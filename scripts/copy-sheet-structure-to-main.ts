@@ -1,8 +1,10 @@
 import path from "node:path";
 import process from "node:process";
 import { google } from "googleapis";
+import dotenv from "dotenv";
+dotenv.config();
 
-const SERVICE_ACCOUNT_FILE = "just-cosmos-437222-b7-f8ab65674d85.json";
+const SERVICE_ACCOUNT_FILE = process.env.SERVICE_ACCOUNT_LOCAL_FILE;
 
 /** 1-based column index → A1 column letters */
 function columnIndexToLetters(column: number): string {
@@ -43,7 +45,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   if (sourceId === destId) {
-    console.error("GOOGLE_SHEET_ID and MAIN_GOOGLE_SHEET_ID must be different spreadsheets.");
+    console.error(
+      "GOOGLE_SHEET_ID and MAIN_GOOGLE_SHEET_ID must be different spreadsheets.",
+    );
     process.exit(1);
   }
 
@@ -125,10 +129,14 @@ async function main(): Promise<void> {
       spreadsheetId: destId,
       requestBody: { requests: addRequests },
     });
-    console.log(`Created ${addRequests.length} missing sheet(s) on destination.`);
+    console.log(
+      `Created ${addRequests.length} missing sheet(s) on destination.`,
+    );
   }
 
-  const clearRanges = srcSheets.map((s) => `${escapeSheetTitleForRange(s.title)}!1:1`);
+  const clearRanges = srcSheets.map(
+    (s) => `${escapeSheetTitleForRange(s.title)}!1:1`,
+  );
 
   await sheetsApi.spreadsheets.values.batchClear({
     spreadsheetId: destId,
@@ -137,7 +145,9 @@ async function main(): Promise<void> {
 
   const updateData = srcSheets.map((s, i) => {
     const firstRow = valueRanges[i]?.values?.[0];
-    const row = Array.isArray(firstRow) ? firstRow.map((c) => (c ?? "") as string | number | boolean) : [];
+    const row = Array.isArray(firstRow)
+      ? firstRow.map((c) => (c ?? "") as string | number | boolean)
+      : [];
     return {
       range: `${escapeSheetTitleForRange(s.title)}!A1`,
       majorDimension: "ROWS" as const,

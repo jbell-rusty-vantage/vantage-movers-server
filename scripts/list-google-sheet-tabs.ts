@@ -1,8 +1,10 @@
 import path from "node:path";
 import process from "node:process";
 import { google } from "googleapis";
+import dotenv from "dotenv";
+dotenv.config();
 
-const SERVICE_ACCOUNT_FILE = "just-cosmos-437222-b7-f8ab65674d85.json";
+const SERVICE_ACCOUNT_FILE = process.env.SERVICE_ACCOUNT_LOCAL_FILE;
 
 const EXPECTED_SHEETS = [
   "Leads",
