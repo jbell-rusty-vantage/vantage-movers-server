@@ -1,7 +1,7 @@
 import { Lead, type LeadDocument } from "../models/Lead";
 import { findCompanySource, getCompanySourceBySite } from "../utils/companySources";
 import { generateLeadId } from "../utils/ids";
-import { getStateCodeForPickupZip } from "../utils/pickupZipState";
+import { getStateCodeForZip } from "../utils/pickupZipState";
 import { type CreateLeadInput, type UpdateLeadInput } from "../validation/lead.validation";
 import { syncLeadToSheets, updateLeadInSheets } from "./googleSheets.service";
 
@@ -23,7 +23,10 @@ export class LeadCompanySourceError extends Error {
 }
 
 export async function createLead(input: CreateLeadInput): Promise<LeadDocument> {
-  const State = await getStateCodeForPickupZip(input.pickupZip);
+  const locationStateFields = await getLeadLocationStateFields(
+    input.pickupZip,
+    input.destinationZip,
+  );
   const companySource =
     findCompanySource(input.sourceCompanySite) ??
     (input.sourceCompanyLabel ? findCompanySource(input.sourceCompanyLabel) : undefined);
@@ -36,7 +39,7 @@ export async function createLead(input: CreateLeadInput): Promise<LeadDocument> 
   const lead = await Lead.create({
     ...input,
     refNo: input.refNo?.trim() || "not provided",
-    State,
+    ...locationStateFields,
     sourceCompanyLabel: companySource.company,
     sourceCompanySite: companySource.site,
     leadId: generateLeadId(),
@@ -101,13 +104,26 @@ export async function updateLead(
     updates.refNo = input.refNo?.trim() || "not provided";
   }
 
-  if (input.pickupZip) {
-    const State = await getStateCodeForPickupZip(input.pickupZip);
-    if (State) {
-      updates.State = State;
-    } else {
-      unset.State = "";
-    }
+  const locationStateFields = await getLeadLocationStateFields(
+    input.pickupZip ?? existingLead.pickupZip,
+    input.destinationZip ?? existingLead.destinationZip,
+    {
+      pickup_state: input.pickupZip ? undefined : existingLead.pickup_state,
+      delivery_state: input.destinationZip ? undefined : existingLead.delivery_state,
+    },
+  );
+  updates.local = locationStateFields.local;
+
+  if (locationStateFields.pickup_state) {
+    updates.pickup_state = locationStateFields.pickup_state;
+  } else {
+    unset.pickup_state = "";
+  }
+
+  if (locationStateFields.delivery_state) {
+    updates.delivery_state = locationStateFields.delivery_state;
+  } else {
+    unset.delivery_state = "";
   }
 
   if (input.sourceCompanySite || input.sourceCompanyLabel) {
@@ -170,4 +186,34 @@ export async function updateLead(
 
     throw new LeadSheetSyncError(message, updatedLead.leadId);
   }
+}
+
+async function getLeadLocationStateFields(
+  pickupZip: string,
+  destinationZip: string,
+  fallback?: {
+    pickup_state?: string | null;
+    delivery_state?: string | null;
+  },
+): Promise<{
+  pickup_state?: string;
+  delivery_state?: string;
+  local: boolean;
+}> {
+  const [pickup_state, delivery_state] = await Promise.all([
+    getStateCodeForZip(pickupZip),
+    getStateCodeForZip(destinationZip),
+  ]);
+  const resolvedPickupState = pickup_state ?? fallback?.pickup_state ?? undefined;
+  const resolvedDeliveryState = delivery_state ?? fallback?.delivery_state ?? undefined;
+
+  return {
+    pickup_state: resolvedPickupState,
+    delivery_state: resolvedDeliveryState,
+    local: Boolean(
+      resolvedPickupState &&
+        resolvedDeliveryState &&
+        resolvedPickupState === resolvedDeliveryState,
+    ),
+  };
 }

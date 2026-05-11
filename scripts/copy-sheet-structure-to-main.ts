@@ -35,12 +35,12 @@ type SheetInfo = {
 };
 
 async function main(): Promise<void> {
-  const sourceId = process.env.GOOGLE_SHEET_ID?.trim();
+  const sourceId = process.env.ORIGINAL_GOOGLE_SHEET_ID?.trim();
   const destId = process.env.MAIN_GOOGLE_SHEET_ID?.trim();
 
   if (!sourceId) {
     console.error(
-      "Missing GOOGLE_SHEET_ID. Set it in .env (see package.json sheets:copy-structure-to-main).",
+      "Missing ORIGINAL_GOOGLE_SHEET_ID. Set it in .env (see package.json sheets:copy-structure-to-main).",
     );
     process.exit(1);
   }

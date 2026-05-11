@@ -14,9 +14,12 @@ export const LEAD_SHEET_HEADERS = [
   "Booked",
   "Source Company Label",
   "Source Company Site",
-  "State",
+  "Pickup State",
+  "Delivery State",
+  "Local",
   "Mongo Lead ID",
   "Cancelled",
+  "Email",
 ] as const;
 
 export type LeadSheetRowSource = {
@@ -24,8 +27,10 @@ export type LeadSheetRowSource = {
   timestamp: Date;
   name: string;
   pickupZip: string;
-  State?: string | null;
+  pickup_state?: string | null;
   destinationZip: string;
+  delivery_state?: string | null;
+  local: boolean;
   moveSize: string;
   moveDate: Date;
   phoneNumber: string;
@@ -35,6 +40,7 @@ export type LeadSheetRowSource = {
   cancelled: boolean;
   sourceCompanyLabel: string;
   sourceCompanySite: string;
+  email: string;
 };
 
 function formatDateOnly(value: Date): string {
@@ -64,8 +70,11 @@ export function leadToSheetRow(lead: LeadSheetRowSource): string[] {
     lead.booked ? "TRUE" : "",
     lead.sourceCompanyLabel,
     lead.sourceCompanySite,
-    lead.State ?? "",
+    lead.pickup_state ?? "",
+    lead.delivery_state ?? "",
+    lead.local ? "TRUE" : "FALSE",
     lead._id.toString(),
     lead.cancelled ? "TRUE" : "",
+    lead.email,
   ];
 }

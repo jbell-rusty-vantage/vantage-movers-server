@@ -8,6 +8,7 @@
     "db:ping": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ping-db.ts",
     "sheets:list-tabs": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/list-google-sheet-tabs.ts",
     "sheets:list-formulas": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/list-google-sheet-formulas.ts",
+    "sheets:dump-leads-columns": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dump-leads-sheet-columns.ts",
     "sheets:copy-structure-to-main": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/copy-sheet-structure-to-main.ts",
     "sheets:minify-service-account": "node ./node_modules/tsx/dist/cli.mjs scripts/minify-google-service-account-json.ts",
     "typecheck": "tsc --noEmit",

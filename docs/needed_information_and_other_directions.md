@@ -18,7 +18,7 @@ Calls: TBM Prime
     Leads: Best Relocation Forms
     Calls: Best Relocation Forms
 
----
+## FINISHED
 
 Static sheet containers will be created per company source
 
@@ -29,3 +29,23 @@ Company Source Sheet Container
 Leads
 Calls
 Other sheets
+
+FINISHED
+
+---
+
+Check Pickup Zip and Destination Zip
+
+---
+
+Backfill the database with current leads from main sheet
+
+Skip Bad Leads
+
+---
+
+Aggregations and Analytics
+
+---
+
+SEO, keyword and content optimization research

@@ -74,10 +74,10 @@ async function formulasViaValuesGet(params: {
 }
 
 async function main(): Promise<void> {
-  const spreadsheetId = process.env.GOOGLE_SHEET_ID?.trim();
+  const spreadsheetId = process.env.ORIGINAL_GOOGLE_SHEET_ID?.trim();
   if (!spreadsheetId) {
     console.error(
-      "Missing GOOGLE_SHEET_ID. Set it in .env and run: pnpm run sheets:list-formulas",
+      "Missing ORIGINAL_GOOGLE_SHEET_ID. Set it in .env and run: pnpm run sheets:list-formulas",
     );
     process.exit(1);
   }

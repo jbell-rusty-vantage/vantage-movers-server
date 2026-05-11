@@ -34,7 +34,7 @@ const LeadSchema = new Schema(
       required: true,
       trim: true,
     },
-    State: {
+    pickup_state: {
       type: String,
       trim: true,
       uppercase: true,
@@ -43,6 +43,16 @@ const LeadSchema = new Schema(
       type: String,
       required: true,
       trim: true,
+    },
+    delivery_state: {
+      type: String,
+      trim: true,
+      uppercase: true,
+    },
+    local: {
+      type: Boolean,
+      required: true,
+      default: false,
     },
     moveSize: {
       type: String,
