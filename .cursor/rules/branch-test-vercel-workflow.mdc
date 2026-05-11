@@ -1,0 +1,16 @@
+---
+description: Branching, local API testing, and Vercel preview workflow
+alwaysApply: true
+---
+
+# Branch Test Vercel Workflow
+
+- For a big slice of work, create a dedicated git branch before editing. Do not commit, push, or deploy unless the user explicitly asks.
+- Before branching, check `git status --short` and avoid overwriting unrelated user changes.
+- Keep work scoped to `vantage_movers_server`; run commands from that directory unless there is a clear reason not to.
+- Validate API changes locally with `pnpm typecheck` and focused route smoke tests. Use `node --env-file=.env` or existing package scripts when env vars are required.
+- For lead-intake live tests, remember valid requests write to MongoDB and Google Sheets. Get user approval before sending live valid payloads.
+- For Vercel work, read `.agents/skills/deploy-to-vercel/SKILL.md` first and follow its preview-first workflow.
+- Use `vercel dev` for local Vercel-compatible API testing when route behavior may differ from direct Express tests.
+- Use preview deployments by default. Production deployments require explicit user approval.
+- If Vercel CLI is linked and git-backed, ask before pushing; otherwise use `vercel deploy -y --no-wait` and report the preview URL.

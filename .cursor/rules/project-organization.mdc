@@ -1,0 +1,14 @@
+---
+description: Current project organization and where new code belongs
+alwaysApply: true
+---
+
+# Project Organization
+
+- This repo is a compact Vercel Express API project. Keep runtime API code under `api/` because `tsconfig.json` includes `api/**/*.ts`.
+- `api/index.ts` owns the exported Express app and route mounting. Keep route files under `api/routes/`.
+- `api/db.ts` is the single Mongo connection helper. Reuse it instead of opening new Mongoose connections.
+- Use focused folders for new API code: `api/middleware`, `api/models`, `api/services`, `api/utils`, and `api/validation`.
+- Keep operational scripts under `scripts/`; run them with the package scripts so `.env` loading stays consistent.
+- Keep architecture notes and implementation plans under `docs/`; do not mix docs-only flow descriptions with runtime code.
+- Avoid broad restructuring unless the user asks for it. Prefer small modules that match the current layout.

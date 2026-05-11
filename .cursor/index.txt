@@ -1,0 +1,2 @@
+Write rules, subagents, commands and other cursor related things in this directory 
+
