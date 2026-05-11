@@ -40,21 +40,37 @@ const optionalRefNoSchema = z.preprocess((value) => {
   return trimmed.length > 0 ? trimmed : undefined;
 }, z.string().optional());
 
+const leadFields = {
+  name: z.string().trim().min(1).max(120),
+  pickupZip: zipSchema,
+  destinationZip: zipSchema,
+  moveSize: moveSizeSchema,
+  moveDate: z.coerce.date(),
+  phoneNumber: phoneSchema,
+  refNo: optionalRefNoSchema,
+  booked: booleanSchema,
+  email: z.email().trim().toLowerCase(),
+  sourceCompanySite: z.string().trim().min(1),
+  sourceCompanyLabel: z.string().trim().min(1).optional(),
+  cancelled: booleanSchema,
+};
+
 export const createLeadSchema = z
   .object({
-    name: z.string().trim().min(1).max(120),
-    pickupZip: zipSchema,
-    destinationZip: zipSchema,
-    moveSize: moveSizeSchema,
-    moveDate: z.coerce.date(),
-    phoneNumber: phoneSchema,
+    ...leadFields,
     refNo: optionalRefNoSchema.default("not provided"),
     booked: booleanSchema.default(false),
-    email: z.email().trim().toLowerCase(),
-    sourceCompanySite: z.string().trim().min(1),
-    sourceCompanyLabel: z.string().trim().min(1),
     cancelled: booleanSchema.default(false),
   })
   .strict();
 
+export const updateLeadSchema = z
+  .object(leadFields)
+  .partial()
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one lead field must be provided",
+  });
+
 export type CreateLeadInput = z.infer<typeof createLeadSchema>;
+export type UpdateLeadInput = z.infer<typeof updateLeadSchema>;

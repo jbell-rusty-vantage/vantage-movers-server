@@ -27,6 +27,12 @@ type SyncLeadResult = {
   companySheetRowNumber?: number;
 };
 
+type SyncedLeadSheetRowSource = LeadSheetRowSource & {
+  mainSheetRowNumber?: number | null;
+  companySheetName?: string | null;
+  companySheetRowNumber?: number | null;
+};
+
 type AppendRowResult = {
   rowNumber?: number;
 };
@@ -79,18 +85,53 @@ export async function syncLeadToSheets(lead: LeadSheetRowSource): Promise<SyncLe
   const spreadsheetId = getSpreadsheetId();
   const row = leadToSheetRow(lead);
 
+  await writeLeadHeaders(sheets, spreadsheetId, LEAD_SHEET_NAME);
   const mainAppend = await appendRow(sheets, spreadsheetId, LEAD_SHEET_NAME, row);
   const companySheetName = await getOrCreateCompanyLeadTab(
     sheets,
     spreadsheetId,
     lead.sourceCompanySite,
   );
+  await writeLeadHeaders(sheets, spreadsheetId, companySheetName);
   const companyAppend = await appendRow(sheets, spreadsheetId, companySheetName, row);
 
   return {
     mainSheetRowNumber: mainAppend.rowNumber,
     companySheetName,
     companySheetRowNumber: companyAppend.rowNumber,
+  };
+}
+
+export async function updateLeadInSheets(lead: SyncedLeadSheetRowSource): Promise<SyncLeadResult> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  const row = leadToSheetRow(lead);
+  await writeLeadHeaders(sheets, spreadsheetId, LEAD_SHEET_NAME);
+  const mainUpdate = lead.mainSheetRowNumber
+    ? await updateRow(sheets, spreadsheetId, LEAD_SHEET_NAME, lead.mainSheetRowNumber, row)
+    : await appendRow(sheets, spreadsheetId, LEAD_SHEET_NAME, row);
+  const companySheetName = await getOrCreateCompanyLeadTab(
+    sheets,
+    spreadsheetId,
+    lead.sourceCompanySite,
+  );
+  await writeLeadHeaders(sheets, spreadsheetId, companySheetName);
+  if (
+    lead.companySheetName &&
+    lead.companySheetName !== companySheetName &&
+    lead.companySheetRowNumber
+  ) {
+    await clearRow(sheets, spreadsheetId, lead.companySheetName, lead.companySheetRowNumber);
+  }
+  const companyUpdate =
+    lead.companySheetName === companySheetName && lead.companySheetRowNumber
+      ? await updateRow(sheets, spreadsheetId, companySheetName, lead.companySheetRowNumber, row)
+      : await appendRow(sheets, spreadsheetId, companySheetName, row);
+
+  return {
+    mainSheetRowNumber: mainUpdate.rowNumber,
+    companySheetName,
+    companySheetRowNumber: companyUpdate.rowNumber,
   };
 }
 
@@ -102,7 +143,7 @@ async function appendRow(
 ): Promise<AppendRowResult> {
   const response = await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: `${escapeSheetTitleForRange(tabName)}!A:L`,
+    range: `${escapeSheetTitleForRange(tabName)}!A:${getLastLeadColumnLetter()}`,
     valueInputOption: "USER_ENTERED",
     insertDataOption: "INSERT_ROWS",
     requestBody: {
@@ -113,6 +154,37 @@ async function appendRow(
   return {
     rowNumber: extractRowNumberFromRange(response.data.updates?.updatedRange),
   };
+}
+
+async function updateRow(
+  sheets: sheets_v4.Sheets,
+  spreadsheetId: string,
+  tabName: string,
+  rowNumber: number,
+  row: string[],
+): Promise<AppendRowResult> {
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${escapeSheetTitleForRange(tabName)}!A${rowNumber}:${getLastLeadColumnLetter()}${rowNumber}`,
+    valueInputOption: "USER_ENTERED",
+    requestBody: {
+      values: [row],
+    },
+  });
+
+  return { rowNumber };
+}
+
+async function clearRow(
+  sheets: sheets_v4.Sheets,
+  spreadsheetId: string,
+  tabName: string,
+  rowNumber: number,
+): Promise<void> {
+  await sheets.spreadsheets.values.clear({
+    spreadsheetId,
+    range: `${escapeSheetTitleForRange(tabName)}!A${rowNumber}:${getLastLeadColumnLetter()}${rowNumber}`,
+  });
 }
 
 async function getOrCreateCompanyLeadTab(
@@ -127,7 +199,7 @@ async function getOrCreateCompanyLeadTab(
     tabType: "LEADS",
   });
 
-  if (existing) {
+  if (existing && existing.tabName === tabName) {
     return existing.tabName;
   }
 
@@ -136,6 +208,13 @@ async function getOrCreateCompanyLeadTab(
     existingGoogleSheetId ?? (await createCompanyLeadTab(sheets, spreadsheetId, tabName));
 
   await writeLeadHeaders(sheets, spreadsheetId, tabName);
+
+  if (existing) {
+    existing.tabName = tabName;
+    existing.googleSheetId = googleSheetId;
+    await existing.save();
+    return tabName;
+  }
 
   try {
     await SheetTab.create({
@@ -206,12 +285,25 @@ async function writeLeadHeaders(
 ): Promise<void> {
   await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: `${escapeSheetTitleForRange(tabName)}!A1:L1`,
+    range: `${escapeSheetTitleForRange(tabName)}!A1:${getLastLeadColumnLetter()}1`,
     valueInputOption: "USER_ENTERED",
     requestBody: {
       values: [[...LEAD_SHEET_HEADERS]],
     },
   });
+}
+
+function getLastLeadColumnLetter(): string {
+  let columnNumber: number = LEAD_SHEET_HEADERS.length;
+  let letter = "";
+
+  while (columnNumber > 0) {
+    const remainder = (columnNumber - 1) % 26;
+    letter = String.fromCharCode(65 + remainder) + letter;
+    columnNumber = Math.floor((columnNumber - 1) / 26);
+  }
+
+  return letter;
 }
 
 function isDuplicateKeyError(error: unknown): boolean {

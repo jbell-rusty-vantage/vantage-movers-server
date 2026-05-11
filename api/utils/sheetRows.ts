@@ -10,15 +10,20 @@ export const LEAD_SHEET_HEADERS = [
   "Phone",
   "Lead ID",
   "Ref No",
-  "Booked (Can be empty for now)",
+  "Booked",
   "Source Company Label",
   "Source Company Site",
+  "State",
+  "Mongo Lead ID",
+  "Cancelled",
 ] as const;
 
 export type LeadSheetRowSource = {
+  _id: { toString(): string };
   timestamp: Date;
   name: string;
   pickupZip: string;
+  State?: string | null;
   destinationZip: string;
   moveSize: string;
   moveDate: Date;
@@ -26,6 +31,7 @@ export type LeadSheetRowSource = {
   leadId: string;
   refNo?: string | null;
   booked: boolean;
+  cancelled: boolean;
   sourceCompanyLabel: string;
   sourceCompanySite: string;
 };
@@ -48,5 +54,8 @@ export function leadToSheetRow(lead: LeadSheetRowSource): string[] {
     lead.booked ? "TRUE" : "",
     lead.sourceCompanyLabel,
     lead.sourceCompanySite,
+    lead.State ?? "",
+    lead._id.toString(),
+    lead.cancelled ? "TRUE" : "",
   ];
 }

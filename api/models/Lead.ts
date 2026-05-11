@@ -34,6 +34,11 @@ const LeadSchema = new Schema(
       required: true,
       trim: true,
     },
+    State: {
+      type: String,
+      trim: true,
+      uppercase: true,
+    },
     destinationZip: {
       type: String,
       required: true,
