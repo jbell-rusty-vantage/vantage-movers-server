@@ -426,51 +426,45 @@ lead.cancelled,
 ];
 } 12. Sheet Naming
 
-Use sourceCompanySite.
+Use fixed tab names in every spreadsheet container:
 
-export function sanitizeSheetName(value: string) {
-return value
-.replace(/[\\/?\*[\]:]/g, "")
-.trim()
-.slice(0, 80);
-}
+- Leads
+- Calls
 
-export function getCompanyLeadSheetName(sourceCompanySite: string) {
-return `${sanitizeSheetName(sourceCompanySite)} - Leads`;
-} 13. Sheets Sync Logic
+Company source segmentation is done by choosing the spreadsheet ID for the source, not by deriving tab names.
+
+13. Sheets Sync Logic
 
 On every lead:
 
 1. Append to main Leads tab.
-2. Get or create company-specific Leads tab.
-3. Append to company-specific Leads tab.
+2. Resolve the company source spreadsheet ID.
+3. Ensure Leads and Calls tabs exist in both spreadsheet containers.
+4. Append to the company spreadsheet Leads tab.
 
 Pseudo-service:
 
 import { google } from "googleapis";
-import { SheetTab } from "../models/SheetTab";
 import { LEAD_HEADERS } from "../constants/sheetHeaders";
 import { leadToSheetRow } from "../utils/leadToSheetRow";
-import { getCompanyLeadSheetName } from "../utils/sheetNames";
+import { getCompanySourceSpreadsheetId } from "../utils/companySources";
 
-const spreadsheetId = process.env.MAIN_GOOGLE_SHEET_ID!;
+const mainSpreadsheetId = process.env.MAIN_GOOGLE_SHEET_ID!;
 
 export async function syncLeadToSheets(lead: any) {
 const sheets = getSheetsClient();
+const companySpreadsheetId = getCompanySourceSpreadsheetId(lead.sourceCompanySite);
 
 const row = leadToSheetRow(lead);
 
-await appendRow(sheets, "Leads", row);
+await ensureTabs(sheets, mainSpreadsheetId, ["Leads", "Calls"]);
+await ensureTabs(sheets, companySpreadsheetId, ["Leads", "Calls"]);
 
-const companyTabName = await getOrCreateCompanyLeadTab(
-sheets,
-lead.sourceCompanySite
-);
-
-await appendRow(sheets, companyTabName, row);
+await appendRow(sheets, mainSpreadsheetId, "Leads", row);
+await appendRow(sheets, companySpreadsheetId, "Leads", row);
 }
 
-async function appendRow(sheets: any, tabName: string, row: any[]) {
+async function appendRow(sheets: any, spreadsheetId: string, tabName: string, row: any[]) {
 await sheets.spreadsheets.values.append({
 spreadsheetId,
 range: `${tabName}!A:Z`,
@@ -479,60 +473,11 @@ requestBody: {
 values: [row],
 },
 });
-} 14. Create Company Tab If Missing
-async function getOrCreateCompanyLeadTab(
-sheets: any,
-sourceCompanySite: string
-) {
-const tabName = getCompanyLeadSheetName(sourceCompanySite);
+} 14. Create Fixed Tabs If Missing
 
-const existing = await SheetTab.findOne({
-spreadsheetId,
-companySite: sourceCompanySite,
-tabType: "LEADS",
-});
+Create `Leads` and `Calls` tabs in the main spreadsheet and in each company spreadsheet on first interaction, then write the shared headers to row 1.
 
-if (existing) {
-return existing.tabName;
-}
-
-const response = await sheets.spreadsheets.batchUpdate({
-spreadsheetId,
-requestBody: {
-requests: [
-{
-addSheet: {
-properties: {
-title: tabName,
-},
-},
-},
-],
-},
-});
-
-const googleSheetId =
-response.data.replies?.[0]?.addSheet?.properties?.sheetId;
-
-await sheets.spreadsheets.values.update({
-spreadsheetId,
-range: `${tabName}!A1:Z1`,
-valueInputOption: "USER_ENTERED",
-requestBody: {
-values: [LEAD_HEADERS],
-},
-});
-
-await SheetTab.create({
-spreadsheetId,
-companySite: sourceCompanySite,
-tabName,
-tabType: "LEADS",
-googleSheetId,
-});
-
-return tabName;
-} 15. Main Sheet Initialization
+15. Main Sheet Initialization
 
 Manually create these tabs first:
 

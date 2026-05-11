@@ -1,8 +1,14 @@
 import path from "node:path";
 import { google, type sheets_v4 } from "googleapis";
-import { SheetTab } from "../models/SheetTab";
-import { escapeSheetTitleForRange, extractRowNumberFromRange } from "../utils/googleSheetsRanges";
-import { getCompanyLeadSheetName } from "../utils/sheetNames";
+import {
+  getCompanySourceBySite,
+  getCompanySourceSpreadsheetId,
+} from "../utils/companySources";
+import {
+  escapeSheetTitleForRange,
+  extractRowNumberFromRange,
+} from "../utils/googleSheetsRanges";
+import { REQUIRED_SHEET_NAMES } from "../utils/sheetNames";
 import {
   LEAD_SHEET_HEADERS,
   LEAD_SHEET_NAME,
@@ -10,7 +16,7 @@ import {
   type LeadSheetRowSource,
 } from "../utils/sheetRows";
 
-const SERVICE_ACCOUNT_FILE = "just-cosmos-437222-b7-f8ab65674d85.json";
+const SERVICE_ACCOUNT_FILE = process.env.SERVICE_ACCOUNT_LOCAL_FILE;
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 
 let cachedSheetsClient: sheets_v4.Sheets | null = null;
@@ -23,12 +29,14 @@ type ServiceAccountCredentials = {
 
 type SyncLeadResult = {
   mainSheetRowNumber?: number;
+  companySpreadsheetId: string;
   companySheetName: string;
   companySheetRowNumber?: number;
 };
 
 type SyncedLeadSheetRowSource = LeadSheetRowSource & {
   mainSheetRowNumber?: number | null;
+  companySpreadsheetId?: string | null;
   companySheetName?: string | null;
   companySheetRowNumber?: number | null;
 };
@@ -55,7 +63,7 @@ function getSheetsClient(): sheets_v4.Sheets {
   const auth = new google.auth.GoogleAuth({
     ...(credentials
       ? { credentials }
-      : { keyFile: path.join(process.cwd(), SERVICE_ACCOUNT_FILE) }),
+      : { keyFile: path.join(process.cwd(), SERVICE_ACCOUNT_FILE!) }),
     scopes: [SHEETS_SCOPE],
   });
 
@@ -66,7 +74,11 @@ function getSheetsClient(): sheets_v4.Sheets {
 function getServiceAccountCredentials(): ServiceAccountCredentials | undefined {
   const rawJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
   const base64Json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64?.trim();
-  const value = rawJson ?? (base64Json ? Buffer.from(base64Json, "base64").toString("utf8") : undefined);
+  const value =
+    rawJson ??
+    (base64Json
+      ? Buffer.from(base64Json, "base64").toString("utf8")
+      : undefined);
 
   if (!value) {
     return undefined;
@@ -80,57 +92,94 @@ function getServiceAccountCredentials(): ServiceAccountCredentials | undefined {
   return parsed;
 }
 
-export async function syncLeadToSheets(lead: LeadSheetRowSource): Promise<SyncLeadResult> {
+export async function syncLeadToSheets(
+  lead: LeadSheetRowSource,
+): Promise<SyncLeadResult> {
   const sheets = getSheetsClient();
-  const spreadsheetId = getSpreadsheetId();
-  const row = leadToSheetRow(lead);
-
-  await writeLeadHeaders(sheets, spreadsheetId, LEAD_SHEET_NAME);
-  const mainAppend = await appendRow(sheets, spreadsheetId, LEAD_SHEET_NAME, row);
-  const companySheetName = await getOrCreateCompanyLeadTab(
-    sheets,
-    spreadsheetId,
+  const mainSpreadsheetId = getSpreadsheetId();
+  const companySpreadsheetId = getCompanySpreadsheetIdForLead(
     lead.sourceCompanySite,
   );
-  await writeLeadHeaders(sheets, spreadsheetId, companySheetName);
-  const companyAppend = await appendRow(sheets, spreadsheetId, companySheetName, row);
+  const row = leadToSheetRow(lead);
+
+  await ensureRequiredSheets(sheets, mainSpreadsheetId);
+  await ensureRequiredSheets(sheets, companySpreadsheetId);
+
+  const mainAppend = await appendRow(
+    sheets,
+    mainSpreadsheetId,
+    LEAD_SHEET_NAME,
+    row,
+  );
+  const companyAppend = await appendRow(
+    sheets,
+    companySpreadsheetId,
+    LEAD_SHEET_NAME,
+    row,
+  );
 
   return {
     mainSheetRowNumber: mainAppend.rowNumber,
-    companySheetName,
+    companySpreadsheetId,
+    companySheetName: LEAD_SHEET_NAME,
     companySheetRowNumber: companyAppend.rowNumber,
   };
 }
 
-export async function updateLeadInSheets(lead: SyncedLeadSheetRowSource): Promise<SyncLeadResult> {
+export async function updateLeadInSheets(
+  lead: SyncedLeadSheetRowSource,
+): Promise<SyncLeadResult> {
   const sheets = getSheetsClient();
-  const spreadsheetId = getSpreadsheetId();
-  const row = leadToSheetRow(lead);
-  await writeLeadHeaders(sheets, spreadsheetId, LEAD_SHEET_NAME);
-  const mainUpdate = lead.mainSheetRowNumber
-    ? await updateRow(sheets, spreadsheetId, LEAD_SHEET_NAME, lead.mainSheetRowNumber, row)
-    : await appendRow(sheets, spreadsheetId, LEAD_SHEET_NAME, row);
-  const companySheetName = await getOrCreateCompanyLeadTab(
-    sheets,
-    spreadsheetId,
+  const mainSpreadsheetId = getSpreadsheetId();
+  const companySpreadsheetId = getCompanySpreadsheetIdForLead(
     lead.sourceCompanySite,
   );
-  await writeLeadHeaders(sheets, spreadsheetId, companySheetName);
+  const row = leadToSheetRow(lead);
+
+  await ensureRequiredSheets(sheets, mainSpreadsheetId);
+  await ensureRequiredSheets(sheets, companySpreadsheetId);
+
+  const mainUpdate = lead.mainSheetRowNumber
+    ? await updateRow(
+        sheets,
+        mainSpreadsheetId,
+        LEAD_SHEET_NAME,
+        lead.mainSheetRowNumber,
+        row,
+      )
+    : await appendRow(sheets, mainSpreadsheetId, LEAD_SHEET_NAME, row);
+
   if (
-    lead.companySheetName &&
-    lead.companySheetName !== companySheetName &&
-    lead.companySheetRowNumber
+    lead.companySpreadsheetId &&
+    lead.companySpreadsheetId !== companySpreadsheetId
   ) {
-    await clearRow(sheets, spreadsheetId, lead.companySheetName, lead.companySheetRowNumber);
+    await ensureRequiredSheets(sheets, lead.companySpreadsheetId);
+    if (lead.companySheetRowNumber) {
+      await clearRow(
+        sheets,
+        lead.companySpreadsheetId,
+        lead.companySheetName ?? LEAD_SHEET_NAME,
+        lead.companySheetRowNumber,
+      );
+    }
   }
+
   const companyUpdate =
-    lead.companySheetName === companySheetName && lead.companySheetRowNumber
-      ? await updateRow(sheets, spreadsheetId, companySheetName, lead.companySheetRowNumber, row)
-      : await appendRow(sheets, spreadsheetId, companySheetName, row);
+    lead.companySpreadsheetId === companySpreadsheetId &&
+    lead.companySheetRowNumber
+      ? await updateRow(
+          sheets,
+          companySpreadsheetId,
+          LEAD_SHEET_NAME,
+          lead.companySheetRowNumber,
+          row,
+        )
+      : await appendRow(sheets, companySpreadsheetId, LEAD_SHEET_NAME, row);
 
   return {
     mainSheetRowNumber: mainUpdate.rowNumber,
-    companySheetName,
+    companySpreadsheetId,
+    companySheetName: LEAD_SHEET_NAME,
     companySheetRowNumber: companyUpdate.rowNumber,
   };
 }
@@ -187,50 +236,31 @@ async function clearRow(
   });
 }
 
-async function getOrCreateCompanyLeadTab(
+function getCompanySpreadsheetIdForLead(sourceCompanySite: string): string {
+  const companySource = getCompanySourceBySite(sourceCompanySite);
+  if (!companySource) {
+    throw new Error(`Unknown lead company source: ${sourceCompanySite}`);
+  }
+
+  return getCompanySourceSpreadsheetId(companySource);
+}
+
+async function ensureRequiredSheets(
   sheets: sheets_v4.Sheets,
   spreadsheetId: string,
-  sourceCompanySite: string,
-): Promise<string> {
-  const tabName = getCompanyLeadSheetName(sourceCompanySite);
-  const existing = await SheetTab.findOne({
-    spreadsheetId,
-    companySite: sourceCompanySite,
-    tabType: "LEADS",
-  });
-
-  if (existing && existing.tabName === tabName) {
-    return existing.tabName;
-  }
-
-  const existingGoogleSheetId = await getExistingSheetId(sheets, spreadsheetId, tabName);
-  const googleSheetId =
-    existingGoogleSheetId ?? (await createCompanyLeadTab(sheets, spreadsheetId, tabName));
-
-  await writeLeadHeaders(sheets, spreadsheetId, tabName);
-
-  if (existing) {
-    existing.tabName = tabName;
-    existing.googleSheetId = googleSheetId;
-    await existing.save();
-    return tabName;
-  }
-
-  try {
-    await SheetTab.create({
+): Promise<void> {
+  for (const tabName of REQUIRED_SHEET_NAMES) {
+    const existingGoogleSheetId = await getExistingSheetId(
+      sheets,
       spreadsheetId,
-      companySite: sourceCompanySite,
       tabName,
-      tabType: "LEADS",
-      googleSheetId,
-    });
-  } catch (error: unknown) {
-    if (!isDuplicateKeyError(error)) {
-      throw error;
+    );
+    if (existingGoogleSheetId === undefined) {
+      await createSheetTab(sheets, spreadsheetId, tabName);
     }
-  }
 
-  return tabName;
+    await writeLeadHeaders(sheets, spreadsheetId, tabName);
+  }
 }
 
 async function getExistingSheetId(
@@ -243,11 +273,13 @@ async function getExistingSheetId(
     fields: "sheets.properties(sheetId,title)",
   });
 
-  const sheet = response.data.sheets?.find((item) => item.properties?.title === tabName);
+  const sheet = response.data.sheets?.find(
+    (item) => item.properties?.title === tabName,
+  );
   return sheet?.properties?.sheetId ?? undefined;
 }
 
-async function createCompanyLeadTab(
+async function createSheetTab(
   sheets: sheets_v4.Sheets,
   spreadsheetId: string,
   tabName: string,
@@ -268,7 +300,9 @@ async function createCompanyLeadTab(
       },
     });
 
-    return response.data.replies?.[0]?.addSheet?.properties?.sheetId ?? undefined;
+    return (
+      response.data.replies?.[0]?.addSheet?.properties?.sheetId ?? undefined
+    );
   } catch (error) {
     if (!isGoogleSheetAlreadyExistsError(error)) {
       throw error;
@@ -306,21 +340,14 @@ function getLastLeadColumnLetter(): string {
   return letter;
 }
 
-function isDuplicateKeyError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === 11000
-  );
-}
-
 function isGoogleSheetAlreadyExistsError(error: unknown): boolean {
   if (typeof error !== "object" || error === null) {
     return false;
   }
 
-  const status = "code" in error ? (error as { code?: unknown }).code : undefined;
-  const message = "message" in error ? String((error as { message?: unknown }).message) : "";
+  const status =
+    "code" in error ? (error as { code?: unknown }).code : undefined;
+  const message =
+    "message" in error ? String((error as { message?: unknown }).message) : "";
   return status === 400 && message.toLowerCase().includes("already exists");
 }

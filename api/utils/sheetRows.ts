@@ -1,4 +1,5 @@
 export const LEAD_SHEET_NAME = "Leads";
+export const CALL_SHEET_NAME = "Calls";
 
 export const LEAD_SHEET_HEADERS = [
   "Time Stamp",
@@ -40,9 +41,18 @@ function formatDateOnly(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
+function formatTimestamp(value: Date): string {
+  const date = `${value.getMonth() + 1}/${value.getDate()}/${value.getFullYear()}`;
+  const time = [value.getHours(), value.getMinutes(), value.getSeconds()]
+    .map((part) => String(part).padStart(2, "0"))
+    .join(":");
+
+  return `${date} ${time}`;
+}
+
 export function leadToSheetRow(lead: LeadSheetRowSource): string[] {
   return [
-    lead.timestamp.toISOString(),
+    formatTimestamp(lead.timestamp),
     lead.name,
     lead.pickupZip,
     lead.destinationZip,

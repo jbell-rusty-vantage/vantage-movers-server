@@ -17,3 +17,15 @@ Calls: TBM Prime
     Site: BestRelocation.com
     Leads: Best Relocation Forms
     Calls: Best Relocation Forms
+
+---
+
+Static sheet containers will be created per company source
+
+And then these need to be updated and re-synced instead of creating derived sheets in the same container with company source - leads or calls
+
+Company Source Sheet Container
+
+Leads
+Calls
+Other sheets

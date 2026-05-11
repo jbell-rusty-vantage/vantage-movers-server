@@ -107,6 +107,10 @@ const LeadSchema = new Schema(
     mainSheetRowNumber: {
       type: Number,
     },
+    companySpreadsheetId: {
+      type: String,
+      trim: true,
+    },
     companySheetName: {
       type: String,
     },

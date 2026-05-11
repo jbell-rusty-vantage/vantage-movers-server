@@ -1,26 +1,11 @@
-import { getCompanySourceBySite } from "./companySources";
+import { CALL_SHEET_NAME, LEAD_SHEET_NAME } from "./sheetRows";
 
-const INVALID_SHEET_TITLE_CHARS = /[\\/?*[\]:]/g;
-const MAX_SHEET_TITLE_LENGTH = 100;
-const LEADS_SUFFIX = " - Leads";
-const CALLS_SUFFIX = " - Calls";
+export const REQUIRED_SHEET_NAMES = [LEAD_SHEET_NAME, CALL_SHEET_NAME] as const;
 
-export function sanitizeSheetName(value: string): string {
-  const sanitized = value.replace(INVALID_SHEET_TITLE_CHARS, "").trim();
-  return sanitized || "Unknown Source";
+export function getLeadSheetName(): typeof LEAD_SHEET_NAME {
+  return LEAD_SHEET_NAME;
 }
 
-export function getCompanyLeadSheetName(sourceCompanySite: string): string {
-  const source = getCompanySourceBySite(sourceCompanySite);
-  return getCompanySheetName(source?.labels.leads ?? sourceCompanySite, LEADS_SUFFIX);
-}
-
-export function getCompanyCallSheetName(sourceCompanySite: string): string {
-  const source = getCompanySourceBySite(sourceCompanySite);
-  return getCompanySheetName(source?.labels.calls ?? sourceCompanySite, CALLS_SUFFIX);
-}
-
-function getCompanySheetName(label: string, suffix: string): string {
-  const baseNameMaxLength = MAX_SHEET_TITLE_LENGTH - suffix.length;
-  return `${sanitizeSheetName(label).slice(0, baseNameMaxLength)}${suffix}`;
+export function getCallSheetName(): typeof CALL_SHEET_NAME {
+  return CALL_SHEET_NAME;
 }
