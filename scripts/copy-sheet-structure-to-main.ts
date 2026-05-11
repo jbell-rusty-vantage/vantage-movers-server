@@ -5,6 +5,12 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const SERVICE_ACCOUNT_FILE = process.env.SERVICE_ACCOUNT_LOCAL_FILE;
+if (!SERVICE_ACCOUNT_FILE) {
+  console.error(
+    "Missing SERVICE_ACCOUNT_LOCAL_FILE. Set it in .env (see package.json sheets:copy-structure-to-main).",
+  );
+  process.exit(1);
+}
 
 /** 1-based column index → A1 column letters */
 function columnIndexToLetters(column: number): string {
@@ -51,7 +57,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const keyFile = path.join(process.cwd(), SERVICE_ACCOUNT_FILE);
+  const keyFile = path.join(process.cwd(), SERVICE_ACCOUNT_FILE!);
 
   const auth = new google.auth.GoogleAuth({
     keyFile,
