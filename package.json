@@ -5,6 +5,10 @@
   "main": "api/index.ts",
   "scripts": {
     "dev": "vercel dev",
+    "db:ping": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ping-db.ts",
+    "sheets:list-tabs": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/list-google-sheet-tabs.ts",
+    "sheets:list-formulas": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/list-google-sheet-formulas.ts",
+    "sheets:copy-structure-to-main": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/copy-sheet-structure-to-main.ts",
     "typecheck": "tsc --noEmit",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -15,6 +19,7 @@
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "google-spreadsheet": "^5.2.0",
     "googleapis": "^171.4.0",
