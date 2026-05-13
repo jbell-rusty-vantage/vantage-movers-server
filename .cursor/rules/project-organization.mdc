@@ -3,12 +3,13 @@ description: Current project organization and where new code belongs
 alwaysApply: true
 ---
 
-# Project Organization
+# Vantage Movers Server Organization
 
-- This repo is a compact Vercel Express API project. Keep runtime API code under `api/` because `tsconfig.json` includes `api/**/*.ts`.
-- `api/index.ts` owns the exported Express app and route mounting. Keep route files under `api/routes/`.
-- `api/db.ts` is the single Mongo connection helper. Reuse it instead of opening new Mongoose connections.
-- Use focused folders for new API code: `api/middleware`, `api/models`, `api/services`, `api/utils`, and `api/validation`.
-- Keep operational scripts under `scripts/`; run them with the package scripts so `.env` loading stays consistent.
-- Keep architecture notes and implementation plans under `docs/`; do not mix docs-only flow descriptions with runtime code.
-- Avoid broad restructuring unless the user asks for it. Prefer small modules that match the current layout.
+- This repo is the Vantage Movers Express REST API deployed on Vercel. Keep runtime API code under `api/` because `tsconfig.json` includes `api/**/*.ts`.
+- `api/index.ts` owns the exported Express app, health/db probes, and route mounting. Mount versioned routes from `api/routes/`.
+- `api/db.ts` is the only Mongo connection helper. Reuse it and keep the app pointed at the `vantagemovers` database.
+- Put request guards in `api/middleware`, Mongoose schemas in `api/models`, orchestration/business logic in `api/services`, shared config/maps in `api/config`, helpers in `api/utils`, and Zod schemas in `api/validation`.
+- Keep API payloads and Mongo fields in `snake_case`; convert to owner-facing Title Case only at the Google Sheets projection boundary.
+- Keep operational scripts under `scripts/`; run them through `package.json` scripts so `.env` loading stays consistent.
+- Keep planning, architecture, and workflow notes under `docs/`. Runtime code should cite those docs conceptually, not duplicate long prose from them.
+- Avoid broad restructuring unless requested. Prefer small modules that match the current folder layout and the v1 API boundaries.

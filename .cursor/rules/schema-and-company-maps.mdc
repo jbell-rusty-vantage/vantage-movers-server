@@ -1,0 +1,18 @@
+---
+description: Mongoose schema and source-company map conventions for API v1
+globs: api/**/*.ts
+alwaysApply: false
+---
+
+# Schemas And Company Maps
+
+- The v1 domain collections are `form_leads`, `call_leads`, `booked_leads`, `cancelled_leads`, and `customers`. Do not reintroduce the legacy single `Lead` model.
+- Keep Mongoose schemas in `api/models/` and shared schema fragments in `api/models/schemaHelpers.ts`.
+- Keep source company, CPL, sheet container, tab, and header maps in `api/config/domain.ts`. Do not scatter `process.env.*_SHEET_ID` lookups through services.
+- Store canonical source companies as slugs: `tbm_leads`, `tbm_prime_leads`, `top10_leads`, `best_relocation_leads`, `main_site`, `not_provided`.
+- Accept owner-facing source names at the API boundary when useful, then normalize to slugs before saving.
+- Store `local` as `local | long_distance`, not a boolean. Sheet projections can derive boolean-style `Local` cells from that enum.
+- Compute and persist `cpl` server-side from source-company maps. Do not trust client-supplied CPL.
+- Bookings must use the polymorphic pair `lead_ref` and `lead_model` (`FormLead` or `CallLead`), require a valid linked lead, and mirror booking flags back to that source lead.
+- Customers are created or linked from valid booking normalization, using the linked lead as the main source of customer identity.
+- Cancellations are booking-linked records with copied booking snapshot fields; they update the booking and source lead but do not write to a separate cancellation sheet in this unit.

@@ -1,18 +1,19 @@
 import express from "express";
 import mongoose from "mongoose";
+import { MONGO_DATABASE_NAME } from "./config/domain";
 import { connectMongo } from "./db";
-import leadRoutes from "./routes/lead.routes";
+import v1Routes from "./routes/v1.routes";
 
 const app = express();
 
 app.use(express.json());
-app.use(leadRoutes);
+app.use(v1Routes);
 
 app.get("/", (_req, res) => {
   res.json({
-    service: "vantage-movers-servers",
+    service: "vantage-movers-server",
     status: "ok",
-    message: "Toy Express on Vercel",
+    apiVersion: "v1",
   });
 });
 
@@ -29,6 +30,7 @@ app.get("/db", async (_req, res) => {
       readyState: mongoose.connection.readyState,
       host: mongoose.connection.host || null,
       name: mongoose.connection.name || null,
+      expectedName: MONGO_DATABASE_NAME,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

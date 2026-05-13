@@ -1,4 +1,6 @@
+import dns from "node:dns";
 import mongoose from "mongoose";
+import { MONGO_DATABASE_NAME } from "./config/domain";
 
 interface MongooseCache {
   conn: typeof mongoose | null;
@@ -29,7 +31,8 @@ export async function connectMongo(): Promise<void> {
   }
 
   if (!cache.promise) {
-    cache.promise = mongoose.connect(uri).catch((error) => {
+    configureMongoDnsServers();
+    cache.promise = mongoose.connect(uri, { dbName: MONGO_DATABASE_NAME }).catch((error) => {
       cache.promise = null;
       throw error;
     });
@@ -37,4 +40,15 @@ export async function connectMongo(): Promise<void> {
 
   await cache.promise;
   cache.conn = mongoose;
+}
+
+function configureMongoDnsServers(): void {
+  const servers = process.env.MONGO_DNS_SERVERS?.split(",")
+    .map((server) => server.trim())
+    .filter(Boolean);
+  if (!servers?.length) {
+    return;
+  }
+
+  dns.setServers(servers);
 }

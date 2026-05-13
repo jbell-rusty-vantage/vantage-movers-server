@@ -1,0 +1,18 @@
+---
+description: Google Sheets synchronization process for API v1
+globs: api/**/*.ts
+alwaysApply: false
+---
+
+# Google Sheets Sync Process
+
+- MongoDB is the source of truth. Create/update Mongo documents first, then derive Google Sheets rows from saved documents.
+- Keep spreadsheet container IDs separate from tab names. `MASTER_LEADS_SHEET_ID` contains `Forms` and `Calls`; `MASTER_BOOKED_SHEET_ID` contains `Booked Deals`.
+- Source lead sheet containers are `TBM_LEADS_SHEET_ID`, `TBM_PRIME_LEADS_SHEET_ID`, `TOP10_LEADS_SHEET_ID`, `BEST_RELOCATION_LEADS_SHEET_ID`, and `MAINSITE_LEADS_SHEET_ID`.
+- All form leads write to master `Forms` plus the matching source `Forms` tab. All call leads write to master `Calls` plus the matching source `Calls` tab.
+- All booked leads write only to `MASTER_BOOKED_SHEET_ID` tab `Booked Deals`.
+- Non-main source lead containers must have `Forms`, `Calls`, `Bad Leads`, and `Bad Calls` tabs. Main site has only `Forms` and `Calls`.
+- Use canonical headers from `api/config/domain.ts`. Do not preserve duplicate or misspelled headers from exploratory docs.
+- Use `Mongo ID` as the row identity in every synced tab. Booked rows also include `Mongo Lead ID` for the linked source lead.
+- Store sync state in each document's `sheet_sync[]` entries: target, spreadsheet ID, tab name, row number, status, last sync time, last error, and dirty state.
+- Immediate create/update sync is expected. If one target fails, persist that target as `failed` and keep successful targets as `synced`.

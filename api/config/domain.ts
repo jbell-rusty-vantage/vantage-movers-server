@@ -1,0 +1,230 @@
+export const MONGO_DATABASE_NAME = "vantagemovers";
+
+export const SOURCE_COMPANIES = [
+  "tbm_leads",
+  "tbm_prime_leads",
+  "top10_leads",
+  "best_relocation_leads",
+  "main_site",
+  "not_provided",
+] as const;
+
+export type SourceCompany = (typeof SOURCE_COMPANIES)[number];
+
+export const LOCAL_TYPES = ["local", "long_distance"] as const;
+export type LocalType = (typeof LOCAL_TYPES)[number];
+
+export const LEAD_MODELS = ["FormLead", "CallLead"] as const;
+export type LeadModelName = (typeof LEAD_MODELS)[number];
+
+export const MOVE_SIZES = [
+  "Studio",
+  "2 Bedrooms",
+  "3 Bedrooms",
+  "4 Bedrooms",
+  "5+ Bedrooms",
+  "Office",
+] as const;
+
+export const SHEET_SYNC_STATUSES = ["pending", "synced", "failed"] as const;
+
+export type SheetSyncStatus = (typeof SHEET_SYNC_STATUSES)[number];
+
+export const SHEET_TAB_NAMES = {
+  forms: "Forms",
+  calls: "Calls",
+  badLeads: "Bad Leads",
+  badCalls: "Bad Calls",
+  bookedDeals: "Booked Deals",
+} as const;
+
+export const SHEET_CONTAINER_ENV_VARS = {
+  masterLeads: "MASTER_LEADS_SHEET_ID",
+  masterBooked: "MASTER_BOOKED_SHEET_ID",
+  sourceLeads: {
+    tbm_leads: "TBM_LEADS_SHEET_ID",
+    tbm_prime_leads: "TBM_PRIME_LEADS_SHEET_ID",
+    top10_leads: "TOP10_LEADS_SHEET_ID",
+    best_relocation_leads: "BEST_RELOCATION_LEADS_SHEET_ID",
+    main_site: "MAINSITE_LEADS_SHEET_ID",
+  },
+} as const;
+
+export const FORM_SHEET_HEADERS = [
+  "Timestamp",
+  "Name",
+  "Pickup Zip",
+  "Destination Zip",
+  "Pickup State",
+  "Delivery State",
+  "Move Size",
+  "Move Date",
+  "Phone Number",
+  "Mongo ID",
+  "Ref No",
+  "Booked",
+  "OVER 2000",
+  "OVER 4000",
+  "Cancelled",
+  "Local",
+  "Cubic Feet",
+  "Lead ID",
+  "Source Company",
+  "Source Company Site",
+  "Quoted",
+  "CPL",
+] as const;
+
+export const CALL_SHEET_HEADERS = [
+  "Timestamp",
+  "Agent",
+  "Book Date",
+  "Job No",
+  "Customer Name",
+  "Binder Amount",
+  "Deposit Amount",
+  "Merchant",
+  "Source",
+  "Mongo ID",
+  "Local",
+  "Cancelled",
+] as const;
+
+export const BOOKED_SHEET_HEADERS = [
+  "Timestamp",
+  "Agent",
+  "Book Date",
+  "Job No",
+  "Customer Name",
+  "Binder Amount",
+  "Deposit Amount",
+  "Merchant",
+  "Source",
+  "Mongo ID",
+  "Mongo Lead ID",
+  "Local",
+  "Cancelled",
+] as const;
+
+export type SourceCompanyConfig = {
+  slug: SourceCompany;
+  label: string;
+  leadSheetEnvVar?: SourceLeadSheetEnvVar;
+  cpl: number | { local: number; long_distance: number };
+  hasBadTabs: boolean;
+  aliases: readonly string[];
+};
+
+export type SourceLeadSheetEnvVar =
+  | "TBM_LEADS_SHEET_ID"
+  | "TBM_PRIME_LEADS_SHEET_ID"
+  | "TOP10_LEADS_SHEET_ID"
+  | "BEST_RELOCATION_LEADS_SHEET_ID"
+  | "MAINSITE_LEADS_SHEET_ID";
+
+export const SOURCE_COMPANY_CONFIGS = {
+  tbm_leads: {
+    slug: "tbm_leads",
+    label: "TBM Leads",
+    leadSheetEnvVar: SHEET_CONTAINER_ENV_VARS.sourceLeads.tbm_leads,
+    cpl: Number(process.env.TBM_LEADS_CPL ?? 190),
+    hasBadTabs: true,
+    aliases: ["TBM Leads", "tbm", "10bestmovingcompanies.com"],
+  },
+  tbm_prime_leads: {
+    slug: "tbm_prime_leads",
+    label: "TBM Prime Leads",
+    leadSheetEnvVar: SHEET_CONTAINER_ENV_VARS.sourceLeads.tbm_prime_leads,
+    cpl: Number(process.env.TBM_PRIME_LEADS_CPL ?? 190),
+    hasBadTabs: true,
+    aliases: ["TBM Prime Leads", "TBM Prime", "Topmovingexperts.com"],
+  },
+  top10_leads: {
+    slug: "top10_leads",
+    label: "Top 10 Leads",
+    leadSheetEnvVar: SHEET_CONTAINER_ENV_VARS.sourceLeads.top10_leads,
+    cpl: Number(process.env.TOP10_LEADS_CPL ?? 190),
+    hasBadTabs: true,
+    aliases: ["Top 10 Leads", "Top10 Leads", "Top 10"],
+  },
+  best_relocation_leads: {
+    slug: "best_relocation_leads",
+    label: "Best Relocation Leads",
+    leadSheetEnvVar: SHEET_CONTAINER_ENV_VARS.sourceLeads.best_relocation_leads,
+    cpl: {
+      local: Number(process.env.BEST_RELOCATION_LOCALS_CPL ?? 40),
+      long_distance: Number(process.env.BEST_RELOCATION_LEADS_CPL ?? 195),
+    },
+    hasBadTabs: true,
+    aliases: ["Best Relocation Leads", "Best Relocation", "BestRelocation.com"],
+  },
+  main_site: {
+    slug: "main_site",
+    label: "main site",
+    leadSheetEnvVar: SHEET_CONTAINER_ENV_VARS.sourceLeads.main_site,
+    cpl: Number(process.env.MAINSITE_CPL ?? 0),
+    hasBadTabs: false,
+    aliases: ["main site", "main_site", "mainsite"],
+  },
+  not_provided: {
+    slug: "not_provided",
+    label: "not provided",
+    leadSheetEnvVar: undefined,
+    cpl: 0,
+    hasBadTabs: false,
+    aliases: ["not provided", "not_provided", ""],
+  },
+} as const satisfies Record<SourceCompany, SourceCompanyConfig>;
+
+export function normalizeSourceCompany(value?: string | null): SourceCompany {
+  const normalized = (value ?? "not_provided").trim().toLowerCase();
+  for (const config of Object.values(SOURCE_COMPANY_CONFIGS)) {
+    if (
+      config.slug === normalized ||
+      config.label.toLowerCase() === normalized ||
+      config.aliases.some((alias) => alias.trim().toLowerCase() === normalized)
+    ) {
+      return config.slug;
+    }
+  }
+
+  return "not_provided";
+}
+
+export function getSourceCompanyLabel(sourceCompany: SourceCompany): string {
+  return SOURCE_COMPANY_CONFIGS[sourceCompany].label;
+}
+
+export function getCplForSource(
+  sourceCompany: SourceCompany,
+  local: LocalType | undefined,
+): number {
+  const cpl = SOURCE_COMPANY_CONFIGS[sourceCompany].cpl;
+  if (typeof cpl === "number") {
+    return cpl;
+  }
+
+  return cpl[local ?? "long_distance"];
+}
+
+export function getRequiredEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`${name} is not set`);
+  }
+
+  return value;
+}
+
+export function getMasterLeadsSheetContainerId(): string {
+  return getRequiredEnv(SHEET_CONTAINER_ENV_VARS.masterLeads);
+}
+
+export function getMasterBookedSheetContainerId(): string {
+  return getRequiredEnv(SHEET_CONTAINER_ENV_VARS.masterBooked);
+}
+
+export function getSourceLeadSheetContainerId(sourceCompany: SourceCompany): string | undefined {
+  const envVar = SOURCE_COMPANY_CONFIGS[sourceCompany].leadSheetEnvVar;
+  return envVar ? getRequiredEnv(envVar) : undefined;
+}

@@ -4,13 +4,17 @@
   "description": "",
   "main": "api/index.ts",
   "scripts": {
-    "dev": "vercel dev",
+    "dev": "pnpm run dev:local",
+    "dev:local": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev-server.ts",
+    "dev:vercel": "vercel dev",
     "db:ping": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ping-db.ts",
     "sheets:list-tabs": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/list-google-sheet-tabs.ts",
     "sheets:list-formulas": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/list-google-sheet-formulas.ts",
     "sheets:dump-leads-columns": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dump-leads-sheet-columns.ts",
     "sheets:copy-structure-to-main": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/copy-sheet-structure-to-main.ts",
     "sheets:minify-service-account": "node ./node_modules/tsx/dist/cli.mjs scripts/minify-google-service-account-json.ts",
+    "postman:login": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/postman-login.ts",
+    "postman:sync": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/postman-sync-vantage-movers.ts",
     "typecheck": "tsc --noEmit",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -35,6 +39,7 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.6.2",
+    "postman-collection": "^5.3.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vercel": "^53.3.2"

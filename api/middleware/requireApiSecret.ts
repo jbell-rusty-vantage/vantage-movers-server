@@ -1,13 +1,13 @@
 import type { NextFunction, Request, Response } from "express";
 
-export function requireWebhookSecret(req: Request, res: Response, next: NextFunction) {
-  const expectedSecret = process.env.LEAD_WEBHOOK_SECRET?.trim();
-  const providedSecret = req.header("x-webhook-secret")?.trim();
+export function requireApiSecret(req: Request, res: Response, next: NextFunction) {
+  const expectedSecret = process.env.VANTAGE_API_SECRET?.trim();
+  const providedSecret = req.header("x-api-secret")?.trim();
 
   if (!expectedSecret) {
     return res.status(500).json({
       ok: false,
-      error: "LEAD_WEBHOOK_SECRET is not set",
+      error: "VANTAGE_API_SECRET is not set",
     });
   }
 
