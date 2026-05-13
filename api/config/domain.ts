@@ -77,6 +77,7 @@ export const FORM_SHEET_HEADERS = [
 
 export const CALL_SHEET_HEADERS = [
   "Timestamp",
+  "Duration",
   "Agent",
   "Book Date",
   "Job No",
@@ -164,7 +165,7 @@ export const SOURCE_COMPANY_CONFIGS = {
     leadSheetEnvVar: SHEET_CONTAINER_ENV_VARS.sourceLeads.main_site,
     cpl: Number(process.env.MAINSITE_CPL ?? 0),
     hasBadTabs: false,
-    aliases: ["main site", "main_site", "mainsite"],
+    aliases: ["main site", "main_site", "mainsite", "Vantage Movers", "vantage_movers", "vantagemovers.com"],
   },
   not_provided: {
     slug: "not_provided",
@@ -176,8 +177,12 @@ export const SOURCE_COMPANY_CONFIGS = {
   },
 } as const satisfies Record<SourceCompany, SourceCompanyConfig>;
 
-export function normalizeSourceCompany(value?: string | null): SourceCompany {
-  const normalized = (value ?? "not_provided").trim().toLowerCase();
+export function resolveSourceCompany(value?: string | null): SourceCompany | undefined {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (!normalized) {
+    return "not_provided";
+  }
+
   for (const config of Object.values(SOURCE_COMPANY_CONFIGS)) {
     if (
       config.slug === normalized ||
@@ -186,6 +191,15 @@ export function normalizeSourceCompany(value?: string | null): SourceCompany {
     ) {
       return config.slug;
     }
+  }
+
+  return undefined;
+}
+
+export function normalizeSourceCompany(value?: string | null): SourceCompany {
+  const sourceCompany = resolveSourceCompany(value);
+  if (sourceCompany) {
+    return sourceCompany;
   }
 
   return "not_provided";

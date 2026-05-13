@@ -21,104 +21,133 @@ function requireAtLeastOne(value: Record<string, unknown>) {
   return Object.keys(value).length > 0;
 }
 
+const formLeadFields = {
+  source_company: sourceCompanySchema,
+  name: nonEmptyString,
+  source_company_site: optionalString,
+  timestamp: optionalDate,
+  lid: optionalString,
+  pickup_zip: zipSchema,
+  destination_zip: zipSchema,
+  pickup_state: optionalString,
+  delivery_state: optionalString,
+  move_size: moveSizeSchema,
+  move_date: optionalDate,
+  ref_no: nonEmptyString,
+  email: emailSchema,
+  phone_number: nonEmptyString,
+  quoted: z.coerce.boolean().optional(),
+  cubic_feet: optionalNumber,
+};
+
 export const createFormLeadSchema = z
   .object({
+    ...formLeadFields,
     source_company: sourceCompanySchema.default("not_provided"),
-    name: nonEmptyString,
-    source_company_site: optionalString,
-    timestamp: optionalDate,
-    lid: optionalString,
-    pickup_zip: zipSchema,
-    destination_zip: zipSchema,
-    pickup_state: optionalString,
-    delivery_state: optionalString,
-    move_size: moveSizeSchema,
-    move_date: optionalDate,
     ref_no: nonEmptyString.default("not provided"),
-    email: emailSchema,
-    phone_number: nonEmptyString,
-    quoted: z.coerce.boolean().optional(),
-    cubic_feet: optionalNumber,
   })
   .strict();
 
-export const updateFormLeadSchema = createFormLeadSchema
+export const updateFormLeadSchema = z
+  .object(formLeadFields)
   .partial()
   .strict()
   .refine(requireAtLeastOne, "At least one form lead field must be provided");
 
+const callLeadFields = {
+  source_company: sourceCompanySchema,
+  source_company_site: optionalString,
+  timestamp: optionalDate,
+  name: optionalString,
+  email: emailSchema,
+  phone_number: nonEmptyString,
+  duration: optionalNumber,
+  start_time: optionalDate,
+  end_time: optionalDate,
+  local: localSchema.optional(),
+  pickup_zip: zipSchema.optional(),
+  delivery_zip: zipSchema.optional(),
+  pickup_state: optionalString,
+  delivery_state: optionalString,
+  cubic_feet: optionalNumber,
+};
+
 export const createCallLeadSchema = z
   .object({
+    ...callLeadFields,
     source_company: sourceCompanySchema.default("not_provided"),
-    source_company_site: optionalString,
-    timestamp: optionalDate,
-    name: optionalString,
-    email: emailSchema,
-    phone_number: nonEmptyString,
-    duration: optionalNumber,
-    start_time: optionalDate,
-    end_time: optionalDate,
-    local: localSchema.optional(),
-    pickup_zip: zipSchema.optional(),
-    delivery_zip: zipSchema.optional(),
-    pickup_state: optionalString,
-    delivery_state: optionalString,
-    cubic_feet: optionalNumber,
   })
   .strict();
 
-export const updateCallLeadSchema = createCallLeadSchema
+export const updateCallLeadSchema = z
+  .object(callLeadFields)
   .partial()
   .strict()
   .refine(requireAtLeastOne, "At least one call lead field must be provided");
 
-export const createBookedLeadSchema = z
-  .object({
-    timestamp: optionalDate,
-    agent: nonEmptyString,
-    book_date: requiredDate,
-    job_no: nonEmptyString,
-    lead_ref: objectIdSchema,
-    lead_model: leadModelSchema,
-    binder_amount: finiteNumber,
-    deposit_amount: finiteNumber,
-    merchant: nonEmptyString,
-    source: nonEmptyString,
-    local: localSchema.optional(),
-  })
-  .strict();
+const bookedLeadFields = {
+  timestamp: optionalDate,
+  agent: nonEmptyString,
+  book_date: requiredDate,
+  job_no: nonEmptyString,
+  lead_ref: objectIdSchema,
+  lead_model: leadModelSchema,
+  binder_amount: finiteNumber,
+  deposit_amount: finiteNumber,
+  merchant: nonEmptyString,
+  source: nonEmptyString,
+  local: localSchema.optional(),
+};
 
-export const updateBookedLeadSchema = createBookedLeadSchema
-  .omit({ lead_ref: true, lead_model: true })
+export const createBookedLeadSchema = z.object(bookedLeadFields).strict();
+
+export const updateBookedLeadSchema = z
+  .object({
+    timestamp: bookedLeadFields.timestamp,
+    agent: bookedLeadFields.agent,
+    book_date: bookedLeadFields.book_date,
+    job_no: bookedLeadFields.job_no,
+    binder_amount: bookedLeadFields.binder_amount,
+    deposit_amount: bookedLeadFields.deposit_amount,
+    merchant: bookedLeadFields.merchant,
+    source: bookedLeadFields.source,
+    local: bookedLeadFields.local,
+  })
   .partial()
   .strict()
   .refine(requireAtLeastOne, "At least one booked lead field must be provided");
 
-export const createCancelledLeadSchema = z
-  .object({
-    timestamp: optionalDate,
-    booked_lead: objectIdSchema,
-    reason: optionalString,
-    notes: optionalString,
-    cancelled_by: optionalString,
-  })
-  .strict();
+const cancelledLeadFields = {
+  timestamp: optionalDate,
+  booked_lead: objectIdSchema,
+  reason: optionalString,
+  notes: optionalString,
+  cancelled_by: optionalString,
+};
 
-export const updateCancelledLeadSchema = createCancelledLeadSchema
-  .omit({ booked_lead: true })
+export const createCancelledLeadSchema = z.object(cancelledLeadFields).strict();
+
+export const updateCancelledLeadSchema = z
+  .object({
+    timestamp: cancelledLeadFields.timestamp,
+    reason: cancelledLeadFields.reason,
+    notes: cancelledLeadFields.notes,
+    cancelled_by: cancelledLeadFields.cancelled_by,
+  })
   .partial()
   .strict()
   .refine(requireAtLeastOne, "At least one cancelled lead field must be provided");
 
-export const createCustomerSchema = z
-  .object({
-    full_name: nonEmptyString,
-    phone_number: nonEmptyString,
-    email: emailSchema,
-  })
-  .strict();
+const customerFields = {
+  full_name: nonEmptyString,
+  phone_number: nonEmptyString,
+  email: emailSchema,
+};
 
-export const updateCustomerSchema = createCustomerSchema
+export const createCustomerSchema = z.object(customerFields).strict();
+
+export const updateCustomerSchema = z
+  .object(customerFields)
   .partial()
   .strict()
   .refine(requireAtLeastOne, "At least one customer field must be provided");

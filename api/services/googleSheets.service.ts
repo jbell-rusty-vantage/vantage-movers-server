@@ -68,6 +68,7 @@ type FormLeadSheetSource = SyncableDocument & {
 
 type CallLeadSheetSource = SyncableDocument & {
   timestamp: Date;
+  duration?: number | null;
   source_company: SourceCompany;
   booked?: PopulatedBookedLead | string | null;
   cancelled?: unknown;
@@ -166,6 +167,53 @@ export async function syncBookedLeadToSheets(
     },
   ];
   return syncRowToTargets(booking, targets, bookedLeadToRow(booking));
+}
+
+export async function deleteFormLeadFromSheets(
+  lead: SyncableDocument & { source_company: SourceCompany },
+): Promise<void> {
+  await deleteRowsFromTargets(
+    lead,
+    getLeadTargets(
+      "master_forms",
+      "source_forms",
+      lead.source_company,
+      SHEET_TAB_NAMES.forms,
+      FORM_SHEET_HEADERS,
+    ),
+    ["master_forms", "source_forms"],
+  );
+}
+
+export async function deleteCallLeadFromSheets(
+  lead: SyncableDocument & { source_company: SourceCompany },
+): Promise<void> {
+  await deleteRowsFromTargets(
+    lead,
+    getLeadTargets(
+      "master_calls",
+      "source_calls",
+      lead.source_company,
+      SHEET_TAB_NAMES.calls,
+      CALL_SHEET_HEADERS,
+    ),
+    ["master_calls", "source_calls"],
+  );
+}
+
+export async function deleteBookedLeadFromSheets(booking: SyncableDocument): Promise<void> {
+  await deleteRowsFromTargets(
+    booking,
+    [
+      {
+        target: "master_booked",
+        spreadsheetId: getMasterBookedSheetContainerId(),
+        tabName: SHEET_TAB_NAMES.bookedDeals,
+        headers: BOOKED_SHEET_HEADERS,
+      },
+    ],
+    ["master_booked"],
+  );
 }
 
 export async function ensureAllConfiguredSheetTabs(): Promise<void> {
@@ -280,7 +328,11 @@ async function upsertRow(
   mongoId: string,
   knownRowNumber?: number,
 ): Promise<number | undefined> {
-  const rowNumber = knownRowNumber ?? (await findRowNumberByMongoId(sheets, spreadsheetId, tabName, headers, mongoId));
+  const rowNumber =
+    knownRowNumber &&
+    (await rowNumberContainsMongoId(sheets, spreadsheetId, tabName, headers, mongoId, knownRowNumber))
+      ? knownRowNumber
+      : await findRowNumberByMongoId(sheets, spreadsheetId, tabName, headers, mongoId);
   if (rowNumber) {
     await sheets.spreadsheets.values.update({
       spreadsheetId,
@@ -300,6 +352,123 @@ async function upsertRow(
   });
 
   return extractRowNumberFromRange(response.data.updates?.updatedRange);
+}
+
+async function deleteRowsFromTargets(
+  document: SyncableDocument,
+  fallbackTargets: SyncTarget[],
+  syncedTargets: readonly string[],
+): Promise<void> {
+  const sheets = getSheetsClient();
+  const targets = getDeleteTargets(document, fallbackTargets, syncedTargets);
+  for (const target of targets) {
+    const rowNumber =
+      target.knownRowNumber &&
+      (await rowNumberContainsMongoId(
+        sheets,
+        target.spreadsheetId,
+        target.tabName,
+        target.headers,
+        document._id.toString(),
+        target.knownRowNumber,
+      ))
+        ? target.knownRowNumber
+        : await findRowNumberByMongoId(
+            sheets,
+            target.spreadsheetId,
+            target.tabName,
+            target.headers,
+            document._id.toString(),
+          );
+    if (!rowNumber) {
+      continue;
+    }
+
+    await deleteSheetRow(sheets, target.spreadsheetId, target.tabName, rowNumber);
+  }
+}
+
+function getDeleteTargets(
+  document: SyncableDocument,
+  fallbackTargets: SyncTarget[],
+  syncedTargets: readonly string[],
+): (SyncTarget & { knownRowNumber?: number })[] {
+  const byKey = new Map<string, SyncTarget & { knownRowNumber?: number }>();
+  for (const target of fallbackTargets) {
+    const existingSync = document.sheet_sync?.find((entry) => entry.target === target.target);
+    byKey.set(deleteTargetKey(target.spreadsheetId, target.tabName), {
+      ...target,
+      knownRowNumber: existingSync?.row_number,
+    });
+  }
+
+  for (const entry of document.sheet_sync ?? []) {
+    if (!syncedTargets.includes(entry.target)) {
+      continue;
+    }
+    const headers = getHeadersForSyncTarget(entry.target);
+    if (!headers) {
+      continue;
+    }
+    byKey.set(deleteTargetKey(entry.spreadsheet_id, entry.tab_name), {
+      target: entry.target,
+      spreadsheetId: entry.spreadsheet_id,
+      tabName: entry.tab_name,
+      headers,
+      knownRowNumber: entry.row_number,
+    });
+  }
+
+  return [...byKey.values()];
+}
+
+function deleteTargetKey(spreadsheetId: string, tabName: string): string {
+  return `${spreadsheetId}:${tabName}`;
+}
+
+function getHeadersForSyncTarget(target: string): readonly string[] | undefined {
+  switch (target) {
+    case "master_forms":
+    case "source_forms":
+      return FORM_SHEET_HEADERS;
+    case "master_calls":
+    case "source_calls":
+      return CALL_SHEET_HEADERS;
+    case "master_booked":
+      return BOOKED_SHEET_HEADERS;
+    default:
+      return undefined;
+  }
+}
+
+async function deleteSheetRow(
+  sheets: sheets_v4.Sheets,
+  spreadsheetId: string,
+  tabName: string,
+  rowNumber: number,
+): Promise<void> {
+  const sheetId = await getExistingSheetId(sheets, spreadsheetId, tabName);
+  if (sheetId === undefined) {
+    return;
+  }
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          deleteDimension: {
+            range: {
+              sheetId,
+              dimension: "ROWS",
+              startIndex: rowNumber - 1,
+              endIndex: rowNumber,
+            },
+          },
+        },
+      ],
+    },
+  });
 }
 
 async function findRowNumberByMongoId(
@@ -326,6 +495,26 @@ async function findRowNumberByMongoId(
   }
 
   return undefined;
+}
+
+async function rowNumberContainsMongoId(
+  sheets: sheets_v4.Sheets,
+  spreadsheetId: string,
+  tabName: string,
+  headers: readonly string[],
+  mongoId: string,
+  rowNumber: number,
+): Promise<boolean> {
+  const mongoIdIndex = headers.indexOf("Mongo ID");
+  if (mongoIdIndex < 0) {
+    return false;
+  }
+
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${escapeSheetTitleForRange(tabName)}!A${rowNumber}:${columnLetter(headers.length)}${rowNumber}`,
+  });
+  return response.data.values?.[0]?.[mongoIdIndex] === mongoId;
 }
 
 async function ensureTabsAndHeaders(
@@ -423,6 +612,7 @@ function callLeadToRow(lead: CallLeadSheetSource): string[] {
   const booked = typeof lead.booked === "object" && lead.booked !== null ? lead.booked : undefined;
   return [
     formatTimestamp(lead.timestamp),
+    formatNumber(lead.duration),
     booked?.agent ?? "",
     booked?.book_date ? formatDateOnly(booked.book_date) : "",
     booked?.job_no ?? "",

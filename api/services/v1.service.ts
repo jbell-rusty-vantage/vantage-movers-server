@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import {
   getCplForSource,
-  normalizeSourceCompany,
+  resolveSourceCompany,
   type LeadModelName,
   type LocalType,
   type SourceCompany,
@@ -27,6 +27,9 @@ import type {
   UpdateFormLeadInput,
 } from "../validation/v1.validation";
 import {
+  deleteBookedLeadFromSheets,
+  deleteCallLeadFromSheets,
+  deleteFormLeadFromSheets,
   syncBookedLeadToSheets,
   syncCallLeadToSheets,
   syncFormLeadToSheets,
@@ -49,7 +52,7 @@ export class V1ServiceError extends Error {
 }
 
 export async function createFormLead(input: CreateFormLeadInput) {
-  const source_company = normalizeSourceCompany(input.source_company);
+  const source_company = parseSourceCompany(input.source_company);
   const location = await resolveRequiredLocation(input);
   const local = deriveLocal(location.pickup_state, location.delivery_state);
   const lead = await FormLead.create({
@@ -74,10 +77,11 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
     throw new V1ServiceError("Form lead not found", 404);
   }
 
-  Object.assign(lead, input);
-  if (input.source_company) {
-    lead.source_company = normalizeSourceCompany(input.source_company);
+  const update = { ...input };
+  if (input.source_company !== undefined) {
+    update.source_company = parseSourceCompany(input.source_company);
   }
+  Object.assign(lead, update);
   if (input.pickup_zip || input.destination_zip || input.pickup_state || input.delivery_state) {
     const location = await resolveRequiredLocation({
       pickup_zip: input.pickup_zip ?? lead.pickup_zip,
@@ -96,7 +100,7 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
 }
 
 export async function createCallLead(input: CreateCallLeadInput) {
-  const source_company = normalizeSourceCompany(input.source_company);
+  const source_company = parseSourceCompany(input.source_company);
   const location = await resolveOptionalLocation(input);
   const local = location.local ?? input.local;
   const lead = await CallLead.create({
@@ -118,10 +122,11 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
     throw new V1ServiceError("Call lead not found", 404);
   }
 
-  Object.assign(lead, input);
-  if (input.source_company) {
-    lead.source_company = normalizeSourceCompany(input.source_company);
+  const update = { ...input };
+  if (input.source_company !== undefined) {
+    update.source_company = parseSourceCompany(input.source_company);
   }
+  Object.assign(lead, update);
   if (
     input.pickup_zip ||
     input.delivery_zip ||
@@ -283,6 +288,7 @@ export async function deleteFormLead(id: string, cascade: boolean) {
   if (lead.booked && cascade) {
     await deleteBookedLead(lead.booked.toString(), true);
   }
+  await deleteFormLeadFromSheets(lead);
   await lead.deleteOne();
 }
 
@@ -297,6 +303,7 @@ export async function deleteCallLead(id: string, cascade: boolean) {
   if (lead.booked && cascade) {
     await deleteBookedLead(lead.booked.toString(), true);
   }
+  await deleteCallLeadFromSheets(lead);
   await lead.deleteOne();
 }
 
@@ -312,6 +319,7 @@ export async function deleteBookedLead(id: string, cascade: boolean) {
     await CancelledLead.findByIdAndDelete(booking.cancelled);
   }
   await clearBookingFromLead(booking.lead_model as LeadModelName, booking.lead_ref.toString());
+  await deleteBookedLeadFromSheets(booking);
   await booking.deleteOne();
 }
 
@@ -382,6 +390,15 @@ function normalizeState(value?: string | null): string | undefined {
 
 function optionalValue<T>(value: T | null | undefined): T | undefined {
   return value === null ? undefined : value;
+}
+
+function parseSourceCompany(value?: string | null): SourceCompany {
+  const sourceCompany = resolveSourceCompany(value);
+  if (!sourceCompany) {
+    throw new V1ServiceError(`Unknown source_company "${value}"`, 400);
+  }
+
+  return sourceCompany;
 }
 
 async function getLinkedLead(leadModel: LeadModelName, leadId: string): Promise<any> {
