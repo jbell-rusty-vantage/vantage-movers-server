@@ -44,7 +44,7 @@ const router = Router();
 router.use("/api/v1", requireApiSecret);
 
 router.get("/api/v1/form-leads", handleFindAll(findAllFormLeads));
-router.post("/api/v1/form-leads", handleCreate(createFormLeadSchema, createFormLead));
+router.post("/api/v1/form-leads", handleCreateFormLead);
 router.patch("/api/v1/form-leads/:id", handleUpdate(updateFormLeadSchema, updateFormLead));
 router.delete("/api/v1/form-leads/:id", handleDelete(deleteFormLead));
 
@@ -91,6 +91,21 @@ function handleCreate<T>(schema: ZodType<T>, create: (input: T) => Promise<unkno
       return sendError(res, error);
     }
   };
+}
+
+async function handleCreateFormLead(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = createFormLeadSchema.parse(req.body);
+    const data = await createFormLead(parsed);
+    res.status(201).json({ ok: true, data });
+    console.log("Sent FormLead create response; background sheet sync remains asynchronous", {
+      statusCode: res.statusCode,
+    });
+    return;
+  } catch (error) {
+    return sendError(res, error);
+  }
 }
 
 function handleUpdate<T>(

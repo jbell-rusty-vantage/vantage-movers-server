@@ -6,8 +6,11 @@
  *
  * Required: POSTMAN_API_KEY
  * Optional: POSTMAN_WORKSPACE_ID, POSTMAN_API_BASE, POSTMAN_REGION=eu,
- *           VANTAGE_API_SECRET, VANTAGE_PRODUCTION_API_SECRET,
+ *           VANTAGE_API_SECRET, VANTAGE_PRODUCTION_API_SECRET (required for *(Production)* requests from Local),
  *           LOCAL_BASE_URL, PRODUCTION_BASE_URL
+ *
+ * Each probe and /api/v1 request is duplicated with a “(Production)” sibling that
+ * calls {{productionBaseUrl}} and, for protected routes, {{productionApiSecret}}.
  */
 import { Collection, Item, ItemGroup } from "postman-collection";
 
@@ -15,11 +18,13 @@ const COLLECTION_NAME = "VantageMovers";
 const LOCAL_ENVIRONMENT_NAME = "VantageMovers Local";
 const PRODUCTION_ENVIRONMENT_NAME = "VantageMovers Production";
 const DEFAULT_LOCAL_BASE_URL = "http://localhost:3000";
+/** Canonical Vercel deployment host for vantage_movers_server. */
 const DEFAULT_PRODUCTION_BASE_URL = "https://vantage-movers-servers.vercel.app";
 const SAMPLE_OBJECT_ID = "000000000000000000000001";
 
 type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 type RequestBody = Record<string, unknown>;
+type RequestTarget = "default" | "production";
 
 type ResourceConfig = {
   folderName: string;
@@ -393,14 +398,18 @@ function buildCollection(): Record<string, unknown> {
       description: [
         "Canonical testing surface for vantage_movers_server.",
         "",
-        "Select **Vantage Movers Local** for localhost testing or **Vantage Movers Production** for the Vercel deployment.",
-        "Every /api/v1 request sends `x-api-secret: {{apiSecret}}`.",
+        "Select **VantageMovers Local** for localhost + optional **(Production)** mirrors, or **VantageMovers Production** when every request should hit Vercel.",
+        "",
+        "Default requests use `{{baseUrl}}` and `x-api-secret: {{apiSecret}}`.",
+        "Sibling requests named **(Production)** use `{{productionBaseUrl}}` and `x-api-secret: {{productionApiSecret}}` so you can hit https://vantage-movers-servers.vercel.app from the Local environment without switching.",
       ].join("\n"),
       schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     },
     variable: [
       { key: "baseUrl", value: DEFAULT_LOCAL_BASE_URL, type: "string" },
       { key: "apiSecret", value: "", type: "string" },
+      { key: "productionBaseUrl", value: DEFAULT_PRODUCTION_BASE_URL, type: "string" },
+      { key: "productionApiSecret", value: "", type: "string" },
       { key: "formLeadId", value: SAMPLE_OBJECT_ID, type: "string" },
       { key: "callLeadId", value: SAMPLE_OBJECT_ID, type: "string" },
       { key: "bookedLeadId", value: SAMPLE_OBJECT_ID, type: "string" },
@@ -421,40 +430,34 @@ function buildServiceFolder(): ItemGroup {
     description: "Unauthenticated service and deployment probes from api/index.ts.",
   });
 
-  folder.items.add(
-    buildRequest({
-      name: "GET /",
-      method: "GET",
-      path: "/",
-      description: "Service metadata probe.",
-      protectedRoute: false,
-      expectedStatuses: [200],
-      expectOkFlag: false,
-    }),
-  );
-  folder.items.add(
-    buildRequest({
-      name: "GET /health",
-      method: "GET",
-      path: "/health",
-      description: "Liveness probe. Returns an ok string body.",
-      protectedRoute: false,
-      expectedStatuses: [200],
-      expectJson: false,
-      expectOkFlag: false,
-    }),
-  );
-  folder.items.add(
-    buildRequest({
-      name: "GET /db",
-      method: "GET",
-      path: "/db",
-      description: "Mongo connectivity probe.",
-      protectedRoute: false,
-      expectedStatuses: [200, 503],
-      expectOkFlag: true,
-    }),
-  );
+  addMirroredRequests(folder, {
+    name: "GET /",
+    method: "GET",
+    path: "/",
+    description: "Service metadata probe.",
+    protectedRoute: false,
+    expectedStatuses: [200],
+    expectOkFlag: false,
+  });
+  addMirroredRequests(folder, {
+    name: "GET /health",
+    method: "GET",
+    path: "/health",
+    description: "Liveness probe. Returns an ok string body.",
+    protectedRoute: false,
+    expectedStatuses: [200],
+    expectJson: false,
+    expectOkFlag: false,
+  });
+  addMirroredRequests(folder, {
+    name: "GET /db",
+    method: "GET",
+    path: "/db",
+    description: "Mongo connectivity probe.",
+    protectedRoute: false,
+    expectedStatuses: [200, 503],
+    expectOkFlag: true,
+  });
 
   return folder;
 }
@@ -479,66 +482,64 @@ function buildResourceFolder(resource: ResourceConfig): ItemGroup {
     description: `${resource.path} CRUD routes.`,
   });
 
-  folder.items.add(
-    buildRequest({
-      name: `List ${resource.folderName}`,
-      method: "GET",
-      path: resource.path,
-      description: `GET ${resource.path} - returns the latest 200 ${resource.folderName.toLowerCase()}.`,
-      protectedRoute: true,
-      expectedStatuses: [200],
-    }),
-  );
+  addMirroredRequests(folder, {
+    name: `List ${resource.folderName}`,
+    method: "GET",
+    path: resource.path,
+    description: `GET ${resource.path} - returns the latest 200 ${resource.folderName.toLowerCase()}.`,
+    protectedRoute: true,
+    expectedStatuses: [200],
+  });
 
-  folder.items.add(
-    buildRequest({
-      name: `Create ${singularize(resource.folderName)}`,
-      method: "POST",
-      path: resource.path,
-      description: resource.createDescription,
-      body: resource.createBody,
-      protectedRoute: true,
-      expectedStatuses: [201],
-      captureIdVariable: resource.captureId ? `${resource.variablePrefix}Id` : undefined,
-    }),
-  );
+  addMirroredRequests(folder, {
+    name: `Create ${singularize(resource.folderName)}`,
+    method: "POST",
+    path: resource.path,
+    description: resource.createDescription,
+    body: resource.createBody,
+    protectedRoute: true,
+    expectedStatuses: [201],
+    captureIdVariable: resource.captureId ? `${resource.variablePrefix}Id` : undefined,
+  });
 
-  folder.items.add(
-    buildRequest({
-      name: `Update ${singularize(resource.folderName)}`,
-      method: "PATCH",
-      path: `${resource.path}/{{${resource.variablePrefix}Id}}`,
-      description: resource.updateDescription,
-      body: resource.updateBody,
-      protectedRoute: true,
-      expectedStatuses: [200],
-      captureIdVariable: resource.captureId ? `${resource.variablePrefix}Id` : undefined,
-    }),
-  );
+  addMirroredRequests(folder, {
+    name: `Update ${singularize(resource.folderName)}`,
+    method: "PATCH",
+    path: `${resource.path}/{{${resource.variablePrefix}Id}}`,
+    description: resource.updateDescription,
+    body: resource.updateBody,
+    protectedRoute: true,
+    expectedStatuses: [200],
+    captureIdVariable: resource.captureId ? `${resource.variablePrefix}Id` : undefined,
+  });
 
-  folder.items.add(
-    buildRequest({
-      name: `Delete ${singularize(resource.folderName)}`,
-      method: "DELETE",
-      path: `${resource.path}/{{${resource.variablePrefix}Id}}`,
-      description: `DELETE ${resource.path}/:id. Use the cascade variant when dependent records exist.`,
-      protectedRoute: true,
-      expectedStatuses: [204],
-    }),
-  );
+  addMirroredRequests(folder, {
+    name: `Delete ${singularize(resource.folderName)}`,
+    method: "DELETE",
+    path: `${resource.path}/{{${resource.variablePrefix}Id}}`,
+    description: `DELETE ${resource.path}/:id. Use the cascade variant when dependent records exist.`,
+    protectedRoute: true,
+    expectedStatuses: [204],
+  });
 
-  folder.items.add(
-    buildRequest({
-      name: `Delete ${singularize(resource.folderName)} with Cascade`,
-      method: "DELETE",
-      path: `${resource.path}/{{${resource.variablePrefix}Id}}?cascade=true`,
-      description: `DELETE ${resource.path}/:id?cascade=true for records with dependents.`,
-      protectedRoute: true,
-      expectedStatuses: [204],
-    }),
-  );
+  addMirroredRequests(folder, {
+    name: `Delete ${singularize(resource.folderName)} with Cascade`,
+    method: "DELETE",
+    path: `${resource.path}/{{${resource.variablePrefix}Id}}?cascade=true`,
+    description: `DELETE ${resource.path}/:id?cascade=true for records with dependents.`,
+    protectedRoute: true,
+    expectedStatuses: [204],
+  });
 
   return folder;
+}
+
+function addMirroredRequests(
+  folder: ItemGroup,
+  args: Omit<Parameters<typeof buildRequest>[0], "target">,
+): void {
+  folder.items.add(buildRequest({ ...args, target: "default" }));
+  folder.items.add(buildRequest({ ...args, target: "production" }));
 }
 
 function buildRequest(args: {
@@ -552,17 +553,23 @@ function buildRequest(args: {
   captureIdVariable?: string;
   expectJson?: boolean;
   expectOkFlag?: boolean;
+  target?: RequestTarget;
 }): Item {
+  const target: RequestTarget = args.target ?? "default";
+  const displayName = target === "production" ? `${args.name} (Production)` : args.name;
+  const baseVar = target === "production" ? "productionBaseUrl" : "baseUrl";
+  const secretHeaderVar = target === "production" ? "productionApiSecret" : "apiSecret";
+
   const headers = [];
   if (args.protectedRoute) {
-    headers.push({ key: "x-api-secret", value: "{{apiSecret}}", type: "text" });
+    headers.push({ key: "x-api-secret", value: `{{${secretHeaderVar}}}`, type: "text" });
   }
   if (args.body) {
     headers.push({ key: "Content-Type", value: "application/json", type: "text" });
   }
 
   return new Item({
-    name: args.name,
+    name: displayName,
     request: {
       method: args.method,
       header: headers,
@@ -573,8 +580,11 @@ function buildRequest(args: {
             options: { raw: { language: "json" } },
           }
         : undefined,
-      url: `{{baseUrl}}${args.path}`,
-      description: args.description,
+      url: `{{${baseVar}}}${args.path}`,
+      description:
+        target === "production"
+          ? `${args.description}\n\n**Target:** Vercel (\`{{productionBaseUrl}}\`).`
+          : args.description,
     },
     event: [
       {
@@ -648,7 +658,13 @@ function singularize(name: string): string {
   return name.endsWith("s") ? name.slice(0, -1) : name;
 }
 
-function buildEnvironmentValues(baseUrl: string, apiSecret: string): PostmanEnvironmentValue[] {
+function buildEnvironmentValues(opts: {
+  baseUrl: string;
+  apiSecret: string;
+  productionBaseUrl: string;
+  productionApiSecret: string;
+}): PostmanEnvironmentValue[] {
+  const { apiSecret, baseUrl, productionApiSecret, productionBaseUrl } = opts;
   return [
     {
       key: "baseUrl",
@@ -659,6 +675,18 @@ function buildEnvironmentValues(baseUrl: string, apiSecret: string): PostmanEnvi
     {
       key: "apiSecret",
       value: apiSecret,
+      type: "secret",
+      enabled: true,
+    },
+    {
+      key: "productionBaseUrl",
+      value: productionBaseUrl,
+      type: "text",
+      enabled: true,
+    },
+    {
+      key: "productionApiSecret",
+      value: productionApiSecret,
       type: "secret",
       enabled: true,
     },
@@ -701,7 +729,8 @@ async function main(): Promise<void> {
   const localBaseUrl = optionalEnv("LOCAL_BASE_URL", DEFAULT_LOCAL_BASE_URL);
   const productionBaseUrl = optionalEnv("PRODUCTION_BASE_URL", DEFAULT_PRODUCTION_BASE_URL);
   const localApiSecret = optionalEnv("VANTAGE_API_SECRET");
-  const productionApiSecret = optionalEnv("VANTAGE_PRODUCTION_API_SECRET", localApiSecret);
+  const explicitProductionSecret = optionalEnv("VANTAGE_PRODUCTION_API_SECRET");
+  const productionEnvApiSecret = explicitProductionSecret || localApiSecret;
 
   await deleteCollectionByName(apiKey, workspaceId, COLLECTION_NAME);
   const collectionId = await createCollection(apiKey, workspaceId, buildCollection());
@@ -712,7 +741,12 @@ async function main(): Promise<void> {
     apiKey,
     workspaceId,
     LOCAL_ENVIRONMENT_NAME,
-    buildEnvironmentValues(localBaseUrl, localApiSecret),
+    buildEnvironmentValues({
+      baseUrl: localBaseUrl,
+      apiSecret: localApiSecret,
+      productionBaseUrl,
+      productionApiSecret: explicitProductionSecret,
+    }),
   );
   console.log(`Created environment "${LOCAL_ENVIRONMENT_NAME}" (${localBaseUrl})`);
 
@@ -721,21 +755,33 @@ async function main(): Promise<void> {
     apiKey,
     workspaceId,
     PRODUCTION_ENVIRONMENT_NAME,
-    buildEnvironmentValues(productionBaseUrl, productionApiSecret),
+    buildEnvironmentValues({
+      baseUrl: productionBaseUrl,
+      apiSecret: productionEnvApiSecret,
+      productionBaseUrl,
+      productionApiSecret: productionEnvApiSecret,
+    }),
   );
   console.log(`Created environment "${PRODUCTION_ENVIRONMENT_NAME}" (${productionBaseUrl})`);
 
   if (!localApiSecret) {
     console.warn("VANTAGE_API_SECRET was not set; fill apiSecret in the Local environment before testing.");
   }
-  if (!productionApiSecret) {
+  if (!productionEnvApiSecret) {
     console.warn(
-      "VANTAGE_PRODUCTION_API_SECRET was not set; fill apiSecret in the Production environment before testing.",
+      "VANTAGE_PRODUCTION_API_SECRET and VANTAGE_API_SECRET were not set; fill apiSecret in the Production environment before testing.",
+    );
+  }
+  if (!explicitProductionSecret) {
+    console.warn(
+      "VANTAGE_PRODUCTION_API_SECRET was not set; *(Production)* requests need productionApiSecret when using VantageMovers Local (set it in the environment or add VANTAGE_PRODUCTION_API_SECRET to .env before sync).",
     );
   }
 
   console.log("Run with: pnpm postman:sync");
-  console.log("In Postman: choose Local or Production, then run Service Probes or API v1 folders.");
+  console.log(
+    "In Postman: each folder lists default requests plus *(Production)* mirrors against {{productionBaseUrl}}.",
+  );
 }
 
 main().catch((err) => {

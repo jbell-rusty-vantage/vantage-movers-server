@@ -1,0 +1,200 @@
+{
+  "scenarioName": "Live sheet sync — round 2 (fresh contacts, bookings, cancels)",
+  "description": "Same flow as the default fixture with different data. Replace {{RUN_TAG}} at runtime. 20 ops: 5 form POSTs, 5 call POSTs, 2 form PATCHes, 2 call PATCHes, 4 booked-leads, 2 cancelled-leads.",
+  "formCreates": [
+    {
+      "source_company": "tbm_leads",
+      "name": "Morgan Tate",
+      "source_company_site": "https://10bestmovingcompanies.com",
+      "pickup_zip": "19103",
+      "destination_zip": "33139",
+      "move_size": "2 Bedrooms",
+      "ref_no": "{{RUN_TAG}}-form-tbm-r2",
+      "email": "morgan.tate.sync.test@example.com",
+      "phone_number": "4155550301",
+      "quoted": false,
+      "cubic_feet": 480
+    },
+    {
+      "source_company": "tbm_prime_leads",
+      "name": "Riley Vaughn",
+      "source_company_site": "https://topmovingexperts.com",
+      "pickup_zip": "75201",
+      "destination_zip": "77002",
+      "move_size": "2 Bedrooms",
+      "ref_no": "{{RUN_TAG}}-form-prime-r2",
+      "email": "riley.vaughn.sync.test@example.com",
+      "phone_number": "4155550302",
+      "quoted": false,
+      "cubic_feet": 690
+    },
+    {
+      "source_company": "top10_leads",
+      "name": "Skyler Nguyen",
+      "source_company_site": "https://example-top10.test",
+      "pickup_zip": "97205",
+      "destination_zip": "85004",
+      "move_size": "Studio",
+      "ref_no": "{{RUN_TAG}}-form-top10-r2",
+      "email": "skyler.nguyen.sync.test@example.com",
+      "phone_number": "4155550303",
+      "quoted": false,
+      "cubic_feet": 360
+    },
+    {
+      "source_company": "best_relocation_leads",
+      "name": "Taylor Okonkwo",
+      "source_company_site": "https://bestrelocation.test",
+      "pickup_zip": "37203",
+      "destination_zip": "30318",
+      "move_size": "3 Bedrooms",
+      "ref_no": "{{RUN_TAG}}-form-best-r2",
+      "email": "taylor.okonkwo.sync.test@example.com",
+      "phone_number": "4155550304",
+      "quoted": false,
+      "cubic_feet": 910
+    },
+    {
+      "source_company": "main_site",
+      "name": "Reese Calderon",
+      "source_company_site": "https://vantagemovers.com",
+      "pickup_zip": "55401",
+      "destination_zip": "55101",
+      "move_size": "2 Bedrooms",
+      "ref_no": "{{RUN_TAG}}-form-main-r2",
+      "email": "reese.calderon.sync.test@example.com",
+      "phone_number": "4155550305",
+      "quoted": false,
+      "cubic_feet": 620
+    }
+  ],
+  "callCreates": [
+    {
+      "source_company": "tbm_leads",
+      "source_company_site": "https://10bestmovingcompanies.com",
+      "name": "Avery Kline",
+      "email": "avery.kline.sync.test@example.com",
+      "phone_number": "4155550401",
+      "duration": 165,
+      "pickup_zip": "19103",
+      "delivery_zip": "08030",
+      "cubic_feet": 740
+    },
+    {
+      "source_company": "tbm_prime_leads",
+      "source_company_site": "https://topmovingexperts.com",
+      "name": "Quinn Mercer",
+      "email": "quinn.mercer.sync.test@example.com",
+      "phone_number": "4155550402",
+      "duration": 380,
+      "pickup_zip": "75201",
+      "delivery_zip": "78745",
+      "cubic_feet": 710
+    },
+    {
+      "source_company": "top10_leads",
+      "source_company_site": "https://example-top10.test",
+      "name": "Parker Singh",
+      "email": "parker.singh.sync.test@example.com",
+      "phone_number": "4155550403",
+      "duration": 275,
+      "pickup_zip": "97205",
+      "delivery_zip": "98122",
+      "cubic_feet": 520
+    },
+    {
+      "source_company": "best_relocation_leads",
+      "source_company_site": "https://bestrelocation.test",
+      "name": "Rowan Esposito",
+      "email": "rowan.esposito.sync.test@example.com",
+      "phone_number": "4155550404",
+      "duration": 445,
+      "pickup_zip": "37203",
+      "delivery_zip": "40202",
+      "cubic_feet": 950
+    },
+    {
+      "source_company": "main_site",
+      "source_company_site": "https://vantagemovers.com",
+      "name": "Sage Whitaker",
+      "email": "sage.whitaker.sync.test@example.com",
+      "phone_number": "4155550405",
+      "duration": 210,
+      "pickup_zip": "55401",
+      "delivery_zip": "53202",
+      "cubic_feet": 580
+    }
+  ],
+  "formPatches": [
+    { "index": 0, "body": { "quoted": true, "cubic_feet": 510 } },
+    { "index": 3, "body": { "quoted": true, "move_size": "4 Bedrooms", "cubic_feet": 1080 } }
+  ],
+  "callPatches": [
+    { "index": 0, "body": { "duration": 220, "cubic_feet": 780 } },
+    { "index": 2, "body": { "duration": 340, "local": "long_distance" } }
+  ],
+  "bookings": [
+    {
+      "lead": { "kind": "FormLead", "index": 1 },
+      "body": {
+        "agent": "Jordan Mills — Dispatch",
+        "book_date": "2026-07-08T16:00:00.000Z",
+        "job_no": "{{RUN_TAG}}-job-form-r2-1",
+        "binder_amount": 275,
+        "deposit_amount": 1950,
+        "merchant": "Stripe"
+      }
+    },
+    {
+      "lead": { "kind": "FormLead", "index": 3 },
+      "body": {
+        "agent": "Jordan Mills — Dispatch",
+        "book_date": "2026-07-09T13:15:00.000Z",
+        "job_no": "{{RUN_TAG}}-job-form-r2-3",
+        "binder_amount": 325,
+        "deposit_amount": 4850,
+        "merchant": "ACH"
+      }
+    },
+    {
+      "lead": { "kind": "CallLead", "index": 1 },
+      "body": {
+        "agent": "Sam Ortiz — After Hours",
+        "book_date": "2026-07-10T18:30:00.000Z",
+        "job_no": "{{RUN_TAG}}-job-call-r2-1",
+        "binder_amount": 450,
+        "deposit_amount": 1650,
+        "merchant": "Stripe"
+      }
+    },
+    {
+      "lead": { "kind": "CallLead", "index": 4 },
+      "body": {
+        "agent": "Sam Ortiz — After Hours",
+        "book_date": "2026-07-11T11:00:00.000Z",
+        "job_no": "{{RUN_TAG}}-job-call-r2-4",
+        "binder_amount": 300,
+        "deposit_amount": 2280,
+        "merchant": "Card"
+      }
+    }
+  ],
+  "cancellations": [
+    {
+      "bookingIndex": 0,
+      "body": {
+        "reason": "Customer found housing fell through — move postponed indefinitely",
+        "notes": "Round-2 fixture cancel #1 — booked from prime form, released slot July 8",
+        "cancelled_by": "QA Script"
+      }
+    },
+    {
+      "bookingIndex": 2,
+      "body": {
+        "reason": "Carrier capacity conflict on booked lane",
+        "notes": "Round-2 fixture cancel #2 — call lead re-offered to partner network",
+        "cancelled_by": "QA Script"
+      }
+    }
+  ]
+}

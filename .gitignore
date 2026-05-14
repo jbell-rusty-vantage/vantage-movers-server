@@ -40,5 +40,7 @@ coverage/
 
 # Misc
 *.swp
-*.swo  
+*.swo   
+
+**/internal_hidden_docs/** 
 

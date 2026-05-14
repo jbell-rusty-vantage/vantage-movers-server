@@ -1,5 +1,10 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
-import { leadModelField, localField, sheetSyncSchema, type SheetSyncEntry } from "./schemaHelpers";
+import {
+  leadModelField,
+  localField,
+  sheetSyncSchema,
+  type SheetSyncEntry,
+} from "./schemaHelpers";
 
 const BookedLeadSchema = new Schema(
   {
@@ -7,7 +12,12 @@ const BookedLeadSchema = new Schema(
     agent: { type: String, required: true, trim: true },
     book_date: { type: Date, required: true },
     job_no: { type: String, required: true, trim: true, index: true },
-    customer: { type: Schema.Types.ObjectId, ref: "Customer", required: true, index: true },
+    customer: {
+      type: Schema.Types.ObjectId,
+      ref: "Customer",
+      required: true,
+      index: true,
+    },
     lead_ref: {
       type: Schema.Types.ObjectId,
       required: true,

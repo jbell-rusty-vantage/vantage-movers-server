@@ -1,3 +1,4 @@
+import { waitUntil } from "@vercel/functions";
 import mongoose from "mongoose";
 import {
   getCplForSource,
@@ -14,6 +15,7 @@ import { FormLead } from "../models/FormLead";
 import { mergeSheetSyncEntries } from "../models/schemaHelpers";
 import { generateLeadId } from "../utils/ids";
 import { getStateCodeForZip } from "../utils/pickupZipState";
+import { connectMongo } from "../db";
 import type {
   CreateBookedLeadInput,
   CreateCallLeadInput,
@@ -67,8 +69,40 @@ export async function createFormLead(input: CreateFormLeadInput) {
     cpl: getCplForSource(source_company, local),
   });
 
+  const leadId = lead._id.toString();
+  console.log("Created FormLead; scheduling background sheet sync", { leadId });
+
+  waitUntil(
+    syncFormLeadById(leadId).catch((error) => {
+      console.error("FormLead background sheet sync failed", {
+        leadId,
+        error: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+    }),
+  );
+
+  console.log("Returning FormLead create payload with sheet sync pending", { leadId });
+  return {
+    lead,
+    sheet_sync_status: "pending",
+  };
+}
+
+async function syncFormLeadById(leadId: string) {
+  console.log("Starting background FormLead sheet sync", { leadId });
+
+  await connectMongo();
+
+  const lead = await FormLead.findById(leadId);
+  if (!lead) {
+    console.error("FormLead not found for background sheet sync", { leadId });
+    return;
+  }
+
   await syncSourceLead(lead, "FormLead");
-  return lead;
+
+  console.log("Completed background FormLead sheet sync", { leadId });
 }
 
 export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
