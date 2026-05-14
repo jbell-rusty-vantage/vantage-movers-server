@@ -6,6 +6,33 @@ import v1Routes from "./routes/v1.routes";
 
 const app = express();
 
+const allowedOrigins = new Set([
+  "https://vantagequotes.com",
+  "https://www.vantagequotes.com",
+]);
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+
+  if (origin && allowedOrigins.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET,POST,PATCH,DELETE,OPTIONS",
+  );
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-api-secret");
+  res.setHeader("Access-Control-Max-Age", "86400");
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+
+  next();
+});
+
 app.use(express.json());
 app.use(v1Routes);
 
