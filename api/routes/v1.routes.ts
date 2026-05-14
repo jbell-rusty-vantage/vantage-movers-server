@@ -5,6 +5,7 @@ import { ZodError, type ZodType } from "zod";
 import { connectMongo } from "../db";
 import { logger as rootLogger } from "../logger";
 import { requireApiSecret } from "../middleware/requireApiSecret";
+import { searchFormLeads } from "../services/formLeadSearch.service";
 import { sanitizeFormLeadBodyPreview } from "../utils/sanitizeFormLeadForLog";
 import {
   createBookedLead,
@@ -35,6 +36,7 @@ import {
   createCancelledLeadSchema,
   createCustomerSchema,
   createFormLeadSchema,
+  searchFormLeadsSchema,
   updateBookedLeadSchema,
   updateCallLeadSchema,
   updateCancelledLeadSchema,
@@ -47,6 +49,7 @@ const router = Router();
 router.use("/api/v1", requireApiSecret);
 
 router.get("/api/v1/form-leads", handleFindAll(findAllFormLeads));
+router.post("/api/v1/form-leads/search", handleSearchFormLeads);
 router.post("/api/v1/form-leads", handleCreateFormLead);
 router.patch("/api/v1/form-leads/:id", handleUpdate(updateFormLeadSchema, updateFormLead));
 router.delete("/api/v1/form-leads/:id", handleDelete(deleteFormLead));
@@ -102,6 +105,17 @@ function requestLogger(req: Request): Logger {
 
 function requestId(req: Request): string | number | object {
   return req.id ?? "unknown";
+}
+
+async function handleSearchFormLeads(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = searchFormLeadsSchema.parse(req.body);
+    const data = await searchFormLeads(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(res, error);
+  }
 }
 
 async function handleCreateFormLead(req: Request, res: Response) {

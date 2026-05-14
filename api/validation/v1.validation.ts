@@ -21,6 +21,10 @@ function requireAtLeastOne(value: Record<string, unknown>) {
   return Object.keys(value).length > 0;
 }
 
+function requireAtLeastOneTruthySearchField(value: Record<string, unknown>) {
+  return ["ref_no", "name", "email", "phone_number"].some((field) => Boolean(value[field]));
+}
+
 const formLeadFields = {
   source_company: sourceCompanySchema,
   name: nonEmptyString,
@@ -53,6 +57,20 @@ export const updateFormLeadSchema = z
   .partial()
   .strict()
   .refine(requireAtLeastOne, "At least one form lead field must be provided");
+
+export const searchFormLeadsSchema = z
+  .object({
+    ref_no: optionalString,
+    name: optionalString,
+    email: emailSchema,
+    phone_number: optionalString,
+    limit: z.coerce.number().int().min(1).max(25).optional(),
+  })
+  .strict()
+  .refine(
+    requireAtLeastOneTruthySearchField,
+    "At least one of ref_no, name, email, or phone_number must be provided",
+  );
 
 const callLeadFields = {
   source_company: sourceCompanySchema,
@@ -154,6 +172,7 @@ export const updateCustomerSchema = z
 
 export type CreateFormLeadInput = z.infer<typeof createFormLeadSchema>;
 export type UpdateFormLeadInput = z.infer<typeof updateFormLeadSchema>;
+export type SearchFormLeadsInput = z.infer<typeof searchFormLeadsSchema>;
 export type CreateCallLeadInput = z.infer<typeof createCallLeadSchema>;
 export type UpdateCallLeadInput = z.infer<typeof updateCallLeadSchema>;
 export type CreateBookedLeadInput = z.infer<typeof createBookedLeadSchema>;

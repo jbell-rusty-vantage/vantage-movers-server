@@ -44,6 +44,7 @@ const FormLeadSchema = new Schema(
 FormLeadSchema.index({ source_company: 1, createdAt: -1 });
 FormLeadSchema.index({ phone_number: 1 });
 FormLeadSchema.index({ ref_no: 1 });
+FormLeadSchema.index({ email: 1 });
 
 export type FormLeadDocument = InferSchemaType<typeof FormLeadSchema> & {
   _id: mongoose.Types.ObjectId;
