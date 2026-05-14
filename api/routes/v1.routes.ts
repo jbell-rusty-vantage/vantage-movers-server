@@ -1,8 +1,11 @@
 import { Router, type Request, type Response } from "express";
 import mongoose from "mongoose";
+import type { Logger } from "pino";
 import { ZodError, type ZodType } from "zod";
 import { connectMongo } from "../db";
+import { logger as rootLogger } from "../logger";
 import { requireApiSecret } from "../middleware/requireApiSecret";
+import { sanitizeFormLeadBodyPreview } from "../utils/sanitizeFormLeadForLog";
 import {
   createBookedLead,
   createCallLead,
@@ -93,17 +96,97 @@ function handleCreate<T>(schema: ZodType<T>, create: (input: T) => Promise<unkno
   };
 }
 
+function requestLogger(req: Request): Logger {
+  return req.log ?? rootLogger;
+}
+
+function requestId(req: Request): string | number | object {
+  return req.id ?? "unknown";
+}
+
 async function handleCreateFormLead(req: Request, res: Response) {
+  const log = requestLogger(req);
+  const rid = requestId(req);
+
+  log.info({
+    msg: "form_lead.request.received",
+    requestId: rid,
+    method: req.method,
+    path: req.path,
+    originalUrl: (req.originalUrl ?? "").split("?")[0],
+    origin: req.headers.origin ?? null,
+    contentType: req.headers["content-type"] ?? null,
+    contentLength: req.headers["content-length"] ?? null,
+    userAgent: req.headers["user-agent"] ?? null,
+  });
+
+  const rawBody = req.body;
+  const bodyKeys =
+    rawBody && typeof rawBody === "object" && !Array.isArray(rawBody)
+      ? Object.keys(rawBody as Record<string, unknown>)
+      : [];
+
+  log.info({
+    msg: "form_lead.request.body_keys",
+    requestId: rid,
+    keys: bodyKeys,
+  });
+
+  log.info({
+    msg: "form_lead.request.payload_preview",
+    requestId: rid,
+    preview: sanitizeFormLeadBodyPreview(rawBody),
+  });
+
   try {
     await connectMongo();
     const parsed = createFormLeadSchema.parse(req.body);
-    const data = await createFormLead(parsed);
-    res.status(201).json({ ok: true, data });
-    console.log("Sent FormLead create response; background sheet sync remains asynchronous", {
-      statusCode: res.statusCode,
+    log.info({
+      msg: "form_lead.validation.ok",
+      requestId: rid,
+      fields: Object.keys(parsed),
     });
-    return;
+    const data = await createFormLead(parsed);
+    const leadId = data.lead._id.toString();
+    log.info({
+      msg: "form_lead.created",
+      requestId: rid,
+      leadId,
+      sheetSyncStatus: data.sheet_sync_status,
+    });
+    return res.status(201).json({ ok: true, data });
   } catch (error) {
+    if (error instanceof ZodError) {
+      log.warn({
+        msg: "form_lead.validation.failed",
+        requestId: rid,
+        issues: error.issues.map((issue) => ({
+          path: issue.path,
+          code: issue.code,
+          message: issue.message,
+        })),
+      });
+      return sendError(res, error);
+    }
+
+    if (error instanceof V1ServiceError) {
+      log.warn({
+        msg: "form_lead.service.error",
+        requestId: rid,
+        statusCode: error.statusCode,
+        message: error.message,
+      });
+      return sendError(res, error);
+    }
+
+    log.error(
+      {
+        err: error,
+        msg: "form_lead.create.failed",
+        requestId: rid,
+      },
+      "Form lead creation failed",
+    );
     return sendError(res, error);
   }
 }

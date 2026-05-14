@@ -1,38 +1,24 @@
-import express from "express";
+import cors from "cors";
+import express, { type NextFunction, type Request, type Response } from "express";
 import mongoose from "mongoose";
 import { MONGO_DATABASE_NAME } from "./config/domain";
 import { connectMongo } from "./db";
+import { logger } from "./logger";
+import { httpLogger } from "./middleware/httpLogger";
 import v1Routes from "./routes/v1.routes";
 
 const app = express();
 
-const allowedOrigins = new Set([
-  "https://vantagequotes.com",
-  "https://www.vantagequotes.com",
-]);
+const corsOptions: cors.CorsOptions = {
+  origin: ["https://vantagequotes.com", "https://www.vantagequotes.com"],
+  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "x-api-secret"],
+  maxAge: 86400,
+  optionsSuccessStatus: 204,
+};
 
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-
-  if (origin && allowedOrigins.has(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Vary", "Origin");
-  }
-
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET,POST,PATCH,DELETE,OPTIONS",
-  );
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-api-secret");
-  res.setHeader("Access-Control-Max-Age", "86400");
-
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(204);
-  }
-
-  next();
-});
-
+app.use(httpLogger);
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(v1Routes);
@@ -64,6 +50,33 @@ app.get("/db", async (_req, res) => {
     const message = err instanceof Error ? err.message : "Unknown error";
     res.status(503).json({ ok: false, error: message });
   }
+});
+
+function isMalformedBodyParseError(err: unknown): boolean {
+  if (err instanceof SyntaxError) {
+    return "body" in err;
+  }
+  if (typeof err !== "object" || err === null) {
+    return false;
+  }
+  const status = "status" in err ? (err as { status: unknown }).status : undefined;
+  const type = "type" in err ? (err as { type: unknown }).type : undefined;
+  return status === 400 && type === "entity.parse.failed";
+}
+
+app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
+  if (!isMalformedBodyParseError(err)) {
+    return next(err);
+  }
+  const log = req.log ?? logger;
+  log.warn({ err, msg: "http.body.parse_failed" });
+  if (res.headersSent) {
+    return;
+  }
+  return res.status(400).json({
+    ok: false,
+    error: "Malformed request body",
+  });
 });
 
 export default app;

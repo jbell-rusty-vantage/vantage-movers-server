@@ -16,6 +16,7 @@ import { mergeSheetSyncEntries } from "../models/schemaHelpers";
 import { generateLeadId } from "../utils/ids";
 import { getStateCodeForZip } from "../utils/pickupZipState";
 import { connectMongo } from "../db";
+import { logger } from "../logger";
 import type {
   CreateBookedLeadInput,
   CreateCallLeadInput,
@@ -70,19 +71,22 @@ export async function createFormLead(input: CreateFormLeadInput) {
   });
 
   const leadId = lead._id.toString();
-  console.log("Created FormLead; scheduling background sheet sync", { leadId });
+  logger.info({ msg: "form_lead.sheet_sync.scheduled", leadId });
 
   waitUntil(
     syncFormLeadById(leadId).catch((error) => {
-      console.error("FormLead background sheet sync failed", {
-        leadId,
-        error: error instanceof Error ? error.message : "Unknown error",
-        stack: error instanceof Error ? error.stack : undefined,
-      });
+      logger.error(
+        {
+          err: error,
+          msg: "form_lead.sheet_sync.failed",
+          leadId,
+        },
+        "FormLead background sheet sync failed",
+      );
     }),
   );
 
-  console.log("Returning FormLead create payload with sheet sync pending", { leadId });
+  logger.info({ msg: "form_lead.sheet_sync.pending_response", leadId });
   return {
     lead,
     sheet_sync_status: "pending",
@@ -90,19 +94,19 @@ export async function createFormLead(input: CreateFormLeadInput) {
 }
 
 async function syncFormLeadById(leadId: string) {
-  console.log("Starting background FormLead sheet sync", { leadId });
+  logger.info({ msg: "form_lead.sheet_sync.started", leadId });
 
   await connectMongo();
 
   const lead = await FormLead.findById(leadId);
   if (!lead) {
-    console.error("FormLead not found for background sheet sync", { leadId });
+    logger.warn({ msg: "form_lead.sheet_sync.lead_missing", leadId });
     return;
   }
 
   await syncSourceLead(lead, "FormLead");
 
-  console.log("Completed background FormLead sheet sync", { leadId });
+  logger.info({ msg: "form_lead.sheet_sync.completed", leadId });
 }
 
 export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
