@@ -1,9 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
+import dotenv from "dotenv";
+dotenv.config();
 
 /** Matches default key file used when env credentials are unset (see googleSheets.service.ts). */
-const DEFAULT_INPUT = "just-cosmos-437222-b7-f8ab65674d85.json";
-const DEFAULT_OUTPUT = "google-service-account.one-line.json";
+const DEFAULT_INPUT = process.env.LOCAL_GOOGLE_SERVICE_ACCOUNT_FILE;
+const DEFAULT_OUTPUT = process.env.SERVICE_FILE_ONE_LINE_NAME;
 
 function main(): void {
   const cwd = process.cwd();
@@ -18,7 +20,10 @@ function main(): void {
     process.exit(1);
   }
 
-  const parsed = JSON.parse(fs.readFileSync(inputPath, "utf8")) as Record<string, unknown>;
+  const parsed = JSON.parse(fs.readFileSync(inputPath, "utf8")) as Record<
+    string,
+    unknown
+  >;
   const oneLine = JSON.stringify(parsed);
   fs.writeFileSync(outputPath, `${oneLine}\n`, "utf8");
   console.log(
