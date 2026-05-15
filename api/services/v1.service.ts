@@ -76,23 +76,24 @@ export class V1ServiceError extends Error {
 }
 
 export async function createFormLead(input: CreateFormLeadInput) {
-  const source_company = parseSourceCompany(input.source_company);
-  const location = await resolveRequiredLocation(input);
+  const { crm_company_label, ...formLeadInput } = input;
+  const source_company = parseSourceCompany(formLeadInput.source_company);
+  const location = await resolveRequiredLocation(formLeadInput);
   const local = deriveLocal(location.pickup_state, location.delivery_state);
   const lead = await FormLead.create({
-    ...input,
+    ...formLeadInput,
     ...location,
     source_company,
     local,
-    lid: input.lid?.trim() || generateLeadId(),
-    ref_no: input.ref_no?.trim() || "not provided",
-    timestamp: input.timestamp ?? new Date(),
-    move_date: input.move_date ?? new Date(),
+    lid: formLeadInput.lid?.trim() || generateLeadId(),
+    ref_no: formLeadInput.ref_no?.trim() || "not provided",
+    timestamp: formLeadInput.timestamp ?? new Date(),
+    move_date: formLeadInput.move_date ?? new Date(),
     cpl: getCplForSource(source_company, local),
   });
 
   const leadId = lead._id.toString();
-  const crmResult = await submitFormLeadToCrm(lead);
+  const crmResult = await submitFormLeadToCrm(lead, { companyLabel: crm_company_label });
 
   scheduleFullSheetSyncProcess({
     resource: "source_lead",
@@ -112,6 +113,7 @@ export async function createFormLead(input: CreateFormLeadInput) {
     lead,
     sheet_sync_status: "pending",
     crm_sync_status: crmResult.ok ? "synced" : "failed",
+    crm_company_label: crmResult.payload.label,
     crm_response: crmResult.responseText || crmResult.error || "",
   };
 }

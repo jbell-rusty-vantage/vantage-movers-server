@@ -49,6 +49,7 @@ export const createFormLeadSchema = z
     ...formLeadFields,
     source_company: sourceCompanySchema.default("not_provided"),
     ref_no: nonEmptyString.default("not provided"),
+    crm_company_label: nonEmptyString.default("Get Movers"),
   })
   .strict();
 

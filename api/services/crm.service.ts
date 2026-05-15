@@ -3,8 +3,7 @@ import { generateLeadId } from "../utils/ids";
 import { logger } from "../logger";
 
 export const CRM_FORM_LEAD_ENDPOINT =
-  process.env.CRM_FORM_LEAD_ENDPOINT?.trim() ||
-  "https://lead.hellomoving.com/LEADSGWHTTP.lidgw?&API_ID=74F36265331A&MOVER";
+  "https://lead.hellomoving.com/LEADSGWHTTP.lidgw?&API_ID=74F36265331A&MOVERREF=Leads@vantagehomemovers.com";
 
 export const CRM_FORM_LEAD_LABEL = "Get Movers";
 
@@ -30,7 +29,10 @@ export type CrmSubmitResult = {
   error?: string;
 };
 
-export function splitNameForCrm(name: string): { firstname: string; lastname: string } {
+export function splitNameForCrm(name: string): {
+  firstname: string;
+  lastname: string;
+} {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) {
     return { firstname: "", lastname: "" };
@@ -50,11 +52,14 @@ export function formatCrmMoveDate(date: Date): string {
   return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
 }
 
-export function buildCrmFormLeadPayload(lead: FormLeadDocument): CrmFormLeadPayload {
+export function buildCrmFormLeadPayload(
+  lead: FormLeadDocument,
+  companyLabel: string = CRM_FORM_LEAD_LABEL,
+): CrmFormLeadPayload {
   const { firstname, lastname } = splitNameForCrm(lead.name);
 
   return {
-    label: CRM_FORM_LEAD_LABEL,
+    label: companyLabel.trim() || CRM_FORM_LEAD_LABEL,
     firstname,
     lastname,
     ozip: lead.pickup_zip,
@@ -77,8 +82,11 @@ function encodeFormBody(payload: CrmFormLeadPayload): string {
   return params.toString();
 }
 
-export async function submitFormLeadToCrm(lead: FormLeadDocument): Promise<CrmSubmitResult> {
-  const payload = buildCrmFormLeadPayload(lead);
+export async function submitFormLeadToCrm(
+  lead: FormLeadDocument,
+  options: { companyLabel?: string } = {},
+): Promise<CrmSubmitResult> {
+  const payload = buildCrmFormLeadPayload(lead, options.companyLabel);
   const leadId = lead._id.toString();
 
   logger.info({
@@ -101,7 +109,9 @@ export async function submitFormLeadToCrm(lead: FormLeadDocument): Promise<CrmSu
     const ok = response.ok;
 
     logger.info({
-      msg: ok ? "crm.form_lead.submit.completed" : "crm.form_lead.submit.http_error",
+      msg: ok
+        ? "crm.form_lead.submit.completed"
+        : "crm.form_lead.submit.http_error",
       leadId,
       status: response.status,
       responseText,
@@ -114,7 +124,8 @@ export async function submitFormLeadToCrm(lead: FormLeadDocument): Promise<CrmSu
       payload,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown CRM error";
+    const message =
+      error instanceof Error ? error.message : "Unknown CRM error";
     logger.error(
       {
         err: error,
