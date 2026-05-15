@@ -18,6 +18,7 @@ import {
   deleteCancelledLead,
   deleteCustomer,
   deleteFormLead,
+  findFormLead,
   findAllBookedLeads,
   findAllCallLeads,
   findAllCancelledLeads,
@@ -49,6 +50,7 @@ const router = Router();
 router.use("/api/v1", requireApiSecret);
 
 router.get("/api/v1/form-leads", handleFindAll(findAllFormLeads));
+router.get("/api/v1/form-leads/:id", handleFindOne(findFormLead));
 router.post("/api/v1/form-leads/search", handleSearchFormLeads);
 router.post("/api/v1/form-leads", handleCreateFormLead);
 router.patch("/api/v1/form-leads/:id", handleUpdate(updateFormLeadSchema, updateFormLead));
@@ -79,6 +81,19 @@ function handleFindAll(findAll: () => Promise<unknown>) {
     try {
       await connectMongo();
       const data = await findAll();
+      return res.json({ ok: true, data });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  };
+}
+
+function handleFindOne(findOne: (id: string) => Promise<unknown>) {
+  return async (req: Request, res: Response) => {
+    try {
+      const id = getValidObjectId(req);
+      await connectMongo();
+      const data = await findOne(id);
       return res.json({ ok: true, data });
     } catch (error) {
       return sendError(res, error);

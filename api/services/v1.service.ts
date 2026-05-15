@@ -339,6 +339,15 @@ export async function findAllFormLeads() {
   return FormLead.find().sort({ createdAt: -1 }).limit(200);
 }
 
+export async function findFormLead(id: string) {
+  const lead = await FormLead.findById(id).select("_id ref_no quoted");
+  if (!lead) {
+    throw new V1ServiceError("Form lead not found", 404);
+  }
+
+  return lead;
+}
+
 export async function findAllCallLeads() {
   return CallLead.find().sort({ createdAt: -1 }).limit(200);
 }
