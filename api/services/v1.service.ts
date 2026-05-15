@@ -8,10 +8,10 @@ import {
   type SourceCompany,
 } from "../config/domain";
 import { BookedLead } from "../models/BookedLead";
-import { CallLead } from "../models/CallLead";
+import { CallLead, type CallLeadDocument } from "../models/CallLead";
 import { CancelledLead } from "../models/CancelledLead";
 import { Customer } from "../models/Customer";
-import { FormLead } from "../models/FormLead";
+import { FormLead, type FormLeadDocument } from "../models/FormLead";
 import { mergeSheetSyncEntries } from "../models/schemaHelpers";
 import { generateLeadId } from "../utils/ids";
 import { getStateCodeForZip } from "../utils/pickupZipState";
@@ -44,6 +44,26 @@ type AnyDoc = mongoose.Document & {
   save(): Promise<unknown>;
 };
 
+type SourceLeadDocument = mongoose.HydratedDocument<FormLeadDocument | CallLeadDocument>;
+
+type FullSheetSyncJob =
+  | {
+      resource: "source_lead";
+      operation: string;
+      leadModel: LeadModelName;
+      leadId: string;
+    }
+  | {
+      resource: "booking_chain";
+      operation: string;
+      bookingId: string;
+    }
+  | {
+      resource: "cancellation_chain";
+      operation: string;
+      cancellationId: string;
+    };
+
 export class V1ServiceError extends Error {
   constructor(
     message: string,
@@ -71,42 +91,18 @@ export async function createFormLead(input: CreateFormLeadInput) {
   });
 
   const leadId = lead._id.toString();
-  logger.info({ msg: "form_lead.sheet_sync.scheduled", leadId });
-
-  waitUntil(
-    syncFormLeadById(leadId).catch((error) => {
-      logger.error(
-        {
-          err: error,
-          msg: "form_lead.sheet_sync.failed",
-          leadId,
-        },
-        "FormLead background sheet sync failed",
-      );
-    }),
-  );
+  scheduleFullSheetSyncProcess({
+    resource: "source_lead",
+    operation: "form_lead.create",
+    leadModel: "FormLead",
+    leadId,
+  });
 
   logger.info({ msg: "form_lead.sheet_sync.pending_response", leadId });
   return {
     lead,
     sheet_sync_status: "pending",
   };
-}
-
-async function syncFormLeadById(leadId: string) {
-  logger.info({ msg: "form_lead.sheet_sync.started", leadId });
-
-  await connectMongo();
-
-  const lead = await FormLead.findById(leadId);
-  if (!lead) {
-    logger.warn({ msg: "form_lead.sheet_sync.lead_missing", leadId });
-    return;
-  }
-
-  await syncSourceLead(lead, "FormLead");
-
-  logger.info({ msg: "form_lead.sheet_sync.completed", leadId });
 }
 
 export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
@@ -133,7 +129,12 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
   }
   lead.cpl = getCplForSource(lead.source_company as SourceCompany, lead.local as LocalType);
   await lead.save();
-  await syncSourceLead(lead, "FormLead");
+  scheduleFullSheetSyncProcess({
+    resource: "source_lead",
+    operation: "form_lead.update",
+    leadModel: "FormLead",
+    leadId: lead._id.toString(),
+  });
   return lead;
 }
 
@@ -150,7 +151,12 @@ export async function createCallLead(input: CreateCallLeadInput) {
     cpl: getCplForSource(source_company, local),
   });
 
-  await syncSourceLead(lead, "CallLead");
+  scheduleFullSheetSyncProcess({
+    resource: "source_lead",
+    operation: "call_lead.create",
+    leadModel: "CallLead",
+    leadId: lead._id.toString(),
+  });
   return lead;
 }
 
@@ -185,7 +191,12 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
   }
   lead.cpl = getCplForSource(lead.source_company as SourceCompany, lead.local as LocalType | undefined);
   await lead.save();
-  await syncSourceLead(lead, "CallLead");
+  scheduleFullSheetSyncProcess({
+    resource: "source_lead",
+    operation: "call_lead.update",
+    leadModel: "CallLead",
+    leadId: lead._id.toString(),
+  });
   return lead;
 }
 
@@ -208,8 +219,12 @@ export async function createBookedLead(input: CreateBookedLeadInput) {
     over_4000,
   });
 
-  await mirrorBookingToLead(input.lead_model, lead, booking._id, over_2000, over_4000, local);
-  await syncBookingAndSource(booking._id, input.lead_model, lead._id.toString());
+  await mirrorBookingToLead(lead, booking._id, over_2000, over_4000, local);
+  scheduleFullSheetSyncProcess({
+    resource: "booking_chain",
+    operation: "booked_lead.create",
+    bookingId: booking._id.toString(),
+  });
   return BookedLead.findById(booking._id).populate("customer").orFail();
 }
 
@@ -229,14 +244,17 @@ export async function updateBookedLead(id: string, input: UpdateBookedLeadInput)
   booking.local = input.local ?? booking.local ?? lead.local;
   await booking.save();
   await mirrorBookingToLead(
-    booking.lead_model as LeadModelName,
     lead,
     booking._id,
     booking.over_2000,
     booking.over_4000,
     booking.local as LocalType,
   );
-  await syncBookingAndSource(booking._id, booking.lead_model as LeadModelName, lead._id.toString());
+  scheduleFullSheetSyncProcess({
+    resource: "booking_chain",
+    operation: "booked_lead.update",
+    bookingId: booking._id.toString(),
+  });
   return BookedLead.findById(booking._id).populate("customer").orFail();
 }
 
@@ -267,7 +285,11 @@ export async function createCancelledLead(input: CreateCancelledLeadInput) {
   booking.cancelled = cancellation._id;
   await booking.save();
   await mirrorCancellationToLead(booking.lead_model as LeadModelName, booking.lead_ref.toString(), cancellation._id);
-  await syncBookingAndSource(booking._id, booking.lead_model as LeadModelName, booking.lead_ref.toString());
+  scheduleFullSheetSyncProcess({
+    resource: "cancellation_chain",
+    operation: "cancelled_lead.create",
+    cancellationId: cancellation._id.toString(),
+  });
   return cancellation;
 }
 
@@ -279,6 +301,11 @@ export async function updateCancelledLead(id: string, input: UpdateCancelledLead
     throw new V1ServiceError("Cancelled lead not found", 404);
   }
 
+  scheduleFullSheetSyncProcess({
+    resource: "cancellation_chain",
+    operation: "cancelled_lead.update",
+    cancellationId: cancellation._id.toString(),
+  });
   return cancellation;
 }
 
@@ -439,7 +466,10 @@ function parseSourceCompany(value?: string | null): SourceCompany {
   return sourceCompany;
 }
 
-async function getLinkedLead(leadModel: LeadModelName, leadId: string): Promise<any> {
+async function getLinkedLead(
+  leadModel: LeadModelName,
+  leadId: string,
+): Promise<SourceLeadDocument> {
   const lead =
     leadModel === "FormLead"
       ? await FormLead.findById(leadId)
@@ -451,7 +481,11 @@ async function getLinkedLead(leadModel: LeadModelName, leadId: string): Promise<
   return lead;
 }
 
-async function upsertCustomerFromLead(lead: { name?: string; phone_number?: string; email?: string }) {
+async function upsertCustomerFromLead(lead: {
+  name?: string | null;
+  phone_number?: string | null;
+  email?: string | null;
+}) {
   if (!lead.name?.trim() || !lead.phone_number?.trim()) {
     throw new V1ServiceError("Linked lead must have name and phone_number to create a customer");
   }
@@ -469,8 +503,7 @@ async function upsertCustomerFromLead(lead: { name?: string; phone_number?: stri
 }
 
 async function mirrorBookingToLead(
-  leadModel: LeadModelName,
-  lead: any,
+  lead: SourceLeadDocument,
   bookingId: mongoose.Types.ObjectId,
   over2000: boolean,
   over4000: boolean,
@@ -482,7 +515,6 @@ async function mirrorBookingToLead(
   lead.local = local;
   lead.cpl = getCplForSource(lead.source_company as SourceCompany, local);
   await lead.save();
-  await syncSourceLead(lead, leadModel);
 }
 
 async function mirrorCancellationToLead(
@@ -524,6 +556,95 @@ async function syncBookingAndSource(
   await syncAndStore(booking as unknown as AnyDoc, syncBookedLeadToSheets);
   const lead = await getLinkedLead(leadModel, leadId);
   await syncSourceLead(lead, leadModel);
+}
+
+function scheduleFullSheetSyncProcess(job: FullSheetSyncJob) {
+  const context = sheetSyncLogContext(job);
+  logger.info({ msg: `${job.operation}.sheet_sync.scheduled`, ...context });
+
+  waitUntil(
+    runFullSheetSyncProcess(job).catch((error) => {
+      logger.error(
+        {
+          err: error,
+          msg: `${job.operation}.sheet_sync.failed`,
+          ...context,
+        },
+        "Background sheet sync failed",
+      );
+    }),
+  );
+}
+
+async function runFullSheetSyncProcess(job: FullSheetSyncJob) {
+  const context = sheetSyncLogContext(job);
+  logger.info({ msg: `${job.operation}.sheet_sync.started`, ...context });
+
+  await connectMongo();
+
+  switch (job.resource) {
+    case "source_lead":
+      await syncSourceLeadById(job.leadModel, job.leadId);
+      break;
+    case "booking_chain":
+      await syncBookingChainById(job.bookingId);
+      break;
+    case "cancellation_chain":
+      await syncCancellationChainById(job.cancellationId);
+      break;
+  }
+
+  logger.info({ msg: `${job.operation}.sheet_sync.completed`, ...context });
+}
+
+async function syncSourceLeadById(leadModel: LeadModelName, leadId: string) {
+  const lead = await getLinkedLead(leadModel, leadId);
+  await syncSourceLead(lead, leadModel);
+}
+
+async function syncBookingChainById(bookingId: string) {
+  const booking = await BookedLead.findById(bookingId);
+  if (!booking) {
+    logger.warn({ msg: "sheet_sync.booking_missing", bookingId });
+    return;
+  }
+
+  await syncBookingAndSource(
+    booking._id,
+    booking.lead_model as LeadModelName,
+    booking.lead_ref.toString(),
+  );
+}
+
+async function syncCancellationChainById(cancellationId: string) {
+  const cancellation = await CancelledLead.findById(cancellationId);
+  if (!cancellation) {
+    logger.warn({ msg: "sheet_sync.cancellation_missing", cancellationId });
+    return;
+  }
+
+  await syncBookingChainById(cancellation.booked_lead.toString());
+}
+
+function sheetSyncLogContext(job: FullSheetSyncJob): Record<string, string> {
+  switch (job.resource) {
+    case "source_lead":
+      return {
+        resource: job.resource,
+        leadModel: job.leadModel,
+        leadId: job.leadId,
+      };
+    case "booking_chain":
+      return {
+        resource: job.resource,
+        bookingId: job.bookingId,
+      };
+    case "cancellation_chain":
+      return {
+        resource: job.resource,
+        cancellationId: job.cancellationId,
+      };
+  }
 }
 
 async function syncSourceLead(lead: AnyDoc, leadModel: LeadModelName) {
