@@ -167,6 +167,8 @@ async function handleCreateFormLead(req: Request, res: Response) {
       requestId: rid,
       leadId,
       sheetSyncStatus: data.sheet_sync_status,
+      crmSyncStatus: data.crm_sync_status,
+      crmResponse: data.crm_response,
     });
     return res.status(201).json({ ok: true, data });
   } catch (error) {

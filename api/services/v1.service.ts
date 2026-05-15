@@ -29,6 +29,7 @@ import type {
   UpdateCustomerInput,
   UpdateFormLeadInput,
 } from "../validation/v1.validation";
+import { submitFormLeadToCrm } from "./crm.service";
 import {
   deleteBookedLeadFromSheets,
   deleteCallLeadFromSheets,
@@ -91,6 +92,8 @@ export async function createFormLead(input: CreateFormLeadInput) {
   });
 
   const leadId = lead._id.toString();
+  const crmResult = await submitFormLeadToCrm(lead);
+
   scheduleFullSheetSyncProcess({
     resource: "source_lead",
     operation: "form_lead.create",
@@ -98,10 +101,18 @@ export async function createFormLead(input: CreateFormLeadInput) {
     leadId,
   });
 
-  logger.info({ msg: "form_lead.sheet_sync.pending_response", leadId });
+  logger.info({
+    msg: "form_lead.sheet_sync.pending_response",
+    leadId,
+    crmSyncOk: crmResult.ok,
+    crmStatus: crmResult.status,
+  });
+
   return {
     lead,
     sheet_sync_status: "pending",
+    crm_sync_status: crmResult.ok ? "synced" : "failed",
+    crm_response: crmResult.responseText || crmResult.error || "",
   };
 }
 
