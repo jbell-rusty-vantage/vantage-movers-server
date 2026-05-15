@@ -6,6 +6,8 @@ export const CRM_FORM_LEAD_ENDPOINT =
   process.env.CRM_FORM_LEAD_ENDPOINT?.trim() ||
   "https://lead.hellomoving.com/LEADSGWHTTP.lidgw?&API_ID=74F36265331A&MOVER";
 
+export const CRM_FORM_LEAD_LABEL = "Get Movers";
+
 export type CrmFormLeadPayload = {
   label: string;
   firstname: string;
@@ -52,7 +54,7 @@ export function buildCrmFormLeadPayload(lead: FormLeadDocument): CrmFormLeadPayl
   const { firstname, lastname } = splitNameForCrm(lead.name);
 
   return {
-    label: String(lead.source_company),
+    label: CRM_FORM_LEAD_LABEL,
     firstname,
     lastname,
     ozip: lead.pickup_zip,
