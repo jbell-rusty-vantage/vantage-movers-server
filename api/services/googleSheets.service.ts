@@ -595,8 +595,8 @@ function formLeadToRow(lead: FormLeadSheetSource): string[] {
     lead._id.toString(),
     lead.ref_no?.trim() || "not provided",
     bookedCell(Boolean(lead.booked)),
-    booleanCell(Boolean(lead.over_2000)),
-    booleanCell(Boolean(lead.over_4000)),
+    overThresholdCell(Boolean(lead.over_2000), ">2k"),
+    overThresholdCell(Boolean(lead.over_4000), ">4k"),
     cancelledCell(Boolean(lead.cancelled)),
     localCell(lead.local),
     formatNumber(lead.cubic_feet),
@@ -667,6 +667,10 @@ function localCell(value: string | null | undefined): string {
 
 function bookedCell(value: boolean): string {
   return value ? "booked" : "";
+}
+
+function overThresholdCell(value: boolean, label: ">2k" | ">4k"): string {
+  return value ? label : "";
 }
 
 function cancelledCell(value: boolean): string {
