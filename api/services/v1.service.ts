@@ -29,7 +29,11 @@ import type {
   UpdateCustomerInput,
   UpdateFormLeadInput,
 } from "../validation/v1.validation";
-import { submitFormLeadToCrm } from "./crm.service";
+import {
+  buildCrmFormLeadPayload,
+  submitFormLeadToCrm,
+  type CrmSubmitResult,
+} from "./crm.service";
 import {
   deleteBookedLeadFromSheets,
   deleteCallLeadFromSheets,
@@ -76,7 +80,7 @@ export class V1ServiceError extends Error {
 }
 
 export async function createFormLead(input: CreateFormLeadInput) {
-  const { crm_company_label, ...formLeadInput } = input;
+  const { crm_company_label, post_to_granot, ...formLeadInput } = input;
   const source_company = parseSourceCompany(formLeadInput.source_company);
   const location = await resolveRequiredLocation(formLeadInput);
   const local = deriveLocal(location.pickup_state, location.delivery_state);
@@ -90,10 +94,26 @@ export async function createFormLead(input: CreateFormLeadInput) {
     timestamp: formLeadInput.timestamp ?? new Date(),
     move_date: formLeadInput.move_date ?? new Date(),
     cpl: getCplForSource(source_company, local),
+    post_to_granot,
   });
 
   const leadId = lead._id.toString();
-  const crmResult = await submitFormLeadToCrm(lead, { companyLabel: crm_company_label });
+  const crmResult: CrmSubmitResult = post_to_granot
+    ? await submitFormLeadToCrm(lead, { companyLabel: crm_company_label })
+    : {
+        ok: true,
+        status: 0,
+        responseText: "",
+        payload: buildCrmFormLeadPayload(lead, crm_company_label),
+      };
+
+  if (!post_to_granot) {
+    logger.info({
+      msg: "crm.form_lead.submit.skipped",
+      leadId,
+      companyLabel: crm_company_label,
+    });
+  }
 
   scheduleFullSheetSyncProcess({
     resource: "source_lead",
@@ -107,12 +127,13 @@ export async function createFormLead(input: CreateFormLeadInput) {
     leadId,
     crmSyncOk: crmResult.ok,
     crmStatus: crmResult.status,
+    crmSkipped: !post_to_granot,
   });
 
   return {
     lead,
     sheet_sync_status: "pending",
-    crm_sync_status: crmResult.ok ? "synced" : "failed",
+    crm_sync_status: post_to_granot ? (crmResult.ok ? "synced" : "failed") : "skipped",
     crm_company_label: crmResult.payload.label,
     crm_response: crmResult.responseText || crmResult.error || "",
   };

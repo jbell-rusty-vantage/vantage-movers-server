@@ -1,0 +1,18 @@
+---
+description: FormLead create route and Granot CRM posting conventions
+globs: api/**/*.ts
+alwaysApply: false
+---
+
+# Form Lead Granot CRM Flow
+
+- `POST /api/v1/form-leads` validates with `createFormLeadSchema`, saves a Mongo `FormLead`, optionally posts to Granot CRM, then schedules Google Sheet sync through the existing WaitUntil flow.
+- `post_to_granot` is a create-only request flag with default `true`. Persist it on `FormLead` for audit/history.
+- When `post_to_granot` is `false`, still save the Mongo document and schedule sheet sync, but do not call the Granot CRM endpoint. Return/report CRM sync as `skipped`, not `failed`.
+- Preserve existing clients: omitted `post_to_granot` must behave like `true`.
+- `crm_company_label` controls the Granot payload `label`; it is not persisted as the source-company slug.
+- The incoming create-form-lead `ref_no` is the original request/source value, commonly a Google click id, and is stored on the Mongo `FormLead.ref_no`. It is also used for Google Sheets chain-of-custody.
+- Do not confuse Mongo `FormLead.ref_no` with the Granot CRM web app `ref_no` column. The Granot web app `ref_no` value is produced from the CRM POST payload field `leadno`.
+- `crm.service.ts` must set CRM payload `leadno` to `lead._id.toString()`. The extension later reads the Granot web app `ref_no` column as that Mongo ObjectId to update the correct FormLead.
+- `PATCH /api/v1/form-leads/:id` already updates `quoted` and schedules sheet sync. Do not add a second quoted sync path unless it preserves that side effect.
+- Keep API and Mongo fields in `snake_case`; only translate to CRM field names inside `crm.service.ts`.

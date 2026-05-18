@@ -72,7 +72,6 @@ export const FORM_SHEET_HEADERS = [
   "Source Company",
   "Source Company Site",
   "Quoted",
-  "CPL",
 ] as const;
 
 export const CALL_SHEET_HEADERS = [

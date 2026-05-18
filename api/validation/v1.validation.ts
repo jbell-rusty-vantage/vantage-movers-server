@@ -50,6 +50,7 @@ export const createFormLeadSchema = z
     source_company: sourceCompanySchema.default("not_provided"),
     ref_no: nonEmptyString.default("not provided"),
     crm_company_label: nonEmptyString.default("Get Movers"),
+    post_to_granot: z.coerce.boolean().default(true),
   })
   .strict();
 

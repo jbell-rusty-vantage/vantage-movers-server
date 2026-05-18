@@ -594,17 +594,16 @@ function formLeadToRow(lead: FormLeadSheetSource): string[] {
     lead.phone_number,
     lead._id.toString(),
     lead.ref_no?.trim() || "not provided",
-    booleanCell(Boolean(lead.booked)),
+    bookedCell(Boolean(lead.booked)),
     booleanCell(Boolean(lead.over_2000)),
     booleanCell(Boolean(lead.over_4000)),
-    booleanCell(Boolean(lead.cancelled)),
-    booleanCell(lead.local === "local"),
+    cancelledCell(Boolean(lead.cancelled)),
+    localCell(lead.local),
     formatNumber(lead.cubic_feet),
     lead.lid ?? "",
     getSourceCompanyLabel(lead.source_company),
     lead.source_company_site ?? "",
-    booleanCell(Boolean(lead.quoted)),
-    formatNumber(lead.cpl),
+    quotedCell(Boolean(lead.quoted)),
   ];
 }
 
@@ -622,8 +621,8 @@ function callLeadToRow(lead: CallLeadSheetSource): string[] {
     booked?.merchant ?? "",
     booked?.source ?? "",
     lead._id.toString(),
-    booleanCell((booked?.local ?? lead.local) === "local"),
-    booleanCell(Boolean(lead.cancelled ?? booked?.cancelled)),
+    localCell(booked?.local ?? lead.local),
+    cancelledCell(Boolean(lead.cancelled ?? booked?.cancelled)),
   ];
 }
 
@@ -640,8 +639,8 @@ function bookedLeadToRow(booking: BookedLeadSheetSource): string[] {
     booking.source,
     booking._id.toString(),
     typeof booking.lead_ref === "string" ? booking.lead_ref : booking.lead_ref?.toString() ?? "",
-    booleanCell(booking.local === "local"),
-    booleanCell(Boolean(booking.cancelled)),
+    localCell(booking.local),
+    cancelledCell(Boolean(booking.cancelled)),
   ];
 }
 
@@ -660,6 +659,22 @@ function formatTimestamp(value: Date): string {
 
 function booleanCell(value: boolean): string {
   return value ? "TRUE" : "FALSE";
+}
+
+function localCell(value: string | null | undefined): string {
+  return value === "local" ? "local" : "long_distance";
+}
+
+function bookedCell(value: boolean): string {
+  return value ? "booked" : "";
+}
+
+function cancelledCell(value: boolean): string {
+  return value ? "cancelled" : "";
+}
+
+function quotedCell(value: boolean): string {
+  return value ? "quoted" : "";
 }
 
 function formatNumber(value: number | null | undefined): string {

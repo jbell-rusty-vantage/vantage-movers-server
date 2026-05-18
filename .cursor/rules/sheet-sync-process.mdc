@@ -14,6 +14,8 @@ alwaysApply: false
 - Non-main source lead containers must have `Forms`, `Calls`, `Bad Leads`, and `Bad Calls` tabs. Main site has only `Forms` and `Calls`.
 - Use canonical headers from `api/config/domain.ts`. Do not preserve duplicate or misspelled headers from exploratory docs.
 - Use `Mongo ID` as the row identity in every synced tab. Booked rows also include `Mongo Lead ID` for the linked source lead.
+- Do not write CPL columns to lead sheets. Keep CPL on Mongo documents only; Forms and Calls sheet projections should omit CPL.
+- Write owner-facing status strings instead of generic booleans for sheet status columns: `Local` is `local` or `long_distance`, `Cancelled` is `cancelled` or empty, Form lead `Booked` is `booked` or empty, and Form lead `Quoted` is `quoted` or empty.
 - Treat `sheet_sync[].row_number` as a cached hint, not the source of truth. Before updating or deleting a row, verify that the stored row still contains the expected `Mongo ID`; if not, scan by `Mongo ID` and write the corrected row number back on the next successful sync.
 - Store sync state in each document's `sheet_sync[]` entries: target, spreadsheet ID, tab name, row number, status, last sync time, last error, and dirty state.
 - Immediate create/update sync is expected. If one target fails, persist that target as `failed` and keep successful targets as `synced`.
