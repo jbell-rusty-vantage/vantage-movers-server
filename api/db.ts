@@ -1,6 +1,7 @@
 import dns from "node:dns";
 import mongoose from "mongoose";
 import { MONGO_DATABASE_NAME } from "./config/domain";
+import { logger } from "./logger";
 
 interface MongooseCache {
   conn: typeof mongoose | null;
@@ -42,7 +43,17 @@ export async function connectMongo(): Promise<void> {
   cache.conn = mongoose;
 }
 
+let loggedDnsServers = false;
+
+function shouldUseLocalMongoDnsServers(): boolean {
+  return process.env.VERCEL !== "1" && process.env.NODE_ENV !== "production";
+}
+
 function configureMongoDnsServers(): void {
+  if (!shouldUseLocalMongoDnsServers()) {
+    return;
+  }
+
   const servers = process.env.MONGO_DNS_SERVERS?.split(",")
     .map((server) => server.trim())
     .filter(Boolean);
@@ -51,4 +62,11 @@ function configureMongoDnsServers(): void {
   }
 
   dns.setServers(servers);
+  if (!loggedDnsServers) {
+    loggedDnsServers = true;
+    logger.info({
+      msg: "mongo.dns.servers_configured",
+      servers,
+    });
+  }
 }

@@ -762,7 +762,33 @@ async function syncAndStore(
   document: AnyDoc,
   syncFn: (doc: any) => Promise<ReturnType<typeof mergeSheetSyncEntries>>,
 ) {
+  const documentId = document._id.toString();
   const updates = await syncFn(document);
   document.set("sheet_sync", mergeSheetSyncEntries(document.get("sheet_sync"), updates));
   await document.save();
+
+  const summary = updates.map((entry) => ({
+    target: entry.target,
+    status: entry.status,
+    tabName: entry.tab_name,
+    rowNumber: entry.row_number ?? null,
+    lastError: entry.last_error ?? null,
+  }));
+  const failed = updates.filter((entry) => entry.status === "failed");
+
+  if (failed.length > 0) {
+    logger.warn({
+      msg: "sheet_sync.document.partial_failure",
+      documentId,
+      failedTargets: failed.map((entry) => entry.target),
+      sheetSync: summary,
+    });
+    return;
+  }
+
+  logger.info({
+    msg: "sheet_sync.document.ok",
+    documentId,
+    sheetSync: summary,
+  });
 }

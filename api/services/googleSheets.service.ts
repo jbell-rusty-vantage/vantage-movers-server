@@ -17,12 +17,20 @@ import {
   escapeSheetTitleForRange,
   extractRowNumberFromRange,
 } from "../utils/googleSheetsRanges";
+import {
+  formatGoogleApiError,
+  redactSpreadsheetId,
+  resolveAuthConfigSummary,
+  type GoogleAuthConfigSummary,
+} from "../utils/googleSheetsDiagnostics";
+import { logger } from "../logger";
 import type { SheetSyncEntry } from "../models/schemaHelpers";
 
 const SERVICE_ACCOUNT_FILE = process.env.SERVICE_ACCOUNT_LOCAL_FILE;
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 
 let cachedSheetsClient: sheets_v4.Sheets | null = null;
+let loggedAuthConfig = false;
 
 type ServiceAccountCredentials = {
   client_email?: string;
@@ -104,16 +112,51 @@ function getSheetsClient(): sheets_v4.Sheets {
     return cachedSheetsClient;
   }
 
+  const authSummary = resolveAuthConfigSummary();
+  logAuthConfigOnce(authSummary);
+
   const credentials = getServiceAccountCredentials();
+  if (!credentials && !SERVICE_ACCOUNT_FILE?.trim()) {
+    const message =
+      "Google Sheets auth is not configured: set GOOGLE_SERVICE_ACCOUNT_JSON or SERVICE_ACCOUNT_LOCAL_FILE";
+    logger.error({ msg: "sheets.auth.missing", auth: authSummary }, message);
+    throw new Error(message);
+  }
+
+  if (!credentials && SERVICE_ACCOUNT_FILE?.startsWith("=")) {
+    logger.warn({
+      msg: "sheets.auth.key_file_malformed",
+      keyFile: SERVICE_ACCOUNT_FILE,
+      hint: "SERVICE_ACCOUNT_LOCAL_FILE looks like it has a stray '=' prefix; fix .env or use GOOGLE_SERVICE_ACCOUNT_JSON",
+    });
+  }
+
   const auth = new google.auth.GoogleAuth({
     ...(credentials
       ? { credentials }
-      : { keyFile: path.join(process.cwd(), SERVICE_ACCOUNT_FILE!) }),
+      : { keyFile: path.join(process.cwd(), SERVICE_ACCOUNT_FILE!.trim()) }),
     scopes: [SHEETS_SCOPE],
   });
 
   cachedSheetsClient = google.sheets({ version: "v4", auth });
   return cachedSheetsClient;
+}
+
+function logAuthConfigOnce(authSummary: GoogleAuthConfigSummary): void {
+  if (loggedAuthConfig) {
+    return;
+  }
+
+  loggedAuthConfig = true;
+  logger.info({
+    msg: "sheets.auth.config",
+    authSource: authSummary.authSource,
+    clientEmail: authSummary.clientEmail ?? null,
+    projectId: authSummary.projectId ?? null,
+    privateKeyPresent: authSummary.privateKeyPresent,
+    keyFile: authSummary.keyFile ?? null,
+    scope: SHEETS_SCOPE,
+  });
 }
 
 function getServiceAccountCredentials(): ServiceAccountCredentials | undefined {
@@ -127,12 +170,34 @@ function getServiceAccountCredentials(): ServiceAccountCredentials | undefined {
     return undefined;
   }
 
-  const parsed = JSON.parse(value) as ServiceAccountCredentials;
-  if (typeof parsed.private_key === "string") {
-    parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
-  }
+  try {
+    const parsed = JSON.parse(value) as ServiceAccountCredentials;
+    if (typeof parsed.private_key === "string") {
+      parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
+    }
 
-  return parsed;
+    if (!parsed.client_email?.trim()) {
+      logger.warn({
+        msg: "sheets.auth.credentials_incomplete",
+        hasPrivateKey: Boolean(parsed.private_key?.trim()),
+      });
+    }
+
+    return parsed;
+  } catch (error) {
+    const details = formatGoogleApiError(error);
+    logger.error(
+      {
+        err: error,
+        msg: "sheets.auth.json_parse_failed",
+        authSource: rawJson ? "env_json" : "env_base64",
+        parseError: details.message,
+        hint: details.hint,
+      },
+      "Failed to parse Google service account JSON from environment",
+    );
+    throw error;
+  }
 }
 
 export async function syncFormLeadToSheets(
@@ -274,7 +339,22 @@ async function syncRowToTargets(
   row: string[],
 ): Promise<SheetSyncEntry[]> {
   const sheets = getSheetsClient();
+  const authSummary = resolveAuthConfigSummary();
+  const documentId = document._id.toString();
   const results: SheetSyncEntry[] = [];
+
+  logger.info({
+    msg: "sheets.sync.started",
+    documentId,
+    targetCount: targets.length,
+    targets: targets.map((target) => ({
+      target: target.target,
+      spreadsheetId: redactSpreadsheetId(target.spreadsheetId),
+      tabName: target.tabName,
+    })),
+    clientEmail: authSummary.clientEmail ?? null,
+  });
+
   for (const target of targets) {
     try {
       await ensureTabsAndHeaders(sheets, target.spreadsheetId, target.ensureTabs);
@@ -285,7 +365,7 @@ async function syncRowToTargets(
         target.tabName,
         target.headers,
         row,
-        document._id.toString(),
+        documentId,
         existingSync?.row_number,
       );
       results.push({
@@ -297,17 +377,54 @@ async function syncRowToTargets(
         last_synced_at: new Date(),
         updated_since_last_sync: false,
       });
+      logger.info({
+        msg: "sheets.sync.target.ok",
+        documentId,
+        target: target.target,
+        spreadsheetId: redactSpreadsheetId(target.spreadsheetId),
+        tabName: target.tabName,
+        rowNumber: rowNumber ?? null,
+      });
     } catch (error) {
+      const details = formatGoogleApiError(error);
+      const lastError = details.hint ? `${details.message} — ${details.hint}` : details.message;
+
+      logger.error(
+        {
+          err: error,
+          msg: "sheets.sync.target.failed",
+          documentId,
+          target: target.target,
+          spreadsheetId: redactSpreadsheetId(target.spreadsheetId),
+          tabName: target.tabName,
+          clientEmail: authSummary.clientEmail ?? null,
+          googleCode: details.code ?? null,
+          googleStatus: details.status ?? null,
+          googleReasons: details.reasons,
+          hint: details.hint ?? null,
+          lastError,
+        },
+        "Google Sheets sync failed for target",
+      );
+
       results.push({
         target: target.target,
         spreadsheet_id: target.spreadsheetId,
         tab_name: target.tabName,
         status: "failed",
-        last_error: error instanceof Error ? error.message : "Unknown Sheets sync error",
+        last_error: lastError,
         updated_since_last_sync: true,
       });
     }
   }
+
+  const failed = results.filter((entry) => entry.status === "failed").length;
+  logger.info({
+    msg: "sheets.sync.finished",
+    documentId,
+    synced: results.length - failed,
+    failed,
+  });
 
   return results;
 }
