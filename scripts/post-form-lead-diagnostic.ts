@@ -14,6 +14,7 @@ if (!secret) {
   console.error("Missing VANTAGE_API_SECRET");
   process.exit(1);
 }
+const apiSecret = secret;
 
 const base =
   process.env.API_BASE_URL?.trim() ||
@@ -45,7 +46,7 @@ async function main() {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-secret": secret,
+      "x-api-secret": apiSecret,
     },
     body: JSON.stringify(body),
   });

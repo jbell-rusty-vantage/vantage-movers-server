@@ -361,6 +361,9 @@ async function getBookedLeadForCancellation(
   if (!booking) {
     throw new V1ServiceError("Booked lead not found", 404);
   }
+  if (booking.cancelled) {
+    throw new V1ServiceError("Booked lead is already cancelled", 409);
+  }
 
   return booking;
 }
