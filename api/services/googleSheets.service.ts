@@ -35,6 +35,12 @@ type SyncTarget = {
   spreadsheetId: string;
   tabName: string;
   headers: readonly string[];
+  ensureTabs: SheetTabConfig[];
+};
+
+type SheetTabConfig = {
+  tabName: string;
+  headers: readonly string[];
 };
 
 type SyncableDocument = {
@@ -164,6 +170,7 @@ export async function syncBookedLeadToSheets(
       spreadsheetId: getMasterBookedSheetContainerId(),
       tabName: SHEET_TAB_NAMES.bookedDeals,
       headers: BOOKED_SHEET_HEADERS,
+      ensureTabs: getMasterBookedTabs(),
     },
   ];
   return syncRowToTargets(booking, targets, bookedLeadToRow(booking));
@@ -210,6 +217,7 @@ export async function deleteBookedLeadFromSheets(booking: SyncableDocument): Pro
         spreadsheetId: getMasterBookedSheetContainerId(),
         tabName: SHEET_TAB_NAMES.bookedDeals,
         headers: BOOKED_SHEET_HEADERS,
+        ensureTabs: getMasterBookedTabs(),
       },
     ],
     ["master_booked"],
@@ -218,30 +226,15 @@ export async function deleteBookedLeadFromSheets(booking: SyncableDocument): Pro
 
 export async function ensureAllConfiguredSheetTabs(): Promise<void> {
   const sheets = getSheetsClient();
-  await ensureTabsAndHeaders(sheets, getMasterLeadsSheetContainerId(), [
-    { tabName: SHEET_TAB_NAMES.forms, headers: FORM_SHEET_HEADERS },
-    { tabName: SHEET_TAB_NAMES.calls, headers: CALL_SHEET_HEADERS },
-  ]);
-  await ensureTabsAndHeaders(sheets, getMasterBookedSheetContainerId(), [
-    { tabName: SHEET_TAB_NAMES.bookedDeals, headers: BOOKED_SHEET_HEADERS },
-  ]);
+  await ensureTabsAndHeaders(sheets, getMasterLeadsSheetContainerId(), getMasterLeadsTabs());
+  await ensureTabsAndHeaders(sheets, getMasterBookedSheetContainerId(), getMasterBookedTabs());
 
   for (const source of Object.values(SOURCE_COMPANY_CONFIGS)) {
     if (!source.leadSheetEnvVar) {
       continue;
     }
     const sourceLeadSheetContainerId = getRequiredEnv(source.leadSheetEnvVar);
-    const tabs = [
-      { tabName: SHEET_TAB_NAMES.forms, headers: FORM_SHEET_HEADERS },
-      { tabName: SHEET_TAB_NAMES.calls, headers: CALL_SHEET_HEADERS },
-    ];
-    await ensureTabsAndHeaders(sheets, sourceLeadSheetContainerId, tabs);
-    if (source.hasBadTabs) {
-      await ensureTabsOnly(sheets, sourceLeadSheetContainerId, [
-        SHEET_TAB_NAMES.badLeads,
-        SHEET_TAB_NAMES.badCalls,
-      ]);
-    }
+    await ensureTabsAndHeaders(sheets, sourceLeadSheetContainerId, getSourceLeadTabs(source.slug));
   }
 }
 
@@ -258,6 +251,7 @@ function getLeadTargets(
       spreadsheetId: getMasterLeadsSheetContainerId(),
       tabName,
       headers,
+      ensureTabs: getMasterLeadsTabs(),
     },
   ];
   const sourceSpreadsheetId = getSourceLeadSheetContainerId(sourceCompany);
@@ -267,6 +261,7 @@ function getLeadTargets(
       spreadsheetId: sourceSpreadsheetId,
       tabName,
       headers,
+      ensureTabs: getSourceLeadTabs(sourceCompany),
     });
   }
 
@@ -282,9 +277,7 @@ async function syncRowToTargets(
   const results: SheetSyncEntry[] = [];
   for (const target of targets) {
     try {
-      await ensureTabsAndHeaders(sheets, target.spreadsheetId, [
-        { tabName: target.tabName, headers: target.headers },
-      ]);
+      await ensureTabsAndHeaders(sheets, target.spreadsheetId, target.ensureTabs);
       const existingSync = document.sheet_sync?.find((entry) => entry.target === target.target);
       const rowNumber = await upsertRow(
         sheets,
@@ -415,6 +408,7 @@ function getDeleteTargets(
       spreadsheetId: entry.spreadsheet_id,
       tabName: entry.tab_name,
       headers,
+      ensureTabs: getEnsureTabsForSyncTarget(entry.target),
       knownRowNumber: entry.row_number,
     });
   }
@@ -439,6 +433,49 @@ function getHeadersForSyncTarget(target: string): readonly string[] | undefined 
     default:
       return undefined;
   }
+}
+
+function getEnsureTabsForSyncTarget(target: string): SheetTabConfig[] {
+  switch (target) {
+    case "master_forms":
+    case "master_calls":
+      return getMasterLeadsTabs();
+    case "source_forms":
+    case "source_calls":
+      return [
+        { tabName: SHEET_TAB_NAMES.forms, headers: FORM_SHEET_HEADERS },
+        { tabName: SHEET_TAB_NAMES.calls, headers: CALL_SHEET_HEADERS },
+        { tabName: SHEET_TAB_NAMES.badLeads, headers: FORM_SHEET_HEADERS },
+        { tabName: SHEET_TAB_NAMES.badCalls, headers: CALL_SHEET_HEADERS },
+      ];
+    case "master_booked":
+      return getMasterBookedTabs();
+    default:
+      return [];
+  }
+}
+
+function getMasterLeadsTabs(): SheetTabConfig[] {
+  return [
+    { tabName: SHEET_TAB_NAMES.forms, headers: FORM_SHEET_HEADERS },
+    { tabName: SHEET_TAB_NAMES.calls, headers: CALL_SHEET_HEADERS },
+  ];
+}
+
+function getMasterBookedTabs(): SheetTabConfig[] {
+  return [{ tabName: SHEET_TAB_NAMES.bookedDeals, headers: BOOKED_SHEET_HEADERS }];
+}
+
+function getSourceLeadTabs(sourceCompany: SourceCompany): SheetTabConfig[] {
+  const tabs = getMasterLeadsTabs();
+  if (SOURCE_COMPANY_CONFIGS[sourceCompany].hasBadTabs) {
+    tabs.push(
+      { tabName: SHEET_TAB_NAMES.badLeads, headers: FORM_SHEET_HEADERS },
+      { tabName: SHEET_TAB_NAMES.badCalls, headers: CALL_SHEET_HEADERS },
+    );
+  }
+
+  return tabs;
 }
 
 async function deleteSheetRow(
@@ -520,7 +557,7 @@ async function rowNumberContainsMongoId(
 async function ensureTabsAndHeaders(
   sheets: sheets_v4.Sheets,
   spreadsheetId: string,
-  tabs: { tabName: string; headers: readonly string[] }[],
+  tabs: SheetTabConfig[],
 ): Promise<void> {
   for (const tab of tabs) {
     await ensureTab(sheets, spreadsheetId, tab.tabName);
@@ -530,16 +567,6 @@ async function ensureTabsAndHeaders(
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [[...tab.headers]] },
     });
-  }
-}
-
-async function ensureTabsOnly(
-  sheets: sheets_v4.Sheets,
-  spreadsheetId: string,
-  tabNames: readonly string[],
-): Promise<void> {
-  for (const tabName of tabNames) {
-    await ensureTab(sheets, spreadsheetId, tabName);
   }
 }
 
