@@ -92,7 +92,9 @@ const BOOKED_LEAD_CREATE_BODY = {
 
 const CANCELLED_LEAD_CREATE_BODY = {
   timestamp: "2026-06-17T12:00:00.000Z",
+  cancel_date: "2026-06-17T12:00:00.000Z",
   booked_lead: "{{bookedLeadId}}",
+  refund_amount: 1250,
   reason: "Postman regression cancellation",
   notes: "Created by the canonical Vantage Movers API collection.",
   cancelled_by: "Postman QA",
@@ -150,10 +152,11 @@ const RESOURCES: ResourceConfig[] = [
     variablePrefix: "cancelledLead",
     path: "/api/v1/cancelled-leads",
     createDescription:
-      "Creates a cancellation from bookedLeadId and mirrors cancellation state to the linked records.",
+      "Creates a cancellation from bookedLeadId, writes Cancelled Deals, and mirrors cancellation state to the linked records.",
     updateDescription: "Partially updates a cancellation. Requires cancelledLeadId.",
     createBody: CANCELLED_LEAD_CREATE_BODY,
     updateBody: {
+      refund_amount: 1000,
       notes: "Updated cancellation notes from Postman.",
     },
     captureId: true,

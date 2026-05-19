@@ -139,8 +139,10 @@ export const updateBookedLeadSchema = z
 
 const cancelledLeadFields = {
   timestamp: optionalDate,
+  cancel_date: optionalDate,
   booked_lead: objectIdSchema.optional(),
   lead_id: objectIdSchema.optional(),
+  refund_amount: finiteNumber,
   reason: optionalString,
   notes: optionalString,
   cancelled_by: optionalString,
@@ -157,6 +159,8 @@ export const createCancelledLeadSchema = z
 export const updateCancelledLeadSchema = z
   .object({
     timestamp: cancelledLeadFields.timestamp,
+    cancel_date: cancelledLeadFields.cancel_date,
+    refund_amount: cancelledLeadFields.refund_amount,
     reason: cancelledLeadFields.reason,
     notes: cancelledLeadFields.notes,
     cancelled_by: cancelledLeadFields.cancelled_by,

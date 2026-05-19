@@ -33,6 +33,12 @@ function createCancelledLeadForm() {
 
   form
     .addTextItem()
+    .setTitle("Refund Amount")
+    .setHelpText("Required. Amount to refund for the cancellation.")
+    .setRequired(true);
+
+  form
+    .addTextItem()
     .setTitle("Cancelled By")
     .setHelpText("Optional. Person submitting or responsible for the cancellation.")
     .setRequired(false);
@@ -80,7 +86,8 @@ function onCancelledLeadSubmit(e) {
   };
 
   addStringIfPresent(payload, "reason", values["Cancellation Reason"]);
-  addDateIfPresent(payload, "timestamp", values["Cancellation Date"]);
+  addDateIfPresent(payload, "cancel_date", values["Cancellation Date"]);
+  addNumberIfPresent(payload, "refund_amount", values["Refund Amount"]);
   addStringIfPresent(payload, "cancelled_by", values["Cancelled By"]);
   addStringIfPresent(payload, "notes", values["Notes"]);
 
@@ -152,6 +159,19 @@ function addDateIfPresent(payload, key, value) {
   }
 
   payload[key] = value instanceof Date ? value.toISOString() : String(value).trim();
+}
+
+function addNumberIfPresent(payload, key, value) {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return;
+  }
+
+  const parsed = Number(String(value).trim());
+  if (Number.isNaN(parsed)) {
+    throw new Error(key + " must be a number.");
+  }
+
+  payload[key] = parsed;
 }
 
 function deleteCancelledLeadTriggers() {

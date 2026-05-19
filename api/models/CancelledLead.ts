@@ -1,5 +1,5 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
-import { leadModelField, localField, sheetSyncSchema, type SheetSyncEntry } from "./schemaHelpers";
+import { leadModelField, sheetSyncSchema, type SheetSyncEntry } from "./schemaHelpers";
 
 const CancelledLeadSchema = new Schema(
   {
@@ -11,15 +11,14 @@ const CancelledLeadSchema = new Schema(
     reason: { type: String, trim: true },
     notes: { type: String, trim: true },
     cancelled_by: { type: String, trim: true },
+    cancel_date: { type: Date, required: true },
     agent: { type: String, trim: true },
     book_date: { type: Date },
     job_no: { type: String, trim: true },
     customer_name: { type: String, trim: true },
-    binder_amount: { type: Number },
-    deposit_amount: { type: Number },
+    refund_amount: { type: Number, required: true },
     merchant: { type: String, trim: true },
     source: { type: String, trim: true },
-    local: localField,
     sheet_sync: { type: [sheetSyncSchema], default: [] },
   },
   {

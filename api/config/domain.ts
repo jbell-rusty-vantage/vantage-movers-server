@@ -36,6 +36,7 @@ export const SHEET_TAB_NAMES = {
   badLeads: "Bad Leads",
   badCalls: "Bad Calls",
   bookedDeals: "Booked Deals",
+  cancelledDeals: "Cancelled Deals",
 } as const;
 
 export const SHEET_CONTAINER_ENV_VARS = {
@@ -104,6 +105,18 @@ export const BOOKED_SHEET_HEADERS = [
   "Mongo Lead ID",
   "Local",
   "Cancelled",
+] as const;
+
+export const CANCELLED_SHEET_HEADERS = [
+  "Timestamp",
+  "Agent",
+  "Cancel Date",
+  "Job No",
+  "Customer Name",
+  "Refund Amount",
+  "Source",
+  "Mongo ID",
+  "Lead Mongo ID",
 ] as const;
 
 export type SourceCompanyConfig = {

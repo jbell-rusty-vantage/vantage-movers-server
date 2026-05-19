@@ -353,7 +353,7 @@ async function main(): Promise<void> {
       .select("job_no lead_model lead_ref deposit_amount cancelled sheet_sync")
       .lean(),
     CancelledLead.find({ _id: { $in: cancelledIds } })
-      .select("job_no reason booked_lead sheet_sync")
+      .select("job_no reason cancel_date refund_amount booked_lead sheet_sync")
       .lean(),
   ]);
 
@@ -382,7 +382,9 @@ async function main(): Promise<void> {
 
   console.log("\nCancelled leads:");
   for (const row of cancelled) {
-    console.log(`  ${row.job_no ?? "—"} | ${row.reason} | booked_lead=${row.booked_lead} | ${summarizeSheetSync(row.sheet_sync)}`);
+    console.log(
+      `  ${row.job_no ?? "—"} | refund=${row.refund_amount ?? "—"} | cancel_date=${row.cancel_date ?? "—"} | ${row.reason} | booked_lead=${row.booked_lead} | ${summarizeSheetSync(row.sheet_sync)}`,
+    );
   }
 
   await mongoose.disconnect();

@@ -7,16 +7,16 @@ alwaysApply: false
 # Google Sheets Sync Process
 
 - MongoDB is the source of truth. Create/update Mongo documents first, then derive Google Sheets rows from saved documents. For deletes, remove Google Sheets rows before deleting the Mongo document so `sheet_sync[]` metadata is still available.
-- Keep spreadsheet container IDs separate from tab names. `MASTER_LEADS_SHEET_ID` contains `Forms` and `Calls`; `MASTER_BOOKED_SHEET_ID` contains `Booked Deals`.
+- Keep spreadsheet container IDs separate from tab names. `MASTER_LEADS_SHEET_ID` contains `Forms` and `Calls`; `MASTER_BOOKED_SHEET_ID` contains `Booked Deals` and `Cancelled Deals`.
 - Source lead sheet containers are `TBM_LEADS_SHEET_ID`, `TBM_PRIME_LEADS_SHEET_ID`, `TOP10_LEADS_SHEET_ID`, `BEST_RELOCATION_LEADS_SHEET_ID`, and `MAINSITE_LEADS_SHEET_ID`.
 - All form leads write to master `Forms` plus the matching source `Forms` tab. All call leads write to master `Calls` plus the matching source `Calls` tab.
-- All booked leads write only to `MASTER_BOOKED_SHEET_ID` tab `Booked Deals`.
+- All booked leads write only to `MASTER_BOOKED_SHEET_ID` tab `Booked Deals`. All cancelled leads write only to `MASTER_BOOKED_SHEET_ID` tab `Cancelled Deals`.
 - Non-main source lead containers must have `Forms`, `Calls`, `Bad Leads`, and `Bad Calls` tabs. Main site has only `Forms` and `Calls`.
 - Use canonical headers from `api/config/domain.ts`. Do not preserve duplicate or misspelled headers from exploratory docs.
-- Use `Mongo ID` as the row identity in every synced tab. Booked rows also include `Mongo Lead ID` for the linked source lead.
+- Use `Mongo ID` as the row identity in every synced tab. Booked and cancelled rows also include `Mongo Lead ID` for the linked source lead.
 - Do not write CPL columns to lead sheets. Keep CPL on Mongo documents only; Forms and Calls sheet projections should omit CPL.
 - Write owner-facing status strings instead of generic booleans for sheet status columns: `Local` is `local` or `long_distance`, `Cancelled` is `cancelled` or empty, Form lead `Booked` is `booked` or empty, and Form lead `Quoted` is `quoted` or empty.
 - Treat `sheet_sync[].row_number` as a cached hint, not the source of truth. Before updating or deleting a row, verify that the stored row still contains the expected `Mongo ID`; if not, scan by `Mongo ID` and write the corrected row number back on the next successful sync.
 - Store sync state in each document's `sheet_sync[]` entries: target, spreadsheet ID, tab name, row number, status, last sync time, last error, and dirty state.
 - Immediate create/update sync is expected. If one target fails, persist that target as `failed` and keep successful targets as `synced`.
-- Delete sync is expected for sheet-backed documents: form leads delete from master/source `Forms`, call leads delete from master/source `Calls`, and booked leads delete from master `Booked Deals`. Deleting a sheet row shifts rows below it; do not proactively rewrite every affected Mongo document, rely on `Mongo ID` verification to self-heal row numbers as records sync again.
+- Delete sync is expected for sheet-backed documents: form leads delete from master/source `Forms`, call leads delete from master/source `Calls`, booked leads delete from master `Booked Deals`, and cancelled leads delete from master `Cancelled Deals`. Deleting a sheet row shifts rows below it; do not proactively rewrite every affected Mongo document, rely on `Mongo ID` verification to self-heal row numbers as records sync again.

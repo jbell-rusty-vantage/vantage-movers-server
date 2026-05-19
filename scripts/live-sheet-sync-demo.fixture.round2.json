@@ -183,6 +183,8 @@
     {
       "bookingIndex": 0,
       "body": {
+        "cancel_date": "2026-07-12T12:00:00.000Z",
+        "refund_amount": 1950,
         "reason": "Customer found housing fell through — move postponed indefinitely",
         "notes": "Round-2 fixture cancel #1 — booked from prime form, released slot July 8",
         "cancelled_by": "QA Script"
@@ -191,6 +193,8 @@
     {
       "bookingIndex": 2,
       "body": {
+        "cancel_date": "2026-07-13T12:00:00.000Z",
+        "refund_amount": 1650,
         "reason": "Carrier capacity conflict on booked lane",
         "notes": "Round-2 fixture cancel #2 — call lead re-offered to partner network",
         "cancelled_by": "QA Script"

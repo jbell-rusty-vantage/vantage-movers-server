@@ -3,6 +3,7 @@ import { google, type sheets_v4 } from "googleapis";
 import {
   BOOKED_SHEET_HEADERS,
   CALL_SHEET_HEADERS,
+  CANCELLED_SHEET_HEADERS,
   FORM_SHEET_HEADERS,
   getMasterBookedSheetContainerId,
   getMasterLeadsSheetContainerId,
@@ -106,6 +107,17 @@ type PopulatedBookedLead = {
 };
 
 type BookedLeadSheetSource = SyncableDocument & PopulatedBookedLead;
+
+type CancelledLeadSheetSource = SyncableDocument & {
+  timestamp: Date;
+  agent?: string | null;
+  cancel_date?: Date | null;
+  job_no?: string | null;
+  customer_name?: string | null;
+  refund_amount?: number | null;
+  source?: string | null;
+  lead_ref?: { toString(): string } | string | null;
+};
 
 function getSheetsClient(): sheets_v4.Sheets {
   if (cachedSheetsClient) {
@@ -241,6 +253,21 @@ export async function syncBookedLeadToSheets(
   return syncRowToTargets(booking, targets, bookedLeadToRow(booking));
 }
 
+export async function syncCancelledLeadToSheets(
+  cancellation: CancelledLeadSheetSource,
+): Promise<SheetSyncEntry[]> {
+  const targets = [
+    {
+      target: "master_cancelled",
+      spreadsheetId: getMasterBookedSheetContainerId(),
+      tabName: SHEET_TAB_NAMES.cancelledDeals,
+      headers: CANCELLED_SHEET_HEADERS,
+      ensureTabs: getMasterBookedTabs(),
+    },
+  ];
+  return syncRowToTargets(cancellation, targets, cancelledLeadToRow(cancellation));
+}
+
 export async function deleteFormLeadFromSheets(
   lead: SyncableDocument & { source_company: SourceCompany },
 ): Promise<void> {
@@ -286,6 +313,22 @@ export async function deleteBookedLeadFromSheets(booking: SyncableDocument): Pro
       },
     ],
     ["master_booked"],
+  );
+}
+
+export async function deleteCancelledLeadFromSheets(cancellation: SyncableDocument): Promise<void> {
+  await deleteRowsFromTargets(
+    cancellation,
+    [
+      {
+        target: "master_cancelled",
+        spreadsheetId: getMasterBookedSheetContainerId(),
+        tabName: SHEET_TAB_NAMES.cancelledDeals,
+        headers: CANCELLED_SHEET_HEADERS,
+        ensureTabs: getMasterBookedTabs(),
+      },
+    ],
+    ["master_cancelled"],
   );
 }
 
@@ -547,6 +590,8 @@ function getHeadersForSyncTarget(target: string): readonly string[] | undefined 
       return CALL_SHEET_HEADERS;
     case "master_booked":
       return BOOKED_SHEET_HEADERS;
+    case "master_cancelled":
+      return CANCELLED_SHEET_HEADERS;
     default:
       return undefined;
   }
@@ -566,6 +611,7 @@ function getEnsureTabsForSyncTarget(target: string): SheetTabConfig[] {
         { tabName: SHEET_TAB_NAMES.badCalls, headers: CALL_SHEET_HEADERS },
       ];
     case "master_booked":
+    case "master_cancelled":
       return getMasterBookedTabs();
     default:
       return [];
@@ -580,7 +626,10 @@ function getMasterLeadsTabs(): SheetTabConfig[] {
 }
 
 function getMasterBookedTabs(): SheetTabConfig[] {
-  return [{ tabName: SHEET_TAB_NAMES.bookedDeals, headers: BOOKED_SHEET_HEADERS }];
+  return [
+    { tabName: SHEET_TAB_NAMES.bookedDeals, headers: BOOKED_SHEET_HEADERS },
+    { tabName: SHEET_TAB_NAMES.cancelledDeals, headers: CANCELLED_SHEET_HEADERS },
+  ];
 }
 
 function getSourceLeadTabs(sourceCompany: SourceCompany): SheetTabConfig[] {
@@ -785,6 +834,22 @@ function bookedLeadToRow(booking: BookedLeadSheetSource): string[] {
     typeof booking.lead_ref === "string" ? booking.lead_ref : booking.lead_ref?.toString() ?? "",
     localCell(booking.local),
     cancelledCell(Boolean(booking.cancelled)),
+  ];
+}
+
+function cancelledLeadToRow(cancellation: CancelledLeadSheetSource): string[] {
+  return [
+    formatTimestamp(cancellation.timestamp),
+    cancellation.agent ?? "",
+    cancellation.cancel_date ? formatDateOnly(cancellation.cancel_date) : "",
+    cancellation.job_no ?? "",
+    cancellation.customer_name ?? "",
+    formatNumber(cancellation.refund_amount),
+    cancellation.source ?? "",
+    cancellation._id.toString(),
+    typeof cancellation.lead_ref === "string"
+      ? cancellation.lead_ref
+      : cancellation.lead_ref?.toString() ?? "",
   ];
 }
 

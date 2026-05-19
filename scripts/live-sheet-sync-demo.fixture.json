@@ -183,6 +183,8 @@
     {
       "bookingIndex": 1,
       "body": {
+        "cancel_date": "2026-06-24T12:00:00.000Z",
+        "refund_amount": 4200,
         "reason": "Customer rescheduled with another carrier",
         "notes": "Demo cancellation #1 — live sheet sync script",
         "cancelled_by": "Demo Ops"
@@ -191,6 +193,8 @@
     {
       "bookingIndex": 3,
       "body": {
+        "cancel_date": "2026-06-25T12:00:00.000Z",
+        "refund_amount": 2100,
         "reason": "Deposit not received within SLA",
         "notes": "Demo cancellation #2 — live sheet sync script",
         "cancelled_by": "Demo Ops"
