@@ -7,7 +7,7 @@ import {
   type LocalType,
   type SourceCompany,
 } from "../config/domain";
-import { BookedLead } from "../models/BookedLead";
+import { BookedLead, type BookedLeadDocument } from "../models/BookedLead";
 import { CallLead, type CallLeadDocument } from "../models/CallLead";
 import { CancelledLead } from "../models/CancelledLead";
 import { Customer } from "../models/Customer";
@@ -293,15 +293,12 @@ export async function updateBookedLead(id: string, input: UpdateBookedLeadInput)
 }
 
 export async function createCancelledLead(input: CreateCancelledLeadInput) {
-  const booking = await BookedLead.findById(input.booked_lead).populate("customer");
-  if (!booking) {
-    throw new V1ServiceError("Booked lead not found", 404);
-  }
+  const booking = await resolveBookedLeadForCancellation(input);
 
   const customer = booking.customer as { _id?: mongoose.Types.ObjectId; full_name?: string } | undefined;
   const cancellation = await CancelledLead.create({
-    ...input,
     timestamp: input.timestamp ?? new Date(),
+    booked_lead: booking._id,
     customer: customer?._id ?? booking.customer,
     lead_ref: booking.lead_ref,
     lead_model: booking.lead_model,
@@ -314,6 +311,9 @@ export async function createCancelledLead(input: CreateCancelledLeadInput) {
     merchant: booking.merchant,
     source: booking.source,
     local: booking.local,
+    reason: input.reason,
+    notes: input.notes,
+    cancelled_by: input.cancelled_by,
   });
 
   booking.cancelled = cancellation._id;
@@ -325,6 +325,64 @@ export async function createCancelledLead(input: CreateCancelledLeadInput) {
     cancellationId: cancellation._id.toString(),
   });
   return cancellation;
+}
+
+async function resolveBookedLeadForCancellation(
+  input: CreateCancelledLeadInput,
+): Promise<mongoose.HydratedDocument<BookedLeadDocument>> {
+  if (input.booked_lead && !input.lead_id) {
+    return getBookedLeadForCancellation(input.booked_lead);
+  }
+
+  if (!input.lead_id) {
+    throw new V1ServiceError("Either booked_lead or lead_id must be provided", 400);
+  }
+
+  const { lead, leadModel } = await resolveSourceLeadById(input.lead_id);
+  if (!lead.booked) {
+    throw new V1ServiceError("Source lead is not booked", 409);
+  }
+
+  const booking = await getBookedLeadForCancellation(lead.booked.toString());
+  if (input.booked_lead && !booking._id.equals(input.booked_lead)) {
+    throw new V1ServiceError("booked_lead does not match the source lead booking", 409);
+  }
+  if (booking.lead_model !== leadModel || booking.lead_ref.toString() !== lead._id.toString()) {
+    throw new V1ServiceError("Booked lead does not match the source lead", 409);
+  }
+
+  return booking;
+}
+
+async function getBookedLeadForCancellation(
+  bookedLeadId: string,
+): Promise<mongoose.HydratedDocument<BookedLeadDocument>> {
+  const booking = await BookedLead.findById(bookedLeadId).populate("customer");
+  if (!booking) {
+    throw new V1ServiceError("Booked lead not found", 404);
+  }
+
+  return booking;
+}
+
+async function resolveSourceLeadById(
+  leadId: string,
+): Promise<{ lead: SourceLeadDocument; leadModel: LeadModelName }> {
+  const [formLead, callLead] = await Promise.all([
+    FormLead.findById(leadId),
+    CallLead.findById(leadId),
+  ]);
+  if (formLead && callLead) {
+    throw new V1ServiceError("Lead id matched both form and call leads", 409);
+  }
+  if (formLead) {
+    return { lead: formLead, leadModel: "FormLead" };
+  }
+  if (callLead) {
+    return { lead: callLead, leadModel: "CallLead" };
+  }
+
+  throw new V1ServiceError("Source lead not found", 404);
 }
 
 export async function updateCancelledLead(id: string, input: UpdateCancelledLeadInput) {

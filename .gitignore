@@ -23,9 +23,12 @@ pnpm-debug.log*
 .vercel_build_output
 
 # Ignore uploaded secrets/service-account files, anywhere in the repo, recursively
+**/*service-account*.json
 **/just-cosmos-437222-b7-f8ab65674d85.json
+**/vantage-sheets-496816-b67de712c0a3.json
 # Minified one-line copy for env paste (see scripts/minify-google-service-account-json.ts)
 /google-service-account.one-line.json
+/vantage-sheets-service-account.one-line.json
 
 # Ignore output
 /*.log

@@ -9,7 +9,12 @@
 
 The booking service uses those two fields together to load the linked source lead before creating the booking. Booking patches do not accept `lead_model`; they use the `lead_model` already stored on the booking.
 
-`POST /api/v1/cancelled-leads` does not require `lead_model`. It receives `booked_lead`, loads that booking, and derives `lead_ref` and `lead_model` from the booking record.
+`POST /api/v1/cancelled-leads` does not require `lead_model`. It accepts either `booked_lead` or `lead_id`:
+
+- With `booked_lead`, it loads that booking directly.
+- With `lead_id`, it checks both `FormLead` and `CallLead`, uses the matched source lead's `booked` relation to load the booking, and then derives `booked_lead`, `lead_ref`, and `lead_model` from the booking record.
+
+If both `booked_lead` and `lead_id` are provided, the cancellation service verifies they point to the same booking before creating the cancellation.
 
 ## Possible Future Change
 

@@ -139,13 +139,20 @@ export const updateBookedLeadSchema = z
 
 const cancelledLeadFields = {
   timestamp: optionalDate,
-  booked_lead: objectIdSchema,
+  booked_lead: objectIdSchema.optional(),
+  lead_id: objectIdSchema.optional(),
   reason: optionalString,
   notes: optionalString,
   cancelled_by: optionalString,
 };
 
-export const createCancelledLeadSchema = z.object(cancelledLeadFields).strict();
+export const createCancelledLeadSchema = z
+  .object(cancelledLeadFields)
+  .strict()
+  .refine(
+    (value) => Boolean(value.booked_lead || value.lead_id),
+    "Either booked_lead or lead_id must be provided",
+  );
 
 export const updateCancelledLeadSchema = z
   .object({
