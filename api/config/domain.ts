@@ -93,11 +93,11 @@ export const CALL_SHEET_HEADERS = [
 
 export const BOOKED_SHEET_HEADERS = [
   "Timestamp",
-  "Agent",
+  "Split",
   "Book Date",
   "Job No",
   "Customer Name",
-  "Binder Amount",
+  "Total Binder Amount",
   "Deposit Amount",
   "Merchant",
   "Source",

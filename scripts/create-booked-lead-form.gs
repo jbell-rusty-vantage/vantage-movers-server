@@ -20,11 +20,38 @@ function createBookedLeadForm() {
     .setHelpText("Enter a valid number, e.g. 500 or 2500.50")
     .build();
 
+  const optionalMoneyValidation = FormApp.createTextValidation()
+    .requireTextMatchesPattern("^$|^\\d+(\\.\\d{1,2})?$")
+    .setHelpText("Leave blank or enter a valid number, e.g. 500 or 2500.50")
+    .build();
+
   form
     .addTextItem()
-    .setTitle("Agent")
-    .setHelpText("Person who booked the lead. Example: John Smith")
+    .setTitle("Agent One")
+    .setHelpText("Primary agent for the booked lead. Example: John Smith")
     .setRequired(true);
+
+  form
+    .addTextItem()
+    .setTitle("Agent One Binder Amount")
+    .setHelpText("Number or decimal only. Example: 500 or 500.50")
+    .setValidation(moneyValidation)
+    .setRequired(true);
+
+  ["Two", "Three", "Four"].forEach((label) => {
+    form
+      .addTextItem()
+      .setTitle("Agent " + label)
+      .setHelpText("Optional additional agent for split attribution.")
+      .setRequired(false);
+
+    form
+      .addTextItem()
+      .setTitle("Agent " + label + " Binder Amount")
+      .setHelpText("Optional. Leave blank or enter a valid number.")
+      .setValidation(optionalMoneyValidation)
+      .setRequired(false);
+  });
 
   form
     .addDateItem()
@@ -56,10 +83,10 @@ function createBookedLeadForm() {
 
   form
     .addTextItem()
-    .setTitle("Binder Amount")
-    .setHelpText("Number or decimal only. Example: 500 or 500.50")
-    .setValidation(moneyValidation)
-    .setRequired(true);
+    .setTitle("Total Binder Amount")
+    .setHelpText("Optional. If provided, this must equal the sum of agent binder amounts.")
+    .setValidation(optionalMoneyValidation)
+    .setRequired(false);
 
   form
     .addTextItem()
@@ -122,17 +149,25 @@ function onBookedLeadSubmit(e) {
     values[title] = answer;
   });
 
+  const agentAllocations = buildAgentAllocations(values);
   const payload = {
-    agent: String(values["Agent"]).trim(),
     book_date: values["Book Date"],
     job_no: String(values["Job Number"]).trim(),
     lead_ref: String(values["Mongo Id"]).trim(),
     lead_model: values["Lead Model"],
-    binder_amount: parseFloat(values["Binder Amount"]),
+    agent_allocations: agentAllocations,
     deposit_amount: parseFloat(values["Deposit Amount"]),
     merchant: String(values["Merchant"]).trim(),
     source: values["Lead Source"],
+    submission_id: e.response.getId
+      ? e.response.getId()
+      : "google-form-" + new Date().toISOString(),
   };
+
+  const totalBinderAmount = optionalNumber(values["Total Binder Amount"]);
+  if (totalBinderAmount !== undefined) {
+    payload.total_binder_amount = totalBinderAmount;
+  }
 
   const local = values["Local"] ? String(values["Local"]).trim() : "";
 
@@ -166,18 +201,63 @@ function onBookedLeadSubmit(e) {
   Logger.log("Response: " + response.getContentText());
 }
 
+function buildAgentAllocations(values) {
+  return ["One", "Two", "Three", "Four"]
+    .map((label) => {
+      const agentName = String(values["Agent " + label] || "").trim();
+      if (!agentName) {
+        return null;
+      }
+      return {
+        agent_name: agentName,
+        binder_amount: optionalNumber(values["Agent " + label + " Binder Amount"]) || 0,
+      };
+    })
+    .filter(Boolean);
+}
+
+function optionalNumber(value) {
+  const text = value === undefined || value === null ? "" : String(value).trim();
+  if (!text) {
+    return undefined;
+  }
+  return parseFloat(text);
+}
+
 function testBookedLeadSubmit() {
   onBookedLeadSubmit({
-    namedValues: {
-      Agent: ["Test Agent"],
-      "Book Date": ["2026-05-15"],
-      "Job Number": ["TEST-123"],
-      "Mongo Id": ["6a06227b7ba7739beaba09fd"],
-      "Lead Model": ["FormLead"],
-      "Binder Amount": ["500"],
-      "Deposit Amount": ["2500"],
-      Merchant: ["Test Merchant"],
-      "Lead Source": ["main_site"],
+    response: {
+      getId: function () {
+        return "test-booked-lead-submit";
+      },
+      getItemResponses: function () {
+        const answers = {
+          "Agent One": "Test Agent",
+          "Agent One Binder Amount": "500",
+          "Book Date": "2026-05-15",
+          "Job Number": "TEST-123",
+          "Mongo Id": "6a06227b7ba7739beaba09fd",
+          "Lead Model": "FormLead",
+          "Deposit Amount": "2500",
+          Merchant: "Test Merchant",
+          "Lead Source": "main_site",
+          Local: "use_lead",
+        };
+        return Object.keys(answers).map(function (title) {
+          return {
+            getItem: function () {
+              return {
+                getTitle: function () {
+                  return title;
+                },
+              };
+            },
+            getResponse: function () {
+              return answers[title];
+            },
+          };
+        });
+      },
     },
   });
 }

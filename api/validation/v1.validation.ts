@@ -7,6 +7,7 @@ const optionalDate = z.coerce.date().optional();
 const requiredDate = z.coerce.date();
 const finiteNumber = z.coerce.number().finite();
 const optionalNumber = z.coerce.number().finite().optional();
+const moneyAmount = z.coerce.number().finite().min(0);
 
 export const objectIdSchema = z.string().trim().regex(/^[a-f\d]{24}$/i, "Invalid Mongo ObjectId");
 export const sourceCompanySchema = z.string().trim().min(1);
@@ -107,34 +108,64 @@ export const updateCallLeadSchema = z
 
 const bookedLeadFields = {
   timestamp: optionalDate,
-  agent: nonEmptyString,
   book_date: requiredDate,
   job_no: nonEmptyString,
   lead_ref: objectIdSchema,
   lead_model: leadModelSchema,
-  binder_amount: finiteNumber,
+  total_binder_amount: moneyAmount.optional(),
   deposit_amount: finiteNumber,
   merchant: nonEmptyString,
   source: nonEmptyString,
   local: localSchema.optional(),
+  submission_id: optionalString,
 };
 
-export const createBookedLeadSchema = z.object(bookedLeadFields).strict();
+const agentAllocationInputSchema = z
+  .object({
+    agent_name: nonEmptyString,
+    binder_amount: moneyAmount,
+  })
+  .strict();
+
+function binderTotalMatches(value: {
+  total_binder_amount?: number;
+  agent_allocations?: { binder_amount: number }[];
+}) {
+  if (value.total_binder_amount === undefined || !value.agent_allocations) {
+    return true;
+  }
+  const allocationTotal = value.agent_allocations.reduce(
+    (sum, allocation) => sum + allocation.binder_amount,
+    0,
+  );
+  return Math.abs(allocationTotal - value.total_binder_amount) < 0.001;
+}
+
+export const createBookedLeadSchema = z
+  .object({
+    ...bookedLeadFields,
+    agent_allocations: z.array(agentAllocationInputSchema).min(1),
+  })
+  .strict()
+  .refine(binderTotalMatches, "total_binder_amount must equal the sum of agent binder amounts");
 
 export const updateBookedLeadSchema = z
   .object({
     timestamp: bookedLeadFields.timestamp,
-    agent: bookedLeadFields.agent,
     book_date: bookedLeadFields.book_date,
     job_no: bookedLeadFields.job_no,
-    binder_amount: bookedLeadFields.binder_amount,
+    total_binder_amount: bookedLeadFields.total_binder_amount,
     deposit_amount: bookedLeadFields.deposit_amount,
     merchant: bookedLeadFields.merchant,
     source: bookedLeadFields.source,
     local: bookedLeadFields.local,
+    submission_id: bookedLeadFields.submission_id,
+    agent_allocation_mode: z.enum(["patch", "replace"]).optional(),
+    agent_allocations: z.array(agentAllocationInputSchema).min(1).optional(),
   })
   .partial()
   .strict()
+  .refine(binderTotalMatches, "total_binder_amount must equal the sum of agent binder amounts")
   .refine(requireAtLeastOne, "At least one booked lead field must be provided");
 
 const cancelledLeadFields = {

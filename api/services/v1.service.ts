@@ -7,6 +7,7 @@ import {
   type LocalType,
   type SourceCompany,
 } from "../config/domain";
+import { Agent } from "../models/Agent";
 import { BookedLead, type BookedLeadDocument } from "../models/BookedLead";
 import { CallLead, type CallLeadDocument } from "../models/CallLead";
 import { CancelledLead } from "../models/CancelledLead";
@@ -52,6 +53,12 @@ type AnyDoc = mongoose.Document & {
 };
 
 type SourceLeadDocument = mongoose.HydratedDocument<FormLeadDocument | CallLeadDocument>;
+type AgentAllocationInput = CreateBookedLeadInput["agent_allocations"][number];
+type AgentAllocationDocumentInput = {
+  agent: mongoose.Types.ObjectId;
+  agent_name_snapshot: string;
+  binder_amount: number;
+};
 
 type FullSheetSyncJob =
   | {
@@ -245,9 +252,55 @@ export async function createBookedLead(input: CreateBookedLeadInput) {
   const customer = await upsertCustomerFromLead(lead);
   const over_2000 = input.deposit_amount > 2000;
   const over_4000 = input.deposit_amount > 4000;
+  const agent_allocations = await resolveAgentAllocations(input.agent_allocations);
+  const total_binder_amount = resolveTotalBinderAmount(
+    agent_allocations,
+    input.total_binder_amount,
+  );
+  const warnings = buildBookedLeadWarnings(agent_allocations);
+  const existingBooking = await BookedLead.findOne({
+    lead_ref: input.lead_ref,
+    lead_model: input.lead_model,
+  });
+
+  if (existingBooking) {
+    if (input.submission_id && existingBooking.submission_id === input.submission_id) {
+      return {
+        booking: await populateBookedLead(existingBooking._id),
+        message: "Duplicate booked lead submission ignored; existing booking returned.",
+        warnings,
+        total_binder_amount: existingBooking.total_binder_amount,
+      };
+    }
+
+    Object.assign(existingBooking, {
+      ...input,
+      agent_allocations,
+      total_binder_amount,
+      customer: customer._id,
+      local,
+      over_2000,
+      over_4000,
+    });
+    await existingBooking.save();
+    await mirrorBookingToLead(lead, existingBooking._id, over_2000, over_4000, local);
+    scheduleFullSheetSyncProcess({
+      resource: "booking_chain",
+      operation: "booked_lead.upsert",
+      bookingId: existingBooking._id.toString(),
+    });
+    return {
+      booking: await populateBookedLead(existingBooking._id),
+      message: "Booked lead already existed and was upserted.",
+      warnings,
+      total_binder_amount,
+    };
+  }
 
   const booking = await BookedLead.create({
     ...input,
+    agent_allocations,
+    total_binder_amount,
     timestamp: input.timestamp ?? new Date(),
     customer: customer._id,
     local,
@@ -261,7 +314,12 @@ export async function createBookedLead(input: CreateBookedLeadInput) {
     operation: "booked_lead.create",
     bookingId: booking._id.toString(),
   });
-  return BookedLead.findById(booking._id).populate("customer").orFail();
+  return {
+    booking: await populateBookedLead(booking._id),
+    message: "Booked lead created.",
+    warnings,
+    total_binder_amount,
+  };
 }
 
 export async function updateBookedLead(id: string, input: UpdateBookedLeadInput) {
@@ -270,10 +328,27 @@ export async function updateBookedLead(id: string, input: UpdateBookedLeadInput)
     throw new V1ServiceError("Booked lead not found", 404);
   }
 
-  Object.assign(booking, input);
+  const { agent_allocations, agent_allocation_mode, total_binder_amount, ...bookingInput } = input;
+  Object.assign(booking, bookingInput);
   if (input.deposit_amount !== undefined) {
     booking.over_2000 = input.deposit_amount > 2000;
     booking.over_4000 = input.deposit_amount > 4000;
+  }
+  const warnings: string[] = [];
+  if (agent_allocations) {
+    const resolvedAllocations = await resolveAgentAllocations(agent_allocations);
+    const nextAllocations =
+      agent_allocation_mode === "replace"
+        ? resolvedAllocations
+        : patchAgentAllocations(booking.agent_allocations ?? [], resolvedAllocations);
+    booking.set("agent_allocations", nextAllocations);
+    warnings.push(...buildBookedLeadWarnings(resolvedAllocations));
+  }
+  if (agent_allocations || total_binder_amount !== undefined) {
+    booking.total_binder_amount = resolveTotalBinderAmount(
+      booking.agent_allocations ?? [],
+      total_binder_amount,
+    );
   }
 
   const lead = await getLinkedLead(booking.lead_model as LeadModelName, booking.lead_ref.toString());
@@ -291,7 +366,12 @@ export async function updateBookedLead(id: string, input: UpdateBookedLeadInput)
     operation: "booked_lead.update",
     bookingId: booking._id.toString(),
   });
-  return BookedLead.findById(booking._id).populate("customer").orFail();
+  return {
+    booking: await populateBookedLead(booking._id),
+    message: "Booked lead updated.",
+    warnings,
+    total_binder_amount: booking.total_binder_amount,
+  };
 }
 
 export async function createCancelledLead(input: CreateCancelledLeadInput) {
@@ -306,7 +386,7 @@ export async function createCancelledLead(input: CreateCancelledLeadInput) {
     lead_ref: booking.lead_ref,
     lead_model: booking.lead_model,
     cancel_date: input.cancel_date ?? timestamp,
-    agent: booking.agent,
+    agent: primaryAgentName(booking),
     book_date: booking.book_date,
     job_no: booking.job_no,
     customer_name: customer?.full_name,
@@ -437,7 +517,11 @@ export async function findAllCallLeads() {
 }
 
 export async function findAllBookedLeads() {
-  return BookedLead.find().populate("customer").sort({ createdAt: -1 }).limit(200);
+  return BookedLead.find()
+    .populate("customer")
+    .populate("agent_allocations.agent")
+    .sort({ createdAt: -1 })
+    .limit(200);
 }
 
 export async function findAllCancelledLeads() {
@@ -534,6 +618,120 @@ export async function deleteCustomer(id: string, cascade: boolean) {
     await deleteBookedLead(booking._id.toString(), true);
   }
   await Customer.findByIdAndDelete(id);
+}
+
+async function resolveAgentAllocations(
+  allocations: AgentAllocationInput[],
+): Promise<AgentAllocationDocumentInput[]> {
+  const normalizedNames = new Set<string>();
+  const resolved: AgentAllocationDocumentInput[] = [];
+
+  for (const allocation of allocations) {
+    const name = allocation.agent_name.trim().replace(/\s+/g, " ");
+    const normalizedName = normalizeAgentName(name);
+    if (normalizedNames.has(normalizedName)) {
+      throw new V1ServiceError(`Duplicate agent allocation for "${name}"`, 400);
+    }
+    normalizedNames.add(normalizedName);
+
+    const agent = await upsertAgentByName(name);
+    resolved.push({
+      agent: agent._id,
+      agent_name_snapshot: agent.name,
+      binder_amount: allocation.binder_amount,
+    });
+  }
+
+  return resolved;
+}
+
+async function upsertAgentByName(name: string) {
+  const normalized_name = normalizeAgentName(name);
+  const update = {
+    $set: { name },
+    $setOnInsert: {
+      normalized_name,
+      active: true,
+      role: "agent",
+      created_from: "booked_lead",
+    },
+  };
+
+  try {
+    return await Agent.findOneAndUpdate({ normalized_name }, update, {
+      upsert: true,
+      returnDocument: "after",
+      setDefaultsOnInsert: true,
+    }).orFail();
+  } catch (error) {
+    if (!isMongoDuplicateKeyError(error)) {
+      throw error;
+    }
+    const agent = await Agent.findOne({ normalized_name });
+    if (!agent) {
+      throw error;
+    }
+    return agent;
+  }
+}
+
+function patchAgentAllocations(
+  existingAllocations: AgentAllocationDocumentInput[],
+  incomingAllocations: AgentAllocationDocumentInput[],
+): AgentAllocationDocumentInput[] {
+  const byAgentId = new Map(
+    existingAllocations.map((allocation) => [allocation.agent.toString(), allocation]),
+  );
+
+  for (const allocation of incomingAllocations) {
+    byAgentId.set(allocation.agent.toString(), allocation);
+  }
+
+  return [...byAgentId.values()];
+}
+
+function resolveTotalBinderAmount(
+  allocations: Pick<AgentAllocationDocumentInput, "binder_amount">[],
+  submittedTotal?: number,
+): number {
+  const allocationTotal = allocations.reduce(
+    (sum, allocation) => sum + allocation.binder_amount,
+    0,
+  );
+  if (submittedTotal !== undefined && Math.abs(allocationTotal - submittedTotal) >= 0.001) {
+    throw new V1ServiceError("total_binder_amount must equal the sum of agent binder amounts", 400);
+  }
+
+  return submittedTotal ?? allocationTotal;
+}
+
+function buildBookedLeadWarnings(
+  allocations: Pick<AgentAllocationDocumentInput, "agent_name_snapshot" | "binder_amount">[],
+): string[] {
+  return allocations
+    .filter((allocation) => allocation.binder_amount === 0)
+    .map((allocation) => `${allocation.agent_name_snapshot} has a zero binder amount`);
+}
+
+function primaryAgentName(booking: Pick<BookedLeadDocument, "agent_allocations">): string {
+  return booking.agent_allocations?.[0]?.agent_name_snapshot ?? "";
+}
+
+function normalizeAgentName(name: string): string {
+  return name.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function isMongoDuplicateKeyError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === 11000
+  );
+}
+
+async function populateBookedLead(id: mongoose.Types.ObjectId) {
+  return BookedLead.findById(id).populate("customer").populate("agent_allocations.agent").orFail();
 }
 
 async function resolveRequiredLocation(input: {
@@ -685,7 +883,10 @@ async function syncBookingAndSource(
   leadModel: LeadModelName,
   leadId: string,
 ) {
-  const booking = await BookedLead.findById(bookingId).populate("customer").orFail();
+  const booking = await BookedLead.findById(bookingId)
+    .populate("customer")
+    .populate("agent_allocations.agent")
+    .orFail();
   await syncAndStore(booking as unknown as AnyDoc, syncBookedLeadToSheets);
   const lead = await getLinkedLead(leadModel, leadId);
   await syncSourceLead(lead, leadModel);
