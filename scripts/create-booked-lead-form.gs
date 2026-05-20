@@ -148,7 +148,7 @@ function onBookedLeadSubmit(e) {
   }
 
   const response = UrlFetchApp.fetch(
-    "https://vantage-movers-servers.vercel.app/api/v1/booked-leads",
+    "https://vantage-movers-main-server.vercel.app/api/v1/booked-leads",
     {
       method: "post",
       contentType: "application/json",

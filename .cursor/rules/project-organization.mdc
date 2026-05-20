@@ -5,7 +5,8 @@ alwaysApply: true
 
 # Vantage Movers Server Organization
 
-- This repo is the Vantage Movers Express REST API deployed on Vercel. Keep runtime API code under `api/` because `tsconfig.json` includes `api/**/*.ts`.
+- This repo (`vantage-main-server`) is the Vantage Movers Express REST API deployed on Vercel. **Production:** https://vantage-movers-main-server.vercel.app
+- Keep runtime API code under `api/` because `tsconfig.json` includes `api/**/*.ts`.
 - `api/index.ts` owns the exported Express app, health/db probes, and route mounting. Mount versioned routes from `api/routes/`.
 - `api/db.ts` is the only Mongo connection helper. Reuse it and keep the app pointed at the `vantagemovers` database.
 - Put request guards in `api/middleware`, Mongoose schemas in `api/models`, orchestration/business logic in `api/services`, shared config/maps in `api/config`, helpers in `api/utils`, and Zod schemas in `api/validation`.

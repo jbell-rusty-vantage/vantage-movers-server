@@ -18,8 +18,8 @@ const COLLECTION_NAME = "VantageMovers";
 const LOCAL_ENVIRONMENT_NAME = "VantageMovers Local";
 const PRODUCTION_ENVIRONMENT_NAME = "VantageMovers Production";
 const DEFAULT_LOCAL_BASE_URL = "http://localhost:3000";
-/** Canonical Vercel deployment host for vantage_movers_server. */
-const DEFAULT_PRODUCTION_BASE_URL = "https://vantage-movers-servers.vercel.app";
+/** Canonical Vercel deployment host for vantage-main-server. */
+const DEFAULT_PRODUCTION_BASE_URL = "https://vantage-movers-main-server.vercel.app";
 const SAMPLE_OBJECT_ID = "000000000000000000000001";
 
 type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
@@ -399,12 +399,12 @@ function buildCollection(): Record<string, unknown> {
     info: {
       name: COLLECTION_NAME,
       description: [
-        "Canonical testing surface for vantage_movers_server.",
+        "Canonical testing surface for vantage-main-server.",
         "",
         "Select **VantageMovers Local** for localhost + optional **(Production)** mirrors, or **VantageMovers Production** when every request should hit Vercel.",
         "",
         "Default requests use `{{baseUrl}}` and `x-api-secret: {{apiSecret}}`.",
-        "Sibling requests named **(Production)** use `{{productionBaseUrl}}` and `x-api-secret: {{productionApiSecret}}` so you can hit https://vantage-movers-servers.vercel.app from the Local environment without switching.",
+        "Sibling requests named **(Production)** use `{{productionBaseUrl}}` and `x-api-secret: {{productionApiSecret}}` so you can hit https://vantage-movers-main-server.vercel.app from the Local environment without switching.",
       ].join("\n"),
       schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     },
