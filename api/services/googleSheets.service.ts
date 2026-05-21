@@ -250,18 +250,16 @@ export async function syncCallLeadToSheets(
 export async function syncBookedLeadToSheets(
   booking: BookedLeadSheetSource,
 ): Promise<SheetSyncEntry[]> {
-  const allocationColumnCount = await resolveBookedSheetAllocationColumnCount(booking);
-  const bookedHeaders = bookedSheetHeaders(allocationColumnCount);
   const targets = [
     {
       target: "master_booked",
       spreadsheetId: getMasterBookedSheetContainerId(),
       tabName: SHEET_TAB_NAMES.bookedDeals,
-      headers: bookedHeaders,
-      ensureTabs: getMasterBookedTabs(bookedHeaders),
+      headers: BOOKED_SHEET_HEADERS,
+      ensureTabs: getMasterBookedTabs(),
     },
   ];
-  return syncRowToTargets(booking, targets, bookedLeadToRow(booking, allocationColumnCount));
+  return syncRowToTargets(booking, targets, bookedLeadToRow(booking));
 }
 
 export async function syncCancelledLeadToSheets(
@@ -827,15 +825,17 @@ function callLeadToRow(lead: CallLeadSheetSource): string[] {
   ];
 }
 
-function bookedLeadToRow(booking: BookedLeadSheetSource, allocationColumnCount: number): string[] {
+function bookedLeadToRow(booking: BookedLeadSheetSource): string[] {
   const allocations = booking.agent_allocations ?? [];
   return [
     formatTimestamp(booking.timestamp),
+    allocations[0]?.agent_name_snapshot ?? "",
+    allocations[1]?.agent_name_snapshot ?? "",
+    formatNumber(booking.total_binder_amount),
     splitCell(allocations),
     formatDateOnly(booking.book_date),
     booking.job_no,
     booking.customer?.full_name ?? "",
-    formatNumber(booking.total_binder_amount),
     formatNumber(booking.deposit_amount),
     booking.merchant,
     booking.source,
@@ -843,7 +843,6 @@ function bookedLeadToRow(booking: BookedLeadSheetSource, allocationColumnCount: 
     typeof booking.lead_ref === "string" ? booking.lead_ref : booking.lead_ref?.toString() ?? "",
     localCell(booking.local),
     cancelledCell(Boolean(booking.cancelled)),
-    ...allocationCells(allocations, allocationColumnCount),
   ];
 }
 
@@ -863,46 +862,6 @@ function cancelledLeadToRow(cancellation: CancelledLeadSheetSource): string[] {
   ];
 }
 
-async function resolveBookedSheetAllocationColumnCount(
-  booking: BookedLeadSheetSource,
-): Promise<number> {
-  const currentAllocationCount = Math.max(booking.agent_allocations?.length ?? 0, 1);
-  try {
-    const sheets = getSheetsClient();
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: getMasterBookedSheetContainerId(),
-      range: `${escapeSheetTitleForRange(SHEET_TAB_NAMES.bookedDeals)}!1:1`,
-    });
-    const existingHeaders = response.data.values?.[0] ?? [];
-    return Math.max(currentAllocationCount, existingAllocationHeaderCount(existingHeaders));
-  } catch {
-    return currentAllocationCount;
-  }
-}
-
-function bookedSheetHeaders(allocationCount: number): readonly string[] {
-  return [...BOOKED_SHEET_HEADERS, ...allocationHeaders(Math.max(allocationCount, 1))];
-}
-
-function allocationHeaders(allocationCount: number): string[] {
-  return Array.from({ length: allocationCount }).flatMap((_, index) => {
-    const label = ordinalLabel(index);
-    return [`Agent ${label}`, `Agent ${label} Binder Amount`];
-  });
-}
-
-function allocationCells(
-  allocations: AgentAllocationSheetSource[],
-  allocationColumnCount: number,
-): string[] {
-  return Array.from({ length: allocationColumnCount }).flatMap((_, index) => {
-    const allocation = allocations[index];
-    return allocation
-      ? [allocation.agent_name_snapshot, formatNumber(allocation.binder_amount)]
-      : ["", ""];
-  });
-}
-
 function primaryBookingAgent(booking?: PopulatedBookedLead): string {
   return booking?.agent_allocations?.[0]?.agent_name_snapshot ?? "";
 }
@@ -911,28 +870,6 @@ function splitCell(allocations: AgentAllocationSheetSource[]): string {
   const namedAllocations = allocations.filter((allocation) => allocation.agent_name_snapshot.trim());
   const nonZeroAmount = allocations.some((allocation) => allocation.binder_amount !== 0);
   return namedAllocations.length >= 2 && allocations.length >= 2 && nonZeroAmount ? "TRUE" : "FALSE";
-}
-
-function ordinalLabel(index: number): string {
-  const labels = [
-    "One",
-    "Two",
-    "Three",
-    "Four",
-    "Five",
-    "Six",
-    "Seven",
-    "Eight",
-    "Nine",
-    "Ten",
-  ];
-  return labels[index] ?? String(index + 1);
-}
-
-function existingAllocationHeaderCount(headers: unknown[]): number {
-  return headers.filter(
-    (header) => typeof header === "string" && /^Agent .+ Binder Amount$/.test(header),
-  ).length;
 }
 
 function formatDateOnly(value: Date): string {

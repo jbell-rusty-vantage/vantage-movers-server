@@ -2,6 +2,7 @@ import { waitUntil } from "@vercel/functions";
 import mongoose from "mongoose";
 import {
   getCplForSource,
+  resolveSourceCompanyFromLabel,
   resolveSourceCompany,
   type LeadModelName,
   type LocalType,
@@ -19,6 +20,7 @@ import { getStateCodeForZip } from "../utils/pickupZipState";
 import { connectMongo } from "../db";
 import { logger } from "../logger";
 import type {
+  CreateBookedLeadFromSourceInput,
   CreateBookedLeadInput,
   CreateCallLeadInput,
   CreateCancelledLeadInput,
@@ -30,6 +32,7 @@ import type {
   UpdateCustomerInput,
   UpdateFormLeadInput,
 } from "../validation/v1.validation";
+import { normalizePhoneNumberForMatch } from "../utils/phone";
 import {
   buildCrmFormLeadPayload,
   submitFormLeadToCrm,
@@ -320,6 +323,30 @@ export async function createBookedLead(input: CreateBookedLeadInput) {
     warnings,
     total_binder_amount,
   };
+}
+
+export async function createBookedLeadFromSource(input: CreateBookedLeadFromSourceInput) {
+  const { lead, leadModel, jobNo } = await resolveBookingSourceLead(input);
+  const effectiveSourceCompany = effectiveBookingSourceCompany(input.source_company, lead);
+  if (input.source_company?.trim()) {
+    lead.source_company = effectiveSourceCompany;
+    await lead.save();
+  }
+
+  return createBookedLead({
+    timestamp: input.timestamp,
+    book_date: input.book_date,
+    job_no: jobNo,
+    lead_ref: lead._id.toString(),
+    lead_model: leadModel,
+    agent_allocations: deriveBookedLeadAgentAllocations(input),
+    total_binder_amount: input.binder_amount,
+    deposit_amount: input.deposit_amount,
+    merchant: input.merchant,
+    source: effectiveSourceCompany,
+    local: input.local,
+    submission_id: input.submission_id,
+  });
 }
 
 export async function updateBookedLead(id: string, input: UpdateBookedLeadInput) {
@@ -618,6 +645,81 @@ export async function deleteCustomer(id: string, cascade: boolean) {
     await deleteBookedLead(booking._id.toString(), true);
   }
   await Customer.findByIdAndDelete(id);
+}
+
+async function resolveBookingSourceLead(
+  input: CreateBookedLeadFromSourceInput,
+): Promise<{ lead: SourceLeadDocument; leadModel: LeadModelName; jobNo: string }> {
+  if (input.lead_type === "FormLead") {
+    const lead = await getLinkedLead("FormLead", input.form_lead_id);
+    return { lead, leadModel: "FormLead", jobNo: input.job_no };
+  }
+
+  const normalizedPhone = normalizePhoneNumberForMatch(input.call_phone_number);
+  if (!normalizedPhone) {
+    throw new V1ServiceError("call_phone_number must contain at least one digit", 400);
+  }
+
+  const leads = await CallLead.find({
+    job_no: input.call_job_no.trim(),
+    $or: [
+      { normalized_phone_number: normalizedPhone },
+      { phone_number: buildPhoneNumberRegex(normalizedPhone) },
+    ],
+  })
+    .sort({ createdAt: -1 })
+    .limit(3);
+
+  if (leads.length === 0) {
+    throw new V1ServiceError("Call lead not found for job_no and phone_number", 404);
+  }
+  if (leads.length > 1) {
+    throw new V1ServiceError(
+      `Multiple call leads matched job_no and phone_number: ${leads
+        .map((lead) => lead._id.toString())
+        .join(", ")}`,
+      409,
+    );
+  }
+
+  return { lead: leads[0], leadModel: "CallLead", jobNo: input.call_job_no.trim() };
+}
+
+function effectiveBookingSourceCompany(
+  sourceCompanyOverride: string | undefined,
+  lead: SourceLeadDocument,
+): SourceCompany {
+  const sourceCompanyOverrideText = sourceCompanyOverride?.trim();
+  if (sourceCompanyOverrideText) {
+    const sourceCompanyFromLabel = resolveSourceCompanyFromLabel(sourceCompanyOverrideText);
+    return sourceCompanyFromLabel ?? parseSourceCompany(sourceCompanyOverrideText);
+  }
+
+  return parseSourceCompany(String(lead.source_company ?? ""));
+}
+
+function deriveBookedLeadAgentAllocations(
+  input: Pick<CreateBookedLeadFromSourceInput, "agent" | "split_agent" | "binder_amount">,
+): AgentAllocationInput[] {
+  const agent = input.agent.trim().replace(/\s+/g, " ");
+  const splitAgent = input.split_agent?.trim().replace(/\s+/g, " ") || undefined;
+  if (splitAgent && normalizeAgentName(agent) === normalizeAgentName(splitAgent)) {
+    throw new V1ServiceError("split_agent must be different from agent", 400);
+  }
+
+  if (!splitAgent) {
+    return [{ agent_name: agent, binder_amount: input.binder_amount }];
+  }
+
+  const halfBinderAmount = input.binder_amount / 2;
+  return [
+    { agent_name: agent, binder_amount: halfBinderAmount },
+    { agent_name: splitAgent, binder_amount: halfBinderAmount },
+  ];
+}
+
+function buildPhoneNumberRegex(normalizedPhone: string): RegExp {
+  return new RegExp(`(?:^|\\D)${normalizedPhone.split("").join("\\D*")}(?:\\D|$)`);
 }
 
 async function resolveAgentAllocations(

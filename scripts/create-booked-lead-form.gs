@@ -3,55 +3,84 @@ function createBookedLeadForm() {
 
   form.setDescription(
     "Submit booked lead data to the Vercel API. " +
-      "For Local, choose use_lead to use the pickup/delivery zip data already stored on the lead.",
+      "Choose FormLead to book by Mongo Id, or CallLead to book by Job Number and Phone Number. " +
+      "For Source Company and Local, choose use_lead to use values already stored on the lead.",
   );
 
   form.setConfirmationMessage(
     "Booked lead submitted. Check MongoDB / synced sheet to confirm.",
   );
 
-  const mongoIdValidation = FormApp.createTextValidation()
-    .requireTextMatchesPattern("^[a-fA-F0-9]{24}$")
-    .setHelpText("Enter a valid 24-character MongoDB ObjectId.")
-    .build();
-
   const moneyValidation = FormApp.createTextValidation()
     .requireTextMatchesPattern("^\\d+(\\.\\d{1,2})?$")
     .setHelpText("Enter a valid number, e.g. 500 or 2500.50")
     .build();
 
-  const optionalMoneyValidation = FormApp.createTextValidation()
-    .requireTextMatchesPattern("^$|^\\d+(\\.\\d{1,2})?$")
-    .setHelpText("Leave blank or enter a valid number, e.g. 500 or 2500.50")
-    .build();
+  const sourceLabelChoices = [
+    "TBM Forms",
+    "10best Inbounds",
+    "TBM Prime Forms",
+    "TBM Prime Inbounds",
+    "Top10 Forms",
+    "Top10 Inbounds",
+    "Best Relocation Forms",
+    "Best Relocation Locals",
+    "Best Relocation Inbounds",
+    "Main Site Forms",
+    "Main Site Inbounds",
+  ];
+
+  const agentChoices = [
+    "Austin",
+    "Brian",
+    "Dylan",
+    "Jacob",
+    "Josh",
+    "Jason",
+    "Mike",
+    "Patrick",
+    "Sil",
+    "Roys",
+    "House",
+  ];
+
+  const merchantChoices = [
+    "Elavon",
+    "Maverick",
+    "Cardpointe",
+    "EMS",
+    "Paper Check",
+    "Seamless",
+    "Wire Transfer ACH",
+  ];
 
   form
-    .addTextItem()
-    .setTitle("Agent One")
-    .setHelpText("Primary agent for the booked lead. Example: John Smith")
+    .addMultipleChoiceItem()
+    .setTitle("Lead Type")
+    .setHelpText("FormLead books by Mongo Id. CallLead books by Job Number and Phone Number.")
+    .setChoiceValues(["FormLead", "CallLead"])
     .setRequired(true);
 
   form
+    .addListItem()
+    .setTitle("Agent")
+    .setHelpText("Primary agent for the booked lead. Example: John Smith")
+    .setChoiceValues(agentChoices)
+    .setRequired(true);
+
+  form
+    .addListItem()
+    .setTitle("SplitAgent")
+    .setHelpText("Optional second agent. If provided, the binder amount is split 50/50.")
+    .setChoiceValues(agentChoices)
+    .setRequired(false);
+
+  form
     .addTextItem()
-    .setTitle("Agent One Binder Amount")
-    .setHelpText("Number or decimal only. Example: 500 or 500.50")
+    .setTitle("Binder Amount")
+    .setHelpText("Full deal binder amount. The API splits this 50/50 when SplitAgent is provided.")
     .setValidation(moneyValidation)
     .setRequired(true);
-
-  ["Two", "Three", "Four"].forEach((label) => {
-    form
-      .addTextItem()
-      .setTitle("Agent " + label)
-      .setHelpText("Optional additional agent for split attribution.")
-      .setRequired(false);
-
-    form
-      .addTextItem()
-      .setTitle("Agent " + label + " Binder Amount")
-      .setHelpText("Optional. Leave blank or enter a valid number.")
-      .setValidation(optionalMoneyValidation)
-      .setRequired(false);
-  });
 
   form
     .addDateItem()
@@ -62,30 +91,27 @@ function createBookedLeadForm() {
   form
     .addTextItem()
     .setTitle("Job Number")
-    .setHelpText("Internal job number.")
+    .setHelpText("Required for both lead types. For CallLead, this is also used to find the call lead.")
     .setRequired(true);
 
   form
     .addTextItem()
     .setTitle("Mongo Id")
     .setHelpText(
-      "Lead ObjectId. This maps to lead_ref. Must be a 24-character MongoDB ObjectId.",
+      "Required for FormLead only. Lead ObjectId. Must be a 24-character MongoDB ObjectId.",
     )
-    .setValidation(mongoIdValidation)
-    .setRequired(true);
-
-  form
-    .addMultipleChoiceItem()
-    .setTitle("Lead Model")
-    .setHelpText("Select the collection/model where the original lead exists.")
-    .setChoiceValues(["FormLead", "CallLead"])
-    .setRequired(true);
+    .setValidation(
+      FormApp.createTextValidation()
+        .requireTextMatchesPattern("^$|^[a-fA-F0-9]{24}$")
+        .setHelpText("Leave blank for CallLead or enter a valid 24-character MongoDB ObjectId.")
+        .build(),
+    )
+    .setRequired(false);
 
   form
     .addTextItem()
-    .setTitle("Total Binder Amount")
-    .setHelpText("Optional. If provided, this must equal the sum of agent binder amounts.")
-    .setValidation(optionalMoneyValidation)
+    .setTitle("Phone Number")
+    .setHelpText("Required for CallLead only. Used with Job Number to find the call lead.")
     .setRequired(false);
 
   form
@@ -96,23 +122,18 @@ function createBookedLeadForm() {
     .setRequired(true);
 
   form
-    .addTextItem()
+    .addListItem()
     .setTitle("Merchant")
     .setHelpText("Person or merchant name associated with the booking.")
+    .setChoiceValues(merchantChoices)
     .setRequired(true);
 
   form
-    .addMultipleChoiceItem()
-    .setTitle("Lead Source")
-    .setHelpText("Where this lead came from.")
-    .setChoiceValues([
-      "main_site",
-      "top10_leads",
-      "tbm_prime_leads",
-      "best_relocation_leads",
-      "not_provided",
-    ])
-    .setRequired(true);
+    .addListItem()
+    .setTitle("Source Label")
+    .setHelpText("Optional. Leave blank to use the linked lead source_company.")
+    .setChoiceValues(sourceLabelChoices)
+    .setRequired(false);
 
   form
     .addListItem()
@@ -149,30 +170,43 @@ function onBookedLeadSubmit(e) {
     values[title] = answer;
   });
 
-  const agentAllocations = buildAgentAllocations(values);
   const payload = {
+    lead_type: requiredText(values["Lead Type"], "Lead Type"),
     book_date: values["Book Date"],
-    job_no: String(values["Job Number"]).trim(),
-    lead_ref: String(values["Mongo Id"]).trim(),
-    lead_model: values["Lead Model"],
-    agent_allocations: agentAllocations,
-    deposit_amount: parseFloat(values["Deposit Amount"]),
-    merchant: String(values["Merchant"]).trim(),
-    source: values["Lead Source"],
+    agent: requiredText(values["Agent"], "Agent"),
+    binder_amount: parseRequiredNumber(values["Binder Amount"], "Binder Amount"),
+    deposit_amount: parseRequiredNumber(values["Deposit Amount"], "Deposit Amount"),
+    merchant: requiredText(values["Merchant"], "Merchant"),
     submission_id: e.response.getId
       ? e.response.getId()
       : "google-form-" + new Date().toISOString(),
   };
 
-  const totalBinderAmount = optionalNumber(values["Total Binder Amount"]);
-  if (totalBinderAmount !== undefined) {
-    payload.total_binder_amount = totalBinderAmount;
+  const splitAgent = optionalText(values["SplitAgent"]);
+  if (splitAgent) {
+    payload.split_agent = splitAgent;
   }
 
   const local = values["Local"] ? String(values["Local"]).trim() : "";
 
   if (local && local !== "use_lead") {
     payload.local = local;
+  }
+
+  const sourceLabel = optionalText(values["Source Label"]);
+  if (sourceLabel) {
+    payload.source_company = sourceLabel;
+  }
+
+  const jobNumber = requiredText(values["Job Number"], "Job Number");
+  if (payload.lead_type === "FormLead") {
+    payload.form_lead_id = requiredText(values["Mongo Id"], "Mongo Id");
+    payload.job_no = jobNumber;
+  } else if (payload.lead_type === "CallLead") {
+    payload.call_job_no = jobNumber;
+    payload.call_phone_number = requiredText(values["Phone Number"], "Phone Number");
+  } else {
+    throw new Error("Unsupported Lead Type: " + payload.lead_type);
   }
 
   const API_SECRET =
@@ -183,7 +217,7 @@ function onBookedLeadSubmit(e) {
   }
 
   const response = UrlFetchApp.fetch(
-    "https://vantage-movers-main-server.vercel.app/api/v1/booked-leads",
+    "https://vantage-movers-main-server.vercel.app/api/v1/booked-leads/from-source",
     {
       method: "post",
       contentType: "application/json",
@@ -201,27 +235,25 @@ function onBookedLeadSubmit(e) {
   Logger.log("Response: " + response.getContentText());
 }
 
-function buildAgentAllocations(values) {
-  return ["One", "Two", "Three", "Four"]
-    .map((label) => {
-      const agentName = String(values["Agent " + label] || "").trim();
-      if (!agentName) {
-        return null;
-      }
-      return {
-        agent_name: agentName,
-        binder_amount: optionalNumber(values["Agent " + label + " Binder Amount"]) || 0,
-      };
-    })
-    .filter(Boolean);
+function requiredText(value, fieldName) {
+  const text = optionalText(value);
+  if (!text) {
+    throw new Error(fieldName + " is required.");
+  }
+  return text;
 }
 
-function optionalNumber(value) {
-  const text = value === undefined || value === null ? "" : String(value).trim();
-  if (!text) {
-    return undefined;
+function optionalText(value) {
+  return value === undefined || value === null ? "" : String(value).trim();
+}
+
+function parseRequiredNumber(value, fieldName) {
+  const text = requiredText(value, fieldName);
+  const parsed = parseFloat(text);
+  if (!isFinite(parsed)) {
+    throw new Error(fieldName + " must be a valid number.");
   }
-  return parseFloat(text);
+  return parsed;
 }
 
 function testBookedLeadSubmit() {
@@ -232,15 +264,17 @@ function testBookedLeadSubmit() {
       },
       getItemResponses: function () {
         const answers = {
-          "Agent One": "Test Agent",
-          "Agent One Binder Amount": "500",
+          "Lead Type": "FormLead",
+          Agent: "Austin",
+          SplitAgent: "Brian",
+          "Binder Amount": "500",
           "Book Date": "2026-05-15",
           "Job Number": "TEST-123",
           "Mongo Id": "6a06227b7ba7739beaba09fd",
-          "Lead Model": "FormLead",
+          "Phone Number": "",
           "Deposit Amount": "2500",
-          Merchant: "Test Merchant",
-          "Lead Source": "main_site",
+          Merchant: "Elavon",
+          "Source Label": "Main Site Forms",
           Local: "use_lead",
         };
         return Object.keys(answers).map(function (title) {

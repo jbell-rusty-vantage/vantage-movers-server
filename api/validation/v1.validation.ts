@@ -188,6 +188,38 @@ export const createBookedLeadSchema = z
   .strict()
   .refine(binderTotalMatches, "total_binder_amount must equal the sum of agent binder amounts");
 
+const bookedLeadFromSourceSharedFields = {
+  timestamp: bookedLeadFields.timestamp,
+  book_date: bookedLeadFields.book_date,
+  deposit_amount: bookedLeadFields.deposit_amount,
+  merchant: bookedLeadFields.merchant,
+  source_company: optionalString,
+  local: bookedLeadFields.local,
+  submission_id: bookedLeadFields.submission_id,
+  agent: nonEmptyString,
+  split_agent: optionalString,
+  binder_amount: moneyAmount,
+};
+
+export const createBookedLeadFromSourceSchema = z.discriminatedUnion("lead_type", [
+  z
+    .object({
+      ...bookedLeadFromSourceSharedFields,
+      lead_type: z.literal("FormLead"),
+      form_lead_id: objectIdSchema,
+      job_no: bookedLeadFields.job_no,
+    })
+    .strict(),
+  z
+    .object({
+      ...bookedLeadFromSourceSharedFields,
+      lead_type: z.literal("CallLead"),
+      call_job_no: nonEmptyString,
+      call_phone_number: nonEmptyString,
+    })
+    .strict(),
+]);
+
 export const updateBookedLeadSchema = z
   .object({
     timestamp: bookedLeadFields.timestamp,
@@ -262,6 +294,7 @@ export type SearchCallLeadsInput = z.infer<typeof searchCallLeadsSchema>;
 export type CallLeadEnrichmentBatchInput = z.infer<typeof callLeadEnrichmentBatchSchema>;
 export type CallLeadEnrichmentRowInput = CallLeadEnrichmentBatchInput["rows"][number];
 export type CreateBookedLeadInput = z.infer<typeof createBookedLeadSchema>;
+export type CreateBookedLeadFromSourceInput = z.infer<typeof createBookedLeadFromSourceSchema>;
 export type UpdateBookedLeadInput = z.infer<typeof updateBookedLeadSchema>;
 export type CreateCancelledLeadInput = z.infer<typeof createCancelledLeadSchema>;
 export type UpdateCancelledLeadInput = z.infer<typeof updateCancelledLeadSchema>;

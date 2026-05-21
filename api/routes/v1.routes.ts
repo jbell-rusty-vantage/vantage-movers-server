@@ -14,6 +14,7 @@ import {
 import { sanitizeFormLeadBodyPreview } from "../utils/sanitizeFormLeadForLog";
 import {
   createBookedLead,
+  createBookedLeadFromSource,
   createCallLead,
   createCancelledLead,
   createCustomer,
@@ -37,6 +38,7 @@ import {
   V1ServiceError,
 } from "../services/v1.service";
 import {
+  createBookedLeadFromSourceSchema,
   createBookedLeadSchema,
   createCallLeadSchema,
   createCancelledLeadSchema,
@@ -73,6 +75,10 @@ router.delete("/api/v1/call-leads/:id", handleDelete(deleteCallLead));
 
 router.get("/api/v1/booked-leads", handleFindAll(findAllBookedLeads));
 router.post("/api/v1/booked-leads", handleCreate(createBookedLeadSchema, createBookedLead));
+router.post(
+  "/api/v1/booked-leads/from-source",
+  handleCreate(createBookedLeadFromSourceSchema, createBookedLeadFromSource),
+);
 router.patch("/api/v1/booked-leads/:id", handleUpdate(updateBookedLeadSchema, updateBookedLead));
 router.delete("/api/v1/booked-leads/:id", handleDelete(deleteBookedLead));
 

@@ -11,6 +11,20 @@ export const SOURCE_COMPANIES = [
 
 export type SourceCompany = (typeof SOURCE_COMPANIES)[number];
 
+export const SOURCE_LABEL_TO_COMPANY = {
+  "Main Site Forms": "main_site",
+  "Main Site Inbounds": "main_site",
+  "TBM Forms": "tbm_leads",
+  "TBM Prime Forms": "tbm_prime_leads",
+  "TBM Prime Inbounds": "tbm_prime_leads",
+  "Top10 Forms": "top10_leads",
+  "Top10 Inbounds": "top10_leads",
+  "10best Inbounds": "top10_leads",
+  "Best Relocation Forms": "best_relocation_leads",
+  "Best Relocation Locals": "best_relocation_leads",
+  "Best Relocation Inbounds": "best_relocation_leads",
+} as const satisfies Record<string, SourceCompany>;
+
 export const LOCAL_TYPES = ["local", "long_distance"] as const;
 export type LocalType = (typeof LOCAL_TYPES)[number];
 
@@ -91,11 +105,13 @@ export const CALL_SHEET_HEADERS = [
 
 export const BOOKED_SHEET_HEADERS = [
   "Timestamp",
+  "Agent",
+  "SplitAgent",
+  "Binder Amount",
   "Split",
   "Book Date",
   "Job No",
   "Customer Name",
-  "Total Binder Amount",
   "Deposit Amount",
   "Merchant",
   "Source",
@@ -193,6 +209,11 @@ export function resolveSourceCompany(value?: string | null): SourceCompany | und
     return "not_provided";
   }
 
+  const sourceCompanyFromLabel = resolveSourceCompanyFromLabel(value);
+  if (sourceCompanyFromLabel) {
+    return sourceCompanyFromLabel;
+  }
+
   for (const config of Object.values(SOURCE_COMPANY_CONFIGS)) {
     if (
       config.slug === normalized ||
@@ -200,6 +221,21 @@ export function resolveSourceCompany(value?: string | null): SourceCompany | und
       config.aliases.some((alias) => alias.trim().toLowerCase() === normalized)
     ) {
       return config.slug;
+    }
+  }
+
+  return undefined;
+}
+
+export function resolveSourceCompanyFromLabel(value?: string | null): SourceCompany | undefined {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+
+  for (const [label, sourceCompany] of Object.entries(SOURCE_LABEL_TO_COMPANY)) {
+    if (label.toLowerCase() === normalized) {
+      return sourceCompany;
     }
   }
 
