@@ -1,12 +1,12 @@
 import type { FormLeadDocument } from "../models/FormLead";
 import { generateLeadId } from "../utils/ids";
 import { logger } from "../logger";
+import "dotenv/config";
 
 const API_ID = process.env.CRM_API_ID;
 const MOVER_REF = process.env.CRM_MOVER_REF;
 
-export const CRM_FORM_LEAD_ENDPOINT =
-  "https://lead.hellomoving.com/LEADSGWHTTP.lidgw?&API_ID=74F36265331A&MOVERREF=Leads@vantagehomemovers.com";
+export const CRM_FORM_LEAD_ENDPOINT = `https://lead.hellomoving.com/LEADSGWHTTP.lidgw?&API_ID=${API_ID}&MOVERREF=${MOVER_REF}`;
 
 export const CRM_FORM_LEAD_LABEL = "Get Movers";
 
