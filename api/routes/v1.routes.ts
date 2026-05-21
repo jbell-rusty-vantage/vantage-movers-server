@@ -6,6 +6,11 @@ import { connectMongo } from "../db";
 import { logger as rootLogger } from "../logger";
 import { requireApiSecret } from "../middleware/requireApiSecret";
 import { searchFormLeads } from "../services/formLeadSearch.service";
+import { searchCallLeads } from "../services/callLeadSearch.service";
+import {
+  previewCallLeadEnrichment,
+  syncCallLeadEnrichment,
+} from "../services/callLeadEnrichment.service";
 import { sanitizeFormLeadBodyPreview } from "../utils/sanitizeFormLeadForLog";
 import {
   createBookedLead,
@@ -37,6 +42,8 @@ import {
   createCancelledLeadSchema,
   createCustomerSchema,
   createFormLeadSchema,
+  callLeadEnrichmentBatchSchema,
+  searchCallLeadsSchema,
   searchFormLeadsSchema,
   updateBookedLeadSchema,
   updateCallLeadSchema,
@@ -57,6 +64,9 @@ router.patch("/api/v1/form-leads/:id", handleUpdate(updateFormLeadSchema, update
 router.delete("/api/v1/form-leads/:id", handleDelete(deleteFormLead));
 
 router.get("/api/v1/call-leads", handleFindAll(findAllCallLeads));
+router.post("/api/v1/call-leads/search", handleSearchCallLeads);
+router.post("/api/v1/call-leads/enrichment/preview", handleCallLeadEnrichmentPreview);
+router.post("/api/v1/call-leads/enrichment/sync", handleCallLeadEnrichmentSync);
 router.post("/api/v1/call-leads", handleCreate(createCallLeadSchema, createCallLead));
 router.patch("/api/v1/call-leads/:id", handleUpdate(updateCallLeadSchema, updateCallLead));
 router.delete("/api/v1/call-leads/:id", handleDelete(deleteCallLead));
@@ -127,6 +137,39 @@ async function handleSearchFormLeads(req: Request, res: Response) {
     await connectMongo();
     const parsed = searchFormLeadsSchema.parse(req.body);
     const data = await searchFormLeads(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+async function handleSearchCallLeads(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = searchCallLeadsSchema.parse(req.body);
+    const data = await searchCallLeads(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+async function handleCallLeadEnrichmentPreview(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = callLeadEnrichmentBatchSchema.parse(req.body);
+    const data = await previewCallLeadEnrichment(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+async function handleCallLeadEnrichmentSync(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = callLeadEnrichmentBatchSchema.parse(req.body);
+    const data = await syncCallLeadEnrichment(parsed);
     return res.json({ ok: true, data });
   } catch (error) {
     return sendError(res, error);

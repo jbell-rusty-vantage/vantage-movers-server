@@ -26,6 +26,10 @@ function requireAtLeastOneTruthySearchField(value: Record<string, unknown>) {
   return ["ref_no", "name", "email", "phone_number"].some((field) => Boolean(value[field]));
 }
 
+function requireAtLeastOneTruthyCallLeadSearchField(value: Record<string, unknown>) {
+  return ["phone_number", "job_no", "email", "name"].some((field) => Boolean(value[field]));
+}
+
 const formLeadFields = {
   source_company: sourceCompanySchema,
   name: nonEmptyString,
@@ -79,6 +83,7 @@ const callLeadFields = {
   source_company: sourceCompanySchema,
   source_company_site: optionalString,
   timestamp: optionalDate,
+  job_no: optionalString,
   name: optionalString,
   email: emailSchema,
   phone_number: nonEmptyString,
@@ -105,6 +110,40 @@ export const updateCallLeadSchema = z
   .partial()
   .strict()
   .refine(requireAtLeastOne, "At least one call lead field must be provided");
+
+export const searchCallLeadsSchema = z
+  .object({
+    phone_number: optionalString,
+    job_no: optionalString,
+    email: emailSchema,
+    name: optionalString,
+    limit: z.coerce.number().int().min(1).max(25).optional(),
+  })
+  .strict()
+  .refine(
+    requireAtLeastOneTruthyCallLeadSearchField,
+    "At least one of phone_number, job_no, email, or name must be provided",
+  );
+
+const callLeadEnrichmentRowSchema = z
+  .object({
+    row_id: nonEmptyString,
+    row_index: z.coerce.number().int().min(0).optional(),
+    job_no: optionalString,
+    customer: optionalString,
+    phone: optionalString,
+    email: optionalString,
+    from_zip: optionalString,
+    to_zip: optionalString,
+    est_cf: optionalString,
+  })
+  .strict();
+
+export const callLeadEnrichmentBatchSchema = z
+  .object({
+    rows: z.array(callLeadEnrichmentRowSchema).min(1).max(100),
+  })
+  .strict();
 
 const bookedLeadFields = {
   timestamp: optionalDate,
@@ -219,6 +258,9 @@ export type UpdateFormLeadInput = z.infer<typeof updateFormLeadSchema>;
 export type SearchFormLeadsInput = z.infer<typeof searchFormLeadsSchema>;
 export type CreateCallLeadInput = z.infer<typeof createCallLeadSchema>;
 export type UpdateCallLeadInput = z.infer<typeof updateCallLeadSchema>;
+export type SearchCallLeadsInput = z.infer<typeof searchCallLeadsSchema>;
+export type CallLeadEnrichmentBatchInput = z.infer<typeof callLeadEnrichmentBatchSchema>;
+export type CallLeadEnrichmentRowInput = CallLeadEnrichmentBatchInput["rows"][number];
 export type CreateBookedLeadInput = z.infer<typeof createBookedLeadSchema>;
 export type UpdateBookedLeadInput = z.infer<typeof updateBookedLeadSchema>;
 export type CreateCancelledLeadInput = z.infer<typeof createCancelledLeadSchema>;

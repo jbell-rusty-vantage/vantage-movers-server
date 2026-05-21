@@ -910,6 +910,15 @@ function scheduleFullSheetSyncProcess(job: FullSheetSyncJob) {
   );
 }
 
+export function scheduleCallLeadSheetSync(leadId: string, operation: string) {
+  scheduleFullSheetSyncProcess({
+    resource: "source_lead",
+    operation,
+    leadModel: "CallLead",
+    leadId,
+  });
+}
+
 async function runFullSheetSyncProcess(job: FullSheetSyncJob) {
   const context = sheetSyncLogContext(job);
   logger.info({ msg: `${job.operation}.sheet_sync.started`, ...context });

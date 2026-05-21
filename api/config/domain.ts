@@ -77,18 +77,16 @@ export const FORM_SHEET_HEADERS = [
 
 export const CALL_SHEET_HEADERS = [
   "Timestamp",
+  "Phone Number",
   "Duration",
-  "Agent",
-  "Book Date",
-  "Job No",
-  "Customer Name",
-  "Binder Amount",
-  "Deposit Amount",
-  "Merchant",
-  "Source",
-  "Mongo ID",
-  "Local",
+  "Booked",
+  "Over 2000",
+  "Over 4000",
   "Cancelled",
+  "Local",
+  "Cubic Feet",
+  "Mongo ID",
+  "Source Company",
 ] as const;
 
 export const BOOKED_SHEET_HEADERS = [

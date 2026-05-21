@@ -5,15 +5,18 @@ import {
   sourceCompanyField,
   type SheetSyncEntry,
 } from "./schemaHelpers";
+import { normalizePhoneNumberForMatch } from "../utils/phone";
 
 const CallLeadSchema = new Schema(
   {
     source_company: sourceCompanyField,
     source_company_site: { type: String, trim: true },
     timestamp: { type: Date, required: true, default: Date.now },
+    job_no: { type: String, trim: true },
     name: { type: String, trim: true },
     email: { type: String, trim: true, lowercase: true },
     phone_number: { type: String, required: true, trim: true },
+    normalized_phone_number: { type: String, trim: true },
     duration: { type: Number },
     start_time: { type: Date },
     end_time: { type: Date },
@@ -40,6 +43,11 @@ const CallLeadSchema = new Schema(
 
 CallLeadSchema.index({ source_company: 1, createdAt: -1 });
 CallLeadSchema.index({ phone_number: 1 });
+CallLeadSchema.index({ normalized_phone_number: 1, createdAt: -1 });
+
+CallLeadSchema.pre("validate", function normalizePhoneNumber() {
+  this.normalized_phone_number = normalizePhoneNumberForMatch(this.phone_number);
+});
 
 export type CallLeadDocument = InferSchemaType<typeof CallLeadSchema> & {
   _id: mongoose.Types.ObjectId;

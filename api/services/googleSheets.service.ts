@@ -83,11 +83,15 @@ type FormLeadSheetSource = SyncableDocument & {
 
 type CallLeadSheetSource = SyncableDocument & {
   timestamp: Date;
+  phone_number: string;
   duration?: number | null;
   source_company: SourceCompany;
   booked?: PopulatedBookedLead | string | null;
   cancelled?: unknown;
+  over_2000?: boolean | null;
+  over_4000?: boolean | null;
   local?: string | null;
+  cubic_feet?: number | null;
 };
 
 type PopulatedBookedLead = {
@@ -808,21 +812,18 @@ function formLeadToRow(lead: FormLeadSheetSource): string[] {
 }
 
 function callLeadToRow(lead: CallLeadSheetSource): string[] {
-  const booked = typeof lead.booked === "object" && lead.booked !== null ? lead.booked : undefined;
   return [
     formatTimestamp(lead.timestamp),
+    lead.phone_number,
     formatNumber(lead.duration),
-    primaryBookingAgent(booked),
-    booked?.book_date ? formatDateOnly(booked.book_date) : "",
-    booked?.job_no ?? "",
-    booked?.customer?.full_name ?? "",
-    formatNumber(booked?.total_binder_amount),
-    formatNumber(booked?.deposit_amount),
-    booked?.merchant ?? "",
-    booked?.source ?? "",
+    bookedCell(Boolean(lead.booked)),
+    overThresholdCell(Boolean(lead.over_2000), ">2k"),
+    overThresholdCell(Boolean(lead.over_4000), ">4k"),
+    cancelledCell(Boolean(lead.cancelled)),
+    optionalLocalCell(lead.local),
+    formatNumber(lead.cubic_feet),
     lead._id.toString(),
-    localCell(booked?.local ?? lead.local),
-    cancelledCell(Boolean(lead.cancelled ?? booked?.cancelled)),
+    getSourceCompanyLabel(lead.source_company),
   ];
 }
 
@@ -953,6 +954,13 @@ function booleanCell(value: boolean): string {
 
 function localCell(value: string | null | undefined): string {
   return value === "local" ? "local" : "long_distance";
+}
+
+function optionalLocalCell(value: string | null | undefined): string {
+  if (!value) {
+    return "";
+  }
+  return localCell(value);
 }
 
 function bookedCell(value: boolean): string {
