@@ -194,7 +194,6 @@ const bookedLeadFromSourceSharedFields = {
   deposit_amount: bookedLeadFields.deposit_amount,
   merchant: bookedLeadFields.merchant,
   source_company: optionalString,
-  local: bookedLeadFields.local,
   submission_id: bookedLeadFields.submission_id,
   agent: nonEmptyString,
   split_agent: optionalString,

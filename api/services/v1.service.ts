@@ -344,7 +344,7 @@ export async function createBookedLeadFromSource(input: CreateBookedLeadFromSour
     deposit_amount: input.deposit_amount,
     merchant: input.merchant,
     source: effectiveSourceCompany,
-    local: input.local,
+    local: lead.local as LocalType | undefined,
     submission_id: input.submission_id,
   });
 }

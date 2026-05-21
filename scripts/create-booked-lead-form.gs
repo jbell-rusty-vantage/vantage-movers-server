@@ -4,7 +4,7 @@ function createBookedLeadForm() {
   form.setDescription(
     "Submit booked lead data to the Vercel API. " +
       "Choose FormLead to book by Mongo Id, or CallLead to book by Job Number and Phone Number. " +
-      "For Source Company and Local, choose use_lead to use values already stored on the lead.",
+      "Leave Source Label blank to use the source company already stored on the lead.",
   );
 
   form.setConfirmationMessage(
@@ -135,15 +135,6 @@ function createBookedLeadForm() {
     .setChoiceValues(sourceLabelChoices)
     .setRequired(false);
 
-  form
-    .addListItem()
-    .setTitle("Local")
-    .setHelpText(
-      "Choose use_lead to let the API use the pickup/delivery zip data already stored on the lead.",
-    )
-    .setChoiceValues(["use_lead", "local", "long_distance"])
-    .setRequired(true);
-
   ScriptApp.newTrigger("onBookedLeadSubmit")
     .forForm(form)
     .onFormSubmit()
@@ -185,12 +176,6 @@ function onBookedLeadSubmit(e) {
   const splitAgent = optionalText(values["SplitAgent"]);
   if (splitAgent) {
     payload.split_agent = splitAgent;
-  }
-
-  const local = values["Local"] ? String(values["Local"]).trim() : "";
-
-  if (local && local !== "use_lead") {
-    payload.local = local;
   }
 
   const sourceLabel = optionalText(values["Source Label"]);
@@ -275,7 +260,6 @@ function testBookedLeadSubmit() {
           "Deposit Amount": "2500",
           Merchant: "Elavon",
           "Source Label": "Main Site Forms",
-          Local: "use_lead",
         };
         return Object.keys(answers).map(function (title) {
           return {
