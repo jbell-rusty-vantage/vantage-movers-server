@@ -16,8 +16,6 @@ const AgentSchema = new Schema(
   },
 );
 
-AgentSchema.index({ normalized_name: 1 }, { unique: true });
-
 export type AgentDocument = InferSchemaType<typeof AgentSchema> & {
   _id: mongoose.Types.ObjectId;
 };
