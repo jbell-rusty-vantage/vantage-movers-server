@@ -9,6 +9,7 @@
     "dev:vercel": "vercel dev",
     "db:ping": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ping-db.ts",
     "db:clear": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/clear-db.ts",
+    "db:init-historical": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/init-historical-db.ts",
     "sheets:list-tabs": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/list-google-sheet-tabs.ts",
     "sheets:list-formulas": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/list-google-sheet-formulas.ts",
     "sheets:dump-leads-columns": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dump-leads-sheet-columns.ts",
