@@ -11,6 +11,10 @@ import {
   previewCallLeadEnrichment,
   syncCallLeadEnrichment,
 } from "../services/callLeadEnrichment.service";
+import {
+  previewBookedCallLeadReconciliation,
+  syncBookedCallLeadReconciliation,
+} from "../services/bookedCallLeadReconciliation.service";
 import { sanitizeFormLeadBodyPreview } from "../utils/sanitizeFormLeadForLog";
 import {
   createBookedLead,
@@ -44,6 +48,7 @@ import {
   createCancelledLeadSchema,
   createCustomerSchema,
   createFormLeadSchema,
+  bookedCallLeadReconciliationBatchSchema,
   callLeadEnrichmentBatchSchema,
   searchCallLeadsSchema,
   searchFormLeadsSchema,
@@ -69,6 +74,14 @@ router.get("/api/v1/call-leads", handleFindAll(findAllCallLeads));
 router.post("/api/v1/call-leads/search", handleSearchCallLeads);
 router.post("/api/v1/call-leads/enrichment/preview", handleCallLeadEnrichmentPreview);
 router.post("/api/v1/call-leads/enrichment/sync", handleCallLeadEnrichmentSync);
+router.post(
+  "/api/v1/call-leads/booked-reconciliation/preview",
+  handleBookedCallLeadReconciliationPreview,
+);
+router.post(
+  "/api/v1/call-leads/booked-reconciliation/sync",
+  handleBookedCallLeadReconciliationSync,
+);
 router.post("/api/v1/call-leads", handleCreate(createCallLeadSchema, createCallLead));
 router.patch("/api/v1/call-leads/:id", handleUpdate(updateCallLeadSchema, updateCallLead));
 router.delete("/api/v1/call-leads/:id", handleDelete(deleteCallLead));
@@ -176,6 +189,28 @@ async function handleCallLeadEnrichmentSync(req: Request, res: Response) {
     await connectMongo();
     const parsed = callLeadEnrichmentBatchSchema.parse(req.body);
     const data = await syncCallLeadEnrichment(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+async function handleBookedCallLeadReconciliationPreview(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = bookedCallLeadReconciliationBatchSchema.parse(req.body);
+    const data = await previewBookedCallLeadReconciliation(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+async function handleBookedCallLeadReconciliationSync(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = bookedCallLeadReconciliationBatchSchema.parse(req.body);
+    const data = await syncBookedCallLeadReconciliation(parsed);
     return res.json({ ok: true, data });
   } catch (error) {
     return sendError(res, error);

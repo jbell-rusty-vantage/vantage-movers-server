@@ -132,7 +132,7 @@ async function resolveEnrichmentRow(
 
   const leadId = lead._id.toString();
   base.call_lead_id = leadId;
-  base.matched_phone_number = lead.phone_number;
+  base.matched_phone_number = lead.phone_number ?? undefined;
   base.warnings.push(...warnings);
 
   if (lead.booked || lead.cancelled) {

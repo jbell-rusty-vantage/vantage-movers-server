@@ -48,3 +48,6 @@ coverage/
 **/internal_hidden_docs/** 
 
 .env*.local
+
+
+scripts/docs/**  

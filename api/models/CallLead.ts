@@ -15,7 +15,7 @@ const CallLeadSchema = new Schema(
     job_no: { type: String, trim: true },
     name: { type: String, trim: true },
     email: { type: String, trim: true, lowercase: true },
-    phone_number: { type: String, required: true, trim: true },
+    phone_number: { type: String, trim: true },
     normalized_phone_number: { type: String, trim: true },
     duration: { type: Number },
     start_time: { type: Date },
@@ -44,9 +44,16 @@ const CallLeadSchema = new Schema(
 CallLeadSchema.index({ source_company: 1, createdAt: -1 });
 CallLeadSchema.index({ phone_number: 1 });
 CallLeadSchema.index({ normalized_phone_number: 1, createdAt: -1 });
+CallLeadSchema.index({ job_no: 1 });
 
 CallLeadSchema.pre("validate", function normalizePhoneNumber() {
   this.normalized_phone_number = normalizePhoneNumberForMatch(this.phone_number);
+});
+
+CallLeadSchema.pre("validate", function requireLeadIdentity() {
+  if (!this.phone_number?.trim() && !this.job_no?.trim()) {
+    this.invalidate("phone_number", "Call lead requires either phone_number or job_no");
+  }
 });
 
 export type CallLeadDocument = InferSchemaType<typeof CallLeadSchema> & {

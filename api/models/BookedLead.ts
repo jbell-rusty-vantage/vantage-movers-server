@@ -1,7 +1,7 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 import {
   leadModelField,
-  localField,
+  optionalLocalField,
   sheetSyncSchema,
   type SheetSyncEntry,
 } from "./schemaHelpers";
@@ -23,7 +23,6 @@ const BookedLeadSchema = new Schema(
     customer: {
       type: Schema.Types.ObjectId,
       ref: "Customer",
-      required: true,
       index: true,
     },
     lead_ref: {
@@ -48,7 +47,7 @@ const BookedLeadSchema = new Schema(
     merchant: { type: String, required: true, trim: true },
     source: { type: String, required: true, trim: true },
     submission_id: { type: String, trim: true, index: true },
-    local: localField,
+    local: optionalLocalField,
     over_2000: { type: Boolean, required: true, default: false },
     over_4000: { type: Boolean, required: true, default: false },
     cancelled: { type: Schema.Types.ObjectId, ref: "CancelledLead" },

@@ -248,8 +248,8 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
 
 export async function createBookedLead(input: CreateBookedLeadInput) {
   const lead = await getLinkedLead(input.lead_model, input.lead_ref);
-  const local = input.local ?? lead.local;
-  if (!local) {
+  const local = optionalValue(input.local ?? lead.local);
+  if (!local && input.lead_model !== "CallLead") {
     throw new V1ServiceError("Booking requires local or a linked lead with local classification");
   }
   const customer = await upsertCustomerFromLead(lead);
@@ -280,7 +280,7 @@ export async function createBookedLead(input: CreateBookedLeadInput) {
       ...input,
       agent_allocations,
       total_binder_amount,
-      customer: customer._id,
+      ...(customer ? { customer: customer._id } : {}),
       local,
       over_2000,
       over_4000,
@@ -305,7 +305,7 @@ export async function createBookedLead(input: CreateBookedLeadInput) {
     agent_allocations,
     total_binder_amount,
     timestamp: input.timestamp ?? new Date(),
-    customer: customer._id,
+    ...(customer ? { customer: customer._id } : {}),
     local,
     over_2000,
     over_4000,
@@ -386,7 +386,7 @@ export async function updateBookedLead(id: string, input: UpdateBookedLeadInput)
     booking._id,
     booking.over_2000,
     booking.over_4000,
-    booking.local as LocalType,
+    booking.local as LocalType | undefined,
   );
   scheduleFullSheetSyncProcess({
     resource: "booking_chain",
@@ -655,34 +655,50 @@ async function resolveBookingSourceLead(
     return { lead, leadModel: "FormLead", jobNo: input.job_no };
   }
 
+  const jobNo = input.call_job_no.trim();
   const normalizedPhone = normalizePhoneNumberForMatch(input.call_phone_number);
-  if (!normalizedPhone) {
-    throw new V1ServiceError("call_phone_number must contain at least one digit", 400);
-  }
 
-  const leads = await CallLead.find({
-    job_no: input.call_job_no.trim(),
-    $or: [
-      { normalized_phone_number: normalizedPhone },
-      { phone_number: buildPhoneNumberRegex(normalizedPhone) },
-    ],
-  })
+  const leads = await CallLead.find({ job_no: jobNo })
     .sort({ createdAt: -1 })
-    .limit(3);
+    .limit(5);
 
-  if (leads.length === 0) {
-    throw new V1ServiceError("Call lead not found for job_no and phone_number", 404);
-  }
   if (leads.length > 1) {
     throw new V1ServiceError(
-      `Multiple call leads matched job_no and phone_number: ${leads
+      `Multiple call leads matched job_no ${jobNo}: ${leads
         .map((lead) => lead._id.toString())
         .join(", ")}`,
       409,
     );
   }
 
-  return { lead: leads[0], leadModel: "CallLead", jobNo: input.call_job_no.trim() };
+  if (leads.length === 1) {
+    const lead = leads[0];
+    const existingPhone = normalizePhoneNumberForMatch(lead.phone_number);
+    if (normalizedPhone && existingPhone && existingPhone !== normalizedPhone) {
+      throw new V1ServiceError(
+        `Call lead ${lead._id.toString()} matched job_no ${jobNo} but has a different phone_number`,
+        409,
+      );
+    }
+    if (normalizedPhone && !existingPhone && input.call_phone_number?.trim()) {
+      lead.phone_number = input.call_phone_number.trim();
+      await lead.save();
+    }
+    return { lead, leadModel: "CallLead", jobNo };
+  }
+
+  const source_company = input.source_company?.trim()
+    ? parseSourceCompany(input.source_company)
+    : "not_provided";
+  const lead = await CallLead.create({
+    job_no: jobNo,
+    ...(input.call_phone_number?.trim() ? { phone_number: input.call_phone_number.trim() } : {}),
+    source_company,
+    timestamp: input.timestamp ?? new Date(),
+    cpl: getCplForSource(source_company, undefined),
+  });
+
+  return { lead, leadModel: "CallLead", jobNo };
 }
 
 function effectiveBookingSourceCompany(
@@ -716,10 +732,6 @@ function deriveBookedLeadAgentAllocations(
     { agent_name: agent, binder_amount: halfBinderAmount },
     { agent_name: splitAgent, binder_amount: halfBinderAmount },
   ];
-}
-
-function buildPhoneNumberRegex(normalizedPhone: string): RegExp {
-  return new RegExp(`(?:^|\\D)${normalizedPhone.split("").join("\\D*")}(?:\\D|$)`);
 }
 
 async function resolveAgentAllocations(
@@ -914,7 +926,7 @@ async function upsertCustomerFromLead(lead: {
   email?: string | null;
 }) {
   if (!lead.name?.trim() || !lead.phone_number?.trim()) {
-    throw new V1ServiceError("Linked lead must have name and phone_number to create a customer");
+    return undefined;
   }
 
   const update = {
@@ -934,12 +946,14 @@ async function mirrorBookingToLead(
   bookingId: mongoose.Types.ObjectId,
   over2000: boolean,
   over4000: boolean,
-  local: LocalType,
+  local: LocalType | undefined,
 ) {
   lead.booked = bookingId;
   lead.over_2000 = over2000;
   lead.over_4000 = over4000;
-  lead.local = local;
+  if (local) {
+    lead.local = local;
+  }
   lead.cpl = getCplForSource(lead.source_company as SourceCompany, local);
   await lead.save();
 }
@@ -1018,6 +1032,14 @@ export function scheduleCallLeadSheetSync(leadId: string, operation: string) {
     operation,
     leadModel: "CallLead",
     leadId,
+  });
+}
+
+export function scheduleBookingChainSheetSync(bookingId: string, operation: string) {
+  scheduleFullSheetSyncProcess({
+    resource: "booking_chain",
+    operation,
+    bookingId,
   });
 }
 

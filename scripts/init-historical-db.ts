@@ -1,29 +1,16 @@
 import mongoose, { type Model } from "mongoose";
 import { connectMongo } from "../api/db";
-import { Agent } from "../api/models/Agent";
-import { BookedLead } from "../api/models/BookedLead";
-import { CallLead } from "../api/models/CallLead";
-import { CancelledLead } from "../api/models/CancelledLead";
-import { Customer } from "../api/models/Customer";
-import { FormLead } from "../api/models/FormLead";
-
-const HISTORICAL_DATABASE_NAME = "vantagemovershistorical";
-
-const sourceModels = [Agent, BookedLead, CallLead, CancelledLead, Customer, FormLead] as const;
+import {
+  getHistoricalModelList,
+  HISTORICAL_DATABASE_NAME,
+  registerHistoricalModels,
+} from "./historical_db_models";
 
 async function ensureHistoricalModel(model: Model<unknown>): Promise<void> {
-  const historicalConnection = mongoose.connection.useDb(HISTORICAL_DATABASE_NAME, {
-    useCache: true,
-  });
+  await model.createCollection();
+  await model.createIndexes();
 
-  const historicalModel =
-    historicalConnection.models[model.modelName] ??
-    historicalConnection.model(model.modelName, model.schema);
-
-  await historicalModel.createCollection();
-  await historicalModel.createIndexes();
-
-  console.log(`${historicalModel.collection.collectionName}: collection and indexes ready`);
+  console.log(`${model.collection.collectionName}: collection and indexes ready`);
 }
 
 async function main(): Promise<void> {
@@ -31,9 +18,14 @@ async function main(): Promise<void> {
 
   console.log(`Preparing historical database "${HISTORICAL_DATABASE_NAME}"...`);
 
-  for (const model of sourceModels) {
+  const historicalModels = registerHistoricalModels();
+  const models = getHistoricalModelList(historicalModels);
+
+  for (const model of models) {
     await ensureHistoricalModel(model);
   }
+
+  console.log(`Historical database "${HISTORICAL_DATABASE_NAME}" is ready for backfill.`);
 }
 
 main()

@@ -30,6 +30,10 @@ function requireAtLeastOneTruthyCallLeadSearchField(value: Record<string, unknow
   return ["phone_number", "job_no", "email", "name"].some((field) => Boolean(value[field]));
 }
 
+function requireCallLeadIdentity(value: Record<string, unknown>) {
+  return Boolean(value.phone_number || value.job_no);
+}
+
 const formLeadFields = {
   source_company: sourceCompanySchema,
   name: nonEmptyString,
@@ -86,7 +90,7 @@ const callLeadFields = {
   job_no: optionalString,
   name: optionalString,
   email: emailSchema,
-  phone_number: nonEmptyString,
+  phone_number: optionalString,
   duration: optionalNumber,
   start_time: optionalDate,
   end_time: optionalDate,
@@ -103,7 +107,8 @@ export const createCallLeadSchema = z
     ...callLeadFields,
     source_company: sourceCompanySchema.default("not_provided"),
   })
-  .strict();
+  .strict()
+  .refine(requireCallLeadIdentity, "Call lead requires either phone_number or job_no");
 
 export const updateCallLeadSchema = z
   .object(callLeadFields)
@@ -142,6 +147,30 @@ const callLeadEnrichmentRowSchema = z
 export const callLeadEnrichmentBatchSchema = z
   .object({
     rows: z.array(callLeadEnrichmentRowSchema).min(1).max(100),
+  })
+  .strict();
+
+const bookedCallLeadReconciliationRowSchema = z
+  .object({
+    row_id: nonEmptyString,
+    row_index: z.coerce.number().int().min(0).optional(),
+    section: z.enum(["bookedJobs", "followUpEstimates"]).optional(),
+    job_no: optionalString,
+    source: optionalString,
+    prior: optionalString,
+    book_date: optionalString,
+    customer: optionalString,
+    phone: optionalString,
+    email: optionalString,
+    from_zip: optionalString,
+    to_zip: optionalString,
+    est_cf: optionalString,
+  })
+  .strict();
+
+export const bookedCallLeadReconciliationBatchSchema = z
+  .object({
+    rows: z.array(bookedCallLeadReconciliationRowSchema).min(1).max(100),
   })
   .strict();
 
@@ -214,7 +243,7 @@ export const createBookedLeadFromSourceSchema = z.discriminatedUnion("lead_type"
       ...bookedLeadFromSourceSharedFields,
       lead_type: z.literal("CallLead"),
       call_job_no: nonEmptyString,
-      call_phone_number: nonEmptyString,
+      call_phone_number: optionalString,
     })
     .strict(),
 ]);
@@ -292,6 +321,11 @@ export type UpdateCallLeadInput = z.infer<typeof updateCallLeadSchema>;
 export type SearchCallLeadsInput = z.infer<typeof searchCallLeadsSchema>;
 export type CallLeadEnrichmentBatchInput = z.infer<typeof callLeadEnrichmentBatchSchema>;
 export type CallLeadEnrichmentRowInput = CallLeadEnrichmentBatchInput["rows"][number];
+export type BookedCallLeadReconciliationBatchInput = z.infer<
+  typeof bookedCallLeadReconciliationBatchSchema
+>;
+export type BookedCallLeadReconciliationRowInput =
+  BookedCallLeadReconciliationBatchInput["rows"][number];
 export type CreateBookedLeadInput = z.infer<typeof createBookedLeadSchema>;
 export type CreateBookedLeadFromSourceInput = z.infer<typeof createBookedLeadFromSourceSchema>;
 export type UpdateBookedLeadInput = z.infer<typeof updateBookedLeadSchema>;

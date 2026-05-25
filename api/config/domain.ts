@@ -91,7 +91,14 @@ export const FORM_SHEET_HEADERS = [
 
 export const CALL_SHEET_HEADERS = [
   "Timestamp",
+  "Job No",
+  "Name",
   "Phone Number",
+  "Email",
+  "Pickup Zip",
+  "Delivery Zip",
+  "Pickup State",
+  "Delivery State",
   "Duration",
   "Booked",
   "Over 2000",

@@ -83,7 +83,14 @@ type FormLeadSheetSource = SyncableDocument & {
 
 type CallLeadSheetSource = SyncableDocument & {
   timestamp: Date;
-  phone_number: string;
+  job_no?: string | null;
+  name?: string | null;
+  phone_number?: string | null;
+  email?: string | null;
+  pickup_zip?: string | null;
+  delivery_zip?: string | null;
+  pickup_state?: string | null;
+  delivery_state?: string | null;
   duration?: number | null;
   source_company: SourceCompany;
   booked?: PopulatedBookedLead | string | null;
@@ -105,7 +112,7 @@ type PopulatedBookedLead = {
   deposit_amount: number;
   merchant: string;
   source: string;
-  local: string;
+  local?: string | null;
   cancelled?: unknown;
   lead_ref?: { toString(): string } | string;
 };
@@ -812,7 +819,14 @@ function formLeadToRow(lead: FormLeadSheetSource): string[] {
 function callLeadToRow(lead: CallLeadSheetSource): string[] {
   return [
     formatTimestamp(lead.timestamp),
-    lead.phone_number,
+    lead.job_no ?? "",
+    lead.name ?? "",
+    lead.phone_number ?? "",
+    lead.email ?? "",
+    lead.pickup_zip ?? "",
+    lead.delivery_zip ?? "",
+    lead.pickup_state ?? "",
+    lead.delivery_state ?? "",
     formatNumber(lead.duration),
     bookedCell(Boolean(lead.booked)),
     overThresholdCell(Boolean(lead.over_2000), ">2k"),
@@ -841,7 +855,7 @@ function bookedLeadToRow(booking: BookedLeadSheetSource): string[] {
     booking.source,
     booking._id.toString(),
     typeof booking.lead_ref === "string" ? booking.lead_ref : booking.lead_ref?.toString() ?? "",
-    localCell(booking.local),
+    optionalLocalCell(booking.local),
     cancelledCell(Boolean(booking.cancelled)),
   ];
 }
