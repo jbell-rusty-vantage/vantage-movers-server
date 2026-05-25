@@ -29,6 +29,7 @@ const FormLeadSchema = new Schema(
     phone_number: { type: String, required: true, trim: true },
     cpl: { type: Number, required: true, default: 0 },
     quoted: { type: Boolean, default: false },
+    duplicate: { type: Boolean, default: false, index: true },
     post_to_granot: { type: Boolean, required: true, default: true },
     cancelled: { type: Schema.Types.ObjectId, ref: "CancelledLead" },
     cubic_feet: { type: Number },

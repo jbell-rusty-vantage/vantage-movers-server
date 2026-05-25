@@ -15,6 +15,10 @@ function createBookedLeadForm() {
     .requireTextMatchesPattern("^\\d+(\\.\\d{1,2})?$")
     .setHelpText("Enter a valid number, e.g. 500 or 2500.50")
     .build();
+  const optionalPhoneValidation = FormApp.createTextValidation()
+    .requireTextMatchesPattern("^$|.*\\d{10,}.*")
+    .setHelpText("Required when Mongo Id is blank. Enter at least 10 digits.")
+    .build();
 
   const sourceLabelChoices = [
     "TBM Forms",
@@ -95,6 +99,15 @@ function createBookedLeadForm() {
 
   form
     .addTextItem()
+    .setTitle("Phone Number")
+    .setHelpText(
+      "Required only when Mongo Id is blank. Used to find or update the booked call lead.",
+    )
+    .setValidation(optionalPhoneValidation)
+    .setRequired(false);
+
+  form
+    .addTextItem()
     .setTitle("Mongo Id")
     .setHelpText(
       "Optional. Enter a form lead ObjectId to attach this booking to an existing form lead.",
@@ -166,6 +179,10 @@ function onBookedLeadSubmit(e) {
     ? e.response.getId()
     : "google-form-" + new Date().toISOString();
   const mongoId = optionalText(values["Mongo Id"]);
+  const phoneNumber = optionalText(values["Phone Number"]);
+  if (!mongoId && !phoneNumber) {
+    throw new Error("Phone Number is required when Mongo Id is blank.");
+  }
   const basePayload = {
     book_date: values["Book Date"],
     agent: requiredText(values["Agent"], "Agent"),
@@ -185,6 +202,7 @@ function onBookedLeadSubmit(e) {
 
   const request = buildBookedLeadRequest({
     jobNumber: jobNumber,
+    phoneNumber: phoneNumber,
     mongoId: mongoId,
     sourceLabel: sourceLabel,
     basePayload: basePayload,
@@ -242,6 +260,10 @@ function buildBookedLeadRequest(options) {
 
   payload.lead_type = "CallLead";
   payload.call_job_no = options.jobNumber;
+  payload.call_phone_number = requiredText(
+    options.phoneNumber,
+    "Phone Number",
+  );
   if (options.sourceLabel) {
     payload.source_company = options.sourceLabel;
   }
@@ -379,6 +401,7 @@ function testBookedLeadSubmit() {
           "Binder Amount": "500",
           "Book Date": "2026-05-15",
           "Job Number": "TEST-123",
+          "Phone Number": "5555551212",
           "Mongo Id": "",
           "Deposit Amount": "2500",
           Merchant: "Elavon",

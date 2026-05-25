@@ -81,6 +81,7 @@ type FormLeadSheetSource = SyncableDocument & {
   source_company_site?: string | null;
   quoted?: boolean | null;
   cpl?: number | null;
+  duplicate?: boolean | null;
 };
 
 type CallLeadSheetSource = SyncableDocument & {
@@ -100,6 +101,7 @@ type CallLeadSheetSource = SyncableDocument & {
   over_2000?: boolean | null;
   over_4000?: boolean | null;
   local?: string | null;
+  form_fill?: boolean | null;
   cubic_feet?: number | null;
 };
 
@@ -233,11 +235,22 @@ function getServiceAccountCredentials(): ServiceAccountCredentials | undefined {
 export async function syncFormLeadToSheets(
   lead: FormLeadSheetSource,
 ): Promise<SheetSyncEntry[]> {
+  const targetBase = lead.duplicate
+    ? {
+        masterTarget: "master_duplicates",
+        sourceTarget: "source_duplicates",
+        tabName: SHEET_TAB_NAMES.duplicates,
+      }
+    : {
+        masterTarget: "master_forms",
+        sourceTarget: "source_forms",
+        tabName: SHEET_TAB_NAMES.forms,
+      };
   const targets = getLeadTargets(
-    "master_forms",
-    "source_forms",
+    targetBase.masterTarget,
+    targetBase.sourceTarget,
     lead.source_company,
-    SHEET_TAB_NAMES.forms,
+    targetBase.tabName,
     FORM_SHEET_HEADERS,
   );
   return syncRowToTargets(lead, targets, formLeadToRow(lead));
@@ -287,18 +300,29 @@ export async function syncCancelledLeadToSheets(
 }
 
 export async function deleteFormLeadFromSheets(
-  lead: SyncableDocument & { source_company: SourceCompany },
+  lead: SyncableDocument & { source_company: SourceCompany; duplicate?: boolean | null },
 ): Promise<void> {
+  const targetBase = lead.duplicate
+    ? {
+        masterTarget: "master_duplicates",
+        sourceTarget: "source_duplicates",
+        tabName: SHEET_TAB_NAMES.duplicates,
+      }
+    : {
+        masterTarget: "master_forms",
+        sourceTarget: "source_forms",
+        tabName: SHEET_TAB_NAMES.forms,
+      };
   await deleteRowsFromTargets(
     lead,
     getLeadTargets(
-      "master_forms",
-      "source_forms",
+      targetBase.masterTarget,
+      targetBase.sourceTarget,
       lead.source_company,
-      SHEET_TAB_NAMES.forms,
+      targetBase.tabName,
       FORM_SHEET_HEADERS,
     ),
-    ["master_forms", "source_forms"],
+    [targetBase.masterTarget, targetBase.sourceTarget],
   );
 }
 
@@ -603,6 +627,8 @@ function getHeadersForSyncTarget(target: string): readonly string[] | undefined 
   switch (target) {
     case "master_forms":
     case "source_forms":
+    case "master_duplicates":
+    case "source_duplicates":
       return FORM_SHEET_HEADERS;
     case "master_calls":
     case "source_calls":
@@ -620,12 +646,15 @@ function getEnsureTabsForSyncTarget(target: string): SheetTabConfig[] {
   switch (target) {
     case "master_forms":
     case "master_calls":
+    case "master_duplicates":
       return getMasterLeadsTabs();
     case "source_forms":
     case "source_calls":
+    case "source_duplicates":
       return [
         { tabName: SHEET_TAB_NAMES.forms, headers: FORM_SHEET_HEADERS },
         { tabName: SHEET_TAB_NAMES.calls, headers: CALL_SHEET_HEADERS },
+        { tabName: SHEET_TAB_NAMES.duplicates, headers: FORM_SHEET_HEADERS },
         { tabName: SHEET_TAB_NAMES.badLeads, headers: FORM_SHEET_HEADERS },
         { tabName: SHEET_TAB_NAMES.badCalls, headers: CALL_SHEET_HEADERS },
       ];
@@ -641,6 +670,7 @@ function getMasterLeadsTabs(): SheetTabConfig[] {
   return [
     { tabName: SHEET_TAB_NAMES.forms, headers: FORM_SHEET_HEADERS },
     { tabName: SHEET_TAB_NAMES.calls, headers: CALL_SHEET_HEADERS },
+    { tabName: SHEET_TAB_NAMES.duplicates, headers: FORM_SHEET_HEADERS },
   ];
 }
 
@@ -874,6 +904,7 @@ function callLeadToRow(lead: CallLeadSheetSource): string[] {
     formatNumber(lead.cubic_feet),
     lead._id.toString(),
     getSourceCompanyLabel(lead.source_company),
+    booleanCell(Boolean(lead.form_fill)),
   ];
 }
 

@@ -4,8 +4,10 @@ import {
   bookedCallLeadReconciliationBatchSchema,
   createBookedLeadFromSourceSchema,
   createCallLeadSchema,
+  createFormLeadSchema,
 } from "./v1.validation";
 import { CallLead } from "../models/CallLead";
+import { FormLead } from "../models/FormLead";
 
 test("createCallLeadSchema accepts a job_no-only call lead", () => {
   const parsed = createCallLeadSchema.parse({
@@ -42,6 +44,50 @@ test("createBookedLeadFromSourceSchema accepts CallLead booking with only call_j
   assert.equal(parsed.call_phone_number, undefined);
 });
 
+test("createBookedLeadFromSourceSchema accepts transient CallLead booking phone", () => {
+  const parsed = createBookedLeadFromSourceSchema.parse({
+    lead_type: "CallLead",
+    call_job_no: "P5556278",
+    call_phone_number: "(240) 555-0199",
+    book_date: "2026-05-21",
+    agent: "JOSH",
+    binder_amount: 900,
+    deposit_amount: 900,
+    merchant: "Card",
+    source_company: "BestRelocation Inbounds",
+  });
+
+  assert.equal(parsed.lead_type, "CallLead");
+  assert.equal(parsed.call_phone_number, "(240) 555-0199");
+});
+
+test("createFormLeadSchema does not accept duplicate from clients", () => {
+  const parsed = createFormLeadSchema.safeParse({
+    source_company: "main_site",
+    name: "Jane Customer",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    move_size: "Studio",
+    ref_no: "not provided",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+    duplicate: true,
+  });
+
+  assert.equal(parsed.success, false);
+});
+
+test("createCallLeadSchema does not accept server-owned flags from clients", () => {
+  const parsed = createCallLeadSchema.safeParse({
+    job_no: "P5556278",
+    source_company: "BestRelocation Inbounds",
+    form_fill: true,
+    created_on_unmatched: true,
+  });
+
+  assert.equal(parsed.success, false);
+});
+
 test("bookedCallLeadReconciliationBatchSchema accepts Booked Jobs CRM rows", () => {
   const parsed = bookedCallLeadReconciliationBatchSchema.parse({
     rows: [
@@ -74,6 +120,39 @@ test("CallLead model validates job_no-only identity", async () => {
   });
 
   await assert.doesNotReject(() => lead.validate());
+});
+
+test("CallLead model stores form_fill when computed by the service", async () => {
+  const lead = new CallLead({
+    job_no: "P5556278",
+    source_company: "best_relocation_leads",
+    form_fill: true,
+    created_on_unmatched: true,
+  });
+
+  await assert.doesNotReject(() => lead.validate());
+  assert.equal(lead.form_fill, true);
+  assert.equal(lead.created_on_unmatched, true);
+});
+
+test("FormLead model stores duplicate quarantine flag", async () => {
+  const lead = new FormLead({
+    source_company: "best_relocation_leads",
+    name: "Jane Customer",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    pickup_state: "NY",
+    delivery_state: "FL",
+    move_size: "Studio",
+    ref_no: "not provided",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+    local: "long_distance",
+    duplicate: true,
+  });
+
+  await assert.doesNotReject(() => lead.validate());
+  assert.equal(lead.duplicate, true);
 });
 
 test("CallLead model rejects identity-less documents", async () => {

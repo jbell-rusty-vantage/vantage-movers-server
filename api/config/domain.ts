@@ -47,6 +47,7 @@ export type SheetSyncStatus = (typeof SHEET_SYNC_STATUSES)[number];
 export const SHEET_TAB_NAMES = {
   forms: "Forms",
   calls: "Calls",
+  duplicates: "Duplicates",
   badLeads: "Bad Leads",
   badCalls: "Bad Calls",
   bookedDeals: "Booked Deals",
@@ -104,6 +105,7 @@ export const CALL_SHEET_HEADERS = [
   "Cubic Feet",
   "Mongo ID",
   "Source Company",
+  "FormFill",
 ] as const;
 
 export const BOOKED_SHEET_HEADERS = [

@@ -25,6 +25,8 @@ const CallLeadSchema = new Schema(
     over_2000: { type: Boolean, default: false },
     over_4000: { type: Boolean, default: false },
     local: optionalLocalField,
+    form_fill: { type: Boolean, default: false },
+    created_on_unmatched: { type: Boolean, default: false, index: true },
     pickup_zip: { type: String, trim: true },
     delivery_zip: { type: String, trim: true },
     pickup_state: { type: String, trim: true, uppercase: true },

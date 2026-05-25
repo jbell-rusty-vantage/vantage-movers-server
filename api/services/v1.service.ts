@@ -96,6 +96,12 @@ export async function createFormLead(input: CreateFormLeadInput) {
   const source_company = parseSourceCompany(formLeadInput.source_company);
   const location = await resolveRequiredLocation(formLeadInput);
   const local = deriveLocal(location.pickup_state, location.delivery_state);
+  const duplicate = await isDuplicateFormLead(
+    source_company,
+    formLeadInput.phone_number,
+    formLeadInput.email,
+  );
+  const shouldPostToGranot = post_to_granot && !duplicate;
   const lead = await FormLead.create({
     ...formLeadInput,
     ...location,
@@ -106,11 +112,12 @@ export async function createFormLead(input: CreateFormLeadInput) {
     timestamp: formLeadInput.timestamp ?? new Date(),
     move_date: formLeadInput.move_date ?? new Date(),
     cpl: getCplForSource(source_company, local),
-    post_to_granot,
+    duplicate,
+    post_to_granot: shouldPostToGranot,
   });
 
   const leadId = lead._id.toString();
-  const crmResult: CrmSubmitResult = post_to_granot
+  const crmResult: CrmSubmitResult = shouldPostToGranot
     ? await submitFormLeadToCrm(lead, { companyLabel: crm_company_label })
     : {
         ok: true,
@@ -119,11 +126,12 @@ export async function createFormLead(input: CreateFormLeadInput) {
         payload: buildCrmFormLeadPayload(lead, crm_company_label),
       };
 
-  if (!post_to_granot) {
+  if (!shouldPostToGranot) {
     logger.info({
       msg: "crm.form_lead.submit.skipped",
       leadId,
       companyLabel: crm_company_label,
+      duplicate,
     });
   }
 
@@ -139,13 +147,14 @@ export async function createFormLead(input: CreateFormLeadInput) {
     leadId,
     crmSyncOk: crmResult.ok,
     crmStatus: crmResult.status,
-    crmSkipped: !post_to_granot,
+    crmSkipped: !shouldPostToGranot,
+    duplicate,
   });
 
   return {
     lead,
     sheet_sync_status: "pending",
-    crm_sync_status: post_to_granot ? (crmResult.ok ? "synced" : "failed") : "skipped",
+    crm_sync_status: shouldPostToGranot ? (crmResult.ok ? "synced" : "failed") : "skipped",
     crm_company_label: crmResult.payload.label,
     crm_response: crmResult.responseText || crmResult.error || "",
   };
@@ -188,11 +197,13 @@ export async function createCallLead(input: CreateCallLeadInput) {
   const source_company = parseSourceCompany(input.source_company);
   const location = await resolveOptionalLocation(input);
   const local = location.local ?? input.local;
+  const form_fill = await hasFormFillForCallLead(source_company, input.phone_number);
   const lead = await CallLead.create({
     ...input,
     ...location,
     source_company,
     local,
+    form_fill,
     timestamp: input.timestamp ?? new Date(),
     cpl: getCplForSource(source_company, local),
   });
@@ -664,7 +675,8 @@ async function resolveBookingSourceLead(
   }
 
   const jobNo = input.call_job_no.trim();
-  const normalizedPhone = normalizePhoneNumberForMatch(input.call_phone_number);
+  const submittedPhone = input.call_phone_number?.trim();
+  const normalizedPhone = normalizePhoneNumberForMatch(submittedPhone);
 
   const leads = await CallLead.find({ job_no: jobNo })
     .sort({ createdAt: -1 })
@@ -681,15 +693,8 @@ async function resolveBookingSourceLead(
 
   if (leads.length === 1) {
     const lead = leads[0];
-    const existingPhone = normalizePhoneNumberForMatch(lead.phone_number);
-    if (normalizedPhone && existingPhone && existingPhone !== normalizedPhone) {
-      throw new V1ServiceError(
-        `Call lead ${lead._id.toString()} matched job_no ${jobNo} but has a different phone_number`,
-        409,
-      );
-    }
-    if (normalizedPhone && !existingPhone && input.call_phone_number?.trim()) {
-      lead.phone_number = input.call_phone_number.trim();
+    if (submittedPhone) {
+      lead.phone_number = submittedPhone;
       await lead.save();
     }
     return { lead, leadModel: "CallLead", jobNo };
@@ -698,10 +703,26 @@ async function resolveBookingSourceLead(
   const source_company = input.source_company?.trim()
     ? parseSourceCompany(input.source_company)
     : "not_provided";
+
+  const phoneMatchedLead = normalizedPhone
+    ? await findBestCallLeadMatchByPhone(normalizedPhone)
+    : undefined;
+  if (phoneMatchedLead) {
+    phoneMatchedLead.job_no = jobNo;
+    if (submittedPhone) {
+      phoneMatchedLead.phone_number = submittedPhone;
+    }
+    await phoneMatchedLead.save();
+    return { lead: phoneMatchedLead, leadModel: "CallLead", jobNo };
+  }
+
+  const form_fill = await hasFormFillForCallLead(source_company, submittedPhone);
   const lead = await CallLead.create({
     job_no: jobNo,
-    ...(input.call_phone_number?.trim() ? { phone_number: input.call_phone_number.trim() } : {}),
+    ...(submittedPhone ? { phone_number: submittedPhone } : {}),
     source_company,
+    form_fill,
+    created_on_unmatched: true,
     timestamp: input.timestamp ?? new Date(),
     cpl: getCplForSource(source_company, undefined),
   });
@@ -929,6 +950,96 @@ function parseSourceCompany(value?: string | null): SourceCompany {
   return sourceCompany;
 }
 
+async function isDuplicateFormLead(
+  sourceCompany: SourceCompany,
+  phoneNumber?: string | null,
+  email?: string | null,
+): Promise<boolean> {
+  const normalizedPhone = normalizePhoneNumberForMatch(phoneNumber);
+  const normalizedEmail = email?.trim().toLowerCase();
+  if (!normalizedPhone || !normalizedEmail) {
+    return false;
+  }
+
+  const candidates = await FormLead.find({
+    source_company: sourceCompany,
+    email: normalizedEmail,
+    duplicate: { $ne: true },
+    phone_number: buildPhoneRegex(normalizedPhone),
+  })
+    .sort({ createdAt: -1 })
+    .limit(25)
+    .exec();
+
+  return candidates.some(
+    (lead) => normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone,
+  );
+}
+
+async function hasFormFillForCallLead(
+  sourceCompany: SourceCompany,
+  phoneNumber?: string | null,
+): Promise<boolean> {
+  const normalizedPhone = normalizePhoneNumberForMatch(phoneNumber);
+  if (!normalizedPhone) {
+    return false;
+  }
+
+  const candidates = await FormLead.find({
+    source_company: sourceCompany,
+    duplicate: { $ne: true },
+    phone_number: buildPhoneRegex(normalizedPhone),
+  })
+    .sort({ createdAt: -1 })
+    .limit(25)
+    .exec();
+
+  return candidates.some(
+    (lead) => normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone,
+  );
+}
+
+async function findBestCallLeadMatchByPhone(
+  normalizedPhone: string,
+): Promise<mongoose.HydratedDocument<CallLeadDocument> | undefined> {
+  const candidates = (
+    await CallLead.find({
+      $or: [
+        { normalized_phone_number: normalizedPhone },
+        { phone_number: buildPhoneRegex(normalizedPhone) },
+      ],
+    })
+      .sort({ createdAt: -1 })
+      .limit(25)
+      .exec()
+  ).filter((lead) => normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone);
+
+  if (candidates.length === 0) {
+    return undefined;
+  }
+
+  const eligibleCandidates = candidates.filter((lead) => !lead.booked && !lead.cancelled);
+  const ranked = eligibleCandidates.length > 0 ? eligibleCandidates : candidates;
+  ranked.sort(compareCallLeadRecency);
+  return ranked[0];
+}
+
+function compareCallLeadRecency(
+  a: mongoose.HydratedDocument<CallLeadDocument>,
+  b: mongoose.HydratedDocument<CallLeadDocument>,
+): number {
+  return getCallLeadTime(b) - getCallLeadTime(a);
+}
+
+function getCallLeadTime(lead: mongoose.HydratedDocument<CallLeadDocument>): number {
+  const doc = lead as mongoose.HydratedDocument<CallLeadDocument> & { createdAt?: Date };
+  return (lead.timestamp ?? doc.createdAt ?? new Date(0)).getTime();
+}
+
+function buildPhoneRegex(normalizedPhone: string): RegExp {
+  return new RegExp(`(?:^|\\D)${normalizedPhone.split("").join("\\D*")}(?:\\D|$)`);
+}
+
 async function getLinkedLead(
   leadModel: LeadModelName,
   leadId: string,
@@ -1145,6 +1256,13 @@ function sheetSyncLogContext(job: FullSheetSyncJob): Record<string, string> {
 
 async function syncSourceLead(lead: AnyDoc, leadModel: LeadModelName) {
   if (leadModel === "CallLead") {
+    if (lead.get("created_on_unmatched") === true) {
+      logger.info({
+        msg: "sheet_sync.call_lead.created_on_unmatched.skipped",
+        leadId: lead._id.toString(),
+      });
+      return;
+    }
     await lead.populate({ path: "booked", populate: { path: "customer" } });
     await syncAndStore(lead, syncCallLeadToSheets);
     return;
