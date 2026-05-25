@@ -117,6 +117,10 @@ export async function createFormLead(input: CreateFormLeadInput) {
   });
 
   const leadId = lead._id.toString();
+  if (!lead.duplicate) {
+    await markMatchingCallLeadsWithFormFill(source_company, lead.phone_number, leadId);
+  }
+
   const crmResult: CrmSubmitResult = shouldPostToGranot
     ? await submitFormLeadToCrm(lead, { companyLabel: crm_company_label })
     : {
@@ -997,6 +1001,52 @@ async function hasFormFillForCallLead(
   return candidates.some(
     (lead) => normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone,
   );
+}
+
+async function markMatchingCallLeadsWithFormFill(
+  sourceCompany: SourceCompany,
+  phoneNumber: string,
+  formLeadId: string,
+): Promise<void> {
+  const normalizedPhone = normalizePhoneNumberForMatch(phoneNumber);
+  if (!normalizedPhone) {
+    return;
+  }
+
+  const candidates = await CallLead.find({
+    source_company: sourceCompany,
+    form_fill: { $ne: true },
+    $or: [
+      { normalized_phone_number: normalizedPhone },
+      { phone_number: buildPhoneRegex(normalizedPhone) },
+    ],
+  })
+    .sort({ createdAt: -1 })
+    .limit(25)
+    .exec();
+
+  const matchedCallLeads = candidates.filter(
+    (lead) => normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone,
+  );
+
+  for (const callLead of matchedCallLeads) {
+    callLead.form_fill = true;
+    await callLead.save();
+    scheduleFullSheetSyncProcess({
+      resource: "source_lead",
+      operation: "call_lead.form_fill.update",
+      leadModel: "CallLead",
+      leadId: callLead._id.toString(),
+    });
+  }
+
+  logger.info({
+    msg: "form_lead.call_lead_form_fill.updated",
+    formLeadId,
+    sourceCompany,
+    normalizedPhone,
+    matchedCallLeadCount: matchedCallLeads.length,
+  });
 }
 
 async function findBestCallLeadMatchByPhone(
