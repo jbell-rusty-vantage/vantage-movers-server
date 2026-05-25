@@ -57,6 +57,7 @@ export function leadToSheetRow(lead: LeadSheetRowSource): string[] {
     lead._id.toString(),
     lead.ref_no?.trim() || "not provided",
     lead.booked ? "TRUE" : "FALSE",
+    bookedDateCell(lead.booked),
     lead.over_2000 ? "TRUE" : "FALSE",
     lead.over_4000 ? "TRUE" : "FALSE",
     lead.cancelled ? "TRUE" : "FALSE",
@@ -66,14 +67,14 @@ export function leadToSheetRow(lead: LeadSheetRowSource): string[] {
     lead.source_company,
     lead.source_company_site ?? "",
     lead.quoted ? "TRUE" : "FALSE",
-    formatCplForSheet(lead.cpl),
   ];
 }
 
-function formatCplForSheet(cpl: number | null | undefined): string {
-  if (cpl === null || cpl === undefined || Number.isNaN(cpl)) {
+function bookedDateCell(booking: unknown): string {
+  if (!booking || typeof booking !== "object" || !("book_date" in booking)) {
     return "";
   }
 
-  return String(cpl);
+  const value = (booking as { book_date?: unknown }).book_date;
+  return value instanceof Date ? formatDateOnly(value) : "";
 }

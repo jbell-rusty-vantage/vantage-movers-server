@@ -29,6 +29,8 @@ import type { SheetSyncEntry } from "../models/schemaHelpers";
 
 const SERVICE_ACCOUNT_FILE = process.env.SERVICE_ACCOUNT_LOCAL_FILE;
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+const SHEET_ROW_LOOKUP_END_COLUMN = "ZZ";
+const LEGACY_CALL_SHEET_HEADER_LENGTH = 18;
 
 let cachedSheetsClient: sheets_v4.Sheets | null = null;
 let loggedAuthConfig = false;
@@ -68,7 +70,7 @@ type FormLeadSheetSource = SyncableDocument & {
   move_date: Date;
   phone_number: string;
   ref_no?: string | null;
-  booked?: unknown;
+  booked?: PopulatedBookedLead | string | null;
   over_2000?: boolean | null;
   over_4000?: boolean | null;
   cancelled?: unknown;
@@ -503,6 +505,7 @@ async function upsertRow(
       ? knownRowNumber
       : await findRowNumberByMongoId(sheets, spreadsheetId, tabName, headers, mongoId);
   if (rowNumber) {
+    await clearLegacyTrailingCells(sheets, spreadsheetId, tabName, headers, rowNumber);
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: `${escapeSheetTitleForRange(tabName)}!A${rowNumber}:${columnLetter(headers.length)}${rowNumber}`,
@@ -699,7 +702,7 @@ async function findRowNumberByMongoId(
 ): Promise<number | undefined> {
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `${escapeSheetTitleForRange(tabName)}!A:${columnLetter(headers.length)}`,
+    range: `${escapeSheetTitleForRange(tabName)}!A:${SHEET_ROW_LOOKUP_END_COLUMN}`,
   });
   const rows = response.data.values ?? [];
   const mongoIdIndex = headers.indexOf("Mongo ID");
@@ -708,7 +711,8 @@ async function findRowNumberByMongoId(
   }
 
   for (let index = 1; index < rows.length; index += 1) {
-    if (rows[index]?.[mongoIdIndex] === mongoId) {
+    const row = rows[index] ?? [];
+    if (row[mongoIdIndex] === mongoId || row.includes(mongoId)) {
       return index + 1;
     }
   }
@@ -731,9 +735,10 @@ async function rowNumberContainsMongoId(
 
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `${escapeSheetTitleForRange(tabName)}!A${rowNumber}:${columnLetter(headers.length)}${rowNumber}`,
+    range: `${escapeSheetTitleForRange(tabName)}!A${rowNumber}:${SHEET_ROW_LOOKUP_END_COLUMN}${rowNumber}`,
   });
-  return response.data.values?.[0]?.[mongoIdIndex] === mongoId;
+  const row = response.data.values?.[0] ?? [];
+  return row[mongoIdIndex] === mongoId || row.includes(mongoId);
 }
 
 async function ensureTabsAndHeaders(
@@ -743,6 +748,7 @@ async function ensureTabsAndHeaders(
 ): Promise<void> {
   for (const tab of tabs) {
     await ensureTab(sheets, spreadsheetId, tab.tabName);
+    await clearLegacyTrailingCells(sheets, spreadsheetId, tab.tabName, tab.headers, 1);
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: `${escapeSheetTitleForRange(tab.tabName)}!A1:${columnLetter(tab.headers.length)}1`,
@@ -750,6 +756,42 @@ async function ensureTabsAndHeaders(
       requestBody: { values: [[...tab.headers]] },
     });
   }
+}
+
+async function clearLegacyTrailingCells(
+  sheets: sheets_v4.Sheets,
+  spreadsheetId: string,
+  tabName: string,
+  headers: readonly string[],
+  rowNumber: number,
+): Promise<void> {
+  const legacyHeaderLength = getLegacyHeaderLength(headers);
+  if (legacyHeaderLength <= headers.length) {
+    return;
+  }
+
+  await clearSheetValues(
+    sheets,
+    spreadsheetId,
+    `${escapeSheetTitleForRange(tabName)}!${columnLetter(headers.length + 1)}${rowNumber}:${columnLetter(
+      legacyHeaderLength,
+    )}${rowNumber}`,
+  );
+}
+
+function getLegacyHeaderLength(headers: readonly string[]): number {
+  return headers === CALL_SHEET_HEADERS ? LEGACY_CALL_SHEET_HEADER_LENGTH : headers.length;
+}
+
+async function clearSheetValues(
+  sheets: sheets_v4.Sheets,
+  spreadsheetId: string,
+  range: string,
+): Promise<void> {
+  await sheets.spreadsheets.values.clear({
+    spreadsheetId,
+    range,
+  });
 }
 
 async function ensureTab(
@@ -804,6 +846,7 @@ function formLeadToRow(lead: FormLeadSheetSource): string[] {
     lead._id.toString(),
     lead.ref_no?.trim() || "not provided",
     bookedCell(Boolean(lead.booked)),
+    bookedDateCell(lead.booked),
     overThresholdCell(Boolean(lead.over_2000), ">2k"),
     overThresholdCell(Boolean(lead.over_4000), ">4k"),
     cancelledCell(Boolean(lead.cancelled)),
@@ -820,15 +863,10 @@ function callLeadToRow(lead: CallLeadSheetSource): string[] {
   return [
     formatTimestamp(lead.timestamp),
     lead.job_no ?? "",
-    lead.name ?? "",
     lead.phone_number ?? "",
-    lead.email ?? "",
-    lead.pickup_zip ?? "",
-    lead.delivery_zip ?? "",
-    lead.pickup_state ?? "",
-    lead.delivery_state ?? "",
     formatNumber(lead.duration),
     bookedCell(Boolean(lead.booked)),
+    bookedDateCell(lead.booked),
     overThresholdCell(Boolean(lead.over_2000), ">2k"),
     overThresholdCell(Boolean(lead.over_4000), ">4k"),
     cancelledCell(Boolean(lead.cancelled)),
@@ -916,6 +954,14 @@ function optionalLocalCell(value: string | null | undefined): string {
 
 function bookedCell(value: boolean): string {
   return value ? "booked" : "";
+}
+
+function bookedDateCell(booking: PopulatedBookedLead | string | null | undefined): string {
+  if (!booking || typeof booking === "string") {
+    return "";
+  }
+
+  return formatDateOnly(booking.book_date);
 }
 
 function overThresholdCell(value: boolean, label: ">2k" | ">4k"): string {

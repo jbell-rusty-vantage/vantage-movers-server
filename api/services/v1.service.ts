@@ -248,6 +248,7 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
 
 export async function createBookedLead(input: CreateBookedLeadInput) {
   const lead = await getLinkedLead(input.lead_model, input.lead_ref);
+  const sourceCompanyForLead = getFormLeadSourceCompanyForBooking(lead, input);
   const local = optionalValue(input.local ?? lead.local);
   if (!local && input.lead_model !== "CallLead") {
     throw new V1ServiceError("Booking requires local or a linked lead with local classification");
@@ -286,7 +287,14 @@ export async function createBookedLead(input: CreateBookedLeadInput) {
       over_4000,
     });
     await existingBooking.save();
-    await mirrorBookingToLead(lead, existingBooking._id, over_2000, over_4000, local);
+    await mirrorBookingToLead(
+      lead,
+      existingBooking._id,
+      over_2000,
+      over_4000,
+      local,
+      sourceCompanyForLead,
+    );
     scheduleFullSheetSyncProcess({
       resource: "booking_chain",
       operation: "booked_lead.upsert",
@@ -311,7 +319,7 @@ export async function createBookedLead(input: CreateBookedLeadInput) {
     over_4000,
   });
 
-  await mirrorBookingToLead(lead, booking._id, over_2000, over_4000, local);
+  await mirrorBookingToLead(lead, booking._id, over_2000, over_4000, local, sourceCompanyForLead);
   scheduleFullSheetSyncProcess({
     resource: "booking_chain",
     operation: "booked_lead.create",
@@ -714,6 +722,22 @@ function effectiveBookingSourceCompany(
   return parseSourceCompany(String(lead.source_company ?? ""));
 }
 
+function getFormLeadSourceCompanyForBooking(
+  lead: SourceLeadDocument,
+  input: Pick<CreateBookedLeadInput, "lead_model" | "source">,
+): SourceCompany | undefined {
+  if (input.lead_model !== "FormLead") {
+    return undefined;
+  }
+
+  const mappedSourceCompany = resolveSourceCompany(input.source);
+  if (!mappedSourceCompany || lead.source_company === mappedSourceCompany) {
+    return undefined;
+  }
+
+  return mappedSourceCompany;
+}
+
 function deriveBookedLeadAgentAllocations(
   input: Pick<CreateBookedLeadFromSourceInput, "agent" | "split_agent" | "binder_amount">,
 ): AgentAllocationInput[] {
@@ -947,10 +971,14 @@ async function mirrorBookingToLead(
   over2000: boolean,
   over4000: boolean,
   local: LocalType | undefined,
+  sourceCompany?: SourceCompany,
 ) {
   lead.booked = bookingId;
   lead.over_2000 = over2000;
   lead.over_4000 = over4000;
+  if (sourceCompany) {
+    lead.source_company = sourceCompany;
+  }
   if (local) {
     lead.local = local;
   }
@@ -1122,6 +1150,7 @@ async function syncSourceLead(lead: AnyDoc, leadModel: LeadModelName) {
     return;
   }
 
+  await lead.populate({ path: "booked", populate: { path: "customer" } });
   await syncAndStore(lead, syncFormLeadToSheets);
 }
 

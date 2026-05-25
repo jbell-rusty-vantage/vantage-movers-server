@@ -3,8 +3,8 @@ function createBookedLeadForm() {
 
   form.setDescription(
     "Submit booked lead data to the Vercel API. " +
-      "Choose FormLead to book by Mongo Id, or CallLead to book by Job Number. " +
-      "Leave Source Label blank to use the source company already stored on the lead.",
+      "Enter Mongo Id for an existing form lead, or leave Mongo Id blank to book by Job Number. " +
+      "Source Label can correct or provide the booking source.",
   );
 
   form.setConfirmationMessage(
@@ -55,15 +55,6 @@ function createBookedLeadForm() {
   ];
 
   form
-    .addMultipleChoiceItem()
-    .setTitle("Lead Type")
-    .setHelpText(
-      "FormLead books by Mongo Id. CallLead books by Job Number.",
-    )
-    .setChoiceValues(["FormLead", "CallLead"])
-    .setRequired(true);
-
-  form
     .addListItem()
     .setTitle("Agent")
     .setHelpText("Primary agent for the booked lead. Example: John Smith")
@@ -98,7 +89,7 @@ function createBookedLeadForm() {
     .addTextItem()
     .setTitle("Job Number")
     .setHelpText(
-      "Required for both lead types. For CallLead, this is also used to find the call lead.",
+      "Required for every booking. Used to find or create a call lead when Mongo Id is blank.",
     )
     .setRequired(true);
 
@@ -106,23 +97,15 @@ function createBookedLeadForm() {
     .addTextItem()
     .setTitle("Mongo Id")
     .setHelpText(
-      "Required for FormLead only. Lead ObjectId. Must be a 24-character MongoDB ObjectId.",
+      "Optional. Enter a form lead ObjectId to attach this booking to an existing form lead.",
     )
     .setValidation(
       FormApp.createTextValidation()
         .requireTextMatchesPattern("^$|^[a-fA-F0-9]{24}$")
         .setHelpText(
-          "Leave blank for CallLead or enter a valid 24-character MongoDB ObjectId.",
+          "Leave blank to create an incomplete call lead booking or enter a valid 24-character MongoDB ObjectId.",
         )
         .build(),
-    )
-    .setRequired(false);
-
-  form
-    .addTextItem()
-    .setTitle("Phone Number")
-    .setHelpText(
-      "Optional for CallLead. If omitted, the API creates or reuses a CallLead by Job Number.",
     )
     .setRequired(false);
 
@@ -173,47 +156,39 @@ function onBookedLeadSubmit(e) {
     values[title] = answer;
   });
 
-  const payload = {
-    lead_type: requiredText(values["Lead Type"], "Lead Type"),
+  const binderAmount = parseRequiredNumber(
+    values["Binder Amount"],
+    "Binder Amount",
+  );
+  const sourceLabel = optionalText(values["Source Label"]);
+  const jobNumber = requiredText(values["Job Number"], "Job Number");
+  const submissionId = e.response.getId
+    ? e.response.getId()
+    : "google-form-" + new Date().toISOString();
+  const mongoId = optionalText(values["Mongo Id"]);
+  const basePayload = {
     book_date: values["Book Date"],
     agent: requiredText(values["Agent"], "Agent"),
-    binder_amount: parseRequiredNumber(
-      values["Binder Amount"],
-      "Binder Amount",
-    ),
+    binder_amount: binderAmount,
     deposit_amount: parseRequiredNumber(
       values["Deposit Amount"],
       "Deposit Amount",
     ),
     merchant: requiredText(values["Merchant"], "Merchant"),
-    submission_id: e.response.getId
-      ? e.response.getId()
-      : "google-form-" + new Date().toISOString(),
+    submission_id: submissionId,
   };
 
   const splitAgent = optionalText(values["SplitAgent"]);
   if (splitAgent) {
-    payload.split_agent = splitAgent;
+    basePayload.split_agent = splitAgent;
   }
 
-  const sourceLabel = optionalText(values["Source Label"]);
-  if (sourceLabel) {
-    payload.source_company = sourceLabel;
-  }
-
-  const jobNumber = requiredText(values["Job Number"], "Job Number");
-  if (payload.lead_type === "FormLead") {
-    payload.form_lead_id = requiredText(values["Mongo Id"], "Mongo Id");
-    payload.job_no = jobNumber;
-  } else if (payload.lead_type === "CallLead") {
-    payload.call_job_no = jobNumber;
-    const phoneNumber = optionalText(values["Phone Number"]);
-    if (phoneNumber) {
-      payload.call_phone_number = phoneNumber;
-    }
-  } else {
-    throw new Error("Unsupported Lead Type: " + payload.lead_type);
-  }
+  const request = buildBookedLeadRequest({
+    jobNumber: jobNumber,
+    mongoId: mongoId,
+    sourceLabel: sourceLabel,
+    basePayload: basePayload,
+  });
 
   const API_SECRET =
     PropertiesService.getScriptProperties().getProperty("API_SECRET");
@@ -222,12 +197,116 @@ function onBookedLeadSubmit(e) {
     throw new Error("Missing API_SECRET in Script Properties");
   }
 
-  const response = UrlFetchApp.fetch(
-    "https://vantage-movers-main-server.vercel.app/api/v1/booked-leads/from-source",
+  const response = UrlFetchApp.fetch(request.url, {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify(request.payload),
+    headers: {
+      "x-api-secret": API_SECRET,
+    },
+    muteHttpExceptions: true,
+  });
+
+  Logger.log("Values: " + JSON.stringify(values));
+  Logger.log("Endpoint: " + request.url);
+  Logger.log("Payload: " + JSON.stringify(request.payload));
+  Logger.log("Status: " + response.getResponseCode());
+  Logger.log("Response: " + response.getContentText());
+}
+
+function buildBookedLeadRequest(options) {
+  const baseUrl = "https://vantage-movers-main-server.vercel.app/api/v1";
+  const payload = Object.assign({}, options.basePayload);
+
+  if (options.mongoId) {
+    delete payload.agent;
+    delete payload.split_agent;
+    delete payload.binder_amount;
+
+    payload.job_no = options.jobNumber;
+    payload.lead_ref = options.mongoId;
+    payload.lead_model = "FormLead";
+    payload.agent_allocations = buildAgentAllocations(
+      options.basePayload.agent,
+      options.basePayload.split_agent,
+      options.basePayload.binder_amount,
+    );
+    payload.total_binder_amount = options.basePayload.binder_amount;
+    payload.source = resolveBookedLeadSource(options.sourceLabel, options.mongoId);
+
+    return {
+      url: baseUrl + "/booked-leads",
+      payload: payload,
+    };
+  }
+
+  payload.lead_type = "CallLead";
+  payload.call_job_no = options.jobNumber;
+  if (options.sourceLabel) {
+    payload.source_company = options.sourceLabel;
+  }
+
+  return {
+    url: baseUrl + "/booked-leads/from-source",
+    payload: payload,
+  };
+}
+
+function buildAgentAllocations(agent, splitAgent, binderAmount) {
+  const agentName = requiredText(agent, "Agent");
+  const splitAgentName = optionalText(splitAgent);
+
+  if (!splitAgentName) {
+    return [
+      {
+        agent_name: agentName,
+        binder_amount: binderAmount,
+      },
+    ];
+  }
+
+  const splitBinderAmount = binderAmount / 2;
+  return [
     {
-      method: "post",
-      contentType: "application/json",
-      payload: JSON.stringify(payload),
+      agent_name: agentName,
+      binder_amount: splitBinderAmount,
+    },
+    {
+      agent_name: splitAgentName,
+      binder_amount: splitBinderAmount,
+    },
+  ];
+}
+
+function resolveBookedLeadSource(sourceLabel, mongoId) {
+  const sourceFromLabel = sourceLabelToCompany(sourceLabel);
+  if (sourceFromLabel) {
+    return sourceFromLabel;
+  }
+
+  const sourceFromLead = fetchFormLeadSourceCompany(mongoId);
+  if (sourceFromLead) {
+    return sourceLabelToCompany(sourceFromLead) || sourceFromLead;
+  }
+
+  throw new Error(
+    "Source Label is required when the linked FormLead does not have source_company.",
+  );
+}
+
+function fetchFormLeadSourceCompany(mongoId) {
+  const API_SECRET =
+    PropertiesService.getScriptProperties().getProperty("API_SECRET");
+
+  if (!API_SECRET) {
+    throw new Error("Missing API_SECRET in Script Properties");
+  }
+
+  const response = UrlFetchApp.fetch(
+    "https://vantage-movers-main-server.vercel.app/api/v1/form-leads/" +
+      encodeURIComponent(mongoId),
+    {
+      method: "get",
       headers: {
         "x-api-secret": API_SECRET,
       },
@@ -235,10 +314,35 @@ function onBookedLeadSubmit(e) {
     },
   );
 
-  Logger.log("Values: " + JSON.stringify(values));
-  Logger.log("Payload: " + JSON.stringify(payload));
-  Logger.log("Status: " + response.getResponseCode());
-  Logger.log("Response: " + response.getContentText());
+  if (response.getResponseCode() !== 200) {
+    throw new Error(
+      "Unable to fetch linked FormLead source_company. Status: " +
+        response.getResponseCode() +
+        " Response: " +
+        response.getContentText(),
+    );
+  }
+
+  const body = JSON.parse(response.getContentText());
+  return optionalText(body && body.data && body.data.source_company);
+}
+
+function sourceLabelToCompany(sourceLabel) {
+  const sourceMap = {
+    "Main Site Forms": "main_site",
+    "Main Site Inbounds": "main_site",
+    "TBM Forms": "tbm_leads",
+    "TBM Prime Forms": "tbm_prime_leads",
+    "TBM Prime Inbounds": "tbm_prime_leads",
+    "Top10 Forms": "top10_leads",
+    "Top10 Inbounds": "top10_leads",
+    "10best Inbounds": "top10_leads",
+    "Best Relocation Forms": "best_relocation_leads",
+    "Best Relocation Locals": "best_relocation_leads",
+    "Best Relocation Inbounds": "best_relocation_leads",
+  };
+
+  return sourceMap[optionalText(sourceLabel)] || "";
 }
 
 function requiredText(value, fieldName) {
@@ -270,14 +374,12 @@ function testBookedLeadSubmit() {
       },
       getItemResponses: function () {
         const answers = {
-          "Lead Type": "CallLead",
           Agent: "Austin",
           SplitAgent: "Brian",
           "Binder Amount": "500",
           "Book Date": "2026-05-15",
           "Job Number": "TEST-123",
           "Mongo Id": "",
-          "Phone Number": "",
           "Deposit Amount": "2500",
           Merchant: "Elavon",
           "Source Label": "Main Site Forms",
