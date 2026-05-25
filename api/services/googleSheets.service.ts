@@ -109,7 +109,7 @@ type PopulatedBookedLead = {
   _id: { toString(): string };
   timestamp: Date;
   book_date: Date;
-  job_no: string;
+  job_no?: string | null;
   customer?: { full_name?: string | null } | null;
   agent_allocations?: AgentAllocationSheetSource[] | null;
   total_binder_amount: number;
@@ -917,7 +917,7 @@ function bookedLeadToRow(booking: BookedLeadSheetSource): string[] {
     formatNumber(booking.total_binder_amount),
     splitCell(allocations),
     formatDateOnly(booking.book_date),
-    booking.job_no,
+    booking.job_no ?? "",
     booking.customer?.full_name ?? "",
     formatNumber(booking.deposit_amount),
     booking.merchant,

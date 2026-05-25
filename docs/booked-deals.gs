@@ -93,9 +93,9 @@ function createBookedLeadForm() {
     .addTextItem()
     .setTitle("Job Number")
     .setHelpText(
-      "Required for every booking. Used to find or create a call lead when Mongo Id is blank.",
+      "Required when Mongo Id is provided. Optional for call lead bookings when Phone Number is provided.",
     )
-    .setRequired(true);
+    .setRequired(false);
 
   form
     .addTextItem()
@@ -174,14 +174,17 @@ function onBookedLeadSubmit(e) {
     "Binder Amount",
   );
   const sourceLabel = optionalText(values["Source Label"]);
-  const jobNumber = requiredText(values["Job Number"], "Job Number");
+  const jobNumber = optionalText(values["Job Number"]);
   const submissionId = e.response.getId
     ? e.response.getId()
     : "google-form-" + new Date().toISOString();
   const mongoId = optionalText(values["Mongo Id"]);
   const phoneNumber = optionalText(values["Phone Number"]);
-  if (!mongoId && !phoneNumber) {
-    throw new Error("Phone Number is required when Mongo Id is blank.");
+  if (mongoId && !jobNumber) {
+    throw new Error("Job Number is required when Mongo Id is provided.");
+  }
+  if (!mongoId && !jobNumber && !phoneNumber) {
+    throw new Error("Either Job Number or Phone Number is required when Mongo Id is blank.");
   }
   const basePayload = {
     book_date: values["Book Date"],
@@ -259,11 +262,12 @@ function buildBookedLeadRequest(options) {
   }
 
   payload.lead_type = "CallLead";
-  payload.call_job_no = options.jobNumber;
-  payload.call_phone_number = requiredText(
-    options.phoneNumber,
-    "Phone Number",
-  );
+  if (options.jobNumber) {
+    payload.call_job_no = options.jobNumber;
+  }
+  if (options.phoneNumber) {
+    payload.call_phone_number = options.phoneNumber;
+  }
   if (options.sourceLabel) {
     payload.source_company = options.sourceLabel;
   }

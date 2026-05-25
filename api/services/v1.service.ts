@@ -62,6 +62,9 @@ type AgentAllocationDocumentInput = {
   agent_name_snapshot: string;
   binder_amount: number;
 };
+type CreateBookedLeadServiceInput = Omit<CreateBookedLeadInput, "job_no"> & {
+  job_no?: string;
+};
 
 type FullSheetSyncJob =
   | {
@@ -261,7 +264,7 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
   return lead;
 }
 
-export async function createBookedLead(input: CreateBookedLeadInput) {
+export async function createBookedLead(input: CreateBookedLeadServiceInput) {
   const lead = await getLinkedLead(input.lead_model, input.lead_ref);
   const sourceCompanyForLead = getFormLeadSourceCompanyForBooking(lead, input);
   const local = optionalValue(input.local ?? lead.local);
@@ -672,19 +675,21 @@ export async function deleteCustomer(id: string, cascade: boolean) {
 
 async function resolveBookingSourceLead(
   input: CreateBookedLeadFromSourceInput,
-): Promise<{ lead: SourceLeadDocument; leadModel: LeadModelName; jobNo: string }> {
+): Promise<{ lead: SourceLeadDocument; leadModel: LeadModelName; jobNo?: string }> {
   if (input.lead_type === "FormLead") {
     const lead = await getLinkedLead("FormLead", input.form_lead_id);
     return { lead, leadModel: "FormLead", jobNo: input.job_no };
   }
 
-  const jobNo = input.call_job_no.trim();
+  const jobNo = input.call_job_no?.trim() || undefined;
   const submittedPhone = input.call_phone_number?.trim();
   const normalizedPhone = normalizePhoneNumberForMatch(submittedPhone);
 
-  const leads = await CallLead.find({ job_no: jobNo })
-    .sort({ createdAt: -1 })
-    .limit(5);
+  const leads = jobNo
+    ? await CallLead.find({ job_no: jobNo })
+        .sort({ createdAt: -1 })
+        .limit(5)
+    : [];
 
   if (leads.length > 1) {
     throw new V1ServiceError(
@@ -712,7 +717,9 @@ async function resolveBookingSourceLead(
     ? await findBestCallLeadMatchByPhone(normalizedPhone)
     : undefined;
   if (phoneMatchedLead) {
-    phoneMatchedLead.job_no = jobNo;
+    if (jobNo) {
+      phoneMatchedLead.job_no = jobNo;
+    }
     if (submittedPhone) {
       phoneMatchedLead.phone_number = submittedPhone;
     }
@@ -722,7 +729,7 @@ async function resolveBookingSourceLead(
 
   const form_fill = await hasFormFillForCallLead(source_company, submittedPhone);
   const lead = await CallLead.create({
-    job_no: jobNo,
+    ...(jobNo ? { job_no: jobNo } : {}),
     ...(submittedPhone ? { phone_number: submittedPhone } : {}),
     source_company,
     form_fill,

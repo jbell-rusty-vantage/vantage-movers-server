@@ -6,6 +6,7 @@ import {
   createCallLeadSchema,
   createFormLeadSchema,
 } from "./v1.validation";
+import { BookedLead } from "../models/BookedLead";
 import { CallLead } from "../models/CallLead";
 import { FormLead } from "../models/FormLead";
 
@@ -59,6 +60,37 @@ test("createBookedLeadFromSourceSchema accepts transient CallLead booking phone"
 
   assert.equal(parsed.lead_type, "CallLead");
   assert.equal(parsed.call_phone_number, "(240) 555-0199");
+});
+
+test("createBookedLeadFromSourceSchema accepts CallLead booking with only phone", () => {
+  const parsed = createBookedLeadFromSourceSchema.parse({
+    lead_type: "CallLead",
+    call_phone_number: "(240) 555-0199",
+    book_date: "2026-05-21",
+    agent: "JOSH",
+    binder_amount: 900,
+    deposit_amount: 900,
+    merchant: "Card",
+    source_company: "BestRelocation Inbounds",
+  });
+
+  assert.equal(parsed.lead_type, "CallLead");
+  assert.equal(parsed.call_job_no, undefined);
+  assert.equal(parsed.call_phone_number, "(240) 555-0199");
+});
+
+test("createBookedLeadFromSourceSchema rejects CallLead booking without job or phone", () => {
+  const parsed = createBookedLeadFromSourceSchema.safeParse({
+    lead_type: "CallLead",
+    book_date: "2026-05-21",
+    agent: "JOSH",
+    binder_amount: 900,
+    deposit_amount: 900,
+    merchant: "Card",
+    source_company: "BestRelocation Inbounds",
+  });
+
+  assert.equal(parsed.success, false);
 });
 
 test("createFormLeadSchema does not accept duplicate from clients", () => {
@@ -133,6 +165,28 @@ test("CallLead model stores form_fill when computed by the service", async () =>
   await assert.doesNotReject(() => lead.validate());
   assert.equal(lead.form_fill, true);
   assert.equal(lead.created_on_unmatched, true);
+});
+
+test("BookedLead model validates phone-only CallLead bookings without job_no", async () => {
+  const booking = new BookedLead({
+    book_date: new Date("2026-05-21"),
+    lead_ref: "507f1f77bcf86cd799439011",
+    lead_model: "CallLead",
+    agent_allocations: [
+      {
+        agent: "507f1f77bcf86cd799439012",
+        agent_name_snapshot: "JOSH",
+        binder_amount: 900,
+      },
+    ],
+    total_binder_amount: 900,
+    deposit_amount: 900,
+    merchant: "Card",
+    source: "main_site",
+  });
+
+  await assert.doesNotReject(() => booking.validate());
+  assert.equal(booking.job_no, undefined);
 });
 
 test("FormLead model stores duplicate quarantine flag", async () => {

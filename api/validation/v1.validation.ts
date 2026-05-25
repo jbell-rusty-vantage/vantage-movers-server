@@ -34,6 +34,10 @@ function requireCallLeadIdentity(value: Record<string, unknown>) {
   return Boolean(value.phone_number || value.job_no);
 }
 
+function requireCallBookingIdentity(value: Record<string, unknown>) {
+  return Boolean(value.call_job_no || value.call_phone_number);
+}
+
 const formLeadFields = {
   source_company: sourceCompanySchema,
   name: nonEmptyString,
@@ -242,10 +246,14 @@ export const createBookedLeadFromSourceSchema = z.discriminatedUnion("lead_type"
     .object({
       ...bookedLeadFromSourceSharedFields,
       lead_type: z.literal("CallLead"),
-      call_job_no: nonEmptyString,
+      call_job_no: optionalString,
       call_phone_number: optionalString,
     })
-    .strict(),
+    .strict()
+    .refine(
+      requireCallBookingIdentity,
+      "CallLead booking requires either call_job_no or call_phone_number",
+    ),
 ]);
 
 export const updateBookedLeadSchema = z

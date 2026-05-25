@@ -19,7 +19,7 @@ const BookedLeadSchema = new Schema(
   {
     timestamp: { type: Date, required: true, default: Date.now },
     book_date: { type: Date, required: true },
-    job_no: { type: String, required: true, trim: true, index: true },
+    job_no: { type: String, trim: true, index: true },
     customer: {
       type: Schema.Types.ObjectId,
       ref: "Customer",
