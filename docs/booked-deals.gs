@@ -184,7 +184,9 @@ function onBookedLeadSubmit(e) {
     throw new Error("Job Number is required when Mongo Id is provided.");
   }
   if (!mongoId && !jobNumber && !phoneNumber) {
-    throw new Error("Either Job Number or Phone Number is required when Mongo Id is blank.");
+    throw new Error(
+      "Either Job Number or Phone Number is required when Mongo Id is blank.",
+    );
   }
   const basePayload = {
     book_date: values["Book Date"],
@@ -253,7 +255,10 @@ function buildBookedLeadRequest(options) {
       options.basePayload.binder_amount,
     );
     payload.total_binder_amount = options.basePayload.binder_amount;
-    payload.source = resolveBookedLeadSource(options.sourceLabel, options.mongoId);
+    payload.source = resolveBookedLeadSource(
+      options.sourceLabel,
+      options.mongoId,
+    );
 
     return {
       url: baseUrl + "/booked-leads",
@@ -357,6 +362,8 @@ function sourceLabelToCompany(sourceLabel) {
   const sourceMap = {
     "Main Site Forms": "main_site",
     "Main Site Inbounds": "main_site",
+    "Get Movers": "main_site",
+    "TBM Forms Prime": "tbm_prime_leads",
     "TBM Forms": "tbm_leads",
     "TBM Prime Forms": "tbm_prime_leads",
     "TBM Prime Inbounds": "tbm_prime_leads",

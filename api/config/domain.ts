@@ -11,6 +11,8 @@ export const SOURCE_COMPANIES = [
 
 export type SourceCompany = (typeof SOURCE_COMPANIES)[number];
 
+// TODO: Ensure these will work at the exact character order level Best Relocation Forms and BestRelocation Forms or BestRelocationForms is the same
+
 export const SOURCE_LABEL_TO_COMPANY = {
   "Main Site Forms": "main_site",
   "Main Site Inbounds": "main_site",
@@ -25,6 +27,9 @@ export const SOURCE_LABEL_TO_COMPANY = {
   "Best Relocation Forms": "best_relocation_leads",
   "Best Relocation Locals": "best_relocation_leads",
   "Best Relocation Inbounds": "best_relocation_leads",
+  "BestRelocation Forms": "best_relocation_leads",
+  "BestRelocation Locals": "best_relocation_leads",
+  "BestRelocation Inbounds": "best_relocation_leads",
 } as const satisfies Record<string, SourceCompany>;
 
 export const LOCAL_TYPES = ["local", "long_distance"] as const;
