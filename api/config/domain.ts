@@ -14,8 +14,10 @@ export type SourceCompany = (typeof SOURCE_COMPANIES)[number];
 export const SOURCE_LABEL_TO_COMPANY = {
   "Main Site Forms": "main_site",
   "Main Site Inbounds": "main_site",
+  "Get Movers": "main_site",
   "TBM Forms": "tbm_leads",
   "TBM Prime Forms": "tbm_prime_leads",
+  "TBM Forms Prime": "tbm_prime_leads",
   "TBM Prime Inbounds": "tbm_prime_leads",
   "Top10 Forms": "top10_leads",
   "Top10 Inbounds": "top10_leads",
@@ -196,7 +198,14 @@ export const SOURCE_COMPANY_CONFIGS = {
     leadSheetEnvVar: SHEET_CONTAINER_ENV_VARS.sourceLeads.main_site,
     cpl: Number(process.env.MAINSITE_CPL ?? 0),
     hasBadTabs: false,
-    aliases: ["main site", "main_site", "mainsite", "Vantage Movers", "vantage_movers", "vantagemovers.com"],
+    aliases: [
+      "main site",
+      "main_site",
+      "mainsite",
+      "Vantage Movers",
+      "vantage_movers",
+      "vantagemovers.com",
+    ],
   },
   not_provided: {
     slug: "not_provided",
@@ -208,7 +217,9 @@ export const SOURCE_COMPANY_CONFIGS = {
   },
 } as const satisfies Record<SourceCompany, SourceCompanyConfig>;
 
-export function resolveSourceCompany(value?: string | null): SourceCompany | undefined {
+export function resolveSourceCompany(
+  value?: string | null,
+): SourceCompany | undefined {
   const normalized = (value ?? "").trim().toLowerCase();
   if (!normalized) {
     return "not_provided";
@@ -232,13 +243,17 @@ export function resolveSourceCompany(value?: string | null): SourceCompany | und
   return undefined;
 }
 
-export function resolveSourceCompanyFromLabel(value?: string | null): SourceCompany | undefined {
+export function resolveSourceCompanyFromLabel(
+  value?: string | null,
+): SourceCompany | undefined {
   const normalized = (value ?? "").trim().toLowerCase();
   if (!normalized) {
     return undefined;
   }
 
-  for (const [label, sourceCompany] of Object.entries(SOURCE_LABEL_TO_COMPANY)) {
+  for (const [label, sourceCompany] of Object.entries(
+    SOURCE_LABEL_TO_COMPANY,
+  )) {
     if (label.toLowerCase() === normalized) {
       return sourceCompany;
     }
@@ -289,7 +304,9 @@ export function getMasterBookedSheetContainerId(): string {
   return getRequiredEnv(SHEET_CONTAINER_ENV_VARS.masterBooked);
 }
 
-export function getSourceLeadSheetContainerId(sourceCompany: SourceCompany): string | undefined {
+export function getSourceLeadSheetContainerId(
+  sourceCompany: SourceCompany,
+): string | undefined {
   const envVar = SOURCE_COMPANY_CONFIGS[sourceCompany].leadSheetEnvVar;
   return envVar ? getRequiredEnv(envVar) : undefined;
 }

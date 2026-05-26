@@ -1,7 +1,7 @@
 import mongoose, { type HydratedDocument } from "mongoose";
 import {
   getCplForSource,
-  resolveSourceCompany,
+  resolveSourceCompanyFromLabel,
   type LocalType,
   type SourceCompany,
 } from "../config/domain";
@@ -14,13 +14,14 @@ import type {
   BookedCallLeadReconciliationBatchInput,
   BookedCallLeadReconciliationRowInput,
 } from "../validation/v1.validation";
-import { scheduleBookingChainSheetSync } from "./v1.service";
+import { scheduleBookingChainSheetSync, scheduleCallLeadSheetSync } from "./v1.service";
 
 export type BookedCallLeadReconciliationStatus =
   | "updateable"
   | "updated"
   | "unchanged"
   | "booking_missing"
+  | "no_match"
   | "invalid"
   | "conflict"
   | "failed";
@@ -64,6 +65,7 @@ type ResolvedReconciliation = {
   lead?: HydratedDocument<CallLeadDocument>;
   leadUpdate?: Partial<CallLeadDocument>;
   bookingUpdate?: Partial<BookedLeadDocument>;
+  syncTarget?: "booking_chain" | "call_lead";
   customerInput?: {
     full_name: string;
     phone_number: string;
@@ -92,7 +94,6 @@ export async function syncBookedCallLeadReconciliation(
       const resolved = await resolveReconciliationRow(row);
       if (
         resolved.result.status !== "updateable" ||
-        !resolved.booking ||
         !resolved.lead ||
         (!resolved.leadUpdate && !resolved.bookingUpdate && !resolved.customerInput)
       ) {
@@ -109,11 +110,11 @@ export async function syncBookedCallLeadReconciliation(
         await resolved.lead.save();
       }
 
-      if (resolved.bookingUpdate) {
+      if (resolved.booking && resolved.bookingUpdate) {
         Object.assign(resolved.booking, resolved.bookingUpdate);
       }
 
-      if (resolved.customerInput) {
+      if (resolved.booking && resolved.customerInput) {
         const customer = await Customer.findOneAndUpdate(
           { phone_number: resolved.customerInput.phone_number },
           resolved.customerInput,
@@ -122,16 +123,26 @@ export async function syncBookedCallLeadReconciliation(
         resolved.booking.customer = customer._id;
       }
 
-      await resolved.booking.save();
-      scheduleBookingChainSheetSync(
-        resolved.booking._id.toString(),
-        "booked_call_lead.reconciliation.sync",
-      );
+      if (resolved.syncTarget === "booking_chain" && resolved.booking) {
+        await resolved.booking.save();
+        scheduleBookingChainSheetSync(
+          resolved.booking._id.toString(),
+          "booked_call_lead.reconciliation.sync",
+        );
+      } else {
+        scheduleCallLeadSheetSync(
+          resolved.lead._id.toString(),
+          "booked_call_lead.call_lead_only.sync",
+        );
+      }
 
       results.push({
         ...resolved.result,
         status: "updated",
-        message: `Updated booked call lead ${resolved.lead._id.toString()} and booking ${resolved.booking._id.toString()}.`,
+        message:
+          resolved.syncTarget === "booking_chain" && resolved.booking
+            ? `Updated booked call lead ${resolved.lead._id.toString()} and booking ${resolved.booking._id.toString()}.`
+            : `Updated call lead ${resolved.lead._id.toString()} from Booked Jobs row.`,
       });
     } catch (error) {
       results.push({
@@ -164,13 +175,7 @@ async function resolveReconciliationRow(
 
   const booking = await BookedLead.findOne({ job_no: parsed.job_no });
   if (!booking) {
-    return {
-      result: {
-        ...base,
-        status: "booking_missing",
-        message: `No booked lead matched job_no ${parsed.job_no}.`,
-      },
-    };
+    return resolveCallLeadOnlyRow(parsed, base);
   }
 
   base.booking_id = booking._id.toString();
@@ -196,6 +201,17 @@ async function resolveReconciliationRow(
   }
   base.call_lead_id = lead._id.toString();
 
+  const sourceConflict = buildAssignedSourceConflict(lead, parsed);
+  if (sourceConflict) {
+    return {
+      result: {
+        ...base,
+        status: "conflict",
+        message: sourceConflict,
+      },
+    };
+  }
+
   const leadUpdate = buildLeadUpdate(lead, parsed, base.warnings);
   const bookingUpdate = buildBookingUpdate(booking, parsed);
   const customerInput = buildCustomerInput(parsed);
@@ -216,6 +232,7 @@ async function resolveReconciliationRow(
     return {
       booking,
       lead,
+      syncTarget: "booking_chain",
       result: {
         ...base,
         status: "unchanged",
@@ -230,10 +247,74 @@ async function resolveReconciliationRow(
     leadUpdate,
     bookingUpdate,
     customerInput,
+    syncTarget: "booking_chain",
     result: {
       ...base,
       status: "updateable",
       message: `Ready to update ${changes.length} field(s).`,
+      changes,
+    },
+  };
+}
+
+async function resolveCallLeadOnlyRow(
+  parsed: ParsedBookedCallLeadRow,
+  base: BookedCallLeadReconciliationResult,
+): Promise<ResolvedReconciliation> {
+  const match = await findCallLeadOnlyMatch(parsed);
+  if (match.result) {
+    return { result: { ...base, ...match.result } };
+  }
+  if (!match.lead) {
+    return {
+      result: {
+        ...base,
+        status: "no_match",
+        message: `No call lead matched job_no ${parsed.job_no} or phone/source ${parsed.normalized_phone_number}.`,
+      },
+    };
+  }
+
+  const lead = match.lead;
+  base.call_lead_id = lead._id.toString();
+  if (match.warnings.length > 0) {
+    base.warnings.push(...match.warnings);
+  }
+
+  const existingJobNo = cleanValue(lead.job_no);
+  if (existingJobNo && existingJobNo !== parsed.job_no) {
+    return {
+      lead,
+      result: {
+        ...base,
+        status: "conflict",
+        message: `Matched call lead already has job_no ${existingJobNo}; CRM row has ${parsed.job_no}.`,
+      },
+    };
+  }
+
+  const leadUpdate = buildLeadUpdate(lead, parsed, base.warnings);
+  const changes = Object.keys(leadUpdate).map((key) => `lead.${key}`);
+  if (changes.length === 0) {
+    return {
+      lead,
+      syncTarget: "call_lead",
+      result: {
+        ...base,
+        status: "unchanged",
+        message: "Matched call lead is already up to date.",
+      },
+    };
+  }
+
+  return {
+    lead,
+    leadUpdate,
+    syncTarget: "call_lead",
+    result: {
+      ...base,
+      status: "updateable",
+      message: `Ready to update ${changes.length} call lead field(s).`,
       changes,
     },
   };
@@ -251,7 +332,7 @@ async function parseBookedCallLeadRow(
   ]);
   const local = pickupState && deliveryState ? deriveLocal(pickupState, deliveryState) : undefined;
   const sourceLabel = cleanValue(row.source);
-  const sourceCompany = sourceLabel ? resolveSourceCompany(sourceLabel) : undefined;
+  const sourceCompany = sourceLabel ? resolveSourceCompanyFromLabel(sourceLabel) : undefined;
   if (sourceLabel && !sourceCompany) {
     warnings.push(`Skipped unknown source "${sourceLabel}".`);
   }
@@ -285,6 +366,11 @@ function validateParsedRow(parsed: ParsedBookedCallLeadRow): string[] {
   const reasons: string[] = [];
   if (!parsed.job_no) {
     reasons.push("Missing required job_no.");
+  }
+  if (!parsed.source_label) {
+    reasons.push("Missing required source.");
+  } else if (!parsed.source_company) {
+    reasons.push(`Unknown source "${parsed.source_label}".`);
   }
   if (parsed.section !== "bookedJobs" && parsed.prior !== "5") {
     reasons.push("Row is not from Booked Jobs and prior is not 5.");
@@ -338,6 +424,168 @@ function buildCustomerInput(parsed: ParsedBookedCallLeadRow) {
     phone_number: parsed.phone_number.trim(),
     ...(parsed.email ? { email: parsed.email } : {}),
   };
+}
+
+async function findCallLeadOnlyMatch(
+  parsed: ParsedBookedCallLeadRow,
+): Promise<{
+  lead?: HydratedDocument<CallLeadDocument>;
+  warnings: string[];
+  result?: Partial<BookedCallLeadReconciliationResult>;
+}> {
+  const byJobNo = await findEligibleCallLeadCandidates({ job_no: parsed.job_no });
+  if (byJobNo.length > 0) {
+    const selected = selectSourceCompatibleLead(byJobNo, parsed.source_company!, "job_no");
+    if (selected.result || selected.lead) {
+      return selected;
+    }
+  }
+
+  if (!parsed.normalized_phone_number) {
+    return {
+      result: {
+        status: "no_match",
+        message: "No booked lead matched job_no and the row has no valid phone for call lead matching.",
+      },
+      warnings: [],
+    };
+  }
+
+  const byPhone = (
+    await findEligibleCallLeadCandidates({
+      normalizedPhone: parsed.normalized_phone_number,
+    })
+  ).filter((lead) => normalizePhoneNumberForMatch(lead.phone_number) === parsed.normalized_phone_number);
+
+  if (byPhone.length === 0) {
+    return {
+      result: {
+        status: "no_match",
+        message: `No call lead matched phone ${parsed.normalized_phone_number}.`,
+      },
+      warnings: [],
+    };
+  }
+
+  const sourceCompatible = byPhone.filter((lead) =>
+    isLeadSourceCompatible(lead, parsed.source_company!),
+  );
+  if (sourceCompatible.length === 0) {
+    return selectSourceCompatibleLead(byPhone, parsed.source_company!, "phone");
+  }
+
+  const jobCompatible = sourceCompatible.filter((lead) => {
+    const existingJobNo = cleanValue(lead.job_no);
+    return !existingJobNo || existingJobNo === parsed.job_no;
+  });
+  if (jobCompatible.length > 0) {
+    return selectSourceCompatibleLead(jobCompatible, parsed.source_company!, "phone");
+  }
+
+  sourceCompatible.sort(compareCallLeadRecency);
+  return { lead: sourceCompatible[0], warnings: [] };
+}
+
+async function findEligibleCallLeadCandidates(input: {
+  job_no?: string;
+  normalizedPhone?: string;
+}): Promise<HydratedDocument<CallLeadDocument>[]> {
+  if (!input.job_no && !input.normalizedPhone) {
+    return [];
+  }
+
+  const identity = input.job_no
+    ? { job_no: input.job_no }
+    : {
+        $or: [
+          { normalized_phone_number: input.normalizedPhone },
+          { phone_number: buildPhoneRegex(input.normalizedPhone!) },
+        ],
+      };
+
+  return CallLead.find({
+    ...identity,
+    created_on_unmatched: { $ne: true },
+    $and: [
+      { $or: [{ booked: { $exists: false } }, { booked: null }] },
+      { $or: [{ cancelled: { $exists: false } }, { cancelled: null }] },
+    ],
+  })
+    .sort({ createdAt: -1 })
+    .limit(25)
+    .exec();
+}
+
+function selectSourceCompatibleLead(
+  candidates: HydratedDocument<CallLeadDocument>[],
+  sourceCompany: SourceCompany,
+  matchType: "job_no" | "phone",
+): {
+  lead?: HydratedDocument<CallLeadDocument>;
+  warnings: string[];
+  result?: Partial<BookedCallLeadReconciliationResult>;
+} {
+  const compatible = candidates.filter((lead) => isLeadSourceCompatible(lead, sourceCompany));
+  if (compatible.length === 0) {
+    const message =
+      matchType === "job_no"
+        ? `Call lead job_no matched, but no candidate had source_company ${sourceCompany} or an unassigned source.`
+        : `Call lead phone matched, but no candidate had source_company ${sourceCompany} or an unassigned source.`;
+    return {
+      result: {
+        status: matchType === "job_no" ? "conflict" : "no_match",
+        message,
+      },
+      warnings: [],
+    };
+  }
+
+  compatible.sort(compareCallLeadRecency);
+  const selected = compatible[0];
+  const nextWarnings: string[] = [];
+  if (compatible.length > 1) {
+    nextWarnings.push(
+      `Multiple call leads matched ${matchType} and source ${sourceCompany}; selected newest eligible lead.`,
+    );
+  }
+  if (isUnassignedSource(selected.source_company)) {
+    nextWarnings.push(`Claiming unassigned call lead source_company as ${sourceCompany}.`);
+  }
+
+  return { lead: selected, warnings: nextWarnings };
+}
+
+function buildAssignedSourceConflict(
+  lead: HydratedDocument<CallLeadDocument>,
+  parsed: ParsedBookedCallLeadRow,
+): string | undefined {
+  if (!parsed.source_company || isLeadSourceCompatible(lead, parsed.source_company)) {
+    return undefined;
+  }
+  return `Matched call lead has source_company ${lead.source_company}; CRM row source maps to ${parsed.source_company}.`;
+}
+
+function isLeadSourceCompatible(
+  lead: HydratedDocument<CallLeadDocument>,
+  sourceCompany: SourceCompany,
+): boolean {
+  return lead.source_company === sourceCompany || isUnassignedSource(lead.source_company);
+}
+
+function isUnassignedSource(sourceCompany: unknown): boolean {
+  return !sourceCompany || sourceCompany === "not_provided";
+}
+
+function compareCallLeadRecency(
+  a: HydratedDocument<CallLeadDocument>,
+  b: HydratedDocument<CallLeadDocument>,
+): number {
+  return getLeadTime(b) - getLeadTime(a);
+}
+
+function getLeadTime(lead: HydratedDocument<CallLeadDocument>): number {
+  const doc = lead as HydratedDocument<CallLeadDocument> & { createdAt?: Date };
+  return (lead.timestamp ?? doc.createdAt ?? new Date(0)).getTime();
 }
 
 function resultBase(
@@ -472,4 +720,8 @@ function parseOptionalDate(value: string | null | undefined, warnings: string[])
 
 function deriveLocal(pickupState: string, deliveryState: string): LocalType {
   return pickupState === deliveryState ? "local" : "long_distance";
+}
+
+function buildPhoneRegex(normalizedPhone: string): RegExp {
+  return new RegExp(`(?:^|\\D)${normalizedPhone.split("").join("\\D*")}(?:\\D|$)`);
 }
