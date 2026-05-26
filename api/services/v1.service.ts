@@ -191,12 +191,7 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
   }
   lead.cpl = getCplForSource(lead.source_company as SourceCompany, lead.local as LocalType);
   await lead.save();
-  scheduleFullSheetSyncProcess({
-    resource: "source_lead",
-    operation: "form_lead.update",
-    leadModel: "FormLead",
-    leadId: lead._id.toString(),
-  });
+  await scheduleUpdatedSourceLeadSync(lead, "FormLead", "form_lead.update");
   return lead;
 }
 
@@ -255,12 +250,7 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
   }
   lead.cpl = getCplForSource(lead.source_company as SourceCompany, lead.local as LocalType | undefined);
   await lead.save();
-  scheduleFullSheetSyncProcess({
-    resource: "source_lead",
-    operation: "call_lead.update",
-    leadModel: "CallLead",
-    leadId: lead._id.toString(),
-  });
+  await scheduleUpdatedSourceLeadSync(lead, "CallLead", "call_lead.update");
   return lead;
 }
 
@@ -952,6 +942,28 @@ function optionalValue<T>(value: T | null | undefined): T | undefined {
   return value === null ? undefined : value;
 }
 
+function sameObjectId(
+  left: mongoose.Types.ObjectId | { _id?: mongoose.Types.ObjectId } | string | null | undefined,
+  right: mongoose.Types.ObjectId | { _id?: mongoose.Types.ObjectId } | string | null | undefined,
+): boolean {
+  return objectIdToString(left) === objectIdToString(right);
+}
+
+function objectIdToString(
+  value: mongoose.Types.ObjectId | { _id?: mongoose.Types.ObjectId } | string | null | undefined,
+): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value instanceof mongoose.Types.ObjectId) {
+    return value.toString();
+  }
+  return value._id?.toString();
+}
+
 function parseSourceCompany(value?: string | null): SourceCompany {
   const sourceCompany = resolveSourceCompany(value);
   if (!sourceCompany) {
@@ -1131,6 +1143,77 @@ async function upsertCustomerFromLead(lead: {
     returnDocument: "after",
     setDefaultsOnInsert: true,
   }).orFail();
+}
+
+async function scheduleUpdatedSourceLeadSync(
+  lead: SourceLeadDocument,
+  leadModel: LeadModelName,
+  operation: string,
+) {
+  const job = await refreshAttachedBookingFromLead(lead, leadModel, operation);
+  scheduleFullSheetSyncProcess(job);
+}
+
+export async function refreshAttachedBookingFromLead(
+  lead: SourceLeadDocument,
+  leadModel: LeadModelName,
+  operation: string,
+): Promise<FullSheetSyncJob> {
+  const sourceLeadJob: FullSheetSyncJob = {
+    resource: "source_lead",
+    operation,
+    leadModel,
+    leadId: lead._id.toString(),
+  };
+  if (!lead.booked) {
+    return sourceLeadJob;
+  }
+
+  const bookingId = lead.booked.toString();
+  const booking = await BookedLead.findById(bookingId);
+  if (!booking) {
+    logger.warn({
+      msg: "source_lead.update.booking_missing",
+      operation,
+      leadModel,
+      leadId: lead._id.toString(),
+      bookingId,
+    });
+    return sourceLeadJob;
+  }
+
+  if (booking.lead_model !== leadModel || booking.lead_ref.toString() !== lead._id.toString()) {
+    logger.warn({
+      msg: "source_lead.update.booking_mismatch",
+      operation,
+      leadModel,
+      leadId: lead._id.toString(),
+      bookingId,
+      bookingLeadModel: booking.lead_model,
+      bookingLeadId: booking.lead_ref.toString(),
+    });
+    return sourceLeadJob;
+  }
+
+  let changed = false;
+  const customer = await upsertCustomerFromLead(lead);
+  if (customer && !sameObjectId(booking.customer, customer._id)) {
+    booking.customer = customer._id;
+    changed = true;
+  }
+  if (lead.local && booking.local !== lead.local) {
+    booking.local = lead.local;
+    changed = true;
+  }
+  if (changed) {
+    await booking.save();
+  }
+
+  return {
+    resource: "booking_chain",
+    operation,
+    bookingId: booking._id.toString(),
+  };
 }
 
 async function mirrorBookingToLead(
