@@ -93,7 +93,7 @@ function createBookedLeadForm() {
     .addTextItem()
     .setTitle("Job Number")
     .setHelpText(
-      "Required when Mongo Id is provided. Optional for call lead bookings when Phone Number is provided.",
+      "Optional when Mongo Id is provided. Required only for call lead bookings without Phone Number.",
     )
     .setRequired(false);
 
@@ -101,7 +101,7 @@ function createBookedLeadForm() {
     .addTextItem()
     .setTitle("Phone Number")
     .setHelpText(
-      "Required only when Mongo Id is blank. Used to find or update the booked call lead.",
+      "Required only when Mongo Id and Job Number are blank. Used to find or update the booked call lead.",
     )
     .setValidation(optionalPhoneValidation)
     .setRequired(false);
@@ -180,9 +180,6 @@ function onBookedLeadSubmit(e) {
     : "google-form-" + new Date().toISOString();
   const mongoId = optionalText(values["Mongo Id"]);
   const phoneNumber = optionalText(values["Phone Number"]);
-  if (mongoId && !jobNumber) {
-    throw new Error("Job Number is required when Mongo Id is provided.");
-  }
   if (!mongoId && !jobNumber && !phoneNumber) {
     throw new Error(
       "Either Job Number or Phone Number is required when Mongo Id is blank.",
@@ -246,7 +243,9 @@ function buildBookedLeadRequest(options) {
     delete payload.split_agent;
     delete payload.binder_amount;
 
-    payload.job_no = options.jobNumber;
+    if (options.jobNumber) {
+      payload.job_no = options.jobNumber;
+    }
     payload.lead_ref = options.mongoId;
     payload.lead_model = "FormLead";
     payload.agent_allocations = buildAgentAllocations(

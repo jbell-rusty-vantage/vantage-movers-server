@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   bookedCallLeadReconciliationBatchSchema,
+  createBookedLeadSchema,
   createBookedLeadFromSourceSchema,
   createCallLeadSchema,
   createFormLeadSchema,
@@ -43,6 +44,23 @@ test("createBookedLeadFromSourceSchema accepts CallLead booking with only call_j
   assert.equal(parsed.lead_type, "CallLead");
   assert.equal(parsed.call_job_no, "P5556278");
   assert.equal(parsed.call_phone_number, undefined);
+});
+
+test("createBookedLeadSchema accepts FormLead booking by Mongo id without job_no", () => {
+  const parsed = createBookedLeadSchema.parse({
+    book_date: "2026-05-21",
+    lead_ref: "507f1f77bcf86cd799439011",
+    lead_model: "FormLead",
+    agent_allocations: [{ agent_name: "JOSH", binder_amount: 900 }],
+    total_binder_amount: 900,
+    deposit_amount: 900,
+    merchant: "Card",
+    source: "main_site",
+  });
+
+  assert.equal(parsed.lead_ref, "507f1f77bcf86cd799439011");
+  assert.equal(parsed.lead_model, "FormLead");
+  assert.equal(parsed.job_no, undefined);
 });
 
 test("createBookedLeadFromSourceSchema accepts transient CallLead booking phone", () => {

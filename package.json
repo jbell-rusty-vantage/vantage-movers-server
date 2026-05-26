@@ -22,6 +22,7 @@
     "postman:login": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/postman-login.ts",
     "postman:sync": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/postman-sync-vantage-movers.ts",
     "demo:live-sheet-sync": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/live-sheet-sync-demo.ts",
+    "call-leads:create-best-relocation": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/create-best-relocation-call-leads.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"api/**/*.test.ts\""
   },

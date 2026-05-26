@@ -216,6 +216,7 @@ function binderTotalMatches(value: {
 export const createBookedLeadSchema = z
   .object({
     ...bookedLeadFields,
+    job_no: optionalString,
     agent_allocations: z.array(agentAllocationInputSchema).min(1),
   })
   .strict()
