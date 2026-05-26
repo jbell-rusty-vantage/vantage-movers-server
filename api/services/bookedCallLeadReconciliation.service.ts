@@ -26,6 +26,12 @@ export type BookedCallLeadReconciliationStatus =
   | "conflict"
   | "failed";
 
+export type BookedCallLeadMatchMethod =
+  | "job_no_with_booking"
+  | "job_no_only"
+  | "phone_only"
+  | "none";
+
 export type BookedCallLeadReconciliationResult = {
   row_id: string;
   status: BookedCallLeadReconciliationStatus;
@@ -33,6 +39,10 @@ export type BookedCallLeadReconciliationResult = {
   job_no?: string;
   booking_id?: string;
   call_lead_id?: string;
+  /** How we located the call lead / booking in the database. */
+  match_method?: BookedCallLeadMatchMethod;
+  /** Whether the matched call lead has a booking attached. */
+  has_booking?: boolean;
   changes: string[];
   warnings: string[];
   parsed?: ParsedBookedCallLeadRow;
@@ -179,6 +189,8 @@ async function resolveReconciliationRow(
   }
 
   base.booking_id = booking._id.toString();
+  base.match_method = "job_no_with_booking";
+  base.has_booking = true;
   if (booking.lead_model !== "CallLead") {
     return {
       result: {
@@ -236,7 +248,7 @@ async function resolveReconciliationRow(
       result: {
         ...base,
         status: "unchanged",
-        message: "Booked call lead is already up to date.",
+        message: `Found a Vantage booking by job_no ${parsed.job_no} (booking ${booking._id.toString()}, call lead ${lead._id.toString()}). All fields already match; running sync is idempotent.`,
       },
     };
   }
@@ -251,7 +263,7 @@ async function resolveReconciliationRow(
     result: {
       ...base,
       status: "updateable",
-      message: `Ready to update ${changes.length} field(s).`,
+      message: `Found a Vantage booking by job_no ${parsed.job_no} (booking ${booking._id.toString()}). Sync will refresh ${changes.length} field(s) across the call lead and booking; the booking link itself is preserved.`,
       changes,
     },
   };
@@ -263,38 +275,49 @@ async function resolveCallLeadOnlyRow(
 ): Promise<ResolvedReconciliation> {
   const match = await findCallLeadOnlyMatch(parsed);
   if (match.result) {
-    return { result: { ...base, ...match.result } };
+    return {
+      result: {
+        ...base,
+        ...match.result,
+        match_method: match.matchMethod ?? base.match_method,
+      },
+    };
   }
   if (!match.lead) {
+    base.match_method = "none";
     return {
       result: {
         ...base,
         status: "no_match",
-        message: `No call lead matched job_no ${parsed.job_no} or phone/source ${parsed.normalized_phone_number}.`,
+        message: `No Vantage booking exists for job_no ${parsed.job_no}, and no call lead matched ${
+          parsed.normalized_phone_number ? `phone ${parsed.normalized_phone_number}` : ""
+        }${parsed.normalized_phone_number ? " or " : ""}job_no ${parsed.job_no}. The customer's phone may have been switched in Granot, or the lead is older than the system's retention window.`,
       },
     };
   }
 
   const lead = match.lead;
   base.call_lead_id = lead._id.toString();
+  base.match_method = match.matchMethod;
+  base.has_booking = Boolean(lead.booked);
   if (match.warnings.length > 0) {
     base.warnings.push(...match.warnings);
   }
 
   const existingJobNo = cleanValue(lead.job_no);
-  if (existingJobNo && existingJobNo !== parsed.job_no) {
-    return {
-      lead,
-      result: {
-        ...base,
-        status: "conflict",
-        message: `Matched call lead already has job_no ${existingJobNo}; CRM row has ${parsed.job_no}.`,
-      },
-    };
+  const hasJobConflict =
+    Boolean(existingJobNo) && existingJobNo !== parsed.job_no;
+  if (hasJobConflict) {
+    base.warnings.push(
+      `Existing call lead already has job_no ${existingJobNo}; CRM row has ${parsed.job_no}. The job_no will be left as-is during sync.`,
+    );
   }
 
-  const leadUpdate = buildLeadUpdate(lead, parsed, base.warnings);
+  const leadUpdate = buildLeadUpdate(lead, parsed, base.warnings, {
+    skipJobNo: hasJobConflict,
+  });
   const changes = Object.keys(leadUpdate).map((key) => `lead.${key}`);
+  const how = formatMatchMethodLabel(match.matchMethod);
   if (changes.length === 0) {
     return {
       lead,
@@ -302,7 +325,7 @@ async function resolveCallLeadOnlyRow(
       result: {
         ...base,
         status: "unchanged",
-        message: "Matched call lead is already up to date.",
+        message: `No Vantage booking exists for job_no ${parsed.job_no} yet. Found a call lead ${how}; all fields already match. Running sync is idempotent.`,
       },
     };
   }
@@ -314,10 +337,23 @@ async function resolveCallLeadOnlyRow(
     result: {
       ...base,
       status: "updateable",
-      message: `Ready to update ${changes.length} call lead field(s).`,
+      message: `No Vantage booking exists for job_no ${parsed.job_no} yet. Found a call lead ${how}. Sync will update ${changes.length} field(s) on the call lead.`,
       changes,
     },
   };
+}
+
+function formatMatchMethodLabel(
+  method: BookedCallLeadMatchMethod | undefined,
+): string {
+  switch (method) {
+    case "job_no_only":
+      return "by job_no only";
+    case "phone_only":
+      return "by phone_number only";
+    default:
+      return "in Vantage";
+  }
 }
 
 async function parseBookedCallLeadRow(
@@ -382,9 +418,12 @@ function buildLeadUpdate(
   lead: HydratedDocument<CallLeadDocument>,
   parsed: ParsedBookedCallLeadRow,
   warnings: string[],
+  options?: { skipJobNo?: boolean },
 ): Partial<CallLeadDocument> {
   const update: Partial<CallLeadDocument> = {};
-  assignIfChanged(update, lead, "job_no", parsed.job_no);
+  if (!options?.skipJobNo) {
+    assignIfChanged(update, lead, "job_no", parsed.job_no);
+  }
   assignIfChanged(update, lead, "name", parsed.name);
   assignIfChanged(update, lead, "phone_number", parsed.phone_number);
   assignIfChanged(update, lead, "email", parsed.email);
@@ -431,13 +470,14 @@ async function findCallLeadOnlyMatch(
 ): Promise<{
   lead?: HydratedDocument<CallLeadDocument>;
   warnings: string[];
+  matchMethod?: BookedCallLeadMatchMethod;
   result?: Partial<BookedCallLeadReconciliationResult>;
 }> {
   const byJobNo = await findEligibleCallLeadCandidates({ job_no: parsed.job_no });
   if (byJobNo.length > 0) {
     const selected = selectSourceCompatibleLead(byJobNo, parsed.source_company!, "job_no");
-    if (selected.result || selected.lead) {
-      return selected;
+    if (selected.lead || selected.result) {
+      return { ...selected, matchMethod: "job_no_only" };
     }
   }
 
@@ -448,6 +488,7 @@ async function findCallLeadOnlyMatch(
         message: "No booked lead matched job_no and the row has no valid phone for call lead matching.",
       },
       warnings: [],
+      matchMethod: "none",
     };
   }
 
@@ -464,6 +505,7 @@ async function findCallLeadOnlyMatch(
         message: `No call lead matched phone ${parsed.normalized_phone_number}.`,
       },
       warnings: [],
+      matchMethod: "none",
     };
   }
 
@@ -471,7 +513,8 @@ async function findCallLeadOnlyMatch(
     isLeadSourceCompatible(lead, parsed.source_company!),
   );
   if (sourceCompatible.length === 0) {
-    return selectSourceCompatibleLead(byPhone, parsed.source_company!, "phone");
+    const selected = selectSourceCompatibleLead(byPhone, parsed.source_company!, "phone");
+    return { ...selected, matchMethod: "phone_only" };
   }
 
   const jobCompatible = sourceCompatible.filter((lead) => {
@@ -479,11 +522,12 @@ async function findCallLeadOnlyMatch(
     return !existingJobNo || existingJobNo === parsed.job_no;
   });
   if (jobCompatible.length > 0) {
-    return selectSourceCompatibleLead(jobCompatible, parsed.source_company!, "phone");
+    const selected = selectSourceCompatibleLead(jobCompatible, parsed.source_company!, "phone");
+    return { ...selected, matchMethod: "phone_only" };
   }
 
   sourceCompatible.sort(compareCallLeadRecency);
-  return { lead: sourceCompatible[0], warnings: [] };
+  return { lead: sourceCompatible[0], warnings: [], matchMethod: "phone_only" };
 }
 
 async function findEligibleCallLeadCandidates(input: {

@@ -547,7 +547,9 @@ export async function findAllFormLeads() {
 }
 
 export async function findFormLead(id: string) {
-  const lead = await FormLead.findById(id).select("_id ref_no quoted");
+  const lead = await FormLead.findById(id).select(
+    "_id ref_no quoted cubic_feet booked",
+  );
   if (!lead) {
     throw new V1ServiceError("Form lead not found", 404);
   }

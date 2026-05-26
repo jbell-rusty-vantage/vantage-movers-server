@@ -99,7 +99,7 @@ test("booked reconciliation does not globally phone-match across assigned source
   assert.match(result.message, /no candidate had source_company main_site/i);
 });
 
-test("booked reconciliation conflicts before overwriting a different call lead job_no", async () => {
+test("booked reconciliation warns but allows idempotent sync when phone-matched lead has a different job_no", async () => {
   stubBookedLeadMissing();
   stubCallLeadFind((query) => {
     if ("job_no" in query) {
@@ -129,8 +129,17 @@ test("booked reconciliation conflicts before overwriting a different call lead j
     ],
   });
 
-  assert.equal(result.status, "conflict");
-  assert.match(result.message, /already has job_no P999/);
+  assert.notEqual(result.status, "conflict");
+  assert.equal(result.match_method, "phone_only");
+  assert.equal(result.has_booking, false);
+  assert.match(
+    result.warnings.join(" "),
+    /Existing call lead already has job_no P999/,
+  );
+  assert.ok(
+    !result.changes.includes("lead.job_no"),
+    "job_no should be left as-is during sync to avoid clobbering existing value",
+  );
 });
 
 test("booked reconciliation prefers phone/source candidates without conflicting job_no", async () => {
