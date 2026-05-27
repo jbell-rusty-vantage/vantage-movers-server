@@ -4,7 +4,8 @@ globs: api/**/*.ts
 alwaysApply: false
 ---
 
-# Google Sheets Sync Process
+# Google Sheets Sync Process 
+# THIS FILE NEEDS TO BE UPDATED . It is not fully representative. 
 
 - MongoDB is the source of truth. Create/update Mongo documents first, then derive Google Sheets rows from saved documents. For deletes, remove Google Sheets rows before deleting the Mongo document so `sheet_sync[]` metadata is still available.
 - Keep spreadsheet container IDs separate from tab names. `MASTER_LEADS_SHEET_ID` contains `Forms` and `Calls`; `MASTER_BOOKED_SHEET_ID` contains `Booked Deals` and `Cancelled Deals`.
