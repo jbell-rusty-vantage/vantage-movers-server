@@ -1141,8 +1141,14 @@ function getCallLeadTime(lead: mongoose.HydratedDocument<CallLeadDocument>): num
   return (lead.timestamp ?? doc.createdAt ?? new Date(0)).getTime();
 }
 
+// The regex acts as a Mongo-side sieve: it must hit any stored phone whose
+// last 10 digits equal `normalizedPhone`, regardless of separators or extra
+// leading digits (e.g. country code, or an 11th digit that storage chose to
+// preserve as-is). We anchor only the tail with `(?:\D|$)` so that we do not
+// match the prefix of a longer number; the caller still verifies the exact
+// match in memory via `normalizePhoneNumberForMatch(stored) === normalizedPhone`.
 function buildPhoneRegex(normalizedPhone: string): RegExp {
-  return new RegExp(`(?:^|\\D)${normalizedPhone.split("").join("\\D*")}(?:\\D|$)`);
+  return new RegExp(`${normalizedPhone.split("").join("\\D*")}(?:\\D|$)`);
 }
 
 async function getLinkedLead(

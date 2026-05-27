@@ -15,7 +15,7 @@ const FormLeadSchema = new Schema(
     name: { type: String, required: true, trim: true },
     source_company_site: { type: String, trim: true },
     timestamp: { type: Date, required: true, default: Date.now },
-    lid: { type: String, trim: true, index: true },
+    lid: { type: String, trim: true },
     pickup_zip: { type: String, required: true, trim: true },
     destination_zip: { type: String, required: true, trim: true },
     pickup_state: { type: String, trim: true, default: FORM_LEAD_UNKNOWN_STATE },
