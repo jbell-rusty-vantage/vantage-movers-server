@@ -9,44 +9,23 @@ import {
 } from "../config/domain";
 import { Agent } from "../models/Agent";
 import { BookedLead, type BookedLeadDocument } from "../models/BookedLead";
-import { CallLead, type CallLeadDocument } from "../models/CallLead";
+import { CallLead } from "../models/CallLead";
 import { CancelledLead } from "../models/CancelledLead";
 import { Customer } from "../models/Customer";
-import {
-  FORM_LEAD_UNKNOWN_STATE,
-  FormLead,
-  type FormLeadDocument,
-} from "../models/FormLead";
-import { generateLeadId } from "../utils/ids";
-import { getStateCodeForZip } from "../utils/pickupZipState";
 import { logger } from "../logger";
 import type {
   CreateBookedLeadFromSourceInput,
   CreateBookedLeadInput,
-  CreateCallLeadInput,
   CreateCancelledLeadInput,
   CreateCustomerInput,
-  CreateFormLeadInput,
   UpdateBookedLeadInput,
-  UpdateCallLeadInput,
   UpdateCancelledLeadInput,
   UpdateCustomerInput,
-  UpdateFormLeadInput,
 } from "../validation/v1.validation";
-import {
-  normalizePhoneNumberForMatch,
-  normalizePhoneNumberForStorage,
-} from "../utils/phone";
-import {
-  buildCrmFormLeadPayload,
-  submitFormLeadToCrm,
-  type CrmSubmitResult,
-} from "./crm.service";
+import { normalizePhoneNumberForMatch } from "../utils/phone";
 import {
   deleteBookedLeadFromSheets,
-  deleteCallLeadFromSheets,
   deleteCancelledLeadFromSheets,
-  deleteFormLeadFromSheets,
 } from "./googleSheets.service";
 import {
   scheduleFullSheetSyncProcess,
@@ -55,13 +34,48 @@ import {
   syncSourceLeadById,
   type FullSheetSyncJob,
 } from "./sheetSync";
+import {
+  findBestCallLeadMatchByPhone,
+  getLinkedLead,
+  hasFormFillForCallLead,
+  parseSourceCompany,
+  resolveSourceLeadById,
+  type SourceLeadDocument,
+} from "./leads";
+
+// --- Compatibility re-exports -------------------------------------------------
+//
+// Route layers and other services historically imported these symbols from
+// `api/services/v1.service.ts`. As the refactor moves implementations into
+// dedicated folders, this facade keeps the original import paths working.
+
+export { V1ServiceError } from "./v1ServiceError";
 
 export {
   scheduleBookingChainSheetSync,
   scheduleCallLeadSheetSync,
 } from "./sheetSync";
 
-type SourceLeadDocument = mongoose.HydratedDocument<FormLeadDocument | CallLeadDocument>;
+export {
+  createCallLead,
+  createFormLead,
+  deleteCallLead,
+  deleteFormLead,
+  findAllCallLeads,
+  findAllFormLeads,
+  findFormLead,
+  updateCallLead,
+  updateFormLead,
+} from "./leads";
+
+// Local imports of the V1ServiceError class for use inside this file. Re-export
+// above keeps it visible at the public facade path.
+import { V1ServiceError } from "./v1ServiceError";
+
+// -----------------------------------------------------------------------------
+// Booking, cancellation, customer, agent allocation, and mirror behavior below
+// still lives here. They will be extracted in refactor plans 04 and 05.
+
 type AgentAllocationInput = CreateBookedLeadInput["agent_allocations"][number];
 type AgentAllocationDocumentInput = {
   agent: mongoose.Types.ObjectId;
@@ -71,185 +85,6 @@ type AgentAllocationDocumentInput = {
 type CreateBookedLeadServiceInput = Omit<CreateBookedLeadInput, "job_no"> & {
   job_no?: string;
 };
-
-export class V1ServiceError extends Error {
-  constructor(
-    message: string,
-    public readonly statusCode = 400,
-  ) {
-    super(message);
-    this.name = "V1ServiceError";
-  }
-}
-
-export async function createFormLead(input: CreateFormLeadInput) {
-  const { crm_company_label, post_to_granot, ...formLeadInput } = input;
-  formLeadInput.phone_number = normalizePhoneNumberForStorage(formLeadInput.phone_number);
-  const source_company = parseSourceCompany(formLeadInput.source_company);
-  const location = await resolveRequiredLocation(formLeadInput);
-  const local = deriveFormLeadLocal(location.pickup_state, location.delivery_state);
-  const duplicate = await isDuplicateFormLead(
-    source_company,
-    formLeadInput.phone_number,
-    formLeadInput.email,
-  );
-  const shouldPostToGranot = post_to_granot && !duplicate;
-  const lead = await FormLead.create({
-    ...formLeadInput,
-    ...location,
-    source_company,
-    local,
-    lid: formLeadInput.lid?.trim() || generateLeadId(),
-    ref_no: formLeadInput.ref_no?.trim() || "not provided",
-    timestamp: formLeadInput.timestamp ?? new Date(),
-    move_date: formLeadInput.move_date ?? new Date(),
-    cpl: getCplForSource(source_company, local),
-    duplicate,
-    post_to_granot: shouldPostToGranot,
-  });
-
-  const leadId = lead._id.toString();
-  if (!lead.duplicate) {
-    await markMatchingCallLeadsWithFormFill(source_company, lead.phone_number, leadId);
-  }
-
-  const crmResult: CrmSubmitResult = shouldPostToGranot
-    ? await submitFormLeadToCrm(lead, { companyLabel: crm_company_label })
-    : {
-        ok: true,
-        status: 0,
-        responseText: "",
-        payload: buildCrmFormLeadPayload(lead, crm_company_label),
-      };
-
-  if (!shouldPostToGranot) {
-    logger.info({
-      msg: "crm.form_lead.submit.skipped",
-      leadId,
-      companyLabel: crm_company_label,
-      duplicate,
-    });
-  }
-
-  scheduleFullSheetSyncProcess({
-    resource: "source_lead",
-    operation: "form_lead.create",
-    leadModel: "FormLead",
-    leadId,
-  });
-
-  logger.info({
-    msg: "form_lead.sheet_sync.pending_response",
-    leadId,
-    crmSyncOk: crmResult.ok,
-    crmStatus: crmResult.status,
-    crmSkipped: !shouldPostToGranot,
-    duplicate,
-  });
-
-  return {
-    lead,
-    sheet_sync_status: "pending",
-    crm_sync_status: shouldPostToGranot ? (crmResult.ok ? "synced" : "failed") : "skipped",
-    crm_company_label: crmResult.payload.label,
-    crm_response: crmResult.responseText || crmResult.error || "",
-  };
-}
-
-export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
-  const lead = await FormLead.findById(id);
-  if (!lead) {
-    throw new V1ServiceError("Form lead not found", 404);
-  }
-
-  const update = { ...input };
-  if (input.source_company !== undefined) {
-    update.source_company = parseSourceCompany(input.source_company);
-  }
-  if (input.phone_number !== undefined) {
-    update.phone_number = normalizePhoneNumberForStorage(input.phone_number);
-  }
-  Object.assign(lead, update);
-  if (
-    hasOwnInput(input, "pickup_zip") ||
-    hasOwnInput(input, "destination_zip") ||
-    hasOwnInput(input, "pickup_state") ||
-    hasOwnInput(input, "delivery_state")
-  ) {
-    const location = await resolveRequiredLocation({
-      pickup_zip: input.pickup_zip ?? lead.pickup_zip,
-      destination_zip: input.destination_zip ?? lead.destination_zip,
-      pickup_state: input.pickup_state ?? lead.pickup_state,
-      delivery_state: input.delivery_state ?? lead.delivery_state,
-    });
-    lead.pickup_state = location.pickup_state;
-    lead.delivery_state = location.delivery_state;
-    lead.local = deriveFormLeadLocal(location.pickup_state, location.delivery_state);
-  }
-  lead.cpl = getCplForSource(lead.source_company as SourceCompany, lead.local as LocalType);
-  await lead.save();
-  await scheduleUpdatedSourceLeadSync(lead, "FormLead", "form_lead.update");
-  return lead;
-}
-
-export async function createCallLead(input: CreateCallLeadInput) {
-  const source_company = parseSourceCompany(input.source_company);
-  const location = await resolveOptionalLocation(input);
-  const local = location.local ?? input.local;
-  const form_fill = await hasFormFillForCallLead(source_company, input.phone_number);
-  const lead = await CallLead.create({
-    ...input,
-    ...location,
-    source_company,
-    local,
-    form_fill,
-    timestamp: input.timestamp ?? new Date(),
-    cpl: getCplForSource(source_company, local),
-  });
-
-  scheduleFullSheetSyncProcess({
-    resource: "source_lead",
-    operation: "call_lead.create",
-    leadModel: "CallLead",
-    leadId: lead._id.toString(),
-  });
-  return lead;
-}
-
-export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
-  const lead = await CallLead.findById(id);
-  if (!lead) {
-    throw new V1ServiceError("Call lead not found", 404);
-  }
-
-  const update = { ...input };
-  if (input.source_company !== undefined) {
-    update.source_company = parseSourceCompany(input.source_company);
-  }
-  Object.assign(lead, update);
-  if (
-    input.pickup_zip ||
-    input.delivery_zip ||
-    input.pickup_state ||
-    input.delivery_state ||
-    input.local
-  ) {
-    const location = await resolveOptionalLocation({
-      pickup_zip: optionalValue(input.pickup_zip ?? lead.pickup_zip),
-      delivery_zip: optionalValue(input.delivery_zip ?? lead.delivery_zip),
-      pickup_state: optionalValue(input.pickup_state ?? lead.pickup_state),
-      delivery_state: optionalValue(input.delivery_state ?? lead.delivery_state),
-      local: optionalValue(input.local ?? lead.local),
-    });
-    lead.pickup_state = location.pickup_state;
-    lead.delivery_state = location.delivery_state;
-    lead.local = location.local ?? input.local ?? lead.local;
-  }
-  lead.cpl = getCplForSource(lead.source_company as SourceCompany, lead.local as LocalType | undefined);
-  await lead.save();
-  await scheduleUpdatedSourceLeadSync(lead, "CallLead", "call_lead.update");
-  return lead;
-}
 
 export async function createBookedLead(input: CreateBookedLeadServiceInput) {
   const lead = await getLinkedLead(input.lead_model, input.lead_ref);
@@ -490,26 +325,6 @@ async function getBookedLeadForCancellation(
   return booking;
 }
 
-async function resolveSourceLeadById(
-  leadId: string,
-): Promise<{ lead: SourceLeadDocument; leadModel: LeadModelName }> {
-  const [formLead, callLead] = await Promise.all([
-    FormLead.findById(leadId),
-    CallLead.findById(leadId),
-  ]);
-  if (formLead && callLead) {
-    throw new V1ServiceError("Lead id matched both form and call leads", 409);
-  }
-  if (formLead) {
-    return { lead: formLead, leadModel: "FormLead" };
-  }
-  if (callLead) {
-    return { lead: callLead, leadModel: "CallLead" };
-  }
-
-  throw new V1ServiceError("Source lead not found", 404);
-}
-
 export async function updateCancelledLead(id: string, input: UpdateCancelledLeadInput) {
   const cancellation = await CancelledLead.findByIdAndUpdate(id, input, {
     returnDocument: "after",
@@ -539,25 +354,6 @@ export async function updateCustomer(id: string, input: UpdateCustomerInput) {
   return customer;
 }
 
-export async function findAllFormLeads() {
-  return FormLead.find().sort({ createdAt: -1 }).limit(200);
-}
-
-export async function findFormLead(id: string) {
-  const lead = await FormLead.findById(id).select(
-    "_id ref_no quoted cubic_feet booked",
-  );
-  if (!lead) {
-    throw new V1ServiceError("Form lead not found", 404);
-  }
-
-  return lead;
-}
-
-export async function findAllCallLeads() {
-  return CallLead.find().sort({ createdAt: -1 }).limit(200);
-}
-
 export async function findAllBookedLeads() {
   return BookedLead.find()
     .populate("customer")
@@ -572,36 +368,6 @@ export async function findAllCancelledLeads() {
 
 export async function findAllCustomers() {
   return Customer.find().sort({ createdAt: -1 }).limit(200);
-}
-
-export async function deleteFormLead(id: string, cascade: boolean) {
-  const lead = await FormLead.findById(id);
-  if (!lead) {
-    throw new V1ServiceError("Form lead not found", 404);
-  }
-  if (lead.booked && !cascade) {
-    throw new V1ServiceError("Form lead has a booking; pass cascade=true to delete dependents", 409);
-  }
-  if (lead.booked && cascade) {
-    await deleteBookedLead(lead.booked.toString(), true);
-  }
-  await deleteFormLeadFromSheets(lead);
-  await lead.deleteOne();
-}
-
-export async function deleteCallLead(id: string, cascade: boolean) {
-  const lead = await CallLead.findById(id);
-  if (!lead) {
-    throw new V1ServiceError("Call lead not found", 404);
-  }
-  if (lead.booked && !cascade) {
-    throw new V1ServiceError("Call lead has a booking; pass cascade=true to delete dependents", 409);
-  }
-  if (lead.booked && cascade) {
-    await deleteBookedLead(lead.booked.toString(), true);
-  }
-  await deleteCallLeadFromSheets(lead);
-  await lead.deleteOne();
 }
 
 export async function deleteBookedLead(id: string, cascade: boolean) {
@@ -893,70 +659,8 @@ async function populateBookedLead(id: mongoose.Types.ObjectId) {
   return BookedLead.findById(id).populate("customer").populate("agent_allocations.agent").orFail();
 }
 
-async function resolveRequiredLocation(input: {
-  pickup_zip: string;
-  destination_zip: string;
-  pickup_state?: string;
-  delivery_state?: string;
-}) {
-  const [pickupStateFromZip, deliveryStateFromZip] = await Promise.all([
-    getStateCodeForZip(input.pickup_zip),
-    getStateCodeForZip(input.destination_zip),
-  ]);
-  const pickup_state =
-    normalizeState(pickupStateFromZip ?? input.pickup_state) ?? FORM_LEAD_UNKNOWN_STATE;
-  const delivery_state =
-    normalizeState(deliveryStateFromZip ?? input.delivery_state) ?? FORM_LEAD_UNKNOWN_STATE;
-
-  return { pickup_state, delivery_state };
-}
-
-async function resolveOptionalLocation(input: {
-  pickup_zip?: string;
-  delivery_zip?: string;
-  pickup_state?: string;
-  delivery_state?: string;
-  local?: LocalType;
-}) {
-  const [pickupStateFromZip, deliveryStateFromZip] = await Promise.all([
-    input.pickup_zip ? getStateCodeForZip(input.pickup_zip) : undefined,
-    input.delivery_zip ? getStateCodeForZip(input.delivery_zip) : undefined,
-  ]);
-  const pickup_state = normalizeState(pickupStateFromZip ?? input.pickup_state);
-  const delivery_state = normalizeState(deliveryStateFromZip ?? input.delivery_state);
-  const local = pickup_state && delivery_state ? deriveLocal(pickup_state, delivery_state) : input.local;
-  return { pickup_state, delivery_state, local };
-}
-
-function deriveLocal(pickupState: string, deliveryState: string): LocalType {
-  return pickupState === deliveryState ? "local" : "long_distance";
-}
-
-function deriveFormLeadLocal(pickupState: string, deliveryState: string): LocalType {
-  if (pickupState === FORM_LEAD_UNKNOWN_STATE || deliveryState === FORM_LEAD_UNKNOWN_STATE) {
-    return "long_distance";
-  }
-
-  return deriveLocal(pickupState, deliveryState);
-}
-
-function normalizeState(value?: string | null): string | undefined {
-  const trimmed = value?.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  return trimmed.toLowerCase() === FORM_LEAD_UNKNOWN_STATE
-    ? FORM_LEAD_UNKNOWN_STATE
-    : trimmed.toUpperCase();
-}
-
 function optionalValue<T>(value: T | null | undefined): T | undefined {
   return value === null ? undefined : value;
-}
-
-function hasOwnInput<T extends object>(input: T, key: keyof T): boolean {
-  return Object.prototype.hasOwnProperty.call(input, key);
 }
 
 function sameObjectId(
@@ -981,172 +685,6 @@ function objectIdToString(
   return value._id?.toString();
 }
 
-function parseSourceCompany(value?: string | null): SourceCompany {
-  const sourceCompany = resolveSourceCompany(value);
-  if (!sourceCompany) {
-    throw new V1ServiceError(`Unknown source_company "${value}"`, 400);
-  }
-
-  return sourceCompany;
-}
-
-async function isDuplicateFormLead(
-  sourceCompany: SourceCompany,
-  phoneNumber?: string | null,
-  email?: string | null,
-): Promise<boolean> {
-  const normalizedPhone = normalizePhoneNumberForMatch(phoneNumber);
-  const normalizedEmail = email?.trim().toLowerCase();
-  if (!normalizedPhone || !normalizedEmail) {
-    return false;
-  }
-
-  const candidates = await FormLead.find({
-    source_company: sourceCompany,
-    email: normalizedEmail,
-    duplicate: { $ne: true },
-    phone_number: buildPhoneRegex(normalizedPhone),
-  })
-    .sort({ createdAt: -1 })
-    .limit(25)
-    .exec();
-
-  return candidates.some(
-    (lead) => normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone,
-  );
-}
-
-async function hasFormFillForCallLead(
-  sourceCompany: SourceCompany,
-  phoneNumber?: string | null,
-): Promise<boolean> {
-  const normalizedPhone = normalizePhoneNumberForMatch(phoneNumber);
-  if (!normalizedPhone) {
-    return false;
-  }
-
-  const candidates = await FormLead.find({
-    source_company: sourceCompany,
-    duplicate: { $ne: true },
-    phone_number: buildPhoneRegex(normalizedPhone),
-  })
-    .sort({ createdAt: -1 })
-    .limit(25)
-    .exec();
-
-  return candidates.some(
-    (lead) => normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone,
-  );
-}
-
-async function markMatchingCallLeadsWithFormFill(
-  sourceCompany: SourceCompany,
-  phoneNumber: string,
-  formLeadId: string,
-): Promise<void> {
-  const normalizedPhone = normalizePhoneNumberForMatch(phoneNumber);
-  if (!normalizedPhone) {
-    return;
-  }
-
-  const candidates = await CallLead.find({
-    source_company: sourceCompany,
-    form_fill: { $ne: true },
-    $or: [
-      { normalized_phone_number: normalizedPhone },
-      { phone_number: buildPhoneRegex(normalizedPhone) },
-    ],
-  })
-    .sort({ createdAt: -1 })
-    .limit(25)
-    .exec();
-
-  const matchedCallLeads = candidates.filter(
-    (lead) => normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone,
-  );
-
-  for (const callLead of matchedCallLeads) {
-    callLead.form_fill = true;
-    await callLead.save();
-    scheduleFullSheetSyncProcess({
-      resource: "source_lead",
-      operation: "call_lead.form_fill.update",
-      leadModel: "CallLead",
-      leadId: callLead._id.toString(),
-    });
-  }
-
-  logger.info({
-    msg: "form_lead.call_lead_form_fill.updated",
-    formLeadId,
-    sourceCompany,
-    normalizedPhone,
-    matchedCallLeadCount: matchedCallLeads.length,
-  });
-}
-
-async function findBestCallLeadMatchByPhone(
-  normalizedPhone: string,
-): Promise<mongoose.HydratedDocument<CallLeadDocument> | undefined> {
-  const candidates = (
-    await CallLead.find({
-      $or: [
-        { normalized_phone_number: normalizedPhone },
-        { phone_number: buildPhoneRegex(normalizedPhone) },
-      ],
-    })
-      .sort({ createdAt: -1 })
-      .limit(25)
-      .exec()
-  ).filter((lead) => normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone);
-
-  if (candidates.length === 0) {
-    return undefined;
-  }
-
-  const eligibleCandidates = candidates.filter((lead) => !lead.booked && !lead.cancelled);
-  const ranked = eligibleCandidates.length > 0 ? eligibleCandidates : candidates;
-  ranked.sort(compareCallLeadRecency);
-  return ranked[0];
-}
-
-function compareCallLeadRecency(
-  a: mongoose.HydratedDocument<CallLeadDocument>,
-  b: mongoose.HydratedDocument<CallLeadDocument>,
-): number {
-  return getCallLeadTime(b) - getCallLeadTime(a);
-}
-
-function getCallLeadTime(lead: mongoose.HydratedDocument<CallLeadDocument>): number {
-  const doc = lead as mongoose.HydratedDocument<CallLeadDocument> & { createdAt?: Date };
-  return (lead.timestamp ?? doc.createdAt ?? new Date(0)).getTime();
-}
-
-// The regex acts as a Mongo-side sieve: it must hit any stored phone whose
-// last 10 digits equal `normalizedPhone`, regardless of separators or extra
-// leading digits (e.g. country code, or an 11th digit that storage chose to
-// preserve as-is). We anchor only the tail with `(?:\D|$)` so that we do not
-// match the prefix of a longer number; the caller still verifies the exact
-// match in memory via `normalizePhoneNumberForMatch(stored) === normalizedPhone`.
-function buildPhoneRegex(normalizedPhone: string): RegExp {
-  return new RegExp(`${normalizedPhone.split("").join("\\D*")}(?:\\D|$)`);
-}
-
-async function getLinkedLead(
-  leadModel: LeadModelName,
-  leadId: string,
-): Promise<SourceLeadDocument> {
-  const lead =
-    leadModel === "FormLead"
-      ? await FormLead.findById(leadId)
-      : await CallLead.findById(leadId);
-  if (!lead) {
-    throw new V1ServiceError("Linked source lead not found", 404);
-  }
-
-  return lead;
-}
-
 async function upsertCustomerFromLead(lead: {
   name?: string | null;
   phone_number?: string | null;
@@ -1166,15 +704,6 @@ async function upsertCustomerFromLead(lead: {
     returnDocument: "after",
     setDefaultsOnInsert: true,
   }).orFail();
-}
-
-async function scheduleUpdatedSourceLeadSync(
-  lead: SourceLeadDocument,
-  leadModel: LeadModelName,
-  operation: string,
-) {
-  const job = await refreshAttachedBookingFromLead(lead, leadModel, operation);
-  scheduleFullSheetSyncProcess(job);
 }
 
 export async function refreshAttachedBookingFromLead(
@@ -1295,4 +824,3 @@ async function clearCancellationFromLead(
     await syncSourceLead(lead, leadModel);
   }
 }
-

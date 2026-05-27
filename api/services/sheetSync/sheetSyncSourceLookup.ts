@@ -2,18 +2,15 @@ import mongoose from "mongoose";
 import type { LeadModelName } from "../../config/domain";
 import { logger } from "../../logger";
 import { BookedLead } from "../../models/BookedLead";
-import { CallLead, type CallLeadDocument } from "../../models/CallLead";
 import { CancelledLead } from "../../models/CancelledLead";
-import { FormLead, type FormLeadDocument } from "../../models/FormLead";
 import {
   syncBookedLeadToSheets,
   syncCallLeadToSheets,
   syncCancelledLeadToSheets,
   syncFormLeadToSheets,
 } from "../googleSheets.service";
+import { getLinkedLead } from "../leads/sourceLeadLookup.service";
 import { syncAndStore, type SheetSyncDocument } from "./sheetSyncPersistence";
-
-type SourceLeadDocument = mongoose.HydratedDocument<FormLeadDocument | CallLeadDocument>;
 
 /**
  * Looks up a source lead by id+model and runs its sheet sync.
@@ -105,28 +102,4 @@ export async function syncSourceLead(
 
   await lead.populate({ path: "booked", populate: { path: "customer" } });
   await syncAndStore(lead, syncFormLeadToSheets);
-}
-
-/**
- * Local copy of the source-lead-by-id lookup used by `v1.service.ts`.
- *
- * Duplicated intentionally so the sheet sync folder does not depend on
- * `v1.service.ts` (which would create a circular import via the compatibility
- * re-exports). The `services/leads/sourceLeadLookup.service.ts` extraction in
- * `03-lead-services.md` is the planned home for the canonical implementation,
- * at which point this copy should be replaced with an import from there.
- */
-async function getLinkedLead(
-  leadModel: LeadModelName,
-  leadId: string,
-): Promise<SourceLeadDocument> {
-  const lead =
-    leadModel === "FormLead"
-      ? await FormLead.findById(leadId)
-      : await CallLead.findById(leadId);
-  if (!lead) {
-    throw new Error("Linked source lead not found");
-  }
-
-  return lead;
 }

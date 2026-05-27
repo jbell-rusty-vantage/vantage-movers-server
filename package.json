@@ -10,6 +10,7 @@
     "db:ping": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ping-db.ts",
     "db:clear": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/clear-db.ts",
     "db:clear:test": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/clear-test-db.ts",
+    "db:clear:booked": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/clear-production-booked-leads.ts",
     "db:init-historical": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/init-historical-db.ts",
     "historical:ingest-sheets": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ingest-historical-sheets.ts",
     "historical:reconcile": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/reconcile-historical-leads.ts",
