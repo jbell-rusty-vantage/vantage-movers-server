@@ -127,6 +127,38 @@ test("createFormLeadSchema does not accept duplicate from clients", () => {
   assert.equal(parsed.success, false);
 });
 
+test("createFormLeadSchema accepts post_to_granot boolean false", () => {
+  const parsed = createFormLeadSchema.parse({
+    source_company: "main_site",
+    name: "Jane Customer",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    move_size: "Studio",
+    ref_no: "not provided",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+    post_to_granot: false,
+  });
+
+  assert.equal(parsed.post_to_granot, false);
+});
+
+test("createFormLeadSchema accepts post_to_granot string false", () => {
+  const parsed = createFormLeadSchema.parse({
+    source_company: "main_site",
+    name: "Jane Customer",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    move_size: "Studio",
+    ref_no: "not provided",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+    post_to_granot: "false",
+  });
+
+  assert.equal(parsed.post_to_granot, false);
+});
+
 test("createCallLeadSchema does not accept server-owned flags from clients", () => {
   const parsed = createCallLeadSchema.safeParse({
     job_no: "P5556278",

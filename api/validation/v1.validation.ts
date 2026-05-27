@@ -8,6 +8,21 @@ const requiredDate = z.coerce.date();
 const finiteNumber = z.coerce.number().finite();
 const optionalNumber = z.coerce.number().finite().optional();
 const moneyAmount = z.coerce.number().finite().min(0);
+const booleanInput = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true") {
+    return true;
+  }
+  if (normalized === "false") {
+    return false;
+  }
+
+  return value;
+}, z.boolean());
 
 export const objectIdSchema = z.string().trim().regex(/^[a-f\d]{24}$/i, "Invalid Mongo ObjectId");
 export const sourceCompanySchema = z.string().trim().min(1);
@@ -53,7 +68,7 @@ const formLeadFields = {
   ref_no: nonEmptyString,
   email: emailSchema,
   phone_number: nonEmptyString,
-  quoted: z.coerce.boolean().optional(),
+  quoted: booleanInput.optional(),
   cubic_feet: optionalNumber,
 };
 
@@ -63,7 +78,7 @@ export const createFormLeadSchema = z
     source_company: sourceCompanySchema.default("not_provided"),
     ref_no: nonEmptyString.default("not provided"),
     crm_company_label: nonEmptyString.default("Get Movers"),
-    post_to_granot: z.coerce.boolean().default(true),
+    post_to_granot: booleanInput.default(true),
   })
   .strict();
 
