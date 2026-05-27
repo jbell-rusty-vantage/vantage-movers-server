@@ -33,6 +33,7 @@ pnpm-debug.log*
 # Ignore output
 /*.log
 /logs
+scripts/historical_db_models/historical-analytics-report.json
 
 # Editor
 .vscode/

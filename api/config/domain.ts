@@ -1,4 +1,12 @@
-export const MONGO_DATABASE_NAME = "vantagemovers";
+export function isTestMode(): boolean {
+  return process.env.TEST_MODE?.trim().toLowerCase() === "true";
+}
+
+export function getMongoDatabaseName(): "vantagemovers" | "testvantagemovers" {
+  return isTestMode() ? "testvantagemovers" : "vantagemovers";
+}
+
+export const MONGO_DATABASE_NAME = getMongoDatabaseName();
 
 export const SOURCE_COMPANIES = [
   "tbm_leads",
@@ -71,6 +79,13 @@ export const SHEET_CONTAINER_ENV_VARS = {
     best_relocation_leads: "BEST_RELOCATION_LEADS_SHEET_ID",
     main_site: "MAINSITE_LEADS_SHEET_ID",
   },
+} as const;
+
+export const GOOGLE_SERVICE_ACCOUNT_ENV_VARS = {
+  json: "GOOGLE_SERVICE_ACCOUNT_JSON",
+  testJson: "GOOGLE_SERVICE_ACCOUNT_TEST_JSON",
+  base64Json: "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64",
+  testBase64Json: "GOOGLE_SERVICE_ACCOUNT_TEST_JSON_BASE64",
 } as const;
 
 export const FORM_SHEET_HEADERS = [
@@ -160,6 +175,15 @@ export type SourceLeadSheetEnvVar =
   | "TOP10_LEADS_SHEET_ID"
   | "BEST_RELOCATION_LEADS_SHEET_ID"
   | "MAINSITE_LEADS_SHEET_ID";
+
+export type SheetContainerEnvVar =
+  | "MASTER_LEADS_SHEET_ID"
+  | "MASTER_BOOKED_SHEET_ID"
+  | SourceLeadSheetEnvVar;
+
+export type RuntimeSheetContainerEnvVar =
+  | SheetContainerEnvVar
+  | `TEST_${SheetContainerEnvVar}`;
 
 export const SOURCE_COMPANY_CONFIGS = {
   tbm_leads: {
@@ -301,17 +325,39 @@ export function getRequiredEnv(name: string): string {
   return value;
 }
 
+export function getRuntimeSheetContainerEnvVar(
+  envVar: SheetContainerEnvVar,
+): RuntimeSheetContainerEnvVar {
+  return isTestMode() ? (`TEST_${envVar}` as const) : envVar;
+}
+
+export function getGoogleServiceAccountJsonEnvVar():
+  | "GOOGLE_SERVICE_ACCOUNT_JSON"
+  | "GOOGLE_SERVICE_ACCOUNT_TEST_JSON" {
+  return isTestMode()
+    ? GOOGLE_SERVICE_ACCOUNT_ENV_VARS.testJson
+    : GOOGLE_SERVICE_ACCOUNT_ENV_VARS.json;
+}
+
+export function getGoogleServiceAccountJsonBase64EnvVar():
+  | "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64"
+  | "GOOGLE_SERVICE_ACCOUNT_TEST_JSON_BASE64" {
+  return isTestMode()
+    ? GOOGLE_SERVICE_ACCOUNT_ENV_VARS.testBase64Json
+    : GOOGLE_SERVICE_ACCOUNT_ENV_VARS.base64Json;
+}
+
 export function getMasterLeadsSheetContainerId(): string {
-  return getRequiredEnv(SHEET_CONTAINER_ENV_VARS.masterLeads);
+  return getRequiredEnv(getRuntimeSheetContainerEnvVar(SHEET_CONTAINER_ENV_VARS.masterLeads));
 }
 
 export function getMasterBookedSheetContainerId(): string {
-  return getRequiredEnv(SHEET_CONTAINER_ENV_VARS.masterBooked);
+  return getRequiredEnv(getRuntimeSheetContainerEnvVar(SHEET_CONTAINER_ENV_VARS.masterBooked));
 }
 
 export function getSourceLeadSheetContainerId(
   sourceCompany: SourceCompany,
 ): string | undefined {
   const envVar = SOURCE_COMPANY_CONFIGS[sourceCompany].leadSheetEnvVar;
-  return envVar ? getRequiredEnv(envVar) : undefined;
+  return envVar ? getRequiredEnv(getRuntimeSheetContainerEnvVar(envVar)) : undefined;
 }

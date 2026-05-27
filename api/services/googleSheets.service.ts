@@ -5,11 +5,13 @@ import {
   CALL_SHEET_HEADERS,
   CANCELLED_SHEET_HEADERS,
   FORM_SHEET_HEADERS,
+  getGoogleServiceAccountJsonBase64EnvVar,
+  getGoogleServiceAccountJsonEnvVar,
   getMasterBookedSheetContainerId,
   getMasterLeadsSheetContainerId,
-  getRequiredEnv,
   getSourceCompanyLabel,
   getSourceLeadSheetContainerId,
+  isTestMode,
   SHEET_TAB_NAMES,
   SOURCE_COMPANY_CONFIGS,
   type SourceCompany,
@@ -27,7 +29,6 @@ import {
 import { logger } from "../logger";
 import type { SheetSyncEntry } from "../models/schemaHelpers";
 
-const SERVICE_ACCOUNT_FILE = process.env.SERVICE_ACCOUNT_LOCAL_FILE;
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const SHEET_ROW_LOOKUP_END_COLUMN = "ZZ";
 const LEGACY_CALL_SHEET_HEADER_LENGTH = 18;
@@ -148,17 +149,20 @@ function getSheetsClient(): sheets_v4.Sheets {
   logAuthConfigOnce(authSummary);
 
   const credentials = getServiceAccountCredentials();
-  if (!credentials && !SERVICE_ACCOUNT_FILE?.trim()) {
-    const message =
-      "Google Sheets auth is not configured: set GOOGLE_SERVICE_ACCOUNT_JSON or SERVICE_ACCOUNT_LOCAL_FILE";
+  const serviceAccountFile = getServiceAccountFile();
+  if (!credentials && !serviceAccountFile) {
+    const requiredEnvVar = getGoogleServiceAccountJsonEnvVar();
+    const message = isTestMode()
+      ? `Google Sheets auth is not configured for TEST_MODE=true: set ${requiredEnvVar}`
+      : `Google Sheets auth is not configured: set ${requiredEnvVar} or SERVICE_ACCOUNT_LOCAL_FILE`;
     logger.error({ msg: "sheets.auth.missing", auth: authSummary }, message);
     throw new Error(message);
   }
 
-  if (!credentials && SERVICE_ACCOUNT_FILE?.startsWith("=")) {
+  if (!credentials && serviceAccountFile?.startsWith("=")) {
     logger.warn({
       msg: "sheets.auth.key_file_malformed",
-      keyFile: SERVICE_ACCOUNT_FILE,
+      keyFile: serviceAccountFile,
       hint: "SERVICE_ACCOUNT_LOCAL_FILE looks like it has a stray '=' prefix; fix .env or use GOOGLE_SERVICE_ACCOUNT_JSON",
     });
   }
@@ -166,7 +170,7 @@ function getSheetsClient(): sheets_v4.Sheets {
   const auth = new google.auth.GoogleAuth({
     ...(credentials
       ? { credentials }
-      : { keyFile: path.join(process.cwd(), SERVICE_ACCOUNT_FILE!.trim()) }),
+      : { keyFile: path.join(process.cwd(), serviceAccountFile!) }),
     scopes: [SHEETS_SCOPE],
   });
 
@@ -192,8 +196,10 @@ function logAuthConfigOnce(authSummary: GoogleAuthConfigSummary): void {
 }
 
 function getServiceAccountCredentials(): ServiceAccountCredentials | undefined {
-  const rawJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
-  const base64Json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64?.trim();
+  const jsonEnvVar = getGoogleServiceAccountJsonEnvVar();
+  const base64JsonEnvVar = getGoogleServiceAccountJsonBase64EnvVar();
+  const rawJson = process.env[jsonEnvVar]?.trim();
+  const base64Json = process.env[base64JsonEnvVar]?.trim();
   const value =
     rawJson ??
     (base64Json ? Buffer.from(base64Json, "base64").toString("utf8") : undefined);
@@ -222,7 +228,7 @@ function getServiceAccountCredentials(): ServiceAccountCredentials | undefined {
       {
         err: error,
         msg: "sheets.auth.json_parse_failed",
-        authSource: rawJson ? "env_json" : "env_base64",
+        authSource: rawJson ? jsonEnvVar : base64JsonEnvVar,
         parseError: details.message,
         hint: details.hint,
       },
@@ -383,9 +389,20 @@ export async function ensureAllConfiguredSheetTabs(): Promise<void> {
     if (!source.leadSheetEnvVar) {
       continue;
     }
-    const sourceLeadSheetContainerId = getRequiredEnv(source.leadSheetEnvVar);
+    const sourceLeadSheetContainerId = getSourceLeadSheetContainerId(source.slug);
+    if (!sourceLeadSheetContainerId) {
+      continue;
+    }
     await ensureTabsAndHeaders(sheets, sourceLeadSheetContainerId, getSourceLeadTabs(source.slug));
   }
+}
+
+function getServiceAccountFile(): string | undefined {
+  if (isTestMode()) {
+    return undefined;
+  }
+
+  return process.env.SERVICE_ACCOUNT_LOCAL_FILE?.trim() || undefined;
 }
 
 function getLeadTargets(

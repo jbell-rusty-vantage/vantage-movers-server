@@ -1,3 +1,9 @@
+import {
+  getGoogleServiceAccountJsonBase64EnvVar,
+  getGoogleServiceAccountJsonEnvVar,
+  isTestMode,
+} from "../config/domain";
+
 type ServiceAccountCredentials = {
   client_email?: string;
   private_key?: string;
@@ -22,8 +28,8 @@ export type GoogleApiErrorDetails = {
 };
 
 export function resolveAuthConfigSummary(): GoogleAuthConfigSummary {
-  const rawJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
-  const base64Json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64?.trim();
+  const rawJson = process.env[getGoogleServiceAccountJsonEnvVar()]?.trim();
+  const base64Json = process.env[getGoogleServiceAccountJsonBase64EnvVar()]?.trim();
   const keyFile = process.env.SERVICE_ACCOUNT_LOCAL_FILE?.trim();
 
   if (rawJson) {
@@ -37,7 +43,7 @@ export function resolveAuthConfigSummary(): GoogleAuthConfigSummary {
     );
   }
 
-  if (keyFile) {
+  if (!isTestMode() && keyFile) {
     return {
       authSource: "key_file",
       keyFile,
@@ -128,11 +134,11 @@ function permissionHint(
   }
 
   if (status === 401 || normalized.includes("invalid_grant") || normalized.includes("unauthorized")) {
-    return "Check GOOGLE_SERVICE_ACCOUNT_JSON / key file: valid JSON, unexpired key, and matching client_email in Google Cloud.";
+    return "Check the configured Google service account env var / key file: valid JSON, unexpired key, and matching client_email in Google Cloud.";
   }
 
   if (normalized.includes("invalid json") || normalized.includes("unexpected token")) {
-    return "GOOGLE_SERVICE_ACCOUNT_JSON may be malformed; re-run sheets:minify-service-account and paste the one-line output.";
+    return "The configured Google service account JSON may be malformed; re-run sheets:minify-service-account and paste the one-line output.";
   }
 
   return undefined;

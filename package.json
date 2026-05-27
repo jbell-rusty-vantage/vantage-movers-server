@@ -13,6 +13,8 @@
     "historical:ingest-sheets": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ingest-historical-sheets.ts",
     "historical:reconcile": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/reconcile-historical-leads.ts",
     "historical:diagnostic": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/historical-ingestion-diagnostic.ts",
+    "historical:analytics": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/historical-analytics.ts",
+    "historical:repair-agent-allocations": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/repair-historical-agent-allocations.ts",
     "sheets:list-tabs": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/list-google-sheet-tabs.ts",
     "sheets:list-formulas": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/list-google-sheet-formulas.ts",
     "sheets:dump-leads-columns": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dump-leads-sheet-columns.ts",

@@ -1,6 +1,11 @@
 import mongoose, { type Model } from "mongoose";
 import { connectMongo } from "../api/db";
 import { normalizePhoneNumberForMatch } from "../api/utils/phone";
+import {
+  normalizeHistoricalAgentName,
+  splitBinderAmountEvenly,
+  splitHistoricalAgentNames,
+} from "./historical-agent-allocation";
 import { createGoogleSheetsClient, requiredEnv } from "./google-sheets-auth";
 import { registerHistoricalModels } from "./historical_db_models";
 import { reconcileHistoricalRelationships } from "./reconcile-historical-leads";
@@ -84,8 +89,7 @@ function isBlankRow(row: string[] | undefined): boolean {
 }
 
 function normalizeName(value: string): string | undefined {
-  const normalized = value.trim().toLowerCase().replace(/\s+/g, " ");
-  return normalized || undefined;
+  return normalizeHistoricalAgentName(value);
 }
 
 function normalizeId(value: string): string | undefined {
@@ -213,6 +217,35 @@ async function ensureAgent(
   });
 }
 
+async function buildAgentAllocations(
+  models: HistoricalModels,
+  rawName: string,
+  binderAmount: number | undefined,
+  importBatchId: string,
+) {
+  const agentNames = splitHistoricalAgentNames(rawName);
+  const binderAmounts = splitBinderAmountEvenly(binderAmount, agentNames.length);
+  const allocations: Array<{
+    agent: mongoose.Types.ObjectId;
+    agent_name_snapshot: string;
+    binder_amount: number | undefined;
+  }> = [];
+
+  for (let index = 0; index < agentNames.length; index++) {
+    const agentName = agentNames[index];
+    const agent = await ensureAgent(models, agentName, importBatchId);
+    if (!agent) continue;
+
+    allocations.push({
+      agent: agent._id,
+      agent_name_snapshot: agentName,
+      binder_amount: binderAmounts[index],
+    });
+  }
+
+  return allocations;
+}
+
 async function ensureCustomer(models: HistoricalModels, rawName: string) {
   const normalizedName = normalizeName(rawName);
   if (!normalizedName) return undefined;
@@ -328,10 +361,15 @@ async function ingestBookedLead(
   importBatchId: string,
 ) {
   const agentName = cell(raw.Agent);
-  const agent = await ensureAgent(models, agentName, importBatchId);
   const customer = await ensureCustomer(models, raw["Customer Name"] ?? "");
   const binderAmount = parseMoney(raw["Binder Amount"] ?? "");
   const lid = normalizeId(raw.LID ?? "");
+  const agentAllocations = await buildAgentAllocations(
+    models,
+    agentName,
+    binderAmount,
+    importBatchId,
+  );
 
   await upsertBySourceRow(
     models.BookedLead,
@@ -345,15 +383,7 @@ async function ingestBookedLead(
       customer: customer?._id,
       customer_name_snapshot: cell(raw["Customer Name"]),
       normalized_customer_name: normalizeName(raw["Customer Name"] ?? ""),
-      agent_allocations: agent
-        ? [
-            {
-              agent: agent._id,
-              agent_name_snapshot: agentName,
-              binder_amount: binderAmount,
-            },
-          ]
-        : [],
+      agent_allocations: agentAllocations,
       total_binder_amount: binderAmount,
       deposit_amount: parseMoney(raw["Deposit Amount"] ?? ""),
       merchant: cell(raw.Merchant),
@@ -373,7 +403,9 @@ async function ingestRefund(
   raw: SheetRow,
   importBatchId: string,
 ) {
-  await ensureAgent(models, raw.Agent ?? "", importBatchId);
+  for (const agentName of splitHistoricalAgentNames(raw.Agent ?? "")) {
+    await ensureAgent(models, agentName, importBatchId);
+  }
   const customer = await ensureCustomer(models, raw["Customer Name"] ?? "");
 
   await upsertBySourceRow(
