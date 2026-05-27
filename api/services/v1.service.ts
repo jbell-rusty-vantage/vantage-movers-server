@@ -1,4 +1,3 @@
-import { waitUntil } from "@vercel/functions";
 import mongoose from "mongoose";
 import {
   getCplForSource,
@@ -18,10 +17,8 @@ import {
   FormLead,
   type FormLeadDocument,
 } from "../models/FormLead";
-import { mergeSheetSyncEntries } from "../models/schemaHelpers";
 import { generateLeadId } from "../utils/ids";
 import { getStateCodeForZip } from "../utils/pickupZipState";
-import { connectMongo } from "../db";
 import { logger } from "../logger";
 import type {
   CreateBookedLeadFromSourceInput,
@@ -50,17 +47,19 @@ import {
   deleteCallLeadFromSheets,
   deleteCancelledLeadFromSheets,
   deleteFormLeadFromSheets,
-  syncBookedLeadToSheets,
-  syncCallLeadToSheets,
-  syncCancelledLeadToSheets,
-  syncFormLeadToSheets,
 } from "./googleSheets.service";
+import {
+  scheduleFullSheetSyncProcess,
+  syncBookingAndSource,
+  syncSourceLead,
+  syncSourceLeadById,
+  type FullSheetSyncJob,
+} from "./sheetSync";
 
-type AnyDoc = mongoose.Document & {
-  _id: mongoose.Types.ObjectId;
-  sheet_sync?: unknown[];
-  save(): Promise<unknown>;
-};
+export {
+  scheduleBookingChainSheetSync,
+  scheduleCallLeadSheetSync,
+} from "./sheetSync";
 
 type SourceLeadDocument = mongoose.HydratedDocument<FormLeadDocument | CallLeadDocument>;
 type AgentAllocationInput = CreateBookedLeadInput["agent_allocations"][number];
@@ -72,24 +71,6 @@ type AgentAllocationDocumentInput = {
 type CreateBookedLeadServiceInput = Omit<CreateBookedLeadInput, "job_no"> & {
   job_no?: string;
 };
-
-type FullSheetSyncJob =
-  | {
-      resource: "source_lead";
-      operation: string;
-      leadModel: LeadModelName;
-      leadId: string;
-    }
-  | {
-      resource: "booking_chain";
-      operation: string;
-      bookingId: string;
-    }
-  | {
-      resource: "cancellation_chain";
-      operation: string;
-      cancellationId: string;
-    };
 
 export class V1ServiceError extends Error {
   constructor(
@@ -1315,176 +1296,3 @@ async function clearCancellationFromLead(
   }
 }
 
-async function syncBookingAndSource(
-  bookingId: mongoose.Types.ObjectId,
-  leadModel: LeadModelName,
-  leadId: string,
-) {
-  const booking = await BookedLead.findById(bookingId)
-    .populate("customer")
-    .populate("agent_allocations.agent")
-    .orFail();
-  await syncAndStore(booking as unknown as AnyDoc, syncBookedLeadToSheets);
-  const lead = await getLinkedLead(leadModel, leadId);
-  await syncSourceLead(lead, leadModel);
-}
-
-function scheduleFullSheetSyncProcess(job: FullSheetSyncJob) {
-  const context = sheetSyncLogContext(job);
-  logger.info({ msg: `${job.operation}.sheet_sync.scheduled`, ...context });
-
-  waitUntil(
-    runFullSheetSyncProcess(job).catch((error) => {
-      logger.error(
-        {
-          err: error,
-          msg: `${job.operation}.sheet_sync.failed`,
-          ...context,
-        },
-        "Background sheet sync failed",
-      );
-    }),
-  );
-}
-
-export function scheduleCallLeadSheetSync(leadId: string, operation: string) {
-  scheduleFullSheetSyncProcess({
-    resource: "source_lead",
-    operation,
-    leadModel: "CallLead",
-    leadId,
-  });
-}
-
-export function scheduleBookingChainSheetSync(bookingId: string, operation: string) {
-  scheduleFullSheetSyncProcess({
-    resource: "booking_chain",
-    operation,
-    bookingId,
-  });
-}
-
-async function runFullSheetSyncProcess(job: FullSheetSyncJob) {
-  const context = sheetSyncLogContext(job);
-  logger.info({ msg: `${job.operation}.sheet_sync.started`, ...context });
-
-  await connectMongo();
-
-  switch (job.resource) {
-    case "source_lead":
-      await syncSourceLeadById(job.leadModel, job.leadId);
-      break;
-    case "booking_chain":
-      await syncBookingChainById(job.bookingId);
-      break;
-    case "cancellation_chain":
-      await syncCancellationChainById(job.cancellationId);
-      break;
-  }
-
-  logger.info({ msg: `${job.operation}.sheet_sync.completed`, ...context });
-}
-
-async function syncSourceLeadById(leadModel: LeadModelName, leadId: string) {
-  const lead = await getLinkedLead(leadModel, leadId);
-  await syncSourceLead(lead, leadModel);
-}
-
-async function syncBookingChainById(bookingId: string) {
-  const booking = await BookedLead.findById(bookingId);
-  if (!booking) {
-    logger.warn({ msg: "sheet_sync.booking_missing", bookingId });
-    return;
-  }
-
-  await syncBookingAndSource(
-    booking._id,
-    booking.lead_model as LeadModelName,
-    booking.lead_ref.toString(),
-  );
-}
-
-async function syncCancellationChainById(cancellationId: string) {
-  const cancellation = await CancelledLead.findById(cancellationId);
-  if (!cancellation) {
-    logger.warn({ msg: "sheet_sync.cancellation_missing", cancellationId });
-    return;
-  }
-
-  await syncBookingChainById(cancellation.booked_lead.toString());
-  await syncAndStore(cancellation as unknown as AnyDoc, syncCancelledLeadToSheets);
-}
-
-function sheetSyncLogContext(job: FullSheetSyncJob): Record<string, string> {
-  switch (job.resource) {
-    case "source_lead":
-      return {
-        resource: job.resource,
-        leadModel: job.leadModel,
-        leadId: job.leadId,
-      };
-    case "booking_chain":
-      return {
-        resource: job.resource,
-        bookingId: job.bookingId,
-      };
-    case "cancellation_chain":
-      return {
-        resource: job.resource,
-        cancellationId: job.cancellationId,
-      };
-  }
-}
-
-async function syncSourceLead(lead: AnyDoc, leadModel: LeadModelName) {
-  if (leadModel === "CallLead") {
-    if (lead.get("created_on_unmatched") === true) {
-      logger.info({
-        msg: "sheet_sync.call_lead.created_on_unmatched.skipped",
-        leadId: lead._id.toString(),
-      });
-      return;
-    }
-    await lead.populate({ path: "booked", populate: { path: "customer" } });
-    await syncAndStore(lead, syncCallLeadToSheets);
-    return;
-  }
-
-  await lead.populate({ path: "booked", populate: { path: "customer" } });
-  await syncAndStore(lead, syncFormLeadToSheets);
-}
-
-async function syncAndStore(
-  document: AnyDoc,
-  syncFn: (doc: any) => Promise<ReturnType<typeof mergeSheetSyncEntries>>,
-) {
-  const documentId = document._id.toString();
-  const updates = await syncFn(document);
-  document.set("sheet_sync", mergeSheetSyncEntries(document.get("sheet_sync"), updates));
-  await document.save();
-
-  const summary = updates.map((entry) => ({
-    target: entry.target,
-    status: entry.status,
-    tabName: entry.tab_name,
-    rowNumber: entry.row_number ?? null,
-    lastError: entry.last_error ?? null,
-  }));
-  const failed = updates.filter((entry) => entry.status === "failed");
-
-  if (failed.length > 0) {
-    logger.warn({
-      msg: "sheet_sync.document.partial_failure",
-      documentId,
-      failedTargets: failed.map((entry) => entry.target),
-      sheetSync: summary,
-    });
-    return;
-  }
-
-  logger.info({
-    msg: "sheet_sync.document.ok",
-    documentId,
-    sheetSync: summary,
-  });
-}
