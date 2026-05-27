@@ -4,6 +4,8 @@ import {
   CALL_SHEET_HEADERS,
   FORM_SHEET_HEADERS,
   SHEET_TAB_NAMES,
+  getSourceCompanyLabel,
+  resolveSourceCompany,
   resolveSourceCompanyFromLabel,
 } from "./domain";
 
@@ -36,4 +38,11 @@ test("source label mapping accepts Granot compact BestRelocation labels", () => 
   assert.equal(resolveSourceCompanyFromLabel("BestRelocation Forms"), "best_relocation_leads");
   assert.equal(resolveSourceCompanyFromLabel("BestRelocation Locals"), "best_relocation_leads");
   assert.equal(resolveSourceCompanyFromLabel("BestRelocation Inbounds"), "best_relocation_leads");
+});
+
+test("top10_leads sheet label is Top 10 Forms while legacy labels still resolve", () => {
+  assert.equal(getSourceCompanyLabel("tbm_leads"), "TBM Leads");
+  assert.equal(getSourceCompanyLabel("top10_leads"), "Top 10 Forms");
+  assert.equal(resolveSourceCompany("TBM Leads"), "tbm_leads");
+  assert.equal(resolveSourceCompany("Top 10 Leads"), "top10_leads");
 });

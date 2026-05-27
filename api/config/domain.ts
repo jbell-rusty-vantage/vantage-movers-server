@@ -204,7 +204,7 @@ export const SOURCE_COMPANY_CONFIGS = {
   },
   top10_leads: {
     slug: "top10_leads",
-    label: "Top 10 Leads",
+    label: "Top 10 Forms",
     leadSheetEnvVar: SHEET_CONTAINER_ENV_VARS.sourceLeads.top10_leads,
     cpl: Number(process.env.TOP10_LEADS_CPL ?? 190),
     hasBadTabs: true,
