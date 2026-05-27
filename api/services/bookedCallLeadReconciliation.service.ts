@@ -767,5 +767,6 @@ function deriveLocal(pickupState: string, deliveryState: string): LocalType {
 }
 
 function buildPhoneRegex(normalizedPhone: string): RegExp {
-  return new RegExp(`(?:^|\\D)${normalizedPhone.split("").join("\\D*")}(?:\\D|$)`);
+  const digits = normalizedPhone.replace(/\D/g, "");
+  return new RegExp(`(?:^|\\D)${digits.split("").join("\\D*")}(?:\\D|$)`);
 }

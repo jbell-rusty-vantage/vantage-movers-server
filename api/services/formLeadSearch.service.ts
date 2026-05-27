@@ -276,7 +276,8 @@ function buildNameRegex(normalizedName: string): RegExp {
 }
 
 function buildPhoneRegex(phoneDigits: string): RegExp {
-  return new RegExp(`(?:^|\\D)${phoneDigits.split("").join("\\D*")}(?:\\D|$)`);
+  const digits = phoneDigits.replace(/\D/g, "");
+  return new RegExp(`(?:^|\\D)${digits.split("").join("\\D*")}(?:\\D|$)`);
 }
 
 function escapeRegex(value: string): string {

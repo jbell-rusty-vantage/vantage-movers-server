@@ -1142,7 +1142,8 @@ function getCallLeadTime(lead: mongoose.HydratedDocument<CallLeadDocument>): num
 }
 
 function buildPhoneRegex(normalizedPhone: string): RegExp {
-  return new RegExp(`(?:^|\\D)${normalizedPhone.split("").join("\\D*")}(?:\\D|$)`);
+  const digits = normalizedPhone.replace(/\D/g, "");
+  return new RegExp(`(?:^|\\D)${digits.split("").join("\\D*")}(?:\\D|$)`);
 }
 
 async function getLinkedLead(

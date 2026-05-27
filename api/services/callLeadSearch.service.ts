@@ -104,7 +104,8 @@ function buildNameRegex(name: string): RegExp {
 }
 
 function buildPhoneRegex(normalizedPhone: string): RegExp {
-  return new RegExp(`(?:^|\\D)${normalizedPhone.split("").join("\\D*")}(?:\\D|$)`);
+  const digits = normalizedPhone.replace(/\D/g, "");
+  return new RegExp(`(?:^|\\D)${digits.split("").join("\\D*")}(?:\\D|$)`);
 }
 
 function escapeRegex(value: string): string {
