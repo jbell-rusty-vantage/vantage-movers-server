@@ -13,7 +13,11 @@ import { BookedLead, type BookedLeadDocument } from "../models/BookedLead";
 import { CallLead, type CallLeadDocument } from "../models/CallLead";
 import { CancelledLead } from "../models/CancelledLead";
 import { Customer } from "../models/Customer";
-import { FormLead, type FormLeadDocument } from "../models/FormLead";
+import {
+  FORM_LEAD_UNKNOWN_STATE,
+  FormLead,
+  type FormLeadDocument,
+} from "../models/FormLead";
 import { mergeSheetSyncEntries } from "../models/schemaHelpers";
 import { generateLeadId } from "../utils/ids";
 import { getStateCodeForZip } from "../utils/pickupZipState";
@@ -98,7 +102,7 @@ export async function createFormLead(input: CreateFormLeadInput) {
   const { crm_company_label, post_to_granot, ...formLeadInput } = input;
   const source_company = parseSourceCompany(formLeadInput.source_company);
   const location = await resolveRequiredLocation(formLeadInput);
-  const local = deriveLocal(location.pickup_state, location.delivery_state);
+  const local = deriveFormLeadLocal(location.pickup_state, location.delivery_state);
   const duplicate = await isDuplicateFormLead(
     source_company,
     formLeadInput.phone_number,
@@ -178,7 +182,12 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
     update.source_company = parseSourceCompany(input.source_company);
   }
   Object.assign(lead, update);
-  if (input.pickup_zip || input.destination_zip || input.pickup_state || input.delivery_state) {
+  if (
+    hasOwnInput(input, "pickup_zip") ||
+    hasOwnInput(input, "destination_zip") ||
+    hasOwnInput(input, "pickup_state") ||
+    hasOwnInput(input, "delivery_state")
+  ) {
     const location = await resolveRequiredLocation({
       pickup_zip: input.pickup_zip ?? lead.pickup_zip,
       destination_zip: input.destination_zip ?? lead.destination_zip,
@@ -187,7 +196,7 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
     });
     lead.pickup_state = location.pickup_state;
     lead.delivery_state = location.delivery_state;
-    lead.local = deriveLocal(location.pickup_state, location.delivery_state);
+    lead.local = deriveFormLeadLocal(location.pickup_state, location.delivery_state);
   }
   lead.cpl = getCplForSource(lead.source_company as SourceCompany, lead.local as LocalType);
   await lead.save();
@@ -906,11 +915,10 @@ async function resolveRequiredLocation(input: {
     getStateCodeForZip(input.pickup_zip),
     getStateCodeForZip(input.destination_zip),
   ]);
-  const pickup_state = normalizeState(pickupStateFromZip ?? input.pickup_state);
-  const delivery_state = normalizeState(deliveryStateFromZip ?? input.delivery_state);
-  if (!pickup_state || !delivery_state) {
-    throw new V1ServiceError("Could not derive pickup_state and delivery_state");
-  }
+  const pickup_state =
+    normalizeState(pickupStateFromZip ?? input.pickup_state) ?? FORM_LEAD_UNKNOWN_STATE;
+  const delivery_state =
+    normalizeState(deliveryStateFromZip ?? input.delivery_state) ?? FORM_LEAD_UNKNOWN_STATE;
 
   return { pickup_state, delivery_state };
 }
@@ -936,12 +944,31 @@ function deriveLocal(pickupState: string, deliveryState: string): LocalType {
   return pickupState === deliveryState ? "local" : "long_distance";
 }
 
+function deriveFormLeadLocal(pickupState: string, deliveryState: string): LocalType {
+  if (pickupState === FORM_LEAD_UNKNOWN_STATE || deliveryState === FORM_LEAD_UNKNOWN_STATE) {
+    return "long_distance";
+  }
+
+  return deriveLocal(pickupState, deliveryState);
+}
+
 function normalizeState(value?: string | null): string | undefined {
-  return value?.trim().toUpperCase() || undefined;
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  return trimmed.toLowerCase() === FORM_LEAD_UNKNOWN_STATE
+    ? FORM_LEAD_UNKNOWN_STATE
+    : trimmed.toUpperCase();
 }
 
 function optionalValue<T>(value: T | null | undefined): T | undefined {
   return value === null ? undefined : value;
+}
+
+function hasOwnInput<T extends object>(input: T, key: keyof T): boolean {
+  return Object.prototype.hasOwnProperty.call(input, key);
 }
 
 function sameObjectId(

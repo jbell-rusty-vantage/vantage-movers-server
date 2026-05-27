@@ -27,6 +27,7 @@ import {
   type GoogleAuthConfigSummary,
 } from "../utils/googleSheetsDiagnostics";
 import { logger } from "../logger";
+import { FORM_LEAD_UNKNOWN_STATE } from "../models/FormLead";
 import type { SheetSyncEntry } from "../models/schemaHelpers";
 
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
@@ -65,8 +66,8 @@ type FormLeadSheetSource = SyncableDocument & {
   name: string;
   pickup_zip: string;
   destination_zip: string;
-  pickup_state: string;
-  delivery_state: string;
+  pickup_state?: string | null;
+  delivery_state?: string | null;
   move_size: string;
   move_date: Date;
   phone_number: string;
@@ -885,8 +886,8 @@ function formLeadToRow(lead: FormLeadSheetSource): string[] {
     lead.name,
     lead.pickup_zip,
     lead.destination_zip,
-    lead.pickup_state,
-    lead.delivery_state,
+    formLeadStateCell(lead.pickup_state),
+    formLeadStateCell(lead.delivery_state),
     lead.move_size,
     formatDateOnly(lead.move_date),
     lead.phone_number,
@@ -904,6 +905,10 @@ function formLeadToRow(lead: FormLeadSheetSource): string[] {
     lead.source_company_site ?? "",
     quotedCell(Boolean(lead.quoted)),
   ];
+}
+
+function formLeadStateCell(value?: string | null): string {
+  return value?.trim() || FORM_LEAD_UNKNOWN_STATE;
 }
 
 function callLeadToRow(lead: CallLeadSheetSource): string[] {

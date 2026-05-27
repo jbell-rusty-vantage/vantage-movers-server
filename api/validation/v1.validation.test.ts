@@ -9,7 +9,7 @@ import {
 } from "./v1.validation";
 import { BookedLead } from "../models/BookedLead";
 import { CallLead } from "../models/CallLead";
-import { FormLead } from "../models/FormLead";
+import { FORM_LEAD_UNKNOWN_STATE, FormLead } from "../models/FormLead";
 
 test("createCallLeadSchema accepts a job_no-only call lead", () => {
   const parsed = createCallLeadSchema.parse({
@@ -257,6 +257,24 @@ test("FormLead model stores duplicate quarantine flag", async () => {
 
   await assert.doesNotReject(() => lead.validate());
   assert.equal(lead.duplicate, true);
+});
+
+test("FormLead model defaults missing state fields to not_found", async () => {
+  const lead = new FormLead({
+    source_company: "top10_leads",
+    name: "Jane Customer",
+    pickup_zip: "22531",
+    destination_zip: "26532",
+    move_size: "Studio",
+    ref_no: "not provided",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+    local: "long_distance",
+  });
+
+  await assert.doesNotReject(() => lead.validate());
+  assert.equal(lead.pickup_state, FORM_LEAD_UNKNOWN_STATE);
+  assert.equal(lead.delivery_state, FORM_LEAD_UNKNOWN_STATE);
 });
 
 test("CallLead model rejects identity-less documents", async () => {

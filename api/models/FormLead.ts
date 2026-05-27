@@ -7,6 +7,8 @@ import {
   type SheetSyncEntry,
 } from "./schemaHelpers";
 
+export const FORM_LEAD_UNKNOWN_STATE = "not_found";
+
 const FormLeadSchema = new Schema(
   {
     source_company: sourceCompanyField,
@@ -16,8 +18,8 @@ const FormLeadSchema = new Schema(
     lid: { type: String, trim: true, index: true },
     pickup_zip: { type: String, required: true, trim: true },
     destination_zip: { type: String, required: true, trim: true },
-    pickup_state: { type: String, required: true, trim: true, uppercase: true },
-    delivery_state: { type: String, required: true, trim: true, uppercase: true },
+    pickup_state: { type: String, trim: true, default: FORM_LEAD_UNKNOWN_STATE },
+    delivery_state: { type: String, trim: true, default: FORM_LEAD_UNKNOWN_STATE },
     move_size: { type: String, required: true, enum: MOVE_SIZES },
     move_date: { type: Date, required: true, default: Date.now },
     ref_no: { type: String, required: true, trim: true, default: "not provided" },
