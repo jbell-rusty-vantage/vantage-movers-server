@@ -32,6 +32,7 @@ export const moveSizeSchema = z.enum(MOVE_SIZES);
 
 const zipSchema = z.string().trim().regex(/^\d{5}$/, "Zip code must be exactly 5 digits");
 const emailSchema = z.email().trim().toLowerCase().optional();
+const looseEmailString = z.string().trim().optional();
 
 function requireAtLeastOne(value: Record<string, unknown>) {
   return Object.keys(value).length > 0;
@@ -66,7 +67,7 @@ const formLeadFields = {
   move_size: moveSizeSchema,
   move_date: optionalDate,
   ref_no: nonEmptyString,
-  email: emailSchema,
+  email: looseEmailString,
   phone_number: nonEmptyString,
   quoted: booleanInput.optional(),
   cubic_feet: optionalNumber,
