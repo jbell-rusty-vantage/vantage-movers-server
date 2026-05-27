@@ -36,7 +36,10 @@ import type {
   UpdateCustomerInput,
   UpdateFormLeadInput,
 } from "../validation/v1.validation";
-import { normalizePhoneNumberForMatch } from "../utils/phone";
+import {
+  normalizePhoneNumberForMatch,
+  normalizePhoneNumberForStorage,
+} from "../utils/phone";
 import {
   buildCrmFormLeadPayload,
   submitFormLeadToCrm,
@@ -100,6 +103,7 @@ export class V1ServiceError extends Error {
 
 export async function createFormLead(input: CreateFormLeadInput) {
   const { crm_company_label, post_to_granot, ...formLeadInput } = input;
+  formLeadInput.phone_number = normalizePhoneNumberForStorage(formLeadInput.phone_number);
   const source_company = parseSourceCompany(formLeadInput.source_company);
   const location = await resolveRequiredLocation(formLeadInput);
   const local = deriveFormLeadLocal(location.pickup_state, location.delivery_state);
@@ -180,6 +184,9 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
   const update = { ...input };
   if (input.source_company !== undefined) {
     update.source_company = parseSourceCompany(input.source_company);
+  }
+  if (input.phone_number !== undefined) {
+    update.phone_number = normalizePhoneNumberForStorage(input.phone_number);
   }
   Object.assign(lead, update);
   if (
