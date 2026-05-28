@@ -15,7 +15,7 @@ import {
   previewBookedCallLeadReconciliation,
   syncBookedCallLeadReconciliation,
 } from "../services/bookedCallLeadReconciliation.service";
-import { sanitizeFormLeadBodyPreview } from "../utils/sanitizeFormLeadForLog";
+import { sanitizeFormLeadBodyPreview } from "../utils/logging/sanitizeFormLeadForLog";
 import {
   createBookedLead,
   createBookedLeadFromSource,
@@ -41,6 +41,7 @@ import {
   updateFormLead,
   V1ServiceError,
 } from "../services/v1.service";
+import { AppError } from "../services/errors";
 import {
   createBookedLeadFromSourceSchema,
   createBookedLeadSchema,
@@ -285,12 +286,20 @@ async function handleCreateFormLead(req: Request, res: Response) {
       return sendError(res, error);
     }
 
-    if (error instanceof V1ServiceError) {
+    // Covers both legacy `V1ServiceError` throws and the new typed
+    // `AppError` subclasses (`NotFoundError`, `ConflictError`, ...) the
+    // form-lead service migrated to. Without this, typed errors would
+    // skip the structured warn-level log below and only surface as a
+    // generic creation-failure error line.
+    if (error instanceof AppError) {
       log.warn({
         msg: "form_lead.service.error",
         requestId: rid,
         statusCode: error.statusCode,
+        errorCode: error.code,
+        errorName: error.name,
         message: error.message,
+        ...(error.metadata ? { metadata: error.metadata } : {}),
       });
       return sendError(res, error);
     }
@@ -356,7 +365,12 @@ function sendError(res: Response, error: unknown) {
     });
   }
 
-  if (error instanceof V1ServiceError) {
+  // `V1ServiceError` extends `AppError` (refactor plan 10), so this single
+  // branch covers both legacy throws and the new typed subclasses
+  // (`NotFoundError`, `ConflictError`, etc.). Response shape and status
+  // are preserved for V1ServiceError -- public `message` and `statusCode`
+  // map exactly as before.
+  if (error instanceof AppError) {
     return res.status(error.statusCode).json({
       ok: false,
       error: error.message,
