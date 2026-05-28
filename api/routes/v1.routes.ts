@@ -68,7 +68,7 @@ router.get("/api/v1/form-leads", handleFindAll(findAllFormLeads));
 router.get("/api/v1/form-leads/:id", handleFindOne(findFormLead));
 router.post("/api/v1/form-leads/search", handleSearchFormLeads);
 router.post("/api/v1/form-leads", handleCreateFormLead);
-router.patch("/api/v1/form-leads/:id", handleUpdate(updateFormLeadSchema, updateFormLead));
+router.patch("/api/v1/form-leads/:id", handleUpdateFormLead);
 router.delete("/api/v1/form-leads/:id", handleDelete(deleteFormLead));
 
 router.get("/api/v1/call-leads", handleFindAll(findAllCallLeads));
@@ -266,6 +266,8 @@ async function handleCreateFormLead(req: Request, res: Response) {
       msg: "form_lead.created",
       requestId: rid,
       leadId,
+      email: data.lead.email,
+      phone_number: data.lead.phone_number,
       sheetSyncStatus: data.sheet_sync_status,
       crmSyncStatus: data.crm_sync_status,
       crmCompanyLabel: data.crm_company_label,
@@ -312,6 +314,29 @@ async function handleCreateFormLead(req: Request, res: Response) {
       },
       "Form lead creation failed",
     );
+    return sendError(res, error);
+  }
+}
+
+async function handleUpdateFormLead(req: Request, res: Response) {
+  const log = requestLogger(req);
+  const rid = requestId(req);
+
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const parsed = updateFormLeadSchema.parse(req.body);
+    const lead = await updateFormLead(id, parsed);
+    log.info({
+      msg: "form_lead.updated",
+      requestId: rid,
+      leadId: id,
+      email: lead.email,
+      phone_number: lead.phone_number,
+      updatedFields: Object.keys(parsed),
+    });
+    return res.json({ ok: true, data: lead });
+  } catch (error) {
     return sendError(res, error);
   }
 }

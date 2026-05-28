@@ -42,19 +42,12 @@ function sanitizeScalar(key: string, value: unknown): unknown {
     return "[unsupported]";
   }
 
-  const lower = key.toLowerCase();
-  if (lower === "email" || lower.endsWith("_email")) {
-    return maskEmailForLog(value);
-  }
-  if (lower === "phone_number" || lower === "phone" || lower.endsWith("_phone")) {
-    return maskPhoneForLog(value);
-  }
-
   return truncate(value);
 }
 
 /**
- * Shallow preview of a webhook/body object for structured logs (no secrets, no full PII).
+ * Shallow preview of a webhook/body object for structured logs (no secrets).
+ * Email and phone are logged in full so operators can trace form leads in Vercel.
  */
 export function sanitizeFormLeadBodyPreview(body: unknown): Record<string, unknown> | null {
   if (body === null || body === undefined) {

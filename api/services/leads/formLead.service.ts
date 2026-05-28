@@ -94,6 +94,8 @@ export async function createFormLead(input: CreateFormLeadInput) {
   logger.info({
     msg: "form_lead.sheet_sync.pending_response",
     leadId,
+    email: lead.email,
+    phone_number: lead.phone_number,
     crmSyncOk: crmResult.ok,
     crmStatus: crmResult.status,
     crmSkipped: !shouldPostToGranot,
