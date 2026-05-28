@@ -2,7 +2,7 @@ import type mongoose from "mongoose";
 import type { LeadModelName } from "../../config/domain";
 import { CallLead, type CallLeadDocument } from "../../models/CallLead";
 import { FormLead, type FormLeadDocument } from "../../models/FormLead";
-import { V1ServiceError } from "../v1ServiceError";
+import { ConflictError, NotFoundError } from "../errors";
 
 /**
  * Shared hydrated-document type for any form-or-call source lead. Exposed
@@ -12,7 +12,7 @@ import { V1ServiceError } from "../v1ServiceError";
 export type SourceLeadDocument = mongoose.HydratedDocument<FormLeadDocument | CallLeadDocument>;
 
 /**
- * Looks up a source lead by model and id and throws a 404 `V1ServiceError`
+ * Looks up a source lead by model and id and throws a 404 `NotFoundError`
  * when it does not exist.
  *
  * This is the canonical lookup used by booking/cancellation mirror code and
@@ -27,7 +27,9 @@ export async function getLinkedLead(
       ? await FormLead.findById(leadId)
       : await CallLead.findById(leadId);
   if (!lead) {
-    throw new V1ServiceError("Linked source lead not found", 404);
+    throw new NotFoundError("Linked source lead not found", {
+      metadata: { leadModel, leadId },
+    });
   }
 
   return lead;
@@ -48,7 +50,9 @@ export async function resolveSourceLeadById(
     CallLead.findById(leadId),
   ]);
   if (formLead && callLead) {
-    throw new V1ServiceError("Lead id matched both form and call leads", 409);
+    throw new ConflictError("Lead id matched both form and call leads", {
+      metadata: { leadId },
+    });
   }
   if (formLead) {
     return { lead: formLead, leadModel: "FormLead" };
@@ -57,5 +61,5 @@ export async function resolveSourceLeadById(
     return { lead: callLead, leadModel: "CallLead" };
   }
 
-  throw new V1ServiceError("Source lead not found", 404);
+  throw new NotFoundError("Source lead not found", { metadata: { leadId } });
 }

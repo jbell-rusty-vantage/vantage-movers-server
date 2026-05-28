@@ -1,9 +1,9 @@
 import { resolveSourceCompany, type SourceCompany } from "../../config/domain";
-import { V1ServiceError } from "../v1ServiceError";
+import { ValidationError } from "../errors";
 
 /**
  * Service-level wrapper around `resolveSourceCompany` that converts an
- * unresolved source company into a 400 `V1ServiceError`.
+ * unresolved source company into a 400 `ValidationError`.
  *
  * Centralizing this here keeps the rejection contract for unknown
  * `source_company` values in one place, even when callers (form lead, call
@@ -12,7 +12,9 @@ import { V1ServiceError } from "../v1ServiceError";
 export function parseSourceCompany(value?: string | null): SourceCompany {
   const sourceCompany = resolveSourceCompany(value);
   if (!sourceCompany) {
-    throw new V1ServiceError(`Unknown source_company "${value}"`, 400);
+    throw new ValidationError(`Unknown source_company "${value}"`, {
+      metadata: { field: "source_company", value: value ?? null },
+    });
   }
 
   return sourceCompany;

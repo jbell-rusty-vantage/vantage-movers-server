@@ -15,10 +15,10 @@ import {
   buildCrmFormLeadPayload,
   submitFormLeadToCrm,
   type CrmSubmitResult,
-} from "../crm.service";
+} from "../crm";
+import { ConflictError, NotFoundError } from "../errors";
 import { deleteFormLeadFromSheets } from "../googleSheets.service";
 import { scheduleFullSheetSyncProcess } from "../sheetSync";
-import { V1ServiceError } from "../v1ServiceError";
 // Compatibility imports from the v1 service facade. `deleteBookedLead` and
 // `refreshAttachedBookingFromLead` still live there because the booking
 // extraction (refactor plan 04) has not happened yet. They are only ever
@@ -112,7 +112,9 @@ export async function createFormLead(input: CreateFormLeadInput) {
 export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
   const lead = await FormLead.findById(id);
   if (!lead) {
-    throw new V1ServiceError("Form lead not found", 404);
+    throw new NotFoundError("Form lead not found", {
+      metadata: { resource: "form_lead", id },
+    });
   }
 
   const update = { ...input };
@@ -155,7 +157,9 @@ export async function findFormLead(id: string) {
     "_id ref_no quoted cubic_feet booked",
   );
   if (!lead) {
-    throw new V1ServiceError("Form lead not found", 404);
+    throw new NotFoundError("Form lead not found", {
+      metadata: { resource: "form_lead", id },
+    });
   }
 
   return lead;
@@ -164,10 +168,21 @@ export async function findFormLead(id: string) {
 export async function deleteFormLead(id: string, cascade: boolean) {
   const lead = await FormLead.findById(id);
   if (!lead) {
-    throw new V1ServiceError("Form lead not found", 404);
+    throw new NotFoundError("Form lead not found", {
+      metadata: { resource: "form_lead", id },
+    });
   }
   if (lead.booked && !cascade) {
-    throw new V1ServiceError("Form lead has a booking; pass cascade=true to delete dependents", 409);
+    throw new ConflictError(
+      "Form lead has a booking; pass cascade=true to delete dependents",
+      {
+        metadata: {
+          resource: "form_lead",
+          id,
+          bookedLeadId: lead.booked.toString(),
+        },
+      },
+    );
   }
   if (lead.booked && cascade) {
     await deleteBookedLead(lead.booked.toString(), true);

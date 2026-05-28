@@ -4,9 +4,9 @@ import type {
   CreateCallLeadInput,
   UpdateCallLeadInput,
 } from "../../validation/v1.validation";
+import { ConflictError, NotFoundError } from "../errors";
 import { deleteCallLeadFromSheets } from "../googleSheets.service";
 import { scheduleFullSheetSyncProcess } from "../sheetSync";
-import { V1ServiceError } from "../v1ServiceError";
 // Compatibility imports from the v1 service facade. `deleteBookedLead` and
 // `refreshAttachedBookingFromLead` still live there because the booking
 // extraction (refactor plan 04) has not happened yet. They are only ever
@@ -44,7 +44,9 @@ export async function createCallLead(input: CreateCallLeadInput) {
 export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
   const lead = await CallLead.findById(id);
   if (!lead) {
-    throw new V1ServiceError("Call lead not found", 404);
+    throw new NotFoundError("Call lead not found", {
+      metadata: { resource: "call_lead", id },
+    });
   }
 
   const update = { ...input };
@@ -87,10 +89,21 @@ export async function findAllCallLeads() {
 export async function deleteCallLead(id: string, cascade: boolean) {
   const lead = await CallLead.findById(id);
   if (!lead) {
-    throw new V1ServiceError("Call lead not found", 404);
+    throw new NotFoundError("Call lead not found", {
+      metadata: { resource: "call_lead", id },
+    });
   }
   if (lead.booked && !cascade) {
-    throw new V1ServiceError("Call lead has a booking; pass cascade=true to delete dependents", 409);
+    throw new ConflictError(
+      "Call lead has a booking; pass cascade=true to delete dependents",
+      {
+        metadata: {
+          resource: "call_lead",
+          id,
+          bookedLeadId: lead.booked.toString(),
+        },
+      },
+    );
   }
   if (lead.booked && cascade) {
     await deleteBookedLead(lead.booked.toString(), true);
