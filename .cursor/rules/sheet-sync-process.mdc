@@ -17,15 +17,16 @@ alwaysApply: false
 
 ## Canonical Headers
 
-- `Forms`, `Duplicates`, `Bad Leads`: `Timestamp`, `Name`, `Pickup Zip`, `Destination Zip`, `Pickup State`, `Delivery State`, `Move Size`, `Move Date`, `Phone Number`, `Mongo ID`, `Ref No`, `Booked`, `Booked Date`, `OVER 2000`, `OVER 4000`, `Cancelled`, `Local`, `Cubic Feet`, `Lead ID`, `Source Company`, `Source Company Site`, `Quoted`.
+- `Forms`, `Duplicates`, `Bad Leads`: `Timestamp`, `Name`, `Pickup Zip`, `Destination Zip`, `Pickup State`, `Delivery State`, `Move Date`, `Phone Number`, `Mongo ID`, `Ref No`, `Booked`, `Booked Date`, `OVER 2000`, `OVER 4000`, `Cancelled`, `Local`, `Cubic Feet`, `Source Company`, `Quoted`. (`Move Size`, `Lead ID`, and `Source Company Site` were removed; the Mongo fields still exist but are no longer projected.)
 - `Calls`, `Bad Calls`: `Timestamp`, `Job No`, `Phone Number`, `Duration`, `Booked`, `Booked Date`, `Over 2000`, `Over 4000`, `Cancelled`, `Local`, `Cubic Feet`, `Mongo ID`, `Source Company`, `FormFill`.
 - `Booked Deals`: `Timestamp`, `Agent`, `SplitAgent`, `Binder Amount`, `Split`, `Book Date`, `Job No`, `Customer Name`, `Deposit Amount`, `Merchant`, `Source`, `Mongo ID`, `Mongo Lead ID`, `Local`, `Cancelled`.
 - `Cancelled Deals`: `Timestamp`, `Agent`, `Cancel Date`, `Job No`, `Customer Name`, `Refund Amount`, `Source`, `Mongo ID`, `Lead Mongo ID`.
 
 ## Write Targets
 
-- Form leads sync to master `Forms` plus source `Forms`; duplicate form leads sync to master/source `Duplicates`.
-- Call leads sync to master `Calls` plus source `Calls`; call leads created only for unmatched bookings are skipped until real call data exists.
+- Form/call lead writes are gated by `shouldWriteSourceLeadSheets()` (env `WRITE_SOURCE_LEAD_SHEETS`, default `false`). Default is **master-only**: source-company lead sheets are formula derivatives of the master. `getLeadTargets()` only appends the source target when the flag is enabled. Source-target plumbing (tabs, projections, delete fallback via `sheet_sync[]`) is retained either way.
+- Form leads sync to master `Forms` (plus source `Forms` only when the flag is on); duplicate form leads sync to master `Duplicates` (plus source when enabled).
+- Call leads sync to master `Calls` (plus source `Calls` only when the flag is on); call leads created only for unmatched bookings are skipped until real call data exists.
 - Booked leads sync only to master `Booked Deals`, then their linked form/call lead is refreshed so mirrored booking fields stay aligned.
 - Cancelled leads sync the booking chain first, then the cancellation row to master `Cancelled Deals`.
 

@@ -21,7 +21,6 @@ export function formLeadToRow(lead: FormLeadSheetSource): string[] {
     lead.destination_zip,
     formLeadStateCell(lead.pickup_state),
     formLeadStateCell(lead.delivery_state),
-    lead.move_size,
     formatDateOnly(lead.move_date),
     lead.phone_number,
     lead._id.toString(),
@@ -33,9 +32,7 @@ export function formLeadToRow(lead: FormLeadSheetSource): string[] {
     cancelledCell(Boolean(lead.cancelled)),
     localCell(lead.local),
     formatNumber(lead.cubic_feet),
-    lead.lid ?? "",
     getSourceCompanyLabel(lead.source_company),
-    lead.source_company_site ?? "",
     quotedCell(Boolean(lead.quoted)),
   ];
 }

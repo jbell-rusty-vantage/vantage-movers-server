@@ -1,10 +1,14 @@
 import type { sheets_v4 } from "googleapis";
-import { CALL_SHEET_HEADERS } from "../../config/domain";
+import { CALL_SHEET_HEADERS, FORM_SHEET_HEADERS } from "../../config/domain";
 import { escapeSheetTitleForRange } from "../../utils/googleSheets/ranges";
 import { withSheetsRetry } from "./retry";
 import type { SheetTabConfig } from "./types";
 
 const LEGACY_CALL_SHEET_HEADER_LENGTH = 18;
+// Forms/Duplicates/Bad Leads previously carried 22 columns (before
+// `Move Size`, `Lead ID`, and `Source Company Site` were removed). Clearing up
+// to the legacy width self-heals stale trailing header cells on redeploy.
+const LEGACY_FORM_SHEET_HEADER_LENGTH = 22;
 
 /**
  * Tabs whose existence + header row have already been ensured in this process.
@@ -75,7 +79,13 @@ export async function clearLegacyTrailingCells(
 }
 
 function getLegacyHeaderLength(headers: readonly string[]): number {
-  return headers === CALL_SHEET_HEADERS ? LEGACY_CALL_SHEET_HEADER_LENGTH : headers.length;
+  if (headers === CALL_SHEET_HEADERS) {
+    return LEGACY_CALL_SHEET_HEADER_LENGTH;
+  }
+  if (headers === FORM_SHEET_HEADERS) {
+    return LEGACY_FORM_SHEET_HEADER_LENGTH;
+  }
+  return headers.length;
 }
 
 async function clearSheetValues(

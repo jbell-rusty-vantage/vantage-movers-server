@@ -53,7 +53,6 @@ export const FORM_SHEET_HEADERS = [
   "Destination Zip",
   "Pickup State",
   "Delivery State",
-  "Move Size",
   "Move Date",
   "Phone Number",
   "Mongo ID",
@@ -65,9 +64,7 @@ export const FORM_SHEET_HEADERS = [
   "Cancelled",
   "Local",
   "Cubic Feet",
-  "Lead ID",
   "Source Company",
-  "Source Company Site",
   "Quoted",
 ] as const;
 

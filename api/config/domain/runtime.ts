@@ -28,6 +28,21 @@ export function isTestMode(): boolean {
   return process.env.TEST_MODE?.trim().toLowerCase() === "true";
 }
 
+/**
+ * Whether lead syncs should also write to the source-company-specific lead
+ * sheets in addition to the Master Leads sheet.
+ *
+ * Defaults to `false` (master-only) so the source sheets can become formula
+ * derivatives of the master. Set `WRITE_SOURCE_LEAD_SHEETS=true` to restore
+ * dual writes. The source-target plumbing is retained either way; this flag
+ * only controls whether those targets are selected for writes.
+ */
+export function shouldWriteSourceLeadSheets(): boolean {
+  return (
+    process.env.WRITE_SOURCE_LEAD_SHEETS?.trim().toLowerCase() === "true"
+  );
+}
+
 export function getMongoDatabaseName(): "vantagemovers" | "testvantagemovers" {
   return isTestMode() ? "testvantagemovers" : "vantagemovers";
 }

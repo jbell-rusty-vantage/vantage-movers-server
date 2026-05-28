@@ -7,6 +7,7 @@ import {
   getMasterLeadsSheetContainerId,
   getSourceLeadSheetContainerId,
   SHEET_TAB_NAMES,
+  shouldWriteSourceLeadSheets,
   SOURCE_COMPANY_CONFIGS,
   type SourceCompany,
 } from "../../config/domain";
@@ -28,7 +29,13 @@ export function getLeadTargets(
       ensureTabs: getMasterLeadsTabs(),
     },
   ];
-  const sourceSpreadsheetId = getSourceLeadSheetContainerId(sourceCompany);
+  // Source-company-specific sheets are derivatives of the Master Leads sheet
+  // via spreadsheet formulas, so writes only go to master unless this flag is
+  // explicitly enabled. The source-target plumbing below is retained so dual
+  // writes can be restored without code changes.
+  const sourceSpreadsheetId = shouldWriteSourceLeadSheets()
+    ? getSourceLeadSheetContainerId(sourceCompany)
+    : undefined;
   if (sourceSpreadsheetId) {
     targets.push({
       target: sourceTarget,

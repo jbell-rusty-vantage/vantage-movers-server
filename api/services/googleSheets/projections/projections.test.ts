@@ -173,29 +173,26 @@ test("formLeadToRow projects fields in the documented header order", () => {
 
   const row = formLeadToRow(lead);
 
-  assert.equal(row.length, 22);
+  assert.equal(row.length, 19);
   assert.equal(row[0], "5/27/2026 09:04:05");
   assert.equal(row[1], "Jane Tester");
   assert.equal(row[2], "10001");
   assert.equal(row[3], "90210");
   assert.equal(row[4], "NY");
   assert.equal(row[5], "not_found");
-  assert.equal(row[6], "2 Bedrooms");
-  assert.equal(row[7], "2026-06-01");
-  assert.equal(row[8], "555-111-2222");
-  assert.equal(row[9], lead._id.toString());
-  assert.equal(row[10], "ref-abc");
+  assert.equal(row[6], "2026-06-01");
+  assert.equal(row[7], "555-111-2222");
+  assert.equal(row[8], lead._id.toString());
+  assert.equal(row[9], "ref-abc");
+  assert.equal(row[10], "");
   assert.equal(row[11], "");
-  assert.equal(row[12], "");
-  assert.equal(row[13], ">2k");
+  assert.equal(row[12], ">2k");
+  assert.equal(row[13], "");
   assert.equal(row[14], "");
-  assert.equal(row[15], "");
-  assert.equal(row[16], "local");
-  assert.equal(row[17], "750");
-  assert.equal(row[18], "lead-id-1");
-  assert.equal(row[19], "main site");
-  assert.equal(row[20], "vantagemovers.com");
-  assert.equal(row[21], "quoted");
+  assert.equal(row[15], "local");
+  assert.equal(row[16], "750");
+  assert.equal(row[17], "main site");
+  assert.equal(row[18], "quoted");
 });
 
 test("formLeadToRow defaults missing ref_no to 'not provided'", () => {
@@ -213,10 +210,10 @@ test("formLeadToRow defaults missing ref_no to 'not provided'", () => {
   };
 
   const row = formLeadToRow(lead);
-  assert.equal(row[10], "not provided");
+  assert.equal(row[9], "not provided");
   assert.equal(row[4], "not_found");
   assert.equal(row[5], "not_found");
-  assert.equal(row[19], "not provided");
+  assert.equal(row[17], "not provided");
 });
 
 test("callLeadToRow projects fields in the documented header order", () => {

@@ -9,6 +9,7 @@ import {
   getRuntimeSheetContainerEnvVar,
   getSourceLeadSheetContainerId,
   isTestMode,
+  shouldWriteSourceLeadSheets,
 } from "./runtime";
 
 /**
@@ -44,6 +45,24 @@ test("isTestMode is true only for the literal string 'true' after trim/lowercasi
   withEnv("TEST_MODE", "false", () => assert.equal(isTestMode(), false));
   withEnv("TEST_MODE", "1", () => assert.equal(isTestMode(), false));
   withEnv("TEST_MODE", undefined, () => assert.equal(isTestMode(), false));
+});
+
+test("shouldWriteSourceLeadSheets is false by default and only true for the literal 'true'", () => {
+  withEnv("WRITE_SOURCE_LEAD_SHEETS", undefined, () =>
+    assert.equal(shouldWriteSourceLeadSheets(), false),
+  );
+  withEnv("WRITE_SOURCE_LEAD_SHEETS", "false", () =>
+    assert.equal(shouldWriteSourceLeadSheets(), false),
+  );
+  withEnv("WRITE_SOURCE_LEAD_SHEETS", "1", () =>
+    assert.equal(shouldWriteSourceLeadSheets(), false),
+  );
+  withEnv("WRITE_SOURCE_LEAD_SHEETS", "true", () =>
+    assert.equal(shouldWriteSourceLeadSheets(), true),
+  );
+  withEnv("WRITE_SOURCE_LEAD_SHEETS", "  TRUE  ", () =>
+    assert.equal(shouldWriteSourceLeadSheets(), true),
+  );
 });
 
 test("getMongoDatabaseName swaps between the prod and test databases on TEST_MODE", () => {
