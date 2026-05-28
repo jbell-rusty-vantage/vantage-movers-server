@@ -50,6 +50,7 @@ export type FormLeadSheetSource = SyncableDocument & {
   move_size: string;
   move_date: Date;
   phone_number: string;
+  email?: string | null;
   ref_no?: string | null;
   booked?: PopulatedBookedLead | string | null;
   over_2000?: boolean | null;

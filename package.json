@@ -21,6 +21,7 @@
     "sheets:list-formulas": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/google_sheets/list-google-sheet-formulas.ts",
     "sheets:dump-leads-columns": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/google_sheets/dump-leads-sheet-columns.ts",
     "sheets:backfill-diagnostic": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/google_sheets/backfill-sheets-diagnostic.ts",
+    "sheets:backfill-master-leads": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/google_sheets/backfill-master-leads-sheet.ts",
     "sheets:copy-structure-to-main": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/google_sheets/copy-sheet-structure-to-main.ts",
     "sheets:minify-service-account": "node ./node_modules/tsx/dist/cli.mjs scripts/google_sheets/minify-google-service-account-json.ts",
     "postman:login": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/postman/postman-login.ts",
