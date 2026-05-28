@@ -7,12 +7,8 @@ import { scheduleFullSheetSyncProcess } from "../sheetSync";
 import { buildPhoneRegex } from "./leadPhoneMatching";
 
 /**
- * Returns `true` when the supplied phone + email pair already exists for a
+ * Returns `true` when the supplied phone or email already exists for a
  * non-duplicate form lead within the same source company.
- *
- * Both phone and email are required to count as a duplicate; either being
- * absent short-circuits to `false`, preserving the original behavior where
- * single-field collisions never mark a new lead as a duplicate.
  *
  * Phone matching uses `buildPhoneRegex` as a Mongo-side sieve and then
  * re-verifies in memory via `normalizePhoneNumberForMatch`.
@@ -24,22 +20,30 @@ export async function isDuplicateFormLead(
 ): Promise<boolean> {
   const normalizedPhone = normalizePhoneNumberForMatch(phoneNumber);
   const normalizedEmail = email?.trim().toLowerCase();
-  if (!normalizedPhone || !normalizedEmail) {
+  const duplicateClauses = [
+    ...(normalizedEmail ? [{ email: normalizedEmail }] : []),
+    ...(normalizedPhone ? [{ phone_number: buildPhoneRegex(normalizedPhone) }] : []),
+  ];
+
+  if (duplicateClauses.length === 0) {
     return false;
   }
 
   const candidates = await FormLead.find({
     source_company: sourceCompany,
-    email: normalizedEmail,
     duplicate: { $ne: true },
-    phone_number: buildPhoneRegex(normalizedPhone),
+    $or: duplicateClauses,
   })
     .sort({ createdAt: -1 })
-    .limit(25)
+    .limit(50)
     .exec();
 
   return candidates.some(
-    (lead) => normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone,
+    (lead) =>
+      (normalizedEmail ? lead.email === normalizedEmail : false) ||
+      (normalizedPhone
+        ? normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone
+        : false),
   );
 }
 
