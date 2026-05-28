@@ -4,6 +4,8 @@
 
 Introduce a shared service error model and shrink compatibility facades after the code has been moved into domain modules.
 
+FROM PROJECT OWNER: Also enhance logging. Ensure that logging will not cause any errors and gives precise data so that I can check it in the Vercel logs
+
 This should be late in the sequence because changing error types and route imports too early can obscure whether behavior changed during file movement.
 
 ## Read First
