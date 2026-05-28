@@ -10,7 +10,7 @@ import {
   formatGoogleApiError,
   resolveAuthConfigSummary,
   type GoogleAuthConfigSummary,
-} from "../../utils/googleSheetsDiagnostics";
+} from "./diagnostics";
 
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 

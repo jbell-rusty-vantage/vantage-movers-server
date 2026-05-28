@@ -3,7 +3,7 @@ import {
   type LocalType,
   type SourceCompany,
 } from "../../config/domain";
-import { getStateCodeForZip } from "../../utils/pickupZipState";
+import { getStateCodeForZip } from "../../utils/location/pickupZipState";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import type { BookedCallLeadReconciliationRowInput } from "../../validation/v1.validation";
 import { deriveLocal } from "../leads";

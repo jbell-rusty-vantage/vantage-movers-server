@@ -4,7 +4,7 @@ import {
   formatGoogleApiError,
   redactSpreadsheetId,
   resolveAuthConfigSummary,
-} from "../../utils/googleSheetsDiagnostics";
+} from "./diagnostics";
 import { getSheetsClient } from "./auth";
 import { upsertRow } from "./rowLookup";
 import { ensureTabsAndHeaders } from "./tabs";

@@ -1,6 +1,6 @@
 import type { LocalType } from "../../config/domain";
 import { FORM_LEAD_UNKNOWN_STATE } from "../../models/FormLead";
-import { getStateCodeForZip } from "../../utils/pickupZipState";
+import { getStateCodeForZip } from "../../utils/location/pickupZipState";
 
 export type RequiredLocationInput = {
   pickup_zip: string;

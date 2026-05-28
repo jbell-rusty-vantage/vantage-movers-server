@@ -2,7 +2,7 @@ import {
   getGoogleServiceAccountJsonBase64EnvVar,
   getGoogleServiceAccountJsonEnvVar,
   isTestMode,
-} from "../config/domain";
+} from "../../config/domain";
 
 type ServiceAccountCredentials = {
   client_email?: string;

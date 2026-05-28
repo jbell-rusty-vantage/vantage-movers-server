@@ -2,7 +2,7 @@ import type { sheets_v4 } from "googleapis";
 import {
   escapeSheetTitleForRange,
   extractRowNumberFromRange,
-} from "../../utils/googleSheetsRanges";
+} from "../../utils/googleSheets/ranges";
 import { clearLegacyTrailingCells, columnLetter } from "./tabs";
 
 const SHEET_ROW_LOOKUP_END_COLUMN = "ZZ";

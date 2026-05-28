@@ -1,6 +1,6 @@
 import type { sheets_v4 } from "googleapis";
 import { CALL_SHEET_HEADERS } from "../../config/domain";
-import { escapeSheetTitleForRange } from "../../utils/googleSheetsRanges";
+import { escapeSheetTitleForRange } from "../../utils/googleSheets/ranges";
 import type { SheetTabConfig } from "./types";
 
 const LEGACY_CALL_SHEET_HEADER_LENGTH = 18;

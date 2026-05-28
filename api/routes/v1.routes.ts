@@ -15,7 +15,7 @@ import {
   previewBookedCallLeadReconciliation,
   syncBookedCallLeadReconciliation,
 } from "../services/bookedCallLeadReconciliation.service";
-import { sanitizeFormLeadBodyPreview } from "../utils/sanitizeFormLeadForLog";
+import { sanitizeFormLeadBodyPreview } from "../utils/logging/sanitizeFormLeadForLog";
 import {
   createBookedLead,
   createBookedLeadFromSource,

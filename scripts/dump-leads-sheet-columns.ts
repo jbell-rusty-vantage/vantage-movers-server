@@ -1,6 +1,6 @@
 /**
  * Reads the **Leads** tab from ORIGINAL_GOOGLE_SHEET_ID and writes a markdown dump
- * of the nine owner-facing columns (see LEAD_SHEET_HEADERS in api/utils/sheetRows.ts).
+ * of the nine owner-facing columns (see FORM_SHEET_HEADERS in api/config/domain.ts).
  *
  * Run: pnpm run sheets:dump-leads-columns
  *
@@ -19,7 +19,10 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { google } from "googleapis";
 import dotenv from "dotenv";
-import { LEAD_SHEET_HEADERS, LEAD_SHEET_NAME } from "../api/utils/sheetRows";
+import { FORM_SHEET_HEADERS, SHEET_TAB_NAMES } from "../api/config/domain";
+
+const LEAD_SHEET_HEADERS = FORM_SHEET_HEADERS;
+const LEAD_SHEET_NAME = SHEET_TAB_NAMES.forms;
 
 dotenv.config();
 
