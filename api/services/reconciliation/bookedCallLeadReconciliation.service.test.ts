@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import mongoose from "mongoose";
-import { CallLead } from "../models/CallLead";
-import { BookedLead } from "../models/BookedLead";
+import { CallLead } from "../../models/CallLead";
+import { BookedLead } from "../../models/BookedLead";
 import { previewBookedCallLeadReconciliation } from "./bookedCallLeadReconciliation.service";
 
 type FindChain = {
