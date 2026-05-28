@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
-import { connectMongo } from "../api/db";
-import { registerHistoricalModels } from "./historical_db_models";
+import { connectMongo } from "../../api/db";
+import { registerHistoricalModels } from "./models";
 
 async function main(): Promise<void> {
   await connectMongo();

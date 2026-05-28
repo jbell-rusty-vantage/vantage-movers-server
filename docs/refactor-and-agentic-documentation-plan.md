@@ -34,7 +34,7 @@ The current server is a Vercel-hosted Express API with MongoDB, Google Sheets, G
 ### Scripts And Historical Data
 
 - `scripts/` currently mixes destructive DB utilities, diagnostics, Postman collection sync, Google Sheets inspection, historical ingestion, reconciliation, analytics, repair jobs, and one-off creation scripts.
-- `scripts/historical_db_models/` registers relaxed replicas of the main models against `vantagemovershistorical`, a separate Mongo database on the same cluster.
+- `scripts/historical/models/` registers relaxed replicas of the main models against `vantagemovershistorical`, a separate Mongo database on the same cluster.
 - Historical ingestion and analytics scripts use the main app Mongo connection helper, then switch to the historical database with `mongoose.connection.useDb(...)`.
 - Existing historical documentation already lives in `docs/historical-db-schema-reference.md`, `docs/mongo-sheets-crm-schema-map.md`, and related relationship docs.
 
@@ -177,7 +177,7 @@ The repo already has `.cursor/rules/` files for project organization, branch/tes
 | `api/models/AGENTS.md` | Mongoose schema conventions, relationships, `sheet_sync[]`, enum source of truth. | `api/models/**` |
 | `api/validation/AGENTS.md` | Zod boundary rules, create/update/search schema behavior, client-owned vs server-owned fields. | `api/validation/**` |
 | `scripts/AGENTS.md` | Script categories, production safeguards, historical DB guidance, run logging, dry-run requirements. | `scripts/**` |
-| `scripts/historical_db_models/AGENTS.md` | Historical DB replica model rules and differences from main models. | `scripts/historical_db_models/**` |
+| `scripts/historical/models/AGENTS.md` | Historical DB replica model rules and differences from main models. | `scripts/historical/models/**` |
 | `docs/AGENTS.md` | Where architecture, business process, rollout, and schema docs belong. | `docs/**` |
 
 ### Proposed Cursor Rules

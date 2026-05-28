@@ -15,11 +15,11 @@
 import { readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import mongoose from "mongoose";
-import { connectMongo } from "../api/db";
-import { BookedLead } from "../api/models/BookedLead";
-import { CallLead } from "../api/models/CallLead";
-import { CancelledLead } from "../api/models/CancelledLead";
-import { FormLead } from "../api/models/FormLead";
+import { connectMongo } from "../../api/db";
+import { BookedLead } from "../../api/models/BookedLead";
+import { CallLead } from "../../api/models/CallLead";
+import { CancelledLead } from "../../api/models/CancelledLead";
+import { FormLead } from "../../api/models/FormLead";
 
 type LeadKind = "FormLead" | "CallLead";
 
@@ -59,7 +59,7 @@ function parseArgs(): { fixturePath: string; skipMongo: boolean } {
     ? isAbsolute(positional)
       ? positional
       : resolve(process.cwd(), positional)
-    : join(process.cwd(), "scripts", "live-sheet-sync-demo.fixture.json");
+    : join(process.cwd(), "scripts", "demos", "live-sheet-sync-demo.fixture.json");
   return { fixturePath, skipMongo };
 }
 

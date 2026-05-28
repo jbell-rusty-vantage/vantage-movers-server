@@ -1,13 +1,13 @@
 import mongoose, { type Model } from "mongoose";
-import { connectMongo } from "../api/db";
-import { normalizePhoneNumberForMatch } from "../api/utils/phone";
+import { connectMongo } from "../../api/db";
+import { normalizePhoneNumberForMatch } from "../../api/utils/phone";
 import {
   normalizeHistoricalAgentName,
   splitBinderAmountEvenly,
   splitHistoricalAgentNames,
 } from "./historical-agent-allocation";
-import { createGoogleSheetsClient, requiredEnv } from "./google-sheets-auth";
-import { registerHistoricalModels } from "./historical_db_models";
+import { createGoogleSheetsClient, requiredEnv } from "../google_sheets/google-sheets-auth";
+import { registerHistoricalModels } from "./models";
 import { reconcileHistoricalRelationships } from "./reconcile-historical-leads";
 
 type WorkbookKey = "top10" | "tbm" | "best_relocation" | "booked";

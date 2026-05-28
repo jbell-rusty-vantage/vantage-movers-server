@@ -2,9 +2,9 @@
 
 **Purpose:** Handoff document for backfill agents and scripts. Describes the MongoDB database `vantagemovershistorical` (same Atlas cluster as production, separate database).
 
-**Source of truth:** `scripts/historical_db_models/`
+**Source of truth:** `scripts/historical/models/`
 
-**Init script:** `pnpm run db:init-historical` → `scripts/init-historical-db.ts`
+**Init script:** `pnpm run db:init-historical` → `scripts/historical/init-historical-db.ts`
 
 ---
 
@@ -351,4 +351,4 @@ See also: [mongo-model-relationships-simple.md](./mongo-model-relationships-simp
 3. **Bidirectional links** are conventional, not enforced by DB — backfill should set both sides when possible (e.g. lead `booked` + booked `lead_ref`).
 4. **`source_company`** on historical rows may be raw sheet labels; do not assume slug enum values.
 5. **No `sheet_sync`** — do not write or expect that field.
-6. **Registration in code:** `registerHistoricalModels()` from `scripts/historical_db_models/index.ts` after `connectMongo()`.
+6. **Registration in code:** `registerHistoricalModels()` from `scripts/historical/models/index.ts` after `connectMongo()`.

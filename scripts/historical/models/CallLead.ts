@@ -1,5 +1,5 @@
 import mongoose, { Schema, type Connection, type InferSchemaType, type Model } from "mongoose";
-import { normalizePhoneNumberForMatch } from "../../api/utils/phone";
+import { normalizePhoneNumberForMatch } from "../../../api/utils/phone";
 import { ImportMetadataFields, optionalLocalField, sourceCompanyField } from "./schemaHelpers";
 
 export const HistoricalCallLeadSchema = new Schema(

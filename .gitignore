@@ -33,7 +33,11 @@ pnpm-debug.log*
 # Ignore output
 /*.log
 /logs
-scripts/historical_db_models/historical-analytics-report.json
+scripts/historical/models/historical-analytics-report.json
+
+# Personal / destructive DB-hitting utilities (clear-db, ping-db, seed scripts, etc.)
+# Lives only on developer machines; never committed.
+scripts/dev_ops/
 
 # Editor
 .vscode/

@@ -1,10 +1,10 @@
 import mongoose, { type Model } from "mongoose";
-import { connectMongo } from "../api/db";
+import { connectMongo } from "../../api/db";
 import {
   getHistoricalModelList,
   HISTORICAL_DATABASE_NAME,
   registerHistoricalModels,
-} from "./historical_db_models";
+} from "./models";
 
 async function ensureHistoricalModel(model: Model<unknown>): Promise<void> {
   await model.createCollection();

@@ -1,11 +1,11 @@
 import mongoose from "mongoose";
-import { connectMongo } from "../api/db";
+import { connectMongo } from "../../api/db";
 import {
   normalizeHistoricalAgentName,
   splitBinderAmountEvenly,
   splitHistoricalAgentNames,
 } from "./historical-agent-allocation";
-import { registerHistoricalModels } from "./historical_db_models";
+import { registerHistoricalModels } from "./models";
 
 type HistoricalModels = ReturnType<typeof registerHistoricalModels>;
 
