@@ -1,9 +1,32 @@
 import type { sheets_v4 } from "googleapis";
 import { CALL_SHEET_HEADERS } from "../../config/domain";
 import { escapeSheetTitleForRange } from "../../utils/googleSheets/ranges";
+import { withSheetsRetry } from "./retry";
 import type { SheetTabConfig } from "./types";
 
 const LEGACY_CALL_SHEET_HEADER_LENGTH = 18;
+
+/**
+ * Tabs whose existence + header row have already been ensured in this process.
+ *
+ * Previously `ensureTabsAndHeaders` rewrote the header row of every tab on
+ * every single row sync, which multiplied write requests (5+ wasted writes per
+ * source-sheet sync) and blew through the Sheets per-minute write quota during
+ * bursts — leaving later targets (notably source sheets) failing with 429 while
+ * the master sheet, written first, still succeeded. Headers effectively never
+ * change at runtime, so ensuring each tab at most once per process removes the
+ * amplification while still self-healing across cold starts.
+ */
+const ensuredTabs = new Set<string>();
+
+function ensuredTabKey(spreadsheetId: string, tabName: string): string {
+  return `${spreadsheetId}:${tabName}`;
+}
+
+/** Test/maintenance helper to force re-ensuring on the next sync. */
+export function resetEnsuredTabsCache(): void {
+  ensuredTabs.clear();
+}
 
 export async function ensureTabsAndHeaders(
   sheets: sheets_v4.Sheets,
@@ -11,14 +34,22 @@ export async function ensureTabsAndHeaders(
   tabs: SheetTabConfig[],
 ): Promise<void> {
   for (const tab of tabs) {
+    const cacheKey = ensuredTabKey(spreadsheetId, tab.tabName);
+    if (ensuredTabs.has(cacheKey)) {
+      continue;
+    }
+
     await ensureTab(sheets, spreadsheetId, tab.tabName);
     await clearLegacyTrailingCells(sheets, spreadsheetId, tab.tabName, tab.headers, 1);
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: `${escapeSheetTitleForRange(tab.tabName)}!A1:${columnLetter(tab.headers.length)}1`,
-      valueInputOption: "USER_ENTERED",
-      requestBody: { values: [[...tab.headers]] },
-    });
+    await withSheetsRetry("values.update.headers", () =>
+      sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${escapeSheetTitleForRange(tab.tabName)}!A1:${columnLetter(tab.headers.length)}1`,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [[...tab.headers]] },
+      }),
+    );
+    ensuredTabs.add(cacheKey);
   }
 }
 
@@ -52,10 +83,12 @@ async function clearSheetValues(
   spreadsheetId: string,
   range: string,
 ): Promise<void> {
-  await sheets.spreadsheets.values.clear({
-    spreadsheetId,
-    range,
-  });
+  await withSheetsRetry("values.clear", () =>
+    sheets.spreadsheets.values.clear({
+      spreadsheetId,
+      range,
+    }),
+  );
 }
 
 async function ensureTab(
@@ -69,12 +102,14 @@ async function ensureTab(
   }
 
   try {
-    const response = await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [{ addSheet: { properties: { title: tabName } } }],
-      },
-    });
+    const response = await withSheetsRetry("batchUpdate.addSheet", () =>
+      sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [{ addSheet: { properties: { title: tabName } } }],
+        },
+      }),
+    );
     return response.data.replies?.[0]?.addSheet?.properties?.sheetId ?? undefined;
   } catch (error) {
     if (!isGoogleSheetAlreadyExistsError(error)) {
@@ -89,10 +124,12 @@ export async function getExistingSheetId(
   spreadsheetId: string,
   tabName: string,
 ): Promise<number | undefined> {
-  const response = await sheets.spreadsheets.get({
-    spreadsheetId,
-    fields: "sheets.properties(sheetId,title)",
-  });
+  const response = await withSheetsRetry("spreadsheets.get", () =>
+    sheets.spreadsheets.get({
+      spreadsheetId,
+      fields: "sheets.properties(sheetId,title)",
+    }),
+  );
   return response.data.sheets?.find((sheet) => sheet.properties?.title === tabName)?.properties?.sheetId ?? undefined;
 }
 

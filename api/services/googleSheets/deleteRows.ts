@@ -1,5 +1,6 @@
 import type { sheets_v4 } from "googleapis";
 import { getSheetsClient } from "./auth";
+import { withSheetsRetry } from "./retry";
 import { findRowNumberByMongoId, rowNumberContainsMongoId } from "./rowLookup";
 import { getDeleteTargets } from "./targets";
 import { getExistingSheetId } from "./tabs";
@@ -50,21 +51,23 @@ async function deleteSheetRow(
     return;
   }
 
-  await sheets.spreadsheets.batchUpdate({
-    spreadsheetId,
-    requestBody: {
-      requests: [
-        {
-          deleteDimension: {
-            range: {
-              sheetId,
-              dimension: "ROWS",
-              startIndex: rowNumber - 1,
-              endIndex: rowNumber,
+  await withSheetsRetry("batchUpdate.deleteRow", () =>
+    sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId,
+                dimension: "ROWS",
+                startIndex: rowNumber - 1,
+                endIndex: rowNumber,
+              },
             },
           },
-        },
-      ],
-    },
-  });
+        ],
+      },
+    }),
+  );
 }

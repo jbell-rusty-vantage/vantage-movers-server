@@ -3,6 +3,7 @@ import {
   escapeSheetTitleForRange,
   extractRowNumberFromRange,
 } from "../../utils/googleSheets/ranges";
+import { withSheetsRetry } from "./retry";
 import { clearLegacyTrailingCells, columnLetter } from "./tabs";
 
 const SHEET_ROW_LOOKUP_END_COLUMN = "ZZ";
@@ -23,22 +24,26 @@ export async function upsertRow(
       : await findRowNumberByMongoId(sheets, spreadsheetId, tabName, headers, mongoId);
   if (rowNumber) {
     await clearLegacyTrailingCells(sheets, spreadsheetId, tabName, headers, rowNumber);
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: `${escapeSheetTitleForRange(tabName)}!A${rowNumber}:${columnLetter(headers.length)}${rowNumber}`,
-      valueInputOption: "USER_ENTERED",
-      requestBody: { values: [row] },
-    });
+    await withSheetsRetry("values.update.row", () =>
+      sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${escapeSheetTitleForRange(tabName)}!A${rowNumber}:${columnLetter(headers.length)}${rowNumber}`,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [row] },
+      }),
+    );
     return rowNumber;
   }
 
-  const response = await sheets.spreadsheets.values.append({
-    spreadsheetId,
-    range: `${escapeSheetTitleForRange(tabName)}!A:${columnLetter(headers.length)}`,
-    valueInputOption: "USER_ENTERED",
-    insertDataOption: "INSERT_ROWS",
-    requestBody: { values: [row] },
-  });
+  const response = await withSheetsRetry("values.append.row", () =>
+    sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: `${escapeSheetTitleForRange(tabName)}!A:${columnLetter(headers.length)}`,
+      valueInputOption: "USER_ENTERED",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values: [row] },
+    }),
+  );
 
   return extractRowNumberFromRange(response.data.updates?.updatedRange);
 }
@@ -50,10 +55,12 @@ export async function findRowNumberByMongoId(
   headers: readonly string[],
   mongoId: string,
 ): Promise<number | undefined> {
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: `${escapeSheetTitleForRange(tabName)}!A:${SHEET_ROW_LOOKUP_END_COLUMN}`,
-  });
+  const response = await withSheetsRetry("values.get.lookup", () =>
+    sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${escapeSheetTitleForRange(tabName)}!A:${SHEET_ROW_LOOKUP_END_COLUMN}`,
+    }),
+  );
   const rows = response.data.values ?? [];
   const mongoIdIndex = headers.indexOf("Mongo ID");
   if (mongoIdIndex < 0) {
@@ -83,10 +90,12 @@ export async function rowNumberContainsMongoId(
     return false;
   }
 
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: `${escapeSheetTitleForRange(tabName)}!A${rowNumber}:${SHEET_ROW_LOOKUP_END_COLUMN}${rowNumber}`,
-  });
+  const response = await withSheetsRetry("values.get.rowCheck", () =>
+    sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${escapeSheetTitleForRange(tabName)}!A${rowNumber}:${SHEET_ROW_LOOKUP_END_COLUMN}${rowNumber}`,
+    }),
+  );
   const row = response.data.values?.[0] ?? [];
   return row[mongoIdIndex] === mongoId || row.includes(mongoId);
 }

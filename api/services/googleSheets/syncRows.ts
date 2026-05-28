@@ -34,7 +34,14 @@ export async function syncRowToTargets(
 
   for (const target of targets) {
     try {
-      await ensureTabsAndHeaders(sheets, target.spreadsheetId, target.ensureTabs);
+      // Only ensure the tab this sync actually writes to. Ensuring every
+      // sibling tab (`target.ensureTabs`) on each row sync rewrote 5+ header
+      // rows per source-sheet write and was the main driver of Sheets
+      // write-quota exhaustion. Full provisioning of all tabs remains the job
+      // of `ensureAllConfiguredSheetTabs` at bootstrap.
+      await ensureTabsAndHeaders(sheets, target.spreadsheetId, [
+        { tabName: target.tabName, headers: target.headers },
+      ]);
       const existingSync = document.sheet_sync?.find((entry) => entry.target === target.target);
       const rowNumber = await upsertRow(
         sheets,
