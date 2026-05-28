@@ -1,0 +1,31 @@
+---
+description: Runtime Mongo schema map and v1 CRUD payload contracts
+globs: api/models/**/*.ts,api/validation/**/*.ts,api/routes/**/*.ts,api/services/**/*.ts,docs/historical-db-schema-reference.md
+alwaysApply: false
+---
+
+# Schema And CRUD Inputs
+
+- Treat `api/models/` as the runtime Mongo schema and `api/validation/v1/` as the public request contract. `api/validation/v1.validation.ts` is only the compatibility barrel; add new Zod logic to the matching `v1/*.validation.ts` module.
+- Keep API and Mongo fields in `snake_case`. Translate only at external boundaries such as CRM payloads and Google Sheets projections.
+
+## Core Collections
+
+- `FormLead` (`form_leads`) is the website form source lead: source/name/zip/move fields, `phone_number`, optional `email`, `ref_no`, `lid`, `quoted`, `cubic_feet`, `duplicate`, `post_to_granot`, `booked`, `cancelled`, `local`, CPL, and `sheet_sync[]`.
+- `CallLead` (`call_leads`) is the phone/Invoca/CRM-enriched source lead: requires either `phone_number` or `job_no`, normalizes phone for matching, stores CRM enrichment fields, `form_fill`, `created_on_unmatched`, booking/cancellation refs, CPL, and `sheet_sync[]`.
+- `BookedLead` (`booked_leads`) links back to `lead_ref` plus `lead_model` (`FormLead` or `CallLead`) via `refPath`, stores customer, job/source/merchant/deposit, required `agent_allocations[]`, `total_binder_amount`, threshold flags, cancellation ref, and `sheet_sync[]`.
+- `CancelledLead` (`cancelled_leads`) links to `booked_lead`, customer, source `lead_ref`/`lead_model`, cancel/refund fields, and snapshots booking/customer/source values for reporting.
+- `Customer` and `Agent` are support collections. Customers are upserted from source leads during booking; agents are resolved from booking form allocation input and snapshot names on bookings.
+
+## Input Contracts
+
+- Routes in `api/routes/v1.routes.ts` parse every create/update/search body with strict Zod schemas before calling services. Update schemas are partial but require at least one field.
+- Form lead create accepts landing-page fields plus `crm_company_label` and `post_to_granot`; duplicate detection can force `post_to_granot=false`. Patch form leads for extension-owned updates such as `quoted` and `cubic_feet`.
+- Call lead create accepts sparse call data but must include `phone_number` or `job_no`. Enrichment endpoints accept batches of CRM rows (`row_id`, job/customer/phone/email/zips/est_cf).
+- Booking create can use direct `lead_ref`/`lead_model` plus `agent_allocations`, or `/booked-leads/from-source` with `lead_type` (`FormLead` uses `form_lead_id`; `CallLead` uses `call_job_no` or `call_phone_number`).
+- Cancellation create requires either `booked_lead` or `lead_id`; if both are present, services enforce that they point to the same booking/source lead chain.
+
+## Change Guidance
+
+- When changing persisted fields, update the model, validation schema, service mirror logic, sheet projections/headers, and any docs or form scripts that submit the field.
+- Do not bypass service helpers for source-company parsing, phone normalization, local/CPL derivation, agent allocation resolution, duplicate/form-fill checks, or sheet-sync scheduling.

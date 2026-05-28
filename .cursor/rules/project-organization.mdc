@@ -1,16 +1,38 @@
 ---
-description: Current project organization and where new code belongs
+description: Compact map of the Vantage main server structure and ownership boundaries
 alwaysApply: true
 ---
 
 # Vantage Movers Server Organization
 
-- This repo (`vantage-main-server`) is the Vantage Movers Express REST API deployed on Vercel. **Production:** https://vantage-movers-main-server.vercel.app
-- Keep runtime API code under `api/` because `tsconfig.json` includes `api/**/*.ts`.
-- `api/index.ts` owns the exported Express app, health/db probes, and route mounting. Mount versioned routes from `api/routes/`.
-- `api/db.ts` is the only Mongo connection helper. Reuse it and keep the app pointed at the `vantagemovers` database.
-- Put request guards in `api/middleware`, Mongoose schemas in `api/models`, orchestration/business logic in `api/services`, shared config/maps in `api/config`, helpers in `api/utils`, and Zod schemas in `api/validation`.
-- Keep API payloads and Mongo fields in `snake_case`; convert to owner-facing Title Case only at the Google Sheets projection boundary.
-- Keep operational scripts under `scripts/`; run them through `package.json` scripts so `.env` loading stays consistent.
-- Keep planning, architecture, and workflow notes under `docs/`. Runtime code should cite those docs conceptually, not duplicate long prose from them.
-- Avoid broad restructuring unless requested. Prefer small modules that match the current folder layout and the v1 API boundaries.
+- `vantage-main-server` is the Vercel-hosted Express REST API for Vantage Movers. Production URL: `https://vantage-movers-main-server.vercel.app`.
+- Runtime API code belongs under `api/`. Operational/personal tooling belongs under `scripts/`. Architecture, schema, workflow, and migration notes belong under `docs/`.
+- Before changing write paths, identify `TEST_MODE`, selected Mongo DB, target Google Sheet env vars, and whether the code can touch CRM, Postman, or production customer data.
+
+## API Launch Map
+
+- Start request tracing at `api/index.ts`: Express app setup, health/db probes, logging, CORS/body parsing, and route mounting.
+- `api/routes/` owns HTTP boundaries. Keep routes thin: authenticate, parse with Zod, call services, format responses, and avoid business logic.
+- `api/validation/` owns request/operation schemas. `api/validation/v1.validation.ts` is the public v1 barrel; detailed schemas live in `api/validation/v1/`.
+- `api/services/` owns business behavior and side effects. Use the domain folders first: `leads/`, `bookings/`, `cancellations/`, `customers/`, `googleSheets/`, `crm/`, `reconciliation/`, `enrichment/`, `search/`, and `errors/`. Legacy barrels such as `v1.service.ts`, `crm.service.ts`, and search/reconciliation wrappers may preserve API compatibility.
+- `api/models/` owns runtime Mongoose schemas and shared schema helpers. Mongo/API fields should stay `snake_case`; only Google Sheets projections should produce owner-facing Title Case columns.
+- `api/config/` owns mode-aware domain configuration. Add source companies, sheet tabs, headers, CPL rules, Mongo database names, and Google auth env selection here instead of scattering `process.env` reads.
+- `api/middleware/` owns request guards and request-level behavior such as API secret enforcement and HTTP logging.
+- `api/utils/` owns small shared helpers, currently including logging sanitizers, Google Sheets range helpers, and location normalization.
+- `api/db.ts` is the shared Mongo connection helper. Runtime code should reuse it and preserve the `TEST_MODE` database boundary.
+
+## Script Launch Map
+
+- Run scripts through `package.json` commands so `.env` loading and `tsx` invocation remain consistent.
+- `scripts/dev_ops/` is for personal/admin DB operations and seed-style utilities. Treat these as potentially destructive even when names sound local.
+- `scripts/historical/` owns historical backfill, reconciliation, diagnostics, analytics, and repairs. `scripts/historical/models/` contains relaxed replicas for the separate `vantagemovershistorical` DB, not runtime API models.
+- `scripts/google_sheets/` owns sheet inspection, diagnostics, auth helpers, structure copy, and service-account utilities.
+- `scripts/postman/` owns Postman login and collection/environment sync for API tooling.
+- `scripts/google_apps_scripts/` owns Google Apps Script form helpers; `scripts/demos/` owns runnable demos/fixtures; `scripts/docs/` contains generated source-workbook documentation.
+
+## Working Rules
+
+- Preserve live workflow boundaries: form leads, call leads, bookings, cancellations, customers, CRM submission, Google Sheets sync, reconciliation, enrichment, historical backfill, and Postman collection management are separate concerns even when they share models.
+- Prefer adding focused modules inside the existing domain folders over expanding broad orchestration files.
+- Keep side effects explicit: Mongo is the source of truth; CRM, Google Sheets, Postman, and historical workbooks are external targets that need mode-aware logging and safe identifiers.
+- Use `pnpm test` for `api/**/*.test.ts` and `pnpm typecheck` after runtime TypeScript changes when practical.
