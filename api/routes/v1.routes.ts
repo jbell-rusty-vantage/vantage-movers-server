@@ -108,13 +108,13 @@ router.patch("/api/v1/customers/:id", handleUpdate(updateCustomerSchema, updateC
 router.delete("/api/v1/customers/:id", handleDelete(deleteCustomer));
 
 function handleFindAll(findAll: () => Promise<unknown>) {
-  return async (_req: Request, res: Response) => {
+  return async (req: Request, res: Response) => {
     try {
       await connectMongo();
       const data = await findAll();
       return res.json({ ok: true, data });
     } catch (error) {
-      return sendError(res, error);
+      return sendError(req, res, error);
     }
   };
 }
@@ -127,7 +127,7 @@ function handleFindOne(findOne: (id: string) => Promise<unknown>) {
       const data = await findOne(id);
       return res.json({ ok: true, data });
     } catch (error) {
-      return sendError(res, error);
+      return sendError(req, res, error);
     }
   };
 }
@@ -140,7 +140,7 @@ function handleCreate<T>(schema: ZodType<T>, create: (input: T) => Promise<unkno
       const data = await create(parsed);
       return res.status(201).json({ ok: true, data });
     } catch (error) {
-      return sendError(res, error);
+      return sendError(req, res, error);
     }
   };
 }
@@ -160,7 +160,7 @@ async function handleSearchFormLeads(req: Request, res: Response) {
     const data = await searchFormLeads(parsed);
     return res.json({ ok: true, data });
   } catch (error) {
-    return sendError(res, error);
+    return sendError(req, res, error);
   }
 }
 
@@ -171,7 +171,7 @@ async function handleSearchCallLeads(req: Request, res: Response) {
     const data = await searchCallLeads(parsed);
     return res.json({ ok: true, data });
   } catch (error) {
-    return sendError(res, error);
+    return sendError(req, res, error);
   }
 }
 
@@ -182,7 +182,7 @@ async function handleBrowseFormLeads(req: Request, res: Response) {
     const data = await browseFormLeads(parsed);
     return res.json({ ok: true, data });
   } catch (error) {
-    return sendError(res, error);
+    return sendError(req, res, error);
   }
 }
 
@@ -193,7 +193,7 @@ async function handleBrowseCallLeads(req: Request, res: Response) {
     const data = await browseCallLeads(parsed);
     return res.json({ ok: true, data });
   } catch (error) {
-    return sendError(res, error);
+    return sendError(req, res, error);
   }
 }
 
@@ -204,7 +204,7 @@ async function handleCallLeadEnrichmentPreview(req: Request, res: Response) {
     const data = await previewCallLeadEnrichment(parsed);
     return res.json({ ok: true, data });
   } catch (error) {
-    return sendError(res, error);
+    return sendError(req, res, error);
   }
 }
 
@@ -215,7 +215,7 @@ async function handleCallLeadEnrichmentSync(req: Request, res: Response) {
     const data = await syncCallLeadEnrichment(parsed);
     return res.json({ ok: true, data });
   } catch (error) {
-    return sendError(res, error);
+    return sendError(req, res, error);
   }
 }
 
@@ -226,7 +226,7 @@ async function handleBookedCallLeadReconciliationPreview(req: Request, res: Resp
     const data = await previewBookedCallLeadReconciliation(parsed);
     return res.json({ ok: true, data });
   } catch (error) {
-    return sendError(res, error);
+    return sendError(req, res, error);
   }
 }
 
@@ -237,7 +237,7 @@ async function handleBookedCallLeadReconciliationSync(req: Request, res: Respons
     const data = await syncBookedCallLeadReconciliation(parsed);
     return res.json({ ok: true, data });
   } catch (error) {
-    return sendError(res, error);
+    return sendError(req, res, error);
   }
 }
 
@@ -308,7 +308,7 @@ async function handleCreateFormLead(req: Request, res: Response) {
           message: issue.message,
         })),
       });
-      return sendError(res, error);
+      return sendError(req, res, error);
     }
 
     // Covers both legacy `V1ServiceError` throws and the new typed
@@ -326,7 +326,7 @@ async function handleCreateFormLead(req: Request, res: Response) {
         message: error.message,
         ...(error.metadata ? { metadata: error.metadata } : {}),
       });
-      return sendError(res, error);
+      return sendError(req, res, error);
     }
 
     log.error(
@@ -337,7 +337,7 @@ async function handleCreateFormLead(req: Request, res: Response) {
       },
       "Form lead creation failed",
     );
-    return sendError(res, error);
+    return sendError(req, res, error);
   }
 }
 
@@ -360,7 +360,7 @@ async function handleUpdateFormLead(req: Request, res: Response) {
     });
     return res.json({ ok: true, data: lead });
   } catch (error) {
-    return sendError(res, error);
+    return sendError(req, res, error);
   }
 }
 
@@ -376,7 +376,7 @@ function handleUpdate<T>(
       const data = await update(id, parsed);
       return res.json({ ok: true, data });
     } catch (error) {
-      return sendError(res, error);
+      return sendError(req, res, error);
     }
   };
 }
@@ -390,7 +390,7 @@ function handleDelete(remove: (id: string, cascade: boolean) => Promise<unknown>
       await remove(id, cascade);
       return res.status(204).send();
     } catch (error) {
-      return sendError(res, error);
+      return sendError(req, res, error);
     }
   };
 }
@@ -404,7 +404,10 @@ function getValidObjectId(req: Request): string {
   return id;
 }
 
-function sendError(res: Response, error: unknown) {
+function sendError(req: Request, res: Response, error: unknown) {
+  const log = requestLogger(req);
+  const rid = requestId(req);
+
   if (error instanceof ZodError) {
     return res.status(400).json({
       ok: false,
@@ -419,12 +422,30 @@ function sendError(res: Response, error: unknown) {
   // are preserved for V1ServiceError -- public `message` and `statusCode`
   // map exactly as before.
   if (error instanceof AppError) {
+    // 5xx AppErrors are dependency/infra failures (e.g. the 503 thrown by
+    // `connectMongo` when Atlas is unreachable). Log them at error level
+    // with the underlying cause so the raw driver/OpenSSL text is captured
+    // here instead of being swallowed into the response body. Client-facing
+    // 4xx AppErrors stay quiet -- they are expected outcomes.
+    if (error.statusCode >= 500) {
+      log.error(
+        { err: error, requestId: rid, ...error.toLog() },
+        "Request failed with server-side AppError",
+      );
+    }
     return res.status(error.statusCode).json({
       ok: false,
       error: error.message,
     });
   }
 
+  // Truly unexpected error: log the full object (pino's `err` serializer
+  // preserves name/message/stack) so operators can see the real cause
+  // rather than pino-http's synthetic "failed with status code 500".
+  log.error(
+    { err: error, requestId: rid },
+    "Unhandled error while processing request",
+  );
   const message = error instanceof Error ? error.message : "Unknown API error";
   return res.status(500).json({
     ok: false,

@@ -29,6 +29,8 @@ export const ERROR_CODES = {
   CONFLICT: "app.conflict",
   /** An external integration (CRM, Sheets, etc.) failed (502). */
   INTEGRATION: "app.integration",
+  /** A required dependency (e.g. the database) is temporarily unreachable (503). */
+  SERVICE_UNAVAILABLE: "app.service_unavailable",
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

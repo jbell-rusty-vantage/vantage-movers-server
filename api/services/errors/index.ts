@@ -17,6 +17,7 @@ export {
   ConflictError,
   IntegrationError,
   NotFoundError,
+  ServiceUnavailableError,
   UnauthorizedError,
   ValidationError,
 } from "./serviceErrors";

@@ -79,3 +79,19 @@ export class IntegrationError extends AppError {
     });
   }
 }
+
+/**
+ * A required runtime dependency (the database, primarily) is temporarily
+ * unreachable. Maps to a 503 so callers know the request can be safely
+ * retried, while the underlying cause (e.g. an Atlas TLS handshake
+ * failure) is kept in `internalMessage`/`cause` for logs only.
+ */
+export class ServiceUnavailableError extends AppError {
+  constructor(message: string, options: SubclassOptions = {}) {
+    super(message, {
+      ...options,
+      code: ERROR_CODES.SERVICE_UNAVAILABLE,
+      statusCode: options.statusCode ?? 503,
+    });
+  }
+}

@@ -1,6 +1,7 @@
 import dns from "node:dns";
 import mongoose from "mongoose";
 import { MONGO_DATABASE_NAME } from "./config/domain";
+import { ServiceUnavailableError } from "./services/errors";
 import { logger } from "./logger";
 
 interface MongooseCache {
@@ -33,10 +34,26 @@ export async function connectMongo(): Promise<void> {
 
   if (!cache.promise) {
     configureMongoDnsServers();
-    cache.promise = mongoose.connect(uri, { dbName: MONGO_DATABASE_NAME }).catch((error) => {
-      cache.promise = null;
-      throw error;
-    });
+    cache.promise = mongoose
+      .connect(uri, { dbName: MONGO_DATABASE_NAME })
+      .catch((error) => {
+        // Reset so the next request retries the connection instead of
+        // reusing a rejected promise for the life of the isolate.
+        cache.promise = null;
+        // Connection failures (Atlas TLS handshake aborts, server
+        // selection timeouts, DNS/network errors) are transient and
+        // safely retryable -- surface them as a 503 with a clean public
+        // message while preserving the raw driver/OpenSSL text for logs.
+        throw new ServiceUnavailableError(
+          "Database temporarily unavailable. Please retry shortly.",
+          {
+            internalMessage:
+              error instanceof Error ? error.message : String(error),
+            cause: error,
+            metadata: { dependency: "mongodb" },
+          },
+        );
+      });
   }
 
   await cache.promise;
