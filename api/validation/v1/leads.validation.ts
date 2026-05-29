@@ -130,9 +130,47 @@ export const searchCallLeadsSchema = z
     "At least one of phone_number, job_no, email, or name must be provided",
   );
 
+/**
+ * Browse / list query for the extension Search workspace. Every filter is
+ * optional so an empty query lists the latest leads ("view all"), `q` is a
+ * loose full-text match across the lead's identifying fields, and
+ * `source_company` can be used as a standalone filter. Distinct from the scored
+ * `searchFormLeadsSchema`, which is tuned for fallback id resolution.
+ */
+export const browseFormLeadsQuerySchema = z
+  .object({
+    q: optionalString,
+    source_company: optionalString,
+    name: optionalString,
+    email: looseEmailString,
+    phone_number: optionalString,
+    booked: booleanInput.optional(),
+    cancelled: booleanInput.optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+    skip: z.coerce.number().int().min(0).default(0),
+  })
+  .strict();
+
+export const browseCallLeadsQuerySchema = z
+  .object({
+    q: optionalString,
+    source_company: optionalString,
+    name: optionalString,
+    email: looseEmailString,
+    phone_number: optionalString,
+    job_no: optionalString,
+    booked: booleanInput.optional(),
+    cancelled: booleanInput.optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+    skip: z.coerce.number().int().min(0).default(0),
+  })
+  .strict();
+
 export type CreateFormLeadInput = z.infer<typeof createFormLeadSchema>;
 export type UpdateFormLeadInput = z.infer<typeof updateFormLeadSchema>;
 export type SearchFormLeadsInput = z.infer<typeof searchFormLeadsSchema>;
 export type CreateCallLeadInput = z.infer<typeof createCallLeadSchema>;
 export type UpdateCallLeadInput = z.infer<typeof updateCallLeadSchema>;
 export type SearchCallLeadsInput = z.infer<typeof searchCallLeadsSchema>;
+export type BrowseFormLeadsQuery = z.infer<typeof browseFormLeadsQuerySchema>;
+export type BrowseCallLeadsQuery = z.infer<typeof browseCallLeadsQuerySchema>;

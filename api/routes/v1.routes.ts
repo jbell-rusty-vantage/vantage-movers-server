@@ -7,6 +7,7 @@ import { logger as rootLogger } from "../logger";
 import { requireApiSecret } from "../middleware/requireApiSecret";
 import { searchFormLeads } from "../services/formLeadSearch.service";
 import { searchCallLeads } from "../services/callLeadSearch.service";
+import { browseCallLeads, browseFormLeads } from "../services/search";
 import {
   previewCallLeadEnrichment,
   syncCallLeadEnrichment,
@@ -30,10 +31,8 @@ import {
   deleteFormLead,
   findFormLead,
   findAllBookedLeads,
-  findAllCallLeads,
   findAllCancelledLeads,
   findAllCustomers,
-  findAllFormLeads,
   updateBookedLead,
   updateCallLead,
   updateCancelledLead,
@@ -50,6 +49,8 @@ import {
   createCustomerSchema,
   createFormLeadSchema,
   bookedCallLeadReconciliationBatchSchema,
+  browseCallLeadsQuerySchema,
+  browseFormLeadsQuerySchema,
   callLeadEnrichmentBatchSchema,
   searchCallLeadsSchema,
   searchFormLeadsSchema,
@@ -64,14 +65,14 @@ const router = Router();
 
 router.use("/api/v1", requireApiSecret);
 
-router.get("/api/v1/form-leads", handleFindAll(findAllFormLeads));
+router.get("/api/v1/form-leads", handleBrowseFormLeads);
 router.get("/api/v1/form-leads/:id", handleFindOne(findFormLead));
 router.post("/api/v1/form-leads/search", handleSearchFormLeads);
 router.post("/api/v1/form-leads", handleCreateFormLead);
 router.patch("/api/v1/form-leads/:id", handleUpdateFormLead);
 router.delete("/api/v1/form-leads/:id", handleDelete(deleteFormLead));
 
-router.get("/api/v1/call-leads", handleFindAll(findAllCallLeads));
+router.get("/api/v1/call-leads", handleBrowseCallLeads);
 router.post("/api/v1/call-leads/search", handleSearchCallLeads);
 router.post("/api/v1/call-leads/enrichment/preview", handleCallLeadEnrichmentPreview);
 router.post("/api/v1/call-leads/enrichment/sync", handleCallLeadEnrichmentSync);
@@ -168,6 +169,28 @@ async function handleSearchCallLeads(req: Request, res: Response) {
     await connectMongo();
     const parsed = searchCallLeadsSchema.parse(req.body);
     const data = await searchCallLeads(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+async function handleBrowseFormLeads(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = browseFormLeadsQuerySchema.parse(req.query);
+    const data = await browseFormLeads(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+async function handleBrowseCallLeads(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = browseCallLeadsQuerySchema.parse(req.query);
+    const data = await browseCallLeads(parsed);
     return res.json({ ok: true, data });
   } catch (error) {
     return sendError(res, error);

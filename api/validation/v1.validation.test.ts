@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   bookedCallLeadReconciliationBatchSchema,
+  browseCallLeadsQuerySchema,
+  browseFormLeadsQuerySchema,
   createBookedLeadSchema,
   createBookedLeadFromSourceSchema,
   createCallLeadSchema,
@@ -298,4 +300,51 @@ test("CallLead model rejects identity-less documents", async () => {
   });
 
   await assert.rejects(() => lead.validate(), /phone_number/);
+});
+
+test("browseFormLeadsQuerySchema allows an empty query (view all) with defaults", () => {
+  const parsed = browseFormLeadsQuerySchema.parse({});
+
+  assert.equal(parsed.limit, 50);
+  assert.equal(parsed.skip, 0);
+  assert.equal(parsed.q, undefined);
+  assert.equal(parsed.source_company, undefined);
+});
+
+test("browseFormLeadsQuerySchema accepts a standalone source_company filter", () => {
+  const parsed = browseFormLeadsQuerySchema.parse({
+    source_company: "Get Movers",
+  });
+
+  assert.equal(parsed.source_company, "Get Movers");
+});
+
+test("browseFormLeadsQuerySchema coerces booked and limit query strings", () => {
+  const parsed = browseFormLeadsQuerySchema.parse({
+    booked: "true",
+    cancelled: "false",
+    limit: "10",
+    skip: "5",
+  });
+
+  assert.equal(parsed.booked, true);
+  assert.equal(parsed.cancelled, false);
+  assert.equal(parsed.limit, 10);
+  assert.equal(parsed.skip, 5);
+});
+
+test("browseFormLeadsQuerySchema rejects unknown keys", () => {
+  const parsed = browseFormLeadsQuerySchema.safeParse({ bogus: "x" });
+
+  assert.equal(parsed.success, false);
+});
+
+test("browseCallLeadsQuerySchema accepts job_no and full-text q", () => {
+  const parsed = browseCallLeadsQuerySchema.parse({
+    q: "smith",
+    job_no: "P5556767",
+  });
+
+  assert.equal(parsed.q, "smith");
+  assert.equal(parsed.job_no, "P5556767");
 });
