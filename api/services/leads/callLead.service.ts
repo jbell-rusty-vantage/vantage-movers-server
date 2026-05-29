@@ -1,5 +1,6 @@
 import { getCplForSource, type LocalType, type SourceCompany } from "../../config/domain";
 import { CallLead } from "../../models/CallLead";
+import { toFloridaTimestamp } from "../../utils/easternTime";
 import type {
   CreateCallLeadInput,
   UpdateCallLeadInput,
@@ -28,7 +29,7 @@ export async function createCallLead(input: CreateCallLeadInput) {
     source_company,
     local,
     form_fill,
-    timestamp: input.timestamp ?? new Date(),
+    timestamp: toFloridaTimestamp(input.timestamp),
     cpl: getCplForSource(source_company, local),
   });
 
@@ -52,6 +53,9 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
   const update = { ...input };
   if (input.source_company !== undefined) {
     update.source_company = parseSourceCompany(input.source_company);
+  }
+  if (input.timestamp !== undefined) {
+    update.timestamp = toFloridaTimestamp(input.timestamp);
   }
   Object.assign(lead, update);
   if (

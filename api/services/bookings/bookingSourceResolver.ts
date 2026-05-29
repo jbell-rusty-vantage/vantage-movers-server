@@ -6,6 +6,7 @@ import {
 } from "../../config/domain";
 import { CallLead } from "../../models/CallLead";
 import { getCplForSource } from "../../config/domain";
+import { toFloridaTimestamp } from "../../utils/easternTime";
 import {
   findBestCallLeadMatchByPhone,
   getLinkedLead,
@@ -99,7 +100,7 @@ export async function resolveBookingSourceLead(
     source_company,
     form_fill,
     created_on_unmatched: true,
-    timestamp: input.timestamp ?? new Date(),
+    timestamp: toFloridaTimestamp(input.timestamp),
     cpl: getCplForSource(source_company, undefined),
   });
 

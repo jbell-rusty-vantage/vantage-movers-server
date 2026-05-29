@@ -5,6 +5,7 @@ import {
 } from "../../config/domain";
 import { FormLead } from "../../models/FormLead";
 import { logger } from "../../logger";
+import { toFloridaTimestamp } from "../../utils/easternTime";
 import { generateLeadId } from "../../utils/ids";
 import { normalizePhoneNumberForStorage } from "../../utils/phone";
 import type {
@@ -54,7 +55,7 @@ export async function createFormLead(input: CreateFormLeadInput) {
     local,
     lid: formLeadInput.lid?.trim() || generateLeadId(),
     ref_no: formLeadInput.ref_no?.trim() || "not provided",
-    timestamp: formLeadInput.timestamp ?? new Date(),
+    timestamp: toFloridaTimestamp(formLeadInput.timestamp),
     move_date: formLeadInput.move_date ?? new Date(),
     cpl: getCplForSource(source_company, local),
     duplicate,
@@ -125,6 +126,9 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
   }
   if (input.phone_number !== undefined) {
     update.phone_number = normalizePhoneNumberForStorage(input.phone_number);
+  }
+  if (input.timestamp !== undefined) {
+    update.timestamp = toFloridaTimestamp(input.timestamp);
   }
   Object.assign(lead, update);
   if (
