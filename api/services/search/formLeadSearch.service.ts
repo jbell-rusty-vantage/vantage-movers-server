@@ -93,7 +93,13 @@ export async function searchFormLeads(input: FormLeadSearchInput): Promise<FormL
     };
   }
 
-  const candidates = await FormLead.find(filter).sort({ createdAt: -1 }).limit(limit).exec();
+  const candidates = await FormLead.find({
+    ...filter,
+    duplicate: { $ne: true },
+  })
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .exec();
   const matches = candidates
     .map((lead) => scoreLead(lead, criteria))
     .filter((match) => match.score > 0)

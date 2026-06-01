@@ -64,7 +64,10 @@ export const createFormLeadSchema = z
   .strict();
 
 export const updateFormLeadSchema = z
-  .object(formLeadFields)
+  .object({
+    ...formLeadFields,
+    duplicate: booleanInput.optional(),
+  })
   .partial()
   .strict()
   .refine(requireAtLeastOne, "At least one form lead field must be provided");

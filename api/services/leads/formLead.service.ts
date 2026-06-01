@@ -120,6 +120,18 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
     });
   }
 
+  if (
+    lead.duplicate &&
+    (input.quoted !== undefined || input.cubic_feet !== undefined)
+  ) {
+    throw new ConflictError(
+      "Cannot update quoted or cubic_feet on a duplicate form lead",
+      {
+        metadata: { resource: "form_lead", id, duplicate: true },
+      },
+    );
+  }
+
   const update = { ...input };
   if (input.source_company !== undefined) {
     update.source_company = parseSourceCompany(input.source_company);
@@ -160,11 +172,15 @@ export async function findAllFormLeads() {
 
 export async function findFormLead(id: string) {
   const lead = await FormLead.findById(id).select(
-    "_id ref_no quoted cubic_feet booked",
+    "_id ref_no quoted cubic_feet booked duplicate",
   );
-  if (!lead) {
+  if (!lead || lead.duplicate) {
     throw new NotFoundError("Form lead not found", {
-      metadata: { resource: "form_lead", id },
+      metadata: {
+        resource: "form_lead",
+        id,
+        ...(lead?.duplicate ? { duplicate: true } : {}),
+      },
     });
   }
 

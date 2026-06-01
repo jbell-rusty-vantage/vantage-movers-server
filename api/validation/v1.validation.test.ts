@@ -8,6 +8,7 @@ import {
   createBookedLeadFromSourceSchema,
   createCallLeadSchema,
   createFormLeadSchema,
+  updateFormLeadSchema,
 } from "./v1.validation";
 import { BookedLead } from "../models/BookedLead";
 import { CallLead } from "../models/CallLead";
@@ -127,6 +128,14 @@ test("createFormLeadSchema does not accept duplicate from clients", () => {
   });
 
   assert.equal(parsed.success, false);
+});
+
+test("updateFormLeadSchema accepts duplicate for backfill and admin patches", () => {
+  const parsed = updateFormLeadSchema.parse({
+    duplicate: true,
+  });
+
+  assert.equal(parsed.duplicate, true);
 });
 
 test("createFormLeadSchema accepts post_to_granot boolean false", () => {
