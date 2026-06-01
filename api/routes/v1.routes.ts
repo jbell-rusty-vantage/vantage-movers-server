@@ -48,6 +48,8 @@ import {
   createCancelledLeadSchema,
   createCustomerSchema,
   createFormLeadSchema,
+  adminBrowseQuerySchema,
+  adminSearchQuerySchema,
   bookedCallLeadReconciliationBatchSchema,
   browseCallLeadsQuerySchema,
   browseFormLeadsQuerySchema,
@@ -60,10 +62,33 @@ import {
   updateCustomerSchema,
   updateFormLeadSchema,
 } from "../validation/v1.validation";
+import {
+  browseAdminResource,
+  exportAdminResourceCsv,
+  getAdminResourceDetail,
+  globalAdminSearch,
+  type AdminResource,
+} from "../services/admin";
 
 const router = Router();
 
 router.use("/api/v1", requireApiSecret);
+
+const adminResources = [
+  "form-leads",
+  "call-leads",
+  "booked-leads",
+  "cancelled-leads",
+  "customers",
+  "agents",
+] as const satisfies readonly AdminResource[];
+
+router.get("/api/v1/admin/search", handleAdminSearch);
+for (const resource of adminResources) {
+  router.get(`/api/v1/admin/${resource}`, handleAdminBrowse(resource));
+  router.get(`/api/v1/admin/${resource}/:id`, handleAdminDetail(resource));
+  router.get(`/api/v1/admin/exports/${resource}.csv`, handleAdminExport(resource));
+}
 
 router.get("/api/v1/form-leads", handleBrowseFormLeads);
 router.get("/api/v1/form-leads/:id", handleFindOne(findFormLead));
@@ -113,6 +138,59 @@ function handleFindAll(findAll: () => Promise<unknown>) {
       await connectMongo();
       const data = await findAll();
       return res.json({ ok: true, data });
+    } catch (error) {
+      return sendError(req, res, error);
+    }
+  };
+}
+
+function handleAdminBrowse(resource: AdminResource) {
+  return async (req: Request, res: Response) => {
+    try {
+      await connectMongo();
+      const parsed = adminBrowseQuerySchema.parse(req.query);
+      const data = await browseAdminResource(resource, parsed);
+      return res.json({ ok: true, data });
+    } catch (error) {
+      return sendError(req, res, error);
+    }
+  };
+}
+
+function handleAdminDetail(resource: AdminResource) {
+  return async (req: Request, res: Response) => {
+    try {
+      const id = getValidObjectId(req);
+      await connectMongo();
+      const parsed = adminBrowseQuerySchema.pick({ database_scope: true }).parse(req.query);
+      const data = await getAdminResourceDetail(resource, id, parsed.database_scope);
+      return res.json({ ok: true, data });
+    } catch (error) {
+      return sendError(req, res, error);
+    }
+  };
+}
+
+async function handleAdminSearch(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = adminSearchQuerySchema.parse(req.query);
+    const data = await globalAdminSearch(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+function handleAdminExport(resource: AdminResource) {
+  return async (req: Request, res: Response) => {
+    try {
+      await connectMongo();
+      const parsed = adminBrowseQuerySchema.parse(req.query);
+      const data = await exportAdminResourceCsv(resource, parsed);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${data.filename}"`);
+      return res.status(200).send(data.csv);
     } catch (error) {
       return sendError(req, res, error);
     }

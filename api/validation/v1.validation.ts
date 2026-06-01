@@ -76,3 +76,12 @@ export {
   type BookedCallLeadReconciliationBatchInput,
   type BookedCallLeadReconciliationRowInput,
 } from "./v1/operations.validation";
+
+export {
+  adminBrowseQuerySchema,
+  adminDatabaseScopeSchema,
+  adminSearchQuerySchema,
+  type AdminBrowseQuery,
+  type AdminDatabaseScope,
+  type AdminSearchQuery,
+} from "./v1/admin.validation";
