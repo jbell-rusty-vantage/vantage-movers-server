@@ -37,11 +37,31 @@ export async function syncBookingChainById(bookingId: string): Promise<void> {
     return;
   }
 
+  if (!booking.lead_ref || !booking.lead_model) {
+    await syncBookedLeadById(bookingId);
+    return;
+  }
+
   await syncBookingAndSource(
     booking._id,
     booking.lead_model as LeadModelName,
     booking.lead_ref.toString(),
   );
+}
+
+/**
+ * Syncs only the booked-lead row. Used by leadless referral bookings and by
+ * booking-chain fallback when a legacy/leadless booking has no source lead.
+ */
+export async function syncBookedLeadById(bookingId: string): Promise<void> {
+  const booking = await BookedLead.findById(bookingId)
+    .populate("customer")
+    .populate("agent_allocations.agent");
+  if (!booking) {
+    logger.warn({ msg: "sheet_sync.booking_missing", bookingId });
+    return;
+  }
+  await syncAndStore(booking as unknown as SheetSyncDocument, syncBookedLeadToSheets);
 }
 
 /**

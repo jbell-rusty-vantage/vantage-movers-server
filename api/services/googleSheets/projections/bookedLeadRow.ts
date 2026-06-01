@@ -10,6 +10,7 @@ import {
 
 export function bookedLeadToRow(booking: BookedLeadSheetSource): string[] {
   const allocations = booking.agent_allocations ?? [];
+  const customerName = booking.customer?.full_name ?? booking.customer_name ?? "";
   return [
     formatTimestamp(booking.timestamp),
     allocations[0]?.agent_name_snapshot ?? "",
@@ -18,7 +19,7 @@ export function bookedLeadToRow(booking: BookedLeadSheetSource): string[] {
     splitCell(allocations),
     formatDateOnly(booking.book_date),
     booking.job_no ?? "",
-    booking.customer?.full_name ?? "",
+    customerName,
     formatNumber(booking.deposit_amount),
     booking.merchant,
     booking.source,

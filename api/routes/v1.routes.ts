@@ -24,6 +24,7 @@ import {
   createCancelledLead,
   createCustomer,
   createFormLead,
+  createReferralBooking,
   deleteBookedLead,
   deleteCallLead,
   deleteCancelledLead,
@@ -48,6 +49,7 @@ import {
   createCancelledLeadSchema,
   createCustomerSchema,
   createFormLeadSchema,
+  createReferralBookingSchema,
   analyticsQuerySchema,
   analyticsReportSchema,
   agentSalesReportQuerySchema,
@@ -159,6 +161,7 @@ router.post(
   "/api/v1/booked-leads/from-source",
   handleCreate(createBookedLeadFromSourceSchema, createBookedLeadFromSource),
 );
+router.post("/api/v1/referral-bookings", handleCreate(createReferralBookingSchema, createReferralBooking));
 router.patch("/api/v1/booked-leads/:id", handleUpdate(updateBookedLeadSchema, updateBookedLead));
 router.delete("/api/v1/booked-leads/:id", handleDelete(deleteBookedLead));
 

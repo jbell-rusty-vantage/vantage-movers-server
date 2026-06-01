@@ -13,6 +13,12 @@ export type BookingChainSheetSyncJob = {
   bookingId: string;
 };
 
+export type BookedLeadSheetSyncJob = {
+  resource: "booked_lead";
+  operation: string;
+  bookingId: string;
+};
+
 export type CancellationChainSheetSyncJob = {
   resource: "cancellation_chain";
   operation: string;
@@ -21,6 +27,7 @@ export type CancellationChainSheetSyncJob = {
 
 export type FullSheetSyncJob =
   | SourceLeadSheetSyncJob
+  | BookedLeadSheetSyncJob
   | BookingChainSheetSyncJob
   | CancellationChainSheetSyncJob;
 
@@ -33,6 +40,7 @@ export function sheetSyncLogContext(job: FullSheetSyncJob): Record<string, strin
         leadId: job.leadId,
       };
     case "booking_chain":
+    case "booked_lead":
       return {
         resource: job.resource,
         bookingId: job.bookingId,

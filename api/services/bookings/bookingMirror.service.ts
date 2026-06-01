@@ -56,7 +56,8 @@ export async function refreshAttachedBookingFromLead(
     return sourceLeadJob;
   }
 
-  if (booking.lead_model !== leadModel || booking.lead_ref.toString() !== lead._id.toString()) {
+  const bookingLeadRef = booking.lead_ref?.toString();
+  if (booking.lead_model !== leadModel || bookingLeadRef !== lead._id.toString()) {
     logger.warn({
       msg: "source_lead.update.booking_mismatch",
       operation,
@@ -64,7 +65,7 @@ export async function refreshAttachedBookingFromLead(
       leadId: lead._id.toString(),
       bookingId,
       bookingLeadModel: booking.lead_model,
-      bookingLeadId: booking.lead_ref.toString(),
+      bookingLeadId: bookingLeadRef,
     });
     return sourceLeadJob;
   }

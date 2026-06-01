@@ -30,6 +30,7 @@ export type PopulatedBookedLead = {
   book_date: Date;
   job_no?: string | null;
   customer?: { full_name?: string | null } | null;
+  customer_name?: string | null;
   agent_allocations?: AgentAllocationSheetSource[] | null;
   total_binder_amount: number;
   deposit_amount: number;

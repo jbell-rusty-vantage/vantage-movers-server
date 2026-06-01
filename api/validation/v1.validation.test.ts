@@ -6,6 +6,7 @@ import {
   browseFormLeadsQuerySchema,
   createBookedLeadSchema,
   createBookedLeadFromSourceSchema,
+  createReferralBookingSchema,
   createCallLeadSchema,
   createFormLeadSchema,
   searchFormLeadsSchema,
@@ -48,6 +49,40 @@ test("createBookedLeadFromSourceSchema accepts CallLead booking with only call_j
   assert.equal(parsed.lead_type, "CallLead");
   assert.equal(parsed.call_job_no, "P5556278");
   assert.equal(parsed.call_phone_number, undefined);
+});
+
+test("createReferralBookingSchema accepts owner-facing referral booking fields", () => {
+  const parsed = createReferralBookingSchema.parse({
+    book_date: "2026-05-21",
+    job_no: "REF-100",
+    customer_name: "Jane Referral",
+    agent: "JOSH",
+    split_agent: "Austin",
+    total_binder_amount: 900,
+    deposit_amount: 300,
+    merchant: "Paper Check",
+    local: "local",
+  });
+
+  assert.equal(parsed.job_no, "REF-100");
+  assert.equal(parsed.customer_name, "Jane Referral");
+  assert.equal(parsed.local, "local");
+});
+
+test("createReferralBookingSchema rejects server-owned referral source fields", () => {
+  const parsed = createReferralBookingSchema.safeParse({
+    book_date: "2026-05-21",
+    job_no: "REF-100",
+    customer_name: "Jane Referral",
+    agent: "JOSH",
+    total_binder_amount: 900,
+    deposit_amount: 300,
+    merchant: "Paper Check",
+    source: "referral",
+    is_referral_booking: true,
+  });
+
+  assert.equal(parsed.success, false);
 });
 
 test("createBookedLeadSchema accepts FormLead booking by Mongo id without job_no", () => {
@@ -264,6 +299,50 @@ test("BookedLead model validates phone-only CallLead bookings without job_no", a
 
   await assert.doesNotReject(() => booking.validate());
   assert.equal(booking.job_no, undefined);
+});
+
+test("BookedLead model validates leadless referral bookings", async () => {
+  const booking = new BookedLead({
+    book_date: new Date("2026-05-21"),
+    job_no: "REF-100",
+    customer_name: "Jane Referral",
+    agent_allocations: [
+      {
+        agent: "507f1f77bcf86cd799439012",
+        agent_name_snapshot: "JOSH",
+        binder_amount: 900,
+      },
+    ],
+    total_binder_amount: 900,
+    deposit_amount: 900,
+    merchant: "Paper Check",
+    source: "referral",
+    is_referral_booking: true,
+  });
+
+  await assert.doesNotReject(() => booking.validate());
+  assert.equal(booking.lead_ref, undefined);
+  assert.equal(booking.lead_model, undefined);
+});
+
+test("BookedLead model still requires lead linkage for non-referral bookings", async () => {
+  const booking = new BookedLead({
+    book_date: new Date("2026-05-21"),
+    job_no: "JOB-100",
+    agent_allocations: [
+      {
+        agent: "507f1f77bcf86cd799439012",
+        agent_name_snapshot: "JOSH",
+        binder_amount: 900,
+      },
+    ],
+    total_binder_amount: 900,
+    deposit_amount: 900,
+    merchant: "Card",
+    source: "main_site",
+  });
+
+  await assert.rejects(() => booking.validate(), /lead_ref/);
 });
 
 test("FormLead model stores duplicate quarantine flag", async () => {

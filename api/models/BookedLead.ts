@@ -27,11 +27,11 @@ const BookedLeadSchema = new Schema(
     },
     lead_ref: {
       type: Schema.Types.ObjectId,
-      required: true,
       refPath: "lead_model",
       index: true,
     },
-    lead_model: leadModelField,
+    lead_model: { ...leadModelField, required: false },
+    customer_name: { type: String, trim: true },
     agent_allocations: {
       type: [AgentAllocationSchema],
       required: true,
@@ -46,6 +46,7 @@ const BookedLeadSchema = new Schema(
     deposit_amount: { type: Number, required: true },
     merchant: { type: String, required: true, trim: true },
     source: { type: String, required: true, trim: true },
+    is_referral_booking: { type: Boolean, required: true, default: false, index: true },
     submission_id: { type: String, trim: true, index: true },
     local: optionalLocalField,
     over_2000: { type: Boolean, required: true, default: false },
@@ -62,6 +63,18 @@ const BookedLeadSchema = new Schema(
 );
 
 BookedLeadSchema.index({ lead_ref: 1, lead_model: 1 });
+BookedLeadSchema.index({ job_no: 1 });
+
+BookedLeadSchema.pre("validate", function () {
+  if (this.is_referral_booking !== true) {
+    if (!this.lead_ref) {
+      this.invalidate("lead_ref", "lead_ref is required unless this is a referral booking");
+    }
+    if (!this.lead_model) {
+      this.invalidate("lead_model", "lead_model is required unless this is a referral booking");
+    }
+  }
+});
 
 BookedLeadSchema.virtual("agent").get(function () {
   return this.agent_allocations?.[0]?.agent_name_snapshot ?? "";
@@ -69,6 +82,10 @@ BookedLeadSchema.virtual("agent").get(function () {
 
 BookedLeadSchema.virtual("binder_amount").get(function () {
   return this.total_binder_amount;
+});
+
+BookedLeadSchema.virtual("customer_name_snapshot").get(function () {
+  return this.customer_name ?? "";
 });
 
 export type BookedLeadDocument = InferSchemaType<typeof BookedLeadSchema> & {

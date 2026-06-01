@@ -40,7 +40,7 @@ export async function resolveBookedLeadForCancellation(
   if (input.booked_lead && !booking._id.equals(input.booked_lead)) {
     throw new V1ServiceError("booked_lead does not match the source lead booking", 409);
   }
-  if (booking.lead_model !== leadModel || booking.lead_ref.toString() !== lead._id.toString()) {
+  if (booking.lead_model !== leadModel || booking.lead_ref?.toString() !== lead._id.toString()) {
     throw new V1ServiceError("Booked lead does not match the source lead", 409);
   }
 
@@ -65,6 +65,9 @@ export async function getBookedLeadForCancellation(
   }
   if (booking.cancelled) {
     throw new V1ServiceError("Booked lead is already cancelled", 409);
+  }
+  if (booking.is_referral_booking || !booking.lead_ref || !booking.lead_model) {
+    throw new V1ServiceError("Referral booking cancellation is not supported yet", 409);
   }
 
   return booking;

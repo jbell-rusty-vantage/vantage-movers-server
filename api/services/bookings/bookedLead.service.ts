@@ -127,6 +127,12 @@ export async function updateBookedLead(id: string, input: UpdateBookedLeadInput)
   if (!booking) {
     throw new V1ServiceError("Booked lead not found", 404);
   }
+  if (booking.is_referral_booking) {
+    throw new V1ServiceError("Referral booking edits are not supported yet", 409);
+  }
+  if (!booking.lead_ref || !booking.lead_model) {
+    throw new V1ServiceError("Booked lead is missing linked lead metadata", 409);
+  }
 
   const { agent_allocations, agent_allocation_mode, total_binder_amount, ...bookingInput } = input;
   Object.assign(booking, bookingInput);
@@ -186,6 +192,12 @@ export async function deleteBookedLead(id: string, cascade: boolean) {
   const booking = await BookedLead.findById(id);
   if (!booking) {
     throw new V1ServiceError("Booked lead not found", 404);
+  }
+  if (booking.is_referral_booking) {
+    throw new V1ServiceError("Referral booking deletion is not supported yet", 409);
+  }
+  if (!booking.lead_ref || !booking.lead_model) {
+    throw new V1ServiceError("Booked lead is missing linked lead metadata", 409);
   }
   if (booking.cancelled && !cascade) {
     throw new V1ServiceError("Booked lead has a cancellation; pass cascade=true to delete dependents", 409);

@@ -103,6 +103,20 @@ export const createBookedLeadFromSourceSchema = z.discriminatedUnion("lead_type"
     ),
 ]);
 
+export const createReferralBookingSchema = z
+  .object({
+    book_date: bookedLeadFields.book_date,
+    job_no: bookedLeadFields.job_no,
+    customer_name: nonEmptyString,
+    agent: nonEmptyString,
+    split_agent: optionalString,
+    total_binder_amount: moneyAmount,
+    deposit_amount: bookedLeadFields.deposit_amount,
+    merchant: bookedLeadFields.merchant,
+    local: bookedLeadFields.local,
+  })
+  .strict();
+
 export const updateBookedLeadSchema = z
   .object({
     timestamp: bookedLeadFields.timestamp,
@@ -124,4 +138,5 @@ export const updateBookedLeadSchema = z
 
 export type CreateBookedLeadInput = z.infer<typeof createBookedLeadSchema>;
 export type CreateBookedLeadFromSourceInput = z.infer<typeof createBookedLeadFromSourceSchema>;
+export type CreateReferralBookingInput = z.infer<typeof createReferralBookingSchema>;
 export type UpdateBookedLeadInput = z.infer<typeof updateBookedLeadSchema>;

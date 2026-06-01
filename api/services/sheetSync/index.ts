@@ -1,4 +1,5 @@
 export type {
+  BookedLeadSheetSyncJob,
   BookingChainSheetSyncJob,
   CancellationChainSheetSyncJob,
   FullSheetSyncJob,
@@ -8,6 +9,7 @@ export { sheetSyncLogContext } from "./sheetSyncJobs";
 
 export {
   runFullSheetSyncProcess,
+  scheduleBookedLeadSheetSync,
   scheduleBookingChainSheetSync,
   scheduleCallLeadSheetSync,
   scheduleFullSheetSyncProcess,
@@ -16,6 +18,7 @@ export {
 export { syncAndStore, type SheetSyncDocument, type SheetSyncFn } from "./sheetSyncPersistence";
 
 export {
+  syncBookedLeadById,
   syncBookingAndSource,
   syncBookingChainById,
   syncCancellationChainById,

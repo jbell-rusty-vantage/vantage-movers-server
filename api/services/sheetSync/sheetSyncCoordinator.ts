@@ -3,6 +3,7 @@ import { connectMongo } from "../../db";
 import { logger } from "../../logger";
 import { sheetSyncLogContext, type FullSheetSyncJob } from "./sheetSyncJobs";
 import {
+  syncBookedLeadById,
   syncBookingChainById,
   syncCancellationChainById,
   syncSourceLeadById,
@@ -59,6 +60,18 @@ export function scheduleBookingChainSheetSync(bookingId: string, operation: stri
 }
 
 /**
+ * Schedules a booked-row-only sync. Referral bookings use this so they update
+ * the Master Booked sheet without trying to refresh a non-existent lead row.
+ */
+export function scheduleBookedLeadSheetSync(bookingId: string, operation: string): void {
+  scheduleFullSheetSyncProcess({
+    resource: "booked_lead",
+    operation,
+    bookingId,
+  });
+}
+
+/**
  * Runs the full sheet sync process synchronously. Normally invoked through
  * `scheduleFullSheetSyncProcess`, but exposed for callers that need to await
  * a sync (e.g. tests, scripts, or future synchronous workflows).
@@ -72,6 +85,9 @@ export async function runFullSheetSyncProcess(job: FullSheetSyncJob): Promise<vo
   switch (job.resource) {
     case "source_lead":
       await syncSourceLeadById(job.leadModel, job.leadId);
+      break;
+    case "booked_lead":
+      await syncBookedLeadById(job.bookingId);
       break;
     case "booking_chain":
       await syncBookingChainById(job.bookingId);

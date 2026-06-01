@@ -41,10 +41,10 @@ const SEARCH_CONFIGS: Record<
     badges: leadBadges,
   },
   "booked-leads": {
-    fields: ["job_no", "normalized_job_no", "customer_name_snapshot", "source", "merchant", "agent_allocations.agent_name_snapshot"],
+    fields: ["job_no", "normalized_job_no", "customer_name", "customer_name_snapshot", "source", "merchant", "agent_allocations.agent_name_snapshot"],
     hrefPrefix: "/bookings",
     primary: (doc) => label(doc.job_no, "Booking"),
-    secondary: (doc) => label(doc.customer_name_snapshot, doc.source, doc.merchant),
+    secondary: (doc) => label(doc.customer_name, doc.customer_name_snapshot, doc.source, doc.merchant),
     badges: (doc) => ["booked", ...(doc.cancelled ? ["cancelled"] : [])],
   },
   "cancelled-leads": {

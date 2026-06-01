@@ -12,6 +12,7 @@
 export { V1ServiceError } from "./v1ServiceError";
 
 export {
+  scheduleBookedLeadSheetSync,
   scheduleBookingChainSheetSync,
   scheduleCallLeadSheetSync,
 } from "./sheetSync";
@@ -31,6 +32,7 @@ export {
 export {
   createBookedLead,
   createBookedLeadFromSource,
+  createReferralBooking,
   deleteBookedLead,
   findAllBookedLeads,
   refreshAttachedBookingFromLead,

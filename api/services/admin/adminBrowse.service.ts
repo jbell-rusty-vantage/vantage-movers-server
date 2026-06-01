@@ -81,6 +81,7 @@ const RESOURCE_CONFIGS: Record<AdminResource, ResourceConfig> = {
     qFields: [
       "job_no",
       "normalized_job_no",
+      "customer_name",
       "customer_name_snapshot",
       "source",
       "merchant",
@@ -91,7 +92,7 @@ const RESOURCE_CONFIGS: Record<AdminResource, ResourceConfig> = {
       source: ["source"],
       source_label: ["source"],
       agent: ["agent_allocations.agent_name_snapshot"],
-      customer_name: ["customer_name_snapshot"],
+      customer_name: ["customer_name", "customer_name_snapshot"],
       job_no: ["job_no", "normalized_job_no"],
       merchant: ["merchant"],
       local: ["local"],

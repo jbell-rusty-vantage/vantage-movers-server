@@ -17,6 +17,8 @@ export {
 
 export { createBookedLeadFromSource } from "./bookedLeadFromSource.service";
 
+export { createReferralBooking } from "./referralBooking.service";
+
 export {
   clearBookingFromLead,
   mirrorBookingToLead,

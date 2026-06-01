@@ -36,6 +36,9 @@ import { resolveBookedLeadForCancellation } from "./cancellationResolver";
  */
 export async function createCancelledLead(input: CreateCancelledLeadInput) {
   const booking = await resolveBookedLeadForCancellation(input);
+  if (!booking.lead_ref || !booking.lead_model) {
+    throw new V1ServiceError("Referral booking cancellation is not supported yet", 409);
+  }
 
   const customer = booking.customer as
     | { _id?: mongoose.Types.ObjectId; full_name?: string }
@@ -63,7 +66,7 @@ export async function createCancelledLead(input: CreateCancelledLeadInput) {
   booking.cancelled = cancellation._id;
   await booking.save();
   await mirrorCancellationToLead(
-    booking.lead_model as LeadModelName,
+    booking.lead_model,
     booking.lead_ref.toString(),
     cancellation._id,
   );
@@ -132,7 +135,7 @@ export async function deleteCancelledLead(id: string) {
     cancellation.lead_ref?.toString(),
     false,
   );
-  if (booking) {
+  if (booking && booking.lead_ref && booking.lead_model) {
     await syncBookingAndSource(
       booking._id,
       booking.lead_model as LeadModelName,

@@ -298,6 +298,29 @@ test("bookedLeadToRow projects allocations, customer, and lead ref", () => {
   assert.equal(row[14], "cancelled");
 });
 
+test("bookedLeadToRow projects referral customer name and blank lead ref", () => {
+  const booking: BookedLeadSheetSource = {
+    _id: new mongoose.Types.ObjectId(),
+    timestamp: new Date(2026, 4, 27, 9, 4, 5),
+    book_date: new Date("2026-05-20T00:00:00.000Z"),
+    job_no: "REF-1",
+    customer_name: "Referral Customer",
+    agent_allocations: [{ agent_name_snapshot: "Agent A", binder_amount: 500 }],
+    total_binder_amount: 500,
+    deposit_amount: 100,
+    merchant: "Paper Check",
+    source: "referral",
+    local: null,
+  };
+
+  const row = bookedLeadToRow(booking);
+  assert.equal(row.length, 15);
+  assert.equal(row[7], "Referral Customer");
+  assert.equal(row[10], "referral");
+  assert.equal(row[12], "");
+  assert.equal(row[13], "");
+});
+
 test("cancelledLeadToRow projects cancellation fields", () => {
   const leadRefId = new mongoose.Types.ObjectId();
   const cancellation: CancelledLeadSheetSource = {
