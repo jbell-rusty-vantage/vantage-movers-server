@@ -44,7 +44,13 @@ export async function ensureTabsAndHeaders(
     }
 
     await ensureTab(sheets, spreadsheetId, tab.tabName);
-    await clearLegacyTrailingCells(sheets, spreadsheetId, tab.tabName, tab.headers, 1);
+    await clearLegacyTrailingCells(
+      sheets,
+      spreadsheetId,
+      tab.tabName,
+      tab.headers,
+      1,
+    );
     await withSheetsRetry("values.update.headers", () =>
       sheets.spreadsheets.values.update({
         spreadsheetId,
@@ -120,7 +126,9 @@ async function ensureTab(
         },
       }),
     );
-    return response.data.replies?.[0]?.addSheet?.properties?.sheetId ?? undefined;
+    return (
+      response.data.replies?.[0]?.addSheet?.properties?.sheetId ?? undefined
+    );
   } catch (error) {
     if (!isGoogleSheetAlreadyExistsError(error)) {
       throw error;
@@ -140,15 +148,21 @@ export async function getExistingSheetId(
       fields: "sheets.properties(sheetId,title)",
     }),
   );
-  return response.data.sheets?.find((sheet) => sheet.properties?.title === tabName)?.properties?.sheetId ?? undefined;
+  return (
+    response.data.sheets?.find(
+      (sheet: sheets_v4.Schema$Sheet) => sheet.properties?.title === tabName,
+    )?.properties?.sheetId ?? undefined
+  );
 }
 
 function isGoogleSheetAlreadyExistsError(error: unknown): boolean {
   if (typeof error !== "object" || error === null) {
     return false;
   }
-  const status = "code" in error ? (error as { code?: unknown }).code : undefined;
-  const message = "message" in error ? String((error as { message?: unknown }).message) : "";
+  const status =
+    "code" in error ? (error as { code?: unknown }).code : undefined;
+  const message =
+    "message" in error ? String((error as { message?: unknown }).message) : "";
   return status === 400 && message.toLowerCase().includes("already exists");
 }
 

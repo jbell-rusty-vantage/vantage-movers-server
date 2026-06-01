@@ -20,7 +20,7 @@ type ServiceAccountCredentials = {
   [key: string]: unknown;
 };
 
-let cachedSheetsClient: sheets_v4.Sheets | null = null;
+let cachedSheetsClient: ReturnType<typeof google.sheets> | null = null;
 let loggedAuthConfig = false;
 
 export function getSheetsClient(): sheets_v4.Sheets {
@@ -57,7 +57,10 @@ export function getSheetsClient(): sheets_v4.Sheets {
     scopes: [SHEETS_SCOPE],
   });
 
-  cachedSheetsClient = google.sheets({ version: "v4", auth });
+  cachedSheetsClient = google.sheets({
+    version: "v4",
+    auth,
+  } satisfies sheets_v4.Options);
   return cachedSheetsClient;
 }
 
@@ -85,7 +88,9 @@ function getServiceAccountCredentials(): ServiceAccountCredentials | undefined {
   const base64Json = process.env[base64JsonEnvVar]?.trim();
   const value =
     rawJson ??
-    (base64Json ? Buffer.from(base64Json, "base64").toString("utf8") : undefined);
+    (base64Json
+      ? Buffer.from(base64Json, "base64").toString("utf8")
+      : undefined);
 
   if (!value) {
     return undefined;

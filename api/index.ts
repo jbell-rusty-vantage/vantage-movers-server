@@ -24,18 +24,13 @@ type RequestWithLogger = Request & {
   log?: Logger;
 };
 
-type BodyParseErrorResponse = Response & {
-  headersSent: boolean;
-  status(code: number): Response;
-};
-
 app.use(httpLogger);
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(v1Routes);
 
-app.get("/", (_req, res) => {
+app.get("/", (_req: Request, res: Response) => {
   res.json({
     service: "vantage-movers-server",
     status: "ok",
@@ -82,12 +77,11 @@ app.use((err: unknown, req: Request, res: Response, next: ErrorNext) => {
     return next(err);
   }
   const log = (req as RequestWithLogger).log ?? logger;
-  const bodyParseResponse = res as BodyParseErrorResponse;
   log.warn({ err, msg: "http.body.parse_failed" });
-  if (bodyParseResponse.headersSent) {
+  if (res.headersSent) {
     return;
   }
-  return bodyParseResponse.status(400).json({
+  return res.status(400).json({
     ok: false,
     error: "Malformed request body",
   });
