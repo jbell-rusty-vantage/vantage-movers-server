@@ -50,6 +50,7 @@ import {
   createFormLeadSchema,
   analyticsQuerySchema,
   analyticsReportSchema,
+  agentSalesReportQuerySchema,
   adminBrowseQuerySchema,
   adminSearchQuerySchema,
   bookedCallLeadReconciliationBatchSchema,
@@ -67,11 +68,17 @@ import {
 import {
   browseAdminResource,
   exportAdminResourceCsv,
+  getAdminFacets,
   getAdminResourceDetail,
   globalAdminSearch,
   type AdminResource,
 } from "../services/admin";
-import { exportAnalyticsReportCsv, getAnalyticsReport } from "../services/analytics";
+import {
+  exportAgentSalesReportCsv,
+  exportAnalyticsReportCsv,
+  getAgentSalesReport,
+  getAnalyticsReport,
+} from "../services/analytics";
 
 const router = Router();
 
@@ -105,9 +112,12 @@ const analyticsReports = [
   "lead-source-performance",
   "local-vs-long-distance",
   "geographic-lanes",
+  "pickup-state-performance",
+  "delivery-state-performance",
 ] as const;
 
 router.get("/api/v1/admin/search", handleAdminSearch);
+router.get("/api/v1/admin/facets", handleAdminFacets);
 for (const resource of adminResources) {
   router.get(`/api/v1/admin/${resource}`, handleAdminBrowse(resource));
   router.get(`/api/v1/admin/${resource}/:id`, handleAdminDetail(resource));
@@ -117,6 +127,8 @@ for (const report of analyticsReports) {
   router.get(`/api/v1/admin/analytics/${report}`, handleAnalyticsReport(report));
 }
 router.get("/api/v1/admin/exports/analytics/:report.csv", handleAnalyticsExport);
+router.get("/api/v1/admin/reports/agent-sales", handleAgentSalesReport);
+router.get("/api/v1/admin/exports/reports/agent-sales.csv", handleAgentSalesReportExport);
 
 router.get("/api/v1/form-leads", handleBrowseFormLeads);
 router.get("/api/v1/form-leads/:id", handleFindOne(findFormLead));
@@ -210,6 +222,17 @@ async function handleAdminSearch(req: Request, res: Response) {
   }
 }
 
+async function handleAdminFacets(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = adminBrowseQuerySchema.pick({ database_scope: true }).parse(req.query);
+    const data = await getAdminFacets(parsed.database_scope);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
 function handleAdminExport(resource: AdminResource) {
   return async (req: Request, res: Response) => {
     try {
@@ -244,6 +267,30 @@ async function handleAnalyticsExport(req: Request, res: Response) {
     const report = analyticsReportSchema.parse(req.params.report);
     const parsed = analyticsQuerySchema.parse(req.query);
     const data = await exportAnalyticsReportCsv(report, parsed);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${data.filename}"`);
+    return res.status(200).send(data.csv);
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleAgentSalesReport(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = agentSalesReportQuerySchema.parse(req.query);
+    const data = await getAgentSalesReport(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleAgentSalesReportExport(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = agentSalesReportQuerySchema.parse(req.query);
+    const data = await exportAgentSalesReportCsv(parsed);
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${data.filename}"`);
     return res.status(200).send(data.csv);

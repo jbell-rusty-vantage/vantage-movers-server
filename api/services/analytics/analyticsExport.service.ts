@@ -70,6 +70,8 @@ const CSV_COLUMNS: Record<AnalyticsReport, string[]> = {
   "lead-source-performance": ["lead_source", "bookings", "cancelled_bookings", "total_deposit_amount", "total_binder_amount", "cancellation_rate"],
   "local-vs-long-distance": ["local_type", "bookings", "cancelled_bookings", "total_deposit_amount", "total_binder_amount", "cancellation_rate"],
   "geographic-lanes": ["lead_type", "pickup_state", "delivery_state", "leads", "booked_leads", "cancelled_leads", "booking_rate"],
+  "pickup-state-performance": ["state", "leads", "booked_leads", "cancelled_leads", "booking_rate"],
+  "delivery-state-performance": ["state", "leads", "booked_leads", "cancelled_leads", "booking_rate"],
 };
 
 export async function exportAnalyticsReportCsv(

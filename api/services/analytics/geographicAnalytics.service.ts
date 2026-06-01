@@ -42,6 +42,77 @@ export async function getGeographicLanes(models: AdminModels, query: AnalyticsQu
   return { form_lanes: formLanes, call_lanes: callLanes };
 }
 
+type StateRow = {
+  _id: string;
+  leads: number;
+  booked_leads: number;
+  cancelled_leads: number;
+};
+
+export async function getStatePerformance(
+  models: AdminModels,
+  query: AnalyticsQuery,
+  dimension: "pickup_state" | "delivery_state",
+) {
+  const [formStats, callStats] = await Promise.all([
+    stateStats(models, "FormLead", query, dimension),
+    stateStats(models, "CallLead", query, dimension),
+  ]);
+  const items = mergeStateRows([...formStats, ...callStats]);
+  return { items };
+}
+
+function stateStats(
+  models: AdminModels,
+  leadType: "FormLead" | "CallLead",
+  query: AnalyticsQuery,
+  dimension: "pickup_state" | "delivery_state",
+): Promise<StateRow[]> {
+  const model = leadType === "FormLead" ? models["form-leads"] : models["call-leads"];
+  return model.aggregate<StateRow>([
+    { $match: leadMatch(leadType, query) },
+    {
+      $set: {
+        state: {
+          $let: {
+            vars: { s: `$${dimension}` },
+            in: {
+              $cond: [{ $or: [{ $eq: ["$$s", null] }, { $eq: ["$$s", ""] }] }, "unknown", "$$s"],
+            },
+          },
+        },
+      },
+    },
+    {
+      $group: {
+        _id: "$state",
+        leads: { $sum: 1 },
+        booked_leads: { $sum: { $cond: [{ $ne: [{ $ifNull: ["$booked", null] }, null] }, 1, 0] } },
+        cancelled_leads: { $sum: { $cond: [{ $ne: [{ $ifNull: ["$cancelled", null] }, null] }, 1, 0] } },
+      },
+    },
+  ]);
+}
+
+function mergeStateRows(rows: StateRow[]) {
+  const map = new Map<string, { state: string; leads: number; booked_leads: number; cancelled_leads: number }>();
+  for (const row of rows) {
+    const state = row._id ?? "unknown";
+    const existing = map.get(state) ?? { state, leads: 0, booked_leads: 0, cancelled_leads: 0 };
+    existing.leads += row.leads;
+    existing.booked_leads += row.booked_leads;
+    existing.cancelled_leads += row.cancelled_leads;
+    map.set(state, existing);
+  }
+  return Array.from(map.values())
+    .map((row) => ({
+      ...row,
+      booking_rate: row.leads ? row.booked_leads / row.leads : 0,
+    }))
+    .sort((left, right) => right.leads - left.leads || right.booked_leads - left.booked_leads)
+    .slice(0, 50);
+}
+
 function laneStats(models: AdminModels, leadType: "FormLead" | "CallLead", query: AnalyticsQuery) {
   const model = leadType === "FormLead" ? models["form-leads"] : models["call-leads"];
   return model.aggregate([

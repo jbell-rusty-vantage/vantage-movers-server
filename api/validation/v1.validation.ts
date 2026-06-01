@@ -89,6 +89,8 @@ export {
 export {
   analyticsQuerySchema,
   analyticsReportSchema,
+  agentSalesReportQuerySchema,
   type AnalyticsQuery,
   type AnalyticsReport,
+  type AgentSalesReportQuery,
 } from "./v1/analytics.validation";

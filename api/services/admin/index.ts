@@ -6,6 +6,7 @@ export {
   type AdminBrowseResult,
 } from "./adminBrowse.service";
 export { exportAdminResourceCsv } from "./adminExport.service";
+export { getAdminFacets, type AdminFacets } from "./adminFacets.service";
 export { globalAdminSearch, type AdminSearchGroup, type AdminSearchItem } from "./adminSearch.service";
 export {
   concreteScopes,

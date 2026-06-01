@@ -139,6 +139,9 @@ function keyFieldsForReport(report: AnalyticsReport): string[] {
       return ["lead_source"];
     case "local-vs-long-distance":
       return ["local_type"];
+    case "pickup-state-performance":
+    case "delivery-state-performance":
+      return ["state"];
     default:
       return ["label"];
   }

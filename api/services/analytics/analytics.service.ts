@@ -6,7 +6,11 @@ import {
 } from "../admin/adminScope.service";
 import { getAgentPerformance } from "./agentPerformance.service";
 import { getBookingCancellationRatio, getCancellationReasons } from "./cancellationAnalytics.service";
-import { getGeographicLanes, getLocalVsLongDistance } from "./geographicAnalytics.service";
+import {
+  getGeographicLanes,
+  getLocalVsLongDistance,
+  getStatePerformance,
+} from "./geographicAnalytics.service";
 import { mergeAnalyticsPayload, type AnalyticsPayload } from "./analyticsMerge";
 import { getRevenueTrend } from "./revenueTrend.service";
 import {
@@ -67,5 +71,9 @@ async function getConcreteAnalyticsReport(
       return getLocalVsLongDistance(models, query);
     case "geographic-lanes":
       return getGeographicLanes(models, query);
+    case "pickup-state-performance":
+      return getStatePerformance(models, query, "pickup_state");
+    case "delivery-state-performance":
+      return getStatePerformance(models, query, "delivery_state");
   }
 }

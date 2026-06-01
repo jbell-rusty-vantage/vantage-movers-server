@@ -22,6 +22,8 @@ export const analyticsReportSchema = z.enum([
   "lead-source-performance",
   "local-vs-long-distance",
   "geographic-lanes",
+  "pickup-state-performance",
+  "delivery-state-performance",
 ]);
 
 export const analyticsQuerySchema = z
@@ -55,3 +57,26 @@ export const analyticsQuerySchema = z
 
 export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>;
 export type AnalyticsReport = z.infer<typeof analyticsReportSchema>;
+
+const optionalAgentList = z.preprocess((value) => {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const list = Array.isArray(value) ? value : [value];
+  const cleaned = list
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter((entry) => entry.length > 0);
+  return cleaned.length ? cleaned : undefined;
+}, z.array(z.string()).optional());
+
+// Production-only Agent Sales report: requires an explicit date range and an
+// optional subset of agent names (empty means all agents).
+export const agentSalesReportQuerySchema = z
+  .object({
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+    agents: optionalAgentList,
+  })
+  .strip();
+
+export type AgentSalesReportQuery = z.infer<typeof agentSalesReportQuerySchema>;
