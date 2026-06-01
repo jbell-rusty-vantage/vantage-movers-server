@@ -28,6 +28,7 @@
     "postman:login": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/postman/postman-login.ts",
     "postman:sync": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/postman/postman-sync-vantage-movers.ts",
     "demo:live-sheet-sync": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/demos/live-sheet-sync-demo.ts",
+    "demo:google-maps-apis": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/demos/test-google-maps-apis.ts",
     "call-leads:create-best-relocation": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/create-best-relocation-call-leads.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"api/**/*.test.ts\""

@@ -1,3 +1,4 @@
+import { getGoogleStateCodeForZip } from "../../services/googleMaps/geocoding";
 import { stateNameToCode } from "./stateNamesToCodes";
 
 type ZippopotamusPlace = {
@@ -10,6 +11,22 @@ type ZippopotamusZipResponse = {
 };
 
 export async function getStateCodeForZip(zipCode: string): Promise<string | undefined> {
+  const zip = zipCode.trim();
+  if (!/^\d{5}$/.test(zip)) {
+    return undefined;
+  }
+
+  const googleStateCode = await getGoogleStateCodeForZip(zip);
+  if (googleStateCode) {
+    return googleStateCode;
+  }
+
+  return getZippopotamusStateCodeForZip(zip);
+}
+
+async function getZippopotamusStateCodeForZip(
+  zipCode: string,
+): Promise<string | undefined> {
   const zip = zipCode.trim();
   if (!/^\d{5}$/.test(zip)) {
     return undefined;
