@@ -48,6 +48,8 @@ import {
   createCancelledLeadSchema,
   createCustomerSchema,
   createFormLeadSchema,
+  analyticsQuerySchema,
+  analyticsReportSchema,
   adminBrowseQuerySchema,
   adminSearchQuerySchema,
   bookedCallLeadReconciliationBatchSchema,
@@ -69,6 +71,7 @@ import {
   globalAdminSearch,
   type AdminResource,
 } from "../services/admin";
+import { exportAnalyticsReportCsv, getAnalyticsReport } from "../services/analytics";
 
 const router = Router();
 
@@ -91,12 +94,29 @@ const adminResources = [
   "agents",
 ] as const satisfies readonly AdminResource[];
 
+const analyticsReports = [
+  "summary",
+  "revenue-trend",
+  "source-company-performance",
+  "agent-performance",
+  "booking-cancellation-ratio",
+  "source-company-funnel",
+  "cancellation-reasons",
+  "lead-source-performance",
+  "local-vs-long-distance",
+  "geographic-lanes",
+] as const;
+
 router.get("/api/v1/admin/search", handleAdminSearch);
 for (const resource of adminResources) {
   router.get(`/api/v1/admin/${resource}`, handleAdminBrowse(resource));
   router.get(`/api/v1/admin/${resource}/:id`, handleAdminDetail(resource));
   router.get(`/api/v1/admin/exports/${resource}.csv`, handleAdminExport(resource));
 }
+for (const report of analyticsReports) {
+  router.get(`/api/v1/admin/analytics/${report}`, handleAnalyticsReport(report));
+}
+router.get("/api/v1/admin/exports/analytics/:report.csv", handleAnalyticsExport);
 
 router.get("/api/v1/form-leads", handleBrowseFormLeads);
 router.get("/api/v1/form-leads/:id", handleFindOne(findFormLead));
@@ -203,6 +223,33 @@ function handleAdminExport(resource: AdminResource) {
       return sendError(req, res, error);
     }
   };
+}
+
+function handleAnalyticsReport(report: (typeof analyticsReports)[number]) {
+  return async (req: Request, res: Response) => {
+    try {
+      await connectMongo();
+      const parsed = analyticsQuerySchema.parse(req.query);
+      const data = await getAnalyticsReport(report, parsed);
+      return res.json({ ok: true, data });
+    } catch (error) {
+      return sendError(req, res, error);
+    }
+  };
+}
+
+async function handleAnalyticsExport(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const report = analyticsReportSchema.parse(req.params.report);
+    const parsed = analyticsQuerySchema.parse(req.query);
+    const data = await exportAnalyticsReportCsv(report, parsed);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${data.filename}"`);
+    return res.status(200).send(data.csv);
+  } catch (error) {
+    return sendError(req, res, error);
+  }
 }
 
 function handleFindOne(findOne: (id: string) => Promise<unknown>) {

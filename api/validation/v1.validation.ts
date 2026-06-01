@@ -85,3 +85,10 @@ export {
   type AdminDatabaseScope,
   type AdminSearchQuery,
 } from "./v1/admin.validation";
+
+export {
+  analyticsQuerySchema,
+  analyticsReportSchema,
+  type AnalyticsQuery,
+  type AnalyticsReport,
+} from "./v1/analytics.validation";

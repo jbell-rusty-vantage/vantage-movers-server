@@ -43,11 +43,11 @@ app.get("/", (_req, res) => {
   });
 });
 
-app.get("/health", (_req, res) => {
+app.get("/health", (_req: Request, res: Response) => {
   res.status(200).send("ok");
 });
 
-app.get("/db", async (_req, res) => {
+app.get("/db", async (_req: Request, res: Response) => {
   try {
     await connectMongo();
     const ready = mongoose.connection.readyState === 1;
@@ -71,7 +71,8 @@ function isMalformedBodyParseError(err: unknown): boolean {
   if (typeof err !== "object" || err === null) {
     return false;
   }
-  const status = "status" in err ? (err as { status: unknown }).status : undefined;
+  const status =
+    "status" in err ? (err as { status: unknown }).status : undefined;
   const type = "type" in err ? (err as { type: unknown }).type : undefined;
   return status === 400 && type === "entity.parse.failed";
 }
