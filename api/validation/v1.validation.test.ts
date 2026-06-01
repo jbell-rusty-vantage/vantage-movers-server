@@ -8,6 +8,7 @@ import {
   createBookedLeadFromSourceSchema,
   createCallLeadSchema,
   createFormLeadSchema,
+  searchFormLeadsSchema,
   updateFormLeadSchema,
 } from "./v1.validation";
 import { BookedLead } from "../models/BookedLead";
@@ -309,6 +310,16 @@ test("CallLead model rejects identity-less documents", async () => {
   });
 
   await assert.rejects(() => lead.validate(), /phone_number/);
+});
+
+test("searchFormLeadsSchema accepts typo emails as plain strings", () => {
+  const parsed = searchFormLeadsSchema.parse({
+    phone_number: "+14322750467",
+    email: " dupemail.com ",
+  });
+
+  assert.equal(parsed.phone_number, "+14322750467");
+  assert.equal(parsed.email, "dupemail.com");
 });
 
 test("browseFormLeadsQuerySchema allows an empty query (view all) with defaults", () => {

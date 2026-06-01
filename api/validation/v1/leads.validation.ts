@@ -76,7 +76,7 @@ export const searchFormLeadsSchema = z
   .object({
     ref_no: optionalString,
     name: optionalString,
-    email: emailSchema,
+    email: looseEmailString,
     phone_number: optionalString,
     limit: z.coerce.number().int().min(1).max(25).optional(),
   })
@@ -123,7 +123,7 @@ export const searchCallLeadsSchema = z
   .object({
     phone_number: optionalString,
     job_no: optionalString,
-    email: emailSchema,
+    email: looseEmailString,
     name: optionalString,
     limit: z.coerce.number().int().min(1).max(25).optional(),
   })
