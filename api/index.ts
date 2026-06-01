@@ -1,6 +1,7 @@
 import cors from "cors";
-import express, { type NextFunction, type Request, type Response } from "express";
+import express, { type Request, type Response } from "express";
 import mongoose from "mongoose";
+import type { Logger } from "pino";
 import { MONGO_DATABASE_NAME } from "./config/domain";
 import { connectMongo } from "./db";
 import { logger } from "./logger";
@@ -15,6 +16,17 @@ const corsOptions: cors.CorsOptions = {
   allowedHeaders: ["Content-Type", "x-api-secret"],
   maxAge: 86400,
   optionsSuccessStatus: 204,
+};
+
+type ErrorNext = (err?: unknown) => void;
+
+type RequestWithLogger = Request & {
+  log?: Logger;
+};
+
+type BodyParseErrorResponse = Response & {
+  headersSent: boolean;
+  status(code: number): Response;
 };
 
 app.use(httpLogger);
@@ -64,16 +76,17 @@ function isMalformedBodyParseError(err: unknown): boolean {
   return status === 400 && type === "entity.parse.failed";
 }
 
-app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
+app.use((err: unknown, req: Request, res: Response, next: ErrorNext) => {
   if (!isMalformedBodyParseError(err)) {
     return next(err);
   }
-  const log = req.log ?? logger;
+  const log = (req as RequestWithLogger).log ?? logger;
+  const bodyParseResponse = res as BodyParseErrorResponse;
   log.warn({ err, msg: "http.body.parse_failed" });
-  if (res.headersSent) {
+  if (bodyParseResponse.headersSent) {
     return;
   }
-  return res.status(400).json({
+  return bodyParseResponse.status(400).json({
     ok: false,
     error: "Malformed request body",
   });

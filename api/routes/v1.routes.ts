@@ -74,6 +74,14 @@ const router = Router();
 
 router.use("/api/v1", requireApiSecret);
 
+type RequestWithLogger = Request & {
+  log?: Logger;
+  id?: string | number | object;
+  originalUrl?: string;
+  url?: string;
+  path?: string;
+};
+
 const adminResources = [
   "form-leads",
   "call-leads",
@@ -224,11 +232,21 @@ function handleCreate<T>(schema: ZodType<T>, create: (input: T) => Promise<unkno
 }
 
 function requestLogger(req: Request): Logger {
-  return req.log ?? rootLogger;
+  return (req as RequestWithLogger).log ?? rootLogger;
 }
 
 function requestId(req: Request): string | number | object {
-  return req.id ?? "unknown";
+  return (req as RequestWithLogger).id ?? "unknown";
+}
+
+function requestPath(req: Request): string {
+  const r = req as RequestWithLogger;
+  return r.path ?? (r.originalUrl ?? r.url ?? "").split("?")[0];
+}
+
+function requestOriginalUrl(req: Request): string {
+  const r = req as RequestWithLogger;
+  return (r.originalUrl ?? r.url ?? "").split("?")[0];
 }
 
 async function handleSearchFormLeads(req: Request, res: Response) {
@@ -327,8 +345,8 @@ async function handleCreateFormLead(req: Request, res: Response) {
     msg: "form_lead.request.received",
     requestId: rid,
     method: req.method,
-    path: req.path,
-    originalUrl: (req.originalUrl ?? "").split("?")[0],
+    path: requestPath(req),
+    originalUrl: requestOriginalUrl(req),
     origin: req.headers.origin ?? null,
     contentType: req.headers["content-type"] ?? null,
     contentLength: req.headers["content-length"] ?? null,

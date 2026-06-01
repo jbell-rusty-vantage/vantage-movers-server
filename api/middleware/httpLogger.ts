@@ -1,8 +1,17 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Request } from "express";
 import pinoHttp from "pino-http";
 import { logger as rootLogger } from "../logger";
+
+type ExpressRequestDetails = IncomingMessage & {
+  id?: string | number | object;
+  route?: {
+    path?: unknown;
+  };
+  baseUrl?: string;
+  originalUrl?: string;
+  url?: string;
+};
 
 function readIncomingHeader(req: IncomingMessage, name: string): string | undefined {
   const raw = req.headers[name];
@@ -15,20 +24,24 @@ function readIncomingHeader(req: IncomingMessage, name: string): string | undefi
   return undefined;
 }
 
-function expressRouteLabel(req: Request): string {
-  if (req.route && typeof req.route.path === "string") {
-    const base = req.baseUrl ?? "";
-    return `${base}${req.route.path}` || (req.originalUrl ?? req.url ?? "").split("?")[0];
-  }
+function requestPath(req: ExpressRequestDetails): string {
   return (req.originalUrl ?? req.url ?? "").split("?")[0];
 }
 
+function expressRouteLabel(req: ExpressRequestDetails): string {
+  if (req.route && typeof req.route.path === "string") {
+    const base = req.baseUrl ?? "";
+    return `${base}${req.route.path}` || requestPath(req);
+  }
+  return requestPath(req);
+}
+
 function httpReqSerializer(req: IncomingMessage) {
-  const r = req as Request;
+  const r = req as ExpressRequestDetails;
   return {
-    id: req.id,
+    id: r.id,
     method: req.method,
-    path: (r.originalUrl ?? req.url ?? "").split("?")[0],
+    path: requestPath(r),
     route: expressRouteLabel(r),
     headers: {
       host: req.headers.host,
@@ -56,7 +69,7 @@ export const httpLogger = pinoHttp({
     res: httpResSerializer,
   },
   customSuccessObject(req, res, val) {
-    const r = req as Request;
+    const r = req as ExpressRequestDetails;
     return {
       ...val,
       http: {
@@ -71,7 +84,7 @@ export const httpLogger = pinoHttp({
     };
   },
   customErrorObject(req, res, error, val) {
-    const r = req as Request;
+    const r = req as ExpressRequestDetails;
     return {
       ...val,
       http: {

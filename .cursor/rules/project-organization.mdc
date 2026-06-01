@@ -14,12 +14,34 @@ alwaysApply: true
 - Start request tracing at `api/index.ts`: Express app setup, health/db probes, logging, CORS/body parsing, and route mounting.
 - `api/routes/` owns HTTP boundaries. Keep routes thin: authenticate, parse with Zod, call services, format responses, and avoid business logic.
 - `api/validation/` owns request/operation schemas. `api/validation/v1.validation.ts` is the public v1 barrel; detailed schemas live in `api/validation/v1/`.
-- `api/services/` owns business behavior and side effects. Use the domain folders first: `leads/`, `bookings/`, `cancellations/`, `customers/`, `googleSheets/`, `crm/`, `reconciliation/`, `enrichment/`, `search/`, and `errors/`. Legacy barrels such as `v1.service.ts`, `crm.service.ts`, and search/reconciliation wrappers may preserve API compatibility.
+- `api/services/` owns business behavior and side effects. Use the domain folders first: `leads/`, `bookings/`, `cancellations/`, `customers/`, `admin/`, `googleSheets/`, `crm/`, `reconciliation/`, `enrichment/`, `search/`, and `errors/`. Legacy barrels such as `v1.service.ts`, `crm.service.ts`, and search/reconciliation wrappers may preserve API compatibility.
 - `api/models/` owns runtime Mongoose schemas and shared schema helpers. Mongo/API fields should stay `snake_case`; only Google Sheets projections should produce owner-facing Title Case columns.
 - `api/config/` owns mode-aware domain configuration. Add source companies, sheet tabs, headers, CPL rules, Mongo database names, and Google auth env selection here instead of scattering `process.env` reads.
 - `api/middleware/` owns request guards and request-level behavior such as API secret enforcement and HTTP logging.
-- `api/utils/` owns small shared helpers, currently including logging sanitizers, Google Sheets range helpers, and location normalization.
+- `api/utils/` owns small shared helpers, currently including logging sanitizers, Google Sheets range helpers, location normalization, and CSV serialization.
 - `api/db.ts` is the shared Mongo connection helper. Runtime code should reuse it and preserve the `TEST_MODE` database boundary.
+
+## Admin V1 API Surface
+
+- Admin routes are mounted in `api/routes/v1.routes.ts` under `/api/v1/admin/...` and remain protected by `requireApiSecret` like the public v1 surface.
+- Admin read services live in `api/services/admin/`:
+  - `adminScope.service.ts` selects production runtime models or read-only historical models from `scripts/historical/models/`.
+  - `adminBrowse.service.ts` owns paginated browse, detail lookup, common filters, sorting, and export row retrieval.
+  - `adminSearch.service.ts` owns grouped global search across form leads, call leads, bookings, cancellations, customers, and agents.
+  - `adminExport.service.ts` owns CSV column selection and export response payload generation.
+- Admin query schemas live in `api/validation/v1/admin.validation.ts` and are re-exported by `api/validation/v1.validation.ts`.
+- Implemented admin GET endpoints:
+  - `/api/v1/admin/form-leads` and `/api/v1/admin/form-leads/:id`
+  - `/api/v1/admin/call-leads` and `/api/v1/admin/call-leads/:id`
+  - `/api/v1/admin/booked-leads` and `/api/v1/admin/booked-leads/:id`
+  - `/api/v1/admin/cancelled-leads` and `/api/v1/admin/cancelled-leads/:id`
+  - `/api/v1/admin/customers` and `/api/v1/admin/customers/:id`
+  - `/api/v1/admin/agents` and `/api/v1/admin/agents/:id`
+  - `/api/v1/admin/search`
+  - `/api/v1/admin/exports/form-leads.csv`, `/call-leads.csv`, `/booked-leads.csv`, `/cancelled-leads.csv`, `/customers.csv`, and `/agents.csv`
+- Admin browse responses use `{ ok: true, data: { items, page, limit, total, has_next_page } }`; detail responses use `{ ok: true, data }`; CSV exports return `text/csv` with an attachment filename.
+- `database_scope=production|historical|combined` is supported where appropriate. Detail endpoints reject `combined`; historical scope is read-only; combined is for search/export-style reads.
+- Do not add `/api/v1/admin` delete routes. Admin write workflows should continue to use existing public v1 booking, cancellation, lead, and customer write services so Google Sheet sync behavior is preserved.
 
 ## Script Launch Map
 
