@@ -79,6 +79,7 @@ export const searchFormLeadsSchema = z
     email: looseEmailString,
     phone_number: optionalString,
     limit: z.coerce.number().int().min(1).max(25).optional(),
+    include_duplicates: booleanInput.default(false),
   })
   .strict()
   .refine(

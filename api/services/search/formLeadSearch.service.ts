@@ -7,6 +7,7 @@ export type FormLeadSearchStatus = "found" | "not_found" | "ambiguous";
 
 export type FormLeadSearchInput = Partial<Record<FormLeadSearchField, string>> & {
   limit?: number;
+  include_duplicates?: boolean;
 };
 
 export type FormLeadSearchCriteria = Partial<Record<FormLeadSearchField, string>> & {
@@ -95,7 +96,7 @@ export async function searchFormLeads(input: FormLeadSearchInput): Promise<FormL
 
   const candidates = await FormLead.find({
     ...filter,
-    duplicate: { $ne: true },
+    ...(input.include_duplicates ? {} : { duplicate: { $ne: true } }),
   })
     .sort({ createdAt: -1 })
     .limit(limit)

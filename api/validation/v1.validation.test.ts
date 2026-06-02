@@ -442,6 +442,16 @@ test("searchFormLeadsSchema accepts typo emails as plain strings", () => {
 
   assert.equal(parsed.phone_number, "+14322750467");
   assert.equal(parsed.email, "dupemail.com");
+  assert.equal(parsed.include_duplicates, false);
+});
+
+test("searchFormLeadsSchema accepts include_duplicates to search quarantined leads", () => {
+  const parsed = searchFormLeadsSchema.parse({
+    phone_number: "3525851751",
+    include_duplicates: true,
+  });
+
+  assert.equal(parsed.include_duplicates, true);
 });
 
 test("browseFormLeadsQuerySchema allows an empty query (view all) with defaults", () => {

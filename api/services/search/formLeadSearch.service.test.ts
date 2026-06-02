@@ -19,7 +19,7 @@ afterEach(() => {
     originalFormLeadFind as StubbedFormLeadModel["find"];
 });
 
-test("form lead search excludes duplicate quarantine leads", async () => {
+test("form lead search excludes duplicate quarantine leads by default", async () => {
   let findQuery: FindQuery | undefined;
   stubFormLeadFind([], (query) => {
     findQuery = query;
@@ -28,6 +28,17 @@ test("form lead search excludes duplicate quarantine leads", async () => {
   await searchFormLeads({ email: "customer@example.com" });
 
   assert.deepEqual(findQuery?.duplicate, { $ne: true });
+});
+
+test("form lead search includes duplicate quarantine leads when requested", async () => {
+  let findQuery: FindQuery | undefined;
+  stubFormLeadFind([], (query) => {
+    findQuery = query;
+  });
+
+  await searchFormLeads({ email: "customer@example.com", include_duplicates: true });
+
+  assert.equal(findQuery?.duplicate, undefined);
 });
 
 function stubFormLeadFind(
