@@ -26,6 +26,10 @@ pnpm-debug.log*
 **/*service-account*.json
 **/just-cosmos-437222-b7-f8ab65674d85.json
 **/vantage-sheets-496816-b67de712c0a3.json
+.ringcentral-token-cache.json
+.ringcentral-webhook-subscription.json
+ringcentral-credentials.json
+ringcentral-call-log-validation-output.json
 # Minified one-line copy for env paste (see scripts/minify-google-service-account-json.ts)
 /google-service-account.one-line.json
 /vantage-sheets-service-account.one-line.json

@@ -1,0 +1,40 @@
+---
+description: RingCentral auth, validation scripts, and integration setup
+globs: api/services/ringcentral/**/*.ts,scripts/ringcentral/**/*.ts,api/routes/**/*.ts,package.json
+alwaysApply: false
+---
+
+# RingCentral Integration
+
+- Scope this work to `vantage-main-server`. Runtime RingCentral code lives in `api/services/ringcentral/`; local validation scripts live in `scripts/ringcentral/`.
+- Use native `fetch` only. Do not add Axios or RingCentral SDKs unless explicitly requested.
+- Env is loaded by package scripts with `node --env-file=.env ./node_modules/tsx/dist/cli.mjs ...`. Run commands with `pnpm` from `vantage-main-server`.
+- Required env vars: `RC_SERVER_URL`, `RC_CLIENT_ID`, `RC_CLIENT_SECRET`, `RC_JWT`. Use `getRequiredEnv()` from `api/config/domain` in runtime/service code.
+- Never log or commit `RC_JWT`, `RC_CLIENT_SECRET`, OAuth access tokens, refresh tokens, or Authorization headers.
+
+## Current Phase
+
+- We are still in local testing/validation. Do not add webhook endpoints, webhook subscriptions, or lead ingestion routes until call-log access is confirmed.
+- Token cache is local file storage by default: `.ringcentral-token-cache.json`, ignored by git.
+- Existing commands:
+  - `pnpm ringcentral:diagnose`
+  - `pnpm ringcentral:call-log:validate`
+- The call-log validator writes `ringcentral-call-log-validation-output.json`; it must stay sanitized and gitignored.
+
+## Auth Flow
+
+- JWT exchange: `POST ${RC_SERVER_URL}/restapi/oauth/token` with Basic auth for `RC_CLIENT_ID:RC_CLIENT_SECRET` and form body `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${RC_JWT}`.
+- Refresh flow uses the same token endpoint with `grant_type=refresh_token`.
+- Token rules: use cached access token if it expires more than 120s from now; otherwise refresh if refresh token is valid; if refresh fails, delete cache and exchange JWT; on API `401`, delete cache, exchange JWT, retry once.
+
+## Access Model
+
+- The JWT represents one RingCentral user/extension, not automatic org-wide access.
+- Account-level analytics require `/restapi/v1.0/account/~/call-log?view=Detailed`; compare against `/restapi/v1.0/account/~/extension/~/call-log?view=Detailed`.
+- Organization-level access is only proven when account-level logs work and returned records include multiple extensions or company numbers.
+
+## Production Direction
+
+- Keep auth/request logic storage-agnostic through `TokenStore`.
+- Production token storage should use `RC_TOKEN_STORE=mongo`, `connectMongo()` from `api/db.ts`, active DB via `getMongoDatabaseName()`/`MONGO_DATABASE_NAME`, collection `integration_tokens`, key `ringcentral:oauth-token`.
+- API routes must never return token values. Webhooks should be added only after controlled call-log validation confirms the expected account-level data boundary.
