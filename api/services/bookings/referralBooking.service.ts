@@ -1,6 +1,7 @@
 import type { CreateReferralBookingInput } from "../../validation/v1.validation";
 import { BookedLead } from "../../models/BookedLead";
 import { deriveBookedLeadAgentAllocations, resolveAgentAllocations } from "../agents";
+import { upsertCustomerFromBookingContact } from "../customers/customerFromLead.service";
 import { scheduleBookedLeadSheetSync } from "../sheetSync";
 import { V1ServiceError } from "../v1ServiceError";
 import { buildBookedLeadWarnings } from "./bookingWarnings";
@@ -23,12 +24,18 @@ export async function createReferralBooking(input: CreateReferralBookingInput) {
   const agent_allocations = await resolveAgentAllocations(allocationInputs);
   const warnings = buildBookedLeadWarnings(agent_allocations);
   const depositAmount = input.deposit_amount;
+  const customerName = input.customer_name.trim();
+  const customer = await upsertCustomerFromBookingContact({
+    customer_name: customerName,
+    customer_phone: input.customer_phone,
+  });
 
   const booking = await BookedLead.create({
     timestamp: new Date(),
     book_date: input.book_date,
     job_no: jobNo,
-    customer_name: input.customer_name.trim(),
+    customer_name: customerName,
+    ...(customer ? { customer: customer._id } : {}),
     agent_allocations,
     total_binder_amount: input.total_binder_amount,
     deposit_amount: depositAmount,

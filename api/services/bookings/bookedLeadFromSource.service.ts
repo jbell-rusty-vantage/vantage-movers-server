@@ -39,5 +39,7 @@ export async function createBookedLeadFromSource(input: CreateBookedLeadFromSour
     source: effectiveSourceCompany,
     local: lead.local as LocalType | undefined,
     submission_id: input.submission_id,
+    customer_name: input.customer_name,
+    customer_phone: input.customer_phone,
   });
 }

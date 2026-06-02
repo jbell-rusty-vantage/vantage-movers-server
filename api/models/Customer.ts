@@ -3,7 +3,8 @@ import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 const CustomerSchema = new Schema(
   {
     full_name: { type: String, required: true, trim: true },
-    phone_number: { type: String, required: true, trim: true, index: true },
+    normalized_name: { type: String, trim: true, lowercase: true, index: true },
+    phone_number: { type: String, trim: true, index: true },
     email: { type: String, trim: true, lowercase: true, index: true },
   },
   {

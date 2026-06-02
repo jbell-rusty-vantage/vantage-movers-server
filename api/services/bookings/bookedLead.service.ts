@@ -12,7 +12,10 @@ import {
   resolveAgentAllocations,
   resolveTotalBinderAmount,
 } from "../agents";
-import { upsertCustomerFromLead } from "../customers/customerFromLead.service";
+import {
+  upsertCustomerFromBookingContact,
+  upsertCustomerFromLead,
+} from "../customers/customerFromLead.service";
 import { getLinkedLead } from "../leads";
 import { scheduleFullSheetSyncProcess } from "../sheetSync";
 import { V1ServiceError } from "../v1ServiceError";
@@ -33,6 +36,8 @@ import { buildBookedLeadWarnings } from "./bookingWarnings";
  */
 type CreateBookedLeadServiceInput = Omit<CreateBookedLeadInput, "job_no"> & {
   job_no?: string;
+  customer_name?: string;
+  customer_phone?: string;
 };
 
 export async function createBookedLead(input: CreateBookedLeadServiceInput) {
@@ -42,7 +47,14 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
   if (!local && input.lead_model !== "CallLead") {
     throw new V1ServiceError("Booking requires local or a linked lead with local classification");
   }
-  const customer = await upsertCustomerFromLead(lead);
+  const customerNameOverride = input.customer_name?.trim();
+  const customer = customerNameOverride
+    ? await upsertCustomerFromBookingContact({
+        customer_name: customerNameOverride,
+        customer_phone: input.customer_phone,
+        lead,
+      })
+    : await upsertCustomerFromLead(lead);
   const over_2000 = input.deposit_amount > 2000;
   const over_4000 = input.deposit_amount > 4000;
   const agent_allocations = await resolveAgentAllocations(input.agent_allocations);
@@ -55,6 +67,7 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
     lead_ref: input.lead_ref,
     lead_model: input.lead_model,
   });
+  const { customer_phone: _customerPhone, ...bookingInput } = input;
 
   if (existingBooking) {
     if (input.submission_id && existingBooking.submission_id === input.submission_id) {
@@ -67,10 +80,11 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
     }
 
     Object.assign(existingBooking, {
-      ...input,
+      ...bookingInput,
       agent_allocations,
       total_binder_amount,
       ...(customer ? { customer: customer._id } : {}),
+      ...(customerNameOverride ? { customer_name: customerNameOverride } : {}),
       local,
       over_2000,
       over_4000,
@@ -98,11 +112,12 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
   }
 
   const booking = await BookedLead.create({
-    ...input,
+    ...bookingInput,
     agent_allocations,
     total_binder_amount,
     timestamp: input.timestamp ?? new Date(),
     ...(customer ? { customer: customer._id } : {}),
+    ...(customerNameOverride ? { customer_name: customerNameOverride } : {}),
     local,
     over_2000,
     over_4000,

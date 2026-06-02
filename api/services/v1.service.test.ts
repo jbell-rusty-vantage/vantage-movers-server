@@ -14,6 +14,7 @@ type StubbedModel = {
 
 type CustomerUpdate = {
   full_name: string;
+  normalized_name: string;
   phone_number: string;
   email?: string;
 };
@@ -64,6 +65,7 @@ test("booked call lead refreshes attached booking customer and local", async () 
   assert.deepEqual(customerUpdates, [
     {
       full_name: "Jane Customer",
+      normalized_name: "jane customer",
       phone_number: "(555) 111-2222",
       email: "jane@example.com",
     },
@@ -107,6 +109,7 @@ test("booked form lead refreshes attached booking customer and local", async () 
   assert.deepEqual(customerUpdates, [
     {
       full_name: "John Customer",
+      normalized_name: "john customer",
       phone_number: "555-222-3333",
       email: "john@example.com",
     },

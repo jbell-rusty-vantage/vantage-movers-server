@@ -78,6 +78,8 @@ const bookedLeadFromSourceSharedFields = {
   agent: nonEmptyString,
   split_agent: optionalString,
   binder_amount: moneyAmount,
+  customer_name: optionalString,
+  customer_phone: optionalString,
 };
 
 export const createBookedLeadFromSourceSchema = z.discriminatedUnion("lead_type", [
@@ -108,6 +110,7 @@ export const createReferralBookingSchema = z
     book_date: bookedLeadFields.book_date,
     job_no: bookedLeadFields.job_no,
     customer_name: nonEmptyString,
+    customer_phone: optionalString,
     agent: nonEmptyString,
     split_agent: optionalString,
     total_binder_amount: moneyAmount,

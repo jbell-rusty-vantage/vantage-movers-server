@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { emailSchema, nonEmptyString, requireAtLeastOne } from "./common";
+import { emailSchema, nonEmptyString, optionalString, requireAtLeastOne } from "./common";
 
 /**
  * Customer create / update schemas. Pairs with `api/services/customers/`.
@@ -7,7 +7,7 @@ import { emailSchema, nonEmptyString, requireAtLeastOne } from "./common";
 
 const customerFields = {
   full_name: nonEmptyString,
-  phone_number: nonEmptyString,
+  phone_number: optionalString,
   email: emailSchema,
 };
 

@@ -8,6 +8,7 @@ import {
   createBookedLeadFromSourceSchema,
   createReferralBookingSchema,
   createCallLeadSchema,
+  createCustomerSchema,
   createFormLeadSchema,
   searchFormLeadsSchema,
   updateFormLeadSchema,
@@ -67,6 +68,48 @@ test("createReferralBookingSchema accepts owner-facing referral booking fields",
   assert.equal(parsed.job_no, "REF-100");
   assert.equal(parsed.customer_name, "Jane Referral");
   assert.equal(parsed.local, "local");
+});
+
+test("createReferralBookingSchema accepts optional customer_phone", () => {
+  const parsed = createReferralBookingSchema.parse({
+    book_date: "2026-05-21",
+    job_no: "REF-101",
+    customer_name: "Jane Referral",
+    customer_phone: "(240) 555-0199",
+    agent: "JOSH",
+    total_binder_amount: 900,
+    deposit_amount: 300,
+    merchant: "Paper Check",
+  });
+
+  assert.equal(parsed.customer_phone, "(240) 555-0199");
+});
+
+test("createBookedLeadFromSourceSchema accepts optional customer contact fields", () => {
+  const parsed = createBookedLeadFromSourceSchema.parse({
+    lead_type: "FormLead",
+    form_lead_id: "507f1f77bcf86cd799439011",
+    job_no: "P5556278",
+    book_date: "2026-05-21",
+    agent: "JOSH",
+    binder_amount: 900,
+    deposit_amount: 900,
+    merchant: "Card",
+    customer_name: "Jane Doe",
+    customer_phone: "(240) 555-0199",
+  });
+
+  assert.equal(parsed.customer_name, "Jane Doe");
+  assert.equal(parsed.customer_phone, "(240) 555-0199");
+});
+
+test("createCustomerSchema accepts name-only customers", () => {
+  const parsed = createCustomerSchema.parse({
+    full_name: "Jane Doe",
+  });
+
+  assert.equal(parsed.full_name, "Jane Doe");
+  assert.equal(parsed.phone_number, undefined);
 });
 
 test("createReferralBookingSchema rejects server-owned referral source fields", () => {

@@ -13,4 +13,4 @@ export {
   updateCustomer,
 } from "./customer.service";
 
-export { upsertCustomerFromLead } from "./customerFromLead.service";
+export { upsertCustomerFromBookingContact, upsertCustomerFromLead } from "./customerFromLead.service";
