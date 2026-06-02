@@ -2,8 +2,22 @@ import type { AnalyticsQuery } from "../../validation/v1.validation";
 import type { AdminModels } from "../admin/adminScope.service";
 import { bookedLeadPrefix } from "./analyticsFilters";
 
+export async function getTopAgentsByDeposit(
+  models: AdminModels,
+  query: AnalyticsQuery,
+  limit = 5,
+): Promise<Record<string, unknown>[]> {
+  const items = await aggregateAgentPerformance(models, query);
+  return items.slice(0, limit);
+}
+
 export async function getAgentPerformance(models: AdminModels, query: AnalyticsQuery) {
-  const items = await models["booked-leads"].aggregate([
+  const items = await aggregateAgentPerformance(models, query);
+  return { items };
+}
+
+async function aggregateAgentPerformance(models: AdminModels, query: AnalyticsQuery) {
+  return models["booked-leads"].aggregate([
     ...bookedLeadPrefix(query),
     { $unwind: "$agent_allocations" },
     {
@@ -56,8 +70,7 @@ export async function getAgentPerformance(models: AdminModels, query: AnalyticsQ
         over_4000_bookings: 1,
       },
     },
-    { $sort: { total_binder_amount: -1, bookings: -1, agent_name: 1 } },
+    { $sort: { total_deposit_amount: -1, bookings: -1, agent_name: 1 } },
     { $limit: 50 },
   ]);
-  return { items };
 }

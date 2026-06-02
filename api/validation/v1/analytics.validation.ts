@@ -58,6 +58,14 @@ export const analyticsQuerySchema = z
 export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>;
 export type AnalyticsReport = z.infer<typeof analyticsReportSchema>;
 
+export const overviewQuerySchema = z
+  .object({
+    database_scope: adminDatabaseScopeSchema,
+  })
+  .strip();
+
+export type OverviewQuery = z.infer<typeof overviewQuerySchema>;
+
 const optionalAgentList = z.preprocess((value) => {
   if (value === undefined || value === null) {
     return undefined;

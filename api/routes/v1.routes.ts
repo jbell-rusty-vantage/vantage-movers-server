@@ -53,6 +53,7 @@ import {
   analyticsQuerySchema,
   analyticsReportSchema,
   agentSalesReportQuerySchema,
+  overviewQuerySchema,
   adminBrowseQuerySchema,
   adminSearchQuerySchema,
   bookedCallLeadReconciliationBatchSchema,
@@ -80,6 +81,7 @@ import {
   exportAnalyticsReportCsv,
   getAgentSalesReport,
   getAnalyticsReport,
+  getOverviewReport,
 } from "../services/analytics";
 
 const router = Router();
@@ -128,6 +130,7 @@ for (const resource of adminResources) {
 for (const report of analyticsReports) {
   router.get(`/api/v1/admin/analytics/${report}`, handleAnalyticsReport(report));
 }
+router.get("/api/v1/admin/analytics/overview", handleOverviewReport());
 router.get("/api/v1/admin/exports/analytics/:report.csv", handleAnalyticsExport);
 router.get("/api/v1/admin/reports/agent-sales", handleAgentSalesReport);
 router.get("/api/v1/admin/exports/reports/agent-sales.csv", handleAgentSalesReportExport);
@@ -245,6 +248,19 @@ function handleAdminExport(resource: AdminResource) {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="${data.filename}"`);
       return res.status(200).send(data.csv);
+    } catch (error) {
+      return sendError(req, res, error);
+    }
+  };
+}
+
+function handleOverviewReport() {
+  return async (req: Request, res: Response) => {
+    try {
+      await connectMongo();
+      const parsed = overviewQuerySchema.parse(req.query);
+      const data = await getOverviewReport(parsed);
+      return res.json({ ok: true, data });
     } catch (error) {
       return sendError(req, res, error);
     }
