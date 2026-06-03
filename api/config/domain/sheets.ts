@@ -12,6 +12,7 @@ export const SHEET_TAB_NAMES = {
   forms: "Forms",
   calls: "Calls",
   duplicates: "Duplicates",
+  duplicateCalls: "Duplicate Calls",
   badLeads: "Bad Leads",
   badCalls: "Bad Calls",
   bookedDeals: "Booked Deals",

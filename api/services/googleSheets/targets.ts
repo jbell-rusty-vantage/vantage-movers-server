@@ -97,6 +97,8 @@ export function getHeadersForSyncTarget(target: string): readonly string[] | und
       return FORM_SHEET_HEADERS;
     case "master_calls":
     case "source_calls":
+    case "master_duplicate_calls":
+    case "source_duplicate_calls":
       return CALL_SHEET_HEADERS;
     case "master_booked":
       return BOOKED_SHEET_HEADERS;
@@ -112,14 +114,17 @@ export function getEnsureTabsForSyncTarget(target: string): SheetTabConfig[] {
     case "master_forms":
     case "master_calls":
     case "master_duplicates":
+    case "master_duplicate_calls":
       return getMasterLeadsTabs();
     case "source_forms":
     case "source_calls":
     case "source_duplicates":
+    case "source_duplicate_calls":
       return [
         { tabName: SHEET_TAB_NAMES.forms, headers: FORM_SHEET_HEADERS },
         { tabName: SHEET_TAB_NAMES.calls, headers: CALL_SHEET_HEADERS },
         { tabName: SHEET_TAB_NAMES.duplicates, headers: FORM_SHEET_HEADERS },
+        { tabName: SHEET_TAB_NAMES.duplicateCalls, headers: CALL_SHEET_HEADERS },
         { tabName: SHEET_TAB_NAMES.badLeads, headers: FORM_SHEET_HEADERS },
         { tabName: SHEET_TAB_NAMES.badCalls, headers: CALL_SHEET_HEADERS },
       ];
@@ -136,6 +141,7 @@ export function getMasterLeadsTabs(): SheetTabConfig[] {
     { tabName: SHEET_TAB_NAMES.forms, headers: FORM_SHEET_HEADERS },
     { tabName: SHEET_TAB_NAMES.calls, headers: CALL_SHEET_HEADERS },
     { tabName: SHEET_TAB_NAMES.duplicates, headers: FORM_SHEET_HEADERS },
+    { tabName: SHEET_TAB_NAMES.duplicateCalls, headers: CALL_SHEET_HEADERS },
   ];
 }
 

@@ -60,11 +60,12 @@ export async function syncFormLeadToSheets(
 export async function syncCallLeadToSheets(
   lead: CallLeadSheetSource,
 ): Promise<SheetSyncEntry[]> {
+  const targetBase = callLeadTargetBase(lead.duplicate);
   const targets = getLeadTargets(
-    "master_calls",
-    "source_calls",
+    targetBase.masterTarget,
+    targetBase.sourceTarget,
     lead.source_company,
-    SHEET_TAB_NAMES.calls,
+    targetBase.tabName,
     CALL_SHEET_HEADERS,
   );
   return syncRowToTargets(lead, targets, callLeadToRow(lead));
@@ -128,19 +129,43 @@ export async function deleteFormLeadFromSheets(
 }
 
 export async function deleteCallLeadFromSheets(
-  lead: SyncableDocument & { source_company: SourceCompany },
+  lead: SyncableDocument & { source_company: SourceCompany; duplicate?: boolean | null },
 ): Promise<void> {
+  const targetBase = callLeadTargetBase(lead.duplicate);
   await deleteRowsFromTargets(
     lead,
     getLeadTargets(
-      "master_calls",
-      "source_calls",
+      targetBase.masterTarget,
+      targetBase.sourceTarget,
       lead.source_company,
-      SHEET_TAB_NAMES.calls,
+      targetBase.tabName,
       CALL_SHEET_HEADERS,
     ),
-    ["master_calls", "source_calls"],
+    [targetBase.masterTarget, targetBase.sourceTarget],
   );
+}
+
+/**
+ * Routes a call lead to the right Master Leads tab. Duplicates go to the
+ * dedicated "Duplicate Calls" tab (same headers/values as the Calls tab) so
+ * the owner can exclude them from lead spend without polluting the Calls tab.
+ */
+function callLeadTargetBase(duplicate?: boolean | null): {
+  masterTarget: string;
+  sourceTarget: string;
+  tabName: string;
+} {
+  return duplicate
+    ? {
+        masterTarget: "master_duplicate_calls",
+        sourceTarget: "source_duplicate_calls",
+        tabName: SHEET_TAB_NAMES.duplicateCalls,
+      }
+    : {
+        masterTarget: "master_calls",
+        sourceTarget: "source_calls",
+        tabName: SHEET_TAB_NAMES.calls,
+      };
 }
 
 export async function deleteBookedLeadFromSheets(booking: SyncableDocument): Promise<void> {

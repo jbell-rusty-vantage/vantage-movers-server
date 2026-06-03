@@ -86,6 +86,7 @@ export type CallLeadSheetSource = SyncableDocument & {
   local?: string | null;
   form_fill?: boolean | null;
   cubic_feet?: number | null;
+  duplicate?: boolean | null;
 };
 
 export type BookedLeadSheetSource = SyncableDocument & PopulatedBookedLead;
