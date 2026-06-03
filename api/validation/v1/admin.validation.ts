@@ -59,6 +59,7 @@ const adminQueryBase = {
   phone_number: optionalTrimmedString,
   ref_no: optionalTrimmedString,
   move_size: optionalTrimmedString,
+  duplicate: booleanInput.optional(),
   active: booleanInput.optional(),
   role: optionalTrimmedString,
   limit: z.coerce.number().int().min(1).max(250).default(50),

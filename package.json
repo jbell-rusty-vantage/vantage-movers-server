@@ -14,6 +14,7 @@
     "db:mark-form-leads-duplicate": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/mark-form-leads-duplicate.ts",
     "db:fix-form-lead-not-found-states": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/fix-form-lead-not-found-states.ts",
     "api:patch-form-lead-duplicate": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/patch-form-lead-duplicate-production.ts",
+    "api:post-form-lead": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/post-form-lead.ts",
     "db:init-historical": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/historical/init-historical-db.ts",
     "historical:ingest-sheets": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/historical/ingest-historical-sheets.ts",
     "historical:reconcile": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/historical/reconcile-historical-leads.ts",

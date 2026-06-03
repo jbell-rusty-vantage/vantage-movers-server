@@ -73,6 +73,31 @@ test("admin browse builds filters, pagination, sorting, and response shape", asy
   assert.match(filterPreview, /booked/);
 });
 
+test("admin form lead browse excludes duplicates by default", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(FormLead, capture, []);
+  stubCount(FormLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({ limit: 10 });
+  await browseAdminResource("form-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /duplicate/);
+  assert.doesNotMatch(filterPreview, /duplicate:\s*true/);
+});
+
+test("admin form lead browse can filter to duplicates only", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(FormLead, capture, []);
+  stubCount(FormLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({ duplicate: "true", limit: 10 });
+  await browseAdminResource("form-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /duplicate:\s*true/);
+});
+
 test("admin detail lookup returns normalized production record", async () => {
   const id = new mongoose.Types.ObjectId();
   const capture: QueryCapture = { populated: [] };

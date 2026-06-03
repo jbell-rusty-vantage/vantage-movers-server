@@ -243,7 +243,7 @@ async function browseConcrete(
   const models = getAdminModels(scope);
   const model = models[resource];
   const config = RESOURCE_CONFIGS[resource];
-  const filter = buildFilter(config, query);
+  const filter = applyResourceFilter(resource, query, buildFilter(config, query));
   const sortField = safeSortField(resource, query.sort);
   const sort = { [sortField]: query.direction === "asc" ? 1 : -1 } as Record<string, 1 | -1>;
   const skip = (query.page - 1) * query.limit;
@@ -259,6 +259,35 @@ async function browseConcrete(
     total,
     has_next_page: skip + docs.length < total,
   };
+}
+
+function applyResourceFilter(
+  resource: AdminResource,
+  query: AdminBrowseQuery,
+  filter: Record<string, unknown>,
+): Record<string, unknown> {
+  if (resource !== "form-leads") {
+    return filter;
+  }
+
+  const duplicateClause =
+    query.duplicate === true ? { duplicate: true } : { duplicate: { $ne: true } };
+  return mergeFilters(filter, duplicateClause);
+}
+
+function mergeFilters(
+  base: Record<string, unknown>,
+  extra: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!Object.keys(base).length) {
+    return extra;
+  }
+
+  if (!Object.keys(extra).length) {
+    return base;
+  }
+
+  return { $and: [base, extra] };
 }
 
 function buildFilter(config: ResourceConfig, query: AdminBrowseQuery): Record<string, unknown> {
