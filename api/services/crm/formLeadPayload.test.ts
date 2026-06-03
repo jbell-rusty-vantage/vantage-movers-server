@@ -73,17 +73,11 @@ test("buildCrmFormLeadPayload uses lead Mongo _id as leadno (Granot ref_no contr
   assert.equal(payload.leadno, lead._id.toString());
 });
 
-test("buildCrmFormLeadPayload preserves the lid in notes when present", () => {
+test("buildCrmFormLeadPayload generates a notes lead id for Granot", () => {
   const lead = hydrateFormLead({ lid: "LID-12345" });
   const payload = buildCrmFormLeadPayload(lead);
-  assert.equal(payload.notes, "LID-12345");
-});
-
-test("buildCrmFormLeadPayload generates a fresh notes lid when lid is blank", () => {
-  const lead = hydrateFormLead({ lid: "" });
-  const payload = buildCrmFormLeadPayload(lead);
-  assert.ok(payload.notes.length > 0, "notes should fall back to a generated lid");
-  assert.notEqual(payload.notes, "");
+  assert.match(payload.notes, /^LID[0-9a-f]{13}$/);
+  assert.notEqual(payload.notes, "LID-12345");
 });
 
 test("buildCrmFormLeadPayload maps lead fields onto the Granot wire shape", () => {

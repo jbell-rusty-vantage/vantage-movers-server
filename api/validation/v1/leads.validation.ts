@@ -39,7 +39,6 @@ const formLeadFields = {
   name: nonEmptyString,
   source_company_site: optionalString,
   timestamp: optionalDate,
-  lid: optionalString,
   pickup_zip: zipSchema,
   destination_zip: zipSchema,
   pickup_state: optionalString,

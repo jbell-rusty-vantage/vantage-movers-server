@@ -54,8 +54,8 @@ export function formatCrmMoveDate(date: Date): string {
  * `.cursor/rules/form-lead-granot-crm.mdc`):
  *   - `label` is the company-facing source label, defaulting to
  *     `CRM_FORM_LEAD_LABEL` when the caller passes a blank value.
- *   - `notes` carries the Vantage `lid` (or a freshly generated one) so
- *     the Granot side can chain back to our lead identifier.
+ *   - `notes` carries a freshly generated lead identifier for Granot-side
+ *     tracking; it is not stored on the Mongo `FormLead`.
  *   - `leadno` is the Mongo `_id` as a string. The Granot extension
  *     reads it back as the web-app `ref_no` column and uses it to
  *     update the right FormLead. NEVER substitute the Mongo `ref_no`
@@ -77,7 +77,7 @@ export function buildCrmFormLeadPayload(
     phone1: lead.phone_number,
     movesize: lead.move_size,
     movedte: formatCrmMoveDate(lead.move_date),
-    notes: lead.lid?.trim() || generateLeadId(),
+    notes: generateLeadId(),
     leadno: lead._id.toString(),
   };
 }

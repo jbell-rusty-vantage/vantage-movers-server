@@ -209,6 +209,22 @@ test("createFormLeadSchema does not accept duplicate from clients", () => {
   assert.equal(parsed.success, false);
 });
 
+test("createFormLeadSchema does not accept lid from clients", () => {
+  const parsed = createFormLeadSchema.safeParse({
+    source_company: "main_site",
+    name: "Jane Customer",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    move_size: "Studio",
+    ref_no: "not provided",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+    lid: "LIDabc123",
+  });
+
+  assert.equal(parsed.success, false);
+});
+
 test("updateFormLeadSchema accepts duplicate for backfill and admin patches", () => {
   const parsed = updateFormLeadSchema.parse({
     duplicate: true,

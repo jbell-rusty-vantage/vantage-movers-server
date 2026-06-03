@@ -6,7 +6,6 @@ import {
 import { FormLead } from "../../models/FormLead";
 import { logger } from "../../logger";
 import { toFloridaTimestamp } from "../../utils/easternTime";
-import { generateLeadId } from "../../utils/ids";
 import { normalizePhoneNumberForStorage } from "../../utils/phone";
 import type {
   CreateFormLeadInput,
@@ -53,7 +52,6 @@ export async function createFormLead(input: CreateFormLeadInput) {
     ...location,
     source_company,
     local,
-    lid: formLeadInput.lid?.trim() || generateLeadId(),
     ref_no: formLeadInput.ref_no?.trim() || "not provided",
     timestamp: toFloridaTimestamp(formLeadInput.timestamp),
     move_date: formLeadInput.move_date ?? new Date(),
