@@ -1,10 +1,14 @@
+import mongoose from "mongoose";
 import { getRequiredEnv } from "../../api/config/domain";
+import { buildRingCentralTelephonyEventFilters } from "../../api/services/ringcentral/call-lead-sources";
 import { ringCentralRequest } from "../../api/services/ringcentral/client";
-import { RINGCENTRAL_TELEPHONY_SESSIONS_EVENT_FILTER } from "../../api/services/ringcentral/webhook-capture";
+import { getRingCentralWebhookFilterMode } from "../../api/services/ringcentral/ringcentral-config";
 import {
   storeRingCentralWebhookSubscriptionMetadata,
   type RingCentralSubscriptionStoreResult,
 } from "../../api/services/ringcentral/webhook-subscriptions";
+
+const RINGCENTRAL_WEBHOOK_ROUTE = "/api/webhooks/ringcentral";
 
 type RingCentralSubscriptionResponse = {
   id?: unknown;
@@ -18,11 +22,24 @@ type RingCentralSubscriptionResponse = {
 };
 
 async function main(): Promise<void> {
-  const webhookUrl = getRequiredEnv("RINGCENTRAL_WEBHOOK_URL");
+  const webhookBaseUrl =
+    process.env.RINGCENTRAL_NGROK_WEBHOOK_URL?.trim() ||
+    getRequiredEnv("RINGCENTRAL_WEBHOOK_URL");
+  const webhookUrl = resolveRingCentralWebhookUrl(webhookBaseUrl);
   validateWebhookUrl(webhookUrl);
 
+  const filterMode = getRingCentralWebhookFilterMode();
+  const eventFilters = buildRingCentralTelephonyEventFilters(filterMode);
+
+  console.log(`Webhook delivery address: ${webhookUrl}`);
+  console.log(`Filter mode: ${filterMode} (${eventFilters.length} filter(s))`);
+  for (const filter of eventFilters) {
+    console.log(`  - ${filter}`);
+  }
+  console.log("");
+
   const response = await ringCentralRequest("POST", "/restapi/v1.0/subscription", {
-    eventFilters: [RINGCENTRAL_TELEPHONY_SESSIONS_EVENT_FILTER],
+    eventFilters,
     deliveryMode: {
       transportType: "WebHook",
       address: webhookUrl,
@@ -31,6 +48,14 @@ async function main(): Promise<void> {
 
   const storeResult = await storeRingCentralWebhookSubscriptionMetadata(response);
   printCreateResult(response, storeResult);
+}
+
+function resolveRingCentralWebhookUrl(value: string): string {
+  const url = new URL(value);
+  if (url.pathname === "/" || url.pathname === "") {
+    url.pathname = RINGCENTRAL_WEBHOOK_ROUTE;
+  }
+  return url.toString();
 }
 
 function validateWebhookUrl(value: string): void {
@@ -122,11 +147,15 @@ function valueToNumber(value: unknown): number | null {
   return null;
 }
 
-main().catch((error) => {
-  console.error(
-    `RingCentral webhook subscription create failed: ${
-      error instanceof Error ? error.message : String(error)
-    }`,
-  );
-  process.exitCode = 1;
-});
+main()
+  .catch((error) => {
+    console.error(
+      `RingCentral webhook subscription create failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await mongoose.disconnect();
+  });

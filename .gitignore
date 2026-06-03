@@ -30,6 +30,11 @@ pnpm-debug.log*
 .ringcentral-webhook-subscription.json
 ringcentral-credentials.json
 ringcentral-call-log-validation-output.json
+ringcentral-call-lead-api-probe-output.json
+ringcentral-call-log-sync-output.json
+ringcentral-analytics-reconcile-output.json
+ringcentral-workflow-test-output.json
+ringcentral-workflow-test.log
 # Minified one-line copy for env paste (see scripts/minify-google-service-account-json.ts)
 /google-service-account.one-line.json
 /vantage-sheets-service-account.one-line.json

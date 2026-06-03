@@ -1,0 +1,180 @@
+import { logger } from "../../logger";
+import { ringCentralRequest } from "./client";
+import { vetRingCentralCallLogRecord } from "./call-log-vetting";
+import {
+  getCallLogSyncState,
+  recordCallLogSyncError,
+  recordCallLogSyncSuccess,
+} from "./call-log-sync-state.store";
+import {
+  getRingCentralCallLogSyncLookbackMinutes,
+  getRingCentralCallLogSyncOverlapMinutes,
+} from "./ringcentral-config";
+import {
+  ingestRingCentralQualifiedCall,
+  type RingCentralIngestAction,
+  type RingCentralQualifiedCall,
+} from "./ringcentral-call-lead-ingest.service";
+
+/**
+ * Scheduled Call Log sync (the cron half of the hybrid strategy).
+ *
+ * Each run reads the high-water-mark cursor, fetches detailed inbound Call Log
+ * records for `[lastSyncTo - overlap, now]` (or `[now - lookback, now]` on
+ * first run), vets each record with the shared rules, and hands every
+ * qualified call to the shared ingest service. Because ingest is idempotent by
+ * `telephonySessionId`, this safely catches calls the webhook missed without
+ * ever double-creating a lead.
+ *
+ * The cursor only advances on success; an error leaves the window intact so
+ * the next run retries the same range.
+ */
+const PER_PAGE = 250;
+const MAX_PAGES = 20;
+
+export type RingCentralCallLogSyncSummary = {
+  ranAt: string;
+  windowFrom: string;
+  windowTo: string;
+  fetchedRecords: number;
+  candidateRecords: number;
+  qualifiedRecords: number;
+  ingestActions: Record<RingCentralIngestAction, number>;
+  leadsCreated: number;
+  duplicatesFlagged: number;
+  errors: string[];
+};
+
+export async function runRingCentralCallLogSync(
+  now: Date = new Date(),
+): Promise<RingCentralCallLogSyncSummary> {
+  const windowTo = now;
+  const windowFrom = await resolveWindowStart(windowTo);
+
+  const summary: RingCentralCallLogSyncSummary = {
+    ranAt: now.toISOString(),
+    windowFrom: windowFrom.toISOString(),
+    windowTo: windowTo.toISOString(),
+    fetchedRecords: 0,
+    candidateRecords: 0,
+    qualifiedRecords: 0,
+    ingestActions: {
+      lead_created: 0,
+      lead_created_duplicate: 0,
+      shadow_recorded: 0,
+      dry_run: 0,
+      skipped_already_processed: 0,
+    },
+    leadsCreated: 0,
+    duplicatesFlagged: 0,
+    errors: [],
+  };
+
+  try {
+    const records = await fetchDetailedInboundCallLog(windowFrom, windowTo);
+    summary.fetchedRecords = records.length;
+
+    for (const record of records) {
+      const vet = vetRingCentralCallLogRecord(record);
+      if (vet.matchedTargetNumber) {
+        summary.candidateRecords += 1;
+      }
+      if (!vet.qualifies || !vet.sourceCompany || !vet.callerPhoneNumber) {
+        continue;
+      }
+      summary.qualifiedRecords += 1;
+
+      const qualifiedCall: RingCentralQualifiedCall = {
+        ingestionSource: "call_log_sync",
+        telephonySessionId: vet.telephonySessionId,
+        sessionId: vet.sessionId,
+        partyId: null,
+        callLogId: vet.callLogId,
+        sourceCompany: vet.sourceCompany,
+        sourceLabel: vet.sourceLabel,
+        callerPhoneNumber: vet.callerPhoneNumber,
+        callerName: vet.callerName,
+        targetPhoneNumber: vet.targetPhoneNumber ?? "",
+        targetName: vet.targetName,
+        answeredAt: vet.startTime,
+        terminalAt:
+          vet.startTime && vet.durationSeconds !== null
+            ? new Date(vet.startTime.getTime() + vet.durationSeconds * 1000)
+            : null,
+        startTime: vet.startTime,
+        durationSeconds: vet.durationSeconds ?? 0,
+        qualificationReason: "call_log_inbound_target_answered_over_120s",
+      };
+
+      const result = await ingestRingCentralQualifiedCall(qualifiedCall, now);
+      summary.ingestActions[result.action] += 1;
+      if (result.action === "lead_created" || result.action === "lead_created_duplicate") {
+        summary.leadsCreated += 1;
+      }
+      if (result.duplicate) {
+        summary.duplicatesFlagged += 1;
+      }
+    }
+
+    await recordCallLogSyncSuccess({
+      syncFrom: windowFrom,
+      syncTo: windowTo,
+      processedCount: summary.fetchedRecords,
+      qualifiedCount: summary.qualifiedRecords,
+      leadActionCount: summary.leadsCreated,
+      now,
+    });
+
+    logger.info({ msg: "ringcentral.call_log_sync.completed", ...summary });
+    return summary;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    summary.errors.push(message);
+    await recordCallLogSyncError({ error: message, now });
+    logger.error({
+      err: error,
+      msg: "ringcentral.call_log_sync.failed",
+      windowFrom: summary.windowFrom,
+      windowTo: summary.windowTo,
+    });
+    throw error;
+  }
+}
+
+async function resolveWindowStart(windowTo: Date): Promise<Date> {
+  const state = await getCallLogSyncState();
+  const overlapMs = getRingCentralCallLogSyncOverlapMinutes() * 60 * 1000;
+  if (state?.lastSyncTo) {
+    return new Date(state.lastSyncTo.getTime() - overlapMs);
+  }
+  const lookbackMs = getRingCentralCallLogSyncLookbackMinutes() * 60 * 1000;
+  return new Date(windowTo.getTime() - lookbackMs);
+}
+
+async function fetchDetailedInboundCallLog(
+  from: Date,
+  to: Date,
+): Promise<unknown[]> {
+  const records: unknown[] = [];
+  for (let page = 1; page <= MAX_PAGES; page += 1) {
+    const query = new URLSearchParams({
+      dateFrom: from.toISOString(),
+      dateTo: to.toISOString(),
+      direction: "Inbound",
+      type: "Voice",
+      view: "Detailed",
+      perPage: String(PER_PAGE),
+      page: String(page),
+    });
+    const payload = await ringCentralRequest(
+      "GET",
+      `/restapi/v1.0/account/~/call-log?${query.toString()}`,
+    );
+    const pageRecords = Array.isArray(payload?.records) ? payload.records : [];
+    records.push(...pageRecords);
+    if (pageRecords.length < PER_PAGE) {
+      break;
+    }
+  }
+  return records;
+}

@@ -7,6 +7,33 @@ import {
 } from "./schemaHelpers";
 import { normalizePhoneNumberForMatch } from "../utils/phone";
 
+/**
+ * Provenance + qualification metadata for call leads created from the
+ * RingCentral hybrid pipeline (telephony webhook or Call Log cron sync).
+ * Manual/API-created call leads leave this undefined. `telephony_session_id`
+ * is the cross-path idempotency key: a unique sparse index guarantees one
+ * lead per RingCentral session no matter how many times the webhook fires or
+ * the cron re-scans the same window.
+ */
+const ringCentralCallMetadataSchema = new Schema(
+  {
+    telephony_session_id: { type: String, trim: true },
+    session_id: { type: String, trim: true },
+    party_id: { type: String, trim: true },
+    call_log_id: { type: String, trim: true },
+    source_label: { type: String, trim: true },
+    ingestion_source: {
+      type: String,
+      enum: ["webhook", "call_log_sync", "manual"],
+    },
+    qualification_reason: { type: String, trim: true },
+    answered_at: { type: Date },
+    terminal_at: { type: Date },
+    duration_seconds: { type: Number },
+  },
+  { _id: false },
+);
+
 const CallLeadSchema = new Schema(
   {
     source_company: sourceCompanyField,
@@ -26,6 +53,11 @@ const CallLeadSchema = new Schema(
     over_4000: { type: Boolean, default: false },
     local: optionalLocalField,
     form_fill: { type: Boolean, default: false },
+    // Set when the same caller phone + source_company already produced a
+    // successful call lead within the duplicate window. Flagged (and zero-CPL)
+    // so the owner can exclude it from lead spend rather than paying twice.
+    duplicate: { type: Boolean, default: false, index: true },
+    ringcentral: { type: ringCentralCallMetadataSchema, default: undefined },
     created_on_unmatched: { type: Boolean, default: false, index: true },
     pickup_zip: { type: String, trim: true },
     delivery_zip: { type: String, trim: true },
@@ -47,6 +79,13 @@ CallLeadSchema.index({ source_company: 1, createdAt: -1 });
 CallLeadSchema.index({ phone_number: 1 });
 CallLeadSchema.index({ normalized_phone_number: 1, createdAt: -1 });
 CallLeadSchema.index({ job_no: 1 });
+// Cross-path idempotency: at most one lead per RingCentral telephony session.
+CallLeadSchema.index(
+  { "ringcentral.telephony_session_id": 1 },
+  { unique: true, sparse: true },
+);
+// Supports the duplicate-window lookup (same caller + source within N hours).
+CallLeadSchema.index({ source_company: 1, normalized_phone_number: 1, duplicate: 1 });
 
 CallLeadSchema.pre("validate", function normalizePhoneNumber() {
   this.normalized_phone_number = normalizePhoneNumberForMatch(this.phone_number);

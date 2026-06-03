@@ -18,6 +18,78 @@ import { hasFormFillForCallLead } from "./duplicateLead.service";
 import { resolveOptionalLocation } from "./leadLocation.service";
 import { parseSourceCompany } from "./leadSourceCompany";
 
+export type CreateRingCentralCallLeadInput = {
+  source_company: SourceCompany;
+  phone_number: string;
+  name?: string | null;
+  duration?: number | null;
+  start_time?: Date | null;
+  end_time?: Date | null;
+  timestamp?: Date | null;
+  duplicate: boolean;
+  ringcentral: {
+    telephony_session_id?: string | null;
+    session_id?: string | null;
+    party_id?: string | null;
+    call_log_id?: string | null;
+    source_label?: string | null;
+    ingestion_source: "webhook" | "call_log_sync" | "manual";
+    qualification_reason?: string | null;
+    answered_at?: Date | null;
+    terminal_at?: Date | null;
+    duration_seconds?: number | null;
+  };
+};
+
+/**
+ * Creates a real `call_leads` document from a qualified RingCentral call.
+ *
+ * Mirrors `createCallLead` (form-fill detection, Florida timestamp, sheet
+ * sync scheduling) but carries RingCentral provenance and the duplicate flag.
+ * Duplicates are still recorded for visibility but get `cpl = 0` so the owner
+ * is never charged twice for the same caller/source. The unique sparse index
+ * on `ringcentral.telephony_session_id` is the final guard against double
+ * inserts across the webhook and cron paths.
+ */
+export async function createRingCentralCallLead(
+  input: CreateRingCentralCallLeadInput,
+) {
+  const { source_company, duplicate } = input;
+  const form_fill = await hasFormFillForCallLead(source_company, input.phone_number);
+  const lead = await CallLead.create({
+    source_company,
+    phone_number: input.phone_number,
+    name: input.name ?? undefined,
+    duration: input.duration ?? undefined,
+    start_time: input.start_time ?? undefined,
+    end_time: input.end_time ?? undefined,
+    timestamp: toFloridaTimestamp(input.timestamp ?? new Date()),
+    form_fill,
+    duplicate,
+    cpl: duplicate ? 0 : getCplForSource(source_company, undefined),
+    ringcentral: {
+      telephony_session_id: input.ringcentral.telephony_session_id ?? undefined,
+      session_id: input.ringcentral.session_id ?? undefined,
+      party_id: input.ringcentral.party_id ?? undefined,
+      call_log_id: input.ringcentral.call_log_id ?? undefined,
+      source_label: input.ringcentral.source_label ?? undefined,
+      ingestion_source: input.ringcentral.ingestion_source,
+      qualification_reason: input.ringcentral.qualification_reason ?? undefined,
+      answered_at: input.ringcentral.answered_at ?? undefined,
+      terminal_at: input.ringcentral.terminal_at ?? undefined,
+      duration_seconds: input.ringcentral.duration_seconds ?? undefined,
+    },
+  });
+
+  scheduleFullSheetSyncProcess({
+    resource: "source_lead",
+    operation: "call_lead.create",
+    leadModel: "CallLead",
+    leadId: lead._id.toString(),
+  });
+  return lead;
+}
+
 export async function createCallLead(input: CreateCallLeadInput) {
   const source_company = parseSourceCompany(input.source_company);
   const location = await resolveOptionalLocation(input);

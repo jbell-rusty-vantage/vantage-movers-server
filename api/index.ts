@@ -6,6 +6,7 @@ import { MONGO_DATABASE_NAME } from "./config/domain";
 import { connectMongo } from "./db";
 import { logger } from "./logger";
 import { httpLogger } from "./middleware/httpLogger";
+import ringCentralCronRoutes from "./routes/ringcentral-cron.routes";
 import ringCentralWebhookRoutes from "./routes/ringcentral-webhook.routes";
 import v1Routes from "./routes/v1.routes";
 
@@ -30,6 +31,7 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(ringCentralWebhookRoutes);
+app.use(ringCentralCronRoutes);
 app.use(v1Routes);
 
 app.get("/", (_req: Request, res: Response) => {

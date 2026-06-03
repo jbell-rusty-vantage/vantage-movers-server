@@ -14,11 +14,14 @@ alwaysApply: false
 
 ## Current Phase
 
-- We are still in local testing/validation. Do not add webhook endpoints, webhook subscriptions, or lead ingestion routes until call-log access is confirmed.
-- Token cache is local file storage by default: `.ringcentral-token-cache.json`, ignored by git.
+- We are in local webhook testing/validation. Webhook endpoints and subscriptions exist, but they must only write to RingCentral test collections and must not create real leads yet.
+- Token storage may use Mongo via `RC_TOKEN_STORE=mongo`; local file cache `.ringcentral-token-cache.json` remains supported and ignored by git.
 - Existing commands:
   - `pnpm ringcentral:diagnose`
   - `pnpm ringcentral:call-log:validate`
+  - `pnpm ringcentral:webhook:create`
+  - `pnpm ringcentral:webhook:list`
+  - `pnpm ringcentral:webhook:monitor`
 - The call-log validator writes `ringcentral-call-log-validation-output.json`; it must stay sanitized and gitignored.
 
 ## Auth Flow
