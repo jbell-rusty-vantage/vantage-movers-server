@@ -87,6 +87,46 @@ test("aggregates a multi-party session and qualifies the canonical queue party o
   assert.equal(document.estimatedDurationSeconds, 121);
 });
 
+test("uses answered agent lifecycle timing when the target queue leg disconnects early", () => {
+  const queueTerminalAt = new Date(ANSWERED_AT.getTime() + 10_000);
+  const agentTerminalAt = new Date(ANSWERED_AT.getTime() + 181_000);
+  const queueParty = party({
+    partyId: "p-queue",
+    queueCall: true,
+    answered: false,
+    answeredAt: null,
+    terminal: true,
+    terminalStatusCode: "Disconnected",
+    terminalAt: queueTerminalAt,
+    estimatedDurationSeconds: 0,
+  });
+  const agentParty = party({
+    partyId: "p-agent",
+    queueCall: true,
+    targetMatched: false,
+    sourceLabel: null,
+    sourceCompany: null,
+    answered: true,
+    answeredAt: ANSWERED_AT,
+    terminal: true,
+    terminalStatusCode: "Disconnected",
+    terminalAt: agentTerminalAt,
+    estimatedDurationSeconds: 181,
+  });
+
+  const { document } = aggregateRingCentralCallSession(
+    [queueParty, agentParty],
+    new Date(agentTerminalAt.getTime() + 1_000),
+  );
+
+  assert.equal(document.canonicalPartyId, "p-queue");
+  assert.equal(document.sourceCompany, "top10_leads");
+  assert.equal(document.terminalAt?.toISOString(), agentTerminalAt.toISOString());
+  assert.equal(document.estimatedDurationSeconds, 181);
+  assert.equal(document.decisionStatus, "qualified");
+  assert.equal(document.ingestEligible, true);
+});
+
 test("rejects a session that disconnected under 120 seconds", () => {
   const terminalAt = new Date(ANSWERED_AT.getTime() + 30_000);
   const { document } = aggregateRingCentralCallSession([

@@ -41,20 +41,22 @@ export const RINGCENTRAL_TELEPHONY_SESSIONS_BASE_FILTER =
 /**
  * Builds the RingCentral subscription event filters for inbound calls.
  *
- * - `per-number` (default, recommended): one narrow filter per mapped
- *   toll-free, so RingCentral only delivers sessions for the four numbers we
- *   care about. RingCentral supports `direction`, `phoneNumber`, `statusCode`
- *   and `missedCall` on telephony-session filters (queue name is NOT a valid
- *   filter key; queue signal stays in the party payload).
- * - `account`: a single account-wide inbound filter. Useful as a fallback if
- *   per-number filtering ever misses queue-routed legs whose `to.phoneNumber`
- *   differs from the toll-free.
+ * - `account` (default, recommended): a single account-wide inbound filter.
+ *   Queue-routed RingCentral calls can move through IVR/queue/agent legs whose
+ *   `to.phoneNumber` differs from the original toll-free, so we subscribe
+ *   broadly and filter target numbers in code.
+ * - `per-number`: one narrow filter per mapped toll-free. RingCentral accepts
+ *   `phoneNumber`, but local testing showed these filters can miss routed
+ *   inbound traffic even while the subscription remains Active.
+ *
+ * Queue name is NOT a valid filter key; queue signal stays in the party
+ * payload (`to.name`, `uiCallInfo`, `queueCall`) and must be filtered locally.
  *
  * Recreate the subscription after changing this (RingCentral does not always
  * patch filters in place) via `pnpm ringcentral:webhook:create`.
  */
 export function buildRingCentralTelephonyEventFilters(
-  mode: "per-number" | "account" = "per-number",
+  mode: "per-number" | "account" = "account",
 ): string[] {
   if (mode === "account") {
     return [`${RINGCENTRAL_TELEPHONY_SESSIONS_BASE_FILTER}?direction=Inbound`];

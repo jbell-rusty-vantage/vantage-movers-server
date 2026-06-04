@@ -137,9 +137,9 @@ export function shouldWebhookCallLogValidate(): boolean {
 }
 
 export function getRingCentralWebhookFilterMode(): RingCentralWebhookFilterMode {
-  return process.env.RINGCENTRAL_WEBHOOK_FILTER_MODE?.trim().toLowerCase() === "account"
-    ? "account"
-    : "per-number";
+  return process.env.RINGCENTRAL_WEBHOOK_FILTER_MODE?.trim().toLowerCase() === "per-number"
+    ? "per-number"
+    : "account";
 }
 
 export function getRingCentralDuplicateWindowHours(): number {

@@ -38,11 +38,6 @@ export async function upsertRingCentralCallCandidateFromEvent(
     partyId: event.partyId,
   });
 
-  if (existing && isOlderEvent(existing, event)) {
-    const decision = evaluateRingCentralCallCandidate(existing, now);
-    return { candidate: existing, decision };
-  }
-
   const candidate = buildCandidateDocument(existing, event, now);
   const decision = evaluateRingCentralCallCandidate(candidate, now);
   const candidateWithDecision: RingCentralCallCandidateDocument = {
@@ -168,55 +163,118 @@ function buildCandidateDocument(
   event: NormalizedRingCentralPartyEvent,
   now: Date,
 ): RingCentralCallCandidateDocument {
+  const eventIsOlder = existing ? isOlderEvent(existing, event) : false;
+  const useEventAsLatest = !eventIsOlder;
   const observedAt = event.eventTime ?? event.timestamp ?? event.receivedAt;
   const wasAnswered = existing?.answered === true;
   const isAnswered = event.statusCode === "Answered";
   const answered = wasAnswered || isAnswered;
-  const terminalStatus = isLikelyTerminalRingCentralStatus(event.statusCode)
+  const eventTerminalStatus = isLikelyTerminalRingCentralStatus(event.statusCode)
     ? event.statusCode
-    : existing?.terminalStatusCode ?? null;
+    : null;
+  const terminalStatus =
+    useEventAsLatest && eventTerminalStatus
+      ? eventTerminalStatus
+      : existing?.terminalStatusCode ?? eventTerminalStatus;
   const terminal = existing?.terminal === true || terminalStatus !== null;
   const existingTargetMatched = existing?.targetMatched === true;
   const targetMatched = existingTargetMatched || event.targetMatched;
+  const answeredAt = earliestDate([
+    existing?.answeredAt ?? null,
+    isAnswered ? observedAt : null,
+  ]);
+  const terminalAt = latestDate([
+    existing?.terminalAt ?? null,
+    eventTerminalStatus ? observedAt : null,
+  ]);
 
   return {
     provider: "ringcentral",
     telephonySessionId: event.telephonySessionId,
-    sessionId: event.sessionId ?? existing?.sessionId ?? null,
+    sessionId:
+      (useEventAsLatest ? event.sessionId : existing?.sessionId) ??
+      existing?.sessionId ??
+      event.sessionId ??
+      null,
     partyId: event.partyId,
     firstSeenAt: existing?.firstSeenAt ?? event.receivedAt,
     lastSeenAt: event.receivedAt,
-    lastEventTime: observedAt,
-    lastSequence: event.sequence ?? existing?.lastSequence ?? null,
-    direction: event.direction ?? existing?.direction ?? null,
-    statusCode: event.statusCode ?? existing?.statusCode ?? null,
-    fromPhoneNumber: event.fromPhoneNumber ?? existing?.fromPhoneNumber ?? null,
-    fromName: event.fromName ?? existing?.fromName ?? null,
-    toPhoneNumber: event.toPhoneNumber ?? existing?.toPhoneNumber ?? null,
-    toName: event.toName ?? existing?.toName ?? null,
+    lastEventTime: useEventAsLatest ? observedAt : existing?.lastEventTime ?? observedAt,
+    lastSequence:
+      (useEventAsLatest ? event.sequence : existing?.lastSequence) ??
+      existing?.lastSequence ??
+      event.sequence ??
+      null,
+    direction:
+      (useEventAsLatest ? event.direction : existing?.direction) ??
+      existing?.direction ??
+      event.direction ??
+      null,
+    statusCode:
+      (useEventAsLatest ? event.statusCode : existing?.statusCode) ??
+      existing?.statusCode ??
+      event.statusCode ??
+      null,
+    fromPhoneNumber:
+      (useEventAsLatest ? event.fromPhoneNumber : existing?.fromPhoneNumber) ??
+      existing?.fromPhoneNumber ??
+      event.fromPhoneNumber ??
+      null,
+    fromName:
+      (useEventAsLatest ? event.fromName : existing?.fromName) ??
+      existing?.fromName ??
+      event.fromName ??
+      null,
+    toPhoneNumber:
+      (useEventAsLatest ? event.toPhoneNumber : existing?.toPhoneNumber) ??
+      existing?.toPhoneNumber ??
+      event.toPhoneNumber ??
+      null,
+    toName:
+      (useEventAsLatest ? event.toName : existing?.toName) ??
+      existing?.toName ??
+      event.toName ??
+      null,
     normalizedFromPhoneNumber:
-      event.normalizedFromPhoneNumber ?? existing?.normalizedFromPhoneNumber ?? null,
+      (useEventAsLatest
+        ? event.normalizedFromPhoneNumber
+        : existing?.normalizedFromPhoneNumber) ??
+      existing?.normalizedFromPhoneNumber ??
+      event.normalizedFromPhoneNumber ??
+      null,
     normalizedToPhoneNumber:
-      event.normalizedToPhoneNumber ?? existing?.normalizedToPhoneNumber ?? null,
-    queueCall: event.queueCall ?? existing?.queueCall ?? null,
-    missedCall: event.missedCall ?? existing?.missedCall ?? null,
+      (useEventAsLatest
+        ? event.normalizedToPhoneNumber
+        : existing?.normalizedToPhoneNumber) ??
+      existing?.normalizedToPhoneNumber ??
+      event.normalizedToPhoneNumber ??
+      null,
+    queueCall:
+      (event.queueCall === true || existing?.queueCall === true
+        ? true
+        : useEventAsLatest
+          ? event.queueCall
+          : existing?.queueCall) ?? null,
+    missedCall:
+      (useEventAsLatest ? event.missedCall : existing?.missedCall) ??
+      existing?.missedCall ??
+      event.missedCall ??
+      null,
     targetMatched,
     sourceLabel: event.sourceLabel ?? existing?.sourceLabel ?? null,
     sourceCompany: event.sourceCompany ?? existing?.sourceCompany ?? null,
     answered,
-    answeredAt:
-      existing?.answeredAt ?? (isAnswered ? observedAt : null),
+    answeredAt,
     terminal,
     terminalStatusCode: terminalStatus,
-    terminalAt:
-      existing?.terminalAt ?? (terminalStatus ? observedAt : null),
+    terminalAt,
     estimatedDurationSeconds: existing?.estimatedDurationSeconds ?? null,
     decisionStatus:
       existing?.decisionStatus ??
       (targetMatched ? "candidate" : "not_candidate"),
     decisionReason: existing?.decisionReason ?? null,
     lastWebhookUuid: event.webhookUuid ?? existing?.lastWebhookUuid ?? null,
-    rawLatestParty: event.rawParty,
+    rawLatestParty: useEventAsLatest ? event.rawParty : existing?.rawLatestParty ?? event.rawParty,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -230,6 +288,22 @@ function isOlderEvent(
     return false;
   }
   return event.sequence < existing.lastSequence;
+}
+
+function earliestDate(values: Array<Date | null>): Date | null {
+  const dates = values.filter((value): value is Date => value instanceof Date);
+  if (dates.length === 0) {
+    return null;
+  }
+  return dates.reduce((min, value) => (value.getTime() < min.getTime() ? value : min));
+}
+
+function latestDate(values: Array<Date | null>): Date | null {
+  const dates = values.filter((value): value is Date => value instanceof Date);
+  if (dates.length === 0) {
+    return null;
+  }
+  return dates.reduce((max, value) => (value.getTime() > max.getTime() ? value : max));
 }
 
 async function getCallCandidatesCollection() {

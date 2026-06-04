@@ -5,6 +5,7 @@ import {
   SOURCE_LABEL_TO_COMPANY,
   resolveRingCentralInboundSource,
 } from "./call-lead-sources";
+import { buildRingCentralCandidateDocument } from "./call-candidate-store";
 import {
   CALL_LEAD_MINIMUM_ANSWERED_SECONDS,
   evaluateRingCentralCallCandidate,
@@ -106,6 +107,52 @@ test("normalizer emits one target-matched party event from sample webhook payloa
   assert.equal(events[0]?.targetMatched, true);
   assert.equal(events[0]?.sourceLabel, "10best Inbounds");
   assert.equal(events[0]?.sourceCompany, "top10_leads");
+});
+
+test("candidate folding preserves answeredAt from an older delayed event", () => {
+  const disconnectedPayload = structuredClone(sampleAnsweredInboundEvent);
+  disconnectedPayload.uuid = "later-disconnected";
+  disconnectedPayload.body.sequence = 20;
+  disconnectedPayload.body.eventTime = "2026-06-02T20:00:43.532Z";
+  disconnectedPayload.body.parties[0].status.code = "Disconnected";
+
+  const answeredPayload = structuredClone(sampleAnsweredInboundEvent);
+  answeredPayload.uuid = "delayed-answered";
+  answeredPayload.body.sequence = 13;
+  answeredPayload.body.eventTime = "2026-06-02T19:58:43.532Z";
+  answeredPayload.body.parties[0].status.code = "Answered";
+
+  const disconnectedEvent = normalizeRingCentralWebhookPayload(
+    disconnectedPayload,
+    new Date("2026-06-02T20:00:44.000Z"),
+  )[0]!;
+  const answeredEvent = normalizeRingCentralWebhookPayload(
+    answeredPayload,
+    new Date("2026-06-02T20:00:45.000Z"),
+  )[0]!;
+
+  const afterDisconnect = buildRingCentralCandidateDocument(
+    null,
+    disconnectedEvent,
+    new Date("2026-06-02T20:00:44.000Z"),
+  );
+  const afterDelayedAnswer = buildRingCentralCandidateDocument(
+    afterDisconnect,
+    answeredEvent,
+    new Date("2026-06-02T20:00:45.000Z"),
+  );
+
+  assert.equal(afterDelayedAnswer.lastSequence, 20);
+  assert.equal(afterDelayedAnswer.statusCode, "Disconnected");
+  assert.equal(afterDelayedAnswer.answered, true);
+  assert.equal(
+    afterDelayedAnswer.answeredAt?.toISOString(),
+    "2026-06-02T19:58:43.532Z",
+  );
+  assert.equal(
+    afterDelayedAnswer.terminalAt?.toISOString(),
+    "2026-06-02T20:00:43.532Z",
+  );
 });
 
 test("sample answered inbound event is pending immediately and qualifies after elapsed buffer", () => {

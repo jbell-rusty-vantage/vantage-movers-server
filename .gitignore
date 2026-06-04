@@ -35,6 +35,7 @@ ringcentral-call-log-sync-output.json
 ringcentral-analytics-reconcile-output.json
 ringcentral-workflow-test-output.json
 ringcentral-workflow-test.log
+ringcentral-local-webhook-events.jsonl
 # Minified one-line copy for env paste (see scripts/minify-google-service-account-json.ts)
 /google-service-account.one-line.json
 /vantage-sheets-service-account.one-line.json

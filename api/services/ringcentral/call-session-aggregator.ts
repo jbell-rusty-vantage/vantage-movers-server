@@ -13,16 +13,16 @@ import type {
  * for one telephony session and collapses them into a single canonical
  * candidate, then runs the shared evaluator to produce one session decision.
  *
- * Canonical party selection order (best first):
+ * Canonical identity selection order (best first):
  *   1. Inbound AND matched to one of our toll-frees
  *   2. queueCall = true (the queue/landing leg)
  *   3. answered = true (an agent actually picked up)
  *   4. longest estimated answered duration
  *   5. most recently updated
  *
- * The canonical party drives source/target identity and answer/terminal
- * timing; answered + terminal signals also fold in session-wide evidence so a
- * call counts as answered if any party answered.
+ * Source/target identity and call lifecycle timing are intentionally selected
+ * separately. Queue legs can disconnect as soon as an agent answers, so timing
+ * prefers the answered party and only falls back to every-party terminal state.
  */
 export function aggregateRingCentralCallSession(
   parties: RingCentralCallCandidateDocument[],
@@ -36,20 +36,21 @@ export function aggregateRingCentralCallSession(
   const canonical = selectCanonicalParty(parties);
 
   const answeredParties = parties.filter((party) => party.answered);
+  const lifecycleParty = selectLifecycleParty(parties);
   const answered = answeredParties.length > 0;
   const answeredAt = earliestDate(
-    [canonical.answeredAt, ...answeredParties.map((party) => party.answeredAt)].filter(
+    [lifecycleParty?.answeredAt ?? null, ...answeredParties.map((party) => party.answeredAt)].filter(
       (value): value is Date => value instanceof Date,
     ),
   );
 
   const terminalParties = parties.filter((party) => party.terminal);
-  // A session is "over" when the canonical (answering) party is terminal, or
-  // when every observed party has reached a terminal status.
+  // A session is "over" when the answered lifecycle party is terminal, or when
+  // every observed party has reached a terminal status.
   const terminal =
-    canonical.terminal || parties.every((party) => party.terminal);
+    lifecycleParty?.terminal === true || parties.every((party) => party.terminal);
   const terminalAt = terminal
-    ? canonical.terminalAt ??
+    ? lifecycleParty?.terminalAt ??
       latestDate(
         terminalParties
           .map((party) => party.terminalAt)
@@ -57,7 +58,7 @@ export function aggregateRingCentralCallSession(
       )
     : null;
   const terminalStatusCode = terminal
-    ? canonical.terminalStatusCode ??
+    ? lifecycleParty?.terminalStatusCode ??
       terminalParties.find((party) => party.terminalStatusCode)?.terminalStatusCode ??
       null
     : null;
@@ -166,11 +167,28 @@ function selectCanonicalParty(
   return [...parties].sort(compareCanonicalPriority)[0]!;
 }
 
+function selectLifecycleParty(
+  parties: RingCentralCallCandidateDocument[],
+): RingCentralCallCandidateDocument | null {
+  const answeredParties = parties.filter((party) => party.answered);
+  if (answeredParties.length > 0) {
+    return [...answeredParties].sort(compareLifecyclePriority)[0]!;
+  }
+  return [...parties].sort(compareLifecyclePriority)[0] ?? null;
+}
+
 function compareCanonicalPriority(
   left: RingCentralCallCandidateDocument,
   right: RingCentralCallCandidateDocument,
 ): number {
   return canonicalScore(right) - canonicalScore(left);
+}
+
+function compareLifecyclePriority(
+  left: RingCentralCallCandidateDocument,
+  right: RingCentralCallCandidateDocument,
+): number {
+  return lifecycleScore(right) - lifecycleScore(left);
 }
 
 function canonicalScore(party: RingCentralCallCandidateDocument): number {
@@ -186,6 +204,22 @@ function canonicalScore(party: RingCentralCallCandidateDocument): number {
   }
   if (party.answered) {
     score += 50_000;
+  }
+  score += Math.min(party.estimatedDurationSeconds ?? 0, 40_000);
+  score += Math.min(party.updatedAt.getTime() / 1_000_000, 9_000);
+  return score;
+}
+
+function lifecycleScore(party: RingCentralCallCandidateDocument): number {
+  let score = 0;
+  if (party.answered) {
+    score += 1_000_000;
+  }
+  if (party.terminal) {
+    score += 500_000;
+  }
+  if (party.queueCall === true) {
+    score += 100_000;
   }
   score += Math.min(party.estimatedDurationSeconds ?? 0, 40_000);
   score += Math.min(party.updatedAt.getTime() / 1_000_000, 9_000);
