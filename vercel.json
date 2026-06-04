@@ -7,7 +7,7 @@
         {
           "type": "queue/v2beta",
           "topic": "sheet-sync-events*",
-          "retryAfterSeconds": 60
+          "retryAfterSeconds": 30
         }
       ]
     }
@@ -23,7 +23,7 @@
     },
     {
       "path": "/api/cron/sheet-sync-drain",
-      "schedule": "*/20 * * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }

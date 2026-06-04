@@ -218,13 +218,13 @@ export type SheetSyncDrainGuardrails = {
 
 export function getSheetSyncDrainGuardrails(): SheetSyncDrainGuardrails {
   return {
-    maxJobsPerDrain: envInt("SHEET_SYNC_MAX_JOBS_PER_DRAIN", 200),
-    maxCoalescedEntitiesPerDrain: envInt("SHEET_SYNC_MAX_COALESCED_ENTITIES_PER_DRAIN", 200),
-    maxRowsPerBatch: envInt("SHEET_SYNC_MAX_ROWS_PER_BATCH", 200),
+    maxJobsPerDrain: envInt("SHEET_SYNC_MAX_JOBS_PER_DRAIN", 500),
+    maxCoalescedEntitiesPerDrain: envInt("SHEET_SYNC_MAX_COALESCED_ENTITIES_PER_DRAIN", 500),
+    maxRowsPerBatch: envInt("SHEET_SYNC_MAX_ROWS_PER_BATCH", 500),
     maxWriteSubrequestsPerCall: envInt("SHEET_SYNC_MAX_WRITE_SUBREQUESTS_PER_CALL", 100),
     maxRunDurationMs: envInt("SHEET_SYNC_MAX_RUN_DURATION_MS", 60_000),
     leaseDurationMs: envInt("SHEET_SYNC_LEASE_DURATION_MS", 120_000),
-    debounceWindowMs: envInt("SHEET_SYNC_DEBOUNCE_WINDOW_MS", 15_000),
+    debounceWindowMs: envInt("SHEET_SYNC_DEBOUNCE_WINDOW_MS", 3_000),
     maxAttempts: envInt("SHEET_SYNC_MAX_ATTEMPTS", 8),
   };
 }

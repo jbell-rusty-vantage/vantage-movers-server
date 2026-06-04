@@ -3,6 +3,7 @@ import { afterEach, test } from "node:test";
 import {
   buildCoalescingKey,
   getSheetSyncBudgets,
+  getSheetSyncDrainGuardrails,
   getSheetSyncMode,
   getSheetSyncQueueTopic,
   priorityForJob,
@@ -24,6 +25,9 @@ const TOUCHED_ENV_KEYS = [
   "SHEET_SYNC_READS_PER_MINUTE_BUDGET",
   "SHEET_SYNC_WRITES_PER_MINUTE_BUDGET",
   "SHEET_SYNC_MAX_PAYLOAD_BYTES",
+  "SHEET_SYNC_MAX_JOBS_PER_DRAIN",
+  "SHEET_SYNC_MAX_ROWS_PER_BATCH",
+  "SHEET_SYNC_DEBOUNCE_WINDOW_MS",
 ];
 
 afterEach(() => {
@@ -77,6 +81,21 @@ test("budgets default below documented Google limits and parse overrides", () =>
 
   process.env.SHEET_SYNC_WRITES_PER_MINUTE_BUDGET = "not-a-number";
   assert.equal(getSheetSyncBudgets().writesPerMinute, 45);
+});
+
+test("drain guardrails default to fast queue draining and parse overrides", () => {
+  const defaults = getSheetSyncDrainGuardrails();
+  assert.equal(defaults.maxJobsPerDrain, 500);
+  assert.equal(defaults.maxRowsPerBatch, 500);
+  assert.equal(defaults.debounceWindowMs, 3_000);
+
+  process.env.SHEET_SYNC_MAX_JOBS_PER_DRAIN = "100";
+  process.env.SHEET_SYNC_MAX_ROWS_PER_BATCH = "50";
+  process.env.SHEET_SYNC_DEBOUNCE_WINDOW_MS = "1000";
+  const overridden = getSheetSyncDrainGuardrails();
+  assert.equal(overridden.maxJobsPerDrain, 100);
+  assert.equal(overridden.maxRowsPerBatch, 50);
+  assert.equal(overridden.debounceWindowMs, 1_000);
 });
 
 test("shouldPublishSheetSyncQueue honors VERCEL and local flag", () => {
