@@ -27,6 +27,7 @@
     "sheets:backfill-diagnostic": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/google_sheets/backfill-sheets-diagnostic.ts",
     "sheets:backfill-master-leads": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/google_sheets/backfill-master-leads-sheet.ts",
     "sheets:repair-source-labels": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/google_sheets/repair-master-leads-source-labels.ts",
+    "sheets:resync-failed": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/google_sheets/resync-failed-sheet-sync-via-api.ts",
     "sheets:copy-structure-to-main": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/google_sheets/copy-sheet-structure-to-main.ts",
     "sheets:minify-service-account": "node ./node_modules/tsx/dist/cli.mjs scripts/google_sheets/minify-google-service-account-json.ts",
     "postman:login": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/postman/postman-login.ts",
@@ -55,6 +56,7 @@
   "packageManager": "pnpm@10.13.1",
   "dependencies": {
     "@vercel/functions": "^3.5.1",
+    "@vercel/queue": "^0.2.1",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",

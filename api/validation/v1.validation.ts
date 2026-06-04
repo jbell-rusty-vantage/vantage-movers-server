@@ -98,3 +98,12 @@ export {
   type AgentSalesReportQuery,
   type OverviewQuery,
 } from "./v1/analytics.validation";
+
+export {
+  sheetSyncJobsQuerySchema,
+  sheetSyncRunsQuerySchema,
+  sheetSyncRetrySchema,
+  type SheetSyncJobsQuery,
+  type SheetSyncRunsQuery,
+  type SheetSyncRetryInput,
+} from "./v1/sheetSync.validation";

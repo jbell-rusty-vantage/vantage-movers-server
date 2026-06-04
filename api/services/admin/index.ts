@@ -15,3 +15,10 @@ export {
   type AdminResource,
   type ConcreteAdminScope,
 } from "./adminScope.service";
+export {
+  getSheetSyncHealth,
+  getSheetSyncRunDetail,
+  listSheetSyncJobs,
+  listSheetSyncRuns,
+  retrySheetSyncJobs,
+} from "./adminSheetSync.service";

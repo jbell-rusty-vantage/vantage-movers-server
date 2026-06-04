@@ -7,9 +7,9 @@ alwaysApply: false
 # Form Lead Granot CRM Flow
 
 - `POST /api/v1/form-leads` validates with `createFormLeadSchema`, saves a Mongo `FormLead`, optionally posts to Granot CRM, then schedules Google Sheet sync through the existing WaitUntil flow.
-- `post_to_granot` is a create-only request flag with default `true`. Persist it on `FormLead` for audit/history.
+- `post_to_granot` is a create-only request flag with default `false`. Persist it on `FormLead` for audit/history.
 - When `post_to_granot` is `false`, still save the Mongo document and schedule sheet sync, but do not call the Granot CRM endpoint. Return/report CRM sync as `skipped`, not `failed`.
-- Preserve existing clients: omitted `post_to_granot` must behave like `true`.
+- Omitted `post_to_granot` behaves like `false`; send `true` explicitly when Granot posting is required.
 - `crm_company_label` controls the Granot payload `label`; it is not persisted as the source-company slug.
 - The incoming create-form-lead `ref_no` is the original request/source value, commonly a Google click id, and is stored on the Mongo `FormLead.ref_no`. It is also used for Google Sheets chain-of-custody.
 - Do not confuse Mongo `FormLead.ref_no` with the Granot CRM web app `ref_no` column. The Granot web app `ref_no` value is produced from the CRM POST payload field `leadno`.

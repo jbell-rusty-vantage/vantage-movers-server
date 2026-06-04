@@ -30,3 +30,4 @@ export * from "./domain/sources";
 export * from "./domain/cpl";
 export * from "./domain/runtime";
 export * from "./domain/googleAuth";
+export * from "./domain/sheetSync";

@@ -1,4 +1,5 @@
 import type mongoose from "mongoose";
+import type { ClientSession } from "mongoose";
 import type { LeadModelName } from "../../config/domain";
 import { getLinkedLead } from "../leads";
 import { syncSourceLead } from "../sheetSync";
@@ -15,10 +16,11 @@ export async function mirrorCancellationToLead(
   leadModel: LeadModelName,
   leadId: string,
   cancellationId: mongoose.Types.ObjectId,
+  session?: ClientSession,
 ) {
-  const lead = await getLinkedLead(leadModel, leadId);
+  const lead = await getLinkedLead(leadModel, leadId, session);
   lead.cancelled = cancellationId;
-  await lead.save();
+  await lead.save({ session });
 }
 
 /**
@@ -35,13 +37,14 @@ export async function clearCancellationFromLead(
   leadModel: LeadModelName,
   leadId?: string,
   syncAfterClear = true,
+  session?: ClientSession,
 ) {
   if (!leadId) {
     return;
   }
-  const lead = await getLinkedLead(leadModel, leadId);
+  const lead = await getLinkedLead(leadModel, leadId, session);
   lead.cancelled = undefined;
-  await lead.save();
+  await lead.save({ session });
   if (syncAfterClear) {
     await syncSourceLead(lead, leadModel);
   }

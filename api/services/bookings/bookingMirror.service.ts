@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose, { type ClientSession } from "mongoose";
 import {
   getCplForSource,
   type LeadModelName,
@@ -32,6 +32,7 @@ export async function refreshAttachedBookingFromLead(
   lead: SourceLeadDocument,
   leadModel: LeadModelName,
   operation: string,
+  session?: ClientSession,
 ): Promise<FullSheetSyncJob> {
   const sourceLeadJob: FullSheetSyncJob = {
     resource: "source_lead",
@@ -44,7 +45,8 @@ export async function refreshAttachedBookingFromLead(
   }
 
   const bookingId = lead.booked.toString();
-  const booking = await BookedLead.findById(bookingId);
+  const bookingQuery = BookedLead.findById(bookingId);
+  const booking = await (session ? bookingQuery.session(session) : bookingQuery);
   if (!booking) {
     logger.warn({
       msg: "source_lead.update.booking_missing",
@@ -71,7 +73,7 @@ export async function refreshAttachedBookingFromLead(
   }
 
   let changed = false;
-  const customer = await upsertCustomerFromLead(lead);
+  const customer = await upsertCustomerFromLead(lead, session);
   if (customer && !sameObjectId(booking.customer, customer._id)) {
     booking.customer = customer._id;
     changed = true;
@@ -81,7 +83,7 @@ export async function refreshAttachedBookingFromLead(
     changed = true;
   }
   if (changed) {
-    await booking.save();
+    await booking.save({ session });
   }
 
   return {
@@ -106,6 +108,7 @@ export async function mirrorBookingToLead(
   over4000: boolean,
   local: LocalType | undefined,
   sourceCompany?: SourceCompany,
+  session?: ClientSession,
 ) {
   lead.booked = bookingId;
   lead.over_2000 = over2000;
@@ -117,7 +120,7 @@ export async function mirrorBookingToLead(
     lead.local = local;
   }
   lead.cpl = getCplForSource(lead.source_company as SourceCompany, local);
-  await lead.save();
+  await lead.save({ session });
 }
 
 /**
@@ -128,14 +131,24 @@ export async function mirrorBookingToLead(
  * cancellation-only clears go through `clearCancellationFromLead` in the
  * cancellation service so they retain `booked`.
  */
-export async function clearBookingFromLead(leadModel: LeadModelName, leadId: string) {
-  const lead = await getLinkedLead(leadModel, leadId);
+export async function clearBookingFromLead(
+  leadModel: LeadModelName,
+  leadId: string,
+  options: { session?: ClientSession; syncAfterClear?: boolean } = {},
+): Promise<SourceLeadDocument> {
+  const { session, syncAfterClear = true } = options;
+  const lead = await getLinkedLead(leadModel, leadId, session);
   lead.booked = undefined;
   lead.cancelled = undefined;
   lead.over_2000 = false;
   lead.over_4000 = false;
-  await lead.save();
-  await syncSourceLead(lead, leadModel);
+  await lead.save({ session });
+  // In queued mode the caller enqueues a source-lead refresh job inside the
+  // transaction instead of running an inline (non-transactional) sync.
+  if (syncAfterClear) {
+    await syncSourceLead(lead, leadModel);
+  }
+  return lead;
 }
 
 function sameObjectId(

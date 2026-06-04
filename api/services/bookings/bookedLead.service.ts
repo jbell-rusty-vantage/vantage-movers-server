@@ -1,5 +1,5 @@
 import type mongoose from "mongoose";
-import type { LeadModelName, LocalType } from "../../config/domain";
+import { getSheetSyncMode, type LeadModelName, type LocalType } from "../../config/domain";
 import { BookedLead } from "../../models/BookedLead";
 import { CancelledLead } from "../../models/CancelledLead";
 import type {
@@ -17,7 +17,16 @@ import {
   upsertCustomerFromLead,
 } from "../customers/customerFromLead.service";
 import { getLinkedLead } from "../leads";
-import { scheduleFullSheetSyncProcess } from "../sheetSync";
+import {
+  buildTombstonePreviousTargets,
+  enqueueSheetSyncJob,
+  enqueueSheetSyncTombstone,
+  finalizeSheetSync,
+  finalizeSheetSyncDelete,
+  persistSheetSyncIntent,
+  runSheetSyncWrite,
+  type FullSheetSyncJob,
+} from "../sheetSync";
 import { V1ServiceError } from "../v1ServiceError";
 import {
   clearBookingFromLead,
@@ -41,99 +50,142 @@ type CreateBookedLeadServiceInput = Omit<CreateBookedLeadInput, "job_no"> & {
 };
 
 export async function createBookedLead(input: CreateBookedLeadServiceInput) {
-  const lead = await getLinkedLead(input.lead_model, input.lead_ref);
-  const sourceCompanyForLead = getFormLeadSourceCompanyForBooking(lead, input);
-  const local = optionalValue(input.local ?? lead.local);
-  if (!local && input.lead_model !== "CallLead") {
-    throw new V1ServiceError("Booking requires local or a linked lead with local classification");
-  }
-  const customerNameOverride = input.customer_name?.trim();
-  const customer = customerNameOverride
-    ? await upsertCustomerFromBookingContact({
-        customer_name: customerNameOverride,
-        customer_phone: input.customer_phone,
-        lead,
-      })
-    : await upsertCustomerFromLead(lead);
   const over_2000 = input.deposit_amount > 2000;
   const over_4000 = input.deposit_amount > 4000;
+  // Agent allocations upsert reference `agents`; resolve them before the
+  // transaction so reference-data writes stay out of the booking txn.
   const agent_allocations = await resolveAgentAllocations(input.agent_allocations);
   const total_binder_amount = resolveTotalBinderAmount(
     agent_allocations,
     input.total_binder_amount,
   );
   const warnings = buildBookedLeadWarnings(agent_allocations);
-  const existingBooking = await BookedLead.findOne({
-    lead_ref: input.lead_ref,
-    lead_model: input.lead_model,
-  });
+  const customerNameOverride = input.customer_name?.trim();
   const { customer_phone: _customerPhone, ...bookingInput } = input;
 
-  if (existingBooking) {
-    if (input.submission_id && existingBooking.submission_id === input.submission_id) {
+  const outcome = await runSheetSyncWrite(async (session) => {
+    const lead = await getLinkedLead(input.lead_model, input.lead_ref, session);
+    const sourceCompanyForLead = getFormLeadSourceCompanyForBooking(lead, input);
+    const local = optionalValue(input.local ?? lead.local);
+    if (!local && input.lead_model !== "CallLead") {
+      throw new V1ServiceError(
+        "Booking requires local or a linked lead with local classification",
+      );
+    }
+    const customer = customerNameOverride
+      ? await upsertCustomerFromBookingContact(
+          {
+            customer_name: customerNameOverride,
+            customer_phone: input.customer_phone,
+            lead,
+          },
+          session,
+        )
+      : await upsertCustomerFromLead(lead, session);
+    const existingBooking = await BookedLead.findOne({
+      lead_ref: input.lead_ref,
+      lead_model: input.lead_model,
+    }).session(session ?? null);
+
+    if (existingBooking) {
+      if (input.submission_id && existingBooking.submission_id === input.submission_id) {
+        return {
+          kind: "duplicate" as const,
+          bookingId: existingBooking._id,
+          totalBinderAmount: existingBooking.total_binder_amount,
+          job: undefined as FullSheetSyncJob | undefined,
+        };
+      }
+
+      Object.assign(existingBooking, {
+        ...bookingInput,
+        agent_allocations,
+        total_binder_amount,
+        ...(customer ? { customer: customer._id } : {}),
+        ...(customerNameOverride ? { customer_name: customerNameOverride } : {}),
+        local,
+        over_2000,
+        over_4000,
+      });
+      await existingBooking.save({ session });
+      await mirrorBookingToLead(
+        lead,
+        existingBooking._id,
+        over_2000,
+        over_4000,
+        local,
+        sourceCompanyForLead,
+        session,
+      );
+      const job: FullSheetSyncJob = {
+        resource: "booking_chain",
+        operation: "booked_lead.upsert",
+        bookingId: existingBooking._id.toString(),
+      };
+      await persistSheetSyncIntent(job, session);
       return {
-        booking: await populateBookedLead(existingBooking._id),
-        message: "Duplicate booked lead submission ignored; existing booking returned.",
-        warnings,
-        total_binder_amount: existingBooking.total_binder_amount,
+        kind: "upsert" as const,
+        bookingId: existingBooking._id,
+        totalBinderAmount: total_binder_amount,
+        job,
       };
     }
 
-    Object.assign(existingBooking, {
+    const booking = new BookedLead({
       ...bookingInput,
       agent_allocations,
       total_binder_amount,
+      timestamp: input.timestamp ?? new Date(),
       ...(customer ? { customer: customer._id } : {}),
       ...(customerNameOverride ? { customer_name: customerNameOverride } : {}),
       local,
       over_2000,
       over_4000,
     });
-    await existingBooking.save();
+    await booking.save({ session });
     await mirrorBookingToLead(
       lead,
-      existingBooking._id,
+      booking._id,
       over_2000,
       over_4000,
       local,
       sourceCompanyForLead,
+      session,
     );
-    scheduleFullSheetSyncProcess({
+    const job: FullSheetSyncJob = {
       resource: "booking_chain",
-      operation: "booked_lead.upsert",
-      bookingId: existingBooking._id.toString(),
-    });
+      operation: "booked_lead.create",
+      bookingId: booking._id.toString(),
+    };
+    await persistSheetSyncIntent(job, session);
     return {
-      booking: await populateBookedLead(existingBooking._id),
-      message: "Booked lead already existed and was upserted.",
+      kind: "create" as const,
+      bookingId: booking._id,
+      totalBinderAmount: total_binder_amount,
+      job,
+    };
+  });
+
+  if (outcome.kind === "duplicate") {
+    return {
+      booking: await populateBookedLead(outcome.bookingId),
+      message: "Duplicate booked lead submission ignored; existing booking returned.",
       warnings,
-      total_binder_amount,
+      total_binder_amount: outcome.totalBinderAmount,
     };
   }
 
-  const booking = await BookedLead.create({
-    ...bookingInput,
-    agent_allocations,
-    total_binder_amount,
-    timestamp: input.timestamp ?? new Date(),
-    ...(customer ? { customer: customer._id } : {}),
-    ...(customerNameOverride ? { customer_name: customerNameOverride } : {}),
-    local,
-    over_2000,
-    over_4000,
-  });
-
-  await mirrorBookingToLead(lead, booking._id, over_2000, over_4000, local, sourceCompanyForLead);
-  scheduleFullSheetSyncProcess({
-    resource: "booking_chain",
-    operation: "booked_lead.create",
-    bookingId: booking._id.toString(),
-  });
+  if (outcome.job) {
+    await finalizeSheetSync(outcome.job);
+  }
   return {
-    booking: await populateBookedLead(booking._id),
-    message: "Booked lead created.",
+    booking: await populateBookedLead(outcome.bookingId),
+    message:
+      outcome.kind === "upsert"
+        ? "Booked lead already existed and was upserted."
+        : "Booked lead created.",
     warnings,
-    total_binder_amount,
+    total_binder_amount: outcome.totalBinderAmount,
   };
 }
 
@@ -157,6 +209,7 @@ export async function updateBookedLead(id: string, input: UpdateBookedLeadInput)
   }
   const warnings: string[] = [];
   if (agent_allocations) {
+    // Agent allocation upserts touch `agents`; resolve before the txn.
     const resolvedAllocations = await resolveAgentAllocations(agent_allocations);
     const nextAllocations =
       agent_allocation_mode === "replace"
@@ -172,21 +225,33 @@ export async function updateBookedLead(id: string, input: UpdateBookedLeadInput)
     );
   }
 
-  const lead = await getLinkedLead(booking.lead_model as LeadModelName, booking.lead_ref.toString());
-  booking.local = input.local ?? booking.local ?? lead.local;
-  await booking.save();
-  await mirrorBookingToLead(
-    lead,
-    booking._id,
-    booking.over_2000,
-    booking.over_4000,
-    booking.local as LocalType | undefined,
-  );
-  scheduleFullSheetSyncProcess({
-    resource: "booking_chain",
-    operation: "booked_lead.update",
-    bookingId: booking._id.toString(),
+  const job = await runSheetSyncWrite(async (session) => {
+    const lead = await getLinkedLead(
+      booking.lead_model as LeadModelName,
+      booking.lead_ref!.toString(),
+      session,
+    );
+    booking.local = input.local ?? booking.local ?? lead.local;
+    await booking.save({ session });
+    await mirrorBookingToLead(
+      lead,
+      booking._id,
+      booking.over_2000,
+      booking.over_4000,
+      booking.local as LocalType | undefined,
+      undefined,
+      session,
+    );
+    const bookingJob: FullSheetSyncJob = {
+      resource: "booking_chain",
+      operation: "booked_lead.update",
+      bookingId: booking._id.toString(),
+    };
+    await persistSheetSyncIntent(bookingJob, session);
+    return bookingJob;
   });
+
+  await finalizeSheetSync(job);
   return {
     booking: await populateBookedLead(booking._id),
     message: "Booked lead updated.",
@@ -217,10 +282,75 @@ export async function deleteBookedLead(id: string, cascade: boolean) {
   if (booking.cancelled && !cascade) {
     throw new V1ServiceError("Booked lead has a cancellation; pass cascade=true to delete dependents", 409);
   }
+  const leadModel = booking.lead_model as LeadModelName;
+  const leadId = booking.lead_ref.toString();
+
+  if (getSheetSyncMode() === "queued") {
+    const bookingTargets = buildTombstonePreviousTargets(booking.sheet_sync);
+    // Capture the cascaded cancellation (if any) before deletion so its rows
+    // can be tombstoned in the same transaction.
+    const cancellation =
+      booking.cancelled && cascade ? await CancelledLead.findById(booking.cancelled) : null;
+    const cancellationTargets = cancellation
+      ? buildTombstonePreviousTargets(cancellation.sheet_sync)
+      : [];
+
+    await runSheetSyncWrite(async (session) => {
+      if (cancellation) {
+        await enqueueSheetSyncTombstone(
+          {
+            resource: "delete_cancelled_lead",
+            entityModel: "CancelledLead",
+            entityId: cancellation._id.toString(),
+            operation: "delete_booked_lead",
+            tombstone: {
+              mongo_id: cancellation._id.toString(),
+              previous_targets: cancellationTargets,
+              linked_booking_id: id,
+            },
+          },
+          { session, targetHints: cancellationTargets.map((target) => target.target) },
+        );
+        await cancellation.deleteOne({ session });
+      }
+
+      // Clear booking columns off the surviving lead and refresh its row.
+      await clearBookingFromLead(leadModel, leadId, { session, syncAfterClear: false });
+      await enqueueSheetSyncJob(
+        {
+          resource: "source_lead",
+          operation: "delete_booked_lead",
+          leadModel,
+          leadId,
+        },
+        { session },
+      );
+
+      await enqueueSheetSyncTombstone(
+        {
+          resource: "delete_booked_lead",
+          entityModel: "BookedLead",
+          entityId: id,
+          operation: "delete_booked_lead",
+          tombstone: {
+            mongo_id: id,
+            previous_targets: bookingTargets,
+            linked_lead_id: leadId,
+            linked_lead_model: leadModel,
+          },
+        },
+        { session, targetHints: bookingTargets.map((target) => target.target) },
+      );
+      await booking.deleteOne({ session });
+    });
+    await finalizeSheetSyncDelete();
+    return;
+  }
+
   if (booking.cancelled && cascade) {
     await CancelledLead.findByIdAndDelete(booking.cancelled);
   }
-  await clearBookingFromLead(booking.lead_model as LeadModelName, booking.lead_ref.toString());
+  await clearBookingFromLead(leadModel, leadId);
   await deleteBookedLeadFromSheets(booking);
   await booking.deleteOne();
 }

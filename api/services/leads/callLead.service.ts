@@ -1,4 +1,9 @@
-import { getCplForSource, type LocalType, type SourceCompany } from "../../config/domain";
+import {
+  getCplForSource,
+  getSheetSyncMode,
+  type LocalType,
+  type SourceCompany,
+} from "../../config/domain";
 import { CallLead } from "../../models/CallLead";
 import { toFloridaTimestamp } from "../../utils/easternTime";
 import type {
@@ -7,7 +12,15 @@ import type {
 } from "../../validation/v1.validation";
 import { ConflictError, NotFoundError } from "../errors";
 import { deleteCallLeadFromSheets } from "../googleSheets.service";
-import { scheduleFullSheetSyncProcess } from "../sheetSync";
+import {
+  buildTombstonePreviousTargets,
+  enqueueSheetSyncTombstone,
+  finalizeSheetSync,
+  finalizeSheetSyncDelete,
+  persistSheetSyncIntent,
+  runSheetSyncWrite,
+  type FullSheetSyncJob,
+} from "../sheetSync";
 // Compatibility imports from the v1 service facade. `deleteBookedLead` and
 // `refreshAttachedBookingFromLead` still live there because the booking
 // extraction (refactor plan 04) has not happened yet. They are only ever
@@ -56,38 +69,47 @@ export async function createRingCentralCallLead(
 ) {
   const { source_company, duplicate } = input;
   const form_fill = await hasFormFillForCallLead(source_company, input.phone_number);
-  const lead = await CallLead.create({
-    source_company,
-    phone_number: input.phone_number,
-    name: input.name ?? undefined,
-    duration: input.duration ?? undefined,
-    start_time: input.start_time ?? undefined,
-    end_time: input.end_time ?? undefined,
-    timestamp: toFloridaTimestamp(input.timestamp ?? new Date()),
-    form_fill,
-    duplicate,
-    cpl: duplicate ? 0 : getCplForSource(source_company, undefined),
-    ringcentral: {
-      telephony_session_id: input.ringcentral.telephony_session_id ?? undefined,
-      session_id: input.ringcentral.session_id ?? undefined,
-      party_id: input.ringcentral.party_id ?? undefined,
-      call_log_id: input.ringcentral.call_log_id ?? undefined,
-      source_label: input.ringcentral.source_label ?? undefined,
-      ingestion_source: input.ringcentral.ingestion_source,
-      qualification_reason: input.ringcentral.qualification_reason ?? undefined,
-      answered_at: input.ringcentral.answered_at ?? undefined,
-      terminal_at: input.ringcentral.terminal_at ?? undefined,
-      duration_seconds: input.ringcentral.duration_seconds ?? undefined,
-    },
+  const lead = await runSheetSyncWrite(async (session) => {
+    const created = new CallLead({
+      source_company,
+      phone_number: input.phone_number,
+      name: input.name ?? undefined,
+      duration: input.duration ?? undefined,
+      start_time: input.start_time ?? undefined,
+      end_time: input.end_time ?? undefined,
+      timestamp: toFloridaTimestamp(input.timestamp ?? new Date()),
+      form_fill,
+      duplicate,
+      cpl: duplicate ? 0 : getCplForSource(source_company, undefined),
+      ringcentral: {
+        telephony_session_id: input.ringcentral.telephony_session_id ?? undefined,
+        session_id: input.ringcentral.session_id ?? undefined,
+        party_id: input.ringcentral.party_id ?? undefined,
+        call_log_id: input.ringcentral.call_log_id ?? undefined,
+        source_label: input.ringcentral.source_label ?? undefined,
+        ingestion_source: input.ringcentral.ingestion_source,
+        qualification_reason: input.ringcentral.qualification_reason ?? undefined,
+        answered_at: input.ringcentral.answered_at ?? undefined,
+        terminal_at: input.ringcentral.terminal_at ?? undefined,
+        duration_seconds: input.ringcentral.duration_seconds ?? undefined,
+      },
+    });
+    await created.save({ session });
+    await persistSheetSyncIntent(callLeadCreateJob(created._id.toString()), session);
+    return created;
   });
 
-  scheduleFullSheetSyncProcess({
+  await finalizeSheetSync(callLeadCreateJob(lead._id.toString()));
+  return lead;
+}
+
+function callLeadCreateJob(leadId: string): FullSheetSyncJob {
+  return {
     resource: "source_lead",
     operation: "call_lead.create",
     leadModel: "CallLead",
-    leadId: lead._id.toString(),
-  });
-  return lead;
+    leadId,
+  };
 }
 
 export async function createCallLead(input: CreateCallLeadInput) {
@@ -95,22 +117,22 @@ export async function createCallLead(input: CreateCallLeadInput) {
   const location = await resolveOptionalLocation(input);
   const local = location.local ?? input.local;
   const form_fill = await hasFormFillForCallLead(source_company, input.phone_number);
-  const lead = await CallLead.create({
-    ...input,
-    ...location,
-    source_company,
-    local,
-    form_fill,
-    timestamp: toFloridaTimestamp(input.timestamp),
-    cpl: getCplForSource(source_company, local),
+  const lead = await runSheetSyncWrite(async (session) => {
+    const created = new CallLead({
+      ...input,
+      ...location,
+      source_company,
+      local,
+      form_fill,
+      timestamp: toFloridaTimestamp(input.timestamp),
+      cpl: getCplForSource(source_company, local),
+    });
+    await created.save({ session });
+    await persistSheetSyncIntent(callLeadCreateJob(created._id.toString()), session);
+    return created;
   });
 
-  scheduleFullSheetSyncProcess({
-    resource: "source_lead",
-    operation: "call_lead.create",
-    leadModel: "CallLead",
-    leadId: lead._id.toString(),
-  });
+  await finalizeSheetSync(callLeadCreateJob(lead._id.toString()));
   return lead;
 }
 
@@ -152,9 +174,19 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
     lead.source_company as SourceCompany,
     lead.local as LocalType | undefined,
   );
-  await lead.save();
-  const job = await refreshAttachedBookingFromLead(lead, "CallLead", "call_lead.update");
-  scheduleFullSheetSyncProcess(job);
+
+  const job = await runSheetSyncWrite(async (session) => {
+    await lead.save({ session });
+    const refreshJob = await refreshAttachedBookingFromLead(
+      lead,
+      "CallLead",
+      "call_lead.update",
+      session,
+    );
+    await persistSheetSyncIntent(refreshJob, session);
+    return refreshJob;
+  });
+  await finalizeSheetSync(job);
   return lead;
 }
 
@@ -184,6 +216,31 @@ export async function deleteCallLead(id: string, cascade: boolean) {
   if (lead.booked && cascade) {
     await deleteBookedLead(lead.booked.toString(), true);
   }
+
+  if (getSheetSyncMode() === "queued") {
+    const previousTargets = buildTombstonePreviousTargets(lead.sheet_sync);
+    await runSheetSyncWrite(async (session) => {
+      await enqueueSheetSyncTombstone(
+        {
+          resource: "delete_source_lead",
+          entityModel: "CallLead",
+          entityId: id,
+          operation: "delete_call_lead",
+          tombstone: {
+            mongo_id: id,
+            source_company: lead.source_company,
+            duplicate: lead.duplicate,
+            previous_targets: previousTargets,
+          },
+        },
+        { session, targetHints: previousTargets.map((target) => target.target) },
+      );
+      await lead.deleteOne({ session });
+    });
+    await finalizeSheetSyncDelete();
+    return;
+  }
+
   await deleteCallLeadFromSheets(lead);
   await lead.deleteOne();
 }

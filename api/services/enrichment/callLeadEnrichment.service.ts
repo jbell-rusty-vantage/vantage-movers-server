@@ -10,7 +10,12 @@ import type {
   CallLeadEnrichmentBatchInput,
   CallLeadEnrichmentRowInput,
 } from "../../validation/v1.validation";
-import { scheduleCallLeadSheetSync } from "../sheetSync";
+import {
+  finalizeSheetSync,
+  persistSheetSyncIntent,
+  runSheetSyncWrite,
+  type FullSheetSyncJob,
+} from "../sheetSync";
 import {
   cleanValue,
   parseEnrichmentRow,
@@ -85,8 +90,18 @@ export async function syncCallLeadEnrichment(
           resolved.lead.local as LocalType | undefined,
         );
       }
-      await resolved.lead.save();
-      scheduleCallLeadSheetSync(resolved.lead._id.toString(), "call_lead.enrichment.sync");
+      const lead = resolved.lead;
+      const job: FullSheetSyncJob = {
+        resource: "source_lead",
+        operation: "call_lead.enrichment.sync",
+        leadModel: "CallLead",
+        leadId: lead._id.toString(),
+      };
+      await runSheetSyncWrite(async (session) => {
+        await lead.save({ session });
+        await persistSheetSyncIntent(job, session);
+      });
+      await finalizeSheetSync(job);
       results.push({
         ...resolved.result,
         status: "updated",

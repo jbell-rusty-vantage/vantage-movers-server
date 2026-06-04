@@ -9,6 +9,7 @@ import { httpLogger } from "./middleware/httpLogger";
 import ringCentralCronRoutes from "./routes/ringcentral-cron.routes";
 import ringCentralWebhookLocalRoutes from "./routes/ringcentral-webhook-local.routes";
 import ringCentralWebhookRoutes from "./routes/ringcentral-webhook.routes";
+import sheetSyncCronRoutes from "./routes/sheet-sync-cron.routes";
 import v1Routes from "./routes/v1.routes";
 
 const app = express();
@@ -34,6 +35,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(ringCentralWebhookRoutes);
 app.use(ringCentralWebhookLocalRoutes);
 app.use(ringCentralCronRoutes);
+app.use(sheetSyncCronRoutes);
 app.use(v1Routes);
 
 app.get("/", (_req: Request, res: Response) => {

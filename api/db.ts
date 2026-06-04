@@ -1,5 +1,5 @@
 import dns from "node:dns";
-import mongoose, { type ConnectOptions } from "mongoose";
+import mongoose, { type ClientSession, type ConnectOptions } from "mongoose";
 import { MONGO_DATABASE_NAME } from "./config/domain";
 import { ServiceUnavailableError } from "./services/errors";
 import { logger } from "./logger";
@@ -81,6 +81,37 @@ export async function connectMongo(): Promise<void> {
 
   await cache.promise;
   cache.conn = mongoose;
+}
+
+/**
+ * Runs `fn` inside a MongoDB multi-document transaction (Atlas replica set).
+ *
+ * `session.withTransaction` transparently retries the callback on transient
+ * transaction / commit-unknown errors, so `fn` MUST be idempotent and must not
+ * perform external side effects (Google Sheets calls, queue publishing, CRM
+ * HTTP). Keep those after the returned promise resolves. The callback's return
+ * value from the committed attempt is propagated to the caller.
+ */
+export async function withTransaction<T>(
+  fn: (session: ClientSession) => Promise<T>,
+): Promise<T> {
+  await connectMongo();
+  const session = await mongoose.connection.startSession();
+  try {
+    let result: T | undefined;
+    let assigned = false;
+    await session.withTransaction(async () => {
+      result = await fn(session);
+      assigned = true;
+    });
+    if (!assigned) {
+      // Should be unreachable: withTransaction throws on failure.
+      throw new Error("Transaction completed without producing a result");
+    }
+    return result as T;
+  } finally {
+    await session.endSession();
+  }
 }
 
 /**

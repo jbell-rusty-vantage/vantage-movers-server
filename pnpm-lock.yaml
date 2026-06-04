@@ -11,6 +11,9 @@ importers:
       '@vercel/functions':
         specifier: ^3.5.1
         version: 3.5.1
+      '@vercel/queue':
+        specifier: ^0.2.1
+        version: 0.2.1
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
@@ -851,6 +854,10 @@ packages:
   '@vercel/python@6.39.0':
     resolution: {integrity: sha512-BIp793WI9TL/N85r22WhSo9n99TPjqI1xXEm8RAqZNJaXcFLHfjF5Hfg14Y4uPHGKfALfEzH3gbUndD8MTA8Hw==}
 
+  '@vercel/queue@0.2.1':
+    resolution: {integrity: sha512-18jVWNj/jroyQ+/GM3XFyr1/deFkinosg7RKjovrJbgQRRjusq9Y+pSGOKfpzus6vVRun2mqDlNI82hm5Rwi5Q==}
+    engines: {node: '>=20.0.0'}
+
   '@vercel/redwood@2.4.13':
     resolution: {integrity: sha512-pXWzVctZea/J7WMQstjsYUDiMc6oJF72p8J5YZnLSCJWg7m+/dLzYGfaUSEo6Q0JpiO/NOcDmG3WENpn7kHwzg==}
 
@@ -1650,6 +1657,10 @@ packages:
   minizlib@3.1.0:
     resolution: {integrity: sha512-KZxYo1BUkWD2TVFLr0MQoM8vUUigWD3LlD83a/75BqC+4qE0Hb1Vo5v1FgcfaNXvfXzr+5EhQ6ing/CaBijTlw==}
     engines: {node: '>= 18'}
+
+  mixpart@0.0.6:
+    resolution: {integrity: sha512-CRdXtgfQH2jARmtNmPR0Q7jL20fiESbaYk1b0KvLD0jCdUuemepREtsbd8nbiY6BHV9OGGddAZITNXklupUPUQ==}
+    engines: {node: '>=20.0.0'}
 
   mkdirp@1.0.4:
     resolution: {integrity: sha512-vVqVZQyf3WLx2Shd0qJ9xuvqgAyKPLAiqITEtqW0oIUjzo3PePDd6fW9iFz30ef7Ysp/oiWqbhszeGWW2T6Gzw==}
@@ -3027,6 +3038,13 @@ snapshots:
     dependencies:
       '@vercel/python-analysis': 0.11.1
 
+  '@vercel/queue@0.2.1':
+    dependencies:
+      '@vercel/oidc': 3.4.1
+      minimatch: 10.2.5
+      mixpart: 0.0.6
+      picocolors: 1.1.1
+
   '@vercel/redwood@2.4.13':
     dependencies:
       '@vercel/nft': 1.5.0
@@ -3898,6 +3916,8 @@ snapshots:
   minizlib@3.1.0:
     dependencies:
       minipass: 7.1.3
+
+  mixpart@0.0.6: {}
 
   mkdirp@1.0.4: {}
 

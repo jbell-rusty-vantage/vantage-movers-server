@@ -56,6 +56,9 @@ import {
   overviewQuerySchema,
   adminBrowseQuerySchema,
   adminSearchQuerySchema,
+  sheetSyncJobsQuerySchema,
+  sheetSyncRunsQuerySchema,
+  sheetSyncRetrySchema,
   bookedCallLeadReconciliationBatchSchema,
   browseCallLeadsQuerySchema,
   browseFormLeadsQuerySchema,
@@ -73,7 +76,12 @@ import {
   exportAdminResourceCsv,
   getAdminFacets,
   getAdminResourceDetail,
+  getSheetSyncHealth,
+  getSheetSyncRunDetail,
   globalAdminSearch,
+  listSheetSyncJobs,
+  listSheetSyncRuns,
+  retrySheetSyncJobs,
   type AdminResource,
 } from "../services/admin";
 import {
@@ -134,6 +142,12 @@ router.get("/api/v1/admin/analytics/overview", handleOverviewReport());
 router.get("/api/v1/admin/exports/analytics/:report.csv", handleAnalyticsExport);
 router.get("/api/v1/admin/reports/agent-sales", handleAgentSalesReport);
 router.get("/api/v1/admin/exports/reports/agent-sales.csv", handleAgentSalesReportExport);
+
+router.get("/api/v1/admin/sheet-sync/health", handleSheetSyncHealth);
+router.get("/api/v1/admin/sheet-sync/jobs", handleSheetSyncJobs);
+router.get("/api/v1/admin/sheet-sync/runs", handleSheetSyncRuns);
+router.get("/api/v1/admin/sheet-sync/runs/:id", handleSheetSyncRunDetail);
+router.post("/api/v1/admin/sheet-sync/retry", handleSheetSyncRetry);
 
 router.get("/api/v1/form-leads", handleBrowseFormLeads);
 router.get("/api/v1/form-leads/:id", handleFindOne(findFormLead));
@@ -252,6 +266,60 @@ function handleAdminExport(resource: AdminResource) {
       return sendError(req, res, error);
     }
   };
+}
+
+async function handleSheetSyncHealth(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const data = await getSheetSyncHealth();
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSheetSyncJobs(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = sheetSyncJobsQuerySchema.parse(req.query);
+    const data = await listSheetSyncJobs(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSheetSyncRuns(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = sheetSyncRunsQuerySchema.parse(req.query);
+    const data = await listSheetSyncRuns(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSheetSyncRunDetail(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const data = await getSheetSyncRunDetail(id);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSheetSyncRetry(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = sheetSyncRetrySchema.parse(req.body);
+    const data = await retrySheetSyncJobs(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
 }
 
 function handleOverviewReport() {

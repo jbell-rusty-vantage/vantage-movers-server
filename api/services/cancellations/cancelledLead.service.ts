@@ -1,5 +1,5 @@
 import type mongoose from "mongoose";
-import type { LeadModelName } from "../../config/domain";
+import { getSheetSyncMode, type LeadModelName } from "../../config/domain";
 import { BookedLead } from "../../models/BookedLead";
 import { CancelledLead } from "../../models/CancelledLead";
 import type {
@@ -9,9 +9,16 @@ import type {
 import { primaryAgentName } from "../agents";
 import { deleteCancelledLeadFromSheets } from "../googleSheets.service";
 import {
-  scheduleFullSheetSyncProcess,
+  buildTombstonePreviousTargets,
+  enqueueSheetSyncJob,
+  enqueueSheetSyncTombstone,
+  finalizeSheetSync,
+  finalizeSheetSyncDelete,
+  persistSheetSyncIntent,
+  runSheetSyncWrite,
   syncBookingAndSource,
   syncSourceLeadById,
+  type FullSheetSyncJob,
 } from "../sheetSync";
 import { V1ServiceError } from "../v1ServiceError";
 import {
@@ -44,37 +51,46 @@ export async function createCancelledLead(input: CreateCancelledLeadInput) {
     | { _id?: mongoose.Types.ObjectId; full_name?: string }
     | undefined;
   const timestamp = input.timestamp ?? new Date();
-  const cancellation = await CancelledLead.create({
-    timestamp,
-    booked_lead: booking._id,
-    customer: customer?._id ?? booking.customer,
-    lead_ref: booking.lead_ref,
-    lead_model: booking.lead_model,
-    cancel_date: input.cancel_date ?? timestamp,
-    agent: primaryAgentName(booking),
-    book_date: booking.book_date,
-    job_no: booking.job_no,
-    customer_name: customer?.full_name,
-    refund_amount: input.refund_amount,
-    merchant: booking.merchant,
-    source: booking.source,
-    reason: input.reason,
-    notes: input.notes,
-    cancelled_by: input.cancelled_by,
+
+  const { cancellation, job } = await runSheetSyncWrite(async (session) => {
+    const created = new CancelledLead({
+      timestamp,
+      booked_lead: booking._id,
+      customer: customer?._id ?? booking.customer,
+      lead_ref: booking.lead_ref,
+      lead_model: booking.lead_model,
+      cancel_date: input.cancel_date ?? timestamp,
+      agent: primaryAgentName(booking),
+      book_date: booking.book_date,
+      job_no: booking.job_no,
+      customer_name: customer?.full_name,
+      refund_amount: input.refund_amount,
+      merchant: booking.merchant,
+      source: booking.source,
+      reason: input.reason,
+      notes: input.notes,
+      cancelled_by: input.cancelled_by,
+    });
+    await created.save({ session });
+
+    booking.cancelled = created._id;
+    await booking.save({ session });
+    await mirrorCancellationToLead(
+      booking.lead_model!,
+      booking.lead_ref!.toString(),
+      created._id,
+      session,
+    );
+    const cancellationJob: FullSheetSyncJob = {
+      resource: "cancellation_chain",
+      operation: "cancelled_lead.create",
+      cancellationId: created._id.toString(),
+    };
+    await persistSheetSyncIntent(cancellationJob, session);
+    return { cancellation: created, job: cancellationJob };
   });
 
-  booking.cancelled = cancellation._id;
-  await booking.save();
-  await mirrorCancellationToLead(
-    booking.lead_model,
-    booking.lead_ref.toString(),
-    cancellation._id,
-  );
-  scheduleFullSheetSyncProcess({
-    resource: "cancellation_chain",
-    operation: "cancelled_lead.create",
-    cancellationId: cancellation._id.toString(),
-  });
+  await finalizeSheetSync(job);
   return cancellation;
 }
 
@@ -84,18 +100,24 @@ export async function createCancelledLead(input: CreateCancelledLeadInput) {
  * unknown, matching the original behavior.
  */
 export async function updateCancelledLead(id: string, input: UpdateCancelledLeadInput) {
-  const cancellation = await CancelledLead.findByIdAndUpdate(id, input, {
-    returnDocument: "after",
+  const { cancellation, job } = await runSheetSyncWrite(async (session) => {
+    const updated = await CancelledLead.findByIdAndUpdate(id, input, {
+      returnDocument: "after",
+      session,
+    });
+    if (!updated) {
+      throw new V1ServiceError("Cancelled lead not found", 404);
+    }
+    const cancellationJob: FullSheetSyncJob = {
+      resource: "cancellation_chain",
+      operation: "cancelled_lead.update",
+      cancellationId: updated._id.toString(),
+    };
+    await persistSheetSyncIntent(cancellationJob, session);
+    return { cancellation: updated, job: cancellationJob };
   });
-  if (!cancellation) {
-    throw new V1ServiceError("Cancelled lead not found", 404);
-  }
 
-  scheduleFullSheetSyncProcess({
-    resource: "cancellation_chain",
-    operation: "cancelled_lead.update",
-    cancellationId: cancellation._id.toString(),
-  });
+  await finalizeSheetSync(job);
   return cancellation;
 }
 
@@ -124,28 +146,75 @@ export async function deleteCancelledLead(id: string) {
   if (!cancellation) {
     throw new V1ServiceError("Cancelled lead not found", 404);
   }
+  const leadModel = cancellation.lead_model as LeadModelName;
+  const leadId = cancellation.lead_ref?.toString();
+
+  if (getSheetSyncMode() === "queued") {
+    const previousTargets = buildTombstonePreviousTargets(cancellation.sheet_sync);
+    await runSheetSyncWrite(async (session) => {
+      const booking = await BookedLead.findByIdAndUpdate(
+        cancellation.booked_lead,
+        { $unset: { cancelled: "" } },
+        { returnDocument: "after", session },
+      );
+      await clearCancellationFromLead(leadModel, leadId, false, session);
+
+      await enqueueSheetSyncTombstone(
+        {
+          resource: "delete_cancelled_lead",
+          entityModel: "CancelledLead",
+          entityId: id,
+          operation: "delete_cancelled_lead",
+          tombstone: {
+            mongo_id: id,
+            previous_targets: previousTargets,
+            linked_booking_id: cancellation.booked_lead?.toString(),
+            linked_lead_id: leadId,
+            linked_lead_model: leadModel,
+          },
+        },
+        { session, targetHints: previousTargets.map((target) => target.target) },
+      );
+
+      // Refresh the surviving booking + source rows (or just the source row)
+      // so they no longer reflect a cancellation.
+      if (booking && booking.lead_ref && booking.lead_model) {
+        await enqueueSheetSyncJob(
+          {
+            resource: "booking_chain",
+            operation: "delete_cancelled_lead",
+            bookingId: booking._id.toString(),
+          },
+          { session },
+        );
+      } else if (leadId) {
+        await enqueueSheetSyncJob(
+          { resource: "source_lead", operation: "delete_cancelled_lead", leadModel, leadId },
+          { session },
+        );
+      }
+
+      await cancellation.deleteOne({ session });
+    });
+    await finalizeSheetSyncDelete();
+    return;
+  }
+
   await deleteCancelledLeadFromSheets(cancellation);
   const booking = await BookedLead.findByIdAndUpdate(
     cancellation.booked_lead,
     { $unset: { cancelled: "" } },
     { returnDocument: "after" },
   );
-  await clearCancellationFromLead(
-    cancellation.lead_model as LeadModelName,
-    cancellation.lead_ref?.toString(),
-    false,
-  );
+  await clearCancellationFromLead(leadModel, leadId, false);
   if (booking && booking.lead_ref && booking.lead_model) {
     await syncBookingAndSource(
       booking._id,
       booking.lead_model as LeadModelName,
       booking.lead_ref.toString(),
     );
-  } else if (cancellation.lead_ref) {
-    await syncSourceLeadById(
-      cancellation.lead_model as LeadModelName,
-      cancellation.lead_ref.toString(),
-    );
+  } else if (leadId) {
+    await syncSourceLeadById(leadModel, leadId);
   }
   await cancellation.deleteOne();
 }

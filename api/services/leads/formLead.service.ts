@@ -1,5 +1,6 @@
 import {
   getCplForSource,
+  getSheetSyncMode,
   type LocalType,
   type SourceCompany,
 } from "../../config/domain";
@@ -18,7 +19,15 @@ import {
 } from "../crm";
 import { ConflictError, NotFoundError } from "../errors";
 import { deleteFormLeadFromSheets } from "../googleSheets.service";
-import { scheduleFullSheetSyncProcess } from "../sheetSync";
+import {
+  buildTombstonePreviousTargets,
+  enqueueSheetSyncTombstone,
+  finalizeSheetSync,
+  finalizeSheetSyncDelete,
+  persistSheetSyncIntent,
+  runSheetSyncWrite,
+  type FullSheetSyncJob,
+} from "../sheetSync";
 // Compatibility imports from the v1 service facade. `deleteBookedLead` and
 // `refreshAttachedBookingFromLead` still live there because the booking
 // extraction (refactor plan 04) has not happened yet. They are only ever
@@ -47,22 +56,53 @@ export async function createFormLead(input: CreateFormLeadInput) {
     formLeadInput.email,
   );
   const shouldPostToGranot = post_to_granot && !duplicate;
-  const lead = await FormLead.create({
-    ...formLeadInput,
-    ...location,
-    source_company,
-    local,
-    ref_no: formLeadInput.ref_no?.trim() || "not provided",
-    timestamp: toFloridaTimestamp(formLeadInput.timestamp),
-    move_date: formLeadInput.move_date ?? new Date(),
-    cpl: getCplForSource(source_company, local),
-    duplicate,
-    post_to_granot: shouldPostToGranot,
+
+  // The domain document, the form-fill call-lead updates, and the durable
+  // sheet-sync outbox jobs all commit atomically (in queued mode). CRM
+  // submission and queue publishing happen only after commit so external
+  // latency/failure can never hold open or roll back the transaction.
+  const { lead, jobs } = await runSheetSyncWrite(async (session) => {
+    const created = new FormLead({
+      ...formLeadInput,
+      ...location,
+      source_company,
+      local,
+      ref_no: formLeadInput.ref_no?.trim() || "not provided",
+      timestamp: toFloridaTimestamp(formLeadInput.timestamp),
+      move_date: formLeadInput.move_date ?? new Date(),
+      cpl: getCplForSource(source_company, local),
+      duplicate,
+      post_to_granot: shouldPostToGranot,
+    });
+    await created.save({ session });
+
+    const leadId = created._id.toString();
+    const sheetSyncJobs: FullSheetSyncJob[] = [];
+    if (!created.duplicate) {
+      const formFillJobs = await markMatchingCallLeadsWithFormFill(
+        source_company,
+        created.phone_number,
+        leadId,
+        session,
+      );
+      sheetSyncJobs.push(...formFillJobs);
+    }
+    const formLeadJob: FullSheetSyncJob = {
+      resource: "source_lead",
+      operation: "form_lead.create",
+      leadModel: "FormLead",
+      leadId,
+    };
+    sheetSyncJobs.push(formLeadJob);
+    for (const job of sheetSyncJobs) {
+      await persistSheetSyncIntent(job, session);
+    }
+    return { lead: created, jobs: sheetSyncJobs };
   });
 
   const leadId = lead._id.toString();
-  if (!lead.duplicate) {
-    await markMatchingCallLeadsWithFormFill(source_company, lead.phone_number, leadId);
+  for (const job of jobs) {
+    await finalizeSheetSync(job);
   }
 
   const crmResult: CrmSubmitResult = shouldPostToGranot
@@ -82,13 +122,6 @@ export async function createFormLead(input: CreateFormLeadInput) {
       duplicate,
     });
   }
-
-  scheduleFullSheetSyncProcess({
-    resource: "source_lead",
-    operation: "form_lead.create",
-    leadModel: "FormLead",
-    leadId,
-  });
 
   logger.info({
     msg: "form_lead.sheet_sync.pending_response",
@@ -158,9 +191,19 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
     lead.local = deriveFormLeadLocal(location.pickup_state, location.delivery_state);
   }
   lead.cpl = getCplForSource(lead.source_company as SourceCompany, lead.local as LocalType);
-  await lead.save();
-  const job = await refreshAttachedBookingFromLead(lead, "FormLead", "form_lead.update");
-  scheduleFullSheetSyncProcess(job);
+
+  const job = await runSheetSyncWrite(async (session) => {
+    await lead.save({ session });
+    const refreshJob = await refreshAttachedBookingFromLead(
+      lead,
+      "FormLead",
+      "form_lead.update",
+      session,
+    );
+    await persistSheetSyncIntent(refreshJob, session);
+    return refreshJob;
+  });
+  await finalizeSheetSync(job);
   return lead;
 }
 
@@ -207,6 +250,31 @@ export async function deleteFormLead(id: string, cascade: boolean) {
   if (lead.booked && cascade) {
     await deleteBookedLead(lead.booked.toString(), true);
   }
+
+  if (getSheetSyncMode() === "queued") {
+    const previousTargets = buildTombstonePreviousTargets(lead.sheet_sync);
+    await runSheetSyncWrite(async (session) => {
+      await enqueueSheetSyncTombstone(
+        {
+          resource: "delete_source_lead",
+          entityModel: "FormLead",
+          entityId: id,
+          operation: "delete_form_lead",
+          tombstone: {
+            mongo_id: id,
+            source_company: lead.source_company,
+            duplicate: lead.duplicate,
+            previous_targets: previousTargets,
+          },
+        },
+        { session, targetHints: previousTargets.map((target) => target.target) },
+      );
+      await lead.deleteOne({ session });
+    });
+    await finalizeSheetSyncDelete();
+    return;
+  }
+
   await deleteFormLeadFromSheets(lead);
   await lead.deleteOne();
 }

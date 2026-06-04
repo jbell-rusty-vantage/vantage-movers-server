@@ -1,3 +1,4 @@
+import type { ClientSession } from "mongoose";
 import { Customer } from "../../models/Customer";
 
 function normalizeCustomerName(value: string): string {
@@ -24,11 +25,14 @@ function buildCustomerUpdate(input: {
  * created without a linked customer. Matches by phone when present, otherwise
  * by normalized name.
  */
-export async function upsertCustomerFromLead(lead: {
-  name?: string | null;
-  phone_number?: string | null;
-  email?: string | null;
-}) {
+export async function upsertCustomerFromLead(
+  lead: {
+    name?: string | null;
+    phone_number?: string | null;
+    email?: string | null;
+  },
+  session?: ClientSession,
+) {
   if (!lead.name?.trim()) {
     return undefined;
   }
@@ -46,6 +50,7 @@ export async function upsertCustomerFromLead(lead: {
       upsert: true,
       returnDocument: "after",
       setDefaultsOnInsert: true,
+      session,
     }).orFail();
   }
 
@@ -53,6 +58,7 @@ export async function upsertCustomerFromLead(lead: {
     upsert: true,
     returnDocument: "after",
     setDefaultsOnInsert: true,
+    session,
   }).orFail();
 }
 
@@ -62,15 +68,18 @@ export async function upsertCustomerFromLead(lead: {
  * Resolves phone from the submitted customer phone first, then from the linked
  * lead when available. Matches by phone when present, otherwise normalized name.
  */
-export async function upsertCustomerFromBookingContact(input: {
-  customer_name: string;
-  customer_phone?: string | null;
-  lead?: {
-    name?: string | null;
-    phone_number?: string | null;
-    email?: string | null;
-  };
-}) {
+export async function upsertCustomerFromBookingContact(
+  input: {
+    customer_name: string;
+    customer_phone?: string | null;
+    lead?: {
+      name?: string | null;
+      phone_number?: string | null;
+      email?: string | null;
+    };
+  },
+  session?: ClientSession,
+) {
   const full_name = input.customer_name.trim();
   if (!full_name) {
     return undefined;
@@ -89,6 +98,7 @@ export async function upsertCustomerFromBookingContact(input: {
       upsert: true,
       returnDocument: "after",
       setDefaultsOnInsert: true,
+      session,
     }).orFail();
   }
 
@@ -96,5 +106,6 @@ export async function upsertCustomerFromBookingContact(input: {
     upsert: true,
     returnDocument: "after",
     setDefaultsOnInsert: true,
+    session,
   }).orFail();
 }

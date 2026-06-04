@@ -233,6 +233,21 @@ test("updateFormLeadSchema accepts duplicate for backfill and admin patches", ()
   assert.equal(parsed.duplicate, true);
 });
 
+test("createFormLeadSchema defaults post_to_granot to false when omitted", () => {
+  const parsed = createFormLeadSchema.parse({
+    source_company: "main_site",
+    name: "Jane Customer",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    move_size: "Studio",
+    ref_no: "not provided",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+  });
+
+  assert.equal(parsed.post_to_granot, false);
+});
+
 test("createFormLeadSchema accepts post_to_granot boolean false", () => {
   const parsed = createFormLeadSchema.parse({
     source_company: "main_site",

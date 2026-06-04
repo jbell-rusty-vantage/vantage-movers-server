@@ -1,9 +1,10 @@
+import type { ClientSession } from "mongoose";
 import type { SourceCompany } from "../../config/domain";
 import { logger } from "../../logger";
 import { CallLead } from "../../models/CallLead";
 import { FormLead } from "../../models/FormLead";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
-import { scheduleFullSheetSyncProcess } from "../sheetSync";
+import type { FullSheetSyncJob } from "../sheetSync";
 import { buildPhoneRegex } from "./leadPhoneMatching";
 
 /**
@@ -79,21 +80,23 @@ export async function hasFormFillForCallLead(
  * Flips `form_fill = true` on any matching call leads in the same source
  * company when a new (non-duplicate) form lead arrives.
  *
- * Each matched call lead also gets a sheet sync scheduled so its row in the
- * Calls sheet reflects the updated `FormFill` column. Schedules occur at the
- * exact same point as before extraction to preserve sync ordering guarantees.
+ * Returns a `source_lead` sheet-sync job for every call lead it touched so the
+ * caller can persist/finalize the syncs alongside the form-lead write (inside
+ * the same transaction in queued mode). When a `session` is supplied the call
+ * lead writes participate in that transaction.
  */
 export async function markMatchingCallLeadsWithFormFill(
   sourceCompany: SourceCompany,
   phoneNumber: string,
   formLeadId: string,
-): Promise<void> {
+  session?: ClientSession,
+): Promise<FullSheetSyncJob[]> {
   const normalizedPhone = normalizePhoneNumberForMatch(phoneNumber);
   if (!normalizedPhone) {
-    return;
+    return [];
   }
 
-  const candidates = await CallLead.find({
+  const candidatesQuery = CallLead.find({
     source_company: sourceCompany,
     form_fill: { $ne: true },
     $or: [
@@ -102,17 +105,18 @@ export async function markMatchingCallLeadsWithFormFill(
     ],
   })
     .sort({ createdAt: -1 })
-    .limit(25)
-    .exec();
+    .limit(25);
+  const candidates = await (session ? candidatesQuery.session(session) : candidatesQuery).exec();
 
   const matchedCallLeads = candidates.filter(
     (lead) => normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone,
   );
 
+  const jobs: FullSheetSyncJob[] = [];
   for (const callLead of matchedCallLeads) {
     callLead.form_fill = true;
-    await callLead.save();
-    scheduleFullSheetSyncProcess({
+    await callLead.save({ session });
+    jobs.push({
       resource: "source_lead",
       operation: "call_lead.form_fill.update",
       leadModel: "CallLead",
@@ -127,4 +131,6 @@ export async function markMatchingCallLeadsWithFormFill(
     normalizedPhone,
     matchedCallLeadCount: matchedCallLeads.length,
   });
+
+  return jobs;
 }

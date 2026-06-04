@@ -1,6 +1,10 @@
 import { waitUntil } from "@vercel/functions";
-import { connectMongo } from "../../db";
+import type { ClientSession } from "mongoose";
+import { getSheetSyncMode } from "../../config/domain";
+import { connectMongo, withTransaction } from "../../db";
 import { logger } from "../../logger";
+import { enqueueSheetSyncJob } from "./sheetSyncOutbox.service";
+import { publishSheetSyncWakeup } from "./sheetSyncQueue.service";
 import { sheetSyncLogContext, type FullSheetSyncJob } from "./sheetSyncJobs";
 import {
   syncBookedLeadById,
@@ -10,15 +14,42 @@ import {
 } from "./sheetSyncSourceLookup";
 
 /**
- * Schedules a sheet sync job to run as a Vercel `waitUntil` background task.
+ * Mode-aware compatibility boundary for sheet sync.
  *
- * Logs scheduling, success, and failure with the same `${operation}.sheet_sync.*`
- * message shape used before extraction so existing log searches keep working.
+ * - `legacy`   -> the original Vercel `waitUntil(runFullSheetSyncProcess)`.
+ * - `queued`   -> best-effort fallback: enqueue a durable outbox job and
+ *                 publish a wake-up in the background. Transactional callers
+ *                 should prefer `persistSheetSyncIntent` (inside their Mongo
+ *                 transaction) + `finalizeSheetSync` (after commit); this path
+ *                 keeps any un-migrated caller correct.
+ * - `disabled` -> log intent and do nothing.
+ *
+ * Log message shapes are preserved (`${operation}.sheet_sync.*`) so existing
+ * log searches keep working.
  */
 export function scheduleFullSheetSyncProcess(job: FullSheetSyncJob): void {
   const context = sheetSyncLogContext(job);
-  logger.info({ msg: `${job.operation}.sheet_sync.scheduled`, ...context });
+  const mode = getSheetSyncMode();
 
+  if (mode === "disabled") {
+    logger.info({ msg: `${job.operation}.sheet_sync.disabled`, ...context });
+    return;
+  }
+
+  if (mode === "queued") {
+    logger.info({ msg: `${job.operation}.sheet_sync.queued`, ...context });
+    waitUntil(
+      enqueueAndPublish(job).catch((error) => {
+        logger.error(
+          { err: error, msg: `${job.operation}.sheet_sync.enqueue_failed`, ...context },
+          "Background sheet sync enqueue failed",
+        );
+      }),
+    );
+    return;
+  }
+
+  logger.info({ msg: `${job.operation}.sheet_sync.scheduled`, ...context });
   waitUntil(
     runFullSheetSyncProcess(job).catch((error) => {
       logger.error(
@@ -31,6 +62,89 @@ export function scheduleFullSheetSyncProcess(job: FullSheetSyncJob): void {
       );
     }),
   );
+}
+
+async function enqueueAndPublish(job: FullSheetSyncJob): Promise<void> {
+  await connectMongo();
+  await enqueueSheetSyncJob(job);
+  await publishSheetSyncWakeup({ reason: "domain_write" });
+}
+
+/**
+ * Runs a domain write through the correct durability path for the active mode.
+ *
+ * - `queued`            -> opens a real Mongo transaction and passes the session
+ *                          to `fn`, so the domain document writes and the outbox
+ *                          job (via `persistSheetSyncIntent`) commit atomically.
+ * - `legacy`/`disabled` -> runs `fn` with `undefined` (no transaction), exactly
+ *                          preserving the current production code path so the
+ *                          default mode sees zero behavioral change.
+ *
+ * `fn` must keep external side effects (Sheets, queue publish, CRM) out of the
+ * callback; callers run those after this resolves (see `finalizeSheetSync`).
+ */
+export async function runSheetSyncWrite<T>(
+  fn: (session: ClientSession | undefined) => Promise<T>,
+): Promise<T> {
+  if (getSheetSyncMode() === "queued") {
+    return withTransaction((session) => fn(session));
+  }
+  await connectMongo();
+  return fn(undefined);
+}
+
+/**
+ * Writes durable sheet-sync intent for a domain write, intended to run inside
+ * the caller's Mongo transaction so the domain document and the outbox job
+ * commit atomically.
+ *
+ * Only acts in `queued` mode. In `legacy`/`disabled` mode it is a no-op; those
+ * modes rely on `finalizeSheetSync` (called after commit) to schedule or skip
+ * the sync.
+ */
+export async function persistSheetSyncIntent(
+  job: FullSheetSyncJob,
+  session?: ClientSession,
+): Promise<void> {
+  if (getSheetSyncMode() !== "queued") {
+    return;
+  }
+  await enqueueSheetSyncJob(job, { session, createdBy: "api" });
+}
+
+/**
+ * Completes sheet-sync handling for a domain write, intended to run AFTER the
+ * Mongo transaction commits.
+ *
+ * - `queued`   -> publish a queue wake-up (durable job already committed).
+ * - `legacy`   -> schedule the original `waitUntil` background sync.
+ * - `disabled` -> log intent only.
+ */
+export async function finalizeSheetSync(job: FullSheetSyncJob): Promise<void> {
+  const mode = getSheetSyncMode();
+  if (mode === "disabled") {
+    logger.info({ msg: `${job.operation}.sheet_sync.disabled`, ...sheetSyncLogContext(job) });
+    return;
+  }
+  if (mode === "queued") {
+    await publishSheetSyncWakeup({ reason: "domain_write" });
+    return;
+  }
+  scheduleFullSheetSyncProcess(job);
+}
+
+/**
+ * Publishes a queue wake-up after a delete tombstone has been committed.
+ *
+ * Intended to run AFTER the Mongo transaction commits in `queued` mode. In
+ * `legacy`/`disabled` mode it is a no-op: those modes perform the sheet row
+ * deletion inline (see each delete service) rather than via the outbox.
+ */
+export async function finalizeSheetSyncDelete(): Promise<void> {
+  if (getSheetSyncMode() !== "queued") {
+    return;
+  }
+  await publishSheetSyncWakeup({ reason: "domain_delete" });
 }
 
 /**

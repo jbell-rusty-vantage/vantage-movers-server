@@ -1,4 +1,5 @@
 import type mongoose from "mongoose";
+import type { ClientSession } from "mongoose";
 import type { LeadModelName } from "../../config/domain";
 import { CallLead, type CallLeadDocument } from "../../models/CallLead";
 import { FormLead, type FormLeadDocument } from "../../models/FormLead";
@@ -21,11 +22,11 @@ export type SourceLeadDocument = mongoose.HydratedDocument<FormLeadDocument | Ca
 export async function getLinkedLead(
   leadModel: LeadModelName,
   leadId: string,
+  session?: ClientSession,
 ): Promise<SourceLeadDocument> {
-  const lead =
-    leadModel === "FormLead"
-      ? await FormLead.findById(leadId)
-      : await CallLead.findById(leadId);
+  const query =
+    leadModel === "FormLead" ? FormLead.findById(leadId) : CallLead.findById(leadId);
+  const lead = await (session ? query.session(session) : query);
   if (!lead) {
     throw new NotFoundError("Linked source lead not found", {
       metadata: { leadModel, leadId },
