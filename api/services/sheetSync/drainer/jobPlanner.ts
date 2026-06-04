@@ -9,8 +9,10 @@ import {
   type SourceCompany,
 } from "../../../config/domain";
 import { logger } from "../../../logger";
+import "../../../models/Agent";
 import { BookedLead } from "../../../models/BookedLead";
 import { CancelledLead } from "../../../models/CancelledLead";
+import "../../../models/Customer";
 import type { SheetSyncJobDocument } from "../../../models/SheetSyncJob";
 import { bookedLeadToRow } from "../../googleSheets/projections/bookedLeadRow";
 import { callLeadToRow } from "../../googleSheets/projections/callLeadRow";

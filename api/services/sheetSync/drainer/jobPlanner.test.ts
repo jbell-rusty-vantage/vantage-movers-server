@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Types } from "mongoose";
+import mongoose, { Types } from "mongoose";
 import type { SheetSyncJobDocument } from "../../../models/SheetSyncJob";
 import { planJobWrites } from "./jobPlanner";
+
+test("jobPlanner registers mongoose models required for booked-lead populate", () => {
+  assert.ok(mongoose.models.Customer, "Customer must be registered for booking_chain populate");
+  assert.ok(mongoose.models.Agent, "Agent must be registered for booking_chain populate");
+});
 
 type TombstoneInput = {
   mongo_id: string;
