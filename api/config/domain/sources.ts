@@ -17,6 +17,7 @@ export const SOURCE_COMPANIES = [
   "tbm_leads",
   "tbm_prime_leads",
   "top10_leads",
+  "10best_leads",
   "best_relocation_leads",
   "main_site",
   "not_provided",
@@ -36,7 +37,7 @@ export const SOURCE_LABEL_TO_COMPANY = {
   "TBM Prime Inbounds": "tbm_prime_leads",
   "Top10 Forms": "top10_leads",
   "Top10 Inbounds": "top10_leads",
-  "10best Inbounds": "top10_leads",
+  "10best Inbounds": "10best_leads",
   "Best Relocation Forms": "best_relocation_leads",
   "Best Relocation Locals": "best_relocation_leads",
   "Best Relocation Inbounds": "best_relocation_leads",
@@ -74,6 +75,13 @@ export const SOURCE_COMPANY_CONFIGS = {
     leadSheetEnvVar: SHEET_CONTAINER_ENV_VARS.sourceLeads.top10_leads,
     hasBadTabs: true,
     aliases: ["Top 10 Leads", "Top10 Leads", "Top 10"],
+  },
+  "10best_leads": {
+    slug: "10best_leads",
+    label: "10best Leads",
+    leadSheetEnvVar: SHEET_CONTAINER_ENV_VARS.sourceLeads["10best_leads"],
+    hasBadTabs: true,
+    aliases: ["10best Leads", "10best", "10best Inbounds"],
   },
   best_relocation_leads: {
     slug: "best_relocation_leads",
@@ -161,4 +169,42 @@ export function normalizeSourceCompany(value?: string | null): SourceCompany {
 
 export function getSourceCompanyLabel(sourceCompany: SourceCompany): string {
   return SOURCE_COMPANY_CONFIGS[sourceCompany].label;
+}
+
+export function getFormLeadSourceCompanyLabel(sourceCompany: SourceCompany): string {
+  switch (sourceCompany) {
+    case "tbm_leads":
+      return "TBM Forms";
+    case "tbm_prime_leads":
+      return "TBM Prime Forms";
+    case "top10_leads":
+      return "Top10 Forms";
+    case "10best_leads":
+      return getSourceCompanyLabel(sourceCompany);
+    case "best_relocation_leads":
+      return "Best Relocation Forms";
+    case "main_site":
+      return "Main Site Forms";
+    case "not_provided":
+      return getSourceCompanyLabel(sourceCompany);
+  }
+}
+
+export function getCallLeadSourceCompanyLabel(sourceCompany: SourceCompany): string {
+  switch (sourceCompany) {
+    case "tbm_leads":
+      return "TBM Inbounds";
+    case "tbm_prime_leads":
+      return "TBM Prime Inbounds";
+    case "top10_leads":
+      return "Top10 Inbounds";
+    case "10best_leads":
+      return "10best Inbounds";
+    case "best_relocation_leads":
+      return "Best Relocation Inbounds";
+    case "main_site":
+      return "Main Site Inbounds";
+    case "not_provided":
+      return getSourceCompanyLabel(sourceCompany);
+  }
 }

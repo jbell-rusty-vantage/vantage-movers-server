@@ -19,6 +19,7 @@ const SOURCE_COMPANY_CPLS = {
   tbm_leads: Number(process.env.TBM_LEADS_CPL ?? 190),
   tbm_prime_leads: Number(process.env.TBM_PRIME_LEADS_CPL ?? 190),
   top10_leads: Number(process.env.TOP10_LEADS_CPL ?? 190),
+  "10best_leads": Number(process.env.TENBEST_LEADS_CPL ?? 150),
   best_relocation_leads: {
     local: Number(process.env.BEST_RELOCATION_LOCALS_CPL ?? 40),
     long_distance: Number(process.env.BEST_RELOCATION_LEADS_CPL ?? 195),

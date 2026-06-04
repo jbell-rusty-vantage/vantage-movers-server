@@ -1,4 +1,4 @@
-import { getSourceCompanyLabel } from "../../../config/domain";
+import { getCallLeadSourceCompanyLabel } from "../../../config/domain";
 import type { CallLeadSheetSource } from "../types";
 import {
   booleanCell,
@@ -25,7 +25,7 @@ export function callLeadToRow(lead: CallLeadSheetSource): string[] {
     optionalLocalCell(lead.local),
     formatNumber(lead.cubic_feet),
     lead._id.toString(),
-    getSourceCompanyLabel(lead.source_company),
+    getCallLeadSourceCompanyLabel(lead.source_company),
     booleanCell(Boolean(lead.form_fill)),
   ];
 }
