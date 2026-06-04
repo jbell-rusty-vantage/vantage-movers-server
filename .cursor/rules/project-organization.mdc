@@ -14,12 +14,20 @@ alwaysApply: true
 - Start request tracing at `api/index.ts`: Express app setup, health/db probes, logging, CORS/body parsing, and route mounting.
 - `api/routes/` owns HTTP boundaries. Keep routes thin: authenticate, parse with Zod, call services, format responses, and avoid business logic.
 - `api/validation/` owns request/operation schemas. `api/validation/v1.validation.ts` is the public v1 barrel; detailed schemas live in `api/validation/v1/`.
-- `api/services/` owns business behavior and side effects. Use the domain folders first: `leads/`, `bookings/`, `cancellations/`, `customers/`, `admin/`, `googleSheets/`, `crm/`, `reconciliation/`, `enrichment/`, `search/`, and `errors/`. Legacy barrels such as `v1.service.ts`, `crm.service.ts`, and search/reconciliation wrappers may preserve API compatibility.
+- `api/services/` owns business behavior and side effects. Use the domain folders first: `leads/`, `bookings/`, `cancellations/`, `customers/`, `admin/`, `ringcentral/`, `googleSheets/`, `crm/`, `reconciliation/`, `enrichment/`, `search/`, and `errors/`. Legacy barrels such as `v1.service.ts`, `crm.service.ts`, and search/reconciliation wrappers may preserve API compatibility.
 - `api/models/` owns runtime Mongoose schemas and shared schema helpers. Mongo/API fields should stay `snake_case`; only Google Sheets projections should produce owner-facing Title Case columns.
 - `api/config/` owns mode-aware domain configuration. Add source companies, sheet tabs, headers, CPL rules, Mongo database names, and Google auth env selection here instead of scattering `process.env` reads.
 - `api/middleware/` owns request guards and request-level behavior such as API secret enforcement and HTTP logging.
 - `api/utils/` owns small shared helpers, currently including logging sanitizers, Google Sheets range helpers, location normalization, and CSV serialization.
 - `api/db.ts` is the shared Mongo connection helper. Runtime code should reuse it and preserve the `TEST_MODE` database boundary.
+
+## RingCentral Service Map
+
+- `api/routes/ringcentral-webhook.routes.ts`, `ringcentral-webhook-local.routes.ts`, and `ringcentral-cron.routes.ts` are HTTP/cron boundaries only; keep qualification, persistence, and lead-write behavior in services.
+- `api/services/ringcentral/` owns RingCentral auth/client code, token stores, webhook capture/normalization, candidate/session aggregation, Call Log sync, Analytics reconciliation, idempotency, duplicate detection, and shadow/real call-lead ingest.
+- `ringcentral-config.ts` is the single source for RingCentral env toggles, collection names, collection mode, duplicate window, cron lookback/overlap, and lead write posture.
+- `call-lead-sources.ts` owns mapped inbound numbers and source-company attribution. Do not duplicate those mappings in routes, scripts, or tests.
+- `ringcentral-call-lead-ingest.service.ts` is the shared promotion path for webhook and Call Log qualified calls. Do not create RingCentral `call_leads` directly from route, webhook, cron, or script code.
 
 ## Admin V1 API Surface
 
@@ -50,6 +58,7 @@ alwaysApply: true
 - `scripts/historical/` owns historical backfill, reconciliation, diagnostics, analytics, and repairs. `scripts/historical/models/` contains relaxed replicas for the separate `vantagemovershistorical` DB, not runtime API models.
 - `scripts/google_sheets/` owns sheet inspection, diagnostics, auth helpers, structure copy, and service-account utilities.
 - `scripts/postman/` owns Postman login and collection/environment sync for API tooling.
+- `scripts/ringcentral/` owns manual diagnostics, webhook subscription management, Call Log validation/probes, workflow tests, and manual cron/reconcile runners. Keep reusable runtime logic in `api/services/ringcentral/` and call it from scripts.
 - `scripts/google_apps_scripts/` owns Google Apps Script form helpers; `scripts/demos/` owns runnable demos/fixtures; `scripts/docs/` contains generated source-workbook documentation.
 
 ## Working Rules

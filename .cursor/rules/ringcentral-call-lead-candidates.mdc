@@ -1,16 +1,22 @@
 ---
-description: RingCentral webhook call-candidate workflow and call-lead promotion goal
-globs: api/services/ringcentral/**/*.ts,scripts/ringcentral/**/*.ts,api/routes/ringcentral-webhook.routes.ts,package.json
+description: RingCentral call-candidate, session, cron, and call-lead promotion workflow
+globs: api/services/ringcentral/**/*.ts,scripts/ringcentral/**/*.ts,api/routes/ringcentral-*.routes.ts,package.json
 alwaysApply: false
 ---
 
-# RingCentral Call-Lead Candidates
+# RingCentral Call-Lead Qualification
 
-- Main business goal: promote qualifying RingCentral inbound calls into real call leads once validation is complete. For now this is webhook-only, best-effort candidate evaluation and must not create real leads.
+- Main business goal: promote qualifying RingCentral inbound calls into call leads through the shared ingest path after validation and env write-mode checks.
 - Local setup uses `localhost:3000` exposed through ngrok. `RINGCENTRAL_NGROK_WEBHOOK_URL` may be a bare base URL; `scripts/ringcentral/ringcentral-webhook-create.ts` resolves it to `/api/webhooks/ringcentral`.
-- RingCentral webhook events are persisted to test-safe Mongo collections only: `ringcentral_webhook_events_test`, `ringcentral_call_candidates_test`, and `ringcentral_call_candidate_decisions_test`.
-- Candidate qualification rule: `direction === "Inbound"`, inbound target number matches `RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE`, call is answered, answered duration is at least 120 seconds, and caller phone number is present.
+- RingCentral collections are resolved by `ringcentral-config.ts`; default mode is test collections with `_test` suffix unless `RINGCENTRAL_COLLECTION_MODE=production`.
+- Qualification rule: `direction === "Inbound"`, inbound target number matches `RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE`, call is answered, answered duration is at least 120 seconds, and caller phone number is present.
 - Static inbound target numbers live in `api/services/ringcentral/call-lead-sources.ts`; canonical keys are normalized E.164-like strings.
 - For inbound candidate party events, `from.phoneNumber` is the caller/customer and `to.phoneNumber` is the RingCentral number/queue being called. Telephony sessions include multiple parties, so always gate qualification on the party `direction`.
-- Do not call RingCentral Call Log or create production leads in this phase. A qualified decision may be based on webhook-derived elapsed time and should clearly remain best-effort until Call Log reconciliation is added.
-- Use `pnpm run ringcentral:webhook:monitor` for current state, `-- --watch` for live polling, and the `/api/dev/ringcentral/*` endpoints for compact local inspection.
+
+## Pipeline Shape
+
+- Webhook path: normalize party events, upsert per-party candidates, aggregate a session in `call-session-aggregator.ts`, and ingest only when the session is both qualified and terminal.
+- Call Log cron path: `call-log-sync.service.ts` fetches detailed inbound records, `call-log-vetting.ts` applies the same business rule, and qualified records go through `ringcentral-call-lead-ingest.service.ts`.
+- Analytics reconcile is count-level only; it stores snapshots for comparison and must not create leads.
+- `ringcentral-call-lead-ingest.service.ts` owns idempotency, duplicate classification, dry-run/shadow/create branching, and processed-call ledger writes. Do not bypass it.
+- Use `pnpm run ringcentral:webhook:monitor`, `pnpm ringcentral:workflow:test`, `pnpm ringcentral:call-log:sync:run`, and `/api/dev/ringcentral/*` endpoints for inspection.

@@ -1,28 +1,46 @@
 ---
-description: RingCentral auth, validation scripts, and integration setup
+description: RingCentral auth, hybrid call-lead pipeline, scripts, and integration setup
 globs: api/services/ringcentral/**/*.ts,scripts/ringcentral/**/*.ts,api/routes/**/*.ts,package.json
 alwaysApply: false
 ---
 
 # RingCentral Integration
 
-- Scope this work to `vantage-main-server`. Runtime RingCentral code lives in `api/services/ringcentral/`; local validation scripts live in `scripts/ringcentral/`.
+- Scope this work to `vantage-main-server`. Runtime RingCentral code lives in `api/services/ringcentral/`; diagnostics and manual runners live in `scripts/ringcentral/`.
 - Use native `fetch` only. Do not add Axios or RingCentral SDKs unless explicitly requested.
 - Env is loaded by package scripts with `node --env-file=.env ./node_modules/tsx/dist/cli.mjs ...`. Run commands with `pnpm` from `vantage-main-server`.
 - Required env vars: `RC_SERVER_URL`, `RC_CLIENT_ID`, `RC_CLIENT_SECRET`, `RC_JWT`. Use `getRequiredEnv()` from `api/config/domain` in runtime/service code.
 - Never log or commit `RC_JWT`, `RC_CLIENT_SECRET`, OAuth access tokens, refresh tokens, or Authorization headers.
 
-## Current Phase
+## Runtime Service Boundaries
 
-- We are in local webhook testing/validation. Webhook endpoints and subscriptions exist, but they must only write to RingCentral test collections and must not create real leads yet.
+- `ringcentral-config.ts` owns all RingCentral env toggles, collection names, collection mode, duplicate window, cron lookback/overlap, analytics buffer, and lead write mode.
+- `client.ts`, `auth.ts`, and token stores own RingCentral API access. Keep token persistence storage-agnostic through `TokenStore`.
+- `call-lead-sources.ts` owns mapped inbound numbers and source attribution. Do not hard-code those mappings elsewhere.
+- Webhook flow: capture raw events, normalize party events, upsert candidates, aggregate sessions, then call shared ingest only when the session is qualified and terminal.
+- Cron flow: `call-log-sync.service.ts` fetches detailed inbound Call Log records, `call-log-vetting.ts` qualifies them, then shared ingest handles idempotency/duplicates/write mode.
+- Analytics flow: `analytics-reconcile.service.ts` stores aggregate snapshots only. It must not create caller-level leads.
+- `ringcentral-call-lead-ingest.service.ts` is the only RingCentral service that should promote qualified calls into dry-run, shadow, or real `call_leads` outcomes.
+
+## Safety Posture
+
+- Default posture is dry-run. Real lead creation requires `RINGCENTRAL_CREATE_CALL_LEADS=true`; shadow creation requires `RINGCENTRAL_SHADOW_CALL_LEADS=true` with real creation off.
 - Token storage may use Mongo via `RC_TOKEN_STORE=mongo`; local file cache `.ringcentral-token-cache.json` remains supported and ignored by git.
+- RingCentral collection names are mode-aware. Confirm `RINGCENTRAL_COLLECTION_MODE` before touching production state.
 - Existing commands:
   - `pnpm ringcentral:diagnose`
   - `pnpm ringcentral:call-log:validate`
+  - `pnpm ringcentral:call-lead:api-probe`
+  - `pnpm ringcentral:workflow:test`
+  - `pnpm ringcentral:call-log:sync:run`
+  - `pnpm ringcentral:analytics:reconcile:run`
   - `pnpm ringcentral:webhook:create`
+  - `pnpm ringcentral:webhook:create:local`
   - `pnpm ringcentral:webhook:list`
+  - `pnpm ringcentral:webhook:delete`
+  - `pnpm ringcentral:webhook:delete:all`
   - `pnpm ringcentral:webhook:monitor`
-- The call-log validator writes `ringcentral-call-log-validation-output.json`; it must stay sanitized and gitignored.
+- RingCentral validation/probe outputs must stay sanitized and gitignored.
 
 ## Auth Flow
 
@@ -38,6 +56,6 @@ alwaysApply: false
 
 ## Production Direction
 
-- Keep auth/request logic storage-agnostic through `TokenStore`.
 - Production token storage should use `RC_TOKEN_STORE=mongo`, `connectMongo()` from `api/db.ts`, active DB via `getMongoDatabaseName()`/`MONGO_DATABASE_NAME`, collection `integration_tokens`, key `ringcentral:oauth-token`.
-- API routes must never return token values. Webhooks should be added only after controlled call-log validation confirms the expected account-level data boundary.
+- API routes must never return token values. Cron routes require `CRON_SECRET`.
+- Before changing cron cadence, lead write flags, or mapped numbers, update `scripts/ringcentral/RINGCENTRAL-PRODUCTION-RUNBOOK.md` and relevant tests/rules so docs match runtime behavior.
