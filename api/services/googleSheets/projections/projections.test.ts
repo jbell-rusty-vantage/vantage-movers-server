@@ -194,7 +194,7 @@ test("formLeadToRow projects fields in the documented header order", () => {
   assert.equal(row[16], "");
   assert.equal(row[17], lead._id.toString());
   assert.equal(row[18], "ref-abc");
-  assert.equal(row[19], "main site");
+  assert.equal(row[19], "Main Site Forms");
 });
 
 test("formLeadToRow defaults missing ref_no to 'not provided'", () => {
@@ -251,7 +251,7 @@ test("callLeadToRow projects fields in the documented header order", () => {
   assert.equal(row[9], "long_distance");
   assert.equal(row[10], "1200");
   assert.equal(row[11], lead._id.toString());
-  assert.equal(row[12], "TBM Leads");
+  assert.equal(row[12], "10 Best Inbounds");
   assert.equal(row[13], "TRUE");
 });
 

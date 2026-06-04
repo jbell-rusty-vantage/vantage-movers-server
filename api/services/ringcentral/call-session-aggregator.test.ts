@@ -31,8 +31,8 @@ function party(
     queueCall: false,
     missedCall: false,
     targetMatched: true,
-    sourceLabel: "10best Inbounds",
-    sourceCompany: "10best_leads",
+    sourceLabel: "10 Best Inbounds",
+    sourceCompany: "tbm_leads",
     answered: true,
     answeredAt: now,
     terminal: false,
@@ -83,7 +83,7 @@ test("aggregates a multi-party session and qualifies the canonical queue party o
   assert.equal(document.decisionStatus, "qualified");
   assert.equal(document.wouldCreateCallLead, true);
   assert.equal(document.ingestEligible, true);
-  assert.equal(document.sourceCompany, "10best_leads");
+  assert.equal(document.sourceCompany, "tbm_leads");
   assert.equal(document.estimatedDurationSeconds, 121);
 });
 
@@ -120,7 +120,7 @@ test("uses answered agent lifecycle timing when the target queue leg disconnects
   );
 
   assert.equal(document.canonicalPartyId, "p-queue");
-  assert.equal(document.sourceCompany, "10best_leads");
+  assert.equal(document.sourceCompany, "tbm_leads");
   assert.equal(document.terminalAt?.toISOString(), agentTerminalAt.toISOString());
   assert.equal(document.estimatedDurationSeconds, 181);
   assert.equal(document.decisionStatus, "qualified");

@@ -17,7 +17,6 @@ export const SOURCE_COMPANIES = [
   "tbm_leads",
   "tbm_prime_leads",
   "top10_leads",
-  "10best_leads",
   "best_relocation_leads",
   "main_site",
   "not_provided",
@@ -37,7 +36,9 @@ export const SOURCE_LABEL_TO_COMPANY = {
   "TBM Prime Inbounds": "tbm_prime_leads",
   "Top10 Forms": "top10_leads",
   "Top10 Inbounds": "top10_leads",
-  "10best Inbounds": "10best_leads",
+  "10 Best Inbounds": "tbm_leads",
+  "10Best Inbounds": "tbm_leads",
+  "10best Inbounds": "tbm_leads",
   "Best Relocation Forms": "best_relocation_leads",
   "Best Relocation Locals": "best_relocation_leads",
   "Best Relocation Inbounds": "best_relocation_leads",
@@ -60,7 +61,14 @@ export const SOURCE_COMPANY_CONFIGS = {
     label: "TBM Leads",
     leadSheetEnvVar: SHEET_CONTAINER_ENV_VARS.sourceLeads.tbm_leads,
     hasBadTabs: true,
-    aliases: ["TBM Leads", "tbm", "10bestmovingcompanies.com"],
+    aliases: [
+      "TBM Leads",
+      "tbm",
+      "10best",
+      "10best Leads",
+      "10 Best Leads",
+      "10bestmovingcompanies.com",
+    ],
   },
   tbm_prime_leads: {
     slug: "tbm_prime_leads",
@@ -75,13 +83,6 @@ export const SOURCE_COMPANY_CONFIGS = {
     leadSheetEnvVar: SHEET_CONTAINER_ENV_VARS.sourceLeads.top10_leads,
     hasBadTabs: true,
     aliases: ["Top 10 Leads", "Top10 Leads", "Top 10"],
-  },
-  "10best_leads": {
-    slug: "10best_leads",
-    label: "10best Leads",
-    leadSheetEnvVar: SHEET_CONTAINER_ENV_VARS.sourceLeads["10best_leads"],
-    hasBadTabs: true,
-    aliases: ["10best Leads", "10best", "10best Inbounds"],
   },
   best_relocation_leads: {
     slug: "best_relocation_leads",
@@ -179,8 +180,6 @@ export function getFormLeadSourceCompanyLabel(sourceCompany: SourceCompany): str
       return "TBM Prime Forms";
     case "top10_leads":
       return "Top10 Forms";
-    case "10best_leads":
-      return getSourceCompanyLabel(sourceCompany);
     case "best_relocation_leads":
       return "Best Relocation Forms";
     case "main_site":
@@ -193,13 +192,11 @@ export function getFormLeadSourceCompanyLabel(sourceCompany: SourceCompany): str
 export function getCallLeadSourceCompanyLabel(sourceCompany: SourceCompany): string {
   switch (sourceCompany) {
     case "tbm_leads":
-      return "TBM Inbounds";
+      return "10 Best Inbounds";
     case "tbm_prime_leads":
       return "TBM Prime Inbounds";
     case "top10_leads":
       return "Top10 Inbounds";
-    case "10best_leads":
-      return "10best Inbounds";
     case "best_relocation_leads":
       return "Best Relocation Inbounds";
     case "main_site":

@@ -78,8 +78,8 @@ test("normalizePhoneNumberToE164Like handles common RingCentral number shapes", 
 
 test("RingCentral inbound target numbers resolve to configured source metadata", () => {
   assert.deepEqual(resolveRingCentralInboundSource("(888) 316-4387"), {
-    sourceLabel: "10best Inbounds",
-    sourceCompany: "10best_leads",
+    sourceLabel: "10 Best Inbounds",
+    sourceCompany: "tbm_leads",
   });
   assert.equal(resolveRingCentralInboundSource("+15555555555"), null);
 });
@@ -105,8 +105,8 @@ test("normalizer emits one target-matched party event from sample webhook payloa
   assert.equal(events[0]?.normalizedFromPhoneNumber, "+12095831618");
   assert.equal(events[0]?.normalizedToPhoneNumber, "+18883164387");
   assert.equal(events[0]?.targetMatched, true);
-  assert.equal(events[0]?.sourceLabel, "10best Inbounds");
-  assert.equal(events[0]?.sourceCompany, "10best_leads");
+  assert.equal(events[0]?.sourceLabel, "10 Best Inbounds");
+  assert.equal(events[0]?.sourceCompany, "tbm_leads");
 });
 
 test("candidate folding preserves answeredAt from an older delayed event", () => {
@@ -293,8 +293,8 @@ function buildCandidate(
     queueCall: true,
     missedCall: false,
     targetMatched: true,
-    sourceLabel: "10best Inbounds",
-    sourceCompany: "10best_leads",
+    sourceLabel: "10 Best Inbounds",
+    sourceCompany: "tbm_leads",
     answered: true,
     answeredAt: now,
     terminal: false,

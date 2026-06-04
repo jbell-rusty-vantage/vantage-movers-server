@@ -26,7 +26,6 @@ export const SHEET_CONTAINER_ENV_VARS = {
     tbm_leads: "TBM_LEADS_SHEET_ID",
     tbm_prime_leads: "TBM_PRIME_LEADS_SHEET_ID",
     top10_leads: "TOP10_LEADS_SHEET_ID",
-    "10best_leads": "TENBEST_LEADS_SHEET_ID",
     best_relocation_leads: "BEST_RELOCATION_LEADS_SHEET_ID",
     main_site: "MAINSITE_LEADS_SHEET_ID",
   },
@@ -36,7 +35,6 @@ export type SourceLeadSheetEnvVar =
   | "TBM_LEADS_SHEET_ID"
   | "TBM_PRIME_LEADS_SHEET_ID"
   | "TOP10_LEADS_SHEET_ID"
-  | "TENBEST_LEADS_SHEET_ID"
   | "BEST_RELOCATION_LEADS_SHEET_ID"
   | "MAINSITE_LEADS_SHEET_ID";
 

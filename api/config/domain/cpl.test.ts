@@ -20,7 +20,6 @@ test("simple-rate sources return their single configured CPL regardless of local
 
   assert.equal(getCplForSource("tbm_prime_leads", "long_distance"), 190);
   assert.equal(getCplForSource("top10_leads", "long_distance"), 190);
-  assert.equal(getCplForSource("10best_leads", "long_distance"), 150);
   assert.equal(getCplForSource("main_site", "long_distance"), 0);
 });
 
