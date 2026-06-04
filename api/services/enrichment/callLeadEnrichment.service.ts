@@ -1,5 +1,9 @@
 import type { HydratedDocument } from "mongoose";
-import { getCplForSource, type LocalType, type SourceCompany } from "../../config/domain";
+import {
+  getCplForSource,
+  normalizeSourceCompany,
+  type LocalType,
+} from "../../config/domain";
 import { CallLead, type CallLeadDocument } from "../../models/CallLead";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import type {
@@ -75,10 +79,10 @@ export async function syncCallLeadEnrichment(
       }
 
       Object.assign(resolved.lead, resolved.update);
-      if (resolved.update.local) {
+      if (resolved.update.local || resolved.update.source_company) {
         resolved.lead.cpl = getCplForSource(
-          resolved.lead.source_company as SourceCompany,
-          resolved.update.local as LocalType,
+          normalizeSourceCompany(resolved.lead.source_company),
+          resolved.lead.local as LocalType | undefined,
         );
       }
       await resolved.lead.save();
@@ -322,6 +326,7 @@ function buildUpdate(
   if (!options?.skipJobNo) {
     assignIfChanged(update, lead, "job_no", parsed.job_no);
   }
+  assignIfChanged(update, lead, "source_company", parsed.source_company);
   assignIfChanged(update, lead, "name", parsed.name);
   assignIfChanged(update, lead, "email", parsed.email);
   assignIfChanged(update, lead, "pickup_zip", parsed.pickup_zip);

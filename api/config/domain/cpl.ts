@@ -1,5 +1,5 @@
 import type { LocalType } from "./constants";
-import type { SourceCompany } from "./sources";
+import { normalizeSourceCompany, type SourceCompany } from "./sources";
 
 /**
  * Sole owner of CPL (cost-per-lead) values for each source company.
@@ -28,10 +28,10 @@ const SOURCE_COMPANY_CPLS = {
 } as const satisfies Record<SourceCompany, SourceCpl>;
 
 export function getCplForSource(
-  sourceCompany: SourceCompany,
+  sourceCompany: SourceCompany | string | null | undefined,
   local: LocalType | undefined,
 ): number {
-  const cpl = SOURCE_COMPANY_CPLS[sourceCompany];
+  const cpl = SOURCE_COMPANY_CPLS[normalizeSourceCompany(sourceCompany)];
   if (typeof cpl === "number") {
     return cpl;
   }

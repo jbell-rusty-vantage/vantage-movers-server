@@ -1,4 +1,8 @@
-import type { LocalType } from "../../config/domain";
+import {
+  resolveSourceCompany,
+  type LocalType,
+  type SourceCompany,
+} from "../../config/domain";
 import { getStateCodeForZip } from "../../utils/location/pickupZipState";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import type { CallLeadEnrichmentRowInput } from "../../validation/v1.validation";
@@ -17,6 +21,7 @@ export type ParsedCallLeadEnrichmentRow = {
   row_id: string;
   row_index?: number;
   job_no?: string;
+  source_company?: SourceCompany;
   name?: string;
   phone?: string;
   normalized_phone_number?: string;
@@ -57,6 +62,7 @@ export async function parseEnrichmentRow(
     row_id: row.row_id,
     row_index: row.row_index,
     job_no: cleanRequired(row.job_no),
+    source_company: resolveSourceCompany(row.source),
     name: cleanValue(row.customer),
     phone: cleanValue(row.phone),
     normalized_phone_number: normalizePhoneNumberForMatch(row.phone),

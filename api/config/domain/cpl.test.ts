@@ -35,3 +35,9 @@ test("not_provided always reports CPL 0 (no env var, no source sheet)", () => {
   assert.equal(getCplForSource("not_provided", "local"), 0);
   assert.equal(getCplForSource("not_provided", "long_distance"), 0);
 });
+
+test("legacy source labels are normalized before CPL lookup", () => {
+  assert.equal(getCplForSource("10best Inbounds", "long_distance"), 190);
+  assert.equal(getCplForSource("Best Relocation Inbounds", "local"), 40);
+  assert.equal(getCplForSource(undefined, "long_distance"), 0);
+});

@@ -14,6 +14,7 @@ const callLeadEnrichmentRowSchema = z
     row_id: nonEmptyString,
     row_index: z.coerce.number().int().min(0).optional(),
     job_no: optionalString,
+    source: optionalString,
     customer: optionalString,
     phone: optionalString,
     email: optionalString,
