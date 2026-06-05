@@ -110,7 +110,7 @@ async function upsertActiveJob(args: {
       },
     },
     {
-      new: true,
+      returnDocument: "after",
       upsert: true,
       setDefaultsOnInsert: true,
       session: options.session,
@@ -232,7 +232,7 @@ export async function enqueueSheetSyncTombstone(
       },
     },
     {
-      new: true,
+      returnDocument: "after",
       upsert: true,
       setDefaultsOnInsert: true,
       session: options.session,

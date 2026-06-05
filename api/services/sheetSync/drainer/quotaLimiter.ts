@@ -79,7 +79,7 @@ export class QuotaLimiter {
     const doc = await this.store.findOneAndUpdate(
       filter,
       { $inc: { count }, $setOnInsert: filter },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
+      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
     );
     const after = doc?.count ?? count;
     if (after > budget) {

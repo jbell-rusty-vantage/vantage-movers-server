@@ -20,7 +20,7 @@ export async function acquireLease(
         $or: [{ leased_until: { $lte: now } }, { leased_until: { $exists: false } }],
       },
       { $set: { lease_owner: owner, leased_until: leasedUntil } },
-      { new: true, upsert: true, setDefaultsOnInsert: true },
+      { returnDocument: "after", upsert: true, setDefaultsOnInsert: true },
     );
     return result?.lease_owner === owner;
   } catch (error) {

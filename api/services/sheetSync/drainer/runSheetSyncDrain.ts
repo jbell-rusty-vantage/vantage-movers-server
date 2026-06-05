@@ -256,7 +256,7 @@ async function claimDueJobs(
           run_id: runId,
         },
       },
-      { new: true },
+      { returnDocument: "after" },
     );
     if (job) {
       claimed.push(job);
