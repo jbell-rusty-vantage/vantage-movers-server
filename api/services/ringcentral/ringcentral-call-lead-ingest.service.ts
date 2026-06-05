@@ -113,7 +113,6 @@ export async function ingestRingCentralQualifiedCall(
     const lead = await createRingCentralCallLead({
       source_company: call.sourceCompany,
       phone_number: call.callerPhoneNumber,
-      name: call.callerName,
       duration: call.durationSeconds,
       start_time: call.answeredAt ?? call.startTime,
       end_time: call.terminalAt,

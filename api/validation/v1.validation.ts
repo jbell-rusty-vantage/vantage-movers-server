@@ -81,11 +81,17 @@ export {
 
 export {
   adminBrowseQuerySchema,
+  catalogCreateSchema,
+  catalogListQuerySchema,
+  catalogUpdateSchema,
   adminDatabaseScopeSchema,
   adminSearchQuerySchema,
   type AdminBrowseQuery,
   type AdminDatabaseScope,
   type AdminSearchQuery,
+  type CatalogCreateInput,
+  type CatalogListQuery,
+  type CatalogUpdateInput,
 } from "./v1/admin.validation";
 
 export {

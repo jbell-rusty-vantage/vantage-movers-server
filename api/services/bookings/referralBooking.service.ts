@@ -1,6 +1,7 @@
 import type { CreateReferralBookingInput } from "../../validation/v1.validation";
 import { BookedLead } from "../../models/BookedLead";
 import { deriveBookedLeadAgentAllocations, resolveAgentAllocations } from "../agents";
+import { resolveActiveMerchantName } from "../catalog";
 import { upsertCustomerFromBookingContact } from "../customers/customerFromLead.service";
 import {
   finalizeSheetSync,
@@ -35,6 +36,7 @@ export async function createReferralBooking(input: CreateReferralBookingInput) {
     binder_amount: input.total_binder_amount,
   });
   const agent_allocations = await resolveAgentAllocations(allocationInputs);
+  const merchant = await resolveActiveMerchantName(input.merchant);
   const warnings = buildBookedLeadWarnings(agent_allocations);
   const depositAmount = input.deposit_amount;
   const customerName = input.customer_name.trim();
@@ -53,7 +55,7 @@ export async function createReferralBooking(input: CreateReferralBookingInput) {
       agent_allocations,
       total_binder_amount: input.total_binder_amount,
       deposit_amount: depositAmount,
-      merchant: input.merchant,
+      merchant,
       source: REFERRAL_SOURCE,
       is_referral_booking: true,
       local: input.local,

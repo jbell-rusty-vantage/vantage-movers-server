@@ -16,6 +16,7 @@ import {
   upsertCustomerFromBookingContact,
   upsertCustomerFromLead,
 } from "../customers/customerFromLead.service";
+import { resolveActiveMerchantName } from "../catalog";
 import { getLinkedLead } from "../leads";
 import {
   buildTombstonePreviousTargets,
@@ -55,6 +56,7 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
   // Agent allocations upsert reference `agents`; resolve them before the
   // transaction so reference-data writes stay out of the booking txn.
   const agent_allocations = await resolveAgentAllocations(input.agent_allocations);
+  const merchant = await resolveActiveMerchantName(input.merchant);
   const total_binder_amount = resolveTotalBinderAmount(
     agent_allocations,
     input.total_binder_amount,
@@ -62,6 +64,7 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
   const warnings = buildBookedLeadWarnings(agent_allocations);
   const customerNameOverride = input.customer_name?.trim();
   const { customer_phone: _customerPhone, ...bookingInput } = input;
+  const canonicalBookingInput = { ...bookingInput, merchant };
 
   const outcome = await runSheetSyncWrite(async (session) => {
     const lead = await getLinkedLead(input.lead_model, input.lead_ref, session);
@@ -98,7 +101,7 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
       }
 
       Object.assign(existingBooking, {
-        ...bookingInput,
+        ...canonicalBookingInput,
         agent_allocations,
         total_binder_amount,
         ...(customer ? { customer: customer._id } : {}),
@@ -132,7 +135,7 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
     }
 
     const booking = new BookedLead({
-      ...bookingInput,
+      ...canonicalBookingInput,
       agent_allocations,
       total_binder_amount,
       timestamp: input.timestamp ?? new Date(),
@@ -202,7 +205,11 @@ export async function updateBookedLead(id: string, input: UpdateBookedLeadInput)
   }
 
   const { agent_allocations, agent_allocation_mode, total_binder_amount, ...bookingInput } = input;
-  Object.assign(booking, bookingInput);
+  const canonicalBookingInput = { ...bookingInput };
+  if (input.merchant !== undefined) {
+    canonicalBookingInput.merchant = await resolveActiveMerchantName(input.merchant);
+  }
+  Object.assign(booking, canonicalBookingInput);
   if (input.deposit_amount !== undefined) {
     booking.over_2000 = input.deposit_amount > 2000;
     booking.over_4000 = input.deposit_amount > 4000;

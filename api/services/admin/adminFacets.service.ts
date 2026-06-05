@@ -1,5 +1,6 @@
 import { SOURCE_COMPANIES } from "../../config/domain/sources";
 import type { AdminDatabaseScope } from "../../validation/v1.validation";
+import { listCatalogItems } from "../catalog";
 import { getAdminModels, type ConcreteAdminScope } from "./adminScope.service";
 
 /**
@@ -16,30 +17,6 @@ export type AdminFacets = {
   sources: string[];
   merchants: string[];
 };
-
-const PRODUCTION_AGENTS = [
-  "Austin",
-  "Brian",
-  "Dylan",
-  "Jacob",
-  "Josh",
-  "Jason",
-  "Mike",
-  "Patrick",
-  "Sil",
-  "Roys",
-  "House",
-] as const;
-
-const PRODUCTION_MERCHANTS = [
-  "Elavon",
-  "Maverick",
-  "Cardpointe",
-  "EMS",
-  "Paper Check",
-  "Seamless",
-  "Wire Transfer ACH",
-] as const;
 
 const PRODUCTION_SOURCE_LABELS = [
   "TBM Forms",
@@ -73,17 +50,21 @@ export async function getAdminFacets(scope: AdminDatabaseScope): Promise<AdminFa
     return cached.value;
   }
 
-  const value = scope === "production" ? productionFacets() : await historicalFacets();
+  const value = scope === "production" ? await productionFacets() : await historicalFacets();
   cache.set(scope, { value, expiresAt: Date.now() + CACHE_TTL_MS });
   return value;
 }
 
-function productionFacets(): AdminFacets {
+async function productionFacets(): Promise<AdminFacets> {
+  const [agents, merchants] = await Promise.all([
+    listCatalogItems("agents"),
+    listCatalogItems("merchants"),
+  ]);
   return {
-    agents: [...PRODUCTION_AGENTS],
+    agents: agents.map((item) => item.name),
     source_companies: [...SOURCE_COMPANIES],
     sources: [...PRODUCTION_SOURCE_LABELS],
-    merchants: [...PRODUCTION_MERCHANTS],
+    merchants: merchants.map((item) => item.name),
   };
 }
 

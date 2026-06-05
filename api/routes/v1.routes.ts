@@ -56,6 +56,9 @@ import {
   overviewQuerySchema,
   adminBrowseQuerySchema,
   adminSearchQuerySchema,
+  catalogCreateSchema,
+  catalogListQuerySchema,
+  catalogUpdateSchema,
   sheetSyncJobsQuerySchema,
   sheetSyncRunsQuerySchema,
   sheetSyncRetrySchema,
@@ -84,6 +87,13 @@ import {
   retrySheetSyncJobs,
   type AdminResource,
 } from "../services/admin";
+import {
+  createCatalogItem,
+  getCatalogItem,
+  listCatalogItems,
+  updateCatalogItem,
+  type CatalogKind,
+} from "../services/catalog";
 import {
   exportAgentSalesReportCsv,
   exportAnalyticsReportCsv,
@@ -130,6 +140,14 @@ const analyticsReports = [
 
 router.get("/api/v1/admin/search", handleAdminSearch);
 router.get("/api/v1/admin/facets", handleAdminFacets);
+router.get("/api/v1/admin/catalog/agents", handleCatalogList("agents"));
+router.get("/api/v1/admin/catalog/merchants", handleCatalogList("merchants"));
+router.post("/api/v1/admin/agents", handleCatalogCreate("agents"));
+router.patch("/api/v1/admin/agents/:id", handleCatalogUpdate("agents"));
+router.get("/api/v1/admin/merchants", handleCatalogList("merchants"));
+router.get("/api/v1/admin/merchants/:id", handleCatalogDetail("merchants"));
+router.post("/api/v1/admin/merchants", handleCatalogCreate("merchants"));
+router.patch("/api/v1/admin/merchants/:id", handleCatalogUpdate("merchants"));
 for (const resource of adminResources) {
   router.get(`/api/v1/admin/${resource}`, handleAdminBrowse(resource));
   router.get(`/api/v1/admin/${resource}/:id`, handleAdminDetail(resource));
@@ -251,6 +269,61 @@ async function handleAdminFacets(req: Request, res: Response) {
   } catch (error) {
     return sendError(req, res, error);
   }
+}
+
+function handleCatalogList(kind: CatalogKind) {
+  return async (req: Request, res: Response) => {
+    try {
+      await connectMongo();
+      const parsed = catalogListQuerySchema.parse(req.query);
+      const items = await listCatalogItems(kind, {
+        includeInactive: parsed.include_inactive === true,
+      });
+      return res.json({ ok: true, data: { items } });
+    } catch (error) {
+      return sendError(req, res, error);
+    }
+  };
+}
+
+function handleCatalogDetail(kind: CatalogKind) {
+  return async (req: Request, res: Response) => {
+    try {
+      const id = getValidObjectId(req);
+      await connectMongo();
+      const data = await getCatalogItem(kind, id);
+      return res.json({ ok: true, data });
+    } catch (error) {
+      return sendError(req, res, error);
+    }
+  };
+}
+
+function handleCatalogCreate(kind: CatalogKind) {
+  return async (req: Request, res: Response) => {
+    try {
+      await connectMongo();
+      const parsed = catalogCreateSchema.parse(req.body);
+      const data = await createCatalogItem(kind, parsed);
+      return res.status(201).json({ ok: true, data });
+    } catch (error) {
+      return sendError(req, res, error);
+    }
+  };
+}
+
+function handleCatalogUpdate(kind: CatalogKind) {
+  return async (req: Request, res: Response) => {
+    try {
+      const id = getValidObjectId(req);
+      await connectMongo();
+      const parsed = catalogUpdateSchema.parse(req.body);
+      const data = await updateCatalogItem(kind, id, parsed);
+      return res.json({ ok: true, data });
+    } catch (error) {
+      return sendError(req, res, error);
+    }
+  };
 }
 
 function handleAdminExport(resource: AdminResource) {

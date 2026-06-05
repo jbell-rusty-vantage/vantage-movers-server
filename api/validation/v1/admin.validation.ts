@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { booleanInput } from "./common";
+import { booleanInput, nonEmptyString, requireAtLeastOne } from "./common";
 
 export const adminDatabaseScopeSchema = z
   .enum(["production", "historical", "combined"])
@@ -78,6 +78,27 @@ export const adminSearchQuerySchema = z
   })
   .strip();
 
+export const catalogListQuerySchema = z
+  .object({
+    include_inactive: booleanInput.optional(),
+  })
+  .strip();
+
+export const catalogCreateSchema = z
+  .object({
+    name: nonEmptyString,
+    active: booleanInput.optional(),
+    role: nonEmptyString.optional(),
+  })
+  .strict();
+
+export const catalogUpdateSchema = catalogCreateSchema
+  .partial()
+  .refine(requireAtLeastOne, "At least one catalog field must be provided");
+
 export type AdminBrowseQuery = z.infer<typeof adminBrowseQuerySchema>;
 export type AdminSearchQuery = z.infer<typeof adminSearchQuerySchema>;
 export type AdminDatabaseScope = z.infer<typeof adminDatabaseScopeSchema>;
+export type CatalogListQuery = z.infer<typeof catalogListQuerySchema>;
+export type CatalogCreateInput = z.infer<typeof catalogCreateSchema>;
+export type CatalogUpdateInput = z.infer<typeof catalogUpdateSchema>;

@@ -5,6 +5,7 @@ import type {
   CreateBookedLeadFromSourceInput,
   CreateBookedLeadInput,
 } from "../../validation/v1.validation";
+import { resolveActiveAgentByName } from "../catalog";
 import { V1ServiceError } from "../v1ServiceError";
 import { normalizeAgentName } from "./agentName";
 
@@ -80,7 +81,7 @@ export async function resolveAgentAllocations(
     }
     normalizedNames.add(normalizedName);
 
-    const agent = await upsertAgentByName(name);
+    const agent = await resolveActiveAgentByName(name);
     resolved.push({
       agent: agent._id,
       agent_name_snapshot: agent.name,
