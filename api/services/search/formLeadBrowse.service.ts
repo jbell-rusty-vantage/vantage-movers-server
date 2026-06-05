@@ -24,6 +24,8 @@ import {
 
 const FULL_TEXT_FIELDS = [
   "name",
+  "first_name",
+  "last_name",
   "email",
   "phone_number",
   "source_company",
@@ -34,6 +36,8 @@ export type FormLeadBrowseResult = {
   _id: string;
   source_company?: string;
   name?: string;
+  first_name?: string;
+  last_name?: string;
   email?: string;
   phone_number?: string;
   ref_no?: string;
@@ -89,7 +93,13 @@ function buildFormLeadBrowseFilter(
 
   const name = normalizeValue(query.name);
   if (name) {
-    clauses.push(fieldContainsClause("name", name));
+    clauses.push({
+      $or: [
+        fieldContainsClause("name", name),
+        fieldContainsClause("first_name", name),
+        fieldContainsClause("last_name", name),
+      ],
+    });
   }
 
   const email = normalizeValue(query.email)?.toLowerCase();
@@ -118,6 +128,8 @@ function mapFormLead(doc: Record<string, unknown>): FormLeadBrowseResult {
     _id: String(doc._id),
     source_company: doc.source_company as string | undefined,
     name: doc.name as string | undefined,
+    first_name: doc.first_name as string | undefined,
+    last_name: doc.last_name as string | undefined,
     email: doc.email as string | undefined,
     phone_number: doc.phone_number as string | undefined,
     ref_no: doc.ref_no as string | undefined,

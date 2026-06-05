@@ -44,6 +44,8 @@ export type PopulatedBookedLead = {
 export type FormLeadSheetSource = SyncableDocument & {
   timestamp: Date;
   name: string;
+  first_name?: string | null;
+  last_name?: string | null;
   pickup_zip: string;
   destination_zip: string;
   pickup_state?: string | null;
@@ -71,6 +73,8 @@ export type CallLeadSheetSource = SyncableDocument & {
   timestamp: Date;
   job_no?: string | null;
   name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
   phone_number?: string | null;
   email?: string | null;
   pickup_zip?: string | null;

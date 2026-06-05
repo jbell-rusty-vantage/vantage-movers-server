@@ -24,6 +24,8 @@ import {
 
 const FULL_TEXT_FIELDS = [
   "name",
+  "first_name",
+  "last_name",
   "email",
   "phone_number",
   "source_company",
@@ -34,6 +36,8 @@ export type CallLeadBrowseResult = {
   _id: string;
   source_company?: string;
   name?: string;
+  first_name?: string;
+  last_name?: string;
   email?: string;
   phone_number?: string;
   job_no?: string;
@@ -88,7 +92,13 @@ function buildCallLeadBrowseFilter(
 
   const name = normalizeValue(query.name);
   if (name) {
-    clauses.push(fieldContainsClause("name", name));
+    clauses.push({
+      $or: [
+        fieldContainsClause("name", name),
+        fieldContainsClause("first_name", name),
+        fieldContainsClause("last_name", name),
+      ],
+    });
   }
 
   const email = normalizeValue(query.email)?.toLowerCase();
@@ -122,6 +132,8 @@ function mapCallLead(doc: Record<string, unknown>): CallLeadBrowseResult {
     _id: String(doc._id),
     source_company: doc.source_company as string | undefined,
     name: doc.name as string | undefined,
+    first_name: doc.first_name as string | undefined,
+    last_name: doc.last_name as string | undefined,
     email: doc.email as string | undefined,
     phone_number: doc.phone_number as string | undefined,
     job_no: doc.job_no as string | undefined,

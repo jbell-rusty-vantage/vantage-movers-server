@@ -23,11 +23,19 @@ import {
  */
 
 function requireAtLeastOneTruthySearchField(value: Record<string, unknown>) {
-  return ["ref_no", "name", "email", "phone_number"].some((field) => Boolean(value[field]));
+  return ["ref_no", "name", "first_name", "last_name", "email", "phone_number"].some((field) =>
+    Boolean(value[field]),
+  );
 }
 
 function requireAtLeastOneTruthyCallLeadSearchField(value: Record<string, unknown>) {
-  return ["phone_number", "job_no", "email", "name"].some((field) => Boolean(value[field]));
+  return ["phone_number", "job_no", "email", "name", "first_name", "last_name"].some((field) =>
+    Boolean(value[field]),
+  );
+}
+
+function hasLeadName(value: Record<string, unknown>) {
+  return Boolean(value.name || value.first_name || value.last_name);
 }
 
 function requireCallLeadIdentity(value: Record<string, unknown>) {
@@ -36,7 +44,9 @@ function requireCallLeadIdentity(value: Record<string, unknown>) {
 
 const formLeadFields = {
   source_company: sourceCompanySchema,
-  name: nonEmptyString,
+  name: optionalString,
+  first_name: optionalString,
+  last_name: optionalString,
   source_company_site: optionalString,
   timestamp: optionalDate,
   pickup_zip: zipSchema,
@@ -60,7 +70,8 @@ export const createFormLeadSchema = z
     crm_company_label: nonEmptyString.default("Get Movers"),
     post_to_granot: booleanInput.default(false),
   })
-  .strict();
+  .strict()
+  .refine(hasLeadName, "Form lead requires name, first_name, or last_name");
 
 export const updateFormLeadSchema = z
   .object({
@@ -75,6 +86,8 @@ export const searchFormLeadsSchema = z
   .object({
     ref_no: optionalString,
     name: optionalString,
+    first_name: optionalString,
+    last_name: optionalString,
     email: looseEmailString,
     phone_number: optionalString,
     limit: z.coerce.number().int().min(1).max(25).optional(),
@@ -92,6 +105,8 @@ const callLeadFields = {
   timestamp: optionalDate,
   job_no: optionalString,
   name: optionalString,
+  first_name: optionalString,
+  last_name: optionalString,
   email: emailSchema,
   phone_number: optionalString,
   duration: optionalNumber,
@@ -125,6 +140,8 @@ export const searchCallLeadsSchema = z
     job_no: optionalString,
     email: looseEmailString,
     name: optionalString,
+    first_name: optionalString,
+    last_name: optionalString,
     limit: z.coerce.number().int().min(1).max(25).optional(),
   })
   .strict()

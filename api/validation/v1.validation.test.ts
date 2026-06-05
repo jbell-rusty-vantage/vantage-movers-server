@@ -248,6 +248,38 @@ test("createFormLeadSchema defaults post_to_granot to false when omitted", () =>
   assert.equal(parsed.post_to_granot, false);
 });
 
+test("createFormLeadSchema accepts first and last name without name", () => {
+  const parsed = createFormLeadSchema.parse({
+    source_company: "main_site",
+    first_name: " Jane ",
+    last_name: " Customer ",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    move_size: "Studio",
+    ref_no: "not provided",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+  });
+
+  assert.equal(parsed.name, undefined);
+  assert.equal(parsed.first_name, "Jane");
+  assert.equal(parsed.last_name, "Customer");
+});
+
+test("createFormLeadSchema rejects payloads without any name fields", () => {
+  const parsed = createFormLeadSchema.safeParse({
+    source_company: "main_site",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    move_size: "Studio",
+    ref_no: "not provided",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+  });
+
+  assert.equal(parsed.success, false);
+});
+
 test("createFormLeadSchema accepts post_to_granot boolean false", () => {
   const parsed = createFormLeadSchema.parse({
     source_company: "main_site",
@@ -304,6 +336,18 @@ test("createCallLeadSchema does not accept server-owned flags from clients", () 
   });
 
   assert.equal(parsed.success, false);
+});
+
+test("createCallLeadSchema accepts optional first and last name", () => {
+  const parsed = createCallLeadSchema.parse({
+    source_company: "BestRelocation Inbounds",
+    phone_number: "5555551212",
+    first_name: "Jane",
+    last_name: "Caller",
+  });
+
+  assert.equal(parsed.first_name, "Jane");
+  assert.equal(parsed.last_name, "Caller");
 });
 
 test("bookedCallLeadReconciliationBatchSchema accepts Booked Jobs CRM rows", () => {

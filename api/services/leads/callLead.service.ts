@@ -28,6 +28,7 @@ import {
 // resolves correctly via ESM/CJS late binding.
 import { deleteBookedLead, refreshAttachedBookingFromLead } from "../v1.service";
 import { hasFormFillForCallLead } from "./duplicateLead.service";
+import { normalizeLeadName, normalizeLeadNameUpdate } from "./leadName.service";
 import { resolveOptionalLocation } from "./leadLocation.service";
 import { parseSourceCompany } from "./leadSourceCompany";
 
@@ -113,18 +114,19 @@ function callLeadCreateJob(leadId: string): FullSheetSyncJob {
 }
 
 export async function createCallLead(input: CreateCallLeadInput) {
-  const source_company = parseSourceCompany(input.source_company);
-  const location = await resolveOptionalLocation(input);
-  const local = location.local ?? input.local;
-  const form_fill = await hasFormFillForCallLead(source_company, input.phone_number);
+  const normalizedInput = normalizeLeadName(input);
+  const source_company = parseSourceCompany(normalizedInput.source_company);
+  const location = await resolveOptionalLocation(normalizedInput);
+  const local = location.local ?? normalizedInput.local;
+  const form_fill = await hasFormFillForCallLead(source_company, normalizedInput.phone_number);
   const lead = await runSheetSyncWrite(async (session) => {
     const created = new CallLead({
-      ...input,
+      ...normalizedInput,
       ...location,
       source_company,
       local,
       form_fill,
-      timestamp: toFloridaTimestamp(input.timestamp),
+      timestamp: toFloridaTimestamp(normalizedInput.timestamp),
       cpl: getCplForSource(source_company, local),
     });
     await created.save({ session });
@@ -144,7 +146,7 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
     });
   }
 
-  const update = { ...input };
+  const update = normalizeLeadNameUpdate({ ...input }, lead);
   if (input.source_company !== undefined) {
     update.source_company = parseSourceCompany(input.source_company);
   }

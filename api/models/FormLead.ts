@@ -13,6 +13,8 @@ const FormLeadSchema = new Schema(
   {
     source_company: sourceCompanyField,
     name: { type: String, required: true, trim: true },
+    first_name: { type: String, trim: true },
+    last_name: { type: String, trim: true },
     source_company_site: { type: String, trim: true },
     timestamp: { type: Date, required: true, default: Date.now },
     lid: { type: String, trim: true },

@@ -43,17 +43,21 @@ import {
   isDuplicateFormLead,
   markMatchingCallLeadsWithFormFill,
 } from "./duplicateLead.service";
+import { normalizeLeadName, normalizeLeadNameUpdate } from "./leadName.service";
 
 export async function createFormLead(input: CreateFormLeadInput) {
   const { crm_company_label, post_to_granot, ...formLeadInput } = input;
-  formLeadInput.phone_number = normalizePhoneNumberForStorage(formLeadInput.phone_number);
-  const source_company = parseSourceCompany(formLeadInput.source_company);
-  const location = await resolveRequiredLocation(formLeadInput);
+  const normalizedFormLeadInput = normalizeLeadName(formLeadInput);
+  normalizedFormLeadInput.phone_number = normalizePhoneNumberForStorage(
+    normalizedFormLeadInput.phone_number,
+  );
+  const source_company = parseSourceCompany(normalizedFormLeadInput.source_company);
+  const location = await resolveRequiredLocation(normalizedFormLeadInput);
   const local = deriveFormLeadLocal(location.pickup_state, location.delivery_state);
   const duplicate = await isDuplicateFormLead(
     source_company,
-    formLeadInput.phone_number,
-    formLeadInput.email,
+    normalizedFormLeadInput.phone_number,
+    normalizedFormLeadInput.email,
   );
   const shouldPostToGranot = post_to_granot && !duplicate;
 
@@ -63,13 +67,13 @@ export async function createFormLead(input: CreateFormLeadInput) {
   // latency/failure can never hold open or roll back the transaction.
   const { lead, jobs } = await runSheetSyncWrite(async (session) => {
     const created = new FormLead({
-      ...formLeadInput,
+      ...normalizedFormLeadInput,
       ...location,
       source_company,
       local,
-      ref_no: formLeadInput.ref_no?.trim() || "not provided",
-      timestamp: toFloridaTimestamp(formLeadInput.timestamp),
-      move_date: formLeadInput.move_date ?? new Date(),
+      ref_no: normalizedFormLeadInput.ref_no?.trim() || "not provided",
+      timestamp: toFloridaTimestamp(normalizedFormLeadInput.timestamp),
+      move_date: normalizedFormLeadInput.move_date ?? new Date(),
       cpl: getCplForSource(source_company, local),
       duplicate,
       post_to_granot: shouldPostToGranot,
@@ -163,7 +167,7 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
     );
   }
 
-  const update = { ...input };
+  const update = normalizeLeadNameUpdate({ ...input }, lead);
   if (input.source_company !== undefined) {
     update.source_company = parseSourceCompany(input.source_company);
   }

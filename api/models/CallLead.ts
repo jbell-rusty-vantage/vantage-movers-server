@@ -41,6 +41,8 @@ const CallLeadSchema = new Schema(
     timestamp: { type: Date, required: true, default: Date.now },
     job_no: { type: String, trim: true },
     name: { type: String, trim: true },
+    first_name: { type: String, trim: true },
+    last_name: { type: String, trim: true },
     email: { type: String, trim: true, lowercase: true },
     phone_number: { type: String, trim: true },
     normalized_phone_number: { type: String, trim: true },
