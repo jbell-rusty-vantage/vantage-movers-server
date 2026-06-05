@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { inspect } from "node:util";
 import mongoose from "mongoose";
+import { BookedLead } from "../../models/BookedLead";
 import { FormLead } from "../../models/FormLead";
 import { registerHistoricalModels } from "../../../scripts/historical/models";
 import { toCsv } from "../../utils/csv";
@@ -22,6 +23,8 @@ type QueryCapture = {
 const originalFormLeadFind = FormLead.find as unknown;
 const originalFormLeadFindById = FormLead.findById as unknown;
 const originalFormLeadCount = FormLead.countDocuments as unknown;
+const originalBookedLeadFind = BookedLead.find as unknown;
+const originalBookedLeadCount = BookedLead.countDocuments as unknown;
 const historicalModels = registerHistoricalModels();
 const originalHistoricalFormLeadFind = historicalModels.FormLead.find as unknown;
 const originalHistoricalFormLeadCount = historicalModels.FormLead.countDocuments as unknown;
@@ -30,6 +33,8 @@ afterEach(() => {
   (FormLead as unknown as MutableModel).find = originalFormLeadFind;
   (FormLead as unknown as MutableModel).findById = originalFormLeadFindById;
   (FormLead as unknown as MutableModel).countDocuments = originalFormLeadCount;
+  (BookedLead as unknown as MutableModel).find = originalBookedLeadFind;
+  (BookedLead as unknown as MutableModel).countDocuments = originalBookedLeadCount;
   (historicalModels.FormLead as unknown as MutableModel).find = originalHistoricalFormLeadFind;
   (historicalModels.FormLead as unknown as MutableModel).countDocuments = originalHistoricalFormLeadCount;
 });
@@ -84,6 +89,32 @@ test("admin form lead browse excludes duplicates by default", async () => {
   const filterPreview = inspect(capture.filter, { depth: null });
   assert.match(filterPreview, /duplicate/);
   assert.doesNotMatch(filterPreview, /duplicate:\s*true/);
+});
+
+test("admin booked lead browse filters source company slugs on the source field", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(BookedLead, capture, []);
+  stubCount(BookedLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({ source: "top10_leads", limit: 10 });
+  await browseAdminResource("booked-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /source/);
+  assert.match(filterPreview, /top10_leads/);
+  assert.doesNotMatch(filterPreview, /source_company/);
+});
+
+test("admin booked lead browse resolves legacy source company labels onto source", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(BookedLead, capture, []);
+  stubCount(BookedLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({ source_company: "Top10 Forms", limit: 10 });
+  await browseAdminResource("booked-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /top10_leads/);
 });
 
 test("admin form lead browse can filter to duplicates only", async () => {

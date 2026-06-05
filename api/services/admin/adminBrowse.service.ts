@@ -1,4 +1,5 @@
 import mongoose, { type Model } from "mongoose";
+import { resolveSourceCompany } from "../../config/domain";
 import type { AdminBrowseQuery, AdminDatabaseScope } from "../../validation/v1.validation";
 import { V1ServiceError } from "../v1ServiceError";
 import {
@@ -88,9 +89,6 @@ const RESOURCE_CONFIGS: Record<AdminResource, ResourceConfig> = {
       "agent_allocations.agent_name_snapshot",
     ],
     stringFilters: {
-      source_company: ["source_company"],
-      source: ["source"],
-      source_label: ["source"],
       agent: ["agent_allocations.agent_name_snapshot"],
       customer_name: ["customer_name", "customer_name_snapshot"],
       job_no: ["job_no", "normalized_job_no"],
@@ -111,9 +109,6 @@ const RESOURCE_CONFIGS: Record<AdminResource, ResourceConfig> = {
     dateFields: ["cancel_date", "timestamp", "createdAt", "book_date"],
     qFields: ["job_no", "normalized_job_no", "customer_name", "reason", "cancelled_by", "source", "merchant", "agent"],
     stringFilters: {
-      source_company: ["source_company"],
-      source: ["source"],
-      source_label: ["source"],
       agent: ["agent"],
       customer_name: ["customer_name", "normalized_customer_name"],
       job_no: ["job_no", "normalized_job_no"],
@@ -266,13 +261,46 @@ function applyResourceFilter(
   query: AdminBrowseQuery,
   filter: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (resource !== "form-leads") {
-    return filter;
+  if (resource === "form-leads") {
+    const duplicateClause =
+      query.duplicate === true ? { duplicate: true } : { duplicate: { $ne: true } };
+    return mergeFilters(filter, duplicateClause);
   }
 
-  const duplicateClause =
-    query.duplicate === true ? { duplicate: true } : { duplicate: { $ne: true } };
-  return mergeFilters(filter, duplicateClause);
+  if (resource === "booked-leads" || resource === "cancelled-leads") {
+    return mergeFilters(filter, bookingSourceFilterClause(query));
+  }
+
+  return filter;
+}
+
+function bookingSourceFilterClause(query: AdminBrowseQuery): Record<string, unknown> {
+  const raw =
+    (typeof query.source === "string" ? query.source.trim() : "") ||
+    (typeof query.source_label === "string" ? query.source_label.trim() : "") ||
+    (typeof query.source_company === "string" ? query.source_company.trim() : "");
+
+  if (!raw) {
+    return {};
+  }
+
+  const resolved = resolveSourceCompany(raw) ?? raw;
+  const variants = resolved === raw ? [resolved] : [resolved, raw];
+  const uniqueVariants = [...new Set(variants.map((value) => value.toLowerCase()))].map(
+    (lower) => variants.find((value) => value.toLowerCase() === lower)!,
+  );
+
+  if (uniqueVariants.length === 1) {
+    return { source: exactCaseInsensitivePattern(uniqueVariants[0]) };
+  }
+
+  return {
+    $or: uniqueVariants.map((value) => ({ source: exactCaseInsensitivePattern(value) })),
+  };
+}
+
+function exactCaseInsensitivePattern(value: string): RegExp {
+  return new RegExp(`^${escapeRegex(value)}$`, "i");
 }
 
 function mergeFilters(
