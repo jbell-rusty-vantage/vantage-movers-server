@@ -9,6 +9,11 @@ import {
   type AdminResource,
   type ConcreteAdminScope,
 } from "./adminScope.service";
+import {
+  emptyAgentBrowseMetrics,
+  getAgentBrowseMetrics,
+  normalizeAgentMetricKey,
+} from "./agentBrowseMetrics.service";
 
 export type AdminBrowseResult = {
   items: Record<string, unknown>[];
@@ -164,6 +169,7 @@ export async function getAdminResourceDetail(
   resource: AdminResource,
   id: string,
   scope: AdminDatabaseScope,
+  detailQuery?: AdminBrowseQuery,
 ): Promise<Record<string, unknown>> {
   if (!mongoose.isValidObjectId(id)) {
     throw new V1ServiceError("Invalid Mongo ObjectId", 400);
@@ -171,13 +177,13 @@ export async function getAdminResourceDetail(
   const concreteScope = rejectCombinedDetailScope(scope);
   const models = getAdminModels(concreteScope);
   const config = RESOURCE_CONFIGS[resource];
-  const query = applyPopulate(models[resource].findById(id), config);
-  const doc = await query.lean({ virtuals: true }).exec();
+  const findQuery = applyPopulate(models[resource].findById(id), config);
+  const doc = await findQuery.lean({ virtuals: true }).exec();
   if (!doc) {
     throw new V1ServiceError("Admin record not found", 404);
   }
   const item = normalizeDoc(doc as Record<string, unknown>, concreteScope);
-  return appendDetailRelations(resource, item, concreteScope, models);
+  return appendDetailRelations(resource, item, concreteScope, models, detailQuery);
 }
 
 export async function exportAdminResourceRows(
@@ -247,8 +253,10 @@ async function browseConcrete(
     findQuery.lean({ virtuals: true }).exec(),
     model.countDocuments(filter).exec(),
   ]);
+  const items = (docs as Record<string, unknown>[]).map((doc) => normalizeDoc(doc, scope));
+  const enrichedItems = resource === "agents" ? await enrichAgentItems(items, models, query) : items;
   return {
-    items: (docs as Record<string, unknown>[]).map((doc) => normalizeDoc(doc, scope)),
+    items: enrichedItems,
     page: query.page,
     limit: query.limit,
     total,
@@ -405,6 +413,7 @@ async function appendDetailRelations(
   item: Record<string, unknown>,
   scope: ConcreteAdminScope,
   models: Record<AdminResource, Model<unknown>>,
+  query?: AdminBrowseQuery,
 ): Promise<Record<string, unknown>> {
   const id = item._id;
   if (!id || typeof id !== "string") return item;
@@ -424,33 +433,24 @@ async function appendDetailRelations(
     };
   }
   if (resource === "agents") {
-    const name = typeof item.name === "string" ? item.name : "";
-    const bookings = await models["booked-leads"]
-      .find({ "agent_allocations.agent_name_snapshot": new RegExp(`^${escapeRegex(name)}$`, "i") })
-      .sort({ book_date: -1 })
-      .limit(25)
-      .lean({ virtuals: true })
-      .exec();
-    const totalBinder = (bookings as Record<string, unknown>[]).reduce(
-      (sum, booking) => sum + numberValue(booking.total_binder_amount),
-      0,
-    );
-    const totalDeposit = (bookings as Record<string, unknown>[]).reduce(
-      (sum, booking) => sum + numberValue(booking.deposit_amount),
-      0,
-    );
-    const cancellationCount = (bookings as Record<string, unknown>[]).filter((booking) => booking.cancelled).length;
     return {
-      ...item,
-      booking_count: bookings.length,
-      total_binder_amount: totalBinder,
-      total_deposit_amount: totalDeposit,
-      cancellation_count: cancellationCount,
-      cancellation_rate: bookings.length ? cancellationCount / bookings.length : 0,
-      recent_bookings: (bookings as Record<string, unknown>[]).map((doc) => normalizeDoc(doc, scope)),
+      ...(await enrichAgentItems([item], models, query ?? ({ database_scope: scope } as AdminBrowseQuery)))[0],
     };
   }
   return item;
+}
+
+async function enrichAgentItems(
+  items: Record<string, unknown>[],
+  models: ReturnType<typeof getAdminModels>,
+  query: AdminBrowseQuery,
+): Promise<Record<string, unknown>[]> {
+  const agentNames = items.map((item) => (typeof item.name === "string" ? item.name : ""));
+  const metricsByAgent = await getAgentBrowseMetrics(models, query, agentNames);
+  return items.map((item) => ({
+    ...item,
+    ...(metricsByAgent.get(normalizeAgentMetricKey(item.name)) ?? emptyAgentBrowseMetrics()),
+  }));
 }
 
 function normalizeDoc(doc: Record<string, unknown>, scope: ConcreteAdminScope): Record<string, unknown> {
@@ -475,10 +475,6 @@ function sortableValue(value: unknown): string | number {
   if (typeof value === "number") return value;
   if (typeof value === "string") return value.toLowerCase();
   return "";
-}
-
-function numberValue(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function escapeRegex(value: string): string {

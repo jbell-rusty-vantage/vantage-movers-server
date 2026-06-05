@@ -240,8 +240,8 @@ function handleAdminDetail(resource: AdminResource) {
     try {
       const id = getValidObjectId(req);
       await connectMongo();
-      const parsed = adminBrowseQuerySchema.pick({ database_scope: true }).parse(req.query);
-      const data = await getAdminResourceDetail(resource, id, parsed.database_scope);
+      const parsed = adminBrowseQuerySchema.parse(req.query);
+      const data = await getAdminResourceDetail(resource, id, parsed.database_scope, parsed);
       return res.json({ ok: true, data });
     } catch (error) {
       return sendError(req, res, error);
