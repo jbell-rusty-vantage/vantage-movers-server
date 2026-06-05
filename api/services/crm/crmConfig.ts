@@ -33,7 +33,7 @@ export const CRM_FORM_LEAD_ENDPOINT = `https://lead.hellomoving.com/LEADSGWHTTP.
  * Used whenever the create-form-lead request does not provide
  * `crm_company_label` or provides a blank one.
  */
-export const CRM_FORM_LEAD_LABEL = "Get Movers" as const;
+export const CRM_FORM_LEAD_LABEL = "Main Site Forms" as const;
 
 /**
  * Returns the CRM endpoint with its `API_ID` and `MOVERREF` query

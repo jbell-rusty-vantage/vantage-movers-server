@@ -20,7 +20,7 @@ export type AdminFacets = {
 
 const PRODUCTION_SOURCE_LABELS = [
   "TBM Forms",
-  "10 Best Inbounds",
+  "10best Inbounds",
   "TBM Prime Forms",
   "TBM Prime Inbounds",
   "Top10 Forms",

@@ -60,6 +60,12 @@ export function formatCrmMoveDate(date: Date): string {
  *     reads it back as the web-app `ref_no` column and uses it to
  *     update the right FormLead. NEVER substitute the Mongo `ref_no`
  *     field here.
+ *
+ * Exact CRM labels (see `CRM_SOURCE_LABELS` in `config/domain/sources`):
+ *   - Form leads: source company + local move type
+ *     (`getCrmFormLeadSourceCompanyLabel`).
+ *   - Call leads: source company inbound label
+ *     (`getCallLeadSourceCompanyLabel`).
  */
 export function buildCrmFormLeadPayload(
   lead: FormLeadDocument,

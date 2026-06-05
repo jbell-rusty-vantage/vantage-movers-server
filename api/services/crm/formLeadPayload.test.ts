@@ -91,7 +91,7 @@ test("buildCrmFormLeadPayload maps lead fields onto the Granot wire shape", () =
     move_date: new Date(2026, 5, 1),
   });
 
-  const payload = buildCrmFormLeadPayload(lead, "Get Movers");
+  const payload = buildCrmFormLeadPayload(lead, "Main Site Forms");
 
   assert.deepEqual(
     {
@@ -107,7 +107,7 @@ test("buildCrmFormLeadPayload maps lead fields onto the Granot wire shape", () =
       leadno: payload.leadno,
     },
     {
-      label: "Get Movers",
+      label: "Main Site Forms",
       firstname: "Jane",
       lastname: "Customer",
       ozip: "10001",
@@ -148,7 +148,7 @@ test("summarizeCrmPayloadForLog handles blank PII fields without throwing", () =
     email: undefined,
     phone_number: "",
   });
-  const payload = buildCrmFormLeadPayload(lead, "Get Movers");
+  const payload = buildCrmFormLeadPayload(lead, "Main Site Forms");
   const summary = summarizeCrmPayloadForLog(payload);
 
   assert.equal(summary.firstname, "");

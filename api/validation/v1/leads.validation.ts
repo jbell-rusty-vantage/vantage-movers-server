@@ -67,7 +67,7 @@ export const createFormLeadSchema = z
     ...formLeadFields,
     source_company: sourceCompanySchema.default("not_provided"),
     ref_no: nonEmptyString.default("not provided"),
-    crm_company_label: nonEmptyString.default("Get Movers"),
+    crm_company_label: nonEmptyString.default("Main Site Forms"),
     post_to_granot: booleanInput.default(false),
   })
   .strict()

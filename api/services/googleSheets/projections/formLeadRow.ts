@@ -1,4 +1,7 @@
-import { getFormLeadSourceCompanyLabel } from "../../../config/domain";
+import {
+  getFormLeadSourceCompanyLabel,
+  LocalType,
+} from "../../../config/domain";
 import { FORM_LEAD_UNKNOWN_STATE } from "../../../models/FormLead";
 import type { FormLeadSheetSource } from "../types";
 import {
@@ -34,7 +37,7 @@ export function formLeadToRow(lead: FormLeadSheetSource): string[] {
     cancelledCell(Boolean(lead.cancelled)),
     lead._id.toString(),
     lead.ref_no?.trim() || "not provided",
-    getFormLeadSourceCompanyLabel(lead.source_company),
+    getFormLeadSourceCompanyLabel(lead.source_company, lead.local as LocalType),
   ];
 }
 

@@ -59,7 +59,7 @@ test("submitFormLeadToCrm POSTs to the Granot lead gateway with the urlencoded p
     "application/x-www-form-urlencoded",
   );
   const body = String(calls[0].init?.body ?? "");
-  assert.match(body, /label=Get\+Movers/);
+  assert.match(body, /label=Main\+Site\+Forms/);
   assert.match(body, /firstname=Jane/);
   assert.match(body, /lastname=Customer/);
   assert.match(body, new RegExp(`leadno=${lead._id.toString()}`));

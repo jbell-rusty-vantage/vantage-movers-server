@@ -1,3 +1,4 @@
+import type { LocalType } from "./constants";
 import {
   SHEET_CONTAINER_ENV_VARS,
   type SourceLeadSheetEnvVar,
@@ -24,7 +25,22 @@ export const SOURCE_COMPANIES = [
 
 export type SourceCompany = (typeof SOURCE_COMPANIES)[number];
 
-// TODO: Ensure these will work at the exact character order level Best Relocation Forms and BestRelocation Forms or BestRelocationForms is the same
+/** Exact Granot CRM `label` values accepted by HelloMoving. */
+export const CRM_SOURCE_LABELS = [
+  "TBM Forms",
+  "10best Inbounds",
+  "TBM Prime Forms",
+  "TBM Prime Inbounds",
+  "Top10 Forms",
+  "Top10 Inbounds",
+  "Best Relocation Forms",
+  "Best Relocation Locals",
+  "Best Relocation Inbounds",
+  "Main Site Forms",
+  "Main Site Inbounds",
+] as const;
+
+export type CrmSourceLabel = (typeof CRM_SOURCE_LABELS)[number];
 
 export const SOURCE_LABEL_TO_COMPANY = {
   "Main Site Forms": "main_site",
@@ -172,7 +188,10 @@ export function getSourceCompanyLabel(sourceCompany: SourceCompany): string {
   return SOURCE_COMPANY_CONFIGS[sourceCompany].label;
 }
 
-export function getFormLeadSourceCompanyLabel(sourceCompany: SourceCompany): string {
+export function getFormLeadSourceCompanyLabel(
+  sourceCompany: SourceCompany,
+  local?: LocalType,
+): string {
   switch (sourceCompany) {
     case "tbm_leads":
       return "TBM Forms";
@@ -181,18 +200,20 @@ export function getFormLeadSourceCompanyLabel(sourceCompany: SourceCompany): str
     case "top10_leads":
       return "Top10 Forms";
     case "best_relocation_leads":
-      return "Best Relocation Forms";
+      return local === "local"
+        ? "Best Relocation Locals"
+        : "Best Relocation Forms";
     case "main_site":
       return "Main Site Forms";
     case "not_provided":
-      return getSourceCompanyLabel(sourceCompany);
+      return "Main Site Forms";
   }
 }
 
 export function getCallLeadSourceCompanyLabel(sourceCompany: SourceCompany): string {
   switch (sourceCompany) {
     case "tbm_leads":
-      return "10 Best Inbounds";
+      return "10best Inbounds";
     case "tbm_prime_leads":
       return "TBM Prime Inbounds";
     case "top10_leads":
@@ -202,6 +223,14 @@ export function getCallLeadSourceCompanyLabel(sourceCompany: SourceCompany): str
     case "main_site":
       return "Main Site Inbounds";
     case "not_provided":
-      return getSourceCompanyLabel(sourceCompany);
+      return "Main Site Inbounds";
   }
+}
+
+/** Granot CRM `label` for a saved form lead (source company + local move type). */
+export function getCrmFormLeadSourceCompanyLabel(
+  sourceCompany: SourceCompany,
+  local: LocalType,
+): CrmSourceLabel {
+  return getFormLeadSourceCompanyLabel(sourceCompany, local) as CrmSourceLabel;
 }

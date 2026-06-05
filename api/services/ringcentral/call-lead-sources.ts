@@ -9,7 +9,7 @@ export type { SourceCompany } from "../../config/domain/sources";
 
 export const RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE = {
   "+18883164387": {
-    sourceLabel: "10 Best Inbounds",
+    sourceLabel: "10best Inbounds",
     sourceCompany: "tbm_leads",
   },
   "+18883083612": {

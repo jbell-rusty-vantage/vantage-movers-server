@@ -216,7 +216,7 @@ test("formLeadToRow defaults missing ref_no to 'not provided'", () => {
   assert.equal(row[18], "not provided");
   assert.equal(row[4], "not_found");
   assert.equal(row[5], "not_found");
-  assert.equal(row[19], "not provided");
+  assert.equal(row[19], "Main Site Forms");
 });
 
 test("callLeadToRow projects fields in the documented header order", () => {
@@ -251,7 +251,7 @@ test("callLeadToRow projects fields in the documented header order", () => {
   assert.equal(row[9], "long_distance");
   assert.equal(row[10], "1200");
   assert.equal(row[11], lead._id.toString());
-  assert.equal(row[12], "10 Best Inbounds");
+  assert.equal(row[12], "10best Inbounds");
   assert.equal(row[13], "TRUE");
 });
 

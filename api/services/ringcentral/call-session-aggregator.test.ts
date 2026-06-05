@@ -31,7 +31,7 @@ function party(
     queueCall: false,
     missedCall: false,
     targetMatched: true,
-    sourceLabel: "10 Best Inbounds",
+    sourceLabel: "10best Inbounds",
     sourceCompany: "tbm_leads",
     answered: true,
     answeredAt: now,

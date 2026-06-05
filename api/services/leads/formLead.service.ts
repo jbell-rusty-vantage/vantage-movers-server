@@ -1,5 +1,6 @@
 import {
   getCplForSource,
+  getCrmFormLeadSourceCompanyLabel,
   getSheetSyncMode,
   type LocalType,
   type SourceCompany,
@@ -60,6 +61,7 @@ export async function createFormLead(input: CreateFormLeadInput) {
     normalizedFormLeadInput.email,
   );
   const shouldPostToGranot = post_to_granot && !duplicate;
+  const crmLabel = getCrmFormLeadSourceCompanyLabel(source_company, local);
 
   // The domain document, the form-fill call-lead updates, and the durable
   // sheet-sync outbox jobs all commit atomically (in queued mode). CRM
@@ -110,19 +112,20 @@ export async function createFormLead(input: CreateFormLeadInput) {
   }
 
   const crmResult: CrmSubmitResult = shouldPostToGranot
-    ? await submitFormLeadToCrm(lead, { companyLabel: crm_company_label })
+    ? await submitFormLeadToCrm(lead, { companyLabel: crmLabel })
     : {
         ok: true,
         status: 0,
         responseText: "",
-        payload: buildCrmFormLeadPayload(lead, crm_company_label),
+        payload: buildCrmFormLeadPayload(lead, crmLabel),
       };
 
   if (!shouldPostToGranot) {
     logger.info({
       msg: "crm.form_lead.submit.skipped",
       leadId,
-      companyLabel: crm_company_label,
+      companyLabel: crmLabel,
+      requestedCompanyLabel: crm_company_label,
       duplicate,
     });
   }
