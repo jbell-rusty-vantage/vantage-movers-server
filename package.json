@@ -47,6 +47,7 @@
     "ringcentral:analytics:reconcile:run": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ringcentral/ringcentral-analytics-reconcile-run.ts",
     "demo:live-sheet-sync": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/demos/live-sheet-sync-demo.ts",
     "demo:google-maps-apis": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/demos/test-google-maps-apis.ts",
+    "bbb:scrape-reviews": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/bbb/scrape-bbb-reviews.ts",
     "call-leads:create-best-relocation": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/create-best-relocation-call-leads.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"api/**/*.test.ts\""
@@ -76,6 +77,7 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.6.2",
+    "apify-client": "^2.23.4",
     "postman-collection": "^5.3.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
