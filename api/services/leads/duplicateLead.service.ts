@@ -1,8 +1,8 @@
 import type { ClientSession } from "mongoose";
 import type { SourceCompany } from "../../config/domain";
 import { logger } from "../../logger";
-import { CallLead } from "../../models/CallLead";
-import { FormLead } from "../../models/FormLead";
+import { getCallLeadModel } from "../../models/CallLead";
+import { getFormLeadModel } from "../../models/FormLead";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import type { FullSheetSyncJob } from "../sheetSync";
 import { buildPhoneRegex } from "./leadPhoneMatching";
@@ -19,6 +19,7 @@ export async function isDuplicateFormLead(
   phoneNumber?: string | null,
   email?: string | null,
 ): Promise<boolean> {
+  const FormLead = getFormLeadModel();
   const normalizedPhone = normalizePhoneNumberForMatch(phoneNumber);
   const normalizedEmail = email?.trim().toLowerCase();
   const duplicateClauses = [
@@ -57,6 +58,7 @@ export async function hasFormFillForCallLead(
   sourceCompany: SourceCompany,
   phoneNumber?: string | null,
 ): Promise<boolean> {
+  const FormLead = getFormLeadModel();
   const normalizedPhone = normalizePhoneNumberForMatch(phoneNumber);
   if (!normalizedPhone) {
     return false;
@@ -91,6 +93,7 @@ export async function markMatchingCallLeadsWithFormFill(
   formLeadId: string,
   session?: ClientSession,
 ): Promise<FullSheetSyncJob[]> {
+  const CallLead = getCallLeadModel();
   const normalizedPhone = normalizePhoneNumberForMatch(phoneNumber);
   if (!normalizedPhone) {
     return [];

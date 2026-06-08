@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import type { SheetSyncMode } from "./sheetSync";
 import {
   SHEET_CONTAINER_ENV_VARS,
   type RuntimeSheetContainerEnvVar,
@@ -24,7 +26,34 @@ import { SOURCE_COMPANY_CONFIGS, type SourceCompany } from "./sources";
  *     the value is unset or blank after trim.
  */
 
+export type RuntimeDomainOverrides = {
+  testMode?: boolean;
+  sheetSyncMode?: SheetSyncMode;
+};
+
+const runtimeDomainOverrides =
+  new AsyncLocalStorage<RuntimeDomainOverrides>();
+
+export function getRuntimeDomainOverrides(): RuntimeDomainOverrides {
+  return runtimeDomainOverrides.getStore() ?? {};
+}
+
+export function withRuntimeDomainOverrides<T>(
+  overrides: RuntimeDomainOverrides,
+  fn: () => T,
+): T {
+  return runtimeDomainOverrides.run(
+    { ...getRuntimeDomainOverrides(), ...overrides },
+    fn,
+  );
+}
+
 export function isTestMode(): boolean {
+  const override = getRuntimeDomainOverrides().testMode;
+  if (override !== undefined) {
+    return override;
+  }
+
   return process.env.TEST_MODE?.trim().toLowerCase() === "true";
 }
 

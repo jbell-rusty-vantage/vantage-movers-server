@@ -35,6 +35,9 @@ importers:
       helmet:
         specifier: ^8.1.0
         version: 8.1.0
+      https-proxy-agent:
+        specifier: ^7.0.6
+        version: 7.0.6
       jsonwebtoken:
         specifier: ^9.0.3
         version: 9.0.3

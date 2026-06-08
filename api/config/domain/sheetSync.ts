@@ -1,3 +1,5 @@
+import { getRuntimeDomainOverrides } from "./runtime";
+
 /**
  * Configuration for the durable Google Sheets sync outbox + queue drainer.
  *
@@ -137,6 +139,11 @@ function envInt(name: string, defaultValue: number): number {
  * `SHEET_SYNC_MODE=queued`. Unknown values fall back to `legacy`.
  */
 export function getSheetSyncMode(): SheetSyncMode {
+  const override = getRuntimeDomainOverrides().sheetSyncMode;
+  if (override) {
+    return override;
+  }
+
   const raw = process.env.SHEET_SYNC_MODE?.trim().toLowerCase();
   if (raw === "queued" || raw === "legacy" || raw === "disabled") {
     return raw;

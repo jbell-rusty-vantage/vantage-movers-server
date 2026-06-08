@@ -5,7 +5,7 @@ import {
   type LocalType,
   type SourceCompany,
 } from "../../config/domain";
-import { FormLead } from "../../models/FormLead";
+import { getFormLeadModel } from "../../models/FormLead";
 import { logger } from "../../logger";
 import { toFloridaTimestamp } from "../../utils/easternTime";
 import { normalizePhoneNumberForStorage } from "../../utils/phone";
@@ -47,6 +47,7 @@ import {
 import { normalizeLeadName, normalizeLeadNameUpdate } from "./leadName.service";
 
 export async function createFormLead(input: CreateFormLeadInput) {
+  const FormLead = getFormLeadModel();
   const { crm_company_label, post_to_granot, ...formLeadInput } = input;
   const normalizedFormLeadInput = normalizeLeadName(formLeadInput);
   normalizedFormLeadInput.phone_number = normalizePhoneNumberForStorage(
@@ -151,6 +152,7 @@ export async function createFormLead(input: CreateFormLeadInput) {
 }
 
 export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
+  const FormLead = getFormLeadModel();
   const lead = await FormLead.findById(id);
   if (!lead) {
     throw new NotFoundError("Form lead not found", {
@@ -215,10 +217,12 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
 }
 
 export async function findAllFormLeads() {
+  const FormLead = getFormLeadModel();
   return FormLead.find().sort({ createdAt: -1 }).limit(200);
 }
 
 export async function findFormLead(id: string) {
+  const FormLead = getFormLeadModel();
   const lead = await FormLead.findById(id).select(
     "_id ref_no quoted cubic_feet booked duplicate",
   );
@@ -236,6 +240,7 @@ export async function findFormLead(id: string) {
 }
 
 export async function deleteFormLead(id: string, cascade: boolean) {
+  const FormLead = getFormLeadModel();
   const lead = await FormLead.findById(id);
   if (!lead) {
     throw new NotFoundError("Form lead not found", {

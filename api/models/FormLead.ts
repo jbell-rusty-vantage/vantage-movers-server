@@ -1,5 +1,5 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
-import { MOVE_SIZES } from "../config/domain";
+import { getMongoDatabaseName, MOVE_SIZES } from "../config/domain";
 import {
   localField,
   sheetSyncSchema,
@@ -60,3 +60,16 @@ export type FormLeadDocument = InferSchemaType<typeof FormLeadSchema> & {
 export const FormLead: Model<FormLeadDocument> =
   mongoose.models.FormLead ??
   mongoose.model<FormLeadDocument>("FormLead", FormLeadSchema);
+
+export function getFormLeadModel(): Model<FormLeadDocument> {
+  const dbName = getMongoDatabaseName();
+  if (mongoose.connection.name === dbName) {
+    return FormLead;
+  }
+
+  const db = mongoose.connection.useDb(dbName, { useCache: true });
+  return (
+    (db.models.FormLead as Model<FormLeadDocument> | undefined) ??
+    db.model<FormLeadDocument>("FormLead", FormLeadSchema)
+  );
+}

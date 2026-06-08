@@ -1,4 +1,5 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
+import { getMongoDatabaseName } from "../config/domain";
 import {
   optionalLocalField,
   sheetSyncSchema,
@@ -106,3 +107,16 @@ export type CallLeadDocument = InferSchemaType<typeof CallLeadSchema> & {
 
 export const CallLead: Model<CallLeadDocument> =
   mongoose.models.CallLead ?? mongoose.model<CallLeadDocument>("CallLead", CallLeadSchema);
+
+export function getCallLeadModel(): Model<CallLeadDocument> {
+  const dbName = getMongoDatabaseName();
+  if (mongoose.connection.name === dbName) {
+    return CallLead;
+  }
+
+  const db = mongoose.connection.useDb(dbName, { useCache: true });
+  return (
+    (db.models.CallLead as Model<CallLeadDocument> | undefined) ??
+    db.model<CallLeadDocument>("CallLead", CallLeadSchema)
+  );
+}

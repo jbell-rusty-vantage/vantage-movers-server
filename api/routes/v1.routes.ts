@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import type { Logger } from "pino";
 import { ZodError, type ZodType } from "zod";
 import { connectMongo } from "../db";
+import { withRuntimeDomainOverrides } from "../config/domain";
 import { logger as rootLogger } from "../logger";
 import { requireApiSecret } from "../middleware/requireApiSecret";
 import { searchFormLeads } from "../services/formLeadSearch.service";
@@ -172,6 +173,7 @@ router.post("/api/v1/admin/sheet-sync/retry", handleSheetSyncRetry);
 router.get("/api/v1/form-leads", handleBrowseFormLeads);
 router.get("/api/v1/form-leads/:id", handleFindOne(findFormLead));
 router.post("/api/v1/form-leads/search", handleSearchFormLeads);
+router.post("/api/v1/create-form-test", handleCreateFormLeadTest);
 router.post("/api/v1/form-leads", handleCreateFormLead);
 router.patch("/api/v1/form-leads/:id", handleUpdateFormLead);
 router.delete("/api/v1/form-leads/:id", handleDelete(deleteFormLead));
@@ -607,11 +609,32 @@ async function handleBookedCallLeadReconciliationSync(req: Request, res: Respons
 }
 
 async function handleCreateFormLead(req: Request, res: Response) {
+  return handleCreateFormLeadRequest(req, res, {
+    logPrefix: "form_lead",
+  });
+}
+
+async function handleCreateFormLeadTest(req: Request, res: Response) {
+  return withRuntimeDomainOverrides(
+    { testMode: true, sheetSyncMode: "legacy" },
+    () =>
+      handleCreateFormLeadRequest(req, res, {
+        logPrefix: "form_lead_test",
+      }),
+  );
+}
+
+async function handleCreateFormLeadRequest(
+  req: Request,
+  res: Response,
+  options: { logPrefix: "form_lead" | "form_lead_test" },
+) {
+  const { logPrefix } = options;
   const log = requestLogger(req);
   const rid = requestId(req);
 
   log.info({
-    msg: "form_lead.request.received",
+    msg: `${logPrefix}.request.received`,
     requestId: rid,
     method: req.method,
     path: requestPath(req),
@@ -629,13 +652,13 @@ async function handleCreateFormLead(req: Request, res: Response) {
       : [];
 
   log.info({
-    msg: "form_lead.request.body_keys",
+    msg: `${logPrefix}.request.body_keys`,
     requestId: rid,
     keys: bodyKeys,
   });
 
   log.info({
-    msg: "form_lead.request.payload_preview",
+    msg: `${logPrefix}.request.payload_preview`,
     requestId: rid,
     preview: sanitizeFormLeadBodyPreview(rawBody),
   });
@@ -644,14 +667,14 @@ async function handleCreateFormLead(req: Request, res: Response) {
     await connectMongo();
     const parsed = createFormLeadSchema.parse(req.body);
     log.info({
-      msg: "form_lead.validation.ok",
+      msg: `${logPrefix}.validation.ok`,
       requestId: rid,
       fields: Object.keys(parsed),
     });
     const data = await createFormLead(parsed);
     const leadId = data.lead._id.toString();
     log.info({
-      msg: "form_lead.created",
+      msg: `${logPrefix}.created`,
       requestId: rid,
       leadId,
       email: data.lead.email,
@@ -665,7 +688,7 @@ async function handleCreateFormLead(req: Request, res: Response) {
   } catch (error) {
     if (error instanceof ZodError) {
       log.warn({
-        msg: "form_lead.validation.failed",
+        msg: `${logPrefix}.validation.failed`,
         requestId: rid,
         issues: error.issues.map((issue) => ({
           path: issue.path,
@@ -683,7 +706,7 @@ async function handleCreateFormLead(req: Request, res: Response) {
     // generic creation-failure error line.
     if (error instanceof AppError) {
       log.warn({
-        msg: "form_lead.service.error",
+        msg: `${logPrefix}.service.error`,
         requestId: rid,
         statusCode: error.statusCode,
         errorCode: error.code,
@@ -697,7 +720,7 @@ async function handleCreateFormLead(req: Request, res: Response) {
     log.error(
       {
         err: error,
-        msg: "form_lead.create.failed",
+        msg: `${logPrefix}.create.failed`,
         requestId: rid,
       },
       "Form lead creation failed",

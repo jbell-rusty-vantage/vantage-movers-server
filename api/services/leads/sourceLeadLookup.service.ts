@@ -1,8 +1,8 @@
 import type mongoose from "mongoose";
 import type { ClientSession } from "mongoose";
 import type { LeadModelName } from "../../config/domain";
-import { CallLead, type CallLeadDocument } from "../../models/CallLead";
-import { FormLead, type FormLeadDocument } from "../../models/FormLead";
+import { getCallLeadModel, type CallLeadDocument } from "../../models/CallLead";
+import { getFormLeadModel, type FormLeadDocument } from "../../models/FormLead";
 import { ConflictError, NotFoundError } from "../errors";
 
 /**
@@ -24,6 +24,8 @@ export async function getLinkedLead(
   leadId: string,
   session?: ClientSession,
 ): Promise<SourceLeadDocument> {
+  const FormLead = getFormLeadModel();
+  const CallLead = getCallLeadModel();
   const query =
     leadModel === "FormLead" ? FormLead.findById(leadId) : CallLead.findById(leadId);
   const lead = await (session ? query.session(session) : query);
@@ -46,6 +48,8 @@ export async function getLinkedLead(
 export async function resolveSourceLeadById(
   leadId: string,
 ): Promise<{ lead: SourceLeadDocument; leadModel: LeadModelName }> {
+  const FormLead = getFormLeadModel();
+  const CallLead = getCallLeadModel();
   const [formLead, callLead] = await Promise.all([
     FormLead.findById(leadId),
     CallLead.findById(leadId),
