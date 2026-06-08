@@ -29,7 +29,7 @@ import { normalizeRingCentralWebhookPayload } from "../../api/services/ringcentr
 const JSON_ARTIFACT = "ringcentral-workflow-test-output.json";
 const LOG_ARTIFACT = "ringcentral-workflow-test.log";
 
-const QUALIFIED_TOLL_FREE = "+18883164387"; // 10BEST LANDING -> top10_leads
+const QUALIFIED_TOLL_FREE = "+18883164387"; // 10BEST LANDING -> tbm_leads
 const TBM_TOLL_FREE = "+18883083612"; // TBM Prime -> tbm_prime_leads
 const UNMAPPED_NUMBER = "+19998887777";
 const CALLER_A = "+12095551234";
@@ -178,7 +178,7 @@ function runWebhookScenarios(): void {
     expect("S1", "wouldCreateCallLead", true, document.wouldCreateCallLead);
     expect("S1", "ingestEligible", true, document.ingestEligible);
     expect("S1", "estimatedDurationSeconds", 121, document.estimatedDurationSeconds);
-    expect("S1", "sourceCompany", "top10_leads", document.sourceCompany);
+    expect("S1", "sourceCompany", "tbm_leads", document.sourceCompany);
   }
 
   // S2: under 120s — answered then disconnected after 30s.
@@ -315,12 +315,12 @@ function runWebhookScenarios(): void {
 async function runDuplicateScenarios(): Promise<void> {
   log("\n=== DUPLICATE GUARD (same caller + source within window) ===");
 
-  // First successful call from CALLER_A to top10_leads: unique.
+  // First successful call from CALLER_A to tbm_leads (10best line): unique.
   log("\n[D1] First successful call from caller -> unique");
   {
     const result = await classifyRingCentralCallLeadDuplicate(
       {
-        sourceCompany: "top10_leads",
+        sourceCompany: "tbm_leads",
         callerPhoneNumber: CALLER_A,
         telephonySessionId: "dup-session-1",
         now: T0,
@@ -336,7 +336,7 @@ async function runDuplicateScenarios(): Promise<void> {
   {
     const result = await classifyRingCentralCallLeadDuplicate(
       {
-        sourceCompany: "top10_leads",
+        sourceCompany: "tbm_leads",
         callerPhoneNumber: CALLER_A,
         telephonySessionId: "dup-session-2",
         now: new Date(T0.getTime() + 2 * 60 * 60 * 1000),

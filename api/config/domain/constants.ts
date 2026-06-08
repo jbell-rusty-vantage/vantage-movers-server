@@ -22,3 +22,6 @@ export const MOVE_SIZES = [
 
 export const SHEET_SYNC_STATUSES = ["pending", "synced", "failed"] as const;
 export type SheetSyncStatus = (typeof SHEET_SYNC_STATUSES)[number];
+
+export const TESTIMONIAL_SOURCES = ["BBB"] as const;
+export type TestimonialSource = (typeof TESTIMONIAL_SOURCES)[number];

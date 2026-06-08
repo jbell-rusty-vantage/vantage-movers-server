@@ -113,3 +113,8 @@ export {
   type SheetSyncRunsQuery,
   type SheetSyncRetryInput,
 } from "./v1/sheetSync.validation";
+
+export {
+  listTestimonialsQuerySchema,
+  type ListTestimonialsQuery,
+} from "./v1/testimonials.validation";

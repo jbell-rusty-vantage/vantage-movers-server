@@ -48,6 +48,7 @@
     "demo:live-sheet-sync": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/demos/live-sheet-sync-demo.ts",
     "demo:google-maps-apis": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/demos/test-google-maps-apis.ts",
     "bbb:scrape-reviews": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/bbb/scrape-bbb-reviews.ts",
+    "bbb:seed-testimonials": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/bbb/seed-bbb-testimonials.ts",
     "call-leads:create-best-relocation": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/create-best-relocation-call-leads.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"api/**/*.test.ts\""

@@ -62,6 +62,7 @@ import {
   sheetSyncJobsQuerySchema,
   sheetSyncRunsQuerySchema,
   sheetSyncRetrySchema,
+  listTestimonialsQuerySchema,
   bookedCallLeadReconciliationBatchSchema,
   browseCallLeadsQuerySchema,
   browseFormLeadsQuerySchema,
@@ -101,6 +102,7 @@ import {
   getAnalyticsReport,
   getOverviewReport,
 } from "../services/analytics";
+import { listTestimonials } from "../services/testimonials";
 
 const router = Router();
 
@@ -209,6 +211,8 @@ router.get("/api/v1/customers", handleFindAll(findAllCustomers));
 router.post("/api/v1/customers", handleCreate(createCustomerSchema, createCustomer));
 router.patch("/api/v1/customers/:id", handleUpdate(updateCustomerSchema, updateCustomer));
 router.delete("/api/v1/customers/:id", handleDelete(deleteCustomer));
+
+router.get("/api/v1/testimonials", handleListTestimonials);
 
 function handleFindAll(findAll: () => Promise<unknown>) {
   return async (req: Request, res: Response) => {
@@ -541,6 +545,17 @@ async function handleBrowseCallLeads(req: Request, res: Response) {
     await connectMongo();
     const parsed = browseCallLeadsQuerySchema.parse(req.query);
     const data = await browseCallLeads(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleListTestimonials(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = listTestimonialsQuerySchema.parse(req.query);
+    const data = await listTestimonials(parsed);
     return res.json({ ok: true, data });
   } catch (error) {
     return sendError(req, res, error);

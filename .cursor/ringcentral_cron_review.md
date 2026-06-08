@@ -86,7 +86,7 @@ A record qualifies only when all rejection reasons are absent:
 
 The current configured target numbers are:
 
-- `+18883164387` -> `10best Inbounds`, `top10_leads`
+- `+18883164387` -> `10best Inbounds`, `tbm_leads`
 - `+18883083612` -> `TBM Prime Inbounds`, `tbm_prime_leads`
 - `+18887240625` -> `Top10 Inbounds`, `top10_leads`
 - `+18884779232` -> `Main Site Inbounds`, `main_site`
