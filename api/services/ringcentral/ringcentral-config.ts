@@ -65,6 +65,7 @@ export type RingCentralRuntimeConfig = {
   duplicateWindowHours: number;
   callLogSyncLookbackMinutes: number;
   callLogSyncOverlapMinutes: number;
+  callLogSyncRollingLookbackMinutes: number;
   analyticsEndBufferMinutes: number;
   hybridMode: RingCentralHybridMode;
 };
@@ -155,6 +156,20 @@ export function getRingCentralCallLogSyncOverlapMinutes(): number {
 }
 
 /**
+ * Every Call Log sync re-scans at least this much recent history, even after
+ * the high-water cursor has advanced. RingCentral Call Log records for very
+ * long calls can show up only after the call ends; a short cursor overlap can
+ * therefore skip calls whose start time fell outside the next cron window.
+ *
+ * Default: 12h. This comfortably covers the current 2h cron cadence, multi-hour
+ * calls, and RingCentral finalization lag. Idempotent processed-call upserts
+ * make repeated scans safe.
+ */
+export function getRingCentralCallLogSyncRollingLookbackMinutes(): number {
+  return envInt("RINGCENTRAL_CALL_LOG_SYNC_ROLLING_LOOKBACK_MINUTES", 12 * 60);
+}
+
+/**
  * Analytics `timeTo` must never be in the future or RingCentral returns
  * `ANL-302`; the cron/reconcile path always trims the window end by this
  * buffer.
@@ -191,6 +206,8 @@ export function getRingCentralRuntimeConfig(): RingCentralRuntimeConfig {
     duplicateWindowHours: getRingCentralDuplicateWindowHours(),
     callLogSyncLookbackMinutes: getRingCentralCallLogSyncLookbackMinutes(),
     callLogSyncOverlapMinutes: getRingCentralCallLogSyncOverlapMinutes(),
+    callLogSyncRollingLookbackMinutes:
+      getRingCentralCallLogSyncRollingLookbackMinutes(),
     analyticsEndBufferMinutes: getRingCentralAnalyticsEndBufferMinutes(),
     hybridMode: resolveRingCentralHybridMode(),
   };

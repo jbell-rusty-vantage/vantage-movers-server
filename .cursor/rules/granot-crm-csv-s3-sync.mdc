@@ -1,0 +1,16 @@
+---
+description: Granot CRM CSV to S3 sync behavior and limitations
+globs: api/services/granotCrmCsv/**/*.ts,scripts/granot_crm_csv/**/*.ts,api/services/enrichment/**/*.ts,api/services/reconciliation/**/*.ts
+alwaysApply: false
+---
+
+# Granot CRM CSV To S3 Sync
+
+- The server-side CSV path stores Granot CSV downloads in S3 through `uploadGranotCrmCsv`, records each upload in `granot_crm_csv_ingestions`, and syncs from S3 with `scripts/granot_crm_csv/sync-from-s3.ts`.
+- `sync-from-s3.ts` selects the latest `status: "uploaded"` ingestion per `workspace_slug + csv_kind`. It can filter by `--workspace`, `--csv-kind follow_up|booked`, `--limit`, and `--apply`; it does not select arbitrary S3 keys.
+- Current Granot CSV downloads can omit `job_no` even when the browser page displays job numbers. When `job_no` is absent, follow-up call lead enrichment can only match by phone; job-number-only matches are impossible from S3 CSV data.
+- Booked reconciliation currently requires `job_no`. If the booked CSV lacks `job_no`, rows should remain `invalid`/unapplied rather than guessing from phone-only data.
+- Follow-up CSV sync is partial but useful: matched phone rows can update name, email, pickup/delivery zip, derived states, cubic feet, local, and source-derived fields. It cannot write `job_no` unless the stored file includes it.
+- Treat this S3 CSV sync as lower priority than the extension's manual sync and auto sync. The owner primarily uses DOM-based manual/auto sync because it sees the page's job numbers.
+- Do not present CSV-to-S3 sync as fully equivalent to the extension until the uploaded/stored file format includes `job_no` for follow-up and booked rows.
+- Preserve idempotency: compare current lead/booking fields before writing, dry-run by default, and only write on `--apply`.

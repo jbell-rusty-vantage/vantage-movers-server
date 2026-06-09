@@ -45,6 +45,7 @@
     "ringcentral:workflow:test": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ringcentral/ringcentral-workflow-test.ts",
     "ringcentral:call-log:sync:run": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ringcentral/ringcentral-call-log-sync-run.ts",
     "ringcentral:analytics:reconcile:run": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ringcentral/ringcentral-analytics-reconcile-run.ts",
+    "ringcentral:backfill-missing-call-leads": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ringcentral/ringcentral-backfill-missing-call-leads.ts",
     "twilio:diagnose": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/twilio/twilio-diagnose.ts",
     "twilio:send-sms": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/twilio/twilio-send-sms.ts",
     "granot-csv:upload-registry": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/granot_crm_csv/upload-registry.ts",

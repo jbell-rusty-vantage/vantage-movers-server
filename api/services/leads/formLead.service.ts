@@ -172,6 +172,21 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
     );
   }
 
+  if (hasOwnInput(input, "bad_lead") && (lead.duplicate || lead.booked || lead.cancelled)) {
+    throw new ConflictError(
+      "Cannot mark a duplicate, booked, or cancelled form lead as bad",
+      {
+        metadata: {
+          resource: "form_lead",
+          id,
+          duplicate: Boolean(lead.duplicate),
+          booked: Boolean(lead.booked),
+          cancelled: Boolean(lead.cancelled),
+        },
+      },
+    );
+  }
+
   const update = normalizeLeadNameUpdate({ ...input }, lead);
   if (input.source_company !== undefined) {
     update.source_company = parseSourceCompany(input.source_company);

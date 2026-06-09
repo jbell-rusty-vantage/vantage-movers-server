@@ -94,6 +94,7 @@ export function getHeadersForSyncTarget(target: string): readonly string[] | und
     case "source_forms":
     case "master_duplicates":
     case "source_duplicates":
+    case "master_bad_leads":
       return FORM_SHEET_HEADERS;
     case "master_calls":
     case "source_calls":
@@ -115,6 +116,7 @@ export function getEnsureTabsForSyncTarget(target: string): SheetTabConfig[] {
     case "master_calls":
     case "master_duplicates":
     case "master_duplicate_calls":
+    case "master_bad_leads":
       return getMasterLeadsTabs();
     case "source_forms":
     case "source_calls":
@@ -142,6 +144,7 @@ export function getMasterLeadsTabs(): SheetTabConfig[] {
     { tabName: SHEET_TAB_NAMES.calls, headers: CALL_SHEET_HEADERS },
     { tabName: SHEET_TAB_NAMES.duplicates, headers: FORM_SHEET_HEADERS },
     { tabName: SHEET_TAB_NAMES.duplicateCalls, headers: CALL_SHEET_HEADERS },
+    { tabName: SHEET_TAB_NAMES.badLeads, headers: FORM_SHEET_HEADERS },
   ];
 }
 

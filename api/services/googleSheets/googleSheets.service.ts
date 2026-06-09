@@ -11,6 +11,7 @@ import {
   type SourceCompany,
 } from "../../config/domain";
 import type { SheetSyncEntry } from "../../models/schemaHelpers";
+import type { SheetSyncUpdateEntry } from "../sheetSync/sheetSyncPersistence";
 import { getSheetsClient } from "./auth";
 import { deleteRowsFromTargets } from "./deleteRows";
 import { bookedLeadToRow } from "./projections/bookedLeadRow";
@@ -35,7 +36,7 @@ import type {
 
 export async function syncFormLeadToSheets(
   lead: FormLeadSheetSource,
-): Promise<SheetSyncEntry[]> {
+): Promise<SheetSyncUpdateEntry[]> {
   const targetBase = lead.duplicate
     ? {
         masterTarget: "master_duplicates",
@@ -54,7 +55,23 @@ export async function syncFormLeadToSheets(
     targetBase.tabName,
     FORM_SHEET_HEADERS,
   );
-  return syncRowToTargets(lead, targets, formLeadToRow(lead));
+  const row = formLeadToRow(lead);
+  const results: SheetSyncUpdateEntry[] = await syncRowToTargets(
+    lead,
+    lead.bad_lead ? [...targets, masterBadLeadsTarget()] : targets,
+    row,
+  );
+  if (!lead.bad_lead) {
+    const deletedTargets = await deleteRowsFromTargets(
+      lead,
+      [masterBadLeadsTarget()],
+      ["master_bad_leads"],
+    );
+    results.push(
+      ...deletedTargets.map((target) => ({ target, status: "deleted" as const })),
+    );
+  }
+  return results;
 }
 
 export async function syncCallLeadToSheets(
@@ -124,8 +141,18 @@ export async function deleteFormLeadFromSheets(
       targetBase.tabName,
       FORM_SHEET_HEADERS,
     ),
-    [targetBase.masterTarget, targetBase.sourceTarget],
+    [targetBase.masterTarget, targetBase.sourceTarget, "master_bad_leads"],
   );
+}
+
+function masterBadLeadsTarget() {
+  return {
+    target: "master_bad_leads",
+    spreadsheetId: getMasterLeadsSheetContainerId(),
+    tabName: SHEET_TAB_NAMES.badLeads,
+    headers: FORM_SHEET_HEADERS,
+    ensureTabs: getMasterLeadsTabs(),
+  };
 }
 
 export async function deleteCallLeadFromSheets(

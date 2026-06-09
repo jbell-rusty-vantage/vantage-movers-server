@@ -87,6 +87,14 @@ export type SheetSyncEntry = {
   updated_since_last_sync: boolean;
 };
 
+export function removeSheetSyncEntries(
+  existing: SheetSyncEntry[] | undefined,
+  targets: readonly string[],
+): SheetSyncEntry[] {
+  const targetSet = new Set(targets);
+  return (existing ?? []).filter((entry) => !targetSet.has(entry.target));
+}
+
 export function mergeSheetSyncEntries(
   existing: SheetSyncEntry[] | undefined,
   updates: SheetSyncEntry[],

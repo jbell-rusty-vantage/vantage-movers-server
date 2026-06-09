@@ -170,11 +170,12 @@ test("formLeadToRow projects fields in the documented header order", () => {
     source_company: "main_site",
     source_company_site: "vantagemovers.com",
     quoted: true,
+    bad_lead: "bad_phone_email_name",
   };
 
   const row = formLeadToRow(lead);
 
-  assert.equal(row.length, 20);
+  assert.equal(row.length, 21);
   assert.equal(row[0], "5/27/2026 09:04:05");
   assert.equal(row[1], "Jane Tester");
   assert.equal(row[2], "10001");
@@ -195,6 +196,7 @@ test("formLeadToRow projects fields in the documented header order", () => {
   assert.equal(row[17], lead._id.toString());
   assert.equal(row[18], "ref-abc");
   assert.equal(row[19], "Main Site Forms");
+  assert.equal(row[20], "Bad Phone-Email-Name");
 });
 
 test("formLeadToRow defaults missing ref_no to 'not provided'", () => {
@@ -217,6 +219,7 @@ test("formLeadToRow defaults missing ref_no to 'not provided'", () => {
   assert.equal(row[4], "not_found");
   assert.equal(row[5], "not_found");
   assert.equal(row[19], "Main Site Forms");
+  assert.equal(row[20], "");
 });
 
 test("callLeadToRow projects fields in the documented header order", () => {

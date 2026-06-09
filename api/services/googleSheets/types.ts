@@ -1,4 +1,4 @@
-import type { SourceCompany } from "../../config/domain";
+import type { FormLeadBadLeadReason, SourceCompany } from "../../config/domain";
 import type { SheetSyncEntry } from "../../models/schemaHelpers";
 
 export type SyncTarget = {
@@ -67,6 +67,7 @@ export type FormLeadSheetSource = SyncableDocument & {
   quoted?: boolean | null;
   cpl?: number | null;
   duplicate?: boolean | null;
+  bad_lead?: FormLeadBadLeadReason | null;
 };
 
 export type CallLeadSheetSource = SyncableDocument & {

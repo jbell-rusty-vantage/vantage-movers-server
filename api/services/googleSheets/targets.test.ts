@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CALL_SHEET_HEADERS, SHEET_TAB_NAMES } from "../../config/domain";
+import {
+  CALL_SHEET_HEADERS,
+  FORM_SHEET_HEADERS,
+  SHEET_TAB_NAMES,
+} from "../../config/domain";
 import {
   getEnsureTabsForSyncTarget,
   getHeadersForSyncTarget,
@@ -31,4 +35,20 @@ test("duplicate-call master target ensures the Master Leads tab set", () => {
   );
   assert.ok(tabNames.includes(SHEET_TAB_NAMES.duplicateCalls));
   assert.ok(tabNames.includes(SHEET_TAB_NAMES.calls));
+});
+
+test("Master Leads provisions Bad Leads with form headers", () => {
+  const badLeadsTab = getMasterLeadsTabs().find(
+    (tab) => tab.tabName === SHEET_TAB_NAMES.badLeads,
+  );
+  assert.deepEqual(badLeadsTab?.headers, FORM_SHEET_HEADERS);
+  assert.equal(getHeadersForSyncTarget("master_bad_leads"), FORM_SHEET_HEADERS);
+});
+
+test("Bad Leads master target ensures the Master Leads tab set", () => {
+  const tabNames = getEnsureTabsForSyncTarget("master_bad_leads").map(
+    (tab) => tab.tabName,
+  );
+  assert.ok(tabNames.includes(SHEET_TAB_NAMES.badLeads));
+  assert.ok(tabNames.includes(SHEET_TAB_NAMES.forms));
 });

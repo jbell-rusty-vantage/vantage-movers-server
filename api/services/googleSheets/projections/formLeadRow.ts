@@ -1,4 +1,5 @@
 import {
+  formatFormLeadBadLeadReason,
   getFormLeadSourceCompanyLabel,
   LocalType,
 } from "../../../config/domain";
@@ -38,6 +39,7 @@ export function formLeadToRow(lead: FormLeadSheetSource): string[] {
     lead._id.toString(),
     lead.ref_no?.trim() || "not provided",
     getFormLeadSourceCompanyLabel(lead.source_company, lead.local as LocalType),
+    formatFormLeadBadLeadReason(lead.bad_lead),
   ];
 }
 

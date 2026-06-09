@@ -1,5 +1,9 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
-import { getMongoDatabaseName, MOVE_SIZES } from "../config/domain";
+import {
+  FORM_LEAD_BAD_LEAD_REASONS,
+  getMongoDatabaseName,
+  MOVE_SIZES,
+} from "../config/domain";
 import {
   localField,
   sheetSyncSchema,
@@ -34,6 +38,12 @@ const FormLeadSchema = new Schema(
     cpl: { type: Number, required: true, default: 0 },
     quoted: { type: Boolean, default: false },
     duplicate: { type: Boolean, default: false, index: true },
+    bad_lead: {
+      type: String,
+      enum: FORM_LEAD_BAD_LEAD_REASONS,
+      trim: true,
+      index: true,
+    },
     post_to_granot: { type: Boolean, required: true, default: true },
     cancelled: { type: Schema.Types.ObjectId, ref: "CancelledLead" },
     cubic_feet: { type: Number },

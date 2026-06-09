@@ -9,6 +9,7 @@ import {
 import {
   getRingCentralCallLogSyncLookbackMinutes,
   getRingCentralCallLogSyncOverlapMinutes,
+  getRingCentralCallLogSyncRollingLookbackMinutes,
 } from "./ringcentral-config";
 import {
   ingestRingCentralQualifiedCall,
@@ -20,11 +21,14 @@ import {
  * Scheduled Call Log sync (the cron half of the hybrid strategy).
  *
  * Each run reads the high-water-mark cursor, fetches detailed inbound Call Log
- * records for `[lastSyncTo - overlap, now]` (or `[now - lookback, now]` on
- * first run), vets each record with the shared rules, and hands every
- * qualified call to the shared ingest service. Because ingest is idempotent by
- * `telephonySessionId`, this safely catches calls the webhook missed without
- * ever double-creating a lead.
+ * records for a conservative rolling window. On normal runs the start is the
+ * earlier of `[lastSyncTo - overlap]` and `[now - rollingLookback]`; on first
+ * run it uses `[now - lookback]`, still honoring the rolling floor. This guards
+ * against very long calls and RingCentral finalization lag: a record whose
+ * `startTime` has already fallen behind the short overlap can still be seen on
+ * a later run after it appears in Call Log. Because ingest is idempotent by
+ * `telephonySessionId` / `callLogId`, repeated scans safely skip already
+ * processed calls.
  *
  * The cursor only advances on success; an error leaves the window intact so
  * the next run retries the same range.
@@ -144,11 +148,20 @@ export async function runRingCentralCallLogSync(
 async function resolveWindowStart(windowTo: Date): Promise<Date> {
   const state = await getCallLogSyncState();
   const overlapMs = getRingCentralCallLogSyncOverlapMinutes() * 60 * 1000;
+  const rollingLookbackMs =
+    getRingCentralCallLogSyncRollingLookbackMinutes() * 60 * 1000;
+  const rollingWindowStart = new Date(windowTo.getTime() - rollingLookbackMs);
   if (state?.lastSyncTo) {
-    return new Date(state.lastSyncTo.getTime() - overlapMs);
+    const cursorWindowStart = new Date(state.lastSyncTo.getTime() - overlapMs);
+    return earlierDate(cursorWindowStart, rollingWindowStart);
   }
   const lookbackMs = getRingCentralCallLogSyncLookbackMinutes() * 60 * 1000;
-  return new Date(windowTo.getTime() - lookbackMs);
+  const initialWindowStart = new Date(windowTo.getTime() - lookbackMs);
+  return earlierDate(initialWindowStart, rollingWindowStart);
+}
+
+function earlierDate(left: Date, right: Date): Date {
+  return left.getTime() <= right.getTime() ? left : right;
 }
 
 async function fetchDetailedInboundCallLog(

@@ -10,9 +10,10 @@ export async function deleteRowsFromTargets(
   document: SyncableDocument,
   fallbackTargets: SyncTarget[],
   syncedTargets: readonly string[],
-): Promise<void> {
+): Promise<string[]> {
   const sheets = getSheetsClient();
   const targets = getDeleteTargets(document, fallbackTargets, syncedTargets);
+  const deletedTargets: string[] = [];
   for (const target of targets) {
     const rowNumber =
       target.knownRowNumber &&
@@ -37,7 +38,10 @@ export async function deleteRowsFromTargets(
     }
 
     await deleteSheetRow(sheets, target.spreadsheetId, target.tabName, rowNumber);
+    deletedTargets.push(target.target);
   }
+
+  return deletedTargets;
 }
 
 async function deleteSheetRow(

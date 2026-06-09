@@ -1,6 +1,10 @@
 import mongoose from "mongoose";
 import { logger } from "../../logger";
-import { mergeSheetSyncEntries, type SheetSyncEntry } from "../../models/schemaHelpers";
+import {
+  mergeSheetSyncEntries,
+  removeSheetSyncEntries,
+  type SheetSyncEntry,
+} from "../../models/schemaHelpers";
 
 /**
  * Minimal mongoose document shape used by sheet sync persistence.
@@ -16,7 +20,9 @@ export type SheetSyncDocument = mongoose.Document & {
   save(): Promise<unknown>;
 };
 
-export type SheetSyncFn = (doc: any) => Promise<SheetSyncEntry[]>;
+export type SheetSyncDeleteEntry = { target: string; status: "deleted" };
+export type SheetSyncUpdateEntry = SheetSyncEntry | SheetSyncDeleteEntry;
+export type SheetSyncFn = (doc: any) => Promise<SheetSyncUpdateEntry[]>;
 
 /**
  * Runs a Google Sheets sync for a single document and persists the resulting
@@ -32,17 +38,27 @@ export async function syncAndStore(
 ): Promise<void> {
   const documentId = document._id.toString();
   const updates = await syncFn(document);
-  document.set("sheet_sync", mergeSheetSyncEntries(document.get("sheet_sync"), updates));
+  const deletedTargets = updates
+    .filter((entry): entry is SheetSyncDeleteEntry => entry.status === "deleted")
+    .map((entry) => entry.target);
+  const syncEntries = updates.filter(
+    (entry): entry is SheetSyncEntry => entry.status !== "deleted",
+  );
+  const withoutDeleted = removeSheetSyncEntries(
+    document.get("sheet_sync"),
+    deletedTargets,
+  );
+  document.set("sheet_sync", mergeSheetSyncEntries(withoutDeleted, syncEntries));
   await document.save();
 
-  const summary = updates.map((entry) => ({
+  const summary = syncEntries.map((entry) => ({
     target: entry.target,
     status: entry.status,
     tabName: entry.tab_name,
     rowNumber: entry.row_number ?? null,
     lastError: entry.last_error ?? null,
   }));
-  const failed = updates.filter((entry) => entry.status === "failed");
+  const failed = syncEntries.filter((entry) => entry.status === "failed");
 
   if (failed.length > 0) {
     logger.warn({

@@ -68,7 +68,30 @@ export const FORM_SHEET_HEADERS = [
   "Mongo ID",
   "Ref No",
   "Source Company",
+  "Bad Lead",
 ] as const;
+
+export const FORM_LEAD_BAD_LEAD_REASONS = [
+  "disconnected_number",
+  "bad_phone_email_name",
+  "auto_only",
+  "international_move",
+] as const;
+
+export type FormLeadBadLeadReason = (typeof FORM_LEAD_BAD_LEAD_REASONS)[number];
+
+export const FORM_LEAD_BAD_LEAD_SHEET_LABELS = {
+  disconnected_number: "D/C number",
+  bad_phone_email_name: "Bad Phone-Email-Name",
+  auto_only: "Auto Only",
+  international_move: "International Move",
+} as const satisfies Record<FormLeadBadLeadReason, string>;
+
+export function formatFormLeadBadLeadReason(
+  reason?: FormLeadBadLeadReason | null,
+): string {
+  return reason ? FORM_LEAD_BAD_LEAD_SHEET_LABELS[reason] : "";
+}
 
 export const CALL_SHEET_HEADERS = [
   "Timestamp",

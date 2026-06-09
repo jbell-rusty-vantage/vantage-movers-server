@@ -5,14 +5,24 @@ import {
   resolveRingCentralInboundSource,
 } from "../../api/services/ringcentral/call-lead-sources";
 import { CALL_LEAD_MINIMUM_ANSWERED_SECONDS } from "../../api/services/ringcentral/call-candidate-evaluator";
+import { vetRingCentralCallLogRecord } from "../../api/services/ringcentral/call-log-vetting";
 import { normalizePhoneNumberToE164Like } from "../../api/services/ringcentral/phone-normalization";
 
 process.env.RC_TOKEN_STORE = "file";
 
 const ARTIFACT_PATH = "ringcentral-call-lead-api-probe-output.json";
-const DEFAULT_LOOKBACK_HOURS = 24;
+const DEFAULT_LOOKBACK_HOURS = 48;
 const DEFAULT_LIMIT = 200;
 const DEFAULT_ANALYTICS_END_BUFFER_MS = 2 * 60 * 1000;
+const MAX_CALL_LOG_PAGES = 20;
+
+const DEFAULT_TARGET_CALLERS = [
+  "(541) 982-5333",
+  "(602) 391-8047",
+  "(240) 426-1067",
+  "(207) 266-8865",
+  "(323) 514-4985",
+] as const;
 
 const TARGET_QUEUES = [
   { extensionNumber: "514", name: "10BEST LANDING" },
@@ -21,14 +31,6 @@ const TARGET_QUEUES = [
   { extensionNumber: "519", name: "Main Site Inbounds" },
 ] as const;
 
-const ANSWERED_RESULTS = new Set([
-  "Accepted",
-  "Completed",
-  "Call connected",
-  "Connected",
-  "Answered",
-]);
-
 type RingCentralClientModule = typeof import("../../api/services/ringcentral/client");
 
 type ProbeOptions = {
@@ -36,6 +38,8 @@ type ProbeOptions = {
   dateTo: string;
   limit: number;
   json: boolean;
+  callerNumbers: string[];
+  sourceNumbers: string[];
 };
 
 type EndpointResult = {
@@ -79,6 +83,10 @@ type LeadCandidateProbe = {
   overMinimumDuration: boolean;
   wouldCreateCallLead: boolean;
   rejectionReasons: string[];
+  productionQualifies: boolean;
+  productionRejectionReasons: string[];
+  matchedExplicitCaller: boolean;
+  matchedExplicitSource: boolean;
   rawSummary: {
     legCount: number;
     legTypes: string[];
@@ -95,6 +103,8 @@ async function main(): Promise<void> {
   console.log(`Window: ${options.dateFrom} to ${options.dateTo}`);
   console.log(`Minimum answered duration: ${CALL_LEAD_MINIMUM_ANSWERED_SECONDS}s`);
   console.log("Token store: file (.ringcentral-token-cache.json)");
+  console.log(`Explicit caller search: ${options.callerNumbers.join(", ") || "(none)"}`);
+  console.log(`Explicit source search: ${options.sourceNumbers.join(", ") || "(none)"}`);
   console.log("");
 
   const extensionDirectoryResult = await checkEndpoint(
@@ -106,15 +116,10 @@ async function main(): Promise<void> {
   const queueExtensions = resolveTargetQueueExtensions(extensionDirectoryResult.data);
   printQueueResolution(queueExtensions);
 
-  const callLogEndpoint = buildCallLogEndpoint(options);
-  const callLogResult = await checkEndpoint(
-    client,
-    "Detailed account call logs",
-    "GET",
-    callLogEndpoint,
-  );
-  const candidates = analyzeCallLogs(callLogResult.data, queueExtensions);
+  const callLogResult = await fetchDetailedInboundCallLogs(client, options);
+  const candidates = analyzeCallLogs(callLogResult.data, queueExtensions, options);
   printCandidateSummary(candidates, options);
+  printExplicitCallerSummary(candidates, options);
 
   const analyticsResults = await runAnalyticsProbes(client, options, queueExtensions);
   printAnalyticsSummary(analyticsResults);
@@ -134,6 +139,10 @@ async function main(): Promise<void> {
       totalRecords: getRecords(callLogResult.data).length,
       candidateCount: candidates.length,
       qualifiedCount: candidates.filter((candidate) => candidate.wouldCreateCallLead)
+        .length,
+      explicitCallerNumbers: options.callerNumbers,
+      explicitSourceNumbers: options.sourceNumbers,
+      explicitCallerMatches: candidates.filter((candidate) => candidate.matchedExplicitCaller)
         .length,
       candidates,
     },
@@ -207,6 +216,48 @@ async function checkEndpoint(
       error: message,
     };
   }
+}
+
+async function fetchDetailedInboundCallLogs(
+  client: RingCentralClientModule,
+  options: ProbeOptions,
+): Promise<EndpointResult> {
+  const records: any[] = [];
+  const pageResults: EndpointResult[] = [];
+  for (let page = 1; page <= MAX_CALL_LOG_PAGES; page += 1) {
+    const endpoint = buildCallLogEndpoint(options, page);
+    const result = await checkEndpoint(
+      client,
+      `Detailed account call logs page ${page}`,
+      "GET",
+      endpoint,
+    );
+    pageResults.push(result);
+    if (!result.ok) {
+      return {
+        ...result,
+        label: "Detailed account call logs",
+        data: { records },
+        responseBody: { pages: pageResults },
+      };
+    }
+    const pageRecords = getRecords(result.data);
+    records.push(...pageRecords);
+    if (pageRecords.length < options.limit) {
+      break;
+    }
+  }
+
+  return {
+    label: "Detailed account call logs",
+    method: "GET",
+    endpoint: buildCallLogEndpoint(options, 1),
+    ok: true,
+    status: 200,
+    statusText: "OK",
+    data: { records },
+    responseBody: { pages: pageResults },
+  };
 }
 
 async function runAnalyticsProbes(
@@ -288,7 +339,7 @@ function buildAnalyticsAggregateBody(
   };
 }
 
-function buildCallLogEndpoint(options: ProbeOptions): string {
+function buildCallLogEndpoint(options: ProbeOptions, page = 1): string {
   const query = new URLSearchParams({
     dateFrom: options.dateFrom,
     dateTo: options.dateTo,
@@ -296,6 +347,7 @@ function buildCallLogEndpoint(options: ProbeOptions): string {
     type: "Voice",
     view: "Detailed",
     perPage: String(options.limit),
+    page: String(page),
   });
   return `/restapi/v1.0/account/~/call-log?${query.toString()}`;
 }
@@ -303,63 +355,65 @@ function buildCallLogEndpoint(options: ProbeOptions): string {
 function analyzeCallLogs(
   payload: any,
   queueExtensions: QueueExtension[],
+  options: ProbeOptions,
 ): LeadCandidateProbe[] {
   return getRecords(payload)
-    .map((record) => analyzeCallLogRecord(record, queueExtensions))
-    .filter((candidate) => candidate.matchedTargetNumber || candidate.matchedQueue);
+    .map((record) => analyzeCallLogRecord(record, queueExtensions, options))
+    .filter(
+      (candidate) =>
+        candidate.matchedTargetNumber ||
+        candidate.matchedQueue ||
+        candidate.matchedExplicitCaller ||
+        candidate.matchedExplicitSource,
+    );
 }
 
 function analyzeCallLogRecord(
   record: any,
   queueExtensions: QueueExtension[],
+  options: ProbeOptions,
 ): LeadCandidateProbe {
+  const productionVet = vetRingCentralCallLogRecord(record);
   const legs = getLegs(record);
   const allParts = [record, ...legs];
-  const targetPhoneNumber = findTargetPhoneNumber(allParts);
+  const targetPhoneNumber = productionVet.targetPhoneNumber;
   const source = resolveRingCentralInboundSource(targetPhoneNumber);
   const matchedQueueExtensions = findMatchingQueueExtensions(allParts, queueExtensions);
-  const durationSeconds = maxNumber(
-    valueToNumber(record?.duration),
-    Math.floor((valueToNumber(record?.durationMs) ?? 0) / 1000) || null,
-    ...legs.map((leg) => valueToNumber(leg?.duration)),
-  );
-  const answered = isAnswered(record) || legs.some(isAnswered);
-  const direction = valueToString(record?.direction);
-  const caller = findCaller(record, legs);
-  const overMinimumDuration =
-    durationSeconds !== null && durationSeconds >= CALL_LEAD_MINIMUM_ANSWERED_SECONDS;
-  const rejectionReasons = buildRejectionReasons({
-    direction,
-    matchedTargetNumber: targetPhoneNumber !== null,
-    matchedQueue: matchedQueueExtensions.length > 0,
-    answered,
-    overMinimumDuration,
-    callerPhoneNumber: caller.phoneNumber,
-  });
+  const caller = {
+    phoneNumber: productionVet.callerPhoneNumber,
+    name: productionVet.callerName,
+  };
+  const matchedExplicitCaller = options.callerNumbers.includes(caller.phoneNumber ?? "");
+  const matchedExplicitSource =
+    targetPhoneNumber !== null && options.sourceNumbers.includes(targetPhoneNumber);
 
   return {
-    callLogId: valueToString(record?.id),
-    sessionId: valueToString(record?.sessionId),
-    telephonySessionId: valueToString(record?.telephonySessionId),
-    startTime: valueToString(record?.startTime),
-    durationSeconds,
-    direction,
+    callLogId: productionVet.callLogId,
+    sessionId: productionVet.sessionId,
+    telephonySessionId: productionVet.telephonySessionId,
+    startTime: productionVet.startTime?.toISOString() ?? null,
+    durationSeconds: productionVet.durationSeconds,
+    direction: productionVet.direction,
     type: valueToString(record?.type),
-    result: valueToString(record?.result),
+    result: productionVet.result,
     action: valueToString(record?.action),
     callerPhoneNumber: caller.phoneNumber,
     callerName: caller.name,
     targetPhoneNumber,
-    targetName: findTargetName(allParts, targetPhoneNumber),
+    targetName: productionVet.targetName,
     sourceLabel: source?.sourceLabel ?? null,
     sourceCompany: source?.sourceCompany ?? null,
-    matchedTargetNumber: targetPhoneNumber !== null,
+    matchedTargetNumber: productionVet.matchedTargetNumber,
     matchedQueue: matchedQueueExtensions.length > 0,
     matchedQueueExtensions,
-    answered,
-    overMinimumDuration,
-    wouldCreateCallLead: rejectionReasons.length === 0,
-    rejectionReasons,
+    answered: productionVet.answered,
+    overMinimumDuration: productionVet.overMinimumDuration,
+    wouldCreateCallLead: productionVet.qualifies,
+    rejectionReasons: productionVet.rejectionReasons,
+    productionQualifies: productionVet.qualifies,
+    productionRejectionReasons: productionVet.rejectionReasons,
+    matchedExplicitCaller,
+    matchedExplicitSource,
     rawSummary: {
       legCount: legs.length,
       legTypes: uniqueStrings(legs.map((leg) => valueToString(leg?.legType))),
@@ -368,86 +422,6 @@ function analyzeCallLogRecord(
         allParts.flatMap((part) => extractExtensionIds(part)),
       ),
     },
-  };
-}
-
-function buildRejectionReasons(input: {
-  direction: string | null;
-  matchedTargetNumber: boolean;
-  matchedQueue: boolean;
-  answered: boolean;
-  overMinimumDuration: boolean;
-  callerPhoneNumber: string | null;
-}): string[] {
-  const reasons: string[] = [];
-  if (input.direction !== "Inbound") {
-    reasons.push("not_inbound");
-  }
-  if (!input.matchedTargetNumber) {
-    reasons.push("target_number_not_matched");
-  }
-  if (!input.matchedQueue) {
-    reasons.push("queue_not_matched");
-  }
-  if (!input.answered) {
-    reasons.push("not_answered");
-  }
-  if (!input.overMinimumDuration) {
-    reasons.push("under_120_seconds");
-  }
-  if (!input.callerPhoneNumber) {
-    reasons.push("missing_caller_phone_number");
-  }
-  return reasons;
-}
-
-function findTargetPhoneNumber(parts: any[]): string | null {
-  for (const part of parts) {
-    const normalized = normalizePhoneNumberToE164Like(
-      valueToString(part?.to?.phoneNumber),
-    );
-    if (normalized && resolveRingCentralInboundSource(normalized)) {
-      return normalized;
-    }
-  }
-  return null;
-}
-
-function findTargetName(parts: any[], targetPhoneNumber: string | null): string | null {
-  if (!targetPhoneNumber) {
-    return null;
-  }
-
-  for (const part of parts) {
-    const normalized = normalizePhoneNumberToE164Like(
-      valueToString(part?.to?.phoneNumber),
-    );
-    if (normalized === targetPhoneNumber) {
-      return valueToString(part?.to?.name);
-    }
-  }
-  return null;
-}
-
-function findCaller(record: any, legs: any[]): { phoneNumber: string | null; name: string | null } {
-  const inboundParts = [record, ...legs].filter(
-    (part) => valueToString(part?.direction) === "Inbound",
-  );
-  for (const part of inboundParts) {
-    const phoneNumber = normalizePhoneNumberToE164Like(
-      valueToString(part?.from?.phoneNumber),
-    );
-    if (phoneNumber) {
-      return {
-        phoneNumber,
-        name: valueToString(part?.from?.name),
-      };
-    }
-  }
-
-  return {
-    phoneNumber: normalizePhoneNumberToE164Like(valueToString(record?.from?.phoneNumber)),
-    name: valueToString(record?.from?.name),
   };
 }
 
@@ -537,11 +511,6 @@ function resolveTargetQueueExtensions(payload: any): QueueExtension[] {
   });
 }
 
-function isAnswered(recordOrLeg: any): boolean {
-  const result = valueToString(recordOrLeg?.result);
-  return result !== null && ANSWERED_RESULTS.has(result);
-}
-
 function extractExtensionIds(recordOrLeg: any): string[] {
   return uniqueStrings([
     valueToString(recordOrLeg?.extension?.id),
@@ -585,10 +554,44 @@ function printCandidateSummary(
         candidate.rejectionReasons.length
           ? `reasons=${candidate.rejectionReasons.join(",")}`
           : null,
+        candidate.matchedExplicitCaller ? "EXPLICIT_CALLER_MATCH" : null,
       ]
         .filter((value) => value !== null)
         .join(" | "),
     );
+  }
+  console.log("");
+}
+
+function printExplicitCallerSummary(
+  candidates: LeadCandidateProbe[],
+  options: ProbeOptions,
+): void {
+  console.log("Explicit missing-caller search");
+  for (const callerNumber of options.callerNumbers) {
+    const matches = candidates.filter(
+      (candidate) => candidate.callerPhoneNumber === callerNumber,
+    );
+    console.log(`  ${callerNumber}: ${matches.length} call-log record(s) found`);
+    for (const candidate of matches) {
+      console.log(
+        [
+          `    ${candidate.productionQualifies ? "QUALIFIED" : "rejected"}`,
+          `start=${candidate.startTime ?? "?"}`,
+          `duration=${candidate.durationSeconds ?? "?"}s`,
+          `result=${candidate.result ?? "?"}`,
+          `to=${candidate.targetPhoneNumber ?? "?"}`,
+          `source=${candidate.sourceLabel ?? "?"}`,
+          candidate.productionRejectionReasons.length
+            ? `reasons=${candidate.productionRejectionReasons.join(",")}`
+            : null,
+          `callLogId=${candidate.callLogId ?? "?"}`,
+          `session=${candidate.telephonySessionId ?? candidate.sessionId ?? "?"}`,
+        ]
+          .filter((value) => value !== null)
+          .join(" | "),
+      );
+    }
   }
   console.log("");
 }
@@ -629,6 +632,12 @@ function parseOptions(args: string[]): ProbeOptions {
   ).toISOString();
   let limit = DEFAULT_LIMIT;
   let json = false;
+  let callerNumbers = DEFAULT_TARGET_CALLERS.map((value) =>
+    normalizeRequiredPhoneNumber(value, "default caller"),
+  );
+  let sourceNumbers = Object.keys(RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE).map((value) =>
+    normalizeRequiredPhoneNumber(value, "default source"),
+  );
 
   for (let index = 0; index < normalizedArgs.length; index += 1) {
     const arg = normalizedArgs[index];
@@ -656,6 +665,24 @@ function parseOptions(args: string[]): ProbeOptions {
       index += 1;
     } else if (arg === "--json") {
       json = true;
+    } else if (arg === "--caller" && next) {
+      callerNumbers = uniqueStrings([
+        ...callerNumbers,
+        ...parsePhoneList(next, "--caller"),
+      ]);
+      index += 1;
+    } else if (arg === "--source" && next) {
+      sourceNumbers = uniqueStrings([
+        ...sourceNumbers,
+        ...parsePhoneList(next, "--source"),
+      ]);
+      index += 1;
+    } else if (arg === "--only-default-callers") {
+      callerNumbers = DEFAULT_TARGET_CALLERS.map((value) =>
+        normalizeRequiredPhoneNumber(value, "default caller"),
+      );
+    } else if (arg === "--no-default-callers") {
+      callerNumbers = [];
     } else if (arg === "--help") {
       printUsageAndExit();
     } else {
@@ -667,7 +694,7 @@ function parseOptions(args: string[]): ProbeOptions {
     throw new Error("--from must be earlier than --to");
   }
 
-  return { dateFrom, dateTo, limit, json };
+  return { dateFrom, dateTo, limit, json, callerNumbers, sourceNumbers };
 }
 
 function parseDateArg(value: string, flag: string): string {
@@ -681,17 +708,37 @@ function parseDateArg(value: string, flag: string): string {
 function printUsageAndExit(): never {
   console.log(`Usage:
   pnpm ringcentral:call-lead:api-probe
-  pnpm ringcentral:call-lead:api-probe -- --hours 6
+  pnpm ringcentral:call-lead:api-probe -- --hours 48
   pnpm ringcentral:call-lead:api-probe -- --from 2026-06-03T13:00:00Z --to 2026-06-03T16:00:00Z --limit 100
+  pnpm ringcentral:call-lead:api-probe -- --caller "(602) 391-8047" --caller "(240) 426-1067"
 
 Options:
   --hours <number>  Look back from now. Defaults to ${DEFAULT_LOOKBACK_HOURS}.
   --from <iso>      Start time for Call Log and Analytics queries.
   --to <iso>        End time for Call Log and Analytics queries.
   --limit <number>  Call Log perPage limit, 1-1000. Defaults to ${DEFAULT_LIMIT}.
+  --caller <phone>  Add a caller phone number to the explicit missing-caller search.
+  --source <phone>  Add a RingCentral source/target phone number to match.
+  --no-default-callers
+                    Only use caller numbers provided with --caller.
   --json            Also print the full sanitized artifact to stdout.
 `);
   process.exit(0);
+}
+
+function parsePhoneList(value: string, flag: string): string[] {
+  return value
+    .split(",")
+    .map((entry) => normalizeRequiredPhoneNumber(entry, flag))
+    .filter((entry, index, all) => all.indexOf(entry) === index);
+}
+
+function normalizeRequiredPhoneNumber(value: string, label: string): string {
+  const normalized = normalizePhoneNumberToE164Like(value);
+  if (!normalized) {
+    throw new Error(`${label} must be a valid phone number: ${value}`);
+  }
+  return normalized;
 }
 
 function getRecords(payload: any): any[] {
@@ -724,14 +771,6 @@ function summarizeAnalyticsRecord(record: any): {
 
 function getLegs(record: any): any[] {
   return Array.isArray(record?.legs) ? record.legs : [];
-}
-
-function maxNumber(...values: Array<number | null>): number | null {
-  const numbers = values.filter((value): value is number => value !== null);
-  if (numbers.length === 0) {
-    return null;
-  }
-  return Math.max(...numbers);
 }
 
 function uniqueStrings(values: Array<string | null | undefined>): string[] {

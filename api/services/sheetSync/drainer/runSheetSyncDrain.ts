@@ -5,7 +5,11 @@ import {
 } from "../../../config/domain";
 import { connectMongo } from "../../../db";
 import { logger } from "../../../logger";
-import { mergeSheetSyncEntries, type SheetSyncEntry } from "../../../models/schemaHelpers";
+import {
+  mergeSheetSyncEntries,
+  removeSheetSyncEntries,
+  type SheetSyncEntry,
+} from "../../../models/schemaHelpers";
 import { SheetSyncAttempt } from "../../../models/SheetSyncAttempt";
 import { SheetSyncJob, type SheetSyncJobDocument } from "../../../models/SheetSyncJob";
 import { SheetSyncRun } from "../../../models/SheetSyncRun";
@@ -281,11 +285,16 @@ async function persistDocSheetSync(
     const entries: SheetSyncEntry[] = docOutcomes
       .filter((o) => o.write.op === "upsert")
       .map((o) => toSheetSyncEntry(o));
-    if (entries.length === 0) {
+    const deletedTargets = docOutcomes
+      .filter((o) => o.write.op === "delete" && o.status === "synced")
+      .map((o) => o.write.target);
+    if (entries.length === 0 && deletedTargets.length === 0) {
       continue;
     }
     const doc = planned.doc;
-    doc.set("sheet_sync", mergeSheetSyncEntries(doc.get("sheet_sync") as SheetSyncEntry[], entries));
+    const existing = doc.get("sheet_sync") as SheetSyncEntry[];
+    const withoutDeleted = removeSheetSyncEntries(existing, deletedTargets);
+    doc.set("sheet_sync", mergeSheetSyncEntries(withoutDeleted, entries));
     await doc.save();
   }
 }

@@ -4,6 +4,7 @@ import {
   CANCELLED_SHEET_HEADERS,
   FORM_SHEET_HEADERS,
   getMasterBookedSheetContainerId,
+  getMasterLeadsSheetContainerId,
   SHEET_TAB_NAMES,
   type LeadModelName,
   type SourceCompany,
@@ -18,7 +19,11 @@ import { bookedLeadToRow } from "../../googleSheets/projections/bookedLeadRow";
 import { callLeadToRow } from "../../googleSheets/projections/callLeadRow";
 import { cancelledLeadToRow } from "../../googleSheets/projections/cancelledLeadRow";
 import { formLeadToRow } from "../../googleSheets/projections/formLeadRow";
-import { getHeadersForSyncTarget, getLeadTargets } from "../../googleSheets/targets";
+import {
+  getHeadersForSyncTarget,
+  getLeadTargets,
+  getMasterLeadsTabs,
+} from "../../googleSheets/targets";
 import type {
   BookedLeadSheetSource,
   CallLeadSheetSource,
@@ -79,6 +84,27 @@ function targetsToWrites(
   }));
 }
 
+function targetToDeleteWrite(
+  jobId: string,
+  docKey: string,
+  mongoId: string,
+  doc: { sheet_sync?: unknown },
+  target: SyncTarget,
+): PlannedWrite {
+  return {
+    jobId,
+    docKey,
+    mongoId,
+    target: target.target,
+    spreadsheetId: target.spreadsheetId,
+    tabName: target.tabName,
+    headers: target.headers,
+    row: [],
+    knownRowNumber: knownRowFor(doc, target.target),
+    op: "delete",
+  };
+}
+
 function formLeadTargetBase(duplicate?: boolean | null) {
   return duplicate
     ? { masterTarget: "master_duplicates", sourceTarget: "source_duplicates", tabName: SHEET_TAB_NAMES.duplicates }
@@ -89,6 +115,16 @@ function callLeadTargetBase(duplicate?: boolean | null) {
   return duplicate
     ? { masterTarget: "master_duplicate_calls", sourceTarget: "source_duplicate_calls", tabName: SHEET_TAB_NAMES.duplicateCalls }
     : { masterTarget: "master_calls", sourceTarget: "source_calls", tabName: SHEET_TAB_NAMES.calls };
+}
+
+function masterBadLeadsTarget(): SyncTarget {
+  return {
+    target: "master_bad_leads",
+    spreadsheetId: getMasterLeadsSheetContainerId(),
+    tabName: SHEET_TAB_NAMES.badLeads,
+    headers: FORM_SHEET_HEADERS,
+    ensureTabs: getMasterLeadsTabs(),
+  };
 }
 
 function bookedTarget(): SyncTarget {
@@ -139,8 +175,35 @@ async function planSourceLead(
       FORM_SHEET_HEADERS,
     );
     const row = formLeadToRow(lead as unknown as FormLeadSheetSource);
-    const selectedTargets = filterTargets(job, targets);
-    return [{ docKey, doc: looseDoc, writes: targetsToWrites(jobId, docKey, leadId, looseDoc, selectedTargets, row) }];
+    const writes = targetsToWrites(
+      jobId,
+      docKey,
+      leadId,
+      looseDoc,
+      filterTargets(job, targets),
+      row,
+    );
+    const badLeadsTarget = masterBadLeadsTarget();
+    if (lead.get("bad_lead")) {
+      writes.push(
+        ...targetsToWrites(
+          jobId,
+          docKey,
+          leadId,
+          looseDoc,
+          filterTargets(job, [badLeadsTarget]),
+          row,
+        ),
+      );
+    } else if (knownRowFor(looseDoc, badLeadsTarget.target)) {
+      const selectedBadLeadTargets = filterTargets(job, [badLeadsTarget]);
+      writes.push(
+        ...selectedBadLeadTargets.map((target) =>
+          targetToDeleteWrite(jobId, docKey, leadId, looseDoc, target),
+        ),
+      );
+    }
+    return [{ docKey, doc: looseDoc, writes }];
   }
 
   const base = callLeadTargetBase(duplicate);

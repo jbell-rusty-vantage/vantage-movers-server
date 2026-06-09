@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { FORM_LEAD_BAD_LEAD_REASONS } from "../../config/domain";
 import {
   booleanInput,
   emailSchema,
@@ -77,6 +78,7 @@ export const updateFormLeadSchema = z
   .object({
     ...formLeadFields,
     duplicate: booleanInput.optional(),
+    bad_lead: z.enum(FORM_LEAD_BAD_LEAD_REASONS).nullable().optional(),
   })
   .partial()
   .strict()

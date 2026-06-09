@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
 import mongoose, { Types } from "mongoose";
+import { SHEET_TAB_NAMES } from "../../../config/domain";
+import { FormLead } from "../../../models/FormLead";
 import type { SheetSyncJobDocument } from "../../../models/SheetSyncJob";
 import { planJobWrites } from "./jobPlanner";
 
@@ -19,6 +21,23 @@ type TombstoneInput = {
   }[];
 };
 
+type StubbedFormLeadModel = {
+  findById: (id: string) => unknown;
+};
+
+const originalFindById = FormLead.findById as unknown;
+const originalUseDb = mongoose.connection.useDb;
+const originalMasterLeadsSheetId = process.env.MASTER_LEADS_SHEET_ID;
+const originalTestMasterLeadsSheetId = process.env.TEST_MASTER_LEADS_SHEET_ID;
+
+afterEach(() => {
+  (FormLead as unknown as StubbedFormLeadModel).findById =
+    originalFindById as StubbedFormLeadModel["findById"];
+  mongoose.connection.useDb = originalUseDb;
+  process.env.MASTER_LEADS_SHEET_ID = originalMasterLeadsSheetId;
+  process.env.TEST_MASTER_LEADS_SHEET_ID = originalTestMasterLeadsSheetId;
+});
+
 function tombstoneJob(
   resource: "delete_source_lead" | "delete_booked_lead" | "delete_cancelled_lead",
   tombstone: TombstoneInput,
@@ -30,6 +49,26 @@ function tombstoneJob(
     entity_id: tombstone.mongo_id,
     tombstone,
   } as unknown as SheetSyncJobDocument;
+}
+
+function sourceLeadJob(leadId: string): SheetSyncJobDocument {
+  return {
+    _id: new Types.ObjectId(),
+    resource: "source_lead",
+    operation: "form_lead.update",
+    entity_model: "FormLead",
+    entity_id: leadId,
+  } as unknown as SheetSyncJobDocument;
+}
+
+function stubFormLead(document: Record<string, unknown>): void {
+  mongoose.connection.useDb = (() => ({
+    models: { FormLead },
+    model: () => FormLead,
+  })) as unknown as typeof mongoose.connection.useDb;
+  (FormLead as unknown as StubbedFormLeadModel).findById = () => ({
+    then: (resolve: (value: unknown) => void) => resolve(document),
+  });
 }
 
 test("planJobWrites turns a tombstone's previous_targets into delete writes", async () => {
@@ -101,4 +140,83 @@ test("planJobWrites returns a single empty plan when a tombstone has no targets"
   const planned = await planJobWrites(job);
   assert.equal(planned.length, 1);
   assert.equal(planned[0].writes.length, 0);
+});
+
+test("planJobWrites dual-writes bad form leads to Forms and Master Bad Leads", async () => {
+  process.env.MASTER_LEADS_SHEET_ID = "master-leads-test";
+  process.env.TEST_MASTER_LEADS_SHEET_ID = "master-leads-test";
+  const leadId = new Types.ObjectId().toString();
+  const lead = {
+    _id: new Types.ObjectId(leadId),
+    timestamp: new Date("2026-05-27T15:04:05.000Z"),
+    name: "Jane Tester",
+    pickup_zip: "10001",
+    destination_zip: "90210",
+    pickup_state: "NY",
+    delivery_state: "CA",
+    move_size: "Studio",
+    move_date: new Date("2026-06-01T00:00:00.000Z"),
+    phone_number: "5551112222",
+    email: "jane@example.com",
+    ref_no: "ref-1",
+    local: "long_distance",
+    source_company: "main_site",
+    bad_lead: "auto_only",
+    sheet_sync: [{ target: "master_forms", row_number: 7 }],
+    get(key: string) {
+      return this[key as keyof typeof lead];
+    },
+    populate: async () => lead,
+  };
+  stubFormLead(lead);
+
+  const planned = await planJobWrites(sourceLeadJob(leadId));
+
+  assert.equal(planned.length, 1);
+  assert.deepEqual(
+    planned[0].writes.map((write) => write.target),
+    ["master_forms", "master_bad_leads"],
+  );
+  assert.equal(planned[0].writes[1].tabName, SHEET_TAB_NAMES.badLeads);
+  assert.equal(planned[0].writes[1].op, "upsert");
+  assert.equal(planned[0].writes[1].row.at(-1), "Auto Only");
+});
+
+test("planJobWrites deletes stale Master Bad Leads row when bad_lead is cleared", async () => {
+  process.env.MASTER_LEADS_SHEET_ID = "master-leads-test";
+  process.env.TEST_MASTER_LEADS_SHEET_ID = "master-leads-test";
+  const leadId = new Types.ObjectId().toString();
+  const lead = {
+    _id: new Types.ObjectId(leadId),
+    timestamp: new Date("2026-05-27T15:04:05.000Z"),
+    name: "Jane Tester",
+    pickup_zip: "10001",
+    destination_zip: "90210",
+    pickup_state: "NY",
+    delivery_state: "CA",
+    move_size: "Studio",
+    move_date: new Date("2026-06-01T00:00:00.000Z"),
+    phone_number: "5551112222",
+    email: "jane@example.com",
+    ref_no: "ref-1",
+    local: "long_distance",
+    source_company: "main_site",
+    bad_lead: null,
+    sheet_sync: [
+      { target: "master_forms", row_number: 7 },
+      { target: "master_bad_leads", row_number: 11 },
+    ],
+    get(key: string) {
+      return this[key as keyof typeof lead];
+    },
+    populate: async () => lead,
+  };
+  stubFormLead(lead);
+
+  const planned = await planJobWrites(sourceLeadJob(leadId));
+
+  assert.equal(planned.length, 1);
+  const deleteWrite = planned[0].writes.find((write) => write.target === "master_bad_leads");
+  assert.equal(deleteWrite?.op, "delete");
+  assert.equal(deleteWrite?.knownRowNumber, 11);
 });

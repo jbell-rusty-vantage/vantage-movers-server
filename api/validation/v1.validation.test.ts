@@ -209,6 +209,22 @@ test("createFormLeadSchema does not accept duplicate from clients", () => {
   assert.equal(parsed.success, false);
 });
 
+test("createFormLeadSchema does not accept bad_lead from clients", () => {
+  const parsed = createFormLeadSchema.safeParse({
+    source_company: "main_site",
+    name: "Jane Customer",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    move_size: "Studio",
+    ref_no: "not provided",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+    bad_lead: "auto_only",
+  });
+
+  assert.equal(parsed.success, false);
+});
+
 test("createFormLeadSchema does not accept lid from clients", () => {
   const parsed = createFormLeadSchema.safeParse({
     source_company: "main_site",
@@ -231,6 +247,22 @@ test("updateFormLeadSchema accepts duplicate for backfill and admin patches", ()
   });
 
   assert.equal(parsed.duplicate, true);
+});
+
+test("updateFormLeadSchema accepts and clears bad_lead reasons", () => {
+  const marked = updateFormLeadSchema.parse({
+    bad_lead: "international_move",
+  });
+  const cleared = updateFormLeadSchema.parse({
+    bad_lead: null,
+  });
+  const invalid = updateFormLeadSchema.safeParse({
+    bad_lead: "wrong_reason",
+  });
+
+  assert.equal(marked.bad_lead, "international_move");
+  assert.equal(cleared.bad_lead, null);
+  assert.equal(invalid.success, false);
 });
 
 test("createFormLeadSchema defaults post_to_granot to false when omitted", () => {
@@ -481,6 +513,45 @@ test("FormLead model stores duplicate quarantine flag", async () => {
 
   await assert.doesNotReject(() => lead.validate());
   assert.equal(lead.duplicate, true);
+});
+
+test("FormLead model stores bad_lead enum values", async () => {
+  const lead = new FormLead({
+    source_company: "best_relocation_leads",
+    name: "Jane Customer",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    pickup_state: "NY",
+    delivery_state: "FL",
+    move_size: "Studio",
+    ref_no: "not provided",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+    local: "long_distance",
+    bad_lead: "disconnected_number",
+  });
+
+  await assert.doesNotReject(() => lead.validate());
+  assert.equal(lead.bad_lead, "disconnected_number");
+});
+
+test("FormLead model rejects unknown bad_lead values", async () => {
+  const lead = new FormLead({
+    source_company: "best_relocation_leads",
+    name: "Jane Customer",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    pickup_state: "NY",
+    delivery_state: "FL",
+    move_size: "Studio",
+    ref_no: "not provided",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+    local: "long_distance",
+    bad_lead: "wrong_reason",
+  });
+
+  await assert.rejects(() => lead.validate(), /bad_lead/);
 });
 
 test("FormLead model defaults missing state fields to not_found", async () => {
