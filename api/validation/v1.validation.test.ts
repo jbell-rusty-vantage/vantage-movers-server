@@ -344,6 +344,22 @@ test("createFormLeadSchema accepts post_to_granot string false", () => {
   assert.equal(parsed.post_to_granot, false);
 });
 
+test("createFormLeadSchema accepts sms_consent for logging-only intake", () => {
+  const parsed = createFormLeadSchema.parse({
+    source_company: "main_site",
+    name: "Jane Customer",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    move_size: "Studio",
+    ref_no: "not provided",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+    sms_consent: true,
+  });
+
+  assert.equal(parsed.sms_consent, true);
+});
+
 test("createFormLeadSchema accepts typo emails as plain strings", () => {
   const parsed = createFormLeadSchema.parse({
     source_company: "main_site",

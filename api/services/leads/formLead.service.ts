@@ -48,7 +48,7 @@ import { normalizeLeadName, normalizeLeadNameUpdate } from "./leadName.service";
 
 export async function createFormLead(input: CreateFormLeadInput) {
   const FormLead = getFormLeadModel();
-  const { crm_company_label, post_to_granot, ...formLeadInput } = input;
+  const { crm_company_label, post_to_granot, sms_consent, ...formLeadInput } = input;
   const normalizedFormLeadInput = normalizeLeadName(formLeadInput);
   normalizedFormLeadInput.phone_number = normalizePhoneNumberForStorage(
     normalizedFormLeadInput.phone_number,
@@ -108,6 +108,17 @@ export async function createFormLead(input: CreateFormLeadInput) {
   });
 
   const leadId = lead._id.toString();
+
+  if (sms_consent !== undefined) {
+    logger.info({
+      msg: "form_lead.sms_consent.received",
+      leadId,
+      sms_consent,
+      email: lead.email,
+      phone_number: lead.phone_number,
+    });
+  }
+
   for (const job of jobs) {
     await finalizeSheetSync(job);
   }

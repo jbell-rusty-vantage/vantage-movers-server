@@ -70,6 +70,8 @@ export const createFormLeadSchema = z
     ref_no: nonEmptyString.default("not provided"),
     crm_company_label: nonEmptyString.default("Main Site Forms"),
     post_to_granot: booleanInput.default(false),
+    // Accepted for logging only until Twilio campaign approval; not persisted yet.
+    sms_consent: booleanInput.optional(),
   })
   .strict()
   .refine(hasLeadName, "Form lead requires name, first_name, or last_name");
