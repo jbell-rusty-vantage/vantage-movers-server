@@ -45,6 +45,10 @@
     "ringcentral:workflow:test": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ringcentral/ringcentral-workflow-test.ts",
     "ringcentral:call-log:sync:run": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ringcentral/ringcentral-call-log-sync-run.ts",
     "ringcentral:analytics:reconcile:run": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ringcentral/ringcentral-analytics-reconcile-run.ts",
+    "twilio:diagnose": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/twilio/twilio-diagnose.ts",
+    "twilio:send-sms": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/twilio/twilio-send-sms.ts",
+    "granot-csv:upload-registry": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/granot_crm_csv/upload-registry.ts",
+    "granot-csv:sync": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/granot_crm_csv/sync-from-s3.ts",
     "demo:live-sheet-sync": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/demos/live-sheet-sync-demo.ts",
     "demo:google-maps-apis": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/demos/test-google-maps-apis.ts",
     "bbb:scrape-reviews": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/bbb/scrape-bbb-reviews.ts",
@@ -59,6 +63,8 @@
   "license": "ISC",
   "packageManager": "pnpm@10.13.1",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1064.0",
+    "@aws-sdk/credential-providers": "^3.1064.0",
     "@vercel/functions": "^3.5.1",
     "@vercel/queue": "^0.2.1",
     "bcryptjs": "^3.0.3",
@@ -73,6 +79,7 @@
     "mongoose": "^9.6.2",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
+    "twilio": "^6.0.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {

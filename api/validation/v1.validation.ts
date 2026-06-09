@@ -118,3 +118,10 @@ export {
   listTestimonialsQuerySchema,
   type ListTestimonialsQuery,
 } from "./v1/testimonials.validation";
+
+export {
+  listGranotCrmSourcesQuerySchema,
+  uploadGranotCrmCsvSchema,
+  type ListGranotCrmSourcesQuery,
+  type UploadGranotCrmCsvInput,
+} from "./v1/granotCsv.validation";
