@@ -96,10 +96,12 @@ async function searchConcrete(
   const config = SEARCH_CONFIGS[resource];
   const models = getAdminModels(scope);
   const q = query.q.trim();
-  const objectIdClause = mongoose.isValidObjectId(q) ? [{ _id: new mongoose.Types.ObjectId(q) }] : [];
+  const objectIdClause = mongoose.isValidObjectId(q)
+    ? [{ _id: mongoose.Types.ObjectId.createFromHexString(q) }]
+    : [];
   const regex = new RegExp(escapeRegex(q), "i");
   const filter = { $or: [...objectIdClause, ...config.fields.map((field) => ({ [field]: regex }))] };
-  const docs = await models[resource].find(filter).sort({ createdAt: -1 }).limit(query.limit).lean({ virtuals: true }).exec();
+  const docs = await models[resource].find(filter).sort({ createdAt: -1 }).limit(query.limit).lean().exec();
   return (docs as Record<string, unknown>[]).map((doc) => {
     const id = String(doc._id);
     return {

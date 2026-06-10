@@ -7,7 +7,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node", "express-serve-static-core"]
   },
   "include": ["api/**/*.ts", "scripts/**/*.ts", "types/**/*.d.ts"]
 }

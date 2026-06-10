@@ -7,6 +7,7 @@ import mongoose, {
 import {
   GRANOT_CRM_CSV_KINDS,
   getMongoDatabaseName,
+  type GranotCrmCsvKind,
 } from "../config/domain";
 import { sourceCompanyField } from "./schemaHelpers";
 
@@ -64,8 +65,19 @@ for (const csvKind of GRANOT_CRM_CSV_KINDS) {
   GranotCrmSourceSchema.index({ [`csv_paths.${csvKind}`]: 1 });
 }
 
-export type GranotCrmSource = InferSchemaType<typeof GranotCrmSourceSchema> & {
+type GranotCrmLastIngestion = {
+  content_sha256?: string;
+  ingestion_id?: mongoose.Types.ObjectId;
+  s3_key?: string;
+  imported_at?: Date;
+};
+
+export type GranotCrmSource = Omit<
+  InferSchemaType<typeof GranotCrmSourceSchema>,
+  "last_ingestions"
+> & {
   _id: mongoose.Types.ObjectId;
+  last_ingestions?: Partial<Record<GranotCrmCsvKind, GranotCrmLastIngestion>>;
 };
 
 export type GranotCrmSourceDocument = HydratedDocument<GranotCrmSource>;

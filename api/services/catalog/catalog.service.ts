@@ -58,14 +58,14 @@ export async function listCatalogItems(
   const docs = await config.model
     .find(filter)
     .sort({ name: 1 })
-    .lean({ virtuals: true })
+    .lean()
     .exec();
   return docs.map(toCatalogItem);
 }
 
 export async function getCatalogItem(kind: CatalogKind, id: string): Promise<CatalogItem> {
   const config = CATALOGS[kind];
-  const doc = await config.model.findById(id).lean({ virtuals: true }).exec();
+  const doc = await config.model.findById(id).lean().exec();
   if (!doc) {
     throw new V1ServiceError(`${config.label} not found`, 404);
   }

@@ -37,7 +37,7 @@ export async function resolveBookedLeadForCancellation(
   }
 
   const booking = await getBookedLeadForCancellation(lead.booked.toString());
-  if (input.booked_lead && !booking._id.equals(input.booked_lead)) {
+  if (input.booked_lead && booking._id.toString() !== input.booked_lead) {
     throw new V1ServiceError("booked_lead does not match the source lead booking", 409);
   }
   if (booking.lead_model !== leadModel || booking.lead_ref?.toString() !== lead._id.toString()) {

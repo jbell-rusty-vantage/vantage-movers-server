@@ -53,7 +53,7 @@ export function getSheetsClient(): sheets_v4.Sheets {
   cachedSheetsClient = google.sheets({
     version: "v4",
     auth,
-  } satisfies sheets_v4.Options);
+  } as unknown as sheets_v4.Options);
   return cachedSheetsClient;
 }
 

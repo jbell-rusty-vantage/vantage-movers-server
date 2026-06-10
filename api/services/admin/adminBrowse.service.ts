@@ -178,7 +178,7 @@ export async function getAdminResourceDetail(
   const models = getAdminModels(concreteScope);
   const config = RESOURCE_CONFIGS[resource];
   const findQuery = applyPopulate(models[resource].findById(id), config);
-  const doc = await findQuery.lean({ virtuals: true }).exec();
+  const doc = await findQuery.lean().exec();
   if (!doc) {
     throw new V1ServiceError("Admin record not found", 404);
   }
@@ -250,7 +250,7 @@ async function browseConcrete(
   const skip = (query.page - 1) * query.limit;
   const findQuery = applyPopulate(model.find(filter).sort(sort).skip(skip).limit(query.limit), config);
   const [docs, total] = await Promise.all([
-    findQuery.lean({ virtuals: true }).exec(),
+    findQuery.lean().exec(),
     model.countDocuments(filter).exec(),
   ]);
   const items = (docs as Record<string, unknown>[]).map((doc) => normalizeDoc(doc, scope));
@@ -373,7 +373,9 @@ function addDateClause(
 
 function addQClause(clauses: Record<string, unknown>[], fields: string[], q?: string) {
   if (!q) return;
-  const objectIdClause = mongoose.isValidObjectId(q) ? [{ _id: new mongoose.Types.ObjectId(q) }] : [];
+  const objectIdClause = mongoose.isValidObjectId(q)
+    ? [{ _id: mongoose.Types.ObjectId.createFromHexString(q) }]
+    : [];
   clauses.push({ $or: [...objectIdClause, ...containsClauses(fields, q)] });
 }
 
@@ -419,8 +421,8 @@ async function appendDetailRelations(
   if (!id || typeof id !== "string") return item;
   if (resource === "customers") {
     const [bookings, cancellations] = await Promise.all([
-      models["booked-leads"].find({ customer: id }).sort({ book_date: -1 }).limit(25).lean({ virtuals: true }).exec(),
-      models["cancelled-leads"].find({ customer: id }).sort({ cancel_date: -1 }).limit(25).lean({ virtuals: true }).exec(),
+      models["booked-leads"].find({ customer: id }).sort({ book_date: -1 }).limit(25).lean().exec(),
+      models["cancelled-leads"].find({ customer: id }).sort({ cancel_date: -1 }).limit(25).lean().exec(),
     ]);
     return {
       ...item,

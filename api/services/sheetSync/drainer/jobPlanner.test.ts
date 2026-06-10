@@ -145,9 +145,10 @@ test("planJobWrites returns a single empty plan when a tombstone has no targets"
 test("planJobWrites dual-writes bad form leads to Forms and Master Bad Leads", async () => {
   process.env.MASTER_LEADS_SHEET_ID = "master-leads-test";
   process.env.TEST_MASTER_LEADS_SHEET_ID = "master-leads-test";
-  const leadId = new Types.ObjectId().toString();
+  const leadObjectId = new Types.ObjectId();
+  const leadId = leadObjectId.toString();
   const lead = {
-    _id: new Types.ObjectId(leadId),
+    _id: leadObjectId,
     timestamp: new Date("2026-05-27T15:04:05.000Z"),
     name: "Jane Tester",
     pickup_zip: "10001",
@@ -185,9 +186,10 @@ test("planJobWrites dual-writes bad form leads to Forms and Master Bad Leads", a
 test("planJobWrites deletes stale Master Bad Leads row when bad_lead is cleared", async () => {
   process.env.MASTER_LEADS_SHEET_ID = "master-leads-test";
   process.env.TEST_MASTER_LEADS_SHEET_ID = "master-leads-test";
-  const leadId = new Types.ObjectId().toString();
+  const leadObjectId = new Types.ObjectId();
+  const leadId = leadObjectId.toString();
   const lead = {
-    _id: new Types.ObjectId(leadId),
+    _id: leadObjectId,
     timestamp: new Date("2026-05-27T15:04:05.000Z"),
     name: "Jane Tester",
     pickup_zip: "10001",

@@ -1,5 +1,5 @@
 import dns from "node:dns";
-import mongoose, { type ClientSession, type ConnectOptions } from "mongoose";
+import mongoose, { type ClientSession } from "mongoose";
 import { MONGO_DATABASE_NAME } from "./config/domain";
 import { ServiceUnavailableError } from "./services/errors";
 import { logger } from "./logger";
@@ -22,14 +22,14 @@ interface MongooseCache {
  * `serverSelectionTimeoutMS` fails fast (and within the function budget)
  * instead of hanging, so a retry can run.
  */
-const MONGO_CONNECT_OPTIONS: ConnectOptions = {
+const MONGO_CONNECT_OPTIONS = {
   dbName: MONGO_DATABASE_NAME,
   maxPoolSize: 5,
   minPoolSize: 0,
   maxIdleTimeMS: 60_000,
   serverSelectionTimeoutMS: 5_000,
   socketTimeoutMS: 45_000,
-};
+} as Parameters<typeof mongoose.connect>[1];
 
 /** How many times to (re)attempt the initial connection per cold isolate. */
 const MAX_CONNECT_ATTEMPTS = 2;
