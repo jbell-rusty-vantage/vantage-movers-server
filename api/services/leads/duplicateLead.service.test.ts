@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
+import mongoose from "mongoose";
 import { FormLead } from "../../models/FormLead";
 import { isDuplicateFormLead } from "./duplicateLead.service";
 
@@ -14,10 +15,12 @@ type StubbedFormLeadModel = {
 };
 
 const originalFormLeadFind = FormLead.find as unknown;
+const originalUseDb = mongoose.connection.useDb;
 
 afterEach(() => {
   (FormLead as unknown as StubbedFormLeadModel).find =
     originalFormLeadFind as StubbedFormLeadModel["find"];
+  mongoose.connection.useDb = originalUseDb;
 });
 
 test("form duplicate check matches existing lead by email within source company", async () => {
@@ -116,6 +119,10 @@ function stubFormLeadFind(
   leads: Array<{ email?: string; phone_number?: string }>,
   onFind?: (query: FindQuery) => void,
 ): void {
+  mongoose.connection.useDb = (() => ({
+    models: { FormLead },
+    model: () => FormLead,
+  })) as unknown as typeof mongoose.connection.useDb;
   (FormLead as unknown as StubbedFormLeadModel).find = (query: FindQuery) => {
     onFind?.(query);
     return {
