@@ -398,6 +398,24 @@ test("createCallLeadSchema accepts optional first and last name", () => {
   assert.equal(parsed.last_name, "Caller");
 });
 
+test("createCallLeadSchema accepts Best Relocation Inbounds webhook payload", () => {
+  const parsed = createCallLeadSchema.parse({
+    source_company: "Best Relocation Inbounds",
+    phone_number: "5555551212",
+    pickup_zip: "10001",
+    delivery_zip: "33101",
+    first_name: "Jane",
+    last_name: "Customer",
+    email: "JANE.CUSTOMER@EXAMPLE.COM",
+  });
+
+  assert.equal(parsed.source_company, "Best Relocation Inbounds");
+  assert.equal(parsed.phone_number, "5555551212");
+  assert.equal(parsed.pickup_zip, "10001");
+  assert.equal(parsed.delivery_zip, "33101");
+  assert.equal(parsed.email, "jane.customer@example.com");
+});
+
 test("bookedCallLeadReconciliationBatchSchema accepts Booked Jobs CRM rows", () => {
   const parsed = bookedCallLeadReconciliationBatchSchema.parse({
     rows: [

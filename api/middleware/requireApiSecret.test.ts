@@ -48,13 +48,16 @@ test("requireApiSecret accepts a source-scoped key for its configured route", ()
   assert.equal(ctx.statusCode, undefined);
 });
 
-test("requireApiSecret rejects a scoped key on a different route", () => {
+test("requireApiSecret accepts a source-scoped key for configured call lead route", () => {
   delete process.env.VANTAGE_API_SECRET;
   process.env.VANTAGE_SCOPED_API_KEYS = JSON.stringify([
     {
       name: "best-relocation-forms",
       secret: "best-relocation-secret",
-      routes: [{ method: "POST", path: "/api/v1/form-leads" }],
+      routes: [
+        { method: "POST", path: "/api/v1/form-leads" },
+        { method: "POST", path: "/api/v1/call-leads" },
+      ],
       source_companies: ["best_relocation_leads"],
     },
   ]);
@@ -63,7 +66,32 @@ test("requireApiSecret rejects a scoped key on a different route", () => {
     secret: "best-relocation-secret",
     method: "POST",
     path: "/api/v1/call-leads",
-    body: { source_company: "Best Relocation Forms" },
+    body: { source_company: "Best Relocation Inbounds" },
+  });
+
+  assert.equal(ctx.nextCalled, true);
+  assert.equal(ctx.statusCode, undefined);
+});
+
+test("requireApiSecret rejects a scoped key on a different route", () => {
+  delete process.env.VANTAGE_API_SECRET;
+  process.env.VANTAGE_SCOPED_API_KEYS = JSON.stringify([
+    {
+      name: "best-relocation-forms",
+      secret: "best-relocation-secret",
+      routes: [
+        { method: "POST", path: "/api/v1/form-leads" },
+        { method: "POST", path: "/api/v1/call-leads" },
+      ],
+      source_companies: ["best_relocation_leads"],
+    },
+  ]);
+
+  const ctx = invokeMiddleware({
+    secret: "best-relocation-secret",
+    method: "POST",
+    path: "/api/v1/booked-leads",
+    body: { source_company: "Best Relocation Inbounds" },
   });
 
   assert.equal(ctx.nextCalled, false);

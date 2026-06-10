@@ -16,6 +16,7 @@
     "db:seed-catalogs": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/seed-agent-merchant-catalogs.ts",
     "api:patch-form-lead-duplicate": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/patch-form-lead-duplicate-production.ts",
     "api:post-form-lead": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/post-form-lead.ts",
+    "dev_ops:test-best-relocation-webhook": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/test-best-relocation-forms-webhook-production.ts",
     "db:init-historical": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/historical/init-historical-db.ts",
     "historical:ingest-sheets": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/historical/ingest-historical-sheets.ts",
     "historical:reconcile": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/historical/reconcile-historical-leads.ts",
