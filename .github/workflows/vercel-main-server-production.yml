@@ -24,6 +24,7 @@ env:
   VERCEL_GIT_COMMIT_REF: ${{ github.ref_name }}
   VERCEL_GIT_COMMIT_SHA: ${{ github.sha }}
   VERCEL_GIT_COMMIT_AUTHOR_LOGIN: ${{ github.actor }}
+  VANTAGE_API_SECRET: ${{ secrets.VANTAGE_API_SECRET }}
 
 jobs:
   deploy:

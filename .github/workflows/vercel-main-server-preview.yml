@@ -26,6 +26,7 @@ env:
   VERCEL_GIT_COMMIT_SHA: ${{ github.sha }}
   VERCEL_GIT_COMMIT_AUTHOR_LOGIN: ${{ github.actor }}
   VERCEL_GIT_PULL_REQUEST_ID: ${{ github.event.pull_request.number || '' }}
+  VANTAGE_API_SECRET: ${{ secrets.VANTAGE_API_SECRET }}
 
 jobs:
   deploy:

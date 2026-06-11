@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import mongoose from "mongoose";
-import { FormLead } from "../../models/FormLead";
 import { isDuplicateFormLead } from "./duplicateLead.service";
 
 type FindQuery = {
@@ -10,16 +9,9 @@ type FindQuery = {
   $or?: Array<Record<string, unknown>>;
 };
 
-type StubbedFormLeadModel = {
-  find: (query: FindQuery) => unknown;
-};
-
-const originalFormLeadFind = FormLead.find as unknown;
 const originalUseDb = mongoose.connection.useDb;
 
 afterEach(() => {
-  (FormLead as unknown as StubbedFormLeadModel).find =
-    originalFormLeadFind as StubbedFormLeadModel["find"];
   mongoose.connection.useDb = originalUseDb;
 });
 
@@ -85,7 +77,10 @@ test("form duplicate check allows single identifier duplicate matches", async ()
     },
   ]);
 
-  assert.equal(await isDuplicateFormLead("top10_leads", null, "lead@example.com"), true);
+  assert.equal(
+    await isDuplicateFormLead("top10_leads", null, "lead@example.com"),
+    true,
+  );
 });
 
 test("form duplicate check ignores regex candidates that fail exact phone verification", async () => {
@@ -111,7 +106,10 @@ test("form duplicate check skips lookup when no usable identifier exists", async
     findCount += 1;
   });
 
-  assert.equal(await isDuplicateFormLead("not_provided", null, "   "), false);
+  assert.equal(
+    await isDuplicateFormLead("not_provided", null, "   "),
+    false,
+  );
   assert.equal(findCount, 0);
 });
 
@@ -119,18 +117,21 @@ function stubFormLeadFind(
   leads: Array<{ email?: string; phone_number?: string }>,
   onFind?: (query: FindQuery) => void,
 ): void {
-  mongoose.connection.useDb = (() => ({
-    models: { FormLead },
-    model: () => FormLead,
-  })) as unknown as typeof mongoose.connection.useDb;
-  (FormLead as unknown as StubbedFormLeadModel).find = (query: FindQuery) => {
-    onFind?.(query);
-    return {
-      sort: () => ({
-        limit: () => ({
-          exec: async () => leads,
+  const formLeadModel = {
+    find: (query: FindQuery) => {
+      onFind?.(query);
+      return {
+        sort: () => ({
+          limit: () => ({
+            exec: async () => leads,
+          }),
         }),
-      }),
-    };
+      };
+    },
   };
+
+  mongoose.connection.useDb = (() => ({
+    models: { FormLead: formLeadModel },
+    model: () => formLeadModel,
+  })) as unknown as typeof mongoose.connection.useDb;
 }
