@@ -1,4 +1,5 @@
 import { logger } from "../../logger";
+import { recordOperationalEvent } from "../observability";
 import { createRingCentralCallLead } from "../leads/callLead.service";
 import type { SourceCompany } from "./call-lead-sources";
 import { classifyRingCentralCallLeadDuplicate } from "./ringcentral-duplicate-guard";
@@ -86,6 +87,25 @@ export async function ingestRingCentralQualifiedCall(
       callLogId: call.callLogId,
       previousStatus: existing.status,
       ingestionSource: call.ingestionSource,
+    });
+    await recordOperationalEvent({
+      level: "info",
+      eventKey: "ringcentral.call_lead.skipped_already_processed",
+      category: "ringcentral",
+      workflow: "ringcentral_call_lead_ingest",
+      summary: "RingCentral call already processed; ingest skipped.",
+      sourceCompany: call.sourceCompany,
+      entity: existing.callLeadId
+        ? { type: "call_lead", id: existing.callLeadId }
+        : undefined,
+      details: {
+        telephonySessionId: call.telephonySessionId,
+        callLogId: call.callLogId,
+        previousStatus: existing.status,
+        ingestionSource: call.ingestionSource,
+        callLeadId: existing.callLeadId,
+      },
+      reportable: false,
     });
     return {
       action: "skipped_already_processed",
@@ -190,6 +210,33 @@ export async function ingestRingCentralQualifiedCall(
     durationSeconds: call.durationSeconds,
     callLeadId,
   });
+
+  if (action === "lead_created" || action === "lead_created_duplicate") {
+    const isDuplicateAction = action === "lead_created_duplicate";
+    await recordOperationalEvent({
+      level: isDuplicateAction ? "warn" : "info",
+      eventKey: isDuplicateAction
+        ? "ringcentral.call_lead.duplicate_created"
+        : "ringcentral.call_lead.created",
+      category: "ringcentral",
+      workflow: "ringcentral_call_lead_ingest",
+      summary: isDuplicateAction
+        ? "RingCentral qualified call created a duplicate call lead."
+        : "RingCentral qualified call created a call lead.",
+      leadIdentity: { name: call.callerName, phone: call.callerPhoneNumber },
+      sourceCompany: call.sourceCompany,
+      entity: callLeadId ? { type: "call_lead", id: callLeadId } : undefined,
+      details: {
+        telephonySessionId: call.telephonySessionId,
+        callLogId: call.callLogId,
+        ingestionSource: call.ingestionSource,
+        durationSeconds: call.durationSeconds,
+        duplicate: duplicate.isDuplicate,
+        duplicateReason: duplicate.reason,
+      },
+      notificationCandidate: false,
+    });
+  }
 
   return {
     action,

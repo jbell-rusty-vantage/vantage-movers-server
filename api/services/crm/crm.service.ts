@@ -1,5 +1,6 @@
 import type { FormLeadDocument } from "../../models/FormLead";
 import { logger } from "../../logger";
+import { recordOperationalEvent } from "../observability";
 import {
   CRM_FORM_LEAD_ENDPOINT,
   crmEndpointForLog,
@@ -39,12 +40,33 @@ export async function submitFormLeadToCrm(
   const leadId = lead._id.toString();
   const payloadSummary = summarizeCrmPayloadForLog(payload);
   const safeEndpoint = crmEndpointForLog();
+  const companyLabel = options.companyLabel ?? payload.label;
+  const leadIdentity = {
+    name: lead.name,
+    phone: lead.phone_number,
+    email: lead.email,
+  };
+  const sourceCompany = lead.source_company as string;
+  const crmEntity = { type: "form_lead", id: leadId } as const;
 
   logger.info({
     msg: "crm.form_lead.submit.started",
     leadId,
     endpoint: safeEndpoint,
     payload: payloadSummary,
+  });
+
+  await recordOperationalEvent({
+    level: "info",
+    eventKey: "crm.form_lead.submit.started",
+    category: "crm",
+    workflow: "crm_submit",
+    summary: "CRM form lead submission started.",
+    leadIdentity,
+    sourceCompany,
+    entity: crmEntity,
+    details: { companyLabel, endpoint: safeEndpoint },
+    reportable: false,
   });
 
   try {
@@ -69,6 +91,34 @@ export async function submitFormLeadToCrm(
       responseText,
     });
 
+    if (ok) {
+      await recordOperationalEvent({
+        level: "info",
+        eventKey: "crm.form_lead.submit.completed",
+        category: "crm",
+        workflow: "crm_submit",
+        summary: "CRM form lead submitted successfully.",
+        leadIdentity,
+        sourceCompany,
+        entity: crmEntity,
+        details: { companyLabel, status: response.status },
+      });
+    } else {
+      await recordOperationalEvent({
+        level: "error",
+        eventKey: "crm.form_lead.submit.http_error",
+        category: "crm",
+        workflow: "crm_submit",
+        summary: "CRM returned an HTTP error for a form lead submission.",
+        leadIdentity,
+        sourceCompany,
+        entity: crmEntity,
+        details: { companyLabel, status: response.status, responseText },
+        errorMessage: `crm_http_${response.status}`,
+        notificationCandidate: true,
+      });
+    }
+
     return {
       ok,
       status: response.status,
@@ -87,6 +137,20 @@ export async function submitFormLeadToCrm(
       },
       "CRM form lead submission failed",
     );
+
+    await recordOperationalEvent({
+      level: "error",
+      eventKey: "crm.form_lead.submit.failed",
+      category: "crm",
+      workflow: "crm_submit",
+      summary: "CRM form lead submission failed (network/unknown error).",
+      leadIdentity,
+      sourceCompany,
+      entity: crmEntity,
+      details: { companyLabel, causeMessage: message },
+      errorMessage: message,
+      notificationCandidate: true,
+    });
 
     return {
       ok: false,

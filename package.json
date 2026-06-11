@@ -60,7 +60,7 @@
     "bbb:seed-testimonials": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/bbb/seed-bbb-testimonials.ts",
     "call-leads:create-best-relocation": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/create-best-relocation-call-leads.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test \"api/**/*.test.ts\""
+    "test": "node --import tsx --import ./scripts/test-setup.ts --test \"api/**/*.test.ts\""
   },
   "keywords": [],
   "author": "",

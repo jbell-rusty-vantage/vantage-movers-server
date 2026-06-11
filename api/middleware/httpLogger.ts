@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { Request } from "express";
 import pinoHttp from "pino-http";
+import {
+  getObservabilitySlowRequestMs,
+  shouldCaptureHttp5xx,
+} from "../config/domain/observability";
 import { logger as rootLogger } from "../logger";
+import { recordOperationalEvent } from "../services/observability";
 
 type ExpressRequestDetails = IncomingMessage & {
   id?: string | number | object;
@@ -34,6 +40,51 @@ function expressRouteLabel(req: ExpressRequestDetails): string {
     return `${base}${req.route.path}` || requestPath(req);
   }
   return requestPath(req);
+}
+
+function shouldSkipSlowRequest(path: string): boolean {
+  return path === "/" || path === "/health" || path === "/db" || path.startsWith("/api/cron/");
+}
+
+function captureSlowRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  responseTime: number | undefined,
+): void {
+  const durationMs = Math.round(Number(responseTime ?? 0));
+  const thresholdMs = getObservabilitySlowRequestMs();
+  if (thresholdMs <= 0 || durationMs < thresholdMs) {
+    return;
+  }
+  if (res.statusCode >= 500 && shouldCaptureHttp5xx()) {
+    return;
+  }
+
+  const r = req as ExpressRequestDetails;
+  const path = requestPath(r);
+  if (shouldSkipSlowRequest(path)) {
+    return;
+  }
+
+  void recordOperationalEvent({
+    level: "warn",
+    eventKey: "http.request.slow",
+    category: "http",
+    workflow: "http_request",
+    summary: `Slow ${req.method ?? "HTTP"} request completed in ${durationMs}ms.`,
+    request: r as unknown as Request,
+    route: expressRouteLabel(r),
+    method: req.method,
+    statusCode: res.statusCode,
+    durationMs,
+    details: {
+      path,
+      threshold_ms: thresholdMs,
+      duration_ms: durationMs,
+      status_code: res.statusCode,
+    },
+    notificationCandidate: false,
+  });
 }
 
 function httpReqSerializer(req: IncomingMessage) {
@@ -70,6 +121,7 @@ export const httpLogger = pinoHttp({
   },
   customSuccessObject(req, res, val) {
     const r = req as ExpressRequestDetails;
+    captureSlowRequest(req, res, val.responseTime);
     return {
       ...val,
       http: {
@@ -85,6 +137,7 @@ export const httpLogger = pinoHttp({
   },
   customErrorObject(req, res, error, val) {
     const r = req as ExpressRequestDetails;
+    captureSlowRequest(req, res, val.responseTime);
     return {
       ...val,
       http: {

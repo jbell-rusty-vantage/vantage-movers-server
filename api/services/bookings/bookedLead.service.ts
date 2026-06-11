@@ -29,6 +29,7 @@ import {
   type FullSheetSyncJob,
 } from "../sheetSync";
 import { V1ServiceError } from "../v1ServiceError";
+import { recordOperationalEvent } from "../observability";
 import {
   clearBookingFromLead,
   mirrorBookingToLead,
@@ -96,6 +97,7 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
           kind: "duplicate" as const,
           bookingId: existingBooking._id,
           totalBinderAmount: existingBooking.total_binder_amount,
+          sourceCompany: sourceCompanyForLead ?? null,
           job: undefined as FullSheetSyncJob | undefined,
         };
       }
@@ -130,6 +132,7 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
         kind: "upsert" as const,
         bookingId: existingBooking._id,
         totalBinderAmount: total_binder_amount,
+        sourceCompany: sourceCompanyForLead ?? null,
         job,
       };
     }
@@ -165,13 +168,30 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
       kind: "create" as const,
       bookingId: booking._id,
       totalBinderAmount: total_binder_amount,
+      sourceCompany: sourceCompanyForLead ?? null,
       job,
     };
   });
 
   if (outcome.kind === "duplicate") {
+    const booking = await populateBookedLead(outcome.bookingId);
+    await recordOperationalEvent({
+      level: "warn",
+      eventKey: "booking.duplicate_submission_ignored",
+      category: "booking",
+      workflow: "booking_create",
+      summary: "Duplicate booking submission ignored.",
+      ...bookingEventContext(booking, outcome.sourceCompany),
+      details: {
+        submission_id: input.submission_id ?? null,
+        job_no: booking.job_no ?? null,
+        lead_ref: input.lead_ref,
+        lead_model: input.lead_model,
+      },
+      notificationCandidate: false,
+    });
     return {
-      booking: await populateBookedLead(outcome.bookingId),
+      booking,
       message: "Duplicate booked lead submission ignored; existing booking returned.",
       warnings,
       total_binder_amount: outcome.totalBinderAmount,
@@ -181,14 +201,65 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
   if (outcome.job) {
     await finalizeSheetSync(outcome.job);
   }
+
+  const booking = await populateBookedLead(outcome.bookingId);
+  const isCreate = outcome.kind === "create";
+  await recordOperationalEvent({
+    level: "info",
+    eventKey: isCreate ? "booking.created" : "booking.upserted",
+    category: "booking",
+    workflow: "booking_create",
+    summary: isCreate ? "Booking created." : "Existing booking upserted.",
+    ...bookingEventContext(booking, outcome.sourceCompany),
+    details: {
+      job_no: booking.job_no ?? null,
+      lead_model: input.lead_model,
+      lead_ref: input.lead_ref,
+      deposit_amount: input.deposit_amount,
+      total_binder_amount: outcome.totalBinderAmount,
+      merchant,
+      local: booking.local ?? null,
+      warnings,
+      ...(isCreate ? {} : { previous_booking_id: outcome.bookingId.toString() }),
+    },
+  });
+
   return {
-    booking: await populateBookedLead(outcome.bookingId),
+    booking,
     message:
       outcome.kind === "upsert"
         ? "Booked lead already existed and was upserted."
         : "Booked lead created.",
     warnings,
     total_binder_amount: outcome.totalBinderAmount,
+  };
+}
+
+/**
+ * Builds owner-facing event context (lead identity + entity) from a populated
+ * booking. Customer identity is read from the populated `customer` relation or
+ * the booking's `customer_name` override.
+ */
+function bookingEventContext(
+  booking: Awaited<ReturnType<typeof populateBookedLead>>,
+  sourceCompany: string | null,
+) {
+  const customer = (booking as unknown as {
+    customer?: { name?: string; phone_number?: string; email?: string } | null;
+    customer_name?: string | null;
+  }).customer;
+  const customerName =
+    customer?.name ??
+    (booking as unknown as { customer_name?: string | null }).customer_name ??
+    null;
+  return {
+    leadIdentity: {
+      name: customerName,
+      phone: customer?.phone_number ?? null,
+      email: customer?.email ?? null,
+    },
+    sourceCompany,
+    entity: { type: "booked_lead", id: booking._id.toString() },
   };
 }
 

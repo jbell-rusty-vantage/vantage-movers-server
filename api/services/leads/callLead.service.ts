@@ -31,6 +31,7 @@ import { hasFormFillForCallLead } from "./duplicateLead.service";
 import { normalizeLeadName, normalizeLeadNameUpdate } from "./leadName.service";
 import { resolveOptionalLocation } from "./leadLocation.service";
 import { parseSourceCompany } from "./leadSourceCompany";
+import { recordOperationalEvent } from "../observability";
 
 export type CreateRingCentralCallLeadInput = {
   source_company: SourceCompany;
@@ -101,6 +102,21 @@ export async function createRingCentralCallLead(
   });
 
   await finalizeSheetSync(callLeadCreateJob(lead._id.toString()));
+
+  if (lead.form_fill) {
+    await recordOperationalEvent({
+      level: "info",
+      eventKey: "lead.call.form_fill_detected",
+      category: "lead",
+      workflow: "ringcentral_call_lead_create",
+      summary: "RingCentral call lead is a form fill.",
+      leadIdentity: { name: lead.name ?? null, phone: lead.phone_number },
+      sourceCompany: source_company,
+      entity: { type: "call_lead", id: lead._id.toString() },
+      details: { form_fill: true, duplicate },
+    });
+  }
+
   return lead;
 }
 
@@ -116,7 +132,9 @@ function callLeadCreateJob(leadId: string): FullSheetSyncJob {
 export async function createCallLead(input: CreateCallLeadInput) {
   const normalizedInput = normalizeLeadName(input);
   const source_company = parseSourceCompany(normalizedInput.source_company);
-  const location = await resolveOptionalLocation(normalizedInput);
+  const location = await resolveOptionalLocation(normalizedInput, {
+    workflow: "call_lead_create",
+  });
   const local = location.local ?? normalizedInput.local;
   const form_fill = await hasFormFillForCallLead(source_company, normalizedInput.phone_number);
   const lead = await runSheetSyncWrite(async (session) => {
@@ -135,6 +153,40 @@ export async function createCallLead(input: CreateCallLeadInput) {
   });
 
   await finalizeSheetSync(callLeadCreateJob(lead._id.toString()));
+
+  const callLeadIdentity = { name: lead.name ?? null, phone: lead.phone_number };
+  await recordOperationalEvent({
+    level: "info",
+    eventKey: "lead.call.created",
+    category: "lead",
+    workflow: "call_lead_create",
+    summary: "Call lead created.",
+    leadIdentity: callLeadIdentity,
+    sourceCompany: source_company,
+    entity: { type: "call_lead", id: lead._id.toString() },
+    details: {
+      form_fill,
+      pickup_zip: lead.pickup_zip ?? null,
+      delivery_zip: lead.delivery_zip ?? null,
+      local: lead.local ?? null,
+      cpl: lead.cpl,
+    },
+  });
+
+  if (form_fill) {
+    await recordOperationalEvent({
+      level: "info",
+      eventKey: "lead.call.form_fill_detected",
+      category: "lead",
+      workflow: "call_lead_create",
+      summary: "Call lead is a form fill.",
+      leadIdentity: callLeadIdentity,
+      sourceCompany: source_company,
+      entity: { type: "call_lead", id: lead._id.toString() },
+      details: { form_fill: true },
+    });
+  }
+
   return lead;
 }
 
@@ -161,13 +213,16 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
     input.delivery_state ||
     input.local
   ) {
-    const location = await resolveOptionalLocation({
-      pickup_zip: optionalValue(input.pickup_zip ?? lead.pickup_zip),
-      delivery_zip: optionalValue(input.delivery_zip ?? lead.delivery_zip),
-      pickup_state: optionalValue(input.pickup_state ?? lead.pickup_state),
-      delivery_state: optionalValue(input.delivery_state ?? lead.delivery_state),
-      local: optionalValue(input.local ?? lead.local),
-    });
+    const location = await resolveOptionalLocation(
+      {
+        pickup_zip: optionalValue(input.pickup_zip ?? lead.pickup_zip),
+        delivery_zip: optionalValue(input.delivery_zip ?? lead.delivery_zip),
+        pickup_state: optionalValue(input.pickup_state ?? lead.pickup_state),
+        delivery_state: optionalValue(input.delivery_state ?? lead.delivery_state),
+        local: optionalValue(input.local ?? lead.local),
+      },
+      { workflow: "call_lead_update" },
+    );
     lead.pickup_state = location.pickup_state;
     lead.delivery_state = location.delivery_state;
     lead.local = location.local ?? input.local ?? lead.local;

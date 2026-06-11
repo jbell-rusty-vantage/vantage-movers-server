@@ -4,6 +4,7 @@ import {
   shouldPublishSheetSyncQueue,
 } from "../../config/domain";
 import { logger } from "../../logger";
+import { recordOperationalEvent } from "../observability";
 
 export type SheetSyncWakeupReason =
   | "domain_write"
@@ -85,6 +86,20 @@ export async function publishSheetSyncWakeup(
       msg: "sheet_sync.queue.publish_failed",
       reason,
       topic,
+    });
+    await recordOperationalEvent({
+      level: "error",
+      eventKey: "sheet_sync.queue.publish_failed",
+      category: "sheet_sync",
+      workflow: "sheet_sync_queue",
+      summary: "Sheet sync queue wake-up publish failed.",
+      details: {
+        reason,
+        topic,
+        causeMessage: error instanceof Error ? error.message : String(error),
+      },
+      errorMessage: error instanceof Error ? error.message : String(error),
+      notificationCandidate: false,
     });
     return { published: false, messageId: null };
   }

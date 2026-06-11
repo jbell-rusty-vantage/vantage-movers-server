@@ -41,10 +41,11 @@ import {
 } from "./leadLocation.service";
 import { parseSourceCompany } from "./leadSourceCompany";
 import {
-  isDuplicateFormLead,
+  findDuplicateFormLeadMatch,
   markMatchingCallLeadsWithFormFill,
 } from "./duplicateLead.service";
 import { normalizeLeadName, normalizeLeadNameUpdate } from "./leadName.service";
+import { recordOperationalEvent } from "../observability";
 
 export async function createFormLead(input: CreateFormLeadInput) {
   const FormLead = getFormLeadModel();
@@ -54,13 +55,16 @@ export async function createFormLead(input: CreateFormLeadInput) {
     normalizedFormLeadInput.phone_number,
   );
   const source_company = parseSourceCompany(normalizedFormLeadInput.source_company);
-  const location = await resolveRequiredLocation(normalizedFormLeadInput);
+  const location = await resolveRequiredLocation(normalizedFormLeadInput, {
+    workflow: "form_lead_create",
+  });
   const local = deriveFormLeadLocal(location.pickup_state, location.delivery_state);
-  const duplicate = await isDuplicateFormLead(
+  const duplicateMatch = await findDuplicateFormLeadMatch(
     source_company,
     normalizedFormLeadInput.phone_number,
     normalizedFormLeadInput.email,
   );
+  const duplicate = duplicateMatch.duplicate;
   const shouldPostToGranot = post_to_granot && !duplicate;
   const crmLabel = getCrmFormLeadSourceCompanyLabel(source_company, local);
 
@@ -153,6 +157,92 @@ export async function createFormLead(input: CreateFormLeadInput) {
     duplicate,
   });
 
+  const leadIdentity = {
+    name: lead.name,
+    phone: lead.phone_number,
+    email: lead.email,
+  };
+  const formFillJobCount = jobs.filter(
+    (job) => job.operation === "call_lead.form_fill.update",
+  ).length;
+
+  await recordOperationalEvent({
+    level: "info",
+    eventKey: "lead.form.created",
+    category: "lead",
+    workflow: "form_lead_create",
+    summary: "Form lead created.",
+    leadIdentity,
+    sourceCompany: source_company,
+    entity: { type: "form_lead", id: leadId },
+    details: {
+      pickup_zip: lead.pickup_zip,
+      delivery_zip: lead.destination_zip,
+      pickup_state: lead.pickup_state,
+      delivery_state: lead.delivery_state,
+      local: lead.local,
+      duplicate,
+      cpl: lead.cpl,
+      post_to_granot: shouldPostToGranot,
+    },
+  });
+
+  if (duplicate) {
+    await recordOperationalEvent({
+      level: "warn",
+      eventKey: "lead.form.duplicate_detected",
+      category: "lead",
+      workflow: "form_lead_create",
+      summary: "Duplicate form lead detected and saved as duplicate.",
+      leadIdentity,
+      sourceCompany: source_company,
+      entity: { type: "form_lead", id: leadId },
+      details: {
+        duplicate: true,
+        matched_by: duplicateMatch.matchedBy,
+        matched_lead_count: duplicateMatch.matchedLeadIds.length,
+      },
+      notificationCandidate: false,
+    });
+  }
+
+  if (formFillJobCount > 0) {
+    await recordOperationalEvent({
+      level: "info",
+      eventKey: "lead.form.call_leads_marked_form_fill",
+      category: "lead",
+      workflow: "form_lead_create",
+      summary: "Form lead marked existing call leads as form fill.",
+      leadIdentity,
+      sourceCompany: source_company,
+      entity: { type: "form_lead", id: leadId },
+      details: {
+        form_lead_id: leadId,
+        matched_call_lead_count: formFillJobCount,
+      },
+    });
+  }
+
+  if (!shouldPostToGranot) {
+    await recordOperationalEvent({
+      level: "info",
+      eventKey: "crm.form_lead.submit.skipped",
+      category: "crm",
+      workflow: "crm_submit",
+      summary: "CRM submission skipped for form lead.",
+      leadIdentity,
+      sourceCompany: source_company,
+      entity: { type: "form_lead", id: leadId },
+      details: {
+        duplicate,
+        post_to_granot: shouldPostToGranot,
+        companyLabel: crmLabel,
+        requestedCompanyLabel: crm_company_label,
+      },
+      reportable: false,
+    });
+  }
+
   return {
     lead,
     sheet_sync_status: "pending",
@@ -215,12 +305,15 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
     hasOwnInput(input, "pickup_state") ||
     hasOwnInput(input, "delivery_state")
   ) {
-    const location = await resolveRequiredLocation({
-      pickup_zip: input.pickup_zip ?? lead.pickup_zip,
-      destination_zip: input.destination_zip ?? lead.destination_zip,
-      pickup_state: input.pickup_state ?? lead.pickup_state,
-      delivery_state: input.delivery_state ?? lead.delivery_state,
-    });
+    const location = await resolveRequiredLocation(
+      {
+        pickup_zip: input.pickup_zip ?? lead.pickup_zip,
+        destination_zip: input.destination_zip ?? lead.destination_zip,
+        pickup_state: input.pickup_state ?? lead.pickup_state,
+        delivery_state: input.delivery_state ?? lead.delivery_state,
+      },
+      { workflow: "form_lead_update" },
+    );
     lead.pickup_state = location.pickup_state;
     lead.delivery_state = location.delivery_state;
     lead.local = deriveFormLeadLocal(location.pickup_state, location.delivery_state);

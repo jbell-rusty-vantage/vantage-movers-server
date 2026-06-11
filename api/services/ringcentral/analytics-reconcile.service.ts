@@ -1,4 +1,5 @@
 import { logger } from "../../logger";
+import { recordOperationalEvent } from "../observability";
 import { CALL_LEAD_MINIMUM_ANSWERED_SECONDS } from "./call-candidate-evaluator";
 import { RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE } from "./call-lead-sources";
 import { ringCentralRequest } from "./client";
@@ -93,6 +94,25 @@ export async function runRingCentralAnalyticsReconcile(
 
   await storeSnapshot({ ...summary, groups, capturedAt: now });
   logger.info({ msg: "ringcentral.analytics_reconcile.completed", ...summary });
+
+  await recordOperationalEvent({
+    level: "info",
+    eventKey: "ringcentral.analytics_reconcile.completed",
+    category: "ringcentral",
+    workflow: "ringcentral_analytics_reconcile",
+    summary: "RingCentral analytics reconcile snapshot completed.",
+    runId: summary.ranAt,
+    details: {
+      windowFrom: summary.windowFrom,
+      windowTo: summary.windowTo,
+      groupCount: summary.groupCount,
+      totalAnsweredOver120: summary.totalAnsweredOver120,
+    },
+    autoResolveKey: `ringcentral.analytics_reconcile.failed:${
+      process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "development"
+    }`,
+  });
+
   return summary;
 }
 

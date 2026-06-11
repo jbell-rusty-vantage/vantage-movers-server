@@ -65,4 +65,7 @@ coverage/
 .env*.local
 
 
-scripts/docs/**  
+scripts/docs/**   
+
+
+observability.env.example.env 

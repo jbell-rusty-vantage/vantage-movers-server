@@ -7,18 +7,25 @@ import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import type { FullSheetSyncJob } from "../sheetSync";
 import { buildPhoneRegex } from "./leadPhoneMatching";
 
+export type DuplicateFormLeadMatch = {
+  duplicate: boolean;
+  matchedBy: "email" | "phone" | "both" | null;
+  matchedLeadIds: string[];
+};
+
 /**
- * Returns `true` when the supplied phone or email already exists for a
- * non-duplicate form lead within the same source company.
+ * Resolves whether the supplied phone or email already exists for a
+ * non-duplicate form lead within the same source company, returning the match
+ * basis and matched lead IDs so callers can record richer operational events.
  *
  * Phone matching uses `buildPhoneRegex` as a Mongo-side sieve and then
  * re-verifies in memory via `normalizePhoneNumberForMatch`.
  */
-export async function isDuplicateFormLead(
+export async function findDuplicateFormLeadMatch(
   sourceCompany: SourceCompany,
   phoneNumber?: string | null,
   email?: string | null,
-): Promise<boolean> {
+): Promise<DuplicateFormLeadMatch> {
   const FormLead = getFormLeadModel();
   const normalizedPhone = normalizePhoneNumberForMatch(phoneNumber);
   const normalizedEmail = email?.trim().toLowerCase();
@@ -28,7 +35,7 @@ export async function isDuplicateFormLead(
   ];
 
   if (duplicateClauses.length === 0) {
-    return false;
+    return { duplicate: false, matchedBy: null, matchedLeadIds: [] };
   }
 
   const candidates = await FormLead.find({
@@ -40,13 +47,50 @@ export async function isDuplicateFormLead(
     .limit(50)
     .exec();
 
-  return candidates.some(
-    (lead) =>
-      (normalizedEmail ? lead.email === normalizedEmail : false) ||
-      (normalizedPhone
-        ? normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone
-        : false),
-  );
+  let emailMatch = false;
+  let phoneMatch = false;
+  let hasMatch = false;
+  const matchedLeadIds: string[] = [];
+
+  for (const lead of candidates) {
+    const byEmail = normalizedEmail ? lead.email === normalizedEmail : false;
+    const byPhone = normalizedPhone
+      ? normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone
+      : false;
+    if (byEmail || byPhone) {
+      hasMatch = true;
+      emailMatch = emailMatch || byEmail;
+      phoneMatch = phoneMatch || byPhone;
+      if (lead._id) {
+        matchedLeadIds.push(lead._id.toString());
+      }
+    }
+  }
+
+  const duplicate = hasMatch;
+  const matchedBy = !duplicate
+    ? null
+    : emailMatch && phoneMatch
+      ? "both"
+      : emailMatch
+        ? "email"
+        : "phone";
+
+  return { duplicate, matchedBy, matchedLeadIds };
+}
+
+/**
+ * Returns `true` when the supplied phone or email already exists for a
+ * non-duplicate form lead within the same source company. Compatibility
+ * wrapper around `findDuplicateFormLeadMatch`.
+ */
+export async function isDuplicateFormLead(
+  sourceCompany: SourceCompany,
+  phoneNumber?: string | null,
+  email?: string | null,
+): Promise<boolean> {
+  const match = await findDuplicateFormLeadMatch(sourceCompany, phoneNumber, email);
+  return match.duplicate;
 }
 
 /**

@@ -1,4 +1,5 @@
 import { logger } from "../../logger";
+import { recordOperationalEvent } from "../observability";
 import { ringCentralRequest } from "./client";
 import { vetRingCentralCallLogRecord } from "./call-log-vetting";
 import {
@@ -130,6 +131,31 @@ export async function runRingCentralCallLogSync(
     });
 
     logger.info({ msg: "ringcentral.call_log_sync.completed", ...summary });
+
+    await recordOperationalEvent({
+      level: "info",
+      eventKey: "ringcentral.call_log_sync.completed",
+      category: "ringcentral",
+      workflow: "ringcentral_call_log_sync",
+      summary: "RingCentral Call Log sync completed.",
+      runId: summary.ranAt,
+      details: {
+        windowFrom: summary.windowFrom,
+        windowTo: summary.windowTo,
+        fetchedRecords: summary.fetchedRecords,
+        candidateRecords: summary.candidateRecords,
+        qualifiedRecords: summary.qualifiedRecords,
+        leadsCreated: summary.leadsCreated,
+        duplicatesFlagged: summary.duplicatesFlagged,
+        ingestActions: summary.ingestActions,
+      },
+      // A clean run resolves any open Call Log sync failure incident.
+      autoResolveKey:
+        summary.errors.length === 0
+          ? `ringcentral.call_log_sync.failed:${resolveEnvironmentName()}`
+          : undefined,
+    });
+
     return summary;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -141,8 +167,30 @@ export async function runRingCentralCallLogSync(
       windowFrom: summary.windowFrom,
       windowTo: summary.windowTo,
     });
+
+    await recordOperationalEvent({
+      level: "error",
+      eventKey: "ringcentral.call_log_sync.failed",
+      category: "ringcentral",
+      workflow: "ringcentral_call_log_sync",
+      summary: "RingCentral Call Log sync failed.",
+      dedupeKey: `ringcentral.call_log_sync.failed:${resolveEnvironmentName()}`,
+      details: {
+        windowFrom: summary.windowFrom,
+        windowTo: summary.windowTo,
+        errorName: error instanceof Error ? error.name : "Error",
+        causeMessage: message,
+      },
+      errorMessage: message,
+      notificationCandidate: true,
+    });
+
     throw error;
   }
+}
+
+function resolveEnvironmentName(): string {
+  return process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "development";
 }
 
 async function resolveWindowStart(windowTo: Date): Promise<Date> {

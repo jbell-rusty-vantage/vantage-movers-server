@@ -4,8 +4,24 @@ import type { Logger } from "pino";
 import { ZodError, type ZodType } from "zod";
 import { connectMongo } from "../db";
 import { withRuntimeDomainOverrides } from "../config/domain";
+import { shouldCaptureHttp5xx } from "../config/domain/observability";
 import { logger as rootLogger } from "../logger";
 import { requireApiSecret } from "../middleware/requireApiSecret";
+import {
+  recordOperationalEvent,
+  getObservabilityOverview,
+  listOperationalEvents,
+  getOperationalEventDetail,
+  listOperationalIncidents,
+  getOperationalIncidentDetail,
+  updateOperationalIncidentStatus,
+  listNotificationDeliveries,
+  exportOperationalEventsCsv,
+  exportOperationalIncidentsCsv,
+  runOperationalReport,
+  listOperationalReportRuns,
+  exportReportRunCsv,
+} from "../services/observability";
 import { searchFormLeads } from "../services/formLeadSearch.service";
 import { searchCallLeads } from "../services/callLeadSearch.service";
 import { browseCallLeads, browseFormLeads } from "../services/search";
@@ -77,6 +93,13 @@ import {
   updateCancelledLeadSchema,
   updateCustomerSchema,
   updateFormLeadSchema,
+  observabilityOverviewQuerySchema,
+  observabilityEventsQuerySchema,
+  observabilityIncidentsQuerySchema,
+  observabilityNotificationsQuerySchema,
+  observabilityIncidentStatusSchema,
+  observabilityReportsQuerySchema,
+  observabilityReportRunSchema,
 } from "../validation/v1.validation";
 import {
   browseAdminResource,
@@ -176,6 +199,28 @@ router.get("/api/v1/admin/sheet-sync/jobs", handleSheetSyncJobs);
 router.get("/api/v1/admin/sheet-sync/runs", handleSheetSyncRuns);
 router.get("/api/v1/admin/sheet-sync/runs/:id", handleSheetSyncRunDetail);
 router.post("/api/v1/admin/sheet-sync/retry", handleSheetSyncRetry);
+
+router.get("/api/v1/admin/observability/overview", handleObservabilityOverview);
+router.get("/api/v1/admin/observability/events", handleObservabilityEvents);
+router.get("/api/v1/admin/observability/events/:id", handleObservabilityEventDetail);
+router.get("/api/v1/admin/observability/incidents", handleObservabilityIncidents);
+router.get("/api/v1/admin/observability/incidents/:id", handleObservabilityIncidentDetail);
+router.patch(
+  "/api/v1/admin/observability/incidents/:id/status",
+  handleObservabilityIncidentStatus,
+);
+router.get("/api/v1/admin/observability/notifications", handleObservabilityNotifications);
+router.get("/api/v1/admin/observability/reports", handleObservabilityReports);
+router.post("/api/v1/admin/observability/reports/run", handleObservabilityReportRun);
+router.get("/api/v1/admin/exports/observability/events.csv", handleObservabilityEventsExport);
+router.get(
+  "/api/v1/admin/exports/observability/incidents.csv",
+  handleObservabilityIncidentsExport,
+);
+router.get(
+  "/api/v1/admin/exports/observability/reports/:id.csv",
+  handleObservabilityReportExport,
+);
 
 router.get("/api/v1/granot-crm/csv/sources", handleGranotCrmCsvSources);
 router.post("/api/v1/granot-crm/csv/uploads", handleGranotCrmCsvUpload);
@@ -362,6 +407,130 @@ async function handleSheetSyncHealth(req: Request, res: Response) {
     await connectMongo();
     const data = await getSheetSyncHealth();
     return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleObservabilityOverview(req: Request, res: Response) {
+  try {
+    const parsed = observabilityOverviewQuerySchema.parse(req.query);
+    const data = await getObservabilityOverview(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleObservabilityEvents(req: Request, res: Response) {
+  try {
+    const parsed = observabilityEventsQuerySchema.parse(req.query);
+    const data = await listOperationalEvents(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleObservabilityEventDetail(req: Request, res: Response) {
+  try {
+    const data = await getOperationalEventDetail(getValidObjectId(req));
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleObservabilityIncidents(req: Request, res: Response) {
+  try {
+    const parsed = observabilityIncidentsQuerySchema.parse(req.query);
+    const data = await listOperationalIncidents(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleObservabilityIncidentDetail(req: Request, res: Response) {
+  try {
+    const data = await getOperationalIncidentDetail(getValidObjectId(req));
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleObservabilityIncidentStatus(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    const parsed = observabilityIncidentStatusSchema.parse(req.body);
+    const data = await updateOperationalIncidentStatus(id, parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleObservabilityNotifications(req: Request, res: Response) {
+  try {
+    const parsed = observabilityNotificationsQuerySchema.parse(req.query);
+    const data = await listNotificationDeliveries(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleObservabilityReports(req: Request, res: Response) {
+  try {
+    const parsed = observabilityReportsQuerySchema.parse(req.query);
+    const data = await listOperationalReportRuns(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleObservabilityReportRun(req: Request, res: Response) {
+  try {
+    const parsed = observabilityReportRunSchema.parse(req.body);
+    const data = await runOperationalReport(parsed);
+    return res.status(201).json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleObservabilityReportExport(req: Request, res: Response) {
+  try {
+    const data = await exportReportRunCsv(getValidObjectId(req));
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${data.filename}"`);
+    return res.status(200).send(data.csv);
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleObservabilityEventsExport(req: Request, res: Response) {
+  try {
+    const parsed = observabilityEventsQuerySchema.parse(req.query);
+    const data = await exportOperationalEventsCsv(parsed);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${data.filename}"`);
+    return res.status(200).send(data.csv);
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleObservabilityIncidentsExport(req: Request, res: Response) {
+  try {
+    const parsed = observabilityIncidentsQuerySchema.parse(req.query);
+    const data = await exportOperationalIncidentsCsv(parsed);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${data.filename}"`);
+    return res.status(200).send(data.csv);
   } catch (error) {
     return sendError(req, res, error);
   }
@@ -846,7 +1015,7 @@ function getValidObjectId(req: Request): string {
   return id;
 }
 
-function sendError(req: Request, res: Response, error: unknown) {
+async function sendError(req: Request, res: Response, error: unknown) {
   const log = requestLogger(req);
   const rid = requestId(req);
 
@@ -874,6 +1043,7 @@ function sendError(req: Request, res: Response, error: unknown) {
         { err: error, requestId: rid, ...error.toLog() },
         "Request failed with server-side AppError",
       );
+      await captureRouteFailureEvent(req, error, error.statusCode);
     }
     return res.status(error.statusCode).json({
       ok: false,
@@ -888,11 +1058,69 @@ function sendError(req: Request, res: Response, error: unknown) {
     { err: error, requestId: rid },
     "Unhandled error while processing request",
   );
+  await captureRouteFailureEvent(req, error, 500);
   const message = error instanceof Error ? error.message : "Unknown API error";
   return res.status(500).json({
     ok: false,
     error: message,
   });
+}
+
+/**
+ * Records an unexpected 5xx as an operational event, classified by route so the
+ * owner sees `lead.route.failed`, `booking.route.failed`, etc. Best-effort and
+ * gated by `OBSERVABILITY_CAPTURE_HTTP_5XX`.
+ */
+async function captureRouteFailureEvent(
+  req: Request,
+  error: unknown,
+  statusCode: number,
+): Promise<void> {
+  if (!shouldCaptureHttp5xx()) {
+    return;
+  }
+  const path = requestPath(req);
+  const { eventKey, category, workflow } = classifyRouteFailure(path);
+  const errorName = error instanceof Error ? error.name : "Error";
+  const errorCode =
+    error instanceof AppError ? error.code : undefined;
+  await recordOperationalEvent({
+    level: "error",
+    eventKey,
+    category,
+    workflow,
+    summary: `Unexpected ${statusCode} on ${req.method} ${path}.`,
+    request: req,
+    statusCode,
+    details: {
+      errorName,
+      errorCode,
+      causeMessage: error instanceof Error ? error.message : String(error),
+    },
+    errorMessage: error instanceof Error ? error.message : String(error),
+    notificationCandidate: true,
+  });
+}
+
+function classifyRouteFailure(path: string): {
+  eventKey: string;
+  category: "lead" | "booking" | "cancellation" | "http";
+  workflow: string;
+} {
+  if (path.includes("/booked-leads")) {
+    return { eventKey: "booking.route.failed", category: "booking", workflow: "booking_route" };
+  }
+  if (path.includes("/cancelled-leads")) {
+    return {
+      eventKey: "cancellation.route.failed",
+      category: "cancellation",
+      workflow: "cancellation_route",
+    };
+  }
+  if (path.includes("/form-leads") || path.includes("/call-leads")) {
+    return { eventKey: "lead.route.failed", category: "lead", workflow: "lead_route" };
+  }
+  return { eventKey: "http.request.5xx", category: "http", workflow: "http_request" };
 }
 
 export default router;

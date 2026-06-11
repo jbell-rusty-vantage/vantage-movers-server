@@ -1,0 +1,20 @@
+---
+description: Observability service, model, cron, notification, and config conventions
+globs: api/services/observability/**/*.ts,api/models/Operational*.ts,api/models/NotificationDelivery.ts,api/models/observabilityModelFactory.ts,api/config/domain/observability.ts,api/routes/notification-cron.routes.ts,api/middleware/httpLogger.ts,api/validation/v1/observability.validation.ts
+alwaysApply: false
+---
+
+# Observability Service Rules
+
+- Treat observability as best-effort. `recordOperationalEvent()` and notification paths must not break lead, booking, cancellation, CRM, RingCentral, Google Sheets, or cron workflows.
+- Use `api/services/observability/index.ts` as the public import surface for instrumentation in other domains.
+- Resolve all observability Mongoose models through `getObservabilityModel()` / model getters so runtime, production, test, and custom collection modes keep working.
+- Keep Mongo/API fields `snake_case`; translate only at response or export boundaries if needed.
+- Put observability env policy in `api/config/domain/observability.ts`. Do not scatter `process.env` reads for capture flags, collection names, email mode, recipients, or alert thresholds.
+- Rollups are deferred. Do not add `OBSERVABILITY_ROLLUPS_COLLECTION` or assume persisted rollup metrics exist; reports and overview aggregate from events, incidents, notification deliveries, and report runs.
+- Incident upserts must dedupe by open/acknowledged fingerprint, increment `count`, refresh latest fields, and only escalate severity (`critical > error > warn`), never downgrade it automatically.
+- Notification retries should update the original `NotificationDelivery` logical record in place with `attempt_count`, `last_attempt_at`, and `next_attempt_at`; do not create retry fan-out rows or mark an original failed provider attempt as a separate sent metric.
+- Only advance incident notification throttling after `sendNotification()` returns `ok: true`.
+- Cron routes stay thin: authenticate with `CRON_SECRET`, call digest/retry services, and record cron failures as operational events without awaiting anything that could block the response unnecessarily.
+- Report aggregations that group many rows must `$sort` before `$limit`, then may use deterministic application sorting as a final guard.
+- After runtime TypeScript changes in this area, run focused `pnpm test -- api/services/observability/*.test.ts api/config/domain/observability.test.ts` where practical plus `pnpm run typecheck`.

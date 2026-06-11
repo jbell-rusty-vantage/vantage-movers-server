@@ -4,6 +4,8 @@ import {
 } from "../googleAuth/serviceAccount";
 import { logger } from "../../logger";
 import { stateNameToCode } from "../../utils/location/stateNamesToCodes";
+import { shouldCaptureZipStateEvents } from "../../config/domain/observability";
+import { recordOperationalEvent } from "../observability";
 
 const MAPS_GEOCODING_SCOPES = [
   "https://www.googleapis.com/auth/cloud-platform",
@@ -32,6 +34,8 @@ export type GoogleGeocodeResponse = {
 
 let cachedAuthContext: Promise<GoogleMapsAuthContext> | null = null;
 let loggedAuthFailure = false;
+let recordedHttpFailureEvent = false;
+let recordedUnavailableEvent = false;
 
 export async function getGoogleStateCodeForZip(
   zipCode: string,
@@ -62,6 +66,20 @@ export async function getGoogleStateCodeForZip(
         status: response.status,
         response: await response.text(),
       });
+      // Record once per cold start: the caller falls back to Zippopotamus, so
+      // a misconfigured Maps integration must not flood the event stream.
+      if (!recordedHttpFailureEvent && shouldCaptureZipStateEvents()) {
+        recordedHttpFailureEvent = true;
+        await recordOperationalEvent({
+          level: "warn",
+          eventKey: "zip_state.google_maps.failed",
+          category: "zip_state",
+          workflow: "zip_state_lookup",
+          summary: "Google Maps ZIP lookup returned an HTTP error.",
+          details: { zip, status: response.status, provider: "google_maps" },
+          notificationCandidate: false,
+        });
+      }
       return undefined;
     }
 
@@ -69,6 +87,23 @@ export async function getGoogleStateCodeForZip(
     return extractStateCodeFromGoogleGeocodeResponse(data);
   } catch (error) {
     logAuthOrRequestFailure(error);
+    if (!recordedUnavailableEvent && shouldCaptureZipStateEvents()) {
+      recordedUnavailableEvent = true;
+      await recordOperationalEvent({
+        level: "warn",
+        eventKey: "zip_state.google_maps.unavailable",
+        category: "zip_state",
+        workflow: "zip_state_lookup",
+        summary: "Google Maps ZIP lookup unavailable; falling back to Zippopotamus.",
+        details: {
+          provider: "google_maps",
+          fallback: "zippopotamus",
+          causeMessage: error instanceof Error ? error.message : String(error),
+        },
+        errorMessage: error instanceof Error ? error.message : String(error),
+        notificationCandidate: false,
+      });
+    }
     return undefined;
   }
 }

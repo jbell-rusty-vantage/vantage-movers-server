@@ -6,6 +6,8 @@ import { MONGO_DATABASE_NAME } from "./config/domain";
 import { connectMongo } from "./db";
 import { logger } from "./logger";
 import { httpLogger } from "./middleware/httpLogger";
+import { recordOperationalEvent } from "./services/observability";
+import notificationCronRoutes from "./routes/notification-cron.routes";
 import ringCentralCronRoutes from "./routes/ringcentral-cron.routes";
 import ringCentralWebhookLocalRoutes from "./routes/ringcentral-webhook-local.routes";
 import ringCentralWebhookRoutes from "./routes/ringcentral-webhook.routes";
@@ -36,6 +38,7 @@ app.use(ringCentralWebhookRoutes);
 app.use(ringCentralWebhookLocalRoutes);
 app.use(ringCentralCronRoutes);
 app.use(sheetSyncCronRoutes);
+app.use(notificationCronRoutes);
 app.use(v1Routes);
 
 app.get("/", (_req: Request, res: Response) => {
@@ -86,6 +89,21 @@ app.use((err: unknown, req: Request, res: Response, next: ErrorNext) => {
   }
   const log = (req as RequestWithLogger).log ?? logger;
   log.warn({ err, msg: "http.body.parse_failed" });
+  void recordOperationalEvent({
+    level: "warn",
+    eventKey: "http.body.parse_failed",
+    category: "http",
+    workflow: "http_request",
+    summary: "Malformed request body could not be parsed.",
+    request: req,
+    statusCode: 400,
+    details: {
+      contentType: req.headers["content-type"] ?? null,
+      causeMessage: err instanceof Error ? err.message : String(err),
+    },
+    notificationCandidate: false,
+    reportable: false,
+  });
   if (res.headersSent) {
     return;
   }

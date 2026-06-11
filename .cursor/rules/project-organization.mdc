@@ -51,6 +51,14 @@ alwaysApply: true
 - `database_scope=production|historical|combined` is supported where appropriate. Detail endpoints reject `combined`; historical scope is read-only; combined is for search/export-style reads.
 - Do not add `/api/v1/admin` delete routes. Admin write workflows should continue to use existing public v1 booking, cancellation, lead, and customer write services so Google Sheet sync behavior is preserved.
 
+## Observability Surface
+
+- `api/services/observability/` owns operational events, incidents, notification policy, digest/retry behavior, admin overview reads, and operational report generation.
+- Runtime Mongoose schemas for this surface live in `api/models/OperationalEvent.ts`, `OperationalIncident.ts`, `NotificationDelivery.ts`, `OperationalReportRun.ts`, and must be accessed through `observabilityModelFactory.ts` so collection modes stay respected.
+- Observability config lives in `api/config/domain/observability.ts`; avoid direct `process.env` reads for observability policy outside that file unless the value is unrelated route auth like `CRON_SECRET`.
+- Notification digest cron is mounted from `api/routes/notification-cron.routes.ts`; it should remain a thin authenticated boundary around observability services.
+- Rollup collections are deferred for now. Admin overview and reports aggregate directly from operational event, incident, notification delivery, and report-run collections.
+
 ## Script Launch Map
 
 - Run scripts through `package.json` commands so `.env` loading and `tsx` invocation remain consistent.
