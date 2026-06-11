@@ -113,7 +113,7 @@ function parseExtraIds(): mongoose.Types.ObjectId[] {
       console.warn(`Skipping invalid SHEET_SYNC_RESYNC_EXTRA_IDS entry: ${id}`);
       continue;
     }
-    ids.push(mongoose.Types.ObjectId.createFromHexString(id));
+    ids.push(new mongoose.Types.ObjectId(id));
   }
   return ids;
 }

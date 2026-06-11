@@ -47,8 +47,10 @@
     "ringcentral:call-log:sync:run": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ringcentral/ringcentral-call-log-sync-run.ts",
     "ringcentral:analytics:reconcile:run": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ringcentral/ringcentral-analytics-reconcile-run.ts",
     "ringcentral:backfill-missing-call-leads": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ringcentral/ringcentral-backfill-missing-call-leads.ts",
+    "twilio:probe-sms-env": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/twilio/twilio-probe-sms-env.ts",
     "twilio:diagnose": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/twilio/twilio-diagnose.ts",
     "twilio:send-sms": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/twilio/twilio-send-sms.ts",
+    "sendgrid:test-email": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/sendgrid/sendgrid-test-email.ts",
     "granot-csv:upload-registry": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/granot_crm_csv/upload-registry.ts",
     "granot-csv:sync": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/granot_crm_csv/sync-from-s3.ts",
     "demo:live-sheet-sync": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/demos/live-sheet-sync-demo.ts",
@@ -67,6 +69,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1064.0",
     "@aws-sdk/credential-providers": "^3.1064.0",
+    "@sendgrid/mail": "^8.1.6",
     "@vercel/functions": "^3.5.1",
     "@vercel/queue": "^0.2.1",
     "bcryptjs": "^3.0.3",

@@ -1,4 +1,4 @@
-import mongoose, { type Model } from "mongoose";
+import mongoose, { type Model, type QueryFilter } from "mongoose";
 import { resolveSourceCompany } from "../../config/domain";
 import type { AdminBrowseQuery, AdminDatabaseScope } from "../../validation/v1.validation";
 import { V1ServiceError } from "../v1ServiceError";
@@ -15,8 +15,11 @@ import {
   normalizeAgentMetricKey,
 } from "./agentBrowseMetrics.service";
 
+type AdminRecord = Record<string, unknown>;
+type AdminFilter = QueryFilter<AdminRecord>;
+
 export type AdminBrowseResult = {
-  items: Record<string, unknown>[];
+  items: AdminRecord[];
   page: number;
   limit: number;
   total: number;
@@ -170,7 +173,7 @@ export async function getAdminResourceDetail(
   id: string,
   scope: AdminDatabaseScope,
   detailQuery?: AdminBrowseQuery,
-): Promise<Record<string, unknown>> {
+): Promise<AdminRecord> {
   if (!mongoose.isValidObjectId(id)) {
     throw new V1ServiceError("Invalid Mongo ObjectId", 400);
   }
@@ -182,7 +185,7 @@ export async function getAdminResourceDetail(
   if (!doc) {
     throw new V1ServiceError("Admin record not found", 404);
   }
-  const item = normalizeDoc(doc as Record<string, unknown>, concreteScope);
+  const item = normalizeDoc(doc as AdminRecord, concreteScope);
   return appendDetailRelations(resource, item, concreteScope, models, detailQuery);
 }
 
@@ -190,10 +193,10 @@ export async function exportAdminResourceRows(
   resource: AdminResource,
   query: AdminBrowseQuery,
   maxRows = 5_000,
-): Promise<Record<string, unknown>[]> {
+): Promise<AdminRecord[]> {
   const exportQuery = { ...query, page: 1, limit: Math.min(maxRows, 250) };
   const scopes = concreteScopes(query.database_scope);
-  const rows: Record<string, unknown>[] = [];
+  const rows: AdminRecord[] = [];
   for (const scope of scopes) {
     let page = 1;
     while (rows.length < maxRows) {
@@ -267,8 +270,8 @@ async function browseConcrete(
 function applyResourceFilter(
   resource: AdminResource,
   query: AdminBrowseQuery,
-  filter: Record<string, unknown>,
-): Record<string, unknown> {
+  filter: AdminFilter,
+): AdminFilter {
   if (resource === "form-leads") {
     const duplicateClause =
       query.duplicate === true ? { duplicate: true } : { duplicate: { $ne: true } };
@@ -282,7 +285,7 @@ function applyResourceFilter(
   return filter;
 }
 
-function bookingSourceFilterClause(query: AdminBrowseQuery): Record<string, unknown> {
+function bookingSourceFilterClause(query: AdminBrowseQuery): AdminFilter {
   const raw =
     (typeof query.source === "string" ? query.source.trim() : "") ||
     (typeof query.source_label === "string" ? query.source_label.trim() : "") ||
@@ -312,9 +315,9 @@ function exactCaseInsensitivePattern(value: string): RegExp {
 }
 
 function mergeFilters(
-  base: Record<string, unknown>,
-  extra: Record<string, unknown>,
-): Record<string, unknown> {
+  base: AdminFilter,
+  extra: AdminFilter,
+): AdminFilter {
   if (!Object.keys(base).length) {
     return extra;
   }
@@ -326,8 +329,8 @@ function mergeFilters(
   return { $and: [base, extra] };
 }
 
-function buildFilter(config: ResourceConfig, query: AdminBrowseQuery): Record<string, unknown> {
-  const clauses: Record<string, unknown>[] = [];
+function buildFilter(config: ResourceConfig, query: AdminBrowseQuery): AdminFilter {
+  const clauses: AdminFilter[] = [];
   addDateClause(clauses, config, query);
   addQClause(clauses, config.qFields, query.q);
   for (const [param, fields] of Object.entries(config.stringFilters)) {
@@ -356,7 +359,7 @@ function buildFilter(config: ResourceConfig, query: AdminBrowseQuery): Record<st
 }
 
 function addDateClause(
-  clauses: Record<string, unknown>[],
+  clauses: AdminFilter[],
   config: ResourceConfig,
   query: AdminBrowseQuery,
 ) {
@@ -371,24 +374,24 @@ function addDateClause(
   clauses.push({ [field]: range });
 }
 
-function addQClause(clauses: Record<string, unknown>[], fields: string[], q?: string) {
+function addQClause(clauses: AdminFilter[], fields: string[], q?: string) {
   if (!q) return;
   const objectIdClause = mongoose.isValidObjectId(q)
-    ? [{ _id: mongoose.Types.ObjectId.createFromHexString(q) }]
+    ? [{ _id: new mongoose.Types.ObjectId(q) }]
     : [];
   clauses.push({ $or: [...objectIdClause, ...containsClauses(fields, q)] });
 }
 
-function orContains(fields: string[], value: string): Record<string, unknown> {
+function orContains(fields: string[], value: string): AdminFilter {
   return { $or: containsClauses(fields, value) };
 }
 
-function containsClauses(fields: string[], value: string): Record<string, unknown>[] {
+function containsClauses(fields: string[], value: string): AdminFilter[] {
   const regex = new RegExp(escapeRegex(value), "i");
   return fields.map((field) => ({ [field]: regex }));
 }
 
-function presenceClause(field: string, present: boolean): Record<string, unknown> {
+function presenceClause(field: string, present: boolean): AdminFilter {
   return present
     ? { [field]: { $ne: null, $exists: true } }
     : { $or: [{ [field]: null }, { [field]: { $exists: false } }] };
@@ -412,11 +415,11 @@ function applyPopulate<TQuery extends mongoose.Query<unknown, unknown>>(
 
 async function appendDetailRelations(
   resource: AdminResource,
-  item: Record<string, unknown>,
+  item: AdminRecord,
   scope: ConcreteAdminScope,
   models: Record<AdminResource, Model<unknown>>,
   query?: AdminBrowseQuery,
-): Promise<Record<string, unknown>> {
+): Promise<AdminRecord> {
   const id = item._id;
   if (!id || typeof id !== "string") return item;
   if (resource === "customers") {
@@ -426,8 +429,8 @@ async function appendDetailRelations(
     ]);
     return {
       ...item,
-      related_bookings: (bookings as Record<string, unknown>[]).map((doc) => normalizeDoc(doc, scope)),
-      related_cancellations: (cancellations as Record<string, unknown>[]).map((doc) => normalizeDoc(doc, scope)),
+      related_bookings: (bookings as AdminRecord[]).map((doc) => normalizeDoc(doc, scope)),
+      related_cancellations: (cancellations as AdminRecord[]).map((doc) => normalizeDoc(doc, scope)),
       aggregates: {
         booking_count: bookings.length,
         cancellation_count: cancellations.length,
@@ -443,10 +446,10 @@ async function appendDetailRelations(
 }
 
 async function enrichAgentItems(
-  items: Record<string, unknown>[],
+  items: AdminRecord[],
   models: ReturnType<typeof getAdminModels>,
   query: AdminBrowseQuery,
-): Promise<Record<string, unknown>[]> {
+): Promise<AdminRecord[]> {
   const agentNames = items.map((item) => (typeof item.name === "string" ? item.name : ""));
   const metricsByAgent = await getAgentBrowseMetrics(models, query, agentNames);
   return items.map((item) => ({
@@ -455,7 +458,7 @@ async function enrichAgentItems(
   }));
 }
 
-function normalizeDoc(doc: Record<string, unknown>, scope: ConcreteAdminScope): Record<string, unknown> {
+function normalizeDoc(doc: AdminRecord, scope: ConcreteAdminScope): AdminRecord {
   return {
     ...doc,
     _id: String(doc._id),

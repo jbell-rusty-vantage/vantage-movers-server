@@ -2,6 +2,10 @@ import mongoose from "mongoose";
 import type { AdminSearchQuery } from "../../validation/v1.validation";
 import { concreteScopes, getAdminModels, type AdminResource, type ConcreteAdminScope } from "./adminScope.service";
 
+type AdminSearchDoc = Record<string, unknown> & {
+  _id: mongoose.Types.ObjectId | string;
+};
+
 export type AdminSearchItem = {
   id: string;
   database_scope: ConcreteAdminScope;
@@ -97,12 +101,12 @@ async function searchConcrete(
   const models = getAdminModels(scope);
   const q = query.q.trim();
   const objectIdClause = mongoose.isValidObjectId(q)
-    ? [{ _id: mongoose.Types.ObjectId.createFromHexString(q) }]
+    ? [{ _id: new mongoose.Types.ObjectId(q) }]
     : [];
   const regex = new RegExp(escapeRegex(q), "i");
   const filter = { $or: [...objectIdClause, ...config.fields.map((field) => ({ [field]: regex }))] };
   const docs = await models[resource].find(filter).sort({ createdAt: -1 }).limit(query.limit).lean().exec();
-  return (docs as Record<string, unknown>[]).map((doc) => {
+  return (docs as AdminSearchDoc[]).map((doc) => {
     const id = String(doc._id);
     return {
       id,
