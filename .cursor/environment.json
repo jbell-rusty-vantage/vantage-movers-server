@@ -1,0 +1,28 @@
+{
+  // JSON schema: https://www.cursor.com/schemas/environment.schema.json
+  "$schema": "https://www.cursor.com/schemas/environment.schema.json",
+  "name": "vantage-movers-server",
+  "user": "ubuntu",
+  // Base image: system-level toolchain (Node 22, pnpm, MongoDB 8.0). Paths are
+  // relative to this .cursor folder. Because `build` is set, the Dockerfile is
+  // the source of truth and no snapshot is used.
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  // Dependency refresh on every agent start, after the latest changes are
+  // pulled. Idempotent and fast (uses pnpm's content-addressable store).
+  "install": "pnpm install",
+  // Long-running processes, started in a shared tmux session after install.
+  "terminals": [
+    {
+      "name": "mongod",
+      "description": "Local MongoDB 8.0 single-node replica set (rs0). Required because the API's write paths use multi-document transactions.",
+      "command": "bash .cursor/scripts/start-mongo.sh"
+    },
+    {
+      "name": "api",
+      "description": "Express API dev server on http://localhost:3000. Waits for mongod, initiates the replica set if needed, ensures a local .env, then runs `pnpm dev`.",
+      "command": "bash .cursor/scripts/start-api.sh"
+    }
+  ]
+}

@@ -9,6 +9,17 @@ RingCentral are external side-effect targets that are not needed for core local 
 Standard commands live in `package.json` `scripts` (e.g. `pnpm dev`, `pnpm typecheck`,
 `pnpm test`). Notes below are only the non-obvious caveats for running this in the cloud VM.
 
+### Declarative environment (`.cursor/environment.json`)
+- The Cloud Agent environment is defined in code at `.cursor/environment.json`. It is
+  **Dockerfile-backed** (`.cursor/Dockerfile`: Ubuntu 24.04 + Node 22 + pnpm 10.13.1 +
+  MongoDB 8.0), so the Dockerfile is the source of truth and any saved snapshot is a no-op.
+- On each agent start it runs `pnpm install`, then two `terminals`:
+  `.cursor/scripts/start-mongo.sh` (the MongoDB replica set) and `.cursor/scripts/start-api.sh`
+  (waits for mongod, initiates `rs0` if needed, writes a local `.env` if missing, then
+  `pnpm dev`). So **MongoDB and the API on `http://localhost:3000` come up automatically** —
+  the manual steps below are a reference/fallback (e.g. when not using this environment, or
+  when restarting a service by hand).
+
 ### Local environment / `.env`
 - All `pnpm dev` and `pnpm db:*`/script commands load `node --env-file=.env`, so a `.env`
   file at the repo root is **required** — without it scripts fail and `connectMongo()` throws
