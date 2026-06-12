@@ -15,6 +15,8 @@ import { normalizeSourceCompany, type SourceCompany } from "./sources";
 
 type SourceCpl = number | { local: number; long_distance: number };
 
+// CPL PRICE CHANGES -> Need backfill and sheetupdate
+
 const SOURCE_COMPANY_CPLS = {
   tbm_leads: Number(process.env.TBM_LEADS_CPL ?? 190),
   tbm_prime_leads: Number(process.env.TBM_PRIME_LEADS_CPL ?? 190),

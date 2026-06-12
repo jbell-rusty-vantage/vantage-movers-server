@@ -274,7 +274,8 @@ test("bookedLeadToRow projects allocations, customer, and lead ref", () => {
     total_binder_amount: 1000,
     deposit_amount: 250,
     merchant: "stripe",
-    source: "mainsite",
+    source: "main_site",
+    lead_model: "FormLead",
     local: "local",
     cancelled: true,
     lead_ref: leadRefId,
@@ -294,11 +295,62 @@ test("bookedLeadToRow projects allocations, customer, and lead ref", () => {
   assert.equal(row[7], "John Doe");
   assert.equal(row[8], "250");
   assert.equal(row[9], "stripe");
-  assert.equal(row[10], "mainsite");
+  assert.equal(row[10], "Main Site Forms");
   assert.equal(row[11], booking._id.toString());
   assert.equal(row[12], leadRefId.toString());
   assert.equal(row[13], "local");
   assert.equal(row[14], "cancelled");
+});
+
+test("bookedLeadToRow writes form source label from canonical slug", () => {
+  const booking: BookedLeadSheetSource = {
+    _id: new mongoose.Types.ObjectId(),
+    timestamp: fixedDate,
+    book_date: fixedDate,
+    agent_allocations: [{ agent_name_snapshot: "Agent A", binder_amount: 500 }],
+    total_binder_amount: 500,
+    deposit_amount: 500,
+    merchant: "Card",
+    source: "top10_leads",
+    lead_model: "FormLead",
+    local: "long_distance",
+  };
+
+  assert.equal(bookedLeadToRow(booking)[10], "Top10 Forms");
+});
+
+test("bookedLeadToRow writes call source label from canonical slug", () => {
+  const booking: BookedLeadSheetSource = {
+    _id: new mongoose.Types.ObjectId(),
+    timestamp: fixedDate,
+    book_date: fixedDate,
+    agent_allocations: [{ agent_name_snapshot: "Agent A", binder_amount: 500 }],
+    total_binder_amount: 500,
+    deposit_amount: 500,
+    merchant: "Card",
+    source: "tbm_leads",
+    lead_model: "CallLead",
+    local: null,
+  };
+
+  assert.equal(bookedLeadToRow(booking)[10], "10best Inbounds");
+});
+
+test("bookedLeadToRow resolves legacy source labels before writing", () => {
+  const booking: BookedLeadSheetSource = {
+    _id: new mongoose.Types.ObjectId(),
+    timestamp: fixedDate,
+    book_date: fixedDate,
+    agent_allocations: [{ agent_name_snapshot: "Agent A", binder_amount: 500 }],
+    total_binder_amount: 500,
+    deposit_amount: 500,
+    merchant: "Card",
+    source: "TBM Forms",
+    lead_model: "FormLead",
+    local: "long_distance",
+  };
+
+  assert.equal(bookedLeadToRow(booking)[10], "TBM Forms");
 });
 
 test("bookedLeadToRow projects referral customer name and blank lead ref", () => {

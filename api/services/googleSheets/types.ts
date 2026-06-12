@@ -36,6 +36,7 @@ export type PopulatedBookedLead = {
   deposit_amount: number;
   merchant: string;
   source: string;
+  lead_model?: "FormLead" | "CallLead" | null;
   local?: string | null;
   cancelled?: unknown;
   lead_ref?: { toString(): string } | string;

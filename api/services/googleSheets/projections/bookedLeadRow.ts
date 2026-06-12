@@ -1,3 +1,9 @@
+import {
+  getCallLeadSourceCompanyLabel,
+  getFormLeadSourceCompanyLabel,
+  resolveSourceCompany,
+  type LocalType,
+} from "../../../config/domain";
 import type { BookedLeadSheetSource } from "../types";
 import {
   cancelledCell,
@@ -22,10 +28,30 @@ export function bookedLeadToRow(booking: BookedLeadSheetSource): string[] {
     customerName,
     formatNumber(booking.deposit_amount),
     booking.merchant,
-    booking.source,
+    bookedLeadSourceCell(booking),
     booking._id.toString(),
     typeof booking.lead_ref === "string" ? booking.lead_ref : booking.lead_ref?.toString() ?? "",
     optionalLocalCell(booking.local),
     cancelledCell(Boolean(booking.cancelled)),
   ];
+}
+
+function bookedLeadSourceCell(booking: BookedLeadSheetSource): string {
+  const sourceCompany = resolveSourceCompany(booking.source);
+  if (!sourceCompany) {
+    return booking.source;
+  }
+
+  if (booking.lead_model === "FormLead") {
+    return getFormLeadSourceCompanyLabel(
+      sourceCompany,
+      booking.local as LocalType | undefined,
+    );
+  }
+
+  if (booking.lead_model === "CallLead") {
+    return getCallLeadSourceCompanyLabel(sourceCompany);
+  }
+
+  return booking.source;
 }

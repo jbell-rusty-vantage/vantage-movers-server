@@ -68,4 +68,7 @@ coverage/
 scripts/docs/**   
 
 
-observability.env.example.env 
+observability.env.example.env  
+
+
+scripts/booked_deals_sync/**

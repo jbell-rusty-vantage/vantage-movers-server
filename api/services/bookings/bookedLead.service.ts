@@ -1,5 +1,11 @@
 import type mongoose from "mongoose";
-import { getSheetSyncMode, type LeadModelName, type LocalType } from "../../config/domain";
+import {
+  getSheetSyncMode,
+  resolveSourceCompany,
+  type LeadModelName,
+  type LocalType,
+  type SourceCompany,
+} from "../../config/domain";
 import { BookedLead } from "../../models/BookedLead";
 import { CancelledLead } from "../../models/CancelledLead";
 import type {
@@ -70,6 +76,11 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
   const outcome = await runSheetSyncWrite(async (session) => {
     const lead = await getLinkedLead(input.lead_model, input.lead_ref, session);
     const sourceCompanyForLead = getFormLeadSourceCompanyForBooking(lead, input);
+    const canonicalSource = resolveBookedLeadSource(
+      sourceCompanyForLead,
+      lead.source_company,
+      input.source,
+    );
     const local = optionalValue(input.local ?? lead.local);
     if (!local && input.lead_model !== "CallLead") {
       throw new V1ServiceError(
@@ -104,6 +115,7 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
 
       Object.assign(existingBooking, {
         ...canonicalBookingInput,
+        source: canonicalSource,
         agent_allocations,
         total_binder_amount,
         ...(customer ? { customer: customer._id } : {}),
@@ -139,6 +151,7 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
 
     const booking = new BookedLead({
       ...canonicalBookingInput,
+      source: canonicalSource,
       agent_allocations,
       total_binder_amount,
       timestamp: input.timestamp ?? new Date(),
@@ -233,6 +246,23 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
     warnings,
     total_binder_amount: outcome.totalBinderAmount,
   };
+}
+
+function resolveBookedLeadSource(
+  sourceCompanyForLead: SourceCompany | undefined,
+  leadSourceCompany: unknown,
+  inputSource: string,
+): SourceCompany | string {
+  if (sourceCompanyForLead) {
+    return sourceCompanyForLead;
+  }
+
+  const leadSource = resolveSourceCompany(String(leadSourceCompany ?? ""));
+  if (leadSource && leadSource !== "not_provided") {
+    return leadSource;
+  }
+
+  return resolveSourceCompany(inputSource) ?? inputSource;
 }
 
 /**
