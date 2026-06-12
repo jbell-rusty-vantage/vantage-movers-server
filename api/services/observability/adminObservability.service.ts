@@ -5,10 +5,19 @@ import {
   type OperationalEventDocument,
 } from "../../models/OperationalEvent";
 import { getOperationalIncidentModel } from "../../models/OperationalIncident";
-import type {
-  IncidentSeverity,
-  IncidentStatus,
+import {
+  INCIDENT_SEVERITIES,
+  INCIDENT_STATUSES,
+  NOTIFICATION_PURPOSES,
+  NOTIFICATION_RECIPIENT_TYPES,
+  NOTIFICATION_STATUSES,
+  OBSERVABILITY_LEVELS,
+  OPERATIONAL_EVENT_CATEGORIES,
+  REPORT_RUN_STATUSES,
+  type IncidentSeverity,
+  type IncidentStatus,
 } from "../../config/domain/observability";
+import { OPERATIONAL_REPORT_KEYS } from "./operationalReports.service";
 import { getNotificationDeliveryModel } from "../../models/NotificationDelivery";
 import { V1ServiceError } from "../v1ServiceError";
 import { getSheetSyncHealth } from "../admin/adminSheetSync.service";
@@ -16,6 +25,7 @@ import { toCsv } from "../../utils/csv";
 import { recordOperationalEvent } from "./recordOperationalEvent";
 import type {
   ObservabilityEventsQuery,
+  ObservabilityFacetsQuery,
   ObservabilityIncidentsQuery,
   ObservabilityIncidentStatusInput,
   ObservabilityNotificationsQuery,
@@ -93,7 +103,46 @@ type PaginatedResult<T> = {
   has_next_page: boolean;
 };
 
-function buildEventFilter(query: ObservabilityEventsQuery): Record<string, unknown> {
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Case-insensitive "contains" regex for owner-friendly partial matching. */
+function containsRegex(value: string): RegExp {
+  return new RegExp(escapeRegex(value.trim()), "i");
+}
+
+/**
+ * Phone filters match on digits only so the owner can paste any format
+ * ("(555) 123-4567", "555.123.4567", "1231"). Falls back to a plain contains
+ * match when the input has no digits.
+ */
+function phoneContainsRegex(value: string): RegExp {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) {
+    return containsRegex(value);
+  }
+  // Allow common separators between each digit so formatted stored values
+  // ("(555) 123-4567") still match a raw digit query.
+  const pattern = digits.split("").map(escapeRegex).join("[\\s().+-]*");
+  return new RegExp(pattern);
+}
+
+/**
+ * Shared partial-match filters for owner-facing lead identity fields. Other
+ * filters stay exact; these are the "track down a customer" search paths.
+ */
+function applyLeadIdentityFilters(
+  filter: Record<string, unknown>,
+  query: { lead_name?: string; lead_phone?: string; lead_email?: string },
+): void {
+  if (query.lead_name) filter.lead_name = containsRegex(query.lead_name);
+  if (query.lead_phone) filter.lead_phone = phoneContainsRegex(query.lead_phone);
+  if (query.lead_email) filter.lead_email = containsRegex(query.lead_email);
+}
+
+/** Exported for unit tests; not part of the route-facing surface. */
+export function buildEventFilter(query: ObservabilityEventsQuery): Record<string, unknown> {
   const filter: Record<string, unknown> = {};
   const occurred: Record<string, Date> = {};
   if (query.from) occurred.$gte = query.from;
@@ -105,9 +154,7 @@ function buildEventFilter(query: ObservabilityEventsQuery): Record<string, unkno
   if (query.workflow) filter.workflow = query.workflow;
   if (query.event_key) filter.event_key = query.event_key;
   if (query.source_company) filter.source_company = query.source_company;
-  if (query.lead_name) filter.lead_name = query.lead_name;
-  if (query.lead_phone) filter.lead_phone = query.lead_phone;
-  if (query.lead_email) filter.lead_email = query.lead_email;
+  applyLeadIdentityFilters(filter, query);
   if (query.route) filter.route = query.route;
   if (query.entity_type) filter.entity_type = query.entity_type;
   if (query.entity_id) filter.entity_id = query.entity_id;
@@ -121,7 +168,8 @@ function buildEventFilter(query: ObservabilityEventsQuery): Record<string, unkno
   return filter;
 }
 
-function buildIncidentFilter(query: ObservabilityIncidentsQuery): Record<string, unknown> {
+/** Exported for unit tests; not part of the route-facing surface. */
+export function buildIncidentFilter(query: ObservabilityIncidentsQuery): Record<string, unknown> {
   const filter: Record<string, unknown> = {};
   const seen: Record<string, Date> = {};
   if (query.from) seen.$gte = query.from;
@@ -134,12 +182,22 @@ function buildIncidentFilter(query: ObservabilityIncidentsQuery): Record<string,
   if (query.workflow) filter.workflow = query.workflow;
   if (query.event_key) filter.event_key = query.event_key;
   if (query.source_company) filter.source_company = query.source_company;
-  if (query.lead_name) filter.lead_name = query.lead_name;
-  if (query.lead_phone) filter.lead_phone = query.lead_phone;
-  if (query.lead_email) filter.lead_email = query.lead_email;
+  applyLeadIdentityFilters(filter, query);
   if (query.entity_type) filter.entity_type = query.entity_type;
   if (query.entity_id) filter.entity_id = query.entity_id;
   if (query.owner_visible !== undefined) filter.owner_visible = query.owner_visible;
+  if (query.q) {
+    // Incidents have no text index; volume is low enough for a regex OR scan.
+    const pattern = containsRegex(query.q);
+    filter.$or = [
+      { title: pattern },
+      { summary: pattern },
+      { event_key: pattern },
+      { workflow: pattern },
+      { lead_name: pattern },
+      { source_company: pattern },
+    ];
+  }
   return filter;
 }
 
@@ -458,6 +516,57 @@ export async function getObservabilityOverview(query: ObservabilityOverviewQuery
       suppressed_today: suppressedToday,
     },
   };
+}
+
+const FACET_VALUE_CAP = 200;
+const FACET_DEFAULT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Distinct event-field values plus the static enums, so the admin UI can
+ * populate every Observational filter dropdown from one call. Distinct values
+ * come from `operational_events` over a bounded window (default last 30 days)
+ * and are capped/sorted for stable dropdowns.
+ */
+export async function getObservabilityFacets(query: ObservabilityFacetsQuery) {
+  await connectMongo();
+  const Event = getOperationalEventModel();
+  const to = query.to ?? new Date();
+  const from = query.from ?? new Date(to.getTime() - FACET_DEFAULT_WINDOW_MS);
+  const match = { occurred_at: { $gte: from, $lt: to } };
+
+  const [workflows, eventKeys, sourceCompanies, entityTypes, routes] =
+    await Promise.all([
+      Event.distinct("workflow", match),
+      Event.distinct("event_key", match),
+      Event.distinct("source_company", match),
+      Event.distinct("entity_type", match),
+      Event.distinct("route", match),
+    ]);
+
+  return {
+    period: { from: from.toISOString(), to: to.toISOString() },
+    workflows: capFacetValues(workflows),
+    event_keys: capFacetValues(eventKeys),
+    source_companies: capFacetValues(sourceCompanies),
+    entity_types: capFacetValues(entityTypes),
+    routes: capFacetValues(routes),
+    levels: [...OBSERVABILITY_LEVELS],
+    categories: [...OPERATIONAL_EVENT_CATEGORIES],
+    incident_statuses: [...INCIDENT_STATUSES],
+    incident_severities: [...INCIDENT_SEVERITIES],
+    notification_statuses: [...NOTIFICATION_STATUSES],
+    notification_purposes: [...NOTIFICATION_PURPOSES],
+    notification_recipient_types: [...NOTIFICATION_RECIPIENT_TYPES],
+    report_keys: [...OPERATIONAL_REPORT_KEYS],
+    report_run_statuses: [...REPORT_RUN_STATUSES],
+  };
+}
+
+function capFacetValues(values: unknown[]): string[] {
+  return values
+    .filter((value): value is string => typeof value === "string" && value !== "")
+    .sort((a, b) => a.localeCompare(b))
+    .slice(0, FACET_VALUE_CAP);
 }
 
 export async function exportOperationalEventsCsv(query: ObservabilityEventsQuery) {

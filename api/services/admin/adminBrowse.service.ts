@@ -377,7 +377,7 @@ function addDateClause(
 function addQClause(clauses: AdminFilter[], fields: string[], q?: string) {
   if (!q) return;
   const objectIdClause = mongoose.isValidObjectId(q)
-    ? [{ _id: new mongoose.Types.ObjectId(q) }]
+    ? [{ _id: mongoose.Types.ObjectId.createFromHexString(q) }]
     : [];
   clauses.push({ $or: [...objectIdClause, ...containsClauses(fields, q)] });
 }

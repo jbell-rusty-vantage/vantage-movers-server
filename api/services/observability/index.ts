@@ -19,6 +19,7 @@ export { buildRequestEventContext } from "./requestEventContext";
 export { computeFingerprint, buildDedupeKey } from "./fingerprint";
 export {
   getObservabilityOverview,
+  getObservabilityFacets,
   listOperationalEvents,
   getOperationalEventDetail,
   listOperationalIncidents,
@@ -31,6 +32,7 @@ export {
 export {
   runOperationalReport,
   listOperationalReportRuns,
+  getOperationalReportRunDetail,
   exportReportRunCsv,
   computeResultHash,
   canonicalize,

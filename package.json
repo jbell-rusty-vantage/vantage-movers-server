@@ -15,6 +15,7 @@
     "db:fix-form-lead-not-found-states": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/fix-form-lead-not-found-states.ts",
     "db:seed-catalogs": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/seed-agent-merchant-catalogs.ts",
     "api:patch-form-lead-duplicate": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/patch-form-lead-duplicate-production.ts",
+    "api:patch-call-lead-phone": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/patch-call-lead-phone-production.ts",
     "api:post-form-lead": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/post-form-lead.ts",
     "dev_ops:test-best-relocation-webhook": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/test-best-relocation-forms-webhook-production.ts",
     "db:init-historical": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/historical/init-historical-db.ts",

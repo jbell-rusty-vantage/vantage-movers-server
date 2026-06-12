@@ -58,6 +58,14 @@ alwaysApply: true
 - Observability config lives in `api/config/domain/observability.ts`; avoid direct `process.env` reads for observability policy outside that file unless the value is unrelated route auth like `CRON_SECRET`.
 - Notification digest cron is mounted from `api/routes/notification-cron.routes.ts`; it should remain a thin authenticated boundary around observability services.
 - Rollup collections are deferred for now. Admin overview and reports aggregate directly from operational event, incident, notification delivery, and report-run collections.
+- Admin observability endpoints (all under `requireApiSecret`, schemas in `api/validation/v1/observability.validation.ts`):
+  - `GET /api/v1/admin/observability/overview` and `GET /api/v1/admin/observability/facets` (distinct workflows/event keys/source companies/entity types/routes plus static enums for filter dropdowns)
+  - `GET /api/v1/admin/observability/events` and `/events/:id`
+  - `GET /api/v1/admin/observability/incidents`, `/incidents/:id`, and `PATCH /incidents/:id/status`
+  - `GET /api/v1/admin/observability/notifications`
+  - `GET /api/v1/admin/observability/reports`, `GET /reports/:id`, and `POST /reports/run`
+  - CSV exports: `/api/v1/admin/exports/observability/events.csv`, `/incidents.csv`, and `/reports/:id.csv`
+- Lead identity filters (`lead_name`, `lead_phone`, `lead_email`) on events/incidents are partial-match: case-insensitive contains for name/email, digits-only contains for phone. Incident `q` is a regex OR across title/summary/event_key/workflow/lead_name/source_company; event `q` uses the `$text` index. All other filters stay exact-match.
 
 ## Script Launch Map
 

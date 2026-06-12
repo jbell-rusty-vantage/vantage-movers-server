@@ -10,6 +10,7 @@ import { requireApiSecret } from "../middleware/requireApiSecret";
 import {
   recordOperationalEvent,
   getObservabilityOverview,
+  getObservabilityFacets,
   listOperationalEvents,
   getOperationalEventDetail,
   listOperationalIncidents,
@@ -20,6 +21,7 @@ import {
   exportOperationalIncidentsCsv,
   runOperationalReport,
   listOperationalReportRuns,
+  getOperationalReportRunDetail,
   exportReportRunCsv,
 } from "../services/observability";
 import { searchFormLeads } from "../services/formLeadSearch.service";
@@ -94,6 +96,7 @@ import {
   updateCustomerSchema,
   updateFormLeadSchema,
   observabilityOverviewQuerySchema,
+  observabilityFacetsQuerySchema,
   observabilityEventsQuerySchema,
   observabilityIncidentsQuerySchema,
   observabilityNotificationsQuerySchema,
@@ -201,6 +204,7 @@ router.get("/api/v1/admin/sheet-sync/runs/:id", handleSheetSyncRunDetail);
 router.post("/api/v1/admin/sheet-sync/retry", handleSheetSyncRetry);
 
 router.get("/api/v1/admin/observability/overview", handleObservabilityOverview);
+router.get("/api/v1/admin/observability/facets", handleObservabilityFacets);
 router.get("/api/v1/admin/observability/events", handleObservabilityEvents);
 router.get("/api/v1/admin/observability/events/:id", handleObservabilityEventDetail);
 router.get("/api/v1/admin/observability/incidents", handleObservabilityIncidents);
@@ -212,6 +216,7 @@ router.patch(
 router.get("/api/v1/admin/observability/notifications", handleObservabilityNotifications);
 router.get("/api/v1/admin/observability/reports", handleObservabilityReports);
 router.post("/api/v1/admin/observability/reports/run", handleObservabilityReportRun);
+router.get("/api/v1/admin/observability/reports/:id", handleObservabilityReportDetail);
 router.get("/api/v1/admin/exports/observability/events.csv", handleObservabilityEventsExport);
 router.get(
   "/api/v1/admin/exports/observability/incidents.csv",
@@ -422,6 +427,16 @@ async function handleObservabilityOverview(req: Request, res: Response) {
   }
 }
 
+async function handleObservabilityFacets(req: Request, res: Response) {
+  try {
+    const parsed = observabilityFacetsQuerySchema.parse(req.query);
+    const data = await getObservabilityFacets(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
 async function handleObservabilityEvents(req: Request, res: Response) {
   try {
     const parsed = observabilityEventsQuerySchema.parse(req.query);
@@ -496,6 +511,15 @@ async function handleObservabilityReportRun(req: Request, res: Response) {
     const parsed = observabilityReportRunSchema.parse(req.body);
     const data = await runOperationalReport(parsed);
     return res.status(201).json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleObservabilityReportDetail(req: Request, res: Response) {
+  try {
+    const data = await getOperationalReportRunDetail(getValidObjectId(req));
+    return res.json({ ok: true, data });
   } catch (error) {
     return sendError(req, res, error);
   }

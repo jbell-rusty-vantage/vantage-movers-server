@@ -20,6 +20,7 @@ export const sheetSyncJobsQuerySchema = z
     status: z.enum(SHEET_SYNC_JOB_STATUSES).optional(),
     resource: z.enum(SHEET_SYNC_RESOURCES).optional(),
     entity_id: optionalTrimmedString,
+    job_id: objectIdSchema.optional(),
     limit: z.coerce.number().int().min(1).max(250).default(50),
     page: z.coerce.number().int().min(1).default(1),
   })

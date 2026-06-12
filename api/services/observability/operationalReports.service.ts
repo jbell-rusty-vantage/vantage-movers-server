@@ -478,6 +478,16 @@ export async function listOperationalReportRuns(query: {
   };
 }
 
+export async function getOperationalReportRunDetail(id: string) {
+  await connectMongo();
+  const ReportRun = getOperationalReportRunModel();
+  const run = await ReportRun.findById(id).lean();
+  if (!run) {
+    throw new V1ServiceError("Report run not found", 404);
+  }
+  return run;
+}
+
 export async function exportReportRunCsv(id: string) {
   await connectMongo();
   const ReportRun = getOperationalReportRunModel();

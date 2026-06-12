@@ -101,7 +101,7 @@ async function searchConcrete(
   const models = getAdminModels(scope);
   const q = query.q.trim();
   const objectIdClause = mongoose.isValidObjectId(q)
-    ? [{ _id: new mongoose.Types.ObjectId(q) }]
+    ? [{ _id: mongoose.Types.ObjectId.createFromHexString(q) }]
     : [];
   const regex = new RegExp(escapeRegex(q), "i");
   const filter = { $or: [...objectIdClause, ...config.fields.map((field) => ({ [field]: regex }))] };

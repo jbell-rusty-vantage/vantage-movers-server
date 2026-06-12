@@ -113,8 +113,13 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
         };
       }
 
+      const existingBookingInput = { ...canonicalBookingInput };
+      if (existingBookingInput.timestamp === undefined) {
+        delete existingBookingInput.timestamp;
+      }
+
       Object.assign(existingBooking, {
-        ...canonicalBookingInput,
+        ...existingBookingInput,
         source: canonicalSource,
         agent_allocations,
         total_binder_amount,

@@ -128,6 +128,7 @@ export {
 
 export {
   observabilityOverviewQuerySchema,
+  observabilityFacetsQuerySchema,
   observabilityEventsQuerySchema,
   observabilityIncidentsQuerySchema,
   observabilityNotificationsQuerySchema,
@@ -135,6 +136,7 @@ export {
   observabilityReportsQuerySchema,
   observabilityReportRunSchema,
   type ObservabilityOverviewQuery,
+  type ObservabilityFacetsQuery,
   type ObservabilityEventsQuery,
   type ObservabilityIncidentsQuery,
   type ObservabilityNotificationsQuery,

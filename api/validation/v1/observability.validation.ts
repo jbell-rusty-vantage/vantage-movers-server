@@ -107,6 +107,13 @@ export const observabilityOverviewQuerySchema = z
   })
   .strip();
 
+export const observabilityFacetsQuerySchema = z
+  .object({
+    from: optionalDateString,
+    to: optionalDateString,
+  })
+  .strip();
+
 export const observabilityEventsQuerySchema = z
   .object({
     ...sharedFilters,
@@ -175,6 +182,7 @@ export const observabilityReportRunSchema = z
   .strip();
 
 export type ObservabilityOverviewQuery = z.infer<typeof observabilityOverviewQuerySchema>;
+export type ObservabilityFacetsQuery = z.infer<typeof observabilityFacetsQuerySchema>;
 export type ObservabilityEventsQuery = z.infer<typeof observabilityEventsQuerySchema>;
 export type ObservabilityIncidentsQuery = z.infer<typeof observabilityIncidentsQuerySchema>;
 export type ObservabilityNotificationsQuery = z.infer<

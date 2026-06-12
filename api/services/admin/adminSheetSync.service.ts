@@ -66,6 +66,9 @@ export async function listSheetSyncJobs(query: SheetSyncJobsQuery) {
   if (query.entity_id) {
     filter.entity_id = query.entity_id;
   }
+  if (query.job_id) {
+    filter._id = new mongoose.Types.ObjectId(query.job_id);
+  }
 
   const skip = (query.page - 1) * query.limit;
   const [items, total] = await Promise.all([
