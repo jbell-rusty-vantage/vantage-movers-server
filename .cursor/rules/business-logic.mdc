@@ -1,0 +1,50 @@
+---
+description: Vantage Movers domain concepts, invariants, and business-logic drift policy
+globs: api/routes/**/*.ts,api/services/**/*.ts,api/models/**/*.ts,api/validation/**/*.ts,scripts/**/*.ts
+alwaysApply: false
+---
+
+# Vantage Movers Business Logic
+
+Business behavior changes must update this file or a linked business/workflow doc with the concept, source of truth, invariants, edge cases, and examples. If no update is needed, say so in the final response.
+
+## Leads And Customers
+
+- MongoDB is the system of record for form leads, call leads, customers, bookings, cancellations, and sync metadata.
+- Form leads originate from website intake and may post to Granot CRM unless duplicate logic forces `post_to_granot=false`.
+- Call leads originate from phone/call sources such as RingCentral/Invoca and may be enriched later from CRM rows.
+- Customers are upserted from source leads during booking flows.
+
+## Quotes, Estimates, And Pricing
+
+- `quoted`, `cubic_feet`, `est_cf`, CPL, deposit, total binder amount, and threshold flags appear across lead, enrichment, booking, and reporting flows.
+- Source of truth and full pricing invariants are TBD from source of truth.
+
+## Moves, Bookings, And Jobs
+
+- Bookings link to a source lead via `lead_ref` and `lead_model` (`FormLead` or `CallLead`).
+- Booking creation can attach by direct Mongo id or source-derived identifiers such as form lead id, call job number, or call phone number.
+- Booking services mirror state back to source leads and schedule related Google Sheet sync work.
+
+## Crews, Trucks, Dispatch, And Availability
+
+- Agent allocations are required on booked leads and are resolved/snapshotted during booking.
+- Crew, truck, dispatch, route, and availability rules are TBD from source of truth.
+
+## Invoices And Payments
+
+- Booking records include merchant/deposit/binder-related fields. Invoice and payment lifecycle rules are TBD from source of truth.
+
+## Integrations And CRM
+
+- Granot CRM receives non-duplicate form leads and uses Mongo ids as `ref_no`/`leadno` for extension lookup.
+- Google Sheets is an owner-facing reporting target; sheet sync can complete after API responses.
+- RingCentral services own call capture, candidate/session aggregation, Call Log sync, analytics reconciliation, duplicate detection, and call-lead ingest.
+- Postman tooling syncs API collections/environments. External integration writes must remain mode-aware and observable.
+
+## Invariants And Edge Cases
+
+- Preserve traceability from website or call source through CRM, Mongo, Sheets, booking, cancellation, and reporting.
+- Keep routes thin and business decisions in services.
+- Do not bypass helpers for source-company parsing, phone normalization, local/CPL derivation, agent allocation resolution, duplicate/form-fill checks, or sheet-sync scheduling.
+- Duplicates, unmatched call bookings, cancellations, historical database reads, and production backfills are high-risk and need focused tests or explicit validation notes.

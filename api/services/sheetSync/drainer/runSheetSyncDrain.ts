@@ -1,3 +1,4 @@
+import mongoose, { type QueryFilter } from "mongoose";
 import type { sheets_v4 } from "googleapis";
 import {
   getSheetSyncDrainGuardrails,
@@ -130,12 +131,12 @@ export async function runSheetSyncDrain(
     }
 
     const allWrites = plannedDocs.flatMap((doc) => doc.writes);
-    const outcomes =
+    let outcomes =
       allWrites.length > 0
         ? await writeBatchedTargets({ sheets, writes: allWrites, quota })
         : [];
 
-    await persistDocSheetSync(plannedDocs, outcomes);
+    outcomes = await persistDocSheetSync(plannedDocs, outcomes);
     await recordAttempts(runId, outcomes);
 
     // Empty jobs (document gone / intentionally skipped) are done.
@@ -260,6 +261,7 @@ export async function runSheetSyncDrain(
     };
   } catch (error) {
     logger.error({ err: error, msg: "sheet_sync.drain.run_failed", trigger, runId: runId.toString() });
+    const releasedJobs = await releaseClaimedJobsForRun(owner, runId, error);
     await SheetSyncRun.findByIdAndUpdate(runId, {
       $set: {
         status: "failed",
@@ -287,6 +289,7 @@ export async function runSheetSyncDrain(
         failed: failedJobs,
         deferred: deferredJobs,
         causeMessage: error instanceof Error ? error.message : String(error),
+        releasedJobs,
       },
       errorMessage: error instanceof Error ? error.message : String(error),
       notificationCandidate: true,
@@ -349,8 +352,9 @@ async function claimDueJobs(
 async function persistDocSheetSync(
   plannedDocs: PlannedDoc[],
   outcomes: PlannedWriteOutcome[],
-): Promise<void> {
+): Promise<PlannedWriteOutcome[]> {
   const outcomesByDoc = groupBy(outcomes, (o) => o.write.docKey);
+  const metadataFailures = new Map<string, string>();
   for (const planned of plannedDocs) {
     if (!planned.doc) {
       continue; // delete tombstone: no surviving document to persist onto
@@ -371,8 +375,50 @@ async function persistDocSheetSync(
     const doc = planned.doc;
     const existing = doc.get("sheet_sync") as SheetSyncEntry[];
     const withoutDeleted = removeSheetSyncEntries(existing, deletedTargets);
-    doc.set("sheet_sync", mergeSheetSyncEntries(withoutDeleted, entries));
-    await doc.save();
+    try {
+      await persistSheetSyncMetadata(doc, mergeSheetSyncEntries(withoutDeleted, entries));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      metadataFailures.set(planned.docKey, message);
+      logger.warn({
+        err: error,
+        msg: "sheet_sync.drain.metadata_persist_failed",
+        docKey: planned.docKey,
+      });
+    }
+  }
+  if (metadataFailures.size === 0) {
+    return outcomes;
+  }
+  return outcomes.map((outcome) => {
+    const message = metadataFailures.get(outcome.write.docKey);
+    if (!message || outcome.status !== "synced") {
+      return outcome;
+    }
+    return {
+      ...outcome,
+      status: "failed",
+      error: `sheet_sync metadata persist failed: ${message}`,
+    };
+  });
+}
+
+async function persistSheetSyncMetadata(
+  doc: PlannedDoc["doc"],
+  sheetSync: SheetSyncEntry[],
+): Promise<void> {
+  if (!doc) {
+    return;
+  }
+  const model = doc.constructor as unknown as {
+    updateOne(
+      filter: Record<string, unknown>,
+      update: Record<string, unknown>,
+    ): Promise<{ matchedCount?: number }>;
+  };
+  const result = await model.updateOne({ _id: doc._id }, { $set: { sheet_sync: sheetSync } });
+  if (result.matchedCount === 0) {
+    throw new Error(`document ${doc._id.toString()} no longer exists`);
   }
 }
 
@@ -409,7 +455,7 @@ async function recordAttempts(
   }
   await SheetSyncAttempt.insertMany(
     outcomes.map((o) => ({
-      run_id: runId,
+      run_id: runId as mongoose.Types.ObjectId,
       job_id: o.write.jobId,
       target: o.write.target,
       spreadsheet_id: o.write.spreadsheetId,
@@ -528,6 +574,32 @@ async function releaseClaim(job: SheetSyncJobDocument): Promise<void> {
   await SheetSyncJob.findByIdAndUpdate(job._id, {
     $set: { status: "pending", leased_until: new Date(0) },
   });
+}
+
+async function releaseClaimedJobsForRun(
+  owner: string,
+  runId: mongoose.Types.ObjectId,
+  error: unknown,
+): Promise<number> {
+  const message = error instanceof Error ? error.message : String(error);
+  const filter: QueryFilter<SheetSyncJobDocument> = {
+    run_id: runId,
+    lease_owner: owner,
+    status: "processing",
+  };
+  const result = await SheetSyncJob.updateMany(
+    filter,
+    {
+      $set: {
+        status: "retrying",
+        due_at: retryDueAt(1),
+        leased_until: new Date(0),
+        last_error: `drain run failed before job finalization: ${message}`,
+        last_error_at: new Date(),
+      },
+    },
+  );
+  return result.modifiedCount;
 }
 
 function retryDueAt(attempts: number): Date {

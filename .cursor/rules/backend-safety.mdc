@@ -1,0 +1,12 @@
+---
+description: Safety expectations for high-risk backend and operational changes
+alwaysApply: true
+---
+
+# Backend Safety
+
+- Treat DB migrations, Mongo schemas, env vars, auth, payments, invoices, webhooks, scheduling, external API integrations, and operational scripts as high-risk.
+- For high-risk changes, final responses must include what changed, migration/backward-compatibility implications, rollback considerations, required env/config changes, and tests run.
+- Never inspect, print, commit, or expose secret values. Document configuration shape in `.env.example`-style files or docs instead of reading real env files.
+- Before touching write paths, identify whether code can affect production Mongo, Google Sheets, Granot CRM, RingCentral, Postman, SendGrid/Twilio, or customer data.
+- Destructive scripts and webhook deletion commands need explicit user intent, a non-production target or dry run when possible, and a rollback plan.
