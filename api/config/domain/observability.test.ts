@@ -19,6 +19,9 @@ import {
  * restores the keys it touched so ordering stays independent.
  */
 const TOUCHED_ENV_KEYS = [
+  "ALLOW_TEST_OBSERVABILITY",
+  "NODE_TEST_CONTEXT",
+  "VANTAGE_TEST_RUNNER",
   "OBSERVABILITY_ENABLED",
   "OBSERVABILITY_WRITE_MODE",
   "OBSERVABILITY_EVENT_MIN_LEVEL",
@@ -44,7 +47,9 @@ afterEach(() => {
 });
 
 test("observability is enabled by default and disabled by flags", () => {
+  process.env.ALLOW_TEST_OBSERVABILITY = "true";
   delete process.env.OBSERVABILITY_ENABLED;
+  delete process.env.OBSERVABILITY_WRITE_MODE;
   assert.equal(isObservabilityEnabled(), true);
 
   process.env.OBSERVABILITY_ENABLED = "false";
@@ -55,7 +60,20 @@ test("observability is enabled by default and disabled by flags", () => {
   assert.equal(isObservabilityEnabled(), false);
 });
 
+test("node test runner disables observability writes unless explicitly allowed", () => {
+  process.env.NODE_TEST_CONTEXT = "child-v8";
+  process.env.OBSERVABILITY_ENABLED = "true";
+  process.env.OBSERVABILITY_WRITE_MODE = "enabled";
+  assert.equal(isObservabilityEnabled(), false);
+  assert.equal(shouldWriteObservabilityCollections(), false);
+
+  process.env.ALLOW_TEST_OBSERVABILITY = "true";
+  assert.equal(isObservabilityEnabled(), true);
+  assert.equal(shouldWriteObservabilityCollections(), true);
+});
+
 test("write mode controls whether collections are written", () => {
+  process.env.ALLOW_TEST_OBSERVABILITY = "true";
   delete process.env.OBSERVABILITY_WRITE_MODE;
   assert.equal(getObservabilityWriteMode(), "enabled");
   assert.equal(shouldWriteObservabilityCollections(), true);

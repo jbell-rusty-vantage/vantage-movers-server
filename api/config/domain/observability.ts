@@ -204,6 +204,14 @@ function envLevel(name: string, defaultValue: ObservabilityLevel): Observability
   return defaultValue;
 }
 
+function isNodeTestRunner(): boolean {
+  return Boolean(process.env.NODE_TEST_CONTEXT) || process.env.VANTAGE_TEST_RUNNER === "true";
+}
+
+function allowTestObservabilityWrites(): boolean {
+  return process.env.ALLOW_TEST_OBSERVABILITY === "true";
+}
+
 /**
  * The master enablement flag. When `OBSERVABILITY_ENABLED=false`, no
  * observability collections are written and notification policy is not
@@ -211,6 +219,9 @@ function envLevel(name: string, defaultValue: ObservabilityLevel): Observability
  * deploy posture.
  */
 export function isObservabilityEnabled(): boolean {
+  if (isNodeTestRunner() && !allowTestObservabilityWrites()) {
+    return false;
+  }
   if (!envFlag("OBSERVABILITY_ENABLED", true)) {
     return false;
   }

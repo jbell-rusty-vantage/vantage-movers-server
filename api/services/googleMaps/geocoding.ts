@@ -18,6 +18,37 @@ type GoogleMapsAuthContext = {
   projectId: string;
 };
 
+export type GoogleMapsGeocodingHealth = {
+  ok: boolean;
+  checkedAt: string;
+  testZip: string;
+  scopes: string[];
+  auth: {
+    ok: boolean;
+    authSource: ReturnType<typeof resolveAuthConfigSummary>["authSource"];
+    clientEmail: string | null;
+    projectId: string | null;
+    resolvedProjectId: string | null;
+    privateKeyPresent: boolean;
+    keyFile: string | null;
+    error: string | null;
+  };
+  token: {
+    ok: boolean;
+    error: string | null;
+  };
+  geocoding: {
+    ok: boolean;
+    endpoint: string;
+    status: number | null;
+    statusText: string | null;
+    stateCode: string | null;
+    resultCount: number | null;
+    responsePreview: string | null;
+    error: string | null;
+  };
+};
+
 type GoogleGeocodeAddressComponent = {
   longText?: string;
   shortText?: string;
@@ -32,6 +63,8 @@ export type GoogleGeocodeResponse = {
     addressComponents?: GoogleGeocodeAddressComponent[];
   }>;
 };
+
+const GOOGLE_GEOCODING_ENDPOINT = "https://geocode.googleapis.com/v4/geocode/address";
 
 let cachedAuthContext: Promise<GoogleMapsAuthContext> | null = null;
 let loggedAuthConfig = false;
@@ -50,7 +83,7 @@ export async function getGoogleStateCodeForZip(
   try {
     const { auth, projectId } = await getGoogleMapsAuthContext();
     const token = await getGoogleMapsAccessToken(auth);
-    const url = new URL("https://geocode.googleapis.com/v4/geocode/address");
+    const url = new URL(GOOGLE_GEOCODING_ENDPOINT);
     url.searchParams.set("address.postalCode", zip);
     url.searchParams.set("address.regionCode", "US");
 
@@ -117,6 +150,94 @@ export async function getGoogleStateCodeForZip(
   }
 }
 
+export async function checkGoogleMapsGeocodingHealth(
+  testZip = "10001",
+): Promise<GoogleMapsGeocodingHealth> {
+  const checkedAt = new Date().toISOString();
+  const zip = /^\d{5}$/.test(testZip.trim()) ? testZip.trim() : "10001";
+  const authSummary = getSafeAuthConfigSummary();
+  const health: GoogleMapsGeocodingHealth = {
+    ok: false,
+    checkedAt,
+    testZip: zip,
+    scopes: MAPS_GEOCODING_SCOPES,
+    auth: {
+      ok: false,
+      authSource: authSummary.summary.authSource,
+      clientEmail: authSummary.summary.clientEmail ?? null,
+      projectId: authSummary.summary.projectId ?? null,
+      resolvedProjectId: getGoogleServiceAccountProjectId() ?? authSummary.summary.projectId ?? null,
+      privateKeyPresent: authSummary.summary.privateKeyPresent,
+      keyFile: authSummary.summary.keyFile ?? null,
+      error: authSummary.error,
+    },
+    token: {
+      ok: false,
+      error: null,
+    },
+    geocoding: {
+      ok: false,
+      endpoint: GOOGLE_GEOCODING_ENDPOINT,
+      status: null,
+      statusText: null,
+      stateCode: null,
+      resultCount: null,
+      responsePreview: null,
+      error: null,
+    },
+  };
+
+  if (authSummary.error) {
+    return health;
+  }
+
+  try {
+    const { auth, projectId } = await getGoogleMapsAuthContext();
+    health.auth.ok = true;
+    health.auth.resolvedProjectId = projectId;
+
+    const token = await getGoogleMapsAccessToken(auth);
+    health.token.ok = true;
+
+    const url = new URL(GOOGLE_GEOCODING_ENDPOINT);
+    url.searchParams.set("address.postalCode", zip);
+    url.searchParams.set("address.regionCode", "US");
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "X-Goog-User-Project": projectId,
+      },
+    });
+    const responseBody = await response.text();
+    health.geocoding.status = response.status;
+    health.geocoding.statusText = response.statusText;
+    health.geocoding.responsePreview = responseBody.slice(0, 1000) || null;
+
+    if (!response.ok) {
+      health.geocoding.error = `Google Geocoding API returned HTTP ${response.status}`;
+      return health;
+    }
+
+    const data = JSON.parse(responseBody) as GoogleGeocodeResponse;
+    const stateCode = extractStateCodeFromGoogleGeocodeResponse(data);
+    health.geocoding.ok = Boolean(stateCode);
+    health.geocoding.stateCode = stateCode ?? null;
+    health.geocoding.resultCount = data.results?.length ?? 0;
+    health.geocoding.error = stateCode ? null : "Google response did not include a state code";
+    health.ok = health.auth.ok && health.token.ok && health.geocoding.ok;
+    return health;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!health.token.ok) {
+      health.token.error = message;
+    } else {
+      health.geocoding.error = message;
+    }
+    return health;
+  }
+}
+
 export function extractStateCodeFromGoogleGeocodeResponse(
   data: GoogleGeocodeResponse,
 ): string | undefined {
@@ -137,6 +258,23 @@ export function extractStateCodeFromGoogleGeocodeResponse(
   }
 
   return undefined;
+}
+
+function getSafeAuthConfigSummary(): {
+  summary: ReturnType<typeof resolveAuthConfigSummary>;
+  error: string | null;
+} {
+  try {
+    return { summary: resolveAuthConfigSummary(), error: null };
+  } catch (error) {
+    return {
+      summary: {
+        authSource: "missing",
+        privateKeyPresent: false,
+      },
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 async function getGoogleMapsAuthContext(): Promise<GoogleMapsAuthContext> {

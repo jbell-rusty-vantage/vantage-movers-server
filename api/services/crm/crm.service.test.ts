@@ -2,13 +2,26 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import mongoose from "mongoose";
 import { FormLead, type FormLeadDocument } from "../../models/FormLead";
+import { getOperationalEventModel } from "../../models/OperationalEvent";
 import { submitFormLeadToCrm } from "./crm.service";
 import { CRM_FORM_LEAD_ENDPOINT } from "./crmConfig";
 
 const originalFetch = globalThis.fetch;
+const originalEnv = {
+  allowTestObservability: process.env.ALLOW_TEST_OBSERVABILITY,
+  nodeTestContext: process.env.NODE_TEST_CONTEXT,
+  observabilityEnabled: process.env.OBSERVABILITY_ENABLED,
+  observabilityWriteMode: process.env.OBSERVABILITY_WRITE_MODE,
+  vercelEnv: process.env.VERCEL_ENV,
+};
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  restoreEnv("ALLOW_TEST_OBSERVABILITY", originalEnv.allowTestObservability);
+  restoreEnv("NODE_TEST_CONTEXT", originalEnv.nodeTestContext);
+  restoreEnv("OBSERVABILITY_ENABLED", originalEnv.observabilityEnabled);
+  restoreEnv("OBSERVABILITY_WRITE_MODE", originalEnv.observabilityWriteMode);
+  restoreEnv("VERCEL_ENV", originalEnv.vercelEnv);
 });
 
 type FetchCall = {
@@ -26,6 +39,14 @@ function stubFetch(
     return responder(call);
   }) as typeof fetch;
   return calls;
+}
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
 }
 
 function hydrateFormLead(
@@ -76,6 +97,34 @@ test("submitFormLeadToCrm reports ok=true with the response body and payload on 
   assert.equal(result.responseText, "Granot accepted lead 42");
   assert.equal(result.error, undefined);
   assert.equal(result.payload.leadno, lead._id.toString());
+});
+
+test("submitFormLeadToCrm does not persist observability events during tests even with production env", async () => {
+  process.env.NODE_TEST_CONTEXT = "child-v8";
+  process.env.VERCEL_ENV = "production";
+  process.env.OBSERVABILITY_ENABLED = "true";
+  process.env.OBSERVABILITY_WRITE_MODE = "enabled";
+  delete process.env.ALLOW_TEST_OBSERVABILITY;
+
+  const Event = getOperationalEventModel();
+  const originalCreate = Event.create;
+  let createCalled = false;
+  Event.create = (async () => {
+    createCalled = true;
+    throw new Error("OperationalEvent.create should not be called during tests");
+  }) as typeof Event.create;
+
+  try {
+    const lead = hydrateFormLead();
+    stubFetch(() => new Response("OK", { status: 200 }));
+
+    const result = await submitFormLeadToCrm(lead);
+
+    assert.equal(result.ok, true);
+    assert.equal(createCalled, false);
+  } finally {
+    Event.create = originalCreate;
+  }
 });
 
 test("submitFormLeadToCrm reports ok=false with response body on HTTP error", async () => {

@@ -38,6 +38,7 @@ import {
   previewBookedCallLeadReconciliation,
   syncBookedCallLeadReconciliation,
 } from "../services/bookedCallLeadReconciliation.service";
+import { checkGoogleMapsGeocodingHealth } from "../services/googleMaps/geocoding";
 import { sanitizeFormLeadBodyPreview } from "../utils/logging/sanitizeFormLeadForLog";
 import {
   createBookedLead,
@@ -204,6 +205,7 @@ router.get("/api/v1/admin/reports/agent-sales", handleAgentSalesReport);
 router.get("/api/v1/admin/exports/reports/agent-sales.csv", handleAgentSalesReportExport);
 
 router.get("/api/v1/admin/sheet-sync/health", handleSheetSyncHealth);
+router.get("/api/v1/admin/google-maps/geocoding-health", handleGoogleMapsGeocodingHealth);
 router.get("/api/v1/admin/sheet-sync/jobs", handleSheetSyncJobs);
 router.get("/api/v1/admin/sheet-sync/runs", handleSheetSyncRuns);
 router.get("/api/v1/admin/sheet-sync/runs/:id", handleSheetSyncRunDetail);
@@ -430,6 +432,16 @@ async function handleSheetSyncHealth(req: Request, res: Response) {
     await connectMongo();
     const data = await getSheetSyncHealth();
     return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleGoogleMapsGeocodingHealth(req: Request, res: Response) {
+  try {
+    const zip = typeof req.query.zip === "string" ? req.query.zip : undefined;
+    const data = await checkGoogleMapsGeocodingHealth(zip);
+    return res.status(data.ok ? 200 : 503).json({ ok: data.ok, data });
   } catch (error) {
     return sendError(req, res, error);
   }
