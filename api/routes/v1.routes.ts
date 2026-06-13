@@ -16,6 +16,9 @@ import {
   listOperationalIncidents,
   getOperationalIncidentDetail,
   updateOperationalIncidentStatus,
+  updateOperationalIncidentStatuses,
+  deleteObservabilityRecord,
+  deleteObservabilityRecords,
   listNotificationDeliveries,
   exportOperationalEventsCsv,
   exportOperationalIncidentsCsv,
@@ -101,6 +104,9 @@ import {
   observabilityIncidentsQuerySchema,
   observabilityNotificationsQuerySchema,
   observabilityIncidentStatusSchema,
+  observabilityIncidentBatchStatusSchema,
+  observabilityDeleteCollectionSchema,
+  observabilityBatchDeleteSchema,
   observabilityReportsQuerySchema,
   observabilityReportRunSchema,
 } from "../validation/v1.validation";
@@ -208,6 +214,10 @@ router.get("/api/v1/admin/observability/facets", handleObservabilityFacets);
 router.get("/api/v1/admin/observability/events", handleObservabilityEvents);
 router.get("/api/v1/admin/observability/events/:id", handleObservabilityEventDetail);
 router.get("/api/v1/admin/observability/incidents", handleObservabilityIncidents);
+router.patch(
+  "/api/v1/admin/observability/incidents/status",
+  handleObservabilityIncidentBatchStatus,
+);
 router.get("/api/v1/admin/observability/incidents/:id", handleObservabilityIncidentDetail);
 router.patch(
   "/api/v1/admin/observability/incidents/:id/status",
@@ -217,6 +227,14 @@ router.get("/api/v1/admin/observability/notifications", handleObservabilityNotif
 router.get("/api/v1/admin/observability/reports", handleObservabilityReports);
 router.post("/api/v1/admin/observability/reports/run", handleObservabilityReportRun);
 router.get("/api/v1/admin/observability/reports/:id", handleObservabilityReportDetail);
+router.post(
+  "/api/v1/admin/observability/:collection/delete",
+  handleObservabilityBatchDelete,
+);
+router.delete(
+  "/api/v1/admin/observability/:collection/:id",
+  handleObservabilityRecordDelete,
+);
 router.get("/api/v1/admin/exports/observability/events.csv", handleObservabilityEventsExport);
 router.get(
   "/api/v1/admin/exports/observability/incidents.csv",
@@ -486,6 +504,16 @@ async function handleObservabilityIncidentStatus(req: Request, res: Response) {
   }
 }
 
+async function handleObservabilityIncidentBatchStatus(req: Request, res: Response) {
+  try {
+    const parsed = observabilityIncidentBatchStatusSchema.parse(req.body);
+    const data = await updateOperationalIncidentStatuses(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
 async function handleObservabilityNotifications(req: Request, res: Response) {
   try {
     const parsed = observabilityNotificationsQuerySchema.parse(req.query);
@@ -519,6 +547,27 @@ async function handleObservabilityReportRun(req: Request, res: Response) {
 async function handleObservabilityReportDetail(req: Request, res: Response) {
   try {
     const data = await getOperationalReportRunDetail(getValidObjectId(req));
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleObservabilityRecordDelete(req: Request, res: Response) {
+  try {
+    const collection = observabilityDeleteCollectionSchema.parse(req.params.collection);
+    const data = await deleteObservabilityRecord(collection, getValidObjectId(req));
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleObservabilityBatchDelete(req: Request, res: Response) {
+  try {
+    const collection = observabilityDeleteCollectionSchema.parse(req.params.collection);
+    const parsed = observabilityBatchDeleteSchema.parse(req.body);
+    const data = await deleteObservabilityRecords(collection, parsed);
     return res.json({ ok: true, data });
   } catch (error) {
     return sendError(req, res, error);

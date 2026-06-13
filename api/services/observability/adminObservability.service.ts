@@ -1,10 +1,17 @@
-import mongoose from "mongoose";
+import mongoose, { type Model } from "mongoose";
 import { connectMongo } from "../../db";
 import {
   getOperationalEventModel,
   type OperationalEventDocument,
 } from "../../models/OperationalEvent";
-import { getOperationalIncidentModel } from "../../models/OperationalIncident";
+import {
+  getOperationalIncidentModel,
+  type OperationalIncidentDocument,
+} from "../../models/OperationalIncident";
+import {
+  getOperationalReportRunModel,
+  type OperationalReportRunDocument,
+} from "../../models/OperationalReportRun";
 import {
   INCIDENT_SEVERITIES,
   INCIDENT_STATUSES,
@@ -18,7 +25,10 @@ import {
   type IncidentStatus,
 } from "../../config/domain/observability";
 import { OPERATIONAL_REPORT_KEYS } from "./operationalReports.service";
-import { getNotificationDeliveryModel } from "../../models/NotificationDelivery";
+import {
+  getNotificationDeliveryModel,
+  type NotificationDeliveryDocument,
+} from "../../models/NotificationDelivery";
 import { V1ServiceError } from "../v1ServiceError";
 import { getSheetSyncHealth } from "../admin/adminSheetSync.service";
 import { toCsv } from "../../utils/csv";
@@ -26,7 +36,10 @@ import { recordOperationalEvent } from "./recordOperationalEvent";
 import type {
   ObservabilityEventsQuery,
   ObservabilityFacetsQuery,
+  ObservabilityBatchDeleteInput,
+  ObservabilityDeleteCollection,
   ObservabilityIncidentsQuery,
+  ObservabilityIncidentBatchStatusInput,
   ObservabilityIncidentStatusInput,
   ObservabilityNotificationsQuery,
   ObservabilityOverviewQuery,
@@ -101,6 +114,20 @@ type PaginatedResult<T> = {
   limit: number;
   total: number;
   has_next_page: boolean;
+};
+
+type ObservabilityDeleteDocument =
+  | OperationalEventDocument
+  | OperationalIncidentDocument
+  | NotificationDeliveryDocument
+  | OperationalReportRunDocument;
+
+type ObservabilityDeleteResult = {
+  collection: ObservabilityDeleteCollection;
+  matched: number;
+  deleted: number;
+  deleted_ids: string[];
+  skipped: Array<{ id: string; reason: string }>;
 };
 
 function escapeRegex(value: string): string {
@@ -325,14 +352,147 @@ export async function updateOperationalIncidentStatus(
 
   const current = incident.status as IncidentStatus;
   const next = input.status;
-  if (current !== next && !ALLOWED_STATUS_TRANSITIONS[current]?.includes(next)) {
+  assertIncidentStatusTransition(current, next);
+  applyIncidentStatus(incident, next, input, new Date());
+  await incident.save();
+
+  await recordIncidentStatusChangedEvent(incident._id.toString(), current, next, input);
+
+  return incident.toObject();
+}
+
+export async function updateOperationalIncidentStatuses(
+  input: ObservabilityIncidentBatchStatusInput,
+) {
+  await connectMongo();
+  const Incident = getOperationalIncidentModel();
+  const uniqueIds = [...new Set(input.ids)];
+  const validIds = uniqueIds.filter((id) => mongoose.isValidObjectId(id));
+  const skipped = uniqueIds
+    .filter((id) => !mongoose.isValidObjectId(id))
+    .map((id) => ({ id, reason: "invalid_id" }));
+
+  const incidents = await Incident.find({
+    _id: { $in: validIds.map((id) => new mongoose.mongo.ObjectId(id)) },
+  });
+  const foundIds = new Set(incidents.map((incident) => incident._id.toString()));
+  for (const id of validIds) {
+    if (!foundIds.has(id)) {
+      skipped.push({ id, reason: "not_found" });
+    }
+  }
+
+  const now = new Date();
+  const updated: string[] = [];
+  for (const incident of incidents) {
+    const current = incident.status as IncidentStatus;
+    const next = input.status;
+    if (!isIncidentStatusTransitionAllowed(current, next)) {
+      skipped.push({
+        id: incident._id.toString(),
+        reason: `invalid_transition:${current}->${next}`,
+      });
+      continue;
+    }
+
+    applyIncidentStatus(incident, next, input, now);
+    await incident.save();
+    updated.push(incident._id.toString());
+    await recordIncidentStatusChangedEvent(incident._id.toString(), current, next, input);
+  }
+
+  return {
+    matched: incidents.length,
+    updated: updated.length,
+    updated_ids: updated,
+    skipped,
+  };
+}
+
+export async function deleteObservabilityRecord(
+  collection: ObservabilityDeleteCollection,
+  id: string,
+): Promise<ObservabilityDeleteResult> {
+  return deleteObservabilityRecords(collection, { ids: [id] });
+}
+
+export async function deleteObservabilityRecords(
+  collection: ObservabilityDeleteCollection,
+  input: ObservabilityBatchDeleteInput,
+): Promise<ObservabilityDeleteResult> {
+  await connectMongo();
+  const Model = getObservabilityDeleteModel(collection);
+  const uniqueIds = [...new Set(input.ids)];
+  const validIds = uniqueIds.filter((id) => mongoose.isValidObjectId(id));
+  const skipped = uniqueIds
+    .filter((id) => !mongoose.isValidObjectId(id))
+    .map((id) => ({ id, reason: "invalid_id" }));
+
+  const objectIds = validIds.map((id) => new mongoose.mongo.ObjectId(id));
+  const existing = await Model.find({ _id: { $in: objectIds } }).select({ _id: 1 }).lean();
+  const existingIds = existing.map((doc) => doc._id.toString());
+  const existingIdSet = new Set(existingIds);
+  for (const id of validIds) {
+    if (!existingIdSet.has(id)) {
+      skipped.push({ id, reason: "not_found" });
+    }
+  }
+
+  if (existingIds.length > 0) {
+    await Model.deleteMany({
+      _id: { $in: existingIds.map((id) => new mongoose.mongo.ObjectId(id)) },
+    });
+  }
+
+  return {
+    collection,
+    matched: existingIds.length,
+    deleted: existingIds.length,
+    deleted_ids: existingIds,
+    skipped,
+  };
+}
+
+function getObservabilityDeleteModel(
+  collection: ObservabilityDeleteCollection,
+): Model<ObservabilityDeleteDocument> {
+  if (collection === "events") {
+    return getOperationalEventModel() as Model<ObservabilityDeleteDocument>;
+  }
+  if (collection === "incidents") {
+    return getOperationalIncidentModel() as Model<ObservabilityDeleteDocument>;
+  }
+  if (collection === "notifications") {
+    return getNotificationDeliveryModel() as Model<ObservabilityDeleteDocument>;
+  }
+  return getOperationalReportRunModel() as Model<ObservabilityDeleteDocument>;
+}
+
+function isIncidentStatusTransitionAllowed(
+  current: IncidentStatus,
+  next: IncidentStatus,
+): boolean {
+  return current === next || ALLOWED_STATUS_TRANSITIONS[current]?.includes(next) === true;
+}
+
+function assertIncidentStatusTransition(
+  current: IncidentStatus,
+  next: IncidentStatus,
+): void {
+  if (!isIncidentStatusTransitionAllowed(current, next)) {
     throw new V1ServiceError(
       `Invalid status transition from ${current} to ${next}`,
       409,
     );
   }
+}
 
-  const now = new Date();
+function applyIncidentStatus(
+  incident: OperationalIncidentDocument,
+  next: IncidentStatus,
+  input: Pick<ObservabilityIncidentStatusInput, "actor">,
+  now: Date,
+): void {
   incident.status = next;
   if (next === "resolved") {
     incident.resolved_at = now;
@@ -345,15 +505,21 @@ export async function updateOperationalIncidentStatus(
   } else if (next === "open") {
     incident.resolved_at = null;
   }
-  await incident.save();
+}
 
+async function recordIncidentStatusChangedEvent(
+  incidentId: string,
+  current: IncidentStatus,
+  next: IncidentStatus,
+  input: Pick<ObservabilityIncidentStatusInput, "actor" | "note">,
+): Promise<void> {
   await recordOperationalEvent({
     level: "info",
     eventKey: "admin.incident.status_changed",
     category: "admin",
     workflow: "incident_status",
     summary: `Incident status changed from ${current} to ${next}.`,
-    entity: { type: "operational_incident", id: incident._id.toString() },
+    entity: { type: "operational_incident", id: incidentId },
     details: {
       from_status: current,
       to_status: next,
@@ -362,8 +528,6 @@ export async function updateOperationalIncidentStatus(
     },
     reportable: false,
   });
-
-  return incident.toObject();
 }
 
 export async function listNotificationDeliveries(
@@ -381,10 +545,10 @@ export async function listNotificationDeliveries(
   if (query.recipient_type) filter.recipient_type = query.recipient_type;
   if (query.provider) filter.provider = query.provider;
   if (query.incident_id && mongoose.isValidObjectId(query.incident_id)) {
-    filter.incident_id = new mongoose.Types.ObjectId(query.incident_id);
+    filter.incident_id = new mongoose.mongo.ObjectId(query.incident_id);
   }
   if (query.report_run_id && mongoose.isValidObjectId(query.report_run_id)) {
-    filter.report_run_id = new mongoose.Types.ObjectId(query.report_run_id);
+    filter.report_run_id = new mongoose.mongo.ObjectId(query.report_run_id);
   }
   if (query.q) filter.subject = { $regex: query.q, $options: "i" };
 

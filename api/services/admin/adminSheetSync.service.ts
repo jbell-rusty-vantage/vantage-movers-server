@@ -67,7 +67,7 @@ export async function listSheetSyncJobs(query: SheetSyncJobsQuery) {
     filter.entity_id = query.entity_id;
   }
   if (query.job_id) {
-    filter._id = new mongoose.Types.ObjectId(query.job_id);
+    filter._id = new mongoose.mongo.ObjectId(query.job_id);
   }
 
   const skip = (query.page - 1) * query.limit;
@@ -120,7 +120,7 @@ export async function retrySheetSyncJobs(input: SheetSyncRetryInput) {
   const filter: Record<string, unknown> = {};
   if (input.job_ids && input.job_ids.length > 0) {
     filter._id = {
-      $in: input.job_ids.map((id) => new mongoose.Types.ObjectId(id)),
+      $in: input.job_ids.map((id) => new mongoose.mongo.ObjectId(id)),
     };
   } else {
     filter.status = { $in: input.statuses ?? ["failed"] };

@@ -3,6 +3,7 @@ import {
   getGoogleServiceAccountProjectId,
 } from "../googleAuth/serviceAccount";
 import { logger } from "../../logger";
+import { resolveAuthConfigSummary } from "../googleSheets/diagnostics";
 import { stateNameToCode } from "../../utils/location/stateNamesToCodes";
 import { shouldCaptureZipStateEvents } from "../../config/domain/observability";
 import { recordOperationalEvent } from "../observability";
@@ -33,6 +34,7 @@ export type GoogleGeocodeResponse = {
 };
 
 let cachedAuthContext: Promise<GoogleMapsAuthContext> | null = null;
+let loggedAuthConfig = false;
 let loggedAuthFailure = false;
 let recordedHttpFailureEvent = false;
 let recordedUnavailableEvent = false;
@@ -60,11 +62,13 @@ export async function getGoogleStateCodeForZip(
     });
 
     if (!response.ok) {
+      const responseBody = await response.text();
       logger.warn({
         msg: "google_maps.geocoding.zip_state_failed",
         zip,
         status: response.status,
-        response: await response.text(),
+        projectId,
+        response: responseBody,
       });
       // Record once per cold start: the caller falls back to Zippopotamus, so
       // a misconfigured Maps integration must not flood the event stream.
@@ -76,7 +80,12 @@ export async function getGoogleStateCodeForZip(
           category: "zip_state",
           workflow: "zip_state_lookup",
           summary: "Google Maps ZIP lookup returned an HTTP error.",
-          details: { zip, status: response.status, provider: "google_maps" },
+          details: {
+            zip,
+            status: response.status,
+            provider: "google_maps",
+            project_id: projectId,
+          },
           notificationCandidate: false,
         });
       }
@@ -141,6 +150,7 @@ async function getGoogleMapsAuthContext(): Promise<GoogleMapsAuthContext> {
 }
 
 async function createGoogleMapsAuthContext(): Promise<GoogleMapsAuthContext> {
+  logGoogleMapsAuthConfigOnce();
   const projectId = getGoogleServiceAccountProjectId();
   if (!projectId) {
     throw new Error(
@@ -150,6 +160,24 @@ async function createGoogleMapsAuthContext(): Promise<GoogleMapsAuthContext> {
 
   const auth = createGoogleServiceAccountAuth(MAPS_GEOCODING_SCOPES);
   return { auth, projectId };
+}
+
+function logGoogleMapsAuthConfigOnce(): void {
+  if (loggedAuthConfig) {
+    return;
+  }
+
+  loggedAuthConfig = true;
+  const authSummary = resolveAuthConfigSummary();
+  logger.info({
+    msg: "google_maps.auth.config",
+    authSource: authSummary.authSource,
+    clientEmail: authSummary.clientEmail ?? null,
+    projectId: getGoogleServiceAccountProjectId() ?? authSummary.projectId ?? null,
+    privateKeyPresent: authSummary.privateKeyPresent,
+    keyFile: authSummary.keyFile ?? null,
+    scopes: MAPS_GEOCODING_SCOPES,
+  });
 }
 
 async function getGoogleMapsAccessToken(

@@ -45,6 +45,9 @@ function parseCliOptions(argv: string[]): CliOptions {
 
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
+    if (arg === "--") {
+      continue;
+    }
     if (arg === "--apply") {
       apply = true;
       continue;

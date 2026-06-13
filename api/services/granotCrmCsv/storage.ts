@@ -1,6 +1,8 @@
 import {
   GetObjectCommand,
+  type GetObjectCommandOutput,
   PutObjectCommand,
+  type PutObjectCommandOutput,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { fromIni } from "@aws-sdk/credential-providers";
@@ -11,6 +13,11 @@ import {
 } from "../../config/domain";
 
 let cachedClient: S3Client | undefined;
+
+type GranotCrmS3Sender = {
+  send(command: PutObjectCommand): Promise<PutObjectCommandOutput>;
+  send(command: GetObjectCommand): Promise<GetObjectCommandOutput>;
+};
 
 export function getGranotCrmS3Client(): S3Client {
   if (cachedClient) {
@@ -59,6 +66,6 @@ export async function getGranotCrmObjectText(key: string): Promise<string> {
   return response.Body?.transformToString() ?? "";
 }
 
-function getGranotCrmS3Sender(): S3Client {
-  return getGranotCrmS3Client();
+function getGranotCrmS3Sender(): GranotCrmS3Sender {
+  return getGranotCrmS3Client() as GranotCrmS3Sender;
 }

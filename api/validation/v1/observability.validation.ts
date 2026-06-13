@@ -78,6 +78,13 @@ const optionalNotificationRecipientType = z.preprocess(
   z.enum(NOTIFICATION_RECIPIENT_TYPES).optional(),
 );
 
+export const OBSERVABILITY_DELETE_COLLECTIONS = [
+  "events",
+  "incidents",
+  "notifications",
+  "report-runs",
+] as const;
+
 const sharedFilters = {
   from: optionalDateString,
   to: optionalDateString,
@@ -157,6 +164,25 @@ export const observabilityIncidentStatusSchema = z
   })
   .strict();
 
+export const observabilityIncidentBatchStatusSchema = z
+  .object({
+    ids: z.array(z.string().trim().min(1)).min(1).max(250),
+    status: z.enum(INCIDENT_STATUSES),
+    actor: optionalTrimmedString,
+    note: optionalTrimmedString,
+  })
+  .strict();
+
+export const observabilityDeleteCollectionSchema = z.enum(
+  OBSERVABILITY_DELETE_COLLECTIONS,
+);
+
+export const observabilityBatchDeleteSchema = z
+  .object({
+    ids: z.array(z.string().trim().min(1)).min(1).max(250),
+  })
+  .strict();
+
 export const observabilityReportsQuerySchema = z
   .object({
     report_key: optionalTrimmedString,
@@ -190,6 +216,15 @@ export type ObservabilityNotificationsQuery = z.infer<
 >;
 export type ObservabilityIncidentStatusInput = z.infer<
   typeof observabilityIncidentStatusSchema
+>;
+export type ObservabilityIncidentBatchStatusInput = z.infer<
+  typeof observabilityIncidentBatchStatusSchema
+>;
+export type ObservabilityDeleteCollection = z.infer<
+  typeof observabilityDeleteCollectionSchema
+>;
+export type ObservabilityBatchDeleteInput = z.infer<
+  typeof observabilityBatchDeleteSchema
 >;
 export type ObservabilityReportsQuery = z.infer<typeof observabilityReportsQuerySchema>;
 export type ObservabilityReportRunInput = z.infer<typeof observabilityReportRunSchema>;
