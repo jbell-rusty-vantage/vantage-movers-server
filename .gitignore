@@ -71,4 +71,6 @@ scripts/docs/**
 observability.env.example.env  
 
 
-scripts/booked_deals_sync/**
+scripts/booked_deals_sync/** 
+
+hooks_hold/

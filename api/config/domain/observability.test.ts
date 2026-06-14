@@ -20,6 +20,7 @@ import {
  */
 const TOUCHED_ENV_KEYS = [
   "ALLOW_TEST_OBSERVABILITY",
+  "ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS",
   "NODE_TEST_CONTEXT",
   "VANTAGE_TEST_RUNNER",
   "OBSERVABILITY_ENABLED",
@@ -70,6 +71,25 @@ test("node test runner disables observability writes unless explicitly allowed",
   process.env.ALLOW_TEST_OBSERVABILITY = "true";
   assert.equal(isObservabilityEnabled(), true);
   assert.equal(shouldWriteObservabilityCollections(), true);
+});
+
+test("node test runner forces test observability collections unless production opt-in is set", () => {
+  process.env.VANTAGE_TEST_RUNNER = "true";
+  process.env.OBSERVABILITY_COLLECTION_MODE = "production";
+  assert.equal(
+    getObservabilityCollectionNames().events,
+    "test_operational_events",
+  );
+  assert.equal(
+    getObservabilityCollectionNames().incidents,
+    "test_operational_incidents",
+  );
+
+  process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS = "true";
+  assert.equal(
+    getObservabilityCollectionNames().events,
+    "operational_events",
+  );
 });
 
 test("write mode controls whether collections are written", () => {

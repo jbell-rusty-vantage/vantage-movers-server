@@ -212,6 +212,14 @@ function allowTestObservabilityWrites(): boolean {
   return process.env.ALLOW_TEST_OBSERVABILITY === "true";
 }
 
+function allowProductionObservabilityInTests(): boolean {
+  return process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS === "true";
+}
+
+function forceTestObservabilityCollections(): boolean {
+  return isNodeTestRunner() && !allowProductionObservabilityInTests();
+}
+
 /**
  * The master enablement flag. When `OBSERVABILITY_ENABLED=false`, no
  * observability collections are written and notification policy is not
@@ -283,6 +291,10 @@ function applyPrefix(names: ObservabilityCollectionNames): ObservabilityCollecti
  * names. Custom names are used verbatim.
  */
 export function getObservabilityCollectionNames(): ObservabilityCollectionNames {
+  if (forceTestObservabilityCollections()) {
+    return applyPrefix(TEST_COLLECTION_NAMES);
+  }
+
   const mode = getObservabilityCollectionMode();
 
   if (mode === "custom") {

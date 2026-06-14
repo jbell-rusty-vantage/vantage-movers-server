@@ -45,9 +45,11 @@ feat/observational-tab
   after the response is sent risks a Vercel function freezing before the write
   completes. `http.body.parse_failed` is captured. Slow-request can be added
   later via an awaited hook if desired.
-- The unit test suite runs with `OBSERVABILITY_ENABLED=false` (see
-  `scripts/test-setup.ts`) so observability never opens a DB connection or
-  writes during tests.
+- The unit test suite runs with `OBSERVABILITY_ENABLED=false` and
+  `OBSERVABILITY_COLLECTION_MODE=test` (see `scripts/test-setup.ts`) so
+  observability never opens a DB connection or writes to production collections
+  during tests. Production collection targeting requires both
+  `ALLOW_TEST_OBSERVABILITY=true` and `ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS=true`.
 
 ## Environment variables (fill values in `.env` / Vercel)
 
