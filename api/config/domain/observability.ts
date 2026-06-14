@@ -208,7 +208,17 @@ function isNodeTestRunner(): boolean {
   return Boolean(process.env.NODE_TEST_CONTEXT) || process.env.VANTAGE_TEST_RUNNER === "true";
 }
 
+function isVercelRuntime(): boolean {
+  return process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV?.trim());
+}
+
 function allowTestObservabilityWrites(): boolean {
+  // Never honor test observability opt-in on Vercel runtimes (build or production).
+  // ALLOW_TEST_OBSERVABILITY belongs only in a local shell when deliberately
+  // testing the observability layer against an isolated test database.
+  if (isVercelRuntime()) {
+    return false;
+  }
   return process.env.ALLOW_TEST_OBSERVABILITY === "true";
 }
 
@@ -349,10 +359,16 @@ export function shouldCaptureHttp5xx(): boolean {
 }
 
 export function shouldCaptureAuthEvents(): boolean {
+  if (!isObservabilityEnabled()) {
+    return false;
+  }
   return envFlag("OBSERVABILITY_CAPTURE_AUTH_EVENTS", true);
 }
 
 export function shouldCaptureZipStateEvents(): boolean {
+  if (!isObservabilityEnabled()) {
+    return false;
+  }
   return envFlag("OBSERVABILITY_CAPTURE_ZIP_STATE_EVENTS", true);
 }
 

@@ -20,9 +20,18 @@ process.env.VANTAGE_TEST_RUNNER = "true";
 process.env.OBSERVABILITY_COLLECTION_MODE = "test";
 delete process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS;
 
+// Vercel injects ALLOW_TEST_OBSERVABILITY from project env during builds; strip it
+// so deploy-time test runs cannot write observability collections.
+if (process.env.VERCEL === "1" || process.env.VERCEL_ENV?.trim()) {
+  delete process.env.ALLOW_TEST_OBSERVABILITY;
+  delete process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS;
+}
+
 if (process.env.ALLOW_TEST_OBSERVABILITY !== "true") {
   process.env.OBSERVABILITY_ENABLED = "false";
   process.env.OBSERVABILITY_WRITE_MODE = "disabled";
+  process.env.OBSERVABILITY_CAPTURE_ZIP_STATE_EVENTS = "false";
+  process.env.OBSERVABILITY_CAPTURE_AUTH_EVENTS = "false";
 }
 if (process.env.ALLOW_TEST_EMAIL_NOTIFICATIONS !== "true") {
   process.env.EMAIL_NOTIFICATIONS_ENABLED = "false";

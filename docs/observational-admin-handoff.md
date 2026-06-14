@@ -49,7 +49,9 @@ feat/observational-tab
   `OBSERVABILITY_COLLECTION_MODE=test` (see `scripts/test-setup.ts`) so
   observability never opens a DB connection or writes to production collections
   during tests. Production collection targeting requires both
-  `ALLOW_TEST_OBSERVABILITY=true` and `ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS=true`.
+  - `ALLOW_TEST_OBSERVABILITY=true` and `ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS=true`.
+  - **Do not set `ALLOW_TEST_OBSERVABILITY` on Vercel** — deploy-time test runs would
+    otherwise write observability noise. The server ignores that flag when `VERCEL=1`.
 
 ## Environment variables (fill values in `.env` / Vercel)
 

@@ -9,6 +9,8 @@ import {
   getObservabilityWriteMode,
   isEmailNotificationsEnabled,
   isObservabilityEnabled,
+  shouldCaptureAuthEvents,
+  shouldCaptureZipStateEvents,
   shouldPersistEventLevel,
   shouldWriteObservabilityCollections,
   validateObservabilityConfig,
@@ -21,6 +23,8 @@ import {
 const TOUCHED_ENV_KEYS = [
   "ALLOW_TEST_OBSERVABILITY",
   "ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS",
+  "VERCEL",
+  "VERCEL_ENV",
   "NODE_TEST_CONTEXT",
   "VANTAGE_TEST_RUNNER",
   "OBSERVABILITY_ENABLED",
@@ -71,6 +75,32 @@ test("node test runner disables observability writes unless explicitly allowed",
   process.env.ALLOW_TEST_OBSERVABILITY = "true";
   assert.equal(isObservabilityEnabled(), true);
   assert.equal(shouldWriteObservabilityCollections(), true);
+});
+
+test("ALLOW_TEST_OBSERVABILITY is ignored on Vercel runtimes", () => {
+  process.env.ALLOW_TEST_OBSERVABILITY = "true";
+  process.env.VANTAGE_TEST_RUNNER = "true";
+  process.env.OBSERVABILITY_ENABLED = "true";
+  process.env.OBSERVABILITY_WRITE_MODE = "enabled";
+  process.env.OBSERVABILITY_CAPTURE_ZIP_STATE_EVENTS = "true";
+  process.env.VERCEL = "1";
+  process.env.VERCEL_ENV = "production";
+  assert.equal(isObservabilityEnabled(), false);
+  assert.equal(shouldCaptureZipStateEvents(), false);
+});
+
+test("zip-state and auth capture flags are off while observability is disabled", () => {
+  process.env.NODE_TEST_CONTEXT = "child-v8";
+  process.env.OBSERVABILITY_ENABLED = "true";
+  process.env.OBSERVABILITY_CAPTURE_ZIP_STATE_EVENTS = "true";
+  process.env.OBSERVABILITY_CAPTURE_AUTH_EVENTS = "true";
+  assert.equal(isObservabilityEnabled(), false);
+  assert.equal(shouldCaptureZipStateEvents(), false);
+  assert.equal(shouldCaptureAuthEvents(), false);
+
+  process.env.ALLOW_TEST_OBSERVABILITY = "true";
+  assert.equal(shouldCaptureZipStateEvents(), true);
+  assert.equal(shouldCaptureAuthEvents(), true);
 });
 
 test("node test runner forces test observability collections unless production opt-in is set", () => {
