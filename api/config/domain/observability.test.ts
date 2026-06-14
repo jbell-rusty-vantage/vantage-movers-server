@@ -52,6 +52,8 @@ afterEach(() => {
 });
 
 test("observability is enabled by default and disabled by flags", () => {
+  delete process.env.VERCEL;
+  delete process.env.VERCEL_ENV;
   process.env.ALLOW_TEST_OBSERVABILITY = "true";
   delete process.env.OBSERVABILITY_ENABLED;
   delete process.env.OBSERVABILITY_WRITE_MODE;
