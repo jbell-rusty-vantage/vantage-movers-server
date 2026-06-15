@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 // Exercises the Google -> Zippopotamus fallback without writing observability
-// events (test-setup disables zip-state capture unless ALLOW_TEST_OBSERVABILITY).
+// events (test-setup disables zip-state capture and records observability in memory).
 test("getStateCodeForZip falls back to Zippopotamus when Google auth is unavailable", async () => {
   clearGoogleAuthEnv();
   globalThis.fetch = (async () =>

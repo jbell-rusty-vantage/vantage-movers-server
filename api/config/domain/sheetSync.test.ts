@@ -111,20 +111,20 @@ test("shouldPublishSheetSyncQueue honors VERCEL and local flag", () => {
 
   process.env.SHEET_SYNC_QUEUE_LOCAL_PUBLISH = "true";
   process.env.ALLOW_TEST_SHEET_SYNC_QUEUE = "true";
-  assert.equal(shouldPublishSheetSyncQueue(), true);
+  assert.equal(shouldPublishSheetSyncQueue(), false);
 
   delete process.env.SHEET_SYNC_QUEUE_LOCAL_PUBLISH;
   process.env.VERCEL = "1";
-  assert.equal(shouldPublishSheetSyncQueue(), true);
+  assert.equal(shouldPublishSheetSyncQueue(), false);
 });
 
-test("shouldPublishSheetSyncQueue is off during the test runner unless explicitly allowed", () => {
+test("shouldPublishSheetSyncQueue is always off during the test runner", () => {
   process.env.VANTAGE_TEST_RUNNER = "true";
   process.env.VERCEL = "1";
   assert.equal(shouldPublishSheetSyncQueue(), false);
 
   process.env.ALLOW_TEST_SHEET_SYNC_QUEUE = "true";
-  assert.equal(shouldPublishSheetSyncQueue(), true);
+  assert.equal(shouldPublishSheetSyncQueue(), false);
 });
 
 test("shouldPublishSheetSyncQueue keeps test runner guard after env cleanup", () => {

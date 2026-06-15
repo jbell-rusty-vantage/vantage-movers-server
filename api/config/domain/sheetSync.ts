@@ -244,14 +244,14 @@ export function getSheetSyncDrainGuardrails(): SheetSyncDrainGuardrails {
  * cron / direct-drain path is responsible for draining (keeps local dev from
  * needing queue credentials).
  *
- * The unit suite sets `VANTAGE_TEST_RUNNER=true` (see `scripts/test-setup.ts`).
- * Deploy-time test runs also inject `VERCEL=1`, which would otherwise attempt
- * queue publishes and record bogus `sheet_sync.queue.publish_failed` events.
- * Never publish from the test runner unless a test explicitly opts in via
- * `ALLOW_TEST_SHEET_SYNC_QUEUE=true`.
+ * The unit suite marks the process as a Vantage test runner (see
+ * `scripts/test-setup.ts`). Deploy-time test runs also inject `VERCEL=1`, which
+ * would otherwise attempt queue publishes and record bogus
+ * `sheet_sync.queue.publish_failed` events. Never publish from the test runner;
+ * isolated queue adapter tests should stub `@vercel/queue` directly instead.
  */
 export function shouldPublishSheetSyncQueue(): boolean {
-  if (isVantageTestRunner() && process.env.ALLOW_TEST_SHEET_SYNC_QUEUE !== "true") {
+  if (isVantageTestRunner()) {
     return false;
   }
   if (process.env.VERCEL === "1") {

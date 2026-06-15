@@ -3,6 +3,10 @@ import { afterEach, test } from "node:test";
 import mongoose from "mongoose";
 import { FormLead, type FormLeadDocument } from "../../models/FormLead";
 import { getOperationalEventModel } from "../../models/OperationalEvent";
+import {
+  clearCapturedOperationalEvents,
+  getCapturedOperationalEvents,
+} from "../observability";
 import { submitFormLeadToCrm } from "./crm.service";
 import { CRM_FORM_LEAD_ENDPOINT } from "./crmConfig";
 
@@ -17,6 +21,7 @@ const originalEnv = {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  clearCapturedOperationalEvents();
   restoreEnv("ALLOW_TEST_OBSERVABILITY", originalEnv.allowTestObservability);
   restoreEnv("NODE_TEST_CONTEXT", originalEnv.nodeTestContext);
   restoreEnv("OBSERVABILITY_ENABLED", originalEnv.observabilityEnabled);
@@ -122,6 +127,13 @@ test("submitFormLeadToCrm does not persist observability events during tests eve
 
     assert.equal(result.ok, true);
     assert.equal(createCalled, false);
+    assert.deepEqual(
+      getCapturedOperationalEvents().map((event) => event.input.eventKey),
+      [
+        "crm.form_lead.submit.started",
+        "crm.form_lead.submit.completed",
+      ],
+    );
   } finally {
     Event.create = originalCreate;
   }

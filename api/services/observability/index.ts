@@ -7,6 +7,13 @@ export {
   recordOperationalEventsBulk,
   type RecordOperationalEventInput,
 } from "./recordOperationalEvent";
+export {
+  clearCapturedOperationalEvents,
+  getCapturedOperationalEvents,
+  installTestObservabilitySink,
+  isTestObservabilitySinkActive,
+  type CapturedOperationalEvent,
+} from "./testObservabilitySink";
 export { sendNotification } from "./emailNotification.service";
 export { dispatchEventNotifications } from "./notificationPolicy";
 export {

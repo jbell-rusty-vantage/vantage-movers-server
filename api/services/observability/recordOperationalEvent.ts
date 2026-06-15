@@ -25,6 +25,10 @@ import {
   upsertIncidentForEvent,
 } from "./operationalIncident.service";
 import { buildRequestEventContext } from "./requestEventContext";
+import {
+  captureOperationalEventForTest,
+  isTestObservabilitySinkActive,
+} from "./testObservabilitySink";
 
 /**
  * Records a single operational event: persists it to `operational_events`,
@@ -112,6 +116,11 @@ export async function recordOperationalEvent(
 ): Promise<OperationalEventDocument | null> {
   // Always mirror to pino so Vercel log search and Mongo events share keys.
   mirrorToPino(input);
+
+  if (isTestObservabilitySinkActive()) {
+    captureOperationalEventForTest(input);
+    return null;
+  }
 
   if (!isObservabilityEnabled()) {
     return null;
@@ -305,6 +314,13 @@ export async function recordOperationalEvent(
 export async function recordOperationalEventsBulk(
   inputs: RecordOperationalEventInput[],
 ): Promise<number> {
+  if (isTestObservabilitySinkActive()) {
+    for (const input of inputs) {
+      captureOperationalEventForTest(input);
+    }
+    return 0;
+  }
+
   if (!shouldWriteObservabilityCollections() || inputs.length === 0) {
     return 0;
   }

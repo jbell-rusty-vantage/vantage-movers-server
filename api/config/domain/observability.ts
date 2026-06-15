@@ -204,22 +204,14 @@ function envLevel(name: string, defaultValue: ObservabilityLevel): Observability
   return defaultValue;
 }
 
-function isVercelRuntime(): boolean {
-  return process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV?.trim());
-}
-
 function allowTestObservabilityWrites(): boolean {
-  // Never honor test observability opt-in on Vercel runtimes (build or production).
-  // ALLOW_TEST_OBSERVABILITY belongs only in a local shell when deliberately
-  // testing the observability layer against an isolated test database.
-  if (isVercelRuntime()) {
-    return false;
-  }
-  return process.env.ALLOW_TEST_OBSERVABILITY === "true";
+  // Unit tests capture observability in memory via the test sink. They must
+  // never enable Mongo writes through mutable env, including on Vercel builds.
+  return false;
 }
 
 function allowProductionObservabilityInTests(): boolean {
-  return process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS === "true";
+  return false;
 }
 
 function forceTestObservabilityCollections(): boolean {

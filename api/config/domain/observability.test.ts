@@ -52,23 +52,17 @@ afterEach(() => {
   }
 });
 
-test("observability is enabled by default and disabled by flags", () => {
+test("observability is disabled inside the test runner even with opt-in flags", () => {
   delete process.env.VERCEL;
   delete process.env.VERCEL_ENV;
   process.env.ALLOW_TEST_OBSERVABILITY = "true";
   delete process.env.OBSERVABILITY_ENABLED;
   delete process.env.OBSERVABILITY_WRITE_MODE;
-  assert.equal(isObservabilityEnabled(), true);
-
-  process.env.OBSERVABILITY_ENABLED = "false";
   assert.equal(isObservabilityEnabled(), false);
-
-  process.env.OBSERVABILITY_ENABLED = "true";
-  process.env.OBSERVABILITY_WRITE_MODE = "disabled";
-  assert.equal(isObservabilityEnabled(), false);
+  assert.equal(shouldWriteObservabilityCollections(), false);
 });
 
-test("node test runner disables observability writes unless explicitly allowed", () => {
+test("node test runner disables observability writes even when explicitly allowed", () => {
   process.env.NODE_TEST_CONTEXT = "child-v8";
   process.env.OBSERVABILITY_ENABLED = "true";
   process.env.OBSERVABILITY_WRITE_MODE = "enabled";
@@ -76,8 +70,8 @@ test("node test runner disables observability writes unless explicitly allowed",
   assert.equal(shouldWriteObservabilityCollections(), false);
 
   process.env.ALLOW_TEST_OBSERVABILITY = "true";
-  assert.equal(isObservabilityEnabled(), true);
-  assert.equal(shouldWriteObservabilityCollections(), true);
+  assert.equal(isObservabilityEnabled(), false);
+  assert.equal(shouldWriteObservabilityCollections(), false);
 });
 
 test("bootstrap test runner marker survives env cleanup", () => {
@@ -120,11 +114,11 @@ test("zip-state and auth capture flags are off while observability is disabled",
   assert.equal(shouldCaptureAuthEvents(), false);
 
   process.env.ALLOW_TEST_OBSERVABILITY = "true";
-  assert.equal(shouldCaptureZipStateEvents(), true);
-  assert.equal(shouldCaptureAuthEvents(), true);
+  assert.equal(shouldCaptureZipStateEvents(), false);
+  assert.equal(shouldCaptureAuthEvents(), false);
 });
 
-test("node test runner forces test observability collections unless production opt-in is set", () => {
+test("node test runner always forces test observability collections", () => {
   process.env.VANTAGE_TEST_RUNNER = "true";
   process.env.OBSERVABILITY_COLLECTION_MODE = "production";
   assert.equal(
@@ -139,15 +133,16 @@ test("node test runner forces test observability collections unless production o
   process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS = "true";
   assert.equal(
     getObservabilityCollectionNames().events,
-    "operational_events",
+    "test_operational_events",
   );
 });
 
-test("write mode controls whether collections are written", () => {
-  process.env.ALLOW_TEST_OBSERVABILITY = "true";
+test("write mode parses values while test runner still blocks collection writes", () => {
+  process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS = "true";
+  process.env.OBSERVABILITY_ENABLED = "true";
   delete process.env.OBSERVABILITY_WRITE_MODE;
   assert.equal(getObservabilityWriteMode(), "enabled");
-  assert.equal(shouldWriteObservabilityCollections(), true);
+  assert.equal(shouldWriteObservabilityCollections(), false);
 
   process.env.OBSERVABILITY_WRITE_MODE = "log_only";
   assert.equal(shouldWriteObservabilityCollections(), false);
@@ -157,7 +152,7 @@ test("collection names follow runtime TEST_MODE by default", () => {
   process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS = "true";
   delete process.env.OBSERVABILITY_COLLECTION_MODE;
   delete process.env.TEST_MODE;
-  assert.equal(getObservabilityCollectionNames().events, "operational_events");
+  assert.equal(getObservabilityCollectionNames().events, "test_operational_events");
 
   process.env.TEST_MODE = "true";
   assert.equal(
@@ -170,7 +165,7 @@ test("collection mode production/test override TEST_MODE", () => {
   process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS = "true";
   process.env.TEST_MODE = "true";
   process.env.OBSERVABILITY_COLLECTION_MODE = "production";
-  assert.equal(getObservabilityCollectionNames().incidents, "operational_incidents");
+  assert.equal(getObservabilityCollectionNames().incidents, "test_operational_incidents");
 
   process.env.OBSERVABILITY_COLLECTION_MODE = "test";
   assert.equal(
@@ -183,19 +178,22 @@ test("collection prefix is applied to default names", () => {
   process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS = "true";
   process.env.OBSERVABILITY_COLLECTION_MODE = "production";
   process.env.OBSERVABILITY_COLLECTION_PREFIX = "dev_";
-  assert.equal(getObservabilityCollectionNames().events, "dev_operational_events");
+  assert.equal(getObservabilityCollectionNames().events, "dev_test_operational_events");
 });
 
-test("custom collection mode requires explicit names", () => {
+test("custom collection mode cannot override forced test collections in the test runner", () => {
   process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS = "true";
   process.env.OBSERVABILITY_COLLECTION_MODE = "custom";
-  assert.throws(() => getObservabilityCollectionNames());
-
   process.env.OBSERVABILITY_EVENTS_COLLECTION = "x_events";
   process.env.OBSERVABILITY_INCIDENTS_COLLECTION = "x_incidents";
   process.env.OBSERVABILITY_NOTIFICATIONS_COLLECTION = "x_notifications";
   process.env.OBSERVABILITY_REPORT_RUNS_COLLECTION = "x_report_runs";
-  assert.equal(getObservabilityCollectionNames().events, "x_events");
+  assert.deepEqual(getObservabilityCollectionNames(), {
+    events: "test_operational_events",
+    incidents: "test_operational_incidents",
+    notifications: "test_notification_deliveries",
+    reportRuns: "test_operational_report_runs",
+  });
 });
 
 test("event min level and info capture gate persistence", () => {
@@ -242,10 +240,10 @@ test("owner events parse from csv", () => {
   ]);
 });
 
-test("config validation reports custom collection errors without throwing", () => {
+test("config validation keeps test collections under custom mode in the test runner", () => {
   process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS = "true";
   process.env.OBSERVABILITY_COLLECTION_MODE = "custom";
   const validation = validateObservabilityConfig();
-  assert.equal(validation.ok, false);
-  assert.ok(validation.errors.some((message) => message.includes("OBSERVABILITY_EVENTS_COLLECTION")));
+  assert.equal(validation.ok, true);
+  assert.equal(validation.collectionNames?.events, "test_operational_events");
 });

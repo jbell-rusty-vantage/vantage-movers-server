@@ -38,6 +38,8 @@ declare global {
   var __vantageTestRunner: boolean | undefined;
 }
 
+const TEST_RUNNER_MARKER = Symbol.for("vantage.testRunner");
+
 export function getRuntimeDomainOverrides(): RuntimeDomainOverrides {
   return runtimeDomainOverrides.getStore() ?? {};
 }
@@ -63,13 +65,28 @@ export function isTestMode(): boolean {
 
 export function markVantageTestRunner(): void {
   globalThis.__vantageTestRunner = true;
+  Reflect.set(globalThis, TEST_RUNNER_MARKER, true);
+}
+
+function isLikelyTestProcess(): boolean {
+  return process.argv.some((arg) => {
+    const normalized = arg.replaceAll("\\", "/").toLowerCase();
+    return (
+      normalized === "--test" ||
+      normalized.endsWith(".test.ts") ||
+      normalized.endsWith(".test.js") ||
+      normalized.includes("/node_modules/.bin/node:test")
+    );
+  });
 }
 
 export function isVantageTestRunner(): boolean {
   return (
+    Reflect.get(globalThis, TEST_RUNNER_MARKER) === true ||
     globalThis.__vantageTestRunner === true ||
     Boolean(process.env.NODE_TEST_CONTEXT) ||
-    process.env.VANTAGE_TEST_RUNNER === "true"
+    process.env.VANTAGE_TEST_RUNNER === "true" ||
+    isLikelyTestProcess()
   );
 }
 

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import mongoose from "mongoose";
+import {
+  clearCapturedOperationalEvents,
+  getCapturedOperationalEvents,
+} from "../observability";
 import { SheetSyncJob } from "../../models/SheetSyncJob";
 import { SheetSyncRun } from "../../models/SheetSyncRun";
 import {
@@ -17,12 +21,21 @@ const original: Record<string, unknown> = {
   updateMany: SheetSyncJob.updateMany,
 };
 const originalRunFindOne = SheetSyncRun.findOne;
+const originalEnv = {
+  vercel: process.env.VERCEL,
+  vercelEnv: process.env.VERCEL_ENV,
+  sheetSyncQueueTopic: process.env.SHEET_SYNC_QUEUE_TOPIC,
+};
 
 afterEach(() => {
   for (const [key, value] of Object.entries(original)) {
     (SheetSyncJob as any)[key] = value;
   }
   (SheetSyncRun as any).findOne = originalRunFindOne;
+  clearCapturedOperationalEvents();
+  restoreEnv("VERCEL", originalEnv.vercel);
+  restoreEnv("VERCEL_ENV", originalEnv.vercelEnv);
+  restoreEnv("SHEET_SYNC_QUEUE_TOPIC", originalEnv.sheetSyncQueueTopic);
 });
 
 /** Minimal chainable query stub that resolves to `result` on await/.lean(). */
@@ -36,6 +49,14 @@ function chain(result: unknown) {
     then: (resolve: (v: unknown) => void) => resolve(result),
   };
   return q;
+}
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
 }
 
 test("getSheetSyncHealth aggregates job counts and derives backlog age", async () => {
@@ -96,6 +117,26 @@ test("retrySheetSyncJobs re-queues failed jobs by default and reports the count"
   assert.equal(updateBody.$set.created_by, "admin");
   assert.ok("leased_until" in updateBody.$unset);
   assert.equal(result.requeued, 1);
+});
+
+test("retrySheetSyncJobs skips Vercel queue publishing and observability writes during tests", async () => {
+  process.env.VERCEL = "1";
+  process.env.VERCEL_ENV = "production";
+  process.env.SHEET_SYNC_QUEUE_TOPIC = "sheet-sync-events";
+
+  const id = new mongoose.Types.ObjectId();
+  (SheetSyncJob as any).find = () => chain([{ _id: id }]);
+  (SheetSyncJob as any).updateMany = () => Promise.resolve({ modifiedCount: 1 });
+
+  const result = await retrySheetSyncJobs({ limit: 100 } as any);
+
+  assert.equal(result.requeued, 1);
+  assert.equal(
+    getCapturedOperationalEvents().some(
+      (event) => event.input.eventKey === "sheet_sync.queue.publish_failed",
+    ),
+    false,
+  );
 });
 
 test("retrySheetSyncJobs is a no-op when nothing matches", async () => {
