@@ -11,6 +11,7 @@ import {
   supersededUpsertCoalescingKey,
   SHEET_SYNC_PRIORITIES,
 } from "./sheetSync";
+import { markVantageTestRunner } from "./runtime";
 
 /**
  * These tests mutate `process.env` to exercise the call-time reads. Each test
@@ -109,6 +110,7 @@ test("shouldPublishSheetSyncQueue honors VERCEL and local flag", () => {
   assert.equal(shouldPublishSheetSyncQueue(), false);
 
   process.env.SHEET_SYNC_QUEUE_LOCAL_PUBLISH = "true";
+  process.env.ALLOW_TEST_SHEET_SYNC_QUEUE = "true";
   assert.equal(shouldPublishSheetSyncQueue(), true);
 
   delete process.env.SHEET_SYNC_QUEUE_LOCAL_PUBLISH;
@@ -123,6 +125,16 @@ test("shouldPublishSheetSyncQueue is off during the test runner unless explicitl
 
   process.env.ALLOW_TEST_SHEET_SYNC_QUEUE = "true";
   assert.equal(shouldPublishSheetSyncQueue(), true);
+});
+
+test("shouldPublishSheetSyncQueue keeps test runner guard after env cleanup", () => {
+  markVantageTestRunner();
+  delete process.env.VANTAGE_TEST_RUNNER;
+  delete process.env.NODE_TEST_CONTEXT;
+  process.env.VERCEL = "1";
+  delete process.env.ALLOW_TEST_SHEET_SYNC_QUEUE;
+
+  assert.equal(shouldPublishSheetSyncQueue(), false);
 });
 
 test("coalescing keys follow the design doc shape", () => {

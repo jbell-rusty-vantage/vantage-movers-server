@@ -34,6 +34,10 @@ export type RuntimeDomainOverrides = {
 const runtimeDomainOverrides =
   new AsyncLocalStorage<RuntimeDomainOverrides>();
 
+declare global {
+  var __vantageTestRunner: boolean | undefined;
+}
+
 export function getRuntimeDomainOverrides(): RuntimeDomainOverrides {
   return runtimeDomainOverrides.getStore() ?? {};
 }
@@ -55,6 +59,18 @@ export function isTestMode(): boolean {
   }
 
   return process.env.TEST_MODE?.trim().toLowerCase() === "true";
+}
+
+export function markVantageTestRunner(): void {
+  globalThis.__vantageTestRunner = true;
+}
+
+export function isVantageTestRunner(): boolean {
+  return (
+    globalThis.__vantageTestRunner === true ||
+    Boolean(process.env.NODE_TEST_CONTEXT) ||
+    process.env.VANTAGE_TEST_RUNNER === "true"
+  );
 }
 
 /**

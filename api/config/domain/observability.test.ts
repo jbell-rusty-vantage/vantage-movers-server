@@ -15,6 +15,7 @@ import {
   shouldWriteObservabilityCollections,
   validateObservabilityConfig,
 } from "./observability";
+import { isVantageTestRunner, markVantageTestRunner } from "./runtime";
 
 /**
  * These tests mutate `process.env` to exercise the call-time reads. Each test
@@ -79,6 +80,24 @@ test("node test runner disables observability writes unless explicitly allowed",
   assert.equal(shouldWriteObservabilityCollections(), true);
 });
 
+test("bootstrap test runner marker survives env cleanup", () => {
+  markVantageTestRunner();
+  delete process.env.NODE_TEST_CONTEXT;
+  delete process.env.VANTAGE_TEST_RUNNER;
+  process.env.VERCEL_ENV = "production";
+  process.env.OBSERVABILITY_ENABLED = "true";
+  process.env.OBSERVABILITY_WRITE_MODE = "enabled";
+  process.env.OBSERVABILITY_COLLECTION_MODE = "production";
+
+  assert.equal(isVantageTestRunner(), true);
+  assert.equal(isObservabilityEnabled(), false);
+  assert.equal(shouldWriteObservabilityCollections(), false);
+  assert.equal(
+    getObservabilityCollectionNames().events,
+    "test_operational_events",
+  );
+});
+
 test("ALLOW_TEST_OBSERVABILITY is ignored on Vercel runtimes", () => {
   process.env.ALLOW_TEST_OBSERVABILITY = "true";
   process.env.VANTAGE_TEST_RUNNER = "true";
@@ -135,6 +154,7 @@ test("write mode controls whether collections are written", () => {
 });
 
 test("collection names follow runtime TEST_MODE by default", () => {
+  process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS = "true";
   delete process.env.OBSERVABILITY_COLLECTION_MODE;
   delete process.env.TEST_MODE;
   assert.equal(getObservabilityCollectionNames().events, "operational_events");
@@ -147,6 +167,7 @@ test("collection names follow runtime TEST_MODE by default", () => {
 });
 
 test("collection mode production/test override TEST_MODE", () => {
+  process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS = "true";
   process.env.TEST_MODE = "true";
   process.env.OBSERVABILITY_COLLECTION_MODE = "production";
   assert.equal(getObservabilityCollectionNames().incidents, "operational_incidents");
@@ -159,12 +180,14 @@ test("collection mode production/test override TEST_MODE", () => {
 });
 
 test("collection prefix is applied to default names", () => {
+  process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS = "true";
   process.env.OBSERVABILITY_COLLECTION_MODE = "production";
   process.env.OBSERVABILITY_COLLECTION_PREFIX = "dev_";
   assert.equal(getObservabilityCollectionNames().events, "dev_operational_events");
 });
 
 test("custom collection mode requires explicit names", () => {
+  process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS = "true";
   process.env.OBSERVABILITY_COLLECTION_MODE = "custom";
   assert.throws(() => getObservabilityCollectionNames());
 
@@ -220,6 +243,7 @@ test("owner events parse from csv", () => {
 });
 
 test("config validation reports custom collection errors without throwing", () => {
+  process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS = "true";
   process.env.OBSERVABILITY_COLLECTION_MODE = "custom";
   const validation = validateObservabilityConfig();
   assert.equal(validation.ok, false);

@@ -1,4 +1,4 @@
-import { getRuntimeDomainOverrides } from "./runtime";
+import { getRuntimeDomainOverrides, isVantageTestRunner } from "./runtime";
 
 /**
  * Configuration for the durable Google Sheets sync outbox + queue drainer.
@@ -236,10 +236,6 @@ export function getSheetSyncDrainGuardrails(): SheetSyncDrainGuardrails {
   };
 }
 
-function isNodeTestRunner(): boolean {
-  return Boolean(process.env.NODE_TEST_CONTEXT) || process.env.VANTAGE_TEST_RUNNER === "true";
-}
-
 /**
  * Whether the queue publisher should attempt a real `send` to Vercel Queues.
  *
@@ -255,7 +251,7 @@ function isNodeTestRunner(): boolean {
  * `ALLOW_TEST_SHEET_SYNC_QUEUE=true`.
  */
 export function shouldPublishSheetSyncQueue(): boolean {
-  if (isNodeTestRunner() && process.env.ALLOW_TEST_SHEET_SYNC_QUEUE !== "true") {
+  if (isVantageTestRunner() && process.env.ALLOW_TEST_SHEET_SYNC_QUEUE !== "true") {
     return false;
   }
   if (process.env.VERCEL === "1") {

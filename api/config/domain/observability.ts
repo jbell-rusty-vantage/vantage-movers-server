@@ -1,4 +1,4 @@
-import { isTestMode } from "./runtime";
+import { isTestMode, isVantageTestRunner } from "./runtime";
 
 /**
  * Configuration for the operational observability + email-notification layer.
@@ -204,10 +204,6 @@ function envLevel(name: string, defaultValue: ObservabilityLevel): Observability
   return defaultValue;
 }
 
-function isNodeTestRunner(): boolean {
-  return Boolean(process.env.NODE_TEST_CONTEXT) || process.env.VANTAGE_TEST_RUNNER === "true";
-}
-
 function isVercelRuntime(): boolean {
   return process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV?.trim());
 }
@@ -227,7 +223,7 @@ function allowProductionObservabilityInTests(): boolean {
 }
 
 function forceTestObservabilityCollections(): boolean {
-  return isNodeTestRunner() && !allowProductionObservabilityInTests();
+  return isVantageTestRunner() && !allowProductionObservabilityInTests();
 }
 
 /**
@@ -237,7 +233,7 @@ function forceTestObservabilityCollections(): boolean {
  * deploy posture.
  */
 export function isObservabilityEnabled(): boolean {
-  if (isNodeTestRunner() && !allowTestObservabilityWrites()) {
+  if (isVantageTestRunner() && !allowTestObservabilityWrites()) {
     return false;
   }
   if (!envFlag("OBSERVABILITY_ENABLED", true)) {

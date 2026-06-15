@@ -17,6 +17,10 @@
  * Individual tests that exercise observability directly set the relevant env
  * vars themselves together with the ALLOW_TEST_* escape hatches.
  */
+import { markVantageTestRunner } from "../api/config/domain/runtime";
+
+markVantageTestRunner();
+
 process.env.VANTAGE_TEST_RUNNER = "true";
 process.env.OBSERVABILITY_COLLECTION_MODE = "test";
 delete process.env.ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS;
