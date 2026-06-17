@@ -11,6 +11,7 @@ import { normalizePhoneNumberToE164Like } from "../../api/services/ringcentral/p
 process.env.RC_TOKEN_STORE = "file";
 
 const ARTIFACT_PATH = "ringcentral-call-lead-api-probe-output.json";
+const QUALIFIED_CALLS_FILE_PREFIX = "ringcentral-qualified-calls";
 const DEFAULT_LOOKBACK_HOURS = 48;
 const DEFAULT_LIMIT = 200;
 const DEFAULT_ANALYTICS_END_BUFFER_MS = 2 * 60 * 1000;
@@ -124,6 +125,9 @@ async function main(): Promise<void> {
   const analyticsResults = await runAnalyticsProbes(client, options, queueExtensions);
   printAnalyticsSummary(analyticsResults);
 
+  const qualifiedCalls = candidates.filter((candidate) => candidate.productionQualifies);
+  const qualifiedCallsPath = buildQualifiedCallsPath(options);
+
   const artifact = {
     generatedAt: new Date().toISOString(),
     options,
@@ -157,8 +161,29 @@ async function main(): Promise<void> {
   };
 
   await fs.writeFile(ARTIFACT_PATH, `${JSON.stringify(sanitize(artifact), null, 2)}\n`);
+  await fs.writeFile(
+    qualifiedCallsPath,
+    `${JSON.stringify(
+      sanitize({
+        generatedAt: artifact.generatedAt,
+        window: {
+          from: options.dateFrom,
+          to: options.dateTo,
+        },
+        qualificationLogic: "api/services/ringcentral/call-log-vetting.ts",
+        targetNumbers: artifact.targetNumbers,
+        targetQueues: artifact.targetQueues,
+        queueExtensions,
+        qualifiedCount: qualifiedCalls.length,
+        qualifiedCalls,
+      }),
+      null,
+      2,
+    )}\n`,
+  );
   console.log("");
   console.log(`Wrote sanitized probe artifact: ${ARTIFACT_PATH}`);
+  console.log(`Wrote service-qualified calls: ${qualifiedCallsPath}`);
 
   if (options.json) {
     console.log(JSON.stringify(sanitize(artifact), null, 2));
@@ -703,6 +728,25 @@ function parseDateArg(value: string, flag: string): string {
     throw new Error(`${flag} must be a valid ISO date/time`);
   }
   return date.toISOString();
+}
+
+function buildQualifiedCallsPath(options: ProbeOptions): string {
+  const fromDate = formatDateInTimeZone(new Date(options.dateFrom), "America/New_York");
+  const exclusiveTo = new Date(options.dateTo);
+  const inclusiveTo = new Date(exclusiveTo.getTime() - 1);
+  const toDate = formatDateInTimeZone(inclusiveTo, "America/New_York");
+  return `${QUALIFIED_CALLS_FILE_PREFIX}-${fromDate}_to_${toDate}.json`;
+}
+
+function formatDateInTimeZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function printUsageAndExit(): never {

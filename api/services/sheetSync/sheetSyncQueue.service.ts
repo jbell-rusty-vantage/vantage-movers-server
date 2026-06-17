@@ -44,8 +44,8 @@ export type PublishSheetSyncWakeupOptions = {
  * this function -- a failed publish is logged and swallowed so it cannot break
  * an API response or roll back a committed domain write.
  *
- * Locally (off Vercel) we no-op unless `SHEET_SYNC_QUEUE_LOCAL_PUBLISH=true`,
- * since local/test drains run via the cron route or direct drainer calls.
+ * Outside production Vercel we no-op; local/test/preview drains run via the
+ * cron route or direct drainer calls.
  */
 export async function publishSheetSyncWakeup(
   options: PublishSheetSyncWakeupOptions = {},

@@ -24,7 +24,6 @@ const TOUCHED_ENV_KEYS = [
   "VERCEL",
   "VANTAGE_TEST_RUNNER",
   "NODE_TEST_CONTEXT",
-  "ALLOW_TEST_SHEET_SYNC_QUEUE",
   "SHEET_SYNC_QUEUE_LOCAL_PUBLISH",
   "SHEET_SYNC_READS_PER_MINUTE_BUDGET",
   "SHEET_SYNC_WRITES_PER_MINUTE_BUDGET",
@@ -102,7 +101,7 @@ test("drain guardrails default to fast queue draining and parse overrides", () =
   assert.equal(overridden.debounceWindowMs, 1_000);
 });
 
-test("shouldPublishSheetSyncQueue honors VERCEL and local flag", () => {
+test("shouldPublishSheetSyncQueue stays off outside production Vercel", () => {
   delete process.env.VERCEL;
   delete process.env.SHEET_SYNC_QUEUE_LOCAL_PUBLISH;
   delete process.env.VANTAGE_TEST_RUNNER;
@@ -110,11 +109,11 @@ test("shouldPublishSheetSyncQueue honors VERCEL and local flag", () => {
   assert.equal(shouldPublishSheetSyncQueue(), false);
 
   process.env.SHEET_SYNC_QUEUE_LOCAL_PUBLISH = "true";
-  process.env.ALLOW_TEST_SHEET_SYNC_QUEUE = "true";
   assert.equal(shouldPublishSheetSyncQueue(), false);
 
   delete process.env.SHEET_SYNC_QUEUE_LOCAL_PUBLISH;
   process.env.VERCEL = "1";
+  process.env.VERCEL_ENV = "preview";
   assert.equal(shouldPublishSheetSyncQueue(), false);
 });
 
@@ -123,7 +122,7 @@ test("shouldPublishSheetSyncQueue is always off during the test runner", () => {
   process.env.VERCEL = "1";
   assert.equal(shouldPublishSheetSyncQueue(), false);
 
-  process.env.ALLOW_TEST_SHEET_SYNC_QUEUE = "true";
+  process.env.SHEET_SYNC_QUEUE_LOCAL_PUBLISH = "true";
   assert.equal(shouldPublishSheetSyncQueue(), false);
 });
 
@@ -132,7 +131,7 @@ test("shouldPublishSheetSyncQueue keeps test runner guard after env cleanup", ()
   delete process.env.VANTAGE_TEST_RUNNER;
   delete process.env.NODE_TEST_CONTEXT;
   process.env.VERCEL = "1";
-  delete process.env.ALLOW_TEST_SHEET_SYNC_QUEUE;
+  process.env.VERCEL_ENV = "production";
 
   assert.equal(shouldPublishSheetSyncQueue(), false);
 });

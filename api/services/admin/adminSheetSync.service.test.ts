@@ -119,10 +119,10 @@ test("retrySheetSyncJobs re-queues failed jobs by default and reports the count"
   assert.equal(result.requeued, 1);
 });
 
-test("retrySheetSyncJobs skips Vercel queue publishing and observability writes during tests", async () => {
+test("retrySheetSyncJobs skips queue publishing and observability writes outside production", async () => {
   process.env.VERCEL = "1";
-  process.env.VERCEL_ENV = "production";
-  process.env.SHEET_SYNC_QUEUE_TOPIC = "sheet-sync-events";
+  process.env.VERCEL_ENV = "preview";
+  process.env.SHEET_SYNC_QUEUE_TOPIC = "sheet-sync-events-dev";
 
   const id = new mongoose.Types.ObjectId();
   (SheetSyncJob as any).find = () => chain([{ _id: id }]);

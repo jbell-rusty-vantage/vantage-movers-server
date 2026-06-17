@@ -239,10 +239,8 @@ export function getSheetSyncDrainGuardrails(): SheetSyncDrainGuardrails {
 /**
  * Whether the queue publisher should attempt a real `send` to Vercel Queues.
  *
- * On Vercel (`VERCEL=1`) we always publish. Locally we only publish when
- * `SHEET_SYNC_QUEUE_LOCAL_PUBLISH=true`; otherwise the adapter no-ops and the
- * cron / direct-drain path is responsible for draining (keeps local dev from
- * needing queue credentials).
+ * Only production Vercel is allowed to publish. Preview, local, and tests use
+ * the cron / direct-drain path so they cannot wake or fail a queue publish.
  *
  * The unit suite marks the process as a Vantage test runner (see
  * `scripts/test-setup.ts`). Deploy-time test runs also inject `VERCEL=1`, which
@@ -254,10 +252,7 @@ export function shouldPublishSheetSyncQueue(): boolean {
   if (isVantageTestRunner()) {
     return false;
   }
-  if (process.env.VERCEL === "1") {
-    return true;
-  }
-  return envFlag("SHEET_SYNC_QUEUE_LOCAL_PUBLISH", false);
+  return process.env.VERCEL === "1" && isProductionVercelEnv();
 }
 
 /**
