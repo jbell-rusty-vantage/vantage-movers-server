@@ -133,7 +133,10 @@ export const createCallLeadSchema = z
   .refine(requireCallLeadIdentity, "Call lead requires either phone_number or job_no");
 
 export const updateCallLeadSchema = z
-  .object(callLeadFields)
+  .object({
+    ...callLeadFields,
+    duplicate: booleanInput.optional(),
+  })
   .partial()
   .strict()
   .refine(requireAtLeastOne, "At least one call lead field must be provided");

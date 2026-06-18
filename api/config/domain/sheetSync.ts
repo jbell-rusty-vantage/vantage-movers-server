@@ -169,6 +169,16 @@ export function isProductionVercelEnv(): boolean {
 }
 
 /**
+ * `VERCEL=1` can leak into local scripts through copied production env files.
+ * `VERCEL_REGION` is injected by the hosted function runtime, so requiring it
+ * prevents local/admin tooling from attempting Queue sends that need Vercel
+ * request-scoped OIDC.
+ */
+export function isVercelFunctionRuntimeEnv(): boolean {
+  return process.env.VERCEL === "1" && Boolean(process.env.VERCEL_REGION?.trim());
+}
+
+/**
  * Env-scoped Vercel Queue topic. Production uses `sheet-sync-events`; every
  * other environment uses `sheet-sync-events-dev` unless `SHEET_SYNC_QUEUE_TOPIC`
  * overrides it explicitly.
@@ -239,8 +249,9 @@ export function getSheetSyncDrainGuardrails(): SheetSyncDrainGuardrails {
 /**
  * Whether the queue publisher should attempt a real `send` to Vercel Queues.
  *
- * Only production Vercel is allowed to publish. Preview, local, and tests use
- * the cron / direct-drain path so they cannot wake or fail a queue publish.
+ * Only the deployed production Vercel function runtime is allowed to publish.
+ * Preview, local, scripts, and tests use the cron / direct-drain path so they
+ * cannot wake or fail a queue publish.
  *
  * The unit suite marks the process as a Vantage test runner (see
  * `scripts/test-setup.ts`). Deploy-time test runs also inject `VERCEL=1`, which
@@ -252,7 +263,7 @@ export function shouldPublishSheetSyncQueue(): boolean {
   if (isVantageTestRunner()) {
     return false;
   }
-  return process.env.VERCEL === "1" && isProductionVercelEnv();
+  return isVercelFunctionRuntimeEnv() && isProductionVercelEnv();
 }
 
 /**

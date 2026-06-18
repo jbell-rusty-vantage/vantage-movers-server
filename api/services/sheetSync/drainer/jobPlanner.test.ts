@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import mongoose, { Types } from "mongoose";
 import { SHEET_TAB_NAMES } from "../../../config/domain";
+import { CallLead } from "../../../models/CallLead";
 import { FormLead } from "../../../models/FormLead";
 import type { SheetSyncJobDocument } from "../../../models/SheetSyncJob";
 import { planJobWrites } from "./jobPlanner";
@@ -25,12 +26,19 @@ type StubbedFormLeadModel = {
   findById: (id: string) => unknown;
 };
 
+type StubbedCallLeadModel = {
+  findById: (id: string) => unknown;
+};
+
+const originalCallLeadFindById = CallLead.findById as unknown;
 const originalFindById = FormLead.findById as unknown;
 const originalUseDb = mongoose.connection.useDb;
 const originalMasterLeadsSheetId = process.env.MASTER_LEADS_SHEET_ID;
 const originalTestMasterLeadsSheetId = process.env.TEST_MASTER_LEADS_SHEET_ID;
 
 afterEach(() => {
+  (CallLead as unknown as StubbedCallLeadModel).findById =
+    originalCallLeadFindById as StubbedCallLeadModel["findById"];
   (FormLead as unknown as StubbedFormLeadModel).findById =
     originalFindById as StubbedFormLeadModel["findById"];
   mongoose.connection.useDb = originalUseDb;
@@ -51,12 +59,12 @@ function tombstoneJob(
   } as unknown as SheetSyncJobDocument;
 }
 
-function sourceLeadJob(leadId: string): SheetSyncJobDocument {
+function sourceLeadJob(leadId: string, leadModel: "FormLead" | "CallLead" = "FormLead"): SheetSyncJobDocument {
   return {
     _id: new Types.ObjectId(),
     resource: "source_lead",
-    operation: "form_lead.update",
-    entity_model: "FormLead",
+    operation: `${leadModel === "FormLead" ? "form" : "call"}_lead.update`,
+    entity_model: leadModel,
     entity_id: leadId,
   } as unknown as SheetSyncJobDocument;
 }
@@ -67,6 +75,16 @@ function stubFormLead(document: Record<string, unknown>): void {
     model: () => FormLead,
   })) as unknown as typeof mongoose.connection.useDb;
   (FormLead as unknown as StubbedFormLeadModel).findById = () => ({
+    then: (resolve: (value: unknown) => void) => resolve(document),
+  });
+}
+
+function stubCallLead(document: Record<string, unknown>): void {
+  mongoose.connection.useDb = (() => ({
+    models: { CallLead },
+    model: () => CallLead,
+  })) as unknown as typeof mongoose.connection.useDb;
+  (CallLead as unknown as StubbedCallLeadModel).findById = () => ({
     then: (resolve: (value: unknown) => void) => resolve(document),
   });
 }
@@ -221,4 +239,47 @@ test("planJobWrites deletes stale Master Bad Leads row when bad_lead is cleared"
   const deleteWrite = planned[0].writes.find((write) => write.target === "master_bad_leads");
   assert.equal(deleteWrite?.op, "delete");
   assert.equal(deleteWrite?.knownRowNumber, 11);
+});
+
+test("planJobWrites deletes stale Calls row when duplicate call lead lacks sheet_sync metadata", async () => {
+  process.env.MASTER_LEADS_SHEET_ID = "master-leads-test";
+  process.env.TEST_MASTER_LEADS_SHEET_ID = "master-leads-test";
+  const leadObjectId = new Types.ObjectId();
+  const leadId = leadObjectId.toString();
+  const lead = {
+    _id: leadObjectId,
+    timestamp: new Date("2026-06-09T10:10:47.392Z"),
+    job_no: "",
+    phone_number: "(260) 446-6873",
+    duration: 1738,
+    booked: null,
+    over_2000: false,
+    over_4000: false,
+    cancelled: null,
+    local: "long_distance",
+    cubic_feet: null,
+    source_company: "tbm_leads",
+    duplicate: true,
+    form_fill: false,
+    sheet_sync: [],
+    get(key: string) {
+      return this[key as keyof typeof lead];
+    },
+    populate: async () => lead,
+  };
+  stubCallLead(lead);
+
+  const planned = await planJobWrites(sourceLeadJob(leadId, "CallLead"));
+
+  assert.equal(planned.length, 1);
+  assert.deepEqual(
+    planned[0].writes.map((write) => `${write.op}:${write.target}:${write.tabName}`),
+    [
+      `upsert:master_duplicate_calls:${SHEET_TAB_NAMES.duplicateCalls}`,
+      `delete:master_calls:${SHEET_TAB_NAMES.calls}`,
+    ],
+  );
+  const staleDelete = planned[0].writes.find((write) => write.target === "master_calls");
+  assert.equal(staleDelete?.knownRowNumber, undefined);
+  assert.equal(staleDelete?.mongoId, leadId);
 });

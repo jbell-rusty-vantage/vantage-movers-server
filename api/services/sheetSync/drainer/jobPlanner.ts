@@ -216,7 +216,22 @@ async function planSourceLead(
   );
   const row = callLeadToRow(lead as unknown as CallLeadSheetSource);
   const selectedTargets = filterTargets(job, targets);
-  return [{ docKey, doc: looseDoc, writes: targetsToWrites(jobId, docKey, leadId, looseDoc, selectedTargets, row) }];
+  const writes = targetsToWrites(jobId, docKey, leadId, looseDoc, selectedTargets, row);
+  const staleBase = callLeadTargetBase(!duplicate);
+  const staleTargets = getLeadTargets(
+    staleBase.masterTarget,
+    staleBase.sourceTarget,
+    sourceCompany,
+    staleBase.tabName,
+    CALL_SHEET_HEADERS,
+  );
+  const selectedStaleTargets = filterTargets(job, staleTargets);
+  writes.push(
+    ...selectedStaleTargets.map((target) =>
+      targetToDeleteWrite(jobId, docKey, leadId, looseDoc, target),
+    ),
+  );
+  return [{ docKey, doc: looseDoc, writes }];
 }
 
 async function planBookedLead(job: SheetSyncJobDocument, bookingId: string): Promise<PlannedDoc[]> {

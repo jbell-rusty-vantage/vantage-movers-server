@@ -6,6 +6,7 @@ import {
   getSheetSyncDrainGuardrails,
   getSheetSyncMode,
   getSheetSyncQueueTopic,
+  isVercelFunctionRuntimeEnv,
   priorityForJob,
   shouldPublishSheetSyncQueue,
   supersededUpsertCoalescingKey,
@@ -22,6 +23,7 @@ const TOUCHED_ENV_KEYS = [
   "SHEET_SYNC_QUEUE_TOPIC",
   "VERCEL_ENV",
   "VERCEL",
+  "VERCEL_REGION",
   "VANTAGE_TEST_RUNNER",
   "NODE_TEST_CONTEXT",
   "SHEET_SYNC_QUEUE_LOCAL_PUBLISH",
@@ -103,6 +105,7 @@ test("drain guardrails default to fast queue draining and parse overrides", () =
 
 test("shouldPublishSheetSyncQueue stays off outside production Vercel", () => {
   delete process.env.VERCEL;
+  delete process.env.VERCEL_REGION;
   delete process.env.SHEET_SYNC_QUEUE_LOCAL_PUBLISH;
   delete process.env.VANTAGE_TEST_RUNNER;
   delete process.env.NODE_TEST_CONTEXT;
@@ -114,12 +117,25 @@ test("shouldPublishSheetSyncQueue stays off outside production Vercel", () => {
   delete process.env.SHEET_SYNC_QUEUE_LOCAL_PUBLISH;
   process.env.VERCEL = "1";
   process.env.VERCEL_ENV = "preview";
+  process.env.VERCEL_REGION = "iad1";
   assert.equal(shouldPublishSheetSyncQueue(), false);
+});
+
+test("isVercelFunctionRuntimeEnv requires hosted runtime markers", () => {
+  process.env.VERCEL = "1";
+  process.env.VERCEL_ENV = "production";
+  delete process.env.VERCEL_REGION;
+  assert.equal(isVercelFunctionRuntimeEnv(), false);
+
+  process.env.VERCEL_REGION = "iad1";
+  assert.equal(isVercelFunctionRuntimeEnv(), true);
 });
 
 test("shouldPublishSheetSyncQueue is always off during the test runner", () => {
   process.env.VANTAGE_TEST_RUNNER = "true";
   process.env.VERCEL = "1";
+  process.env.VERCEL_ENV = "production";
+  process.env.VERCEL_REGION = "iad1";
   assert.equal(shouldPublishSheetSyncQueue(), false);
 
   process.env.SHEET_SYNC_QUEUE_LOCAL_PUBLISH = "true";

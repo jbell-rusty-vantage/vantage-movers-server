@@ -76,8 +76,9 @@ export async function syncFormLeadToSheets(
 
 export async function syncCallLeadToSheets(
   lead: CallLeadSheetSource,
-): Promise<SheetSyncEntry[]> {
+): Promise<SheetSyncUpdateEntry[]> {
   const targetBase = callLeadTargetBase(lead.duplicate);
+  const staleTargetBase = callLeadTargetBase(!lead.duplicate);
   const targets = getLeadTargets(
     targetBase.masterTarget,
     targetBase.sourceTarget,
@@ -85,7 +86,23 @@ export async function syncCallLeadToSheets(
     targetBase.tabName,
     CALL_SHEET_HEADERS,
   );
-  return syncRowToTargets(lead, targets, callLeadToRow(lead));
+  const results: SheetSyncUpdateEntry[] = await syncRowToTargets(lead, targets, callLeadToRow(lead));
+  const staleTargets = getLeadTargets(
+    staleTargetBase.masterTarget,
+    staleTargetBase.sourceTarget,
+    lead.source_company,
+    staleTargetBase.tabName,
+    CALL_SHEET_HEADERS,
+  );
+  const deletedTargets = await deleteRowsFromTargets(
+    lead,
+    staleTargets,
+    [staleTargetBase.masterTarget, staleTargetBase.sourceTarget],
+  );
+  results.push(
+    ...deletedTargets.map((target) => ({ target, status: "deleted" as const })),
+  );
+  return results;
 }
 
 export async function syncBookedLeadToSheets(

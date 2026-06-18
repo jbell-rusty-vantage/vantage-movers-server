@@ -1,6 +1,8 @@
 import {
+  CALL_SHEET_HEADERS,
   getCplForSource,
   getSheetSyncMode,
+  SHEET_TAB_NAMES,
   type LocalType,
   type SourceCompany,
 } from "../../config/domain";
@@ -12,6 +14,7 @@ import type {
 } from "../../validation/v1.validation";
 import { ConflictError, NotFoundError } from "../errors";
 import { deleteCallLeadFromSheets } from "../googleSheets.service";
+import { getLeadTargets } from "../googleSheets/targets";
 import {
   buildTombstonePreviousTargets,
   enqueueSheetSyncTombstone,
@@ -197,6 +200,11 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
       metadata: { resource: "call_lead", id },
     });
   }
+  if (input.duplicate === true && lead.booked) {
+    throw new ConflictError("Cannot mark a booked call lead as duplicate", {
+      metadata: { resource: "call_lead", id, bookedLeadId: lead.booked.toString() },
+    });
+  }
 
   const update = normalizeLeadNameUpdate({ ...input }, lead);
   if (input.source_company !== undefined) {
@@ -227,10 +235,12 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
     lead.delivery_state = location.delivery_state;
     lead.local = location.local ?? input.local ?? lead.local;
   }
-  lead.cpl = getCplForSource(
-    lead.source_company as SourceCompany,
-    lead.local as LocalType | undefined,
-  );
+  lead.cpl = lead.duplicate
+    ? 0
+    : getCplForSource(
+        lead.source_company as SourceCompany,
+        lead.local as LocalType | undefined,
+      );
 
   const job = await runSheetSyncWrite(async (session) => {
     await lead.save({ session });
@@ -275,7 +285,7 @@ export async function deleteCallLead(id: string, cascade: boolean) {
   }
 
   if (getSheetSyncMode() === "queued") {
-    const previousTargets = buildTombstonePreviousTargets(lead.sheet_sync);
+    const previousTargets = buildCallLeadDeletePreviousTargets(lead);
     await runSheetSyncWrite(async (session) => {
       await enqueueSheetSyncTombstone(
         {
@@ -304,4 +314,63 @@ export async function deleteCallLead(id: string, cascade: boolean) {
 
 function optionalValue<T>(value: T | null | undefined): T | undefined {
   return value === null ? undefined : value;
+}
+
+type CallLeadDeleteTargetSource = {
+  source_company: SourceCompany;
+  sheet_sync?: Parameters<typeof buildTombstonePreviousTargets>[0];
+};
+
+export function buildCallLeadDeletePreviousTargets(lead: CallLeadDeleteTargetSource) {
+  const byTarget = new Map<
+    string,
+    {
+      target: string;
+      spreadsheet_id: string;
+      tab_name: string;
+      row_number?: number;
+    }
+  >();
+
+  for (const previous of buildTombstonePreviousTargets(lead.sheet_sync)) {
+    byTarget.set(previous.target, previous);
+  }
+
+  for (const target of [
+    ...getCallLeadDeleteFallbackTargets(lead.source_company, false),
+    ...getCallLeadDeleteFallbackTargets(lead.source_company, true),
+  ]) {
+    if (byTarget.has(target.target)) {
+      continue;
+    }
+    byTarget.set(target.target, {
+      target: target.target,
+      spreadsheet_id: target.spreadsheetId,
+      tab_name: target.tabName,
+    });
+  }
+
+  return [...byTarget.values()];
+}
+
+function getCallLeadDeleteFallbackTargets(sourceCompany: SourceCompany, duplicate: boolean) {
+  const targetBase = duplicate
+    ? {
+        masterTarget: "master_duplicate_calls",
+        sourceTarget: "source_duplicate_calls",
+        tabName: SHEET_TAB_NAMES.duplicateCalls,
+      }
+    : {
+        masterTarget: "master_calls",
+        sourceTarget: "source_calls",
+        tabName: SHEET_TAB_NAMES.calls,
+      };
+
+  return getLeadTargets(
+    targetBase.masterTarget,
+    targetBase.sourceTarget,
+    sourceCompany,
+    targetBase.tabName,
+    CALL_SHEET_HEADERS,
+  );
 }
