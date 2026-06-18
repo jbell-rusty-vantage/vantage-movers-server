@@ -48,6 +48,7 @@ import {
   createCustomer,
   createFormLead,
   createReferralBooking,
+  createLeadlessBooking,
   deleteBookedLead,
   deleteCallLead,
   deleteCancelledLead,
@@ -73,6 +74,7 @@ import {
   createCustomerSchema,
   createFormLeadSchema,
   createReferralBookingSchema,
+  createLeadlessBookingSchema,
   analyticsQuerySchema,
   analyticsReportSchema,
   agentSalesReportQuerySchema,
@@ -281,6 +283,10 @@ router.post(
   handleCreate(createBookedLeadFromSourceSchema, createBookedLeadFromSource),
 );
 router.post("/api/v1/referral-bookings", handleCreate(createReferralBookingSchema, createReferralBooking));
+router.post(
+  "/api/v1/leadless-bookings",
+  handleCreate(createLeadlessBookingSchema, createLeadlessBooking),
+);
 router.patch("/api/v1/booked-leads/:id", handleUpdate(updateBookedLeadSchema, updateBookedLead));
 router.delete("/api/v1/booked-leads/:id", handleDelete(deleteBookedLead));
 

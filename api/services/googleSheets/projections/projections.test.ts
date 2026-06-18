@@ -376,6 +376,26 @@ test("bookedLeadToRow projects referral customer name and blank lead ref", () =>
   assert.equal(row[13], "");
 });
 
+test("bookedLeadToRow projects leadless booking source label and blank lead ref", () => {
+  const booking: BookedLeadSheetSource = {
+    _id: new mongoose.Types.ObjectId(),
+    timestamp: new Date(2026, 4, 27, 9, 4, 5),
+    book_date: new Date("2026-05-20T00:00:00.000Z"),
+    job_no: "JOB-1",
+    agent_allocations: [{ agent_name_snapshot: "Agent A", binder_amount: 500 }],
+    total_binder_amount: 500,
+    deposit_amount: 100,
+    merchant: "Card",
+    source: "Best Relocation Inbounds",
+    local: "local",
+  };
+
+  const row = bookedLeadToRow(booking);
+  assert.equal(row[6], "JOB-1");
+  assert.equal(row[10], "Best Relocation Inbounds");
+  assert.equal(row[12], "");
+});
+
 test("cancelledLeadToRow projects cancellation fields", () => {
   const leadRefId = new mongoose.Types.ObjectId();
   const cancellation: CancelledLeadSheetSource = {

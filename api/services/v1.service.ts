@@ -33,6 +33,7 @@ export {
   createBookedLead,
   createBookedLeadFromSource,
   createReferralBooking,
+  createLeadlessBooking,
   deleteBookedLead,
   findAllBookedLeads,
   refreshAttachedBookingFromLead,

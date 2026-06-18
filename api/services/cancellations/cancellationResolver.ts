@@ -66,8 +66,8 @@ export async function getBookedLeadForCancellation(
   if (booking.cancelled) {
     throw new V1ServiceError("Booked lead is already cancelled", 409);
   }
-  if (booking.is_referral_booking || !booking.lead_ref || !booking.lead_model) {
-    throw new V1ServiceError("Referral booking cancellation is not supported yet", 409);
+  if (booking.is_referral_booking || booking.is_leadless_booking || !booking.lead_ref || !booking.lead_model) {
+    throw new V1ServiceError("Standalone booking cancellation is not supported yet", 409);
   }
 
   return booking;

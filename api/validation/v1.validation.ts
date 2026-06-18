@@ -49,10 +49,12 @@ export {
   createBookedLeadSchema,
   createBookedLeadFromSourceSchema,
   createReferralBookingSchema,
+  createLeadlessBookingSchema,
   updateBookedLeadSchema,
   type CreateBookedLeadInput,
   type CreateBookedLeadFromSourceInput,
   type CreateReferralBookingInput,
+  type CreateLeadlessBookingInput,
   type UpdateBookedLeadInput,
 } from "./v1/bookings.validation";
 

@@ -47,6 +47,7 @@ const BookedLeadSchema = new Schema(
     merchant: { type: String, required: true, trim: true },
     source: { type: String, required: true, trim: true },
     is_referral_booking: { type: Boolean, required: true, default: false, index: true },
+    is_leadless_booking: { type: Boolean, required: true, default: false, index: true },
     submission_id: { type: String, trim: true, index: true },
     local: optionalLocalField,
     over_2000: { type: Boolean, required: true, default: false },
@@ -66,12 +67,18 @@ BookedLeadSchema.index({ lead_ref: 1, lead_model: 1 });
 BookedLeadSchema.index({ job_no: 1 });
 
 BookedLeadSchema.pre("validate", function () {
-  if (this.is_referral_booking !== true) {
+  if (this.is_referral_booking !== true && this.is_leadless_booking !== true) {
     if (!this.lead_ref) {
-      this.invalidate("lead_ref", "lead_ref is required unless this is a referral booking");
+      this.invalidate(
+        "lead_ref",
+        "lead_ref is required unless this is a referral or leadless booking",
+      );
     }
     if (!this.lead_model) {
-      this.invalidate("lead_model", "lead_model is required unless this is a referral booking");
+      this.invalidate(
+        "lead_model",
+        "lead_model is required unless this is a referral or leadless booking",
+      );
     }
   }
 });

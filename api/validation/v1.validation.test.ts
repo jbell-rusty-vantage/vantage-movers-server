@@ -7,6 +7,7 @@ import {
   createBookedLeadSchema,
   createBookedLeadFromSourceSchema,
   createReferralBookingSchema,
+  createLeadlessBookingSchema,
   createCallLeadSchema,
   createCustomerSchema,
   createFormLeadSchema,
@@ -123,6 +124,55 @@ test("createReferralBookingSchema rejects server-owned referral source fields", 
     merchant: "Paper Check",
     source: "referral",
     is_referral_booking: true,
+  });
+
+  assert.equal(parsed.success, false);
+});
+
+test("createLeadlessBookingSchema accepts owner-facing leadless booking fields", () => {
+  const parsed = createLeadlessBookingSchema.parse({
+    book_date: "2026-05-21",
+    job_no: "JOB-100",
+    source_company: "Best Relocation Inbounds",
+    customer_name: "Jane Doe",
+    agent: "JOSH",
+    split_agent: "Austin",
+    total_binder_amount: 900,
+    deposit_amount: 300,
+    merchant: "Paper Check",
+    local: "local",
+  });
+
+  assert.equal(parsed.job_no, "JOB-100");
+  assert.equal(parsed.source_company, "Best Relocation Inbounds");
+  assert.equal(parsed.customer_name, "Jane Doe");
+});
+
+test("createLeadlessBookingSchema accepts booking without customer contact fields", () => {
+  const parsed = createLeadlessBookingSchema.parse({
+    book_date: "2026-05-21",
+    job_no: "JOB-101",
+    source_company: "10best Inbounds",
+    agent: "JOSH",
+    total_binder_amount: 900,
+    deposit_amount: 900,
+    merchant: "Card",
+  });
+
+  assert.equal(parsed.customer_name, undefined);
+  assert.equal(parsed.customer_phone, undefined);
+});
+
+test("createLeadlessBookingSchema rejects server-owned leadless flags", () => {
+  const parsed = createLeadlessBookingSchema.safeParse({
+    book_date: "2026-05-21",
+    job_no: "JOB-100",
+    source_company: "Best Relocation Inbounds",
+    agent: "JOSH",
+    total_binder_amount: 900,
+    deposit_amount: 900,
+    merchant: "Card",
+    is_leadless_booking: true,
   });
 
   assert.equal(parsed.success, false);
@@ -502,6 +552,29 @@ test("BookedLead model validates leadless referral bookings", async () => {
     merchant: "Paper Check",
     source: "referral",
     is_referral_booking: true,
+  });
+
+  await assert.doesNotReject(() => booking.validate());
+  assert.equal(booking.lead_ref, undefined);
+  assert.equal(booking.lead_model, undefined);
+});
+
+test("BookedLead model validates leadless bookings without lead linkage", async () => {
+  const booking = new BookedLead({
+    book_date: new Date("2026-05-21"),
+    job_no: "JOB-100",
+    agent_allocations: [
+      {
+        agent: "507f1f77bcf86cd799439012",
+        agent_name_snapshot: "JOSH",
+        binder_amount: 900,
+      },
+    ],
+    total_binder_amount: 900,
+    deposit_amount: 900,
+    merchant: "Card",
+    source: "Best Relocation Inbounds",
+    is_leadless_booking: true,
   });
 
   await assert.doesNotReject(() => booking.validate());

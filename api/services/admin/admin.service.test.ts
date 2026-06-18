@@ -4,6 +4,7 @@ import { inspect } from "node:util";
 import mongoose from "mongoose";
 import { Agent } from "../../models/Agent";
 import { BookedLead } from "../../models/BookedLead";
+import { CallLead } from "../../models/CallLead";
 import { FormLead } from "../../models/FormLead";
 import { registerHistoricalModels } from "../../../scripts/historical/models";
 import { toCsv } from "../../utils/csv";
@@ -24,6 +25,8 @@ type QueryCapture = {
 const originalFormLeadFind = FormLead.find as unknown;
 const originalFormLeadFindById = FormLead.findById as unknown;
 const originalFormLeadCount = FormLead.countDocuments as unknown;
+const originalCallLeadFind = CallLead.find as unknown;
+const originalCallLeadCount = CallLead.countDocuments as unknown;
 const originalAgentFind = Agent.find as unknown;
 const originalAgentFindById = Agent.findById as unknown;
 const originalAgentCount = Agent.countDocuments as unknown;
@@ -38,6 +41,8 @@ afterEach(() => {
   (FormLead as unknown as MutableModel).find = originalFormLeadFind;
   (FormLead as unknown as MutableModel).findById = originalFormLeadFindById;
   (FormLead as unknown as MutableModel).countDocuments = originalFormLeadCount;
+  (CallLead as unknown as MutableModel).find = originalCallLeadFind;
+  (CallLead as unknown as MutableModel).countDocuments = originalCallLeadCount;
   (Agent as unknown as MutableModel).find = originalAgentFind;
   (Agent as unknown as MutableModel).findById = originalAgentFindById;
   (Agent as unknown as MutableModel).countDocuments = originalAgentCount;
@@ -126,6 +131,20 @@ test("admin booked lead browse resolves legacy source company labels onto source
   assert.match(filterPreview, /top10_leads/);
 });
 
+test("admin booked lead browse filters leadless bookings", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(BookedLead, capture, []);
+  stubCount(BookedLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({ leadless: "true", limit: 10 });
+  await browseAdminResource("booked-leads", query);
+
+  assert.equal(query.leadless, true);
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /is_leadless_booking/);
+  assert.match(filterPreview, /true/);
+});
+
 test("admin agents browse returns metrics for list rows", async () => {
   const agentId = new mongoose.Types.ObjectId();
   stubFind(Agent, { populated: [] }, [
@@ -200,6 +219,31 @@ test("admin form lead browse can filter to duplicates only", async () => {
 
   const query = adminBrowseQuerySchema.parse({ duplicate: "true", limit: 10 });
   await browseAdminResource("form-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /duplicate:\s*true/);
+});
+
+test("admin call lead browse excludes duplicates by default", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(CallLead, capture, []);
+  stubCount(CallLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({ limit: 10 });
+  await browseAdminResource("call-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /duplicate/);
+  assert.doesNotMatch(filterPreview, /duplicate:\s*true/);
+});
+
+test("admin call lead browse can filter to duplicates only", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(CallLead, capture, []);
+  stubCount(CallLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({ duplicate: "true", limit: 10 });
+  await browseAdminResource("call-leads", query);
 
   const filterPreview = inspect(capture.filter, { depth: null });
   assert.match(filterPreview, /duplicate:\s*true/);

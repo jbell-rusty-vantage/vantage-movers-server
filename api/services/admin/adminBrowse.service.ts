@@ -272,17 +272,39 @@ function applyResourceFilter(
   query: AdminBrowseQuery,
   filter: AdminFilter,
 ): AdminFilter {
-  if (resource === "form-leads") {
+  if (resource === "form-leads" || resource === "call-leads") {
     const duplicateClause =
       query.duplicate === true ? { duplicate: true } : { duplicate: { $ne: true } };
     return mergeFilters(filter, duplicateClause);
   }
 
-  if (resource === "booked-leads" || resource === "cancelled-leads") {
+  if (resource === "booked-leads") {
+    return mergeFilters(
+      mergeFilters(filter, bookingSourceFilterClause(query)),
+      leadlessBookingFilterClause(query),
+    );
+  }
+
+  if (resource === "cancelled-leads") {
     return mergeFilters(filter, bookingSourceFilterClause(query));
   }
 
   return filter;
+}
+
+function leadlessBookingFilterClause(query: AdminBrowseQuery): AdminFilter {
+  if (query.leadless === true) {
+    return { is_leadless_booking: true };
+  }
+  if (query.leadless === false) {
+    return {
+      $or: [
+        { is_leadless_booking: false },
+        { is_leadless_booking: { $exists: false } },
+      ],
+    };
+  }
+  return {};
 }
 
 function bookingSourceFilterClause(query: AdminBrowseQuery): AdminFilter {

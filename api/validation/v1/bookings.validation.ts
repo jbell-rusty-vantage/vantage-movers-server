@@ -10,6 +10,7 @@ import {
   optionalString,
   requireAtLeastOne,
   requiredDate,
+  sourceCompanySchema,
 } from "./common";
 
 /**
@@ -120,6 +121,22 @@ export const createReferralBookingSchema = z
   })
   .strict();
 
+export const createLeadlessBookingSchema = z
+  .object({
+    book_date: bookedLeadFields.book_date,
+    job_no: bookedLeadFields.job_no,
+    source_company: sourceCompanySchema,
+    customer_name: optionalString,
+    customer_phone: optionalString,
+    agent: nonEmptyString,
+    split_agent: optionalString,
+    total_binder_amount: moneyAmount,
+    deposit_amount: bookedLeadFields.deposit_amount,
+    merchant: bookedLeadFields.merchant,
+    local: bookedLeadFields.local,
+  })
+  .strict();
+
 export const updateBookedLeadSchema = z
   .object({
     timestamp: bookedLeadFields.timestamp,
@@ -142,4 +159,5 @@ export const updateBookedLeadSchema = z
 export type CreateBookedLeadInput = z.infer<typeof createBookedLeadSchema>;
 export type CreateBookedLeadFromSourceInput = z.infer<typeof createBookedLeadFromSourceSchema>;
 export type CreateReferralBookingInput = z.infer<typeof createReferralBookingSchema>;
+export type CreateLeadlessBookingInput = z.infer<typeof createLeadlessBookingSchema>;
 export type UpdateBookedLeadInput = z.infer<typeof updateBookedLeadSchema>;

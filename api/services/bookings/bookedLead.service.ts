@@ -306,6 +306,9 @@ export async function updateBookedLead(id: string, input: UpdateBookedLeadInput)
   if (booking.is_referral_booking) {
     throw new V1ServiceError("Referral booking edits are not supported yet", 409);
   }
+  if (booking.is_leadless_booking) {
+    throw new V1ServiceError("Leadless booking edits are not supported yet", 409);
+  }
   if (!booking.lead_ref || !booking.lead_model) {
     throw new V1ServiceError("Booked lead is missing linked lead metadata", 409);
   }
@@ -388,6 +391,9 @@ export async function deleteBookedLead(id: string, cascade: boolean) {
   }
   if (booking.is_referral_booking) {
     throw new V1ServiceError("Referral booking deletion is not supported yet", 409);
+  }
+  if (booking.is_leadless_booking) {
+    throw new V1ServiceError("Leadless booking deletion is not supported yet", 409);
   }
   if (!booking.lead_ref || !booking.lead_model) {
     throw new V1ServiceError("Booked lead is missing linked lead metadata", 409);
