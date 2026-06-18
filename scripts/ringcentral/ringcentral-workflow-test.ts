@@ -323,7 +323,7 @@ async function runDuplicateScenarios(): Promise<void> {
         sourceCompany: "tbm_leads",
         callerPhoneNumber: CALLER_A,
         telephonySessionId: "dup-session-1",
-        now: T0,
+        callTimestamp: T0,
       },
       { findRecentCallLeads: async () => [] },
     );
@@ -339,7 +339,7 @@ async function runDuplicateScenarios(): Promise<void> {
         sourceCompany: "tbm_leads",
         callerPhoneNumber: CALLER_A,
         telephonySessionId: "dup-session-2",
-        now: new Date(T0.getTime() + 2 * 60 * 60 * 1000),
+        callTimestamp: new Date(T0.getTime() + 2 * 60 * 60 * 1000),
       },
       {
         findRecentCallLeads: async () => [

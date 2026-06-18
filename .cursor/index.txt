@@ -1,3 +1,7 @@
 Write rules, subagents, commands and other cursor related things in this directory.
 
+See index.md for full directory guide.
+
 Production API: https://vantage-movers-main-server.vercel.app
+
+Service-level business logic (compact): `.cursor/businesslogic/`

@@ -42,6 +42,7 @@
     "sheets:resync-failed": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/google_sheets/resync-failed-sheet-sync-via-api.ts",
     "sheets:copy-structure-to-main": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/google_sheets/copy-sheet-structure-to-main.ts",
     "sheets:minify-service-account": "node ./node_modules/tsx/dist/cli.mjs scripts/google_sheets/minify-google-service-account-json.ts",
+    "backfill:tbm-prime-updated-calls": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/backfill-tbm-prime-updated-calls-via-api.ts",
     "postman:login": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/postman/postman-login.ts",
     "postman:sync": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/postman/postman-sync-vantage-movers.ts",
     "ringcentral:diagnose": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ringcentral/ringcentral-diagnose.ts",

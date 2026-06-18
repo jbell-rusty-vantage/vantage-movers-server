@@ -1,16 +1,19 @@
 import { CallLead } from "../../models/CallLead";
+import { toFloridaTimestamp } from "../../utils/easternTime";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import type { SourceCompany } from "./call-lead-sources";
-import { getRingCentralDuplicateWindowHours } from "./ringcentral-config";
+
+export const RINGCENTRAL_CALL_LEAD_DUPLICATE_WINDOW_DAYS = 90;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
  * Business duplicate rule for RingCentral call leads.
  *
  * Criteria from the owner: a successful (qualified) inbound call should be
  * flagged `duplicate: true` when the *same caller phone* for the *same source
- * company* already produced a call lead within the duplicate window (default
- * 24h). Duplicates are still recorded for visibility but are zero-CPL so the
- * owner avoids paying twice for the same caller.
+ * company* already produced a call lead within 90 days of the current call's
+ * persisted lead timestamp. Duplicates are still recorded for visibility but
+ * are zero-CPL so the owner avoids paying twice for the same caller.
  *
  * This is distinct from idempotency: the unique `telephony_session_id` index
  * prevents the *same call* from creating two leads. This guard prevents a
@@ -23,7 +26,7 @@ export type RingCentralDuplicateClassification = {
     | "unique"
     | "same_source_phone_within_window";
   existingLeadId: string | null;
-  windowHours: number;
+  windowDays: number;
   matchCount: number;
 };
 
@@ -32,7 +35,8 @@ export type RingCentralDuplicateInput = {
   callerPhoneNumber: string | null;
   /** The current call's session id, excluded from the match (it is itself). */
   telephonySessionId?: string | null;
-  now?: Date;
+  /** Business timestamp for the current call, before CallLead persistence normalization. */
+  callTimestamp?: Date;
 };
 
 type RecentCallLead = {
@@ -45,19 +49,20 @@ export type RingCentralDuplicateDeps = {
   findRecentCallLeads: (params: {
     sourceCompany: SourceCompany;
     normalizedPhone: string;
-    since: Date;
+    from: Date;
+    to: Date;
   }) => Promise<RecentCallLead[]>;
 };
 
 const defaultDeps: RingCentralDuplicateDeps = {
-  async findRecentCallLeads({ sourceCompany, normalizedPhone, since }) {
+  async findRecentCallLeads({ sourceCompany, normalizedPhone, from, to }) {
     return CallLead.find({
       source_company: sourceCompany,
       duplicate: { $ne: true },
       normalized_phone_number: normalizedPhone,
-      createdAt: { $gte: since },
+      timestamp: { $gte: from, $lte: to },
     })
-      .sort({ createdAt: -1 })
+      .sort({ timestamp: -1 })
       .limit(25)
       .lean()
       .exec() as unknown as Promise<RecentCallLead[]>;
@@ -68,24 +73,26 @@ export async function classifyRingCentralCallLeadDuplicate(
   input: RingCentralDuplicateInput,
   deps: RingCentralDuplicateDeps = defaultDeps,
 ): Promise<RingCentralDuplicateClassification> {
-  const windowHours = getRingCentralDuplicateWindowHours();
   const normalizedPhone = normalizePhoneNumberForMatch(input.callerPhoneNumber);
   if (!normalizedPhone) {
     return {
       isDuplicate: false,
       reason: "no_caller_phone",
       existingLeadId: null,
-      windowHours,
+      windowDays: RINGCENTRAL_CALL_LEAD_DUPLICATE_WINDOW_DAYS,
       matchCount: 0,
     };
   }
 
-  const now = input.now ?? new Date();
-  const since = new Date(now.getTime() - windowHours * 60 * 60 * 1000);
+  const callTimestamp = toFloridaTimestamp(input.callTimestamp ?? new Date());
+  const windowMs = RINGCENTRAL_CALL_LEAD_DUPLICATE_WINDOW_DAYS * MS_PER_DAY;
+  const from = new Date(callTimestamp.getTime() - windowMs);
+  const to = new Date(callTimestamp.getTime() + windowMs);
   const candidates = await deps.findRecentCallLeads({
     sourceCompany: input.sourceCompany,
     normalizedPhone,
-    since,
+    from,
+    to,
   });
 
   const matches = candidates.filter(
@@ -101,7 +108,7 @@ export async function classifyRingCentralCallLeadDuplicate(
       isDuplicate: false,
       reason: "unique",
       existingLeadId: null,
-      windowHours,
+      windowDays: RINGCENTRAL_CALL_LEAD_DUPLICATE_WINDOW_DAYS,
       matchCount: 0,
     };
   }
@@ -110,7 +117,7 @@ export async function classifyRingCentralCallLeadDuplicate(
     isDuplicate: true,
     reason: "same_source_phone_within_window",
     existingLeadId: matches[0]!._id.toString(),
-    windowHours,
+    windowDays: RINGCENTRAL_CALL_LEAD_DUPLICATE_WINDOW_DAYS,
     matchCount: matches.length,
   };
 }

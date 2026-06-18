@@ -117,11 +117,12 @@ export async function ingestRingCentralQualifiedCall(
     };
   }
 
+  const callTimestamp = call.startTime ?? call.answeredAt ?? now;
   const duplicate = await classifyRingCentralCallLeadDuplicate({
     sourceCompany: call.sourceCompany,
     callerPhoneNumber: call.callerPhoneNumber,
     telephonySessionId: call.telephonySessionId,
-    now,
+    callTimestamp,
   });
 
   const writeMode = resolveRingCentralLeadWriteMode();
@@ -136,7 +137,7 @@ export async function ingestRingCentralQualifiedCall(
       duration: call.durationSeconds,
       start_time: call.answeredAt ?? call.startTime,
       end_time: call.terminalAt,
-      timestamp: call.startTime ?? call.answeredAt ?? now,
+      timestamp: callTimestamp,
       duplicate: duplicate.isDuplicate,
       ringcentral: {
         telephony_session_id: call.telephonySessionId,

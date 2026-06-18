@@ -8,12 +8,15 @@ alwaysApply: false
 
 Business behavior changes must update this file or a linked business/workflow doc with the concept, source of truth, invariants, edge cases, and examples. If no update is needed, say so in the final response.
 
+**Service docs:** `.cursor/businesslogic/` — per-service compact rules (form lead, call lead, RingCentral qualification, agent allocation, catalog, customers, testimonials, analytics, bookings, cancellations, …).
+
 ## Leads And Customers
 
 - MongoDB is the system of record for form leads, call leads, customers, bookings, cancellations, and sync metadata.
 - Form leads originate from website intake and may post to Granot CRM unless duplicate logic forces `post_to_granot=false`.
 - Call leads originate from phone/call sources such as RingCentral/Invoca and may be enriched later from CRM rows.
-- Customers are upserted from source leads during booking flows.
+- Customers are upserted from source leads or booking contact overrides during booking flows (`customer.service.md`); manual CRUD is separate.
+- Extension/admin read paths: scored form search + call OR-search + paginated browse (`formLeadSearch.service.md`, `callLeadSearch.service.md`, `leadBrowse.service.md`); admin global search is separate (`adminSearch.service.md`).
 
 ## Quotes, Estimates, And Pricing
 
@@ -22,13 +25,22 @@ Business behavior changes must update this file or a linked business/workflow do
 
 ## Moves, Bookings, And Jobs
 
-- Bookings link to a source lead via `lead_ref` and `lead_model` (`FormLead` or `CallLead`).
+- Bookings link to a source lead via `lead_ref` and `lead_model` (`FormLead` or `CallLead`) except referral bookings (`is_referral_booking`, no lead link). See `businesslogic/bookings.service.md`.
 - Booking creation can attach by direct Mongo id or source-derived identifiers such as form lead id, call job number, or call phone number.
-- Booking services mirror state back to source leads and schedule related Google Sheet sync work.
+- One lead-attached booking per `(lead_ref, lead_model)`; repeat creates upsert unless `submission_id` matches (idempotent no-op).
+- Booking services mirror state back to source leads and schedule related Google Sheet sync work (`booking_chain` or referral `booked_lead` job).
+
+## Cancellations
+
+- Cancellations attach to lead-attached bookings only; referral bookings are blocked (409). See `businesslogic/cancelledLead.service.md`.
+- Create resolves booking via `booked_lead` and/or `lead_id`, snapshots agent/job/source/customer fields, sets `booking.cancelled`, mirrors `cancelled` onto the source lead, and enqueues `cancellation_chain` sheet sync.
+- Delete unwinds booking + lead refs and refreshes booked/source sheet rows before removing the cancellation document.
+- Lead mirror semantics (`booked` retained alongside `cancelled`): `businesslogic/cancellationMirror.service.md`.
 
 ## Crews, Trucks, Dispatch, And Availability
 
-- Agent allocations are required on booked leads and are resolved/snapshotted during booking.
+- Agent and merchant reference data live in Mongo catalog collections; admin CRUD and active-name resolution: `catalog.service.md`.
+- Agent allocations are required on booked leads and are resolved/snapshotted during booking (`agentAllocation.service.md`: active catalog lookup, 50/50 split, patch/replace, primary agent = index 0).
 - Crew, truck, dispatch, route, and availability rules are TBD from source of truth.
 
 ## Invoices And Payments
@@ -38,8 +50,10 @@ Business behavior changes must update this file or a linked business/workflow do
 ## Integrations And CRM
 
 - Granot CRM receives non-duplicate form leads and uses Mongo ids as `ref_no`/`leadno` for extension lookup.
-- Google Sheets is an owner-facing reporting target; sheet sync can complete after API responses.
-- RingCentral services own call capture, candidate/session aggregation, Call Log sync, analytics reconciliation, duplicate detection, and call-lead ingest.
+- Google Sheets is an owner-facing reporting target; sheet sync can complete after API responses (`businesslogic/sheetSync.service.md`: outbox, Vercel Queue wake-up, drainer, `sheet_sync_jobs` collection).
+- RingCentral call-lead qualification and promotion: webhook + Call Log cron → shared ingest (`ringcentral-call-lead-qualification.service.md`). Analytics reconcile is count-only and must not create leads.
+- Granot Booked Jobs CSV reconciliation refreshes existing call leads and bookings from CRM rows without creating bookings (`bookedCallLeadReconciliation.service.md`).
+- Marketing testimonials are read from Mongo via `testimonial.service.md`; the website fetches `published=true` reviews (ingest is ops/scripts, not API CRUD).
 - Postman tooling syncs API collections/environments. External integration writes must remain mode-aware and observable.
 
 ## Invariants And Edge Cases

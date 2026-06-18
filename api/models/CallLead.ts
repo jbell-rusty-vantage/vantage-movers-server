@@ -87,8 +87,13 @@ CallLeadSchema.index(
   { "ringcentral.telephony_session_id": 1 },
   { unique: true, sparse: true },
 );
-// Supports the duplicate-window lookup (same caller + source within N hours).
-CallLeadSchema.index({ source_company: 1, normalized_phone_number: 1, duplicate: 1 });
+// Supports the duplicate-window lookup (same caller + source within 90 days of call timestamp).
+CallLeadSchema.index({
+  source_company: 1,
+  normalized_phone_number: 1,
+  duplicate: 1,
+  timestamp: -1,
+});
 
 CallLeadSchema.pre("validate", function normalizePhoneNumber() {
   this.normalized_phone_number = normalizePhoneNumberForMatch(this.phone_number);
