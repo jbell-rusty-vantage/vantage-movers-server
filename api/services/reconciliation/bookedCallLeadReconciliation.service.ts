@@ -352,7 +352,6 @@ function buildLeadUpdate(
     assignIfChanged(update, lead, "job_no", parsed.job_no);
   }
   assignIfChanged(update, lead, "name", parsed.name);
-  assignIfChanged(update, lead, "phone_number", parsed.phone_number);
   assignIfChanged(update, lead, "email", parsed.email);
   assignIfChanged(update, lead, "pickup_zip", parsed.pickup_zip);
   assignIfChanged(update, lead, "delivery_zip", parsed.delivery_zip);

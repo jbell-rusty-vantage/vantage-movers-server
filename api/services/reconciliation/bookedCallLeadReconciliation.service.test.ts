@@ -60,7 +60,6 @@ test("booked reconciliation can preview phone/source matched unbooked call lead 
   assert.deepEqual(result.changes.sort(), [
     "lead.job_no",
     "lead.name",
-    "lead.phone_number",
     "lead.source_company",
   ]);
   assert.match(result.warnings.join(" "), /Claiming unassigned call lead source_company as main_site/);
