@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { LEAD_MODELS, LOCAL_TYPES, MOVE_SIZES } from "../../config/domain";
+import { parseFloridaCalendarDate } from "../../utils/easternTime";
 
 /**
  * Shared zod building blocks for the v1 validation modules.
@@ -15,6 +16,16 @@ export const nonEmptyString = z.string().trim().min(1);
 export const optionalString = z.string().trim().optional();
 export const optionalDate = z.coerce.date().optional();
 export const requiredDate = z.coerce.date();
+export const optionalFloridaCalendarDate = z.preprocess((value) => {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  return parseFloridaCalendarDate(value);
+}, z.date().optional());
+export const requiredFloridaCalendarDate = z.preprocess(
+  (value) => parseFloridaCalendarDate(value),
+  z.date(),
+);
 // In Zod v4, `z.number()` (and `z.coerce.number()`) rejects Infinity/NaN by
 // default, so `.finite()` is a deprecated no-op. The helpers below are
 // kept named `finiteNumber` / `moneyAmount` because the *intent* is still

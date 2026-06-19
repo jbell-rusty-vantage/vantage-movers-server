@@ -3,6 +3,7 @@ import {
   finiteNumber,
   objectIdSchema,
   optionalDate,
+  optionalFloridaCalendarDate,
   optionalString,
   requireAtLeastOne,
 } from "./common";
@@ -14,7 +15,7 @@ import {
 
 const cancelledLeadFields = {
   timestamp: optionalDate,
-  cancel_date: optionalDate,
+  cancel_date: optionalFloridaCalendarDate,
   booked_lead: objectIdSchema.optional(),
   lead_id: objectIdSchema.optional(),
   refund_amount: finiteNumber,

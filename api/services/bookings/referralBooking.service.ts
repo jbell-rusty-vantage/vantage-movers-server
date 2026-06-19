@@ -1,3 +1,4 @@
+import { toFloridaTimestamp } from "../../utils/easternTime";
 import type { CreateReferralBookingInput } from "../../validation/v1.validation";
 import { BookedLead } from "../../models/BookedLead";
 import { deriveBookedLeadAgentAllocations, resolveAgentAllocations } from "../agents";
@@ -47,7 +48,7 @@ export async function createReferralBooking(input: CreateReferralBookingInput) {
       session,
     );
     const created = new BookedLead({
-      timestamp: new Date(),
+      timestamp: toFloridaTimestamp(new Date()),
       book_date: input.book_date,
       job_no: jobNo,
       customer_name: customerName,

@@ -3,8 +3,12 @@ import type {
   PopulatedBookedLead,
 } from "../types";
 
+import {
+  formatFloridaCalendarDateIso,
+} from "../../../utils/easternTime";
+
 export function formatDateOnly(value: Date): string {
-  return value.toISOString().slice(0, 10);
+  return formatFloridaCalendarDateIso(value);
 }
 
 export function formatTimestamp(value: Date): string {

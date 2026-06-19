@@ -1,3 +1,4 @@
+import { toFloridaTimestamp } from "../../utils/easternTime";
 import type { CreateLeadlessBookingInput } from "../../validation/v1.validation";
 import { BookedLead } from "../../models/BookedLead";
 import { deriveBookedLeadAgentAllocations, resolveAgentAllocations } from "../agents";
@@ -54,7 +55,7 @@ export async function createLeadlessBooking(input: CreateLeadlessBookingInput) {
         )
       : undefined;
     const created = new BookedLead({
-      timestamp: new Date(),
+      timestamp: toFloridaTimestamp(new Date()),
       book_date: input.book_date,
       job_no: jobNo,
       ...(customerName ? { customer_name: customerName } : {}),

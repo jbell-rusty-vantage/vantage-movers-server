@@ -3,6 +3,7 @@ import {
   type LocalType,
   type SourceCompany,
 } from "../../config/domain";
+import { parseFloridaCalendarDate } from "../../utils/easternTime";
 import { getStateCodeForZip } from "../../utils/location/pickupZipState";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import type { BookedCallLeadReconciliationRowInput } from "../../validation/v1.validation";
@@ -155,10 +156,10 @@ export function parseOptionalDate(
     return undefined;
   }
   const [, month, day, year] = match;
-  const parsed = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
-  if (Number.isNaN(parsed.getTime())) {
+  try {
+    return parseFloridaCalendarDate(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`);
+  } catch {
     warnings.push(`Skipped invalid book_date value "${cleaned}".`);
     return undefined;
   }
-  return parsed;
 }

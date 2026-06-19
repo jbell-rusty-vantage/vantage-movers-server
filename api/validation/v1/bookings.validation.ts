@@ -9,7 +9,7 @@ import {
   optionalDate,
   optionalString,
   requireAtLeastOne,
-  requiredDate,
+  requiredFloridaCalendarDate,
   sourceCompanySchema,
 } from "./common";
 
@@ -41,7 +41,7 @@ function binderTotalMatches(value: {
 
 const bookedLeadFields = {
   timestamp: optionalDate,
-  book_date: requiredDate,
+  book_date: requiredFloridaCalendarDate,
   job_no: nonEmptyString,
   lead_ref: objectIdSchema,
   lead_model: leadModelSchema,

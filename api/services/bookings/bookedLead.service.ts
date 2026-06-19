@@ -6,6 +6,7 @@ import {
   type LocalType,
   type SourceCompany,
 } from "../../config/domain";
+import { toFloridaTimestamp } from "../../utils/easternTime";
 import { BookedLead } from "../../models/BookedLead";
 import { CancelledLead } from "../../models/CancelledLead";
 import type {
@@ -159,7 +160,7 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
       source: canonicalSource,
       agent_allocations,
       total_binder_amount,
-      timestamp: input.timestamp ?? new Date(),
+      timestamp: toFloridaTimestamp(input.timestamp ?? new Date()),
       ...(customer ? { customer: customer._id } : {}),
       ...(customerNameOverride ? { customer_name: customerNameOverride } : {}),
       local,
