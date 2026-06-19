@@ -1,9 +1,11 @@
 import mongoose from "mongoose";
+import { waitUntil } from "@vercel/functions";
 import { getSheetSyncMode } from "../../config/domain";
+import { logger } from "../../logger";
 import { SheetSyncAttempt } from "../../models/SheetSyncAttempt";
 import { SheetSyncJob } from "../../models/SheetSyncJob";
 import { SheetSyncRun } from "../../models/SheetSyncRun";
-import { publishSheetSyncWakeup } from "../sheetSync";
+import { runSheetSyncDrain } from "../sheetSync";
 import { V1ServiceError } from "../v1ServiceError";
 import type {
   SheetSyncJobsQuery,
@@ -113,10 +115,13 @@ export async function getSheetSyncRunDetail(id: string) {
 /**
  * Re-queues terminal jobs to `pending` with an immediate `due_at`, clearing the
  * lease so the next drain claims them. Defaults to `failed` jobs when no filter
- * is supplied. Returns the number actually re-queued and publishes a wake-up so
- * a drain runs promptly.
+ * is supplied. Returns the number actually re-queued and starts an admin drain
+ * so retries run promptly without depending on the Vercel Queue wake-up path.
  */
-export async function retrySheetSyncJobs(input: SheetSyncRetryInput) {
+export async function retrySheetSyncJobs(
+  input: SheetSyncRetryInput,
+  options: { startDrain?: () => void | Promise<void> } = {},
+) {
   const filter: Record<string, unknown> = {};
   if (input.job_ids && input.job_ids.length > 0) {
     filter._id = {
@@ -128,7 +133,7 @@ export async function retrySheetSyncJobs(input: SheetSyncRetryInput) {
 
   const ids = await SheetSyncJob.find(filter).limit(input.limit).select({ _id: 1 }).lean();
   if (ids.length === 0) {
-    return { requeued: 0 };
+    return { requeued: 0, drain_started: false };
   }
 
   const result = await SheetSyncJob.updateMany(
@@ -144,7 +149,18 @@ export async function retrySheetSyncJobs(input: SheetSyncRetryInput) {
     },
   );
 
-  await publishSheetSyncWakeup({ reason: "admin_retry" });
+  if (result.modifiedCount > 0) {
+    const startDrain = options.startDrain ?? startAdminSheetSyncDrain;
+    await startDrain();
+  }
 
-  return { requeued: result.modifiedCount };
+  return { requeued: result.modifiedCount, drain_started: result.modifiedCount > 0 };
+}
+
+function startAdminSheetSyncDrain(): void {
+  waitUntil(
+    runSheetSyncDrain("admin").catch((error) => {
+      logger.error({ err: error, msg: "sheet_sync.admin_retry.drain_failed" });
+    }),
+  );
 }

@@ -100,6 +100,7 @@ test("listSheetSyncJobs builds a filtered, paginated query", async () => {
 test("retrySheetSyncJobs re-queues failed jobs by default and reports the count", async () => {
   let updateFilter: any;
   let updateBody: any;
+  let drainStarted = false;
   const id = new mongoose.Types.ObjectId();
   (SheetSyncJob as any).find = (filter: any) => {
     updateFilter = filter;
@@ -110,27 +111,40 @@ test("retrySheetSyncJobs re-queues failed jobs by default and reports the count"
     return Promise.resolve({ modifiedCount: 1 });
   };
 
-  const result = await retrySheetSyncJobs({ limit: 100 } as any);
+  const result = await retrySheetSyncJobs({ limit: 100 } as any, {
+    startDrain: () => {
+      drainStarted = true;
+    },
+  });
 
   assert.deepEqual(updateFilter, { status: { $in: ["failed"] } });
   assert.equal(updateBody.$set.status, "pending");
   assert.equal(updateBody.$set.created_by, "admin");
   assert.ok("leased_until" in updateBody.$unset);
   assert.equal(result.requeued, 1);
+  assert.equal(result.drain_started, true);
+  assert.equal(drainStarted, true);
 });
 
-test("retrySheetSyncJobs skips queue publishing and observability writes outside production", async () => {
+test("retrySheetSyncJobs starts an admin drain instead of publishing a queue wake-up", async () => {
   process.env.VERCEL = "1";
   process.env.VERCEL_ENV = "preview";
   process.env.SHEET_SYNC_QUEUE_TOPIC = "sheet-sync-events-dev";
+  let drainStarted = false;
 
   const id = new mongoose.Types.ObjectId();
   (SheetSyncJob as any).find = () => chain([{ _id: id }]);
   (SheetSyncJob as any).updateMany = () => Promise.resolve({ modifiedCount: 1 });
 
-  const result = await retrySheetSyncJobs({ limit: 100 } as any);
+  const result = await retrySheetSyncJobs({ limit: 100 } as any, {
+    startDrain: () => {
+      drainStarted = true;
+    },
+  });
 
   assert.equal(result.requeued, 1);
+  assert.equal(result.drain_started, true);
+  assert.equal(drainStarted, true);
   assert.equal(
     getCapturedOperationalEvents().some(
       (event) => event.input.eventKey === "sheet_sync.queue.publish_failed",
@@ -149,5 +163,6 @@ test("retrySheetSyncJobs is a no-op when nothing matches", async () => {
 
   const result = await retrySheetSyncJobs({ statuses: ["cancelled"], limit: 10 } as any);
   assert.equal(result.requeued, 0);
+  assert.equal(result.drain_started, false);
   assert.equal(updateCalled, false);
 });
