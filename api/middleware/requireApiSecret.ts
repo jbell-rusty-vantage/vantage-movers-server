@@ -1,5 +1,9 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
+import {
+  getExtensionUserFromAccessToken,
+  type ExtensionRole,
+} from "../auth/extension";
 import { resolveSourceCompany, type SourceCompany } from "../config/domain";
 import { shouldCaptureAuthEvents } from "../config/domain/observability";
 import { recordOperationalEvent } from "../services/observability";
@@ -16,34 +20,82 @@ type ScopedApiKey = {
   sourceCompanies: SourceCompany[];
 };
 
-export async function requireApiSecret(
+export type VantageAuthContext =
+  | { kind: "secret" }
+  | { kind: "scoped_key"; scopedKeyName: string }
+  | { kind: "user"; userId: string; email: string; role: ExtensionRole };
+
+type RequestWithVantageAuth = Request & {
+  vantageAuth?: VantageAuthContext;
+};
+
+export async function requireVantageAuth(
   req: Request,
   res: Response,
   next: NextFunction,
 ) {
   const expectedSecret = process.env.VANTAGE_API_SECRET?.trim();
   const providedSecret = req.header("x-api-secret")?.trim();
+  const bearerToken = readBearerToken(req);
+  const hasScopedKeys = Boolean(process.env.VANTAGE_SCOPED_API_KEYS?.trim());
 
-  if (!expectedSecret && !process.env.VANTAGE_SCOPED_API_KEYS?.trim()) {
+  if (!expectedSecret && !hasScopedKeys && !bearerToken) {
     await recordAuthEvent(req, {
       level: "error",
       eventKey: "auth.scoped_key.config_invalid",
-      summary: "API secret configuration is invalid.",
-      details: { reason: "no_secret_configured" },
+      summary: "API auth configuration is invalid.",
+      details: { reason: "no_auth_configured" },
       notificationCandidate: true,
     });
     return res.status(500).json({
       ok: false,
-      error: "VANTAGE_API_SECRET or VANTAGE_SCOPED_API_KEYS is not set",
+      error: "VANTAGE_API_SECRET, VANTAGE_SCOPED_API_KEYS, or Bearer auth is not configured",
     });
+  }
+
+  // Fast path: the primary API secret matches. No event is recorded here to
+  // keep the hot path latency-free; observability focuses on scoped keys and
+  // rejections.
+  if (expectedSecret && providedSecret && secretsEqual(providedSecret, expectedSecret)) {
+    setVantageAuth(req, { kind: "secret" });
+    return next();
+  }
+
+  if (bearerToken) {
+    const user = await getExtensionUserFromAccessToken(bearerToken);
+    if (user) {
+      if (user.role === "employee") {
+        await recordAuthEvent(req, {
+          level: "warn",
+          eventKey: "auth.user.forbidden",
+          summary: "Extension employee user denied protected API route.",
+          details: {
+            user_id: user.id,
+            role: user.role,
+            forbidden_reason: "employee_data_route",
+          },
+          notificationCandidate: false,
+          reportable: false,
+        });
+        return res.status(403).json({ ok: false, error: "Forbidden" });
+      }
+
+      setVantageAuth(req, {
+        kind: "user",
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+      });
+      return next();
+    }
   }
 
   if (!providedSecret) {
     await recordAuthEvent(req, {
       level: "warn",
       eventKey: "auth.api_secret.rejected",
-      summary: "Request rejected: missing API secret.",
-      details: { reject_reason: "missing_secret" },
+      summary: "Request rejected: missing API credentials.",
+      details: { reject_reason: "missing_credentials" },
       notificationCandidate: false,
       reportable: false,
     });
@@ -51,13 +103,6 @@ export async function requireApiSecret(
       ok: false,
       error: "Unauthorized",
     });
-  }
-
-  // Fast path: the primary API secret matches. No event is recorded here to
-  // keep the hot path latency-free; observability focuses on scoped keys and
-  // rejections.
-  if (expectedSecret && secretsEqual(providedSecret, expectedSecret)) {
-    return next();
   }
 
   let scopedKeys: ScopedApiKey[];
@@ -131,8 +176,11 @@ export async function requireApiSecret(
     sourceCompany,
   });
 
+  setVantageAuth(req, { kind: "scoped_key", scopedKeyName: matchingKey.name });
   return next();
 }
+
+export const requireApiSecret = requireVantageAuth;
 
 type AuthEventInput = {
   level: "info" | "warn" | "error";
@@ -266,6 +314,19 @@ function isSourceCompanyAllowed(req: Request, key: ScopedApiKey): boolean {
     getString((req.body as Record<string, unknown>).source_company),
   );
   return sourceCompany ? key.sourceCompanies.includes(sourceCompany) : false;
+}
+
+function readBearerToken(req: Request): string | undefined {
+  const authorization = req.header("authorization")?.trim();
+  if (!authorization?.toLowerCase().startsWith("bearer ")) {
+    return undefined;
+  }
+  const token = authorization.slice("bearer ".length).trim();
+  return token || undefined;
+}
+
+function setVantageAuth(req: Request, context: VantageAuthContext): void {
+  (req as RequestWithVantageAuth).vantageAuth = context;
 }
 
 function secretsEqual(provided: string, expected: string): boolean {

@@ -7,6 +7,7 @@ import { withRuntimeDomainOverrides } from "../config/domain";
 import { shouldCaptureHttp5xx } from "../config/domain/observability";
 import { logger as rootLogger } from "../logger";
 import { requireApiSecret } from "../middleware/requireApiSecret";
+import extensionAuthRoutes from "./extension-auth.routes";
 import {
   recordOperationalEvent,
   getObservabilityOverview,
@@ -149,6 +150,7 @@ import {
 
 const router = Router();
 
+router.use(extensionAuthRoutes);
 router.use("/api/v1", requireApiSecret);
 
 type RequestWithLogger = Request & {

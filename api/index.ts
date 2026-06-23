@@ -19,7 +19,7 @@ const app = express();
 const corsOptions: cors.CorsOptions = {
   origin: ["https://vantagequotes.com", "https://www.vantagequotes.com"],
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "x-api-secret"],
+  allowedHeaders: ["Authorization", "Content-Type", "x-api-secret"],
   maxAge: 86400,
   optionsSuccessStatus: 204,
 };
