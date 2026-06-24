@@ -1,6 +1,11 @@
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
+**Primary code:** `api/services/sheetSync/`  
+**Domain terms used:** Sheet Sync, Booking Chain, Cancellation Chain, System of Record, Reporting Sheets, Master Sheets, Operational Event
+
 # Sheet Sync (`sheetSync/`)
 
-**Role:** Mode-aware scheduling layer between Mongo domain writes and Google Sheets reporting. Mongo is authoritative; sheets sync *after* API responses, never the other way around.
+**Role:** Mode-aware scheduling layer between Mongo domain writes and **Reporting Sheets**. **System of Record** is MongoDB; **Sheet Sync** writes **Master Sheets** only — **Source Company Sheets** derive via import queries. Sheets update *after* API responses; a successful response does not mean sheets are updated yet.
 
 **Stack:** Domain services → coordinator/outbox → Vercel Queue wake-up (optional) → drainer → `googleSheets/` writes. Legacy mode skips the outbox and runs sync inline via `waitUntil`.
 
@@ -45,10 +50,10 @@ Cron safety net (every 5 min, queued only)
 
 | `resource` | Entity id field | Typical `operation` examples |
 |------------|-----------------|------------------------------|
-| `source_lead` | `leadId` + `leadModel` (`FormLead` / `CallLead`) | `form_lead.create`, `call_lead.update` |
-| `booked_lead` | `bookingId` | `referral_booking.create` (no source lead) |
-| `booking_chain` | `bookingId` | `booking_chain.create`, `booking.upsert` |
-| `cancellation_chain` | `cancellationId` | `cancellation.create` |
+| `source_lead` | `leadId` + `leadModel` (`FormLead` / `CallLead`) | `form_lead.create`, `call_lead.update`, `call_lead.form_fill.update` |
+| `booked_lead` | `bookingId` | `referral_booking.create` (Referral Booking — no source lead) |
+| `booking_chain` | `bookingId` | **Booking Chain** — `booking_chain.create`, `booking.upsert` |
+| `cancellation_chain` | `cancellationId` | **Cancellation Chain** — `cancellation.create` |
 
 Delete tombstones use separate resources: `delete_source_lead`, `delete_booked_lead`, `delete_cancelled_lead` (enqueued via `enqueueSheetSyncTombstone`, not `FullSheetSyncJob`).
 
@@ -208,7 +213,7 @@ No destructive "heal" that could fight the drainer for the same rows.
 - Do not bypass coordinator helpers for sheet scheduling from domain services.
 - Outbox + domain doc must commit atomically in `queued` mode (`persistSheetSyncIntent` inside txn).
 - Queue publish is best-effort; never fail an API response because publish failed.
-- Sheet row identity is always `Mongo ID` column; `sheet_sync[].row_number` is a hint only.
+- Sheet row identity is always **Lead ID** (`Mongo ID` column); `sheet_sync[].row_number` is a hint only.
 - Delete tombstone must precede hard Mongo delete; tombstone cancels pending upserts for same entity.
 - Tab routing in `jobPlanner.ts` must stay aligned with `googleSheets.service.md` when rules change.
 - Do not reset stuck `processing` jobs to `pending` without fixing root cause — use admin retry or operational runbook (`rules/sheet-sync-process.mdc`).
@@ -224,8 +229,20 @@ No destructive "heal" that could fight the drainer for the same rows.
 | `config/domain/sheetSync.ts` | Mode, topic, priorities, guardrails, coalescing |
 | `models/SheetSync*.ts` | Outbox, run, attempt, lease schemas |
 
+## Related businesslogic
+
+- [`form-lead.service.md`](form-lead.service.md) — Form Lead Ingestion post-save Sheet Sync + ADR-0002 order gap with CRM Posting
+- [`call-lead.service.md`](call-lead.service.md) — Call Lead Ingestion jobs
+- [`bookings.service.md`](bookings.service.md) — Booking Chain jobs
+- [`cancelledLead.service.md`](cancelledLead.service.md) — Cancellation Chain jobs
+- [`googleSheets.service.md`](googleSheets.service.md) — tab routing, projections, Master vs Source Company Sheet writes
+
+## Related rules
+
+- [`sheet-sync-process.mdc`](../rules/sheet-sync-process.mdc) — outbox architecture, headers, backfill runbooks, failure semantics
+
 ## When to read this vs other docs
 
 - **This file:** scheduling modes, outbox/queue/collections, coordinator API, drainer lifecycle, domain integration.
 - **`googleSheets.service.md`:** row content, tab routing, upsert/delete mechanics.
-- **`rules/sheet-sync-process.mdc`:** canonical headers, backfill/cleanup runbooks, failure semantics in depth.
+- **`rules/sheet-sync-process.mdc`:** software-layer process details in depth.

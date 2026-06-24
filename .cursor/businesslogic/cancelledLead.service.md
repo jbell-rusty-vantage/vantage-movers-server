@@ -1,6 +1,11 @@
-# Cancelled Lead Service (`cancelledLead.service.ts`)
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
+**Primary code:** `api/services/cancellations/cancelledLead.service.ts`, `cancellationResolver.ts`  
+**Domain terms used:** Cancellation, Booking, Cancellation Chain, Sheet Sync, Referral Booking, Agent, System of Record
 
-**Source of truth:** Mongo `cancelled_leads`. Cancellations attach to an existing lead-attached booking; they snapshot booking/customer/source fields at create time so reporting stays stable if the booking is later mutated or deleted.
+# Cancelled Lead Service
+
+**System of Record:** MongoDB `cancelled_leads`. **Cancellations** attach to an existing lead-attached **Booking**; they snapshot booking/customer/source fields at create time so reporting stays stable if the booking is later mutated or deleted.
 
 **Three modules — one lifecycle:**
 
@@ -10,7 +15,7 @@
 | `cancellationResolver.ts` | Resolve target booking + enforce lead/booking match invariants |
 | `cancellationMirror.service.ts` | Stamp/clear `cancelled` on linked form/call lead (see dedicated doc) |
 
-Owner reporting via sheet sync: `cancellation_chain` refreshes booking + source lead rows, then the `Cancelled Deals` row. Details: `googleSheets.service.md`, `rules/sheet-sync-process.mdc`.
+Owner reporting via **Sheet Sync**: **Cancellation Chain** refreshes booking + source lead rows, then the `Cancelled Deals` row. Details: [`googleSheets.service.md`](googleSheets.service.md), [`sheetSync.service.md`](sheetSync.service.md).
 
 ## HTTP entry points
 
@@ -57,7 +62,7 @@ finalizeSheetSync → syncCancellationChainById
 
 - **404** when booking missing
 - **409** when `booking.cancelled` already set
-- **409** for referral bookings or bookings missing `lead_ref`/`lead_model`
+- **409** for **Referral Bookings** or bookings missing `lead_ref`/`lead_model`
 
 Create repeats the referral guard after resolve (defense in depth).
 
@@ -112,11 +117,11 @@ Unwinds all state the cancellation owns. Order matters for sheet/Mongo consisten
 
 **404** when cancellation missing. Missing `leadId` on old rows → lead clear is a no-op (preserved behavior).
 
-## Sheet sync
+## Sheet Sync
 
 | Path | Resource | Operation |
 |------|----------|-----------|
-| Create | `cancellation_chain` | `cancelled_lead.create` |
+| Create | `cancellation_chain` | **Cancellation Chain** — `cancelled_lead.create` |
 | Update | `cancellation_chain` | `cancelled_lead.update` |
 | Delete | `delete_cancelled_lead` tombstone + follow-up | `delete_cancelled_lead` |
 
@@ -136,7 +141,7 @@ Delete tombstone coalesces with pending `cancellation_chain` upserts for the sam
 ## Invariants
 
 - **One cancellation per booking** — enforced at resolve/create (`booking.cancelled` must be unset).
-- **Lead-attached bookings only** — referral bookings blocked (409); same as booking update/delete limits.
+- **Lead-attached Bookings only** — **Referral Bookings** blocked (409); same as booking update/delete limits.
 - **Traceability** — every cancellation stores `booked_lead`, `lead_ref`, `lead_model` for admin search and sheet linkage.
 - **Do not bypass** `resolveBookedLeadForCancellation`, mirror helpers, or sheet-sync txn scheduling.
 - Cancellation create/update/delete are high-risk; add focused tests when changing unwind order or referral guards.

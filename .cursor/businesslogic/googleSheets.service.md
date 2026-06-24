@@ -1,6 +1,11 @@
-# Google Sheets Service (`googleSheets/googleSheets.service.ts`)
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
+**Primary code:** `api/services/googleSheets/googleSheets.service.ts` (facade: `api/services/googleSheets.service.ts`)  
+**Domain terms used:** Sheet Sync, Reporting Sheets, Master Sheets, Source Company Sheet, Duplicate Lead, Bad Lead, Lead ID
 
-**Role:** Projects Mongo lead/booking/cancellation documents into owner-facing Google Sheets. Mongo is authoritative; sheets are reporting only.
+# Google Sheets Service
+
+**Role:** Projects Mongo Form Lead, Call Lead, Booking, and Cancellation documents into **Reporting Sheets**. **System of Record** is MongoDB; sheets are eventually consistent reporting only — never authoritative for lead state, CPL, or CRM.
 
 **Facade:** `api/services/googleSheets.service.ts` re-exports this module. Callers include legacy sheet sync (`sheetSyncSourceLookup`) and the queued drainer (`jobPlanner` mirrors the same tab routing).
 
@@ -8,10 +13,10 @@
 
 | Function | Entity | Spreadsheet(s) |
 |----------|--------|----------------|
-| `syncFormLeadToSheets` | Form lead | Master Leads (+ optional source sheet) |
-| `syncCallLeadToSheets` | Call lead | Master Leads (+ optional source sheet) |
-| `syncBookedLeadToSheets` | Booked lead | Master Booked |
-| `syncCancelledLeadToSheets` | Cancellation | Master Booked |
+| `syncFormLeadToSheets` | Form Lead | **Master Leads** (+ optional Source Company Sheet) |
+| `syncCallLeadToSheets` | Call Lead | **Master Leads** (+ optional Source Company Sheet) |
+| `syncBookedLeadToSheets` | Booking | **Master Booked** |
+| `syncCancelledLeadToSheets` | Cancellation | **Master Booked** |
 | `deleteFormLeadFromSheets` | Form lead | Primary tab + `Bad Leads` if present |
 | `deleteCallLeadFromSheets` | Call lead | Primary tab only |
 | `deleteBookedLeadFromSheets` | Booking | `Booked Deals` |
@@ -24,22 +29,22 @@ All sync functions return `SheetSyncEntry[]` (per-target row number, status, err
 
 ### Form leads (`syncFormLeadToSheets` / `deleteFormLeadFromSheets`)
 
-| `duplicate` | `bad_lead` | Primary tab(s) |
-|-------------|------------|----------------|
-| `false` | unset | `Forms` |
-| `true` | unset | `Duplicates` |
-| either | set | primary tab **+** `Bad Leads` |
+| Duplicate Lead? | Bad Lead? | Primary tab(s) |
+|-----------------|-----------|----------------|
+| no | no | `Forms` |
+| yes | no | `Duplicates` |
+| either | yes | primary tab **+** `Bad Leads` |
 
 When `bad_lead` is cleared on sync, explicitly deletes the row from `Bad Leads` (master only).
 
 ### Call leads (`callLeadTargetBase`)
 
-| `duplicate` | Tab |
-|-------------|-----|
-| `false` | `Calls` |
-| `true` | `Duplicate Calls` |
+| Duplicate Lead? | Tab |
+|-----------------|-----|
+| no | `Calls` |
+| yes | `Duplicate Calls` |
 
-Same `CALL_SHEET_HEADERS` for both; routing keeps duplicate spend out of the main Calls tab.
+Same `CALL_SHEET_HEADERS` for both; routing keeps Duplicate Lead spend out of the main Calls tab. **Bad Call** workflow is planned only — tab name exists in config; no mark-bad API yet.
 
 ### Bookings / cancellations
 
@@ -50,9 +55,9 @@ Header constants live in `api/config/domain/sheets.ts`. Row shape built by `proj
 
 ## Write targets (`getLeadTargets` in `targets.ts`)
 
-Every lead sync **always** writes Master Leads first.
+Every lead sync **always** writes **Master Sheets** first.
 
-Source-company spreadsheets (TBM, Top10, etc.) are appended **only** when `WRITE_SOURCE_LEAD_SHEETS=true` (`shouldWriteSourceLeadSheets()`). Default is **master-only** — per-source sheets are formula derivatives of master. Target plumbing (source target keys, tabs, delete fallback) stays in code either way.
+**Source Company Sheets** (TBM, Top10, etc.) are appended **only** when `WRITE_SOURCE_LEAD_SHEETS=true` (`shouldWriteSourceLeadSheets()`). Default is **master-only** — Source Company Sheets derive rows from Master via sheet import queries per glossary. Target plumbing stays in code either way.
 
 `not_provided` has no source container. `main_site` has no bad tabs on source sheets.
 
@@ -61,7 +66,7 @@ Source-company spreadsheets (TBM, Top10, etc.) are appended **only** when `WRITE
 For each target:
 
 1. Ensure the **single tab being written** exists with correct headers (not full sibling tab provisioning — that is `ensureAllConfiguredSheetTabs`).
-2. **Upsert by Mongo ID:** lookup `Mongo ID` column; update row if found, else append.
+2. **Upsert by Lead ID:** lookup `Mongo ID` column; update row if found, else append.
 3. Use `document.sheet_sync[].row_number` when still valid (verified before update).
 4. Per-target failures are captured in results; other targets still attempt.
 
@@ -107,7 +112,16 @@ Form delete also attempts `master_bad_leads`. Call delete uses duplicate-aware p
 | `sheetSync/` | Scheduling (legacy / queued outbox + drainer) |
 | `config/domain/sheets.ts` | Tab names and header arrays |
 
+## Related businesslogic
+
+- [`sheetSync.service.md`](sheetSync.service.md) — scheduling, outbox, drainer (invokes this module)
+- [`form-lead.service.md`](form-lead.service.md), [`call-lead.service.md`](call-lead.service.md) — lead tab routing invariants
+
+## Related rules
+
+- [`sheet-sync-process.mdc`](../rules/sheet-sync-process.mdc) — outbox modes, drainer, quotas, coalescing, tombstones
+
 ## When to read this vs sheet-sync docs
 
 - **This file:** what gets written where, and sync/delete entry points.
-- **`.cursor/rules/sheet-sync-process.mdc`:** outbox modes, drainer, quotas, coalescing, tombstones.
+- **`sheetSync.service.md` + `sheet-sync-process.mdc`:** scheduling and software-layer process.

@@ -1,6 +1,11 @@
-# Catalog Service (`catalog/catalog.service.ts`)
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
+**Primary code:** `api/services/catalog/catalog.service.ts`  
+**Domain terms used:** Agent, Active Agent, Merchant, Active Merchant, Booking, Admin Dashboard
 
-**Source of truth:** Mongo `agents` and `merchants` collections — admin-managed reference data for booking allocation and merchant fields.
+# Catalog Service
+
+**System of Record:** MongoDB `agents` and `merchants` collections — **Admin Dashboard** reference data for **Agent Allocation** and **Merchant** fields on Bookings.
 
 **Role:** Unified CRUD and name resolution for both catalogs. Does not create bookings, sync sheets, or auto-provision agents on standard booking paths.
 

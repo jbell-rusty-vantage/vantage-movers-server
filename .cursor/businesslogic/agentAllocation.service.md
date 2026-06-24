@@ -1,6 +1,11 @@
-# Agent Allocation Service (`agentAllocation.service.ts`)
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
+**Primary code:** `api/services/agents/agentAllocation.service.ts`  
+**Domain terms used:** Agent Allocation, Agent, Active Agent, Binder, Booking, Cancellation
 
-**Source of truth:** Mongo `agents` catalog (reference data) + denormalized snapshots on `BookedLead.agent_allocations`. Reporting reads the booking snapshot, not live agent renames.
+# Agent Allocation Service
+
+**System of Record:** MongoDB `agents` catalog (reference data) + denormalized snapshots on `BookedLead.agent_allocations`. **Analytics** reads the booking snapshot, not live agent renames.
 
 **Role:** Resolve agent names to catalog ids, split binder credit across agents, validate totals, and merge allocation updates. Does not create bookings or sync sheets by itself.
 
@@ -14,7 +19,7 @@ Each entry:
 | `agent_name_snapshot` | Canonical `Agent.name` at resolve time |
 | `binder_amount` | Credit attributed to that agent (≥ 0) |
 
-Schema requires **at least one** allocation. **Primary agent** = first array element (`primaryAgentName`, cancellation snapshot, `BookedLead` virtuals).
+Schema requires **at least one** **Agent Allocation**. **Primary agent** = first array element (`primaryAgentName`, **Cancellation** snapshot, `BookedLead` virtuals).
 
 ## Name normalization (`agentName.ts`)
 

@@ -1,12 +1,17 @@
-# RingCentral Call Lead Qualification (`ringcentral/`)
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
+**Primary code:** `api/services/ringcentral/`  
+**Domain terms used:** Call Qualification, Call Lead Ingestion, Call Lead, Duplicate Lead, Caller Match Key, Operational Event, Main Site
 
-**Role:** Decide which RingCentral inbound calls qualify as billable call leads, then promote them through one shared ingest path. Mongo `call_leads` are created only via `ingestRingCentralQualifiedCall` — never from routes, webhooks, cron, or scripts directly.
+# RingCentral Call Lead Qualification
 
-**Hybrid strategy:** Real-time **webhook** session tracking (best-effort duration) + scheduled **Call Log** sync (authoritative records). Both paths build a `RingCentralQualifiedCall` and hand it to ingest so qualification rules, idempotency, duplicates, and write mode stay identical.
+**Role:** **Call Qualification** rules decide which Ring Central inbound calls become Call Leads, then promote them through one shared ingest path. Mongo `call_leads` are created only via `ingestRingCentralQualifiedCall` — never from routes, webhooks, cron, or scripts directly.
 
-**Source of truth for leads:** Mongo `call_leads` (when write mode is `create`). RingCentral Call Log is authoritative for cron qualification timing; webhook candidates are operational state until terminal + ingest.
+**Hybrid strategy:** Real-time **webhook** session tracking (best-effort duration) + scheduled **Call Log sync** (polling safety net). Both paths build a `RingCentralQualifiedCall` and hand it to ingest so **Call Qualification**, idempotency, Duplicate Lead classification, and write mode stay identical.
 
-## Core qualification rule
+**System of Record:** MongoDB `call_leads` (when write mode is `create`). Ring Central Call Log is authoritative for cron qualification timing; webhook candidates are operational state until terminal + ingest.
+
+## Core **Call Qualification** rule
 
 Shared constant: `CALL_LEAD_MINIMUM_ANSWERED_SECONDS = 120` (`call-candidate-evaluator.ts`).
 
@@ -20,7 +25,7 @@ A call qualifies when **all** are true:
 | Duration | `answeredAt` → `terminalAt` (or `now` if still live) ≥ 120s | `duration` / `durationMs` / leg max ≥ 120s |
 | Caller phone | Normalized `from` present | Caller from inbound leg / record `from` |
 
-**Inbound mapping:** `call-lead-sources.ts` — four toll-frees → `sourceLabel` + `sourceCompany` (`main_site`, `top10_leads`, `tbm_leads`, `tbm_prime_leads`). Filter in code after account-wide webhook subscription (queue/IVR legs may use non-toll-free `to` numbers).
+**Inbound mapping:** `call-lead-sources.ts` — four toll-frees → `sourceLabel` + **Source Company** (`main_site`, `top10_leads`, `tbm_leads`, `tbm_prime_leads`). Filter in code after account-wide webhook subscription (queue/IVR legs may use non-toll-free `to` numbers).
 
 **Party semantics:** On inbound candidate events, `from` = customer caller, `to` = RingCentral number/queue. Telephony sessions have multiple parties — qualify on **party direction** and aggregate at session level for webhooks.
 
@@ -116,8 +121,8 @@ Each run:
    └─ already lead_created / lead_created_duplicate / shadow_recorded → skipped_already_processed
 
 2. classifyRingCentralCallLeadDuplicate (ringcentral-duplicate-guard.ts)
-   └─ same caller phone + source within RINGCENTRAL_DUPLICATE_WINDOW_HOURS (default 24h)
-      excluding current telephonySessionId; only matches non-duplicate prior leads
+   └─ same Caller Match Key (source + phone) within ±90 days of call timestamp
+      excluding current telephonySessionId; only matches non-duplicate prior Call Leads
 
 3. resolveRingCentralLeadWriteMode (ringcentral-config.ts)
    └─ create | shadow | dry_run
@@ -138,7 +143,7 @@ Each run:
 | `action` | Meaning |
 |----------|---------|
 | `lead_created` | New non-duplicate call lead |
-| `lead_created_duplicate` | Lead created with `duplicate: true`, `cpl: 0` |
+| `lead_created_duplicate` | Call Lead created with Duplicate Lead flag, `cpl: 0` |
 | `shadow_recorded` | Shadow collection write |
 | `dry_run` | Ledger recorded, no lead |
 | `skipped_already_processed` | Idempotent skip |
@@ -148,9 +153,11 @@ Each run:
 | Concern | Mechanism | Purpose |
 |---------|-----------|---------|
 | **Idempotency** | `ringcentral_processed_calls` + unique sparse `ringcentral.telephony_session_id` on `call_leads` | Same call (webhook + cron, or double webhook) must not insert twice |
-| **Business duplicate** | `classifyRingCentralCallLeadDuplicate` | Different call, same caller+source within window → `duplicate: true`, zero CPL |
+| **Business Duplicate Lead** | `classifyRingCentralCallLeadDuplicate` (90-day window per glossary) | Different call, same caller+source within ±90 days → Duplicate Lead, zero CPL |
 
-Duplicate leads still persist and sync to `Duplicate Calls` tab (see `call-lead.service.md`).
+Duplicate Call Leads still persist and **Sheet Sync** to `Duplicate Calls` tab (see [`call-lead.service.md`](call-lead.service.md)).
+
+**Config note:** `duplicateWindowHours` in `ringcentral-config.ts` (`RINGCENTRAL_DUPLICATE_WINDOW_HOURS`, default 24) is debug metadata only — not used by the duplicate guard (hardcoded 90 days).
 
 ### Operational events
 
@@ -164,11 +171,11 @@ Duplicate leads still persist and sync to `Duplicate Calls` tab (see `call-lead.
 
 ## Invariants
 
-- Never create RingCentral `call_leads` outside `ingestRingCentralQualifiedCall`.
-- Never bypass `evaluateRingCentralCallCandidate` / `vetRingCentralCallLogRecord` for the 120s rule.
+- Never create Ring Central Call Leads outside `ingestRingCentralQualifiedCall` (**Call Lead Ingestion** gate).
+- Never bypass `evaluateRingCentralCallCandidate` / `vetRingCentralCallLogRecord` for the 120s **Call Qualification** rule.
 - Webhook ingest requires **qualified + terminal** session; cron ingest uses finalized Call Log duration.
-- Target-number gating always uses `resolveRingCentralInboundSource` — do not hardcode source companies in routes.
-- Analytics reconcile (`analytics-reconcile.service.ts`) is count-level comparison only — **must not** create leads.
+- Target-number gating always uses `resolveRingCentralInboundSource` — do not hardcode Source Companies in routes.
+- **Analytics** reconcile (`analytics-reconcile.service.ts`) is count-level comparison only — **must not** create Call Leads.
 - RingCentral Mongo collections use `_test` suffix unless `RINGCENTRAL_COLLECTION_MODE=production`.
 
 ## Debug / local tooling
@@ -191,10 +198,10 @@ Duplicate leads still persist and sync to `Duplicate Calls` tab (see `call-lead.
 | `ringcentral-config.ts` | Feature flags, write mode, sync windows |
 | `processed-calls-store.ts` | Ingest idempotency ledger |
 | `shadow-call-leads-store.ts` | Shadow-mode staging |
-| `leads/callLead.service.ts` | `createRingCentralCallLead` — Mongo + sheet sync |
-| `call-lead.service.md` | Call lead create semantics, CPL, sheet tabs |
-| `rules/ringcentral-integration.mdc` | Env, webhooks, cron wiring |
-| `rules/ringcentral-call-lead-candidates.mdc` | Pipeline boundaries |
+| `leads/callLead.service.ts` | `createRingCentralCallLead` — Mongo + Sheet Sync |
+| [`call-lead.service.md`](call-lead.service.md) | Call Lead create semantics, CPL, sheet tabs |
+| [`rules/ringcentral-integration.mdc`](../rules/ringcentral-integration.mdc) | Env, webhooks, cron wiring |
+| [`rules/ringcentral-call-lead-candidates.mdc`](../rules/ringcentral-call-lead-candidates.mdc) | Pipeline boundaries |
 
 ## Tests
 

@@ -53,15 +53,16 @@ Production API: https://vantage-movers-main-server.vercel.app
 
 **Not duplicated here (yet):** call lead enrichment — still lives in `rules/*.mdc` and `docs/`.
 
-**Relationship to `rules/`:**
+**Relationship to platform docs and `rules/`:**
 
-| Layer | Audience | Granularity |
-|-------|----------|-------------|
-| `businesslogic/*.md` | One service / integration surface | Compact reference for that file |
-| `rules/*.mdc` | Cross-cutting workflows & architecture | Broader, glob-triggered in Cursor |
-| `docs/` | Owner specs, showcase, implementation plans | Long-form human docs |
+| Layer | Location | Contains |
+|-------|----------|----------|
+| **Domain language** | [`../CONTEXT.md`](../CONTEXT.md) + [`../docs/adr/`](../docs/adr/) | Platform glossary — Form Lead, Sheet Sync, CRM Posting, etc. Canonical terms for all repos. |
+| **Business logic** | `businesslogic/*.service.md` | How owner rules manifest in each service. **Uses glossary terms from root `CONTEXT.md`; links — does not redefine.** |
+| **Software logic** | `rules/*.mdc` | Folder ownership, thin routes, TEST_MODE, outbox/drainer, TypeScript/testing. |
+| **Long-form human docs** | `docs/` | Owner specs, showcase, implementation plans |
 
-Prefer updating the relevant `businesslogic` file when changing a single service; update `rules/business-logic.mdc` or workflow rules when invariants span many modules.
+Prefer updating the relevant `businesslogic` file when changing a single service; update [`rules/business-logic.mdc`](rules/business-logic.mdc) or workflow rules when invariants span many modules. Terminology changes belong in root [`CONTEXT.md`](../CONTEXT.md), not duplicated here.
 
 ---
 
@@ -113,8 +114,13 @@ Used by Cursor cloud agent / local agent environments (`environment.json`).
 ## Adding a new `businesslogic` doc
 
 1. Read the target service and its direct helpers (duplicate, scope, sheet sync, etc.).
-2. Create `businesslogic/{name}.service.md` with: role, entry points, main flows, invariants, sheet/integration routing, related modules.
+2. Create `businesslogic/{name}.service.md` with the standard header block:
+   - **Platform glossary** → [`../CONTEXT.md`](../CONTEXT.md)
+   - **ADRs** → [`../docs/adr/`](../docs/adr/) (link relevant ADRs)
+   - **Primary code** → actual `api/services/...` path
+   - **Domain terms used** → 2–5 bullets from glossary (link, don't define)
+   - Then: triggers, invariants, Sheet Sync job types, cross-links, related rules
 3. Add a row to the table in this file.
-4. If the change affects cross-cutting invariants, patch `rules/business-logic.mdc` or the relevant workflow rule.
+4. If the change affects cross-cutting invariants, patch [`rules/business-logic.mdc`](rules/business-logic.mdc) or the relevant workflow rule.
 
 Keep each doc **compact** (roughly one screen to a few screens). Link to `rules/` for process details already documented there.

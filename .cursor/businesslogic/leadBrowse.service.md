@@ -1,6 +1,11 @@
-# Lead Browse (`search/formLeadBrowse.service.ts`, `search/callLeadBrowse.service.ts`)
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
+**Primary code:** `api/services/search/formLeadBrowse.service.ts`, `callLeadBrowse.service.ts`, `leadBrowseShared.ts`  
+**Domain terms used:** Form Lead, Call Lead, Lead ID, Admin Dashboard (extension search workspace)
 
-**Role:** Read-only **paginated list/browse** for the Granot extension Search workspace. Every filter is optional — empty query returns the latest leads. Populates booking + cancellation refs for attachment chips without extra round trips.
+# Lead Browse
+
+**Role:** Read-only **paginated list/browse** for the Granot extension Search workspace. Every filter is optional — empty query returns the latest leads. Populates Booking + Cancellation refs for attachment chips without extra round trips.
 
 **Shared helpers:** `search/leadBrowseShared.ts` (filter builders, summary mappers, populate selects).
 

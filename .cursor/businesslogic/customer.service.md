@@ -1,8 +1,13 @@
-# Customer Service (`customers/`)
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
+**Primary code:** `api/services/customers/`  
+**Domain terms used:** Customer, Booking, Form Lead, Call Lead, System of Record
 
-**Source of truth:** Mongo `customers` collection. Bookings reference customers via `BookedLead.customer` (`ObjectId`); denormalized `customer_name` may also live on the booking.
+# Customer Service
 
-**Role:** Route-facing CRUD plus booking-time upsert helpers. Customers are not created from form/call lead intake alone — linkage happens during booking (or manual admin CRUD).
+**System of Record:** MongoDB `customers` collection. Bookings reference **Customers** via `BookedLead.customer` (`ObjectId`); denormalized `customer_name` may also live on the Booking.
+
+**Role:** Route-facing CRUD plus booking-time upsert helpers. **Customers** are not created from Form Lead or Call Lead Ingestion alone — linkage happens during Booking (or manual **Admin Dashboard** CRUD).
 
 ## Module split
 

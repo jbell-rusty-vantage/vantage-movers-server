@@ -1,6 +1,11 @@
-# Form Lead Search (`search/formLeadSearch.service.ts`)
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0003 Lead ID / ref_no](../../../docs/adr/0003-lead-id-granot-leadno-ref-no-contract.md)  
+**Primary code:** `api/services/search/formLeadSearch.service.ts`  
+**Domain terms used:** Form Lead, Lead ID, CRM Lead Reference, Tracking Reference, Duplicate Lead, Form Lead Enrichment
 
-**Role:** Read-only **identity resolution** for form leads — find one lead from partial identifiers with scored confidence and explicit ambiguity handling. Backs the Granot extension “smart search” and Granot CSV sync fallback matching.
+# Form Lead Search
+
+**Role:** Read-only **identity resolution** for Form Leads — find one lead from partial identifiers with scored confidence and explicit ambiguity handling. Backs Granot extension smart search and Granot CSV sync fallback matching (when `ref_no` is not a **Lead ID**).
 
 **Not the same as:**
 
@@ -20,7 +25,7 @@
 | `ref_no`, `name`, `email`, `phone_number` | At least one required |
 | `first_name`, `last_name` | Accepted by schema but **not used** by search logic today |
 | `limit` | 1–25, default 10 |
-| `include_duplicates` | Default `false` — excludes `duplicate: true` quarantine rows |
+| `include_duplicates` | Default `false` — excludes **Duplicate Lead** quarantine rows |
 
 ## Response status
 
@@ -46,7 +51,7 @@ normalize input → build candidate $or filter → Mongo find (newest first, lim
 
 | Field | Rule |
 |-------|------|
-| `ref_no` | Trim; ignore `"not provided"` (case-insensitive) |
+| `ref_no` | Trim; ignore `"not provided"` (case-insensitive) — may be **Tracking Reference** or **CRM Lead Reference** depending on origin |
 | `name` | Trim, collapse whitespace, lowercase |
 | `email` | Trim, lowercase (`looseEmailString` at API — not strict RFC) |
 | `phone_number` | Trim; derive `phone_digits` (digits only) for matching |
@@ -87,12 +92,12 @@ Confidence is informational; **`found` vs `ambiguous` is score-tie only**.
 
 | Caller | Usage |
 |--------|-------|
-| Granot CSV sync (`granotCrmCsv/sync.service.ts`) | Fallback when `ref_no` is not a Mongo ObjectId — phone + email + name; `ambiguous` → sync conflict |
+| Granot CSV sync (`granotCrmCsv/sync.service.ts`) | Fallback when `ref_no` is not a **Lead ID** (Mongo ObjectId) — phone + email + name; `ambiguous` → sync conflict |
 
 ## Invariants
 
-- **Read-only** — never mutate Mongo or trigger sheet sync.
-- Duplicate exclusion is **search-only**; browse lists include duplicates unless filtered elsewhere.
+- **Read-only** — never mutate Mongo or trigger **Sheet Sync**.
+- Duplicate exclusion is **search-only**; browse lists include Duplicate Leads unless filtered elsewhere.
 - Do not loosen ambiguity rules for quoted/extension updates without owner sign-off.
 - Scoring runs in memory after a broad `$or` pull — changing weights or tie logic affects extension + CSV sync.
 

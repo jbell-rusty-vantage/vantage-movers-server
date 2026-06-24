@@ -1,8 +1,13 @@
-# Booked Call Lead Reconciliation (`reconciliation/bookedCallLeadReconciliation.service.ts`)
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
+**Primary code:** `api/services/reconciliation/bookedCallLeadReconciliation.service.ts`  
+**Domain terms used:** Call Lead Enrichment, Booking Chain, Sheet Sync, Job Number, Granot CRM, System of Record
 
-**Role:** Apply Granot **Booked Jobs** CRM row data to existing Vantage **call leads** and **bookings** — refresh fields from CRM without creating bookings or re-linking leads.
+# Booked Call Lead Reconciliation
 
-**Source of truth:** Mongo `call_leads` and `booked_leads`. CRM rows are an enrichment/reconciliation input, not authoritative for linkage. This service does **not** create bookings; booking creation stays in `bookings/` (`bookings.service.md`).
+**Role:** Apply Granot **Booked Jobs** CRM row data to existing Vantage **Call Leads** and **Bookings** — refresh fields from CRM without creating Bookings or re-linking leads. Distinct from **Call Lead Enrichment** (Follow Up Estimates path).
+
+**System of Record:** MongoDB `call_leads` and `booked_leads`. Granot CRM rows are an enrichment/reconciliation input, not authoritative for linkage. This service does **not** create Bookings; booking creation stays in [`bookings.service.md`](bookings.service.md).
 
 **Facade:** `api/services/bookedCallLeadReconciliation.service.ts` re-exports this folder for routes. New code should import from `api/services/reconciliation/`.
 
@@ -19,7 +24,7 @@ Batch schema: `bookedCallLeadReconciliationBatchSchema` (1–100 rows). Row shap
 
 `granotCrmCsv/sync.service.ts` routes **call** rows from `csv_kind: "booked"` through this service (`processBookedCallRow`). Form rows (`ref_no` is Mongo ObjectId) use the form-lead path instead. `apply: false` → preview; `apply: true` → sync.
 
-Follow-Up Estimates CSV rows use **call lead enrichment** (`callLeadEnrichment.service.ts`), not this service — unless a row is passed here with `prior: "5"` (see row eligibility below).
+Follow-Up Estimates CSV rows use **Call Lead Enrichment** (`callLeadEnrichment.service.ts`), not this service — unless a row is passed here with `prior: "5"` (see row eligibility below).
 
 ## Row parsing (`bookedCallLeadRows.ts`)
 

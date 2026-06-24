@@ -73,6 +73,7 @@
     "bbb:apify-scrape-seed": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/bbb/apify-scrape-and-seed-bbb-testimonials.ts",
     "bbb:seed-testimonials": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/bbb/seed-bbb-testimonials.ts",
     "call-leads:create-best-relocation": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/create-best-relocation-call-leads.ts",
+    "dev_ops:strip-markdown": "node ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/strip-markdown-to-txt.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --import ./scripts/test-setup.ts --test \"api/**/*.test.ts\""
   },

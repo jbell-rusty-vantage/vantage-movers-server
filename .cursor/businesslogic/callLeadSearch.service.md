@@ -1,6 +1,11 @@
-# Call Lead Search (`search/callLeadSearch.service.ts`)
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
+**Primary code:** `api/services/search/callLeadSearch.service.ts`  
+**Domain terms used:** Call Lead, Caller Match Key, Job Number, Duplicate Lead, Form Fill
 
-**Role:** Read-only **multi-criteria lookup** for call leads — returns up to N matching summaries sorted newest-first. Simpler than form search: no scoring, no `found`/`ambiguous` status.
+# Call Lead Search
+
+**Role:** Read-only **multi-criteria lookup** for Call Leads — returns up to N matching summaries sorted newest-first. Simpler than form search: no scoring, no `found`/`ambiguous` status.
 
 **Not the same as:**
 
@@ -8,7 +13,7 @@
 |--------|---------|
 | `leadBrowse.service.md` | Paginated browse (`GET /call-leads`) with `q`, attachment filters, population |
 | `adminSearch.service.md` | Admin cross-resource typeahead |
-| RingCentral ingest | Creates call leads; does not use this search |
+| Ring Central **Call Lead Ingestion** | Creates Call Leads; does not use this search |
 
 **Legacy import:** `api/services/callLeadSearch.service.ts` re-exports this file. Prefer `api/services/search`.
 
@@ -43,7 +48,7 @@ Each provided field adds a clause; **multiple fields combine with `$or`** (match
 
 If **no** usable fields after normalization → `{ _id: { $exists: false } }` (empty result set).
 
-Does **not** filter `duplicate` — duplicate and non-duplicate call leads can both appear.
+Does **not** filter Duplicate Leads — duplicate and non-duplicate Call Leads can both appear.
 
 Sort: `{ createdAt: -1 }`.
 

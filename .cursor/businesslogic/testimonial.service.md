@@ -1,6 +1,10 @@
-# Testimonial Service (`testimonials/testimonial.service.ts`)
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**Primary code:** `api/services/testimonials/testimonial.service.ts`  
+**Domain terms used:** Main Site (marketing consumer)
 
-**Source of truth:** Mongo `testimonials` collection — curated review content for the public marketing site.
+# Testimonial Service
+
+**System of Record:** MongoDB `testimonials` collection — curated review content for the public marketing site (**Main Site** consumer).
 
 **Role:** Read-only list API for published reviews. **No create/update/delete** in this service; documents are loaded externally (scripts/ops) using shared helpers.
 

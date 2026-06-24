@@ -1,84 +1,107 @@
-# Call Lead Service (`callLead.service.ts`)
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
+**Primary code:** `api/services/leads/callLead.service.ts`  
+**Domain terms used:** Call Lead, Call Lead Ingestion, Duplicate Lead, Form Fill, CPL, Sheet Sync, Caller Match Key, Lead ID
 
-**Source of truth:** Mongo `call_leads`. Owner reporting via sheet sync (Master Leads + optional source sheets).
+# Call Lead Service
 
-**Two create paths** — same collection, different origin and duplicate rules:
+**System of Record:** MongoDB `call_leads`. Owner reporting via **Sheet Sync** → **Master Sheets**.
 
-| Function | Caller | Duplicate flag | CPL |
+**Two create paths** — same collection, different origin and Duplicate Lead rules:
+
+| Function | Caller | Duplicate Lead | CPL |
 |----------|--------|----------------|-----|
 | `createCallLead` | `POST /api/v1/call-leads` (manual, Invoca, tests) | always `false` (schema default) | `getCplForSource(source, local)` |
-| `createRingCentralCallLead` | RingCentral ingest only | passed in by ingest | `0` when duplicate, else source CPL |
+| `createRingCentralCallLead` | **Call Lead Ingestion** (Ring Central) only | passed in by ingest | `0` when Duplicate Lead, else source CPL |
 
-RingCentral qualification + ingest live in `ringcentral-call-lead-qualification.service.md`. Duplicate classification is in `ringcentral-duplicate-guard.ts`; promotion gate is `ringcentral-call-lead-ingest.service.ts`. Ingest calls `createRingCentralCallLead` with `duplicate: true/false`.
+**Call Qualification** + ingest: [`ringcentral-call-lead-qualification.service.md`](ringcentral-call-lead-qualification.service.md). Duplicate classification: `ringcentral-duplicate-guard.ts`; promotion gate: `ringcentral-call-lead-ingest.service.ts`.
 
 ## Create — manual/API (`createCallLead`)
 
-1. Normalize name, parse source company, optional location (`resolveOptionalLocation`).
-2. **Form-fill check** — `hasFormFillForCallLead(source, phone)`: true when a non-duplicate form lead exists with same source + normalized phone.
-3. Save with `form_fill`, Florida `timestamp`, `cpl`; enqueue `call_lead.create` sheet-sync job; finalize sync.
-4. No RingCentral metadata; no call duplicate window logic.
+1. Normalize name, parse **Source Company**, optional location.
+2. **Form Fill** check — `hasFormFillForCallLead(source, phone)`: true when a non-duplicate Form Lead exists with same source + normalized phone.
+3. Save with `form_fill`, Florida `timestamp`, **CPL**; enqueue `call_lead.create` Sheet Sync job; finalize sync.
+4. No Ring Central metadata; no Call Lead duplicate window logic.
 
-## Create — RingCentral (`createRingCentralCallLead`)
+## Create — Ring Central (`createRingCentralCallLead`)
 
 1. Caller supplies `duplicate` (from ingest duplicate guard).
-2. Same form-fill check as manual path.
-3. Save with `ringcentral.*` provenance (session id, call log id, ingestion source, qualification, timestamps).
-4. **`cpl = 0` when `duplicate: true`** — owner not charged twice for same caller/source within window.
-5. Unique sparse index on `ringcentral.telephony_session_id` prevents the **same call** from inserting twice (webhook vs cron idempotency — separate from business duplicate).
+2. Same Form Fill check as manual path.
+3. Save with `ringcentral.*` provenance (session id, call log id, ingestion source, **Call Qualification**, timestamps).
+4. **`cpl = 0` when Duplicate Lead** — owner not charged twice for same caller/source within window.
+5. Unique sparse index on `ringcentral.telephony_session_id` prevents the **same call** from inserting twice (webhook vs cron idempotency — separate from business Duplicate Lead).
 
-### RingCentral duplicate rule (upstream of this service)
+### Duplicate Lead rule (upstream of this service)
 
-- Same **normalized caller phone** + **source company** as an existing **non-duplicate** call lead within `RINGCENTRAL_DUPLICATE_WINDOW_HOURS` (default 24h).
+Per glossary and `ringcentral-duplicate-guard.ts`:
+
+- Same **Caller Match Key** (Source Company + normalized phone) as an existing **non-duplicate** Call Lead whose timestamp falls within **±90 days** of the incoming call's timestamp.
 - Excludes the current `telephony_session_id`.
-- Duplicate call leads still persist and sync; they do not block future “first” calls after window expires.
+- Duplicate Call Leads still persist and **Sheet Sync**; they are **never CRM-posted** (Call Lead Enrichment is separate).
 
-## Sheet routing
+**Config note:** `RINGCENTRAL_DUPLICATE_WINDOW_HOURS` in `ringcentral-config.ts` is exposed for debug display only; the guard uses hardcoded `RINGCENTRAL_CALL_LEAD_DUPLICATE_WINDOW_DAYS = 90`.
 
-| Condition | Master Leads tab | Headers |
-|-----------|------------------|---------|
-| `duplicate: false` | `Calls` | `CALL_SHEET_HEADERS` |
-| `duplicate: true` | `Duplicate Calls` | same as Calls |
+### CPL config lag
 
-Delete/tombstone uses `lead.duplicate` to target the correct tab. `FormFill` column reflects `form_fill` on the row.
+Glossary: CPL by Source Company + **Lead Channel** + **Move Type**. `getCplForSource` is source-centric (Best Relocation local/LD split only). Move Type on Call Leads may be unknown until **Call Lead Enrichment**.
 
-## Form-fill linkage
+## Sheet Sync tab routing
 
-- **At call create:** `hasFormFillForCallLead` reads existing non-duplicate form leads (same source + phone).
-- **At form create:** non-duplicate forms call `markMatchingCallLeadsWithFormFill` to flip existing calls (see `form-lead.service.md`).
-- Form-fill is attribution only; does not set `duplicate` on call leads.
+| Condition | Master Leads tab |
+|-----------|------------------|
+| Not Duplicate Lead | `Calls` |
+| Duplicate Lead | `Duplicate Calls` |
+
+Delete/tombstone uses `lead.duplicate` for correct tab. `FormFill` column reflects `form_fill`.
+
+## Form Fill linkage
+
+| Direction | Behavior |
+|-----------|----------|
+| At Call Lead create | `hasFormFillForCallLead` reads existing non-duplicate Form Leads (same source + phone) |
+| At Form Lead create | Non-duplicate Form Leads call `markMatchingCallLeadsWithFormFill` ([`form-lead.service.md`](form-lead.service.md)) |
+
+Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 
 ## Update (`updateCallLead`)
 
-- Optional location fields; recomputes `local` + `cpl` via `getCplForSource`.
-- **Note:** update recalculates CPL from source/local — it does not re-run duplicate logic; a RingCentral duplicate stays `cpl: 0` only if `duplicate` remains true and local unchanged, but changing local on a duplicate could overwrite CPL (edge case — duplicates rarely updated via API).
-- Saves + refreshes attached booking chain (`call_lead.update`).
+- Optional location; recomputes Move Type + CPL via `getCplForSource`.
+- **Edge case:** update recalculates CPL from source/local — does not re-run Duplicate Lead logic; changing local on a duplicate could overwrite CPL (duplicates rarely updated via API).
+- Saves + refreshes attached **Booking Chain** (`call_lead.update`).
 
 ## Delete (`deleteCallLead`)
 
-- Same cascade rules as form leads (`cascade=true` when booked).
+- Same cascade rules as Form Leads (`cascade=true` when Booked).
 - Queued mode: tombstone with `duplicate` for correct tab; legacy: `deleteCallLeadFromSheets` then Mongo delete.
 
 ## Read
 
 - `findAllCallLeads` — last 200 by `createdAt`.
-- No “hide duplicate” read helper (unlike form leads’ `findFormLead`).
+- No “hide duplicate” read helper (unlike Form Lead `findFormLead`).
 
 ## Invariants
 
-- Manual/API creates never set `duplicate: true`; only RingCentral ingest does.
-- Business duplicate (caller window) ≠ idempotency (same telephony session).
-- Do not bypass phone normalization, form-fill helpers, source parsing, or sheet-sync scheduling.
-- Call leads do not post to Granot at create; enrichment is a separate flow (`callLeadEnrichment.service.ts`).
+| Rule | Detail |
+|------|--------|
+| Manual/API creates | Never set `duplicate: true`; only Ring Central ingest does |
+| Idempotency vs Duplicate Lead | Same telephony session ≠ business duplicate (different calls, same caller within ±90 days) |
+| CRM | Call leads not CRM-posted at create; **Call Lead Enrichment** is separate |
+| Helpers | Do not bypass phone normalization, Form Fill, Source Company parsing, or Sheet Sync scheduling |
 
-## Related modules
-
-- Form-fill / cross-lead matching: `duplicateLead.service.ts`
-- RingCentral qualification + ingest: `ringcentral-call-lead-qualification.service.md`
-- Sheets: `syncCallLeadToSheets` → `Calls` / `Duplicate Calls`
-
-## Operational events
+## Operational Events
 
 | Path | Events |
 |------|--------|
 | Manual create | `lead.call.created`, `lead.call.form_fill_detected` when applicable |
-| RingCentral create | ingest emits `ringcentral.call_lead.created` or `ringcentral.call_lead.duplicate_created`; form-fill event from this service when `form_fill` |
+| Ring Central create | ingest emits `ringcentral.call_lead.created` or `ringcentral.call_lead.duplicate_created`; form-fill event from this service when `form_fill` |
+
+## Related businesslogic
+
+- [`form-lead.service.md`](form-lead.service.md) — Form Fill side effects on Form Lead Ingestion
+- [`ringcentral-call-lead-qualification.service.md`](ringcentral-call-lead-qualification.service.md) — **Call Qualification**, ingest gate
+- [`googleSheets.service.md`](googleSheets.service.md) — Calls / Duplicate Calls tabs
+
+## Related rules
+
+- [`ringcentral-integration.mdc`](../rules/ringcentral-integration.mdc) — env, webhooks, cron wiring
+- [`ringcentral-call-lead-candidates.mdc`](../rules/ringcentral-call-lead-candidates.mdc) — pipeline boundaries

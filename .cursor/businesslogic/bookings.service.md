@@ -1,6 +1,11 @@
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
+**Primary code:** `api/services/bookings/`  
+**Domain terms used:** Booking, Leadless Booking, Referral Booking, Booking Chain, Sheet Sync, Agent Allocation, Binder, Deposit, Unmatched Call Lead, System of Record
+
 # Bookings (`bookings/`)
 
-**Source of truth:** Mongo `booked_leads`. Lead-attached bookings also mirror state onto `form_leads` / `call_leads` (`booked`, `over_2000`, `over_4000`, optional `source_company`/`local`, recomputed `cpl`). Owner reporting via sheet sync (Master Booked + source lead rows).
+**System of Record:** MongoDB `booked_leads`. Lead-attached Bookings mirror state onto Form Leads / Call Leads (`booked`, threshold flags, optional `source_company`/`local`, recomputed CPL). Owner reporting via **Sheet Sync** (**Master Booked** + source lead rows).
 
 **Four services — one lifecycle:**
 
@@ -37,14 +42,14 @@ resolveBookingSourceLead   input.lead_ref/model      no source lead
                     │                                        │
             mirrorBookingToLead                         (no mirror)
                     │
-            booking_chain sheet sync              booked_lead sheet sync
+            Booking Chain Sheet Sync              booked_lead Sheet Sync
 ```
 
 ### 1. From source (`createBookedLeadFromSource`)
 
 1. **`resolveBookingSourceLead`** (`bookingSourceResolver.ts`):
    - **FormLead:** load by `form_lead_id`; use submitted `job_no`.
-   - **CallLead:** match by `call_job_no` (409 if multiple); else phone via `findBestCallLeadMatchByPhone`; else **create** new call lead with `created_on_unmatched: true` (excluded from billable lead-cost analytics). Requires `call_job_no` or `call_phone_number`.
+   - **CallLead:** match by `call_job_no` (409 if multiple); else phone via `findBestCallLeadMatchByPhone`; else **create** new Call Lead with `created_on_unmatched: true` (**Unmatched Call Lead** — excluded from lead-cost **Analytics**). Requires `call_job_no` or `call_phone_number`.
 2. **`effectiveBookingSourceCompany`** — override from form label/parsing, else lead’s company. If override provided, writes `lead.source_company` before booking.
 3. **`deriveBookedLeadAgentAllocations`** from `agent`, optional `split_agent`, `binder_amount`.
 4. Delegates to **`createBookedLead`** with `lead_ref`, optional `customer_name`/`customer_phone`, `submission_id`.
@@ -68,7 +73,7 @@ Inside `runSheetSyncWrite`:
 
 Post-commit: `finalizeSheetSync`; operational events `booking.created` or `booking.upserted`.
 
-### 3. Referral (`createReferralBooking`)
+### 3. Referral (`createReferralBooking`) — **Referral Booking**
 
 - **No** `lead_ref` / `lead_model`; `is_referral_booking: true`, `source: "referral"`.
 - **409** if `job_no` already exists globally.
@@ -131,34 +136,35 @@ Booking delete: clears `booked`, `cancelled`, threshold flags on lead. Legacy pa
 
 **Upsert vs duplicate:** Second create for same lead **updates** the booking unless `submission_id` matches — then no-op with existing doc returned.
 
-**Unmatched call leads:** Created at booking time when call identity cannot be resolved; flagged `created_on_unmatched: true`.
+**Unmatched Call Leads:** Created at booking time when call identity cannot be resolved; flagged `created_on_unmatched: true`.
 
-## Sheet sync
+## Sheet Sync
 
 | Path | Resource | Operations |
 |------|----------|------------|
-| Lead-attached create | `booking_chain` | `booked_lead.create` |
+| Lead-attached create | `booking_chain` | **Booking Chain** — `booked_lead.create` |
 | Lead-attached re-book / upsert | `booking_chain` | `booked_lead.upsert` |
 | Lead-attached update | `booking_chain` | `booked_lead.update` |
 | Lead-attached delete | tombstone + `source_lead` | `delete_booked_lead` |
 | Referral create | `booked_lead` | `referral_booking.create` |
 | Lead update with booking | `booking_chain` or `source_lead` | from `refreshAttachedBookingFromLead` |
 
-`booking_chain` refreshes **both** Master Booked (`bookedDeals` tab) and the linked source lead row. Details: `googleSheets.service.md`, `rules/sheet-sync-process.mdc`.
+**Booking Chain** refreshes **Master Booked** (`Booked Deals` tab) and the linked source lead row. Details: [`googleSheets.service.md`](googleSheets.service.md), [`sheetSync.service.md`](sheetSync.service.md).
 
 ## Warnings and events
 
 - **Warnings:** zero binder per agent (`buildBookedLeadWarnings`) — non-blocking.
 - **Events:** `booking.created`, `booking.upserted`, `booking.duplicate_submission_ignored`.
 
-## Related modules
+## Related rules
 
-- Agent allocations: `agentAllocation.service.md`
-- Cancellations: `cancelledLead.service.md` (sets `booking.cancelled`; referral blocked)
-- Customers: `customerFromLead.service.ts`
-- Catalog: `resolveActiveMerchantName`
-- Lead services: form/call update → `refreshAttachedBookingFromLead`
-- Analytics: bookings drive agent/source reports (`analytics.service.md`)
+- [`sheet-sync-process.mdc`](../rules/sheet-sync-process.mdc) — outbox, drainer mechanics
+
+## Related businesslogic
+
+- [`cancelledLead.service.md`](cancelledLead.service.md) — **Cancellation** (referral blocked)
+- [`agentAllocation.service.md`](agentAllocation.service.md) — **Agent Allocation**, **Binder**
+- [`analytics.service.md`](analytics.service.md) — **Analytics** over bookings
 
 ## Do not bypass
 

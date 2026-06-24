@@ -6,59 +6,67 @@ alwaysApply: false
 
 # Vantage Movers Business Logic
 
-Business behavior changes must update this file or a linked business/workflow doc with the concept, source of truth, invariants, edge cases, and examples. If no update is needed, say so in the final response.
+Business behavior changes must update the relevant doc below. If no update is needed, say so in the final response.
 
-**Service docs:** `.cursor/businesslogic/` — per-service compact rules (form lead, call lead, RingCentral qualification, agent allocation, catalog, customers, testimonials, analytics, bookings, cancellations, …).
+## Three documentation layers
 
-## Leads And Customers
+| Layer | Location | Contains |
+|-------|----------|----------|
+| **Domain language** | [`CONTEXT.md`](../../../CONTEXT.md) + [`docs/adr/`](../../../docs/adr/) | What things **are** — Form Lead, Sheet Sync, CRM Posting, Main Site vs Landing Page. No routes, env vars, or step lists. |
+| **Business logic** | `.cursor/businesslogic/*.service.md` | How owner rules manifest in each service: invariants, match rules, tab routing, post-save order, edge cases. **Use glossary terms; link — do not redefine.** |
+| **Software logic** | `.cursor/rules/*.mdc` | Folder ownership, thin routes, TEST_MODE, outbox/drainer mechanics, TypeScript/testing. Module/Seam vocabulary lives here — not in `CONTEXT.md`. |
 
-- MongoDB is the system of record for form leads, call leads, customers, bookings, cancellations, and sync metadata.
-- Form leads originate from website intake and may post to Granot CRM unless duplicate logic forces `post_to_granot=false`.
-- Call leads originate from phone/call sources such as RingCentral/Invoca and may be enriched later from CRM rows.
-- Customers are upserted from source leads or booking contact overrides during booking flows (`customer.service.md`); manual CRUD is separate.
-- Extension/admin read paths: scored form search + call OR-search + paginated browse (`formLeadSearch.service.md`, `callLeadSearch.service.md`, `leadBrowse.service.md`); admin global search is separate (`adminSearch.service.md`).
+**Platform glossary (canonical terms):** [`vantage/CONTEXT.md`](../../../CONTEXT.md)  
+**Cross-cutting ADRs:** [`vantage/docs/adr/`](../../../docs/adr/)
 
-## Quotes, Estimates, And Pricing
+## Drift policy
 
-- `quoted`, `cubic_feet`, `est_cf`, CPL, deposit, total binder amount, and threshold flags appear across lead, enrichment, booking, and reporting flows.
-- Source of truth and full pricing invariants are TBD from source of truth.
+| Change type | Update |
+|-------------|--------|
+| New or renamed domain term | Root [`CONTEXT.md`](../../../CONTEXT.md) via `/domain-modeling` — not businesslogic headers |
+| Architectural decision (hard to reverse, surprising, real trade-off) | [`docs/adr/`](../../../docs/adr/) |
+| Service behavior, invariants, routing, side-effect order | Relevant `.cursor/businesslogic/*.service.md` |
+| Cross-service structure, env, process mechanics | Relevant `.cursor/rules/*.mdc` |
 
-## Moves, Bookings, And Jobs
+Do **not** duplicate glossary definitions into businesslogic files — link and use canonical terms.
 
-- Bookings link to a source lead via `lead_ref` and `lead_model` (`FormLead` or `CallLead`) except referral bookings (`is_referral_booking`, no lead link). See `businesslogic/bookings.service.md`.
-- Booking creation can attach by direct Mongo id or source-derived identifiers such as form lead id, call job number, or call phone number.
-- One lead-attached booking per `(lead_ref, lead_model)`; repeat creates upsert unless `submission_id` matches (idempotent no-op).
-- Booking services mirror state back to source leads and schedule related Google Sheet sync work (`booking_chain` or referral `booked_lead` job).
+**Service docs:** `.cursor/businesslogic/` — per-service compact rules (form lead, call lead, RingCentral qualification, sheet sync, bookings, cancellations, …).
 
-## Cancellations
+## System of record
 
-- Cancellations attach to lead-attached bookings only; referral bookings are blocked (409). See `businesslogic/cancelledLead.service.md`.
-- Create resolves booking via `booked_lead` and/or `lead_id`, snapshots agent/job/source/customer fields, sets `booking.cancelled`, mirrors `cancelled` onto the source lead, and enqueues `cancellation_chain` sheet sync.
-- Delete unwinds booking + lead refs and refreshes booked/source sheet rows before removing the cancellation document.
-- Lead mirror semantics (`booked` retained alongside `cancelled`): `businesslogic/cancellationMirror.service.md`.
+MongoDB is the **System of Record** for Form Leads, Call Leads, Bookings, Cancellations, and related domain data ([ADR-0001](../../../docs/adr/0001-mongodb-system-of-record.md)). Reporting Sheets and Granot CRM follow Mongo; they are not authoritative.
 
-## Crews, Trucks, Dispatch, And Availability
+## Leads
 
-- Agent and merchant reference data live in Mongo catalog collections; admin CRUD and active-name resolution: `catalog.service.md`.
-- Agent allocations are required on booked leads and are resolved/snapshotted during booking (`agentAllocation.service.md`: active catalog lookup, 50/50 split, patch/replace, primary agent = index 0).
-- Crew, truck, dispatch, route, and availability rules are TBD from source of truth.
+- **Form Lead Ingestion** — Landing Page quote form → Mongo persist → post-save workflows (CRM Posting when enabled, Sheet Sync). Duplicate Form Leads always save and Sheet Sync; never CRM-posted ([`form-lead.service.md`](../businesslogic/form-lead.service.md)).
+- **Call Lead Ingestion** — qualified Ring Central call → Mongo persist → Sheet Sync. Call leads are not CRM-posted at create; **Enrichment** is separate ([`call-lead.service.md`](../businesslogic/call-lead.service.md), [`ringcentral-call-lead-qualification.service.md`](../businesslogic/ringcentral-call-lead-qualification.service.md)).
+- **Customers** — upserted from source leads or booking contact overrides during booking ([`customer.service.md`](../businesslogic/customer.service.md)).
+- Extension/admin read paths: scored form search + call OR-search + paginated browse; admin global search is separate.
 
-## Invoices And Payments
+## Quotes, estimates, and CPL
 
-- Booking records include merchant/deposit/binder-related fields. Invoice and payment lifecycle rules are TBD from source of truth.
+- `quoted`, `cubic_feet`, CPL, deposit, binder, and threshold flags span lead, Enrichment, booking, and Analytics.
+- **CPL** is granular by Source Company + Lead Channel + Move Type per glossary; server config in `cpl.ts` is source-centric (Best Relocation move-type split only) — config lag noted in lead service docs.
 
-## Integrations And CRM
+## Bookings and cancellations
 
-- Granot CRM receives non-duplicate form leads and uses Mongo ids as `ref_no`/`leadno` for extension lookup.
-- Google Sheets is an owner-facing reporting target; sheet sync can complete after API responses (`businesslogic/sheetSync.service.md`: outbox, Vercel Queue wake-up, drainer, `sheet_sync_jobs` collection).
-- RingCentral call-lead qualification and promotion: webhook + Call Log cron → shared ingest (`ringcentral-call-lead-qualification.service.md`). Analytics reconcile is count-only and must not create leads.
-- Granot Booked Jobs CSV reconciliation refreshes existing call leads and bookings from CRM rows without creating bookings (`bookedCallLeadReconciliation.service.md`).
-- Marketing testimonials are read from Mongo via `testimonial.service.md`; the website fetches `published=true` reviews (ingest is ops/scripts, not API CRUD).
-- Postman tooling syncs API collections/environments. External integration writes must remain mode-aware and observable.
+- Bookings link to a source lead via `lead_ref` / `lead_model` except **Referral Booking** ([`bookings.service.md`](../businesslogic/bookings.service.md)).
+- One lead-attached booking per `(lead_ref, lead_model)`; repeat creates upsert unless `submission_id` matches.
+- **Booking Chain** Sheet Sync on create/update; referral uses `booked_lead` job.
+- Cancellations attach to lead-attached bookings only; referral blocked ([`cancelledLead.service.md`](../businesslogic/cancelledLead.service.md)). **Cancellation Chain** on create.
+- Lead mirror semantics: [`cancellationMirror.service.md`](../businesslogic/cancellationMirror.service.md).
 
-## Invariants And Edge Cases
+## Integrations
 
-- Preserve traceability from website or call source through CRM, Mongo, Sheets, booking, cancellation, and reporting.
-- Keep routes thin and business decisions in services.
-- Do not bypass helpers for source-company parsing, phone normalization, local/CPL derivation, agent allocation resolution, duplicate/form-fill checks, or sheet-sync scheduling.
-- Duplicates, unmatched call bookings, cancellations, historical database reads, and production backfills are high-risk and need focused tests or explicit validation notes.
+- **CRM Posting** — non-duplicate Form Leads only; Lead ID as `leadno` → Granot `ref_no` ([ADR-0002](../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md), [ADR-0003](../../../docs/adr/0003-lead-id-granot-leadno-ref-no-contract.md)). Must survive non-critical downstream failures; known code order gap in `formLead.service.ts` documented inline.
+- **Sheet Sync** — Master Sheets only; Source Company Sheets via import queries ([`sheetSync.service.md`](../businesslogic/sheetSync.service.md), [`googleSheets.service.md`](../businesslogic/googleSheets.service.md)).
+- **Call Qualification** — webhook + Call Log sync → shared ingest; Analytics reconcile is count-only, must not create leads.
+- Granot Booked Jobs CSV reconciliation: [`bookedCallLeadReconciliation.service.md`](../businesslogic/bookedCallLeadReconciliation.service.md).
+- Marketing testimonials: [`testimonial.service.md`](../businesslogic/testimonial.service.md).
+
+## Invariants
+
+- Preserve traceability from Landing Page or Call Lead Ingestion through CRM, Mongo, Reporting Sheets, booking, cancellation, and Analytics.
+- Keep routes thin; business decisions in services.
+- Do not bypass helpers for Source Company parsing, phone normalization, CPL/Move Type derivation, agent allocation, Duplicate Lead / Form Fill checks, or Sheet Sync scheduling.
+- Duplicates, Unmatched Call Leads, cancellations, and production backfills are high-risk — focused tests or explicit validation notes required.

@@ -1,6 +1,11 @@
-# Cancellation Mirror Service (`cancellationMirror.service.ts`)
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
+**Primary code:** `api/services/cancellations/cancellationMirror.service.ts`  
+**Domain terms used:** Cancellation, Booking, Form Lead, Call Lead, Sheet Sync
 
-**Role:** Keep the linked source lead (`FormLead` / `CallLead`) aligned with cancellation state on Mongo. Does not create cancellations, sync sheets directly, or clear `booked`.
+# Cancellation Mirror Service
+
+**Role:** Keep the linked source **Form Lead** / **Call Lead** aligned with **Cancellation** state on Mongo. Does not create cancellations, **Sheet Sync** directly, or clear `booked`.
 
 **Called from:** `cancelledLead.service.ts` (create/delete) and indirectly via booking delete through `clearBookingFromLead` in `bookingMirror.service.ts`.
 
@@ -12,7 +17,7 @@ FormLead / CallLead
   cancelled  → CancelledLead._id  (set by cancellation mirror)
 ```
 
-Cancellation is **alongside** the booking, not in place of it. Owner sheets show both `Booked` and `Cancelled` columns on lead rows; the cancellation row lives on Master Booked `Cancelled Deals`.
+Cancellation is **alongside** the **Booking**, not in place of it. **Reporting Sheets** show both Booked and Cancelled columns on lead rows; the **Cancellation** row lives on **Master Booked** `Cancelled Deals` tab.
 
 ## `mirrorCancellationToLead`
 
@@ -46,7 +51,7 @@ This avoids double-sync and keeps sheet refresh batched with booking/source row 
 
 - Always load via `getLinkedLead` — do not query form/call collections ad hoc.
 - Never clear `booked` here; booking unlink is `clearBookingFromLead`.
-- When adding a new cancellation write path, pair mirror set with txn + `cancellation_chain` job (see `cancelledLead.service.md`).
+- When adding a new cancellation write path, pair mirror set with txn + **Cancellation Chain** job (see [`cancelledLead.service.md`](cancelledLead.service.md)).
 - When adding a new cancellation unwind path, clear lead in txn and schedule sheet refresh explicitly if opting out of inline sync.
 
 ## Related modules

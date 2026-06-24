@@ -1,6 +1,11 @@
-# Admin Search Service (`admin/adminSearch.service.ts`)
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md), [0003 Lead ID / ref_no](../../../docs/adr/0003-lead-id-granot-leadno-ref-no-contract.md)  
+**Primary code:** `api/services/admin/adminSearch.service.ts`  
+**Domain terms used:** Admin Dashboard, Workflow Observational, Lead ID, Form Lead, Call Lead, Booking, Cancellation, System of Record
 
-**Role:** Cross-resource typeahead / global search for the observational admin UI. Read-only Mongo lookups; no mutations, sheet sync, or CRM.
+# Admin Search Service
+
+**Role:** Cross-resource typeahead / global search for the **Admin Dashboard**. Read-only Mongo lookups; no mutations, **Sheet Sync**, or **CRM Posting**.
 
 **Entry:** `GET /api/v1/admin/search?q=...&database_scope=...&limit=...` → `globalAdminSearch`.
 

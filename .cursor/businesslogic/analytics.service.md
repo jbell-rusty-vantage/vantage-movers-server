@@ -1,10 +1,15 @@
-# Analytics Service (`analytics.service.ts`)
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
+**Primary code:** `api/services/analytics/analytics.service.ts`  
+**Domain terms used:** Analytics, System of Record, CPL, Source Company, Agent Allocation, Cancellation, Reporting Sheets
 
-**Source of truth:** Read-only Mongo aggregations over production and/or historical lead/booking collections. No writes, no sheet sync.
+# Analytics Service
 
-**Role:** Orchestrator for admin analytics reports. Routes `report` + `query` to a concrete report service, resolves `database_scope` to model sets, and merges results when scope is `combined`.
+**System of Record:** Read-only MongoDB aggregations over production and/or historical Form Lead, Call Lead, Booking, and Cancellation collections. **Analytics** does not query **Reporting Sheets**. No writes, no **Sheet Sync**.
 
-**Not this module:** RingCentral call analytics reconciliation lives in `ringcentral/analytics-reconcile.service.ts` (cron/ops). Admin dashboard overview and Agent Sales CSV are sibling services under `api/services/analytics/` with separate routes.
+**Role:** Orchestrator for **Admin Dashboard** **Analytics** reports. Routes `report` + `query` to a concrete report service, resolves `database_scope` to model sets, and merges results when scope is `combined`.
+
+**Not this module:** Ring Central call analytics reconciliation lives in `ringcentral/analytics-reconcile.service.ts` (cron/ops) — count-only; must not create Call Leads.
 
 ## HTTP entry points
 
@@ -111,7 +116,9 @@ Special merge shapes: `summary` → `{ totals }`, `booking-cancellation-ratio` �
 
 **Lead source performance** — groups booked leads by booking `source` field (marketing label), not `derived_source_company`.
 
-**Lead cost** (`leadCost.service.ts`) — **overview only**, production all-time / last-7-days. Sums `cpl` on billable leads: forms exclude `duplicate: true`; calls exclude `created_on_unmatched: true`.
+**Lead cost** (`leadCost.service.ts`) — **overview only**, production all-time / last-7-days. Sums **CPL** on billable leads: Form Leads exclude Duplicate Leads; Call Leads exclude **Unmatched Call Leads** (`created_on_unmatched: true`).
+
+**CPL config lag:** Stored CPL at ingestion may not reflect full Source Company + Lead Channel + Move Type granularity (see [`form-lead.service.md`](form-lead.service.md)).
 
 ## Overview (`overview.service.ts`)
 
