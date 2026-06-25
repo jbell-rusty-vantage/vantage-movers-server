@@ -13,7 +13,10 @@ import type {
   CreateBookedLeadInput,
   UpdateBookedLeadInput,
 } from "../../validation/v1.validation";
-import { deleteBookedLeadFromSheets } from "../googleSheets.service";
+import {
+  deleteBookedLeadFromSheets,
+  deleteCancelledLeadFromSheets,
+} from "../googleSheets.service";
 import {
   patchAgentAllocations,
   resolveAgentAllocations,
@@ -390,20 +393,15 @@ export async function deleteBookedLead(id: string, cascade: boolean) {
   if (!booking) {
     throw new V1ServiceError("Booked lead not found", 404);
   }
-  if (booking.is_referral_booking) {
-    throw new V1ServiceError("Referral booking deletion is not supported yet", 409);
-  }
-  if (booking.is_leadless_booking) {
-    throw new V1ServiceError("Leadless booking deletion is not supported yet", 409);
-  }
-  if (!booking.lead_ref || !booking.lead_model) {
+  const hasLinkedLead = Boolean(booking.lead_ref && booking.lead_model);
+  if (!hasLinkedLead && !booking.is_referral_booking && !booking.is_leadless_booking) {
     throw new V1ServiceError("Booked lead is missing linked lead metadata", 409);
   }
   if (booking.cancelled && !cascade) {
     throw new V1ServiceError("Booked lead has a cancellation; pass cascade=true to delete dependents", 409);
   }
-  const leadModel = booking.lead_model as LeadModelName;
-  const leadId = booking.lead_ref.toString();
+  const leadModel = hasLinkedLead ? (booking.lead_model as LeadModelName) : undefined;
+  const leadId = hasLinkedLead ? booking.lead_ref!.toString() : undefined;
 
   if (getSheetSyncMode() === "queued") {
     const bookingTargets = buildTombstonePreviousTargets(booking.sheet_sync);
@@ -434,17 +432,19 @@ export async function deleteBookedLead(id: string, cascade: boolean) {
         await cancellation.deleteOne({ session });
       }
 
-      // Clear booking columns off the surviving lead and refresh its row.
-      await clearBookingFromLead(leadModel, leadId, { session, syncAfterClear: false });
-      await enqueueSheetSyncJob(
-        {
-          resource: "source_lead",
-          operation: "delete_booked_lead",
-          leadModel,
-          leadId,
-        },
-        { session },
-      );
+      if (leadModel && leadId) {
+        // Clear booking columns off the surviving lead and refresh its row.
+        await clearBookingFromLead(leadModel, leadId, { session, syncAfterClear: false });
+        await enqueueSheetSyncJob(
+          {
+            resource: "source_lead",
+            operation: "delete_booked_lead",
+            leadModel,
+            leadId,
+          },
+          { session },
+        );
+      }
 
       await enqueueSheetSyncTombstone(
         {
@@ -468,9 +468,15 @@ export async function deleteBookedLead(id: string, cascade: boolean) {
   }
 
   if (booking.cancelled && cascade) {
-    await CancelledLead.findByIdAndDelete(booking.cancelled);
+    const cancellation = await CancelledLead.findById(booking.cancelled);
+    if (cancellation) {
+      await deleteCancelledLeadFromSheets(cancellation);
+      await cancellation.deleteOne();
+    }
   }
-  await clearBookingFromLead(leadModel, leadId);
+  if (leadModel && leadId) {
+    await clearBookingFromLead(leadModel, leadId);
+  }
   await deleteBookedLeadFromSheets(booking);
   await booking.deleteOne();
 }

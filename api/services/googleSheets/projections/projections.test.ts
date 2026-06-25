@@ -222,6 +222,33 @@ test("formLeadToRow defaults missing ref_no to 'not provided'", () => {
   assert.equal(row[20], "");
 });
 
+test("formLeadToRow clears booking reporting columns after booking deletion", () => {
+  const lead: FormLeadSheetSource = {
+    _id: new mongoose.Types.ObjectId(),
+    timestamp: fixedDate,
+    name: "Deleted Booking Lead",
+    pickup_zip: "10001",
+    destination_zip: "90210",
+    move_size: "Studio",
+    move_date: fixedDate,
+    phone_number: "555-555-5555",
+    local: "local",
+    source_company: "main_site",
+    booked: undefined,
+    over_2000: false,
+    over_4000: false,
+    cancelled: undefined,
+  };
+
+  const row = formLeadToRow(lead);
+
+  assert.equal(row[12], "");
+  assert.equal(row[13], "");
+  assert.equal(row[14], "");
+  assert.equal(row[15], "");
+  assert.equal(row[16], "");
+});
+
 test("callLeadToRow projects fields in the documented header order", () => {
   const lead: CallLeadSheetSource = {
     _id: new mongoose.Types.ObjectId(),
@@ -256,6 +283,28 @@ test("callLeadToRow projects fields in the documented header order", () => {
   assert.equal(row[11], lead._id.toString());
   assert.equal(row[12], "10best Inbounds");
   assert.equal(row[13], "TRUE");
+});
+
+test("callLeadToRow clears booking reporting columns after booking deletion", () => {
+  const lead: CallLeadSheetSource = {
+    _id: new mongoose.Types.ObjectId(),
+    timestamp: fixedDate,
+    job_no: "J-200",
+    phone_number: "555-333-4444",
+    source_company: "tbm_leads",
+    booked: undefined,
+    over_2000: false,
+    over_4000: false,
+    cancelled: undefined,
+  };
+
+  const row = callLeadToRow(lead);
+
+  assert.equal(row[4], "");
+  assert.equal(row[5], "");
+  assert.equal(row[6], "");
+  assert.equal(row[7], "");
+  assert.equal(row[8], "");
 });
 
 test("bookedLeadToRow projects allocations, customer, and lead ref", () => {
