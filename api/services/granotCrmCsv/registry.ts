@@ -31,7 +31,19 @@ export const GRANOT_CRM_SOURCE_SEEDS: GranotCrmSourceSeed[] = [
     workspace_slug: "get-movers",
     granot_label: "Get Movers",
     default_channel: "form",
-    source_company: "main_site",
+    source_company: "get_movers_leads",
+  },
+  {
+    workspace_slug: "getmovers-forms",
+    granot_label: "GetMovers Forms",
+    default_channel: "form",
+    source_company: "get_movers_leads",
+  },
+  {
+    workspace_slug: "getmovers-inbounds",
+    granot_label: "GetMovers Inbounds",
+    default_channel: "call",
+    source_company: "get_movers_leads",
   },
   {
     workspace_slug: "main-site-inbounds",

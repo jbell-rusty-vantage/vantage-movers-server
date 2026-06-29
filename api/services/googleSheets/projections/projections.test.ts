@@ -222,6 +222,31 @@ test("formLeadToRow defaults missing ref_no to 'not provided'", () => {
   assert.equal(row[20], "");
 });
 
+test("lead projections use exact GetMovers source labels", () => {
+  const formLead: FormLeadSheetSource = {
+    _id: new mongoose.Types.ObjectId(),
+    timestamp: fixedDate,
+    name: "GetMovers Form",
+    pickup_zip: "10001",
+    destination_zip: "90210",
+    move_size: "Studio",
+    move_date: fixedDate,
+    phone_number: "555-555-5555",
+    local: "long_distance",
+    source_company: "get_movers_leads",
+  };
+  const callLead: CallLeadSheetSource = {
+    _id: new mongoose.Types.ObjectId(),
+    timestamp: fixedDate,
+    phone_number: "555-333-4444",
+    duration: 180,
+    source_company: "get_movers_leads",
+  };
+
+  assert.equal(formLeadToRow(formLead)[19], "GetMovers Forms");
+  assert.equal(callLeadToRow(callLead)[12], "GetMovers Inbounds");
+});
+
 test("formLeadToRow clears booking reporting columns after booking deletion", () => {
   const lead: FormLeadSheetSource = {
     _id: new mongoose.Types.ObjectId(),

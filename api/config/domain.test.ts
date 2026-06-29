@@ -59,6 +59,15 @@ test("10 Best inbound labels resolve to tbm_leads", () => {
   assert.equal(resolveSourceCompany("Top10 Inbounds"), "top10_leads");
 });
 
+test("GetMovers labels resolve to get_movers_leads", () => {
+  assert.equal(resolveSourceCompany("Get Movers"), "get_movers_leads");
+  assert.equal(resolveSourceCompany("GetMovers"), "get_movers_leads");
+  assert.equal(resolveSourceCompany("GetMovers Leads"), "get_movers_leads");
+  assert.equal(resolveSourceCompanyFromLabel("Get Movers"), "get_movers_leads");
+  assert.equal(resolveSourceCompanyFromLabel("GetMovers Forms"), "get_movers_leads");
+  assert.equal(resolveSourceCompanyFromLabel("GetMovers Inbounds"), "get_movers_leads");
+});
+
 test("lead sheet source company labels are precise by lead type", () => {
   assert.equal(getFormLeadSourceCompanyLabel("tbm_leads"), "TBM Forms");
   assert.equal(getCallLeadSourceCompanyLabel("tbm_leads"), "10best Inbounds");
@@ -75,6 +84,8 @@ test("lead sheet source company labels are precise by lead type", () => {
     "Best Relocation Locals",
   );
   assert.equal(getCallLeadSourceCompanyLabel("best_relocation_leads"), "Best Relocation Inbounds");
+  assert.equal(getFormLeadSourceCompanyLabel("get_movers_leads"), "GetMovers Forms");
+  assert.equal(getCallLeadSourceCompanyLabel("get_movers_leads"), "GetMovers Inbounds");
   assert.equal(getFormLeadSourceCompanyLabel("main_site"), "Main Site Forms");
   assert.equal(getCallLeadSourceCompanyLabel("main_site"), "Main Site Inbounds");
 });

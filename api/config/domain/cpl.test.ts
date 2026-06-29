@@ -20,6 +20,7 @@ test("simple-rate sources return their single configured CPL regardless of local
 
   assert.equal(getCplForSource("tbm_prime_leads", "long_distance"), 190);
   assert.equal(getCplForSource("top10_leads", "long_distance"), 190);
+  assert.equal(getCplForSource("get_movers_leads", "long_distance"), 0);
   assert.equal(getCplForSource("main_site", "long_distance"), 0);
 });
 
@@ -39,5 +40,6 @@ test("not_provided always reports CPL 0 (no env var, no source sheet)", () => {
 test("legacy source labels are normalized before CPL lookup", () => {
   assert.equal(getCplForSource("10best Inbounds", "long_distance"), 190);
   assert.equal(getCplForSource("Best Relocation Inbounds", "local"), 40);
+  assert.equal(getCplForSource("Get Movers", "long_distance"), 0);
   assert.equal(getCplForSource(undefined, "long_distance"), 0);
 });

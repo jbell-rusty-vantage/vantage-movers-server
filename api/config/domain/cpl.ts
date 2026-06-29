@@ -25,6 +25,7 @@ const SOURCE_COMPANY_CPLS = {
     local: Number(process.env.BEST_RELOCATION_LOCALS_CPL ?? 40),
     long_distance: Number(process.env.BEST_RELOCATION_LEADS_CPL ?? 195),
   },
+  get_movers_leads: Number(process.env.GETMOVERS_LEADS_CPL ?? 0),
   main_site: Number(process.env.MAINSITE_CPL ?? 0),
   not_provided: 0,
 } as const satisfies Record<SourceCompany, SourceCpl>;

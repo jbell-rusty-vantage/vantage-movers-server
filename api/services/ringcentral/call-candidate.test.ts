@@ -71,6 +71,7 @@ const sampleAnsweredInboundEvent = {
 test("normalizePhoneNumberToE164Like handles common RingCentral number shapes", () => {
   assert.equal(normalizePhoneNumberToE164Like("(888) 316-4387"), "+18883164387");
   assert.equal(normalizePhoneNumberToE164Like("888-308-3612"), "+18883083612");
+  assert.equal(normalizePhoneNumberToE164Like("(888) 397-1005"), "+18883971005");
   assert.equal(normalizePhoneNumberToE164Like("+18887240625"), "+18887240625");
   assert.equal(normalizePhoneNumberToE164Like("12095831618"), "+12095831618");
   assert.equal(normalizePhoneNumberToE164Like("   "), null);
@@ -80,6 +81,10 @@ test("RingCentral inbound target numbers resolve to configured source metadata",
   assert.deepEqual(resolveRingCentralInboundSource("(888) 316-4387"), {
     sourceLabel: "10best Inbounds",
     sourceCompany: "tbm_leads",
+  });
+  assert.deepEqual(resolveRingCentralInboundSource("(888) 397-1005"), {
+    sourceLabel: "GetMovers Inbounds",
+    sourceCompany: "get_movers_leads",
   });
   assert.equal(resolveRingCentralInboundSource("+15555555555"), null);
 });

@@ -19,6 +19,7 @@ export const SOURCE_COMPANIES = [
   "tbm_prime_leads",
   "top10_leads",
   "best_relocation_leads",
+  "get_movers_leads",
   "main_site",
   "not_provided",
 ] as const;
@@ -36,6 +37,8 @@ export const CRM_SOURCE_LABELS = [
   "Best Relocation Forms",
   "Best Relocation Locals",
   "Best Relocation Inbounds",
+  "GetMovers Forms",
+  "GetMovers Inbounds",
   "Main Site Forms",
   "Main Site Inbounds",
 ] as const;
@@ -45,7 +48,11 @@ export type CrmSourceLabel = (typeof CRM_SOURCE_LABELS)[number];
 export const SOURCE_LABEL_TO_COMPANY = {
   "Main Site Forms": "main_site",
   "Main Site Inbounds": "main_site",
-  "Get Movers": "main_site",
+  "Get Movers": "get_movers_leads",
+  "GetMovers Forms": "get_movers_leads",
+  "Get Movers Forms": "get_movers_leads",
+  "GetMovers Inbounds": "get_movers_leads",
+  "Get Movers Inbounds": "get_movers_leads",
   "TBM Forms": "tbm_leads",
   "TBM Prime Forms": "tbm_prime_leads",
   "TBM Forms Prime": "tbm_prime_leads",
@@ -106,6 +113,19 @@ export const SOURCE_COMPANY_CONFIGS = {
     leadSheetEnvVar: SHEET_CONTAINER_ENV_VARS.sourceLeads.best_relocation_leads,
     hasBadTabs: true,
     aliases: ["Best Relocation Leads", "Best Relocation", "BestRelocation.com"],
+  },
+  get_movers_leads: {
+    slug: "get_movers_leads",
+    label: "GetMovers Leads",
+    leadSheetEnvVar: SHEET_CONTAINER_ENV_VARS.sourceLeads.get_movers_leads,
+    hasBadTabs: true,
+    aliases: [
+      "GetMovers Leads",
+      "Get Movers Leads",
+      "Get Movers",
+      "GetMovers",
+      "get_movers_leads",
+    ],
   },
   main_site: {
     slug: "main_site",
@@ -203,6 +223,8 @@ export function getFormLeadSourceCompanyLabel(
       return local === "local"
         ? "Best Relocation Locals"
         : "Best Relocation Forms";
+    case "get_movers_leads":
+      return "GetMovers Forms";
     case "main_site":
       return "Main Site Forms";
     case "not_provided":
@@ -220,6 +242,8 @@ export function getCallLeadSourceCompanyLabel(sourceCompany: SourceCompany): str
       return "Top10 Inbounds";
     case "best_relocation_leads":
       return "Best Relocation Inbounds";
+    case "get_movers_leads":
+      return "GetMovers Inbounds";
     case "main_site":
       return "Main Site Inbounds";
     case "not_provided":

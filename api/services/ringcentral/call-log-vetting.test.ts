@@ -24,6 +24,27 @@ test("qualifies an inbound answered call over 120s to a mapped toll-free", () =>
   assert.deepEqual(vet.rejectionReasons, []);
 });
 
+test("qualifies a GetMovers inbound call log record", () => {
+  const vet = vetRingCentralCallLogRecord({
+    id: "cl-getmovers-1",
+    sessionId: "sess-getmovers-1",
+    telephonySessionId: "tcl-getmovers-1",
+    startTime: "2026-06-29T18:00:00.000Z",
+    direction: "Inbound",
+    type: "Voice",
+    result: "Completed",
+    duration: 180,
+    to: { phoneNumber: "+18883971005", name: "GetMovers Inbounds" },
+    from: { phoneNumber: "+13055559999", name: "Caller" },
+  });
+
+  assert.equal(vet.qualifies, true);
+  assert.equal(vet.sourceCompany, "get_movers_leads");
+  assert.equal(vet.sourceLabel, "GetMovers Inbounds");
+  assert.equal(vet.targetPhoneNumber, "+18883971005");
+  assert.deepEqual(vet.rejectionReasons, []);
+});
+
 test("rejects a call under 120 seconds", () => {
   const vet = vetRingCentralCallLogRecord({
     id: "cl-2",

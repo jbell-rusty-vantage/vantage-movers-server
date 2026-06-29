@@ -59,6 +59,7 @@
     "ringcentral:call-log:sync:run": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ringcentral/ringcentral-call-log-sync-run.ts",
     "ringcentral:analytics:reconcile:run": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ringcentral/ringcentral-analytics-reconcile-run.ts",
     "ringcentral:backfill-missing-call-leads": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ringcentral/ringcentral-backfill-missing-call-leads.ts",
+    "ringcentral:getmovers-call-log-backfill": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ringcentral/getmovers-call-log-backfill.ts",
     "ringcentral:inspect-call-lead-duplicate": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ringcentral/inspect-ringcentral-call-lead-duplicate.ts",
     "call-leads:mark-duplicates": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/mark-call-lead-duplicates-via-api.ts",
     "twilio:probe-sms-env": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/twilio/twilio-probe-sms-env.ts",
