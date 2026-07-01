@@ -7,6 +7,7 @@ export {
 
 export {
   buildContentFingerprint,
+  hasBbbRedaction,
   normalizeReviewerName,
   parseReviewDate,
 } from "./testimonial.helpers";
