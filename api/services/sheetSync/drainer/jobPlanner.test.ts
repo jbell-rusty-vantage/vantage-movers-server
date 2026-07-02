@@ -198,7 +198,8 @@ test("planJobWrites dual-writes bad form leads to Forms and Master Bad Leads", a
   );
   assert.equal(planned[0].writes[1].tabName, SHEET_TAB_NAMES.badLeads);
   assert.equal(planned[0].writes[1].op, "upsert");
-  assert.equal(planned[0].writes[1].row.at(-1), "Auto Only");
+  assert.equal(planned[0].writes[1].row.at(-1), "");
+  assert.equal(planned[0].writes[1].row.at(-2), "Auto Only");
 });
 
 test("planJobWrites deletes stale Master Bad Leads row when bad_lead is cleared", async () => {

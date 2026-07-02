@@ -64,6 +64,7 @@
     "call-leads:mark-duplicates": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/mark-call-lead-duplicates-via-api.ts",
     "twilio:probe-sms-env": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/twilio/twilio-probe-sms-env.ts",
     "twilio:diagnose": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/twilio/twilio-diagnose.ts",
+    "twilio:tollfree": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/twilio/twilio-tollfree-verification.ts",
     "twilio:send-sms": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/twilio/twilio-send-sms.ts",
     "sendgrid:test-email": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/sendgrid/sendgrid-test-email.ts",
     "granot-csv:upload-registry": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/granot_crm_csv/upload-registry.ts",

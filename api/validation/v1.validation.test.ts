@@ -12,6 +12,7 @@ import {
   createCustomerSchema,
   createFormLeadSchema,
   searchFormLeadsSchema,
+  updateCallLeadSchema,
   updateFormLeadSchema,
 } from "./v1.validation";
 import { BookedLead } from "../models/BookedLead";
@@ -685,6 +686,80 @@ test("CallLead model rejects identity-less documents", async () => {
   });
 
   await assert.rejects(() => lead.validate(), /phone_number/);
+});
+
+test("FormLead model accepts receiver_agent provenance fields", async () => {
+  const lead = new FormLead({
+    source_company: "best_relocation_leads",
+    name: "Jane Customer",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    pickup_state: "NY",
+    delivery_state: "FL",
+    move_size: "Studio",
+    ref_no: "not provided",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+    local: "long_distance",
+    receiver_agent_source: "extension_match",
+    receiver_agent_source_value: "NICK",
+  });
+
+  await assert.doesNotReject(() => lead.validate());
+  assert.equal(lead.receiver_agent_source, "extension_match");
+  assert.equal(lead.receiver_agent_source_value, "NICK");
+});
+
+test("FormLead model rejects an unknown receiver_agent_source value", async () => {
+  const lead = new FormLead({
+    source_company: "best_relocation_leads",
+    name: "Jane Customer",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    pickup_state: "NY",
+    delivery_state: "FL",
+    move_size: "Studio",
+    ref_no: "not provided",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+    local: "long_distance",
+    receiver_agent_source: "not_a_real_source",
+  });
+
+  await assert.rejects(() => lead.validate(), /receiver_agent_source/);
+});
+
+test("CallLead model accepts receiver_agent provenance fields", async () => {
+  const lead = new CallLead({
+    job_no: "P5556278",
+    source_company: "best_relocation_leads",
+    receiver_agent_source: "extension_created",
+    receiver_agent_source_value: "AUSTIN",
+  });
+
+  await assert.doesNotReject(() => lead.validate());
+  assert.equal(lead.receiver_agent_source, "extension_created");
+});
+
+test("updateFormLeadSchema accepts receiver_agent linking fields", () => {
+  const parsed = updateFormLeadSchema.parse({
+    receiver_agent: "507f1f77bcf86cd799439011",
+    receiver_agent_source: "manual",
+    receiver_agent_source_value: "Nick",
+  });
+
+  assert.equal(parsed.receiver_agent, "507f1f77bcf86cd799439011");
+  assert.equal(parsed.receiver_agent_source, "manual");
+});
+
+test("updateCallLeadSchema accepts receiver_agent linking fields", () => {
+  const parsed = updateCallLeadSchema.parse({
+    receiver_agent: "507f1f77bcf86cd799439011",
+    receiver_agent_source: "extension_selected",
+  });
+
+  assert.equal(parsed.receiver_agent, "507f1f77bcf86cd799439011");
+  assert.equal(parsed.receiver_agent_source, "extension_selected");
 });
 
 test("searchFormLeadsSchema accepts typo emails as plain strings", () => {

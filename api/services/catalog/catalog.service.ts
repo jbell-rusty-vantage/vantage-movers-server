@@ -86,6 +86,7 @@ export async function createCatalogItem(
       normalized_name,
       active: input.active ?? true,
       ...(kind === "agents" && input.role ? { role: input.role } : {}),
+      ...(input.created_from ? { created_from: input.created_from } : {}),
     });
     return toCatalogItem(doc.toObject({ virtuals: true }));
   } catch (error) {

@@ -18,8 +18,8 @@ MongoDB is the source of truth. Google Sheets are owner-facing reporting surface
 
 ## Canonical Headers
 
-- `Forms`, `Duplicates`, `Bad Leads`: `Timestamp`, `Name`, `Pickup Zip`, `Destination Zip`, `Pickup State`, `Delivery State`, `Move Date`, `Phone Number`, `Mongo ID`, `Ref No`, `Booked`, `Booked Date`, `OVER 2000`, `OVER 4000`, `Cancelled`, `Local`, `Cubic Feet`, `Source Company`, `Quoted`. (`Move Size`, `Lead ID`, and `Source Company Site` were removed; the Mongo fields still exist but are no longer projected.)
-- `Calls`, `Bad Calls`: `Timestamp`, `Job No`, `Phone Number`, `Duration`, `Booked`, `Booked Date`, `Over 2000`, `Over 4000`, `Cancelled`, `Local`, `Cubic Feet`, `Mongo ID`, `Source Company`, `FormFill`.
+- `Forms`, `Duplicates`, `Bad Leads`: `Timestamp`, `Name`, `Pickup Zip`, `Destination Zip`, `Pickup State`, `Delivery State`, `Local`, `Move Date`, `Phone Number`, `Email`, `Quoted`, `Cubic Feet`, `Booked`, `OVER 2000`, `OVER 4000`, `Booked Date`, `Cancelled`, `Mongo ID`, `Ref No`, `Source Company`, `Bad Lead`, `Sales Rep`. (`Move Size`, `Lead ID`, and `Source Company Site` were removed; the Mongo fields still exist but are no longer projected.)
+- `Calls`, `Bad Calls`: `Timestamp`, `Job No`, `Phone Number`, `Duration`, `Booked`, `Booked Date`, `Over 2000`, `Over 4000`, `Cancelled`, `Local`, `Cubic Feet`, `Mongo ID`, `Source Company`, `FormFill`, `Sales Rep`.
 - `Booked Deals`: `Timestamp`, `Agent`, `SplitAgent`, `Binder Amount`, `Split`, `Book Date`, `Job No`, `Customer Name`, `Deposit Amount`, `Merchant`, `Source`, `Mongo ID`, `Mongo Lead ID`, `Local`, `Cancelled`.
 - `Cancelled Deals`: `Timestamp`, `Agent`, `Cancel Date`, `Job No`, `Customer Name`, `Refund Amount`, `Source`, `Mongo ID`, `Lead Mongo ID`.
 

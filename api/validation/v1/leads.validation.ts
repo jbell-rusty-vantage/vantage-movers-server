@@ -7,6 +7,7 @@ import {
   looseEmailString,
   moveSizeSchema,
   nonEmptyString,
+  objectIdSchema,
   optionalDate,
   optionalFloridaCalendarDate,
   optionalNumber,
@@ -15,6 +16,25 @@ import {
   sourceCompanySchema,
   zipSchema,
 } from "./common";
+
+/**
+ * How a lead's `receiver_agent` attribution was made. Mirrors the extension's
+ * upsert cascade: a pattern match against Granot's `user`/`rep` column, a
+ * manual pick from the candidate/search list, a brand-new agent created on
+ * the spot, or a direct API call outside the extension flow.
+ */
+export const receiverAgentSourceSchema = z.enum([
+  "extension_match",
+  "extension_selected",
+  "extension_created",
+  "manual",
+]);
+
+const receiverAgentFields = {
+  receiver_agent: objectIdSchema.optional(),
+  receiver_agent_source: receiverAgentSourceSchema.optional(),
+  receiver_agent_source_value: optionalString,
+};
 
 /**
  * Form lead and call lead create / update / search schemas.
@@ -62,6 +82,7 @@ const formLeadFields = {
   phone_number: nonEmptyString,
   quoted: booleanInput.optional(),
   cubic_feet: optionalNumber,
+  ...receiverAgentFields,
 };
 
 export const createFormLeadSchema = z
@@ -123,6 +144,7 @@ const callLeadFields = {
   pickup_state: optionalString,
   delivery_state: optionalString,
   cubic_feet: optionalNumber,
+  ...receiverAgentFields,
 };
 
 export const createCallLeadSchema = z

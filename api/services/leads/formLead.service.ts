@@ -5,6 +5,7 @@ import {
   type LocalType,
   type SourceCompany,
 } from "../../config/domain";
+import { Agent } from "../../models/Agent";
 import { getFormLeadModel } from "../../models/FormLead";
 import { logger } from "../../logger";
 import { toFloridaTimestamp } from "../../utils/easternTime";
@@ -81,7 +82,7 @@ export async function createFormLead(input: CreateFormLeadInput) {
       ref_no: normalizedFormLeadInput.ref_no?.trim() || "not provided",
       timestamp: toFloridaTimestamp(normalizedFormLeadInput.timestamp),
       move_date: normalizedFormLeadInput.move_date ?? new Date(),
-      cpl: getCplForSource(source_company, local),
+      cpl: await getCplForSource(source_company, "form", local),
       duplicate,
       post_to_granot: shouldPostToGranot,
     });
@@ -318,7 +319,21 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
     lead.delivery_state = location.delivery_state;
     lead.local = deriveFormLeadLocal(location.pickup_state, location.delivery_state);
   }
-  lead.cpl = getCplForSource(lead.source_company as SourceCompany, lead.local as LocalType);
+  lead.cpl = await getCplForSource(lead.source_company as SourceCompany, "form", lead.local as LocalType);
+
+  if (input.receiver_agent !== undefined) {
+    const agent = await Agent.findById(input.receiver_agent);
+    if (!agent) {
+      throw new NotFoundError("Agent not found", {
+        metadata: { resource: "agent", id: input.receiver_agent },
+      });
+    }
+    lead.receiver_agent = agent._id;
+    lead.receiver_agent_name_snapshot = agent.name;
+    lead.receiver_agent_source = input.receiver_agent_source ?? "manual";
+    lead.receiver_agent_source_value = input.receiver_agent_source_value;
+    lead.receiver_agent_set_at = new Date();
+  }
 
   const job = await runSheetSyncWrite(async (session) => {
     await lead.save({ session });
@@ -343,7 +358,7 @@ export async function findAllFormLeads() {
 export async function findFormLead(id: string) {
   const FormLead = getFormLeadModel();
   const lead = await FormLead.findById(id).select(
-    "_id ref_no quoted cubic_feet booked duplicate",
+    "_id ref_no quoted cubic_feet booked duplicate receiver_agent_name_snapshot",
   );
   if (!lead || lead.duplicate) {
     throw new NotFoundError("Form lead not found", {

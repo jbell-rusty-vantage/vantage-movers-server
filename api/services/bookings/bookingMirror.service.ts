@@ -1,5 +1,6 @@
 import mongoose, { type ClientSession } from "mongoose";
 import {
+  cplLeadTypeForModel,
   getCplForSource,
   type LeadModelName,
   type LocalType,
@@ -97,12 +98,14 @@ export async function refreshAttachedBookingFromLead(
  * Writes booking-side state back onto its source lead.
  *
  * Sets `booked`, `over_2000`, `over_4000`, optionally `source_company` and
- * `local`, and recomputes `cpl` from the resulting source company / local
- * pair. Caller passes a hydrated lead document so the save happens on a
- * single round-trip.
+ * `local`, and recomputes `cpl` from the resulting source company / lead
+ * type / local triple. Caller passes a hydrated lead document (and its
+ * model name, so the correct granular CPL rate slot is used) so the save
+ * happens on a single round-trip.
  */
 export async function mirrorBookingToLead(
   lead: SourceLeadDocument,
+  leadModel: LeadModelName,
   bookingId: mongoose.Types.ObjectId,
   over2000: boolean,
   over4000: boolean,
@@ -119,7 +122,11 @@ export async function mirrorBookingToLead(
   if (local) {
     lead.local = local;
   }
-  lead.cpl = getCplForSource(lead.source_company as SourceCompany, local);
+  lead.cpl = await getCplForSource(
+    lead.source_company as SourceCompany,
+    cplLeadTypeForModel(leadModel),
+    local,
+  );
   await lead.save({ session });
 }
 

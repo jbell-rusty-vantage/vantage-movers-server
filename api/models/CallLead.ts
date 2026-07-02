@@ -68,6 +68,17 @@ const CallLeadSchema = new Schema(
     delivery_state: { type: String, trim: true, uppercase: true },
     cubic_feet: { type: Number },
     cpl: { type: Number, required: true, default: 0 },
+    // Who originally received/worked this lead (independent of BookedLead's
+    // agent_allocations, which tracks who gets commission/credit for closing
+    // it). See `receiverAgentSourceEnum` for the provenance values.
+    receiver_agent: { type: Schema.Types.ObjectId, ref: "Agent", index: true },
+    receiver_agent_name_snapshot: { type: String, trim: true },
+    receiver_agent_source: {
+      type: String,
+      enum: ["extension_match", "extension_selected", "extension_created", "manual"],
+    },
+    receiver_agent_source_value: { type: String, trim: true },
+    receiver_agent_set_at: { type: Date },
     sheet_sync: { type: [sheetSyncSchema], default: [] },
   },
   {

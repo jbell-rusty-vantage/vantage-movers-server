@@ -27,5 +27,6 @@ export function callLeadToRow(lead: CallLeadSheetSource): string[] {
     lead._id.toString(),
     getCallLeadSourceCompanyLabel(lead.source_company),
     booleanCell(Boolean(lead.form_fill)),
+    lead.receiver_agent_name_snapshot?.trim() ?? "",
   ];
 }

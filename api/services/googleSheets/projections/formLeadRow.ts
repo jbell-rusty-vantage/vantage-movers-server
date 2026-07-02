@@ -40,6 +40,7 @@ export function formLeadToRow(lead: FormLeadSheetSource): string[] {
     lead.ref_no?.trim() || "not provided",
     getFormLeadSourceCompanyLabel(lead.source_company, lead.local as LocalType),
     formatFormLeadBadLeadReason(lead.bad_lead),
+    lead.receiver_agent_name_snapshot?.trim() ?? "",
   ];
 }
 

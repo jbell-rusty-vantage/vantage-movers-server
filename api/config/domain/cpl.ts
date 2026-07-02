@@ -1,43 +1,38 @@
 import type { LocalType } from "./constants";
+import type { CplLeadType } from "./cplRateDefinitions";
 import { normalizeSourceCompany, type SourceCompany } from "./sources";
 
 /**
- * Sole owner of CPL (cost-per-lead) values for each source company.
+ * Sole owner of CPL (cost-per-lead) resolution for each granular
+ * source-company + lead-type (+ local, for `best_relocation_leads` forms)
+ * slot.
  *
- * CPL defaults and env-var overrides are snapshot at module load -- this
- * preserves the original `process.env.* ?? <default>` semantics from
- * `api/config/domain.ts`, where toggling an env var at runtime after the
- * module is loaded does not change CPL.
+ * CPL used to be a static, env-snapshotted table (see git history). It is
+ * now owner-editable at runtime through the `cpl_rates` collection -- see
+ * `CPL_RATE_DEFINITIONS` in `./cplRateDefinitions.ts` for the canonical
+ * 13-slot list and `../../services/cpl/cplRate.service.ts` for the
+ * DB-backed cache, seeding, and admin read/write operations. This module
+ * intentionally reaches into the service layer (breaking the "pure config"
+ * convention the rest of `./domain/` follows) because CPL is no longer
+ * build/env-time config -- it is owner-configurable runtime data that must
+ * be looked up per lead.
  *
- * `best_relocation_leads` differentiates `local` vs `long_distance`; every
- * other source uses a single CPL regardless of `local` value.
+ * `not_provided` is not owner-configurable and always resolves to 0.
  */
 
-type SourceCpl = number | { local: number; long_distance: number };
-
-// CPL PRICE CHANGES -> Need backfill and sheetupdate
-
-const SOURCE_COMPANY_CPLS = {
-  tbm_leads: Number(process.env.TBM_LEADS_CPL ?? 190),
-  tbm_prime_leads: Number(process.env.TBM_PRIME_LEADS_CPL ?? 190),
-  top10_leads: Number(process.env.TOP10_LEADS_CPL ?? 190),
-  best_relocation_leads: {
-    local: Number(process.env.BEST_RELOCATION_LOCALS_CPL ?? 40),
-    long_distance: Number(process.env.BEST_RELOCATION_LEADS_CPL ?? 195),
-  },
-  get_movers_leads: Number(process.env.GETMOVERS_LEADS_CPL ?? 0),
-  main_site: Number(process.env.MAINSITE_CPL ?? 0),
-  not_provided: 0,
-} as const satisfies Record<SourceCompany, SourceCpl>;
-
-export function getCplForSource(
+export async function getCplForSource(
   sourceCompany: SourceCompany | string | null | undefined,
+  leadType: CplLeadType,
   local: LocalType | undefined,
-): number {
-  const cpl = SOURCE_COMPANY_CPLS[normalizeSourceCompany(sourceCompany)];
-  if (typeof cpl === "number") {
-    return cpl;
+): Promise<number> {
+  const resolvedSourceCompany = normalizeSourceCompany(sourceCompany);
+  if (resolvedSourceCompany === "not_provided") {
+    return 0;
   }
 
-  return cpl[local ?? "long_distance"];
+  // Lazy import avoids a load-time cycle: `./cpl` is re-exported from the
+  // `./domain` barrel that `../../models/CplRate.ts` (via `../../services/
+  // cpl/cplRate.service.ts`) also depends on for its own domain constants.
+  const { getCplRate } = await import("../../services/cpl/cplRate.service.js");
+  return getCplRate(resolvedSourceCompany, leadType, local);
 }

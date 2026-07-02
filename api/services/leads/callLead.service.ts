@@ -6,6 +6,7 @@ import {
   type LocalType,
   type SourceCompany,
 } from "../../config/domain";
+import { Agent } from "../../models/Agent";
 import { CallLead } from "../../models/CallLead";
 import { toFloridaTimestamp } from "../../utils/easternTime";
 import type {
@@ -85,7 +86,7 @@ export async function createRingCentralCallLead(
       timestamp: toFloridaTimestamp(input.timestamp ?? new Date()),
       form_fill,
       duplicate,
-      cpl: duplicate ? 0 : getCplForSource(source_company, undefined),
+      cpl: duplicate ? 0 : await getCplForSource(source_company, "call", undefined),
       ringcentral: {
         telephony_session_id: input.ringcentral.telephony_session_id ?? undefined,
         session_id: input.ringcentral.session_id ?? undefined,
@@ -148,7 +149,7 @@ export async function createCallLead(input: CreateCallLeadInput) {
       local,
       form_fill,
       timestamp: toFloridaTimestamp(normalizedInput.timestamp),
-      cpl: getCplForSource(source_company, local),
+      cpl: await getCplForSource(source_company, "call", local),
     });
     await created.save({ session });
     await persistSheetSyncIntent(callLeadCreateJob(created._id.toString()), session);
@@ -237,10 +238,25 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
   }
   lead.cpl = lead.duplicate
     ? 0
-    : getCplForSource(
+    : await getCplForSource(
         lead.source_company as SourceCompany,
+        "call",
         lead.local as LocalType | undefined,
       );
+
+  if (input.receiver_agent !== undefined) {
+    const agent = await Agent.findById(input.receiver_agent);
+    if (!agent) {
+      throw new NotFoundError("Agent not found", {
+        metadata: { resource: "agent", id: input.receiver_agent },
+      });
+    }
+    lead.receiver_agent = agent._id;
+    lead.receiver_agent_name_snapshot = agent.name;
+    lead.receiver_agent_source = input.receiver_agent_source ?? "manual";
+    lead.receiver_agent_source_value = input.receiver_agent_source_value;
+    lead.receiver_agent_set_at = new Date();
+  }
 
   const job = await runSheetSyncWrite(async (session) => {
     await lead.save({ session });

@@ -47,6 +47,17 @@ const FormLeadSchema = new Schema(
     post_to_granot: { type: Boolean, required: true, default: true },
     cancelled: { type: Schema.Types.ObjectId, ref: "CancelledLead" },
     cubic_feet: { type: Number },
+    // Who originally received/worked this lead (independent of BookedLead's
+    // agent_allocations, which tracks who gets commission/credit for closing
+    // it). See `receiver_agent_source` enum for the provenance values.
+    receiver_agent: { type: Schema.Types.ObjectId, ref: "Agent", index: true },
+    receiver_agent_name_snapshot: { type: String, trim: true },
+    receiver_agent_source: {
+      type: String,
+      enum: ["extension_match", "extension_selected", "extension_created", "manual"],
+    },
+    receiver_agent_source_value: { type: String, trim: true },
+    receiver_agent_set_at: { type: Date },
     sheet_sync: { type: [sheetSyncSchema], default: [] },
   },
   {

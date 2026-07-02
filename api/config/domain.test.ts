@@ -32,7 +32,7 @@ test("call sheet headers omit owner-hidden descriptive and location columns", ()
 
 test("lead sheet configuration includes duplicate and form fill surfaces", () => {
   assert.equal(SHEET_TAB_NAMES.duplicates, "Duplicates");
-  assert.equal(CALL_SHEET_HEADERS.at(-1), "FormFill");
+  assert.equal(CALL_SHEET_HEADERS.at(-1), "Sales Rep");
   assert.equal((FORM_SHEET_HEADERS as readonly string[]).includes("Duplicate"), false);
 });
 

@@ -51,6 +51,8 @@ export type BookedCallLeadReconciliationResult = {
   match_method?: BookedCallLeadMatchMethod;
   /** Whether the matched call lead has a booking attached. */
   has_booking?: boolean;
+  /** Name snapshot of the agent already linked as `receiver_agent`, if any. */
+  receiver_agent_name_snapshot?: string;
   changes: string[];
   warnings: string[];
   parsed?: ParsedBookedCallLeadRow;
@@ -98,8 +100,9 @@ export async function syncBookedCallLeadReconciliation(
 
       if (resolved.leadUpdate) {
         Object.assign(resolved.lead, resolved.leadUpdate);
-        resolved.lead.cpl = getCplForSource(
+        resolved.lead.cpl = await getCplForSource(
           resolved.lead.source_company as SourceCompany,
+          "call",
           resolved.lead.local as LocalType | undefined,
         );
         await resolved.lead.save();
@@ -197,6 +200,7 @@ async function resolveReconciliationRow(
     };
   }
   base.call_lead_id = lead._id.toString();
+  base.receiver_agent_name_snapshot = lead.receiver_agent_name_snapshot ?? undefined;
 
   const sourceConflict = buildAssignedSourceConflict(lead, parsed);
   if (sourceConflict) {
@@ -285,6 +289,7 @@ async function resolveCallLeadOnlyRow(
   base.call_lead_id = lead._id.toString();
   base.match_method = match.matchMethod;
   base.has_booking = Boolean(lead.booked);
+  base.receiver_agent_name_snapshot = lead.receiver_agent_name_snapshot ?? undefined;
   if (match.warnings.length > 0) {
     base.warnings.push(...match.warnings);
   }

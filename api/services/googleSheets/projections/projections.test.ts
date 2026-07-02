@@ -171,11 +171,12 @@ test("formLeadToRow projects fields in the documented header order", () => {
     source_company_site: "vantagemovers.com",
     quoted: true,
     bad_lead: "bad_phone_email_name",
+    receiver_agent_name_snapshot: "  Nick Smith  ",
   };
 
   const row = formLeadToRow(lead);
 
-  assert.equal(row.length, 21);
+  assert.equal(row.length, 22);
   assert.equal(row[0], "5/27/2026 09:04:05");
   assert.equal(row[1], "Jane Tester");
   assert.equal(row[2], "10001");
@@ -197,6 +198,7 @@ test("formLeadToRow projects fields in the documented header order", () => {
   assert.equal(row[18], "ref-abc");
   assert.equal(row[19], "Main Site Forms");
   assert.equal(row[20], "Bad Phone-Email-Name");
+  assert.equal(row[21], "Nick Smith");
 });
 
 test("formLeadToRow defaults missing ref_no to 'not provided'", () => {
@@ -220,6 +222,7 @@ test("formLeadToRow defaults missing ref_no to 'not provided'", () => {
   assert.equal(row[5], "not_found");
   assert.equal(row[19], "Main Site Forms");
   assert.equal(row[20], "");
+  assert.equal(row[21], "");
 });
 
 test("lead projections use exact GetMovers source labels", () => {
@@ -289,11 +292,12 @@ test("callLeadToRow projects fields in the documented header order", () => {
     cubic_feet: 1200,
     source_company: "tbm_leads",
     form_fill: true,
+    receiver_agent_name_snapshot: "  Nick Smith  ",
   };
 
   const row = callLeadToRow(lead);
 
-  assert.equal(row.length, 14);
+  assert.equal(row.length, 15);
   assert.equal(row[0], "5/27/2026 09:04:05");
   assert.equal(row[1], "J-100");
   assert.equal(row[2], "555-333-4444");
@@ -308,6 +312,7 @@ test("callLeadToRow projects fields in the documented header order", () => {
   assert.equal(row[11], lead._id.toString());
   assert.equal(row[12], "10best Inbounds");
   assert.equal(row[13], "TRUE");
+  assert.equal(row[14], "Nick Smith");
 });
 
 test("callLeadToRow clears booking reporting columns after booking deletion", () => {

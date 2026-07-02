@@ -50,6 +50,8 @@ export type CallLeadEnrichmentResult = {
   match_method?: CallLeadMatchMethod;
   /** Whether the matched call lead has a booking attached (BookedLead present). */
   has_booking?: boolean;
+  /** Name snapshot of the agent already linked as `receiver_agent`, if any. */
+  receiver_agent_name_snapshot?: string;
   changes: string[];
   warnings: string[];
   parsed?: ParsedCallLeadEnrichmentRow;
@@ -85,8 +87,9 @@ export async function syncCallLeadEnrichment(
 
       Object.assign(resolved.lead, resolved.update);
       if (resolved.update.local || resolved.update.source_company) {
-        resolved.lead.cpl = getCplForSource(
+        resolved.lead.cpl = await getCplForSource(
           normalizeSourceCompany(resolved.lead.source_company),
+          "call",
           resolved.lead.local as LocalType | undefined,
         );
       }
@@ -164,6 +167,7 @@ async function resolveEnrichmentRow(
   base.matched_phone_number = lead.phone_number ?? undefined;
   base.match_method = matchMethod;
   base.has_booking = Boolean(lead.booked);
+  base.receiver_agent_name_snapshot = lead.receiver_agent_name_snapshot ?? undefined;
   base.warnings.push(...warnings);
 
   const existingJobNo = cleanValue(lead.job_no);

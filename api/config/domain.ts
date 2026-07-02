@@ -13,7 +13,9 @@
  *   - `./domain/sources`   -- source-company slugs, labels, aliases,
  *     `SOURCE_COMPANY_CONFIGS` (pure metadata, no env reads), and
  *     normalization helpers.
- *   - `./domain/cpl`       -- env-snapshot CPL table and `getCplForSource`.
+ *   - `./domain/cpl`       -- DB-backed CPL resolution (`getCplForSource`).
+ *   - `./domain/cplRateDefinitions` -- canonical granular CPL rate slots
+ *     (`CPL_RATE_DEFINITIONS`) shared by the CPL service and admin UI.
  *   - `./domain/runtime`   -- `TEST_MODE`, Mongo DB name, required-env
  *     lookup, and `TEST_`-prefixed Sheet container resolution.
  *   - `./domain/googleAuth` -- Google service-account env-var names and
@@ -28,6 +30,7 @@ export * from "./domain/constants";
 export * from "./domain/sheets";
 export * from "./domain/sources";
 export * from "./domain/cpl";
+export * from "./domain/cplRateDefinitions";
 export * from "./domain/runtime";
 export * from "./domain/googleAuth";
 export * from "./domain/sheetSync";

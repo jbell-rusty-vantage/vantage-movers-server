@@ -136,6 +136,7 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
       await existingBooking.save({ session });
       await mirrorBookingToLead(
         lead,
+        input.lead_model,
         existingBooking._id,
         over_2000,
         over_4000,
@@ -173,6 +174,7 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
     await booking.save({ session });
     await mirrorBookingToLead(
       lead,
+      input.lead_model,
       booking._id,
       over_2000,
       over_4000,
@@ -346,8 +348,9 @@ export async function updateBookedLead(id: string, input: UpdateBookedLeadInput)
   }
 
   const job = await runSheetSyncWrite(async (session) => {
+    const leadModel = booking.lead_model as LeadModelName;
     const lead = await getLinkedLead(
-      booking.lead_model as LeadModelName,
+      leadModel,
       booking.lead_ref!.toString(),
       session,
     );
@@ -355,6 +358,7 @@ export async function updateBookedLead(id: string, input: UpdateBookedLeadInput)
     await booking.save({ session });
     await mirrorBookingToLead(
       lead,
+      leadModel,
       booking._id,
       booking.over_2000,
       booking.over_4000,

@@ -69,6 +69,7 @@ export type FormLeadSheetSource = SyncableDocument & {
   cpl?: number | null;
   duplicate?: boolean | null;
   bad_lead?: FormLeadBadLeadReason | null;
+  receiver_agent_name_snapshot?: string | null;
 };
 
 export type CallLeadSheetSource = SyncableDocument & {
@@ -93,6 +94,7 @@ export type CallLeadSheetSource = SyncableDocument & {
   form_fill?: boolean | null;
   cubic_feet?: number | null;
   duplicate?: boolean | null;
+  receiver_agent_name_snapshot?: string | null;
 };
 
 export type BookedLeadSheetSource = SyncableDocument & PopulatedBookedLead;

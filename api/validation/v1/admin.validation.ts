@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { booleanInput, nonEmptyString, requireAtLeastOne } from "./common";
+import { booleanInput, moneyAmount, nonEmptyString, requireAtLeastOne } from "./common";
 
 export const adminDatabaseScopeSchema = z
   .enum(["production", "historical", "combined"])
@@ -90,6 +90,12 @@ export const catalogCreateSchema = z
     name: nonEmptyString,
     active: booleanInput.optional(),
     role: nonEmptyString.optional(),
+    // Optional provenance override. Defaults to the catalog's configured
+    // `created_from` (see `CATALOGS` in `catalog.service.ts`) when omitted;
+    // used by callers like the extension's sales-rep upsert dialog to tag
+    // agents created that way (`extension_sales_rep_match`) instead of
+    // `admin`.
+    created_from: nonEmptyString.optional(),
   })
   .strict();
 
@@ -97,9 +103,16 @@ export const catalogUpdateSchema = catalogCreateSchema
   .partial()
   .refine(requireAtLeastOne, "At least one catalog field must be provided");
 
+export const cplRateUpdateSchema = z
+  .object({
+    cpl: moneyAmount,
+  })
+  .strict();
+
 export type AdminBrowseQuery = z.infer<typeof adminBrowseQuerySchema>;
 export type AdminSearchQuery = z.infer<typeof adminSearchQuerySchema>;
 export type AdminDatabaseScope = z.infer<typeof adminDatabaseScopeSchema>;
 export type CatalogListQuery = z.infer<typeof catalogListQuerySchema>;
 export type CatalogCreateInput = z.infer<typeof catalogCreateSchema>;
 export type CatalogUpdateInput = z.infer<typeof catalogUpdateSchema>;
+export type CplRateUpdateInput = z.infer<typeof cplRateUpdateSchema>;

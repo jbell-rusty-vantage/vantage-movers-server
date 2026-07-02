@@ -4,11 +4,14 @@ import { escapeSheetTitleForRange } from "../../utils/googleSheets/ranges";
 import { withSheetsRetry } from "./retry";
 import type { SheetTabConfig } from "./types";
 
-const LEGACY_CALL_SHEET_HEADER_LENGTH = 18;
+const LEGACY_CALL_SHEET_HEADER_LENGTH = 19;
 // Forms/Duplicates/Bad Leads previously carried 22 columns (before
 // `Move Size`, `Lead ID`, and `Source Company Site` were removed). Clearing up
 // to the legacy width self-heals stale trailing header cells on redeploy.
-const LEGACY_FORM_SHEET_HEADER_LENGTH = 22;
+// Bumped alongside `CALL_SHEET_HEADERS`/`FORM_SHEET_HEADERS` each time a
+// column is appended, so exactly one stale trailing column is still cleared
+// beyond the current (now longer) header width.
+const LEGACY_FORM_SHEET_HEADER_LENGTH = 23;
 
 /**
  * Tabs whose existence + header row have already been ensured in this process.

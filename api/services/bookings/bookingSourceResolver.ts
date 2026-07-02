@@ -1,11 +1,11 @@
 import {
+  getCplForSource,
   resolveSourceCompany,
   resolveSourceCompanyFromLabel,
   type LeadModelName,
   type SourceCompany,
 } from "../../config/domain";
 import { CallLead } from "../../models/CallLead";
-import { getCplForSource } from "../../config/domain";
 import { toFloridaTimestamp } from "../../utils/easternTime";
 import {
   findBestCallLeadMatchByPhone,
@@ -101,7 +101,7 @@ export async function resolveBookingSourceLead(
     form_fill,
     created_on_unmatched: true,
     timestamp: toFloridaTimestamp(input.timestamp),
-    cpl: getCplForSource(source_company, undefined),
+    cpl: await getCplForSource(source_company, "call", undefined),
   });
 
   return { lead, leadModel: "CallLead", jobNo };

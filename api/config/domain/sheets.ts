@@ -71,6 +71,7 @@ export const FORM_SHEET_HEADERS = [
   "Ref No",
   "Source Company",
   "Bad Lead",
+  "Sales Rep",
 ] as const;
 
 export const FORM_LEAD_BAD_LEAD_REASONS = [
@@ -110,6 +111,7 @@ export const CALL_SHEET_HEADERS = [
   "Mongo ID",
   "Source Company",
   "FormFill",
+  "Sales Rep",
 ] as const;
 
 export const BOOKED_SHEET_HEADERS = [

@@ -85,6 +85,7 @@ import {
   catalogCreateSchema,
   catalogListQuerySchema,
   catalogUpdateSchema,
+  cplRateUpdateSchema,
   listGranotCrmSourcesQuerySchema,
   sheetSyncJobsQuerySchema,
   sheetSyncRunsQuerySchema,
@@ -134,6 +135,7 @@ import {
   updateCatalogItem,
   type CatalogKind,
 } from "../services/catalog";
+import { listCplRates, updateCplRate } from "../services/cpl/cplRate.service";
 import {
   exportAgentSalesReportCsv,
   exportAnalyticsReportCsv,
@@ -195,6 +197,8 @@ router.get("/api/v1/admin/merchants", handleCatalogList("merchants"));
 router.get("/api/v1/admin/merchants/:id", handleCatalogDetail("merchants"));
 router.post("/api/v1/admin/merchants", handleCatalogCreate("merchants"));
 router.patch("/api/v1/admin/merchants/:id", handleCatalogUpdate("merchants"));
+router.get("/api/v1/admin/cpl-rates", handleCplRatesList);
+router.patch("/api/v1/admin/cpl-rates/:label", handleCplRateUpdate);
 for (const resource of adminResources) {
   router.get(`/api/v1/admin/${resource}`, handleAdminBrowse(resource));
   router.get(`/api/v1/admin/${resource}/:id`, handleAdminDetail(resource));
@@ -418,6 +422,28 @@ function handleCatalogUpdate(kind: CatalogKind) {
       return sendError(req, res, error);
     }
   };
+}
+
+async function handleCplRatesList(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const items = await listCplRates();
+    return res.json({ ok: true, data: { items } });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleCplRateUpdate(req: Request, res: Response) {
+  try {
+    const label = (Array.isArray(req.params.label) ? req.params.label[0] : req.params.label) ?? "";
+    await connectMongo();
+    const parsed = cplRateUpdateSchema.parse(req.body);
+    const data = await updateCplRate(label, parsed.cpl);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
 }
 
 function handleAdminExport(resource: AdminResource) {
