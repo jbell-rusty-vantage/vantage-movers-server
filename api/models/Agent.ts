@@ -7,6 +7,14 @@ const AgentSchema = new Schema(
     active: { type: Boolean, required: true, default: true },
     role: { type: String, required: true, trim: true, default: "agent" },
     created_from: { type: String, required: true, trim: true, default: "booked_lead" },
+    // Granot CRM `user`/`rep` column login (e.g. "MIKEM", "JACOB").
+    granot_crm_username: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      sparse: true,
+      unique: true,
+    },
   },
   {
     collection: "agents",
