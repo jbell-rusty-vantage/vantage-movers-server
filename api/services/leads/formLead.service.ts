@@ -358,7 +358,7 @@ export async function findAllFormLeads() {
 export async function findFormLead(id: string) {
   const FormLead = getFormLeadModel();
   const lead = await FormLead.findById(id).select(
-    "_id ref_no quoted cubic_feet booked duplicate receiver_agent_name_snapshot",
+    "_id ref_no quoted cubic_feet booked duplicate receiver_agent receiver_agent_name_snapshot receiver_agent_source receiver_agent_source_value",
   );
   if (!lead || lead.duplicate) {
     throw new NotFoundError("Form lead not found", {

@@ -27,6 +27,7 @@ export const receiverAgentSourceSchema = z.enum([
   "extension_match",
   "extension_selected",
   "extension_created",
+  "extension_crm_username_match",
   "manual",
 ]);
 

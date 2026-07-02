@@ -90,6 +90,7 @@ export const catalogCreateSchema = z
     name: nonEmptyString,
     active: booleanInput.optional(),
     role: nonEmptyString.optional(),
+    granot_crm_username: nonEmptyString.optional(),
     // Optional provenance override. Defaults to the catalog's configured
     // `created_from` (see `CATALOGS` in `catalog.service.ts`) when omitted;
     // used by callers like the extension's sales-rep upsert dialog to tag

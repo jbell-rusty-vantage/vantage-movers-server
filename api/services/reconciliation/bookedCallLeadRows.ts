@@ -29,6 +29,7 @@ export type ParsedBookedCallLeadRow = {
   book_date?: Date;
   name?: string;
   phone_number?: string;
+  granot_crm_username?: string;
   normalized_phone_number?: string;
   email?: string;
   pickup_zip?: string;
@@ -73,6 +74,7 @@ export async function parseBookedCallLeadRow(
     book_date: parseOptionalDate(row.book_date, warnings),
     name: cleanValue(row.customer),
     phone_number: cleanValue(row.phone),
+    granot_crm_username: cleanValue(row.granot_crm_username),
     normalized_phone_number: normalizePhoneNumberForMatch(row.phone),
     email: cleanEmail(row.email, warnings),
     pickup_zip: pickupZip,

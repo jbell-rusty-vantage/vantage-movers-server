@@ -7,6 +7,7 @@ import type {
 } from "../../validation/v1.validation";
 import { V1ServiceError } from "../v1ServiceError";
 import { normalizeAgentName } from "../agents/agentName";
+import { normalizeGranotCrmUsername } from "../agents/receiverAgentCrmUsername";
 
 export type CatalogKind = "agents" | "merchants";
 
@@ -18,6 +19,7 @@ export type CatalogItem = {
   active: boolean;
   created_from: string;
   role?: string;
+  granot_crm_username?: string;
   createdAt?: Date;
   updatedAt?: Date;
 };
@@ -86,6 +88,9 @@ export async function createCatalogItem(
       normalized_name,
       active: input.active ?? true,
       ...(kind === "agents" && input.role ? { role: input.role } : {}),
+      ...(kind === "agents"
+        ? toGranotCrmUsernameField(input.granot_crm_username)
+        : {}),
       ...(input.created_from ? { created_from: input.created_from } : {}),
     });
     return toCatalogItem(doc.toObject({ virtuals: true }));
@@ -114,6 +119,9 @@ export async function updateCatalogItem(
   }
   if (kind === "agents" && input.role !== undefined) {
     update.role = input.role;
+  }
+  if (kind === "agents" && input.granot_crm_username !== undefined) {
+    Object.assign(update, toGranotCrmUsernameField(input.granot_crm_username));
   }
 
   try {
@@ -154,6 +162,13 @@ function canonicalName(name: string): string {
   return name.trim().replace(/\s+/g, " ");
 }
 
+function toGranotCrmUsernameField(
+  value: string | undefined,
+): Record<string, string> | Record<string, never> {
+  const granot_crm_username = normalizeGranotCrmUsername(value);
+  return granot_crm_username ? { granot_crm_username } : {};
+}
+
 function toCatalogItem(doc: Record<string, unknown>): CatalogItem {
   const id = String(doc._id ?? doc.id ?? "");
   return {
@@ -164,6 +179,9 @@ function toCatalogItem(doc: Record<string, unknown>): CatalogItem {
     active: doc.active === true,
     created_from: String(doc.created_from ?? ""),
     ...(typeof doc.role === "string" ? { role: doc.role } : {}),
+    ...(typeof doc.granot_crm_username === "string"
+      ? { granot_crm_username: doc.granot_crm_username }
+      : {}),
     ...(doc.createdAt instanceof Date ? { createdAt: doc.createdAt } : {}),
     ...(doc.updatedAt instanceof Date ? { updatedAt: doc.updatedAt } : {}),
   };

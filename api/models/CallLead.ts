@@ -75,7 +75,13 @@ const CallLeadSchema = new Schema(
     receiver_agent_name_snapshot: { type: String, trim: true },
     receiver_agent_source: {
       type: String,
-      enum: ["extension_match", "extension_selected", "extension_created", "manual"],
+      enum: [
+        "extension_match",
+        "extension_selected",
+        "extension_created",
+        "extension_crm_username_match",
+        "manual",
+      ],
     },
     receiver_agent_source_value: { type: String, trim: true },
     receiver_agent_set_at: { type: Date },

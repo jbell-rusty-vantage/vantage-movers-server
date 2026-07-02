@@ -701,12 +701,12 @@ test("FormLead model accepts receiver_agent provenance fields", async () => {
     email: "jane@example.com",
     phone_number: "5555551212",
     local: "long_distance",
-    receiver_agent_source: "extension_match",
+    receiver_agent_source: "extension_crm_username_match",
     receiver_agent_source_value: "NICK",
   });
 
   await assert.doesNotReject(() => lead.validate());
-  assert.equal(lead.receiver_agent_source, "extension_match");
+  assert.equal(lead.receiver_agent_source, "extension_crm_username_match");
   assert.equal(lead.receiver_agent_source_value, "NICK");
 });
 
@@ -755,11 +755,11 @@ test("updateFormLeadSchema accepts receiver_agent linking fields", () => {
 test("updateCallLeadSchema accepts receiver_agent linking fields", () => {
   const parsed = updateCallLeadSchema.parse({
     receiver_agent: "507f1f77bcf86cd799439011",
-    receiver_agent_source: "extension_selected",
+    receiver_agent_source: "extension_crm_username_match",
   });
 
   assert.equal(parsed.receiver_agent, "507f1f77bcf86cd799439011");
-  assert.equal(parsed.receiver_agent_source, "extension_selected");
+  assert.equal(parsed.receiver_agent_source, "extension_crm_username_match");
 });
 
 test("searchFormLeadsSchema accepts typo emails as plain strings", () => {

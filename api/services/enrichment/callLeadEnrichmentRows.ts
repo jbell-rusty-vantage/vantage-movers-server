@@ -24,6 +24,7 @@ export type ParsedCallLeadEnrichmentRow = {
   source_company?: SourceCompany;
   name?: string;
   phone?: string;
+  granot_crm_username?: string;
   normalized_phone_number?: string;
   email?: string;
   pickup_zip?: string;
@@ -65,6 +66,7 @@ export async function parseEnrichmentRow(
     source_company: resolveSourceCompany(row.source),
     name: cleanValue(row.customer),
     phone: cleanValue(row.phone),
+    granot_crm_username: cleanValue(row.granot_crm_username),
     normalized_phone_number: normalizePhoneNumberForMatch(row.phone),
     email: cleanEmail(row.email, warnings),
     pickup_zip: pickupZip,

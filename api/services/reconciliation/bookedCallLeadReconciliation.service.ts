@@ -23,6 +23,10 @@ import {
   type ParsedBookedCallLeadRow,
   type ParsedBookedCallLeadRowWithWarnings,
 } from "./bookedCallLeadRows";
+import {
+  applyGranotCrmUsernameReceiverMatch,
+  type ReceiverAgentCrmUsernameMatchResult,
+} from "../agents/receiverAgentCrmUsername";
 
 export type BookedCallLeadReconciliationStatus =
   | "updateable"
@@ -53,6 +57,8 @@ export type BookedCallLeadReconciliationResult = {
   has_booking?: boolean;
   /** Name snapshot of the agent already linked as `receiver_agent`, if any. */
   receiver_agent_name_snapshot?: string;
+  /** CRM username of the linked receiver Agent, when known. */
+  receiver_agent_granot_crm_username?: string;
   changes: string[];
   warnings: string[];
   parsed?: ParsedBookedCallLeadRow;
@@ -89,15 +95,28 @@ export async function syncBookedCallLeadReconciliation(
   for (const row of input.rows) {
     try {
       const resolved = await resolveReconciliationRow(row);
+      const receiverMatch = resolved.lead
+        ? await applyGranotCrmUsernameReceiverMatch(
+            resolved.lead,
+            row.granot_crm_username,
+          )
+        : undefined;
+      const canWrite =
+        resolved.result.status === "updateable" ||
+        resolved.result.status === "unchanged";
       if (
-        resolved.result.status !== "updateable" ||
+        !canWrite ||
         !resolved.lead ||
-        (!resolved.leadUpdate && !resolved.bookingUpdate && !resolved.customerInput)
+        (!resolved.leadUpdate &&
+          !resolved.bookingUpdate &&
+          !resolved.customerInput &&
+          !receiverMatch?.changed)
       ) {
-        results.push(resolved.result);
+        results.push(applyReceiverMatchResult(resolved.result, receiverMatch));
         continue;
       }
 
+      const leadChanged = Boolean(resolved.leadUpdate) || Boolean(receiverMatch?.changed);
       if (resolved.leadUpdate) {
         Object.assign(resolved.lead, resolved.leadUpdate);
         resolved.lead.cpl = await getCplForSource(
@@ -105,6 +124,8 @@ export async function syncBookedCallLeadReconciliation(
           "call",
           resolved.lead.local as LocalType | undefined,
         );
+      }
+      if (leadChanged) {
         await resolved.lead.save();
       }
 
@@ -133,14 +154,29 @@ export async function syncBookedCallLeadReconciliation(
           "booked_call_lead.call_lead_only.sync",
         );
       }
+      if (receiverMatch?.changed) {
+        scheduleCallLeadSheetSync(
+          resolved.lead._id.toString(),
+          "booked_call_lead.receiver_agent_crm_username.sync",
+        );
+      }
 
+      const result = applyReceiverMatchResult(resolved.result, receiverMatch);
       results.push({
-        ...resolved.result,
+        ...result,
         status: "updated",
         message:
           resolved.syncTarget === "booking_chain" && resolved.booking
-            ? `Updated booked call lead ${resolved.lead._id.toString()} and booking ${resolved.booking._id.toString()}.`
-            : `Updated call lead ${resolved.lead._id.toString()} from Booked Jobs row.`,
+            ? buildBookingChainSyncMessage(
+                resolved.lead._id.toString(),
+                resolved.booking._id.toString(),
+                receiverMatch,
+              )
+            : buildCallLeadOnlySyncMessage(
+                resolved.lead._id.toString(),
+                receiverMatch,
+              ),
+        changes: mergeReceiverChanges(result.changes, receiverMatch),
       });
     } catch (error) {
       results.push({
@@ -153,6 +189,62 @@ export async function syncBookedCallLeadReconciliation(
     }
   }
   return results;
+}
+
+function applyReceiverMatchResult(
+  result: BookedCallLeadReconciliationResult,
+  match: ReceiverAgentCrmUsernameMatchResult | undefined,
+): BookedCallLeadReconciliationResult {
+  if (!match || match.status === "empty") {
+    return result;
+  }
+
+  const warnings = [...result.warnings];
+  if (match.status === "not_found") {
+    warnings.push(match.message);
+  } else if (match.status === "already_linked") {
+    warnings.push(
+      `Receiver Agent already set; CRM username ${match.username} did not overwrite it.`,
+    );
+  }
+
+  return {
+    ...result,
+    ...(match.status === "matched"
+      ? {
+          receiver_agent_name_snapshot: match.agentName,
+          receiver_agent_granot_crm_username: match.username,
+        }
+      : {}),
+    warnings,
+  };
+}
+
+function mergeReceiverChanges(
+  changes: string[],
+  match: ReceiverAgentCrmUsernameMatchResult | undefined,
+): string[] {
+  if (match?.status !== "matched") {
+    return changes;
+  }
+  return Array.from(new Set([...changes, "receiver_agent"]));
+}
+
+function buildBookingChainSyncMessage(
+  leadId: string,
+  bookingId: string,
+  match: ReceiverAgentCrmUsernameMatchResult | undefined,
+): string {
+  const base = `Updated booked call lead ${leadId} and booking ${bookingId}.`;
+  return match?.status === "matched" ? `${base} ${match.message}` : base;
+}
+
+function buildCallLeadOnlySyncMessage(
+  leadId: string,
+  match: ReceiverAgentCrmUsernameMatchResult | undefined,
+): string {
+  const base = `Updated call lead ${leadId} from Booked Jobs row.`;
+  return match?.status === "matched" ? `${base} ${match.message}` : base;
 }
 
 async function resolveReconciliationRow(

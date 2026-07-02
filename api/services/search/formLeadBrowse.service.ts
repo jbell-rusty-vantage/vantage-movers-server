@@ -44,6 +44,8 @@ export type FormLeadBrowseResult = {
   quoted?: boolean;
   cubic_feet?: number;
   createdAt?: Date;
+  receiver_agent_name_snapshot?: string;
+  receiver_agent_granot_crm_username?: string;
   booked: LeadBookingSummary | null;
   cancelled: LeadCancellationSummary | null;
 };
@@ -65,6 +67,7 @@ export async function browseFormLeads(
       .limit(query.limit)
       .populate({ path: "booked", select: BOOKING_SUMMARY_SELECT })
       .populate({ path: "cancelled", select: CANCELLATION_SUMMARY_SELECT })
+      .populate({ path: "receiver_agent", select: "granot_crm_username" })
       .lean()
       .exec(),
     FormLead.countDocuments(filter).exec(),
@@ -136,7 +139,17 @@ function mapFormLead(doc: Record<string, unknown>): FormLeadBrowseResult {
     quoted: doc.quoted as boolean | undefined,
     cubic_feet: doc.cubic_feet as number | undefined,
     createdAt: doc.createdAt as Date | undefined,
+    receiver_agent_name_snapshot: doc.receiver_agent_name_snapshot as string | undefined,
+    receiver_agent_granot_crm_username: getReceiverAgentCrmUsername(doc.receiver_agent),
     booked: toBookingSummary(doc.booked),
     cancelled: toCancellationSummary(doc.cancelled),
   };
+}
+
+function getReceiverAgentCrmUsername(receiverAgent: unknown): string | undefined {
+  if (!receiverAgent || typeof receiverAgent !== "object") {
+    return undefined;
+  }
+  const value = (receiverAgent as { granot_crm_username?: unknown }).granot_crm_username;
+  return typeof value === "string" ? value : undefined;
 }
