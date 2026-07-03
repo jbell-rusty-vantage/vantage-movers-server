@@ -14,6 +14,12 @@ import {
 import { mergeAnalyticsPayload, type AnalyticsPayload } from "./analyticsMerge";
 import { getRevenueTrend } from "./revenueTrend.service";
 import {
+  getReceiverAgentPerformance,
+  getReceiverAgentSourceBreakdown,
+  getReceiverAgentTrend,
+  unsupportedReceiverAgentReport,
+} from "./receiverAgentPerformance.service";
+import {
   getLeadSourcePerformance,
   getSourceCompanyFunnel,
   getSourceCompanyPerformance,
@@ -75,5 +81,11 @@ async function getConcreteAnalyticsReport(
       return getStatePerformance(models, query, "pickup_state");
     case "delivery-state-performance":
       return getStatePerformance(models, query, "delivery_state");
+    case "receiver-agent-performance":
+      return scope === "historical" ? unsupportedReceiverAgentReport() : getReceiverAgentPerformance(models, query);
+    case "receiver-agent-trend":
+      return scope === "historical" ? unsupportedReceiverAgentReport() : getReceiverAgentTrend(models, query);
+    case "receiver-agent-source-breakdown":
+      return scope === "historical" ? unsupportedReceiverAgentReport() : getReceiverAgentSourceBreakdown(models, query);
   }
 }

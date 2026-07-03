@@ -275,7 +275,10 @@ function applyResourceFilter(
   if (resource === "form-leads" || resource === "call-leads") {
     const duplicateClause =
       query.duplicate === true ? { duplicate: true } : { duplicate: { $ne: true } };
-    return mergeFilters(filter, duplicateClause);
+    return mergeFilters(
+      mergeFilters(filter, duplicateClause),
+      receiverAgentFilterClause(query),
+    );
   }
 
   if (resource === "booked-leads") {
@@ -290,6 +293,16 @@ function applyResourceFilter(
   }
 
   return filter;
+}
+
+function receiverAgentFilterClause(query: AdminBrowseQuery): AdminFilter {
+  const receiverAgent = typeof query.receiver_agent === "string" ? query.receiver_agent.trim() : "";
+  if (!receiverAgent) {
+    return {};
+  }
+  return {
+    receiver_agent: new mongoose.mongo.ObjectId(receiverAgent),
+  };
 }
 
 function leadlessBookingFilterClause(query: AdminBrowseQuery): AdminFilter {

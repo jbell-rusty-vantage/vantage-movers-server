@@ -105,6 +105,25 @@ test("admin form lead browse excludes duplicates by default", async () => {
   assert.doesNotMatch(filterPreview, /duplicate:\s*true/);
 });
 
+test("admin form lead browse filters receiver agent by ObjectId equality", async () => {
+  const capture: QueryCapture = { populated: [] };
+  const receiverAgentId = new mongoose.Types.ObjectId();
+  stubFind(FormLead, capture, []);
+  stubCount(FormLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({
+    receiver_agent: receiverAgentId.toString(),
+    limit: 10,
+  });
+  await browseAdminResource("form-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /receiver_agent/);
+  assert.match(filterPreview, new RegExp(receiverAgentId.toString()));
+  assert.doesNotMatch(filterPreview, /\/.*receiver_agent.*\//);
+  assert.throws(() => adminBrowseQuerySchema.parse({ receiver_agent: "not-an-object-id" }));
+});
+
 test("admin booked lead browse filters source company slugs on the source field", async () => {
   const capture: QueryCapture = { populated: [] };
   stubFind(BookedLead, capture, []);

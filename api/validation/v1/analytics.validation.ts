@@ -11,6 +11,11 @@ const optionalDateString = z.preprocess(
   z.coerce.date().optional(),
 );
 
+const optionalObjectIdString = optionalTrimmedString.refine(
+  (value) => value === undefined || /^[a-f\d]{24}$/i.test(value),
+  "Invalid Mongo ObjectId",
+);
+
 export const analyticsReportSchema = z.enum([
   "summary",
   "revenue-trend",
@@ -24,6 +29,9 @@ export const analyticsReportSchema = z.enum([
   "geographic-lanes",
   "pickup-state-performance",
   "delivery-state-performance",
+  "receiver-agent-performance",
+  "receiver-agent-trend",
+  "receiver-agent-source-breakdown",
 ]);
 
 export const analyticsQuerySchema = z
@@ -34,6 +42,7 @@ export const analyticsQuerySchema = z
     source_company: optionalTrimmedString,
     source: optionalTrimmedString,
     agent: optionalTrimmedString,
+    receiver_agent: optionalObjectIdString,
     merchant: optionalTrimmedString,
     local: optionalTrimmedString,
     lead_type: z

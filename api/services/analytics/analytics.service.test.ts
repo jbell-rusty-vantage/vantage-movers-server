@@ -21,15 +21,19 @@ test("analytics validation accepts report filters and rejects invalid report nam
     to: "2026-01-31",
     source_company: "Main Site Forms",
     agent: "Austin",
+    receiver_agent: "507f1f77bcf86cd799439011",
     lead_type: "form",
     granularity: "day",
   });
 
   assert.equal(query.database_scope, "combined");
+  assert.equal(query.receiver_agent, "507f1f77bcf86cd799439011");
   assert.equal(query.lead_type, "FormLead");
   assert.equal(query.granularity, "day");
   assert.equal(analyticsReportSchema.parse("revenue-trend"), "revenue-trend");
+  assert.equal(analyticsReportSchema.parse("receiver-agent-performance"), "receiver-agent-performance");
   assert.throws(() => analyticsReportSchema.parse("unknown-report"));
+  assert.throws(() => analyticsQuerySchema.parse({ receiver_agent: "not-an-object-id" }));
 });
 
 test("analytics booked lead filters start with a leading date match", () => {
@@ -89,6 +93,40 @@ test("combined revenue trend merges rows by date period", () => {
   assert.equal(items[0].period, "2026-01");
   assert.equal(items[0].bookings, 3);
   assert.equal(items[0].total_deposit_amount, 3000);
+});
+
+test("combined receiver-agent analytics merge production rows and keep historical warning metadata", () => {
+  const merged = mergeAnalyticsPayload("receiver-agent-performance", [
+    {
+      items: [
+        {
+          receiver_agent_id: "507f1f77bcf86cd799439011",
+          receiver_agent_name: "Nick Smith",
+          receiver_agent_group: "assigned",
+          received_leads: 2,
+          billable_received_leads: 1,
+          booked_leads: 1,
+          cancelled_leads: 0,
+          total_lead_cost: 100,
+        },
+      ],
+    },
+    {
+      items: [],
+      metadata: {
+        receiver_agent_scope: "unsupported",
+        historical_receiver_agent_supported: false,
+      },
+    },
+  ]);
+
+  const items = merged.items as Record<string, unknown>[];
+  const metadata = merged.metadata as Record<string, unknown>;
+  assert.equal(items.length, 1);
+  assert.equal(items[0].receiver_agent_name, "Nick Smith");
+  assert.equal(items[0].booking_rate, 0.5);
+  assert.equal(items[0].average_cpl, 100);
+  assert.equal(metadata.historical_receiver_agent_supported, false);
 });
 
 test("analytics CSV export uses the selected report rows", async () => {

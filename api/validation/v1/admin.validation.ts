@@ -24,6 +24,11 @@ const optionalNumberInput = z.preprocess(
   z.coerce.number().optional(),
 );
 
+const optionalObjectIdString = optionalTrimmedString.refine(
+  (value) => value === undefined || /^[a-f\d]{24}$/i.test(value),
+  "Invalid Mongo ObjectId",
+);
+
 const adminQueryBase = {
   database_scope: adminDatabaseScopeSchema,
   q: optionalTrimmedString,
@@ -34,6 +39,7 @@ const adminQueryBase = {
   source: optionalTrimmedString,
   source_label: optionalTrimmedString,
   agent: optionalTrimmedString,
+  receiver_agent: optionalObjectIdString,
   customer_name: optionalTrimmedString,
   customer_phone: optionalTrimmedString,
   customer_email: optionalTrimmedString,

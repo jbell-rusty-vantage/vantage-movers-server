@@ -37,6 +37,9 @@ const NUMERIC_FIELDS = [
   "sheet_cancelled_leads",
   "reconciled_bookings",
   "reconciled_cancelled_bookings",
+  "received_leads",
+  "billable_received_leads",
+  "total_lead_cost",
 ];
 
 export function mergeAnalyticsPayload(report: AnalyticsReport, payloads: AnalyticsPayload[]): AnalyticsPayload {
@@ -50,6 +53,19 @@ export function mergeAnalyticsPayload(report: AnalyticsReport, payloads: Analyti
     return {
       form_lanes: mergeRows(payloads.flatMap((payload) => arrayValue(payload.form_lanes)), ["pickup_state", "delivery_state"]),
       call_lanes: mergeRows(payloads.flatMap((payload) => arrayValue(payload.call_lanes)), ["pickup_state", "delivery_state"]),
+    };
+  }
+  if (isReceiverAgentReport(report)) {
+    const keyFields = keyFieldsForReport(report);
+    const items = mergeRows(payloads.flatMap((payload) => arrayValue(payload.items)), keyFields);
+    return {
+      items,
+      metadata: {
+        receiver_agent_scope: "production_only",
+        historical_receiver_agent_supported: false,
+        historical_excluded_from_receiver_agent_metrics: true,
+        message: "Combined scope shows production receiver-agent metrics only. Historical lead records do not include receiver_agent attribution.",
+      },
     };
   }
   const keyFields = keyFieldsForReport(report);
@@ -110,7 +126,7 @@ function deriveRates(row: AnalyticsRow): AnalyticsRow {
   const next = { ...row };
   const bookings = numberValue(next.bookings || next.booked_leads);
   const cancellations = numberValue(next.cancelled_bookings || next.cancelled_leads || next.cancellations);
-  const leads = numberValue(next.total_leads || next.leads);
+  const leads = numberValue(next.total_leads || next.leads || next.received_leads);
   if (bookings || cancellations) {
     next.cancellation_rate = rate(cancellations, bookings);
     next.active_bookings = numberValue(next.active_bookings) || Math.max(bookings - cancellations, 0);
@@ -118,7 +134,14 @@ function deriveRates(row: AnalyticsRow): AnalyticsRow {
   if (leads || bookings) {
     next.booking_rate = rate(bookings, leads);
   }
-  for (const moneyField of ["total_deposit_amount", "total_binder_amount", "total_refund_amount"]) {
+  const billableReceivedLeads = numberValue(next.billable_received_leads);
+  const totalLeadCost = numberValue(next.total_lead_cost);
+  if (billableReceivedLeads || totalLeadCost) {
+    next.average_cpl = roundMoney(rate(totalLeadCost, billableReceivedLeads));
+    next.cost_per_received_lead = roundMoney(rate(totalLeadCost, billableReceivedLeads));
+    next.cost_per_booked_lead = roundMoney(rate(totalLeadCost, bookings));
+  }
+  for (const moneyField of ["total_deposit_amount", "total_binder_amount", "total_refund_amount", "total_lead_cost"]) {
     if (moneyField in next) next[moneyField] = roundMoney(numberValue(next[moneyField]));
   }
   return next;
@@ -142,9 +165,21 @@ function keyFieldsForReport(report: AnalyticsReport): string[] {
     case "pickup-state-performance":
     case "delivery-state-performance":
       return ["state"];
+    case "receiver-agent-performance":
+      return ["receiver_agent_id", "receiver_agent_name"];
+    case "receiver-agent-trend":
+      return ["period", "receiver_agent_id", "receiver_agent_name"];
+    case "receiver-agent-source-breakdown":
+      return ["receiver_agent_id", "receiver_agent_name", "source_label", "source_company", "lead_type"];
     default:
       return ["label"];
   }
+}
+
+function isReceiverAgentReport(report: AnalyticsReport): boolean {
+  return report === "receiver-agent-performance" ||
+    report === "receiver-agent-trend" ||
+    report === "receiver-agent-source-breakdown";
 }
 
 function keyValue(field: string, value: unknown): string {

@@ -13,15 +13,57 @@ alwaysApply: true
 
 - Start request tracing at `api/index.ts`: Express app setup, health/db probes, logging, CORS/body parsing, and route mounting.
 - `api/routes/` owns HTTP boundaries. Keep routes thin: authenticate, parse with Zod, call services, format responses, and avoid business logic.
+- `api/routes/v1.routes.ts` is the main surface: public `/api/v1/*` writes/reads, extension-facing browse/enrichment/reconciliation, Granot CSV uploads, admin browse/search/export/analytics, catalog/CPL admin, sheet-sync ops, and observability admin. Mounted last so cron/webhook routes stay separate.
+- `api/routes/extension-auth.routes.ts` serves `/api/v1/extension/auth/*` (login, refresh, me, logout) without `x-api-secret`; mounted inside `v1.routes.ts` before the auth guard.
+- Cron/webhook routes mount directly from `api/index.ts`: RingCentral webhooks + cron, sheet-sync drain cron, notification digest cron.
 - `api/validation/` owns request/operation schemas. `api/validation/v1.validation.ts` is the public v1 barrel; detailed schemas live in `api/validation/v1/`.
-- `api/services/` owns business behavior and side effects. Use the domain folders first: `leads/`, `bookings/`, `cancellations/`, `customers/`, `admin/`, `ringcentral/`, `googleSheets/`, `crm/`, `reconciliation/`, `enrichment/`, `search/`, and `errors/`. Legacy barrels such as `v1.service.ts`, `crm.service.ts`, and search/reconciliation wrappers may preserve API compatibility.
-- `api/models/` owns runtime Mongoose schemas and shared schema helpers. Mongo/API fields should stay `snake_case`; only Google Sheets projections should produce owner-facing Title Case columns.
-- `api/config/` owns mode-aware domain configuration. Add source companies, sheet tabs, headers, CPL rules, Mongo database names, and Google auth env selection here instead of scattering `process.env` reads.
-- `api/middleware/` owns request guards and request-level behavior such as API secret enforcement and HTTP logging.
-- `api/utils/` owns small shared helpers, currently including logging sanitizers, Google Sheets range helpers, location normalization, and CSV serialization.
+- `api/models/` owns runtime Mongoose schemas and shared schema helpers. Mongo/API fields stay `snake_case`; only Google Sheets projections produce owner-facing Title Case columns.
+- `api/config/domain/` owns mode-aware domain configuration (`runtime`, `sources`, `sheets`, `cpl`, `sheetSync`, `granotCsv`, `observability`, `googleAuth`, `constants`). Re-exported by `api/config/domain.ts`. Add source companies, sheet tabs, headers, CPL rules, Mongo database names, and Google auth env selection here instead of scattering `process.env` reads.
+- `api/middleware/` owns request guards and request-level behavior: `requireApiSecret` (`requireVantageAuth`), HTTP logging.
+- `api/auth/extension/` owns Granot browser-extension login, JWT access/refresh tokens, password hashing, and `ExtensionUser` lookup.
+- `api/utils/` owns small shared helpers under `logging/`, `googleSheets/`, `location/`, plus top-level helpers such as `easternTime.ts` and CSV serialization.
 - `api/db.ts` is the shared Mongo connection helper. Runtime code should reuse it and preserve the `TEST_MODE` database boundary.
+- `api/queues/sheet-sync-consumer.ts` is the queue consumer entry for sheet-sync wake-ups when `SHEET_SYNC_MODE=queued`.
 
-## RingCentral Service Map
+## Auth Surface
+
+- Protected `/api/v1/*` routes accept, in order: primary `x-api-secret`, extension Bearer token (owner role only for data routes; employees are rejected), or scoped API keys from `VANTAGE_SCOPED_API_KEYS` (route + source-company constrained).
+- Extension auth is separate from admin secret auth. Granot Sync uses Bearer tokens; website forms and internal scripts typically use `x-api-secret` or scoped keys.
+- Successful auth attaches `req.vantageAuth` (`secret`, `scoped_key`, or `user`). Do not bypass this guard for new v1 endpoints.
+
+## Services — Core Domain
+
+Mongo is the source of truth. Domain services own business behavior and side effects; prefer importing from the domain folder, not legacy barrels.
+
+- `api/services/leads/` — Form/call lead CRUD, duplicate quarantine, phone/name/source-company helpers, location enrichment, source-lead lookup. Models: `FormLead`, `CallLead`.
+- `api/services/agents/` — Receiver-agent attribution from Granot CRM usernames (`receiverAgentCrmUsername.ts`). Used by call-lead enrichment/reconciliation sync and supports extension form-lead PATCH provenance. Model: `Agent` (`granot_crm_username`, virtual `form_leads_received` / `call_leads_received`).
+- `api/services/bookings/` — Booked-lead CRUD, booking-from-source, referral bookings, leadless bookings, booking mirror updates, source-company resolution for attached leads. Model: `BookedLead`.
+- `api/services/cancellations/` — Cancelled-lead CRUD, cancellation resolver, sheet mirror helpers. Model: `CancelledLead`.
+- `api/services/customers/` — Customer CRUD and customer upsert from lead/booking flows. Model: `Customer`.
+- `api/services/catalog/` — Admin catalog CRUD for agents and merchants (`/api/v1/admin/catalog/*`, `/admin/agents`, `/admin/merchants`). Models: `Agent`, `Merchant`.
+- `api/services/cpl/` — DB-backed CPL rate admin reads/updates. Model: `CplRate`. Resolution helpers also live in `api/config/domain/cpl.ts`.
+- `api/services/testimonials/` — Public testimonial listing for marketing site. Model: `Testimonial`.
+
+## Services — Extension & Granot Workflows
+
+These integrate the Granot browser extension with production leads.
+
+- `api/services/search/` — Paginated browse (`GET /form-leads`, `/call-leads`) and POST search used by the extension Search workspace. Populates receiver-agent snapshots.
+- `api/services/enrichment/` — Call-lead enrichment preview/sync from Granot Follow Up Estimates rows (`/call-leads/enrichment/*`). Matches leads by phone/job metadata; can set `receiver_agent` from row `granot_crm_username` when unset.
+- `api/services/reconciliation/` — Booked call-lead reconciliation preview/sync from Granot Booked Jobs rows (`/call-leads/booked-reconciliation/*`). Updates booking chain or call-lead-only paths; same receiver-agent matching rules as enrichment.
+- `api/services/granotCrmCsv/` — Granot CRM CSV source registry, S3/storage ingest, and sync runs triggered by the extension CSV workspace (`/granot-crm/csv/*`). Models: `GranotCrmSource`, `GranotCrmCsvIngestion`, `GranotCrmSyncRun`. Config: `api/config/domain/granotCsv.ts`.
+
+Form-lead sync from the extension uses public `PATCH /api/v1/form-leads/:id` (including optional `receiver_agent` provenance fields validated in `api/validation/v1/leads.validation.ts`).
+
+## Services — External Integrations
+
+- `api/services/crm/` — Granot CRM submission for inbound form leads (`crm.service.ts`, payload builders, `crmConfig.ts`). Invoked from form-lead create/update paths; not a route boundary.
+- `api/services/googleSheets/` — Google Sheets API client, tab/target resolution, row lookup, batch sync/delete, diagnostics. `projections/` maps Mongo documents to owner-facing sheet rows (`formLeadRow`, `callLeadRow`, `bookedLeadRow`, shared `cells.ts`).
+- `api/services/sheetSync/` — Write-behind outbox for Google Sheets. Domain writes enqueue jobs (`sheetSyncOutbox.service.ts`); coordinator runs transactional Mongo writes + intent persistence (`sheetSyncCoordinator.ts`); drainer batches jobs with leases/quota limits (`drainer/`); queue publish/wakeup (`sheetSyncQueue.service.ts`). Models: `SheetSyncJob`, `SheetSyncRun`, `SheetSyncAttempt`, `SheetSyncLease`, `SheetSyncQuotaBucket`. Config: `api/config/domain/sheetSync.ts`.
+- `api/services/googleAuth/` — Service-account credential loading for Sheets (separate from `googleSheets/auth.ts` client wiring).
+- `api/services/googleMaps/` — Geocoding health checks for admin (`/admin/google-maps/geocoding-health`).
+
+## Services — RingCentral
 
 - `api/routes/ringcentral-webhook.routes.ts`, `ringcentral-webhook-local.routes.ts`, and `ringcentral-cron.routes.ts` are HTTP/cron boundaries only; keep qualification, persistence, and lead-write behavior in services.
 - `api/services/ringcentral/` owns RingCentral auth/client code, token stores, webhook capture/normalization, candidate/session aggregation, Call Log sync, Analytics reconciliation, idempotency, duplicate detection, and shadow/real call-lead ingest.
@@ -29,57 +71,50 @@ alwaysApply: true
 - `call-lead-sources.ts` owns mapped inbound numbers and source-company attribution. Do not duplicate those mappings in routes, scripts, or tests.
 - `ringcentral-call-lead-ingest.service.ts` is the shared promotion path for webhook and Call Log qualified calls. Do not create RingCentral `call_leads` directly from route, webhook, cron, or script code.
 
-## Admin V1 API Surface
+## Services — Admin, Analytics, Observability
 
-- Admin routes are mounted in `api/routes/v1.routes.ts` under `/api/v1/admin/...` and remain protected by `requireApiSecret` like the public v1 surface.
-- Admin read services live in `api/services/admin/`:
-  - `adminScope.service.ts` selects production runtime models or read-only historical models from `scripts/historical/models/`.
-  - `adminBrowse.service.ts` owns paginated browse, detail lookup, common filters, sorting, and export row retrieval.
-  - `adminSearch.service.ts` owns grouped global search across form leads, call leads, bookings, cancellations, customers, and agents.
-  - `adminExport.service.ts` owns CSV column selection and export response payload generation.
-- Admin query schemas live in `api/validation/v1/admin.validation.ts` and are re-exported by `api/validation/v1.validation.ts`.
-- Implemented admin GET endpoints:
-  - `/api/v1/admin/form-leads` and `/api/v1/admin/form-leads/:id`
-  - `/api/v1/admin/call-leads` and `/api/v1/admin/call-leads/:id`
-  - `/api/v1/admin/booked-leads` and `/api/v1/admin/booked-leads/:id`
-  - `/api/v1/admin/cancelled-leads` and `/api/v1/admin/cancelled-leads/:id`
-  - `/api/v1/admin/customers` and `/api/v1/admin/customers/:id`
-  - `/api/v1/admin/agents` and `/api/v1/admin/agents/:id`
-  - `/api/v1/admin/search`
-  - `/api/v1/admin/exports/form-leads.csv`, `/call-leads.csv`, `/booked-leads.csv`, `/cancelled-leads.csv`, `/customers.csv`, and `/agents.csv`
-- Admin browse responses use `{ ok: true, data: { items, page, limit, total, has_next_page } }`; detail responses use `{ ok: true, data }`; CSV exports return `text/csv` with an attachment filename.
+- `api/services/admin/` — Production vs historical scope (`adminScope.service.ts`), paginated browse/detail/export (`adminBrowse.service.ts`, `adminExport.service.ts`), global search/facets (`adminSearch.service.ts`, `adminFacets.service.ts`), sheet-sync health/job/run admin (`adminSheetSync.service.ts`), agent browse metrics.
+- `api/services/analytics/` — Admin analytics reports (summary, revenue, source/agent performance, funnel, cancellation, geographic, lead-cost) plus overview and agent-sales report/export helpers. Mounted under `/api/v1/admin/analytics/*` and `/admin/reports/agent-sales`.
+- `api/services/observability/` — Operational events, incidents, notification policy, digest/retry behavior, admin overview reads, and operational report generation. Runtime schemas: `OperationalEvent`, `OperationalIncident`, `NotificationDelivery`, `OperationalReportRun` via `observabilityModelFactory.ts`. Config: `api/config/domain/observability.ts`.
+- Notification digest cron mounts from `api/routes/notification-cron.routes.ts`; keep it a thin authenticated boundary around observability services.
+- Admin browse resources: `form-leads`, `call-leads`, `booked-leads`, `cancelled-leads`, `customers`, `agents` — each with list, detail, and CSV export under `/api/v1/admin/...`. Also: global search, facets, catalog agents/merchants, CPL rates, sheet-sync ops, analytics reports, observability suite.
 - `database_scope=production|historical|combined` is supported where appropriate. Detail endpoints reject `combined`; historical scope is read-only; combined is for search/export-style reads.
-- Do not add `/api/v1/admin` delete routes. Admin write workflows should continue to use existing public v1 booking, cancellation, lead, and customer write services so Google Sheet sync behavior is preserved.
+- Do not add `/api/v1/admin` delete routes for core leads/bookings/customers. Admin write workflows should continue to use existing public v1 write services so Google Sheet sync behavior is preserved. Observability collections are the exception and have explicit admin delete endpoints.
 
-## Observability Surface
+## Legacy Compatibility Barrels
 
-- `api/services/observability/` owns operational events, incidents, notification policy, digest/retry behavior, admin overview reads, and operational report generation.
-- Runtime Mongoose schemas for this surface live in `api/models/OperationalEvent.ts`, `OperationalIncident.ts`, `NotificationDelivery.ts`, `OperationalReportRun.ts`, and must be accessed through `observabilityModelFactory.ts` so collection modes stay respected.
-- Observability config lives in `api/config/domain/observability.ts`; avoid direct `process.env` reads for observability policy outside that file unless the value is unrelated route auth like `CRON_SECRET`.
-- Notification digest cron is mounted from `api/routes/notification-cron.routes.ts`; it should remain a thin authenticated boundary around observability services.
-- Rollup collections are deferred for now. Admin overview and reports aggregate directly from operational event, incident, notification delivery, and report-run collections.
-- Admin observability endpoints (all under `requireApiSecret`, schemas in `api/validation/v1/observability.validation.ts`):
-  - `GET /api/v1/admin/observability/overview` and `GET /api/v1/admin/observability/facets` (distinct workflows/event keys/source companies/entity types/routes plus static enums for filter dropdowns)
-  - `GET /api/v1/admin/observability/events` and `/events/:id`
-  - `GET /api/v1/admin/observability/incidents`, `/incidents/:id`, and `PATCH /incidents/:id/status`
-  - `GET /api/v1/admin/observability/notifications`
-  - `GET /api/v1/admin/observability/reports`, `GET /reports/:id`, and `POST /reports/run`
-  - CSV exports: `/api/v1/admin/exports/observability/events.csv`, `/incidents.csv`, and `/reports/:id.csv`
-- Lead identity filters (`lead_name`, `lead_phone`, `lead_email`) on events/incidents are partial-match: case-insensitive contains for name/email, digits-only contains for phone. Incident `q` is a regex OR across title/summary/event_key/workflow/lead_name/source_company; event `q` uses the `$text` index. All other filters stay exact-match.
+Prefer direct domain imports in new code. These re-export moved implementations so routes and scripts keep compiling:
+
+- `api/services/v1.service.ts` — leads, bookings, cancellations, customers, sheet-sync schedulers, `V1ServiceError`.
+- `api/services/formLeadSearch.service.ts`, `callLeadSearch.service.ts` → `search/`.
+- `api/services/callLeadEnrichment.service.ts` → `enrichment/`.
+- `api/services/bookedCallLeadReconciliation.service.ts` → `reconciliation/`.
+- `api/services/crm.service.ts` → `crm/` (if present as barrel).
+
+## Cross-Cutting Write Flow
+
+Most mutating domain services follow the same integration pattern:
+
+1. Validate input (route Zod schema + service guards).
+2. Persist Mongo change (often in a transaction when sheet sync is involved).
+3. Enqueue or schedule Google Sheet sync (`schedule*SheetSync`, `runSheetSyncWrite`, `persistSheetSyncIntent`).
+4. Optionally trigger CRM submit (form leads), customer upsert (bookings), CPL recompute, or observability events.
+
+When touching a write path, trace which downstream targets it affects before editing.
 
 ## Script Launch Map
 
 - Run scripts through `package.json` commands so `.env` loading and `tsx` invocation remain consistent.
-- `scripts/dev_ops/` is for personal/admin DB operations and seed-style utilities. Treat these as potentially destructive even when names sound local.
-- `scripts/historical/` owns historical backfill, reconciliation, diagnostics, analytics, and repairs. `scripts/historical/models/` contains relaxed replicas for the separate `vantagemovershistorical` DB, not runtime API models.
-- `scripts/google_sheets/` owns sheet inspection, diagnostics, auth helpers, structure copy, and service-account utilities.
-- `scripts/postman/` owns Postman login and collection/environment sync for API tooling.
-- `scripts/ringcentral/` owns manual diagnostics, webhook subscription management, Call Log validation/probes, workflow tests, and manual cron/reconcile runners. Keep reusable runtime logic in `api/services/ringcentral/` and call it from scripts.
-- `scripts/google_apps_scripts/` owns Google Apps Script form helpers; `scripts/demos/` owns runnable demos/fixtures; `scripts/docs/` contains generated source-workbook documentation.
+- `scripts/dev_ops/` — Personal/admin DB operations, extension-user seeding, agent CRM username backfills, duplicate audits, production patches, webhook probes. Treat as potentially destructive even when names sound local.
+- `scripts/historical/` — Historical backfill, reconciliation, diagnostics, analytics, and repairs. `scripts/historical/models/` contains relaxed replicas for the separate `vantagemovershistorical` DB, not runtime API models.
+- `scripts/google_sheets/` — Sheet inspection, diagnostics, auth helpers, structure copy, and service-account utilities.
+- `scripts/postman/` — Postman login and collection/environment sync for API tooling.
+- `scripts/ringcentral/` — Manual diagnostics, webhook subscription management, Call Log validation/probes, workflow tests, and manual cron/reconcile runners. Keep reusable runtime logic in `api/services/ringcentral/` and call it from scripts.
+- `scripts/dev_ops/google_apps_scripts/` — Google Apps Script form helpers; `scripts/demos/` — runnable demos/fixtures; `scripts/docs/` — generated source-workbook documentation.
 
 ## Working Rules
 
-- Preserve live workflow boundaries: form leads, call leads, bookings, cancellations, customers, CRM submission, Google Sheets sync, reconciliation, enrichment, historical backfill, and Postman collection management are separate concerns even when they share models.
-- Prefer adding focused modules inside the existing domain folders over expanding broad orchestration files.
-- Keep side effects explicit: Mongo is the source of truth; CRM, Google Sheets, Postman, and historical workbooks are external targets that need mode-aware logging and safe identifiers.
+- Preserve live workflow boundaries: form leads, call leads, bookings, cancellations, customers, agents/receiver attribution, CRM submission, Google Sheets sync, RingCentral ingest, Granot extension enrichment/reconciliation/CSV, reconciliation, enrichment, historical backfill, analytics, and Postman collection management are separate concerns even when they share models.
+- Prefer adding focused modules inside the existing domain folders over expanding broad orchestration files or `v1.routes.ts` handler blocks.
+- Keep side effects explicit: Mongo is the source of truth; CRM, Google Sheets, S3/Granot CSV storage, Postman, and historical workbooks are external targets that need mode-aware logging and safe identifiers.
 - Use `pnpm test` for `api/**/*.test.ts` and `pnpm typecheck` after runtime TypeScript changes when practical.
