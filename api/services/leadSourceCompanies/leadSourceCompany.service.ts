@@ -2,6 +2,8 @@ import mongoose from "mongoose";
 import {
   CPL_RATE_DEFINITIONS,
   SOURCE_COMPANY_CONFIGS,
+  SOURCE_LABEL_TO_COMPANY,
+  getMongoDatabaseName,
   type LocalType,
 } from "../../config/domain";
 import {
@@ -100,7 +102,7 @@ export type LeadSourceResolveInput = {
   requireActive?: boolean;
 };
 
-let seedPromise: Promise<void> | undefined;
+const seedPromisesByDatabase = new Map<string, Promise<void>>();
 
 const LEGACY_RINGCENTRAL_INBOUND_NUMBERS_BY_LABEL: Record<string, string[]> = {
   "10best Inbounds": ["+18883164387"],
@@ -111,8 +113,14 @@ const LEGACY_RINGCENTRAL_INBOUND_NUMBERS_BY_LABEL: Record<string, string[]> = {
 };
 
 export async function ensureLeadSourceCompaniesSeeded(): Promise<void> {
+  const databaseName = getMongoDatabaseName();
+  let seedPromise = seedPromisesByDatabase.get(databaseName);
   if (!seedPromise) {
-    seedPromise = seedKnownLeadSourceCompanies();
+    seedPromise = seedKnownLeadSourceCompanies().catch((error) => {
+      seedPromisesByDatabase.delete(databaseName);
+      throw error;
+    });
+    seedPromisesByDatabase.set(databaseName, seedPromise);
   }
   return seedPromise;
 }
@@ -298,7 +306,7 @@ function knownLeadSourceCompanySeeds(): LeadSourceCompanyInput[] {
         channel: definition.leadType,
         owner_label: definition.label,
         crm_label: definition.label,
-        aliases: [definition.label],
+        aliases: [definition.label, ...legacyGranularityAliasesForDefinition(definition)],
         active: true,
         cpl: definition.defaultCpl,
         ...(definition.local ? { local: definition.local } : {}),
@@ -318,7 +326,7 @@ function knownLeadSourceCompanySeeds(): LeadSourceCompanyInput[] {
         company_slug: config.slug,
         name: config.label,
         owner_label: config.label,
-        aliases: [...config.aliases],
+        aliases: [...config.aliases, ...legacySourceLabelsForCompany(config.slug)],
         active: true,
         default_form_granularity_key: defaultForm?.granularity_key,
         default_call_granularity_key: defaultCall?.granularity_key,
@@ -327,6 +335,66 @@ function knownLeadSourceCompanySeeds(): LeadSourceCompanyInput[] {
         created_from: "legacy_seed",
       };
     });
+}
+
+function legacySourceLabelsForCompany(sourceCompany: string): string[] {
+  return Object.entries(SOURCE_LABEL_TO_COMPANY)
+    .filter(([, company]) => company === sourceCompany)
+    .map(([label]) => label);
+}
+
+function legacyGranularityAliasesForDefinition(definition: {
+  label: string;
+  sourceCompany: string;
+  leadType: string;
+  local?: string;
+}): string[] {
+  return Object.entries(SOURCE_LABEL_TO_COMPANY)
+    .filter(([, company]) => company === definition.sourceCompany)
+    .map(([label]) => label)
+    .filter((label) => labelMatchesGranularity(label, definition));
+}
+
+function labelMatchesGranularity(
+  label: string,
+  definition: {
+    label: string;
+    leadType: string;
+    local?: string;
+  },
+): boolean {
+  if (definition.label === label) {
+    return true;
+  }
+
+  const labelChannel = label.toLowerCase().includes("inbound") ? "call" : "form";
+  if (labelChannel !== definition.leadType) {
+    return false;
+  }
+
+  const labelLocal = label.toLowerCase().includes("local") ? "local" : undefined;
+  if (definition.local === "local") {
+    return labelLocal === "local";
+  }
+  if (definition.local === "long_distance") {
+    return labelLocal !== "local";
+  }
+  if (labelLocal) {
+    return false;
+  }
+  if (
+    definition.leadType === "form" &&
+    label.toLowerCase().includes("form") &&
+    definition.label.toLowerCase().includes("form")
+  ) {
+    return true;
+  }
+
+  return normalizeComparableLabel(label) === normalizeComparableLabel(definition.label);
+}
+
+function normalizeComparableLabel(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
 function selectGranularity(
