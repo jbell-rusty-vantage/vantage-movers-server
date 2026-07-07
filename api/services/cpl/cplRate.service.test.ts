@@ -3,6 +3,7 @@ import { afterEach, test } from "node:test";
 import { CallLead } from "../../models/CallLead";
 import { CplRate } from "../../models/CplRate";
 import { FormLead } from "../../models/FormLead";
+import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import {
   invalidateCplRateCache,
   listCplRates,
@@ -16,6 +17,9 @@ const originalCplRateUpdateOne = CplRate.updateOne as unknown;
 const originalCplRateFindOneAndUpdate = CplRate.findOneAndUpdate as unknown;
 const originalFormLeadUpdateMany = FormLead.updateMany as unknown;
 const originalCallLeadUpdateMany = CallLead.updateMany as unknown;
+const leadSourceCompanyModel = getLeadSourceCompanyModel();
+const originalLeadSourceCompanyFind = leadSourceCompanyModel.find as unknown;
+const originalLeadSourceCompanyUpdateOne = leadSourceCompanyModel.updateOne as unknown;
 
 afterEach(() => {
   (CplRate as unknown as MutableModel).find = originalCplRateFind;
@@ -23,11 +27,16 @@ afterEach(() => {
   (CplRate as unknown as MutableModel).findOneAndUpdate = originalCplRateFindOneAndUpdate;
   (FormLead as unknown as MutableModel).updateMany = originalFormLeadUpdateMany;
   (CallLead as unknown as MutableModel).updateMany = originalCallLeadUpdateMany;
+  (leadSourceCompanyModel as unknown as MutableModel).find = originalLeadSourceCompanyFind;
+  (leadSourceCompanyModel as unknown as MutableModel).updateOne = originalLeadSourceCompanyUpdateOne;
   invalidateCplRateCache();
 });
 
 function chain(result: unknown) {
   return {
+    sort() {
+      return this;
+    },
     lean() {
       return this;
     },
@@ -35,7 +44,24 @@ function chain(result: unknown) {
   };
 }
 
+function stubEmptyLeadSourceCompanyCatalog() {
+  const seededCompanySlugs = [
+    "tbm_leads",
+    "tbm_prime_leads",
+    "top10_leads",
+    "best_relocation_leads",
+    "get_movers_leads",
+    "main_site",
+  ].map((company_slug) => ({ company_slug }));
+  (leadSourceCompanyModel as unknown as MutableModel).find = (_filter?: unknown, projection?: unknown) =>
+    chain(projection ? seededCompanySlugs : []);
+  (leadSourceCompanyModel as unknown as MutableModel).updateOne = () => {
+    throw new Error("lead source company catalog should not be seeded in CPL rate tests");
+  };
+}
+
 test("updateCplRate rejects an unknown label without touching the database", async () => {
+  stubEmptyLeadSourceCompanyCatalog();
   (CplRate as unknown as MutableModel).findOneAndUpdate = () => {
     throw new Error("findOneAndUpdate should not be called for an unknown label");
   };
@@ -47,6 +73,7 @@ test("updateCplRate rejects an unknown label without touching the database", asy
 });
 
 test("updateCplRate backfills only matching-local form leads for Best Relocation Forms", async () => {
+  stubEmptyLeadSourceCompanyCatalog();
   (CplRate as unknown as MutableModel).findOneAndUpdate = () =>
     chain({ cpl: 210, createdAt: undefined, updatedAt: undefined });
 
@@ -67,6 +94,7 @@ test("updateCplRate backfills only matching-local form leads for Best Relocation
 });
 
 test("updateCplRate backfills call leads without a local filter", async () => {
+  stubEmptyLeadSourceCompanyCatalog();
   (CplRate as unknown as MutableModel).findOneAndUpdate = () =>
     chain({ cpl: 175, createdAt: undefined, updatedAt: undefined });
 
@@ -86,6 +114,7 @@ test("updateCplRate backfills call leads without a local filter", async () => {
 });
 
 test("updateCplRate excludes duplicate leads from the backfill filter", async () => {
+  stubEmptyLeadSourceCompanyCatalog();
   (CplRate as unknown as MutableModel).findOneAndUpdate = () =>
     chain({ cpl: 200, createdAt: undefined, updatedAt: undefined });
 
@@ -104,6 +133,7 @@ test("updateCplRate excludes duplicate leads from the backfill filter", async ()
 });
 
 test("listCplRates seeds any missing slots and returns all 13 rates", async () => {
+  stubEmptyLeadSourceCompanyCatalog();
   const existingLabels = [
     { label: "TBM Forms" },
     { label: "10best Inbounds" },
