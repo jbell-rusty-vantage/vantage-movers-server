@@ -23,6 +23,8 @@ import {
   ingestRingCentralQualifiedCall,
   type RingCentralQualifiedCall,
 } from "../services/ringcentral/ringcentral-call-lead-ingest.service";
+import type { NormalizedRingCentralPartyEvent } from "../services/ringcentral/call-candidate-types";
+import { resolveRingCentralInboundSourceFromCatalog } from "../services/ringcentral/call-lead-sources";
 import { listProcessedCalls } from "../services/ringcentral/processed-calls-store";
 import { recordOperationalEvent } from "../services/observability";
 import { normalizeRingCentralWebhookPayload } from "../services/ringcentral/webhook-event-normalizer";
@@ -112,9 +114,11 @@ router.post("/api/webhooks/ringcentral", async (req: Request, res: Response) => 
       });
     }
 
-    const normalizedPartyEvents = normalizeRingCentralWebhookPayload(
-      req.body ?? null,
-      receivedAt,
+    const normalizedPartyEvents = await enrichRingCentralSourceEvents(
+      normalizeRingCentralWebhookPayload(
+        req.body ?? null,
+        receivedAt,
+      ),
     );
     const candidateUpdates = await processCandidateUpdates(
       normalizedPartyEvents,
@@ -281,7 +285,7 @@ function getEventHeaders(
 }
 
 async function processCandidateUpdates(
-  normalizedPartyEvents: ReturnType<typeof normalizeRingCentralWebhookPayload>,
+  normalizedPartyEvents: NormalizedRingCentralPartyEvent[],
   log: Logger,
 ): Promise<CandidateUpdateResponse[]> {
   if (!process.env.MONGO_URI?.trim()) {
@@ -330,7 +334,7 @@ type SessionUpdateResponse = {
  * create/shadow/dry-run env posture, so this is safe to call repeatedly.
  */
 async function processSessionsAndIngest(
-  normalizedPartyEvents: ReturnType<typeof normalizeRingCentralWebhookPayload>,
+  normalizedPartyEvents: NormalizedRingCentralPartyEvent[],
   log: Logger,
 ): Promise<SessionUpdateResponse[]> {
   if (!process.env.MONGO_URI?.trim()) {
@@ -374,6 +378,27 @@ async function processSessionsAndIngest(
   }
 
   return updates;
+}
+
+async function enrichRingCentralSourceEvents(
+  events: NormalizedRingCentralPartyEvent[],
+): Promise<NormalizedRingCentralPartyEvent[]> {
+  return Promise.all(
+    events.map(async (event) => {
+      const source = await resolveRingCentralInboundSourceFromCatalog(
+        event.normalizedToPhoneNumber ?? event.toPhoneNumber,
+      );
+      if (!source) {
+        return event;
+      }
+      return {
+        ...event,
+        targetMatched: true,
+        sourceCompany: source.sourceCompany,
+        sourceLabel: source.sourceLabel,
+      };
+    }),
+  );
 }
 
 async function ingestSessionLead(

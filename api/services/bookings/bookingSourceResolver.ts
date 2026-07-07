@@ -1,5 +1,4 @@
 import {
-  getCplForSource,
   resolveSourceCompany,
   resolveSourceCompanyFromLabel,
   type LeadModelName,
@@ -20,6 +19,7 @@ import type {
   CreateBookedLeadInput,
 } from "../../validation/v1.validation";
 import { V1ServiceError } from "../v1ServiceError";
+import { resolveLeadSourceAssignment } from "../leads/leadSourceCompany";
 
 /**
  * Locates (or creates) the source lead a booked-from-source request points at.
@@ -93,15 +93,27 @@ export async function resolveBookingSourceLead(
     return { lead: phoneMatchedLead, leadModel: "CallLead", jobNo };
   }
 
-  const form_fill = await hasFormFillForCallLead(source_company, submittedPhone);
+  const { resolution: sourceResolution, assignment: sourceAssignment } =
+    await resolveLeadSourceAssignment({
+      value: input.source_company,
+      company_slug: source_company,
+      channel: "call",
+    });
+  const form_fill = await hasFormFillForCallLead(
+    {
+      sourceCompany: sourceAssignment.source_company,
+      leadSourceCompany: sourceAssignment.lead_source_company,
+    },
+    submittedPhone,
+  );
   const lead = await CallLead.create({
     ...(jobNo ? { job_no: jobNo } : {}),
     ...(submittedPhone ? { phone_number: submittedPhone } : {}),
-    source_company,
+    ...sourceAssignment,
     form_fill,
     created_on_unmatched: true,
     timestamp: toFloridaTimestamp(input.timestamp),
-    cpl: await getCplForSource(source_company, "call", undefined),
+    cpl: sourceResolution.granularity.cpl,
   });
 
   return { lead, leadModel: "CallLead", jobNo };

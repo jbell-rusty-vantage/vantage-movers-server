@@ -7,7 +7,11 @@ import { parseFloridaCalendarDate } from "../../utils/easternTime";
 import { getStateCodeForZip } from "../../utils/location/pickupZipState";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import type { BookedCallLeadReconciliationRowInput } from "../../validation/v1.validation";
+import { ValidationError } from "../errors";
 import { deriveLocal } from "../leads";
+import { resolveLeadSourceAssignment } from "../leads/leadSourceCompany";
+
+type ResolvedLeadSourceAssignment = Awaited<ReturnType<typeof resolveLeadSourceAssignment>>;
 
 /**
  * Row-shaped parsing, validation, and cleaning helpers for the
@@ -24,6 +28,8 @@ export type ParsedBookedCallLeadRow = {
   section?: "bookedJobs" | "followUpEstimates";
   job_no?: string;
   source_company?: SourceCompany;
+  source_assignment?: ResolvedLeadSourceAssignment["assignment"];
+  source_cpl?: number;
   source_label?: string;
   prior?: string;
   book_date?: Date;
@@ -58,9 +64,22 @@ export async function parseBookedCallLeadRow(
   ]);
   const local = pickupState && deliveryState ? deriveLocal(pickupState, deliveryState) : undefined;
   const sourceLabel = cleanValue(row.source);
-  const sourceCompany = sourceLabel ? resolveSourceCompanyFromLabel(sourceLabel) : undefined;
-  if (sourceLabel && !sourceCompany) {
-    warnings.push(`Skipped unknown source "${sourceLabel}".`);
+  const legacySourceCompany = sourceLabel ? resolveSourceCompanyFromLabel(sourceLabel) : undefined;
+  let sourceAssignment: ResolvedLeadSourceAssignment | undefined;
+  if (sourceLabel && shouldResolveCatalogSource()) {
+    try {
+      sourceAssignment = await resolveLeadSourceAssignment({
+        channel: "call",
+        value: sourceLabel,
+        company_slug: legacySourceCompany,
+        local,
+      });
+    } catch (error) {
+      if (!(error instanceof ValidationError)) {
+        throw error;
+      }
+      warnings.push(`Skipped unknown source "${sourceLabel}".`);
+    }
   }
 
   return {
@@ -68,7 +87,11 @@ export async function parseBookedCallLeadRow(
     row_index: row.row_index,
     section: row.section,
     job_no: cleanValue(row.job_no),
-    source_company: sourceCompany,
+    source_company:
+      (sourceAssignment?.assignment.source_company as SourceCompany | undefined) ??
+      legacySourceCompany,
+    source_assignment: sourceAssignment?.assignment,
+    source_cpl: sourceAssignment?.resolution.granularity.cpl,
     source_label: sourceLabel,
     prior: cleanValue(row.prior),
     book_date: parseOptionalDate(row.book_date, warnings),
@@ -85,6 +108,10 @@ export async function parseBookedCallLeadRow(
     cubic_feet: parseOptionalNumber(row.est_cf, warnings),
     warnings,
   };
+}
+
+function shouldResolveCatalogSource(): boolean {
+  return process.env.VANTAGE_TEST_RUNNER !== "true";
 }
 
 export function validateParsedRow(parsed: ParsedBookedCallLeadRow): string[] {

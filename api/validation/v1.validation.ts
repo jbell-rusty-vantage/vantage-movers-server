@@ -87,6 +87,8 @@ export {
   catalogListQuerySchema,
   catalogUpdateSchema,
   cplRateUpdateSchema,
+  leadSourceCompanyCreateSchema,
+  leadSourceCompanyUpdateSchema,
   adminDatabaseScopeSchema,
   adminSearchQuerySchema,
   type AdminBrowseQuery,
@@ -96,6 +98,8 @@ export {
   type CatalogListQuery,
   type CatalogUpdateInput,
   type CplRateUpdateInput,
+  type LeadSourceCompanyCreateInput,
+  type LeadSourceCompanyUpdateInput,
 } from "./v1/admin.validation";
 
 export {

@@ -40,6 +40,7 @@ export const analyticsQuerySchema = z
     from: optionalDateString,
     to: optionalDateString,
     source_company: optionalTrimmedString,
+    source_granularity_key: optionalTrimmedString,
     source: optionalTrimmedString,
     agent: optionalTrimmedString,
     receiver_agent: optionalObjectIdString,

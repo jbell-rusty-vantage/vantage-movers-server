@@ -11,6 +11,7 @@ import { BookedLead } from "../../models/BookedLead";
 import { upsertCustomerFromLead } from "../customers/customerFromLead.service";
 import { getLinkedLead, type SourceLeadDocument } from "../leads";
 import { syncSourceLead, type FullSheetSyncJob } from "../sheetSync";
+import { resolveLeadSourceAssignment } from "../leads/leadSourceCompany";
 
 /**
  * Re-evaluates a booked lead that hangs off a freshly mutated source lead.
@@ -116,17 +117,27 @@ export async function mirrorBookingToLead(
   lead.booked = bookingId;
   lead.over_2000 = over2000;
   lead.over_4000 = over4000;
-  if (sourceCompany) {
-    lead.source_company = sourceCompany;
-  }
   if (local) {
     lead.local = local;
   }
-  lead.cpl = await getCplForSource(
-    lead.source_company as SourceCompany,
-    cplLeadTypeForModel(leadModel),
-    local,
-  );
+  const leadType = cplLeadTypeForModel(leadModel);
+  if (sourceCompany) {
+    const { resolution, assignment } = await resolveLeadSourceAssignment({
+      value: sourceCompany,
+      company_slug: sourceCompany,
+      channel: leadType,
+      local,
+      source_site: lead.source_company_site,
+    });
+    Object.assign(lead, assignment);
+    lead.cpl = resolution.granularity.cpl;
+  } else {
+    lead.cpl = await getCplForSource(
+      lead.source_company as SourceCompany,
+      leadType,
+      local,
+    );
+  }
   await lead.save({ session });
 }
 

@@ -3,6 +3,7 @@ import {
   SOURCE_COMPANY_CONFIGS,
   SOURCE_LABEL_TO_COMPANY,
   normalizeSourceCompany,
+  resolveSourceCompany,
 } from "../../config/domain/sources";
 import type { AnalyticsQuery } from "../../validation/v1.validation";
 
@@ -21,6 +22,7 @@ export function bookedLeadPrefix(query: AnalyticsQuery): PipelineStage[] {
     ...directBookedLeadMatch(query),
     ...bookedLeadSourceLookups(),
     ...sourceCompanyMatch("derived_source_company", query.source_company),
+    ...sourceGranularityMatch("derived_source_granularity_key", query.source_granularity_key),
   ];
 }
 
@@ -64,9 +66,11 @@ export function cancelledLeadPrefix(query: AnalyticsQuery): PipelineStage[] {
     {
       $set: {
         derived_source_company: sourceCompanyExpression(),
+        derived_source_granularity_key: sourceGranularityExpression(),
       },
     },
     ...sourceCompanyMatch("derived_source_company", query.source_company),
+    ...sourceGranularityMatch("derived_source_granularity_key", query.source_granularity_key),
   ];
 }
 
@@ -80,6 +84,9 @@ export function leadMatch(leadType: "FormLead" | "CallLead", query: AnalyticsQue
   if (query.local) clauses.push({ local: exactRegex(query.local) });
   if (query.source_company) {
     clauses.push({ source_company: { $in: sourceCompanyRegexes(query.source_company) } });
+  }
+  if (query.source_granularity_key) {
+    clauses.push({ source_granularity_key: exactRegex(query.source_granularity_key) });
   }
   if (!clauses.length) return {};
   if (clauses.length === 1) return clauses[0];
@@ -107,6 +114,7 @@ export function bookedLeadSourceLookups(): PipelineStage[] {
     {
       $set: {
         derived_source_company: sourceCompanyExpression(),
+        derived_source_granularity_key: sourceGranularityExpression(),
         is_cancelled: {
           $ne: [{ $ifNull: ["$cancelled", null] }, null],
         },
@@ -184,13 +192,21 @@ function sourceCompanyMatch(field: string, value?: string): PipelineStage.Match[
   return [{ $match: { [field]: { $in: sourceCompanyRegexes(value) } } }];
 }
 
+function sourceGranularityMatch(field: string, value?: string): PipelineStage.Match[] {
+  if (!value) return [];
+  return [{ $match: { [field]: exactRegex(value) } }];
+}
+
 function sourceCompanyRegexes(value: string): RegExp[] {
   return sourceCompanyVariants(value).map(exactRegex);
 }
 
 function sourceCompanyVariants(value: string): string[] {
   const variants = new Set([value]);
-  const resolved = normalizeSourceCompany(value);
+  const resolved = resolveSourceCompany(value);
+  if (!resolved) {
+    return Array.from(variants).filter(Boolean);
+  }
   variants.add(resolved);
   const config = SOURCE_COMPANY_CONFIGS[resolved];
   variants.add(config.label);
@@ -204,11 +220,41 @@ function sourceCompanyVariants(value: string): string[] {
 function sourceCompanyExpression() {
   const joinedSourceCompany = {
     $ifNull: [
-      { $arrayElemAt: ["$form_lead.source_company", 0] },
+      { $arrayElemAt: ["$form_lead.crm_source_label_snapshot", 0] },
       {
         $ifNull: [
-          { $arrayElemAt: ["$call_lead.source_company", 0] },
-          { $ifNull: ["$source", "unknown"] },
+          { $arrayElemAt: ["$form_lead.source_granularity_label_snapshot", 0] },
+          {
+            $ifNull: [
+              { $arrayElemAt: ["$form_lead.source_company_label_snapshot", 0] },
+              {
+                $ifNull: [
+                  { $arrayElemAt: ["$call_lead.crm_source_label_snapshot", 0] },
+                  {
+                    $ifNull: [
+                      { $arrayElemAt: ["$call_lead.source_granularity_label_snapshot", 0] },
+                      {
+                        $ifNull: [
+                          { $arrayElemAt: ["$call_lead.source_company_label_snapshot", 0] },
+                          {
+                            $ifNull: [
+                              { $arrayElemAt: ["$form_lead.source_company", 0] },
+                              {
+                                $ifNull: [
+                                  { $arrayElemAt: ["$call_lead.source_company", 0] },
+                                  { $ifNull: ["$source", "unknown"] },
+                                ],
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
         ],
       },
     ],
@@ -225,6 +271,15 @@ function sourceCompanyExpression() {
         ],
       },
     },
+  };
+}
+
+function sourceGranularityExpression() {
+  return {
+    $ifNull: [
+      { $arrayElemAt: ["$form_lead.source_granularity_key", 0] },
+      { $arrayElemAt: ["$call_lead.source_granularity_key", 0] },
+    ],
   };
 }
 

@@ -2,6 +2,7 @@ import { logger } from "../../logger";
 import { recordOperationalEvent } from "../observability";
 import { ringCentralRequest } from "./client";
 import { vetRingCentralCallLogRecord } from "./call-log-vetting";
+import { resolveRingCentralInboundSourceFromCatalog } from "./call-lead-sources";
 import {
   getCallLogSyncState,
   recordCallLogSyncError,
@@ -81,10 +82,18 @@ export async function runRingCentralCallLogSync(
 
     for (const record of records) {
       const vet = vetRingCentralCallLogRecord(record);
-      if (vet.matchedTargetNumber) {
+      const sourceFromCatalog = await resolveRingCentralInboundSourceFromCatalog(
+        vet.targetPhoneNumber,
+      );
+      const sourceCompany = sourceFromCatalog?.sourceCompany ?? vet.sourceCompany;
+      const sourceLabel = sourceFromCatalog?.sourceLabel ?? vet.sourceLabel;
+      const rejectionReasons = sourceFromCatalog
+        ? vet.rejectionReasons.filter((reason) => reason !== "target_number_not_matched")
+        : vet.rejectionReasons;
+      if (vet.matchedTargetNumber || sourceFromCatalog) {
         summary.candidateRecords += 1;
       }
-      if (!vet.qualifies || !vet.sourceCompany || !vet.callerPhoneNumber) {
+      if (rejectionReasons.length > 0 || !sourceCompany || !vet.callerPhoneNumber) {
         continue;
       }
       summary.qualifiedRecords += 1;
@@ -95,8 +104,8 @@ export async function runRingCentralCallLogSync(
         sessionId: vet.sessionId,
         partyId: null,
         callLogId: vet.callLogId,
-        sourceCompany: vet.sourceCompany,
-        sourceLabel: vet.sourceLabel,
+        sourceCompany,
+        sourceLabel,
         callerPhoneNumber: vet.callerPhoneNumber,
         callerName: vet.callerName,
         targetPhoneNumber: vet.targetPhoneNumber ?? "",

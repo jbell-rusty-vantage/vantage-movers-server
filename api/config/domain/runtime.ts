@@ -139,9 +139,11 @@ export function getMasterBookedSheetContainerId(): string {
 }
 
 export function getSourceLeadSheetContainerId(
-  sourceCompany: SourceCompany,
+  sourceCompany: SourceCompany | string,
 ): string | undefined {
-  const envVar = SOURCE_COMPANY_CONFIGS[sourceCompany].leadSheetEnvVar;
+  const config =
+    SOURCE_COMPANY_CONFIGS[sourceCompany as keyof typeof SOURCE_COMPANY_CONFIGS];
+  const envVar = config?.leadSheetEnvVar;
   return envVar
     ? getRequiredEnv(getRuntimeSheetContainerEnvVar(envVar))
     : undefined;

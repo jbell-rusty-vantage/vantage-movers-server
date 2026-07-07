@@ -1,6 +1,6 @@
-import { SOURCE_COMPANIES } from "../../config/domain/sources";
 import type { AdminDatabaseScope } from "../../validation/v1.validation";
 import { listCatalogItems } from "../catalog";
+import { listLeadSourceCompanies } from "../leadSourceCompanies";
 import { getAdminModels, type ConcreteAdminScope } from "./adminScope.service";
 
 /**
@@ -14,23 +14,10 @@ import { getAdminModels, type ConcreteAdminScope } from "./adminScope.service";
 export type AdminFacets = {
   agents: string[];
   source_companies: string[];
+  source_granularities: string[];
   sources: string[];
   merchants: string[];
 };
-
-const PRODUCTION_SOURCE_LABELS = [
-  "TBM Forms",
-  "10best Inbounds",
-  "TBM Prime Forms",
-  "TBM Prime Inbounds",
-  "Top10 Forms",
-  "Top10 Inbounds",
-  "Best Relocation Forms",
-  "Best Relocation Locals",
-  "Best Relocation Inbounds",
-  "Main Site Forms",
-  "Main Site Inbounds",
-] as const;
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -56,14 +43,20 @@ export async function getAdminFacets(scope: AdminDatabaseScope): Promise<AdminFa
 }
 
 async function productionFacets(): Promise<AdminFacets> {
-  const [agents, merchants] = await Promise.all([
+  const [agents, merchants, sourceCompanies] = await Promise.all([
     listCatalogItems("agents"),
     listCatalogItems("merchants"),
+    listLeadSourceCompanies(),
   ]);
   return {
     agents: agents.map((item) => item.name),
-    source_companies: [...SOURCE_COMPANIES],
-    sources: [...PRODUCTION_SOURCE_LABELS],
+    source_companies: sourceCompanies.map((company) => company.company_slug),
+    source_granularities: sourceCompanies.flatMap((company) =>
+      company.granularities.map((granularity) => granularity.granularity_key),
+    ),
+    sources: sourceCompanies.flatMap((company) =>
+      company.granularities.map((granularity) => granularity.crm_label),
+    ),
     merchants: merchants.map((item) => item.name),
   };
 }
@@ -74,7 +67,7 @@ async function historicalFacets(): Promise<AdminFacets> {
   const formLeads = models["form-leads"];
   const callLeads = models["call-leads"];
 
-  const [agentRows, sources, formSources, callSources, merchants] = await Promise.all([
+  const [agentRows, sources, formSources, callSources, formGranularities, callGranularities, merchants] = await Promise.all([
     booked.aggregate<{ _id: unknown }>([
       { $unwind: "$agent_allocations" },
       { $group: { _id: "$agent_allocations.agent_name_snapshot" } },
@@ -82,6 +75,8 @@ async function historicalFacets(): Promise<AdminFacets> {
     booked.distinct("source"),
     formLeads.distinct("source_company"),
     callLeads.distinct("source_company"),
+    formLeads.distinct("source_granularity_key"),
+    callLeads.distinct("source_granularity_key"),
     booked.distinct("merchant"),
   ]);
 
@@ -92,6 +87,7 @@ async function historicalFacets(): Promise<AdminFacets> {
     // which can be either a lead source_company slug or the booked `source`
     // label, so expose the union of both for historical scope.
     source_companies: cleanStrings([...formSources, ...callSources, ...sourceList]),
+    source_granularities: cleanStrings([...formGranularities, ...callGranularities]),
     sources: sourceList,
     merchants: cleanStrings(merchants),
   };
@@ -121,6 +117,7 @@ function mergeFacets(left: AdminFacets, right: AdminFacets): AdminFacets {
   return {
     agents: cleanStrings([...left.agents, ...right.agents]),
     source_companies: cleanStrings([...left.source_companies, ...right.source_companies]),
+    source_granularities: cleanStrings([...left.source_granularities, ...right.source_granularities]),
     sources: cleanStrings([...left.sources, ...right.sources]),
     merchants: cleanStrings([...left.merchants, ...right.merchants]),
   };

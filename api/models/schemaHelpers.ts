@@ -3,12 +3,10 @@ import {
   LEAD_MODELS,
   LOCAL_TYPES,
   SHEET_SYNC_STATUSES,
-  SOURCE_COMPANIES,
 } from "../config/domain";
 
 export const sourceCompanyField = {
   type: String,
-  enum: SOURCE_COMPANIES,
   required: true,
   default: "not_provided",
   index: true,

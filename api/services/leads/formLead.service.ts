@@ -1,6 +1,5 @@
 import {
   getCplForSource,
-  getCrmFormLeadSourceCompanyLabel,
   getSheetSyncMode,
   type LocalType,
   type SourceCompany,
@@ -40,7 +39,7 @@ import {
   deriveFormLeadLocal,
   resolveRequiredLocation,
 } from "./leadLocation.service";
-import { parseSourceCompany } from "./leadSourceCompany";
+import { parseSourceCompany, resolveLeadSourceAssignment } from "./leadSourceCompany";
 import {
   findDuplicateFormLeadMatch,
   markMatchingCallLeadsWithFormFill,
@@ -55,19 +54,31 @@ export async function createFormLead(input: CreateFormLeadInput) {
   normalizedFormLeadInput.phone_number = normalizePhoneNumberForStorage(
     normalizedFormLeadInput.phone_number,
   );
-  const source_company = parseSourceCompany(normalizedFormLeadInput.source_company);
   const location = await resolveRequiredLocation(normalizedFormLeadInput, {
     workflow: "form_lead_create",
   });
   const local = deriveFormLeadLocal(location.pickup_state, location.delivery_state);
+  const { resolution: sourceResolution, assignment: sourceAssignment } =
+    await resolveLeadSourceAssignment({
+      value: normalizedFormLeadInput.source_company,
+      company_slug: normalizedFormLeadInput.company_slug,
+      granularity_key: normalizedFormLeadInput.source_granularity_key,
+      channel: "form",
+      local,
+      source_site: normalizedFormLeadInput.source_company_site,
+    });
+  const source_company = sourceAssignment.source_company as SourceCompany;
   const duplicateMatch = await findDuplicateFormLeadMatch(
-    source_company,
+    {
+      sourceCompany: source_company,
+      leadSourceCompany: sourceAssignment.lead_source_company,
+    },
     normalizedFormLeadInput.phone_number,
     normalizedFormLeadInput.email,
   );
   const duplicate = duplicateMatch.duplicate;
   const shouldPostToGranot = post_to_granot && !duplicate;
-  const crmLabel = getCrmFormLeadSourceCompanyLabel(source_company, local);
+  const crmLabel = sourceResolution.granularity.crm_label;
 
   // The domain document, the form-fill call-lead updates, and the durable
   // sheet-sync outbox jobs all commit atomically (in queued mode). CRM
@@ -77,12 +88,12 @@ export async function createFormLead(input: CreateFormLeadInput) {
     const created = new FormLead({
       ...normalizedFormLeadInput,
       ...location,
-      source_company,
+      ...sourceAssignment,
       local,
       ref_no: normalizedFormLeadInput.ref_no?.trim() || "not provided",
       timestamp: toFloridaTimestamp(normalizedFormLeadInput.timestamp),
       move_date: normalizedFormLeadInput.move_date ?? new Date(),
-      cpl: await getCplForSource(source_company, "form", local),
+      cpl: sourceResolution.granularity.cpl,
       duplicate,
       post_to_granot: shouldPostToGranot,
     });
@@ -92,7 +103,10 @@ export async function createFormLead(input: CreateFormLeadInput) {
     const sheetSyncJobs: FullSheetSyncJob[] = [];
     if (!created.duplicate) {
       const formFillJobs = await markMatchingCallLeadsWithFormFill(
-        source_company,
+        {
+          sourceCompany: source_company,
+          leadSourceCompany: sourceAssignment.lead_source_company,
+        },
         created.phone_number,
         leadId,
         session,
@@ -290,9 +304,10 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
   }
 
   const update = normalizeLeadNameUpdate({ ...input }, lead);
-  if (input.source_company !== undefined) {
-    update.source_company = parseSourceCompany(input.source_company);
-  }
+  let sourceResolutionForUpdate:
+    | Awaited<ReturnType<typeof resolveLeadSourceAssignment>>
+    | undefined;
+  const sourceAffectingInputChanged = hasFormLeadSourceAffectingInput(input);
   if (input.phone_number !== undefined) {
     update.phone_number = normalizePhoneNumberForStorage(input.phone_number);
   }
@@ -319,7 +334,20 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
     lead.delivery_state = location.delivery_state;
     lead.local = deriveFormLeadLocal(location.pickup_state, location.delivery_state);
   }
-  lead.cpl = await getCplForSource(lead.source_company as SourceCompany, "form", lead.local as LocalType);
+  if (sourceAffectingInputChanged || !lead.lead_source_company) {
+    sourceResolutionForUpdate = await resolveLeadSourceAssignment({
+      value: input.source_company ?? lead.source_company,
+      company_slug: input.company_slug ?? lead.source_company,
+      granularity_key: input.source_granularity_key ?? lead.source_granularity_key,
+      channel: "form",
+      local: lead.local as LocalType,
+      source_site: input.source_company_site ?? lead.source_company_site,
+    });
+    Object.assign(lead, sourceResolutionForUpdate.assignment);
+  }
+  lead.cpl =
+    sourceResolutionForUpdate?.resolution.granularity.cpl ??
+    (await getCplForSource(lead.source_company as SourceCompany, "form", lead.local as LocalType));
 
   if (input.receiver_agent !== undefined) {
     const agent = await Agent.findById(input.receiver_agent);
@@ -427,4 +455,17 @@ export async function deleteFormLead(id: string, cascade: boolean) {
 
 function hasOwnInput<T extends object>(input: T, key: keyof T): boolean {
   return Object.prototype.hasOwnProperty.call(input, key);
+}
+
+function hasFormLeadSourceAffectingInput(input: UpdateFormLeadInput): boolean {
+  return (
+    hasOwnInput(input, "source_company") ||
+    hasOwnInput(input, "company_slug") ||
+    hasOwnInput(input, "source_granularity_key") ||
+    hasOwnInput(input, "source_company_site") ||
+    hasOwnInput(input, "pickup_zip") ||
+    hasOwnInput(input, "destination_zip") ||
+    hasOwnInput(input, "pickup_state") ||
+    hasOwnInput(input, "delivery_state")
+  );
 }

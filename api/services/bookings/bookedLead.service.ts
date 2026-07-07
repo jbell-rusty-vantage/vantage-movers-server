@@ -1,5 +1,7 @@
 import type mongoose from "mongoose";
 import {
+  getCallLeadSourceCompanyLabel,
+  getFormLeadSourceCompanyLabel,
   getSheetSyncMode,
   resolveSourceCompany,
   type LeadModelName,
@@ -82,7 +84,8 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
     const sourceCompanyForLead = getFormLeadSourceCompanyForBooking(lead, input);
     const canonicalSource = resolveBookedLeadSource(
       sourceCompanyForLead,
-      lead.source_company,
+      lead,
+      input.lead_model,
       input.source,
     );
     const local = optionalValue(input.local ?? lead.local);
@@ -261,19 +264,55 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
 
 function resolveBookedLeadSource(
   sourceCompanyForLead: SourceCompany | undefined,
-  leadSourceCompany: unknown,
+  lead: SourceDisplayLead,
+  leadModel: LeadModelName,
   inputSource: string,
 ): SourceCompany | string {
+  const inputSourceText = inputSource.trim();
   if (sourceCompanyForLead) {
-    return sourceCompanyForLead;
+    return inputSourceText || labelForSourceCompany(leadModel, sourceCompanyForLead);
   }
 
-  const leadSource = resolveSourceCompany(String(leadSourceCompany ?? ""));
+  const snapshotSource = sourceDisplayLabelFromLead(lead);
+  if (snapshotSource) {
+    return snapshotSource;
+  }
+
+  const leadSource = resolveSourceCompany(String(lead.source_company ?? ""));
   if (leadSource && leadSource !== "not_provided") {
-    return leadSource;
+    return labelForSourceCompany(leadModel, leadSource);
   }
 
-  return resolveSourceCompany(inputSource) ?? inputSource;
+  const inputSourceCompany = resolveSourceCompany(inputSource);
+  return inputSourceCompany ? labelForSourceCompany(leadModel, inputSourceCompany) : inputSource;
+}
+
+type SourceDisplayLead = {
+  source_company?: unknown;
+  crm_source_label_snapshot?: unknown;
+  source_granularity_label_snapshot?: unknown;
+  source_company_label_snapshot?: unknown;
+};
+
+function sourceDisplayLabelFromLead(lead: SourceDisplayLead): string | undefined {
+  return (
+    stringValue(lead.crm_source_label_snapshot) ??
+    stringValue(lead.source_granularity_label_snapshot) ??
+    stringValue(lead.source_company_label_snapshot)
+  );
+}
+
+function labelForSourceCompany(
+  leadModel: LeadModelName,
+  sourceCompany: SourceCompany,
+): string {
+  return leadModel === "CallLead"
+    ? getCallLeadSourceCompanyLabel(sourceCompany)
+    : getFormLeadSourceCompanyLabel(sourceCompany);
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 /**

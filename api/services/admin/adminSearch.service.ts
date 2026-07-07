@@ -31,17 +31,39 @@ const SEARCH_CONFIGS: Record<
   }
 > = {
   "form-leads": {
-    fields: ["name", "email", "phone_number", "source_company", "ref_no", "lid"],
+    fields: [
+      "name",
+      "email",
+      "phone_number",
+      "source_company",
+      "source_company_label_snapshot",
+      "source_granularity_label_snapshot",
+      "crm_source_label_snapshot",
+      "source_granularity_key",
+      "ref_no",
+      "lid",
+    ],
     hrefPrefix: "/form-leads",
     primary: (doc) => label(doc.ref_no, doc.name, doc.phone_number, "Form lead"),
-    secondary: (doc) => label(doc.name, doc.email, doc.phone_number, doc.source_company),
+    secondary: (doc) => label(doc.name, doc.email, doc.phone_number, sourceLabel(doc)),
     badges: leadBadges,
   },
   "call-leads": {
-    fields: ["name", "email", "phone_number", "normalized_phone_number", "source_company", "job_no"],
+    fields: [
+      "name",
+      "email",
+      "phone_number",
+      "normalized_phone_number",
+      "source_company",
+      "source_company_label_snapshot",
+      "source_granularity_label_snapshot",
+      "crm_source_label_snapshot",
+      "source_granularity_key",
+      "job_no",
+    ],
     hrefPrefix: "/call-leads",
     primary: (doc) => label(doc.job_no, doc.name, doc.phone_number, "Call lead"),
-    secondary: (doc) => label(doc.name, doc.email, doc.phone_number, doc.source_company),
+    secondary: (doc) => label(doc.name, doc.email, doc.phone_number, sourceLabel(doc)),
     badges: leadBadges,
   },
   "booked-leads": {
@@ -121,6 +143,15 @@ async function searchConcrete(
 
 function leadBadges(doc: Record<string, unknown>): string[] {
   return [doc.booked ? "booked" : "unbooked", ...(doc.cancelled ? ["cancelled"] : [])];
+}
+
+function sourceLabel(doc: Record<string, unknown>): unknown {
+  return (
+    doc.crm_source_label_snapshot ||
+    doc.source_granularity_label_snapshot ||
+    doc.source_company_label_snapshot ||
+    doc.source_company
+  );
 }
 
 function label(...values: unknown[]): string {

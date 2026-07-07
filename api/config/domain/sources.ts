@@ -204,12 +204,14 @@ export function normalizeSourceCompany(value?: string | null): SourceCompany {
   return "not_provided";
 }
 
-export function getSourceCompanyLabel(sourceCompany: SourceCompany): string {
-  return SOURCE_COMPANY_CONFIGS[sourceCompany].label;
+export function getSourceCompanyLabel(sourceCompany: SourceCompany | string): string {
+  const config =
+    SOURCE_COMPANY_CONFIGS[sourceCompany as keyof typeof SOURCE_COMPANY_CONFIGS];
+  return config?.label ?? sourceCompany;
 }
 
 export function getFormLeadSourceCompanyLabel(
-  sourceCompany: SourceCompany,
+  sourceCompany: SourceCompany | string,
   local?: LocalType,
 ): string {
   switch (sourceCompany) {
@@ -229,10 +231,12 @@ export function getFormLeadSourceCompanyLabel(
       return "Main Site Forms";
     case "not_provided":
       return "Main Site Forms";
+    default:
+      return sourceCompany;
   }
 }
 
-export function getCallLeadSourceCompanyLabel(sourceCompany: SourceCompany): string {
+export function getCallLeadSourceCompanyLabel(sourceCompany: SourceCompany | string): string {
   switch (sourceCompany) {
     case "tbm_leads":
       return "10best Inbounds";
@@ -248,6 +252,8 @@ export function getCallLeadSourceCompanyLabel(sourceCompany: SourceCompany): str
       return "Main Site Inbounds";
     case "not_provided":
       return "Main Site Inbounds";
+    default:
+      return sourceCompany;
   }
 }
 

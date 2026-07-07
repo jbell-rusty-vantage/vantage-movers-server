@@ -86,6 +86,8 @@ import {
   catalogListQuerySchema,
   catalogUpdateSchema,
   cplRateUpdateSchema,
+  leadSourceCompanyCreateSchema,
+  leadSourceCompanyUpdateSchema,
   listGranotCrmSourcesQuerySchema,
   sheetSyncJobsQuerySchema,
   sheetSyncRunsQuerySchema,
@@ -136,6 +138,12 @@ import {
   type CatalogKind,
 } from "../services/catalog";
 import { listCplRates, updateCplRate } from "../services/cpl/cplRate.service";
+import {
+  createLeadSourceCompany,
+  getLeadSourceCompany,
+  listLeadSourceCompanies,
+  updateLeadSourceCompany,
+} from "../services/leadSourceCompanies";
 import {
   exportAgentSalesReportCsv,
   exportAnalyticsReportCsv,
@@ -202,6 +210,10 @@ router.post("/api/v1/admin/merchants", handleCatalogCreate("merchants"));
 router.patch("/api/v1/admin/merchants/:id", handleCatalogUpdate("merchants"));
 router.get("/api/v1/admin/cpl-rates", handleCplRatesList);
 router.patch("/api/v1/admin/cpl-rates/:label", handleCplRateUpdate);
+router.get("/api/v1/admin/source-companies", handleLeadSourceCompaniesList);
+router.get("/api/v1/admin/source-companies/:id", handleLeadSourceCompanyDetail);
+router.post("/api/v1/admin/source-companies", handleLeadSourceCompanyCreate);
+router.patch("/api/v1/admin/source-companies/:id", handleLeadSourceCompanyUpdate);
 for (const resource of adminResources) {
   router.get(`/api/v1/admin/${resource}`, handleAdminBrowse(resource));
   router.get(`/api/v1/admin/${resource}/:id`, handleAdminDetail(resource));
@@ -443,6 +455,53 @@ async function handleCplRateUpdate(req: Request, res: Response) {
     await connectMongo();
     const parsed = cplRateUpdateSchema.parse(req.body);
     const data = await updateCplRate(label, parsed.cpl);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleLeadSourceCompaniesList(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = catalogListQuerySchema.parse(req.query);
+    const items = await listLeadSourceCompanies({
+      includeInactive: parsed.include_inactive === true,
+    });
+    return res.json({ ok: true, data: { items } });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleLeadSourceCompanyDetail(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const data = await getLeadSourceCompany(id);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleLeadSourceCompanyCreate(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = leadSourceCompanyCreateSchema.parse(req.body);
+    const data = await createLeadSourceCompany(parsed);
+    return res.status(201).json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleLeadSourceCompanyUpdate(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const parsed = leadSourceCompanyUpdateSchema.parse(req.body);
+    const data = await updateLeadSourceCompany(id, parsed);
     return res.json({ ok: true, data });
   } catch (error) {
     return sendError(req, res, error);

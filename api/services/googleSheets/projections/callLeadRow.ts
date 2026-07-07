@@ -25,7 +25,9 @@ export function callLeadToRow(lead: CallLeadSheetSource): string[] {
     optionalLocalCell(lead.local),
     formatNumber(lead.cubic_feet),
     lead._id.toString(),
-    getCallLeadSourceCompanyLabel(lead.source_company),
+    lead.crm_source_label_snapshot?.trim() ||
+      lead.source_granularity_label_snapshot?.trim() ||
+      getCallLeadSourceCompanyLabel(lead.source_company),
     booleanCell(Boolean(lead.form_fill)),
     lead.receiver_agent_name_snapshot?.trim() ?? "",
   ];

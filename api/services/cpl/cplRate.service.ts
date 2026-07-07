@@ -10,12 +10,19 @@ import type { SourceCompany } from "../../config/domain/sources";
 import { CplRate, type CplRateDocument } from "../../models/CplRate";
 import { CallLead } from "../../models/CallLead";
 import { FormLead } from "../../models/FormLead";
+import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
+import {
+  listLeadSourceCompanies,
+  type LeadSourceGranularityItem,
+} from "../leadSourceCompanies";
 import { V1ServiceError } from "../v1ServiceError";
 
 export type CplRateItem = {
   id: string;
   label: string;
-  source_company: SourceCompany;
+  source_company: string;
+  lead_source_company?: string;
+  source_granularity_key?: string;
   lead_type: CplLeadType;
   local?: LocalType;
   cpl: number;
@@ -68,6 +75,16 @@ export async function getCplRate(
 }
 
 export async function listCplRates(): Promise<CplRateItem[]> {
+  const sourceCompanies = await listLeadSourceCompanies({ includeInactive: true });
+  const catalogRates = sourceCompanies.flatMap((company) =>
+    company.granularities.map((granularity) =>
+      toCatalogCplRateItem(company, granularity),
+    ),
+  );
+  if (catalogRates.length) {
+    return catalogRates;
+  }
+
   await ensureCplRatesSeeded();
   const docs = await CplRate.find().lean().exec();
   const byLabel = new Map(docs.map((doc) => [doc.label, doc]));
@@ -78,6 +95,12 @@ export async function listCplRates(): Promise<CplRateItem[]> {
 }
 
 export async function updateCplRate(label: string, cpl: number): Promise<UpdateCplRateResult> {
+  const catalogUpdate = await updateCatalogGranularityCpl(label, cpl);
+  if (catalogUpdate) {
+    invalidateCplRateCache();
+    return catalogUpdate;
+  }
+
   const definition = findCplRateDefinition(label);
   if (!definition) {
     throw new V1ServiceError(`Unknown CPL rate label: ${label}`, 404);
@@ -101,6 +124,79 @@ export async function updateCplRate(label: string, cpl: number): Promise<UpdateC
   const leads_updated = await backfillLeadsForDefinition(definition, cpl);
 
   return { rate: toCplRateItem(definition, doc), leads_updated };
+}
+
+async function updateCatalogGranularityCpl(
+  label: string,
+  cpl: number,
+): Promise<UpdateCplRateResult | undefined> {
+  const sourceCompanies = await listLeadSourceCompanies({ includeInactive: true });
+  const normalizedLabel = label.trim().toLowerCase();
+  const sourceCompany = sourceCompanies.find((company) =>
+    company.granularities.some((granularity) =>
+      [
+        granularity.granularity_key,
+        granularity.owner_label,
+        granularity.crm_label,
+        ...granularity.aliases,
+      ].some((candidate) => candidate.trim().toLowerCase() === normalizedLabel),
+    ),
+  );
+  const granularity = sourceCompany?.granularities.find((candidate) =>
+    [
+      candidate.granularity_key,
+      candidate.owner_label,
+      candidate.crm_label,
+      ...candidate.aliases,
+    ].some((value) => value.trim().toLowerCase() === normalizedLabel),
+  );
+  if (!sourceCompany || !granularity) {
+    return undefined;
+  }
+
+  const Model = getLeadSourceCompanyModel();
+  await Model.updateOne(
+    {
+      _id: sourceCompany.id,
+      "granularities.granularity_key": granularity.granularity_key,
+    },
+    { $set: { "granularities.$.cpl": cpl } },
+    { runValidators: true },
+  ).exec();
+
+  const leads_updated = await backfillLeadsForGranularity(
+    sourceCompany.company_slug,
+    granularity,
+    cpl,
+  );
+  return {
+    rate: { ...toCatalogCplRateItem(sourceCompany, granularity), cpl },
+    leads_updated,
+  };
+}
+
+async function backfillLeadsForGranularity(
+  sourceCompany: string,
+  granularity: LeadSourceGranularityItem,
+  cpl: number,
+): Promise<number> {
+  const filter: Record<string, unknown> = {
+    source_company: sourceCompany,
+    duplicate: { $ne: true },
+    $or: [
+      { source_granularity_key: granularity.granularity_key },
+      { source_granularity_key: { $exists: false } },
+      { source_granularity_key: null },
+    ],
+  };
+  if (granularity.local) {
+    filter.local = granularity.local;
+  }
+  const result =
+    granularity.channel === "form"
+      ? await FormLead.updateMany(filter, { $set: { cpl } }).exec()
+      : await CallLead.updateMany(filter, { $set: { cpl } }).exec();
+  return result.modifiedCount ?? 0;
 }
 
 async function backfillLeadsForDefinition(
@@ -214,5 +310,21 @@ function toCplRateItem(
     cpl: doc?.cpl ?? definition.defaultCpl,
     ...(doc?.createdAt ? { createdAt: doc.createdAt } : {}),
     ...(doc?.updatedAt ? { updatedAt: doc.updatedAt } : {}),
+  };
+}
+
+function toCatalogCplRateItem(
+  company: { id: string; company_slug: string },
+  granularity: LeadSourceGranularityItem,
+): CplRateItem {
+  return {
+    id: granularity.crm_label,
+    label: granularity.crm_label,
+    source_company: company.company_slug,
+    lead_source_company: company.id,
+    source_granularity_key: granularity.granularity_key,
+    lead_type: granularity.channel,
+    ...(granularity.local ? { local: granularity.local } : {}),
+    cpl: granularity.cpl,
   };
 }

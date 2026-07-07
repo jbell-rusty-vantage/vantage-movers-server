@@ -2,6 +2,7 @@ import {
   SOURCE_LABEL_TO_COMPANY,
   type SourceCompany,
 } from "../../config/domain/sources";
+import { resolveLeadSource } from "../leadSourceCompanies";
 import { normalizePhoneNumberToE164Like } from "./phone-normalization";
 
 export { SOURCE_COMPANIES, SOURCE_LABEL_TO_COMPANY } from "../../config/domain/sources";
@@ -37,7 +38,10 @@ export const RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE = {
 >;
 
 export type RingCentralInboundSource =
-  (typeof RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE)[keyof typeof RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE];
+  {
+    sourceLabel: string;
+    sourceCompany: SourceCompany;
+  };
 
 export const RINGCENTRAL_TELEPHONY_SESSIONS_BASE_FILTER =
   "/restapi/v1.0/account/~/telephony/sessions";
@@ -87,6 +91,29 @@ export function resolveRingCentralInboundSource(
   }
 
   return RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE[normalizedPhoneNumber];
+}
+
+export async function resolveRingCentralInboundSourceFromCatalog(
+  phoneNumber: string | null | undefined,
+): Promise<RingCentralInboundSource | null> {
+  const normalizedPhoneNumber = normalizePhoneNumberToE164Like(phoneNumber);
+  if (!normalizedPhoneNumber) {
+    return null;
+  }
+
+  try {
+    const resolution = await resolveLeadSource({
+      channel: "call",
+      inbound_phone_number: normalizedPhoneNumber,
+      requireActive: true,
+    });
+    return {
+      sourceLabel: resolution.granularity.crm_label,
+      sourceCompany: resolution.company.company_slug as SourceCompany,
+    };
+  } catch {
+    return resolveRingCentralInboundSource(normalizedPhoneNumber);
+  }
 }
 
 function isRingCentralInboundNumber(

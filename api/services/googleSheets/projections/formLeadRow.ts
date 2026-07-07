@@ -38,7 +38,9 @@ export function formLeadToRow(lead: FormLeadSheetSource): string[] {
     cancelledCell(Boolean(lead.cancelled)),
     lead._id.toString(),
     lead.ref_no?.trim() || "not provided",
-    getFormLeadSourceCompanyLabel(lead.source_company, lead.local as LocalType),
+    lead.crm_source_label_snapshot?.trim() ||
+      lead.source_granularity_label_snapshot?.trim() ||
+      getFormLeadSourceCompanyLabel(lead.source_company, lead.local as LocalType),
     formatFormLeadBadLeadReason(lead.bad_lead),
     lead.receiver_agent_name_snapshot?.trim() ?? "",
   ];

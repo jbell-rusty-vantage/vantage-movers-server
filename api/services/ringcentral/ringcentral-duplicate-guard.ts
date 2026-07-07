@@ -32,6 +32,7 @@ export type RingCentralDuplicateClassification = {
 
 export type RingCentralDuplicateInput = {
   sourceCompany: SourceCompany;
+  leadSourceCompany?: unknown;
   callerPhoneNumber: string | null;
   /** The current call's session id, excluded from the match (it is itself). */
   telephonySessionId?: string | null;
@@ -48,6 +49,7 @@ type RecentCallLead = {
 export type RingCentralDuplicateDeps = {
   findRecentCallLeads: (params: {
     sourceCompany: SourceCompany;
+    leadSourceCompany?: unknown;
     normalizedPhone: string;
     from: Date;
     to: Date;
@@ -55,9 +57,22 @@ export type RingCentralDuplicateDeps = {
 };
 
 const defaultDeps: RingCentralDuplicateDeps = {
-  async findRecentCallLeads({ sourceCompany, normalizedPhone, from, to }) {
+  async findRecentCallLeads({
+    sourceCompany,
+    leadSourceCompany,
+    normalizedPhone,
+    from,
+    to,
+  }) {
     return CallLead.find({
-      source_company: sourceCompany,
+      ...(leadSourceCompany
+        ? {
+            $or: [
+              { lead_source_company: leadSourceCompany },
+              { source_company: sourceCompany },
+            ],
+          }
+        : { source_company: sourceCompany }),
       duplicate: { $ne: true },
       normalized_phone_number: normalizedPhone,
       timestamp: { $gte: from, $lte: to },
@@ -90,6 +105,7 @@ export async function classifyRingCentralCallLeadDuplicate(
   const to = new Date(callTimestamp.getTime() + windowMs);
   const candidates = await deps.findRecentCallLeads({
     sourceCompany: input.sourceCompany,
+    leadSourceCompany: input.leadSourceCompany,
     normalizedPhone,
     from,
     to,

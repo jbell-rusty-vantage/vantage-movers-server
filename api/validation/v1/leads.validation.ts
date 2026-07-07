@@ -67,6 +67,8 @@ function requireCallLeadIdentity(value: Record<string, unknown>) {
 
 const formLeadFields = {
   source_company: sourceCompanySchema,
+  company_slug: optionalString,
+  source_granularity_key: optionalString,
   name: optionalString,
   first_name: optionalString,
   last_name: optionalString,
@@ -128,6 +130,8 @@ export const searchFormLeadsSchema = z
 
 const callLeadFields = {
   source_company: sourceCompanySchema,
+  company_slug: optionalString,
+  source_granularity_key: optionalString,
   source_company_site: optionalString,
   timestamp: optionalDate,
   job_no: optionalString,
@@ -192,6 +196,8 @@ export const browseFormLeadsQuerySchema = z
   .object({
     q: optionalString,
     source_company: optionalString,
+    lead_source_company: objectIdSchema.optional(),
+    source_granularity_key: optionalString,
     name: optionalString,
     email: looseEmailString,
     phone_number: optionalString,
@@ -206,6 +212,8 @@ export const browseCallLeadsQuerySchema = z
   .object({
     q: optionalString,
     source_company: optionalString,
+    lead_source_company: objectIdSchema.optional(),
+    source_granularity_key: optionalString,
     name: optionalString,
     email: looseEmailString,
     phone_number: optionalString,

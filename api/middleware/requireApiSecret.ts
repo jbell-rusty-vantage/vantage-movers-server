@@ -4,7 +4,7 @@ import {
   getExtensionUserFromAccessToken,
   type ExtensionRole,
 } from "../auth/extension";
-import { resolveSourceCompany, type SourceCompany } from "../config/domain";
+import { resolveSourceCompany } from "../config/domain";
 import { shouldCaptureAuthEvents } from "../config/domain/observability";
 import { recordOperationalEvent } from "../services/observability";
 
@@ -17,7 +17,8 @@ type ScopedApiKey = {
   name: string;
   secret: string;
   routes: ScopedApiRoute[];
-  sourceCompanies: SourceCompany[];
+  sourceCompanies: string[];
+  sourceGranularities: string[];
 };
 
 export type VantageAuthContext =
@@ -218,10 +219,10 @@ function readSourceCompany(req: Request): string | null {
   if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
     return null;
   }
-  const resolved = resolveSourceCompany(
-    getString((req.body as Record<string, unknown>).source_company),
+  const body = req.body as Record<string, unknown>;
+  return normalizeScopedSourceCompany(
+    getString(body.company_slug) ?? getString(body.source_company),
   );
-  return resolved ?? null;
 }
 
 function parseScopedApiKeys(raw: string | undefined): ScopedApiKey[] {
@@ -263,6 +264,7 @@ function parseScopedApiKey(value: unknown): ScopedApiKey {
     secret,
     routes,
     sourceCompanies: parseSourceCompanyScope(config),
+    sourceGranularities: parseSourceGranularityScope(config),
   };
 }
 
@@ -278,19 +280,38 @@ function parseScopedApiRoute(value: unknown): ScopedApiRoute {
   return { method, path };
 }
 
-function parseSourceCompanyScope(config: Record<string, unknown>): SourceCompany[] {
+function parseSourceCompanyScope(config: Record<string, unknown>): string[] {
   const raw = config.sourceCompanies ?? config.source_companies;
   if (!Array.isArray(raw)) {
     return [];
   }
 
   return raw.map((value) => {
-    const sourceCompany = resolveSourceCompany(getString(value));
+    const sourceCompany = normalizeScopedSourceCompany(getString(value));
     if (!sourceCompany) {
-      throw new Error("Scoped API key includes an unknown source company");
+      throw new Error("Scoped API key includes an invalid source company");
     }
 
     return sourceCompany;
+  });
+}
+
+function parseSourceGranularityScope(config: Record<string, unknown>): string[] {
+  const raw =
+    config.sourceGranularities ??
+    config.source_granularities ??
+    config.granularityKeys ??
+    config.granularity_keys;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw.map((value) => {
+    const granularity = normalizeKey(getString(value));
+    if (!granularity) {
+      throw new Error("Scoped API key includes an invalid source granularity");
+    }
+    return granularity;
   });
 }
 
@@ -302,7 +323,7 @@ function isRouteAllowed(req: Request, key: ScopedApiKey): boolean {
 }
 
 function isSourceCompanyAllowed(req: Request, key: ScopedApiKey): boolean {
-  if (key.sourceCompanies.length === 0) {
+  if (key.sourceCompanies.length === 0 && key.sourceGranularities.length === 0) {
     return true;
   }
 
@@ -310,10 +331,20 @@ function isSourceCompanyAllowed(req: Request, key: ScopedApiKey): boolean {
     return false;
   }
 
-  const sourceCompany = resolveSourceCompany(
-    getString((req.body as Record<string, unknown>).source_company),
+  const body = req.body as Record<string, unknown>;
+  const sourceCompany = normalizeScopedSourceCompany(
+    getString(body.company_slug) ?? getString(body.source_company),
   );
-  return sourceCompany ? key.sourceCompanies.includes(sourceCompany) : false;
+  const sourceCompanyAllowed =
+    key.sourceCompanies.length === 0 ||
+    (sourceCompany ? key.sourceCompanies.includes(sourceCompany) : false);
+
+  const sourceGranularity = normalizeKey(getString(body.source_granularity_key));
+  const granularityAllowed =
+    key.sourceGranularities.length === 0 ||
+    (sourceGranularity ? key.sourceGranularities.includes(sourceGranularity) : false);
+
+  return sourceCompanyAllowed && granularityAllowed;
 }
 
 function readBearerToken(req: Request): string | undefined {
@@ -348,6 +379,18 @@ function normalizePath(value: string | undefined): string {
 
 function getString(value: unknown): string | undefined {
   return typeof value === "string" ? value.trim() : undefined;
+}
+
+function normalizeScopedSourceCompany(value: string | undefined): string | null {
+  const resolved = resolveSourceCompany(value);
+  if (resolved) {
+    return resolved;
+  }
+  return normalizeKey(value) || null;
+}
+
+function normalizeKey(value: string | undefined): string {
+  return value?.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") ?? "";
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

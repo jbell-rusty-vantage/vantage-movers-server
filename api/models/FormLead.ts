@@ -16,6 +16,16 @@ export const FORM_LEAD_UNKNOWN_STATE = "not_found";
 const FormLeadSchema = new Schema(
   {
     source_company: sourceCompanyField,
+    lead_source_company: {
+      type: Schema.Types.ObjectId,
+      ref: "LeadSourceCompany",
+      index: true,
+    },
+    source_granularity_id: { type: Schema.Types.ObjectId, index: true },
+    source_granularity_key: { type: String, trim: true, lowercase: true, index: true },
+    source_company_label_snapshot: { type: String, trim: true },
+    source_granularity_label_snapshot: { type: String, trim: true },
+    crm_source_label_snapshot: { type: String, trim: true },
     name: { type: String, required: true, trim: true },
     first_name: { type: String, trim: true },
     last_name: { type: String, trim: true },
@@ -75,6 +85,8 @@ const FormLeadSchema = new Schema(
 );
 
 FormLeadSchema.index({ source_company: 1, createdAt: -1 });
+FormLeadSchema.index({ lead_source_company: 1, createdAt: -1 });
+FormLeadSchema.index({ lead_source_company: 1, source_granularity_key: 1, createdAt: -1 });
 FormLeadSchema.index({ phone_number: 1 });
 FormLeadSchema.index({ ref_no: 1 });
 FormLeadSchema.index({ email: 1 });

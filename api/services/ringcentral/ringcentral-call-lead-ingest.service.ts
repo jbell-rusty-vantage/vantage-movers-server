@@ -1,7 +1,11 @@
 import { logger } from "../../logger";
+import { resolveLeadSource } from "../leadSourceCompanies";
 import { recordOperationalEvent } from "../observability";
 import { createRingCentralCallLead } from "../leads/callLead.service";
-import type { SourceCompany } from "./call-lead-sources";
+import {
+  resolveRingCentralInboundSourceFromCatalog,
+  type SourceCompany,
+} from "./call-lead-sources";
 import { classifyRingCentralCallLeadDuplicate } from "./ringcentral-duplicate-guard";
 import { resolveRingCentralLeadWriteMode } from "./ringcentral-config";
 import {
@@ -70,6 +74,17 @@ export async function ingestRingCentralQualifiedCall(
   call: RingCentralQualifiedCall,
   now: Date = new Date(),
 ): Promise<RingCentralIngestResult> {
+  const catalogSource = await resolveRingCentralInboundSourceFromCatalog(
+    call.targetPhoneNumber,
+  );
+  if (catalogSource) {
+    call = {
+      ...call,
+      sourceCompany: catalogSource.sourceCompany,
+      sourceLabel: catalogSource.sourceLabel,
+    };
+  }
+
   const existing = await findProcessedCall({
     telephonySessionId: call.telephonySessionId,
     callLogId: call.callLogId,
@@ -118,8 +133,15 @@ export async function ingestRingCentralQualifiedCall(
   }
 
   const callTimestamp = call.startTime ?? call.answeredAt ?? now;
+  const resolvedSource = await resolveLeadSource({
+    channel: "call",
+    value: call.sourceLabel ?? call.sourceCompany,
+    company_slug: call.sourceCompany,
+    inbound_phone_number: call.targetPhoneNumber,
+  });
   const duplicate = await classifyRingCentralCallLeadDuplicate({
     sourceCompany: call.sourceCompany,
+    leadSourceCompany: resolvedSource.company.id,
     callerPhoneNumber: call.callerPhoneNumber,
     telephonySessionId: call.telephonySessionId,
     callTimestamp,

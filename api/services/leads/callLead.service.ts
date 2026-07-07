@@ -34,7 +34,7 @@ import { deleteBookedLead, refreshAttachedBookingFromLead } from "../v1.service"
 import { hasFormFillForCallLead } from "./duplicateLead.service";
 import { normalizeLeadName, normalizeLeadNameUpdate } from "./leadName.service";
 import { resolveOptionalLocation } from "./leadLocation.service";
-import { parseSourceCompany } from "./leadSourceCompany";
+import { parseSourceCompany, resolveLeadSourceAssignment } from "./leadSourceCompany";
 import { recordOperationalEvent } from "../observability";
 
 export type CreateRingCentralCallLeadInput = {
@@ -74,10 +74,22 @@ export async function createRingCentralCallLead(
   input: CreateRingCentralCallLeadInput,
 ) {
   const { source_company, duplicate } = input;
-  const form_fill = await hasFormFillForCallLead(source_company, input.phone_number);
+  const { resolution: sourceResolution, assignment: sourceAssignment } =
+    await resolveLeadSourceAssignment({
+      value: input.ringcentral.source_label ?? source_company,
+      company_slug: source_company,
+      channel: "call",
+    });
+  const form_fill = await hasFormFillForCallLead(
+    {
+      sourceCompany: source_company,
+      leadSourceCompany: sourceAssignment.lead_source_company,
+    },
+    input.phone_number,
+  );
   const lead = await runSheetSyncWrite(async (session) => {
     const created = new CallLead({
-      source_company,
+      ...sourceAssignment,
       phone_number: input.phone_number,
       name: input.name ?? undefined,
       duration: input.duration ?? undefined,
@@ -86,7 +98,7 @@ export async function createRingCentralCallLead(
       timestamp: toFloridaTimestamp(input.timestamp ?? new Date()),
       form_fill,
       duplicate,
-      cpl: duplicate ? 0 : await getCplForSource(source_company, "call", undefined),
+      cpl: duplicate ? 0 : sourceResolution.granularity.cpl,
       ringcentral: {
         telephony_session_id: input.ringcentral.telephony_session_id ?? undefined,
         session_id: input.ringcentral.session_id ?? undefined,
@@ -135,21 +147,36 @@ function callLeadCreateJob(leadId: string): FullSheetSyncJob {
 
 export async function createCallLead(input: CreateCallLeadInput) {
   const normalizedInput = normalizeLeadName(input);
-  const source_company = parseSourceCompany(normalizedInput.source_company);
   const location = await resolveOptionalLocation(normalizedInput, {
     workflow: "call_lead_create",
   });
   const local = location.local ?? normalizedInput.local;
-  const form_fill = await hasFormFillForCallLead(source_company, normalizedInput.phone_number);
+  const { resolution: sourceResolution, assignment: sourceAssignment } =
+    await resolveLeadSourceAssignment({
+      value: normalizedInput.source_company,
+      company_slug: normalizedInput.company_slug,
+      granularity_key: normalizedInput.source_granularity_key,
+      channel: "call",
+      local,
+      source_site: normalizedInput.source_company_site,
+    });
+  const source_company = sourceAssignment.source_company as SourceCompany;
+  const form_fill = await hasFormFillForCallLead(
+    {
+      sourceCompany: source_company,
+      leadSourceCompany: sourceAssignment.lead_source_company,
+    },
+    normalizedInput.phone_number,
+  );
   const lead = await runSheetSyncWrite(async (session) => {
     const created = new CallLead({
       ...normalizedInput,
       ...location,
-      source_company,
+      ...sourceAssignment,
       local,
       form_fill,
       timestamp: toFloridaTimestamp(normalizedInput.timestamp),
-      cpl: await getCplForSource(source_company, "call", local),
+      cpl: sourceResolution.granularity.cpl,
     });
     await created.save({ session });
     await persistSheetSyncIntent(callLeadCreateJob(created._id.toString()), session);
@@ -208,19 +235,20 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
   }
 
   const update = normalizeLeadNameUpdate({ ...input }, lead);
-  if (input.source_company !== undefined) {
-    update.source_company = parseSourceCompany(input.source_company);
-  }
+  let sourceResolutionForUpdate:
+    | Awaited<ReturnType<typeof resolveLeadSourceAssignment>>
+    | undefined;
+  const sourceAffectingInputChanged = hasCallLeadSourceAffectingInput(input);
   if (input.timestamp !== undefined) {
     update.timestamp = toFloridaTimestamp(input.timestamp);
   }
   Object.assign(lead, update);
   if (
-    input.pickup_zip ||
-    input.delivery_zip ||
-    input.pickup_state ||
-    input.delivery_state ||
-    input.local
+    hasOwnInput(input, "pickup_zip") ||
+    hasOwnInput(input, "delivery_zip") ||
+    hasOwnInput(input, "pickup_state") ||
+    hasOwnInput(input, "delivery_state") ||
+    hasOwnInput(input, "local")
   ) {
     const location = await resolveOptionalLocation(
       {
@@ -236,13 +264,25 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
     lead.delivery_state = location.delivery_state;
     lead.local = location.local ?? input.local ?? lead.local;
   }
+  if (sourceAffectingInputChanged || !lead.lead_source_company) {
+    sourceResolutionForUpdate = await resolveLeadSourceAssignment({
+      value: input.source_company ?? lead.source_company,
+      company_slug: input.company_slug ?? lead.source_company,
+      granularity_key: input.source_granularity_key ?? lead.source_granularity_key,
+      channel: "call",
+      local: lead.local as LocalType | undefined,
+      source_site: input.source_company_site ?? lead.source_company_site,
+    });
+    Object.assign(lead, sourceResolutionForUpdate.assignment);
+  }
   lead.cpl = lead.duplicate
     ? 0
-    : await getCplForSource(
-        lead.source_company as SourceCompany,
-        "call",
-        lead.local as LocalType | undefined,
-      );
+    : sourceResolutionForUpdate?.resolution.granularity.cpl ??
+      (await getCplForSource(
+          lead.source_company as SourceCompany,
+          "call",
+          lead.local as LocalType | undefined,
+        ));
 
   if (input.receiver_agent !== undefined) {
     const agent = await Agent.findById(input.receiver_agent);
@@ -332,8 +372,26 @@ function optionalValue<T>(value: T | null | undefined): T | undefined {
   return value === null ? undefined : value;
 }
 
+function hasOwnInput<T extends object>(input: T, key: keyof T): boolean {
+  return Object.prototype.hasOwnProperty.call(input, key);
+}
+
+function hasCallLeadSourceAffectingInput(input: UpdateCallLeadInput): boolean {
+  return (
+    hasOwnInput(input, "source_company") ||
+    hasOwnInput(input, "company_slug") ||
+    hasOwnInput(input, "source_granularity_key") ||
+    hasOwnInput(input, "source_company_site") ||
+    hasOwnInput(input, "pickup_zip") ||
+    hasOwnInput(input, "delivery_zip") ||
+    hasOwnInput(input, "pickup_state") ||
+    hasOwnInput(input, "delivery_state") ||
+    hasOwnInput(input, "local")
+  );
+}
+
 type CallLeadDeleteTargetSource = {
-  source_company: SourceCompany;
+  source_company: SourceCompany | string;
   sheet_sync?: Parameters<typeof buildTombstonePreviousTargets>[0];
 };
 
@@ -369,7 +427,10 @@ export function buildCallLeadDeletePreviousTargets(lead: CallLeadDeleteTargetSou
   return [...byTarget.values()];
 }
 
-function getCallLeadDeleteFallbackTargets(sourceCompany: SourceCompany, duplicate: boolean) {
+function getCallLeadDeleteFallbackTargets(
+  sourceCompany: SourceCompany | string,
+  duplicate: boolean,
+) {
   const targetBase = duplicate
     ? {
         masterTarget: "master_duplicate_calls",

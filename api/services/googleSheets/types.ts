@@ -63,7 +63,10 @@ export type FormLeadSheetSource = SyncableDocument & {
   local: string;
   cubic_feet?: number | null;
   lid?: string | null;
-  source_company: SourceCompany;
+  source_company: SourceCompany | string;
+  source_company_label_snapshot?: string | null;
+  source_granularity_label_snapshot?: string | null;
+  crm_source_label_snapshot?: string | null;
   source_company_site?: string | null;
   quoted?: boolean | null;
   cpl?: number | null;
@@ -85,7 +88,10 @@ export type CallLeadSheetSource = SyncableDocument & {
   pickup_state?: string | null;
   delivery_state?: string | null;
   duration?: number | null;
-  source_company: SourceCompany;
+  source_company: SourceCompany | string;
+  source_company_label_snapshot?: string | null;
+  source_granularity_label_snapshot?: string | null;
+  crm_source_label_snapshot?: string | null;
   booked?: PopulatedBookedLead | string | null;
   cancelled?: unknown;
   over_2000?: boolean | null;

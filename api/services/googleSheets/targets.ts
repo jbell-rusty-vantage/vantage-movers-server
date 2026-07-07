@@ -16,7 +16,7 @@ import type { SheetTabConfig, SyncableDocument, SyncTarget } from "./types";
 export function getLeadTargets(
   masterTarget: string,
   sourceTarget: string,
-  sourceCompany: SourceCompany,
+  sourceCompany: SourceCompany | string,
   tabName: string,
   headers: readonly string[],
 ): SyncTarget[] {
@@ -157,9 +157,11 @@ export function getMasterBookedTabs(
   ];
 }
 
-export function getSourceLeadTabs(sourceCompany: SourceCompany): SheetTabConfig[] {
+export function getSourceLeadTabs(sourceCompany: SourceCompany | string): SheetTabConfig[] {
   const tabs = getMasterLeadsTabs();
-  if (SOURCE_COMPANY_CONFIGS[sourceCompany].hasBadTabs) {
+  const config =
+    SOURCE_COMPANY_CONFIGS[sourceCompany as keyof typeof SOURCE_COMPANY_CONFIGS];
+  if (config?.hasBadTabs) {
     tabs.push(
       { tabName: SHEET_TAB_NAMES.badLeads, headers: FORM_SHEET_HEADERS },
       { tabName: SHEET_TAB_NAMES.badCalls, headers: CALL_SHEET_HEADERS },

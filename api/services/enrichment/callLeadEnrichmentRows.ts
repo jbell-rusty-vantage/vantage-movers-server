@@ -3,10 +3,14 @@ import {
   type LocalType,
   type SourceCompany,
 } from "../../config/domain";
+import { ValidationError } from "../errors";
 import { getStateCodeForZip } from "../../utils/location/pickupZipState";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import type { CallLeadEnrichmentRowInput } from "../../validation/v1.validation";
 import { deriveLocal } from "../leads";
+import { resolveLeadSourceAssignment } from "../leads/leadSourceCompany";
+
+type ResolvedLeadSourceAssignment = Awaited<ReturnType<typeof resolveLeadSourceAssignment>>;
 
 /**
  * Row-shaped parsing, validation, and cleaning helpers for the call lead
@@ -22,6 +26,9 @@ export type ParsedCallLeadEnrichmentRow = {
   row_index?: number;
   job_no?: string;
   source_company?: SourceCompany;
+  source_label?: string;
+  source_assignment?: ResolvedLeadSourceAssignment["assignment"];
+  source_cpl?: number;
   name?: string;
   phone?: string;
   granot_crm_username?: string;
@@ -58,12 +65,35 @@ export async function parseEnrichmentRow(
   if (deliveryZip && !deliveryState) {
     warnings.push(`Could not resolve state for to_zip ${deliveryZip}.`);
   }
+  const sourceLabel = cleanValue(row.source);
+  const legacySourceCompany = resolveSourceCompany(sourceLabel);
+  let sourceAssignment: ResolvedLeadSourceAssignment | undefined;
+  if (sourceLabel && shouldResolveCatalogSource()) {
+    try {
+      sourceAssignment = await resolveLeadSourceAssignment({
+        channel: "call",
+        value: sourceLabel,
+        company_slug: legacySourceCompany,
+        local,
+      });
+    } catch (error) {
+      if (!(error instanceof ValidationError)) {
+        throw error;
+      }
+      warnings.push(`Skipped unknown source "${sourceLabel}".`);
+    }
+  }
 
   return {
     row_id: row.row_id,
     row_index: row.row_index,
     job_no: cleanRequired(row.job_no),
-    source_company: resolveSourceCompany(row.source),
+    source_company:
+      (sourceAssignment?.assignment.source_company as SourceCompany | undefined) ??
+      legacySourceCompany,
+    source_label: sourceLabel,
+    source_assignment: sourceAssignment?.assignment,
+    source_cpl: sourceAssignment?.resolution.granularity.cpl,
     name: cleanValue(row.customer),
     phone: cleanValue(row.phone),
     granot_crm_username: cleanValue(row.granot_crm_username),
@@ -77,6 +107,10 @@ export async function parseEnrichmentRow(
     cubic_feet: parseOptionalNumber(row.est_cf, warnings),
     warnings,
   };
+}
+
+function shouldResolveCatalogSource(): boolean {
+  return process.env.VANTAGE_TEST_RUNNER !== "true";
 }
 
 export function validateParsedRow(parsed: ParsedCallLeadEnrichmentRow): string[] {

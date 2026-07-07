@@ -104,6 +104,7 @@ function toAnalyticsCompatibleQuery(query: AdminBrowseQuery) {
     from: query.from,
     to: query.to,
     source_company: query.source_company,
+    source_granularity_key: query.source_granularity_key,
     source: query.source,
     agent: query.agent,
     merchant: query.merchant,

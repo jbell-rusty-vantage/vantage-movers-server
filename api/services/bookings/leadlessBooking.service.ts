@@ -14,6 +14,7 @@ import {
 import { V1ServiceError } from "../v1ServiceError";
 import { buildBookedLeadWarnings } from "./bookingWarnings";
 import { populateBookedLead } from "./bookedLead.service";
+import { resolveLeadSourceAssignment } from "../leads/leadSourceCompany";
 
 function leadlessBookingJob(bookingId: string): FullSheetSyncJob {
   return {
@@ -23,9 +24,19 @@ function leadlessBookingJob(bookingId: string): FullSheetSyncJob {
   };
 }
 
-function resolveLeadlessBookingSource(sourceCompany: string): string {
-  parseSourceCompany(sourceCompany);
-  return sourceCompany.trim();
+async function resolveLeadlessBookingSource(sourceCompany: string): Promise<string> {
+  const legacySourceCompany = parseSourceCompany(sourceCompany);
+  const { assignment } = await resolveLeadSourceAssignment({
+    value: sourceCompany,
+    company_slug: legacySourceCompany,
+    channel: "call",
+  });
+  return (
+    assignment.crm_source_label_snapshot ??
+    assignment.source_granularity_label_snapshot ??
+    assignment.source_company_label_snapshot ??
+    assignment.source_company
+  );
 }
 
 export async function createLeadlessBooking(input: CreateLeadlessBookingInput) {
@@ -45,7 +56,7 @@ export async function createLeadlessBooking(input: CreateLeadlessBookingInput) {
   const warnings = buildBookedLeadWarnings(agent_allocations);
   const depositAmount = input.deposit_amount;
   const customerName = input.customer_name?.trim() ?? "";
-  const source = resolveLeadlessBookingSource(input.source_company);
+  const source = await resolveLeadlessBookingSource(input.source_company);
 
   const booking = await runSheetSyncWrite(async (session) => {
     const customer = customerName

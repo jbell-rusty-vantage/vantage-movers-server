@@ -25,6 +25,22 @@ export async function getCplForSource(
   leadType: CplLeadType,
   local: LocalType | undefined,
 ): Promise<number> {
+  try {
+    const { getCplForLeadSource } = await import(
+      "../../services/leadSourceCompanies/index.js"
+    );
+    return await getCplForLeadSource({
+      value: sourceCompany,
+      channel: leadType,
+      local,
+      requireActive: false,
+    });
+  } catch {
+    // Fall through to the legacy static/CplRate lookup. This keeps lead
+    // creation resilient during first deploys before the source catalog has
+    // been seeded or if Mongo is temporarily unreachable.
+  }
+
   const resolvedSourceCompany = normalizeSourceCompany(sourceCompany);
   if (resolvedSourceCompany === "not_provided") {
     return 0;

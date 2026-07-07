@@ -62,7 +62,10 @@ test("booked reconciliation can preview phone/source matched unbooked call lead 
     "lead.name",
     "lead.source_company",
   ]);
-  assert.match(result.warnings.join(" "), /Claiming unassigned call lead source_company as main_site/);
+  assert.match(
+    result.warnings.join(" "),
+    /Claiming unassigned call lead source as Main Site Inbounds/,
+  );
 });
 
 test("booked reconciliation does not globally phone-match across assigned source companies", async () => {
@@ -95,7 +98,7 @@ test("booked reconciliation does not globally phone-match across assigned source
   });
 
   assert.equal(result.status, "no_match");
-  assert.match(result.message, /no candidate had source_company main_site/i);
+  assert.match(result.message, /no candidate had source Main Site Inbounds/i);
 });
 
 test("booked reconciliation warns but allows idempotent sync when phone-matched lead has a different job_no", async () => {

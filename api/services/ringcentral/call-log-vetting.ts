@@ -111,14 +111,18 @@ export function vetRingCentralCallLogRecord(
 }
 
 function findTargetPhoneNumber(parts: Record<string, unknown>[]): string | null {
+  let firstInboundTarget: string | null = null;
   for (const part of parts) {
     const to = asRecord(part.to);
     const normalized = normalizePhoneNumberToE164Like(valueToString(to?.phoneNumber));
     if (normalized && resolveRingCentralInboundSource(normalized)) {
       return normalized;
     }
+    if (!firstInboundTarget && normalized) {
+      firstInboundTarget = normalized;
+    }
   }
-  return null;
+  return firstInboundTarget;
 }
 
 function findTargetName(

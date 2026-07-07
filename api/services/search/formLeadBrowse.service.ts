@@ -29,12 +29,20 @@ const FULL_TEXT_FIELDS = [
   "email",
   "phone_number",
   "source_company",
+  "source_company_label_snapshot",
+  "source_granularity_label_snapshot",
+  "crm_source_label_snapshot",
   "ref_no",
 ];
 
 export type FormLeadBrowseResult = {
   _id: string;
   source_company?: string;
+  lead_source_company?: string;
+  source_granularity_key?: string;
+  source_company_label_snapshot?: string;
+  source_granularity_label_snapshot?: string;
+  crm_source_label_snapshot?: string;
   name?: string;
   first_name?: string;
   last_name?: string;
@@ -91,7 +99,24 @@ function buildFormLeadBrowseFilter(
 
   const sourceCompany = normalizeValue(query.source_company);
   if (sourceCompany) {
-    clauses.push(fieldEqualsClause("source_company", sourceCompany));
+    clauses.push({
+      $or: [
+        fieldEqualsClause("source_company", sourceCompany),
+        fieldEqualsClause("source_company_label_snapshot", sourceCompany),
+        fieldEqualsClause("source_granularity_label_snapshot", sourceCompany),
+        fieldEqualsClause("crm_source_label_snapshot", sourceCompany),
+      ],
+    });
+  }
+
+  const leadSourceCompany = normalizeValue(query.lead_source_company);
+  if (leadSourceCompany) {
+    clauses.push({ lead_source_company: leadSourceCompany });
+  }
+
+  const sourceGranularityKey = normalizeValue(query.source_granularity_key);
+  if (sourceGranularityKey) {
+    clauses.push(fieldEqualsClause("source_granularity_key", sourceGranularityKey));
   }
 
   const name = normalizeValue(query.name);
@@ -130,6 +155,13 @@ function mapFormLead(doc: Record<string, unknown>): FormLeadBrowseResult {
   return {
     _id: String(doc._id),
     source_company: doc.source_company as string | undefined,
+    lead_source_company: doc.lead_source_company
+      ? String(doc.lead_source_company)
+      : undefined,
+    source_granularity_key: doc.source_granularity_key as string | undefined,
+    source_company_label_snapshot: doc.source_company_label_snapshot as string | undefined,
+    source_granularity_label_snapshot: doc.source_granularity_label_snapshot as string | undefined,
+    crm_source_label_snapshot: doc.crm_source_label_snapshot as string | undefined,
     name: doc.name as string | undefined,
     first_name: doc.first_name as string | undefined,
     last_name: doc.last_name as string | undefined,

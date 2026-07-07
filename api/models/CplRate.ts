@@ -1,7 +1,6 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 import { LOCAL_TYPES } from "../config/domain/constants";
 import { CPL_LEAD_TYPES } from "../config/domain/cplRateDefinitions";
-import { SOURCE_COMPANIES } from "../config/domain/sources";
 
 /**
  * Owner-editable CPL (cost-per-lead) rate for one granular lead-type slot,
@@ -12,7 +11,7 @@ import { SOURCE_COMPANIES } from "../config/domain/sources";
 const CplRateSchema = new Schema(
   {
     label: { type: String, required: true, trim: true, unique: true },
-    source_company: { type: String, required: true, enum: SOURCE_COMPANIES },
+    source_company: { type: String, required: true, trim: true, lowercase: true },
     lead_type: { type: String, required: true, enum: CPL_LEAD_TYPES },
     local: { type: String, enum: LOCAL_TYPES },
     cpl: { type: Number, required: true, min: 0 },

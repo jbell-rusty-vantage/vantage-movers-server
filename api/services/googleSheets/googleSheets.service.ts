@@ -136,7 +136,7 @@ export async function syncCancelledLeadToSheets(
 }
 
 export async function deleteFormLeadFromSheets(
-  lead: SyncableDocument & { source_company: SourceCompany; duplicate?: boolean | null },
+  lead: SyncableDocument & { source_company: SourceCompany | string; duplicate?: boolean | null },
 ): Promise<void> {
   const targetBase = lead.duplicate
     ? {
@@ -173,7 +173,7 @@ function masterBadLeadsTarget() {
 }
 
 export async function deleteCallLeadFromSheets(
-  lead: SyncableDocument & { source_company: SourceCompany; duplicate?: boolean | null },
+  lead: SyncableDocument & { source_company: SourceCompany | string; duplicate?: boolean | null },
 ): Promise<void> {
   const targetBase = callLeadTargetBase(lead.duplicate);
   await deleteRowsFromTargets(

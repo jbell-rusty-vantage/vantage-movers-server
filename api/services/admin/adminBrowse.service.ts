@@ -44,9 +44,27 @@ const RESOURCE_CONFIGS: Record<AdminResource, ResourceConfig> = {
     allowedSorts: ["createdAt", "timestamp", "move_date", "source_company", "name", "ref_no"],
     defaultDateField: "timestamp",
     dateFields: ["timestamp", "createdAt", "move_date"],
-    qFields: ["name", "first_name", "last_name", "email", "phone_number", "source_company", "ref_no", "lid"],
+    qFields: [
+      "name",
+      "first_name",
+      "last_name",
+      "email",
+      "phone_number",
+      "source_company",
+      "source_company_label_snapshot",
+      "source_granularity_label_snapshot",
+      "crm_source_label_snapshot",
+      "ref_no",
+      "lid",
+    ],
     stringFilters: {
-      source_company: ["source_company"],
+      source_company: [
+        "source_company",
+        "source_company_label_snapshot",
+        "source_granularity_label_snapshot",
+        "crm_source_label_snapshot",
+      ],
+      source_granularity_key: ["source_granularity_key"],
       name: ["name", "first_name", "last_name"],
       email: ["email"],
       phone_number: ["phone_number", "normalized_phone_number"],
@@ -66,9 +84,27 @@ const RESOURCE_CONFIGS: Record<AdminResource, ResourceConfig> = {
     allowedSorts: ["createdAt", "timestamp", "start_time", "end_time", "source_company", "job_no"],
     defaultDateField: "timestamp",
     dateFields: ["timestamp", "createdAt", "start_time", "end_time"],
-    qFields: ["name", "first_name", "last_name", "email", "phone_number", "normalized_phone_number", "source_company", "job_no"],
+    qFields: [
+      "name",
+      "first_name",
+      "last_name",
+      "email",
+      "phone_number",
+      "normalized_phone_number",
+      "source_company",
+      "source_company_label_snapshot",
+      "source_granularity_label_snapshot",
+      "crm_source_label_snapshot",
+      "job_no",
+    ],
     stringFilters: {
-      source_company: ["source_company"],
+      source_company: [
+        "source_company",
+        "source_company_label_snapshot",
+        "source_granularity_label_snapshot",
+        "crm_source_label_snapshot",
+      ],
+      source_granularity_key: ["source_granularity_key"],
       name: ["name", "first_name", "last_name"],
       email: ["email"],
       phone_number: ["phone_number", "normalized_phone_number"],
@@ -276,8 +312,11 @@ function applyResourceFilter(
     const duplicateClause =
       query.duplicate === true ? { duplicate: true } : { duplicate: { $ne: true } };
     return mergeFilters(
-      mergeFilters(filter, duplicateClause),
-      receiverAgentFilterClause(query),
+      mergeFilters(
+        mergeFilters(filter, duplicateClause),
+        receiverAgentFilterClause(query),
+      ),
+      leadSourceCompanyFilterClause(query),
     );
   }
 
@@ -302,6 +341,17 @@ function receiverAgentFilterClause(query: AdminBrowseQuery): AdminFilter {
   }
   return {
     receiver_agent: new mongoose.mongo.ObjectId(receiverAgent),
+  };
+}
+
+function leadSourceCompanyFilterClause(query: AdminBrowseQuery): AdminFilter {
+  const leadSourceCompany =
+    typeof query.lead_source_company === "string" ? query.lead_source_company.trim() : "";
+  if (!leadSourceCompany) {
+    return {};
+  }
+  return {
+    lead_source_company: new mongoose.mongo.ObjectId(leadSourceCompany),
   };
 }
 
@@ -371,7 +421,11 @@ function buildFilter(config: ResourceConfig, query: AdminBrowseQuery): AdminFilt
   for (const [param, fields] of Object.entries(config.stringFilters)) {
     const value = query[param as keyof AdminBrowseQuery];
     if (typeof value === "string" && value.trim()) {
-      clauses.push(orContains(fields, value));
+      clauses.push(
+        param === "source_granularity_key"
+          ? orExact(fields, value)
+          : orContains(fields, value),
+      );
     }
   }
   for (const [param, field] of Object.entries(config.booleanFilters ?? {})) {
@@ -419,6 +473,10 @@ function addQClause(clauses: AdminFilter[], fields: string[], q?: string) {
 
 function orContains(fields: string[], value: string): AdminFilter {
   return { $or: containsClauses(fields, value) };
+}
+
+function orExact(fields: string[], value: string): AdminFilter {
+  return { $or: fields.map((field) => ({ [field]: exactCaseInsensitivePattern(value) })) };
 }
 
 function containsClauses(fields: string[], value: string): AdminFilter[] {

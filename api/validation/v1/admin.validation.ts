@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { booleanInput, moneyAmount, nonEmptyString, requireAtLeastOne } from "./common";
+import {
+  booleanInput,
+  localSchema,
+  moneyAmount,
+  nonEmptyString,
+  optionalString,
+  requireAtLeastOne,
+} from "./common";
 
 export const adminDatabaseScopeSchema = z
   .enum(["production", "historical", "combined"])
@@ -36,6 +43,8 @@ const adminQueryBase = {
   to: optionalDateString,
   date_field: optionalTrimmedString,
   source_company: optionalTrimmedString,
+  lead_source_company: optionalObjectIdString,
+  source_granularity_key: optionalTrimmedString,
   source: optionalTrimmedString,
   source_label: optionalTrimmedString,
   agent: optionalTrimmedString,
@@ -116,6 +125,51 @@ export const cplRateUpdateSchema = z
   })
   .strict();
 
+const stringListSchema = z.array(nonEmptyString).default([]);
+
+export const leadSourceGranularitySchema = z
+  .object({
+    granularity_key: nonEmptyString,
+    channel: z.enum(["form", "call"]),
+    owner_label: nonEmptyString,
+    crm_label: nonEmptyString,
+    aliases: stringListSchema.optional(),
+    active: booleanInput.optional(),
+    cpl: moneyAmount.optional(),
+    local: localSchema.optional(),
+    source_sites: stringListSchema.optional(),
+    inbound_phone_numbers: stringListSchema.optional(),
+    priority: z.coerce.number().int().optional(),
+    sheet_tab_name: optionalString,
+  })
+  .strict();
+
+export const leadSourceCompanyCreateSchema = z
+  .object({
+    company_slug: nonEmptyString,
+    name: nonEmptyString,
+    owner_label: nonEmptyString.optional(),
+    aliases: stringListSchema.optional(),
+    active: booleanInput.optional(),
+    default_form_granularity_key: optionalString,
+    default_call_granularity_key: optionalString,
+    sheet_config: z
+      .object({
+        spreadsheet_id: optionalString,
+        has_bad_tabs: booleanInput.optional(),
+      })
+      .strict()
+      .optional(),
+    granularities: z.array(leadSourceGranularitySchema).optional(),
+    created_from: nonEmptyString.optional(),
+  })
+  .strict();
+
+export const leadSourceCompanyUpdateSchema = leadSourceCompanyCreateSchema
+  .omit({ company_slug: true })
+  .partial()
+  .refine(requireAtLeastOne, "At least one source company field must be provided");
+
 export type AdminBrowseQuery = z.infer<typeof adminBrowseQuerySchema>;
 export type AdminSearchQuery = z.infer<typeof adminSearchQuerySchema>;
 export type AdminDatabaseScope = z.infer<typeof adminDatabaseScopeSchema>;
@@ -123,3 +177,5 @@ export type CatalogListQuery = z.infer<typeof catalogListQuerySchema>;
 export type CatalogCreateInput = z.infer<typeof catalogCreateSchema>;
 export type CatalogUpdateInput = z.infer<typeof catalogUpdateSchema>;
 export type CplRateUpdateInput = z.infer<typeof cplRateUpdateSchema>;
+export type LeadSourceCompanyCreateInput = z.infer<typeof leadSourceCompanyCreateSchema>;
+export type LeadSourceCompanyUpdateInput = z.infer<typeof leadSourceCompanyUpdateSchema>;

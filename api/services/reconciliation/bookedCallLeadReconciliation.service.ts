@@ -119,11 +119,13 @@ export async function syncBookedCallLeadReconciliation(
       const leadChanged = Boolean(resolved.leadUpdate) || Boolean(receiverMatch?.changed);
       if (resolved.leadUpdate) {
         Object.assign(resolved.lead, resolved.leadUpdate);
-        resolved.lead.cpl = await getCplForSource(
-          resolved.lead.source_company as SourceCompany,
-          "call",
-          resolved.lead.local as LocalType | undefined,
-        );
+        resolved.lead.cpl =
+          resolved.result.parsed?.source_cpl ??
+          (await getCplForSource(
+            resolved.lead.source_company as SourceCompany,
+            "call",
+            resolved.lead.local as LocalType | undefined,
+          ));
       }
       if (leadChanged) {
         await resolved.lead.save();
@@ -455,7 +457,11 @@ function buildLeadUpdate(
   assignIfChanged(update, lead, "pickup_state", parsed.pickup_state);
   assignIfChanged(update, lead, "delivery_state", parsed.delivery_state);
   assignNumberIfChanged(update, lead, "cubic_feet", parsed.cubic_feet);
-  assignIfChanged(update, lead, "source_company", parsed.source_company);
+  if (parsed.source_assignment) {
+    assignSourceAssignmentIfChanged(update, lead, parsed.source_assignment);
+  } else {
+    assignIfChanged(update, lead, "source_company", parsed.source_company);
+  }
 
   if (parsed.local) {
     assignIfChanged(update, lead, "local", parsed.local);
@@ -466,12 +472,41 @@ function buildLeadUpdate(
   return update;
 }
 
+function assignSourceAssignmentIfChanged(
+  update: Partial<CallLeadDocument>,
+  lead: HydratedDocument<CallLeadDocument>,
+  assignment: NonNullable<ParsedBookedCallLeadRow["source_assignment"]>,
+) {
+  assignIfChanged(
+    update,
+    lead,
+    "source_company",
+    assignment.source_company as CallLeadDocument["source_company"],
+  );
+  assignIfChanged(update, lead, "lead_source_company", assignment.lead_source_company);
+  assignIfChanged(update, lead, "source_granularity_id", assignment.source_granularity_id);
+  assignIfChanged(update, lead, "source_granularity_key", assignment.source_granularity_key);
+  assignIfChanged(
+    update,
+    lead,
+    "source_company_label_snapshot",
+    assignment.source_company_label_snapshot,
+  );
+  assignIfChanged(
+    update,
+    lead,
+    "source_granularity_label_snapshot",
+    assignment.source_granularity_label_snapshot,
+  );
+  assignIfChanged(update, lead, "crm_source_label_snapshot", assignment.crm_source_label_snapshot);
+}
+
 function buildBookingUpdate(
   booking: HydratedDocument<BookedLeadDocument>,
   parsed: ParsedBookedCallLeadRow,
 ): Partial<BookedLeadDocument> {
   const update: Partial<BookedLeadDocument> = {};
-  assignIfChanged(update, booking, "source", parsed.source_company);
+  assignIfChanged(update, booking, "source", sourceDisplayLabel(parsed));
   assignIfChanged(update, booking, "local", parsed.local);
   assignDateIfChanged(update, booking, "book_date", parsed.book_date);
   return update;
@@ -498,7 +533,7 @@ async function findCallLeadOnlyMatch(
 }> {
   const byJobNo = await findEligibleCallLeadCandidates({ job_no: parsed.job_no });
   if (byJobNo.length > 0) {
-    const selected = selectSourceCompatibleLead(byJobNo, parsed.source_company!, "job_no");
+    const selected = selectSourceCompatibleLead(byJobNo, parsed, "job_no");
     if (selected.lead || selected.result) {
       return { ...selected, matchMethod: "job_no_only" };
     }
@@ -533,10 +568,10 @@ async function findCallLeadOnlyMatch(
   }
 
   const sourceCompatible = byPhone.filter((lead) =>
-    isLeadSourceCompatible(lead, parsed.source_company!),
+    isLeadSourceCompatible(lead, parsed),
   );
   if (sourceCompatible.length === 0) {
-    const selected = selectSourceCompatibleLead(byPhone, parsed.source_company!, "phone");
+    const selected = selectSourceCompatibleLead(byPhone, parsed, "phone");
     return { ...selected, matchMethod: "phone_only" };
   }
 
@@ -545,7 +580,7 @@ async function findCallLeadOnlyMatch(
     return !existingJobNo || existingJobNo === parsed.job_no;
   });
   if (jobCompatible.length > 0) {
-    const selected = selectSourceCompatibleLead(jobCompatible, parsed.source_company!, "phone");
+    const selected = selectSourceCompatibleLead(jobCompatible, parsed, "phone");
     return { ...selected, matchMethod: "phone_only" };
   }
 
@@ -585,19 +620,20 @@ async function findEligibleCallLeadCandidates(input: {
 
 function selectSourceCompatibleLead(
   candidates: HydratedDocument<CallLeadDocument>[],
-  sourceCompany: SourceCompany,
+  parsed: ParsedBookedCallLeadRow,
   matchType: "job_no" | "phone",
 ): {
   lead?: HydratedDocument<CallLeadDocument>;
   warnings: string[];
   result?: Partial<BookedCallLeadReconciliationResult>;
 } {
-  const compatible = candidates.filter((lead) => isLeadSourceCompatible(lead, sourceCompany));
+  const compatible = candidates.filter((lead) => isLeadSourceCompatible(lead, parsed));
   if (compatible.length === 0) {
+    const sourceLabel = sourceDisplayLabel(parsed);
     const message =
       matchType === "job_no"
-        ? `Call lead job_no matched, but no candidate had source_company ${sourceCompany} or an unassigned source.`
-        : `Call lead phone matched, but no candidate had source_company ${sourceCompany} or an unassigned source.`;
+        ? `Call lead job_no matched, but no candidate had source ${sourceLabel} or an unassigned source.`
+        : `Call lead phone matched, but no candidate had source ${sourceLabel} or an unassigned source.`;
     return {
       result: {
         status: matchType === "job_no" ? "conflict" : "no_match",
@@ -612,11 +648,11 @@ function selectSourceCompatibleLead(
   const nextWarnings: string[] = [];
   if (compatible.length > 1) {
     nextWarnings.push(
-      `Multiple call leads matched ${matchType} and source ${sourceCompany}; selected newest eligible lead.`,
+      `Multiple call leads matched ${matchType} and source ${sourceDisplayLabel(parsed)}; selected newest eligible lead.`,
     );
   }
   if (isUnassignedSource(selected.source_company)) {
-    nextWarnings.push(`Claiming unassigned call lead source_company as ${sourceCompany}.`);
+    nextWarnings.push(`Claiming unassigned call lead source as ${sourceDisplayLabel(parsed)}.`);
   }
 
   return { lead: selected, warnings: nextWarnings };
@@ -626,21 +662,60 @@ function buildAssignedSourceConflict(
   lead: HydratedDocument<CallLeadDocument>,
   parsed: ParsedBookedCallLeadRow,
 ): string | undefined {
-  if (!parsed.source_company || isLeadSourceCompatible(lead, parsed.source_company)) {
+  if (!parsed.source_company || isLeadSourceCompatible(lead, parsed)) {
     return undefined;
   }
-  return `Matched call lead has source_company ${lead.source_company}; CRM row source maps to ${parsed.source_company}.`;
+  const existing = leadSourceDisplayLabel(lead);
+  return `Matched call lead has source ${existing}; CRM row source maps to ${sourceDisplayLabel(parsed)}.`;
 }
 
 function isLeadSourceCompatible(
   lead: HydratedDocument<CallLeadDocument>,
-  sourceCompany: SourceCompany,
+  parsed: ParsedBookedCallLeadRow,
 ): boolean {
-  return lead.source_company === sourceCompany || isUnassignedSource(lead.source_company);
+  if (isUnassignedSource(lead.source_company)) {
+    return true;
+  }
+  if (
+    parsed.source_assignment?.lead_source_company &&
+    lead.lead_source_company &&
+    String(lead.lead_source_company) === String(parsed.source_assignment.lead_source_company)
+  ) {
+    return true;
+  }
+  if (
+    parsed.source_assignment?.source_granularity_key &&
+    lead.source_granularity_key === parsed.source_assignment.source_granularity_key
+  ) {
+    return true;
+  }
+  return Boolean(parsed.source_company && lead.source_company === parsed.source_company);
 }
 
 function isUnassignedSource(sourceCompany: unknown): boolean {
   return !sourceCompany || sourceCompany === "not_provided";
+}
+
+function sourceDisplayLabel(parsed: ParsedBookedCallLeadRow): string {
+  return (
+    parsed.source_assignment?.crm_source_label_snapshot ??
+    parsed.source_assignment?.source_granularity_label_snapshot ??
+    parsed.source_assignment?.source_company_label_snapshot ??
+    parsed.source_label ??
+    parsed.source_company ??
+    "unknown"
+  );
+}
+
+function leadSourceDisplayLabel(lead: HydratedDocument<CallLeadDocument>): string {
+  return (
+    lead.crm_source_label_snapshot ??
+    lead.source_granularity_label_snapshot ??
+    lead.source_company_label_snapshot ??
+    lead.source_granularity_key ??
+    lead.source_company ??
+    "unknown"
+  );
 }
 
 function compareCallLeadRecency(

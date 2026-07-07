@@ -108,11 +108,13 @@ export async function syncCallLeadEnrichment(
         Object.assign(resolved.lead, resolved.update);
       }
       if (resolved.update?.local || resolved.update?.source_company) {
-        resolved.lead.cpl = await getCplForSource(
-          normalizeSourceCompany(resolved.lead.source_company),
-          "call",
-          resolved.lead.local as LocalType | undefined,
-        );
+        resolved.lead.cpl =
+          resolved.result.parsed?.source_cpl ??
+          (await getCplForSource(
+            normalizeSourceCompany(resolved.lead.source_company),
+            "call",
+            resolved.lead.local as LocalType | undefined,
+          ));
       }
       const lead = resolved.lead;
       const job: FullSheetSyncJob = {
@@ -415,7 +417,11 @@ function buildUpdate(
   if (!options?.skipJobNo) {
     assignIfChanged(update, lead, "job_no", parsed.job_no);
   }
-  assignIfChanged(update, lead, "source_company", parsed.source_company);
+  if (parsed.source_assignment) {
+    assignSourceAssignmentIfChanged(update, lead, parsed.source_assignment);
+  } else {
+    assignIfChanged(update, lead, "source_company", parsed.source_company);
+  }
   assignIfChanged(update, lead, "name", parsed.name);
   assignIfChanged(update, lead, "email", parsed.email);
   assignIfChanged(update, lead, "pickup_zip", parsed.pickup_zip);
@@ -431,6 +437,35 @@ function buildUpdate(
   }
 
   return update;
+}
+
+function assignSourceAssignmentIfChanged(
+  update: Partial<CallLeadDocument>,
+  lead: HydratedDocument<CallLeadDocument>,
+  assignment: NonNullable<ParsedCallLeadEnrichmentRow["source_assignment"]>,
+) {
+  assignIfChanged(
+    update,
+    lead,
+    "source_company",
+    assignment.source_company as CallLeadDocument["source_company"],
+  );
+  assignIfChanged(update, lead, "lead_source_company", assignment.lead_source_company);
+  assignIfChanged(update, lead, "source_granularity_id", assignment.source_granularity_id);
+  assignIfChanged(update, lead, "source_granularity_key", assignment.source_granularity_key);
+  assignIfChanged(
+    update,
+    lead,
+    "source_company_label_snapshot",
+    assignment.source_company_label_snapshot,
+  );
+  assignIfChanged(
+    update,
+    lead,
+    "source_granularity_label_snapshot",
+    assignment.source_granularity_label_snapshot,
+  );
+  assignIfChanged(update, lead, "crm_source_label_snapshot", assignment.crm_source_label_snapshot);
 }
 
 function assignIfChanged<K extends keyof CallLeadDocument>(

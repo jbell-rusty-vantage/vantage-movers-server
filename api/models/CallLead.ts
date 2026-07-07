@@ -38,6 +38,16 @@ const ringCentralCallMetadataSchema = new Schema(
 const CallLeadSchema = new Schema(
   {
     source_company: sourceCompanyField,
+    lead_source_company: {
+      type: Schema.Types.ObjectId,
+      ref: "LeadSourceCompany",
+      index: true,
+    },
+    source_granularity_id: { type: Schema.Types.ObjectId, index: true },
+    source_granularity_key: { type: String, trim: true, lowercase: true, index: true },
+    source_company_label_snapshot: { type: String, trim: true },
+    source_granularity_label_snapshot: { type: String, trim: true },
+    crm_source_label_snapshot: { type: String, trim: true },
     source_company_site: { type: String, trim: true },
     timestamp: { type: Date, required: true, default: Date.now },
     job_no: { type: String, trim: true },
@@ -96,6 +106,8 @@ const CallLeadSchema = new Schema(
 );
 
 CallLeadSchema.index({ source_company: 1, createdAt: -1 });
+CallLeadSchema.index({ lead_source_company: 1, createdAt: -1 });
+CallLeadSchema.index({ lead_source_company: 1, source_granularity_key: 1, createdAt: -1 });
 CallLeadSchema.index({ phone_number: 1 });
 CallLeadSchema.index({ normalized_phone_number: 1, createdAt: -1 });
 CallLeadSchema.index({ job_no: 1 });
