@@ -47,11 +47,11 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Show Vercel CLI version
+        run: pnpm exec vercel --version
 
       - name: Typecheck
         run: pnpm typecheck
@@ -60,15 +60,46 @@ jobs:
         run: pnpm test
 
       - name: Pull Vercel preview environment
-        run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+        run: pnpm exec vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
 
       - name: Build prebuilt output
-        run: vercel build --token="$VERCEL_TOKEN"
+        run: pnpm exec vercel build --token="$VERCEL_TOKEN"
+
+      - name: Summarize prebuilt output
+        run: |
+          echo "### Prebuilt output" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+          node <<'NODE' | tee -a "$GITHUB_STEP_SUMMARY"
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          let files = 0;
+          let bytes = 0;
+
+          function walk(dir) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const fullPath = path.join(dir, entry.name);
+              if (entry.isDirectory()) {
+                walk(fullPath);
+                continue;
+              }
+              if (entry.isFile()) {
+                files += 1;
+                bytes += fs.statSync(fullPath).size;
+              }
+            }
+          }
+
+          walk(".vercel/output");
+          console.log(`files: ${files}`);
+          console.log(`size: ${(bytes / 1024 / 1024).toFixed(1)} MB`);
+          NODE
+          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Deploy prebuilt preview
         id: deploy
         run: |
-          url="$(vercel deploy --prebuilt --archive=tgz --token="$VERCEL_TOKEN")"
+          url="$(pnpm exec vercel deploy --prebuilt --token="$VERCEL_TOKEN")"
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "### Preview deployment" >> "$GITHUB_STEP_SUMMARY"
           echo "$url" >> "$GITHUB_STEP_SUMMARY"
