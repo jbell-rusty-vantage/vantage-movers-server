@@ -35,6 +35,13 @@ const TestimonialSchema = new Schema(
 
     business_response: { type: BusinessResponseSchema, default: null },
 
+    customer: {
+      type: Schema.Types.ObjectId,
+      ref: "Customer",
+      index: true,
+      default: null,
+    },
+
     content_fingerprint: {
       type: String,
       required: true,

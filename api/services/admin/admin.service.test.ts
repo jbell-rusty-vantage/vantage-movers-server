@@ -6,10 +6,16 @@ import { Agent } from "../../models/Agent";
 import { BookedLead } from "../../models/BookedLead";
 import { CallLead } from "../../models/CallLead";
 import { FormLead } from "../../models/FormLead";
-import { registerHistoricalModels } from "../../../scripts/historical/models";
+import { registerHistoricalModels } from "../../../scripts/dev_ops/historical/models";
 import { toCsv } from "../../utils/csv";
-import { adminBrowseQuerySchema, adminSearchQuerySchema } from "../../validation/v1.validation";
-import { browseAdminResource, getAdminResourceDetail } from "./adminBrowse.service";
+import {
+  adminBrowseQuerySchema,
+  adminSearchQuerySchema,
+} from "../../validation/v1.validation";
+import {
+  browseAdminResource,
+  getAdminResourceDetail,
+} from "./adminBrowse.service";
 import { exportAdminResourceCsv } from "./adminExport.service";
 import { globalAdminSearch } from "./adminSearch.service";
 
@@ -34,8 +40,10 @@ const originalBookedLeadFind = BookedLead.find as unknown;
 const originalBookedLeadCount = BookedLead.countDocuments as unknown;
 const originalBookedLeadAggregate = BookedLead.aggregate as unknown;
 const historicalModels = registerHistoricalModels();
-const originalHistoricalFormLeadFind = historicalModels.FormLead.find as unknown;
-const originalHistoricalFormLeadCount = historicalModels.FormLead.countDocuments as unknown;
+const originalHistoricalFormLeadFind = historicalModels.FormLead
+  .find as unknown;
+const originalHistoricalFormLeadCount = historicalModels.FormLead
+  .countDocuments as unknown;
 
 afterEach(() => {
   (FormLead as unknown as MutableModel).find = originalFormLeadFind;
@@ -47,10 +55,14 @@ afterEach(() => {
   (Agent as unknown as MutableModel).findById = originalAgentFindById;
   (Agent as unknown as MutableModel).countDocuments = originalAgentCount;
   (BookedLead as unknown as MutableModel).find = originalBookedLeadFind;
-  (BookedLead as unknown as MutableModel).countDocuments = originalBookedLeadCount;
-  (BookedLead as unknown as MutableModel).aggregate = originalBookedLeadAggregate;
-  (historicalModels.FormLead as unknown as MutableModel).find = originalHistoricalFormLeadFind;
-  (historicalModels.FormLead as unknown as MutableModel).countDocuments = originalHistoricalFormLeadCount;
+  (BookedLead as unknown as MutableModel).countDocuments =
+    originalBookedLeadCount;
+  (BookedLead as unknown as MutableModel).aggregate =
+    originalBookedLeadAggregate;
+  (historicalModels.FormLead as unknown as MutableModel).find =
+    originalHistoricalFormLeadFind;
+  (historicalModels.FormLead as unknown as MutableModel).countDocuments =
+    originalHistoricalFormLeadCount;
 });
 
 test("admin browse builds filters, pagination, sorting, and response shape", async () => {
@@ -121,7 +133,9 @@ test("admin form lead browse filters receiver agent by ObjectId equality", async
   assert.match(filterPreview, /receiver_agent/);
   assert.match(filterPreview, new RegExp(receiverAgentId.toString()));
   assert.doesNotMatch(filterPreview, /\/.*receiver_agent.*\//);
-  assert.throws(() => adminBrowseQuerySchema.parse({ receiver_agent: "not-an-object-id" }));
+  assert.throws(() =>
+    adminBrowseQuerySchema.parse({ receiver_agent: "not-an-object-id" }),
+  );
 });
 
 test("admin booked lead browse filters source company slugs on the source field", async () => {
@@ -129,7 +143,10 @@ test("admin booked lead browse filters source company slugs on the source field"
   stubFind(BookedLead, capture, []);
   stubCount(BookedLead, 0);
 
-  const query = adminBrowseQuerySchema.parse({ source: "top10_leads", limit: 10 });
+  const query = adminBrowseQuerySchema.parse({
+    source: "top10_leads",
+    limit: 10,
+  });
   await browseAdminResource("booked-leads", query);
 
   const filterPreview = inspect(capture.filter, { depth: null });
@@ -143,7 +160,10 @@ test("admin booked lead browse resolves legacy source company labels onto source
   stubFind(BookedLead, capture, []);
   stubCount(BookedLead, 0);
 
-  const query = adminBrowseQuerySchema.parse({ source_company: "Top10 Forms", limit: 10 });
+  const query = adminBrowseQuerySchema.parse({
+    source_company: "Top10 Forms",
+    limit: 10,
+  });
   await browseAdminResource("booked-leads", query);
 
   const filterPreview = inspect(capture.filter, { depth: null });
@@ -186,7 +206,11 @@ test("admin agents browse returns metrics for list rows", async () => {
     },
   ]);
 
-  const query = adminBrowseQuerySchema.parse({ limit: 10, sort: "name", direction: "asc" });
+  const query = adminBrowseQuerySchema.parse({
+    limit: 10,
+    sort: "name",
+    direction: "asc",
+  });
   const result = await browseAdminResource("agents", query);
 
   assert.equal(result.items[0]._id, agentId.toString());
@@ -199,7 +223,9 @@ test("admin agents browse returns metrics for list rows", async () => {
 
 test("admin agents browse applies date range to booked lead metrics", async () => {
   const aggregateCapture: { pipeline?: unknown[] } = {};
-  stubFind(Agent, { populated: [] }, [{ _id: new mongoose.Types.ObjectId(), name: "Alice Agent" }]);
+  stubFind(Agent, { populated: [] }, [
+    { _id: new mongoose.Types.ObjectId(), name: "Alice Agent" },
+  ]);
   stubCount(Agent, 1);
   stubAggregate(BookedLead, [], aggregateCapture);
 
@@ -217,7 +243,9 @@ test("admin agents browse applies date range to booked lead metrics", async () =
 });
 
 test("admin agents browse returns zero metric fields for agents without bookings", async () => {
-  stubFind(Agent, { populated: [] }, [{ _id: new mongoose.Types.ObjectId(), name: "No Booking Agent" }]);
+  stubFind(Agent, { populated: [] }, [
+    { _id: new mongoose.Types.ObjectId(), name: "No Booking Agent" },
+  ]);
   stubCount(Agent, 1);
   stubAggregate(BookedLead, []);
 
@@ -276,7 +304,11 @@ test("admin detail lookup returns normalized production record", async () => {
     name: "Detail Customer",
   });
 
-  const detail = await getAdminResourceDetail("form-leads", id.toString(), "production");
+  const detail = await getAdminResourceDetail(
+    "form-leads",
+    id.toString(),
+    "production",
+  );
 
   assert.equal(detail._id, id.toString());
   assert.equal(detail.database_scope, "production");
@@ -286,29 +318,42 @@ test("admin detail lookup returns normalized production record", async () => {
 test("admin agent detail returns metrics consistent with browse enrichment", async () => {
   const id = new mongoose.Types.ObjectId();
   const aggregateCapture: { pipeline?: unknown[] } = {};
-  stubFindById(Agent, { populated: [] }, {
-    _id: id,
-    name: "Alice Agent",
-    active: true,
-    role: "sales",
-  });
-  stubAggregate(BookedLead, [
+  stubFindById(
+    Agent,
+    { populated: [] },
     {
-      agent_key: "alice agent",
-      booking_count: 2,
-      total_binder_amount: 500,
-      total_deposit_amount: 1200,
-      cancellation_count: 1,
-      cancellation_rate: 0.5,
+      _id: id,
+      name: "Alice Agent",
+      active: true,
+      role: "sales",
     },
-  ], aggregateCapture);
+  );
+  stubAggregate(
+    BookedLead,
+    [
+      {
+        agent_key: "alice agent",
+        booking_count: 2,
+        total_binder_amount: 500,
+        total_deposit_amount: 1200,
+        cancellation_count: 1,
+        cancellation_rate: 0.5,
+      },
+    ],
+    aggregateCapture,
+  );
 
   const query = adminBrowseQuerySchema.parse({
     database_scope: "production",
     from: "2026-01-01T00:00:00.000Z",
     to: "2026-01-31T23:59:59.999Z",
   });
-  const detail = await getAdminResourceDetail("agents", id.toString(), "production", query);
+  const detail = await getAdminResourceDetail(
+    "agents",
+    id.toString(),
+    "production",
+    query,
+  );
 
   assert.equal(detail._id, id.toString());
   assert.equal(detail.booking_count, 2);
@@ -316,12 +361,17 @@ test("admin agent detail returns metrics consistent with browse enrichment", asy
   assert.equal(detail.total_deposit_amount, 1200);
   assert.equal(detail.cancellation_count, 1);
   assert.equal(detail.cancellation_rate, 0.5);
-  assert.match(inspect(aggregateCapture.pipeline, { depth: null }), /book_date/);
+  assert.match(
+    inspect(aggregateCapture.pipeline, { depth: null }),
+    /book_date/,
+  );
 });
 
 test("admin historical browse uses historical models and remains read-only", async () => {
   const capture: QueryCapture = { populated: [] };
-  stubFind(historicalModels.FormLead, capture, [{ _id: new mongoose.Types.ObjectId(), name: "Historical" }]);
+  stubFind(historicalModels.FormLead, capture, [
+    { _id: new mongoose.Types.ObjectId(), name: "Historical" },
+  ]);
   stubCount(historicalModels.FormLead, 1);
   (FormLead as unknown as MutableModel).find = () => {
     throw new Error("production model should not be used for historical scope");
@@ -332,7 +382,10 @@ test("admin historical browse uses historical models and remains read-only", asy
 
   assert.equal(result.total, 1);
   assert.equal(result.items[0].database_scope, "historical");
-  assert.equal(typeof (historicalModels.FormLead as unknown as MutableModel).deleteOne, "function");
+  assert.equal(
+    typeof (historicalModels.FormLead as unknown as MutableModel).deleteOne,
+    "function",
+  );
 });
 
 test("global admin search returns grouped results", async () => {
@@ -382,14 +435,22 @@ test("csv helper emits text/csv-compatible header and rows", () => {
   assert.equal(csv, 'name,notes\r\n"A, B","Line\nTwo"\r\n');
 });
 
-function stubFind(model: unknown, capture: QueryCapture, docs: Record<string, unknown>[]) {
+function stubFind(
+  model: unknown,
+  capture: QueryCapture,
+  docs: Record<string, unknown>[],
+) {
   (model as MutableModel).find = (filter: unknown) => {
     capture.filter = filter;
     return chain(capture, docs);
   };
 }
 
-function stubFindById(model: unknown, capture: QueryCapture, doc: Record<string, unknown> | null) {
+function stubFindById(
+  model: unknown,
+  capture: QueryCapture,
+  doc: Record<string, unknown> | null,
+) {
   (model as MutableModel).findById = (id: string) => {
     capture.filter = { _id: id };
     return chain(capture, doc);
@@ -449,7 +510,9 @@ function stubOtherSearchModelsEmpty() {
     "Agent",
   ] as const;
   for (const modelName of models) {
-    const model = mongoose.models[modelName] as unknown as MutableModel | undefined;
+    const model = mongoose.models[modelName] as unknown as
+      | MutableModel
+      | undefined;
     if (model) {
       model.find = () => chain({ populated: [] }, []);
     }

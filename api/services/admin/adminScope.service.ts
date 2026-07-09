@@ -6,7 +6,7 @@ import { CancelledLead } from "../../models/CancelledLead";
 import { Customer } from "../../models/Customer";
 import { FormLead } from "../../models/FormLead";
 import type { AdminDatabaseScope } from "../../validation/v1.validation";
-import { registerHistoricalModels } from "../../../scripts/historical/models";
+import { registerHistoricalModels } from "../../../scripts/dev_ops/historical/models";
 
 export type AdminResource =
   | "form-leads"
@@ -43,13 +43,19 @@ export function getAdminModels(scope: ConcreteAdminScope): AdminModels {
   };
 }
 
-export function concreteScopes(scope: AdminDatabaseScope): ConcreteAdminScope[] {
+export function concreteScopes(
+  scope: AdminDatabaseScope,
+): ConcreteAdminScope[] {
   return scope === "combined" ? ["production", "historical"] : [scope];
 }
 
-export function rejectCombinedDetailScope(scope: AdminDatabaseScope): ConcreteAdminScope {
+export function rejectCombinedDetailScope(
+  scope: AdminDatabaseScope,
+): ConcreteAdminScope {
   if (scope === "combined") {
-    throw new Error("Detail endpoints support production or historical scope, not combined");
+    throw new Error(
+      "Detail endpoints support production or historical scope, not combined",
+    );
   }
   return scope;
 }

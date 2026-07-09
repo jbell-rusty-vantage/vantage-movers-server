@@ -47,7 +47,9 @@ scripts/historical/models/historical-analytics-report.json
 
 # Personal / destructive DB-hitting utilities (clear-db, ping-db, seed scripts, etc.)
 # Lives only on developer machines; never committed.
-scripts/dev_ops/
+scripts/dev_ops/**
+!scripts/dev_ops/
+!scripts/dev_ops/seed-moving-carriers.ts
 
 # Editor
 .vscode/

@@ -88,10 +88,15 @@ import {
   cplRateUpdateSchema,
   leadSourceCompanyCreateSchema,
   leadSourceCompanyUpdateSchema,
+  listMovingCarriersQuerySchema,
+  movingCarrierCreateSchema,
+  movingCarrierImportSchema,
+  movingCarrierUpdateSchema,
   listGranotCrmSourcesQuerySchema,
   sheetSyncJobsQuerySchema,
   sheetSyncRunsQuerySchema,
   sheetSyncRetrySchema,
+  adminTestimonialsQuerySchema,
   listTestimonialsQuerySchema,
   bookedCallLeadReconciliationBatchSchema,
   browseCallLeadsQuerySchema,
@@ -151,7 +156,18 @@ import {
   getAnalyticsReport,
   getOverviewReport,
 } from "../services/analytics";
-import { listTestimonials } from "../services/testimonials";
+import {
+  getAdminTestimonial,
+  listAdminTestimonialReviewerNames,
+  listAdminTestimonials,
+  listTestimonials,
+} from "../services/testimonials";
+import {
+  createMovingCarrier,
+  importMovingCarriersFromCsv,
+  listMovingCarriers,
+  updateMovingCarrier,
+} from "../services/movingCarriers";
 import {
   listGranotCrmSources,
   seedGranotCrmSources,
@@ -214,6 +230,13 @@ router.get("/api/v1/admin/source-companies", handleLeadSourceCompaniesList);
 router.get("/api/v1/admin/source-companies/:id", handleLeadSourceCompanyDetail);
 router.post("/api/v1/admin/source-companies", handleLeadSourceCompanyCreate);
 router.patch("/api/v1/admin/source-companies/:id", handleLeadSourceCompanyUpdate);
+router.get("/api/v1/admin/testimonials", handleAdminTestimonialsList);
+router.get("/api/v1/admin/testimonials/reviewer-names", handleAdminTestimonialReviewerNames);
+router.get("/api/v1/admin/testimonials/:id", handleAdminTestimonialDetail);
+router.get("/api/v1/admin/moving-carriers", handleMovingCarriersList);
+router.post("/api/v1/admin/moving-carriers", handleMovingCarrierCreate);
+router.post("/api/v1/admin/moving-carriers/import", handleMovingCarrierImport);
+router.patch("/api/v1/admin/moving-carriers/:id", handleMovingCarrierUpdate);
 for (const resource of adminResources) {
   router.get(`/api/v1/admin/${resource}`, handleAdminBrowse(resource));
   router.get(`/api/v1/admin/${resource}/:id`, handleAdminDetail(resource));
@@ -322,6 +345,7 @@ router.patch("/api/v1/customers/:id", handleUpdate(updateCustomerSchema, updateC
 router.delete("/api/v1/customers/:id", handleDelete(deleteCustomer));
 
 router.get("/api/v1/testimonials", handleListTestimonials);
+router.get("/api/v1/moving-carriers", handleMovingCarriersList);
 
 function handleFindAll(findAll: () => Promise<unknown>) {
   return async (req: Request, res: Response) => {
@@ -962,6 +986,83 @@ async function handleListTestimonials(req: Request, res: Response) {
     await connectMongo();
     const parsed = listTestimonialsQuerySchema.parse(req.query);
     const data = await listTestimonials(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleAdminTestimonialsList(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = adminTestimonialsQuerySchema.parse(req.query);
+    const data = await listAdminTestimonials(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleAdminTestimonialDetail(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const data = await getAdminTestimonial(id);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleAdminTestimonialReviewerNames(_req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const data = await listAdminTestimonialReviewerNames();
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(_req, res, error);
+  }
+}
+
+async function handleMovingCarriersList(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = listMovingCarriersQuerySchema.parse(req.query);
+    const data = await listMovingCarriers(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleMovingCarrierCreate(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = movingCarrierCreateSchema.parse(req.body);
+    const data = await createMovingCarrier(parsed);
+    return res.status(201).json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleMovingCarrierUpdate(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const parsed = movingCarrierUpdateSchema.parse(req.body);
+    const data = await updateMovingCarrier(id, parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleMovingCarrierImport(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = movingCarrierImportSchema.parse(req.body);
+    const data = await importMovingCarriersFromCsv(parsed);
     return res.json({ ok: true, data });
   } catch (error) {
     return sendError(req, res, error);

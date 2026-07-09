@@ -27,6 +27,12 @@ CustomerSchema.virtual("cancelled_leads", {
   foreignField: "customer",
 });
 
+CustomerSchema.virtual("testimonials", {
+  ref: "Testimonial",
+  localField: "_id",
+  foreignField: "customer",
+});
+
 export type CustomerDocument = InferSchemaType<typeof CustomerSchema> & {
   _id: mongoose.Types.ObjectId;
 };

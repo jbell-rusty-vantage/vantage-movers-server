@@ -123,9 +123,22 @@ export {
 } from "./v1/sheetSync.validation";
 
 export {
+  adminTestimonialsQuerySchema,
   listTestimonialsQuerySchema,
+  type AdminTestimonialsQuery,
   type ListTestimonialsQuery,
 } from "./v1/testimonials.validation";
+
+export {
+  listMovingCarriersQuerySchema,
+  movingCarrierCreateSchema,
+  movingCarrierImportSchema,
+  movingCarrierUpdateSchema,
+  type ListMovingCarriersQuery,
+  type MovingCarrierCreateInput,
+  type MovingCarrierImportInput,
+  type MovingCarrierUpdateInput,
+} from "./v1/movingCarriers.validation";
 
 export {
   listGranotCrmSourcesQuerySchema,

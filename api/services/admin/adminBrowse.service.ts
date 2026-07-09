@@ -293,7 +293,12 @@ async function browseConcrete(
     model.countDocuments(filter).exec(),
   ]);
   const items = (docs as Record<string, unknown>[]).map((doc) => normalizeDoc(doc, scope));
-  const enrichedItems = resource === "agents" ? await enrichAgentItems(items, models, query) : items;
+  const enrichedItems =
+    resource === "agents"
+      ? await enrichAgentItems(items, models, query)
+      : resource === "customers"
+        ? await enrichCustomerItems(items, models)
+        : items;
   return {
     items: enrichedItems,
     page: query.page,
@@ -549,6 +554,67 @@ async function enrichAgentItems(
     ...item,
     ...(metricsByAgent.get(normalizeAgentMetricKey(item.name)) ?? emptyAgentBrowseMetrics()),
   }));
+}
+
+async function enrichCustomerItems(
+  items: AdminRecord[],
+  models: ReturnType<typeof getAdminModels>,
+): Promise<AdminRecord[]> {
+  const customerIds = items
+    .map((item) => item._id)
+    .filter((id): id is string => typeof id === "string" && mongoose.isValidObjectId(id))
+    .map((id) => new mongoose.Types.ObjectId(id));
+  if (customerIds.length === 0) {
+    return items;
+  }
+
+  const [bookingRows, cancellationRows] = await Promise.all([
+    models["booked-leads"].aggregate<{
+      _id: mongoose.Types.ObjectId;
+      booking_count: number;
+      deposit_total: number;
+    }>([
+      { $match: { customer: { $in: customerIds } } },
+      {
+        $group: {
+          _id: "$customer",
+          booking_count: { $sum: 1 },
+          deposit_total: { $sum: { $ifNull: ["$deposit_amount", 0] } },
+        },
+      },
+    ]),
+    models["cancelled-leads"].aggregate<{
+      _id: mongoose.Types.ObjectId;
+      cancellation_count: number;
+    }>([
+      { $match: { customer: { $in: customerIds } } },
+      { $group: { _id: "$customer", cancellation_count: { $sum: 1 } } },
+    ]),
+  ]);
+
+  const bookingMetrics = new Map(
+    bookingRows.map((row) => [
+      String(row._id),
+      {
+        booking_count: row.booking_count,
+        deposit_total: row.deposit_total,
+      },
+    ]),
+  );
+  const cancellationMetrics = new Map(
+    cancellationRows.map((row) => [String(row._id), row.cancellation_count]),
+  );
+
+  return items.map((item) => {
+    const id = String(item._id ?? "");
+    const booking = bookingMetrics.get(id);
+    return {
+      ...item,
+      booking_count: booking?.booking_count ?? 0,
+      cancellation_count: cancellationMetrics.get(id) ?? 0,
+      deposit_total: booking?.deposit_total ?? 0,
+    };
+  });
 }
 
 function normalizeDoc(doc: AdminRecord, scope: ConcreteAdminScope): AdminRecord {
