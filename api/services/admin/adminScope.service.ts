@@ -6,7 +6,9 @@ import { CancelledLead } from "../../models/CancelledLead";
 import { Customer } from "../../models/Customer";
 import { FormLead } from "../../models/FormLead";
 import type { AdminDatabaseScope } from "../../validation/v1.validation";
-import { registerHistoricalModels } from "../../../scripts/dev_ops/historical/models";
+// Historical models target the separate vantagemovershistorical DB and are only
+// selected when admin callers pass database_scope=historical (or combined).
+import { registerHistoricalModels } from "../../models/historical";
 
 export type AdminResource =
   | "form-leads"

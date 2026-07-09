@@ -6,7 +6,7 @@ import { Agent } from "../../models/Agent";
 import { BookedLead } from "../../models/BookedLead";
 import { CallLead } from "../../models/CallLead";
 import { FormLead } from "../../models/FormLead";
-import { registerHistoricalModels } from "../../../scripts/dev_ops/historical/models";
+import { registerHistoricalModels } from "../../models/historical";
 import { toCsv } from "../../utils/csv";
 import {
   adminBrowseQuerySchema,
