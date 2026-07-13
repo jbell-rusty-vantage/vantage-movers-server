@@ -151,7 +151,9 @@ test("formLeadToRow projects fields in the documented header order", () => {
     _id: new mongoose.Types.ObjectId(),
     timestamp: new Date(2026, 4, 27, 9, 4, 5),
     name: "Jane Tester",
+    pickup_city: "New York",
     pickup_zip: "10001",
+    delivery_city: "Beverly Hills",
     destination_zip: "90210",
     pickup_state: "NY",
     delivery_state: "  ",
@@ -177,6 +179,8 @@ test("formLeadToRow projects fields in the documented header order", () => {
   const row = formLeadToRow(lead);
 
   assert.equal(row.length, 22);
+  assert.equal(row.includes("New York"), false);
+  assert.equal(row.includes("Beverly Hills"), false);
   assert.equal(row[0], "5/27/2026 09:04:05");
   assert.equal(row[1], "Jane Tester");
   assert.equal(row[2], "10001");
@@ -283,6 +287,8 @@ test("callLeadToRow projects fields in the documented header order", () => {
     timestamp: new Date(2026, 4, 27, 9, 4, 5),
     job_no: "J-100",
     phone_number: "555-333-4444",
+    pickup_city: "New York",
+    delivery_city: "Beverly Hills",
     duration: 120,
     booked: "some-id",
     over_2000: false,
@@ -298,6 +304,8 @@ test("callLeadToRow projects fields in the documented header order", () => {
   const row = callLeadToRow(lead);
 
   assert.equal(row.length, 15);
+  assert.equal(row.includes("New York"), false);
+  assert.equal(row.includes("Beverly Hills"), false);
   assert.equal(row[0], "5/27/2026 09:04:05");
   assert.equal(row[1], "J-100");
   assert.equal(row[2], "555-333-4444");

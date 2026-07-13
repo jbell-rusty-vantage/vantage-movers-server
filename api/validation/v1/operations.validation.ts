@@ -19,7 +19,9 @@ const callLeadEnrichmentRowSchema = z
     phone: optionalString,
     granot_crm_username: optionalString,
     email: optionalString,
+    from: optionalString,
     from_zip: optionalString,
+    to: optionalString,
     to_zip: optionalString,
     est_cf: optionalString,
   })
@@ -44,7 +46,9 @@ const bookedCallLeadReconciliationRowSchema = z
     phone: optionalString,
     granot_crm_username: optionalString,
     email: optionalString,
+    from: optionalString,
     from_zip: optionalString,
+    to: optionalString,
     to_zip: optionalString,
     est_cf: optionalString,
   })

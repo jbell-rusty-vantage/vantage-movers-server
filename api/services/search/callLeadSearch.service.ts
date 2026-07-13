@@ -11,7 +11,9 @@ export type CallLeadSearchSummary = Pick<
   | "phone_number"
   | "normalized_phone_number"
   | "job_no"
+  | "pickup_city"
   | "pickup_zip"
+  | "delivery_city"
   | "delivery_zip"
   | "pickup_state"
   | "delivery_state"
@@ -43,7 +45,9 @@ export function summarizeCallLead(lead: CallLeadDocument): CallLeadSearchSummary
     phone_number: lead.phone_number,
     normalized_phone_number: lead.normalized_phone_number,
     job_no: lead.job_no,
+    pickup_city: lead.pickup_city,
     pickup_zip: lead.pickup_zip,
+    delivery_city: lead.delivery_city,
     delivery_zip: lead.delivery_zip,
     pickup_state: lead.pickup_state,
     delivery_state: lead.delivery_state,

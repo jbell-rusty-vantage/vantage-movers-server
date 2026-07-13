@@ -49,6 +49,12 @@ export type FormLeadBrowseResult = {
   email?: string;
   phone_number?: string;
   ref_no?: string;
+  pickup_city?: string;
+  pickup_zip?: string;
+  pickup_state?: string;
+  delivery_city?: string;
+  destination_zip?: string;
+  delivery_state?: string;
   quoted?: boolean;
   cubic_feet?: number;
   createdAt?: Date;
@@ -168,6 +174,12 @@ function mapFormLead(doc: Record<string, unknown>): FormLeadBrowseResult {
     email: doc.email as string | undefined,
     phone_number: doc.phone_number as string | undefined,
     ref_no: doc.ref_no as string | undefined,
+    pickup_city: doc.pickup_city as string | undefined,
+    pickup_zip: doc.pickup_zip as string | undefined,
+    pickup_state: doc.pickup_state as string | undefined,
+    delivery_city: doc.delivery_city as string | undefined,
+    destination_zip: doc.destination_zip as string | undefined,
+    delivery_state: doc.delivery_state as string | undefined,
     quoted: doc.quoted as boolean | undefined,
     cubic_feet: doc.cubic_feet as number | undefined,
     createdAt: doc.createdAt as Date | undefined,

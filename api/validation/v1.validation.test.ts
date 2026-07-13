@@ -23,10 +23,24 @@ test("createCallLeadSchema accepts a job_no-only call lead", () => {
   const parsed = createCallLeadSchema.parse({
     job_no: "P5556278",
     source_company: "BestRelocation Inbounds",
+    pickup_city: "Barnesville",
+    delivery_city: "Atlanta",
   });
 
   assert.equal(parsed.job_no, "P5556278");
   assert.equal(parsed.source_company, "BestRelocation Inbounds");
+  assert.equal(parsed.pickup_city, "Barnesville");
+  assert.equal(parsed.delivery_city, "Atlanta");
+});
+
+test("updateFormLeadSchema accepts canonical pickup and delivery cities", () => {
+  const parsed = updateFormLeadSchema.parse({
+    pickup_city: "New Orleans",
+    delivery_city: "New York",
+  });
+
+  assert.equal(parsed.pickup_city, "New Orleans");
+  assert.equal(parsed.delivery_city, "New York");
 });
 
 test("createCallLeadSchema rejects call leads without phone_number or job_no", () => {

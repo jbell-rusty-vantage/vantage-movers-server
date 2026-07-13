@@ -4,6 +4,10 @@ import {
   type SourceCompany,
 } from "../../config/domain";
 import { parseFloridaCalendarDate } from "../../utils/easternTime";
+import {
+  parseGranotCityState,
+  parseGranotZip,
+} from "../../utils/location/granotLocation";
 import { getStateCodeForZip } from "../../utils/location/pickupZipState";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import type { BookedCallLeadReconciliationRowInput } from "../../validation/v1.validation";
@@ -38,7 +42,9 @@ export type ParsedBookedCallLeadRow = {
   granot_crm_username?: string;
   normalized_phone_number?: string;
   email?: string;
+  pickup_city?: string;
   pickup_zip?: string;
+  delivery_city?: string;
   delivery_zip?: string;
   pickup_state?: string;
   delivery_state?: string;
@@ -56,8 +62,10 @@ export async function parseBookedCallLeadRow(
   row: BookedCallLeadReconciliationRowInput,
 ): Promise<ParsedBookedCallLeadRowWithWarnings> {
   const warnings: string[] = [];
-  const pickupZip = cleanZip(row.from_zip);
-  const deliveryZip = cleanZip(row.to_zip);
+  const pickupLocation = parseGranotCityState(row.from);
+  const deliveryLocation = parseGranotCityState(row.to);
+  const pickupZip = parseGranotZip(row.from_zip);
+  const deliveryZip = parseGranotZip(row.to_zip);
   const [pickupState, deliveryState] = await Promise.all([
     pickupZip ? getStateCodeForZip(pickupZip) : undefined,
     deliveryZip ? getStateCodeForZip(deliveryZip) : undefined,
@@ -100,7 +108,9 @@ export async function parseBookedCallLeadRow(
     granot_crm_username: cleanValue(row.granot_crm_username),
     normalized_phone_number: normalizePhoneNumberForMatch(row.phone),
     email: cleanEmail(row.email, warnings),
+    pickup_city: pickupLocation?.city,
     pickup_zip: pickupZip,
+    delivery_city: deliveryLocation?.city,
     delivery_zip: deliveryZip,
     pickup_state: pickupState,
     delivery_state: deliveryState,

@@ -56,6 +56,8 @@ const RESOURCE_CONFIGS: Record<AdminResource, ResourceConfig> = {
       "crm_source_label_snapshot",
       "ref_no",
       "lid",
+      "pickup_city",
+      "delivery_city",
     ],
     stringFilters: {
       source_company: [
@@ -69,8 +71,10 @@ const RESOURCE_CONFIGS: Record<AdminResource, ResourceConfig> = {
       email: ["email"],
       phone_number: ["phone_number", "normalized_phone_number"],
       ref_no: ["ref_no", "normalized_ref_no"],
+      pickup_city: ["pickup_city"],
       pickup_state: ["pickup_state"],
       pickup_zip: ["pickup_zip"],
+      delivery_city: ["delivery_city"],
       delivery_state: ["delivery_state"],
       delivery_zip: ["delivery_zip", "destination_zip"],
       move_size: ["move_size"],
@@ -96,6 +100,8 @@ const RESOURCE_CONFIGS: Record<AdminResource, ResourceConfig> = {
       "source_granularity_label_snapshot",
       "crm_source_label_snapshot",
       "job_no",
+      "pickup_city",
+      "delivery_city",
     ],
     stringFilters: {
       source_company: [
@@ -109,8 +115,10 @@ const RESOURCE_CONFIGS: Record<AdminResource, ResourceConfig> = {
       email: ["email"],
       phone_number: ["phone_number", "normalized_phone_number"],
       job_no: ["job_no", "normalized_job_no"],
+      pickup_city: ["pickup_city"],
       pickup_state: ["pickup_state"],
       pickup_zip: ["pickup_zip"],
+      delivery_city: ["delivery_city"],
       delivery_state: ["delivery_state"],
       delivery_zip: ["delivery_zip"],
       local: ["local"],

@@ -8,6 +8,7 @@
     "dev:local": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev-server.ts",
     "dev:vercel": "vercel dev",
     "db:ping": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/ping-db.ts",
+    "db:ingest-moving-carriers": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ingest-moving-carriers.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --import ./scripts/test-setup.ts --test \"api/**/*.test.ts\""
   },

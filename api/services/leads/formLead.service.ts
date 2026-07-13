@@ -37,6 +37,7 @@ import {
 import { deleteBookedLead, refreshAttachedBookingFromLead } from "../v1.service";
 import {
   deriveFormLeadLocal,
+  normalizeState,
   resolveRequiredLocation,
 } from "./leadLocation.service";
 import { parseSourceCompany, resolveLeadSourceAssignment } from "./leadSourceCompany";
@@ -330,9 +331,15 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
       },
       { workflow: "form_lead_update" },
     );
-    lead.pickup_state = location.pickup_state;
-    lead.delivery_state = location.delivery_state;
-    lead.local = deriveFormLeadLocal(location.pickup_state, location.delivery_state);
+    const explicitPickupState = normalizeState(input.pickup_state);
+    const explicitDeliveryState = normalizeState(input.delivery_state);
+    lead.pickup_state = isStateCode(explicitPickupState)
+      ? explicitPickupState
+      : location.pickup_state;
+    lead.delivery_state = isStateCode(explicitDeliveryState)
+      ? explicitDeliveryState
+      : location.delivery_state;
+    lead.local = deriveFormLeadLocal(lead.pickup_state, lead.delivery_state);
   }
   if (sourceAffectingInputChanged || !lead.lead_source_company) {
     sourceResolutionForUpdate = await resolveLeadSourceAssignment({
@@ -378,6 +385,10 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
   return lead;
 }
 
+function isStateCode(value?: string): value is string {
+  return Boolean(value && /^[A-Z]{2}$/.test(value));
+}
+
 export async function findAllFormLeads() {
   const FormLead = getFormLeadModel();
   return FormLead.find().sort({ createdAt: -1 }).limit(200);
@@ -386,7 +397,7 @@ export async function findAllFormLeads() {
 export async function findFormLead(id: string) {
   const FormLead = getFormLeadModel();
   const lead = await FormLead.findById(id).select(
-    "_id ref_no quoted cubic_feet booked duplicate receiver_agent receiver_agent_name_snapshot receiver_agent_source receiver_agent_source_value",
+    "_id ref_no quoted cubic_feet pickup_city pickup_zip pickup_state delivery_city destination_zip delivery_state booked duplicate receiver_agent receiver_agent_name_snapshot receiver_agent_source receiver_agent_source_value",
   );
   if (!lead || lead.duplicate) {
     throw new NotFoundError("Form lead not found", {

@@ -452,7 +452,9 @@ function buildLeadUpdate(
   }
   assignIfChanged(update, lead, "name", parsed.name);
   assignIfChanged(update, lead, "email", parsed.email);
+  assignIfChanged(update, lead, "pickup_city", parsed.pickup_city);
   assignIfChanged(update, lead, "pickup_zip", parsed.pickup_zip);
+  assignIfChanged(update, lead, "delivery_city", parsed.delivery_city);
   assignIfChanged(update, lead, "delivery_zip", parsed.delivery_zip);
   assignIfChanged(update, lead, "pickup_state", parsed.pickup_state);
   assignIfChanged(update, lead, "delivery_state", parsed.delivery_state);

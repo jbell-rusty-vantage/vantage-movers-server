@@ -47,7 +47,9 @@ export type FormLeadSheetSource = SyncableDocument & {
   name: string;
   first_name?: string | null;
   last_name?: string | null;
+  pickup_city?: string | null;
   pickup_zip: string;
+  delivery_city?: string | null;
   destination_zip: string;
   pickup_state?: string | null;
   delivery_state?: string | null;
@@ -83,7 +85,9 @@ export type CallLeadSheetSource = SyncableDocument & {
   last_name?: string | null;
   phone_number?: string | null;
   email?: string | null;
+  pickup_city?: string | null;
   pickup_zip?: string | null;
+  delivery_city?: string | null;
   delivery_zip?: string | null;
   pickup_state?: string | null;
   delivery_state?: string | null;

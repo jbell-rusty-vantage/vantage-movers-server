@@ -49,6 +49,12 @@ export type CallLeadBrowseResult = {
   email?: string;
   phone_number?: string;
   job_no?: string;
+  pickup_city?: string;
+  pickup_zip?: string;
+  pickup_state?: string;
+  delivery_city?: string;
+  delivery_zip?: string;
+  delivery_state?: string;
   cubic_feet?: number;
   createdAt?: Date;
   receiver_agent_name_snapshot?: string;
@@ -172,6 +178,12 @@ function mapCallLead(doc: Record<string, unknown>): CallLeadBrowseResult {
     email: doc.email as string | undefined,
     phone_number: doc.phone_number as string | undefined,
     job_no: doc.job_no as string | undefined,
+    pickup_city: doc.pickup_city as string | undefined,
+    pickup_zip: doc.pickup_zip as string | undefined,
+    pickup_state: doc.pickup_state as string | undefined,
+    delivery_city: doc.delivery_city as string | undefined,
+    delivery_zip: doc.delivery_zip as string | undefined,
+    delivery_state: doc.delivery_state as string | undefined,
     cubic_feet: doc.cubic_feet as number | undefined,
     createdAt: doc.createdAt as Date | undefined,
     receiver_agent_name_snapshot: doc.receiver_agent_name_snapshot as string | undefined,

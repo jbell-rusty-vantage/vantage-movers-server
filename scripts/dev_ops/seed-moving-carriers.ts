@@ -1,3 +1,6 @@
+/**
+ * @deprecated Use `pnpm run db:ingest-moving-carriers` (`scripts/ingest-moving-carriers.ts`).
+ */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { connectMongo } from "../../api/db";
