@@ -16,8 +16,8 @@
  * not MongoDB. Real observability integration tests must live behind a separate
  * explicit runner that targets isolated test collections only.
  */
-import { markVantageTestRunner } from "../api/config/domain/runtime";
-import { installTestObservabilitySink } from "../api/services/observability/testObservabilitySink";
+import { markVantageTestRunner } from "../src/config/domain/runtime";
+import { installTestObservabilitySink } from "../src/services/observability/testObservabilitySink";
 
 markVantageTestRunner();
 installTestObservabilitySink();

@@ -1,4 +1,4 @@
-import { getSheetsClient } from "../../api/services/googleSheets/auth";
+import { getSheetsClient } from "../../src/services/googleSheets/auth";
 
 export function requiredEnv(name: string): string {
   const value = process.env[name];

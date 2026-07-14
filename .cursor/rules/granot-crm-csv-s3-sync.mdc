@@ -1,6 +1,6 @@
 ---
 description: Granot CRM CSV to S3 sync behavior and limitations
-globs: api/services/granotCrmCsv/**/*.ts,scripts/granot_crm_csv/**/*.ts,api/services/enrichment/**/*.ts,api/services/reconciliation/**/*.ts
+globs: src/services/granotCrmCsv/**/*.ts,scripts/granot_crm_csv/**/*.ts,src/services/enrichment/**/*.ts,src/services/reconciliation/**/*.ts
 alwaysApply: false
 ---
 

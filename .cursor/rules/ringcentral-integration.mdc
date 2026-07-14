@@ -1,15 +1,15 @@
 ---
 description: RingCentral auth, hybrid call-lead pipeline, scripts, and integration setup
-globs: api/services/ringcentral/**/*.ts,scripts/ringcentral/**/*.ts,api/routes/**/*.ts,package.json
+globs: src/services/ringcentral/**/*.ts,scripts/ringcentral/**/*.ts,src/routes/**/*.ts,package.json
 alwaysApply: false
 ---
 
 # RingCentral Integration
 
-- Scope this work to `vantage-main-server`. Runtime RingCentral code lives in `api/services/ringcentral/`; diagnostics and manual runners live in `scripts/ringcentral/`.
+- Scope this work to `vantage-main-server`. Runtime RingCentral code lives in `src/services/ringcentral/`; diagnostics and manual runners live in `scripts/ringcentral/`.
 - Use native `fetch` only. Do not add Axios or RingCentral SDKs unless explicitly requested.
 - Env is loaded by package scripts with `node --env-file=.env ./node_modules/tsx/dist/cli.mjs ...`. Run commands with `pnpm` from `vantage-main-server`.
-- Required env vars: `RC_SERVER_URL`, `RC_CLIENT_ID`, `RC_CLIENT_SECRET`, `RC_JWT`. Use `getRequiredEnv()` from `api/config/domain` in runtime/service code.
+- Required env vars: `RC_SERVER_URL`, `RC_CLIENT_ID`, `RC_CLIENT_SECRET`, `RC_JWT`. Use `getRequiredEnv()` from `src/config/domain` in runtime/service code.
 - Never log or commit `RC_JWT`, `RC_CLIENT_SECRET`, OAuth access tokens, refresh tokens, or Authorization headers.
 
 ## Runtime Service Boundaries
@@ -56,6 +56,6 @@ alwaysApply: false
 
 ## Production Direction
 
-- Production token storage should use `RC_TOKEN_STORE=mongo`, `connectMongo()` from `api/db.ts`, active DB via `getMongoDatabaseName()`/`MONGO_DATABASE_NAME`, collection `integration_tokens`, key `ringcentral:oauth-token`.
+- Production token storage should use `RC_TOKEN_STORE=mongo`, `connectMongo()` from `src/db.ts`, active DB via `getMongoDatabaseName()`/`MONGO_DATABASE_NAME`, collection `integration_tokens`, key `ringcentral:oauth-token`.
 - API routes must never return token values. Cron routes require `CRON_SECRET`.
 - Before changing cron cadence, lead write flags, or mapped numbers, update `scripts/ringcentral/RINGCENTRAL-PRODUCTION-RUNBOOK.md` and relevant tests/rules so docs match runtime behavior.

@@ -1,6 +1,6 @@
 ---
 description: Owner lead lifecycle from website intake through CRM, extension, forms, bookings, and cancellations
-globs: docs/showcase/owner-workflow.md,api/routes/**/*.ts,api/services/leads/**/*.ts,api/services/bookings/**/*.ts,api/services/cancellations/**/*.ts,api/services/enrichment/**/*.ts,api/services/reconciliation/**/*.ts,api/services/crm/**/*.ts,api/services/googleSheets/**/*.ts,api/services/sheetSync/**/*.ts,scripts/google_apps_scripts/**/*
+globs: docs/showcase/owner-workflow.md,src/routes/**/*.ts,src/services/leads/**/*.ts,src/services/bookings/**/*.ts,src/services/cancellations/**/*.ts,src/services/enrichment/**/*.ts,src/services/reconciliation/**/*.ts,src/services/crm/**/*.ts,src/services/googleSheets/**/*.ts,src/services/sheetSync/**/*.ts,scripts/google_apps_scripts/**/*
 alwaysApply: false
 ---
 

@@ -3,6 +3,7 @@
   "git": {
     "deploymentEnabled": false
   },
+  "outputDirectory": "public",
   "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
   "functions": {
     "api/queues/sheet-sync-consumer.ts": {

@@ -1,5 +1,5 @@
 import mongoose, { type Model } from "mongoose";
-import { connectMongo } from "../../api/db";
+import { connectMongo } from "../../src/db";
 import {
   getHistoricalModelList,
   HISTORICAL_DATABASE_NAME,

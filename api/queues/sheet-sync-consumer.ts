@@ -1,7 +1,7 @@
 import { QueueClient } from "@vercel/queue";
-import { connectMongo } from "../db";
-import { logger } from "../logger";
-import { runSheetSyncDrain } from "../services/sheetSync";
+import { connectMongo } from "../../src/db";
+import { logger } from "../../src/logger";
+import { runSheetSyncDrain } from "../../src/services/sheetSync";
 
 /**
  * Vercel Queue consumer for the sheet-sync wake-up topic.

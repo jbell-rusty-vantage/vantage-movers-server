@@ -1,6 +1,6 @@
 ---
 description: TypeScript correctness and type-safety guardrails for the Vantage main server
-globs: api/**/*.ts,scripts/**/*.ts,types/**/*.d.ts
+globs: src/**/*.ts,scripts/**/*.ts,types/**/*.d.ts
 alwaysApply: false
 ---
 
@@ -10,4 +10,4 @@ alwaysApply: false
 - Do not silence errors with `any`, `unknown` laundering, unsafe double-casts, `@ts-ignore`, or weakened types. If an escape hatch is unavoidable, add a nearby comment explaining why.
 - Prefer domain-specific types, branded IDs where already used, discriminated unions for stateful workflows, and precise return types at service and route boundaries.
 - Preserve existing project conventions: strict TypeScript, Node16 modules, snake_case Mongo/API fields, Zod validation at HTTP boundaries, and service-owned business behavior.
-- When changing public payloads, update the matching `api/validation/v1/*.validation.ts` schema, service types, tests, and docs/rules that describe the contract.
+- When changing public payloads, update the matching `src/validation/v1/*.validation.ts` schema, service types, tests, and docs/rules that describe the contract.

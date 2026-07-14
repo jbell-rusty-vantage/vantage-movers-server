@@ -1,6 +1,6 @@
 import mongoose, { type Model } from "mongoose";
-import { connectMongo } from "../../api/db";
-import { normalizePhoneNumberForMatch } from "../../api/utils/phone";
+import { connectMongo } from "../../src/db";
+import { normalizePhoneNumberForMatch } from "../../src/utils/phone";
 import {
   normalizeHistoricalAgentName,
   splitBinderAmountEvenly,

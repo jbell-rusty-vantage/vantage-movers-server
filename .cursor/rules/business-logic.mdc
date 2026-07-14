@@ -1,6 +1,6 @@
 ---
 description: Vantage Movers domain concepts, invariants, and business-logic drift policy
-globs: api/routes/**/*.ts,api/services/**/*.ts,api/models/**/*.ts,api/validation/**/*.ts,scripts/**/*.ts
+globs: src/routes/**/*.ts,src/services/**/*.ts,src/models/**/*.ts,src/validation/**/*.ts,scripts/**/*.ts
 alwaysApply: false
 ---
 

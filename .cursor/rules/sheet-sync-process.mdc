@@ -1,6 +1,6 @@
 ---
 description: Google Sheets sync architecture, outbox drain flow, targets, and operational safety
-globs: api/config/domain.ts,api/config/domain/**/*.ts,api/models/*Lead.ts,api/models/SheetSync*.ts,api/routes/sheet-sync-cron.routes.ts,api/queues/sheet-sync-consumer.ts,api/services/googleSheets/**/*.ts,api/services/sheetSync/**/*.ts,scripts/google_sheets/**/*.ts,scripts/historical/**/*.ts
+globs: src/config/domain.ts,src/config/domain/**/*.ts,src/models/*Lead.ts,src/models/SheetSync*.ts,src/routes/sheet-sync-cron.routes.ts,api/queues/sheet-sync-consumer.ts,src/services/googleSheets/**/*.ts,src/services/sheetSync/**/*.ts,scripts/google_sheets/**/*.ts,scripts/historical/**/*.ts
 alwaysApply: false
 ---
 
@@ -10,8 +10,8 @@ MongoDB is the source of truth. Google Sheets are owner-facing reporting surface
 
 ## Configuration And Targets
 
-- Canonical sheet names, tabs, headers, source-company mappings, priorities, budgets, and guardrails live under `api/config/domain/`. `api/config/domain.ts` is a backward-compatible barrel.
-- Runtime sheet env vars are mode-aware. `TEST_MODE=true` reads the `TEST_`-prefixed container ids through `api/config/domain/runtime.ts`.
+- Canonical sheet names, tabs, headers, source-company mappings, priorities, budgets, and guardrails live under `src/config/domain/`. `src/config/domain.ts` is a backward-compatible barrel.
+- Runtime sheet env vars are mode-aware. `TEST_MODE=true` reads the `TEST_`-prefixed container ids through `src/config/domain/runtime.ts`.
 - Container ids are env-driven: `MASTER_LEADS_SHEET_ID`, `MASTER_BOOKED_SHEET_ID`, and source containers such as `TBM_LEADS_SHEET_ID`, `TBM_PRIME_LEADS_SHEET_ID`, `TOP10_LEADS_SHEET_ID`, `BEST_RELOCATION_LEADS_SHEET_ID`, and `MAINSITE_LEADS_SHEET_ID`.
 - Master Leads has `Forms`, `Calls`, `Duplicates`, and bad-lead surfaces. Source lead sheets can have `Forms`, `Calls`, `Duplicates`, `Bad Leads`, and `Bad Calls`; `main_site` has no bad tabs and `not_provided` has no source sheet target.
 - Master Booked has `Booked Deals` and `Cancelled Deals`.
@@ -67,7 +67,7 @@ Only `pending` and `retrying` jobs are coalesced. Do not coalesce onto `processi
 ## Queue, Cron, And Drain Lifecycle
 
 - `api/queues/sheet-sync-consumer.ts` handles Vercel Queue wake-ups and calls `runSheetSyncDrain("queue")`.
-- `api/routes/sheet-sync-cron.routes.ts` is a cron safety net. It is authenticated by `CRON_SECRET` and is a no-op unless `SHEET_SYNC_MODE=queued`.
+- `src/routes/sheet-sync-cron.routes.ts` is a cron safety net. It is authenticated by `CRON_SECRET` and is a no-op unless `SHEET_SYNC_MODE=queued`.
 - The wake-up payload is intentionally ignored. Mongo owns due/coalescing/priority/quota decisions.
 - `runSheetSyncDrain()` takes a global `sheet-sync:drain` lease so queue wake-ups and cron never drain concurrently.
 - The drainer claims due jobs by setting `status="processing"`, `leased_until`, `lease_owner`, and `run_id`.
@@ -102,7 +102,7 @@ Only `pending` and `retrying` jobs are coalesced. Do not coalesce onto `processi
 
 ## Files To Know
 
-- Models: `api/models/SheetSyncJob.ts`, `api/models/SheetSyncRun.ts`, `api/models/SheetSyncAttempt.ts`, `api/models/SheetSyncLease.ts`.
-- Scheduling: `api/services/sheetSync/sheetSyncCoordinator.ts`, `api/services/sheetSync/sheetSyncOutbox.service.ts`, `api/services/sheetSync/sheetSyncQueue.service.ts`.
-- Execution: `api/services/sheetSync/drainer/runSheetSyncDrain.ts`, `jobPlanner.ts`, `batchWriter.ts`, `tabRowMap.ts`, `quotaLimiter.ts`, `leases.ts`.
-- Sheet details: `api/services/googleSheets/targets.ts`, `tabs.ts`, projection helpers, and `api/config/domain/sheets.ts`.
+- Models: `src/models/SheetSyncJob.ts`, `src/models/SheetSyncRun.ts`, `src/models/SheetSyncAttempt.ts`, `src/models/SheetSyncLease.ts`.
+- Scheduling: `src/services/sheetSync/sheetSyncCoordinator.ts`, `src/services/sheetSync/sheetSyncOutbox.service.ts`, `src/services/sheetSync/sheetSyncQueue.service.ts`.
+- Execution: `src/services/sheetSync/drainer/runSheetSyncDrain.ts`, `jobPlanner.ts`, `batchWriter.ts`, `tabRowMap.ts`, `quotaLimiter.ts`, `leases.ts`.
+- Sheet details: `src/services/googleSheets/targets.ts`, `tabs.ts`, projection helpers, and `src/config/domain/sheets.ts`.

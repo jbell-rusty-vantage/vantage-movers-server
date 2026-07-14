@@ -6,11 +6,11 @@ alwaysApply: true
 # Codebase Map
 
 - `vantage-main-server` is a Vercel-hosted Express TypeScript API. Runtime entrypoint and HTTP setup live in `api/index.ts`.
-- `api/routes/` owns HTTP and cron boundaries. Keep routes thin: auth, validation, service calls, response shaping.
-- `api/validation/` owns Zod request and operation schemas. `api/validation/v1.validation.ts` is the v1 public barrel; detailed schemas live under `api/validation/v1/`.
-- `api/services/` owns business behavior and side effects across leads, bookings, cancellations, customers, admin, RingCentral, Google Sheets/sheet sync, CRM, observability, reconciliation, analytics, search, enrichment, catalog, and errors.
-- `api/models/` owns Mongoose runtime schemas and model helpers. `api/db.ts` owns the shared Mongo connection and must preserve `TEST_MODE` boundaries.
-- `api/config/` owns mode-aware domain configuration such as source companies, sheet targets, CPL, observability, Google auth, and runtime DB selection.
+- `src/routes/` owns HTTP and cron boundaries. Keep routes thin: auth, validation, service calls, response shaping.
+- `src/validation/` owns Zod request and operation schemas. `src/validation/v1.validation.ts` is the v1 public barrel; detailed schemas live under `src/validation/v1/`.
+- `src/services/` owns business behavior and side effects across leads, bookings, cancellations, customers, admin, RingCentral, Google Sheets/sheet sync, CRM, observability, reconciliation, analytics, search, enrichment, catalog, and errors.
+- `src/models/` owns Mongoose runtime schemas and model helpers. `src/db.ts` owns the shared Mongo connection and must preserve `TEST_MODE` boundaries.
+- `src/config/` owns mode-aware domain configuration such as source companies, sheet targets, CPL, observability, Google auth, and runtime DB selection.
 - `scripts/` contains operational tooling: dev ops, historical backfill/repair, Google Sheets inspection/backfill, RingCentral management, Postman sync, demos, generated docs, and tests setup.
 - Architecture, operational, and workflow notes belong in `docs/`, `.cursor/rules/`, or existing internal docs.
 

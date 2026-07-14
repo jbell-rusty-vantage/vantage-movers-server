@@ -9,4 +9,4 @@ export {
   registerHistoricalCustomer,
   registerHistoricalFormLead,
   registerHistoricalModels,
-} from "../../../api/models/historical";
+} from "../../../src/models/historical";
