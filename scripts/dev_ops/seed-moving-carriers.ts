@@ -3,8 +3,8 @@
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { connectMongo } from "../../api/db";
-import { importMovingCarriersFromCsv } from "../../api/services/movingCarriers";
+import { connectMongo } from "../../src/db";
+import { importMovingCarriersFromCsv } from "../../src/services/movingCarriers";
 
 const DEFAULT_CSV_PATH = path.resolve(
   process.cwd(),

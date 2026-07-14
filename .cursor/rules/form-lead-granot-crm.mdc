@@ -1,6 +1,6 @@
 ---
 description: FormLead create route and Granot CRM posting conventions
-globs: api/**/*.ts
+globs: src/**/*.ts
 alwaysApply: false
 ---
 

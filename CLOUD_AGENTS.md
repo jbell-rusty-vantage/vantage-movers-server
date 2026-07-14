@@ -56,5 +56,5 @@ Standard commands live in `package.json` `scripts` (e.g. `pnpm dev`, `pnpm typec
   - The created id is at `data.lead._id`; read back with `GET /api/v1/form-leads/:id`.
 
 ### Tests / typecheck
-- `pnpm test` (Node's built-in runner over `api/**/*.test.ts`) and `pnpm typecheck` (`tsc --noEmit`)
+- `pnpm test` (Node's built-in runner over `src/**/*.test.ts`) and `pnpm typecheck` (`tsc --noEmit`)
   are pure/offline — they do **not** need MongoDB or any external services.

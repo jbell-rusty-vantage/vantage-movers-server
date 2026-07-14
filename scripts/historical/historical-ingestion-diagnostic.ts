@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { connectMongo } from "../../api/db";
+import { connectMongo } from "../../src/db";
 import { registerHistoricalModels } from "./models";
 
 async function main(): Promise<void> {

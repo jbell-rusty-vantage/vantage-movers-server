@@ -1,6 +1,6 @@
 ---
 description: RingCentral call-candidate, session, cron, and call-lead promotion workflow
-globs: api/services/ringcentral/**/*.ts,scripts/ringcentral/**/*.ts,api/routes/ringcentral-*.routes.ts,package.json
+globs: src/services/ringcentral/**/*.ts,scripts/ringcentral/**/*.ts,src/routes/ringcentral-*.routes.ts,package.json
 alwaysApply: false
 ---
 
@@ -10,7 +10,7 @@ alwaysApply: false
 - Local setup uses `localhost:3000` exposed through ngrok. `RINGCENTRAL_NGROK_WEBHOOK_URL` may be a bare base URL; `scripts/ringcentral/ringcentral-webhook-create.ts` resolves it to `/api/webhooks/ringcentral`.
 - RingCentral collections are resolved by `ringcentral-config.ts`; default mode is test collections with `_test` suffix unless `RINGCENTRAL_COLLECTION_MODE=production`.
 - Qualification rule: `direction === "Inbound"`, inbound target number matches `RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE`, call is answered, answered duration is at least 120 seconds, and caller phone number is present.
-- Static inbound target numbers live in `api/services/ringcentral/call-lead-sources.ts`; canonical keys are normalized E.164-like strings.
+- Static inbound target numbers live in `src/services/ringcentral/call-lead-sources.ts`; canonical keys are normalized E.164-like strings.
 - For inbound candidate party events, `from.phoneNumber` is the caller/customer and `to.phoneNumber` is the RingCentral number/queue being called. Telephony sessions include multiple parties, so always gate qualification on the party `direction`.
 
 ## Pipeline Shape

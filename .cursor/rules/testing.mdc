@@ -1,12 +1,12 @@
 ---
 description: Test expectations for Vantage main server changes
-globs: api/**/*.ts,scripts/**/*.ts
+globs: src/**/*.ts,scripts/**/*.ts
 alwaysApply: false
 ---
 
 # Testing Expectations
 
-- Run targeted tests for changed behavior. This repo uses Node's built-in test runner via `pnpm test` and `api/**/*.test.ts`.
+- Run targeted tests for changed behavior. This repo uses Node's built-in test runner via `pnpm test` and `src/**/*.test.ts`.
 - Add or update tests for business logic changes, especially leads, bookings, cancellations, CRM, RingCentral, Google Sheets sync, observability, validation, and admin reads.
 - Prefer unit tests for pure logic and integration-style tests at Mongo/API/service boundaries.
 - Avoid running expensive production-touching scripts as tests. Keep tests under `TEST_MODE` and use existing test setup helpers.

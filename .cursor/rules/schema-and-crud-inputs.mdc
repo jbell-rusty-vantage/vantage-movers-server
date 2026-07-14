@@ -1,12 +1,12 @@
 ---
 description: Runtime Mongo schema map and v1 CRUD payload contracts
-globs: api/models/**/*.ts,api/validation/**/*.ts,api/routes/**/*.ts,api/services/**/*.ts,docs/historical-db-schema-reference.md
+globs: src/models/**/*.ts,src/validation/**/*.ts,src/routes/**/*.ts,src/services/**/*.ts,docs/historical-db-schema-reference.md
 alwaysApply: false
 ---
 
 # Schema And CRUD Inputs
 
-- Treat `api/models/` as the runtime Mongo schema and `api/validation/v1/` as the public request contract. `api/validation/v1.validation.ts` is only the compatibility barrel; add new Zod logic to the matching `v1/*.validation.ts` module.
+- Treat `src/models/` as the runtime Mongo schema and `src/validation/v1/` as the public request contract. `src/validation/v1.validation.ts` is only the compatibility barrel; add new Zod logic to the matching `v1/*.validation.ts` module.
 - Keep API and Mongo fields in `snake_case`. Translate only at external boundaries such as CRM payloads and Google Sheets projections.
 
 ## Core Collections
@@ -19,7 +19,7 @@ alwaysApply: false
 
 ## Input Contracts
 
-- Routes in `api/routes/v1.routes.ts` parse every create/update/search body with strict Zod schemas before calling services. Update schemas are partial but require at least one field.
+- Routes in `src/routes/v1.routes.ts` parse every create/update/search body with strict Zod schemas before calling services. Update schemas are partial but require at least one field.
 - Form lead create accepts landing-page fields plus `crm_company_label` and `post_to_granot`; duplicate detection can force `post_to_granot=false`. Patch form leads for extension-owned updates such as `quoted` and `cubic_feet`.
 - Call lead create accepts sparse call data but must include `phone_number` or `job_no`. Enrichment endpoints accept batches of CRM rows (`row_id`, job/customer/phone/email/zips/est_cf).
 - Booking create can use direct `lead_ref`/`lead_model` plus `agent_allocations`, or `/booked-leads/from-source` with `lead_type` (`FormLead` uses `form_lead_id`; `CallLead` uses `call_job_no` or `call_phone_number`).

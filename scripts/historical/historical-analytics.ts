@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import mongoose, { type PipelineStage } from "mongoose";
-import { connectMongo } from "../../api/db";
+import { connectMongo } from "../../src/db";
 import { HISTORICAL_DATABASE_NAME, registerHistoricalModels } from "./models";
 
 type HistoricalModels = ReturnType<typeof registerHistoricalModels>;
