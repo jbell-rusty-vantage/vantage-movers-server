@@ -66,13 +66,14 @@ Do not send `sms_consent` or `post_to_granot`.
 | Value | Notes |
 | --- | --- |
 | `Studio` | |
+| `1 Bedroom` | Singular `Bedroom`. |
 | `2 Bedrooms` | Use the plural `Bedrooms`, not `2 Bedroom`. |
 | `3 Bedrooms` | |
 | `4 Bedrooms` | |
 | `5+ Bedrooms` | Include the `+` character. |
 | `Office` | |
 
-Any other string (for example `1 Bedroom`, `2BR`, or `2 Bedroom`) returns HTTP `400`.
+Any other string (for example `2BR` or `2 Bedroom`) returns HTTP `400`.
 
 ### Move date
 
@@ -157,6 +158,7 @@ See `scripts/dev_ops/examples/best-relocation-forms-webhook.js` for a runnable N
 /** Allowed move_size values — must match exactly. */
 const MOVE_SIZES = [
   "Studio",
+  "1 Bedroom",
   "2 Bedrooms",
   "3 Bedrooms",
   "4 Bedrooms",

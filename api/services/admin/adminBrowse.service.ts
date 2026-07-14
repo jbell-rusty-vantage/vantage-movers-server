@@ -571,7 +571,7 @@ async function enrichCustomerItems(
   const customerIds = items
     .map((item) => item._id)
     .filter((id): id is string => typeof id === "string" && mongoose.isValidObjectId(id))
-    .map((id) => new mongoose.Types.ObjectId(id));
+    .map((id) => mongoose.Types.ObjectId.createFromHexString(id));
   if (customerIds.length === 0) {
     return items;
   }

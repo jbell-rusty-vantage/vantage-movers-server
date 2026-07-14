@@ -51,7 +51,7 @@ export async function refreshExtensionSession(
     return null;
   }
 
-  if (!mongoose.Types.ObjectId.isValid(payload.sub)) {
+  if (!mongoose.isValidObjectId(payload.sub)) {
     return null;
   }
 
@@ -78,7 +78,7 @@ export async function getExtensionUserFromAccessToken(
     return null;
   }
 
-  if (!mongoose.Types.ObjectId.isValid(payload.sub)) {
+  if (!mongoose.isValidObjectId(payload.sub)) {
     return null;
   }
 

@@ -256,8 +256,8 @@ export async function resolveLeadSource(
 export function leadSourceAssignmentFields(resolution: LeadSourceResolution) {
   return {
     source_company: resolution.company.company_slug,
-    lead_source_company: new mongoose.Types.ObjectId(resolution.company.id),
-    source_granularity_id: new mongoose.Types.ObjectId(resolution.granularity.id),
+    lead_source_company: mongoose.Types.ObjectId.createFromHexString(resolution.company.id),
+    source_granularity_id: mongoose.Types.ObjectId.createFromHexString(resolution.granularity.id),
     source_granularity_key: resolution.granularity.granularity_key,
     source_company_label_snapshot: resolution.company.owner_label,
     source_granularity_label_snapshot: resolution.granularity.owner_label,

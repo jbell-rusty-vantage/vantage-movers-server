@@ -52,7 +52,7 @@ Standard commands live in `package.json` `scripts` (e.g. `pnpm dev`, `pnpm typec
 - Unauthenticated probes for quick health checks: `GET /` (banner), `GET /health`, `GET /db`.
 - Hello-world smoke test (create + read a form lead):
   - `curl -X POST localhost:3000/api/v1/form-leads -H 'x-api-secret: <secret>' -H 'Content-Type: application/json' -d '{"source_company":"main_site","name":"Test User","phone_number":"5551234567","pickup_zip":"10001","destination_zip":"94105","move_size":"Studio","ref_no":"smoke"}'`
-  - `move_size` must be one of `Studio | 2 Bedrooms | 3 Bedrooms | 4 Bedrooms | 5+ Bedrooms | Office`.
+  - `move_size` must be one of `Studio | 1 Bedroom | 2 Bedrooms | 3 Bedrooms | 4 Bedrooms | 5+ Bedrooms | Office`.
   - The created id is at `data.lead._id`; read back with `GET /api/v1/form-leads/:id`.
 
 ### Tests / typecheck

@@ -149,7 +149,7 @@ export function buildAdminTestimonialFilter(query: AdminTestimonialsQuery): Reco
     filter.rating = query.rating;
   }
   if (query.customer !== undefined) {
-    filter.customer = new mongoose.Types.ObjectId(query.customer);
+    filter.customer = mongoose.Types.ObjectId.createFromHexString(query.customer);
   }
   if (query.from !== undefined || query.to !== undefined) {
     filter.review_date = {

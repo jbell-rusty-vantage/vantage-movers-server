@@ -55,7 +55,7 @@ test("buildTestimonialFilter applies only provided query flags", () => {
 });
 
 test("adminTestimonialsQuerySchema coerces admin filters and sort direction", () => {
-  const customer = new mongoose.Types.ObjectId().toHexString();
+  const customer = String(new mongoose.Types.ObjectId());
   const parsed = adminTestimonialsQuerySchema.parse({
     q: "Dana",
     reviewer_name: "Dana P",
@@ -91,7 +91,7 @@ test("buildAdminTestimonialFilter applies reviewer, rating, customer, and date f
     q: "Dana P",
     reviewer_name: "Dana P",
     rating: 1,
-    customer: customer.toHexString(),
+    customer: String(customer),
     from,
     to,
     published: true,
@@ -100,7 +100,7 @@ test("buildAdminTestimonialFilter applies reviewer, rating, customer, and date f
   assert.deepEqual(filter.published, true);
   assert.deepEqual(filter.reviewer_name, "Dana P");
   assert.deepEqual(filter.rating, 1);
-  assert.equal(String(filter.customer), customer.toHexString());
+  assert.equal(String(filter.customer), String(customer));
   assert.deepEqual(filter.review_date, { $gte: from, $lte: to });
   assert.ok(Array.isArray(filter.$or));
   assert.match(String((filter.$or as Array<Record<string, RegExp>>)[0]?.reviewer_name), /Dana P/);
@@ -243,7 +243,7 @@ test("listAdminTestimonials returns admin fields and applies requested sort", as
   assert.equal(findCapture.skip, 0);
   assert.equal(findCapture.limit, 50);
   assert.equal(result.items[0]?.source_company, "Vantage Movers, LLC");
-  assert.equal(result.items[0]?.customer?.id, customerId.toHexString());
+  assert.equal(result.items[0]?.customer?.id, String(customerId));
 });
 
 test("listAdminTestimonialReviewerNames returns sorted unique non-empty names", async () => {
