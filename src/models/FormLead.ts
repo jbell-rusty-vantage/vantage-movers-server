@@ -40,7 +40,7 @@ const FormLeadSchema = new Schema(
     delivery_state: { type: String, trim: true, default: FORM_LEAD_UNKNOWN_STATE },
     move_size: { type: String, required: true, enum: MOVE_SIZES },
     move_date: { type: Date, required: true, default: Date.now },
-    ref_no: { type: String, required: true, trim: true, default: "not provided" },
+    ref_no: { type: String, trim: true, default: "not provided" },
     booked: { type: Schema.Types.ObjectId, ref: "BookedLead" },
     over_2000: { type: Boolean, default: false },
     over_4000: { type: Boolean, default: false },

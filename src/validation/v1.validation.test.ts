@@ -345,6 +345,21 @@ test("createFormLeadSchema defaults post_to_granot to false when omitted", () =>
   assert.equal(parsed.post_to_granot, false);
 });
 
+test("createFormLeadSchema defaults an omitted or blank ref_no", () => {
+  const baseLead = {
+    source_company: "main_site",
+    name: "Jane Customer",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    move_size: "Studio",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+  };
+
+  assert.equal(createFormLeadSchema.parse(baseLead).ref_no, "not provided");
+  assert.equal(createFormLeadSchema.parse({ ...baseLead, ref_no: "" }).ref_no, "not provided");
+});
+
 test("createFormLeadSchema accepts first and last name without name", () => {
   const parsed = createFormLeadSchema.parse({
     source_company: "main_site",

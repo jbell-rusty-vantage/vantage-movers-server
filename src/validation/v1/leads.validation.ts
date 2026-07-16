@@ -65,6 +65,12 @@ function requireCallLeadIdentity(value: Record<string, unknown>) {
   return Boolean(value.phone_number || value.job_no);
 }
 
+const optionalFormLeadRefNo = z.preprocess(
+  (value: string | undefined) =>
+    typeof value === "string" && value.trim() === "" ? undefined : value,
+  nonEmptyString.default("not provided"),
+);
+
 const formLeadFields = {
   source_company: sourceCompanySchema,
   company_slug: optionalString,
@@ -82,7 +88,7 @@ const formLeadFields = {
   delivery_state: optionalString,
   move_size: moveSizeSchema,
   move_date: optionalFloridaCalendarDate,
-  ref_no: nonEmptyString,
+  ref_no: optionalFormLeadRefNo,
   email: looseEmailString,
   phone_number: nonEmptyString,
   quoted: booleanInput.optional(),
@@ -94,7 +100,7 @@ export const createFormLeadSchema = z
   .object({
     ...formLeadFields,
     source_company: sourceCompanySchema.default("not_provided"),
-    ref_no: nonEmptyString.default("not provided"),
+    ref_no: optionalFormLeadRefNo,
     crm_company_label: nonEmptyString.default("Main Site Forms"),
     post_to_granot: booleanInput.default(false),
     // Accepted for logging only until Twilio campaign approval; not persisted yet.
