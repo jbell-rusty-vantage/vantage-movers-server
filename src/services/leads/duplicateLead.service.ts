@@ -43,10 +43,14 @@ export async function findDuplicateFormLeadMatch(
     return { duplicate: false, matchedBy: null, matchedLeadIds: [] };
   }
 
+  // Compose with $and so the source-scope $or (lead_source_company | source_company)
+  // is not overwritten by the email/phone $or.
   const candidates = await FormLead.find({
-    ...buildSourceMatchFilter(sourceScope),
-    duplicate: { $ne: true },
-    $or: duplicateClauses,
+    $and: [
+      buildSourceMatchFilter(sourceScope),
+      { duplicate: { $ne: true } },
+      { $or: duplicateClauses },
+    ],
   })
     .sort({ createdAt: -1 })
     .limit(50)
@@ -114,9 +118,11 @@ export async function hasFormFillForCallLead(
   }
 
   const candidates = await FormLead.find({
-    ...buildSourceMatchFilter(sourceScope),
-    duplicate: { $ne: true },
-    phone_number: buildPhoneRegex(normalizedPhone),
+    $and: [
+      buildSourceMatchFilter(sourceScope),
+      { duplicate: { $ne: true } },
+      { phone_number: buildPhoneRegex(normalizedPhone) },
+    ],
   })
     .sort({ createdAt: -1 })
     .limit(25)
@@ -150,11 +156,15 @@ export async function markMatchingCallLeadsWithFormFill(
   }
 
   const candidatesQuery = CallLead.find({
-    ...buildSourceMatchFilter(sourceScope),
-    form_fill: { $ne: true },
-    $or: [
-      { normalized_phone_number: normalizedPhone },
-      { phone_number: buildPhoneRegex(normalizedPhone) },
+    $and: [
+      buildSourceMatchFilter(sourceScope),
+      { form_fill: { $ne: true } },
+      {
+        $or: [
+          { normalized_phone_number: normalizedPhone },
+          { phone_number: buildPhoneRegex(normalizedPhone) },
+        ],
+      },
     ],
   })
     .sort({ createdAt: -1 })

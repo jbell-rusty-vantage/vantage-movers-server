@@ -7,6 +7,7 @@ type FindQuery = {
   source_company?: string;
   duplicate?: unknown;
   $or?: Array<Record<string, unknown>>;
+  $and?: Array<Record<string, unknown>>;
 };
 
 const originalUseDb = mongoose.connection.useDb;
@@ -36,9 +37,14 @@ test("form duplicate check matches existing lead by email within source company"
   );
 
   assert.equal(duplicate, true);
-  assert.equal(findQuery?.source_company, "tbm_leads");
-  assert.deepEqual(findQuery?.duplicate, { $ne: true });
-  assert.equal(findQuery?.$or?.some((clause) => clause.email === "customer@example.com"), true);
+  assert.equal(findQuery?.$and?.[0]?.source_company, "tbm_leads");
+  assert.deepEqual(findQuery?.$and?.[1]?.duplicate, { $ne: true });
+  assert.equal(
+    (findQuery?.$and?.[2]?.$or as Array<Record<string, unknown>> | undefined)?.some(
+      (clause) => clause.email === "customer@example.com",
+    ),
+    true,
+  );
 });
 
 test("form duplicate check matches existing lead by phone within source company", async () => {
@@ -62,9 +68,51 @@ test("form duplicate check matches existing lead by phone within source company"
   );
 
   assert.equal(duplicate, true);
-  assert.equal(findQuery?.source_company, "main_site");
+  assert.equal(findQuery?.$and?.[0]?.source_company, "main_site");
   assert.equal(
-    findQuery?.$or?.some((clause) => clause.phone_number instanceof RegExp),
+    (findQuery?.$and?.[2]?.$or as Array<Record<string, unknown>> | undefined)?.some(
+      (clause) => clause.phone_number instanceof RegExp,
+    ),
+    true,
+  );
+});
+
+test("form duplicate check keeps source scope when leadSourceCompany is provided", async () => {
+  let findQuery: FindQuery | undefined;
+  const leadSourceCompany = new mongoose.Types.ObjectId();
+  stubFormLeadFind([], (query) => {
+    findQuery = query;
+  });
+
+  await isDuplicateFormLead(
+    {
+      sourceCompany: "tbm_leads",
+      leadSourceCompany,
+    },
+    "9542340460",
+    "dringram91231@gmail.com",
+  );
+
+  const sourceFilter = findQuery?.$and?.[0];
+  const identifierFilter = findQuery?.$and?.[2];
+  assert.ok(sourceFilter?.$or);
+  assert.equal(
+    (sourceFilter?.$or as Array<Record<string, unknown>>).some(
+      (clause) => clause.lead_source_company === leadSourceCompany,
+    ),
+    true,
+  );
+  assert.equal(
+    (sourceFilter?.$or as Array<Record<string, unknown>>).some(
+      (clause) => clause.source_company === "tbm_leads",
+    ),
+    true,
+  );
+  assert.ok(identifierFilter?.$or);
+  assert.equal(
+    (identifierFilter?.$or as Array<Record<string, unknown>>).some(
+      (clause) => clause.email === "dringram91231@gmail.com",
+    ),
     true,
   );
 });
