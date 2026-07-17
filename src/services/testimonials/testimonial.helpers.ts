@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { TestimonialSource } from "../../config/domain";
 
 /** BBB redacts PII with the literal token "REMOVED" (sometimes "REMOVE"). */
-const BBB_REDACTION_PATTERN = /\bREMOVED\b|\bREMOVE\b/i;
+const BBB_REDACTION_PATTERN = /\b(?:REMOVED|REMOVE)/i;
 
 export function hasBbbRedaction(text: string): boolean {
   return BBB_REDACTION_PATTERN.test(text);

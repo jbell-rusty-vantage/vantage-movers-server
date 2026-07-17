@@ -424,7 +424,7 @@ test("createFormLeadSchema accepts post_to_granot string false", () => {
   assert.equal(parsed.post_to_granot, false);
 });
 
-test("createFormLeadSchema accepts sms_consent for logging-only intake", () => {
+test("createFormLeadSchema accepts boolean sms_consent", () => {
   const parsed = createFormLeadSchema.parse({
     source_company: "main_site",
     name: "Jane Customer",
@@ -438,6 +438,28 @@ test("createFormLeadSchema accepts sms_consent for logging-only intake", () => {
   });
 
   assert.equal(parsed.sms_consent, true);
+});
+
+test("createFormLeadSchema coerces string sms_consent values", () => {
+  const base = {
+    source_company: "main_site",
+    name: "Jane Customer",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    move_size: "Studio",
+    ref_no: "not provided",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+  };
+
+  assert.equal(
+    createFormLeadSchema.parse({ ...base, sms_consent: "true" }).sms_consent,
+    true,
+  );
+  assert.equal(
+    createFormLeadSchema.parse({ ...base, sms_consent: "false" }).sms_consent,
+    false,
+  );
 });
 
 test("createFormLeadSchema accepts typo emails as plain strings", () => {

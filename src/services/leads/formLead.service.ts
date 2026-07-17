@@ -1,6 +1,8 @@
 import {
   getCplForSource,
   getSheetSyncMode,
+  isTestMode,
+  shouldAllowLeadMessagingInTestMode,
   type LocalType,
   type SourceCompany,
 } from "../../config/domain";
@@ -47,6 +49,12 @@ import {
 } from "./duplicateLead.service";
 import { normalizeLeadName, normalizeLeadNameUpdate } from "./leadName.service";
 import { recordOperationalEvent } from "../observability";
+import {
+  dispatchPersistedLeadMessage,
+  persistLeadMessageIntent,
+  queueInitialLeadMessage,
+  type LeadMessagingOutcome,
+} from "../leadMessaging";
 
 export async function createFormLead(input: CreateFormLeadInput) {
   const FormLead = getFormLeadModel();
@@ -80,12 +88,13 @@ export async function createFormLead(input: CreateFormLeadInput) {
   const duplicate = duplicateMatch.duplicate;
   const shouldPostToGranot = post_to_granot && !duplicate;
   const crmLabel = sourceResolution.granularity.crm_label;
+  const messagingAllowedInRuntime =
+    !isTestMode() || shouldAllowLeadMessagingInTestMode();
 
-  // The domain document, the form-fill call-lead updates, and the durable
-  // sheet-sync outbox jobs all commit atomically (in queued mode). CRM
-  // submission and queue publishing happen only after commit so external
-  // latency/failure can never hold open or roll back the transaction.
-  const { lead, jobs } = await runSheetSyncWrite(async (session) => {
+  // A consented Lead Message forces a transaction even when Sheet Sync is
+  // legacy/disabled, so a lead can never commit without its durable message
+  // intent. External CRM/Twilio/queue calls remain post-commit.
+  const { lead, jobs, leadMessage } = await runSheetSyncWrite(async (session) => {
     const created = new FormLead({
       ...normalizedFormLeadInput,
       ...location,
@@ -124,8 +133,18 @@ export async function createFormLead(input: CreateFormLeadInput) {
     for (const job of sheetSyncJobs) {
       await persistSheetSyncIntent(job, session);
     }
-    return { lead: created, jobs: sheetSyncJobs };
-  });
+    const message = await persistLeadMessageIntent({
+      formLeadId: leadId,
+      destinationPhone: created.phone_number,
+      formInput: input,
+      duplicate: created.duplicate,
+      testMode: isTestMode(),
+      session,
+    });
+    return { lead: created, jobs: sheetSyncJobs, leadMessage: message };
+    },
+    { forceTransaction: sms_consent === true && messagingAllowedInRuntime },
+  );
 
   const leadId = lead._id.toString();
 
@@ -138,6 +157,8 @@ export async function createFormLead(input: CreateFormLeadInput) {
       phone_number: lead.phone_number,
     });
   }
+
+  const messagingResult = await dispatchLeadMessageAfterPersist(leadMessage);
 
   for (const job of jobs) {
     await finalizeSheetSync(job);
@@ -170,6 +191,8 @@ export async function createFormLead(input: CreateFormLeadInput) {
     crmSyncOk: crmResult.ok,
     crmStatus: crmResult.status,
     crmSkipped: !shouldPostToGranot,
+    messagingStatus: messagingResult.status,
+    leadMessageId: messagingResult.message_id,
     duplicate,
   });
 
@@ -265,7 +288,32 @@ export async function createFormLead(input: CreateFormLeadInput) {
     crm_sync_status: shouldPostToGranot ? (crmResult.ok ? "synced" : "failed") : "skipped",
     crm_company_label: crmResult.payload.label,
     crm_response: crmResult.responseText || crmResult.error || "",
+    messaging_status: messagingResult.status,
+    lead_message_id: messagingResult.message_id,
   };
+}
+
+async function dispatchLeadMessageAfterPersist(
+  message: Awaited<ReturnType<typeof persistLeadMessageIntent>>,
+): Promise<LeadMessagingOutcome> {
+  if (!message) return { message_id: null, status: "not_requested" };
+  if (message.status === "skipped") {
+    return { message_id: message._id.toString(), status: "skipped" };
+  }
+  try {
+    if (message.dispatch_mode === "queued") {
+      return queueInitialLeadMessage(message._id.toString());
+    }
+    return dispatchPersistedLeadMessage(message._id.toString());
+  } catch (error) {
+    logger.error({
+      err: error,
+      msg: "lead_messaging.post_persist_dispatch_failed",
+      leadMessageId: message._id.toString(),
+      leadId: message.form_lead.toString(),
+    });
+    return { message_id: message._id.toString(), status: "failed" };
+  }
 }
 
 export async function updateFormLead(id: string, input: UpdateFormLeadInput) {

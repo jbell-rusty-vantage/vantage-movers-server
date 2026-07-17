@@ -46,15 +46,27 @@ const receiverAgentFields = {
  */
 
 function requireAtLeastOneTruthySearchField(value: Record<string, unknown>) {
-  return ["ref_no", "name", "first_name", "last_name", "email", "phone_number"].some((field) =>
-    Boolean(value[field]),
-  );
+  return [
+    "ref_no",
+    "name",
+    "first_name",
+    "last_name",
+    "email",
+    "phone_number",
+  ].some((field) => Boolean(value[field]));
 }
 
-function requireAtLeastOneTruthyCallLeadSearchField(value: Record<string, unknown>) {
-  return ["phone_number", "job_no", "email", "name", "first_name", "last_name"].some((field) =>
-    Boolean(value[field]),
-  );
+function requireAtLeastOneTruthyCallLeadSearchField(
+  value: Record<string, unknown>,
+) {
+  return [
+    "phone_number",
+    "job_no",
+    "email",
+    "name",
+    "first_name",
+    "last_name",
+  ].some((field) => Boolean(value[field]));
 }
 
 function hasLeadName(value: Record<string, unknown>) {
@@ -103,7 +115,7 @@ export const createFormLeadSchema = z
     ref_no: optionalFormLeadRefNo,
     crm_company_label: nonEmptyString.default("Main Site Forms"),
     post_to_granot: booleanInput.default(false),
-    // Accepted for logging only until Twilio campaign approval; not persisted yet.
+    // Parsed here before the service applies the strict true-only messaging gate.
     sms_consent: booleanInput.optional(),
   })
   .strict()
@@ -168,7 +180,10 @@ export const createCallLeadSchema = z
     source_company: sourceCompanySchema.default("not_provided"),
   })
   .strict()
-  .refine(requireCallLeadIdentity, "Call lead requires either phone_number or job_no");
+  .refine(
+    requireCallLeadIdentity,
+    "Call lead requires either phone_number or job_no",
+  );
 
 export const updateCallLeadSchema = z
   .object({

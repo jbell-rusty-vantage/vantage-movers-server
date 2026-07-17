@@ -7,6 +7,7 @@ import { withRuntimeDomainOverrides } from "../config/domain";
 import { shouldCaptureHttp5xx } from "../config/domain/observability";
 import { logger as rootLogger } from "../logger";
 import { requireApiSecret } from "../middleware/requireApiSecret";
+import type { VantageAuthContext } from "../middleware/requireApiSecret";
 import extensionAuthRoutes from "./extension-auth.routes";
 import {
   recordOperationalEvent,
@@ -121,6 +122,8 @@ import {
   observabilityBatchDeleteSchema,
   observabilityReportsQuerySchema,
   observabilityReportRunSchema,
+  leadMessagesQuerySchema,
+  leadMessageRetrySchema,
 } from "../validation/v1.validation";
 import {
   browseAdminResource,
@@ -173,6 +176,11 @@ import {
   seedGranotCrmSources,
   uploadGranotCrmCsv,
 } from "../services/granotCrmCsv";
+import {
+  getLeadMessage,
+  listLeadMessages,
+  requestLeadMessageRetry,
+} from "../services/leadMessaging";
 
 const router = Router();
 
@@ -229,9 +237,15 @@ router.patch("/api/v1/admin/cpl-rates/:label", handleCplRateUpdate);
 router.get("/api/v1/admin/source-companies", handleLeadSourceCompaniesList);
 router.get("/api/v1/admin/source-companies/:id", handleLeadSourceCompanyDetail);
 router.post("/api/v1/admin/source-companies", handleLeadSourceCompanyCreate);
-router.patch("/api/v1/admin/source-companies/:id", handleLeadSourceCompanyUpdate);
+router.patch(
+  "/api/v1/admin/source-companies/:id",
+  handleLeadSourceCompanyUpdate,
+);
 router.get("/api/v1/admin/testimonials", handleAdminTestimonialsList);
-router.get("/api/v1/admin/testimonials/reviewer-names", handleAdminTestimonialReviewerNames);
+router.get(
+  "/api/v1/admin/testimonials/reviewer-names",
+  handleAdminTestimonialReviewerNames,
+);
 router.get("/api/v1/admin/testimonials/:id", handleAdminTestimonialDetail);
 router.get("/api/v1/admin/moving-carriers", handleMovingCarriersList);
 router.post("/api/v1/admin/moving-carriers", handleMovingCarrierCreate);
@@ -240,41 +254,77 @@ router.patch("/api/v1/admin/moving-carriers/:id", handleMovingCarrierUpdate);
 for (const resource of adminResources) {
   router.get(`/api/v1/admin/${resource}`, handleAdminBrowse(resource));
   router.get(`/api/v1/admin/${resource}/:id`, handleAdminDetail(resource));
-  router.get(`/api/v1/admin/exports/${resource}.csv`, handleAdminExport(resource));
+  router.get(
+    `/api/v1/admin/exports/${resource}.csv`,
+    handleAdminExport(resource),
+  );
 }
 for (const report of analyticsReports) {
-  router.get(`/api/v1/admin/analytics/${report}`, handleAnalyticsReport(report));
+  router.get(
+    `/api/v1/admin/analytics/${report}`,
+    handleAnalyticsReport(report),
+  );
 }
 router.get("/api/v1/admin/analytics/overview", handleOverviewReport());
-router.get("/api/v1/admin/exports/analytics/:report.csv", handleAnalyticsExport);
+router.get(
+  "/api/v1/admin/exports/analytics/:report.csv",
+  handleAnalyticsExport,
+);
 router.get("/api/v1/admin/reports/agent-sales", handleAgentSalesReport);
-router.get("/api/v1/admin/exports/reports/agent-sales.csv", handleAgentSalesReportExport);
+router.get(
+  "/api/v1/admin/exports/reports/agent-sales.csv",
+  handleAgentSalesReportExport,
+);
 
 router.get("/api/v1/admin/sheet-sync/health", handleSheetSyncHealth);
-router.get("/api/v1/admin/google-maps/geocoding-health", handleGoogleMapsGeocodingHealth);
+router.get(
+  "/api/v1/admin/google-maps/geocoding-health",
+  handleGoogleMapsGeocodingHealth,
+);
 router.get("/api/v1/admin/sheet-sync/jobs", handleSheetSyncJobs);
 router.get("/api/v1/admin/sheet-sync/runs", handleSheetSyncRuns);
 router.get("/api/v1/admin/sheet-sync/runs/:id", handleSheetSyncRunDetail);
 router.post("/api/v1/admin/sheet-sync/retry", handleSheetSyncRetry);
+router.get("/api/v1/admin/lead-messages", handleLeadMessagesList);
+router.get("/api/v1/admin/lead-messages/:id", handleLeadMessageDetail);
+router.post("/api/v1/admin/lead-messages/:id/retry", handleLeadMessageRetry);
 
 router.get("/api/v1/admin/observability/overview", handleObservabilityOverview);
 router.get("/api/v1/admin/observability/facets", handleObservabilityFacets);
 router.get("/api/v1/admin/observability/events", handleObservabilityEvents);
-router.get("/api/v1/admin/observability/events/:id", handleObservabilityEventDetail);
-router.get("/api/v1/admin/observability/incidents", handleObservabilityIncidents);
+router.get(
+  "/api/v1/admin/observability/events/:id",
+  handleObservabilityEventDetail,
+);
+router.get(
+  "/api/v1/admin/observability/incidents",
+  handleObservabilityIncidents,
+);
 router.patch(
   "/api/v1/admin/observability/incidents/status",
   handleObservabilityIncidentBatchStatus,
 );
-router.get("/api/v1/admin/observability/incidents/:id", handleObservabilityIncidentDetail);
+router.get(
+  "/api/v1/admin/observability/incidents/:id",
+  handleObservabilityIncidentDetail,
+);
 router.patch(
   "/api/v1/admin/observability/incidents/:id/status",
   handleObservabilityIncidentStatus,
 );
-router.get("/api/v1/admin/observability/notifications", handleObservabilityNotifications);
+router.get(
+  "/api/v1/admin/observability/notifications",
+  handleObservabilityNotifications,
+);
 router.get("/api/v1/admin/observability/reports", handleObservabilityReports);
-router.post("/api/v1/admin/observability/reports/run", handleObservabilityReportRun);
-router.get("/api/v1/admin/observability/reports/:id", handleObservabilityReportDetail);
+router.post(
+  "/api/v1/admin/observability/reports/run",
+  handleObservabilityReportRun,
+);
+router.get(
+  "/api/v1/admin/observability/reports/:id",
+  handleObservabilityReportDetail,
+);
 router.post(
   "/api/v1/admin/observability/:collection/delete",
   handleObservabilityBatchDelete,
@@ -283,7 +333,10 @@ router.delete(
   "/api/v1/admin/observability/:collection/:id",
   handleObservabilityRecordDelete,
 );
-router.get("/api/v1/admin/exports/observability/events.csv", handleObservabilityEventsExport);
+router.get(
+  "/api/v1/admin/exports/observability/events.csv",
+  handleObservabilityEventsExport,
+);
 router.get(
   "/api/v1/admin/exports/observability/incidents.csv",
   handleObservabilityIncidentsExport,
@@ -306,7 +359,10 @@ router.delete("/api/v1/form-leads/:id", handleDelete(deleteFormLead));
 
 router.get("/api/v1/call-leads", handleBrowseCallLeads);
 router.post("/api/v1/call-leads/search", handleSearchCallLeads);
-router.post("/api/v1/call-leads/enrichment/preview", handleCallLeadEnrichmentPreview);
+router.post(
+  "/api/v1/call-leads/enrichment/preview",
+  handleCallLeadEnrichmentPreview,
+);
 router.post("/api/v1/call-leads/enrichment/sync", handleCallLeadEnrichmentSync);
 router.post(
   "/api/v1/call-leads/booked-reconciliation/preview",
@@ -316,32 +372,62 @@ router.post(
   "/api/v1/call-leads/booked-reconciliation/sync",
   handleBookedCallLeadReconciliationSync,
 );
-router.post("/api/v1/call-leads", handleCreate(createCallLeadSchema, createCallLead));
-router.patch("/api/v1/call-leads/:id", handleUpdate(updateCallLeadSchema, updateCallLead));
+router.post(
+  "/api/v1/call-leads",
+  handleCreate(createCallLeadSchema, createCallLead),
+);
+router.patch(
+  "/api/v1/call-leads/:id",
+  handleUpdate(updateCallLeadSchema, updateCallLead),
+);
 router.delete("/api/v1/call-leads/:id", handleDelete(deleteCallLead));
 
 router.get("/api/v1/booked-leads", handleFindAll(findAllBookedLeads));
-router.post("/api/v1/booked-leads", handleCreate(createBookedLeadSchema, createBookedLead));
+router.post(
+  "/api/v1/booked-leads",
+  handleCreate(createBookedLeadSchema, createBookedLead),
+);
 router.post(
   "/api/v1/booked-leads/from-source",
   handleCreate(createBookedLeadFromSourceSchema, createBookedLeadFromSource),
 );
-router.post("/api/v1/referral-bookings", handleCreate(createReferralBookingSchema, createReferralBooking));
+router.post(
+  "/api/v1/referral-bookings",
+  handleCreate(createReferralBookingSchema, createReferralBooking),
+);
 router.post(
   "/api/v1/leadless-bookings",
   handleCreate(createLeadlessBookingSchema, createLeadlessBooking),
 );
-router.patch("/api/v1/booked-leads/:id", handleUpdate(updateBookedLeadSchema, updateBookedLead));
+router.patch(
+  "/api/v1/booked-leads/:id",
+  handleUpdate(updateBookedLeadSchema, updateBookedLead),
+);
 router.delete("/api/v1/booked-leads/:id", handleDelete(deleteBookedLead));
 
 router.get("/api/v1/cancelled-leads", handleFindAll(findAllCancelledLeads));
-router.post("/api/v1/cancelled-leads", handleCreate(createCancelledLeadSchema, createCancelledLead));
-router.patch("/api/v1/cancelled-leads/:id", handleUpdate(updateCancelledLeadSchema, updateCancelledLead));
-router.delete("/api/v1/cancelled-leads/:id", handleDelete(async (id) => deleteCancelledLead(id)));
+router.post(
+  "/api/v1/cancelled-leads",
+  handleCreate(createCancelledLeadSchema, createCancelledLead),
+);
+router.patch(
+  "/api/v1/cancelled-leads/:id",
+  handleUpdate(updateCancelledLeadSchema, updateCancelledLead),
+);
+router.delete(
+  "/api/v1/cancelled-leads/:id",
+  handleDelete(async (id) => deleteCancelledLead(id)),
+);
 
 router.get("/api/v1/customers", handleFindAll(findAllCustomers));
-router.post("/api/v1/customers", handleCreate(createCustomerSchema, createCustomer));
-router.patch("/api/v1/customers/:id", handleUpdate(updateCustomerSchema, updateCustomer));
+router.post(
+  "/api/v1/customers",
+  handleCreate(createCustomerSchema, createCustomer),
+);
+router.patch(
+  "/api/v1/customers/:id",
+  handleUpdate(updateCustomerSchema, updateCustomer),
+);
 router.delete("/api/v1/customers/:id", handleDelete(deleteCustomer));
 
 router.get("/api/v1/testimonials", handleListTestimonials);
@@ -378,7 +464,12 @@ function handleAdminDetail(resource: AdminResource) {
       const id = getValidObjectId(req);
       await connectMongo();
       const parsed = adminBrowseQuerySchema.parse(req.query);
-      const data = await getAdminResourceDetail(resource, id, parsed.database_scope, parsed);
+      const data = await getAdminResourceDetail(
+        resource,
+        id,
+        parsed.database_scope,
+        parsed,
+      );
       return res.json({ ok: true, data });
     } catch (error) {
       return sendError(req, res, error);
@@ -400,7 +491,9 @@ async function handleAdminSearch(req: Request, res: Response) {
 async function handleAdminFacets(req: Request, res: Response) {
   try {
     await connectMongo();
-    const parsed = adminBrowseQuerySchema.pick({ database_scope: true }).parse(req.query);
+    const parsed = adminBrowseQuerySchema
+      .pick({ database_scope: true })
+      .parse(req.query);
     const data = await getAdminFacets(parsed.database_scope);
     return res.json({ ok: true, data });
   } catch (error) {
@@ -475,7 +568,10 @@ async function handleCplRatesList(req: Request, res: Response) {
 
 async function handleCplRateUpdate(req: Request, res: Response) {
   try {
-    const label = (Array.isArray(req.params.label) ? req.params.label[0] : req.params.label) ?? "";
+    const label =
+      (Array.isArray(req.params.label)
+        ? req.params.label[0]
+        : req.params.label) ?? "";
     await connectMongo();
     const parsed = cplRateUpdateSchema.parse(req.body);
     const data = await updateCplRate(label, parsed.cpl);
@@ -539,7 +635,10 @@ function handleAdminExport(resource: AdminResource) {
       const parsed = adminBrowseQuerySchema.parse(req.query);
       const data = await exportAdminResourceCsv(resource, parsed);
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename="${data.filename}"`);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${data.filename}"`,
+      );
       return res.status(200).send(data.csv);
     } catch (error) {
       return sendError(req, res, error);
@@ -636,7 +735,10 @@ async function handleObservabilityIncidentStatus(req: Request, res: Response) {
   }
 }
 
-async function handleObservabilityIncidentBatchStatus(req: Request, res: Response) {
+async function handleObservabilityIncidentBatchStatus(
+  req: Request,
+  res: Response,
+) {
   try {
     const parsed = observabilityIncidentBatchStatusSchema.parse(req.body);
     const data = await updateOperationalIncidentStatuses(parsed);
@@ -687,8 +789,13 @@ async function handleObservabilityReportDetail(req: Request, res: Response) {
 
 async function handleObservabilityRecordDelete(req: Request, res: Response) {
   try {
-    const collection = observabilityDeleteCollectionSchema.parse(req.params.collection);
-    const data = await deleteObservabilityRecord(collection, getValidObjectId(req));
+    const collection = observabilityDeleteCollectionSchema.parse(
+      req.params.collection,
+    );
+    const data = await deleteObservabilityRecord(
+      collection,
+      getValidObjectId(req),
+    );
     return res.json({ ok: true, data });
   } catch (error) {
     return sendError(req, res, error);
@@ -697,7 +804,9 @@ async function handleObservabilityRecordDelete(req: Request, res: Response) {
 
 async function handleObservabilityBatchDelete(req: Request, res: Response) {
   try {
-    const collection = observabilityDeleteCollectionSchema.parse(req.params.collection);
+    const collection = observabilityDeleteCollectionSchema.parse(
+      req.params.collection,
+    );
     const parsed = observabilityBatchDeleteSchema.parse(req.body);
     const data = await deleteObservabilityRecords(collection, parsed);
     return res.json({ ok: true, data });
@@ -710,7 +819,10 @@ async function handleObservabilityReportExport(req: Request, res: Response) {
   try {
     const data = await exportReportRunCsv(getValidObjectId(req));
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${data.filename}"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${data.filename}"`,
+    );
     return res.status(200).send(data.csv);
   } catch (error) {
     return sendError(req, res, error);
@@ -722,7 +834,10 @@ async function handleObservabilityEventsExport(req: Request, res: Response) {
     const parsed = observabilityEventsQuerySchema.parse(req.query);
     const data = await exportOperationalEventsCsv(parsed);
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${data.filename}"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${data.filename}"`,
+    );
     return res.status(200).send(data.csv);
   } catch (error) {
     return sendError(req, res, error);
@@ -734,7 +849,10 @@ async function handleObservabilityIncidentsExport(req: Request, res: Response) {
     const parsed = observabilityIncidentsQuerySchema.parse(req.query);
     const data = await exportOperationalIncidentsCsv(parsed);
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${data.filename}"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${data.filename}"`,
+    );
     return res.status(200).send(data.csv);
   } catch (error) {
     return sendError(req, res, error);
@@ -783,6 +901,56 @@ async function handleSheetSyncRetry(req: Request, res: Response) {
   } catch (error) {
     return sendError(req, res, error);
   }
+}
+
+async function handleLeadMessagesList(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = leadMessagesQuerySchema.parse(req.query);
+    const data = await listLeadMessages({
+      page: parsed.page,
+      limit: parsed.limit,
+      status: parsed.status,
+      formLeadId: parsed.form_lead_id,
+      phone: parsed.phone,
+    });
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleLeadMessageDetail(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const data = await getLeadMessage(getValidObjectId(req));
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleLeadMessageRetry(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    leadMessageRetrySchema.parse(req.body);
+    const data = await requestLeadMessageRetry(
+      getValidObjectId(req),
+      describeAuthActor(req),
+    );
+    return res.status(202).json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+function describeAuthActor(req: Request): string {
+  const auth = (req as Request & { vantageAuth?: VantageAuthContext })
+    .vantageAuth;
+  if (!auth) return "unknown";
+  if (auth.kind === "user") return `user:${auth.userId}`;
+  if (auth.kind === "scoped_key") return `scoped_key:${auth.scopedKeyName}`;
+  return "api_secret";
 }
 
 async function handleGranotCrmCsvSources(req: Request, res: Response) {
@@ -862,7 +1030,10 @@ async function handleAnalyticsExport(req: Request, res: Response) {
     const parsed = analyticsQuerySchema.parse(req.query);
     const data = await exportAnalyticsReportCsv(report, parsed);
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${data.filename}"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${data.filename}"`,
+    );
     return res.status(200).send(data.csv);
   } catch (error) {
     return sendError(req, res, error);
@@ -886,7 +1057,10 @@ async function handleAgentSalesReportExport(req: Request, res: Response) {
     const parsed = agentSalesReportQuerySchema.parse(req.query);
     const data = await exportAgentSalesReportCsv(parsed);
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${data.filename}"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${data.filename}"`,
+    );
     return res.status(200).send(data.csv);
   } catch (error) {
     return sendError(req, res, error);
@@ -906,7 +1080,10 @@ function handleFindOne(findOne: (id: string) => Promise<unknown>) {
   };
 }
 
-function handleCreate<T>(schema: ZodType<T>, create: (input: T) => Promise<unknown>) {
+function handleCreate<T>(
+  schema: ZodType<T>,
+  create: (input: T) => Promise<unknown>,
+) {
   return async (req: Request, res: Response) => {
     try {
       await connectMongo();
@@ -1014,7 +1191,10 @@ async function handleAdminTestimonialDetail(req: Request, res: Response) {
   }
 }
 
-async function handleAdminTestimonialReviewerNames(_req: Request, res: Response) {
+async function handleAdminTestimonialReviewerNames(
+  _req: Request,
+  res: Response,
+) {
   try {
     await connectMongo();
     const data = await listAdminTestimonialReviewerNames();
@@ -1091,7 +1271,10 @@ async function handleCallLeadEnrichmentSync(req: Request, res: Response) {
   }
 }
 
-async function handleBookedCallLeadReconciliationPreview(req: Request, res: Response) {
+async function handleBookedCallLeadReconciliationPreview(
+  req: Request,
+  res: Response,
+) {
   try {
     await connectMongo();
     const parsed = bookedCallLeadReconciliationBatchSchema.parse(req.body);
@@ -1102,7 +1285,10 @@ async function handleBookedCallLeadReconciliationPreview(req: Request, res: Resp
   }
 }
 
-async function handleBookedCallLeadReconciliationSync(req: Request, res: Response) {
+async function handleBookedCallLeadReconciliationSync(
+  req: Request,
+  res: Response,
+) {
   try {
     await connectMongo();
     const parsed = bookedCallLeadReconciliationBatchSchema.parse(req.body);
@@ -1188,6 +1374,8 @@ async function handleCreateFormLeadRequest(
       crmSyncStatus: data.crm_sync_status,
       crmCompanyLabel: data.crm_company_label,
       crmResponse: data.crm_response,
+      messagingStatus: data.messaging_status,
+      leadMessageId: data.lead_message_id,
     });
     return res.status(201).json({ ok: true, data });
   } catch (error) {
@@ -1274,7 +1462,9 @@ function handleUpdate<T>(
   };
 }
 
-function handleDelete(remove: (id: string, cascade: boolean) => Promise<unknown>) {
+function handleDelete(
+  remove: (id: string, cascade: boolean) => Promise<unknown>,
+) {
   return async (req: Request, res: Response) => {
     try {
       const id = getValidObjectId(req);
@@ -1364,8 +1554,7 @@ async function captureRouteFailureEvent(
   const path = requestPath(req);
   const { eventKey, category, workflow } = classifyRouteFailure(path);
   const errorName = error instanceof Error ? error.name : "Error";
-  const errorCode =
-    error instanceof AppError ? error.code : undefined;
+  const errorCode = error instanceof AppError ? error.code : undefined;
   await recordOperationalEvent({
     level: "error",
     eventKey,
@@ -1390,7 +1579,11 @@ function classifyRouteFailure(path: string): {
   workflow: string;
 } {
   if (path.includes("/booked-leads")) {
-    return { eventKey: "booking.route.failed", category: "booking", workflow: "booking_route" };
+    return {
+      eventKey: "booking.route.failed",
+      category: "booking",
+      workflow: "booking_route",
+    };
   }
   if (path.includes("/cancelled-leads")) {
     return {
@@ -1400,9 +1593,17 @@ function classifyRouteFailure(path: string): {
     };
   }
   if (path.includes("/form-leads") || path.includes("/call-leads")) {
-    return { eventKey: "lead.route.failed", category: "lead", workflow: "lead_route" };
+    return {
+      eventKey: "lead.route.failed",
+      category: "lead",
+      workflow: "lead_route",
+    };
   }
-  return { eventKey: "http.request.5xx", category: "http", workflow: "http_request" };
+  return {
+    eventKey: "http.request.5xx",
+    category: "http",
+    workflow: "http_request",
+  };
 }
 
 export default router;

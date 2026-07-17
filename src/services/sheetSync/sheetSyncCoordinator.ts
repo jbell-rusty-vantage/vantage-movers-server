@@ -73,9 +73,9 @@ async function enqueueAndPublish(job: FullSheetSyncJob): Promise<void> {
 /**
  * Runs a domain write through the correct durability path for the active mode.
  *
- * - `queued`            -> opens a real Mongo transaction and passes the session
- *                          to `fn`, so the domain document writes and the outbox
- *                          job (via `persistSheetSyncIntent`) commit atomically.
+ * - `queued`/forced     -> opens a real Mongo transaction and passes the session
+ *                          to `fn`, so domain writes and durable integration
+ *                          intents commit atomically.
  * - `legacy`/`disabled` -> runs `fn` with `undefined` (no transaction), exactly
  *                          preserving the current production code path so the
  *                          default mode sees zero behavioral change.
@@ -85,8 +85,9 @@ async function enqueueAndPublish(job: FullSheetSyncJob): Promise<void> {
  */
 export async function runSheetSyncWrite<T>(
   fn: (session: ClientSession | undefined) => Promise<T>,
+  options: { forceTransaction?: boolean } = {},
 ): Promise<T> {
-  if (getSheetSyncMode() === "queued") {
+  if (getSheetSyncMode() === "queued" || options.forceTransaction === true) {
     return withTransaction((session) => fn(session));
   }
   await connectMongo();

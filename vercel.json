@@ -14,6 +14,15 @@
           "retryAfterSeconds": 30
         }
       ]
+    },
+    "api/queues/lead-messaging-consumer.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "lead-messaging-events*",
+          "retryAfterSeconds": 30
+        }
+      ]
     }
   },
   "crons": [
@@ -27,6 +36,10 @@
     },
     {
       "path": "/api/cron/sheet-sync-drain",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/lead-messaging-drain",
       "schedule": "*/5 * * * *"
     },
     {

@@ -57,6 +57,7 @@ export const OPERATIONAL_EVENT_CATEGORIES = [
   "google_sheets",
   "sheet_sync",
   "ringcentral",
+  "messaging",
   "queue",
   "cron",
   "lead",

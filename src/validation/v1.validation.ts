@@ -171,3 +171,9 @@ export {
   type ObservabilityReportsQuery,
   type ObservabilityReportRunInput,
 } from "./v1/observability.validation";
+
+export {
+  leadMessagesQuerySchema,
+  leadMessageRetrySchema,
+  type LeadMessagesQuery,
+} from "./v1/leadMessaging.validation";

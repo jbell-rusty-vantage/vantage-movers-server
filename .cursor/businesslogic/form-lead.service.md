@@ -74,7 +74,12 @@ Job: `resource: source_lead`, `operation: form_lead.create` | `form_lead.update`
 | Duplicate Form Leads | Always saved + Sheet Sync'd to `Duplicates`; **never CRM-posted** |
 | Form Fill | One-way at create: new non-duplicate Form Lead marks existing Call Leads; not run for duplicates |
 | Helpers | Do not bypass Source Company, location, duplicate, or Sheet Sync scheduling |
-| `sms_consent` | Logged only; not stored on document |
+| `sms_consent` | Boolean or `"true"`/`"false"` at the route; only parsed `true` creates a Lead Message. Duplicate leads record a skipped message; false/missing creates no message. |
+
+Lead Messaging defaults to disabled. Active sends require an E.164 destination
+matching `LEAD_MESSAGING_ALLOWED_COUNTRY_PREFIXES` (default `+1`), respect the
+per-destination cooldown and hourly capacity, and dispatch only after the
+Form Lead plus Lead Message transaction commits.
 
 ## Operational Events (create)
 
