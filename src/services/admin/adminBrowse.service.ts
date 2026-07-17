@@ -1,5 +1,6 @@
 import mongoose, { type Model, type QueryFilter } from "mongoose";
 import { resolveSourceCompany } from "../../config/domain";
+import { getLeadMessageModel } from "../../models/LeadMessage";
 import type { AdminBrowseQuery, AdminDatabaseScope } from "../../validation/v1.validation";
 import { V1ServiceError } from "../v1ServiceError";
 import {
@@ -230,7 +231,17 @@ export async function getAdminResourceDetail(
     throw new V1ServiceError("Admin record not found", 404);
   }
   const item = normalizeDoc(doc as AdminRecord, concreteScope);
-  return appendDetailRelations(resource, item, concreteScope, models, detailQuery);
+  const detailedItem = await appendDetailRelations(
+    resource,
+    item,
+    concreteScope,
+    models,
+    detailQuery,
+  );
+  if (resource === "form-leads") {
+    return (await enrichFormLeadItems([detailedItem], concreteScope, true))[0];
+  }
+  return detailedItem;
 }
 
 export async function exportAdminResourceRows(
@@ -306,7 +317,9 @@ async function browseConcrete(
       ? await enrichAgentItems(items, models, query)
       : resource === "customers"
         ? await enrichCustomerItems(items, models)
-        : items;
+        : resource === "form-leads"
+          ? await enrichFormLeadItems(items, scope, false)
+          : items;
   return {
     items: enrichedItems,
     page: query.page,
@@ -623,6 +636,76 @@ async function enrichCustomerItems(
       deposit_total: booking?.deposit_total ?? 0,
     };
   });
+}
+
+async function enrichFormLeadItems(
+  items: AdminRecord[],
+  scope: ConcreteAdminScope,
+  includeMessageData: boolean,
+): Promise<AdminRecord[]> {
+  if (scope === "historical" || items.length === 0) {
+    return items.map((item) => ({
+      ...item,
+      sms_message_sent: false,
+      ...(includeMessageData ? { sms_message: null } : {}),
+    }));
+  }
+
+  const leadIds = items
+    .map((item) => item._id)
+    .filter((id): id is string => typeof id === "string" && mongoose.isValidObjectId(id))
+    .map((id) => mongoose.Types.ObjectId.createFromHexString(id));
+  if (leadIds.length === 0) {
+    return items.map((item) => ({
+      ...item,
+      sms_message_sent: false,
+      ...(includeMessageData ? { sms_message: null } : {}),
+    }));
+  }
+
+  const LeadMessage = getLeadMessageModel();
+  if (!includeMessageData) {
+    const sentLeadRows = await LeadMessage.aggregate<{ _id: mongoose.Types.ObjectId }>([
+      {
+        $match: {
+          form_lead: { $in: leadIds },
+          twilio_message_sid: { $type: "string", $ne: "" },
+        },
+      },
+      { $group: { _id: "$form_lead" } },
+    ]).exec();
+    const sentLeadIds = new Set(sentLeadRows.map((row) => row._id.toString()));
+    return items.map((item) => ({
+      ...item,
+      sms_message_sent: sentLeadIds.has(String(item._id ?? "")),
+    }));
+  }
+
+  const leadId = leadIds[0];
+  const latestMessage = await LeadMessage.findOne({ form_lead: leadId })
+    .sort({ createdAt: -1 })
+    .lean()
+    .exec();
+  const message = latestMessage
+    ? normalizeLeadMessage(latestMessage as unknown as AdminRecord)
+    : undefined;
+  const sentMessage = await LeadMessage.exists({
+    form_lead: leadId,
+    twilio_message_sid: { $type: "string", $ne: "" },
+  });
+  return items.map((item) => ({
+    ...item,
+    sms_message_sent: Boolean(sentMessage),
+    sms_message: message ?? null,
+  }));
+}
+
+function normalizeLeadMessage(message: AdminRecord): AdminRecord {
+  return {
+    ...message,
+    _id: String(message._id),
+    form_lead: String(message.form_lead),
+  };
 }
 
 function normalizeDoc(doc: AdminRecord, scope: ConcreteAdminScope): AdminRecord {

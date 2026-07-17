@@ -6,6 +6,7 @@ import { Agent } from "../../models/Agent";
 import { BookedLead } from "../../models/BookedLead";
 import { CallLead } from "../../models/CallLead";
 import { FormLead } from "../../models/FormLead";
+import { getLeadMessageModel } from "../../models/LeadMessage";
 import { registerHistoricalModels } from "../../models/historical";
 import { toCsv } from "../../utils/csv";
 import {
@@ -31,6 +32,11 @@ type QueryCapture = {
 const originalFormLeadFind = FormLead.find as unknown;
 const originalFormLeadFindById = FormLead.findById as unknown;
 const originalFormLeadCount = FormLead.countDocuments as unknown;
+const LeadMessage = getLeadMessageModel();
+const originalLeadMessageFind = LeadMessage.find as unknown;
+const originalLeadMessageFindOne = LeadMessage.findOne as unknown;
+const originalLeadMessageExists = LeadMessage.exists as unknown;
+const originalLeadMessageAggregate = LeadMessage.aggregate as unknown;
 const originalCallLeadFind = CallLead.find as unknown;
 const originalCallLeadCount = CallLead.countDocuments as unknown;
 const originalAgentFind = Agent.find as unknown;
@@ -49,6 +55,10 @@ afterEach(() => {
   (FormLead as unknown as MutableModel).find = originalFormLeadFind;
   (FormLead as unknown as MutableModel).findById = originalFormLeadFindById;
   (FormLead as unknown as MutableModel).countDocuments = originalFormLeadCount;
+  (LeadMessage as unknown as MutableModel).find = originalLeadMessageFind;
+  (LeadMessage as unknown as MutableModel).findOne = originalLeadMessageFindOne;
+  (LeadMessage as unknown as MutableModel).exists = originalLeadMessageExists;
+  (LeadMessage as unknown as MutableModel).aggregate = originalLeadMessageAggregate;
   (CallLead as unknown as MutableModel).find = originalCallLeadFind;
   (CallLead as unknown as MutableModel).countDocuments = originalCallLeadCount;
   (Agent as unknown as MutableModel).find = originalAgentFind;
@@ -77,6 +87,7 @@ test("admin browse builds filters, pagination, sorting, and response shape", asy
     },
   ]);
   stubCount(FormLead, 9);
+  stubAggregateExec(LeadMessage, [{ _id: id }]);
 
   const query = adminBrowseQuerySchema.parse({
     q: "Jane",
@@ -95,6 +106,7 @@ test("admin browse builds filters, pagination, sorting, and response shape", asy
   assert.equal(result.has_next_page, true);
   assert.equal(result.items[0]._id, id.toString());
   assert.equal(result.items[0].database_scope, "production");
+  assert.equal(result.items[0].sms_message_sent, true);
   assert.deepEqual(capture.sort, { timestamp: 1 });
   assert.equal(capture.skip, 3);
   assert.equal(capture.limit, 3);
@@ -303,6 +315,14 @@ test("admin detail lookup returns normalized production record", async () => {
     _id: id,
     name: "Detail Customer",
   });
+  stubFindOne(LeadMessage, {
+    _id: new mongoose.Types.ObjectId(),
+    form_lead: id,
+    status: "delivered",
+    body: "Exact persisted SMS body",
+    twilio_message_sid: "SM-admin-detail",
+  });
+  stubExists(LeadMessage, true);
 
   const detail = await getAdminResourceDetail(
     "form-leads",
@@ -312,6 +332,11 @@ test("admin detail lookup returns normalized production record", async () => {
 
   assert.equal(detail._id, id.toString());
   assert.equal(detail.database_scope, "production");
+  assert.equal(detail.sms_message_sent, true);
+  assert.equal(
+    (detail.sms_message as Record<string, unknown>).body,
+    "Exact persisted SMS body",
+  );
   assert.deepEqual(capture.populated, ["booked", "cancelled"]);
 });
 
@@ -419,6 +444,7 @@ test("admin CSV export uses browse rows and escapes CSV body", async () => {
     },
   ]);
   stubCount(FormLead, 1);
+  stubAggregateExec(LeadMessage, []);
 
   const query = adminBrowseQuerySchema.parse({ limit: 10 });
   const result = await exportAdminResourceCsv("form-leads", query);
@@ -457,6 +483,15 @@ function stubFindById(
   };
 }
 
+function stubFindOne(model: unknown, doc: Record<string, unknown> | null) {
+  (model as MutableModel).findOne = () => chain({ populated: [] }, doc);
+}
+
+function stubExists(model: unknown, exists: boolean) {
+  (model as MutableModel).exists = async () =>
+    exists ? { _id: new mongoose.Types.ObjectId() } : null;
+}
+
 function stubCount(model: unknown, count: number) {
   (model as MutableModel).countDocuments = () => ({
     exec: async () => count,
@@ -476,6 +511,12 @@ function stubAggregate(
   };
 }
 
+function stubAggregateExec(model: unknown, rows: Record<string, unknown>[]) {
+  (model as MutableModel).aggregate = () => ({
+    exec: async () => rows,
+  });
+}
+
 function chain(capture: QueryCapture, result: unknown) {
   return {
     sort(sort: unknown) {
@@ -492,6 +533,9 @@ function chain(capture: QueryCapture, result: unknown) {
     },
     populate(path: string) {
       capture.populated.push(path);
+      return this;
+    },
+    select() {
       return this;
     },
     lean() {

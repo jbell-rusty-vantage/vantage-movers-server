@@ -409,7 +409,7 @@ export async function applyTwilioStatusCallback(input: {
       { twilio_message_sids: input.messageSid },
     ],
   })
-    .select("_id twilio_message_sid")
+    .select("_id form_lead to from channel purpose twilio_message_sid")
     .lean();
   if (!message) return false;
 
@@ -431,6 +431,7 @@ export async function applyTwilioStatusCallback(input: {
         },
       },
     );
+    await recordStatusCallbackEvent(message, input, incoming, false);
     return true;
   }
 
@@ -444,6 +445,7 @@ export async function applyTwilioStatusCallback(input: {
         },
       },
     );
+    await recordStatusCallbackEvent(message, input, incoming, false);
     return true;
   }
   const allowedCurrent = Object.entries(PROVIDER_STATUS_RANK)
@@ -455,7 +457,7 @@ export async function applyTwilioStatusCallback(input: {
         ),
     )
     .map(([status]) => status);
-  await LeadMessage.updateOne(
+  const updateResult = await LeadMessage.updateOne(
     {
       _id: message._id,
       twilio_message_sid: input.messageSid,
@@ -478,6 +480,12 @@ export async function applyTwilioStatusCallback(input: {
         status_history: { $each: [statusEvent], $slice: -50 },
       },
     },
+  );
+  await recordStatusCallbackEvent(
+    message,
+    input,
+    incoming,
+    updateResult.modifiedCount === 1,
   );
   return true;
 }
@@ -758,7 +766,65 @@ async function recordMessagingEvent(
         ? "Lead message accepted by provider."
         : "Lead message dispatch failed.",
     entity: { type: "form_lead", id: message.form_lead.toString() },
-    details: { lead_message_id: message._id.toString(), ...details },
+    leadIdentity: { phone: message.to },
+    details: {
+      lead_message_id: message._id.toString(),
+      channel: message.channel,
+      purpose: message.purpose,
+      to: message.to,
+      from: message.from,
+      ...details,
+    },
     notificationCandidate: false,
+  });
+}
+
+async function recordStatusCallbackEvent(
+  message: Pick<
+    LeadMessageDocument,
+    "_id" | "form_lead" | "to" | "from" | "channel" | "purpose"
+  >,
+  input: {
+    messageSid: string;
+    messageStatus: string;
+    errorCode?: number | null;
+    errorMessage?: string | null;
+  },
+  providerStatus: string,
+  applied: boolean,
+): Promise<void> {
+  const failed = ["failed", "undelivered", "canceled"].includes(providerStatus);
+  const deliveryFailed = failed && applied;
+  await recordOperationalEvent({
+    level: deliveryFailed ? "error" : "info",
+    eventKey: deliveryFailed
+      ? "lead_message.delivery_failed"
+      : applied
+        ? "lead_message.status_updated"
+        : "lead_message.status_ignored",
+    category: "messaging",
+    workflow: "lead_message_delivery",
+    summary: deliveryFailed
+      ? `Lead message delivery changed to ${providerStatus}.`
+      : applied
+        ? `Lead message status changed to ${providerStatus}.`
+        : `Lead message status ${providerStatus} was received but not applied.`,
+    entity: { type: "form_lead", id: message.form_lead.toString() },
+    leadIdentity: { phone: message.to },
+    details: {
+      lead_message_id: message._id.toString(),
+      twilio_message_sid: input.messageSid,
+      provider_status: providerStatus,
+      status_applied: applied,
+      channel: message.channel,
+      purpose: message.purpose,
+      to: message.to,
+      from: message.from,
+      error_code: input.errorCode ?? null,
+      error_message: input.errorMessage ?? null,
+    },
+    errorMessage: deliveryFailed ? input.errorMessage ?? providerStatus : null,
+    notificationCandidate: false,
+    reportable: applied,
   });
 }
