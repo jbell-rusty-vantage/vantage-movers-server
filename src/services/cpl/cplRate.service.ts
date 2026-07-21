@@ -116,7 +116,7 @@ export async function updateCplRate(label: string, cpl: number): Promise<UpdateC
         ...(definition.local ? { local: definition.local } : { local: undefined }),
       },
     },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
+    { returnDocument: "after", upsert: true, setDefaultsOnInsert: true },
   ).exec();
 
   invalidateCplRateCache();

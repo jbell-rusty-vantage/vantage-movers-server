@@ -133,7 +133,7 @@ export async function dispatchPersistedLeadMessage(
       },
       $inc: { attempt_count: 1 },
     },
-    { new: true },
+    { returnDocument: "after" },
   );
   if (!message) {
     const existing = await LeadMessage.findById(messageId);
@@ -543,7 +543,7 @@ export async function requestLeadMessageRetry(
       },
       $inc: { manual_retry_count: 1 },
     },
-    { new: true },
+    { returnDocument: "after" },
   );
   if (!message) {
     const existing = await LeadMessage.findById(id)
@@ -676,7 +676,7 @@ export async function reserveLeadMessagingCapacity(
       },
       $inc: { count: 1 },
     },
-    { upsert: true, new: true, session },
+    { upsert: true, returnDocument: "after", session },
   );
   if (hourly.count > getLeadMessagingHourlyLimit()) {
     return "hourly_capacity_reached";
@@ -711,7 +711,7 @@ export async function reserveLeadMessagingCapacity(
         },
       },
     ],
-    { upsert: true, new: true, session, updatePipeline: true },
+    { upsert: true, returnDocument: "after", session, updatePipeline: true },
   );
   if (reservation.last_decision_token !== decisionToken) {
     return "destination_cooldown";
