@@ -339,10 +339,13 @@ function applyResourceFilter(
       query.duplicate === true ? { duplicate: true } : { duplicate: { $ne: true } };
     return mergeFilters(
       mergeFilters(
-        mergeFilters(filter, duplicateClause),
-        receiverAgentFilterClause(query),
+        mergeFilters(
+          mergeFilters(filter, duplicateClause),
+          receiverAgentFilterClause(query),
+        ),
+        leadSourceCompanyFilterClause(query),
       ),
-      leadSourceCompanyFilterClause(query),
+      pastMoveDateFilterClause(resource, query),
     );
   }
 
@@ -378,6 +381,38 @@ function leadSourceCompanyFilterClause(query: AdminBrowseQuery): AdminFilter {
   }
   return {
     lead_source_company: new mongoose.mongo.ObjectId(leadSourceCompany),
+  };
+}
+
+/**
+ * Form leads whose chosen move_date is at least one calendar day before the
+ * submission `timestamp`. Both fields store Florida calendar components as UTC
+ * date parts, so comparing move_date (UTC midnight) to the UTC start of the
+ * timestamp's calendar day matches owner-facing "day behind" semantics.
+ */
+function pastMoveDateFilterClause(
+  resource: AdminResource,
+  query: AdminBrowseQuery,
+): AdminFilter {
+  if (resource !== "form-leads" || typeof query.past_move_date !== "boolean") {
+    return {};
+  }
+
+  const moveDateBeforeCreated = {
+    $lt: [
+      "$move_date",
+      {
+        $dateFromParts: {
+          year: { $year: "$timestamp" },
+          month: { $month: "$timestamp" },
+          day: { $dayOfMonth: "$timestamp" },
+        },
+      },
+    ],
+  };
+
+  return {
+    $expr: query.past_move_date ? moveDateBeforeCreated : { $not: [moveDateBeforeCreated] },
   };
 }
 

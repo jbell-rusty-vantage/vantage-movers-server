@@ -129,6 +129,42 @@ test("admin form lead browse excludes duplicates by default", async () => {
   assert.doesNotMatch(filterPreview, /duplicate:\s*true/);
 });
 
+test("admin form lead browse filters past move dates relative to timestamp", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(FormLead, capture, []);
+  stubCount(FormLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({
+    past_move_date: "true",
+    limit: 10,
+  });
+  await browseAdminResource("form-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /\$expr/);
+  assert.match(filterPreview, /move_date/);
+  assert.match(filterPreview, /\$dateFromParts/);
+  assert.match(filterPreview, /timestamp/);
+  assert.doesNotMatch(filterPreview, /\$not/);
+});
+
+test("admin form lead browse can invert the past move date filter", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(FormLead, capture, []);
+  stubCount(FormLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({
+    past_move_date: "false",
+    limit: 10,
+  });
+  await browseAdminResource("form-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /\$expr/);
+  assert.match(filterPreview, /\$not/);
+  assert.match(filterPreview, /move_date/);
+});
+
 test("admin form lead browse filters receiver agent by ObjectId equality", async () => {
   const capture: QueryCapture = { populated: [] };
   const receiverAgentId = new mongoose.Types.ObjectId();

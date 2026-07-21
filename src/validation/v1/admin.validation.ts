@@ -78,6 +78,8 @@ const adminQueryBase = {
   ref_no: optionalTrimmedString,
   move_size: optionalTrimmedString,
   duplicate: booleanInput.optional(),
+  /** Form leads only: move_date calendar day is ≥1 day before submission `timestamp`. */
+  past_move_date: booleanInput.optional(),
   active: booleanInput.optional(),
   role: optionalTrimmedString,
   limit: z.coerce.number().int().min(1).max(250).default(50),
