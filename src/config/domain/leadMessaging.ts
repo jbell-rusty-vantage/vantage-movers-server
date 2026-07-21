@@ -71,6 +71,51 @@ export function getLeadMessagingCredentials(): {
   };
 }
 
+export const DEFAULT_TWILIO_VOICE_FORWARD_TO = "+18884862499";
+export const DEFAULT_TWILIO_VOICE_WEBHOOK_URL =
+  "https://vantage-movers-main-server.vercel.app/api/webhooks/twilio/voice";
+
+export function getTwilioVoiceConfig(): {
+  fromNumber: string;
+  forwardTo: string;
+  webhookUrl: string;
+  statusCallbackUrl: string;
+  completedCallbackUrl: string;
+} {
+  const webhookUrl =
+    process.env.TWILIO_VOICE_WEBHOOK_URL?.trim() ||
+    DEFAULT_TWILIO_VOICE_WEBHOOK_URL;
+  const parsedWebhookUrl = new URL(webhookUrl);
+  const callbackBase = parsedWebhookUrl.pathname.replace(/\/$/, "");
+  const fromNumber = required("TWILIO_FROM_NUMBER");
+  const forwardTo =
+    process.env.TWILIO_VOICE_FORWARD_TO?.trim() ||
+    DEFAULT_TWILIO_VOICE_FORWARD_TO;
+
+  if (!/^\+[1-9]\d{7,14}$/.test(forwardTo)) {
+    throw new Error("TWILIO_VOICE_FORWARD_TO must be an E.164 phone number");
+  }
+  if (digits(fromNumber) === digits(forwardTo)) {
+    throw new Error("TWILIO_VOICE_FORWARD_TO cannot equal TWILIO_FROM_NUMBER");
+  }
+
+  const callbackUrl = (suffix: string) => {
+    const url = new URL(parsedWebhookUrl.toString());
+    url.pathname = `${callbackBase}/${suffix}`;
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  };
+
+  return {
+    fromNumber,
+    forwardTo,
+    webhookUrl: parsedWebhookUrl.toString(),
+    statusCallbackUrl: callbackUrl("status"),
+    completedCallbackUrl: callbackUrl("completed"),
+  };
+}
+
 export function getLeadMessagingQueueTopic(): string {
   const explicit = process.env.LEAD_MESSAGING_QUEUE_TOPIC?.trim();
   if (explicit) return explicit;
@@ -123,6 +168,10 @@ function required(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is not set`);
   return value;
+}
+
+function digits(value: string): string {
+  return value.replace(/\D/g, "");
 }
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {

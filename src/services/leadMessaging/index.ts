@@ -15,3 +15,8 @@ export {
 } from "./leadMessaging.service";
 export { buildLeadConfirmationMessage } from "./messageBuilder";
 export { validateTwilioWebhook } from "./twilioAdapter";
+export {
+  buildTwilioVoiceCompletedResponse,
+  buildTwilioVoiceForwardResponse,
+  isExpectedTwilioVoiceDestination,
+} from "./twilioVoice";

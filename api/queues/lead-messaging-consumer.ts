@@ -6,7 +6,12 @@ import { runLeadMessagingDrain } from "../../src/services/leadMessaging";
 const queue = new QueueClient();
 
 export default queue.handleNodeCallback(async () => {
-  await connectMongo();
-  const summary = await runLeadMessagingDrain("queue");
-  logger.info({ msg: "lead_messaging.consumer.drained", ...summary });
+  try {
+    await connectMongo();
+    const summary = await runLeadMessagingDrain("queue");
+    logger.info({ msg: "lead_messaging.consumer.drained", ...summary });
+  } catch (error) {
+    logger.error({ err: error, msg: "lead_messaging.consumer.failed" });
+    throw error;
+  }
 });

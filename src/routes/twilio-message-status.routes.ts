@@ -5,6 +5,7 @@ import {
   applyTwilioStatusCallback,
   validateTwilioWebhook,
 } from "../services/leadMessaging";
+import { maskPhoneForLog } from "../utils/logging/sanitizeFormLeadForLog";
 
 const router = Router();
 
@@ -23,13 +24,30 @@ router.post(
       });
       return res.status(500).send("Webhook configuration error");
     }
-    if (!valid) return res.status(403).send("Forbidden");
+    if (!valid) {
+      logger.warn({ msg: "twilio.message_status.signature_invalid" });
+      return res.status(403).send("Forbidden");
+    }
 
     const messageSid = params.MessageSid;
     const messageStatus = params.MessageStatus;
     if (!messageSid || !messageStatus) {
+      logger.warn({
+        msg: "twilio.message_status.missing_params",
+        has_message_sid: Boolean(messageSid),
+        has_message_status: Boolean(messageStatus),
+      });
       return res.status(400).send("Missing MessageSid or MessageStatus");
     }
+
+    logger.info({
+      msg: "twilio.message_status.received",
+      message_sid: messageSid,
+      message_status: messageStatus,
+      error_code: parseOptionalNumber(params.ErrorCode),
+      to: params.To ? maskPhoneForLog(params.To) : undefined,
+      from: params.From ? maskPhoneForLog(params.From) : undefined,
+    });
 
     try {
       await connectMongo();
@@ -39,7 +57,19 @@ router.post(
         errorCode: parseOptionalNumber(params.ErrorCode),
         errorMessage: params.ErrorMessage || null,
       });
-      if (!matched) return res.status(404).send("Message not recorded yet");
+      if (!matched) {
+        logger.warn({
+          msg: "twilio.message_status.not_found",
+          message_sid: messageSid,
+          message_status: messageStatus,
+        });
+        return res.status(404).send("Message not recorded yet");
+      }
+      logger.info({
+        msg: "twilio.message_status.processed",
+        message_sid: messageSid,
+        message_status: messageStatus,
+      });
       return res.status(204).send();
     } catch (error) {
       logger.error({ err: error, msg: "lead_messaging.callback.failed" });

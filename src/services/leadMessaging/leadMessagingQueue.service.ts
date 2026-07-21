@@ -22,6 +22,11 @@ export async function publishLeadMessagingWakeup(
       { kind: "lead_messaging_wakeup", reason },
       { idempotencyKey },
     );
+    logger.info({
+      msg: "lead_messaging.queue.published",
+      reason,
+      idempotency_key: idempotencyKey ?? null,
+    });
     return true;
   } catch (error) {
     logger.error({

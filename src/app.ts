@@ -14,6 +14,7 @@ import ringCentralWebhookRoutes from "./routes/ringcentral-webhook.routes";
 import sheetSyncCronRoutes from "./routes/sheet-sync-cron.routes";
 import leadMessagingCronRoutes from "./routes/lead-messaging-cron.routes";
 import twilioMessageStatusRoutes from "./routes/twilio-message-status.routes";
+import twilioVoiceRoutes from "./routes/twilio-voice.routes";
 import v1Routes from "./routes/v1.routes";
 
 const app = express();
@@ -43,6 +44,7 @@ app.use(sheetSyncCronRoutes);
 app.use(leadMessagingCronRoutes);
 app.use(notificationCronRoutes);
 app.use(twilioMessageStatusRoutes);
+app.use(twilioVoiceRoutes);
 app.use(v1Routes);
 
 app.get("/", (_req: Request, res: Response) => {

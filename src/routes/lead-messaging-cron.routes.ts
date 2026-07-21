@@ -12,6 +12,7 @@ router.all(
     try {
       await connectMongo();
       const summary = await runLeadMessagingDrain("cron");
+      logger.info({ msg: "lead_messaging.cron.completed", ...summary });
       return res.json({ ok: true, summary });
     } catch (error) {
       logger.error({ err: error, msg: "lead_messaging.cron.failed" });
