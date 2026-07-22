@@ -94,12 +94,15 @@ export async function createFormLead(input: CreateFormLeadInput) {
   // A consented Lead Message forces a transaction even when Sheet Sync is
   // legacy/disabled, so a lead can never commit without its durable message
   // intent. External CRM/Twilio/queue calls remain post-commit.
+  const lid = normalizedFormLeadInput.lid?.trim() || undefined;
+
   const { lead, jobs, leadMessage } = await runSheetSyncWrite(async (session) => {
     const created = new FormLead({
       ...normalizedFormLeadInput,
       ...location,
       ...sourceAssignment,
       local,
+      lid,
       ref_no: normalizedFormLeadInput.ref_no?.trim() || "not provided",
       timestamp: toFloridaTimestamp(normalizedFormLeadInput.timestamp),
       move_date: normalizedFormLeadInput.move_date ?? new Date(),

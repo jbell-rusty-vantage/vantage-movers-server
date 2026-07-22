@@ -101,6 +101,7 @@ const formLeadFields = {
   move_size: moveSizeSchema,
   move_date: optionalFloridaCalendarDate,
   ref_no: optionalFormLeadRefNo,
+  lid: optionalString,
   email: looseEmailString,
   phone_number: nonEmptyString,
   quoted: booleanInput.optional(),

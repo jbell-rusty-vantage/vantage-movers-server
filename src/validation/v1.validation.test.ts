@@ -290,8 +290,8 @@ test("createFormLeadSchema does not accept bad_lead from clients", () => {
   assert.equal(parsed.success, false);
 });
 
-test("createFormLeadSchema does not accept lid from clients", () => {
-  const parsed = createFormLeadSchema.safeParse({
+test("createFormLeadSchema accepts optional lid from clients", () => {
+  const parsed = createFormLeadSchema.parse({
     source_company: "main_site",
     name: "Jane Customer",
     pickup_zip: "10001",
@@ -303,7 +303,7 @@ test("createFormLeadSchema does not accept lid from clients", () => {
     lid: "LIDabc123",
   });
 
-  assert.equal(parsed.success, false);
+  assert.equal(parsed.lid, "LIDabc123");
 });
 
 test("updateFormLeadSchema accepts duplicate for backfill and admin patches", () => {
