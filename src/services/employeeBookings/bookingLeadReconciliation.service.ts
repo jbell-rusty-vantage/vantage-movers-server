@@ -132,14 +132,24 @@ export async function searchBookingLeadCandidates(
   caseId: string,
   query: BookingLeadCandidateSearchInput,
 ) {
-  const caseDoc = await BookingLeadReconciliationCase.findById(caseId).lean().exec();
+  const caseDoc = await BookingLeadReconciliationCase.findById(caseId)
+    .populate("booking")
+    .lean()
+    .exec();
   if (!caseDoc) {
     throw new NotFoundError("Booking lead reconciliation case not found");
   }
+  const booking = (caseDoc as any).booking;
+  if (!booking?._id) {
+    throw new NotFoundError("Booked lead not found");
+  }
+  const prepared = preparedFromCase(caseDoc);
   const results = await searchCandidates(query);
   const next = results.length > query.limit ? results[query.limit - 1] : undefined;
   return {
-    items: results.slice(0, query.limit),
+    items: results
+      .slice(0, query.limit)
+      .map((lead) => toLeadSearchResult(lead, booking, prepared)),
     next_cursor:
       next?.createdAt && next?._id
         ? encodeDateIdCursor(next.createdAt, String(next._id))
@@ -616,7 +626,7 @@ async function searchCandidates(query: BookingLeadCandidateSearchInput) {
       ? {
           createdAt: {
             ...(query.from ? { $gte: query.from } : {}),
-            ...(query.to ? { $lte: query.to } : {}),
+            ...(query.to ? { $lt: startOfNextUtcDay(query.to) } : {}),
           },
         }
       : {};
@@ -638,7 +648,7 @@ async function searchCandidates(query: BookingLeadCandidateSearchInput) {
     models.map(async ([leadModel, Model]) => {
       const docs = await (Model as any)
         .find(filter)
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: -1, _id: -1 })
         .limit(query.limit + 1)
         .lean()
         .exec();
@@ -851,6 +861,41 @@ function deriveLiveLeadWarnings(
   return [...warnings].sort();
 }
 
+function toLeadSearchResult(
+  lead: any,
+  booking: any,
+  prepared: PreparedEmployeeBookingSubmission,
+) {
+  const warnings = deriveLiveLeadWarnings(
+    lead,
+    lead.lead_model,
+    booking,
+    prepared,
+  );
+  const id = String(lead._id);
+  return {
+    id,
+    _id: id,
+    lead_model: lead.lead_model,
+    name: lead.name,
+    phone_number: lead.phone_number,
+    email: lead.email,
+    lid: lead.lid,
+    job_no: lead.job_no,
+    duplicate: lead.duplicate === true,
+    booked: lead.booked ? String(lead.booked) : false,
+    cancelled: lead.cancelled ? String(lead.cancelled) : false,
+    is_current_attachment:
+      Boolean(lead.booked) && String(lead.booked) === String(booking._id),
+    source_company:
+      lead.source_company_label_snapshot ?? lead.source_company,
+    source_granularity_key: lead.source_granularity_key,
+    createdAt: lead.createdAt,
+    updatedAt: lead.updatedAt,
+    warnings,
+  };
+}
+
 function assertLeadAttachable(
   lead: any,
   booking: any,
@@ -906,4 +951,14 @@ function compareCreatedAtDesc(
   const timeDelta =
     (right.createdAt?.getTime() ?? 0) - (left.createdAt?.getTime() ?? 0);
   return timeDelta !== 0 ? timeDelta : right._id.localeCompare(left._id);
+}
+
+function startOfNextUtcDay(value: Date): Date {
+  return new Date(
+    Date.UTC(
+      value.getUTCFullYear(),
+      value.getUTCMonth(),
+      value.getUTCDate() + 1,
+    ),
+  );
 }

@@ -95,8 +95,9 @@ test("assertAllowedCaseAction allows only valid transitions", () => {
   assert.doesNotThrow(() => assertAllowedCaseAction("pending", "dismiss"));
   assert.doesNotThrow(() => assertAllowedCaseAction("pending", "update_pending"));
   assert.doesNotThrow(() => assertAllowedCaseAction("resolved", "reopen"));
+  assert.doesNotThrow(() => assertAllowedCaseAction("dismissed", "attach_existing"));
   assert.throws(() => assertAllowedCaseAction("pending", "reopen"), /does not allow reopen/);
-  assert.throws(() => assertAllowedCaseAction("dismissed", "attach_existing"), /does not allow attach_existing/);
+  assert.throws(() => assertAllowedCaseAction("resolved", "attach_existing"), /does not allow attach_existing/);
 });
 
 test("assertLiveBookingState blocks cancelled and invalid booking states", () => {
@@ -170,15 +171,32 @@ test("assertLiveBookingState blocks cancelled and invalid booking states", () =>
 
 test("applyCursorFilter uses date plus id tie-break", () => {
   const at = new Date("2026-07-23T12:00:00.000Z");
-  const cursor = decodeDateIdCursor(encodeDateIdCursor(at, "b"))!;
+  const ids = [
+    "64c0f47e4d8b0e1111111111",
+    "64c0f47e4d8b0e2222222222",
+    "64c0f47e4d8b0e3333333333",
+  ];
+  const cursor = decodeDateIdCursor(encodeDateIdCursor(at, ids[1]!))!;
   const filtered = applyCursorFilter(
     [
-      { id: "a", sortDate: at },
-      { id: "b", sortDate: at },
-      { id: "c", sortDate: at },
+      { id: ids[0]!, sortDate: at },
+      { id: ids[1]!, sortDate: at },
+      { id: ids[2]!, sortDate: at },
     ],
     cursor,
     "asc",
   );
-  assert.deepEqual(filtered.map((item) => item.id), ["c"]);
+  assert.deepEqual(filtered.map((item) => item.id), [ids[2]]);
+});
+
+test("decodeDateIdCursor rejects malformed dates and object ids", () => {
+  const malformedDate = Buffer.from(
+    JSON.stringify({ date: "not-a-date", id: "64c0f47e4d8b0e1111111111" }),
+  ).toString("base64url");
+  const malformedId = Buffer.from(
+    JSON.stringify({ date: "2026-07-23T12:00:00.000Z", id: "not-an-object-id" }),
+  ).toString("base64url");
+
+  assert.throws(() => decodeDateIdCursor(malformedDate), /Invalid cursor/);
+  assert.throws(() => decodeDateIdCursor(malformedId), /Invalid cursor/);
 });

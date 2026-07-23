@@ -107,6 +107,7 @@ export function assertAllowedCaseAction(
       ["dismiss", "attach_existing", "create_and_attach", "update_pending"].includes(
         action,
       )) ||
+    (status === "dismissed" && action === "attach_existing") ||
     ((status === "resolved" || status === "dismissed") &&
       ["reassign", "reopen"].includes(action));
   if (!allowed) {
@@ -179,7 +180,15 @@ export function decodeDateIdCursor(
       date: string;
       id: string;
     };
-    return { date: new Date(parsed.date), id: parsed.id };
+    const date = new Date(parsed.date);
+    if (
+      Number.isNaN(date.getTime()) ||
+      typeof parsed.id !== "string" ||
+      !/^[a-f\d]{24}$/i.test(parsed.id)
+    ) {
+      throw new Error("Malformed cursor payload");
+    }
+    return { date, id: parsed.id };
   } catch {
     throw new V1ServiceError("Invalid cursor", 400);
   }
