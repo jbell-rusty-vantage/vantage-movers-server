@@ -83,6 +83,12 @@ const optionalFormLeadRefNo = z.preprocess(
   nonEmptyString.default("not provided"),
 );
 
+const optionalLeadId = z.preprocess(
+  (value: unknown) =>
+    typeof value === "string" && value.trim() === "" ? undefined : value,
+  z.string().trim().regex(/^LID[0-9a-f]{13}$/).optional(),
+);
+
 const formLeadFields = {
   source_company: sourceCompanySchema,
   company_slug: optionalString,
@@ -101,7 +107,7 @@ const formLeadFields = {
   move_size: moveSizeSchema,
   move_date: optionalFloridaCalendarDate,
   ref_no: optionalFormLeadRefNo,
-  lid: optionalString,
+  lid: optionalLeadId,
   email: looseEmailString,
   phone_number: nonEmptyString,
   quoted: booleanInput.optional(),

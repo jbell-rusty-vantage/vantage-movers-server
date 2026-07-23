@@ -65,7 +65,7 @@ function hydrateFormLead(
     phone_number: "555-111-2222",
     move_size: "2 Bedrooms",
     move_date: new Date(Date.UTC(2026, 4, 28)),
-    lid: "LID-EXISTING",
+    lid: "LID6a6255e58ad8d",
     ...overrides,
   }) as FormLeadDocument;
 }
@@ -87,7 +87,7 @@ test("submitFormLeadToCrm POSTs to the Granot lead gateway with the urlencoded p
   assert.match(body, /label=Main\+Site\+Forms/);
   assert.match(body, /firstname=Jane/);
   assert.match(body, /lastname=Customer/);
-  assert.match(body, new RegExp(`leadno=${lead._id.toString()}`));
+  assert.match(body, /leadno=LID6a6255e58ad8d/);
 });
 
 test("submitFormLeadToCrm reports ok=true with the response body and payload on HTTP 200", async () => {
@@ -100,7 +100,7 @@ test("submitFormLeadToCrm reports ok=true with the response body and payload on 
   assert.equal(result.status, 200);
   assert.equal(result.responseText, "Granot accepted lead 42");
   assert.equal(result.error, undefined);
-  assert.equal(result.payload.leadno, lead._id.toString());
+  assert.equal(result.payload.leadno, "LID6a6255e58ad8d");
 });
 
 test("submitFormLeadToCrm reports ok=false with response body on HTTP error", async () => {
@@ -113,7 +113,7 @@ test("submitFormLeadToCrm reports ok=false with response body on HTTP error", as
   assert.equal(result.status, 400);
   assert.equal(result.responseText, "bad request");
   assert.equal(result.error, undefined);
-  assert.equal(result.payload.leadno, lead._id.toString());
+  assert.equal(result.payload.leadno, "LID6a6255e58ad8d");
 });
 
 test("submitFormLeadToCrm catches network errors and returns ok=false with status 0 and an error message", async () => {
@@ -128,7 +128,7 @@ test("submitFormLeadToCrm catches network errors and returns ok=false with statu
   assert.equal(result.status, 0);
   assert.equal(result.responseText, "");
   assert.equal(result.error, "ECONNRESET");
-  assert.equal(result.payload.leadno, lead._id.toString());
+  assert.equal(result.payload.leadno, "LID6a6255e58ad8d");
 });
 
 test("submitFormLeadToCrm forwards companyLabel as the Granot label", async () => {

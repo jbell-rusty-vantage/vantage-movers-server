@@ -56,9 +56,8 @@ export function formatCrmMoveDate(date: Date): string {
  *     `CRM_FORM_LEAD_LABEL` when the caller passes a blank value.
  *   - `notes` carries a freshly generated lead identifier for Granot-side
  *     tracking; it is not stored on the Mongo `FormLead`.
- *   - `leadno` is the Mongo `_id` as a string. The Granot extension
- *     reads it back as the web-app `ref_no` column and uses it to
- *     update the right FormLead. NEVER substitute the Mongo `ref_no`
+ *   - `leadno` is the lead's persisted `lid`. Granot writes this value to
+ *     its web-app `ref_no` column. NEVER substitute the Mongo `ref_no`
  *     field here.
  *
  * Exact CRM labels (see `CRM_SOURCE_LABELS` in `config/domain/sources`):
@@ -72,6 +71,7 @@ export function buildCrmFormLeadPayload(
   companyLabel: string = CRM_FORM_LEAD_LABEL,
 ): CrmFormLeadPayload {
   const { firstname, lastname } = splitNameForCrm(lead.name);
+  const lid = lead.lid?.trim() || generateLeadId();
 
   return {
     label: companyLabel.trim() || CRM_FORM_LEAD_LABEL,
@@ -84,7 +84,7 @@ export function buildCrmFormLeadPayload(
     movesize: lead.move_size,
     movedte: formatCrmMoveDate(lead.move_date),
     notes: generateLeadId(),
-    leadno: lead._id.toString(),
+    leadno: lid,
   };
 }
 

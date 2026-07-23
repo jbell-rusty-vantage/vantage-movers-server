@@ -67,10 +67,10 @@ test("buildCrmFormLeadPayload defaults label to CRM_FORM_LEAD_LABEL when blank",
   assert.equal(payload.label, CRM_FORM_LEAD_LABEL);
 });
 
-test("buildCrmFormLeadPayload uses lead Mongo _id as leadno (Granot ref_no contract)", () => {
-  const lead = hydrateFormLead();
+test("buildCrmFormLeadPayload uses the persisted lid as Granot leadno", () => {
+  const lead = hydrateFormLead({ lid: "LID6a6255e58ad8d" });
   const payload = buildCrmFormLeadPayload(lead);
-  assert.equal(payload.leadno, lead._id.toString());
+  assert.equal(payload.leadno, "LID6a6255e58ad8d");
 });
 
 test("buildCrmFormLeadPayload generates a notes lead id for Granot", () => {
@@ -116,7 +116,7 @@ test("buildCrmFormLeadPayload maps lead fields onto the Granot wire shape", () =
       phone1: "555-111-2222",
       movesize: "Studio",
       movedte: "6/1/2026",
-      leadno: lead._id.toString(),
+      leadno: "LID-EXISTING",
     },
   );
 });

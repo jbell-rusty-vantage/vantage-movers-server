@@ -300,10 +300,25 @@ test("createFormLeadSchema accepts optional lid from clients", () => {
     ref_no: "not provided",
     email: "jane@example.com",
     phone_number: "5555551212",
+    lid: "LID6a6255e58ad8d",
+  });
+
+  assert.equal(parsed.lid, "LID6a6255e58ad8d");
+});
+
+test("createFormLeadSchema rejects malformed lid values", () => {
+  const parsed = createFormLeadSchema.safeParse({
+    source_company: "main_site",
+    name: "Jane Customer",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    move_size: "Studio",
+    email: "jane@example.com",
+    phone_number: "5555551212",
     lid: "LIDabc123",
   });
 
-  assert.equal(parsed.lid, "LIDabc123");
+  assert.equal(parsed.success, false);
 });
 
 test("updateFormLeadSchema accepts duplicate for backfill and admin patches", () => {
