@@ -54,10 +54,10 @@ test("splitNameForCrm takes the first and last token for multi-word names", () =
   });
 });
 
-test("formatCrmMoveDate produces unpadded M/D/YYYY local-component date", () => {
-  const d = new Date(2026, 0, 5);
+test("formatCrmMoveDate preserves the UTC calendar date as unpadded M/D/YYYY", () => {
+  const d = new Date(Date.UTC(2026, 0, 5));
   assert.equal(formatCrmMoveDate(d), "1/5/2026");
-  const d2 = new Date(2025, 11, 31);
+  const d2 = new Date(Date.UTC(2025, 11, 31));
   assert.equal(formatCrmMoveDate(d2), "12/31/2025");
 });
 

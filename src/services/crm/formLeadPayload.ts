@@ -38,13 +38,12 @@ export function splitNameForCrm(name: string): {
 }
 
 /**
- * Formats a JS `Date` into the `M/D/YYYY` string Granot expects in
- * `movedte`. Month/day are unpadded (matches the original behavior;
- * Granot's parser accepts either form, but the previous implementation
- * produced unpadded values and we keep that wire shape).
+ * Formats a date-only Mongo value into the `M/D/YYYY` string Granot expects in
+ * `movedte`. Form move dates are stored at UTC midnight, so UTC components
+ * preserve the submitted calendar day regardless of the process timezone.
  */
 export function formatCrmMoveDate(date: Date): string {
-  return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
+  return `${date.getUTCMonth() + 1}/${date.getUTCDate()}/${date.getUTCFullYear()}`;
 }
 
 /**
