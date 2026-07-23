@@ -47,12 +47,13 @@ export async function getLinkedLead(
  */
 export async function resolveSourceLeadById(
   leadId: string,
+  session?: ClientSession,
 ): Promise<{ lead: SourceLeadDocument; leadModel: LeadModelName }> {
   const FormLead = getFormLeadModel();
   const CallLead = getCallLeadModel();
   const [formLead, callLead] = await Promise.all([
-    FormLead.findById(leadId),
-    CallLead.findById(leadId),
+    FormLead.findById(leadId).session(session ?? null),
+    CallLead.findById(leadId).session(session ?? null),
   ]);
   if (formLead && callLead) {
     throw new ConflictError("Lead id matched both form and call leads", {

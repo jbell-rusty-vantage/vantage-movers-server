@@ -1,6 +1,7 @@
 import type mongoose from "mongoose";
 import { getSheetSyncMode, type LeadModelName } from "../../config/domain";
 import { BookedLead } from "../../models/BookedLead";
+import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconciliationCase";
 import { CancelledLead } from "../../models/CancelledLead";
 import type {
   CreateCancelledLeadInput,
@@ -43,23 +44,25 @@ import { resolveBookedLeadForCancellation } from "./cancellationResolver";
  *     operation tag `cancelled_lead.create`.
  */
 export async function createCancelledLead(input: CreateCancelledLeadInput) {
-  const booking = await resolveBookedLeadForCancellation(input);
-  if (!booking.lead_ref || !booking.lead_model) {
-    throw new V1ServiceError("Referral booking cancellation is not supported yet", 409);
-  }
-
-  const customer = booking.customer as
-    | { _id?: mongoose.Types.ObjectId; full_name?: string }
-    | undefined;
   const timestamp = input.timestamp ?? new Date();
 
-  const { cancellation, job } = await runSheetSyncWrite(async (session) => {
+  const { cancellation, job, booking } = await runSheetSyncWrite(async (session) => {
+    const booking = await resolveBookedLeadForCancellation(input, session);
+    const employeeLeadlessBooking =
+      booking.booking_origin === "employee_booking" &&
+      booking.is_leadless_booking === true;
+    if (!employeeLeadlessBooking && (!booking.lead_ref || !booking.lead_model)) {
+      throw new V1ServiceError("Referral booking cancellation is not supported yet", 409);
+    }
+    const customer = booking.customer as
+      | { _id?: mongoose.Types.ObjectId; full_name?: string }
+      | undefined;
     const created = new CancelledLead({
       timestamp,
       booked_lead: booking._id,
       customer: customer?._id ?? booking.customer,
-      lead_ref: booking.lead_ref,
-      lead_model: booking.lead_model,
+      ...(booking.lead_ref ? { lead_ref: booking.lead_ref } : {}),
+      ...(booking.lead_model ? { lead_model: booking.lead_model } : {}),
       cancel_date: input.cancel_date ?? timestamp,
       agent: primaryAgentName(booking),
       book_date: booking.book_date,
@@ -76,20 +79,37 @@ export async function createCancelledLead(input: CreateCancelledLeadInput) {
 
     booking.cancelled = created._id;
     await booking.save({ session });
-    await mirrorCancellationToLead(
-      booking.lead_model!,
-      booking.lead_ref!.toString(),
-      created._id,
-      session,
-    );
+    if (booking.lead_model && booking.lead_ref) {
+      await mirrorCancellationToLead(
+        booking.lead_model!,
+        booking.lead_ref!.toString(),
+        created._id,
+        session,
+      );
+    }
+    const reconciliationCase = await BookingLeadReconciliationCase.findOne({
+      booking: booking._id,
+      status: "pending",
+    }).session(session ?? null);
+    if (reconciliationCase) {
+      reconciliationCase.status = "dismissed";
+      reconciliationCase.resolution_history.push({
+        action: "booking_cancelled",
+        actor: input.cancelled_by ?? "unknown",
+        notes: input.notes,
+        occurred_at: new Date(),
+      } as any);
+      reconciliationCase.revision += 1;
+      await reconciliationCase.save({ session });
+    }
     const cancellationJob: FullSheetSyncJob = {
       resource: "cancellation_chain",
       operation: "cancelled_lead.create",
       cancellationId: created._id.toString(),
     };
     await persistSheetSyncIntent(cancellationJob, session);
-    return { cancellation: created, job: cancellationJob };
-  });
+    return { cancellation: created, job: cancellationJob, booking };
+  }, { forceTransaction: true });
 
   await finalizeSheetSync(job);
 
@@ -179,7 +199,9 @@ export async function deleteCancelledLead(id: string) {
         { $unset: { cancelled: "" } },
         { returnDocument: "after", session },
       );
-      await clearCancellationFromLead(leadModel, leadId, false, session);
+      if (leadModel && leadId) {
+        await clearCancellationFromLead(leadModel, leadId, false, session);
+      }
 
       await enqueueSheetSyncTombstone(
         {
@@ -209,7 +231,7 @@ export async function deleteCancelledLead(id: string) {
           },
           { session },
         );
-      } else if (leadId) {
+      } else if (leadModel && leadId) {
         await enqueueSheetSyncJob(
           { resource: "source_lead", operation: "delete_cancelled_lead", leadModel, leadId },
           { session },
@@ -228,14 +250,16 @@ export async function deleteCancelledLead(id: string) {
     { $unset: { cancelled: "" } },
     { returnDocument: "after" },
   );
-  await clearCancellationFromLead(leadModel, leadId, false);
+  if (leadModel && leadId) {
+    await clearCancellationFromLead(leadModel, leadId, false);
+  }
   if (booking && booking.lead_ref && booking.lead_model) {
     await syncBookingAndSource(
       booking._id,
       booking.lead_model as LeadModelName,
       booking.lead_ref.toString(),
     );
-  } else if (leadId) {
+  } else if (leadModel && leadId) {
     await syncSourceLeadById(leadModel, leadId);
   }
   await cancellation.deleteOne();

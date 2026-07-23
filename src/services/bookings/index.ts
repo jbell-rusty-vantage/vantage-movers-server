@@ -22,6 +22,7 @@ export { createReferralBooking } from "./referralBooking.service";
 export { createLeadlessBooking } from "./leadlessBooking.service";
 
 export {
+  claimAvailableLeadForBooking,
   clearBookingFromLead,
   mirrorBookingToLead,
   refreshAttachedBookingFromLead,

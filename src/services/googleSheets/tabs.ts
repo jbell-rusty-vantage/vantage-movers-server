@@ -46,7 +46,13 @@ export async function ensureTabsAndHeaders(
       continue;
     }
 
-    await ensureTab(sheets, spreadsheetId, tab.tabName);
+    const sheet = await ensureTab(sheets, spreadsheetId, tab.tabName);
+    await ensureColumnCapacity(
+      sheets,
+      spreadsheetId,
+      sheet,
+      Math.max(tab.headers.length, getLegacyHeaderLength(tab.headers)),
+    );
     await clearLegacyTrailingCells(
       sheets,
       spreadsheetId,
@@ -114,9 +120,9 @@ async function ensureTab(
   sheets: sheets_v4.Sheets,
   spreadsheetId: string,
   tabName: string,
-): Promise<number | undefined> {
-  const existing = await getExistingSheetId(sheets, spreadsheetId, tabName);
-  if (existing !== undefined) {
+): Promise<SheetGridProperties | undefined> {
+  const existing = await getExistingSheetProperties(sheets, spreadsheetId, tabName);
+  if (existing) {
     return existing;
   }
 
@@ -129,15 +135,54 @@ async function ensureTab(
         },
       }),
     );
-    return (
-      response.data.replies?.[0]?.addSheet?.properties?.sheetId ?? undefined
-    );
+    const properties = response.data.replies?.[0]?.addSheet?.properties;
+    if (properties?.sheetId == null) {
+      return undefined;
+    }
+    return {
+      sheetId: properties.sheetId,
+      columnCount: properties.gridProperties?.columnCount,
+    };
   } catch (error) {
     if (!isGoogleSheetAlreadyExistsError(error)) {
       throw error;
     }
-    return getExistingSheetId(sheets, spreadsheetId, tabName);
+    return getExistingSheetProperties(sheets, spreadsheetId, tabName);
   }
+}
+
+type SheetGridProperties = {
+  sheetId: number;
+  columnCount?: number | null;
+};
+
+async function ensureColumnCapacity(
+  sheets: sheets_v4.Sheets,
+  spreadsheetId: string,
+  sheet: SheetGridProperties | undefined,
+  requiredColumnCount: number,
+): Promise<void> {
+  if (!sheet || (sheet.columnCount ?? 0) >= requiredColumnCount) {
+    return;
+  }
+  await withSheetsRetry("batchUpdate.expandColumns", () =>
+    sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            updateSheetProperties: {
+              properties: {
+                sheetId: sheet.sheetId,
+                gridProperties: { columnCount: requiredColumnCount },
+              },
+              fields: "gridProperties.columnCount",
+            },
+          },
+        ],
+      },
+    }),
+  );
 }
 
 export async function getExistingSheetId(
@@ -145,17 +190,31 @@ export async function getExistingSheetId(
   spreadsheetId: string,
   tabName: string,
 ): Promise<number | undefined> {
+  return (await getExistingSheetProperties(sheets, spreadsheetId, tabName))
+    ?.sheetId;
+}
+
+async function getExistingSheetProperties(
+  sheets: sheets_v4.Sheets,
+  spreadsheetId: string,
+  tabName: string,
+): Promise<SheetGridProperties | undefined> {
   const response = await withSheetsRetry("spreadsheets.get", () =>
     sheets.spreadsheets.get({
       spreadsheetId,
-      fields: "sheets.properties(sheetId,title)",
+      fields: "sheets.properties(sheetId,title,gridProperties(columnCount))",
     }),
   );
-  return (
-    response.data.sheets?.find(
-      (sheet: sheets_v4.Schema$Sheet) => sheet.properties?.title === tabName,
-    )?.properties?.sheetId ?? undefined
-  );
+  const properties = response.data.sheets?.find(
+    (sheet: sheets_v4.Schema$Sheet) => sheet.properties?.title === tabName,
+  )?.properties;
+  if (properties?.sheetId == null) {
+    return undefined;
+  }
+  return {
+    sheetId: properties.sheetId,
+    columnCount: properties.gridProperties?.columnCount,
+  };
 }
 
 function isGoogleSheetAlreadyExistsError(error: unknown): boolean {

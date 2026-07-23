@@ -39,6 +39,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/booking-reconciliation-rematch",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/lead-messaging-drain",
       "schedule": "*/5 * * * *"
     },

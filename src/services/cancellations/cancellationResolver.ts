@@ -22,21 +22,28 @@ import { V1ServiceError } from "../v1ServiceError";
  */
 export async function resolveBookedLeadForCancellation(
   input: CreateCancelledLeadInput,
+  session?: mongoose.ClientSession,
 ): Promise<mongoose.HydratedDocument<BookedLeadDocument>> {
   if (input.booked_lead && !input.lead_id) {
-    return getBookedLeadForCancellation(input.booked_lead);
+    return getBookedLeadForCancellation(input.booked_lead, session);
   }
 
   if (!input.lead_id) {
     throw new V1ServiceError("Either booked_lead or lead_id must be provided", 400);
   }
 
-  const { lead, leadModel } = await resolveSourceLeadById(input.lead_id);
+  const { lead, leadModel } = await resolveSourceLeadById(
+    input.lead_id,
+    session,
+  );
   if (!lead.booked) {
     throw new V1ServiceError("Source lead is not booked", 409);
   }
 
-  const booking = await getBookedLeadForCancellation(lead.booked.toString());
+  const booking = await getBookedLeadForCancellation(
+    lead.booked.toString(),
+    session,
+  );
   if (input.booked_lead && booking._id.toString() !== input.booked_lead) {
     throw new V1ServiceError("booked_lead does not match the source lead booking", 409);
   }
@@ -58,15 +65,25 @@ export async function resolveBookedLeadForCancellation(
  */
 export async function getBookedLeadForCancellation(
   bookedLeadId: string,
+  session?: mongoose.ClientSession,
 ): Promise<mongoose.HydratedDocument<BookedLeadDocument>> {
-  const booking = await BookedLead.findById(bookedLeadId).populate("customer");
+  const booking = await BookedLead.findById(bookedLeadId)
+    .session(session ?? null)
+    .populate("customer");
   if (!booking) {
     throw new V1ServiceError("Booked lead not found", 404);
   }
   if (booking.cancelled) {
     throw new V1ServiceError("Booked lead is already cancelled", 409);
   }
-  if (booking.is_referral_booking || booking.is_leadless_booking || !booking.lead_ref || !booking.lead_model) {
+  const employeeLeadlessBooking =
+    booking.booking_origin === "employee_booking" &&
+    booking.is_leadless_booking === true;
+  if (
+    booking.is_referral_booking ||
+    (!employeeLeadlessBooking &&
+      (booking.is_leadless_booking || !booking.lead_ref || !booking.lead_model))
+  ) {
     throw new V1ServiceError("Standalone booking cancellation is not supported yet", 409);
   }
 

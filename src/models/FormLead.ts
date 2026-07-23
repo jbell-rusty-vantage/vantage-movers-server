@@ -10,6 +10,11 @@ import {
   sourceCompanyField,
   type SheetSyncEntry,
 } from "./schemaHelpers";
+import {
+  normalizeComparisonName,
+  normalizeSubmissionLid,
+} from "../services/bookings/bookingIdentity";
+import { normalizePhoneNumberForMatch } from "../utils/phone";
 
 export const FORM_LEAD_UNKNOWN_STATE = "not_found";
 
@@ -32,6 +37,7 @@ const FormLeadSchema = new Schema(
     source_company_site: { type: String, trim: true },
     timestamp: { type: Date, required: true, default: Date.now },
     lid: { type: String, trim: true },
+    normalized_lid: { type: String, trim: true },
     pickup_city: { type: String, trim: true },
     pickup_zip: { type: String, required: true, trim: true },
     delivery_city: { type: String, trim: true },
@@ -47,6 +53,8 @@ const FormLeadSchema = new Schema(
     local: localField,
     email: { type: String, trim: true, lowercase: true },
     phone_number: { type: String, required: true, trim: true },
+    normalized_phone_number: { type: String, trim: true },
+    normalized_contact_name: { type: String, trim: true },
     cpl: { type: Number, required: true, default: 0 },
     quoted: { type: Boolean, default: false },
     duplicate: { type: Boolean, default: false, index: true },
@@ -80,6 +88,7 @@ const FormLeadSchema = new Schema(
   },
   {
     collection: "form_leads",
+    autoIndex: false,
     timestamps: true,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
@@ -92,6 +101,31 @@ FormLeadSchema.index({ lead_source_company: 1, source_granularity_key: 1, create
 FormLeadSchema.index({ phone_number: 1 });
 FormLeadSchema.index({ ref_no: 1 });
 FormLeadSchema.index({ email: 1 });
+FormLeadSchema.index({ normalized_lid: 1 }, { sparse: true });
+FormLeadSchema.index({ normalized_phone_number: 1 });
+FormLeadSchema.index({ normalized_contact_name: 1 });
+FormLeadSchema.index({
+  lead_source_company: 1,
+  source_granularity_key: 1,
+  normalized_lid: 1,
+});
+FormLeadSchema.index({
+  lead_source_company: 1,
+  source_granularity_key: 1,
+  normalized_phone_number: 1,
+});
+FormLeadSchema.index({
+  lead_source_company: 1,
+  source_granularity_key: 1,
+  email: 1,
+  normalized_contact_name: 1,
+});
+
+FormLeadSchema.pre("validate", function normalizeEmployeeBookingFields() {
+  this.normalized_lid = normalizeSubmissionLid(this.lid);
+  this.normalized_phone_number = normalizePhoneNumberForMatch(this.phone_number);
+  this.normalized_contact_name = normalizeComparisonName(this.name);
+});
 
 export type FormLeadDocument = InferSchemaType<typeof FormLeadSchema> & {
   _id: mongoose.Types.ObjectId;

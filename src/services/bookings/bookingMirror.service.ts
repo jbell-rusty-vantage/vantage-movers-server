@@ -99,8 +99,9 @@ export async function refreshAttachedBookingFromLead(
  * Writes booking-side state back onto its source lead.
  *
  * Sets `booked`, `over_2000`, `over_4000`, optionally `source_company` and
- * `local`, and recomputes `cpl` from the resulting source company / lead
- * type / local triple. Caller passes a hydrated lead document (and its
+ * `local`, and normally recomputes `cpl` from the resulting source company /
+ * lead type / local triple. Reconciliation may preserve the existing CPL when
+ * it is preserving the Lead's source assignment. Caller passes a hydrated lead document (and its
  * model name, so the correct granular CPL rate slot is used) so the save
  * happens on a single round-trip.
  */
@@ -113,6 +114,7 @@ export async function mirrorBookingToLead(
   local: LocalType | undefined,
   sourceCompany?: SourceCompany,
   session?: ClientSession,
+  preserveExistingCpl = false,
 ) {
   lead.booked = bookingId;
   lead.over_2000 = over2000;
@@ -131,7 +133,7 @@ export async function mirrorBookingToLead(
     });
     Object.assign(lead, assignment);
     lead.cpl = resolution.granularity.cpl;
-  } else {
+  } else if (!preserveExistingCpl) {
     lead.cpl = await getCplForSource(
       lead.source_company as SourceCompany,
       leadType,
@@ -139,6 +141,45 @@ export async function mirrorBookingToLead(
     );
   }
   await lead.save({ session });
+}
+
+/**
+ * Atomically claims an otherwise eligible Lead for a newly-created Booking.
+ * Returns false when another request claimed/cancelled/quarantined the Lead
+ * after candidate evaluation, allowing employee submission to stay leadless.
+ */
+export async function claimAvailableLeadForBooking(
+  lead: SourceLeadDocument,
+  leadModel: LeadModelName,
+  bookingId: mongoose.Types.ObjectId,
+  over2000: boolean,
+  over4000: boolean,
+  local: LocalType | undefined,
+  session?: ClientSession,
+): Promise<boolean> {
+  const result = await (lead.constructor as any).updateOne(
+    {
+      _id: lead._id,
+      $and: [
+        { $or: [{ booked: null }, { booked: { $exists: false } }] },
+        { $or: [{ cancelled: null }, { cancelled: { $exists: false } }] },
+      ],
+      duplicate: { $ne: true },
+      ...(leadModel === "CallLead"
+        ? { created_on_unmatched: { $ne: true } }
+        : {}),
+    },
+    {
+      $set: {
+        booked: bookingId,
+        over_2000: over2000,
+        over_4000: over4000,
+        ...(local ? { local } : {}),
+      },
+    },
+    { session },
+  );
+  return result.modifiedCount === 1;
 }
 
 /**

@@ -72,6 +72,7 @@ export async function upsertCustomerFromBookingContact(
   input: {
     customer_name: string;
     customer_phone?: string | null;
+    customer_email?: string | null;
     lead?: {
       name?: string | null;
       phone_number?: string | null;
@@ -90,7 +91,7 @@ export async function upsertCustomerFromBookingContact(
   const update = buildCustomerUpdate({
     full_name,
     phone_number,
-    email: input.lead?.email,
+    email: input.customer_email ?? input.lead?.email,
   });
 
   if (phone_number) {

@@ -67,13 +67,27 @@ import {
   updateFormLead,
   V1ServiceError,
 } from "../services/v1.service";
+import {
+  getBookingLeadReconciliationCase,
+  listBookingLeadReconciliationCases,
+  refreshBookingLeadCandidates,
+  reopenBookingLeadReconciliation,
+  resolveBookingLeadReconciliation,
+  searchBookingLeadCandidates,
+  submitEmployeeBooking,
+  updatePendingEmployeeBooking,
+} from "../services/employeeBookings";
+import { deriveTrustedOwnerActor } from "../services/employeeBookings/reconciliationPolicy";
 import { AppError } from "../services/errors";
 import {
+  bookingLeadCandidateSearchSchema,
+  bookingLeadReconciliationListQuerySchema,
   createBookedLeadFromSourceSchema,
   createBookedLeadSchema,
   createCallLeadSchema,
   createCancelledLeadSchema,
   createCustomerSchema,
+  createEmployeeBookingSubmissionSchema,
   createFormLeadSchema,
   createReferralBookingSchema,
   createLeadlessBookingSchema,
@@ -103,9 +117,13 @@ import {
   browseCallLeadsQuerySchema,
   browseFormLeadsQuerySchema,
   callLeadEnrichmentBatchSchema,
+  refreshBookingLeadCandidatesSchema,
+  reopenBookingLeadReconciliationSchema,
+  resolveBookingLeadReconciliationSchema,
   searchCallLeadsSchema,
   searchFormLeadsSchema,
   uploadGranotCrmCsvSchema,
+  updatePendingEmployeeBookingSchema,
   updateBookedLeadSchema,
   updateCallLeadSchema,
   updateCancelledLeadSchema,
@@ -285,6 +303,34 @@ router.get("/api/v1/admin/sheet-sync/jobs", handleSheetSyncJobs);
 router.get("/api/v1/admin/sheet-sync/runs", handleSheetSyncRuns);
 router.get("/api/v1/admin/sheet-sync/runs/:id", handleSheetSyncRunDetail);
 router.post("/api/v1/admin/sheet-sync/retry", handleSheetSyncRetry);
+router.get(
+  "/api/v1/admin/booking-lead-reconciliations",
+  handleBookingLeadReconciliationsList,
+);
+router.get(
+  "/api/v1/admin/booking-lead-reconciliations/:id",
+  handleBookingLeadReconciliationDetail,
+);
+router.post(
+  "/api/v1/admin/booking-lead-reconciliations/:id/candidates/search",
+  handleBookingLeadCandidateSearch,
+);
+router.post(
+  "/api/v1/admin/booking-lead-reconciliations/:id/candidates/refresh",
+  handleBookingLeadCandidateRefresh,
+);
+router.patch(
+  "/api/v1/admin/booking-lead-reconciliations/:id/booking",
+  handlePendingEmployeeBookingUpdate,
+);
+router.post(
+  "/api/v1/admin/booking-lead-reconciliations/:id/resolve",
+  handleBookingLeadReconciliationResolve,
+);
+router.post(
+  "/api/v1/admin/booking-lead-reconciliations/:id/reopen",
+  handleBookingLeadReconciliationReopen,
+);
 router.get("/api/v1/admin/lead-messages", handleLeadMessagesList);
 router.get("/api/v1/admin/lead-messages/:id", handleLeadMessageDetail);
 router.post("/api/v1/admin/lead-messages/:id/retry", handleLeadMessageRetry);
@@ -398,6 +444,10 @@ router.post(
 router.post(
   "/api/v1/leadless-bookings",
   handleCreate(createLeadlessBookingSchema, createLeadlessBooking),
+);
+router.post(
+  "/api/v1/employee-booking-submissions",
+  handleEmployeeBookingSubmission,
 );
 router.patch(
   "/api/v1/booked-leads/:id",
@@ -1478,6 +1528,131 @@ function handleDelete(
   };
 }
 
+async function handleEmployeeBookingSubmission(req: Request, res: Response) {
+  try {
+    const auth = (req as Request & { vantageAuth?: VantageAuthContext }).vantageAuth;
+    if (auth?.kind !== "secret") {
+      throw new V1ServiceError("Forbidden", 403);
+    }
+    await connectMongo();
+    const parsed = createEmployeeBookingSubmissionSchema.parse(req.body);
+    const clientKeyHash = req.header("x-public-client-key-hash")?.trim();
+    if (!clientKeyHash || !/^[a-f0-9]{64}$/i.test(clientKeyHash)) {
+      throw new V1ServiceError("A valid public client identifier is required", 400);
+    }
+    const data = await submitEmployeeBooking(parsed, {
+      clientKeyHash,
+    });
+    return res.status(data.statusCode).json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleBookingLeadReconciliationsList(
+  req: Request,
+  res: Response,
+) {
+  try {
+    requireOwnerActor(req);
+    await connectMongo();
+    const parsed = bookingLeadReconciliationListQuerySchema.parse(req.query);
+    const data = await listBookingLeadReconciliationCases(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleBookingLeadReconciliationDetail(
+  req: Request,
+  res: Response,
+) {
+  try {
+    requireOwnerActor(req);
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const data = await getBookingLeadReconciliationCase(id);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleBookingLeadCandidateSearch(req: Request, res: Response) {
+  try {
+    requireOwnerActor(req);
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const parsed = bookingLeadCandidateSearchSchema.parse(req.body);
+    const data = await searchBookingLeadCandidates(id, parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleBookingLeadCandidateRefresh(req: Request, res: Response) {
+  try {
+    const actor = requireOwnerActor(req);
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const parsed = refreshBookingLeadCandidatesSchema.parse(req.body);
+    const data = await refreshBookingLeadCandidates(id, parsed, actor);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handlePendingEmployeeBookingUpdate(
+  req: Request,
+  res: Response,
+) {
+  try {
+    const actor = requireOwnerActor(req);
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const parsed = updatePendingEmployeeBookingSchema.parse(req.body);
+    const data = await updatePendingEmployeeBooking(id, parsed, actor);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleBookingLeadReconciliationResolve(
+  req: Request,
+  res: Response,
+) {
+  try {
+    const actor = requireOwnerActor(req);
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const parsed = resolveBookingLeadReconciliationSchema.parse(req.body);
+    const data = await resolveBookingLeadReconciliation(id, parsed, actor);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleBookingLeadReconciliationReopen(
+  req: Request,
+  res: Response,
+) {
+  try {
+    const actor = requireOwnerActor(req);
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const parsed = reopenBookingLeadReconciliationSchema.parse(req.body);
+    const data = await reopenBookingLeadReconciliation(id, parsed, actor);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
 function getValidObjectId(req: Request): string {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   if (!id || !mongoose.isValidObjectId(id)) {
@@ -1485,6 +1660,17 @@ function getValidObjectId(req: Request): string {
   }
 
   return id;
+}
+
+function requireOwnerActor(
+  req: Request,
+): { actor: string; ownerId?: string; ownerEmail?: string } {
+  const auth = (req as Request & { vantageAuth?: VantageAuthContext }).vantageAuth;
+  return deriveTrustedOwnerActor(auth, {
+    adminUserId: req.header("x-vantage-admin-user-id"),
+    adminEmail: req.header("x-vantage-admin-email"),
+    adminRole: req.header("x-vantage-admin-role"),
+  });
 }
 
 async function sendError(req: Request, res: Response, error: unknown) {
@@ -1496,6 +1682,13 @@ async function sendError(req: Request, res: Response, error: unknown) {
       ok: false,
       error: "Invalid request payload",
       issues: error.issues,
+    });
+  }
+
+  if (error instanceof mongoose.Error.VersionError) {
+    return res.status(409).json({
+      ok: false,
+      error: "The record changed while this request was being processed",
     });
   }
 

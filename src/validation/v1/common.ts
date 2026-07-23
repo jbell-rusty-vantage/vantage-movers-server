@@ -23,7 +23,14 @@ export const optionalFloridaCalendarDate = z.preprocess((value) => {
   return parseFloridaCalendarDate(value);
 }, z.date().optional());
 export const requiredFloridaCalendarDate = z.preprocess(
-  (value) => parseFloridaCalendarDate(value),
+  (value) => {
+    try {
+      return parseFloridaCalendarDate(value);
+    } catch {
+      // Let Zod turn missing or malformed input into a structured issue.
+      return value;
+    }
+  },
   z.date(),
 );
 // In Zod v4, `z.number()` (and `z.coerce.number()`) rejects Infinity/NaN by

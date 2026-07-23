@@ -7,6 +7,7 @@ import {
   type SheetSyncEntry,
 } from "./schemaHelpers";
 import { normalizePhoneNumberForMatch } from "../utils/phone";
+import { normalizeJobNo } from "../services/bookings/bookingIdentity";
 
 /**
  * Provenance + qualification metadata for call leads created from the
@@ -51,6 +52,7 @@ const CallLeadSchema = new Schema(
     source_company_site: { type: String, trim: true },
     timestamp: { type: Date, required: true, default: Date.now },
     job_no: { type: String, trim: true },
+    normalized_job_no: { type: String, trim: true },
     name: { type: String, trim: true },
     first_name: { type: String, trim: true },
     last_name: { type: String, trim: true },
@@ -101,6 +103,7 @@ const CallLeadSchema = new Schema(
   },
   {
     collection: "call_leads",
+    autoIndex: false,
     timestamps: true,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
@@ -113,6 +116,12 @@ CallLeadSchema.index({ lead_source_company: 1, source_granularity_key: 1, create
 CallLeadSchema.index({ phone_number: 1 });
 CallLeadSchema.index({ normalized_phone_number: 1, createdAt: -1 });
 CallLeadSchema.index({ job_no: 1 });
+CallLeadSchema.index({ normalized_job_no: 1 });
+CallLeadSchema.index({
+  lead_source_company: 1,
+  source_granularity_key: 1,
+  normalized_job_no: 1,
+});
 // Cross-path idempotency: at most one lead per RingCentral telephony session.
 CallLeadSchema.index(
   { "ringcentral.telephony_session_id": 1 },
@@ -128,6 +137,7 @@ CallLeadSchema.index({
 
 CallLeadSchema.pre("validate", function normalizePhoneNumber() {
   this.normalized_phone_number = normalizePhoneNumberForMatch(this.phone_number);
+  this.normalized_job_no = normalizeJobNo(this.job_no);
 });
 
 CallLeadSchema.pre("validate", function requireLeadIdentity() {

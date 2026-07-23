@@ -37,3 +37,5 @@ export * from "./domain/sheetSync";
 export * from "./domain/granotCsv";
 export * from "./domain/observability";
 export * from "./domain/leadMessaging";
+export * from "./domain/employeeBookingMatching";
+export * from "./domain/bookingReconciliation";

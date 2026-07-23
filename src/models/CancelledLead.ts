@@ -7,7 +7,7 @@ const CancelledLeadSchema = new Schema(
     booked_lead: { type: Schema.Types.ObjectId, ref: "BookedLead", required: true, index: true },
     customer: { type: Schema.Types.ObjectId, ref: "Customer", index: true },
     lead_ref: { type: Schema.Types.ObjectId, refPath: "lead_model", index: true },
-    lead_model: leadModelField,
+    lead_model: { ...leadModelField, required: false },
     reason: { type: String, trim: true },
     notes: { type: String, trim: true },
     cancelled_by: { type: String, trim: true },
