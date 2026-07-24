@@ -12,8 +12,8 @@ export function formatDateOnly(value: Date): string {
 }
 
 export function formatTimestamp(value: Date): string {
-  const date = `${value.getMonth() + 1}/${value.getDate()}/${value.getFullYear()}`;
-  const time = [value.getHours(), value.getMinutes(), value.getSeconds()]
+  const date = `${value.getUTCMonth() + 1}/${value.getUTCDate()}/${value.getUTCFullYear()}`;
+  const time = [value.getUTCHours(), value.getUTCMinutes(), value.getUTCSeconds()]
     .map((part) => String(part).padStart(2, "0"))
     .join(":");
 

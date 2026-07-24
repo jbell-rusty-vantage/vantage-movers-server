@@ -24,13 +24,59 @@ export function cell(value: unknown): string {
 export function parseDate(value: string): Date | undefined {
   const raw = value.trim();
   if (!raw || raw.toUpperCase() === "FORMULAS") return undefined;
+  const serial = parseGoogleSheetsSerial(raw);
+  if (serial) return serial;
   const withoutWeekday = raw.replace(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+/i, "");
   const parsed = new Date(withoutWeekday);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
 export function parseDateTime(dateValue: string, timeValue: string): Date | undefined {
+  const dateRaw = dateValue.trim();
+  const timeRaw = timeValue.trim();
+  const dateSerial = Number(dateRaw);
+  if (
+    Number.isFinite(dateSerial) &&
+    dateSerial >= 20_000 &&
+    dateSerial <= 100_000
+  ) {
+    if (!timeRaw) return parseDate(dateRaw);
+    const numericTime = Number(timeRaw);
+    if (Number.isFinite(numericTime) && numericTime >= 0 && numericTime < 1) {
+      return dateFromGoogleSerial(Math.floor(dateSerial) + numericTime);
+    }
+    const clockFraction = parseClockFraction(timeRaw);
+    if (clockFraction !== undefined) {
+      return dateFromGoogleSerial(Math.floor(dateSerial) + clockFraction);
+    }
+  }
   return parseDate(`${dateValue.trim()} ${timeValue.trim()}`.trim());
+}
+
+function parseGoogleSheetsSerial(value: string): Date | undefined {
+  if (!/^\d{4,6}(?:\.\d+)?$/.test(value)) return undefined;
+  const serial = Number(value);
+  return Number.isFinite(serial) && serial >= 20_000 && serial <= 100_000
+    ? dateFromGoogleSerial(serial)
+    : undefined;
+}
+
+function dateFromGoogleSerial(serial: number): Date {
+  const milliseconds = Date.UTC(1899, 11, 30) + serial * 24 * 60 * 60 * 1000;
+  return new Date(Math.round(milliseconds / 1000) * 1000);
+}
+
+function parseClockFraction(value: string): number | undefined {
+  const match = value.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+  if (!match) return undefined;
+  let hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const second = Number(match[3] ?? 0);
+  const meridiem = match[4]?.toUpperCase();
+  if (meridiem === "AM" && hour === 12) hour = 0;
+  if (meridiem === "PM" && hour < 12) hour += 12;
+  if (hour > 23 || minute > 59 || second > 59) return undefined;
+  return (hour * 3600 + minute * 60 + second) / 86_400;
 }
 
 export function parseMoney(value: string): number | undefined {

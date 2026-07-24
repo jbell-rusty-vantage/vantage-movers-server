@@ -9,6 +9,8 @@ import {
   normalizeZip,
   parseBookedDealRows,
   parseCallRows,
+  parseDate,
+  parseDateTime,
   parseFormRows,
   parseRefundRows,
   type IngestPlan,
@@ -27,6 +29,33 @@ test("restores leading zeroes dropped from formatted ZIP cells", () => {
   assert.equal(normalizeZip("725"), "00725");
   assert.equal(normalizeZip("33101"), "33101");
   assert.throws(() => normalizeZip("unknown"));
+});
+
+test("decodes Google Sheets serial timestamps as owner-facing UTC components", () => {
+  assert.equal(
+    parseDate("45922.8633333333")?.toISOString(),
+    "2025-09-22T20:43:12.000Z",
+  );
+  assert.equal(parseDate("45922")?.toISOString(), "2025-09-22T00:00:00.000Z");
+  assert.equal(
+    parseDateTime("45922", "20:43:12")?.toISOString(),
+    "2025-09-22T20:43:12.000Z",
+  );
+  assert.equal(
+    parseDate("45929.87042824074")?.toISOString(),
+    "2025-09-29T20:53:25.000Z",
+  );
+});
+
+test("call parser accepts a combined Google Sheets serial timestamp", () => {
+  const headers = ["PHONE NUMBER", "Date", "Time"];
+  const [call] = parseCallRows(
+    makeTab("Calls", headers, [
+      headers,
+      ["716-383-0064", "45922.8633333333", ""],
+    ]),
+  );
+  assert.equal(call.timestamp, "2025-09-22T20:43:12.000Z");
 });
 
 test("parsers preserve source-row provenance and skip formula sentinels", () => {

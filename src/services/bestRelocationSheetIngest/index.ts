@@ -6,6 +6,8 @@ export {
   makeTab,
   parseBookedDealRows,
   parseCallRows,
+  parseDate,
+  parseDateTime,
   parseFormRows,
   parseLidBestRelo,
   parseRefundRows,

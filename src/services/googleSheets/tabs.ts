@@ -53,6 +53,12 @@ export async function ensureTabsAndHeaders(
       sheet,
       Math.max(tab.headers.length, getLegacyHeaderLength(tab.headers)),
     );
+    await ensureTimestampColumnFormat(
+      sheets,
+      spreadsheetId,
+      sheet,
+      tab.headers,
+    );
     await clearLegacyTrailingCells(
       sheets,
       spreadsheetId,
@@ -177,6 +183,46 @@ async function ensureColumnCapacity(
                 gridProperties: { columnCount: requiredColumnCount },
               },
               fields: "gridProperties.columnCount",
+            },
+          },
+        ],
+      },
+    }),
+  );
+}
+
+async function ensureTimestampColumnFormat(
+  sheets: sheets_v4.Sheets,
+  spreadsheetId: string,
+  sheet: SheetGridProperties | undefined,
+  headers: readonly string[],
+): Promise<void> {
+  const timestampColumn = headers.indexOf("Timestamp");
+  if (!sheet || timestampColumn < 0) {
+    return;
+  }
+  await withSheetsRetry("batchUpdate.formatTimestampColumn", () =>
+    sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            repeatCell: {
+              range: {
+                sheetId: sheet.sheetId,
+                startRowIndex: 1,
+                startColumnIndex: timestampColumn,
+                endColumnIndex: timestampColumn + 1,
+              },
+              cell: {
+                userEnteredFormat: {
+                  numberFormat: {
+                    type: "DATE_TIME",
+                    pattern: "M/d/yyyy HH:mm:ss",
+                  },
+                },
+              },
+              fields: "userEnteredFormat.numberFormat",
             },
           },
         ],

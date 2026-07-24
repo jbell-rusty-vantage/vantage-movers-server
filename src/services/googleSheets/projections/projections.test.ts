@@ -34,8 +34,8 @@ test("formatDateOnly returns ISO date prefix", () => {
   assert.equal(formatDateOnly(fixedDate), "2026-05-27");
 });
 
-test("formatTimestamp uses local clock components", () => {
-  const value = new Date(2026, 4, 27, 9, 4, 5);
+test("formatTimestamp uses owner-facing UTC clock components", () => {
+  const value = new Date("2026-05-27T09:04:05.000Z");
   assert.equal(formatTimestamp(value), "5/27/2026 09:04:05");
 });
 
@@ -149,7 +149,7 @@ test("splitCell only flags true splits when there are at least two named allocat
 test("formLeadToRow projects fields in the documented header order", () => {
   const lead: FormLeadSheetSource = {
     _id: new mongoose.Types.ObjectId(),
-    timestamp: new Date(2026, 4, 27, 9, 4, 5),
+    timestamp: new Date("2026-05-27T09:04:05.000Z"),
     name: "Jane Tester",
     pickup_city: "New York",
     pickup_zip: "10001",
@@ -284,7 +284,7 @@ test("formLeadToRow clears booking reporting columns after booking deletion", ()
 test("callLeadToRow projects fields in the documented header order", () => {
   const lead: CallLeadSheetSource = {
     _id: new mongoose.Types.ObjectId(),
-    timestamp: new Date(2026, 4, 27, 9, 4, 5),
+    timestamp: new Date("2026-05-27T09:04:05.000Z"),
     job_no: "J-100",
     phone_number: "555-333-4444",
     pickup_city: "New York",
@@ -350,7 +350,7 @@ test("bookedLeadToRow projects allocations, customer, and lead ref", () => {
   const leadRefId = new mongoose.Types.ObjectId();
   const booking: BookedLeadSheetSource = {
     _id: new mongoose.Types.ObjectId(),
-    timestamp: new Date(2026, 4, 27, 9, 4, 5),
+    timestamp: new Date("2026-05-27T09:04:05.000Z"),
     book_date: new Date("2026-05-20T00:00:00.000Z"),
     job_no: "JOB-1",
     customer: { full_name: "John Doe" },
@@ -443,7 +443,7 @@ test("bookedLeadToRow resolves legacy source labels before writing", () => {
 test("bookedLeadToRow projects referral customer name and blank lead ref", () => {
   const booking: BookedLeadSheetSource = {
     _id: new mongoose.Types.ObjectId(),
-    timestamp: new Date(2026, 4, 27, 9, 4, 5),
+    timestamp: new Date("2026-05-27T09:04:05.000Z"),
     book_date: new Date("2026-05-20T00:00:00.000Z"),
     job_no: "REF-1",
     customer_name: "Referral Customer",
@@ -466,7 +466,7 @@ test("bookedLeadToRow projects referral customer name and blank lead ref", () =>
 test("bookedLeadToRow projects leadless booking source label and blank lead ref", () => {
   const booking: BookedLeadSheetSource = {
     _id: new mongoose.Types.ObjectId(),
-    timestamp: new Date(2026, 4, 27, 9, 4, 5),
+    timestamp: new Date("2026-05-27T09:04:05.000Z"),
     book_date: new Date("2026-05-20T00:00:00.000Z"),
     job_no: "JOB-1",
     agent_allocations: [{ agent_name_snapshot: "Agent A", binder_amount: 500 }],
@@ -487,7 +487,7 @@ test("cancelledLeadToRow projects cancellation fields", () => {
   const leadRefId = new mongoose.Types.ObjectId();
   const cancellation: CancelledLeadSheetSource = {
     _id: new mongoose.Types.ObjectId(),
-    timestamp: new Date(2026, 4, 27, 9, 4, 5),
+    timestamp: new Date("2026-05-27T09:04:05.000Z"),
     agent: "Agent A",
     cancel_date: new Date("2026-05-25T00:00:00.000Z"),
     job_no: "JOB-2",
