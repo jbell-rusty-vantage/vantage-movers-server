@@ -149,6 +149,7 @@ test("createLeadlessBookingSchema accepts owner-facing leadless booking fields",
     book_date: "2026-05-21",
     job_no: "JOB-100",
     source_company: "Best Relocation Inbounds",
+    source: "Best Relocation Forms",
     customer_name: "Jane Doe",
     agent: "JOSH",
     split_agent: "Austin",
@@ -160,6 +161,7 @@ test("createLeadlessBookingSchema accepts owner-facing leadless booking fields",
 
   assert.equal(parsed.job_no, "JOB-100");
   assert.equal(parsed.source_company, "Best Relocation Inbounds");
+  assert.equal(parsed.source, "Best Relocation Forms");
   assert.equal(parsed.customer_name, "Jane Doe");
 });
 
@@ -304,6 +306,26 @@ test("createFormLeadSchema accepts optional lid from clients", () => {
   });
 
   assert.equal(parsed.lid, "LID6a6255e58ad8d");
+});
+
+test("createFormLeadSchema accepts Best Relocation UUID identity and sheet flags", () => {
+  const parsed = createFormLeadSchema.parse({
+    source_company: "best_relocation_leads",
+    name: "Jane Customer",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    move_size: "Studio",
+    phone_number: "5555551212",
+    lid: "33e2d437-594b-475a-b03b-0789a9f614a7",
+    local: "long_distance",
+    ingestion_source: "best_relocation_sheet",
+    over_2000: true,
+    over_4000: false,
+  });
+
+  assert.equal(parsed.lid, "33e2d437-594b-475a-b03b-0789a9f614a7");
+  assert.equal(parsed.local, "long_distance");
+  assert.equal(parsed.over_2000, true);
 });
 
 test("createFormLeadSchema rejects malformed lid values", () => {
@@ -501,6 +523,18 @@ test("createCallLeadSchema does not accept server-owned flags from clients", () 
   });
 
   assert.equal(parsed.success, false);
+});
+
+test("createCallLeadSchema accepts imported qualification flags", () => {
+  const parsed = createCallLeadSchema.parse({
+    source_company: "best_relocation_leads",
+    phone_number: "5555551212",
+    over_2000: true,
+    over_4000: false,
+  });
+
+  assert.equal(parsed.over_2000, true);
+  assert.equal(parsed.over_4000, false);
 });
 
 test("createCallLeadSchema accepts optional first and last name", () => {

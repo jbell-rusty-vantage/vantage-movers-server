@@ -59,7 +59,13 @@ import {
 
 export async function createFormLead(input: CreateFormLeadInput) {
   const FormLead = getFormLeadModel();
-  const { crm_company_label, post_to_granot, sms_consent, ...formLeadInput } = input;
+  const {
+    crm_company_label,
+    post_to_granot,
+    sms_consent,
+    ingestion_source,
+    ...formLeadInput
+  } = input;
   const normalizedFormLeadInput = normalizeLeadName(formLeadInput);
   normalizedFormLeadInput.phone_number = normalizePhoneNumberForStorage(
     normalizedFormLeadInput.phone_number,
@@ -67,7 +73,11 @@ export async function createFormLead(input: CreateFormLeadInput) {
   const location = await resolveRequiredLocation(normalizedFormLeadInput, {
     workflow: "form_lead_create",
   });
-  const local = deriveFormLeadLocal(location.pickup_state, location.delivery_state);
+  const local =
+    (ingestion_source === "best_relocation_sheet"
+      ? normalizedFormLeadInput.local
+      : undefined) ??
+    deriveFormLeadLocal(location.pickup_state, location.delivery_state);
   const { resolution: sourceResolution, assignment: sourceAssignment } =
     await resolveLeadSourceAssignment({
       value: normalizedFormLeadInput.source_company,

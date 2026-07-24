@@ -23,9 +23,10 @@ import { V1ServiceError } from "../v1ServiceError";
 export async function resolveBookedLeadForCancellation(
   input: CreateCancelledLeadInput,
   session?: mongoose.ClientSession,
+  options: { allowLeadless?: boolean } = {},
 ): Promise<mongoose.HydratedDocument<BookedLeadDocument>> {
   if (input.booked_lead && !input.lead_id) {
-    return getBookedLeadForCancellation(input.booked_lead, session);
+    return getBookedLeadForCancellation(input.booked_lead, session, options);
   }
 
   if (!input.lead_id) {
@@ -43,6 +44,7 @@ export async function resolveBookedLeadForCancellation(
   const booking = await getBookedLeadForCancellation(
     lead.booked.toString(),
     session,
+    options,
   );
   if (input.booked_lead && booking._id.toString() !== input.booked_lead) {
     throw new V1ServiceError("booked_lead does not match the source lead booking", 409);
@@ -66,6 +68,7 @@ export async function resolveBookedLeadForCancellation(
 export async function getBookedLeadForCancellation(
   bookedLeadId: string,
   session?: mongoose.ClientSession,
+  options: { allowLeadless?: boolean } = {},
 ): Promise<mongoose.HydratedDocument<BookedLeadDocument>> {
   const booking = await BookedLead.findById(bookedLeadId)
     .session(session ?? null)
@@ -76,13 +79,10 @@ export async function getBookedLeadForCancellation(
   if (booking.cancelled) {
     throw new V1ServiceError("Booked lead is already cancelled", 409);
   }
-  const employeeLeadlessBooking =
-    booking.booking_origin === "employee_booking" &&
-    booking.is_leadless_booking === true;
   if (
     booking.is_referral_booking ||
-    (!employeeLeadlessBooking &&
-      (booking.is_leadless_booking || !booking.lead_ref || !booking.lead_model))
+    (booking.is_leadless_booking && options.allowLeadless !== true) ||
+    (!booking.is_leadless_booking && (!booking.lead_ref || !booking.lead_model))
   ) {
     throw new V1ServiceError("Standalone booking cancellation is not supported yet", 409);
   }

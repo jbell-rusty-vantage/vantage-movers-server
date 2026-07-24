@@ -22,6 +22,7 @@ const cancelledLeadFields = {
   reason: optionalString,
   notes: optionalString,
   cancelled_by: optionalString,
+  ingestion_source: z.literal("best_relocation_sheet").optional(),
 };
 
 export const createCancelledLeadSchema = z

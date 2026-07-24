@@ -9,6 +9,7 @@
     "dev:vercel": "vercel dev",
     "db:ping": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/ping-db.ts",
     "db:ingest-moving-carriers": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ingest-moving-carriers.ts",
+    "ingest:best-relocation": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/best-relocation-sheet-ingest.ts",
     "twilio:send-sms": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/twilio/twilio-send-sms.ts",
     "twilio:voice-routing": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/twilio/twilio-voice-routing.ts",
     "typecheck": "tsc --noEmit",

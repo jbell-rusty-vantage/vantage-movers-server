@@ -47,11 +47,11 @@ export async function createCancelledLead(input: CreateCancelledLeadInput) {
   const timestamp = input.timestamp ?? new Date();
 
   const { cancellation, job, booking } = await runSheetSyncWrite(async (session) => {
-    const booking = await resolveBookedLeadForCancellation(input, session);
-    const employeeLeadlessBooking =
-      booking.booking_origin === "employee_booking" &&
-      booking.is_leadless_booking === true;
-    if (!employeeLeadlessBooking && (!booking.lead_ref || !booking.lead_model)) {
+    const booking = await resolveBookedLeadForCancellation(input, session, {
+      allowLeadless: input.ingestion_source === "best_relocation_sheet",
+    });
+    const leadlessBooking = booking.is_leadless_booking === true;
+    if (!leadlessBooking && (!booking.lead_ref || !booking.lead_model)) {
       throw new V1ServiceError("Referral booking cancellation is not supported yet", 409);
     }
     const customer = booking.customer as

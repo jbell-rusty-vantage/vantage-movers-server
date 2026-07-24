@@ -10,7 +10,7 @@ afterEach(() => {
   (BookedLead as any).findById = originalFindById;
 });
 
-test("getBookedLeadForCancellation allows unresolved employee leadless bookings", async () => {
+test("getBookedLeadForCancellation allows explicitly authorized imported leadless booking", async () => {
   (BookedLead as any).findById = () => ({
     session() {
       return this;
@@ -18,7 +18,6 @@ test("getBookedLeadForCancellation allows unresolved employee leadless bookings"
     populate: async () =>
       BookedLead.hydrate({
         _id: "64c0f47e4d8b0e4444444444",
-        booking_origin: "employee_booking",
         is_leadless_booking: true,
         is_referral_booking: false,
         cancelled: null,
@@ -31,8 +30,11 @@ test("getBookedLeadForCancellation allows unresolved employee leadless bookings"
       }),
   });
 
-  const booking = await getBookedLeadForCancellation("64c0f47e4d8b0e4444444444");
-  assert.equal(booking.booking_origin, "employee_booking");
+  const booking = await getBookedLeadForCancellation(
+    "64c0f47e4d8b0e4444444444",
+    undefined,
+    { allowLeadless: true },
+  );
   assert.equal(booking.is_leadless_booking, true);
 });
 

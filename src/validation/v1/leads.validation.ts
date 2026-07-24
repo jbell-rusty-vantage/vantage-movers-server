@@ -86,7 +86,14 @@ const optionalFormLeadRefNo = z.preprocess(
 const optionalLeadId = z.preprocess(
   (value: unknown) =>
     typeof value === "string" && value.trim() === "" ? undefined : value,
-  z.string().trim().regex(/^LID[0-9a-f]{13}$/).optional(),
+  z
+    .string()
+    .trim()
+    .regex(
+      /^(?:LID[0-9a-f]{13}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i,
+      "Lead ID must be a legacy LID or UUID",
+    )
+    .optional(),
 );
 
 const formLeadFields = {
@@ -110,6 +117,8 @@ const formLeadFields = {
   lid: optionalLeadId,
   email: looseEmailString,
   phone_number: nonEmptyString,
+  over_2000: booleanInput.optional(),
+  over_4000: booleanInput.optional(),
   quoted: booleanInput.optional(),
   cubic_feet: optionalNumber,
   ...receiverAgentFields,
@@ -122,10 +131,16 @@ export const createFormLeadSchema = z
     ref_no: optionalFormLeadRefNo,
     crm_company_label: nonEmptyString.default("Main Site Forms"),
     post_to_granot: booleanInput.default(false),
+    local: localSchema.optional(),
+    ingestion_source: z.literal("best_relocation_sheet").optional(),
     // Parsed here before the service applies the strict true-only messaging gate.
     sms_consent: booleanInput.optional(),
   })
   .strict()
+  .refine(
+    (value) => value.local === undefined || value.ingestion_source === "best_relocation_sheet",
+    "local override is restricted to Best Relocation sheet ingestion",
+  )
   .refine(hasLeadName, "Form lead requires name, first_name, or last_name");
 
 export const updateFormLeadSchema = z
@@ -178,6 +193,8 @@ const callLeadFields = {
   pickup_state: optionalString,
   delivery_state: optionalString,
   cubic_feet: optionalNumber,
+  over_2000: booleanInput.optional(),
+  over_4000: booleanInput.optional(),
   ...receiverAgentFields,
 };
 

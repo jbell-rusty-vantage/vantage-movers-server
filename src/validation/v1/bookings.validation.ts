@@ -126,6 +126,7 @@ export const createLeadlessBookingSchema = z
     book_date: bookedLeadFields.book_date,
     job_no: bookedLeadFields.job_no,
     source_company: sourceCompanySchema,
+    source: optionalString,
     customer_name: optionalString,
     customer_phone: optionalString,
     agent: nonEmptyString,

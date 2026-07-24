@@ -56,7 +56,8 @@ export async function createLeadlessBooking(input: CreateLeadlessBookingInput) {
   const warnings = buildBookedLeadWarnings(agent_allocations);
   const depositAmount = input.deposit_amount;
   const customerName = input.customer_name?.trim() ?? "";
-  const source = await resolveLeadlessBookingSource(input.source_company);
+  const source =
+    input.source?.trim() || (await resolveLeadlessBookingSource(input.source_company));
 
   const booking = await runSheetSyncWrite(async (session) => {
     const customer = customerName
