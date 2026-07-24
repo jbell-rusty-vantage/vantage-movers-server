@@ -15,6 +15,7 @@ export {
   collapseBookingsByJob,
   DEFAULT_MATCH_THRESHOLD,
   DEFAULT_PRODUCTION_BASE_URL,
+  normalizeMerchantName,
   normalizeMoveSize,
   normalizeZip,
   SOURCE_COMPANY,

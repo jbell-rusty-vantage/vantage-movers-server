@@ -141,10 +141,23 @@ export async function updateCatalogItem(
 }
 
 export async function resolveActiveAgentByName(name: string): Promise<AgentDocument> {
+  return resolveAgentByName(name);
+}
+
+export async function resolveAgentByName(
+  name: string,
+  options: { includeInactive?: boolean } = {},
+): Promise<AgentDocument> {
   const normalized_name = normalizeCatalogName(name);
-  const agent = await Agent.findOne({ normalized_name, active: true }).exec();
+  const agent = await Agent.findOne({
+    normalized_name,
+    ...(options.includeInactive ? {} : { active: true }),
+  }).exec();
   if (!agent) {
-    throw new V1ServiceError(`Unknown or inactive agent: ${name}`, 400);
+    throw new V1ServiceError(
+      options.includeInactive ? `Unknown agent: ${name}` : `Unknown or inactive agent: ${name}`,
+      400,
+    );
   }
   return agent;
 }

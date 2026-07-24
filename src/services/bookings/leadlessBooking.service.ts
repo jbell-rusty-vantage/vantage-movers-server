@@ -15,6 +15,7 @@ import { V1ServiceError } from "../v1ServiceError";
 import { buildBookedLeadWarnings } from "./bookingWarnings";
 import { populateBookedLead } from "./bookedLead.service";
 import { resolveLeadSourceAssignment } from "../leads/leadSourceCompany";
+import { requireBestRelocationImportSource } from "./bestRelocationImportGuard";
 
 function leadlessBookingJob(bookingId: string): FullSheetSyncJob {
   return {
@@ -41,6 +42,10 @@ async function resolveLeadlessBookingSource(sourceCompany: string): Promise<stri
 
 export async function createLeadlessBooking(input: CreateLeadlessBookingInput) {
   const jobNo = input.job_no.trim();
+  const isBestRelocationImport = requireBestRelocationImportSource(
+    input.ingestion_source,
+    parseSourceCompany(input.source_company),
+  );
   const existingBooking = await BookedLead.findOne({ job_no: jobNo }).select("_id").lean().exec();
   if (existingBooking) {
     throw new V1ServiceError("A booking already exists with this job number", 409);
@@ -51,7 +56,9 @@ export async function createLeadlessBooking(input: CreateLeadlessBookingInput) {
     split_agent: input.split_agent,
     binder_amount: input.total_binder_amount,
   });
-  const agent_allocations = await resolveAgentAllocations(allocationInputs);
+  const agent_allocations = await resolveAgentAllocations(allocationInputs, {
+    includeInactive: isBestRelocationImport,
+  });
   const merchant = await resolveActiveMerchantName(input.merchant);
   const warnings = buildBookedLeadWarnings(agent_allocations);
   const depositAmount = input.deposit_amount;

@@ -5,7 +5,7 @@ import type {
   CreateBookedLeadFromSourceInput,
   CreateBookedLeadInput,
 } from "../../validation/v1.validation";
-import { resolveActiveAgentByName } from "../catalog";
+import { resolveAgentByName } from "../catalog";
 import { V1ServiceError } from "../v1ServiceError";
 import { normalizeAgentName } from "./agentName";
 
@@ -27,6 +27,24 @@ export type AgentAllocationDocumentInput = {
   agent_name_snapshot: string;
   binder_amount: number;
 };
+
+export function receiverAttributionFromPrimaryAllocation(
+  allocations: AgentAllocationDocumentInput[],
+  sourceValue: string,
+  setAt = new Date(),
+  existingReceiver?: unknown,
+) {
+  if (existingReceiver) return undefined;
+  const primary = allocations[0];
+  if (!primary) return undefined;
+  return {
+    receiver_agent: primary.agent,
+    receiver_agent_name_snapshot: primary.agent_name_snapshot,
+    receiver_agent_source: "best_relocation_sheet" as const,
+    receiver_agent_source_value: sourceValue,
+    receiver_agent_set_at: setAt,
+  };
+}
 
 /**
  * Derives the agent allocation list for a booked-from-source request.
@@ -69,6 +87,7 @@ export function deriveBookedLeadAgentAllocations(
  */
 export async function resolveAgentAllocations(
   allocations: AgentAllocationInput[],
+  options: { includeInactive?: boolean } = {},
 ): Promise<AgentAllocationDocumentInput[]> {
   const normalizedNames = new Set<string>();
   const resolved: AgentAllocationDocumentInput[] = [];
@@ -81,7 +100,7 @@ export async function resolveAgentAllocations(
     }
     normalizedNames.add(normalizedName);
 
-    const agent = await resolveActiveAgentByName(name);
+    const agent = await resolveAgentByName(name, options);
     resolved.push({
       agent: agent._id,
       agent_name_snapshot: agent.name,

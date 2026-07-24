@@ -81,6 +81,7 @@ const bookedLeadFromSourceSharedFields = {
   binder_amount: moneyAmount,
   customer_name: optionalString,
   customer_phone: optionalString,
+  ingestion_source: z.literal("best_relocation_sheet").optional(),
 };
 
 export const createBookedLeadFromSourceSchema = z.discriminatedUnion("lead_type", [
@@ -135,6 +136,7 @@ export const createLeadlessBookingSchema = z
     deposit_amount: bookedLeadFields.deposit_amount,
     merchant: bookedLeadFields.merchant,
     local: bookedLeadFields.local,
+    ingestion_source: z.literal("best_relocation_sheet").optional(),
   })
   .strict();
 

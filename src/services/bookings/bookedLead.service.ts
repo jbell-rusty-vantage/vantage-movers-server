@@ -21,6 +21,7 @@ import {
 } from "../googleSheets.service";
 import {
   patchAgentAllocations,
+  receiverAttributionFromPrimaryAllocation,
   resolveAgentAllocations,
   resolveTotalBinderAmount,
 } from "../agents";
@@ -61,14 +62,34 @@ type CreateBookedLeadServiceInput = Omit<CreateBookedLeadInput, "job_no"> & {
   job_no?: string;
   customer_name?: string;
   customer_phone?: string;
+  allow_inactive_agents?: boolean;
+  set_primary_agent_as_receiver?: boolean;
+  receiver_agent_source_value?: string;
 };
+
+function assignPrimaryAgentAsReceiver(
+  lead: object & { receiver_agent?: unknown },
+  allocations: Awaited<ReturnType<typeof resolveAgentAllocations>>,
+  input: CreateBookedLeadServiceInput,
+): void {
+  if (!input.set_primary_agent_as_receiver) return;
+  const attribution = receiverAttributionFromPrimaryAllocation(
+    allocations,
+    input.receiver_agent_source_value ?? "Booked Deals:unknown-job",
+    new Date(),
+    lead.receiver_agent,
+  );
+  if (attribution) Object.assign(lead, attribution);
+}
 
 export async function createBookedLead(input: CreateBookedLeadServiceInput) {
   const over_2000 = input.deposit_amount > 2000;
   const over_4000 = input.deposit_amount > 4000;
   // Agent allocations upsert reference `agents`; resolve them before the
   // transaction so reference-data writes stay out of the booking txn.
-  const agent_allocations = await resolveAgentAllocations(input.agent_allocations);
+  const agent_allocations = await resolveAgentAllocations(input.agent_allocations, {
+    includeInactive: input.allow_inactive_agents,
+  });
   const merchant = await resolveActiveMerchantName(input.merchant);
   const total_binder_amount = resolveTotalBinderAmount(
     agent_allocations,
@@ -137,6 +158,7 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
         over_4000,
       });
       await existingBooking.save({ session });
+      assignPrimaryAgentAsReceiver(lead, agent_allocations, input);
       await mirrorBookingToLead(
         lead,
         input.lead_model,
@@ -175,6 +197,7 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
       over_4000,
     });
     await booking.save({ session });
+    assignPrimaryAgentAsReceiver(lead, agent_allocations, input);
     await mirrorBookingToLead(
       lead,
       input.lead_model,

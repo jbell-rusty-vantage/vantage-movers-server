@@ -229,6 +229,8 @@ test("plan orders leads, attached booking, and cancellation with response bindin
   );
   assert.equal(plan.mutations[1].match_method, "lid_exact");
   assert.ok(plan.mutations[1].api.bindings?.form_lead_id);
+  assert.equal(plan.mutations[1].api.body.merchant, "Elavon");
+  assert.equal(plan.mutations[1].api.body.ingestion_source, "best_relocation_sheet");
   assert.ok(plan.mutations[2].api.bindings?.booked_lead);
 });
 

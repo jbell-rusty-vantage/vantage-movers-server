@@ -18,6 +18,15 @@ export const DEFAULT_PRODUCTION_BASE_URL =
   "https://vantage-movers-main-server.vercel.app";
 export const SOURCE_COMPANY = "best_relocation_leads" as const;
 
+export function normalizeMerchantName(value: string): string {
+  const normalized = value.trim().toLowerCase().replace(/\s+/g, " ");
+  if (normalized === "elavon" || normalized === "elavon cc") return "Elavon";
+  if (normalized === "paper check" || normalized === "paper check wf") {
+    return "Paper Check";
+  }
+  throw new Error(`Unsupported Best Relocation merchant "${value}"`);
+}
+
 export function normalizeMoveSize(value: string): (typeof MOVE_SIZES)[number] {
   const normalized = value.trim().toLowerCase().replace(/\s+/g, " ");
   if (/^studio\b/.test(normalized)) return "Studio";
@@ -277,7 +286,8 @@ function mapBookingMutation(
     agent: booking.agents[0],
     split_agent: booking.agents[1],
     deposit_amount: booking.deposit_amount,
-    merchant: booking.primary.merchant,
+    merchant: normalizeMerchantName(booking.primary.merchant),
+    ingestion_source: "best_relocation_sheet",
   });
   const sheet = { rows: booking.rows.map((row) => row.provenance) };
   if (!match || match.lead.kind === "lid_best_relo") {

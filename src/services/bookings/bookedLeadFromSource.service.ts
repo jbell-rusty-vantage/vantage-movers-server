@@ -7,6 +7,7 @@ import {
   resolveBookingSourceLead,
 } from "./bookingSourceResolver";
 import { resolveLeadSourceAssignment } from "../leads/leadSourceCompany";
+import { requireBestRelocationImportSource } from "./bestRelocationImportGuard";
 
 /**
  * Bridges Google Form / phone-driven booking submissions onto the generic
@@ -22,6 +23,16 @@ import { resolveLeadSourceAssignment } from "../leads/leadSourceCompany";
 export async function createBookedLeadFromSource(input: CreateBookedLeadFromSourceInput) {
   const { lead, leadModel, jobNo } = await resolveBookingSourceLead(input);
   const effectiveSourceCompany = effectiveBookingSourceCompany(input.source_company, lead);
+  const isBestRelocationImport = requireBestRelocationImportSource(
+    input.ingestion_source,
+    effectiveSourceCompany,
+  );
+  if (isBestRelocationImport) {
+    requireBestRelocationImportSource(
+      input.ingestion_source,
+      effectiveBookingSourceCompany(undefined, lead),
+    );
+  }
   let bookingSource = sourceDisplayLabelFromLead(lead) ?? effectiveSourceCompany;
   if (input.source_company?.trim()) {
     const { resolution, assignment } = await resolveLeadSourceAssignment({
@@ -52,6 +63,11 @@ export async function createBookedLeadFromSource(input: CreateBookedLeadFromSour
     submission_id: input.submission_id,
     customer_name: input.customer_name,
     customer_phone: input.customer_phone,
+    allow_inactive_agents: isBestRelocationImport,
+    set_primary_agent_as_receiver: isBestRelocationImport,
+    receiver_agent_source_value: isBestRelocationImport
+      ? `Booked Deals:${jobNo ?? "unknown-job"}`
+      : undefined,
   });
 }
 

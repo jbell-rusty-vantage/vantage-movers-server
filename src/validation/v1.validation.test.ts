@@ -223,10 +223,12 @@ test("createBookedLeadFromSourceSchema accepts transient CallLead booking phone"
     deposit_amount: 900,
     merchant: "Card",
     source_company: "BestRelocation Inbounds",
+    ingestion_source: "best_relocation_sheet",
   });
 
   assert.equal(parsed.lead_type, "CallLead");
   assert.equal(parsed.call_phone_number, "(240) 555-0199");
+  assert.equal(parsed.ingestion_source, "best_relocation_sheet");
 });
 
 test("createBookedLeadFromSourceSchema accepts CallLead booking with only phone", () => {
@@ -801,13 +803,13 @@ test("FormLead model accepts receiver_agent provenance fields", async () => {
     email: "jane@example.com",
     phone_number: "5555551212",
     local: "long_distance",
-    receiver_agent_source: "extension_crm_username_match",
-    receiver_agent_source_value: "NICK",
+    receiver_agent_source: "best_relocation_sheet",
+    receiver_agent_source_value: "Booked Deals:P5556278",
   });
 
   await assert.doesNotReject(() => lead.validate());
-  assert.equal(lead.receiver_agent_source, "extension_crm_username_match");
-  assert.equal(lead.receiver_agent_source_value, "NICK");
+  assert.equal(lead.receiver_agent_source, "best_relocation_sheet");
+  assert.equal(lead.receiver_agent_source_value, "Booked Deals:P5556278");
 });
 
 test("FormLead model rejects an unknown receiver_agent_source value", async () => {
@@ -833,12 +835,12 @@ test("CallLead model accepts receiver_agent provenance fields", async () => {
   const lead = new CallLead({
     job_no: "P5556278",
     source_company: "best_relocation_leads",
-    receiver_agent_source: "extension_created",
-    receiver_agent_source_value: "AUSTIN",
+    receiver_agent_source: "best_relocation_sheet",
+    receiver_agent_source_value: "Booked Deals:P5556278",
   });
 
   await assert.doesNotReject(() => lead.validate());
-  assert.equal(lead.receiver_agent_source, "extension_created");
+  assert.equal(lead.receiver_agent_source, "best_relocation_sheet");
 });
 
 test("updateFormLeadSchema accepts receiver_agent linking fields", () => {

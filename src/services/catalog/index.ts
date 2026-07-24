@@ -4,6 +4,7 @@ export {
   listCatalogItems,
   normalizeCatalogName,
   resolveActiveAgentByName,
+  resolveAgentByName,
   resolveActiveMerchantName,
   updateCatalogItem,
   type CatalogItem,

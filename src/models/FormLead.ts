@@ -79,6 +79,7 @@ const FormLeadSchema = new Schema(
         "extension_selected",
         "extension_created",
         "extension_crm_username_match",
+        "best_relocation_sheet",
         "manual",
       ],
     },

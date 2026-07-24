@@ -12,6 +12,7 @@ export {
   deriveBookedLeadAgentAllocations,
   patchAgentAllocations,
   primaryAgentName,
+  receiverAttributionFromPrimaryAllocation,
   resolveAgentAllocations,
   resolveTotalBinderAmount,
   upsertAgentByName,

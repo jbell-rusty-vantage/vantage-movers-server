@@ -29,9 +29,11 @@ export function buildPhoneRegex(normalizedPhone: string): RegExp {
  */
 export async function findBestCallLeadMatchByPhone(
   normalizedPhone: string,
+  options: { sourceCompany?: string } = {},
 ): Promise<mongoose.HydratedDocument<CallLeadDocument> | undefined> {
   const candidates = (
     await CallLead.find({
+      ...(options.sourceCompany ? { source_company: options.sourceCompany } : {}),
       $or: [
         { normalized_phone_number: normalizedPhone },
         { phone_number: buildPhoneRegex(normalizedPhone) },

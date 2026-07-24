@@ -7,6 +7,7 @@ import {
   createCatalogItem,
   listCatalogItems,
   resolveActiveAgentByName,
+  resolveAgentByName,
   resolveActiveMerchantName,
 } from "./catalog.service";
 
@@ -74,6 +75,26 @@ test("agent resolution rejects inactive or unknown names", async () => {
     () => resolveActiveAgentByName("Former Agent"),
     /Unknown or inactive agent: Former Agent/,
   );
+});
+
+test("agent resolution can include an existing inactive agent", async () => {
+  const capture: { filter?: unknown } = {};
+  (Agent as unknown as MutableModel).findOne = (filter: unknown) => {
+    capture.filter = filter;
+    return {
+      exec: async () => ({
+        _id: new mongoose.Types.ObjectId(),
+        name: "Former Agent",
+        normalized_name: "former agent",
+        active: false,
+      }),
+    };
+  };
+
+  const agent = await resolveAgentByName("Former Agent", { includeInactive: true });
+
+  assert.deepEqual(capture.filter, { normalized_name: "former agent" });
+  assert.equal(agent.active, false);
 });
 
 test("merchant resolution returns canonical display name", async () => {

@@ -20,6 +20,7 @@ import type {
 } from "../../validation/v1.validation";
 import { V1ServiceError } from "../v1ServiceError";
 import { resolveLeadSourceAssignment } from "../leads/leadSourceCompany";
+import { bestRelocationImportLeadFilter } from "./bestRelocationImportGuard";
 
 /**
  * Locates (or creates) the source lead a booked-from-source request points at.
@@ -50,9 +51,10 @@ export async function resolveBookingSourceLead(
   const jobNo = input.call_job_no?.trim() || undefined;
   const submittedPhone = input.call_phone_number?.trim();
   const normalizedPhone = normalizePhoneNumberForMatch(submittedPhone);
+  const importLeadFilter = bestRelocationImportLeadFilter(input.ingestion_source);
 
   const leads = jobNo
-    ? await CallLead.find({ job_no: jobNo })
+    ? await CallLead.find({ job_no: jobNo, ...importLeadFilter })
         .sort({ createdAt: -1 })
         .limit(5)
     : [];
@@ -80,7 +82,9 @@ export async function resolveBookingSourceLead(
     : "not_provided";
 
   const phoneMatchedLead = normalizedPhone
-    ? await findBestCallLeadMatchByPhone(normalizedPhone)
+    ? await findBestCallLeadMatchByPhone(normalizedPhone, {
+        sourceCompany: importLeadFilter.source_company,
+      })
     : undefined;
   if (phoneMatchedLead) {
     if (jobNo) {
