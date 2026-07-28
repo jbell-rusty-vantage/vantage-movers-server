@@ -165,11 +165,14 @@ test("call lead enrichment can claim an unassigned phone-matched call lead sourc
 function stubCallLeadFind(
   resolver: (query: Record<string, unknown>) => unknown[],
 ) {
-  (CallLead as unknown as StubbedModel).find = ((query: Record<string, unknown>) => {
-    const chain = {} as FindChain;
-    chain.sort = () => chain;
-    chain.limit = () => chain;
-    chain.exec = async () => resolver(query);
+  (CallLead as unknown as { find: (query: Record<string, unknown>) => FindChain }).find = ((
+    query: Record<string, unknown>,
+  ) => {
+    const chain: FindChain = {
+      sort: () => chain,
+      limit: () => chain,
+      exec: async () => resolver(query),
+    };
     return chain;
-  }) as typeof CallLead.find;
+  });
 }
