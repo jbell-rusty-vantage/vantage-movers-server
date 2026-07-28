@@ -27,6 +27,12 @@ import {
   applyGranotCrmUsernameReceiverMatch,
   type ReceiverAgentCrmUsernameMatchResult,
 } from "../agents/receiverAgentCrmUsername";
+import {
+  buildAssignedSourceConflict,
+  isLeadSourceCompatible,
+  isUnassignedSource,
+  sourceDisplayLabel,
+} from "../leads/callLeadSourceMatch";
 
 export type CallLeadEnrichmentStatus =
   | "updateable"
@@ -211,10 +217,20 @@ async function resolveEnrichmentRow(
     };
   }
 
-  const { lead, warnings, matchMethod } = await findBestCallLeadMatch(
-    parsed.normalized_phone_number,
-    parsed.job_no,
-  );
+  const match = await findBestCallLeadMatch(parsed);
+  if (match.conflict) {
+    return {
+      result: {
+        ...base,
+        status: "conflict",
+        match_method: match.matchMethod,
+        message: match.conflict.message,
+        warnings: [...base.warnings, ...match.warnings],
+      },
+    };
+  }
+
+  const { lead, warnings, matchMethod } = match;
   if (!lead) {
     const identityParts: string[] = [];
     if (parsed.normalized_phone_number) {
@@ -241,6 +257,17 @@ async function resolveEnrichmentRow(
   base.has_booking = Boolean(lead.booked);
   base.receiver_agent_name_snapshot = lead.receiver_agent_name_snapshot ?? undefined;
   base.warnings.push(...warnings);
+
+  const sourceConflict = buildAssignedSourceConflict(lead, parsed);
+  if (sourceConflict) {
+    return {
+      result: {
+        ...base,
+        status: "conflict",
+        message: sourceConflict,
+      },
+    };
+  }
 
   const existingJobNo = cleanValue(lead.job_no);
   const hasJobConflict =
@@ -339,48 +366,50 @@ function formatMatchMethod(method: CallLeadMatchMethod | undefined): string {
   }
 }
 
-async function findBestCallLeadMatch(
-  normalizedPhone: string | undefined,
-  jobNo: string | undefined,
-): Promise<{
+type CallLeadMatchResult = {
   lead?: HydratedDocument<CallLeadDocument>;
   warnings: string[];
   matchMethod: CallLeadMatchMethod;
-}> {
-  const candidates = normalizedPhone
-    ? (
-        await CallLead.find({
-          $or: [
-            { normalized_phone_number: normalizedPhone },
-            { phone_number: buildPhoneRegex(normalizedPhone) },
-          ],
-        })
-          .sort({ createdAt: -1 })
-          .limit(25)
-          .exec()
-      ).filter(
-        (lead) =>
-          normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone,
-      )
-    : [];
+  conflict?: { message: string };
+};
 
-  if (candidates.length > 0) {
-    const activeCandidates = candidates.filter(
-      (lead) => !lead.booked && !lead.cancelled,
+async function findBestCallLeadMatch(
+  parsed: ParsedCallLeadEnrichmentRow,
+): Promise<CallLeadMatchResult> {
+  const normalizedPhone = parsed.normalized_phone_number;
+  const jobNo = parsed.job_no;
+
+  if (normalizedPhone) {
+    const candidates = (
+      await CallLead.find({
+        $or: [
+          { normalized_phone_number: normalizedPhone },
+          { phone_number: buildPhoneRegex(normalizedPhone) },
+        ],
+      })
+        .sort({ createdAt: -1 })
+        .limit(25)
+        .exec()
+    ).filter(
+      (lead) => normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone,
     );
-    const ranked = activeCandidates.length > 0 ? activeCandidates : candidates;
-    ranked.sort(compareCallLeadRecency);
-    const warnings: string[] = [];
-    if (candidates.length > 1) {
-      warnings.push(
-        `Multiple call leads matched phone ${normalizedPhone}; selected newest eligible lead.`,
+
+    if (candidates.length > 0) {
+      const phoneMatch = selectSourceCompatibleCallLead(
+        candidates,
+        parsed,
+        "phone",
+        normalizedPhone,
       );
+      if (phoneMatch.conflict || phoneMatch.lead) {
+        const selectedJobNo = cleanValue(phoneMatch.lead?.job_no);
+        const matchMethod: CallLeadMatchMethod =
+          phoneMatch.lead && jobNo && selectedJobNo === jobNo
+            ? "phone_and_job_no"
+            : "phone_only";
+        return { ...phoneMatch, matchMethod };
+      }
     }
-    const selected = ranked[0];
-    const selectedJobNo = cleanValue(selected.job_no);
-    const matchMethod: CallLeadMatchMethod =
-      jobNo && selectedJobNo === jobNo ? "phone_and_job_no" : "phone_only";
-    return { lead: selected, warnings, matchMethod };
   }
 
   if (jobNo) {
@@ -389,22 +418,66 @@ async function findBestCallLeadMatch(
       .limit(5)
       .exec();
     if (byJobNo.length > 0) {
-      byJobNo.sort(compareCallLeadRecency);
-      const warnings: string[] = [];
-      if (byJobNo.length > 1) {
-        warnings.push(
-          `Multiple call leads matched job_no ${jobNo}; selected newest eligible lead.`,
-        );
+      const jobMatch = selectSourceCompatibleCallLead(byJobNo, parsed, "job_no", jobNo);
+      if (jobMatch.conflict || jobMatch.lead) {
+        return { ...jobMatch, matchMethod: "job_no_only" };
       }
-      return {
-        lead: byJobNo[0],
-        warnings,
-        matchMethod: "job_no_only",
-      };
     }
   }
 
   return { warnings: [], matchMethod: "none" };
+}
+
+function selectSourceCompatibleCallLead(
+  candidates: HydratedDocument<CallLeadDocument>[],
+  parsed: ParsedCallLeadEnrichmentRow,
+  matchType: "phone" | "job_no",
+  matchValue: string,
+): Omit<CallLeadMatchResult, "matchMethod"> {
+  const activeCandidates = candidates.filter((lead) => !lead.booked && !lead.cancelled);
+  const pool = activeCandidates.length > 0 ? activeCandidates : candidates;
+  const compatible = pool.filter((lead) => isLeadSourceCompatible(lead, parsed));
+  const crmSourceLabel = sourceDisplayLabel(parsed);
+
+  if (compatible.length === 0) {
+    const conflictLead = [...pool].sort(compareCallLeadRecency)[0];
+    const message =
+      buildAssignedSourceConflict(conflictLead, parsed) ??
+      (matchType === "job_no"
+        ? `Call lead job_no matched, but no eligible candidate had source ${crmSourceLabel} or an unassigned source.`
+        : `Call lead phone matched, but no eligible candidate had source ${crmSourceLabel} or an unassigned source.`);
+    const warnings =
+      candidates.length > 1
+        ? [
+            matchType === "phone"
+              ? `Multiple call leads matched phone ${matchValue}; none matched CRM source ${crmSourceLabel}.`
+              : `Multiple call leads matched job_no ${matchValue}; none matched CRM source ${crmSourceLabel}.`,
+          ]
+        : [];
+    return { conflict: { message }, warnings };
+  }
+
+  compatible.sort(compareCallLeadRecency);
+  const selected = compatible[0];
+  const warnings: string[] = [];
+  if (compatible.length > 1) {
+    warnings.push(
+      matchType === "phone"
+        ? `Multiple call leads matched phone ${matchValue} and source ${crmSourceLabel}; selected newest eligible lead.`
+        : `Multiple call leads matched job_no ${matchValue} and source ${crmSourceLabel}; selected newest eligible lead.`,
+    );
+  } else if (candidates.length > 1) {
+    warnings.push(
+      matchType === "phone"
+        ? `Multiple call leads matched phone ${matchValue}; selected newest eligible lead with matching source ${crmSourceLabel}.`
+        : `Multiple call leads matched job_no ${matchValue}; selected newest eligible lead with matching source ${crmSourceLabel}.`,
+    );
+  }
+  if (isUnassignedSource(selected.source_company)) {
+    warnings.push(`Claiming unassigned call lead source as ${crmSourceLabel}.`);
+  }
+
+  return { lead: selected, warnings };
 }
 
 function buildUpdate(
