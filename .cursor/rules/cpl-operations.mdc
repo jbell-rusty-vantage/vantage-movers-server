@@ -1,0 +1,18 @@
+---
+description: Temporal CPL schedule, Lead snapshot, and correction-job invariants
+globs: src/services/operationsRegistry/cpl*.ts,src/models/{Cpl*,FormLead,CallLead}.ts,src/services/leads/{leadCplResolution,formLead.service,callLead.service}.ts,src/services/bookings/{bookedLeadFromSource.service,bookingMirror.service,bookingSourceResolver}.ts,src/services/employeeBookings/bookingLeadAttachment.service.ts,src/services/analytics/{leadCost.service,receiverAgentPerformance.service,analyticsMerge}.ts,src/routes/{v1.routes,cpl-correction-cron.routes}.ts,scripts/migrations/operations-registry-cpl-schedules*.ts
+alwaysApply: false
+---
+
+# Temporal CPL Operations
+
+- `cpl_rate_periods` is the writable CPL authority. Legacy `cpl_rates` and embedded granularity CPL values are read-only migration compatibility data.
+- Owner inputs are `America/New_York` business dates. Store inclusive starts and next-local-midnight exclusive ends as UTC instants plus date strings. Store money as non-negative integer cents.
+- Active schedules are continuous, non-overlapping, and end with exactly one open period. Explicit zero is a valid resolved rate. Use the granularity `schedule_revision` for optimistic concurrency.
+- Schedule writes build and validate the full result in memory, then update periods, revision, and Registry Change in one transaction. Simple multi-row changes are all-or-nothing. Schedule edits never rewrite prior Leads.
+- Resolve Lead CPL from the Lead business `timestamp`, accounting for the existing pseudo-UTC Eastern wall-clock storage convention; never use `createdAt`.
+- New production Leads persist `cpl`, period reference, resolution status/time/version. Missing rates save compatibility zero, clear the period reference, emit an actionable event, and remain excluded/disclosed in trustworthy Analytics.
+- `duplicate_zero` applies only to duplicate Call Leads and retains base-period evidence when available. Unrelated Lead edits preserve the existing CPL snapshot.
+- Prior Lead rewrites require the separate Owner preview/apply correction workflow. Freeze reviewed IDs and state, reject drift as `CPL_PREVIEW_STALE`, touch production Form/Call collections only, and keep immutable before/after evidence.
+- Correction workers use owner-guarded leases, stable cursors, transactional Lead-plus-checkpoint writes, resumable failures, safe cancellation, bounded windows/targets, and sanitized events/errors.
+- M4 is dry-run by default, creates one reviewed open cutover period per active granularity, blocks source disagreements, and never infers history or updates existing Lead fields.
