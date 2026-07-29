@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildSourceRegistryHealthFindings } from "./health";
+import {
+  buildCplRegistryHealthFindings,
+  buildSourceRegistryHealthFindings,
+} from "./health";
 
 test("source registry health reports invalid defaults and deterministic conflicts", () => {
   const findings = buildSourceRegistryHealthFindings(
@@ -65,4 +68,22 @@ test("source registry health reports active granularity under inactive company",
 
   assert.equal(findings[0]?.code, "registry.source_granularity_inactive_company");
   assert.equal(findings[0]?.entity_id, "call-a");
+});
+
+test("CPL health discloses invalid active schedules and unresolved production Leads", () => {
+  const findings = buildCplRegistryHealthFindings(
+    ["granularity-a"],
+    [],
+    3,
+    1,
+    1,
+  );
+  assert.deepEqual(
+    findings.map((finding) => finding.code),
+    [
+      "registry.cpl_schedule_invalid",
+      "registry.cpl_missing_rate_leads",
+      "registry.cpl_correction_jobs_unhealthy",
+    ],
+  );
 });

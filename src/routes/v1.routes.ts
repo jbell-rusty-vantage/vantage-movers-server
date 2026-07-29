@@ -95,12 +95,21 @@ import {
   getSourceCompanyBySlug,
   listSourceCompanies,
   listSourceGranularities,
+  applySimpleCplSchedule,
+  listCplSchedule,
+  mutateAdvancedCplSchedule,
+  previewCplCorrection,
+  createCplCorrection,
+  getCplCorrectionJob,
+  cancelCplCorrectionJob,
+  createDefaultCplCorrectionDependencies,
   previewSourceDependency,
   previewSourceResolution,
   setSourceCompanyActivation,
   setSourceGranularityActivation,
   type RegistryCatalogItem,
   type SourceCompanyCommand,
+  type AdvancedCplOperation,
 } from "../services/operationsRegistry";
 import {
   bookingLeadCandidateSearchSchema,
@@ -124,7 +133,6 @@ import {
   catalogListQuerySchema,
   catalogUpdateSchema,
   catalogActivationSchema,
-  cplRateUpdateSchema,
   leadSourceCompanyCreateSchema,
   leadSourceCompanyUpdateSchema,
   sourceGranularityListQuerySchema,
@@ -174,6 +182,12 @@ import {
   registryChangesQuerySchema,
   registryOverviewQuerySchema,
   registryHealthQuerySchema,
+  cplSnapshotQuerySchema,
+  simpleCplScheduleSchema,
+  advancedCplScheduleCommandSchema,
+  cplCorrectionPreviewSchema,
+  createCplCorrectionSchema,
+  cancelCplCorrectionSchema,
   type LeadSourceCompanyCreateInput,
   type LeadSourceCompanyUpdateInput,
 } from "../validation/v1.validation";
@@ -198,7 +212,7 @@ import {
   type CatalogItem,
   type CatalogKind,
 } from "../services/catalog";
-import { listCplRates, updateCplRate } from "../services/cpl/cplRate.service";
+import { listCplRates } from "../services/cpl/cplRate.service";
 import {
   exportAgentSalesReportCsv,
   exportAnalyticsReportCsv,
@@ -290,7 +304,6 @@ router.get(
   handleCatalogDependencies("merchants"),
 );
 router.get("/api/v1/admin/cpl-rates", handleCplRatesList);
-router.patch("/api/v1/admin/cpl-rates/:label", handleCplRateUpdate);
 router.get("/api/v1/admin/source-companies", handleLeadSourceCompaniesList);
 router.get("/api/v1/admin/source-companies/:id", handleLeadSourceCompanyDetail);
 router.post("/api/v1/admin/source-companies", handleLeadSourceCompanyCreate);
@@ -323,6 +336,26 @@ router.get(
 router.post(
   "/api/v1/admin/source-resolution/preview",
   handleSourceResolutionPreview,
+);
+router.get("/api/v1/admin/cpl/snapshot", handleCplSnapshot);
+router.post("/api/v1/admin/cpl/simple-schedule", handleSimpleCplSchedule);
+router.get(
+  "/api/v1/admin/source-granularities/:id/cpl-periods",
+  handleCplPeriods,
+);
+router.post(
+  "/api/v1/admin/source-granularities/:id/cpl-schedule/commands",
+  handleAdvancedCplScheduleCommand,
+);
+router.post(
+  "/api/v1/admin/cpl-corrections/preview",
+  handleCplCorrectionPreview,
+);
+router.post("/api/v1/admin/cpl-corrections", handleCplCorrectionCreate);
+router.get("/api/v1/admin/cpl-corrections/:id", handleCplCorrectionDetail);
+router.post(
+  "/api/v1/admin/cpl-corrections/:id/cancel",
+  handleCplCorrectionCancel,
 );
 router.get("/api/v1/admin/testimonials", handleAdminTestimonialsList);
 router.get(
@@ -750,21 +783,6 @@ async function handleCplRatesList(req: Request, res: Response) {
   }
 }
 
-async function handleCplRateUpdate(req: Request, res: Response) {
-  try {
-    const label =
-      (Array.isArray(req.params.label)
-        ? req.params.label[0]
-        : req.params.label) ?? "";
-    await connectMongo();
-    const parsed = cplRateUpdateSchema.parse(req.body);
-    const data = await updateCplRate(label, parsed.cpl);
-    return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
 async function handleLeadSourceCompaniesList(req: Request, res: Response) {
   try {
     await connectMongo();
@@ -961,6 +979,214 @@ async function handleSourceResolutionPreview(req: Request, res: Response) {
     requireRegistryReadActor(req, getVantageAuth(req));
     const parsed = sourceResolutionPreviewSchema.parse(req.body);
     const data = await previewSourceResolution(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleCplSnapshot(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    cplSnapshotQuerySchema.parse(req.query);
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const granularities = await listSourceGranularities();
+    const now = new Date();
+    const items = await Promise.all(
+      granularities.map(async (granularity) => {
+        const schedule = await listCplSchedule(granularity.id);
+        const current = schedule.periods.find(
+          (period) =>
+            period.effective_from <= now &&
+            (!period.effective_until || period.effective_until > now),
+        );
+        return {
+          source_granularity: granularity,
+          schedule_revision: schedule.revision,
+          current_rate: current
+            ? {
+                status: "resolved",
+                amount: current.amount_cents / 100,
+                amount_cents: current.amount_cents,
+                period_id: current.id,
+              }
+            : { status: "missing_rate", fallback_amount: 0 },
+        };
+      }),
+    );
+    return res.json({ ok: true, data: { generated_at: now.toISOString(), items } });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSimpleCplSchedule(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
+    const parsed = simpleCplScheduleSchema.parse(req.body);
+    const data = await applySimpleCplSchedule(parsed, actor);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleCplPeriods(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const data = await listCplSchedule(id);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleAdvancedCplScheduleCommand(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
+    const parsed = advancedCplScheduleCommandSchema.parse(req.body);
+    let operation: AdvancedCplOperation;
+    switch (parsed.operation) {
+      case "add_future":
+        operation = {
+          type: "add_future",
+          effective_date: parsed.effective_date,
+          amount: parsed.amount,
+        };
+        break;
+      case "split":
+        operation = {
+          type: "split",
+          period_id: parsed.period_id,
+          effective_date: parsed.effective_date,
+          amount: parsed.amount,
+        };
+        break;
+      case "correct_period":
+        operation = {
+          type: "correct_period",
+          period_id: parsed.period_id,
+          amount: parsed.amount,
+        };
+        break;
+      case "replace_schedule":
+        operation = {
+          type: "replace_schedule",
+          periods: parsed.periods.map((period) => ({
+            amount: period.amount,
+            start_date: period.effective_from_date,
+            end_date: period.effective_until_date,
+          })),
+        };
+        break;
+    }
+    const data = await mutateAdvancedCplSchedule(
+      {
+        source_granularity_id: id,
+        expected_revision: parsed.expected_revision,
+        operation,
+        reason: parsed.reason,
+      },
+      actor,
+    );
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleCplCorrectionPreview(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    requireRegistryOwnerActor(req, getVantageAuth(req));
+    const parsed = cplCorrectionPreviewSchema.parse(req.body);
+    const schedule = await listCplSchedule(parsed.source_granularity_id);
+    const deps = createDefaultCplCorrectionDependencies({
+      previewSampleLimit: parsed.sample_limit,
+    });
+    const preview = await previewCplCorrection(
+      {
+        source_granularity_id: parsed.source_granularity_id,
+        target_schedule_revision: schedule.revision,
+        window: {
+          kind: "business_date",
+          window_from_date: parsed.window_from,
+          window_until_date: parsed.window_until,
+        },
+      },
+      deps,
+    );
+    const data = {
+      preview_hash: preview.preview_hash,
+      selection: preview.selection,
+      target_schedule_revision: preview.target_schedule_revision,
+      impact: preview.impact,
+    };
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleCplCorrectionCreate(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
+    const parsed = createCplCorrectionSchema.parse(req.body);
+    const data = await createCplCorrection(
+      {
+        source_granularity_id: parsed.source_granularity_id,
+        target_schedule_revision: parsed.target_schedule_revision,
+        preview_hash: parsed.preview_hash,
+        confirm: true,
+        reason: parsed.reason,
+        window: {
+          kind: "business_date",
+          window_from_date: parsed.window_from,
+          window_until_date: parsed.window_until,
+        },
+      },
+      actor,
+      createDefaultCplCorrectionDependencies(),
+    );
+    return res.status(202).json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleCplCorrectionDetail(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const data = await getCplCorrectionJob(
+      id,
+      createDefaultCplCorrectionDependencies(),
+    );
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleCplCorrectionCancel(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
+    const parsed = cancelCplCorrectionSchema.parse(req.body);
+    const data = await cancelCplCorrectionJob(
+      id,
+      actor,
+      createDefaultCplCorrectionDependencies(),
+      parsed.reason,
+    );
     return res.json({ ok: true, data });
   } catch (error) {
     return sendError(req, res, error);

@@ -46,3 +46,45 @@ test("employee booking reconciliation routes are registered", () => {
     true,
   );
 });
+
+test("legacy CPL rates remain read-only after temporal schedule cutover", () => {
+  const stack = (router as { stack?: RouteLayer[] }).stack ?? [];
+  const legacyRoutes = stack
+    .map((layer) => layer.route)
+    .filter((route): route is NonNullable<RouteLayer["route"]> =>
+      Boolean(route?.path?.startsWith("/api/v1/admin/cpl-rates")),
+    );
+
+  assert.equal(
+    legacyRoutes.some(
+      (route) => route.path === "/api/v1/admin/cpl-rates" && route.methods?.get,
+    ),
+    true,
+  );
+  assert.equal(legacyRoutes.some((route) => route.methods?.patch), false);
+});
+
+test("temporal CPL schedule and correction routes are registered", () => {
+  const stack = (router as { stack?: RouteLayer[] }).stack ?? [];
+  const routes = new Set(
+    stack
+      .map((layer) => layer.route)
+      .filter((route): route is NonNullable<RouteLayer["route"]> =>
+        Boolean(route?.path),
+      )
+      .map((route) => route.path),
+  );
+
+  for (const path of [
+    "/api/v1/admin/cpl/snapshot",
+    "/api/v1/admin/cpl/simple-schedule",
+    "/api/v1/admin/source-granularities/:id/cpl-periods",
+    "/api/v1/admin/source-granularities/:id/cpl-schedule/commands",
+    "/api/v1/admin/cpl-corrections/preview",
+    "/api/v1/admin/cpl-corrections",
+    "/api/v1/admin/cpl-corrections/:id",
+    "/api/v1/admin/cpl-corrections/:id/cancel",
+  ]) {
+    assert.equal(routes.has(path), true, `missing route ${path}`);
+  }
+});

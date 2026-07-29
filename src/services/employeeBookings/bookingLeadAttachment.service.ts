@@ -1,8 +1,8 @@
 import mongoose, { type ClientSession } from "mongoose";
 import type { LeadModelName } from "../../config/domain";
-import { getCplForLeadSource } from "../leadSourceCompanies";
 import { FormLead } from "../../models/FormLead";
 import { CallLead } from "../../models/CallLead";
+import { toFloridaTimestamp } from "../../utils/easternTime";
 import { resolveRequiredLocation, deriveFormLeadLocal, resolveOptionalLocation } from "../leads";
 import {
   findDuplicateFormLeadMatch,
@@ -11,6 +11,10 @@ import {
 } from "../leads/duplicateLead.service";
 import { normalizeLeadName } from "../leads/leadName.service";
 import { resolveLeadSourceAssignment } from "../leads/leadSourceCompany";
+import {
+  recordMissingLeadCplRate,
+  resolveLeadCplSnapshot,
+} from "../leads/leadCplResolution";
 import {
   claimAvailableLeadForBooking,
   clearBookingFromLead,
@@ -54,7 +58,16 @@ export async function attachLeadToEmployeeBooking(args: {
       local: (lead.local as any) ?? args.prepared.local,
     });
     Object.assign(lead, resolution.assignment);
-    lead.cpl = resolution.resolution.granularity.cpl;
+    Object.assign(
+      lead,
+      await resolveLeadCplSnapshot({
+        sourceGranularityId: resolution.assignment.source_granularity_id
+          ? String(resolution.assignment.source_granularity_id)
+          : null,
+        storedBusinessTimestamp: lead.timestamp,
+        duplicate: args.leadModel === "CallLead" && lead.duplicate === true,
+      }),
+    );
   }
 
   const claimed = await claimAvailableLeadForBooking(
@@ -132,16 +145,35 @@ export async function createAndAttachReconciliationCallLead(args: {
     },
     normalized.phone_number,
   );
+  const timestamp = toFloridaTimestamp(new Date());
+  const cplSnapshot = await resolveLeadCplSnapshot({
+    sourceGranularityId: resolution.assignment.source_granularity_id
+      ? String(resolution.assignment.source_granularity_id)
+      : null,
+    storedBusinessTimestamp: timestamp,
+  });
   const created = new CallLead({
     ...normalized,
     ...location,
     ...resolution.assignment,
     local: location.local ?? args.prepared.local,
     form_fill: formFill,
-    cpl: resolution.resolution.granularity.cpl,
+    timestamp,
+    ...cplSnapshot,
     created_on_unmatched: false,
   });
   await created.save({ session: args.session });
+  if (created.cpl_resolution_status === "missing_rate") {
+    await recordMissingLeadCplRate({
+      leadModel: "CallLead",
+      leadId: created._id.toString(),
+      sourceCompany: String(resolution.assignment.source_company),
+      sourceGranularityId: resolution.assignment.source_granularity_id
+        ? String(resolution.assignment.source_granularity_id)
+        : null,
+      sourceGranularityKey: resolution.assignment.source_granularity_key,
+    });
+  }
   const job = await attachLeadToEmployeeBooking({
     booking: args.booking,
     prepared: args.prepared,
@@ -191,21 +223,35 @@ export async function createAndAttachReconciliationFormLead(args: {
     normalized.phone_number,
     normalized.email,
   );
+  const timestamp = toFloridaTimestamp(new Date());
+  const cplSnapshot = await resolveLeadCplSnapshot({
+    sourceGranularityId: resolution.assignment.source_granularity_id
+      ? String(resolution.assignment.source_granularity_id)
+      : null,
+    storedBusinessTimestamp: timestamp,
+  });
   const created = new FormLead({
     ...normalized,
     ...location,
     ...resolution.assignment,
     local,
-    cpl: await getCplForLeadSource({
-      company_slug: args.prepared.sourceAssignment.source_company,
-      granularity_key: args.prepared.sourceAssignment.source_granularity_key,
-      channel: "form",
-      local,
-    }),
+    timestamp,
+    ...cplSnapshot,
     duplicate: duplicateMatch.duplicate,
     post_to_granot: false,
   });
   await created.save({ session: args.session });
+  if (created.cpl_resolution_status === "missing_rate") {
+    await recordMissingLeadCplRate({
+      leadModel: "FormLead",
+      leadId: created._id.toString(),
+      sourceCompany: String(resolution.assignment.source_company),
+      sourceGranularityId: resolution.assignment.source_granularity_id
+        ? String(resolution.assignment.source_granularity_id)
+        : null,
+      sourceGranularityKey: resolution.assignment.source_granularity_key,
+    });
+  }
   const formFillJobs = created.duplicate
     ? []
     : await markMatchingCallLeadsWithFormFill(

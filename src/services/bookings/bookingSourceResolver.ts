@@ -20,6 +20,7 @@ import type {
 } from "../../validation/v1.validation";
 import { V1ServiceError } from "../v1ServiceError";
 import { resolveLeadSourceAssignment } from "../leads/leadSourceCompany";
+import { resolveLeadCplSnapshot } from "../leads/leadCplResolution";
 import { bestRelocationImportLeadFilter } from "./bestRelocationImportGuard";
 
 /**
@@ -97,8 +98,7 @@ export async function resolveBookingSourceLead(
     return { lead: phoneMatchedLead, leadModel: "CallLead", jobNo };
   }
 
-  const { resolution: sourceResolution, assignment: sourceAssignment } =
-    await resolveLeadSourceAssignment({
+  const { assignment: sourceAssignment } = await resolveLeadSourceAssignment({
       value: input.source_company,
       company_slug: source_company,
       channel: "call",
@@ -110,14 +110,22 @@ export async function resolveBookingSourceLead(
     },
     submittedPhone,
   );
+  const timestamp = toFloridaTimestamp(input.timestamp);
+  const cplSnapshot = await resolveLeadCplSnapshot({
+    sourceGranularityId: sourceAssignment.source_granularity_id
+      ? String(sourceAssignment.source_granularity_id)
+      : null,
+    storedBusinessTimestamp: timestamp,
+    applicable: false,
+  });
   const lead = await CallLead.create({
     ...(jobNo ? { job_no: jobNo } : {}),
     ...(submittedPhone ? { phone_number: submittedPhone } : {}),
     ...sourceAssignment,
     form_fill,
     created_on_unmatched: true,
-    timestamp: toFloridaTimestamp(input.timestamp),
-    cpl: sourceResolution.granularity.cpl,
+    timestamp,
+    ...cplSnapshot,
   });
 
   return { lead, leadModel: "CallLead", jobNo };

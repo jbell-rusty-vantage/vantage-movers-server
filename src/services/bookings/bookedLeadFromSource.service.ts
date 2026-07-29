@@ -7,6 +7,10 @@ import {
   resolveBookingSourceLead,
 } from "./bookingSourceResolver";
 import { resolveLeadSourceAssignment } from "../leads/leadSourceCompany";
+import {
+  recordMissingLeadCplRate,
+  resolveLeadCplSnapshot,
+} from "../leads/leadCplResolution";
 import { requireBestRelocationImportSource } from "./bestRelocationImportGuard";
 
 /**
@@ -35,7 +39,7 @@ export async function createBookedLeadFromSource(input: CreateBookedLeadFromSour
   }
   let bookingSource = sourceDisplayLabelFromLead(lead) ?? effectiveSourceCompany;
   if (input.source_company?.trim()) {
-    const { resolution, assignment } = await resolveLeadSourceAssignment({
+    const { assignment } = await resolveLeadSourceAssignment({
       value: input.source_company,
       company_slug: effectiveSourceCompany,
       channel: leadModel === "CallLead" ? "call" : "form",
@@ -43,9 +47,29 @@ export async function createBookedLeadFromSource(input: CreateBookedLeadFromSour
       source_site: lead.source_company_site,
     });
     Object.assign(lead, assignment);
-    lead.cpl = resolution.granularity.cpl;
+    Object.assign(
+      lead,
+      await resolveLeadCplSnapshot({
+        sourceGranularityId: assignment.source_granularity_id
+          ? String(assignment.source_granularity_id)
+          : null,
+        storedBusinessTimestamp: lead.timestamp,
+        duplicate: leadModel === "CallLead" && lead.duplicate === true,
+      }),
+    );
     bookingSource = sourceDisplayLabelFromAssignment(assignment);
     await lead.save();
+    if (lead.cpl_resolution_status === "missing_rate") {
+      await recordMissingLeadCplRate({
+        leadModel,
+        leadId: lead._id.toString(),
+        sourceCompany: String(assignment.source_company),
+        sourceGranularityId: assignment.source_granularity_id
+          ? String(assignment.source_granularity_id)
+          : null,
+        sourceGranularityKey: assignment.source_granularity_key,
+      });
+    }
   }
 
   return createBookedLead({

@@ -3,7 +3,15 @@ import { Agent } from "../../../models/Agent";
 import { Merchant } from "../../../models/Merchant";
 import { getLeadSourceCompanyModel } from "../../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../../models/LeadSourceGranularity";
+import { getCplRatePeriodModel } from "../../../models/CplRatePeriod";
+import { getFormLeadModel } from "../../../models/FormLead";
+import { getCallLeadModel } from "../../../models/CallLead";
+import { getCplCorrectionJobModel } from "../../../models/CplCorrectionJob";
 import { getAdminProxySigningSecret } from "../config";
+import {
+  validateCplSchedule,
+  type CplSchedulePeriod,
+} from "../cplSchedule";
 import type { RegistryHealthFinding, RegistryHealthResult } from "../types";
 
 export async function getRegistryHealth(): Promise<RegistryHealthResult> {
@@ -28,11 +36,32 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
     inactiveMerchantsCount,
     sourceCompanies,
     sourceGranularities,
+    cplPeriods,
+    unresolvedFormLeads,
+    unresolvedCallLeads,
+    failedCorrectionJobs,
+    stalledCorrectionJobs,
   ] = await Promise.all([
     Agent.countDocuments({ active: false }),
     Merchant.countDocuments({ active: false }),
     getLeadSourceCompanyModel().find({}).lean().exec(),
     getLeadSourceGranularityModel().find({}).lean().exec(),
+    getCplRatePeriodModel()
+      .find({ archived_at: { $exists: false } })
+      .sort({ source_granularity: 1, effective_from: 1 })
+      .lean()
+      .exec(),
+    getFormLeadModel().countDocuments({
+      cpl_resolution_status: "missing_rate",
+    }),
+    getCallLeadModel().countDocuments({
+      cpl_resolution_status: "missing_rate",
+    }),
+    getCplCorrectionJobModel().countDocuments({ status: "failed" }),
+    getCplCorrectionJobModel().countDocuments({
+      status: "processing",
+      leased_until: { $lte: new Date() },
+    }),
   ]);
 
   if (inactiveAgentsUsedRecently > 0) {
@@ -83,11 +112,90 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
       })),
     ),
   );
+  findings.push(
+    ...buildCplRegistryHealthFindings(
+      sourceGranularities
+        .filter((granularity) => granularity.active)
+        .map((granularity) => String(granularity._id)),
+      cplPeriods.map((period) => ({
+        id: String(period._id),
+        source_granularity_id: String(period.source_granularity),
+        amount_cents: period.amount_cents,
+        effective_from: period.effective_from,
+        effective_until: period.effective_until ?? undefined,
+        effective_from_date: period.effective_from_date,
+        effective_until_date_exclusive:
+          period.effective_until_date_exclusive ?? undefined,
+        business_timezone: "America/New_York" as const,
+      })),
+      unresolvedFormLeads + unresolvedCallLeads,
+      failedCorrectionJobs,
+      stalledCorrectionJobs,
+    ),
+  );
 
   return {
     generated_at: new Date().toISOString(),
     findings,
   };
+}
+
+export function buildCplRegistryHealthFindings(
+  activeGranularityIds: readonly string[],
+  periods: readonly CplSchedulePeriod[],
+  unresolvedLeadCount: number,
+  failedCorrectionJobs = 0,
+  stalledCorrectionJobs = 0,
+): RegistryHealthFinding[] {
+  const findings: RegistryHealthFinding[] = [];
+  for (const granularityId of activeGranularityIds) {
+    const schedule = periods.filter(
+      (period) => period.source_granularity_id === granularityId,
+    );
+    try {
+      validateCplSchedule(schedule, { active: true });
+    } catch {
+      findings.push({
+        code: "registry.cpl_schedule_invalid",
+        severity: "error",
+        summary:
+          "Active Source Granularity lacks continuous, non-overlapping CPL coverage.",
+        entity_type: "source_granularity",
+        entity_id: granularityId,
+        remediation: {
+          summary:
+            "Add or correct periods so coverage is continuous with one open final period.",
+          action: "edit_cpl_schedule",
+        },
+      });
+    }
+  }
+  if (unresolvedLeadCount > 0) {
+    findings.push({
+      code: "registry.cpl_missing_rate_leads",
+      severity: "error",
+      summary: `${unresolvedLeadCount} production Lead(s) have unresolved CPL.`,
+      entity_type: "cpl_schedule",
+      remediation: {
+        summary:
+          "Correct schedule coverage, preview affected Leads, and run a correction job.",
+        action: "preview_cpl_correction",
+      },
+    });
+  }
+  if (failedCorrectionJobs > 0 || stalledCorrectionJobs > 0) {
+    findings.push({
+      code: "registry.cpl_correction_jobs_unhealthy",
+      severity: "error",
+      summary: `${failedCorrectionJobs} failed and ${stalledCorrectionJobs} stalled CPL correction job(s).`,
+      entity_type: "cpl_correction_job",
+      remediation: {
+        summary: "Review sanitized job errors and resume or replace the job.",
+        action: "review_cpl_correction_jobs",
+      },
+    });
+  }
+  return findings;
 }
 
 type HealthCompany = {

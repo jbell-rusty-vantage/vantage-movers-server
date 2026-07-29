@@ -10,6 +10,7 @@ import {
 
 export type LeadCostResult = {
   total: number;
+  unresolved_count: number;
   by_source_company: AnalyticsRow[];
 };
 
@@ -48,7 +49,18 @@ async function leadCostRowsBySource(
         $group: {
           _id: "$source_company",
           lead_count: { $sum: 1 },
-          total_lead_cost: { $sum: { $ifNull: ["$cpl", 0] } },
+          unresolved_cpl_count: {
+            $sum: { $cond: [{ $eq: ["$cpl_resolution_status", "missing_rate"] }, 1, 0] },
+          },
+          total_lead_cost: {
+            $sum: {
+              $cond: [
+                { $eq: ["$cpl_resolution_status", "missing_rate"] },
+                0,
+                { $ifNull: ["$cpl", 0] },
+              ],
+            },
+          },
         },
       },
     ]),
@@ -58,7 +70,18 @@ async function leadCostRowsBySource(
         $group: {
           _id: "$source_company",
           lead_count: { $sum: 1 },
-          total_lead_cost: { $sum: { $ifNull: ["$cpl", 0] } },
+          unresolved_cpl_count: {
+            $sum: { $cond: [{ $eq: ["$cpl_resolution_status", "missing_rate"] }, 1, 0] },
+          },
+          total_lead_cost: {
+            $sum: {
+              $cond: [
+                { $eq: ["$cpl_resolution_status", "missing_rate"] },
+                0,
+                { $ifNull: ["$cpl", 0] },
+              ],
+            },
+          },
         },
       },
     ]),
@@ -70,9 +93,13 @@ async function leadCostRowsBySource(
     const existing = bySource.get(source) ?? {
       source_company: source,
       lead_count: 0,
+      unresolved_cpl_count: 0,
       total_lead_cost: 0,
     };
     existing.lead_count = numberValue(existing.lead_count) + numberValue(row.lead_count);
+    existing.unresolved_cpl_count =
+      numberValue(existing.unresolved_cpl_count) +
+      numberValue(row.unresolved_cpl_count);
     existing.total_lead_cost = numberValue(existing.total_lead_cost) + numberValue(row.total_lead_cost);
     bySource.set(source, existing);
   }
@@ -81,6 +108,7 @@ async function leadCostRowsBySource(
     .map((row) => ({
       source_company: row.source_company,
       lead_count: numberValue(row.lead_count),
+      unresolved_cpl_count: numberValue(row.unresolved_cpl_count),
       total_lead_cost: roundMoney(numberValue(row.total_lead_cost)),
     }))
     .sort(
@@ -95,5 +123,9 @@ export async function getLeadCost(models: AdminModels, query: AnalyticsQuery): P
   const total = roundMoney(
     by_source_company.reduce((sum, row) => sum + numberValue(row.total_lead_cost), 0),
   );
-  return { total, by_source_company };
+  const unresolved_count = by_source_company.reduce(
+    (sum, row) => sum + numberValue(row.unresolved_cpl_count),
+    0,
+  );
+  return { total, unresolved_count, by_source_company };
 }

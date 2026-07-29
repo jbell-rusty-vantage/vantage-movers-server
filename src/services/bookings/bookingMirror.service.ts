@@ -1,7 +1,6 @@
 import mongoose, { type ClientSession } from "mongoose";
 import {
   cplLeadTypeForModel,
-  getCplForSource,
   type LeadModelName,
   type LocalType,
   type SourceCompany,
@@ -12,6 +11,7 @@ import { upsertCustomerFromLead } from "../customers/customerFromLead.service";
 import { getLinkedLead, type SourceLeadDocument } from "../leads";
 import { syncSourceLead, type FullSheetSyncJob } from "../sheetSync";
 import { resolveLeadSourceAssignment } from "../leads/leadSourceCompany";
+import { resolveLeadCplSnapshot } from "../leads/leadCplResolution";
 
 /**
  * Re-evaluates a booked lead that hangs off a freshly mutated source lead.
@@ -124,7 +124,7 @@ export async function mirrorBookingToLead(
   }
   const leadType = cplLeadTypeForModel(leadModel);
   if (sourceCompany) {
-    const { resolution, assignment } = await resolveLeadSourceAssignment({
+    const { assignment } = await resolveLeadSourceAssignment({
       value: sourceCompany,
       company_slug: sourceCompany,
       channel: leadType,
@@ -132,12 +132,17 @@ export async function mirrorBookingToLead(
       source_site: lead.source_company_site,
     });
     Object.assign(lead, assignment);
-    lead.cpl = resolution.granularity.cpl;
-  } else if (!preserveExistingCpl) {
-    lead.cpl = await getCplForSource(
-      lead.source_company as SourceCompany,
-      leadType,
-      local,
+  }
+  if (sourceCompany || !preserveExistingCpl) {
+    Object.assign(
+      lead,
+      await resolveLeadCplSnapshot({
+        sourceGranularityId: lead.source_granularity_id
+          ? String(lead.source_granularity_id)
+          : null,
+        storedBusinessTimestamp: lead.timestamp,
+        duplicate: leadModel === "CallLead" && lead.duplicate === true,
+      }),
     );
   }
   await lead.save({ session });

@@ -129,8 +129,32 @@ async function leadRowsForType(
         },
         is_billable_received_lead:
           leadType === "FormLead"
-            ? { $ne: ["$duplicate", true] }
-            : { $ne: ["$created_on_unmatched", true] },
+            ? {
+                $and: [
+                  { $ne: ["$duplicate", true] },
+                  { $ne: ["$cpl_resolution_status", "missing_rate"] },
+                ],
+              }
+            : {
+                $and: [
+                  { $ne: ["$created_on_unmatched", true] },
+                  { $ne: ["$cpl_resolution_status", "missing_rate"] },
+                ],
+              },
+        is_unresolved_cpl:
+          leadType === "FormLead"
+            ? {
+                $and: [
+                  { $ne: ["$duplicate", true] },
+                  { $eq: ["$cpl_resolution_status", "missing_rate"] },
+                ],
+              }
+            : {
+                $and: [
+                  { $ne: ["$created_on_unmatched", true] },
+                  { $eq: ["$cpl_resolution_status", "missing_rate"] },
+                ],
+              },
         is_booked_received_lead: {
           $or: [
             { $ne: [{ $ifNull: ["$booked", null] }, null] },
@@ -151,6 +175,7 @@ async function leadRowsForType(
         _id: groupId(groupFields),
         received_leads: { $sum: 1 },
         billable_received_leads: { $sum: { $cond: ["$is_billable_received_lead", 1, 0] } },
+        unresolved_cpl_count: { $sum: { $cond: ["$is_unresolved_cpl", 1, 0] } },
         form_leads: { $sum: leadType === "FormLead" ? 1 : 0 },
         call_leads: { $sum: leadType === "CallLead" ? 1 : 0 },
         booked_leads: { $sum: { $cond: ["$is_booked_received_lead", 1, 0] } },
@@ -166,6 +191,7 @@ async function leadRowsForType(
         ...projectGroupFields(groupFields),
         received_leads: 1,
         billable_received_leads: 1,
+        unresolved_cpl_count: 1,
         form_leads: 1,
         call_leads: 1,
         booked_leads: 1,
@@ -339,6 +365,7 @@ function mergeReceiverRows(rows: AnalyticsRow[], keyFields: string[]): Analytics
     for (const field of [
       "received_leads",
       "billable_received_leads",
+      "unresolved_cpl_count",
       "form_leads",
       "call_leads",
       "booked_leads",

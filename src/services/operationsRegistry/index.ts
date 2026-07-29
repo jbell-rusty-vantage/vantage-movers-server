@@ -133,3 +133,52 @@ export type {
   SourceGranularityCommand,
   SourceGranularityItem,
 } from "./sourceRegistry";
+
+export {
+  applySimpleCplSchedule,
+  businessDateToUtc,
+  constructAdvancedCplSchedule,
+  constructSimpleCplSchedule,
+  dollarsToCents,
+  listCplSchedule,
+  mutateAdvancedCplSchedule,
+  ownerInclusiveEndDateToExclusive,
+  resolveCpl,
+  resolveCplFromPeriods,
+  storedLeadTimestampToCplInstant,
+  validateCplSchedule,
+} from "./cplSchedule";
+export type {
+  AdvancedCplOperation,
+  AdvancedCplScheduleCommand,
+  CplResolution,
+  CplScheduleCommandResult,
+  CplSchedulePeriod,
+  CplSchedulePeriodInput,
+  CplScheduleState,
+  ResolveCplInput,
+  SimpleCplScheduleCommand,
+} from "./cplSchedule";
+
+export {
+  cancelCplCorrectionJob,
+  computeCplCorrectionPreviewHash,
+  configureCplCorrectionAnalyticsInvalidation,
+  createCplCorrection,
+  createDefaultCplCorrectionDependencies,
+  getCplCorrectionAnalyticsInvalidationSeam,
+  getCplCorrectionJob,
+  normalizeCplCorrectionSelection,
+  previewCplCorrection,
+  processCplCorrectionBatch,
+  runDueCplCorrectionJobs,
+} from "./cplCorrections";
+export type {
+  CplCorrectionAnalyticsInvalidationRequest,
+  CplCorrectionBatchResult,
+  CplCorrectionDependencies,
+  CplCorrectionJobView,
+  CplCorrectionPreviewResult,
+  CreateCplCorrectionCommand,
+  PreviewCplCorrectionCommand,
+} from "./cplCorrections";

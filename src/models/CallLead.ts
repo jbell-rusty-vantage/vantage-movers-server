@@ -82,6 +82,23 @@ const CallLeadSchema = new Schema(
     delivery_state: { type: String, trim: true, uppercase: true },
     cubic_feet: { type: Number },
     cpl: { type: Number, required: true, default: 0 },
+    cpl_rate_period: {
+      type: Schema.Types.ObjectId,
+      ref: "CplRatePeriod",
+      index: true,
+    },
+    cpl_resolution_status: {
+      type: String,
+      enum: ["resolved", "missing_rate", "duplicate_zero", "not_applicable"],
+      index: true,
+    },
+    cpl_resolved_at: { type: Date },
+    cpl_resolution_version: { type: String, trim: true },
+    cpl_correction: {
+      job_id: { type: Schema.Types.ObjectId, ref: "CplCorrectionJob" },
+      corrected_at: { type: Date },
+      previous_cpl: { type: Number },
+    },
     // Who originally received/worked this lead (independent of BookedLead's
     // agent_allocations, which tracks who gets commission/credit for closing
     // it). See `receiverAgentSourceEnum` for the provenance values.
@@ -118,6 +135,7 @@ CallLeadSchema.index({ phone_number: 1 });
 CallLeadSchema.index({ normalized_phone_number: 1, createdAt: -1 });
 CallLeadSchema.index({ job_no: 1 });
 CallLeadSchema.index({ normalized_job_no: 1 });
+CallLeadSchema.index({ source_granularity_id: 1, timestamp: 1, _id: 1 });
 CallLeadSchema.index({
   lead_source_company: 1,
   source_granularity_key: 1,

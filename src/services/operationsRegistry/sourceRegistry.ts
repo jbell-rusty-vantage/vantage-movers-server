@@ -6,10 +6,15 @@ import {
 } from "../../models/LeadSourceGranularity";
 import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
+import {
+  CPL_BUSINESS_TIME_ZONE,
+  getCplRatePeriodModel,
+} from "../../models/CplRatePeriod";
 import { recordOperationalEvent } from "../observability";
 import { REGISTRY_ERROR_CODES } from "../errors/registryErrorCodes";
 import { RegistryError } from "./errors";
 import { withRegistryMutation } from "./registryAudit";
+import { validateCplSchedule } from "./cplSchedule";
 import {
   previewSourceAttribution,
   type RegistrySourceChannel,
@@ -491,6 +496,35 @@ export async function setSourceGranularityActivation(
             "Activate the Source Company before activating its granularity.",
           );
         }
+        const periods = await getCplRatePeriodModel()
+          .find({
+            source_granularity: before._id,
+            archived_at: { $exists: false },
+          })
+          .sort({ effective_from: 1 })
+          .session(session)
+          .lean()
+          .exec();
+        validateCplSchedule(
+          periods.map((period) => ({
+            id: String(period._id),
+            source_granularity_id: String(period.source_granularity),
+            amount_cents: period.amount_cents,
+            effective_from: period.effective_from,
+            ...(period.effective_until
+              ? { effective_until: period.effective_until }
+              : {}),
+            effective_from_date: period.effective_from_date,
+            ...(period.effective_until_date_exclusive
+              ? {
+                  effective_until_date_exclusive:
+                    period.effective_until_date_exclusive,
+                }
+              : {}),
+            business_timezone: CPL_BUSINESS_TIME_ZONE,
+          })),
+          { active: true },
+        );
         await assertExactIdentifiersAvailable(before, session);
         const defaultId =
           before.channel === "form"
