@@ -107,9 +107,15 @@ export {
   catalogCreateSchema,
   catalogListQuerySchema,
   catalogUpdateSchema,
+  catalogActivationSchema,
   cplRateUpdateSchema,
   leadSourceCompanyCreateSchema,
   leadSourceCompanyUpdateSchema,
+  sourceGranularityListQuerySchema,
+  sourceGranularityCreateSchema,
+  sourceGranularityUpdateSchema,
+  sourceActivationSchema,
+  sourceResolutionPreviewSchema,
   adminDatabaseScopeSchema,
   adminSearchQuerySchema,
   type AdminBrowseQuery,
@@ -118,9 +124,15 @@ export {
   type CatalogCreateInput,
   type CatalogListQuery,
   type CatalogUpdateInput,
+  type CatalogActivationInput,
   type CplRateUpdateInput,
   type LeadSourceCompanyCreateInput,
   type LeadSourceCompanyUpdateInput,
+  type SourceGranularityListQuery,
+  type SourceGranularityCreateInput,
+  type SourceGranularityUpdateInput,
+  type SourceActivationInput,
+  type SourceResolutionPreviewInput,
 } from "./v1/admin.validation";
 
 export {
@@ -198,3 +210,12 @@ export {
   leadMessageRetrySchema,
   type LeadMessagesQuery,
 } from "./v1/leadMessaging.validation";
+
+export {
+  registryChangesQuerySchema,
+  registryOverviewQuerySchema,
+  registryHealthQuerySchema,
+  type RegistryChangesQuery,
+  type RegistryOverviewQuery,
+  type RegistryHealthQuery,
+} from "./v1/operationsRegistry.validation";

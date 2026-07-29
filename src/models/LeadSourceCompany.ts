@@ -42,11 +42,26 @@ const LeadSourceCompanySchema = new Schema(
     aliases: { type: [String], default: [] },
     active: { type: Boolean, required: true, default: true, index: true },
     archived_at: { type: Date },
+    deactivation_reason: { type: String, trim: true },
+    default_form_granularity: {
+      type: Schema.Types.ObjectId,
+      ref: "LeadSourceGranularity",
+    },
+    default_call_granularity: {
+      type: Schema.Types.ObjectId,
+      ref: "LeadSourceGranularity",
+    },
     default_form_granularity_key: { type: String, trim: true, lowercase: true },
     default_call_granularity_key: { type: String, trim: true, lowercase: true },
     sheet_config: {
       spreadsheet_id: { type: String, trim: true },
       has_bad_tabs: { type: Boolean, required: true, default: false },
+      projection_mode: {
+        type: String,
+        enum: ["derived_import", "direct_write"],
+        required: true,
+        default: "derived_import",
+      },
     },
     granularities: { type: [sourceGranularitySchema], default: [] },
     created_from: { type: String, required: true, trim: true, default: "admin" },

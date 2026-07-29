@@ -4,7 +4,6 @@ import mongoose from "mongoose";
 import { Agent } from "../../models/Agent";
 import { Merchant } from "../../models/Merchant";
 import {
-  createCatalogItem,
   listCatalogItems,
   resolveActiveAgentByName,
   resolveAgentByName,
@@ -13,35 +12,14 @@ import {
 
 type MutableModel = Record<string, unknown>;
 
-const originalAgentCreate = Agent.create as unknown;
-const originalAgentFind = Agent.find as unknown;
-const originalAgentFindOne = Agent.findOne as unknown;
-const originalMerchantCreate = Merchant.create as unknown;
-const originalMerchantFind = Merchant.find as unknown;
-const originalMerchantFindOne = Merchant.findOne as unknown;
+const originalAgentFind = Agent.find;
+const originalAgentFindOne = Agent.findOne;
+const originalMerchantFindOne = Merchant.findOne;
 
 afterEach(() => {
-  (Agent as unknown as MutableModel).create = originalAgentCreate;
   (Agent as unknown as MutableModel).find = originalAgentFind;
   (Agent as unknown as MutableModel).findOne = originalAgentFindOne;
-  (Merchant as unknown as MutableModel).create = originalMerchantCreate;
-  (Merchant as unknown as MutableModel).find = originalMerchantFind;
   (Merchant as unknown as MutableModel).findOne = originalMerchantFindOne;
-});
-
-test("catalog create trims and normalizes merchant names", async () => {
-  (Merchant as unknown as MutableModel).create = async (input: Record<string, unknown>) => ({
-    toObject: () => ({ _id: new mongoose.Types.ObjectId(), ...input }),
-  });
-
-  const item = await createCatalogItem("merchants", {
-    name: "  Paper   Check ",
-    active: true,
-  });
-
-  assert.equal(item.name, "Paper Check");
-  assert.equal(item.normalized_name, "paper check");
-  assert.equal(item.active, true);
 });
 
 test("active catalog list excludes inactive rows by default", async () => {
@@ -63,7 +41,7 @@ test("active catalog list excludes inactive rows by default", async () => {
   const items = await listCatalogItems("agents");
 
   assert.deepEqual(capture.filter, { active: true });
-  assert.equal(items[0].name, "Austin");
+  assert.equal(items[0]?.name, "Austin");
 });
 
 test("agent resolution rejects inactive or unknown names", async () => {
@@ -93,7 +71,9 @@ test("agent resolution can include an existing inactive agent", async () => {
 
   const agent = await resolveAgentByName("Former Agent", { includeInactive: true });
 
-  assert.deepEqual(capture.filter, { normalized_name: "former agent" });
+  assert.deepEqual(capture.filter, {
+    $or: [{ normalized_name: "former agent" }, { name_aliases: "former agent" }],
+  });
   assert.equal(agent.active, false);
 });
 

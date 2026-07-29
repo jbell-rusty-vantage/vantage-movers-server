@@ -80,6 +80,29 @@ import {
 import { deriveTrustedOwnerActor } from "../services/employeeBookings/reconciliationPolicy";
 import { AppError } from "../services/errors";
 import {
+  getRegistryOverview,
+  getRegistryHealth,
+  listRegistryChanges,
+  requireRegistryReadActor,
+  requireRegistryOwnerActor,
+  isRegistryError,
+  previewRegistryDependency,
+  setAgentActivation,
+  setMerchantActivation,
+  createOrUpdateSourceCompany,
+  createOrUpdateSourceGranularity,
+  getSourceCompany,
+  getSourceCompanyBySlug,
+  listSourceCompanies,
+  listSourceGranularities,
+  previewSourceDependency,
+  previewSourceResolution,
+  setSourceCompanyActivation,
+  setSourceGranularityActivation,
+  type RegistryCatalogItem,
+  type SourceCompanyCommand,
+} from "../services/operationsRegistry";
+import {
   bookingLeadCandidateSearchSchema,
   bookingLeadReconciliationListQuerySchema,
   createBookedLeadFromSourceSchema,
@@ -100,9 +123,15 @@ import {
   catalogCreateSchema,
   catalogListQuerySchema,
   catalogUpdateSchema,
+  catalogActivationSchema,
   cplRateUpdateSchema,
   leadSourceCompanyCreateSchema,
   leadSourceCompanyUpdateSchema,
+  sourceGranularityListQuerySchema,
+  sourceGranularityCreateSchema,
+  sourceGranularityUpdateSchema,
+  sourceActivationSchema,
+  sourceResolutionPreviewSchema,
   listMovingCarriersQuerySchema,
   movingCarrierCreateSchema,
   movingCarrierImportSchema,
@@ -142,6 +171,11 @@ import {
   observabilityReportRunSchema,
   leadMessagesQuerySchema,
   leadMessageRetrySchema,
+  registryChangesQuerySchema,
+  registryOverviewQuerySchema,
+  registryHealthQuerySchema,
+  type LeadSourceCompanyCreateInput,
+  type LeadSourceCompanyUpdateInput,
 } from "../validation/v1.validation";
 import {
   browseAdminResource,
@@ -161,15 +195,10 @@ import {
   getCatalogItem,
   listCatalogItems,
   updateCatalogItem,
+  type CatalogItem,
   type CatalogKind,
 } from "../services/catalog";
 import { listCplRates, updateCplRate } from "../services/cpl/cplRate.service";
-import {
-  createLeadSourceCompany,
-  getLeadSourceCompany,
-  listLeadSourceCompanies,
-  updateLeadSourceCompany,
-} from "../services/leadSourceCompanies";
 import {
   exportAgentSalesReportCsv,
   exportAnalyticsReportCsv,
@@ -246,10 +275,20 @@ router.get("/api/v1/admin/catalog/agents", handleCatalogList("agents"));
 router.get("/api/v1/admin/catalog/merchants", handleCatalogList("merchants"));
 router.post("/api/v1/admin/agents", handleCatalogCreate("agents"));
 router.patch("/api/v1/admin/agents/:id", handleCatalogUpdate("agents"));
+router.post("/api/v1/admin/agents/:id/activation", handleCatalogActivation("agents"));
+router.get("/api/v1/admin/agents/:id/dependencies", handleCatalogDependencies("agents"));
 router.get("/api/v1/admin/merchants", handleCatalogList("merchants"));
 router.get("/api/v1/admin/merchants/:id", handleCatalogDetail("merchants"));
 router.post("/api/v1/admin/merchants", handleCatalogCreate("merchants"));
 router.patch("/api/v1/admin/merchants/:id", handleCatalogUpdate("merchants"));
+router.post(
+  "/api/v1/admin/merchants/:id/activation",
+  handleCatalogActivation("merchants"),
+);
+router.get(
+  "/api/v1/admin/merchants/:id/dependencies",
+  handleCatalogDependencies("merchants"),
+);
 router.get("/api/v1/admin/cpl-rates", handleCplRatesList);
 router.patch("/api/v1/admin/cpl-rates/:label", handleCplRateUpdate);
 router.get("/api/v1/admin/source-companies", handleLeadSourceCompaniesList);
@@ -258,6 +297,32 @@ router.post("/api/v1/admin/source-companies", handleLeadSourceCompanyCreate);
 router.patch(
   "/api/v1/admin/source-companies/:id",
   handleLeadSourceCompanyUpdate,
+);
+router.post(
+  "/api/v1/admin/source-companies/:id/activation",
+  handleSourceCompanyActivation,
+);
+router.get(
+  "/api/v1/admin/source-companies/:id/dependencies",
+  handleSourceCompanyDependencies,
+);
+router.get("/api/v1/admin/source-granularities", handleSourceGranularitiesList);
+router.post("/api/v1/admin/source-granularities", handleSourceGranularityCreate);
+router.patch(
+  "/api/v1/admin/source-granularities/:id",
+  handleSourceGranularityUpdate,
+);
+router.post(
+  "/api/v1/admin/source-granularities/:id/activation",
+  handleSourceGranularityActivation,
+);
+router.get(
+  "/api/v1/admin/source-granularities/:id/dependencies",
+  handleSourceGranularityDependencies,
+);
+router.post(
+  "/api/v1/admin/source-resolution/preview",
+  handleSourceResolutionPreview,
 );
 router.get("/api/v1/admin/testimonials", handleAdminTestimonialsList);
 router.get(
@@ -334,6 +399,19 @@ router.post(
 router.get("/api/v1/admin/lead-messages", handleLeadMessagesList);
 router.get("/api/v1/admin/lead-messages/:id", handleLeadMessageDetail);
 router.post("/api/v1/admin/lead-messages/:id/retry", handleLeadMessageRetry);
+
+router.get(
+  "/api/v1/admin/operations-registry/overview",
+  handleOperationsRegistryOverview,
+);
+router.get(
+  "/api/v1/admin/operations-registry/health",
+  handleOperationsRegistryHealth,
+);
+router.get(
+  "/api/v1/admin/operations-registry/changes",
+  handleOperationsRegistryChanges,
+);
 
 router.get("/api/v1/admin/observability/overview", handleObservabilityOverview);
 router.get("/api/v1/admin/observability/facets", handleObservabilityFacets);
@@ -555,6 +633,7 @@ function handleCatalogList(kind: CatalogKind) {
   return async (req: Request, res: Response) => {
     try {
       await connectMongo();
+      requireRegistryReadActor(req, getVantageAuth(req));
       const parsed = catalogListQuerySchema.parse(req.query);
       const items = await listCatalogItems(kind, {
         includeInactive: parsed.include_inactive === true,
@@ -571,6 +650,7 @@ function handleCatalogDetail(kind: CatalogKind) {
     try {
       const id = getValidObjectId(req);
       await connectMongo();
+      requireRegistryReadActor(req, getVantageAuth(req));
       const data = await getCatalogItem(kind, id);
       return res.json({ ok: true, data });
     } catch (error) {
@@ -583,8 +663,9 @@ function handleCatalogCreate(kind: CatalogKind) {
   return async (req: Request, res: Response) => {
     try {
       await connectMongo();
+      const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
       const parsed = catalogCreateSchema.parse(req.body);
-      const data = await createCatalogItem(kind, parsed);
+      const data = await createCatalogItem(kind, parsed, actor);
       return res.status(201).json({ ok: true, data });
     } catch (error) {
       return sendError(req, res, error);
@@ -597,12 +678,65 @@ function handleCatalogUpdate(kind: CatalogKind) {
     try {
       const id = getValidObjectId(req);
       await connectMongo();
+      const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
       const parsed = catalogUpdateSchema.parse(req.body);
-      const data = await updateCatalogItem(kind, id, parsed);
+      const data = await updateCatalogItem(kind, id, parsed, actor);
       return res.json({ ok: true, data });
     } catch (error) {
       return sendError(req, res, error);
     }
+  };
+}
+
+function handleCatalogActivation(kind: CatalogKind) {
+  return async (req: Request, res: Response) => {
+    try {
+      const id = getValidObjectId(req);
+      await connectMongo();
+      const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
+      const parsed = catalogActivationSchema.parse(req.body);
+      const command = { id, active: parsed.active, reason: parsed.reason };
+      const item =
+        kind === "agents"
+          ? await setAgentActivation(command, actor)
+          : await setMerchantActivation(command, actor);
+      return res.json({ ok: true, data: toLegacyCatalogResponse(item) });
+    } catch (error) {
+      return sendError(req, res, error);
+    }
+  };
+}
+
+function handleCatalogDependencies(kind: CatalogKind) {
+  return async (req: Request, res: Response) => {
+    try {
+      const id = getValidObjectId(req);
+      await connectMongo();
+      requireRegistryReadActor(req, getVantageAuth(req));
+      const data = await previewRegistryDependency({
+        entity_type: kind === "agents" ? "agent" : "merchant",
+        entity_id: id,
+      });
+      return res.json({ ok: true, data });
+    } catch (error) {
+      return sendError(req, res, error);
+    }
+  };
+}
+
+function toLegacyCatalogResponse(item: RegistryCatalogItem): CatalogItem {
+  const username = item.granot_crm_username ?? item.granot_identity?.username;
+  return {
+    id: item.id,
+    _id: item.id,
+    name: item.name,
+    normalized_name: item.normalized_name,
+    active: item.active,
+    created_from: item.created_from,
+    ...(item.role ? { role: item.role } : {}),
+    ...(username ? { granot_crm_username: username } : {}),
+    ...(item.createdAt ? { createdAt: item.createdAt } : {}),
+    ...(item.updatedAt ? { updatedAt: item.updatedAt } : {}),
   };
 }
 
@@ -634,8 +768,9 @@ async function handleCplRateUpdate(req: Request, res: Response) {
 async function handleLeadSourceCompaniesList(req: Request, res: Response) {
   try {
     await connectMongo();
+    requireRegistryReadActor(req, getVantageAuth(req));
     const parsed = catalogListQuerySchema.parse(req.query);
-    const items = await listLeadSourceCompanies({
+    const items = await listSourceCompanies({
       includeInactive: parsed.include_inactive === true,
     });
     return res.json({ ok: true, data: { items } });
@@ -648,7 +783,8 @@ async function handleLeadSourceCompanyDetail(req: Request, res: Response) {
   try {
     const id = getValidObjectId(req);
     await connectMongo();
-    const data = await getLeadSourceCompany(id);
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const data = await getSourceCompany(id);
     return res.json({ ok: true, data });
   } catch (error) {
     return sendError(req, res, error);
@@ -658,8 +794,10 @@ async function handleLeadSourceCompanyDetail(req: Request, res: Response) {
 async function handleLeadSourceCompanyCreate(req: Request, res: Response) {
   try {
     await connectMongo();
+    const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
     const parsed = leadSourceCompanyCreateSchema.parse(req.body);
-    const data = await createLeadSourceCompany(parsed);
+    await createOrUpdateSourceCompany(toSourceCompanyCommand(parsed), actor);
+    const data = await getSourceCompanyBySlug(parsed.company_slug);
     return res.status(201).json({ ok: true, data });
   } catch (error) {
     return sendError(req, res, error);
@@ -670,12 +808,195 @@ async function handleLeadSourceCompanyUpdate(req: Request, res: Response) {
   try {
     const id = getValidObjectId(req);
     await connectMongo();
+    const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
     const parsed = leadSourceCompanyUpdateSchema.parse(req.body);
-    const data = await updateLeadSourceCompany(id, parsed);
+    await createOrUpdateSourceCompany(toSourceCompanyCommand(parsed, id), actor);
+    const data = await getSourceCompany(id);
     return res.json({ ok: true, data });
   } catch (error) {
     return sendError(req, res, error);
   }
+}
+
+async function handleSourceCompanyActivation(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
+    const parsed = sourceActivationSchema.parse(req.body);
+    await setSourceCompanyActivation(
+      {
+        id,
+        active: parsed.active,
+        reason: parsed.reason,
+        replacement_default_id: parsed.replacement_default_id,
+        remove_automatic_use_for_channel: parsed.remove_automatic_use_for_channel,
+      },
+      actor,
+    );
+    const data = await getSourceCompany(id);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSourceCompanyDependencies(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const data = await previewSourceDependency({
+      entity_type: "source_company",
+      entity_id: id,
+    });
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSourceGranularitiesList(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const parsed = sourceGranularityListQuerySchema.parse(req.query);
+    const items = await listSourceGranularities({
+      includeInactive: parsed.include_inactive === true,
+      ...(parsed.source_company ? { sourceCompanyId: parsed.source_company } : {}),
+      ...(parsed.channel ? { channel: parsed.channel } : {}),
+    });
+    return res.json({ ok: true, data: { items } });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSourceGranularityCreate(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
+    const parsed = sourceGranularityCreateSchema.parse(req.body);
+    const data = await createOrUpdateSourceGranularity(
+      {
+        source_company: parsed.source_company,
+        granularity_key: parsed.granularity_key,
+        channel: parsed.channel,
+        owner_label: parsed.owner_label,
+        crm_label: parsed.crm_label,
+        ...(parsed.aliases !== undefined ? { aliases: parsed.aliases } : {}),
+        ...(parsed.local !== undefined ? { local: parsed.local } : {}),
+        ...(parsed.source_sites !== undefined ? { source_sites: parsed.source_sites } : {}),
+        ...(parsed.priority !== undefined ? { priority: parsed.priority } : {}),
+        ...(parsed.sheet_tab_name !== undefined
+          ? { sheet_tab_name: parsed.sheet_tab_name }
+          : {}),
+        ...(parsed.created_from ? { created_from: parsed.created_from } : {}),
+        ...(parsed.reason ? { reason: parsed.reason } : {}),
+      },
+      actor,
+    );
+    return res.status(201).json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSourceGranularityUpdate(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
+    const parsed = sourceGranularityUpdateSchema.parse(req.body);
+    const data = await createOrUpdateSourceGranularity(
+      { id, ...parsed },
+      actor,
+    );
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSourceGranularityActivation(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
+    const parsed = sourceActivationSchema.parse(req.body);
+    const data = await setSourceGranularityActivation(
+      {
+        id,
+        active: parsed.active,
+        reason: parsed.reason,
+        replacement_default_id: parsed.replacement_default_id,
+        remove_automatic_use_for_channel: parsed.remove_automatic_use_for_channel,
+      },
+      actor,
+    );
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSourceGranularityDependencies(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const data = await previewSourceDependency({
+      entity_type: "source_granularity",
+      entity_id: id,
+    });
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSourceResolutionPreview(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const parsed = sourceResolutionPreviewSchema.parse(req.body);
+    const data = await previewSourceResolution(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+function toSourceCompanyCommand(
+  parsed: LeadSourceCompanyCreateInput | LeadSourceCompanyUpdateInput,
+  id?: string,
+): SourceCompanyCommand {
+  return {
+    ...(id ? { id } : {}),
+    ...("company_slug" in parsed && parsed.company_slug
+      ? { company_slug: parsed.company_slug }
+      : {}),
+    ...(parsed.name !== undefined ? { name: parsed.name } : {}),
+    ...(parsed.owner_label !== undefined ? { owner_label: parsed.owner_label } : {}),
+    ...(parsed.aliases !== undefined ? { aliases: parsed.aliases } : {}),
+    ...(parsed.default_form_granularity !== undefined
+      ? { default_form_granularity: parsed.default_form_granularity ?? null }
+      : {}),
+    ...(parsed.default_call_granularity !== undefined
+      ? { default_call_granularity: parsed.default_call_granularity ?? null }
+      : {}),
+    ...(parsed.sheet_config?.spreadsheet_id !== undefined
+      ? { spreadsheet_id: parsed.sheet_config.spreadsheet_id ?? null }
+      : {}),
+    ...(parsed.sheet_config?.has_bad_tabs !== undefined
+      ? { has_bad_tabs: parsed.sheet_config.has_bad_tabs }
+      : {}),
+    ...(parsed.sheet_config?.projection_mode
+      ? { projection_mode: parsed.sheet_config.projection_mode }
+      : {}),
+    ...(parsed.created_from ? { created_from: parsed.created_from } : {}),
+    ...(parsed.reason ? { reason: parsed.reason } : {}),
+  };
 }
 
 function handleAdminExport(resource: AdminResource) {
@@ -711,6 +1032,39 @@ async function handleGoogleMapsGeocodingHealth(req: Request, res: Response) {
     const zip = typeof req.query.zip === "string" ? req.query.zip : undefined;
     const data = await checkGoogleMapsGeocodingHealth(zip);
     return res.status(data.ok ? 200 : 503).json({ ok: data.ok, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleOperationsRegistryOverview(req: Request, res: Response) {
+  try {
+    registryOverviewQuerySchema.parse(req.query);
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const data = await getRegistryOverview();
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleOperationsRegistryHealth(req: Request, res: Response) {
+  try {
+    registryHealthQuerySchema.parse(req.query);
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const data = await getRegistryHealth();
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleOperationsRegistryChanges(req: Request, res: Response) {
+  try {
+    const parsed = registryChangesQuerySchema.parse(req.query);
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const data = await listRegistryChanges(parsed);
+    return res.json({ ok: true, data });
   } catch (error) {
     return sendError(req, res, error);
   }
@@ -1662,6 +2016,10 @@ function getValidObjectId(req: Request): string {
   return id;
 }
 
+function getVantageAuth(req: Request): VantageAuthContext | undefined {
+  return (req as Request & { vantageAuth?: VantageAuthContext }).vantageAuth;
+}
+
 function requireOwnerActor(
   req: Request,
 ): { actor: string; ownerId?: string; ownerEmail?: string } {
@@ -1709,6 +2067,9 @@ async function sendError(req: Request, res: Response, error: unknown) {
         "Request failed with server-side AppError",
       );
       await captureRouteFailureEvent(req, error, error.statusCode);
+    }
+    if (isRegistryError(error)) {
+      return res.status(error.statusCode).json(error.toHttpBody());
     }
     return res.status(error.statusCode).json({
       ok: false,

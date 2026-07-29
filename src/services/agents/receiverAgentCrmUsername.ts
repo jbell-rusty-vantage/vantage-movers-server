@@ -43,12 +43,24 @@ export function normalizeGranotCrmUsername(value: string | null | undefined): st
 
 export async function findAgentByGranotCrmUsername(
   value: string | null | undefined,
+  options: { includeInactive?: boolean } = {},
 ): Promise<AgentDocument | undefined> {
   const username = normalizeGranotCrmUsername(value);
   if (!username) {
     return undefined;
   }
-  return (await Agent.findOne({ granot_crm_username: username }).exec()) ?? undefined;
+  return (
+    (await Agent.findOne({
+      $or: [
+        { "granot_identity.username": username },
+        {
+          "granot_identity.username": { $exists: false },
+          granot_crm_username: username,
+        },
+      ],
+      ...(options.includeInactive ? {} : { active: true }),
+    }).exec()) ?? undefined
+  );
 }
 
 export async function applyGranotCrmUsernameReceiverMatch(

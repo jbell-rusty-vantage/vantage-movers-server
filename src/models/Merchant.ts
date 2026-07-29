@@ -6,6 +6,9 @@ const MerchantSchema = new Schema(
     normalized_name: { type: String, required: true, trim: true, lowercase: true, unique: true },
     active: { type: Boolean, required: true, default: true },
     created_from: { type: String, required: true, trim: true, default: "admin" },
+    name_aliases: { type: [String], default: [] },
+    archived_at: { type: Date },
+    deactivation_reason: { type: String, trim: true },
   },
   {
     collection: "merchants",
@@ -14,6 +17,8 @@ const MerchantSchema = new Schema(
     toObject: { virtuals: true },
   },
 );
+
+MerchantSchema.index({ name_aliases: 1 });
 
 export type MerchantDocument = InferSchemaType<typeof MerchantSchema> & {
   _id: mongoose.Types.ObjectId;

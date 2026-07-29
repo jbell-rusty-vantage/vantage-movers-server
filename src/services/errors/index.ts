@@ -13,6 +13,11 @@
 export { AppError, type AppErrorOptions } from "./AppError";
 export { ERROR_CODES, type ErrorCode } from "./errorCodes";
 export {
+  REGISTRY_ERROR_CODES,
+  type RegistryErrorCode,
+  type RegistryRemediation,
+} from "./registryErrorCodes";
+export {
   BadRequestError,
   ConflictError,
   IntegrationError,

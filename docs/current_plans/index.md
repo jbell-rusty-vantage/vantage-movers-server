@@ -1,6 +1,6 @@
 # Operations Registry Current Plan
 
-Status: Approved specification; ready for implementation planning handoff
+Status: Approved specification and package-level execution briefs
 Decision date: 2026-07-28
 Primary repository: `vantage-main-server`
 Dashboard repository: `vantage-admin`
@@ -25,6 +25,25 @@ Read these documents in order:
 4. [Migration, testing, rollout, and rollback](./04-migration-testing-rollout.md)
    defines production-only backfills, verification, cutover order, and safety
    checks.
+
+Implementation units add repository/file-level context to the S/D packages
+without replacing the four authority documents above:
+
+5. [Unit 1 — Server S0–S3](./05-unit-1-server-s0-s3.md) covers inventory,
+   registry foundation, trusted actor/audit, Agent/Merchant lifecycle, and
+   first-class Source Granularities.
+6. [Unit 2 — Server S4–S5](./06-unit-2-server-s4-s5.md) covers temporal CPL
+   schedules and production correction jobs.
+7. [Unit 3 — Server S6–S7](./07-unit-3-server-s6-s7.md) covers RingCentral
+   route/assignment registry and registry-only runtime consumer cutover.
+8. [Unit 4 — Server S8](./08-unit-4-server-s8.md) covers health completeness,
+   compatibility retirement, integrated verification, and runbook dry run.
+9. [Unit 5 — Dashboard D0–D3](./09-unit-5-dashboard-d0-d3.md) covers the
+   registry shell/signing, catalog, source, and CPL interfaces.
+10. [Unit 6 — Dashboard D4](./10-unit-6-dashboard-d4.md) covers RingCentral
+    queue-number management.
+11. [Unit 7 — Dashboard D5–D6](./11-unit-7-dashboard-d5-d6.md) covers Health,
+    Registry Changes, dashboard hardening, and cross-repository acceptance.
 
 Background references:
 

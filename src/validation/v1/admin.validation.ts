@@ -107,7 +107,6 @@ export const catalogListQuerySchema = z
 export const catalogCreateSchema = z
   .object({
     name: nonEmptyString,
-    active: booleanInput.optional(),
     role: nonEmptyString.optional(),
     granot_crm_username: nonEmptyString.optional(),
     // Optional provenance override. Defaults to the catalog's configured
@@ -122,6 +121,13 @@ export const catalogCreateSchema = z
 export const catalogUpdateSchema = catalogCreateSchema
   .partial()
   .refine(requireAtLeastOne, "At least one catalog field must be provided");
+
+export const catalogActivationSchema = z
+  .object({
+    active: booleanInput,
+    reason: optionalTrimmedString,
+  })
+  .strict();
 
 export const cplRateUpdateSchema = z
   .object({
@@ -148,31 +154,131 @@ export const leadSourceGranularitySchema = z
   })
   .strict();
 
-export const leadSourceCompanyCreateSchema = z
+const sourceSheetConfigSchema = z
+  .object({
+    spreadsheet_id: optionalString,
+    has_bad_tabs: booleanInput.optional(),
+    projection_mode: z.enum(["derived_import", "direct_write"]).optional(),
+  })
+  .strict();
+
+const leadSourceCompanyWriteBaseSchema = z
   .object({
     company_slug: nonEmptyString,
     name: nonEmptyString,
     owner_label: nonEmptyString.optional(),
     aliases: stringListSchema.optional(),
     active: booleanInput.optional(),
+    default_form_granularity: optionalObjectIdString,
+    default_call_granularity: optionalObjectIdString,
     default_form_granularity_key: optionalString,
     default_call_granularity_key: optionalString,
-    sheet_config: z
-      .object({
-        spreadsheet_id: optionalString,
-        has_bad_tabs: booleanInput.optional(),
-      })
-      .strict()
-      .optional(),
+    sheet_config: sourceSheetConfigSchema.optional(),
     granularities: z.array(leadSourceGranularitySchema).optional(),
     created_from: nonEmptyString.optional(),
+    reason: optionalTrimmedString,
   })
   .strict();
 
-export const leadSourceCompanyUpdateSchema = leadSourceCompanyCreateSchema
+function rejectLegacySourceCompanyWrites(
+  value: {
+    granularities?: unknown;
+    active?: unknown;
+    default_form_granularity_key?: unknown;
+    default_call_granularity_key?: unknown;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  if (value.granularities !== undefined) {
+    ctx.addIssue({
+      code: "custom",
+      message:
+        "Embedded granularities are read-only. Use /api/v1/admin/source-granularities.",
+      path: ["granularities"],
+    });
+  }
+  if (value.active !== undefined) {
+    ctx.addIssue({
+      code: "custom",
+      message:
+        "Source Company activation is managed via /api/v1/admin/source-companies/:id/activation.",
+      path: ["active"],
+    });
+  }
+  for (const field of [
+    "default_form_granularity_key",
+    "default_call_granularity_key",
+  ] as const) {
+    if (value[field] !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Compatibility default keys are read-only. Select a first-class Source Granularity ID.",
+        path: [field],
+      });
+    }
+  }
+}
+
+export const leadSourceCompanyCreateSchema = leadSourceCompanyWriteBaseSchema.superRefine(
+  rejectLegacySourceCompanyWrites,
+);
+
+export const leadSourceCompanyUpdateSchema = leadSourceCompanyWriteBaseSchema
   .omit({ company_slug: true })
   .partial()
+  .superRefine(rejectLegacySourceCompanyWrites)
   .refine(requireAtLeastOne, "At least one source company field must be provided");
+
+export const sourceGranularityListQuerySchema = z
+  .object({
+    include_inactive: booleanInput.optional(),
+    source_company: optionalObjectIdString,
+    channel: z.enum(["form", "call"]).optional(),
+  })
+  .strip();
+
+export const sourceGranularityCreateSchema = z
+  .object({
+    source_company: z.string().trim().regex(/^[a-f\d]{24}$/i, "Invalid Mongo ObjectId"),
+    granularity_key: nonEmptyString,
+    channel: z.enum(["form", "call"]),
+    owner_label: nonEmptyString,
+    crm_label: nonEmptyString,
+    aliases: stringListSchema.optional(),
+    local: localSchema.optional(),
+    source_sites: stringListSchema.optional(),
+    priority: z.coerce.number().int().optional(),
+    sheet_tab_name: optionalString,
+    created_from: nonEmptyString.optional(),
+    reason: optionalTrimmedString,
+  })
+  .strict();
+
+export const sourceGranularityUpdateSchema = sourceGranularityCreateSchema
+  .omit({ source_company: true, granularity_key: true, channel: true })
+  .partial()
+  .refine(requireAtLeastOne, "At least one source granularity field must be provided");
+
+export const sourceActivationSchema = z
+  .object({
+    active: booleanInput,
+    reason: optionalTrimmedString,
+    replacement_default_id: optionalObjectIdString,
+    remove_automatic_use_for_channel: booleanInput.optional(),
+  })
+  .strict();
+
+export const sourceResolutionPreviewSchema = z
+  .object({
+    channel: z.enum(["form", "call"]),
+    company_slug: optionalString,
+    granularity_key: optionalString,
+    crm_label: optionalString,
+    source_site: optionalString,
+    fallback_alias: optionalString,
+  })
+  .strict();
 
 export type AdminBrowseQuery = z.infer<typeof adminBrowseQuerySchema>;
 export type AdminSearchQuery = z.infer<typeof adminSearchQuerySchema>;
@@ -180,6 +286,12 @@ export type AdminDatabaseScope = z.infer<typeof adminDatabaseScopeSchema>;
 export type CatalogListQuery = z.infer<typeof catalogListQuerySchema>;
 export type CatalogCreateInput = z.infer<typeof catalogCreateSchema>;
 export type CatalogUpdateInput = z.infer<typeof catalogUpdateSchema>;
+export type CatalogActivationInput = z.infer<typeof catalogActivationSchema>;
 export type CplRateUpdateInput = z.infer<typeof cplRateUpdateSchema>;
 export type LeadSourceCompanyCreateInput = z.infer<typeof leadSourceCompanyCreateSchema>;
 export type LeadSourceCompanyUpdateInput = z.infer<typeof leadSourceCompanyUpdateSchema>;
+export type SourceGranularityListQuery = z.infer<typeof sourceGranularityListQuerySchema>;
+export type SourceGranularityCreateInput = z.infer<typeof sourceGranularityCreateSchema>;
+export type SourceGranularityUpdateInput = z.infer<typeof sourceGranularityUpdateSchema>;
+export type SourceActivationInput = z.infer<typeof sourceActivationSchema>;
+export type SourceResolutionPreviewInput = z.infer<typeof sourceResolutionPreviewSchema>;
