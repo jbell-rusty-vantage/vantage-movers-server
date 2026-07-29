@@ -1,9 +1,13 @@
-import { CALL_LEAD_MINIMUM_ANSWERED_SECONDS } from "./call-candidate-evaluator";
 import {
-  resolveRingCentralInboundSource,
-  type SourceCompany,
-} from "./call-lead-sources";
+  resolveRingCentralInboundRoute,
+  type RingCentralRouteResolution,
+  type RingCentralRouteSnapshot,
+} from "../operationsRegistry";
 import { normalizePhoneNumberToE164Like } from "./phone-normalization";
+import {
+  CALL_LEAD_MINIMUM_ANSWERED_SECONDS,
+  qualifyRingCentralCall,
+} from "./call-qualification";
 
 /**
  * Shared vetting for RingCentral *Call Log* records (the cron/polling path).
@@ -41,7 +45,8 @@ export type RingCentralCallLogVetResult = {
   targetPhoneNumber: string | null;
   targetName: string | null;
   sourceLabel: string | null;
-  sourceCompany: SourceCompany | null;
+  sourceCompany: string | null;
+  routeResolution: RingCentralRouteResolution | null;
   matchedTargetNumber: boolean;
   answered: boolean;
   overMinimumDuration: boolean;
@@ -51,6 +56,7 @@ export type RingCentralCallLogVetResult = {
 
 export function vetRingCentralCallLogRecord(
   record: unknown,
+  snapshot: RingCentralRouteSnapshot = EMPTY_ROUTE_SNAPSHOT,
 ): RingCentralCallLogVetResult {
   const root = asRecord(record);
   const legs = getLegs(root);
@@ -58,8 +64,10 @@ export function vetRingCentralCallLogRecord(
     (part): part is Record<string, unknown> => part !== null,
   );
 
-  const targetPhoneNumber = findTargetPhoneNumber(allParts);
-  const source = resolveRingCentralInboundSource(targetPhoneNumber);
+  const startTime = valueToDate(root?.startTime);
+  const target = findTarget(allParts, snapshot, startTime);
+  const targetPhoneNumber = target.phoneNumber;
+  const resolution = target.resolution;
   const direction = valueToString(root?.direction);
   const durationSeconds = maxNumber(
     valueToNumber(root?.duration),
@@ -71,28 +79,19 @@ export function vetRingCentralCallLogRecord(
   const overMinimumDuration =
     durationSeconds !== null && durationSeconds >= CALL_LEAD_MINIMUM_ANSWERED_SECONDS;
 
-  const rejectionReasons: string[] = [];
-  if (direction !== "Inbound") {
-    rejectionReasons.push("not_inbound");
-  }
-  if (!targetPhoneNumber || !source) {
-    rejectionReasons.push("target_number_not_matched");
-  }
-  if (!answered) {
-    rejectionReasons.push("not_answered");
-  }
-  if (!overMinimumDuration) {
-    rejectionReasons.push("under_120_seconds");
-  }
-  if (!caller.phoneNumber) {
-    rejectionReasons.push("missing_caller_phone_number");
-  }
+  const { rejectionReasons } = qualifyRingCentralCall({
+    direction,
+    routeResolution: resolution,
+    answered,
+    durationSeconds,
+    callerPhoneNumber: caller.phoneNumber,
+  });
 
   return {
     callLogId: valueToString(root?.id),
     sessionId: valueToString(root?.sessionId),
     telephonySessionId: valueToString(root?.telephonySessionId),
-    startTime: valueToDate(root?.startTime),
+    startTime,
     durationSeconds,
     direction,
     result: valueToString(root?.result),
@@ -100,9 +99,10 @@ export function vetRingCentralCallLogRecord(
     callerName: caller.name,
     targetPhoneNumber,
     targetName: findTargetName(allParts, targetPhoneNumber),
-    sourceLabel: source?.sourceLabel ?? null,
-    sourceCompany: source?.sourceCompany ?? null,
-    matchedTargetNumber: targetPhoneNumber !== null && source !== null,
+    sourceLabel: resolution?.crm_label_snapshot ?? null,
+    sourceCompany: resolution?.company_slug ?? null,
+    routeResolution: resolution,
+    matchedTargetNumber: resolution !== null,
     answered,
     overMinimumDuration,
     qualifies: rejectionReasons.length === 0,
@@ -110,19 +110,33 @@ export function vetRingCentralCallLogRecord(
   };
 }
 
-function findTargetPhoneNumber(parts: Record<string, unknown>[]): string | null {
+const EMPTY_ROUTE_SNAPSHOT: RingCentralRouteSnapshot = Object.freeze({
+  version: 1,
+  built_at: new Date(0),
+  max_age_ms: 1,
+  entries_by_phone: new Map(),
+});
+
+function findTarget(
+  parts: Record<string, unknown>[],
+  snapshot: RingCentralRouteSnapshot,
+  startTime: Date | null,
+): { phoneNumber: string | null; resolution: RingCentralRouteResolution | null } {
   let firstInboundTarget: string | null = null;
   for (const part of parts) {
     const to = asRecord(part.to);
     const normalized = normalizePhoneNumberToE164Like(valueToString(to?.phoneNumber));
-    if (normalized && resolveRingCentralInboundSource(normalized)) {
-      return normalized;
+    const resolution = startTime
+      ? resolveRingCentralInboundRoute(snapshot, normalized, startTime)
+      : null;
+    if (normalized && resolution) {
+      return { phoneNumber: normalized, resolution };
     }
     if (!firstInboundTarget && normalized) {
       firstInboundTarget = normalized;
     }
   }
-  return firstInboundTarget;
+  return { phoneNumber: firstInboundTarget, resolution: null };
 }
 
 function findTargetName(

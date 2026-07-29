@@ -182,3 +182,46 @@ export type {
   CreateCplCorrectionCommand,
   PreviewCplCorrectionCommand,
 } from "./cplCorrections";
+
+export {
+  activateRingCentralRoute,
+  createOrUpdateRingCentralRoute,
+  deactivateRingCentralRoute,
+  getRingCentralInboundRoute,
+  listRingCentralInboundRoutes,
+  previewRingCentralRouteDependencies,
+  recordRingCentralRouteObservation,
+  reassignRingCentralRoute,
+  validateRingCentralRoute,
+} from "./ringCentralRegistry";
+export type {
+  RingCentralRouteActivationCommand,
+  RingCentralRouteAssignmentItem,
+  RingCentralRouteCommand,
+  RingCentralRouteDeactivationCommand,
+  RingCentralRouteItem,
+} from "./ringCentralRegistry";
+
+export {
+  buildRingCentralRouteSnapshot,
+  listActiveRingCentralSnapshotNumbers,
+  listRingCentralSnapshotNumbers,
+  loadRingCentralRouteSnapshot,
+  resetRingCentralRouteSnapshotForTests,
+  resolveRingCentralInboundRoute,
+  RINGCENTRAL_ROUTE_CACHE_KEY,
+} from "./ringCentralSnapshot";
+export type {
+  RingCentralRouteResolution,
+  RingCentralRouteSnapshot,
+  RingCentralRouteSnapshotEntry,
+  RingCentralSnapshotInput,
+} from "./ringCentralSnapshot";
+
+export {
+  validateRingCentralNumberAgainstAccount,
+} from "./ringCentralValidation";
+export type {
+  RingCentralRouteValidationResult,
+  RingCentralRouteValidator,
+} from "./ringCentralValidation";

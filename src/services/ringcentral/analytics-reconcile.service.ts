@@ -1,7 +1,10 @@
 import { logger } from "../../logger";
 import { recordOperationalEvent } from "../observability";
 import { CALL_LEAD_MINIMUM_ANSWERED_SECONDS } from "./call-candidate-evaluator";
-import { RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE } from "./call-lead-sources";
+import {
+  listActiveRingCentralSnapshotNumbers,
+  loadRingCentralRouteSnapshot,
+} from "../operationsRegistry";
 import { ringCentralRequest } from "./client";
 import {
   getRingCentralAnalyticsEndBufferMinutes,
@@ -41,6 +44,8 @@ export async function runRingCentralAnalyticsReconcile(
   const windowFrom = new Date(
     windowTo.getTime() - (options.hoursBack ?? 24) * 60 * 60 * 1000,
   );
+  const routeSnapshot = await loadRingCentralRouteSnapshot();
+  const diagnosticNumbers = listActiveRingCentralSnapshotNumbers(routeSnapshot);
 
   const body = {
     grouping: { groupBy: "CompanyNumbers", keys: [] as string[] },
@@ -55,7 +60,7 @@ export async function runRingCentralAnalyticsReconcile(
       directions: ["Inbound"],
       callResponses: ["Answered"],
       callDuration: { minSeconds: CALL_LEAD_MINIMUM_ANSWERED_SECONDS },
-      calledNumbers: Object.keys(RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE),
+      calledNumbers: diagnosticNumbers,
     },
     responseOptions: {
       counters: {

@@ -4,6 +4,7 @@ import { Merchant } from "../../../models/Merchant";
 import { LeadSourceCompany } from "../../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../../models/LeadSourceGranularity";
 import { OperationsRegistryChange } from "../../../models/OperationsRegistryChange";
+import { getRingCentralInboundRouteModel } from "../../../models/RingCentralInboundRoute";
 import {
   getAdminProxySignatureMaxAgeMs,
   getAdminProxySigningSecret,
@@ -23,6 +24,8 @@ export async function getRegistryOverview(): Promise<RegistryOverviewResult> {
     sourceCompaniesActive,
     sourceGranularitiesTotal,
     sourceGranularitiesActive,
+    ringCentralRoutesTotal,
+    ringCentralRoutesActive,
     registryChangesTotal,
   ] = await Promise.all([
     Agent.countDocuments({}),
@@ -33,6 +36,8 @@ export async function getRegistryOverview(): Promise<RegistryOverviewResult> {
     LeadSourceCompany.countDocuments({ active: true }),
     getLeadSourceGranularityModel().countDocuments({}),
     getLeadSourceGranularityModel().countDocuments({ active: true }),
+    getRingCentralInboundRouteModel().countDocuments({}),
+    getRingCentralInboundRouteModel().countDocuments({ active: true }),
     OperationsRegistryChange.countDocuments({}),
   ]);
 
@@ -47,6 +52,8 @@ export async function getRegistryOverview(): Promise<RegistryOverviewResult> {
       source_companies_active: sourceCompaniesActive,
       source_granularities_total: sourceGranularitiesTotal,
       source_granularities_active: sourceGranularitiesActive,
+      ringcentral_routes_total: ringCentralRoutesTotal,
+      ringcentral_routes_active: ringCentralRoutesActive,
       registry_changes_total: registryChangesTotal,
     },
     signing: {

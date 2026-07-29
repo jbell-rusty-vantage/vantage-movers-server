@@ -1,9 +1,8 @@
 import type { HydratedDocument } from "mongoose";
-import type { SourceCompany } from "../../config/domain";
 import type { CallLeadDocument } from "../../models/CallLead";
 
 export type CallLeadSourceParsedRow = {
-  source_company?: SourceCompany;
+  source_company?: string;
   source_label?: string;
   source_assignment?: {
     lead_source_company?: unknown;

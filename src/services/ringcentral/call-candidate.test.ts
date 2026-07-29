@@ -95,7 +95,7 @@ test("RingCentral source labels are consistent with source company mapping", () 
   }
 });
 
-test("normalizer emits one target-matched party event from sample webhook payload", () => {
+test("normalizer preserves telephony facts before registry qualification", () => {
   const events = normalizeRingCentralWebhookPayload(
     sampleAnsweredInboundEvent,
     new Date("2026-06-02T19:58:43.693Z"),
@@ -109,9 +109,25 @@ test("normalizer emits one target-matched party event from sample webhook payloa
   assert.equal(events[0]?.statusCode, "Answered");
   assert.equal(events[0]?.normalizedFromPhoneNumber, "+12095831618");
   assert.equal(events[0]?.normalizedToPhoneNumber, "+18883164387");
-  assert.equal(events[0]?.targetMatched, true);
-  assert.equal(events[0]?.sourceLabel, "10best Inbounds");
-  assert.equal(events[0]?.sourceCompany, "tbm_leads");
+  assert.equal(events[0]?.callStartedAt, null);
+  assert.equal(events[0]?.targetMatched, false);
+  assert.equal(events[0]?.sourceLabel, null);
+  assert.equal(events[0]?.sourceCompany, null);
+  assert.equal(events[0]?.routeResolution, null);
+});
+
+test("normalizer uses an explicit provider call start and never notification time", () => {
+  const payload = structuredClone(sampleAnsweredInboundEvent);
+  Object.assign(payload.body.parties[0], {
+    startTime: "2026-06-02T19:55:00.000Z",
+  });
+  const event = normalizeRingCentralWebhookPayload(
+    payload,
+    new Date("2026-06-02T20:01:00.000Z"),
+  )[0]!;
+
+  assert.equal(event.callStartedAt?.toISOString(), "2026-06-02T19:55:00.000Z");
+  assert.notEqual(event.callStartedAt?.toISOString(), payload.body.eventTime);
 });
 
 test("candidate folding preserves answeredAt from an older delayed event", () => {
@@ -300,6 +316,18 @@ function buildCandidate(
     targetMatched: true,
     sourceLabel: "10best Inbounds",
     sourceCompany: "tbm_leads",
+    routeResolution: {
+      route_id: "66a000000000000000000001",
+      assignment_id: "66a000000000000000000002",
+      normalized_target_number: "+18883164387",
+      company_id: "66a000000000000000000003",
+      company_slug: "tbm_leads",
+      company_label_snapshot: "10 Best",
+      granularity_id: "66a000000000000000000004",
+      granularity_key: "tbm_calls",
+      granularity_label_snapshot: "10best Inbounds",
+      crm_label_snapshot: "10best Inbounds",
+    },
     answered: true,
     answeredAt: now,
     terminal: false,

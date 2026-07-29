@@ -7,6 +7,8 @@ import { getCplRatePeriodModel } from "../../../models/CplRatePeriod";
 import { getFormLeadModel } from "../../../models/FormLead";
 import { getCallLeadModel } from "../../../models/CallLead";
 import { getCplCorrectionJobModel } from "../../../models/CplCorrectionJob";
+import { getRingCentralInboundRouteModel } from "../../../models/RingCentralInboundRoute";
+import { getRingCentralInboundRouteAssignmentModel } from "../../../models/RingCentralInboundRouteAssignment";
 import { getAdminProxySigningSecret } from "../config";
 import {
   validateCplSchedule,
@@ -41,6 +43,8 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
     unresolvedCallLeads,
     failedCorrectionJobs,
     stalledCorrectionJobs,
+    ringCentralRoutes,
+    ringCentralAssignments,
   ] = await Promise.all([
     Agent.countDocuments({ active: false }),
     Merchant.countDocuments({ active: false }),
@@ -62,6 +66,10 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
       status: "processing",
       leased_until: { $lte: new Date() },
     }),
+    getRingCentralInboundRouteModel().find({}).lean().exec(),
+    getRingCentralInboundRouteAssignmentModel().find({
+      effective_until: { $exists: false },
+    }).lean().exec(),
   ]);
 
   if (inactiveAgentsUsedRecently > 0) {
@@ -112,6 +120,64 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
       })),
     ),
   );
+  const sourceCompanyById = new Map(
+    sourceCompanies.map((company) => [String(company._id), company]),
+  );
+  const sourceGranularityById = new Map(
+    sourceGranularities.map((granularity) => [String(granularity._id), granularity]),
+  );
+  const openAssignmentsByRoute = new Map<string, typeof ringCentralAssignments>();
+  for (const assignment of ringCentralAssignments) {
+    const routeId = String(assignment.route);
+    openAssignmentsByRoute.set(routeId, [
+      ...(openAssignmentsByRoute.get(routeId) ?? []),
+      assignment,
+    ]);
+  }
+  for (const route of ringCentralRoutes) {
+    if (!route.active) continue;
+    const open = openAssignmentsByRoute.get(String(route._id)) ?? [];
+    if (route.validation_status !== "valid" || open.length !== 1) {
+      findings.push({
+        code: "registry.ringcentral_route_inconsistent",
+        severity: "error",
+        summary:
+          "Active RingCentral route requires valid account validation and exactly one open assignment.",
+        entity_type: "ringcentral_route",
+        entity_id: String(route._id),
+        remediation: {
+          summary: "Validate the route and repair its current assignment.",
+          action: "edit_ringcentral_route",
+        },
+      });
+      continue;
+    }
+    const assignment = open[0]!;
+    const granularity = sourceGranularityById.get(
+      String(assignment.source_granularity),
+    );
+    const company = sourceCompanyById.get(String(assignment.source_company));
+    if (
+      !assignment.active ||
+      !granularity?.active ||
+      granularity.channel !== "call" ||
+      !company?.active ||
+      String(granularity.source_company) !== String(company._id)
+    ) {
+      findings.push({
+        code: "registry.ringcentral_assignment_inconsistent",
+        severity: "error",
+        summary:
+          "RingCentral route assignment targets an inactive or invalid source.",
+        entity_type: "ringcentral_route",
+        entity_id: String(route._id),
+        remediation: {
+          summary: "Reassign the route to an active call granularity.",
+          action: "reassign_ringcentral_route",
+        },
+      });
+    }
+  }
   findings.push(
     ...buildCplRegistryHealthFindings(
       sourceGranularities

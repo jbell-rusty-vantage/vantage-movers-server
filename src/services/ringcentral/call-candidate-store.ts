@@ -69,6 +69,7 @@ export async function upsertRingCentralCallCandidateFromEvent(
         sessionId: candidateWithDecision.sessionId,
         lastSeenAt: candidateWithDecision.lastSeenAt,
         lastEventTime: candidateWithDecision.lastEventTime,
+        callStartedAt: candidateWithDecision.callStartedAt,
         lastSequence: candidateWithDecision.lastSequence,
         direction: candidateWithDecision.direction,
         statusCode: candidateWithDecision.statusCode,
@@ -83,6 +84,7 @@ export async function upsertRingCentralCallCandidateFromEvent(
         targetMatched: candidateWithDecision.targetMatched,
         sourceLabel: candidateWithDecision.sourceLabel,
         sourceCompany: candidateWithDecision.sourceCompany,
+        routeResolution: candidateWithDecision.routeResolution,
         answered: candidateWithDecision.answered,
         answeredAt: candidateWithDecision.answeredAt,
         terminal: candidateWithDecision.terminal,
@@ -200,6 +202,10 @@ function buildCandidateDocument(
     firstSeenAt: existing?.firstSeenAt ?? event.receivedAt,
     lastSeenAt: event.receivedAt,
     lastEventTime: useEventAsLatest ? observedAt : existing?.lastEventTime ?? observedAt,
+    callStartedAt: earliestDate([
+      existing?.callStartedAt ?? null,
+      event.callStartedAt ?? observedAt,
+    ]),
     lastSequence:
       (useEventAsLatest ? event.sequence : existing?.lastSequence) ??
       existing?.lastSequence ??
@@ -261,8 +267,9 @@ function buildCandidateDocument(
       event.missedCall ??
       null,
     targetMatched,
-    sourceLabel: event.sourceLabel ?? existing?.sourceLabel ?? null,
-    sourceCompany: event.sourceCompany ?? existing?.sourceCompany ?? null,
+    sourceLabel: existing?.sourceLabel ?? event.sourceLabel ?? null,
+    sourceCompany: existing?.sourceCompany ?? event.sourceCompany ?? null,
+    routeResolution: existing?.routeResolution ?? event.routeResolution ?? null,
     answered,
     answeredAt,
     terminal,

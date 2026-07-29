@@ -2,7 +2,7 @@ import type {
   CandidateDecision,
   RingCentralDecisionStatus,
 } from "./call-candidate-types";
-import type { SourceCompany } from "./call-lead-sources";
+import type { RingCentralRouteResolution } from "../operationsRegistry";
 
 /**
  * Session-level aggregate for a single RingCentral telephony session.
@@ -25,6 +25,7 @@ export type RingCentralCallSessionDocument = {
 
   firstSeenAt: Date;
   lastSeenAt: Date;
+  callStartedAt?: Date | null;
 
   direction: string | null;
   statusCode: string | null;
@@ -33,7 +34,8 @@ export type RingCentralCallSessionDocument = {
 
   targetMatched: boolean;
   sourceLabel: string | null;
-  sourceCompany: SourceCompany | null;
+  sourceCompany: string | null;
+  routeResolution?: RingCentralRouteResolution | null;
 
   fromPhoneNumber: string | null;
   normalizedFromPhoneNumber: string | null;

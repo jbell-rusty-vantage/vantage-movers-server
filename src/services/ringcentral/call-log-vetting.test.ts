@@ -1,6 +1,46 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { vetRingCentralCallLogRecord } from "./call-log-vetting";
+import { buildRingCentralRouteSnapshot } from "../operationsRegistry";
+import { vetRingCentralCallLogRecord as vetWithSnapshot } from "./call-log-vetting";
+
+const mappings = [
+  ["+18883083612", "tbm_prime_leads", "TBM Prime Inbounds"],
+  ["+18883971005", "get_movers_leads", "GetMovers Inbounds"],
+  ["+18884779232", "main_site", "Main Site Inbounds"],
+] as const;
+const snapshot = buildRingCentralRouteSnapshot({
+  routes: mappings.map(([phone], index) => ({
+    _id: `66a00000000000000000000${index + 1}`,
+    phone_number: phone,
+  })),
+  companies: mappings.map(([, slug], index) => ({
+    _id: `66b00000000000000000000${index + 1}`,
+    company_slug: slug,
+    owner_label: slug,
+  })),
+  granularities: mappings.map(([, , label], index) => ({
+    _id: `66c00000000000000000000${index + 1}`,
+    source_company: `66b00000000000000000000${index + 1}`,
+    granularity_key: `calls_${index}`,
+    owner_label: label,
+    crm_label: label,
+  })),
+  assignments: mappings.map((_mapping, index) => ({
+    _id: `66d00000000000000000000${index + 1}`,
+    route: `66a00000000000000000000${index + 1}`,
+    source_company: `66b00000000000000000000${index + 1}`,
+    source_granularity: `66c00000000000000000000${index + 1}`,
+    effective_from: new Date("2020-01-01T00:00:00.000Z"),
+  })),
+});
+const vetRingCentralCallLogRecord = (record: unknown) =>
+  vetWithSnapshot(
+    {
+      startTime: "2026-06-29T18:00:00.000Z",
+      ...(record as Record<string, unknown>),
+    },
+    snapshot,
+  );
 
 test("qualifies an inbound answered call over 120s to a mapped toll-free", () => {
   const vet = vetRingCentralCallLogRecord({

@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import {
   CALL_SHEET_HEADERS,
   getSheetSyncMode,
@@ -39,9 +40,11 @@ import {
   resolveLeadCplSnapshot,
 } from "./leadCplResolution";
 import { recordOperationalEvent } from "../observability";
+import type { RingCentralRouteResolution } from "../operationsRegistry";
 
 export type CreateRingCentralCallLeadInput = {
   source_company: SourceCompany;
+  source_resolution: RingCentralRouteResolution;
   phone_number: string;
   name?: string | null;
   duration?: number | null;
@@ -60,6 +63,9 @@ export type CreateRingCentralCallLeadInput = {
     answered_at?: Date | null;
     terminal_at?: Date | null;
     duration_seconds?: number | null;
+    route_id: string;
+    route_assignment_id: string;
+    target_phone_number: string;
   };
 };
 
@@ -77,11 +83,21 @@ export async function createRingCentralCallLead(
   input: CreateRingCentralCallLeadInput,
 ) {
   const { source_company, duplicate } = input;
-  const { assignment: sourceAssignment } = await resolveLeadSourceAssignment({
-      value: input.ringcentral.source_label ?? source_company,
-      company_slug: source_company,
-      channel: "call",
-    });
+  const sourceAssignment = {
+    source_company,
+    lead_source_company: mongoose.Types.ObjectId.createFromHexString(
+      input.source_resolution.company_id,
+    ),
+    source_granularity_id: mongoose.Types.ObjectId.createFromHexString(
+      input.source_resolution.granularity_id,
+    ),
+    source_granularity_key: input.source_resolution.granularity_key,
+    source_company_label_snapshot:
+      input.source_resolution.company_label_snapshot,
+    source_granularity_label_snapshot:
+      input.source_resolution.granularity_label_snapshot,
+    crm_source_label_snapshot: input.source_resolution.crm_label_snapshot,
+  };
   const form_fill = await hasFormFillForCallLead(
     {
       sourceCompany: source_company,
@@ -120,6 +136,9 @@ export async function createRingCentralCallLead(
         answered_at: input.ringcentral.answered_at ?? undefined,
         terminal_at: input.ringcentral.terminal_at ?? undefined,
         duration_seconds: input.ringcentral.duration_seconds ?? undefined,
+        route_id: input.ringcentral.route_id,
+        route_assignment_id: input.ringcentral.route_assignment_id,
+        target_phone_number: input.ringcentral.target_phone_number,
       },
     });
     await created.save({ session });

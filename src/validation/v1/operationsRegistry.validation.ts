@@ -209,6 +209,60 @@ export const cancelCplCorrectionSchema = z
   .object({ reason: reasonSchema })
   .strict();
 
+const phoneNumberSchema = z.string().trim().min(8).max(32);
+
+export const ringCentralRouteListQuerySchema = z
+  .object({
+    include_inactive: z
+      .preprocess(
+        (value) =>
+          value === "true" ? true : value === "false" ? false : value,
+        z.boolean().optional(),
+      ),
+    include_history: z
+      .preprocess(
+        (value) =>
+          value === "true" ? true : value === "false" ? false : value,
+        z.boolean().optional(),
+      ),
+  })
+  .strict();
+
+export const ringCentralRouteCreateSchema = z
+  .object({
+    phone_number: phoneNumberSchema,
+    display_label: z.string().trim().min(1).max(200),
+    created_from: z.string().trim().min(1).max(100).optional(),
+    reason: reasonSchema,
+  })
+  .strict();
+
+export const ringCentralRouteUpdateSchema = z
+  .object({
+    phone_number: phoneNumberSchema.optional(),
+    display_label: z.string().trim().min(1).max(200).optional(),
+    reason: reasonSchema,
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.phone_number !== undefined ||
+      value.display_label !== undefined ||
+      value.reason !== undefined,
+    "At least one field is required",
+  );
+
+export const ringCentralRouteReasonSchema = z
+  .object({ reason: reasonSchema })
+  .strict();
+
+export const ringCentralRouteAssignmentSchema = z
+  .object({
+    source_granularity_id: objectIdSchema,
+    reason: reasonSchema,
+  })
+  .strict();
+
 export type SimpleCplScheduleInput = z.infer<typeof simpleCplScheduleSchema>;
 export type AdvancedCplScheduleCommandInput = z.infer<
   typeof advancedCplScheduleCommandSchema
@@ -216,3 +270,15 @@ export type AdvancedCplScheduleCommandInput = z.infer<
 export type CplCorrectionPreviewInput = z.infer<typeof cplCorrectionPreviewSchema>;
 export type CreateCplCorrectionInput = z.infer<typeof createCplCorrectionSchema>;
 export type CancelCplCorrectionInput = z.infer<typeof cancelCplCorrectionSchema>;
+export type RingCentralRouteListQuery = z.infer<
+  typeof ringCentralRouteListQuerySchema
+>;
+export type RingCentralRouteCreateInput = z.infer<
+  typeof ringCentralRouteCreateSchema
+>;
+export type RingCentralRouteUpdateInput = z.infer<
+  typeof ringCentralRouteUpdateSchema
+>;
+export type RingCentralRouteAssignmentInput = z.infer<
+  typeof ringCentralRouteAssignmentSchema
+>;

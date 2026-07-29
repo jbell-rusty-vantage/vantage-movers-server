@@ -1,4 +1,4 @@
-import type { SourceCompany } from "./call-lead-sources";
+import type { RingCentralRouteResolution } from "../operationsRegistry";
 
 export type RingCentralDecisionStatus =
   | "not_candidate"
@@ -18,6 +18,7 @@ export type NormalizedRingCentralPartyEvent = {
 
   timestamp: Date | null;
   eventTime: Date | null;
+  callStartedAt?: Date | null;
   receivedAt: Date;
 
   sequence: number | null;
@@ -47,7 +48,8 @@ export type NormalizedRingCentralPartyEvent = {
 
   targetMatched: boolean;
   sourceLabel: string | null;
-  sourceCompany: SourceCompany | null;
+  sourceCompany: string | null;
+  routeResolution: RingCentralRouteResolution | null;
 
   rawParty: unknown;
 };
@@ -80,6 +82,7 @@ export type RingCentralCallCandidateDocument = {
   firstSeenAt: Date;
   lastSeenAt: Date;
   lastEventTime: Date | null;
+  callStartedAt?: Date | null;
   lastSequence: number | null;
 
   direction: string | null;
@@ -98,7 +101,8 @@ export type RingCentralCallCandidateDocument = {
 
   targetMatched: boolean;
   sourceLabel: string | null;
-  sourceCompany: SourceCompany | null;
+  sourceCompany: string | null;
+  routeResolution?: RingCentralRouteResolution | null;
 
   answered: boolean;
   answeredAt: Date | null;
@@ -125,8 +129,9 @@ export type CandidateDecision = {
   decisionReason: string;
   leadPreview: null | {
     provider: "ringcentral";
-    sourceCompany: SourceCompany;
+    sourceCompany: string;
     sourceLabel: string;
+    routeResolution: RingCentralRouteResolution;
     callerPhoneNumber: string;
     callerName: string | null;
     targetPhoneNumber: string;

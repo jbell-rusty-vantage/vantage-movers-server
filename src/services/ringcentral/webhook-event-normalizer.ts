@@ -1,4 +1,3 @@
-import { resolveRingCentralInboundSource } from "./call-lead-sources";
 import type { NormalizedRingCentralPartyEvent } from "./call-candidate-types";
 import { normalizePhoneNumberToE164Like } from "./phone-normalization";
 
@@ -53,7 +52,6 @@ function normalizeParty(
   const uiAdditional = asRecord(uiCallInfo?.additional);
   const toPhoneNumber = valueToString(to?.phoneNumber);
   const normalizedToPhoneNumber = normalizePhoneNumberToE164Like(toPhoneNumber);
-  const source = resolveRingCentralInboundSource(normalizedToPhoneNumber);
 
   return {
     provider: "ringcentral",
@@ -65,6 +63,9 @@ function normalizeParty(
 
     timestamp: valueToDate(input.root?.timestamp),
     eventTime: valueToDate(input.body?.eventTime),
+    callStartedAt:
+      valueToDate(party.startTime) ??
+      valueToDate(input.body?.startTime),
     receivedAt: input.receivedAt,
 
     sequence: valueToNumber(input.body?.sequence),
@@ -94,9 +95,10 @@ function normalizeParty(
     uiAdditionalType: valueToString(uiAdditional?.type),
     uiAdditionalValue: valueToString(uiAdditional?.value),
 
-    targetMatched: source !== null,
-    sourceLabel: source?.sourceLabel ?? null,
-    sourceCompany: source?.sourceCompany ?? null,
+    targetMatched: false,
+    sourceLabel: null,
+    sourceCompany: null,
+    routeResolution: null,
 
     rawParty: input.party,
   };

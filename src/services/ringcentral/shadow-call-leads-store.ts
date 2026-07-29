@@ -1,4 +1,4 @@
-import type { SourceCompany } from "./call-lead-sources";
+import type { SourceCompany } from "../../config/domain";
 import { getRingCentralCollectionName } from "./ringcentral-config";
 import { getRingCentralDb } from "./ringcentral-mongo";
 

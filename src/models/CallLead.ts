@@ -32,6 +32,17 @@ const ringCentralCallMetadataSchema = new Schema(
     answered_at: { type: Date },
     terminal_at: { type: Date },
     duration_seconds: { type: Number },
+    route_id: {
+      type: Schema.Types.ObjectId,
+      ref: "RingCentralInboundRoute",
+      index: true,
+    },
+    route_assignment_id: {
+      type: Schema.Types.ObjectId,
+      ref: "RingCentralInboundRouteAssignment",
+      index: true,
+    },
+    target_phone_number: { type: String, trim: true, index: true },
   },
   { _id: false },
 );

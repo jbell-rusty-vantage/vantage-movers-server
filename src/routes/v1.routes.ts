@@ -9,6 +9,7 @@ import { logger as rootLogger } from "../logger";
 import { requireApiSecret } from "../middleware/requireApiSecret";
 import type { VantageAuthContext } from "../middleware/requireApiSecret";
 import extensionAuthRoutes from "./extension-auth.routes";
+import ringCentralRegistryRoutes from "./ringcentral-registry.routes";
 import {
   recordOperationalEvent,
   getObservabilityOverview,
@@ -247,6 +248,7 @@ const router = Router();
 
 router.use(extensionAuthRoutes);
 router.use("/api/v1", requireApiSecret);
+router.use(ringCentralRegistryRoutes);
 
 type RequestWithLogger = Request & {
   log?: Logger;

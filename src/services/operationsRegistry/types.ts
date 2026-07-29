@@ -40,6 +40,8 @@ export type RegistryOverviewCounts = {
   source_companies_active: number;
   source_granularities_total: number;
   source_granularities_active: number;
+  ringcentral_routes_total: number;
+  ringcentral_routes_active: number;
   registry_changes_total: number;
 };
 
