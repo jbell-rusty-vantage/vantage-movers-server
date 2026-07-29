@@ -7,6 +7,11 @@ import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularit
 import { REGISTRY_ERROR_CODES } from "../errors/registryErrorCodes";
 import { RegistryError } from "./errors";
 import { withRegistryMutation } from "./registryAudit";
+import {
+  recordRegistryResolverAttempt,
+  recordRegistryResolverFailure,
+  recordRegistryResolverSuccess,
+} from "./runtimeTelemetry";
 import type {
   RegistryActorContext,
   RegistryAuditInput,
@@ -515,11 +520,18 @@ export async function resolveCpl(
   }
   assertValidTimestamp(input.business_timestamp);
   const store = deps.store ?? mongoCplScheduleStore;
-  const periods = await store.findCoveringPeriods(
-    input.source_granularity_id,
-    input.business_timestamp,
-  );
-  return resolveCplFromPeriods(periods, input);
+  recordRegistryResolverAttempt("cpl");
+  try {
+    const periods = await store.findCoveringPeriods(
+      input.source_granularity_id,
+      input.business_timestamp,
+    );
+    recordRegistryResolverSuccess("cpl");
+    return resolveCplFromPeriods(periods, input);
+  } catch (error) {
+    recordRegistryResolverFailure("cpl", "resolution_query_failed");
+    throw error;
+  }
 }
 
 export async function mutateAdvancedCplSchedule(

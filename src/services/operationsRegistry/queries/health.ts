@@ -9,17 +9,37 @@ import { getCallLeadModel } from "../../../models/CallLead";
 import { getCplCorrectionJobModel } from "../../../models/CplCorrectionJob";
 import { getRingCentralInboundRouteModel } from "../../../models/RingCentralInboundRoute";
 import { getRingCentralInboundRouteAssignmentModel } from "../../../models/RingCentralInboundRouteAssignment";
+import { OperationsRegistryChange } from "../../../models/OperationsRegistryChange";
+import { getOperationalEventModel } from "../../../models/OperationalEvent";
 import { getAdminProxySigningSecret } from "../config";
 import {
   validateCplSchedule,
   type CplSchedulePeriod,
 } from "../cplSchedule";
 import type { RegistryHealthFinding, RegistryHealthResult } from "../types";
+import {
+  getRegistryRuntimeTelemetry,
+  mergeDurableCompatibilityTelemetry,
+  type RegistryCompatibilityConsumer,
+  type RegistryRuntimeTelemetry,
+} from "../runtimeTelemetry";
+
+type RegistryHealthFindingDraft = Omit<
+  RegistryHealthFinding,
+  "first_observed_at" | "last_observed_at" | "actionable"
+> &
+  Partial<
+    Pick<
+      RegistryHealthFinding,
+      "first_observed_at" | "last_observed_at" | "actionable"
+    >
+  >;
 
 export async function getRegistryHealth(): Promise<RegistryHealthResult> {
   await connectMongo();
 
-  const findings: RegistryHealthFinding[] = [];
+  const findings: RegistryHealthFindingDraft[] = [];
+  const observationCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   if (!getAdminProxySigningSecret()) {
     findings.push({
@@ -45,6 +65,9 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
     stalledCorrectionJobs,
     ringCentralRoutes,
     ringCentralAssignments,
+    sourceResolutionEvents,
+    compatibilityEvents,
+    latestMigrationChange,
   ] = await Promise.all([
     Agent.countDocuments({ active: false }),
     Merchant.countDocuments({ active: false }),
@@ -70,6 +93,35 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
     getRingCentralInboundRouteAssignmentModel().find({
       effective_until: { $exists: false },
     }).lean().exec(),
+    getOperationalEventModel()
+      .find({
+        event_key: {
+          $in: [
+            "operations_registry.source_resolution_ambiguous",
+            "operations_registry.source_resolution_not_found",
+          ],
+        },
+        occurred_at: { $gte: observationCutoff },
+      })
+      .sort({ occurred_at: -1 })
+      .limit(100)
+      .lean()
+      .exec(),
+    getOperationalEventModel()
+      .find({
+        event_key: "operations_registry.compatibility_read",
+        occurred_at: { $gte: observationCutoff },
+      })
+      .sort({ occurred_at: -1 })
+      .limit(100)
+      .lean()
+      .exec(),
+    OperationsRegistryChange.findOne({
+      actor_id: { $regex: /^operations-registry-m\d+$/ },
+    })
+      .sort({ created_at: -1 })
+      .lean()
+      .exec(),
   ]);
 
   if (inactiveAgentsUsedRecently > 0) {
@@ -135,6 +187,25 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
     ]);
   }
   for (const route of ringCentralRoutes) {
+    if (route.validation_status === "invalid") {
+      findings.push({
+        code: "registry.ringcentral_validation_failed",
+        severity: "error",
+        summary: "RingCentral route failed provider-account validation.",
+        entity_type: "ringcentral_route",
+        entity_id: String(route._id),
+        last_observed_at:
+          route.validated_at?.toISOString() ?? new Date().toISOString(),
+        actionable: true,
+        evidence: {
+          validation_code: route.validation_code ?? "invalid",
+        },
+        remediation: {
+          summary: "Correct the route metadata and re-run provider validation.",
+          action: "validate_ringcentral_route",
+        },
+      });
+    }
     if (!route.active) continue;
     const open = openAssignmentsByRoute.get(String(route._id)) ?? [];
     if (route.validation_status !== "valid" || open.length !== 1) {
@@ -199,11 +270,169 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
       stalledCorrectionJobs,
     ),
   );
+  const runtimeTelemetry = mergeDurableCompatibilityTelemetry(
+    getRegistryRuntimeTelemetry(),
+    compatibilityEvents
+      .map((event) => {
+        const path = event.details.compatibility_path;
+        const consumer = event.details.consumer_category;
+        return typeof path === "string" && isCompatibilityConsumer(consumer)
+          ? {
+              path,
+              consumer_category: consumer,
+              occurred_at: event.occurred_at,
+            }
+          : null;
+      })
+      .filter(
+        (
+          event,
+        ): event is {
+          path: string;
+          consumer_category: RegistryCompatibilityConsumer;
+          occurred_at: Date;
+        } => event !== null,
+      ),
+  );
+  findings.push(...buildRuntimeRegistryHealthFindings(runtimeTelemetry));
+  findings.push(
+    ...buildSourceResolutionEventFindings(
+      sourceResolutionEvents.map((event) => ({
+        event_key: event.event_key,
+        occurred_at: event.occurred_at,
+      })),
+    ),
+  );
+  findings.push(
+    latestMigrationChange
+      ? {
+          code: "registry.migration_evidence_present",
+          severity: "info",
+          summary: "An applied Operations Registry migration audit record is present.",
+          entity_type: "registry_migration",
+          entity_id: latestMigrationChange.actor_id,
+          first_observed_at: latestMigrationChange.created_at.toISOString(),
+          last_observed_at: latestMigrationChange.created_at.toISOString(),
+          actionable: false,
+          evidence: {
+            request_id: latestMigrationChange.request_id,
+          },
+          remediation: {
+            summary: "Retain the corresponding migration manifest with rollout evidence.",
+          },
+        }
+      : {
+          code: "registry.migration_evidence_missing",
+          severity: "warn",
+          summary: "No applied Operations Registry migration audit record is present.",
+          entity_type: "registry_migration",
+          actionable: true,
+          remediation: {
+            summary:
+              "Run approved migrations in order and retain their manifests before cutover.",
+            action: "review_migration_manifests",
+          },
+        },
+  );
 
   return {
     generated_at: new Date().toISOString(),
-    findings,
+    findings: finalizeHealthFindings(findings),
   };
+}
+
+export function buildSourceResolutionEventFindings(
+  events: readonly { event_key: string; occurred_at: Date }[],
+): RegistryHealthFindingDraft[] {
+  if (!events.length) return [];
+  const ordered = [...events].sort(
+    (left, right) => left.occurred_at.getTime() - right.occurred_at.getTime(),
+  );
+  const ambiguous = events.filter((event) =>
+    event.event_key.endsWith("_ambiguous"),
+  ).length;
+  const missing = events.length - ambiguous;
+  return [
+    {
+      code: "registry.source_resolution_failures",
+      severity: "error",
+      summary: `${missing} missing and ${ambiguous} ambiguous source resolution event(s) were observed in the latest bounded sample.`,
+      entity_type: "source_granularity",
+      first_observed_at: ordered[0]!.occurred_at.toISOString(),
+      last_observed_at: ordered.at(-1)!.occurred_at.toISOString(),
+      actionable: true,
+      evidence: {
+        sample_size: events.length,
+        missing,
+        ambiguous,
+      },
+      remediation: {
+        summary:
+          "Add or correct active source identifiers, aliases, priorities, and defaults.",
+        action: "review_source_resolution",
+      },
+    },
+  ];
+}
+
+export function buildRuntimeRegistryHealthFindings(
+  telemetry: RegistryRuntimeTelemetry,
+): RegistryHealthFindingDraft[] {
+  const findings: RegistryHealthFindingDraft[] = [];
+  for (const [resolver, state] of Object.entries(telemetry.resolvers)) {
+    const expired =
+      state.age_ms !== null &&
+      state.max_age_ms !== null &&
+      state.age_ms > state.max_age_ms;
+    if (!state.serving_stale && !expired) continue;
+    findings.push({
+      code: "registry.cache_stale",
+      severity: "error",
+      summary: `${resolver} registry resolver is serving or holding a stale snapshot.`,
+      entity_type: "registry_cache",
+      entity_id: resolver,
+      last_observed_at: state.last_success_at ?? new Date().toISOString(),
+      actionable: true,
+      evidence: {
+        age_ms: state.age_ms,
+        max_age_ms: state.max_age_ms,
+        refresh_failures: state.refresh_failures,
+        last_error_code: state.last_error_code,
+        serving_stale: state.serving_stale,
+      },
+      remediation: {
+        summary: "Restore registry refresh access and force a safe snapshot reload.",
+        action: "refresh_registry_cache",
+      },
+    });
+  }
+
+  if (telemetry.compatibility_reads.length > 0) {
+    const lastUsedAt = telemetry.compatibility_reads
+      .map((item) => item.last_used_at)
+      .sort()
+      .at(-1)!;
+    findings.push({
+      code: "registry.compatibility_reads_remaining",
+      severity: "warn",
+      summary: `${telemetry.compatibility_reads.reduce(
+        (sum, item) => sum + item.count,
+        0,
+      )} retained compatibility read(s) were observed in this server process.`,
+      entity_type: "registry_compatibility",
+      last_observed_at: lastUsedAt,
+      actionable: true,
+      evidence: {
+        path_count: telemetry.compatibility_reads.length,
+      },
+      remediation: {
+        summary:
+          "Review consumer categories and retire each path after usage reaches zero.",
+        action: "review_compatibility_reads",
+      },
+    });
+  }
+  return findings.sort((left, right) => left.code.localeCompare(right.code));
 }
 
 export function buildCplRegistryHealthFindings(
@@ -212,8 +441,8 @@ export function buildCplRegistryHealthFindings(
   unresolvedLeadCount: number,
   failedCorrectionJobs = 0,
   stalledCorrectionJobs = 0,
-): RegistryHealthFinding[] {
-  const findings: RegistryHealthFinding[] = [];
+): RegistryHealthFindingDraft[] {
+  const findings: RegistryHealthFindingDraft[] = [];
   for (const granularityId of activeGranularityIds) {
     const schedule = periods.filter(
       (period) => period.source_granularity_id === granularityId,
@@ -285,8 +514,8 @@ type HealthGranularity = {
 export function buildSourceRegistryHealthFindings(
   companies: readonly HealthCompany[],
   granularities: readonly HealthGranularity[],
-): RegistryHealthFinding[] {
-  const findings: RegistryHealthFinding[] = [];
+): RegistryHealthFindingDraft[] {
+  const findings: RegistryHealthFindingDraft[] = [];
   const activeCompanies = new Map(
     companies.filter((company) => company.active).map((company) => [company.id, company]),
   );
@@ -351,7 +580,7 @@ export function buildSourceRegistryHealthFindings(
 function collisionFindings(
   rows: readonly HealthGranularity[],
   kind: "crm_label" | "source_site",
-): RegistryHealthFinding[] {
+): RegistryHealthFindingDraft[] {
   const groups = new Map<string, string[]>();
   for (const row of rows) {
     const values = kind === "crm_label" ? [row.crm_label] : row.source_sites;
@@ -377,7 +606,7 @@ function collisionFindings(
 
 function fallbackCollisionFindings(
   rows: readonly HealthGranularity[],
-): RegistryHealthFinding[] {
+): RegistryHealthFindingDraft[] {
   const groups = new Map<string, string[]>();
   for (const row of rows) {
     for (const rawAlias of row.aliases) {
@@ -402,4 +631,30 @@ function fallbackCollisionFindings(
 
 function normalize(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function isCompatibilityConsumer(
+  value: unknown,
+): value is RegistryCompatibilityConsumer {
+  return [
+    "admin_list",
+    "booking_legacy_parse",
+    "enrichment",
+    "reconciliation",
+    "unknown",
+  ].includes(String(value));
+}
+
+function finalizeHealthFindings(
+  findings: readonly RegistryHealthFindingDraft[],
+  observedAt = new Date(),
+): RegistryHealthFinding[] {
+  const fallbackObservedAt = observedAt.toISOString();
+  return findings.map((finding) => ({
+    ...finding,
+    first_observed_at: finding.first_observed_at ?? fallbackObservedAt,
+    last_observed_at: finding.last_observed_at ?? fallbackObservedAt,
+    actionable:
+      finding.actionable ?? Boolean(finding.remediation?.action),
+  }));
 }

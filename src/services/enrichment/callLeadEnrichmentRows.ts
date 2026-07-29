@@ -101,7 +101,6 @@ export async function parseEnrichmentRow(
       legacySourceCompany,
     source_label: sourceLabel,
     source_assignment: sourceAssignment?.assignment,
-    source_cpl: sourceAssignment?.resolution.granularity.cpl,
     name: cleanValue(row.customer),
     phone: cleanValue(row.phone),
     granot_crm_username: cleanValue(row.granot_crm_username),

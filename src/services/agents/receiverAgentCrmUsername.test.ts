@@ -29,13 +29,7 @@ test("automatic CRM username receiver matching excludes inactive Agents", async 
   assert.equal(result.status, "not_found");
   assert.equal(result.changed, false);
   assert.deepEqual(capturedFilter, {
-    $or: [
-      { "granot_identity.username": "MIKEM" },
-      {
-        "granot_identity.username": { $exists: false },
-        granot_crm_username: "MIKEM",
-      },
-    ],
+    "granot_identity.username": "MIKEM",
     active: true,
   });
   assert.equal(lead.receiver_agent, undefined);
@@ -62,18 +56,12 @@ test("findAgentByGranotCrmUsername prefers embedded granot_identity username", a
   assert.ok(agent);
   assert.equal(agent._id.toString(), agentId.toString());
   assert.deepEqual(capturedFilter, {
-    $or: [
-      { "granot_identity.username": "MIKEM" },
-      {
-        "granot_identity.username": { $exists: false },
-        granot_crm_username: "MIKEM",
-      },
-    ],
+    "granot_identity.username": "MIKEM",
     active: true,
   });
 });
 
-test("findAgentByGranotCrmUsername falls back to flat granot_crm_username", async () => {
+test("findAgentByGranotCrmUsername never reads the retained flat compatibility field", async () => {
   let capturedFilter: unknown;
   (Agent as unknown as MutableModel).findOne = (filter: unknown) => {
     capturedFilter = filter;
@@ -83,13 +71,7 @@ test("findAgentByGranotCrmUsername falls back to flat granot_crm_username", asyn
   await findAgentByGranotCrmUsername("JACOB");
 
   assert.deepEqual(capturedFilter, {
-    $or: [
-      { "granot_identity.username": "JACOB" },
-      {
-        "granot_identity.username": { $exists: false },
-        granot_crm_username: "JACOB",
-      },
-    ],
+    "granot_identity.username": "JACOB",
     active: true,
   });
 });

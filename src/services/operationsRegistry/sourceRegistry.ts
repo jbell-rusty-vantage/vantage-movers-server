@@ -25,6 +25,11 @@ import {
   type SourceResolutionPreview,
 } from "./sourceResolution";
 import type { RegistryActorContext, RegistryAuditInput } from "./types";
+import {
+  recordRegistryResolverAttempt,
+  recordRegistryResolverFailure,
+  recordRegistryResolverSuccess,
+} from "./runtimeTelemetry";
 
 export type SourceCompanyCommand = {
   id?: string;
@@ -632,9 +637,20 @@ export async function previewSourceResolution(
 export async function resolveSourceAttribution(
   input: SourceAttributionInput,
 ): Promise<SourceAttribution> {
-  const preview = await previewSourceResolution(input);
-  if (preview.status === "resolved") return preview.attribution;
+  recordRegistryResolverAttempt("source");
+  let preview: SourceResolutionPreview;
+  try {
+    preview = await previewSourceResolution(input);
+  } catch (error) {
+    recordRegistryResolverFailure("source", "resolution_query_failed");
+    throw error;
+  }
+  if (preview.status === "resolved") {
+    recordRegistryResolverSuccess("source");
+    return preview.attribution;
+  }
   if (preview.status === "ambiguous") {
+    recordRegistryResolverFailure("source", "ambiguous_resolution");
     await recordOperationalEvent({
       level: "error",
       eventKey: "operations_registry.source_resolution_ambiguous",
@@ -654,6 +670,20 @@ export async function resolveSourceAttribution(
       metadata: { candidate_ids: preview.candidate_ids },
     });
   }
+  recordRegistryResolverFailure("source", "not_found");
+  await recordOperationalEvent({
+    level: "warn",
+    eventKey: "operations_registry.source_resolution_not_found",
+    category: "admin",
+    workflow: "operations_registry",
+    summary: "Source attribution did not match an active registry entry.",
+    details: {
+      identifier_kind: preview.identifier_kind,
+    },
+    notificationCandidate: false,
+    ownerVisible: true,
+    piiPolicy: "none",
+  });
   throw new RegistryError("Source attribution was not found.", {
     registryCode: REGISTRY_ERROR_CODES.NOT_FOUND,
   });
@@ -840,6 +870,9 @@ function toGranularityItem(
     active: doc.active === true,
     source_sites: strings(doc.source_sites),
     priority: typeof doc.priority === "number" ? doc.priority : 0,
+    ...(doc.local === "local" || doc.local === "long_distance"
+      ? { local: doc.local }
+      : {}),
     schedule_revision:
       typeof doc.schedule_revision === "number" ? doc.schedule_revision : 0,
     ...(doc.activated_at instanceof Date

@@ -99,7 +99,6 @@ export async function parseBookedCallLeadRow(
       (sourceAssignment?.assignment.source_company as SourceCompany | undefined) ??
       legacySourceCompany,
     source_assignment: sourceAssignment?.assignment,
-    source_cpl: sourceAssignment?.resolution.granularity.cpl,
     source_label: sourceLabel,
     prior: cleanValue(row.prior),
     book_date: parseOptionalDate(row.book_date, warnings),

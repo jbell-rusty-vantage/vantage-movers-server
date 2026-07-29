@@ -33,8 +33,23 @@ const granularities: RegistrySourceGranularityRecord[] = [
     aliases: ["legacy dynamic"],
     source_sites: ["landing.dynamic.test"],
     priority: 10,
+    local: "local",
     active: true,
     schedule_revision: 3,
+  },
+  {
+    id: "form-long-distance",
+    source_company: "company-a",
+    granularity_key: "dynamic_form_long_distance",
+    channel: "form",
+    owner_label: "Dynamic Long Distance Forms",
+    crm_label: "Dynamic Long Distance Web Leads",
+    aliases: [],
+    source_sites: [],
+    priority: 5,
+    local: "long_distance",
+    active: true,
+    schedule_revision: 4,
   },
   {
     id: "call-a",
@@ -78,6 +93,34 @@ test("active company default resolves only to an active same-channel record", ()
   }
 });
 
+test("a company identifier falls through to its default when it is not a granularity alias", () => {
+  const result = previewSourceAttribution(companies, granularities, {
+    channel: "call",
+    company_slug: "dynamic_source",
+    fallback_alias: "dynamic_source",
+  });
+
+  assert.equal(result.status, "resolved");
+  if (result.status === "resolved") {
+    assert.equal(result.attribution.granularity_id, "call-a");
+    assert.equal(result.attribution.match_kind, "default");
+  }
+});
+
+test("local classification resolves the matching active granularity before the default", () => {
+  const result = previewSourceAttribution(companies, granularities, {
+    channel: "form",
+    company_slug: "dynamic_source",
+    local: "long_distance",
+  });
+
+  assert.equal(result.status, "resolved");
+  if (result.status === "resolved") {
+    assert.equal(result.attribution.granularity_id, "form-long-distance");
+    assert.equal(result.attribution.match_kind, "exact");
+  }
+});
+
 test("fallback aliases choose the unique highest priority candidate", () => {
   const result = previewSourceAttribution(
     companies,
@@ -92,6 +135,22 @@ test("fallback aliases choose the unique highest priority candidate", () => {
     ],
     { channel: "form", fallback_alias: "legacy dynamic" },
   );
+
+  assert.equal(result.status, "resolved");
+  if (result.status === "resolved") {
+    assert.equal(result.attribution.granularity_id, "form-a");
+    assert.equal(result.attribution.match_kind, "fallback");
+  }
+});
+
+test("an inferred unknown company identifier can resolve as a global alias in one pass", () => {
+  const result = previewSourceAttribution(companies, granularities, {
+    channel: "form",
+    company_slug: "legacy dynamic",
+    crm_label: "legacy dynamic",
+    fallback_alias: "legacy dynamic",
+    allow_company_identifier_fallback: true,
+  });
 
   assert.equal(result.status, "resolved");
   if (result.status === "resolved") {

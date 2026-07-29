@@ -5,6 +5,7 @@ import type {
   RegistryChangeEntityType,
 } from "../../models/OperationsRegistryChange";
 import type { ApprovedRegistryReadRole } from "./trustedActorCanonical";
+import type { RegistryRuntimeTelemetry } from "./runtimeTelemetry";
 
 export type RegistryActorContext = {
   actorType: RegistryChangeActorType;
@@ -53,6 +54,7 @@ export type RegistryOverviewResult = {
     preview_unsigned_allowed: boolean;
     signature_max_age_ms: number;
   };
+  runtime: RegistryRuntimeTelemetry;
 };
 
 export type RegistryHealthSeverity = "info" | "warn" | "error";
@@ -63,6 +65,10 @@ export type RegistryHealthFinding = {
   summary: string;
   entity_type?: string;
   entity_id?: string;
+  first_observed_at: string;
+  last_observed_at: string;
+  actionable: boolean;
+  evidence?: Record<string, string | number | boolean | null>;
   remediation?: {
     summary: string;
     action?: string;

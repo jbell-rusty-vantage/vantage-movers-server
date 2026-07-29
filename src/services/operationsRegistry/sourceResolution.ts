@@ -20,6 +20,7 @@ export type RegistrySourceGranularityRecord = {
   aliases: string[];
   source_sites: string[];
   priority: number;
+  local?: "local" | "long_distance";
   active: boolean;
   schedule_revision: number;
 };
@@ -31,6 +32,8 @@ export type SourceAttributionInput = {
   crm_label?: string | null;
   source_site?: string | null;
   fallback_alias?: string | null;
+  local?: "local" | "long_distance";
+  allow_company_identifier_fallback?: boolean;
 };
 
 export type SourceAttribution = {
@@ -66,9 +69,16 @@ export function previewSourceAttribution(
   input: SourceAttributionInput,
 ): SourceResolutionPreview {
   const activeCompanies = companies.filter((company) => company.active);
-  const companyResult = selectCompany(activeCompanies, input.company_slug);
+  let companyResult = selectCompany(activeCompanies, input.company_slug);
   if (companyResult.status !== "resolved") {
-    return companyResult;
+    if (
+      input.allow_company_identifier_fallback &&
+      companyResult.status === "not_found"
+    ) {
+      companyResult = { status: "resolved" };
+    } else {
+      return companyResult;
+    }
   }
 
   const candidates = granularities.filter(
@@ -88,16 +98,31 @@ export function previewSourceAttribution(
     const matches = candidates.filter((candidate) =>
       exactMatches(candidate, exact.kind, exact.value),
     );
-    if (matches.length !== 1) {
-      return matches.length > 1
-        ? ambiguous("exact", exact.value, matches)
-        : {
-            status: "not_found",
-            identifier_kind: "exact",
-            identifier: exact.value,
-          };
+    if (matches.length > 1) {
+      return ambiguous("exact", exact.value, matches);
     }
-    return resolved(companies, matches[0], "exact");
+    if (matches.length === 1) {
+      return resolved(companies, matches[0], "exact");
+    }
+    if (!normalize(input.fallback_alias)) {
+      return {
+        status: "not_found",
+        identifier_kind: "exact",
+        identifier: exact.value,
+      };
+    }
+  }
+
+  if (input.local) {
+    const localMatches = candidates.filter(
+      (candidate) => candidate.local === input.local,
+    );
+    if (localMatches.length === 1) {
+      return resolved(companies, localMatches[0], "exact");
+    }
+    if (localMatches.length > 1) {
+      return ambiguous("exact", input.local, localMatches);
+    }
   }
 
   const fallback = normalize(input.fallback_alias);
@@ -118,11 +143,13 @@ export function previewSourceAttribution(
       }
       return resolved(companies, preferred[0], "fallback");
     }
-    return {
-      status: "not_found",
-      identifier_kind: "fallback",
-      identifier: fallback,
-    };
+    if (!companyResult.company) {
+      return {
+        status: "not_found",
+        identifier_kind: "fallback",
+        identifier: fallback,
+      };
+    }
   }
 
   const company = companyResult.company;

@@ -51,13 +51,7 @@ export async function findAgentByGranotCrmUsername(
   }
   return (
     (await Agent.findOne({
-      $or: [
-        { "granot_identity.username": username },
-        {
-          "granot_identity.username": { $exists: false },
-          granot_crm_username: username,
-        },
-      ],
+      "granot_identity.username": username,
       ...(options.includeInactive ? {} : { active: true }),
     }).exec()) ?? undefined
   );

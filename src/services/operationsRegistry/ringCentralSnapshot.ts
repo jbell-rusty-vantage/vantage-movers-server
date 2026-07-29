@@ -9,6 +9,12 @@ import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularit
 import { normalizePhoneNumberToE164Like } from "../ringcentral/phone-normalization";
 import { recordOperationalEvent } from "../observability";
 import { onRegistryCacheInvalidation } from "./cacheInvalidation";
+import {
+  recordRegistryResolverAttempt,
+  recordRegistryResolverFailure,
+  recordRegistryResolverStaleServe,
+  recordRegistryResolverSuccess,
+} from "./runtimeTelemetry";
 
 export const RINGCENTRAL_ROUTE_CACHE_KEY = "ringcentral_routes";
 const DEFAULT_SNAPSHOT_MAX_AGE_MS = 5 * 60 * 1000;
@@ -80,6 +86,7 @@ export async function loadRingCentralRouteSnapshot(
     return cachedSnapshot;
   }
   if (refreshPromise) return refreshPromise;
+  recordRegistryResolverAttempt("ringcentral");
   const pendingRefresh = refreshSnapshot(now)
     .catch(async (error) => {
       const staleAge = cachedSnapshot
@@ -98,7 +105,12 @@ export async function loadRingCentralRouteSnapshot(
         errorMessage: error instanceof Error ? error.message : String(error),
         notificationCandidate: true,
       });
+      recordRegistryResolverFailure(
+        "ringcentral",
+        "snapshot_refresh_failed",
+      );
       if (cachedSnapshot && staleAge <= getLastKnownValidMaxAgeMs()) {
+        recordRegistryResolverStaleServe("ringcentral");
         return cachedSnapshot;
       }
       throw error;
@@ -117,6 +129,10 @@ async function refreshSnapshot(startedAt: Date): Promise<RingCentralRouteSnapsho
     const snapshot = await snapshotLoader(loadAt);
     if (startedGeneration === cacheGeneration) {
       cachedSnapshot = snapshot;
+      recordRegistryResolverSuccess("ringcentral", {
+        loadedAt: snapshot.built_at,
+        maxAgeMs: snapshot.max_age_ms,
+      });
       return snapshot;
     }
     loadAt = new Date();

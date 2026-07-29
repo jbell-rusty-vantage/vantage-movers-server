@@ -302,6 +302,14 @@ async function main(): Promise<void> {
     const validationFailures = result.validations.filter(
       (validation) => validation.status !== "valid",
     );
+    const conflictsByCode = Object.fromEntries(
+      [...new Set(plan.conflicts.map((conflict) => conflict.code))]
+        .sort()
+        .map((code) => [
+          code,
+          plan.conflicts.filter((conflict) => conflict.code === code).length,
+        ]),
+    );
     const manifest = {
       run_id: runId,
       script_version: RINGCENTRAL_BACKFILL_SCRIPT_VERSION,
@@ -310,6 +318,7 @@ async function main(): Promise<void> {
       mode: apply ? "apply" : "dry_run",
       started_at: startedAt.toISOString(),
       completed_at: new Date().toISOString(),
+      operator: process.env.USERNAME ?? process.env.USER,
       source_counts: {
         static_mappings: snapshot.static_mappings.length,
         embedded_numbers: snapshot.companies.reduce(
@@ -330,11 +339,18 @@ async function main(): Promise<void> {
       },
       applied: result.applied,
       mapping_checksum: plan.mapping_checksum,
+      conflict_summary: {
+        blocking: plan.conflicts.filter((conflict) => conflict.blocking).length,
+        reviewable: plan.conflicts.filter((conflict) => !conflict.blocking).length,
+        total: plan.conflicts.length,
+        by_category: conflictsByCode,
+      },
       conflicts: plan.conflicts,
       mappings: plan.mappings,
       validations: result.validations,
       apply_errors: result.apply_errors,
       validation_summary: {
+        dry_run_performed_no_writes: !apply,
         intended_routes: plan.mappings.length,
         validated_routes: result.validations.length,
         valid_routes: result.validations.length - validationFailures.length,
@@ -345,6 +361,7 @@ async function main(): Promise<void> {
           validationFailures.length === 0 &&
           result.applied.failures === 0,
       },
+      resume_cursor: null,
     };
     await mkdir(OUTPUT_DIR, { recursive: true });
     const manifestPath = path.join(OUTPUT_DIR, `${runId}.json`);
@@ -359,6 +376,7 @@ async function main(): Promise<void> {
       planned: manifest.planned,
       applied: manifest.applied,
       mapping_checksum: manifest.mapping_checksum,
+      conflict_summary: manifest.conflict_summary,
       validation_summary: manifest.validation_summary,
     }, null, 2));
     if (apply && !manifest.validation_summary.gate_passed) {

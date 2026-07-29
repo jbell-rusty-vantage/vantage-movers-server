@@ -42,7 +42,7 @@ import {
   normalizeState,
   resolveRequiredLocation,
 } from "./leadLocation.service";
-import { parseSourceCompany, resolveLeadSourceAssignment } from "./leadSourceCompany";
+import { resolveLeadSourceAssignment } from "./leadSourceCompany";
 import {
   findDuplicateFormLeadMatch,
   markMatchingCallLeadsWithFormFill,
@@ -101,7 +101,7 @@ export async function createFormLead(input: CreateFormLeadInput) {
   );
   const duplicate = duplicateMatch.duplicate;
   const shouldPostToGranot = post_to_granot && !duplicate;
-  const crmLabel = sourceResolution.granularity.crm_label;
+  const crmLabel = sourceResolution.crm_label_snapshot;
   const leadTimestamp = toFloridaTimestamp(normalizedFormLeadInput.timestamp);
   const cplSnapshot = await resolveLeadCplSnapshot({
     sourceGranularityId: sourceAssignment.source_granularity_id

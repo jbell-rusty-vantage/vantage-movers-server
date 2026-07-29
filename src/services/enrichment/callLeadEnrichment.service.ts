@@ -1,9 +1,4 @@
 import type { HydratedDocument } from "mongoose";
-import {
-  getCplForSource,
-  normalizeSourceCompany,
-  type LocalType,
-} from "../../config/domain";
 import { CallLead, type CallLeadDocument } from "../../models/CallLead";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import type {
@@ -33,6 +28,7 @@ import {
   isUnassignedSource,
   sourceDisplayLabel,
 } from "../leads/callLeadSourceMatch";
+import { resolveLeadCplSnapshot } from "../leads/leadCplResolution";
 
 export type CallLeadEnrichmentStatus =
   | "updateable"
@@ -114,13 +110,15 @@ export async function syncCallLeadEnrichment(
         Object.assign(resolved.lead, resolved.update);
       }
       if (resolved.update?.local || resolved.update?.source_company) {
-        resolved.lead.cpl =
-          resolved.result.parsed?.source_cpl ??
-          (await getCplForSource(
-            normalizeSourceCompany(resolved.lead.source_company),
-            "call",
-            resolved.lead.local as LocalType | undefined,
-          ));
+        Object.assign(
+          resolved.lead,
+          await resolveLeadCplSnapshot({
+            sourceGranularityId: resolved.lead.source_granularity_id
+              ? String(resolved.lead.source_granularity_id)
+              : null,
+            storedBusinessTimestamp: resolved.lead.timestamp,
+          }),
+        );
       }
       const lead = resolved.lead;
       const job: FullSheetSyncJob = {

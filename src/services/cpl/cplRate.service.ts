@@ -12,6 +12,7 @@ import {
   listLeadSourceCompanies,
   type LeadSourceGranularityItem,
 } from "../leadSourceCompanies";
+import { recordDurableCompatibilityRead } from "../operationsRegistry/runtimeTelemetry";
 
 export type CplRateItem = {
   id: string;
@@ -57,6 +58,7 @@ export async function getCplRate(
   leadType: CplLeadType,
   local: LocalType | undefined,
 ): Promise<number> {
+  await recordDurableCompatibilityRead("legacy_cpl_rates", "unknown");
   const key = cplRateCacheKey(sourceCompany, leadType, local);
   const loaded = await loadCache();
   if (loaded.has(key)) {
@@ -66,6 +68,7 @@ export async function getCplRate(
 }
 
 export async function listCplRates(): Promise<CplRateItem[]> {
+  await recordDurableCompatibilityRead("legacy_cpl_rates", "admin_list");
   const sourceCompanies = await listLeadSourceCompanies({ includeInactive: true });
   const catalogRates = sourceCompanies.flatMap((company) =>
     company.granularities.map((granularity) =>

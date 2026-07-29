@@ -34,7 +34,7 @@ import { deleteBookedLead, refreshAttachedBookingFromLead } from "../v1.service"
 import { hasFormFillForCallLead } from "./duplicateLead.service";
 import { normalizeLeadName, normalizeLeadNameUpdate } from "./leadName.service";
 import { resolveOptionalLocation } from "./leadLocation.service";
-import { parseSourceCompany, resolveLeadSourceAssignment } from "./leadSourceCompany";
+import { resolveLeadSourceAssignment } from "./leadSourceCompany";
 import {
   recordMissingLeadCplRate,
   resolveLeadCplSnapshot,

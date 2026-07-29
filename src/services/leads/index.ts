@@ -34,8 +34,6 @@ export {
   resolveRequiredLocation,
 } from "./leadLocation.service";
 
-export { parseSourceCompany } from "./leadSourceCompany";
-
 export {
   hasFormFillForCallLead,
   isDuplicateFormLead,

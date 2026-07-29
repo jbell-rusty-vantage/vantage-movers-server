@@ -1,6 +1,5 @@
 import {
   resolveSourceCompany,
-  resolveSourceCompanyFromLabel,
   type LeadModelName,
   type SourceCompany,
 } from "../../config/domain";
@@ -10,7 +9,6 @@ import {
   findBestCallLeadMatchByPhone,
   getLinkedLead,
   hasFormFillForCallLead,
-  parseSourceCompany,
   type SourceLeadDocument,
 } from "../leads";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
@@ -78,10 +76,6 @@ export async function resolveBookingSourceLead(
     return { lead, leadModel: "CallLead", jobNo };
   }
 
-  const source_company = input.source_company?.trim()
-    ? parseSourceCompany(input.source_company)
-    : "not_provided";
-
   const phoneMatchedLead = normalizedPhone
     ? await findBestCallLeadMatchByPhone(normalizedPhone, {
         sourceCompany: importLeadFilter.source_company,
@@ -100,7 +94,6 @@ export async function resolveBookingSourceLead(
 
   const { assignment: sourceAssignment } = await resolveLeadSourceAssignment({
       value: input.source_company,
-      company_slug: source_company,
       channel: "call",
     });
   const form_fill = await hasFormFillForCallLead(
@@ -145,11 +138,10 @@ export function effectiveBookingSourceCompany(
 ): SourceCompany {
   const sourceCompanyOverrideText = sourceCompanyOverride?.trim();
   if (sourceCompanyOverrideText) {
-    const sourceCompanyFromLabel = resolveSourceCompanyFromLabel(sourceCompanyOverrideText);
-    return sourceCompanyFromLabel ?? parseSourceCompany(sourceCompanyOverrideText);
+    return sourceCompanyOverrideText as SourceCompany;
   }
 
-  return parseSourceCompany(String(lead.source_company ?? ""));
+  return String(lead.source_company ?? "not_provided") as SourceCompany;
 }
 
 /**

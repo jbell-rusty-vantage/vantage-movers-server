@@ -45,6 +45,21 @@ export {
   getRegistryCacheInvalidationLogForTests,
   resetRegistryCacheInvalidationForTests,
 } from "./cacheInvalidation";
+export {
+  getRegistryRuntimeTelemetry,
+  mergeDurableCompatibilityTelemetry,
+  recordCompatibilityRead,
+  recordDurableCompatibilityRead,
+  recordRegistryResolverAttempt,
+  recordRegistryResolverFailure,
+  recordRegistryResolverStaleServe,
+  recordRegistryResolverSuccess,
+} from "./runtimeTelemetry";
+export type {
+  RegistryCompatibilityTelemetry,
+  RegistryResolverTelemetry,
+  RegistryRuntimeTelemetry,
+} from "./runtimeTelemetry";
 
 export {
   getAdminProxySigningSecret,
