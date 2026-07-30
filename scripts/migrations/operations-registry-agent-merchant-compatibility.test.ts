@@ -82,6 +82,22 @@ test("M2 preserves existing verified_at when present and keeps flat field untouc
   assert.equal(update?.flat_username, "MIKEM");
 });
 
+test("M2 initializes missing Agent aliases in the same pass as nested identity", () => {
+  const snapshot = baseSnapshot();
+  snapshot.agents[0].name_aliases = null;
+
+  const plan = buildAgentMerchantCompatibilityPlan(snapshot);
+  const update = plan.agents.find((entry) => entry.agent_id === "agent-1");
+  const updateDoc = agentMigrationUpdateFilter(update!);
+
+  assert.equal(update?.action, "update_identity");
+  assert.equal(update?.initialize_aliases, true);
+  assert.deepEqual(
+    (updateDoc?.$set as { name_aliases?: string[] } | undefined)?.name_aliases,
+    [],
+  );
+});
+
 test("M2 noop when nested identity already matches flat username", () => {
   const plan = buildAgentMerchantCompatibilityPlan(baseSnapshot());
   const jacob = plan.agents.find((entry) => entry.agent_id === "agent-2");

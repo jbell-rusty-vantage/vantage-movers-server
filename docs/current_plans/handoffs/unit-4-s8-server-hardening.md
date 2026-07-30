@@ -172,7 +172,7 @@ Additional migration safeguards:
 Current verification:
 
 - focused registry/runtime consumer tests: 16 passed;
-- migration/readiness tests: 45 passed;
+- migration/readiness tests: 46 passed;
 - full server suite: 593 passed, 0 failed;
 - `pnpm typecheck`: no diagnostics in changed Operations Registry/runtime
   files; the command remains non-zero only for the pre-existing
@@ -209,3 +209,20 @@ schedules reference the first-class granularities created by M3; an empty
 pre-M3 M4 manifest is not approval evidence. The next action is the separately
 authorized ordered production apply gate, starting with M2 and M3, followed by
 fresh M4 and M5 dry runs. M4 and M5 apply remain later approval gates.
+
+## 2026-07-30 production apply evidence
+
+M2 Agent/Merchant was owner-authorized and applied:
+
+- first reviewed pass: 27 updates, zero conflicts, zero failures;
+- immediate verification exposed a planner defect: the 13 Agents that needed
+  both nested Granot identity and alias initialization received the identity
+  first, leaving 13 reviewed alias-only updates;
+- second reviewed pass: 13 alias initializations, 14 no-ops, zero conflicts,
+  zero failures;
+- final verification: zero updates, 27 no-ops, receiver matching parity true,
+  and Booking snapshots untouched.
+
+M2 v2 fixes the planner so identity and missing aliases are written together in
+one pass. M3 was intentionally held until the M2 post-state became fully
+idempotent.

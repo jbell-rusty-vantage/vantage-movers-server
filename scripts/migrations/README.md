@@ -106,7 +106,9 @@ remove legacy collections or fields.
 
 This reads the existing `agents` and `merchants` collections. It normalizes the
 existing Granot username into `granot_identity`, adds aliases where needed, and
-does not rewrite Booking snapshots.
+does not rewrite Booking snapshots. M2 v2 initializes a missing Agent alias
+array in the same update that copies its nested Granot identity, making a
+single apply fully idempotent.
 
 ```text
 # Test database dry run, then apply

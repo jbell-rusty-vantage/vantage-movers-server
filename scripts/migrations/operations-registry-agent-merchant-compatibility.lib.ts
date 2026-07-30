@@ -8,7 +8,7 @@ import {
   type OperationsRegistryMigrationManifestBase,
 } from "./operations-registry-migration.lib";
 
-export const SCRIPT_VERSION = "operations-registry-agent-merchant-m2";
+export const SCRIPT_VERSION = "operations-registry-agent-merchant-m2-v2";
 
 export type AgentMigrationInput = {
   id: string;
@@ -50,6 +50,7 @@ export type AgentMigrationPlanItem = {
     verified_at?: string;
     last_observed_at?: string;
   };
+  initialize_aliases?: boolean;
   conflict?: {
     code: string;
     message: string;
@@ -195,6 +196,7 @@ function buildAgentPlanItem(agent: AgentMigrationInput): AgentMigrationPlanItem 
     action: "update_identity",
     flat_username: flatUsername,
     planned_identity: buildGranotIdentityFromFlat(agent, flatUsername),
+    ...(needsAliasInit ? { initialize_aliases: true } : {}),
   };
 }
 
@@ -502,7 +504,7 @@ export function agentMigrationUpdateFilter(plan: AgentMigrationPlanItem): Record
     return {
       $set: {
         granot_identity: identity,
-        ...(plan.planned_identity ? {} : {}),
+        ...(plan.initialize_aliases ? { name_aliases: [] } : {}),
       },
     };
   }
