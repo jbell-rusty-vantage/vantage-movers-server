@@ -245,4 +245,13 @@ numbers validated, while one of five parallel copies of the same RingCentral
 account-inventory request received HTTP 429. M5 v2 replaces those redundant
 parallel provider requests with one shared account inventory load used to
 validate all five numbers. A regression test proves concurrent validations
-share exactly one load. M5 requires a fresh v2 dry-run manifest before retry.
+share exactly one load.
+
+The M5 v2 retry used one provider request and all five numbers validated. It
+also made no route writes because production MongoDB rejected the assignment
+model's partial unique index containing the unsupported
+`effective_until: { $exists: false }` predicate. M5 v3 uses the equivalent
+supported partial filter `{ active: true }`: assignment close/deactivate
+already changes `active` to false, so this still enforces exactly one current
+assignment per route. An index contract test protects the production-compatible
+definition. M5 requires a fresh v3 dry-run manifest before retry.

@@ -219,7 +219,9 @@ Dry run performs no provider calls. Apply loads the accessible RingCentral
 account phone-number inventory once, validates every intended number against
 that shared snapshot, persists sanitized provider metadata, activates valid
 routes, and rolls back routes activated earlier in the run if a later route
-fails.
+fails. The assignment collection enforces one active assignment per route with
+a unique partial index on `active: true`, which is supported by the production
+MongoDB index engine.
 
 ```text
 # Test database dry run, then apply

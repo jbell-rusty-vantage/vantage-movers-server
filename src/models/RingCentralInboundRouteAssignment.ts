@@ -53,7 +53,7 @@ RingCentralInboundRouteAssignmentSchema.index(
   { route: 1 },
   {
     unique: true,
-    partialFilterExpression: { effective_until: { $exists: false }, active: true },
+    partialFilterExpression: { active: true },
   },
 );
 RingCentralInboundRouteAssignmentSchema.index({
