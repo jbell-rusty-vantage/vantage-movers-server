@@ -173,7 +173,7 @@ Current verification:
 
 - focused registry/runtime consumer tests: 16 passed;
 - migration/readiness tests: 46 passed;
-- full server suite: 593 passed, 0 failed;
+- full server suite: 595 passed, 0 failed;
 - `pnpm typecheck`: no diagnostics in changed Operations Registry/runtime
   files; the command remains non-zero only for the pre-existing
   `scripts/dev_ops/*` baseline.
@@ -254,4 +254,18 @@ model's partial unique index containing the unsupported
 supported partial filter `{ active: true }`: assignment close/deactivate
 already changes `active` to false, so this still enforces exactly one current
 assignment per route. An index contract test protects the production-compatible
-definition. M5 requires a fresh v3 dry-run manifest before retry.
+definition. A fresh v3 dry-run manifest was generated before retry.
+
+The owner-authorized M5 v3 retry completed successfully:
+
+- one RingCentral account-inventory request returned HTTP 200;
+- all 5 intended numbers validated against the configured production account;
+- 5 inbound routes created and 5 initial assignments activated;
+- zero failures, zero conflicts, provider gate passed;
+- final dry-run verification: zero writes and 5 no-ops.
+
+Production Registry Health after M5 contains no warning or error findings. Its
+only findings are informational: 6 inactive Agents retained for historical
+references and confirmation that applied migration audit evidence exists.
+Mongoose `findOneAndUpdate` calls in the route lifecycle now use
+`returnDocument: "after"` rather than the deprecated `new: true` option.

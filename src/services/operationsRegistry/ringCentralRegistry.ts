@@ -246,7 +246,7 @@ export async function createOrUpdateRingCentralRoute(
       }
       const after = await Route.findOneAndUpdate({ _id: routeId }, update, {
         upsert: !command.id,
-        new: true,
+        returnDocument: "after",
         session,
         runValidators: true,
       }).lean().exec();
@@ -300,7 +300,7 @@ export async function validateRingCentralRoute(
       const after = await Route.findByIdAndUpdate(
         command.id,
         validationUpdate(result, actor, validatedAt),
-        { new: true, session, runValidators: true },
+        { returnDocument: "after", session, runValidators: true },
       ).lean().exec();
       audit.before = before as unknown as Record<string, unknown>;
       audit.after = after as unknown as Record<string, unknown>;
@@ -378,7 +378,7 @@ export async function deactivateRingCentralRoute(
             deactivation_reason: command.reason?.trim() || undefined,
           },
         },
-        { new: true, session },
+        { returnDocument: "after", session },
       ).lean().exec();
       audit.before = before as unknown as Record<string, unknown>;
       audit.after = after as unknown as Record<string, unknown>;
@@ -449,7 +449,7 @@ async function mutateAssignment(
           $set: { active: true, ever_activated: true, phone_locked: true },
           $unset: { archived_at: 1, deactivation_reason: 1 },
         },
-        { new: true, session },
+        { returnDocument: "after", session },
       ).lean().exec();
       audit.before = before as unknown as Record<string, unknown>;
       audit.after = after as unknown as Record<string, unknown>;
