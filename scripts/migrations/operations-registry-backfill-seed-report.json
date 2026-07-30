@@ -1,0 +1,1015 @@
+{
+  "meta": {
+    "title": "Operations Registry backfill seed surface",
+    "captured_at": "2026-07-29T22:46:53.018Z",
+    "completed_at": "2026-07-29T22:46:53.667Z",
+    "database": "vantagemovers",
+    "git_sha": "1cf9e5cf7acb1ca9b907f33924240f448672bce2",
+    "source": "mongoose live dump + RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE",
+    "purpose": "Complete value inventory for Operations Registry migrations before production apply"
+  },
+  "counts": {
+    "agents_total": 20,
+    "agents_active": 14,
+    "agents_inactive": 6,
+    "merchants_total": 7,
+    "merchants_active": 7,
+    "lead_source_companies_total": 6,
+    "lead_source_companies_active": 6,
+    "embedded_granularities_total": 13,
+    "ringcentral_static_queue_numbers": 5,
+    "embedded_inbound_phone_numbers": 5
+  },
+  "agents": [
+    {
+      "_id": "6a21fe8b3fcb5d44d032227e",
+      "name": "Austin",
+      "normalized_name": "austin",
+      "active": true,
+      "role": "agent",
+      "created_from": "booked_lead",
+      "granot_crm_username": "AUSTIN",
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-04T22:39:07.870Z",
+      "updatedAt": "2026-07-06T18:56:14.593Z"
+    },
+    {
+      "_id": "6a21ff1b3fcb5d44d0322295",
+      "name": "Brian",
+      "normalized_name": "brian",
+      "active": true,
+      "role": "agent",
+      "created_from": "booked_lead",
+      "granot_crm_username": "BRIAN",
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-04T22:41:31.525Z",
+      "updatedAt": "2026-07-06T18:56:09.467Z"
+    },
+    {
+      "_id": "6a63b1da5aef139884eb8bd7",
+      "name": "Chris",
+      "normalized_name": "chris",
+      "active": false,
+      "role": "agent",
+      "created_from": "best_relocation_sheet",
+      "granot_crm_username": null,
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-07-24T18:41:30.139Z",
+      "updatedAt": "2026-07-24T18:41:30.139Z"
+    },
+    {
+      "_id": "6a21f48c3fcb5d44d03221ab",
+      "name": "Dylan",
+      "normalized_name": "dylan",
+      "active": true,
+      "role": "agent",
+      "created_from": "booked_lead",
+      "granot_crm_username": "DYLAN",
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-04T21:56:28.597Z",
+      "updatedAt": "2026-07-02T20:24:56.931Z"
+    },
+    {
+      "_id": "6a22eb273fcb5d44d0324383",
+      "name": "House",
+      "normalized_name": "house",
+      "active": true,
+      "role": "agent",
+      "created_from": "seed",
+      "granot_crm_username": null,
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-05T15:28:41.466Z",
+      "updatedAt": "2026-06-05T15:28:41.466Z"
+    },
+    {
+      "_id": "6a22eb273fcb5d44d0324380",
+      "name": "Jacob",
+      "normalized_name": "jacob",
+      "active": true,
+      "role": "agent",
+      "created_from": "seed",
+      "granot_crm_username": "JACOB",
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-05T15:28:40.702Z",
+      "updatedAt": "2026-07-02T20:24:34.341Z"
+    },
+    {
+      "_id": "6a22eb273fcb5d44d0324381",
+      "name": "Jason",
+      "normalized_name": "jason",
+      "active": true,
+      "role": "agent",
+      "created_from": "seed",
+      "granot_crm_username": "JASON",
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-05T15:28:40.923Z",
+      "updatedAt": "2026-07-06T18:55:57.308Z"
+    },
+    {
+      "_id": "6a2843fa991eeb7641c737bc",
+      "name": "Jenna",
+      "normalized_name": "jenna",
+      "active": true,
+      "role": "agent",
+      "created_from": "admin",
+      "granot_crm_username": "JENNA",
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-09T16:48:58.205Z",
+      "updatedAt": "2026-07-06T18:55:51.374Z"
+    },
+    {
+      "_id": "6a63b1d95aef139884eb8bd5",
+      "name": "John V",
+      "normalized_name": "john v",
+      "active": false,
+      "role": "agent",
+      "created_from": "best_relocation_sheet",
+      "granot_crm_username": null,
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-07-24T18:41:29.871Z",
+      "updatedAt": "2026-07-24T18:41:29.871Z"
+    },
+    {
+      "_id": "6a1dc03e419f58fdad44944f",
+      "name": "Josh",
+      "normalized_name": "josh",
+      "active": true,
+      "role": "agent",
+      "created_from": "booked_lead",
+      "granot_crm_username": "JOSH",
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-01T17:24:14.439Z",
+      "updatedAt": "2026-07-02T20:24:17.295Z"
+    },
+    {
+      "_id": "6a63b1da5aef139884eb8bd6",
+      "name": "JV",
+      "normalized_name": "jv",
+      "active": false,
+      "role": "agent",
+      "created_from": "best_relocation_sheet",
+      "granot_crm_username": null,
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-07-24T18:41:30.027Z",
+      "updatedAt": "2026-07-24T18:41:30.027Z"
+    },
+    {
+      "_id": "6a63b1d95aef139884eb8bd4",
+      "name": "Manny",
+      "normalized_name": "manny",
+      "active": false,
+      "role": "agent",
+      "created_from": "best_relocation_sheet",
+      "granot_crm_username": null,
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-07-24T18:41:29.697Z",
+      "updatedAt": "2026-07-24T18:41:29.697Z"
+    },
+    {
+      "_id": "6a188f06419f58fdad439723",
+      "name": "Mike",
+      "normalized_name": "mike",
+      "active": true,
+      "role": "agent",
+      "created_from": "booked_lead",
+      "granot_crm_username": "MIKEM",
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-05-28T18:52:54.033Z",
+      "updatedAt": "2026-07-02T20:24:11.407Z"
+    },
+    {
+      "_id": "6a32b6efdf22fad9eb0f7080",
+      "name": "Nick",
+      "normalized_name": "nick",
+      "active": true,
+      "role": "agent",
+      "created_from": "admin",
+      "granot_crm_username": "NICK",
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-17T15:02:07.054Z",
+      "updatedAt": "2026-07-02T20:23:58.203Z"
+    },
+    {
+      "_id": "6a22eb273fcb5d44d0324382",
+      "name": "Patrick",
+      "normalized_name": "patrick",
+      "active": true,
+      "role": "agent",
+      "created_from": "seed",
+      "granot_crm_username": "PATRICKO",
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-05T15:28:41.309Z",
+      "updatedAt": "2026-07-02T20:23:50.466Z"
+    },
+    {
+      "_id": "6a63b1da5aef139884eb8bd9",
+      "name": "Pierre",
+      "normalized_name": "pierre",
+      "active": false,
+      "role": "agent",
+      "created_from": "best_relocation_sheet",
+      "granot_crm_username": null,
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-07-24T18:41:30.320Z",
+      "updatedAt": "2026-07-24T18:41:30.320Z"
+    },
+    {
+      "_id": "6a1df18b419f58fdad449975",
+      "name": "Roys",
+      "normalized_name": "roys",
+      "active": true,
+      "role": "agent",
+      "created_from": "booked_lead",
+      "granot_crm_username": "ROY",
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-01T20:54:35.663Z",
+      "updatedAt": "2026-07-02T20:23:36.565Z"
+    },
+    {
+      "_id": "6a23170d1161d2977cba9585",
+      "name": "Sean",
+      "normalized_name": "sean",
+      "active": true,
+      "role": "agent",
+      "created_from": "admin",
+      "granot_crm_username": "SEAN",
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-05T18:35:57.519Z",
+      "updatedAt": "2026-07-02T20:23:23.381Z"
+    },
+    {
+      "_id": "6a1f15ea419f58fdad44f423",
+      "name": "Sil",
+      "normalized_name": "sil",
+      "active": true,
+      "role": "agent",
+      "created_from": "booked_lead",
+      "granot_crm_username": "SIL",
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-02T17:42:02.592Z",
+      "updatedAt": "2026-07-02T20:23:08.457Z"
+    },
+    {
+      "_id": "6a63b1da5aef139884eb8bd8",
+      "name": "Ted",
+      "normalized_name": "ted",
+      "active": false,
+      "role": "agent",
+      "created_from": "best_relocation_sheet",
+      "granot_crm_username": null,
+      "name_aliases": [],
+      "granot_identity": null,
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-07-24T18:41:30.233Z",
+      "updatedAt": "2026-07-24T18:41:30.233Z"
+    }
+  ],
+  "merchants": [
+    {
+      "_id": "6a22eb273fcb5d44d0324386",
+      "name": "Cardpointe",
+      "normalized_name": "cardpointe",
+      "active": true,
+      "created_from": "seed",
+      "name_aliases": [],
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-05T15:28:41.614Z",
+      "updatedAt": "2026-06-05T15:28:41.614Z"
+    },
+    {
+      "_id": "6a22eb273fcb5d44d0324384",
+      "name": "Elavon",
+      "normalized_name": "elavon",
+      "active": true,
+      "created_from": "seed",
+      "name_aliases": [],
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-05T15:28:41.516Z",
+      "updatedAt": "2026-06-05T15:28:41.516Z"
+    },
+    {
+      "_id": "6a22eb283fcb5d44d0324387",
+      "name": "EMS",
+      "normalized_name": "ems",
+      "active": true,
+      "created_from": "seed",
+      "name_aliases": [],
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-05T15:28:41.659Z",
+      "updatedAt": "2026-06-05T15:28:41.659Z"
+    },
+    {
+      "_id": "6a22eb273fcb5d44d0324385",
+      "name": "Maverick",
+      "normalized_name": "maverick",
+      "active": true,
+      "created_from": "seed",
+      "name_aliases": [],
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-05T15:28:41.569Z",
+      "updatedAt": "2026-06-05T15:28:41.569Z"
+    },
+    {
+      "_id": "6a22eb283fcb5d44d0324388",
+      "name": "Paper Check",
+      "normalized_name": "paper check",
+      "active": true,
+      "created_from": "seed",
+      "name_aliases": [],
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-05T15:28:41.709Z",
+      "updatedAt": "2026-06-05T15:28:41.709Z"
+    },
+    {
+      "_id": "6a22eb283fcb5d44d0324389",
+      "name": "Seamless",
+      "normalized_name": "seamless",
+      "active": true,
+      "created_from": "seed",
+      "name_aliases": [],
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-05T15:28:41.772Z",
+      "updatedAt": "2026-06-05T15:28:41.772Z"
+    },
+    {
+      "_id": "6a22eb283fcb5d44d032438a",
+      "name": "Wire Transfer ACH",
+      "normalized_name": "wire transfer ach",
+      "active": true,
+      "created_from": "seed",
+      "name_aliases": [],
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-06-05T15:28:41.823Z",
+      "updatedAt": "2026-06-05T15:28:41.823Z"
+    }
+  ],
+  "lead_source_companies": [
+    {
+      "_id": "6a4d240f3117eacd97823868",
+      "company_slug": "best_relocation_leads",
+      "name": "Best Relocation Leads",
+      "owner_label": "Best Relocation Leads",
+      "active": true,
+      "created_from": "legacy_seed",
+      "aliases": [
+        "Best Relocation Leads",
+        "Best Relocation",
+        "BestRelocation.com",
+        "Best Relocation Forms",
+        "Best Relocation Locals",
+        "Best Relocation Inbounds",
+        "BestRelocation Forms",
+        "BestRelocation Locals",
+        "BestRelocation Inbounds"
+      ],
+      "default_form_granularity_key": "best_relocation_leads_form_long_distance",
+      "default_call_granularity_key": "best_relocation_leads_call",
+      "default_form_granularity": null,
+      "default_call_granularity": null,
+      "sheet_config": {
+        "has_spreadsheet_id": false,
+        "has_bad_tabs": true
+      },
+      "granularities": [
+        {
+          "_id": "6a4d240f04c6e063cb6621f1",
+          "granularity_key": "best_relocation_leads_form_long_distance",
+          "channel": "form",
+          "owner_label": "Best Relocation Forms",
+          "crm_label": "Best Relocation Forms",
+          "aliases": [
+            "Best Relocation Forms",
+            "BestRelocation Forms"
+          ],
+          "active": true,
+          "archived_at": null,
+          "cpl": 195,
+          "local": "long_distance",
+          "source_sites": [],
+          "inbound_phone_numbers": [],
+          "priority": 10,
+          "sheet_tab_name": null
+        },
+        {
+          "_id": "6a4d240f04c6e063cb6621f2",
+          "granularity_key": "best_relocation_leads_form_local",
+          "channel": "form",
+          "owner_label": "Best Relocation Locals",
+          "crm_label": "Best Relocation Locals",
+          "aliases": [
+            "Best Relocation Locals",
+            "BestRelocation Locals"
+          ],
+          "active": true,
+          "archived_at": null,
+          "cpl": 40,
+          "local": "local",
+          "source_sites": [],
+          "inbound_phone_numbers": [],
+          "priority": 10,
+          "sheet_tab_name": null
+        },
+        {
+          "_id": "6a4d240f04c6e063cb6621f3",
+          "granularity_key": "best_relocation_leads_call",
+          "channel": "call",
+          "owner_label": "Best Relocation Inbounds",
+          "crm_label": "Best Relocation Inbounds",
+          "aliases": [
+            "Best Relocation Inbounds",
+            "BestRelocation Inbounds"
+          ],
+          "active": true,
+          "archived_at": null,
+          "cpl": 195,
+          "local": null,
+          "source_sites": [],
+          "inbound_phone_numbers": [],
+          "priority": 0,
+          "sheet_tab_name": null
+        }
+      ],
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-07-07T16:06:39.734Z",
+      "updatedAt": "2026-07-07T16:06:39.734Z"
+    },
+    {
+      "_id": "6a4d240f3117eacd9782386a",
+      "company_slug": "get_movers_leads",
+      "name": "GetMovers Leads",
+      "owner_label": "GetMovers Leads",
+      "active": true,
+      "created_from": "legacy_seed",
+      "aliases": [
+        "GetMovers Leads",
+        "Get Movers Leads",
+        "Get Movers",
+        "GetMovers",
+        "get_movers_leads",
+        "GetMovers Forms",
+        "Get Movers Forms",
+        "GetMovers Inbounds",
+        "Get Movers Inbounds"
+      ],
+      "default_form_granularity_key": "get_movers_leads_form",
+      "default_call_granularity_key": "get_movers_leads_call",
+      "default_form_granularity": null,
+      "default_call_granularity": null,
+      "sheet_config": {
+        "has_spreadsheet_id": false,
+        "has_bad_tabs": true
+      },
+      "granularities": [
+        {
+          "_id": "6a4d240f04c6e063cb6621f4",
+          "granularity_key": "get_movers_leads_form",
+          "channel": "form",
+          "owner_label": "GetMovers Forms",
+          "crm_label": "GetMovers Forms",
+          "aliases": [
+            "GetMovers Forms",
+            "Get Movers",
+            "Get Movers Forms"
+          ],
+          "active": true,
+          "archived_at": null,
+          "cpl": 0,
+          "local": null,
+          "source_sites": [],
+          "inbound_phone_numbers": [],
+          "priority": 0,
+          "sheet_tab_name": null
+        },
+        {
+          "_id": "6a4d240f04c6e063cb6621f5",
+          "granularity_key": "get_movers_leads_call",
+          "channel": "call",
+          "owner_label": "GetMovers Inbounds",
+          "crm_label": "GetMovers Inbounds",
+          "aliases": [
+            "GetMovers Inbounds",
+            "Get Movers Inbounds"
+          ],
+          "active": true,
+          "archived_at": null,
+          "cpl": 0,
+          "local": null,
+          "source_sites": [],
+          "inbound_phone_numbers": [
+            "+18883971005"
+          ],
+          "priority": 0,
+          "sheet_tab_name": null
+        }
+      ],
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-07-07T16:06:39.734Z",
+      "updatedAt": "2026-07-07T16:06:39.734Z"
+    },
+    {
+      "_id": "6a4d240f3117eacd97823869",
+      "company_slug": "main_site",
+      "name": "main site",
+      "owner_label": "main site",
+      "active": true,
+      "created_from": "legacy_seed",
+      "aliases": [
+        "main site",
+        "main_site",
+        "mainsite",
+        "Vantage Movers",
+        "vantage_movers",
+        "vantagemovers.com",
+        "Main Site Forms",
+        "Main Site Inbounds"
+      ],
+      "default_form_granularity_key": "main_site_form",
+      "default_call_granularity_key": "main_site_call",
+      "default_form_granularity": null,
+      "default_call_granularity": null,
+      "sheet_config": {
+        "has_spreadsheet_id": false,
+        "has_bad_tabs": false
+      },
+      "granularities": [
+        {
+          "_id": "6a4d240f04c6e063cb6621f6",
+          "granularity_key": "main_site_form",
+          "channel": "form",
+          "owner_label": "Main Site Forms",
+          "crm_label": "Main Site Forms",
+          "aliases": [
+            "Main Site Forms"
+          ],
+          "active": true,
+          "archived_at": null,
+          "cpl": 0,
+          "local": null,
+          "source_sites": [],
+          "inbound_phone_numbers": [],
+          "priority": 0,
+          "sheet_tab_name": null
+        },
+        {
+          "_id": "6a4d240f04c6e063cb6621f7",
+          "granularity_key": "main_site_call",
+          "channel": "call",
+          "owner_label": "Main Site Inbounds",
+          "crm_label": "Main Site Inbounds",
+          "aliases": [
+            "Main Site Inbounds"
+          ],
+          "active": true,
+          "archived_at": null,
+          "cpl": 0,
+          "local": null,
+          "source_sites": [],
+          "inbound_phone_numbers": [
+            "+18884779232"
+          ],
+          "priority": 0,
+          "sheet_tab_name": null
+        }
+      ],
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-07-07T16:06:39.734Z",
+      "updatedAt": "2026-07-07T16:06:39.734Z"
+    },
+    {
+      "_id": "6a4d240f3117eacd97823866",
+      "company_slug": "tbm_leads",
+      "name": "TBM Leads",
+      "owner_label": "TBM Leads",
+      "active": true,
+      "created_from": "legacy_seed",
+      "aliases": [
+        "TBM Leads",
+        "tbm",
+        "10best",
+        "10best Leads",
+        "10 Best Leads",
+        "10bestmovingcompanies.com",
+        "TBM Forms",
+        "10 Best Inbounds",
+        "10Best Inbounds",
+        "10best Inbounds"
+      ],
+      "default_form_granularity_key": "tbm_leads_form",
+      "default_call_granularity_key": "tbm_leads_call",
+      "default_form_granularity": null,
+      "default_call_granularity": null,
+      "sheet_config": {
+        "has_spreadsheet_id": false,
+        "has_bad_tabs": true
+      },
+      "granularities": [
+        {
+          "_id": "6a4d240f04c6e063cb6621eb",
+          "granularity_key": "tbm_leads_form",
+          "channel": "form",
+          "owner_label": "TBM Forms",
+          "crm_label": "TBM Forms",
+          "aliases": [
+            "TBM Forms"
+          ],
+          "active": true,
+          "archived_at": null,
+          "cpl": 190,
+          "local": null,
+          "source_sites": [],
+          "inbound_phone_numbers": [],
+          "priority": 0,
+          "sheet_tab_name": null
+        },
+        {
+          "_id": "6a4d240f04c6e063cb6621ec",
+          "granularity_key": "tbm_leads_call",
+          "channel": "call",
+          "owner_label": "10best Inbounds",
+          "crm_label": "10best Inbounds",
+          "aliases": [
+            "10best Inbounds",
+            "10 Best Inbounds",
+            "10Best Inbounds"
+          ],
+          "active": true,
+          "archived_at": null,
+          "cpl": 190,
+          "local": null,
+          "source_sites": [],
+          "inbound_phone_numbers": [
+            "+18883164387"
+          ],
+          "priority": 0,
+          "sheet_tab_name": null
+        }
+      ],
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-07-07T16:06:39.732Z",
+      "updatedAt": "2026-07-07T16:06:39.732Z"
+    },
+    {
+      "_id": "6a4d240f3117eacd97823867",
+      "company_slug": "tbm_prime_leads",
+      "name": "TBM Prime Leads",
+      "owner_label": "TBM Prime Leads",
+      "active": true,
+      "created_from": "legacy_seed",
+      "aliases": [
+        "TBM Prime Leads",
+        "TBM Prime",
+        "Topmovingexperts.com",
+        "TBM Forms Prime",
+        "TBM Prime Forms",
+        "TBM Prime Inbounds"
+      ],
+      "default_form_granularity_key": "tbm_prime_leads_form",
+      "default_call_granularity_key": "tbm_prime_leads_call",
+      "default_form_granularity": null,
+      "default_call_granularity": null,
+      "sheet_config": {
+        "has_spreadsheet_id": false,
+        "has_bad_tabs": true
+      },
+      "granularities": [
+        {
+          "_id": "6a4d240f04c6e063cb6621ed",
+          "granularity_key": "tbm_prime_leads_form",
+          "channel": "form",
+          "owner_label": "TBM Prime Forms",
+          "crm_label": "TBM Prime Forms",
+          "aliases": [
+            "TBM Prime Forms",
+            "TBM Forms Prime"
+          ],
+          "active": true,
+          "archived_at": null,
+          "cpl": 190,
+          "local": null,
+          "source_sites": [],
+          "inbound_phone_numbers": [],
+          "priority": 0,
+          "sheet_tab_name": null
+        },
+        {
+          "_id": "6a4d240f04c6e063cb6621ee",
+          "granularity_key": "tbm_prime_leads_call",
+          "channel": "call",
+          "owner_label": "TBM Prime Inbounds",
+          "crm_label": "TBM Prime Inbounds",
+          "aliases": [
+            "TBM Prime Inbounds"
+          ],
+          "active": true,
+          "archived_at": null,
+          "cpl": 190,
+          "local": null,
+          "source_sites": [],
+          "inbound_phone_numbers": [
+            "+18883083612"
+          ],
+          "priority": 0,
+          "sheet_tab_name": null
+        }
+      ],
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-07-07T16:06:39.734Z",
+      "updatedAt": "2026-07-07T16:06:39.734Z"
+    },
+    {
+      "_id": "6a4d240f3117eacd9782386b",
+      "company_slug": "top10_leads",
+      "name": "Top 10 Forms",
+      "owner_label": "Top 10 Forms",
+      "active": true,
+      "created_from": "legacy_seed",
+      "aliases": [
+        "Top 10 Leads",
+        "Top10 Leads",
+        "Top 10",
+        "Top10 Forms",
+        "Top10 Inbounds"
+      ],
+      "default_form_granularity_key": "top10_leads_form",
+      "default_call_granularity_key": "top10_leads_call",
+      "default_form_granularity": null,
+      "default_call_granularity": null,
+      "sheet_config": {
+        "has_spreadsheet_id": false,
+        "has_bad_tabs": true
+      },
+      "granularities": [
+        {
+          "_id": "6a4d240f04c6e063cb6621ef",
+          "granularity_key": "top10_leads_form",
+          "channel": "form",
+          "owner_label": "Top10 Forms",
+          "crm_label": "Top10 Forms",
+          "aliases": [
+            "Top10 Forms"
+          ],
+          "active": true,
+          "archived_at": null,
+          "cpl": 190,
+          "local": null,
+          "source_sites": [],
+          "inbound_phone_numbers": [],
+          "priority": 0,
+          "sheet_tab_name": null
+        },
+        {
+          "_id": "6a4d240f04c6e063cb6621f0",
+          "granularity_key": "top10_leads_call",
+          "channel": "call",
+          "owner_label": "Top10 Inbounds",
+          "crm_label": "Top10 Inbounds",
+          "aliases": [
+            "Top10 Inbounds"
+          ],
+          "active": true,
+          "archived_at": null,
+          "cpl": 190,
+          "local": null,
+          "source_sites": [],
+          "inbound_phone_numbers": [
+            "+18887240625"
+          ],
+          "priority": 0,
+          "sheet_tab_name": null
+        }
+      ],
+      "archived_at": null,
+      "deactivation_reason": null,
+      "createdAt": "2026-07-07T16:06:39.734Z",
+      "updatedAt": "2026-07-07T16:06:39.734Z"
+    }
+  ],
+  "ringcentral_queue_numbers": {
+    "description": "Inbound queue / company numbers used by Call Log vetting and M5 RingCentral route backfill.",
+    "static_mappings": [
+      {
+        "phone_number": "+18883164387",
+        "source_label": "10best Inbounds",
+        "source_company": "tbm_leads",
+        "present_in_db_inbound_phone_numbers": true
+      },
+      {
+        "phone_number": "+18883083612",
+        "source_label": "TBM Prime Inbounds",
+        "source_company": "tbm_prime_leads",
+        "present_in_db_inbound_phone_numbers": true
+      },
+      {
+        "phone_number": "+18887240625",
+        "source_label": "Top10 Inbounds",
+        "source_company": "top10_leads",
+        "present_in_db_inbound_phone_numbers": true
+      },
+      {
+        "phone_number": "+18884779232",
+        "source_label": "Main Site Inbounds",
+        "source_company": "main_site",
+        "present_in_db_inbound_phone_numbers": true
+      },
+      {
+        "phone_number": "+18883971005",
+        "source_label": "GetMovers Inbounds",
+        "source_company": "get_movers_leads",
+        "present_in_db_inbound_phone_numbers": true
+      }
+    ],
+    "embedded_inbound_phone_numbers_from_db": [
+      {
+        "phone_number": "+18883083612",
+        "company_slug": "tbm_prime_leads",
+        "granularity_key": "tbm_prime_leads_call",
+        "crm_label": "TBM Prime Inbounds"
+      },
+      {
+        "phone_number": "+18883164387",
+        "company_slug": "tbm_leads",
+        "granularity_key": "tbm_leads_call",
+        "crm_label": "10best Inbounds"
+      },
+      {
+        "phone_number": "+18883971005",
+        "company_slug": "get_movers_leads",
+        "granularity_key": "get_movers_leads_call",
+        "crm_label": "GetMovers Inbounds"
+      },
+      {
+        "phone_number": "+18884779232",
+        "company_slug": "main_site",
+        "granularity_key": "main_site_call",
+        "crm_label": "Main Site Inbounds"
+      },
+      {
+        "phone_number": "+18887240625",
+        "company_slug": "top10_leads",
+        "granularity_key": "top10_leads_call",
+        "crm_label": "Top10 Inbounds"
+      }
+    ],
+    "parity": {
+      "static_vs_embedded": "exact_match",
+      "missing_from_static": [],
+      "missing_from_embedded": [],
+      "call_granularities_without_numbers": [
+        {
+          "company_slug": "best_relocation_leads",
+          "granularity_key": "best_relocation_leads_call",
+          "crm_label": "Best Relocation Inbounds"
+        }
+      ]
+    }
+  },
+  "static_source_company_slugs": [
+    "best_relocation_leads",
+    "get_movers_leads",
+    "main_site",
+    "not_provided",
+    "tbm_leads",
+    "tbm_prime_leads",
+    "top10_leads"
+  ],
+  "db_vs_static_source_slugs": {
+    "in_db": [
+      "best_relocation_leads",
+      "get_movers_leads",
+      "main_site",
+      "tbm_leads",
+      "tbm_prime_leads",
+      "top10_leads"
+    ],
+    "in_static_only": [
+      "not_provided"
+    ],
+    "in_db_only": []
+  },
+  "unique_index_keys": {
+    "agents.normalized_name": [
+      "austin",
+      "brian",
+      "chris",
+      "dylan",
+      "house",
+      "jacob",
+      "jason",
+      "jenna",
+      "john v",
+      "josh",
+      "jv",
+      "manny",
+      "mike",
+      "nick",
+      "patrick",
+      "pierre",
+      "roys",
+      "sean",
+      "sil",
+      "ted"
+    ],
+    "agents.granot_crm_username": [
+      "AUSTIN",
+      "BRIAN",
+      "DYLAN",
+      "JACOB",
+      "JASON",
+      "JENNA",
+      "JOSH",
+      "MIKEM",
+      "NICK",
+      "PATRICKO",
+      "ROY",
+      "SEAN",
+      "SIL"
+    ],
+    "merchants.normalized_name": [
+      "cardpointe",
+      "elavon",
+      "ems",
+      "maverick",
+      "paper check",
+      "seamless",
+      "wire transfer ach"
+    ],
+    "lead_source_companies.company_slug": [
+      "best_relocation_leads",
+      "get_movers_leads",
+      "main_site",
+      "tbm_leads",
+      "tbm_prime_leads",
+      "top10_leads"
+    ]
+  }
+}

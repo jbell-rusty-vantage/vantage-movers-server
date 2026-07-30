@@ -1,15 +1,9 @@
 import mongoose, { type PipelineStage } from "mongoose";
-import {
-  getCallLeadSourceCompanyLabel,
-  getFormLeadSourceCompanyLabel,
-  normalizeSourceCompany,
-  type LocalType,
-  type SourceCompany,
-} from "../../config/domain";
 import type { AnalyticsQuery } from "../../validation/v1.validation";
 import type { AdminModels } from "../admin/adminScope.service";
 import {
   leadMatch,
+  normalizeSourceDimension,
   numberValue,
   rate,
   roundMoney,
@@ -294,54 +288,21 @@ function receiverLeadLookups(leadType: "FormLead" | "CallLead"): PipelineStage[]
 
 function sourceLabelExpression(leadType: "FormLead" | "CallLead") {
   return {
-    $switch: {
-      branches: [
-        ...sourceLabelBranches(leadType),
-      ],
-      default: leadType === "FormLead" ? "Main Site Forms" : "Main Site Inbounds",
-    },
-  };
-}
-
-function sourceLabelBranches(leadType: "FormLead" | "CallLead") {
-  const sourceCompanies: SourceCompany[] = [
-    "tbm_leads",
-    "tbm_prime_leads",
-    "top10_leads",
-    "best_relocation_leads",
-    "get_movers_leads",
-    "main_site",
-    "not_provided",
-  ];
-  return sourceCompanies.flatMap((sourceCompany) => {
-    if (leadType === "CallLead") {
-      return [{
-        case: { $eq: ["$source_company", sourceCompany] },
-        then: getCallLeadSourceCompanyLabel(sourceCompany),
-      }];
-    }
-    if (sourceCompany === "best_relocation_leads") {
-      return [
-        {
-          case: {
-            $and: [
-              { $eq: ["$source_company", sourceCompany] },
-              { $eq: ["$local", "local"] },
+    $ifNull: [
+      "$crm_source_label_snapshot",
+      {
+        $ifNull: [
+          "$source_granularity_label_snapshot",
+          {
+            $ifNull: [
+              "$source_company_label_snapshot",
+              { $ifNull: ["$source_company", leadType === "FormLead" ? "Unknown Form Source" : "Unknown Call Source"] },
             ],
           },
-          then: getFormLeadSourceCompanyLabel(sourceCompany, "local"),
-        },
-        {
-          case: { $eq: ["$source_company", sourceCompany] },
-          then: getFormLeadSourceCompanyLabel(sourceCompany, "long_distance"),
-        },
-      ];
-    }
-    return [{
-      case: { $eq: ["$source_company", sourceCompany] },
-      then: getFormLeadSourceCompanyLabel(sourceCompany),
-    }];
-  });
+        ],
+      },
+    ],
+  };
 }
 
 function groupId(fields: string[]): Record<string, string> {
@@ -383,16 +344,9 @@ function normalizeSourceRow(row: AnalyticsRow): AnalyticsRow {
   if (typeof row.source_company !== "string") {
     return row;
   }
-  const sourceCompany = normalizeSourceCompany(row.source_company);
-  const leadType = row.lead_type;
-  const local = typeof row.local === "string" ? (row.local as LocalType) : undefined;
   return {
     ...row,
-    source_company: sourceCompany,
-    source_label:
-      leadType === "FormLead"
-        ? getFormLeadSourceCompanyLabel(sourceCompany as SourceCompany, local)
-        : getCallLeadSourceCompanyLabel(sourceCompany as SourceCompany),
+    source_company: normalizeSourceDimension(row.source_company),
   };
 }
 

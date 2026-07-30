@@ -23,6 +23,8 @@
 - Active channel defaults belong to the same active Source Company and point to an active same-channel Source Granularity.
 - A current default cannot be deactivated without a same-command replacement or explicit removal of automatic channel use.
 - Source Company projection mode defaults to `derived_import`; `direct_write` requires complete workbook metadata and does not itself enable Sheet Sync writes.
+- Employee Booking validation and production admin facets read first-class
+  Source Granularities. Embedded arrays are migration/rollback evidence only.
 
 ## Authorization and audit
 
@@ -35,3 +37,6 @@
 - M2 preserves Agent IDs, flat Granot usernames, and Booking snapshots.
 - M3 preserves valid embedded Source Granularity IDs, retains embedded arrays and compatibility default keys, and creates first-class records.
 - Inventory and migration scripts are deterministic, redacted, dry-run first, production guarded, and never access historical models or `vantagemovershistorical`.
+- Every production M2–M5 apply must name the exact reviewed dry-run manifest.
+  The script version, target database, mapping checksum, and M4 cutover date
+  must still match before any write or RingCentral validation begins.

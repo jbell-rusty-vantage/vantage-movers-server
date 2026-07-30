@@ -24,6 +24,7 @@ import {
 } from "../../src/services/employeeBookings/migrationApplySafety.js";
 import {
   assertMigrationDatabaseAllowed,
+  assertReviewedDryRunManifest,
   hasBlockingMigrationCollisions,
 } from "./operations-registry-migration.lib.js";
 import {
@@ -33,6 +34,7 @@ import {
   companyMigrationUpdateFilter,
   granularityMigrationInsertDocument,
   redactSourceGranularitiesManifestForOutput,
+  SCRIPT_VERSION as SOURCE_GRANULARITIES_SCRIPT_VERSION,
   type ExistingGranularityRecord,
   type SourceGranularitiesSnapshot,
 } from "./operations-registry-source-granularities.lib.js";
@@ -241,6 +243,12 @@ async function main(): Promise<void> {
   });
 
   if (apply) {
+    await assertReviewedDryRunManifest({
+      args: process.argv,
+      databaseName,
+      scriptVersion: SOURCE_GRANULARITIES_SCRIPT_VERSION,
+      mappingChecksum: manifest.mapping_checksum,
+    });
     if (hasBlockingMigrationCollisions(plan.collisions)) {
       throw new Error(
         "Refusing --apply while blocking Source Granularity migration collisions remain.",

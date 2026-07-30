@@ -38,6 +38,7 @@ import {
 } from "../../src/services/employeeBookings/migrationApplySafety.js";
 import {
   assertMigrationDatabaseAllowed,
+  assertReviewedDryRunManifest,
 } from "./operations-registry-migration.lib.js";
 import {
   buildRingCentralBackfillPlan,
@@ -279,6 +280,14 @@ async function main(): Promise<void> {
     const snapshot = await loadSnapshot();
     const plan = buildRingCentralBackfillPlan(snapshot);
     const runId = `operations-registry-ringcentral-${Date.now()}`;
+    if (apply) {
+      await assertReviewedDryRunManifest({
+        args: process.argv,
+        databaseName,
+        scriptVersion: RINGCENTRAL_BACKFILL_SCRIPT_VERSION,
+        mappingChecksum: plan.mapping_checksum,
+      });
+    }
     const result = apply
       ? plan.conflicts.length > 0
         ? {

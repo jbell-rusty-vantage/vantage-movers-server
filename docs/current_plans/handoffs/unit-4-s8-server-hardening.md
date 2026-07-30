@@ -136,3 +136,76 @@ apply, then apply M2 and M3 to `testvantagemovers`, apply M4 with the reviewed
 cutover date, and repeat M5 dry-run before any live provider validation. This is an
 ordered rollout prerequisite, not a server-code defect. Production apply, live
 RingCentral validation, deployment, push, and merge to `main` remain out of scope.
+
+## 2026-07-30 production-readiness addendum
+
+The current worktree was re-audited before production backfill authorization.
+Production read-only dry runs were authorized and performed on 2026-07-30.
+No production mutation, provider call, push, merge, or deployment was
+performed.
+
+Additional runtime cutovers:
+
+- Agent, Merchant, Source Company, Source Granularity, CPL schedule, and
+  RingCentral Inbound Route lifecycle surfaces now have explicit list/detail
+  reads plus their supported create/update/activation commands.
+- Agent and Merchant name/Granot resolution now stays behind the public
+  Operations Registry interface; the unused Agent auto-upsert helper was
+  removed.
+- Form/Call manual receiver assignment resolves the Agent through the registry.
+- Employee Booking source validation and production admin facets use
+  first-class Source Granularities rather than embedded compatibility arrays.
+- Receiver-Agent Analytics uses persisted dynamic source label snapshots and
+  does not remap owner-created Source Companies through the legacy closed
+  union.
+
+Additional migration safeguards:
+
+- the seed-surface dump redacts workbook identity and writes only to the
+  gitignored output directory;
+- the reviewed checked-in seed report contains no workbook IDs;
+- production M2–M5 apply requires
+  `--reviewed-manifest=<exact-dry-run-manifest-path>`;
+- apply aborts if database, script version, mapping checksum, or M4 cutover
+  date differs from the reviewed dry run.
+
+Current verification:
+
+- focused registry/runtime consumer tests: 16 passed;
+- migration/readiness tests: 45 passed;
+- full server suite: 593 passed, 0 failed;
+- `pnpm typecheck`: no diagnostics in changed Operations Registry/runtime
+  files; the command remains non-zero only for the pre-existing
+  `scripts/dev_ops/*` baseline.
+
+Production read-only evidence:
+
+- seed surface: 20 Agents, 7 Merchants, 6 Source Companies, 13 embedded
+  granularities, and exact parity between the 5 embedded inbound numbers and
+  the 5 static RingCentral mappings;
+- M0 inventory: zero blocking conflicts and four reviewable CPL disagreements;
+- M2 Agent/Merchant: 27 planned updates and zero conflicts;
+- M3 Source Granularities: 13 planned creates, 6 planned updates, and zero
+  conflicts;
+- M5 RingCentral: no writes or provider calls and 10 expected blocking
+  unresolved-granularity conflicts because M3 has not yet been applied.
+
+Timestamped manifests live only under the gitignored `scripts/output/`
+deployment-evidence directories. Before apply, use the final dry-run manifest,
+record its path and checksum in the deployment record, and verify its
+`git_sha` equals the exact commit being deployed. Do not rely on a manifest
+filename copied into this tracked handoff.
+
+The four M0 review items are the existing `190` embedded versus `205` legacy
+CPL disagreements for TBM call/form and TBM Prime call/form. The owner approved
+the currently authoritative production `cpl_rates` values, so M4 v2 seeds
+`205` for those four entries and retains each embedded mismatch as a
+reviewable manifest collision. The owner also approved `2024-01-01` as the
+open-ended schedule start; M4 does not set an end date or rewrite historical
+Lead CPL snapshots.
+
+A meaningful M4 production dry run must follow the reviewed M3 apply because
+schedules reference the first-class granularities created by M3; an empty
+pre-M3 M4 manifest is not approval evidence. The next action is the separately
+authorized ordered production apply gate, starting with M2 and M3, followed by
+fresh M4 and M5 dry runs. M4 and M5 apply remain later approval gates.

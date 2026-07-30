@@ -1,5 +1,3 @@
-import { Agent, type AgentDocument } from "../../models/Agent";
-import { Merchant } from "../../models/Merchant";
 import type {
   CatalogCreateInput,
   CatalogUpdateInput,
@@ -11,9 +9,11 @@ import {
   getRegistryMerchant,
   listRegistryAgents,
   listRegistryMerchants,
+  resolveRegistryAgentByName,
+  resolveRegistryMerchantByName,
+  type RegistryActorContext,
   type RegistryCatalogItem,
-} from "../operationsRegistry/catalogRegistry";
-import type { RegistryActorContext } from "../operationsRegistry/types";
+} from "../operationsRegistry";
 import { V1ServiceError } from "../v1ServiceError";
 import { normalizeAgentName } from "../agents/agentName";
 
@@ -106,19 +106,15 @@ export async function updateCatalogItem(
   return toLegacyCatalogItem(item);
 }
 
-export async function resolveActiveAgentByName(name: string): Promise<AgentDocument> {
+export async function resolveActiveAgentByName(name: string): Promise<RegistryCatalogItem> {
   return resolveAgentByName(name);
 }
 
 export async function resolveAgentByName(
   name: string,
   options: { includeInactive?: boolean } = {},
-): Promise<AgentDocument> {
-  const normalized_name = normalizeCatalogName(name);
-  const agent = await Agent.findOne({
-    $or: [{ normalized_name }, { name_aliases: normalized_name }],
-    ...(options.includeInactive ? {} : { active: true }),
-  }).exec();
+): Promise<RegistryCatalogItem> {
+  const agent = await resolveRegistryAgentByName(name, options);
   if (!agent) {
     throw new V1ServiceError(
       options.includeInactive ? `Unknown agent: ${name}` : `Unknown or inactive agent: ${name}`,
@@ -129,11 +125,7 @@ export async function resolveAgentByName(
 }
 
 export async function resolveActiveMerchantName(name: string): Promise<string> {
-  const normalized_name = normalizeCatalogName(name);
-  const merchant = await Merchant.findOne({
-    $or: [{ normalized_name }, { name_aliases: normalized_name }],
-    active: true,
-  }).exec();
+  const merchant = await resolveRegistryMerchantByName(name);
   if (!merchant) {
     throw new V1ServiceError(`Unknown or inactive merchant: ${name}`, 400);
   }

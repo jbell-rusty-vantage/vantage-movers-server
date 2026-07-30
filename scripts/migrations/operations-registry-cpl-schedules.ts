@@ -27,6 +27,7 @@ import {
 } from "../../src/services/employeeBookings/migrationApplySafety.js";
 import {
   assertMigrationDatabaseAllowed,
+  assertReviewedDryRunManifest,
   hasBlockingMigrationCollisions,
 } from "./operations-registry-migration.lib.js";
 import {
@@ -326,6 +327,13 @@ async function main(): Promise<void> {
   });
 
   if (apply) {
+    await assertReviewedDryRunManifest({
+      args: process.argv,
+      databaseName,
+      scriptVersion: SCRIPT_VERSION,
+      mappingChecksum: manifest.mapping_checksum,
+      cutoverDate,
+    });
     if (hasBlockingMigrationCollisions(plan.collisions)) {
       throw new Error(
         "Refusing --apply while blocking CPL schedule migration collisions remain.",

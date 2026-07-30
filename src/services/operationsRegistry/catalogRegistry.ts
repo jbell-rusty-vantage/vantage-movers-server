@@ -5,11 +5,8 @@ import { CallLead } from "../../models/CallLead";
 import { FormLead } from "../../models/FormLead";
 import { Merchant, type MerchantDocument } from "../../models/Merchant";
 import { normalizeAgentName } from "../agents/agentName";
-import {
-  findAgentByGranotCrmUsername,
-  normalizeGranotCrmUsername,
-} from "../agents/receiverAgentCrmUsername";
 import { REGISTRY_ERROR_CODES } from "../errors/registryErrorCodes";
+import { normalizeGranotCrmUsername } from "./catalogNormalization";
 import { RegistryError } from "./errors";
 import { withRegistryMutation } from "./registryAudit";
 import type { RegistryActorContext, RegistryAuditInput } from "./types";
@@ -126,15 +123,44 @@ export async function getRegistryMerchant(id: string): Promise<RegistryCatalogIt
   return toCatalogItem(row);
 }
 
+export async function resolveRegistryAgentByName(
+  name: string,
+  options: { includeInactive?: boolean } = {},
+): Promise<RegistryCatalogItem | undefined> {
+  const normalized_name = normalizeAgentName(name);
+  const row = await Agent.findOne({
+    $or: [{ normalized_name }, { name_aliases: normalized_name }],
+    ...(options.includeInactive ? {} : { active: true }),
+  })
+    .exec();
+  return row ? toCatalogItem(documentToCatalogLean(row)) : undefined;
+}
+
+export async function resolveRegistryMerchantByName(
+  name: string,
+  options: { includeInactive?: boolean } = {},
+): Promise<RegistryCatalogItem | undefined> {
+  const normalized_name = normalizeAgentName(name);
+  const row = await Merchant.findOne({
+    $or: [{ normalized_name }, { name_aliases: normalized_name }],
+    ...(options.includeInactive ? {} : { active: true }),
+  })
+    .exec();
+  return row ? toCatalogItem(documentToCatalogLean(row)) : undefined;
+}
+
 export async function resolveAgentByGranotUsername(
   value: string | null | undefined,
   options: { includeInactive?: boolean } = {},
 ): Promise<RegistryCatalogItem | undefined> {
-  const agent = await findAgentByGranotCrmUsername(value, options);
-  if (!agent) {
-    return undefined;
-  }
-  return toCatalogItem(documentToCatalogLean(agent));
+  const username = normalizeGranotCrmUsername(value);
+  if (!username) return undefined;
+  const row = await Agent.findOne({
+    "granot_identity.username": username,
+    ...(options.includeInactive ? {} : { active: true }),
+  })
+    .exec();
+  return row ? toCatalogItem(documentToCatalogLean(row)) : undefined;
 }
 
 export async function createOrUpdateAgent(
@@ -533,7 +559,12 @@ function mergeAlias(
 function documentToCatalogLean(
   doc: AgentDocument | MerchantDocument,
 ): CatalogLeanDocument {
-  return (doc as unknown as mongoose.Document).toObject({ virtuals: true }) as CatalogLeanDocument;
+  const candidate = doc as unknown as {
+    toObject?: (options: { virtuals: boolean }) => unknown;
+  };
+  return (candidate.toObject
+    ? candidate.toObject({ virtuals: true })
+    : doc) as CatalogLeanDocument;
 }
 
 async function createAgentDocument(

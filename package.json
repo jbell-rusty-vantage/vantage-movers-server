@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --import ./scripts/test-setup.ts --test \"src/**/*.test.ts\"",
     "migrations:operations-registry-inventory": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/operations-registry-inventory.ts",
+    "migrations:dump-operations-registry-seed-surface": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/dump-operations-registry-seed-surface.ts",
     "migrations:operations-registry-agent-merchant": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/operations-registry-agent-merchant-compatibility.ts",
     "migrations:operations-registry-source-granularities": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/operations-registry-source-granularities.ts",
     "migrations:operations-registry-cpl-schedules": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/operations-registry-cpl-schedules.ts",

@@ -69,6 +69,7 @@ export {
 } from "./config";
 
 export { RegistryError, isRegistryError } from "./errors";
+export { normalizeGranotCrmUsername } from "./catalogNormalization";
 
 export type {
   RegistryActorContext,
@@ -104,6 +105,8 @@ export {
   listRegistryMerchants,
   previewRegistryDependency,
   resolveAgentByGranotUsername,
+  resolveRegistryAgentByName,
+  resolveRegistryMerchantByName,
   setAgentActivation,
   setMerchantActivation,
 } from "./catalogRegistry";

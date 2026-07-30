@@ -1,5 +1,4 @@
-import type mongoose from "mongoose";
-import { Agent } from "../../models/Agent";
+import mongoose from "mongoose";
 import type { BookedLeadDocument } from "../../models/BookedLead";
 import type {
   CreateBookedLeadFromSourceInput,
@@ -102,51 +101,13 @@ export async function resolveAgentAllocations(
 
     const agent = await resolveAgentByName(name, options);
     resolved.push({
-      agent: agent._id,
+      agent: new mongoose.Types.ObjectId(agent.id),
       agent_name_snapshot: agent.name,
       binder_amount: allocation.binder_amount,
     });
   }
 
   return resolved;
-}
-
-/**
- * Upserts a single agent by `normalized_name`. Updates the human-readable
- * `name` on every call so casing/whitespace fixes propagate, and seeds the
- * default agent flags on insert.
- *
- * Recovers from `E11000` duplicate-key races by re-reading the agent that
- * the racing writer just inserted.
- */
-export async function upsertAgentByName(name: string) {
-  const normalized_name = normalizeAgentName(name);
-  const update = {
-    $set: { name },
-    $setOnInsert: {
-      normalized_name,
-      active: true,
-      role: "agent",
-      created_from: "booked_lead",
-    },
-  };
-
-  try {
-    return await Agent.findOneAndUpdate({ normalized_name }, update, {
-      upsert: true,
-      returnDocument: "after",
-      setDefaultsOnInsert: true,
-    }).orFail();
-  } catch (error) {
-    if (!isMongoDuplicateKeyError(error)) {
-      throw error;
-    }
-    const agent = await Agent.findOne({ normalized_name });
-    if (!agent) {
-      throw error;
-    }
-    return agent;
-  }
 }
 
 /**
@@ -204,13 +165,4 @@ export function primaryAgentName(
   booking: Pick<BookedLeadDocument, "agent_allocations">,
 ): string {
   return booking.agent_allocations?.[0]?.agent_name_snapshot ?? "";
-}
-
-function isMongoDuplicateKeyError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === 11000
-  );
 }

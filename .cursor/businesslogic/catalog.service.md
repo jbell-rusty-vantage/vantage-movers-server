@@ -33,8 +33,8 @@ Uniqueness is enforced on `normalized_name` (Mongo unique index). Duplicate crea
 
 | Operation | Agents | Merchants |
 |-----------|--------|-----------|
-| List (active default) | `GET /api/v1/admin/catalog/agents` | `GET /api/v1/admin/catalog/merchants`, `GET /api/v1/admin/merchants` |
-| Detail | — | `GET /api/v1/admin/merchants/:id` |
+| List (active default) | `GET /api/v1/admin/catalog/agents`, `GET /api/v1/admin/agents` | `GET /api/v1/admin/catalog/merchants`, `GET /api/v1/admin/merchants` |
+| Detail | `GET /api/v1/admin/agents/:id` | `GET /api/v1/admin/merchants/:id` |
 | Create | `POST /api/v1/admin/agents` | `POST /api/v1/admin/merchants` |
 | Update | `PATCH /api/v1/admin/agents/:id` | `PATCH /api/v1/admin/merchants/:id` |
 
@@ -50,7 +50,7 @@ Create/update bodies validated by `catalogCreateSchema` / `catalogUpdateSchema` 
 | `getCatalogItem` | By id; 404 if missing |
 | `createCatalogItem` | Apply kind defaults (`created_from: "admin"`; agents also `role: "agent"`) |
 | `updateCatalogItem` | Partial `$set`; recompute `normalized_name` when `name` changes |
-| `resolveActiveAgentByName` | Returns full `AgentDocument`; 400 if unknown/inactive |
+| `resolveActiveAgentByName` | Returns the public Operations Registry catalog DTO; 400 if unknown/inactive |
 | `resolveActiveMerchantName` | Returns catalog canonical `name` string; 400 if unknown/inactive |
 
 `CatalogItem` exposes both `id` and `_id` as string for admin JSON consumers.
@@ -68,9 +68,9 @@ Historical admin facets scan booking snapshots instead of live catalog (`agent_n
 
 ## Create defaults vs legacy agents
 
-Admin catalog create sets `created_from: "admin"`. The `Agent` schema default is `"booked_lead"` for documents created outside this service.
-
-`upsertAgentByName` in `agentAllocation.service.ts` can still upsert agents with `created_from: "booked_lead"` — **not used by current production booking flows**; repair/backfill only. Standard bookings require pre-existing **active** catalog agents.
+Admin catalog create sets `created_from: "admin"`. Standard booking paths never
+auto-create Agents: allocations resolve through the public Operations Registry
+interface and require a pre-existing active Agent.
 
 ## Deactivation semantics
 

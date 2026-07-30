@@ -94,6 +94,7 @@ import {
   createOrUpdateSourceGranularity,
   getSourceCompany,
   getSourceCompanyBySlug,
+  getSourceGranularity,
   listSourceCompanies,
   listSourceGranularities,
   applySimpleCplSchedule,
@@ -289,6 +290,8 @@ router.get("/api/v1/admin/search", handleAdminSearch);
 router.get("/api/v1/admin/facets", handleAdminFacets);
 router.get("/api/v1/admin/catalog/agents", handleCatalogList("agents"));
 router.get("/api/v1/admin/catalog/merchants", handleCatalogList("merchants"));
+router.get("/api/v1/admin/agents", handleCatalogList("agents"));
+router.get("/api/v1/admin/agents/:id", handleCatalogDetail("agents"));
 router.post("/api/v1/admin/agents", handleCatalogCreate("agents"));
 router.patch("/api/v1/admin/agents/:id", handleCatalogUpdate("agents"));
 router.post("/api/v1/admin/agents/:id/activation", handleCatalogActivation("agents"));
@@ -322,6 +325,10 @@ router.get(
   handleSourceCompanyDependencies,
 );
 router.get("/api/v1/admin/source-granularities", handleSourceGranularitiesList);
+router.get(
+  "/api/v1/admin/source-granularities/:id",
+  handleSourceGranularityDetail,
+);
 router.post("/api/v1/admin/source-granularities", handleSourceGranularityCreate);
 router.patch(
   "/api/v1/admin/source-granularities/:id",
@@ -887,6 +894,18 @@ async function handleSourceGranularitiesList(req: Request, res: Response) {
       ...(parsed.channel ? { channel: parsed.channel } : {}),
     });
     return res.json({ ok: true, data: { items } });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSourceGranularityDetail(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const data = await getSourceGranularity(id);
+    return res.json({ ok: true, data });
   } catch (error) {
     return sendError(req, res, error);
   }

@@ -1,7 +1,6 @@
 import mongoose from "mongoose";
 import { floridaCalendarToday } from "../../utils/easternTime";
 import { normalizePhoneNumberForStorage, normalizePhoneNumberForMatch } from "../../utils/phone";
-import { LeadSourceCompany } from "../../models/LeadSourceCompany";
 import type { CreateEmployeeBookingSubmissionInput } from "../../validation/v1.validation";
 import { deriveBookedLeadAgentAllocations, resolveAgentAllocations } from "../agents";
 import { resolveActiveMerchantName } from "../catalog";
@@ -12,17 +11,30 @@ import {
   normalizeSubmissionLid,
 } from "../bookings/bookingIdentity";
 import { ValidationError } from "../errors";
+import {
+  getSourceCompany,
+  isRegistryError,
+  listSourceGranularities,
+} from "../operationsRegistry";
 import type { PreparedEmployeeBookingSubmission } from "./types";
 
 export async function prepareEmployeeBookingSubmission(
   input: CreateEmployeeBookingSubmissionInput,
 ): Promise<PreparedEmployeeBookingSubmission> {
-  const company = await LeadSourceCompany.findById(input.lead_source_company_id);
+  let company: Awaited<ReturnType<typeof getSourceCompany>> | undefined;
+  try {
+    company = await getSourceCompany(input.lead_source_company_id);
+  } catch (error) {
+    if (!isRegistryError(error)) throw error;
+  }
   if (!company || company.active !== true) {
     throw new ValidationError("Unknown or inactive employee booking source company");
   }
 
-  const granularity = company.granularities.find(
+  const granularities = await listSourceGranularities({
+    sourceCompanyId: company.id,
+  });
+  const granularity = granularities.find(
     (candidate) =>
       candidate.active === true &&
       candidate.granularity_key ===
@@ -83,8 +95,8 @@ export async function prepareEmployeeBookingSubmission(
       company.owner_label ||
       company.company_slug,
     sourceAssignment: {
-      lead_source_company: new mongoose.Types.ObjectId(company._id),
-      source_granularity_id: new mongoose.Types.ObjectId(granularity._id),
+      lead_source_company: new mongoose.Types.ObjectId(company.id),
+      source_granularity_id: new mongoose.Types.ObjectId(granularity.id),
       source_granularity_key: granularity.granularity_key,
       source_company: company.company_slug,
       source_company_label_snapshot: company.owner_label,

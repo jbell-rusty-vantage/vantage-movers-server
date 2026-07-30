@@ -15,7 +15,6 @@ export {
   receiverAttributionFromPrimaryAllocation,
   resolveAgentAllocations,
   resolveTotalBinderAmount,
-  upsertAgentByName,
   type AgentAllocationDocumentInput,
   type AgentAllocationInput,
 } from "./agentAllocation.service";

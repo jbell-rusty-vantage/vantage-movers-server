@@ -54,7 +54,7 @@ test("findAgentByGranotCrmUsername prefers embedded granot_identity username", a
   const agent = await findAgentByGranotCrmUsername("mikem");
 
   assert.ok(agent);
-  assert.equal(agent._id.toString(), agentId.toString());
+  assert.equal(agent.id, agentId.toString());
   assert.deepEqual(capturedFilter, {
     "granot_identity.username": "MIKEM",
     active: true,

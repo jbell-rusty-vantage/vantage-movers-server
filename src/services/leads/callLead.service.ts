@@ -6,7 +6,6 @@ import {
   type LocalType,
   type SourceCompany,
 } from "../../config/domain";
-import { Agent } from "../../models/Agent";
 import { CallLead } from "../../models/CallLead";
 import { toFloridaTimestamp } from "../../utils/easternTime";
 import type {
@@ -40,7 +39,11 @@ import {
   resolveLeadCplSnapshot,
 } from "./leadCplResolution";
 import { recordOperationalEvent } from "../observability";
-import type { RingCentralRouteResolution } from "../operationsRegistry";
+import {
+  getRegistryAgent,
+  isRegistryError,
+  type RingCentralRouteResolution,
+} from "../operationsRegistry";
 
 export type CreateRingCentralCallLeadInput = {
   source_company: SourceCompany;
@@ -352,13 +355,16 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
   }
 
   if (input.receiver_agent !== undefined) {
-    const agent = await Agent.findById(input.receiver_agent);
-    if (!agent) {
+    let agent: Awaited<ReturnType<typeof getRegistryAgent>>;
+    try {
+      agent = await getRegistryAgent(input.receiver_agent);
+    } catch (error) {
+      if (!isRegistryError(error)) throw error;
       throw new NotFoundError("Agent not found", {
         metadata: { resource: "agent", id: input.receiver_agent },
       });
     }
-    lead.receiver_agent = agent._id;
+    lead.receiver_agent = new mongoose.Types.ObjectId(agent.id);
     lead.receiver_agent_name_snapshot = agent.name;
     lead.receiver_agent_source = input.receiver_agent_source ?? "manual";
     lead.receiver_agent_source_value = input.receiver_agent_source_value;

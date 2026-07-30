@@ -41,6 +41,20 @@ router.get("/api/v1/admin/ringcentral/inbound-routes", async (req, res) => {
   }
 });
 
+router.get(
+  "/api/v1/admin/ringcentral/inbound-routes/:id",
+  async (req, res) => {
+    try {
+      await connectMongo();
+      requireRegistryReadActor(req, auth(req));
+      const data = await getRingCentralInboundRoute(routeId(req));
+      return res.json({ ok: true, data });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  },
+);
+
 router.post("/api/v1/admin/ringcentral/inbound-routes", async (req, res) => {
   try {
     await connectMongo();

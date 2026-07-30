@@ -12,7 +12,7 @@ import {
   listLeadSourceCompanies,
   type LeadSourceGranularityItem,
 } from "../leadSourceCompanies";
-import { recordDurableCompatibilityRead } from "../operationsRegistry/runtimeTelemetry";
+import { recordDurableCompatibilityRead } from "../operationsRegistry";
 
 export type CplRateItem = {
   id: string;

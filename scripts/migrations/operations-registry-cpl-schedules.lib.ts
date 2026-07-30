@@ -17,7 +17,7 @@ import {
   type OperationsRegistryMigrationManifestBase,
 } from "./operations-registry-migration.lib";
 
-export const SCRIPT_VERSION = "operations-registry-cpl-schedules-m4";
+export const SCRIPT_VERSION = "operations-registry-cpl-schedules-m4-v2";
 
 export const M4_CUTOVER_CHANGE_REASON = "M4 cutover schedule seed";
 
@@ -246,11 +246,14 @@ function resolveAmountAuthority(input: {
     const legacyCents = dollarsToCents(legacy.cpl);
     if (embeddedCents !== legacyCents) {
       return {
+        amount_cents: legacyCents,
+        source_value: legacy.cpl,
+        authority: "cpl_rates",
         conflict: {
           code: "embedded_cpl_vs_cpl_rates_disagreement",
-          severity: "blocking",
+          severity: "reviewable",
           category: "cpl",
-          message: `Embedded CPL and cpl_rates disagree for ${granularity.company_slug}/${granularity.granularity_key}; owner review required.`,
+          message: `Embedded CPL and cpl_rates disagree for ${granularity.company_slug}/${granularity.granularity_key}; the current authoritative cpl_rates value will seed M4.`,
           details: {
             source_granularity_id: granularity.id,
             company_slug: granularity.company_slug,
@@ -357,6 +360,8 @@ export function buildCplSchedulesPlan(
 
     if (resolved.conflict) {
       collisions.push(resolved.conflict);
+    }
+    if (resolved.conflict?.severity === "blocking") {
       schedules.push({
         ...base,
         action: "conflict",

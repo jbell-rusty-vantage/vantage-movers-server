@@ -27,10 +27,12 @@ import {
   buildAgentMerchantCompatibilityManifest,
   buildAgentMerchantCompatibilityPlan,
   merchantMigrationUpdateFilter,
+  SCRIPT_VERSION as AGENT_MERCHANT_SCRIPT_VERSION,
   type AgentMerchantCompatibilitySnapshot,
 } from "./operations-registry-agent-merchant-compatibility.lib.js";
 import {
   assertMigrationDatabaseAllowed,
+  assertReviewedDryRunManifest,
   hasBlockingMigrationCollisions,
 } from "./operations-registry-migration.lib.js";
 
@@ -191,6 +193,12 @@ async function main(): Promise<void> {
   });
 
   if (apply) {
+    await assertReviewedDryRunManifest({
+      args: process.argv,
+      databaseName,
+      scriptVersion: AGENT_MERCHANT_SCRIPT_VERSION,
+      mappingChecksum: manifest.mapping_checksum,
+    });
     if (hasBlockingMigrationCollisions(plan.collisions)) {
       throw new Error(
         "Refusing --apply while blocking Agent/Merchant migration collisions remain.",

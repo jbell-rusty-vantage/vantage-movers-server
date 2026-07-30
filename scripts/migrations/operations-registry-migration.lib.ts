@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 
 export const PRODUCTION_DATABASE = "vantagemovers";
 export const TEST_DATABASE = "testvantagemovers";
@@ -135,6 +136,48 @@ export function assertMigrationDatabaseAllowed(
   throw new Error(
     `Refusing migration against unknown database "${databaseName}". Allowed targets: ${TEST_DATABASE}, or ${PRODUCTION_DATABASE} with ${PRODUCTION_CONFIRMATION}.`,
   );
+}
+
+export async function assertReviewedDryRunManifest(input: {
+  args: readonly string[];
+  databaseName: string;
+  scriptVersion: string;
+  mappingChecksum: string;
+  cutoverDate?: string;
+}): Promise<void> {
+  if (input.databaseName !== PRODUCTION_DATABASE) {
+    return;
+  }
+
+  const flag = input.args.find((arg) =>
+    arg.startsWith("--reviewed-manifest="),
+  );
+  const manifestPath = flag?.slice("--reviewed-manifest=".length).trim();
+  if (!manifestPath) {
+    throw new Error(
+      "Production apply requires --reviewed-manifest=<exact dry-run manifest path>.",
+    );
+  }
+
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+    mode?: unknown;
+    database_name?: unknown;
+    script_version?: unknown;
+    mapping_checksum?: unknown;
+    cutover_date?: unknown;
+  };
+  if (
+    manifest.mode !== "dry_run" ||
+    manifest.database_name !== input.databaseName ||
+    manifest.script_version !== input.scriptVersion ||
+    manifest.mapping_checksum !== input.mappingChecksum ||
+    (input.cutoverDate !== undefined &&
+      manifest.cutover_date !== input.cutoverDate)
+  ) {
+    throw new Error(
+      "Reviewed dry-run manifest does not match the current database, script version, mapping checksum, or cutover date.",
+    );
+  }
 }
 
 export function countPlannedActions<T extends { action: string }>(

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import ringCentralRouterModule from "./ringcentral-registry.routes";
 import routerModule from "./v1.routes";
 
 type RouteLayer = {
@@ -10,6 +11,76 @@ type RouteLayer = {
 };
 
 const router = (routerModule as { default?: unknown }).default ?? routerModule;
+const ringCentralRouter =
+  (ringCentralRouterModule as { default?: unknown }).default ??
+  ringCentralRouterModule;
+
+function registeredMethods(
+  targetRouter: unknown,
+): Set<string> {
+  const stack =
+    (targetRouter as { stack?: RouteLayer[] }).stack ?? [];
+  return new Set(
+    stack.flatMap((layer) => {
+      const route = layer.route;
+      if (!route?.path) return [];
+      return Object.entries(route.methods ?? {})
+        .filter(([, enabled]) => enabled)
+        .map(([method]) => `${method.toUpperCase()} ${route.path}`);
+    }),
+  );
+}
+
+test("Operations Registry entities expose complete lifecycle CRUD surfaces", () => {
+  const routes = registeredMethods(router);
+  const ringCentralRoutes = registeredMethods(ringCentralRouter);
+
+  for (const expected of [
+    "GET /api/v1/admin/catalog/agents",
+    "GET /api/v1/admin/agents",
+    "GET /api/v1/admin/agents/:id",
+    "POST /api/v1/admin/agents",
+    "PATCH /api/v1/admin/agents/:id",
+    "POST /api/v1/admin/agents/:id/activation",
+    "GET /api/v1/admin/merchants",
+    "GET /api/v1/admin/merchants/:id",
+    "POST /api/v1/admin/merchants",
+    "PATCH /api/v1/admin/merchants/:id",
+    "POST /api/v1/admin/merchants/:id/activation",
+    "GET /api/v1/admin/source-companies",
+    "GET /api/v1/admin/source-companies/:id",
+    "POST /api/v1/admin/source-companies",
+    "PATCH /api/v1/admin/source-companies/:id",
+    "POST /api/v1/admin/source-companies/:id/activation",
+    "GET /api/v1/admin/source-granularities",
+    "GET /api/v1/admin/source-granularities/:id",
+    "POST /api/v1/admin/source-granularities",
+    "PATCH /api/v1/admin/source-granularities/:id",
+    "POST /api/v1/admin/source-granularities/:id/activation",
+    "GET /api/v1/admin/cpl/snapshot",
+    "GET /api/v1/admin/source-granularities/:id/cpl-periods",
+    "POST /api/v1/admin/cpl/simple-schedule",
+    "POST /api/v1/admin/source-granularities/:id/cpl-schedule/commands",
+  ]) {
+    assert.equal(routes.has(expected), true, `missing route ${expected}`);
+  }
+
+  for (const expected of [
+    "GET /api/v1/admin/ringcentral/inbound-routes",
+    "GET /api/v1/admin/ringcentral/inbound-routes/:id",
+    "POST /api/v1/admin/ringcentral/inbound-routes",
+    "PATCH /api/v1/admin/ringcentral/inbound-routes/:id",
+    "POST /api/v1/admin/ringcentral/inbound-routes/:id/activate",
+    "POST /api/v1/admin/ringcentral/inbound-routes/:id/reassign",
+    "POST /api/v1/admin/ringcentral/inbound-routes/:id/deactivate",
+  ]) {
+    assert.equal(
+      ringCentralRoutes.has(expected),
+      true,
+      `missing route ${expected}`,
+    );
+  }
+});
 
 test("admin analytics receiver-agent reports have GET routes", () => {
   const stack = (router as { stack?: RouteLayer[] }).stack ?? [];

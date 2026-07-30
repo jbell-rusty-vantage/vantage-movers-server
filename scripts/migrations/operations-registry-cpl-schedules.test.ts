@@ -111,22 +111,25 @@ test("M4 allows explicit zero-dollar free-traffic periods", () => {
   assert.equal(free?.authority, "embedded_granularity+cpl_rates");
 });
 
-test("M4 blocks when embedded and cpl_rates disagree and never auto-picks", () => {
+test("M4 preserves current authoritative cpl_rates when embedded CPL disagrees", () => {
   const snapshot = baseSnapshot();
   snapshot.cplRates[0]!.cpl = 200;
 
   const plan = buildCplSchedulesPlan(snapshot);
   const forms = plan.schedules.find((entry) => entry.granularity_key === "tbm_forms");
 
-  assert.equal(forms?.action, "conflict");
-  assert.equal(forms?.amount_cents, undefined);
+  assert.equal(forms?.action, "create");
+  assert.equal(forms?.amount_cents, 20_000);
+  assert.equal(forms?.source_value, 200);
+  assert.equal(forms?.authority, "cpl_rates");
   assert.ok(
     plan.collisions.some(
       (collision) =>
         collision.code === "embedded_cpl_vs_cpl_rates_disagreement" &&
-        collision.severity === "blocking",
+        collision.severity === "reviewable",
     ),
   );
+  assert.ok(!plan.collisions.some((collision) => collision.severity === "blocking"));
 });
 
 test("M4 is idempotent when a non-archived schedule already exists", () => {
@@ -259,7 +262,7 @@ test("M4 dry-run path is the default and apply is gated", () => {
   assert.match(cliSource, /mode: apply \? "apply" : "dry_run"/);
   assert.match(
     cliSource,
-    /if \(apply\) \{\s*if \(hasBlockingMigrationCollisions/,
+    /if \(apply\) \{\s*await assertReviewedDryRunManifest[\s\S]*?if \(hasBlockingMigrationCollisions/,
   );
   assert.match(cliSource, /Refusing --apply while blocking CPL schedule migration collisions remain/);
   assert.match(

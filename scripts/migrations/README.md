@@ -49,7 +49,24 @@ copy `.env` credentials into manifests or tickets.
   America/New_York business date, not a UTC timestamp.
 - Keep the exact reviewed manifest path when using `--resume-from`.
 
-## Ordered execution
+## Seed surface snapshot (pre-backfill reference)
+
+A checked-in value inventory of current Agents, Merchants, LeadSourceCompanies,
+embedded inbound numbers, and static RingCentral queue mappings lives at:
+
+- `operations-registry-backfill-seed-report.json`
+- `operations-registry-backfill-seed-report.md`
+
+Generate a fresh redacted candidate from the live DB (database read-only):
+
+```text
+pnpm migrations:dump-operations-registry-seed-surface -- --confirm-production-db=vantagemovers
+```
+
+The command writes only to the gitignored `scripts/output/` directory and never
+overwrites the checked-in reviewed snapshot. Diff and copy a candidate into the
+tracked report only after reviewing it for safe fields and expected production
+counts.
 
 ### M0 — Inventory and collision gate
 
@@ -98,7 +115,7 @@ TEST_MODE=true pnpm migrations:operations-registry-agent-merchant -- --apply
 
 # Production dry run, then authorized apply
 pnpm migrations:operations-registry-agent-merchant -- --confirm-production-db=vantagemovers
-pnpm migrations:operations-registry-agent-merchant -- --apply --production-apply --confirm-production-db=vantagemovers
+pnpm migrations:operations-registry-agent-merchant -- --apply --production-apply --confirm-production-db=vantagemovers --reviewed-manifest=<m2-dry-run-manifest-path>
 ```
 
 Manifests:
@@ -129,7 +146,7 @@ TEST_MODE=true pnpm migrations:operations-registry-source-granularities -- --app
 
 # Production dry run, then authorized apply
 pnpm migrations:operations-registry-source-granularities -- --confirm-production-db=vantagemovers
-pnpm migrations:operations-registry-source-granularities -- --apply --production-apply --confirm-production-db=vantagemovers
+pnpm migrations:operations-registry-source-granularities -- --apply --production-apply --confirm-production-db=vantagemovers --reviewed-manifest=<m3-dry-run-manifest-path>
 ```
 
 Manifests:
@@ -150,6 +167,21 @@ This creates one open-ended current period per reviewed active first-class
 granularity. It does not infer historical schedules and does not modify
 existing Lead CPL snapshots.
 
+M4 preserves the current production `cpl_rates` value when embedded Source
+Company CPL disagrees, because stored `cpl_rates` documents are the existing
+runtime authority. The mismatch remains a reviewable manifest collision so it
+is visible in the deployment evidence. As of the 2026-07-30 production
+inventory, those differences are:
+
+- `tbm_leads` call and form: embedded `$190`, legacy `$205`;
+- `tbm_prime_leads` call and form: embedded `$190`, legacy `$205`.
+
+The owner approved the current `cpl_rates` values as the seed authority and
+`2024-01-01` as the open-ended schedule start. Because M4 schedules reference
+first-class Source Granularities, its meaningful
+production dry run must happen after the reviewed M3 apply. Do not approve an
+empty pre-M3 M4 manifest for apply.
+
 Replace the example date with the owner-approved cutover date:
 
 ```text
@@ -159,7 +191,7 @@ TEST_MODE=true pnpm migrations:operations-registry-cpl-schedules -- --apply --cu
 
 # Production dry run, then authorized apply
 pnpm migrations:operations-registry-cpl-schedules -- --confirm-production-db=vantagemovers --cutover-date=2026-07-29
-pnpm migrations:operations-registry-cpl-schedules -- --apply --production-apply --confirm-production-db=vantagemovers --cutover-date=2026-07-29
+pnpm migrations:operations-registry-cpl-schedules -- --apply --production-apply --confirm-production-db=vantagemovers --cutover-date=2026-07-29 --reviewed-manifest=<m4-dry-run-manifest-path>
 ```
 
 Manifests:
@@ -192,7 +224,7 @@ TEST_MODE=true pnpm migrations:operations-registry-ringcentral -- --apply
 
 # Production dry run, then authorized apply
 pnpm migrations:operations-registry-ringcentral -- --confirm-production-db=vantagemovers
-pnpm migrations:operations-registry-ringcentral -- --apply --production-apply --confirm-production-db=vantagemovers
+pnpm migrations:operations-registry-ringcentral -- --apply --production-apply --confirm-production-db=vantagemovers --reviewed-manifest=<m5-dry-run-manifest-path>
 ```
 
 Manifests:
@@ -208,6 +240,7 @@ Gate:
 - all intended routes validate against the configured RingCentral account;
 - active routes and assignments have zero conflicts or failures;
 - the database name, run ID, and mapping checksum match the reviewed output;
+- production apply is bound to the exact reviewed dry-run manifest;
 - `validation_summary.gate_passed` is `true`.
 
 Only after this gate passes should registry-only webhook, Call Log, and
