@@ -1,4 +1,3 @@
-import type { SourceCompany } from "../../config/domain";
 import { V1ServiceError } from "../v1ServiceError";
 
 export const BEST_RELOCATION_INGESTION_SOURCE = "best_relocation_sheet" as const;
@@ -14,7 +13,7 @@ export function bestRelocationImportLeadFilter(
 
 export function requireBestRelocationImportSource(
   ingestionSource: typeof BEST_RELOCATION_INGESTION_SOURCE | undefined,
-  sourceCompany: SourceCompany,
+  sourceCompany: string,
 ): boolean {
   if (ingestionSource !== BEST_RELOCATION_INGESTION_SOURCE) return false;
   if (sourceCompany !== BEST_RELOCATION_SOURCE_COMPANY) {

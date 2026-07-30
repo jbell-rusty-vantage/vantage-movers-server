@@ -2,7 +2,6 @@ import type { PipelineStage } from "mongoose";
 import {
   SOURCE_COMPANY_CONFIGS,
   SOURCE_LABEL_TO_COMPANY,
-  normalizeSourceCompany,
   resolveSourceCompany,
 } from "../../config/domain/sources";
 import type { AnalyticsQuery } from "../../validation/v1.validation";
@@ -134,7 +133,9 @@ export function normalizeDimensionKey(value: unknown, fallback = "unknown"): str
 }
 
 export function normalizeSourceDimension(value: unknown): string {
-  return normalizeSourceCompany(typeof value === "string" ? value : undefined);
+  const normalized = normalizeDimension(value);
+  const resolved = resolveSourceCompany(normalized);
+  return resolved ?? normalized.trim().toLowerCase();
 }
 
 export function roundMoney(value: number): number {
@@ -220,37 +221,17 @@ function sourceCompanyVariants(value: string): string[] {
 function sourceCompanyExpression() {
   const joinedSourceCompany = {
     $ifNull: [
-      { $arrayElemAt: ["$form_lead.crm_source_label_snapshot", 0] },
+      { $arrayElemAt: ["$form_lead.source_company", 0] },
       {
         $ifNull: [
-          { $arrayElemAt: ["$form_lead.source_granularity_label_snapshot", 0] },
+          { $arrayElemAt: ["$call_lead.source_company", 0] },
           {
             $ifNull: [
               { $arrayElemAt: ["$form_lead.source_company_label_snapshot", 0] },
               {
                 $ifNull: [
-                  { $arrayElemAt: ["$call_lead.crm_source_label_snapshot", 0] },
-                  {
-                    $ifNull: [
-                      { $arrayElemAt: ["$call_lead.source_granularity_label_snapshot", 0] },
-                      {
-                        $ifNull: [
-                          { $arrayElemAt: ["$call_lead.source_company_label_snapshot", 0] },
-                          {
-                            $ifNull: [
-                              { $arrayElemAt: ["$form_lead.source_company", 0] },
-                              {
-                                $ifNull: [
-                                  { $arrayElemAt: ["$call_lead.source_company", 0] },
-                                  { $ifNull: ["$source", "unknown"] },
-                                ],
-                              },
-                            ],
-                          },
-                        ],
-                      },
-                    ],
-                  },
+                  { $arrayElemAt: ["$call_lead.source_company_label_snapshot", 0] },
+                  { $ifNull: ["$source", "unknown"] },
                 ],
               },
             ],

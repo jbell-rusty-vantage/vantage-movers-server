@@ -1,12 +1,11 @@
+import mongoose from "mongoose";
 import {
   CALL_SHEET_HEADERS,
-  getCplForSource,
   getSheetSyncMode,
   SHEET_TAB_NAMES,
   type LocalType,
   type SourceCompany,
 } from "../../config/domain";
-import { Agent } from "../../models/Agent";
 import { CallLead } from "../../models/CallLead";
 import { toFloridaTimestamp } from "../../utils/easternTime";
 import type {
@@ -34,11 +33,21 @@ import { deleteBookedLead, refreshAttachedBookingFromLead } from "../v1.service"
 import { hasFormFillForCallLead } from "./duplicateLead.service";
 import { normalizeLeadName, normalizeLeadNameUpdate } from "./leadName.service";
 import { resolveOptionalLocation } from "./leadLocation.service";
-import { parseSourceCompany, resolveLeadSourceAssignment } from "./leadSourceCompany";
+import { resolveLeadSourceAssignment } from "./leadSourceCompany";
+import {
+  recordMissingLeadCplRate,
+  resolveLeadCplSnapshot,
+} from "./leadCplResolution";
 import { recordOperationalEvent } from "../observability";
+import {
+  getRegistryAgent,
+  isRegistryError,
+  type RingCentralRouteResolution,
+} from "../operationsRegistry";
 
 export type CreateRingCentralCallLeadInput = {
   source_company: SourceCompany;
+  source_resolution: RingCentralRouteResolution;
   phone_number: string;
   name?: string | null;
   duration?: number | null;
@@ -57,6 +66,9 @@ export type CreateRingCentralCallLeadInput = {
     answered_at?: Date | null;
     terminal_at?: Date | null;
     duration_seconds?: number | null;
+    route_id: string;
+    route_assignment_id: string;
+    target_phone_number: string;
   };
 };
 
@@ -74,12 +86,21 @@ export async function createRingCentralCallLead(
   input: CreateRingCentralCallLeadInput,
 ) {
   const { source_company, duplicate } = input;
-  const { resolution: sourceResolution, assignment: sourceAssignment } =
-    await resolveLeadSourceAssignment({
-      value: input.ringcentral.source_label ?? source_company,
-      company_slug: source_company,
-      channel: "call",
-    });
+  const sourceAssignment = {
+    source_company,
+    lead_source_company: mongoose.Types.ObjectId.createFromHexString(
+      input.source_resolution.company_id,
+    ),
+    source_granularity_id: mongoose.Types.ObjectId.createFromHexString(
+      input.source_resolution.granularity_id,
+    ),
+    source_granularity_key: input.source_resolution.granularity_key,
+    source_company_label_snapshot:
+      input.source_resolution.company_label_snapshot,
+    source_granularity_label_snapshot:
+      input.source_resolution.granularity_label_snapshot,
+    crm_source_label_snapshot: input.source_resolution.crm_label_snapshot,
+  };
   const form_fill = await hasFormFillForCallLead(
     {
       sourceCompany: source_company,
@@ -87,6 +108,14 @@ export async function createRingCentralCallLead(
     },
     input.phone_number,
   );
+  const leadTimestamp = toFloridaTimestamp(input.timestamp ?? new Date());
+  const cplSnapshot = await resolveLeadCplSnapshot({
+    sourceGranularityId: sourceAssignment.source_granularity_id
+      ? String(sourceAssignment.source_granularity_id)
+      : null,
+    storedBusinessTimestamp: leadTimestamp,
+    duplicate,
+  });
   const lead = await runSheetSyncWrite(async (session) => {
     const created = new CallLead({
       ...sourceAssignment,
@@ -95,10 +124,10 @@ export async function createRingCentralCallLead(
       duration: input.duration ?? undefined,
       start_time: input.start_time ?? undefined,
       end_time: input.end_time ?? undefined,
-      timestamp: toFloridaTimestamp(input.timestamp ?? new Date()),
+      timestamp: leadTimestamp,
       form_fill,
       duplicate,
-      cpl: duplicate ? 0 : sourceResolution.granularity.cpl,
+      ...cplSnapshot,
       ringcentral: {
         telephony_session_id: input.ringcentral.telephony_session_id ?? undefined,
         session_id: input.ringcentral.session_id ?? undefined,
@@ -110,6 +139,9 @@ export async function createRingCentralCallLead(
         answered_at: input.ringcentral.answered_at ?? undefined,
         terminal_at: input.ringcentral.terminal_at ?? undefined,
         duration_seconds: input.ringcentral.duration_seconds ?? undefined,
+        route_id: input.ringcentral.route_id,
+        route_assignment_id: input.ringcentral.route_assignment_id,
+        target_phone_number: input.ringcentral.target_phone_number,
       },
     });
     await created.save({ session });
@@ -118,6 +150,18 @@ export async function createRingCentralCallLead(
   });
 
   await finalizeSheetSync(callLeadCreateJob(lead._id.toString()));
+
+  if (lead.cpl_resolution_status === "missing_rate") {
+    await recordMissingLeadCplRate({
+      leadModel: "CallLead",
+      leadId: lead._id.toString(),
+      sourceCompany: source_company,
+      sourceGranularityId: sourceAssignment.source_granularity_id
+        ? String(sourceAssignment.source_granularity_id)
+        : null,
+      sourceGranularityKey: sourceAssignment.source_granularity_key,
+    });
+  }
 
   if (lead.form_fill) {
     await recordOperationalEvent({
@@ -151,8 +195,7 @@ export async function createCallLead(input: CreateCallLeadInput) {
     workflow: "call_lead_create",
   });
   const local = location.local ?? normalizedInput.local;
-  const { resolution: sourceResolution, assignment: sourceAssignment } =
-    await resolveLeadSourceAssignment({
+  const { assignment: sourceAssignment } = await resolveLeadSourceAssignment({
       value: normalizedInput.source_company,
       company_slug: normalizedInput.company_slug,
       granularity_key: normalizedInput.source_granularity_key,
@@ -168,6 +211,13 @@ export async function createCallLead(input: CreateCallLeadInput) {
     },
     normalizedInput.phone_number,
   );
+  const leadTimestamp = toFloridaTimestamp(normalizedInput.timestamp);
+  const cplSnapshot = await resolveLeadCplSnapshot({
+    sourceGranularityId: sourceAssignment.source_granularity_id
+      ? String(sourceAssignment.source_granularity_id)
+      : null,
+    storedBusinessTimestamp: leadTimestamp,
+  });
   const lead = await runSheetSyncWrite(async (session) => {
     const created = new CallLead({
       ...normalizedInput,
@@ -175,8 +225,8 @@ export async function createCallLead(input: CreateCallLeadInput) {
       ...sourceAssignment,
       local,
       form_fill,
-      timestamp: toFloridaTimestamp(normalizedInput.timestamp),
-      cpl: sourceResolution.granularity.cpl,
+      timestamp: leadTimestamp,
+      ...cplSnapshot,
     });
     await created.save({ session });
     await persistSheetSyncIntent(callLeadCreateJob(created._id.toString()), session);
@@ -184,6 +234,18 @@ export async function createCallLead(input: CreateCallLeadInput) {
   });
 
   await finalizeSheetSync(callLeadCreateJob(lead._id.toString()));
+
+  if (lead.cpl_resolution_status === "missing_rate") {
+    await recordMissingLeadCplRate({
+      leadModel: "CallLead",
+      leadId: lead._id.toString(),
+      sourceCompany: source_company,
+      sourceGranularityId: sourceAssignment.source_granularity_id
+        ? String(sourceAssignment.source_granularity_id)
+        : null,
+      sourceGranularityKey: sourceAssignment.source_granularity_key,
+    });
+  }
 
   const callLeadIdentity = { name: lead.name ?? null, phone: lead.phone_number };
   await recordOperationalEvent({
@@ -275,23 +337,34 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
     });
     Object.assign(lead, sourceResolutionForUpdate.assignment);
   }
-  lead.cpl = lead.duplicate
-    ? 0
-    : sourceResolutionForUpdate?.resolution.granularity.cpl ??
-      (await getCplForSource(
-          lead.source_company as SourceCompany,
-          "call",
-          lead.local as LocalType | undefined,
-        ));
+  if (
+    sourceResolutionForUpdate !== undefined ||
+    hasOwnInput(input, "timestamp") ||
+    hasOwnInput(input, "duplicate")
+  ) {
+    Object.assign(
+      lead,
+      await resolveLeadCplSnapshot({
+        sourceGranularityId: lead.source_granularity_id
+          ? String(lead.source_granularity_id)
+          : null,
+        storedBusinessTimestamp: lead.timestamp,
+        duplicate: lead.duplicate,
+      }),
+    );
+  }
 
   if (input.receiver_agent !== undefined) {
-    const agent = await Agent.findById(input.receiver_agent);
-    if (!agent) {
+    let agent: Awaited<ReturnType<typeof getRegistryAgent>>;
+    try {
+      agent = await getRegistryAgent(input.receiver_agent);
+    } catch (error) {
+      if (!isRegistryError(error)) throw error;
       throw new NotFoundError("Agent not found", {
         metadata: { resource: "agent", id: input.receiver_agent },
       });
     }
-    lead.receiver_agent = agent._id;
+    lead.receiver_agent = new mongoose.Types.ObjectId(agent.id);
     lead.receiver_agent_name_snapshot = agent.name;
     lead.receiver_agent_source = input.receiver_agent_source ?? "manual";
     lead.receiver_agent_source_value = input.receiver_agent_source_value;
@@ -310,6 +383,17 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
     return refreshJob;
   });
   await finalizeSheetSync(job);
+  if (lead.cpl_resolution_status === "missing_rate") {
+    await recordMissingLeadCplRate({
+      leadModel: "CallLead",
+      leadId: lead._id.toString(),
+      sourceCompany: lead.source_company as SourceCompany,
+      sourceGranularityId: lead.source_granularity_id
+        ? String(lead.source_granularity_id)
+        : null,
+      sourceGranularityKey: lead.source_granularity_key,
+    });
+  }
   return lead;
 }
 

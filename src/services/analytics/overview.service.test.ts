@@ -32,7 +32,7 @@ test("mergeOverviewAllTime merges combined totals and clears production-only lea
           total_binder_amount: 600,
           cancelled_bookings: 1,
         },
-        lead_cost: { total: 190, by_source_company: [{ source_company: "tbm_leads", lead_count: 1, total_lead_cost: 190 }] },
+        lead_cost: { total: 190, unresolved_count: 0, by_source_company: [{ source_company: "tbm_leads", lead_count: 1, total_lead_cost: 190 }] },
         top_agents: [
           { agent_name: "Alex", bookings: 2, total_deposit_amount: 3000, total_binder_amount: 600 },
         ],
@@ -67,6 +67,7 @@ test("mergeOverviewAllTime merges combined totals and clears production-only lea
 test("mergeOverviewAllTime keeps lead cost for production scope", () => {
   const lead_cost = {
     total: 380,
+    unresolved_count: 0,
     by_source_company: [{ source_company: "tbm_leads", lead_count: 2, total_lead_cost: 380 }],
   };
   const merged = mergeOverviewAllTime(

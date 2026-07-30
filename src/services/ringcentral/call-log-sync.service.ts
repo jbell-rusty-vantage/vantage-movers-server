@@ -2,7 +2,10 @@ import { logger } from "../../logger";
 import { recordOperationalEvent } from "../observability";
 import { ringCentralRequest } from "./client";
 import { vetRingCentralCallLogRecord } from "./call-log-vetting";
-import { resolveRingCentralInboundSourceFromCatalog } from "./call-lead-sources";
+import {
+  loadRingCentralRouteSnapshot,
+  recordRingCentralRouteObservation,
+} from "../operationsRegistry";
 import {
   getCallLogSyncState,
   recordCallLogSyncError,
@@ -77,23 +80,29 @@ export async function runRingCentralCallLogSync(
   };
 
   try {
+    const routeSnapshot = await loadRingCentralRouteSnapshot();
     const records = await fetchDetailedInboundCallLog(windowFrom, windowTo);
     summary.fetchedRecords = records.length;
 
     for (const record of records) {
-      const vet = vetRingCentralCallLogRecord(record);
-      const sourceFromCatalog = await resolveRingCentralInboundSourceFromCatalog(
-        vet.targetPhoneNumber,
-      );
-      const sourceCompany = sourceFromCatalog?.sourceCompany ?? vet.sourceCompany;
-      const sourceLabel = sourceFromCatalog?.sourceLabel ?? vet.sourceLabel;
-      const rejectionReasons = sourceFromCatalog
-        ? vet.rejectionReasons.filter((reason) => reason !== "target_number_not_matched")
-        : vet.rejectionReasons;
-      if (vet.matchedTargetNumber || sourceFromCatalog) {
+      const vet = vetRingCentralCallLogRecord(record, routeSnapshot);
+      if (vet.matchedTargetNumber) {
         summary.candidateRecords += 1;
+        if (vet.routeResolution) {
+          await recordRingCentralRouteObservation(
+            vet.routeResolution.route_id,
+            "call_log",
+            vet.startTime ?? now,
+            vet.targetName,
+          );
+        }
       }
-      if (rejectionReasons.length > 0 || !sourceCompany || !vet.callerPhoneNumber) {
+      if (
+        vet.rejectionReasons.length > 0 ||
+        !vet.sourceCompany ||
+        !vet.callerPhoneNumber ||
+        !vet.routeResolution
+      ) {
         continue;
       }
       summary.qualifiedRecords += 1;
@@ -104,8 +113,9 @@ export async function runRingCentralCallLogSync(
         sessionId: vet.sessionId,
         partyId: null,
         callLogId: vet.callLogId,
-        sourceCompany,
-        sourceLabel,
+        sourceCompany: vet.sourceCompany,
+        sourceLabel: vet.sourceLabel,
+        routeResolution: vet.routeResolution,
         callerPhoneNumber: vet.callerPhoneNumber,
         callerName: vet.callerName,
         targetPhoneNumber: vet.targetPhoneNumber ?? "",

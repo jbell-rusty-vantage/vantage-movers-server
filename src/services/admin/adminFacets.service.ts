@@ -1,6 +1,9 @@
 import type { AdminDatabaseScope } from "../../validation/v1.validation";
 import { listCatalogItems } from "../catalog";
-import { listLeadSourceCompanies } from "../leadSourceCompanies";
+import {
+  listSourceCompanies,
+  listSourceGranularities,
+} from "../operationsRegistry";
 import { getAdminModels, type ConcreteAdminScope } from "./adminScope.service";
 
 /**
@@ -43,20 +46,19 @@ export async function getAdminFacets(scope: AdminDatabaseScope): Promise<AdminFa
 }
 
 async function productionFacets(): Promise<AdminFacets> {
-  const [agents, merchants, sourceCompanies] = await Promise.all([
+  const [agents, merchants, sourceCompanies, sourceGranularities] = await Promise.all([
     listCatalogItems("agents"),
     listCatalogItems("merchants"),
-    listLeadSourceCompanies(),
+    listSourceCompanies(),
+    listSourceGranularities(),
   ]);
   return {
     agents: agents.map((item) => item.name),
     source_companies: sourceCompanies.map((company) => company.company_slug),
-    source_granularities: sourceCompanies.flatMap((company) =>
-      company.granularities.map((granularity) => granularity.granularity_key),
+    source_granularities: sourceGranularities.map(
+      (granularity) => granularity.granularity_key,
     ),
-    sources: sourceCompanies.flatMap((company) =>
-      company.granularities.map((granularity) => granularity.crm_label),
-    ),
+    sources: sourceGranularities.map((granularity) => granularity.crm_label),
     merchants: merchants.map((item) => item.name),
   };
 }

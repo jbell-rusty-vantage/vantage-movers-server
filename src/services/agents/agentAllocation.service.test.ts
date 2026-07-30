@@ -34,7 +34,12 @@ test("Best Relocation allocation resolves an existing inactive agent", async () 
     { includeInactive: true },
   );
 
-  assert.deepEqual(capture.filter, { normalized_name: "former agent" });
+  assert.deepEqual(capture.filter, {
+    $or: [
+      { normalized_name: "former agent" },
+      { name_aliases: "former agent" },
+    ],
+  });
   assert.equal(allocation.agent_name_snapshot, "Former Agent");
   assert.equal(allocation.binder_amount, 350);
 });

@@ -4,6 +4,10 @@ import mongoose from "mongoose";
 import { getMongoDatabaseName } from "../../config/domain";
 import { connectMongo } from "../../db";
 import { logger } from "../../logger";
+import {
+  listActiveRingCentralSnapshotNumbers,
+  loadRingCentralRouteSnapshot,
+} from "../operationsRegistry";
 
 const SUBSCRIPTIONS_COLLECTION = "ringcentral_webhook_subscriptions";
 export const LOCAL_SUBSCRIPTION_METADATA_PATH =
@@ -37,6 +41,24 @@ export type RingCentralSubscriptionStoreResult = {
 };
 
 let subscriptionIndexesReady: Promise<void> | null = null;
+
+const TELEPHONY_SESSIONS_FILTER =
+  "/restapi/v1.0/account/~/telephony/sessions";
+
+export async function buildRingCentralTelephonyEventFilters(
+  mode: "per-number" | "account" = "account",
+): Promise<string[]> {
+  if (mode === "account") {
+    return [`${TELEPHONY_SESSIONS_FILTER}?direction=Inbound`];
+  }
+  const snapshot = await loadRingCentralRouteSnapshot();
+  return listActiveRingCentralSnapshotNumbers(snapshot).map(
+    (phoneNumber) =>
+      `${TELEPHONY_SESSIONS_FILTER}?direction=Inbound&phoneNumber=${encodeURIComponent(
+        phoneNumber,
+      )}`,
+  );
+}
 
 export async function storeRingCentralWebhookSubscriptionMetadata(
   raw: unknown,

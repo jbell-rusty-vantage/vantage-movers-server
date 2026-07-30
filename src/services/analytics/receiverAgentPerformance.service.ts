@@ -1,15 +1,9 @@
 import mongoose, { type PipelineStage } from "mongoose";
-import {
-  getCallLeadSourceCompanyLabel,
-  getFormLeadSourceCompanyLabel,
-  normalizeSourceCompany,
-  type LocalType,
-  type SourceCompany,
-} from "../../config/domain";
 import type { AnalyticsQuery } from "../../validation/v1.validation";
 import type { AdminModels } from "../admin/adminScope.service";
 import {
   leadMatch,
+  normalizeSourceDimension,
   numberValue,
   rate,
   roundMoney,
@@ -129,8 +123,32 @@ async function leadRowsForType(
         },
         is_billable_received_lead:
           leadType === "FormLead"
-            ? { $ne: ["$duplicate", true] }
-            : { $ne: ["$created_on_unmatched", true] },
+            ? {
+                $and: [
+                  { $ne: ["$duplicate", true] },
+                  { $ne: ["$cpl_resolution_status", "missing_rate"] },
+                ],
+              }
+            : {
+                $and: [
+                  { $ne: ["$created_on_unmatched", true] },
+                  { $ne: ["$cpl_resolution_status", "missing_rate"] },
+                ],
+              },
+        is_unresolved_cpl:
+          leadType === "FormLead"
+            ? {
+                $and: [
+                  { $ne: ["$duplicate", true] },
+                  { $eq: ["$cpl_resolution_status", "missing_rate"] },
+                ],
+              }
+            : {
+                $and: [
+                  { $ne: ["$created_on_unmatched", true] },
+                  { $eq: ["$cpl_resolution_status", "missing_rate"] },
+                ],
+              },
         is_booked_received_lead: {
           $or: [
             { $ne: [{ $ifNull: ["$booked", null] }, null] },
@@ -151,6 +169,7 @@ async function leadRowsForType(
         _id: groupId(groupFields),
         received_leads: { $sum: 1 },
         billable_received_leads: { $sum: { $cond: ["$is_billable_received_lead", 1, 0] } },
+        unresolved_cpl_count: { $sum: { $cond: ["$is_unresolved_cpl", 1, 0] } },
         form_leads: { $sum: leadType === "FormLead" ? 1 : 0 },
         call_leads: { $sum: leadType === "CallLead" ? 1 : 0 },
         booked_leads: { $sum: { $cond: ["$is_booked_received_lead", 1, 0] } },
@@ -166,6 +185,7 @@ async function leadRowsForType(
         ...projectGroupFields(groupFields),
         received_leads: 1,
         billable_received_leads: 1,
+        unresolved_cpl_count: 1,
         form_leads: 1,
         call_leads: 1,
         booked_leads: 1,
@@ -268,54 +288,21 @@ function receiverLeadLookups(leadType: "FormLead" | "CallLead"): PipelineStage[]
 
 function sourceLabelExpression(leadType: "FormLead" | "CallLead") {
   return {
-    $switch: {
-      branches: [
-        ...sourceLabelBranches(leadType),
-      ],
-      default: leadType === "FormLead" ? "Main Site Forms" : "Main Site Inbounds",
-    },
-  };
-}
-
-function sourceLabelBranches(leadType: "FormLead" | "CallLead") {
-  const sourceCompanies: SourceCompany[] = [
-    "tbm_leads",
-    "tbm_prime_leads",
-    "top10_leads",
-    "best_relocation_leads",
-    "get_movers_leads",
-    "main_site",
-    "not_provided",
-  ];
-  return sourceCompanies.flatMap((sourceCompany) => {
-    if (leadType === "CallLead") {
-      return [{
-        case: { $eq: ["$source_company", sourceCompany] },
-        then: getCallLeadSourceCompanyLabel(sourceCompany),
-      }];
-    }
-    if (sourceCompany === "best_relocation_leads") {
-      return [
-        {
-          case: {
-            $and: [
-              { $eq: ["$source_company", sourceCompany] },
-              { $eq: ["$local", "local"] },
+    $ifNull: [
+      "$crm_source_label_snapshot",
+      {
+        $ifNull: [
+          "$source_granularity_label_snapshot",
+          {
+            $ifNull: [
+              "$source_company_label_snapshot",
+              { $ifNull: ["$source_company", leadType === "FormLead" ? "Unknown Form Source" : "Unknown Call Source"] },
             ],
           },
-          then: getFormLeadSourceCompanyLabel(sourceCompany, "local"),
-        },
-        {
-          case: { $eq: ["$source_company", sourceCompany] },
-          then: getFormLeadSourceCompanyLabel(sourceCompany, "long_distance"),
-        },
-      ];
-    }
-    return [{
-      case: { $eq: ["$source_company", sourceCompany] },
-      then: getFormLeadSourceCompanyLabel(sourceCompany),
-    }];
-  });
+        ],
+      },
+    ],
+  };
 }
 
 function groupId(fields: string[]): Record<string, string> {
@@ -339,6 +326,7 @@ function mergeReceiverRows(rows: AnalyticsRow[], keyFields: string[]): Analytics
     for (const field of [
       "received_leads",
       "billable_received_leads",
+      "unresolved_cpl_count",
       "form_leads",
       "call_leads",
       "booked_leads",
@@ -356,16 +344,9 @@ function normalizeSourceRow(row: AnalyticsRow): AnalyticsRow {
   if (typeof row.source_company !== "string") {
     return row;
   }
-  const sourceCompany = normalizeSourceCompany(row.source_company);
-  const leadType = row.lead_type;
-  const local = typeof row.local === "string" ? (row.local as LocalType) : undefined;
   return {
     ...row,
-    source_company: sourceCompany,
-    source_label:
-      leadType === "FormLead"
-        ? getFormLeadSourceCompanyLabel(sourceCompany as SourceCompany, local)
-        : getCallLeadSourceCompanyLabel(sourceCompany as SourceCompany),
+    source_company: normalizeSourceDimension(row.source_company),
   };
 }
 

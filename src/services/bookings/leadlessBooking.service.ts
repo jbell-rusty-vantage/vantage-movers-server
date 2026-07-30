@@ -4,7 +4,6 @@ import { BookedLead } from "../../models/BookedLead";
 import { deriveBookedLeadAgentAllocations, resolveAgentAllocations } from "../agents";
 import { resolveActiveMerchantName } from "../catalog";
 import { upsertCustomerFromBookingContact } from "../customers/customerFromLead.service";
-import { parseSourceCompany } from "../leads";
 import {
   finalizeSheetSync,
   persistSheetSyncIntent,
@@ -25,26 +24,27 @@ function leadlessBookingJob(bookingId: string): FullSheetSyncJob {
   };
 }
 
-async function resolveLeadlessBookingSource(sourceCompany: string): Promise<string> {
-  const legacySourceCompany = parseSourceCompany(sourceCompany);
+async function resolveLeadlessBookingSource(sourceCompany: string) {
   const { assignment } = await resolveLeadSourceAssignment({
     value: sourceCompany,
-    company_slug: legacySourceCompany,
     channel: "call",
   });
-  return (
-    assignment.crm_source_label_snapshot ??
-    assignment.source_granularity_label_snapshot ??
-    assignment.source_company_label_snapshot ??
-    assignment.source_company
-  );
+  return {
+    companySlug: assignment.source_company,
+    label:
+      assignment.crm_source_label_snapshot ??
+      assignment.source_granularity_label_snapshot ??
+      assignment.source_company_label_snapshot ??
+      assignment.source_company,
+  };
 }
 
 export async function createLeadlessBooking(input: CreateLeadlessBookingInput) {
   const jobNo = input.job_no.trim();
+  const resolvedSource = await resolveLeadlessBookingSource(input.source_company);
   const isBestRelocationImport = requireBestRelocationImportSource(
     input.ingestion_source,
-    parseSourceCompany(input.source_company),
+    resolvedSource.companySlug,
   );
   const existingBooking = await BookedLead.findOne({ job_no: jobNo }).select("_id").lean().exec();
   if (existingBooking) {
@@ -64,7 +64,7 @@ export async function createLeadlessBooking(input: CreateLeadlessBookingInput) {
   const depositAmount = input.deposit_amount;
   const customerName = input.customer_name?.trim() ?? "";
   const source =
-    input.source?.trim() || (await resolveLeadlessBookingSource(input.source_company));
+    input.source?.trim() || resolvedSource.label;
 
   const booking = await runSheetSyncWrite(async (session) => {
     const customer = customerName

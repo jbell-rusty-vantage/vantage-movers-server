@@ -24,7 +24,11 @@ import {
   type RingCentralQualifiedCall,
 } from "../services/ringcentral/ringcentral-call-lead-ingest.service";
 import type { NormalizedRingCentralPartyEvent } from "../services/ringcentral/call-candidate-types";
-import { resolveRingCentralInboundSourceFromCatalog } from "../services/ringcentral/call-lead-sources";
+import {
+  loadRingCentralRouteSnapshot,
+  recordRingCentralRouteObservation,
+  resolveRingCentralInboundRoute,
+} from "../services/operationsRegistry";
 import { listProcessedCalls } from "../services/ringcentral/processed-calls-store";
 import { recordOperationalEvent } from "../services/observability";
 import { normalizeRingCentralWebhookPayload } from "../services/ringcentral/webhook-event-normalizer";
@@ -383,22 +387,30 @@ async function processSessionsAndIngest(
 async function enrichRingCentralSourceEvents(
   events: NormalizedRingCentralPartyEvent[],
 ): Promise<NormalizedRingCentralPartyEvent[]> {
-  return Promise.all(
-    events.map(async (event) => {
-      const source = await resolveRingCentralInboundSourceFromCatalog(
-        event.normalizedToPhoneNumber ?? event.toPhoneNumber,
-      );
-      if (!source) {
-        return event;
-      }
-      return {
-        ...event,
-        targetMatched: true,
-        sourceCompany: source.sourceCompany,
-        sourceLabel: source.sourceLabel,
-      };
-    }),
-  );
+  const snapshot = await loadRingCentralRouteSnapshot();
+  return Promise.all(events.map(async (event) => {
+    const callStartedAt = event.callStartedAt;
+    if (!callStartedAt) return event;
+    const resolution = resolveRingCentralInboundRoute(
+      snapshot,
+      event.normalizedToPhoneNumber ?? event.toPhoneNumber,
+      callStartedAt,
+    );
+    if (!resolution) return event;
+    await recordRingCentralRouteObservation(
+      resolution.route_id,
+      "webhook",
+      event.receivedAt,
+      event.toName,
+    );
+    return {
+      ...event,
+      targetMatched: true,
+      sourceCompany: resolution.company_slug,
+      sourceLabel: resolution.crm_label_snapshot,
+      routeResolution: resolution,
+    };
+  }));
 }
 
 async function ingestSessionLead(
@@ -418,13 +430,14 @@ async function ingestSessionLead(
     callLogId: null,
     sourceCompany: preview.sourceCompany,
     sourceLabel: preview.sourceLabel,
+    routeResolution: preview.routeResolution,
     callerPhoneNumber: preview.callerPhoneNumber,
     callerName: preview.callerName,
     targetPhoneNumber: preview.targetPhoneNumber,
     targetName: preview.targetName,
     answeredAt: preview.answeredAt,
     terminalAt: preview.terminalAt,
-    startTime: preview.answeredAt,
+    startTime: document.callStartedAt ?? preview.answeredAt,
     durationSeconds: preview.estimatedDurationSeconds,
     qualificationReason: preview.qualificationReason,
   };

@@ -2,10 +2,14 @@ import type {
   CandidateDecision,
   RingCentralCallCandidateDocument,
 } from "./call-candidate-types";
+import {
+  CALL_LEAD_MINIMUM_ANSWERED_SECONDS,
+  qualifyRingCentralCall,
+} from "./call-qualification";
 
 // Webhook-only, best-effort candidate decisions for local validation.
 // This intentionally does not create real call leads or call RingCentral Call Log.
-export const CALL_LEAD_MINIMUM_ANSWERED_SECONDS = 120;
+export { CALL_LEAD_MINIMUM_ANSWERED_SECONDS } from "./call-qualification";
 
 export function isLikelyTerminalRingCentralStatus(
   statusCode: string | null | undefined,
@@ -34,7 +38,12 @@ export function evaluateRingCentralCallCandidate(
     return reject("not_inbound");
   }
 
-  if (!candidate.targetMatched || !candidate.sourceCompany || !candidate.sourceLabel) {
+  if (
+    !candidate.targetMatched ||
+    !candidate.sourceCompany ||
+    !candidate.sourceLabel ||
+    !candidate.routeResolution
+  ) {
     return reject("target_number_not_matched");
   }
 
@@ -84,6 +93,17 @@ export function evaluateRingCentralCallCandidate(
     };
   }
 
+  const sharedQualification = qualifyRingCentralCall({
+    direction: candidate.direction,
+    routeResolution: candidate.routeResolution,
+    answered: candidate.answered,
+    durationSeconds: estimatedDurationSeconds,
+    callerPhoneNumber: candidate.normalizedFromPhoneNumber,
+  });
+  if (!sharedQualification.qualifies) {
+    return reject(sharedQualification.rejectionReasons[0] ?? "not_qualified");
+  }
+
   return {
     wouldCreateCallLead: true,
     decisionStatus: "qualified",
@@ -94,6 +114,7 @@ export function evaluateRingCentralCallCandidate(
       provider: "ringcentral",
       sourceCompany: candidate.sourceCompany,
       sourceLabel: candidate.sourceLabel,
+      routeResolution: candidate.routeResolution,
       callerPhoneNumber: candidate.normalizedFromPhoneNumber,
       callerName: candidate.fromName,
       targetPhoneNumber:

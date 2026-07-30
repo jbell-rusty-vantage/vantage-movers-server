@@ -1,12 +1,11 @@
+import mongoose from "mongoose";
 import {
-  getCplForSource,
   getSheetSyncMode,
   isTestMode,
   shouldAllowLeadMessagingInTestMode,
   type LocalType,
   type SourceCompany,
 } from "../../config/domain";
-import { Agent } from "../../models/Agent";
 import { getFormLeadModel } from "../../models/FormLead";
 import { logger } from "../../logger";
 import { toFloridaTimestamp } from "../../utils/easternTime";
@@ -43,13 +42,18 @@ import {
   normalizeState,
   resolveRequiredLocation,
 } from "./leadLocation.service";
-import { parseSourceCompany, resolveLeadSourceAssignment } from "./leadSourceCompany";
+import { resolveLeadSourceAssignment } from "./leadSourceCompany";
 import {
   findDuplicateFormLeadMatch,
   markMatchingCallLeadsWithFormFill,
 } from "./duplicateLead.service";
 import { normalizeLeadName, normalizeLeadNameUpdate } from "./leadName.service";
+import {
+  recordMissingLeadCplRate,
+  resolveLeadCplSnapshot,
+} from "./leadCplResolution";
 import { recordOperationalEvent } from "../observability";
+import { getRegistryAgent, isRegistryError } from "../operationsRegistry";
 import {
   dispatchPersistedLeadMessage,
   persistLeadMessageIntent,
@@ -98,7 +102,14 @@ export async function createFormLead(input: CreateFormLeadInput) {
   );
   const duplicate = duplicateMatch.duplicate;
   const shouldPostToGranot = post_to_granot && !duplicate;
-  const crmLabel = sourceResolution.granularity.crm_label;
+  const crmLabel = sourceResolution.crm_label_snapshot;
+  const leadTimestamp = toFloridaTimestamp(normalizedFormLeadInput.timestamp);
+  const cplSnapshot = await resolveLeadCplSnapshot({
+    sourceGranularityId: sourceAssignment.source_granularity_id
+      ? String(sourceAssignment.source_granularity_id)
+      : null,
+    storedBusinessTimestamp: leadTimestamp,
+  });
   const messagingAllowedInRuntime =
     !isTestMode() || shouldAllowLeadMessagingInTestMode();
 
@@ -115,9 +126,9 @@ export async function createFormLead(input: CreateFormLeadInput) {
       local,
       lid,
       ref_no: normalizedFormLeadInput.ref_no?.trim() || "not provided",
-      timestamp: toFloridaTimestamp(normalizedFormLeadInput.timestamp),
+      timestamp: leadTimestamp,
       move_date: normalizedFormLeadInput.move_date ?? new Date(),
-      cpl: sourceResolution.granularity.cpl,
+      ...cplSnapshot,
       duplicate,
       post_to_granot: shouldPostToGranot,
     });
@@ -161,6 +172,18 @@ export async function createFormLead(input: CreateFormLeadInput) {
   );
 
   const leadId = lead._id.toString();
+
+  if (lead.cpl_resolution_status === "missing_rate") {
+    await recordMissingLeadCplRate({
+      leadModel: "FormLead",
+      leadId,
+      sourceCompany: source_company,
+      sourceGranularityId: sourceAssignment.source_granularity_id
+        ? String(sourceAssignment.source_granularity_id)
+        : null,
+      sourceGranularityKey: sourceAssignment.source_granularity_key,
+    });
+  }
 
   if (sms_consent !== undefined) {
     logger.info({
@@ -414,18 +437,32 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
     });
     Object.assign(lead, sourceResolutionForUpdate.assignment);
   }
-  lead.cpl =
-    sourceResolutionForUpdate?.resolution.granularity.cpl ??
-    (await getCplForSource(lead.source_company as SourceCompany, "form", lead.local as LocalType));
+  if (
+    sourceResolutionForUpdate !== undefined ||
+    hasOwnInput(input, "timestamp")
+  ) {
+    Object.assign(
+      lead,
+      await resolveLeadCplSnapshot({
+        sourceGranularityId: lead.source_granularity_id
+          ? String(lead.source_granularity_id)
+          : null,
+        storedBusinessTimestamp: lead.timestamp,
+      }),
+    );
+  }
 
   if (input.receiver_agent !== undefined) {
-    const agent = await Agent.findById(input.receiver_agent);
-    if (!agent) {
+    let agent: Awaited<ReturnType<typeof getRegistryAgent>>;
+    try {
+      agent = await getRegistryAgent(input.receiver_agent);
+    } catch (error) {
+      if (!isRegistryError(error)) throw error;
       throw new NotFoundError("Agent not found", {
         metadata: { resource: "agent", id: input.receiver_agent },
       });
     }
-    lead.receiver_agent = agent._id;
+    lead.receiver_agent = new mongoose.Types.ObjectId(agent.id);
     lead.receiver_agent_name_snapshot = agent.name;
     lead.receiver_agent_source = input.receiver_agent_source ?? "manual";
     lead.receiver_agent_source_value = input.receiver_agent_source_value;
@@ -444,6 +481,17 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
     return refreshJob;
   });
   await finalizeSheetSync(job);
+  if (lead.cpl_resolution_status === "missing_rate") {
+    await recordMissingLeadCplRate({
+      leadModel: "FormLead",
+      leadId: lead._id.toString(),
+      sourceCompany: lead.source_company as SourceCompany,
+      sourceGranularityId: lead.source_granularity_id
+        ? String(lead.source_granularity_id)
+        : null,
+      sourceGranularityKey: lead.source_granularity_key,
+    });
+  }
   return lead;
 }
 

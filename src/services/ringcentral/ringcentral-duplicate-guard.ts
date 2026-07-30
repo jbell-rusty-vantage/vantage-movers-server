@@ -1,7 +1,7 @@
 import { CallLead } from "../../models/CallLead";
 import { toFloridaTimestamp } from "../../utils/easternTime";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
-import type { SourceCompany } from "./call-lead-sources";
+import type { SourceCompany } from "../../config/domain";
 
 export const RINGCENTRAL_CALL_LEAD_DUPLICATE_WINDOW_DAYS = 90;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;

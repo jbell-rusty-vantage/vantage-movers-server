@@ -147,6 +147,12 @@ export async function getLeadSourceCompany(id: string): Promise<LeadSourceCompan
 export async function createLeadSourceCompany(
   input: LeadSourceCompanyInput,
 ): Promise<LeadSourceCompanyItem> {
+  if (input.granularities !== undefined) {
+    throw new V1ServiceError(
+      "Embedded granularities are read-only. Use /api/v1/admin/source-granularities.",
+      400,
+    );
+  }
   const Model = getLeadSourceCompanyModel();
   try {
     const doc = await Model.create(normalizeCompanyInput(input));
@@ -166,15 +172,17 @@ export async function updateLeadSourceCompany(
   id: string,
   input: Partial<LeadSourceCompanyInput>,
 ): Promise<LeadSourceCompanyItem> {
+  if (input.granularities !== undefined) {
+    throw new V1ServiceError(
+      "Embedded granularities are read-only. Use /api/v1/admin/source-granularities.",
+      400,
+    );
+  }
   const Model = getLeadSourceCompanyModel();
   const update: Record<string, unknown> = {};
   if (input.name !== undefined) update.name = canonicalLabel(input.name);
   if (input.owner_label !== undefined) update.owner_label = canonicalLabel(input.owner_label);
   if (input.aliases !== undefined) update.aliases = normalizeStringList(input.aliases);
-  if (input.active !== undefined) {
-    update.active = input.active;
-    update.archived_at = input.active ? undefined : new Date();
-  }
   if (input.default_form_granularity_key !== undefined) {
     update.default_form_granularity_key = normalizeKey(input.default_form_granularity_key);
   }
@@ -186,9 +194,6 @@ export async function updateLeadSourceCompany(
       spreadsheet_id: optionalTrim(input.sheet_config.spreadsheet_id),
       has_bad_tabs: input.sheet_config.has_bad_tabs === true,
     };
-  }
-  if (input.granularities !== undefined) {
-    update.granularities = input.granularities.map(normalizeGranularityInput);
   }
 
   try {

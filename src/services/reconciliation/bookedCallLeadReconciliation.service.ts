@@ -1,9 +1,5 @@
 import mongoose, { type HydratedDocument } from "mongoose";
-import {
-  getCplForSource,
-  type LocalType,
-  type SourceCompany,
-} from "../../config/domain";
+import type { SourceCompany } from "../../config/domain";
 import { BookedLead, type BookedLeadDocument } from "../../models/BookedLead";
 import { CallLead, type CallLeadDocument } from "../../models/CallLead";
 import { Customer } from "../../models/Customer";
@@ -27,6 +23,7 @@ import {
   applyGranotCrmUsernameReceiverMatch,
   type ReceiverAgentCrmUsernameMatchResult,
 } from "../agents/receiverAgentCrmUsername";
+import { resolveLeadCplSnapshot } from "../leads/leadCplResolution";
 
 export type BookedCallLeadReconciliationStatus =
   | "updateable"
@@ -119,13 +116,15 @@ export async function syncBookedCallLeadReconciliation(
       const leadChanged = Boolean(resolved.leadUpdate) || Boolean(receiverMatch?.changed);
       if (resolved.leadUpdate) {
         Object.assign(resolved.lead, resolved.leadUpdate);
-        resolved.lead.cpl =
-          resolved.result.parsed?.source_cpl ??
-          (await getCplForSource(
-            resolved.lead.source_company as SourceCompany,
-            "call",
-            resolved.lead.local as LocalType | undefined,
-          ));
+        Object.assign(
+          resolved.lead,
+          await resolveLeadCplSnapshot({
+            sourceGranularityId: resolved.lead.source_granularity_id
+              ? String(resolved.lead.source_granularity_id)
+              : null,
+            storedBusinessTimestamp: resolved.lead.timestamp,
+          }),
+        );
       }
       if (leadChanged) {
         await resolved.lead.save();

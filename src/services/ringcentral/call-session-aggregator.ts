@@ -83,6 +83,11 @@ export function aggregateRingCentralCallSession(
     firstSeenAt: canonical.firstSeenAt,
     lastSeenAt: canonical.lastSeenAt,
     lastEventTime: canonical.lastEventTime,
+    callStartedAt: earliestDate(
+      parties
+        .map((party) => party.callStartedAt ?? null)
+        .filter((value): value is Date => value instanceof Date),
+    ),
     lastSequence: canonical.lastSequence,
     direction: canonical.direction,
     statusCode: canonical.statusCode,
@@ -105,6 +110,7 @@ export function aggregateRingCentralCallSession(
     targetMatched,
     sourceLabel: targetMatchedParty.sourceLabel,
     sourceCompany: targetMatchedParty.sourceCompany,
+    routeResolution: targetMatchedParty.routeResolution,
     answered,
     answeredAt,
     terminal,
@@ -130,6 +136,7 @@ export function aggregateRingCentralCallSession(
     partyCount: parties.length,
     firstSeenAt: earliestDate(parties.map((party) => party.firstSeenAt)) ?? canonical.firstSeenAt,
     lastSeenAt: latestDate(parties.map((party) => party.lastSeenAt)) ?? canonical.lastSeenAt,
+    callStartedAt: syntheticCandidate.callStartedAt,
     direction: canonical.direction,
     statusCode: canonical.statusCode,
     queueCall: syntheticCandidate.queueCall,
@@ -137,6 +144,7 @@ export function aggregateRingCentralCallSession(
     targetMatched,
     sourceLabel: targetMatchedParty.sourceLabel,
     sourceCompany: targetMatchedParty.sourceCompany,
+    routeResolution: targetMatchedParty.routeResolution,
     fromPhoneNumber: syntheticCandidate.fromPhoneNumber,
     normalizedFromPhoneNumber: syntheticCandidate.normalizedFromPhoneNumber,
     fromName: syntheticCandidate.fromName,

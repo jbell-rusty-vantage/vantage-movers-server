@@ -7,6 +7,19 @@ const AgentSchema = new Schema(
     active: { type: Boolean, required: true, default: true },
     role: { type: String, required: true, trim: true, default: "agent" },
     created_from: { type: String, required: true, trim: true, default: "booked_lead" },
+    name_aliases: { type: [String], default: [] },
+    archived_at: { type: Date },
+    deactivation_reason: { type: String, trim: true },
+    granot_identity: {
+      username: {
+        type: String,
+        trim: true,
+        uppercase: true,
+      },
+      verified: { type: Boolean, required: true, default: false },
+      verified_at: { type: Date },
+      last_observed_at: { type: Date },
+    },
     // Granot CRM `user`/`rep` column login (e.g. "MIKEM", "JACOB").
     granot_crm_username: {
       type: String,
@@ -23,6 +36,16 @@ const AgentSchema = new Schema(
     toObject: { virtuals: true },
   },
 );
+
+AgentSchema.index(
+  { "granot_identity.username": 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: { "granot_identity.username": { $type: "string" } },
+  },
+);
+AgentSchema.index({ name_aliases: 1 });
 
 // Query-time-only reverse relationships (virtual populate, never persisted)
 // from the lead side's `receiver_agent` ref. Kept as two virtuals rather than

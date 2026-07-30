@@ -116,6 +116,11 @@ Special merge shapes: `summary` → `{ totals }`, `booking-cancellation-ratio` �
 
 **Lead source performance** — groups booked leads by booking `source` field (marketing label), not `derived_source_company`.
 
+**Receiver-Agent source breakdown** — uses persisted registry source-company
+and granularity/CRM label snapshots. Owner-created Source Companies are kept as
+their canonical dynamic slug/label and are never remapped to the legacy Main
+Site fallback.
+
 **Lead cost** (`leadCost.service.ts`) — **overview only**, production all-time / last-7-days. Sums **CPL** on billable leads: Form Leads exclude Duplicate Leads; Call Leads exclude **Unmatched Call Leads** (`created_on_unmatched: true`).
 
 **CPL config lag:** Stored CPL at ingestion may not reflect full Source Company + Lead Channel + Move Type granularity (see [`form-lead.service.md`](form-lead.service.md)).

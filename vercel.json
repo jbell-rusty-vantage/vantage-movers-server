@@ -47,6 +47,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/cpl-corrections-drain",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/notifications-digest-daily",
       "schedule": "0 12 * * *"
     }

@@ -1,11 +1,8 @@
 import { logger } from "../../logger";
-import { resolveLeadSource } from "../leadSourceCompanies";
 import { recordOperationalEvent } from "../observability";
 import { createRingCentralCallLead } from "../leads/callLead.service";
-import {
-  resolveRingCentralInboundSourceFromCatalog,
-  type SourceCompany,
-} from "./call-lead-sources";
+import type { RingCentralRouteResolution } from "../operationsRegistry";
+import type { SourceCompany } from "../../config/domain";
 import { classifyRingCentralCallLeadDuplicate } from "./ringcentral-duplicate-guard";
 import { resolveRingCentralLeadWriteMode } from "./ringcentral-config";
 import {
@@ -28,8 +25,9 @@ export type RingCentralQualifiedCall = {
   sessionId: string | null;
   partyId: string | null;
   callLogId: string | null;
-  sourceCompany: SourceCompany;
+  sourceCompany: string;
   sourceLabel: string | null;
+  routeResolution: RingCentralRouteResolution;
   callerPhoneNumber: string;
   callerName: string | null;
   targetPhoneNumber: string;
@@ -74,17 +72,6 @@ export async function ingestRingCentralQualifiedCall(
   call: RingCentralQualifiedCall,
   now: Date = new Date(),
 ): Promise<RingCentralIngestResult> {
-  const catalogSource = await resolveRingCentralInboundSourceFromCatalog(
-    call.targetPhoneNumber,
-  );
-  if (catalogSource) {
-    call = {
-      ...call,
-      sourceCompany: catalogSource.sourceCompany,
-      sourceLabel: catalogSource.sourceLabel,
-    };
-  }
-
   const existing = await findProcessedCall({
     telephonySessionId: call.telephonySessionId,
     callLogId: call.callLogId,
@@ -109,7 +96,7 @@ export async function ingestRingCentralQualifiedCall(
       category: "ringcentral",
       workflow: "ringcentral_call_lead_ingest",
       summary: "RingCentral call already processed; ingest skipped.",
-      sourceCompany: call.sourceCompany,
+      sourceCompany: call.sourceCompany as SourceCompany,
       entity: existing.callLeadId
         ? { type: "call_lead", id: existing.callLeadId }
         : undefined,
@@ -133,15 +120,9 @@ export async function ingestRingCentralQualifiedCall(
   }
 
   const callTimestamp = call.startTime ?? call.answeredAt ?? now;
-  const resolvedSource = await resolveLeadSource({
-    channel: "call",
-    value: call.sourceLabel ?? call.sourceCompany,
-    company_slug: call.sourceCompany,
-    inbound_phone_number: call.targetPhoneNumber,
-  });
   const duplicate = await classifyRingCentralCallLeadDuplicate({
-    sourceCompany: call.sourceCompany,
-    leadSourceCompany: resolvedSource.company.id,
+    sourceCompany: call.sourceCompany as SourceCompany,
+    leadSourceCompany: call.routeResolution.company_id,
     callerPhoneNumber: call.callerPhoneNumber,
     telephonySessionId: call.telephonySessionId,
     callTimestamp,
@@ -154,7 +135,8 @@ export async function ingestRingCentralQualifiedCall(
 
   if (writeMode === "create") {
     const lead = await createRingCentralCallLead({
-      source_company: call.sourceCompany,
+      source_company: call.sourceCompany as SourceCompany,
+      source_resolution: call.routeResolution,
       phone_number: call.callerPhoneNumber,
       duration: call.durationSeconds,
       start_time: call.answeredAt ?? call.startTime,
@@ -172,6 +154,9 @@ export async function ingestRingCentralQualifiedCall(
         answered_at: call.answeredAt,
         terminal_at: call.terminalAt,
         duration_seconds: call.durationSeconds,
+        route_id: call.routeResolution.route_id,
+        route_assignment_id: call.routeResolution.assignment_id,
+        target_phone_number: call.routeResolution.normalized_target_number,
       },
     });
     callLeadId = lead._id.toString();
@@ -183,7 +168,7 @@ export async function ingestRingCentralQualifiedCall(
       sessionId: call.sessionId,
       callLogId: call.callLogId,
       ingestionSource: call.ingestionSource,
-      sourceCompany: call.sourceCompany,
+      sourceCompany: call.sourceCompany as SourceCompany,
       sourceLabel: call.sourceLabel,
       callerPhoneNumber: call.callerPhoneNumber,
       callerName: call.callerName,
@@ -211,7 +196,7 @@ export async function ingestRingCentralQualifiedCall(
     status,
     duplicate: duplicate.isDuplicate,
     duplicateReason: duplicate.reason,
-    sourceCompany: call.sourceCompany,
+    sourceCompany: call.sourceCompany as SourceCompany,
     sourceLabel: call.sourceLabel,
     callerPhoneNumber: call.callerPhoneNumber,
     durationSeconds: call.durationSeconds,

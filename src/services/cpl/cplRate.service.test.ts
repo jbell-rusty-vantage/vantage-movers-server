@@ -1,22 +1,16 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { CallLead } from "../../models/CallLead";
 import { CplRate } from "../../models/CplRate";
-import { FormLead } from "../../models/FormLead";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import {
   invalidateCplRateCache,
   listCplRates,
-  updateCplRate,
 } from "./cplRate.service";
 
 type MutableModel = Record<string, unknown>;
 
 const originalCplRateFind = CplRate.find as unknown;
 const originalCplRateUpdateOne = CplRate.updateOne as unknown;
-const originalCplRateFindOneAndUpdate = CplRate.findOneAndUpdate as unknown;
-const originalFormLeadUpdateMany = FormLead.updateMany as unknown;
-const originalCallLeadUpdateMany = CallLead.updateMany as unknown;
 const leadSourceCompanyModel = getLeadSourceCompanyModel();
 const originalLeadSourceCompanyFind = leadSourceCompanyModel.find as unknown;
 const originalLeadSourceCompanyUpdateOne = leadSourceCompanyModel.updateOne as unknown;
@@ -24,9 +18,6 @@ const originalLeadSourceCompanyUpdateOne = leadSourceCompanyModel.updateOne as u
 afterEach(() => {
   (CplRate as unknown as MutableModel).find = originalCplRateFind;
   (CplRate as unknown as MutableModel).updateOne = originalCplRateUpdateOne;
-  (CplRate as unknown as MutableModel).findOneAndUpdate = originalCplRateFindOneAndUpdate;
-  (FormLead as unknown as MutableModel).updateMany = originalFormLeadUpdateMany;
-  (CallLead as unknown as MutableModel).updateMany = originalCallLeadUpdateMany;
   (leadSourceCompanyModel as unknown as MutableModel).find = originalLeadSourceCompanyFind;
   (leadSourceCompanyModel as unknown as MutableModel).updateOne = originalLeadSourceCompanyUpdateOne;
   invalidateCplRateCache();
@@ -59,78 +50,6 @@ function stubEmptyLeadSourceCompanyCatalog() {
     throw new Error("lead source company catalog should not be seeded in CPL rate tests");
   };
 }
-
-test("updateCplRate rejects an unknown label without touching the database", async () => {
-  stubEmptyLeadSourceCompanyCatalog();
-  (CplRate as unknown as MutableModel).findOneAndUpdate = () => {
-    throw new Error("findOneAndUpdate should not be called for an unknown label");
-  };
-
-  await assert.rejects(
-    () => updateCplRate("Not A Real Label", 100),
-    /Unknown CPL rate label: Not A Real Label/,
-  );
-});
-
-test("updateCplRate backfills only matching-local form leads for Best Relocation Forms", async () => {
-  stubEmptyLeadSourceCompanyCatalog();
-  (CplRate as unknown as MutableModel).findOneAndUpdate = () =>
-    chain({ cpl: 210, createdAt: undefined, updatedAt: undefined });
-
-  const capturedFilters: Record<string, unknown>[] = [];
-  (FormLead as unknown as MutableModel).updateMany = (filter: Record<string, unknown>) => {
-    capturedFilters.push(filter);
-    return { exec: async () => ({ modifiedCount: 7 }) };
-  };
-
-  const result = await updateCplRate("Best Relocation Forms", 210);
-
-  assert.equal(result.leads_updated, 7);
-  assert.deepEqual(capturedFilters[0], {
-    source_company: "best_relocation_leads",
-    duplicate: { $ne: true },
-    local: "long_distance",
-  });
-});
-
-test("updateCplRate backfills call leads without a local filter", async () => {
-  stubEmptyLeadSourceCompanyCatalog();
-  (CplRate as unknown as MutableModel).findOneAndUpdate = () =>
-    chain({ cpl: 175, createdAt: undefined, updatedAt: undefined });
-
-  const capturedFilters: Record<string, unknown>[] = [];
-  (CallLead as unknown as MutableModel).updateMany = (filter: Record<string, unknown>) => {
-    capturedFilters.push(filter);
-    return { exec: async () => ({ modifiedCount: 3 }) };
-  };
-
-  const result = await updateCplRate("Best Relocation Inbounds", 175);
-
-  assert.equal(result.leads_updated, 3);
-  assert.deepEqual(capturedFilters[0], {
-    source_company: "best_relocation_leads",
-    duplicate: { $ne: true },
-  });
-});
-
-test("updateCplRate excludes duplicate leads from the backfill filter", async () => {
-  stubEmptyLeadSourceCompanyCatalog();
-  (CplRate as unknown as MutableModel).findOneAndUpdate = () =>
-    chain({ cpl: 200, createdAt: undefined, updatedAt: undefined });
-
-  let capturedFilter: Record<string, unknown> | undefined;
-  (FormLead as unknown as MutableModel).updateMany = (filter: Record<string, unknown>) => {
-    capturedFilter = filter;
-    return { exec: async () => ({ modifiedCount: 0 }) };
-  };
-
-  await updateCplRate("TBM Forms", 200);
-
-  assert.equal(capturedFilter?.duplicate && typeof capturedFilter.duplicate === "object", true);
-  assert.deepEqual(capturedFilter?.duplicate, { $ne: true });
-  // Non-best-relocation form slots never filter by `local`.
-  assert.equal("local" in (capturedFilter ?? {}), false);
-});
 
 test("listCplRates seeds any missing slots and returns all 13 rates", async () => {
   stubEmptyLeadSourceCompanyCatalog();

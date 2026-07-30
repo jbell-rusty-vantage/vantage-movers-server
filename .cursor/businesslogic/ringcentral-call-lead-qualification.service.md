@@ -20,12 +20,12 @@ A call qualifies when **all** are true:
 | Criterion | Webhook (`call-candidate-evaluator`) | Cron (`call-log-vetting.ts`) |
 |-----------|--------------------------------------|------------------------------|
 | Direction | `Inbound` | `Inbound` |
-| Target toll-free | `to.phoneNumber` matches `RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE` | Same — scan record + legs |
+| Target route | `to.phoneNumber` resolves in the cached Operations Registry snapshot at call start | Same — scan record + legs against one run snapshot |
 | Answered | Party/session `answered` with `answeredAt` | `result` in answered set (`Accepted`, `Completed`, `Connected`, …) |
 | Duration | `answeredAt` → `terminalAt` (or `now` if still live) ≥ 120s | `duration` / `durationMs` / leg max ≥ 120s |
 | Caller phone | Normalized `from` present | Caller from inbound leg / record `from` |
 
-**Inbound mapping:** `call-lead-sources.ts` — four toll-frees → `sourceLabel` + **Source Company** (`main_site`, `top10_leads`, `tbm_leads`, `tbm_prime_leads`). Filter in code after account-wide webhook subscription (queue/IVR legs may use non-toll-free `to` numbers).
+**Inbound mapping:** `ringcentral_inbound_routes` plus effective-dated `ringcentral_inbound_route_assignments`. The webhook uses the shared cached snapshot; each Call Log run loads one immutable snapshot. `call-lead-sources.ts` is M5 migration/test seed data only.
 
 **Party semantics:** On inbound candidate events, `from` = customer caller, `to` = RingCentral number/queue. Telephony sessions have multiple parties — qualify on **party direction** and aggregate at session level for webhooks.
 
@@ -174,7 +174,7 @@ Duplicate Call Leads still persist and **Sheet Sync** to `Duplicate Calls` tab (
 - Never create Ring Central Call Leads outside `ingestRingCentralQualifiedCall` (**Call Lead Ingestion** gate).
 - Never bypass `evaluateRingCentralCallCandidate` / `vetRingCentralCallLogRecord` for the 120s **Call Qualification** rule.
 - Webhook ingest requires **qualified + terminal** session; cron ingest uses finalized Call Log duration.
-- Target-number gating always uses `resolveRingCentralInboundSource` — do not hardcode Source Companies in routes.
+- Target-number gating always uses `resolveRingCentralInboundRoute(snapshot, phone, callStartedAt)`. There is no static fallback.
 - **Analytics** reconcile (`analytics-reconcile.service.ts`) is count-level comparison only — **must not** create Call Leads.
 - RingCentral Mongo collections use `_test` suffix unless `RINGCENTRAL_COLLECTION_MODE=production`.
 

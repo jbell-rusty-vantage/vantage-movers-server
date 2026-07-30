@@ -1,4 +1,10 @@
-import { Agent, type AgentDocument } from "../../models/Agent";
+import {
+  normalizeGranotCrmUsername,
+  resolveAgentByGranotUsername,
+  type RegistryCatalogItem,
+} from "../operationsRegistry";
+
+export { normalizeGranotCrmUsername };
 
 export const CRM_USERNAME_RECEIVER_SOURCE = "extension_crm_username_match" as const;
 
@@ -36,19 +42,11 @@ type ReceiverAgentLead = {
   receiver_agent_set_at?: Date | null;
 };
 
-export function normalizeGranotCrmUsername(value: string | null | undefined): string | undefined {
-  const normalized = value?.trim().toUpperCase();
-  return normalized || undefined;
-}
-
 export async function findAgentByGranotCrmUsername(
   value: string | null | undefined,
-): Promise<AgentDocument | undefined> {
-  const username = normalizeGranotCrmUsername(value);
-  if (!username) {
-    return undefined;
-  }
-  return (await Agent.findOne({ granot_crm_username: username }).exec()) ?? undefined;
+  options: { includeInactive?: boolean } = {},
+): Promise<RegistryCatalogItem | undefined> {
+  return resolveAgentByGranotUsername(value, options);
 }
 
 export async function applyGranotCrmUsernameReceiverMatch(
@@ -74,7 +72,7 @@ export async function applyGranotCrmUsernameReceiverMatch(
     };
   }
 
-  lead.receiver_agent = agent._id;
+  lead.receiver_agent = agent.id;
   lead.receiver_agent_name_snapshot = agent.name;
   lead.receiver_agent_source = CRM_USERNAME_RECEIVER_SOURCE;
   lead.receiver_agent_source_value = username;
@@ -85,7 +83,7 @@ export async function applyGranotCrmUsernameReceiverMatch(
     status: "matched",
     changed: true,
     username,
-    agentId: agent._id.toString(),
+    agentId: agent.id,
     agentName: agent.name,
     active: agent.active,
     message: `Matched ${activeLabel} Agent "${agent.name}" by CRM username ${username}.`,

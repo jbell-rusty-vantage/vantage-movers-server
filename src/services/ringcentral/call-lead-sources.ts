@@ -2,12 +2,15 @@ import {
   SOURCE_LABEL_TO_COMPANY,
   type SourceCompany,
 } from "../../config/domain/sources";
-import { resolveLeadSource } from "../leadSourceCompanies";
 import { normalizePhoneNumberToE164Like } from "./phone-normalization";
 
 export { SOURCE_COMPANIES, SOURCE_LABEL_TO_COMPANY } from "../../config/domain/sources";
 export type { SourceCompany } from "../../config/domain/sources";
 
+/**
+ * Legacy seed manifest for M5 migration and deterministic fixtures only.
+ * Production routing must use the Operations Registry snapshot resolver.
+ */
 export const RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE = {
   "+18883164387": {
     sourceLabel: "10best Inbounds",
@@ -43,41 +46,7 @@ export type RingCentralInboundSource =
     sourceCompany: SourceCompany;
   };
 
-export const RINGCENTRAL_TELEPHONY_SESSIONS_BASE_FILTER =
-  "/restapi/v1.0/account/~/telephony/sessions";
-
-/**
- * Builds the RingCentral subscription event filters for inbound calls.
- *
- * - `account` (default, recommended): a single account-wide inbound filter.
- *   Queue-routed RingCentral calls can move through IVR/queue/agent legs whose
- *   `to.phoneNumber` differs from the original toll-free, so we subscribe
- *   broadly and filter target numbers in code.
- * - `per-number`: one narrow filter per mapped toll-free. RingCentral accepts
- *   `phoneNumber`, but local testing showed these filters can miss routed
- *   inbound traffic even while the subscription remains Active.
- *
- * Queue name is NOT a valid filter key; queue signal stays in the party
- * payload (`to.name`, `uiCallInfo`, `queueCall`) and must be filtered locally.
- *
- * Recreate the subscription after changing this (RingCentral does not always
- * patch filters in place) via `pnpm ringcentral:webhook:create`.
- */
-export function buildRingCentralTelephonyEventFilters(
-  mode: "per-number" | "account" = "account",
-): string[] {
-  if (mode === "account") {
-    return [`${RINGCENTRAL_TELEPHONY_SESSIONS_BASE_FILTER}?direction=Inbound`];
-  }
-
-  return Object.keys(RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE).map(
-    (phoneNumber) =>
-      `${RINGCENTRAL_TELEPHONY_SESSIONS_BASE_FILTER}?direction=Inbound&phoneNumber=${encodeURIComponent(
-        phoneNumber,
-      )}`,
-  );
-}
-
+/** @deprecated Migration/test fixture helper; never use for runtime routing. */
 export function resolveRingCentralInboundSource(
   phoneNumber: string | null | undefined,
 ): RingCentralInboundSource | null {
@@ -91,29 +60,6 @@ export function resolveRingCentralInboundSource(
   }
 
   return RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE[normalizedPhoneNumber];
-}
-
-export async function resolveRingCentralInboundSourceFromCatalog(
-  phoneNumber: string | null | undefined,
-): Promise<RingCentralInboundSource | null> {
-  const normalizedPhoneNumber = normalizePhoneNumberToE164Like(phoneNumber);
-  if (!normalizedPhoneNumber) {
-    return null;
-  }
-
-  try {
-    const resolution = await resolveLeadSource({
-      channel: "call",
-      inbound_phone_number: normalizedPhoneNumber,
-      requireActive: true,
-    });
-    return {
-      sourceLabel: resolution.granularity.crm_label,
-      sourceCompany: resolution.company.company_slug as SourceCompany,
-    };
-  } catch {
-    return resolveRingCentralInboundSource(normalizedPhoneNumber);
-  }
 }
 
 function isRingCentralInboundNumber(

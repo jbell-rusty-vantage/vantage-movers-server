@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import mongoose from "mongoose";
 import { Agent } from "../../models/Agent";
-import { applyGranotCrmUsernameReceiverMatch } from "./receiverAgentCrmUsername";
+import { Merchant } from "../../models/Merchant";
+import {
+  applyGranotCrmUsernameReceiverMatch,
+  findAgentByGranotCrmUsername,
+} from "./receiverAgentCrmUsername";
 
 type MutableModel = Record<string, unknown>;
 
@@ -12,32 +16,64 @@ afterEach(() => {
   (Agent as unknown as MutableModel).findOne = originalFindOne;
 });
 
-test("CRM username receiver match fills an empty receiver from inactive Agents too", async () => {
-  const agentId = new mongoose.Types.ObjectId();
-  (Agent as unknown as MutableModel).findOne = (filter: unknown) => ({
-    exec: async () =>
-      Agent.hydrate({
-        _id: agentId,
-        name: "Mike M",
-        normalized_name: "mike m",
-        active: false,
-        role: "agent",
-        created_from: "admin",
-        granot_crm_username: "MIKEM",
-      }),
-    filter,
-  });
+test("automatic CRM username receiver matching excludes inactive Agents", async () => {
+  let capturedFilter: unknown;
+  (Agent as unknown as MutableModel).findOne = (filter: unknown) => {
+    capturedFilter = filter;
+    return { exec: async () => null };
+  };
 
   const lead: Record<string, unknown> = {};
   const result = await applyGranotCrmUsernameReceiverMatch(lead, " mikem ");
 
-  assert.equal(result.status, "matched");
-  assert.equal(result.changed, true);
-  assert.equal(lead.receiver_agent?.toString(), agentId.toString());
-  assert.equal(lead.receiver_agent_name_snapshot, "Mike M");
-  assert.equal(lead.receiver_agent_source, "extension_crm_username_match");
-  assert.equal(lead.receiver_agent_source_value, "MIKEM");
-  assert.match(result.message, /inactive Agent/);
+  assert.equal(result.status, "not_found");
+  assert.equal(result.changed, false);
+  assert.deepEqual(capturedFilter, {
+    "granot_identity.username": "MIKEM",
+    active: true,
+  });
+  assert.equal(lead.receiver_agent, undefined);
+});
+
+test("findAgentByGranotCrmUsername prefers embedded granot_identity username", async () => {
+  let capturedFilter: unknown;
+  const agentId = new mongoose.Types.ObjectId();
+  (Agent as unknown as MutableModel).findOne = (filter: unknown) => {
+    capturedFilter = filter;
+    return {
+      exec: async () => ({
+        _id: agentId,
+        name: "Mike M",
+        normalized_name: "mike m",
+        active: true,
+        granot_identity: { username: "MIKEM", verified: true },
+      }),
+    };
+  };
+
+  const agent = await findAgentByGranotCrmUsername("mikem");
+
+  assert.ok(agent);
+  assert.equal(agent.id, agentId.toString());
+  assert.deepEqual(capturedFilter, {
+    "granot_identity.username": "MIKEM",
+    active: true,
+  });
+});
+
+test("findAgentByGranotCrmUsername never reads the retained flat compatibility field", async () => {
+  let capturedFilter: unknown;
+  (Agent as unknown as MutableModel).findOne = (filter: unknown) => {
+    capturedFilter = filter;
+    return { exec: async () => null };
+  };
+
+  await findAgentByGranotCrmUsername("JACOB");
+
+  assert.deepEqual(capturedFilter, {
+    "granot_identity.username": "JACOB",
+    active: true,
+  });
 });
 
 test("CRM username receiver match never overwrites an existing receiver", async () => {

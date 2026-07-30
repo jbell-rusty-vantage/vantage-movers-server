@@ -56,6 +56,23 @@ const FormLeadSchema = new Schema(
     normalized_phone_number: { type: String, trim: true },
     normalized_contact_name: { type: String, trim: true },
     cpl: { type: Number, required: true, default: 0 },
+    cpl_rate_period: {
+      type: Schema.Types.ObjectId,
+      ref: "CplRatePeriod",
+      index: true,
+    },
+    cpl_resolution_status: {
+      type: String,
+      enum: ["resolved", "missing_rate", "duplicate_zero", "not_applicable"],
+      index: true,
+    },
+    cpl_resolved_at: { type: Date },
+    cpl_resolution_version: { type: String, trim: true },
+    cpl_correction: {
+      job_id: { type: Schema.Types.ObjectId, ref: "CplCorrectionJob" },
+      corrected_at: { type: Date },
+      previous_cpl: { type: Number },
+    },
     quoted: { type: Boolean, default: false },
     duplicate: { type: Boolean, default: false, index: true },
     bad_lead: {
@@ -105,6 +122,7 @@ FormLeadSchema.index({ email: 1 });
 FormLeadSchema.index({ normalized_lid: 1 }, { sparse: true });
 FormLeadSchema.index({ normalized_phone_number: 1 });
 FormLeadSchema.index({ normalized_contact_name: 1 });
+FormLeadSchema.index({ source_granularity_id: 1, timestamp: 1, _id: 1 });
 FormLeadSchema.index({
   lead_source_company: 1,
   source_granularity_key: 1,

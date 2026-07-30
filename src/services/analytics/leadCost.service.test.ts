@@ -22,7 +22,12 @@ test("lead cost excludes duplicate form leads and unmatched call leads", async (
   (FormLead as unknown as MutableModel).aggregate = (pipeline: Record<string, unknown>[]) => {
     formPipelines.push(pipeline);
     return Promise.resolve([
-      { _id: "tbm_leads", lead_count: 2, total_lead_cost: 380 },
+      {
+        _id: "tbm_leads",
+        lead_count: 2,
+        unresolved_cpl_count: 1,
+        total_lead_cost: 190,
+      },
     ]);
   };
   (CallLead as unknown as MutableModel).aggregate = (pipeline: Record<string, unknown>[]) => {
@@ -43,8 +48,11 @@ test("lead cost excludes duplicate form leads and unmatched call leads", async (
     query,
   );
 
-  assert.equal(result.total, 380);
+  assert.equal(result.total, 190);
+  assert.equal(result.unresolved_count, 1);
+  assert.equal(result.by_source_company[0].unresolved_cpl_count, 1);
   assert.equal(result.by_source_company.length, 1);
   assert.match(JSON.stringify(formPipelines[0][0]), /duplicate/);
   assert.match(JSON.stringify(callPipelines[0][0]), /created_on_unmatched/);
+  assert.match(JSON.stringify(formPipelines[0][1]), /cpl_resolution_status/);
 });

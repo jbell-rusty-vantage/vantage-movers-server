@@ -39,6 +39,7 @@ const NUMERIC_FIELDS = [
   "reconciled_cancelled_bookings",
   "received_leads",
   "billable_received_leads",
+  "unresolved_cpl_count",
   "total_lead_cost",
 ];
 

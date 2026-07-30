@@ -8,14 +8,11 @@ import {
 import type { LocalType } from "../../config/domain/constants";
 import type { SourceCompany } from "../../config/domain/sources";
 import { CplRate, type CplRateDocument } from "../../models/CplRate";
-import { CallLead } from "../../models/CallLead";
-import { FormLead } from "../../models/FormLead";
-import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import {
   listLeadSourceCompanies,
   type LeadSourceGranularityItem,
 } from "../leadSourceCompanies";
-import { V1ServiceError } from "../v1ServiceError";
+import { recordDurableCompatibilityRead } from "../operationsRegistry";
 
 export type CplRateItem = {
   id: string;
@@ -28,11 +25,6 @@ export type CplRateItem = {
   cpl: number;
   createdAt?: Date;
   updatedAt?: Date;
-};
-
-export type UpdateCplRateResult = {
-  rate: CplRateItem;
-  leads_updated: number;
 };
 
 /**
@@ -66,6 +58,7 @@ export async function getCplRate(
   leadType: CplLeadType,
   local: LocalType | undefined,
 ): Promise<number> {
+  await recordDurableCompatibilityRead("legacy_cpl_rates", "unknown");
   const key = cplRateCacheKey(sourceCompany, leadType, local);
   const loaded = await loadCache();
   if (loaded.has(key)) {
@@ -75,6 +68,7 @@ export async function getCplRate(
 }
 
 export async function listCplRates(): Promise<CplRateItem[]> {
+  await recordDurableCompatibilityRead("legacy_cpl_rates", "admin_list");
   const sourceCompanies = await listLeadSourceCompanies({ includeInactive: true });
   const catalogRates = sourceCompanies.flatMap((company) =>
     company.granularities.map((granularity) =>
@@ -92,130 +86,6 @@ export async function listCplRates(): Promise<CplRateItem[]> {
     const doc = byLabel.get(definition.label);
     return toCplRateItem(definition, doc);
   });
-}
-
-export async function updateCplRate(label: string, cpl: number): Promise<UpdateCplRateResult> {
-  const catalogUpdate = await updateCatalogGranularityCpl(label, cpl);
-  if (catalogUpdate) {
-    invalidateCplRateCache();
-    return catalogUpdate;
-  }
-
-  const definition = findCplRateDefinition(label);
-  if (!definition) {
-    throw new V1ServiceError(`Unknown CPL rate label: ${label}`, 404);
-  }
-
-  const doc = await CplRate.findOneAndUpdate(
-    { label: definition.label },
-    {
-      $set: {
-        cpl,
-        source_company: definition.sourceCompany,
-        lead_type: definition.leadType,
-        ...(definition.local ? { local: definition.local } : { local: undefined }),
-      },
-    },
-    { returnDocument: "after", upsert: true, setDefaultsOnInsert: true },
-  ).exec();
-
-  invalidateCplRateCache();
-
-  const leads_updated = await backfillLeadsForDefinition(definition, cpl);
-
-  return { rate: toCplRateItem(definition, doc), leads_updated };
-}
-
-async function updateCatalogGranularityCpl(
-  label: string,
-  cpl: number,
-): Promise<UpdateCplRateResult | undefined> {
-  const sourceCompanies = await listLeadSourceCompanies({ includeInactive: true });
-  const normalizedLabel = label.trim().toLowerCase();
-  const sourceCompany = sourceCompanies.find((company) =>
-    company.granularities.some((granularity) =>
-      [
-        granularity.granularity_key,
-        granularity.owner_label,
-        granularity.crm_label,
-        ...granularity.aliases,
-      ].some((candidate) => candidate.trim().toLowerCase() === normalizedLabel),
-    ),
-  );
-  const granularity = sourceCompany?.granularities.find((candidate) =>
-    [
-      candidate.granularity_key,
-      candidate.owner_label,
-      candidate.crm_label,
-      ...candidate.aliases,
-    ].some((value) => value.trim().toLowerCase() === normalizedLabel),
-  );
-  if (!sourceCompany || !granularity) {
-    return undefined;
-  }
-
-  const Model = getLeadSourceCompanyModel();
-  await Model.updateOne(
-    {
-      _id: sourceCompany.id,
-      "granularities.granularity_key": granularity.granularity_key,
-    },
-    { $set: { "granularities.$.cpl": cpl } },
-    { runValidators: true },
-  ).exec();
-
-  const leads_updated = await backfillLeadsForGranularity(
-    sourceCompany.company_slug,
-    granularity,
-    cpl,
-  );
-  return {
-    rate: { ...toCatalogCplRateItem(sourceCompany, granularity), cpl },
-    leads_updated,
-  };
-}
-
-async function backfillLeadsForGranularity(
-  sourceCompany: string,
-  granularity: LeadSourceGranularityItem,
-  cpl: number,
-): Promise<number> {
-  const filter: Record<string, unknown> = {
-    source_company: sourceCompany,
-    duplicate: { $ne: true },
-    $or: [
-      { source_granularity_key: granularity.granularity_key },
-      { source_granularity_key: { $exists: false } },
-      { source_granularity_key: null },
-    ],
-  };
-  if (granularity.local) {
-    filter.local = granularity.local;
-  }
-  const result =
-    granularity.channel === "form"
-      ? await FormLead.updateMany(filter, { $set: { cpl } }).exec()
-      : await CallLead.updateMany(filter, { $set: { cpl } }).exec();
-  return result.modifiedCount ?? 0;
-}
-
-async function backfillLeadsForDefinition(
-  definition: CplRateDefinition,
-  cpl: number,
-): Promise<number> {
-  const filter: Record<string, unknown> = {
-    source_company: definition.sourceCompany,
-    duplicate: { $ne: true },
-  };
-  if (definition.local) {
-    filter.local = definition.local;
-  }
-
-  const result =
-    definition.leadType === "form"
-      ? await FormLead.updateMany(filter, { $set: { cpl } }).exec()
-      : await CallLead.updateMany(filter, { $set: { cpl } }).exec();
-  return result.modifiedCount ?? 0;
 }
 
 async function ensureCplRatesSeeded(): Promise<void> {

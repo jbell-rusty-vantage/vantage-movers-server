@@ -1,0 +1,18 @@
+---
+description: Operations Registry module, authorization, audit, and migration rules
+globs: src/services/operationsRegistry/**/*.ts,src/models/{Agent,Merchant,LeadSourceCompany,LeadSourceGranularity,OperationsRegistryChange}.ts,scripts/migrations/operations-registry-*.ts,src/routes/v1.routes.ts
+alwaysApply: false
+---
+
+# Operations Registry
+
+- `src/services/operationsRegistry/` is the public module for production Agent, Merchant, Source Company, and Source Granularity catalog behavior. Routes and runtime consumers use its exported commands, queries, and resolvers rather than importing registry models.
+- Registry mutations require a verified signed Owner actor. Canonical signing includes admin ID, normalized email, role, timestamp, request ID, HTTP method, and path using `VANTAGE_ADMIN_PROXY_SIGNING_SECRET`. Unsigned preview compatibility must remain narrowly scoped and fail closed for production mutations.
+- Every domain mutation and `operations_registry_changes` insert shares one Mongo transaction. Audit failure aborts the mutation. Cache invalidation occurs only after commit.
+- Registry audit snapshots and metadata must be bounded and redact secrets, credentials, tokens, authorization values, and provider payloads.
+- No registry workflow hard-deletes records. Inactive records are hidden from automatic/default selection but may be explicitly included for Owner correction workflows.
+- `granot_identity.username` is authoritative after M2; `granot_crm_username` remains a temporary read fallback. Automatic Granot receiver matching is active-only.
+- `lead_source_granularities` is authoritative after M3. `LeadSourceCompany.granularities[]` and default key fields remain read-only compatibility data and must not become a second writable authority.
+- Source exact identifiers fail on ambiguity. Fallback aliases choose one highest-priority active candidate and fail on an equal-priority tie.
+- Migration scripts under `scripts/migrations/` are dry-run by default, reject historical/unknown databases, require explicit production apply confirmation, write deterministic redacted manifests, and never import historical models.
+- Required configuration shape: `VANTAGE_ADMIN_PROXY_SIGNING_SECRET`; optional replay-window override and preview compatibility settings are owned by `src/services/operationsRegistry/config.ts`. Never document secret values.
