@@ -206,9 +206,7 @@ Lead CPL snapshots.
 
 A meaningful M4 production dry run must follow the reviewed M3 apply because
 schedules reference the first-class granularities created by M3; an empty
-pre-M3 M4 manifest is not approval evidence. The next action is the separately
-authorized ordered production apply gate, starting with M2 and M3, followed by
-fresh M4 and M5 dry runs. M4 and M5 apply remain later approval gates.
+pre-M3 M4 manifest is not approval evidence.
 
 ## 2026-07-30 production apply evidence
 
@@ -226,3 +224,25 @@ M2 Agent/Merchant was owner-authorized and applied:
 M2 v2 fixes the planner so identity and missing aliases are written together in
 one pass. M3 was intentionally held until the M2 post-state became fully
 idempotent.
+
+M3 Source Granularities was then owner-authorized and applied:
+
+- 13 first-class granularity creates and 6 Source Company default-link updates;
+- zero conflicts and zero failures;
+- final verification: zero writes and 19 no-ops, with all 13 embedded rows
+  mapped one-to-one and defaults resolving to the mapped IDs.
+
+M4 CPL schedules was owner-authorized and applied:
+
+- 13 open-ended periods effective `2024-01-01`;
+- current production `cpl_rates` amounts used, including the four approved
+  `205` values;
+- zero blocking conflicts and zero failures;
+- final verification: zero writes and 13 no-ops.
+
+The first owner-authorized M5 provider preflight made no database writes. Four
+numbers validated, while one of five parallel copies of the same RingCentral
+account-inventory request received HTTP 429. M5 v2 replaces those redundant
+parallel provider requests with one shared account inventory load used to
+validate all five numbers. A regression test proves concurrent validations
+share exactly one load. M5 requires a fresh v2 dry-run manifest before retry.

@@ -237,6 +237,7 @@ export type {
 } from "./ringCentralSnapshot";
 
 export {
+  createRingCentralAccountRouteValidator,
   validateRingCentralNumberAgainstAccount,
 } from "./ringCentralValidation";
 export type {

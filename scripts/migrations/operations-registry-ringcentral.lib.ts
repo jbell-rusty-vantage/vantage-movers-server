@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { normalizePhoneNumberToE164Like } from "../../src/services/ringcentral/phone-normalization";
 
 export const RINGCENTRAL_BACKFILL_SCRIPT_VERSION =
-  "operations-registry-ringcentral-m5-v1";
+  "operations-registry-ringcentral-m5-v2";
 
 export type RingCentralSeedMapping = {
   phone_number: string;

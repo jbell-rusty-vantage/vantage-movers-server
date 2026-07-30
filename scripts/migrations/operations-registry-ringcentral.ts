@@ -28,7 +28,7 @@ import {
   type RegistryActorContext,
 } from "../../src/services/operationsRegistry/index.js";
 import {
-  validateRingCentralNumberAgainstAccount,
+  createRingCentralAccountRouteValidator,
   type RingCentralRouteValidationResult,
 } from "../../src/services/operationsRegistry/ringCentralValidation.js";
 import { RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE } from "../../src/services/ringcentral/call-lead-sources.js";
@@ -115,10 +115,11 @@ async function applyPlan(
   let failures = 0;
   const applyErrors: string[] = [];
   const activatedRoutes: Array<{ id: string; phone_number: string }> = [];
+  const validateAgainstAccount = createRingCentralAccountRouteValidator();
   const preflight = await Promise.all(
     plan.mappings.map(async (mapping) => ({
       phone_number: mapping.phone_number,
-      result: await validateRingCentralNumberAgainstAccount(mapping.phone_number),
+      result: await validateAgainstAccount(mapping.phone_number),
     })),
   );
   const validations: Array<{

@@ -215,9 +215,11 @@ The dry run combines the five server-side RingCentral mappings with embedded
 Source Company inbound numbers. It resolves each normalized number to one
 active first-class call granularity.
 
-Dry run performs no provider calls. Apply performs live RingCentral account
-validation, persists sanitized provider metadata, activates valid routes, and
-rolls back routes activated earlier in the run if a later route fails.
+Dry run performs no provider calls. Apply loads the accessible RingCentral
+account phone-number inventory once, validates every intended number against
+that shared snapshot, persists sanitized provider metadata, activates valid
+routes, and rolls back routes activated earlier in the run if a later route
+fails.
 
 ```text
 # Test database dry run, then apply

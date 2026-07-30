@@ -27,8 +27,12 @@ export type RingCentralRouteValidator = (
   normalizedPhoneNumber: string,
 ) => Promise<RingCentralRouteValidationResult>;
 
-export const validateRingCentralNumberAgainstAccount: RingCentralRouteValidator =
-  async (normalizedPhoneNumber) => {
+type AccessiblePhoneNumberLoader = () => Promise<Record<string, unknown>[]>;
+
+async function validateWithPhoneNumberLoader(
+  normalizedPhoneNumber: string,
+  loadPhoneNumbers: AccessiblePhoneNumberLoader,
+): Promise<RingCentralRouteValidationResult> {
     if (!normalizePhoneNumberToE164Like(normalizedPhoneNumber)) {
       return {
         status: "invalid",
@@ -38,7 +42,7 @@ export const validateRingCentralNumberAgainstAccount: RingCentralRouteValidator 
     }
 
     try {
-      const records = await loadAccessiblePhoneNumbers();
+      const records = await loadPhoneNumbers();
       const matched = records.find(
         (record) =>
           normalizePhoneNumberToE164Like(valueToString(record.phoneNumber)) ===
@@ -80,7 +84,31 @@ export const validateRingCentralNumberAgainstAccount: RingCentralRouteValidator 
         message: safeValidationFailureMessage(error),
       };
     }
+}
+
+export const validateRingCentralNumberAgainstAccount: RingCentralRouteValidator =
+  async (normalizedPhoneNumber) =>
+    validateWithPhoneNumberLoader(
+      normalizedPhoneNumber,
+      loadAccessiblePhoneNumbers,
+    );
+
+/**
+ * Creates a validator that shares one account phone-number inventory request
+ * across every number validated by the caller. M5 uses this to avoid issuing
+ * parallel copies of the same rate-limited RingCentral request.
+ */
+export function createRingCentralAccountRouteValidator(
+  loadPhoneNumbers: AccessiblePhoneNumberLoader = loadAccessiblePhoneNumbers,
+): RingCentralRouteValidator {
+  let sharedLoad: Promise<Record<string, unknown>[]> | undefined;
+  const loadOnce = () => {
+    sharedLoad ??= loadPhoneNumbers();
+    return sharedLoad;
   };
+  return async (normalizedPhoneNumber) =>
+    validateWithPhoneNumberLoader(normalizedPhoneNumber, loadOnce);
+}
 
 async function loadAccessiblePhoneNumbers(): Promise<Record<string, unknown>[]> {
   const records: Record<string, unknown>[] = [];
