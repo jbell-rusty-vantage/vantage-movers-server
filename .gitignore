@@ -24,6 +24,7 @@ pnpm-debug.log*
 
 # Ignore uploaded secrets/service-account files, anywhere in the repo, recursively
 **/*service-account*.json
+**/client_secret*
 **/just-cosmos-437222-b7-f8ab65674d85.json
 **/vantage-sheets-496816-b67de712c0a3.json
 .ringcentral-token-cache.json
@@ -44,6 +45,7 @@ ringcentral-local-webhook-events.jsonl
 /*.log
 /logs
 scripts/historical/models/historical-analytics-report.json
+scripts/historical/reports/
 
 # Personal / destructive DB-hitting utilities (clear-db, ping-db, seed scripts, etc.)
 # Lives only on developer machines; never committed.
@@ -68,6 +70,9 @@ coverage/
 
 
 scripts/docs/**   
+
+# Local MongoDB -> owner Google Sheets report prototype.
+/scripts/test-create-google-spreadsheet.ts
 
 
 observability.env.example.env  

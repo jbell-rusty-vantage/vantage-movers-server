@@ -212,6 +212,15 @@ export {
 } from "./v1/leadMessaging.validation";
 
 export {
+  googleOAuthCallbackQuerySchema,
+  googleOAuthErrorQuerySchema,
+  googleDriveCreateFolderSchema,
+  googleDriveTestSpreadsheetSchema,
+  type GoogleDriveCreateFolderInput,
+  type GoogleDriveTestSpreadsheetInput,
+} from "./v1/googleDriveOAuth.validation";
+
+export {
   registryChangesQuerySchema,
   registryOverviewQuerySchema,
   registryHealthQuerySchema,

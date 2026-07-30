@@ -61,6 +61,7 @@ Form-lead sync from the extension uses public `PATCH /api/v1/form-leads/:id` (in
 - `src/services/googleSheets/` — Google Sheets API client, tab/target resolution, row lookup, batch sync/delete, diagnostics. `projections/` maps Mongo documents to owner-facing sheet rows (`formLeadRow`, `callLeadRow`, `bookedLeadRow`, shared `cells.ts`).
 - `src/services/sheetSync/` — Write-behind outbox for Google Sheets. Domain writes enqueue jobs (`sheetSyncOutbox.service.ts`); coordinator runs transactional Mongo writes + intent persistence (`sheetSyncCoordinator.ts`); drainer batches jobs with leases/quota limits (`drainer/`); queue publish/wakeup (`sheetSyncQueue.service.ts`). Models: `SheetSyncJob`, `SheetSyncRun`, `SheetSyncAttempt`, `SheetSyncLease`, `SheetSyncQuotaBucket`. Config: `src/config/domain/sheetSync.ts`.
 - `src/services/googleAuth/` — Service-account credential loading for Sheets (separate from `googleSheets/auth.ts` client wiring).
+- `src/services/googleDriveOAuth/` — Owner-authorized Google Drive connection, encrypted refresh-token persistence, one-time OAuth state, and creation of owner-requested spreadsheets. HTTP endpoints live in `src/routes/google-drive-oauth.routes.ts`.
 - `src/services/googleMaps/` — Geocoding health checks for admin (`/admin/google-maps/geocoding-health`).
 
 ## Services — RingCentral

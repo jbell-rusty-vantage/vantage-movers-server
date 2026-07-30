@@ -9,6 +9,7 @@ import { logger as rootLogger } from "../logger";
 import { requireApiSecret } from "../middleware/requireApiSecret";
 import type { VantageAuthContext } from "../middleware/requireApiSecret";
 import extensionAuthRoutes from "./extension-auth.routes";
+import googleDriveOAuthRoutes from "./google-drive-oauth.routes";
 import ringCentralRegistryRoutes from "./ringcentral-registry.routes";
 import {
   recordOperationalEvent,
@@ -248,6 +249,7 @@ import {
 const router = Router();
 
 router.use(extensionAuthRoutes);
+router.use(googleDriveOAuthRoutes);
 router.use("/api/v1", requireApiSecret);
 router.use(ringCentralRegistryRoutes);
 
