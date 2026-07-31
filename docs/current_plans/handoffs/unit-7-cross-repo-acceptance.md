@@ -9,8 +9,9 @@ Server branch: `vantage-main-server` `main`
 
 | Repo | Branch | SHA | Notes |
 |------|--------|-----|-------|
-| `vantage-admin` | `feature/operations-registry` | `1864dc3c7e7627d2b3781c22e666c149d1213a5a` | Dashboard Unit 7 (D5–D6) |
-| `vantage-main-server` | `main` | `d15da87c73ae674ad72d109edc8b09ccf77d0b7d` | Observed during Unit 7; registry S1–S8 already merged |
+| `vantage-admin` | `main` | `f961fe488fc32fff5d87a884b4ffb5ebd320de0a` | Merged D0–D6; production deploy trigger |
+| `vantage-admin` | `feature/operations-registry` | `1864dc3c7e7627d2b3781c22e666c149d1213a5a` | Unit 7 D5–D6 commit |
+| `vantage-main-server` | `main` | `76ad2338cdc8d821c2bf4cfbe041858f2b9fd524` | Handoffs + empty redeploy commit; tests green at prior `d15da87` |
 
 ### Dashboard gate
 
