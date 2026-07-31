@@ -96,13 +96,20 @@ receiver_agent: toObjectId(agent.id),
 
 Do **not** use a named `import { ObjectId } from "mongodb"` in the shared helper for Vercel serverless routes. That pattern has compiled to a runtime `ReferenceError: mongodb_1 is not defined` in production even when local Node/`tsx` works.
 
-Construct through Mongoose’s already-loaded driver namespace and cast to `Types.ObjectId` for the API surface:
+Construct through Mongoose’s already-loaded driver namespace. Vercel's
+per-function checker can also lose `ObjectId` from the flattened `mongodb`
+declaration, so describe only the runtime property needed:
 
 ```ts
 import mongoose, { type Types } from "mongoose";
 
+type MongooseMongoRuntime = {
+  ObjectId: new (value: string) => Types.ObjectId;
+};
+
 export function toObjectId(value: string): Types.ObjectId {
-  return new mongoose.mongo.ObjectId(value) as Types.ObjectId;
+  const { ObjectId } = mongoose.mongo as unknown as MongooseMongoRuntime;
+  return new ObjectId(value);
 }
 ```
 
@@ -154,7 +161,7 @@ return response.Body?.transformToString() ?? "";
 
 ### Canonical fixes
 
-Use `S3Client` directly (or a thin wrapper that preserves generics):
+Use `S3Client` directly when the checker retains its Smithy base class:
 
 ```ts
 export async function getGranotCrmObjectText(key: string): Promise<string> {
@@ -169,6 +176,27 @@ export async function getGranotCrmObjectText(key: string): Promise<string> {
 ```
 
 If a test double is needed, mock `S3Client` / `send` with the same generic shape — do not invent a narrower dual-overload interface and force-cast the real client into it.
+
+Vercel's per-function checker can lose the inherited `send` method even though
+plain `tsc` resolves it. In that case, use one generic intersection helper and
+provide the SDK's actual command/output pair at each call:
+
+```ts
+type S3RuntimeSender<Command, Output> = {
+  send(command: Command): Promise<Output>;
+};
+
+function sendS3Command<Command, Output>(
+  client: S3Client,
+  command: Command,
+): Promise<Output> {
+  return (client as S3Client & S3RuntimeSender<Command, Output>).send(command);
+}
+```
+
+Keeping `S3Client` in the intersection makes this an SDK-boundary repair, not a
+replacement client interface. Do not use a dual-overload facade: commands can
+be structurally similar enough for the wrong output overload to win.
 
 ### Command/output cheat sheet
 
@@ -222,8 +250,12 @@ const sheets = google.sheets({
 } as unknown as sheets_v4.Options);
 ```
 
-2. Type the stored client as `drive_v3.Drive` / `sheets_v4.Sheets` (or `ReturnType<typeof google.sheets>` only after the factory call typechecks).
-3. Do not “fix” missing `.data` by asserting the response; fix the client factory typing first — `.data` disappearing is a cascade.
+2. Type request builders explicitly (`drive_v3.Schema$File`, etc.) instead of
+   relying on an inferred object type across the SDK boundary.
+3. If Vercel selects a callback overload and reports a `void` response, pass an
+   explicit method-options object: `drive.files.create(params, {})`.
+4. Type the stored client as `drive_v3.Drive` / `sheets_v4.Sheets` (or
+   `ReturnType<typeof google.sheets>` only after the factory call typechecks).
 
 ### Anti-patterns
 
@@ -238,14 +270,14 @@ const sheets = google.sheets({
 1. **ObjectIds**
    - Validate with `mongoose.isValidObjectId`.
    - Construct/parse through one shared helper (`toObjectId`), not `createFromHexString` sprinkled everywhere.
-   - If CI fails on `Types.ObjectId` construct/statics, add direct `mongodb` dependency and construct from there inside the helper only.
+   - If Vercel loses `ObjectId` from the driver declaration, use the helper's typed runtime view of `mongoose.mongo`; never add a named `mongodb` import to app-route helpers.
 2. **AWS SDK v3**
-   - Call `client.send(new XxxCommand(...))` on the real client type.
-   - Never invent overload-only `send` facades that require casting `S3Client`.
+   - Call `client.send(new XxxCommand(...))` when the checker retains the real client type.
+   - If Vercel loses inherited `send`, use the generic `S3Client` intersection helper, never a dual-overload facade.
    - Know which command outputs include `Body`.
 3. **googleapis**
    - Construct Drive/Sheets clients with the `as unknown as <api>.Options` pattern already used for Sheets auth when overload matching fails.
-   - If `.data` is `void`, fix the client creation types before touching call sites.
+   - If `.data` is `void`, type the request body and pass explicit method options to avoid the callback overload.
 4. **Verification**
    - Run `pnpm run typecheck` locally.
    - Treat Vercel/TS build output as authoritative when local and CI disagree; stabilize with direct deps + helpers, not per-file ignores.
@@ -257,10 +289,10 @@ const sheets = google.sheets({
 
 Implemented:
 
-1. Direct `mongodb@~7.2` dependency (for scripts/native-driver paths) and `src/utils/objectId.ts` (`isObjectIdString`, `toObjectId`, `toObjectIdOrUndefined`) constructing via `mongoose.mongo.ObjectId`.
+1. Direct `mongodb@~7.2` dependency (for scripts/native-driver paths) and `src/utils/objectId.ts` (`isObjectIdString`, `toObjectId`, `toObjectIdOrUndefined`) constructing through a typed runtime view of `mongoose.mongo`.
 2. Failing service/route call sites migrated off `ObjectId.isValid` / `createFromHexString` / `new Types.ObjectId(id)`.
-3. `granotCrmCsv/storage.ts` uses `S3Client.send` directly (no custom sender facade).
-4. `googleDriveOAuth/spreadsheet.service.ts` uses the Sheets-style `as unknown as drive_v3.Options` / `sheets_v4.Options` cast.
+3. `granotCrmCsv/storage.ts` uses a generic `S3Client` intersection helper because Vercel loses Smithy's inherited `send`.
+4. `googleDriveOAuth/spreadsheet.service.ts` uses typed request bodies, explicit method options, and the Sheets-style `as unknown as drive_v3.Options` / `sheets_v4.Options` cast.
 
 For new code, keep using the helper and patterns above rather than reintroducing raw SDK statics.
 

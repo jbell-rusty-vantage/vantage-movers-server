@@ -12,19 +12,20 @@ Full guide: `docs/typescript-library-typing-pitfalls.md`.
 
 - Validate with `mongoose.isValidObjectId(id)`, never `Types.ObjectId.isValid` in new code.
 - Construct/parse hex ids through `toObjectId` / `isObjectIdString` in `src/utils/objectId.ts`, not scattered `createFromHexString` / raw `new mongoose.Types.ObjectId(id)` copies.
-- If CI reports `Expected 0 arguments, but got 1` or missing `createFromHexString`/`isValid` on `typeof ObjectId`, fix via the helper (`mongoose.mongo.ObjectId` inside `toObjectId`) — do not `@ts-ignore` call sites, and do not use a named `import { ObjectId } from "mongodb"` in serverless route helpers (Vercel has emitted `mongodb_1 is not defined` at runtime).
+- If CI reports `Expected 0 arguments, but got 1` or missing `ObjectId`/statics, fix via the helper (a typed runtime view of `mongoose.mongo` inside `toObjectId`) — do not `@ts-ignore` call sites, and do not use a named `import { ObjectId } from "mongodb"` in serverless route helpers (Vercel has emitted `mongodb_1 is not defined` at runtime).
 - `Schema.Types.ObjectId` is for schemas only, not value construction.
 
 ## AWS S3
 
 - Call `S3Client.send(new XxxCommand(...))` on the real client.
-- Do not invent narrow `send` overload facades and cast `S3Client` into them.
+- If Vercel alone loses the Smithy-inherited `send`, use one generic intersection helper that retains `S3Client` and pairs each command with its real SDK output type.
+- Do not invent a dual-overload sender facade; structurally similar commands can resolve to the wrong output.
 - `Body` exists on get/read outputs (`GetObjectCommandOutput`), not on `PutObjectCommandOutput`.
 
 ## googleapis
 
 - When `google.drive` / `google.sheets` reject `auth` on `Options` or methods return `void` instead of `{ data }`, use the existing cast pattern from `src/services/googleSheets/auth.ts`: `as unknown as drive_v3.Options` / `sheets_v4.Options`, with a short comment.
-- Fix client factory typing before asserting away missing `.data`.
+- Fix client factory and request-body typing first; an explicit method-options argument can prevent selection of a callback/`void` overload.
 
 ## Escape hatches
 

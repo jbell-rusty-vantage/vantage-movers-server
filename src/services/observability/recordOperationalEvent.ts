@@ -1,5 +1,4 @@
 import type { Request } from "express";
-import mongoose from "mongoose";
 import {
   getObservabilityBulkBatchSize,
   isObservabilityEnabled,
@@ -349,7 +348,6 @@ export async function recordOperationalEventsBulk(
       return {
         insertOne: {
           document: {
-            _id: new mongoose.Types.ObjectId(),
             occurred_at: occurredAt,
             received_at: new Date(),
             level: input.level,

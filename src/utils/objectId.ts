@@ -1,5 +1,9 @@
 import mongoose, { type Types } from "mongoose";
 
+type MongooseMongoRuntime = {
+  ObjectId: new (value: string) => Types.ObjectId;
+};
+
 /**
  * ObjectId helpers that stay type-stable under pnpm + TypeScript 6 / Vercel.
  *
@@ -18,7 +22,10 @@ export function isObjectIdString(value: string): boolean {
 }
 
 export function toObjectId(value: string): Types.ObjectId {
-  return new mongoose.mongo.ObjectId(value) as Types.ObjectId;
+  // Preserve Mongoose's runtime driver path while insulating Vercel's checker
+  // from mongodb's flattened declaration export.
+  const { ObjectId } = mongoose.mongo as unknown as MongooseMongoRuntime;
+  return new ObjectId(value);
 }
 
 export function toObjectIdOrUndefined(

@@ -37,11 +37,14 @@ export async function createGoogleDriveFolder(
   });
 
   try {
-    const created = await drive.files.create({
-      requestBody,
-      fields: "id,name,webViewLink",
-      supportsAllDrives: true,
-    });
+    const created = await drive.files.create(
+      {
+        requestBody,
+        fields: "id,name,webViewLink",
+        supportsAllDrives: true,
+      },
+      {},
+    );
     const folderId = created.data.id;
     if (!folderId) {
       throw new Error("Google Drive returned no folder ID");
@@ -63,7 +66,9 @@ export async function createGoogleDriveFolder(
   }
 }
 
-export function createGoogleDriveFolderRequest(input: CreateGoogleDriveFolderInput) {
+export function createGoogleDriveFolderRequest(
+  input: CreateGoogleDriveFolderInput,
+): drive_v3.Schema$File {
   const parentFolderId = normalizeFolderId(input.parentFolderId);
   return {
     name: input.name,
