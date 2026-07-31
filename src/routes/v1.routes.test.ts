@@ -105,6 +105,7 @@ test("employee booking reconciliation routes are registered", () => {
       .map((route) => route.path),
   );
 
+  assert.equal(routes.has("/api/v1/employee-booking-options"), true);
   assert.equal(routes.has("/api/v1/employee-booking-submissions"), true);
   assert.equal(routes.has("/api/v1/admin/booking-lead-reconciliations"), true);
   assert.equal(routes.has("/api/v1/admin/booking-lead-reconciliations/:id"), true);

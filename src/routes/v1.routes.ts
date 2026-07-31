@@ -71,6 +71,7 @@ import {
 } from "../services/v1.service";
 import {
   getBookingLeadReconciliationCase,
+  getEmployeeBookingOptions,
   listBookingLeadReconciliationCases,
   refreshBookingLeadCandidates,
   reopenBookingLeadReconciliation,
@@ -566,6 +567,10 @@ router.post(
 router.post(
   "/api/v1/leadless-bookings",
   handleCreate(createLeadlessBookingSchema, createLeadlessBooking),
+);
+router.get(
+  "/api/v1/employee-booking-options",
+  handleEmployeeBookingOptions,
 );
 router.post(
   "/api/v1/employee-booking-submissions",
@@ -2129,6 +2134,20 @@ function handleDelete(
       return sendError(req, res, error);
     }
   };
+}
+
+async function handleEmployeeBookingOptions(req: Request, res: Response) {
+  try {
+    const auth = (req as Request & { vantageAuth?: VantageAuthContext }).vantageAuth;
+    if (auth?.kind !== "secret") {
+      throw new V1ServiceError("Forbidden", 403);
+    }
+    await connectMongo();
+    const data = await getEmployeeBookingOptions();
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
 }
 
 async function handleEmployeeBookingSubmission(req: Request, res: Response) {
