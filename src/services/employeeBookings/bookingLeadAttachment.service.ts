@@ -216,15 +216,17 @@ export async function createAndAttachReconciliationFormLead(args: {
     channel: "form",
     local,
   });
+  const timestamp = toFloridaTimestamp(new Date());
   const duplicateMatch = await findDuplicateFormLeadMatch(
     {
       sourceCompany: resolution.assignment.source_company,
       leadSourceCompany: resolution.assignment.lead_source_company,
+      sourceGranularityId: resolution.assignment.source_granularity_id,
     },
     normalized.phone_number,
     normalized.email,
+    timestamp,
   );
-  const timestamp = toFloridaTimestamp(new Date());
   const cplSnapshot = await resolveLeadCplSnapshot({
     sourceGranularityId: resolution.assignment.source_granularity_id
       ? String(resolution.assignment.source_granularity_id)

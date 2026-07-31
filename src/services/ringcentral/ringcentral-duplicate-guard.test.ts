@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  classifyRingCentralCallLeadDuplicate,
+  classifyRingCentralCallLeadDuplicate as classifyRingCentralCallLeadDuplicateStrict,
   RINGCENTRAL_CALL_LEAD_DUPLICATE_WINDOW_DAYS,
+  type RingCentralDuplicateDeps,
+  type RingCentralDuplicateInput,
 } from "./ringcentral-duplicate-guard";
 import { toFloridaTimestamp } from "../../utils/easternTime";
 
@@ -10,9 +12,21 @@ const NOW = new Date("2026-06-03T18:00:00.000Z");
 const STORED_NOW = toFloridaTimestamp(NOW);
 const CALLER = "+12095551234";
 const WINDOW_MS = RINGCENTRAL_CALL_LEAD_DUPLICATE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+const SOURCE_GRANULARITY_ID = "507f1f77bcf86cd799439011";
+
+function classifyRingCentralCallLeadDuplicate(
+  input: Omit<RingCentralDuplicateInput, "sourceGranularityId">,
+  deps: RingCentralDuplicateDeps,
+) {
+  return classifyRingCentralCallLeadDuplicateStrict(
+    { ...input, sourceGranularityId: SOURCE_GRANULARITY_ID },
+    deps,
+  );
+}
 
 type CapturedDuplicateLookup = {
   sourceCompany: string;
+  sourceGranularityId: unknown;
   normalizedPhone: string;
   from: Date;
   to: Date;
@@ -117,7 +131,7 @@ test("phone numbers in different formats still match as duplicates", async () =>
   assert.equal(result.isDuplicate, true);
 });
 
-test("duplicate lookup uses the 90-day window around the call timestamp", async () => {
+test("duplicate lookup uses the earlier-only 90-day window", async () => {
   const captured: CapturedDuplicateLookup[] = [];
 
   const result = await classifyRingCentralCallLeadDuplicate(
@@ -146,9 +160,10 @@ test("duplicate lookup uses the 90-day window around the call timestamp", async 
   assert.equal(captured.length, 1);
   const capturedLookup = captured[0]!;
   assert.equal(capturedLookup.sourceCompany, "top10_leads");
+  assert.equal(capturedLookup.sourceGranularityId, SOURCE_GRANULARITY_ID);
   assert.equal(capturedLookup.normalizedPhone, "2095551234");
   assert.equal(capturedLookup.from.toISOString(), new Date(STORED_NOW.getTime() - WINDOW_MS).toISOString());
-  assert.equal(capturedLookup.to.toISOString(), new Date(STORED_NOW.getTime() + WINDOW_MS).toISOString());
+  assert.equal(capturedLookup.to.toISOString(), STORED_NOW.toISOString());
 });
 
 test("same caller and source exactly 90 days apart is a duplicate", async () => {

@@ -18,6 +18,12 @@ export type LeadSourceMatchScope = {
   leadSourceCompany?: unknown;
 };
 
+export type ExactGranularityMatchScope = LeadSourceMatchScope & {
+  sourceGranularityId: unknown;
+};
+
+const FORM_DUPLICATE_CUTOFF = new Date("2026-04-30T04:00:00.000Z");
+
 /**
  * Resolves whether the supplied phone or email already exists for a
  * non-duplicate form lead within the same source company, returning the match
@@ -27,9 +33,10 @@ export type LeadSourceMatchScope = {
  * re-verifies in memory via `normalizePhoneNumberForMatch`.
  */
 export async function findDuplicateFormLeadMatch(
-  sourceScope: SourceCompany | LeadSourceMatchScope,
+  sourceScope: ExactGranularityMatchScope,
   phoneNumber?: string | null,
   email?: string | null,
+  eventTimestamp: Date = new Date(),
 ): Promise<DuplicateFormLeadMatch> {
   const FormLead = getFormLeadModel();
   const normalizedPhone = normalizePhoneNumberForMatch(phoneNumber);
@@ -43,17 +50,24 @@ export async function findDuplicateFormLeadMatch(
     return { duplicate: false, matchedBy: null, matchedLeadIds: [] };
   }
 
+  if (!sourceScope.sourceGranularityId) {
+    throw new Error("Duplicate Form Lead classification requires an exact Source Granularity");
+  }
+  const cohortRange = eventTimestamp < FORM_DUPLICATE_CUTOFF
+    ? { $lt: eventTimestamp }
+    : { $gte: FORM_DUPLICATE_CUTOFF, $lt: eventTimestamp };
+
   // Compose with $and so the source-scope $or (lead_source_company | source_company)
   // is not overwritten by the email/phone $or.
   const candidates = await FormLead.find({
     $and: [
-      buildSourceMatchFilter(sourceScope),
+      { source_granularity_id: sourceScope.sourceGranularityId },
       { duplicate: { $ne: true } },
+      { timestamp: cohortRange },
       { $or: duplicateClauses },
     ],
   })
-    .sort({ createdAt: -1 })
-    .limit(50)
+    .sort({ timestamp: 1, _id: 1 })
     .exec();
 
   let emailMatch = false;
@@ -94,11 +108,12 @@ export async function findDuplicateFormLeadMatch(
  * wrapper around `findDuplicateFormLeadMatch`.
  */
 export async function isDuplicateFormLead(
-  sourceCompany: SourceCompany | LeadSourceMatchScope,
+  sourceCompany: ExactGranularityMatchScope,
   phoneNumber?: string | null,
   email?: string | null,
+  eventTimestamp?: Date,
 ): Promise<boolean> {
-  const match = await findDuplicateFormLeadMatch(sourceCompany, phoneNumber, email);
+  const match = await findDuplicateFormLeadMatch(sourceCompany, phoneNumber, email, eventTimestamp);
   return match.duplicate;
 }
 

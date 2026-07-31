@@ -35,7 +35,7 @@
 
 Per glossary and `ringcentral-duplicate-guard.ts`:
 
-- Same **Caller Match Key** (Source Company + normalized phone) as an existing **non-duplicate** Call Lead whose timestamp falls within **±90 days** of the incoming call's timestamp.
+- Same exact **Source Granularity** + normalized phone as an earlier existing **non-duplicate** Call Lead in the inclusive prior 90-day window.
 - Excludes the current `telephony_session_id`.
 - Duplicate Call Leads still persist and **Sheet Sync**; they are **never CRM-posted** (Call Lead Enrichment is separate).
 

@@ -18,7 +18,7 @@ Do not apply migrations or mutate production during this pass.
 
 The completed plan is the canonical summary; do not restate it:
 
-- `C:\Users\Pinda\Proyectos\vantage\vantage-main-server\docs\historical-database-consolidation-plan.md`
+- `C:\Users\Pinda\Proyectos\vantage\vantage-main-server\docs\historical_production_db_staged_merge_ingestion_plans\historical-database-consolidation-plan.md`
 
 Aggregate reports:
 

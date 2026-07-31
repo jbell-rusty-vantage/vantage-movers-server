@@ -1,6 +1,7 @@
 # Historical database consolidation and sheet-ingestion plan
 
 Status: analysis and implementation design  
+Document set: historical production database staged merge ingestion  
 Generated from live read-only audits on 2026-07-30
 
 Parsing, Customer-cardinality, classification, conflict-artifact, and planner

@@ -1,6 +1,7 @@
 # Historical consolidation rules and staged-ingestion specification
 
 Status: implementation-ready analysis supplement  
+Document set: historical production database staged merge ingestion  
 Generated from read-only audits on 2026-07-30
 
 This document refines, but does not replace, the

@@ -92,25 +92,21 @@ receiver_agent: toObjectId(agent.id),
 
 `createFromHexString` and `new ObjectId(hex)` are equivalent for normal 24-char hex ids. Prefer the helper; do not mix three different construction styles in one PR.
 
-#### 3. If CI still cannot see Mongoose’s constructor/statics: depend on `mongodb` directly
+#### 3. If CI still cannot see Mongoose’s constructor/statics: use `mongoose.mongo.ObjectId` inside the helper
 
-`mongodb` is currently only a **transitive** dependency of `mongoose` (pnpm-nested). That is a common root of flaky ObjectId typing on Vercel.
+Do **not** use a named `import { ObjectId } from "mongodb"` in the shared helper for Vercel serverless routes. That pattern has compiled to a runtime `ReferenceError: mongodb_1 is not defined` in production even when local Node/`tsx` works.
 
-Durable package-level fix:
-
-1. Add a direct dependency on `mongodb` matching Mongoose’s range (`mongoose@9` depends on `mongodb@~7.2`).
-2. Import the value class from `mongodb` (or keep returning `Types.ObjectId` at API boundaries):
+Construct through Mongoose’s already-loaded driver namespace and cast to `Types.ObjectId` for the API surface:
 
 ```ts
-import { ObjectId } from "mongodb";
-import type { Types } from "mongoose";
+import mongoose, { type Types } from "mongoose";
 
 export function toObjectId(value: string): Types.ObjectId {
-  return new ObjectId(value) as Types.ObjectId;
+  return new mongoose.mongo.ObjectId(value) as Types.ObjectId;
 }
 ```
 
-Do **not** import ObjectId from random deep paths under `mongoose/node_modules`.
+A direct `mongodb` dependency is still fine for scripts / native-driver code paths. Keep app-route ObjectId construction centralized in `src/utils/objectId.ts`.
 
 #### 4. Generate vs parse
 
@@ -261,13 +257,13 @@ const sheets = google.sheets({
 
 Implemented:
 
-1. Direct `mongodb@~7.2` dependency and `src/utils/objectId.ts` (`isObjectIdString`, `toObjectId`, `toObjectIdOrUndefined`).
+1. Direct `mongodb@~7.2` dependency (for scripts/native-driver paths) and `src/utils/objectId.ts` (`isObjectIdString`, `toObjectId`, `toObjectIdOrUndefined`) constructing via `mongoose.mongo.ObjectId`.
 2. Failing service/route call sites migrated off `ObjectId.isValid` / `createFromHexString` / `new Types.ObjectId(id)`.
 3. `granotCrmCsv/storage.ts` uses `S3Client.send` directly (no custom sender facade).
 4. `googleDriveOAuth/spreadsheet.service.ts` uses the Sheets-style `as unknown as drive_v3.Options` / `sheets_v4.Options` cast.
 
 For new code, keep using the helper and patterns above rather than reintroducing raw SDK statics.
 
-Also avoid `new mongoose.mongo.ObjectId(id)` in app code — use `toObjectId(id)` instead so construction stays centralized.
+Also avoid `new mongoose.mongo.ObjectId(id)` / named `mongodb` ObjectId imports in app route code — use `toObjectId(id)` instead so construction stays centralized and Vercel-safe.
 
 `pnpm run typecheck` excludes `scripts/dev_ops/**` (one-off ops tooling). Runtime/API code under `src/`, `api/`, and non-dev_ops scripts must stay clean.

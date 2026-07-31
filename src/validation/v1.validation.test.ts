@@ -745,6 +745,25 @@ test("FormLead model stores bad_lead enum values", async () => {
   assert.equal(lead.bad_lead, "disconnected_number");
 });
 
+test("FormLead model and update validation support lossless legacy bad-tab provenance", async () => {
+  const parsed = updateFormLeadSchema.parse({ bad_lead: "legacy_bad_tab" });
+  assert.equal(parsed.bad_lead, "legacy_bad_tab");
+
+  const lead = new FormLead({
+    source_company: "tbm_leads",
+    name: "Legacy Bad Row",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    move_size: "Studio",
+    phone_number: "5551112222",
+    local: "long_distance",
+    cpl: 0,
+    bad_lead: "legacy_bad_tab",
+  });
+  await lead.validate();
+  assert.equal(lead.bad_lead, "legacy_bad_tab");
+});
+
 test("FormLead model rejects unknown bad_lead values", async () => {
   const lead = new FormLead({
     source_company: "best_relocation_leads",

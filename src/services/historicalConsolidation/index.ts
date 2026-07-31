@@ -1,0 +1,13 @@
+export { buildHistoricalManifest, parseHistoricalManifest } from "./manifest";
+export { applyHistoricalManifest, preflightHistoricalManifest } from "./apply";
+export { verifyHistoricalManifest } from "./verify";
+export { rollbackHistoricalManifest } from "./rollback";
+export { createHistoricalMigrationRunner } from "./migrationContext";
+export { classifyHistoricalLeads, FORM_DUPLICATE_CUTOFF, CALL_DUPLICATE_WINDOW_MS } from "./classification";
+export { planHistoricalConsolidation } from "./planner";
+export type { HistoricalPlanningInput, HistoricalPlanningResult } from "./planner";
+export { normalizeExact, normalizeDisplay, parseAgentNames, parseCustomerName, parseMoneyToCents, allocateCents } from "./normalization";
+export { parseEasternDate, googleSerialToEastern } from "./dateParsing";
+export { stableJson, sha256, deterministicObjectId, assertArtifactHash } from "./stableJson";
+export type * from "./types";
+export type { ApplyAuthorization } from "./targetGuard";

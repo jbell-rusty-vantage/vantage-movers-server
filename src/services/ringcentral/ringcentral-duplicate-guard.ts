@@ -2,6 +2,7 @@ import { CallLead } from "../../models/CallLead";
 import { toFloridaTimestamp } from "../../utils/easternTime";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import type { SourceCompany } from "../../config/domain";
+import type { Types } from "mongoose";
 
 export const RINGCENTRAL_CALL_LEAD_DUPLICATE_WINDOW_DAYS = 90;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -33,6 +34,7 @@ export type RingCentralDuplicateClassification = {
 export type RingCentralDuplicateInput = {
   sourceCompany: SourceCompany;
   leadSourceCompany?: unknown;
+  sourceGranularityId: string | Types.ObjectId;
   callerPhoneNumber: string | null;
   /** The current call's session id, excluded from the match (it is itself). */
   telephonySessionId?: string | null;
@@ -49,7 +51,7 @@ type RecentCallLead = {
 export type RingCentralDuplicateDeps = {
   findRecentCallLeads: (params: {
     sourceCompany: SourceCompany;
-    leadSourceCompany?: unknown;
+    sourceGranularityId: string | Types.ObjectId;
     normalizedPhone: string;
     from: Date;
     to: Date;
@@ -58,27 +60,18 @@ export type RingCentralDuplicateDeps = {
 
 const defaultDeps: RingCentralDuplicateDeps = {
   async findRecentCallLeads({
-    sourceCompany,
-    leadSourceCompany,
+    sourceGranularityId,
     normalizedPhone,
     from,
     to,
   }) {
     return CallLead.find({
-      ...(leadSourceCompany
-        ? {
-            $or: [
-              { lead_source_company: leadSourceCompany },
-              { source_company: sourceCompany },
-            ],
-          }
-        : { source_company: sourceCompany }),
+      source_granularity_id: sourceGranularityId,
       duplicate: { $ne: true },
       normalized_phone_number: normalizedPhone,
-      timestamp: { $gte: from, $lte: to },
+      timestamp: { $gte: from, $lt: to },
     })
       .sort({ timestamp: -1 })
-      .limit(25)
       .lean()
       .exec() as unknown as Promise<RecentCallLead[]>;
   },
@@ -88,6 +81,9 @@ export async function classifyRingCentralCallLeadDuplicate(
   input: RingCentralDuplicateInput,
   deps: RingCentralDuplicateDeps = defaultDeps,
 ): Promise<RingCentralDuplicateClassification> {
+  if (!input.sourceGranularityId) {
+    throw new Error("Call Lead duplicate classification requires an exact Source Granularity");
+  }
   const normalizedPhone = normalizePhoneNumberForMatch(input.callerPhoneNumber);
   if (!normalizedPhone) {
     return {
@@ -102,10 +98,10 @@ export async function classifyRingCentralCallLeadDuplicate(
   const callTimestamp = toFloridaTimestamp(input.callTimestamp ?? new Date());
   const windowMs = RINGCENTRAL_CALL_LEAD_DUPLICATE_WINDOW_DAYS * MS_PER_DAY;
   const from = new Date(callTimestamp.getTime() - windowMs);
-  const to = new Date(callTimestamp.getTime() + windowMs);
+  const to = callTimestamp;
   const candidates = await deps.findRecentCallLeads({
     sourceCompany: input.sourceCompany,
-    leadSourceCompany: input.leadSourceCompany,
+    sourceGranularityId: input.sourceGranularityId,
     normalizedPhone,
     from,
     to,

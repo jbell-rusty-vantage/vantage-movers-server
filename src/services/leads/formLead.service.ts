@@ -92,18 +92,20 @@ export async function createFormLead(input: CreateFormLeadInput) {
       source_site: normalizedFormLeadInput.source_company_site,
     });
   const source_company = sourceAssignment.source_company as SourceCompany;
+  const leadTimestamp = toFloridaTimestamp(normalizedFormLeadInput.timestamp);
   const duplicateMatch = await findDuplicateFormLeadMatch(
     {
       sourceCompany: source_company,
       leadSourceCompany: sourceAssignment.lead_source_company,
+      sourceGranularityId: sourceAssignment.source_granularity_id,
     },
     normalizedFormLeadInput.phone_number,
     normalizedFormLeadInput.email,
+    leadTimestamp,
   );
   const duplicate = duplicateMatch.duplicate;
   const shouldPostToGranot = post_to_granot && !duplicate;
   const crmLabel = sourceResolution.crm_label_snapshot;
-  const leadTimestamp = toFloridaTimestamp(normalizedFormLeadInput.timestamp);
   const cplSnapshot = await resolveLeadCplSnapshot({
     sourceGranularityId: sourceAssignment.source_granularity_id
       ? String(sourceAssignment.source_granularity_id)

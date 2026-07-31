@@ -123,6 +123,7 @@ export async function ingestRingCentralQualifiedCall(
   const duplicate = await classifyRingCentralCallLeadDuplicate({
     sourceCompany: call.sourceCompany as SourceCompany,
     leadSourceCompany: call.routeResolution.company_id,
+    sourceGranularityId: call.routeResolution.granularity_id,
     callerPhoneNumber: call.callerPhoneNumber,
     telephonySessionId: call.telephonySessionId,
     callTimestamp,

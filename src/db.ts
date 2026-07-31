@@ -182,7 +182,7 @@ function shouldUseLocalMongoDnsServers(): boolean {
   return process.env.VERCEL !== "1" && process.env.NODE_ENV !== "production";
 }
 
-function configureMongoDnsServers(): void {
+export function configureMongoDnsServers(): void {
   if (!shouldUseLocalMongoDnsServers()) {
     return;
   }

@@ -16,7 +16,7 @@ afterEach(() => {
   mongoose.connection.useDb = originalUseDb;
 });
 
-test("form duplicate check matches existing lead by email within source company", async () => {
+test("form duplicate check matches an earlier lead by email within exact granularity", async () => {
   let findQuery: FindQuery | undefined;
   stubFormLeadFind(
     [
@@ -31,23 +31,23 @@ test("form duplicate check matches existing lead by email within source company"
   );
 
   const duplicate = await isDuplicateFormLead(
-    "tbm_leads",
+    { sourceCompany: "tbm_leads", sourceGranularityId: "granularity-1" },
     "5553334444",
     " CUSTOMER@example.com ",
   );
 
   assert.equal(duplicate, true);
-  assert.equal(findQuery?.$and?.[0]?.source_company, "tbm_leads");
+  assert.equal(findQuery?.$and?.[0]?.source_granularity_id, "granularity-1");
   assert.deepEqual(findQuery?.$and?.[1]?.duplicate, { $ne: true });
   assert.equal(
-    (findQuery?.$and?.[2]?.$or as Array<Record<string, unknown>> | undefined)?.some(
+    (findQuery?.$and?.[3]?.$or as Array<Record<string, unknown>> | undefined)?.some(
       (clause) => clause.email === "customer@example.com",
     ),
     true,
   );
 });
 
-test("form duplicate check matches existing lead by phone within source company", async () => {
+test("form duplicate check matches existing lead by phone within exact granularity", async () => {
   let findQuery: FindQuery | undefined;
   stubFormLeadFind(
     [
@@ -62,22 +62,22 @@ test("form duplicate check matches existing lead by phone within source company"
   );
 
   const duplicate = await isDuplicateFormLead(
-    "main_site",
+    { sourceCompany: "main_site", sourceGranularityId: "granularity-2" },
     "5619889998",
     "new@example.com",
   );
 
   assert.equal(duplicate, true);
-  assert.equal(findQuery?.$and?.[0]?.source_company, "main_site");
+  assert.equal(findQuery?.$and?.[0]?.source_granularity_id, "granularity-2");
   assert.equal(
-    (findQuery?.$and?.[2]?.$or as Array<Record<string, unknown>> | undefined)?.some(
+    (findQuery?.$and?.[3]?.$or as Array<Record<string, unknown>> | undefined)?.some(
       (clause) => clause.phone_number instanceof RegExp,
     ),
     true,
   );
 });
 
-test("form duplicate check keeps source scope when leadSourceCompany is provided", async () => {
+test("form duplicate check does not fall back from exact granularity to company", async () => {
   let findQuery: FindQuery | undefined;
   const leadSourceCompany = new mongoose.Types.ObjectId();
   stubFormLeadFind([], (query) => {
@@ -88,26 +88,15 @@ test("form duplicate check keeps source scope when leadSourceCompany is provided
     {
       sourceCompany: "tbm_leads",
       leadSourceCompany,
+      sourceGranularityId: "granularity-3",
     },
     "9542340460",
     "dringram91231@gmail.com",
   );
 
   const sourceFilter = findQuery?.$and?.[0];
-  const identifierFilter = findQuery?.$and?.[2];
-  assert.ok(sourceFilter?.$or);
-  assert.equal(
-    (sourceFilter?.$or as Array<Record<string, unknown>>).some(
-      (clause) => clause.lead_source_company === leadSourceCompany,
-    ),
-    true,
-  );
-  assert.equal(
-    (sourceFilter?.$or as Array<Record<string, unknown>>).some(
-      (clause) => clause.source_company === "tbm_leads",
-    ),
-    true,
-  );
+  const identifierFilter = findQuery?.$and?.[3];
+  assert.equal(sourceFilter?.source_granularity_id, "granularity-3");
   assert.ok(identifierFilter?.$or);
   assert.equal(
     (identifierFilter?.$or as Array<Record<string, unknown>>).some(
@@ -126,7 +115,7 @@ test("form duplicate check allows single identifier duplicate matches", async ()
   ]);
 
   assert.equal(
-    await isDuplicateFormLead("top10_leads", null, "lead@example.com"),
+    await isDuplicateFormLead({ sourceCompany: "top10_leads", sourceGranularityId: "granularity-4" }, null, "lead@example.com"),
     true,
   );
 });
@@ -140,7 +129,7 @@ test("form duplicate check ignores regex candidates that fail exact phone verifi
   ]);
 
   const duplicate = await isDuplicateFormLead(
-    "best_relocation_leads",
+    { sourceCompany: "best_relocation_leads", sourceGranularityId: "granularity-5" },
     "5619889998",
     "   ",
   );
@@ -155,7 +144,7 @@ test("form duplicate check skips lookup when no usable identifier exists", async
   });
 
   assert.equal(
-    await isDuplicateFormLead("not_provided", null, "   "),
+    await isDuplicateFormLead({ sourceCompany: "not_provided", sourceGranularityId: "granularity-6" }, null, "   "),
     false,
   );
   assert.equal(findCount, 0);
@@ -169,11 +158,7 @@ function stubFormLeadFind(
     find: (query: FindQuery) => {
       onFind?.(query);
       return {
-        sort: () => ({
-          limit: () => ({
-            exec: async () => leads,
-          }),
-        }),
+        sort: () => ({ exec: async () => leads }),
       };
     },
   };

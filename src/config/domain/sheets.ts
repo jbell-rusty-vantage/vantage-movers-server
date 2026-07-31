@@ -79,6 +79,7 @@ export const FORM_LEAD_BAD_LEAD_REASONS = [
   "bad_phone_email_name",
   "auto_only",
   "international_move",
+  "legacy_bad_tab",
 ] as const;
 
 export type FormLeadBadLeadReason = (typeof FORM_LEAD_BAD_LEAD_REASONS)[number];
@@ -88,6 +89,7 @@ export const FORM_LEAD_BAD_LEAD_SHEET_LABELS = {
   bad_phone_email_name: "Bad Phone-Email-Name",
   auto_only: "Auto Only",
   international_move: "International Move",
+  legacy_bad_tab: "Legacy Bad Tab",
 } as const satisfies Record<FormLeadBadLeadReason, string>;
 
 export function formatFormLeadBadLeadReason(

@@ -52,6 +52,10 @@ scripts/historical/reports/
 scripts/dev_ops/**
 !scripts/dev_ops/backfill-main-site-granot-july-2026.ts
 
+# Local-only historical production DB staged merge ingestion tooling.
+# Keep on developer machines; never commit or deploy.
+scripts/historical_production_db_staged_merge_ingestion/
+
 
 # Editor
 .vscode/

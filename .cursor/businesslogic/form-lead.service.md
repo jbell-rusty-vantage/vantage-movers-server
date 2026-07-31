@@ -15,7 +15,7 @@
 |------|----------------|
 | 1. Normalize | Name, phone, **Source Company** (`parseSourceCompany`), required location |
 | 2. Derive | **Move Type** (`local` from pickup/delivery states), **CPL** (`getCplForSource`), Florida `timestamp`, **Tracking Reference** (`ref_no`, default `"not provided"`), `move_date` |
-| 3. **Duplicate Lead** check | `findDuplicateFormLeadMatch(source, phone, email)` — same Source Company, existing non-duplicate Form Lead with same normalized phone **or** email; no time window |
+| 3. **Duplicate Lead** check | `findDuplicateFormLeadMatch(source, phone, email, timestamp)` — exact Source Granularity, same cohort around the 2026-04-30 Eastern cutoff, earlier non-duplicate Form Lead with same normalized phone **or** email |
 | 4. Persist + Sheet Sync intent | Atomic in queued mode via `runSheetSyncWrite`: save Form Lead with `duplicate` flag; `post_to_granot = post_to_granot && !duplicate` |
 | 4b. Form Fill (non-duplicates only) | `markMatchingCallLeadsWithFormFill` — same source + phone Call Leads → `form_fill=true`; enqueues `call_lead.form_fill.update` jobs in same txn |
 | 4c. Enqueue | `source_lead` / `form_lead.create` Sheet Sync job |
@@ -50,6 +50,11 @@ Glossary: CPL by Source Company + **Lead Channel** + **Move Type**. `getCplForSo
 | Not Duplicate Lead | `Forms` |
 | Duplicate Lead | `Duplicates` |
 | `bad_lead` set | primary tab **+** `Bad Leads` |
+
+`legacy_bad_tab` is the lossless migration-only reason for a row observed on a
+legacy bad-lead surface when no trustworthy specific reason exists. It is not
+derived from cell color. Duplicate, Booked, and Cancelled state keeps
+precedence; the migration records the legacy disposition as provenance.
 
 Job: `resource: source_lead`, `operation: form_lead.create` | `form_lead.update`. Delete: tombstone `delete_source_lead` / `delete_form_lead`.
 
