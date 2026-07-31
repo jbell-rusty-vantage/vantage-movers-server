@@ -2,24 +2,27 @@ import type { ParseResult } from "./normalization";
 
 const DATE_TIME = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})[ ,T]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/iu;
 const DATE_ONLY = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/u;
+const ISO_DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?$/u;
+const ISO_DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/u;
 
 export function parseEasternDate(rawValue: unknown, options: { allow_known_0205_correction?: boolean } = {}): ParseResult<string> {
   const raw = String(rawValue ?? "").normalize("NFKC").trim().replace(/^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+/iu, "");
   if (!raw) return { disposition: "empty", reason_codes: ["missing_date"] };
   const match = raw.match(DATE_TIME) ?? raw.match(DATE_ONLY);
-  if (!match) return { disposition: "invalid", reason_codes: ["unsupported_date_format"] };
-  let year = Number(match[3]);
-  const month = Number(match[1]);
-  const day = Number(match[2]);
+  const isoMatch = raw.match(ISO_DATE_TIME) ?? raw.match(ISO_DATE_ONLY);
+  if (!match && !isoMatch) return { disposition: "invalid", reason_codes: ["unsupported_date_format"] };
+  let year = Number(isoMatch?.[1] ?? match?.[3]);
+  const month = Number(isoMatch?.[2] ?? match?.[1]);
+  const day = Number(isoMatch?.[3] ?? match?.[2]);
   const reasons: string[] = [];
   if (year === 205 && month === 7 && day === 20 && options.allow_known_0205_correction) {
     year = 2025;
     reasons.push("corrected_7_20_0205_to_2025_07_20");
   }
-  let hour = Number(match[4] ?? 0);
-  const minute = Number(match[5] ?? 0);
-  const second = Number(match[6] ?? 0);
-  const meridiem = match[7]?.toUpperCase();
+  let hour = Number(isoMatch?.[4] ?? match?.[4] ?? 0);
+  const minute = Number(isoMatch?.[5] ?? match?.[5] ?? 0);
+  const second = Number(isoMatch?.[6] ?? match?.[6] ?? 0);
+  const meridiem = match?.[7]?.toUpperCase();
   if (meridiem === "PM" && hour < 12) hour += 12;
   if (meridiem === "AM" && hour === 12) hour = 0;
   if (!validCalendar(year, month, day, hour, minute, second)) return { disposition: "invalid", reason_codes: ["invalid_calendar_date"] };

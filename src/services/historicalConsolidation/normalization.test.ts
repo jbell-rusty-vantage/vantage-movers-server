@@ -45,6 +45,11 @@ test("integer-cent allocations are exact for one, two, and three agents", () => 
 });
 
 test("Eastern parser handles DST and the reviewed malformed-year correction", () => {
+  assert.deepEqual(parseEasternDate("2025-08-20 19:55:56"), {
+    disposition: "accepted",
+    value: "2025-08-20T23:55:56.000Z",
+    reason_codes: [],
+  });
   assert.equal(parseEasternDate("3/8/2026 2:30 AM").disposition, "invalid");
   assert.deepEqual(parseEasternDate("11/1/2026 1:30 AM"), { disposition: "accepted", value: "2026-11-01T06:30:00.000Z", reason_codes: [] });
   assert.deepEqual(parseEasternDate("7/20/0205", { allow_known_0205_correction: true }), { disposition: "accepted", value: "2025-07-20T04:00:00.000Z", reason_codes: ["corrected_7_20_0205_to_2025_07_20"] });

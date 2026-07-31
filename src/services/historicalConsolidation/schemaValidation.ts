@@ -44,11 +44,37 @@ export function validateManifestOperations(operations: HistoricalOperation[]): v
       }
     } else {
       for (const [field, value] of Object.entries(operation.set ?? {})) {
-        const schemaType = ModelCtor.schema.path(field);
-        if (!schemaType) throw new Error(`Update ${operation.operation_id} targets unknown production field ${field}`);
-        const cast = schemaType.cast(materializeMongoValue(value));
-        if (JSON.stringify(comparable(cast)) !== JSON.stringify(comparable(materializeMongoValue(value)))) throw new Error(`Production schema changed update field ${field} for ${operation.operation_id}`);
+        validateUpdateField(ModelCtor, operation.operation_id, field, value);
       }
     }
   }
+}
+
+function validateUpdateField(
+  ModelCtor: Model<ParityRecord>,
+  operationId: string,
+  field: string,
+  value: unknown,
+): void {
+  const materialized = materializeMongoValue(value);
+  const schemaType = ModelCtor.schema.path(field);
+  if (schemaType) {
+    const cast = schemaType.cast(materialized);
+    if (JSON.stringify(comparable(cast)) !== JSON.stringify(comparable(materialized))) {
+      throw new Error(`Production schema changed update field ${field} for ${operationId}`);
+    }
+    return;
+  }
+  if (
+    ModelCtor.schema.pathType(field) === "nested" &&
+    materialized !== null &&
+    typeof materialized === "object" &&
+    !Array.isArray(materialized)
+  ) {
+    for (const [nestedField, nestedValue] of Object.entries(materialized as Record<string, unknown>)) {
+      validateUpdateField(ModelCtor, operationId, `${field}.${nestedField}`, nestedValue);
+    }
+    return;
+  }
+  throw new Error(`Update ${operationId} targets unknown production field ${field}`);
 }
