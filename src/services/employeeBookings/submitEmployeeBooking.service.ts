@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import mongoose from "mongoose";
 import {
   getBookingReconciliationConfig,
   getEmployeeBookingMatchingConfig,
@@ -28,6 +27,7 @@ import type {
   EmployeeBookingMatchOutcome,
   EvaluatedLeadCandidate,
 } from "./types";
+import { toObjectId } from "../../utils/objectId";
 
 export type SubmitEmployeeBookingContext = {
   clientKeyHash?: string;
@@ -192,7 +192,7 @@ export async function submitEmployeeBooking(
           } else {
             const booking = new BookedLead({
               ...bookingBase,
-              lead_ref: new mongoose.Types.ObjectId(matchOutcome.leadId),
+              lead_ref: toObjectId(matchOutcome.leadId),
               lead_model: matchOutcome.leadModel,
               is_leadless_booking: false,
               auto_match: {
@@ -413,7 +413,7 @@ function pendingFromClaimFailure(
 function toCaseCandidate(candidate: EvaluatedLeadCandidate) {
   return {
     lead_model: candidate.leadModel,
-    lead_id: new mongoose.Types.ObjectId(candidate.leadId),
+    lead_id: toObjectId(candidate.leadId),
     confidence: candidate.confidence,
     match_methods: candidate.matchMethods,
     eligibility: candidate.eligibility,

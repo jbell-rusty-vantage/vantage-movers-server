@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { Testimonial } from "../../models/Testimonial";
 import type { AdminTestimonialsQuery, ListTestimonialsQuery } from "../../validation/v1.validation";
 import { V1ServiceError } from "../v1ServiceError";
+import { toObjectId } from "../../utils/objectId";
 
 export type TestimonialListItem = {
   id: string;
@@ -149,7 +150,7 @@ export function buildAdminTestimonialFilter(query: AdminTestimonialsQuery): Reco
     filter.rating = query.rating;
   }
   if (query.customer !== undefined) {
-    filter.customer = mongoose.Types.ObjectId.createFromHexString(query.customer);
+    filter.customer = toObjectId(query.customer);
   }
   if (query.from !== undefined || query.to !== undefined) {
     filter.review_date = {

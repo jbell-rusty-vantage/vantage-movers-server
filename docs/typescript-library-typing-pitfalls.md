@@ -257,10 +257,17 @@ const sheets = google.sheets({
    - Allowed only at SDK boundaries, with a one-line comment naming the library gap.
    - Forbidden as a substitute for learning the correct command/output or ObjectId helper.
 
-## Suggested remediation order (when implementing later)
+## Remediation status
 
-1. Add `src/utils/objectId.ts` (and direct `mongodb` dep if still required after a CI repro).
-2. Replace `ObjectId.isValid` / `createFromHexString` / raw `new Types.ObjectId(id)` in the failing services listed above.
-3. Simplify `granotCrmCsv/storage.ts` to use `S3Client.send` directly.
-4. Align `googleDriveOAuth/spreadsheet.service.ts` with the Sheets auth factory cast pattern.
-5. Re-run `pnpm run typecheck` and confirm the Vercel TypeScript step is clean.
+Implemented:
+
+1. Direct `mongodb@~7.2` dependency and `src/utils/objectId.ts` (`isObjectIdString`, `toObjectId`, `toObjectIdOrUndefined`).
+2. Failing service/route call sites migrated off `ObjectId.isValid` / `createFromHexString` / `new Types.ObjectId(id)`.
+3. `granotCrmCsv/storage.ts` uses `S3Client.send` directly (no custom sender facade).
+4. `googleDriveOAuth/spreadsheet.service.ts` uses the Sheets-style `as unknown as drive_v3.Options` / `sheets_v4.Options` cast.
+
+For new code, keep using the helper and patterns above rather than reintroducing raw SDK statics.
+
+Also avoid `new mongoose.mongo.ObjectId(id)` in app code — use `toObjectId(id)` instead so construction stays centralized.
+
+`pnpm run typecheck` excludes `scripts/dev_ops/**` (one-off ops tooling). Runtime/API code under `src/`, `api/`, and non-dev_ops scripts must stay clean.

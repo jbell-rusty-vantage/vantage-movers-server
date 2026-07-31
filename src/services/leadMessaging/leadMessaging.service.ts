@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import mongoose, { type ClientSession } from "mongoose";
+import { type ClientSession } from "mongoose";
 import {
   LEAD_MESSAGING_DRAIN_LIMIT,
   LEAD_MESSAGING_LEASE_MS,
@@ -23,6 +23,7 @@ import { getLeadMessageRateLimitModel } from "../../models/LeadMessageRateLimit"
 import type { CreateFormLeadInput } from "../../validation/v1.validation";
 import { ConflictError, NotFoundError } from "../errors";
 import { recordOperationalEvent } from "../observability";
+import { toObjectId } from "../../utils/objectId";
 import {
   LEAD_CONFIRMATION_MESSAGE_KEY,
   LEAD_CONFIRMATION_TEMPLATE_VERSION,
@@ -88,7 +89,7 @@ export async function persistLeadMessageIntent(
 
   return (dependencies.createMessage ?? createLeadMessage)(
     {
-      form_lead: new mongoose.Types.ObjectId(input.formLeadId),
+      form_lead: toObjectId(input.formLeadId),
       provider: "twilio",
       channel: "sms",
       purpose: "quote_request_confirmation",

@@ -1,4 +1,4 @@
-import mongoose, { type ClientSession } from "mongoose";
+import { type ClientSession } from "mongoose";
 import type { LeadModelName } from "../../config/domain";
 import { FormLead } from "../../models/FormLead";
 import { CallLead } from "../../models/CallLead";
@@ -29,6 +29,7 @@ import type {
   CreateReconciliationFormLeadInput,
 } from "../../validation/v1.validation";
 import type { PreparedEmployeeBookingSubmission } from "./types";
+import { toObjectId } from "../../utils/objectId";
 
 type SourceResolutionChoice =
   | "preserve_lead_source"
@@ -86,7 +87,7 @@ export async function attachLeadToEmployeeBooking(args: {
     );
   }
 
-  args.booking.lead_ref = new mongoose.Types.ObjectId(args.leadId);
+  args.booking.lead_ref = toObjectId(args.leadId);
   args.booking.lead_model = args.leadModel;
   args.booking.is_leadless_booking = false;
   args.booking.source =

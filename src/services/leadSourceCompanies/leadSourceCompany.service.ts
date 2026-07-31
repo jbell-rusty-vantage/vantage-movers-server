@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import {
   CPL_RATE_DEFINITIONS,
   SOURCE_COMPANY_CONFIGS,
@@ -11,6 +10,7 @@ import {
   type LeadSourceCompanyDocument,
   type LeadSourceGranularity,
 } from "../../models/LeadSourceCompany";
+import { toObjectId } from "../../utils/objectId";
 import { ValidationError } from "../errors";
 import { V1ServiceError } from "../v1ServiceError";
 
@@ -261,8 +261,8 @@ export async function resolveLeadSource(
 export function leadSourceAssignmentFields(resolution: LeadSourceResolution) {
   return {
     source_company: resolution.company.company_slug,
-    lead_source_company: mongoose.Types.ObjectId.createFromHexString(resolution.company.id),
-    source_granularity_id: mongoose.Types.ObjectId.createFromHexString(resolution.granularity.id),
+    lead_source_company: toObjectId(resolution.company.id),
+    source_granularity_id: toObjectId(resolution.granularity.id),
     source_granularity_key: resolution.granularity.granularity_key,
     source_company_label_snapshot: resolution.company.owner_label,
     source_granularity_label_snapshot: resolution.granularity.owner_label,

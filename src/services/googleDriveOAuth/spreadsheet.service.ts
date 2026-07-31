@@ -1,4 +1,4 @@
-import { google, type sheets_v4 } from "googleapis";
+import { google, type drive_v3, type sheets_v4 } from "googleapis";
 import { getGoogleDriveOAuthConfig } from "../../config/domain";
 import { BadRequestError, IntegrationError } from "../errors";
 import { getConnectedGoogleOAuthClient } from "./googleDriveOAuth.service";
@@ -26,7 +26,11 @@ export async function createGoogleDriveFolder(
 }> {
   const auth = await getConnectedGoogleOAuthClient();
   const config = getGoogleDriveOAuthConfig();
-  const drive = google.drive({ version: "v3", auth });
+  // googleapis overload resolution often drops `auth` on Options under TS 6.
+  const drive = google.drive({
+    version: "v3",
+    auth,
+  } as unknown as drive_v3.Options);
   const requestBody = createGoogleDriveFolderRequest({
     name: input.name,
     parentFolderId: input.parentFolderId ?? config.exportFolderId,
@@ -76,8 +80,15 @@ export async function createOAuthTestSpreadsheet(
   title: string;
 }> {
   const auth = await getConnectedGoogleOAuthClient();
-  const drive = google.drive({ version: "v3", auth });
-  const sheets = google.sheets({ version: "v4", auth });
+  // googleapis overload resolution often drops `auth` on Options under TS 6.
+  const drive = google.drive({
+    version: "v3",
+    auth,
+  } as unknown as drive_v3.Options);
+  const sheets = google.sheets({
+    version: "v4",
+    auth,
+  } as unknown as sheets_v4.Options);
   const config = getGoogleDriveOAuthConfig();
   const folderId = normalizeFolderId(input.folderId ?? config.exportFolderId);
 

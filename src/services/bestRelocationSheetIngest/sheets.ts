@@ -1,5 +1,5 @@
 import path from "node:path";
-import { google } from "googleapis";
+import { google, type sheets_v4 } from "googleapis";
 import {
   cell,
   parseBookedDealRows,
@@ -62,7 +62,11 @@ export function createSheetsClient(): SheetsClient {
     ...serviceAccountAuthSource(),
     scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
   });
-  return google.sheets({ version: "v4", auth });
+  // googleapis overload resolution often drops `auth` on Options under TS 6.
+  return google.sheets({
+    version: "v4",
+    auth,
+  } as unknown as sheets_v4.Options);
 }
 
 async function readTab(

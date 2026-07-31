@@ -16,6 +16,7 @@ import {
   type RingCentralRouteValidationResult,
   type RingCentralRouteValidator,
 } from "./ringCentralValidation";
+import { toObjectId } from "../../utils/objectId";
 
 const DEFAULT_VALIDATION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -220,7 +221,7 @@ export async function createOrUpdateRingCentralRoute(
       };
       if (!before) {
         Object.assign(set, {
-          _id: new mongoose.Types.ObjectId(routeId),
+          _id: toObjectId(routeId),
           provider: "ringcentral",
           phone_locked: false,
           active: false,

@@ -30,6 +30,7 @@ import {
   recordRegistryResolverFailure,
   recordRegistryResolverSuccess,
 } from "./runtimeTelemetry";
+import { toObjectIdOrUndefined } from "../../utils/objectId";
 
 export type SourceCompanyCommand = {
   id?: string;
@@ -253,7 +254,7 @@ export async function createOrUpdateSourceCompany(
         if (command.default_form_granularity === null) {
           unset.default_form_granularity = 1;
         } else {
-          update.default_form_granularity = objectIdOrUndefined(
+          update.default_form_granularity = toObjectIdOrUndefined(
             command.default_form_granularity,
           );
         }
@@ -264,7 +265,7 @@ export async function createOrUpdateSourceCompany(
         if (command.default_call_granularity === null) {
           unset.default_call_granularity = 1;
         } else {
-          update.default_call_granularity = objectIdOrUndefined(
+          update.default_call_granularity = toObjectIdOrUndefined(
             command.default_call_granularity,
           );
         }
@@ -980,12 +981,6 @@ function normalizeKey(value: unknown): string | undefined {
 
 function optional(value: string | null | undefined): string | undefined {
   return value?.trim() || undefined;
-}
-
-function objectIdOrUndefined(
-  value: string | null | undefined,
-): mongoose.Types.ObjectId | undefined {
-  return value ? new mongoose.Types.ObjectId(value) : undefined;
 }
 
 function record(value: unknown): Record<string, unknown> | null {

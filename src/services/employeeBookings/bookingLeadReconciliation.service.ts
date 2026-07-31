@@ -45,6 +45,7 @@ import type {
   PreparedEmployeeBookingSubmission,
 } from "./types";
 import { createHash } from "node:crypto";
+import { toObjectId } from "../../utils/objectId";
 
 export async function listBookingLeadReconciliationCases(
   query: BookingLeadReconciliationListQuery,
@@ -54,7 +55,7 @@ export async function listBookingLeadReconciliationCases(
   if (query.reason) filter.reason = query.reason;
   if (query.lead_source_company) {
     filter["submission.source_assignment.lead_source_company"] =
-      new mongoose.Types.ObjectId(query.lead_source_company);
+      toObjectId(query.lead_source_company);
   }
   if (query.source_granularity_key) {
     filter["submission.source_assignment.source_granularity_key"] =
@@ -70,7 +71,7 @@ export async function listBookingLeadReconciliationCases(
       { "submission.email": regex },
       { "submission.source_assignment.crm_source_label_snapshot": regex },
       ...(mongoose.isValidObjectId(query.q.trim())
-        ? [{ booking: new mongoose.Types.ObjectId(query.q.trim()) }]
+        ? [{ booking: toObjectId(query.q.trim()) }]
         : []),
     ];
     filter.$or = orClauses;
@@ -93,7 +94,7 @@ export async function listBookingLeadReconciliationCases(
             {
               [query.sort]: parsed.date,
               _id: {
-                [directionOperator]: new mongoose.Types.ObjectId(parsed.id),
+                [directionOperator]: toObjectId(parsed.id),
               },
             },
           ],
@@ -392,7 +393,7 @@ export async function resolveBookingLeadReconciliation(
       caseDoc.resolution_history.push({
         action: "attach_existing",
         lead_model: command.lead_model,
-        lead_id: new mongoose.Types.ObjectId(command.lead_id),
+        lead_id: toObjectId(command.lead_id),
         source_resolution: command.source_resolution,
         overridden_warnings: command.overridden_warnings,
         actor: context.actor,
@@ -417,7 +418,7 @@ export async function resolveBookingLeadReconciliation(
         caseDoc.resolution_history.push({
           action: "create_and_attach",
           lead_model: "CallLead",
-          lead_id: new mongoose.Types.ObjectId(result.leadId),
+          lead_id: toObjectId(result.leadId),
           actor: context.actor,
           notes: command.notes,
           occurred_at: new Date(),
@@ -438,7 +439,7 @@ export async function resolveBookingLeadReconciliation(
         caseDoc.resolution_history.push({
           action: "create_and_attach",
           lead_model: "FormLead",
-          lead_id: new mongoose.Types.ObjectId(result.leadId),
+          lead_id: toObjectId(result.leadId),
           actor: context.actor,
           notes: command.notes,
           occurred_at: new Date(),
@@ -468,7 +469,7 @@ export async function resolveBookingLeadReconciliation(
       caseDoc.resolution_history.push({
         action: "reassign",
         lead_model: command.lead_model,
-        lead_id: new mongoose.Types.ObjectId(command.lead_id),
+        lead_id: toObjectId(command.lead_id),
         source_resolution: command.source_resolution,
         overridden_warnings: command.overridden_warnings,
         actor: context.actor,
@@ -560,7 +561,7 @@ export async function reopenBookingLeadReconciliation(
 
 async function searchCandidates(query: BookingLeadCandidateSearchInput) {
   const clauses: Record<string, unknown>[] = [];
-  if (query.mongo_id) clauses.push({ _id: new mongoose.Types.ObjectId(query.mongo_id) });
+  if (query.mongo_id) clauses.push({ _id: toObjectId(query.mongo_id) });
   const normalizedLid = normalizeSubmissionLid(query.lid);
   if (normalizedLid) clauses.push({ normalized_lid: normalizedLid });
   const normalizedJobNo = normalizeJobNo(query.job_no);
@@ -584,7 +585,7 @@ async function searchCandidates(query: BookingLeadCandidateSearchInput) {
         { createdAt: { $lt: cursor.date } },
         {
           createdAt: cursor.date,
-          _id: { $lt: new mongoose.Types.ObjectId(cursor.id) },
+          _id: { $lt: toObjectId(cursor.id) },
         },
       ],
     });
@@ -592,7 +593,7 @@ async function searchCandidates(query: BookingLeadCandidateSearchInput) {
   if (query.name?.trim()) clauses.push({ name: new RegExp(escapeRegex(query.name.trim()), "i") });
   if (query.lead_source_company) {
     clauses.push({
-      lead_source_company: new mongoose.Types.ObjectId(query.lead_source_company),
+      lead_source_company: toObjectId(query.lead_source_company),
     });
   }
   if (query.source_granularity_key?.trim()) {
@@ -702,7 +703,7 @@ function preparedFromCase(caseDoc: any): PreparedEmployeeBookingSubmission {
 function toCaseCandidate(candidate: EvaluatedLeadCandidate) {
   return {
     lead_model: candidate.leadModel,
-    lead_id: new mongoose.Types.ObjectId(candidate.leadId),
+    lead_id: toObjectId(candidate.leadId),
     confidence: candidate.confidence,
     match_methods: candidate.matchMethods,
     eligibility: candidate.eligibility,

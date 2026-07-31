@@ -15,5 +15,8 @@
     "src/**/*.ts",
     "scripts/**/*.ts",
     "types/**/*.d.ts"
+  ],
+  "exclude": [
+    "scripts/dev_ops/**"
   ]
 }

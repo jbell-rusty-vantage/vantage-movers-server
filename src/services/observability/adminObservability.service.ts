@@ -44,6 +44,7 @@ import type {
   ObservabilityNotificationsQuery,
   ObservabilityOverviewQuery,
 } from "../../validation/v1.validation";
+import { toObjectId } from "../../utils/objectId";
 
 /**
  * Read services + incident status mutation backing the admin Observational
@@ -373,7 +374,7 @@ export async function updateOperationalIncidentStatuses(
     .map((id) => ({ id, reason: "invalid_id" }));
 
   const incidents = await Incident.find({
-    _id: { $in: validIds.map((id) => new mongoose.mongo.ObjectId(id)) },
+    _id: { $in: validIds.map((id) => toObjectId(id)) },
   });
   const foundIds = new Set(incidents.map((incident) => incident._id.toString()));
   for (const id of validIds) {
@@ -428,7 +429,7 @@ export async function deleteObservabilityRecords(
     .filter((id) => !mongoose.isValidObjectId(id))
     .map((id) => ({ id, reason: "invalid_id" }));
 
-  const objectIds = validIds.map((id) => new mongoose.mongo.ObjectId(id));
+  const objectIds = validIds.map((id) => toObjectId(id));
   const existing = await Model.find({ _id: { $in: objectIds } }).select({ _id: 1 }).lean();
   const existingIds = existing.map((doc) => doc._id.toString());
   const existingIdSet = new Set(existingIds);
@@ -440,7 +441,7 @@ export async function deleteObservabilityRecords(
 
   if (existingIds.length > 0) {
     await Model.deleteMany({
-      _id: { $in: existingIds.map((id) => new mongoose.mongo.ObjectId(id)) },
+      _id: { $in: existingIds.map((id) => toObjectId(id)) },
     });
   }
 
@@ -545,10 +546,10 @@ export async function listNotificationDeliveries(
   if (query.recipient_type) filter.recipient_type = query.recipient_type;
   if (query.provider) filter.provider = query.provider;
   if (query.incident_id && mongoose.isValidObjectId(query.incident_id)) {
-    filter.incident_id = new mongoose.mongo.ObjectId(query.incident_id);
+    filter.incident_id = toObjectId(query.incident_id);
   }
   if (query.report_run_id && mongoose.isValidObjectId(query.report_run_id)) {
-    filter.report_run_id = new mongoose.mongo.ObjectId(query.report_run_id);
+    filter.report_run_id = toObjectId(query.report_run_id);
   }
   if (query.q) filter.subject = { $regex: query.q, $options: "i" };
 

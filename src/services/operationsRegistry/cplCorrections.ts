@@ -26,6 +26,7 @@ import { withRegistryMutation, type RegistryAuditDeps } from "./registryAudit";
 import { sanitizeEventDetails } from "../observability/operationalEventSanitizer";
 import { recordOperationalEvent } from "../observability";
 import type { RegistryActorContext, TransactionRunner } from "./types";
+import { isObjectIdString, toObjectId } from "../../utils/objectId";
 
 export const CPL_CORRECTION_RESOLUTION_VERSION =
   "operations-registry-cpl-correction-v1" as const;
@@ -344,7 +345,7 @@ export function normalizeCplCorrectionSelection(
   input: CplCorrectionSelectionInput,
 ): NormalizedCplCorrectionSelection {
   const sourceGranularityId = input.source_granularity_id.trim();
-  if (!mongoose.Types.ObjectId.isValid(sourceGranularityId)) {
+  if (!isObjectIdString(sourceGranularityId)) {
     throw new RegistryError("Invalid source granularity id.", {
       registryCode: REGISTRY_ERROR_CODES.IMMUTABLE_FIELD,
     });
@@ -1499,7 +1500,7 @@ function leadTimestampFilter(
   if (leadModel && selection.reviewed_targets) {
     const reviewedIds = selection.reviewed_targets
       .filter((target) => target.lead_model === leadModel)
-      .map((target) => new mongoose.Types.ObjectId(target.lead_id));
+      .map((target) => toObjectId(target.lead_id));
     return {
       _id: {
         $in: reviewedIds,
@@ -1515,7 +1516,7 @@ function leadTimestampFilter(
         ? selection.max_call_lead_id
         : undefined;
   return {
-    source_granularity_id: new mongoose.Types.ObjectId(selection.source_granularity_id),
+    source_granularity_id: toObjectId(selection.source_granularity_id),
     timestamp: {
       $gte: storedRange.from,
       $lt: storedRange.until,
@@ -1526,7 +1527,7 @@ function leadTimestampFilter(
         ? {
             _id: {
               ...(afterId ? { $gt: afterId } : {}),
-              $lte: new mongoose.Types.ObjectId(maxLeadId),
+              $lte: toObjectId(maxLeadId),
             },
           }
         : afterId
@@ -1606,7 +1607,7 @@ async function queryLeadBatch(
   const startModel: CplCorrectionLeadModel =
     cursor?.lead_model ?? "FormLead";
   const startId = cursor?.lead_id
-    ? new mongoose.Types.ObjectId(cursor.lead_id)
+    ? toObjectId(cursor.lead_id)
     : undefined;
 
   if (startModel === "FormLead") {
@@ -1678,13 +1679,11 @@ export function createMongoCplCorrectionLeadStore(): CplCorrectionLeadStore {
     async updateLeadCorrection(ref, update, session) {
       const expectedFilter: Record<string, unknown> = {
         _id: ref.lead_id,
-        source_granularity_id: new mongoose.Types.ObjectId(
-          ref.source_granularity_id,
-        ),
+        source_granularity_id: toObjectId(ref.source_granularity_id),
         timestamp: ref.timestamp,
         cpl: ref.cpl,
         cpl_rate_period: ref.cpl_rate_period
-          ? new mongoose.Types.ObjectId(ref.cpl_rate_period)
+          ? toObjectId(ref.cpl_rate_period)
           : null,
         cpl_resolution_status: ref.cpl_resolution_status ?? null,
         cpl_resolved_at: ref.cpl_resolved_at ?? null,
@@ -1696,9 +1695,7 @@ export function createMongoCplCorrectionLeadStore(): CplCorrectionLeadStore {
         cpl: update.cpl,
         ...(update.cpl_rate_period
           ? {
-              cpl_rate_period: new mongoose.Types.ObjectId(
-                update.cpl_rate_period,
-              ),
+              cpl_rate_period: toObjectId(update.cpl_rate_period),
             }
           : {}),
         cpl_resolution_status: update.cpl_resolution_status,
@@ -1730,14 +1727,14 @@ export function createMongoCplCorrectionLeadStore(): CplCorrectionLeadStore {
       await getCplLeadCorrectionModel().create(
         [
           {
-            job_id: new mongoose.Types.ObjectId(update.job_id),
+            job_id: toObjectId(update.job_id),
             lead_model: ref.lead_model,
-            lead_id: new mongoose.Types.ObjectId(ref.lead_id),
+            lead_id: toObjectId(ref.lead_id),
             corrected_at: update.corrected_at,
             before: {
               cpl: ref.cpl,
               cpl_rate_period: ref.cpl_rate_period
-                ? new mongoose.Types.ObjectId(ref.cpl_rate_period)
+                ? toObjectId(ref.cpl_rate_period)
                 : null,
               cpl_resolution_status: ref.cpl_resolution_status ?? null,
               cpl_resolved_at: ref.cpl_resolved_at ?? null,
@@ -1746,7 +1743,7 @@ export function createMongoCplCorrectionLeadStore(): CplCorrectionLeadStore {
             after: {
               cpl: update.cpl,
               cpl_rate_period: update.cpl_rate_period
-                ? new mongoose.Types.ObjectId(update.cpl_rate_period)
+                ? toObjectId(update.cpl_rate_period)
                 : null,
               cpl_resolution_status: update.cpl_resolution_status,
               cpl_resolved_at: update.cpl_resolved_at,
@@ -1829,25 +1826,19 @@ export function createMongoCplCorrectionJobStore(): CplCorrectionJobStore {
             window_until: input.selection.window_until,
             target_schedule_revision: input.selection.target_schedule_revision,
             max_form_lead_id: input.selection.max_form_lead_id
-              ? new mongoose.Types.ObjectId(
-                  input.selection.max_form_lead_id,
-                )
+              ? toObjectId(input.selection.max_form_lead_id)
               : null,
             max_call_lead_id: input.selection.max_call_lead_id
-              ? new mongoose.Types.ObjectId(
-                  input.selection.max_call_lead_id,
-                )
+              ? toObjectId(input.selection.max_call_lead_id)
               : null,
             reviewed_targets: input.reviewed_targets.map((target) => ({
               lead_model: target.lead_model,
-              lead_id: new mongoose.Types.ObjectId(target.lead_id),
-              source_granularity_id: new mongoose.Types.ObjectId(
-                target.source_granularity_id,
-              ),
+              lead_id: toObjectId(target.lead_id),
+              source_granularity_id: toObjectId(target.source_granularity_id),
               timestamp: target.timestamp,
               cpl: target.cpl,
               cpl_rate_period: target.cpl_rate_period
-                ? new mongoose.Types.ObjectId(target.cpl_rate_period)
+                ? toObjectId(target.cpl_rate_period)
                 : null,
               cpl_resolution_status:
                 target.cpl_resolution_status ?? null,
@@ -1874,12 +1865,12 @@ export function createMongoCplCorrectionJobStore(): CplCorrectionJobStore {
       return mapJobDoc(created!);
     },
     async findById(id) {
-      if (!mongoose.Types.ObjectId.isValid(id)) return null;
+      if (!isObjectIdString(id)) return null;
       const doc = await model().findById(id).exec();
       return doc ? mapJobDoc(doc) : null;
     },
     async claimForProcessing(id, owner, leaseUntil, now) {
-      if (!mongoose.Types.ObjectId.isValid(id)) return null;
+      if (!isObjectIdString(id)) return null;
       const doc = await model()
         .findOneAndUpdate(
           {
@@ -2000,7 +1991,7 @@ export function createMongoCplCorrectionGranularityStore(): CplCorrectionGranula
   const model = () => getLeadSourceGranularityModel();
   return {
     async getScheduleRevision(sourceGranularityId) {
-      if (!mongoose.Types.ObjectId.isValid(sourceGranularityId)) return null;
+      if (!isObjectIdString(sourceGranularityId)) return null;
       const doc = await model()
         .findById(sourceGranularityId)
         .select("schedule_revision")

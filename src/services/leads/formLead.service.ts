@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import {
   getSheetSyncMode,
   isTestMode,
@@ -31,6 +30,7 @@ import {
   runSheetSyncWrite,
   type FullSheetSyncJob,
 } from "../sheetSync";
+import { toObjectId } from "../../utils/objectId";
 // Compatibility imports from the v1 service facade. `deleteBookedLead` and
 // `refreshAttachedBookingFromLead` still live there because the booking
 // extraction (refactor plan 04) has not happened yet. They are only ever
@@ -462,7 +462,7 @@ export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
         metadata: { resource: "agent", id: input.receiver_agent },
       });
     }
-    lead.receiver_agent = new mongoose.Types.ObjectId(agent.id);
+    lead.receiver_agent = toObjectId(agent.id);
     lead.receiver_agent_name_snapshot = agent.name;
     lead.receiver_agent_source = input.receiver_agent_source ?? "manual";
     lead.receiver_agent_source_value = input.receiver_agent_source_value;

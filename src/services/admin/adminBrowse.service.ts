@@ -15,6 +15,7 @@ import {
   getAgentBrowseMetrics,
   normalizeAgentMetricKey,
 } from "./agentBrowseMetrics.service";
+import { toObjectId } from "../../utils/objectId";
 
 type AdminRecord = Record<string, unknown>;
 type AdminFilter = QueryFilter<AdminRecord>;
@@ -369,7 +370,7 @@ function receiverAgentFilterClause(query: AdminBrowseQuery): AdminFilter {
     return {};
   }
   return {
-    receiver_agent: new mongoose.mongo.ObjectId(receiverAgent),
+    receiver_agent: toObjectId(receiverAgent),
   };
 }
 
@@ -380,7 +381,7 @@ function leadSourceCompanyFilterClause(query: AdminBrowseQuery): AdminFilter {
     return {};
   }
   return {
-    lead_source_company: new mongoose.mongo.ObjectId(leadSourceCompany),
+    lead_source_company: toObjectId(leadSourceCompany),
   };
 }
 
@@ -527,7 +528,7 @@ function addDateClause(
 function addQClause(clauses: AdminFilter[], fields: string[], q?: string) {
   if (!q) return;
   const objectIdClause = mongoose.isValidObjectId(q)
-    ? [{ _id: new mongoose.mongo.ObjectId(q) }]
+    ? [{ _id: toObjectId(q) }]
     : [];
   clauses.push({ $or: [...objectIdClause, ...containsClauses(fields, q)] });
 }
@@ -619,7 +620,7 @@ async function enrichCustomerItems(
   const customerIds = items
     .map((item) => item._id)
     .filter((id): id is string => typeof id === "string" && mongoose.isValidObjectId(id))
-    .map((id) => mongoose.Types.ObjectId.createFromHexString(id));
+    .map((id) => toObjectId(id));
   if (customerIds.length === 0) {
     return items;
   }
@@ -689,7 +690,7 @@ async function enrichFormLeadItems(
   const leadIds = items
     .map((item) => item._id)
     .filter((id): id is string => typeof id === "string" && mongoose.isValidObjectId(id))
-    .map((id) => mongoose.Types.ObjectId.createFromHexString(id));
+    .map((id) => toObjectId(id));
   if (leadIds.length === 0) {
     return items.map((item) => ({
       ...item,

@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import { ValidationError } from "../errors";
 import {
   type LeadSourceChannel,
@@ -10,6 +9,7 @@ import {
   type SourceAttributionInput,
 } from "../operationsRegistry";
 import type { LocalType } from "../../config/domain";
+import { toObjectId } from "../../utils/objectId";
 
 export async function resolveLeadSourceAssignment(input: {
   value?: string | null;
@@ -72,10 +72,10 @@ export async function resolveLeadSourceAssignment(input: {
 function sourceAssignmentFields(resolution: SourceAttribution) {
   return {
     source_company: resolution.company_slug,
-    lead_source_company: mongoose.Types.ObjectId.createFromHexString(
+    lead_source_company: toObjectId(
       resolution.company_id,
     ),
-    source_granularity_id: mongoose.Types.ObjectId.createFromHexString(
+    source_granularity_id: toObjectId(
       resolution.granularity_id,
     ),
     source_granularity_key: resolution.granularity_key,

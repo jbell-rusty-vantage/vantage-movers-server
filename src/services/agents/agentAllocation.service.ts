@@ -7,6 +7,7 @@ import type {
 import { resolveAgentByName } from "../catalog";
 import { V1ServiceError } from "../v1ServiceError";
 import { normalizeAgentName } from "./agentName";
+import { toObjectId } from "../../utils/objectId";
 
 /**
  * Shape of an agent allocation as accepted from request input.
@@ -101,7 +102,7 @@ export async function resolveAgentAllocations(
 
     const agent = await resolveAgentByName(name, options);
     resolved.push({
-      agent: new mongoose.Types.ObjectId(agent.id),
+      agent: toObjectId(agent.id),
       agent_name_snapshot: agent.name,
       binder_amount: allocation.binder_amount,
     });

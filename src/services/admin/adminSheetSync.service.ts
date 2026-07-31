@@ -12,6 +12,7 @@ import type {
   SheetSyncRunsQuery,
   SheetSyncRetryInput,
 } from "../../validation/v1.validation";
+import { toObjectId } from "../../utils/objectId";
 
 /**
  * Read-only admin surface plus a bounded retry control for the sheet-sync
@@ -69,7 +70,7 @@ export async function listSheetSyncJobs(query: SheetSyncJobsQuery) {
     filter.entity_id = query.entity_id;
   }
   if (query.job_id) {
-    filter._id = new mongoose.mongo.ObjectId(query.job_id);
+    filter._id = toObjectId(query.job_id);
   }
 
   const skip = (query.page - 1) * query.limit;
@@ -125,7 +126,7 @@ export async function retrySheetSyncJobs(
   const filter: Record<string, unknown> = {};
   if (input.job_ids && input.job_ids.length > 0) {
     filter._id = {
-      $in: input.job_ids.map((id) => new mongoose.mongo.ObjectId(id)),
+      $in: input.job_ids.map((id) => toObjectId(id)),
     };
   } else {
     filter.status = { $in: input.statuses ?? ["failed"] };

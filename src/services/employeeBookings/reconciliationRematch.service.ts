@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import mongoose from "mongoose";
 import { connectMongo } from "../../db";
 import { BookedLead } from "../../models/BookedLead";
 import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconciliationCase";
@@ -12,6 +11,7 @@ import { queryEmployeeBookingCandidates } from "./leadCandidateQueries";
 import type { PreparedEmployeeBookingSubmission } from "./types";
 import { acquireLease, releaseLease } from "../sheetSync/drainer/leases";
 import { createHash } from "node:crypto";
+import { toObjectId } from "../../utils/objectId";
 
 const GLOBAL_REMATCH_LEASE_SCOPE = "booking-reconciliation:rematch";
 
@@ -157,7 +157,7 @@ export async function runDueBookingLeadRematches(context: { actor: string }) {
             caseDoc.resolution_history.push({
               action: "auto_attach_delayed",
               lead_model: evaluated.leadModel,
-              lead_id: new mongoose.Types.ObjectId(evaluated.leadId),
+              lead_id: toObjectId(evaluated.leadId),
               actor: context.actor,
               occurred_at: new Date(),
             } as any);
@@ -263,7 +263,7 @@ function preparedFromCase(caseDoc: any): PreparedEmployeeBookingSubmission {
 function toCaseCandidate(candidate: any) {
   return {
     lead_model: candidate.leadModel,
-    lead_id: new mongoose.Types.ObjectId(candidate.leadId),
+    lead_id: toObjectId(candidate.leadId),
     confidence: candidate.confidence,
     match_methods: candidate.matchMethods,
     eligibility: candidate.eligibility,

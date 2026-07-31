@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import {
   CALL_SHEET_HEADERS,
   getSheetSyncMode,
@@ -24,6 +23,7 @@ import {
   runSheetSyncWrite,
   type FullSheetSyncJob,
 } from "../sheetSync";
+import { toObjectId } from "../../utils/objectId";
 // Compatibility imports from the v1 service facade. `deleteBookedLead` and
 // `refreshAttachedBookingFromLead` still live there because the booking
 // extraction (refactor plan 04) has not happened yet. They are only ever
@@ -88,10 +88,10 @@ export async function createRingCentralCallLead(
   const { source_company, duplicate } = input;
   const sourceAssignment = {
     source_company,
-    lead_source_company: mongoose.Types.ObjectId.createFromHexString(
+    lead_source_company: toObjectId(
       input.source_resolution.company_id,
     ),
-    source_granularity_id: mongoose.Types.ObjectId.createFromHexString(
+    source_granularity_id: toObjectId(
       input.source_resolution.granularity_id,
     ),
     source_granularity_key: input.source_resolution.granularity_key,
@@ -364,7 +364,7 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
         metadata: { resource: "agent", id: input.receiver_agent },
       });
     }
-    lead.receiver_agent = new mongoose.Types.ObjectId(agent.id);
+    lead.receiver_agent = toObjectId(agent.id);
     lead.receiver_agent_name_snapshot = agent.name;
     lead.receiver_agent_source = input.receiver_agent_source ?? "manual";
     lead.receiver_agent_source_value = input.receiver_agent_source_value;

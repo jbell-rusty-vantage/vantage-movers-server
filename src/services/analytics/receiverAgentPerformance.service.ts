@@ -10,6 +10,7 @@ import {
   trendDateExpression,
   type AnalyticsRow,
 } from "./analyticsFilters";
+import { toObjectId } from "../../utils/objectId";
 
 const RECEIVER_AGENT_UNSUPPORTED_METADATA = {
   receiver_agent_scope: "unsupported",
@@ -206,7 +207,7 @@ function receiverLeadMatch(leadType: "FormLead" | "CallLead", query: AnalyticsQu
     return base;
   }
   const receiverClause = {
-    receiver_agent: new mongoose.mongo.ObjectId(receiverAgent),
+    receiver_agent: toObjectId(receiverAgent),
   };
   if (!Object.keys(base).length) {
     return receiverClause;

@@ -11,7 +11,7 @@ Full guide: `docs/typescript-library-typing-pitfalls.md`.
 ## Mongoose ObjectId
 
 - Validate with `mongoose.isValidObjectId(id)`, never `Types.ObjectId.isValid` in new code.
-- Construct/parse hex ids through a shared helper (`toObjectId` in `src/utils/objectId.ts` once it exists), not scattered `createFromHexString` / raw `new mongoose.Types.ObjectId(id)` copies.
+- Construct/parse hex ids through `toObjectId` / `isObjectIdString` in `src/utils/objectId.ts`, not scattered `createFromHexString` / raw `new mongoose.Types.ObjectId(id)` copies.
 - If CI reports `Expected 0 arguments, but got 1` or missing `createFromHexString`/`isValid` on `typeof ObjectId`, fix via the helper + direct `mongodb` dependency — do not `@ts-ignore` call sites.
 - `Schema.Types.ObjectId` is for schemas only, not value construction.
 

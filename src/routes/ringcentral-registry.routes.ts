@@ -1,5 +1,4 @@
 import { Router, type Request, type Response } from "express";
-import mongoose from "mongoose";
 import { ZodError } from "zod";
 import { connectMongo } from "../db";
 import type { VantageAuthContext } from "../middleware/requireApiSecret";
@@ -23,6 +22,7 @@ import {
   ringCentralRouteReasonSchema,
   ringCentralRouteUpdateSchema,
 } from "../validation/v1.validation";
+import { isObjectIdString } from "../utils/objectId";
 
 const router = Router();
 
@@ -166,7 +166,7 @@ function auth(req: Request): VantageAuthContext | undefined {
 
 function routeId(req: Request): string {
   const value = req.params.id;
-  if (typeof value !== "string" || !mongoose.Types.ObjectId.isValid(value)) {
+  if (typeof value !== "string" || !isObjectIdString(value)) {
     throw new ZodError([]);
   }
   return value;

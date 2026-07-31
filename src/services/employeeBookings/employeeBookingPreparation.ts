@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import { floridaCalendarToday } from "../../utils/easternTime";
 import { normalizePhoneNumberForStorage, normalizePhoneNumberForMatch } from "../../utils/phone";
 import type { CreateEmployeeBookingSubmissionInput } from "../../validation/v1.validation";
@@ -17,6 +16,7 @@ import {
   listSourceGranularities,
 } from "../operationsRegistry";
 import type { PreparedEmployeeBookingSubmission } from "./types";
+import { toObjectId } from "../../utils/objectId";
 
 export async function prepareEmployeeBookingSubmission(
   input: CreateEmployeeBookingSubmissionInput,
@@ -95,8 +95,8 @@ export async function prepareEmployeeBookingSubmission(
       company.owner_label ||
       company.company_slug,
     sourceAssignment: {
-      lead_source_company: new mongoose.Types.ObjectId(company.id),
-      source_granularity_id: new mongoose.Types.ObjectId(granularity.id),
+      lead_source_company: toObjectId(company.id),
+      source_granularity_id: toObjectId(granularity.id),
       source_granularity_key: granularity.granularity_key,
       source_company: company.company_slug,
       source_company_label_snapshot: company.owner_label,
