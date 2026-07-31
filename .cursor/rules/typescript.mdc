@@ -11,3 +11,4 @@ alwaysApply: false
 - Prefer domain-specific types, branded IDs where already used, discriminated unions for stateful workflows, and precise return types at service and route boundaries.
 - Preserve existing project conventions: strict TypeScript, Node16 modules, snake_case Mongo/API fields, Zod validation at HTTP boundaries, and service-owned business behavior.
 - When changing public payloads, update the matching `src/validation/v1/*.validation.ts` schema, service types, tests, and docs/rules that describe the contract.
+- For recurring Mongoose `ObjectId`, AWS S3 `send`/`Body`, and `googleapis` `auth`/`Options` failures, follow `docs/typescript-library-typing-pitfalls.md` and `.cursor/rules/library-typing.mdc` instead of per-file ignores.

@@ -1,12 +1,33 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  catalogUpdateSchema,
   leadSourceCompanyCreateSchema,
   sourceActivationSchema,
   sourceGranularityCreateSchema,
   sourceGranularityUpdateSchema,
   sourceResolutionPreviewSchema,
 } from "./admin.validation";
+
+test("catalog update accepts Granot username correction with optional reason", () => {
+  assert.deepEqual(
+    catalogUpdateSchema.parse({
+      granot_crm_username: "MIKEM",
+      reason: "Correct misspelling",
+    }),
+    {
+      granot_crm_username: "MIKEM",
+      reason: "Correct misspelling",
+    },
+  );
+});
+
+test("catalog update rejects reason-only payloads", () => {
+  assert.throws(
+    () => catalogUpdateSchema.parse({ reason: "No field change" }),
+    /At least one catalog field/,
+  );
+});
 
 test("Source Company writes reject embedded granularities and compatibility defaults", () => {
   assert.throws(

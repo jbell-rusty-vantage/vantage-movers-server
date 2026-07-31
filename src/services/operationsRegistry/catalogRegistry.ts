@@ -196,13 +196,8 @@ export async function createOrUpdateAgent(
       const existingUsername = normalizeGranotCrmUsername(
         before?.granot_identity?.username ?? before?.granot_crm_username,
       );
-
-      if (existingUsername && username !== undefined && username !== existingUsername) {
-        throw new RegistryError(
-          "A configured Granot username cannot be changed through ordinary editing.",
-          { registryCode: REGISTRY_ERROR_CODES.IMMUTABLE_FIELD },
-        );
-      }
+      const usernameChanging =
+        username !== undefined && username !== existingUsername;
 
       const normalizedNameChanging =
         !before || before.normalized_name !== normalizedName;
@@ -210,7 +205,7 @@ export async function createOrUpdateAgent(
         await assertCatalogNameAvailable("agents", normalizedName, command.id, session);
       }
 
-      if (username) {
+      if (usernameChanging && username) {
         await assertGranotUsernameAvailable(username, command.id, session);
       }
 
@@ -237,7 +232,9 @@ export async function createOrUpdateAgent(
         update.active = true;
       }
 
-      if (username && !existingUsername) {
+      // Owner may set or correct a Granot username (e.g. misspelling). Uniqueness
+      // remains global; changing resets verification on the nested identity.
+      if (usernameChanging && username) {
         update.granot_identity = { username, verified: false };
         update.granot_crm_username = username;
       }

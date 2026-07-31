@@ -1,0 +1,31 @@
+---
+description: Avoid recurring Mongoose ObjectId, AWS S3, and googleapis TypeScript typing pitfalls
+globs: src/**/*.ts,scripts/**/*.ts
+alwaysApply: false
+---
+
+# Library typing (ObjectId / S3 / googleapis)
+
+Full guide: `docs/typescript-library-typing-pitfalls.md`.
+
+## Mongoose ObjectId
+
+- Validate with `mongoose.isValidObjectId(id)`, never `Types.ObjectId.isValid` in new code.
+- Construct/parse hex ids through a shared helper (`toObjectId` in `src/utils/objectId.ts` once it exists), not scattered `createFromHexString` / raw `new mongoose.Types.ObjectId(id)` copies.
+- If CI reports `Expected 0 arguments, but got 1` or missing `createFromHexString`/`isValid` on `typeof ObjectId`, fix via the helper + direct `mongodb` dependency — do not `@ts-ignore` call sites.
+- `Schema.Types.ObjectId` is for schemas only, not value construction.
+
+## AWS S3
+
+- Call `S3Client.send(new XxxCommand(...))` on the real client.
+- Do not invent narrow `send` overload facades and cast `S3Client` into them.
+- `Body` exists on get/read outputs (`GetObjectCommandOutput`), not on `PutObjectCommandOutput`.
+
+## googleapis
+
+- When `google.drive` / `google.sheets` reject `auth` on `Options` or methods return `void` instead of `{ data }`, use the existing cast pattern from `src/services/googleSheets/auth.ts`: `as unknown as drive_v3.Options` / `sheets_v4.Options`, with a short comment.
+- Fix client factory typing before asserting away missing `.data`.
+
+## Escape hatches
+
+- No `any` / `@ts-ignore` / unexplained double-casts. SDK-boundary casts need a one-line comment naming the library gap.

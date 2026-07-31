@@ -93,6 +93,7 @@ export async function updateCatalogItem(
             name: input.name,
             role: input.role,
             granot_crm_username: input.granot_crm_username,
+            reason: input.reason,
           },
           actor,
         )
@@ -100,6 +101,7 @@ export async function updateCatalogItem(
           {
             id,
             name: input.name,
+            reason: input.reason,
           },
           actor,
         );

@@ -120,7 +120,17 @@ export const catalogCreateSchema = z
 
 export const catalogUpdateSchema = catalogCreateSchema
   .partial()
-  .refine(requireAtLeastOne, "At least one catalog field must be provided");
+  .extend({
+    reason: optionalTrimmedString,
+  })
+  .refine(
+    (value) =>
+      value.name !== undefined ||
+      value.role !== undefined ||
+      value.granot_crm_username !== undefined ||
+      value.created_from !== undefined,
+    "At least one catalog field must be provided",
+  );
 
 export const catalogActivationSchema = z
   .object({

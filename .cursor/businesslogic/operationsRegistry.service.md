@@ -13,7 +13,7 @@
 - Agent, Merchant, Source Company, and Source Granularity records are deactivated, never deleted.
 - Default lists and automatic matching use active records only. Owner correction workflows may explicitly include inactive records.
 - Agent and Merchant renames preserve the prior normalized name as an alias. Existing Booking and Lead snapshots are not rewritten.
-- A configured Granot username is immutable through ordinary edits. Nested `granot_identity` is authoritative; the legacy flat username remains a temporary fallback.
+- An Owner may set or correct a Granot username on an Agent; usernames remain globally unique. Nested `granot_identity` is authoritative; the legacy flat username remains a temporary fallback. Changing a username resets verification.
 
 ## Source attribution
 
