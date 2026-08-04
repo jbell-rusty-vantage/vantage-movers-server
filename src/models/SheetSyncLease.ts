@@ -9,8 +9,9 @@ import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 const SheetSyncLeaseSchema = new Schema(
   {
     scope: { type: String, required: true, trim: true, unique: true },
-    lease_owner: { type: String, trim: true },
-    leased_until: { type: Date, required: true },
+    lease_owner: { type: String, trim: true, default: null },
+    leased_until: { type: Date, default: null },
+    lease_epoch: { type: Number, required: true, default: 0, min: 0 },
   },
   {
     collection: "sheet_sync_leases",

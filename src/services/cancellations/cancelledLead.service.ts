@@ -3,6 +3,7 @@ import { getSheetSyncMode, type LeadModelName } from "../../config/domain";
 import { BookedLead } from "../../models/BookedLead";
 import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconciliationCase";
 import { CancelledLead } from "../../models/CancelledLead";
+import { DomainCommandExecution } from "../../models/DomainCommandExecution";
 import type {
   CreateCancelledLeadInput,
   UpdateCancelledLeadInput,
@@ -23,6 +24,8 @@ import {
 } from "../sheetSync";
 import { V1ServiceError } from "../v1ServiceError";
 import { recordOperationalEvent } from "../observability";
+import { getLinkedLead } from "../leads";
+import { requireBestRelocationImportSource } from "../bookings/bestRelocationImportGuard";
 import {
   clearCancellationFromLead,
   mirrorCancellationToLead,
@@ -43,13 +46,53 @@ import { resolveBookedLeadForCancellation } from "./cancellationResolver";
  *   - Schedules a `cancellation_chain` sheet sync with the original
  *     operation tag `cancelled_lead.create`.
  */
-export async function createCancelledLead(input: CreateCancelledLeadInput) {
+export async function createCancelledLead(
+  input: CreateCancelledLeadInput,
+  options: { requiredSourceConnectionKey?: string } = {},
+) {
   const timestamp = input.timestamp ?? new Date();
 
   const { cancellation, job, booking } = await runSheetSyncWrite(async (session) => {
     const booking = await resolveBookedLeadForCancellation(input, session, {
       allowLeadless: input.ingestion_source === "best_relocation_sheet",
     });
+    if (options.requiredSourceConnectionKey) {
+      if (booking.lead_model && booking.lead_ref) {
+        const lead = await getLinkedLead(
+          booking.lead_model,
+          booking.lead_ref.toString(),
+          session,
+        );
+        requireBestRelocationImportSource(
+          "best_relocation_sheet",
+          String(lead.source_company),
+        );
+      } else {
+        const ingestionExecution =
+          await DomainCommandExecution.findOne({
+            origin: "external_sheet_ingestion",
+            command_name: "createLeadlessBooking",
+            "provenance.source_connection_key":
+              options.requiredSourceConnectionKey,
+            entity_refs: {
+              $elemMatch: {
+                model: "BookedLead",
+                id: booking._id.toString(),
+              },
+            },
+          })
+            .session(session ?? null)
+            .select("_id")
+            .lean()
+            .exec();
+        if (!ingestionExecution) {
+          throw new V1ServiceError(
+            "Best Relocation import capability cannot cancel this booking",
+            400,
+          );
+        }
+      }
+    }
     const leadlessBooking = booking.is_leadless_booking === true;
     if (!leadlessBooking && (!booking.lead_ref || !booking.lead_model)) {
       throw new V1ServiceError("Referral booking cancellation is not supported yet", 409);

@@ -17,7 +17,12 @@ import { SheetSyncJob, type SheetSyncJobDocument } from "../../../models/SheetSy
 import { SheetSyncRun } from "../../../models/SheetSyncRun";
 import { getSheetsClient } from "../../googleSheets/auth";
 import { writeBatchedTargets } from "./batchWriter";
-import { acquireLease, releaseLease } from "./leases";
+import {
+  acquireLease,
+  assertLeaseHeld,
+  releaseLease,
+  renewLease,
+} from "./leases";
 import { planJobWrites, type PlannedDoc } from "./jobPlanner";
 import { QuotaLimiter } from "./quotaLimiter";
 import type { PlannedWrite, PlannedWriteOutcome } from "./types";
@@ -62,9 +67,48 @@ export async function runSheetSyncDrain(
     logger.info({ msg: "sheet_sync.drain.skipped_locked", trigger });
     return { ok: true, runId: null, skipped: true, claimed: 0, synced: 0, failed: 0, deferred: 0 };
   }
-
+  let activeLease = acquired;
   const run = await SheetSyncRun.create({ trigger, status: "running", started_at: new Date() });
   const runId = run._id;
+  let heartbeatFailure: Error | null = null;
+  let heartbeatWork = Promise.resolve();
+  const renewDrainOwnership = async () => {
+    if (heartbeatFailure) throw heartbeatFailure;
+    const renewed = await renewLease(
+      activeLease,
+      guardrails.leaseDurationMs,
+    );
+    if (!renewed) {
+      throw new Error("Sheet Sync drain lease was lost.");
+    }
+    activeLease = renewed;
+    await renewClaimedJobLeases(
+      owner,
+      runId,
+      guardrails.leaseDurationMs,
+    );
+  };
+  const heartbeat = setInterval(() => {
+    heartbeatWork = heartbeatWork
+      .then(renewDrainOwnership)
+      .catch((error) => {
+        heartbeatFailure =
+          error instanceof Error ? error : new Error(String(error));
+      });
+  }, Math.max(1_000, Math.floor(guardrails.leaseDurationMs / 3)));
+  heartbeat.unref();
+  const requireActiveLease = async (renew = false) => {
+    await heartbeatWork;
+    if (heartbeatFailure) throw heartbeatFailure;
+    if (renew) {
+      await renewDrainOwnership();
+      return;
+    }
+    if (!(await assertLeaseHeld(activeLease))) {
+      throw new Error("Sheet Sync drain lease was lost.");
+    }
+  };
+
   const sheets = options.sheets ?? getSheetsClient();
   const quota = options.quota ?? new QuotaLimiter();
 
@@ -111,6 +155,7 @@ export async function runSheetSyncDrain(
     for (const job of representatives.values()) {
       if (Date.now() > deadline) {
         // Out of time: release remaining claims back to pending.
+        await requireActiveLease();
         await releaseClaim(job);
         continue;
       }
@@ -123,6 +168,7 @@ export async function runSheetSyncDrain(
           plannedDocs.push(...docs);
         }
       } catch (error) {
+        await requireActiveLease();
         const failure = await markJobFailure(job, error, guardrails.maxAttempts);
         failedJobs += 1;
         jobsById.delete(job._id.toString());
@@ -131,16 +177,24 @@ export async function runSheetSyncDrain(
     }
 
     const allWrites = plannedDocs.flatMap((doc) => doc.writes);
+    await requireActiveLease(true);
     let outcomes =
       allWrites.length > 0
         ? await writeBatchedTargets({ sheets, writes: allWrites, quota })
         : [];
 
-    outcomes = await persistDocSheetSync(plannedDocs, outcomes);
+    await requireActiveLease();
+    outcomes = await persistDocSheetSync(
+      plannedDocs,
+      outcomes,
+      () => requireActiveLease(),
+    );
+    await requireActiveLease();
     await recordAttempts(runId, outcomes);
 
     // Empty jobs (document gone / intentionally skipped) are done.
     for (const job of emptyJobs) {
+      await requireActiveLease();
       await markJobSynced(job);
       syncedJobs += 1;
     }
@@ -148,6 +202,7 @@ export async function runSheetSyncDrain(
     // Apply per-job status from its write outcomes.
     const outcomesByJob = groupBy(outcomes, (o) => o.write.jobId);
     for (const [jobId, job] of jobsById) {
+      await requireActiveLease();
       const jobOutcomes = outcomesByJob.get(jobId) ?? [];
       if (jobOutcomes.length === 0) {
         continue; // already handled as empty/failed above
@@ -190,11 +245,13 @@ export async function runSheetSyncDrain(
 
     // Duplicate jobs are fully covered by their representative's sync.
     for (const job of duplicates) {
+      await requireActiveLease();
       await markJobSynced(job, "coalesced_into_representative");
       syncedJobs += 1;
     }
 
     const status = failedJobs > 0 || deferredJobs > 0 ? "partial_failure" : "completed";
+    await requireActiveLease();
     await SheetSyncRun.findByIdAndUpdate(runId, {
       $set: {
         status,
@@ -304,7 +361,9 @@ export async function runSheetSyncDrain(
       deferred: deferredJobs,
     };
   } finally {
-    await releaseLease(DRAIN_LEASE_SCOPE, owner);
+    clearInterval(heartbeat);
+    await heartbeatWork;
+    await releaseLease(activeLease);
   }
 }
 
@@ -349,9 +408,31 @@ async function claimDueJobs(
   return claimed;
 }
 
+async function renewClaimedJobLeases(
+  owner: string,
+  runId: mongoose.Types.ObjectId,
+  leaseMs: number,
+): Promise<void> {
+  const now = new Date();
+  await SheetSyncJob.updateMany(
+    {
+      run_id: runId,
+      lease_owner: owner,
+      status: "processing",
+      leased_until: { $gt: now },
+    },
+    {
+      $set: {
+        leased_until: new Date(now.getTime() + leaseMs),
+      },
+    },
+  );
+}
+
 async function persistDocSheetSync(
   plannedDocs: PlannedDoc[],
   outcomes: PlannedWriteOutcome[],
+  assertOwnership: () => Promise<void>,
 ): Promise<PlannedWriteOutcome[]> {
   const outcomesByDoc = groupBy(outcomes, (o) => o.write.docKey);
   const metadataFailures = new Map<string, string>();
@@ -375,6 +456,7 @@ async function persistDocSheetSync(
     const doc = planned.doc;
     const existing = doc.get("sheet_sync") as SheetSyncEntry[];
     const withoutDeleted = removeSheetSyncEntries(existing, deletedTargets);
+    await assertOwnership();
     try {
       await persistSheetSyncMetadata(doc, mergeSheetSyncEntries(withoutDeleted, entries));
     } catch (error) {
@@ -472,7 +554,7 @@ async function recordAttempts(
 }
 
 async function markJobSynced(job: SheetSyncJobDocument, note?: string): Promise<void> {
-  await SheetSyncJob.findByIdAndUpdate(job._id, {
+  const updated = await SheetSyncJob.findOneAndUpdate(activeJobFilter(job), {
     $set: {
       status: "synced",
       leased_until: new Date(0),
@@ -480,11 +562,12 @@ async function markJobSynced(job: SheetSyncJobDocument, note?: string): Promise<
       ...(note ? { last_error: note } : { last_error: undefined }),
     },
   });
+  assertJobMutationApplied(updated);
 }
 
 async function deferJob(job: SheetSyncJobDocument, retryTargets: string[]): Promise<void> {
   // Quota deferral is not a failure: retry next minute without burning an attempt.
-  await SheetSyncJob.findByIdAndUpdate(job._id, {
+  const updated = await SheetSyncJob.findOneAndUpdate(activeJobFilter(job), {
     $set: {
       status: "retrying",
       due_at: new Date(Date.now() + 60_000),
@@ -494,6 +577,7 @@ async function deferJob(job: SheetSyncJobDocument, retryTargets: string[]): Prom
       last_error_at: new Date(),
     },
   });
+  assertJobMutationApplied(updated);
 }
 
 async function markJobFailure(
@@ -505,7 +589,7 @@ async function markJobFailure(
   const attempts = (job.attempts ?? 0) + 1;
   const message = error instanceof Error ? error.message : String(error);
   const terminal = attempts >= maxAttempts;
-  await SheetSyncJob.findByIdAndUpdate(job._id, {
+  const updated = await SheetSyncJob.findOneAndUpdate(activeJobFilter(job), {
     $set: {
       status: terminal ? "failed" : "retrying",
       attempts,
@@ -516,6 +600,7 @@ async function markJobFailure(
       last_error_at: new Date(),
     },
   });
+  assertJobMutationApplied(updated);
   return { terminal, attempts, message };
 }
 
@@ -571,9 +656,30 @@ async function recordJobFailureEvent(
 }
 
 async function releaseClaim(job: SheetSyncJobDocument): Promise<void> {
-  await SheetSyncJob.findByIdAndUpdate(job._id, {
+  const updated = await SheetSyncJob.findOneAndUpdate(activeJobFilter(job), {
     $set: { status: "pending", leased_until: new Date(0) },
   });
+  assertJobMutationApplied(updated);
+}
+
+function activeJobFilter(
+  job: SheetSyncJobDocument,
+): QueryFilter<SheetSyncJobDocument> {
+  return {
+    _id: job._id,
+    status: "processing",
+    lease_owner: job.lease_owner,
+    run_id: job.run_id,
+    leased_until: { $gt: new Date() },
+  };
+}
+
+function assertJobMutationApplied(
+  updated: SheetSyncJobDocument | null,
+): void {
+  if (!updated) {
+    throw new Error("Sheet Sync job lease was lost.");
+  }
 }
 
 async function releaseClaimedJobsForRun(

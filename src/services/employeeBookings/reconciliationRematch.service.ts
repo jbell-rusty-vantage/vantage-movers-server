@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type mongoose from "mongoose";
 import { connectMongo } from "../../db";
 import { BookedLead } from "../../models/BookedLead";
 import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconciliationCase";
@@ -9,7 +10,11 @@ import { attachLeadToEmployeeBooking } from "./bookingLeadAttachment.service";
 import { evaluateEmployeeBookingMatch } from "./leadMatchEvaluator";
 import { queryEmployeeBookingCandidates } from "./leadCandidateQueries";
 import type { PreparedEmployeeBookingSubmission } from "./types";
-import { acquireLease, releaseLease } from "../sheetSync/drainer/leases";
+import {
+  acquireLease,
+  releaseLease,
+  renewLease,
+} from "../sheetSync/drainer/leases";
 import { createHash } from "node:crypto";
 import { toObjectId } from "../../utils/objectId";
 
@@ -27,6 +32,31 @@ export async function runDueBookingLeadRematches(context: { actor: string }) {
   if (!acquired) {
     return { claimed: 0, attached: 0, updated: 0, skipped: 0 };
   }
+  let activeLease = acquired;
+  let heartbeatFailure: Error | null = null;
+  let heartbeatWork = Promise.resolve();
+  const renewGlobalLease = async () => {
+    if (heartbeatFailure) throw heartbeatFailure;
+    const renewed = await renewLease(activeLease, 60_000);
+    if (!renewed) {
+      throw new Error("Booking reconciliation rematch lease was lost.");
+    }
+    activeLease = renewed;
+  };
+  const heartbeat = setInterval(() => {
+    heartbeatWork = heartbeatWork
+      .then(renewGlobalLease)
+      .catch((error) => {
+        heartbeatFailure =
+          error instanceof Error ? error : new Error(String(error));
+      });
+  }, 20_000);
+  heartbeat.unref();
+  const assertGlobalLease = async (renew = false) => {
+    await heartbeatWork;
+    if (heartbeatFailure) throw heartbeatFailure;
+    if (renew) await renewGlobalLease();
+  };
   const now = new Date();
   let claimed = 0;
   let attached = 0;
@@ -50,6 +80,7 @@ export async function runDueBookingLeadRematches(context: { actor: string }) {
       .exec();
 
     for (const dueCase of dueCases) {
+      await assertGlobalLease(true);
       const leased = await BookingLeadReconciliationCase.findOneAndUpdate(
         {
           _id: dueCase._id,
@@ -75,7 +106,11 @@ export async function runDueBookingLeadRematches(context: { actor: string }) {
       claimed += 1;
       try {
         const jobs = await runSheetSyncWrite(async (session) => {
-          const caseDoc = (await BookingLeadReconciliationCase.findById(leased._id)
+          const caseDoc = (await BookingLeadReconciliationCase.findOne({
+            _id: leased._id,
+            "retry.lease_owner": owner,
+            "retry.leased_until": { $gt: new Date() },
+          })
             .session(session ?? null)
             .exec()) as any;
           if (
@@ -112,6 +147,18 @@ export async function runDueBookingLeadRematches(context: { actor: string }) {
             candidateQuery.candidates,
             candidateQuery.hasOverflow,
           );
+          await assertGlobalLease();
+          if (
+            !(await renewCaseLease(
+              leased._id,
+              owner,
+              session,
+            ))
+          ) {
+            throw new Error(
+              "Booking reconciliation case lease was lost.",
+            );
+          }
           caseDoc.latest_candidates = evaluated.candidates.map(toCaseCandidate) as any;
           caseDoc.match_attempts.push({
             attempted_at: new Date(),
@@ -187,6 +234,7 @@ export async function runDueBookingLeadRematches(context: { actor: string }) {
           return [] as any[];
         }, { forceTransaction: true });
         for (const job of jobs) {
+          await assertGlobalLease();
           await finalizeSheetSync(job);
         }
       } catch (error) {
@@ -227,8 +275,32 @@ export async function runDueBookingLeadRematches(context: { actor: string }) {
     });
     return { claimed, attached, updated, skipped };
   } finally {
-    await releaseLease(GLOBAL_REMATCH_LEASE_SCOPE, owner);
+    clearInterval(heartbeat);
+    await heartbeatWork;
+    await releaseLease(activeLease);
   }
+}
+
+async function renewCaseLease(
+  caseId: mongoose.Types.ObjectId,
+  owner: string,
+  session?: mongoose.ClientSession,
+): Promise<boolean> {
+  const now = new Date();
+  const result = await BookingLeadReconciliationCase.updateOne(
+    {
+      _id: caseId,
+      "retry.lease_owner": owner,
+      "retry.leased_until": { $gt: now },
+    },
+    {
+      $set: {
+        "retry.leased_until": new Date(now.getTime() + 60_000),
+      },
+    },
+    { session },
+  ).exec();
+  return result.modifiedCount === 1;
 }
 
 function preparedFromCase(caseDoc: any): PreparedEmployeeBookingSubmission {

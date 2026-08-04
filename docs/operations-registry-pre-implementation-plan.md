@@ -1,8 +1,14 @@
 # Operations Registry Pre-Implementation Plan
 
-Status: Pre-implementation; decisions and sequencing are expected to evolve  
-Date: 2026-07-28  
-Primary repository: `vantage-main-server`  
+> Historical planning document. The Operations Registry described here has
+> been implemented and is functional. Use `docs/current_plans/` for the detailed
+> implementation record and `docs/operations-registry-platform-direction.md`
+> for the current cross-platform roadmap. Do not treat unchecked planning items
+> in this document as evidence that delivered registry work is still missing.
+
+Status: Historical pre-implementation plan; superseded by delivered implementation records
+Date: 2026-07-28
+Primary repository: `vantage-main-server`
 Related repositories: `vantage-admin`, `granot_sync_extensions_and_services`
 
 ## 1. Objective

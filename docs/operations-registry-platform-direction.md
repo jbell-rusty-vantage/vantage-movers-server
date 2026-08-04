@@ -1,327 +1,537 @@
-# Vantage Operations Platform Direction
+# Vantage Operational Control Plane Direction
 
-Status: Conversation synthesis and architectural direction  
-Date: 2026-07-28  
-Primary application: `vantage-main-server`  
-Related applications: `vantage-admin`, `granot_sync_extensions_and_services`
+Status: Consolidated platform direction; Operations Registry delivered; remaining modules proposed
+Updated: 2026-08-03
+Primary application: `vantage-main-server`
+Related applications: `vantage-admin`, `granot_sync_extensions_and_services`, proposed `vantage-agent`
 
 ## Purpose
 
-This document records the current product and architecture direction discussed
-for four connected areas:
+This document is the architectural index for the Vantage owner-facing operational
+control plane. It records the relationship between five major capabilities:
 
-1. Operations Registry
-2. External Data Ingestion
-3. Reporting Projection
-4. Granot CRM automation and dashboard control
+1. the delivered Operations Registry;
+2. application-owned External Data Ingestion;
+3. configurable Reporting Projection;
+4. a server-backed Granot CRM automation control plane; and
+5. Vantage Copilot, its MCP server, agent skills, and delegated agents.
 
-It is a synthesis, not an implementation specification. The detailed
-pre-implementation plan for the first area is in
-`docs/operations-registry-pre-implementation-plan.md`.
+It is direction for later specifications and issues, not one implementation
+specification. Detailed Operations Registry implementation records are under
+`docs/current_plans/`. The detailed Copilot design is in
+`docs/vantage-copilot-mcp-and-agent-skills.md`.
 
-## Business problem
+## Executive direction
 
-Vantage currently operates across three first-party applications and several
-external systems:
+Vantage should become the canonical operational control plane, not another
+participant in a collection of independently maintained spreadsheets and tools.
 
-- The main server owns operational business behavior and MongoDB writes.
-- The Admin Dashboard gives the owner operational and reporting workflows.
-- The Granot browser extension enriches Vantage records from Granot CRM.
-- RingCentral supplies inbound call activity.
-- Google Sheets are used both for familiar owner reporting and, for some lead
-  sources, as an incoming operational data source.
+- MongoDB owns canonical business records and operational configuration.
+- External spreadsheets are explicitly registered as either inputs or outputs.
+- Ingestion turns external rows into attributable observations and reconciles
+  them with canonical records.
+- Reporting definitions turn canonical records into rebuildable projections.
+- Granot automation is requested and audited by the server, then executed by the
+  installed extension in the owner's existing browser session.
+- Vantage Copilot inspects, explains, previews, and acts through the same narrow,
+  audited application commands used by trusted product workflows.
 
-The owner needs to control operational configuration without requiring a code
-deployment. He also wants to keep selected legacy sheet processes while Vantage
-consolidates historical and current data into one canonical database.
+The governing agent principle is:
 
-The central difficulty is not any single integration. It is preventing the same
-lead, booking, cancellation, rate, or source assignment from being maintained
-independently in MongoDB, Granot CRM, and multiple spreadsheets.
+> The agent may inspect broadly, calculate in isolation, propose precisely, and
+> act only through narrow audited commands.
 
-## Confirmed direction
+## System roles and ownership
 
-MongoDB remains the System of Record for canonical Leads, Bookings,
-Cancellations, Agents, Merchants, Source Companies, and related operational
-data.
+| System | Canonical role | Must not become |
+| --- | --- | --- |
+| `vantage-main-server` | Domain rules, canonical records, commands, queries, run state, audit | A thin proxy for spreadsheet behavior |
+| `vantage-admin` | Owner control plane, previews, approvals, exceptions, health | A second implementation of domain rules |
+| Granot extension | Browser-session Adapter and Granot execution worker | A second source of orchestration truth |
+| MongoDB | System of Record | A cache of spreadsheet state |
+| Input Google Sheets | External Data Sources | Canonical records by default |
+| Output Google Sheets | Reporting Projections | Re-ingestion sources |
+| RingCentral | Provider of call observations | Owner of Vantage source attribution |
+| Vantage Copilot/MCP | Audited agent Interface over application capabilities | Arbitrary database, shell, or HTTP access |
+| Sandboxed agents | Bounded analysis and artifact production | Holders of production credentials |
 
-External systems have explicit roles:
+## Delivered foundation: Operations Registry
 
-- Google Sheets configured as inputs are External Data Sources.
-- Google Sheets generated by Vantage are Reporting Projections.
-- Granot CRM is an external CRM used for CRM Posting and Enrichment.
-- RingCentral is the external provider of call observations used by Call
-  Qualification and Call Lead Ingestion.
+The Operations Registry is implemented and functional. It is now a delivered
+platform dependency rather than the next proposed project.
 
-An external row or CRM row is evidence about a business event. It is not
-automatically the canonical domain record. Vantage must identify, validate, and
-reconcile that evidence before mutating canonical data.
+### Delivered owner-managed catalogs
 
-## Architectural shape
+- Agents, including active/deactivated lifecycle, aliases, role, and verified
+  Granot CRM identity fields;
+- Merchants, including active/deactivated lifecycle and aliases;
+- Source Companies and first-class Source Granularities for form, call, and
+  other source-specific variants;
+- effective-dated CPL schedules, revisions, corrections, and resolution
+  snapshots;
+- RingCentral Inbound Queue Numbers, provider validation, observation state,
+  and effective-dated Source Company/Granularity assignments; and
+- registry audit, dependency checks, overview, and health surfaces.
 
-The proposed design has three deep modules. Each presents a small interface and
-hides the source-specific or destination-specific complexity inside its
-implementation.
+Moving Carriers are not part of this roadmap. Their CSV overwrite and
+idempotent-addition workflow is already considered resolved.
 
-### Operations Registry
+### Delivered runtime consequences
 
-The Operations Registry owns owner-editable operational configuration:
+The registry is not merely CRUD. Runtime flows now have database-backed
+identities and policies that can be shared by form ingestion, RingCentral call
+qualification, analytics, lead persistence, CPL attribution, and the Admin
+Dashboard. Temporal CPL resolution retains the applied period and status on the
+lead. RingCentral routing uses registry routes and assignments instead of a
+production static-map fallback.
 
-- Agents and their Granot CRM identities
-- Merchants
-- Source Companies
-- Source Company form/call granularities
-- Effective-dated CPL rates
-- RingCentral inbound queue-number routing and validation
+The Operations Registry should be treated as a deep Module with a small
+Interface:
 
-Moving Carriers are intentionally excluded from this initiative. Their existing
-CSV patch/replace workflow and activation behavior are considered separately
-resolved.
+- resolve an Agent or Granot identity;
+- resolve a Source Company and Granularity;
+- resolve CPL for a business timestamp;
+- resolve or validate an inbound RingCentral route;
+- inspect dependencies and lifecycle eligibility; and
+- record and query Registry Changes.
 
-The Operations Registry is more than a collection of generic CRUD screens. It
-must enforce relationships and lifecycle rules:
+New modules should consume those operations rather than read registry
+collections independently or recreate lookup rules.
 
-- Historical records continue to display deactivated values.
-- Deactivation prevents new assignment without destroying old references.
-- A RingCentral number cannot be active in two conflicting routes.
-- A CPL schedule cannot contain overlapping periods for one granularity.
-- A default granularity cannot silently point at an inactive entry.
-- Source attribution resolves consistently in forms, calls, bookings,
-  analytics, CRM posting, and Reporting Projections.
+### Documentation status
 
-### External Data Ingestion
+The original pre-implementation plan is retained as historical planning context.
+The implementation specifications and delivery handoffs under
+`docs/current_plans/` are the more precise record of the delivered registry.
+Future registry changes should be written as incremental specifications, not as
+an attempt to execute the original plan again.
 
-External Data Ingestion will read owner-selected workbook IDs and tabs, inspect
-headers, parse rows through versioned schema profiles, and reconcile observations
-against canonical records.
+## Proposed Module 1: Application-Owned External Data Ingestion
+
+### Outcome
+
+The owner can register external workbooks, map their structures, preview an
+ingestion, run or schedule it, and resolve ambiguous or conflicting observations
+without relying on a developer-operated script or local checkpoint file.
 
 Likely inputs include:
 
-- Source Company form sheets
-- Source Company call sheets
-- The separate Booked Deals workbook
-- Refund or cancellation tabs
-- Historical source workbooks
+- lead-source form workbooks;
+- lead-source call workbooks;
+- the separate Booked Deals workbook;
+- cancellation or refund tabs;
+- historical workbooks; and
+- source-specific feeds such as Best Relocation.
 
-The module should preserve:
+### Module boundary
 
-- Workbook ID and title
-- Tab name
-- Source row identity
-- Raw row or a protected raw-row reference
-- Content hash
-- Schema-profile version
-- Import run
-- Match result and confidence
-- Resulting Mongo ID
-- Conflict or rejection reason
+The External Data Ingestion Module owns connections, schema interpretation, run
+orchestration, source-row idempotency, matching evidence, and conflicts. It does
+not own Booking, Lead, Cancellation, or Registry business rules. After it has
+validated and reconciled an observation, it invokes the appropriate canonical
+domain command.
 
-The Best Relocation importer is the strongest current prototype. It already
-demonstrates parsing, normalization, provenance, matching, a dry-run plan,
-guarded apply behavior, and resumability. The long-term design should retain
-those behaviors while moving orchestration and idempotency into the application.
+Suggested core records:
 
-The owner-facing workflow should be:
+- `ExternalDataConnection`: workbook/provider identity and access configuration;
+- `ExternalDatasetDefinition`: tab, business record type, Source Company,
+  Granularity, schema profile, and schedule;
+- `IngestionSchemaProfile`: versioned header aliases, parsers, transforms, and
+  required fields;
+- `IngestionRun`: immutable plan, status, lease, counters, checkpoints, actor,
+  and timing;
+- `SourceRowReceipt`: source identity, row identity, content hash, protected raw
+  provenance, profile version, match result, and resulting domain IDs; and
+- `IngestionConflict`: durable evidence, candidate matches, conflicting values,
+  disposition, and resolution audit.
 
-1. Register a workbook.
-2. Inspect available tabs and headers.
-3. Select the business record type and Source Company granularity.
-4. Review or correct suggested header mappings.
-5. Preview creates, updates, no-ops, invalid rows, and conflicts.
-6. Activate a recurring or one-time ingestion.
-7. Monitor runs and resolve conflicts in the Admin Dashboard.
+Names may change during specification, but these responsibilities should remain
+inside one Module.
 
-### Reporting Projection
+### Required behavior
 
-Reporting Projection will materialize canonical MongoDB data into owner-selected
-Google Sheets.
+1. Register and verify a connection without making it an active input.
+2. Inspect workbooks, tabs, and headers.
+3. Select the record type and Registry attribution.
+4. Suggest a versioned schema profile and allow explicit corrections.
+5. Produce a dry-run plan containing creates, safe updates, no-ops, invalid
+   rows, ambiguous matches, and conflicts.
+6. Apply an approved immutable plan with a lease, checkpoints, retries, and
+   idempotency.
+7. Preserve source provenance and exact resulting domain IDs.
+8. Resume safely after process or provider failure.
+9. Expose run health and conflict resolution in the Admin Dashboard.
 
-A Reporting Definition should eventually specify:
+### Idempotency and contention rules
 
-- Dataset or report type
-- Date range or rolling window
-- Source Company and granularity filters
-- Included columns
-- Destination workbook and tab
-- Refresh schedule
-- Replace, rebuild, or row-upsert strategy
+Row number alone is not a durable identity because rows can move. Prefer a
+provider row ID where available. Otherwise use a dataset-specific stable key and
+content hash while retaining row position as provenance.
 
-Reporting Projections are rebuildable views. They do not become an input merely
-because they are Google Sheets.
+Each row outcome must be deterministic for a specific schema-profile version
+and run plan. Re-reading unchanged evidence should be a no-op. Changed evidence
+should create a new receipt/version or a conflict, not erase its history.
 
-Input workbook connections and Reporting Projection destinations must be
-separate concepts. Direction and ownership must be explicit so Vantage cannot
-ingest a sheet that it generated and create an import/export feedback loop.
+The owner's separate Booked Deals sheet is a stream of External Booking
+Observations. An observation can produce:
 
-The existing durable Sheet Sync outbox remains useful for operational row
-projections. Large configurable reports may use snapshot or full-tab rebuilds
-instead of one Sheet Sync job per domain record.
+- a Booking attached to an existing Lead;
+- a Leadless Booking;
+- a no-op against the same existing Booking;
+- an explicitly permitted safe update;
+- an ambiguous match; or
+- a conflict with canonical values.
 
-### Granot CRM possibilities
+It must never silently overwrite a Booking created through the Admin Dashboard.
+Financial changes should require explicit policy and, by default, owner
+approval.
 
-The Granot extension already supports:
+### Best Relocation pilot
 
-- Owner authentication
-- Manual Form Lead Enrichment
-- Manual Call Lead Enrichment
-- Booked call reconciliation
-- Background alarms
-- A pinned Granot target tab
-- Preview-only automation
-- Selected background write workflows
-- Local cycle history
+The existing Best Relocation importer is the best tracer bullet. Its parsing,
+normalization, provenance, matching, dry-run, guarded apply, and resumability
+should be retained. Its orchestration should move behind the application-owned
+Module so that run state, receipts, conflicts, and permissions are server-owned.
 
-The next major possibility is a server-backed automation control plane:
+### Historical consolidation
 
-- Extension installation identity
-- Extension version and last heartbeat
-- Granot tab/session availability
-- Owner-controlled automation policy
-- Run-now commands
-- Command leasing and idempotency
-- Run results and row-level outcomes
-- Dashboard health, failures, and recent activity
+Production and historical data should converge into one canonical database
+through the same reconciliation discipline, not a raw collection copy. The
+staged consolidation plans under
+`docs/historical_production_db_staged_merge_ingestion_plans/` remain the
+specialized source for that migration.
 
-A safe dashboard launch flow is:
+After consolidation, "historical" should describe date or provenance, not a
+separate live database boundary. The old database should remain read-only for a
+defined audit window, and the migration must verify relationships, counts, and
+financial totals.
 
-1. The dashboard creates a Granot automation command.
-2. The installed owner extension claims the command.
-3. The extension opens or focuses the Granot tab in the owner's browser.
-4. The existing browser session is reused.
-5. If Granot is logged out, the owner authenticates directly in Granot.
-6. The extension performs preview or apply according to the command policy.
-7. The extension reports results to the server.
+## Proposed Module 2: Configurable Reporting Projection
 
-Raw Granot credentials should not initially be stored in the Admin Dashboard or
-sent to the extension. Fully unattended credential-based automation would
-require a separate secure runner or local companion with an appropriate
-credential vault and a distinct security review.
+### Outcome
 
-## Current codebase findings
+The owner can define, preview, schedule, and rebuild Google Sheets reports from
+canonical data without adding source-specific code or environment variables.
 
-### Operations Registry foundations
+### Module boundary
 
-The current code already contains:
+The Reporting Projection Module owns report definitions, destination
+connections, query parameters, column contracts, run state, delivery strategy,
+and artifacts. It reads canonical domain queries; it does not own the underlying
+business records or make an output sheet canonical.
 
-- `Agent` with active status and one unique `granot_crm_username`
-- `Merchant` with active status
-- `LeadSourceCompany` with embedded form/call granularities
-- Source granularity fields for CRM labels, aliases, CPL, Move Type, source
-  sites, inbound numbers, priority, and sheet metadata
-- Admin routes and dashboard settings for Agents, Merchants, Source Companies,
-  granularities, and legacy CPL rates
-- Source resolution used by Form Lead, Call Lead, booking, and portions of the
-  RingCentral flow
+Suggested core records:
 
-This means Operations Registry work should deepen and complete the existing
-module instead of adding a parallel registry.
+- `ReportingDestination`: provider, workbook, tab policy, credentials reference,
+  ownership, and health;
+- `ReportingDefinition`: dataset, filters, dimensions, measures, columns,
+  ordering, timezone, destination, strategy, and schedule;
+- `ReportingRun`: immutable definition revision, status, counters, checksum,
+  lease, actor, and timing; and
+- `ReportingArtifact` or `ReportingDelivery`: generated data/version, target,
+  provider response, and verification result.
 
-The database can currently store a newly created Source Company, but the
-runtime still has a compile-time `SourceCompany` union, static label maps,
-static CRM labels, static sheet metadata, and source-specific switches. An
-owner-created Source Company is therefore not automatically usable by every
-lead, analytics, CRM, or sheet workflow. Completing the registry includes
-removing this compile-time closed-world assumption from runtime resolution.
+### Definition capabilities
 
-### Temporal CPL gap
+A definition should be able to express:
 
-Current CPL edits update the configured value and backfill `cpl` onto all
-matching non-duplicate leads. This makes the current feature suitable for
-correcting a universally wrong rate, but not for representing:
+- dataset or report type;
+- explicit or rolling date range;
+- Source Company and Granularity filters;
+- Agent, Merchant, route, booking-status, or cancellation filters where valid;
+- dimensions, measures, included columns, labels, and ordering;
+- reporting timezone;
+- destination workbook and tab;
+- manual, scheduled, or event-triggered refresh; and
+- snapshot, full-tab rebuild, or key-based row-upsert delivery.
 
-> TBM Forms cost one amount from April 1, 2024 through May 5, 2024 and another
-> amount after that.
+Definitions should be revisioned. A run records the exact definition revision
+used, so a later edit does not make an old report irreproducible.
 
-CPL must become an effective-dated schedule. Leads should retain the applied
-amount and rate-period identity as ingestion-time snapshots. Historical
-recalculation must be an explicit correction workflow, not the default effect of
-editing a rate.
+### Input/output safety
 
-### Sheet configuration gap
+External input connections and reporting destinations are separate concepts and
+permissions. A workbook/tab cannot be both unless an exceptional, reviewed
+configuration explicitly partitions the data. The system must detect and block
+obvious feedback loops where Vantage ingests its own projection.
 
-Source Company sheet IDs and granularity tab names are editable in the current
-database model and Admin Dashboard, but Sheet Sync target resolution still
-relies primarily on static configuration and environment variables. The current
-fields should not be treated as fully operational until Reporting Projection or
-sheet target resolution consumes them.
+The existing durable Sheet Sync outbox remains appropriate for operational row
+projections. Large or configurable reports will often be safer as snapshot or
+full-tab rebuilds. The Reporting Projection Module may use Sheet Sync as an
+Adapter, but should not force every report into one job per domain record.
 
-### RingCentral routing gap
+### Owner workflow
 
-Five inbound numbers are currently hard-coded in
-`src/services/ringcentral/call-lead-sources.ts`. A database-backed catalog
-fallback exists in portions of Call Log and qualified-call ingestion, but
-several earlier stages still use the static map:
+1. Select a vetted dataset.
+2. Configure filters, columns, destination, and schedule.
+3. Preview row count, sample rows, warnings, and intended sheet changes.
+4. Save a versioned definition.
+5. Run now or activate the schedule.
+6. Inspect delivery history, freshness, failures, and checksums.
+7. Clone or revise the definition without changing previous run history.
 
-- Webhook event normalization
-- Candidate qualification
-- Call Log target selection and initial vetting
-- Analytics reconciliation
-- Per-number subscription filter construction
+## Proposed Module 3: Server-Backed Granot Automation Control Plane
 
-Adding an editable model without migrating every consumer would create
-different qualification outcomes between webhook, Call Log, and analytics
-paths. RingCentral routing therefore needs one shared registry resolver and a
-coordinated cutover.
+### Outcome
 
-## External booking contention
+The dashboard can show whether the extension is ready, request a bounded Granot
+operation, monitor it, and audit its results. The extension remains the browser
+execution Adapter and uses the owner's existing Granot session.
 
-The owner's separate Booked Deals sheet should be treated as a stream of
-External Booking Observations.
+### Module boundary
 
-An observation can resolve to:
+The Granot Automation Module owns installations, policies, commands, leases,
+runs, and results. It does not own Lead or Booking truth and does not duplicate
+browser-driving logic on the server.
 
-- A new Booking attached to an existing Lead
-- A new Leadless Booking
-- The same Booking already recorded in the Admin Dashboard
-- A safe update to an existing Booking
-- An ambiguous lead match
-- A conflict with existing canonical values
-- An invalid row
+Suggested core records:
 
-The importer should no-op when the sheet and canonical Booking agree. It should
-create a durable reconciliation case when they disagree. It must not silently
-overwrite a Booking created through the Admin Dashboard.
+- `GranotAutomationInstallation`: owner/workspace identity, extension version,
+  capabilities, last heartbeat, browser/session state, and revocation;
+- `GranotAutomationPolicy`: allowed operations, preview/apply defaults, limits,
+  schedules, and approval requirements;
+- `GranotAutomationCommand`: requested operation, canonical input references,
+  idempotency key, policy snapshot, state, expiry, actor, and lease;
+- `GranotAutomationRun`: installation, attempt, timing, progress, and terminal
+  status; and
+- `GranotAutomationResult`: summary, row-level outcomes, domain references,
+  evidence, and sanitized failure details.
 
-## Database consolidation direction
+### Command flow
 
-The production and historical databases should eventually become one canonical
-database. This should be a migration through canonical rules, not a raw
-collection copy.
+1. The dashboard, a schedule, or an approved Copilot tool creates a command.
+2. The server validates permissions and snapshots the active policy.
+3. An authorized extension installation claims a short lease.
+4. The extension opens or focuses the pinned Granot tab.
+5. The owner's existing Granot browser session is reused.
+6. The extension previews or applies the bounded operation.
+7. It reports progress and row-level outcomes.
+8. The server expires, retries, or completes the command idempotently.
 
-The migration must:
+Useful commands may include:
 
-- Inventory collisions and relationship gaps first
-- Preserve source provenance and original business timestamps
-- Preserve ObjectIds when safe or maintain an old-to-new ID map
-- Rewire Lead, Booking, Cancellation, Customer, and Agent references
-- Normalize Source Company and granularity assignments
-- Verify counts and financial totals
-- Retain the old historical database read-only for a defined audit period
+- verify installation/session health;
+- synchronize eligible records;
+- enrich selected Form Leads or Call Leads;
+- reconcile booked calls;
+- preview a background cycle;
+- apply an explicitly approved background cycle; and
+- retry eligible failures.
 
-After consolidation, "historical" should describe date or origin metadata, not
-a separate operational database scope.
+### Security direction
 
-## Recommended delivery sequence
+Do not initially collect raw Granot credentials in the dashboard, MCP server, or
+sandbox. The extension should reuse the browser session and report `login
+required` when that session is unavailable. Fully unattended credential-based
+automation would be a separate product boundary with a credential vault,
+isolated runner, and dedicated security review.
 
-1. Complete Operations Registry and make every runtime consumer use it.
-2. Introduce effective-dated CPL before performing additional historical
-   ingestion.
-3. Build the application-owned ingestion run, source-row receipt, and conflict
-   foundation.
+Command inputs should reference canonical IDs, not trust arbitrary payloads.
+Commands need expiry, leases, idempotency keys, bounded batch sizes, sanitized
+logs, and cancellation semantics. Preview and apply are distinct permissions.
+
+## Proposed Module 4: Vantage Copilot and Maintainer System
+
+### Product surfaces
+
+The owner should be able to use Vantage Copilot through:
+
+- an Agent Workspace in the Admin Dashboard; and
+- Claude Desktop/Claude Code through Vantage MCP and repository agent skills.
+
+Cursor Cloud Agents and Claude Code also form a Maintainer System for continuing
+to operate the codebases after the current developer leaves. The Owner Copilot
+and Maintainer System share documentation and selected read tools, but their
+permissions must remain separate. Asking an operational question must never
+implicitly grant repository mutation or deployment rights.
+
+### MCP role
+
+MCP is an agent-facing Interface over stable Vantage commands and queries. It
+should expose task-oriented tools such as `preview_ingestion_run` or
+`explain_call_attribution`, not mirror every raw HTTP route and never expose a
+general database query, arbitrary server HTTP client, shell, or production
+secret.
+
+When the MCP runtime is in the same trusted application boundary, tools should
+invoke domain Modules directly. A separately deployed MCP server may use a
+dedicated `/api/v1/agent/` facade with scoped OAuth and the same command/query
+contracts.
+
+### Tool risk tiers
+
+| Tier | Examples | Default control |
+| --- | --- | --- |
+| Read | registry lookup, lead search, run status | Scoped authorization and audit |
+| Analyze | reconciliation plan, report preview, anomaly explanation | Bounded inputs and artifact audit |
+| Reversible write | start a run from an approved definition, retry a failed command | Structured preview plus approval |
+| Canonical/financial write | booking mutation, CPL correction, conflict resolution | Explicit fresh approval and narrow command |
+| Infrastructure mutation | code change, deploy request, migration | Separate maintainer role and workflow |
+| Destructive/high blast radius | bulk delete, secret access, arbitrary production command | Prohibited or purpose-built two-step ceremony |
+
+Suggested OAuth scopes include:
+
+- `vantage:operations:read`;
+- `vantage:analytics:read`;
+- `vantage:registry:write`;
+- `vantage:bookings:write`;
+- `vantage:integrations:run`;
+- `vantage:code:read`; and
+- `vantage:deploy:request`.
+
+The existing `x-api-secret` must not become an owner-facing MCP credential.
+
+### Delegated analysis
+
+Sandboxed agents are useful for deep research, header discovery, spreadsheet
+normalization, dataset production, report drafting, and codebase research. They
+receive a task-scoped dataset, network allowlist, time/resource limits, and a
+short-lived artifact destination. They do not receive production database,
+Google, RingCentral, Granot, deployment, or broad Vantage API credentials.
+
+Their output is an artifact or proposal. A trusted server command validates and
+applies any approved canonical write.
+
+Vercel Eve and Vercel Sandbox are promising implementation candidates, but the
+Vantage MCP contracts, domain commands, authorization, and audit model should
+remain provider-independent because agent frameworks evolve quickly.
+
+See `docs/vantage-copilot-mcp-and-agent-skills.md` for the detailed architecture,
+dashboard workspace, audit records, skills, hooks, sandbox roles, and delivery
+phases.
+
+## Shared platform invariants
+
+These rules cross every proposed Module:
+
+1. MongoDB is canonical; external rows and agent statements are evidence.
+2. Every run uses an immutable snapshot of its definition, policy, or plan.
+3. Preview and apply are distinct operations and permissions.
+4. Every side effect has an actor, reason, idempotency key, and audit record.
+5. Leases and retries cannot produce duplicate canonical mutations.
+6. Historical provenance is append-oriented and never silently rewritten.
+7. Runtime Modules, dashboard workflows, MCP tools, and extensions share domain
+   commands rather than reimplement rules.
+8. Input connections and output destinations are explicitly different.
+9. Agents and sandboxes have less authority than the trusted server.
+10. No automation stores or displays secrets in prompts, artifacts, or logs.
+
+## End-to-end architectural shape
+
+```text
+Owner
+  |-- Admin Dashboard
+  |     |-- Registry management
+  |     |-- Ingestion runs and conflicts
+  |     |-- Reporting definitions and runs
+  |     |-- Granot command control
+  |     `-- Vantage Copilot workspace and approvals
+  |
+  |-- Claude Desktop / Claude Code
+  |     `-- MCP + Vantage agent skills
+  |
+  `-- Cursor Cloud Agents
+        `-- separately authorized Maintainer System
+
+Trusted application boundary
+  |-- Operations Registry Module
+  |-- External Data Ingestion Module
+  |-- Reporting Projection Module
+  |-- Granot Automation Module
+  |-- Agent command/query facade
+  |-- Approval and audit records
+  `-- Canonical domain Modules and MongoDB
+
+Adapters and bounded workers
+  |-- Google Sheets / Drive
+  |-- RingCentral
+  |-- Granot browser extension
+  |-- MCP transport
+  `-- sandboxed delegated agents
+```
+
+## Recommended delivery sequence from the current baseline
+
+1. Record Operations Registry deployment and acceptance evidence; treat future
+   changes as incremental work.
+2. Establish the maintainability baseline: canonical architecture docs,
+   runbooks, access transfer, shared safety hooks, and repository instructions.
+3. Build the application-owned ingestion run, receipt, schema-profile, and
+   conflict foundation.
 4. Move Best Relocation onto that foundation as the pilot.
-5. Ingest remaining workbooks and consolidate the historical database.
-6. Build configurable Reporting Definitions and projection destinations.
-7. Add the server-backed Granot automation control plane.
+5. Complete remaining workbook ingestion and historical consolidation.
+6. Build Reporting Destinations, versioned Reporting Definitions, previews, and
+   deterministic runs.
+7. Add the server-backed Granot installation, heartbeat, policy, command, lease,
+   and result plane.
+8. Release read-only MCP tools and the initial owner Copilot workspace.
+9. Add preview tools, structured approvals, and narrowly scoped write commands.
+10. Add sandboxed analysis agents and, only after evaluation, scheduled routines.
+11. Complete the separately authorized Cursor/Claude Maintainer System and owner
+    training.
 
-## Decisions still requiring owner confirmation
+Steps 3-7 can be specified independently, but they should reuse the same run,
+audit, approval, and artifact vocabulary where doing so preserves clear Module
+ownership.
 
-- Whether one Vantage Agent can have multiple Granot usernames or identities.
-- Whether Granot identities vary by Granot workspace, account, or CRM origin.
-- Whether Source Company "granularity" remains the owner-facing term or becomes
-  "Lead Source Program."
-- Whether a CPL end date entered by the owner is inclusive or exclusive.
-- Whether RingCentral qualification duration is globally fixed at 120 seconds
-  or may vary by inbound route in the future.
-- Whether a RingCentral number may be scheduled for future activation.
-- Whether a sheet-originated booking may update financial fields automatically
-  or always requires approval once a canonical Booking exists.
+## Specifications and issue boundaries to create next
+
+The following are good issue-collection boundaries:
+
+1. Application-Owned Ingestion Foundation
+2. Best Relocation Ingestion Migration
+3. External Booking Reconciliation Policy
+4. Historical Workbook Onboarding and Consolidation
+5. Reporting Definition and Destination Model
+6. Reporting Preview, Run, and Sheet Delivery
+7. Granot Installation, Heartbeat, and Health
+8. Granot Command Queue, Leasing, Policies, and Results
+9. Vantage Agent Command/Query Facade and OAuth
+10. Dashboard Copilot Workspace and Approval Queue
+11. Read-Only MCP Tool Set and Evaluations
+12. Approval-Gated MCP Mutations
+13. Sandboxed Sheet Analyst and Reporting Builder
+14. Claude Code Skill Set and Canonical Documentation Router
+15. Cursor/Claude Shared Safety Hooks and CI Checks
+16. Access Transfer, Runbooks, Recovery Drills, and Owner Training
+
+## Decisions to resolve during specification
+
+### Ingestion
+
+- Which external booking fields may update an existing canonical Booking without
+  approval?
+- Which source-specific identifiers are stable enough to become row identities?
+- What protected raw-row retention period is required?
+- Which datasets may run unattended after their first approved import?
+
+### Reporting
+
+- Which vetted datasets and measures are available in the first release?
+- Is full-tab replacement acceptable for every initial destination?
+- What freshness and reconciliation checks define a successful delivery?
+
+### Granot automation
+
+- Which commands are preview-only, approval-gated, or schedule-eligible?
+- Is one installation bound to one owner, one browser profile, or one Granot
+  workspace?
+- How long may a command lease or offline installation remain eligible?
+
+### Copilot and maintenance
+
+- Which write tools, if any, are included in the first owner release?
+- Who can approve financial, integration, and deployment actions?
+- Which agent runtime hosts the first version, and what is the exit strategy?
+- What monthly cost, concurrency, and artifact-retention limits apply?
+- Which deployments require a human outside the owner account?
+
+## External technology references
+
+- [Model Context Protocol authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization)
+- [MCP authorization tutorial](https://modelcontextprotocol.io/docs/tutorials/security/authorization)
+- [Vercel Eve](https://vercel.com/eve)
+- [Vercel Eve repository](https://github.com/vercel/eve)
+- [Vercel Sandbox](https://vercel.com/docs/sandbox)
+- [Claude Agent Skills overview](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview)
+- [Cursor Cloud Agents](https://cursor.com/changelog/cloud-in-agents-window)

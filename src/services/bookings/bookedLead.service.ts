@@ -49,6 +49,10 @@ import {
 } from "./bookingMirror.service";
 import { getFormLeadSourceCompanyForBooking } from "./bookingSourceResolver";
 import { buildBookedLeadWarnings } from "./bookingWarnings";
+import {
+  BEST_RELOCATION_INGESTION_SOURCE,
+  requireBestRelocationImportSource,
+} from "./bestRelocationImportGuard";
 
 /**
  * Internal create-input variant used by `createBookedLeadFromSource`, which
@@ -65,6 +69,7 @@ type CreateBookedLeadServiceInput = Omit<CreateBookedLeadInput, "job_no"> & {
   allow_inactive_agents?: boolean;
   set_primary_agent_as_receiver?: boolean;
   receiver_agent_source_value?: string;
+  ingestion_source?: typeof BEST_RELOCATION_INGESTION_SOURCE;
 };
 
 function assignPrimaryAgentAsReceiver(
@@ -97,12 +102,25 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
   );
   const warnings = buildBookedLeadWarnings(agent_allocations);
   const customerNameOverride = input.customer_name?.trim();
-  const { customer_phone: _customerPhone, ...bookingInput } = input;
+  const {
+    customer_phone: _customerPhone,
+    allow_inactive_agents: _allowInactiveAgents,
+    set_primary_agent_as_receiver: _setPrimaryAgentAsReceiver,
+    receiver_agent_source_value: _receiverAgentSourceValue,
+    ingestion_source: _ingestionSource,
+    ...bookingInput
+  } = input;
   const canonicalBookingInput = { ...bookingInput, merchant };
 
   const outcome = await runSheetSyncWrite(async (session) => {
     const lead = await getLinkedLead(input.lead_model, input.lead_ref, session);
     const sourceCompanyForLead = getFormLeadSourceCompanyForBooking(lead, input);
+    if (input.ingestion_source) {
+      requireBestRelocationImportSource(
+        input.ingestion_source,
+        String(lead.source_company),
+      );
+    }
     const canonicalSource = resolveBookedLeadSource(
       sourceCompanyForLead,
       lead,
@@ -137,6 +155,7 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
           bookingId: existingBooking._id,
           totalBinderAmount: existingBooking.total_binder_amount,
           sourceCompany: sourceCompanyForLead ?? null,
+          warnings,
           job: undefined as FullSheetSyncJob | undefined,
         };
       }
@@ -180,6 +199,7 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
         bookingId: existingBooking._id,
         totalBinderAmount: total_binder_amount,
         sourceCompany: sourceCompanyForLead ?? null,
+        warnings,
         job,
       };
     }
@@ -219,6 +239,7 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
       bookingId: booking._id,
       totalBinderAmount: total_binder_amount,
       sourceCompany: sourceCompanyForLead ?? null,
+      warnings,
       job,
     };
   });

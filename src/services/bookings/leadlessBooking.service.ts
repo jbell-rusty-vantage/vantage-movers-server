@@ -66,7 +66,7 @@ export async function createLeadlessBooking(input: CreateLeadlessBookingInput) {
   const source =
     input.source?.trim() || resolvedSource.label;
 
-  const booking = await runSheetSyncWrite(async (session) => {
+  const outcome = await runSheetSyncWrite(async (session) => {
     const customer = customerName
       ? await upsertCustomerFromBookingContact(
           { customer_name: customerName, customer_phone: input.customer_phone },
@@ -91,9 +91,10 @@ export async function createLeadlessBooking(input: CreateLeadlessBookingInput) {
     });
     await created.save({ session });
     await persistSheetSyncIntent(leadlessBookingJob(created._id.toString()), session);
-    return created;
+    return { booking: created, warnings };
   });
 
+  const { booking } = outcome;
   await finalizeSheetSync(leadlessBookingJob(booking._id.toString()));
 
   return {

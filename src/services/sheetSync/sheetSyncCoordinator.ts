@@ -12,6 +12,10 @@ import {
   syncCancellationChainById,
   syncSourceLeadById,
 } from "./sheetSyncSourceLookup";
+import {
+  hasActiveCanonicalCommandExecution,
+  persistActiveCanonicalCommandExecution,
+} from "../domainCommands/idempotency";
 
 /**
  * Mode-aware compatibility boundary for sheet sync.
@@ -87,8 +91,19 @@ export async function runSheetSyncWrite<T>(
   fn: (session: ClientSession | undefined) => Promise<T>,
   options: { forceTransaction?: boolean } = {},
 ): Promise<T> {
-  if (getSheetSyncMode() === "queued" || options.forceTransaction === true) {
-    return withTransaction((session) => fn(session));
+  const canonicalCommandActive = hasActiveCanonicalCommandExecution();
+  if (
+    getSheetSyncMode() === "queued" ||
+    options.forceTransaction === true ||
+    canonicalCommandActive
+  ) {
+    return withTransaction(async (session) => {
+      const result = await fn(session);
+      if (canonicalCommandActive) {
+        await persistActiveCanonicalCommandExecution(result, session);
+      }
+      return result;
+    });
   }
   await connectMongo();
   return fn(undefined);
