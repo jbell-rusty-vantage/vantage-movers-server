@@ -1,6 +1,7 @@
 import {
   DEFAULT_PRODUCTION_BASE_URL,
 } from "./plan";
+import { toFloridaTimestamp } from "../../utils/easternTime";
 import type { IngestPlan, PlannedMutation } from "./types";
 
 export type ApplyResult = {
@@ -139,6 +140,9 @@ async function findExistingEntity(
     const phone = stringField(mutation.api.body.phone_number);
     const jobNo = stringField(mutation.api.body.job_no);
     const timestamp = stringField(mutation.api.body.timestamp);
+    const persistedTimestamp = timestamp
+      ? toFloridaTimestamp(new Date(timestamp)).toISOString()
+      : undefined;
     if (!phone && !jobNo) return undefined;
     const data = await request(
       fetchImpl,
@@ -160,8 +164,8 @@ async function findExistingEntity(
         if (jobNo && stringField(candidate.job_no) === jobNo) return true;
         return (
           phoneDigits(stringField(candidate.phone_number)) === phoneDigits(phone) &&
-          timestamp &&
-          sameInstant(stringField(candidate.timestamp), timestamp)
+          persistedTimestamp &&
+          sameInstant(stringField(candidate.timestamp), persistedTimestamp)
         );
       });
     return objectId(exact);

@@ -23,6 +23,15 @@
           "retryAfterSeconds": 30
         }
       ]
+    },
+    "api/queues/best-relocation-ingestion-consumer.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "best-relocation-ingestion-events*",
+          "retryAfterSeconds": 30
+        }
+      ]
     }
   },
   "crons": [
@@ -53,6 +62,10 @@
     {
       "path": "/api/cron/notifications-digest-daily",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/best-relocation-ingest-heartbeat",
+      "schedule": "0 */6 * * *"
     }
   ]
 }

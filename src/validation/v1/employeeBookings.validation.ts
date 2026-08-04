@@ -41,6 +41,9 @@ export const createEmployeeBookingSubmissionSchema = z
 export const bookingLeadReconciliationListQuerySchema = z
   .object({
     status: z.enum(["pending", "resolved", "dismissed"]).optional(),
+    origin: z
+      .enum(["employee_booking", "external_sheet_ingestion"])
+      .optional(),
     reason: z
       .enum([
         "no_match",

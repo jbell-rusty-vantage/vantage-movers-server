@@ -5,6 +5,7 @@ import {
   buildIngestPlan,
   collapseBookingsByJob,
   makeTab,
+  matchRefundsToBookings,
   normalizeMoveSize,
   normalizeZip,
   parseBookedDealRows,
@@ -263,6 +264,131 @@ test("plan orders leads, attached booking, and cancellation with response bindin
   assert.ok(plan.mutations[2].api.bindings?.booked_lead);
 });
 
+test("refund discovery keeps contradictory LID evidence below auto-cancel threshold", () => {
+  const bookingHeaders = [
+    "Timestamp",
+    "Agent",
+    "Book Date",
+    "Job Number:",
+    "Customer Name",
+    "Binder Amount",
+    "Deposit Amount",
+    "Merchant",
+    "Lead Source",
+    "LID",
+  ];
+  const refundHeaders = [
+    "Refund Request Date",
+    "Status",
+    "Timestamp",
+    "Agent",
+    "Book Date",
+    "Job Number:",
+    "Customer Name",
+    "Binder Amount",
+    "Deposit Amount",
+    "Merchant",
+    "Lead Source",
+    "LID",
+  ];
+  const bookings = parseBookedDealRows(
+    makeTab("Booked Deals", bookingHeaders, [
+      bookingHeaders,
+      [
+        "5/1/2026 10:00 AM",
+        "Agent One",
+        "5/1/2026",
+        "P100",
+        "Customer One",
+        "$500",
+        "$700",
+        "Elavon",
+        "Best Relocation Forms",
+        "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      ],
+      [
+        "5/1/2026 11:00 AM",
+        "Agent Two",
+        "5/1/2026",
+        "P200",
+        "Customer Two",
+        "$500",
+        "$700",
+        "Elavon",
+        "Best Relocation Forms",
+        "22222222-2222-4222-8222-222222222222",
+      ],
+    ]),
+  );
+  const refunds = parseRefundRows(
+    makeTab("Refunds", refundHeaders, [
+      refundHeaders,
+      [
+        "5/2/2026",
+        "refunded",
+        "5/2/2026 10:00 AM",
+        "Different Agent",
+        "5/1/2026",
+        "P100",
+        "Different Customer",
+        "$500",
+        "$700",
+        "Elavon",
+        "Other Source",
+        "22222222-2222-4222-8222-222222222222",
+      ],
+      [
+        "5/2/2026",
+        "refunded",
+        "5/2/2026 11:00 AM",
+        "Unrelated Agent",
+        "5/1/2026",
+        "OTHER",
+        "Unrelated Customer",
+        "$100",
+        "$100",
+        "Elavon",
+        "Other Source",
+        "",
+      ],
+      [
+        "5/2/2026",
+        "refunded",
+        "5/2/2026 12:00 PM",
+        "Another Agent",
+        "5/1/2026",
+        "NO-JOB-MATCH",
+        "Another Customer",
+        "$500",
+        "$700",
+        "Elavon",
+        "Other Source",
+        "AAAAAAAA-1111-4111-8111-AAAAAAAAAAAA",
+      ],
+    ]),
+  );
+  const result = matchRefundsToBookings(refunds, bookings);
+  assert.equal(result.matches.length, 2);
+  assert.equal(result.matches[0].method, "job_no_unique");
+  assert.equal(result.matches[0].confidence, 0.85);
+  assert.equal(result.matches[0].booking.normalized_job_no, "P100");
+  assert.equal(result.matches[1].method, "lid_exact");
+  assert.equal(result.matches[1].confidence, 0.9);
+  assert.equal(result.matches[1].booking.normalized_job_no, "P100");
+  assert.equal(result.unmatched.length, 0);
+  const plan = buildIngestPlan({
+    leadsWorkbook: { id: "leads", title: "Leads" },
+    bookedWorkbook: { id: "booked", title: "Booked" },
+    forms: [],
+    localForms: [],
+    calls: [],
+    booked: bookings,
+    refunds,
+    lidBestRelo: [],
+  });
+  assert.equal(plan.summary.unmatched_refunds, 1);
+});
+
 test("live apply refuses to send the secret to an unpinned host", async () => {
   const plan = minimalPlan("https://attacker.example");
   let called = false;
@@ -361,7 +487,8 @@ test("call preflight recognizes the route's bare-array response", async () => {
             {
               _id: "507f1f77bcf86cd799439011",
               phone_number: "305-555-1212",
-              timestamp: "2026-01-01T15:00:00.000Z",
+              // Call creation stores Eastern wall-clock components in Mongo.
+              timestamp: "2026-01-01T10:00:00.000Z",
             },
           ],
         }),

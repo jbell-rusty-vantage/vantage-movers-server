@@ -27,8 +27,71 @@ export function parseDate(value: string): Date | undefined {
   const serial = parseGoogleSheetsSerial(raw);
   if (serial) return serial;
   const withoutWeekday = raw.replace(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+/i, "");
+  const newYorkWallClock = parseNewYorkWallClock(withoutWeekday);
+  if (newYorkWallClock) return newYorkWallClock;
   const parsed = new Date(withoutWeekday);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+function parseNewYorkWallClock(value: string): Date | undefined {
+  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(value)) return undefined;
+  const match = value.match(
+    /^(?:(\d{4})-(\d{1,2})-(\d{1,2})|(\d{1,2})[/-](\d{1,2})[/-](\d{4}))(?:[ T]+(\d{1,2})(?::(\d{2}))?(?::(\d{2}))?\s*(AM|PM)?)?$/,
+  );
+  if (!match) return undefined;
+  const year = Number(match[1] ?? match[6]);
+  const month = Number(match[2] ?? match[4]);
+  const day = Number(match[3] ?? match[5]);
+  let hour = Number(match[7] ?? 0);
+  const minute = Number(match[8] ?? 0);
+  const second = Number(match[9] ?? 0);
+  const meridiem = match[10]?.toUpperCase();
+  if (meridiem === "AM" && hour === 12) hour = 0;
+  if (meridiem === "PM" && hour < 12) hour += 12;
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
+  ) {
+    return undefined;
+  }
+  const wallClockUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+  let candidate = wallClockUtc;
+  for (let iteration = 0; iteration < 2; iteration += 1) {
+    candidate = wallClockUtc - timeZoneOffsetMilliseconds(candidate);
+  }
+  return new Date(candidate);
+}
+
+function timeZoneOffsetMilliseconds(timestamp: number): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(timestamp));
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)]),
+  );
+  const representedAsUtc = Date.UTC(
+    values.year,
+    values.month - 1,
+    values.day,
+    values.hour,
+    values.minute,
+    values.second,
+  );
+  return representedAsUtc - timestamp;
 }
 
 export function parseDateTime(dateValue: string, timeValue: string): Date | undefined {
@@ -334,6 +397,7 @@ export function makeTab(
   return {
     spreadsheetId,
     spreadsheetTitle: "Test Workbook",
+    tabId: 1,
     tabName,
     headers,
     matrix,

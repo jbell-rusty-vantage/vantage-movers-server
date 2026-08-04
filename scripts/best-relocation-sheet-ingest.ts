@@ -4,6 +4,9 @@ import path from "node:path";
 import process from "node:process";
 import {
   applyIngestPlan,
+  AUTO_LINK_THRESHOLD,
+  BEST_RELOCATION_CUTOFF,
+  buildBestRelocationApplicationPlan,
   type ApplyResult,
   buildIngestPlan,
   DEFAULT_MATCH_THRESHOLD,
@@ -20,33 +23,64 @@ const DEFAULT_OUTPUT_DIRECTORY = path.join(
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
+  if (options.threshold !== AUTO_LINK_THRESHOLD) {
+    throw new Error(
+      `The application-owned planner pins the reviewed threshold to ${AUTO_LINK_THRESHOLD}.`,
+    );
+  }
+  if (options.limitBookings !== undefined) {
+    throw new Error(
+      "--limit-bookings is not supported by the application-owned planner.",
+    );
+  }
   if (options.apply) {
-    await applyReviewedPlan(options);
-    return;
+    throw new Error(
+      "CLI live apply is retired. Approve the immutable application-owned run through /api/v1/admin/ingestion.",
+    );
   }
   console.log("Reading Best Relocation and Booked Deal workbooks...");
-  const data = await readBestRelocationWorkbooks();
-  const plan = buildIngestPlan(data, {
-    threshold: options.threshold,
-    baseUrl:
-      process.env.VANTAGE_API_BASE_URL?.trim() ??
-      process.env.PRODUCTION_BASE_URL?.trim() ??
-      DEFAULT_PRODUCTION_BASE_URL,
-    limitBookings: options.limitBookings,
+  const sourceReadThrough = new Date();
+  const data = await readBestRelocationWorkbooks({
+    cutoff: BEST_RELOCATION_CUTOFF,
+    sourceReadThrough,
   });
-  const artifacts = await writeDryRunArtifacts(plan, options.outputDirectory);
-  const planBytes = await fs.readFile(artifacts.jsonPath);
-  const planSha256 = sha256(planBytes);
+  const { plan, checksum } = buildBestRelocationApplicationPlan({
+    data,
+    trigger: "preview",
+    cutoff: BEST_RELOCATION_CUTOFF,
+    sourceReadThrough,
+  });
+  await fs.mkdir(options.outputDirectory, { recursive: true, mode: 0o700 });
+  const jsonPath = path.join(options.outputDirectory, "ingest-plan.json");
+  const summaryPath = path.join(options.outputDirectory, "ingest-plan-summary.json");
+  await fs.writeFile(jsonPath, `${JSON.stringify(plan, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
   await fs.writeFile(
-    path.join(options.outputDirectory, "ingest-plan.sha256"),
-    `${planSha256}  ingest-plan.json\n`,
+    summaryPath,
+    `${JSON.stringify(
+      {
+        plan_checksum: checksum,
+        source_read_through: plan.source_read_through,
+        counters: plan.counters,
+        warnings: plan.warnings,
+      },
+      null,
+      2,
+    )}\n`,
     { encoding: "utf8", mode: 0o600 },
   );
-  printSummary(plan);
-  console.log(`Plan JSON: ${path.relative(process.cwd(), artifacts.jsonPath)}`);
-  console.log(`Summary:   ${path.relative(process.cwd(), artifacts.markdownPath)}`);
+  await fs.writeFile(
+    path.join(options.outputDirectory, "ingest-plan.sha256"),
+    `${checksum}  ingest-plan.json\n`,
+    { encoding: "utf8", mode: 0o600 },
+  );
+  console.log(JSON.stringify(plan.counters, null, 2));
+  console.log(`Plan JSON: ${path.relative(process.cwd(), jsonPath)}`);
+  console.log(`Summary:   ${path.relative(process.cwd(), summaryPath)}`);
 
-  console.log(`Plan SHA-256: ${planSha256}`);
+  console.log(`Canonical plan SHA-256: ${checksum}`);
   console.log("Dry run complete. No HTTP mutations were sent.");
   console.log("Warning: ingest-plan.json contains customer PII; keep it restricted.");
 }

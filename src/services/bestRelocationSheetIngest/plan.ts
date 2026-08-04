@@ -1,5 +1,9 @@
 import { MOVE_SIZES } from "../../config/domain";
-import { matchLeadsToBookings, matchRefundsToBookings } from "./matching";
+import {
+  matchLeadsToBookings,
+  matchRefundsToBookings,
+  selectBestRelocationRefundObservations,
+} from "./matching";
 import { normalizeJobNo, toDateKeyFromRaw } from "./parsing";
 import type {
   CollapsedBooking,
@@ -13,7 +17,9 @@ import type {
   PlannedMutation,
 } from "./types";
 
-export const DEFAULT_MATCH_THRESHOLD = 0.5;
+// Conservative unattended policy: only exact LID/ref matches clear this
+// threshold. Lower-confidence name/call heuristics remain review evidence.
+export const DEFAULT_MATCH_THRESHOLD = 0.9;
 export const DEFAULT_PRODUCTION_BASE_URL =
   "https://vantage-movers-main-server.vercel.app";
 export const SOURCE_COMPANY = "best_relocation_leads" as const;
@@ -92,6 +98,13 @@ export function buildIngestPlan(
   }
   const leadMatchResult = matchLeadsToBookings(data);
   const refundMatchResult = matchRefundsToBookings(data.refunds, data.booked);
+  const relevantRefunds = selectBestRelocationRefundObservations(
+    data.refunds,
+    data.booked,
+  );
+  const acceptedRefundMatches = refundMatchResult.matches.filter(
+    (match) => match.confidence >= threshold,
+  );
   const allCollapsed = collapseBookingsByJob(data.booked);
   const collapsed =
     options.limitBookings === undefined
@@ -130,7 +143,7 @@ export function buildIngestPlan(
       )
       .map((mutation) => [mutation.idempotency_key.split(":").at(-1)!, mutation]),
   );
-  for (const match of refundMatchResult.matches) {
+  for (const match of acceptedRefundMatches) {
     const job = match.booking.normalized_job_no;
     if (!job || !includedJobs.has(job)) continue;
     const bookingMutation = bookingMutationByJob.get(job);
@@ -142,9 +155,13 @@ export function buildIngestPlan(
     (booking) => !matchByJob.has(booking.normalized_job_no),
   );
   const warnings: string[] = [];
-  if (refundMatchResult.unmatched.length) {
+  const unmatchedRefundCount =
+    refundMatchResult.unmatched.length +
+    refundMatchResult.matches.length -
+    acceptedRefundMatches.length;
+  if (unmatchedRefundCount) {
     warnings.push(
-      `${refundMatchResult.unmatched.length} Best Relocation refund row(s) could not be linked and were not planned.`,
+      `${unmatchedRefundCount} Best Relocation refund row(s) could not be linked and were not planned.`,
     );
   }
   const lidOnly = leadMatchResult.matches.filter(
@@ -185,9 +202,9 @@ export function buildIngestPlan(
       ),
       accepted_booking_matches: matchByJob.size,
       leadless_bookings: unmatchedJobs.length,
-      refunds: data.refunds.filter((row) => row.is_best_relocation_source).length,
+      refunds: relevantRefunds.length,
       matched_refunds: counts.create_cancelled_lead,
-      unmatched_refunds: refundMatchResult.unmatched.length,
+      unmatched_refunds: unmatchedRefundCount,
       mutations: counts,
     },
     unmatched_booking_jobs: unmatchedJobs.map((booking) => {

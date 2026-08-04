@@ -1,6 +1,14 @@
 export { applyIngestPlan, type ApplyResult } from "./apply";
+export * from "./adapter";
+export * from "./applicationPlan";
+export * from "./bootstrap";
 export { formatPlanSummary, writeDryRunArtifacts } from "./dryRun";
-export { matchLeadsToBookings, matchRefundsToBookings } from "./matching";
+export * from "./identity";
+export {
+  matchLeadsToBookings,
+  matchRefundsToBookings,
+  selectBestRelocationRefundObservations,
+} from "./matching";
 export {
   BEST_RELOCATION_LEAD_SOURCES,
   makeTab,
@@ -12,6 +20,8 @@ export {
   parseLidBestRelo,
   parseRefundRows,
 } from "./parsing";
+export * from "./provider";
+export * from "./sourceChangePolicy";
 export {
   buildIngestPlan,
   collapseBookingsByJob,
@@ -23,8 +33,11 @@ export {
   SOURCE_COMPANY,
 } from "./plan";
 export {
-  DEFAULT_BOOKED_SHEET_ID,
-  DEFAULT_LEADS_SHEET_ID,
+  BEST_RELOCATION_CUTOFF,
+  BEST_RELOCATION_TIMEZONE,
+  isWithinIngestionWindow,
   readBestRelocationWorkbooks,
+  resolveWorkbookIds,
 } from "./sheets";
+export * from "./updatePolicy";
 export type * from "./types";

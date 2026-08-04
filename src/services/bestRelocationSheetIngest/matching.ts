@@ -423,6 +423,10 @@ export function matchRefundsToBookings(
   bookings: ParsedBookedDeal[],
 ): { matches: RefundBookingMatch[]; unmatched: ParsedRefund[] } {
   const relevantBookings = bookings.filter((row) => row.is_best_relocation_source);
+  const relevantRefunds = selectBestRelocationRefundObservations(
+    refunds,
+    relevantBookings,
+  );
   const byJob = new Map<string, ParsedBookedDeal[]>();
   const usedRows = new Set<number>();
   for (const booking of relevantBookings) {
@@ -441,31 +445,53 @@ export function matchRefundsToBookings(
     method: RefundMatchMethod,
     confidence: number,
   ) => {
-    usedRows.add(booking.sheet_row);
+    // Review-only evidence must not consume the booking before a later refund
+    // with corroborated evidence can reach the unattended threshold.
+    if (confidence >= 0.9) usedRows.add(booking.sheet_row);
     matches.push({ refund, booking, method, confidence });
   };
 
-  for (const refund of refunds.filter((row) => row.is_best_relocation_source)) {
+  for (const refund of relevantRefunds) {
     const candidates = (refund.normalized_job_no
       ? byJob.get(refund.normalized_job_no) ?? []
       : []
     ).filter((row) => !usedRows.has(row.sheet_row));
     const byAgent = candidates.filter(
-      (row) => row.agent.trim().toLowerCase() === refund.normalized_agent,
+      (row) =>
+        Boolean(refund.normalized_agent) &&
+        row.agent.trim().toLowerCase() === refund.normalized_agent,
     );
     if (byAgent.length === 1) {
       push(refund, byAgent[0], "job_no_agent", 1);
       continue;
     }
-    if (candidates.length === 1) {
-      push(refund, candidates[0], "job_no_unique", 0.95);
-      continue;
-    }
     const byCustomer = candidates.filter(
-      (row) => row.normalized_customer_name === refund.normalized_customer_name,
+      (row) =>
+        Boolean(refund.normalized_customer_name) &&
+        row.normalized_customer_name === refund.normalized_customer_name,
     );
     if (byCustomer.length === 1) {
       push(refund, byCustomer[0], "job_no_customer", 0.9);
+      continue;
+    }
+    const byLid = relevantBookings.filter(
+      (row) =>
+        !usedRows.has(row.sheet_row) &&
+        refund.lid &&
+        row.lid?.toLowerCase() === refund.lid.toLowerCase(),
+    );
+    if (
+      byLid.length === 1 &&
+      (candidates.length === 0 ||
+        candidates.some((row) => row.sheet_row === byLid[0].sheet_row))
+    ) {
+      push(refund, byLid[0], "lid_exact", 0.9);
+      continue;
+    }
+    if (candidates.length === 1) {
+      // Unique job alone is review evidence under conservative calibration
+      // (AUTO_LINK_THRESHOLD 0.9). Auto-cancel requires agent, customer, or LID.
+      push(refund, candidates[0], "job_no_unique", 0.85);
       continue;
     }
     const byAmounts = candidates.filter(
@@ -477,19 +503,10 @@ export function matchRefundsToBookings(
       push(refund, byAmounts[0], "job_no_amounts", 0.85);
       continue;
     }
-    const byLid = relevantBookings.filter(
-      (row) =>
-        !usedRows.has(row.sheet_row) &&
-        refund.lid &&
-        row.lid?.toLowerCase() === refund.lid.toLowerCase(),
-    );
-    if (byLid.length === 1) {
-      push(refund, byLid[0], "lid_exact", 0.9);
-      continue;
-    }
     const byCustomerDate = relevantBookings.filter(
       (row) =>
         !usedRows.has(row.sheet_row) &&
+        Boolean(refund.normalized_customer_name) &&
         row.normalized_customer_name === refund.normalized_customer_name &&
         row.book_date?.slice(0, 10) === refund.book_date?.slice(0, 10),
     );
@@ -500,4 +517,31 @@ export function matchRefundsToBookings(
     unmatched.push(refund);
   }
   return { matches, unmatched };
+}
+
+export function selectBestRelocationRefundObservations(
+  refunds: ParsedRefund[],
+  bookings: ParsedBookedDeal[],
+): ParsedRefund[] {
+  const relevantBookings = bookings.filter(
+    (row) => row.is_best_relocation_source,
+  );
+  const jobs = new Set(
+    relevantBookings
+      .map((row) => row.normalized_job_no)
+      .filter((value): value is string => Boolean(value)),
+  );
+  const lids = new Set(
+    relevantBookings
+      .map((row) => row.lid?.toLowerCase())
+      .filter((value): value is string => Boolean(value)),
+  );
+  return refunds.filter(
+    (refund) =>
+      refund.is_best_relocation_source ||
+      Boolean(
+        refund.normalized_job_no && jobs.has(refund.normalized_job_no),
+      ) ||
+      Boolean(refund.lid && lids.has(refund.lid.toLowerCase())),
+  );
 }

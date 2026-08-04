@@ -18,6 +18,8 @@ import cplCorrectionCronRoutes from "./routes/cpl-correction-cron.routes";
 import twilioMessageStatusRoutes from "./routes/twilio-message-status.routes";
 import twilioVoiceRoutes from "./routes/twilio-voice.routes";
 import v1Routes from "./routes/v1.routes";
+import ingestionRoutes from "./routes/ingestion.routes";
+import bestRelocationIngestionCronRoutes from "./routes/best-relocation-ingestion-cron.routes";
 
 const app = express();
 
@@ -49,7 +51,9 @@ app.use(cplCorrectionCronRoutes);
 app.use(notificationCronRoutes);
 app.use(twilioMessageStatusRoutes);
 app.use(twilioVoiceRoutes);
+app.use(bestRelocationIngestionCronRoutes);
 app.use(v1Routes);
+app.use(ingestionRoutes);
 
 app.get("/", (_req: Request, res: Response) => {
   res.json({

@@ -98,6 +98,13 @@ const BookingLeadReconciliationCaseSchema = new Schema(
       unique: true,
       index: true,
     },
+    origin: {
+      type: String,
+      enum: ["employee_booking", "external_sheet_ingestion"],
+      required: true,
+      default: "employee_booking",
+      index: true,
+    },
     status: {
       type: String,
       enum: ["pending", "resolved", "dismissed"],
@@ -178,6 +185,7 @@ const BookingLeadReconciliationCaseSchema = new Schema(
 );
 
 BookingLeadReconciliationCaseSchema.index({ status: 1, createdAt: -1 });
+BookingLeadReconciliationCaseSchema.index({ origin: 1, status: 1, createdAt: -1 });
 BookingLeadReconciliationCaseSchema.index({ status: 1, "retry.next_attempt_at": 1 });
 BookingLeadReconciliationCaseSchema.index({ reason: 1, status: 1, updatedAt: -1 });
 BookingLeadReconciliationCaseSchema.index({ "submission.normalized_job_no": 1, createdAt: -1 });

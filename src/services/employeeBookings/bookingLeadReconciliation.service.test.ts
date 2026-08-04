@@ -82,6 +82,7 @@ test("listBookingLeadReconciliationCases returns admin-facing summary fields", a
 
   const result = await listBookingLeadReconciliationCases({
     status: "pending",
+    origin: "external_sheet_ingestion",
     reason: "no_match",
     q: "Casey",
     limit: 25,
@@ -91,6 +92,7 @@ test("listBookingLeadReconciliationCases returns admin-facing summary fields", a
 
   assert.deepEqual(capturedFilter, {
     status: "pending",
+    origin: "external_sheet_ingestion",
     reason: "no_match",
     $or: [
       { "submission.job_no": /Casey/i },
@@ -107,6 +109,7 @@ test("listBookingLeadReconciliationCases returns admin-facing summary fields", a
       id: caseId.toString(),
       _id: caseId.toString(),
       booking_id: bookingId.toString(),
+      origin: "employee_booking",
       status: "pending",
       reason: "no_match",
       revision: 4,
@@ -192,6 +195,7 @@ test("getBookingLeadReconciliationCase returns detail fields consumed by admin",
     id: caseId.toString(),
     _id: caseId.toString(),
     booking_id: bookingObjectId.toString(),
+    origin: "employee_booking",
     booking,
     attached_lead: {
       id: attachedLeadId.toString(),

@@ -8,6 +8,10 @@ import {
   normalizeSpreadsheetId,
   type OperationalWorkbookRegistration,
 } from "./registry";
+import {
+  BEST_RELOCATION_INGESTION_WORKBOOK_REGISTRATIONS,
+  CURRENT_OPERATIONAL_WORKBOOK_REGISTRATIONS,
+} from "./registrations";
 
 const masterId = "1MasterWorkbookIdentifier_1234567890";
 const sourceId = "1SourceWorkbookIdentifier_1234567890";
@@ -99,4 +103,35 @@ test("registration groups compose without mutable global state", () => {
   );
   assert.equal(composed.length, 3);
   assert.equal(registrations.length, 2);
+});
+
+test("Stage 2 registers both ingestion sources as production-required", () => {
+  assert.deepEqual(
+    BEST_RELOCATION_INGESTION_WORKBOOK_REGISTRATIONS.map((entry) => ({
+      env_key: entry.env_key,
+      purpose: entry.purpose,
+      required: entry.required_in_production,
+      owner: entry.owner_module,
+    })),
+    [
+      {
+        env_key: "BEST_RELOCATION_SYNC_SHEET_ID",
+        purpose: "ingestion_source",
+        required: true,
+        owner: "best_relocation_ingestion",
+      },
+      {
+        env_key: "BOOKED_DEALS_FORM_RESPONSES_SYNC_SHEET_ID",
+        purpose: "ingestion_source",
+        required: true,
+        owner: "best_relocation_ingestion",
+      },
+    ],
+  );
+  assert.equal(
+    CURRENT_OPERATIONAL_WORKBOOK_REGISTRATIONS.filter(
+      (entry) => entry.owner_module === "best_relocation_ingestion",
+    ).length,
+    2,
+  );
 });

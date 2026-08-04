@@ -52,6 +52,7 @@ export async function listBookingLeadReconciliationCases(
 ) {
   const filter: Record<string, unknown> = {};
   if (query.status) filter.status = query.status;
+  if (query.origin) filter.origin = query.origin;
   if (query.reason) filter.reason = query.reason;
   if (query.lead_source_company) {
     filter["submission.source_assignment.lead_source_company"] =
@@ -719,6 +720,7 @@ function summarizeCase(doc: any) {
     id,
     _id: id,
     booking_id: bookingIdFromCase(doc),
+    origin: doc.origin ?? "employee_booking",
     status: doc.status,
     reason: doc.reason,
     revision: doc.revision,
@@ -745,6 +747,7 @@ function detailCase(doc: any) {
     id,
     _id: id,
     booking_id: bookingIdFromCase(doc),
+    origin: doc.origin ?? "employee_booking",
     booking,
     attached_lead: attachedLead,
     status: doc.status,

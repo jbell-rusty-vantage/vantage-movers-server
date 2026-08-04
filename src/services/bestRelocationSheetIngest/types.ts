@@ -11,6 +11,7 @@ export type SourceTab =
 export type TabReadResult = {
   spreadsheetId: string;
   spreadsheetTitle: string;
+  tabId?: number;
   tabName: SourceTab;
   headers: string[];
   matrix: string[][];
