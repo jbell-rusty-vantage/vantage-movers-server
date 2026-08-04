@@ -800,6 +800,21 @@ Auditable v1 measures:
 - total binder; and
 - total deposit.
 
+The approved `source_performance@1` booking semantics are:
+
+- aggregate every canonical booking related to a cohort lead, not only the
+  deterministic primary booking used by the one-row lead detail dataset;
+- `cancelled_bookings` counts every related booking having at least one
+  cancellation/refund record;
+- `net_bookings` is the number of all related booking records minus the number
+  of cancelled/refunded related booking records;
+- `total_binder` and `total_deposit` sum their canonical amounts across every
+  related booking record; and
+- both conversion ratios are `null` when `total_leads` is zero.
+
+These semantics are part of schema version 1 and are locked by contract tests.
+Changing them is a dataset schema-version change.
+
 Do not infer profit, revenue, or ROI until those domain terms and cost semantics
 are specified. Call-lead quoted state is not applicable rather than false.
 

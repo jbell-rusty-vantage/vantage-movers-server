@@ -20,6 +20,7 @@ import twilioVoiceRoutes from "./routes/twilio-voice.routes";
 import v1Routes from "./routes/v1.routes";
 import ingestionRoutes from "./routes/ingestion.routes";
 import bestRelocationIngestionCronRoutes from "./routes/best-relocation-ingestion-cron.routes";
+import reportingRoutes from "./routes/reporting.routes";
 
 const app = express();
 
@@ -54,6 +55,7 @@ app.use(twilioVoiceRoutes);
 app.use(bestRelocationIngestionCronRoutes);
 app.use(v1Routes);
 app.use(ingestionRoutes);
+app.use(reportingRoutes);
 
 app.get("/", (_req: Request, res: Response) => {
   res.json({

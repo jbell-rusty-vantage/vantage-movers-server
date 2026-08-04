@@ -358,26 +358,28 @@ Dimension columns are `period`, `source_company`, and optional
 | `bad_leads` | Cohort leads marked bad |
 | `quoted_form_leads` | Form leads with quoted true; call leads excluded as not applicable |
 | `booked_leads` | Distinct cohort leads with at least one booking |
-| `cancelled_bookings` | Cancelled/refunded bookings related to cohort leads; exact multiple-booking aggregation requires domain approval |
-| `net_bookings` | Booked less cancelled outcome; exact grain and multiple-booking treatment require domain approval |
-| `lead_to_booking_conversion` | `booked_leads / total_leads`; zero-denominator representation requires domain approval |
-| `net_conversion` | `net_bookings / total_leads`; zero-denominator representation requires domain approval |
+| `cancelled_bookings` | Every related booking having at least one cancellation/refund record |
+| `net_bookings` | All related booking records minus cancelled/refunded related booking records |
+| `lead_to_booking_conversion` | `booked_leads / total_leads`; `null` when `total_leads` is zero |
+| `net_conversion` | `net_bookings / total_leads`; `null` when `total_leads` is zero |
 | `resolved_cpl_spend` | Sum of resolved canonical CPL for cohort leads |
 | `unresolved_cpl_count` | Cohort leads without resolved CPL value/status |
-| `total_binder` | Binder total related to cohort outcomes; multiple-booking aggregation requires domain approval |
-| `total_deposit` | Deposit total related to cohort outcomes; multiple-booking aggregation requires domain approval |
+| `total_binder` | Sum of canonical binder amounts across every related booking record |
+| `total_deposit` | Sum of canonical deposit amounts across every related booking record |
 
 Do not expose profit, revenue, ROI, or any inferred cost measure. Money rounds
 to two decimal places only after aggregation; conversion ratios retain the
 contracted decimal precision until delivery formatting. Call-lead quote state
 never contributes to either quoted numerator or a false count.
 
-The source specification intentionally names these auditable measures without
-settling ambiguous multiple-booking and zero-denominator semantics. Before
-`source_performance@1` is implemented, the owner/domain authority must approve
-those semantics and record them in the authoritative specification and dataset
-contract tests. The phrases in the table above are constraints, not permission
-to choose primary-booking-only, all-booking, or zero/null behavior implicitly.
+The owner/domain authority approved all-related-booking aggregation for
+`source_performance@1`: the detail dataset still chooses one deterministic
+primary booking for display, but performance measures aggregate every canonical
+booking related to a cohort lead. A booking is cancelled/refunded when it has
+at least one related cancellation/refund record. Financial measures sum every
+related booking, and zero-lead conversion ratios are `null`. These semantics are
+recorded in the authoritative specification and locked by contract tests;
+changing them requires a new dataset schema version.
 
 Default ordering is `period ASC`, `source_company ASC`,
 `source_granularity ASC`. These dimensions form the complete pagination cursor.
@@ -688,7 +690,7 @@ For the exact draft checksum:
 10. identify selected PII column IDs and destination ownership;
 11. emit typed warnings with non-PII parameters; and
 12. compute a preview checksum tied to the validated draft, estimates,
-    destination snapshot, source read-through, and sample checksum.
+    destination snapshot, source read-through, and keyed opaque sample evidence.
 
 Never silently truncate. If projected cells exceed either destination capacity
 or provider limits, return a blocking `destination_capacity_exceeded` result
@@ -793,9 +795,12 @@ Response includes:
 
 Use a two-step protocol:
 
-1. without confirmation, return the fresh estimate/warnings and a short-lived
-   confirmation token bound to revision/destination/query checksums;
-2. with that token and idempotency key, create one `queued` run and return
+1. with an idempotency key but without confirmation, return the fresh
+   estimate/warnings and a short-lived confirmation token bound to actor,
+   server-issued confirmation ID, that idempotency key, and immutable
+   revision/destination/query checksums;
+2. with that token and the same idempotency key, atomically consume the
+   confirmation, create one `queued` run, and return
    `202 { runId, status: "queued" }`.
 
 The run endpoint does not accept ad hoc filters, columns, destination, strategy,
@@ -1092,6 +1097,9 @@ interface ReportingExecutionPackageV1 {
     pageSize: number;
     resumeCursor: string | null;
     checksumAlgorithm: "sha256";
+    executionInterfaceVersion: 1;
+    candidateManifestVersion: 1;
+    checksumAccumulatorVersion: 1;
   };
   estimate: {
     kind: "exact" | "upper_bound";
@@ -1105,7 +1113,7 @@ interface ReportingExecutionPackageV1 {
   preview: {
     previewChecksum: string;
     sampleCount: number;
-    sampleChecksum: string;
+    sampleEvidence: string;
     warnings: Array<{ code: string; parameters: Record<string, number | string> }>;
     intendedChanges: IntendedDestinationChangesV1;
   };
@@ -1113,6 +1121,12 @@ interface ReportingExecutionPackageV1 {
     highest: Sensitivity;
     piiColumnIds: string[];
     destinationOwnership: string;
+  };
+  writeSemantics: {
+    valueInputOption: "RAW";
+    headers: "literal_strings";
+    cells: "literal_values";
+    formulasAllowed: false;
   };
   destination: ValidatedReportingDestinationSnapshotV1;
   acceptance: DeliveryAcceptanceRulesV1;
@@ -1124,13 +1138,18 @@ The package must include or make available through a versioned service:
 - validated immutable revision and destination snapshots;
 - exact stream column order and header labels;
 - deterministic sort terms, cursor codec/version, page size, and resume cursor;
+- the executable `ReportingStage4StreamV1` interface, which accepts the Stage
+  4-captured `sourceReadThrough`, builds an ordered canonical
+  ID/model/version/fingerprint manifest, validates it before and after every
+  page query, and emits resumable cursor/row-count/checksum checkpoints;
 - canonical row encoding and incremental SHA-256 checksum algorithm;
 - revision, destination, query-input, preview, sample, page, and final data
   checksum expectations, plus the Stage 3 function for deriving the final
   query-plan checksum after Stage 4 supplies the captured read-through;
 - exact/bounded volume, columns, cells including header, page/batch estimates,
   and capacity margin;
-- the response-only 50-row sample path, non-PII sample checksum, and warnings;
+- the response-only 50-row sample path, keyed opaque non-PII sample evidence,
+  and warnings;
 - selected sensitivity metadata, PII column IDs, and ownership classification;
 - snapshot versus managed replace-tab intended changes; and
 - these acceptance/rejection rules.
@@ -1149,6 +1168,8 @@ Stage 4 must accept a package only when:
    Stage 4 can capture it exactly once before querying;
 8. first-delivery/fresh-run confirmation evidence is present; and
 9. no blocking warning or forbidden sensitivity/destination combination exists.
+10. writes use `valueInputOption: "RAW"` and treat every header and cell as a
+    literal value; formula interpretation is forbidden.
 
 Stage 4 must reject before writing when any check fails, recording a structured
 non-PII failure. During delivery it must reject checksum/cursor discontinuity,
