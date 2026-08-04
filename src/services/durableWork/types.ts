@@ -115,6 +115,7 @@ export type ChecksumArtifactKind =
   | "reporting_draft"
   | "reporting_sample"
   | "reporting_destination_snapshot"
+  | "reporting_destination_stable_identity"
   | "reporting_query_input"
   | "reporting_query_plan"
   | "reporting_page";

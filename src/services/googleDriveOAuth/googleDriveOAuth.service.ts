@@ -14,9 +14,13 @@ import {
   decryptGoogleRefreshToken,
   encryptGoogleRefreshToken,
 } from "./tokenEncryption";
+import {
+  ALLOWED_GOOGLE_OAUTH_SCOPES,
+  assertAllowedOAuthScopes,
+  normalizeOAuthScopes,
+} from "./oauthScopes";
 
-const DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
-const OAUTH_SCOPES = ["openid", "email", DRIVE_FILE_SCOPE] as const;
+const OAUTH_SCOPES = [...ALLOWED_GOOGLE_OAUTH_SCOPES];
 const STATE_TTL_MS = 10 * 60 * 1_000;
 
 export type GoogleDriveConnectionStatus =
@@ -53,9 +57,8 @@ export async function beginGoogleDriveOAuth(): Promise<{
   const authorizationUrl = client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
-    include_granted_scopes: true,
     login_hint: config.ownerEmail,
-    scope: [...OAUTH_SCOPES],
+    scope: OAUTH_SCOPES,
     state,
   });
 
@@ -89,7 +92,7 @@ export async function completeGoogleDriveOAuth(
   } catch (error) {
     throw new IntegrationError(
       "Google could not complete authorization. Start the connection again.",
-      { cause: error, internalMessage: errorMessage(error) },
+      { cause: error, internalMessage: internalErrorMessage(error) },
     );
   }
   const tokens = tokenResponse.tokens;
@@ -112,10 +115,12 @@ export async function completeGoogleDriveOAuth(
   }
   if (googleEmail !== config.ownerEmail) {
     throw new UnauthorizedError(
-      `Connect Google Drive using ${config.ownerEmail}.`,
+      "The connected Google account is not authorized for reporting.",
       { statusCode: 403 },
     );
   }
+  const grantedScopes = normalizeOAuthScopes(tokens.scope);
+  assertAllowedOAuthScopes(grantedScopes, "oauth_callback");
   if (!tokens.refresh_token) {
     throw new IntegrationError(
       "Google did not return offline access. Revoke the existing Vantage authorization in Google Account permissions and connect again.",
@@ -135,7 +140,7 @@ export async function completeGoogleDriveOAuth(
         owner_email: config.ownerEmail,
         google_email: googleEmail,
         ...encrypted,
-        scopes: parseScopes(tokens.scope),
+        scopes: grantedScopes,
         connected_at: now,
       },
       $unset: { last_used_at: 1 },
@@ -157,6 +162,7 @@ export async function getGoogleDriveConnectionStatus():
     return { connected: false, owner_email: config.ownerEmail };
   }
 
+  assertAllowedOAuthScopes(connection.scopes, "stored_connection");
   return {
     connected: true,
     owner_email: connection.owner_email,
@@ -214,6 +220,7 @@ export async function getConnectedGoogleOAuthClient():
       "Google Drive is not connected. Complete the owner authorization first.",
     );
   }
+  assertAllowedOAuthScopes(connection.scopes, "oauth_client");
 
   const client = createOAuthClient();
   client.setCredentials({
@@ -230,6 +237,150 @@ export async function getConnectedGoogleOAuthClient():
   return client;
 }
 
+export type GoogleDriveAccessTokenHealth = {
+  healthy: true;
+  access_token: string;
+  expires_at: Date;
+  google_email: string;
+} | {
+  healthy: false;
+  reason: "not_connected" | "refresh_failed" | "scope_violation";
+  google_email?: string;
+};
+
+export async function getGoogleDriveAccessTokenHealth(): Promise<GoogleDriveAccessTokenHealth> {
+  const config = getGoogleDriveOAuthConfig();
+  await connectMongo();
+  const connection = await GoogleDriveConnection.findOne({
+    owner_email: config.ownerEmail,
+  }).lean();
+  if (!connection) {
+    return { healthy: false, reason: "not_connected" };
+  }
+  try {
+    assertAllowedOAuthScopes(connection.scopes, "access_token_health");
+  } catch {
+    return {
+      healthy: false,
+      reason: "scope_violation",
+      google_email: connection.google_email,
+    };
+  }
+
+  const client = createOAuthClient();
+  client.setCredentials({
+    refresh_token: decryptGoogleRefreshToken(
+      encryptedTokenFromConnection(connection),
+      config.tokenEncryptionKey,
+      config.ownerEmail,
+    ),
+  });
+
+  try {
+    const tokenResponse = await client.getAccessToken();
+    const accessToken =
+      typeof tokenResponse.token === "string" ? tokenResponse.token : undefined;
+    if (!accessToken) {
+      return {
+        healthy: false,
+        reason: "refresh_failed",
+        google_email: connection.google_email,
+      };
+    }
+    const expiry = client.credentials.expiry_date
+      ? new Date(client.credentials.expiry_date)
+      : new Date(Date.now() + 3_600_000);
+    await GoogleDriveConnection.updateOne(
+      { owner_email: config.ownerEmail },
+      { $set: { last_used_at: new Date() } },
+    );
+    return {
+      healthy: true,
+      access_token: accessToken,
+      expires_at: expiry,
+      google_email: connection.google_email,
+    };
+  } catch {
+    return {
+      healthy: false,
+      reason: "refresh_failed",
+      google_email: connection.google_email,
+    };
+  }
+}
+
+export function sanitizeGoogleDriveConnectionStatus(
+  status: GoogleDriveConnectionStatus,
+): Record<string, unknown> {
+  if (!status.connected) {
+    return {
+      connected: false,
+    };
+  }
+  return {
+    connected: true,
+    google_email: status.google_email,
+    scopes: status.scopes,
+    connected_at: status.connected_at,
+    updated_at: status.updated_at,
+    ...(status.last_used_at ? { last_used_at: status.last_used_at } : {}),
+  };
+}
+
+export function assertGoogleDriveSecretsRedacted(payload: unknown): void {
+  const forbidden = [
+    "client_secret",
+    "clientSecret",
+    "refresh_token",
+    "refreshToken",
+    "encrypted_refresh_token",
+    "refresh_token_iv",
+    "refresh_token_auth_tag",
+    "token_encryption_key",
+    "tokenEncryptionKey",
+    "GOOGLE_OAUTH_CLIENT_SECRET",
+    "GOOGLE_OAUTH_TOKEN_ENCRYPTION_KEY",
+  ];
+  const seen = new Set<string>();
+  walkForForbiddenKeys(payload, forbidden, seen, "");
+  if (seen.size > 0) {
+    throw new Error(
+      `Google OAuth response leaked forbidden keys: ${[...seen].join(", ")}`,
+    );
+  }
+}
+
+function walkForForbiddenKeys(
+  value: unknown,
+  forbidden: string[],
+  seen: Set<string>,
+  path: string,
+): void {
+  if (!value || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    value.forEach((item, index) =>
+      walkForForbiddenKeys(item, forbidden, seen, `${path}[${index}]`),
+    );
+    return;
+  }
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    const normalized = key.trim();
+    if (
+      forbidden.some(
+        (candidate) => candidate.toLowerCase() === normalized.toLowerCase(),
+      )
+    ) {
+      seen.add(path ? `${path}.${normalized}` : normalized);
+    }
+    walkForForbiddenKeys(
+      nested,
+      forbidden,
+      seen,
+      path ? `${path}.${normalized}` : normalized,
+    );
+  }
+}
+
 export function hashOAuthState(state: string): string {
   return createHash("sha256").update(state).digest("hex");
 }
@@ -241,6 +392,10 @@ function createOAuthClient(): Auth.OAuth2Client {
     config.clientSecret,
     config.redirectUri,
   );
+}
+
+function internalErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function encryptedTokenFromConnection(connection: {
@@ -260,12 +415,4 @@ function encryptedTokenFromConnection(connection: {
     refresh_token_auth_tag: connection.refresh_token_auth_tag,
     encryption_version: 1 as const,
   };
-}
-
-function parseScopes(value: string | null | undefined): string[] {
-  return value?.split(/\s+/).filter(Boolean) ?? [...OAUTH_SCOPES];
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

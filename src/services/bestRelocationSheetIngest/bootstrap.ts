@@ -2,6 +2,7 @@ import { BookedLead } from "../../models/BookedLead";
 import { CallLead } from "../../models/CallLead";
 import { CancelledLead } from "../../models/CancelledLead";
 import { FormLead } from "../../models/FormLead";
+import { toFloridaTimestamp } from "../../utils/easternTime";
 import type {
   BestRelocationApplicationPlan,
   BestRelocationPlanAction,
@@ -142,12 +143,14 @@ async function findCandidates(
     const phone = String(payload.phone_number ?? "").replace(/\D/g, "").slice(-10);
     const timestamp = payload.timestamp ? new Date(String(payload.timestamp)) : null;
     if (!phone || !timestamp || !Number.isFinite(timestamp.getTime())) return [];
+    const persistedTimestamp = toFloridaTimestamp(timestamp);
     const docs = await CallLead.find({
       source_company: "best_relocation_leads",
       normalized_phone_number: phone,
+      duplicate: { $ne: true },
       timestamp: {
-        $gte: new Date(timestamp.getTime() - 1_000),
-        $lte: new Date(timestamp.getTime() + 1_000),
+        $gte: new Date(persistedTimestamp.getTime() - 1_000),
+        $lte: new Date(persistedTimestamp.getTime() + 1_000),
       },
     })
       .select(`_id ${sourceOwnedPaths("CallLead").join(" ")}`)

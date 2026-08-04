@@ -7,7 +7,15 @@ export type ReportingAuditAction =
   | "archive"
   | "run_estimate"
   | "run_confirmation"
-  | "run_queue";
+  | "run_queue"
+  | "run_cancel"
+  | "destination_create"
+  | "destination_update"
+  | "destination_verify"
+  | "destination_archive"
+  | "delivery_complete"
+  | "delivery_failed"
+  | "cleanup";
 
 export type ReportingAuditInput = {
   action: ReportingAuditAction;
@@ -17,6 +25,7 @@ export type ReportingAuditInput = {
   definitionId?: string;
   revisionId?: string;
   runId?: string;
+  destinationId?: string;
   datasetKey?: string;
   rowCount?: number;
   checksum?: string;
@@ -37,6 +46,7 @@ export function buildReportingAuditDetails(
     definition_id: input.definitionId,
     revision_id: input.revisionId,
     run_id: input.runId,
+    destination_id: input.destinationId,
     dataset_key: input.datasetKey,
     row_count: input.rowCount,
     checksum: input.checksum,
@@ -52,6 +62,9 @@ export function buildReportingAuditDetails(
 export async function recordReportingAudit(
   input: ReportingAuditInput,
 ): Promise<void> {
+  const notificationCandidate =
+    input.action === "delivery_failed" &&
+    input.outcome === "failure";
   await recordOperationalEvent({
     level: input.outcome === "success" ? "info" : "warn",
     eventKey: `reporting.${input.action}.${input.outcome}`,
@@ -63,7 +76,7 @@ export async function recordReportingAudit(
     entity: input.definitionId
       ? { type: "reporting_definition", id: input.definitionId }
       : undefined,
-    notificationCandidate: false,
+    notificationCandidate,
     reportable: false,
     ownerVisible: true,
     piiPolicy: "none",

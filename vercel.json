@@ -32,6 +32,15 @@
           "retryAfterSeconds": 30
         }
       ]
+    },
+    "api/queues/reporting-consumer.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "reporting-delivery-events*",
+          "retryAfterSeconds": 30
+        }
+      ]
     }
   },
   "crons": [
@@ -66,6 +75,22 @@
     {
       "path": "/api/cron/best-relocation-ingest-heartbeat",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/reporting-delivery-heartbeat",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/reporting-health-scan",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/reporting-cleanup-janitor",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/reporting-test-artifact-janitor",
+      "schedule": "0 4 * * *"
     }
   ]
 }

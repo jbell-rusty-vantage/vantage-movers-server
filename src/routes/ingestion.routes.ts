@@ -611,7 +611,7 @@ function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function sendError(res: Response, error: unknown) {
+export function sendError(res: Response, error: unknown) {
   if (error instanceof z.ZodError) {
     return res.status(400).json({
       ok: false,
@@ -626,9 +626,26 @@ function sendError(res: Response, error: unknown) {
     typeof error.statusCode === "number"
       ? error.statusCode
       : 500;
+  const rawCode =
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+      ? error.code
+      : undefined;
+  const code =
+    rawCode && /^[a-z0-9_]{1,64}$/i.test(rawCode)
+      ? rawCode.toLowerCase()
+      : status >= 500
+        ? "ingestion_internal_error"
+        : "ingestion_request_rejected";
   return res.status(status).json({
     ok: false,
-    error: error instanceof Error ? error.message : "Ingestion request failed",
+    code,
+    error:
+      status >= 500
+        ? "Ingestion request failed"
+        : "Ingestion request was rejected",
   });
 }
 

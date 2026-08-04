@@ -12,6 +12,20 @@ export const REPORTING_MAX_RELATED_ROWS = 200_000;
 export const REPORTING_MAX_MANIFEST_ENTRIES = 250_000;
 export const REPORTING_QUERY_MAX_TIME_MS = 15_000;
 export const REPORTING_DESTINATION_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
+export const REPORTING_PICKER_NONCE_TTL_MS = 10 * 60 * 1000;
+export const REPORTING_PICKER_SELECTION_TTL_MS = 15 * 60 * 1000;
+export const REPORTING_DESTINATION_HEALTH_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Deployment-level kill switch for Google destination mutations and new runs.
+ * It is intentionally fail-closed so a missing Vercel variable cannot enable
+ * external writes during rollout or rollback.
+ */
+export function isReportingGoogleDeliveryEnabled(
+  raw = process.env.REPORTING_GOOGLE_DELIVERY_ENABLED,
+): boolean {
+  return raw?.trim().toLowerCase() === "true";
+}
 
 export function parseReportingEnabledDatasets(
   raw = process.env.REPORTING_ENABLED_DATASETS,

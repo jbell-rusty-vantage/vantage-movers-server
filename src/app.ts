@@ -21,6 +21,10 @@ import v1Routes from "./routes/v1.routes";
 import ingestionRoutes from "./routes/ingestion.routes";
 import bestRelocationIngestionCronRoutes from "./routes/best-relocation-ingestion-cron.routes";
 import reportingRoutes from "./routes/reporting.routes";
+import reportingCronRoutes from "./routes/reporting-cron.routes";
+import { registerReportingStage4Foundation } from "./services/reporting/registerStage4Foundation";
+
+registerReportingStage4Foundation();
 
 const app = express();
 
@@ -53,6 +57,7 @@ app.use(notificationCronRoutes);
 app.use(twilioMessageStatusRoutes);
 app.use(twilioVoiceRoutes);
 app.use(bestRelocationIngestionCronRoutes);
+app.use(reportingCronRoutes);
 app.use(v1Routes);
 app.use(ingestionRoutes);
 app.use(reportingRoutes);

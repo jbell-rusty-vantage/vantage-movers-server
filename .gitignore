@@ -3,7 +3,8 @@ node_modules/
 dist/
 build/
 .env
-.env.* # all env files
+.env.*
+!.env.example
 
 # OS junk
 .DS_Store
@@ -89,5 +90,14 @@ hooks_hold/
 
 **/scripts/output  
 
+
+# Local Granot HTTP automation prototype.
+# Keep this untracked until the collect/preview pathway is ready to ship.
+/src/services/granotHttpCollector/
+/src/routes/granot-automation.routes.ts
+/src/routes/granot-automation.routes.test.ts
+/scripts/granot-automation/
+/docs/granot-http-automation.md
+/pnpm-workspace.yaml
 
 

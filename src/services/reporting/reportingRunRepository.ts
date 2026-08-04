@@ -25,9 +25,41 @@ export const REPORTING_FAILURE_CODES = {
     summary: "The reporting destination changed before delivery.",
     retryable: true,
   },
+  DESTINATION_UNSAFE: {
+    summary: "The reporting destination failed a safety check.",
+    retryable: false,
+  },
+  DESTINATION_CAPACITY_EXCEEDED: {
+    summary: "Projected report cells exceed destination capacity.",
+    retryable: false,
+  },
   PROVIDER_UNAVAILABLE: {
     summary: "The reporting provider is temporarily unavailable.",
     retryable: true,
+  },
+  PROVIDER_AUTHENTICATION: {
+    summary: "Reporting Google OAuth authentication failed.",
+    retryable: false,
+  },
+  PROVIDER_AUTHORIZATION: {
+    summary: "Reporting Google access was denied.",
+    retryable: false,
+  },
+  OWNERSHIP_MARKER_MISMATCH: {
+    summary: "The managed reporting tab ownership marker did not match.",
+    retryable: false,
+  },
+  HEADER_OR_CURSOR_DRIFT: {
+    summary: "Reporting headers or cursors drifted from the immutable revision.",
+    retryable: false,
+  },
+  VERIFICATION_MISMATCH: {
+    summary: "Reporting delivery verification did not match expectations.",
+    retryable: false,
+  },
+  PROMOTION_AMBIGUOUS: {
+    summary: "Reporting tab promotion ended in an ambiguous Google state.",
+    retryable: false,
   },
   LEASE_LOST: {
     summary: "The reporting worker lease was lost.",
@@ -63,6 +95,9 @@ export type ReportingSafeFailureEnvelope = {
     attempt: number;
     page_number: number;
     row_count: number;
+    batch_number: number;
+    sheet_id: number;
+    remediation: string;
   }>;
 };
 
@@ -118,6 +153,9 @@ export function assertSafeReportingFailure(
     "attempt",
     "page_number",
     "row_count",
+    "batch_number",
+    "sheet_id",
+    "remediation",
   ]);
   for (const [key, entry] of Object.entries(metadata)) {
     if (!allowed.has(key) || (typeof entry !== "number" && typeof entry !== "string")) {
@@ -228,7 +266,8 @@ export async function renewReportingRunLease(input: {
       },
     },
   );
-  return result.modifiedCount === 1;
+  // matchedCount: identical leased_until (same now+ttl) must not look like LEASE_LOST.
+  return result.matchedCount === 1;
 }
 
 export async function releaseReportingRunLease(input: {
@@ -246,7 +285,7 @@ export async function releaseReportingRunLease(input: {
       $set: { lease_owner: null, leased_until: null },
     },
   );
-  return result.modifiedCount === 1;
+  return result.matchedCount === 1;
 }
 
 export async function captureReportingSourceReadThrough(input: {
@@ -331,6 +370,43 @@ export async function transitionReportingRun(input: {
     }
     set[`counters.${key}`] = value;
   }
+  if (input.nextStatus === "completed" || input.nextStatus === "failed" || input.nextStatus === "cancelled") {
+    set.completed_at = input.now;
+  }
+  if (input.nextStatus === "querying" && input.expectedStatus === "queued") {
+    set.started_at = input.now;
+  }
+  const result = await ReportingRun.collection.updateOne(
+    {
+      _id: asObjectId(input.runId),
+      status: input.expectedStatus,
+      lease_owner: input.leaseOwner,
+      lease_epoch: input.leaseEpoch,
+      leased_until: { $gt: input.now },
+    },
+    { $set: set },
+  );
+  return result.modifiedCount === 1;
+}
+
+export async function checkpointReportingRun(input: {
+  runId: string;
+  expectedStatus: ReportingRunStatus;
+  leaseOwner: string;
+  leaseEpoch: number;
+  now: Date;
+  checkpoint: ReportingStreamCheckpointV1;
+  counters?: Record<string, number>;
+}): Promise<boolean> {
+  const set: Record<string, unknown> = {
+    checkpoint: reportingCheckpoint(input.checkpoint, input.now),
+  };
+  for (const [key, value] of Object.entries(input.counters ?? {})) {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new TypeError(`Invalid reporting counter: ${key}`);
+    }
+    set[`counters.${key}`] = value;
+  }
   const result = await ReportingRun.collection.updateOne(
     {
       _id: asObjectId(input.runId),
@@ -359,6 +435,253 @@ export function reportingCheckpoint(
     },
     completed_units: checkpoint.rowCount,
     updated_at: now,
+  };
+}
+
+export type ReportingCancelResult = {
+  status: "cancel_requested" | "already_terminal" | "already_requested" | "not_found";
+  runStatus?: ReportingRunStatus;
+};
+
+export async function requestReportingRunCancellation(input: {
+  runId: string;
+  actorId: string;
+  now: Date;
+  idempotencyKey: string;
+}): Promise<ReportingCancelResult> {
+  if (!input.idempotencyKey.trim() || input.idempotencyKey.length < 8) {
+    throw new TypeError("idempotencyKey is required for cancellation.");
+  }
+  const run = await ReportingRun.collection.findOne({
+    _id: asObjectId(input.runId),
+  });
+  if (!run) return { status: "not_found" };
+
+  // Idempotent replay: same key returns the persisted result.
+  if (
+    run.cancellation_idempotency_key === input.idempotencyKey &&
+    run.cancellation_result &&
+    typeof run.cancellation_result === "object"
+  ) {
+    return run.cancellation_result as ReportingCancelResult;
+  }
+  if (
+    run.cancellation_idempotency_key &&
+    run.cancellation_idempotency_key !== input.idempotencyKey
+  ) {
+    // A different key already bound this cancel request — replay that result.
+    if (run.cancellation_result && typeof run.cancellation_result === "object") {
+      return run.cancellation_result as ReportingCancelResult;
+    }
+    return {
+      status: "already_requested",
+      runStatus: run.status as ReportingRunStatus,
+    };
+  }
+
+  if (["completed", "failed", "cancelled"].includes(String(run.status))) {
+    const result: ReportingCancelResult = {
+      status: "already_terminal",
+      runStatus: run.status as ReportingRunStatus,
+    };
+    await persistCancelResult(input.runId, input.idempotencyKey, input.actorId, input.now, result);
+    return result;
+  }
+  if (run.cancellation_requested_at) {
+    const result: ReportingCancelResult = {
+      status: "already_requested",
+      runStatus: run.status as ReportingRunStatus,
+    };
+    await persistCancelResult(input.runId, input.idempotencyKey, input.actorId, input.now, result);
+    return result;
+  }
+
+  // Promoting is not a cancel safe-point; request is recorded but worker will
+  // refuse to interrupt rename/recovery blindly.
+  const updated = await ReportingRun.collection.findOneAndUpdate(
+    {
+      _id: asObjectId(input.runId),
+      status: { $in: ["queued", "querying", "writing", "verifying", "promoting"] },
+      cancellation_requested_at: null,
+      $or: [
+        { cancellation_idempotency_key: null },
+        { cancellation_idempotency_key: input.idempotencyKey },
+      ],
+    },
+    {
+      $set: {
+        cancellation_requested_at: input.now,
+        cancellation_requested_by: input.actorId,
+        cancellation_idempotency_key: input.idempotencyKey,
+        cancellation_result: {
+          status: "cancel_requested",
+          runStatus: run.status,
+        },
+      },
+    },
+    { returnDocument: "after" },
+  );
+  if (!updated) {
+    const latest = await ReportingRun.collection.findOne({
+      _id: asObjectId(input.runId),
+    });
+    if (!latest) return { status: "not_found" };
+    if (
+      latest.cancellation_idempotency_key === input.idempotencyKey &&
+      latest.cancellation_result
+    ) {
+      return latest.cancellation_result as ReportingCancelResult;
+    }
+    if (["completed", "failed", "cancelled"].includes(String(latest.status))) {
+      const result: ReportingCancelResult = {
+        status: "already_terminal",
+        runStatus: latest.status as ReportingRunStatus,
+      };
+      await persistCancelResult(input.runId, input.idempotencyKey, input.actorId, input.now, result);
+      return result;
+    }
+    const result: ReportingCancelResult = {
+      status: "already_requested",
+      runStatus: latest.status as ReportingRunStatus,
+    };
+    await persistCancelResult(input.runId, input.idempotencyKey, input.actorId, input.now, result);
+    return result;
+  }
+  return {
+    status: "cancel_requested",
+    runStatus: run.status as ReportingRunStatus,
+  };
+}
+
+async function persistCancelResult(
+  runId: string,
+  idempotencyKey: string,
+  actorId: string,
+  now: Date,
+  result: ReportingCancelResult,
+): Promise<void> {
+  const set: Record<string, unknown> = {
+    cancellation_idempotency_key: idempotencyKey,
+    cancellation_requested_by: actorId,
+    cancellation_result: result,
+  };
+  if (
+    result.status === "cancel_requested" ||
+    result.status === "already_requested"
+  ) {
+    set.cancellation_requested_at = now;
+  }
+  await ReportingRun.collection.updateOne(
+    {
+      _id: asObjectId(runId),
+      $or: [
+        { cancellation_idempotency_key: null },
+        { cancellation_idempotency_key: idempotencyKey },
+      ],
+    },
+    { $set: set },
+  );
+}
+
+export async function applyReportingRunCancellationAtSafePoint(input: {
+  runId: string;
+  leaseOwner: string;
+  leaseEpoch: number;
+  now: Date;
+  expectedStatus: "queued" | "querying" | "writing" | "verifying";
+}): Promise<boolean> {
+  const result = await ReportingRun.collection.updateOne(
+    {
+      _id: asObjectId(input.runId),
+      status: input.expectedStatus,
+      lease_owner: input.leaseOwner,
+      lease_epoch: input.leaseEpoch,
+      leased_until: { $gt: input.now },
+      cancellation_requested_at: { $ne: null },
+    },
+    {
+      $set: {
+        status: "cancelled",
+        completed_at: input.now,
+        failure: reportingFailure("RUN_CANCELLED", {
+          phase:
+            input.expectedStatus === "queued"
+              ? "querying"
+              : input.expectedStatus,
+        }),
+      },
+    },
+  );
+  return result.modifiedCount === 1;
+}
+
+export async function loadReportingRun(
+  runId: string,
+): Promise<Record<string, any> | null> {
+  return ReportingRun.collection.findOne({ _id: asObjectId(runId) });
+}
+
+export async function claimNextQueuedReportingRun(input: {
+  owner: string;
+  now: Date;
+  ttlMs: number;
+  runHint?: string | null;
+  cancellationOnly?: boolean;
+}): Promise<{
+  run: Record<string, any>;
+  lease: { owner: string; epoch: number; leasedUntil: Date };
+} | null> {
+  const hintFilter = input.runHint
+    ? { _id: asObjectId(input.runHint) }
+    : {};
+  const candidates = await ReportingRun.collection
+    .find({
+      ...hintFilter,
+      ...(input.cancellationOnly
+        ? { cancellation_requested_at: { $ne: null } }
+        : {}),
+      status: { $in: ["queued", "querying", "writing", "verifying", "promoting"] },
+      $or: [
+        { leased_until: null },
+        { leased_until: { $lte: input.now } },
+        { lease_owner: input.owner },
+      ],
+    })
+    .sort({ created_at: 1, _id: 1 })
+    .limit(1)
+    .toArray();
+  const candidate = candidates[0];
+  if (!candidate) return null;
+  const lease = await acquireReportingRunLease({
+    runId: String(candidate._id),
+    owner: input.owner,
+    now: input.now,
+    ttlMs: input.ttlMs,
+  });
+  if (!lease) return null;
+  const run = await loadReportingRun(String(candidate._id));
+  if (!run) return null;
+  return { run, lease };
+}
+
+export function streamCheckpointFromRun(
+  run: Record<string, any>,
+): ReportingStreamCheckpointV1 | undefined {
+  const cursor = run.checkpoint?.cursor;
+  if (!cursor || typeof cursor !== "object") return undefined;
+  if (
+    typeof cursor.page_number !== "number" ||
+    typeof cursor.row_count !== "number" ||
+    typeof cursor.checksum_accumulator !== "string"
+  ) {
+    return undefined;
+  }
+  return {
+    version: 1,
+    cursor: cursor.cursor ?? null,
+    pageNumber: cursor.page_number,
+    rowCount: cursor.row_count,
+    checksumAccumulator: cursor.checksum_accumulator,
   };
 }
 

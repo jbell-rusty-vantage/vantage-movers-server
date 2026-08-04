@@ -33,6 +33,15 @@ const ReportingRunSchema = new Schema<Record<string, any>>(
     confirmation_id: { type: String, required: true, unique: true },
     immutable_fingerprint: { type: String, required: true },
     failure: { type: Schema.Types.Mixed, default: null },
+    cancellation_requested_at: { type: Date, default: null },
+    cancellation_requested_by: { type: String, default: null },
+    cancellation_idempotency_key: { type: String, default: null },
+    cancellation_result: { type: Schema.Types.Mixed, default: null },
+    /** Authoritative delivery fence generation written under active lease. */
+    delivery_fence_generation: { type: Number, default: null },
+    delivery_fence_owner: { type: String, default: null },
+    /** Reservation before Google promote; takeovers inspect/recover by IDs. */
+    promotion_reservation: { type: Schema.Types.Mixed, default: null },
     ...reportingRunControlFields,
   },
   {
@@ -47,6 +56,14 @@ ReportingRunSchema.index({ created_at: -1, _id: 1 });
 ReportingRunSchema.index(
   { "actor.actor_id": 1, definition_revision_id: 1, idempotency_key: 1 },
   { unique: true, name: "reporting_manual_run_idempotency" },
+);
+ReportingRunSchema.index(
+  { _id: 1, cancellation_idempotency_key: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { cancellation_idempotency_key: { $type: "string" } },
+    name: "reporting_run_cancel_idempotency",
+  },
 );
 for (const operation of [
   "updateOne",

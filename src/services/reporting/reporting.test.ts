@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { z } from "zod";
 import mongoose from "mongoose";
 import { parseReportingEnabledDatasets } from "../../config/domain/reporting";
 import { ReportingDefinition } from "../../models/ReportingDefinition";
@@ -23,6 +24,7 @@ import {
 } from "./catalog";
 import {
   destinationSnapshotChecksum,
+  destinationStableIdentityChecksum,
   FakeReportingDestinationPort,
   validateDestinationSnapshot,
   type ValidatedReportingDestinationSnapshotV1,
@@ -60,7 +62,12 @@ import {
   type ReportingExecutionPackageV1,
   type ReportingRevisionSnapshotV1,
 } from "./reporting.service";
-import { InvalidReportingObjectIdError, safeReportingRunForRead, serializeReportingRouteError } from "../../routes/reporting.routes";
+import {
+  InvalidReportingObjectIdError,
+  ReportingGoogleDeliveryDisabledError,
+  safeReportingRunForRead,
+  serializeReportingRouteError,
+} from "../../routes/reporting.routes";
 import {
   assertSafeReportingFailure,
   reportingCheckpoint,
@@ -173,6 +180,24 @@ test("request bounds and formula-safe labels fail before database work", async (
   }), /cannot exceed/i);
   assert.throws(() => runRequestSchema.parse({ revisionId: "a".repeat(24) }));
   assert.equal(runRequestSchema.parse({ idempotencyKey: "run-key-123" }).idempotencyKey, "run-key-123");
+});
+
+test("cancel wire contract requires idempotencyKey (admin clients must send it)", () => {
+  // Mirrors POST /reporting/runs/:id/cancel body schema in reporting.routes.ts.
+  const cancelBodySchema = z
+    .object({
+      idempotencyKey: z.string().trim().min(8).max(200),
+    })
+    .strict();
+  assert.throws(() => cancelBodySchema.parse({}), /idempotencyKey|Required/i);
+  assert.throws(
+    () => cancelBodySchema.parse({ idempotencyKey: "short" }),
+    /idempotencyKey|at least|min/i,
+  );
+  assert.equal(
+    cancelBodySchema.parse({ idempotencyKey: "cancel-key-123" }).idempotencyKey,
+    "cancel-key-123",
+  );
 });
 
 test("New York date boundaries are half-open across 23 and 25 hour days", () => {
@@ -486,6 +511,61 @@ test("every orphan predicate narrows granularities per parent company", () => {
     },
     { company: "64b000000000000000000003" },
   ]);
+});
+
+test("confirmation binds stable destination identity; health refresh stays valid", () => {
+  withReportingSecrets(() => {
+    const snap = destinationWithTimes(
+      "2026-08-01T00:00:00.000Z",
+      "2026-08-01T00:00:00.000Z",
+    );
+    const refreshedHealth = destinationWithTimes(
+      "2026-08-04T12:00:00.000Z",
+      "2026-08-04T12:00:00.000Z",
+    );
+    const stableA = destinationStableIdentityChecksum(snap);
+    const stableB = destinationStableIdentityChecksum(refreshedHealth);
+    assert.equal(stableA, stableB);
+    assert.notEqual(snap.snapshotChecksum, refreshedHealth.snapshotChecksum);
+
+    const owner = actor("owner-a");
+    const fingerprintA = confirmationImmutableFingerprint({
+      definitionId: "def",
+      revisionId: "rev",
+      revisionSnapshotChecksum: "a".repeat(64),
+      destinationStableIdentityChecksum: stableA,
+      queryInputChecksum: "b".repeat(64),
+      estimateFingerprint: "c".repeat(64),
+      actorFingerprint: reportingActorFingerprint(owner),
+      idempotencyKey: "run-key-123",
+    });
+    const fingerprintB = confirmationImmutableFingerprint({
+      definitionId: "def",
+      revisionId: "rev",
+      revisionSnapshotChecksum: "a".repeat(64),
+      destinationStableIdentityChecksum: stableB,
+      queryInputChecksum: "b".repeat(64),
+      estimateFingerprint: "c".repeat(64),
+      actorFingerprint: reportingActorFingerprint(owner),
+      idempotencyKey: "run-key-123",
+    });
+    assert.equal(fingerprintA, fingerprintB);
+
+    const drifted = confirmationImmutableFingerprint({
+      definitionId: "def",
+      revisionId: "rev",
+      revisionSnapshotChecksum: "a".repeat(64),
+      destinationStableIdentityChecksum: destinationStableIdentityChecksum({
+        ...snap,
+        folder: { ...snap.folder, id: "other" },
+      }),
+      queryInputChecksum: "b".repeat(64),
+      estimateFingerprint: "c".repeat(64),
+      actorFingerprint: reportingActorFingerprint(owner),
+      idempotencyKey: "run-key-123",
+    });
+    assert.notEqual(fingerprintA, drifted);
+  });
 });
 
 test("confirmation evidence binds actor, idempotency key, and immutable fingerprint", () => {
@@ -854,6 +934,20 @@ test("reporting routes preserve RegistryError status and reject malformed IDs", 
         ok: false,
         code: "invalid_object_id",
         error: "Invalid resource identifier",
+      },
+    },
+  );
+});
+
+test("reporting routes expose the deployment kill switch without leaking config", () => {
+  assert.deepEqual(
+    serializeReportingRouteError(new ReportingGoogleDeliveryDisabledError()),
+    {
+      status: 503,
+      body: {
+        ok: false,
+        code: "reporting_google_delivery_disabled",
+        error: "Google reporting delivery is disabled by deployment configuration.",
       },
     },
   );

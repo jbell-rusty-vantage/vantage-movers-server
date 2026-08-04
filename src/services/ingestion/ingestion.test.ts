@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { CallLead } from "../../models/CallLead";
 import { IngestionConflict } from "../../models/IngestionConflict";
 import { IngestionRun } from "../../models/IngestionRun";
 import { SourceRowReceipt } from "../../models/SourceRowReceipt";
 import { SourceRowState } from "../../models/SourceRowState";
+import { sendError as sendIngestionRouteError } from "../../routes/ingestion.routes";
 import {
   BEST_RELOCATION_CUTOFF,
   buildBestRelocationApplicationPlan,
@@ -1110,6 +1112,87 @@ test("bootstrap adoption remaps creates to receipt-only adopt_existing", () => {
   );
 });
 
+test("bootstrap adopts nonduplicate calls using DST-aware persisted timestamps", async (t) => {
+  const data = fixture();
+  data.calls = parseCallRows(
+    makeTab("Calls", ["PHONE NUMBER", "Date", "Time", "vantage_ingestion_id"], [
+      ["PHONE NUMBER", "Date", "Time", "vantage_ingestion_id"],
+      ["305-555-1212", "5/1/2026", "10:00 AM", managed("9")],
+    ]),
+  );
+  const source = buildBestRelocationApplicationPlan({
+    data,
+    trigger: "bootstrap",
+    cutoff: BEST_RELOCATION_CUTOFF,
+    sourceReadThrough: new Date("2026-05-03T00:00:00.000Z"),
+  }).plan;
+  const callAction = source.actions.find(
+    (action) => action.command === "create_call_lead",
+  )!;
+  const winterAction = {
+    ...callAction,
+    action_key: `${callAction.action_key}:winter`,
+    stable_source_row_id: managed("8"),
+    content_hash: "f".repeat(64),
+    command_payload: {
+      ...callAction.command_payload,
+      timestamp: "2026-01-15T15:00:00.000Z",
+    },
+  };
+  const capturedFilters: Record<string, unknown>[] = [];
+  t.mock.method(CallLead, "find", (filter: Record<string, unknown>) => {
+    capturedFilters.push(filter);
+    const query = {
+      select: () => query,
+      limit: () => query,
+      lean: () => query,
+      exec: async () => [
+        {
+          _id: "507f1f77bcf86cd799439011",
+          ...callAction.source_owned_values,
+        },
+      ],
+    };
+    return query as never;
+  });
+
+  const summer = await planBootstrapAdoption({
+    ...source,
+    actions: [callAction],
+  });
+  const winter = await planBootstrapAdoption({
+    ...source,
+    actions: [winterAction],
+  });
+
+  const summerTimestamp = capturedFilters[0]?.timestamp as
+    | { $gte?: Date; $lte?: Date }
+    | undefined;
+  const winterTimestamp = capturedFilters[1]?.timestamp as
+    | { $gte?: Date; $lte?: Date }
+    | undefined;
+  assert.equal(
+    summerTimestamp?.$gte?.toISOString(),
+    "2026-05-01T09:59:59.000Z",
+  );
+  assert.equal(
+    summerTimestamp?.$lte?.toISOString(),
+    "2026-05-01T10:00:01.000Z",
+  );
+  assert.equal(
+    winterTimestamp?.$gte?.toISOString(),
+    "2026-01-15T09:59:59.000Z",
+  );
+  assert.equal(
+    winterTimestamp?.$lte?.toISOString(),
+    "2026-01-15T10:00:01.000Z",
+  );
+  assert.deepEqual(capturedFilters[0]?.duplicate, { $ne: true });
+  assert.deepEqual(capturedFilters[1]?.duplicate, { $ne: true });
+  assert.equal(summer.actions[0].command, "adopt_existing");
+  assert.equal(winter.actions[0].command, "adopt_existing");
+});
+
 test("apply resumes from checkpoint without replaying successful actions", async () => {
   const built = buildBestRelocationApplicationPlan({
     data: fixture(),
@@ -1607,3 +1690,33 @@ function fixture(includeLidEvidence = false): ParsedWorkbookData {
 function managed(suffix: string): string {
   return `vantage:00000000-0000-4000-8000-00000000000${suffix}`;
 }
+
+test("ingestion route errors never expose provider or source details", () => {
+  let status = 0;
+  let body: Record<string, unknown> | undefined;
+  const response = {
+    status(value: number) {
+      status = value;
+      return this;
+    },
+    json(value: Record<string, unknown>) {
+      body = value;
+      return this;
+    },
+  };
+  sendIngestionRouteError(
+    response as any,
+    Object.assign(
+      new Error(
+        "Google workbook 1abc failed for customer@example.com mongodb://user:pass@host",
+      ),
+      { statusCode: 500 },
+    ),
+  );
+  assert.equal(status, 500);
+  assert.deepEqual(body, {
+    ok: false,
+    code: "ingestion_internal_error",
+    error: "Ingestion request failed",
+  });
+});

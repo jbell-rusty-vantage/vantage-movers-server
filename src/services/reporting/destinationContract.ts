@@ -41,6 +41,157 @@ export function destinationSnapshotChecksum(
   });
 }
 
+/**
+ * Lineage-stable destination identity for two-step run confirmation.
+ * Excludes volatile healthVerifiedAt / denylistCheckedAt so a health refresh
+ * between estimate and confirm remains valid when identity/safety/ownership match.
+ */
+export function destinationStableIdentityPayload(
+  snapshot: Omit<ValidatedReportingDestinationSnapshotV1, "snapshotChecksum"> | ValidatedReportingDestinationSnapshotV1,
+): Record<string, unknown> {
+  return {
+    contractVersion: snapshot.contractVersion,
+    destinationId: snapshot.destinationId,
+    provider: snapshot.provider,
+    driveConnectionId: snapshot.driveConnectionId,
+    ownerIdentitySnapshot: snapshot.ownerIdentitySnapshot,
+    folder: snapshot.folder,
+    strategy: snapshot.strategy,
+    workbook: snapshot.workbook ?? null,
+    managedTab: snapshot.managedTab
+      ? {
+          immutableSheetId: snapshot.managedTab.immutableSheetId,
+          name: snapshot.managedTab.name,
+          managed: snapshot.managedTab.managed,
+        }
+      : null,
+    destinationType: snapshot.destinationType,
+    ownershipPolicy: snapshot.ownershipPolicy,
+    accessStatus: snapshot.accessStatus,
+    archived: snapshot.archived,
+    safety: {
+      operationalWorkbookMatch: snapshot.safety.operationalWorkbookMatch,
+      humanCreatedTabTakeover: snapshot.safety.humanCreatedTabTakeover,
+    },
+    capacity: snapshot.capacity,
+  };
+}
+
+export function destinationStableIdentityChecksum(
+  snapshot: Omit<ValidatedReportingDestinationSnapshotV1, "snapshotChecksum"> | ValidatedReportingDestinationSnapshotV1,
+): string {
+  return computeChecksum({
+    checksum_version: 1,
+    artifact_kind: "reporting_destination_stable_identity",
+    schema_version: 1,
+    payload: destinationStableIdentityPayload(snapshot),
+  });
+}
+
+/** DB-only checksum for owner-facing destination reads; trusts persisted verification state. */
+export function snapshotChecksumFromDestinationRecord(
+  destination: Record<string, unknown>,
+  destinationId: string,
+): string | null {
+  if (destination.state !== "active" || destination.access_status !== "verified") {
+    return null;
+  }
+  const healthVerifiedAt = destination.health_verified_at;
+  const denylistCheckedAt = destination.denylist_checked_at;
+  const driveConnectionId = destination.drive_connection_id;
+  const owner = destination.owner_identity_snapshot as
+    | { stable_owner_id?: string; masked_email?: string }
+    | undefined;
+  const folder = destination.folder as { id?: string; name?: string; url?: string } | undefined;
+  const capacity = destination.capacity as
+    | { provider_max_cells?: number; destination_available_cells?: number }
+    | undefined;
+  const strategy = destination.strategy;
+  if (
+    !driveConnectionId ||
+    !owner?.stable_owner_id ||
+    !owner.masked_email ||
+    !folder?.id ||
+    !folder.name ||
+    !folder.url ||
+    (strategy !== "replace_tab" && strategy !== "snapshot") ||
+    !capacity?.provider_max_cells ||
+    !capacity.destination_available_cells
+  ) {
+    return null;
+  }
+  const validatedStrategy = strategy as "replace_tab" | "snapshot";
+
+  const healthVerifiedAtIso =
+    healthVerifiedAt instanceof Date
+      ? healthVerifiedAt.toISOString()
+      : typeof healthVerifiedAt === "string"
+        ? healthVerifiedAt
+        : null;
+  const denylistCheckedAtIso =
+    denylistCheckedAt instanceof Date
+      ? denylistCheckedAt.toISOString()
+      : typeof denylistCheckedAt === "string"
+        ? denylistCheckedAt
+        : null;
+  if (!healthVerifiedAtIso || !denylistCheckedAtIso) {
+    return null;
+  }
+
+  const payload = {
+    contractVersion: 1 as const,
+    destinationId,
+    provider: "google_sheets" as const,
+    driveConnectionId: String(driveConnectionId),
+    ownerIdentitySnapshot: {
+      stableOwnerId: owner.stable_owner_id,
+      maskedEmail: owner.masked_email,
+    },
+    folder: {
+      id: folder.id,
+      name: folder.name,
+      url: folder.url,
+    },
+    strategy: validatedStrategy,
+    destinationType: String(destination.destination_type ?? "owner_drive"),
+    ownershipPolicy: String(destination.ownership_policy ?? "vantage_managed_tab"),
+    accessStatus: "verified" as const,
+    healthVerifiedAt: healthVerifiedAtIso,
+    archived: false as const,
+    safety: {
+      denylistCheckedAt: denylistCheckedAtIso,
+      operationalWorkbookMatch: false as const,
+      humanCreatedTabTakeover: false as const,
+    },
+    capacity: {
+      providerMaxCells: capacity.provider_max_cells,
+      destinationAvailableCells: capacity.destination_available_cells,
+    },
+    ...(validatedStrategy === "replace_tab"
+      ? {
+          workbook: destination.workbook as { id: string; name: string; url: string },
+          managedTab: {
+            immutableSheetId: (destination.managed_tab as { immutable_sheet_id: number })
+              .immutable_sheet_id,
+            name: (destination.managed_tab as { name: string }).name,
+            managed: true as const,
+          },
+        }
+      : {}),
+  };
+
+  if (
+    validatedStrategy === "replace_tab" &&
+    (!payload.workbook?.id ||
+      !payload.managedTab?.immutableSheetId ||
+      !payload.managedTab.name)
+  ) {
+    return null;
+  }
+
+  return destinationSnapshotChecksum(payload);
+}
+
 export function validateDestinationSnapshot(
   snapshot: ValidatedReportingDestinationSnapshotV1,
   expected: {

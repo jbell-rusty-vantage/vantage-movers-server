@@ -13,8 +13,31 @@ import { getReportingCatalog, REPORTING_DATASETS, ReportingError } from "../serv
 import { prepareManualRun, previewReportingDraft, saveReportingRevision } from "../services/reporting/reporting.service";
 import { reportingDraftSchema, runRequestSchema, saveDefinitionSchema } from "../validation/reporting.validation";
 import { isRegistryError } from "../services/operationsRegistry/errors";
-import { safeReportingFailureForRead } from "../services/reporting/reportingRunRepository";
+import {
+  requestReportingRunCancellation,
+  safeReportingFailureForRead,
+} from "../services/reporting/reportingRunRepository";
+import {
+  loadReportingDelivery,
+  safeReportingDeliveryForRead,
+} from "../services/reporting/reportingDeliveryRepository";
 import { recordReportingAudit } from "../services/reporting/reportingAudit";
+import { publishReportingWakeup } from "../services/reporting/queue";
+import {
+  archiveReportingDestinationRecord,
+  createReportingDestination,
+  getReportingDestinationSummary,
+  listReportingDestinationSummaries,
+  updateReportingDestinationRecord,
+  verifyReportingDestination,
+} from "../services/reporting/reportingDestination.service";
+import {
+  archiveReportingDestinationSchema,
+  createReportingDestinationSchema,
+  updateReportingDestinationSchema,
+} from "../validation/reportingDestination.validation";
+import { isReportingGoogleDeliveryEnabled } from "../config/domain/reporting";
+import { emitReportingDestinationHealthFailure } from "../services/reporting/reportingObservability";
 
 const router = Router();
 const base = "/api/v1/admin/reporting";
@@ -24,6 +47,131 @@ router.get(`${base}/catalog`, async (req, res) => {
   try {
     readActor(req);
     return res.json({ ok: true, data: getReportingCatalog() });
+  } catch (error) { return sendError(res, error); }
+});
+
+router.get(`${base}/destinations`, async (req, res) => {
+  try {
+    readActor(req);
+    const query = z.object({
+      state: z.enum(["active", "archived"]).default("active"),
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+    }).strict().parse(req.query);
+    await connectMongo();
+    const data = await listReportingDestinationSummaries(query);
+    return res.json({ ok: true, data });
+  } catch (error) { return sendError(res, error); }
+});
+
+router.post(`${base}/destinations`, async (req, res) => {
+  try {
+    const actor = ownerActor(req);
+    assertReportingGoogleDeliveryEnabled();
+    const body = createReportingDestinationSchema.parse(req.body ?? {});
+    await connectMongo();
+    const data = await createReportingDestination({
+      strategy: body.strategy,
+      folderSelectionReference: body.folder_selection_reference,
+      createFolderName: body.create_folder_name,
+      workbookSelectionReference: body.workbook_selection_reference,
+      createWorkbookName: body.create_workbook_name,
+      managedTabName: body.managed_tab_name,
+    }, actor);
+    await recordReportingAudit({
+      action: "destination_create",
+      outcome: "success",
+      actor,
+      durationMs: 0,
+      destinationId: String((data as { _id?: unknown })._id ?? ""),
+    });
+    return res.status(201).json({ ok: true, data });
+  } catch (error) { return sendError(res, error); }
+});
+
+router.get(`${base}/destinations/:id`, async (req, res) => {
+  try {
+    readActor(req);
+    objectId(req.params.id);
+    await connectMongo();
+    const data = await getReportingDestinationSummary(req.params.id);
+    return res.json({ ok: true, data });
+  } catch (error) { return sendError(res, error); }
+});
+
+router.patch(`${base}/destinations/:id`, async (req, res) => {
+  try {
+    const actor = ownerActor(req);
+    assertReportingGoogleDeliveryEnabled();
+    objectId(req.params.id);
+    const body = updateReportingDestinationSchema.parse(req.body ?? {});
+    await connectMongo();
+    const data = await updateReportingDestinationRecord(req.params.id, {
+      expectedVersion: body.expected_version,
+      managedTabName: body.managed_tab_name,
+    }, actor);
+    await recordReportingAudit({
+      action: "destination_update",
+      outcome: "success",
+      actor,
+      durationMs: 0,
+      destinationId: req.params.id,
+    });
+    return res.json({ ok: true, data });
+  } catch (error) { return sendError(res, error); }
+});
+
+router.post(`${base}/destinations/:id/verify`, async (req, res) => {
+  try {
+    const actor = ownerActor(req);
+    assertReportingGoogleDeliveryEnabled();
+    objectId(req.params.id);
+    z.object({}).strict().parse(req.body ?? {});
+    await connectMongo();
+    const data = await verifyReportingDestination(req.params.id, actor);
+    await recordReportingAudit({
+      action: "destination_verify",
+      outcome: "success",
+      actor,
+      durationMs: 0,
+      destinationId: req.params.id,
+    });
+    return res.json({ ok: true, data });
+  } catch (error) {
+    if (
+      !(error instanceof ReportingGoogleDeliveryDisabledError) &&
+      !(error instanceof z.ZodError) &&
+      typeof req.params.id === "string" &&
+      mongoose.isValidObjectId(req.params.id)
+    ) {
+      await emitReportingDestinationHealthFailure({
+        destinationId: req.params.id,
+        reason: reportingHealthFailureReason(error),
+      }).catch(() => undefined);
+    }
+    return sendError(res, error);
+  }
+});
+
+router.delete(`${base}/destinations/:id`, async (req, res) => {
+  try {
+    const actor = ownerActor(req);
+    assertReportingGoogleDeliveryEnabled();
+    objectId(req.params.id);
+    const body = archiveReportingDestinationSchema.parse(req.body ?? {});
+    await connectMongo();
+    const data = await archiveReportingDestinationRecord(
+      req.params.id,
+      body.expected_version,
+      actor,
+    );
+    await recordReportingAudit({
+      action: "destination_archive",
+      outcome: "success",
+      actor,
+      durationMs: 0,
+      destinationId: req.params.id,
+    });
+    return res.json({ ok: true, data });
   } catch (error) { return sendError(res, error); }
 });
 
@@ -161,6 +309,7 @@ router.delete(`${base}/definitions/:id`, async (req, res) => {
 router.post(`${base}/definitions/:id/run`, async (req, res) => {
   try {
     const actor = ownerActor(req); objectId(req.params.id);
+    assertReportingGoogleDeliveryEnabled();
     const started = Date.now();
     const body = runRequestSchema.parse(req.body ?? {}); await connectMongo();
     const data = await prepareManualRun({ definitionId: req.params.id, ...body }, actor);
@@ -192,8 +341,73 @@ router.get(`${base}/runs/:id`, async (req, res) => {
     readActor(req); objectId(req.params.id); await connectMongo();
     const run = await ReportingRun.findById(req.params.id).select(reportingRunReadProjection()).lean().exec();
     if (!run) return res.status(404).json({ ok: false, error: "Run not found" });
-    return res.json({ ok: true, data: safeReportingRunForRead(run) });
+    const delivery = await loadReportingDelivery(req.params.id);
+    return res.json({
+      ok: true,
+      data: {
+        ...safeReportingRunForRead(run),
+        delivery: safeReportingDeliveryForRead(delivery),
+      },
+    });
   } catch (error) { return sendError(res, error); }
+});
+
+/**
+ * Wire contract: POST /reporting/runs/:id/cancel
+ * Body (strict): { idempotencyKey: string } — required, min 8 / max 200 chars.
+ * Admin clients that omit idempotencyKey receive 400 validation errors.
+ * Successful responses echo { runId, cancellation, runStatus, idempotencyKey }.
+ */
+router.post(`${base}/runs/:id/cancel`, async (req, res) => {
+  try {
+    const actor = ownerActor(req);
+    objectId(req.params.id);
+    const body = z
+      .object({
+        idempotencyKey: z.string().trim().min(8).max(200),
+      })
+      .strict()
+      .parse(req.body ?? {});
+    await connectMongo();
+    const started = Date.now();
+    const result = await requestReportingRunCancellation({
+      runId: req.params.id,
+      actorId: actor.actor_id,
+      now: new Date(),
+      idempotencyKey: body.idempotencyKey,
+    });
+    if (result.status === "not_found") {
+      return res.status(404).json({ ok: false, error: "Run not found" });
+    }
+    if (
+      result.status === "cancel_requested" ||
+      result.status === "already_requested"
+    ) {
+      await publishReportingWakeup({
+        reason: "manual",
+        run_hint: req.params.id,
+      });
+    }
+    await recordReportingAudit({
+      action: "run_cancel",
+      outcome: "success",
+      actor,
+      durationMs: Date.now() - started,
+      runId: req.params.id,
+      reasonCode: result.status,
+    });
+    return res.json({
+      ok: true,
+      data: {
+        runId: req.params.id,
+        cancellation: result.status,
+        runStatus: result.runStatus ?? null,
+        idempotencyKey: body.idempotencyKey,
+      },
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
 });
 
 function auth(req: Request): VantageAuthContext | undefined {
@@ -215,6 +429,21 @@ export class InvalidReportingObjectIdError extends Error {
     super("Invalid Mongo ObjectId");
     this.name = "InvalidReportingObjectIdError";
   }
+}
+export class ReportingGoogleDeliveryDisabledError extends Error {
+  constructor() {
+    super("Google reporting delivery is disabled by deployment configuration.");
+    this.name = "ReportingGoogleDeliveryDisabledError";
+  }
+}
+function assertReportingGoogleDeliveryEnabled(): void {
+  if (!isReportingGoogleDeliveryEnabled()) {
+    throw new ReportingGoogleDeliveryDisabledError();
+  }
+}
+function reportingHealthFailureReason(error: unknown): string {
+  if (error instanceof ReportingError) return error.code;
+  return "destination_verification_failed";
 }
 function sendError(res: Response, error: unknown) {
   const serialized = serializeReportingRouteError(error);
@@ -257,6 +486,16 @@ export function serializeReportingRouteError(error: unknown): {
       },
     };
   }
+  if (error instanceof ReportingGoogleDeliveryDisabledError) {
+    return {
+      status: 503,
+      body: {
+        ok: false,
+        code: "reporting_google_delivery_disabled",
+        error: error.message,
+      },
+    };
+  }
   return {
     status: 500,
     body: {
@@ -276,6 +515,26 @@ export function safeReportingRunForRead(
     safe.execution_package = { ...safe.execution_package };
     delete safe.execution_package.destination;
   }
+  // Artifact-safe progress only — never expose row payloads.
+  if (safe.checkpoint && typeof safe.checkpoint === "object") {
+    const cursor = (safe.checkpoint as any).cursor;
+    safe.progress = {
+      phase: (safe.checkpoint as any).phase ?? null,
+      page_number: cursor?.page_number ?? null,
+      row_count: cursor?.row_count ?? null,
+      checksum_accumulator: cursor?.checksum_accumulator ?? null,
+      cancellation_requested: Boolean(value.cancellation_requested_at),
+    };
+  } else {
+    safe.progress = {
+      phase: null,
+      page_number: null,
+      row_count: null,
+      checksum_accumulator: null,
+      cancellation_requested: Boolean(value.cancellation_requested_at),
+    };
+  }
+  delete safe.checkpoint;
   return safe;
 }
 
@@ -294,9 +553,11 @@ function reportingRunReadProjection() {
     estimate: 1,
     actual: 1,
     counters: 1,
+    checkpoint: 1,
     final_data_checksum: 1,
     failure: 1,
     execution_package: 1,
+    cancellation_requested_at: 1,
     created_at: 1,
     updated_at: 1,
     started_at: 1,

@@ -20,10 +20,20 @@ import {
   type ValidatedReportingRequest,
 } from "./catalog";
 import {
+  destinationStableIdentityChecksum,
   getReportingDestinationPort,
   validateDestinationSnapshot,
   type ValidatedReportingDestinationSnapshotV1,
 } from "./destinationContract";
+import {
+  buildDestinationLineageEvidence,
+  extractPredecessorSheetIds,
+  validateDestinationForImmutableRevision,
+} from "./destinationLineage";
+import {
+  getReportingDestinationById,
+  refreshDestinationHealthAndDenylist,
+} from "./reportingDestinationRepository";
 import { computeQueryInputChecksum, estimateReportingQuery, previewReportingQuery } from "./query/canonicalReporting";
 import { validateReportingDraft } from "../../validation/reporting.validation";
 import { withTransaction } from "../../db";
@@ -125,6 +135,12 @@ export interface ReportingExecutionPackageV1 {
     formulasAllowed: false;
   };
   destination: ValidatedReportingDestinationSnapshotV1;
+  destinationLineage: {
+    revisionDestinationSnapshotChecksum: string;
+    predecessorSheetId: number | null;
+    currentManagedSheetId: number | null;
+    acceptedAdvancement: boolean;
+  };
   acceptance: {
     requireQueuedManualRun: true;
     requireMatchingRevisionChecksum: true;
@@ -184,7 +200,12 @@ async function previewReportingDraftCore(input: unknown, actor: DurableActor) {
     source_read_through: sourceReadThrough,
     estimate,
     projected: { rows: projectedRows, columns, cellsIncludingHeader },
-    capacity: { applicableLimit, remainingCells: applicableLimit - cellsIncludingHeader },
+    capacity: {
+      providerMaxCells: snapshot.capacity.providerMaxCells,
+      destinationAvailableCells: snapshot.capacity.destinationAvailableCells,
+      applicableLimit,
+      remainingCells: applicableLimit - cellsIncludingHeader,
+    },
     batches: {
       queryPages: Math.ceil(estimate.rows / REPORTING_PAGE_SIZE),
       writeBatches: Math.ceil(estimate.rows / 1000),
@@ -423,19 +444,42 @@ async function prepareManualRunCore(input: {
   if (!revision) throw reportingError("revision_unavailable", "Revision was not found.", 404);
   assertRevisionChecksum(revision);
   requireDataset(revision.dataset_key as keyof typeof REPORTING_DATASETS);
-  const destination = validateDestinationSnapshot(
-    await getReportingDestinationPort().getValidatedSnapshot(revision.destination_id),
-    { destinationId: revision.destination_id, checksum: revision.destination_snapshot_checksum, strategy: revision.strategy },
+  const revisionDestination = revision.destination_snapshot as ValidatedReportingDestinationSnapshotV1;
+  const live = await getReportingDestinationPort().getValidatedSnapshot(
+    revision.destination_id,
   );
+  const destinationRecord = await getReportingDestinationById(
+    revision.destination_id,
+  );
+  const predecessorSheetIds = extractPredecessorSheetIds(destinationRecord);
+  // Fresh live snapshot + proven lineage vs immutable revision destination.
+  // Do not require live checksum === revision.destination_snapshot_checksum.
+  const destination = validateDestinationForImmutableRevision({
+    live,
+    revisionDestination,
+    predecessorSheetIds,
+  });
+  // Keep denylist_checked_at aligned with health after a live allow so verified
+  // destinations do not age out spuriously on only one timestamp.
+  await refreshDestinationHealthAndDenylist({
+    destinationId: destination.destinationId,
+    now: new Date(),
+  });
   const queryInput = revisionToQueryInput(revision);
   const estimate = await estimateReportingQuery(queryInput);
   const columns = revision.selected_columns.length;
   const cellsIncludingHeader = (estimate.rows + 1) * columns;
   const limit = Math.min(destination.capacity.providerMaxCells, destination.capacity.destinationAvailableCells);
   assertEstimateFitsCapacity(estimate, columns, limit);
+  // Confirmation binds lineage-stable destination identity — not volatile
+  // healthVerifiedAt / denylistCheckedAt — so a health refresh between estimate
+  // and confirm remains valid when identity/safety/ownership match.
+  const destinationStableChecksum = destinationStableIdentityChecksum(destination);
   const confirmation = {
     definitionId: String(definition._id), revisionId: String(revision._id),
     revisionSnapshotChecksum: revision.revision_snapshot_checksum,
+    destinationStableIdentityChecksum: destinationStableChecksum,
+    // Full snapshot checksum retained for diagnostics; not part of immutable bind.
     destinationSnapshotChecksum: destination.snapshotChecksum,
     queryInputChecksum: computeQueryInputChecksum(queryInput),
     estimate: { ...estimate, columns, cellsIncludingHeader, generatedAt: new Date().toISOString() },
@@ -464,7 +508,7 @@ async function prepareManualRunCore(input: {
     definitionId: confirmation.definitionId,
     revisionId: confirmation.revisionId,
     revisionSnapshotChecksum: confirmation.revisionSnapshotChecksum,
-    destinationSnapshotChecksum: confirmation.destinationSnapshotChecksum,
+    destinationStableIdentityChecksum: confirmation.destinationStableIdentityChecksum,
     queryInputChecksum: confirmation.queryInputChecksum,
     estimateFingerprint,
     actorFingerprint,
@@ -537,12 +581,15 @@ async function prepareManualRunCore(input: {
     }
   }
   const accepted = verifyConfirmation(input.confirmationToken);
+  const liveStableChecksum = destinationStableIdentityChecksum(destination);
   if (
     accepted.actorFingerprint !== actorFingerprint ||
     accepted.idempotencyKey !== input.idempotencyKey ||
     accepted.revisionId !== confirmation.revisionId ||
     accepted.revisionSnapshotChecksum !== confirmation.revisionSnapshotChecksum ||
-    accepted.destinationSnapshotChecksum !== confirmation.destinationSnapshotChecksum ||
+    accepted.destinationStableIdentityChecksum !== liveStableChecksum ||
+    accepted.destinationStableIdentityChecksum !==
+      confirmation.destinationStableIdentityChecksum ||
     accepted.queryInputChecksum !== confirmation.queryInputChecksum ||
     accepted.estimateFingerprint !== estimateFingerprint ||
     accepted.immutableFingerprint !== immutableFingerprint
@@ -595,6 +642,10 @@ async function prepareManualRunCore(input: {
     confirmation,
     destination,
     String(proposedRunId),
+    {
+      revisionDestination,
+      predecessorSheetIds,
+    },
   );
   const session = await mongoose.startSession();
   let concurrentReplay = false;
@@ -660,7 +711,17 @@ async function prepareManualRunCore(input: {
     }
     return persistedRunReplay(consumed.consumed_run_id, immutableFingerprint);
   }
-  return persistedRunReplay(proposedRunId, immutableFingerprint, false);
+  const created = await persistedRunReplay(
+    proposedRunId,
+    immutableFingerprint,
+    false,
+  );
+  const { publishReportingWakeup } = await import("./queue.js");
+  const wakeupPublished = await publishReportingWakeup({
+    reason: "manual",
+    run_hint: created.runId,
+  });
+  return { ...created, wakeupPublished };
 }
 
 export function isMongoDuplicateKeyError(
@@ -680,6 +741,10 @@ export function buildExecutionPackage(
   confirmation: ReportingConfirmationSnapshotV1,
   destination: ValidatedReportingDestinationSnapshotV1,
   runId: string,
+  lineage?: {
+    revisionDestination: ValidatedReportingDestinationSnapshotV1;
+    predecessorSheetIds: number[];
+  },
 ) : ReportingExecutionPackageV1 {
   const contract = REPORTING_DATASETS[revision.dataset_key];
   const columns = revision.selected_columns.map((selected: { id: string; label: string }) => {
@@ -687,6 +752,13 @@ export function buildExecutionPackage(
     return { ...selected, type: column.type, sensitivity: column.sensitivity };
   });
   const piiColumnIds = columns.filter((column: { sensitivity: Sensitivity }) => column.sensitivity === "confidential_pii").map((column: { id: string }) => column.id);
+  const revisionDestination =
+    lineage?.revisionDestination ?? revision.destination_snapshot;
+  const destinationLineage = buildDestinationLineageEvidence({
+    revisionDestination,
+    live: destination,
+    predecessorSheetIds: lineage?.predecessorSheetIds ?? [],
+  });
   return {
     contractVersion: 1, runId, definitionId: String(revision.definition_id),
     revisionId: String(revision._id), revisionNumber: revision.revision_number,
@@ -723,7 +795,9 @@ export function buildExecutionPackage(
       cells: "literal_values",
       formulasAllowed: false,
     },
+    // Freshly validated current managed-tab snapshot (may lineage-advance).
     destination,
+    destinationLineage,
     acceptance: {
       requireQueuedManualRun: true, requireMatchingRevisionChecksum: true,
       requireEnabledDataset: true, requireUnsetSourceReadThrough: true,
@@ -926,6 +1000,7 @@ function confirmationResponse(payload: Record<string, any>) {
     definitionId: payload.definitionId,
     revisionId: payload.revisionId,
     revisionSnapshotChecksum: payload.revisionSnapshotChecksum,
+    destinationStableIdentityChecksum: payload.destinationStableIdentityChecksum,
     destinationSnapshotChecksum: payload.destinationSnapshotChecksum,
     queryInputChecksum: payload.queryInputChecksum,
     estimate: payload.estimate,
