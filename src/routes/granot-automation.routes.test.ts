@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { test } from "node:test";
 import { GranotAutomationRun } from "../models/GranotAutomationRun";
 import { GranotAutomationSource } from "../models/GranotAutomationSource";
@@ -159,4 +161,21 @@ test("Granot source schema requires one or two unique supported workflows", () =
   assert.ok(source(["unknown"])?.errors["supported_operations.0"]);
   assert.equal(source(["form_leads"]), undefined);
   assert.equal(source(["form_leads", "call_leads"]), undefined);
+});
+
+test("Granot queue contention defers to a durable continuation", async () => {
+  const consumer = await readFile(
+    path.join(
+      __dirname,
+      "../../api/queues/granot-automation-consumer.ts",
+    ),
+    "utf8",
+  );
+  assert.match(consumer, /status === "lease_busy"/);
+  assert.match(consumer, /consumer\.deferred/);
+  assert.match(consumer, /continueGranotRuns\(result\.run_id\)/);
+  assert.match(
+    consumer,
+    /continuation\.recoverable && !continuation\.queue_published/,
+  );
 });

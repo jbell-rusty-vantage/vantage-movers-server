@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { Types } from "mongoose";
+import { computeChecksum } from "../durableWork";
 import {
+  buildFormExpectedFilter,
   createGranotRunGroup,
+  toDurableGranotValue,
   type GranotRunGroupRuntime,
 } from "./runWorkflow";
 import {
@@ -126,4 +130,50 @@ test("run-group validation completes before any child insertion", async () => {
     GranotAutomationSourceValidationError,
   );
   assert.equal(insertCalled, false);
+});
+
+test("call plan previews convert Mongo ObjectIds before checksumming", () => {
+  const sourceCompanyId = new Types.ObjectId();
+  const preview = toDurableGranotValue({
+    status: "updateable",
+    optional_match: undefined,
+    parsed: {
+      optional_booking: undefined,
+      source_assignment: {
+        lead_source_company: sourceCompanyId,
+      },
+    },
+    candidates: [undefined, sourceCompanyId],
+  });
+
+  assert.deepEqual(preview, {
+    status: "updateable",
+    parsed: {
+      source_assignment: {
+        lead_source_company: sourceCompanyId.toHexString(),
+      },
+    },
+    candidates: [null, sourceCompanyId.toHexString()],
+  });
+  assert.doesNotThrow(() =>
+    computeChecksum({
+      checksum_version: 1,
+      artifact_kind: "ingestion_plan",
+      schema_version: 1,
+      payload: preview,
+    }),
+  );
+});
+
+test("form expected filters do not cast empty strings as ObjectIds", () => {
+  assert.deepEqual(
+    buildFormExpectedFilter({
+      receiver_agent: null,
+      pickup_city: null,
+    }),
+    {
+      receiver_agent: null,
+      pickup_city: { $in: [null, ""] },
+    },
+  );
 });

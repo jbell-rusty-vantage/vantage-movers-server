@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { send } from "@vercel/queue";
+import { Types } from "mongoose";
 import { connectMongo, withTransaction } from "../../db";
 import { logger } from "../../logger";
 import { GranotAutomationRun } from "../../models/GranotAutomationRun";
@@ -343,35 +344,27 @@ export async function runGranotWorker(): Promise<{
       },
       { $set: { status: "expired", completed_at: now } },
     ).exec();
-    const run = await GranotAutomationRun.findOneAndUpdate(
-      {
-        $or: [
-          { status: "queued" },
-          { status: "applying" },
-          {
-            status: "planning",
-            $or: [
-              { leased_until: { $lte: now } },
-              { leased_until: null },
-              { leased_until: { $exists: false } },
-            ],
-          },
-        ],
-      },
-      {
-        $set: {
-          lease_owner: lease.owner,
-          leased_until: lease.leased_until,
-          lease_epoch: lease.epoch,
-          started_at: now,
-          last_attempt_at: now,
+    // Approved work takes precedence over new planning so an owner does not
+    // wait behind a large sibling plan after explicitly approving a checksum.
+    const run =
+      (await claimGranotRun({ status: "applying" }, lease, now)) ??
+      (await claimGranotRun(
+        {
+          $or: [
+            { status: "queued" },
+            {
+              status: "planning",
+              $or: [
+                { leased_until: { $lte: now } },
+                { leased_until: null },
+                { leased_until: { $exists: false } },
+              ],
+            },
+          ],
         },
-        $inc: { attempt_count: 1 },
-      },
-      { sort: { createdAt: 1 }, returnDocument: "after" },
-    )
-      .lean()
-      .exec();
+        lease,
+        now,
+      ));
     if (!run) return { claimed: false };
     runId = String(run._id);
     if (run.status === "applying") {
@@ -478,7 +471,7 @@ async function planCallWorkflow(
       action_id: `enrichment:${row.row_id}`,
       operation: "enrichment",
       row,
-      preview: preview as unknown as Record<string, unknown>,
+      preview: toDurableGranotValue(preview) as Record<string, unknown>,
       syncable:
         preview?.status === "updateable" ||
         Boolean(targetBinding.target_receiver_agent),
@@ -493,7 +486,7 @@ async function planCallWorkflow(
       action_id: `booked_reconciliation:${row.row_id}`,
       operation: "booked_reconciliation",
       row,
-      preview: preview as unknown as Record<string, unknown>,
+      preview: toDurableGranotValue(preview) as Record<string, unknown>,
       syncable:
         preview?.status === "updateable" ||
         Boolean(targetBinding.target_receiver_agent),
@@ -584,13 +577,14 @@ async function applyFormAction(action: GranotFormPlanAction) {
   if (action.classification !== "update" || !action.lead_id || !action.patch) {
     return receipt(action.action_id, "skipped");
   }
+  if (
+    action.patch.receiver_agent !== undefined &&
+    !Types.ObjectId.isValid(action.patch.receiver_agent)
+  ) {
+    return receipt(action.action_id, "failed");
+  }
   const FormLead = getFormLeadModel();
-  const expected = Object.fromEntries(
-    Object.entries(action.expected ?? {}).map(([path, value]) => [
-      path,
-      value === null ? { $in: [null, ""] } : value,
-    ]),
-  );
+  const expected = buildFormExpectedFilter(action.expected ?? {});
   const {
     receiver_agent_name_snapshot: _receiverName,
     receiver_agent_set_at: _receiverSetAt,
@@ -875,16 +869,49 @@ export async function recoverGranotRuns(): Promise<{
   };
 }
 
+export async function continueGranotRuns(completedRunId: string): Promise<{
+  recoverable: boolean;
+  queue_published: boolean;
+}> {
+  await connectMongo();
+  const exists = await GranotAutomationRun.exists({
+    $or: [
+      { status: "queued" },
+      {
+        status: { $in: ["planning", "applying"] },
+        $or: [
+          { leased_until: { $lte: new Date() } },
+          { leased_until: null },
+          { leased_until: { $exists: false } },
+        ],
+      },
+    ],
+  });
+  return {
+    recoverable: Boolean(exists),
+    queue_published: exists
+      ? await publishGranotWakeup(
+          String(exists._id),
+          "continuation",
+          completedRunId,
+        )
+      : false,
+  };
+}
+
 export async function publishGranotWakeup(
   runId: string,
-  reason: "create" | "approval" | "recovery",
+  reason: "create" | "approval" | "recovery" | "continuation",
+  predecessorRunId?: string,
 ): Promise<boolean> {
   if (process.env.VERCEL !== "1" || process.env.NODE_ENV !== "production") return false;
   try {
     const idempotencyKey =
       reason === "recovery"
         ? `granot:${reason}:${runId}:${Math.floor(Date.now() / (5 * 60_000))}`
-        : `granot:${reason}:${runId}`;
+        : reason === "continuation"
+          ? `granot:${reason}:${predecessorRunId ?? "unknown"}:${runId}`
+          : `granot:${reason}:${runId}`;
     await send(
       GRANOT_AUTOMATION_TOPIC,
       { kind: "granot_automation_wakeup", run_hint: runId, reason },
@@ -1039,6 +1066,8 @@ async function failRun(runId: string, lease: LeaseToken, error: unknown): Promis
       $set: {
         status: "failed",
         completed_at: new Date(),
+        lease_owner: null,
+        leased_until: null,
         failure: {
           code:
             error instanceof GranotRunConflict ? error.code : "GRANOT_RUN_FAILED",
@@ -1051,6 +1080,81 @@ async function failRun(runId: string, lease: LeaseToken, error: unknown): Promis
       },
     },
   ).exec();
+}
+
+async function claimGranotRun(
+  filter: Record<string, unknown>,
+  lease: LeaseToken,
+  now: Date,
+) {
+  return GranotAutomationRun.findOneAndUpdate(
+    filter,
+    {
+      $set: {
+        lease_owner: lease.owner,
+        leased_until: lease.leased_until,
+        lease_epoch: lease.epoch,
+        started_at: now,
+        last_attempt_at: now,
+      },
+      $inc: { attempt_count: 1 },
+    },
+    { sort: { createdAt: 1 }, returnDocument: "after" },
+  )
+    .lean()
+    .exec();
+}
+
+export function buildFormExpectedFilter(
+  expected: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(expected).map(([path, value]) => [
+      path,
+      value === null && path !== "receiver_agent"
+        ? { $in: [null, ""] }
+        : value,
+    ]),
+  );
+}
+
+export function toDurableGranotValue(value: unknown): unknown {
+  if (value === undefined) return null;
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new TypeError("Granot durable plans cannot contain non-finite numbers.");
+    }
+    return Object.is(value, -0) ? 0 : value;
+  }
+  if (value instanceof Date) {
+    if (!Number.isFinite(value.getTime())) {
+      throw new TypeError("Granot durable plans cannot contain invalid dates.");
+    }
+    return value.toISOString();
+  }
+  if (value instanceof Types.ObjectId) return value.toHexString();
+  if (Array.isArray(value)) return value.map(toDurableGranotValue);
+  if (typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new TypeError("Granot durable plans cannot contain non-plain objects.");
+    }
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, entry]) => entry !== undefined)
+        .map(([key, entry]) => [key, toDurableGranotValue(entry)]),
+    );
+  }
+  throw new TypeError(
+    `Granot durable plans cannot contain ${typeof value} values.`,
+  );
 }
 
 export class GranotRunConflict extends Error {
