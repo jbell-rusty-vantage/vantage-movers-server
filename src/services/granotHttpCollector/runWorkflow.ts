@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { send } from "@vercel/queue";
-import { connectMongo } from "../../db";
+import { connectMongo, withTransaction } from "../../db";
 import { logger } from "../../logger";
 import { GranotAutomationRun } from "../../models/GranotAutomationRun";
 import { BookedLead } from "../../models/BookedLead";
@@ -38,6 +38,12 @@ import {
   type GranotFormPlan,
   type GranotFormPlanAction,
 } from "./formWorkflow";
+import {
+  GranotAutomationSourceValidationError,
+  resolveGranotAutomationSources,
+  type GranotAutomationSourceItem,
+  type GranotSourceOperation,
+} from "./sourceCatalog";
 
 export const GRANOT_AUTOMATION_TOPIC = "granot-automation-events";
 const LEASE_SCOPE = "granot:automation:account";
@@ -53,6 +59,25 @@ export type GranotRunRequest = Omit<GranotCollectionRequest, "credentials"> & {
   operation: GranotOperation;
   workflow: GranotWorkflow;
   initiator: DurableActor;
+  sourceIds?: string[];
+};
+export type GranotRunGroupRequest = {
+  operations: GranotOperation[];
+  workflow: GranotWorkflow;
+  dateWindow: GranotCollectionRequest["dateWindow"];
+  sourceIds: string[];
+  filters?: GranotCollectionRequest["filters"];
+  initiator: DurableActor;
+};
+type QueuedGranotRun = ReturnType<typeof buildQueuedRun>;
+type InsertedGranotRun = QueuedGranotRun & { _id: unknown };
+export type GranotRunGroupRuntime = {
+  resolveSources: (input: {
+    sourceIds: string[];
+    operations: GranotSourceOperation[];
+  }) => Promise<Map<GranotSourceOperation, GranotAutomationSourceItem[]>>;
+  insertRuns: (documents: QueuedGranotRun[]) => Promise<InsertedGranotRun[]>;
+  publishWakeup: (runId: string) => Promise<boolean>;
 };
 
 type CallPlanAction = {
@@ -87,26 +112,142 @@ export async function createGranotRun(
   request: GranotRunRequest,
 ): Promise<{ run_id: string; status: "queued"; queue_published: boolean }> {
   await connectMongo();
-  const now = new Date();
-  const run = await GranotAutomationRun.create({
-    operation: request.operation,
-    workflow: request.workflow,
-    status: "queued",
-    request_snapshot: {
+  let sourceLabels = request.sourceLabels;
+  let sourceIds = request.sourceIds ?? [];
+  if (request.sourceIds) {
+    const partitions = await resolveGranotAutomationSources({
+      sourceIds: request.sourceIds,
+      operations: [request.operation],
+    });
+    const sources = partitions.get(request.operation) ?? [];
+    sourceLabels = sources.map((source) => source.label);
+    sourceIds = sources.map((source) => source.id);
+  }
+  const run = await GranotAutomationRun.create(
+    buildQueuedRun({
+      operation: request.operation,
+      workflow: request.workflow,
       dateWindow: request.dateWindow,
-      sourceLabels: request.sourceLabels,
-      filters: request.filters ?? {},
-    },
-    initiator: request.initiator,
-    expires_at: new Date(now.getTime() + PLAN_TTL_MS),
-    purge_at: new Date(now.getTime() + 7 * 24 * 60 * 60_000),
-    last_attempt_at: now,
-  });
+      sourceIds,
+      sourceLabels,
+      filters: request.filters,
+      initiator: request.initiator,
+    }),
+  );
   const runId = String(run._id);
   return {
     run_id: runId,
-    status: "queued",
+    status: "queued" as const,
     queue_published: await publishGranotWakeup(runId, "create"),
+  };
+}
+
+export async function createGranotRunGroup(
+  request: GranotRunGroupRequest,
+  runtime: GranotRunGroupRuntime = defaultGranotRunGroupRuntime,
+): Promise<{
+  run_group_id: string;
+  runs: Array<{
+    run_id: string;
+    operation: GranotOperation;
+    source_labels: string[];
+    queue_published: boolean;
+  }>;
+}> {
+  if (
+    request.operations.length < 1 ||
+    request.operations.length > 2 ||
+    new Set(request.operations).size !== request.operations.length
+  ) {
+    throw new GranotAutomationSourceValidationError(
+      "Lead workflows must contain one or two unique operations.",
+      [{
+        path: ["operations"],
+        message: "Select one or two unique Lead workflows",
+      }],
+    );
+  }
+  const operations = [...new Set(request.operations)];
+  const partitions = await runtime.resolveSources({
+    sourceIds: request.sourceIds,
+    operations: operations as GranotSourceOperation[],
+  });
+  const runGroupId = randomUUID();
+  const documents = operations.map((operation) => {
+    const sources = partitions.get(operation) ?? [];
+    return buildQueuedRun({
+      operation,
+      workflow: request.workflow,
+      dateWindow: request.dateWindow,
+      sourceIds: sources.map((source) => source.id),
+      sourceLabels: sources.map((source) => source.label),
+      filters: request.filters,
+      initiator: request.initiator,
+      runGroupId,
+    });
+  });
+
+  // All compatibility validation happens above. The transaction is the
+  // durable boundary: either every child run is committed or none are.
+  const created = await runtime.insertRuns(documents);
+  const publications = await Promise.all(
+    created.map((run) => runtime.publishWakeup(String(run._id))),
+  );
+  return {
+    run_group_id: runGroupId,
+    runs: created.map((run, index) => ({
+      run_id: String(run._id),
+      operation: run.operation as GranotOperation,
+      source_labels:
+        (
+          run.request_snapshot as {
+            sourceLabels?: string[];
+          }
+        ).sourceLabels ?? [],
+      queue_published: publications[index] ?? false,
+    })),
+  };
+}
+
+const defaultGranotRunGroupRuntime: GranotRunGroupRuntime = {
+  resolveSources: resolveGranotAutomationSources,
+  insertRuns: (documents) =>
+    withTransaction(async (session) => {
+      const inserted = await GranotAutomationRun.insertMany(documents, {
+        ordered: true,
+        session,
+      });
+      return inserted as unknown as InsertedGranotRun[];
+    }),
+  publishWakeup: (runId) => publishGranotWakeup(runId, "create"),
+};
+
+function buildQueuedRun(input: {
+  operation: GranotOperation;
+  workflow: GranotWorkflow;
+  dateWindow: GranotCollectionRequest["dateWindow"];
+  sourceIds: string[];
+  sourceLabels: string[];
+  filters?: GranotCollectionRequest["filters"];
+  initiator: DurableActor;
+  runGroupId?: string;
+}) {
+  const now = new Date();
+  return {
+    operation: input.operation,
+    run_group_id: input.runGroupId ?? null,
+    workflow: input.workflow,
+    status: "queued" as const,
+    request_snapshot: {
+      dateWindow: input.dateWindow,
+      sourceIds: input.sourceIds,
+      sourceLabels: input.sourceLabels,
+      filters: input.filters ?? {},
+    },
+    initiator: input.initiator,
+    expires_at: new Date(now.getTime() + PLAN_TTL_MS),
+    purge_at: new Date(now.getTime() + 7 * 24 * 60 * 60_000),
+    last_attempt_at: now,
   };
 }
 
@@ -834,6 +975,7 @@ function safeRun(run: Record<string, unknown>, details: boolean) {
   const plan = run.plan_snapshot as GranotPlan | null;
   return {
     id: String(run._id),
+    run_group_id: run.run_group_id,
     operation: run.operation,
     workflow: run.workflow,
     status: run.status,

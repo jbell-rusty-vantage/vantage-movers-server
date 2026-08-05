@@ -20,6 +20,12 @@ const GranotAutomationRunSchema = new Schema(
       required: true,
       enum: ["form_leads", "call_leads"],
     },
+    run_group_id: {
+      type: String,
+      trim: true,
+      index: true,
+      default: null,
+    },
     workflow: {
       type: String,
       required: true,

@@ -39,7 +39,43 @@ Local creation executes the worker directly.
 
 `workflow: "preview"` locks a plan and completes without mutation.
 `workflow: "apply"` locks the plan and enters `awaiting_approval`.
-At least one exact, case-sensitive `source_labels` entry is required.
+New callers should submit `source_ids`; `source_labels` remains a compatibility
+path for existing scripts.
+
+### Create one or both Lead workflows
+
+`POST /api/v1/admin/granot-automation/run-groups`
+
+```json
+{
+  "operations": ["form_leads", "call_leads"],
+  "workflow": "apply",
+  "from": "08/03/2026",
+  "to": "08/04/2026",
+  "source_ids": ["<form source id>", "<call source id>"]
+}
+```
+
+The server resolves and partitions source IDs from the catalog, validates every
+partition before writing, and atomically creates one independently reviewable
+durable run per operation. Child runs share `run_group_id`; approvals,
+checksums, actions, and receipts remain isolated.
+
+### Source catalog
+
+- `GET /api/v1/admin/granot-automation/runs/sources`
+- `GET /api/v1/admin/granot-automation/runs/sources?operation=form_leads`
+- `POST /api/v1/admin/granot-automation/runs/sources`
+
+Source creation requires an exact label plus one or two unique supported Lead
+workflows:
+
+```json
+{
+  "label": "Example Exact Label",
+  "supported_operations": ["form_leads", "call_leads"]
+}
+```
 
 ### List or inspect
 

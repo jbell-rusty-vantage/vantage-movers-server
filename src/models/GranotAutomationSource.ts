@@ -2,6 +2,10 @@ import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 
 export const GRANOT_AUTOMATION_UNSAFE_LABEL_PATTERN =
   /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
+export const GRANOT_AUTOMATION_OPERATIONS = [
+  "form_leads",
+  "call_leads",
+] as const;
 
 const GranotAutomationSourceSchema = new Schema(
   {
@@ -24,6 +28,19 @@ const GranotAutomationSourceSchema = new Schema(
       default: true,
       index: true,
     },
+    supported_operations: {
+      type: [String],
+      enum: GRANOT_AUTOMATION_OPERATIONS,
+      required: true,
+      validate: {
+        validator: (values: string[]) =>
+          values.length >= 1 &&
+          values.length <= GRANOT_AUTOMATION_OPERATIONS.length &&
+          new Set(values).size === values.length,
+        message:
+          "Granot automation sources must support one or two unique Lead workflows.",
+      },
+    },
     created_from: {
       type: String,
       required: true,
@@ -45,6 +62,10 @@ const GranotAutomationSourceSchema = new Schema(
 GranotAutomationSourceSchema.index(
   { active: 1, label: 1 },
   { name: "granot_automation_source_active_label" },
+);
+GranotAutomationSourceSchema.index(
+  { active: 1, supported_operations: 1, label: 1 },
+  { name: "granot_automation_source_active_operation_label" },
 );
 
 export type GranotAutomationSourceDocument = InferSchemaType<
