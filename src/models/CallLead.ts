@@ -134,6 +134,7 @@ const CallLeadSchema = new Schema(
     collection: "call_leads",
     autoIndex: false,
     timestamps: true,
+    optimisticConcurrency: true,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
   },

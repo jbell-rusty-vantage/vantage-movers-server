@@ -1,4 +1,5 @@
-import type { HydratedDocument } from "mongoose";
+import mongoose, { type HydratedDocument } from "mongoose";
+import { connectMongo } from "../../db";
 import { CallLead, type CallLeadDocument } from "../../models/CallLead";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import type {
@@ -8,7 +9,6 @@ import type {
 import {
   finalizeSheetSync,
   persistSheetSyncIntent,
-  runSheetSyncWrite,
   type FullSheetSyncJob,
 } from "../sheetSync";
 import {
@@ -83,17 +83,44 @@ export async function previewCallLeadEnrichment(
 
 export async function syncCallLeadEnrichment(
   input: CallLeadEnrichmentBatchInput,
+  options: {
+    expectedCallLeadId?: string | null;
+    expectedUpdatedAt?: string | null;
+    expectedReceiverAgent?: string | null;
+    targetReceiverAgent?: string | null;
+  } = {},
 ): Promise<CallLeadEnrichmentResult[]> {
   const results: CallLeadEnrichmentResult[] = [];
   for (const row of input.rows) {
     try {
       const resolved = await resolveEnrichmentRow(row);
+      if (
+        options.expectedCallLeadId !== undefined &&
+        (resolved.lead?._id.toString() ?? null) !== options.expectedCallLeadId
+      ) {
+        throw new Error("Call lead identity changed after the approved preview.");
+      }
+      if (
+        resolved.lead &&
+        options.expectedUpdatedAt !== undefined &&
+        documentUpdatedAt(resolved.lead) !== options.expectedUpdatedAt
+      ) {
+        throw new Error("Call lead changed after the approved preview.");
+      }
       const receiverMatch = resolved.lead
         ? await applyGranotCrmUsernameReceiverMatch(
             resolved.lead,
             row.granot_crm_username,
           )
         : undefined;
+      if (
+        resolved.lead &&
+        options.expectedReceiverAgent !== undefined &&
+        receiverAgentId(resolved.lead) !==
+          (options.targetReceiverAgent ?? options.expectedReceiverAgent)
+      ) {
+        throw new Error("Receiver-agent target changed after the approved preview.");
+      }
       const canWrite =
         resolved.result.status === "updateable" ||
         resolved.result.status === "unchanged";
@@ -106,31 +133,13 @@ export async function syncCallLeadEnrichment(
         continue;
       }
 
-      if (resolved.update) {
-        Object.assign(resolved.lead, resolved.update);
-      }
-      if (resolved.update?.local || resolved.update?.source_company) {
-        Object.assign(
-          resolved.lead,
-          await resolveLeadCplSnapshot({
-            sourceGranularityId: resolved.lead.source_granularity_id
-              ? String(resolved.lead.source_granularity_id)
-              : null,
-            storedBusinessTimestamp: resolved.lead.timestamp,
-          }),
-        );
-      }
-      const lead = resolved.lead;
       const job: FullSheetSyncJob = {
         resource: "source_lead",
         operation: "call_lead.enrichment.sync",
         leadModel: "CallLead",
-        leadId: lead._id.toString(),
+        leadId: resolved.lead._id.toString(),
       };
-      await runSheetSyncWrite(async (session) => {
-        await lead.save({ session });
-        await persistSheetSyncIntent(job, session);
-      });
+      await applyEnrichmentTransaction(resolved, receiverMatch, options, job);
       await finalizeSheetSync(job);
       const result = applyReceiverMatchResult(resolved.result, receiverMatch);
       results.push({
@@ -150,6 +159,93 @@ export async function syncCallLeadEnrichment(
     }
   }
   return results;
+}
+
+function receiverAgentId(lead: { receiver_agent?: unknown }): string | null {
+  return lead.receiver_agent ? String(lead.receiver_agent) : null;
+}
+
+async function applyEnrichmentTransaction(
+  resolved: ResolvedEnrichment,
+  receiverMatch: ReceiverAgentCrmUsernameMatchResult | undefined,
+  options: {
+    expectedCallLeadId?: string | null;
+    expectedUpdatedAt?: string | null;
+    expectedReceiverAgent?: string | null;
+    targetReceiverAgent?: string | null;
+  },
+  job: FullSheetSyncJob,
+): Promise<void> {
+  if (!resolved.lead) throw new Error("Call lead disappeared before enrichment.");
+  const approvedLead = resolved.lead;
+  await connectMongo();
+  const session = await mongoose.connection.startSession();
+  session.startTransaction();
+  try {
+    const lead = await CallLead.findById(approvedLead._id).session(session).orFail();
+    if (
+      options.expectedCallLeadId !== undefined &&
+      lead._id.toString() !== options.expectedCallLeadId
+    ) {
+      throw new Error("Call lead identity changed after the approved preview.");
+    }
+    if (
+      options.expectedUpdatedAt !== undefined &&
+      documentUpdatedAt(lead) !== options.expectedUpdatedAt
+    ) {
+      throw new Error("Call lead changed after the approved preview.");
+    }
+    if (
+      options.expectedReceiverAgent !== undefined &&
+      receiverAgentId(lead) !== options.expectedReceiverAgent
+    ) {
+      throw new Error("Receiver agent changed after the approved preview.");
+    }
+
+    if (resolved.update) Object.assign(lead, resolved.update);
+    if (resolved.update?.local || resolved.update?.source_company) {
+      Object.assign(
+        lead,
+        await resolveLeadCplSnapshot({
+          sourceGranularityId: lead.source_granularity_id
+            ? String(lead.source_granularity_id)
+            : null,
+          storedBusinessTimestamp: lead.timestamp,
+        }),
+      );
+    }
+    if (receiverMatch?.changed) {
+      lead.receiver_agent = approvedLead.receiver_agent;
+      lead.receiver_agent_name_snapshot =
+        approvedLead.receiver_agent_name_snapshot;
+      lead.receiver_agent_source = approvedLead.receiver_agent_source;
+      lead.receiver_agent_source_value =
+        approvedLead.receiver_agent_source_value;
+      lead.receiver_agent_set_at = approvedLead.receiver_agent_set_at;
+    }
+    if (
+      options.targetReceiverAgent !== undefined &&
+      options.targetReceiverAgent !== null &&
+      receiverAgentId(lead) !== options.targetReceiverAgent
+    ) {
+      throw new Error("Approved receiver agent could not be reproduced.");
+    }
+    await lead.save({ session });
+    await persistSheetSyncIntent(job, session);
+    await session.commitTransaction();
+  } catch (error) {
+    await session.abortTransaction().catch(() => undefined);
+    throw error;
+  } finally {
+    await session.endSession();
+  }
+}
+
+function documentUpdatedAt(document: unknown): string | null {
+  const value = (document as { updatedAt?: Date | string }).updatedAt;
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 function applyReceiverMatchResult(

@@ -1,5 +1,6 @@
 import mongoose, { type HydratedDocument } from "mongoose";
 import type { SourceCompany } from "../../config/domain";
+import { connectMongo } from "../../db";
 import { BookedLead, type BookedLeadDocument } from "../../models/BookedLead";
 import { CallLead, type CallLeadDocument } from "../../models/CallLead";
 import { Customer } from "../../models/Customer";
@@ -75,6 +76,15 @@ type ResolvedReconciliation = {
   };
 };
 
+type ReconciliationSyncOptions = {
+  expectedCallLeadId?: string | null;
+  expectedCallLeadUpdatedAt?: string | null;
+  expectedBookingId?: string | null;
+  expectedBookingUpdatedAt?: string | null;
+  expectedReceiverAgent?: string | null;
+  targetReceiverAgent?: string | null;
+};
+
 export async function previewBookedCallLeadReconciliation(
   input: BookedCallLeadReconciliationBatchInput,
 ): Promise<BookedCallLeadReconciliationResult[]> {
@@ -87,17 +97,52 @@ export async function previewBookedCallLeadReconciliation(
 
 export async function syncBookedCallLeadReconciliation(
   input: BookedCallLeadReconciliationBatchInput,
+  options: ReconciliationSyncOptions = {},
 ): Promise<BookedCallLeadReconciliationResult[]> {
   const results: BookedCallLeadReconciliationResult[] = [];
   for (const row of input.rows) {
     try {
       const resolved = await resolveReconciliationRow(row);
+      if (
+        options.expectedCallLeadId !== undefined &&
+        (resolved.lead?._id.toString() ?? null) !== options.expectedCallLeadId
+      ) {
+        throw new Error("Call lead identity changed after the approved preview.");
+      }
+      if (
+        options.expectedBookingId !== undefined &&
+        (resolved.booking?._id.toString() ?? null) !== options.expectedBookingId
+      ) {
+        throw new Error("Booking identity changed after the approved preview.");
+      }
+      if (
+        resolved.lead &&
+        options.expectedCallLeadUpdatedAt !== undefined &&
+        documentUpdatedAt(resolved.lead) !== options.expectedCallLeadUpdatedAt
+      ) {
+        throw new Error("Call lead changed after the approved preview.");
+      }
+      if (
+        resolved.booking &&
+        options.expectedBookingUpdatedAt !== undefined &&
+        documentUpdatedAt(resolved.booking) !== options.expectedBookingUpdatedAt
+      ) {
+        throw new Error("Booking changed after the approved preview.");
+      }
       const receiverMatch = resolved.lead
         ? await applyGranotCrmUsernameReceiverMatch(
             resolved.lead,
             row.granot_crm_username,
           )
         : undefined;
+      if (
+        resolved.lead &&
+        options.expectedReceiverAgent !== undefined &&
+        receiverAgentId(resolved.lead) !==
+          (options.targetReceiverAgent ?? options.expectedReceiverAgent)
+      ) {
+        throw new Error("Receiver-agent target changed after the approved preview.");
+      }
       const canWrite =
         resolved.result.status === "updateable" ||
         resolved.result.status === "unchanged";
@@ -113,38 +158,13 @@ export async function syncBookedCallLeadReconciliation(
         continue;
       }
 
-      const leadChanged = Boolean(resolved.leadUpdate) || Boolean(receiverMatch?.changed);
-      if (resolved.leadUpdate) {
-        Object.assign(resolved.lead, resolved.leadUpdate);
-        Object.assign(
-          resolved.lead,
-          await resolveLeadCplSnapshot({
-            sourceGranularityId: resolved.lead.source_granularity_id
-              ? String(resolved.lead.source_granularity_id)
-              : null,
-            storedBusinessTimestamp: resolved.lead.timestamp,
-          }),
-        );
-      }
-      if (leadChanged) {
-        await resolved.lead.save();
-      }
-
-      if (resolved.booking && resolved.bookingUpdate) {
-        Object.assign(resolved.booking, resolved.bookingUpdate);
-      }
-
-      if (resolved.booking && resolved.customerInput) {
-        const customer = await Customer.findOneAndUpdate(
-          { phone_number: resolved.customerInput.phone_number },
-          resolved.customerInput,
-          { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
-        ).orFail();
-        resolved.booking.customer = customer._id;
-      }
+      await applyResolvedReconciliationTransaction(
+        resolved,
+        receiverMatch,
+        options,
+      );
 
       if (resolved.syncTarget === "booking_chain" && resolved.booking) {
-        await resolved.booking.save();
         scheduleBookingChainSheetSync(
           resolved.booking._id.toString(),
           "booked_call_lead.reconciliation.sync",
@@ -190,6 +210,151 @@ export async function syncBookedCallLeadReconciliation(
     }
   }
   return results;
+}
+
+async function applyResolvedReconciliationTransaction(
+  resolved: ResolvedReconciliation,
+  receiverMatch: ReceiverAgentCrmUsernameMatchResult | undefined,
+  options: ReconciliationSyncOptions,
+): Promise<void> {
+  if (!resolved.lead) {
+    throw new Error("Call lead disappeared before reconciliation.");
+  }
+  const approvedLead = resolved.lead;
+  await connectMongo();
+  const session = await mongoose.connection.startSession();
+  session.startTransaction();
+  try {
+    const lead = await CallLead.findById(approvedLead._id).session(session).orFail();
+    if (
+      options.expectedCallLeadId !== undefined &&
+      lead._id.toString() !== options.expectedCallLeadId
+    ) {
+      throw new Error("Call lead identity changed after the approved preview.");
+    }
+    if (
+      options.expectedCallLeadUpdatedAt !== undefined &&
+      documentUpdatedAt(lead) !== options.expectedCallLeadUpdatedAt
+    ) {
+      throw new Error("Call lead changed after the approved preview.");
+    }
+    if (
+      options.expectedReceiverAgent !== undefined &&
+      receiverAgentId(lead) !== options.expectedReceiverAgent
+    ) {
+      throw new Error("Receiver agent changed after the approved preview.");
+    }
+
+    const booking = resolved.booking
+      ? await BookedLead.findById(resolved.booking._id).session(session).orFail()
+      : undefined;
+    if (
+      options.expectedBookingId !== undefined &&
+      (booking?._id.toString() ?? null) !== options.expectedBookingId
+    ) {
+      throw new Error("Booking identity changed after the approved preview.");
+    }
+    if (
+      booking &&
+      options.expectedBookingUpdatedAt !== undefined &&
+      documentUpdatedAt(booking) !== options.expectedBookingUpdatedAt
+    ) {
+      throw new Error("Booking changed after the approved preview.");
+    }
+    if (
+      options.expectedBookingId === null &&
+      (await BookedLead.exists({
+        $or: [
+          { lead_model: "CallLead", lead_ref: lead._id },
+          ...(resolved.result.job_no
+            ? [{ job_no: resolved.result.job_no }]
+            : []),
+        ],
+      }).session(session))
+    ) {
+      throw new Error("A booking appeared after the approved preview.");
+    }
+
+    const leadChanged =
+      Boolean(resolved.leadUpdate) || Boolean(receiverMatch?.changed);
+    if (resolved.leadUpdate) {
+      Object.assign(lead, resolved.leadUpdate);
+      Object.assign(
+        lead,
+        await resolveLeadCplSnapshot({
+          sourceGranularityId: lead.source_granularity_id
+            ? String(lead.source_granularity_id)
+            : null,
+          storedBusinessTimestamp: lead.timestamp,
+        }),
+      );
+    }
+    if (receiverMatch?.changed) {
+      lead.receiver_agent = approvedLead.receiver_agent;
+      lead.receiver_agent_name_snapshot =
+        approvedLead.receiver_agent_name_snapshot;
+      lead.receiver_agent_source = approvedLead.receiver_agent_source;
+      lead.receiver_agent_source_value =
+        approvedLead.receiver_agent_source_value;
+      lead.receiver_agent_set_at = approvedLead.receiver_agent_set_at;
+    }
+    if (
+      options.targetReceiverAgent !== undefined &&
+      options.targetReceiverAgent !== null &&
+      receiverAgentId(lead) !== options.targetReceiverAgent
+    ) {
+      throw new Error("Approved receiver agent could not be reproduced.");
+    }
+    if (leadChanged) {
+      await lead.save({ session });
+    } else {
+      const guarded = await CallLead.updateOne(
+        { _id: lead._id, __v: lead.__v },
+        { $inc: { __v: 1 } },
+        { session, timestamps: false },
+      ).exec();
+      if (guarded.modifiedCount !== 1) {
+        throw new Error("Call lead changed while applying the approved preview.");
+      }
+    }
+
+    if (booking && resolved.bookingUpdate) {
+      Object.assign(booking, resolved.bookingUpdate);
+    }
+    if (booking && resolved.customerInput) {
+      const customer = await Customer.findOneAndUpdate(
+        { phone_number: resolved.customerInput.phone_number },
+        { $setOnInsert: resolved.customerInput },
+        {
+          upsert: true,
+          returnDocument: "after",
+          setDefaultsOnInsert: true,
+          session,
+        },
+      ).orFail();
+      booking.customer = customer._id;
+    }
+    if (resolved.syncTarget === "booking_chain" && booking) {
+      await booking.save({ session });
+    }
+    await session.commitTransaction();
+  } catch (error) {
+    await session.abortTransaction().catch(() => undefined);
+    throw error;
+  } finally {
+    await session.endSession();
+  }
+}
+
+function receiverAgentId(lead: { receiver_agent?: unknown }): string | null {
+  return lead.receiver_agent ? String(lead.receiver_agent) : null;
+}
+
+function documentUpdatedAt(document: unknown): string | null {
+  const value = (document as { updatedAt?: Date | string }).updatedAt;
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 function applyReceiverMatchResult(
@@ -320,6 +485,7 @@ async function resolveReconciliationRow(
       !sameObjectId(booking.customer, await findExistingCustomerId(customerInput.phone_number)))
   ) {
     changes.push("booking.customer");
+    changes.push("customer.create_or_link");
   }
 
   if (changes.length === 0) {

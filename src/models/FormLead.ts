@@ -107,6 +107,7 @@ const FormLeadSchema = new Schema(
   {
     collection: "form_leads",
     autoIndex: false,
+    optimisticConcurrency: true,
     timestamps: true,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },

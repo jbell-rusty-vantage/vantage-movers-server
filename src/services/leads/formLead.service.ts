@@ -355,10 +355,24 @@ async function dispatchLeadMessageAfterPersist(
   }
 }
 
-export async function updateFormLead(id: string, input: UpdateFormLeadInput) {
+export async function updateFormLead(
+  id: string,
+  input: UpdateFormLeadInput,
+  options: { expected?: Record<string, unknown> } = {},
+) {
   const FormLead = getFormLeadModel();
-  const lead = await FormLead.findById(id);
+  const lead = options.expected
+    ? await FormLead.findOne({ _id: id, ...options.expected })
+    : await FormLead.findById(id);
   if (!lead) {
+    if (options.expected) {
+      throw new ConflictError(
+        "Form lead changed after preview; reload before applying",
+        {
+          metadata: { resource: "form_lead", id, reason: "preview_drift" },
+        },
+      );
+    }
     throw new NotFoundError("Form lead not found", {
       metadata: { resource: "form_lead", id },
     });

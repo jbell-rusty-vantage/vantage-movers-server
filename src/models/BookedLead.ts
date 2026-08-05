@@ -91,6 +91,7 @@ const BookedLeadSchema = new Schema(
     collection: "booked_leads",
     autoIndex: false,
     timestamps: true,
+    optimisticConcurrency: true,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
   },
