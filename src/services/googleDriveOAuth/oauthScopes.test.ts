@@ -51,3 +51,26 @@ test("OAuth scope normalization is order-insensitive", () => {
     ]),
   );
 });
+
+test("Google userinfo.email URI is treated as the email scope", () => {
+  assert.deepEqual(
+    normalizeOAuthScopes([
+      "openid",
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/drive.file",
+    ]),
+    normalizeOAuthScopes([
+      "openid",
+      "email",
+      "https://www.googleapis.com/auth/drive.file",
+    ]),
+  );
+  assert.equal(
+    scopesMatchAllowedSet([
+      "https://www.googleapis.com/auth/drive.file",
+      "openid",
+      "https://www.googleapis.com/auth/userinfo.email",
+    ]),
+    true,
+  );
+});
