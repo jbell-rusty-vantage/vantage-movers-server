@@ -10,13 +10,13 @@ export function stableOwnerIdFromEmail(email: string): string {
 }
 
 export function ownerIdentitySnapshotFromEmail(email: string): {
-  stableOwnerId: string;
-  maskedEmail: string;
+  stable_owner_id: string;
+  masked_email: string;
 } {
   const normalized = email.trim().toLowerCase();
   return {
-    stableOwnerId: stableOwnerIdFromEmail(normalized),
-    maskedEmail: maskEmailForLog(normalized),
+    stable_owner_id: stableOwnerIdFromEmail(normalized),
+    masked_email: maskEmailForLog(normalized),
   };
 }
 
