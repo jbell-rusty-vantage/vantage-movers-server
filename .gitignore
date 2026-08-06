@@ -72,6 +72,7 @@ coverage/
 **/internal_hidden_docs/** 
 
 .env*.local
+/.env.granot-webhook.local
 
 
 scripts/docs/**   

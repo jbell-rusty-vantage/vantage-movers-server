@@ -15,7 +15,7 @@ alwaysApply: true
 - `src/routes/` owns HTTP boundaries. Keep routes thin: authenticate, parse with Zod, call services, format responses, and avoid business logic.
 - `src/routes/v1.routes.ts` is the main surface: public `/api/v1/*` writes/reads, extension-facing browse/enrichment/reconciliation, Granot CSV uploads, admin browse/search/export/analytics, catalog/CPL admin, sheet-sync ops, and observability admin. Mounted last so cron/webhook routes stay separate.
 - `src/routes/extension-auth.routes.ts` serves `/api/v1/extension/auth/*` (login, refresh, me, logout) without `x-api-secret`; mounted inside `v1.routes.ts` before the auth guard.
-- Cron/webhook routes mount directly from `api/index.ts`: RingCentral webhooks + cron, sheet-sync drain cron, notification digest cron.
+- Cron/webhook routes mount directly from `api/index.ts`: RingCentral webhooks + cron, Granot webhook capture, sheet-sync drain cron, notification digest cron.
 - `src/validation/` owns request/operation schemas. `src/validation/v1.validation.ts` is the public v1 barrel; detailed schemas live in `src/validation/v1/`.
 - `src/models/` owns runtime Mongoose schemas and shared schema helpers. Mongo/API fields stay `snake_case`; only Google Sheets projections produce owner-facing Title Case columns.
 - `src/config/domain/` owns mode-aware domain configuration (`runtime`, `sources`, `sheets`, `cpl`, `sheetSync`, `granotCsv`, `observability`, `googleAuth`, `constants`). Re-exported by `src/config/domain.ts`. Add source companies, sheet tabs, headers, CPL rules, Mongo database names, and Google auth env selection here instead of scattering `process.env` reads.
@@ -58,6 +58,7 @@ Form-lead sync from the extension uses public `PATCH /api/v1/form-leads/:id` (in
 ## Services — External Integrations
 
 - `src/services/crm/` — Granot CRM submission for inbound form leads (`crm.service.ts`, payload builders, `crmConfig.ts`). Invoked from form-lead create/update paths; not a route boundary.
+- `src/services/granotWebhooks/` — Authenticated, schema-flexible capture of Granot lead-created, priority-updated, and booking-status webhook receipts. Initial capture is durable only and does not mutate lead or booking state.
 - `src/services/googleSheets/` — Google Sheets API client, tab/target resolution, row lookup, batch sync/delete, diagnostics. `projections/` maps Mongo documents to owner-facing sheet rows (`formLeadRow`, `callLeadRow`, `bookedLeadRow`, shared `cells.ts`).
 - `src/services/sheetSync/` — Write-behind outbox for Google Sheets. Domain writes enqueue jobs (`sheetSyncOutbox.service.ts`); coordinator runs transactional Mongo writes + intent persistence (`sheetSyncCoordinator.ts`); drainer batches jobs with leases/quota limits (`drainer/`); queue publish/wakeup (`sheetSyncQueue.service.ts`). Models: `SheetSyncJob`, `SheetSyncRun`, `SheetSyncAttempt`, `SheetSyncLease`, `SheetSyncQuotaBucket`. Config: `src/config/domain/sheetSync.ts`.
 - `src/services/googleAuth/` — Service-account credential loading for Sheets (separate from `googleSheets/auth.ts` client wiring).

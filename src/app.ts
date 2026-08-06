@@ -12,6 +12,7 @@ import bookingReconciliationCronRoutes from "./routes/booking-reconciliation-cro
 import ringCentralCronRoutes from "./routes/ringcentral-cron.routes";
 import ringCentralWebhookLocalRoutes from "./routes/ringcentral-webhook-local.routes";
 import ringCentralWebhookRoutes from "./routes/ringcentral-webhook.routes";
+import granotWebhookRoutes from "./routes/granot-webhook.routes";
 import sheetSyncCronRoutes from "./routes/sheet-sync-cron.routes";
 import leadMessagingCronRoutes from "./routes/lead-messaging-cron.routes";
 import cplCorrectionCronRoutes from "./routes/cpl-correction-cron.routes";
@@ -49,6 +50,7 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 app.use(ringCentralWebhookRoutes);
+app.use(granotWebhookRoutes);
 app.use(ringCentralWebhookLocalRoutes);
 app.use(ringCentralCronRoutes);
 app.use(bookingReconciliationCronRoutes);

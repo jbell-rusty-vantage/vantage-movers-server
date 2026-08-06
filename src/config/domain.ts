@@ -37,6 +37,7 @@ export * from "./domain/googleDriveOAuth";
 export * from "./domain/googlePicker";
 export * from "./domain/sheetSync";
 export * from "./domain/granotCsv";
+export * from "./domain/granotWebhook";
 export * from "./domain/observability";
 export * from "./domain/reportingLiveTest";
 export * from "./domain/leadMessaging";
