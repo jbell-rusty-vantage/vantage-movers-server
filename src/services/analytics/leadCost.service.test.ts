@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { CallLead } from "../../models/CallLead";
 import { FormLead } from "../../models/FormLead";
+import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
+import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
 import { analyticsQuerySchema } from "../../validation/v1.validation";
 import { getLeadCost } from "./leadCost.service";
 
@@ -9,10 +11,16 @@ type MutableModel = Record<string, unknown>;
 
 const originalFormAggregate = FormLead.aggregate as unknown;
 const originalCallAggregate = CallLead.aggregate as unknown;
+const SourceCompany = getLeadSourceCompanyModel();
+const SourceGranularity = getLeadSourceGranularityModel();
+const originalCompanyFind = SourceCompany.find as unknown;
+const originalGranularityFind = SourceGranularity.find as unknown;
 
 afterEach(() => {
   (FormLead as unknown as MutableModel).aggregate = originalFormAggregate;
   (CallLead as unknown as MutableModel).aggregate = originalCallAggregate;
+  (SourceCompany as unknown as MutableModel).find = originalCompanyFind;
+  (SourceGranularity as unknown as MutableModel).find = originalGranularityFind;
 });
 
 test("lead cost excludes duplicate form leads and unmatched call leads", async () => {
@@ -34,6 +42,28 @@ test("lead cost excludes duplicate form leads and unmatched call leads", async (
     callPipelines.push(pipeline);
     return Promise.resolve([]);
   };
+  (SourceCompany as unknown as MutableModel).find = () =>
+    queryResult([
+      {
+        _id: "company-1",
+        company_slug: "tbm_leads",
+        name: "TBM Leads",
+        owner_label: "TBM Leads",
+        active: true,
+      },
+    ]);
+  (SourceGranularity as unknown as MutableModel).find = () =>
+    queryResult([
+      {
+        _id: "granularity-1",
+        source_company: "company-1",
+        granularity_key: "unknown",
+        owner_label: "Unknown",
+        crm_label: "Unknown",
+        channel: "form",
+        active: true,
+      },
+    ]);
 
   const query = analyticsQuerySchema.parse({ database_scope: "production" });
   const result = await getLeadCost(
@@ -55,4 +85,21 @@ test("lead cost excludes duplicate form leads and unmatched call leads", async (
   assert.match(JSON.stringify(formPipelines[0][0]), /duplicate/);
   assert.match(JSON.stringify(callPipelines[0][0]), /created_on_unmatched/);
   assert.match(JSON.stringify(formPipelines[0][1]), /cpl_resolution_status/);
+  assert.match(
+    JSON.stringify(formPipelines[0][1]),
+    /source_granularity_key/,
+  );
+  assert.equal(
+    result.by_source_company[0].granularities instanceof Array,
+    true,
+  );
 });
+
+function queryResult(rows: Record<string, unknown>[]) {
+  const query = {
+    sort: () => query,
+    lean: () => query,
+    exec: () => Promise.resolve(rows),
+  };
+  return query;
+}

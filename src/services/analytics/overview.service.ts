@@ -12,6 +12,11 @@ import { bookedLeadPrefix, type AnalyticsRow } from "./analyticsFilters";
 import { mergeAnalyticsPayload, mergeRows, type AnalyticsPayload } from "./analyticsMerge";
 import { getLeadCost, type LeadCostResult } from "./leadCost.service";
 import { getSummary } from "./summary.service";
+import {
+  loadProductionSourceLabelIndex,
+  nestSourceCompanyRows,
+  type SourceLabelIndex,
+} from "./sourceHierarchy";
 
 export type OverviewPeriod = {
   from: string;
@@ -51,8 +56,19 @@ export function rollingLast7DaysWindow(): { from: Date; to: Date } {
 
 export async function getOverviewReport(query: OverviewQuery): Promise<OverviewResponse> {
   const scopes = concreteScopes(query.database_scope);
+  const sourceLabels =
+    query.database_scope === "production"
+      ? await loadProductionSourceLabelIndex()
+      : undefined;
   const allTimePayloads = await Promise.all(
-    scopes.map((scope) => buildAllTimeSection(getAdminModels(scope), scope, query.database_scope)),
+    scopes.map((scope) =>
+      buildAllTimeSection(
+        getAdminModels(scope),
+        scope,
+        query.database_scope,
+        sourceLabels,
+      ),
+    ),
   );
   const all_time = mergeOverviewAllTime(allTimePayloads, query.database_scope);
 
@@ -64,7 +80,12 @@ export async function getOverviewReport(query: OverviewQuery): Promise<OverviewR
       from: from.toISOString(),
       to: to.toISOString(),
     });
-    last_7_days = await buildLast7DaysSection(getAdminModels("production"), rangeQuery, { from, to });
+    last_7_days = await buildLast7DaysSection(
+      getAdminModels("production"),
+      rangeQuery,
+      { from, to },
+      sourceLabels!,
+    );
   }
 
   return {
@@ -79,6 +100,7 @@ async function buildAllTimeSection(
   models: AdminModels,
   scope: ConcreteAdminScope,
   requestedScope: AdminDatabaseScope,
+  sourceLabels?: SourceLabelIndex,
 ): Promise<OverviewAllTime> {
   const emptyQuery = analyticsQuerySchema.parse({ database_scope: scope });
   const [summary, topAgents] = await Promise.all([
@@ -88,7 +110,7 @@ async function buildAllTimeSection(
 
   const lead_cost =
     requestedScope === "production" && scope === "production"
-      ? await getLeadCost(models, emptyQuery)
+      ? await getLeadCost(models, emptyQuery, sourceLabels)
       : null;
 
   return {
@@ -102,11 +124,12 @@ async function buildLast7DaysSection(
   models: AdminModels,
   query: ReturnType<typeof analyticsQuerySchema.parse>,
   window: { from: Date; to: Date },
+  sourceLabels: SourceLabelIndex,
 ): Promise<OverviewLast7Days> {
   const [summary, by_source_company, lead_cost, top_agents] = await Promise.all([
     getSummary(models, query),
-    getSalesBySourceCompany(models, query),
-    getLeadCost(models, query),
+    getSalesBySourceCompany(models, query, sourceLabels),
+    getLeadCost(models, query, sourceLabels),
     getTopAgentsByDeposit(models, query, 5),
   ]);
 
@@ -125,26 +148,35 @@ async function buildLast7DaysSection(
 async function getSalesBySourceCompany(
   models: AdminModels,
   query: ReturnType<typeof analyticsQuerySchema.parse>,
+  sourceLabels: SourceLabelIndex,
 ): Promise<AnalyticsRow[]> {
-  return models["booked-leads"].aggregate([
+  const leaves = await models["booked-leads"].aggregate([
     ...bookedLeadPrefix(query),
     {
       $group: {
-        _id: "$derived_source_company",
+        _id: {
+          source_company: "$derived_source_company",
+          source_granularity_key: {
+            $ifNull: ["$derived_source_granularity_key", "unknown"],
+          },
+        },
         bookings: { $sum: 1 },
         total_deposit_amount: { $sum: { $ifNull: ["$deposit_amount", 0] } },
       },
     },
-    {
-      $project: {
-        _id: 0,
-        source_company: "$_id",
-        bookings: 1,
-        total_deposit_amount: { $round: ["$total_deposit_amount", 2] },
-      },
-    },
-    { $sort: { total_deposit_amount: -1, bookings: -1, source_company: 1 } },
   ]);
+  return nestSourceCompanyRows(leaves, sourceLabels, {
+    additiveFields: ["bookings", "total_deposit_amount"],
+    derive: (row) => ({
+      ...row,
+      total_deposit_amount:
+        Math.round((Number(row.total_deposit_amount ?? 0) + Number.EPSILON) * 100) / 100,
+    }),
+    sort: (left, right) =>
+      Number(right.total_deposit_amount) - Number(left.total_deposit_amount) ||
+      Number(right.bookings) - Number(left.bookings) ||
+      left.source_company.localeCompare(right.source_company),
+  });
 }
 
 export function mergeOverviewAllTime(

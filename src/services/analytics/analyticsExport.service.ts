@@ -19,6 +19,10 @@ const CSV_COLUMNS: Record<AnalyticsReport, string[]> = {
   "revenue-trend": ["period", "bookings", "cancelled_bookings", "total_deposit_amount", "total_binder_amount", "cancellation_rate"],
   "source-company-performance": [
     "source_company",
+    "source_company_label",
+    "source_granularity_key",
+    "source_granularity_label",
+    "channel",
     "bookings",
     "cancelled_bookings",
     "active_bookings",
@@ -47,6 +51,10 @@ const CSV_COLUMNS: Record<AnalyticsReport, string[]> = {
   ],
   "source-company-funnel": [
     "source_company",
+    "source_company_label",
+    "source_granularity_key",
+    "source_granularity_label",
+    "channel",
     "total_leads",
     "form_leads",
     "call_leads",
@@ -131,7 +139,10 @@ export async function exportAnalyticsReportCsv(
   };
 }
 
-function rowsForCsv(report: AnalyticsReport, data: Record<string, unknown>): CsvRow[] {
+export function rowsForCsv(
+  report: AnalyticsReport,
+  data: Record<string, unknown>,
+): CsvRow[] {
   if (report === "summary") {
     return [objectValue(data.totals)];
   }
@@ -146,6 +157,21 @@ function rowsForCsv(report: AnalyticsReport, data: Record<string, unknown>): Csv
       ...arrayValue(data.form_lanes).map((row) => ({ lead_type: "form", ...row })),
       ...arrayValue(data.call_lanes).map((row) => ({ lead_type: "call", ...row })),
     ];
+  }
+  if (
+    report === "source-company-performance" ||
+    report === "source-company-funnel"
+  ) {
+    return arrayValue(data.items).flatMap((company) => {
+      const granularities = arrayValue(company.granularities);
+      const { granularities: _ignored, ...parent } = company;
+      if (!granularities.length) return [parent];
+      return granularities.map((granularity) => ({
+        source_company: company.source_company,
+        source_company_label: company.source_company_label,
+        ...granularity,
+      }));
+    });
   }
   return arrayValue(data.items);
 }

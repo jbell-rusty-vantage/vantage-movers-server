@@ -2,11 +2,18 @@ import type { AnalyticsQuery } from "../../validation/v1.validation";
 import type { AdminModels } from "../admin/adminScope.service";
 import {
   leadMatch,
-  normalizeSourceDimension,
   numberValue,
   roundMoney,
   type AnalyticsRow,
 } from "./analyticsFilters";
+import {
+  companyOnlySourceRows,
+  loadProductionSourceLabelIndex,
+  nestSourceCompanyRows,
+  sourceCompanyFromRow,
+  sourceGranularityFromRow,
+  type SourceLabelIndex,
+} from "./sourceHierarchy";
 
 export type LeadCostResult = {
   total: number;
@@ -41,13 +48,21 @@ function billableCallLeadMatch(query: AnalyticsQuery): Record<string, unknown> {
 async function leadCostRowsBySource(
   models: AdminModels,
   query: AnalyticsQuery,
+  sourceLabels?: SourceLabelIndex,
 ): Promise<AnalyticsRow[]> {
+  const supportsSourceGranularity = query.database_scope === "production";
+  const groupId = supportsSourceGranularity
+    ? {
+        source_company: "$source_company",
+        source_granularity_key: { $ifNull: ["$source_granularity_key", "unknown"] },
+      }
+    : "$source_company";
   const [formRows, callRows] = await Promise.all([
     models["form-leads"].aggregate([
       { $match: billableFormLeadMatch(query) },
       {
         $group: {
-          _id: "$source_company",
+          _id: groupId,
           lead_count: { $sum: 1 },
           unresolved_cpl_count: {
             $sum: { $cond: [{ $eq: ["$cpl_resolution_status", "missing_rate"] }, 1, 0] },
@@ -68,7 +83,7 @@ async function leadCostRowsBySource(
       { $match: billableCallLeadMatch(query) },
       {
         $group: {
-          _id: "$source_company",
+          _id: groupId,
           lead_count: { $sum: 1 },
           unresolved_cpl_count: {
             $sum: { $cond: [{ $eq: ["$cpl_resolution_status", "missing_rate"] }, 1, 0] },
@@ -89,9 +104,16 @@ async function leadCostRowsBySource(
 
   const bySource = new Map<string, AnalyticsRow>();
   for (const row of [...formRows, ...callRows]) {
-    const source = normalizeSourceDimension(row._id);
-    const existing = bySource.get(source) ?? {
+    const source = sourceCompanyFromRow(row);
+    const granularity = supportsSourceGranularity
+      ? sourceGranularityFromRow(row)
+      : "";
+    const key = `${source}|${granularity}`;
+    const existing = bySource.get(key) ?? {
       source_company: source,
+      ...(supportsSourceGranularity
+        ? { source_granularity_key: granularity }
+        : {}),
       lead_count: 0,
       unresolved_cpl_count: 0,
       total_lead_cost: 0,
@@ -101,25 +123,42 @@ async function leadCostRowsBySource(
       numberValue(existing.unresolved_cpl_count) +
       numberValue(row.unresolved_cpl_count);
     existing.total_lead_cost = numberValue(existing.total_lead_cost) + numberValue(row.total_lead_cost);
-    bySource.set(source, existing);
+    bySource.set(key, existing);
   }
 
-  return Array.from(bySource.values())
+  const leaves = Array.from(bySource.values())
     .map((row) => ({
       source_company: row.source_company,
+      ...(supportsSourceGranularity
+        ? { source_granularity_key: row.source_granularity_key }
+        : {}),
       lead_count: numberValue(row.lead_count),
       unresolved_cpl_count: numberValue(row.unresolved_cpl_count),
       total_lead_cost: roundMoney(numberValue(row.total_lead_cost)),
-    }))
-    .sort(
-      (left, right) =>
-        numberValue(right.total_lead_cost) - numberValue(left.total_lead_cost) ||
-        String(left.source_company).localeCompare(String(right.source_company)),
-    );
+    }));
+  const sort = (left: AnalyticsRow, right: AnalyticsRow) =>
+    numberValue(right.total_lead_cost) - numberValue(left.total_lead_cost) ||
+    String(left.source_company).localeCompare(String(right.source_company));
+  if (!supportsSourceGranularity) {
+    return companyOnlySourceRows(leaves, { sort });
+  }
+  const labels = sourceLabels ?? await loadProductionSourceLabelIndex();
+  return nestSourceCompanyRows(leaves, labels, {
+    additiveFields: ["lead_count", "unresolved_cpl_count", "total_lead_cost"],
+    derive: (row) => ({
+      ...row,
+      total_lead_cost: roundMoney(numberValue(row.total_lead_cost)),
+    }),
+    sort,
+  });
 }
 
-export async function getLeadCost(models: AdminModels, query: AnalyticsQuery): Promise<LeadCostResult> {
-  const by_source_company = await leadCostRowsBySource(models, query);
+export async function getLeadCost(
+  models: AdminModels,
+  query: AnalyticsQuery,
+  sourceLabels?: SourceLabelIndex,
+): Promise<LeadCostResult> {
+  const by_source_company = await leadCostRowsBySource(models, query, sourceLabels);
   const total = roundMoney(
     by_source_company.reduce((sum, row) => sum + numberValue(row.total_lead_cost), 0),
   );

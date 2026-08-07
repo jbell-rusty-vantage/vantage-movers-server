@@ -16,6 +16,7 @@ const NUMERIC_FIELDS = [
   "call_leads",
   "total_leads",
   "leads",
+  "lead_count",
   "bookings",
   "booked_leads",
   "cancelled_bookings",
@@ -80,12 +81,30 @@ export function mergeRows(rows: AnalyticsRow[], keyFields: string[]): AnalyticsR
     const key = keyFields.map((field) => keyValue(field, row[field])).join("|");
     const existing = merged.get(key);
     if (!existing) {
-      merged.set(key, { ...row });
+      merged.set(key, {
+        ...row,
+        ...(Array.isArray(row.granularities)
+          ? { granularities: [...row.granularities] }
+          : {}),
+      });
       continue;
     }
     for (const field of NUMERIC_FIELDS) {
       if (field in row || field in existing) {
         existing[field] = numberValue(existing[field]) + numberValue(row[field]);
+      }
+    }
+    const incomingGranularities = arrayValue(row.granularities);
+    if (incomingGranularities.length) {
+      const existingGranularities = arrayValue(existing.granularities);
+      existing.granularities = existingGranularities.length
+        ? mergeRows(
+            [...existingGranularities, ...incomingGranularities],
+            ["source_granularity_key"],
+          )
+        : [...incomingGranularities];
+      if (typeof row.source_company_label === "string") {
+        existing.source_company_label = row.source_company_label;
       }
     }
   }
@@ -125,8 +144,15 @@ function mergeRatioPayloads(payloads: AnalyticsPayload[]): AnalyticsPayload {
 
 function deriveRates(row: AnalyticsRow): AnalyticsRow {
   const next = { ...row };
-  const bookings = numberValue(next.bookings || next.booked_leads);
-  const cancellations = numberValue(next.cancelled_bookings || next.cancelled_leads || next.cancellations);
+  const bookings = numberValue(
+    next.bookings || next.booked_leads || next.reconciled_bookings,
+  );
+  const cancellations = numberValue(
+    next.cancelled_bookings ||
+      next.cancelled_leads ||
+      next.cancellations ||
+      next.reconciled_cancelled_bookings,
+  );
   const leads = numberValue(next.total_leads || next.leads || next.received_leads);
   if (bookings || cancellations) {
     next.cancellation_rate = rate(cancellations, bookings);

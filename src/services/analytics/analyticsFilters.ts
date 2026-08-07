@@ -219,19 +219,24 @@ function sourceCompanyVariants(value: string): string[] {
 }
 
 function sourceCompanyExpression() {
-  const joinedSourceCompany = {
+  const sourceCompany = {
     $ifNull: [
-      { $arrayElemAt: ["$form_lead.source_company", 0] },
+      "$employee_source_snapshot.source_company",
       {
         $ifNull: [
-          { $arrayElemAt: ["$call_lead.source_company", 0] },
+          { $arrayElemAt: ["$form_lead.source_company", 0] },
           {
             $ifNull: [
-              { $arrayElemAt: ["$form_lead.source_company_label_snapshot", 0] },
+              { $arrayElemAt: ["$call_lead.source_company", 0] },
               {
                 $ifNull: [
-                  { $arrayElemAt: ["$call_lead.source_company_label_snapshot", 0] },
-                  { $ifNull: ["$source", "unknown"] },
+                  { $arrayElemAt: ["$form_lead.source_company_label_snapshot", 0] },
+                  {
+                    $ifNull: [
+                      { $arrayElemAt: ["$call_lead.source_company_label_snapshot", 0] },
+                      { $ifNull: ["$source", "unknown"] },
+                    ],
+                  },
                 ],
               },
             ],
@@ -243,7 +248,7 @@ function sourceCompanyExpression() {
 
   return {
     $let: {
-      vars: { sourceCompany: joinedSourceCompany },
+      vars: { sourceCompany },
       in: {
         $cond: [
           { $or: [{ $eq: ["$$sourceCompany", null] }, { $eq: ["$$sourceCompany", ""] }] },
@@ -258,8 +263,13 @@ function sourceCompanyExpression() {
 function sourceGranularityExpression() {
   return {
     $ifNull: [
-      { $arrayElemAt: ["$form_lead.source_granularity_key", 0] },
-      { $arrayElemAt: ["$call_lead.source_granularity_key", 0] },
+      "$employee_source_snapshot.source_granularity_key",
+      {
+        $ifNull: [
+          { $arrayElemAt: ["$form_lead.source_granularity_key", 0] },
+          { $arrayElemAt: ["$call_lead.source_granularity_key", 0] },
+        ],
+      },
     ],
   };
 }
