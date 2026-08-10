@@ -6,10 +6,15 @@ Granot sends three server-to-server JSON webhook event classes:
 - `POST /api/webhooks/granot/priority-updated`
 - `POST /api/webhooks/granot/booking-status-changed`
 
-Every request must send `Content-Type: application/json` and the dedicated
-secret as `x-api-secret`. The server reads the expected secret from
-`GRANOT_WEBHOOK_SECRET`. This is intentionally separate from
-`VANTAGE_API_SECRET` and is accepted only by the three Granot webhook routes.
+The preferred request format is `Content-Type: application/json` with the
+dedicated secret in the `x-api-secret` header. For compatibility with Granot's
+current client, `application/x-www-form-urlencoded` requests may instead send
+`x-api-secret` as a body field. The server removes that field before durable
+capture, so the secret is never stored with the payload.
+
+The server reads the expected secret from `GRANOT_WEBHOOK_SECRET`. This is
+intentionally separate from `VANTAGE_API_SECRET` and is accepted only by the
+three Granot webhook routes.
 
 The payload contract is intentionally open until Granot supplies real examples.
 Authenticated deliveries are stored unchanged in `granot_webhook_receipts`,

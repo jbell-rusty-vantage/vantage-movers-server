@@ -10,6 +10,7 @@ let captureShouldFail = false;
 
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(
   createGranotWebhookRouter(async (input) => {
     if (captureShouldFail) throw new Error("storage unavailable");
@@ -56,6 +57,47 @@ test("rejects a missing or incorrect Granot webhook secret", async () => {
   const incorrect = await post("lead-created", { arbitrary: true }, "wrong-secret");
   assert.equal(missing.status, 401);
   assert.equal(incorrect.status, 401);
+  assert.equal(captures.length, 0);
+});
+
+test("accepts a form-encoded body secret without storing the secret", async () => {
+  process.env.GRANOT_WEBHOOK_SECRET = "expected-secret";
+  const response = await fetch(
+    `${baseUrl}/api/webhooks/granot/booking-status-changed`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        "x-api-secret": "expected-secret",
+        event_type: "booked",
+        job_no: "567632",
+      }),
+    },
+  );
+
+  assert.equal(response.status, 202);
+  assert.equal(captures.length, 1);
+  assert.deepEqual(captures[0]?.payload, {
+    event_type: "booked",
+    job_no: "567632",
+  });
+});
+
+test("rejects an incorrect form-encoded body secret", async () => {
+  process.env.GRANOT_WEBHOOK_SECRET = "expected-secret";
+  const response = await fetch(
+    `${baseUrl}/api/webhooks/granot/booking-status-changed`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        "x-api-secret": "wrong-secret",
+        job_no: "567632",
+      }),
+    },
+  );
+
+  assert.equal(response.status, 401);
   assert.equal(captures.length, 0);
 });
 
