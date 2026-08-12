@@ -1,9 +1,14 @@
-import { resolveSourceCompanyFromLabel } from "../../config/domain";
-import { getFormLeadModel, type FormLeadDocument } from "../../models/FormLead";
 import { parseGranotCityState, parseGranotZip } from "../../utils/location/granotLocation";
 import { findAgentByGranotCrmUsername, normalizeGranotCrmUsername } from "../agents/receiverAgentCrmUsername";
-import { searchFormLeads, type FormLeadSearchMatch } from "../search/formLeadSearch.service";
 import type { GranotReportRow, GranotSourceCollection } from "./index";
+import {
+  resolveGranotFormLead,
+  type GranotFormLeadLike,
+  type GranotFormLeadMatcherDependencies,
+  type GranotFormLeadMatchMethod,
+} from "./granotFormLeadMatcher";
+
+export { selectGranotFormFallback } from "./granotFormLeadMatcher";
 
 export type GranotFormPatch = {
   quoted?: boolean;
@@ -26,11 +31,12 @@ export type GranotFormPlanAction = {
   row_id: string;
   source_label: string;
   classification: "update" | "unchanged" | "conflict" | "no_match" | "invalid";
-  match_method?: "ref_no_exact" | "fallback";
+  match_method?: GranotFormLeadMatchMethod;
   lead_id?: string;
   patch?: GranotFormPatch;
   expected?: Record<string, unknown>;
   reason?: string;
+  warnings?: string[];
 };
 
 export type GranotFormPlan = {
@@ -40,14 +46,7 @@ export type GranotFormPlan = {
   counters: Record<GranotFormPlanAction["classification"], number>;
 };
 
-type LeadLike = FormLeadDocument & {
-  createdAt: Date;
-  get(path: string): unknown;
-};
-
-export type GranotFormWorkflowDependencies = {
-  findExactRefMatches?: (refNo: string) => Promise<LeadLike[]>;
-  search?: typeof searchFormLeads;
+export type GranotFormWorkflowDependencies = GranotFormLeadMatcherDependencies & {
   resolveAgent?: typeof findAgentByGranotCrmUsername;
   beforeRow?: () => void | Promise<void>;
 };
@@ -77,50 +76,30 @@ async function planRow(
   dependencies: GranotFormWorkflowDependencies,
 ): Promise<GranotFormPlanAction> {
   const actionId = `${sourceLabel}:${row.id}`;
-  const refNo = clean(row.values.ref_no);
-  let lead: LeadLike | undefined;
-  let matchMethod: GranotFormPlanAction["match_method"];
-  if (refNo) {
-    const exact = await (
-      dependencies.findExactRefMatches ?? findExactRefMatches
-    )(refNo);
-    if (exact.length > 1) {
-      return conflict(actionId, row.id, sourceLabel, "duplicate_exact_ref");
-    }
-    if (exact.length === 1) {
-      lead = exact[0];
-      matchMethod = "ref_no_exact";
-    }
+  const match = await resolveGranotFormLead(
+    {
+      ref_no: row.values.ref_no,
+      phone_number: row.values.phone,
+      email: row.values.email,
+      name: row.values.customer,
+      source_label: sourceLabel,
+      prior: row.values.prior,
+    },
+    dependencies,
+  );
+  if (match.status !== "found") {
+    return {
+      action_id: actionId,
+      row_id: row.id,
+      source_label: sourceLabel,
+      classification: match.status === "conflict" ? "conflict" : "no_match",
+      match_method: match.match_method,
+      reason: match.reason,
+      warnings: match.warnings,
+    };
   }
-
-  if (!lead) {
-    const search = await (dependencies.search ?? searchFormLeads)({
-      phone_number: clean(row.values.phone),
-      email: clean(row.values.email),
-      name: clean(row.values.customer),
-      limit: 25,
-      include_duplicates: false,
-    });
-    const selected = selectGranotFormFallback(
-      search.matches,
-      sourceLabel,
-      row.values.prior,
-    );
-    if (selected.status === "conflict") {
-      return conflict(actionId, row.id, sourceLabel, "ambiguous_fallback");
-    }
-    if (!selected.lead) {
-      return {
-        action_id: actionId,
-        row_id: row.id,
-        source_label: sourceLabel,
-        classification: "no_match",
-        reason: "No non-quarantined FormLead matched phone, email, or name.",
-      };
-    }
-    lead = selected.lead;
-    matchMethod = "fallback";
-  }
+  const lead = match.lead;
+  const matchMethod = match.match_method;
 
   const patch = await buildGranotFormPatch(
     lead,
@@ -138,6 +117,7 @@ async function planRow(
       classification: "unchanged",
       match_method: matchMethod,
       lead_id: String(lead._id),
+      warnings: match.warnings,
     };
   }
   const changedPatch = Object.fromEntries(changed) as GranotFormPatch;
@@ -149,51 +129,15 @@ async function planRow(
     match_method: matchMethod,
     lead_id: String(lead._id),
     patch: changedPatch,
+    warnings: match.warnings,
     expected: Object.fromEntries(
       changed.map(([path]) => [path, serializeExpected(lead!.get(path))]),
     ),
   };
 }
 
-async function findExactRefMatches(refNo: string): Promise<LeadLike[]> {
-  const FormLead = getFormLeadModel();
-  return (await FormLead.find({
-    ref_no: refNo,
-    duplicate: { $ne: true },
-  })
-    .limit(3)
-    .exec()) as unknown as LeadLike[];
-}
-
-export function selectGranotFormFallback(
-  matches: FormLeadSearchMatch[],
-  sourceLabel: string,
-  prior: string | undefined,
-): { lead?: LeadLike; status: "found" | "not_found" | "conflict" } {
-  if (!matches.length) return { status: "not_found" };
-  const bestScore = matches[0].score;
-  let candidates = matches.filter((match) => match.score === bestScore);
-  const sourceCompany = resolveSourceCompanyFromLabel(sourceLabel);
-  if (sourceCompany) {
-    const sourceMatches = candidates.filter(
-      ({ lead }) => String(lead.source_company ?? "") === sourceCompany,
-    );
-    if (sourceMatches.length) candidates = sourceMatches;
-  }
-  if (candidates.length > 1 && ["0", "1", "5"].includes(prior ?? "")) {
-    const expectedQuoted = prior === "1" || prior === "5";
-    const quotedMatches = candidates.filter(
-      ({ lead }) => lead.quoted === expectedQuoted,
-    );
-    if (quotedMatches.length) candidates = quotedMatches;
-  }
-  return candidates.length === 1
-    ? { status: "found", lead: candidates[0].lead as unknown as LeadLike }
-    : { status: "conflict" };
-}
-
 export async function buildGranotFormPatch(
-  lead: LeadLike,
+  lead: GranotFormLeadLike,
   row: GranotReportRow,
   resolveAgent: typeof findAgentByGranotCrmUsername = findAgentByGranotCrmUsername,
 ): Promise<GranotFormPatch> {
@@ -330,6 +274,7 @@ function countActions(
 // Kept exported for focused tests of the strict fallback identity vocabulary.
 export const granotFormIdentityFields = Object.freeze([
   "ref_no",
+  "_id",
   "phone_number",
   "email",
   "name",

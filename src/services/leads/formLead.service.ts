@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import {
   getSheetSyncMode,
   isTestMode,
@@ -380,7 +381,11 @@ export async function updateFormLead(
 
   if (
     lead.duplicate &&
-    (input.quoted !== undefined || input.cubic_feet !== undefined)
+    (
+      input.quoted !== undefined ||
+      input.cubic_feet !== undefined ||
+      input.receiver_agent_source === "extension_crm_username_match"
+    )
   ) {
     throw new ConflictError(
       "Cannot update quoted or cubic_feet on a duplicate form lead",
@@ -485,17 +490,30 @@ export async function updateFormLead(
     lead.receiver_agent_set_at = new Date();
   }
 
-  const job = await runSheetSyncWrite(async (session) => {
-    await lead.save({ session });
-    const refreshJob = await refreshAttachedBookingFromLead(
-      lead,
-      "FormLead",
-      "form_lead.update",
-      session,
-    );
-    await persistSheetSyncIntent(refreshJob, session);
-    return refreshJob;
-  });
+  let job: FullSheetSyncJob;
+  try {
+    job = await runSheetSyncWrite(async (session) => {
+      await lead.save({ session });
+      const refreshJob = await refreshAttachedBookingFromLead(
+        lead,
+        "FormLead",
+        "form_lead.update",
+        session,
+      );
+      await persistSheetSyncIntent(refreshJob, session);
+      return refreshJob;
+    });
+  } catch (error) {
+    if (error instanceof mongoose.Error.VersionError) {
+      throw new ConflictError(
+        "Form lead changed after preview; reload before applying",
+        {
+          metadata: { resource: "form_lead", id, reason: "preview_drift" },
+        },
+      );
+    }
+    throw error;
+  }
   await finalizeSheetSync(job);
   if (lead.cpl_resolution_status === "missing_rate") {
     await recordMissingLeadCplRate({
@@ -523,7 +541,7 @@ export async function findAllFormLeads() {
 export async function findFormLead(id: string) {
   const FormLead = getFormLeadModel();
   const lead = await FormLead.findById(id).select(
-    "_id ref_no quoted cubic_feet pickup_city pickup_zip pickup_state delivery_city destination_zip delivery_state booked duplicate receiver_agent receiver_agent_name_snapshot receiver_agent_source receiver_agent_source_value",
+    "_id ref_no source_company quoted cubic_feet pickup_city pickup_zip pickup_state delivery_city destination_zip delivery_state booked duplicate receiver_agent receiver_agent_name_snapshot receiver_agent_source receiver_agent_source_value",
   );
   if (!lead || lead.duplicate) {
     throw new NotFoundError("Form lead not found", {

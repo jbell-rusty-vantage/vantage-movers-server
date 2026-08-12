@@ -32,6 +32,10 @@ import {
   exportReportRunCsv,
 } from "../services/observability";
 import { searchFormLeads } from "../services/formLeadSearch.service";
+import {
+  resolveGranotFormLead,
+  type GranotFormLeadLike,
+} from "../services/granotHttpCollector/granotFormLeadMatcher";
 import { searchCallLeads } from "../services/callLeadSearch.service";
 import { browseCallLeads, browseFormLeads } from "../services/search";
 import {
@@ -163,6 +167,8 @@ import {
   resolveBookingLeadReconciliationSchema,
   searchCallLeadsSchema,
   searchFormLeadsSchema,
+  resolveGranotFormLeadSchema,
+  granotFormLeadSyncSchema,
   uploadGranotCrmCsvSchema,
   updatePendingEmployeeBookingSchema,
   updateBookedLeadSchema,
@@ -519,10 +525,12 @@ router.get("/api/v1/granot-crm/csv/sources", handleGranotCrmCsvSources);
 router.post("/api/v1/granot-crm/csv/uploads", handleGranotCrmCsvUpload);
 
 router.get("/api/v1/form-leads", handleBrowseFormLeads);
+router.post("/api/v1/form-leads/granot-match", handleResolveGranotFormLead);
 router.get("/api/v1/form-leads/:id", handleFindOne(findFormLead));
 router.post("/api/v1/form-leads/search", handleSearchFormLeads);
 router.post("/api/v1/create-form-test", handleCreateFormLeadTest);
 router.post("/api/v1/form-leads", handleCreateFormLead);
+router.patch("/api/v1/form-leads/:id/granot-sync", handleGranotFormLeadSync);
 router.patch("/api/v1/form-leads/:id", handleUpdateFormLead);
 router.delete("/api/v1/form-leads/:id", handleDelete(deleteFormLead));
 
@@ -1783,6 +1791,48 @@ async function handleSearchFormLeads(req: Request, res: Response) {
   }
 }
 
+async function handleResolveGranotFormLead(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const parsed = resolveGranotFormLeadSchema.parse(req.body);
+    const result = await resolveGranotFormLead(parsed);
+    return res.json({
+      ok: true,
+      data:
+        result.status === "found"
+          ? {
+              ...result,
+              lead: serializeGranotFormLead(result.lead),
+            }
+          : result,
+    });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+function serializeGranotFormLead(lead: GranotFormLeadLike) {
+  return {
+    _id: String(lead._id),
+    ref_no: lead.ref_no,
+    source_company: lead.source_company,
+    quoted: lead.quoted,
+    cubic_feet: lead.cubic_feet,
+    pickup_city: lead.pickup_city,
+    pickup_zip: lead.pickup_zip,
+    pickup_state: lead.pickup_state,
+    delivery_city: lead.delivery_city,
+    destination_zip: lead.destination_zip,
+    delivery_state: lead.delivery_state,
+    booked: lead.booked ? String(lead.booked) : null,
+    duplicate: lead.duplicate === true,
+    receiver_agent: lead.receiver_agent ? String(lead.receiver_agent) : null,
+    receiver_agent_name_snapshot: lead.receiver_agent_name_snapshot,
+    receiver_agent_source: lead.receiver_agent_source,
+    receiver_agent_source_value: lead.receiver_agent_source_value,
+  };
+}
+
 async function handleSearchCallLeads(req: Request, res: Response) {
   try {
     await connectMongo();
@@ -2101,6 +2151,61 @@ async function handleUpdateFormLead(req: Request, res: Response) {
   } catch (error) {
     return sendError(req, res, error);
   }
+}
+
+async function handleGranotFormLeadSync(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const parsed = granotFormLeadSyncSchema.parse(req.body);
+    const lead = await updateFormLead(id, parsed.patch, {
+      expected: buildGranotSyncExpectedFilter(
+        parsed.patch,
+        parsed.expected_source_company,
+        parsed.expected_snapshot,
+      ),
+    });
+    return res.json({ ok: true, data: lead });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+export function buildGranotSyncExpectedFilter(
+  patch: Record<string, unknown>,
+  sourceCompany: string,
+  expectedSnapshot: Record<string, unknown>,
+): Record<string, unknown> {
+  const clauses: Record<string, unknown>[] = [];
+  for (const field of ["pickup_city", "delivery_city"]) {
+    if (Object.prototype.hasOwnProperty.call(patch, field)) {
+      clauses.push({ [field]: { $in: [null, ""] } });
+    }
+  }
+  for (const field of ["pickup_state", "delivery_state"]) {
+    if (Object.prototype.hasOwnProperty.call(patch, field)) {
+      clauses.push({ [field]: { $in: [null, "", "not_found"] } });
+    }
+  }
+  for (const field of ["pickup_zip", "destination_zip"]) {
+    if (Object.prototype.hasOwnProperty.call(patch, field)) {
+      clauses.push({
+        $or: [
+          { [field]: { $in: [null, ""] } },
+          { [field]: { $regex: /^0+$/ } },
+        ],
+      });
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "receiver_agent")) {
+    clauses.push({ receiver_agent: null });
+  }
+  return {
+    source_company: sourceCompany,
+    duplicate: { $ne: true },
+    ...expectedSnapshot,
+    ...(clauses.length > 0 ? { $and: clauses } : {}),
+  };
 }
 
 function handleUpdate<T>(

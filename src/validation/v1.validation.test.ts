@@ -11,6 +11,8 @@ import {
   createCallLeadSchema,
   createCustomerSchema,
   createFormLeadSchema,
+  granotFormLeadSyncSchema,
+  resolveGranotFormLeadSchema,
   searchFormLeadsSchema,
   updateCallLeadSchema,
   updateFormLeadSchema,
@@ -901,6 +903,56 @@ test("searchFormLeadsSchema accepts include_duplicates to search quarantined lea
   });
 
   assert.equal(parsed.include_duplicates, true);
+});
+
+test("resolveGranotFormLeadSchema keeps provider refs and requires a Granot source", () => {
+  const parsed = resolveGranotFormLeadSchema.parse({
+    ref_no: " Mob_t3ePdBDVFn ",
+    phone_number: " 5551234567 ",
+    email: " lead@example.com ",
+    name: " Jane Customer ",
+    source_label: " Top10 Forms ",
+    prior: "5",
+  });
+
+  assert.equal(parsed.ref_no, "Mob_t3ePdBDVFn");
+  assert.equal(parsed.source_label, "Top10 Forms");
+  assert.equal(parsed.name, "Jane Customer");
+});
+
+test("granotFormLeadSyncSchema separates the patch from its source precondition", () => {
+  const parsed = granotFormLeadSyncSchema.parse({
+    patch: { quoted: true, cubic_feet: 300 },
+    expected_source_company: "top10_leads",
+    expected_snapshot: {
+      quoted: false,
+      cubic_feet: 200,
+      pickup_city: null,
+      pickup_zip: null,
+      pickup_state: "not_found",
+      delivery_city: null,
+      destination_zip: null,
+      delivery_state: "not_found",
+      receiver_agent: null,
+    },
+  });
+  assert.deepEqual(parsed.patch, { quoted: true, cubic_feet: 300 });
+  assert.equal(parsed.expected_source_company, "top10_leads");
+  assert.throws(() =>
+    granotFormLeadSyncSchema.parse({
+      patch: { quoted: true, source_company: "tbm_leads" },
+      expected_source_company: "top10_leads",
+    }),
+  );
+  assert.throws(() =>
+    granotFormLeadSyncSchema.parse({
+      patch: {
+        receiver_agent_source: "extension_crm_username_match",
+        receiver_agent_source_value: "MIKEM",
+      },
+      expected_source_company: "top10_leads",
+    }),
+  );
 });
 
 test("browseFormLeadsQuerySchema allows an empty query (view all) with defaults", () => {

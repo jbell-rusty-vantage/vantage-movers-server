@@ -8,14 +8,14 @@ import {
 } from "./formWorkflow";
 import { granotApplyEnabled } from "./runWorkflow";
 
-test("form identity vocabulary excludes Mongo ids and lids", () => {
+test("form identity vocabulary excludes lids while allowing Mongo id as a secondary lookup", () => {
   assert.deepEqual(granotFormIdentityFields, [
     "ref_no",
+    "_id",
     "phone_number",
     "email",
     "name",
   ]);
-  assert.equal(granotFormIdentityFields.includes("_id"), false);
   assert.equal(granotFormIdentityFields.includes("lid"), false);
   assert.equal(granotFormIdentityFields.includes("normalized_lid"), false);
 });
@@ -45,6 +45,24 @@ test("form planning gives exact FormLead.ref_no priority over every fallback", a
   assert.equal(searched, false);
   assert.equal(plan.actions[0]?.match_method, "ref_no_exact");
   assert.equal(plan.actions[0]?.lead_id, "lead-exact");
+});
+
+test("exact identity wins but surfaces a source-company mismatch warning", async () => {
+  const plan = await planGranotFormWorkflow(
+    [makeSource({ ref_no: "global-provider-ref", prior: "0" })],
+    {
+      findExactRefMatches: async () => [
+        makeLead("lead-exact", {
+          ref_no: "global-provider-ref",
+          source_company: "top10_leads",
+        }) as never,
+      ],
+      resolveAgent: async () => undefined,
+    },
+  );
+  assert.equal(plan.actions[0]?.match_method, "ref_no_exact");
+  assert.match(plan.actions[0]?.warnings?.[0] ?? "", /source_company/);
+  assert.match(plan.actions[0]?.warnings?.[0] ?? "", /TBM Forms/);
 });
 
 test("duplicate exact FormLead.ref_no candidates are a conflict", async () => {
@@ -103,6 +121,32 @@ test("form planning falls back only after FormLead.ref_no has no match", async (
   assert.equal(plan.actions[0]?.lead_id, "lead-fallback");
 });
 
+test("form planning resolves an ObjectId ref_no only after exact field lookup misses", async () => {
+  const calls: string[] = [];
+  const mongoId = "6a72c49b1009d5e86400d193";
+  const lead = makeLead(mongoId, { ref_no: "provider-ref" });
+  const plan = await planGranotFormWorkflow(
+    [makeSource({ ref_no: mongoId, prior: "5" })],
+    {
+      findExactRefMatches: async () => {
+        calls.push("ref_no_exact");
+        return [];
+      },
+      findByMongoId: async (id) => {
+        calls.push(`mongo_id:${id}`);
+        return lead as never;
+      },
+      search: async () => {
+        throw new Error("fallback must not run after a Mongo id match");
+      },
+      resolveAgent: async () => undefined,
+    },
+  );
+  assert.deepEqual(calls, ["ref_no_exact", `mongo_id:${mongoId}`]);
+  assert.equal(plan.actions[0]?.match_method, "mongo_id");
+  assert.equal(plan.actions[0]?.lead_id, mongoId);
+});
+
 test("fallback ties resolve by source company then quoted prior", () => {
   const make = (id: string, source: string, quoted: boolean) => ({
     lead: {
@@ -125,6 +169,68 @@ test("fallback ties resolve by source company then quoted prior", () => {
     "5",
   );
   assert.equal(String(selected.lead?._id), "b");
+});
+
+test("fallback refuses a sole candidate from a different source company", async () => {
+  const wrongSource = makeLead("wrong-source", {
+    source_company: "top10_leads",
+    quoted: false,
+  });
+  const plan = await planGranotFormWorkflow(
+    [makeSource({ ref_no: "", prior: "0", phone: "555-0100" })],
+    {
+      search: async () =>
+        ({
+          status: "found",
+          found: true,
+          matches: [
+            {
+              lead: wrongSource,
+              matched_fields: ["phone_number"],
+              confidence: "medium",
+              score: 35,
+            },
+          ],
+        }) as never,
+      resolveAgent: async () => undefined,
+    },
+  );
+  assert.equal(plan.actions[0]?.classification, "no_match");
+  assert.equal(plan.actions[0]?.reason, "No same-source FormLead matched phone, email, or name.");
+});
+
+test("fallback does not select a lead from name alone", async () => {
+  let searched = false;
+  const plan = await planGranotFormWorkflow(
+    [makeSource({ ref_no: "", prior: "1", customer: "Jane Customer" })],
+    {
+      search: async () => {
+        searched = true;
+        throw new Error("weak name-only fallback must not query");
+      },
+    },
+  );
+  assert.equal(searched, false);
+  assert.equal(plan.actions[0]?.classification, "no_match");
+  assert.equal(plan.actions[0]?.reason, "Fallback matching requires phone or email.");
+});
+
+test("fallback scores only candidates that pass the source-company gate", () => {
+  const make = (id: string, source: string, score: number) => ({
+    lead: makeLead(id, { source_company: source }),
+    matched_fields: ["phone_number"],
+    confidence: "medium",
+    score,
+  });
+  const selected = selectGranotFormFallback(
+    [
+      make("wrong-higher-score", "top10_leads", 75),
+      make("same-source", "tbm_leads", 35),
+    ] as never,
+    "TBM Forms",
+    "0",
+  );
+  assert.equal(String(selected.lead?._id), "same-source");
 });
 
 test("form patch has extension parity and fills only missing locations", async () => {

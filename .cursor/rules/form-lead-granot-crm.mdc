@@ -14,6 +14,6 @@ alwaysApply: false
 - `crm_company_label` controls the Granot payload `label`; it is not persisted as the source-company slug.
 - The incoming create-form-lead `ref_no` is the original request/source value, commonly a Google click id, and is stored on the Mongo `FormLead.ref_no`. It is also used for Google Sheets chain-of-custody.
 - Do not confuse Mongo `FormLead.ref_no` with the Granot CRM web app `ref_no` column. The Granot web app `ref_no` value is produced from the CRM POST payload field `leadno`.
-- `crm.service.ts` must set CRM payload `leadno` to the persisted `lead.lid`. Granot writes that value to its web app `ref_no` column.
+- `formLeadPayload.ts` must set CRM payload `leadno` to the persisted provider `lead.ref_no`. Granot writes that value to its web app `ref_no` column. The optional `notes` field may carry `lead.lid`, but `lid` is never an identity key.
 - `PATCH /api/v1/form-leads/:id` already updates `quoted` and schedules sheet sync. Do not add a second quoted sync path unless it preserves that side effect.
 - Keep API and Mongo fields in `snake_case`; only translate to CRM field names inside `crm.service.ts`.

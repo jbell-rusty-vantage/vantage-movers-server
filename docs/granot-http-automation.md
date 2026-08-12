@@ -122,12 +122,15 @@ Validation is `400`, state/checksum/gate conflicts are `409`, missing runs are
 ## Form identity and mutation rules
 
 1. Granot `ref_no` is compared exactly to Mongo `FormLead.ref_no`.
-2. Granot `ref_no` is never queried against `FormLead.lid`,
-   `normalized_lid`, or `_id`.
+2. After an exact field miss, an ObjectId-shaped Granot `ref_no` is resolved
+   against Mongo `_id` for compatibility with historical rows. `lid` and
+   `normalized_lid` are never matching keys.
 3. Multiple non-quarantined exact refs are a conflict. Records with
    `duplicate: true` are excluded from all matching and applying.
-4. Fallback uses existing phone/email/name search scoring, then source-company
-   and quoted/prior tie-breaks. A remaining tie is a conflict.
+4. Fallback uses phone/email/name search, hard-filters candidates to the
+   Granot source's canonical `source_company`, then applies score and
+   quoted/prior tie-breaks. Phone or email is required; name is supplemental.
+   Unknown or cross-source candidates cannot update.
 5. Prior `1` or `5` sets quoted and valid cubic feet.
 6. Pickup/delivery city, state, and ZIP values fill only empty compatible
    canonical fields.

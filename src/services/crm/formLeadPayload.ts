@@ -1,5 +1,5 @@
+import { createHash } from "node:crypto";
 import type { FormLeadDocument } from "../../models/FormLead";
-import { generateLeadId } from "../../utils/ids";
 import {
   maskEmailForLog,
   maskPhoneForLog,
@@ -53,11 +53,10 @@ export function formatCrmMoveDate(date: Date): string {
  * `.cursor/rules/form-lead-granot-crm.mdc`):
  *   - `label` is the company-facing source label, defaulting to
  *     `CRM_FORM_LEAD_LABEL` when the caller passes a blank value.
- *   - `notes` carries a freshly generated lead identifier for Granot-side
- *     tracking; it is not stored on the Mongo `FormLead`.
- *   - `leadno` is the lead's persisted `lid`. Granot writes this value to
- *     its web-app `ref_no` column. NEVER substitute the Mongo `ref_no`
- *     field here.
+ *   - `leadno` carries the provider `ref_no`; Granot writes it to the list
+ *     `ref_no` column used by both reconciliation paths.
+ *   - `notes` may carry the internal `lid` for operator context, but it is
+ *     never a matching key.
  *
  * Exact CRM labels (see `CRM_SOURCE_LABELS` in `config/domain/sources`):
  *   - Form leads: source company + local move type
@@ -70,7 +69,10 @@ export function buildCrmFormLeadPayload(
   companyLabel: string = CRM_FORM_LEAD_LABEL,
 ): CrmFormLeadPayload {
   const { firstname, lastname } = splitNameForCrm(lead.name);
-  const lid = lead.lid?.trim() || generateLeadId();
+  const lid = lead.lid?.trim() || "";
+  const rawRefNo = lead.ref_no?.trim() || "";
+  const providerRefNo =
+    rawRefNo.toLowerCase() === "not provided" ? "" : rawRefNo;
 
   return {
     label: companyLabel.trim() || CRM_FORM_LEAD_LABEL,
@@ -82,8 +84,8 @@ export function buildCrmFormLeadPayload(
     phone1: lead.phone_number,
     movesize: lead.move_size,
     movedte: formatCrmMoveDate(lead.move_date),
-    notes: generateLeadId(),
-    leadno: lid,
+    notes: lid,
+    leadno: providerRefNo,
   };
 }
 
@@ -101,9 +103,9 @@ export function encodeCrmFormBody(payload: CrmFormLeadPayload): string {
 }
 
 /**
- * Returns a log-safe summary of a CRM payload: keeps non-PII fields
- * (label, zips, move size/date, leadno, notes) as-is and masks
- * `firstname`/`lastname`/`email`/`phone1`.
+ * Returns a log-safe summary of a CRM payload. Customer identifiers and
+ * locations are represented by deterministic short fingerprints so operators
+ * can correlate retries without persisting raw values.
  *
  * Use this in service logs so operators can debug what we sent to
  * Granot without writing raw customer PII to Vercel log storage.
@@ -115,13 +117,19 @@ export function summarizeCrmPayloadForLog(
     label: payload.label,
     firstname: payload.firstname ? `${payload.firstname[0]}***` : "",
     lastname: payload.lastname ? `${payload.lastname[0]}***` : "",
-    ozip: payload.ozip,
-    dzip: payload.dzip,
+    ozip: fingerprintForLog(payload.ozip),
+    dzip: fingerprintForLog(payload.dzip),
     email: payload.email ? maskEmailForLog(payload.email) : "",
     phone1: payload.phone1 ? maskPhoneForLog(payload.phone1) : "",
     movesize: payload.movesize,
     movedte: payload.movedte,
-    notes: payload.notes,
-    leadno: payload.leadno,
+    notes: fingerprintForLog(payload.notes),
+    leadno: fingerprintForLog(payload.leadno),
   };
+}
+
+function fingerprintForLog(value: string): string {
+  return value
+    ? `sha256:${createHash("sha256").update(value).digest("hex").slice(0, 12)}`
+    : "";
 }

@@ -23,6 +23,7 @@ function hydrateFormLead(
     move_size: "2 Bedrooms",
     move_date: new Date(Date.UTC(2026, 4, 28)),
     lid: "LID-EXISTING",
+    ref_no: "Mob_providerRef123",
     ...overrides,
   }) as FormLeadDocument;
 }
@@ -67,17 +68,27 @@ test("buildCrmFormLeadPayload defaults label to CRM_FORM_LEAD_LABEL when blank",
   assert.equal(payload.label, CRM_FORM_LEAD_LABEL);
 });
 
-test("buildCrmFormLeadPayload uses the persisted lid as Granot leadno", () => {
-  const lead = hydrateFormLead({ lid: "LID6a6255e58ad8d" });
+test("buildCrmFormLeadPayload uses the provider ref_no as Granot leadno", () => {
+  const lead = hydrateFormLead({
+    lid: "LID6a6255e58ad8d",
+    ref_no: "DT_czj2atkThs",
+  });
   const payload = buildCrmFormLeadPayload(lead);
-  assert.equal(payload.leadno, "LID6a6255e58ad8d");
+  assert.equal(payload.leadno, "DT_czj2atkThs");
 });
 
-test("buildCrmFormLeadPayload generates a notes lead id for Granot", () => {
+test("buildCrmFormLeadPayload carries lid in notes without using it for identity", () => {
   const lead = hydrateFormLead({ lid: "LID-12345" });
   const payload = buildCrmFormLeadPayload(lead);
-  assert.match(payload.notes, /^LID[0-9a-f]{13}$/);
-  assert.notEqual(payload.notes, "LID-12345");
+  assert.equal(payload.notes, "LID-12345");
+  assert.notEqual(payload.leadno, "LID-12345");
+});
+
+test("buildCrmFormLeadPayload leaves leadno blank for the not-provided sentinel", () => {
+  const payload = buildCrmFormLeadPayload(
+    hydrateFormLead({ ref_no: "not provided" }),
+  );
+  assert.equal(payload.leadno, "");
 });
 
 test("buildCrmFormLeadPayload maps lead fields onto the Granot wire shape", () => {
@@ -116,12 +127,12 @@ test("buildCrmFormLeadPayload maps lead fields onto the Granot wire shape", () =
       phone1: "555-111-2222",
       movesize: "Studio",
       movedte: "6/1/2026",
-      leadno: "LID-EXISTING",
+      leadno: "Mob_providerRef123",
     },
   );
 });
 
-test("summarizeCrmPayloadForLog masks name, email, and phone but keeps zips, label, and leadno", () => {
+test("summarizeCrmPayloadForLog masks PII and fingerprints identifiers and locations", () => {
   const lead = hydrateFormLead({
     name: "Jane Maria Customer",
     pickup_zip: "10001",
@@ -137,9 +148,12 @@ test("summarizeCrmPayloadForLog masks name, email, and phone but keeps zips, lab
   assert.equal(summary.lastname, "C***");
   assert.equal(summary.email, "j***@example.com");
   assert.equal(summary.phone1, "***2222");
-  assert.equal(summary.ozip, "10001");
-  assert.equal(summary.dzip, "90210");
-  assert.equal(summary.leadno, payload.leadno);
+  assert.match(summary.ozip, /^sha256:[0-9a-f]{12}$/);
+  assert.match(summary.dzip, /^sha256:[0-9a-f]{12}$/);
+  assert.match(summary.leadno, /^sha256:[0-9a-f]{12}$/);
+  assert.match(summary.notes, /^sha256:[0-9a-f]{12}$/);
+  assert.notEqual(summary.leadno, payload.leadno);
+  assert.notEqual(summary.notes, payload.notes);
 });
 
 test("summarizeCrmPayloadForLog handles blank PII fields without throwing", () => {

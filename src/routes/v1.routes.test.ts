@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import ringCentralRouterModule from "./ringcentral-registry.routes";
-import routerModule from "./v1.routes";
+import routerModule, { buildGranotSyncExpectedFilter } from "./v1.routes";
 
 type RouteLayer = {
   route?: {
@@ -116,6 +116,71 @@ test("employee booking reconciliation routes are registered", () => {
   assert.equal(
     routes.has("/api/v1/admin/booking-lead-reconciliations/:id/resolve"),
     true,
+  );
+});
+
+test("Granot form-lead resolution route is registered before the id route", () => {
+  const stack = (router as { stack?: RouteLayer[] }).stack ?? [];
+  const routes = stack
+    .map((layer) => layer.route)
+    .filter((route): route is NonNullable<RouteLayer["route"]> =>
+      Boolean(route?.path),
+    );
+  const resolverIndex = routes.findIndex(
+    (route) =>
+      route.path === "/api/v1/form-leads/granot-match" &&
+      route.methods?.post,
+  );
+  const idIndex = routes.findIndex(
+    (route) => route.path === "/api/v1/form-leads/:id" && route.methods?.get,
+  );
+
+  assert.ok(resolverIndex >= 0, "missing Granot form-lead resolver route");
+  assert.ok(resolverIndex < idIndex, "resolver route must precede /:id");
+  assert.ok(
+    routes.some(
+      (route) =>
+        route.path === "/api/v1/form-leads/:id/granot-sync" &&
+        route.methods?.patch,
+    ),
+    "missing drift-checked Granot sync route",
+  );
+});
+
+test("Granot sync expected filter enforces fill-only and empty receiver fields", () => {
+  assert.deepEqual(
+    buildGranotSyncExpectedFilter(
+      {
+        pickup_city: "Miami",
+        pickup_state: "FL",
+        destination_zip: "33139",
+        receiver_agent: "507f1f77bcf86cd799439011",
+      },
+      "top10_leads",
+      {
+        pickup_state: "FL",
+        pickup_zip: null,
+        receiver_agent: null,
+      },
+    ),
+    {
+      source_company: "top10_leads",
+      duplicate: { $ne: true },
+      pickup_state: "FL",
+      pickup_zip: null,
+      receiver_agent: null,
+      $and: [
+        { pickup_city: { $in: [null, ""] } },
+        { pickup_state: { $in: [null, "", "not_found"] } },
+        {
+          $or: [
+            { destination_zip: { $in: [null, ""] } },
+            { destination_zip: { $regex: /^0+$/ } },
+          ],
+        },
+        { receiver_agent: null },
+      ],
+    },
   );
 });
 

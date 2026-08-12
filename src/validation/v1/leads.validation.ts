@@ -171,6 +171,80 @@ export const searchFormLeadsSchema = z
     "At least one of ref_no, name, email, or phone_number must be provided",
   );
 
+export const resolveGranotFormLeadSchema = z
+  .object({
+    ref_no: optionalString,
+    name: optionalString,
+    email: looseEmailString,
+    phone_number: optionalString,
+    source_label: nonEmptyString,
+    prior: optionalString,
+  })
+  .strict()
+  .refine(
+    requireAtLeastOneTruthySearchField,
+    "At least one of ref_no, name, email, or phone_number must be provided",
+  );
+
+const granotFormLeadPatchSchema = z
+  .object({
+    quoted: booleanInput.optional(),
+    cubic_feet: optionalNumber,
+    pickup_city: optionalString,
+    pickup_zip: zipSchema.optional(),
+    pickup_state: optionalString,
+    delivery_city: optionalString,
+    destination_zip: zipSchema.optional(),
+    delivery_state: optionalString,
+    receiver_agent: objectIdSchema.optional(),
+    receiver_agent_source: z
+      .literal("extension_crm_username_match")
+      .optional(),
+    receiver_agent_source_value: optionalString,
+  })
+  .strict()
+  .refine(requireAtLeastOne, "At least one Granot sync field must be provided")
+  .superRefine((patch, ctx) => {
+    const hasReceiverProvenance =
+      patch.receiver_agent_source !== undefined ||
+      patch.receiver_agent_source_value !== undefined;
+    if (
+      (patch.receiver_agent !== undefined || hasReceiverProvenance) &&
+      (
+        patch.receiver_agent === undefined ||
+        patch.receiver_agent_source !== "extension_crm_username_match" ||
+        !patch.receiver_agent_source_value
+      )
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["receiver_agent"],
+        message:
+          "Granot receiver updates require receiver_agent, extension provenance, and source value together",
+      });
+    }
+  });
+
+export const granotFormLeadSyncSchema = z
+  .object({
+    patch: granotFormLeadPatchSchema,
+    expected_source_company: sourceCompanySchema,
+    expected_snapshot: z
+      .object({
+        quoted: z.boolean().nullable(),
+        cubic_feet: z.number().nullable(),
+        pickup_city: z.string().nullable(),
+        pickup_zip: z.string().nullable(),
+        pickup_state: z.string().nullable(),
+        delivery_city: z.string().nullable(),
+        destination_zip: z.string().nullable(),
+        delivery_state: z.string().nullable(),
+        receiver_agent: objectIdSchema.nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+
 const callLeadFields = {
   source_company: sourceCompanySchema,
   company_slug: optionalString,
@@ -278,6 +352,12 @@ export const browseCallLeadsQuerySchema = z
 export type CreateFormLeadInput = z.infer<typeof createFormLeadSchema>;
 export type UpdateFormLeadInput = z.infer<typeof updateFormLeadSchema>;
 export type SearchFormLeadsInput = z.infer<typeof searchFormLeadsSchema>;
+export type ResolveGranotFormLeadInput = z.infer<
+  typeof resolveGranotFormLeadSchema
+>;
+export type GranotFormLeadSyncInput = z.infer<
+  typeof granotFormLeadSyncSchema
+>;
 export type CreateCallLeadInput = z.infer<typeof createCallLeadSchema>;
 export type UpdateCallLeadInput = z.infer<typeof updateCallLeadSchema>;
 export type SearchCallLeadsInput = z.infer<typeof searchCallLeadsSchema>;
