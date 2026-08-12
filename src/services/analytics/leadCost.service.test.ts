@@ -84,7 +84,8 @@ test("lead cost excludes duplicate form leads and unmatched call leads", async (
   assert.equal(result.by_source_company.length, 1);
   assert.match(JSON.stringify(formPipelines[0][0]), /duplicate/);
   assert.match(JSON.stringify(callPipelines[0][0]), /created_on_unmatched/);
-  assert.match(JSON.stringify(formPipelines[0][1]), /cpl_resolution_status/);
+  assert.doesNotMatch(JSON.stringify(formPipelines[0][1]), /cpl_resolution_status/);
+  assert.match(JSON.stringify(formPipelines[0][1]), /"\$cpl"/);
   assert.match(
     JSON.stringify(formPipelines[0][1]),
     /source_granularity_key/,

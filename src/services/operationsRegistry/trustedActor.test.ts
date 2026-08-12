@@ -298,3 +298,101 @@ test("exported header names match dashboard proxy contract", () => {
   assert.equal(ADMIN_PROXY_HEADER_NAMES.signature, "x-vantage-admin-signature");
   assert.equal(normalizeAdminPath("/api/v1/admin/operations-registry/health/"), "/api/v1/admin/operations-registry/health");
 });
+
+test("extension owner Bearer auth can read agent catalog without signed proxy headers", () => {
+  process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = TEST_SECRET;
+  process.env.NODE_ENV = "production";
+
+  const actor = verifyRegistryActor({
+    method: "GET",
+    path: "/api/v1/admin/catalog/agents",
+    headers: {},
+    auth: {
+      kind: "user",
+      userId: "ext_owner_1",
+      email: "Owner@Example.test",
+      role: "owner",
+    },
+    now: Date.now(),
+  });
+
+  assert.equal(actor.actorType, "owner");
+  assert.equal(actor.actorId, "ext_owner_1");
+  assert.equal(actor.actorLabel, "owner@example.test");
+  assert.equal(actor.requestId, "extension:ext_owner_1");
+});
+
+test("extension owner Bearer auth can create agents without signed proxy headers", () => {
+  process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = TEST_SECRET;
+  process.env.NODE_ENV = "production";
+
+  const actor = verifyRegistryActor({
+    method: "POST",
+    path: "/api/v1/admin/agents",
+    headers: {},
+    auth: {
+      kind: "user",
+      userId: "ext_owner_1",
+      email: "owner@example.test",
+      role: "owner",
+    },
+    requireOwner: true,
+    now: Date.now(),
+  });
+
+  assert.equal(actor.actorRole, "owner");
+  assert.equal(actor.actorId, "ext_owner_1");
+});
+
+test("extension owner Bearer auth cannot mutate non-catalog registry routes", () => {
+  process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = TEST_SECRET;
+  process.env.NODE_ENV = "production";
+
+  assert.throws(
+    () =>
+      verifyRegistryActor({
+        method: "POST",
+        path: "/api/v1/admin/source-companies",
+        headers: {},
+        auth: {
+          kind: "user",
+          userId: "ext_owner_1",
+          email: "owner@example.test",
+          role: "owner",
+        },
+        requireOwner: true,
+        now: Date.now(),
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof RegistryError);
+      assert.equal(error.registryCode, REGISTRY_ERROR_CODES.ACTOR_SIGNATURE_MISSING);
+      return true;
+    },
+  );
+});
+
+test("extension employee Bearer auth is not a registry actor", () => {
+  process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = TEST_SECRET;
+  process.env.NODE_ENV = "production";
+
+  assert.throws(
+    () =>
+      verifyRegistryActor({
+        method: "GET",
+        path: "/api/v1/admin/catalog/agents",
+        headers: {},
+        auth: {
+          kind: "user",
+          userId: "ext_employee_1",
+          email: "employee@example.test",
+          role: "employee",
+        },
+        now: Date.now(),
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof RegistryError);
+      assert.equal(error.registryCode, REGISTRY_ERROR_CODES.ACTOR_SIGNATURE_MISSING);
+      return true;
+    },
+  );
+});

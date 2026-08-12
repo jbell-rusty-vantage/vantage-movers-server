@@ -65,6 +65,7 @@ export async function createCatalogItem(
             name: input.name,
             role: input.role,
             granot_crm_username: input.granot_crm_username,
+            active: input.active,
             created_from: input.created_from,
           },
           actor,
@@ -73,6 +74,7 @@ export async function createCatalogItem(
           {
             name: input.name,
             created_from: input.created_from,
+            active: input.active,
           },
           actor,
         );
@@ -93,6 +95,7 @@ export async function updateCatalogItem(
             name: input.name,
             role: input.role,
             granot_crm_username: input.granot_crm_username,
+            active: input.active,
             reason: input.reason,
           },
           actor,
@@ -101,6 +104,7 @@ export async function updateCatalogItem(
           {
             id,
             name: input.name,
+            active: input.active,
             reason: input.reason,
           },
           actor,

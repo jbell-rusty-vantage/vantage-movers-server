@@ -109,6 +109,10 @@ export const catalogCreateSchema = z
     name: nonEmptyString,
     role: nonEmptyString.optional(),
     granot_crm_username: nonEmptyString.optional(),
+    // Optional create-time activation. Defaults to active=true in the registry
+    // when omitted. Accepted so the extension Sales Rep dialog can create an
+    // inactive Agent without a follow-up activation call.
+    active: booleanInput.optional(),
     // Optional provenance override. Defaults to the catalog's configured
     // `created_from` (see `CATALOGS` in `catalog.service.ts`) when omitted;
     // used by callers like the extension's sales-rep upsert dialog to tag
@@ -128,6 +132,7 @@ export const catalogUpdateSchema = catalogCreateSchema
       value.name !== undefined ||
       value.role !== undefined ||
       value.granot_crm_username !== undefined ||
+      value.active !== undefined ||
       value.created_from !== undefined,
     "At least one catalog field must be provided",
   );

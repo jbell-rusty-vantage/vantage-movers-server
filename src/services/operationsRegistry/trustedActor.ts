@@ -223,9 +223,62 @@ function verifyPreviewUnsignedActor(input: VerifyActorInput): RegistryActorConte
   };
 }
 
+/**
+ * Narrow owner-mutation paths the browser extension may call with Bearer auth
+ * (Sales Rep attribution: create/update Agents). All other registry mutations
+ * still require a signed dashboard Owner proxy actor.
+ */
+function isExtensionOwnerCatalogMutationPath(method: string, path: string): boolean {
+  const normalizedMethod = method.trim().toUpperCase();
+  if (normalizedMethod === "POST" && path === "/api/v1/admin/agents") {
+    return true;
+  }
+  if (
+    normalizedMethod === "PATCH" &&
+    /^\/api\/v1\/admin\/agents\/[a-f0-9]{24}$/i.test(path)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function extensionOwnerActor(
+  input: VerifyActorInput,
+): RegistryActorContext | null {
+  if (input.auth?.kind !== "user" || input.auth.role !== "owner") {
+    return null;
+  }
+
+  return {
+    actorType: "owner",
+    actorId: input.auth.userId,
+    actorLabel: normalizeAdminEmail(input.auth.email),
+    actorRole: "owner",
+    requestId:
+      input.headers.requestId?.trim() || `extension:${input.auth.userId}`,
+  };
+}
+
 export function verifyRegistryActor(input: VerifyActorInput): RegistryActorContext {
   const path = normalizeAdminPath(input.path);
   const normalizedInput = { ...input, path };
+  const hasSignature = Boolean(normalizedInput.headers.signature?.trim());
+
+  // Extension owner Bearer sessions need registry Agent catalog reads (and a
+  // narrow create/update path) for receiver_agent Sales Rep attribution. Prefer
+  // signed dashboard actors when present; otherwise authorize the extension
+  // owner without requiring admin-proxy HMAC headers.
+  if (!hasSignature) {
+    const extensionOwner = extensionOwnerActor(normalizedInput);
+    if (extensionOwner) {
+      if (!normalizedInput.requireOwner) {
+        return extensionOwner;
+      }
+      if (isExtensionOwnerCatalogMutationPath(normalizedInput.method, path)) {
+        return extensionOwner;
+      }
+    }
+  }
 
   // The preview compatibility flag is read-only. Mutations always require a
   // signature, including in local and preview environments.
@@ -233,7 +286,6 @@ export function verifyRegistryActor(input: VerifyActorInput): RegistryActorConte
     return verifySignedActor(normalizedInput);
   }
 
-  const hasSignature = Boolean(normalizedInput.headers.signature?.trim());
   if (hasSignature || !isOperationsRegistryPreviewUnsignedAllowed()) {
     return verifySignedActor(normalizedInput);
   }

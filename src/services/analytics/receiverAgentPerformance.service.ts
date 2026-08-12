@@ -127,13 +127,13 @@ async function leadRowsForType(
             ? {
                 $and: [
                   { $ne: ["$duplicate", true] },
-                  { $ne: ["$cpl_resolution_status", "missing_rate"] },
+                  { $ne: [{ $ifNull: ["$cpl", null] }, null] },
                 ],
               }
             : {
                 $and: [
                   { $ne: ["$created_on_unmatched", true] },
-                  { $ne: ["$cpl_resolution_status", "missing_rate"] },
+                  { $ne: [{ $ifNull: ["$cpl", null] }, null] },
                 ],
               },
         is_unresolved_cpl:
@@ -141,13 +141,13 @@ async function leadRowsForType(
             ? {
                 $and: [
                   { $ne: ["$duplicate", true] },
-                  { $eq: ["$cpl_resolution_status", "missing_rate"] },
+                  { $eq: [{ $ifNull: ["$cpl", null] }, null] },
                 ],
               }
             : {
                 $and: [
                   { $ne: ["$created_on_unmatched", true] },
-                  { $eq: ["$cpl_resolution_status", "missing_rate"] },
+                  { $eq: [{ $ifNull: ["$cpl", null] }, null] },
                 ],
               },
         is_booked_received_lead: {

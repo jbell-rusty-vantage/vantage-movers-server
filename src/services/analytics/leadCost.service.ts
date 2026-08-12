@@ -65,16 +65,16 @@ async function leadCostRowsBySource(
           _id: groupId,
           lead_count: { $sum: 1 },
           unresolved_cpl_count: {
-            $sum: { $cond: [{ $eq: ["$cpl_resolution_status", "missing_rate"] }, 1, 0] },
-          },
-          total_lead_cost: {
             $sum: {
               $cond: [
-                { $eq: ["$cpl_resolution_status", "missing_rate"] },
+                { $eq: [{ $ifNull: ["$cpl", null] }, null] },
+                1,
                 0,
-                { $ifNull: ["$cpl", 0] },
               ],
             },
+          },
+          total_lead_cost: {
+            $sum: { $ifNull: ["$cpl", 0] },
           },
         },
       },
@@ -86,16 +86,16 @@ async function leadCostRowsBySource(
           _id: groupId,
           lead_count: { $sum: 1 },
           unresolved_cpl_count: {
-            $sum: { $cond: [{ $eq: ["$cpl_resolution_status", "missing_rate"] }, 1, 0] },
-          },
-          total_lead_cost: {
             $sum: {
               $cond: [
-                { $eq: ["$cpl_resolution_status", "missing_rate"] },
+                { $eq: [{ $ifNull: ["$cpl", null] }, null] },
+                1,
                 0,
-                { $ifNull: ["$cpl", 0] },
               ],
             },
+          },
+          total_lead_cost: {
+            $sum: { $ifNull: ["$cpl", 0] },
           },
         },
       },
