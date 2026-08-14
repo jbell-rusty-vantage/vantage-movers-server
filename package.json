@@ -11,6 +11,8 @@
     "granot:collect": "node --env-file-if-exists=../agent_granot_credentials/.env --env-file-if-exists=.env ./node_modules/tsx/dist/cli.mjs scripts/granot-automation/run-local.ts",
     "granot:seed-sources": "node --env-file-if-exists=.env ./node_modules/tsx/dist/cli.mjs scripts/granot-automation/seed-sources.ts",
     "granot:webhook:generate-secret": "node ./node_modules/tsx/dist/cli.mjs scripts/generate-granot-webhook-secret.ts",
+    "ops:dump-name-link-inventory": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dump-operations-name-link-inventory.ts",
+    "prototype:granot-lifecycle": "node ./node_modules/tsx/dist/cli.mjs scripts/prototypes/granot-lead-lifecycle/cli.ts",
     "test:granot": "node --import tsx --import ./scripts/test-setup.ts --test \"src/services/granotHttpCollector/*.test.ts\" \"src/routes/granot-automation.routes.test.ts\"",
     "db:ping": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/ping-db.ts",
     "db:ingest-moving-carriers": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ingest-moving-carriers.ts",

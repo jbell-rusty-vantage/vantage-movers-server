@@ -16,11 +16,28 @@ The server reads the expected secret from `GRANOT_WEBHOOK_SECRET`. This is
 intentionally separate from `VANTAGE_API_SECRET` and is accepted only by the
 three Granot webhook routes.
 
-The payload contract is intentionally open until Granot supplies real examples.
-Authenticated deliveries are stored unchanged in `granot_webhook_receipts`,
-along with sanitized headers, receipt time, route-derived event type, and an
-initial `received` processing status. Authentication headers are never stored.
-No lead, priority, booking, or cancellation mutation occurs yet.
+The capture model remains intentionally open because Granot has not supplied a
+stable, versioned contract. Live deliveries now provide representative shapes,
+but they already contain casing drift, unsupported priority values, and route /
+payload event-type disagreement. Authenticated deliveries are stored unchanged
+in `granot_webhook_receipts`, along with sanitized headers, receipt time,
+route-derived event type, and an initial `received` processing status. No lead,
+priority, booking, or cancellation mutation occurs yet.
+
+The proposed domain model, live collection profile, matching strategy,
+provenance model, idempotency boundaries, event-specific behavior, and staged
+rollout are documented in
+[`granot-webhook-domain-service-model.md`](./granot-webhook-domain-service-model.md).
+
+Important findings from the 2026-08-13 read-only profile:
+
+- live priority values include `0`, `1`, `2`, `3`, `5`, `7`, `8`, and `9`;
+- the route event class can disagree with the payload `event_type`;
+- payload key casing has already drifted;
+- no stable provider event ID, occurrence time, or source revision is present;
+- current header capture stores infrastructure credential/signature and client
+  network headers, so it should move from a denylist to a small allowlist before
+  processing/admin surfaces are expanded.
 
 The route returns `202` only after MongoDB stores the receipt. It returns `503`
 when durable capture fails so the sender can retry.
