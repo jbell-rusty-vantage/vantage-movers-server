@@ -68,7 +68,7 @@ test("buildCrmFormLeadPayload defaults label to CRM_FORM_LEAD_LABEL when blank",
   assert.equal(payload.label, CRM_FORM_LEAD_LABEL);
 });
 
-test("buildCrmFormLeadPayload uses the provider ref_no as Granot leadno", () => {
+test("[AC-03] buildCrmFormLeadPayload uses the provider ref_no as Granot leadno", () => {
   const lead = hydrateFormLead({
     lid: "LID6a6255e58ad8d",
     ref_no: "DT_czj2atkThs",
@@ -77,14 +77,14 @@ test("buildCrmFormLeadPayload uses the provider ref_no as Granot leadno", () => 
   assert.equal(payload.leadno, "DT_czj2atkThs");
 });
 
-test("buildCrmFormLeadPayload carries lid in notes without using it for identity", () => {
+test("[AC-03] buildCrmFormLeadPayload carries lid in notes without using it for identity", () => {
   const lead = hydrateFormLead({ lid: "LID-12345" });
   const payload = buildCrmFormLeadPayload(lead);
   assert.equal(payload.notes, "LID-12345");
   assert.notEqual(payload.leadno, "LID-12345");
 });
 
-test("buildCrmFormLeadPayload leaves leadno blank for the not-provided sentinel", () => {
+test("[AC-03] buildCrmFormLeadPayload leaves leadno blank for the not-provided sentinel", () => {
   const payload = buildCrmFormLeadPayload(
     hydrateFormLead({ ref_no: "not provided" }),
   );

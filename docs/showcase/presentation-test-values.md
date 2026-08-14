@@ -56,14 +56,15 @@ Expected result:
 
 - Lead saves to MongoDB.
 - Lead posts to Granot CRM.
-- Granot `ref_no` equals the Mongo `_id`.
+- Granot `ref_no` equals the submitted Tracking Reference (`SHOWCASE-0526A-FORM1`).
 - Lead syncs to Master Leads `Forms`.
 - Lead syncs to Main Site source sheet `Forms`.
 
 Save after submission:
 
 ```text
-FORM_LEAD_MONGO_ID=<copy from API response, sheet Mongo ID, or Granot ref_no>
+FORM_LEAD_MONGO_ID=<copy from API response or sheet Mongo ID>
+GRANOT_FORM_REF=<copy the submitted Tracking Reference from Granot ref_no>
 GRANOT_JOB_NO=<copy once CRM job exists>
 ```
 
@@ -103,7 +104,7 @@ Expected result for second submission:
 Use the CRM row from the valid form lead.
 
 ```text
-Mongo ID / Granot ref_no: <FORM_LEAD_MONGO_ID>
+Granot ref_no / FormLead.ref_no: <GRANOT_FORM_REF>
 Cubic Feet: 865
 Quoted: true
 ```
@@ -388,13 +389,13 @@ Expected talking point:
 Action:
 
 - Submit the valid form lead values once.
-- Copy the Mongo ID from the response, sheet, or Granot `ref_no`.
+- Copy the Mongo ID from the response or sheet, and verify the submitted Tracking Reference in Granot `ref_no`.
 
 Expected talking point:
 
 - MongoDB creates the permanent ID first.
-- Granot receives that ID as `ref_no`.
-- Google Sheets receives the same Mongo ID.
+- Granot receives the persisted Tracking Reference as `ref_no` through CRM `leadno`.
+- Google Sheets receives the Mongo ID.
 
 ### 3. Browser Extension Updates Form Lead
 
@@ -405,7 +406,7 @@ Action:
 
 Expected talking point:
 
-- The extension uses the Granot `ref_no` to find the Mongo lead.
+- The extension uses exact Granot `ref_no` → `FormLead.ref_no` identity first; Mongo ID-shaped `ref_no` remains a compatibility fallback.
 - Mongo and sheets update without manual sheet editing.
 
 ### 4. Book The Form Lead

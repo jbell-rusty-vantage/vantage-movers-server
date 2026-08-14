@@ -58,7 +58,7 @@ MongoDB is the **System of Record** for Form Leads, Call Leads, Bookings, Cancel
 
 ## Integrations
 
-- **CRM Posting** — non-duplicate Form Leads only; Lead ID as `leadno` → Granot `ref_no` ([ADR-0002](../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md), [ADR-0003](../../../docs/adr/0003-lead-id-granot-leadno-ref-no-contract.md)). Must survive non-critical downstream failures; known code order gap in `formLead.service.ts` documented inline.
+- **CRM Posting** — non-duplicate Form Leads only; persisted Tracking Reference (`FormLead.ref_no`) as `leadno` → Granot `ref_no`. Exact Tracking Reference is primary identity; Mongo Lead ID is compatibility fallback only ([final Granot Lead Lifecycle specification](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md), [ADR-0002](../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md)). Must survive non-critical downstream failures; known code order gap in `formLead.service.ts` documented inline.
 - **Sheet Sync** — Master Sheets only; Source Company Sheets via import queries ([`sheetSync.service.md`](../businesslogic/sheetSync.service.md), [`googleSheets.service.md`](../businesslogic/googleSheets.service.md)).
 - **Call Qualification** — webhook + Call Log sync → shared ingest; Analytics reconcile is count-only, must not create leads.
 - Granot Booked Jobs CSV reconciliation: [`bookedCallLeadReconciliation.service.md`](../businesslogic/bookedCallLeadReconciliation.service.md).

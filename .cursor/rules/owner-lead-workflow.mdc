@@ -14,11 +14,11 @@ alwaysApply: false
 - Landing pages submit `POST /api/v1/form-leads` with pickup/destination, move details, name/email/phone, source, and tracking `ref_no`.
 - Create normalizes source/company/location/phone, derives `local` and CPL, generates `lid` when needed, checks duplicates by same source + normalized phone + email, then saves `FormLead`.
 - Duplicate form leads still save and sync to `Duplicates`, but force `post_to_granot=false` so Granot does not receive another CRM row.
-- Non-duplicates post to Granot; the CRM payload `leadno` must be the Mongo `_id`, which appears in Granot as `ref_no` and lets the browser extension find the exact form lead later.
+- Non-duplicates post to Granot; the CRM payload `leadno` is the persisted Form Lead Tracking Reference (`FormLead.ref_no`), which Granot exposes as `ref_no`. Exact `FormLead.ref_no` is the primary identity; a valid Mongo `_id`-shaped Granot `ref_no` remains a compatibility fallback only after exact lookup misses.
 
 ## Extension And CRM Updates
 
-- For form leads, the browser extension reads the Granot `ref_no` Mongo id and calls `PATCH /api/v1/form-leads/:id` for owner updates such as `quoted` and `cubic_feet`; the service refreshes the source lead row and any attached booking chain.
+- For form leads, the browser extension reads Granot `ref_no`, resolves exact `FormLead.ref_no` first and Mongo `_id` compatibility second, then calls `PATCH /api/v1/form-leads/:id` for owner updates such as `quoted` and `cubic_feet`; the service refreshes the source lead row and any attached booking chain.
 - Call leads often start as sparse phone/source records from Invoca or tests via `POST /api/v1/call-leads`. A matching non-duplicate form lead from the same source sets `form_fill=true` for attribution.
 - CRM enrichment uses `POST /api/v1/call-leads/enrichment/preview` and `/sync` with row batches. It updates job/customer/contact/location/cubic-feet fields and schedules call-lead sheet sync.
 

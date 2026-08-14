@@ -80,11 +80,11 @@ If the form lead is not a duplicate:
 1. The lead is saved in MongoDB first.
 2. MongoDB generates the lead's unique `_id`.
 3. The server posts the lead to Granot CRM.
-4. The Mongo `_id` is sent to Granot as the CRM `leadno`.
-5. Granot shows that Mongo `_id` as the CRM `ref_no`.
+4. The persisted Tracking Reference (`FormLead.ref_no`) is sent to Granot as the CRM `leadno`.
+5. Granot shows that Tracking Reference as the CRM `ref_no`.
 6. The lead syncs to Google Sheets.
 
-This Mongo `_id` is the important permanent identifier. It is what links the website lead, MongoDB record, Granot CRM row, Google Sheets row, booking, and cancellation.
+The Mongo `_id` remains the permanent Vantage Lead ID used by MongoDB, Google Sheets, bookings, and cancellations. For Granot matching, exact `FormLead.ref_no` is primary; a valid Mongo `_id`-shaped Granot `ref_no` is retained as a compatibility fallback only after exact lookup misses.
 
 After a successful non-duplicate submission, the lead should appear in:
 
@@ -92,13 +92,13 @@ After a successful non-duplicate submission, the lead should appear in:
 - Master Leads Sheet, `Forms` tab
 - Source-specific leads sheet, `Forms` tab
 
-**SHOWCASE:** Submit one valid form lead and show that the Mongo ID returned by the API becomes the Granot `ref_no` and the Google Sheets `Mongo ID`.
+**SHOWCASE:** Submit one valid form lead and show that its submitted Tracking Reference becomes the Granot `ref_no`, while the API-generated Mongo ID remains the Google Sheets `Mongo ID`.
 
 ### 4. Browser Extension Updates Form Leads
 
 After the form lead is in Granot CRM, the owner can use the browser extension while viewing Follow Up Estimates.
 
-The extension reads the Granot row and looks for the `ref_no`. For form leads, this `ref_no` should be the Mongo `_id`.
+The extension reads the Granot row and looks for `ref_no`. For form leads, it resolves exact `FormLead.ref_no` first, then accepts a valid Mongo `_id` as a compatibility fallback.
 
 The extension can then update fields such as:
 

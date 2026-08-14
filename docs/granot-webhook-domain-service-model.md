@@ -474,7 +474,7 @@ The extension and HTTP automation should call the same identity and command serv
 - Replace header denylist with allowlist.
 - Confirm priority meanings for every observed value and stable booking statuses.
 - Ask Granot for event ID, occurred time, and record revision.
-- Resolve the `leadno/ref_no` documentation conflict described below.
+- Preserve the resolved `FormLead.ref_no` → Granot `leadno`/`ref_no` identity contract and Mongo `_id` compatibility fallback.
 - Add indexes only after profiling cardinality and running an index plan against production-sized data.
 
 ### Phase 1: normalization and shadow matching
@@ -512,7 +512,7 @@ The extension and HTTP automation should call the same identity and command serv
 5. What retry window should allow a Granot webhook to wait for RingCentral polling or Form Lead Ingestion?
 6. Which fields are Granot-authoritative, fill-only, Vantage-authoritative, or owner-only?
 7. Is Granot `user`/`rep` only the receiver Agent, or can Granot provide the actual change actor separately?
-8. The root glossary and ADR-0003 say server CRM Posting sends Mongo Lead ID as `leadno`; current code/tests/rule and `docs/form-lead-granot-matching-alignment.md` send provider Tracking Reference. This hard-to-reverse identity contract must be reconciled explicitly. Until then, match provider `ref_no` first and retain Mongo `_id` compatibility second, matching current executable behavior.
+8. **Resolved by the final Granot Lead Lifecycle specification:** server CRM Posting sends persisted `FormLead.ref_no` as `leadno`, which Granot exposes as `ref_no`. Match exact `FormLead.ref_no` first; only after that misses may a valid ObjectId-shaped value use Mongo `_id` compatibility. Older Mongo-ID-as-current-posting guidance is superseded.
 
 ## Acceptance scenarios for implementation planning
 

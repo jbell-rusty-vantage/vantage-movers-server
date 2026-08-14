@@ -8,7 +8,7 @@ import {
 } from "./formWorkflow";
 import { granotApplyEnabled } from "./runWorkflow";
 
-test("form identity vocabulary excludes lids while allowing Mongo id as a secondary lookup", () => {
+test("[AC-03] form identity vocabulary excludes lids while allowing Mongo id as a secondary lookup", () => {
   assert.deepEqual(granotFormIdentityFields, [
     "ref_no",
     "_id",
@@ -20,7 +20,7 @@ test("form identity vocabulary excludes lids while allowing Mongo id as a second
   assert.equal(granotFormIdentityFields.includes("normalized_lid"), false);
 });
 
-test("form planning gives exact FormLead.ref_no priority over every fallback", async () => {
+test("[AC-03] form planning gives exact FormLead.ref_no priority over every fallback", async () => {
   let searched = false;
   let receivedRefNo = "";
   const lead = makeLead("lead-exact", {
@@ -85,7 +85,7 @@ test("duplicate exact FormLead.ref_no candidates are a conflict", async () => {
   assert.equal(plan.actions[0]?.reason, "duplicate_exact_ref");
 });
 
-test("form planning falls back only after FormLead.ref_no has no match", async () => {
+test("[AC-03] form planning falls back only after FormLead.ref_no has no match", async () => {
   const fallback = makeLead("lead-fallback", {
     source_company: "tbm_leads",
     quoted: true,
@@ -121,7 +121,7 @@ test("form planning falls back only after FormLead.ref_no has no match", async (
   assert.equal(plan.actions[0]?.lead_id, "lead-fallback");
 });
 
-test("form planning resolves an ObjectId ref_no only after exact field lookup misses", async () => {
+test("[AC-03] form planning resolves an ObjectId ref_no only after exact field lookup misses", async () => {
   const calls: string[] = [];
   const mongoId = "6a72c49b1009d5e86400d193";
   const lead = makeLead(mongoId, { ref_no: "provider-ref" });

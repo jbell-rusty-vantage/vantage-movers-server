@@ -66,6 +66,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - `granotCrmCsv/` — CSV source registry + S3 ingest (`/granot-crm/csv/*`)
 - `granotWebhooks/` — Durable receipt capture only (no lead mutation yet)
 - `granotHttpCollector/` — HTTP session collector + automation runs/sources/workflows
+- `granotLifecycle/` — Frozen shared lifecycle vocabulary plus redacted normalization test contracts; runtime normalization, processing, and effects land only in their assigned lifecycle units
 - `crm/` — Outbound Granot form-lead submit (invoked from lead write paths)
 
 ### Integrations

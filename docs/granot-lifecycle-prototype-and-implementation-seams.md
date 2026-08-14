@@ -378,12 +378,17 @@ Lead documents.
 - provider ordering without event ID, occurred-at, and revision;
 - final owner policy for `Paid Overflow`, `Referral`, and non-qualified Granot
   inbound jobs;
-- the documented `leadno` / `ref_no` identity contradiction;
 - whether bad Form Leads may still receive webhook enrichment;
 - exact pending-match retry duration.
 
 These are business decisions. The Module must make each unresolved case an
 explainable blocked or pending decision rather than hide it behind a default.
+
+Historical identity note: an earlier revision listed the `leadno` / `ref_no`
+contract as unsettled. The final Granot Lead Lifecycle specification supersedes
+that note: CRM Posting sends persisted `FormLead.ref_no` as `leadno`, Granot
+exposes it as `ref_no`, exact `FormLead.ref_no` is primary identity, and a valid
+Mongo `_id` is compatibility fallback only after exact lookup misses.
 
 ## Recommended next implementation slice
 

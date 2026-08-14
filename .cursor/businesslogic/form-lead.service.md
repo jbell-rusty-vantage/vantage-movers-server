@@ -1,5 +1,5 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
-**ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md), [0002 CRM post survives failures](../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md), [0003 Lead ID / leadno / ref_no](../../../docs/adr/0003-lead-id-granot-leadno-ref-no-contract.md)  
+**Authority:** [Final Granot Lead Lifecycle specification](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) for Granot identity; [`../../../docs/adr/`](../../../docs/adr/) for [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md) and [0002 CRM post survives failures](../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md)
 **Primary code:** `api/services/leads/formLead.service.ts`  
 **Domain terms used:** Form Lead Ingestion, Form Lead, Duplicate Lead, CRM Posting, Sheet Sync, Tracking Reference, Lead ID, Form Fill, Move Type, CPL
 
@@ -26,7 +26,7 @@
 | Order | ADR-0002 intent | Current code |
 |-------|-------------------|--------------|
 | 1 | Mongo persist | ✓ (in txn) |
-| 2 | **CRM Posting** (Lead ID as `leadno`) | Runs **after** Sheet Sync finalization |
+| 2 | **CRM Posting** (Tracking Reference as `leadno`) | Runs **after** Sheet Sync finalization |
 | 3 | **Sheet Sync** (`finalizeSheetSync`) | Runs **before** CRM Posting |
 | 4 | **Operational Events** | After CRM |
 
@@ -36,7 +36,7 @@
 
 - When `post_to_granot` and not Duplicate Lead → `submitFormLeadToCrm`
 - Granot source label: `getCrmFormLeadSourceCompanyLabel(source, local)`
-- Payload `leadno` = **Lead ID** (Mongo `_id`); Granot stores as **CRM Lead Reference** in `ref_no` ([ADR-0003](../../../docs/adr/0003-lead-id-granot-leadno-ref-no-contract.md))
+- Payload `leadno` = persisted **Tracking Reference** (`FormLead.ref_no`); Granot exposes it as the **Granot Form Reference** in `ref_no`. Exact `FormLead.ref_no` lookup is primary; a valid Mongo `_id`-shaped Granot `ref_no` is compatibility fallback only after the exact lookup misses.
 - Duplicate Form Leads and caller-disabled posting → skip; emit `crm.form_lead.submit.skipped`
 
 ### CPL config lag
