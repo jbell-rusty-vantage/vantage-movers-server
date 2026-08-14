@@ -1,7 +1,7 @@
 import type { IncomingHttpHeaders } from "node:http";
 import type { GranotWebhookEventType } from "../../config/domain/granotWebhook";
 import { connectMongo } from "../../db";
-import { getGranotWebhookReceiptModel } from "../../models/GranotWebhookReceipt";
+import { getGranotWebhookReceiptModel } from "../../models/GranotObservationReceipt";
 
 export type CaptureGranotWebhookInput = {
   event_type: GranotWebhookEventType;

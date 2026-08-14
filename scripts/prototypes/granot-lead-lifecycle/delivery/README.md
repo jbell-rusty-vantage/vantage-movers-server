@@ -30,6 +30,7 @@ Those owner workflows are the canonical replacement for what older drafts called
 
 - `AGENT-EXECUTION-RUNBOOK.md` — rules inherited by all unit sessions.
 - `UNIT-STATUS.md` — dependency-aware delivery ledger.
+- `warnings/` — open review warnings and nits to resolve along the way; not an implementation contract.
 - `issues/UNIT-01.md` through `issues/UNIT-34.md` — one contract per primary implementation session.
 
 Unit 32 is optional and requires separate Owner acceptance. Unit 34 is mandatory, remains final, and certifies completed behavior with current Granot webhook payload shapes under the isolation and privacy rules in the approved handoff.

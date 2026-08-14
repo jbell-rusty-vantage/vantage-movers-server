@@ -24,7 +24,7 @@ alwaysApply: true
 - Cron/webhook mounts from `src/app.ts`: RingCentral webhooks + cron, Granot webhooks, booking-reconciliation rematch, sheet-sync drain, lead-messaging drain, CPL-corrections drain, notification digest, Twilio status/voice, Best Relocation heartbeat, reporting crons, Granot automation heartbeat.
 - **Queue consumers** (`api/queues/`): `sheet-sync-consumer`, `lead-messaging-consumer`, `best-relocation-ingestion-consumer`, `reporting-consumer`, `granot-automation-consumer`. Consumers must re-register foundations as needed (e.g. reporting Stage4); do not assume Express bootstrap ran.
 - `src/validation/` — Zod schemas (`v1.validation.ts` barrel + `src/validation/v1/` + reporting validators).
-- `src/models/` — runtime Mongoose schemas (`snake_case`); Google Sheets projections produce Title Case columns.
+- `src/models/` — runtime Mongoose schemas (`snake_case`); Google Sheets projections produce Title Case columns. `GranotObservationReceipt` lives here; collection `granot_webhook_receipts` is retained.
 - `src/config/domain/` — mode-aware domain config; re-exported by `src/config/domain.ts` **except** `reporting.ts` (import `./domain/reporting` directly). Prefer focused modules over scattering `process.env`.
 - `src/db.ts` — shared Mongo helper; preserve `TEST_MODE` DB boundary.
 - `src/middleware/` — `requireApiSecret` / `requireVantageAuth`, HTTP logging, webhook secrets.
@@ -66,7 +66,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - `granotCrmCsv/` — CSV source registry + S3 ingest (`/granot-crm/csv/*`)
 - `granotWebhooks/` — Durable receipt capture only (no lead mutation yet)
 - `granotHttpCollector/` — HTTP session collector + automation runs/sources/workflows
-- `granotLifecycle/` — Frozen shared lifecycle vocabulary plus redacted normalization test contracts; runtime normalization, processing, and effects land only in their assigned lifecycle units
+- `granotLifecycle/` — Frozen shared lifecycle vocabulary, receipt evidence helpers, and redacted normalization test contracts; runtime normalization, processing, and effects land only in their assigned lifecycle units
 - `crm/` — Outbound Granot form-lead submit (invoked from lead write paths)
 
 ### Integrations
@@ -144,7 +144,7 @@ Run via `package.json` so `.env` + `tsx` stay consistent.
 | `scripts/reporting/` | Live Google harness + artifact janitor (`pnpm reporting:*`) |
 | `scripts/historical/` | Historical audits/backfills/repairs (+ relaxed historical models when present) |
 | `scripts/historical_production_db_staged_merge_ingestion/` | Snapshot/plan/apply/verify/rollback (`pnpm historical:*`) |
-| `scripts/migrations/` | Ops-registry seed/backfill/RC migrations (`pnpm migrations:*`) |
+| `scripts/migrations/` | Ops-registry seed/backfill/RC migrations (`pnpm migrations:*`) and Granot lifecycle receipt/index migrations (`pnpm migration:granot-lifecycle:*`) |
 | `scripts/output/` | Generated artifacts (not runtime) |
 | Root one-offs | `dev-server.ts`, `best-relocation-sheet-ingest.ts`, `generate-granot-webhook-secret.ts`, `test-setup.ts` |
 

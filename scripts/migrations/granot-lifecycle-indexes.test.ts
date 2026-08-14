@@ -1,0 +1,111 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import {
+  GRANOT_OBSERVATION_RECEIPT_INDEXES,
+  GRANOT_OBSERVATION_RECEIPT_LEGACY_INDEXES,
+} from "../../src/models/GranotObservationReceipt";
+import {
+  findChannelOperationIdCollisions,
+  orderedReceiptIndexCreates,
+  verifyReceiptIndexDefinitions,
+} from "./granot-lifecycle-indexes.lib";
+
+test("[AC-02] unique/partial collision report ignores webhook rows without operation ids", () => {
+  const collisions = findChannelOperationIdCollisions([
+    { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", observation_channel: "granot_webhook" },
+    { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", observation_channel: "granot_webhook" },
+    {
+      _id: "cccccccccccccccccccccccc",
+      observation_channel: "browser_extension",
+      channel_operation_id: "77777777-7777-4777-8777-777777777777",
+    },
+    {
+      _id: "dddddddddddddddddddddddd",
+      observation_channel: "browser_extension",
+      channel_operation_id: "77777777-7777-4777-8777-777777777777",
+    },
+  ]);
+
+  assert.equal(collisions.length, 1);
+  assert.equal(collisions[0]?.count, 2);
+  assert.equal(collisions[0]?.observation_channel, "browser_extension");
+  assert.equal(
+    collisions[0]?.channel_operation_id,
+    "77777777-7777-4777-8777-777777777777",
+  );
+  assert.equal(
+    JSON.stringify(collisions).includes("aaaaaaaaaaaaaaaaaaaaaaaa"),
+    false,
+  );
+});
+
+test("[AC-02] index apply creates non-unique indexes before the unique partial index", () => {
+  const ordered = orderedReceiptIndexCreates();
+  assert.ok(ordered.nonUnique.length >= 4);
+  assert.equal(ordered.unique.length, 1);
+  assert.equal(
+    ordered.unique[0]?.name,
+    "granot_observation_receipt_channel_operation_id_unique",
+  );
+  assert.ok(
+    ordered.nonUnique.every((index) => index.name !== ordered.unique[0]?.name),
+  );
+  assert.ok(
+    ordered.nonUnique.some(
+      (index) => index.name === "granot_observation_receipt_payload_sha256_diag",
+    ),
+  );
+  assert.notEqual(
+    GRANOT_OBSERVATION_RECEIPT_INDEXES.find(
+      (index) => index.name === "granot_observation_receipt_payload_sha256_diag",
+    ) && "unique" in GRANOT_OBSERVATION_RECEIPT_INDEXES.find(
+      (index) => index.name === "granot_observation_receipt_payload_sha256_diag",
+    )!,
+    true,
+  );
+});
+
+test("[AC-02] index verify matches the model contract names and definitions", () => {
+  const actual = [
+    ...GRANOT_OBSERVATION_RECEIPT_INDEXES.map((index) => ({
+      name: index.name,
+      key: { ...index.key },
+      unique: "unique" in index ? true : undefined,
+      partialFilterExpression:
+        "partialFilterExpression" in index
+          ? { ...index.partialFilterExpression }
+          : undefined,
+    })),
+    ...GRANOT_OBSERVATION_RECEIPT_LEGACY_INDEXES.map((index, position) => ({
+      name: `legacy_${position}`,
+      key: { ...index.key },
+    })),
+  ];
+  const verified = verifyReceiptIndexDefinitions(actual);
+  assert.equal(verified.ok, true);
+  assert.deepEqual(verified.missing, []);
+  assert.deepEqual(verified.mismatched, []);
+
+  const missingUnique = verifyReceiptIndexDefinitions(
+    actual.filter(
+      (index) =>
+        index.name !== "granot_observation_receipt_channel_operation_id_unique",
+    ),
+  );
+  assert.equal(missingUnique.ok, false);
+  assert.deepEqual(missingUnique.missing, [
+    "granot_observation_receipt_channel_operation_id_unique",
+  ]);
+
+  const mismatched = verifyReceiptIndexDefinitions(
+    actual.map((index) =>
+      index.name === "granot_observation_receipt_payload_sha256_diag"
+        ? { ...index, unique: true }
+        : index,
+    ),
+  );
+  assert.equal(mismatched.ok, false);
+  assert.deepEqual(mismatched.mismatched, [
+    "granot_observation_receipt_payload_sha256_diag",
+  ]);
+});

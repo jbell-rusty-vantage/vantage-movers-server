@@ -36,6 +36,8 @@ ringcentral-call-lead-api-probe-output.json
 ringcentral-call-log-sync-output.json
 ringcentral-analytics-reconcile-output.json
 ringcentral-workflow-test-output.json
+ringcentral-recording-transcript-probe-output.json
+ringcentral-recording-samples/
 ringcentral-workflow-test.log
 ringcentral-local-webhook-events.jsonl
 # Minified one-line copy for env paste (see scripts/minify-google-service-account-json.ts)

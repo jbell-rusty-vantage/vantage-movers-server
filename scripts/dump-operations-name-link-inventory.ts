@@ -22,7 +22,7 @@ import { getCallLeadModel } from "../src/models/CallLead.js";
 import { getFormLeadModel } from "../src/models/FormLead.js";
 import { GranotAutomationSource } from "../src/models/GranotAutomationSource.js";
 import { getGranotCrmSourceModel } from "../src/models/GranotCrmSource.js";
-import { getGranotWebhookReceiptModel } from "../src/models/GranotWebhookReceipt.js";
+import { getGranotWebhookReceiptModel } from "../src/models/GranotObservationReceipt.js";
 import { getLeadSourceCompanyModel } from "../src/models/LeadSourceCompany.js";
 import { Merchant } from "../src/models/Merchant.js";
 import { getRingCentralInboundRouteAssignmentModel } from "../src/models/RingCentralInboundRouteAssignment.js";

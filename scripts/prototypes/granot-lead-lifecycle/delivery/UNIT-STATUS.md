@@ -7,7 +7,7 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 | Unit | Title | Prerequisites | Status | Contract | Completion report |
 | --- | --- | --- | --- | --- | --- |
 | 01 | Contract freeze, redacted synthetic fixtures, and quality guardrails | none | complete | complete | [UNIT-01-COMPLETION.md](completion-reports/UNIT-01-COMPLETION.md) |
-| 02 | Channel-neutral receipt model, evidence immutability, and receipt migration | 01 | ready | complete | — |
+| 02 | Channel-neutral receipt model, evidence immutability, and receipt migration | 01 | complete | complete | [UNIT-02-COMPLETION.md](completion-reports/UNIT-02-COMPLETION.md) |
 | 03 | Webhook authentication, secure capture, response, and queue wake-up seam | 01–02 | blocked | scaffold | — |
 | 04 | Observation persistence and exact normalization vocabulary | 01–03 | blocked | scaffold | — |
 | 05 | Audited Granot CRM source Registry domain | 01 | blocked | scaffold | — |
@@ -43,5 +43,7 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 
 ## Current ready queue
 
-- Unit 02 is implementation-ready on `granot-lead-lifecycle` after Unit 01 verification. Implement it next.
-- Units 05 and 09 remain contract-refinement candidates and stay blocked for implementation until their scaffolds are refined against repository state. They may be logically independent of Unit 02, but implementation on shared branches remains sequential by default.
+- Open review findings live in [`warnings/`](warnings/README.md). They do not block Unit 03 contract refinement.
+- Unit 02 is complete on `granot-lead-lifecycle`. Re-verify `UNIT-02-COMPLETION.md` and repository state before starting Unit 03.
+- Unit 03 is the next implementation target after its scaffold is refined against the landed receipt model. It remains blocked while the contract is still a scaffold.
+- Units 05 and 09 remain contract-refinement candidates and stay blocked for implementation until their scaffolds are refined against repository state. Implementation on shared branches remains sequential by default.
