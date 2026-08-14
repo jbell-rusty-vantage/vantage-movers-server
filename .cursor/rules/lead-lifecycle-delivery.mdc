@@ -1,0 +1,39 @@
+---
+description: Lead lifecycle delivery — branch plan across server, admin, and extension
+alwaysApply: false
+---
+
+# Lead Lifecycle Delivery
+
+Apply this rule when implementing Granot lead lifecycle (webhooks, observations, intake, admin UI, extension). Keep all of that work on the branches below. Do not open extra feature branches for this set.
+
+## Repos and branches
+
+| Repo | Branch | Rule |
+|---|---|---|
+| `vantage-main-server` | **one new branch** from current `main` | All API, models, queues, crons, and admin routes for lifecycle live here. |
+| `vantage-admin` | **one new branch** from current `main` | All admin UI for intake, observations, and confirm flows live here. |
+| `granot_sync_extensions_and_services` | **`main`** | Edit on `main`. Bump the extension version to **`0.2.8`**. |
+
+Do not create a second server or admin branch for a later slice of the same lifecycle work. Stack commits on the existing branch.
+
+Suggested names if none exist yet: `lead-lifecycle` in each of the two app repos. Reuse those names if already created.
+
+## How to work
+
+- Create the server and admin branches before the first lifecycle edit in that repo. Check `git status --short` first.
+- Keep each change in the repo that owns it. Server code stays in `vantage-main-server`. Admin UI stays in `vantage-admin`. Extension stays in `granot_sync_extensions_and_services`.
+- On the extension, set `package.json` (and any mirrored manifest version) to `0.2.8` as part of the first lifecycle change on `main`.
+- Do not commit, push, or deploy unless the user asks.
+
+```text
+# ❌ BAD — extra branches for the same work
+vantage-main-server: feat/lifecycle-webhooks
+vantage-main-server: feat/lifecycle-intake
+granot_sync_extensions_and_services: feat/lifecycle-0.2.8
+
+# ✅ GOOD
+vantage-main-server: lead-lifecycle
+vantage-admin: lead-lifecycle
+granot_sync_extensions_and_services: main @ 0.2.8
+```

@@ -27,6 +27,7 @@
     "historical:rollback": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/historical_production_db_staged_merge_ingestion/rollback.ts",
     "google-sheets:test-create": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/test-create-google-spreadsheet.ts",
     "twilio:send-sms": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/twilio/twilio-send-sms.ts",
+    "twilio:send-email": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/twilio/twilio-send-email.ts",
     "twilio:voice-routing": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/twilio/twilio-voice-routing.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --import ./scripts/test-setup.ts --test \"src/**/*.test.ts\"",
