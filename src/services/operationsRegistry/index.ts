@@ -143,6 +143,14 @@ export type {
   GranotCrmSourceRecord,
 } from "./granotCrmSources";
 export {
+  getProjectedGranotCrmSource,
+  listProjectedGranotCrmSources,
+} from "./granotCrmSourceProjections";
+export type {
+  GranotCrmSourceProjection,
+} from "./granotCrmSourceProjections";
+export { setGranotAutomationSourceReference } from "./granotAutomationSources";
+export {
   GRANOT_LIFECYCLE_SOURCE_CACHE_KEYS,
   GRANOT_LIFECYCLE_SOURCE_HEALTH_CACHE_KEY,
   GRANOT_LIFECYCLE_SOURCE_LIST_CACHE_KEY,

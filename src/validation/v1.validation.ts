@@ -120,6 +120,8 @@ export {
   sourceGranularityUpdateSchema,
   sourceActivationSchema,
   sourceResolutionPreviewSchema,
+  granotCrmSourceRegistryUpdateSchema,
+  granotCrmSourceLifecycleActivationSchema,
   adminDatabaseScopeSchema,
   adminSearchQuerySchema,
   type AdminBrowseQuery,
@@ -137,6 +139,8 @@ export {
   type SourceGranularityUpdateInput,
   type SourceActivationInput,
   type SourceResolutionPreviewInput,
+  type GranotCrmSourceRegistryUpdateInput,
+  type GranotCrmSourceLifecycleActivationInput,
 } from "./v1/admin.validation";
 
 export {

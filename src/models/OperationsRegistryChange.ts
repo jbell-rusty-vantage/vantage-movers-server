@@ -10,6 +10,7 @@ export const REGISTRY_CHANGE_ENTITY_TYPES = [
   "ringcentral_assignment",
   "registry",
   "granot_crm_source",
+  "granot_automation_source",
 ] as const;
 
 export type RegistryChangeEntityType = (typeof REGISTRY_CHANGE_ENTITY_TYPES)[number];

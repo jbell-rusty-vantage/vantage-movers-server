@@ -34,6 +34,10 @@
 - `ringCentralRegistry.ts` / `ringCentralValidation.ts` — inbound-route snapshot used at Call Qualification time.
 - HTTP: registry overview/health/changes plus catalog, CPL admin, and RC inbound-route routes in `v1.routes.ts`. Mutations require a signed Owner actor.
 - `granotCrmSources.ts` — Owner-only create/update/enable-disable for `GranotCrmSource` lifecycle semantics. Mutation and one `granot_crm_source` `OperationsRegistryChange` share a transaction; policy/list/health cache keys invalidate only after commit. Unreviewed rows stay disabled/deferred/observation-only. Runtime resolution lives in `granotLifecycle/sourcePolicy.ts`, not here.
+- `granotCrmSourceProjections.ts` — list/detail enrichments for Admin: dependency labels/status, automation references plus compatibility, and latest safe audit metadata. No receipt/payload/contact fields.
+- `granotAutomationSources.ts` — Owner-only exact `GranotAutomationSource.granot_crm_source` link. Same transaction/audit/cache-after-commit rules; entity type `granot_automation_source`.
+- HTTP: `GET/PATCH /api/v1/admin/granot-crm-sources` and `PATCH .../:id/activation`. Reads Owner/Admin; mutations signed Owner. Clients cannot submit `normalized_granot_label` or `create_if_missing`.
+- Classification apply is `scripts/migrations/granot-lifecycle-source-registry.ts` (`pnpm migration:granot-lifecycle:sources -- --report|--apply|--verify`). Report is default. Apply requires `--confirm-production=<db>` and separate authorization. Unique normalized-label index apply is refused while collisions exist.
 
 ## Authorization and audit
 

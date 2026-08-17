@@ -288,3 +288,24 @@ After M2–M5 have passed:
 Keep every dry-run and apply manifest with the deployment record. Migrations
 are idempotent, but reruns must use the same reviewed inputs and must still pass
 their collision and validation gates.
+
+## Granot lifecycle source Registry (Unit 06)
+
+`granot-lifecycle-source-registry.ts` classifies existing `GranotCrmSource`
+rows and links exact-normalized `GranotAutomationSource` references. It does
+not create Leads, Bookings, or Cancellations and does not enable a processor.
+
+```text
+pnpm migration:granot-lifecycle:sources -- --report
+pnpm migration:granot-lifecycle:sources -- --apply --confirm-production=<db>
+pnpm migration:granot-lifecycle:sources -- --verify
+```
+
+Omitted mode is report. Historical/unknown databases are rejected. Apply is
+separately authorized and refuses the whole reviewed family when a normalized
+label, company, granularity, or route dependency is invalid. Unique
+normalized-label index apply remains refused while collisions exist.
+
+Reviewed normalized labels only: Best Relocation Call/Form families, Referral,
+Paid Overflow, and source label Auto. Provider payload `type=AUTO` is not a
+classification input. Best Relocation creation policy stays `link_only`.

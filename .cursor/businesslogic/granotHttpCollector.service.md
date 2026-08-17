@@ -28,6 +28,8 @@
 
 Operations: `form_leads` or `call_leads`. Form planning never **creates** Form Leads.
 
+`GranotAutomationSource.supported_operations` remains a catalog/list compatibility field. Lifecycle availability and apply routing come from the referenced `GranotCrmSource` via `evaluateGranotAutomationCompatibility`. List/create still return legacy label/operations plus an additive `compatibility` projection. `resolveGranotAutomationSources` fails closed with `INVALID_GRANOT_SOURCES` and per-source issues when the reference is missing, disabled, ambiguous, or operation-incompatible. New automation labels are `missing_reference` until an Owner or reviewed migration attaches an exact Registry row.
+
 ## Form plan / apply
 
 `planGranotFormWorkflow()` matches rows (booked + follow-up) via `granotFormLeadMatcher.ts`: exact `ref_no` first, Mongo `_id` compatibility second, scored search fallback. Classifications: `update` / `unchanged` / `conflict` / `no_match` / `invalid`.

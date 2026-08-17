@@ -284,6 +284,47 @@ export const sourceActivationSchema = z
   })
   .strict();
 
+const registryReasonSchema = z.string().trim().min(10).max(1000);
+
+export const granotCrmSourceRegistryUpdateSchema = z
+  .object({
+    granot_label: z.string().trim().min(1).max(200),
+    default_channel: z.enum(["form", "call", "unknown"]).optional(),
+    enabled: booleanInput.optional(),
+    notes: z.string().trim().max(2000).optional().nullable(),
+    lifecycle_enabled: booleanInput,
+    lifecycle_disposition: z.enum([
+      "source_scoped_lead",
+      "referral_booking",
+      "deferred",
+    ]),
+    lead_created_policy: z.enum(["link_only", "observation_only"]),
+    lead_source_company: optionalObjectIdString.nullable(),
+    lifecycle_routes: z.array(
+      z
+        .object({
+          route_key: z.string().trim().min(1).max(80),
+          lead_model: z.enum(["FormLead", "CallLead"]),
+          move_type: z.enum(["local", "long_distance", "any"]),
+          source_granularity_id: z
+            .string()
+            .trim()
+            .regex(/^[a-f\d]{24}$/i, "Invalid Mongo ObjectId"),
+        })
+        .strict(),
+    ),
+    lifecycle_policy_version: z.string().trim().max(120).optional(),
+    reason: registryReasonSchema,
+  })
+  .strict();
+
+export const granotCrmSourceLifecycleActivationSchema = z
+  .object({
+    lifecycle_enabled: booleanInput,
+    reason: registryReasonSchema,
+  })
+  .strict();
+
 export const sourceResolutionPreviewSchema = z
   .object({
     channel: z.enum(["form", "call"]),
@@ -310,3 +351,9 @@ export type SourceGranularityCreateInput = z.infer<typeof sourceGranularityCreat
 export type SourceGranularityUpdateInput = z.infer<typeof sourceGranularityUpdateSchema>;
 export type SourceActivationInput = z.infer<typeof sourceActivationSchema>;
 export type SourceResolutionPreviewInput = z.infer<typeof sourceResolutionPreviewSchema>;
+export type GranotCrmSourceRegistryUpdateInput = z.infer<
+  typeof granotCrmSourceRegistryUpdateSchema
+>;
+export type GranotCrmSourceLifecycleActivationInput = z.infer<
+  typeof granotCrmSourceLifecycleActivationSchema
+>;

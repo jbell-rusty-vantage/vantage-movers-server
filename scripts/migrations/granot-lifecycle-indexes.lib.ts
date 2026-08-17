@@ -6,11 +6,12 @@ import {
   GRANOT_OBSERVATION_RECEIPT_LEGACY_INDEXES,
 } from "../../src/models/GranotObservationReceipt";
 import { GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES } from "../../src/models/GranotCrmSource";
+import { GRANOT_AUTOMATION_SOURCE_INDEXES } from "../../src/models/GranotAutomationSource";
 import { maskReceiptId } from "./granot-lifecycle-migration.lib";
 
-export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/3";
+export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/4";
 
-export const GRANOT_CRM_SOURCE_UNIQUE_INDEX_APPLY_ENABLED = false;
+export const GRANOT_CRM_SOURCE_UNIQUE_INDEX_APPLY_ENABLED = true;
 
 export type ReceiptIndexContract = (typeof GRANOT_OBSERVATION_RECEIPT_INDEXES)[number];
 export type ObservationIndexContract = (typeof GRANOT_OBSERVATION_INDEXES)[number];
@@ -176,9 +177,51 @@ export function verifyObservationIndexDefinitions(
   };
 }
 
+export function verifyGranotCrmSourceIndexDefinitions(
+  actual: readonly DeclaredMongoIndex[],
+): { ok: boolean; missing: string[]; mismatched: string[] } {
+  return verifyNamedIndexDefinitions(actual, GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES);
+}
+
+export function verifyGranotAutomationSourceIndexDefinitions(
+  actual: readonly DeclaredMongoIndex[],
+): { ok: boolean; missing: string[]; mismatched: string[] } {
+  return verifyNamedIndexDefinitions(actual, GRANOT_AUTOMATION_SOURCE_INDEXES);
+}
+
+export function orderedGranotAutomationSourceIndexCreates() {
+  return {
+    nonUnique: [...GRANOT_AUTOMATION_SOURCE_INDEXES],
+    unique: [],
+  };
+}
+
+function verifyNamedIndexDefinitions(
+  actual: readonly DeclaredMongoIndex[],
+  expectedIndexes: readonly { name: string; key: Record<string, number>; unique?: true }[],
+): { ok: boolean; missing: string[]; mismatched: string[] } {
+  const missing: string[] = [];
+  const mismatched: string[] = [];
+  for (const expected of expectedIndexes) {
+    const found = actual.find((index) => index.name === expected.name);
+    if (!found) {
+      missing.push(expected.name);
+      continue;
+    }
+    if (!sameIndexDefinition(found, expected)) {
+      mismatched.push(expected.name);
+    }
+  }
+  return {
+    ok: missing.length === 0 && mismatched.length === 0,
+    missing,
+    mismatched,
+  };
+}
+
 function sameIndexDefinition(
   actual: DeclaredMongoIndex,
-  expected: ReceiptIndexContract | ObservationIndexContract,
+  expected: ReceiptIndexContract | ObservationIndexContract | { name: string; key: Record<string, number>; unique?: true },
 ): boolean {
   const expectedUnique = "unique" in expected ? expected.unique === true : false;
   const actualUnique = actual.unique === true;

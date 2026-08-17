@@ -38,7 +38,7 @@ Every applicable gate is evaluated and snapshotted. Any false gate blocks the re
 
 ## Defaults and later work
 
-Every unreviewed row remains lifecycle-disabled, deferred, observation-only, and route-empty. Unit 06 owns classification, automation links, and reviewed UI. This module authorizes no live effect.
+Every unreviewed row remains lifecycle-disabled, deferred, observation-only, and route-empty. Unit 06 writes reviewed classifications and automation references through audited Registry commands; this module remains the only runtime semantic read. Best Relocation reviewed policy stays `link_only`. This module authorizes no live effect.
 
 ## Related
 

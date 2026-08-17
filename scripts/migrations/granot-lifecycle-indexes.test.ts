@@ -11,12 +11,16 @@ import {
   findNormalizedGranotLabelCollisions,
   findObservationReceiptIdCollisions,
   GRANOT_CRM_SOURCE_UNIQUE_INDEX_APPLY_ENABLED,
+  orderedGranotAutomationSourceIndexCreates,
   orderedGranotCrmSourceIndexCreates,
   orderedObservationIndexCreates,
   orderedReceiptIndexCreates,
+  verifyGranotAutomationSourceIndexDefinitions,
+  verifyGranotCrmSourceIndexDefinitions,
   verifyObservationIndexDefinitions,
   verifyReceiptIndexDefinitions,
 } from "./granot-lifecycle-indexes.lib";
+import { GRANOT_AUTOMATION_SOURCE_INDEXES } from "../../src/models/GranotAutomationSource";
 
 test("[AC-02] unique/partial collision report ignores webhook rows without operation ids", () => {
   const collisions = findChannelOperationIdCollisions([
@@ -182,21 +186,40 @@ test("[AC-38] normalized Granot label collision report masks ids and ignores emp
   assert.equal(JSON.stringify(collisions).includes("aaaaaaaaaaaaaaaaaaaaaaaa"), false);
 });
 
-test("[AC-38] unique normalized-label index is declared but not applied in Unit 05", () => {
-  assert.equal(GRANOT_CRM_SOURCE_UNIQUE_INDEX_APPLY_ENABLED, false);
+test("[AC-38] unique normalized-label index is created only after a zero-collision report", () => {
+  assert.equal(GRANOT_CRM_SOURCE_UNIQUE_INDEX_APPLY_ENABLED, true);
   const ordered = orderedGranotCrmSourceIndexCreates();
-  assert.equal(ordered.unique.length, 0);
-  assert.ok(
-    GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES.some(
-      (index) =>
-        index.name === "granot_crm_source_normalized_label_unique" &&
-        "unique" in index,
-    ),
-  );
+  assert.equal(ordered.unique.length, 1);
+  assert.equal(ordered.unique[0]?.name, "granot_crm_source_normalized_label_unique");
   assert.ok(
     ordered.nonUnique.every(
       (index) => index.name !== "granot_crm_source_normalized_label_unique",
     ),
   );
   assert.equal(ordered.nonUnique.length, 2);
+  const collisions = findNormalizedGranotLabelCollisions([
+    { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", normalized_granot_label: "referral" },
+    { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", normalized_granot_label: "referral" },
+  ]);
+  assert.equal(collisions.length, 1);
+});
+
+test("[AC-38] source and automation index verify matches the model contract", () => {
+  const sourceActual = GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES.map((index) => ({
+    name: index.name,
+    key: { ...index.key },
+    unique: "unique" in index ? true : undefined,
+  }));
+  assert.equal(verifyGranotCrmSourceIndexDefinitions(sourceActual).ok, true);
+  const automationActual = GRANOT_AUTOMATION_SOURCE_INDEXES.map((index) => ({
+    name: index.name,
+    key: { ...index.key },
+  }));
+  assert.equal(verifyGranotAutomationSourceIndexDefinitions(automationActual).ok, true);
+  assert.equal(orderedGranotAutomationSourceIndexCreates().unique.length, 0);
+  assert.ok(
+    orderedGranotAutomationSourceIndexCreates().nonUnique.some(
+      (index) => index.name === "granot_automation_source_crm_source_active",
+    ),
+  );
 });

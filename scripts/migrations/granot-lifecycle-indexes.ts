@@ -25,15 +25,25 @@ import {
   parseGranotLifecycleMigrationMode,
   writeGranotLifecycleManifest,
 } from "./granot-lifecycle-migration.lib.js";
-import { GRANOT_CRM_SOURCE_COLLECTION } from "../../src/models/GranotCrmSource.js";
+import {
+  GRANOT_CRM_SOURCE_COLLECTION,
+  GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES,
+} from "../../src/models/GranotCrmSource.js";
+import {
+  GRANOT_AUTOMATION_SOURCE_COLLECTION,
+  GRANOT_AUTOMATION_SOURCE_INDEXES,
+} from "../../src/models/GranotAutomationSource.js";
 import {
   INDEX_MIGRATION_SCRIPT_VERSION,
   findChannelOperationIdCollisions,
   findNormalizedGranotLabelCollisions,
   findObservationReceiptIdCollisions,
+  orderedGranotAutomationSourceIndexCreates,
   orderedGranotCrmSourceIndexCreates,
   orderedObservationIndexCreates,
   orderedReceiptIndexCreates,
+  verifyGranotAutomationSourceIndexDefinitions,
+  verifyGranotCrmSourceIndexDefinitions,
   verifyObservationIndexDefinitions,
   verifyReceiptIndexDefinitions,
   type DeclaredMongoIndex,
@@ -158,15 +168,20 @@ async function main(): Promise<void> {
   const ordered = orderedReceiptIndexCreates();
   const observationOrdered = orderedObservationIndexCreates();
   const sourceOrdered = orderedGranotCrmSourceIndexCreates();
+  const automationOrdered = orderedGranotAutomationSourceIndexCreates();
   let created: string[] = [];
   let verify: ReturnType<typeof verifyReceiptIndexDefinitions> | undefined;
   let observationVerify: ReturnType<typeof verifyObservationIndexDefinitions> | undefined;
+  let sourceVerify: ReturnType<typeof verifyGranotCrmSourceIndexDefinitions> | undefined;
+  let automationVerify: ReturnType<typeof verifyGranotAutomationSourceIndexDefinitions> | undefined;
 
   if (mode === "apply") {
     created = await createIndexes(GRANOT_OBSERVATION_RECEIPT_COLLECTION, ordered.nonUnique);
     created = [
       ...created,
       ...(await createIndexes(GRANOT_OBSERVATION_COLLECTION, observationOrdered.nonUnique)),
+      ...(await createIndexes(GRANOT_CRM_SOURCE_COLLECTION, sourceOrdered.nonUnique)),
+      ...(await createIndexes(GRANOT_AUTOMATION_SOURCE_COLLECTION, automationOrdered.nonUnique)),
     ];
     if (collisions.length > 0 || observationCollisions.length > 0) {
       const manifest = buildManifest({
@@ -189,10 +204,34 @@ async function main(): Promise<void> {
         `Refusing unique index create: ${collisions.length + observationCollisions.length} collision group(s).`,
       );
     }
+    if (normalizedLabelCollisions.length > 0) {
+      const manifest = buildManifest({
+        databaseName,
+        mode,
+        collisions,
+        observationCollisions,
+        normalizedLabelCollisions,
+        created,
+        uniqueCreated: [],
+        verify,
+        observationVerify,
+        sourceVerify,
+        automationVerify,
+      });
+      await writeGranotLifecycleManifest({
+        directory: OUTPUT_DIR,
+        runId: `granot-lifecycle-indexes-${mode}-${Date.now()}`,
+        manifest,
+      });
+      throw new Error(
+        `Refusing unique normalized-label index create: ${normalizedLabelCollisions.length} collision group(s).`,
+      );
+    }
     created = [
       ...created,
       ...(await createIndexes(GRANOT_OBSERVATION_RECEIPT_COLLECTION, ordered.unique)),
       ...(await createIndexes(GRANOT_OBSERVATION_COLLECTION, observationOrdered.unique)),
+      ...(await createIndexes(GRANOT_CRM_SOURCE_COLLECTION, sourceOrdered.unique)),
     ];
   }
 
@@ -203,10 +242,19 @@ async function main(): Promise<void> {
     observationVerify = verifyObservationIndexDefinitions(
       await listDeclaredIndexes(GRANOT_OBSERVATION_COLLECTION),
     );
+    sourceVerify = verifyGranotCrmSourceIndexDefinitions(
+      await listDeclaredIndexes(GRANOT_CRM_SOURCE_COLLECTION),
+    );
+    automationVerify = verifyGranotAutomationSourceIndexDefinitions(
+      await listDeclaredIndexes(GRANOT_AUTOMATION_SOURCE_COLLECTION),
+    );
   }
 
   const uniqueCreated =
-    mode === "apply" && collisions.length === 0 && observationCollisions.length === 0
+    mode === "apply" &&
+    collisions.length === 0 &&
+    observationCollisions.length === 0 &&
+    normalizedLabelCollisions.length === 0
       ? [
           ...ordered.unique.map((index) => index.name),
           ...observationOrdered.unique.map((index) => index.name),
@@ -224,6 +272,8 @@ async function main(): Promise<void> {
     uniqueCreated,
     verify,
     observationVerify,
+    sourceVerify,
+    automationVerify,
   });
   await writeGranotLifecycleManifest({
     directory: OUTPUT_DIR,
@@ -232,7 +282,7 @@ async function main(): Promise<void> {
   });
 
   if (mode === "verify") {
-    const failed = [verify, observationVerify].filter((result) => result && !result.ok);
+    const failed = [verify, observationVerify, sourceVerify, automationVerify].filter((result) => result && !result.ok);
     if (failed.length > 0) {
       const missing = failed.flatMap((result) => result?.missing ?? []);
       const mismatched = failed.flatMap((result) => result?.mismatched ?? []);
@@ -253,6 +303,8 @@ function buildManifest(input: {
   uniqueCreated: string[];
   verify?: ReturnType<typeof verifyReceiptIndexDefinitions>;
   observationVerify?: ReturnType<typeof verifyObservationIndexDefinitions>;
+  sourceVerify?: ReturnType<typeof verifyGranotCrmSourceIndexDefinitions>;
+  automationVerify?: ReturnType<typeof verifyGranotAutomationSourceIndexDefinitions>;
 }) {
   return {
     script_version: INDEX_MIGRATION_SCRIPT_VERSION,
@@ -261,6 +313,8 @@ function buildManifest(input: {
     contract_index_names: [
       ...GRANOT_OBSERVATION_RECEIPT_INDEXES.map((index) => index.name),
       ...GRANOT_OBSERVATION_INDEXES.map((index) => index.name),
+      ...GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES.map((index) => index.name),
+      ...GRANOT_AUTOMATION_SOURCE_INDEXES.map((index) => index.name),
     ],
     collision_count:
       input.collisions.length +
@@ -269,11 +323,13 @@ function buildManifest(input: {
     collisions: input.collisions,
     observation_receipt_id_collisions: input.observationCollisions,
     normalized_granot_label_collisions: input.normalizedLabelCollisions,
-    granot_crm_source_unique_index_apply_enabled: false,
+    granot_crm_source_unique_index_apply_enabled: true,
     created_index_names: input.created,
     unique_index_names_created: input.uniqueCreated,
     verify: input.verify,
     observation_verify: input.observationVerify,
+    granot_crm_source_verify: input.sourceVerify,
+    granot_automation_source_verify: input.automationVerify,
   };
 }
 

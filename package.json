@@ -41,6 +41,7 @@
     "migrations:operations-registry-cpl-schedules": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/operations-registry-cpl-schedules.ts",
     "migrations:operations-registry-ringcentral": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/operations-registry-ringcentral.ts",
     "migration:granot-lifecycle:receipts": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-receipts.ts",
+    "migration:granot-lifecycle:sources": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-source-registry.ts",
     "migration:granot-lifecycle:indexes": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-indexes.ts"
   },
   "keywords": [],

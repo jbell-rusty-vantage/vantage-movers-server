@@ -50,6 +50,10 @@ const GranotAutomationSourceSchema = new Schema(
       type: Schema.Types.Mixed,
       default: null,
     },
+    granot_crm_source: {
+      type: Schema.Types.ObjectId,
+      ref: "GranotCrmSource",
+    },
   },
   {
     collection: "granot_automation_sources",
@@ -59,6 +63,23 @@ const GranotAutomationSourceSchema = new Schema(
   },
 );
 
+export const GRANOT_AUTOMATION_SOURCE_COLLECTION = "granot_automation_sources";
+
+export const GRANOT_AUTOMATION_SOURCE_INDEXES = [
+  {
+    name: "granot_automation_source_active_label",
+    key: { active: 1, label: 1 },
+  },
+  {
+    name: "granot_automation_source_active_operation_label",
+    key: { active: 1, supported_operations: 1, label: 1 },
+  },
+  {
+    name: "granot_automation_source_crm_source_active",
+    key: { granot_crm_source: 1, active: 1 },
+  },
+] as const;
+
 GranotAutomationSourceSchema.index(
   { active: 1, label: 1 },
   { name: "granot_automation_source_active_label" },
@@ -66,6 +87,10 @@ GranotAutomationSourceSchema.index(
 GranotAutomationSourceSchema.index(
   { active: 1, supported_operations: 1, label: 1 },
   { name: "granot_automation_source_active_operation_label" },
+);
+GranotAutomationSourceSchema.index(
+  { granot_crm_source: 1, active: 1 },
+  { name: "granot_automation_source_crm_source_active" },
 );
 
 export type GranotAutomationSourceDocument = InferSchemaType<

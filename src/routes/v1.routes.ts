@@ -98,11 +98,15 @@ import {
   setMerchantActivation,
   createOrUpdateSourceCompany,
   createOrUpdateSourceGranularity,
+  createOrUpdateGranotCrmSource,
+  getProjectedGranotCrmSource,
   getSourceCompany,
   getSourceCompanyBySlug,
   getSourceGranularity,
+  listProjectedGranotCrmSources,
   listSourceCompanies,
   listSourceGranularities,
+  setGranotCrmSourceLifecycleEnabled,
   applySimpleCplSchedule,
   listCplSchedule,
   mutateAdvancedCplSchedule,
@@ -148,6 +152,8 @@ import {
   sourceGranularityUpdateSchema,
   sourceActivationSchema,
   sourceResolutionPreviewSchema,
+  granotCrmSourceRegistryUpdateSchema,
+  granotCrmSourceLifecycleActivationSchema,
   listMovingCarriersQuerySchema,
   movingCarrierCreateSchema,
   movingCarrierImportSchema,
@@ -350,6 +356,13 @@ router.post(
 router.get(
   "/api/v1/admin/source-granularities/:id/dependencies",
   handleSourceGranularityDependencies,
+);
+router.get("/api/v1/admin/granot-crm-sources", handleGranotCrmSourcesList);
+router.get("/api/v1/admin/granot-crm-sources/:id", handleGranotCrmSourceDetail);
+router.patch("/api/v1/admin/granot-crm-sources/:id", handleGranotCrmSourceUpdate);
+router.patch(
+  "/api/v1/admin/granot-crm-sources/:id/activation",
+  handleGranotCrmSourceActivation,
 );
 router.post(
   "/api/v1/admin/source-resolution/preview",
@@ -1003,6 +1016,82 @@ async function handleSourceGranularityDependencies(req: Request, res: Response) 
       entity_type: "source_granularity",
       entity_id: id,
     });
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleGranotCrmSourcesList(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const items = await listProjectedGranotCrmSources();
+    return res.json({ ok: true, data: { items } });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleGranotCrmSourceDetail(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const data = await getProjectedGranotCrmSource(id);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleGranotCrmSourceUpdate(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
+    const parsed = granotCrmSourceRegistryUpdateSchema.parse(req.body);
+    await createOrUpdateGranotCrmSource(
+      {
+        id,
+        granot_label: parsed.granot_label,
+        ...(parsed.default_channel ? { default_channel: parsed.default_channel } : {}),
+        ...(parsed.enabled !== undefined ? { enabled: parsed.enabled } : {}),
+        ...(parsed.notes !== undefined ? { notes: parsed.notes } : {}),
+        lifecycle_enabled: parsed.lifecycle_enabled,
+        lifecycle_disposition: parsed.lifecycle_disposition,
+        lead_created_policy: parsed.lead_created_policy,
+        lead_source_company: parsed.lead_source_company ?? null,
+        lifecycle_routes: parsed.lifecycle_routes,
+        ...(parsed.lifecycle_policy_version !== undefined
+          ? { lifecycle_policy_version: parsed.lifecycle_policy_version }
+          : {}),
+        reason: parsed.reason,
+      },
+      actor,
+    );
+    const data = await getProjectedGranotCrmSource(id);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleGranotCrmSourceActivation(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
+    const parsed = granotCrmSourceLifecycleActivationSchema.parse(req.body);
+    await setGranotCrmSourceLifecycleEnabled(
+      {
+        id,
+        lifecycle_enabled: parsed.lifecycle_enabled,
+        reason: parsed.reason,
+      },
+      actor,
+    );
+    const data = await getProjectedGranotCrmSource(id);
     return res.json({ ok: true, data });
   } catch (error) {
     return sendError(req, res, error);

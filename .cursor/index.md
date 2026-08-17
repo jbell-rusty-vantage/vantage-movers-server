@@ -52,7 +52,7 @@ Production API: https://vantage-movers-main-server.vercel.app
 | [customer.service.md](businesslogic/customer.service.md) | `src/services/customers/` — CRUD, cascade delete, booking-time upsert from lead/contact |
 | [testimonial.service.md](businesslogic/testimonial.service.md) | `src/services/testimonials/testimonial.service.ts` — read-only list for marketing site, ingest helpers |
 | [sheetSync.service.md](businesslogic/sheetSync.service.md) | `src/services/sheetSync/` — modes, outbox (`sheet_sync_jobs`), Vercel Queue wake-up, drainer, coordinator API, tombstones, cron/admin |
-| [operationsRegistry.service.md](businesslogic/operationsRegistry.service.md) | `src/services/operationsRegistry/` — catalog/source/CPL/RC inbound-route SoR, signed owner mutations, `resolveCpl` |
+| [operationsRegistry.service.md](businesslogic/operationsRegistry.service.md) | `src/services/operationsRegistry/` — catalog/source/CPL/RC inbound-route/Granot CRM source SoR, signed owner mutations, `resolveCpl` |
 | [granotLifecycle.capture.md](businesslogic/granotLifecycle.capture.md) | `src/services/granotLifecycle/` — webhook auth, v2 receipt capture, `{ receipt_id }` wake-up; **no processing** |
 | [granotLifecycle.normalization.md](businesslogic/granotLifecycle.normalization.md) | `src/services/granotLifecycle/normalization.ts` — one Observation per receipt, exact Section 10 vocabulary; **no matching/effects** |
 | [granotLifecycle.sourcePolicy.md](businesslogic/granotLifecycle.sourcePolicy.md) | `src/services/granotLifecycle/sourcePolicy.ts` — fail-closed Registry policy resolution and seven-layer effect-gate snapshot; **no effects** |

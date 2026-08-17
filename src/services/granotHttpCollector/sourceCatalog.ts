@@ -2,6 +2,12 @@ import mongoose from "mongoose";
 import { connectMongo } from "../../db";
 import { GranotAutomationSource } from "../../models/GranotAutomationSource";
 import type { DurableActor } from "../durableWork";
+import {
+  evaluateGranotAutomationCompatibility,
+  automationOperationPermittedByRoutes,
+  type GranotAutomationSourceCompatibility,
+} from "../granotLifecycle/automationCompatibility";
+import { listRegistryGranotCrmSources } from "../operationsRegistry/granotCrmSources";
 
 export const GRANOT_AUTOMATION_SOURCE_LIMIT = 200;
 export type GranotSourceOperation = "form_leads" | "call_leads";
@@ -27,6 +33,8 @@ export type GranotAutomationSourceItem = {
   supported_operations: GranotSourceOperation[];
   created_from: "seed" | "admin";
   created_at?: Date;
+  granot_crm_source?: string;
+  compatibility?: GranotAutomationSourceCompatibility;
 };
 
 export class GranotAutomationSourceConflict extends Error {
@@ -52,7 +60,12 @@ export class GranotAutomationSourceValidationError extends Error {
 
   constructor(
     message: string,
-    readonly issues: Array<{ path: string[]; message: string }>,
+    readonly issues: Array<{
+      path: string[];
+      message: string;
+      code?: string;
+      source_id?: string;
+    }>,
   ) {
     super(message);
     this.name = "GranotAutomationSourceValidationError";
@@ -73,7 +86,11 @@ export async function listGranotAutomationSources(
     .limit(GRANOT_AUTOMATION_SOURCE_LIMIT)
     .lean()
     .exec();
-  return rows.map(toItem);
+  const projected = await projectAutomationSources(
+    rows,
+    operation ? [operation] : undefined,
+  );
+  return projected.items;
 }
 
 export async function createGranotAutomationSource(input: {
@@ -97,7 +114,12 @@ export async function createGranotAutomationSource(input: {
       created_from: "admin",
       created_by: input.createdBy,
     });
-    return toItem(row.toObject());
+    return {
+      ...toItem(row.toObject()),
+      compatibility: evaluateGranotAutomationCompatibility({
+        requested_operations: input.supportedOperations,
+      }),
+    };
   } catch (error) {
     if (isDuplicateKeyError(error)) {
       throw new GranotAutomationSourceConflict();
@@ -223,8 +245,31 @@ export async function resolveGranotAutomationSources(input: {
     );
   }
 
-  const ordered = sourceIds.map((id) => toItem(byId.get(id)!));
-  return partitionGranotAutomationSources(ordered, input.operations);
+  const projected = await projectAutomationSources(
+    sourceIds.map((id) => byId.get(id)!),
+    input.operations,
+  );
+  const unavailable = projected.items.filter(
+    (source) => source.compatibility?.available_for_apply !== true,
+  );
+  if (unavailable.length) {
+    throw new GranotAutomationSourceValidationError(
+      "Selected Granot sources are unavailable.",
+      unavailable.map((source) => ({
+        path: ["source_ids"],
+        message:
+          source.compatibility?.issues[0]?.message ??
+          "Selected Granot source is unavailable for apply.",
+        code: source.compatibility?.issues[0]?.code,
+        source_id: source.id,
+      })),
+    );
+  }
+  return partitionGranotAutomationSourcesByRegistry(
+    projected.items,
+    projected.routesBySourceId,
+    input.operations,
+  );
 }
 
 export function canonicalizeGranotSourceIds(sourceIds: string[]): string[] {
@@ -288,6 +333,7 @@ function toItem(row: {
   supported_operations?: string[] | null;
   created_from: "seed" | "admin";
   createdAt?: Date | null;
+  granot_crm_source?: unknown;
 }): GranotAutomationSourceItem {
   return {
     id: String(row._id),
@@ -299,7 +345,101 @@ function toItem(row: {
     ),
     created_from: row.created_from,
     ...(row.createdAt ? { created_at: row.createdAt } : {}),
+    ...(row.granot_crm_source
+      ? { granot_crm_source: String(row.granot_crm_source) }
+      : {}),
   };
+}
+
+async function projectAutomationSources(
+  rows: Array<{
+    _id: unknown;
+    label: string;
+    active: boolean;
+    supported_operations?: string[] | null;
+    created_from: "seed" | "admin";
+    createdAt?: Date | null;
+    granot_crm_source?: unknown;
+  }>,
+  requestedOperations?: GranotSourceOperation[],
+): Promise<{
+  items: GranotAutomationSourceItem[];
+  routesBySourceId: Map<string, Array<{ lead_model: "FormLead" | "CallLead" }>>;
+}> {
+  const registryRows = await listRegistryGranotCrmSources({ includeDisabled: true });
+  const byId = new Map(registryRows.map((row) => [row.id, row]));
+  const labelCounts = new Map<string, number>();
+  for (const row of registryRows) {
+    if (!row.normalized_granot_label) continue;
+    labelCounts.set(
+      row.normalized_granot_label,
+      (labelCounts.get(row.normalized_granot_label) ?? 0) + 1,
+    );
+  }
+  const routesBySourceId = new Map<
+    string,
+    Array<{ lead_model: "FormLead" | "CallLead" }>
+  >();
+  const items = rows.map((row) => {
+    const item = toItem(row);
+    const referenced = item.granot_crm_source
+      ? byId.get(item.granot_crm_source)
+      : undefined;
+    if (referenced) {
+      routesBySourceId.set(item.id, referenced.lifecycle_routes);
+    }
+    const operations = requestedOperations ?? item.supported_operations;
+    return {
+      ...item,
+      compatibility: evaluateGranotAutomationCompatibility({
+        granot_crm_source_id: item.granot_crm_source,
+        requested_operations: operations,
+        referenced: referenced
+          ? {
+              id: referenced.id,
+              enabled: referenced.enabled,
+              lifecycle_enabled: referenced.lifecycle_enabled,
+              lifecycle_disposition: referenced.lifecycle_disposition,
+              lifecycle_routes: referenced.lifecycle_routes,
+              normalized_granot_label: referenced.normalized_granot_label,
+            }
+          : item.granot_crm_source
+            ? null
+            : undefined,
+        normalized_label_match_count: referenced?.normalized_granot_label
+          ? labelCounts.get(referenced.normalized_granot_label) ?? 1
+          : 1,
+      }),
+    };
+  });
+  return { items, routesBySourceId };
+}
+
+function partitionGranotAutomationSourcesByRegistry(
+  sources: GranotAutomationSourceItem[],
+  routesBySourceId: Map<string, Array<{ lead_model: "FormLead" | "CallLead" }>>,
+  operations: GranotSourceOperation[],
+): Map<GranotSourceOperation, GranotAutomationSourceItem[]> {
+  const partitions = new Map<GranotSourceOperation, GranotAutomationSourceItem[]>();
+  for (const operation of operations) {
+    const permitted = sources.filter((source) =>
+      automationOperationPermittedByRoutes(
+        routesBySourceId.get(source.id) ?? [],
+        operation,
+      ),
+    );
+    if (permitted.length === 0) {
+      throw new GranotAutomationSourceValidationError(
+        `No selected Granot sources support ${operation}.`,
+        [{
+          path: ["source_ids"],
+          message: `Select at least one source that supports ${operation}`,
+        }],
+      );
+    }
+    partitions.set(operation, permitted);
+  }
+  return partitions;
 }
 
 function isDuplicateKeyError(error: unknown): boolean {

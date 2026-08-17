@@ -146,6 +146,15 @@ test("Granot source catalog persists exact labels and ships all requested defaul
           "granot_automation_source_active_operation_label",
       ),
   );
+  assert.ok(GranotAutomationSource.schema.path("granot_crm_source"));
+  assert.ok(
+    GranotAutomationSource.schema
+      .indexes()
+      .some(
+        (entry: [Record<string, number>, { name?: string }]) =>
+          entry[1].name === "granot_automation_source_crm_source_active",
+      ),
+  );
 });
 
 test("Granot source schema requires one or two unique supported workflows", () => {
