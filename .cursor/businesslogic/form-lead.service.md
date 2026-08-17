@@ -1,6 +1,6 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) for Granot identity; [`../../../docs/adr/`](../../../docs/adr/) for [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md) and [0002 CRM post survives failures](../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md)
-**Primary code:** `api/services/leads/formLead.service.ts`  
+**Primary code:** `src/services/leads/formLead.service.ts`, `src/services/leads/leadCplResolution.ts`, `src/services/crm/crm.service.ts`, `src/services/crm/formLeadPayload.ts`  
 **Domain terms used:** Form Lead Ingestion, Form Lead, Duplicate Lead, CRM Posting, Sheet Sync, Tracking Reference, Lead ID, Form Fill, Move Type, CPL
 
 # Form Lead Service
@@ -14,7 +14,7 @@
 | Step | What happens |
 |------|----------------|
 | 1. Normalize | Name, phone, **Source Company** (`parseSourceCompany`), required location |
-| 2. Derive | **Move Type** (`local` from pickup/delivery states), **CPL** (`getCplForSource`), Florida `timestamp`, **Tracking Reference** (`ref_no`, default `"not provided"`), `move_date` |
+| 2. Derive | **Move Type** (`local` from pickup/delivery states), **CPL** snapshot (`resolveLeadCplSnapshot` → `operationsRegistry.resolveCpl`), Florida `timestamp`, **Tracking Reference** (`ref_no`, default `"not provided"`), `move_date` |
 | 3. **Duplicate Lead** check | `findDuplicateFormLeadMatch(source, phone, email, timestamp)` — exact Source Granularity, same cohort around the 2026-04-30 Eastern cutoff, earlier non-duplicate Form Lead with same normalized phone **or** email |
 | 4. Persist + Sheet Sync intent | Atomic in queued mode via `runSheetSyncWrite`: save Form Lead with `duplicate` flag; `post_to_granot = post_to_granot && !duplicate` |
 | 4b. Form Fill (non-duplicates only) | `markMatchingCallLeadsWithFormFill` — same source + phone Call Leads → `form_fill=true`; enqueues `call_lead.form_fill.update` jobs in same txn |
@@ -39,9 +39,13 @@
 - Payload `leadno` = persisted **Tracking Reference** (`FormLead.ref_no`); Granot exposes it as the **Granot Form Reference** in `ref_no`. Exact `FormLead.ref_no` lookup is primary; a valid Mongo `_id`-shaped Granot `ref_no` is compatibility fallback only after the exact lookup misses.
 - Duplicate Form Leads and caller-disabled posting → skip; emit `crm.form_lead.submit.skipped`
 
-### CPL config lag
+### CPL snapshot
 
-Glossary: CPL by Source Company + **Lead Channel** + **Move Type**. `getCplForSource` in `cpl.ts` keys mainly on source (Best Relocation has local/LD split only). Stored CPL at ingestion may not match full channel granularity.
+Create/update store `cpl`, `cpl_rate_period`, `cpl_resolution_status` (`resolved` / `duplicate_zero` / `missing_rate` / `not_applicable`), `cpl_resolved_at`, and `cpl_resolution_version` via `leads/leadCplResolution.ts`. Authority is Operations Registry periods, not `cpl.ts` / `getCplForSource`. Missing coverage emits `lead.cpl.missing_rate`.
+
+### Granot lifecycle boundary
+
+CRM Posting is independent of webhook capture. Granot webhooks do not create or update Form Leads today ([`granotLifecycle.capture.md`](granotLifecycle.capture.md)). HTTP automation may later `PATCH` the same lead ([`granotHttpCollector.service.md`](granotHttpCollector.service.md)).
 
 ## Sheet Sync tab routing (Form Lead)
 
@@ -60,7 +64,8 @@ Job: `resource: source_lead`, `operation: form_lead.create` | `form_lead.update`
 
 ## Update (`updateFormLead`)
 
-- Re-normalizes provided fields; recomputes Move Type + CPL.
+- Re-normalizes provided fields; recomputes Move Type + CPL snapshot.
+- Optional `receiver_agent` (+ `receiver_agent_source` / snapshots) via Operations Registry agent lookup.
 - **Blocked:** `quoted` / `cubic_feet` on Duplicate Leads; **Bad Lead** on duplicate, Booked, or Cancelled leads.
 - Saves + enqueues attached **Booking Chain** refresh (`form_lead.update`).
 
@@ -96,8 +101,10 @@ Form Lead plus Lead Message transaction commits.
 ## Related businesslogic
 
 - [`call-lead.service.md`](call-lead.service.md) — Form Fill on Call Lead create; Call Lead Ingestion
+- [`operationsRegistry.service.md`](operationsRegistry.service.md) — CPL periods + agent lookup
 - [`sheetSync.service.md`](sheetSync.service.md) — outbox, drainer, job shapes
 - [`googleSheets.service.md`](googleSheets.service.md) — tab routing, Master vs Source Company Sheet writes
+- [`granotLifecycle.capture.md`](granotLifecycle.capture.md) — webhook receipts (no Form Lead writes)
 
 ## Related rules
 

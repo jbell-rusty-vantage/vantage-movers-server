@@ -15,26 +15,27 @@ alwaysApply: true
 - **Local dev:** `scripts/dev-server.ts` (`pnpm dev` / `dev:local` / `dev:granot`).
 - `src/routes/` owns HTTP boundaries — keep thin: auth → Zod → service → response.
 - `src/routes/v1.routes.ts` is the main surface (public v1 + admin browse/search/export/analytics/registry/observability + extension workflows). Mounted after most cron/webhook routes.
-- Before the `/api/v1` guard inside v1: `extension-auth.routes.ts` (`/api/v1/extension/auth/*`, no secret) and `google-drive-oauth.routes.ts` (`/api/v1/admin/google-drive/*`).
+- Before the `/api/v1` guard inside v1: `extension-auth.routes.ts` (`/api/v1/extension/auth/*`, no secret) and `google-drive-oauth.routes.ts` (mounted **inside** `v1.routes.ts`, not a separate `app.use`). OAuth callback is unguarded; other `/api/v1/admin/google-drive/*` routes attach per-route `requireApiSecret` + owner gate.
 - After the guard: `ringcentral-registry.routes.ts` (`/api/v1/admin/ringcentral/inbound-routes*`).
-- Separate admin routers (still under `/api/v1/admin/...`, with `requireApiSecret`):
-  - `ingestion.routes.ts` — Best Relocation ingestion
-  - `reporting.routes.ts` — reporting definitions/destinations/runs
-  - `granot-automation.routes.ts` — Granot HTTP automation
-- Cron/webhook mounts from `src/app.ts`: RingCentral webhooks + cron, Granot webhooks, booking-reconciliation rematch, sheet-sync drain, lead-messaging drain, CPL-corrections drain, notification digest, Twilio status/voice, Best Relocation heartbeat, reporting crons, Granot automation heartbeat.
-- **Queue consumers** (`api/queues/`): `sheet-sync-consumer`, `lead-messaging-consumer`, `best-relocation-ingestion-consumer`, `reporting-consumer`, `granot-automation-consumer`. Consumers must re-register foundations as needed (e.g. reporting Stage4); do not assume Express bootstrap ran.
+- Separate admin routers mounted from `src/app.ts` (still under `/api/v1/admin/...`, with `requireApiSecret`):
+  - `granot-automation.routes.ts` — Granot HTTP automation (mounted **before** v1)
+  - `ingestion.routes.ts` — Best Relocation ingestion (after v1)
+  - `reporting.routes.ts` — reporting definitions/destinations/runs (after v1)
+- Cron/webhook mounts from `src/app.ts` (before v1): RC webhooks (`/api/webhooks/ringcentral`, `/api/webhooks/ringcentral-local`, `/api/dev/ringcentral/*`), Granot webhooks (`/api/webhooks/granot/{lead-created,priority-updated,booking-status-changed}`), RC crons (`ringcentral-call-log-sync`, `ringcentral-analytics-reconcile`), booking-reconciliation rematch, sheet-sync drain, lead-messaging drain, CPL-corrections drain, notification digest, Twilio status/voice, Best Relocation ingest heartbeat, reporting crons (`reporting-delivery-heartbeat`, `reporting-health-scan`, `reporting-cleanup-janitor`, `reporting-test-artifact-janitor`), Granot automation heartbeat.
+- `app.ts` also calls `registerReportingStage4Foundation()` at Express bootstrap. Queue consumers do not inherit this — they must re-register foundations themselves.
+- **Queue consumers** (`api/queues/`): `sheet-sync-consumer`, `lead-messaging-consumer`, `best-relocation-ingestion-consumer`, `reporting-consumer`, `granot-automation-consumer`. Granot lifecycle capture may publish `{ receipt_id }` to `granot-lifecycle-events` / `granot-lifecycle-events-dev`; **no** `granot-lifecycle-consumer` is deployed yet.
 - `src/validation/` — Zod schemas (`v1.validation.ts` barrel + `src/validation/v1/` + reporting validators).
 - `src/models/` — runtime Mongoose schemas (`snake_case`); Google Sheets projections produce Title Case columns. `GranotObservationReceipt` lives here; collection `granot_webhook_receipts` is retained.
 - `src/config/domain/` — mode-aware domain config; re-exported by `src/config/domain.ts` **except** `reporting.ts` (import `./domain/reporting` directly). Prefer focused modules over scattering `process.env`.
 - `src/db.ts` — shared Mongo helper; preserve `TEST_MODE` DB boundary.
-- `src/middleware/` — `requireApiSecret` / `requireVantageAuth`, HTTP logging, webhook secrets.
+- `src/middleware/` — `requireApiSecret` / `requireVantageAuth`, `requireGranotWebhookSecret`, HTTP logging.
 - `src/auth/extension/` — Granot extension login, JWT, password hashing, `ExtensionUser`.
 
 ## Auth Surface
 
 | Mechanism | Scope |
 |-----------|--------|
-| `x-api-secret` → extension Bearer (owner only on data routes; employees 403) → scoped keys (`VANTAGE_SCOPED_API_KEYS`) | Protected `/api/v1/*` after extension mount. Sets `req.vantageAuth`: `secret` \| `scoped_key` \| `user` |
+| `x-api-secret` → extension Bearer (owner only on data routes; employees 403) → scoped keys (`VANTAGE_SCOPED_API_KEYS`) | Protected `/api/v1/*` after extension mount. Sets `req.vantageAuth`: `secret` \| `scoped_key` \| `user`. Scoped keys may also constrain Source Company + Source Granularity. |
 | Extension auth (unguarded) | `/api/v1/extension/auth/{login,refresh,me,logout}` |
 | Admin proxy actors | Trusted `x-vantage-admin-*` (+ optional HMAC). Registry/source/CPL/RC/ingestion/granot/booking-recon owner gates use `requireRegistry*Actor` patterns |
 | Google Drive owner gate | Drive OAuth/Picker admin routes |
@@ -49,7 +50,8 @@ Do not bypass the v1 auth guard for new data endpoints.
 Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*Search.service.ts`, enrichment/reconciliation/crm/googleSheets top-level barrels).
 
 ### Core
-- `leads/` — Form/call CRUD, duplicates, source match, location enrichment. Models: `FormLead`, `CallLead`
+- `leads/` — Form/call CRUD, duplicates, source match, location enrichment, CPL snapshot via `leadCplResolution.ts`. Models: `FormLead`, `CallLead`
+- `leadSourceCompanies/` — legacy embedded source-company document helpers and CPL reads; admin writes go through `operationsRegistry/`. Lead write paths still call this via `leads/leadSourceCompany.ts`.
 - `bookings/` — Booked CRUD, from-source, referral/leadless, mirrors. Model: `BookedLead`
 - `cancellations/` — Cancelled CRUD + sheet mirrors. Model: `CancelledLead`
 - `customers/` — Customer CRUD/upsert. Model: `Customer`
@@ -65,9 +67,9 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - `reconciliation/` — Booked call-lead reconciliation from Granot Booked Jobs rows
 - `granotCrmCsv/` — CSV source registry + S3 ingest (`/granot-crm/csv/*`)
 - `granotWebhooks/` — Compatibility adapter only; webhook capture implementation lives in `granotLifecycle/capture`
-- `granotHttpCollector/` — HTTP session collector + automation runs/sources/workflows
-- `granotLifecycle/` — Shared lifecycle vocabulary, receipt evidence helpers, webhook capture, and receipt-ID queue wake-up publisher. Runtime normalization, processing, consumer/drainer, flags, and effects land only in their assigned lifecycle units
-- `crm/` — Outbound Granot form-lead submit (invoked from lead write paths)
+- `granotHttpCollector/` — HTTP session collector + automation runs/sources/workflows. Apply still mutates leads/enrichment/reconciliation **directly** (not via a lifecycle processor). See `businesslogic/granotHttpCollector.service.md`.
+- `granotLifecycle/` — Shared lifecycle vocabulary, receipt evidence helpers, webhook capture, and receipt-ID queue wake-up publisher. Runtime normalization, processing, consumer/drainer, flags, and effects land only in their assigned lifecycle units — **none of those are live yet**.
+- `crm/` — Outbound Granot form-lead submit (invoked from lead write paths). Independent of webhook capture.
 
 ### Integrations
 - `googleSheets/` + `sheetSync/` — Sheets client/projections + write-behind outbox/drainer/queue
@@ -79,7 +81,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 
 ### RingCentral
 - Routes are HTTP/cron boundaries only. Logic lives in `ringcentral/`: auth/client, webhook capture, candidates, Call Log sync, analytics reconcile, duplicate detection, call-lead ingest.
-- `call-lead-sources.ts` owns inbound-number → source-company mapping. `ringcentral-call-lead-ingest.service.ts` is the shared promotion path — do not create RC call leads from routes/scripts directly.
+- Operations Registry inbound-route snapshot owns runtime inbound-number → source attribution. `call-lead-sources.ts` is migration/test seed only — do not import it at runtime. `ringcentral-call-lead-ingest.service.ts` is the shared promotion path — do not create RC call leads from routes/scripts directly.
 - `ringcentral-config.ts` is the single source for RC env toggles and write posture.
 
 ### Admin / analytics / observability / registry
@@ -103,18 +105,20 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - **Catalog/people:** `catalog/agents|merchants`, `agents`, `merchants` (+ activation/dependencies)
 - **Sources/CPL:** `source-companies`, `source-granularities`, `source-resolution/preview`, `cpl-rates`, `cpl/snapshot|simple-schedule`, CPL periods/commands, `cpl-corrections*`
 - **Browse + CSV:** `form-leads`, `call-leads`, `booked-leads`, `cancelled-leads`, `customers`, `agents` (+ `exports/{resource}.csv`)
-- **Analytics/reports:** `analytics/*` (incl. `overview`), `exports/analytics/:report.csv`, `reports/agent-sales`
-- **Ops tooling:** `sheet-sync/*`, `google-maps/geocoding-health`, `lead-messages/*`, `testimonials`, `moving-carriers`
+- **Analytics/reports:** `analytics/*` (incl. `overview`, `receiver-agent-*`), `exports/analytics/:report.csv`, `exports/reports/agent-sales.csv`, `reports/agent-sales`
+- **Ops tooling:** `sheet-sync/*`, `google-maps/geocoding-health`, `lead-messages/*`, `testimonials` (+ `reviewer-names`), `moving-carriers` (+ `import`)
 - **Booking recon:** `booking-lead-reconciliations/*`
 - **Registry:** `operations-registry/{overview,health,changes}`
 - **RingCentral:** `ringcentral/inbound-routes*`
 - **Observability:** `observability/*` + exports
-- **Google Drive:** `google-drive/*` (separate router)
-- **Ingestion:** `ingestion/*` (separate router)
-- **Reporting:** `reporting/{catalog,destinations,definitions,draft,runs}` (separate router)
-- **Granot automation:** `granot-automation/{sources,runs,run-groups,worker}` (separate router)
+- **Google Drive:** `google-drive/*` (router file nested in `v1.routes.ts`)
+- **Ingestion:** `ingestion/*` (separate `app.use` router)
+- **Reporting:** `reporting/{catalog,destinations,definitions,draft,runs}` (separate `app.use` router)
+- **Granot automation:** `granot-automation/runs/*`, `granot-automation/runs/sources`, `granot-automation/run-groups`, `granot-automation/runs/worker` (separate `app.use` router, before v1)
 
 `database_scope=production|historical|combined` where appropriate. Detail rejects `combined`; historical is read-only. No admin delete routes for core leads/bookings/customers — use public v1 writes so sheet sync stays owned by domain services. Observability deletes are the explicit exception.
+
+Public v1 extras (still behind the v1 guard unless noted): `POST /api/v1/leadless-bookings`, `POST /api/v1/employee-booking-{options,submissions}` (secret + `x-public-client-key-hash` on submit), `POST /api/v1/form-leads/granot-match`, `/api/v1/granot-crm/csv/*`.
 
 ## Config Domain Modules (`src/config/domain/`)
 
@@ -145,8 +149,11 @@ Run via `package.json` so `.env` + `tsx` stay consistent.
 | `scripts/historical/` | Historical audits/backfills/repairs (+ relaxed historical models when present) |
 | `scripts/historical_production_db_staged_merge_ingestion/` | Snapshot/plan/apply/verify/rollback (`pnpm historical:*`) |
 | `scripts/migrations/` | Ops-registry seed/backfill/RC migrations (`pnpm migrations:*`) and Granot lifecycle receipt/index migrations (`pnpm migration:granot-lifecycle:*`) |
+| `scripts/prototypes/` | Granot lead-lifecycle prototype CLI (`pnpm prototype:granot-lifecycle`) — not runtime |
 | `scripts/output/` | Generated artifacts (not runtime) |
-| Root one-offs | `dev-server.ts`, `best-relocation-sheet-ingest.ts`, `generate-granot-webhook-secret.ts`, `test-setup.ts` |
+| Root one-offs | `dev-server.ts`, `best-relocation-sheet-ingest.ts`, `generate-granot-webhook-secret.ts`, `test-setup.ts`, `dump-operations-name-link-inventory.ts` (`pnpm ops:dump-name-link-inventory`), `ingest-moving-carriers.ts` (`pnpm db:ingest-moving-carriers`), `test-create-google-spreadsheet.ts` |
+| `scripts/dev_ops/twilio/`, `scripts/dev_ops/ping-db.ts` | `pnpm twilio:*`, `pnpm db:ping` |
+| `scripts/dev_ops/ringcentral/` | Manual RC diagnostics/webhook runners — invoke with `tsx` + `.env`; **no** `pnpm ringcentral:*` scripts in `package.json` |
 
 Keep reusable runtime logic in `src/services/`; scripts should call services, not reimplement them.
 

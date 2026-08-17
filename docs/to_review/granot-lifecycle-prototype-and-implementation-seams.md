@@ -1,5 +1,7 @@
 # Granot lifecycle prototype and implementation seams
 
+> **Prototype vocabulary.** Intake / Confirm Granot Booking names in this file are **superseded** by the final spec §5 (Booking/Release Reconciliation). Do not copy them into code or Cursor rules. Live webhook capture is documented in [`.cursor/businesslogic/granotLifecycle.capture.md`](../../.cursor/businesslogic/granotLifecycle.capture.md). Locked contracts: `scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md`.
+
 Status: executable reasoning artifact, not a production implementation. The
 prototype lives at `scripts/prototypes/granot-lead-lifecycle/` and uses no live
 systems or persistence.

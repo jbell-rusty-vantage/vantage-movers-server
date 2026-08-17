@@ -1,6 +1,6 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
-**Primary code:** `api/services/customers/`  
+**Primary code:** `src/services/customers/`  
 **Domain terms used:** Customer, Booking, Form Lead, Call Lead, System of Record
 
 # Customer Service

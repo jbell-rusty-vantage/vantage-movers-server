@@ -1,13 +1,13 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
-**Primary code:** `api/services/googleSheets/googleSheets.service.ts` (facade: `api/services/googleSheets.service.ts`)  
+**Primary code:** `src/services/googleSheets/googleSheets.service.ts` (facade: `src/services/googleSheets.service.ts`)  
 **Domain terms used:** Sheet Sync, Reporting Sheets, Master Sheets, Source Company Sheet, Duplicate Lead, Bad Lead, Lead ID
 
 # Google Sheets Service
 
 **Role:** Projects Mongo Form Lead, Call Lead, Booking, and Cancellation documents into **Reporting Sheets**. **System of Record** is MongoDB; sheets are eventually consistent reporting only — never authoritative for lead state, CPL, or CRM.
 
-**Facade:** `api/services/googleSheets.service.ts` re-exports this module. Callers include legacy sheet sync (`sheetSyncSourceLookup`) and the queued drainer (`jobPlanner` mirrors the same tab routing).
+**Facade:** `src/services/googleSheets.service.ts` re-exports this module. Callers include legacy sheet sync (`sheetSyncSourceLookup`) and the queued drainer (`jobPlanner` mirrors the same tab routing).
 
 ## Public API
 
@@ -51,7 +51,7 @@ Same `CALL_SHEET_HEADERS` for both; routing keeps Duplicate Lead spend out of th
 - Bookings → Master Booked / `Booked Deals`
 - Cancellations → Master Booked / `Cancelled Deals`
 
-Header constants live in `api/config/domain/sheets.ts`. Row shape built by `projections/*Row.ts`.
+Header constants live in `src/config/domain/sheets.ts`. Row shape built by `projections/*Row.ts`.
 
 ## Write targets (`getLeadTargets` in `targets.ts`)
 

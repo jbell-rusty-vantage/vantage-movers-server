@@ -29,31 +29,34 @@ Production API: https://vantage-movers-main-server.vercel.app
 
 **When to update:** Any behavior change in the documented service (see also `rules/business-logic.mdc` drift policy).
 
-**Naming:** `{service-or-area}.service.md` mirroring the primary file under `api/services/`.
+**Naming:** `{service-or-area}.service.md` mirroring primary code under `src/services/<domain>/`.
 
 | File | Covers |
 |------|--------|
-| [form-lead.service.md](businesslogic/form-lead.service.md) | `formLead.service.ts` — create/update/delete, duplicates, Granot, form-fill → call leads, sheet tabs |
-| [call-lead.service.md](businesslogic/call-lead.service.md) | `callLead.service.ts` — manual vs RingCentral create, duplicate calls, form-fill, CPL, sheet tabs |
-| [googleSheets.service.md](businesslogic/googleSheets.service.md) | `googleSheets/googleSheets.service.ts` — tab routing, upsert/delete, projections, master vs source writes |
-| [adminSearch.service.md](businesslogic/adminSearch.service.md) | `admin/adminSearch.service.ts` — global admin search, scopes, resources, vs browse |
-| [agentAllocation.service.md](businesslogic/agentAllocation.service.md) | `agents/agentAllocation.service.ts` — binder splits, catalog resolve, patch/replace, primary agent, cancellation snapshot |
-| [analytics.service.md](businesslogic/analytics.service.md) | `analytics/analytics.service.ts` — admin report router, scopes, filters, merge, overview/agent-sales siblings |
-| [bookings.service.md](businesslogic/bookings.service.md) | `bookings/` — create/update/delete, from-source, mirror, referral, sheet `booking_chain`, idempotency |
-| [bookedCallLeadReconciliation.service.md](businesslogic/bookedCallLeadReconciliation.service.md) | `reconciliation/bookedCallLeadReconciliation.service.ts` — Granot Booked Jobs → call lead/booking field refresh, match paths, source rules, sheet sync |
-| [ringcentral-call-lead-qualification.service.md](businesslogic/ringcentral-call-lead-qualification.service.md) | `ringcentral/` — 120s qualification (evaluator + vetting), webhook session aggregation, Call Log cron, shared ingest (idempotency, duplicate, write mode) |
-| [cancelledLead.service.md](businesslogic/cancelledLead.service.md) | `cancellations/cancelledLead.service.ts` + `cancellationResolver.ts` — create/update/delete, booking resolve, snapshot fields, sheet `cancellation_chain`, referral guard |
-| [cancellationMirror.service.md](businesslogic/cancellationMirror.service.md) | `cancellations/cancellationMirror.service.ts` — stamp/clear `cancelled` on source lead, syncAfterClear batching |
-| [formLeadSearch.service.md](businesslogic/formLeadSearch.service.md) | `search/formLeadSearch.service.ts` — scored form identity search, ambiguity, duplicate quarantine, Granot CSV fallback |
-| [callLeadSearch.service.md](businesslogic/callLeadSearch.service.md) | `search/callLeadSearch.service.ts` — OR-based call lookup, summaries |
-| [leadBrowse.service.md](businesslogic/leadBrowse.service.md) | `search/*Browse.service.ts` + `leadBrowseShared.ts` — extension GET browse, pagination, attachment chips |
-| [catalog.service.md](businesslogic/catalog.service.md) | `catalog/catalog.service.ts` — agents/merchants CRUD, name normalization, active resolve for bookings |
-| [customer.service.md](businesslogic/customer.service.md) | `customers/` — CRUD, cascade delete, booking-time upsert from lead/contact |
-| [testimonial.service.md](businesslogic/testimonial.service.md) | `testimonials/testimonial.service.ts` — read-only list for marketing site, ingest helpers |
-| [sheetSync.service.md](businesslogic/sheetSync.service.md) | `sheetSync/` — modes, outbox (`sheet_sync_jobs`), Vercel Queue wake-up, drainer, coordinator API, tombstones, cron/admin |
-| [granotLifecycle.capture.md](businesslogic/granotLifecycle.capture.md) | `granotLifecycle/` — webhook auth, v2 receipt capture, `{ receipt_id }` wake-up; no processing |
+| [form-lead.service.md](businesslogic/form-lead.service.md) | `src/services/leads/formLead.service.ts` — create/update/delete, duplicates, Granot CRM post, form-fill → call leads, receiver agent, sheet tabs |
+| [call-lead.service.md](businesslogic/call-lead.service.md) | `src/services/leads/callLead.service.ts` — manual vs RingCentral create, duplicate calls, form-fill, CPL snapshot, receiver agent, sheet tabs |
+| [googleSheets.service.md](businesslogic/googleSheets.service.md) | `src/services/googleSheets/googleSheets.service.ts` — tab routing, upsert/delete, projections, master vs source writes |
+| [adminSearch.service.md](businesslogic/adminSearch.service.md) | `src/services/admin/adminSearch.service.ts` — global admin search, scopes, resources, vs browse |
+| [agentAllocation.service.md](businesslogic/agentAllocation.service.md) | `src/services/agents/agentAllocation.service.ts` — binder splits, catalog resolve, patch/replace, primary agent, cancellation snapshot |
+| [analytics.service.md](businesslogic/analytics.service.md) | `src/services/analytics/` — admin report router, scopes, filters, merge, overview/agent-sales/receiver-agent siblings |
+| [bookings.service.md](businesslogic/bookings.service.md) | `src/services/bookings/` — create/update/delete, from-source, mirror, referral, leadless, sheet `booking_chain`, idempotency |
+| [bookedCallLeadReconciliation.service.md](businesslogic/bookedCallLeadReconciliation.service.md) | `src/services/reconciliation/bookedCallLeadReconciliation.service.ts` — Granot Booked Jobs → call lead/booking field refresh, match paths, source rules, sheet sync |
+| [enrichment.service.md](businesslogic/enrichment.service.md) | `src/services/enrichment/callLeadEnrichment.service.ts` — Follow Up preview/sync, match/conflict, receiver-agent username match, sheet `call_lead.enrichment.sync` |
+| [ringcentral-call-lead-qualification.service.md](businesslogic/ringcentral-call-lead-qualification.service.md) | `src/services/ringcentral/` — 120s qualification (evaluator + vetting), webhook session aggregation, Call Log cron, shared ingest (idempotency, duplicate, write mode) |
+| [cancelledLead.service.md](businesslogic/cancelledLead.service.md) | `src/services/cancellations/cancelledLead.service.ts` + `cancellationResolver.ts` — create/update/delete, booking resolve, snapshot fields, sheet `cancellation_chain`, referral guard |
+| [cancellationMirror.service.md](businesslogic/cancellationMirror.service.md) | `src/services/cancellations/cancellationMirror.service.ts` — stamp/clear `cancelled` on source lead, syncAfterClear batching |
+| [formLeadSearch.service.md](businesslogic/formLeadSearch.service.md) | `src/services/search/formLeadSearch.service.ts` — scored form identity search, ambiguity, duplicate quarantine, Granot CSV fallback |
+| [callLeadSearch.service.md](businesslogic/callLeadSearch.service.md) | `src/services/search/callLeadSearch.service.ts` — OR-based call lookup, summaries |
+| [leadBrowse.service.md](businesslogic/leadBrowse.service.md) | `src/services/search/*Browse.service.ts` + `leadBrowseShared.ts` — extension GET browse, pagination, attachment chips |
+| [catalog.service.md](businesslogic/catalog.service.md) | `src/services/catalog/catalog.service.ts` — agents/merchants facade; mutations go through Operations Registry |
+| [customer.service.md](businesslogic/customer.service.md) | `src/services/customers/` — CRUD, cascade delete, booking-time upsert from lead/contact |
+| [testimonial.service.md](businesslogic/testimonial.service.md) | `src/services/testimonials/testimonial.service.ts` — read-only list for marketing site, ingest helpers |
+| [sheetSync.service.md](businesslogic/sheetSync.service.md) | `src/services/sheetSync/` — modes, outbox (`sheet_sync_jobs`), Vercel Queue wake-up, drainer, coordinator API, tombstones, cron/admin |
+| [operationsRegistry.service.md](businesslogic/operationsRegistry.service.md) | `src/services/operationsRegistry/` — catalog/source/CPL/RC inbound-route SoR, signed owner mutations, `resolveCpl` |
+| [granotLifecycle.capture.md](businesslogic/granotLifecycle.capture.md) | `src/services/granotLifecycle/` — webhook auth, v2 receipt capture, `{ receipt_id }` wake-up; **no processing** |
+| [granotHttpCollector.service.md](businesslogic/granotHttpCollector.service.md) | `src/services/granotHttpCollector/` — HTTP session collector, preview/approve/apply runs; apply still mutates directly |
 
-**Not duplicated here (yet):** call lead enrichment — still lives in `rules/*.mdc` and `docs/`.
+**Not duplicated here (yet):** `employeeBookings/`, `leadMessaging/`, `reporting/`, `ingestion/` — mapped in `rules/project-organization.mdc`.
 
 **Relationship to platform docs and `rules/`:**
 
@@ -87,12 +90,15 @@ Rule files apply when editing matching paths (`globs` in each file frontmatter).
 |------|--------|
 | `documentation-maintenance.mdc` | Layer + glob hygiene; routes drift fixes to `docs-keeper` |
 | `business-logic.mdc` | Domain invariants, drift policy, links to `businesslogic/` |
-| `owner-lead-workflow.mdc` | Website → form lead → CRM → extension → booking → cancellation |
+| `owner-lead-workflow.mdc` | Website → form lead → CRM → extension → booking → cancellation; webhook capture is a separate, capture-only channel |
 | `sheet-sync-process.mdc` | Outbox, drainer, quotas, headers, sync modes |
-| `project-organization.mdc` | Folder ownership (RingCentral, leads, sheet sync, etc.) |
+| `project-organization.mdc` | Folder ownership (RingCentral, leads, sheet sync, Granot, etc.) |
 | `ringcentral-integration.mdc` | RingCentral env, webhooks, cron |
 | `ringcentral-call-lead-candidates.mdc` | Candidate aggregation + ingest boundaries |
 | `form-lead-granot-crm.mdc` | Granot CRM form-lead posting |
+| `granot-lifecycle-capture.mdc` | Webhook capture + `{ receipt_id }` wake-up only; no processor |
+| `granot-http-automation.mdc` | HTTP collector / automation runs; direct apply mutations |
+| `lead-lifecycle-delivery.mdc` | Branch plan for Granot lead-lifecycle units (server / admin / extension) |
 | `granot-crm-csv-s3-sync.mdc` | CSV/S3 CRM sync |
 | `observability-service.mdc` | Operational events and alerts |
 | `schema-and-crud-inputs.mdc` | Models and validation patterns |
@@ -131,7 +137,7 @@ Used by Cursor cloud agent / local agent environments (`environment.json`).
 2. Create `businesslogic/{name}.service.md` with the standard header block:
    - **Platform glossary** → [`../CONTEXT.md`](../CONTEXT.md)
    - **ADRs** → [`../docs/adr/`](../docs/adr/) (link relevant ADRs)
-   - **Primary code** → actual `api/services/...` path
+   - **Primary code** → actual `src/services/...` path
    - **Domain terms used** → 2–5 bullets from glossary (link, don't define)
    - Then: triggers, invariants, Sheet Sync job types, cross-links, related rules
 3. Add a row to the table in this file.

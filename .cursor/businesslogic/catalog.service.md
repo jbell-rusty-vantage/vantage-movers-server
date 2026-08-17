@@ -1,13 +1,13 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
-**Primary code:** `api/services/catalog/catalog.service.ts`  
+**Primary code:** `src/services/catalog/catalog.service.ts`  
 **Domain terms used:** Agent, Active Agent, Merchant, Active Merchant, Booking, Admin Dashboard
 
 # Catalog Service
 
-**System of Record:** MongoDB `agents` and `merchants` collections — **Admin Dashboard** reference data for **Agent Allocation** and **Merchant** fields on Bookings.
+**System of Record:** Operations Registry catalog collections (`agents`, `merchants`). This file is the public facade; mutations go through `operationsRegistry/catalogRegistry.ts` with a signed Owner actor and a Registry Change audit row.
 
-**Role:** Unified CRUD and name resolution for both catalogs. Does not create bookings, sync sheets, or auto-provision agents on standard booking paths.
+**Role:** Unified list/detail/resolve plus owner mutations for both catalogs. Does not create bookings, sync sheets, or auto-provision agents on standard booking paths.
 
 ## Catalog kinds
 

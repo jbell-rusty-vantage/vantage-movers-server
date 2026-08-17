@@ -1,6 +1,6 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
-**Primary code:** `api/services/search/callLeadSearch.service.ts`  
+**Primary code:** `src/services/search/callLeadSearch.service.ts`  
 **Domain terms used:** Call Lead, Caller Match Key, Job Number, Duplicate Lead, Form Fill
 
 # Call Lead Search
@@ -15,7 +15,7 @@
 | `adminSearch.service.md` | Admin cross-resource typeahead |
 | Ring Central **Call Lead Ingestion** | Creates Call Leads; does not use this search |
 
-**Legacy import:** `api/services/callLeadSearch.service.ts` re-exports this file. Prefer `api/services/search`.
+**Legacy import:** `src/services/callLeadSearch.service.ts` re-exports this file. Prefer `src/services/search`.
 
 ## HTTP entry point
 

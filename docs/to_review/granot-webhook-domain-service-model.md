@@ -1,5 +1,7 @@
 # Granot webhook domain and service model
 
+> **Status vs code:** capture + security (Units 02–03) are implemented. Normalization, Observation persistence, and the processor are **not** live. Current capture: [`.cursor/businesslogic/granotLifecycle.capture.md`](../../.cursor/businesslogic/granotLifecycle.capture.md).
+
 Status: architecture recommendation based on repository code and a read-only profile of `vantagemovers.granot_webhook_receipts` on 2026-08-13. This document proposes boundaries and rollout steps; it does not mean webhook-driven mutations are enabled.
 
 ## Executive recommendation

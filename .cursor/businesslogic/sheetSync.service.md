@@ -1,6 +1,6 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
-**Primary code:** `api/services/sheetSync/`  
+**Primary code:** `src/services/sheetSync/`  
 **Domain terms used:** Sheet Sync, Booking Chain, Cancellation Chain, System of Record, Reporting Sheets, Master Sheets, Operational Event
 
 # Sheet Sync (`sheetSync/`)
@@ -9,7 +9,7 @@
 
 **Stack:** Domain services → coordinator/outbox → Vercel Queue wake-up (optional) → drainer → `googleSheets/` writes. Legacy mode skips the outbox and runs sync inline via `waitUntil`.
 
-**Public barrel:** `api/services/sheetSync/index.ts` re-exports coordinator, outbox, queue, drainer, persistence, and source-lookup helpers.
+**Public barrel:** `src/services/sheetSync/index.ts` re-exports coordinator, outbox, queue, drainer, persistence, and source-lookup helpers.
 
 ## Execution modes (`SHEET_SYNC_MODE`)
 
@@ -19,7 +19,7 @@
 | `queued` | opt-in | Outbox row in same Mongo txn as domain doc | Queue wake-up → `runSheetSyncDrain` |
 | `disabled` | — | Log intent only | No Sheets calls |
 
-Config lives in `api/config/domain/sheetSync.ts` (priorities, guardrails, queue topic, coalescing keys).
+Config lives in `src/config/domain/sheetSync.ts` (priorities, guardrails, queue topic, coalescing keys).
 
 ## End-to-end flow (queued mode)
 
@@ -182,17 +182,20 @@ await runSheetSyncWrite(async (session) => {
 await finalizeSheetSyncDelete();
 ```
 
-**Unmigrated / background callers** (enrichment, reconciliation) use `scheduleCallLeadSheetSync` / `scheduleBookingChainSheetSync` — in `queued` mode these `waitUntil` enqueue + publish without participating in the caller's txn.
+Some callers still use `scheduleCallLeadSheetSync` / `scheduleBookingChainSheetSync`. Enrichment and several reconciliation writes now use `persistSheetSyncIntent` + `finalizeSheetSync` with dedicated operations.
 
 | Caller | Jobs enqueued |
 |--------|---------------|
 | `formLead.service.ts` | `source_lead`; tombstone on delete |
 | `callLead.service.ts` | `source_lead`; tombstone on delete |
 | `bookedLead.service.ts` | `booking_chain` or `booked_lead`; tombstone on delete |
-| `referralBooking.service.ts` | `booked_lead` only |
+| `referralBooking.service.ts` | `booked_lead` / `referral_booking.create` |
+| `leadlessBooking.service.ts` | `booked_lead` / `leadless_booking.create` |
 | `cancelledLead.service.ts` | `cancellation_chain`; tombstone on delete |
-| `bookedCallLeadReconciliation.service.ts` | `scheduleBookingChainSheetSync` / `scheduleCallLeadSheetSync` |
-| `callLeadEnrichment.service.ts` | `scheduleCallLeadSheetSync` |
+| `bookedCallLeadReconciliation.service.ts` | `booked_call_lead.call_lead_only.sync`, `booked_call_lead.receiver_agent_crm_username.sync`, plus schedule helpers |
+| `callLeadEnrichment.service.ts` | `call_lead.enrichment.sync` via persist + finalize |
+
+`jobPlanner.ts` skips a Calls-tab sheet row for `created_on_unmatched` call stubs so unmatched booking stubs do not invent a misleading lead row.
 
 ## Cron safety net
 

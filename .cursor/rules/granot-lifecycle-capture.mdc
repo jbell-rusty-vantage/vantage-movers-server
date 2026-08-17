@@ -1,0 +1,17 @@
+---
+description: Granot webhook capture and receipt-id queue wake-up only; no processor
+globs: src/services/granotLifecycle/**/*.ts,src/services/granotWebhooks/**/*.ts,src/routes/granot-webhook.routes.ts,src/middleware/requireGranotWebhookSecret.ts,src/config/domain/granotWebhook.ts,src/models/GranotObservationReceipt.ts,src/models/granotLifecycleSchemas.ts,scripts/migrations/granot-lifecycle-*.ts,.cursor/businesslogic/granotLifecycle*.md
+alwaysApply: false
+---
+
+# Granot Lifecycle Capture
+
+Owner invariants: [`.cursor/businesslogic/granotLifecycle.capture.md`](../businesslogic/granotLifecycle.capture.md).
+
+- `src/services/granotLifecycle/capture.ts` is the only webhook insert path. `granotWebhooks/` is a deprecated adapter.
+- Authenticate with `requireGranotWebhookSecret`, persist one credential-redacted v2 receipt, return `202` only after Mongo commit, then optionally publish `{ receipt_id }`.
+- Do not describe normalization, Observation processing, Registry policy, Lead/Booking/Cancellation effects, a lifecycle consumer, or a drainer as live. Those units are not implemented.
+- `granot-lifecycle-events` / `granot-lifecycle-events-dev` may receive wake-ups. `api/queues/` has **no** `granot-lifecycle-consumer` yet. Publish failure must not change `202`.
+- When Unit 08 ships a consumer/drainer, add those paths to this rule's `globs` and update the capture doc — do not pretend they exist before then.
+
+Delivery branches: [`lead-lifecycle-delivery.mdc`](lead-lifecycle-delivery.mdc). Locked contracts: `scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md`.

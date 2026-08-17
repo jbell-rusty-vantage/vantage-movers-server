@@ -1,6 +1,6 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
-**Primary code:** `api/services/agents/agentAllocation.service.ts`  
+**Primary code:** `src/services/agents/agentAllocation.service.ts`  
 **Domain terms used:** Agent Allocation, Agent, Active Agent, Binder, Booking, Cancellation
 
 # Agent Allocation Service

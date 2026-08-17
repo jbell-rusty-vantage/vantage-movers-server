@@ -26,6 +26,14 @@
 - Employee Booking validation and production admin facets read first-class
   Source Granularities. Embedded arrays are migration/rollback evidence only.
 
+## CPL, catalog, and RingCentral (same folder)
+
+- `cplSchedule.ts` — authoritative CPL periods + `resolveCpl` / `resolveCplFromPeriods`. Lead writes go through `leads/leadCplResolution.ts`.
+- `cplCorrections.ts` — owner correction jobs against stored lead snapshots.
+- `catalogRegistry.ts` — Agent/Merchant mutations used by the catalog facade.
+- `ringCentralRegistry.ts` / `ringCentralValidation.ts` — inbound-route snapshot used at Call Qualification time.
+- HTTP: registry overview/health/changes plus catalog, CPL admin, and RC inbound-route routes in `v1.routes.ts`. Mutations require a signed Owner actor.
+
 ## Authorization and audit
 
 - Approved signed dashboard roles may read. Only a verified Owner may mutate.
@@ -40,3 +48,9 @@
 - Every production M2–M5 apply must name the exact reviewed dry-run manifest.
   The script version, target database, mapping checksum, and M4 cutover date
   must still match before any write or RingCentral validation begins.
+
+## Related
+
+- [`catalog.service.md`](catalog.service.md) — public catalog facade
+- [`form-lead.service.md`](form-lead.service.md) / [`call-lead.service.md`](call-lead.service.md) — lead CPL snapshots
+- [`rules/operations-registry.mdc`](../rules/operations-registry.mdc), [`rules/cpl-operations.mdc`](../rules/cpl-operations.mdc)

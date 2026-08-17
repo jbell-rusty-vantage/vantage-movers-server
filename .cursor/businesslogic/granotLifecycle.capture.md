@@ -1,5 +1,5 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
-**Primary code:** `src/services/granotLifecycle/capture.ts`, `src/services/granotLifecycle/queuePublisher.ts`, `src/middleware/requireGranotWebhookSecret.ts`, `src/routes/granot-webhook.routes.ts`  
+**Primary code:** `src/services/granotLifecycle/capture.ts`, `src/services/granotLifecycle/queuePublisher.ts`, `src/services/granotLifecycle/receiptEvidence.ts`, `src/services/granotLifecycle/metrics.ts`, `src/models/GranotObservationReceipt.ts`, `src/models/granotLifecycleSchemas.ts`, `src/middleware/requireGranotWebhookSecret.ts`, `src/routes/granot-webhook.routes.ts`  
 **Domain terms used:** Granot Observation Receipt, Observation Channel, System of Record
 
 # Granot webhook capture (`granotLifecycle/`)
@@ -35,6 +35,7 @@
 - proven `authentication_method` (`body_secret` or `header_secret`), never `legacy_unknown`
 - route-derived `route_event_class` / compatibility `event_type`
 - pending processing defaults; compatibility `processing_status: "received"`
+- compatibility fields still written on insert: `provider`, `schema_version`, `event_type`, `received_at`, `processing_status`
 - no `channel_operation_kind`, `channel_operation_id`, or human `initiator`
 
 Stored headers are exactly `content-type`, `content-length`, `user-agent`, `x-request-id`, and `x-vercel-id`, each value truncated to 1,024 characters.
@@ -55,6 +56,14 @@ Identical deliveries are distinct receipts. `payload_sha256` is diagnostic, neve
 ## Queue wake-up
 
 After commit, publish exactly `{ receipt_id }` when the environment is an approved production Vercel function runtime. Tests and unapproved environments skip publish. Publish failure is logged/metriced as `granot_lifecycle.queue.publish_failed` and cannot change `202` or the receipt. No consumer/drainer/processing exists yet.
+
+Indexes for a future drainer/lease exist on the receipt model; nothing claims or drains them yet.
+
+## Related
+
+- CRM Posting on form-lead create does **not** write a receipt and is not triggered by webhooks ([`form-lead.service.md`](form-lead.service.md)).
+- HTTP automation is a separate mutation path ([`granotHttpCollector.service.md`](granotHttpCollector.service.md)).
+- Software map: [`granot-lifecycle-capture.mdc`](../rules/granot-lifecycle-capture.mdc).
 
 ## Out of scope here
 

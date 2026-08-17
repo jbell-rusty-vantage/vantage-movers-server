@@ -1,5 +1,5 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
-**Primary code:** `api/services/testimonials/testimonial.service.ts`  
+**Primary code:** `src/services/testimonials/testimonial.service.ts`  
 **Domain terms used:** Main Site (marketing consumer)
 
 # Testimonial Service

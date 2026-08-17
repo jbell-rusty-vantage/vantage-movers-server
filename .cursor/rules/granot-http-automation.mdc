@@ -1,0 +1,16 @@
+---
+description: Granot HTTP collector and automation runs; apply still mutates directly
+globs: src/services/granotHttpCollector/**/*.ts,src/routes/granot-automation.routes.ts,src/routes/granot-automation-cron.routes.ts,src/models/GranotAutomationRun.ts,src/models/GranotAutomationSource.ts,api/queues/granot-automation-consumer.ts,scripts/granot-automation/**/*.ts
+alwaysApply: false
+---
+
+# Granot HTTP Automation
+
+Owner invariants: [`.cursor/businesslogic/granotHttpCollector.service.md`](../businesslogic/granotHttpCollector.service.md).
+
+- Admin surface: `/api/v1/admin/granot-automation/*` behind `requireApiSecret` + `requireRegistryOwnerActor`. Separate `app.use` in `src/app.ts` before v1.
+- Workflows are `preview` or `apply`. Apply requires `GRANOT_AUTOMATION_APPLY_ENABLED` and explicit owner approval of selected plan actions.
+- Form apply calls `updateFormLead`. Call apply calls `syncCallLeadEnrichment` / `syncBookedCallLeadReconciliation`. This is **not** a Granot Observation Receipt channel and does not call a lifecycle processor.
+- Queue topic `granot-automation-events` → `api/queues/granot-automation-consumer.ts` → `runGranotWorker()`. Cron heartbeat recovers leased runs.
+- Run-level `receipts` on `GranotAutomationRun` are `{ action_id, outcome }` — not `GranotObservationReceipt`.
+- Do not converge this path onto `GranotObservationProcessor` until the assigned lifecycle unit ships. Until then, keep the direct-mutation gap labeled as a gap.

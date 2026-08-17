@@ -1,6 +1,6 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
-**Primary code:** `api/services/cancellations/cancelledLead.service.ts`, `cancellationResolver.ts`  
+**Primary code:** `src/services/cancellations/cancelledLead.service.ts`, `cancellationResolver.ts`  
 **Domain terms used:** Cancellation, Booking, Cancellation Chain, Sheet Sync, Referral Booking, Agent, System of Record
 
 # Cancelled Lead Service

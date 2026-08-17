@@ -70,15 +70,16 @@ Match changed files to **existing** rule `globs` first. Then update that rule an
 | --- | --- |
 | `src/services/leads/**`, `src/models/FormLead.ts`, form-lead routes/validation | `businesslogic/form-lead.service.md`; `rules/form-lead-granot-crm.mdc`; `rules/owner-lead-workflow.mdc` if the owner path changed |
 | `src/services/leads/**` call-lead, `src/models/CallLead.ts` | `businesslogic/call-lead.service.md`; `rules/owner-lead-workflow.mdc` if the owner path changed |
-| `src/services/ringcentral/**`, `src/routes/ringcentral-*.routes.ts`, `scripts/ringcentral/**` | `businesslogic/ringcentral-call-lead-qualification.service.md`; `rules/ringcentral-integration.mdc`; `rules/ringcentral-call-lead-candidates.mdc` |
+| `src/services/ringcentral/**`, `src/routes/ringcentral-*.routes.ts`, `scripts/dev_ops/ringcentral/**` | `businesslogic/ringcentral-call-lead-qualification.service.md`; `rules/ringcentral-integration.mdc`; `rules/ringcentral-call-lead-candidates.mdc` |
 | `src/services/googleSheets/**` | `businesslogic/googleSheets.service.md`; `rules/sheet-sync-process.mdc` if tab/projection/write rules changed |
 | `src/services/sheetSync/**`, `api/queues/sheet-sync-consumer.ts`, sheet-sync cron/config/models | `businesslogic/sheetSync.service.md`; `rules/sheet-sync-process.mdc` |
 | `src/services/bookings/**` | `businesslogic/bookings.service.md`; `rules/owner-lead-workflow.mdc` |
 | `src/services/cancellations/**` | `businesslogic/cancelledLead.service.md` and/or `cancellationMirror.service.md`; `rules/owner-lead-workflow.mdc` |
 | `src/services/reconciliation/**` | `businesslogic/bookedCallLeadReconciliation.service.md`; `rules/owner-lead-workflow.mdc` |
 | `src/services/crm/**` | `businesslogic/form-lead.service.md` (CRM Posting); `rules/form-lead-granot-crm.mdc` |
-| `src/services/granotLifecycle/**`, granot webhook routes/middleware | `businesslogic/granotLifecycle.capture.md` (capture-only today); lifecycle units stay with the spec extractor |
-| `src/services/granotCrmCsv/**`, `src/services/enrichment/**` | `rules/granot-crm-csv-s3-sync.mdc`; create a businesslogic file if enrichment behavior is now owner-facing and undocumented |
+| `src/services/granotLifecycle/**`, granot webhook routes/middleware | `businesslogic/granotLifecycle.capture.md` (capture-only today); `rules/granot-lifecycle-capture.mdc`; lifecycle units stay with the spec extractor |
+| `src/services/granotHttpCollector/**`, granot-automation routes/consumer | `businesslogic/granotHttpCollector.service.md`; `rules/granot-http-automation.mdc` |
+| `src/services/granotCrmCsv/**`, `src/services/enrichment/**` | `rules/granot-crm-csv-s3-sync.mdc`; `businesslogic/enrichment.service.md` |
 | `src/services/search/**` | `formLeadSearch.service.md`, `callLeadSearch.service.md`, and/or `leadBrowse.service.md` |
 | `src/services/admin/**` | `businesslogic/adminSearch.service.md` and `rules/project-organization.mdc` admin route groups |
 | `src/services/analytics/**` | `businesslogic/analytics.service.md` |

@@ -1,12 +1,12 @@
 ---
 description: RingCentral auth, hybrid call-lead pipeline, scripts, and integration setup
-globs: src/services/ringcentral/**/*.ts,scripts/ringcentral/**/*.ts,src/routes/**/*.ts,package.json
+globs: src/services/ringcentral/**/*.ts,scripts/dev_ops/ringcentral/**/*.ts,src/routes/**/*.ts,package.json
 alwaysApply: false
 ---
 
 # RingCentral Integration
 
-- Scope this work to `vantage-main-server`. Runtime RingCentral code lives in `src/services/ringcentral/`; diagnostics and manual runners live in `scripts/ringcentral/`.
+- Scope this work to `vantage-main-server`. Runtime RingCentral code lives in `src/services/ringcentral/`; diagnostics and manual runners live in `scripts/dev_ops/ringcentral/`.
 - Use native `fetch` only. Do not add Axios or RingCentral SDKs unless explicitly requested.
 - Env is loaded by package scripts with `node --env-file=.env ./node_modules/tsx/dist/cli.mjs ...`. Run commands with `pnpm` from `vantage-main-server`.
 - Required env vars: `RC_SERVER_URL`, `RC_CLIENT_ID`, `RC_CLIENT_SECRET`, `RC_JWT`. Use `getRequiredEnv()` from `src/config/domain` in runtime/service code.
@@ -27,19 +27,7 @@ alwaysApply: false
 - Default posture is dry-run. Real lead creation requires `RINGCENTRAL_CREATE_CALL_LEADS=true`; shadow creation requires `RINGCENTRAL_SHADOW_CALL_LEADS=true` with real creation off.
 - Token storage may use Mongo via `RC_TOKEN_STORE=mongo`; local file cache `.ringcentral-token-cache.json` remains supported and ignored by git.
 - RingCentral collection names are mode-aware. Confirm `RINGCENTRAL_COLLECTION_MODE` before touching production state.
-- Existing commands:
-  - `pnpm ringcentral:diagnose`
-  - `pnpm ringcentral:call-log:validate`
-  - `pnpm ringcentral:call-lead:api-probe`
-  - `pnpm ringcentral:workflow:test`
-  - `pnpm ringcentral:call-log:sync:run`
-  - `pnpm ringcentral:analytics:reconcile:run`
-  - `pnpm ringcentral:webhook:create`
-  - `pnpm ringcentral:webhook:create:local`
-  - `pnpm ringcentral:webhook:list`
-  - `pnpm ringcentral:webhook:delete`
-  - `pnpm ringcentral:webhook:delete:all`
-  - `pnpm ringcentral:webhook:monitor`
+- Manual runners live under `scripts/dev_ops/ringcentral/`. There are **no** `pnpm ringcentral:*` scripts in `package.json`. Invoke with `node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/ringcentral/<script>.ts` (for example `ringcentral-diagnose.ts`, `ringcentral-webhook-create.ts`, `ringcentral-webhook-create-local.ts`, `ringcentral-webhook-monitor.ts`).
 - RingCentral validation/probe outputs must stay sanitized and gitignored.
 
 ## Auth Flow
@@ -58,4 +46,4 @@ alwaysApply: false
 
 - Production token storage should use `RC_TOKEN_STORE=mongo`, `connectMongo()` from `src/db.ts`, active DB via `getMongoDatabaseName()`/`MONGO_DATABASE_NAME`, collection `integration_tokens`, key `ringcentral:oauth-token`.
 - API routes must never return token values. Cron routes require `CRON_SECRET`.
-- Before changing cron cadence, lead write flags, or mapped numbers, update `scripts/ringcentral/RINGCENTRAL-PRODUCTION-RUNBOOK.md` and relevant tests/rules so docs match runtime behavior.
+- Before changing cron cadence, lead write flags, or mapped numbers, update the relevant tests/rules so docs match runtime behavior.

@@ -1,6 +1,6 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
-**Primary code:** `api/services/analytics/analytics.service.ts`  
+**Primary code:** `src/services/analytics/`  
 **Domain terms used:** Analytics, System of Record, CPL, Source Company, Agent Allocation, Cancellation, Reporting Sheets
 
 # Analytics Service
@@ -45,6 +45,9 @@ Report names (validated by `analyticsReportSchema`):
 | `geographic-lanes` | `geographicAnalytics.service.ts` | form + call (pickup × delivery) |
 | `pickup-state-performance` | `geographicAnalytics.service.ts` | form + call |
 | `delivery-state-performance` | `geographicAnalytics.service.ts` | form + call |
+| `receiver-agent-performance` | `receiverAgentPerformance.service.ts` | form + call (`receiver_agent`) |
+| `receiver-agent-trend` | `receiverAgentPerformance.service.ts` | form + call |
+| `receiver-agent-source-breakdown` | `receiverAgentPerformance.service.ts` | form + call + registry snapshots |
 
 ## Query filters (`analyticsQuerySchema`)
 
@@ -61,6 +64,8 @@ Shared across reports unless a report ignores a field.
 | `local` | Booking `local` or lead `local` |
 | `lead_type` | `form`/`FormLead` or `call`/`CallLead` — excludes the other lead type |
 | `granularity` | `day` or `month` (default `month`) — **revenue-trend only** |
+| `receiver_agent` | Filter to a registry agent id on receiver-agent reports |
+| `source_granularity_key` | Filter by first-class Source Granularity key |
 
 ### Date fields by collection
 
@@ -116,14 +121,9 @@ Special merge shapes: `summary` → `{ totals }`, `booking-cancellation-ratio` �
 
 **Lead source performance** — groups booked leads by booking `source` field (marketing label), not `derived_source_company`.
 
-**Receiver-Agent source breakdown** — uses persisted registry source-company
-and granularity/CRM label snapshots. Owner-created Source Companies are kept as
-their canonical dynamic slug/label and are never remapped to the legacy Main
-Site fallback.
+**Receiver-agent reports** (`receiverAgentPerformance.service.ts`) — three admin reports (`receiver-agent-performance`, `receiver-agent-trend`, `receiver-agent-source-breakdown`). Historical scope returns an empty payload with `unsupportedReceiverAgentReport()` metadata (`historical_receiver_agent_supported: false`). Combined merges production rows and keeps that historical warning. Source breakdown uses persisted registry source-company and granularity/CRM label snapshots; owner-created Source Companies keep their canonical slug/label and are never remapped to the legacy Main Site fallback.
 
-**Lead cost** (`leadCost.service.ts`) — **overview only**, production all-time / last-7-days. Sums **CPL** on billable leads: Form Leads exclude Duplicate Leads; Call Leads exclude **Unmatched Call Leads** (`created_on_unmatched: true`).
-
-**CPL config lag:** Stored CPL at ingestion may not reflect full Source Company + Lead Channel + Move Type granularity (see [`form-lead.service.md`](form-lead.service.md)).
+**Lead cost** (`leadCost.service.ts`) — **overview only**, production all-time / last-7-days. Sums stored **CPL** on billable leads: Form Leads exclude Duplicate Leads; Call Leads exclude **Unmatched Call Leads** (`created_on_unmatched: true`). Lead CPL snapshots now come from Operations Registry resolution (see [`form-lead.service.md`](form-lead.service.md)).
 
 ## Overview (`overview.service.ts`)
 

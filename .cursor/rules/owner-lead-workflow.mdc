@@ -1,6 +1,6 @@
 ---
 description: Owner lead lifecycle from website intake through CRM, extension, forms, bookings, and cancellations
-globs: docs/showcase/owner-workflow.md,src/routes/**/*.ts,src/services/leads/**/*.ts,src/services/bookings/**/*.ts,src/services/cancellations/**/*.ts,src/services/enrichment/**/*.ts,src/services/reconciliation/**/*.ts,src/services/crm/**/*.ts,src/services/googleSheets/**/*.ts,src/services/sheetSync/**/*.ts,scripts/google_apps_scripts/**/*
+globs: docs/showcase/owner-workflow.md,src/routes/**/*.ts,src/services/leads/**/*.ts,src/services/bookings/**/*.ts,src/services/cancellations/**/*.ts,src/services/enrichment/**/*.ts,src/services/reconciliation/**/*.ts,src/services/crm/**/*.ts,src/services/googleSheets/**/*.ts,src/services/sheetSync/**/*.ts,src/services/granotLifecycle/**/*.ts,src/services/granotHttpCollector/**/*.ts,src/services/employeeBookings/**/*.ts,src/services/leadMessaging/**/*.ts,scripts/google_apps_scripts/**/*
 alwaysApply: false
 ---
 
@@ -8,32 +8,50 @@ alwaysApply: false
 
 - MongoDB is the system of record. Server writes Mongo first, then posts/syncs side effects to Granot CRM and Google Sheets; sheet sync may finish after the API response.
 - Owner-facing reporting lives in Google Sheets, but source truth, matching, booking state, cancellation state, and sync metadata live on Mongo documents.
+- Compact service docs: `.cursor/businesslogic/`. Do not treat Granot webhook capture as a lead-write path — it is receipt-only today.
 
 ## Website To Form Lead
 
 - Landing pages submit `POST /api/v1/form-leads` with pickup/destination, move details, name/email/phone, source, and tracking `ref_no`.
-- Create normalizes source/company/location/phone, derives `local` and CPL, generates `lid` when needed, checks duplicates by same source + normalized phone + email, then saves `FormLead`.
+- Create normalizes source/company/location/phone, derives `local`, stores a CPL snapshot via `resolveLeadCplSnapshot` → Operations Registry `resolveCpl`, generates `lid` when needed, checks duplicates by same source + normalized phone + email, then saves `FormLead`.
 - Duplicate form leads still save and sync to `Duplicates`, but force `post_to_granot=false` so Granot does not receive another CRM row.
 - Non-duplicates post to Granot; the CRM payload `leadno` is the persisted Form Lead Tracking Reference (`FormLead.ref_no`), which Granot exposes as `ref_no`. Exact `FormLead.ref_no` is the primary identity; a valid Mongo `_id`-shaped Granot `ref_no` remains a compatibility fallback only after exact lookup misses.
+- When `sms_consent` parses as true, create may enqueue a Lead Message after the Form Lead + Lead Message transaction commits. Duplicates record a skipped message and never dispatch. See `src/services/leadMessaging/`.
 
 ## Extension And CRM Updates
 
-- For form leads, the browser extension reads Granot `ref_no`, resolves exact `FormLead.ref_no` first and Mongo `_id` compatibility second, then calls `PATCH /api/v1/form-leads/:id` for owner updates such as `quoted` and `cubic_feet`; the service refreshes the source lead row and any attached booking chain.
+- For form leads, the browser extension reads Granot `ref_no`, resolves exact `FormLead.ref_no` first and Mongo `_id` compatibility second, then calls `PATCH /api/v1/form-leads/:id` for owner updates such as `quoted`, `cubic_feet`, and `receiver_agent`; the service refreshes the source lead row and any attached booking chain.
 - Call leads often start as sparse phone/source records from Invoca or tests via `POST /api/v1/call-leads`. A matching non-duplicate form lead from the same source sets `form_fill=true` for attribution.
-- CRM enrichment uses `POST /api/v1/call-leads/enrichment/preview` and `/sync` with row batches. It updates job/customer/contact/location/cubic-feet fields and schedules call-lead sheet sync.
+- CRM enrichment uses `POST /api/v1/call-leads/enrichment/preview` and `/sync` with row batches. It updates job/customer/contact/location/cubic-feet fields, may set `receiver_agent` from a Granot CRM username match, and enqueues Sheet Sync `call_lead.enrichment.sync`.
+- `PATCH` form/call leads may set `receiver_agent` (+ snapshots) via Operations Registry agent lookup.
+
+## Granot webhook observations (capture-only today)
+
+- Granot posts `POST /api/webhooks/granot/{lead-created,priority-updated,booking-status-changed}`.
+- Authenticated deliveries persist one credential-redacted Granot Observation Receipt and return `202`. Capture does **not** create, update, or cancel a Lead, Booking, or Cancellation.
+- After commit, production Vercel may publish `{ receipt_id }` to the lifecycle queue topic. No consumer/drainer/processor is deployed yet.
+- CRM Posting on form-lead create is independent of webhook capture. Details: `businesslogic/granotLifecycle.capture.md`.
+
+## Granot HTTP automation (parallel correction path)
+
+- Admin `/api/v1/admin/granot-automation/*` plans form/call patches from an HTTP session collector.
+- Apply requires `GRANOT_AUTOMATION_APPLY_ENABLED` plus explicit owner approval. Form apply calls `updateFormLead`; call apply calls enrichment / booked-call reconciliation **directly**.
+- This path does **not** write `GranotObservationReceipt` or call a lifecycle processor (final spec §31 / Unit 17 is not live). Details: `businesslogic/granotHttpCollector.service.md`.
 
 ## Booking Flow
 
 - The booked-deal Google Form posts to `POST /api/v1/booked-leads` for direct Mongo-id bookings or `POST /api/v1/booked-leads/from-source` for source-driven form/call bookings.
-- Form bookings attach by original form lead Mongo id. Call bookings prefer an existing job-number match, then phone match, and finally create a `created_on_unmatched` call stub so the booked deal is preserved without creating a misleading lead-sheet row.
+- Form bookings attach by original form lead Mongo id. Call bookings prefer an existing job-number match, then phone match, and finally create a `created_on_unmatched` call stub so the booked deal is preserved. Sheet Sync skips a misleading Calls-tab row for `created_on_unmatched` stubs (`jobPlanner.ts`).
 - Booking services upsert the booking by `lead_ref` + `lead_model`, resolve/snapshot agent allocations, upsert customer, mirror `booked`, `over_2000`, `over_4000`, `local`, and sometimes `source_company` back to the source lead, then sync the booking chain.
+- Additional create paths: `POST /api/v1/referral-bookings` (no source lead), `POST /api/v1/leadless-bookings` (`is_leadless_booking`, opens a `BookingLeadReconciliationCase`), and public `POST /api/v1/employee-booking-submissions` (throttle + `submission_id` idempotency; may book-and-link or book-pending-lead).
 
 ## Cancellation Flow
 
 - Cancellations post to `POST /api/v1/cancelled-leads` with `booked_lead` or source `lead_id`. The resolver rejects already-cancelled bookings and mismatched booking/source chains.
 - Cancellation create snapshots booking/customer/source fields, marks the booking and source lead with `cancelled`, and syncs booked, cancelled, and source lead rows.
+- Referral bookings cannot be cancelled through this path.
 
 ## Change Guidance
 
 - Preserve the owner promise: a lead should remain traceable from website or call source through Granot, Mongo, Sheets, booking, and cancellation.
-- Before changing workflow logic, check `docs/showcase/owner-workflow.md`, the relevant service domain, validation payloads, sheet-sync behavior, and Google Apps Script form submitters.
+- Before changing workflow logic, check `docs/showcase/owner-workflow.md`, the relevant `.cursor/businesslogic/*.service.md`, validation payloads, sheet-sync behavior, and Google Apps Script form submitters.

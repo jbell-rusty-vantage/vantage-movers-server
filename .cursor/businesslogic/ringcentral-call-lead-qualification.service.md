@@ -1,6 +1,6 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
-**Primary code:** `api/services/ringcentral/`  
+**Primary code:** `src/services/ringcentral/`  
 **Domain terms used:** Call Qualification, Call Lead Ingestion, Call Lead, Duplicate Lead, Caller Match Key, Operational Event, Main Site
 
 # RingCentral Call Lead Qualification

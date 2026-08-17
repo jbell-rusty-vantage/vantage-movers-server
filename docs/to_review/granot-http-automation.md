@@ -1,5 +1,7 @@
 # Granot Dashboard workflow
 
+> Compact current invariants: [`.cursor/businesslogic/granotHttpCollector.service.md`](../../.cursor/businesslogic/granotHttpCollector.service.md). Apply still mutates domain services directly; it does not write `GranotObservationReceipt`.
+
 The server collects Granot Leads & Advertising reports through the protected
 Node HTTP collector, then creates a durable Mongo-backed preview/apply run.
 Every request explicitly chooses `form_leads` or `call_leads`; the call path

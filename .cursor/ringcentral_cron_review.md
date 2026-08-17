@@ -73,7 +73,7 @@ There is documentation drift: `scripts/ringcentral/RINGCENTRAL-PRODUCTION-RUNBOO
 
 ## Qualification Logic
 
-The Call Log vetting logic lives in `api/services/ringcentral/call-log-vetting.ts`.
+The Call Log vetting logic lives in `src/services/ringcentral/call-log-vetting.ts`.
 
 A record qualifies only when all rejection reasons are absent:
 
@@ -109,7 +109,7 @@ That max-duration choice is pragmatic for multi-leg queue calls, but it is also 
 
 ## Lead Storage Behavior
 
-Qualified Call Log records are not written directly as leads. They go through `ingestRingCentralQualifiedCall()` in `api/services/ringcentral/ringcentral-call-lead-ingest.service.ts`.
+Qualified Call Log records are not written directly as leads. They go through `ingestRingCentralQualifiedCall()` in `src/services/ringcentral/ringcentral-call-lead-ingest.service.ts`.
 
 The ingest service does four important things:
 

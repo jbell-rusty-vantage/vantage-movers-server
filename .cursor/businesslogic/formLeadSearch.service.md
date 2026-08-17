@@ -1,6 +1,6 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) for Granot identity
-**Primary code:** `api/services/search/formLeadSearch.service.ts`  
+**Primary code:** `src/services/search/formLeadSearch.service.ts`  
 **Domain terms used:** Form Lead, Lead ID, Granot Form Reference, Tracking Reference, Duplicate Lead, Form Lead Enrichment
 
 # Form Lead Search
@@ -14,7 +14,7 @@
 | `leadBrowse.service.md` | Paginated list/browse (`GET /form-leads`) — optional filters, no scoring |
 | `adminSearch.service.md` | Cross-resource admin typeahead (`GET /admin/search`) |
 
-**Legacy import:** `api/services/formLeadSearch.service.ts` re-exports this file. Prefer `api/services/search`.
+**Legacy import:** `src/services/formLeadSearch.service.ts` re-exports this file. Prefer `src/services/search`.
 
 ## HTTP entry point
 

@@ -1,6 +1,6 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
-**Primary code:** `api/services/cancellations/cancellationMirror.service.ts`  
+**Primary code:** `src/services/cancellations/cancellationMirror.service.ts`  
 **Domain terms used:** Cancellation, Booking, Form Lead, Call Lead, Sheet Sync
 
 # Cancellation Mirror Service

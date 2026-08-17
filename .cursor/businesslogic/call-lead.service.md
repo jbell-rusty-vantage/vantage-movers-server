@@ -1,6 +1,6 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
-**Primary code:** `api/services/leads/callLead.service.ts`  
+**Primary code:** `src/services/leads/callLead.service.ts`, `src/services/leads/leadCplResolution.ts`  
 **Domain terms used:** Call Lead, Call Lead Ingestion, Duplicate Lead, Form Fill, CPL, Sheet Sync, Caller Match Key, Lead ID
 
 # Call Lead Service
@@ -11,8 +11,8 @@
 
 | Function | Caller | Duplicate Lead | CPL |
 |----------|--------|----------------|-----|
-| `createCallLead` | `POST /api/v1/call-leads` (manual, Invoca, tests) | always `false` (schema default) | `getCplForSource(source, local)` |
-| `createRingCentralCallLead` | **Call Lead Ingestion** (Ring Central) only | passed in by ingest | `0` when Duplicate Lead, else source CPL |
+| `createCallLead` | `POST /api/v1/call-leads` (manual, Invoca, tests) | always `false` (schema default) | `resolveLeadCplSnapshot` |
+| `createRingCentralCallLead` | **Call Lead Ingestion** (Ring Central) only | passed in by ingest | `duplicate_zero` / `cpl = 0` when Duplicate Lead, else registry snapshot |
 
 **Call Qualification** + ingest: [`ringcentral-call-lead-qualification.service.md`](ringcentral-call-lead-qualification.service.md). Duplicate classification: `ringcentral-duplicate-guard.ts`; promotion gate: `ringcentral-call-lead-ingest.service.ts`.
 
@@ -20,7 +20,7 @@
 
 1. Normalize name, parse **Source Company**, optional location.
 2. **Form Fill** check — `hasFormFillForCallLead(source, phone)`: true when a non-duplicate Form Lead exists with same source + normalized phone.
-3. Save with `form_fill`, Florida `timestamp`, **CPL**; enqueue `call_lead.create` Sheet Sync job; finalize sync.
+3. Save with `form_fill`, Florida `timestamp`, **CPL snapshot**; enqueue `call_lead.create` Sheet Sync job; finalize sync.
 4. No Ring Central metadata; no Call Lead duplicate window logic.
 
 ## Create — Ring Central (`createRingCentralCallLead`)
@@ -41,9 +41,9 @@ Per glossary and `ringcentral-duplicate-guard.ts`:
 
 **Config note:** `RINGCENTRAL_DUPLICATE_WINDOW_HOURS` in `ringcentral-config.ts` is exposed for debug display only; the guard uses hardcoded `RINGCENTRAL_CALL_LEAD_DUPLICATE_WINDOW_DAYS = 90`.
 
-### CPL config lag
+### CPL snapshot
 
-Glossary: CPL by Source Company + **Lead Channel** + **Move Type**. `getCplForSource` is source-centric (Best Relocation local/LD split only). Move Type on Call Leads may be unknown until **Call Lead Enrichment**.
+Create/update use `resolveLeadCplSnapshot` (Operations Registry periods). Duplicate Ring Central creates store `cpl = 0` with status `duplicate_zero`. Move Type / location may still be unknown until **Call Lead Enrichment**.
 
 ## Sheet Sync tab routing
 
@@ -65,8 +65,8 @@ Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 
 ## Update (`updateCallLead`)
 
-- Optional location; recomputes Move Type + CPL via `getCplForSource`.
-- **Edge case:** update recalculates CPL from source/local — does not re-run Duplicate Lead logic; changing local on a duplicate could overwrite CPL (duplicates rarely updated via API).
+- Optional location; recomputes Move Type + CPL snapshot. Optional `receiver_agent` via Operations Registry.
+- **Edge case:** update recalculates CPL from current granularity — does not re-run Duplicate Lead logic.
 - Saves + refreshes attached **Booking Chain** (`call_lead.update`).
 
 ## Delete (`deleteCallLead`)
@@ -98,6 +98,7 @@ Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 ## Related businesslogic
 
 - [`form-lead.service.md`](form-lead.service.md) — Form Fill side effects on Form Lead Ingestion
+- [`enrichment.service.md`](enrichment.service.md) — Follow Up preview/sync
 - [`ringcentral-call-lead-qualification.service.md`](ringcentral-call-lead-qualification.service.md) — **Call Qualification**, ingest gate
 - [`googleSheets.service.md`](googleSheets.service.md) — Calls / Duplicate Calls tabs
 

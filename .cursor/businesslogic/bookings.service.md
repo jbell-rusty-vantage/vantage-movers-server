@@ -1,20 +1,21 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
-**Primary code:** `api/services/bookings/`  
+**Primary code:** `src/services/bookings/`  
 **Domain terms used:** Booking, Leadless Booking, Referral Booking, Booking Chain, Sheet Sync, Agent Allocation, Binder, Deposit, Unmatched Call Lead, System of Record
 
 # Bookings (`bookings/`)
 
 **System of Record:** MongoDB `booked_leads`. Lead-attached Bookings mirror state onto Form Leads / Call Leads (`booked`, threshold flags, optional `source_company`/`local`, recomputed CPL). Owner reporting via **Sheet Sync** (**Master Booked** + source lead rows).
 
-**Four services — one lifecycle:**
+**Five services — one lifecycle:**
 
 | File | Role |
 |------|------|
 | `bookedLead.service.ts` | Core CRUD: create, update, delete, populate |
 | `bookedLeadFromSource.service.ts` | Form/phone submission bridge → `createBookedLead` |
 | `bookingMirror.service.ts` | Lead ↔ booking state sync + lead-update refresh |
-| `referralBooking.service.ts` | Leadless referral bookings (separate create path) |
+| `referralBooking.service.ts` | Referral bookings (no source lead) |
+| `leadlessBooking.service.ts` | Leadless bookings + `BookingLeadReconciliationCase` |
 
 Helpers in same folder: `bookingSourceResolver.ts` (lead lookup/create), `bookingWarnings.ts` (zero-binder warnings). Agent resolution: see `agentAllocation.service.md`.
 
@@ -28,22 +29,25 @@ Helpers in same folder: `bookingSourceResolver.ts` (lead lookup/create), `bookin
 | `DELETE /api/v1/booked-leads/:id?cascade=` | `deleteBookedLead` |
 | `GET /api/v1/booked-leads` | `findAllBookedLeads` (last 200) |
 | `POST /api/v1/referral-bookings` | `createReferralBooking` |
+| `POST /api/v1/leadless-bookings` | `createLeadlessBooking` |
 
-## Three create paths
+## Create paths
 
 ```
-Form/phone intake          Direct API                 Referral
+Form/phone intake          Direct API                 Referral / leadless
 (from-source)              (booked-leads)
       │                          │                          │
       ▼                          ▼                          ▼
 resolveBookingSourceLead   input.lead_ref/model      no source lead
       │                          │                          │
-      └──────── createBookedLead ─┘                    createReferralBooking
-                    │                                        │
-            mirrorBookingToLead                         (no mirror)
+      └──────── createBookedLead ─┘         createReferralBooking
+                    │                       createLeadlessBooking
+            mirrorBookingToLead                 (no lead mirror)
                     │
-            Booking Chain Sheet Sync              booked_lead Sheet Sync
+            Booking Chain Sheet Sync        booked_lead Sheet Sync
 ```
+
+Public employee submit (`src/services/employeeBookings/`) is a separate HTTP path that may book-and-link or create a leadless booking + reconciliation case.
 
 ### 1. From source (`createBookedLeadFromSource`)
 
@@ -80,6 +84,13 @@ Post-commit: `finalizeSheetSync`; operational events `booking.created` or `booki
 - Customer from contact fields only; **no** `mirrorBookingToLead`.
 - Sheet job: `resource: "booked_lead"`, `operation: "referral_booking.create"` (not `booking_chain`).
 - **Update/delete/cancel not supported yet** (409 from booked-lead and cancellation resolvers).
+
+### 4. Leadless (`createLeadlessBooking`)
+
+- `POST /api/v1/leadless-bookings`. Sets `is_leadless_booking`. **409** if `job_no` already exists.
+- Resolves source via `resolveLeadSourceAssignment`. Opens a `BookingLeadReconciliationCase`.
+- Sheet job: `resource: "booked_lead"`, `operation: "leadless_booking.create"`.
+- Distinct from referral (`source: "referral"`) and from employee public submit.
 
 ## Update (`updateBookedLead`)
 
@@ -147,6 +158,7 @@ Booking delete: clears `booked`, `cancelled`, threshold flags on lead. Legacy pa
 | Lead-attached update | `booking_chain` | `booked_lead.update` |
 | Lead-attached delete | tombstone + `source_lead` | `delete_booked_lead` |
 | Referral create | `booked_lead` | `referral_booking.create` |
+| Leadless create | `booked_lead` | `leadless_booking.create` |
 | Lead update with booking | `booking_chain` or `source_lead` | from `refreshAttachedBookingFromLead` |
 
 **Booking Chain** refreshes **Master Booked** (`Booked Deals` tab) and the linked source lead row. Details: [`googleSheets.service.md`](googleSheets.service.md), [`sheetSync.service.md`](sheetSync.service.md).

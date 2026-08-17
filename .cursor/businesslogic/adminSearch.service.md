@@ -1,6 +1,6 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)
-**Primary code:** `api/services/admin/adminSearch.service.ts`  
+**Primary code:** `src/services/admin/adminSearch.service.ts`  
 **Domain terms used:** Admin Dashboard, Workflow Observational, Lead ID, Form Lead, Call Lead, Booking, Cancellation, System of Record
 
 # Admin Search Service

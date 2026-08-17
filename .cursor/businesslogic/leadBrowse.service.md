@@ -1,6 +1,6 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
-**Primary code:** `api/services/search/formLeadBrowse.service.ts`, `callLeadBrowse.service.ts`, `leadBrowseShared.ts`  
+**Primary code:** `src/services/search/formLeadBrowse.service.ts`, `callLeadBrowse.service.ts`, `leadBrowseShared.ts`  
 **Domain terms used:** Form Lead, Call Lead, Lead ID, Admin Dashboard (extension search workspace)
 
 # Lead Browse
@@ -112,4 +112,4 @@ Unpopulated or broken refs → `null` on the result row.
 
 - Form/call POST search: `formLeadSearch.service.md`, `callLeadSearch.service.md`
 - Admin list/detail: `adminSearch.service.md` + `admin/adminBrowse.service.ts`
-- Barrel: `api/services/search/index.ts`
+- Barrel: `src/services/search/index.ts`

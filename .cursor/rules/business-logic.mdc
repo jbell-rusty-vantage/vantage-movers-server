@@ -46,11 +46,11 @@ MongoDB is the **System of Record** for Form Leads, Call Leads, Bookings, Cancel
 ## Quotes, estimates, and CPL
 
 - `quoted`, `cubic_feet`, CPL, deposit, binder, and threshold flags span lead, Enrichment, booking, and Analytics.
-- **CPL** is granular by Source Company + Lead Channel + Move Type per glossary; server config in `cpl.ts` is source-centric (Best Relocation move-type split only) — config lag noted in lead service docs.
+- **CPL** is granular by Source Company + Lead Channel + Move Type per glossary. Lead create/update stores a snapshot via `leads/leadCplResolution.ts` → `operationsRegistry.resolveCpl` (statuses include `resolved`, `duplicate_zero`, `missing_rate`, `not_applicable`). Legacy `cpl.ts` / `cplRate.service.ts` remain for older reads; do not treat them as the write-path authority.
 
 ## Bookings and cancellations
 
-- Bookings link to a source lead via `lead_ref` / `lead_model` except **Referral Booking** ([`bookings.service.md`](../businesslogic/bookings.service.md)).
+- Bookings link to a source lead via `lead_ref` / `lead_model` except **Referral Booking** and **leadless bookings** ([`bookings.service.md`](../businesslogic/bookings.service.md)). Employee public submit is a separate path (`employeeBookings/`).
 - One lead-attached booking per `(lead_ref, lead_model)`; repeat creates upsert unless `submission_id` matches.
 - **Booking Chain** Sheet Sync on create/update; referral uses `booked_lead` job.
 - Cancellations attach to lead-attached bookings only; referral blocked ([`cancelledLead.service.md`](../businesslogic/cancelledLead.service.md)). **Cancellation Chain** on create.
@@ -62,6 +62,9 @@ MongoDB is the **System of Record** for Form Leads, Call Leads, Bookings, Cancel
 - **Sheet Sync** — Master Sheets only; Source Company Sheets via import queries ([`sheetSync.service.md`](../businesslogic/sheetSync.service.md), [`googleSheets.service.md`](../businesslogic/googleSheets.service.md)).
 - **Call Qualification** — webhook + Call Log sync → shared ingest; Analytics reconcile is count-only, must not create leads.
 - Granot Booked Jobs CSV reconciliation: [`bookedCallLeadReconciliation.service.md`](../businesslogic/bookedCallLeadReconciliation.service.md).
+- **Call Lead Enrichment** (Follow Up rows): [`enrichment.service.md`](../businesslogic/enrichment.service.md).
+- Granot HTTP automation (preview/approve/apply, still direct mutations): [`granotHttpCollector.service.md`](../businesslogic/granotHttpCollector.service.md).
+- Granot webhook capture is receipt-only today — no Lead/Booking mutation ([`granotLifecycle.capture.md`](../businesslogic/granotLifecycle.capture.md)).
 - Marketing testimonials: [`testimonial.service.md`](../businesslogic/testimonial.service.md).
 
 ## Invariants

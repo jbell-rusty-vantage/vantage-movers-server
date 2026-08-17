@@ -8,7 +8,7 @@ alwaysApply: true
 - `vantage-main-server` is a Vercel-hosted Express TypeScript API. Runtime entrypoint and HTTP setup live in `api/index.ts`.
 - `src/routes/` owns HTTP and cron boundaries. Keep routes thin: auth, validation, service calls, response shaping.
 - `src/validation/` owns Zod request and operation schemas. `src/validation/v1.validation.ts` is the v1 public barrel; detailed schemas live under `src/validation/v1/`.
-- `src/services/` owns business behavior and side effects across leads, bookings, cancellations, customers, admin, RingCentral, Google Sheets/sheet sync, CRM, observability, reconciliation, analytics, search, enrichment, catalog, and errors.
+- `src/services/` owns business behavior and side effects across leads, bookings, cancellations, customers, agents, catalog, CPL, search, enrichment, reconciliation, CRM, Granot (CSV, HTTP automation, lifecycle capture, webhooks adapter), RingCentral, Google Sheets/sheet sync, Google Drive OAuth, lead messaging, observability, operations registry, analytics, admin, reporting, Best Relocation ingestion, employee bookings, domain commands, durable work, historical consolidation, operational workbooks, and legacy compatibility helpers (`leadSourceCompanies/`, root `*.service.ts` barrels).
 - `src/models/` owns Mongoose runtime schemas and model helpers. `src/db.ts` owns the shared Mongo connection and must preserve `TEST_MODE` boundaries.
 - `src/config/` owns mode-aware domain configuration such as source companies, sheet targets, CPL, observability, Google auth, and runtime DB selection.
 - `scripts/` contains operational tooling: dev ops, historical backfill/repair, Google Sheets inspection/backfill, RingCentral management, Postman sync, demos, generated docs, and tests setup.

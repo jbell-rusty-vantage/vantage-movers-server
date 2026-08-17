@@ -1,6 +1,6 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
-**Primary code:** `api/services/reconciliation/bookedCallLeadReconciliation.service.ts`  
+**Primary code:** `src/services/reconciliation/bookedCallLeadReconciliation.service.ts`  
 **Domain terms used:** Call Lead Enrichment, Booking Chain, Sheet Sync, Job Number, Granot CRM, System of Record
 
 # Booked Call Lead Reconciliation
@@ -9,7 +9,7 @@
 
 **System of Record:** MongoDB `call_leads` and `booked_leads`. Granot CRM rows are an enrichment/reconciliation input, not authoritative for linkage. This service does **not** create Bookings; booking creation stays in [`bookings.service.md`](bookings.service.md).
 
-**Facade:** `api/services/bookedCallLeadReconciliation.service.ts` re-exports this folder for routes. New code should import from `api/services/reconciliation/`.
+**Facade:** `src/services/bookedCallLeadReconciliation.service.ts` re-exports this folder for routes. New code should import from `src/services/reconciliation/`.
 
 ## HTTP entry points
 
@@ -67,7 +67,7 @@ BookedLead.findOne({ job_no })
 2. **Conflict** if `lead_model !== "CallLead"` or `lead_ref` call lead missing.
 3. **Conflict** if matched call lead has an assigned `source_company` incompatible with CRM row (see source rules).
 4. Diff fields → `updateable` / `unchanged`.
-5. On sync: update call lead (+ recompute `cpl` via `getCplForSource`), patch booking (`source`, `local`, `book_date`), upsert `Customer` by phone when name+phone present and booking customer differs/missing.
+5. On sync: update call lead (+ CPL snapshot via `resolveLeadCplSnapshot`), patch booking (`source`, `local`, `book_date`), upsert `Customer` by phone when name+phone present and booking customer differs/missing. May set `receiver_agent` from Granot CRM username and enqueue `booked_call_lead.call_lead_only.sync` / `booked_call_lead.receiver_agent_crm_username.sync`.
 6. Sheet sync: `scheduleBookingChainSheetSync` (`booked_call_lead.reconciliation.sync`).
 
 ### Path B — no booking yet (`job_no_only` / `phone_only`)

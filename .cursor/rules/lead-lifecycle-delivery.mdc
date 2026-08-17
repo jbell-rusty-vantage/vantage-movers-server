@@ -1,18 +1,19 @@
 ---
 description: Lead lifecycle delivery — branch plan across server, admin, and extension
+globs: scripts/prototypes/granot-lead-lifecycle/**/*,src/services/granotLifecycle/**/*.ts,.cursor/businesslogic/granotLifecycle*.md
 alwaysApply: false
 ---
 
 # Lead Lifecycle Delivery
 
-Apply this rule when implementing Granot lead lifecycle (webhooks, observations, intake, admin UI, extension). Keep all of that work on the branches below. Do not open extra feature branches for this set.
+Apply this rule when implementing Granot lead lifecycle (webhooks, observations, Booking/Release Reconciliation, admin UI, extension). Keep all of that work on the branches below. Do not open extra feature branches for this set. Do not use superseded Intake-era names (`GranotBookingIntakeCase`, dismiss, generic lifecycle enum).
 
 ## Repos and branches
 
 | Repo | Branch | Rule |
 |---|---|---|
 | `vantage-main-server` | **one new branch** from current `main` | All API, models, queues, crons, and admin routes for lifecycle live here. |
-| `vantage-admin` | **one new branch** from current `main` | All admin UI for intake, observations, and confirm flows live here. |
+| `vantage-admin` | **one new branch** from current `main` | All admin UI for observations and Booking/Release Reconciliation live here. |
 | `granot_sync_extensions_and_services` | **`main`** | Edit on `main`. Bump the extension version to **`0.2.8`**. |
 
 Do not create a second server or admin branch for a later slice of the same lifecycle work. Stack commits on the existing branch.
