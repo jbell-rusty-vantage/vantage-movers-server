@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { GRANOT_OBSERVATION_INDEXES } from "../../src/models/GranotObservation";
 import {
   GRANOT_OBSERVATION_RECEIPT_INDEXES,
   GRANOT_OBSERVATION_RECEIPT_LEGACY_INDEXES,
 } from "../../src/models/GranotObservationReceipt";
 import {
   findChannelOperationIdCollisions,
+  findObservationReceiptIdCollisions,
+  orderedObservationIndexCreates,
   orderedReceiptIndexCreates,
+  verifyObservationIndexDefinitions,
   verifyReceiptIndexDefinitions,
 } from "./granot-lifecycle-indexes.lib";
 
@@ -108,4 +112,55 @@ test("[AC-02] index verify matches the model contract names and definitions", ()
   assert.deepEqual(mismatched.mismatched, [
     "granot_observation_receipt_payload_sha256_diag",
   ]);
+});
+
+test("[AC-05] Observation unique receipt_id collision report refuses unique creation", () => {
+  const collisions = findObservationReceiptIdCollisions([
+    { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", receipt_id: "cccccccccccccccccccccccc" },
+    { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", receipt_id: "cccccccccccccccccccccccc" },
+    { _id: "dddddddddddddddddddddddd", receipt_id: "eeeeeeeeeeeeeeeeeeeeeeee" },
+  ]);
+  assert.equal(collisions.length, 1);
+  assert.equal(collisions[0]?.count, 2);
+  assert.equal(collisions[0]?.receipt_id, "cccccccccccccccccccccccc");
+  assert.equal(JSON.stringify(collisions).includes("aaaaaaaaaaaaaaaaaaaaaaaa"), false);
+});
+
+test("[AC-05] Observation index apply creates non-unique indexes before unique receipt_id", () => {
+  const ordered = orderedObservationIndexCreates();
+  assert.equal(ordered.unique.length, 1);
+  assert.equal(ordered.unique[0]?.name, "granot_observation_receipt_id_unique");
+  assert.equal(ordered.nonUnique.length, 5);
+  assert.ok(
+    ordered.nonUnique.every((index) => index.name !== ordered.unique[0]?.name),
+  );
+  assert.equal(GRANOT_OBSERVATION_INDEXES.filter((index) => "unique" in index).length, 1);
+});
+
+test("[AC-05] Observation index verify matches the model contract names and definitions", () => {
+  const actual = GRANOT_OBSERVATION_INDEXES.map((index) => ({
+    name: index.name,
+    key: { ...index.key },
+    unique: "unique" in index ? true : undefined,
+  }));
+  const verified = verifyObservationIndexDefinitions(actual);
+  assert.equal(verified.ok, true);
+  assert.deepEqual(verified.missing, []);
+  assert.deepEqual(verified.mismatched, []);
+
+  const missingUnique = verifyObservationIndexDefinitions(
+    actual.filter((index) => index.name !== "granot_observation_receipt_id_unique"),
+  );
+  assert.equal(missingUnique.ok, false);
+  assert.deepEqual(missingUnique.missing, ["granot_observation_receipt_id_unique"]);
+
+  const mismatched = verifyObservationIndexDefinitions(
+    actual.map((index) =>
+      index.name === "granot_observation_kind_captured"
+        ? { ...index, unique: true }
+        : index,
+    ),
+  );
+  assert.equal(mismatched.ok, false);
+  assert.deepEqual(mismatched.mismatched, ["granot_observation_kind_captured"]);
 });

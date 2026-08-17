@@ -1,6 +1,6 @@
 # Granot lifecycle prototype and implementation seams
 
-> **Prototype vocabulary.** Intake / Confirm Granot Booking names in this file are **superseded** by the final spec §5 (Booking/Release Reconciliation). Do not copy them into code or Cursor rules. Live webhook capture is documented in [`.cursor/businesslogic/granotLifecycle.capture.md`](../../.cursor/businesslogic/granotLifecycle.capture.md). Locked contracts: `scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md`.
+> **Prototype vocabulary.** Intake / Confirm Granot Booking names in this file are **superseded** by the final spec §5 (Booking/Release Reconciliation). Do not copy them into code or Cursor rules. Live webhook capture is documented in [`.cursor/businesslogic/granotLifecycle.capture.md`](../../.cursor/businesslogic/granotLifecycle.capture.md). Live callable Observation normalization is documented in [`.cursor/businesslogic/granotLifecycle.normalization.md`](../../.cursor/businesslogic/granotLifecycle.normalization.md). Locked contracts: `scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md`.
 
 Status: executable reasoning artifact, not a production implementation. The
 prototype lives at `scripts/prototypes/granot-lead-lifecycle/` and uses no live
@@ -305,7 +305,9 @@ a downstream resolution tool only after a Vantage Booking exists.
 
 Existing webhook routes remain capture-only and fast. Production now implements
 that seam in `src/services/granotLifecycle/capture.ts` plus a receipt-ID-only
-publisher. Processing, normalization, and a queue consumer do not exist yet.
+publisher. Callable Observation normalization exists in
+`src/services/granotLifecycle/normalization.ts` and is not invoked by capture.
+Processing and a queue consumer do not exist yet.
 
 ```text
 authenticate → capture immutable receipt → publish { receipt_id } wake-up → 202

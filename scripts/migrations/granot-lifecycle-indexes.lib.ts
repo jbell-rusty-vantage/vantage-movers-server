@@ -1,12 +1,16 @@
 import {
+  GRANOT_OBSERVATION_INDEXES,
+} from "../../src/models/GranotObservation";
+import {
   GRANOT_OBSERVATION_RECEIPT_INDEXES,
   GRANOT_OBSERVATION_RECEIPT_LEGACY_INDEXES,
 } from "../../src/models/GranotObservationReceipt";
 import { maskReceiptId } from "./granot-lifecycle-migration.lib";
 
-export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/1";
+export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/2";
 
 export type ReceiptIndexContract = (typeof GRANOT_OBSERVATION_RECEIPT_INDEXES)[number];
+export type ObservationIndexContract = (typeof GRANOT_OBSERVATION_INDEXES)[number];
 
 export type OperationIdCollision = {
   observation_channel: string;
@@ -75,6 +79,50 @@ export function orderedReceiptIndexCreates(): {
   return { nonUnique, unique };
 }
 
+export type ObservationReceiptIdCollision = {
+  receipt_id: string;
+  count: number;
+  masked_ids: string[];
+};
+
+export function findObservationReceiptIdCollisions(
+  rows: readonly {
+    _id: string;
+    receipt_id?: unknown;
+  }[],
+): ObservationReceiptIdCollision[] {
+  const groups = new Map<string, { count: number; masked_ids: string[] }>();
+  for (const row of rows) {
+    if (row.receipt_id == null || row.receipt_id === "") {
+      continue;
+    }
+    const receiptId = String(row.receipt_id);
+    const current = groups.get(receiptId) ?? { count: 0, masked_ids: [] };
+    current.count += 1;
+    current.masked_ids.push(maskReceiptId(row._id));
+    groups.set(receiptId, current);
+  }
+  return [...groups.entries()]
+    .filter(([, group]) => group.count > 1)
+    .map(([receipt_id, group]) => ({
+      receipt_id,
+      count: group.count,
+      masked_ids: group.masked_ids.sort(),
+    }))
+    .sort((left, right) => left.receipt_id.localeCompare(right.receipt_id));
+}
+
+export function orderedObservationIndexCreates(): {
+  nonUnique: ObservationIndexContract[];
+  unique: ObservationIndexContract[];
+} {
+  const nonUnique = GRANOT_OBSERVATION_INDEXES.filter(
+    (index) => !("unique" in index),
+  );
+  const unique = GRANOT_OBSERVATION_INDEXES.filter((index) => "unique" in index);
+  return { nonUnique, unique };
+}
+
 export function verifyReceiptIndexDefinitions(
   actual: readonly DeclaredMongoIndex[],
 ): { ok: boolean; missing: string[]; mismatched: string[] } {
@@ -103,9 +151,31 @@ export function verifyReceiptIndexDefinitions(
   };
 }
 
+export function verifyObservationIndexDefinitions(
+  actual: readonly DeclaredMongoIndex[],
+): { ok: boolean; missing: string[]; mismatched: string[] } {
+  const missing: string[] = [];
+  const mismatched: string[] = [];
+  for (const expected of GRANOT_OBSERVATION_INDEXES) {
+    const found = actual.find((index) => index.name === expected.name);
+    if (!found) {
+      missing.push(expected.name);
+      continue;
+    }
+    if (!sameIndexDefinition(found, expected)) {
+      mismatched.push(expected.name);
+    }
+  }
+  return {
+    ok: missing.length === 0 && mismatched.length === 0,
+    missing,
+    mismatched,
+  };
+}
+
 function sameIndexDefinition(
   actual: DeclaredMongoIndex,
-  expected: ReceiptIndexContract,
+  expected: ReceiptIndexContract | ObservationIndexContract,
 ): boolean {
   const expectedUnique = "unique" in expected ? expected.unique === true : false;
   const actualUnique = actual.unique === true;

@@ -25,7 +25,7 @@ alwaysApply: true
 - `app.ts` also calls `registerReportingStage4Foundation()` at Express bootstrap. Queue consumers do not inherit this — they must re-register foundations themselves.
 - **Queue consumers** (`api/queues/`): `sheet-sync-consumer`, `lead-messaging-consumer`, `best-relocation-ingestion-consumer`, `reporting-consumer`, `granot-automation-consumer`. Granot lifecycle capture may publish `{ receipt_id }` to `granot-lifecycle-events` / `granot-lifecycle-events-dev`; **no** `granot-lifecycle-consumer` is deployed yet.
 - `src/validation/` — Zod schemas (`v1.validation.ts` barrel + `src/validation/v1/` + reporting validators).
-- `src/models/` — runtime Mongoose schemas (`snake_case`); Google Sheets projections produce Title Case columns. `GranotObservationReceipt` lives here; collection `granot_webhook_receipts` is retained.
+- `src/models/` — runtime Mongoose schemas (`snake_case`); Google Sheets projections produce Title Case columns. `GranotObservationReceipt` lives here; collection `granot_webhook_receipts` is retained. `GranotObservation` lives here; collection `granot_observations`.
 - `src/config/domain/` — mode-aware domain config; re-exported by `src/config/domain.ts` **except** `reporting.ts` (import `./domain/reporting` directly). Prefer focused modules over scattering `process.env`.
 - `src/db.ts` — shared Mongo helper; preserve `TEST_MODE` DB boundary.
 - `src/middleware/` — `requireApiSecret` / `requireVantageAuth`, `requireGranotWebhookSecret`, HTTP logging.
@@ -68,7 +68,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - `granotCrmCsv/` — CSV source registry + S3 ingest (`/granot-crm/csv/*`)
 - `granotWebhooks/` — Compatibility adapter only; webhook capture implementation lives in `granotLifecycle/capture`
 - `granotHttpCollector/` — HTTP session collector + automation runs/sources/workflows. Apply still mutates leads/enrichment/reconciliation **directly** (not via a lifecycle processor). See `businesslogic/granotHttpCollector.service.md`.
-- `granotLifecycle/` — Shared lifecycle vocabulary, receipt evidence helpers, webhook capture, and receipt-ID queue wake-up publisher. Runtime normalization, processing, consumer/drainer, flags, and effects land only in their assigned lifecycle units — **none of those are live yet**.
+- `granotLifecycle/` — Shared lifecycle vocabulary, receipt evidence helpers, webhook capture, receipt-ID queue wake-up publisher, and callable Observation normalization (`normalization.ts`). Capture does not invoke normalization. Processing, consumer/drainer, flags, and effects land only in their assigned later units — **none of those are live yet**.
 - `crm/` — Outbound Granot form-lead submit (invoked from lead write paths). Independent of webhook capture.
 
 ### Integrations

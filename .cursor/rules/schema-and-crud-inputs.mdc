@@ -16,6 +16,7 @@ alwaysApply: false
 - `BookedLead` (`booked_leads`) links back to `lead_ref` plus `lead_model` (`FormLead` or `CallLead`) via `refPath`, stores customer, job/source/merchant/deposit, required `agent_allocations[]`, `total_binder_amount`, threshold flags, cancellation ref, and `sheet_sync[]`.
 - `CancelledLead` (`cancelled_leads`) links to `booked_lead`, customer, source `lead_ref`/`lead_model`, cancel/refund fields, and snapshots booking/customer/source values for reporting.
 - `Customer` and `Agent` are support collections. Customers are upserted from source leads during booking; agents are resolved from booking form allocation input and snapshot names on bookings.
+- `GranotObservation` (`granot_observations`) is one normalized Granot statement per receipt. It is evidence only. Unique index is `receipt_id`. It does not mutate Leads, Bookings, or Cancellations.
 
 ## Input Contracts
 

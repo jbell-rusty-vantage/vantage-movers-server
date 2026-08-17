@@ -1,7 +1,11 @@
 import { Schema } from "mongoose";
 import type {
   ChannelOperationKind,
+  GranotBookingAction,
+  GranotObservationKind,
   GranotRouteEventClass,
+  NormalizationIssueCode,
+  NormalizationResult,
   ObservationChannel,
   ReceiptWorkState,
 } from "../services/granotLifecycle/types";
@@ -40,6 +44,43 @@ export const CHANNEL_OPERATION_KINDS = [
   "lead_snapshot_apply",
   "booking_action_apply",
 ] as const satisfies readonly ChannelOperationKind[];
+
+export const OBSERVATION_KINDS = [
+  "lead_snapshot",
+  "booking_action_snapshot",
+] as const satisfies readonly GranotObservationKind[];
+
+export const NORMALIZATION_RESULTS = [
+  "valid",
+  "valid_with_issues",
+  "invalid",
+  "unsupported",
+] as const satisfies readonly NormalizationResult[];
+
+export const NORMALIZATION_ISSUE_CODES = [
+  "payload_not_object",
+  "route_payload_event_conflict",
+  "missing_payload_event_type",
+  "unsupported_booking_action",
+  "invalid_source_label",
+  "missing_job_number",
+  "invalid_form_reference",
+  "invalid_phone",
+  "invalid_email",
+  "invalid_move_date",
+  "invalid_state",
+  "invalid_cubic_feet",
+  "invalid_priority",
+  "invalid_money",
+  "granot_agent_identity_conflict",
+] as const satisfies readonly NormalizationIssueCode[];
+
+export const GRANOT_BOOKING_ACTIONS = [
+  "booked",
+  "release",
+] as const satisfies readonly GranotBookingAction[];
+
+export const NORMALIZATION_ISSUE_SEVERITIES = ["warning", "error"] as const;
 
 const CONTROL_OR_BIDI = /[\p{Cc}\p{Cf}]/u;
 const LOWERCASE_UUID_V4 =

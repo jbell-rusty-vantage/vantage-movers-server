@@ -67,4 +67,4 @@ Indexes for a future drainer/lease exist on the receipt model; nothing claims or
 
 ## Out of scope here
 
-Observation persistence, normalization, Registry, processor, flags, Lead/Booking/Cancellation effects, and queue consumer/cron.
+Capture does not call Observation normalization. The callable module lives in [`granotLifecycle.normalization.md`](granotLifecycle.normalization.md). Registry, processor, flags, Lead/Booking/Cancellation effects, and queue consumer/cron remain later units.

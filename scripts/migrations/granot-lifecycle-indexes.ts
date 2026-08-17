@@ -1,5 +1,5 @@
 /**
- * 34.5 — Granot Observation Receipt index deployment.
+ * 34.5 — Granot Observation Receipt and Observation index deployment.
  *
  * Dry-run / --report by default. Mutation requires
  * --apply --confirm-production=<database-name>.
@@ -10,6 +10,10 @@
  */
 import mongoose from "mongoose";
 import { connectMongo } from "../../src/db.js";
+import {
+  GRANOT_OBSERVATION_COLLECTION,
+  GRANOT_OBSERVATION_INDEXES,
+} from "../../src/models/GranotObservation.js";
 import {
   GRANOT_OBSERVATION_RECEIPT_COLLECTION,
   GRANOT_OBSERVATION_RECEIPT_INDEXES,
@@ -24,7 +28,10 @@ import {
 import {
   INDEX_MIGRATION_SCRIPT_VERSION,
   findChannelOperationIdCollisions,
+  findObservationReceiptIdCollisions,
+  orderedObservationIndexCreates,
   orderedReceiptIndexCreates,
+  verifyObservationIndexDefinitions,
   verifyReceiptIndexDefinitions,
   type DeclaredMongoIndex,
 } from "./granot-lifecycle-indexes.lib.js";
@@ -57,10 +64,8 @@ async function loadOperationIdRows(): Promise<
   }));
 }
 
-async function listDeclaredIndexes(): Promise<DeclaredMongoIndex[]> {
-  const collection = mongoose.connection.db?.collection(
-    GRANOT_OBSERVATION_RECEIPT_COLLECTION,
-  );
+async function listDeclaredIndexes(collectionName: string): Promise<DeclaredMongoIndex[]> {
+  const collection = mongoose.connection.db?.collection(collectionName);
   if (!collection) {
     throw new Error("Cannot list indexes: Mongo collection is unavailable.");
   }
@@ -76,11 +81,10 @@ async function listDeclaredIndexes(): Promise<DeclaredMongoIndex[]> {
 }
 
 async function createIndexes(
-  specs: readonly (typeof GRANOT_OBSERVATION_RECEIPT_INDEXES)[number][],
+  collectionName: string,
+  specs: readonly { name: string; key: Record<string, number>; unique?: true; partialFilterExpression?: Record<string, unknown> }[],
 ): Promise<string[]> {
-  const collection = mongoose.connection.db?.collection(
-    GRANOT_OBSERVATION_RECEIPT_COLLECTION,
-  );
+  const collection = mongoose.connection.db?.collection(collectionName);
   if (!collection) {
     throw new Error("Cannot create indexes: Mongo collection is unavailable.");
   }
@@ -98,6 +102,22 @@ async function createIndexes(
   return created;
 }
 
+async function loadObservationReceiptIdRows(): Promise<
+  Array<{ _id: string; receipt_id?: unknown }>
+> {
+  const collection = mongoose.connection.db?.collection(GRANOT_OBSERVATION_COLLECTION);
+  if (!collection) {
+    throw new Error("Cannot load observations: Mongo collection is unavailable.");
+  }
+  const documents = await collection
+    .find({}, { projection: { receipt_id: 1 } })
+    .toArray();
+  return documents.map((document) => ({
+    _id: String(document._id),
+    receipt_id: document.receipt_id,
+  }));
+}
+
 async function main(): Promise<void> {
   const mode = parseGranotLifecycleMigrationMode(process.argv);
   await connectMongo();
@@ -112,20 +132,30 @@ async function main(): Promise<void> {
 
   const rows = await loadOperationIdRows();
   const collisions = findChannelOperationIdCollisions(rows);
+  const observationRows = await loadObservationReceiptIdRows();
+  const observationCollisions = findObservationReceiptIdCollisions(observationRows);
   const ordered = orderedReceiptIndexCreates();
+  const observationOrdered = orderedObservationIndexCreates();
   let created: string[] = [];
   let verify: ReturnType<typeof verifyReceiptIndexDefinitions> | undefined;
+  let observationVerify: ReturnType<typeof verifyObservationIndexDefinitions> | undefined;
 
   if (mode === "apply") {
-    created = await createIndexes(ordered.nonUnique);
-    if (collisions.length > 0) {
+    created = await createIndexes(GRANOT_OBSERVATION_RECEIPT_COLLECTION, ordered.nonUnique);
+    created = [
+      ...created,
+      ...(await createIndexes(GRANOT_OBSERVATION_COLLECTION, observationOrdered.nonUnique)),
+    ];
+    if (collisions.length > 0 || observationCollisions.length > 0) {
       const manifest = buildManifest({
         databaseName,
         mode,
         collisions,
+        observationCollisions,
         created,
         uniqueCreated: [],
         verify,
+        observationVerify,
       });
       await writeGranotLifecycleManifest({
         directory: OUTPUT_DIR,
@@ -133,25 +163,42 @@ async function main(): Promise<void> {
         manifest,
       });
       throw new Error(
-        `Refusing unique index create: ${collisions.length} collision group(s).`,
+        `Refusing unique index create: ${collisions.length + observationCollisions.length} collision group(s).`,
       );
     }
-    created = [...created, ...(await createIndexes(ordered.unique))];
+    created = [
+      ...created,
+      ...(await createIndexes(GRANOT_OBSERVATION_RECEIPT_COLLECTION, ordered.unique)),
+      ...(await createIndexes(GRANOT_OBSERVATION_COLLECTION, observationOrdered.unique)),
+    ];
   }
 
   if (mode === "verify") {
-    verify = verifyReceiptIndexDefinitions(await listDeclaredIndexes());
+    verify = verifyReceiptIndexDefinitions(
+      await listDeclaredIndexes(GRANOT_OBSERVATION_RECEIPT_COLLECTION),
+    );
+    observationVerify = verifyObservationIndexDefinitions(
+      await listDeclaredIndexes(GRANOT_OBSERVATION_COLLECTION),
+    );
   }
+
+  const uniqueCreated =
+    mode === "apply" && collisions.length === 0 && observationCollisions.length === 0
+      ? [
+          ...ordered.unique.map((index) => index.name),
+          ...observationOrdered.unique.map((index) => index.name),
+        ]
+      : [];
 
   const manifest = buildManifest({
     databaseName,
     mode,
     collisions,
+    observationCollisions,
     created,
-    uniqueCreated: mode === "apply" && collisions.length === 0
-      ? ordered.unique.map((index) => index.name)
-      : [],
+    uniqueCreated,
     verify,
+    observationVerify,
   });
   await writeGranotLifecycleManifest({
     directory: OUTPUT_DIR,
@@ -159,10 +206,15 @@ async function main(): Promise<void> {
     manifest,
   });
 
-  if (mode === "verify" && verify && !verify.ok) {
-    throw new Error(
-      `Index verify failed: missing ${verify.missing.join(", ") || "none"}; mismatched ${verify.mismatched.join(", ") || "none"}.`,
-    );
+  if (mode === "verify") {
+    const failed = [verify, observationVerify].filter((result) => result && !result.ok);
+    if (failed.length > 0) {
+      const missing = failed.flatMap((result) => result?.missing ?? []);
+      const mismatched = failed.flatMap((result) => result?.mismatched ?? []);
+      throw new Error(
+        `Index verify failed: missing ${missing.join(", ") || "none"}; mismatched ${mismatched.join(", ") || "none"}.`,
+      );
+    }
   }
 }
 
@@ -170,22 +222,27 @@ function buildManifest(input: {
   databaseName: string;
   mode: string;
   collisions: ReturnType<typeof findChannelOperationIdCollisions>;
+  observationCollisions: ReturnType<typeof findObservationReceiptIdCollisions>;
   created: string[];
   uniqueCreated: string[];
   verify?: ReturnType<typeof verifyReceiptIndexDefinitions>;
+  observationVerify?: ReturnType<typeof verifyObservationIndexDefinitions>;
 }) {
   return {
     script_version: INDEX_MIGRATION_SCRIPT_VERSION,
     database_name: input.databaseName,
     mode: input.mode,
-    contract_index_names: GRANOT_OBSERVATION_RECEIPT_INDEXES.map(
-      (index) => index.name,
-    ),
-    collision_count: input.collisions.length,
+    contract_index_names: [
+      ...GRANOT_OBSERVATION_RECEIPT_INDEXES.map((index) => index.name),
+      ...GRANOT_OBSERVATION_INDEXES.map((index) => index.name),
+    ],
+    collision_count: input.collisions.length + input.observationCollisions.length,
     collisions: input.collisions,
+    observation_receipt_id_collisions: input.observationCollisions,
     created_index_names: input.created,
     unique_index_names_created: input.uniqueCreated,
     verify: input.verify,
+    observation_verify: input.observationVerify,
   };
 }
 

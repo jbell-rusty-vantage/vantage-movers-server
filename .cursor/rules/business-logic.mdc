@@ -64,7 +64,7 @@ MongoDB is the **System of Record** for Form Leads, Call Leads, Bookings, Cancel
 - Granot Booked Jobs CSV reconciliation: [`bookedCallLeadReconciliation.service.md`](../businesslogic/bookedCallLeadReconciliation.service.md).
 - **Call Lead Enrichment** (Follow Up rows): [`enrichment.service.md`](../businesslogic/enrichment.service.md).
 - Granot HTTP automation (preview/approve/apply, still direct mutations): [`granotHttpCollector.service.md`](../businesslogic/granotHttpCollector.service.md).
-- Granot webhook capture is receipt-only today — no Lead/Booking mutation ([`granotLifecycle.capture.md`](../businesslogic/granotLifecycle.capture.md)).
+- Granot webhook capture is receipt-only today — no Lead/Booking mutation ([`granotLifecycle.capture.md`](../businesslogic/granotLifecycle.capture.md)). Observation normalization is a callable evidence module only ([`granotLifecycle.normalization.md`](../businesslogic/granotLifecycle.normalization.md)).
 - Marketing testimonials: [`testimonial.service.md`](../businesslogic/testimonial.service.md).
 
 ## Invariants

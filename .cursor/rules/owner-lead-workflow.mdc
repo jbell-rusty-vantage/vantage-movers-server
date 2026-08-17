@@ -29,7 +29,7 @@ alwaysApply: false
 
 - Granot posts `POST /api/webhooks/granot/{lead-created,priority-updated,booking-status-changed}`.
 - Authenticated deliveries persist one credential-redacted Granot Observation Receipt and return `202`. Capture does **not** create, update, or cancel a Lead, Booking, or Cancellation.
-- After commit, production Vercel may publish `{ receipt_id }` to the lifecycle queue topic. No consumer/drainer/processor is deployed yet.
+- After commit, production Vercel may publish `{ receipt_id }` to the lifecycle queue topic. No consumer/drainer/processor is deployed yet. A callable Observation normalization module exists (`granotLifecycle/normalization.ts`) and is not invoked by capture.
 - CRM Posting on form-lead create is independent of webhook capture. Details: `businesslogic/granotLifecycle.capture.md`.
 
 ## Granot HTTP automation (parallel correction path)
