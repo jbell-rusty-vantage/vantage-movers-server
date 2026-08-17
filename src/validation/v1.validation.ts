@@ -259,5 +259,7 @@ export {
 
 export {
   granotLifecycleActivationCommandSchema,
+  granotLifecycleRequeueCommandSchema,
   type GranotLifecycleActivationCommandInput,
+  type GranotLifecycleRequeueCommandInput,
 } from "./v1/granotLifecycle.validation";

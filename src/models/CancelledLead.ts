@@ -1,4 +1,8 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
+import {
+  aggregateRevisionSchemaFields,
+  applyAggregateRevisionGuards,
+} from "./granotLifecycleSchemas";
 import { leadModelField, sheetSyncSchema, type SheetSyncEntry } from "./schemaHelpers";
 
 const CancelledLeadSchema = new Schema(
@@ -20,6 +24,7 @@ const CancelledLeadSchema = new Schema(
     merchant: { type: String, trim: true },
     source: { type: String, trim: true },
     sheet_sync: { type: [sheetSyncSchema], default: [] },
+    ...aggregateRevisionSchemaFields,
   },
   {
     collection: "cancelled_leads",
@@ -28,6 +33,8 @@ const CancelledLeadSchema = new Schema(
     toObject: { virtuals: true },
   },
 );
+
+applyAggregateRevisionGuards(CancelledLeadSchema);
 
 export type CancelledLeadDocument = InferSchemaType<typeof CancelledLeadSchema> & {
   _id: mongoose.Types.ObjectId;

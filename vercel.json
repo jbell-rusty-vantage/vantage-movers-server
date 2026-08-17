@@ -50,6 +50,15 @@
           "retryAfterSeconds": 30
         }
       ]
+    },
+    "api/queues/granot-lifecycle-consumer.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "granot-lifecycle-events*",
+          "retryAfterSeconds": 30
+        }
+      ]
     }
   },
   "crons": [
@@ -99,6 +108,10 @@
     },
     {
       "path": "/api/cron/granot-automation-heartbeat",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/granot-lifecycle-drain",
       "schedule": "*/5 * * * *"
     },
     {

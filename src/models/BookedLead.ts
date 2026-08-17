@@ -1,5 +1,9 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 import {
+  aggregateRevisionSchemaFields,
+  applyAggregateRevisionGuards,
+} from "./granotLifecycleSchemas";
+import {
   leadModelField,
   optionalLocalField,
   sheetSyncSchema,
@@ -86,6 +90,7 @@ const BookedLeadSchema = new Schema(
     over_4000: { type: Boolean, required: true, default: false },
     cancelled: { type: Schema.Types.ObjectId, ref: "CancelledLead" },
     sheet_sync: { type: [sheetSyncSchema], default: [] },
+    ...aggregateRevisionSchemaFields,
   },
   {
     collection: "booked_leads",
@@ -110,15 +115,23 @@ BookedLeadSchema.index(
     },
   },
 );
-BookedLeadSchema.index(
-  { normalized_job_no: 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      normalized_job_no: { $type: "string" },
-    },
+export const BOOKED_LEAD_NORMALIZED_JOB_INDEX = {
+  name: "booked_lead_normalized_job_no_unique",
+  key: { normalized_job_no: 1 },
+  unique: true as const,
+  partialFilterExpression: {
+    normalized_job_no: { $type: "string" },
   },
-);
+  accepted_names: ["booked_lead_normalized_job_no_unique", "normalized_job_no_1"],
+} as const;
+
+BookedLeadSchema.index(BOOKED_LEAD_NORMALIZED_JOB_INDEX.key, {
+  unique: true,
+  name: BOOKED_LEAD_NORMALIZED_JOB_INDEX.name,
+  partialFilterExpression: BOOKED_LEAD_NORMALIZED_JOB_INDEX.partialFilterExpression,
+});
+
+applyAggregateRevisionGuards(BookedLeadSchema);
 
 BookedLeadSchema.pre("validate", function () {
   this.normalized_job_no = normalizeJobNo(this.job_no);

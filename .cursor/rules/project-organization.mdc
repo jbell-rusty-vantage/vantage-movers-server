@@ -21,9 +21,9 @@ alwaysApply: true
   - `granot-automation.routes.ts` — Granot HTTP automation (mounted **before** v1)
   - `ingestion.routes.ts` — Best Relocation ingestion (after v1)
   - `reporting.routes.ts` — reporting definitions/destinations/runs (after v1)
-- Cron/webhook mounts from `src/app.ts` (before v1): RC webhooks (`/api/webhooks/ringcentral`, `/api/webhooks/ringcentral-local`, `/api/dev/ringcentral/*`), Granot webhooks (`/api/webhooks/granot/{lead-created,priority-updated,booking-status-changed}`), RC crons (`ringcentral-call-log-sync`, `ringcentral-analytics-reconcile`), booking-reconciliation rematch, sheet-sync drain, lead-messaging drain, CPL-corrections drain, notification digest, Twilio status/voice, Best Relocation ingest heartbeat, reporting crons (`reporting-delivery-heartbeat`, `reporting-health-scan`, `reporting-cleanup-janitor`, `reporting-test-artifact-janitor`), Granot automation heartbeat.
+- Cron/webhook mounts from `src/app.ts` (before v1): RC webhooks (`/api/webhooks/ringcentral`, `/api/webhooks/ringcentral-local`, `/api/dev/ringcentral/*`), Granot webhooks (`/api/webhooks/granot/{lead-created,priority-updated,booking-status-changed}`), RC crons (`ringcentral-call-log-sync`, `ringcentral-analytics-reconcile`), booking-reconciliation rematch, sheet-sync drain, lead-messaging drain, CPL-corrections drain, notification digest, Twilio status/voice, Best Relocation ingest heartbeat, reporting crons (`reporting-delivery-heartbeat`, `reporting-health-scan`, `reporting-cleanup-janitor`, `reporting-test-artifact-janitor`), Granot automation heartbeat, Granot lifecycle drain (`/api/cron/granot-lifecycle-drain`).
 - `app.ts` also calls `registerReportingStage4Foundation()` at Express bootstrap. Queue consumers do not inherit this — they must re-register foundations themselves.
-- **Queue consumers** (`api/queues/`): `sheet-sync-consumer`, `lead-messaging-consumer`, `best-relocation-ingestion-consumer`, `reporting-consumer`, `granot-automation-consumer`. Granot lifecycle capture may publish `{ receipt_id }` to `granot-lifecycle-events` / `granot-lifecycle-events-dev`; **no** `granot-lifecycle-consumer` is deployed yet.
+- **Queue consumers** (`api/queues/`): `sheet-sync-consumer`, `lead-messaging-consumer`, `best-relocation-ingestion-consumer`, `reporting-consumer`, `granot-automation-consumer`, `granot-lifecycle-consumer` (`granot-lifecycle-events*`, `{ receipt_id }` only). Mongo remains the durable work source; the consumer is a wake-up.
 - `src/validation/` — Zod schemas (`v1.validation.ts` barrel + `src/validation/v1/` + reporting validators).
 - `src/models/` — runtime Mongoose schemas (`snake_case`); Google Sheets projections produce Title Case columns. `GranotObservationReceipt` lives here; collection `granot_webhook_receipts` is retained. `GranotObservation` lives here; collection `granot_observations`. `SynchronizationDecision`, `GranotLifecycleActivation`, and `GranotRecordLink` are Unit 07 evidence/current-state models.
 - `src/config/domain/` — mode-aware domain config; re-exported by `src/config/domain.ts` **except** `reporting.ts` (import `./domain/reporting` directly). Prefer focused modules over scattering `process.env`. `granotLifecycle.ts` owns the ten centralized lifecycle flags (processing/shadow default true; all eight effect flags stay false).
@@ -68,7 +68,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - `granotCrmCsv/` — CSV source registry + S3 ingest (`/granot-crm/csv/*`)
 - `granotWebhooks/` — Compatibility adapter only; webhook capture implementation lives in `granotLifecycle/capture`
 - `granotHttpCollector/` — HTTP session collector + automation runs/sources/workflows. Apply still mutates leads/enrichment/reconciliation **directly** (not via a lifecycle processor). See `businesslogic/granotHttpCollector.service.md`.
-- `granotLifecycle/` — Shared lifecycle vocabulary, receipt evidence helpers, webhook capture, receipt-ID queue wake-up publisher, callable Observation normalization (`normalization.ts`), fail-closed source-policy/gate evaluation (`sourcePolicy.ts`), and the Unit 07 Decision/activation/Record Link skeleton (`processor.ts`, `operations.ts`, `projections.ts`). Capture does not invoke normalization, policy, or the processor. Consumer/drainer and effects remain later units.
+- `granotLifecycle/` — Shared lifecycle vocabulary, receipt evidence helpers, webhook capture, receipt-ID queue wake-up publisher, callable Observation normalization (`normalization.ts`), fail-closed source-policy/gate evaluation (`sourcePolicy.ts`), Decision/activation/Record Link skeleton (`processor.ts`, `operations.ts`, `projections.ts`), the Unit 08 claim/drainer (`drainer.ts`), and the Unit 09 revision CAS primitive (`aggregateRevision.ts`). Capture still does not invoke the processor. Queue/cron/requeue enter the same fenced claim service. Form/Call/Booking/Cancellation documents now carry `domain_revision` and a history boundary; canonical Change enforcement remains later units.
 - `crm/` — Outbound Granot form-lead submit (invoked from lead write paths). Independent of webhook capture.
 
 ### Integrations
@@ -115,7 +115,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - **Ingestion:** `ingestion/*` (separate `app.use` router)
 - **Reporting:** `reporting/{catalog,destinations,definitions,draft,runs}` (separate `app.use` router)
 - **Granot automation:** `granot-automation/runs/*`, `granot-automation/runs/sources`, `granot-automation/run-groups`, `granot-automation/runs/worker` (separate `app.use` router, before v1)
-- **Granot lifecycle:** `granot-lifecycle/activation`, `granot-lifecycle/jobs/:normalized_job_no`, `granot-lifecycle/operations/health` (focused router mounted after the `/api/v1` guard)
+- **Granot lifecycle:** `granot-lifecycle/activation`, `granot-lifecycle/receipts/:id/requeue`, `granot-lifecycle/jobs/:normalized_job_no`, `granot-lifecycle/operations/health` (focused router mounted after the `/api/v1` guard)
 
 `database_scope=production|historical|combined` where appropriate. Detail rejects `combined`; historical is read-only. No admin delete routes for core leads/bookings/customers — use public v1 writes so sheet sync stays owned by domain services. Observability deletes are the explicit exception.
 
@@ -160,7 +160,7 @@ Keep reusable runtime logic in `src/services/`; scripts should call services, no
 
 ## Working Rules
 
-- Preserve workflow boundaries: form/call/book/cancel/customer, sheet sync, RC ingest, extension enrich/recon/CSV, Granot webhooks (capture-only), Granot HTTP automation, ops registry, reporting, Best Relocation ingestion, employee booking/recon, lead messaging, historical work — separate concerns even when they share models.
+- Preserve workflow boundaries: form/call/book/cancel/customer, sheet sync, RC ingest, extension enrich/recon/CSV, Granot webhooks (receipt capture + drain; no official Lead/Booking writes), Granot HTTP automation, ops registry, reporting, Best Relocation ingestion, employee booking/recon, lead messaging, historical work — separate concerns even when they share models.
 - Prefer focused modules inside existing domain folders over growing `v1.routes.ts` or broad orchestration files.
 - Mongo is source of truth; Sheets/CRM/S3/Twilio/Drive/reporting destinations are mode-aware side effects that need safe identifiers and logging.
 - Registry/source/CPL/RC-route/ingestion/granot mutations need trusted owner actors when that gate already exists.

@@ -1,17 +1,17 @@
 ---
-description: Granot webhook capture plus callable Decision skeleton; capture does not invoke the processor
-globs: src/services/granotLifecycle/**/*.ts,src/services/granotWebhooks/**/*.ts,src/routes/granot-webhook.routes.ts,src/routes/granot-lifecycle-admin.routes.ts,src/middleware/requireGranotWebhookSecret.ts,src/config/domain/granotWebhook.ts,src/config/domain/granotLifecycle.ts,src/models/GranotObservationReceipt.ts,src/models/GranotObservation.ts,src/models/SynchronizationDecision.ts,src/models/GranotLifecycleActivation.ts,src/models/GranotRecordLink.ts,src/models/granotLifecycleSchemas.ts,src/validation/v1/granotLifecycle.validation.ts,scripts/migrations/granot-lifecycle-*.ts,.cursor/businesslogic/granotLifecycle*.md
+description: Granot webhook capture plus fenced claim/drainer and callable Decision skeleton; capture does not invoke the processor
+globs: src/services/granotLifecycle/**/*.ts,src/services/granotWebhooks/**/*.ts,src/routes/granot-webhook.routes.ts,src/routes/granot-lifecycle-admin.routes.ts,src/routes/granot-lifecycle-cron.routes.ts,api/queues/granot-lifecycle-consumer.ts,src/middleware/requireGranotWebhookSecret.ts,src/config/domain/granotWebhook.ts,src/config/domain/granotLifecycle.ts,src/models/GranotObservationReceipt.ts,src/models/GranotObservation.ts,src/models/SynchronizationDecision.ts,src/models/GranotLifecycleActivation.ts,src/models/GranotRecordLink.ts,src/models/granotLifecycleSchemas.ts,src/validation/v1/granotLifecycle.validation.ts,scripts/migrations/granot-lifecycle-*.ts,.cursor/businesslogic/granotLifecycle*.md
 alwaysApply: false
 ---
 
 # Granot Lifecycle Capture
 
-Owner invariants: [`.cursor/businesslogic/granotLifecycle.capture.md`](../businesslogic/granotLifecycle.capture.md). Decision/activation/Record Link: [`.cursor/businesslogic/granotLifecycle.processor.md`](../businesslogic/granotLifecycle.processor.md).
+Owner invariants: [`.cursor/businesslogic/granotLifecycle.capture.md`](../businesslogic/granotLifecycle.capture.md). Decision/activation/Record Link: [`.cursor/businesslogic/granotLifecycle.processor.md`](../businesslogic/granotLifecycle.processor.md). Claim/drainer: [`.cursor/businesslogic/granotLifecycle.drainer.md`](../businesslogic/granotLifecycle.drainer.md).
 
 - `src/services/granotLifecycle/capture.ts` is the only webhook insert path. `granotWebhooks/` is a deprecated adapter.
 - Authenticate with `requireGranotWebhookSecret`, persist one credential-redacted v2 receipt, return `202` only after Mongo commit, then optionally publish `{ receipt_id }`.
-- Capture still does not normalize or process. `normalization.ts` is a callable Observation module only. `sourcePolicy.ts` is a fail-closed Registry read/gate module. `processor.ts` is a callable Decision/Record Link skeleton only. None of those are invoked from capture. Admin routes activate, project a Job, or read health — they do not process a receipt. Do not describe Lead/Booking/Cancellation effects, a lifecycle consumer, or a drainer as live.
-- `granot-lifecycle-events` / `granot-lifecycle-events-dev` may receive wake-ups. `api/queues/` has **no** `granot-lifecycle-consumer` yet. Publish failure must not change `202`.
-- When Unit 08 ships a consumer/drainer, add those paths to this rule's `globs` and update the capture doc — do not pretend they exist before then.
+- Capture still does not normalize or process. `normalization.ts` is a callable Observation module only. `sourcePolicy.ts` is a fail-closed Registry read/gate module. `processor.ts` is a callable Decision/Record Link skeleton only. None of those are invoked from capture. Admin routes activate, requeue dead letters, project a Job, or read health — they do not own claim/match/patch policy.
+- `granot-lifecycle-events*` wake-ups are consumed by `api/queues/granot-lifecycle-consumer.ts`, which accepts only `{ receipt_id }` and calls the shared drainer. Five-minute cron `/api/cron/granot-lifecycle-drain` scans due work. Mongo claim/fence selects the single winner. Publish failure must not change `202`.
+- Processing disabled means no claim; capture and due work remain intact. Shadow/retry/requeue must not create, update, cancel, or un-cancel a Booking.
 
 Delivery branches: [`lead-lifecycle-delivery.mdc`](lead-lifecycle-delivery.mdc). Locked contracts: `scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md`.

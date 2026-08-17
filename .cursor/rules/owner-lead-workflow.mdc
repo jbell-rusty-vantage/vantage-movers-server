@@ -25,11 +25,11 @@ alwaysApply: false
 - CRM enrichment uses `POST /api/v1/call-leads/enrichment/preview` and `/sync` with row batches. It updates job/customer/contact/location/cubic-feet fields, may set `receiver_agent` from a Granot CRM username match, and enqueues Sheet Sync `call_lead.enrichment.sync`.
 - `PATCH` form/call leads may set `receiver_agent` (+ snapshots) via Operations Registry agent lookup.
 
-## Granot webhook observations (capture-only today)
+## Granot webhook observations (no official Lead/Booking writes)
 
 - Granot posts `POST /api/webhooks/granot/{lead-created,priority-updated,booking-status-changed}`.
 - Authenticated deliveries persist one credential-redacted Granot Observation Receipt and return `202`. Capture does **not** create, update, or cancel a Lead, Booking, or Cancellation.
-- After commit, production Vercel may publish `{ receipt_id }` to the lifecycle queue topic. No consumer/drainer is deployed. Callable Observation normalization and Decision processor modules exist and are not invoked by capture. Details: `businesslogic/granotLifecycle.processor.md`.
+- After commit, production Vercel may publish `{ receipt_id }` to the lifecycle queue topic. A dedicated consumer and five-minute cron drain due work through one Mongo claim/fence. Capture still does not invoke the processor. Details: `businesslogic/granotLifecycle.drainer.md`.
 - CRM Posting on form-lead create is independent of webhook capture. Details: `businesslogic/granotLifecycle.capture.md`.
 
 ## Granot HTTP automation (parallel correction path)

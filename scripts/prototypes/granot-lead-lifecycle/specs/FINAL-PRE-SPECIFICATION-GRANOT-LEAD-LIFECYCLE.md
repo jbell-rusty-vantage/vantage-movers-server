@@ -1,5 +1,7 @@
 # Final pre-specification: Granot Lead Lifecycle
 
+Owner: This was written before FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md
+
 Date: 2026-08-14  
 Status: interview complete; ready for conversion into the official specification  
 Workspace: `C:/Users/Pinda/Proyectos/vantage`  
@@ -189,7 +191,7 @@ The immutable evidence portion includes:
 
 - `source_system: "granot"`;
 - `observation_channel: "granot_webhook" | "browser_extension" |
-  "granot_http_automation"`;
+"granot_http_automation"`;
 - `captured_at`;
 - optional webhook route event class;
 - credential-redacted provider payload;
@@ -418,19 +420,19 @@ rewrites `ingestion_origin = granot_lead_created`.
 
 ### Shared authority matrix
 
-| Field group | Authority |
-| --- | --- |
-| Job Number | Granot may fill missing and establish Record Link; conflict never overwrites |
-| `granot_priority` | Every accepted valid Priority |
-| `receiver_agent` | Any accepted Observation may fill empty through unambiguous active Agent identity |
-| `quoted` | Priority 1/5 may set true; never false |
-| Granot/current contact | Priority 1/5 under origin-specific rules below |
-| Current location, move date, cubic feet | Priority 1/5 under origin-specific rules below |
-| `granot_move_size`, `granot_service_type` | Priority 1/5; never overwrite Vantage move size/type |
-| Source attribution, origin, CPL | Never reassigned by Granot after creation |
-| Booking/Cancellation refs | Canonical owner commands only |
-| Binder, Deposit, Merchant, Refund, allocations, official dates | Owner-command authority only |
-| Granot estimate/payment/balance | Observation and case display context only; not Lead fields |
+| Field group                                                    | Authority                                                                         |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Job Number                                                     | Granot may fill missing and establish Record Link; conflict never overwrites      |
+| `granot_priority`                                              | Every accepted valid Priority                                                     |
+| `receiver_agent`                                               | Any accepted Observation may fill empty through unambiguous active Agent identity |
+| `quoted`                                                       | Priority 1/5 may set true; never false                                            |
+| Granot/current contact                                         | Priority 1/5 under origin-specific rules below                                    |
+| Current location, move date, cubic feet                        | Priority 1/5 under origin-specific rules below                                    |
+| `granot_move_size`, `granot_service_type`                      | Priority 1/5; never overwrite Vantage move size/type                              |
+| Source attribution, origin, CPL                                | Never reassigned by Granot after creation                                         |
+| Booking/Cancellation refs                                      | Canonical owner commands only                                                     |
+| Binder, Deposit, Merchant, Refund, allocations, official dates | Owner-command authority only                                                      |
+| Granot estimate/payment/balance                                | Observation and case display context only; not Lead fields                        |
 
 An accepted Observation with no authorized state change creates no
 `EntityChange` and no Sheet Sync.
@@ -805,8 +807,12 @@ interface GranotBookingReconciliation {
   }): Promise<CaseEffectResult>;
 
   confirmBooking(input: ConfirmBookingCommand): Promise<OwnerCommandResult>;
-  updateExistingBooking(input: UpdateBookingCommand): Promise<OwnerCommandResult>;
-  createReferralBooking(input: ReferralBookingCommand): Promise<OwnerCommandResult>;
+  updateExistingBooking(
+    input: UpdateBookingCommand,
+  ): Promise<OwnerCommandResult>;
+  createReferralBooking(
+    input: ReferralBookingCommand,
+  ): Promise<OwnerCommandResult>;
   noAction(input: NoActionCommand): Promise<OwnerCommandResult>;
 }
 
@@ -816,8 +822,12 @@ interface GranotReleaseReconciliation {
     decision_id: string;
   }): Promise<CaseEffectResult>;
 
-  confirmCancellation(input: ConfirmCancellationCommand): Promise<OwnerCommandResult>;
-  updateExistingBooking(input: UpdateBookingCommand): Promise<OwnerCommandResult>;
+  confirmCancellation(
+    input: ConfirmCancellationCommand,
+  ): Promise<OwnerCommandResult>;
+  updateExistingBooking(
+    input: UpdateBookingCommand,
+  ): Promise<OwnerCommandResult>;
   noAction(input: NoActionCommand): Promise<OwnerCommandResult>;
 }
 ```
@@ -1140,4 +1150,3 @@ the official specification or the approved first release.
 6. Preserve current capture and user-owned repository changes.
 7. Explicitly label old Intake/link-only/glossary assumptions superseded.
 8. Do not create issues until the official specification is reviewed.
-

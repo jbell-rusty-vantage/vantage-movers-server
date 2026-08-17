@@ -57,6 +57,8 @@ Production API: https://vantage-movers-main-server.vercel.app
 | [granotLifecycle.normalization.md](businesslogic/granotLifecycle.normalization.md) | `src/services/granotLifecycle/normalization.ts` — one Observation per receipt, exact Section 10 vocabulary; **no matching/effects** |
 | [granotLifecycle.sourcePolicy.md](businesslogic/granotLifecycle.sourcePolicy.md) | `src/services/granotLifecycle/sourcePolicy.ts` — fail-closed Registry policy resolution and seven-layer effect-gate snapshot; **no effects** |
 | [granotLifecycle.processor.md](businesslogic/granotLifecycle.processor.md) | `src/services/granotLifecycle/processor.ts` — Decision, write-once activation, historical-only job Record Link, raw-free Job/health reads; **no Lead/Booking effects** |
+| [granotLifecycle.drainer.md](businesslogic/granotLifecycle.drainer.md) | `src/services/granotLifecycle/drainer.ts` — fenced claim/lease, queue/cron drain, technical vs pending-match clocks, dead letter, Owner requeue; **no Lead/Booking effects** |
+| [granotLifecycle.revisions.md](businesslogic/granotLifecycle.revisions.md) | `src/models/granotLifecycleSchemas.ts` + `aggregateRevision.ts` — `domain_revision` / history-boundary fields and CAS primitive; canonical Change enforcement is incomplete until Unit 11 |
 | [granotHttpCollector.service.md](businesslogic/granotHttpCollector.service.md) | `src/services/granotHttpCollector/` — HTTP session collector, preview/approve/apply runs; apply still mutates directly |
 
 **Not duplicated here (yet):** `employeeBookings/`, `leadMessaging/`, `reporting/`, `ingestion/` — mapped in `rules/project-organization.mdc`.
@@ -93,7 +95,7 @@ Rule files apply when editing matching paths (`globs` in each file frontmatter).
 |------|--------|
 | `documentation-maintenance.mdc` | Layer + glob hygiene; routes drift fixes to `docs-keeper` |
 | `business-logic.mdc` | Domain invariants, drift policy, links to `businesslogic/` |
-| `owner-lead-workflow.mdc` | Website → form lead → CRM → extension → booking → cancellation; webhook capture is a separate, capture-only channel |
+| `owner-lead-workflow.mdc` | Website → form lead → CRM → extension → booking → cancellation; webhook receipt path is separate from form/CRM writes |
 | `sheet-sync-process.mdc` | Outbox, drainer, quotas, headers, sync modes |
 | `project-organization.mdc` | Folder ownership (RingCentral, leads, sheet sync, Granot, etc.) |
 | `ringcentral-integration.mdc` | RingCentral env, webhooks, cron |

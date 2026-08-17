@@ -13,6 +13,9 @@ import { CancelledLead } from "../../models/CancelledLead";
 import { comparable, materializeMongoValue } from "./mongoValues";
 import type { HistoricalOperation } from "./types";
 
+/** Schema defaults/hooks may attach these on insert. They are not sheet-planned facts. */
+const SERVER_OWNED_REVISION_DEFAULTS = new Set(["domain_revision", "change_history_started_at"]);
+
 type ParityRecord = Record<string, unknown>;
 
 const MODELS: Record<HistoricalOperation["model"], Model<ParityRecord>> = {
@@ -37,7 +40,9 @@ export function validateManifestOperations(operations: HistoricalOperation[]): v
       const validation = document.validateSync();
       if (validation) throw new Error(`Production schema rejected ${operation.operation_id}: ${validation.message}`);
       const serialized = document.toObject({ depopulate: true, virtuals: false, versionKey: false, minimize: true });
-      const unexpected = Object.keys(serialized).filter((key) => !(key in expected));
+      const unexpected = Object.keys(serialized).filter(
+        (key) => !(key in expected) && !SERVER_OWNED_REVISION_DEFAULTS.has(key),
+      );
       if (unexpected.length) throw new Error(`Production schema introduced unplanned fields for ${operation.operation_id}: ${unexpected.join(", ")}`);
       for (const [field, value] of Object.entries(expected)) {
         if (JSON.stringify(comparable(serialized[field])) !== JSON.stringify(comparable(value))) throw new Error(`Production schema changed planned field ${field} for ${operation.operation_id}`);

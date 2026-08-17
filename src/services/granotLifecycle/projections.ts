@@ -7,8 +7,10 @@ import { getGranotLifecycleActivationModel } from "../../models/GranotLifecycleA
 import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
+import { getOperationalEventModel } from "../../models/OperationalEvent";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { RECEIPT_WORK_STATES } from "../../models/granotLifecycleSchemas";
+import { applyDueGauges } from "./drainer";
 import { normalizeJobNo } from "../bookings/bookingIdentity";
 import {
   GRANOT_LIFECYCLE_ERROR_CODES,
@@ -89,6 +91,9 @@ export type GranotLifecycleHealthProjection = {
     due_count: number;
     oldest_due_at: string | null;
     oldest_due_age_ms: number | null;
+    claimed_count: number;
+    expired_claim_count: number;
+    dead_letter_count: number;
   };
   decisions_last_24h: Array<{
     execution_mode: ExecutionMode;
@@ -97,9 +102,14 @@ export type GranotLifecycleHealthProjection = {
     count: number;
   }>;
   record_links: { active: number; disputed: number };
-  last_queue_run: null;
-  last_cron_run: null;
+  last_queue_run: GranotLifecycleLastRunProjection;
+  last_cron_run: GranotLifecycleLastRunProjection;
 };
+
+export type GranotLifecycleLastRunProjection = {
+  at: string;
+  status: "completed" | "failed";
+} | null;
 
 export function normalizeJobProjectionPath(raw: string): string {
   const normalized = normalizeJobNo(raw);
@@ -234,9 +244,12 @@ export async function projectGranotLifecycleHealth(
     activation,
     receiptStates,
     due,
+    expiredClaims,
     decisionCounts,
     activeLinks,
     disputedLinks,
+    lastQueue,
+    lastCron,
   ] = await Promise.all([
     getGranotLifecycleActivationModel().findOne({ key: "granot_lifecycle" }).lean(),
     getGranotObservationReceiptModel()
@@ -264,6 +277,10 @@ export async function projectGranotLifecycleHealth(
         },
       ])
       .exec(),
+    getGranotObservationReceiptModel().countDocuments({
+      "processing.state": "claimed",
+      "processing.leased_until": { $lte: now },
+    }),
     getSynchronizationDecisionModel()
       .aggregate<{
         _id: {
@@ -288,6 +305,8 @@ export async function projectGranotLifecycleHealth(
       .exec(),
     getGranotRecordLinkModel().countDocuments({ state: "active" }),
     getGranotRecordLinkModel().countDocuments({ state: "active", disputed: true }),
+    loadLastRun("queue"),
+    loadLastRun("cron"),
   ]);
 
   const by_work_state = Object.fromEntries(
@@ -301,8 +320,7 @@ export async function projectGranotLifecycleHealth(
 
   const dueRow = due[0];
   const oldestDue = dueRow?.oldest_due_at ? new Date(dueRow.oldest_due_at) : null;
-
-  return {
+  const health: GranotLifecycleHealthProjection = {
     flags: flagsToNamedBooleans(flags),
     activation: activation
       ? {
@@ -317,6 +335,9 @@ export async function projectGranotLifecycleHealth(
       due_count: dueRow?.due_count ?? 0,
       oldest_due_at: oldestDue ? oldestDue.toISOString() : null,
       oldest_due_age_ms: oldestDue ? Math.max(0, now.getTime() - oldestDue.getTime()) : null,
+      claimed_count: by_work_state.claimed,
+      expired_claim_count: expiredClaims,
+      dead_letter_count: by_work_state.dead_letter,
     },
     decisions_last_24h: decisionCounts.map((row) => ({
       execution_mode: row._id.execution_mode,
@@ -325,8 +346,36 @@ export async function projectGranotLifecycleHealth(
       count: row.count,
     })),
     record_links: { active: activeLinks, disputed: disputedLinks },
-    last_queue_run: null,
-    last_cron_run: null,
+    last_queue_run: lastQueue,
+    last_cron_run: lastCron,
+  };
+  applyDueGauges({
+    due_count: health.receipts.due_count,
+    oldest_due_age_ms: health.receipts.oldest_due_age_ms,
+  });
+  return health;
+}
+
+async function loadLastRun(
+  trigger: "queue" | "cron",
+): Promise<GranotLifecycleLastRunProjection> {
+  const row = await getOperationalEventModel()
+    .findOne({
+      event_key: {
+        $in: [
+          `granot_lifecycle.${trigger}.run.completed`,
+          `granot_lifecycle.${trigger}.run.failed`,
+        ],
+      },
+    })
+    .sort({ occurred_at: -1, _id: -1 })
+    .lean();
+  if (!row) {
+    return null;
+  }
+  return {
+    at: new Date(row.occurred_at).toISOString(),
+    status: row.event_key.endsWith(".failed") ? "failed" : "completed",
   };
 }
 

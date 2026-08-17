@@ -95,6 +95,10 @@ Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 | Manual create | `lead.call.created`, `lead.call.form_fill_detected` when applicable |
 | Ring Central create | ingest emits `ringcentral.call_lead.created` or `ringcentral.call_lead.duplicate_created`; form-fill event from this service when `form_fill` |
 
+## Lifecycle revision
+
+`domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical compare-and-swap / `EntityChange` enforcement is incomplete until Unit 11. Lead Job Number remains non-unique.
+
 ## Related businesslogic
 
 - [`form-lead.service.md`](form-lead.service.md) — Form Fill side effects on Form Lead Ingestion

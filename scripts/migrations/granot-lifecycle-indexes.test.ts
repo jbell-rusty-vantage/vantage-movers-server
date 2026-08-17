@@ -28,11 +28,15 @@ import {
   verifyObservationIndexDefinitions,
   verifyReceiptIndexDefinitions,
   verifySynchronizationDecisionIndexDefinitions,
+  findBookedLeadNormalizedJobCollisions,
+  orderedBookedLeadIndexCreates,
+  verifyBookedLeadNormalizedJobIndexDefinitions,
 } from "./granot-lifecycle-indexes.lib";
 import { SYNCHRONIZATION_DECISION_INDEXES } from "../../src/models/SynchronizationDecision";
 import { GRANOT_LIFECYCLE_ACTIVATION_INDEXES } from "../../src/models/GranotLifecycleActivation";
 import { GRANOT_RECORD_LINK_INDEXES } from "../../src/models/GranotRecordLink";
 import { GRANOT_AUTOMATION_SOURCE_INDEXES } from "../../src/models/GranotAutomationSource";
+import { BOOKED_LEAD_NORMALIZED_JOB_INDEX } from "../../src/models/BookedLead";
 
 test("[AC-02] unique/partial collision report ignores webhook rows without operation ids", () => {
   const collisions = findChannelOperationIdCollisions([
@@ -334,4 +338,58 @@ test("[AC-02][AC-31][AC-32] Decision, activation, and Record Link indexes create
     ).ok,
     true,
   );
+});
+
+test("[AC-21] Booking normalized-Job collision report masks ids and fingerprints the key", () => {
+  const collisions = findBookedLeadNormalizedJobCollisions([
+    { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", normalized_job_no: "SYNTHETIC JOB 100" },
+    { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", normalized_job_no: "SYNTHETIC JOB 100" },
+    { _id: "cccccccccccccccccccccccc", normalized_job_no: "SYNTHETIC JOB 200" },
+  ]);
+  assert.equal(collisions.length, 1);
+  assert.equal(collisions[0]?.count, 2);
+  assert.equal(JSON.stringify(collisions).includes("aaaaaaaaaaaaaaaaaaaaaaaa"), false);
+  assert.equal(JSON.stringify(collisions).includes("SYNTHETIC JOB 100"), false);
+});
+
+test("[AC-21] Booking unique index is created only after a zero-collision report", () => {
+  const ordered = orderedBookedLeadIndexCreates();
+  assert.equal(ordered.nonUnique.length, 0);
+  assert.equal(ordered.unique.length, 1);
+  assert.equal(ordered.unique[0]?.name, BOOKED_LEAD_NORMALIZED_JOB_INDEX.name);
+  const collisions = findBookedLeadNormalizedJobCollisions([
+    { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", normalized_job_no: "SYNTHETIC JOB 100" },
+    { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", normalized_job_no: "SYNTHETIC JOB 100" },
+  ]);
+  assert.equal(collisions.length, 1);
+});
+
+test("[AC-21] Booking index verify accepts the named contract or the default deployed name", () => {
+  const named = verifyBookedLeadNormalizedJobIndexDefinitions([
+    {
+      name: BOOKED_LEAD_NORMALIZED_JOB_INDEX.name,
+      key: { ...BOOKED_LEAD_NORMALIZED_JOB_INDEX.key },
+      unique: true,
+      partialFilterExpression: {
+        ...BOOKED_LEAD_NORMALIZED_JOB_INDEX.partialFilterExpression,
+      },
+    },
+  ]);
+  assert.equal(named.ok, true);
+  assert.equal(named.observed_name, BOOKED_LEAD_NORMALIZED_JOB_INDEX.name);
+
+  const legacy = verifyBookedLeadNormalizedJobIndexDefinitions([
+    {
+      name: "normalized_job_no_1",
+      key: { normalized_job_no: 1 },
+      unique: true,
+      partialFilterExpression: { normalized_job_no: { $type: "string" } },
+    },
+  ]);
+  assert.equal(legacy.ok, true);
+  assert.equal(legacy.observed_name, "normalized_job_no_1");
+
+  const missing = verifyBookedLeadNormalizedJobIndexDefinitions([]);
+  assert.equal(missing.ok, false);
+  assert.deepEqual(missing.missing, [BOOKED_LEAD_NORMALIZED_JOB_INDEX.name]);
 });

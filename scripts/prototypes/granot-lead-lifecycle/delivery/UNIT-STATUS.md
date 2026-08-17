@@ -13,12 +13,12 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 | 05 | Audited Granot CRM source Registry domain | 01 | complete | complete | [UNIT-05-COMPLETION.md](completion-reports/UNIT-05-COMPLETION.md) |
 | 06 | Registry migration, automation compatibility link, and reviewed Registry UI | 05 | complete | complete | [UNIT-06-COMPLETION.md](completion-reports/UNIT-06-COMPLETION.md) |
 | 07 | Decision, activation, Record Link, execution mode, and safe operational skeleton | 04–06 | complete | complete | [UNIT-07-COMPLETION.md](completion-reports/UNIT-07-COMPLETION.md) |
-| 08 | Durable claim service, drainer, queue/cron, retries, dead letter, and manual requeue | 04, 07 | ready | complete | — |
-| 09 | Aggregate revision fields and additive revision migrations | 01 | blocked | complete | — |
-| 10 | Transaction-owning canonical command executor and idempotent replay | 09 | blocked | complete | — |
-| 11 | Entity Change, outbox atomicity, and canonicalization of existing write adapters | 09–10 | blocked | scaffold | — |
-| 12 | Lead provenance schema parity, immutable snapshots, and trusted validators | 05, 09–11 | blocked | scaffold | — |
-| 13 | Lead provenance and index migration suite | 12 | blocked | scaffold | — |
+| 08 | Durable claim service, drainer, queue/cron, retries, dead letter, and manual requeue | 04, 07 | complete | complete | [UNIT-08-COMPLETION.md](completion-reports/UNIT-08-COMPLETION.md) |
+| 09 | Aggregate revision fields and additive revision migrations | 01 | complete | complete | [UNIT-09-COMPLETION.md](completion-reports/UNIT-09-COMPLETION.md) |
+| 10 | Transaction-owning canonical command executor and idempotent replay | 09 | ready | complete | — |
+| 11 | Entity Change, outbox atomicity, and canonicalization of existing write adapters | 09–10 | blocked | complete | — |
+| 12 | Lead provenance schema parity, immutable snapshots, and trusted validators | 05, 09–11 | blocked | complete | — |
+| 13 | Lead provenance and index migration suite | 12 | blocked | complete | — |
 | 14 | Source policy resolution and source-scoped identity ladders | 04–07, 12–13 | blocked | scaffold | — |
 | 15 | Temporal ordering, desired-state planning, and shadow processor orchestration | 07–08, 14 | blocked | scaffold | — |
 | 16 | Browser extension receipt apply and version 0.2.8 | 02–04, 14–15 | blocked | scaffold | — |
@@ -43,8 +43,11 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 
 ## Current ready queue
 
-- Open review findings live in [`warnings/`](warnings/README.md). They do not block Unit 08 implementation unless repository re-verification shows an applicable finding has become material.
-- Units 04–07 are complete on `granot-lead-lifecycle`. Re-verify `UNIT-07-COMPLETION.md` and repository state before starting Unit 08.
-- Unit 08 is implementation-ready and is the next sequential implementation target. Contract maturity does not authorize queue/cron activation or processing effects.
-- Unit 09's contract is complete and its specification prerequisite is satisfied. Shared-branch implementation remains sequential by default, so keep it blocked until the current implementation target is handed off or an integration owner explicitly authorizes non-overlapping work.
-- Unit 10's contract is complete. It remains blocked until Unit 09 is implemented and verified and the shared-branch sequence reaches it.
+- Open review findings live in [`warnings/`](warnings/README.md). They do not block the next sequential unit unless repository re-verification shows an applicable finding has become material.
+- Units 04–09 are complete on `granot-lead-lifecycle`. Re-verify `UNIT-09-COMPLETION.md` and repository state before starting the next sequential unit.
+- Unit 08 completes S06 and removes Unit 15's durable-work prerequisite. Unit 15 still waits for Unit 14 and its other approved prerequisites.
+- Unit 09 lands aggregate revision tokens, the CAS primitive, and revision-only Lead/Booking/Cancellation backfill. Units 12–13 must preserve those revisions and the persisted history boundary.
+- Unit 10 is implementation-ready and is the next sequential shared-branch implementation target. Re-verify `UNIT-09-COMPLETION.md` and repository state before starting it.
+- Unit 11's contract is complete. It remains blocked until Unit 10 is implemented and verified and the shared-branch sequence reaches it.
+- Unit 12's contract is complete. It remains blocked until Units 09–11 are implemented and verified; Unit 05 is already complete.
+- Unit 13's contract is complete. It remains blocked until Unit 12 is implemented and verified. Its completion will finish S08 and unblock Unit 14.

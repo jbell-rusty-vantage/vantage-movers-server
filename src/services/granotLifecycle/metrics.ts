@@ -26,6 +26,18 @@ let queuePublishFailuresTotal = 0;
 const decisionsTotal = new Map<string, number>();
 const captureToDecisionMs: number[] = [];
 let activationsTotal = 0;
+let queueDue = 0;
+let oldestDueSeconds = 0;
+let claimRecoveriesTotal = 0;
+const technicalRetriesTotal = new Map<string, number>();
+const deadLettersTotal = new Map<string, number>();
+
+function boundedErrorCode(code: string): string | null {
+  if (!/^[a-z][a-z0-9_]{0,63}$/.test(code)) {
+    return null;
+  }
+  return code;
+}
 
 function receiptKey(labels: GranotLifecycleReceiptMetricLabels): string {
   return `${labels.channel}|${labels.event_class}`;
@@ -81,6 +93,35 @@ export function incrementGranotLifecycleActivationsTotal(): void {
   activationsTotal += 1;
 }
 
+export function setGranotLifecycleQueueDue(count: number): void {
+  queueDue = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+}
+
+export function setGranotLifecycleOldestDueSeconds(seconds: number): void {
+  oldestDueSeconds =
+    Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
+}
+
+export function incrementGranotLifecycleClaimRecoveries(): void {
+  claimRecoveriesTotal += 1;
+}
+
+export function incrementGranotLifecycleTechnicalRetries(code: string): void {
+  const bounded = boundedErrorCode(code);
+  if (!bounded) {
+    return;
+  }
+  technicalRetriesTotal.set(bounded, (technicalRetriesTotal.get(bounded) ?? 0) + 1);
+}
+
+export function incrementGranotLifecycleDeadLetters(code: string): void {
+  const bounded = boundedErrorCode(code);
+  if (!bounded) {
+    return;
+  }
+  deadLettersTotal.set(bounded, (deadLettersTotal.get(bounded) ?? 0) + 1);
+}
+
 export function getGranotLifecycleReceiptsTotal(
   labels: GranotLifecycleReceiptMetricLabels,
 ): number {
@@ -109,6 +150,26 @@ export function getGranotLifecycleActivationsTotal(): number {
   return activationsTotal;
 }
 
+export function getGranotLifecycleQueueDue(): number {
+  return queueDue;
+}
+
+export function getGranotLifecycleOldestDueSeconds(): number {
+  return oldestDueSeconds;
+}
+
+export function getGranotLifecycleClaimRecoveriesTotal(): number {
+  return claimRecoveriesTotal;
+}
+
+export function getGranotLifecycleTechnicalRetriesTotal(code: string): number {
+  return technicalRetriesTotal.get(code) ?? 0;
+}
+
+export function getGranotLifecycleDeadLettersTotal(code: string): number {
+  return deadLettersTotal.get(code) ?? 0;
+}
+
 export function resetGranotLifecycleMetrics(): void {
   receiptsTotal.clear();
   captureFailuresTotal = 0;
@@ -116,4 +177,9 @@ export function resetGranotLifecycleMetrics(): void {
   decisionsTotal.clear();
   captureToDecisionMs.length = 0;
   activationsTotal = 0;
+  queueDue = 0;
+  oldestDueSeconds = 0;
+  claimRecoveriesTotal = 0;
+  technicalRetriesTotal.clear();
+  deadLettersTotal.clear();
 }

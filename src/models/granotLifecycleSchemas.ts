@@ -196,6 +196,66 @@ export const GRANOT_LEAD_MODELS = [
   "CallLead",
 ] as const satisfies readonly LeadModel[];
 
+export const AGGREGATE_REVISION_FIELD_NAMES = [
+  "domain_revision",
+  "last_change_id",
+  "last_changed_at",
+  "change_history_started_at",
+] as const;
+
+export function isNonnegativeIntegerRevision(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    Number.isFinite(value) &&
+    value >= 0
+  );
+}
+
+export const aggregateRevisionSchemaFields = {
+  domain_revision: {
+    type: Number,
+    required: true,
+    default: 0,
+    min: 0,
+    validate: {
+      validator: isNonnegativeIntegerRevision,
+      message: "domain_revision must be a nonnegative integer",
+    },
+  },
+  last_change_id: {
+    type: Schema.Types.ObjectId,
+    ref: "EntityChange",
+  },
+  last_changed_at: { type: Date },
+  change_history_started_at: { type: Date },
+};
+
+export function applyAggregateRevisionGuards(schema: Schema): void {
+  schema.pre("validate", function rejectInvalidRevisionMetadata() {
+    const hasChangeId = this.get("last_change_id") != null;
+    const hasChangedAt = this.get("last_changed_at") != null;
+    if (hasChangeId !== hasChangedAt) {
+      this.invalidate(
+        "last_change_id",
+        "last_change_id and last_changed_at must both be present or both absent",
+      );
+    }
+
+    if (this.isNew) {
+      this.set("change_history_started_at", new Date());
+      return;
+    }
+
+    if (this.isModified("change_history_started_at")) {
+      this.invalidate(
+        "change_history_started_at",
+        "change_history_started_at is write-once outside the authorized migration seam",
+      );
+    }
+  });
+}
+
 export const RECORD_LINK_STATES = ["active", "superseded"] as const;
 
 export const GRANOT_LIFECYCLE_ACTIVATION_KEY = "granot_lifecycle" as const;

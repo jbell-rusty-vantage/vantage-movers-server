@@ -5,6 +5,10 @@ import {
   MOVE_SIZES,
 } from "../config/domain";
 import {
+  aggregateRevisionSchemaFields,
+  applyAggregateRevisionGuards,
+} from "./granotLifecycleSchemas";
+import {
   localField,
   sheetSyncSchema,
   sourceCompanyField,
@@ -103,6 +107,7 @@ const FormLeadSchema = new Schema(
     receiver_agent_source_value: { type: String, trim: true },
     receiver_agent_set_at: { type: Date },
     sheet_sync: { type: [sheetSyncSchema], default: [] },
+    ...aggregateRevisionSchemaFields,
   },
   {
     collection: "form_leads",
@@ -140,6 +145,8 @@ FormLeadSchema.index({
   email: 1,
   normalized_contact_name: 1,
 });
+
+applyAggregateRevisionGuards(FormLeadSchema);
 
 FormLeadSchema.pre("validate", function normalizeEmployeeBookingFields() {
   this.normalized_lid = normalizeSubmissionLid(this.lid);

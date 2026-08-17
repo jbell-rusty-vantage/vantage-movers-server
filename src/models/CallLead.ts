@@ -1,6 +1,10 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 import { getMongoDatabaseName } from "../config/domain";
 import {
+  aggregateRevisionSchemaFields,
+  applyAggregateRevisionGuards,
+} from "./granotLifecycleSchemas";
+import {
   optionalLocalField,
   sheetSyncSchema,
   sourceCompanyField,
@@ -129,6 +133,7 @@ const CallLeadSchema = new Schema(
     receiver_agent_source_value: { type: String, trim: true },
     receiver_agent_set_at: { type: Date },
     sheet_sync: { type: [sheetSyncSchema], default: [] },
+    ...aggregateRevisionSchemaFields,
   },
   {
     collection: "call_leads",
@@ -165,6 +170,8 @@ CallLeadSchema.index({
   duplicate: 1,
   timestamp: -1,
 });
+
+applyAggregateRevisionGuards(CallLeadSchema);
 
 CallLeadSchema.pre("validate", function normalizePhoneNumber() {
   this.normalized_phone_number = normalizePhoneNumberForMatch(this.phone_number);

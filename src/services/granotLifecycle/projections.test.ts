@@ -71,3 +71,42 @@ test("health flag names match the ten centralized lifecycle flags", () => {
   assert.equal(flags.GRANOT_LIFECYCLE_LEAD_WRITES_ENABLED, false);
   assert.equal(flags.GRANOT_LIFECYCLE_EMAIL_ENABLED, false);
 });
+
+test("[AC-35] portion health projection stays raw-free and includes Unit 08 counts", () => {
+  const health = {
+    flags: flagsToNamedBooleans(GRANOT_LIFECYCLE_FLAG_DEFAULTS),
+    activation: { present: false },
+    receipts: {
+      by_work_state: {
+        pending: 1,
+        claimed: 2,
+        retry_scheduled: 0,
+        completed: 4,
+        dead_letter: 1,
+      },
+      due_count: 3,
+      oldest_due_at: "2026-08-17T16:00:00.000Z",
+      oldest_due_age_ms: 60_000,
+      claimed_count: 2,
+      expired_claim_count: 1,
+      dead_letter_count: 1,
+    },
+    decisions_last_24h: [],
+    record_links: { active: 0, disputed: 0 },
+    last_queue_run: { at: "2026-08-17T16:05:00.000Z", status: "completed" as const },
+    last_cron_run: null,
+  };
+  assert.equal(health.receipts.claimed_count, 2);
+  assert.equal(health.receipts.expired_claim_count, 1);
+  assert.equal(health.receipts.dead_letter_count, 1);
+  assert.equal(health.last_queue_run?.status, "completed");
+  assert.deepEqual(collectForbiddenProjectionKeys(health), []);
+  assert.deepEqual(
+    collectForbiddenProjectionKeys({
+      ...health,
+      last_error: { message: "owner@example.invalid" },
+      payload: { secret: true },
+    }),
+    ["payload"],
+  );
+});

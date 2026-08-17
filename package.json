@@ -30,7 +30,8 @@
     "twilio:send-email": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/twilio/twilio-send-email.ts",
     "twilio:voice-routing": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/twilio/twilio-voice-routing.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --import ./scripts/test-setup.ts --test \"src/**/*.test.ts\"",
+    "test": "node --import tsx --import ./scripts/test-setup.ts --test \"src/**/*.test.ts\" \"api/queues/**/*.test.ts\"",
+    "test:granot-lifecycle:replica": "node --env-file=.env --import tsx --import ./scripts/test-setup.ts scripts/test-granot-lifecycle-replica.ts",
     "test:reporting-live-safety": "node --import tsx --import ./scripts/test-setup.ts --test \"src/services/reporting/live/*.test.ts\" \"src/services/reporting/reportingObservability.test.ts\"",
     "reporting:live-google-harness": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/reporting/run-live-google-harness.ts",
     "reporting:test-artifact-janitor": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/reporting/run-test-artifact-janitor.ts",
@@ -42,7 +43,9 @@
     "migrations:operations-registry-ringcentral": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/operations-registry-ringcentral.ts",
     "migration:granot-lifecycle:receipts": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-receipts.ts",
     "migration:granot-lifecycle:sources": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-source-registry.ts",
-    "migration:granot-lifecycle:indexes": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-indexes.ts"
+    "migration:granot-lifecycle:indexes": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-indexes.ts",
+    "migration:granot-lifecycle:leads": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-lead-provenance.ts",
+    "migration:granot-lifecycle:revisions": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-aggregate-revisions.ts"
   },
   "keywords": [],
   "author": "",

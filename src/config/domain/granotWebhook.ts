@@ -17,7 +17,8 @@ export function getGranotWebhookSecret(): string | null {
  * Env-scoped Vercel Queue topic for the receipt-ID wake-up. Production uses
  * `granot-lifecycle-events`; every other environment uses
  * `granot-lifecycle-events-dev` unless `GRANOT_LIFECYCLE_QUEUE_TOPIC` overrides
- * it. Unit 08 owns the consumer; publishing must stay safe with none deployed.
+ * it. A dedicated consumer may drain `{ receipt_id }` wake-ups; publish
+ * failure still cannot change capture `202`.
  */
 export function getGranotLifecycleQueueTopic(): string {
   const explicit = process.env.GRANOT_LIFECYCLE_QUEUE_TOPIC?.trim();

@@ -6,7 +6,7 @@
 
 **Role:** Turn one receipt's Observation into one causal Synchronization Decision and, only when safe, one job-level Granot Record Link. This is evidence and operational inspectability. It does not match or mutate a Lead, open a case, or create an official Booking or Cancellation fact.
 
-**Stack:** callable module `processor.ts`. When invoked it upserts the Observation through the existing normalization module, then writes one Decision. No HTTP route processes a receipt. Admin routes accept an activation command, a Job Number path, or a health read. Capture does not invoke this module. Unit 08 owns claiming, draining, and retries.
+**Stack:** callable module `processor.ts`. When invoked it upserts the Observation through the existing normalization module, then writes one Decision. Capture does not invoke this module. Queue, cron, and the synchronous claim-and-poll seam invoke it only after a fenced receipt claim (`drainer.ts`). Admin routes accept an activation command, Owner dead-letter requeue, a Job Number path, or a health read.
 
 ## Execution mode
 
@@ -29,7 +29,7 @@ Incompatible job/source evidence records `conflict` / `record_link_conflict` and
 
 ## Projections
 
-Job and health reads are Owner/Admin, raw-free, and explicitly incomplete (`complete_timeline`, `cases`, and `official_facts` are false; queue/cron timestamps stay null).
+Job and health reads are Owner/Admin, raw-free, and explicitly incomplete (`complete_timeline`, `cases`, and `official_facts` are false). Health now includes claimed/expired/dead-letter counts and last queue/cron run derived from durable Operational Events.
 
 ## Flags
 
@@ -37,7 +37,7 @@ Defaults: processing true, shadow true, all eight effect flags false. Capture ig
 
 ## Out of scope here
 
-Claim/fencing, consumer, cron, identity ladders, desired state, Lead writes, post-cutoff link mutation, Entity Changes, Sheet Sync, cases, discrepancies, and notifications.
+Identity ladders, desired state, Lead writes, post-cutoff link mutation, Entity Changes, Sheet Sync, cases, discrepancies, and notifications. Claim/fencing/retry/requeue: [`granotLifecycle.drainer.md`](granotLifecycle.drainer.md).
 
 ## Related
 

@@ -10,9 +10,14 @@ import { GRANOT_AUTOMATION_SOURCE_INDEXES } from "../../src/models/GranotAutomat
 import { SYNCHRONIZATION_DECISION_INDEXES } from "../../src/models/SynchronizationDecision";
 import { GRANOT_LIFECYCLE_ACTIVATION_INDEXES } from "../../src/models/GranotLifecycleActivation";
 import { GRANOT_RECORD_LINK_INDEXES } from "../../src/models/GranotRecordLink";
+import { BOOKED_LEAD_NORMALIZED_JOB_INDEX } from "../../src/models/BookedLead";
 import { maskReceiptId } from "./granot-lifecycle-migration.lib";
+import {
+  inventoryBookingJobs,
+  type BookingJobCollision,
+} from "./granot-lifecycle-revisions.lib";
 
-export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/5";
+export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/6";
 
 export const GRANOT_CRM_SOURCE_UNIQUE_INDEX_APPLY_ENABLED = true;
 
@@ -459,6 +464,67 @@ export function verifyGranotRecordLinkIndexDefinitions(
   actual: readonly DeclaredMongoIndex[],
 ) {
   return verifyNamedIndexDefinitions(actual, GRANOT_RECORD_LINK_INDEXES);
+}
+
+export const BOOKED_LEAD_COLLECTION = "booked_leads";
+
+export function findBookedLeadNormalizedJobCollisions(
+  rows: readonly { _id: string; normalized_job_no?: unknown }[],
+): BookingJobCollision[] {
+  return inventoryBookingJobs(rows).collision_groups;
+}
+
+export function orderedBookedLeadIndexCreates() {
+  return {
+    nonUnique: [] as Array<typeof BOOKED_LEAD_NORMALIZED_JOB_INDEX>,
+    unique: [BOOKED_LEAD_NORMALIZED_JOB_INDEX],
+  };
+}
+
+export function bookingNormalizedJobIndexReady(
+  actual: readonly DeclaredMongoIndex[],
+): { ready: boolean; observed_name?: string } {
+  const verified = verifyBookedLeadNormalizedJobIndexDefinitions(actual);
+  return { ready: verified.ok, observed_name: verified.observed_name };
+}
+
+export function verifyBookedLeadNormalizedJobIndexDefinitions(
+  actual: readonly DeclaredMongoIndex[],
+): { ok: boolean; missing: string[]; mismatched: string[]; observed_name?: string } {
+  const expected = BOOKED_LEAD_NORMALIZED_JOB_INDEX;
+  const found = actual.find((index) =>
+    (expected.accepted_names as readonly string[]).includes(index.name),
+  );
+  if (!found) {
+    const byKey = actual.find((index) => sameKey(index.key, expected.key));
+    if (byKey && sameIndexDefinition(byKey, expected)) {
+      return {
+        ok: true,
+        missing: [],
+        mismatched: [],
+        observed_name: byKey.name,
+      };
+    }
+    return {
+      ok: false,
+      missing: [expected.name],
+      mismatched: [],
+    };
+  }
+  if (!sameIndexDefinition(found, expected)) {
+    return {
+      ok: false,
+      missing: [],
+      mismatched: [found.name],
+      observed_name: found.name,
+    };
+  }
+  return {
+    ok: true,
+    missing: [],
+    mismatched: [],
+    observed_name: found.name,
+  };
 }
 
 function sameJson(left: unknown, right: unknown): boolean {

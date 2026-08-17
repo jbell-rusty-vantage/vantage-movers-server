@@ -16,3 +16,13 @@ export const granotLifecycleActivationCommandSchema = z
 export type GranotLifecycleActivationCommandInput = z.infer<
   typeof granotLifecycleActivationCommandSchema
 >;
+
+export const granotLifecycleRequeueCommandSchema = z
+  .object({
+    reason: z.string().trim().min(10).max(500),
+  })
+  .strict();
+
+export type GranotLifecycleRequeueCommandInput = z.infer<
+  typeof granotLifecycleRequeueCommandSchema
+>;

@@ -6,7 +6,9 @@ import {
   activateGranotLifecycle,
   durableActorFromOwnerActor,
   projectActivation,
+  requeueDeadLetterReceipt,
   type ActivationCommandDeps,
+  type RequeueCommandDeps,
 } from "./operations";
 import { getGranotLifecycleActivationsTotal, resetGranotLifecycleMetrics } from "./metrics";
 import type { RegistryActorContext } from "../operationsRegistry/types";
@@ -175,6 +177,137 @@ test("[AC-31] foundation replica-set concurrent activation has one winner", asyn
   assert.equal(fulfilled.length, 1);
   assert.equal(rejected.length, 1);
   assert.equal(await Activation.countDocuments({ key: "granot_lifecycle" }), 1);
+});
+
+function memoryRequeue(existing?: {
+  state: "dead_letter" | "completed" | "claimed" | "pending";
+  match_attempt?: number;
+  payload_sha256?: string;
+  channel_operation_id?: string;
+}): RequeueCommandDeps & {
+  audits: number;
+  storedState: string | null;
+} {
+  const receiptId = new mongoose.Types.ObjectId();
+  let state = existing?.state ?? "dead_letter";
+  const match_attempt = existing?.match_attempt ?? 4;
+  const payload_sha256 = existing?.payload_sha256 ?? "b".repeat(64);
+  const channel_operation_id = existing?.channel_operation_id ?? "synthetic-op-1";
+  let manual_requeue_count = 0;
+  const audits: unknown[] = [];
+  return {
+    audits: 0,
+    storedState: state,
+    now: () => new Date("2026-08-17T18:00:00.000Z"),
+    findReceipt: async () =>
+      existing
+        ? {
+            _id: receiptId,
+            processing: { state, match_attempt, manual_requeue_count },
+            payload_sha256,
+            channel_operation_id,
+          }
+        : null,
+    transitionDeadLetter: async () => {
+      if (state !== "dead_letter") {
+        return null;
+      }
+      state = "pending";
+      manual_requeue_count += 1;
+      return {
+        _id: receiptId,
+        processing: {
+          state: "pending",
+          match_attempt,
+          next_attempt_at: new Date("2026-08-17T18:00:00.000Z"),
+          manual_requeue_count,
+        },
+        payload_sha256,
+        channel_operation_id,
+      };
+    },
+    persistRequeueAudit: async () => {
+      audits.push(1);
+    },
+    withTransaction: async (fn) => {
+      const result = await fn({} as never);
+      return result;
+    },
+    get auditsCount() {
+      return audits.length;
+    },
+  } as RequeueCommandDeps & { audits: number; storedState: string | null; auditsCount: number };
+}
+
+test("[AC-37] Owner requeue moves dead_letter to pending without replacing evidence", async () => {
+  const deps = memoryRequeue({
+    state: "dead_letter",
+    match_attempt: 4,
+    payload_sha256: "c".repeat(64),
+    channel_operation_id: "synthetic-channel-op",
+  });
+  const result = await requeueDeadLetterReceipt(
+    { id: new mongoose.Types.ObjectId().toHexString(), reason: "Owner requeue of synthetic dead letter" },
+    OWNER,
+    deps,
+  );
+  assert.equal(result.state, "pending");
+  assert.equal(result.match_attempt, 4);
+  assert.equal(result.payload_sha256, "c".repeat(64));
+  assert.equal(result.channel_operation_id, "synthetic-channel-op");
+  assert.equal(result.manual_requeue_count, 1);
+});
+
+test("[AC-37] requeue of completed or claimed work conflicts and creates no audit", async () => {
+  for (const state of ["completed", "claimed", "pending"] as const) {
+    const deps = memoryRequeue({ state });
+    await assert.rejects(
+      () =>
+        requeueDeadLetterReceipt(
+          {
+            id: new mongoose.Types.ObjectId().toHexString(),
+            reason: "Owner requeue of ineligible receipt state",
+          },
+          OWNER,
+          deps,
+        ),
+      (error: unknown) =>
+        error instanceof Error &&
+        "code" in error &&
+        (error as { code: string }).code === GRANOT_LIFECYCLE_ERROR_CODES.REQUEUE_STATE_CONFLICT,
+    );
+  }
+});
+
+test("[AC-37] missing receipt returns GRANOT_RECEIPT_NOT_FOUND", async () => {
+  const deps = memoryRequeue();
+  deps.findReceipt = async () => null;
+  deps.transitionDeadLetter = async () => null;
+  await assert.rejects(
+    () =>
+      requeueDeadLetterReceipt(
+        {
+          id: new mongoose.Types.ObjectId().toHexString(),
+          reason: "Owner requeue of missing synthetic receipt",
+        },
+        OWNER,
+        deps,
+      ),
+    (error: unknown) =>
+      error instanceof Error &&
+      "code" in error &&
+      (error as { code: string }).code === GRANOT_LIFECYCLE_ERROR_CODES.RECEIPT_NOT_FOUND,
+  );
+});
+
+test("[AC-37] Admin without Owner cannot requeue", () => {
+  assert.throws(
+    () => durableActorFromOwnerActor(ADMIN),
+    (error: unknown) =>
+      error instanceof Error &&
+      "code" in error &&
+      (error as { code: string }).code === GRANOT_LIFECYCLE_ERROR_CODES.OWNER_REQUIRED,
+  );
 });
 
 test("[AC-35] portion activation projection omits reason and actor PII", () => {

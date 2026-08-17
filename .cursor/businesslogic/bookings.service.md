@@ -168,6 +168,10 @@ Booking delete: clears `booked`, `cancelled`, threshold flags on lead. Legacy pa
 - **Warnings:** zero binder per agent (`buildBookedLeadWarnings`) — non-blocking.
 - **Events:** `booking.created`, `booking.upserted`, `booking.duplicate_submission_ignored`.
 
+## Lifecycle revision
+
+`domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical compare-and-swap / `EntityChange` enforcement is incomplete until Unit 11. One Booking per normalized Job Number remains the unique partial index contract; collisions block unique-index apply.
+
 ## Related rules
 
 - [`sheet-sync-process.mdc`](../rules/sheet-sync-process.mdc) — outbox, drainer mechanics

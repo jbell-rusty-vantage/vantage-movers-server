@@ -55,8 +55,13 @@ import {
   verifyObservationIndexDefinitions,
   verifyReceiptIndexDefinitions,
   verifySynchronizationDecisionIndexDefinitions,
+  BOOKED_LEAD_COLLECTION,
+  findBookedLeadNormalizedJobCollisions,
+  orderedBookedLeadIndexCreates,
+  verifyBookedLeadNormalizedJobIndexDefinitions,
   type DeclaredMongoIndex,
 } from "./granot-lifecycle-indexes.lib.js";
+import { BOOKED_LEAD_NORMALIZED_JOB_INDEX } from "../../src/models/BookedLead.js";
 import {
   SYNCHRONIZATION_DECISION_COLLECTION,
   SYNCHRONIZATION_DECISION_INDEXES,
@@ -220,6 +225,22 @@ async function loadActiveRecordLinkRows(): Promise<
   }));
 }
 
+async function loadBookedLeadNormalizedJobRows(): Promise<
+  Array<{ _id: string; normalized_job_no?: unknown }>
+> {
+  const collection = mongoose.connection.db?.collection(BOOKED_LEAD_COLLECTION);
+  if (!collection) {
+    return [];
+  }
+  const documents = await collection
+    .find({}, { projection: { normalized_job_no: 1 } })
+    .toArray();
+  return documents.map((document) => ({
+    _id: String(document._id),
+    normalized_job_no: document.normalized_job_no,
+  }));
+}
+
 async function main(): Promise<void> {
   const mode = parseGranotLifecycleMigrationMode(process.argv);
   await connectMongo();
@@ -251,6 +272,9 @@ async function main(): Promise<void> {
   const decisionOrdered = orderedSynchronizationDecisionIndexCreates();
   const activationOrdered = orderedGranotLifecycleActivationIndexCreates();
   const recordLinkOrdered = orderedGranotRecordLinkIndexCreates();
+  const bookedLeadRows = await loadBookedLeadNormalizedJobRows();
+  const bookedLeadCollisions = findBookedLeadNormalizedJobCollisions(bookedLeadRows);
+  const bookedLeadOrdered = orderedBookedLeadIndexCreates();
   let created: string[] = [];
   let verify: ReturnType<typeof verifyReceiptIndexDefinitions> | undefined;
   let observationVerify: ReturnType<typeof verifyObservationIndexDefinitions> | undefined;
@@ -259,6 +283,7 @@ async function main(): Promise<void> {
   let decisionVerify: ReturnType<typeof verifySynchronizationDecisionIndexDefinitions> | undefined;
   let activationVerify: ReturnType<typeof verifyGranotLifecycleActivationIndexDefinitions> | undefined;
   let recordLinkVerify: ReturnType<typeof verifyGranotRecordLinkIndexDefinitions> | undefined;
+  let bookedLeadVerify: ReturnType<typeof verifyBookedLeadNormalizedJobIndexDefinitions> | undefined;
 
   if (mode === "apply") {
     created = await createIndexes(GRANOT_OBSERVATION_RECEIPT_COLLECTION, ordered.nonUnique);
@@ -354,6 +379,38 @@ async function main(): Promise<void> {
       ...(await createIndexes(GRANOT_LIFECYCLE_ACTIVATION_COLLECTION, activationOrdered.unique)),
       ...(await createIndexes(GRANOT_RECORD_LINK_COLLECTION, recordLinkOrdered.unique)),
     ];
+    if (bookedLeadCollisions.length > 0) {
+      const manifest = buildManifest({
+        databaseName,
+        mode,
+        collisions,
+        observationCollisions,
+        normalizedLabelCollisions,
+        created,
+        uniqueCreated: [],
+        verify,
+        observationVerify,
+        bookedLeadCollisions,
+      });
+      await writeGranotLifecycleManifest({
+        directory: OUTPUT_DIR,
+        runId: `granot-lifecycle-indexes-${mode}-${Date.now()}`,
+        manifest,
+      });
+      throw new Error(
+        `Refusing unique Booking normalized-Job index create: ${bookedLeadCollisions.length} collision group(s).`,
+      );
+    }
+    const existingBookedLeadIndexes = await listDeclaredIndexes(BOOKED_LEAD_COLLECTION);
+    const bookedLeadAlreadyPresent = verifyBookedLeadNormalizedJobIndexDefinitions(
+      existingBookedLeadIndexes,
+    ).ok;
+    if (!bookedLeadAlreadyPresent) {
+      created = [
+        ...created,
+        ...(await createIndexes(BOOKED_LEAD_COLLECTION, bookedLeadOrdered.unique)),
+      ];
+    }
   }
 
   if (mode === "verify") {
@@ -378,6 +435,9 @@ async function main(): Promise<void> {
     recordLinkVerify = verifyGranotRecordLinkIndexDefinitions(
       await listDeclaredIndexes(GRANOT_RECORD_LINK_COLLECTION),
     );
+    bookedLeadVerify = verifyBookedLeadNormalizedJobIndexDefinitions(
+      await listDeclaredIndexes(BOOKED_LEAD_COLLECTION),
+    );
   }
 
   const uniqueCreated =
@@ -387,7 +447,8 @@ async function main(): Promise<void> {
     normalizedLabelCollisions.length === 0 &&
     decisionCollisions.length === 0 &&
     activationCollisions.length === 0 &&
-    recordLinkCollisions.length === 0
+    recordLinkCollisions.length === 0 &&
+    bookedLeadCollisions.length === 0
       ? [
           ...ordered.unique.map((index) => index.name),
           ...observationOrdered.unique.map((index) => index.name),
@@ -395,6 +456,7 @@ async function main(): Promise<void> {
           ...decisionOrdered.unique.map((index) => index.name),
           ...activationOrdered.unique.map((index) => index.name),
           ...recordLinkOrdered.unique.map((index) => index.name),
+          ...bookedLeadOrdered.unique.map((index) => index.name),
         ]
       : [];
 
@@ -416,6 +478,8 @@ async function main(): Promise<void> {
     decisionVerify,
     activationVerify,
     recordLinkVerify,
+    bookedLeadCollisions,
+    bookedLeadVerify,
   });
   await writeGranotLifecycleManifest({
     directory: OUTPUT_DIR,
@@ -432,6 +496,7 @@ async function main(): Promise<void> {
       decisionVerify,
       activationVerify,
       recordLinkVerify,
+      bookedLeadVerify,
     ].filter((result) => result && !result.ok);
     if (failed.length > 0) {
       const missing = failed.flatMap((result) => result?.missing ?? []);
@@ -452,6 +517,7 @@ function buildManifest(input: {
   decisionCollisions?: ReturnType<typeof findDecisionObservationAttemptCollisions>;
   activationCollisions?: ReturnType<typeof findActivationKeyCollisions>;
   recordLinkCollisions?: ReturnType<typeof findActiveRecordLinkJobCollisions>;
+  bookedLeadCollisions?: ReturnType<typeof findBookedLeadNormalizedJobCollisions>;
   created: string[];
   uniqueCreated: string[];
   verify?: ReturnType<typeof verifyReceiptIndexDefinitions>;
@@ -461,6 +527,7 @@ function buildManifest(input: {
   decisionVerify?: ReturnType<typeof verifySynchronizationDecisionIndexDefinitions>;
   activationVerify?: ReturnType<typeof verifyGranotLifecycleActivationIndexDefinitions>;
   recordLinkVerify?: ReturnType<typeof verifyGranotRecordLinkIndexDefinitions>;
+  bookedLeadVerify?: ReturnType<typeof verifyBookedLeadNormalizedJobIndexDefinitions>;
 }) {
   return {
     script_version: INDEX_MIGRATION_SCRIPT_VERSION,
@@ -474,6 +541,7 @@ function buildManifest(input: {
       ...SYNCHRONIZATION_DECISION_INDEXES.map((index) => index.name),
       ...GRANOT_LIFECYCLE_ACTIVATION_INDEXES.map((index) => index.name),
       ...GRANOT_RECORD_LINK_INDEXES.map((index) => index.name),
+      BOOKED_LEAD_NORMALIZED_JOB_INDEX.name,
     ],
     collision_count:
       input.collisions.length +
@@ -481,7 +549,8 @@ function buildManifest(input: {
       input.normalizedLabelCollisions.length +
       (input.decisionCollisions?.length ?? 0) +
       (input.activationCollisions?.length ?? 0) +
-      (input.recordLinkCollisions?.length ?? 0),
+      (input.recordLinkCollisions?.length ?? 0) +
+      (input.bookedLeadCollisions?.length ?? 0),
     collisions: input.collisions,
     observation_receipt_id_collisions: input.observationCollisions,
     normalized_granot_label_collisions: input.normalizedLabelCollisions,
@@ -498,11 +567,17 @@ function buildManifest(input: {
     synchronization_decision_verify: input.decisionVerify,
     granot_lifecycle_activation_verify: input.activationVerify,
     granot_record_link_verify: input.recordLinkVerify,
+    booked_lead_normalized_job_collisions: input.bookedLeadCollisions ?? [],
+    booked_lead_verify: input.bookedLeadVerify,
   };
 }
 
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : "Unknown error";
-  console.error(message);
-  process.exitCode = 1;
-});
+main()
+  .catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error(message);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await mongoose.disconnect().catch(() => undefined);
+  });

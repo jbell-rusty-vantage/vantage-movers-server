@@ -55,9 +55,9 @@ Identical deliveries are distinct receipts. `payload_sha256` is diagnostic, neve
 
 ## Queue wake-up
 
-After commit, publish exactly `{ receipt_id }` when the environment is an approved production Vercel function runtime. Tests and unapproved environments skip publish. Publish failure is logged/metriced as `granot_lifecycle.queue.publish_failed` and cannot change `202` or the receipt. No consumer/drainer exists yet. The Unit 07 processor is callable only and is not invoked from capture.
+After commit, publish exactly `{ receipt_id }` when the environment is an approved production Vercel function runtime. Tests and unapproved environments skip publish. Publish failure is logged/metriced as `granot_lifecycle.queue.publish_failed` and cannot change `202` or the receipt. Capture still does not invoke the processor.
 
-Indexes for a future drainer/lease exist on the receipt model; nothing claims or drains them yet.
+A dedicated consumer now exists (`api/queues/granot-lifecycle-consumer.ts`) and a five-minute cron safety net scans due work. Both are wake-ups only: Mongo receipt `processing.*` remains the durable work source. Details: [`granotLifecycle.drainer.md`](granotLifecycle.drainer.md).
 
 ## Related
 
@@ -67,4 +67,4 @@ Indexes for a future drainer/lease exist on the receipt model; nothing claims or
 
 ## Out of scope here
 
-Capture does not call Observation normalization or the Decision processor. Normalization lives in [`granotLifecycle.normalization.md`](granotLifecycle.normalization.md). The Decision/activation/Record Link skeleton lives in [`granotLifecycle.processor.md`](granotLifecycle.processor.md). Queue consumer/cron remain Unit 08. Lead/Booking/Cancellation effects remain later units.
+Capture does not call Observation normalization or the Decision processor. Normalization lives in [`granotLifecycle.normalization.md`](granotLifecycle.normalization.md). The Decision/activation/Record Link skeleton lives in [`granotLifecycle.processor.md`](granotLifecycle.processor.md). Claim/lease/retry/requeue live in [`granotLifecycle.drainer.md`](granotLifecycle.drainer.md). Lead/Booking/Cancellation effects remain later units.

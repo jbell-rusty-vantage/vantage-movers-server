@@ -11,11 +11,12 @@ alwaysApply: false
 
 ## Core Collections
 
-- `FormLead` (`form_leads`) is the website form source lead: source/name/zip/move fields, `phone_number`, optional `email`, `ref_no`, `lid`, `quoted`, `cubic_feet`, `duplicate`, `post_to_granot`, `booked`, `cancelled`, `local`, CPL, and `sheet_sync[]`.
-- `CallLead` (`call_leads`) is the phone/Invoca/CRM-enriched source lead: requires either `phone_number` or `job_no`, normalizes phone for matching, stores CRM enrichment fields, `form_fill`, `created_on_unmatched`, booking/cancellation refs, CPL, and `sheet_sync[]`.
-- `BookedLead` (`booked_leads`) links back to `lead_ref` plus `lead_model` (`FormLead` or `CallLead`) via `refPath`, stores customer, job/source/merchant/deposit, required `agent_allocations[]`, `total_binder_amount`, threshold flags, cancellation ref, and `sheet_sync[]`.
-- `CancelledLead` (`cancelled_leads`) links to `booked_lead`, customer, source `lead_ref`/`lead_model`, cancel/refund fields, and snapshots booking/customer/source values for reporting.
+- `FormLead` (`form_leads`) is the website form source lead: source/name/zip/move fields, `phone_number`, optional `email`, `ref_no`, `lid`, `quoted`, `cubic_feet`, `duplicate`, `post_to_granot`, `booked`, `cancelled`, `local`, CPL, and `sheet_sync[]`. Additive lifecycle metadata: required `domain_revision` (default `0`), optional `last_change_id` / `last_changed_at`, and write-once `change_history_started_at`. Public/admin DTOs cannot set these fields. Canonical revision/`EntityChange` enforcement is incomplete until Unit 11; `__v` is not the lifecycle contract.
+- `CallLead` (`call_leads`) is the phone/Invoca/CRM-enriched source lead: requires either `phone_number` or `job_no`, normalizes phone for matching, stores CRM enrichment fields, `form_fill`, `created_on_unmatched`, booking/cancellation refs, CPL, and `sheet_sync[]`. Same additive revision/history-boundary fields as Form Lead. Lead Job Number is not globally unique.
+- `BookedLead` (`booked_leads`) links back to `lead_ref` plus `lead_model` (`FormLead` or `CallLead`) via `refPath`, stores customer, job/source/merchant/deposit, required `agent_allocations[]`, `total_binder_amount`, threshold flags, cancellation ref, and `sheet_sync[]`. Same additive revision/history-boundary fields. Unique partial `{ normalized_job_no: 1 }` is the one-Booking-per-normalized-Job contract (`booked_lead_normalized_job_no_unique`; deployed name may still be `normalized_job_no_1`).
+- `CancelledLead` (`cancelled_leads`) links to `booked_lead`, customer, source `lead_ref`/`lead_model`, cancel/refund fields, and snapshots booking/customer/source values for reporting. Same additive revision/history-boundary fields. Historical collections are not write targets for these fields.
 - `Customer` and `Agent` are support collections. Customers are upserted from source leads during booking; agents are resolved from booking form allocation input and snapshot names on bookings.
+- `GranotObservationReceipt` (`granot_webhook_receipts`) is the durable credential-redacted envelope. After insert, only `processing.*` may mutate. `processing.*` is the durable work source for claim/drain; queue payloads are `{ receipt_id }` wake-ups only. Declared due/lease indexes already exist on the model. It does not mutate Leads, Bookings, or Cancellations.
 - `GranotObservation` (`granot_observations`) is one normalized Granot statement per receipt. It is evidence only. Unique index is `receipt_id`. It does not mutate Leads, Bookings, or Cancellations.
 - `SynchronizationDecision` (`synchronization_decisions`) is one immutable row per observation/attempt. Unique index is `{ observation_id, attempt }`. The processor stamps `processing.latest_decision_id` on the source receipt; it does not claim or drain the receipt.
 - `GranotLifecycleActivation` (`granot_lifecycle_activations`) is write-once. Unique index is `{ key: 1 }`. No API delete/edit exists.
@@ -29,6 +30,7 @@ alwaysApply: false
 - Call lead create accepts sparse call data but must include `phone_number` or `job_no`. Enrichment endpoints accept batches of CRM rows (`row_id`, job/customer/phone/email/zips/est_cf).
 - Booking create can use direct `lead_ref`/`lead_model` plus `agent_allocations`, or `/booked-leads/from-source` with `lead_type` (`FormLead` uses `form_lead_id`; `CallLead` uses `call_job_no` or `call_phone_number`).
 - Cancellation create requires either `booked_lead` or `lead_id`; if both are present, services enforce that they point to the same booking/source lead chain.
+- Owner requeue `POST /api/v1/admin/granot-lifecycle/receipts/:id/requeue` body is `{ reason }` (trim 10–500, unknown keys rejected). Only `dead_letter` is eligible.
 
 ## Change Guidance
 
