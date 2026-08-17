@@ -256,3 +256,8 @@ export {
   type RingCentralRouteUpdateInput,
   type RingCentralRouteAssignmentInput,
 } from "./v1/operationsRegistry.validation";
+
+export {
+  granotLifecycleActivationCommandSchema,
+  type GranotLifecycleActivationCommandInput,
+} from "./v1/granotLifecycle.validation";

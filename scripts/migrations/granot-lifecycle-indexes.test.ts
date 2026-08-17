@@ -7,19 +7,31 @@ import {
 } from "../../src/models/GranotObservationReceipt";
 import { GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES } from "../../src/models/GranotCrmSource";
 import {
+  findActivationKeyCollisions,
+  findActiveRecordLinkJobCollisions,
   findChannelOperationIdCollisions,
+  findDecisionObservationAttemptCollisions,
   findNormalizedGranotLabelCollisions,
   findObservationReceiptIdCollisions,
   GRANOT_CRM_SOURCE_UNIQUE_INDEX_APPLY_ENABLED,
   orderedGranotAutomationSourceIndexCreates,
   orderedGranotCrmSourceIndexCreates,
+  orderedGranotLifecycleActivationIndexCreates,
+  orderedGranotRecordLinkIndexCreates,
   orderedObservationIndexCreates,
   orderedReceiptIndexCreates,
+  orderedSynchronizationDecisionIndexCreates,
   verifyGranotAutomationSourceIndexDefinitions,
   verifyGranotCrmSourceIndexDefinitions,
+  verifyGranotLifecycleActivationIndexDefinitions,
+  verifyGranotRecordLinkIndexDefinitions,
   verifyObservationIndexDefinitions,
   verifyReceiptIndexDefinitions,
+  verifySynchronizationDecisionIndexDefinitions,
 } from "./granot-lifecycle-indexes.lib";
+import { SYNCHRONIZATION_DECISION_INDEXES } from "../../src/models/SynchronizationDecision";
+import { GRANOT_LIFECYCLE_ACTIVATION_INDEXES } from "../../src/models/GranotLifecycleActivation";
+import { GRANOT_RECORD_LINK_INDEXES } from "../../src/models/GranotRecordLink";
 import { GRANOT_AUTOMATION_SOURCE_INDEXES } from "../../src/models/GranotAutomationSource";
 
 test("[AC-02] unique/partial collision report ignores webhook rows without operation ids", () => {
@@ -221,5 +233,105 @@ test("[AC-38] source and automation index verify matches the model contract", ()
     orderedGranotAutomationSourceIndexCreates().nonUnique.some(
       (index) => index.name === "granot_automation_source_crm_source_active",
     ),
+  );
+});
+
+test("[AC-02] Decision unique observation/attempt collision report masks ids", () => {
+  const collisions = findDecisionObservationAttemptCollisions([
+    { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", observation_id: "cccccccccccccccccccccccc", attempt: 1 },
+    { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", observation_id: "cccccccccccccccccccccccc", attempt: 1 },
+    { _id: "dddddddddddddddddddddddd", observation_id: "cccccccccccccccccccccccc", attempt: 2 },
+  ]);
+  assert.equal(collisions.length, 1);
+  assert.equal(collisions[0]?.count, 2);
+  assert.equal(JSON.stringify(collisions).includes("aaaaaaaaaaaaaaaaaaaaaaaa"), false);
+});
+
+test("[AC-31] Activation unique key collision report masks ids", () => {
+  const collisions = findActivationKeyCollisions([
+    { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", key: "granot_lifecycle" },
+    { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", key: "granot_lifecycle" },
+  ]);
+  assert.equal(collisions.length, 1);
+  assert.equal(collisions[0]?.key, "granot_lifecycle");
+  assert.equal(JSON.stringify(collisions).includes("aaaaaaaaaaaaaaaaaaaaaaaa"), false);
+});
+
+test("[AC-32] active Record Link job collision report ignores superseded rows", () => {
+  const collisions = findActiveRecordLinkJobCollisions([
+    {
+      _id: "aaaaaaaaaaaaaaaaaaaaaaaa",
+      provider: "granot",
+      normalized_job_no: "SYNTHETIC JOB 100",
+      state: "active",
+    },
+    {
+      _id: "bbbbbbbbbbbbbbbbbbbbbbbb",
+      provider: "granot",
+      normalized_job_no: "SYNTHETIC JOB 100",
+      state: "active",
+    },
+    {
+      _id: "cccccccccccccccccccccccc",
+      provider: "granot",
+      normalized_job_no: "SYNTHETIC JOB 100",
+      state: "superseded",
+    },
+  ]);
+  assert.equal(collisions.length, 1);
+  assert.equal(collisions[0]?.count, 2);
+  assert.equal(JSON.stringify(collisions).includes("aaaaaaaaaaaaaaaaaaaaaaaa"), false);
+});
+
+test("[AC-02][AC-31][AC-32] Decision, activation, and Record Link indexes create non-unique first and verify names", () => {
+  const decisions = orderedSynchronizationDecisionIndexCreates();
+  assert.equal(decisions.unique.length, 1);
+  assert.equal(
+    decisions.unique[0]?.name,
+    "synchronization_decision_observation_attempt_unique",
+  );
+  assert.equal(decisions.nonUnique.length, 3);
+  assert.equal(
+    verifySynchronizationDecisionIndexDefinitions(
+      SYNCHRONIZATION_DECISION_INDEXES.map((index) => ({
+        name: index.name,
+        key: { ...index.key },
+        unique: "unique" in index ? true : undefined,
+      })),
+    ).ok,
+    true,
+  );
+
+  const activations = orderedGranotLifecycleActivationIndexCreates();
+  assert.equal(activations.unique.length, 1);
+  assert.equal(activations.nonUnique.length, 0);
+  assert.equal(
+    verifyGranotLifecycleActivationIndexDefinitions(
+      GRANOT_LIFECYCLE_ACTIVATION_INDEXES.map((index) => ({
+        name: index.name,
+        key: { ...index.key },
+        unique: true,
+      })),
+    ).ok,
+    true,
+  );
+
+  const links = orderedGranotRecordLinkIndexCreates();
+  assert.equal(links.unique.length, 1);
+  assert.equal(links.unique[0]?.name, "granot_record_link_active_job_unique");
+  assert.equal(links.nonUnique.length, 2);
+  assert.equal(
+    verifyGranotRecordLinkIndexDefinitions(
+      GRANOT_RECORD_LINK_INDEXES.map((index) => ({
+        name: index.name,
+        key: { ...index.key },
+        unique: "unique" in index ? true : undefined,
+        partialFilterExpression:
+          "partialFilterExpression" in index
+            ? { ...index.partialFilterExpression }
+            : undefined,
+      })),
+    ).ok,
+    true,
   );
 });

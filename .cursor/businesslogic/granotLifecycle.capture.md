@@ -55,7 +55,7 @@ Identical deliveries are distinct receipts. `payload_sha256` is diagnostic, neve
 
 ## Queue wake-up
 
-After commit, publish exactly `{ receipt_id }` when the environment is an approved production Vercel function runtime. Tests and unapproved environments skip publish. Publish failure is logged/metriced as `granot_lifecycle.queue.publish_failed` and cannot change `202` or the receipt. No consumer/drainer/processing exists yet.
+After commit, publish exactly `{ receipt_id }` when the environment is an approved production Vercel function runtime. Tests and unapproved environments skip publish. Publish failure is logged/metriced as `granot_lifecycle.queue.publish_failed` and cannot change `202` or the receipt. No consumer/drainer exists yet. The Unit 07 processor is callable only and is not invoked from capture.
 
 Indexes for a future drainer/lease exist on the receipt model; nothing claims or drains them yet.
 
@@ -67,4 +67,4 @@ Indexes for a future drainer/lease exist on the receipt model; nothing claims or
 
 ## Out of scope here
 
-Capture does not call Observation normalization. The callable module lives in [`granotLifecycle.normalization.md`](granotLifecycle.normalization.md). Registry, processor, flags, Lead/Booking/Cancellation effects, and queue consumer/cron remain later units.
+Capture does not call Observation normalization or the Decision processor. Normalization lives in [`granotLifecycle.normalization.md`](granotLifecycle.normalization.md). The Decision/activation/Record Link skeleton lives in [`granotLifecycle.processor.md`](granotLifecycle.processor.md). Queue consumer/cron remain Unit 08. Lead/Booking/Cancellation effects remain later units.

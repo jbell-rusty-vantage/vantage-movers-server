@@ -1,13 +1,18 @@
 import { Schema } from "mongoose";
 import type {
   ChannelOperationKind,
+  ExecutionMode,
   GranotBookingAction,
+  GranotLifecycleDisposition,
   GranotObservationKind,
   GranotRouteEventClass,
+  LeadModel,
   NormalizationIssueCode,
   NormalizationResult,
   ObservationChannel,
   ReceiptWorkState,
+  SynchronizationOutcome,
+  SynchronizationReasonCode,
 } from "../services/granotLifecycle/types";
 
 export const RECEIPT_WORK_STATES = [
@@ -81,6 +86,119 @@ export const GRANOT_BOOKING_ACTIONS = [
 ] as const satisfies readonly GranotBookingAction[];
 
 export const NORMALIZATION_ISSUE_SEVERITIES = ["warning", "error"] as const;
+
+export const SYNCHRONIZATION_OUTCOMES = [
+  "created",
+  "applied",
+  "linked",
+  "already_current",
+  "stale",
+  "pending_match",
+  "unmatched",
+  "ambiguous",
+  "conflict",
+  "deferred",
+  "policy_blocked",
+  "insufficient_creation_data",
+  "invalid",
+  "unsupported",
+] as const satisfies readonly SynchronizationOutcome[];
+
+export const SYNCHRONIZATION_REASON_CODES = [
+  "lead_created_authorized",
+  "lead_state_changed",
+  "record_link_established",
+  "record_link_confirmed",
+  "desired_state_already_current",
+  "older_than_temporal_winner",
+  "pending_source_scoped_match",
+  "match_window_expired",
+  "multiple_eligible_matches",
+  "source_scope_conflict",
+  "job_number_conflict",
+  "record_link_conflict",
+  "duplicate_form_lead_ineligible",
+  "bad_form_lead_priority_only",
+  "source_unclassified",
+  "source_deferred",
+  "source_disabled",
+  "target_source_company_inactive",
+  "target_source_granularity_inactive",
+  "global_effect_disabled",
+  "shadow_effect_suppressed",
+  "creation_policy_link_only",
+  "creation_policy_observation_only",
+  "missing_creation_job_number",
+  "missing_creation_contact",
+  "missing_creation_route_data",
+  "invalid_payload",
+  "invalid_priority_update",
+  "unsupported_booking_action",
+  "booking_case_opened",
+  "booking_case_refreshed",
+  "release_case_opened",
+  "release_case_refreshed",
+  "booking_discrepancy_opened",
+  "booking_discrepancy_refreshed",
+  "release_discrepancy_opened",
+  "release_discrepancy_refreshed",
+  "booking_already_cancelled",
+  "historical_shadow",
+] as const satisfies readonly SynchronizationReasonCode[];
+
+export const EXECUTION_MODES = [
+  "historical_shadow",
+  "live_shadow",
+  "live",
+] as const satisfies readonly ExecutionMode[];
+
+export const SYNCHRONIZATION_MATCH_METHODS = [
+  "granot_record_link",
+  "form_ref_no_exact",
+  "form_mongo_id_compatibility",
+  "call_job_no_exact",
+  "booking_job_no_exact",
+  "source_scoped_contact",
+] as const;
+
+export const SYNCHRONIZATION_EFFECT_KINDS = [
+  "record_link_established",
+  "record_link_confirmed",
+  "lead_created",
+  "lead_updated",
+  "booking_case_opened",
+  "booking_case_refreshed",
+  "release_case_opened",
+  "release_case_refreshed",
+  "discrepancy_opened",
+  "discrepancy_refreshed",
+  "sheet_sync_requested",
+] as const;
+
+export const ENTITY_REF_MODELS = [
+  "FormLead",
+  "CallLead",
+  "BookedLead",
+  "CancelledLead",
+  "GranotRecordLink",
+  "GranotBookingReconciliationCase",
+  "GranotReleaseReconciliationCase",
+] as const;
+
+export const GRANOT_LIFECYCLE_DISPOSITIONS = [
+  "source_scoped_lead",
+  "referral_booking",
+  "deferred",
+] as const satisfies readonly GranotLifecycleDisposition[];
+
+export const GRANOT_LEAD_MODELS = [
+  "FormLead",
+  "CallLead",
+] as const satisfies readonly LeadModel[];
+
+export const RECORD_LINK_STATES = ["active", "superseded"] as const;
+
+export const GRANOT_LIFECYCLE_ACTIVATION_KEY = "granot_lifecycle" as const;
 
 const CONTROL_OR_BIDI = /[\p{Cc}\p{Cf}]/u;
 const LOWERCASE_UUID_V4 =

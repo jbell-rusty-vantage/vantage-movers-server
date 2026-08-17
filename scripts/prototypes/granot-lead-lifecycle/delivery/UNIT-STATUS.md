@@ -12,8 +12,8 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 | 04 | Observation persistence and exact normalization vocabulary | 01–03 | complete | complete | [UNIT-04-COMPLETION.md](completion-reports/UNIT-04-COMPLETION.md) |
 | 05 | Audited Granot CRM source Registry domain | 01 | complete | complete | [UNIT-05-COMPLETION.md](completion-reports/UNIT-05-COMPLETION.md) |
 | 06 | Registry migration, automation compatibility link, and reviewed Registry UI | 05 | complete | complete | [UNIT-06-COMPLETION.md](completion-reports/UNIT-06-COMPLETION.md) |
-| 07 | Decision, activation, Record Link, execution mode, and safe operational skeleton | 04–06 | ready | complete | — |
-| 08 | Durable claim service, drainer, queue/cron, retries, dead letter, and manual requeue | 04, 07 | blocked | complete | — |
+| 07 | Decision, activation, Record Link, execution mode, and safe operational skeleton | 04–06 | complete | complete | [UNIT-07-COMPLETION.md](completion-reports/UNIT-07-COMPLETION.md) |
+| 08 | Durable claim service, drainer, queue/cron, retries, dead letter, and manual requeue | 04, 07 | ready | complete | — |
 | 09 | Aggregate revision fields and additive revision migrations | 01 | blocked | complete | — |
 | 10 | Transaction-owning canonical command executor and idempotent replay | 09 | blocked | complete | — |
 | 11 | Entity Change, outbox atomicity, and canonicalization of existing write adapters | 09–10 | blocked | scaffold | — |
@@ -43,9 +43,8 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 
 ## Current ready queue
 
-- Open review findings live in [`warnings/`](warnings/README.md). They do not block Unit 07 implementation unless repository re-verification shows an applicable finding has become material.
-- Units 04–06 are complete on `granot-lead-lifecycle`. Re-verify `UNIT-06-COMPLETION.md` and both repository states before starting Unit 07.
-- Unit 07 is implementation-ready and is the next sequential implementation target. Contract maturity does not authorize activation or any effect.
-- Unit 08's contract is complete. It remains blocked until Units 04 and 07 are implemented and verified; contract maturity does not authorize queue/cron activation or processing effects.
+- Open review findings live in [`warnings/`](warnings/README.md). They do not block Unit 08 implementation unless repository re-verification shows an applicable finding has become material.
+- Units 04–07 are complete on `granot-lead-lifecycle`. Re-verify `UNIT-07-COMPLETION.md` and repository state before starting Unit 08.
+- Unit 08 is implementation-ready and is the next sequential implementation target. Contract maturity does not authorize queue/cron activation or processing effects.
 - Unit 09's contract is complete and its specification prerequisite is satisfied. Shared-branch implementation remains sequential by default, so keep it blocked until the current implementation target is handed off or an integration owner explicitly authorizes non-overlapping work.
 - Unit 10's contract is complete. It remains blocked until Unit 09 is implemented and verified and the shared-branch sequence reaches it.

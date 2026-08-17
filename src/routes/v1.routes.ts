@@ -11,6 +11,7 @@ import type { VantageAuthContext } from "../middleware/requireApiSecret";
 import extensionAuthRoutes from "./extension-auth.routes";
 import googleDriveOAuthRoutes from "./google-drive-oauth.routes";
 import ringCentralRegistryRoutes from "./ringcentral-registry.routes";
+import granotLifecycleAdminRoutes from "./granot-lifecycle-admin.routes";
 import {
   recordOperationalEvent,
   getObservabilityOverview,
@@ -265,6 +266,7 @@ router.use(extensionAuthRoutes);
 router.use(googleDriveOAuthRoutes);
 router.use("/api/v1", requireApiSecret);
 router.use(ringCentralRegistryRoutes);
+router.use(granotLifecycleAdminRoutes);
 
 type RequestWithLogger = Request & {
   log?: Logger;

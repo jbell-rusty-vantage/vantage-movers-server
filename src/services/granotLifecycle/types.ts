@@ -120,6 +120,38 @@ export type EntityRef = {
   id: string;
 };
 
+export type SynchronizationEffectKind =
+  | "record_link_established"
+  | "record_link_confirmed"
+  | "lead_created"
+  | "lead_updated"
+  | "booking_case_opened"
+  | "booking_case_refreshed"
+  | "release_case_opened"
+  | "release_case_refreshed"
+  | "discrepancy_opened"
+  | "discrepancy_refreshed"
+  | "sheet_sync_requested";
+
+export type SynchronizationEffectSummary = {
+  kind: SynchronizationEffectKind;
+  ref?: EntityRef;
+  changed_paths?: string[];
+};
+
+export interface GranotObservationProcessor {
+  process(input: {
+    receipt_id: string;
+    initiator?: import("../durableWork/types").DurableActor;
+  }): Promise<{
+    observation_id: string;
+    decision_id: string;
+    outcome: SynchronizationOutcome;
+    effects: SynchronizationEffectSummary[];
+    target?: EntityRef;
+  }>;
+}
+
 export type GranotLifecycleDisposition =
   | "source_scoped_lead"
   | "referral_booking"

@@ -17,6 +17,9 @@ alwaysApply: false
 - `CancelledLead` (`cancelled_leads`) links to `booked_lead`, customer, source `lead_ref`/`lead_model`, cancel/refund fields, and snapshots booking/customer/source values for reporting.
 - `Customer` and `Agent` are support collections. Customers are upserted from source leads during booking; agents are resolved from booking form allocation input and snapshot names on bookings.
 - `GranotObservation` (`granot_observations`) is one normalized Granot statement per receipt. It is evidence only. Unique index is `receipt_id`. It does not mutate Leads, Bookings, or Cancellations.
+- `SynchronizationDecision` (`synchronization_decisions`) is one immutable row per observation/attempt. Unique index is `{ observation_id, attempt }`. The processor stamps `processing.latest_decision_id` on the source receipt; it does not claim or drain the receipt.
+- `GranotLifecycleActivation` (`granot_lifecycle_activations`) is write-once. Unique index is `{ key: 1 }`. No API delete/edit exists.
+- `GranotRecordLink` (`granot_record_links`) is the current job-level link aggregate. Unique partial index is `{ provider, normalized_job_no }` where `state:"active"`. Unit 07 does not store Lead/Booking refs.
 - `GranotCrmSource` (`granot_crm_sources`) remains the operational CSV catalog and is now also the only semantic Granot source Registry. Additive lifecycle fields default to `lifecycle_enabled=false`, `lifecycle_disposition=deferred`, `lead_created_policy=observation_only`, and empty routes. Do not repurpose legacy string `source_company` as `lead_source_company`. The unique `{ normalized_granot_label: 1 }` index is declared but not production-applied until Unit 06 collision inventory is zero.
 
 ## Input Contracts

@@ -12,7 +12,7 @@
 
 - `normalizeGranotSourceLabel(raw)` — NFKC, trim, collapse whitespace, lowercase; reject empty/control/bidi rather than stripping them into a usable label.
 - `resolveSourcePolicy(facts, store?)` — exact normalized-label lookup only. Provider `type` is never a classification input.
-- `evaluateEffectGates(facts)` — pure snapshot of every applicable gate in stable order. Tests pass explicit `false` inputs; no flags or activation exist yet.
+- `evaluateEffectGates(facts)` — pure snapshot of every applicable gate in stable order. Unit 07 supplies flag and execution-mode facts; this module still performs no writes.
 
 ## Fail-closed resolution
 
@@ -44,3 +44,4 @@ Every unreviewed row remains lifecycle-disabled, deferred, observation-only, and
 
 - Registry writes and audit: [`operationsRegistry.service.md`](operationsRegistry.service.md)
 - Observation normalization: [`granotLifecycle.normalization.md`](granotLifecycle.normalization.md)
+- Decision processor consumes this read/gate snapshot ([`granotLifecycle.processor.md`](granotLifecycle.processor.md)).

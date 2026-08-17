@@ -56,6 +56,7 @@ Production API: https://vantage-movers-main-server.vercel.app
 | [granotLifecycle.capture.md](businesslogic/granotLifecycle.capture.md) | `src/services/granotLifecycle/` — webhook auth, v2 receipt capture, `{ receipt_id }` wake-up; **no processing** |
 | [granotLifecycle.normalization.md](businesslogic/granotLifecycle.normalization.md) | `src/services/granotLifecycle/normalization.ts` — one Observation per receipt, exact Section 10 vocabulary; **no matching/effects** |
 | [granotLifecycle.sourcePolicy.md](businesslogic/granotLifecycle.sourcePolicy.md) | `src/services/granotLifecycle/sourcePolicy.ts` — fail-closed Registry policy resolution and seven-layer effect-gate snapshot; **no effects** |
+| [granotLifecycle.processor.md](businesslogic/granotLifecycle.processor.md) | `src/services/granotLifecycle/processor.ts` — Decision, write-once activation, historical-only job Record Link, raw-free Job/health reads; **no Lead/Booking effects** |
 | [granotHttpCollector.service.md](businesslogic/granotHttpCollector.service.md) | `src/services/granotHttpCollector/` — HTTP session collector, preview/approve/apply runs; apply still mutates directly |
 
 **Not duplicated here (yet):** `employeeBookings/`, `leadMessaging/`, `reporting/`, `ingestion/` — mapped in `rules/project-organization.mdc`.
@@ -98,7 +99,7 @@ Rule files apply when editing matching paths (`globs` in each file frontmatter).
 | `ringcentral-integration.mdc` | RingCentral env, webhooks, cron |
 | `ringcentral-call-lead-candidates.mdc` | Candidate aggregation + ingest boundaries |
 | `form-lead-granot-crm.mdc` | Granot CRM form-lead posting |
-| `granot-lifecycle-capture.mdc` | Webhook capture + `{ receipt_id }` wake-up only; callable Observation normalization is separate and not invoked by capture |
+| `granot-lifecycle-capture.mdc` | Webhook capture + `{ receipt_id }` wake-up; callable Observation/policy/processor modules are not invoked by capture |
 | `granot-http-automation.mdc` | HTTP collector / automation runs; direct apply mutations |
 | `lead-lifecycle-delivery.mdc` | Branch plan for Granot lead-lifecycle units (server / admin / extension) |
 | `granot-crm-csv-s3-sync.mdc` | CSV/S3 CRM sync |

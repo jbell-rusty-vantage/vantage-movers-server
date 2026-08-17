@@ -16,7 +16,7 @@ alwaysApply: true
 - `src/routes/` owns HTTP boundaries — keep thin: auth → Zod → service → response.
 - `src/routes/v1.routes.ts` is the main surface (public v1 + admin browse/search/export/analytics/registry/observability + extension workflows). Mounted after most cron/webhook routes.
 - Before the `/api/v1` guard inside v1: `extension-auth.routes.ts` (`/api/v1/extension/auth/*`, no secret) and `google-drive-oauth.routes.ts` (mounted **inside** `v1.routes.ts`, not a separate `app.use`). OAuth callback is unguarded; other `/api/v1/admin/google-drive/*` routes attach per-route `requireApiSecret` + owner gate.
-- After the guard: `ringcentral-registry.routes.ts` (`/api/v1/admin/ringcentral/inbound-routes*`).
+- After the guard: `ringcentral-registry.routes.ts` (`/api/v1/admin/ringcentral/inbound-routes*`) and `granot-lifecycle-admin.routes.ts` (`/api/v1/admin/granot-lifecycle/*`).
 - Separate admin routers mounted from `src/app.ts` (still under `/api/v1/admin/...`, with `requireApiSecret`):
   - `granot-automation.routes.ts` — Granot HTTP automation (mounted **before** v1)
   - `ingestion.routes.ts` — Best Relocation ingestion (after v1)
@@ -25,8 +25,8 @@ alwaysApply: true
 - `app.ts` also calls `registerReportingStage4Foundation()` at Express bootstrap. Queue consumers do not inherit this — they must re-register foundations themselves.
 - **Queue consumers** (`api/queues/`): `sheet-sync-consumer`, `lead-messaging-consumer`, `best-relocation-ingestion-consumer`, `reporting-consumer`, `granot-automation-consumer`. Granot lifecycle capture may publish `{ receipt_id }` to `granot-lifecycle-events` / `granot-lifecycle-events-dev`; **no** `granot-lifecycle-consumer` is deployed yet.
 - `src/validation/` — Zod schemas (`v1.validation.ts` barrel + `src/validation/v1/` + reporting validators).
-- `src/models/` — runtime Mongoose schemas (`snake_case`); Google Sheets projections produce Title Case columns. `GranotObservationReceipt` lives here; collection `granot_webhook_receipts` is retained. `GranotObservation` lives here; collection `granot_observations`.
-- `src/config/domain/` — mode-aware domain config; re-exported by `src/config/domain.ts` **except** `reporting.ts` (import `./domain/reporting` directly). Prefer focused modules over scattering `process.env`.
+- `src/models/` — runtime Mongoose schemas (`snake_case`); Google Sheets projections produce Title Case columns. `GranotObservationReceipt` lives here; collection `granot_webhook_receipts` is retained. `GranotObservation` lives here; collection `granot_observations`. `SynchronizationDecision`, `GranotLifecycleActivation`, and `GranotRecordLink` are Unit 07 evidence/current-state models.
+- `src/config/domain/` — mode-aware domain config; re-exported by `src/config/domain.ts` **except** `reporting.ts` (import `./domain/reporting` directly). Prefer focused modules over scattering `process.env`. `granotLifecycle.ts` owns the ten centralized lifecycle flags (processing/shadow default true; all eight effect flags stay false).
 - `src/db.ts` — shared Mongo helper; preserve `TEST_MODE` DB boundary.
 - `src/middleware/` — `requireApiSecret` / `requireVantageAuth`, `requireGranotWebhookSecret`, HTTP logging.
 - `src/auth/extension/` — Granot extension login, JWT, password hashing, `ExtensionUser`.
@@ -68,7 +68,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - `granotCrmCsv/` — CSV source registry + S3 ingest (`/granot-crm/csv/*`)
 - `granotWebhooks/` — Compatibility adapter only; webhook capture implementation lives in `granotLifecycle/capture`
 - `granotHttpCollector/` — HTTP session collector + automation runs/sources/workflows. Apply still mutates leads/enrichment/reconciliation **directly** (not via a lifecycle processor). See `businesslogic/granotHttpCollector.service.md`.
-- `granotLifecycle/` — Shared lifecycle vocabulary, receipt evidence helpers, webhook capture, receipt-ID queue wake-up publisher, callable Observation normalization (`normalization.ts`), and fail-closed source-policy/gate evaluation (`sourcePolicy.ts`). Capture does not invoke normalization or policy. Processing, consumer/drainer, flags, and effects land only in their assigned later units — **none of those are live yet**.
+- `granotLifecycle/` — Shared lifecycle vocabulary, receipt evidence helpers, webhook capture, receipt-ID queue wake-up publisher, callable Observation normalization (`normalization.ts`), fail-closed source-policy/gate evaluation (`sourcePolicy.ts`), and the Unit 07 Decision/activation/Record Link skeleton (`processor.ts`, `operations.ts`, `projections.ts`). Capture does not invoke normalization, policy, or the processor. Consumer/drainer and effects remain later units.
 - `crm/` — Outbound Granot form-lead submit (invoked from lead write paths). Independent of webhook capture.
 
 ### Integrations
@@ -115,6 +115,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - **Ingestion:** `ingestion/*` (separate `app.use` router)
 - **Reporting:** `reporting/{catalog,destinations,definitions,draft,runs}` (separate `app.use` router)
 - **Granot automation:** `granot-automation/runs/*`, `granot-automation/runs/sources`, `granot-automation/run-groups`, `granot-automation/runs/worker` (separate `app.use` router, before v1)
+- **Granot lifecycle:** `granot-lifecycle/activation`, `granot-lifecycle/jobs/:normalized_job_no`, `granot-lifecycle/operations/health` (focused router mounted after the `/api/v1` guard)
 
 `database_scope=production|historical|combined` where appropriate. Detail rejects `combined`; historical is read-only. No admin delete routes for core leads/bookings/customers — use public v1 writes so sheet sync stays owned by domain services. Observability deletes are the explicit exception.
 
@@ -122,7 +123,7 @@ Public v1 extras (still behind the v1 guard unless noted): `POST /api/v1/leadles
 
 ## Config Domain Modules (`src/config/domain/`)
 
-`constants`, `sheets`, `sources`, `cpl` / `cplRateDefinitions`, `runtime`, `googleAuth`, `googleDriveOAuth`, `googlePicker`, `sheetSync`, `granotCsv`, `granotWebhook` (secret + env-scoped lifecycle queue topic/publish guard), `observability`, `leadMessaging`, `employeeBookingMatching`, `bookingReconciliation`, `reportingLiveTest` — barrel-exported via `domain.ts`.
+`constants`, `sheets`, `sources`, `cpl` / `cplRateDefinitions`, `runtime`, `googleAuth`, `googleDriveOAuth`, `googlePicker`, `sheetSync`, `granotCsv`, `granotWebhook` (secret + env-scoped lifecycle queue topic/publish guard), `granotLifecycle` (ten processing/shadow/effect flags), `observability`, `leadMessaging`, `employeeBookingMatching`, `bookingReconciliation`, `reportingLiveTest` — barrel-exported via `domain.ts`.
 
 **`reporting`** — delivery limits/flags; import `./domain/reporting` directly (not in barrel).
 

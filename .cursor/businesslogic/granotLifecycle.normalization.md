@@ -6,7 +6,7 @@
 
 **Role:** Convert one immutable **Granot Observation Receipt** into one immutable-in-meaning **Granot Observation**. This module owns every Section 10 field, result, and issue rule. It does **not** match Leads, resolve Registry policy, write Decisions, or mutate a Lead, Booking, or Cancellation.
 
-**Stack:** callable module only. Capture, routes, and later consumers pass a receipt ID (or an already-read typed receipt). They must not normalize fields themselves. No processor, worker, or flag module exists yet.
+**Stack:** callable module only. Capture does not invoke this module. The Unit 07 Decision processor upserts an Observation when it is invoked. Routes and later consumers pass a receipt ID (or an already-read typed receipt). They must not normalize fields themselves. No consumer/drainer exists yet.
 
 ## Public interface
 
@@ -56,4 +56,5 @@
 ## Related
 
 - Capture remains receipt-only ([`granotLifecycle.capture.md`](granotLifecycle.capture.md)).
+- Decision processor may upsert an Observation when invoked ([`granotLifecycle.processor.md`](granotLifecycle.processor.md)).
 - HTTP automation still mutates directly ([`granotHttpCollector.service.md`](granotHttpCollector.service.md)).
