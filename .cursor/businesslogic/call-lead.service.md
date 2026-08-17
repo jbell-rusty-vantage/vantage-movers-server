@@ -97,7 +97,7 @@ Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 
 ## Lifecycle revision
 
-`domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical compare-and-swap / `EntityChange` enforcement is incomplete until Unit 11. Lead Job Number remains non-unique.
+`domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical create/update/delete routes persist an append-only `EntityChange` and stamp `last_change_*` in the executor transaction. Lead Job Number remains non-unique.
 
 ## Related businesslogic
 

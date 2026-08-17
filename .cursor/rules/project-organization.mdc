@@ -95,7 +95,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - `ingestion/` — Best Relocation connection/runs/conflicts/queue worker
 - `bestRelocationSheetIngest/` — Sheet inspect/plan/apply for BR ingest
 - `employeeBookings/` — Public employee booking submit + admin booking-lead reconciliation cases
-- `domainCommands/` — Transaction-owning canonical command executor + ingest/admin adapters. See [`domainCommands.service.md`](../businesslogic/domainCommands.service.md). `EntityChange` / full outbox canonicalization remain Unit 11.
+- `domainCommands/` — Transaction-owning canonical command executor + existing write adapters + append-only `EntityChange`. See [`domainCommands.service.md`](../businesslogic/domainCommands.service.md). Later lifecycle/owner commands remain disabled.
 - `durableWork/` — Leases, checksums, actors, checkpoints for long-running jobs
 - `historicalConsolidation/` — Staged historical→production merge helpers
 

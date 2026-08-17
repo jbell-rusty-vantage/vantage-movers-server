@@ -23,7 +23,7 @@ type ScopedApiKey = {
 
 export type VantageAuthContext =
   | { kind: "secret" }
-  | { kind: "scoped_key"; scopedKeyName: string }
+  | { kind: "scoped_key"; scopedKeyName: string; scopedKeyFingerprint: string }
   | { kind: "user"; userId: string; email: string; role: ExtensionRole };
 
 type RequestWithVantageAuth = Request & {
@@ -177,7 +177,14 @@ export async function requireVantageAuth(
     sourceCompany,
   });
 
-  setVantageAuth(req, { kind: "scoped_key", scopedKeyName: matchingKey.name });
+  setVantageAuth(req, {
+    kind: "scoped_key",
+    scopedKeyName: matchingKey.name,
+    scopedKeyFingerprint: createHash("sha256")
+      .update(matchingKey.secret)
+      .digest("hex")
+      .slice(0, 32),
+  });
   return next();
 }
 

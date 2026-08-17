@@ -51,7 +51,7 @@ Production API: https://vantage-movers-main-server.vercel.app
 | [catalog.service.md](businesslogic/catalog.service.md) | `src/services/catalog/catalog.service.ts` — agents/merchants facade; mutations go through Operations Registry |
 | [customer.service.md](businesslogic/customer.service.md) | `src/services/customers/` — CRUD, cascade delete, booking-time upsert from lead/contact |
 | [testimonial.service.md](businesslogic/testimonial.service.md) | `src/services/testimonials/testimonial.service.ts` — read-only list for marketing site, ingest helpers |
-| [domainCommands.service.md](businesslogic/domainCommands.service.md) | `src/services/domainCommands/` — transaction-owning executor, four origins, stored `applied` result, post-commit finalize; Change/outbox remain Unit 11 |
+| [domainCommands.service.md](businesslogic/domainCommands.service.md) | `src/services/domainCommands/` — transaction-owning executor, existing-write adapters, append-only `EntityChange`, queued outbox atomicity, post-commit finalize; later lifecycle/owner commands remain disabled |
 | [sheetSync.service.md](businesslogic/sheetSync.service.md) | `src/services/sheetSync/` — modes, outbox (`sheet_sync_jobs`), Vercel Queue wake-up, drainer, coordinator API, tombstones, cron/admin |
 | [operationsRegistry.service.md](businesslogic/operationsRegistry.service.md) | `src/services/operationsRegistry/` — catalog/source/CPL/RC inbound-route/Granot CRM source SoR, signed owner mutations, `resolveCpl` |
 | [granotLifecycle.capture.md](businesslogic/granotLifecycle.capture.md) | `src/services/granotLifecycle/` — webhook auth, v2 receipt capture, `{ receipt_id }` wake-up; **no processing** |
@@ -59,7 +59,7 @@ Production API: https://vantage-movers-main-server.vercel.app
 | [granotLifecycle.sourcePolicy.md](businesslogic/granotLifecycle.sourcePolicy.md) | `src/services/granotLifecycle/sourcePolicy.ts` — fail-closed Registry policy resolution and seven-layer effect-gate snapshot; **no effects** |
 | [granotLifecycle.processor.md](businesslogic/granotLifecycle.processor.md) | `src/services/granotLifecycle/processor.ts` — Decision, write-once activation, historical-only job Record Link, raw-free Job/health reads; **no Lead/Booking effects** |
 | [granotLifecycle.drainer.md](businesslogic/granotLifecycle.drainer.md) | `src/services/granotLifecycle/drainer.ts` — fenced claim/lease, queue/cron drain, technical vs pending-match clocks, dead letter, Owner requeue; **no Lead/Booking effects** |
-| [granotLifecycle.revisions.md](businesslogic/granotLifecycle.revisions.md) | `src/models/granotLifecycleSchemas.ts` + `aggregateRevision.ts` — `domain_revision` / history-boundary fields and CAS primitive; canonical Change enforcement is incomplete until Unit 11 |
+| [granotLifecycle.revisions.md](businesslogic/granotLifecycle.revisions.md) | `src/models/granotLifecycleSchemas.ts` + `aggregateRevision.ts` — `domain_revision` / history-boundary fields and CAS primitive; existing adapters stamp `last_change_*` from append-only `EntityChange` |
 | [granotHttpCollector.service.md](businesslogic/granotHttpCollector.service.md) | `src/services/granotHttpCollector/` — HTTP session collector, preview/approve/apply runs; apply still mutates directly |
 
 **Not duplicated here (yet):** `employeeBookings/`, `leadMessaging/`, `reporting/`, `ingestion/` — mapped in `rules/project-organization.mdc`.

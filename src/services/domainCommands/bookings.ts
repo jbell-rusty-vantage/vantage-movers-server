@@ -1,15 +1,7 @@
+import mongoose from "mongoose";
+import { BookedLead } from "../../models/BookedLead";
 import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconciliationCase";
 import { DomainCommandExecution } from "../../models/DomainCommandExecution";
-import {
-  createBookedLeadSchema,
-  createLeadlessBookingSchema,
-} from "../../validation/v1.validation";
-import {
-  createBookedLeadInTransaction,
-  finalizeBookedLeadCreateAfterCommit,
-} from "../bookings/bookedLead.service";
-import { createLeadlessBookingInTransaction } from "../bookings/leadlessBooking.service";
-import { populateBookedLead } from "../bookings/bookedLead.service";
 import { requireBestRelocationImportSource } from "../bookings/bestRelocationImportGuard";
 import { ConflictError, NotFoundError } from "../errors";
 import { getLinkedLead } from "../leads";
@@ -17,7 +9,21 @@ import {
   resolveBookingLeadReconciliationInTransaction,
 } from "../employeeBookings/bookingLeadReconciliation.service";
 import { finalizeSheetSync } from "../sheetSync";
+import {
+  BOOKED_LEAD_CHANGE_PATHS,
+  CALL_LEAD_CHANGE_PATHS,
+  collectDocumentFieldChanges,
+  FORM_LEAD_CHANGE_PATHS,
+  persistEntityChangeMutations,
+} from "./entityChange";
 import { executeCanonicalCommandWithPostCommit } from "./idempotency";
+import {
+  runExistingCreateBookingFromLead,
+  runExistingCreateLeadlessBooking,
+  runExistingCreateReferralBooking,
+  runExistingDeleteBookedLead,
+  runExistingUpdateBookedLead,
+} from "./existingWrites";
 import type {
   CanonicalCommandContext,
   CompatibilityCanonicalCommandResult,
@@ -27,91 +33,37 @@ export async function createBookingFromLead(input: {
   data: unknown;
   context: CanonicalCommandContext;
 }): Promise<CompatibilityCanonicalCommandResult> {
-  const data = createBookedLeadSchema.parse(input.data);
-  const serviceInput = {
-    ...data,
-    ...(input.context.provenance.origin === "external_sheet_ingestion"
-      ? {
-          ingestion_source: "best_relocation_sheet" as const,
-          allow_inactive_agents: true,
-          set_primary_agent_as_receiver: true,
-          receiver_agent_source_value: `Booked Deals:${data.job_no ?? "unknown-job"}`,
-        }
-      : {}),
-  };
-  return executeCanonicalCommandWithPostCommit({
-    command_name: "createBookingFromLead",
-    context: input.context,
-    operation: async ({ session, now }) => {
-      const pending = await createBookedLeadInTransaction(
-        serviceInput,
-        { session, now },
-      );
-      return {
-        entity_refs: [
-          {
-            model: "BookedLead",
-            id: String(pending.outcome.bookingId),
-          },
-          {
-            model: data.lead_model,
-            id: data.lead_ref,
-          },
-        ],
-        warnings: pending.warnings,
-        pending,
-      };
-    },
-    finalize: async (pending) => {
-      await finalizeBookedLeadCreateAfterCommit(
-        serviceInput,
-        pending.merchant,
-        pending.warnings,
-        pending.outcome,
-      );
-    },
-  });
+  return (await runExistingCreateBookingFromLead(input)).command;
 }
 
 export async function createLeadlessBooking(input: {
   data: unknown;
   context: CanonicalCommandContext;
 }): Promise<CompatibilityCanonicalCommandResult> {
-  const data = createLeadlessBookingSchema.parse(input.data);
-  return executeCanonicalCommandWithPostCommit({
-    command_name: "createLeadlessBooking",
-    context: input.context,
-    operation: async ({ session, now }) => {
-      const pending = await createLeadlessBookingInTransaction(
-        {
-          ...data,
-          ingestion_source:
-            input.context.provenance.origin === "external_sheet_ingestion"
-              ? ("best_relocation_sheet" as const)
-              : undefined,
-        },
-        { session, now },
-      );
-      return {
-        entity_refs: [
-          {
-            model: "BookedLead",
-            id: pending.booking._id.toString(),
-          },
-        ],
-        warnings: pending.warnings,
-        pending,
-      };
-    },
-    finalize: async (pending) => {
-      await finalizeSheetSync({
-        resource: "booked_lead",
-        operation: "leadless_booking.create",
-        bookingId: pending.booking._id.toString(),
-      });
-      await populateBookedLead(pending.booking._id);
-    },
-  });
+  return (await runExistingCreateLeadlessBooking(input)).command;
+}
+
+export async function createExistingReferralBooking(input: {
+  data: unknown;
+  context: CanonicalCommandContext;
+}): Promise<CompatibilityCanonicalCommandResult> {
+  return (await runExistingCreateReferralBooking(input)).command;
+}
+
+export async function updateBookedLead(input: {
+  booking_id: string;
+  patch: Record<string, unknown>;
+  context: CanonicalCommandContext;
+}): Promise<CompatibilityCanonicalCommandResult> {
+  return (await runExistingUpdateBookedLead(input)).command;
+}
+
+export async function deleteBookedLead(input: {
+  booking_id: string;
+  cascade: boolean;
+  context: CanonicalCommandContext;
+}): Promise<CompatibilityCanonicalCommandResult> {
+  return runExistingDeleteBookedLead(input);
 }
 
 export async function attachBookingToLead(input: {
@@ -121,10 +73,14 @@ export async function attachBookingToLead(input: {
   expected_revision: number;
   context: CanonicalCommandContext;
 }): Promise<CompatibilityCanonicalCommandResult> {
+  const changeIds = [
+    new mongoose.Types.ObjectId(),
+    new mongoose.Types.ObjectId(),
+  ];
   return executeCanonicalCommandWithPostCommit({
     command_name: "attachBookingToLead",
     context: input.context,
-    operation: async ({ session, now }) => {
+    operation: async ({ session, now, command_execution_id }) => {
       if (input.context.provenance.origin === "external_sheet_ingestion") {
         const lead = await getLinkedLead(input.lead_model, input.lead_id, session);
         requireBestRelocationImportSource(
@@ -163,6 +119,12 @@ export async function attachBookingToLead(input: {
       if (!reconciliationCase) {
         throw new NotFoundError("Booking lead reconciliation case not found");
       }
+      const bookingBefore = await BookedLead.findById(input.booking_id)
+        .session(session ?? null)
+        .lean();
+      const leadBefore = (
+        await getLinkedLead(input.lead_model, input.lead_id, session)
+      ).toObject() as Record<string, unknown>;
       const jobs = await resolveBookingLeadReconciliationInTransaction(
         String(reconciliationCase._id),
         {
@@ -174,6 +136,48 @@ export async function attachBookingToLead(input: {
         actorContext(input.context),
         { session, now },
       );
+      const bookingAfter = await BookedLead.findById(input.booking_id)
+        .session(session ?? null)
+        .lean();
+      const leadAfter = (
+        await getLinkedLead(input.lead_model, input.lead_id, session)
+      ).toObject() as Record<string, unknown>;
+      const mutations = [
+        {
+          change_id: changeIds[0]!,
+          entity: { model: "BookedLead" as const, id: input.booking_id },
+          revision_before: Number(
+            (bookingBefore as { domain_revision?: number } | null)?.domain_revision ?? 0,
+          ),
+          fields: collectDocumentFieldChanges(
+            (bookingBefore as Record<string, unknown> | null) ?? null,
+            (bookingAfter as Record<string, unknown> | null) ?? null,
+            BOOKED_LEAD_CHANGE_PATHS,
+          ),
+        },
+        {
+          change_id: changeIds[1]!,
+          entity: { model: input.lead_model, id: input.lead_id },
+          revision_before: Number(
+            (leadBefore as { domain_revision?: number }).domain_revision ?? 0,
+          ),
+          fields: collectDocumentFieldChanges(
+            leadBefore,
+            leadAfter,
+            input.lead_model === "FormLead"
+              ? FORM_LEAD_CHANGE_PATHS
+              : CALL_LEAD_CHANGE_PATHS,
+          ),
+        },
+      ].filter((mutation) => mutation.fields.length > 0);
+      await persistEntityChangeMutations({
+        session,
+        now,
+        command_name: "attachBookingToLead",
+        command_execution_id,
+        context: input.context,
+        mutations,
+      });
       return {
         entity_refs: [
           { model: "BookedLead", id: input.booking_id },

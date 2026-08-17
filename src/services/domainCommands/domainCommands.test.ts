@@ -16,7 +16,14 @@ import {
   type CanonicalCommandExecutionStore,
   type StoredCanonicalCommandExecution,
 } from "./idempotency";
+import {
+  createVantageApiSecretActor,
+  createVantageScopedApiKeyActor,
+} from "./existingWriteContext";
 import { createCallLead } from "./leads";
+import {
+  VANTAGE_API_SECRET_ACTOR_ID,
+} from "./types";
 import {
   assertOwnerCommandIdempotencyKey,
   DomainCommandContextError,
@@ -262,6 +269,94 @@ test("[AC-32] observation_channel must agree with the initiator path", async () 
   );
 });
 
+test("[AC-21] compatibility API-secret and scoped-key system actors validate for vantage_admin", async () => {
+  const execute = createIdempotentCanonicalCommandExecutor({
+    store: memoryExecutionStore(new Map()),
+    connect: async () => undefined,
+    withTransaction: async (fn) => fn({} as ClientSession),
+  });
+  const secretActor = createVantageApiSecretActor("req-secret");
+  const secretApplied = await execute({
+    command_name: "createFormLead",
+    context: {
+      command_id: "cmd-secret",
+      idempotency_key: "key-secret",
+      payload_checksum: "d".repeat(64),
+      actor: secretActor,
+      initiator: secretActor,
+      provenance: {
+        origin: "vantage_admin",
+        run_id: null,
+        source_receipt_id: null,
+        source_connection_key: null,
+      },
+    },
+    operation: async () => ({
+      entity_refs: [{ model: "FormLead", id: "lead-secret" }],
+    }),
+  });
+  assert.equal(secretApplied.result.status, "applied");
+  assert.equal(secretActor.actor_id, VANTAGE_API_SECRET_ACTOR_ID);
+  const scopedActor = createVantageScopedApiKeyActor({
+    requestId: "req-scoped",
+    fingerprint: "ab".repeat(16),
+  });
+  const scopedApplied = await execute({
+    command_name: "createFormLead",
+    context: {
+      command_id: "cmd-scoped",
+      idempotency_key: "key-scoped",
+      payload_checksum: "e".repeat(64),
+      actor: scopedActor,
+      initiator: scopedActor,
+      provenance: {
+        origin: "vantage_admin",
+        run_id: null,
+        source_receipt_id: null,
+        source_connection_key: null,
+      },
+    },
+    operation: async () => ({
+      entity_refs: [{ model: "FormLead", id: "lead-scoped" }],
+    }),
+  });
+  assert.equal(scopedApplied.result.status, "applied");
+  await assert.rejects(
+    execute({
+      command_name: "createFormLead",
+      context: {
+        command_id: "cmd-forged",
+        idempotency_key: "key-forged",
+        payload_checksum: "f".repeat(64),
+        actor: {
+          actor_type: "system",
+          actor_id: "forged-system",
+          actor_label: "Forged",
+          actor_role: "system",
+          request_id: "req-forged",
+          origin: "vantage_admin",
+        },
+        initiator: {
+          actor_type: "system",
+          actor_id: "forged-system",
+          actor_label: "Forged",
+          actor_role: "system",
+          request_id: "req-forged",
+          origin: "vantage_admin",
+        },
+        provenance: {
+          origin: "vantage_admin",
+          run_id: null,
+          source_receipt_id: null,
+          source_connection_key: null,
+        },
+      },
+      operation: async () => ({ entity_refs: [] }),
+    }),
+    DomainCommandContextError,
+  );
+});
+
 test("owner idempotency key helper preserves the 8-200 printable envelope", () => {
   assertOwnerCommandIdempotencyKey("case-key-1");
   assert.throws(
@@ -295,6 +390,7 @@ test("[AC-21] transaction-bound internals do not open nested transactions or fin
         "createFormLeadInTransaction",
         "persistFormLeadUpdateInTransaction",
         "updateFormLeadInTransaction",
+        "deleteFormLeadInTransaction",
       ],
     },
     {
@@ -303,6 +399,7 @@ test("[AC-21] transaction-bound internals do not open nested transactions or fin
         "createCallLeadInTransaction",
         "persistCallLeadUpdateInTransaction",
         "updateCallLeadInTransaction",
+        "deleteCallLeadInTransaction",
       ],
     },
     {
@@ -310,6 +407,8 @@ test("[AC-21] transaction-bound internals do not open nested transactions or fin
       names: [
         "createBookedLeadInTransaction",
         "persistBookedLeadCreateInTransaction",
+        "updateBookedLeadInTransaction",
+        "deleteBookedLeadInTransaction",
       ],
     },
     {
@@ -324,7 +423,17 @@ test("[AC-21] transaction-bound internals do not open nested transactions or fin
       names: [
         "createCancelledLeadInTransaction",
         "persistCancelledLeadCreateInTransaction",
+        "updateCancelledLeadInTransaction",
+        "deleteCancelledLeadInTransaction",
       ],
+    },
+    {
+      file: path.join(__dirname, "../bookings/referralBooking.service.ts"),
+      names: ["createReferralBookingInTransaction"],
+    },
+    {
+      file: path.join(__dirname, "../bookings/bookedLeadFromSource.service.ts"),
+      names: ["createBookedLeadFromSourceInTransaction"],
     },
     {
       file: path.join(
@@ -341,9 +450,10 @@ test("[AC-21] transaction-bound internals do not open nested transactions or fin
     const source = await readFile(entry.file, "utf8");
     for (const name of entry.names) {
       const body = extractExportedFunction(source, name);
-      assert.doesNotMatch(body, /withTransaction\s*\(/);
-      assert.doesNotMatch(body, /runSheetSyncWrite\s*\(/);
-      assert.doesNotMatch(body, /finalizeSheetSync(?:Delete)?\s*\(/);
+      const transactionBody = body.split(/finalize:\s*async/)[0] ?? body;
+      assert.doesNotMatch(transactionBody, /withTransaction\s*\(/);
+      assert.doesNotMatch(transactionBody, /runSheetSyncWrite\s*\(/);
+      assert.doesNotMatch(transactionBody, /finalizeSheetSync(?:Delete)?\s*\(/);
     }
   }
 });
@@ -460,6 +570,61 @@ function extractExportedFunction(source: string, name: string): string {
   const next = source.indexOf("\nexport async function ", start + 1);
   return next === -1 ? source.slice(start) : source.slice(start, next);
 }
+
+test("[AC-32] existing write context factory hashes payload and never stores credentials", () => {
+  const secretActor = createVantageApiSecretActor("req-1");
+  assert.equal(secretActor.actor_id, VANTAGE_API_SECRET_ACTOR_ID);
+  assert.equal(secretActor.origin, "vantage_admin");
+  const scoped = createVantageScopedApiKeyActor({
+    requestId: "req-2",
+    fingerprint: "ab".repeat(16),
+  });
+  assert.match(scoped.actor_id, /^vantage-scoped-api-key:[a-f0-9]{32}$/);
+  assert.equal(JSON.stringify(scoped).includes("super-secret-key"), false);
+});
+
+test("[AC-32] v1 write routes enter existing adapters and do not patch models", async () => {
+  const source = await readFile(
+    path.join(__dirname, "../../routes/v1.routes.ts"),
+    "utf8",
+  );
+  for (const name of [
+    "runExistingCreateFormLead",
+    "runExistingCreateCallLead",
+    "runExistingUpdateSourceOwnedLead",
+    "runExistingCreateBookingFromLead",
+    "runExistingCreateBookedLeadFromSource",
+    "runExistingCreateReferralBooking",
+    "runExistingCreateLeadlessBooking",
+    "runExistingUpdateBookedLead",
+    "runExistingCreateCancellation",
+    "runExistingUpdateCancelledLead",
+    "runExistingDeleteFormLead",
+    "runExistingDeleteCallLead",
+    "runExistingDeleteBookedLead",
+    "runExistingDeleteCancelledLead",
+    "existingWriteContextFromRequest",
+  ]) {
+    assert.match(source, new RegExp(name));
+  }
+  assert.doesNotMatch(source, /FormLead\.findByIdAndUpdate|BookedLead\.create\(/);
+  assert.doesNotMatch(
+    source,
+    /synchronizeLeadFromGranot|createLeadFromGranot|establishGranotRecordLink|correctGranotRecordLink/,
+  );
+});
+
+test("[AC-32] existing write adapters persist Changes inside the executor and keep later commands disabled", async () => {
+  const source = await readFile(path.join(__dirname, "existingWrites.ts"), "utf8");
+  assert.match(source, /persistEntityChangeMutations|persistPlannedMutations/);
+  assert.match(source, /executeCanonicalCommandWithPostCommit/);
+  assert.doesNotMatch(source, /withTransaction\s*\(/);
+  assert.doesNotMatch(source, /runSheetSyncWrite\s*\(/);
+  assert.doesNotMatch(
+    source,
+    /synchronizeLeadFromGranot|createLeadFromGranot|updateBooking\b|establishGranotRecordLink/,
+  );
+});
 
 function memoryExecutionStore(
   records: Map<string, StoredCanonicalCommandExecution>,

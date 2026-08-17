@@ -93,7 +93,8 @@ export type DurableActor =
         | "external_sheet_ingestion"
         | "reporting_projection"
         | "granot_lifecycle"
-        | "ringcentral";
+        | "ringcentral"
+        | "vantage_admin";
     };
 
 export type DurableAuditEnvelope = {

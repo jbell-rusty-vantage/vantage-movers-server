@@ -75,7 +75,7 @@ Mode-aware boundary for all domain callers.
 
 **Transaction rule:** Keep Google Sheets, queue publish, CRM, and email **outside** `runSheetSyncWrite` callback. Only Mongo + outbox belong in the txn.
 
-**Canonical commands:** `executeIdempotentCanonicalCommand` owns the Mongo transaction and `DomainCommandExecution` persist. `runSheetSyncWrite` no longer completes commands (ALS / `persistActiveCanonicalCommandExecution` are gone). Canonical adapters persist Sheet Sync intent inside the executor session and call `finalizeSheetSync` only after a successful non-replay commit. Public legacy services may still wrap their own writes with `runSheetSyncWrite`. `EntityChange` and complete outbox atomicity remain Unit 11.
+**Canonical commands:** `executeIdempotentCanonicalCommand` owns the Mongo transaction and `DomainCommandExecution` persist. `runSheetSyncWrite` no longer completes commands (ALS / `persistActiveCanonicalCommandExecution` are gone). Canonical adapters persist Sheet Sync intent and `EntityChange` rows inside the executor session and call `finalizeSheetSync` only after a successful non-replay commit. A no-op or replay writes no outbox row and does not finalize. Public legacy services may still wrap their own writes with `runSheetSyncWrite`. Lifecycle callers remain disabled.
 
 **Legacy path:** `scheduleFullSheetSyncProcess` → `waitUntil` → `runFullSheetSyncProcess` → `sheetSyncSourceLookup` → `googleSheets.service` + `syncAndStore`.
 

@@ -24,6 +24,66 @@ function referralBookingJob(bookingId: string): FullSheetSyncJob {
   };
 }
 
+export async function createReferralBookingInTransaction(
+  input: CreateReferralBookingInput,
+  tx: { session?: import("mongoose").ClientSession; now: Date },
+) {
+  const jobNo = input.job_no.trim();
+  const existingBooking = await BookedLead.findOne({ job_no: jobNo })
+    .session(tx.session ?? null)
+    .select("_id")
+    .lean()
+    .exec();
+  if (existingBooking) {
+    throw new V1ServiceError("A booking already exists with this job number", 409);
+  }
+  const allocationInputs = deriveBookedLeadAgentAllocations({
+    agent: input.agent,
+    split_agent: input.split_agent,
+    binder_amount: input.total_binder_amount,
+  });
+  const agent_allocations = await resolveAgentAllocations(allocationInputs);
+  const merchant = await resolveActiveMerchantName(input.merchant);
+  const warnings = buildBookedLeadWarnings(agent_allocations);
+  const depositAmount = input.deposit_amount;
+  const customerName = input.customer_name.trim();
+  const customer = await upsertCustomerFromBookingContact(
+    { customer_name: customerName, customer_phone: input.customer_phone },
+    tx.session,
+  );
+  const created = new BookedLead({
+    timestamp: toFloridaTimestamp(tx.now),
+    book_date: input.book_date,
+    job_no: jobNo,
+    customer_name: customerName,
+    ...(customer ? { customer: customer._id } : {}),
+    agent_allocations,
+    total_binder_amount: input.total_binder_amount,
+    deposit_amount: depositAmount,
+    merchant,
+    source: REFERRAL_SOURCE,
+    is_referral_booking: true,
+    local: input.local,
+    over_2000: depositAmount > 2000,
+    over_4000: depositAmount > 4000,
+  });
+  await created.save({ session: tx.session });
+  await persistSheetSyncIntent(referralBookingJob(created._id.toString()), tx.session);
+  return {
+    booking: created,
+    warnings,
+    finalize: async () => {
+      await finalizeSheetSync(referralBookingJob(created._id.toString()));
+      return {
+        booking: await populateBookedLead(created._id),
+        message: "Referral booking created.",
+        warnings,
+        total_binder_amount: created.total_binder_amount,
+      };
+    },
+  };
+}
+
 export async function createReferralBooking(input: CreateReferralBookingInput) {
   const jobNo = input.job_no.trim();
   const existingBooking = await BookedLead.findOne({ job_no: jobNo }).select("_id").lean().exec();

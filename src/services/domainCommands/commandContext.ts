@@ -6,6 +6,8 @@ import {
   GRANOT_LIFECYCLE_PROCESSOR_ACTOR_LABEL,
   GRANOT_WEBHOOK_INITIATOR_ID,
   RINGCENTRAL_CALL_INGEST_ACTOR_ID,
+  VANTAGE_API_SECRET_ACTOR_ID,
+  VANTAGE_SCOPED_API_KEY_ACTOR_PREFIX,
 } from "./types";
 import { verifyTrustedRingCentralTelephonyProvenance } from "./ringcentralProvenance";
 
@@ -81,13 +83,42 @@ function assertExternalSheetIngestionContext(
 
 function assertVantageAdminContext(context: CanonicalCommandContext): void {
   if (
-    !isTrustedHumanActor(context.actor, "vantage_admin") ||
-    !isTrustedHumanActor(context.initiator, "vantage_admin")
+    isTrustedHumanActor(context.actor, "vantage_admin") &&
+    isTrustedHumanActor(context.initiator, "vantage_admin")
   ) {
-    throw new DomainCommandContextError(
-      "Admin commands require trusted owner/admin actor and initiator snapshots.",
-    );
+    return;
   }
+  if (
+    isCompatibilitySystemActor(context.actor) &&
+    isCompatibilitySystemActor(context.initiator) &&
+    context.actor.actor_id === context.initiator.actor_id &&
+    context.actor.request_id === context.initiator.request_id
+  ) {
+    return;
+  }
+  throw new DomainCommandContextError(
+    "Admin commands require trusted owner/admin actor and initiator snapshots.",
+  );
+}
+
+function isCompatibilitySystemActor(
+  actor: CanonicalCommandContext["actor"],
+): boolean {
+  if (
+    actor.actor_type !== "system" ||
+    actor.actor_role !== "system" ||
+    actor.origin !== "vantage_admin" ||
+    !actor.request_id.trim()
+  ) {
+    return false;
+  }
+  if (actor.actor_id === VANTAGE_API_SECRET_ACTOR_ID) {
+    return true;
+  }
+  return new RegExp(
+    `^${VANTAGE_SCOPED_API_KEY_ACTOR_PREFIX}[a-f0-9]{16,64}$`,
+    "i",
+  ).test(actor.actor_id);
 }
 
 function assertGranotLifecycleContext(context: CanonicalCommandContext): void {

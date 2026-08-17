@@ -85,7 +85,7 @@ Job: `resource: source_lead`, `operation: form_lead.create` | `form_lead.update`
 | Form Fill | One-way at create: new non-duplicate Form Lead marks existing Call Leads; not run for duplicates |
 | Helpers | Do not bypass Source Company, location, duplicate, or Sheet Sync scheduling |
 | `sms_consent` | Boolean or `"true"`/`"false"` at the route; only parsed `true` creates a Lead Message. Duplicate leads record a skipped message; false/missing creates no message. |
-| Lifecycle revision | `domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical compare-and-swap / `EntityChange` enforcement is incomplete until Unit 11. |
+| Lifecycle revision | `domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical create/update/delete routes persist an append-only `EntityChange` and stamp `last_change_*` in the executor transaction. |
 
 Lead Messaging defaults to disabled. Active sends require an E.164 destination
 matching `LEAD_MESSAGING_ALLOWED_COUNTRY_PREFIXES` (default `+1`), respect the

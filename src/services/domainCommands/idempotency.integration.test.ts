@@ -420,8 +420,10 @@ function replicaStore() {
       };
       applied_at: Date;
       session: mongoose.ClientSession;
+      execution_id: mongoose.Types.ObjectId;
     }) {
       const execution = new DomainCommandExecution({
+        _id: input.execution_id,
         origin: input.context.provenance.origin,
         idempotency_key: input.context.idempotency_key,
         command_id: input.context.command_id,

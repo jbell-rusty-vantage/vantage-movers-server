@@ -12,14 +12,14 @@
 | Field | Rule |
 |-------|------|
 | `domain_revision` | Required nonnegative integer. New documents default to `0`. Revision `0` means no authoritative post-boundary lifecycle change has been recorded. |
-| `last_change_id` / `last_changed_at` | Optional pair. Both absent until Unit 11 records a real `EntityChange`. One-sided pairs fail validation. |
+| `last_change_id` / `last_changed_at` | Optional pair. Both absent until an existing canonical adapter records a real `EntityChange`. One-sided pairs fail validation. |
 | `change_history_started_at` | Honest start-of-history boundary. New documents receive trusted server creation time. Clients cannot supply it. Write-once outside the reviewed migration seam. |
 
 Public/admin/trusted DTOs reject these fields. Historical collections are not write targets. Historical consolidation plans omit revision metadata; production schema defaults may attach `domain_revision: 0` and a server history boundary at insert validation without inventing `last_change_*` or `EntityChange` rows.
 
 ## Compare-and-swap primitive
 
-Later authoritative mutations must filter `{ _id, domain_revision: expected }` and increment once. A zero-row filter is `DOMAIN_REVISION_CONFLICT`. Unit 09 supplies the primitive only. Units 10–11 own command replay, `EntityChange`, and adapter canonicalization.
+Later authoritative mutations must filter `{ _id, domain_revision: expected }` and increment once. A zero-row filter is `DOMAIN_REVISION_CONFLICT`. Existing adapters stamp this pair from the persisted `EntityChange`. Accepted-Observation and owner-case commands remain later units.
 
 ## Migrations
 

@@ -16,8 +16,8 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 | 08 | Durable claim service, drainer, queue/cron, retries, dead letter, and manual requeue | 04, 07 | complete | complete | [UNIT-08-COMPLETION.md](completion-reports/UNIT-08-COMPLETION.md) |
 | 09 | Aggregate revision fields and additive revision migrations | 01 | complete | complete | [UNIT-09-COMPLETION.md](completion-reports/UNIT-09-COMPLETION.md) |
 | 10 | Transaction-owning canonical command executor and idempotent replay | 09 | complete | complete | [UNIT-10-COMPLETION.md](completion-reports/UNIT-10-COMPLETION.md) |
-| 11 | Entity Change, outbox atomicity, and canonicalization of existing write adapters | 09–10 | ready | complete | — |
-| 12 | Lead provenance schema parity, immutable snapshots, and trusted validators | 05, 09–11 | blocked | complete | — |
+| 11 | Entity Change, outbox atomicity, and canonicalization of existing write adapters | 09–10 | complete | complete | [UNIT-11-COMPLETION.md](completion-reports/UNIT-11-COMPLETION.md) |
+| 12 | Lead provenance schema parity, immutable snapshots, and trusted validators | 05, 09–11 | ready | complete | — |
 | 13 | Lead provenance and index migration suite | 12 | blocked | complete | — |
 | 14 | Source policy resolution and source-scoped identity ladders | 04–07, 12–13 | blocked | complete | — |
 | 15 | Temporal ordering, desired-state planning, and shadow processor orchestration | 07–08, 14 | blocked | complete | — |
@@ -44,12 +44,12 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 ## Current ready queue
 
 - Open review findings live in [`warnings/`](warnings/README.md). They do not block the next sequential unit unless repository re-verification shows an applicable finding has become material.
-- Units 04–10 are complete on `granot-lead-lifecycle`. Re-verify `UNIT-10-COMPLETION.md` and repository state before starting the next sequential unit.
+- Units 04–11 are complete on `granot-lead-lifecycle`. Re-verify `UNIT-11-COMPLETION.md` and repository state before starting the next sequential unit.
 - Unit 08 completes S06 and removes Unit 15's durable-work prerequisite. Unit 15 still waits for Unit 14 and its other approved prerequisites.
 - Unit 09 lands aggregate revision tokens, the CAS primitive, and revision-only Lead/Booking/Cancellation backfill. Units 12–13 must preserve those revisions and the persisted history boundary.
-- Unit 10 lands the transaction-owning canonical executor, four-origin validation, stored `applied` replay, and Decision/revision/Command rollback. Full Change/outbox/S07 remains Unit 11.
-- Unit 11 is implementation-ready and is the next sequential shared-branch implementation target. Re-verify `UNIT-10-COMPLETION.md` and repository state before starting it.
-- Unit 12's contract is complete. It remains blocked until Units 09–11 are implemented and verified; Unit 05 is already complete.
+- Unit 10 lands the transaction-owning canonical executor, four-origin validation, stored `applied` replay, and Decision/revision/Command rollback.
+- Unit 11 completes S07: append-only `EntityChange`, queued outbox atomicity, and canonicalization of existing write adapters. Later lifecycle/owner commands remain disabled.
+- Unit 12 is implementation-ready and is the next sequential shared-branch implementation target. Re-verify `UNIT-11-COMPLETION.md` and Unit 05 evidence before starting it.
 - Unit 13's contract is complete. It remains blocked until Unit 12 is implemented and verified. Its completion will finish S08 and unblock Unit 14.
 - Unit 14's contract is complete. It remains blocked until Units 12–13 are implemented and verified and the shared-branch sequence reaches it; Units 04–07 are already complete.
 - Unit 15's contract is complete. It remains blocked until Unit 14 is implemented and verified; Units 07–08 are already complete.

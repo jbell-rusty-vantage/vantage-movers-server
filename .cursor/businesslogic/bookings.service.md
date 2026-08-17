@@ -170,7 +170,7 @@ Booking delete: clears `booked`, `cancelled`, threshold flags on lead. Legacy pa
 
 ## Lifecycle revision
 
-`domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical compare-and-swap / `EntityChange` enforcement is incomplete until Unit 11. One Booking per normalized Job Number remains the unique partial index contract; collisions block unique-index apply.
+`domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical Booking/leadless/Referral create/update/delete adapters persist append-only `EntityChange` rows and stamp `last_change_*` in the executor transaction. One Booking per normalized Job Number remains the unique partial index contract; collisions block unique-index apply. Later Granot owner `updateBooking` and lifecycle Referral commands remain disabled.
 
 ## Related rules
 

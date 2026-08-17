@@ -42,6 +42,12 @@ import {
   runSheetSyncWrite,
   type FullSheetSyncJob,
 } from "../sheetSync";
+import {
+  BOOKED_LEAD_CHANGE_PATHS,
+  CALL_LEAD_CHANGE_PATHS,
+  collectDocumentFieldChanges,
+  FORM_LEAD_CHANGE_PATHS,
+} from "../domainCommands/entityChange";
 import { V1ServiceError } from "../v1ServiceError";
 import { recordOperationalEvent } from "../observability";
 import {
@@ -476,6 +482,127 @@ function bookingEventContext(
   };
 }
 
+export async function updateBookedLeadInTransaction(
+  id: string,
+  input: UpdateBookedLeadInput,
+  tx: { session?: ClientSession; now: Date },
+) {
+  const booking = await BookedLead.findById(id).session(tx.session ?? null);
+  if (!booking) {
+    throw new V1ServiceError("Booked lead not found", 404);
+  }
+  if (booking.is_referral_booking) {
+    throw new V1ServiceError("Referral booking edits are not supported yet", 409);
+  }
+  if (booking.is_leadless_booking) {
+    throw new V1ServiceError("Leadless booking edits are not supported yet", 409);
+  }
+  if (!booking.lead_ref || !booking.lead_model) {
+    throw new V1ServiceError("Booked lead is missing linked lead metadata", 409);
+  }
+  const before = booking.toObject() as Record<string, unknown>;
+  const { agent_allocations, agent_allocation_mode, total_binder_amount, ...bookingInput } = input;
+  const canonicalBookingInput = { ...bookingInput };
+  if (input.merchant !== undefined) {
+    canonicalBookingInput.merchant = await resolveActiveMerchantName(input.merchant);
+  }
+  Object.assign(booking, canonicalBookingInput);
+  if (input.deposit_amount !== undefined) {
+    booking.over_2000 = input.deposit_amount > 2000;
+    booking.over_4000 = input.deposit_amount > 4000;
+  }
+  const warnings: string[] = [];
+  if (agent_allocations) {
+    const resolvedAllocations = await resolveAgentAllocations(agent_allocations);
+    const nextAllocations =
+      agent_allocation_mode === "replace"
+        ? resolvedAllocations
+        : patchAgentAllocations(booking.agent_allocations ?? [], resolvedAllocations);
+    booking.set("agent_allocations", nextAllocations);
+    warnings.push(...buildBookedLeadWarnings(resolvedAllocations));
+  }
+  if (agent_allocations || total_binder_amount !== undefined) {
+    booking.total_binder_amount = resolveTotalBinderAmount(
+      booking.agent_allocations ?? [],
+      total_binder_amount,
+    );
+  }
+  const leadModel = booking.lead_model as LeadModelName;
+  const lead = await getLinkedLead(leadModel, booking.lead_ref!.toString(), tx.session);
+  const leadBefore = lead.toObject() as Record<string, unknown>;
+  booking.local = input.local ?? booking.local ?? lead.local;
+  const after = booking.toObject() as Record<string, unknown>;
+  const bookingFields = collectDocumentFieldChanges(
+    before,
+    after,
+    BOOKED_LEAD_CHANGE_PATHS,
+  );
+  if (bookingFields.length === 0) {
+    return {
+      noop: true as const,
+      result: {
+        booking: await populateBookedLead(booking._id),
+        message: "Booked lead updated.",
+        warnings,
+        total_binder_amount: booking.total_binder_amount,
+      },
+      warnings,
+      mutations: [],
+      job: undefined,
+    };
+  }
+  await booking.save({ session: tx.session });
+  await mirrorBookingToLead(
+    lead,
+    leadModel,
+    booking._id,
+    booking.over_2000,
+    booking.over_4000,
+    booking.local as LocalType | undefined,
+    undefined,
+    tx.session,
+  );
+  const job: FullSheetSyncJob = {
+    resource: "booking_chain",
+    operation: "booked_lead.update",
+    bookingId: booking._id.toString(),
+  };
+  await persistSheetSyncIntent(job, tx.session);
+  const leadFields = collectDocumentFieldChanges(
+    leadBefore,
+    lead.toObject() as Record<string, unknown>,
+    leadModel === "FormLead" ? FORM_LEAD_CHANGE_PATHS : CALL_LEAD_CHANGE_PATHS,
+  );
+  const mutations = [
+    {
+      entity: { model: "BookedLead" as const, id: id },
+      revision_before: Number(before.domain_revision ?? 0),
+      fields: bookingFields,
+    },
+    ...(leadFields.length > 0
+      ? [
+          {
+            entity: { model: leadModel, id: booking.lead_ref!.toString() },
+            revision_before: Number(leadBefore.domain_revision ?? 0),
+            fields: leadFields,
+          },
+        ]
+      : []),
+  ];
+  return {
+    noop: false as const,
+    result: {
+      booking: await populateBookedLead(booking._id),
+      message: "Booked lead updated.",
+      warnings,
+      total_binder_amount: booking.total_binder_amount,
+    },
+    warnings,
+    mutations,
+    job,
+  };
+}
+
 export async function updateBookedLead(id: string, input: UpdateBookedLeadInput) {
   const booking = await BookedLead.findById(id);
   if (!booking) {
@@ -662,6 +789,146 @@ export async function deleteBookedLead(id: string, cascade: boolean) {
  * responses. Throws via `orFail` to propagate the standard mongoose error
  * when the document disappears between writes.
  */
+export async function deleteBookedLeadInTransaction(
+  id: string,
+  cascade: boolean,
+  tx: { session?: ClientSession; now: Date },
+) {
+  const booking = await BookedLead.findById(id).session(tx.session ?? null);
+  if (!booking) {
+    throw new V1ServiceError("Booked lead not found", 404);
+  }
+  const hasLinkedLead = Boolean(booking.lead_ref && booking.lead_model);
+  if (!hasLinkedLead && !booking.is_referral_booking && !booking.is_leadless_booking) {
+    throw new V1ServiceError("Booked lead is missing linked lead metadata", 409);
+  }
+  if (booking.cancelled && !cascade) {
+    throw new V1ServiceError(
+      "Booked lead has a cancellation; pass cascade=true to delete dependents",
+      409,
+    );
+  }
+  const leadModel = hasLinkedLead ? (booking.lead_model as LeadModelName) : undefined;
+  const leadId = hasLinkedLead ? booking.lead_ref!.toString() : undefined;
+  const mutations: Array<{
+    entity: { model: "FormLead" | "CallLead" | "BookedLead" | "CancelledLead"; id: string };
+    revision_before: number;
+    fields: Array<{ path: string; before?: unknown; after?: unknown }>;
+    deleted?: boolean;
+  }> = [];
+  const entity_refs: Array<{ model: string; id: string }> = [
+    { model: "BookedLead", id },
+  ];
+  const cancellation =
+    booking.cancelled && cascade
+      ? await CancelledLead.findById(booking.cancelled).session(tx.session ?? null)
+      : null;
+  const capturedCancellation = cancellation?.toObject();
+  const capturedBooking = booking.toObject();
+  if (cancellation) {
+    if (getSheetSyncMode() === "queued") {
+      const cancellationTargets = buildTombstonePreviousTargets(cancellation.sheet_sync);
+      await enqueueSheetSyncTombstone(
+        {
+          resource: "delete_cancelled_lead",
+          entityModel: "CancelledLead",
+          entityId: cancellation._id.toString(),
+          operation: "delete_booked_lead",
+          tombstone: {
+            mongo_id: cancellation._id.toString(),
+            previous_targets: cancellationTargets,
+            linked_booking_id: id,
+          },
+        },
+        {
+          session: tx.session,
+          targetHints: cancellationTargets.map((target) => target.target),
+        },
+      );
+    }
+    mutations.push({
+      entity: { model: "CancelledLead", id: cancellation._id.toString() },
+      revision_before: Number(cancellation.domain_revision ?? 0),
+      fields: [{ path: "$deleted" }],
+      deleted: true,
+    });
+    entity_refs.push({ model: "CancelledLead", id: cancellation._id.toString() });
+    await cancellation.deleteOne({ session: tx.session });
+  }
+  if (leadModel && leadId) {
+    const lead = await getLinkedLead(leadModel, leadId, tx.session);
+    const leadBefore = Number(lead.domain_revision ?? 0);
+    await clearBookingFromLead(leadModel, leadId, {
+      session: tx.session,
+      syncAfterClear: false,
+    });
+    mutations.push({
+      entity: { model: leadModel, id: leadId },
+      revision_before: leadBefore,
+      fields: [{ path: "booked" }],
+    });
+    entity_refs.push({ model: leadModel, id: leadId });
+    if (getSheetSyncMode() === "queued") {
+      await enqueueSheetSyncJob(
+        {
+          resource: "source_lead",
+          operation: "delete_booked_lead",
+          leadModel,
+          leadId,
+        },
+        { session: tx.session },
+      );
+    }
+  }
+  if (getSheetSyncMode() === "queued") {
+    const bookingTargets = buildTombstonePreviousTargets(booking.sheet_sync);
+    await enqueueSheetSyncTombstone(
+      {
+        resource: "delete_booked_lead",
+        entityModel: "BookedLead",
+        entityId: id,
+        operation: "delete_booked_lead",
+        tombstone: {
+          mongo_id: id,
+          previous_targets: bookingTargets,
+          linked_lead_id: leadId,
+          linked_lead_model: leadModel,
+        },
+      },
+      {
+        session: tx.session,
+        targetHints: bookingTargets.map((target) => target.target),
+      },
+    );
+  }
+  mutations.push({
+    entity: { model: "BookedLead", id },
+    revision_before: Number(booking.domain_revision ?? 0),
+    fields: [{ path: "$deleted" }],
+    deleted: true,
+  });
+  await booking.deleteOne({ session: tx.session });
+  return {
+    mutations,
+    entity_refs,
+    finalize: async () => {
+      if (getSheetSyncMode() === "queued") {
+        await finalizeSheetSyncDelete();
+        return;
+      }
+      if (capturedCancellation) {
+        await deleteCancelledLeadFromSheets(
+          capturedCancellation as Parameters<typeof deleteCancelledLeadFromSheets>[0],
+        );
+      }
+      if (leadModel && leadId) {
+        await clearBookingFromLead(leadModel, leadId);
+      }
+      await deleteBookedLeadFromSheets(capturedBooking as typeof booking);
+    },
+  };
+}
+
 export async function populateBookedLead(id: mongoose.Types.ObjectId) {
   return BookedLead.findById(id).populate("customer").populate("agent_allocations.agent").orFail();
 }

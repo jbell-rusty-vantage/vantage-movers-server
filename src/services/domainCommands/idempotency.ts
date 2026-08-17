@@ -1,4 +1,5 @@
 import type { ClientSession } from "mongoose";
+import mongoose from "mongoose";
 import { connectMongo, withTransaction } from "../../db";
 import {
   DomainCommandExecution,
@@ -35,6 +36,7 @@ export interface CanonicalCommandExecutionStore {
     result: StoredCanonicalCommandResult;
     applied_at: Date;
     session: ClientSession;
+    execution_id: import("mongoose").Types.ObjectId;
   }): Promise<void>;
 }
 
@@ -63,6 +65,9 @@ export function createIdempotentCanonicalCommandExecutor(input: {
     const context = normalizeCommandContext(command.context);
     await input.connect();
     const now = clock();
+    const commandExecutionId = mongoose.Types.ObjectId.isValid(context.command_id)
+      ? new mongoose.Types.ObjectId(context.command_id)
+      : new mongoose.Types.ObjectId();
 
     let outcome: CanonicalCommandExecutionOutcome;
     try {
@@ -77,7 +82,11 @@ export function createIdempotentCanonicalCommandExecutor(input: {
           return { result: existing, replayed: true };
         }
 
-        const evidence = await command.operation({ session, now });
+        const evidence = await command.operation({
+          session,
+          now,
+          command_execution_id: commandExecutionId,
+        });
         const result = toStoredResult(evidence);
         await input.store.persist({
           command_name: command.command_name,
@@ -85,6 +94,7 @@ export function createIdempotentCanonicalCommandExecutor(input: {
           result,
           applied_at: now,
           session,
+          execution_id: commandExecutionId,
         });
         return { result, replayed: false };
       });
@@ -127,6 +137,7 @@ const mongooseExecutionStore: CanonicalCommandExecutionStore = {
   },
   async persist(input) {
     const execution = new DomainCommandExecution({
+      _id: input.execution_id,
       origin: input.context.provenance.origin,
       idempotency_key: input.context.idempotency_key,
       command_id: input.context.command_id,

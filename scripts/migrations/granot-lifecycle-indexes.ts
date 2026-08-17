@@ -59,8 +59,15 @@ import {
   findBookedLeadNormalizedJobCollisions,
   orderedBookedLeadIndexCreates,
   verifyBookedLeadNormalizedJobIndexDefinitions,
+  findEntityChangeRevisionCollisions,
+  orderedEntityChangeIndexCreates,
+  verifyEntityChangeIndexDefinitions,
   type DeclaredMongoIndex,
 } from "./granot-lifecycle-indexes.lib.js";
+import {
+  ENTITY_CHANGE_COLLECTION,
+  ENTITY_CHANGE_INDEXES,
+} from "../../src/models/EntityChange.js";
 import { BOOKED_LEAD_NORMALIZED_JOB_INDEX } from "../../src/models/BookedLead.js";
 import {
   SYNCHRONIZATION_DECISION_COLLECTION,
@@ -225,6 +232,29 @@ async function loadActiveRecordLinkRows(): Promise<
   }));
 }
 
+async function loadEntityChangeRevisionRows(): Promise<
+  Array<{
+    _id: string;
+    entity_model?: unknown;
+    entity_id?: unknown;
+    revision_after?: unknown;
+  }>
+> {
+  const collection = mongoose.connection.db?.collection(ENTITY_CHANGE_COLLECTION);
+  if (!collection) {
+    return [];
+  }
+  const documents = await collection
+    .find({}, { projection: { entity: 1, revision_after: 1 } })
+    .toArray();
+  return documents.map((document) => ({
+    _id: String(document._id),
+    entity_model: (document as { entity?: { model?: unknown } }).entity?.model,
+    entity_id: (document as { entity?: { id?: unknown } }).entity?.id,
+    revision_after: (document as { revision_after?: unknown }).revision_after,
+  }));
+}
+
 async function loadBookedLeadNormalizedJobRows(): Promise<
   Array<{ _id: string; normalized_job_no?: unknown }>
 > {
@@ -275,6 +305,9 @@ async function main(): Promise<void> {
   const bookedLeadRows = await loadBookedLeadNormalizedJobRows();
   const bookedLeadCollisions = findBookedLeadNormalizedJobCollisions(bookedLeadRows);
   const bookedLeadOrdered = orderedBookedLeadIndexCreates();
+  const entityChangeRows = await loadEntityChangeRevisionRows();
+  const entityChangeCollisions = findEntityChangeRevisionCollisions(entityChangeRows);
+  const entityChangeOrdered = orderedEntityChangeIndexCreates();
   let created: string[] = [];
   let verify: ReturnType<typeof verifyReceiptIndexDefinitions> | undefined;
   let observationVerify: ReturnType<typeof verifyObservationIndexDefinitions> | undefined;
@@ -284,6 +317,7 @@ async function main(): Promise<void> {
   let activationVerify: ReturnType<typeof verifyGranotLifecycleActivationIndexDefinitions> | undefined;
   let recordLinkVerify: ReturnType<typeof verifyGranotRecordLinkIndexDefinitions> | undefined;
   let bookedLeadVerify: ReturnType<typeof verifyBookedLeadNormalizedJobIndexDefinitions> | undefined;
+  let entityChangeVerify: ReturnType<typeof verifyEntityChangeIndexDefinitions> | undefined;
 
   if (mode === "apply") {
     created = await createIndexes(GRANOT_OBSERVATION_RECEIPT_COLLECTION, ordered.nonUnique);
@@ -295,6 +329,7 @@ async function main(): Promise<void> {
       ...(await createIndexes(SYNCHRONIZATION_DECISION_COLLECTION, decisionOrdered.nonUnique)),
       ...(await createIndexes(GRANOT_LIFECYCLE_ACTIVATION_COLLECTION, activationOrdered.nonUnique)),
       ...(await createIndexes(GRANOT_RECORD_LINK_COLLECTION, recordLinkOrdered.nonUnique)),
+      ...(await createIndexes(ENTITY_CHANGE_COLLECTION, entityChangeOrdered.nonUnique)),
     ];
     if (collisions.length > 0 || observationCollisions.length > 0) {
       const manifest = buildManifest({
@@ -320,7 +355,8 @@ async function main(): Promise<void> {
     if (
       decisionCollisions.length > 0 ||
       activationCollisions.length > 0 ||
-      recordLinkCollisions.length > 0
+      recordLinkCollisions.length > 0 ||
+      entityChangeCollisions.length > 0
     ) {
       const manifest = buildManifest({
         databaseName,
@@ -378,6 +414,9 @@ async function main(): Promise<void> {
       ...(await createIndexes(SYNCHRONIZATION_DECISION_COLLECTION, decisionOrdered.unique)),
       ...(await createIndexes(GRANOT_LIFECYCLE_ACTIVATION_COLLECTION, activationOrdered.unique)),
       ...(await createIndexes(GRANOT_RECORD_LINK_COLLECTION, recordLinkOrdered.unique)),
+      ...(entityChangeCollisions.length === 0
+        ? await createIndexes(ENTITY_CHANGE_COLLECTION, entityChangeOrdered.unique)
+        : []),
     ];
     if (bookedLeadCollisions.length > 0) {
       const manifest = buildManifest({
@@ -438,6 +477,9 @@ async function main(): Promise<void> {
     bookedLeadVerify = verifyBookedLeadNormalizedJobIndexDefinitions(
       await listDeclaredIndexes(BOOKED_LEAD_COLLECTION),
     );
+    entityChangeVerify = verifyEntityChangeIndexDefinitions(
+      await listDeclaredIndexes(ENTITY_CHANGE_COLLECTION),
+    );
   }
 
   const uniqueCreated =
@@ -448,7 +490,8 @@ async function main(): Promise<void> {
     decisionCollisions.length === 0 &&
     activationCollisions.length === 0 &&
     recordLinkCollisions.length === 0 &&
-    bookedLeadCollisions.length === 0
+    bookedLeadCollisions.length === 0 &&
+    entityChangeCollisions.length === 0
       ? [
           ...ordered.unique.map((index) => index.name),
           ...observationOrdered.unique.map((index) => index.name),
@@ -457,6 +500,7 @@ async function main(): Promise<void> {
           ...activationOrdered.unique.map((index) => index.name),
           ...recordLinkOrdered.unique.map((index) => index.name),
           ...bookedLeadOrdered.unique.map((index) => index.name),
+          ...entityChangeOrdered.unique.map((index) => index.name),
         ]
       : [];
 
@@ -480,6 +524,8 @@ async function main(): Promise<void> {
     recordLinkVerify,
     bookedLeadCollisions,
     bookedLeadVerify,
+    entityChangeCollisions,
+    entityChangeVerify,
   });
   await writeGranotLifecycleManifest({
     directory: OUTPUT_DIR,
@@ -497,6 +543,7 @@ async function main(): Promise<void> {
       activationVerify,
       recordLinkVerify,
       bookedLeadVerify,
+      entityChangeVerify,
     ].filter((result) => result && !result.ok);
     if (failed.length > 0) {
       const missing = failed.flatMap((result) => result?.missing ?? []);
@@ -528,6 +575,8 @@ function buildManifest(input: {
   activationVerify?: ReturnType<typeof verifyGranotLifecycleActivationIndexDefinitions>;
   recordLinkVerify?: ReturnType<typeof verifyGranotRecordLinkIndexDefinitions>;
   bookedLeadVerify?: ReturnType<typeof verifyBookedLeadNormalizedJobIndexDefinitions>;
+  entityChangeCollisions?: ReturnType<typeof findEntityChangeRevisionCollisions>;
+  entityChangeVerify?: ReturnType<typeof verifyEntityChangeIndexDefinitions>;
 }) {
   return {
     script_version: INDEX_MIGRATION_SCRIPT_VERSION,
@@ -542,6 +591,7 @@ function buildManifest(input: {
       ...GRANOT_LIFECYCLE_ACTIVATION_INDEXES.map((index) => index.name),
       ...GRANOT_RECORD_LINK_INDEXES.map((index) => index.name),
       BOOKED_LEAD_NORMALIZED_JOB_INDEX.name,
+      ...ENTITY_CHANGE_INDEXES.map((index) => index.name),
     ],
     collision_count:
       input.collisions.length +
@@ -550,7 +600,8 @@ function buildManifest(input: {
       (input.decisionCollisions?.length ?? 0) +
       (input.activationCollisions?.length ?? 0) +
       (input.recordLinkCollisions?.length ?? 0) +
-      (input.bookedLeadCollisions?.length ?? 0),
+      (input.bookedLeadCollisions?.length ?? 0) +
+      (input.entityChangeCollisions?.length ?? 0),
     collisions: input.collisions,
     observation_receipt_id_collisions: input.observationCollisions,
     normalized_granot_label_collisions: input.normalizedLabelCollisions,
@@ -569,6 +620,8 @@ function buildManifest(input: {
     granot_record_link_verify: input.recordLinkVerify,
     booked_lead_normalized_job_collisions: input.bookedLeadCollisions ?? [],
     booked_lead_verify: input.bookedLeadVerify,
+    entity_change_revision_collisions: input.entityChangeCollisions ?? [],
+    entity_change_verify: input.entityChangeVerify,
   };
 }
 

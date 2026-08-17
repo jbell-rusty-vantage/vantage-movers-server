@@ -1,13 +1,13 @@
-**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
-**Authority:** [Final Granot Lead Lifecycle specification](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) Sections 23.1–23.2, 24 common envelope, 25, 27, 38/S07  
-**Primary code:** `src/services/domainCommands/`  
-**Domain terms used:** System of Record, Sheet Sync, Observation Channel, Booking, Cancellation
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)
+**Authority:** [Final Granot Lead Lifecycle specification](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) Sections 23.1–23.4, 34.5, 35.1, 38/S07
+**Primary code:** `src/services/domainCommands/`, `src/models/EntityChange.ts`
+**Domain terms used:** System of Record, Sheet Sync, Observation Channel, Booking, Cancellation, Entity Change
 
 # Domain Commands (`domainCommands/`)
 
-Canonical idempotent write surface for ingest and (later) lifecycle/owner commands. Mongo is the System of Record. The executor owns one Mongo transaction, the durable `DomainCommandExecution` result, and the replay/conflict decision. Sheet Sync does **not** complete commands.
+Canonical idempotent write surface for ingest and existing v1 write adapters. Mongo is the System of Record. The executor owns one Mongo transaction, the durable `DomainCommandExecution` result, append-only `EntityChange` rows, aggregate revision stamps, queued Sheet Sync outbox intent, and the replay/conflict decision. Sheet Sync does **not** complete commands.
 
-**Unit 11 still owns** `EntityChange`, complete outbox atomicity, and wholesale adapter canonicalization. This module does not enable Granot/RingCentral lifecycle callers or any lifecycle effect flag.
+This module does not enable Granot/RingCentral lifecycle callers, owner `updateBooking`, lifecycle `createReferralBooking`, Record Link commands, or any lifecycle effect flag. Later Section 23.4 commands remain disabled.
 
 ## Executor sequence
 
@@ -16,8 +16,8 @@ Canonical idempotent write surface for ingest and (later) lifecycle/owner comman
 1. Fail-closed context validation, lowercase SHA-256 checksum, connect, allocate logical `now` once, preserve caller-preallocated command/causal IDs.
 2. Open one Mongo session/transaction. Callback retries reuse the same clock and IDs.
 3. Session-scoped read of `(origin, idempotency_key)`. Exact stored result replay, or `DOMAIN_COMMAND_IDEMPOTENCY_CONFLICT` when name/checksum disagree. Replay does not invoke the operation.
-4. Invoke `operation({ session, now })`. The operation may persist a preallocated Decision and expected-`domain_revision` aggregate change.
-5. Persist one `DomainCommandExecution` with nested `result.status: "applied"` plus compatibility top-level `entity_refs` / `warnings`. Commit once.
+4. Invoke `operation({ session, now, command_execution_id })`. The operation may persist a preallocated Decision, expected-`domain_revision` aggregate change, one append-only `EntityChange` per changed aggregate, and queued Sheet Sync outbox intent.
+5. Persist one `DomainCommandExecution` with nested `result.status: "applied"` plus compatibility top-level `entity_refs` / `warnings`. Commit once. Failure at aggregate, Change, Command, outbox, or commit leaves none of the proposed chain visible.
 6. After commit only: PII-safe operational telemetry (`domain_command.applied` or `domain_command.replayed`). Sheets, queue publish, email, CRM, and other network calls are forbidden inside the transaction.
 7. Duplicate-key 11000: reload durable execution; return it only when name/checksum agree; otherwise conflict.
 8. Any operation/persist/commit failure leaves no visible Decision, aggregate delta, or command row.
@@ -37,14 +37,22 @@ Canonical idempotent write surface for ingest and (later) lifecycle/owner comman
 | Origin | Actor / initiator | Required provenance |
 | --- | --- | --- |
 | `external_sheet_ingestion` | System `best-relocation-ingestion` + trusted human initiator | run/receipt/connection |
-| `vantage_admin` | Trusted owner/admin actor and initiator | existing admin rules |
+| `vantage_admin` | Trusted owner/admin actor and initiator, or the two exact compatibility system IDs `vantage-api-secret` and `vantage-scoped-api-key:<fingerprint>` | existing admin rules; clients cannot supply context fields |
 | `granot_lifecycle` | Fixed processor `{ actor_id: "granot-lifecycle-processor" }`; webhook initiator `granot-webhook` or a server-authenticated Owner | nonblank receipt/Observation/Decision; `source_receipt_id` === processor `request_id`; `observation_channel` agrees with the initiator path |
 | `ringcentral` | Fixed `ringcentral-call-ingest` actor and initiator | server-verified telephony provenance — never a client boolean |
 
 `browser_extension` is an Observation Channel / DurableActor origin, not a `CommandOrigin`. The executor never generates a Decision ID.
 
-## Transaction-bound internals
+## Transaction-bound internals and existing adapters
 
-Current canonical adapters call `*InTransaction` helpers that accept `{ session, now }`. Those internals must not call `withTransaction`, `runSheetSyncWrite`, or `finalizeSheetSync`. Public noncanonical service paths still own their existing `runSheetSyncWrite` + finalize loop until Unit 11.
+Affected v1 create/update/delete routes derive trusted context via `existingWriteContextFromRequest` and call `runExisting*` adapters. Those adapters enter the executor once. `*InTransaction` helpers accept `{ session, now }` and must not call `withTransaction`, `runSheetSyncWrite`, or `finalizeSheetSync`. Public noncanonical service functions may still wrap `runSheetSyncWrite` for non-route callers.
 
-Owner HTTP `Idempotency-Key` parsing, Booking/Cancellation case commands, and `already_satisfied` remain later units. The helper `assertOwnerCommandIdempotencyKey` preserves the 8–200 printable envelope.
+Compatibility context: Command ID is a server ObjectId hex; idempotency is `submission_id` when present, otherwise `request:{command}:{requestId}`; payload checksum is SHA-256 of the canonicalized `{command_name, resource_id, payload}`. No credential or key value is persisted.
+
+## EntityChange
+
+`entity_changes` is append-only. `revision_after === revision_before + 1`. Contact/address/`$deleted` fields are `reference_only` with no raw values or hashes. Low-risk relationship/lifecycle values may be `stored`. Hashed mode is reserved and is not invented for contact. Surviving aggregates receive `last_change_id` / `last_changed_at` / `domain_revision`. Deletes persist the Change then remove the aggregate; no missing document retains `last_change_id`.
+
+A semantic no-op performs no aggregate save, revision increment, Change, or outbox write. Exact replay never re-enters the operation.
+
+Owner HTTP `Idempotency-Key` parsing, Booking/Cancellation case commands, `already_satisfied`, and accepted-Observation effects remain later units. The helper `assertOwnerCommandIdempotencyKey` preserves the 8–200 printable envelope.

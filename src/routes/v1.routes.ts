@@ -50,30 +50,32 @@ import {
 import { checkGoogleMapsGeocodingHealth } from "../services/googleMaps/geocoding";
 import { sanitizeFormLeadBodyPreview } from "../utils/logging/sanitizeFormLeadForLog";
 import {
-  createBookedLead,
-  createBookedLeadFromSource,
-  createCallLead,
-  createCancelledLead,
   createCustomer,
-  createFormLead,
-  createReferralBooking,
-  createLeadlessBooking,
-  deleteBookedLead,
-  deleteCallLead,
-  deleteCancelledLead,
   deleteCustomer,
-  deleteFormLead,
   findFormLead,
   findAllBookedLeads,
   findAllCancelledLeads,
   findAllCustomers,
-  updateBookedLead,
-  updateCallLead,
-  updateCancelledLead,
   updateCustomer,
-  updateFormLead,
   V1ServiceError,
 } from "../services/v1.service";
+import {
+  existingWriteContextFromRequest,
+  runExistingCreateBookedLeadFromSource,
+  runExistingCreateBookingFromLead,
+  runExistingCreateCallLead,
+  runExistingCreateCancellation,
+  runExistingCreateFormLead,
+  runExistingCreateLeadlessBooking,
+  runExistingCreateReferralBooking,
+  runExistingDeleteBookedLead,
+  runExistingDeleteCallLead,
+  runExistingDeleteCancelledLead,
+  runExistingDeleteFormLead,
+  runExistingUpdateBookedLead,
+  runExistingUpdateCancelledLead,
+  runExistingUpdateSourceOwnedLead,
+} from "../services/domainCommands";
 import {
   getBookingLeadReconciliationCase,
   getEmployeeBookingOptions,
@@ -547,7 +549,12 @@ router.post("/api/v1/create-form-test", handleCreateFormLeadTest);
 router.post("/api/v1/form-leads", handleCreateFormLead);
 router.patch("/api/v1/form-leads/:id/granot-sync", handleGranotFormLeadSync);
 router.patch("/api/v1/form-leads/:id", handleUpdateFormLead);
-router.delete("/api/v1/form-leads/:id", handleDelete(deleteFormLead));
+router.delete(
+  "/api/v1/form-leads/:id",
+  handleCanonicalDelete("deleteFormLead", (id, cascade, context) =>
+    runExistingDeleteFormLead({ lead_id: id, cascade, context }),
+  ),
+);
 
 router.get("/api/v1/call-leads", handleBrowseCallLeads);
 router.post("/api/v1/call-leads/search", handleSearchCallLeads);
@@ -566,30 +573,71 @@ router.post(
 );
 router.post(
   "/api/v1/call-leads",
-  handleCreate(createCallLeadSchema, createCallLead),
+  handleCanonicalCreate(
+    createCallLeadSchema,
+    "createCallLead",
+    async (data, context) => (await runExistingCreateCallLead({ data, context })).data,
+  ),
 );
 router.patch(
   "/api/v1/call-leads/:id",
-  handleUpdate(updateCallLeadSchema, updateCallLead),
+  handleCanonicalUpdate(
+    updateCallLeadSchema,
+    "updateSourceOwnedLead",
+    async (id, patch, context) =>
+      (
+        await runExistingUpdateSourceOwnedLead({
+          lead_model: "CallLead",
+          lead_id: id,
+          patch,
+          context,
+        })
+      ).data,
+  ),
 );
-router.delete("/api/v1/call-leads/:id", handleDelete(deleteCallLead));
+router.delete(
+  "/api/v1/call-leads/:id",
+  handleCanonicalDelete("deleteCallLead", (id, cascade, context) =>
+    runExistingDeleteCallLead({ lead_id: id, cascade, context }),
+  ),
+);
 
 router.get("/api/v1/booked-leads", handleFindAll(findAllBookedLeads));
 router.post(
   "/api/v1/booked-leads",
-  handleCreate(createBookedLeadSchema, createBookedLead),
+  handleCanonicalCreate(
+    createBookedLeadSchema,
+    "createBookingFromLead",
+    async (data, context) =>
+      (await runExistingCreateBookingFromLead({ data, context })).data,
+  ),
 );
 router.post(
   "/api/v1/booked-leads/from-source",
-  handleCreate(createBookedLeadFromSourceSchema, createBookedLeadFromSource),
+  handleCanonicalCreate(
+    createBookedLeadFromSourceSchema,
+    "createBookingFromLead",
+    async (data, context) =>
+      (await runExistingCreateBookedLeadFromSource({ data, context })).data,
+  ),
 );
 router.post(
   "/api/v1/referral-bookings",
-  handleCreate(createReferralBookingSchema, createReferralBooking),
+  handleCanonicalCreate(
+    createReferralBookingSchema,
+    "createExistingReferralBooking",
+    async (data, context) =>
+      (await runExistingCreateReferralBooking({ data, context })).data,
+  ),
 );
 router.post(
   "/api/v1/leadless-bookings",
-  handleCreate(createLeadlessBookingSchema, createLeadlessBooking),
+  handleCanonicalCreate(
+    createLeadlessBookingSchema,
+    "createLeadlessBooking",
+    async (data, context) =>
+      (await runExistingCreateLeadlessBooking({ data, context })).data,
+  ),
 );
 router.get(
   "/api/v1/employee-booking-options",
@@ -601,22 +649,50 @@ router.post(
 );
 router.patch(
   "/api/v1/booked-leads/:id",
-  handleUpdate(updateBookedLeadSchema, updateBookedLead),
+  handleCanonicalUpdate(
+    updateBookedLeadSchema,
+    "updateBookedLead",
+    async (id, patch, context) =>
+      (await runExistingUpdateBookedLead({ booking_id: id, patch, context })).data,
+  ),
 );
-router.delete("/api/v1/booked-leads/:id", handleDelete(deleteBookedLead));
+router.delete(
+  "/api/v1/booked-leads/:id",
+  handleCanonicalDelete("deleteBookedLead", (id, cascade, context) =>
+    runExistingDeleteBookedLead({ booking_id: id, cascade, context }),
+  ),
+);
 
 router.get("/api/v1/cancelled-leads", handleFindAll(findAllCancelledLeads));
 router.post(
   "/api/v1/cancelled-leads",
-  handleCreate(createCancelledLeadSchema, createCancelledLead),
+  handleCanonicalCreate(
+    createCancelledLeadSchema,
+    "createCancellation",
+    async (data, context) =>
+      (await runExistingCreateCancellation({ data, context })).data,
+  ),
 );
 router.patch(
   "/api/v1/cancelled-leads/:id",
-  handleUpdate(updateCancelledLeadSchema, updateCancelledLead),
+  handleCanonicalUpdate(
+    updateCancelledLeadSchema,
+    "updateCancelledLead",
+    async (id, patch, context) =>
+      (
+        await runExistingUpdateCancelledLead({
+          cancellation_id: id,
+          patch,
+          context,
+        })
+      ).data,
+  ),
 );
 router.delete(
   "/api/v1/cancelled-leads/:id",
-  handleDelete(async (id) => deleteCancelledLead(id)),
+  handleCanonicalDelete("deleteCancelledLead", (id, _cascade, context) =>
+    runExistingDeleteCancelledLead({ cancellation_id: id, context }),
+  ),
 );
 
 router.get("/api/v1/customers", handleFindAll(findAllCustomers));
@@ -1837,6 +1913,94 @@ function handleFindOne(findOne: (id: string) => Promise<unknown>) {
   };
 }
 
+function handleCanonicalCreate<T>(
+  schema: ZodType<T>,
+  commandName: string,
+  create: (
+    input: T,
+    context: import("../services/domainCommands").CanonicalCommandContext,
+  ) => Promise<unknown>,
+) {
+  return async (req: Request, res: Response) => {
+    try {
+      await connectMongo();
+      const parsed = schema.parse(req.body);
+      const data = await create(
+        parsed,
+        existingWriteContextFromRequest({
+          req,
+          command_name: commandName,
+          payload: parsed,
+        }),
+      );
+      return res.status(201).json({ ok: true, data });
+    } catch (error) {
+      return sendError(req, res, error);
+    }
+  };
+}
+
+function handleCanonicalUpdate<T>(
+  schema: ZodType<T>,
+  commandName: string,
+  update: (
+    id: string,
+    input: T,
+    context: import("../services/domainCommands").CanonicalCommandContext,
+  ) => Promise<unknown>,
+) {
+  return async (req: Request, res: Response) => {
+    try {
+      const id = getValidObjectId(req);
+      await connectMongo();
+      const parsed = schema.parse(req.body);
+      const data = await update(
+        id,
+        parsed,
+        existingWriteContextFromRequest({
+          req,
+          command_name: commandName,
+          payload: parsed,
+          resource_id: id,
+        }),
+      );
+      return res.json({ ok: true, data });
+    } catch (error) {
+      return sendError(req, res, error);
+    }
+  };
+}
+
+function handleCanonicalDelete(
+  commandName: string,
+  remove: (
+    id: string,
+    cascade: boolean,
+    context: import("../services/domainCommands").CanonicalCommandContext,
+  ) => Promise<unknown>,
+) {
+  return async (req: Request, res: Response) => {
+    try {
+      const id = getValidObjectId(req);
+      await connectMongo();
+      const cascade = req.query.cascade === "true";
+      await remove(
+        id,
+        cascade,
+        existingWriteContextFromRequest({
+          req,
+          command_name: commandName,
+          payload: { id, cascade },
+          resource_id: id,
+        }),
+      );
+      return res.status(204).send();
+    } catch (error) {
+      return sendError(req, res, error);
+    }
+  };
+}
+
 function handleCreate<T>(
   schema: ZodType<T>,
   create: (input: T) => Promise<unknown>,
@@ -2161,7 +2325,16 @@ async function handleCreateFormLeadRequest(
       requestId: rid,
       fields: Object.keys(parsed),
     });
-    const data = await createFormLead(parsed);
+    const data = (
+      await runExistingCreateFormLead({
+        data: parsed,
+        context: existingWriteContextFromRequest({
+          req,
+          command_name: "createFormLead",
+          payload: parsed,
+        }),
+      })
+    ).data;
     const leadId = data.lead._id.toString();
     log.info({
       msg: `${logPrefix}.created`,
@@ -2229,13 +2402,26 @@ async function handleUpdateFormLead(req: Request, res: Response) {
     const id = getValidObjectId(req);
     await connectMongo();
     const parsed = updateFormLeadSchema.parse(req.body);
-    const lead = await updateFormLead(id, parsed);
+    const lead = (
+      await runExistingUpdateSourceOwnedLead({
+        lead_model: "FormLead",
+        lead_id: id,
+        patch: parsed,
+        context: existingWriteContextFromRequest({
+          req,
+          command_name: "updateSourceOwnedLead",
+          payload: parsed,
+          resource_id: id,
+        }),
+      })
+    ).data;
+    const updatedLead = lead as { email?: string; phone_number?: string };
     log.info({
       msg: "form_lead.updated",
       requestId: rid,
       leadId: id,
-      email: lead.email,
-      phone_number: lead.phone_number,
+      email: updatedLead.email,
+      phone_number: updatedLead.phone_number,
       updatedFields: Object.keys(parsed),
     });
     return res.json({ ok: true, data: lead });
@@ -2249,13 +2435,24 @@ async function handleGranotFormLeadSync(req: Request, res: Response) {
     const id = getValidObjectId(req);
     await connectMongo();
     const parsed = granotFormLeadSyncSchema.parse(req.body);
-    const lead = await updateFormLead(id, parsed.patch, {
-      expected: buildGranotSyncExpectedFilter(
-        parsed.patch,
-        parsed.expected_source_company,
-        parsed.expected_snapshot,
-      ),
-    });
+    const lead = (
+      await runExistingUpdateSourceOwnedLead({
+        lead_model: "FormLead",
+        lead_id: id,
+        patch: parsed.patch,
+        expected: buildGranotSyncExpectedFilter(
+          parsed.patch,
+          parsed.expected_source_company,
+          parsed.expected_snapshot,
+        ),
+        context: existingWriteContextFromRequest({
+          req,
+          command_name: "updateSourceOwnedLead",
+          payload: parsed,
+          resource_id: id,
+        }),
+      })
+    ).data;
     return res.json({ ok: true, data: lead });
   } catch (error) {
     return sendError(req, res, error);

@@ -20,6 +20,10 @@ import {
   submitFormLeadToCrm,
   type CrmSubmitResult,
 } from "../crm";
+import {
+  collectDocumentFieldChanges,
+  FORM_LEAD_CHANGE_PATHS,
+} from "../domainCommands/entityChange";
 import { ConflictError, NotFoundError } from "../errors";
 import { deleteFormLeadFromSheets } from "../googleSheets.service";
 import {
@@ -441,8 +445,10 @@ export async function updateFormLead(
 ) {
   const FormLead = getFormLeadModel();
   const lead = options.expected
-    ? await FormLead.findOne({ _id: id, ...options.expected })
-    : await FormLead.findById(id);
+    ? await FormLead.findOne({ _id: id, ...options.expected }).session(
+        options.transaction?.session ?? null,
+      )
+    : await FormLead.findById(id).session(options.transaction?.session ?? null);
   if (!lead) {
     if (options.expected) {
       throw new ConflictError(
@@ -488,6 +494,7 @@ export async function updateFormLead(
     );
   }
 
+  const beforeSnapshot = lead.toObject() as Record<string, unknown>;
   const update = normalizeLeadNameUpdate({ ...input }, lead);
   let sourceResolutionForUpdate:
     | Awaited<ReturnType<typeof resolveLeadSourceAssignment>>
@@ -566,6 +573,15 @@ export async function updateFormLead(
     lead.receiver_agent_source = input.receiver_agent_source ?? "manual";
     lead.receiver_agent_source_value = input.receiver_agent_source_value;
     lead.receiver_agent_set_at = new Date();
+  }
+
+  const fieldChanges = collectDocumentFieldChanges(
+    beforeSnapshot,
+    lead.toObject() as Record<string, unknown>,
+    FORM_LEAD_CHANGE_PATHS,
+  );
+  if (fieldChanges.length === 0) {
+    return lead;
   }
 
   let job: FullSheetSyncJob;
@@ -683,6 +699,91 @@ export async function deleteFormLead(id: string, cascade: boolean) {
 
   await deleteFormLeadFromSheets(lead);
   await lead.deleteOne();
+}
+
+export async function deleteFormLeadInTransaction(
+  id: string,
+  cascade: boolean,
+  tx: { session?: ClientSession; now: Date },
+) {
+  const FormLead = getFormLeadModel();
+  const lead = await FormLead.findById(id).session(tx.session ?? null);
+  if (!lead) {
+    throw new NotFoundError("Form lead not found", {
+      metadata: { resource: "form_lead", id },
+    });
+  }
+  if (lead.booked && !cascade) {
+    throw new ConflictError(
+      "Form lead has a booking; pass cascade=true to delete dependents",
+      {
+        metadata: {
+          resource: "form_lead",
+          id,
+          bookedLeadId: lead.booked.toString(),
+        },
+      },
+    );
+  }
+  const mutations: Array<{
+    entity: { model: "FormLead" | "CallLead" | "BookedLead" | "CancelledLead"; id: string };
+    revision_before: number;
+    fields: Array<{ path: string; before?: unknown; after?: unknown }>;
+    deleted?: boolean;
+  }> = [];
+  const entity_refs: Array<{ model: string; id: string }> = [
+    { model: "FormLead", id },
+  ];
+  const { deleteBookedLeadInTransaction } = await import(
+    "../bookings/bookedLead.service.js"
+  );
+  let cascaded: Awaited<ReturnType<typeof deleteBookedLeadInTransaction>> | undefined;
+  if (lead.booked && cascade) {
+    cascaded = await deleteBookedLeadInTransaction(lead.booked.toString(), true, tx);
+    mutations.push(...cascaded.mutations);
+    entity_refs.push(...cascaded.entity_refs);
+  }
+  if (getSheetSyncMode() === "queued") {
+    const previousTargets = buildTombstonePreviousTargets(lead.sheet_sync);
+    await enqueueSheetSyncTombstone(
+      {
+        resource: "delete_source_lead",
+        entityModel: "FormLead",
+        entityId: id,
+        operation: "delete_form_lead",
+        tombstone: {
+          mongo_id: id,
+          source_company: lead.source_company,
+          duplicate: lead.duplicate,
+          previous_targets: previousTargets,
+        },
+      },
+      {
+        session: tx.session,
+        targetHints: previousTargets.map((target) => target.target),
+      },
+    );
+  }
+  mutations.push({
+    entity: { model: "FormLead", id },
+    revision_before: Number(lead.domain_revision ?? 0),
+    fields: [{ path: "$deleted" }],
+    deleted: true,
+  });
+  const captured = lead.toObject();
+  await lead.deleteOne({ session: tx.session });
+  return {
+    mutations,
+    entity_refs,
+    finalize: async () => {
+      if (getSheetSyncMode() === "queued") {
+        await finalizeSheetSyncDelete();
+        return;
+      }
+      await cascaded?.finalize();
+      await deleteFormLeadFromSheets(captured as typeof lead);
+    },
+  };
 }
 
 function hasOwnInput<T extends object>(input: T, key: keyof T): boolean {

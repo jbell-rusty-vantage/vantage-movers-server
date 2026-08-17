@@ -20,7 +20,9 @@ import {
   orderedGranotRecordLinkIndexCreates,
   orderedObservationIndexCreates,
   orderedReceiptIndexCreates,
+  orderedEntityChangeIndexCreates,
   orderedSynchronizationDecisionIndexCreates,
+  verifyEntityChangeIndexDefinitions,
   verifyGranotAutomationSourceIndexDefinitions,
   verifyGranotCrmSourceIndexDefinitions,
   verifyGranotLifecycleActivationIndexDefinitions,
@@ -392,4 +394,25 @@ test("[AC-21] Booking index verify accepts the named contract or the default dep
   const missing = verifyBookedLeadNormalizedJobIndexDefinitions([]);
   assert.equal(missing.ok, false);
   assert.deepEqual(missing.missing, [BOOKED_LEAD_NORMALIZED_JOB_INDEX.name]);
+});
+
+test("[AC-32] EntityChange indexes create non-unique first and verify the unique entity/revision key", () => {
+  const ordered = orderedEntityChangeIndexCreates();
+  assert.equal(ordered.unique.length, 1);
+  assert.deepEqual(ordered.unique[0]?.key, {
+    "entity.model": 1,
+    "entity.id": 1,
+    revision_after: 1,
+  });
+  assert.equal(ordered.nonUnique.length, 3);
+  assert.equal(
+    verifyEntityChangeIndexDefinitions(
+      [...ordered.nonUnique, ...ordered.unique].map((index) => ({
+        name: index.name,
+        key: { ...index.key },
+        unique: "unique" in index ? true : undefined,
+      })),
+    ).ok,
+    true,
+  );
 });

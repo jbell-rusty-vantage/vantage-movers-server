@@ -92,19 +92,14 @@ function stubFindById(document: Record<string, unknown> | null): void {
   })) as unknown as typeof mongoose.connection.useDb;
   (FormLead as unknown as StubbedFormLeadModel).findById = () => {
     const query = {
-      select: () => ({
-        exec: async () => document,
-        then: (resolve: (value: unknown) => void) => resolve(document),
-      }),
+      session: () => query,
+      select: () => query,
+      exec: async () => document,
+      then: (
+        resolve: (value: unknown) => void,
+        reject?: (reason: unknown) => void,
+      ) => Promise.resolve(document).then(resolve, reject),
     };
-
-    if (document) {
-      return {
-        select: () => document,
-        ...document,
-      };
-    }
-
     return query;
   };
 }

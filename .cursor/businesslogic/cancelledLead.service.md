@@ -145,7 +145,7 @@ Delete tombstone coalesces with pending `cancellation_chain` upserts for the sam
 - **Traceability** — every cancellation stores `booked_lead`, `lead_ref`, `lead_model` for admin search and sheet linkage.
 - **Do not bypass** `resolveBookedLeadForCancellation`, mirror helpers, or sheet-sync txn scheduling.
 - Cancellation create/update/delete are high-risk; add focused tests when changing unwind order or referral guards.
-- `domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical compare-and-swap / `EntityChange` enforcement is incomplete until Unit 11.
+- `domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical create/update/delete adapters persist append-only `EntityChange` rows and stamp `last_change_*` in the executor transaction.
 
 ## Operational events
 

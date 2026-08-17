@@ -1,7 +1,15 @@
 import type { LocalType } from "../../config/domain";
-import type { CreateBookedLeadFromSourceInput } from "../../validation/v1.validation";
+import { BookedLead } from "../../models/BookedLead";
+import {
+  createBookedLeadFromSourceSchema,
+  type CreateBookedLeadFromSourceInput,
+} from "../../validation/v1.validation";
 import { deriveBookedLeadAgentAllocations } from "../agents";
-import { createBookedLead } from "./bookedLead.service";
+import {
+  createBookedLead,
+  createBookedLeadInTransaction,
+  finalizeBookedLeadCreateAfterCommit,
+} from "./bookedLead.service";
 import {
   effectiveBookingSourceCompany,
   resolveBookingSourceLead,
@@ -24,6 +32,167 @@ import { requireBestRelocationImportSource } from "./bestRelocationImportGuard";
  * including the `lead.source_company = effectiveSourceCompany` write that
  * only fires when the request actually overrode the source company.
  */
+export async function createBookedLeadFromSourceInTransaction(
+  rawInput: unknown,
+  tx: { session?: import("mongoose").ClientSession; now: Date },
+) {
+  const input = createBookedLeadFromSourceSchema.parse(rawInput);
+  const { lead, leadModel, jobNo } = await resolveBookingSourceLead(input);
+  const overrideSource = input.source_company?.trim();
+  const overrideResolution = overrideSource
+    ? await resolveLeadSourceAssignment({
+        value: overrideSource,
+        channel: leadModel === "CallLead" ? "call" : "form",
+        local: lead.local as LocalType | undefined,
+        source_site: lead.source_company_site,
+      })
+    : undefined;
+  const effectiveSourceCompany =
+    overrideResolution?.assignment.source_company ??
+    effectiveBookingSourceCompany(undefined, lead);
+  const isBestRelocationImport = requireBestRelocationImportSource(
+    input.ingestion_source,
+    effectiveSourceCompany,
+  );
+  if (isBestRelocationImport) {
+    requireBestRelocationImportSource(
+      input.ingestion_source,
+      effectiveBookingSourceCompany(undefined, lead),
+    );
+  }
+  let bookingSource = sourceDisplayLabelFromLead(lead) ?? effectiveSourceCompany;
+  const leadMutations: Array<{
+    entity: { model: "FormLead" | "CallLead"; id: string };
+    revision_before: number;
+    fields: Array<{ path: string; before?: unknown; after?: unknown }>;
+  }> = [];
+  const revisionBefore = Number(lead.domain_revision ?? 0);
+  if (overrideResolution) {
+    const { assignment } = overrideResolution;
+    Object.assign(lead, assignment);
+    Object.assign(
+      lead,
+      await resolveLeadCplSnapshot({
+        sourceGranularityId: assignment.source_granularity_id
+          ? String(assignment.source_granularity_id)
+          : null,
+        storedBusinessTimestamp: lead.timestamp,
+        duplicate: leadModel === "CallLead" && lead.duplicate === true,
+      }),
+    );
+    bookingSource = sourceDisplayLabelFromAssignment(assignment);
+    await lead.save({ session: tx.session });
+    leadMutations.push({
+      entity: { model: leadModel, id: lead._id.toString() },
+      revision_before: revisionBefore,
+      fields: [{ path: "source_company", after: assignment.source_company }],
+    });
+  }
+  const pending = await createBookedLeadInTransaction(
+    {
+      timestamp: input.timestamp,
+      book_date: input.book_date,
+      job_no: jobNo,
+      lead_ref: lead._id.toString(),
+      lead_model: leadModel,
+      agent_allocations: deriveBookedLeadAgentAllocations(input),
+      total_binder_amount: input.binder_amount,
+      deposit_amount: input.deposit_amount,
+      merchant: input.merchant,
+      source: bookingSource,
+      local: lead.local as LocalType | undefined,
+      submission_id: input.submission_id,
+      customer_name: input.customer_name,
+      customer_phone: input.customer_phone,
+      allow_inactive_agents: isBestRelocationImport,
+      set_primary_agent_as_receiver: isBestRelocationImport,
+      receiver_agent_source_value: isBestRelocationImport
+        ? `Booked Deals:${jobNo ?? "unknown-job"}`
+        : undefined,
+    },
+    tx,
+  );
+  const mutations = [
+    ...leadMutations,
+    ...(pending.outcome.kind === "duplicate"
+      ? []
+      : [
+          {
+            entity: {
+              model: "BookedLead" as const,
+              id: String(pending.outcome.bookingId),
+            },
+            revision_before:
+              pending.outcome.kind === "upsert"
+                ? Number(
+                    (
+                      await BookedLead.findById(pending.outcome.bookingId).session(
+                        tx.session ?? null,
+                      )
+                    )?.domain_revision ?? 0,
+                  )
+                : 0,
+            fields: [
+              { path: "job_no", after: jobNo },
+              { path: "lead_ref", after: lead._id.toString() },
+              { path: "lead_model", after: leadModel },
+            ],
+          },
+          {
+            entity: { model: leadModel, id: lead._id.toString() },
+            revision_before: overrideResolution
+              ? revisionBefore + 1
+              : Number(lead.domain_revision ?? 0),
+            fields: [{ path: "booked", after: String(pending.outcome.bookingId) }],
+          },
+        ]),
+  ];
+  return {
+    result: undefined as unknown,
+    warnings: pending.warnings,
+    entity_refs: [
+      { model: "BookedLead", id: String(pending.outcome.bookingId) },
+      { model: leadModel, id: lead._id.toString() },
+    ],
+    mutations,
+    finalize: async () => {
+      const finalized = await finalizeBookedLeadCreateAfterCommit(
+        {
+          timestamp: input.timestamp,
+          book_date: input.book_date,
+          job_no: jobNo,
+          lead_ref: lead._id.toString(),
+          lead_model: leadModel,
+          agent_allocations: deriveBookedLeadAgentAllocations(input),
+          total_binder_amount: input.binder_amount,
+          deposit_amount: input.deposit_amount,
+          merchant: input.merchant,
+          source: bookingSource,
+          local: lead.local as LocalType | undefined,
+          submission_id: input.submission_id,
+          customer_name: input.customer_name,
+          customer_phone: input.customer_phone,
+        },
+        pending.merchant,
+        pending.warnings,
+        pending.outcome,
+      );
+      if (overrideResolution && lead.cpl_resolution_status === "missing_rate") {
+        await recordMissingLeadCplRate({
+          leadModel,
+          leadId: lead._id.toString(),
+          sourceCompany: String(overrideResolution.assignment.source_company),
+          sourceGranularityId: overrideResolution.assignment.source_granularity_id
+            ? String(overrideResolution.assignment.source_granularity_id)
+            : null,
+          sourceGranularityKey: overrideResolution.assignment.source_granularity_key,
+        });
+      }
+      return finalized;
+    },
+  };
+}
+
 export async function createBookedLeadFromSource(input: CreateBookedLeadFromSourceInput) {
   const { lead, leadModel, jobNo } = await resolveBookingSourceLead(input);
   const overrideSource = input.source_company?.trim();

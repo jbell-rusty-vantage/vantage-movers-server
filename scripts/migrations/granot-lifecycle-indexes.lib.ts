@@ -17,7 +17,9 @@ import {
   type BookingJobCollision,
 } from "./granot-lifecycle-revisions.lib";
 
-export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/6";
+import { ENTITY_CHANGE_INDEXES } from "../../src/models/EntityChange";
+
+export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/7";
 
 export const GRANOT_CRM_SOURCE_UNIQUE_INDEX_APPLY_ENABLED = true;
 
@@ -464,6 +466,56 @@ export function verifyGranotRecordLinkIndexDefinitions(
   actual: readonly DeclaredMongoIndex[],
 ) {
   return verifyNamedIndexDefinitions(actual, GRANOT_RECORD_LINK_INDEXES);
+}
+
+export function findEntityChangeRevisionCollisions(
+  rows: readonly {
+    _id: string;
+    entity_model?: unknown;
+    entity_id?: unknown;
+    revision_after?: unknown;
+  }[],
+) {
+  const groups = new Map<string, { count: number; masked_ids: string[] }>();
+  for (const row of rows) {
+    if (
+      typeof row.entity_model !== "string" ||
+      typeof row.entity_id !== "string" ||
+      typeof row.revision_after !== "number"
+    ) {
+      continue;
+    }
+    const key = `${row.entity_model}\u0000${row.entity_id}\u0000${row.revision_after}`;
+    const current = groups.get(key) ?? { count: 0, masked_ids: [] };
+    current.count += 1;
+    current.masked_ids.push(maskReceiptId(row._id));
+    groups.set(key, current);
+  }
+  return [...groups.entries()]
+    .filter(([, group]) => group.count > 1)
+    .map(([key, group]) => {
+      const [entity_model, entity_id, revision_after] = key.split("\u0000");
+      return {
+        entity_model,
+        entity_id,
+        revision_after,
+        count: group.count,
+        masked_ids: group.masked_ids.sort(),
+      };
+    });
+}
+
+export function orderedEntityChangeIndexCreates() {
+  return {
+    nonUnique: ENTITY_CHANGE_INDEXES.filter((index) => !("unique" in index)),
+    unique: ENTITY_CHANGE_INDEXES.filter((index) => "unique" in index),
+  };
+}
+
+export function verifyEntityChangeIndexDefinitions(
+  actual: readonly DeclaredMongoIndex[],
+) {
+  return verifyNamedIndexDefinitions(actual, ENTITY_CHANGE_INDEXES);
 }
 
 export const BOOKED_LEAD_COLLECTION = "booked_leads";

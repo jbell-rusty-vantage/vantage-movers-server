@@ -60,9 +60,13 @@ export type CanonicalCommandExecutionOutcome = {
   replayed: boolean;
 };
 
+export const VANTAGE_API_SECRET_ACTOR_ID = "vantage-api-secret";
+export const VANTAGE_SCOPED_API_KEY_ACTOR_PREFIX = "vantage-scoped-api-key:";
+
 export type CanonicalCommandOperationInput = {
   session: import("mongoose").ClientSession;
   now: Date;
+  command_execution_id: import("mongoose").Types.ObjectId;
 };
 
 export type CanonicalCommandOperationEvidence = {

@@ -23,6 +23,10 @@ import {
   syncSourceLeadById,
   type FullSheetSyncJob,
 } from "../sheetSync";
+import {
+  CANCELLED_LEAD_CHANGE_PATHS,
+  collectDocumentFieldChanges,
+} from "../domainCommands/entityChange";
 import { V1ServiceError } from "../v1ServiceError";
 import { recordOperationalEvent } from "../observability";
 import { getLinkedLead } from "../leads";
@@ -207,6 +211,51 @@ export async function persistCancelledLeadCreateInTransaction(
  * sheet sync tagged `cancelled_lead.update`. Throws 404 when the id is
  * unknown, matching the original behavior.
  */
+export async function updateCancelledLeadInTransaction(
+  id: string,
+  input: UpdateCancelledLeadInput,
+  tx: { session?: ClientSession; now: Date },
+) {
+  const cancellation = await CancelledLead.findById(id).session(tx.session ?? null);
+  if (!cancellation) {
+    throw new V1ServiceError("Cancelled lead not found", 404);
+  }
+  const before = cancellation.toObject() as Record<string, unknown>;
+  Object.assign(cancellation, input);
+  const fields = collectDocumentFieldChanges(
+    before,
+    cancellation.toObject() as Record<string, unknown>,
+    CANCELLED_LEAD_CHANGE_PATHS,
+  );
+  if (fields.length === 0) {
+    return {
+      noop: true as const,
+      cancellation,
+      mutations: [],
+      job: undefined,
+    };
+  }
+  await cancellation.save({ session: tx.session });
+  const cancellationJob: FullSheetSyncJob = {
+    resource: "cancellation_chain",
+    operation: "cancelled_lead.update",
+    cancellationId: cancellation._id.toString(),
+  };
+  await persistSheetSyncIntent(cancellationJob, tx.session);
+  return {
+    noop: false as const,
+    cancellation,
+    mutations: [
+      {
+        entity: { model: "CancelledLead" as const, id },
+        revision_before: Number(before.domain_revision ?? 0),
+        fields,
+      },
+    ],
+    job: cancellationJob,
+  };
+}
+
 export async function updateCancelledLead(id: string, input: UpdateCancelledLeadInput) {
   const { cancellation, job } = await runSheetSyncWrite(async (session) => {
     const updated = await CancelledLead.findByIdAndUpdate(id, input, {
@@ -329,4 +378,119 @@ export async function deleteCancelledLead(id: string) {
     await syncSourceLeadById(leadModel, leadId);
   }
   await cancellation.deleteOne();
+}
+
+export async function deleteCancelledLeadInTransaction(
+  id: string,
+  tx: { session?: ClientSession; now: Date },
+) {
+  const cancellation = await CancelledLead.findById(id).session(tx.session ?? null);
+  if (!cancellation) {
+    throw new V1ServiceError("Cancelled lead not found", 404);
+  }
+  const leadModel = cancellation.lead_model as LeadModelName;
+  const leadId = cancellation.lead_ref?.toString();
+  const mutations: Array<{
+    entity: { model: "FormLead" | "CallLead" | "BookedLead" | "CancelledLead"; id: string };
+    revision_before: number;
+    fields: Array<{ path: string; before?: unknown; after?: unknown }>;
+    deleted?: boolean;
+  }> = [
+    {
+      entity: { model: "CancelledLead", id },
+      revision_before: Number(cancellation.domain_revision ?? 0),
+      fields: [{ path: "$deleted" }],
+      deleted: true,
+    },
+  ];
+  const entity_refs: Array<{ model: string; id: string }> = [
+    { model: "CancelledLead", id },
+  ];
+  const captured = cancellation.toObject();
+  const booking = await BookedLead.findByIdAndUpdate(
+    cancellation.booked_lead,
+    { $unset: { cancelled: "" } },
+    { returnDocument: "after", session: tx.session },
+  );
+  if (booking) {
+    mutations.push({
+      entity: { model: "BookedLead", id: booking._id.toString() },
+      revision_before: Number(booking.domain_revision ?? 0),
+      fields: [{ path: "cancelled" }],
+    });
+    entity_refs.push({ model: "BookedLead", id: booking._id.toString() });
+  }
+  if (leadModel && leadId) {
+    const lead = await getLinkedLead(leadModel, leadId, tx.session);
+    mutations.push({
+      entity: { model: leadModel, id: leadId },
+      revision_before: Number(lead.domain_revision ?? 0),
+      fields: [{ path: "cancelled" }],
+    });
+    entity_refs.push({ model: leadModel, id: leadId });
+    await clearCancellationFromLead(leadModel, leadId, false, tx.session);
+  }
+  if (getSheetSyncMode() === "queued") {
+    const previousTargets = buildTombstonePreviousTargets(cancellation.sheet_sync);
+    await enqueueSheetSyncTombstone(
+      {
+        resource: "delete_cancelled_lead",
+        entityModel: "CancelledLead",
+        entityId: id,
+        operation: "delete_cancelled_lead",
+        tombstone: {
+          mongo_id: id,
+          previous_targets: previousTargets,
+          linked_booking_id: cancellation.booked_lead?.toString(),
+          linked_lead_id: leadId,
+          linked_lead_model: leadModel,
+        },
+      },
+      {
+        session: tx.session,
+        targetHints: previousTargets.map((target) => target.target),
+      },
+    );
+    if (booking && booking.lead_ref && booking.lead_model) {
+      await enqueueSheetSyncJob(
+        {
+          resource: "booking_chain",
+          operation: "delete_cancelled_lead",
+          bookingId: booking._id.toString(),
+        },
+        { session: tx.session },
+      );
+    } else if (leadModel && leadId) {
+      await enqueueSheetSyncJob(
+        {
+          resource: "source_lead",
+          operation: "delete_cancelled_lead",
+          leadModel,
+          leadId,
+        },
+        { session: tx.session },
+      );
+    }
+  }
+  await cancellation.deleteOne({ session: tx.session });
+  return {
+    mutations,
+    entity_refs,
+    finalize: async () => {
+      if (getSheetSyncMode() === "queued") {
+        await finalizeSheetSyncDelete();
+        return;
+      }
+      await deleteCancelledLeadFromSheets(captured as typeof cancellation);
+      if (booking && booking.lead_ref && booking.lead_model) {
+        await syncBookingAndSource(
+          booking._id,
+          booking.lead_model as LeadModelName,
+          booking.lead_ref.toString(),
+        );
+      } else if (leadModel && leadId) {
+        await syncSourceLeadById(leadModel, leadId);
+      }
+    },
+  };
 }
