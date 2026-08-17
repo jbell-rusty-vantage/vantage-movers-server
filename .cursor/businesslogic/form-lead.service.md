@@ -1,6 +1,6 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) for Granot identity; [`../../../docs/adr/`](../../../docs/adr/) for [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md) and [0002 CRM post survives failures](../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md)
-**Primary code:** `src/services/leads/formLead.service.ts`, `src/services/leads/leadCplResolution.ts`, `src/services/crm/crm.service.ts`, `src/services/crm/formLeadPayload.ts`  
+**Primary code:** `src/services/leads/formLead.service.ts`, `src/services/leads/leadIngestionProvenance.ts`, `src/services/leads/leadCplResolution.ts`, `src/services/crm/crm.service.ts`, `src/services/crm/formLeadPayload.ts`  
 **Domain terms used:** Form Lead Ingestion, Form Lead, Duplicate Lead, CRM Posting, Sheet Sync, Tracking Reference, Lead ID, Form Fill, Move Type, CPL
 
 # Form Lead Service
@@ -14,7 +14,7 @@
 | Step | What happens |
 |------|----------------|
 | 1. Normalize | Name, phone, **Source Company** (`parseSourceCompany`), required location |
-| 2. Derive | **Move Type** (`local` from pickup/delivery states), **CPL** snapshot (`resolveLeadCplSnapshot` → `operationsRegistry.resolveCpl`), Florida `timestamp`, **Tracking Reference** (`ref_no`, default `"not provided"`), `move_date` |
+| 2. Derive | **Move Type** (`local` from pickup/delivery states), **CPL** snapshot (`resolveLeadCplSnapshot` → `operationsRegistry.resolveCpl`), Florida `timestamp`, **Tracking Reference** (`ref_no`, default `"not provided"`), `move_date`, trusted `ingestion_origin`, immutable `ingested_contact_snapshot` / `ingested_move_snapshot` (`captured_at_ingestion`, same trusted `now`) |
 | 3. **Duplicate Lead** check | `findDuplicateFormLeadMatch(source, phone, email, timestamp)` — exact Source Granularity, same cohort around the 2026-04-30 Eastern cutoff, earlier non-duplicate Form Lead with same normalized phone **or** email |
 | 4. Persist + Sheet Sync intent | Atomic in queued mode via `runSheetSyncWrite`: save Form Lead with `duplicate` flag; `post_to_granot = post_to_granot && !duplicate` |
 | 4b. Form Fill (non-duplicates only) | `markMatchingCallLeadsWithFormFill` — same source + phone Call Leads → `form_fill=true`; enqueues `call_lead.form_fill.update` jobs in same txn |
@@ -45,7 +45,7 @@ Create/update store `cpl`, `cpl_rate_period`, `cpl_resolution_status` (`resolved
 
 ### Granot lifecycle boundary
 
-CRM Posting is independent of webhook capture. Granot webhooks do not create or update Form Leads today ([`granotLifecycle.capture.md`](granotLifecycle.capture.md)). HTTP automation may later `PATCH` the same lead ([`granotHttpCollector.service.md`](granotHttpCollector.service.md)).
+CRM Posting is independent of webhook capture. Granot webhooks do not create or update Form Leads today ([`granotLifecycle.capture.md`](granotLifecycle.capture.md)). Trusted Granot create validators (`trustedLeadCreateValidation.ts`) exist as capability only, force `post_to_granot=false`, and have no live caller. HTTP automation may later `PATCH` the same lead ([`granotHttpCollector.service.md`](granotHttpCollector.service.md)).
 
 ## Sheet Sync tab routing (Form Lead)
 
@@ -65,7 +65,7 @@ Job: `resource: source_lead`, `operation: form_lead.create` | `form_lead.update`
 ## Update (`updateFormLead`)
 
 - Re-normalizes provided fields; recomputes Move Type + CPL snapshot.
-- Optional `receiver_agent` (+ `receiver_agent_source` / snapshots) via Operations Registry agent lookup.
+- Optional `receiver_agent` (+ `receiver_agent_source` / snapshots) via Operations Registry agent lookup. The source enum includes `granot_username_match`; existing extension writes still store `extension_crm_username_match`, which remains readable.
 - **Blocked:** `quoted` / `cubic_feet` on Duplicate Leads; **Bad Lead** on duplicate, Booked, or Cancelled leads.
 - Saves + enqueues attached **Booking Chain** refresh (`form_lead.update`).
 
@@ -86,6 +86,9 @@ Job: `resource: source_lead`, `operation: form_lead.create` | `form_lead.update`
 | Helpers | Do not bypass Source Company, location, duplicate, or Sheet Sync scheduling |
 | `sms_consent` | Boolean or `"true"`/`"false"` at the route; only parsed `true` creates a Lead Message. Duplicate leads record a skipped message; false/missing creates no message. |
 | Lifecycle revision | `domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical create/update/delete routes persist an append-only `EntityChange` and stamp `last_change_*` in the executor transaction. |
+| Ingestion Origin | Server-assigned and immutable. Ordinary WordPress/`createFormLead` → `wordpress_form`; authenticated Admin actor → `vantage_admin`; trusted Best Relocation command → `best_relocation_sheet`. `granot_lead_created` is assignable for a trusted Granot create context only; no live caller. Clients cannot set `ingestion_origin`. `legacy_unknown` is migration-only. |
+| Immutable creation evidence | New Form Leads persist `ingested_contact_snapshot` and `ingested_move_snapshot` in the create transaction. Later Granot evidence cannot overwrite them. `granot_contact_snapshot` is a separate field. |
+| Form Job Number | Additive `job_no` / `normalized_job_no` via existing `normalizeJobNo`. This is not **Tracking Reference**. CRM Posting still sends `FormLead.ref_no` as `leadno`. Persisted `move_size` is optional; ordinary WordPress/Admin Zod still requires it. |
 
 Lead Messaging defaults to disabled. Active sends require an E.164 destination
 matching `LEAD_MESSAGING_ALLOWED_COUNTRY_PREFIXES` (default `+1`), respect the

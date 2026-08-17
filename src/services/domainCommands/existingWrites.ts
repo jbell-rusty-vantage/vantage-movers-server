@@ -41,6 +41,10 @@ import {
   updateFormLeadInTransaction,
   deleteFormLeadInTransaction,
 } from "../leads/formLead.service";
+import {
+  deriveCallLeadIngestionOrigin,
+  deriveFormLeadIngestionOrigin,
+} from "../leads/leadIngestionProvenance";
 import { finalizeSheetSync, finalizeSheetSyncDelete } from "../sheetSync";
 import {
   BOOKED_LEAD_CHANGE_PATHS,
@@ -137,7 +141,13 @@ export async function runExistingCreateFormLead(input: {
     command_name: "createFormLead",
     context: input.context,
     operation: async (tx) => {
-      const pending = await createFormLeadInTransaction(data, tx);
+      const pending = await createFormLeadInTransaction(data, {
+        ...tx,
+        ingestion_origin: deriveFormLeadIngestionOrigin({
+          commandOrigin: input.context.provenance.origin,
+          actorType: input.context.actor.actor_type,
+        }),
+      });
       await persistPlannedMutations(
         "createFormLead",
         input.context,
@@ -183,7 +193,12 @@ export async function runExistingCreateCallLead(input: {
     command_name: "createCallLead",
     context: input.context,
     operation: async (tx) => {
-      const pending = await createCallLeadInTransaction(data, tx);
+      const pending = await createCallLeadInTransaction(data, {
+        ...tx,
+        ingestion_origin: deriveCallLeadIngestionOrigin({
+          commandOrigin: input.context.provenance.origin,
+        }),
+      });
       await persistPlannedMutations(
         "createCallLead",
         input.context,

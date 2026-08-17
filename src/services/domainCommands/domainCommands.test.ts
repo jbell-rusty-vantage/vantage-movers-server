@@ -397,6 +397,7 @@ test("[AC-21] transaction-bound internals do not open nested transactions or fin
       file: path.join(__dirname, "../leads/callLead.service.ts"),
       names: [
         "createCallLeadInTransaction",
+        "createRingCentralCallLeadInTransaction",
         "persistCallLeadUpdateInTransaction",
         "updateCallLeadInTransaction",
         "deleteCallLeadInTransaction",

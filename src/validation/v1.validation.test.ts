@@ -1001,3 +1001,86 @@ test("browseCallLeadsQuerySchema accepts job_no and full-text q", () => {
   assert.equal(parsed.q, "smith");
   assert.equal(parsed.job_no, "P5556767");
 });
+
+const FORM_CREATE_BASE = {
+  source_company: "main_site",
+  name: "Synthetic User",
+  pickup_zip: "10001",
+  destination_zip: "94105",
+  move_size: "Studio",
+  phone_number: "5550100100",
+};
+
+const INTERNAL_LEAD_FIELDS = [
+  "ingestion_origin",
+  "normalized_job_no",
+  "granot_priority",
+  "granot_move_size",
+  "granot_service_type",
+  "ingested_contact_snapshot",
+  "granot_contact_snapshot",
+  "ingested_move_snapshot",
+  "current_contact_provenance",
+  "current_move_provenance",
+  "last_accepted_granot_observation",
+  "granot_contact_revision",
+  "last_granot_contact_change",
+  "ringcentral_convergence",
+  "domain_revision",
+  "last_change_id",
+  "last_changed_at",
+  "change_history_started_at",
+] as const;
+
+test("[AC-07] [AC-10] public/admin Form create and patch reject internal lifecycle metadata", () => {
+  for (const field of INTERNAL_LEAD_FIELDS) {
+    assert.equal(
+      createFormLeadSchema.safeParse({ ...FORM_CREATE_BASE, [field]: "x" }).success,
+      false,
+      `createFormLeadSchema must reject ${field}`,
+    );
+    assert.equal(
+      updateFormLeadSchema.safeParse({ [field]: "x" }).success,
+      false,
+      `updateFormLeadSchema must reject ${field}`,
+    );
+  }
+  assert.equal(
+    createFormLeadSchema.safeParse({ ...FORM_CREATE_BASE, job_no: "P5556278" }).success,
+    false,
+  );
+  assert.equal(createFormLeadSchema.safeParse({
+    ...FORM_CREATE_BASE,
+    move_size: undefined,
+  }).success, false);
+});
+
+test("[AC-12] public/admin Call create and patch reject internal lifecycle metadata", () => {
+  const callBase = { phone_number: "5550100101" };
+  for (const field of INTERNAL_LEAD_FIELDS) {
+    assert.equal(
+      createCallLeadSchema.safeParse({ ...callBase, [field]: "x" }).success,
+      false,
+      `createCallLeadSchema must reject ${field}`,
+    );
+    assert.equal(
+      updateCallLeadSchema.safeParse({ [field]: "x" }).success,
+      false,
+      `updateCallLeadSchema must reject ${field}`,
+    );
+  }
+  assert.equal(
+    createCallLeadSchema.safeParse({ ...callBase, quoted: true }).success,
+    false,
+  );
+});
+
+test("[AC-07] ordinary Form create still requires move_size; ordinary Call still requires phone or job_no", () => {
+  const { move_size: _moveSize, ...withoutMoveSize } = FORM_CREATE_BASE;
+  assert.equal(createFormLeadSchema.safeParse(withoutMoveSize).success, false);
+  assert.equal(createCallLeadSchema.safeParse({ name: "Synthetic" }).success, false);
+  assert.equal(
+    createCallLeadSchema.parse({ phone_number: "5550100101" }).phone_number,
+    "5550100101",
+  );
+});

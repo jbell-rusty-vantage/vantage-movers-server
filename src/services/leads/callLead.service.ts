@@ -37,6 +37,11 @@ import { toObjectId } from "../../utils/objectId";
 import { deleteBookedLead, refreshAttachedBookingFromLead } from "../v1.service";
 import { hasFormFillForCallLead } from "./duplicateLead.service";
 import { normalizeLeadName, normalizeLeadNameUpdate } from "./leadName.service";
+import {
+  callLeadCreationProvenanceFields,
+  omitForbiddenLeadLifecycleFields,
+} from "./leadIngestionProvenance";
+import type { CallLeadIngestionOrigin } from "../granotLifecycle/types";
 import { resolveOptionalLocation } from "./leadLocation.service";
 import { resolveLeadSourceAssignment } from "./leadSourceCompany";
 import {
@@ -87,8 +92,9 @@ export type CreateRingCentralCallLeadInput = {
  * on `ringcentral.telephony_session_id` is the final guard against double
  * inserts across the webhook and cron paths.
  */
-export async function createRingCentralCallLead(
+export async function createRingCentralCallLeadInTransaction(
   input: CreateRingCentralCallLeadInput,
+  tx: { session?: ClientSession; now: Date },
 ) {
   const { source_company, duplicate } = input;
   const sourceAssignment = {
@@ -121,38 +127,57 @@ export async function createRingCentralCallLead(
     storedBusinessTimestamp: leadTimestamp,
     duplicate,
   });
-  const lead = await runSheetSyncWrite(async (session) => {
-    const created = new CallLead({
-      ...sourceAssignment,
-      phone_number: input.phone_number,
-      name: input.name ?? undefined,
-      duration: input.duration ?? undefined,
-      start_time: input.start_time ?? undefined,
-      end_time: input.end_time ?? undefined,
-      timestamp: leadTimestamp,
-      form_fill,
-      duplicate,
-      ...cplSnapshot,
-      ringcentral: {
-        telephony_session_id: input.ringcentral.telephony_session_id ?? undefined,
-        session_id: input.ringcentral.session_id ?? undefined,
-        party_id: input.ringcentral.party_id ?? undefined,
-        call_log_id: input.ringcentral.call_log_id ?? undefined,
-        source_label: input.ringcentral.source_label ?? undefined,
-        ingestion_source: input.ringcentral.ingestion_source,
-        qualification_reason: input.ringcentral.qualification_reason ?? undefined,
-        answered_at: input.ringcentral.answered_at ?? undefined,
-        terminal_at: input.ringcentral.terminal_at ?? undefined,
-        duration_seconds: input.ringcentral.duration_seconds ?? undefined,
-        route_id: input.ringcentral.route_id,
-        route_assignment_id: input.ringcentral.route_assignment_id,
-        target_phone_number: input.ringcentral.target_phone_number,
+  const created = new CallLead({
+    ...sourceAssignment,
+    phone_number: input.phone_number,
+    name: input.name ?? undefined,
+    duration: input.duration ?? undefined,
+    start_time: input.start_time ?? undefined,
+    end_time: input.end_time ?? undefined,
+    timestamp: leadTimestamp,
+    form_fill,
+    duplicate,
+    ...cplSnapshot,
+    ...callLeadCreationProvenanceFields({
+      origin: "ringcentral",
+      now: tx.now,
+      contact: {
+        name: input.name,
+        phone_number: input.phone_number,
       },
-    });
-    await created.save({ session });
-    await persistSheetSyncIntent(callLeadCreateJob(created._id.toString()), session);
-    return created;
+    }),
+    ringcentral: {
+      telephony_session_id: input.ringcentral.telephony_session_id ?? undefined,
+      session_id: input.ringcentral.session_id ?? undefined,
+      party_id: input.ringcentral.party_id ?? undefined,
+      call_log_id: input.ringcentral.call_log_id ?? undefined,
+      source_label: input.ringcentral.source_label ?? undefined,
+      ingestion_source: input.ringcentral.ingestion_source,
+      qualification_reason: input.ringcentral.qualification_reason ?? undefined,
+      answered_at: input.ringcentral.answered_at ?? undefined,
+      terminal_at: input.ringcentral.terminal_at ?? undefined,
+      duration_seconds: input.ringcentral.duration_seconds ?? undefined,
+      route_id: input.ringcentral.route_id,
+      route_assignment_id: input.ringcentral.route_assignment_id,
+      target_phone_number: input.ringcentral.target_phone_number,
+    },
   });
+  await created.save({ session: tx.session });
+  const job = callLeadCreateJob(created._id.toString());
+  await persistSheetSyncIntent(job, tx.session);
+  return { lead: created, job, source_company, sourceAssignment, form_fill };
+}
+
+export async function createRingCentralCallLead(
+  input: CreateRingCentralCallLeadInput,
+) {
+  const pending = await runSheetSyncWrite(async (session) =>
+    createRingCentralCallLeadInTransaction(input, {
+      session,
+      now: new Date(),
+    }),
+  );
+  const { lead, source_company, sourceAssignment, form_fill } = pending;
 
   await finalizeSheetSync(callLeadCreateJob(lead._id.toString()));
 
@@ -178,7 +203,7 @@ export async function createRingCentralCallLead(
       leadIdentity: { name: lead.name ?? null, phone: lead.phone_number },
       sourceCompany: source_company,
       entity: { type: "call_lead", id: lead._id.toString() },
-      details: { form_fill: true, duplicate },
+      details: { form_fill: true, duplicate: lead.duplicate },
     });
   }
 
@@ -196,7 +221,11 @@ function callLeadCreateJob(leadId: string): FullSheetSyncJob {
 
 export async function createCallLeadInTransaction(
   input: CreateCallLeadInput,
-  tx: { session?: ClientSession; now: Date },
+  tx: {
+    session?: ClientSession;
+    now: Date;
+    ingestion_origin: CallLeadIngestionOrigin;
+  },
 ) {
   const normalizedInput = normalizeLeadName(input);
   const location = await resolveOptionalLocation(normalizedInput, {
@@ -234,6 +263,17 @@ export async function createCallLeadInTransaction(
     form_fill,
     timestamp: leadTimestamp,
     ...cplSnapshot,
+    ...callLeadCreationProvenanceFields({
+      origin: tx.ingestion_origin,
+      now: tx.now,
+      contact: {
+        first_name: normalizedInput.first_name,
+        last_name: normalizedInput.last_name,
+        name: normalizedInput.name,
+        phone_number: normalizedInput.phone_number,
+        email: normalizedInput.email,
+      },
+    }),
   });
   await created.save({ session: tx.session });
   const job = callLeadCreateJob(created._id.toString());
@@ -303,7 +343,11 @@ export async function finalizeCallLeadCreateAfterCommit(pending: {
 
 export async function createCallLead(input: CreateCallLeadInput) {
   const pending = await runSheetSyncWrite((session) =>
-    createCallLeadInTransaction(input, { session, now: new Date() }),
+    createCallLeadInTransaction(input, {
+      session,
+      now: new Date(),
+      ingestion_origin: "vantage_admin",
+    }),
   );
   return finalizeCallLeadCreateAfterCommit(pending);
 }
@@ -351,7 +395,9 @@ export async function updateCallLead(
   }
 
   const beforeSnapshot = lead.toObject() as Record<string, unknown>;
-  const update = normalizeLeadNameUpdate({ ...input }, lead);
+  const update = omitForbiddenLeadLifecycleFields(
+    normalizeLeadNameUpdate({ ...input }, lead) as Record<string, unknown>,
+  );
   let sourceResolutionForUpdate:
     | Awaited<ReturnType<typeof resolveLeadSourceAssignment>>
     | undefined;

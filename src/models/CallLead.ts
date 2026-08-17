@@ -3,6 +3,9 @@ import { getMongoDatabaseName } from "../config/domain";
 import {
   aggregateRevisionSchemaFields,
   applyAggregateRevisionGuards,
+  applyLeadProvenanceGuards,
+  callLeadProvenanceSchemaFields,
+  RECEIVER_AGENT_SOURCES,
 } from "./granotLifecycleSchemas";
 import {
   optionalLocalField,
@@ -66,8 +69,6 @@ const CallLeadSchema = new Schema(
     crm_source_label_snapshot: { type: String, trim: true },
     source_company_site: { type: String, trim: true },
     timestamp: { type: Date, required: true, default: Date.now },
-    job_no: { type: String, trim: true },
-    normalized_job_no: { type: String, trim: true },
     name: { type: String, trim: true },
     first_name: { type: String, trim: true },
     last_name: { type: String, trim: true },
@@ -121,18 +122,12 @@ const CallLeadSchema = new Schema(
     receiver_agent_name_snapshot: { type: String, trim: true },
     receiver_agent_source: {
       type: String,
-      enum: [
-        "extension_match",
-        "extension_selected",
-        "extension_created",
-        "extension_crm_username_match",
-        "best_relocation_sheet",
-        "manual",
-      ],
+      enum: RECEIVER_AGENT_SOURCES,
     },
     receiver_agent_source_value: { type: String, trim: true },
     receiver_agent_set_at: { type: Date },
     sheet_sync: { type: [sheetSyncSchema], default: [] },
+    ...callLeadProvenanceSchemaFields,
     ...aggregateRevisionSchemaFields,
   },
   {
@@ -170,7 +165,20 @@ CallLeadSchema.index({
   duplicate: 1,
   timestamp: -1,
 });
+CallLeadSchema.index({ source_granularity_id: 1, normalized_job_no: 1 });
+CallLeadSchema.index({
+  source_granularity_id: 1,
+  normalized_phone_number: 1,
+  createdAt: -1,
+});
+CallLeadSchema.index({
+  ingestion_origin: 1,
+  source_granularity_id: 1,
+  "ingested_contact_snapshot.normalized_phone_number": 1,
+  createdAt: -1,
+});
 
+applyLeadProvenanceGuards(CallLeadSchema);
 applyAggregateRevisionGuards(CallLeadSchema);
 
 CallLeadSchema.pre("validate", function normalizePhoneNumber() {

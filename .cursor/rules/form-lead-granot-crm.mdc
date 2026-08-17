@@ -8,14 +8,14 @@ alwaysApply: false
 
 - `POST /api/v1/form-leads` validates with `createFormLeadSchema`, saves a Mongo `FormLead`, optionally posts to Granot CRM, then schedules Google Sheet sync through the Sheet Sync coordinator (`runSheetSyncWrite` + `finalizeSheetSync`). Production may use `SHEET_SYNC_MODE=queued` (outbox + drain). `legacy` mode still uses `waitUntil` inline sync. Do not assume WaitUntil is the only path.
 - CRM Posting is independent of Granot webhook capture. Webhooks do not create or update Form Leads today.
-- `post_to_granot` is a create-only request flag with default `false`. Persist it on `FormLead` for audit/history.
+- `post_to_granot` is a create-only request flag with default `false`. Persist it on `FormLead` for audit/history. Trusted Granot create validators (capability only, no live caller) force `post_to_granot=false`.
 - When `post_to_granot` is `false`, still save the Mongo document and schedule sheet sync, but do not call the Granot CRM endpoint. Return/report CRM sync as `skipped`, not `failed`.
 - Omitted `post_to_granot` behaves like `false`; send `true` explicitly when Granot posting is required.
 - Generate and persist a `lid` when the create request omits one. The established shape is `LID` plus 13 lowercase hexadecimal characters.
 - `crm_company_label` controls the Granot payload `label`; it is not persisted as the source-company slug.
 - The incoming create-form-lead `ref_no` is the original request/source value, commonly a Google click id, and is stored on the Mongo `FormLead.ref_no`. It is also used for Google Sheets chain-of-custody.
 - Do not confuse Mongo `FormLead.ref_no` with the Granot CRM web app `ref_no` column. The Granot web app `ref_no` value is produced from the CRM POST payload field `leadno`.
-- `formLeadPayload.ts` must set CRM payload `leadno` to the persisted provider `lead.ref_no`. Granot writes that value to its web app `ref_no` column. The optional `notes` field may carry `lead.lid`, but `lid` is never an identity key.
+- `formLeadPayload.ts` must set CRM payload `leadno` to the persisted provider `lead.ref_no`. Granot writes that value to its web app `ref_no` column. The optional `notes` field may carry `lead.lid`, but `lid` is never an identity key. Additive Form `job_no` / `normalized_job_no` is Granot Job Number parity and must not replace `ref_no` as `leadno`.
 - `PATCH /api/v1/form-leads/:id` already updates `quoted` (and may set `receiver_agent`) and schedules sheet sync. Do not add a second quoted sync path unless it preserves that side effect.
 - Keep API and Mongo fields in `snake_case`; only translate to CRM field names inside `crm.service.ts`.
 

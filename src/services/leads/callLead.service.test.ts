@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { SHEET_TAB_NAMES } from "../../config/domain";
 import { buildCallLeadDeletePreviousTargets } from "./callLead.service";
+import {
+  callLeadCreationProvenanceFields,
+  deriveCallLeadIngestionOrigin,
+} from "./leadIngestionProvenance";
 
 const originalMasterLeadsSheetId = process.env.MASTER_LEADS_SHEET_ID;
 const originalTestMasterLeadsSheetId = process.env.TEST_MASTER_LEADS_SHEET_ID;
@@ -53,4 +57,25 @@ test("buildCallLeadDeletePreviousTargets preserves known rows from sheet_sync", 
 
   assert.equal(callsTarget?.row_number, 42);
   assert.equal(duplicateCallsTarget?.row_number, undefined);
+});
+
+test("[AC-12] manual Admin and RingCentral Call paths derive exact origins and quoted false", () => {
+  assert.equal(deriveCallLeadIngestionOrigin({}), "vantage_admin");
+  assert.equal(
+    deriveCallLeadIngestionOrigin({ commandOrigin: "ringcentral" }),
+    "ringcentral",
+  );
+  assert.equal(
+    deriveCallLeadIngestionOrigin({ commandOrigin: "external_sheet_ingestion" }),
+    "best_relocation_sheet",
+  );
+  const now = new Date("2026-08-17T16:10:00.000Z");
+  const ringcentral = callLeadCreationProvenanceFields({
+    origin: "ringcentral",
+    now,
+    contact: { phone_number: "5550100101" },
+  });
+  assert.equal(ringcentral.quoted, false);
+  assert.equal(ringcentral.ingestion_origin, "ringcentral");
+  assert.equal(ringcentral.ingested_contact_snapshot.evidence_status, "captured_at_ingestion");
 });

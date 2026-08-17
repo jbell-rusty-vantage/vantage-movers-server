@@ -20,7 +20,7 @@ alwaysApply: false
 - Webhook flow: capture raw events, normalize party events, upsert candidates, aggregate sessions, then call shared ingest only when the session is qualified and terminal.
 - Cron flow: `call-log-sync.service.ts` fetches detailed inbound Call Log records, `call-log-vetting.ts` qualifies them, then shared ingest handles idempotency/duplicates/write mode.
 - Analytics flow: `analytics-reconcile.service.ts` stores aggregate snapshots only. It must not create caller-level leads.
-- `ringcentral-call-lead-ingest.service.ts` is the only RingCentral service that should promote qualified calls into dry-run, shadow, or real `call_leads` outcomes.
+- `ringcentral-call-lead-ingest.service.ts` is the only RingCentral service that should promote qualified calls into dry-run, shadow, or real `call_leads` outcomes. Real creates persist top-level `ingestion_origin=ringcentral` and an immutable ingested contact snapshot; nested `ringcentral.ingestion_source` remains webhook/call-log/manual transport provenance.
 
 ## Safety Posture
 

@@ -7,7 +7,11 @@ import {
 import {
   aggregateRevisionSchemaFields,
   applyAggregateRevisionGuards,
+  applyLeadProvenanceGuards,
+  formLeadProvenanceSchemaFields,
+  RECEIVER_AGENT_SOURCES,
 } from "./granotLifecycleSchemas";
+import { normalizeJobNo } from "../services/bookings/bookingIdentity";
 import {
   localField,
   sheetSyncSchema,
@@ -48,7 +52,7 @@ const FormLeadSchema = new Schema(
     destination_zip: { type: String, required: true, trim: true },
     pickup_state: { type: String, trim: true, default: FORM_LEAD_UNKNOWN_STATE },
     delivery_state: { type: String, trim: true, default: FORM_LEAD_UNKNOWN_STATE },
-    move_size: { type: String, required: true, enum: MOVE_SIZES },
+    move_size: { type: String, enum: MOVE_SIZES },
     move_date: { type: Date, required: true, default: Date.now },
     ref_no: { type: String, trim: true, default: "not provided" },
     booked: { type: Schema.Types.ObjectId, ref: "BookedLead" },
@@ -95,18 +99,12 @@ const FormLeadSchema = new Schema(
     receiver_agent_name_snapshot: { type: String, trim: true },
     receiver_agent_source: {
       type: String,
-      enum: [
-        "extension_match",
-        "extension_selected",
-        "extension_created",
-        "extension_crm_username_match",
-        "best_relocation_sheet",
-        "manual",
-      ],
+      enum: RECEIVER_AGENT_SOURCES,
     },
     receiver_agent_source_value: { type: String, trim: true },
     receiver_agent_set_at: { type: Date },
     sheet_sync: { type: [sheetSyncSchema], default: [] },
+    ...formLeadProvenanceSchemaFields,
     ...aggregateRevisionSchemaFields,
   },
   {
@@ -145,13 +143,23 @@ FormLeadSchema.index({
   email: 1,
   normalized_contact_name: 1,
 });
+FormLeadSchema.index({ normalized_job_no: 1 });
+FormLeadSchema.index({ source_granularity_id: 1, normalized_job_no: 1 });
+FormLeadSchema.index({
+  source_granularity_id: 1,
+  normalized_phone_number: 1,
+  duplicate: 1,
+});
+FormLeadSchema.index({ ref_no: 1, duplicate: 1 });
 
+applyLeadProvenanceGuards(FormLeadSchema);
 applyAggregateRevisionGuards(FormLeadSchema);
 
 FormLeadSchema.pre("validate", function normalizeEmployeeBookingFields() {
   this.normalized_lid = normalizeSubmissionLid(this.lid);
   this.normalized_phone_number = normalizePhoneNumberForMatch(this.phone_number);
   this.normalized_contact_name = normalizeComparisonName(this.name);
+  this.normalized_job_no = normalizeJobNo(this.job_no);
 });
 
 export type FormLeadDocument = InferSchemaType<typeof FormLeadSchema> & {

@@ -45,7 +45,7 @@ This module does not enable Granot/RingCentral lifecycle callers, owner `updateB
 
 ## Transaction-bound internals and existing adapters
 
-Affected v1 create/update/delete routes derive trusted context via `existingWriteContextFromRequest` and call `runExisting*` adapters. Those adapters enter the executor once. `*InTransaction` helpers accept `{ session, now }` and must not call `withTransaction`, `runSheetSyncWrite`, or `finalizeSheetSync`. Public noncanonical service functions may still wrap `runSheetSyncWrite` for non-route callers.
+Affected v1 create/update/delete routes derive trusted context via `existingWriteContextFromRequest` and call `runExisting*` adapters. Those adapters enter the executor once. Form/Call create adapters derive Ingestion Origin from command origin/actor via `leadIngestionProvenance` and pass it into the create transaction; clients cannot supply `ingestion_origin`. A `granot_lifecycle` origin would map to `granot_lead_created`, but that path has no live caller. Form/Call create `*InTransaction` helpers accept `{ session, now, ingestion_origin }` and must not call `withTransaction`, `runSheetSyncWrite`, or `finalizeSheetSync`. Public noncanonical service functions may still wrap `runSheetSyncWrite` for non-route callers.
 
 Compatibility context: Command ID is a server ObjectId hex; idempotency is `submission_id` when present, otherwise `request:{command}:{requestId}`; payload checksum is SHA-256 of the canonicalized `{command_name, resource_id, payload}`. No credential or key value is persisted.
 

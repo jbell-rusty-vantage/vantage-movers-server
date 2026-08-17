@@ -77,6 +77,18 @@ test("[AC-03] buildCrmFormLeadPayload uses the provider ref_no as Granot leadno"
   assert.equal(payload.leadno, "DT_czj2atkThs");
 });
 
+test("[AC-03] Form Job Number parity does not reinterpret ref_no as CRM leadno", () => {
+  const lead = hydrateFormLead({
+    ref_no: "DT_czj2atkThs",
+    job_no: "P5556278",
+    normalized_job_no: "P5556278",
+  });
+  const payload = buildCrmFormLeadPayload(lead);
+  assert.equal(payload.leadno, "DT_czj2atkThs");
+  assert.notEqual(payload.leadno, lead.job_no);
+  assert.notEqual(payload.leadno, lead.normalized_job_no);
+});
+
 test("[AC-03] buildCrmFormLeadPayload carries lid in notes without using it for identity", () => {
   const lead = hydrateFormLead({ lid: "LID-12345" });
   const payload = buildCrmFormLeadPayload(lead);

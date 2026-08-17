@@ -1,6 +1,6 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) Sections 14.1, 23.2, 34.3–34.5  
-**Primary code:** `src/models/granotLifecycleSchemas.ts`, `src/services/granotLifecycle/aggregateRevision.ts`, `scripts/migrations/granot-lifecycle-lead-provenance.ts`, `scripts/migrations/granot-lifecycle-aggregate-revisions.ts`  
+**Primary code:** `src/models/granotLifecycleSchemas.ts`, `src/services/granotLifecycle/aggregateRevision.ts`, `src/services/granotLifecycle/trustedLeadCreateValidation.ts`, `scripts/migrations/granot-lifecycle-lead-provenance.ts`, `scripts/migrations/granot-lifecycle-aggregate-revisions.ts`  
 **Domain terms used:** Form Lead, Call Lead, Booking, Cancellation, System of Record, Job Number
 
 # Aggregate revisions (Unit 09 foundation)
@@ -15,7 +15,7 @@
 | `last_change_id` / `last_changed_at` | Optional pair. Both absent until an existing canonical adapter records a real `EntityChange`. One-sided pairs fail validation. |
 | `change_history_started_at` | Honest start-of-history boundary. New documents receive trusted server creation time. Clients cannot supply it. Write-once outside the reviewed migration seam. |
 
-Public/admin/trusted DTOs reject these fields. Historical collections are not write targets. Historical consolidation plans omit revision metadata; production schema defaults may attach `domain_revision: 0` and a server history boundary at insert validation without inventing `last_change_*` or `EntityChange` rows.
+Public/admin DTOs reject these fields and the Unit 12 Lead provenance fields (`ingestion_origin`, ingested/Granot snapshots, current provenance, temporal winner, `granot_contact_revision`, bounded contact summary, Call `ringcentral_convergence`). Shared provenance/temporal/convergence sub-schemas in `granotLifecycleSchemas.ts` are storage only. Trusted Granot create validators (`trustedLeadCreateValidation.ts`) accept a future `granot_lead_created` context and force `post_to_granot=false`; they have no live caller. Historical collections are not write targets. Historical consolidation plans omit revision metadata; production schema defaults may attach `domain_revision: 0` and a server history boundary at insert validation without inventing `last_change_*` or `EntityChange` rows. Lead origin/snapshot backfill and the seven declared Lead indexes remain Unit 13.
 
 ## Compare-and-swap primitive
 

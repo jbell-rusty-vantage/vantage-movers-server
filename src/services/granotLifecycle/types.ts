@@ -109,6 +109,38 @@ export type GranotBookingAction = "booked" | "release";
 
 export type LeadModel = "FormLead" | "CallLead";
 
+export type FormLeadIngestionOrigin =
+  | "wordpress_form"
+  | "granot_lead_created"
+  | "best_relocation_sheet"
+  | "vantage_admin"
+  | "legacy_unknown";
+
+export type CallLeadIngestionOrigin =
+  | "ringcentral"
+  | "granot_lead_created"
+  | "best_relocation_sheet"
+  | "vantage_admin"
+  | "legacy_import"
+  | "legacy_unknown";
+
+export type IngestedEvidenceStatus = "captured_at_ingestion" | "legacy_baseline";
+
+export type CurrentContactSourceSystem = "vantage" | "granot" | "ringcentral";
+
+export type CurrentMoveSourceSystem =
+  | "wordpress"
+  | "granot"
+  | "ringcentral"
+  | "admin"
+  | "legacy";
+
+export type RingCentralConvergenceState =
+  | "pending"
+  | "adopted"
+  | "conflict"
+  | "not_applicable";
+
 export type EntityRef = {
   model:
     | LeadModel

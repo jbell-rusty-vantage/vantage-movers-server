@@ -1,16 +1,22 @@
 import { Schema } from "mongoose";
 import type {
+  CallLeadIngestionOrigin,
   ChannelOperationKind,
+  CurrentContactSourceSystem,
+  CurrentMoveSourceSystem,
   ExecutionMode,
+  FormLeadIngestionOrigin,
   GranotBookingAction,
   GranotLifecycleDisposition,
   GranotObservationKind,
   GranotRouteEventClass,
+  IngestedEvidenceStatus,
   LeadModel,
   NormalizationIssueCode,
   NormalizationResult,
   ObservationChannel,
   ReceiptWorkState,
+  RingCentralConvergenceState,
   SynchronizationOutcome,
   SynchronizationReasonCode,
 } from "../services/granotLifecycle/types";
@@ -230,6 +236,310 @@ export const aggregateRevisionSchemaFields = {
   last_changed_at: { type: Date },
   change_history_started_at: { type: Date },
 };
+
+export const FORM_LEAD_INGESTION_ORIGINS = [
+  "wordpress_form",
+  "granot_lead_created",
+  "best_relocation_sheet",
+  "vantage_admin",
+  "legacy_unknown",
+] as const satisfies readonly FormLeadIngestionOrigin[];
+
+export const CALL_LEAD_INGESTION_ORIGINS = [
+  "ringcentral",
+  "granot_lead_created",
+  "best_relocation_sheet",
+  "vantage_admin",
+  "legacy_import",
+  "legacy_unknown",
+] as const satisfies readonly CallLeadIngestionOrigin[];
+
+export const ASSIGNABLE_FORM_LEAD_INGESTION_ORIGINS = [
+  "wordpress_form",
+  "granot_lead_created",
+  "best_relocation_sheet",
+  "vantage_admin",
+] as const satisfies readonly Exclude<FormLeadIngestionOrigin, "legacy_unknown">[];
+
+export const ASSIGNABLE_CALL_LEAD_INGESTION_ORIGINS = [
+  "ringcentral",
+  "granot_lead_created",
+  "best_relocation_sheet",
+  "vantage_admin",
+  "legacy_import",
+] as const satisfies readonly Exclude<CallLeadIngestionOrigin, "legacy_unknown">[];
+
+export const INGESTED_EVIDENCE_STATUSES = [
+  "captured_at_ingestion",
+  "legacy_baseline",
+] as const satisfies readonly IngestedEvidenceStatus[];
+
+export const CURRENT_CONTACT_SOURCE_SYSTEMS = [
+  "vantage",
+  "granot",
+  "ringcentral",
+] as const satisfies readonly CurrentContactSourceSystem[];
+
+export const CURRENT_MOVE_SOURCE_SYSTEMS = [
+  "wordpress",
+  "granot",
+  "ringcentral",
+  "admin",
+  "legacy",
+] as const satisfies readonly CurrentMoveSourceSystem[];
+
+export const RINGCENTRAL_CONVERGENCE_STATES = [
+  "pending",
+  "adopted",
+  "conflict",
+  "not_applicable",
+] as const satisfies readonly RingCentralConvergenceState[];
+
+export const RECEIVER_AGENT_SOURCES = [
+  "extension_match",
+  "extension_selected",
+  "extension_created",
+  "extension_crm_username_match",
+  "granot_username_match",
+  "best_relocation_sheet",
+  "manual",
+] as const;
+
+export const LEAD_PROVENANCE_FIELD_NAMES = [
+  "ingestion_origin",
+  "job_no",
+  "normalized_job_no",
+  "granot_priority",
+  "granot_move_size",
+  "granot_service_type",
+  "ingested_contact_snapshot",
+  "granot_contact_snapshot",
+  "ingested_move_snapshot",
+  "current_contact_provenance",
+  "current_move_provenance",
+  "last_accepted_granot_observation",
+  "granot_contact_revision",
+  "last_granot_contact_change",
+  "ringcentral_convergence",
+] as const;
+
+export const PUBLIC_LEAD_FORBIDDEN_LIFECYCLE_FIELDS = [
+  "ingestion_origin",
+  "normalized_job_no",
+  "granot_priority",
+  "granot_move_size",
+  "granot_service_type",
+  "ingested_contact_snapshot",
+  "granot_contact_snapshot",
+  "ingested_move_snapshot",
+  "current_contact_provenance",
+  "current_move_provenance",
+  "last_accepted_granot_observation",
+  "granot_contact_revision",
+  "last_granot_contact_change",
+  "ringcentral_convergence",
+  ...AGGREGATE_REVISION_FIELD_NAMES,
+] as const;
+
+const ingestedContactSnapshotSchema = new Schema(
+  {
+    first_name: { type: String, trim: true },
+    last_name: { type: String, trim: true },
+    name: { type: String, trim: true },
+    phone_number: { type: String, trim: true },
+    normalized_phone_number: { type: String, trim: true },
+    email: { type: String, trim: true, lowercase: true },
+    captured_at: { type: Date, required: true },
+    evidence_status: {
+      type: String,
+      required: true,
+      enum: INGESTED_EVIDENCE_STATUSES,
+    },
+  },
+  { _id: false },
+);
+
+const ingestedMoveSnapshotSchema = new Schema(
+  {
+    pickup_city: { type: String, trim: true },
+    pickup_zip: { type: String, trim: true },
+    pickup_state: { type: String, trim: true },
+    delivery_city: { type: String, trim: true },
+    destination_zip: { type: String, trim: true },
+    delivery_state: { type: String, trim: true },
+    move_date: { type: Date },
+    move_size: { type: String, trim: true },
+    captured_at: { type: Date, required: true },
+    evidence_status: {
+      type: String,
+      required: true,
+      enum: INGESTED_EVIDENCE_STATUSES,
+    },
+  },
+  { _id: false },
+);
+
+const granotContactSnapshotSchema = new Schema(
+  {
+    first_name: { type: String, trim: true },
+    last_name: { type: String, trim: true },
+    name: { type: String, trim: true },
+    phone_number: { type: String, trim: true },
+    normalized_phone_number: { type: String, trim: true },
+    email: { type: String, trim: true, lowercase: true },
+    differs_from_ingested: { type: Boolean, required: true },
+    observation_id: { type: Schema.Types.ObjectId, required: true },
+    captured_at: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
+const currentContactProvenanceSchema = new Schema(
+  {
+    source_system: {
+      type: String,
+      required: true,
+      enum: CURRENT_CONTACT_SOURCE_SYSTEMS,
+    },
+    observation_id: { type: Schema.Types.ObjectId },
+    changed_at: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
+const currentMoveProvenanceSchema = new Schema(
+  {
+    source_system: {
+      type: String,
+      required: true,
+      enum: CURRENT_MOVE_SOURCE_SYSTEMS,
+    },
+    observation_id: { type: Schema.Types.ObjectId },
+    changed_at: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
+const lastAcceptedGranotObservationSchema = new Schema(
+  {
+    observation_id: { type: Schema.Types.ObjectId, required: true },
+    captured_at: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
+const lastGranotContactChangeSchema = new Schema(
+  {
+    observation_id: { type: Schema.Types.ObjectId, required: true },
+    changed_at: { type: Date, required: true },
+    changed_paths: { type: [String], required: true, default: undefined },
+    before_hash: { type: String, required: true, trim: true },
+    after_hash: { type: String, required: true, trim: true },
+  },
+  { _id: false },
+);
+
+const ringcentralConvergenceSchema = new Schema(
+  {
+    state: {
+      type: String,
+      required: true,
+      enum: RINGCENTRAL_CONVERGENCE_STATES,
+    },
+    candidate_window_started_at: { type: Date },
+    adopted_at: { type: Date },
+    conflict_reason: { type: String, trim: true },
+    observation_id: { type: Schema.Types.ObjectId },
+  },
+  { _id: false },
+);
+
+export const sharedLeadProvenanceSchemaFields = {
+  job_no: { type: String, trim: true },
+  normalized_job_no: { type: String, trim: true },
+  granot_priority: { type: String, trim: true },
+  granot_move_size: { type: String, trim: true },
+  granot_service_type: { type: String, trim: true },
+  ingested_contact_snapshot: { type: ingestedContactSnapshotSchema },
+  granot_contact_snapshot: { type: granotContactSnapshotSchema },
+  current_contact_provenance: { type: currentContactProvenanceSchema },
+  current_move_provenance: { type: currentMoveProvenanceSchema },
+  last_accepted_granot_observation: { type: lastAcceptedGranotObservationSchema },
+  granot_contact_revision: {
+    type: Number,
+    required: true,
+    default: 0,
+    min: 0,
+    validate: {
+      validator: isNonnegativeIntegerRevision,
+      message: "granot_contact_revision must be a nonnegative integer",
+    },
+  },
+  last_granot_contact_change: { type: lastGranotContactChangeSchema },
+};
+
+export const formLeadProvenanceSchemaFields = {
+  ingestion_origin: {
+    type: String,
+    enum: FORM_LEAD_INGESTION_ORIGINS,
+  },
+  ...sharedLeadProvenanceSchemaFields,
+  ingested_move_snapshot: { type: ingestedMoveSnapshotSchema },
+};
+
+export const callLeadProvenanceSchemaFields = {
+  ingestion_origin: {
+    type: String,
+    enum: CALL_LEAD_INGESTION_ORIGINS,
+  },
+  quoted: { type: Boolean, required: true, default: false },
+  ringcentral_convergence: { type: ringcentralConvergenceSchema },
+  ...sharedLeadProvenanceSchemaFields,
+};
+
+const IMMUTABLE_LEAD_PROVENANCE_PATHS = [
+  "ingestion_origin",
+  "ingested_contact_snapshot",
+  "ingested_move_snapshot",
+] as const;
+
+export function applyLeadProvenanceGuards(schema: Schema): void {
+  schema.pre("validate", function rejectImmutableProvenanceMutation() {
+    if (this.isNew) {
+      if (this.get("ingestion_origin") === "legacy_unknown") {
+        this.invalidate(
+          "ingestion_origin",
+          "legacy_unknown is migration-only and is never assigned to a new row",
+        );
+      }
+      const contactSnapshot = this.get("ingested_contact_snapshot") as
+        | { evidence_status?: string }
+        | undefined;
+      if (contactSnapshot?.evidence_status === "legacy_baseline") {
+        this.invalidate(
+          "ingested_contact_snapshot",
+          "legacy_baseline is migration-only and is never assigned to a new ingested snapshot",
+        );
+      }
+      const moveSnapshot = this.get("ingested_move_snapshot") as
+        | { evidence_status?: string }
+        | undefined;
+      if (moveSnapshot?.evidence_status === "legacy_baseline") {
+        this.invalidate(
+          "ingested_move_snapshot",
+          "legacy_baseline is migration-only and is never assigned to a new ingested snapshot",
+        );
+      }
+      return;
+    }
+
+    for (const path of IMMUTABLE_LEAD_PROVENANCE_PATHS) {
+      if (schema.path(path) && this.isModified(path)) {
+        this.invalidate(path, `${path} is immutable after insert`);
+      }
+    }
+  });
+}
 
 export function applyAggregateRevisionGuards(schema: Schema): void {
   schema.pre("validate", function rejectInvalidRevisionMetadata() {

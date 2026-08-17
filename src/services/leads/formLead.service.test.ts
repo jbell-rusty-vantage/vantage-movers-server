@@ -4,6 +4,10 @@ import mongoose from "mongoose";
 import { FormLead } from "../../models/FormLead";
 import { ConflictError, NotFoundError } from "../errors";
 import { findFormLead, updateFormLead } from "./formLead.service";
+import {
+  deriveFormLeadIngestionOrigin,
+  omitForbiddenLeadLifecycleFields,
+} from "./leadIngestionProvenance";
 
 type StubbedFormLeadModel = {
   findById: (id: string) => unknown;
@@ -83,6 +87,39 @@ test("updateFormLead rejects bad_lead updates on duplicate, booked, or cancelled
       },
     );
   }
+});
+
+test("[AC-10] WordPress and Admin Form create paths derive exact origins", () => {
+  assert.equal(deriveFormLeadIngestionOrigin({}), "wordpress_form");
+  assert.equal(
+    deriveFormLeadIngestionOrigin({
+      commandOrigin: "vantage_admin",
+      actorType: "system",
+    }),
+    "wordpress_form",
+  );
+  assert.equal(
+    deriveFormLeadIngestionOrigin({
+      commandOrigin: "vantage_admin",
+      actorType: "owner",
+    }),
+    "vantage_admin",
+  );
+  assert.equal(
+    deriveFormLeadIngestionOrigin({ commandOrigin: "external_sheet_ingestion" }),
+    "best_relocation_sheet",
+  );
+});
+
+test("[AC-10] Form updates cannot carry internal snapshot or origin fields", () => {
+  const stripped = omitForbiddenLeadLifecycleFields({
+    quoted: true,
+    ingestion_origin: "granot_lead_created",
+    ingested_move_snapshot: { pickup_zip: "10001" },
+  });
+  assert.equal(stripped.quoted, true);
+  assert.equal("ingestion_origin" in stripped, false);
+  assert.equal("ingested_move_snapshot" in stripped, false);
 });
 
 function stubFindById(document: Record<string, unknown> | null): void {

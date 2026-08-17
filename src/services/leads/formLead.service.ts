@@ -54,6 +54,11 @@ import {
 } from "./duplicateLead.service";
 import { normalizeLeadName, normalizeLeadNameUpdate } from "./leadName.service";
 import {
+  formLeadCreationProvenanceFields,
+  omitForbiddenLeadLifecycleFields,
+} from "./leadIngestionProvenance";
+import type { FormLeadIngestionOrigin } from "../granotLifecycle/types";
+import {
   recordMissingLeadCplRate,
   resolveLeadCplSnapshot,
 } from "./leadCplResolution";
@@ -84,7 +89,11 @@ export type FormLeadCreateTransactionResult = {
 
 export async function createFormLeadInTransaction(
   input: CreateFormLeadInput,
-  tx: { session?: ClientSession; now: Date },
+  tx: {
+    session?: ClientSession;
+    now: Date;
+    ingestion_origin: FormLeadIngestionOrigin;
+  },
 ): Promise<FormLeadCreateTransactionResult> {
   const FormLead = getFormLeadModel();
   const {
@@ -149,6 +158,27 @@ export async function createFormLeadInTransaction(
     ...cplSnapshot,
     duplicate,
     post_to_granot: shouldPostToGranot,
+    ...formLeadCreationProvenanceFields({
+      origin: tx.ingestion_origin,
+      now: tx.now,
+      contact: {
+        first_name: normalizedFormLeadInput.first_name,
+        last_name: normalizedFormLeadInput.last_name,
+        name: normalizedFormLeadInput.name,
+        phone_number: normalizedFormLeadInput.phone_number,
+        email: normalizedFormLeadInput.email,
+      },
+      move: {
+        pickup_city: normalizedFormLeadInput.pickup_city,
+        pickup_zip: normalizedFormLeadInput.pickup_zip,
+        pickup_state: location.pickup_state,
+        delivery_city: normalizedFormLeadInput.delivery_city,
+        destination_zip: normalizedFormLeadInput.destination_zip,
+        delivery_state: location.delivery_state,
+        move_date: normalizedFormLeadInput.move_date ?? tx.now,
+        move_size: normalizedFormLeadInput.move_size,
+      },
+    }),
   });
   await created.save({ session: tx.session });
 
@@ -204,7 +234,11 @@ export async function createFormLead(input: CreateFormLeadInput) {
     !isTestMode() || shouldAllowLeadMessagingInTestMode();
   const pending = await runSheetSyncWrite(
     (session) =>
-      createFormLeadInTransaction(input, { session, now: new Date() }),
+      createFormLeadInTransaction(input, {
+        session,
+        now: new Date(),
+        ingestion_origin: "wordpress_form",
+      }),
     {
       forceTransaction:
         input.sms_consent === true && messagingAllowedInRuntime,
@@ -495,7 +529,9 @@ export async function updateFormLead(
   }
 
   const beforeSnapshot = lead.toObject() as Record<string, unknown>;
-  const update = normalizeLeadNameUpdate({ ...input }, lead);
+  const update = omitForbiddenLeadLifecycleFields(
+    normalizeLeadNameUpdate({ ...input }, lead) as Record<string, unknown>,
+  );
   let sourceResolutionForUpdate:
     | Awaited<ReturnType<typeof resolveLeadSourceAssignment>>
     | undefined;

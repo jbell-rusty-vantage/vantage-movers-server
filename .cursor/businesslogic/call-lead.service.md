@@ -1,6 +1,6 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
-**Primary code:** `src/services/leads/callLead.service.ts`, `src/services/leads/leadCplResolution.ts`  
+**Primary code:** `src/services/leads/callLead.service.ts`, `src/services/leads/leadIngestionProvenance.ts`, `src/services/leads/leadCplResolution.ts`  
 **Domain terms used:** Call Lead, Call Lead Ingestion, Duplicate Lead, Form Fill, CPL, Sheet Sync, Caller Match Key, Lead ID
 
 # Call Lead Service
@@ -20,14 +20,14 @@
 
 1. Normalize name, parse **Source Company**, optional location.
 2. **Form Fill** check — `hasFormFillForCallLead(source, phone)`: true when a non-duplicate Form Lead exists with same source + normalized phone.
-3. Save with `form_fill`, Florida `timestamp`, **CPL snapshot**; enqueue `call_lead.create` Sheet Sync job; finalize sync.
+3. Save with `form_fill`, Florida `timestamp`, **CPL snapshot**, `quoted=false`, trusted `ingestion_origin` (`vantage_admin` for ordinary manual/Admin, `best_relocation_sheet` for trusted sheet commands), and immutable `ingested_contact_snapshot`; enqueue `call_lead.create` Sheet Sync job; finalize sync.
 4. No Ring Central metadata; no Call Lead duplicate window logic.
 
 ## Create — Ring Central (`createRingCentralCallLead`)
 
 1. Caller supplies `duplicate` (from ingest duplicate guard).
 2. Same Form Fill check as manual path.
-3. Save with `ringcentral.*` provenance (session id, call log id, ingestion source, **Call Qualification**, timestamps).
+3. Save with `ringcentral.*` transport provenance (session id, call log id, nested `ingestion_source`, **Call Qualification**, timestamps), top-level `ingestion_origin=ringcentral`, `quoted=false`, and immutable `ingested_contact_snapshot`.
 4. **`cpl = 0` when Duplicate Lead** — owner not charged twice for same caller/source within window.
 5. Unique sparse index on `ringcentral.telephony_session_id` prevents the **same call** from inserting twice (webhook vs cron idempotency — separate from business Duplicate Lead).
 
@@ -65,7 +65,7 @@ Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 
 ## Update (`updateCallLead`)
 
-- Optional location; recomputes Move Type + CPL snapshot. Optional `receiver_agent` via Operations Registry.
+- Optional location; recomputes Move Type + CPL snapshot. Optional `receiver_agent` via Operations Registry. The source enum includes `granot_username_match`; existing extension writes still store `extension_crm_username_match`, which remains readable.
 - **Edge case:** update recalculates CPL from current granularity — does not re-run Duplicate Lead logic.
 - Saves + refreshes attached **Booking Chain** (`call_lead.update`).
 
@@ -97,7 +97,7 @@ Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 
 ## Lifecycle revision
 
-`domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical create/update/delete routes persist an append-only `EntityChange` and stamp `last_change_*` in the executor transaction. Lead Job Number remains non-unique.
+`domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision, origin, snapshot, Priority provenance, temporal-winner, contact-summary, or `ringcentral_convergence` metadata. Canonical create/update/delete routes persist an append-only `EntityChange` and stamp `last_change_*` in the executor transaction. Lead Job Number remains non-unique. `quoted` is required and defaults to `false`. Nested `ringcentral.ingestion_source` remains transport provenance and is not Ingestion Origin. `granot_lead_created` is assignable for a trusted Granot create context only; no live caller. Shared provenance/temporal/convergence fields are storage only.
 
 ## Related businesslogic
 

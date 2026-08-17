@@ -14,7 +14,12 @@ import { comparable, materializeMongoValue } from "./mongoValues";
 import type { HistoricalOperation } from "./types";
 
 /** Schema defaults/hooks may attach these on insert. They are not sheet-planned facts. */
-const SERVER_OWNED_REVISION_DEFAULTS = new Set(["domain_revision", "change_history_started_at"]);
+const SERVER_OWNED_REVISION_DEFAULTS = new Set([
+  "domain_revision",
+  "change_history_started_at",
+  "granot_contact_revision",
+  "quoted",
+]);
 
 type ParityRecord = Record<string, unknown>;
 
