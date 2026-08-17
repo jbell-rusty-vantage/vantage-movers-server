@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Vantage Movers Business Logic
 
-Business behavior changes must update the relevant doc below. If no update is needed, say so in the final response.
+Business behavior changes must update the relevant doc below. Prefer the **docs-keeper** agent (`.cursor/agents/docs-keeper.md`) so the matching glob-scoped rule and layer stay in sync. If no update is needed, say so in the final response.
 
 ## Three documentation layers
 

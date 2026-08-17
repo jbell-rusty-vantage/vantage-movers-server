@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write Granot Unit Issues"
+  short_description: "Author implementation-ready Granot unit issues"
+  default_prompt: "Use $write-granot-unit-issues to fully author the requested Granot lifecycle unit issue documents."

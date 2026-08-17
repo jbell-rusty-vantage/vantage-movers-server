@@ -16,5 +16,5 @@ alwaysApply: true
 
 # Drift Policy
 
-- If a change modifies architecture, folder structure, public interfaces, runtime behavior, or operational assumptions, update this rule or a relevant codebase document.
+- If a change modifies architecture, folder structure, public interfaces, runtime behavior, or operational assumptions, update this rule or a relevant codebase document. Prefer the **docs-keeper** agent (`.cursor/agents/docs-keeper.md`) when more than one layer or glob-scoped rule may be stale.
 - If no documentation update is needed, say so in the final response.

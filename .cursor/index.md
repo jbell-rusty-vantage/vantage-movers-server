@@ -12,6 +12,7 @@ Production API: https://vantage-movers-main-server.vercel.app
 .cursor/
 ├── index.md                 ← this file
 ├── index.txt                ← one-line pointer (legacy)
+├── agents/                  ← Cursor subagents (docs-keeper, spec extractor)
 ├── businesslogic/           ← per-service compact domain docs (see below)
 ├── rules/                   ← Cursor rule files (*.mdc), scoped by glob
 ├── scripts/                 ← local dev helpers (Mongo, API)
@@ -50,6 +51,7 @@ Production API: https://vantage-movers-main-server.vercel.app
 | [customer.service.md](businesslogic/customer.service.md) | `customers/` — CRUD, cascade delete, booking-time upsert from lead/contact |
 | [testimonial.service.md](businesslogic/testimonial.service.md) | `testimonials/testimonial.service.ts` — read-only list for marketing site, ingest helpers |
 | [sheetSync.service.md](businesslogic/sheetSync.service.md) | `sheetSync/` — modes, outbox (`sheet_sync_jobs`), Vercel Queue wake-up, drainer, coordinator API, tombstones, cron/admin |
+| [granotLifecycle.capture.md](businesslogic/granotLifecycle.capture.md) | `granotLifecycle/` — webhook auth, v2 receipt capture, `{ receipt_id }` wake-up; no processing |
 
 **Not duplicated here (yet):** call lead enrichment — still lives in `rules/*.mdc` and `docs/`.
 
@@ -66,12 +68,24 @@ Prefer updating the relevant `businesslogic` file when changing a single service
 
 ---
 
+## `agents/` — Cursor subagents
+
+| Agent | Use for |
+|-------|---------|
+| [docs-keeper](agents/docs-keeper.md) | After code or workflow changes: update the matching documentation layer and the glob-scoped rule that already owns those paths. Covers this server (primary), `vantage-admin`, the Granot extension, and `vantage-movers-clients`. |
+| [lead-lifecycle-spec-extractor](agents/lead-lifecycle-spec-extractor.md) | Extract locked Granot lead-lifecycle contracts before implementing a unit. Not a docs rewriter. |
+
+Invoke with: `Use the docs-keeper subagent to [area or files].`
+
+---
+
 ## `rules/` — Cursor rules (`.mdc`)
 
 Rule files apply when editing matching paths (`globs` in each file frontmatter). Highlights:
 
 | Rule | Focus |
 |------|--------|
+| `documentation-maintenance.mdc` | Layer + glob hygiene; routes drift fixes to `docs-keeper` |
 | `business-logic.mdc` | Domain invariants, drift policy, links to `businesslogic/` |
 | `owner-lead-workflow.mdc` | Website → form lead → CRM → extension → booking → cancellation |
 | `sheet-sync-process.mdc` | Outbox, drainer, quotas, headers, sync modes |

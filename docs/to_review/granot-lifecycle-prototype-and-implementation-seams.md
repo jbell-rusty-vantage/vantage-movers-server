@@ -301,10 +301,12 @@ a downstream resolution tool only after a Vantage Booking exists.
 
 ### Routes
 
-Existing webhook routes remain capture-only and fast:
+Existing webhook routes remain capture-only and fast. Production now implements
+that seam in `src/services/granotLifecycle/capture.ts` plus a receipt-ID-only
+publisher. Processing, normalization, and a queue consumer do not exist yet.
 
 ```text
-authenticate → capture immutable receipt → publish wake-up → 202
+authenticate → capture immutable receipt → publish { receipt_id } wake-up → 202
 ```
 
 Do not expose the processing policy in three webhook route handlers. They all
@@ -325,9 +327,10 @@ specific resolution command; do not offer generic model PATCH.
 
 ### Queue
 
-Add one wake-up topic/consumer for Granot receipt processing. The queue message
-should carry only `receipt_id` and a wake-up reason. Mongo remains the durable
-work source; the queue is not the event store.
+The capture path may publish a best-effort wake-up containing only
+`{ "receipt_id": "..." }`. Mongo remains the durable work source; the queue is
+not the event store. The consumer, drainer, lease, and retry path are later
+work.
 
 Processing needs a lease/fence or an atomic claim. Attempts should classify:
 

@@ -8,11 +8,11 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 | --- | --- | --- | --- | --- | --- |
 | 01 | Contract freeze, redacted synthetic fixtures, and quality guardrails | none | complete | complete | [UNIT-01-COMPLETION.md](completion-reports/UNIT-01-COMPLETION.md) |
 | 02 | Channel-neutral receipt model, evidence immutability, and receipt migration | 01 | complete | complete | [UNIT-02-COMPLETION.md](completion-reports/UNIT-02-COMPLETION.md) |
-| 03 | Webhook authentication, secure capture, response, and queue wake-up seam | 01–02 | blocked | scaffold | — |
-| 04 | Observation persistence and exact normalization vocabulary | 01–03 | blocked | scaffold | — |
-| 05 | Audited Granot CRM source Registry domain | 01 | blocked | scaffold | — |
-| 06 | Registry migration, automation compatibility link, and reviewed Registry UI | 05 | blocked | scaffold | — |
-| 07 | Decision, activation, Record Link, execution mode, and safe operational skeleton | 04–06 | blocked | scaffold | — |
+| 03 | Webhook authentication, secure capture, response, and queue wake-up seam | 01–02 | complete | complete | [UNIT-03-COMPLETION.md](completion-reports/UNIT-03-COMPLETION.md) |
+| 04 | Observation persistence and exact normalization vocabulary | 01–03 | ready | complete | — |
+| 05 | Audited Granot CRM source Registry domain | 01 | blocked | complete | — |
+| 06 | Registry migration, automation compatibility link, and reviewed Registry UI | 05 | blocked | complete | — |
+| 07 | Decision, activation, Record Link, execution mode, and safe operational skeleton | 04–06 | blocked | complete | — |
 | 08 | Durable claim service, drainer, queue/cron, retries, dead letter, and manual requeue | 04, 07 | blocked | scaffold | — |
 | 09 | Aggregate revision fields and additive revision migrations | 01 | blocked | scaffold | — |
 | 10 | Transaction-owning canonical command executor and idempotent replay | 09 | blocked | scaffold | — |
@@ -43,7 +43,10 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 
 ## Current ready queue
 
-- Open review findings live in [`warnings/`](warnings/README.md). They do not block Unit 03 contract refinement.
-- Unit 02 is complete on `granot-lead-lifecycle`. Re-verify `UNIT-02-COMPLETION.md` and repository state before starting Unit 03.
-- Unit 03 is the next implementation target after its scaffold is refined against the landed receipt model. It remains blocked while the contract is still a scaffold.
-- Units 05 and 09 remain contract-refinement candidates and stay blocked for implementation until their scaffolds are refined against repository state. Implementation on shared branches remains sequential by default.
+- Open review findings live in [`warnings/`](warnings/README.md). They do not block Unit 04 implementation unless repository re-verification shows an applicable finding has become material.
+- Unit 03 is complete on `granot-lead-lifecycle`. Re-verify `UNIT-03-COMPLETION.md` and repository state before starting Unit 04.
+- Unit 04 is implementation-ready and is the next implementation target. Re-verify its cited Unit 01–03 evidence and current repository state before editing.
+- Unit 05's contract is complete. Its specification prerequisite is satisfied, but shared-branch implementation remains sequential by default; keep it blocked until the current implementation target is handed off or an integration owner explicitly authorizes otherwise.
+- Unit 06's contract is complete. It remains blocked until Unit 05 is implemented and verified and the shared-branch implementation sequence reaches it.
+- Unit 07's contract is complete. It remains blocked until Units 04–06 are implemented and verified; contract maturity does not authorize activation or any effect.
+- Unit 09 remains a contract-refinement candidate and stays blocked for implementation until its scaffold is refined against repository state.

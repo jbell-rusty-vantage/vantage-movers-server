@@ -1,0 +1,33 @@
+---
+description: Keep Vantage docs layered and glob-scoped; delegate drift fixes to the docs-keeper agent
+globs: .cursor/businesslogic/**/*.md,.cursor/rules/*.mdc,.cursor/index.md,.cursor/agents/*.md,docs/**/*.md,CONTEXT.md,AGENTS.md
+alwaysApply: false
+---
+
+# Documentation Maintenance
+
+When these files — or the code their `globs` / `Primary code` links point at — change, keep documentation current. Prefer the **docs-keeper** agent over ad-hoc rewrites.
+
+## Layers (do not collapse)
+
+| Change | Update |
+|--------|--------|
+| New or renamed domain term | Workspace-root `CONTEXT.md` via `/domain-modeling` |
+| Hard-to-reverse architectural decision | `docs/adr/` |
+| Service invariants, routing, side-effect order | Matching `.cursor/businesslogic/*.service.md` |
+| Folder ownership, process mechanics, auth, env | The `.mdc` whose `globs` already match the path |
+| New businesslogic file or rule | `.cursor/index.md` catalog row |
+
+Link glossary terms; do not redefine them. Do not copy owner policy into software-logic rules.
+
+## Glob-scoped rules
+
+- Edit the rule whose frontmatter `globs` match the changed path. If the path moved, fix that rule’s `globs` rather than creating an always-apply duplicate.
+- Keep `alwaysApply: true` for maps and safety only (`project-organization`, `codebase`, `backend-safety`).
+- One concern per rule. Reference businesslogic docs instead of pasting them.
+
+## Cross-repo
+
+Server behavior stays in `vantage-main-server`. Admin UI maps live in `vantage-admin/.cursor/rules/`. Extension workflows live in `granot_sync_extensions_and_services/.cursor/rules/`. Client-site / `@vantage/api-client` maps live in `vantage-movers-clients/.cursor/rules/`. Cross-link; do not fork the same invariant.
+
+If no documentation update is needed, say so.

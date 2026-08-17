@@ -64,9 +64,9 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - `enrichment/` — Call-lead enrichment preview/sync from Granot Follow Up rows
 - `reconciliation/` — Booked call-lead reconciliation from Granot Booked Jobs rows
 - `granotCrmCsv/` — CSV source registry + S3 ingest (`/granot-crm/csv/*`)
-- `granotWebhooks/` — Durable receipt capture only (no lead mutation yet)
+- `granotWebhooks/` — Compatibility adapter only; webhook capture implementation lives in `granotLifecycle/capture`
 - `granotHttpCollector/` — HTTP session collector + automation runs/sources/workflows
-- `granotLifecycle/` — Frozen shared lifecycle vocabulary, receipt evidence helpers, and redacted normalization test contracts; runtime normalization, processing, and effects land only in their assigned lifecycle units
+- `granotLifecycle/` — Shared lifecycle vocabulary, receipt evidence helpers, webhook capture, and receipt-ID queue wake-up publisher. Runtime normalization, processing, consumer/drainer, flags, and effects land only in their assigned lifecycle units
 - `crm/` — Outbound Granot form-lead submit (invoked from lead write paths)
 
 ### Integrations
@@ -118,7 +118,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 
 ## Config Domain Modules (`src/config/domain/`)
 
-`constants`, `sheets`, `sources`, `cpl` / `cplRateDefinitions`, `runtime`, `googleAuth`, `googleDriveOAuth`, `googlePicker`, `sheetSync`, `granotCsv`, `granotWebhook`, `observability`, `leadMessaging`, `employeeBookingMatching`, `bookingReconciliation`, `reportingLiveTest` — barrel-exported via `domain.ts`.
+`constants`, `sheets`, `sources`, `cpl` / `cplRateDefinitions`, `runtime`, `googleAuth`, `googleDriveOAuth`, `googlePicker`, `sheetSync`, `granotCsv`, `granotWebhook` (secret + env-scoped lifecycle queue topic/publish guard), `observability`, `leadMessaging`, `employeeBookingMatching`, `bookingReconciliation`, `reportingLiveTest` — barrel-exported via `domain.ts`.
 
 **`reporting`** — delivery limits/flags; import `./domain/reporting` directly (not in barrel).
 
