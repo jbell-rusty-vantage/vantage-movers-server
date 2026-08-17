@@ -11,7 +11,7 @@
 
 | Function | Caller | Duplicate Lead | CPL |
 |----------|--------|----------------|-----|
-| `createCallLead` | `POST /api/v1/call-leads` (manual, Invoca, tests) | always `false` (schema default) | `resolveLeadCplSnapshot` |
+| `createCallLead` | `POST /api/v1/call-leads` (manual, Invoca, tests). Canonical wrappers use `createCallLeadInTransaction` ([`domainCommands.service.md`](domainCommands.service.md)). | always `false` (schema default) | `resolveLeadCplSnapshot` |
 | `createRingCentralCallLead` | **Call Lead Ingestion** (Ring Central) only | passed in by ingest | `duplicate_zero` / `cpl = 0` when Duplicate Lead, else registry snapshot |
 
 **Call Qualification** + ingest: [`ringcentral-call-lead-qualification.service.md`](ringcentral-call-lead-qualification.service.md). Duplicate classification: `ringcentral-duplicate-guard.ts`; promotion gate: `ringcentral-call-lead-ingest.service.ts`.

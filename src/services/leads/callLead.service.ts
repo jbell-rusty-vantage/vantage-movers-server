@@ -1,3 +1,4 @@
+import type { ClientSession } from "mongoose";
 import {
   CALL_SHEET_HEADERS,
   getSheetSyncMode,
@@ -189,7 +190,10 @@ function callLeadCreateJob(leadId: string): FullSheetSyncJob {
   };
 }
 
-export async function createCallLead(input: CreateCallLeadInput) {
+export async function createCallLeadInTransaction(
+  input: CreateCallLeadInput,
+  tx: { session?: ClientSession; now: Date },
+) {
   const normalizedInput = normalizeLeadName(input);
   const location = await resolveOptionalLocation(normalizedInput, {
     workflow: "call_lead_create",
@@ -218,22 +222,32 @@ export async function createCallLead(input: CreateCallLeadInput) {
       : null,
     storedBusinessTimestamp: leadTimestamp,
   });
-  const lead = await runSheetSyncWrite(async (session) => {
-    const created = new CallLead({
-      ...normalizedInput,
-      ...location,
-      ...sourceAssignment,
-      local,
-      form_fill,
-      timestamp: leadTimestamp,
-      ...cplSnapshot,
-    });
-    await created.save({ session });
-    await persistSheetSyncIntent(callLeadCreateJob(created._id.toString()), session);
-    return created;
+  const created = new CallLead({
+    ...normalizedInput,
+    ...location,
+    ...sourceAssignment,
+    local,
+    form_fill,
+    timestamp: leadTimestamp,
+    ...cplSnapshot,
   });
+  await created.save({ session: tx.session });
+  const job = callLeadCreateJob(created._id.toString());
+  await persistSheetSyncIntent(job, tx.session);
+  return { lead: created, job, source_company, sourceAssignment, form_fill };
+}
 
-  await finalizeSheetSync(callLeadCreateJob(lead._id.toString()));
+export async function finalizeCallLeadCreateAfterCommit(pending: {
+  lead: InstanceType<typeof CallLead>;
+  job: FullSheetSyncJob;
+  source_company: SourceCompany;
+  sourceAssignment: Awaited<
+    ReturnType<typeof resolveLeadSourceAssignment>
+  >["assignment"];
+  form_fill: boolean;
+}) {
+  const { lead, job, source_company, sourceAssignment, form_fill } = pending;
+  await finalizeSheetSync(job);
 
   if (lead.cpl_resolution_status === "missing_rate") {
     await recordMissingLeadCplRate({
@@ -283,7 +297,41 @@ export async function createCallLead(input: CreateCallLeadInput) {
   return lead;
 }
 
-export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
+export async function createCallLead(input: CreateCallLeadInput) {
+  const pending = await runSheetSyncWrite((session) =>
+    createCallLeadInTransaction(input, { session, now: new Date() }),
+  );
+  return finalizeCallLeadCreateAfterCommit(pending);
+}
+
+export async function persistCallLeadUpdateInTransaction(
+  lead: InstanceType<typeof CallLead>,
+  tx: { session?: ClientSession; now: Date },
+): Promise<FullSheetSyncJob> {
+  await lead.save({ session: tx.session });
+  const refreshJob = await refreshAttachedBookingFromLead(
+    lead,
+    "CallLead",
+    "call_lead.update",
+    tx.session,
+  );
+  await persistSheetSyncIntent(refreshJob, tx.session);
+  return refreshJob;
+}
+
+export async function updateCallLeadInTransaction(
+  id: string,
+  input: UpdateCallLeadInput,
+  tx: { session?: ClientSession; now: Date },
+) {
+  return updateCallLead(id, input, { transaction: tx });
+}
+
+export async function updateCallLead(
+  id: string,
+  input: UpdateCallLeadInput,
+  options: { transaction?: { session?: ClientSession; now: Date } } = {},
+) {
   const lead = await CallLead.findById(id);
   if (!lead) {
     throw new NotFoundError("Call lead not found", {
@@ -371,18 +419,17 @@ export async function updateCallLead(id: string, input: UpdateCallLeadInput) {
     lead.receiver_agent_set_at = new Date();
   }
 
-  const job = await runSheetSyncWrite(async (session) => {
-    await lead.save({ session });
-    const refreshJob = await refreshAttachedBookingFromLead(
-      lead,
-      "CallLead",
-      "call_lead.update",
-      session,
-    );
-    await persistSheetSyncIntent(refreshJob, session);
-    return refreshJob;
-  });
-  await finalizeSheetSync(job);
+  const job = options.transaction
+    ? await persistCallLeadUpdateInTransaction(lead, options.transaction)
+    : await runSheetSyncWrite((session) =>
+        persistCallLeadUpdateInTransaction(lead, {
+          session,
+          now: new Date(),
+        }),
+      );
+  if (!options.transaction) {
+    await finalizeSheetSync(job);
+  }
   if (lead.cpl_resolution_status === "missing_rate") {
     await recordMissingLeadCplRate({
       leadModel: "CallLead",

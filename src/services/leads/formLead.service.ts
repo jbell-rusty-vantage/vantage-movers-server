@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose, { type ClientSession } from "mongoose";
 import {
   getSheetSyncMode,
   isTestMode,
@@ -62,7 +62,26 @@ import {
   type LeadMessagingOutcome,
 } from "../leadMessaging";
 
-export async function createFormLead(input: CreateFormLeadInput) {
+export type FormLeadCreateTransactionResult = {
+  lead: InstanceType<ReturnType<typeof getFormLeadModel>>;
+  jobs: FullSheetSyncJob[];
+  leadMessage: Awaited<ReturnType<typeof persistLeadMessageIntent>>;
+  shouldPostToGranot: boolean;
+  crmLabel: string;
+  source_company: SourceCompany;
+  sourceAssignment: Awaited<
+    ReturnType<typeof resolveLeadSourceAssignment>
+  >["assignment"];
+  duplicate: boolean;
+  duplicateMatch: Awaited<ReturnType<typeof findDuplicateFormLeadMatch>>;
+  crm_company_label: string | undefined;
+  sms_consent: boolean | undefined;
+};
+
+export async function createFormLeadInTransaction(
+  input: CreateFormLeadInput,
+  tx: { session?: ClientSession; now: Date },
+): Promise<FormLeadCreateTransactionResult> {
   const FormLead = getFormLeadModel();
   const {
     crm_company_label,
@@ -113,67 +132,99 @@ export async function createFormLead(input: CreateFormLeadInput) {
       : null,
     storedBusinessTimestamp: leadTimestamp,
   });
+  const lid = normalizedFormLeadInput.lid?.trim() || generateLeadId();
+  const created = new FormLead({
+    ...normalizedFormLeadInput,
+    ...location,
+    ...sourceAssignment,
+    local,
+    lid,
+    ref_no: normalizedFormLeadInput.ref_no?.trim() || "not provided",
+    timestamp: leadTimestamp,
+    move_date: normalizedFormLeadInput.move_date ?? tx.now,
+    ...cplSnapshot,
+    duplicate,
+    post_to_granot: shouldPostToGranot,
+  });
+  await created.save({ session: tx.session });
+
+  const leadId = created._id.toString();
+  const sheetSyncJobs: FullSheetSyncJob[] = [];
+  if (!created.duplicate) {
+    const formFillJobs = await markMatchingCallLeadsWithFormFill(
+      {
+        sourceCompany: source_company,
+        leadSourceCompany: sourceAssignment.lead_source_company,
+      },
+      created.phone_number,
+      leadId,
+      tx.session,
+    );
+    sheetSyncJobs.push(...formFillJobs);
+  }
+  const formLeadJob: FullSheetSyncJob = {
+    resource: "source_lead",
+    operation: "form_lead.create",
+    leadModel: "FormLead",
+    leadId,
+  };
+  sheetSyncJobs.push(formLeadJob);
+  for (const job of sheetSyncJobs) {
+    await persistSheetSyncIntent(job, tx.session);
+  }
+  const message = await persistLeadMessageIntent({
+    formLeadId: leadId,
+    destinationPhone: created.phone_number,
+    formInput: input,
+    duplicate: created.duplicate,
+    testMode: isTestMode(),
+    session: tx.session,
+  });
+  return {
+    lead: created,
+    jobs: sheetSyncJobs,
+    leadMessage: message,
+    shouldPostToGranot,
+    crmLabel,
+    source_company,
+    sourceAssignment,
+    duplicate,
+    duplicateMatch,
+    crm_company_label,
+    sms_consent,
+  };
+}
+
+export async function createFormLead(input: CreateFormLeadInput) {
   const messagingAllowedInRuntime =
     !isTestMode() || shouldAllowLeadMessagingInTestMode();
-
-  // A consented Lead Message forces a transaction even when Sheet Sync is
-  // legacy/disabled, so a lead can never commit without its durable message
-  // intent. External CRM/Twilio/queue calls remain post-commit.
-  const lid = normalizedFormLeadInput.lid?.trim() || generateLeadId();
-
-  const { lead, jobs, leadMessage } = await runSheetSyncWrite(async (session) => {
-    const created = new FormLead({
-      ...normalizedFormLeadInput,
-      ...location,
-      ...sourceAssignment,
-      local,
-      lid,
-      ref_no: normalizedFormLeadInput.ref_no?.trim() || "not provided",
-      timestamp: leadTimestamp,
-      move_date: normalizedFormLeadInput.move_date ?? new Date(),
-      ...cplSnapshot,
-      duplicate,
-      post_to_granot: shouldPostToGranot,
-    });
-    await created.save({ session });
-
-    const leadId = created._id.toString();
-    const sheetSyncJobs: FullSheetSyncJob[] = [];
-    if (!created.duplicate) {
-      const formFillJobs = await markMatchingCallLeadsWithFormFill(
-        {
-          sourceCompany: source_company,
-          leadSourceCompany: sourceAssignment.lead_source_company,
-        },
-        created.phone_number,
-        leadId,
-        session,
-      );
-      sheetSyncJobs.push(...formFillJobs);
-    }
-    const formLeadJob: FullSheetSyncJob = {
-      resource: "source_lead",
-      operation: "form_lead.create",
-      leadModel: "FormLead",
-      leadId,
-    };
-    sheetSyncJobs.push(formLeadJob);
-    for (const job of sheetSyncJobs) {
-      await persistSheetSyncIntent(job, session);
-    }
-    const message = await persistLeadMessageIntent({
-      formLeadId: leadId,
-      destinationPhone: created.phone_number,
-      formInput: input,
-      duplicate: created.duplicate,
-      testMode: isTestMode(),
-      session,
-    });
-    return { lead: created, jobs: sheetSyncJobs, leadMessage: message };
+  const pending = await runSheetSyncWrite(
+    (session) =>
+      createFormLeadInTransaction(input, { session, now: new Date() }),
+    {
+      forceTransaction:
+        input.sms_consent === true && messagingAllowedInRuntime,
     },
-    { forceTransaction: sms_consent === true && messagingAllowedInRuntime },
   );
+  return finalizeFormLeadCreateAfterCommit(pending);
+}
 
+export async function finalizeFormLeadCreateAfterCommit(
+  pending: FormLeadCreateTransactionResult,
+) {
+  const {
+    lead,
+    jobs,
+    leadMessage,
+    shouldPostToGranot,
+    crmLabel,
+    source_company,
+    sourceAssignment,
+    duplicate,
+    duplicateMatch,
+    crm_company_label,
+    sms_consent,
+  } = pending;
   const leadId = lead._id.toString();
 
   if (lead.cpl_resolution_status === "missing_rate") {
@@ -356,10 +407,37 @@ async function dispatchLeadMessageAfterPersist(
   }
 }
 
+export async function persistFormLeadUpdateInTransaction(
+  lead: InstanceType<ReturnType<typeof getFormLeadModel>>,
+  tx: { session?: ClientSession; now: Date },
+): Promise<FullSheetSyncJob> {
+  await lead.save({ session: tx.session });
+  const refreshJob = await refreshAttachedBookingFromLead(
+    lead,
+    "FormLead",
+    "form_lead.update",
+    tx.session,
+  );
+  await persistSheetSyncIntent(refreshJob, tx.session);
+  return refreshJob;
+}
+
+export async function updateFormLeadInTransaction(
+  id: string,
+  input: UpdateFormLeadInput,
+  tx: { session?: ClientSession; now: Date },
+  options: { expected?: Record<string, unknown> } = {},
+) {
+  return updateFormLead(id, input, { ...options, transaction: tx });
+}
+
 export async function updateFormLead(
   id: string,
   input: UpdateFormLeadInput,
-  options: { expected?: Record<string, unknown> } = {},
+  options: {
+    expected?: Record<string, unknown>;
+    transaction?: { session?: ClientSession; now: Date };
+  } = {},
 ) {
   const FormLead = getFormLeadModel();
   const lead = options.expected
@@ -492,17 +570,14 @@ export async function updateFormLead(
 
   let job: FullSheetSyncJob;
   try {
-    job = await runSheetSyncWrite(async (session) => {
-      await lead.save({ session });
-      const refreshJob = await refreshAttachedBookingFromLead(
-        lead,
-        "FormLead",
-        "form_lead.update",
-        session,
-      );
-      await persistSheetSyncIntent(refreshJob, session);
-      return refreshJob;
-    });
+    job = options.transaction
+      ? await persistFormLeadUpdateInTransaction(lead, options.transaction)
+      : await runSheetSyncWrite((session) =>
+          persistFormLeadUpdateInTransaction(lead, {
+            session,
+            now: new Date(),
+          }),
+        );
   } catch (error) {
     if (error instanceof mongoose.Error.VersionError) {
       throw new ConflictError(
@@ -514,7 +589,9 @@ export async function updateFormLead(
     }
     throw error;
   }
-  await finalizeSheetSync(job);
+  if (!options.transaction) {
+    await finalizeSheetSync(job);
+  }
   if (lead.cpl_resolution_status === "missing_rate") {
     await recordMissingLeadCplRate({
       leadModel: "FormLead",

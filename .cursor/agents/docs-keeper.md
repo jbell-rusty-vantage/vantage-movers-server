@@ -72,6 +72,7 @@ Match changed files to **existing** rule `globs` first. Then update that rule an
 | `src/services/leads/**` call-lead, `src/models/CallLead.ts` | `businesslogic/call-lead.service.md`; `rules/owner-lead-workflow.mdc` if the owner path changed |
 | `src/services/ringcentral/**`, `src/routes/ringcentral-*.routes.ts`, `scripts/dev_ops/ringcentral/**` | `businesslogic/ringcentral-call-lead-qualification.service.md`; `rules/ringcentral-integration.mdc`; `rules/ringcentral-call-lead-candidates.mdc` |
 | `src/services/googleSheets/**` | `businesslogic/googleSheets.service.md`; `rules/sheet-sync-process.mdc` if tab/projection/write rules changed |
+| `src/services/domainCommands/**`, `src/models/DomainCommandExecution.ts` | `businesslogic/domainCommands.service.md`; `rules/schema-and-crud-inputs.mdc`; `rules/sheet-sync-process.mdc` for post-commit finalize only |
 | `src/services/sheetSync/**`, `api/queues/sheet-sync-consumer.ts`, sheet-sync cron/config/models | `businesslogic/sheetSync.service.md`; `rules/sheet-sync-process.mdc` |
 | `src/services/bookings/**` | `businesslogic/bookings.service.md`; `rules/owner-lead-workflow.mdc` |
 | `src/services/cancellations/**` | `businesslogic/cancelledLead.service.md` and/or `cancellationMirror.service.md`; `rules/owner-lead-workflow.mdc` |

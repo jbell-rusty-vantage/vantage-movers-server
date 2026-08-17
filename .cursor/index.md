@@ -51,6 +51,7 @@ Production API: https://vantage-movers-main-server.vercel.app
 | [catalog.service.md](businesslogic/catalog.service.md) | `src/services/catalog/catalog.service.ts` — agents/merchants facade; mutations go through Operations Registry |
 | [customer.service.md](businesslogic/customer.service.md) | `src/services/customers/` — CRUD, cascade delete, booking-time upsert from lead/contact |
 | [testimonial.service.md](businesslogic/testimonial.service.md) | `src/services/testimonials/testimonial.service.ts` — read-only list for marketing site, ingest helpers |
+| [domainCommands.service.md](businesslogic/domainCommands.service.md) | `src/services/domainCommands/` — transaction-owning executor, four origins, stored `applied` result, post-commit finalize; Change/outbox remain Unit 11 |
 | [sheetSync.service.md](businesslogic/sheetSync.service.md) | `src/services/sheetSync/` — modes, outbox (`sheet_sync_jobs`), Vercel Queue wake-up, drainer, coordinator API, tombstones, cron/admin |
 | [operationsRegistry.service.md](businesslogic/operationsRegistry.service.md) | `src/services/operationsRegistry/` — catalog/source/CPL/RC inbound-route/Granot CRM source SoR, signed owner mutations, `resolveCpl` |
 | [granotLifecycle.capture.md](businesslogic/granotLifecycle.capture.md) | `src/services/granotLifecycle/` — webhook auth, v2 receipt capture, `{ receipt_id }` wake-up; **no processing** |

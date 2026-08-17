@@ -1,4 +1,5 @@
 import type mongoose from "mongoose";
+import type { ClientSession } from "mongoose";
 import {
   getCallLeadSourceCompanyLabel,
   getFormLeadSourceCompanyLabel,
@@ -112,7 +113,89 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
   } = input;
   const canonicalBookingInput = { ...bookingInput, merchant };
 
-  const outcome = await runSheetSyncWrite(async (session) => {
+  const outcome = await runSheetSyncWrite((session) =>
+    persistBookedLeadCreateInTransaction(input, {
+      agent_allocations,
+      merchant,
+      total_binder_amount,
+      warnings,
+      customerNameOverride,
+      canonicalBookingInput,
+      over_2000,
+      over_4000,
+    }, { session, now: new Date() }),
+  );
+
+  return finalizeBookedLeadCreateAfterCommit(input, merchant, warnings, outcome);
+}
+
+export async function createBookedLeadInTransaction(
+  input: CreateBookedLeadServiceInput,
+  tx: { session?: ClientSession; now: Date },
+) {
+  const over_2000 = input.deposit_amount > 2000;
+  const over_4000 = input.deposit_amount > 4000;
+  const agent_allocations = await resolveAgentAllocations(input.agent_allocations, {
+    includeInactive: input.allow_inactive_agents,
+  });
+  const merchant = await resolveActiveMerchantName(input.merchant);
+  const total_binder_amount = resolveTotalBinderAmount(
+    agent_allocations,
+    input.total_binder_amount,
+  );
+  const warnings = buildBookedLeadWarnings(agent_allocations);
+  const customerNameOverride = input.customer_name?.trim();
+  const {
+    customer_phone: _customerPhone,
+    allow_inactive_agents: _allowInactiveAgents,
+    set_primary_agent_as_receiver: _setPrimaryAgentAsReceiver,
+    receiver_agent_source_value: _receiverAgentSourceValue,
+    ingestion_source: _ingestionSource,
+    ...bookingInput
+  } = input;
+  const canonicalBookingInput = { ...bookingInput, merchant };
+  const outcome = await persistBookedLeadCreateInTransaction(
+    input,
+    {
+      agent_allocations,
+      merchant,
+      total_binder_amount,
+      warnings,
+      customerNameOverride,
+      canonicalBookingInput,
+      over_2000,
+      over_4000,
+    },
+    tx,
+  );
+  return { outcome, merchant, warnings };
+}
+
+export async function persistBookedLeadCreateInTransaction(
+  input: CreateBookedLeadServiceInput,
+  prepared: {
+    agent_allocations: Awaited<ReturnType<typeof resolveAgentAllocations>>;
+    merchant: string;
+    total_binder_amount: number;
+    warnings: string[];
+    customerNameOverride: string | undefined;
+    canonicalBookingInput: Record<string, unknown>;
+    over_2000: boolean;
+    over_4000: boolean;
+  },
+  tx: { session?: ClientSession; now: Date },
+) {
+  const session = tx.session;
+  const {
+    agent_allocations,
+    merchant,
+    total_binder_amount,
+    warnings,
+    customerNameOverride,
+    canonicalBookingInput,
+    over_2000,
+    over_4000,
+  } = prepared;
     const lead = await getLinkedLead(input.lead_model, input.lead_ref, session);
     const sourceCompanyForLead = getFormLeadSourceCompanyForBooking(lead, input);
     if (input.ingestion_source) {
@@ -242,8 +325,14 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
       warnings,
       job,
     };
-  });
+}
 
+export async function finalizeBookedLeadCreateAfterCommit(
+  input: CreateBookedLeadServiceInput,
+  merchant: string,
+  warnings: string[],
+  outcome: Awaited<ReturnType<typeof persistBookedLeadCreateInTransaction>>,
+) {
   if (outcome.kind === "duplicate") {
     const booking = await populateBookedLead(outcome.bookingId);
     await recordOperationalEvent({

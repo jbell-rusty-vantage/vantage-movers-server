@@ -1,3 +1,4 @@
+import type { ClientSession } from "mongoose";
 import { createHash } from "node:crypto";
 import { toFloridaTimestamp } from "../../utils/easternTime";
 import type { CreateLeadlessBookingInput } from "../../validation/v1.validation";
@@ -84,7 +85,113 @@ export async function createLeadlessBooking(input: CreateLeadlessBookingInput) {
   const source =
     input.source?.trim() || resolvedSource.label;
 
-  const outcome = await runSheetSyncWrite(async (session) => {
+  const outcome = await runSheetSyncWrite((session) =>
+    persistLeadlessBookingCreateInTransaction(
+      input,
+      {
+        jobNo,
+        resolvedSource,
+        isBestRelocationImport,
+        agent_allocations,
+        merchant,
+        warnings,
+        depositAmount,
+        customerName,
+        source,
+      },
+      { session, now: new Date() },
+    ),
+  );
+
+  const { booking } = outcome;
+  await finalizeSheetSync(leadlessBookingJob(booking._id.toString()));
+
+  return {
+    booking: await populateBookedLead(booking._id),
+    message: "Leadless booking created.",
+    warnings,
+    total_binder_amount: booking.total_binder_amount,
+  };
+}
+
+export async function createLeadlessBookingInTransaction(
+  input: CreateLeadlessBookingInput,
+  tx: { session?: ClientSession; now: Date },
+) {
+  const jobNo = input.job_no.trim();
+  const resolvedSource = await resolveLeadlessBookingSource(
+    input.source_company,
+    input.source,
+  );
+  const isBestRelocationImport = requireBestRelocationImportSource(
+    input.ingestion_source,
+    resolvedSource.companySlug,
+  );
+  const existingBooking = await BookedLead.findOne({ job_no: jobNo })
+    .session(tx.session ?? null)
+    .select("_id")
+    .lean()
+    .exec();
+  if (existingBooking) {
+    throw new V1ServiceError("A booking already exists with this job number", 409);
+  }
+  const allocationInputs = deriveBookedLeadAgentAllocations({
+    agent: input.agent,
+    split_agent: input.split_agent,
+    binder_amount: input.total_binder_amount,
+  });
+  const agent_allocations = await resolveAgentAllocations(allocationInputs, {
+    includeInactive: isBestRelocationImport,
+  });
+  const merchant = await resolveActiveMerchantName(input.merchant);
+  const warnings = buildBookedLeadWarnings(agent_allocations);
+  const depositAmount = input.deposit_amount;
+  const customerName = input.customer_name?.trim() ?? "";
+  const source = input.source?.trim() || resolvedSource.label;
+  return persistLeadlessBookingCreateInTransaction(
+    input,
+    {
+      jobNo,
+      resolvedSource,
+      isBestRelocationImport,
+      agent_allocations,
+      merchant,
+      warnings,
+      depositAmount,
+      customerName,
+      source,
+    },
+    tx,
+  );
+}
+
+export async function persistLeadlessBookingCreateInTransaction(
+  input: CreateLeadlessBookingInput,
+  prepared: {
+    jobNo: string;
+    resolvedSource: Awaited<ReturnType<typeof resolveLeadlessBookingSource>>;
+    isBestRelocationImport: boolean;
+    agent_allocations: Awaited<ReturnType<typeof resolveAgentAllocations>>;
+    merchant: string;
+    warnings: string[];
+    depositAmount: number;
+    customerName: string;
+    source: string;
+  },
+  tx: { session?: ClientSession; now: Date },
+) {
+  const session = tx.session;
+  const {
+    jobNo,
+    resolvedSource,
+    isBestRelocationImport,
+    agent_allocations,
+    merchant,
+    warnings,
+    depositAmount,
+    customerName,
+    source,
+  } = prepared;
     const customer = customerName
       ? await upsertCustomerFromBookingContact(
           { customer_name: customerName, customer_phone: input.customer_phone },
@@ -92,7 +199,7 @@ export async function createLeadlessBooking(input: CreateLeadlessBookingInput) {
         )
       : undefined;
     const created = new BookedLead({
-      timestamp: toFloridaTimestamp(new Date()),
+      timestamp: toFloridaTimestamp(tx.now),
       book_date: input.book_date,
       job_no: jobNo,
       ...(customerName ? { customer_name: customerName } : {}),
@@ -169,15 +276,4 @@ export async function createLeadlessBooking(input: CreateLeadlessBookingInput) {
     }
     await persistSheetSyncIntent(leadlessBookingJob(created._id.toString()), session);
     return { booking: created, warnings };
-  });
-
-  const { booking } = outcome;
-  await finalizeSheetSync(leadlessBookingJob(booking._id.toString()));
-
-  return {
-    booking: await populateBookedLead(booking._id),
-    message: "Leadless booking created.",
-    warnings,
-    total_binder_amount: booking.total_binder_amount,
-  };
 }

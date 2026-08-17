@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose, { type ClientSession } from "mongoose";
 import { BookedLead } from "../../models/BookedLead";
 import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconciliationCase";
 import { CallLead } from "../../models/CallLead";
@@ -345,7 +345,58 @@ export async function resolveBookingLeadReconciliation(
   command: ResolveBookingLeadReconciliationInput,
   context: EmployeeBookingActorContext,
 ) {
-  const jobs = await runSheetSyncWrite(async (session) => {
+  const jobs = await runSheetSyncWrite(
+    (session) =>
+      persistBookingLeadReconciliationResolveInTransaction(
+        caseId,
+        command,
+        context,
+        { session, now: new Date() },
+      ),
+    { forceTransaction: true },
+  );
+  for (const job of jobs) {
+    await finalizeSheetSync(job);
+  }
+  await recordOperationalEvent({
+    level: command.action === "reassign" ? "warn" : command.action === "dismiss" ? "info" : "info",
+    eventKey:
+      command.action === "reassign"
+        ? "booking.lead_reconciliation.reassigned"
+        : command.action === "dismiss"
+          ? "booking.lead_reconciliation.dismissed"
+          : "booking.lead_reconciliation.resolved",
+    category: "booking",
+    workflow: "booking_lead_reconciliation",
+    summary: "Booking lead reconciliation command completed.",
+    entity: { type: "booking_lead_reconciliation_case", id: caseId },
+    details: { actor: context.actor, action: command.action },
+    notificationCandidate: false,
+  });
+  return getBookingLeadReconciliationCase(caseId);
+}
+
+export async function resolveBookingLeadReconciliationInTransaction(
+  caseId: string,
+  command: ResolveBookingLeadReconciliationInput,
+  context: EmployeeBookingActorContext,
+  tx: { session?: ClientSession; now: Date },
+) {
+  return persistBookingLeadReconciliationResolveInTransaction(
+    caseId,
+    command,
+    context,
+    tx,
+  );
+}
+
+export async function persistBookingLeadReconciliationResolveInTransaction(
+  caseId: string,
+  command: ResolveBookingLeadReconciliationInput,
+  context: EmployeeBookingActorContext,
+  tx: { session?: ClientSession; now: Date },
+) {
+  const session = tx.session;
     const caseDoc = (await BookingLeadReconciliationCase.findById(caseId)
       .session(session ?? null)
       .exec()) as any;
@@ -481,26 +532,6 @@ export async function resolveBookingLeadReconciliation(
     caseDoc.revision += 1;
     await caseDoc.save({ session });
     return jobsToFinalize;
-  }, { forceTransaction: true });
-  for (const job of jobs) {
-    await finalizeSheetSync(job);
-  }
-  await recordOperationalEvent({
-    level: command.action === "reassign" ? "warn" : command.action === "dismiss" ? "info" : "info",
-    eventKey:
-      command.action === "reassign"
-        ? "booking.lead_reconciliation.reassigned"
-        : command.action === "dismiss"
-          ? "booking.lead_reconciliation.dismissed"
-          : "booking.lead_reconciliation.resolved",
-    category: "booking",
-    workflow: "booking_lead_reconciliation",
-    summary: "Booking lead reconciliation command completed.",
-    entity: { type: "booking_lead_reconciliation_case", id: caseId },
-    details: { actor: context.actor, action: command.action },
-    notificationCandidate: false,
-  });
-  return getBookingLeadReconciliationCase(caseId);
 }
 
 export async function reopenBookingLeadReconciliation(

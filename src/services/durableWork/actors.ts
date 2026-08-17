@@ -48,6 +48,43 @@ export function createReportingProjectionActor(
   };
 }
 
+export function createGranotLifecycleProcessorActor(
+  receiptId: string,
+): DurableActor {
+  return {
+    actor_type: "system",
+    actor_id: "granot-lifecycle-processor",
+    actor_label: "Granot Lifecycle Processor",
+    actor_role: "system",
+    request_id: receiptId,
+    origin: "granot_lifecycle",
+  };
+}
+
+export function createGranotWebhookInitiator(receiptId: string): DurableActor {
+  return {
+    actor_type: "system",
+    actor_id: "granot-webhook",
+    actor_label: "Granot webhook",
+    actor_role: "system",
+    request_id: receiptId,
+    origin: "granot_lifecycle",
+  };
+}
+
+export function createRingCentralCallIngestActor(
+  requestId: string,
+): DurableActor {
+  return {
+    actor_type: "system",
+    actor_id: "ringcentral-call-ingest",
+    actor_label: "RingCentral call ingest",
+    actor_role: "system",
+    request_id: requestId,
+    origin: "ringcentral",
+  };
+}
+
 export function createDurableAuditEnvelope(input: {
   actor: DurableActor;
   initiator: DurableActor;

@@ -7,7 +7,7 @@
 
 **System of Record:** MongoDB `form_leads`. Owner reporting via **Sheet Sync** → **Master Sheets** (Source Company Sheets derive via import queries).
 
-**Triggers:** `POST /api/v1/form-leads` → `createFormLead`; `PATCH /api/v1/form-leads/:id` → `updateFormLead`.
+**Triggers:** `POST /api/v1/form-leads` → `createFormLead`; `PATCH /api/v1/form-leads/:id` → `updateFormLead`. Canonical ingest/admin wrappers call `createFormLeadInTransaction` / `updateFormLeadInTransaction` with the executor `{ session, now }` and finalize only after commit ([`domainCommands.service.md`](domainCommands.service.md)). Public routes still own `runSheetSyncWrite`.
 
 ## Form Lead Ingestion — create (`createFormLead`)
 

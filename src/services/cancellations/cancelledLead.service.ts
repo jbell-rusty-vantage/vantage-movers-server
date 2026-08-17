@@ -1,4 +1,5 @@
 import type mongoose from "mongoose";
+import type { ClientSession } from "mongoose";
 import { getSheetSyncMode, type LeadModelName } from "../../config/domain";
 import { BookedLead } from "../../models/BookedLead";
 import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconciliationCase";
@@ -52,7 +53,54 @@ export async function createCancelledLead(
 ) {
   const timestamp = input.timestamp ?? new Date();
 
-  const { cancellation, job, booking } = await runSheetSyncWrite(async (session) => {
+  const { cancellation, job, booking } = await runSheetSyncWrite((session) =>
+    persistCancelledLeadCreateInTransaction(input, options, {
+      session,
+      now: timestamp,
+    }),
+    { forceTransaction: true },
+  );
+
+  await finalizeSheetSync(job);
+
+  await recordOperationalEvent({
+    level: "info",
+    eventKey: "cancellation.created",
+    category: "cancellation",
+    workflow: "cancellation_create",
+    summary: "Cancellation created.",
+    leadIdentity: { name: cancellation.customer_name ?? null },
+    sourceCompany: (booking.source as string | undefined) ?? null,
+    entity: { type: "cancelled_lead", id: cancellation._id.toString() },
+    details: {
+      booking_id: booking._id.toString(),
+      job_no: cancellation.job_no ?? null,
+      reason: cancellation.reason ?? null,
+      refund_amount: cancellation.refund_amount ?? null,
+      cancelled_by: cancellation.cancelled_by ?? null,
+      agent: cancellation.agent ?? null,
+      merchant: cancellation.merchant ?? null,
+    },
+  });
+
+  return cancellation;
+}
+
+export async function createCancelledLeadInTransaction(
+  input: CreateCancelledLeadInput,
+  options: { requiredSourceConnectionKey?: string } = {},
+  tx: { session?: ClientSession; now: Date },
+) {
+  return persistCancelledLeadCreateInTransaction(input, options, tx);
+}
+
+export async function persistCancelledLeadCreateInTransaction(
+  input: CreateCancelledLeadInput,
+  options: { requiredSourceConnectionKey?: string } = {},
+  tx: { session?: ClientSession; now: Date },
+) {
+  const timestamp = input.timestamp ?? tx.now;
+  const session = tx.session;
     const booking = await resolveBookedLeadForCancellation(input, session, {
       allowLeadless: input.ingestion_source === "best_relocation_sheet",
     });
@@ -152,31 +200,6 @@ export async function createCancelledLead(
     };
     await persistSheetSyncIntent(cancellationJob, session);
     return { cancellation: created, job: cancellationJob, booking };
-  }, { forceTransaction: true });
-
-  await finalizeSheetSync(job);
-
-  await recordOperationalEvent({
-    level: "info",
-    eventKey: "cancellation.created",
-    category: "cancellation",
-    workflow: "cancellation_create",
-    summary: "Cancellation created.",
-    leadIdentity: { name: cancellation.customer_name ?? null },
-    sourceCompany: (booking.source as string | undefined) ?? null,
-    entity: { type: "cancelled_lead", id: cancellation._id.toString() },
-    details: {
-      booking_id: booking._id.toString(),
-      job_no: cancellation.job_no ?? null,
-      reason: cancellation.reason ?? null,
-      refund_amount: cancellation.refund_amount ?? null,
-      cancelled_by: cancellation.cancelled_by ?? null,
-      agent: cancellation.agent ?? null,
-      merchant: cancellation.merchant ?? null,
-    },
-  });
-
-  return cancellation;
 }
 
 /**

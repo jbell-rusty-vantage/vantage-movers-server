@@ -81,7 +81,7 @@ export type DurableActor =
       actor_label: string;
       actor_role: "owner" | "admin";
       request_id: string;
-      origin: "vantage_admin";
+      origin: "vantage_admin" | "browser_extension";
     }
   | {
       actor_type: "system";
@@ -89,7 +89,11 @@ export type DurableActor =
       actor_label: string;
       actor_role: "system";
       request_id: string;
-      origin: "external_sheet_ingestion" | "reporting_projection";
+      origin:
+        | "external_sheet_ingestion"
+        | "reporting_projection"
+        | "granot_lifecycle"
+        | "ringcentral";
     };
 
 export type DurableAuditEnvelope = {

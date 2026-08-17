@@ -11,7 +11,7 @@
 
 | File | Role |
 |------|------|
-| `bookedLead.service.ts` | Core CRUD: create, update, delete, populate |
+| `bookedLead.service.ts` | Core CRUD: create, update, delete, populate. Canonical wrappers use `createBookedLeadInTransaction` ([`domainCommands.service.md`](domainCommands.service.md)). |
 | `bookedLeadFromSource.service.ts` | Form/phone submission bridge → `createBookedLead` |
 | `bookingMirror.service.ts` | Lead ↔ booking state sync + lead-update refresh |
 | `referralBooking.service.ts` | Referral bookings (no source lead) |

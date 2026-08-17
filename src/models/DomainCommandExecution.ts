@@ -4,10 +4,34 @@ import mongoose, {
   type Model,
 } from "mongoose";
 
+const COMMAND_ORIGINS = [
+  "external_sheet_ingestion",
+  "vantage_admin",
+  "granot_lifecycle",
+  "ringcentral",
+] as const;
+
 const EntityReferenceSchema = new Schema(
   {
     model: { type: String, required: true, trim: true },
     id: { type: String, required: true, trim: true },
+  },
+  { _id: false },
+);
+
+const StoredCommandResultSchema = new Schema(
+  {
+    status: {
+      type: String,
+      required: true,
+      enum: ["applied"],
+    },
+    entity_refs: {
+      type: [EntityReferenceSchema],
+      required: true,
+      default: [],
+    },
+    warnings: { type: [String], required: true, default: [] },
   },
   { _id: false },
 );
@@ -17,7 +41,7 @@ const DomainCommandExecutionSchema = new Schema(
     origin: {
       type: String,
       required: true,
-      enum: ["external_sheet_ingestion", "vantage_admin"],
+      enum: COMMAND_ORIGINS,
       index: true,
     },
     idempotency_key: { type: String, required: true, trim: true },
@@ -27,6 +51,7 @@ const DomainCommandExecutionSchema = new Schema(
     actor: { type: Schema.Types.Mixed, required: true },
     initiator: { type: Schema.Types.Mixed, required: true },
     provenance: { type: Schema.Types.Mixed, required: true },
+    result: { type: StoredCommandResultSchema, required: false },
     entity_refs: {
       type: [EntityReferenceSchema],
       required: true,
@@ -61,3 +86,36 @@ export const DomainCommandExecution: Model<DomainCommandExecutionDocument> =
     "DomainCommandExecution",
     DomainCommandExecutionSchema,
   );
+
+export function readStoredCanonicalCommandResult(document: {
+  result?: {
+    status?: string;
+    entity_refs?: Array<{ model: string; id: string }>;
+    warnings?: string[];
+  } | null;
+  entity_refs?: Array<{ model: string; id: string }>;
+  warnings?: string[];
+}): {
+  status: "applied";
+  entity_refs: Array<{ model: string; id: string }>;
+  warnings: string[];
+} {
+  if (document.result?.status === "applied") {
+    return {
+      status: "applied",
+      entity_refs: (document.result.entity_refs ?? []).map((entry) => ({
+        model: entry.model,
+        id: entry.id,
+      })),
+      warnings: [...(document.result.warnings ?? [])],
+    };
+  }
+  return {
+    status: "applied",
+    entity_refs: (document.entity_refs ?? []).map((entry) => ({
+      model: entry.model,
+      id: entry.id,
+    })),
+    warnings: [...(document.warnings ?? [])],
+  };
+}

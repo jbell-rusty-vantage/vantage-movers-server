@@ -1,137 +1,129 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import type { ClientSession } from "mongoose";
-import { connectMongo } from "../../db";
-import { DomainCommandExecution } from "../../models/DomainCommandExecution";
-import { recordOperationalEvent } from "../observability";
+import { connectMongo, withTransaction } from "../../db";
 import {
-  DomainCommandContextError,
+  DomainCommandExecution,
+  readStoredCanonicalCommandResult,
+} from "../../models/DomainCommandExecution";
+import { recordOperationalEvent } from "../observability";
+import { assertCommandContext, type CommandContextVerifier } from "./commandContext";
+import {
   DomainCommandIdempotencyConflictError,
+  toCompatibilityCanonicalCommandResult,
   type CanonicalCommandContext,
-  type CanonicalCommandResult,
-  type CanonicalEntityReference,
+  type CanonicalCommandExecutionOutcome,
+  type CanonicalCommandOperationEvidence,
+  type CanonicalCommandOperationInput,
+  type CompatibilityCanonicalCommandResult,
+  type StoredCanonicalCommandResult,
 } from "./types";
-
-type AppliedCommandEvidence = {
-  entity_refs: readonly CanonicalEntityReference[];
-  warnings?: readonly string[];
-};
 
 export type StoredCanonicalCommandExecution = {
   command_name: string;
   payload_checksum: string;
-  entity_refs: readonly CanonicalEntityReference[];
-  warnings: readonly string[];
+  result: StoredCanonicalCommandResult;
 };
 
 export interface CanonicalCommandExecutionStore {
   find(input: {
     origin: CanonicalCommandContext["provenance"]["origin"];
     idempotency_key: string;
+    session?: ClientSession;
   }): Promise<StoredCanonicalCommandExecution | null>;
   persist(input: {
     command_name: string;
     context: CanonicalCommandContext;
-    result: CanonicalCommandResult;
+    result: StoredCanonicalCommandResult;
     applied_at: Date;
     session: ClientSession;
   }): Promise<void>;
 }
 
-type ActiveCommandExecution = {
-  command_name: string;
-  context: CanonicalCommandContext;
-  project: (transactionResult: unknown) => AppliedCommandEvidence;
-  store: CanonicalCommandExecutionStore;
-  result?: CanonicalCommandResult;
-};
-
-const commandExecutionStorage =
-  new AsyncLocalStorage<ActiveCommandExecution>();
+export type CanonicalCommandTransactionRunner = <T>(
+  fn: (session: ClientSession) => Promise<T>,
+) => Promise<T>;
 
 export function createIdempotentCanonicalCommandExecutor(input: {
   store: CanonicalCommandExecutionStore;
   connect: () => Promise<void>;
+  withTransaction?: CanonicalCommandTransactionRunner;
+  now?: () => Date;
+  contextVerifier?: CommandContextVerifier;
 }) {
-  return async function execute<T>(command: {
+  const runTransaction = input.withTransaction ?? withTransaction;
+  const clock = input.now ?? (() => new Date());
+
+  return async function execute(command: {
     command_name: string;
     context: CanonicalCommandContext;
-    operation: () => Promise<T>;
-    project: (transactionResult: unknown) => AppliedCommandEvidence;
-  }): Promise<CanonicalCommandResult> {
-    assertCommandContext(command.context);
+    operation: (
+      input: CanonicalCommandOperationInput,
+    ) => Promise<CanonicalCommandOperationEvidence>;
+  }): Promise<CanonicalCommandExecutionOutcome> {
+    await assertCommandContext(command.context, input.contextVerifier);
+    const context = normalizeCommandContext(command.context);
     await input.connect();
-    const existing = await findExisting(
-      input.store,
-      command.command_name,
-      command.context,
-    );
-    if (existing) {
-      await recordCommandOperationalEvent(
-        command.command_name,
-        command.context,
-        existing,
-      );
-      return existing;
-    }
+    const now = clock();
 
-    const active: ActiveCommandExecution = {
-      command_name: command.command_name,
-      context: command.context,
-      project: command.project,
-      store: input.store,
-    };
+    let outcome: CanonicalCommandExecutionOutcome;
     try {
-      await commandExecutionStorage.run(active, command.operation);
+      outcome = await runTransaction(async (session) => {
+        const existing = await findExisting(
+          input.store,
+          command.command_name,
+          context,
+          session,
+        );
+        if (existing) {
+          return { result: existing, replayed: true };
+        }
+
+        const evidence = await command.operation({ session, now });
+        const result = toStoredResult(evidence);
+        await input.store.persist({
+          command_name: command.command_name,
+          context,
+          result,
+          applied_at: now,
+          session,
+        });
+        return { result, replayed: false };
+      });
     } catch (error) {
       if (!isDuplicateKeyError(error)) throw error;
       const raced = await findExisting(
         input.store,
         command.command_name,
-        command.context,
+        context,
       );
-      if (raced) {
-        await recordCommandOperationalEvent(
-          command.command_name,
-          command.context,
-          raced,
-        );
-        return raced;
-      }
-      throw error;
+      if (!raced) throw error;
+      outcome = { result: raced, replayed: true };
     }
-    if (!active.result) {
-      throw new DomainCommandContextError(
-        "Canonical command did not execute through the transactional domain-write seam.",
-      );
-    }
+
     await recordCommandOperationalEvent(
       command.command_name,
-      command.context,
-      active.result,
+      context,
+      outcome,
     );
-    return active.result;
+    return outcome;
   };
 }
 
 const mongooseExecutionStore: CanonicalCommandExecutionStore = {
   async find(input) {
-    const existing = await DomainCommandExecution.findOne({
+    const query = DomainCommandExecution.findOne({
       origin: input.origin,
       idempotency_key: input.idempotency_key,
-    })
-      .lean()
-      .exec();
-    return existing
-      ? {
-          command_name: existing.command_name,
-          payload_checksum: existing.payload_checksum,
-          entity_refs: existing.entity_refs.map((entry) => ({
-            model: entry.model,
-            id: entry.id,
-          })),
-          warnings: [...existing.warnings],
-        }
-      : null;
+    });
+    if (input.session) {
+      query.session(input.session);
+    }
+    const existing = await query.lean().exec();
+    if (!existing) return null;
+    return {
+      command_name: existing.command_name,
+      payload_checksum: existing.payload_checksum,
+      result: readStoredCanonicalCommandResult(existing),
+    };
   },
   async persist(input) {
     const execution = new DomainCommandExecution({
@@ -139,10 +131,11 @@ const mongooseExecutionStore: CanonicalCommandExecutionStore = {
       idempotency_key: input.context.idempotency_key,
       command_id: input.context.command_id,
       command_name: input.command_name,
-      payload_checksum: input.context.payload_checksum.toLowerCase(),
+      payload_checksum: input.context.payload_checksum,
       actor: input.context.actor,
       initiator: input.context.initiator,
       provenance: input.context.provenance,
+      result: input.result,
       entity_refs: input.result.entity_refs,
       warnings: input.result.warnings,
       applied_at: input.applied_at,
@@ -157,106 +150,75 @@ export const executeIdempotentCanonicalCommand =
     connect: connectMongo,
   });
 
-export function hasActiveCanonicalCommandExecution(): boolean {
-  return commandExecutionStorage.getStore() !== undefined;
+export async function executeCanonicalCommandWithPostCommit<TPending>(input: {
+  command_name: string;
+  context: CanonicalCommandContext;
+  operation: (
+    tx: CanonicalCommandOperationInput,
+  ) => Promise<CanonicalCommandOperationEvidence & { pending?: TPending }>;
+  finalize?: (pending: TPending) => Promise<unknown>;
+}): Promise<CompatibilityCanonicalCommandResult> {
+  let pending: TPending | undefined;
+  const outcome = await executeIdempotentCanonicalCommand({
+    command_name: input.command_name,
+    context: input.context,
+    operation: async (tx) => {
+      const evidence = await input.operation(tx);
+      pending = evidence.pending;
+      return {
+        entity_refs: evidence.entity_refs,
+        warnings: evidence.warnings,
+      };
+    },
+  });
+  if (!outcome.replayed && pending !== undefined && input.finalize) {
+    await input.finalize(pending);
+  }
+  return toCompatibilityCanonicalCommandResult(outcome);
 }
 
-export async function persistActiveCanonicalCommandExecution(
-  transactionResult: unknown,
-  session: ClientSession,
-): Promise<void> {
-  const active = commandExecutionStorage.getStore();
-  if (!active) return;
-  const evidence = active.project(transactionResult);
-  const result: CanonicalCommandResult = {
+function normalizeCommandContext(
+  context: CanonicalCommandContext,
+): CanonicalCommandContext {
+  return {
+    ...context,
+    payload_checksum: context.payload_checksum.toLowerCase(),
+  };
+}
+
+function toStoredResult(
+  evidence: CanonicalCommandOperationEvidence,
+): StoredCanonicalCommandResult {
+  return {
     status: "applied",
     entity_refs: evidence.entity_refs.map((entry) => ({ ...entry })),
     warnings: [...(evidence.warnings ?? [])],
   };
-  await active.store.persist({
-    command_name: active.command_name,
-    context: active.context,
-    result,
-    applied_at: new Date(),
-    session,
-  });
-  active.result = result;
 }
 
 async function findExisting(
   store: CanonicalCommandExecutionStore,
   commandName: string,
   context: CanonicalCommandContext,
-): Promise<CanonicalCommandResult | null> {
+  session?: ClientSession,
+): Promise<StoredCanonicalCommandResult | null> {
   const existing = await store.find({
     origin: context.provenance.origin,
     idempotency_key: context.idempotency_key,
+    session,
   });
   if (!existing) return null;
   if (
     existing.command_name !== commandName ||
-    existing.payload_checksum !== context.payload_checksum.toLowerCase()
+    existing.payload_checksum !== context.payload_checksum
   ) {
     throw new DomainCommandIdempotencyConflictError();
   }
   return {
-    status: "already_applied",
-    entity_refs: existing.entity_refs.map((entry) => ({
-      model: entry.model,
-      id: entry.id,
-    })),
-    warnings: [...existing.warnings],
+    status: "applied",
+    entity_refs: existing.result.entity_refs.map((entry) => ({ ...entry })),
+    warnings: [...existing.result.warnings],
   };
-}
-
-function assertCommandContext(context: CanonicalCommandContext): void {
-  if (
-    !context.command_id.trim() ||
-    !context.idempotency_key.trim() ||
-    !/^[a-f0-9]{64}$/i.test(context.payload_checksum)
-  ) {
-    throw new DomainCommandContextError(
-      "Command id, idempotency key, and SHA-256 payload checksum are required.",
-    );
-  }
-  if (context.provenance.origin === "external_sheet_ingestion") {
-    if (
-      context.actor.actor_type !== "system" ||
-      context.actor.actor_id !== "best-relocation-ingestion" ||
-      context.actor.actor_role !== "system" ||
-      context.actor.origin !== "external_sheet_ingestion" ||
-      !isTrustedHumanActor(context.initiator) ||
-      !context.provenance.run_id ||
-      !context.provenance.source_receipt_id ||
-      !context.provenance.source_connection_key
-    ) {
-      throw new DomainCommandContextError(
-        "External ingestion commands require the dedicated ingestion actor, a trusted human initiator, and complete source provenance.",
-      );
-    }
-    return;
-  }
-  if (
-    !isTrustedHumanActor(context.actor) ||
-    !isTrustedHumanActor(context.initiator)
-  ) {
-    throw new DomainCommandContextError(
-      "Admin commands require trusted owner/admin actor and initiator snapshots.",
-    );
-  }
-}
-
-function isTrustedHumanActor(
-  actor: CanonicalCommandContext["actor"],
-): boolean {
-  return (
-    (actor.actor_type === "owner" ||
-      actor.actor_type === "admin") &&
-    actor.actor_role === actor.actor_type &&
-    actor.origin === "vantage_admin" &&
-    Boolean(actor.actor_id.trim()) &&
-    Boolean(actor.request_id.trim())
-  );
 }
 
 function isDuplicateKeyError(error: unknown): boolean {
@@ -271,21 +233,19 @@ function isDuplicateKeyError(error: unknown): boolean {
 async function recordCommandOperationalEvent(
   commandName: string,
   context: CanonicalCommandContext,
-  result: CanonicalCommandResult,
+  outcome: CanonicalCommandExecutionOutcome,
 ): Promise<void> {
-  const firstEntity = result.entity_refs[0];
+  const firstEntity = outcome.result.entity_refs[0];
   await recordOperationalEvent({
     level: "info",
-    eventKey:
-      result.status === "applied"
-        ? "domain_command.applied"
-        : "domain_command.replayed",
+    eventKey: outcome.replayed
+      ? "domain_command.replayed"
+      : "domain_command.applied",
     category: "admin",
     workflow: "canonical_domain_command",
-    summary:
-      result.status === "applied"
-        ? "Canonical domain command applied."
-        : "Canonical domain command replay returned its durable outcome.",
+    summary: outcome.replayed
+      ? "Canonical domain command replay returned its durable outcome."
+      : "Canonical domain command applied.",
     requestId: context.actor.request_id,
     runId: context.provenance.run_id,
     ...(firstEntity
@@ -299,17 +259,19 @@ async function recordCommandOperationalEvent(
     details: {
       command_name: commandName,
       command_id: context.command_id,
-      command_status: result.status,
+      command_status: outcome.result.status,
+      replayed: outcome.replayed,
       actor_type: context.actor.actor_type,
       actor_id: context.actor.actor_id,
       initiator_type: context.initiator.actor_type,
       initiator_id: context.initiator.actor_id,
       origin: context.provenance.origin,
       source_receipt_id: context.provenance.source_receipt_id,
-      source_connection_key:
-        context.provenance.source_connection_key,
-      entity_ref_count: result.entity_refs.length,
-      warning_count: result.warnings.length,
+      source_connection_key: context.provenance.source_connection_key,
+      observation_id: context.provenance.observation_id ?? null,
+      decision_id: context.provenance.decision_id ?? null,
+      entity_ref_count: outcome.result.entity_refs.length,
+      warning_count: outcome.result.warnings.length,
     },
     notificationCandidate: false,
     reportable: false,

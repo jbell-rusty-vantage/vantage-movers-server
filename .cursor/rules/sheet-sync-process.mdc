@@ -43,9 +43,11 @@ Do not add CPL columns to Sheets. Use projection helpers for owner-facing values
 
 For new write paths, prefer:
 
-1. `runSheetSyncWrite()` around the Mongo mutation.
-2. `persistSheetSyncIntent()` inside the transaction in queued mode.
+1. `runSheetSyncWrite()` around the Mongo mutation on **public/legacy** services.
+2. `persistSheetSyncIntent()` inside the caller's transaction in queued mode.
 3. `finalizeSheetSync()` after commit to publish the queue wake-up or run legacy scheduling.
+
+Canonical command adapters do **not** use `runSheetSyncWrite` to complete a command. The domain-command executor owns that transaction and persists `DomainCommandExecution`; adapters persist Sheet Sync intent on the executor session and finalize only after a successful non-replay commit. See [`domainCommands.service.md`](../businesslogic/domainCommands.service.md). `EntityChange` and complete outbox linkage remain Unit 11.
 
 Keep external side effects such as Google Sheets, queues, CRM, and email outside the transaction callback.
 

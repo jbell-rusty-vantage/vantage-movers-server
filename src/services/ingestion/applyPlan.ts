@@ -10,7 +10,7 @@ import {
 import type {
   CanonicalCommandContext,
   CanonicalDomainCommands,
-  CanonicalCommandResult,
+  CompatibilityCanonicalCommandResult,
 } from "../domainCommands";
 import type {
   BestRelocationApplicationPlan,
@@ -264,7 +264,7 @@ async function executeAction(
   action: BestRelocationPlanAction,
   receiptId: string,
   resolved: Map<string, string>,
-): Promise<CanonicalCommandResult> {
+): Promise<CompatibilityCanonicalCommandResult> {
   const data = resolvePayload(action, resolved);
   const payloadChecksum = computeChecksum({
     checksum_version: 1,

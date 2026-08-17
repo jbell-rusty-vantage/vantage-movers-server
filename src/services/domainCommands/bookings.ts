@@ -4,81 +4,113 @@ import {
   createBookedLeadSchema,
   createLeadlessBookingSchema,
 } from "../../validation/v1.validation";
-import { createBookedLead } from "../bookings/bookedLead.service";
-import { createLeadlessBooking as createLeadlessBookingService } from "../bookings/leadlessBooking.service";
+import {
+  createBookedLeadInTransaction,
+  finalizeBookedLeadCreateAfterCommit,
+} from "../bookings/bookedLead.service";
+import { createLeadlessBookingInTransaction } from "../bookings/leadlessBooking.service";
+import { populateBookedLead } from "../bookings/bookedLead.service";
+import { requireBestRelocationImportSource } from "../bookings/bestRelocationImportGuard";
 import { ConflictError, NotFoundError } from "../errors";
 import { getLinkedLead } from "../leads";
-import { requireBestRelocationImportSource } from "../bookings/bestRelocationImportGuard";
-import { resolveBookingLeadReconciliation } from "../employeeBookings/bookingLeadReconciliation.service";
-import { executeIdempotentCanonicalCommand } from "./idempotency";
+import {
+  resolveBookingLeadReconciliationInTransaction,
+} from "../employeeBookings/bookingLeadReconciliation.service";
+import { finalizeSheetSync } from "../sheetSync";
+import { executeCanonicalCommandWithPostCommit } from "./idempotency";
 import type {
   CanonicalCommandContext,
-  CanonicalCommandResult,
+  CompatibilityCanonicalCommandResult,
 } from "./types";
 
 export async function createBookingFromLead(input: {
   data: unknown;
   context: CanonicalCommandContext;
-}): Promise<CanonicalCommandResult> {
+}): Promise<CompatibilityCanonicalCommandResult> {
   const data = createBookedLeadSchema.parse(input.data);
-  return executeIdempotentCanonicalCommand({
+  const serviceInput = {
+    ...data,
+    ...(input.context.provenance.origin === "external_sheet_ingestion"
+      ? {
+          ingestion_source: "best_relocation_sheet" as const,
+          allow_inactive_agents: true,
+          set_primary_agent_as_receiver: true,
+          receiver_agent_source_value: `Booked Deals:${data.job_no ?? "unknown-job"}`,
+        }
+      : {}),
+  };
+  return executeCanonicalCommandWithPostCommit({
     command_name: "createBookingFromLead",
     context: input.context,
-    operation: () =>
-      createBookedLead({
-        ...data,
-        ...(input.context.provenance.origin ===
-        "external_sheet_ingestion"
-          ? {
-              ingestion_source: "best_relocation_sheet" as const,
-              allow_inactive_agents: true,
-              set_primary_agent_as_receiver: true,
-              receiver_agent_source_value: `Booked Deals:${data.job_no ?? "unknown-job"}`,
-            }
-          : {}),
-      }),
-    project: (transactionResult) => ({
-      entity_refs: [
-        {
-          model: "BookedLead",
-          id: nestedId(transactionResult, "bookingId"),
-        },
-        {
-          model: data.lead_model,
-          id: data.lead_ref,
-        },
-      ],
-      warnings: stringArray(transactionResult, "warnings"),
-    }),
+    operation: async ({ session, now }) => {
+      const pending = await createBookedLeadInTransaction(
+        serviceInput,
+        { session, now },
+      );
+      return {
+        entity_refs: [
+          {
+            model: "BookedLead",
+            id: String(pending.outcome.bookingId),
+          },
+          {
+            model: data.lead_model,
+            id: data.lead_ref,
+          },
+        ],
+        warnings: pending.warnings,
+        pending,
+      };
+    },
+    finalize: async (pending) => {
+      await finalizeBookedLeadCreateAfterCommit(
+        serviceInput,
+        pending.merchant,
+        pending.warnings,
+        pending.outcome,
+      );
+    },
   });
 }
 
 export async function createLeadlessBooking(input: {
   data: unknown;
   context: CanonicalCommandContext;
-}): Promise<CanonicalCommandResult> {
+}): Promise<CompatibilityCanonicalCommandResult> {
   const data = createLeadlessBookingSchema.parse(input.data);
-  return executeIdempotentCanonicalCommand({
+  return executeCanonicalCommandWithPostCommit({
     command_name: "createLeadlessBooking",
     context: input.context,
-    operation: () =>
-      createLeadlessBookingService({
-        ...data,
-        ingestion_source:
-          input.context.provenance.origin ===
-          "external_sheet_ingestion"
-            ? ("best_relocation_sheet" as const)
-            : undefined,
-      }),
-    project: (transactionResult) => ({
-      entity_refs: [
+    operation: async ({ session, now }) => {
+      const pending = await createLeadlessBookingInTransaction(
         {
-          model: "BookedLead",
-          id: nestedDocumentId(transactionResult, "booking"),
+          ...data,
+          ingestion_source:
+            input.context.provenance.origin === "external_sheet_ingestion"
+              ? ("best_relocation_sheet" as const)
+              : undefined,
         },
-      ],
-      warnings: stringArray(transactionResult, "warnings"),
-    }),
+        { session, now },
+      );
+      return {
+        entity_refs: [
+          {
+            model: "BookedLead",
+            id: pending.booking._id.toString(),
+          },
+        ],
+        warnings: pending.warnings,
+        pending,
+      };
+    },
+    finalize: async (pending) => {
+      await finalizeSheetSync({
+        resource: "booked_lead",
+        operation: "leadless_booking.create",
+        bookingId: pending.booking._id.toString(),
+      });
+      await populateBookedLead(pending.booking._id);
+    },
   });
 }
 
@@ -88,58 +120,50 @@ export async function attachBookingToLead(input: {
   lead_id: string;
   expected_revision: number;
   context: CanonicalCommandContext;
-}): Promise<CanonicalCommandResult> {
-  return executeIdempotentCanonicalCommand({
+}): Promise<CompatibilityCanonicalCommandResult> {
+  return executeCanonicalCommandWithPostCommit({
     command_name: "attachBookingToLead",
     context: input.context,
-    operation: async () => {
-      if (
-        input.context.provenance.origin ===
-        "external_sheet_ingestion"
-      ) {
-        const lead = await getLinkedLead(
-          input.lead_model,
-          input.lead_id,
-        );
+    operation: async ({ session, now }) => {
+      if (input.context.provenance.origin === "external_sheet_ingestion") {
+        const lead = await getLinkedLead(input.lead_model, input.lead_id, session);
         requireBestRelocationImportSource(
           "best_relocation_sheet",
           String(lead.source_company),
         );
-        const ownedBooking =
-          await DomainCommandExecution.findOne({
-            origin: "external_sheet_ingestion",
-            command_name: "createLeadlessBooking",
-            "provenance.source_connection_key":
-              input.context.provenance.source_connection_key,
-            entity_refs: {
-              $elemMatch: {
-                model: "BookedLead",
-                id: input.booking_id,
-              },
+        const ownedBooking = await DomainCommandExecution.findOne({
+          origin: "external_sheet_ingestion",
+          command_name: "createLeadlessBooking",
+          "provenance.source_connection_key":
+            input.context.provenance.source_connection_key,
+          entity_refs: {
+            $elemMatch: {
+              model: "BookedLead",
+              id: input.booking_id,
             },
-          })
-            .select("_id")
-            .lean()
-            .exec();
+          },
+        })
+          .session(session)
+          .select("_id")
+          .lean()
+          .exec();
         if (!ownedBooking) {
           throw new ConflictError(
             "Booking does not belong to this ingestion source",
           );
         }
       }
-      const reconciliationCase =
-        await BookingLeadReconciliationCase.findOne({
-          booking: input.booking_id,
-        })
-          .select("_id")
-          .lean()
-          .exec();
+      const reconciliationCase = await BookingLeadReconciliationCase.findOne({
+        booking: input.booking_id,
+      })
+        .session(session)
+        .select("_id")
+        .lean()
+        .exec();
       if (!reconciliationCase) {
-        throw new NotFoundError(
-          "Booking lead reconciliation case not found",
-        );
+        throw new NotFoundError("Booking lead reconciliation case not found");
       }
-      return resolveBookingLeadReconciliation(
+      const jobs = await resolveBookingLeadReconciliationInTransaction(
         String(reconciliationCase._id),
         {
           action: "attach_existing",
@@ -148,14 +172,21 @@ export async function attachBookingToLead(input: {
           lead_id: input.lead_id,
         },
         actorContext(input.context),
+        { session, now },
       );
+      return {
+        entity_refs: [
+          { model: "BookedLead", id: input.booking_id },
+          { model: input.lead_model, id: input.lead_id },
+        ],
+        pending: jobs,
+      };
     },
-    project: () => ({
-      entity_refs: [
-        { model: "BookedLead", id: input.booking_id },
-        { model: input.lead_model, id: input.lead_id },
-      ],
-    }),
+    finalize: async (jobs) => {
+      for (const job of jobs) {
+        await finalizeSheetSync(job);
+      }
+    },
   });
 }
 
@@ -173,29 +204,4 @@ function actorContext(context: CanonicalCommandContext): {
         }
       : {}),
   };
-}
-
-function nestedId(value: unknown, key: string): string {
-  if (!isRecord(value) || !(key in value)) {
-    throw new Error("Canonical booking command produced no entity reference.");
-  }
-  return String(value[key]);
-}
-
-function nestedDocumentId(value: unknown, key: string): string {
-  if (!isRecord(value) || !isRecord(value[key]) || !("_id" in value[key])) {
-    throw new Error("Canonical booking command produced no entity reference.");
-  }
-  return String(value[key]._id);
-}
-
-function stringArray(value: unknown, key: string): string[] {
-  if (!isRecord(value) || !Array.isArray(value[key])) return [];
-  return value[key].filter(
-    (entry): entry is string => typeof entry === "string",
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }

@@ -11,7 +11,7 @@
 
 | File | Role |
 |------|------|
-| `cancelledLead.service.ts` | CRUD: create, update, delete, list |
+| `cancelledLead.service.ts` | CRUD: create, update, delete, list. Canonical wrappers use `createCancelledLeadInTransaction` ([`domainCommands.service.md`](domainCommands.service.md)). |
 | `cancellationResolver.ts` | Resolve target booking + enforce lead/booking match invariants |
 | `cancellationMirror.service.ts` | Stamp/clear `cancelled` on linked form/call lead (see dedicated doc) |
 
