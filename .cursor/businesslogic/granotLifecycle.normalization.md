@@ -39,7 +39,7 @@
 
 - Only scalars participate in scalar fields. Arrays/objects never stringify to `[object Object]`.
 - Strings are Unicode NFKC, trimmed, and bounded. Over-bound input emits the applicable issue and does not manufacture a valid identity.
-- Source lookup label = NFKC + trim + collapsed whitespace + lowercase. Empty/control/bidi/invalid → `invalid_source_label`.
+- Source lookup label uses the shared `normalizeGranotSourceLabel` helper (NFKC + trim + collapsed whitespace + lowercase). Empty/control/bidi/invalid → `invalid_source_label`. Registry commands and `sourcePolicy.ts` must use the same helper.
 - Job Number uses `normalizeJobNo`. Form reference sentinels `not provided` / `not_provided` / blank become absent identities.
 - Phone uses `normalizePhoneNumberForMatch`. Email is trim/lowercase with `invalid_email` on malformed input.
 - Move date is strict `MM/DD/YYYY` in `America/New_York` (Vantage business timezone decision). Impossible dates → `invalid_move_date`.

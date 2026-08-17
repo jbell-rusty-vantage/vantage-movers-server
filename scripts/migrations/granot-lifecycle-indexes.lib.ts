@@ -5,9 +5,12 @@ import {
   GRANOT_OBSERVATION_RECEIPT_INDEXES,
   GRANOT_OBSERVATION_RECEIPT_LEGACY_INDEXES,
 } from "../../src/models/GranotObservationReceipt";
+import { GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES } from "../../src/models/GranotCrmSource";
 import { maskReceiptId } from "./granot-lifecycle-migration.lib";
 
-export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/2";
+export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/3";
+
+export const GRANOT_CRM_SOURCE_UNIQUE_INDEX_APPLY_ENABLED = false;
 
 export type ReceiptIndexContract = (typeof GRANOT_OBSERVATION_RECEIPT_INDEXES)[number];
 export type ObservationIndexContract = (typeof GRANOT_OBSERVATION_INDEXES)[number];
@@ -197,6 +200,56 @@ function sameKey(
   expected: Record<string, unknown>,
 ): boolean {
   return sameJson(actual, expected);
+}
+
+export type NormalizedLabelCollision = {
+  normalized_granot_label: string;
+  count: number;
+  masked_ids: string[];
+};
+
+export function findNormalizedGranotLabelCollisions(
+  rows: readonly {
+    _id: string;
+    normalized_granot_label?: unknown;
+  }[],
+): NormalizedLabelCollision[] {
+  const groups = new Map<string, { count: number; masked_ids: string[] }>();
+  for (const row of rows) {
+    if (typeof row.normalized_granot_label !== "string" || !row.normalized_granot_label) {
+      continue;
+    }
+    const current = groups.get(row.normalized_granot_label) ?? {
+      count: 0,
+      masked_ids: [],
+    };
+    current.count += 1;
+    current.masked_ids.push(maskReceiptId(row._id));
+    groups.set(row.normalized_granot_label, current);
+  }
+  return [...groups.entries()]
+    .filter(([, group]) => group.count > 1)
+    .map(([normalized_granot_label, group]) => ({
+      normalized_granot_label,
+      count: group.count,
+      masked_ids: group.masked_ids.sort(),
+    }))
+    .sort((left, right) =>
+      left.normalized_granot_label.localeCompare(right.normalized_granot_label),
+    );
+}
+
+export function orderedGranotCrmSourceIndexCreates(): {
+  nonUnique: typeof GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES[number][];
+  unique: typeof GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES[number][];
+} {
+  const nonUnique = GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES.filter(
+    (index) => !("unique" in index),
+  );
+  const unique = GRANOT_CRM_SOURCE_UNIQUE_INDEX_APPLY_ENABLED
+    ? GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES.filter((index) => "unique" in index)
+    : [];
+  return { nonUnique, unique };
 }
 
 function sameJson(left: unknown, right: unknown): boolean {

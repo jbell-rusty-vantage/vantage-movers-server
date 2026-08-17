@@ -1,12 +1,12 @@
 ---
 description: Operations Registry module, authorization, audit, and migration rules
-globs: src/services/operationsRegistry/**/*.ts,src/models/{Agent,Merchant,LeadSourceCompany,LeadSourceGranularity,OperationsRegistryChange}.ts,scripts/migrations/operations-registry-*.ts,src/routes/v1.routes.ts
+globs: src/services/operationsRegistry/**/*.ts,src/models/{Agent,Merchant,LeadSourceCompany,LeadSourceGranularity,OperationsRegistryChange,GranotCrmSource}.ts,scripts/migrations/operations-registry-*.ts,src/routes/v1.routes.ts
 alwaysApply: false
 ---
 
 # Operations Registry
 
-- `src/services/operationsRegistry/` is the public module for production Agent, Merchant, Source Company, and Source Granularity catalog behavior. Routes and runtime consumers use its exported commands, queries, and resolvers rather than importing registry models.
+- `src/services/operationsRegistry/` is the public module for production Agent, Merchant, Source Company, Source Granularity, and Granot CRM source lifecycle catalog behavior. Routes and runtime consumers use its exported commands, queries, and resolvers rather than importing registry models. `GranotCrmSource` is the only semantic registry for a Granot source label; runtime policy reads go through `src/services/granotLifecycle/sourcePolicy.ts`.
 - Registry mutations require a verified signed Owner actor. Canonical signing includes admin ID, normalized email, role, timestamp, request ID, HTTP method, and path using `VANTAGE_ADMIN_PROXY_SIGNING_SECRET`. Unsigned preview compatibility must remain narrowly scoped and fail closed for production mutations.
 - Every domain mutation and `operations_registry_changes` insert shares one Mongo transaction. Audit failure aborts the mutation. Cache invalidation occurs only after commit.
 - Registry audit snapshots and metadata must be bounded and redact secrets, credentials, tokens, authorization values, and provider payloads.

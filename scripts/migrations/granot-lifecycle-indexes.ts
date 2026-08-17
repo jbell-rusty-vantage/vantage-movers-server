@@ -25,10 +25,13 @@ import {
   parseGranotLifecycleMigrationMode,
   writeGranotLifecycleManifest,
 } from "./granot-lifecycle-migration.lib.js";
+import { GRANOT_CRM_SOURCE_COLLECTION } from "../../src/models/GranotCrmSource.js";
 import {
   INDEX_MIGRATION_SCRIPT_VERSION,
   findChannelOperationIdCollisions,
+  findNormalizedGranotLabelCollisions,
   findObservationReceiptIdCollisions,
+  orderedGranotCrmSourceIndexCreates,
   orderedObservationIndexCreates,
   orderedReceiptIndexCreates,
   verifyObservationIndexDefinitions,
@@ -118,6 +121,22 @@ async function loadObservationReceiptIdRows(): Promise<
   }));
 }
 
+async function loadNormalizedGranotLabelRows(): Promise<
+  Array<{ _id: string; normalized_granot_label?: unknown }>
+> {
+  const collection = mongoose.connection.db?.collection(GRANOT_CRM_SOURCE_COLLECTION);
+  if (!collection) {
+    throw new Error("Cannot load Granot CRM sources: Mongo collection is unavailable.");
+  }
+  const documents = await collection
+    .find({}, { projection: { normalized_granot_label: 1 } })
+    .toArray();
+  return documents.map((document) => ({
+    _id: String(document._id),
+    normalized_granot_label: document.normalized_granot_label,
+  }));
+}
+
 async function main(): Promise<void> {
   const mode = parseGranotLifecycleMigrationMode(process.argv);
   await connectMongo();
@@ -134,8 +153,11 @@ async function main(): Promise<void> {
   const collisions = findChannelOperationIdCollisions(rows);
   const observationRows = await loadObservationReceiptIdRows();
   const observationCollisions = findObservationReceiptIdCollisions(observationRows);
+  const sourceRows = await loadNormalizedGranotLabelRows();
+  const normalizedLabelCollisions = findNormalizedGranotLabelCollisions(sourceRows);
   const ordered = orderedReceiptIndexCreates();
   const observationOrdered = orderedObservationIndexCreates();
+  const sourceOrdered = orderedGranotCrmSourceIndexCreates();
   let created: string[] = [];
   let verify: ReturnType<typeof verifyReceiptIndexDefinitions> | undefined;
   let observationVerify: ReturnType<typeof verifyObservationIndexDefinitions> | undefined;
@@ -152,6 +174,7 @@ async function main(): Promise<void> {
         mode,
         collisions,
         observationCollisions,
+        normalizedLabelCollisions,
         created,
         uniqueCreated: [],
         verify,
@@ -187,6 +210,7 @@ async function main(): Promise<void> {
       ? [
           ...ordered.unique.map((index) => index.name),
           ...observationOrdered.unique.map((index) => index.name),
+          ...sourceOrdered.unique.map((index) => index.name),
         ]
       : [];
 
@@ -195,6 +219,7 @@ async function main(): Promise<void> {
     mode,
     collisions,
     observationCollisions,
+    normalizedLabelCollisions,
     created,
     uniqueCreated,
     verify,
@@ -223,6 +248,7 @@ function buildManifest(input: {
   mode: string;
   collisions: ReturnType<typeof findChannelOperationIdCollisions>;
   observationCollisions: ReturnType<typeof findObservationReceiptIdCollisions>;
+  normalizedLabelCollisions: ReturnType<typeof findNormalizedGranotLabelCollisions>;
   created: string[];
   uniqueCreated: string[];
   verify?: ReturnType<typeof verifyReceiptIndexDefinitions>;
@@ -236,9 +262,14 @@ function buildManifest(input: {
       ...GRANOT_OBSERVATION_RECEIPT_INDEXES.map((index) => index.name),
       ...GRANOT_OBSERVATION_INDEXES.map((index) => index.name),
     ],
-    collision_count: input.collisions.length + input.observationCollisions.length,
+    collision_count:
+      input.collisions.length +
+      input.observationCollisions.length +
+      input.normalizedLabelCollisions.length,
     collisions: input.collisions,
     observation_receipt_id_collisions: input.observationCollisions,
+    normalized_granot_label_collisions: input.normalizedLabelCollisions,
+    granot_crm_source_unique_index_apply_enabled: false,
     created_index_names: input.created,
     unique_index_names_created: input.uniqueCreated,
     verify: input.verify,

@@ -10,7 +10,7 @@ Owner invariants: [`.cursor/businesslogic/granotLifecycle.capture.md`](../busine
 
 - `src/services/granotLifecycle/capture.ts` is the only webhook insert path. `granotWebhooks/` is a deprecated adapter.
 - Authenticate with `requireGranotWebhookSecret`, persist one credential-redacted v2 receipt, return `202` only after Mongo commit, then optionally publish `{ receipt_id }`.
-- Capture still does not normalize. `normalization.ts` is a callable Observation module only; it is not invoked from capture, routes, or a worker. Do not describe Registry policy, Lead/Booking/Cancellation effects, a lifecycle consumer, or a drainer as live.
+- Capture still does not normalize. `normalization.ts` is a callable Observation module only; it is not invoked from capture, routes, or a worker. `sourcePolicy.ts` is a fail-closed Registry read/gate module and is also not invoked from capture. Do not describe Lead/Booking/Cancellation effects, a lifecycle consumer, or a drainer as live.
 - `granot-lifecycle-events` / `granot-lifecycle-events-dev` may receive wake-ups. `api/queues/` has **no** `granot-lifecycle-consumer` yet. Publish failure must not change `202`.
 - When Unit 08 ships a consumer/drainer, add those paths to this rule's `globs` and update the capture doc — do not pretend they exist before then.
 

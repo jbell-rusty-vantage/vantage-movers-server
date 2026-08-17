@@ -131,6 +131,25 @@ export type {
 } from "./sourceResolution";
 
 export {
+  createOrUpdateGranotCrmSource,
+  getRegistryGranotCrmSource,
+  listRegistryGranotCrmSources,
+  setGranotCrmSourceLifecycleEnabled,
+} from "./granotCrmSources";
+export type {
+  GranotCrmSourceCommand,
+  GranotCrmSourceLifecycleActivationCommand,
+  GranotCrmSourceLifecycleRoute,
+  GranotCrmSourceRecord,
+} from "./granotCrmSources";
+export {
+  GRANOT_LIFECYCLE_SOURCE_CACHE_KEYS,
+  GRANOT_LIFECYCLE_SOURCE_HEALTH_CACHE_KEY,
+  GRANOT_LIFECYCLE_SOURCE_LIST_CACHE_KEY,
+  GRANOT_LIFECYCLE_SOURCE_POLICY_CACHE_KEY,
+} from "./granotCrmSourceCache";
+
+export {
   createOrUpdateSourceCompany,
   createOrUpdateSourceGranularity,
   getSourceCompany,

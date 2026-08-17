@@ -5,9 +5,13 @@ import {
   GRANOT_OBSERVATION_RECEIPT_INDEXES,
   GRANOT_OBSERVATION_RECEIPT_LEGACY_INDEXES,
 } from "../../src/models/GranotObservationReceipt";
+import { GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES } from "../../src/models/GranotCrmSource";
 import {
   findChannelOperationIdCollisions,
+  findNormalizedGranotLabelCollisions,
   findObservationReceiptIdCollisions,
+  GRANOT_CRM_SOURCE_UNIQUE_INDEX_APPLY_ENABLED,
+  orderedGranotCrmSourceIndexCreates,
   orderedObservationIndexCreates,
   orderedReceiptIndexCreates,
   verifyObservationIndexDefinitions,
@@ -163,4 +167,36 @@ test("[AC-05] Observation index verify matches the model contract names and defi
   );
   assert.equal(mismatched.ok, false);
   assert.deepEqual(mismatched.mismatched, ["granot_observation_kind_captured"]);
+});
+
+test("[AC-38] normalized Granot label collision report masks ids and ignores empty labels", () => {
+  const collisions = findNormalizedGranotLabelCollisions([
+    { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", normalized_granot_label: "bestrelocation forms" },
+    { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", normalized_granot_label: "bestrelocation forms" },
+    { _id: "cccccccccccccccccccccccc", normalized_granot_label: "referral" },
+    { _id: "dddddddddddddddddddddddd" },
+  ]);
+  assert.equal(collisions.length, 1);
+  assert.equal(collisions[0]?.count, 2);
+  assert.equal(collisions[0]?.normalized_granot_label, "bestrelocation forms");
+  assert.equal(JSON.stringify(collisions).includes("aaaaaaaaaaaaaaaaaaaaaaaa"), false);
+});
+
+test("[AC-38] unique normalized-label index is declared but not applied in Unit 05", () => {
+  assert.equal(GRANOT_CRM_SOURCE_UNIQUE_INDEX_APPLY_ENABLED, false);
+  const ordered = orderedGranotCrmSourceIndexCreates();
+  assert.equal(ordered.unique.length, 0);
+  assert.ok(
+    GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES.some(
+      (index) =>
+        index.name === "granot_crm_source_normalized_label_unique" &&
+        "unique" in index,
+    ),
+  );
+  assert.ok(
+    ordered.nonUnique.every(
+      (index) => index.name !== "granot_crm_source_normalized_label_unique",
+    ),
+  );
+  assert.equal(ordered.nonUnique.length, 2);
 });

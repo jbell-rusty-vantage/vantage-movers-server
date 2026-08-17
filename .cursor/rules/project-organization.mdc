@@ -68,7 +68,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - `granotCrmCsv/` — CSV source registry + S3 ingest (`/granot-crm/csv/*`)
 - `granotWebhooks/` — Compatibility adapter only; webhook capture implementation lives in `granotLifecycle/capture`
 - `granotHttpCollector/` — HTTP session collector + automation runs/sources/workflows. Apply still mutates leads/enrichment/reconciliation **directly** (not via a lifecycle processor). See `businesslogic/granotHttpCollector.service.md`.
-- `granotLifecycle/` — Shared lifecycle vocabulary, receipt evidence helpers, webhook capture, receipt-ID queue wake-up publisher, and callable Observation normalization (`normalization.ts`). Capture does not invoke normalization. Processing, consumer/drainer, flags, and effects land only in their assigned later units — **none of those are live yet**.
+- `granotLifecycle/` — Shared lifecycle vocabulary, receipt evidence helpers, webhook capture, receipt-ID queue wake-up publisher, callable Observation normalization (`normalization.ts`), and fail-closed source-policy/gate evaluation (`sourcePolicy.ts`). Capture does not invoke normalization or policy. Processing, consumer/drainer, flags, and effects land only in their assigned later units — **none of those are live yet**.
 - `crm/` — Outbound Granot form-lead submit (invoked from lead write paths). Independent of webhook capture.
 
 ### Integrations
@@ -88,7 +88,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - `admin/` — Scope (`production|historical|combined`), browse/detail/export, search/facets, sheet-sync admin
 - `analytics/` — Summary/trends/funnels + overview + agent-sales
 - `observability/` — Events, incidents, notifications, operational reports
-- `operationsRegistry/` — Agents/merchants/sources/granularities/CPL schedules+corrections/RC inbound routes + change audit
+- `operationsRegistry/` — Agents/merchants/sources/granularities/CPL schedules+corrections/RC inbound routes + Granot CRM source lifecycle Registry commands + change audit
 
 ### Reporting / ingestion / automation / durable
 - `reporting/` — Definitions, revisions, previews, runs, deliveries, destinations; Google adapters; queue worker; live harness/janitor

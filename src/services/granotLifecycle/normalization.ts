@@ -7,6 +7,10 @@ import { getGranotObservationReceiptModel } from "../../models/GranotObservation
 import { assertReceiptChannelShape } from "../../models/granotLifecycleSchemas";
 import { normalizeJobNo } from "../bookings/bookingIdentity";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
+import {
+  hasControlOrBidiCharacters,
+  normalizeGranotSourceLabel,
+} from "./sourceLabel";
 import type {
   ChannelOperationKind,
   GranotBookingAction,
@@ -41,7 +45,6 @@ export const NORMALIZATION_FIELD_BOUNDS = {
 
 export const PRIORITY_BROAD_ENRICHMENT_CANONICALS = ["1", "5"] as const;
 
-const CONTROL_OR_BIDI = /[\p{Cc}\p{Cf}]/u;
 const PRIORITY_STRING = /^[0-9]{1,12}$/;
 const MOVE_DATE = /^(\d{2})\/(\d{2})\/(\d{4})$/;
 const MONEY = /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/;
@@ -140,7 +143,7 @@ function isJsonScalar(value: unknown): value is string | number | boolean | null
 }
 
 function hasControlOrBidi(value: string): boolean {
-  return CONTROL_OR_BIDI.test(value);
+  return hasControlOrBidiCharacters(value);
 }
 
 function readStringScalar(
@@ -169,11 +172,7 @@ function firstPresent(object: Record<string, unknown>, keys: string[]): unknown 
 }
 
 function normalizeLookupLabel(raw: string): string | undefined {
-  const normalized = raw.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
-  if (!normalized || hasControlOrBidi(normalized)) {
-    return undefined;
-  }
-  return normalized;
+  return normalizeGranotSourceLabel(raw);
 }
 
 function isRealCalendarDate(year: number, month: number, day: number): boolean {
