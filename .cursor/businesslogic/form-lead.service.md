@@ -45,7 +45,7 @@ Create/update store `cpl`, `cpl_rate_period`, `cpl_resolution_status` (`resolved
 
 ### Granot lifecycle boundary
 
-CRM Posting is independent of webhook capture. Granot webhooks do not create or update Form Leads today ([`granotLifecycle.capture.md`](granotLifecycle.capture.md)). Trusted Granot create validators (`trustedLeadCreateValidation.ts`) exist as capability only, force `post_to_granot=false`, and have no live caller. Approved HTTP automation apply captures a `granot_http_automation` receipt and does not call `updateFormLead` ([`granotHttpCollector.service.md`](granotHttpCollector.service.md), [`granotLifecycle.automationApply.md`](granotLifecycle.automationApply.md)). Ordinary Form Edit Lead still uses `PATCH /api/v1/form-leads/:id`.
+CRM Posting is independent of webhook capture. Capture remains receipt-only ([`granotLifecycle.capture.md`](granotLifecycle.capture.md)). Authorized live `create_if_missing` Form creation is owned by `createLeadFromGranot` through the processor, not by `createFormLead` or public Zod ([`granotLifecycle.processor.md`](granotLifecycle.processor.md)). That command uses trusted Granot create validators (`post_to_granot=false`) and never CRM-posts. It derives `local` only from accepted origin/destination state facts and leaves `move_date` absent when the Observation has none; the model does not invent either fact. WordPress-created Form Leads that later match a Granot `lead_created` Observation stay on `synchronizeLeadFromGranot` and never mint a second Lead. Approved HTTP automation apply captures a `granot_http_automation` receipt and does not call `updateFormLead` ([`granotHttpCollector.service.md`](granotHttpCollector.service.md), [`granotLifecycle.automationApply.md`](granotLifecycle.automationApply.md)). Ordinary Form Edit Lead still uses `PATCH /api/v1/form-leads/:id`.
 
 ## Sheet Sync tab routing (Form Lead)
 
@@ -86,9 +86,9 @@ Job: `resource: source_lead`, `operation: form_lead.create` | `form_lead.update`
 | Helpers | Do not bypass Source Company, location, duplicate, or Sheet Sync scheduling |
 | `sms_consent` | Boolean or `"true"`/`"false"` at the route; only parsed `true` creates a Lead Message. Duplicate leads record a skipped message; false/missing creates no message. |
 | Lifecycle revision | `domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical create/update/delete routes persist an append-only `EntityChange` and stamp `last_change_*` in the executor transaction. |
-| Ingestion Origin | Server-assigned and immutable. Ordinary WordPress/`createFormLead` → `wordpress_form`; authenticated Admin actor → `vantage_admin`; trusted Best Relocation command → `best_relocation_sheet`. `granot_lead_created` is assignable for a trusted Granot create context only; no live caller. Clients cannot set `ingestion_origin`. Historical rows without durable proof receive `legacy_unknown` from the Lead provenance migration only; labels and `ref_no` never decide origin. |
+| Ingestion Origin | Server-assigned and immutable. Ordinary WordPress/`createFormLead` → `wordpress_form`; authenticated Admin actor → `vantage_admin`; trusted Best Relocation command → `best_relocation_sheet`. `createLeadFromGranot` assigns `granot_lead_created` and forces `post_to_granot=false`. Clients cannot set `ingestion_origin`. Historical rows without durable proof receive `legacy_unknown` from the Lead provenance migration only; labels and `ref_no` never decide origin. |
 | Immutable creation evidence | New Form Leads persist `ingested_contact_snapshot` and `ingested_move_snapshot` in the create transaction. Later Granot evidence cannot overwrite them. Missing historical snapshots may be labeled `legacy_baseline` from current fields only; `captured_at_ingestion` is never rewritten. `granot_contact_snapshot` is a separate field. |
-| Form Job Number | Additive `job_no` / `normalized_job_no` via existing `normalizeJobNo`. This is not **Tracking Reference**. CRM Posting still sends `FormLead.ref_no` as `leadno`. Persisted `move_size` is optional; ordinary WordPress/Admin Zod still requires it. |
+| Form Job Number / sparse move facts | Additive `job_no` / `normalized_job_no` via existing `normalizeJobNo`. This is not **Tracking Reference**. CRM Posting still sends `FormLead.ref_no` as `leadno`. Persisted `move_size` and `move_date` are optional so trusted Granot creation can preserve absence; ordinary WordPress/Admin validation remains the authority for those callers. A legacy CRM payload built from an absent date emits an empty `movedte` instead of inventing today. |
 
 Lead Messaging defaults to disabled. Active sends require an E.164 destination
 matching `LEAD_MESSAGING_ALLOWED_COUNTRY_PREFIXES` (default `+1`), respect the
@@ -109,6 +109,7 @@ Form Lead plus Lead Message transaction commits.
 - [`sheetSync.service.md`](sheetSync.service.md) — outbox, drainer, job shapes
 - [`googleSheets.service.md`](googleSheets.service.md) — tab routing, Master vs Source Company Sheet writes
 - [`granotLifecycle.capture.md`](granotLifecycle.capture.md) — webhook receipts (no Form Lead writes)
+- [`granotLifecycle.processor.md`](granotLifecycle.processor.md) — authorized Granot Form create and matched-Lead sync
 - [`granotLifecycle.identity.md`](granotLifecycle.identity.md) — source-scoped Form ladder reads `ref_no`, snapshots, Duplicate/Bad eligibility; no Form Lead writes
 - [`granotLifecycle.automationApply.md`](granotLifecycle.automationApply.md) — HTTP automation apply captures receipts; does not call `updateFormLead`
 

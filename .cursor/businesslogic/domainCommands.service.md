@@ -7,7 +7,7 @@
 
 Canonical idempotent write surface for ingest and existing v1 write adapters. Mongo is the System of Record. The executor owns one Mongo transaction, the durable `DomainCommandExecution` result, append-only `EntityChange` rows, aggregate revision stamps, queued Sheet Sync outbox intent, and the replay/conflict decision. Sheet Sync does **not** complete commands.
 
-`synchronizeLeadFromGranot` is the first Granot lifecycle command. Policy and desired-state conversion live in `granotLifecycle/`; this registry is a thin entry. The processor is the only caller. Owner `updateBooking`, lifecycle `createReferralBooking`, `createLeadFromGranot`, and Record Link correction commands remain disabled. Checked-in effect flags stay false.
+`synchronizeLeadFromGranot` and `createLeadFromGranot` are the live Granot lifecycle commands. Policy, minimum-data, and desired-state conversion live in `granotLifecycle/`; this registry is a thin entry. The processor is the only caller of both. Owner `updateBooking`, lifecycle `createReferralBooking`, and Record Link correction commands remain disabled. Checked-in effect flags stay false.
 
 ## Executor sequence
 
@@ -45,7 +45,7 @@ Canonical idempotent write surface for ingest and existing v1 write adapters. Mo
 
 ## Transaction-bound internals and existing adapters
 
-Affected v1 create/update/delete routes derive trusted context via `existingWriteContextFromRequest` and call `runExisting*` adapters. Those adapters enter the executor once. Form/Call create adapters derive Ingestion Origin from command origin/actor via `leadIngestionProvenance` and pass it into the create transaction; clients cannot supply `ingestion_origin`. A `granot_lifecycle` origin would map to `granot_lead_created`, but that path has no live caller. Form/Call create `*InTransaction` helpers accept `{ session, now, ingestion_origin }` and must not call `withTransaction`, `runSheetSyncWrite`, or `finalizeSheetSync`. Public noncanonical service functions may still wrap `runSheetSyncWrite` for non-route callers.
+Affected v1 create/update/delete routes derive trusted context via `existingWriteContextFromRequest` and call `runExisting*` adapters. Those adapters enter the executor once. Form/Call create adapters derive Ingestion Origin from command origin/actor via `leadIngestionProvenance` and pass it into the create transaction; clients cannot supply `ingestion_origin`. Authorized Granot create does not use those public adapters: `createLeadFromGranot` loads the Observation, runs trusted `granot_lead_created` validators (`post_to_granot=false`), and writes the Lead plus active Record Link inside the same executor transaction. Form/Call create `*InTransaction` helpers accept `{ session, now, ingestion_origin }` and must not call `withTransaction`, `runSheetSyncWrite`, or `finalizeSheetSync`. Public noncanonical service functions may still wrap `runSheetSyncWrite` for non-route callers.
 
 Compatibility context: Command ID is a server ObjectId hex; idempotency is `submission_id` when present, otherwise `request:{command}:{requestId}`; payload checksum is SHA-256 of the canonicalized `{command_name, resource_id, payload}`. No credential or key value is persisted.
 

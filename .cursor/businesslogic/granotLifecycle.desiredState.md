@@ -31,8 +31,8 @@ WordPress Form: primary name/phone/email and both ingested snapshots stay off `c
 - `link_only`: `pending_match` / `pending_source_scoped_match` with `next_match_attempt_at` from the Unit 08 offsets; at/after 24h `unmatched` / `match_window_expired`
 - incomplete immutable creation data: `insufficient_creation_data` with `missing_creation_job_number`, `missing_creation_contact`, or `missing_creation_route_data`; never pending
 - Form minimum data: normalized Job, deterministic route, name component, normalized phone, valid origin/destination state and 5-digit ZIP
-- Call may be Job-only for future authorized creation; telephony fields are never fabricated
-- `create_if_missing` eligible stays `shadow_effect_suppressed`; Unit 19 owns the create
+- Call may be Job-only; telephony, duration, session, qualification, and RingCentral metadata are never fabricated
+- `create_if_missing` with complete minimum data plans immediately `created` / `lead_created_authorized` and `creation_eligibility:"eligible"`; the processor invokes `createLeadFromGranot` only when execution is `live`, `GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED` is true, and every creation gate passes. Shadow and gated-off live stay `shadow_effect_suppressed` / `global_effect_disabled` with no Lead, link, Command, Change, or outbox
 - `observation_only` stays `creation_policy_observation_only`
 
 Equivalent formatting uses existing Job/phone/email/state/date normalizers and does not manufacture a change. `changed_paths` are sorted and deduplicated.

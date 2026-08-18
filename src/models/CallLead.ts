@@ -84,6 +84,19 @@ const CallLeadSchema = new Schema(
     over_4000: { type: Boolean, default: false },
     local: optionalLocalField,
     form_fill: { type: Boolean, default: false },
+    post_to_granot: {
+      type: Boolean,
+      default: false,
+      validate: {
+        validator: function (
+          this: { ingestion_origin?: string },
+          value: boolean | undefined,
+        ) {
+          return this.ingestion_origin !== "granot_lead_created" || value !== true;
+        },
+        message: "Granot-created CallLead post_to_granot must remain false",
+      },
+    },
     // Set when the same caller phone + source_company already produced a
     // successful call lead within the duplicate window. Flagged (and zero-CPL)
     // so the owner can exclude it from lead spend rather than paying twice.

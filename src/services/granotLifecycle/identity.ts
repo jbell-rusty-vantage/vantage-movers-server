@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose, { type ClientSession } from "mongoose";
 import { Agent } from "../../models/Agent";
 import { BookedLead } from "../../models/BookedLead";
 import { getCallLeadModel } from "../../models/CallLead";
@@ -179,7 +179,7 @@ export function isMongoObjectIdHex(value: string): boolean {
   return OBJECT_ID_HEX.test(value);
 }
 
-export function createMongoLeadIdentityStore(): LeadIdentityStore {
+export function createMongoLeadIdentityStore(session?: ClientSession): LeadIdentityStore {
   return {
     async findActiveRecordLink(normalizedJobNo) {
       const row = await getGranotRecordLinkModel()
@@ -188,6 +188,7 @@ export function createMongoLeadIdentityStore(): LeadIdentityStore {
           normalized_job_no: normalizedJobNo,
           state: "active",
         })
+        .session(session ?? null)
         .lean()
         .exec();
       if (!row) return null;
@@ -208,12 +209,20 @@ export function createMongoLeadIdentityStore(): LeadIdentityStore {
       };
     },
     async findFormLeadsByRefNo(refNo) {
-      const rows = await getFormLeadModel().find({ ref_no: refNo }).lean().exec();
+      const rows = await getFormLeadModel()
+        .find({ ref_no: refNo })
+        .session(session ?? null)
+        .lean()
+        .exec();
       return rows.map(toIdentityFormLead);
     },
     async findFormLeadById(id) {
       if (!isMongoObjectIdHex(id)) return null;
-      const row = await getFormLeadModel().findById(id).lean().exec();
+      const row = await getFormLeadModel()
+        .findById(id)
+        .session(session ?? null)
+        .lean()
+        .exec();
       return row ? toIdentityFormLead(row) : null;
     },
     async findFormLeadsByScopedContact(input) {
@@ -240,6 +249,7 @@ export function createMongoLeadIdentityStore(): LeadIdentityStore {
           duplicate: { $ne: true },
           $or: or,
         })
+        .session(session ?? null)
         .lean()
         .exec();
       return rows.map(toIdentityFormLead);
@@ -250,6 +260,7 @@ export function createMongoLeadIdentityStore(): LeadIdentityStore {
           source_granularity_id: new mongoose.Types.ObjectId(input.source_granularity_id),
           normalized_job_no: input.normalized_job_no,
         })
+        .session(session ?? null)
         .lean()
         .exec();
       return rows.map(toIdentityCallLead);
@@ -266,13 +277,18 @@ export function createMongoLeadIdentityStore(): LeadIdentityStore {
             },
           ],
         })
+        .session(session ?? null)
         .lean()
         .exec();
       return rows.map(toIdentityCallLead);
     },
     async findCallLeadById(id) {
       if (!isMongoObjectIdHex(id)) return null;
-      const row = await getCallLeadModel().findById(id).lean().exec();
+      const row = await getCallLeadModel()
+        .findById(id)
+        .session(session ?? null)
+        .lean()
+        .exec();
       return row ? toIdentityCallLead(row) : null;
     },
     async findActiveAgentsByUsername(username) {
@@ -283,6 +299,7 @@ export function createMongoLeadIdentityStore(): LeadIdentityStore {
           { granot_crm_username: username },
         ],
       })
+        .session(session ?? null)
         .lean()
         .exec();
       return rows.map((row) => ({
@@ -294,6 +311,7 @@ export function createMongoLeadIdentityStore(): LeadIdentityStore {
     },
     async findBookingsByNormalizedJob(normalizedJobNo) {
       const rows = await BookedLead.find({ normalized_job_no: normalizedJobNo })
+        .session(session ?? null)
         .lean()
         .exec();
       return rows.map((row) => ({
@@ -410,7 +428,7 @@ async function applyOwnerScope(
     const lead = await store.findFormLeadById(owner.id);
     if (!lead) {
       return {
-        outcome: "conflict",
+        outcome: "ambiguous",
         reason_code: "record_link_conflict",
         candidates: [{ target: owner, reason_codes: ["record_link_conflict"] }],
       };
@@ -631,7 +649,7 @@ async function evaluateFormExactLeads(
     return {
       stop: true,
       result: {
-        outcome: "ambiguous",
+        outcome: "conflict",
         reason_code: "multiple_eligible_matches",
         candidates: unique.flatMap((row) => row.candidates),
       },
@@ -881,7 +899,7 @@ function classifyCallLeads(
     return {
       stop: true,
       result: {
-        outcome: "ambiguous",
+        outcome: "conflict",
         reason_code: "multiple_eligible_matches",
         candidates: unique.map((lead) => ({
           target: callRef(lead.id),

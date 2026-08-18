@@ -202,7 +202,7 @@ test("[AC-32] contact hash is stable and omits values from the checksum helper o
     desired_state: desired(),
   });
   assert.match(checksum, /^[a-f0-9]{64}$/);
-  assert.equal(checksum.includes("555"), false);
+  assert.equal(checksum.includes("5550001111"), false);
   assert.equal(
     synchronizeLeadIdempotencyKey(observationId),
     `granot:synchronize-lead:${observationId}`,

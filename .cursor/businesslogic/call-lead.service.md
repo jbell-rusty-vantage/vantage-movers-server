@@ -7,12 +7,13 @@
 
 **System of Record:** MongoDB `call_leads`. Owner reporting via **Sheet Sync** → **Master Sheets**.
 
-**Two create paths** — same collection, different origin and Duplicate Lead rules:
+**Three create paths** — same collection, different origin and Duplicate Lead rules:
 
 | Function | Caller | Duplicate Lead | CPL |
 |----------|--------|----------------|-----|
 | `createCallLead` | `POST /api/v1/call-leads` (manual, Invoca, tests). Canonical wrappers use `createCallLeadInTransaction` ([`domainCommands.service.md`](domainCommands.service.md)). | always `false` (schema default) | `resolveLeadCplSnapshot` |
 | `createRingCentralCallLead` | **Call Lead Ingestion** (Ring Central) only | passed in by ingest | `duplicate_zero` / `cpl = 0` when Duplicate Lead, else registry snapshot |
+| `createLeadFromGranot` | Granot lifecycle processor only, after live `create_if_missing` authorization and no eligible match ([`granotLifecycle.processor.md`](granotLifecycle.processor.md)) | `false`; sparse Job-only creation is allowed | exact active Source Granularity rate snapshot |
 
 **Call Qualification** + ingest: [`ringcentral-call-lead-qualification.service.md`](ringcentral-call-lead-qualification.service.md). Duplicate classification: `ringcentral-duplicate-guard.ts`; promotion gate: `ringcentral-call-lead-ingest.service.ts`.
 
@@ -97,11 +98,12 @@ Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 
 ## Lifecycle revision
 
-`domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision, origin, snapshot, Priority provenance, temporal-winner, contact-summary, or `ringcentral_convergence` metadata. Canonical create/update/delete routes persist an append-only `EntityChange` and stamp `last_change_*` in the executor transaction. Lead Job Number remains non-unique. `quoted` is required and defaults to `false`. Nested `ringcentral.ingestion_source` remains transport provenance and is not Ingestion Origin. Historical rows without durable proof receive `legacy_unknown` / `legacy_baseline` from the Lead provenance migration only; later RingCentral adoption never rewrites `granot_lead_created`. `granot_lead_created` is assignable for a trusted Granot create context only; no live caller. Shared provenance/temporal/convergence fields are storage only.
+`domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision, origin, snapshot, Priority provenance, temporal-winner, contact-summary, or `ringcentral_convergence` metadata. Canonical create/update/delete routes persist an append-only `EntityChange` and stamp `last_change_*` in the executor transaction. Lead Job Number remains non-unique. `quoted` is required and defaults to `false`. `post_to_granot` defaults to `false`; explicit `true` fails validation only for `granot_lead_created` rows. The field remains non-required, and ordinary legacy rows with either an absent field or a historical `true` remain saveable. Nested `ringcentral.ingestion_source` remains transport provenance and is not Ingestion Origin. Historical rows without durable proof receive `legacy_unknown` / `legacy_baseline` from the Lead provenance migration only; later RingCentral adoption never rewrites `granot_lead_created`. `createLeadFromGranot` assigns `granot_lead_created`, forces `post_to_granot=false`, and may create a Job-only Call Lead: `ringcentral_convergence.state` is `pending` with a normalized phone and `not_applicable` when Job-only. It fabricates no `local`, duration, session, qualification, or RingCentral metadata. Shared provenance/temporal/convergence fields stay storage-only except that trusted Granot create path.
 
 ## Related businesslogic
 
 - [`form-lead.service.md`](form-lead.service.md) — Form Fill side effects on Form Lead Ingestion
+- [`granotLifecycle.processor.md`](granotLifecycle.processor.md) — authorized Granot Call create (sparse Job-only / phone `pending`) and matched-Lead sync
 - [`granotLifecycle.identity.md`](granotLifecycle.identity.md) — source-scoped Call ladder reads Job/phone/ingested phone; Duplicate Call Leads remain readable
 - [`enrichment.service.md`](enrichment.service.md) — Follow Up preview/sync
 - [`ringcentral-call-lead-qualification.service.md`](ringcentral-call-lead-qualification.service.md) — **Call Qualification**, ingest gate

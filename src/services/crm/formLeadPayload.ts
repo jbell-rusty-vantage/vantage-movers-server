@@ -83,7 +83,7 @@ export function buildCrmFormLeadPayload(
     email: lead.email ?? "",
     phone1: lead.phone_number,
     movesize: lead.move_size ?? "",
-    movedte: formatCrmMoveDate(lead.move_date),
+    movedte: lead.move_date ? formatCrmMoveDate(lead.move_date) : "",
     notes: lid,
     leadno: providerRefNo,
   };

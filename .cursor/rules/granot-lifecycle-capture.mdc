@@ -1,5 +1,5 @@
 ---
-description: Granot lead-lifecycle software map — webhook receipt capture, Observation/policy/identity/Decision/drain; Booking/Release Reconciliation is the destination and is not live
+description: Granot lead-lifecycle software map — webhook receipt capture, Observation/policy/identity/Decision/drain, matched-Lead sync, authorized create-if-missing; Booking/Release Reconciliation is not live
 globs: src/services/granotLifecycle/**/*.ts,src/services/granotWebhooks/**/*.ts,src/routes/granot-webhook.routes.ts,src/routes/granot-lifecycle-admin.routes.ts,src/routes/granot-lifecycle-cron.routes.ts,api/queues/granot-lifecycle-consumer.ts,src/middleware/requireGranotWebhookSecret.ts,src/config/domain/granotWebhook.ts,src/config/domain/granotLifecycle.ts,src/models/GranotObservationReceipt.ts,src/models/GranotObservation.ts,src/models/SynchronizationDecision.ts,src/models/GranotLifecycleActivation.ts,src/models/GranotRecordLink.ts,src/models/granotLifecycleSchemas.ts,src/validation/v1/granotLifecycle.validation.ts,scripts/migrations/granot-lifecycle-*.ts,.cursor/businesslogic/granotLifecycle*.md
 alwaysApply: false
 ---
@@ -8,7 +8,7 @@ alwaysApply: false
 
 Software map for `src/services/granotLifecycle/`. Owner invariants stay in the linked businesslogic files. Locked contracts stay in `scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md`. Delivery branches: [`lead-lifecycle-delivery.mdc`](lead-lifecycle-delivery.mdc). Unit ledger is a navigation aid only: [`UNIT-STATUS.md`](../../scripts/prototypes/granot-lead-lifecycle/delivery/UNIT-STATUS.md). Repository state, migrations/indexes, flags, and tests are authoritative.
 
-Owner invariants: [capture](../businesslogic/granotLifecycle.capture.md), [extension apply](../businesslogic/granotLifecycle.extensionApply.md), [automation apply](../businesslogic/granotLifecycle.automationApply.md), [normalization](../businesslogic/granotLifecycle.normalization.md), [source policy](../businesslogic/granotLifecycle.sourcePolicy.md), [identity](../businesslogic/granotLifecycle.identity.md), [processor](../businesslogic/granotLifecycle.processor.md), [drainer](../businesslogic/granotLifecycle.drainer.md), [revisions](../businesslogic/granotLifecycle.revisions.md).
+Owner invariants: [capture](../businesslogic/granotLifecycle.capture.md), [extension apply](../businesslogic/granotLifecycle.extensionApply.md), [automation apply](../businesslogic/granotLifecycle.automationApply.md), [normalization](../businesslogic/granotLifecycle.normalization.md), [source policy](../businesslogic/granotLifecycle.sourcePolicy.md), [identity](../businesslogic/granotLifecycle.identity.md), [desired state](../businesslogic/granotLifecycle.desiredState.md), [processor](../businesslogic/granotLifecycle.processor.md), [drainer](../businesslogic/granotLifecycle.drainer.md), [revisions](../businesslogic/granotLifecycle.revisions.md).
 
 ## Goal
 
@@ -32,22 +32,23 @@ Granot evidence never becomes an official Booking or Cancellation by itself. CRM
 | `identity.ts` | Read-only Form/Call ladders, Agent assertion, Booking delegation context. No Decision or Lead writes. |
 | `leadDesiredState.ts` | Pure origin-specific desired-state planner and temporal comparator. No writes. |
 | `synchronizeLeadFromGranot.ts` | Canonical matched-Lead command: allowlisted desired state, Record-Link establish/attach/confirm, Lead CAS, Decision, `EntityChange`, Sheet Sync intent. |
-| `processor.ts` | Channel-neutral orchestrator: identity, temporal compare, desired-state plan, gates, Decision, historical job-level Record Link. Live matched-Lead writes enter `synchronizeLeadFromGranot` only when live + Lead writes + all eight gates authorize them. |
+| `createLeadFromGranot.ts` | Canonical authorized `create_if_missing` command: no caller patch; one transaction Decision + Form/Call Lead + active Record Link + Command + Changes + `form_lead.create` / `call_lead.create` outbox. |
+| `processor.ts` | Channel-neutral orchestrator: identity, temporal compare, desired-state plan, gates, Decision, historical job-level Record Link. Live matched-Lead writes enter `synchronizeLeadFromGranot`. Live eligible no-match creation enters `createLeadFromGranot`. |
 | `drainer.ts` | Fenced Mongo claim/lease shared by the queue consumer, five-minute cron, and Owner requeue. |
 | `aggregateRevision.ts` | Compare-and-swap primitive for later consumed aggregates. |
-| `trustedLeadCreateValidation.ts` | Trusted `granot_lead_created` validator only (`post_to_granot=false`). No live caller. |
+| `trustedLeadCreateValidation.ts` | Trusted `granot_lead_created` validator (`post_to_granot=false`). Live caller is `createLeadFromGranot` only. |
 
-Admin routes activate, requeue dead letters, project a Job, or read health. They do not own claim, match, or patch policy. Canonical executor / `EntityChange` live in `domainCommands/`. The only live lifecycle command is `synchronizeLeadFromGranot`; creation and owner Booking/Release commands stay disabled.
+Admin routes activate, requeue dead letters, project a Job, or read health. They do not own claim, match, or patch policy. Canonical executor / `EntityChange` live in `domainCommands/`. Live lifecycle commands are `synchronizeLeadFromGranot` and `createLeadFromGranot`. Owner Booking/Release commands stay disabled. Checked-in creation/writes flags stay false.
 
 ## Progress
 
-Units 01–18 are complete on `granot-lead-lifecycle` (Unit 16 also lands extension `0.2.8` on `granot_sync_extensions_and_services/main`). Re-verify the matching `UNIT-*-COMPLETION.md` and repository state before editing; do not trust the ledger alone.
+Units 01–19 are implemented on `granot-lead-lifecycle` (Unit 16 also lands extension `0.2.8` on `granot_sync_extensions_and_services/main`). Re-verify the matching `UNIT-*-COMPLETION.md` and repository state before editing; do not trust the ledger alone.
 
-**Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, shadow processor orchestration, Owner browser-extension receipt apply, HTTP automation receipt apply, and canonical `synchronizeLeadFromGranot` for authorized matched-Lead writes.
+**Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, shadow processor orchestration, Owner browser-extension receipt apply, HTTP automation receipt apply, canonical `synchronizeLeadFromGranot` for authorized matched-Lead writes, and canonical `createLeadFromGranot` for authorized `create_if_missing` Form/Call creation plus active Record Link reservation.
 
-**Next sequential implementation:** Unit 19 authorized Granot Lead create. Deployed posture stays shadow; Lead writes/creation/cases stay false except injected live test posture for Unit 18.
+**Next sequential implementation:** Unit 20 RingCentral qualified-call adoption. Deployed posture stays shadow; Lead writes/creation/cases stay false except injected live test posture.
 
-**Not started here:** authorized Granot Lead create (19), RingCentral adoption (20–21), Booking/Release Reconciliation persistence and owner commands (22–29).
+**Not started here:** RingCentral adoption (20–21), Booking/Release Reconciliation persistence and owner commands (22–29). Unit 19 adds no migration or index.
 
 ## Live constraints
 
@@ -56,4 +57,4 @@ Units 01–18 are complete on `granot-lead-lifecycle` (Unit 16 also lands extens
 - Processing disabled means no claim; capture and due work remain intact.
 - Processing and shadow default true. All eight effect flags stay false.
 - Shadow, retry, and requeue must not create, update, cancel, or un-cancel a Booking.
-- Capture, identity, planner, and trusted-create validators have no production Lead/Booking/Cancellation write path. Matched-Lead field writes exist only through `synchronizeLeadFromGranot` when live + Lead writes + all eight gates authorize them. Checked-in defaults keep shadow true and Lead writes false.
+- Capture, identity, and planner have no production Lead/Booking/Cancellation write path. Matched-Lead field writes exist only through `synchronizeLeadFromGranot` when live + Lead writes + all eight gates authorize them. Authorized create-if-missing writes exist only through `createLeadFromGranot` when live + Lead creation + all creation gates authorize them. Checked-in defaults keep shadow true and Lead writes/creation false. Unit 19 does not enable Registry `create_if_missing` or change indexes.

@@ -222,14 +222,15 @@ test("[AC-07] matched Lead Created selects one target and never plans a second L
   assert.equal(JSON.stringify(result.desired_values).includes("created"), false);
 });
 
-test("[AC-08] create_if_missing with minimum data stays shadow-suppressed and does not reserve a Lead", () => {
+test("[AC-08] create_if_missing with minimum data authorizes the gated creation command", () => {
   const result = plan({
     identity: pendingIdentity(),
     policy: policy({ lead_created_policy: "create_if_missing" }),
   });
   assert.equal(result.creation_eligibility, "eligible");
-  assert.equal(result.outcome, "policy_blocked");
-  assert.equal(result.reason_code, "shadow_effect_suppressed");
+  assert.equal(result.creation_model, "FormLead");
+  assert.equal(result.outcome, "created");
+  assert.equal(result.reason_code, "lead_created_authorized");
   assert.equal(result.target, undefined);
   assert.deepEqual(result.desired_values, {});
 });

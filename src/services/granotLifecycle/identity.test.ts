@@ -711,6 +711,30 @@ test("Call current and ingested phones dedupe to one Lead", async () => {
   assert.equal(result.candidates.length, 1);
 });
 
+test("[AC-08] multiple scoped Call phone candidates are a creation conflict", async () => {
+  const result = await resolveLeadIdentity(
+    {
+      observation: observation({
+        contact: { normalized_phone: "5550002222" },
+      }),
+      policy: callPolicy(),
+    },
+    createRecordingStore({
+      callLeads: [
+        callLead({ normalized_phone_number: "5550002222" }),
+        callLead({
+          id: CALL_ID_B,
+          normalized_phone_number: "5550002222",
+        }),
+      ],
+    }),
+  );
+  assert.equal(result.outcome, "conflict");
+  assert.equal(result.reason_code, "multiple_eligible_matches");
+  assert.equal(result.target, undefined);
+  assert.equal(result.candidates.length, 2);
+});
+
 test("[AC-13] identity portion equal usernames suggest one active Agent and never mutate", async () => {
   const store = createRecordingStore({
     agents: [

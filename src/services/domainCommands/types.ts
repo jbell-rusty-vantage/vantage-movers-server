@@ -6,6 +6,7 @@ import type {
   CreateLeadlessBookingInput,
 } from "../../validation/v1.validation";
 import type { GranotAuthorizedLeadDesiredState } from "../granotLifecycle/authorizedDesiredState";
+import type { CreateLeadFromGranotInput } from "../granotLifecycle/createLeadFromGranot";
 import type { SynchronizeLeadExecution } from "../granotLifecycle/synchronizeLeadTypes";
 import type { ObservationChannel } from "../granotLifecycle/types";
 import type { DurableActor } from "../durableWork";
@@ -110,6 +111,9 @@ export interface CanonicalDomainCommands {
     data: CreateCancelledLeadInput;
     context: CanonicalCommandContext;
   }): Promise<CompatibilityCanonicalCommandResult>;
+  createLeadFromGranot(
+    input: CreateLeadFromGranotInput,
+  ): Promise<CanonicalCommandResult>;
   synchronizeLeadFromGranot(input: {
     lead_ref: { model: "FormLead" | "CallLead"; id: string };
     expected_domain_revision: number;

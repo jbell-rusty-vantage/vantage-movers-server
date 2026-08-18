@@ -1,3 +1,4 @@
+import type { ClientSession } from "mongoose";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
@@ -116,11 +117,12 @@ export type EffectGateEvaluation = {
   reason: SynchronizationReasonCode;
 };
 
-export function createMongoSourcePolicyStore(): SourcePolicyStore {
+export function createMongoSourcePolicyStore(session?: ClientSession): SourcePolicyStore {
   return {
     async findByNormalizedLabel(label) {
       const rows = await getGranotCrmSourceModel()
         .find({ normalized_granot_label: label })
+        .session(session ?? null)
         .lean()
         .exec();
       return rows.map((row) => ({
@@ -143,11 +145,19 @@ export function createMongoSourcePolicyStore(): SourcePolicyStore {
       }));
     },
     async findCompany(id) {
-      const row = await getLeadSourceCompanyModel().findById(id).lean().exec();
+      const row = await getLeadSourceCompanyModel()
+        .findById(id)
+        .session(session ?? null)
+        .lean()
+        .exec();
       return row ? { id: String(row._id), active: row.active === true } : null;
     },
     async findGranularity(id) {
-      const row = await getLeadSourceGranularityModel().findById(id).lean().exec();
+      const row = await getLeadSourceGranularityModel()
+        .findById(id)
+        .session(session ?? null)
+        .lean()
+        .exec();
       return row
         ? {
             id: String(row._id),

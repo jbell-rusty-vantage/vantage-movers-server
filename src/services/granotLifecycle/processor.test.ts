@@ -21,6 +21,12 @@ import {
 import type { LeadIdentityResult } from "./identity";
 import type { LeadDesiredStateProjection } from "./leadDesiredState";
 import { DomainRevisionConflictError } from "../domainCommands/types";
+import {
+  createLeadFromGranotIdempotencyKey,
+  createLeadFromGranotPayloadChecksum,
+  CreateLeadFromGranotRaceError,
+  type CreateLeadFromGranotInput,
+} from "./createLeadFromGranot";
 import { processGranotObservation, type GranotLifecycleProcessorDeps } from "./processor";
 import type { SourcePolicyStore } from "./sourcePolicy";
 
@@ -111,6 +117,139 @@ function pendingIdentity(): LeadIdentityResult {
   };
 }
 
+function liveCreationFlags(): typeof GRANOT_LIFECYCLE_FLAG_DEFAULTS {
+  return {
+    ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+    shadow_mode: false,
+    lead_writes_enabled: true,
+    lead_creation_enabled: true,
+  };
+}
+
+function formCreateStore(): SourcePolicyStore & {
+  companyId: string;
+  localGranularityId: string;
+  longGranularityId: string;
+  sourceId: string;
+} {
+  const companyId = String(objectId());
+  const localGranularityId = String(objectId());
+  const longGranularityId = String(objectId());
+  const sourceId = String(objectId());
+  return {
+    companyId,
+    localGranularityId,
+    longGranularityId,
+    sourceId,
+    async findByNormalizedLabel() {
+      return [
+        {
+          id: sourceId,
+          enabled: true,
+          lifecycle_enabled: true,
+          lifecycle_disposition: "source_scoped_lead",
+          lead_created_policy: "create_if_missing",
+          lead_source_company: companyId,
+          lifecycle_routes: [
+            {
+              route_key: "form_local",
+              lead_model: "FormLead",
+              move_type: "local",
+              source_granularity_id: localGranularityId,
+            },
+            {
+              route_key: "form_long",
+              lead_model: "FormLead",
+              move_type: "long_distance",
+              source_granularity_id: longGranularityId,
+            },
+          ],
+          lifecycle_policy_version: "granot-lifecycle-source-policy-v1",
+          normalized_granot_label: "synthetic forms",
+        },
+      ];
+    },
+    async findCompany(id) {
+      return { id, active: true };
+    },
+    async findGranularity(id) {
+      return {
+        id,
+        source_company_id: companyId,
+        active: true,
+        channel: "form",
+        local: id === longGranularityId ? "long_distance" : "local",
+      };
+    },
+  };
+}
+
+function callCreateStore(): SourcePolicyStore {
+  const base = reviewedStore();
+  return {
+    ...base,
+    async findByNormalizedLabel(label) {
+      const rows = await base.findByNormalizedLabel(label);
+      return rows.map((row) => ({
+        ...row,
+        lead_created_policy: "create_if_missing" as const,
+      }));
+    },
+  };
+}
+
+function completeFormObservation(
+  overrides: Partial<GranotObservationDocument> = {},
+): GranotObservationDocument {
+  return observation({
+    contact: {
+      first_name: "Ada",
+      display_name: "Ada",
+      phone_raw: "5551234567",
+      normalized_phone: "5551234567",
+    },
+    move: {
+      origin: { state: "NY", zip: "10001" },
+      destination: { state: "NY", zip: "10002" },
+    },
+    ...overrides,
+  });
+}
+
+function appliedCreateResult(
+  model: "FormLead" | "CallLead" = "FormLead",
+): Awaited<ReturnType<NonNullable<GranotLifecycleProcessorDeps["createLead"]>>> {
+  return {
+    status: "applied",
+    entity_refs: [
+      { model, id: String(objectId()) },
+      { model: "GranotRecordLink", id: String(objectId()) },
+    ],
+    warnings: [],
+  };
+}
+
+function assertNoPatchCreateCommand(input: CreateLeadFromGranotInput): void {
+  assert.deepEqual(Object.keys(input).sort(), [
+    "context",
+    "lead_model",
+    "observation_id",
+    "source_scope",
+  ]);
+  assert.equal("data" in input, false);
+  assert.equal("desired_state" in input, false);
+  assert.deepEqual(Object.keys(input.source_scope).sort(), [
+    "lead_source_company",
+    "source_granularity_id",
+  ]);
+  assert.equal("ingestion_origin" in input, false);
+  assert.equal("post_to_granot" in input, false);
+  const record = input as CreateLeadFromGranotInput & Record<string, unknown>;
+  assert.equal(record.patch, undefined);
+  assert.equal(record.job_no, undefined);
+  assert.equal(record.contact, undefined);
+}
+
 function memoryDeps(input: {
   observation: GranotObservationDocument;
   channel?: "granot_webhook" | "browser_extension";
@@ -124,6 +263,7 @@ function memoryDeps(input: {
   lead?: LeadDesiredStateProjection | null;
   winnerAdvanced?: boolean;
   synchronizeLead?: GranotLifecycleProcessorDeps["synchronizeLead"];
+  createLead?: GranotLifecycleProcessorDeps["createLead"];
 }): GranotLifecycleProcessorDeps & {
   decisions: SynchronizationDecisionDocument[];
   links: GranotRecordLinkDocument[];
@@ -131,12 +271,16 @@ function memoryDeps(input: {
   temporalAdvances: number;
   initiatorSeen: string[];
   synchronizeCalls: number;
+  createLeadCalls: number;
+  createLeadInputs: CreateLeadFromGranotInput[];
 } {
   const decisions: SynchronizationDecisionDocument[] = [];
   const links: GranotRecordLinkDocument[] = [];
   const forbiddenEffects: string[] = [];
   const initiatorSeen: string[] = [];
   const synchronizeCalls = { count: 0 };
+  const createLeadCalls = { count: 0 };
+  const createLeadInputs: CreateLeadFromGranotInput[] = [];
   let activeLink = input.existingLink ?? null;
   const counters = { temporalAdvances: 0 };
   return {
@@ -149,6 +293,10 @@ function memoryDeps(input: {
     get synchronizeCalls() {
       return synchronizeCalls.count;
     },
+    get createLeadCalls() {
+      return createLeadCalls.count;
+    },
+    createLeadInputs,
     initiatorSeen,
     now: () => decidedAt,
     flags: input.flags ?? GRANOT_LIFECYCLE_FLAG_DEFAULTS,
@@ -199,6 +347,13 @@ function memoryDeps(input: {
       ? async (payload) => {
           synchronizeCalls.count += 1;
           return input.synchronizeLead!(payload);
+        }
+      : undefined,
+    createLead: input.createLead
+      ? async (payload) => {
+          createLeadCalls.count += 1;
+          createLeadInputs.push(payload);
+          return input.createLead!(payload);
         }
       : undefined,
     withTransaction: async (fn) => fn({} as never),
@@ -633,12 +788,16 @@ test("[AC-08] foundation eligible create_if_missing stays suppressed with no res
     observation: row,
     activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
     store: createStore,
+    createLead: async () => {
+      throw new Error("shadow create_if_missing must not invoke createLeadFromGranot");
+    },
   });
   const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
   assert.equal(result.outcome, "policy_blocked");
   assert.equal(deps.decisions[0]?.reason_code, "shadow_effect_suppressed");
   assert.equal(deps.links.length, 0);
   assert.equal(result.effects.length, 0);
+  assert.equal(deps.createLeadCalls, 0);
 });
 
 test("[AC-30] processor emits terminal unmatched at 24 hours", async () => {
@@ -1074,4 +1233,422 @@ test("[AC-07] live already_current with no active link still invokes association
   const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
   assert.equal(deps.synchronizeCalls, 1);
   assert.equal(result.outcome, "linked");
+});
+
+test("[AC-08] live eligible no-match invokes createLeadFromGranot once with the exact no-patch command", async () => {
+  const row = completeFormObservation();
+  const store = formCreateStore();
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: liveCreationFlags(),
+    store,
+    createLead: async (input) => appliedCreateResult("FormLead"),
+    synchronizeLead: async () => {
+      throw new Error("eligible no-match must not enter synchronizeLeadFromGranot");
+    },
+  });
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(deps.createLeadCalls, 1);
+  assert.equal(deps.synchronizeCalls, 0);
+  const command = deps.createLeadInputs[0];
+  assert.ok(command);
+  assertNoPatchCreateCommand(command);
+  assert.equal(command.observation_id, String(row._id));
+  assert.equal(
+    command.source_scope.lead_source_company,
+    String(store.companyId),
+  );
+  assert.equal(
+    command.source_scope.source_granularity_id,
+    String(store.localGranularityId),
+  );
+  assert.equal(command.lead_model, "FormLead");
+  assert.equal(
+    command.context.idempotency_key,
+    createLeadFromGranotIdempotencyKey(String(row._id)),
+  );
+  assert.equal(
+    command.context.payload_checksum,
+    createLeadFromGranotPayloadChecksum({
+      observation: row,
+      source_scope: {
+        granot_crm_source_id: new mongoose.Types.ObjectId(store.sourceId),
+        lead_source_company: new mongoose.Types.ObjectId(store.companyId),
+        source_granularity_id: new mongoose.Types.ObjectId(store.localGranularityId),
+        disposition: "source_scoped_lead",
+        policy_version: "granot-lifecycle-source-policy-v1",
+      },
+      lead_model: "FormLead",
+    }),
+  );
+  assert.equal(command.context.actor.actor_id, "granot-lifecycle-processor");
+  assert.equal(command.context.provenance.origin, "granot_lifecycle");
+  assert.equal(command.context.provenance.observation_id, String(row._id));
+  assert.equal(command.context.provenance.source_receipt_id, String(row.receipt_id));
+  assert.ok(command.context.provenance.decision_id);
+  assert.equal(result.outcome, "created");
+  assert.ok(result.effects.some((effect) => effect.kind === "lead_created"));
+});
+
+test("[AC-08] live authorized Job-only Call invokes creation and multiple candidates block it", async () => {
+  const row = observation();
+  const created = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: liveCreationFlags(),
+    store: callCreateStore(),
+    createLead: async (input) => {
+      assert.equal(input.lead_model, "CallLead");
+      return appliedCreateResult("CallLead");
+    },
+  });
+  const result = await processGranotObservation(
+    { receipt_id: String(row.receipt_id) },
+    created,
+  );
+  assert.equal(created.createLeadCalls, 1);
+  assert.equal(result.outcome, "created");
+
+  const conflicted = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: liveCreationFlags(),
+    store: callCreateStore(),
+    identity: {
+      outcome: "conflict",
+      reason_code: "multiple_eligible_matches",
+      candidates: [
+        {
+          target: { model: "CallLead", id: String(objectId()) },
+          reason_codes: ["multiple_eligible_matches"],
+        },
+        {
+          target: { model: "CallLead", id: String(objectId()) },
+          reason_codes: ["multiple_eligible_matches"],
+        },
+      ],
+    },
+    createLead: async () => {
+      throw new Error("multiple Call candidates must not invoke creation");
+    },
+  });
+  const conflict = await processGranotObservation(
+    { receipt_id: String(row.receipt_id) },
+    conflicted,
+  );
+  assert.equal(conflicted.createLeadCalls, 0);
+  assert.equal(conflict.outcome, "conflict");
+  assert.equal(conflicted.decisions[0]?.reason_code, "multiple_eligible_matches");
+});
+
+test("[AC-07] live matched Lead Created never invokes createLeadFromGranot", async () => {
+  const row = completeFormObservation({ priority: { valid: true, canonical: "1" } });
+  const leadId = String(objectId());
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: liveCreationFlags(),
+    store: formCreateStore(),
+    identity: matchedFormIdentity(leadId),
+    lead: currentLead(leadId, {
+      granot_priority: "8",
+      quoted: false,
+      normalized_job_no: "SYNTHETIC JOB 100",
+      job_no: "synthetic-job-100",
+    }),
+    createLead: async () => {
+      throw new Error("matched Lead Created must not invoke createLeadFromGranot");
+    },
+    synchronizeLead: async (input) => {
+      assert.equal(input.lead_ref.id, leadId);
+      return { status: "applied", entity_refs: [input.lead_ref], warnings: [] };
+    },
+  });
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(deps.createLeadCalls, 0);
+  assert.equal(deps.synchronizeCalls, 1);
+  assert.equal(result.outcome, "applied");
+});
+
+test("[AC-07] identity race winner replans through Unit 18 and never retries blind creation", async () => {
+  const row = completeFormObservation({ priority: { valid: true, canonical: "1" } });
+  const leadId = String(objectId());
+  let identityLoads = 0;
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: liveCreationFlags(),
+    store: formCreateStore(),
+    lead: currentLead(leadId, {
+      granot_priority: "8",
+      quoted: false,
+      normalized_job_no: "SYNTHETIC JOB 100",
+      job_no: "synthetic-job-100",
+    }),
+    createLead: async () => {
+      throw new CreateLeadFromGranotRaceError("identity");
+    },
+    synchronizeLead: async (input) => {
+      assert.equal(input.lead_ref.id, leadId);
+      return { status: "applied", entity_refs: [input.lead_ref], warnings: [] };
+    },
+  });
+  deps.resolveIdentity = async () => {
+    identityLoads += 1;
+    return identityLoads === 1 ? pendingIdentity() : matchedFormIdentity(leadId);
+  };
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(deps.createLeadCalls, 1);
+  assert.equal(deps.synchronizeCalls, 1);
+  assert.equal(result.outcome, "applied");
+});
+
+test("[AC-07] lead-less active link reservation replans as record-link conflict", async () => {
+  const row = completeFormObservation({ priority: { valid: true, canonical: "1" } });
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: liveCreationFlags(),
+    store: formCreateStore(),
+    identity: pendingIdentity(),
+    createLead: async () => {
+      throw new CreateLeadFromGranotRaceError("link_duplicate");
+    },
+  });
+  const result = await processGranotObservation(
+    { receipt_id: String(row.receipt_id) },
+    deps,
+  );
+  assert.equal(deps.createLeadCalls, 1);
+  assert.equal(result.outcome, "conflict");
+  assert.equal(deps.decisions[0]?.reason_code, "record_link_conflict");
+  assert.deepEqual(deps.decisions[0]?.effects, []);
+});
+
+test("[AC-07] unrelated duplicate-key failures remain technical errors", async () => {
+  const row = completeFormObservation({ priority: { valid: true, canonical: "1" } });
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: liveCreationFlags(),
+    store: formCreateStore(),
+    identity: pendingIdentity(),
+    createLead: async () => {
+      throw Object.assign(new Error("unrelated unique index"), { code: 11000 });
+    },
+  });
+  await assert.rejects(
+    () =>
+      processGranotObservation(
+        { receipt_id: String(row.receipt_id) },
+        deps,
+      ),
+    /unrelated unique index/,
+  );
+  assert.equal(deps.createLeadCalls, 1);
+  assert.equal(deps.decisions.length, 0);
+});
+
+test("[AC-08] disabled, shadow, incomplete, and route-failure paths create no command", async () => {
+  const complete = completeFormObservation();
+  const store = formCreateStore();
+
+  const disabled = memoryDeps({
+    observation: complete,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: {
+      ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+      shadow_mode: false,
+      lead_writes_enabled: true,
+      lead_creation_enabled: false,
+    },
+    store,
+    createLead: async () => {
+      throw new Error("creation-disabled must not invoke createLeadFromGranot");
+    },
+  });
+  const disabledResult = await processGranotObservation(
+    { receipt_id: String(complete.receipt_id) },
+    disabled,
+  );
+  assert.equal(disabledResult.outcome, "policy_blocked");
+  assert.equal(disabled.decisions[0]?.reason_code, "global_effect_disabled");
+  assert.equal(disabled.createLeadCalls, 0);
+  assert.equal(disabled.links.length, 0);
+
+  const shadow = memoryDeps({
+    observation: complete,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: {
+      ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+      shadow_mode: true,
+      lead_creation_enabled: true,
+    },
+    store,
+    createLead: async () => {
+      throw new Error("live_shadow must not invoke createLeadFromGranot");
+    },
+  });
+  const shadowResult = await processGranotObservation(
+    { receipt_id: String(complete.receipt_id) },
+    shadow,
+  );
+  assert.equal(shadowResult.outcome, "policy_blocked");
+  assert.equal(shadow.decisions[0]?.reason_code, "shadow_effect_suppressed");
+  assert.equal(shadow.createLeadCalls, 0);
+
+  const incomplete = completeFormObservation({ contact: {} });
+  const missing = memoryDeps({
+    observation: incomplete,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: liveCreationFlags(),
+    store,
+    createLead: async () => {
+      throw new Error("insufficient_creation_data must not invoke createLeadFromGranot");
+    },
+  });
+  const missingResult = await processGranotObservation(
+    { receipt_id: String(incomplete.receipt_id) },
+    missing,
+  );
+  assert.equal(missingResult.outcome, "insufficient_creation_data");
+  assert.equal(missing.decisions[0]?.reason_code, "missing_creation_contact");
+  assert.equal(missing.createLeadCalls, 0);
+  assert.equal(missing.links.length, 0);
+  assert.equal(missingResult.effects.length, 0);
+
+  const routeFailure = memoryDeps({
+    observation: complete,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: liveCreationFlags(),
+    store,
+    createLead: async () => {
+      throw new CreateLeadFromGranotRaceError("route_assignment");
+    },
+  });
+  const routed = await processGranotObservation(
+    { receipt_id: String(complete.receipt_id) },
+    routeFailure,
+  );
+  assert.equal(routeFailure.createLeadCalls, 1);
+  assert.equal(routed.outcome, "insufficient_creation_data");
+  assert.equal(routeFailure.decisions[0]?.reason_code, "missing_creation_route_data");
+  assert.equal(routeFailure.decisions[0]?.effects.length, 0);
+  assert.equal(routed.effects.length, 0);
+});
+
+test("[AC-09] live Form same states select Local; differing states select long-distance; invalid ZIP/state create no command", async () => {
+  const store = formCreateStore();
+  const localRow = completeFormObservation();
+  const local = memoryDeps({
+    observation: localRow,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: liveCreationFlags(),
+    store,
+    createLead: async (input) => {
+      assert.equal(input.lead_model, "FormLead");
+      return appliedCreateResult("FormLead");
+    },
+  });
+  await processGranotObservation({ receipt_id: String(localRow.receipt_id) }, local);
+  assert.equal(local.createLeadCalls, 1);
+  assert.equal(
+    local.createLeadInputs[0]?.context.payload_checksum,
+    createLeadFromGranotPayloadChecksum({
+      observation: localRow,
+      source_scope: {
+        granot_crm_source_id: new mongoose.Types.ObjectId(store.sourceId),
+        lead_source_company: new mongoose.Types.ObjectId(store.companyId),
+        source_granularity_id: new mongoose.Types.ObjectId(store.localGranularityId),
+        disposition: "source_scoped_lead",
+        policy_version: "granot-lifecycle-source-policy-v1",
+      },
+      lead_model: "FormLead",
+    }),
+  );
+
+  const longRow = completeFormObservation({
+    move: {
+      origin: { state: "NY", zip: "10001" },
+      destination: { state: "CA", zip: "94105" },
+    },
+  });
+  const longDistance = memoryDeps({
+    observation: longRow,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: liveCreationFlags(),
+    store,
+    createLead: async (input) => {
+      assert.equal(input.lead_model, "FormLead");
+      return appliedCreateResult("FormLead");
+    },
+  });
+  await processGranotObservation({ receipt_id: String(longRow.receipt_id) }, longDistance);
+  assert.equal(longDistance.createLeadCalls, 1);
+  assert.equal(
+    longDistance.createLeadInputs[0]?.context.payload_checksum,
+    createLeadFromGranotPayloadChecksum({
+      observation: longRow,
+      source_scope: {
+        granot_crm_source_id: new mongoose.Types.ObjectId(store.sourceId),
+        lead_source_company: new mongoose.Types.ObjectId(store.companyId),
+        source_granularity_id: new mongoose.Types.ObjectId(store.longGranularityId),
+        disposition: "source_scoped_lead",
+        policy_version: "granot-lifecycle-source-policy-v1",
+      },
+      lead_model: "FormLead",
+    }),
+  );
+  assert.notEqual(
+    local.createLeadInputs[0]?.context.payload_checksum,
+    longDistance.createLeadInputs[0]?.context.payload_checksum,
+  );
+
+  const invalidZip = completeFormObservation({
+    move: {
+      origin: { state: "NY", zip: "1000" },
+      destination: { state: "NY", zip: "10002" },
+    },
+  });
+  const zipBlocked = memoryDeps({
+    observation: invalidZip,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: liveCreationFlags(),
+    store,
+    createLead: async () => {
+      throw new Error("invalid ZIP must not invoke createLeadFromGranot");
+    },
+  });
+  const zipResult = await processGranotObservation(
+    { receipt_id: String(invalidZip.receipt_id) },
+    zipBlocked,
+  );
+  assert.equal(zipResult.outcome, "insufficient_creation_data");
+  assert.equal(zipBlocked.decisions[0]?.reason_code, "missing_creation_route_data");
+  assert.equal(zipBlocked.createLeadCalls, 0);
+
+  const invalidState = completeFormObservation({
+    move: {
+      origin: { state: "XX", zip: "10001" },
+      destination: { state: "NY", zip: "10002" },
+    },
+  });
+  const stateBlocked = memoryDeps({
+    observation: invalidState,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: liveCreationFlags(),
+    store,
+    createLead: async () => {
+      throw new Error("invalid state must not invoke createLeadFromGranot");
+    },
+  });
+  const stateResult = await processGranotObservation(
+    { receipt_id: String(invalidState.receipt_id) },
+    stateBlocked,
+  );
+  assert.equal(stateResult.outcome, "insufficient_creation_data");
+  assert.equal(stateBlocked.decisions[0]?.reason_code, "missing_creation_route_data");
+  assert.equal(stateBlocked.createLeadCalls, 0);
+  assert.equal(stateBlocked.links.length, 0);
 });

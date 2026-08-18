@@ -8,7 +8,7 @@ alwaysApply: false
 
 - MongoDB is the system of record. Server writes Mongo first, then posts/syncs side effects to Granot CRM and Google Sheets; sheet sync may finish after the API response.
 - Owner-facing reporting lives in Google Sheets, but source truth, matching, booking state, cancellation state, and sync metadata live on Mongo documents.
-- Compact service docs: `.cursor/businesslogic/`. Do not treat Granot webhook capture as a lead-write path — it is receipt-only today.
+- Compact service docs: `.cursor/businesslogic/`. Granot webhook capture is receipt-only. Authorized live create-if-missing writes go through `createLeadFromGranot` after drain; checked-in creation flags stay false.
 
 ## Website To Form Lead
 
@@ -25,11 +25,12 @@ alwaysApply: false
 - CRM enrichment uses `POST /api/v1/call-leads/enrichment/preview` and `/sync` with row batches. It updates job/customer/contact/location/cubic-feet fields, may set `receiver_agent` from a Granot CRM username match, and enqueues Sheet Sync `call_lead.enrichment.sync`.
 - `PATCH` form/call leads may set `receiver_agent` (+ snapshots) via Operations Registry agent lookup.
 
-## Granot webhook observations (no official Lead/Booking writes)
+## Granot webhook observations (capture is not a write path)
 
 - Granot posts `POST /api/webhooks/granot/{lead-created,priority-updated,booking-status-changed}`.
 - Authenticated deliveries persist one credential-redacted Granot Observation Receipt and return `202`. Capture does **not** create, update, or cancel a Lead, Booking, or Cancellation.
 - After commit, production Vercel may publish `{ receipt_id }` to the lifecycle queue topic. A dedicated consumer and five-minute cron drain due work through one Mongo claim/fence. Capture still does not invoke the processor. Details: `businesslogic/granotLifecycle.drainer.md`.
+- When live + `GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED` + reviewed `create_if_missing` + complete minimum data + no eligible match, the processor creates exactly one Form/Call Lead and reserves the active Record Link through `createLeadFromGranot`. Matched Observations stay on `synchronizeLeadFromGranot`. Checked-in flags keep creation off. Neither path writes a Booking or Cancellation. Details: `businesslogic/granotLifecycle.processor.md`.
 - CRM Posting on form-lead create is independent of webhook capture. Details: `businesslogic/granotLifecycle.capture.md`.
 
 ## Granot HTTP automation (parallel correction path)

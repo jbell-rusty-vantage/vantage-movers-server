@@ -1,10 +1,10 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
-**Primary code:** `src/services/granotLifecycle/processor.ts`, `src/services/granotLifecycle/leadDesiredState.ts`, `src/services/granotLifecycle/granotTemporal.ts`, `src/config/domain/granotLifecycle.ts`, `src/models/SynchronizationDecision.ts`, `src/models/GranotLifecycleActivation.ts`, `src/models/GranotRecordLink.ts`
+**Primary code:** `src/services/granotLifecycle/processor.ts`, `src/services/granotLifecycle/createLeadFromGranot.ts`, `src/services/granotLifecycle/synchronizeLeadFromGranot.ts`, `src/services/granotLifecycle/leadDesiredState.ts`, `src/services/granotLifecycle/granotTemporal.ts`, `src/config/domain/granotLifecycle.ts`, `src/models/SynchronizationDecision.ts`, `src/models/GranotLifecycleActivation.ts`, `src/models/GranotRecordLink.ts`
 **Domain terms used:** Synchronization Decision, Granot Record Link, Granot Observation, Granot Observation Receipt, System of Record
 
 # Granot lifecycle processor (`granotLifecycle/processor`)
 
-**Role:** Channel-neutral production orchestrator. One receipt becomes one Observation, one Unit 14 identity result, one desired-state plan, and one Synchronization Decision. Historical shadow may establish or confirm a **job-level** Granot Record Link. Authorized live matched-Lead writes enter `synchronizeLeadFromGranot` only; this module never patches a Lead or official Booking/Cancellation fact itself.
+**Role:** Channel-neutral production orchestrator. One receipt becomes one Observation, one Unit 14 identity result, one desired-state plan, and one Synchronization Decision. Historical shadow may establish or confirm a **job-level** Granot Record Link. Authorized live matched-Lead writes enter `synchronizeLeadFromGranot` only. Authorized live `create_if_missing` Lead Created with no eligible match enters `createLeadFromGranot` only. This module never patches a Lead or official Booking/Cancellation fact itself.
 
 **Stack:** callable module `processor.ts`. Capture does not invoke it. Queue, cron, and the synchronous claim-and-poll seam invoke it only after a fenced receipt claim (`drainer.ts`). Routes pass receipt identity (and optional initiator); they do not plan patches.
 
@@ -14,7 +14,8 @@
 load receipt -> upsert/reuse Observation -> classify stored execution mode
 -> terminal normalization -> resolve Registry policy -> Unit 14 identity
 -> temporal compare -> desired-state plan -> evaluate exact gates
--> live+writes+all gates+matched Lead -> synchronizeLeadFromGranot
+-> live+creation+all gates+eligible no-match -> createLeadFromGranot
+-> else live+writes+all gates+matched Lead -> synchronizeLeadFromGranot
    (or already_current exact-link Decision + metadata-only temporal CAS)
 -> otherwise persist one Decision / historical job-level link
 -> finalize through Unit 08 fence
@@ -38,8 +39,8 @@ Ordering is latest accepted Vantage `captured_at`; equal times use the lexicogra
 - RingCentral-created and Granot-created qualified contact/move plan current fields plus a bounded `last_granot_contact_change.changed_paths` summary; no Entity Change is claimed
 - one Unit 14 Agent suggestion may fill an empty receiver at any valid Priority via `granot_username_match`; conflicts and existing receivers never overwrite
 - Duplicate Form has no target; Bad exact Form is Priority plus safe link evidence only
-- `link_only` no-match is `pending_match` until the Unit 08 24h clock, then `unmatched` / `match_window_expired`; incomplete creation data is terminal `insufficient_creation_data` and is never pending
-- `create_if_missing` evaluates Section 16.3 minimum data in shadow and stays `shadow_effect_suppressed` with no `created` claim; Unit 19 owns creation
+- `link_only` no-match is `pending_match` until the Unit 08 24h clock, then `unmatched` / `match_window_expired`; incomplete creation data is terminal `insufficient_creation_data` (`missing_creation_job_number`, `missing_creation_contact`, or `missing_creation_route_data`) and is never pending
+- `create_if_missing` with complete minimum data plans immediately `created` / `lead_created_authorized`. The processor invokes `createLeadFromGranot` only when execution is `live`, `lead_creation_enabled` is true, and every creation gate is allowed. Shadow and gated-off live persist the suppressed/disabled Decision and create nothing
 
 Source Company, Source Granularity, Ingestion Origin, CPL, Booking/Cancellation refs, and official money never enter `desired_values`.
 
@@ -48,13 +49,25 @@ Source Company, Source Granularity, Ingestion Origin, CPL, Booking/Cancellation 
 - Pre-activation and `captured_at < activated_at` stay `historical_shadow` forever. Live-shadow Decisions are never promoted.
 - Historical shadow may create safe job-level Record Link evidence when Job/scope agree. It does not add `lead_ref`, `booking_ref`, source scope, or disputed state.
 - Live shadow persists Decisions only. Eligible matched writes become `shadow_effect_suppressed`.
-- Live + `GRANOT_LIFECYCLE_LEAD_WRITES_ENABLED` + all eight gates + a matched eligible Lead invoke `synchronizeLeadFromGranot` for an `applied` plan or for `already_current` that still needs a lead-attached Record Link. Exact current links stay on the Decision-only / metadata CAS path.
-- A failed gate records that gate's outcome/reason and performs no command. Race losers reload and replan. If the replan is still an authorized write, the command retries with the current revision (max 3). Classification outcomes persist Decision-only. Never persist `applied` against a lost claim.
-- Production starting/ending flags stay processing true, shadow true, and all eight effect flags false.
+- Live + `GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED` + all creation gates + an eligible no-match `lead_created` plan invoke `createLeadFromGranot` once. Live + `GRANOT_LIFECYCLE_LEAD_WRITES_ENABLED` + all eight gates + a matched eligible Lead invoke `synchronizeLeadFromGranot` for an `applied` plan or for `already_current` that still needs a lead-attached Record Link. Exact current links stay on the Decision-only / metadata CAS path.
+- A failed gate records that gate's outcome/reason and performs no command. Creation race losers (identity, policy, active-link duplicate-key) abort the proposed transaction, reload policy and the full identity ladder, and replan. A now-eligible matched Lead flows through `synchronizeLeadFromGranot`; a pre-existing lead-less active reservation becomes `conflict` / `record_link_conflict`; the processor never retries blind creation. A route/minimum-data race persists `insufficient_creation_data` / `missing_creation_route_data`. Matched-write race losers reload and replan; if the replan is still an authorized write, the command retries with the current revision (max 3). Classification outcomes persist Decision-only. Never persist `applied` against a lost claim.
+- Production starting/ending flags stay processing true, shadow true, and all eight effect flags false. Unit 19 adds no migration or index.
 
 ## Temporal compare-and-swap seam
 
 For a newer Observation whose authorized desired state **and** exact lead-attached link are already current, injected **`live` + Lead-writes-enabled test posture** inserts `already_current` / `desired_state_already_current` and may atomically advance `last_accepted_granot_observation` with a filter that accepts only an older `(captured_at, observation_id)` tuple. That write does not increment `domain_revision`, write `last_change_*`, create Entity Change, request Sheet Sync, or emit `lead_updated`. Zero matched rows abort the proposed Decision, reload, and re-evaluate; the loser is normally `stale`. Production shadow never invokes this Lead write. Reportable matched-Lead or Record-Link association mutations use `synchronizeLeadFromGranot`.
+
+## Authorized Lead creation (`createLeadFromGranot`)
+
+The processor is the only caller. Routes, clients, and payloads may not supply a Lead patch, Job Number, Ingestion Origin, CPL, convergence state, or `post_to_granot`. Command input is exactly `{ lead_model, source_scope, observation_id, context }`. Idempotency key is `granot:create-lead:<observation_id>`. Checksum covers Observation ID, Job, selected model, source-scope IDs/policy version, and normalized contact/move semantics — never a raw payload.
+
+**Live invocation requires all of:** `route_event_class:"lead_created"`; execution mode `live`; `GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED=true`; every Unit 15/18 creation gate allowed (global creation flag, post-activation, operational + lifecycle enabled, disposition `source_scoped_lead`, active Source Company and Source Granularity, current reviewed policy `create_if_missing`); the complete identity ladder found no eligible target/ambiguity/conflict/Duplicate-or-Bad restriction; `evaluateMinimumCreationData` is `eligible`; the selected Form/Call route is deterministic and agrees with the command model. Incomplete immutable data is terminal for this Observation (`insufficient_creation_data` with the exact missing-data reason) and creates no Lead, link, Command, Change, or outbox. `link_only` keeps the Unit 08 pending/unmatched clock. A later complete Observation may still create.
+
+Inside one executor transaction the command reloads Observation, Registry, gates, route, and identity, then commits atomically: the preallocated Decision (`created` / `lead_created_authorized` with bounded effects `lead_created`, `record_link_established`, `sheet_sync_requested`); exactly one Form/Call Lead (`ingestion_origin:"granot_lead_created"`, `post_to_granot:false`, immutable creation snapshots, `domain_revision` after the creation Change); exactly one newly created active `GranotRecordLink` for `provider:"granot"` + normalized Job Number (existing Unit 07 unique partial index is the reservation fence); append-only `EntityChange` rows for Lead and link; one `DomainCommandExecution` whose refs include both; and one queued `form_lead.create` or `call_lead.create` Sheet Sync intent. Creation never attaches or fills a pre-existing active link, including a historical lead-less reservation: that aborts the proposed transaction and replans to `conflict` / `record_link_conflict` when no eligible Lead emerges. Exact replay returns the stored refs. Same key/different checksum is `DOMAIN_COMMAND_IDEMPOTENCY_CONFLICT`. Duplicate-key or competing identity aborts the whole proposed chain.
+
+Form creation requires a name component, normalized phone, valid origin/destination USPS state and five-digit ZIP, and the exact selected Local/long-distance Form Granularity (same two valid states → Local; differing valid states → long-distance). It derives persisted `local` from those accepted states and leaves `move_date` absent when the Observation omits it. Call Job-only creation is legal here; `ringcentral_convergence.state` is `pending` when a normalized phone exists and `not_applicable` when Job-only. The command stores available Granot facts only and fabricates no `local`, duration, start/end time, RingCentral session/call-log IDs, qualification, assignment, target number, or transport source. RingCentral assignment validation is configured-only: when any assignment row exists for the exact Call Source Company + Granularity, exactly one must be active/effective and point to an active, valid route; otherwise creation becomes `insufficient_creation_data` / `missing_creation_route_data`. Zero assignment rows means the route remains Granot-only and no assignment is invented. WordPress-created Form Leads that later match stay on `synchronizeLeadFromGranot` and never mint a second Lead.
+
+Creation never opens a Booking/Release case, writes a Booking or Cancellation, sends email, or invokes RingCentral adoption. Checked-in flags stay processing true, shadow true, Lead writes/creation false. Unit 19 adds no migration, backfill, or index.
 
 ## Flags
 
@@ -62,7 +75,7 @@ Defaults: processing true, shadow true, all eight effect flags false. Processing
 
 ## Out of scope here
 
-Authorized Lead creation and create-reservation (Unit 19). Booking/Release cases and commands. RingCentral adoption. Public Lead Zod / `updateSourceOwnedLead` are not a lifecycle write path.
+Booking/Release cases and commands. RingCentral qualified-call adoption (Units 20–21). Public Lead Zod / `updateSourceOwnedLead` are not a lifecycle write path. Registry policy stays `link_only` until a separately audited Owner mutation; this module does not rewrite Registry rows.
 
 ## Related
 
@@ -70,4 +83,5 @@ Authorized Lead creation and create-reservation (Unit 19). Booking/Release cases
 - Desired-state planner: [`granotLifecycle.desiredState.md`](granotLifecycle.desiredState.md)
 - Policy/gates: [`granotLifecycle.sourcePolicy.md`](granotLifecycle.sourcePolicy.md)
 - Drain/pending clock: [`granotLifecycle.drainer.md`](granotLifecycle.drainer.md)
+- Executor / command registry: [`domainCommands.service.md`](domainCommands.service.md)
 - Software map: [`granot-lifecycle-capture.mdc`](../rules/granot-lifecycle-capture.mdc)

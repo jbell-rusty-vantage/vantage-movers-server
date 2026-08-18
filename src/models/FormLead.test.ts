@@ -136,10 +136,14 @@ test("[AC-10] new Form rows cannot use legacy_unknown or legacy_baseline", async
   );
 });
 
-test("[AC-07] Form persisted move_size is optional while snapshot/provenance enums reject malformed values", async () => {
-  const withoutMoveSize = new FormLead(formLeadAttrs({ move_size: undefined }));
+test("[AC-07][AC-08] trusted Form may omit move size/date without inventing facts", async () => {
+  const withoutMoveSize = new FormLead(
+    formLeadAttrs({ move_size: undefined, move_date: undefined }),
+  );
   delete (withoutMoveSize as { move_size?: string }).move_size;
+  delete (withoutMoveSize as { move_date?: Date }).move_date;
   await withoutMoveSize.validate();
+  assert.equal(withoutMoveSize.move_date, undefined);
   await assert.rejects(
     () =>
       new FormLead(formLeadAttrs({ ingestion_origin: "not_a_real_origin" })).validate(),

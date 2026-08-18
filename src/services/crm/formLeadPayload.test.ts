@@ -144,6 +144,11 @@ test("buildCrmFormLeadPayload maps lead fields onto the Granot wire shape", () =
   );
 });
 
+test("[AC-08] CRM payload does not invent an absent trusted Granot move date", () => {
+  const lead = hydrateFormLead({ move_date: undefined });
+  assert.equal(buildCrmFormLeadPayload(lead).movedte, "");
+});
+
 test("summarizeCrmPayloadForLog masks PII and fingerprints identifiers and locations", () => {
   const lead = hydrateFormLead({
     name: "Jane Maria Customer",

@@ -24,8 +24,8 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 | 16 | Browser extension receipt apply and version 0.2.8 | 02–04, 14–15 | complete | complete | [UNIT-16-COMPLETION.md](completion-reports/UNIT-16-COMPLETION.md) |
 | 17 | HTTP automation receipt convergence and resumable lifecycle outcomes | 02–04, 14–15 | complete | complete | [UNIT-17-COMPLETION.md](completion-reports/UNIT-17-COMPLETION.md) |
 | 18 | Safe matched-Lead synchronization effects | 10–17, parity approval | complete | complete | [UNIT-18-COMPLETION.md](completion-reports/UNIT-18-COMPLETION.md) |
-| 19 | Authorized Granot Lead creation and atomic link reservation | 18 | ready | complete | — |
-| 20 | RingCentral adoption/convergence and duplicate correctness | 12, 19 | blocked | complete | — |
+| 19 | Authorized Granot Lead creation and atomic link reservation | 18 | complete | complete | [UNIT-19-COMPLETION.md](completion-reports/UNIT-19-COMPLETION.md) |
+| 20 | RingCentral adoption/convergence and duplicate correctness | 12, 19 | ready | complete | — |
 | 21 | RingCentral Call Log lease, telemetry, overlap safety, and 30-minute cadence | 20 | blocked | complete | — |
 | 22 | Booking Reconciliation persistence, sequencing, and read-only reconciliation service | 07, 14–15, 18 | ready | complete | — |
 | 23 | Booking lifecycle reads, Admin queue/detail, candidate browser, and Job/Lead timeline | 22 | blocked | complete | — |

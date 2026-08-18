@@ -18,6 +18,7 @@ import {
   deleteFormLead,
   updateSourceOwnedLead,
 } from "./leads";
+import { createLeadFromGranot } from "../granotLifecycle/createLeadFromGranot";
 import { synchronizeLeadFromGranot } from "../granotLifecycle/synchronizeLeadFromGranot";
 import type { CanonicalDomainCommands } from "./types";
 
@@ -28,6 +29,7 @@ export * from "./existingWrites";
 export * from "./idempotency";
 export * from "./leads";
 export * from "./types";
+export { createLeadFromGranot } from "../granotLifecycle/createLeadFromGranot";
 
 export const canonicalDomainCommands: CanonicalDomainCommands = {
   createFormLead,
@@ -37,6 +39,7 @@ export const canonicalDomainCommands: CanonicalDomainCommands = {
   createLeadlessBooking,
   attachBookingToLead,
   createCancellation,
+  createLeadFromGranot,
   synchronizeLeadFromGranot,
 };
 

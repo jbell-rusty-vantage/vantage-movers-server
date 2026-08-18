@@ -29,6 +29,7 @@ export type LeadDesiredStatePlan = {
   agent_changed_paths: string[];
   temporal_winner_should_advance: boolean;
   creation_eligibility?: LeadCreationEligibility;
+  creation_model?: "FormLead" | "CallLead";
   next_match_attempt_at?: Date;
 };
 
@@ -219,9 +220,10 @@ function planNoMatch(input: LeadDesiredStateInput): LeadDesiredStatePlan {
     }
     if (input.policy.lead_created_policy === "create_if_missing") {
       return emptyPlan({
-        outcome: "policy_blocked",
-        reason_code: "shadow_effect_suppressed",
+        outcome: "created",
+        reason_code: "lead_created_authorized",
         creation_eligibility: "eligible",
+        creation_model: input.policy.selected_lead_model,
       });
     }
   }
@@ -578,6 +580,7 @@ function emptyPlan(input: {
   target?: EntityRef;
   temporal_winner_should_advance?: boolean;
   creation_eligibility?: LeadCreationEligibility;
+  creation_model?: "FormLead" | "CallLead";
 }): LeadDesiredStatePlan {
   return {
     outcome: input.outcome,
@@ -588,6 +591,7 @@ function emptyPlan(input: {
     agent_changed_paths: [],
     temporal_winner_should_advance: input.temporal_winner_should_advance ?? false,
     creation_eligibility: input.creation_eligibility,
+    creation_model: input.creation_model,
   };
 }
 

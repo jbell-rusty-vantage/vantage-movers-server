@@ -27,7 +27,7 @@ function hasIndex(expected: Record<string, number>): boolean {
   );
 }
 
-test("[AC-12] CallLead requires quoted default false and exact origin/snapshot/convergence paths", async () => {
+test("[AC-08][AC-12] CallLead defaults quoted/post_to_granot false and has exact provenance paths", async () => {
   const now = new Date("2026-08-17T16:00:00.000Z");
   const lead = new CallLead(
     callLeadAttrs({
@@ -42,6 +42,7 @@ test("[AC-12] CallLead requires quoted default false and exact origin/snapshot/c
   );
   await lead.validate();
   assert.equal(lead.quoted, false);
+  assert.equal(lead.post_to_granot, false);
   assert.equal(lead.ingestion_origin, "ringcentral");
   assert.equal(lead.granot_contact_revision, 0);
   assert.equal(lead.ingested_contact_snapshot?.evidence_status, "captured_at_ingestion");
@@ -53,6 +54,22 @@ test("[AC-12] CallLead requires quoted default false and exact origin/snapshot/c
     "legacy_import",
     "legacy_unknown",
   ]);
+  await assert.rejects(
+    () =>
+      new CallLead(
+        callLeadAttrs({
+          ingestion_origin: "granot_lead_created",
+          post_to_granot: true,
+        }),
+      ).validate(),
+    /post_to_granot/,
+  );
+  await new CallLead(
+    callLeadAttrs({
+      ingestion_origin: "legacy_import",
+      post_to_granot: true,
+    }),
+  ).validate();
   assert.deepEqual([...RINGCENTRAL_CONVERGENCE_STATES], [
     "pending",
     "adopted",
