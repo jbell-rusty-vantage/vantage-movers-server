@@ -70,6 +70,8 @@ export async function runRingCentralCallLogSync(
     ingestActions: {
       lead_created: 0,
       lead_created_duplicate: 0,
+      lead_adopted: 0,
+      lead_adopted_duplicate: 0,
       shadow_recorded: 0,
       dry_run: 0,
       skipped_already_processed: 0,

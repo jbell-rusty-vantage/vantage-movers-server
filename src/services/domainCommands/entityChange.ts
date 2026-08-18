@@ -191,6 +191,7 @@ export const CALL_LEAD_CHANGE_PATHS = [
   "last_accepted_granot_observation",
   "granot_contact_revision",
   "last_granot_contact_change",
+  "ringcentral",
   "ringcentral_convergence",
   "over_2000",
   "over_4000",

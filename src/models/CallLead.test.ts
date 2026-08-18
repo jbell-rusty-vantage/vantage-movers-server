@@ -164,3 +164,44 @@ test("[AC-07] CallLead declares the three exact S08 indexes and no unique Lead J
   );
   assert.equal(uniqueJob, false);
 });
+
+test("[AC-14] RingCentral original caller evidence is required and immutable", async () => {
+  const now = new Date("2026-08-18T16:00:00.000Z");
+  const lead = new CallLead(
+    callLeadAttrs({
+      ingestion_origin: "granot_lead_created",
+      ringcentral: {
+        ingestion_source: "webhook",
+        original_caller: {
+          phone_number: "5550002001",
+          normalized_phone_number: "5550002001",
+          captured_at: now,
+        },
+      },
+    }),
+  );
+  await lead.validate();
+  assert.equal(
+    lead.ringcentral?.original_caller?.normalized_phone_number,
+    "5550002001",
+  );
+  const path = CallLead.schema.path("ringcentral.original_caller") as {
+    options?: { immutable?: boolean };
+  };
+  assert.equal(path.options?.immutable, true);
+  await assert.rejects(
+    () =>
+      new CallLead(
+        callLeadAttrs({
+          ringcentral: {
+            ingestion_source: "webhook",
+            original_caller: {
+              phone_number: "5550002001",
+              captured_at: now,
+            },
+          },
+        }),
+      ).validate(),
+    /normalized_phone_number/,
+  );
+});

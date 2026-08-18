@@ -59,6 +59,12 @@ import {
   trustedGranotFormLeadCreateSchema,
 } from "./trustedLeadCreateValidation";
 import type { LeadModel } from "./types";
+import {
+  acquireRingCentralConvergenceScopeLock,
+  ensureRingCentralConvergenceScopeLock,
+  findPreCreationRingCentralConvergenceCandidates,
+} from "../ringcentral/callLeadConvergence.service";
+import { isRingCentralGranotAdoptionEnabled } from "../ringcentral/ringcentral-config";
 
 export const CREATE_LEAD_FROM_GRANOT_COMMAND_NAME = "createLeadFromGranot";
 
@@ -143,6 +149,20 @@ export async function createLeadFromGranot(
   deps: CreateLeadFromGranotDependencies = {},
 ): Promise<CanonicalCommandResult> {
   assertCommandEnvelope(input);
+  if (
+    input.lead_model === "CallLead" &&
+    isRingCentralGranotAdoptionEnabled()
+  ) {
+    const observation = await getGranotObservationModel()
+      .findById(input.observation_id)
+      .select({ "contact.normalized_phone": 1 })
+      .lean()
+      .exec();
+    await ensureRingCentralConvergenceScopeLock({
+      source_granularity_id: input.source_scope.source_granularity_id,
+      normalized_phone_number: observation?.contact?.normalized_phone,
+    });
+  }
   const command = await executeCanonicalCommandWithPostCommit({
     command_name: CREATE_LEAD_FROM_GRANOT_COMMAND_NAME,
     context: input.context,
@@ -270,6 +290,27 @@ async function executeCreation(
   const normalizedJob = observation.identity?.normalized_job_no;
   if (!normalizedJob) {
     throw new CreateLeadFromGranotRaceError("identity");
+  }
+  if (
+    selectedModel === "CallLead" &&
+    observation.contact?.normalized_phone &&
+    isRingCentralGranotAdoptionEnabled()
+  ) {
+    await acquireRingCentralConvergenceScopeLock({
+      source_granularity_id: snapshot.source_granularity_id,
+      normalized_phone_number: observation.contact.normalized_phone,
+      session,
+      now,
+    });
+    const convergenceCandidates =
+      await findPreCreationRingCentralConvergenceCandidates({
+        source_granularity_id: snapshot.source_granularity_id,
+        normalized_phone_number: observation.contact.normalized_phone,
+        session,
+      });
+    if (convergenceCandidates.length > 0) {
+      throw new CreateLeadFromGranotRaceError("identity");
+    }
   }
 
   const identity = await resolveLeadIdentity(

@@ -1,4 +1,5 @@
 import type { SourceCompany } from "../../config/domain";
+import type { ClientSession } from "mongoose";
 import { getRingCentralCollectionName } from "./ringcentral-config";
 import { getRingCentralDb } from "./ringcentral-mongo";
 
@@ -12,6 +13,8 @@ import { getRingCentralDb } from "./ringcentral-mongo";
 export type RingCentralProcessedCallStatus =
   | "lead_created"
   | "lead_created_duplicate"
+  | "lead_adopted"
+  | "lead_adopted_duplicate"
   | "shadow_recorded"
   | "dry_run"
   | "skipped";
@@ -35,11 +38,28 @@ export type RingCentralProcessedCallDocument = {
   updatedAt: Date;
 };
 
+export const RINGCENTRAL_PROCESSED_CALL_LOG_ID_UNIQUE_INDEX = {
+  name: "ringcentral_processed_call_log_id_unique",
+  key: { callLogId: 1 },
+  unique: true,
+  sparse: true,
+} as const;
+
+export const RINGCENTRAL_PROCESSED_CALL_TERMINAL_STATUSES = [
+  "lead_created",
+  "lead_created_duplicate",
+  "lead_adopted",
+  "lead_adopted_duplicate",
+  "shadow_recorded",
+] as const satisfies readonly RingCentralProcessedCallStatus[];
+
 let indexesReady: Promise<void> | null = null;
 
-async function getCollection() {
+async function getCollection(options: { ensureIndexes?: boolean } = {}) {
   const db = await getRingCentralDb();
-  await ensureIndexes();
+  if (options.ensureIndexes !== false) {
+    await ensureIndexes();
+  }
   return db.collection<RingCentralProcessedCallDocument>(
     getRingCentralCollectionName("processedCalls"),
   );
@@ -48,6 +68,10 @@ async function getCollection() {
 function ensureIndexes(): Promise<void> {
   indexesReady ??= createIndexes();
   return indexesReady;
+}
+
+export function ensureProcessedCallIndexes(): Promise<void> {
+  return ensureIndexes();
 }
 
 async function createIndexes(): Promise<void> {
@@ -59,19 +83,23 @@ async function createIndexes(): Promise<void> {
     { telephonySessionId: 1 },
     { unique: true, sparse: true },
   );
-  await collection.createIndex({ callLogId: 1 }, { sparse: true });
   await collection.createIndex({ status: 1, updatedAt: -1 });
   await collection.createIndex({ sourceCompany: 1, callerPhoneNumber: 1 });
 }
 
 export async function findProcessedCall(params: {
   telephonySessionId?: string | null;
+  sessionId?: string | null;
   callLogId?: string | null;
+  session?: ClientSession;
 }): Promise<RingCentralProcessedCallDocument | null> {
-  const collection = await getCollection();
+  const collection = await getCollection({ ensureIndexes: params.session == null });
   const or: Array<Record<string, string>> = [];
   if (params.telephonySessionId) {
     or.push({ telephonySessionId: params.telephonySessionId });
+  }
+  if (params.sessionId) {
+    or.push({ sessionId: params.sessionId });
   }
   if (params.callLogId) {
     or.push({ callLogId: params.callLogId });
@@ -79,35 +107,73 @@ export async function findProcessedCall(params: {
   if (or.length === 0) {
     return null;
   }
-  return collection.findOne({ $or: or });
+  return collection.findOne(
+    { $or: or },
+    params.session ? { session: params.session } : {},
+  );
 }
 
 export async function upsertProcessedCall(
   document: Omit<RingCentralProcessedCallDocument, "firstProcessedAt" | "updatedAt"> & {
     now?: Date;
+    session?: ClientSession;
   },
 ): Promise<void> {
-  const { now, ...rest } = document;
+  const { now, session, ...rest } = document;
   const timestamp = now ?? new Date();
-  const collection = await getCollection();
+  const collection = await getCollection({ ensureIndexes: session == null });
 
-  const key = rest.telephonySessionId
-    ? { telephonySessionId: rest.telephonySessionId }
-    : rest.callLogId
-      ? { callLogId: rest.callLogId }
-      : null;
+  const key = processedCallIdentityKey(rest);
   if (!key) {
     return;
   }
+  const persisted: Partial<typeof rest> = { ...rest };
+  if (!rest.telephonySessionId) delete persisted.telephonySessionId;
+  if (!rest.callLogId) delete persisted.callLogId;
 
   await collection.updateOne(
     key,
     {
       $setOnInsert: { firstProcessedAt: timestamp },
-      $set: { ...rest, updatedAt: timestamp },
+      $set: { ...persisted, updatedAt: timestamp },
     },
-    { upsert: true },
+    { upsert: true, ...(session ? { session } : {}) },
   );
+}
+
+export function processedCallIdentityKey(input: {
+  telephonySessionId?: string | null;
+  callLogId?: string | null;
+}): { telephonySessionId: string } | { callLogId: string } | null {
+  return input.telephonySessionId
+    ? { telephonySessionId: input.telephonySessionId }
+    : input.callLogId
+      ? { callLogId: input.callLogId }
+      : null;
+}
+
+export async function assertProcessedCallAdoptionIndexes(): Promise<void> {
+  const collection = await getCollection();
+  const indexes = await collection.indexes();
+  const hasUniqueSession = indexes.some(
+    (index) =>
+      index.unique === true &&
+      index.sparse === true &&
+      index.key.telephonySessionId === 1 &&
+      Object.keys(index.key).length === 1,
+  );
+  const hasUniqueCallLog = indexes.some(
+    (index) =>
+      index.unique === true &&
+      index.sparse === true &&
+      index.key.callLogId === 1 &&
+      Object.keys(index.key).length === 1,
+  );
+  if (!hasUniqueSession || !hasUniqueCallLog) {
+    throw new Error(
+      "RingCentral adoption requires unique processed-call session and call-log identity indexes.",
+    );
+  }
 }
 
 export async function listProcessedCalls(limit: number) {

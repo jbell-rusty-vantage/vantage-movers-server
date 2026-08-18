@@ -1,12 +1,29 @@
 import { logger } from "../../logger";
+import { withTransaction } from "../../db";
 import { recordOperationalEvent } from "../observability";
-import { createRingCentralCallLead } from "../leads/callLead.service";
+import {
+  createRingCentralCallLead,
+  createRingCentralCallLeadInTransaction,
+  finalizeCallLeadCreateAfterCommit,
+  type CreateRingCentralCallLeadInput,
+} from "../leads/callLead.service";
 import type { RingCentralRouteResolution } from "../operationsRegistry";
 import type { SourceCompany } from "../../config/domain";
 import { classifyRingCentralCallLeadDuplicate } from "./ringcentral-duplicate-guard";
-import { resolveRingCentralLeadWriteMode } from "./ringcentral-config";
+import {
+  isRingCentralGranotAdoptionEnabled,
+  resolveRingCentralLeadWriteMode,
+} from "./ringcentral-config";
+import {
+  acquireRingCentralConvergenceScopeLock,
+  attemptRingCentralCallLeadConvergence,
+  RingCentralConvergenceScopeRaceError,
+  selectRingCentralConvergenceCandidates,
+} from "./callLeadConvergence.service";
 import {
   findProcessedCall,
+  assertProcessedCallAdoptionIndexes,
+  RINGCENTRAL_PROCESSED_CALL_TERMINAL_STATUSES,
   upsertProcessedCall,
   type RingCentralProcessedCallStatus,
 } from "./processed-calls-store";
@@ -42,6 +59,8 @@ export type RingCentralQualifiedCall = {
 export type RingCentralIngestAction =
   | "lead_created"
   | "lead_created_duplicate"
+  | "lead_adopted"
+  | "lead_adopted_duplicate"
   | "shadow_recorded"
   | "dry_run"
   | "skipped_already_processed";
@@ -53,6 +72,32 @@ export type RingCentralIngestResult = {
   callLeadId: string | null;
   telephonySessionId: string | null;
   callLogId: string | null;
+};
+
+export type RingCentralIngestDependencies = {
+  findProcessedCall: typeof findProcessedCall;
+  attemptConvergence: typeof attemptRingCentralCallLeadConvergence;
+  classifyDuplicate: typeof classifyRingCentralCallLeadDuplicate;
+  resolveWriteMode: typeof resolveRingCentralLeadWriteMode;
+  adoptionEnabled: typeof isRingCentralGranotAdoptionEnabled;
+  assertAdoptionIndexes: typeof assertProcessedCallAdoptionIndexes;
+  createLead: typeof createRingCentralCallLead;
+  insertShadow: typeof insertShadowCallLead;
+  upsertProcessedCall: typeof upsertProcessedCall;
+  recordEvent: typeof recordOperationalEvent;
+};
+
+const defaultIngestDependencies: RingCentralIngestDependencies = {
+  findProcessedCall,
+  attemptConvergence: attemptRingCentralCallLeadConvergence,
+  classifyDuplicate: classifyRingCentralCallLeadDuplicate,
+  resolveWriteMode: resolveRingCentralLeadWriteMode,
+  adoptionEnabled: isRingCentralGranotAdoptionEnabled,
+  assertAdoptionIndexes: assertProcessedCallAdoptionIndexes,
+  createLead: createRingCentralCallLead,
+  insertShadow: insertShadowCallLead,
+  upsertProcessedCall,
+  recordEvent: recordOperationalEvent,
 };
 
 /**
@@ -71,17 +116,21 @@ export type RingCentralIngestResult = {
 export async function ingestRingCentralQualifiedCall(
   call: RingCentralQualifiedCall,
   now: Date = new Date(),
+  dependencies: Partial<RingCentralIngestDependencies> = {},
+  convergenceRaceRetries = 0,
 ): Promise<RingCentralIngestResult> {
-  const existing = await findProcessedCall({
+  const deps = { ...defaultIngestDependencies, ...dependencies };
+  const existing = await deps.findProcessedCall({
     telephonySessionId: call.telephonySessionId,
+    sessionId: call.sessionId,
     callLogId: call.callLogId,
   });
 
   if (
     existing &&
-    (existing.status === "lead_created" ||
-      existing.status === "lead_created_duplicate" ||
-      existing.status === "shadow_recorded")
+    RINGCENTRAL_PROCESSED_CALL_TERMINAL_STATUSES.includes(
+      existing.status as (typeof RINGCENTRAL_PROCESSED_CALL_TERMINAL_STATUSES)[number],
+    )
   ) {
     logger.info({
       msg: "ringcentral.ingest.skipped_already_processed",
@@ -90,7 +139,7 @@ export async function ingestRingCentralQualifiedCall(
       previousStatus: existing.status,
       ingestionSource: call.ingestionSource,
     });
-    await recordOperationalEvent({
+    await deps.recordEvent({
       level: "info",
       eventKey: "ringcentral.call_lead.skipped_already_processed",
       category: "ringcentral",
@@ -119,23 +168,115 @@ export async function ingestRingCentralQualifiedCall(
     };
   }
 
+  const writeMode = deps.resolveWriteMode();
+  const adoptionEnabled = deps.adoptionEnabled();
+  if (
+    writeMode === "create" &&
+    (adoptionEnabled ||
+      (!call.telephonySessionId && Boolean(call.callLogId)))
+  ) {
+    await deps.assertAdoptionIndexes();
+  }
+  if (adoptionEnabled) {
+    await deps.recordEvent({
+      level: "info",
+      eventKey: "ringcentral.call_lead.convergence_attempted",
+      category: "ringcentral",
+      workflow: "ringcentral_call_lead_convergence",
+      summary: "Qualified RingCentral call entered Granot Call Lead convergence.",
+      sourceCompany: call.sourceCompany as SourceCompany,
+      details: {
+        outcome: "attempted",
+        route_id: call.routeResolution.route_id,
+        ingestion_source: call.ingestionSource,
+      },
+      notificationCandidate: false,
+      reportable: false,
+    });
+  }
+  const convergence = await deps.attemptConvergence({
+    call,
+    enabled: adoptionEnabled,
+    allowMutations: writeMode === "create",
+  });
+  if (convergence.outcome === "adopted") {
+    const action = convergence.duplicate
+      ? "lead_adopted_duplicate"
+      : "lead_adopted";
+    await deps.recordEvent({
+      level: convergence.duplicate ? "warn" : "info",
+      eventKey: convergence.duplicate
+        ? "ringcentral.call_lead.adopted_duplicate"
+        : "ringcentral.call_lead.adopted",
+      category: "ringcentral",
+      workflow: "ringcentral_call_lead_convergence",
+      summary: convergence.duplicate
+        ? "Qualified RingCentral call adopted into a Granot-created duplicate Call Lead."
+        : "Qualified RingCentral call adopted into a Granot-created Call Lead.",
+      sourceCompany: call.sourceCompany as SourceCompany,
+      entity: { type: "call_lead", id: convergence.callLeadId },
+      details: {
+        outcome: action,
+        route_id: call.routeResolution.route_id,
+        ingestion_source: call.ingestionSource,
+      },
+      notificationCandidate: false,
+      reportable: false,
+    });
+    return {
+      action,
+      duplicate: convergence.duplicate,
+      duplicateReason: convergence.duplicateReason,
+      callLeadId: convergence.callLeadId,
+      telephonySessionId: call.telephonySessionId,
+      callLogId: call.callLogId,
+    };
+  }
+  if (
+    convergence.outcome === "conflict" ||
+    convergence.outcome === "not_found" ||
+    convergence.outcome === "ineligible"
+  ) {
+    await deps.recordEvent({
+      level: convergence.outcome === "conflict" ? "warn" : "info",
+      eventKey: `ringcentral.call_lead.convergence_${convergence.outcome}`,
+      category: "ringcentral",
+      workflow: "ringcentral_call_lead_convergence",
+      summary:
+        convergence.outcome === "conflict"
+          ? "Qualified RingCentral call found multiple Granot Call Lead convergence candidates."
+          : convergence.outcome === "not_found"
+            ? "Qualified RingCentral call found no Granot Call Lead convergence candidate."
+            : "Qualified RingCentral call was ineligible for Granot Call Lead convergence.",
+      sourceCompany: call.sourceCompany as SourceCompany,
+      details: {
+        outcome: convergence.outcome,
+        route_id: call.routeResolution.route_id,
+        ingestion_source: call.ingestionSource,
+      },
+      notificationCandidate: false,
+      reportable: false,
+    });
+  }
+
   const callTimestamp = call.startTime ?? call.answeredAt ?? now;
-  const duplicate = await classifyRingCentralCallLeadDuplicate({
+  const duplicate = await deps.classifyDuplicate({
     sourceCompany: call.sourceCompany as SourceCompany,
     leadSourceCompany: call.routeResolution.company_id,
     sourceGranularityId: call.routeResolution.granularity_id,
     callerPhoneNumber: call.callerPhoneNumber,
     telephonySessionId: call.telephonySessionId,
+    sessionId: call.sessionId,
+    callLogId: call.callLogId,
     callTimestamp,
   });
 
-  const writeMode = resolveRingCentralLeadWriteMode();
   let action: RingCentralIngestAction;
   let status: RingCentralProcessedCallStatus;
   let callLeadId: string | null = null;
 
   if (writeMode === "create") {
-    const lead = await createRingCentralCallLead({
+    const createInput: CreateRingCentralCallLeadInput = {
       source_company: call.sourceCompany as SourceCompany,
       source_resolution: call.routeResolution,
       phone_number: call.callerPhoneNumber,
@@ -159,12 +300,108 @@ export async function ingestRingCentralQualifiedCall(
         route_assignment_id: call.routeResolution.assignment_id,
         target_phone_number: call.routeResolution.normalized_target_number,
       },
-    });
-    callLeadId = lead._id.toString();
+    };
+    if (dependencies.createLead) {
+      const lead = await deps.createLead(createInput);
+      callLeadId = lead._id.toString();
+    } else {
+      try {
+        const pending = await withTransaction(async (session) => {
+          if (adoptionEnabled) {
+            await acquireRingCentralConvergenceScopeLock({
+              source_granularity_id:
+                call.routeResolution.granularity_id,
+              normalized_phone_number: call.callerPhoneNumber,
+              session,
+              now,
+            });
+            const lateProcessed = await deps.findProcessedCall({
+              telephonySessionId: call.telephonySessionId,
+              sessionId: call.sessionId,
+              callLogId: call.callLogId,
+              session,
+            });
+            if (
+              lateProcessed &&
+              RINGCENTRAL_PROCESSED_CALL_TERMINAL_STATUSES.includes(
+                lateProcessed.status as (typeof RINGCENTRAL_PROCESSED_CALL_TERMINAL_STATUSES)[number],
+              )
+            ) {
+              throw new RingCentralConvergenceScopeRaceError();
+            }
+            const lateSelection =
+              await selectRingCentralConvergenceCandidates(
+                call,
+                session,
+              );
+            if (
+              lateSelection.outcome === "candidate" ||
+              lateSelection.outcome === "conflict"
+            ) {
+              throw new RingCentralConvergenceScopeRaceError();
+            }
+          }
+          const created = await createRingCentralCallLeadInTransaction(
+            createInput,
+            { session, now },
+          );
+          await deps.upsertProcessedCall({
+            provider: "ringcentral",
+            telephonySessionId: call.telephonySessionId,
+            sessionId: call.sessionId,
+            callLogId: call.callLogId,
+            ingestionSource: call.ingestionSource,
+            status: duplicate.isDuplicate
+              ? "lead_created_duplicate"
+              : "lead_created",
+            duplicate: duplicate.isDuplicate,
+            duplicateReason: duplicate.reason,
+            sourceCompany: call.sourceCompany as SourceCompany,
+            sourceLabel: call.sourceLabel,
+            callerPhoneNumber: call.callerPhoneNumber,
+            durationSeconds: call.durationSeconds,
+            qualificationReason: call.qualificationReason,
+            callLeadId: created.lead._id.toString(),
+            now,
+            session,
+          });
+          return created;
+        });
+        callLeadId = pending.lead._id.toString();
+        await finalizeCallLeadCreateAfterCommit(pending);
+      } catch (error) {
+        if (
+          error instanceof RingCentralConvergenceScopeRaceError &&
+          convergenceRaceRetries < 2
+        ) {
+          return ingestRingCentralQualifiedCall(
+            call,
+            now,
+            dependencies,
+            convergenceRaceRetries + 1,
+          );
+        }
+        if (!isDuplicateKeyError(error)) throw error;
+        const raced = await deps.findProcessedCall({
+          telephonySessionId: call.telephonySessionId,
+          sessionId: call.sessionId,
+          callLogId: call.callLogId,
+        });
+        if (!raced) throw error;
+        return {
+          action: "skipped_already_processed",
+          duplicate: raced.duplicate,
+          duplicateReason: raced.duplicateReason,
+          callLeadId: raced.callLeadId,
+          telephonySessionId: call.telephonySessionId,
+          callLogId: call.callLogId,
+        };
+      }
+    }
     action = duplicate.isDuplicate ? "lead_created_duplicate" : "lead_created";
     status = action;
   } else if (writeMode === "shadow") {
-    await insertShadowCallLead({
+    await deps.insertShadow({
       telephonySessionId: call.telephonySessionId,
       sessionId: call.sessionId,
       callLogId: call.callLogId,
@@ -188,23 +425,25 @@ export async function ingestRingCentralQualifiedCall(
     status = "dry_run";
   }
 
-  await upsertProcessedCall({
-    provider: "ringcentral",
-    telephonySessionId: call.telephonySessionId,
-    sessionId: call.sessionId,
-    callLogId: call.callLogId,
-    ingestionSource: call.ingestionSource,
-    status,
-    duplicate: duplicate.isDuplicate,
-    duplicateReason: duplicate.reason,
-    sourceCompany: call.sourceCompany as SourceCompany,
-    sourceLabel: call.sourceLabel,
-    callerPhoneNumber: call.callerPhoneNumber,
-    durationSeconds: call.durationSeconds,
-    qualificationReason: call.qualificationReason,
-    callLeadId,
-    now,
-  });
+  if (writeMode !== "create" || dependencies.createLead) {
+    await deps.upsertProcessedCall({
+      provider: "ringcentral",
+      telephonySessionId: call.telephonySessionId,
+      sessionId: call.sessionId,
+      callLogId: call.callLogId,
+      ingestionSource: call.ingestionSource,
+      status,
+      duplicate: duplicate.isDuplicate,
+      duplicateReason: duplicate.reason,
+      sourceCompany: call.sourceCompany as SourceCompany,
+      sourceLabel: call.sourceLabel,
+      callerPhoneNumber: call.callerPhoneNumber,
+      durationSeconds: call.durationSeconds,
+      qualificationReason: call.qualificationReason,
+      callLeadId,
+      now,
+    });
+  }
 
   logger.info({
     msg: "ringcentral.ingest.processed",
@@ -222,7 +461,7 @@ export async function ingestRingCentralQualifiedCall(
 
   if (action === "lead_created" || action === "lead_created_duplicate") {
     const isDuplicateAction = action === "lead_created_duplicate";
-    await recordOperationalEvent({
+    await deps.recordEvent({
       level: isDuplicateAction ? "warn" : "info",
       eventKey: isDuplicateAction
         ? "ringcentral.call_lead.duplicate_created"
@@ -255,4 +494,13 @@ export async function ingestRingCentralQualifiedCall(
     telephonySessionId: call.telephonySessionId,
     callLogId: call.callLogId,
   };
+}
+
+function isDuplicateKeyError(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: unknown }).code === 11000,
+  );
 }

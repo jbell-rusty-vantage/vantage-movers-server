@@ -1325,6 +1325,12 @@ test("apply resumes from checkpoint without replaying successful actions", async
       synchronizeLeadFromGranot: async () => {
         throw new Error("unexpected");
       },
+      adoptRingCentralCall: async () => {
+        throw new Error("unexpected");
+      },
+      markRingCentralConvergenceConflict: async () => {
+        throw new Error("unexpected");
+      },
     },
     persistence,
   });
@@ -1471,6 +1477,12 @@ test("failed lead dependency blocks dependent booking and continues independentl
       synchronizeLeadFromGranot: async () => {
         throw new Error("unexpected");
       },
+      adoptRingCentralCall: async () => {
+        throw new Error("unexpected");
+      },
+      markRingCentralConvergenceConflict: async () => {
+        throw new Error("unexpected");
+      },
     },
     persistence: {
       appendSourceReceipt: async () => ({ id: "r", inserted: true }),
@@ -1560,6 +1572,12 @@ test("altered plan checksum is rejected before any mutation", async () => {
             throw new Error("unreachable");
           },
           synchronizeLeadFromGranot: async () => {
+            throw new Error("unreachable");
+          },
+          adoptRingCentralCall: async () => {
+            throw new Error("unreachable");
+          },
+          markRingCentralConvergenceConflict: async () => {
             throw new Error("unreachable");
           },
         },

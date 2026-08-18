@@ -10,6 +10,10 @@ import type { CreateLeadFromGranotInput } from "../granotLifecycle/createLeadFro
 import type { SynchronizeLeadExecution } from "../granotLifecycle/synchronizeLeadTypes";
 import type { ObservationChannel } from "../granotLifecycle/types";
 import type { DurableActor } from "../durableWork";
+import type {
+  AdoptRingCentralCallInput,
+  MarkRingCentralConvergenceConflictInput,
+} from "../ringcentral/callLeadConvergence.service";
 
 export type CommandOrigin =
   | "external_sheet_ingestion"
@@ -121,6 +125,12 @@ export interface CanonicalDomainCommands {
     context: CanonicalCommandContext;
     execution: SynchronizeLeadExecution;
   }): Promise<CanonicalCommandResult>;
+  adoptRingCentralCall(
+    input: AdoptRingCentralCallInput,
+  ): Promise<CanonicalCommandResult>;
+  markRingCentralConvergenceConflict(
+    input: MarkRingCentralConvergenceConflictInput,
+  ): Promise<CanonicalCommandResult>;
 }
 
 export class DomainCommandIdempotencyConflictError extends Error {

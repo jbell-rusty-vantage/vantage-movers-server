@@ -449,6 +449,7 @@ const ringcentralConvergenceSchema = new Schema(
     candidate_window_started_at: { type: Date },
     adopted_at: { type: Date },
     conflict_reason: { type: String, trim: true },
+    conflict_call_identity_hash: { type: String, trim: true },
     observation_id: { type: Schema.Types.ObjectId },
   },
   { _id: false },

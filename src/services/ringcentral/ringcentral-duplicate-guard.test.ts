@@ -95,6 +95,32 @@ test("the same telephony session is not counted as its own duplicate", async () 
   assert.equal(result.reason, "unique");
 });
 
+test("[AC-15] the same call-log identity is not counted as its own duplicate", async () => {
+  const result = await classifyRingCentralCallLeadDuplicate(
+    {
+      sourceCompany: "top10_leads",
+      callerPhoneNumber: CALLER,
+      callTimestamp: NOW,
+      telephonySessionId: null,
+      sessionId: "session-current",
+      callLogId: "call-log-current",
+    },
+    {
+      findRecentCallLeads: async () => [
+        {
+          _id: { toString: () => "lead-current" },
+          phone_number: CALLER,
+          ringcentral: {
+            session_id: "session-current",
+            call_log_id: "call-log-current",
+          },
+        },
+      ],
+    },
+  );
+  assert.equal(result.isDuplicate, false);
+});
+
 test("a call with no caller phone cannot be classified as a duplicate", async () => {
   const result = await classifyRingCentralCallLeadDuplicate(
     {
@@ -237,5 +263,96 @@ test("different source is scoped out by the duplicate lookup", async () => {
   );
 
   assert.equal(capturedSourceCompany, "top10_leads");
+  assert.equal(result.isDuplicate, false);
+});
+
+test("[AC-15] adopted Lead id is excluded from duplicate classification", async () => {
+  const result = await classifyRingCentralCallLeadDuplicate(
+    {
+      sourceCompany: "top10_leads",
+      callerPhoneNumber: CALLER,
+      telephonySessionId: "session-adopted",
+      callLeadIdToExclude: "lead-adopted",
+      callTimestamp: NOW,
+    },
+    {
+      findRecentCallLeads: async ({ callLeadIdToExclude }) => {
+        assert.equal(callLeadIdToExclude, "lead-adopted");
+        return [
+          {
+            _id: { toString: () => "lead-adopted" },
+            phone_number: CALLER,
+          },
+        ];
+      },
+    },
+  );
+  assert.equal(result.isDuplicate, false);
+  assert.equal(result.reason, "unique");
+});
+
+test("[AC-15][AC-16] unresolved Granot candidates do not create false duplicates", async () => {
+  for (const state of ["pending", "conflict"] as const) {
+    const result = await classifyRingCentralCallLeadDuplicate(
+      {
+        sourceCompany: "top10_leads",
+        callerPhoneNumber: CALLER,
+        telephonySessionId: "session-current",
+        callTimestamp: NOW,
+      },
+      {
+        findRecentCallLeads: async () => [
+          {
+            _id: { toString: () => `lead-${state}` },
+            phone_number: CALLER,
+            ingestion_origin: "granot_lead_created",
+            ringcentral_convergence: { state },
+          },
+        ],
+      },
+    );
+    assert.equal(result.isDuplicate, false);
+  }
+});
+
+test("[AC-15] adopted Granot candidate from another physical call remains eligible", async () => {
+  const result = await classifyRingCentralCallLeadDuplicate(
+    {
+      sourceCompany: "top10_leads",
+      callerPhoneNumber: CALLER,
+      telephonySessionId: "session-current",
+      callTimestamp: NOW,
+    },
+    {
+      findRecentCallLeads: async () => [
+        {
+          _id: { toString: () => "lead-prior-adopted" },
+          phone_number: CALLER,
+          ingestion_origin: "granot_lead_created",
+          ringcentral_convergence: { state: "adopted" },
+          ringcentral: { telephony_session_id: "session-prior" },
+        },
+      ],
+    },
+  );
+  assert.equal(result.isDuplicate, true);
+  assert.equal(result.existingLeadId, "lead-prior-adopted");
+});
+
+test("[AC-15] future Leads are outside the earlier-only duplicate window", async () => {
+  const result = await classifyRingCentralCallLeadDuplicate(
+    {
+      sourceCompany: "top10_leads",
+      callerPhoneNumber: CALLER,
+      telephonySessionId: "session-current",
+      callTimestamp: NOW,
+    },
+    {
+      findRecentCallLeads: async ({ to }) => {
+        assert.equal(to.toISOString(), STORED_NOW.toISOString());
+        return [];
+      },
+    },
+  );
   assert.equal(result.isDuplicate, false);
 });

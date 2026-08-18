@@ -1,5 +1,5 @@
 ---
-description: RingCentral call-candidate, session, cron, and call-lead promotion workflow
+description: RingCentral qualification, Granot Call Lead convergence, duplicate, and promotion workflow
 globs: src/services/ringcentral/**/*.ts,scripts/dev_ops/ringcentral/**/*.ts,src/routes/ringcentral-*.routes.ts,package.json
 alwaysApply: false
 ---
@@ -18,5 +18,10 @@ alwaysApply: false
 - Webhook path: normalize party events, upsert per-party candidates, aggregate a session in `call-session-aggregator.ts`, and ingest only when the session is both qualified and terminal.
 - Call Log cron path: `call-log-sync.service.ts` fetches detailed inbound records, `call-log-vetting.ts` applies the same business rule, and qualified records go through `ringcentral-call-lead-ingest.service.ts`.
 - Analytics reconcile is count-level only; it stores snapshots for comparison and must not create leads.
-- `ringcentral-call-lead-ingest.service.ts` owns idempotency, duplicate classification, dry-run/shadow/create branching, and processed-call ledger writes. Do not bypass it.
+- `ringcentral-call-lead-ingest.service.ts` owns the exact promotion order: processed-call idempotency, optional Granot-created Lead adoption, business duplicate classification, create only when adoption did not succeed, then normal shadow/dry-run handling and processed-ledger persistence. Do not bypass it.
+- `callLeadConvergence.service.ts` is the only candidate-selection/adoption/conflict seam. The exact qualified-call candidate is one `ingestion_origin:"granot_lead_created"` + `ringcentral_convergence.state:"pending"` Call Lead in the active route's exact Source Granularity, with exact normalized caller phone against immutable `ingested_contact_snapshot.normalized_phone_number`, no attached RingCentral session/call-log identity, and `createdAt` inclusively within call start ±12 hours. Missing start/phone, zero rows, and Job-number-only rows are ineligible; deterministic sort never chooses among multiple rows.
+- Exactly one candidate is revalidated and adopted canonically in one transaction with immutable Granot origin/snapshot retention, immutable `ringcentral.original_caller`, complete verified telephony/route/timing/qualification evidence, duplicate result, revision/Change, `call_lead.update` outbox, and processed ledger. Multiple candidates are never guessed: atomically mark all still-eligible rows `conflict` with `multiple_adoption_candidates` and a bounded call-identity hash, then continue normal ingest. Zero/ineligible also continue normal ingest.
+- Duplicate classification remains exact Source Granularity + normalized phone + a different non-duplicate prior Call Lead in `[call time - 90 days, call time)`. Exclude the adopted Lead ID, current telephony session, and unresolved Granot-created `pending`/`conflict` rows with no RingCentral identity. Other eligible legacy/current rows and adopted rows from another physical call still participate.
+- `RINGCENTRAL_GRANOT_ADOPTION_ENABLED` defaults false. True attempts convergence before duplicate classification, but only `create` write mode allows adoption/conflict mutation; shadow/dry-run continue without mutating existing Leads. Rollback disables this flag and preserves all committed evidence.
+- Processed-ledger terminal results include `lead_adopted` and `lead_adopted_duplicate`. Adoption fails closed unless both sparse unique session and call-log identity indexes exist; the report-first migration is owned by `scripts/migrations/ringcentral-processed-call-indexes.ts`, and Unit 20 performed no production apply.
 - Inspect with `/api/dev/ringcentral/*` and the `tsx` runners under `scripts/dev_ops/ringcentral/` (no `pnpm ringcentral:*` scripts are wired).

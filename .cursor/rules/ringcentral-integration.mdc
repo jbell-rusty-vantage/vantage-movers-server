@@ -1,6 +1,6 @@
 ---
 description: RingCentral auth, hybrid call-lead pipeline, scripts, and integration setup
-globs: src/services/ringcentral/**/*.ts,scripts/dev_ops/ringcentral/**/*.ts,src/routes/**/*.ts,package.json
+globs: src/services/ringcentral/**/*.ts,scripts/dev_ops/ringcentral/**/*.ts,scripts/migrations/ringcentral-processed-call-indexes*.ts,src/routes/**/*.ts,package.json
 alwaysApply: false
 ---
 
@@ -15,16 +15,21 @@ alwaysApply: false
 ## Runtime Service Boundaries
 
 - `ringcentral-config.ts` owns all RingCentral env toggles, collection names, collection mode, duplicate window, cron lookback/overlap, analytics buffer, and lead write mode.
+- `RINGCENTRAL_GRANOT_ADOPTION_ENABLED` is a narrow fail-closed gate, default false. Enabled convergence still mutates Leads only when the existing RingCentral write mode is `create`; shadow/dry-run remain non-mutating for adoption/conflict.
 - `client.ts`, `auth.ts`, and token stores own RingCentral API access. Keep token persistence storage-agnostic through `TokenStore`.
 - The Operations Registry RingCentral route snapshot owns inbound-number identity and attribution. `call-lead-sources.ts` is migration/test seed data only; runtime code must not import it or fall back to it.
 - Webhook flow: capture raw events, normalize party events, upsert candidates, aggregate sessions, then call shared ingest only when the session is qualified and terminal.
 - Cron flow: `call-log-sync.service.ts` fetches detailed inbound Call Log records, `call-log-vetting.ts` qualifies them, then shared ingest handles idempotency/duplicates/write mode.
 - Analytics flow: `analytics-reconcile.service.ts` stores aggregate snapshots only. It must not create caller-level leads.
-- `ringcentral-call-lead-ingest.service.ts` is the only RingCentral service that should promote qualified calls into dry-run, shadow, or real `call_leads` outcomes. Real creates persist top-level `ingestion_origin=ringcentral` and an immutable ingested contact snapshot; nested `ringcentral.ingestion_source` remains webhook/call-log/manual transport provenance.
+- `ringcentral-call-lead-ingest.service.ts` is the only RingCentral promotion gate. Its order is processed-call idempotency, optional Granot-created Lead convergence, business duplicate classification, then create/shadow/dry-run only when adoption did not succeed. Real creates persist top-level `ingestion_origin=ringcentral`; adoption preserves `ingestion_origin=granot_lead_created`. Nested `ringcentral.ingestion_source` remains webhook/call-log/manual transport provenance.
+- `callLeadConvergence.service.ts` alone owns candidate selection and canonical adoption/conflict. Routes, webhook/session code, Call Log sync, clients, and the duplicate guard must not select or mutate candidates.
+- Granot Call creation and RingCentral adoption/normal creation must acquire the same hashed Granularity+phone convergence scope fence before checking or creating. Keep raw phones out of lock rows, and recover revision/idempotency races by re-reading ledger/candidates rather than failing or creating a second Lead.
 
 ## Safety Posture
 
 - Default posture is dry-run. Real lead creation requires `RINGCENTRAL_CREATE_CALL_LEADS=true`; shadow creation requires `RINGCENTRAL_SHADOW_CALL_LEADS=true` with real creation off.
+- Roll adoption out independently: verify the processed-call session and call-log identity fences, keep `RINGCENTRAL_GRANOT_ADOPTION_ENABLED=false` until separately approved, and preserve the existing create/shadow/dry-run posture. Roll back by disabling adoption first; never detach committed caller/telephony evidence, reset convergence, delete conflict/ledger/Command/Change/outbox evidence, or automatically reverse duplicate classification.
+- Adoption requires unique sparse `telephonySessionId` and `callLogId` indexes on `ringcentral_processed_calls`. Runtime transaction paths do not create indexes. `migration:ringcentral:processed-call-indexes` is report-first, refuses collisions, and requires explicit database/apply authorization plus matching collection mode. Unit 20 added this utility but did not authorize or perform a production apply.
 - Token storage may use Mongo via `RC_TOKEN_STORE=mongo`; local file cache `.ringcentral-token-cache.json` remains supported and ignored by git.
 - RingCentral collection names are mode-aware. Confirm `RINGCENTRAL_COLLECTION_MODE` before touching production state.
 - Manual runners live under `scripts/dev_ops/ringcentral/`. There are **no** `pnpm ringcentral:*` scripts in `package.json`. Invoke with `node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/ringcentral/<script>.ts` (for example `ringcentral-diagnose.ts`, `ringcentral-webhook-create.ts`, `ringcentral-webhook-create-local.ts`, `ringcentral-webhook-monitor.ts`).

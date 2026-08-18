@@ -20,6 +20,10 @@ import {
 } from "./leads";
 import { createLeadFromGranot } from "../granotLifecycle/createLeadFromGranot";
 import { synchronizeLeadFromGranot } from "../granotLifecycle/synchronizeLeadFromGranot";
+import {
+  adoptRingCentralCall,
+  markRingCentralConvergenceConflict,
+} from "../ringcentral/callLeadConvergence.service";
 import type { CanonicalDomainCommands } from "./types";
 
 export * from "./bookings";
@@ -30,6 +34,10 @@ export * from "./idempotency";
 export * from "./leads";
 export * from "./types";
 export { createLeadFromGranot } from "../granotLifecycle/createLeadFromGranot";
+export {
+  adoptRingCentralCall,
+  markRingCentralConvergenceConflict,
+} from "../ringcentral/callLeadConvergence.service";
 
 export const canonicalDomainCommands: CanonicalDomainCommands = {
   createFormLead,
@@ -41,6 +49,8 @@ export const canonicalDomainCommands: CanonicalDomainCommands = {
   createCancellation,
   createLeadFromGranot,
   synchronizeLeadFromGranot,
+  adoptRingCentralCall,
+  markRingCentralConvergenceConflict,
 };
 
 export const existingWriteCanonicalCommands = {

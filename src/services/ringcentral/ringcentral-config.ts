@@ -27,6 +27,7 @@ export type RingCentralCollectionKey =
   | "callSessions"
   | "callSessionDecisions"
   | "processedCalls"
+  | "convergenceLocks"
   | "callLogSyncState"
   | "shadowCallLeads"
   | "analyticsSnapshots";
@@ -44,6 +45,7 @@ const BASE_COLLECTION_NAMES: Record<RingCentralCollectionKey, string> = {
   callSessions: "ringcentral_call_sessions",
   callSessionDecisions: "ringcentral_call_session_decisions",
   processedCalls: "ringcentral_processed_calls",
+  convergenceLocks: "ringcentral_convergence_locks",
   callLogSyncState: "ringcentral_call_log_sync_state",
   shadowCallLeads: "ringcentral_shadow_call_leads",
   analyticsSnapshots: "ringcentral_analytics_snapshots",
@@ -59,6 +61,7 @@ export type RingCentralRuntimeConfig = {
   analyticsReconcileEnabled: boolean;
   createCallLeads: boolean;
   shadowCallLeads: boolean;
+  granotAdoptionEnabled: boolean;
   webhookCallLogValidate: boolean;
   collectionMode: RingCentralCollectionMode;
   webhookFilterMode: RingCentralWebhookFilterMode;
@@ -126,6 +129,14 @@ export function shouldCreateRingCentralCallLeads(): boolean {
  */
 export function shouldShadowRingCentralCallLeads(): boolean {
   return envFlag("RINGCENTRAL_SHADOW_CALL_LEADS", false);
+}
+
+/**
+ * Narrow, fail-closed gate for adopting qualified calls into pending
+ * Granot-created Call Leads. Rollout is independent from call-lead creation.
+ */
+export function isRingCentralGranotAdoptionEnabled(): boolean {
+  return envFlag("RINGCENTRAL_GRANOT_ADOPTION_ENABLED", false);
 }
 
 /**
@@ -200,6 +211,7 @@ export function getRingCentralRuntimeConfig(): RingCentralRuntimeConfig {
     analyticsReconcileEnabled: isRingCentralAnalyticsReconcileEnabled(),
     createCallLeads: shouldCreateRingCentralCallLeads(),
     shadowCallLeads: shouldShadowRingCentralCallLeads(),
+    granotAdoptionEnabled: isRingCentralGranotAdoptionEnabled(),
     webhookCallLogValidate: shouldWebhookCallLogValidate(),
     collectionMode: getRingCentralCollectionMode(),
     webhookFilterMode: getRingCentralWebhookFilterMode(),

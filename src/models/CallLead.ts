@@ -24,6 +24,15 @@ import { normalizeJobNo } from "../services/bookings/bookingIdentity";
  * lead per RingCentral session no matter how many times the webhook fires or
  * the cron re-scans the same window.
  */
+const ringCentralOriginalCallerSchema = new Schema(
+  {
+    phone_number: { type: String, required: true, trim: true },
+    normalized_phone_number: { type: String, required: true, trim: true },
+    captured_at: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
 const ringCentralCallMetadataSchema = new Schema(
   {
     telephony_session_id: { type: String, trim: true },
@@ -36,6 +45,8 @@ const ringCentralCallMetadataSchema = new Schema(
       enum: ["webhook", "call_log_sync", "manual"],
     },
     qualification_reason: { type: String, trim: true },
+    start_time: { type: Date },
+    end_time: { type: Date },
     answered_at: { type: Date },
     terminal_at: { type: Date },
     duration_seconds: { type: Number },
@@ -50,6 +61,11 @@ const ringCentralCallMetadataSchema = new Schema(
       index: true,
     },
     target_phone_number: { type: String, trim: true, index: true },
+    target_name: { type: String, trim: true },
+    original_caller: {
+      type: ringCentralOriginalCallerSchema,
+      immutable: true,
+    },
   },
   { _id: false },
 );
@@ -231,6 +247,34 @@ CallLeadSchema.pre("validate", function requireLeadIdentity() {
     this.invalidate("phone_number", "Call lead requires either phone_number or job_no");
   }
 });
+
+CallLeadSchema.pre(
+  ["updateOne", "updateMany", "findOneAndUpdate", "replaceOne", "findOneAndReplace"],
+  function rejectRingCentralCallerReplacement() {
+    const update = this.getUpdate() as
+      | {
+          ringcentral?: unknown;
+          $set?: { ringcentral?: unknown };
+        }
+      | null;
+    const replacesRingCentral =
+      update?.ringcentral != null || update?.$set?.ringcentral != null;
+    if (!replacesRingCentral) return;
+    const callerGuard = (
+      this.getFilter() as Record<string, unknown>
+    )["ringcentral.original_caller"];
+    const explicitlyAbsent =
+      callerGuard != null &&
+      typeof callerGuard === "object" &&
+      "$exists" in callerGuard &&
+      (callerGuard as { $exists?: unknown }).$exists === false;
+    if (!explicitlyAbsent) {
+      throw new Error(
+        "RingCentral metadata with original caller evidence is immutable.",
+      );
+    }
+  },
+);
 
 export type CallLeadDocument = InferSchemaType<typeof CallLeadSchema> & {
   _id: mongoose.Types.ObjectId;
