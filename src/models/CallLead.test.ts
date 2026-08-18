@@ -6,7 +6,7 @@ import {
   RECEIVER_AGENT_SOURCES,
   RINGCENTRAL_CONVERGENCE_STATES,
 } from "./granotLifecycleSchemas";
-import { CallLead } from "./CallLead";
+import { CALL_LEAD_S08_INDEXES, CallLead } from "./CallLead";
 
 function callLeadAttrs(overrides: Record<string, unknown> = {}) {
   return {
@@ -120,6 +120,8 @@ test("[AC-12] CallLead receiver-agent enum gains granot_username_match", () => {
 });
 
 test("[AC-07] CallLead declares the three exact S08 indexes and no unique Lead Job index", () => {
+  assert.equal(CALL_LEAD_S08_INDEXES.length, 3);
+  assert.equal(CALL_LEAD_S08_INDEXES[0]?.name, "call_lead_source_granularity_normalized_job_no");
   assert.equal(hasIndex({ source_granularity_id: 1, normalized_job_no: 1 }), true);
   assert.equal(
     hasIndex({

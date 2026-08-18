@@ -31,14 +31,22 @@ import {
   verifyReceiptIndexDefinitions,
   verifySynchronizationDecisionIndexDefinitions,
   findBookedLeadNormalizedJobCollisions,
+  hasGlobalUniqueLeadJobIndex,
+  leadS08IndexesAreAllNonUnique,
   orderedBookedLeadIndexCreates,
+  orderedCallLeadS08IndexCreates,
+  orderedFormLeadS08IndexCreates,
   verifyBookedLeadNormalizedJobIndexDefinitions,
+  verifyCallLeadS08IndexDefinitions,
+  verifyFormLeadS08IndexDefinitions,
 } from "./granot-lifecycle-indexes.lib";
 import { SYNCHRONIZATION_DECISION_INDEXES } from "../../src/models/SynchronizationDecision";
 import { GRANOT_LIFECYCLE_ACTIVATION_INDEXES } from "../../src/models/GranotLifecycleActivation";
 import { GRANOT_RECORD_LINK_INDEXES } from "../../src/models/GranotRecordLink";
 import { GRANOT_AUTOMATION_SOURCE_INDEXES } from "../../src/models/GranotAutomationSource";
 import { BOOKED_LEAD_NORMALIZED_JOB_INDEX } from "../../src/models/BookedLead";
+import { CALL_LEAD_S08_INDEXES } from "../../src/models/CallLead";
+import { FORM_LEAD_S08_INDEXES } from "../../src/models/FormLead";
 
 test("[AC-02] unique/partial collision report ignores webhook rows without operation ids", () => {
   const collisions = findChannelOperationIdCollisions([
@@ -394,6 +402,75 @@ test("[AC-21] Booking index verify accepts the named contract or the default dep
   const missing = verifyBookedLeadNormalizedJobIndexDefinitions([]);
   assert.equal(missing.ok, false);
   assert.deepEqual(missing.missing, [BOOKED_LEAD_NORMALIZED_JOB_INDEX.name]);
+});
+
+test("[AC-10][AC-11][AC-12] foundation/partial: seven exact non-unique Lead indexes and no global unique Lead Job index", () => {
+  assert.equal(FORM_LEAD_S08_INDEXES.length, 4);
+  assert.equal(CALL_LEAD_S08_INDEXES.length, 3);
+  assert.equal(leadS08IndexesAreAllNonUnique(), true);
+  const formOrdered = orderedFormLeadS08IndexCreates();
+  const callOrdered = orderedCallLeadS08IndexCreates();
+  assert.equal(formOrdered.unique.length, 0);
+  assert.equal(callOrdered.unique.length, 0);
+  assert.equal(formOrdered.nonUnique.length, 4);
+  assert.equal(callOrdered.nonUnique.length, 3);
+  assert.deepEqual(formOrdered.nonUnique[0]?.key, { normalized_job_no: 1 });
+  assert.deepEqual(formOrdered.nonUnique[3]?.key, { ref_no: 1, duplicate: 1 });
+  assert.deepEqual(callOrdered.nonUnique[2]?.key, {
+    ingestion_origin: 1,
+    source_granularity_id: 1,
+    "ingested_contact_snapshot.normalized_phone_number": 1,
+    createdAt: -1,
+  });
+
+  const formActual = FORM_LEAD_S08_INDEXES.map((index) => ({
+    name: index.name,
+    key: { ...index.key },
+  }));
+  const formVerified = verifyFormLeadS08IndexDefinitions(formActual);
+  assert.equal(formVerified.ok, true);
+  const formLegacy = verifyFormLeadS08IndexDefinitions([
+    { name: "normalized_job_no_1", key: { normalized_job_no: 1 } },
+    {
+      name: "source_granularity_id_1_normalized_job_no_1",
+      key: { source_granularity_id: 1, normalized_job_no: 1 },
+    },
+    {
+      name: "source_granularity_id_1_normalized_phone_number_1_duplicate_1",
+      key: {
+        source_granularity_id: 1,
+        normalized_phone_number: 1,
+        duplicate: 1,
+      },
+    },
+    { name: "ref_no_1_duplicate_1", key: { ref_no: 1, duplicate: 1 } },
+  ]);
+  assert.equal(formLegacy.ok, true);
+
+  const missing = verifyFormLeadS08IndexDefinitions([]);
+  assert.equal(missing.ok, false);
+  assert.equal(missing.missing.length, 4);
+
+  const uniqueJob = verifyFormLeadS08IndexDefinitions([
+    ...formActual,
+    { name: "normalized_job_no_unique", key: { normalized_job_no: 1 }, unique: true },
+  ]);
+  assert.equal(uniqueJob.ok, false);
+  assert.equal(
+    hasGlobalUniqueLeadJobIndex([
+      { name: "normalized_job_no_unique", key: { normalized_job_no: 1 }, unique: true },
+    ]),
+    true,
+  );
+
+  const callActual = CALL_LEAD_S08_INDEXES.map((index) => ({
+    name: index.name,
+    key: { ...index.key },
+  }));
+  assert.equal(verifyCallLeadS08IndexDefinitions(callActual).ok, true);
+  const callMissing = verifyCallLeadS08IndexDefinitions(callActual.slice(0, 2));
+  assert.equal(callMissing.ok, false);
+  assert.deepEqual(callMissing.missing, ["call_lead_origin_source_ingested_phone_created"]);
 });
 
 test("[AC-32] EntityChange indexes create non-unique first and verify the unique entity/revision key", () => {

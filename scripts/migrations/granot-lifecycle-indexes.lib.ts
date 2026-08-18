@@ -11,6 +11,8 @@ import { SYNCHRONIZATION_DECISION_INDEXES } from "../../src/models/Synchronizati
 import { GRANOT_LIFECYCLE_ACTIVATION_INDEXES } from "../../src/models/GranotLifecycleActivation";
 import { GRANOT_RECORD_LINK_INDEXES } from "../../src/models/GranotRecordLink";
 import { BOOKED_LEAD_NORMALIZED_JOB_INDEX } from "../../src/models/BookedLead";
+import { FORM_LEAD_S08_INDEXES } from "../../src/models/FormLead";
+import { CALL_LEAD_S08_INDEXES } from "../../src/models/CallLead";
 import { maskReceiptId } from "./granot-lifecycle-migration.lib";
 import {
   inventoryBookingJobs,
@@ -19,7 +21,9 @@ import {
 
 import { ENTITY_CHANGE_INDEXES } from "../../src/models/EntityChange";
 
-export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/7";
+export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/8";
+export const FORM_LEAD_COLLECTION = "form_leads";
+export const CALL_LEAD_COLLECTION = "call_leads";
 
 export const GRANOT_CRM_SOURCE_UNIQUE_INDEX_APPLY_ENABLED = true;
 
@@ -581,4 +585,106 @@ export function verifyBookedLeadNormalizedJobIndexDefinitions(
 
 function sameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
+export type LeadS08IndexContract = {
+  name: string;
+  key: Record<string, number>;
+  accepted_names: readonly string[];
+};
+
+export function orderedFormLeadS08IndexCreates() {
+  return {
+    nonUnique: [...FORM_LEAD_S08_INDEXES],
+    unique: [] as Array<(typeof FORM_LEAD_S08_INDEXES)[number]>,
+  };
+}
+
+export function orderedCallLeadS08IndexCreates() {
+  return {
+    nonUnique: [...CALL_LEAD_S08_INDEXES],
+    unique: [] as Array<(typeof CALL_LEAD_S08_INDEXES)[number]>,
+  };
+}
+
+export function leadS08IndexesAreAllNonUnique(): boolean {
+  return (
+    FORM_LEAD_S08_INDEXES.length + CALL_LEAD_S08_INDEXES.length === 7 &&
+    [...FORM_LEAD_S08_INDEXES, ...CALL_LEAD_S08_INDEXES].every(
+      (index) => !("unique" in index),
+    )
+  );
+}
+
+function findLeadS08Index(
+  actual: readonly DeclaredMongoIndex[],
+  expected: LeadS08IndexContract,
+): DeclaredMongoIndex | undefined {
+  return (
+    actual.find((index) => expected.accepted_names.includes(index.name)) ??
+    actual.find((index) => sameKey(index.key, expected.key))
+  );
+}
+
+export function leadS08IndexAlreadyPresent(
+  actual: readonly DeclaredMongoIndex[],
+  expected: LeadS08IndexContract,
+): boolean {
+  const found = findLeadS08Index(actual, expected);
+  return Boolean(found && found.unique !== true && sameKey(found.key, expected.key));
+}
+
+function verifyLeadS08IndexDefinitions(
+  actual: readonly DeclaredMongoIndex[],
+  expectedIndexes: readonly LeadS08IndexContract[],
+): { ok: boolean; missing: string[]; mismatched: string[]; observed_names: string[] } {
+  const missing: string[] = [];
+  const mismatched: string[] = [];
+  const observed_names: string[] = [];
+  for (const expected of expectedIndexes) {
+    const found = findLeadS08Index(actual, expected);
+    if (!found) {
+      missing.push(expected.name);
+      continue;
+    }
+    observed_names.push(found.name);
+    if (found.unique === true || !sameKey(found.key, expected.key)) {
+      mismatched.push(found.name);
+    }
+  }
+  const uniqueLeadJob = actual.filter(
+    (index) => index.unique === true && "normalized_job_no" in index.key && Object.keys(index.key).length === 1,
+  );
+  if (uniqueLeadJob.length > 0) {
+    mismatched.push(...uniqueLeadJob.map((index) => index.name));
+  }
+  return {
+    ok: missing.length === 0 && mismatched.length === 0,
+    missing,
+    mismatched,
+    observed_names,
+  };
+}
+
+export function verifyFormLeadS08IndexDefinitions(
+  actual: readonly DeclaredMongoIndex[],
+) {
+  return verifyLeadS08IndexDefinitions(actual, FORM_LEAD_S08_INDEXES);
+}
+
+export function verifyCallLeadS08IndexDefinitions(
+  actual: readonly DeclaredMongoIndex[],
+) {
+  return verifyLeadS08IndexDefinitions(actual, CALL_LEAD_S08_INDEXES);
+}
+
+export function hasGlobalUniqueLeadJobIndex(
+  actual: readonly DeclaredMongoIndex[],
+): boolean {
+  return actual.some(
+    (index) =>
+      index.unique === true &&
+      "normalized_job_no" in index.key &&
+      Object.keys(index.key).length === 1,
+  );
 }

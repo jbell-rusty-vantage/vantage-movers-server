@@ -50,7 +50,7 @@ MongoDB is the **System of Record** for Form Leads, Call Leads, Bookings, Cancel
 
 ## Bookings and cancellations
 
-- Form Lead, Call Lead, Booking, and Cancellation documents carry additive `domain_revision` and `change_history_started_at`. Public/admin DTOs cannot set them. Existing canonical adapters persist append-only `EntityChange` rows and stamp `last_change_*` / `domain_revision` in the executor transaction ([`granotLifecycle.revisions.md`](../businesslogic/granotLifecycle.revisions.md), [`domainCommands.service.md`](../businesslogic/domainCommands.service.md)).
+- Form Lead, Call Lead, Booking, and Cancellation documents carry additive `domain_revision` and `change_history_started_at`. Public/admin DTOs cannot set them. Existing canonical adapters persist append-only `EntityChange` rows and stamp `last_change_*` / `domain_revision` in the executor transaction ([`granotLifecycle.revisions.md`](../businesslogic/granotLifecycle.revisions.md), [`domainCommands.service.md`](../businesslogic/domainCommands.service.md)). Historical Lead origin/snapshot backfill is metadata-only (`legacy_unknown` / `legacy_baseline`) and never rewrites current contact, move, Job, source, or revision facts.
 - Bookings link to a source lead via `lead_ref` / `lead_model` except **Referral Booking** and **leadless bookings** ([`bookings.service.md`](../businesslogic/bookings.service.md)). Employee public submit is a separate path (`employeeBookings/`).
 - One lead-attached booking per `(lead_ref, lead_model)`; repeat creates upsert unless `submission_id` matches.
 - **Booking Chain** Sheet Sync on create/update; referral uses `booked_lead` job.

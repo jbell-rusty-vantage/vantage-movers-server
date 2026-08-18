@@ -165,18 +165,45 @@ CallLeadSchema.index({
   duplicate: 1,
   timestamp: -1,
 });
-CallLeadSchema.index({ source_granularity_id: 1, normalized_job_no: 1 });
-CallLeadSchema.index({
-  source_granularity_id: 1,
-  normalized_phone_number: 1,
-  createdAt: -1,
-});
-CallLeadSchema.index({
-  ingestion_origin: 1,
-  source_granularity_id: 1,
-  "ingested_contact_snapshot.normalized_phone_number": 1,
-  createdAt: -1,
-});
+export const CALL_LEAD_S08_INDEXES = [
+  {
+    name: "call_lead_source_granularity_normalized_job_no",
+    key: { source_granularity_id: 1, normalized_job_no: 1 },
+    accepted_names: [
+      "call_lead_source_granularity_normalized_job_no",
+      "source_granularity_id_1_normalized_job_no_1",
+    ],
+  },
+  {
+    name: "call_lead_source_granularity_normalized_phone_created",
+    key: {
+      source_granularity_id: 1,
+      normalized_phone_number: 1,
+      createdAt: -1,
+    },
+    accepted_names: [
+      "call_lead_source_granularity_normalized_phone_created",
+      "source_granularity_id_1_normalized_phone_number_1_createdAt_-1",
+    ],
+  },
+  {
+    name: "call_lead_origin_source_ingested_phone_created",
+    key: {
+      ingestion_origin: 1,
+      source_granularity_id: 1,
+      "ingested_contact_snapshot.normalized_phone_number": 1,
+      createdAt: -1,
+    },
+    accepted_names: [
+      "call_lead_origin_source_ingested_phone_created",
+      "ingestion_origin_1_source_granularity_id_1_ingested_contact_snapshot.normalized_phone_number_1_createdAt_-1",
+    ],
+  },
+] as const;
+
+for (const index of CALL_LEAD_S08_INDEXES) {
+  CallLeadSchema.index(index.key, { name: index.name });
+}
 
 applyLeadProvenanceGuards(CallLeadSchema);
 applyAggregateRevisionGuards(CallLeadSchema);

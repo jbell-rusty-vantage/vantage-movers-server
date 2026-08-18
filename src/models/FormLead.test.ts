@@ -7,7 +7,7 @@ import {
   PUBLIC_LEAD_FORBIDDEN_LIFECYCLE_FIELDS,
   RECEIVER_AGENT_SOURCES,
 } from "./granotLifecycleSchemas";
-import { FormLead } from "./FormLead";
+import { FORM_LEAD_S08_INDEXES, FormLead } from "./FormLead";
 
 function formLeadAttrs(overrides: Record<string, unknown> = {}) {
   return {
@@ -182,6 +182,8 @@ test("[AC-12] FormLead receiver-agent enum gains granot_username_match and keeps
 });
 
 test("[AC-07] FormLead declares the four exact S08 indexes and no unique Lead Job index", () => {
+  assert.equal(FORM_LEAD_S08_INDEXES.length, 4);
+  assert.equal(FORM_LEAD_S08_INDEXES[0]?.name, "form_lead_normalized_job_no");
   assert.equal(hasIndex({ normalized_job_no: 1 }), true);
   assert.equal(hasIndex({ source_granularity_id: 1, normalized_job_no: 1 }), true);
   assert.equal(

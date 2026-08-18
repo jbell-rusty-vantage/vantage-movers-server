@@ -97,7 +97,7 @@ Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 
 ## Lifecycle revision
 
-`domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision, origin, snapshot, Priority provenance, temporal-winner, contact-summary, or `ringcentral_convergence` metadata. Canonical create/update/delete routes persist an append-only `EntityChange` and stamp `last_change_*` in the executor transaction. Lead Job Number remains non-unique. `quoted` is required and defaults to `false`. Nested `ringcentral.ingestion_source` remains transport provenance and is not Ingestion Origin. `granot_lead_created` is assignable for a trusted Granot create context only; no live caller. Shared provenance/temporal/convergence fields are storage only.
+`domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision, origin, snapshot, Priority provenance, temporal-winner, contact-summary, or `ringcentral_convergence` metadata. Canonical create/update/delete routes persist an append-only `EntityChange` and stamp `last_change_*` in the executor transaction. Lead Job Number remains non-unique. `quoted` is required and defaults to `false`. Nested `ringcentral.ingestion_source` remains transport provenance and is not Ingestion Origin. Historical rows without durable proof receive `legacy_unknown` / `legacy_baseline` from the Lead provenance migration only; later RingCentral adoption never rewrites `granot_lead_created`. `granot_lead_created` is assignable for a trusted Granot create context only; no live caller. Shared provenance/temporal/convergence fields are storage only.
 
 ## Related businesslogic
 

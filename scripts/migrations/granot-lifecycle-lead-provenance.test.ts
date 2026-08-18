@@ -17,8 +17,21 @@ import {
 } from "./granot-lifecycle-revisions.lib";
 import {
   LEAD_PROVENANCE_REVISION_COLLECTIONS,
+  assertLeadProvenanceApplyAllowed,
+  buildLegacyBaselineContactSnapshot,
+  buildLegacyBaselineMoveSnapshot,
+  classifyLeadIngestionOrigin,
+  classifyLeadJob,
+  leadProvenanceApplyManifest,
+  leadProvenanceReviewProjection,
   leadRevisionManifestBody,
+  persistReviewedBaseline,
+  planLeadProvenanceMigration,
   planLeadRevisionMigration,
+  resolveReviewedBaseline,
+  scanLeadProvenanceArtifactForPii,
+  verifyLeadProvenanceMigration,
+  type LeadProvenanceInventoryRow,
 } from "./granot-lifecycle-lead-provenance.lib";
 
 const REVIEWED = "2026-08-17T20:00:00.000Z";
@@ -137,6 +150,331 @@ test("[AC-32] verify fails on every missing or invalid invariant", () => {
     ],
   });
   assert.equal(valid.ok, true);
+});
+
+const BASELINE = "2026-08-17T21:00:00.000Z";
+const FORM_SCOPE = "aaaaaaaaaaaaaaaaaaaaaaaa";
+const CALL_SCOPE = "bbbbbbbbbbbbbbbbbbbbbbbb";
+
+function provenanceRow(
+  id: string,
+  overrides: Partial<LeadProvenanceInventoryRow> = {},
+): LeadProvenanceInventoryRow {
+  return { _id: id, ...overrides };
+}
+
+test("[AC-10][AC-11][AC-12] foundation/partial: unknown origin is legacy_unknown; labels and transport never decide", () => {
+  assert.deepEqual(
+    classifyLeadIngestionOrigin({ kind: "form", ingestion_origin: undefined }),
+    { status: "missing", planned_origin: "legacy_unknown" },
+  );
+  assert.deepEqual(
+    classifyLeadIngestionOrigin({ kind: "call", ingestion_origin: undefined }),
+    { status: "missing", planned_origin: "legacy_unknown" },
+  );
+  assert.equal(
+    classifyLeadIngestionOrigin({ kind: "form", ingestion_origin: "wordpress_form" }).status,
+    "valid_deterministic",
+  );
+  assert.equal(
+    classifyLeadIngestionOrigin({ kind: "form", ingestion_origin: "not_a_real_origin" }).status,
+    "contradiction",
+  );
+  assert.equal(
+    classifyLeadIngestionOrigin({ kind: "call", ingestion_origin: "legacy_import" }).status,
+    "valid_deterministic",
+  );
+  const plans = planLeadProvenanceMigration({
+    rowsByCollection: {
+      form_leads: [
+        provenanceRow("aaaaaaaaaaaaaaaaaaaaaaaa", {
+          name: "Synthetic User",
+          phone_number: "5550100130",
+          ringcentral_ingestion_source: "webhook",
+        }),
+      ],
+      call_leads: [
+        provenanceRow("bbbbbbbbbbbbbbbbbbbbbbbb", {
+          name: "Synthetic Caller",
+          phone_number: "5550100131",
+          ringcentral_ingestion_source: "call_log_sync",
+        }),
+      ],
+    },
+  });
+  assert.equal(plans[0]?.planned[0]?.planned_origin, "legacy_unknown");
+  assert.equal(plans[1]?.planned[0]?.planned_origin, "legacy_unknown");
+  assert.equal(plans[0]?.legacy_unknown_count, 1);
+  assert.equal(plans[0]?.deterministic_origin_count, 0);
+});
+
+test("[AC-10][AC-11] foundation/partial: Job normalize from job_no only; ref_no and lid never become Job", () => {
+  const fromJob = classifyLeadJob(
+    provenanceRow("aaaaaaaaaaaaaaaaaaaaaaaa", { job_no: "ab-12" }),
+  );
+  assert.equal(fromJob.planned_normalized, "AB 12");
+  assert.equal(fromJob.raw_present, true);
+  const fromRef = classifyLeadJob(
+    provenanceRow("bbbbbbbbbbbbbbbbbbbbbbbb", { ref_no: "DT_u13ref", lid: "LID-99" }),
+  );
+  assert.equal(fromRef.missing, true);
+  assert.equal(fromRef.planned_normalized, undefined);
+  const mismatch = classifyLeadJob(
+    provenanceRow("cccccccccccccccccccccccc", {
+      job_no: "ab-12",
+      normalized_job_no: "OTHER",
+    }),
+  );
+  assert.equal(mismatch.contradiction, true);
+});
+
+test("[AC-10][AC-11] foundation/partial: baseline copies current fields only and never labels original submission", () => {
+  const capturedAt = new Date(BASELINE);
+  const contact = buildLegacyBaselineContactSnapshot(
+    provenanceRow("aaaaaaaaaaaaaaaaaaaaaaaa", {
+      name: "Synthetic User",
+      phone_number: "5550100130",
+    }),
+    capturedAt,
+  );
+  assert.equal(contact?.evidence_status, "legacy_baseline");
+  assert.equal(contact?.name, "Synthetic User");
+  assert.equal(contact?.first_name, undefined);
+  assert.equal(contact?.normalized_phone_number, undefined);
+  const empty = buildLegacyBaselineContactSnapshot(
+    provenanceRow("bbbbbbbbbbbbbbbbbbbbbbbb"),
+    capturedAt,
+  );
+  assert.equal(empty, undefined);
+  const move = buildLegacyBaselineMoveSnapshot(
+    provenanceRow("cccccccccccccccccccccccc", {
+      pickup_zip: "10001",
+      destination_zip: "94105",
+    }),
+    capturedAt,
+  );
+  assert.equal(move?.evidence_status, "legacy_baseline");
+  assert.equal(move?.pickup_city, undefined);
+  assert.equal(move?.move_date, undefined);
+});
+
+test("[AC-10][AC-11][AC-12] foundation/partial: planner preserves captured snapshots, revisions, and business-field silence", () => {
+  const plans = planLeadProvenanceMigration({
+    rowsByCollection: {
+      form_leads: [
+        provenanceRow("aaaaaaaaaaaaaaaaaaaaaaaa", {
+          ingestion_origin: "wordpress_form",
+          job_no: "SYN-U13-1",
+          normalized_job_no: "SYN U13 1",
+          name: "Synthetic User",
+          phone_number: "5550100130",
+          pickup_zip: "10001",
+          destination_zip: "94105",
+          ingested_contact_snapshot: {
+            name: "Synthetic User",
+            captured_at: new Date("2026-01-01T00:00:00.000Z"),
+            evidence_status: "captured_at_ingestion",
+          },
+          ingested_move_snapshot: {
+            pickup_zip: "10001",
+            captured_at: new Date("2026-01-01T00:00:00.000Z"),
+            evidence_status: "captured_at_ingestion",
+          },
+          domain_revision: 4,
+          change_history_started_at: new Date(REVIEWED),
+          duplicate: true,
+          bad_lead: "test",
+        }),
+        provenanceRow("bbbbbbbbbbbbbbbbbbbbbbbb", {
+          ingestion_origin: "not_real",
+          name: "Synthetic Blocked",
+        }),
+      ],
+      call_leads: [
+        provenanceRow("cccccccccccccccccccccccc", {
+          name: "Synthetic Caller",
+          phone_number: "5550100131",
+          job_no: "SYN-U13-2",
+          source_granularity_id: CALL_SCOPE,
+          domain_revision: 0,
+          change_history_started_at: new Date(REVIEWED),
+        }),
+        provenanceRow("dddddddddddddddddddddddd", {
+          name: "Synthetic Collision A",
+          job_no: "SYN-U13-2",
+          normalized_job_no: "SYN U13 2",
+          source_granularity_id: CALL_SCOPE,
+        }),
+      ],
+    },
+  });
+  const form = plans[0];
+  assert.equal(form?.unchanged, 1);
+  assert.equal(form?.blocked, 1);
+  assert.equal(form?.planned.length, 0);
+  assert.equal(form?.snapshot_captured_at_ingestion, 1);
+  assert.equal(form?.duplicate_count, 1);
+  assert.equal(form?.bad_lead_count, 1);
+  assert.equal(form?.revision_would_preserve, 1);
+  assert.equal(form?.history_boundary_would_preserve, 1);
+  const call = plans[1];
+  assert.equal(call?.planned.length, 2);
+  assert.equal(call?.planned[0]?.set_origin, true);
+  assert.equal(call?.planned[0]?.set_normalized_job_no, true);
+  assert.equal(call?.planned[0]?.set_contact_snapshot, true);
+  assert.equal(call?.collision_groups.length, 1);
+  assert.throws(() =>
+    assertLeadProvenanceApplyAllowed({
+      plans,
+      revisionPlans: planLeadRevisionMigration({
+        rowsByCollection: {
+          form_leads: [provenanceRow("bbbbbbbbbbbbbbbbbbbbbbbb", { domain_revision: -1 })],
+          call_leads: [],
+        },
+      }),
+    }),
+  );
+});
+
+test("[AC-10][AC-11][AC-12] foundation/partial: manifests are deterministic and PII-safe", () => {
+  const plans = planLeadProvenanceMigration({
+    rowsByCollection: {
+      form_leads: [
+        provenanceRow("aaaaaaaaaaaaaaaaaaaaaaaa", {
+          name: "Synthetic User",
+          phone_number: "5550100130",
+          email: "synthetic.user@example.test",
+          job_no: "SYN-U13-100",
+          pickup_zip: "10001",
+          source_granularity_id: FORM_SCOPE,
+        }),
+      ],
+      call_leads: [],
+    },
+  });
+  const revisionPlans = planLeadRevisionMigration({
+    rowsByCollection: {
+      form_leads: [provenanceRow("aaaaaaaaaaaaaaaaaaaaaaaa")],
+      call_leads: [],
+    },
+  });
+  const apply = leadProvenanceApplyManifest({
+    databaseName: "testvantagemovers",
+    databaseCategory: "test",
+    mode: "report",
+    baselineCapturedAt: BASELINE,
+    baselineSource: "requested",
+    reviewedBoundary: REVIEWED,
+    plans,
+    revisionPlans,
+    applied: 0,
+  });
+  const review = leadProvenanceReviewProjection({
+    databaseName: "testvantagemovers",
+    databaseCategory: "test",
+    mode: "report",
+    baselineCapturedAt: BASELINE,
+    baselineSource: "requested",
+    reviewedBoundary: REVIEWED,
+    plans,
+    revisionPlans,
+    applied: 0,
+    applyChecksum: apply.checksum,
+  });
+  assert.equal(apply.applied, 0);
+  assert.equal(apply.fabricated_entity_changes, 0);
+  assert.equal(review.protected_manifest_checksum, apply.checksum);
+  assert.equal(JSON.stringify(review).includes("aaaaaaaaaaaaaaaaaaaaaaaa"), false);
+  assert.equal(JSON.stringify(review).includes("Synthetic User"), false);
+  assert.equal(JSON.stringify(review).includes("5550100130"), false);
+  assert.equal(JSON.stringify(review).includes("SYN-U13-100"), false);
+  assert.equal(JSON.stringify(apply).includes("Synthetic User"), false);
+  assert.equal(JSON.stringify(apply).includes("5550100130"), false);
+  assert.deepEqual(scanLeadProvenanceArtifactForPii(review), []);
+  assert.deepEqual(scanLeadProvenanceArtifactForPii(apply), []);
+});
+
+test("[AC-10][AC-11][AC-12] foundation/partial: verify fails remaining planned rows, mismatches, and revision regression", () => {
+  const missing = verifyLeadProvenanceMigration({
+    rowsByCollection: {
+      form_leads: [provenanceRow("aaaaaaaaaaaaaaaaaaaaaaaa", { name: "Synthetic User" })],
+      call_leads: [],
+    },
+    baselineCapturedAt: BASELINE,
+  });
+  assert.equal(missing.ok, false);
+  assert.ok(missing.failures.some((failure) => failure.includes("remaining planned")));
+  assert.ok(missing.failures.some((failure) => failure.includes("missing domain_revision")));
+
+  const valid = verifyLeadProvenanceMigration({
+    rowsByCollection: {
+      form_leads: [
+        provenanceRow("aaaaaaaaaaaaaaaaaaaaaaaa", {
+          ingestion_origin: "legacy_unknown",
+          name: "Synthetic User",
+          domain_revision: 0,
+          change_history_started_at: new Date(REVIEWED),
+          ingested_contact_snapshot: {
+            name: "Synthetic User",
+            captured_at: new Date(BASELINE),
+            evidence_status: "legacy_baseline",
+          },
+        }),
+      ],
+      call_leads: [],
+    },
+    baselineCapturedAt: BASELINE,
+  });
+  assert.equal(valid.ok, true);
+
+  const overwritten = verifyLeadProvenanceMigration({
+    rowsByCollection: {
+      form_leads: [
+        provenanceRow("aaaaaaaaaaaaaaaaaaaaaaaa", {
+          ingestion_origin: "legacy_unknown",
+          domain_revision: 0,
+          change_history_started_at: new Date(REVIEWED),
+          ingested_contact_snapshot: {
+            name: "Synthetic User",
+            captured_at: new Date("2020-01-01T00:00:00.000Z"),
+            evidence_status: "legacy_baseline",
+          },
+        }),
+      ],
+      call_leads: [],
+    },
+    baselineCapturedAt: BASELINE,
+  });
+  assert.equal(overwritten.ok, false);
+  assert.ok(overwritten.failures.some((failure) => failure.includes("captured_at")));
+});
+
+test("[AC-32] one reviewed ISO baseline is persisted and reused, never advanced or taken from history boundary", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "u13-lead-baseline-"));
+  try {
+    const first = await resolveReviewedBaseline({
+      requested: BASELINE,
+      allowGenerate: true,
+      directory,
+    });
+    assert.equal(first.record.baseline_captured_at, BASELINE);
+    const reused = await resolveReviewedBaseline({
+      allowGenerate: true,
+      now: new Date("2026-12-01T00:00:00.000Z"),
+      directory,
+    });
+    assert.equal(reused.source, "persisted");
+    assert.equal(reused.record.baseline_captured_at, BASELINE);
+    await persistReviewedBaseline(BASELINE, directory);
+    await assert.rejects(() =>
+      resolveReviewedBaseline({
+        requested: "2026-12-01T00:00:00.000Z",
+        directory,
+      }),
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("[AC-32] one reviewed ISO boundary is persisted and reused, never advanced", async () => {

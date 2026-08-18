@@ -56,14 +56,23 @@ import {
   verifyReceiptIndexDefinitions,
   verifySynchronizationDecisionIndexDefinitions,
   BOOKED_LEAD_COLLECTION,
+  CALL_LEAD_COLLECTION,
+  FORM_LEAD_COLLECTION,
   findBookedLeadNormalizedJobCollisions,
   orderedBookedLeadIndexCreates,
   verifyBookedLeadNormalizedJobIndexDefinitions,
   findEntityChangeRevisionCollisions,
   orderedEntityChangeIndexCreates,
   verifyEntityChangeIndexDefinitions,
+  leadS08IndexAlreadyPresent,
+  orderedCallLeadS08IndexCreates,
+  orderedFormLeadS08IndexCreates,
+  verifyCallLeadS08IndexDefinitions,
+  verifyFormLeadS08IndexDefinitions,
   type DeclaredMongoIndex,
 } from "./granot-lifecycle-indexes.lib.js";
+import { CALL_LEAD_S08_INDEXES } from "../../src/models/CallLead.js";
+import { FORM_LEAD_S08_INDEXES } from "../../src/models/FormLead.js";
 import {
   ENTITY_CHANGE_COLLECTION,
   ENTITY_CHANGE_INDEXES,
@@ -128,7 +137,13 @@ async function listDeclaredIndexes(collectionName: string): Promise<DeclaredMong
 
 async function createIndexes(
   collectionName: string,
-  specs: readonly { name: string; key: Record<string, number>; unique?: true; partialFilterExpression?: Record<string, unknown> }[],
+  specs: readonly {
+    name: string;
+    key: Record<string, number>;
+    unique?: true;
+    partialFilterExpression?: Record<string, unknown>;
+    accepted_names?: readonly string[];
+  }[],
 ): Promise<string[]> {
   const collection = mongoose.connection.db?.collection(collectionName);
   if (!collection) {
@@ -308,6 +323,8 @@ async function main(): Promise<void> {
   const entityChangeRows = await loadEntityChangeRevisionRows();
   const entityChangeCollisions = findEntityChangeRevisionCollisions(entityChangeRows);
   const entityChangeOrdered = orderedEntityChangeIndexCreates();
+  const formLeadOrdered = orderedFormLeadS08IndexCreates();
+  const callLeadOrdered = orderedCallLeadS08IndexCreates();
   let created: string[] = [];
   let verify: ReturnType<typeof verifyReceiptIndexDefinitions> | undefined;
   let observationVerify: ReturnType<typeof verifyObservationIndexDefinitions> | undefined;
@@ -318,6 +335,8 @@ async function main(): Promise<void> {
   let recordLinkVerify: ReturnType<typeof verifyGranotRecordLinkIndexDefinitions> | undefined;
   let bookedLeadVerify: ReturnType<typeof verifyBookedLeadNormalizedJobIndexDefinitions> | undefined;
   let entityChangeVerify: ReturnType<typeof verifyEntityChangeIndexDefinitions> | undefined;
+  let formLeadVerify: ReturnType<typeof verifyFormLeadS08IndexDefinitions> | undefined;
+  let callLeadVerify: ReturnType<typeof verifyCallLeadS08IndexDefinitions> | undefined;
 
   if (mode === "apply") {
     created = await createIndexes(GRANOT_OBSERVATION_RECEIPT_COLLECTION, ordered.nonUnique);
@@ -450,6 +469,22 @@ async function main(): Promise<void> {
         ...(await createIndexes(BOOKED_LEAD_COLLECTION, bookedLeadOrdered.unique)),
       ];
     }
+    const existingFormLeadIndexes = await listDeclaredIndexes(FORM_LEAD_COLLECTION);
+    const missingFormLead = formLeadOrdered.nonUnique.filter(
+      (index) => !leadS08IndexAlreadyPresent(existingFormLeadIndexes, index),
+    );
+    created = [
+      ...created,
+      ...(await createIndexes(FORM_LEAD_COLLECTION, missingFormLead)),
+    ];
+    const existingCallLeadIndexes = await listDeclaredIndexes(CALL_LEAD_COLLECTION);
+    const missingCallLead = callLeadOrdered.nonUnique.filter(
+      (index) => !leadS08IndexAlreadyPresent(existingCallLeadIndexes, index),
+    );
+    created = [
+      ...created,
+      ...(await createIndexes(CALL_LEAD_COLLECTION, missingCallLead)),
+    ];
   }
 
   if (mode === "verify") {
@@ -479,6 +514,12 @@ async function main(): Promise<void> {
     );
     entityChangeVerify = verifyEntityChangeIndexDefinitions(
       await listDeclaredIndexes(ENTITY_CHANGE_COLLECTION),
+    );
+    formLeadVerify = verifyFormLeadS08IndexDefinitions(
+      await listDeclaredIndexes(FORM_LEAD_COLLECTION),
+    );
+    callLeadVerify = verifyCallLeadS08IndexDefinitions(
+      await listDeclaredIndexes(CALL_LEAD_COLLECTION),
     );
   }
 
@@ -526,6 +567,8 @@ async function main(): Promise<void> {
     bookedLeadVerify,
     entityChangeCollisions,
     entityChangeVerify,
+    formLeadVerify,
+    callLeadVerify,
   });
   await writeGranotLifecycleManifest({
     directory: OUTPUT_DIR,
@@ -544,6 +587,8 @@ async function main(): Promise<void> {
       recordLinkVerify,
       bookedLeadVerify,
       entityChangeVerify,
+      formLeadVerify,
+      callLeadVerify,
     ].filter((result) => result && !result.ok);
     if (failed.length > 0) {
       const missing = failed.flatMap((result) => result?.missing ?? []);
@@ -577,6 +622,8 @@ function buildManifest(input: {
   bookedLeadVerify?: ReturnType<typeof verifyBookedLeadNormalizedJobIndexDefinitions>;
   entityChangeCollisions?: ReturnType<typeof findEntityChangeRevisionCollisions>;
   entityChangeVerify?: ReturnType<typeof verifyEntityChangeIndexDefinitions>;
+  formLeadVerify?: ReturnType<typeof verifyFormLeadS08IndexDefinitions>;
+  callLeadVerify?: ReturnType<typeof verifyCallLeadS08IndexDefinitions>;
 }) {
   return {
     script_version: INDEX_MIGRATION_SCRIPT_VERSION,
@@ -592,6 +639,8 @@ function buildManifest(input: {
       ...GRANOT_RECORD_LINK_INDEXES.map((index) => index.name),
       BOOKED_LEAD_NORMALIZED_JOB_INDEX.name,
       ...ENTITY_CHANGE_INDEXES.map((index) => index.name),
+      ...FORM_LEAD_S08_INDEXES.map((index) => index.name),
+      ...CALL_LEAD_S08_INDEXES.map((index) => index.name),
     ],
     collision_count:
       input.collisions.length +
@@ -622,6 +671,9 @@ function buildManifest(input: {
     booked_lead_verify: input.bookedLeadVerify,
     entity_change_revision_collisions: input.entityChangeCollisions ?? [],
     entity_change_verify: input.entityChangeVerify,
+    form_lead_s08_verify: input.formLeadVerify,
+    call_lead_s08_verify: input.callLeadVerify,
+    global_unique_lead_job_index: false,
   };
 }
 

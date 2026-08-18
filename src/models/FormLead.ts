@@ -143,14 +143,42 @@ FormLeadSchema.index({
   email: 1,
   normalized_contact_name: 1,
 });
-FormLeadSchema.index({ normalized_job_no: 1 });
-FormLeadSchema.index({ source_granularity_id: 1, normalized_job_no: 1 });
-FormLeadSchema.index({
-  source_granularity_id: 1,
-  normalized_phone_number: 1,
-  duplicate: 1,
-});
-FormLeadSchema.index({ ref_no: 1, duplicate: 1 });
+export const FORM_LEAD_S08_INDEXES = [
+  {
+    name: "form_lead_normalized_job_no",
+    key: { normalized_job_no: 1 },
+    accepted_names: ["form_lead_normalized_job_no", "normalized_job_no_1"],
+  },
+  {
+    name: "form_lead_source_granularity_normalized_job_no",
+    key: { source_granularity_id: 1, normalized_job_no: 1 },
+    accepted_names: [
+      "form_lead_source_granularity_normalized_job_no",
+      "source_granularity_id_1_normalized_job_no_1",
+    ],
+  },
+  {
+    name: "form_lead_source_granularity_normalized_phone_duplicate",
+    key: {
+      source_granularity_id: 1,
+      normalized_phone_number: 1,
+      duplicate: 1,
+    },
+    accepted_names: [
+      "form_lead_source_granularity_normalized_phone_duplicate",
+      "source_granularity_id_1_normalized_phone_number_1_duplicate_1",
+    ],
+  },
+  {
+    name: "form_lead_ref_no_duplicate",
+    key: { ref_no: 1, duplicate: 1 },
+    accepted_names: ["form_lead_ref_no_duplicate", "ref_no_1_duplicate_1"],
+  },
+] as const;
+
+for (const index of FORM_LEAD_S08_INDEXES) {
+  FormLeadSchema.index(index.key, { name: index.name });
+}
 
 applyLeadProvenanceGuards(FormLeadSchema);
 applyAggregateRevisionGuards(FormLeadSchema);
