@@ -69,6 +69,17 @@ telephony idempotency
 - Zero/multiple/ineligible candidates continue through the existing write mode (`create | shadow | dry_run`) and are not discarded.
 - Adoption/convergence never changes call qualification. Only an already-qualified `RingCentralQualifiedCall` reaches this service.
 
+#### 6.1.1 The two valid arrival orders
+
+The implementation and tests must prove both orders without changing Lead identity:
+
+| Arrival order | Required result |
+| --- | --- |
+| RingCentral qualified call first, Granot `lead_created` later | The shared RingCentral ingest performs telephony idempotency and the existing duplicate rule, then creates at most one `ingestion_origin:"ringcentral"` Call Lead. The later Granot Observation resolves and links/enriches that existing Lead through Units 14/18. It does not run adoption, create a second Lead, or rewrite Ingestion Origin. |
+| Granot `lead_created` first, RingCentral qualified call later | Unit 19 may create exactly one `ingestion_origin:"granot_lead_created"` Call Lead with convergence `pending`. The qualified-call ingest first adopts that exact pending candidate, then classifies the adopted Lead against other prior Call Leads while explicitly excluding the adopted Lead itself, and does not create another Lead for the same physical call. |
+
+“Find an existing call lead and attach metadata” is intentionally narrow: adoption is not a general same-phone merge. It requires exactly one pending Granot-created candidate in the exact Source Granularity, with the immutable creation phone, within the inclusive ±12-hour window, and with no RingCentral identity already attached. An existing processed-call ledger entry wins before this search. Any broader existing-Lead matching for a later Granot Observation belongs to the Granot identity/link path, not RingCentral adoption.
+
 ### 6.2 Exact candidate query and boundary
 
 Use call start as `call.startTime`; if the provider-qualified descriptor lacks it, fail the adoption attempt closed and continue normal ingest rather than substituting ingestion `now`. Candidate adoption requires all of:
@@ -132,6 +143,18 @@ Refactor `classifyRingCentralCallLeadDuplicate` so callers can exclude an adopte
 
 The duplicate query must exclude unresolved Granot-created Leads whose convergence state is `pending` or `conflict` and which have no RingCentral identity. Those rows alone cannot create a false duplicate. A resolved adopted Granot-created Lead from a different physical call is an ordinary qualifying prior Lead.
 
+Preserve the existing prior-Lead eligibility rule for all other Call Leads: non-duplicate, exact Source Granularity, same normalized phone, and timestamp in the earlier-only 90-day window. Do not accidentally require RingCentral metadata from every historical candidate; that would weaken duplicate detection for otherwise eligible legacy/current Call Leads. The only new candidate exclusion is an unresolved Granot-created `pending`/`conflict` row with no verified RingCentral identity, plus the existing same-session and new adopted-Lead-ID exclusions.
+
+The decision order for a successful adoption is therefore exact:
+
+1. reserve the one physical call through telephony idempotency;
+2. adopt the one exact Granot-created pending Lead and attach verified RingCentral evidence;
+3. query for a **different** prior eligible Call Lead using exact Source Granularity + normalized phone + the 90-day window;
+4. set the adopted Lead `duplicate:true` and apply existing zero-CPL behavior only when that different prior Lead exists; otherwise keep it non-duplicate; and
+5. commit the adopted Lead mutation, duplicate result, Command, Change, outbox, and processed-call ledger atomically.
+
+Source Company alone is never the duplicate boundary. Two Call Leads in different Source Granularities do not duplicate one another even when they belong to the same Source Company and have the same phone.
+
 At exactly the 90-day boundary preserve the existing inclusive business rule; newer than the current call is never a prior duplicate. Do not weaken exact Granularity to legacy Source Company or global phone.
 
 ### 6.6 Zero, multiple, Job-only, and race outcomes
@@ -187,6 +210,8 @@ If implementation verification discovers that stable qualified calls can lack te
 - [ ] **AC-14:** one exact Granot-created Call Lead is adopted by the matching qualified RingCentral call; complete verified telephony/original-caller evidence and ledger identity commit atomically; Ingestion Origin remains `granot_lead_created`.
 - [ ] **AC-15:** the adopted physical call is not its own business duplicate. A different prior qualifying Call Lead in exact Granularity/phone/90-day scope still marks the adopted Lead duplicate under normal rules.
 - [ ] **AC-16:** zero or multiple phone candidates and Job-number-only candidates never guess. Multiple ambiguity is durable; unresolved candidates alone create no false duplicate; the qualified call continues through normal ingest and is preserved.
+- [ ] Both arrival orders are explicit: RingCentral-first is later matched/linked by Granot without origin rewrite; Granot-first is adopted before duplicate classification and suppresses creation of a second physical-call Lead.
+- [ ] Adoption is never a broad same-phone merge, and duplicate classification remains exact Source Granularity—not Source Company—with prior eligible legacy/current Call Leads still participating under the existing 90-day rule.
 - [ ] Exactly ±12 hours is eligible; one millisecond outside is not. Current contact drift cannot replace the immutable Granot creation-phone criterion.
 - [ ] Webhook and Call Log descriptors produce the same candidate/adoption/duplicate result; telephony replay and concurrent paths yield one ledger winner and at most one adopted Lead.
 - [ ] Every adopted/conflict mutation is canonical, revision-guarded, causally traceable, privacy-safe, and outbox-atomic; no Booking/Cancellation/lifecycle-case effect occurs.

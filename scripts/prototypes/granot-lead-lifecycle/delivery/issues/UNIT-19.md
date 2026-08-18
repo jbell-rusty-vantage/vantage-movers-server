@@ -66,6 +66,17 @@ Reload Registry policy, active Record Link, and identity candidates immediately 
 
 `link_only` retains the Unit 08 pending schedule and terminal `unmatched`. `observation_only`, deferred, disabled, inactive, shadow, or globally gated sources remain evidence-only. Missing immutable data is terminal for this Observation; a later complete Observation may create.
 
+#### 6.1.1 WordPress/Vantage Form submission versus Granot-originated creation
+
+Do not treat every Form-shaped `lead_created` Observation as authority to ingest a Form Lead. There are two distinct arrival paths:
+
+1. **Vantage/WordPress Form submission already created the Lead.** Form Lead Ingestion remains the creation authority and stores `ingestion_origin:"wordpress_form"` plus immutable submitted contact/move snapshots. Its later Granot `lead_created` delivery must run the complete Form identity ladder and flow through Unit 18: prefer an existing active Record Link, then exact Granot `ref_no` to `FormLead.ref_no`, ObjectId compatibility, and finally exact Source Scope contact evidence. On one eligible match, establish or confirm the active Granot Record Link, preserve the WordPress origin and submitted snapshots, store the Receipt/Observation/Decision, and apply only Unit 18-authorized Granot snapshot/enrichment fields. Never create a second Form Lead.
+2. **Granot is the reviewed creation authority for this source.** Only a current audited Registry policy of `create_if_missing`, after the full ladder returns no eligible Lead and all minimum-data/route/effect gates pass, may create the Form Lead through this unit with `ingestion_origin:"granot_lead_created"`.
+
+A WordPress-backed Form route whose normal authority is Form Lead Ingestion must remain `link_only` (or more restrictive) during rollout. This prevents a Granot webhook that wins the delivery race against the original Form Lead transaction from minting a second Lead; the existing 24-hour match retry absorbs that race. `create_if_missing` is enabled only for a separately reviewed Granot-originated route, never merely because the payload is Form-shaped.
+
+For the matched WordPress path, “store a snapshot” means preserving the credential-redacted Receipt and normalized Granot Observation as evidence and, when Unit 18 authorizes the mutation, storing Granot contact/current-fact provenance separately. It does not replace the immutable submitted snapshots, change Ingestion Origin, or copy the raw webhook payload onto the Lead.
+
 ### 6.2 Canonical command
 
 Add the final-spec command to `CanonicalDomainCommands` and the production command registry:
@@ -183,6 +194,7 @@ The policy transition is not a migration. It is a separately authorized audited 
 - [ ] **AC-07 (creation boundary):** after the full ladder finds an exact eligible Lead—including one created by a concurrent winner—the Observation links/enriches that Lead through Unit 18 and never creates a second Lead.
 - [ ] **AC-08:** authorized `create_if_missing` Lead Created creates immediately exactly once with an active Record Link. Incomplete immutable data returns `insufficient_creation_data` with the exact missing-data reason and creates no Lead/link/Command/Change/outbox.
 - [ ] **AC-09:** Best Relocation Form with the same two valid states selects Local; differing valid states select long-distance; missing/invalid state or ZIP creates nothing. Migration remains `link_only`; only an audited reviewed policy change authorizes creation.
+- [ ] A WordPress/Vantage-created Form Lead receiving its later Granot `lead_created` event is matched and linked through Unit 18, retains `ingestion_origin:"wordpress_form"` and immutable submitted snapshots, and never creates a second Form Lead. WordPress-backed routes remain `link_only` or more restrictive; only separately reviewed Granot-originated routes may use `create_if_missing`.
 - [ ] Form and Call creation use the exact active route/scope, immutable `granot_lead_created` evidence, `post_to_granot:false`, and one canonical transaction.
 - [ ] Call Job-only creation is sparse and `not_applicable`; phone creation is `pending`; neither fabricates telephony evidence.
 - [ ] Replica races prove one active link/one Lead, duplicate-key re-read/replan, exact replay, checksum conflict, and rollback with zero orphan/partial effects.
