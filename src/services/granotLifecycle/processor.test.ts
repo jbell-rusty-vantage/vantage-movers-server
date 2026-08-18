@@ -18,6 +18,8 @@ import {
   getGranotLifecycleDecisionsTotal,
   resetGranotLifecycleMetrics,
 } from "./metrics";
+import type { LeadIdentityResult } from "./identity";
+import type { LeadDesiredStateProjection } from "./leadDesiredState";
 import { processGranotObservation, type GranotLifecycleProcessorDeps } from "./processor";
 import type { SourcePolicyStore } from "./sourcePolicy";
 
@@ -100,6 +102,14 @@ function reviewedStore(): SourcePolicyStore {
   };
 }
 
+function pendingIdentity(): LeadIdentityResult {
+  return {
+    outcome: "pending_match",
+    reason_code: "pending_source_scoped_match",
+    candidates: [],
+  };
+}
+
 function memoryDeps(input: {
   observation: GranotObservationDocument;
   channel?: "granot_webhook" | "browser_extension";
@@ -109,19 +119,30 @@ function memoryDeps(input: {
   store?: SourcePolicyStore;
   existingDecision?: SynchronizationDecisionDocument | null;
   existingLink?: GranotRecordLinkDocument | null;
+  identity?: LeadIdentityResult;
+  lead?: LeadDesiredStateProjection | null;
+  winnerAdvanced?: boolean;
 }): GranotLifecycleProcessorDeps & {
   decisions: SynchronizationDecisionDocument[];
   links: GranotRecordLinkDocument[];
   forbiddenEffects: string[];
+  temporalAdvances: number;
+  initiatorSeen: string[];
 } {
   const decisions: SynchronizationDecisionDocument[] = [];
   const links: GranotRecordLinkDocument[] = [];
   const forbiddenEffects: string[] = [];
+  const initiatorSeen: string[] = [];
   let activeLink = input.existingLink ?? null;
+  const counters = { temporalAdvances: 0 };
   return {
     decisions,
     links,
     forbiddenEffects,
+    get temporalAdvances() {
+      return counters.temporalAdvances;
+    },
+    initiatorSeen,
     now: () => decidedAt,
     flags: input.flags ?? GRANOT_LIFECYCLE_FLAG_DEFAULTS,
     sourcePolicyStore: input.store ?? reviewedStore(),
@@ -135,6 +156,12 @@ function memoryDeps(input: {
     loadActivation: async () => input.activation ?? null,
     findDecision: async () => input.existingDecision ?? null,
     findActiveLink: async () => activeLink,
+    resolveIdentity: async () => input.identity ?? pendingIdentity(),
+    loadLeadProjection: async () => input.lead ?? null,
+    advanceTemporalWinner: async () => {
+      counters.temporalAdvances += 1;
+      return input.winnerAdvanced !== false;
+    },
     persistDecisionOnly: async (decision) => {
       decisions.push(decision);
     },
@@ -236,9 +263,11 @@ test("[AC-31] foundation live-shadow Decisions are not promoted and mutate no Re
   });
   const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
   assert.equal(deps.decisions[0]?.execution_mode, "live_shadow");
-  assert.equal(result.outcome, "policy_blocked");
-  assert.equal(deps.decisions[0]?.reason_code, "shadow_effect_suppressed");
+  assert.equal(result.outcome, "pending_match");
+  assert.equal(deps.decisions[0]?.reason_code, "pending_source_scoped_match");
+  assert.ok(deps.decisions[0]?.next_match_attempt_at);
   assert.equal(deps.links.length, 0);
+  assert.deepEqual(deps.forbiddenEffects, []);
 });
 
 test("[AC-32] portion historical establishment, confirmation, and conflict keep one active link", async () => {
@@ -379,7 +408,7 @@ test("processing disabled refuses unless a test supplies config", async () => {
   );
 });
 
-test("[AC-31] foundation live configuration with all effects false is global_effect_disabled", async () => {
+test("[AC-31] foundation live configuration with no match stays pending and mutates no Lead", async () => {
   const row = observation();
   const deps = memoryDeps({
     observation: row,
@@ -388,8 +417,8 @@ test("[AC-31] foundation live configuration with all effects false is global_eff
   });
   const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
   assert.equal(deps.decisions[0]?.execution_mode, "live");
-  assert.equal(result.outcome, "policy_blocked");
-  assert.equal(deps.decisions[0]?.reason_code, "global_effect_disabled");
+  assert.equal(result.outcome, "pending_match");
+  assert.equal(deps.decisions[0]?.reason_code, "pending_source_scoped_match");
   assert.equal(deps.links.length, 0);
 });
 
@@ -510,6 +539,249 @@ async function connectReplicaSetForTests(): Promise<
     };
   }
 }
+
+function matchedFormIdentity(leadId: string): LeadIdentityResult {
+  return {
+    outcome: "linked",
+    reason_code: "record_link_confirmed",
+    match_method: "form_ref_no_exact",
+    target: { model: "FormLead", id: leadId },
+    target_eligibility: "full",
+    candidates: [{ target: { model: "FormLead", id: leadId }, reason_codes: ["form_ref_no_exact"] }],
+    agent_assertion: "empty",
+  };
+}
+
+function currentLead(id: string, overrides: Partial<LeadDesiredStateProjection> = {}): LeadDesiredStateProjection {
+  return {
+    model: "FormLead",
+    id,
+    ingestion_origin: "wordpress_form",
+    quoted: false,
+    ...overrides,
+  };
+}
+
+test("[AC-07] shadow matched Lead Created records one target and never claims a second Lead", async () => {
+  const row = observation();
+  const leadId = String(objectId());
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    identity: matchedFormIdentity(leadId),
+    lead: currentLead(leadId),
+  });
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(result.outcome, "policy_blocked");
+  assert.equal(deps.decisions[0]?.reason_code, "shadow_effect_suppressed");
+  assert.equal(deps.decisions[0]?.target?.id, leadId);
+  assert.equal(deps.decisions[0]?.match_method, "form_ref_no_exact");
+  assert.equal(deps.decisions[0]?.candidates[0]?.target.id, leadId);
+  assert.equal(deps.links.length, 0);
+  assert.equal(result.effects.length, 0);
+});
+
+test("[AC-08] foundation eligible create_if_missing stays suppressed with no reservation", async () => {
+  const row = observation({
+    contact: {
+      first_name: "Ada",
+      display_name: "Ada",
+      normalized_phone: "5551234567",
+    },
+    move: {
+      origin: { state: "NY", zip: "10001" },
+      destination: { state: "NY", zip: "10002" },
+    },
+  });
+  const createStore = reviewedStore();
+  const original = createStore.findByNormalizedLabel;
+  createStore.findByNormalizedLabel = async (label) => {
+    const rows = await original(label);
+    return rows.map((row) => ({ ...row, lead_created_policy: "create_if_missing" as const }));
+  };
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    store: createStore,
+  });
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(result.outcome, "policy_blocked");
+  assert.equal(deps.decisions[0]?.reason_code, "shadow_effect_suppressed");
+  assert.equal(deps.links.length, 0);
+  assert.equal(result.effects.length, 0);
+});
+
+test("[AC-30] processor emits terminal unmatched at 24 hours", async () => {
+  const row = observation();
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    matchAttempt: 8,
+    flags: {
+      ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+      shadow_mode: true,
+    },
+  });
+  deps.now = () => new Date(capturedAt.getTime() + 24 * 60 * 60 * 1000);
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(result.outcome, "unmatched");
+  assert.equal(deps.decisions[0]?.reason_code, "match_window_expired");
+  assert.equal(deps.decisions[0]?.next_match_attempt_at, undefined);
+  assert.equal(deps.links.length, 0);
+});
+
+test("[AC-06] malformed Priority on Lead Created continues independent identity work", async () => {
+  const row = observation({
+    route_event_class: "lead_created",
+    normalization_result: "valid_with_issues",
+    issues: [{ code: "invalid_priority", severity: "error" }],
+    priority: { valid: false },
+  });
+  const leadId = String(objectId());
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    identity: matchedFormIdentity(leadId),
+    lead: currentLead(leadId, { granot_priority: "1", quoted: true }),
+  });
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.notEqual(result.outcome, "invalid");
+  assert.equal(deps.decisions[0]?.target?.id, leadId);
+  assert.equal(deps.links.length, 0);
+});
+
+test("[AC-32] shadow no-op already_current writes no Change, Sheet, or Record Link", async () => {
+  const row = observation({ priority: { valid: true, canonical: "8" } });
+  const leadId = String(objectId());
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    identity: matchedFormIdentity(leadId),
+    lead: currentLead(leadId, {
+      granot_priority: "8",
+      quoted: false,
+      normalized_job_no: "SYNTHETIC JOB 100",
+      job_no: "synthetic-job-100",
+    }),
+  });
+  const result = await processGranotObservation(
+    {
+      receipt_id: String(row.receipt_id),
+      initiator: {
+        actor_type: "system",
+        actor_id: "granot-webhook",
+        actor_label: "Granot Webhook",
+        actor_role: "system",
+        origin: "granot_lifecycle",
+        request_id: String(row.receipt_id),
+      },
+    },
+    deps,
+  );
+  assert.equal(result.outcome, "already_current");
+  assert.equal(deps.decisions[0]?.reason_code, "desired_state_already_current");
+  assert.equal(result.effects.length, 0);
+  assert.equal(deps.links.length, 0);
+  assert.equal(deps.temporalAdvances, 0);
+  assert.ok(result.observation_id);
+  assert.ok(result.decision_id);
+});
+
+test("[AC-32] live test posture advances metadata-only winner and does not emit Change", async () => {
+  const row = observation({ priority: { valid: true, canonical: "8" } });
+  const leadId = String(objectId());
+  const older = String(objectId());
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: {
+      ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+      shadow_mode: false,
+      lead_writes_enabled: true,
+    },
+    identity: matchedFormIdentity(leadId),
+    lead: currentLead(leadId, {
+      granot_priority: "8",
+      quoted: false,
+      normalized_job_no: "SYNTHETIC JOB 100",
+      job_no: "synthetic-job-100",
+      last_accepted_granot_observation: {
+        observation_id: older,
+        captured_at: new Date("2026-08-17T14:00:00.000Z"),
+      },
+    }),
+    winnerAdvanced: true,
+  });
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(result.outcome, "already_current");
+  assert.equal(deps.temporalAdvances, 1);
+  assert.equal(result.effects.length, 0);
+  assert.equal(deps.decisions[0]?.effects.length, 0);
+});
+
+test("[AC-32] CAS loser re-evaluates as stale and never persists already_current", async () => {
+  const row = observation({ priority: { valid: true, canonical: "8" } });
+  const leadId = String(objectId());
+  const newerWinner = {
+    observation_id: String(objectId()),
+    captured_at: new Date("2026-08-17T18:00:00.000Z"),
+  };
+  let loads = 0;
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: {
+      ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+      shadow_mode: false,
+      lead_writes_enabled: true,
+    },
+    identity: matchedFormIdentity(leadId),
+    winnerAdvanced: false,
+  });
+  deps.loadLeadProjection = async () => {
+    loads += 1;
+    return currentLead(leadId, {
+      granot_priority: "8",
+      quoted: false,
+      normalized_job_no: "SYNTHETIC JOB 100",
+      job_no: "synthetic-job-100",
+      last_accepted_granot_observation:
+        loads === 1
+          ? {
+              observation_id: String(objectId()),
+              captured_at: new Date("2026-08-17T14:00:00.000Z"),
+            }
+          : newerWinner,
+    });
+  };
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(result.outcome, "stale");
+  assert.equal(deps.decisions[0]?.reason_code, "older_than_temporal_winner");
+  assert.equal(deps.decisions[0]?.outcome, "stale");
+});
+
+test("gate snapshot uses real policy facts in stable eight-name order", async () => {
+  const row = observation();
+  const deps = memoryDeps({ observation: row });
+  await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.deepEqual(
+    deps.decisions[0]?.evaluated_gates.map((gate) => gate.gate),
+    [
+      "global_effect_flag",
+      "post_activation_live_mode",
+      "operational_enabled",
+      "lifecycle_enabled",
+      "disposition_permits_effect",
+      "source_company_active",
+      "source_granularity_active",
+      "policy_permits_effect",
+    ],
+  );
+  assert.equal(
+    deps.decisions[0]?.evaluated_gates.find((gate) => gate.gate === "operational_enabled")?.allowed,
+    true,
+  );
+});
 
 test("[AC-35] portion Decision metrics use only bounded enum labels", async () => {
   resetGranotLifecycleMetrics();

@@ -12,7 +12,7 @@
 
 - `normalizeGranotSourceLabel(raw)` — NFKC, trim, collapse whitespace, lowercase; reject empty/control/bidi rather than stripping them into a usable label.
 - `resolveSourcePolicy(facts, store?)` — exact normalized-label lookup only. Provider `type` is never a classification input. A selected route also stamps `selected_lead_model` so identity can choose the Form or Call ladder without re-resolving Registry semantics.
-- `evaluateEffectGates(facts)` — pure snapshot of every applicable gate in stable order. Unit 07 supplies flag and execution-mode facts; this module still performs no writes.
+- `evaluateEffectGates(facts)` — pure snapshot of every applicable gate in stable eight-name order. The processor now passes real Registry `enabled` / `lifecycle_enabled` and company/granularity `active` facts from the snapshot, not Boolean id-presence approximations. This module still performs no writes.
 
 ## Fail-closed resolution
 
@@ -45,4 +45,5 @@ Every unreviewed row remains lifecycle-disabled, deferred, observation-only, and
 - Registry writes and audit: [`operationsRegistry.service.md`](operationsRegistry.service.md)
 - Observation normalization: [`granotLifecycle.normalization.md`](granotLifecycle.normalization.md)
 - Identity consumes this snapshot and never copies Registry semantics ([`granotLifecycle.identity.md`](granotLifecycle.identity.md)).
-- Decision processor consumes this read/gate snapshot ([`granotLifecycle.processor.md`](granotLifecycle.processor.md)).
+- Decision processor consumes this read/gate snapshot and Unit 14 identity ([`granotLifecycle.processor.md`](granotLifecycle.processor.md)).
+- Successful snapshots also carry `operational_enabled`, `lifecycle_enabled`, `source_company_active`, and `source_granularity_active` so Unit 15 can persist real gate facts.

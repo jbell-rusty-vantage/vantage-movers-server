@@ -6,7 +6,7 @@
 
 **Role:** Read-only identity half of S09. After reviewed Registry policy resolves as `source_scoped_lead`, run the Form or Call ladder and return deterministic candidates, conflicts, Agent assertion, and Booking context. This module creates no Decision, desired state, Lead/Booking/Cancellation write, case, discrepancy, command, Change, outbox item, or notification.
 
-**Stack:** callable module `identity.ts`. `sourcePolicy.ts` remains the sole Registry semantic resolver. The Unit 07 processor does not invoke this module; Unit 15 owns integration. Capture, routes, and clients never select candidates.
+**Stack:** callable module `identity.ts`. `sourcePolicy.ts` remains the sole Registry semantic resolver. The Unit 15 processor invokes this module after Registry policy and before desired-state planning. Capture, routes, and clients never select candidates. This module remains read-only.
 
 ## Public interface
 
@@ -46,7 +46,7 @@ Job and contact queries always include `source_granularity_id`. Duplicate Call L
 
 ## Agent assertion
 
-Preserve `user_raw` and `rep_raw`. Normalize nonempty values with the Operations Registry Granot username normalizer. Equal normalized values are one assertion. Different nonempty values yield `granot_agent_identity_conflict` (`agent_assertion: "conflict"`), return no Agent, and do not block non-Agent identity. Suggest an Agent only when exactly one active row matches `granot_identity.username` or compatibility `granot_crm_username`. Never call `applyGranotCrmUsernameReceiverMatch`. Never create, activate, verify, or mutate an Agent. Existing receiver overwrite remains Unit 15/18.
+Preserve `user_raw` and `rep_raw`. Normalize nonempty values with the Operations Registry Granot username normalizer. Equal normalized values are one assertion. Different nonempty values yield `granot_agent_identity_conflict` (`agent_assertion: "conflict"`), return no Agent, and do not block non-Agent identity. Suggest an Agent only when exactly one active row matches `granot_identity.username` or compatibility `granot_crm_username`. Never call `applyGranotCrmUsernameReceiverMatch`. Never create, activate, verify, or mutate an Agent. Existing receiver overwrite is planned by Unit 15 and applied by Unit 18.
 
 ## Booking context
 

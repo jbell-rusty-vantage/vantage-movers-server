@@ -20,9 +20,9 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 | 12 | Lead provenance schema parity, immutable snapshots, and trusted validators | 05, 09–11 | complete | complete | [UNIT-12-COMPLETION.md](completion-reports/UNIT-12-COMPLETION.md) |
 | 13 | Lead provenance and index migration suite | 12 | complete | complete | [UNIT-13-COMPLETION.md](completion-reports/UNIT-13-COMPLETION.md) |
 | 14 | Source policy resolution and source-scoped identity ladders | 04–07, 12–13 | complete | complete | [UNIT-14-COMPLETION.md](completion-reports/UNIT-14-COMPLETION.md) |
-| 15 | Temporal ordering, desired-state planning, and shadow processor orchestration | 07–08, 14 | ready | complete | — |
-| 16 | Browser extension receipt apply and version 0.2.8 | 02–04, 14–15 | blocked | complete | — |
-| 17 | HTTP automation receipt convergence and resumable lifecycle outcomes | 02–04, 14–15 | blocked | scaffold | — |
+| 15 | Temporal ordering, desired-state planning, and shadow processor orchestration | 07–08, 14 | complete | complete | [UNIT-15-COMPLETION.md](completion-reports/UNIT-15-COMPLETION.md) |
+| 16 | Browser extension receipt apply and version 0.2.8 | 02–04, 14–15 | ready | complete | — |
+| 17 | HTTP automation receipt convergence and resumable lifecycle outcomes | 02–04, 14–15 | ready | scaffold | — |
 | 18 | Safe matched-Lead synchronization effects | 10–17, parity approval | blocked | scaffold | — |
 | 19 | Authorized Granot Lead creation and atomic link reservation | 18 | blocked | scaffold | — |
 | 20 | RingCentral adoption/convergence and duplicate correctness | 12, 19 | blocked | scaffold | — |
@@ -44,7 +44,7 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 ## Current ready queue
 
 - Open review findings live in [`warnings/`](warnings/README.md). They do not block the next sequential unit unless repository re-verification shows an applicable finding has become material.
-- Units 04–14 are complete on `granot-lead-lifecycle`. Re-verify `UNIT-14-COMPLETION.md` and repository state before starting Unit 15.
+- Units 04–15 are complete on `granot-lead-lifecycle`. Re-verify `UNIT-15-COMPLETION.md` and repository state before starting Units 16 or 17.
 - Unit 08 completes S06 and removes Unit 15's durable-work prerequisite. Unit 14 now supplies the identity resolver Unit 15 must consume.
 - Unit 09 lands aggregate revision tokens, the CAS primitive, and revision-only Lead/Booking/Cancellation backfill. Units 12–13 must preserve those revisions and the persisted history boundary.
 - Unit 10 lands the transaction-owning canonical executor, four-origin validation, stored `applied` replay, and Decision/revision/Command rollback.
@@ -52,5 +52,5 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 - Unit 12 completes the S08 schema/runtime half: Ingestion Origin, immutable ingested snapshots, Form Job parity, Call `quoted` default false, trusted/public validator separation, and seven Lead index declarations. Lead writes/creation remain false.
 - Unit 13 completes S08: fail-closed origin/Job/`legacy_baseline` backfill on the fixed Lead command, PII-safe dual manifests, and the seven non-unique Lead indexes. Unit 09 revisions/history boundary are preserved. Lead writes/creation remain false. No production apply.
 - Unit 14 completes the identity half of S09: policy-before-identity, Form/Call ladders, Agent assertion, and Booking delegation context. It writes no data and does not invoke from the Unit 07 processor. Lead writes/creation remain false.
-- Unit 15 is implementation-ready and is the next sequential shared-branch implementation target. Re-verify `UNIT-14-COMPLETION.md` before starting it. It must consume `resolveLeadIdentity` rather than reconstructing identity inside the processor.
-- Unit 16's contract is complete. It remains blocked until Unit 15 is implemented and verified. It must remain in shadow and cannot provide the parity approval required by Unit 18 until its server/extension implementation and cross-channel proof are complete.
+- Unit 15 completes S09: temporal compare, desired-state planning, and shadow processor orchestration. It consumes `resolveLeadIdentity`, persists Receipt→Observation→Decision refs, and keeps Lead writes/creation/cases false. Historical shadow may still create job-level Record Link evidence only.
+- Units 16 and 17 are unblocked for parallel contract-permitted implementation. Both must call this processor and may not reconstruct patches or desired state. Unit 16's contract is complete. Unit 17 remains a scaffold. Neither can provide the parity approval required by Unit 18 until implementation and cross-channel proof are complete.

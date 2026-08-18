@@ -30,12 +30,15 @@ const UNIT_FILES: Record<string, string[]> = {
   "14": [
     "src/services/granotLifecycle/identity.replica.test.ts",
   ],
+  "15": [
+    "src/services/granotLifecycle/processor.replica.test.ts",
+  ],
 };
 
 function parseUnit(): string {
   const raw = process.argv.find((arg) => arg.startsWith("--unit="));
   if (!raw) {
-    throw new Error("Usage: pnpm test:granot-lifecycle:replica -- --unit=08|09|10|11|12|13|14");
+    throw new Error("Usage: pnpm test:granot-lifecycle:replica -- --unit=08|09|10|11|12|13|14|15");
   }
   return raw.slice("--unit=".length);
 }

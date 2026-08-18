@@ -28,7 +28,8 @@ Granot evidence never becomes an official Booking or Cancellation by itself. CRM
 | `normalization.ts` | Callable Observation upsert. Exact Section 10 vocabulary. No matching or effects. |
 | `sourcePolicy.ts` | Fail-closed Registry read and seven-layer effect-gate snapshot. No writes. |
 | `identity.ts` | Read-only Form/Call ladders, Agent assertion, Booking delegation context. No Decision or Lead writes. |
-| `processor.ts` | Callable Decision / write-once activation / historical-only job Record Link. Does not invoke identity or plan desired state. |
+| `leadDesiredState.ts` | Pure origin-specific desired-state planner and temporal comparator. No writes. |
+| `processor.ts` | Channel-neutral shadow orchestrator: identity, temporal compare, desired-state plan, gates, Decision, historical job-level Record Link. Production Lead writes stay off. |
 | `drainer.ts` | Fenced Mongo claim/lease shared by the queue consumer, five-minute cron, and Owner requeue. |
 | `aggregateRevision.ts` | Compare-and-swap primitive for later consumed aggregates. |
 | `trustedLeadCreateValidation.ts` | Trusted `granot_lead_created` validator only (`post_to_granot=false`). No live caller. |
@@ -37,11 +38,11 @@ Admin routes activate, requeue dead letters, project a Job, or read health. They
 
 ## Progress
 
-Units 01–14 are complete on `granot-lead-lifecycle`. Re-verify the matching `UNIT-*-COMPLETION.md` and repository state before editing; do not trust the ledger alone.
+Units 01–15 are complete on `granot-lead-lifecycle`. Re-verify the matching `UNIT-*-COMPLETION.md` and repository state before editing; do not trust the ledger alone.
 
-**Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, and the identity resolver.
+**Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, and shadow processor orchestration.
 
-**Next sequential implementation:** Unit 15 — temporal ordering, desired-state planning, and shadow processor orchestration. It must consume `resolveLeadIdentity` rather than reconstructing identity inside `processor.ts`. Deployed posture stays shadow; Lead writes/creation/cases stay false.
+**Next sequential implementation:** Units 16 and 17 may proceed in parallel. Both must call this processor and may not reconstruct patches or desired state. Deployed posture stays shadow; Lead writes/creation/cases stay false.
 
 **Not started here:** extension receipt apply (16), HTTP automation receipt convergence (17), live matched-Lead writes (18), authorized Granot Lead create (19), RingCentral adoption (20–21), Booking/Release Reconciliation persistence and owner commands (22–29).
 
@@ -52,4 +53,4 @@ Units 01–14 are complete on `granot-lead-lifecycle`. Re-verify the matching `U
 - Processing disabled means no claim; capture and due work remain intact.
 - Processing and shadow default true. All eight effect flags stay false.
 - Shadow, retry, and requeue must not create, update, cancel, or un-cancel a Booking.
-- Capture, identity, and trusted-create validators have no Lead/Booking/Cancellation write path. Do not invent one while wiring Unit 15.
+- Capture, identity, planner, and trusted-create validators have no production Lead/Booking/Cancellation write path. The only Lead write Unit 15 may perform is the injected-test metadata-only temporal winner CAS.

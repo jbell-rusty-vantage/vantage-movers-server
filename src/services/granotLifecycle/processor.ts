@@ -6,6 +6,8 @@ import {
 } from "../../config/domain/granotLifecycle";
 import { withTransaction as defaultWithTransaction } from "../../db";
 import { logger } from "../../logger";
+import { getCallLeadModel } from "../../models/CallLead";
+import { getFormLeadModel } from "../../models/FormLead";
 import { getGranotLifecycleActivationModel } from "../../models/GranotLifecycleActivation";
 import { type GranotObservationDocument } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
@@ -23,6 +25,22 @@ import { normalizeJobNo } from "../bookings/bookingIdentity";
 import type { DurableActor } from "../durableWork/types";
 import { DecisionIntegrityError, ProcessingDisabledError } from "./errors";
 import {
+  compareGranotTemporal,
+  olderTemporalWinnerFilter,
+  type GranotTemporalTuple,
+} from "./granotTemporal";
+import {
+  resolveLeadIdentity,
+  type LeadIdentityInput,
+  type LeadIdentityResult,
+  type LeadIdentityStore,
+} from "./identity";
+import {
+  planLeadDesiredState,
+  type LeadDesiredStatePlan,
+  type LeadDesiredStateProjection,
+} from "./leadDesiredState";
+import {
   incrementGranotLifecycleDecisionsTotal,
   recordGranotLifecycleCaptureToDecisionMs,
 } from "./metrics";
@@ -33,6 +51,7 @@ import {
   resolveSourcePolicy,
   type EffectGateEvaluation,
   type EvaluatedGate,
+  type RequestedLifecycleEffect,
   type SourcePolicyResolution,
   type SourcePolicySnapshot,
   type SourcePolicyStore,
@@ -41,6 +60,7 @@ import type {
   EntityRef,
   ExecutionMode,
   GranotObservationProcessor,
+  LeadModel,
   ObservationChannel,
   SynchronizationEffectSummary,
   SynchronizationOutcome,
@@ -54,6 +74,7 @@ type ProcessorReceipt = {
   observation_channel: ObservationChannel;
   captured_at: Date;
   processing: { match_attempt: number };
+  initiator?: DurableActor;
 };
 
 type PreparedDecision = {
@@ -112,6 +133,17 @@ export type GranotLifecycleProcessorDeps = {
     receiptId: mongoose.Types.ObjectId;
     session?: ClientSession;
   }) => Promise<void>;
+  resolveIdentity?: (
+    input: LeadIdentityInput,
+    store?: LeadIdentityStore,
+  ) => Promise<LeadIdentityResult>;
+  identityStore?: LeadIdentityStore;
+  loadLeadProjection?: (target: EntityRef) => Promise<LeadDesiredStateProjection | null>;
+  advanceTemporalWinner?: (input: {
+    target: EntityRef;
+    incoming: GranotTemporalTuple;
+    session?: ClientSession;
+  }) => Promise<boolean>;
   withTransaction?: <T>(fn: (session: ClientSession) => Promise<T>) => Promise<T>;
 };
 
@@ -135,7 +167,6 @@ export async function processGranotObservation(
   effects: SynchronizationEffectSummary[];
   target?: EntityRef;
 }> {
-  void input.initiator;
   const flags = deps.flags ?? getGranotLifecycleFlags();
   if (!flags.processing_enabled) {
     throw new ProcessingDisabledError();
@@ -147,6 +178,11 @@ export async function processGranotObservation(
   if (!receipt) {
     throw new Error("GranotObservationReceipt was not found");
   }
+
+  const moduleContext = {
+    initiator: input.initiator ?? receipt.initiator,
+    processor_actor: granotLifecycleProcessorActor(String(receipt._id)),
+  };
 
   const observation = await (deps.upsertObservation ?? defaultUpsertObservation)(
     String(receipt._id),
@@ -164,13 +200,16 @@ export async function processGranotObservation(
     attempt,
   );
 
-  const prepared = await prepareDecision({
+  let prepared = await prepareDecision({
     observation,
     attempt,
     execution_mode,
     flags,
     decided_at: now(),
     sourcePolicyStore: deps.sourcePolicyStore,
+    resolveIdentity: deps.resolveIdentity,
+    identityStore: deps.identityStore,
+    loadLeadProjection: deps.loadLeadProjection,
   });
 
   if (existing) {
@@ -183,8 +222,24 @@ export async function processGranotObservation(
   const decisionId = new mongoose.Types.ObjectId();
   const linkProposal = prepared.link;
   const runTransaction = deps.withTransaction ?? defaultWithTransaction;
+  const cas = temporalCasClaim(
+    prepared,
+    flags,
+    execution_mode,
+    observation.captured_at,
+  );
 
   const persisted = await runTransaction(async (session) => {
+    if (cas) {
+      const won = await (deps.advanceTemporalWinner ?? defaultAdvanceTemporalWinner)({
+        target: cas.target,
+        incoming: cas.incoming,
+        session,
+      });
+      if (!won) {
+        return null;
+      }
+    }
     if (!linkProposal) {
       const decision = toDecisionDocument(decisionId, prepared.decision);
       await (deps.persistDecisionOnly ?? defaultPersistDecisionOnly)(
@@ -268,6 +323,45 @@ export async function processGranotObservation(
     }
   });
 
+  if (!persisted) {
+    const lead = cas
+      ? await (deps.loadLeadProjection ?? defaultLoadLeadProjection)(cas.target)
+      : null;
+    prepared = await prepareDecision({
+      observation,
+      attempt,
+      execution_mode,
+      flags,
+      decided_at: now(),
+      sourcePolicyStore: deps.sourcePolicyStore,
+      resolveIdentity: deps.resolveIdentity,
+      identityStore: deps.identityStore,
+      loadLeadProjection: deps.loadLeadProjection,
+      leadOverride: lead,
+    });
+    const staleDecision = toDecisionDocument(new mongoose.Types.ObjectId(), prepared.decision);
+    await runTransaction(async (session) => {
+      await (deps.persistDecisionOnly ?? defaultPersistDecisionOnly)(
+        staleDecision,
+        receipt._id,
+        session,
+      );
+    });
+    logProcessingCompletion({
+      receipt_id: String(receipt._id),
+      observation_id: String(observation._id),
+      decision_id: String(staleDecision._id),
+      attempt,
+      execution_mode,
+      outcome: staleDecision.outcome,
+      reason_code: staleDecision.reason_code,
+      initiator_actor_id: moduleContext.initiator?.actor_id,
+      processor_actor_id: moduleContext.processor_actor.actor_id,
+      duration_ms: Date.now() - started,
+    });
+    return toProcessorResult(staleDecision, receipt.observation_channel, started);
+  }
+
   logProcessingCompletion({
     receipt_id: String(receipt._id),
     observation_id: String(observation._id),
@@ -276,6 +370,8 @@ export async function processGranotObservation(
     execution_mode,
     outcome: persisted.outcome,
     reason_code: persisted.reason_code,
+    initiator_actor_id: moduleContext.initiator?.actor_id,
+    processor_actor_id: moduleContext.processor_actor.actor_id,
     duration_ms: Date.now() - started,
   });
   return toProcessorResult(persisted, receipt.observation_channel, started);
@@ -335,7 +431,15 @@ async function prepareDecision(input: {
   flags: GranotLifecycleFlags;
   decided_at: Date;
   sourcePolicyStore?: SourcePolicyStore;
-}): Promise<{ decision: PreparedDecision; link?: LinkProposal }> {
+  resolveIdentity?: GranotLifecycleProcessorDeps["resolveIdentity"];
+  identityStore?: LeadIdentityStore;
+  loadLeadProjection?: GranotLifecycleProcessorDeps["loadLeadProjection"];
+  leadOverride?: LeadDesiredStateProjection | null;
+}): Promise<{
+  decision: PreparedDecision;
+  link?: LinkProposal;
+  plan?: LeadDesiredStatePlan;
+}> {
   const base: PreparedDecision = {
     observation_id: input.observation._id,
     attempt: input.attempt,
@@ -366,43 +470,88 @@ async function prepareDecision(input: {
     input.sourcePolicyStore ?? createMongoSourcePolicyStore(),
   );
 
+  const policySnapshot = policy.snapshot ?? emptyPolicySnapshot();
+  const identity = await (input.resolveIdentity ?? resolveLeadIdentity)(
+    {
+      observation: toIdentityObservation(input.observation),
+      policy: policySnapshot,
+      policy_failure: policy.ok
+        ? undefined
+        : { outcome: policy.outcome, reason: policy.reason },
+    },
+    input.identityStore,
+  );
+
   if (!policy.ok) {
     return {
       decision: {
         ...base,
         outcome: policy.outcome,
         reason_code: policy.reason,
+        match_method: identity.match_method,
+        target: identity.target,
+        candidates: identity.candidates,
         source_scope: decisionSourceScope(policy.snapshot),
+        evaluated_gates: policy.snapshot
+          ? snapshotEligibleGates(policy.snapshot, input.execution_mode, input.flags, "lead_link")
+              .evaluated_gates
+          : [],
       },
     };
   }
 
-  const gates = snapshotEligibleGates(policy.snapshot, input.execution_mode, input.flags);
+  const lead =
+    input.leadOverride !== undefined
+      ? input.leadOverride
+      : identity.target && isLeadRef(identity.target)
+        ? await (input.loadLeadProjection ?? defaultLoadLeadProjection)(identity.target)
+        : null;
+  const temporal_order = compareGranotTemporal(
+    {
+      captured_at: input.observation.captured_at,
+      observation_id: String(input.observation._id),
+    },
+    lead?.last_accepted_granot_observation,
+  );
+  const plan = planLeadDesiredState({
+    observation: input.observation,
+    identity,
+    lead,
+    policy: policy.snapshot,
+    temporal_order,
+    now: input.decided_at,
+    attempt: input.attempt,
+  });
+  const requested = requestedEffect(plan);
+  const gates = snapshotEligibleGates(
+    policy.snapshot,
+    input.execution_mode,
+    input.flags,
+    requested,
+  );
   const source_scope = decisionSourceScope(policy.snapshot);
   const job = jobProposal(input.observation, policy);
-
-  if (input.execution_mode === "historical_shadow" && job) {
-    return {
-      decision: {
-        ...base,
-        outcome: "linked",
-        reason_code: "record_link_established",
-        match_method: "granot_record_link",
-        source_scope,
-        evaluated_gates: gates.evaluated_gates,
-      },
-      link: job,
-    };
-  }
+  const decided = decidePreparedOutcome({
+    plan,
+    identity,
+    execution_mode: input.execution_mode,
+    job,
+  });
 
   return {
     decision: {
       ...base,
-      outcome: nonEffectingOutcome(input.execution_mode).outcome,
-      reason_code: nonEffectingOutcome(input.execution_mode).reason,
+      outcome: decided.outcome,
+      reason_code: decided.reason_code,
+      match_method: decided.match_method,
+      target: decided.target,
       source_scope,
+      candidates: identity.candidates,
       evaluated_gates: gates.evaluated_gates,
+      next_match_attempt_at: plan.next_match_attempt_at,
     },
+    link: decided.link,
+    plan,
   };
 }
 
@@ -428,19 +577,144 @@ function snapshotEligibleGates(
   snapshot: SourcePolicySnapshot,
   mode: ExecutionMode,
   flags: GranotLifecycleFlags,
+  requested_effect: RequestedLifecycleEffect,
 ): EffectGateEvaluation {
+  const globalFlag =
+    requested_effect === "lead_created"
+      ? flags.lead_creation_enabled
+      : requested_effect === "lead_enrichment" || requested_effect === "lead_link"
+        ? flags.lead_writes_enabled
+        : false;
   return evaluateEffectGates({
-    global_effect_flag: flags.lead_writes_enabled,
+    global_effect_flag: globalFlag,
     receipt_post_activation: mode !== "historical_shadow",
     processor_mode: mode,
-    operational_enabled: true,
-    lifecycle_enabled: true,
+    operational_enabled: snapshot.operational_enabled === true,
+    lifecycle_enabled: snapshot.lifecycle_enabled === true,
     disposition: snapshot.lifecycle_disposition,
-    source_company_active: Boolean(snapshot.lead_source_company_id),
-    source_granularity_active: Boolean(snapshot.source_granularity_id),
+    source_company_active: snapshot.source_company_active === true,
+    source_granularity_active: snapshot.source_granularity_active === true,
     lead_created_policy: snapshot.lead_created_policy,
-    requested_effect: "lead_link",
+    requested_effect,
   });
+}
+
+function requestedEffect(plan: LeadDesiredStatePlan): RequestedLifecycleEffect {
+  if (plan.creation_eligibility === "eligible") {
+    return "lead_created";
+  }
+  if (plan.outcome === "applied" || plan.changed_paths.length > 0) {
+    return "lead_enrichment";
+  }
+  return "lead_link";
+}
+
+function decidePreparedOutcome(input: {
+  plan: LeadDesiredStatePlan;
+  identity: LeadIdentityResult;
+  execution_mode: ExecutionMode;
+  job?: LinkProposal;
+}): {
+  outcome: SynchronizationOutcome;
+  reason_code: SynchronizationReasonCode;
+  match_method?: SynchronizationDecisionDocument["match_method"];
+  target?: EntityRef;
+  link?: LinkProposal;
+} {
+  if (
+    input.execution_mode === "historical_shadow" &&
+    input.job &&
+    allowsHistoricalJobLink(input.plan)
+  ) {
+    return {
+      outcome: "linked",
+      reason_code: "record_link_established",
+      match_method: "granot_record_link",
+      link: input.job,
+    };
+  }
+
+  if (isClassificationOutcome(input.plan.outcome)) {
+    return {
+      outcome: input.plan.outcome,
+      reason_code: input.plan.reason_code,
+      match_method: input.identity.match_method,
+      target: input.plan.target ?? input.identity.target,
+    };
+  }
+
+  const suppressed = nonEffectingOutcome(input.execution_mode);
+  return {
+    outcome: suppressed.outcome,
+    reason_code: suppressed.reason,
+    match_method: input.identity.match_method,
+    target: input.plan.target ?? input.identity.target,
+  };
+}
+
+function allowsHistoricalJobLink(plan: LeadDesiredStatePlan): boolean {
+  if (
+    plan.outcome === "invalid" ||
+    plan.outcome === "unsupported" ||
+    plan.outcome === "conflict" ||
+    plan.outcome === "ambiguous" ||
+    plan.outcome === "deferred"
+  ) {
+    return false;
+  }
+  if (
+    plan.outcome === "policy_blocked" &&
+    (plan.reason_code === "source_unclassified" ||
+      plan.reason_code === "source_disabled" ||
+      plan.reason_code === "target_source_company_inactive" ||
+      plan.reason_code === "target_source_granularity_inactive")
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function isClassificationOutcome(outcome: SynchronizationOutcome): boolean {
+  return (
+    outcome === "stale" ||
+    outcome === "already_current" ||
+    outcome === "pending_match" ||
+    outcome === "unmatched" ||
+    outcome === "insufficient_creation_data" ||
+    outcome === "invalid" ||
+    outcome === "unsupported" ||
+    outcome === "ambiguous" ||
+    outcome === "conflict" ||
+    outcome === "deferred" ||
+    outcome === "policy_blocked"
+  );
+}
+
+function temporalCasClaim(
+  prepared: { decision: PreparedDecision; plan?: LeadDesiredStatePlan },
+  flags: GranotLifecycleFlags,
+  mode: ExecutionMode,
+  capturedAt: Date,
+): { target: EntityRef; incoming: GranotTemporalTuple } | undefined {
+  const plan = prepared.plan;
+  const target = plan?.target;
+  if (
+    mode !== "live" ||
+    !flags.lead_writes_enabled ||
+    plan?.outcome !== "already_current" ||
+    plan.temporal_winner_should_advance !== true ||
+    !target ||
+    !isLeadRef(target)
+  ) {
+    return undefined;
+  }
+  return {
+    target,
+    incoming: {
+      captured_at: capturedAt,
+      observation_id: String(prepared.decision.observation_id),
+    },
+  };
 }
 
 function nonEffectingOutcome(
@@ -634,6 +908,8 @@ function logProcessingCompletion(input: {
   execution_mode: ExecutionMode;
   outcome: SynchronizationOutcome;
   reason_code: SynchronizationReasonCode;
+  initiator_actor_id?: string;
+  processor_actor_id?: string;
   duration_ms: number;
 }): void {
   logger.info({
@@ -645,8 +921,57 @@ function logProcessingCompletion(input: {
     execution_mode: input.execution_mode,
     outcome: input.outcome,
     reason_code: input.reason_code,
+    initiator_actor_id: input.initiator_actor_id,
+    processor_actor_id: input.processor_actor_id,
     duration_ms: input.duration_ms,
   });
+}
+
+function granotLifecycleProcessorActor(receiptId: string): DurableActor {
+  return {
+    actor_type: "system",
+    actor_id: "granot-lifecycle-processor",
+    actor_label: "Granot Lifecycle Processor",
+    actor_role: "system",
+    origin: "granot_lifecycle",
+    request_id: receiptId,
+  };
+}
+
+function toIdentityObservation(
+  observation: GranotObservationDocument,
+): LeadIdentityInput["observation"] {
+  return {
+    identity: {
+      normalized_job_no: observation.identity?.normalized_job_no,
+      normalized_form_ref: observation.identity?.normalized_form_ref,
+    },
+    contact: {
+      normalized_phone: observation.contact?.normalized_phone,
+      normalized_email: observation.contact?.normalized_email,
+    },
+    agent_identity: {
+      user_raw: observation.agent_identity?.user_raw,
+      rep_raw: observation.agent_identity?.rep_raw,
+    },
+    provider_context: observation.provider_context,
+  };
+}
+
+function emptyPolicySnapshot(): SourcePolicySnapshot {
+  return {
+    granot_crm_source_id: "",
+    lifecycle_disposition: "deferred",
+    lead_created_policy: "observation_only",
+    operational_enabled: false,
+    lifecycle_enabled: false,
+    source_company_active: false,
+    source_granularity_active: false,
+  };
+}
+
+function isLeadRef(target: EntityRef): target is EntityRef & { model: LeadModel } {
+  return target.model === "FormLead" || target.model === "CallLead";
 }
 
 function isDuplicateKeyError(error: unknown): boolean {
@@ -668,6 +993,7 @@ async function defaultLoadReceipt(receiptId: string): Promise<ProcessorReceipt |
     observation_channel: row.observation_channel,
     captured_at: new Date(row.captured_at),
     processing: { match_attempt: row.processing.match_attempt },
+    initiator: row.initiator,
   };
 }
 
@@ -752,6 +1078,153 @@ async function defaultPersistDecisionAndLink(input: {
     { $set: { "processing.latest_decision_id": input.decision._id } },
     { session: input.session },
   );
+}
+
+function absent<T>(value: T | null | undefined): T | undefined {
+  return value ?? undefined;
+}
+
+async function defaultLoadLeadProjection(
+  target: EntityRef,
+): Promise<LeadDesiredStateProjection | null> {
+  if (target.model === "FormLead") {
+    const row = await getFormLeadModel().findById(target.id).lean().exec();
+    if (!row) return null;
+    return {
+      model: "FormLead",
+      id: String(row._id),
+      ingestion_origin: absent(row.ingestion_origin),
+      job_no: absent(row.job_no),
+      normalized_job_no: absent(row.normalized_job_no),
+      granot_priority: absent(row.granot_priority),
+      quoted: absent(row.quoted),
+      receiver_agent: row.receiver_agent ? String(row.receiver_agent) : undefined,
+      name: absent(row.name),
+      first_name: absent(row.first_name),
+      last_name: absent(row.last_name),
+      phone_number: absent(row.phone_number),
+      normalized_phone_number: absent(row.normalized_phone_number),
+      email: absent(row.email),
+      pickup_city: absent(row.pickup_city),
+      pickup_zip: absent(row.pickup_zip),
+      pickup_state: absent(row.pickup_state),
+      delivery_city: absent(row.delivery_city),
+      destination_zip: absent(row.destination_zip),
+      delivery_state: absent(row.delivery_state),
+      move_date: row.move_date ? new Date(row.move_date) : undefined,
+      cubic_feet: absent(row.cubic_feet),
+      local: absent(row.local),
+      move_size: absent(row.move_size),
+      granot_move_size: absent(row.granot_move_size),
+      granot_service_type: absent(row.granot_service_type),
+      granot_contact_snapshot: snapshotContact(row.granot_contact_snapshot),
+      ingested_contact_snapshot: snapshotContact(row.ingested_contact_snapshot),
+      last_accepted_granot_observation: row.last_accepted_granot_observation
+        ? {
+            observation_id: String(row.last_accepted_granot_observation.observation_id),
+            captured_at: new Date(row.last_accepted_granot_observation.captured_at),
+          }
+        : undefined,
+      last_granot_contact_change: row.last_granot_contact_change
+        ? { changed_paths: row.last_granot_contact_change.changed_paths ?? [] }
+        : undefined,
+      domain_revision: row.domain_revision,
+    };
+  }
+  if (target.model === "CallLead") {
+    const row = await getCallLeadModel().findById(target.id).lean().exec();
+    if (!row) return null;
+    return {
+      model: "CallLead",
+      id: String(row._id),
+      ingestion_origin: absent(row.ingestion_origin),
+      job_no: absent(row.job_no),
+      normalized_job_no: absent(row.normalized_job_no),
+      granot_priority: absent(row.granot_priority),
+      quoted: absent(row.quoted),
+      receiver_agent: row.receiver_agent ? String(row.receiver_agent) : undefined,
+      name: absent(row.name),
+      first_name: absent(row.first_name),
+      last_name: absent(row.last_name),
+      phone_number: absent(row.phone_number),
+      normalized_phone_number: absent(row.normalized_phone_number),
+      email: absent(row.email),
+      pickup_city: absent(row.pickup_city),
+      pickup_zip: absent(row.pickup_zip),
+      pickup_state: absent(row.pickup_state),
+      delivery_city: absent(row.delivery_city),
+      delivery_zip: absent(row.delivery_zip),
+      delivery_state: absent(row.delivery_state),
+      cubic_feet: absent(row.cubic_feet),
+      local: absent(row.local),
+      granot_move_size: absent(row.granot_move_size),
+      granot_service_type: absent(row.granot_service_type),
+      granot_contact_snapshot: snapshotContact(row.granot_contact_snapshot),
+      ingested_contact_snapshot: snapshotContact(row.ingested_contact_snapshot),
+      last_accepted_granot_observation: row.last_accepted_granot_observation
+        ? {
+            observation_id: String(row.last_accepted_granot_observation.observation_id),
+            captured_at: new Date(row.last_accepted_granot_observation.captured_at),
+          }
+        : undefined,
+      last_granot_contact_change: row.last_granot_contact_change
+        ? { changed_paths: row.last_granot_contact_change.changed_paths ?? [] }
+        : undefined,
+      domain_revision: row.domain_revision,
+    };
+  }
+  return null;
+}
+
+function snapshotContact(
+  value:
+    | {
+        first_name?: string | null;
+        last_name?: string | null;
+        name?: string | null;
+        phone_number?: string | null;
+        normalized_phone_number?: string | null;
+        email?: string | null;
+      }
+    | null
+    | undefined,
+): LeadDesiredStateProjection["granot_contact_snapshot"] {
+  if (!value) return undefined;
+  return {
+    first_name: absent(value.first_name),
+    last_name: absent(value.last_name),
+    name: absent(value.name),
+    phone_number: absent(value.phone_number),
+    normalized_phone_number: absent(value.normalized_phone_number),
+    email: absent(value.email),
+  };
+}
+
+async function defaultAdvanceTemporalWinner(input: {
+  target: EntityRef;
+  incoming: GranotTemporalTuple;
+  session?: ClientSession;
+}): Promise<boolean> {
+  const filter = {
+    _id: input.target.id,
+    ...olderTemporalWinnerFilter(input.incoming),
+  };
+  const update = {
+    $set: {
+      last_accepted_granot_observation: {
+        observation_id: new mongoose.Types.ObjectId(input.incoming.observation_id),
+        captured_at: input.incoming.captured_at,
+      },
+    },
+  };
+  const options = { session: input.session };
+  const result =
+    input.target.model === "FormLead"
+      ? await getFormLeadModel().updateOne(filter, update, options)
+      : input.target.model === "CallLead"
+        ? await getCallLeadModel().updateOne(filter, update, options)
+        : { matchedCount: 0 };
+  return result.matchedCount === 1;
 }
 
 export const granotObservationProcessor = createGranotObservationProcessor();

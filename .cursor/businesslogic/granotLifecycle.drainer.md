@@ -18,7 +18,7 @@ Processing disabled: no claim, safe skipped run. Capture and due work remain int
 
 - Technical failure (no Decision): attempts 1–9 → `retry_scheduled` at `min(6h, 30s * 2^(attempt-1))` plus 0–25% jitter; attempt 10 → `dead_letter`.
 - Successful processor result resets `technical_attempts` to 0 so the stored value is the consecutive technical-failure budget.
-- `pending_match` increments `match_attempt` once and schedules the next absolute offset from immutable `captured_at`: immediate → 1m → 5m → 15m → 1h → 2h → 6h → 12h → 24h. At or after 24 hours the receipt completes and is not scheduled further. The drainer does not fabricate an `unmatched` Decision.
+- `pending_match` increments `match_attempt` once and schedules the next absolute offset from immutable `captured_at`: immediate → 1m → 5m → 15m → 1h → 2h → 6h → 12h → 24h. At or after 24 hours the Unit 15 processor emits `unmatched` / `match_window_expired` and the receipt completes. The drainer does not fabricate that Decision.
 - Every other known `SynchronizationOutcome` completes. Unknown outcomes fail closed as a technical contract error.
 
 ## Requeue

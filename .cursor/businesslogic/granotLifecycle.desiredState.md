@@ -1,0 +1,41 @@
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
+**Primary code:** `src/services/granotLifecycle/leadDesiredState.ts`, `src/services/granotLifecycle/granotTemporal.ts`  
+**Domain terms used:** Granot Observation, Synchronization Decision, Ingestion Origin, System of Record
+
+# Granot desired-state planner (`granotLifecycle/leadDesiredState`)
+
+**Role:** Pure origin-specific planner. Given a persisted Observation, Unit 14 identity result, current Lead projection, Registry policy, and temporal order, return a deterministic `LeadDesiredStatePlan`. Routes and clients never supply this object. The plan is not persisted; Decisions keep only target/candidates, reason, gate snapshot, and allowed effect summaries.
+
+## Temporal comparator
+
+`compareGranotTemporal` compares `captured_at` first, then lowercase 24-character Observation ObjectId hex. Missing stored winner is `newer`. Exact same tuple is `same`. Older observations plan `stale` and do not advance the winner.
+
+## Authority matrix
+
+| Field group | Planned when |
+| --- | --- |
+| Job Number | fill missing when normalized values agree; conflict never overwrites |
+| `granot_priority` | every temporally accepted valid Priority |
+| `receiver_agent` | empty receiver + one active Unit 14 Agent suggestion at any valid Priority |
+| `quoted` | Priority `1`/`5` may set true; never false |
+| Granot/current contact | Priority `1`/`5`, subject to origin |
+| current location / move date / cubic feet / `local` | Priority `1`/`5`, subject to origin |
+| `granot_move_size`, `granot_service_type` | Priority `1`/`5`; never Vantage `move_size` |
+
+WordPress Form: primary name/phone/email and both ingested snapshots stay off `changed_paths`. Granot-created and RingCentral-created qualified contact become current operational fields and a bounded contact-revision path list. Full history is Unit 18 `EntityChange`.
+
+## No-match and minimum data
+
+- `link_only`: `pending_match` / `pending_source_scoped_match` with `next_match_attempt_at` from the Unit 08 offsets; at/after 24h `unmatched` / `match_window_expired`
+- incomplete immutable creation data: `insufficient_creation_data` with `missing_creation_job_number`, `missing_creation_contact`, or `missing_creation_route_data`; never pending
+- Form minimum data: normalized Job, deterministic route, name component, normalized phone, valid origin/destination state and 5-digit ZIP
+- Call may be Job-only for future authorized creation; telephony fields are never fabricated
+- `create_if_missing` eligible stays `shadow_effect_suppressed`; Unit 19 owns the create
+- `observation_only` stays `creation_policy_observation_only`
+
+Equivalent formatting uses existing Job/phone/email/state/date normalizers and does not manufacture a change. `changed_paths` are sorted and deduplicated.
+
+## Related
+
+- Processor orchestration: [`granotLifecycle.processor.md`](granotLifecycle.processor.md)
+- Identity input: [`granotLifecycle.identity.md`](granotLifecycle.identity.md)

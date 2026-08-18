@@ -1,47 +1,69 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
-**Primary code:** `src/services/granotLifecycle/processor.ts`, `src/services/granotLifecycle/operations.ts`, `src/services/granotLifecycle/projections.ts`, `src/config/domain/granotLifecycle.ts`, `src/models/SynchronizationDecision.ts`, `src/models/GranotLifecycleActivation.ts`, `src/models/GranotRecordLink.ts`  
+**Primary code:** `src/services/granotLifecycle/processor.ts`, `src/services/granotLifecycle/leadDesiredState.ts`, `src/services/granotLifecycle/granotTemporal.ts`, `src/config/domain/granotLifecycle.ts`, `src/models/SynchronizationDecision.ts`, `src/models/GranotLifecycleActivation.ts`, `src/models/GranotRecordLink.ts`
 **Domain terms used:** Synchronization Decision, Granot Record Link, Granot Observation, Granot Observation Receipt, System of Record
 
-# Granot lifecycle Decision skeleton (`granotLifecycle/processor`)
+# Granot lifecycle processor (`granotLifecycle/processor`)
 
-**Role:** Turn one receipt's Observation into one causal Synchronization Decision and, only when safe, one job-level Granot Record Link. This is evidence and operational inspectability. It does not match or mutate a Lead, open a case, or create an official Booking or Cancellation fact.
+**Role:** Channel-neutral production orchestrator. One receipt becomes one Observation, one Unit 14 identity result, one desired-state plan, and one Synchronization Decision. Historical shadow may also establish or confirm a **job-level** Granot Record Link. This module does not mutate Lead business fields, target links, official Booking/Cancellation facts, cases, Commands, Entity Changes, or Sheet Sync.
 
-**Stack:** callable module `processor.ts`. When invoked it upserts the Observation through the existing normalization module, then writes one Decision. Capture does not invoke this module. Queue, cron, and the synchronous claim-and-poll seam invoke it only after a fenced receipt claim (`drainer.ts`). Admin routes accept an activation command, Owner dead-letter requeue, a Job Number path, or a health read.
+**Stack:** callable module `processor.ts`. Capture does not invoke it. Queue, cron, and the synchronous claim-and-poll seam invoke it only after a fenced receipt claim (`drainer.ts`). Routes pass receipt identity (and optional initiator); they do not plan patches.
 
-## Execution mode
+## Orchestration
 
-`classifyExecutionMode` is pure. Channel never changes mode. A stored Decision's mode is never recomputed or promoted.
+```text
+load receipt -> upsert/reuse Observation -> classify stored execution mode
+-> terminal normalization -> resolve Registry policy -> Unit 14 identity
+-> temporal compare -> desired-state plan -> evaluate exact gates
+-> persist one Decision for observation/attempt -> finalize through Unit 08 fence
+```
 
-- no activation row → `historical_shadow`
-- `captured_at < activated_at` → permanently `historical_shadow`
-- `captured_at >= activated_at` and shadow true → `live_shadow`
-- `captured_at >= activated_at` and shadow false → `live`
+The processor actor is always `{ actor_type:"system", actor_id:"granot-lifecycle-processor" }`. Receipt `initiator` is threaded in module context for later commands; a webhook may omit it. Clients never supply the processor actor.
 
-## Safe historical Record Link
+Same observation/attempt with identical causal meaning replays the stored Decision. Different meaning is `DecisionIntegrityError`. Technical dependency failures create no Decision.
 
-Only a valid Observation whose source policy resolves successfully, in `historical_shadow`, with a normalized Job Number may establish or confirm a job-level link. Referral may establish a job-only link without Source Scope. Deferred, disabled, unclassified, ambiguous, or invalid policy establishes none. Post-cutoff `live_shadow` / `live` attempts persist a Decision and do not mutate a Record Link. A successful Decision stamps `processing.latest_decision_id` on the receipt; it does not claim or drain the receipt.
+## Temporal tuple
 
-Incompatible job/source evidence records `conflict` / `record_link_conflict` and does not alter, mark, or supersede the active link. Unit 29 owns disputed marking and correction.
+Ordering is latest accepted Vantage `captured_at`; equal times use the lexicographically greater lowercase 24-character Observation ObjectId hex. No source, channel, or Priority outranks that tuple. Missing stored winner is newer. Exact same tuple is replay/`already_current`. Older is `stale` / `older_than_temporal_winner` with no desired-state effect or winner advance.
 
-## Activation
+## Desired-state planner
 
-`POST /api/v1/admin/granot-lifecycle/activation` is Owner-only and write-once. The server supplies `activated_at` and the verified actor. Success is `201`. An existing row returns `409 GRANOT_ALREADY_ACTIVATED`. The command exists; the activation row stays absent until separately approved.
+`leadDesiredState.ts` returns a plan, not a database patch and never contact values inside a Decision. Rules:
 
-## Projections
+- every temporally accepted valid Priority plans `granot_priority`; only `1`/`5` plan broad enrichment and `quoted=true`; no Priority plans false
+- malformed Priority Update is `invalid` / `invalid_priority_update`; the same issue on Lead Created/Booked/Release skips Priority and continues
+- WordPress primary contact and both ingested snapshots never enter `changed_paths`; qualified Granot contact stays on `granot_contact_snapshot`; qualified move may plan current location/date/cubic feet and derived `local`; Vantage `move_size` is never planned
+- RingCentral-created and Granot-created qualified contact/move plan current fields plus a bounded `last_granot_contact_change.changed_paths` summary; no Entity Change is claimed
+- one Unit 14 Agent suggestion may fill an empty receiver at any valid Priority via `granot_username_match`; conflicts and existing receivers never overwrite
+- Duplicate Form has no target; Bad exact Form is Priority plus safe link evidence only
+- `link_only` no-match is `pending_match` until the Unit 08 24h clock, then `unmatched` / `match_window_expired`; incomplete creation data is terminal `insufficient_creation_data` and is never pending
+- `create_if_missing` evaluates Section 16.3 minimum data in shadow and stays `shadow_effect_suppressed` with no `created` claim; Unit 19 owns creation
 
-Job and health reads are Owner/Admin, raw-free, and explicitly incomplete (`complete_timeline`, `cases`, and `official_facts` are false). Health now includes claimed/expired/dead-letter counts and last queue/cron run derived from durable Operational Events.
+Source Company, Source Granularity, Ingestion Origin, CPL, Booking/Cancellation refs, and official money never enter `desired_values`.
+
+## Shadow and effects
+
+- Pre-activation and `captured_at < activated_at` stay `historical_shadow` forever. Live-shadow Decisions are never promoted.
+- Historical shadow may create safe job-level Record Link evidence when Job/scope agree. It does not add `lead_ref`, `booking_ref`, source scope, or disputed state.
+- Live shadow persists Decisions only. Eligible matched writes become `shadow_effect_suppressed`.
+- Effect rows are empty unless a safe job-level Record Link establish/confirm actually occurs.
+- Production starting/ending flags stay processing true, shadow true, and all eight effect flags false.
+
+## Temporal compare-and-swap seam
+
+For a newer Observation whose authorized desired state is already current, injected **`live` + Lead-writes-enabled test posture only** may insert `already_current` / `desired_state_already_current` and atomically advance `last_accepted_granot_observation` with a filter that accepts only an older `(captured_at, observation_id)` tuple. That write does not increment `domain_revision`, write `last_change_*`, create Entity Change, request Sheet Sync, or emit `lead_updated`. Zero matched rows abort the proposed Decision, reload, and re-evaluate; the loser is normally `stale`. Production shadow never invokes this Lead write. Unit 18 owns changed-field command transactions.
 
 ## Flags
 
-Defaults: processing true, shadow true, all eight effect flags false. Capture ignores these flags. Processing false refuses this module unless a test supplies config. This unit applies no Lead, Booking, or Cancellation effects.
+Defaults: processing true, shadow true, all eight effect flags false. Processing false refuses this module unless a test supplies config.
 
 ## Out of scope here
 
-Identity ladders live in [`granotLifecycle.identity.md`](granotLifecycle.identity.md) and are not invoked from this skeleton. Desired state, Lead writes, post-cutoff link mutation, Entity Changes, Sheet Sync, cases, discrepancies, and notifications remain later units. Claim/fencing/retry/requeue: [`granotLifecycle.drainer.md`](granotLifecycle.drainer.md).
+Matched Lead field writes and target-link mutation (Unit 18). Authorized Lead creation (Unit 19). Booking/Release cases and commands. Extension/automation adapters. RingCentral adoption.
 
 ## Related
 
-- Capture remains receipt-only ([`granotLifecycle.capture.md`](granotLifecycle.capture.md)).
-- Observation upsert uses [`granotLifecycle.normalization.md`](granotLifecycle.normalization.md).
-- Policy resolution: [`granotLifecycle.sourcePolicy.md`](granotLifecycle.sourcePolicy.md).
-- Software map: [`granot-lifecycle-capture.mdc`](../rules/granot-lifecycle-capture.mdc).
+- Identity: [`granotLifecycle.identity.md`](granotLifecycle.identity.md)
+- Desired-state planner: [`granotLifecycle.desiredState.md`](granotLifecycle.desiredState.md)
+- Policy/gates: [`granotLifecycle.sourcePolicy.md`](granotLifecycle.sourcePolicy.md)
+- Drain/pending clock: [`granotLifecycle.drainer.md`](granotLifecycle.drainer.md)
+- Software map: [`granot-lifecycle-capture.mdc`](../rules/granot-lifecycle-capture.mdc)

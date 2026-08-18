@@ -48,6 +48,10 @@ export type SourcePolicySnapshot = {
   lifecycle_disposition: GranotLifecycleDisposition;
   lead_created_policy: GranotLeadCreatedPolicy;
   lifecycle_policy_version?: string;
+  operational_enabled?: boolean;
+  lifecycle_enabled?: boolean;
+  source_company_active?: boolean;
+  source_granularity_active?: boolean;
 };
 
 export type SourcePolicyResolution =
@@ -210,6 +214,10 @@ async function resolveNormalizedMatches(
     lifecycle_disposition: row.lifecycle_disposition,
     lead_created_policy: row.lead_created_policy,
     lifecycle_policy_version: row.lifecycle_policy_version || undefined,
+    operational_enabled: row.enabled,
+    lifecycle_enabled: row.lifecycle_enabled,
+    source_company_active: false,
+    source_granularity_active: false,
   };
 
   if (!row.enabled || !row.lifecycle_enabled) {
@@ -248,7 +256,7 @@ async function resolveNormalizedMatches(
       ok: false,
       outcome: "policy_blocked",
       reason: "target_source_company_inactive",
-      snapshot: baseSnapshot,
+      snapshot: { ...baseSnapshot, source_company_active: company?.active === true },
     };
   }
 
@@ -256,10 +264,11 @@ async function resolveNormalizedMatches(
   if (!selected.ok) {
     return {
       ...selected,
-      snapshot: baseSnapshot,
+      snapshot: { ...baseSnapshot, source_company_active: true },
     };
   }
 
+  const granularity = await store.findGranularity(selected.route.source_granularity_id);
   return {
     ok: true,
     snapshot: {
@@ -268,6 +277,8 @@ async function resolveNormalizedMatches(
       selected_route_key: selected.route.route_key,
       selected_lead_model: selected.route.lead_model,
       selected_move_type: selected.route.move_type,
+      source_company_active: true,
+      source_granularity_active: granularity?.active === true,
     },
   };
 }
