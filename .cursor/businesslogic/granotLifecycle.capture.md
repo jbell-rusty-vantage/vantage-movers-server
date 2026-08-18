@@ -63,7 +63,7 @@ A dedicated consumer now exists (`api/queues/granot-lifecycle-consumer.ts`) and 
 
 - CRM Posting on form-lead create does **not** write a receipt and is not triggered by webhooks ([`form-lead.service.md`](form-lead.service.md)).
 - Approved Owner browser-extension apply uses `captureChannelOperationReceipt` (`observation_channel: "browser_extension"`, `authentication_method: "extension_session"`). Same channel + operation ID + hash replays the receipt; a different hash is `409 GRANOT_OPERATION_IDEMPOTENCY_CONFLICT` and creates no row. Unique-index races reload the winner and apply the same hash check. Details: [`granotLifecycle.extensionApply.md`](granotLifecycle.extensionApply.md).
-- HTTP automation is still a separate mutation path until Unit 17 ([`granotHttpCollector.service.md`](granotHttpCollector.service.md)).
+- Approved HTTP automation apply uses `captureChannelOperationReceipt` (`observation_channel: "granot_http_automation"`, `authentication_method: "automation_owner_approval"`). Operation ID is `${run_id}:${action_id}`. Details: [`granotLifecycle.automationApply.md`](granotLifecycle.automationApply.md).
 - Software map: [`granot-lifecycle-capture.mdc`](../rules/granot-lifecycle-capture.mdc).
 
 ## Out of scope here

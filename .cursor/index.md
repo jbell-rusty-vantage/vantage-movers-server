@@ -56,6 +56,7 @@ Production API: https://vantage-movers-main-server.vercel.app
 | [operationsRegistry.service.md](businesslogic/operationsRegistry.service.md) | `src/services/operationsRegistry/` — catalog/source/CPL/RC inbound-route/Granot CRM source SoR, signed owner mutations, `resolveCpl` |
 | [granotLifecycle.capture.md](businesslogic/granotLifecycle.capture.md) | `src/services/granotLifecycle/capture.ts` — webhook auth, v2 receipt capture, channel-neutral operation-ID capture, `{ receipt_id }` wake-up. Program map: `rules/granot-lifecycle-capture.mdc` |
 | [granotLifecycle.extensionApply.md](businesslogic/granotLifecycle.extensionApply.md) | `src/services/granotLifecycle/extensionApply.ts` — Owner extension apply items, receipt capture, `claimAndProcessOrPoll`, safe compatibility result |
+| [granotLifecycle.automationApply.md](businesslogic/granotLifecycle.automationApply.md) | `src/services/granotLifecycle/automationApply.ts` — Owner-approved HTTP automation receipt apply, resumable `accepted_for_processing` |
 | [granotLifecycle.normalization.md](businesslogic/granotLifecycle.normalization.md) | `src/services/granotLifecycle/normalization.ts` — one Observation per receipt, exact Section 10 vocabulary; **no matching/effects** |
 | [granotLifecycle.sourcePolicy.md](businesslogic/granotLifecycle.sourcePolicy.md) | `src/services/granotLifecycle/sourcePolicy.ts` — fail-closed Registry policy resolution and eight-name effect-gate snapshot with real enabled/active facts; **no effects** |
 | [granotLifecycle.identity.md](businesslogic/granotLifecycle.identity.md) | `src/services/granotLifecycle/identity.ts` — source-scoped Form/Call ladders, Agent assertion, Booking delegation context; **read-only, invoked by the Unit 15 processor** |
@@ -63,7 +64,7 @@ Production API: https://vantage-movers-main-server.vercel.app
 | [granotLifecycle.processor.md](businesslogic/granotLifecycle.processor.md) | `src/services/granotLifecycle/processor.ts` — channel-neutral shadow orchestration, identity + planner + gates, historical job Record Link, test-only metadata CAS; **no Lead/Booking business effects** |
 | [granotLifecycle.drainer.md](businesslogic/granotLifecycle.drainer.md) | `src/services/granotLifecycle/drainer.ts` — fenced claim/lease, queue/cron drain, technical vs pending-match clocks, dead letter, Owner requeue; **no Lead/Booking effects** |
 | [granotLifecycle.revisions.md](businesslogic/granotLifecycle.revisions.md) | `src/models/granotLifecycleSchemas.ts` + `aggregateRevision.ts` — `domain_revision` / history-boundary fields, Unit 12 Lead provenance storage, CAS primitive; existing adapters stamp `last_change_*` from append-only `EntityChange` |
-| [granotHttpCollector.service.md](businesslogic/granotHttpCollector.service.md) | `src/services/granotHttpCollector/` — HTTP session collector, preview/approve/apply runs; apply still mutates directly |
+| [granotHttpCollector.service.md](businesslogic/granotHttpCollector.service.md) | `src/services/granotHttpCollector/` — HTTP session collector, preview/approve/apply runs; apply captures `granot_http_automation` receipts |
 
 **Not duplicated here (yet):** `employeeBookings/`, `leadMessaging/`, `reporting/`, `ingestion/` — mapped in `rules/project-organization.mdc`.
 
@@ -105,8 +106,8 @@ Rule files apply when editing matching paths (`globs` in each file frontmatter).
 | `ringcentral-integration.mdc` | RingCentral env, webhooks, cron |
 | `ringcentral-call-lead-candidates.mdc` | Candidate aggregation + ingest boundaries |
 | `form-lead-granot-crm.mdc` | Granot CRM form-lead posting |
-| `granot-lifecycle-capture.mdc` | Granot lead-lifecycle software map: goal, current `granotLifecycle/` modules, Units 01–14 shipped / 15 next; capture still does not invoke the processor; Booking/Release Reconciliation is not live |
-| `granot-http-automation.mdc` | HTTP collector / automation runs; direct apply mutations |
+| `granot-lifecycle-capture.mdc` | Granot lead-lifecycle software map: webhook capture, extension/automation receipt apply, shadow processor; Booking/Release Reconciliation is not live |
+| `granot-http-automation.mdc` | HTTP collector / automation runs; approved apply captures `granot_http_automation` receipts |
 | `lead-lifecycle-delivery.mdc` | Branch plan for Granot lead-lifecycle units (server / admin / extension) |
 | `granot-crm-csv-s3-sync.mdc` | CSV/S3 CRM sync |
 | `observability-service.mdc` | Operational events and alerts |

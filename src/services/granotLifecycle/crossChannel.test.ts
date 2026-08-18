@@ -225,3 +225,63 @@ test("[AC-02][AC-33] apply-item envelope unwraps to the statement without a seco
   });
   assert.notEqual(hashed.payload_sha256, drifted.payload_sha256);
 });
+
+test("[AC-02][AC-33] equivalent webhook and automation statements share Observation identity", () => {
+  const operationId = "507f1f77bcf86cd799439011:Synthetic Forms:row-1";
+  const webhook = normalizeGranotReceipt({
+    observation_channel: "granot_webhook",
+    captured_at: capturedAt,
+    route_event_class: "priority_updated",
+    payload: { event_type: "priority_updated", ...statement },
+  });
+  const automation = normalizeGranotReceipt({
+    observation_channel: "granot_http_automation",
+    captured_at: capturedAt,
+    channel_operation_kind: "lead_snapshot_apply",
+    channel_operation_id: operationId,
+    payload_schema_hint: "granot_apply_item_v1",
+    payload: {
+      operation_id: operationId,
+      operation_kind: "lead_snapshot_apply",
+      granot_statement: statement,
+    },
+  });
+  assert.equal(webhook.identity.form_ref_raw, automation.identity.form_ref_raw);
+  assert.equal(webhook.identity.normalized_job_no, automation.identity.normalized_job_no);
+  assert.equal(webhook.priority.canonical, automation.priority.canonical);
+  assert.equal(webhook.agent_identity.user_raw, automation.agent_identity.user_raw);
+  assert.equal(webhook.agent_identity.rep_raw, automation.agent_identity.rep_raw);
+  assert.equal(webhook.normalized_source_label, automation.normalized_source_label);
+});
+
+test("[AC-33] equivalent webhook and automation shadow desired-state outcomes match", async () => {
+  const webhookObs = observation(new mongoose.Types.ObjectId());
+  const automationObs = observation(new mongoose.Types.ObjectId());
+  const webhookDeps = memoryDeps(webhookObs);
+  webhookDeps.loadReceipt = async () => ({
+    _id: webhookObs.receipt_id,
+    observation_channel: "granot_webhook",
+    captured_at: capturedAt,
+    processing: { match_attempt: 0 },
+  });
+  const automationDeps = memoryDeps(automationObs);
+  automationDeps.loadReceipt = async () => ({
+    _id: automationObs.receipt_id,
+    observation_channel: "granot_http_automation",
+    captured_at: capturedAt,
+    processing: { match_attempt: 0 },
+  });
+  const webhookResult = await processGranotObservation(
+    { receipt_id: String(webhookObs.receipt_id) },
+    webhookDeps,
+  );
+  const automationResult = await processGranotObservation(
+    { receipt_id: String(automationObs.receipt_id) },
+    automationDeps,
+  );
+  assert.equal(webhookResult.outcome, automationResult.outcome);
+  assert.deepEqual(
+    webhookResult.effects.flatMap((effect) => effect.changed_paths ?? []),
+    automationResult.effects.flatMap((effect) => effect.changed_paths ?? []),
+  );
+});

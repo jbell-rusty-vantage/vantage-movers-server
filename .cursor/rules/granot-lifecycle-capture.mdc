@@ -8,15 +8,15 @@ alwaysApply: false
 
 Software map for `src/services/granotLifecycle/`. Owner invariants stay in the linked businesslogic files. Locked contracts stay in `scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md`. Delivery branches: [`lead-lifecycle-delivery.mdc`](lead-lifecycle-delivery.mdc). Unit ledger is a navigation aid only: [`UNIT-STATUS.md`](../../scripts/prototypes/granot-lead-lifecycle/delivery/UNIT-STATUS.md). Repository state, migrations/indexes, flags, and tests are authoritative.
 
-Owner invariants: [capture](../businesslogic/granotLifecycle.capture.md), [extension apply](../businesslogic/granotLifecycle.extensionApply.md), [normalization](../businesslogic/granotLifecycle.normalization.md), [source policy](../businesslogic/granotLifecycle.sourcePolicy.md), [identity](../businesslogic/granotLifecycle.identity.md), [processor](../businesslogic/granotLifecycle.processor.md), [drainer](../businesslogic/granotLifecycle.drainer.md), [revisions](../businesslogic/granotLifecycle.revisions.md).
+Owner invariants: [capture](../businesslogic/granotLifecycle.capture.md), [extension apply](../businesslogic/granotLifecycle.extensionApply.md), [automation apply](../businesslogic/granotLifecycle.automationApply.md), [normalization](../businesslogic/granotLifecycle.normalization.md), [source policy](../businesslogic/granotLifecycle.sourcePolicy.md), [identity](../businesslogic/granotLifecycle.identity.md), [processor](../businesslogic/granotLifecycle.processor.md), [drainer](../businesslogic/granotLifecycle.drainer.md), [revisions](../businesslogic/granotLifecycle.revisions.md).
 
 ## Goal
 
 Replace ad-hoc Granot webhook, extension, and HTTP apply mutations with one channel-neutral path from Granot evidence to owner-authorized Vantage facts:
 
-webhook / later extension / later HTTP automation → credential-redacted **Granot Observation Receipt** → **Granot Observation** → fail-closed Registry policy + source-scoped identity → **Synchronization Decision** → later matched-Lead sync, authorized Granot Lead create, and owner **Granot Booking / Release Reconciliation** (confirm, update, or No Action).
+webhook / extension / HTTP automation → credential-redacted **Granot Observation Receipt** → **Granot Observation** → fail-closed Registry policy + source-scoped identity → **Synchronization Decision** → later matched-Lead sync, authorized Granot Lead create, and owner **Granot Booking / Release Reconciliation** (confirm, update, or No Action).
 
-Granot evidence never becomes an official Booking or Cancellation by itself. CRM Posting remains a separate mutation path. Approved Owner extension apply now captures a `browser_extension` receipt and enters the shared processor. HTTP automation apply remains a separate mutation path until Unit 17.
+Granot evidence never becomes an official Booking or Cancellation by itself. CRM Posting remains a separate mutation path. Approved Owner extension apply captures a `browser_extension` receipt and enters the shared processor. Approved HTTP automation apply captures a `granot_http_automation` receipt under `${run_id}:${action_id}` and enters the same claim/processor. Neither path may restore a direct Form/Call/Booked mutation bypass.
 
 ## Current service
 
@@ -26,6 +26,7 @@ Granot evidence never becomes an official Booking or Cancellation by itself. CRM
 | --- | --- |
 | `capture.ts` | Webhook insert plus channel-neutral `captureChannelOperationReceipt` for extension/automation operation IDs. Hash/replay/409 uniqueness live here. Webhook capture still does not invoke the processor. |
 | `extensionApply.ts` | Owner apply-item capture → `claimAndProcessOrPoll` → safe compatibility result. Routes stay policy-free. |
+| `automationApply.ts` | Owner-approved HTTP automation action → `granot_http_automation` capture → `claimAndProcessOrPoll` → run-action receipt. |
 | `normalization.ts` | Callable Observation upsert. Exact Section 10 vocabulary. No matching or effects. |
 | `sourcePolicy.ts` | Fail-closed Registry read and seven-layer effect-gate snapshot. No writes. |
 | `identity.ts` | Read-only Form/Call ladders, Agent assertion, Booking delegation context. No Decision or Lead writes. |
@@ -39,13 +40,13 @@ Admin routes activate, requeue dead letters, project a Job, or read health. They
 
 ## Progress
 
-Units 01–16 are complete on `granot-lead-lifecycle` (Unit 16 also lands extension `0.2.8` on `granot_sync_extensions_and_services/main`). Re-verify the matching `UNIT-*-COMPLETION.md` and repository state before editing; do not trust the ledger alone.
+Units 01–17 are complete on `granot-lead-lifecycle` (Unit 16 also lands extension `0.2.8` on `granot_sync_extensions_and_services/main`). Re-verify the matching `UNIT-*-COMPLETION.md` and repository state before editing; do not trust the ledger alone.
 
-**Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, shadow processor orchestration, and Owner browser-extension receipt apply.
+**Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, shadow processor orchestration, Owner browser-extension receipt apply, and HTTP automation receipt apply.
 
-**Next sequential implementation:** Unit 17 may proceed independently and must call this processor without reconstructing patches or desired state. Unit 18 stays blocked until Units 16–17 plus accepted shadow parity. Deployed posture stays shadow; Lead writes/creation/cases stay false.
+**Next sequential implementation:** Unit 18 stays blocked until a designated integration owner accepts combined webhook/extension/automation shadow parity. Deployed posture stays shadow; Lead writes/creation/cases stay false.
 
-**Not started here:** HTTP automation receipt convergence (17), live matched-Lead writes (18), authorized Granot Lead create (19), RingCentral adoption (20–21), Booking/Release Reconciliation persistence and owner commands (22–29).
+**Not started here:** live matched-Lead writes (18), authorized Granot Lead create (19), RingCentral adoption (20–21), Booking/Release Reconciliation persistence and owner commands (22–29).
 
 ## Live constraints
 

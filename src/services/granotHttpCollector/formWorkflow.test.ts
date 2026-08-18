@@ -283,6 +283,28 @@ test("form patch has extension parity and fills only missing locations", async (
   assert.equal(patch.receiver_agent_source, "extension_crm_username_match");
 });
 
+test("[AC-33] form planning labels Booked Jobs and Follow Up sections separately", async () => {
+  const plan = await planGranotFormWorkflow(
+    [
+      {
+        sourceLabel: "TBM Forms",
+        contentHash: "hash",
+        sectionSchemas: { bookedJobs: "table", followUpEstimates: "table" },
+        sections: {
+          bookedJobs: [{ id: "booked:1", rowIndex: 1, values: { ref_no: "booked-ref", prior: "1" } }],
+          followUpEstimates: [{ id: "follow:1", rowIndex: 2, values: { ref_no: "follow-ref", prior: "5" } }],
+        },
+      } as never,
+    ],
+    {
+      findExactRefMatches: async () => [],
+      search: async () => ({ status: "none", found: false, matches: [] }) as never,
+    },
+  );
+  assert.equal(plan.actions[0]?.table_section, "bookedJobs");
+  assert.equal(plan.actions[1]?.table_section, "followUpEstimates");
+});
+
 test("apply deployment gate is explicit", () => {
   assert.equal(granotApplyEnabled("true"), true);
   assert.equal(granotApplyEnabled("TRUE"), true);

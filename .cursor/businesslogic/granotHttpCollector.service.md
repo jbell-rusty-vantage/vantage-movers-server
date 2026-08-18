@@ -1,12 +1,10 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)
 **Primary code:** `src/services/granotHttpCollector/`
-**Domain terms used:** Form Lead, Call Lead Enrichment, System of Record, Tracking Reference
+**Domain terms used:** Form Lead, Call Lead Enrichment, Granot Observation Receipt, System of Record, Tracking Reference
 
 # Granot HTTP collector / automation
 
-**Role:** Owner-gated HTTP session collector that plans form/call patches from Granot HTML tables, then optionally applies selected actions. Mongo is the **System of Record**. This path is **not** Granot webhook capture and does **not** write `GranotObservationReceipt`.
-
-**Gap (do not describe as shipped):** final spec §31 / Unit 17 would capture `granot_http_automation` receipts and call `GranotObservationProcessor`. Apply today mutates domain services directly.
+**Role:** Owner-gated HTTP session collector that plans form/call work from Granot HTML tables. Mongo is the **System of Record**. Preview never writes a lifecycle receipt. Approved apply captures one `granot_http_automation` receipt per selected action and enters the shared lifecycle claim/processor. It does **not** call `updateFormLead`, `syncCallLeadEnrichment`, or `syncBookedCallLeadReconciliation`.
 
 ## HTTP / queue
 
@@ -23,31 +21,29 @@
 
 | Workflow | Behavior |
 |----------|----------|
-| `preview` | Collect + plan. No Mongo lead writes. |
-| `apply` | Same plan, then owner approval of selected action ids. Requires `GRANOT_AUTOMATION_APPLY_ENABLED`. |
+| `preview` | Collect + plan. No lifecycle receipt. No Lead write. |
+| `apply` | Same plan, Owner approval of selected action ids, then capture + `claimAndProcessOrPoll`. Requires `GRANOT_AUTOMATION_APPLY_ENABLED`. |
 
 Operations: `form_leads` or `call_leads`. Form planning never **creates** Form Leads.
 
 `GranotAutomationSource.supported_operations` remains a catalog/list compatibility field. Lifecycle availability and apply routing come from the referenced `GranotCrmSource` via `evaluateGranotAutomationCompatibility`. List/create still return legacy label/operations plus an additive `compatibility` projection. `resolveGranotAutomationSources` fails closed with `INVALID_GRANOT_SOURCES` and per-source issues when the reference is missing, disabled, ambiguous, or operation-incompatible. New automation labels are `missing_reference` until an Owner or reviewed migration attaches an exact Registry row.
 
-## Form plan / apply
+## Plan schema v2
 
-`planGranotFormWorkflow()` matches rows (booked + follow-up) via `granotFormLeadMatcher.ts`: exact `ref_no` first, Mongo `_id` compatibility second, scored search fallback. Classifications: `update` / `unchanged` / `conflict` / `no_match` / `invalid`.
+Before checksum lock, every collected action receives a server-owned `lifecycle_apply` block: `${run_id}:${action_id}`, operation kind, complete `granot_statement`, and optional preview `expected_target`. Schema-v1 plans cannot be reconstructed and fail `RUN_REPLAN_REQUIRED`.
 
-Approved form apply → `applyFormAction()` → `updateFormLead()` (quoted, cubic_feet, location, optional `receiver_agent` from Granot CRM username match).
+## Form / Call apply
 
-## Call apply
-
-Approved call actions call `syncCallLeadEnrichment()` or `syncBookedCallLeadReconciliation()` — the same services the extension/CSV paths use.
+Selected approved actions call `applyAutomationPlanAction`. Follow Up rows are `lead_snapshot_apply`. Booked Jobs rows, including Form-plan Booked rows, are `booking_action_apply` with raw `Booked` evidence. Unselected actions create no lifecycle receipt. Preview matching remains for owner guidance only.
 
 ## Run records
 
-`GranotAutomationRun` / `GranotAutomationSource` own plan snapshots, leases, and run-level `{ action_id, outcome }` receipts. Those are **not** lifecycle observation receipts.
+`GranotAutomationRun` stores the immutable plan, approval, lease, and per-action receipts `{ action_id, lifecycle_receipt_id, observation_id?, decision_id?, outcome, applied_at }`. Lifecycle receipts/Observations/Decisions remain durable if the run later expires.
 
-Worker claims `applying` runs under a durable lease (`granot:automation:account`). Approved work precedes new planning.
+Worker claims `applying` runs under a durable lease (`granot:automation:account`). Approved work precedes new planning. `accepted_for_processing` yields the run lease and resumes the same operation ID.
 
 ## Related
 
-- [`enrichment.service.md`](enrichment.service.md), [`bookedCallLeadReconciliation.service.md`](bookedCallLeadReconciliation.service.md), [`form-lead.service.md`](form-lead.service.md)
-- [`granotLifecycle.capture.md`](granotLifecycle.capture.md) — webhook channel (no mutation)
+- [`granotLifecycle.automationApply.md`](granotLifecycle.automationApply.md)
+- [`granotLifecycle.capture.md`](granotLifecycle.capture.md)
 - [`granot-http-automation.mdc`](../rules/granot-http-automation.mdc)

@@ -16,7 +16,7 @@
 | `POST /api/v1/call-leads/enrichment/preview` | `previewCallLeadEnrichment` | No |
 | `POST /api/v1/call-leads/enrichment/sync` | Owner extension receipt apply (`extensionApply.ts`) | Receipt capture only in Unit 16; Lead writes stay off |
 
-`syncCallLeadEnrichment` remains for Granot CSV Follow Up ingest and HTTP automation until Unit 17. The extension final-apply URL no longer calls it. Preview is unchanged.
+`syncCallLeadEnrichment` remains for Granot CSV Follow Up ingest. Extension and HTTP automation final-apply URLs no longer call it. Preview is unchanged.
 
 ## Invariants
 

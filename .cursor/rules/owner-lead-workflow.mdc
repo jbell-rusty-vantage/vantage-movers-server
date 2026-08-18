@@ -34,9 +34,9 @@ alwaysApply: false
 
 ## Granot HTTP automation (parallel correction path)
 
-- Admin `/api/v1/admin/granot-automation/*` plans form/call patches from an HTTP session collector.
-- Apply requires `GRANOT_AUTOMATION_APPLY_ENABLED` plus explicit owner approval. Form apply calls `updateFormLead`; call apply calls enrichment / booked-call reconciliation **directly**.
-- This path does **not** write `GranotObservationReceipt` or call a lifecycle processor (final spec §31 / Unit 17 is not live). Details: `businesslogic/granotHttpCollector.service.md`.
+- Admin `/api/v1/admin/granot-automation/*` plans form/call work from an HTTP session collector.
+- Apply requires `GRANOT_AUTOMATION_APPLY_ENABLED` plus explicit owner approval. Selected actions capture a `granot_http_automation` receipt and enter `claimAndProcessOrPoll`. Preview creates no receipt.
+- Details: `businesslogic/granotHttpCollector.service.md` and `businesslogic/granotLifecycle.automationApply.md`.
 
 ## Booking Flow
 

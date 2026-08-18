@@ -7,6 +7,7 @@ import {
   type GranotFormLeadMatcherDependencies,
   type GranotFormLeadMatchMethod,
 } from "./granotFormLeadMatcher";
+import type { GranotAutomationLifecycleApply, GranotTableSection } from "./lifecycleStatement";
 
 export { selectGranotFormFallback } from "./granotFormLeadMatcher";
 
@@ -30,6 +31,7 @@ export type GranotFormPlanAction = {
   action_id: string;
   row_id: string;
   source_label: string;
+  table_section: GranotTableSection;
   classification: "update" | "unchanged" | "conflict" | "no_match" | "invalid";
   match_method?: GranotFormLeadMatchMethod;
   lead_id?: string;
@@ -37,11 +39,12 @@ export type GranotFormPlanAction = {
   expected?: Record<string, unknown>;
   reason?: string;
   warnings?: string[];
+  lifecycle_apply?: GranotAutomationLifecycleApply;
 };
 
 export type GranotFormPlan = {
   kind: "form_leads";
-  schema_version: 1;
+  schema_version: 1 | 2;
   actions: GranotFormPlanAction[];
   counters: Record<GranotFormPlanAction["classification"], number>;
 };
@@ -57,9 +60,13 @@ export async function planGranotFormWorkflow(
 ): Promise<GranotFormPlan> {
   const actions: GranotFormPlanAction[] = [];
   for (const source of sources) {
-    for (const row of [...source.sections.bookedJobs, ...source.sections.followUpEstimates]) {
+    for (const row of source.sections.bookedJobs) {
       await dependencies.beforeRow?.();
-      actions.push(await planRow(source.sourceLabel, row, dependencies));
+      actions.push(await planRow(source.sourceLabel, row, "bookedJobs", dependencies));
+    }
+    for (const row of source.sections.followUpEstimates) {
+      await dependencies.beforeRow?.();
+      actions.push(await planRow(source.sourceLabel, row, "followUpEstimates", dependencies));
     }
   }
   return {
@@ -73,6 +80,7 @@ export async function planGranotFormWorkflow(
 async function planRow(
   sourceLabel: string,
   row: GranotReportRow,
+  tableSection: GranotTableSection,
   dependencies: GranotFormWorkflowDependencies,
 ): Promise<GranotFormPlanAction> {
   const actionId = `${sourceLabel}:${row.id}`;
@@ -92,6 +100,7 @@ async function planRow(
       action_id: actionId,
       row_id: row.id,
       source_label: sourceLabel,
+      table_section: tableSection,
       classification: match.status === "conflict" ? "conflict" : "no_match",
       match_method: match.match_method,
       reason: match.reason,
@@ -114,6 +123,7 @@ async function planRow(
       action_id: actionId,
       row_id: row.id,
       source_label: sourceLabel,
+      table_section: tableSection,
       classification: "unchanged",
       match_method: matchMethod,
       lead_id: String(lead._id),
@@ -125,6 +135,7 @@ async function planRow(
     action_id: actionId,
     row_id: row.id,
     source_label: sourceLabel,
+    table_section: tableSection,
     classification: "update",
     match_method: matchMethod,
     lead_id: String(lead._id),
@@ -236,6 +247,7 @@ function conflict(
     action_id: actionId,
     row_id: rowId,
     source_label: sourceLabel,
+    table_section: "followUpEstimates",
     classification: "conflict",
     reason,
   };

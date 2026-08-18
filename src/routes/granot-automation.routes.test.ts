@@ -172,6 +172,17 @@ test("Granot source schema requires one or two unique supported workflows", () =
   assert.equal(source(["form_leads", "call_leads"]), undefined);
 });
 
+test("[AC-35] run details project lifecycle receipt IDs without raw statements or payloads", async () => {
+  const workflow = await readFile(
+    path.join(__dirname, "../services/granotHttpCollector/runWorkflow.ts"),
+    "utf8",
+  );
+  assert.match(workflow, /redactPlanForDisplay/);
+  assert.match(workflow, /redactReceiptsForDisplay/);
+  assert.match(workflow, /lifecycle_receipt_id/);
+  assert.equal(workflow.includes("granot_statement: action.lifecycle_apply"), false);
+});
+
 test("Granot queue contention defers to a durable continuation", async () => {
   const consumer = await readFile(
     path.join(

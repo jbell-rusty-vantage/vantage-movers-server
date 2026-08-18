@@ -1,18 +1,17 @@
 import type { IncomingHttpHeaders } from "node:http";
 import type { DurableActor } from "../durableWork/types";
 import {
+  EXTENSION_APPLY_ITEM_SCHEMA_HINT,
+  type GranotApplyItem,
+} from "./applyItem";
+import {
   captureChannelOperationReceipt,
   type CaptureChannelOperationResult,
 } from "./capture";
 import { claimAndProcessOrPoll, type SyncClaimResult } from "./drainer";
 import type { EntityRef, SynchronizationOutcome } from "./types";
 
-export type ExtensionGranotApplyItem = {
-  operation_id: string;
-  operation_kind: "lead_snapshot_apply" | "booking_action_apply";
-  granot_statement: Record<string, string | number | null>;
-  expected_target?: { model: "FormLead" | "CallLead"; id: string };
-};
+export type ExtensionGranotApplyItem = GranotApplyItem;
 
 export type ExtensionGranotApplyResult = {
   operation_id: string;
@@ -105,7 +104,7 @@ export async function applyExtensionGranotItem(
     payload: input.item,
     initiator: input.initiator,
     request_id: input.request_id,
-    payload_schema_hint: "extension_granot_apply_item_v1",
+    payload_schema_hint: EXTENSION_APPLY_ITEM_SCHEMA_HINT,
   });
 
   const claimed = await claimAndProcess(captured.receipt_id, input.initiator);

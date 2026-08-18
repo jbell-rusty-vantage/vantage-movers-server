@@ -1,5 +1,5 @@
 ---
-description: Granot HTTP collector and automation runs; apply still mutates directly
+description: Granot HTTP collector and automation runs; approved apply captures lifecycle receipts
 globs: src/services/granotHttpCollector/**/*.ts,src/routes/granot-automation.routes.ts,src/routes/granot-automation-cron.routes.ts,src/models/GranotAutomationRun.ts,src/models/GranotAutomationSource.ts,api/queues/granot-automation-consumer.ts,scripts/granot-automation/**/*.ts
 alwaysApply: false
 ---
@@ -11,7 +11,7 @@ Owner invariants: [`.cursor/businesslogic/granotHttpCollector.service.md`](../bu
 - Admin surface: `/api/v1/admin/granot-automation/*` behind `requireApiSecret` + `requireRegistryOwnerActor`. Separate `app.use` in `src/app.ts` before v1.
 - Source list/create remain label + `supported_operations` compatible. Apply resolution dereferences `GranotCrmSource` and fails closed with `INVALID_GRANOT_SOURCES` when compatibility is not `ready`. New labels start as `missing_reference`.
 - Workflows are `preview` or `apply`. Apply requires `GRANOT_AUTOMATION_APPLY_ENABLED` and explicit owner approval of selected plan actions.
-- Form apply calls `updateFormLead`. Call apply calls `syncCallLeadEnrichment` / `syncBookedCallLeadReconciliation`. This is **not** a Granot Observation Receipt channel and does not call a lifecycle processor.
+- Approved apply captures one `granot_http_automation` receipt per selected action (`${run_id}:${action_id}`) and enters `claimAndProcessOrPoll`. It must not call `updateFormLead`, `syncCallLeadEnrichment`, or `syncBookedCallLeadReconciliation`.
 - Queue topic `granot-automation-events` → `api/queues/granot-automation-consumer.ts` → `runGranotWorker()`. Cron heartbeat recovers leased runs.
-- Run-level `receipts` on `GranotAutomationRun` are `{ action_id, outcome }` — not `GranotObservationReceipt`.
-- Do not converge this path onto `GranotObservationProcessor` until the assigned lifecycle unit ships. Until then, keep the direct-mutation gap labeled as a gap.
+- Run-level `receipts` on `GranotAutomationRun` store lifecycle IDs and bounded outcomes, including `accepted_for_processing`. They are not the Observation Receipt document.
+- Schema-v1 plans fail closed (`RUN_REPLAN_REQUIRED`). Preview remains guidance-only and creates no receipt.

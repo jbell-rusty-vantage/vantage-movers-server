@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { test } from "node:test";
 import { Types } from "mongoose";
 import { computeChecksum } from "../durableWork";
@@ -176,4 +178,16 @@ test("form expected filters do not cast empty strings as ObjectIds", () => {
       pickup_city: { $in: [null, ""] },
     },
   );
+});
+
+test("[AC-02] applyRun has no runtime path to legacy Form/Call/Booked mutation services", async () => {
+  const source = await readFile(
+    path.join(__dirname, "runWorkflow.ts"),
+    "utf8",
+  );
+  assert.equal(source.includes("updateFormLead"), false);
+  assert.equal(source.includes("syncCallLeadEnrichment"), false);
+  assert.equal(source.includes("syncBookedCallLeadReconciliation"), false);
+  assert.match(source, /applyAutomationPlanAction/);
+  assert.match(source, /claimAndProcessOrPoll|applyAutomationPlanAction/);
 });

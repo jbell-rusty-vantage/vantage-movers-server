@@ -217,7 +217,7 @@ export type LoadChannelReceiptByOperation = (input: {
   channel_operation_id: string;
 }) => Promise<Pick<
   GranotObservationReceiptDocument,
-  "_id" | "payload_sha256"
+  "_id" | "payload_sha256" | "channel_operation_kind"
 > | null>;
 
 export function buildGranotChannelReceiptInsert(
@@ -240,6 +240,18 @@ export function buildGranotChannelReceiptInsert(
   }
   if (input.initiator.origin !== "browser_extension" && input.observation_channel === "browser_extension") {
     throw new Error("browser_extension capture requires a browser_extension initiator");
+  }
+  if (
+    input.observation_channel === "granot_http_automation" &&
+    input.authentication_method !== "automation_owner_approval"
+  ) {
+    throw new Error("granot_http_automation capture requires automation_owner_approval");
+  }
+  if (
+    input.observation_channel === "granot_http_automation" &&
+    input.initiator.origin !== "vantage_admin"
+  ) {
+    throw new Error("granot_http_automation capture requires a vantage_admin initiator");
   }
 
   const headers = allowlistGranotWebhookHeaders(input.headers);
@@ -300,7 +312,10 @@ export async function captureChannelOperationReceipt(
     if (!existing) {
       throw new CaptureUnavailableError(input.request_id);
     }
-    if (existing.payload_sha256 !== document.payload_sha256) {
+    if (
+      existing.payload_sha256 !== document.payload_sha256 ||
+      existing.channel_operation_kind !== document.channel_operation_kind
+    ) {
       throw new OperationIdempotencyConflictError(input.request_id);
     }
     return {
@@ -322,14 +337,17 @@ async function persistGranotChannelReceipt(
 async function loadChannelReceiptByOperation(input: {
   observation_channel: ChannelObservationChannel;
   channel_operation_id: string;
-}): Promise<Pick<GranotObservationReceiptDocument, "_id" | "payload_sha256"> | null> {
+}): Promise<Pick<
+  GranotObservationReceiptDocument,
+  "_id" | "payload_sha256" | "channel_operation_kind"
+> | null> {
   await connectMongo();
   return getGranotObservationReceiptModel()
     .findOne({
       observation_channel: input.observation_channel,
       channel_operation_id: input.channel_operation_id,
     })
-    .select({ _id: 1, payload_sha256: 1 })
+    .select({ _id: 1, payload_sha256: 1, channel_operation_kind: 1 })
     .lean();
 }
 

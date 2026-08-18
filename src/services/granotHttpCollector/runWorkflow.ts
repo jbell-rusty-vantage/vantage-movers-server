@@ -6,13 +6,11 @@ import { logger } from "../../logger";
 import { GranotAutomationRun } from "../../models/GranotAutomationRun";
 import { BookedLead } from "../../models/BookedLead";
 import { getCallLeadModel } from "../../models/CallLead";
-import { getFormLeadModel } from "../../models/FormLead";
 import { SheetSyncLease } from "../../models/SheetSyncLease";
 import {
   findAgentByGranotCrmUsername,
   normalizeGranotCrmUsername,
 } from "../agents/receiverAgentCrmUsername";
-import { updateFormLead } from "../leads/formLead.service";
 import {
   MongoLeaseStore,
   assertChecksum,
@@ -20,25 +18,32 @@ import {
   type DurableActor,
   type LeaseToken,
 } from "../durableWork";
-import {
-  previewCallLeadEnrichment,
-  syncCallLeadEnrichment,
-} from "../enrichment";
-import {
-  previewBookedCallLeadReconciliation,
-  syncBookedCallLeadReconciliation,
-} from "../reconciliation";
+import { previewCallLeadEnrichment } from "../enrichment";
+import { previewBookedCallLeadReconciliation } from "../reconciliation";
+import { OperationIdempotencyConflictError } from "../granotLifecycle/errors";
+import { applyAutomationPlanAction } from "../granotLifecycle/automationApply";
+import type { GranotAutomationActionReceipt } from "../granotLifecycle/automationApply";
 import {
   buildGranotOperationPayloads,
   collectGranotReport,
   GranotCollectorError,
   type GranotCollectionRequest,
 } from "./index";
+import { GranotRunConflict } from "./errors";
 import {
   planGranotFormWorkflow,
   type GranotFormPlan,
-  type GranotFormPlanAction,
 } from "./formWorkflow";
+import {
+  assertSealedAutomationPlan,
+  automationRunCompletionStatus,
+  isPendingAutomationActionOutcome,
+  isTerminalAutomationActionOutcome,
+  sealAutomationPlan,
+  type GranotAutomationLifecycleApply,
+} from "./lifecycleStatement";
+
+export { GranotRunConflict } from "./errors";
 import {
   GranotAutomationSourceValidationError,
   resolveGranotAutomationSources,
@@ -88,6 +93,7 @@ type CallPlanAction = {
   preview: Record<string, unknown>;
   syncable: boolean;
   target_binding: CallTargetBinding;
+  lifecycle_apply?: GranotAutomationLifecycleApply;
 };
 
 type CallTargetBinding = {
@@ -102,7 +108,7 @@ type CallTargetBinding = {
 
 type CallPlan = {
   kind: "call_leads";
-  schema_version: 1;
+  schema_version: 1 | 2;
   actions: CallPlanAction[];
   counters: Record<string, number>;
 };
@@ -279,6 +285,7 @@ export async function approveGranotRun(input: {
     );
   }
   const plan = run.plan_snapshot as unknown as GranotPlan;
+  assertSealedAutomationPlan(plan);
   assertPlanChecksum(plan, input.plan_checksum);
   assertUniqueActionIds(plan);
   const validIds = new Set(
@@ -422,10 +429,11 @@ async function planRun(runId: string, lease: LeaseToken): Promise<string> {
       { $set: { checkpoint: checkpoint("plan", plannedRows) } },
     ).exec();
   };
-  const plan =
+  const planned =
     run.operation === "form_leads"
       ? await planGranotFormWorkflow(collection.sources, { beforeRow })
       : await planCallWorkflow(collection.sources, beforeRow);
+  const plan = sealAutomationPlan(planned, runId, collection.sources);
   assertUniqueActionIds(plan);
   const checksum = planChecksum(plan);
   const finalStatus =
@@ -519,46 +527,83 @@ async function applyRun(runId: string, lease: LeaseToken): Promise<string> {
     throw new GranotRunConflict("RUN_EXPIRED_OR_DRIFTED", "Approved Granot run expired or lost its immutable plan.");
   }
   const plan = run.plan_snapshot as unknown as GranotPlan;
+  assertSealedAutomationPlan(plan);
   assertPlanChecksum(plan, run.plan_checksum);
   const approval = run.approval as unknown as {
     selected_action_ids: string[];
     plan_checksum: string;
+    approved_by: DurableActor;
   };
   if (approval.plan_checksum !== run.plan_checksum) {
     throw new GranotRunConflict("CHECKSUM_DRIFT", "Approval checksum no longer matches the immutable plan.");
   }
-  const selected = new Set(approval.selected_action_ids);
-  const storedReceipts = run.receipts as Array<{
-    action_id?: string;
-    outcome?: string;
-  }>;
-  const priorReceipts = new Set(
-    storedReceipts.map((receipt) => receipt.action_id),
+  const selected = [...new Set(approval.selected_action_ids)];
+  const selectedSet = new Set(selected);
+  const storedReceipts = ((run.receipts as GranotAutomationActionReceipt[]) ?? []);
+  const receiptsByAction = new Map(
+    storedReceipts
+      .filter((receipt) => typeof receipt.action_id === "string")
+      .map((receipt) => [receipt.action_id, receipt]),
   );
-  let completed = priorReceipts.size;
-  let failures = storedReceipts.filter(
-    ({ outcome }) => outcome === "failed" || outcome === "drift",
+  let completed = [...receiptsByAction.values()].filter((receipt) =>
+    isTerminalAutomationActionOutcome(receipt.outcome),
   ).length;
+
   for (const action of plan.actions) {
-    if (!selected.has(action.action_id) || priorReceipts.has(action.action_id)) continue;
+    if (!selectedSet.has(action.action_id)) continue;
+    const existing = receiptsByAction.get(action.action_id);
+    if (existing && isTerminalAutomationActionOutcome(existing.outcome)) {
+      continue;
+    }
+    if (!action.lifecycle_apply) {
+      throw new GranotRunConflict(
+        "RUN_REPLAN_REQUIRED",
+        "Selected action is missing the immutable lifecycle apply block.",
+      );
+    }
     await renewRunLease(runId, lease, "applying");
-    const receipt =
-      plan.kind === "form_leads"
-        ? await applyFormAction(action as GranotFormPlanAction)
-        : await applyCallAction(action as CallPlanAction);
-    if (receipt.outcome === "drift" || receipt.outcome === "failed") failures += 1;
-    completed += 1;
-    const saved = await GranotAutomationRun.updateOne(
-      fenced(runId, lease, ["applying"]),
-      {
-        $push: { receipts: receipt },
-        $set: { checkpoint: checkpoint("apply", completed) },
-      },
-    ).exec();
-    if (saved.modifiedCount !== 1) throw new Error("Granot apply checkpoint lost its fenced lease.");
-    priorReceipts.add(action.action_id);
+    let receipt: GranotAutomationActionReceipt;
+    try {
+      receipt = await applyAutomationPlanAction({
+        action_id: action.action_id,
+        lifecycle_apply: action.lifecycle_apply,
+        initiator: approval.approved_by,
+        existing_receipt: existing,
+        request_id: runId,
+      });
+    } catch (error) {
+      if (error instanceof OperationIdempotencyConflictError) {
+        receipt = {
+          action_id: action.action_id,
+          lifecycle_receipt_id: existing?.lifecycle_receipt_id ?? "",
+          outcome: "technical_failure",
+          applied_at: new Date(),
+          error_code: error.code,
+        };
+      } else {
+        throw error;
+      }
+    }
+    const terminal = isTerminalAutomationActionOutcome(receipt.outcome);
+    if (terminal && (!existing || isPendingAutomationActionOutcome(existing.outcome))) {
+      completed += 1;
+    }
+    await upsertActionReceipt(runId, lease, receipt, terminal ? completed : undefined);
+    receiptsByAction.set(action.action_id, receipt);
+    if (isPendingAutomationActionOutcome(receipt.outcome)) {
+      await yieldApplyingRun(runId, lease);
+      return "applying";
+    }
   }
-  const status = failures > 0 ? "completed_with_errors" : "completed";
+
+  const status = automationRunCompletionStatus(
+    [...receiptsByAction.values()],
+    selected,
+  );
+  if (status === "applying") {
+    await yieldApplyingRun(runId, lease);
+    return status;
+  }
   const finished = await GranotAutomationRun.updateOne(
     fenced(runId, lease, ["applying"]),
     {
@@ -566,6 +611,8 @@ async function applyRun(runId: string, lease: LeaseToken): Promise<string> {
         status,
         completed_at: new Date(),
         checkpoint: checkpoint("completed", completed),
+        lease_owner: null,
+        leased_until: null,
       },
     },
   ).exec();
@@ -573,113 +620,49 @@ async function applyRun(runId: string, lease: LeaseToken): Promise<string> {
   return status;
 }
 
-async function applyFormAction(action: GranotFormPlanAction) {
-  if (action.classification !== "update" || !action.lead_id || !action.patch) {
-    return receipt(action.action_id, "skipped");
-  }
-  if (
-    action.patch.receiver_agent !== undefined &&
-    !Types.ObjectId.isValid(action.patch.receiver_agent)
-  ) {
-    return receipt(action.action_id, "failed");
-  }
-  const FormLead = getFormLeadModel();
-  const expected = buildFormExpectedFilter(action.expected ?? {});
-  const {
-    receiver_agent_name_snapshot: _receiverName,
-    receiver_agent_set_at: _receiverSetAt,
-    ...canonicalPatch
-  } = action.patch;
-  const stillCurrent = await FormLead.exists({
-    _id: action.lead_id,
-    duplicate: { $ne: true },
-    ...expected,
-  });
-  if (stillCurrent) {
-    try {
-      await updateFormLead(action.lead_id, canonicalPatch as never, {
-        expected: {
-          duplicate: { $ne: true },
-          ...expected,
-        },
-      });
-      return receipt(action.action_id, "applied");
-    } catch {
-      const appliedAfterRace = await FormLead.exists({
-        _id: action.lead_id,
-        duplicate: { $ne: true },
-        ...canonicalPatch,
-      });
-      return receipt(
-        action.action_id,
-        appliedAfterRace ? "already_applied" : "drift",
-      );
-    }
-  }
-  const alreadyApplied = await FormLead.exists({
-    _id: action.lead_id,
-    duplicate: { $ne: true },
-    ...canonicalPatch,
-  });
-  return receipt(action.action_id, alreadyApplied ? "already_applied" : "drift");
+async function upsertActionReceipt(
+  runId: string,
+  lease: LeaseToken,
+  receipt: GranotAutomationActionReceipt,
+  completed?: number,
+): Promise<void> {
+  const run = await GranotAutomationRun.findOne(fenced(runId, lease, ["applying"]))
+    .select({ receipts: 1 })
+    .lean()
+    .exec();
+  if (!run) throw new Error("Granot apply checkpoint lost its fenced lease.");
+  const receipts = [
+    ...(((run.receipts as GranotAutomationActionReceipt[]) ?? []).filter(
+      (entry) => entry.action_id !== receipt.action_id,
+    )),
+    receipt,
+  ];
+  const saved = await GranotAutomationRun.updateOne(
+    fenced(runId, lease, ["applying"]),
+    {
+      $set: {
+        receipts,
+        ...(completed !== undefined
+          ? { checkpoint: checkpoint("apply", completed) }
+          : {}),
+      },
+    },
+  ).exec();
+  if (saved.modifiedCount !== 1) throw new Error("Granot apply checkpoint lost its fenced lease.");
 }
 
-async function applyCallAction(action: CallPlanAction) {
-  try {
-    if (!action.syncable) {
-      return receipt(action.action_id, "skipped");
-    }
-    const currentPreview =
-      action.operation === "enrichment"
-        ? (await previewCallLeadEnrichment({ rows: [action.row as never] }))[0]
-        : (await previewBookedCallLeadReconciliation({
-            rows: [action.row as never],
-          }))[0];
-    const currentBinding = await buildCallTargetBinding(
-      action.row,
-      currentPreview,
-    );
-    if (callActionAlreadyApplied(action, currentPreview, currentBinding)) {
-      return receipt(action.action_id, "already_applied");
-    }
-    if (
-      JSON.stringify(callPreviewBinding(currentPreview)) !==
-        JSON.stringify(callPreviewBinding(action.preview)) ||
-      JSON.stringify(currentBinding) !== JSON.stringify(action.target_binding)
-    ) {
-      return receipt(action.action_id, "drift");
-    }
-    const [result] =
-      action.operation === "enrichment"
-        ? await syncCallLeadEnrichment(
-            { rows: [action.row as never] },
-            {
-              expectedCallLeadId: action.target_binding.call_lead_id,
-              expectedUpdatedAt: action.target_binding.call_lead_updated_at,
-              expectedReceiverAgent:
-                action.target_binding.expected_receiver_agent,
-              targetReceiverAgent:
-                action.target_binding.target_receiver_agent,
-            },
-          )
-        : await syncBookedCallLeadReconciliation(
-            { rows: [action.row as never] },
-            {
-              expectedCallLeadId: action.target_binding.call_lead_id,
-              expectedCallLeadUpdatedAt:
-                action.target_binding.call_lead_updated_at,
-              expectedBookingId: action.target_binding.booking_id,
-              expectedBookingUpdatedAt:
-                action.target_binding.booking_updated_at,
-              expectedReceiverAgent:
-                action.target_binding.expected_receiver_agent,
-              targetReceiverAgent:
-                action.target_binding.target_receiver_agent,
-            },
-          );
-    return receipt(action.action_id, String(result?.status ?? "failed"));
-  } catch {
-    return receipt(action.action_id, "failed");
+async function yieldApplyingRun(runId: string, lease: LeaseToken): Promise<void> {
+  const yielded = await GranotAutomationRun.updateOne(
+    fenced(runId, lease, ["applying"]),
+    {
+      $set: {
+        lease_owner: null,
+        leased_until: null,
+      },
+    },
+  ).exec();
+  if (yielded.modifiedCount !== 1) {
+    throw new Error("Granot pending continuation lost its fenced lease.");
   }
 }
 
@@ -730,25 +713,6 @@ async function buildCallTargetBinding(
   };
 }
 
-function callActionAlreadyApplied(
-  action: CallPlanAction,
-  currentPreview: unknown,
-  currentBinding: CallTargetBinding,
-): boolean {
-  const before = callPreviewBinding(action.preview);
-  const after = callPreviewBinding(currentPreview);
-  const sameTargets =
-    before.call_lead_id === after.call_lead_id &&
-    before.booking_id === after.booking_id;
-  if (!sameTargets || after.status !== "unchanged") return false;
-  if (before.status === "updateable") return true;
-  return Boolean(
-    action.target_binding.target_receiver_agent &&
-      currentBinding.expected_receiver_agent ===
-        action.target_binding.target_receiver_agent,
-  );
-}
-
 function dateString(value: Date | string | undefined): string | null {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
@@ -790,21 +754,6 @@ async function renewRunLease(
     );
   }
   lease.leased_until = renewed.leased_until;
-}
-
-function callPreviewBinding(preview: unknown): Record<string, unknown> {
-  const value =
-    preview && typeof preview === "object"
-      ? (preview as Record<string, unknown>)
-      : {};
-  return {
-    status: value.status ?? null,
-    call_lead_id: value.call_lead_id ?? null,
-    booking_id: value.booking_id ?? null,
-    match_method: value.match_method ?? null,
-    has_booking: value.has_booking ?? null,
-    changes: Array.isArray(value.changes) ? [...value.changes].sort() : [],
-  };
 }
 
 function isApprovableAction(action: GranotPlan["actions"][number]): boolean {
@@ -980,10 +929,6 @@ function checkpoint(phase: string, completed: number) {
   };
 }
 
-function receipt(actionId: string, outcome: string) {
-  return { action_id: actionId, outcome, applied_at: new Date() };
-}
-
 function summarizeCollection(collection: Awaited<ReturnType<typeof collectGranotReport>>) {
   return {
     requestedDateWindow: collection.requestedDateWindow,
@@ -1014,8 +959,45 @@ function safeRun(run: Record<string, unknown>, details: boolean) {
     receipt_count: Array.isArray(run.receipts) ? run.receipts.length : 0,
     created_at: run.createdAt,
     updated_at: run.updatedAt,
-    ...(details ? { plan, receipts: run.receipts } : {}),
+    ...(details
+      ? {
+          plan: plan ? redactPlanForDisplay(plan) : plan,
+          receipts: redactReceiptsForDisplay(run.receipts),
+        }
+      : {}),
   };
+}
+
+function redactPlanForDisplay(plan: GranotPlan): GranotPlan {
+  return {
+    ...plan,
+    actions: plan.actions.map((action) => {
+      if (!("lifecycle_apply" in action) || !action.lifecycle_apply) {
+        return action;
+      }
+      const { granot_statement: _statement, ...safeApply } = action.lifecycle_apply;
+      return {
+        ...action,
+        lifecycle_apply: safeApply as GranotAutomationLifecycleApply,
+      };
+    }),
+  } as GranotPlan;
+}
+
+function redactReceiptsForDisplay(value: unknown): GranotAutomationActionReceipt[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((entry) => {
+    const receipt = entry as GranotAutomationActionReceipt;
+    return {
+      action_id: receipt.action_id,
+      lifecycle_receipt_id: receipt.lifecycle_receipt_id,
+      ...(receipt.observation_id ? { observation_id: receipt.observation_id } : {}),
+      ...(receipt.decision_id ? { decision_id: receipt.decision_id } : {}),
+      outcome: receipt.outcome,
+      applied_at: receipt.applied_at,
+      ...(receipt.error_code ? { error_code: receipt.error_code } : {}),
+    };
+  });
 }
 
 function readCredentials(): GranotCollectionRequest["credentials"] {
@@ -1155,14 +1137,4 @@ export function toDurableGranotValue(value: unknown): unknown {
   throw new TypeError(
     `Granot durable plans cannot contain ${typeof value} values.`,
   );
-}
-
-export class GranotRunConflict extends Error {
-  constructor(
-    public readonly code: string,
-    message: string,
-  ) {
-    super(message);
-    this.name = "GranotRunConflict";
-  }
 }

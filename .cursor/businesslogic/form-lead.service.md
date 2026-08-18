@@ -45,7 +45,7 @@ Create/update store `cpl`, `cpl_rate_period`, `cpl_resolution_status` (`resolved
 
 ### Granot lifecycle boundary
 
-CRM Posting is independent of webhook capture. Granot webhooks do not create or update Form Leads today ([`granotLifecycle.capture.md`](granotLifecycle.capture.md)). Trusted Granot create validators (`trustedLeadCreateValidation.ts`) exist as capability only, force `post_to_granot=false`, and have no live caller. HTTP automation may later `PATCH` the same lead ([`granotHttpCollector.service.md`](granotHttpCollector.service.md)).
+CRM Posting is independent of webhook capture. Granot webhooks do not create or update Form Leads today ([`granotLifecycle.capture.md`](granotLifecycle.capture.md)). Trusted Granot create validators (`trustedLeadCreateValidation.ts`) exist as capability only, force `post_to_granot=false`, and have no live caller. Approved HTTP automation apply captures a `granot_http_automation` receipt and does not call `updateFormLead` ([`granotHttpCollector.service.md`](granotHttpCollector.service.md), [`granotLifecycle.automationApply.md`](granotLifecycle.automationApply.md)). Ordinary Form Edit Lead still uses `PATCH /api/v1/form-leads/:id`.
 
 ## Sheet Sync tab routing (Form Lead)
 
@@ -110,6 +110,7 @@ Form Lead plus Lead Message transaction commits.
 - [`googleSheets.service.md`](googleSheets.service.md) — tab routing, Master vs Source Company Sheet writes
 - [`granotLifecycle.capture.md`](granotLifecycle.capture.md) — webhook receipts (no Form Lead writes)
 - [`granotLifecycle.identity.md`](granotLifecycle.identity.md) — source-scoped Form ladder reads `ref_no`, snapshots, Duplicate/Bad eligibility; no Form Lead writes
+- [`granotLifecycle.automationApply.md`](granotLifecycle.automationApply.md) — HTTP automation apply captures receipts; does not call `updateFormLead`
 
 ## Related rules
 

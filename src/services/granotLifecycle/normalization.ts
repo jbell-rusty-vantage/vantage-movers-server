@@ -11,6 +11,7 @@ import {
   hasControlOrBidiCharacters,
   normalizeGranotSourceLabel,
 } from "./sourceLabel";
+import { isRecognizedApplyItemHint } from "./applyItem";
 import type {
   ChannelOperationKind,
   GranotBookingAction,
@@ -68,6 +69,7 @@ export type NormalizationReceiptInput = {
   route_event_class?: GranotRouteEventClass;
   channel_operation_kind?: ChannelOperationKind;
   channel_operation_id?: string;
+  payload_schema_hint?: string;
   payload: unknown;
 };
 
@@ -299,15 +301,37 @@ export function isSupportedGranotBookingAction(raw: unknown): boolean {
 
 export function extractNormalizationStatement(
   payload: Record<string, unknown>,
+  receipt?: Pick<
+    NormalizationReceiptInput,
+    "payload_schema_hint" | "channel_operation_kind" | "channel_operation_id"
+  >,
 ): Record<string, unknown> {
-  if (
+  const looksLikeEnvelope =
     isPlainObject(payload.granot_statement) &&
     (typeof payload.operation_kind === "string" ||
-      typeof payload.operation_id === "string")
-  ) {
-    return payload.granot_statement;
+      typeof payload.operation_id === "string");
+  if (!looksLikeEnvelope) {
+    return payload;
   }
-  return payload;
+  if (
+    typeof receipt?.payload_schema_hint === "string" &&
+    !isRecognizedApplyItemHint(receipt.payload_schema_hint)
+  ) {
+    return payload;
+  }
+  if (
+    receipt?.channel_operation_kind &&
+    payload.operation_kind !== receipt.channel_operation_kind
+  ) {
+    return payload;
+  }
+  if (
+    receipt?.channel_operation_id &&
+    payload.operation_id !== receipt.channel_operation_id
+  ) {
+    return payload;
+  }
+  return payload.granot_statement as Record<string, unknown>;
 }
 
 function eventTypeToken(raw: string | undefined): string | undefined {
@@ -784,7 +808,7 @@ export function normalizeGranotReceipt(
     };
   }
 
-  const payload = extractNormalizationStatement(receipt.payload);
+  const payload = extractNormalizationStatement(receipt.payload, receipt);
   const authority = classifyAuthority(receipt, payload, issues);
   const source = normalizeSourceLabel(payload, issues);
   const identity = normalizeIdentity(payload, issues);

@@ -58,4 +58,4 @@
 - Capture remains receipt-only ([`granotLifecycle.capture.md`](granotLifecycle.capture.md)).
 - Decision processor may upsert an Observation when invoked ([`granotLifecycle.processor.md`](granotLifecycle.processor.md)).
 - Queue/cron/requeue enter the fenced claim service ([`granotLifecycle.drainer.md`](granotLifecycle.drainer.md)).
-- HTTP automation still mutates directly ([`granotHttpCollector.service.md`](granotHttpCollector.service.md)).
+- Approved HTTP automation apply captures a `granot_http_automation` receipt and enters the shared claim/processor ([`granotLifecycle.automationApply.md`](granotLifecycle.automationApply.md)). It does not mutate Leads from this module.

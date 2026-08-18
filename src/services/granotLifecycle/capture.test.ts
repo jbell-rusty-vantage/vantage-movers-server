@@ -284,6 +284,7 @@ test("[AC-02] same extension operation ID + same hash replays the existing recei
     async () => ({
       _id: { toString: () => "winner-receipt" } as never,
       payload_sha256: firstHash,
+      channel_operation_kind: "lead_snapshot_apply",
     }),
   );
   assert.equal(result.status, "replayed");
@@ -300,11 +301,76 @@ test("[AC-02] same extension operation ID + different hash is GRANOT_OPERATION_I
       async () => ({
         _id: { toString: () => "winner-receipt" } as never,
         payload_sha256: "a".repeat(64),
+        channel_operation_kind: "lead_snapshot_apply",
       }),
     ),
     (error: unknown) =>
       error instanceof OperationIdempotencyConflictError &&
       error.code === GRANOT_LIFECYCLE_ERROR_CODES.OPERATION_IDEMPOTENCY_CONFLICT &&
       error.statusCode === 409,
+  );
+});
+
+const automationInitiator: DurableActor = {
+  actor_type: "owner",
+  actor_id: "owner-auto-1",
+  actor_label: "owner@example.invalid",
+  actor_role: "owner",
+  request_id: "req-auto-1",
+  origin: "vantage_admin",
+};
+
+const automationItem = {
+  operation_id: "507f1f77bcf86cd799439011:Synthetic Forms:row-1",
+  operation_kind: "lead_snapshot_apply" as const,
+  granot_statement: { source: "Synthetic Forms", priority: "1", user: "MIKE", rep: "SALES" },
+};
+
+function automationInput(overrides: Record<string, unknown> = {}) {
+  return {
+    observation_channel: "granot_http_automation" as const,
+    authentication_method: "automation_owner_approval" as const,
+    channel_operation_kind: "lead_snapshot_apply" as const,
+    channel_operation_id: automationItem.operation_id,
+    captured_at: capturedAt,
+    headers: {},
+    payload: automationItem,
+    initiator: automationInitiator,
+    ...overrides,
+  };
+}
+
+test("[AC-02] automation channel capture stores one granot_http_automation receipt", async () => {
+  const persisted: GranotChannelReceiptInsert[] = [];
+  const result = await captureChannelOperationReceipt(
+    automationInput(),
+    async (document) => {
+      persisted.push(document);
+      return { receipt_id: "auto-receipt-1" };
+    },
+  );
+  assert.equal(result.status, "inserted");
+  assert.equal(persisted[0]?.observation_channel, "granot_http_automation");
+  assert.equal(persisted[0]?.authentication_method, "automation_owner_approval");
+  assert.equal(persisted[0]?.channel_operation_id, automationItem.operation_id);
+  assert.equal(persisted[0]?.initiator?.origin, "vantage_admin");
+  assert.deepEqual(persisted[0]?.headers, {});
+});
+
+test("[AC-02] same automation operation ID + different kind is GRANOT_OPERATION_IDEMPOTENCY_CONFLICT", async () => {
+  const firstHash = buildGranotChannelReceiptInsert(automationInput()).payload_sha256;
+  await assert.rejects(
+    captureChannelOperationReceipt(
+      automationInput(),
+      async () => {
+        throw Object.assign(new Error("duplicate"), { code: 11000 });
+      },
+      async () => ({
+        _id: { toString: () => "winner-receipt" } as never,
+        payload_sha256: firstHash,
+        channel_operation_kind: "booking_action_apply",
+      }),
+    ),
+    (error: unknown) => error instanceof OperationIdempotencyConflictError,
   );
 });
