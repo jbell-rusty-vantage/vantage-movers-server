@@ -23,7 +23,22 @@ import {
 } from "../../models/SynchronizationDecision";
 import { normalizeJobNo } from "../bookings/bookingIdentity";
 import type { DurableActor } from "../durableWork/types";
+import {
+  DomainRevisionConflictError,
+} from "../domainCommands/types";
+import { createGranotWebhookInitiator } from "../durableWork/actors";
 import { DecisionIntegrityError, ProcessingDisabledError } from "./errors";
+import {
+  assertAuthorizedLeadDesiredState,
+  synchronizeLeadIdempotencyKey,
+  synchronizeLeadPayloadChecksum,
+  toAuthorizedLeadDesiredState,
+} from "./authorizedDesiredState";
+import {
+  synchronizeLeadFromGranot,
+  SynchronizeLeadRaceError,
+} from "./synchronizeLeadFromGranot";
+import type { SynchronizeLeadExecution } from "./synchronizeLeadTypes";
 import {
   compareGranotTemporal,
   olderTemporalWinnerFilter,
@@ -144,6 +159,7 @@ export type GranotLifecycleProcessorDeps = {
     incoming: GranotTemporalTuple;
     session?: ClientSession;
   }) => Promise<boolean>;
+  synchronizeLead?: typeof synchronizeLeadFromGranot;
   withTransaction?: <T>(fn: (session: ClientSession) => Promise<T>) => Promise<T>;
 };
 
@@ -217,6 +233,22 @@ export async function processGranotObservation(
       throw new DecisionIntegrityError(String(observation._id), attempt);
     }
     return toProcessorResult(existing, receipt.observation_channel, started);
+  }
+
+  const synchronized = await maybeSynchronizeMatchedLead({
+    prepared,
+    observation,
+    receipt,
+    flags,
+    execution_mode,
+    moduleContext,
+    deps,
+    now,
+    started,
+    attempt,
+  });
+  if (synchronized) {
+    return synchronized;
   }
 
   const decisionId = new mongoose.Types.ObjectId();
@@ -377,6 +409,274 @@ export async function processGranotObservation(
   return toProcessorResult(persisted, receipt.observation_channel, started);
 }
 
+async function maybeSynchronizeMatchedLead(input: {
+  prepared: {
+    decision: PreparedDecision;
+    link?: LinkProposal;
+    job?: LinkProposal;
+    plan?: LeadDesiredStatePlan;
+    identity?: LeadIdentityResult;
+  };
+  observation: GranotObservationDocument;
+  receipt: ProcessorReceipt;
+  flags: GranotLifecycleFlags;
+  execution_mode: ExecutionMode;
+  moduleContext: { initiator?: DurableActor; processor_actor: DurableActor };
+  deps: GranotLifecycleProcessorDeps;
+  now: () => Date;
+  started: number;
+  attempt: number;
+}): Promise<{
+  observation_id: string;
+  decision_id: string;
+  outcome: SynchronizationOutcome;
+  effects: SynchronizationEffectSummary[];
+  target?: EntityRef;
+} | null> {
+  const { observation, receipt, flags, execution_mode, deps } = input;
+  const receiptId = String(receipt._id);
+
+  let prepared = input.prepared;
+  const maxCommandAttempts = 3;
+  for (let commandAttempt = 0; commandAttempt < maxCommandAttempts; commandAttempt++) {
+    const target = prepared.plan?.target ?? prepared.decision.target;
+    const gatesAllowed = prepared.decision.evaluated_gates.every((gate) => gate.allowed);
+    if (
+      execution_mode !== "live" ||
+      !flags.lead_writes_enabled ||
+      !gatesAllowed ||
+      !target ||
+      !isLeadRef(target) ||
+      !prepared.plan
+    ) {
+      if (commandAttempt === 0) {
+        return null;
+      }
+      return persistRaceReplan({
+        prepared: prepared.decision,
+        receipt,
+        observation,
+        execution_mode,
+        attempt: input.attempt,
+        started: input.started,
+        moduleContext: input.moduleContext,
+        deps,
+      });
+    }
+
+    const job = prepared.job ?? prepared.link;
+    const existingLink = job
+      ? await (deps.findActiveLink ?? defaultFindActiveLink)(job.normalized_job_no)
+      : null;
+    const associationNeeded = liveAssociationNeeded(existingLink, job, target);
+    const mayApplyLead = prepared.plan.outcome === "applied";
+    const mayAssociate =
+      associationNeeded &&
+      (prepared.plan.outcome === "applied" || prepared.plan.outcome === "already_current");
+    if (!mayApplyLead && !mayAssociate) {
+      if (commandAttempt === 0) {
+        return null;
+      }
+      return persistRaceReplan({
+        prepared: prepared.decision,
+        receipt,
+        observation,
+        execution_mode,
+        attempt: input.attempt,
+        started: input.started,
+        moduleContext: input.moduleContext,
+        deps,
+      });
+    }
+
+    const initiator =
+      input.moduleContext.initiator ??
+      (receipt.observation_channel === "granot_webhook"
+        ? createGranotWebhookInitiator(receiptId)
+        : undefined);
+    if (!initiator) {
+      throw new Error("Granot lifecycle commands require a receipt initiator.");
+    }
+
+    const desired = toAuthorizedLeadDesiredState({
+      plan: prepared.plan,
+      lead_model: target.model,
+      temporal_winner: {
+        observation_id: String(observation._id),
+        captured_at: observation.captured_at,
+      },
+    });
+    assertAuthorizedLeadDesiredState(desired, target.model);
+    const expectedRevision = Number(
+      (await (deps.loadLeadProjection ?? defaultLoadLeadProjection)(target))?.domain_revision ?? 0,
+    );
+    const decisionId = new mongoose.Types.ObjectId();
+    const execution: SynchronizeLeadExecution = {
+      observation,
+      identity: prepared.identity ?? {
+        outcome: prepared.decision.outcome,
+        reason_code: prepared.decision.reason_code,
+        match_method: prepared.decision.match_method,
+        target,
+        candidates: prepared.decision.candidates,
+      },
+      receipt_id: receipt._id,
+      attempt: input.attempt,
+      execution_mode,
+      flags,
+      evaluated_gates: prepared.decision.evaluated_gates,
+      match_method: prepared.decision.match_method,
+      candidates: prepared.decision.candidates,
+      source_scope: prepared.decision.source_scope,
+      job,
+      decided_at: prepared.decision.decided_at,
+      target,
+      findActiveLink: deps.findActiveLink,
+    };
+
+    try {
+      await (deps.synchronizeLead ?? synchronizeLeadFromGranot)({
+        lead_ref: { model: target.model, id: target.id },
+        expected_domain_revision: expectedRevision,
+        desired_state: desired,
+        context: {
+          command_id: new mongoose.Types.ObjectId().toHexString(),
+          idempotency_key: synchronizeLeadIdempotencyKey(String(observation._id)),
+          payload_checksum: synchronizeLeadPayloadChecksum({
+            lead_ref: { model: target.model, id: target.id },
+            expected_domain_revision: expectedRevision,
+            desired_state: desired,
+          }),
+          actor: input.moduleContext.processor_actor,
+          initiator,
+          provenance: {
+            origin: "granot_lifecycle",
+            run_id: null,
+            source_receipt_id: receiptId,
+            source_connection_key: null,
+            observation_id: String(observation._id),
+            decision_id: String(decisionId),
+            observation_channel: receipt.observation_channel,
+          },
+        },
+        execution,
+      });
+    } catch (error) {
+      if (!isSynchronizeRace(error)) {
+        throw error;
+      }
+      const lead = await (deps.loadLeadProjection ?? defaultLoadLeadProjection)(target);
+      prepared = await prepareDecision({
+        observation,
+        attempt: input.attempt,
+        execution_mode,
+        flags,
+        decided_at: input.now(),
+        sourcePolicyStore: deps.sourcePolicyStore,
+        resolveIdentity: deps.resolveIdentity,
+        identityStore: deps.identityStore,
+        loadLeadProjection: deps.loadLeadProjection,
+        leadOverride: lead,
+      });
+      continue;
+    }
+
+    const persisted =
+      (await (deps.findDecision ?? defaultFindDecision)(observation._id, input.attempt)) ??
+      toDecisionDocument(decisionId, {
+        ...prepared.decision,
+        outcome: prepared.plan.outcome === "applied" ? "applied" : "linked",
+        reason_code:
+          prepared.plan.outcome === "applied" ? "lead_state_changed" : "record_link_established",
+      });
+    logProcessingCompletion({
+      receipt_id: receiptId,
+      observation_id: String(observation._id),
+      decision_id: String(persisted._id),
+      attempt: input.attempt,
+      execution_mode,
+      outcome: persisted.outcome,
+      reason_code: persisted.reason_code,
+      initiator_actor_id: input.moduleContext.initiator?.actor_id,
+      processor_actor_id: input.moduleContext.processor_actor.actor_id,
+      duration_ms: Date.now() - input.started,
+    });
+    return toProcessorResult(persisted, receipt.observation_channel, input.started);
+  }
+
+  throw new Error("synchronizeLeadFromGranot exhausted revision/link race retries.");
+}
+
+async function persistRaceReplan(input: {
+  prepared: PreparedDecision;
+  receipt: ProcessorReceipt;
+  observation: GranotObservationDocument;
+  execution_mode: ExecutionMode;
+  attempt: number;
+  started: number;
+  moduleContext: { initiator?: DurableActor; processor_actor: DurableActor };
+  deps: GranotLifecycleProcessorDeps;
+}): Promise<{
+  observation_id: string;
+  decision_id: string;
+  outcome: SynchronizationOutcome;
+  effects: SynchronizationEffectSummary[];
+  target?: EntityRef;
+}> {
+  if (input.prepared.outcome === "applied" || input.prepared.outcome === "linked") {
+    throw new Error("Race replan still requires synchronizeLeadFromGranot.");
+  }
+  const decision = toDecisionDocument(new mongoose.Types.ObjectId(), input.prepared);
+  const runTransaction = input.deps.withTransaction ?? defaultWithTransaction;
+  await runTransaction(async (session) => {
+    await (input.deps.persistDecisionOnly ?? defaultPersistDecisionOnly)(
+      decision,
+      input.receipt._id,
+      session,
+    );
+  });
+  logProcessingCompletion({
+    receipt_id: String(input.receipt._id),
+    observation_id: String(input.observation._id),
+    decision_id: String(decision._id),
+    attempt: input.attempt,
+    execution_mode: input.execution_mode,
+    outcome: decision.outcome,
+    reason_code: decision.reason_code,
+    initiator_actor_id: input.moduleContext.initiator?.actor_id,
+    processor_actor_id: input.moduleContext.processor_actor.actor_id,
+    duration_ms: Date.now() - input.started,
+  });
+  return toProcessorResult(decision, input.receipt.observation_channel, input.started);
+}
+
+function liveAssociationNeeded(
+  existing: GranotRecordLinkDocument | null,
+  job: LinkProposal | undefined,
+  target: EntityRef & { model: "FormLead" | "CallLead" },
+): boolean {
+  if (!job) return false;
+  if (!existing) return true;
+  if (!existing.lead_ref) return true;
+  return String(existing.lead_ref.id) !== target.id;
+}
+
+function isSynchronizeRace(error: unknown): boolean {
+  if (error instanceof DomainRevisionConflictError || error instanceof SynchronizeLeadRaceError) {
+    return true;
+  }
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  const code = "code" in error ? (error as { code?: unknown }).code : undefined;
+  const message = error instanceof Error ? error.message : undefined;
+  return (
+    code === 11000 ||
+    code === "DOMAIN_REVISION_CONFLICT" ||
+    message === "DOMAIN_REVISION_CONFLICT"
+  );
+}
+
 async function persistLinkFollowUp(input: {
   existingLink: GranotRecordLinkDocument;
   proposal: LinkProposal;
@@ -438,7 +738,9 @@ async function prepareDecision(input: {
 }): Promise<{
   decision: PreparedDecision;
   link?: LinkProposal;
+  job?: LinkProposal;
   plan?: LeadDesiredStatePlan;
+  identity?: LeadIdentityResult;
 }> {
   const base: PreparedDecision = {
     observation_id: input.observation._id,
@@ -535,6 +837,8 @@ async function prepareDecision(input: {
     plan,
     identity,
     execution_mode: input.execution_mode,
+    flags: input.flags,
+    gates,
     job,
   });
 
@@ -551,7 +855,9 @@ async function prepareDecision(input: {
       next_match_attempt_at: plan.next_match_attempt_at,
     },
     link: decided.link,
+    job,
     plan,
+    identity,
   };
 }
 
@@ -613,6 +919,8 @@ function decidePreparedOutcome(input: {
   plan: LeadDesiredStatePlan;
   identity: LeadIdentityResult;
   execution_mode: ExecutionMode;
+  flags: GranotLifecycleFlags;
+  gates: EffectGateEvaluation;
   job?: LinkProposal;
 }): {
   outcome: SynchronizationOutcome;
@@ -635,6 +943,23 @@ function decidePreparedOutcome(input: {
   }
 
   if (isClassificationOutcome(input.plan.outcome)) {
+    return {
+      outcome: input.plan.outcome,
+      reason_code: input.plan.reason_code,
+      match_method: input.identity.match_method,
+      target: input.plan.target ?? input.identity.target,
+    };
+  }
+
+  if (input.execution_mode === "live" && input.flags.lead_writes_enabled) {
+    if (!input.gates.allowed) {
+      return {
+        outcome: input.gates.outcome,
+        reason_code: input.gates.reason,
+        match_method: input.identity.match_method,
+        target: input.plan.target ?? input.identity.target,
+      };
+    }
     return {
       outcome: input.plan.outcome,
       reason_code: input.plan.reason_code,
@@ -864,9 +1189,22 @@ function decisionMeaningEquals(
       (existing.outcome === "linked" || existing.outcome === "conflict")
     );
   }
-  return (
+  if (
     existing.outcome === next.outcome &&
     existing.reason_code === next.reason_code
+  ) {
+    return true;
+  }
+  // After a committed live mutation the same Observation+attempt re-plans as
+  // already_current (or stale if a later winner landed). The stored Decision
+  // remains the causal replay result.
+  return (
+    existing.execution_mode === "live" &&
+    (existing.outcome === "applied" || existing.outcome === "linked") &&
+    (existing.reason_code === "lead_state_changed" ||
+      existing.reason_code === "record_link_established" ||
+      existing.reason_code === "record_link_confirmed") &&
+    (next.outcome === "already_current" || next.outcome === "stale")
   );
 }
 
@@ -1036,10 +1374,10 @@ async function defaultPersistDecisionOnly(
   session?: ClientSession,
 ): Promise<void> {
   await getSynchronizationDecisionModel().create([decision], { session });
-  await getGranotObservationReceiptModel().updateOne(
+  await getGranotObservationReceiptModel().collection.updateOne(
     { _id: receiptId },
     { $set: { "processing.latest_decision_id": decision._id } },
-    { session },
+    session ? { session } : {},
   );
 }
 
@@ -1073,10 +1411,10 @@ async function defaultPersistDecisionAndLink(input: {
       { session: input.session },
     );
   }
-  await getGranotObservationReceiptModel().updateOne(
+  await getGranotObservationReceiptModel().collection.updateOne(
     { _id: input.receiptId },
     { $set: { "processing.latest_decision_id": input.decision._id } },
-    { session: input.session },
+    input.session ? { session: input.session } : {},
   );
 }
 

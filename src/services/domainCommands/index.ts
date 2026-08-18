@@ -18,6 +18,7 @@ import {
   deleteFormLead,
   updateSourceOwnedLead,
 } from "./leads";
+import { synchronizeLeadFromGranot } from "../granotLifecycle/synchronizeLeadFromGranot";
 import type { CanonicalDomainCommands } from "./types";
 
 export * from "./bookings";
@@ -36,6 +37,7 @@ export const canonicalDomainCommands: CanonicalDomainCommands = {
   createLeadlessBooking,
   attachBookingToLead,
   createCancellation,
+  synchronizeLeadFromGranot,
 };
 
 export const existingWriteCanonicalCommands = {

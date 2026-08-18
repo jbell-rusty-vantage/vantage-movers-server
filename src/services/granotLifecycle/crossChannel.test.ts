@@ -8,6 +8,10 @@ import {
 } from "./normalization";
 import { processGranotObservation, type GranotLifecycleProcessorDeps } from "./processor";
 import { GRANOT_LIFECYCLE_FLAG_DEFAULTS } from "../../config/domain/granotLifecycle";
+import {
+  createBrowserExtensionOwnerInitiator,
+} from "../durableWork/actors";
+import type { SynchronizeLeadFromGranotInput } from "./synchronizeLeadFromGranot";
 import type { GranotObservationDocument } from "../../models/GranotObservation";
 import type { SynchronizationDecisionDocument } from "../../models/SynchronizationDecision";
 import type { LeadIdentityResult } from "./identity";
@@ -284,4 +288,88 @@ test("[AC-33] equivalent webhook and automation shadow desired-state outcomes ma
     webhookResult.effects.flatMap((effect) => effect.changed_paths ?? []),
     automationResult.effects.flatMap((effect) => effect.changed_paths ?? []),
   );
+});
+
+test("[AC-33] equivalent live webhook, extension, and automation desired states match", async () => {
+  const calls: Array<{
+    channel: string | null | undefined;
+    origin: string;
+    actor: string;
+    desired: SynchronizeLeadFromGranotInput["desired_state"];
+  }> = [];
+
+  async function run(channel: "granot_webhook" | "browser_extension" | "granot_http_automation") {
+    const obs = observation(new mongoose.Types.ObjectId());
+    const deps = memoryDeps(obs);
+    deps.flags = {
+      ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+      shadow_mode: false,
+      lead_writes_enabled: true,
+    };
+    deps.loadActivation = async () => ({ activated_at: new Date("2026-08-17T14:00:00.000Z") });
+    deps.loadLeadProjection = async () => ({
+      model: "FormLead",
+      id: "507f1f77bcf86cd799439011",
+      ingestion_origin: "wordpress_form",
+      job_no: "567632",
+      normalized_job_no: "567632",
+      quoted: false,
+      granot_priority: "8",
+      receiver_agent: undefined,
+      last_accepted_granot_observation: undefined,
+      domain_revision: 2,
+    });
+    deps.loadReceipt = async () => ({
+      _id: obs.receipt_id,
+      observation_channel: channel,
+      captured_at: capturedAt,
+      processing: { match_attempt: 0 },
+    });
+    deps.synchronizeLead = async (input) => {
+      calls.push({
+        channel: input.context.provenance.observation_channel,
+        origin: input.context.initiator.origin ?? "",
+        actor: input.context.actor.actor_id,
+        desired: input.desired_state,
+      });
+      return { status: "applied", entity_refs: [input.lead_ref], warnings: [] };
+    };
+    const initiator =
+      channel === "browser_extension"
+        ? createBrowserExtensionOwnerInitiator({
+            actor_id: "owner-1",
+            actor_label: "Owner",
+            request_id: String(obs.receipt_id),
+          })
+        : channel === "granot_http_automation"
+          ? {
+              actor_type: "admin" as const,
+              actor_id: "admin-1",
+              actor_label: "Admin",
+              actor_role: "admin" as const,
+              origin: "vantage_admin" as const,
+              request_id: String(obs.receipt_id),
+            }
+          : undefined;
+    return processGranotObservation({ receipt_id: String(obs.receipt_id), initiator }, deps);
+  }
+
+  const webhook = await run("granot_webhook");
+  const extension = await run("browser_extension");
+  const automation = await run("granot_http_automation");
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls[0]?.desired.changed_paths, calls[1]?.desired.changed_paths);
+  assert.deepEqual(calls[1]?.desired.changed_paths, calls[2]?.desired.changed_paths);
+  assert.equal(calls[0]?.desired.set.granot_priority, "1");
+  assert.equal(calls[0]?.desired.set.quoted, true);
+  assert.equal(calls[0]?.channel, "granot_webhook");
+  assert.equal(calls[1]?.channel, "browser_extension");
+  assert.equal(calls[2]?.channel, "granot_http_automation");
+  assert.equal(calls[0]?.origin, "granot_lifecycle");
+  assert.equal(calls[1]?.origin, "browser_extension");
+  assert.equal(calls[2]?.origin, "vantage_admin");
+  assert.equal(new Set(calls.map((call) => call.actor)).size, 1);
+  assert.equal(webhook.outcome, "applied");
+  assert.equal(extension.outcome, "applied");
+  assert.equal(automation.outcome, "applied");
 });

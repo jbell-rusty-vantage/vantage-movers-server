@@ -5,6 +5,8 @@ import type {
   CreateFormLeadInput,
   CreateLeadlessBookingInput,
 } from "../../validation/v1.validation";
+import type { GranotAuthorizedLeadDesiredState } from "../granotLifecycle/authorizedDesiredState";
+import type { SynchronizeLeadExecution } from "../granotLifecycle/synchronizeLeadTypes";
 import type { ObservationChannel } from "../granotLifecycle/types";
 import type { DurableActor } from "../durableWork";
 
@@ -108,6 +110,13 @@ export interface CanonicalDomainCommands {
     data: CreateCancelledLeadInput;
     context: CanonicalCommandContext;
   }): Promise<CompatibilityCanonicalCommandResult>;
+  synchronizeLeadFromGranot(input: {
+    lead_ref: { model: "FormLead" | "CallLead"; id: string };
+    expected_domain_revision: number;
+    desired_state: GranotAuthorizedLeadDesiredState;
+    context: CanonicalCommandContext;
+    execution: SynchronizeLeadExecution;
+  }): Promise<CanonicalCommandResult>;
 }
 
 export class DomainCommandIdempotencyConflictError extends Error {

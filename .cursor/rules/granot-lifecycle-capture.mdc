@@ -31,22 +31,23 @@ Granot evidence never becomes an official Booking or Cancellation by itself. CRM
 | `sourcePolicy.ts` | Fail-closed Registry read and seven-layer effect-gate snapshot. No writes. |
 | `identity.ts` | Read-only Form/Call ladders, Agent assertion, Booking delegation context. No Decision or Lead writes. |
 | `leadDesiredState.ts` | Pure origin-specific desired-state planner and temporal comparator. No writes. |
-| `processor.ts` | Channel-neutral shadow orchestrator: identity, temporal compare, desired-state plan, gates, Decision, historical job-level Record Link. Production Lead writes stay off. |
+| `synchronizeLeadFromGranot.ts` | Canonical matched-Lead command: allowlisted desired state, Record-Link establish/attach/confirm, Lead CAS, Decision, `EntityChange`, Sheet Sync intent. |
+| `processor.ts` | Channel-neutral orchestrator: identity, temporal compare, desired-state plan, gates, Decision, historical job-level Record Link. Live matched-Lead writes enter `synchronizeLeadFromGranot` only when live + Lead writes + all eight gates authorize them. |
 | `drainer.ts` | Fenced Mongo claim/lease shared by the queue consumer, five-minute cron, and Owner requeue. |
 | `aggregateRevision.ts` | Compare-and-swap primitive for later consumed aggregates. |
 | `trustedLeadCreateValidation.ts` | Trusted `granot_lead_created` validator only (`post_to_granot=false`). No live caller. |
 
-Admin routes activate, requeue dead letters, project a Job, or read health. They do not own claim, match, or patch policy. Canonical executor / `EntityChange` live in `domainCommands/` and are not invoked as lifecycle or owner commands yet.
+Admin routes activate, requeue dead letters, project a Job, or read health. They do not own claim, match, or patch policy. Canonical executor / `EntityChange` live in `domainCommands/`. The only live lifecycle command is `synchronizeLeadFromGranot`; creation and owner Booking/Release commands stay disabled.
 
 ## Progress
 
-Units 01–17 are complete on `granot-lead-lifecycle` (Unit 16 also lands extension `0.2.8` on `granot_sync_extensions_and_services/main`). Re-verify the matching `UNIT-*-COMPLETION.md` and repository state before editing; do not trust the ledger alone.
+Units 01–18 are complete on `granot-lead-lifecycle` (Unit 16 also lands extension `0.2.8` on `granot_sync_extensions_and_services/main`). Re-verify the matching `UNIT-*-COMPLETION.md` and repository state before editing; do not trust the ledger alone.
 
-**Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, shadow processor orchestration, Owner browser-extension receipt apply, and HTTP automation receipt apply.
+**Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, shadow processor orchestration, Owner browser-extension receipt apply, HTTP automation receipt apply, and canonical `synchronizeLeadFromGranot` for authorized matched-Lead writes.
 
-**Next sequential implementation:** Unit 18 stays blocked until a designated integration owner accepts combined webhook/extension/automation shadow parity. Deployed posture stays shadow; Lead writes/creation/cases stay false.
+**Next sequential implementation:** Unit 19 authorized Granot Lead create. Deployed posture stays shadow; Lead writes/creation/cases stay false except injected live test posture for Unit 18.
 
-**Not started here:** live matched-Lead writes (18), authorized Granot Lead create (19), RingCentral adoption (20–21), Booking/Release Reconciliation persistence and owner commands (22–29).
+**Not started here:** authorized Granot Lead create (19), RingCentral adoption (20–21), Booking/Release Reconciliation persistence and owner commands (22–29).
 
 ## Live constraints
 
@@ -55,4 +56,4 @@ Units 01–17 are complete on `granot-lead-lifecycle` (Unit 16 also lands extens
 - Processing disabled means no claim; capture and due work remain intact.
 - Processing and shadow default true. All eight effect flags stay false.
 - Shadow, retry, and requeue must not create, update, cancel, or un-cancel a Booking.
-- Capture, identity, planner, and trusted-create validators have no production Lead/Booking/Cancellation write path. The only Lead write Unit 15 may perform is the injected-test metadata-only temporal winner CAS.
+- Capture, identity, planner, and trusted-create validators have no production Lead/Booking/Cancellation write path. Matched-Lead field writes exist only through `synchronizeLeadFromGranot` when live + Lead writes + all eight gates authorize them. Checked-in defaults keep shadow true and Lead writes false.

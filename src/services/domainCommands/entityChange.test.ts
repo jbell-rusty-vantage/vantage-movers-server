@@ -19,6 +19,14 @@ test("[AC-32] contact and address paths are reference_only; low-risk paths stay 
   assert.equal(classifyEntityChangePath("deposit_amount"), "stored");
   assert.equal(classifyEntityChangePath("job_no"), "stored");
   assert.equal(classifyEntityChangePath("unknown_future_path"), "reference_only");
+  assert.equal(classifyEntityChangePath("granot_priority"), "stored");
+  assert.equal(classifyEntityChangePath("quoted"), "stored");
+  assert.equal(classifyEntityChangePath("receiver_agent"), "stored");
+  assert.equal(classifyEntityChangePath("lead_ref"), "stored");
+  assert.equal(classifyEntityChangePath("source_scope"), "stored");
+  assert.equal(classifyEntityChangePath("granot_contact_snapshot"), "reference_only");
+  assert.equal(classifyEntityChangePath("name"), "reference_only");
+  assert.equal(classifyEntityChangePath("destination_zip"), "reference_only");
 });
 
 test("[AC-32] Change builders omit raw contact values and emit deterministic paths", () => {

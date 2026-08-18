@@ -7,7 +7,7 @@
 
 Canonical idempotent write surface for ingest and existing v1 write adapters. Mongo is the System of Record. The executor owns one Mongo transaction, the durable `DomainCommandExecution` result, append-only `EntityChange` rows, aggregate revision stamps, queued Sheet Sync outbox intent, and the replay/conflict decision. Sheet Sync does **not** complete commands.
 
-This module does not enable Granot/RingCentral lifecycle callers, owner `updateBooking`, lifecycle `createReferralBooking`, Record Link commands, or any lifecycle effect flag. Later Section 23.4 commands remain disabled.
+`synchronizeLeadFromGranot` is the first Granot lifecycle command. Policy and desired-state conversion live in `granotLifecycle/`; this registry is a thin entry. The processor is the only caller. Owner `updateBooking`, lifecycle `createReferralBooking`, `createLeadFromGranot`, and Record Link correction commands remain disabled. Checked-in effect flags stay false.
 
 ## Executor sequence
 

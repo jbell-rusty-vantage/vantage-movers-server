@@ -63,6 +63,12 @@ export const GRANOT_RECORD_LINK_INDEXES = [
 const ALLOWED_RECORD_LINK_SET_PATHS = new Set([
   "last_observation_id",
   "last_observed_at",
+  "lead_ref",
+  "source_scope",
+  "disputed",
+  "dispute_reason",
+  "last_change_id",
+  "last_changed_at",
   "domain_revision",
   "updatedAt",
 ]);

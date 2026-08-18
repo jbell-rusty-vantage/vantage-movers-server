@@ -11,6 +11,7 @@ import {
 } from "../../models/EntityChange";
 import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
+import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import type { EntityRef } from "../granotLifecycle/types";
 import type { CanonicalCommandContext, CommandOrigin } from "./types";
 
@@ -20,17 +21,26 @@ const CONTACT_OR_ADDRESS_PATH =
 const STORED_PATHS = new Set([
   "quoted",
   "priority",
+  "granot_priority",
+  "granot_move_size",
+  "granot_service_type",
   "cubic_feet",
   "est_cf",
   "receiver_agent",
   "receiver_agent_name_snapshot",
   "receiver_agent_source",
+  "receiver_agent_source_value",
   "agent_allocations",
   "booked",
   "cancelled",
   "booked_lead",
   "lead_ref",
   "lead_model",
+  "source_scope",
+  "disputed",
+  "dispute_reason",
+  "last_observation_id",
+  "last_observed_at",
   "deposit_amount",
   "total_binder_amount",
   "refund_amount",
@@ -64,7 +74,10 @@ export const FORM_LEAD_CHANGE_PATHS = [
   "first_name",
   "last_name",
   "phone_number",
+  "normalized_phone_number",
   "email",
+  "job_no",
+  "normalized_job_no",
   "pickup_zip",
   "destination_zip",
   "pickup_city",
@@ -84,6 +97,17 @@ export const FORM_LEAD_CHANGE_PATHS = [
   "booked",
   "cancelled",
   "receiver_agent",
+  "receiver_agent_source",
+  "receiver_agent_source_value",
+  "granot_priority",
+  "granot_contact_snapshot",
+  "granot_move_size",
+  "granot_service_type",
+  "current_contact_provenance",
+  "current_move_provenance",
+  "last_accepted_granot_observation",
+  "granot_contact_revision",
+  "last_granot_contact_change",
   "over_2000",
   "over_4000",
 ] as const;
@@ -95,8 +119,10 @@ export const CALL_LEAD_CHANGE_PATHS = [
   "first_name",
   "last_name",
   "phone_number",
+  "normalized_phone_number",
   "email",
   "job_no",
+  "normalized_job_no",
   "form_fill",
   "duplicate",
   "booked",
@@ -105,8 +131,33 @@ export const CALL_LEAD_CHANGE_PATHS = [
   "source_company",
   "timestamp",
   "receiver_agent",
+  "receiver_agent_source",
+  "receiver_agent_source_value",
+  "pickup_city",
+  "pickup_zip",
+  "pickup_state",
+  "delivery_city",
+  "delivery_zip",
+  "delivery_state",
+  "move_date",
+  "granot_priority",
+  "granot_contact_snapshot",
+  "granot_move_size",
+  "granot_service_type",
+  "current_contact_provenance",
+  "current_move_provenance",
+  "last_accepted_granot_observation",
+  "granot_contact_revision",
+  "last_granot_contact_change",
   "over_2000",
   "over_4000",
+] as const;
+
+export const RECORD_LINK_CHANGE_PATHS = [
+  "lead_ref",
+  "source_scope",
+  "disputed",
+  "dispute_reason",
 ] as const;
 
 export const BOOKED_LEAD_CHANGE_PATHS = [
@@ -347,6 +398,8 @@ function writableAggregateModel(model: EntityRef["model"]) {
       return BookedLead;
     case "CancelledLead":
       return CancelledLead;
+    case "GranotRecordLink":
+      return getGranotRecordLinkModel();
     default:
       throw new Error(`EntityChange stamping is not owned for ${model}`);
   }

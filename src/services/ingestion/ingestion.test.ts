@@ -1319,6 +1319,9 @@ test("apply resumes from checkpoint without replaying successful actions", async
       createCancellation: async () => {
         throw new Error("unexpected");
       },
+      synchronizeLeadFromGranot: async () => {
+        throw new Error("unexpected");
+      },
     },
     persistence,
   });
@@ -1459,6 +1462,9 @@ test("failed lead dependency blocks dependent booking and continues independentl
       createCancellation: async () => {
         throw new Error("unexpected");
       },
+      synchronizeLeadFromGranot: async () => {
+        throw new Error("unexpected");
+      },
     },
     persistence: {
       appendSourceReceipt: async () => ({ id: "r", inserted: true }),
@@ -1542,6 +1548,9 @@ test("altered plan checksum is rejected before any mutation", async () => {
             throw new Error("unreachable");
           },
           createCancellation: async () => {
+            throw new Error("unreachable");
+          },
+          synchronizeLeadFromGranot: async () => {
             throw new Error("unreachable");
           },
         },

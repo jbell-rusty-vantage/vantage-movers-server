@@ -67,12 +67,19 @@ test("[AC-32] disputed active links remain lookup-visible and refresh updates ar
     $set: {
       last_observation_id: new mongoose.Types.ObjectId(),
       last_observed_at: new Date(),
+      lead_ref: { model: "FormLead", id: new mongoose.Types.ObjectId() },
+      disputed: true,
+      dispute_reason: "source_scope_conflict",
     },
     $inc: { domain_revision: 1 },
   });
   assert.throws(
-    () => assertAllowlistedRecordLinkRefreshUpdate({ $set: { disputed: true } }),
-    /cannot update disputed/,
+    () => assertAllowlistedRecordLinkRefreshUpdate({ $set: { state: "superseded" } }),
+    /cannot update state/,
+  );
+  assert.throws(
+    () => assertAllowlistedRecordLinkRefreshUpdate({ $set: { booking_ref: new mongoose.Types.ObjectId() } }),
+    /cannot update booking_ref/,
   );
   assert.throws(
     () => assertAllowlistedRecordLinkRefreshUpdate({ $setOnInsert: { state: "active" } }),

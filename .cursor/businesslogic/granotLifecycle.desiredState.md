@@ -1,5 +1,7 @@
-**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
-**Primary code:** `src/services/granotLifecycle/leadDesiredState.ts`, `src/services/granotLifecycle/granotTemporal.ts`  
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)
+
+**Primary code:** `src/services/granotLifecycle/leadDesiredState.ts`, `src/services/granotLifecycle/granotTemporal.ts`, `src/services/granotLifecycle/authorizedDesiredState.ts`, `src/services/granotLifecycle/leadContactProjection.ts`
+
 **Domain terms used:** Granot Observation, Synchronization Decision, Ingestion Origin, System of Record
 
 # Granot desired-state planner (`granotLifecycle/leadDesiredState`)
@@ -22,7 +24,7 @@
 | current location / move date / cubic feet / `local` | Priority `1`/`5`, subject to origin |
 | `granot_move_size`, `granot_service_type` | Priority `1`/`5`; never Vantage `move_size` |
 
-WordPress Form: primary name/phone/email and both ingested snapshots stay off `changed_paths`. Granot-created and RingCentral-created qualified contact become current operational fields and a bounded contact-revision path list. Full history is Unit 18 `EntityChange`.
+WordPress Form: primary name/phone/email and both ingested snapshots stay off `changed_paths`. Qualified Granot contact plans `granot_contact_snapshot` only. Granot-created and RingCentral-created qualified contact become current operational fields; `last_granot_contact_change.changed_paths` is planner metadata and is stripped before `synchronizeLeadFromGranot`. The command derives provenance, contact hashes, temporal winner, and `EntityChange` field modes.
 
 ## No-match and minimum data
 
@@ -34,6 +36,12 @@ WordPress Form: primary name/phone/email and both ingested snapshots stay off `c
 - `observation_only` stays `creation_policy_observation_only`
 
 Equivalent formatting uses existing Job/phone/email/state/date normalizers and does not manufacture a change. `changed_paths` are sorted and deduplicated.
+
+## Command conversion and role-safe projection
+
+The processor converts a plan to `GranotAuthorizedLeadDesiredState` immediately before `synchronizeLeadFromGranot`. Extra/missing/duplicate paths, `quoted:false`, forbidden metadata, and model-inapplicable ZIP fields are rejected. Contact hashes and temporal/provenance stamps are server-derived.
+
+`projectRoleSafeLeadContacts` keeps WordPress submitted contact and `granot_contact_snapshot` separately identifiable and masks phones/emails. It never reads raw receipt payload.
 
 ## Related
 

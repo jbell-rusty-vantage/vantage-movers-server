@@ -23,11 +23,11 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 | 15 | Temporal ordering, desired-state planning, and shadow processor orchestration | 07–08, 14 | complete | complete | [UNIT-15-COMPLETION.md](completion-reports/UNIT-15-COMPLETION.md) |
 | 16 | Browser extension receipt apply and version 0.2.8 | 02–04, 14–15 | complete | complete | [UNIT-16-COMPLETION.md](completion-reports/UNIT-16-COMPLETION.md) |
 | 17 | HTTP automation receipt convergence and resumable lifecycle outcomes | 02–04, 14–15 | complete | complete | [UNIT-17-COMPLETION.md](completion-reports/UNIT-17-COMPLETION.md) |
-| 18 | Safe matched-Lead synchronization effects | 10–17, parity approval | blocked | complete | — |
-| 19 | Authorized Granot Lead creation and atomic link reservation | 18 | blocked | complete | — |
+| 18 | Safe matched-Lead synchronization effects | 10–17, parity approval | complete | complete | [UNIT-18-COMPLETION.md](completion-reports/UNIT-18-COMPLETION.md) |
+| 19 | Authorized Granot Lead creation and atomic link reservation | 18 | ready | complete | — |
 | 20 | RingCentral adoption/convergence and duplicate correctness | 12, 19 | blocked | complete | — |
 | 21 | RingCentral Call Log lease, telemetry, overlap safety, and 30-minute cadence | 20 | blocked | complete | — |
-| 22 | Booking Reconciliation persistence, sequencing, and read-only reconciliation service | 07, 14–15, 18 | blocked | complete | — |
+| 22 | Booking Reconciliation persistence, sequencing, and read-only reconciliation service | 07, 14–15, 18 | ready | complete | — |
 | 23 | Booking lifecycle reads, Admin queue/detail, candidate browser, and Job/Lead timeline | 22 | blocked | complete | — |
 | 24 | Confirm missing standard Booking owner workflow | 10–11, 22–23, Owner review | blocked | complete | — |
 | 25 | Existing Booking update and Booking No Action workflows | 24 | blocked | complete | — |
@@ -44,7 +44,7 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 ## Current ready queue
 
 - Open review findings live in [`warnings/`](warnings/README.md). They do not block the next sequential unit unless repository re-verification shows an applicable finding has become material.
-- Units 04–17 are complete on `granot-lead-lifecycle`. Re-verify the matching completion report before depending on a later unit.
+- Units 04–18 are complete on `granot-lead-lifecycle`. Re-verify the matching completion report before depending on a later unit.
 - Unit 08 completes S06 and removes Unit 15's durable-work prerequisite. Unit 14 now supplies the identity resolver Unit 15 must consume.
 - Unit 09 lands aggregate revision tokens, the CAS primitive, and revision-only Lead/Booking/Cancellation backfill. Units 12–13 must preserve those revisions and the persisted history boundary.
 - Unit 10 lands the transaction-owning canonical executor, four-origin validation, stored `applied` replay, and Decision/revision/Command rollback.
@@ -54,7 +54,8 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 - Unit 14 completes the identity half of S09: policy-before-identity, Form/Call ladders, Agent assertion, and Booking delegation context. It writes no data and does not invoke from the Unit 07 processor. Lead writes/creation remain false.
 - Unit 15 completes S09: temporal compare, desired-state planning, and shadow processor orchestration. It consumes `resolveLeadIdentity`, persists Receipt→Observation→Decision refs, and keeps Lead writes/creation/cases false. Historical shadow may still create job-level Record Link evidence only.
 - Unit 16 is complete on `granot-lead-lifecycle` plus `granot_sync_extensions_and_services/main` (`0.2.8`). Re-verify `UNIT-16-COMPLETION.md` before depending on extension receipt apply.
-- Unit 17 is complete on `granot-lead-lifecycle` (server + Admin display/adapter). Re-verify `UNIT-17-COMPLETION.md` before depending on HTTP automation receipt apply. Schema-v1 plans fail closed. Unit 18 remains blocked until a designated integration owner accepts combined webhook/extension/automation shadow parity. Checked-in defaults remain shadow true with Lead writes/creation/cases false.
-- Units 19 and 20 now have complete implementation contracts but remain blocked by shared-branch prerequisites. Unit 19 waits for verified Unit 18 completion; Unit 20 waits for verified Unit 19 completion (Unit 12 is already complete). Unit 21 remains blocked by Unit 20 and retains exclusive ownership of the RingCentral lease/telemetry/cadence change.
-- Units 21–23 now have complete implementation contracts but remain implementation-blocked. Unit 21 waits for verified Unit 20 convergence/adoption/duplicate proof. Unit 22 waits for verified Unit 18 completion (Units 07, 14, and 15 are already complete). Unit 23 waits for Unit 22 and owns read/API/Admin deployment before any separately approved Booking-case enablement; Booking commands remain false.
+- Unit 17 is complete on `granot-lead-lifecycle` (server + Admin display/adapter). Re-verify `UNIT-17-COMPLETION.md` before depending on HTTP automation receipt apply. Schema-v1 plans fail closed. Checked-in defaults remain shadow true with Lead writes/creation/cases false.
+- Unit 18 is complete on `granot-lead-lifecycle`. Re-verify `UNIT-18-COMPLETION.md` before depending on `synchronizeLeadFromGranot`. Checked-in defaults remain shadow true and every effect flag false; focused/replica tests inject live + Lead writes only.
+- Unit 19 is ready (next sequential shared-branch owner). Unit 20 waits for verified Unit 19 completion (Unit 12 is already complete). Unit 21 remains blocked by Unit 20 and retains exclusive ownership of the RingCentral lease/telemetry/cadence change.
+- Unit 22 is spec-unblocked by Unit 18 (Units 07, 14, and 15 are already complete). Shared-branch sequencing: do not start Unit 22 in parallel with Unit 19 unless a designated integration owner assigns non-overlapping files. Unit 23 waits for Unit 22 and owns read/API/Admin deployment before any separately approved Booking-case enablement; Booking commands remain false.
 - Units 24–25 now have complete implementation contracts but remain implementation-blocked. Unit 24 waits for verified Units 22–23 and Owner review of the deployed read-only Booking workflow (Units 10–11 are already complete); it lands confirm-missing capability with the shared Booking command flag still false. Unit 25 waits for verified Unit 24, owns existing-Booking update and standard Booking No Action, and completes S16 before any separately authorized narrow Booking-command rollout.

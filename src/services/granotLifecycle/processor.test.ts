@@ -20,6 +20,7 @@ import {
 } from "./metrics";
 import type { LeadIdentityResult } from "./identity";
 import type { LeadDesiredStateProjection } from "./leadDesiredState";
+import { DomainRevisionConflictError } from "../domainCommands/types";
 import { processGranotObservation, type GranotLifecycleProcessorDeps } from "./processor";
 import type { SourcePolicyStore } from "./sourcePolicy";
 
@@ -122,17 +123,20 @@ function memoryDeps(input: {
   identity?: LeadIdentityResult;
   lead?: LeadDesiredStateProjection | null;
   winnerAdvanced?: boolean;
+  synchronizeLead?: GranotLifecycleProcessorDeps["synchronizeLead"];
 }): GranotLifecycleProcessorDeps & {
   decisions: SynchronizationDecisionDocument[];
   links: GranotRecordLinkDocument[];
   forbiddenEffects: string[];
   temporalAdvances: number;
   initiatorSeen: string[];
+  synchronizeCalls: number;
 } {
   const decisions: SynchronizationDecisionDocument[] = [];
   const links: GranotRecordLinkDocument[] = [];
   const forbiddenEffects: string[] = [];
   const initiatorSeen: string[] = [];
+  const synchronizeCalls = { count: 0 };
   let activeLink = input.existingLink ?? null;
   const counters = { temporalAdvances: 0 };
   return {
@@ -141,6 +145,9 @@ function memoryDeps(input: {
     forbiddenEffects,
     get temporalAdvances() {
       return counters.temporalAdvances;
+    },
+    get synchronizeCalls() {
+      return synchronizeCalls.count;
     },
     initiatorSeen,
     now: () => decidedAt,
@@ -188,8 +195,31 @@ function memoryDeps(input: {
         }
       }
     },
+    synchronizeLead: input.synchronizeLead
+      ? async (payload) => {
+          synchronizeCalls.count += 1;
+          return input.synchronizeLead!(payload);
+        }
+      : undefined,
     withTransaction: async (fn) => fn({} as never),
   };
+}
+
+function exactLink(leadId: string): GranotRecordLinkDocument {
+  return {
+    _id: objectId(),
+    provider: "granot",
+    normalized_job_no: "SYNTHETIC JOB 100",
+    job_no_snapshot: "synthetic-job-100",
+    state: "active",
+    lead_ref: { model: "FormLead", id: new mongoose.Types.ObjectId(leadId) },
+    disputed: false,
+    established_by_decision_id: objectId(),
+    established_at: decidedAt,
+    last_observation_id: objectId(),
+    last_observed_at: decidedAt,
+    domain_revision: 0,
+  } as GranotRecordLinkDocument;
 }
 
 test("[AC-02] portion identical webhook evidence in two receipts creates two Decisions", async () => {
@@ -700,6 +730,7 @@ test("[AC-32] live test posture advances metadata-only winner and does not emit 
       lead_writes_enabled: true,
     },
     identity: matchedFormIdentity(leadId),
+    existingLink: exactLink(leadId),
     lead: currentLead(leadId, {
       granot_priority: "8",
       quoted: false,
@@ -736,6 +767,7 @@ test("[AC-32] CAS loser re-evaluates as stale and never persists already_current
       lead_writes_enabled: true,
     },
     identity: matchedFormIdentity(leadId),
+    existingLink: exactLink(leadId),
     winnerAdvanced: false,
   });
   deps.loadLeadProjection = async () => {
@@ -798,4 +830,248 @@ test("[AC-35] portion Decision metrics use only bounded enum labels", async () =
     }),
     1,
   );
+});
+
+test("[AC-05][AC-07] live authorized matched write invokes synchronizeLeadFromGranot once", async () => {
+  const row = observation({ priority: { valid: true, canonical: "1" } });
+  const leadId = String(objectId());
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: {
+      ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+      shadow_mode: false,
+      lead_writes_enabled: true,
+    },
+    identity: matchedFormIdentity(leadId),
+    lead: currentLead(leadId, {
+      granot_priority: "8",
+      quoted: false,
+      normalized_job_no: "SYNTHETIC JOB 100",
+      job_no: "synthetic-job-100",
+    }),
+    synchronizeLead: async (input) => {
+      assert.equal(input.lead_ref.id, leadId);
+      assert.equal(input.desired_state.set.granot_priority, "1");
+      assert.equal(input.desired_state.set.quoted, true);
+      assert.equal(input.context.idempotency_key, `granot:synchronize-lead:${String(row._id)}`);
+      assert.match(input.context.payload_checksum, /^[a-f0-9]{64}$/);
+      assert.equal(input.context.actor.actor_id, "granot-lifecycle-processor");
+      return { status: "applied", entity_refs: [input.lead_ref], warnings: [] };
+    },
+  });
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(deps.synchronizeCalls, 1);
+  assert.equal(result.outcome, "applied");
+});
+
+test("[AC-32] live applied Decision replays without a second command after the Lead is current", async () => {
+  const row = observation({ priority: { valid: true, canonical: "1" } });
+  const leadId = String(objectId());
+  const existing = {
+    _id: objectId(),
+    observation_id: row._id,
+    attempt: 1,
+    execution_mode: "live",
+    outcome: "applied",
+    reason_code: "lead_state_changed",
+    candidates: [],
+    evaluated_gates: [],
+    effects: [{ kind: "lead_updated", ref: { model: "FormLead", id: leadId }, changed_paths: ["granot_priority"] }],
+    decided_at: decidedAt,
+  } as SynchronizationDecisionDocument;
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: {
+      ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+      shadow_mode: false,
+      lead_writes_enabled: true,
+    },
+    identity: matchedFormIdentity(leadId),
+    existingLink: exactLink(leadId),
+    existingDecision: existing,
+    lead: currentLead(leadId, {
+      granot_priority: "1",
+      quoted: true,
+      normalized_job_no: "SYNTHETIC JOB 100",
+      job_no: "synthetic-job-100",
+      last_accepted_granot_observation: {
+        observation_id: String(row._id),
+        captured_at: capturedAt,
+      },
+    }),
+    synchronizeLead: async () => {
+      throw new Error("stored applied Decision must replay without synchronizeLeadFromGranot");
+    },
+  });
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(result.decision_id, String(existing._id));
+  assert.equal(result.outcome, "applied");
+  assert.equal(deps.synchronizeCalls, 0);
+});
+
+test("[AC-32] lost live command race replans as stale and never persists applied", async () => {
+  const row = observation({ priority: { valid: true, canonical: "1" } });
+  const leadId = String(objectId());
+  let loads = 0;
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: {
+      ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+      shadow_mode: false,
+      lead_writes_enabled: true,
+    },
+    identity: matchedFormIdentity(leadId),
+    existingLink: exactLink(leadId),
+    synchronizeLead: async () => {
+      throw new DomainRevisionConflictError();
+    },
+  });
+  deps.loadLeadProjection = async () => {
+    loads += 1;
+    return currentLead(leadId, {
+      granot_priority: "1",
+      quoted: true,
+      normalized_job_no: "SYNTHETIC JOB 100",
+      job_no: "synthetic-job-100",
+      last_accepted_granot_observation:
+        loads < 3
+          ? {
+              observation_id: String(objectId()),
+              captured_at: new Date("2026-08-17T14:00:00.000Z"),
+            }
+          : {
+              observation_id: String(objectId()),
+              captured_at: new Date("2026-08-17T18:00:00.000Z"),
+            },
+    });
+  };
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(result.outcome, "stale");
+  assert.equal(deps.decisions[0]?.outcome, "stale");
+  assert.equal(deps.decisions[0]?.reason_code, "older_than_temporal_winner");
+  assert.equal(deps.decisions[0]?.effects.length, 0);
+  assert.equal(deps.synchronizeCalls, 1);
+});
+
+test("[AC-32] already_current exact link does not invoke the command", async () => {
+  const row = observation({ priority: { valid: true, canonical: "8" } });
+  const leadId = String(objectId());
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: {
+      ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+      shadow_mode: false,
+      lead_writes_enabled: true,
+    },
+    identity: matchedFormIdentity(leadId),
+    existingLink: exactLink(leadId),
+    lead: currentLead(leadId, {
+      granot_priority: "8",
+      quoted: false,
+      normalized_job_no: "SYNTHETIC JOB 100",
+      job_no: "synthetic-job-100",
+      last_accepted_granot_observation: {
+        observation_id: String(objectId()),
+        captured_at: new Date("2026-08-17T14:00:00.000Z"),
+      },
+    }),
+    winnerAdvanced: true,
+    synchronizeLead: async () => {
+      throw new Error("already_current must not enter synchronizeLeadFromGranot");
+    },
+  });
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(result.outcome, "already_current");
+  assert.equal(deps.synchronizeCalls, 0);
+  assert.equal(result.effects.length, 0);
+});
+
+test("[AC-32] stale classification does not invoke the command", async () => {
+  const row = observation({ priority: { valid: true, canonical: "1" } });
+  const leadId = String(objectId());
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: {
+      ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+      shadow_mode: false,
+      lead_writes_enabled: true,
+    },
+    identity: matchedFormIdentity(leadId),
+    existingLink: exactLink(leadId),
+    lead: currentLead(leadId, {
+      granot_priority: "8",
+      quoted: false,
+      last_accepted_granot_observation: {
+        observation_id: String(objectId()),
+        captured_at: new Date("2026-08-17T18:00:00.000Z"),
+      },
+    }),
+    synchronizeLead: async () => {
+      throw new Error("stale must not enter synchronizeLeadFromGranot");
+    },
+  });
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(result.outcome, "stale");
+  assert.equal(deps.decisions[0]?.reason_code, "older_than_temporal_winner");
+  assert.equal(deps.synchronizeCalls, 0);
+});
+
+test("[AC-32] inactive Source Company is policy_blocked and never invokes the command", async () => {
+  const row = observation({ priority: { valid: true, canonical: "1" } });
+  const leadId = String(objectId());
+  const store = reviewedStore();
+  store.findCompany = async (id) => ({ id, active: false });
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: {
+      ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+      shadow_mode: false,
+      lead_writes_enabled: true,
+    },
+    store,
+    identity: matchedFormIdentity(leadId),
+    lead: currentLead(leadId, { granot_priority: "8", quoted: false }),
+    synchronizeLead: async () => {
+      throw new Error("policy_blocked must not enter synchronizeLeadFromGranot");
+    },
+  });
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(result.outcome, "policy_blocked");
+  assert.equal(deps.decisions[0]?.reason_code, "target_source_company_inactive");
+  assert.equal(deps.synchronizeCalls, 0);
+});
+
+test("[AC-07] live already_current with no active link still invokes association", async () => {
+  const row = observation({ priority: { valid: true, canonical: "8" } });
+  const leadId = String(objectId());
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: {
+      ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+      shadow_mode: false,
+      lead_writes_enabled: true,
+    },
+    identity: matchedFormIdentity(leadId),
+    lead: currentLead(leadId, {
+      granot_priority: "8",
+      quoted: false,
+      normalized_job_no: "SYNTHETIC JOB 100",
+      job_no: "synthetic-job-100",
+    }),
+    synchronizeLead: async (input) => {
+      assert.equal(input.desired_state.changed_paths.length, 0);
+      assert.ok(input.execution.job);
+      return { status: "applied", entity_refs: [input.lead_ref], warnings: [] };
+    },
+  });
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(deps.synchronizeCalls, 1);
+  assert.equal(result.outcome, "linked");
 });

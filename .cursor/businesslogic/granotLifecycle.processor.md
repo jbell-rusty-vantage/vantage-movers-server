@@ -4,7 +4,7 @@
 
 # Granot lifecycle processor (`granotLifecycle/processor`)
 
-**Role:** Channel-neutral production orchestrator. One receipt becomes one Observation, one Unit 14 identity result, one desired-state plan, and one Synchronization Decision. Historical shadow may also establish or confirm a **job-level** Granot Record Link. This module does not mutate Lead business fields, target links, official Booking/Cancellation facts, cases, Commands, Entity Changes, or Sheet Sync.
+**Role:** Channel-neutral production orchestrator. One receipt becomes one Observation, one Unit 14 identity result, one desired-state plan, and one Synchronization Decision. Historical shadow may establish or confirm a **job-level** Granot Record Link. Authorized live matched-Lead writes enter `synchronizeLeadFromGranot` only; this module never patches a Lead or official Booking/Cancellation fact itself.
 
 **Stack:** callable module `processor.ts`. Capture does not invoke it. Queue, cron, and the synchronous claim-and-poll seam invoke it only after a fenced receipt claim (`drainer.ts`). Routes pass receipt identity (and optional initiator); they do not plan patches.
 
@@ -14,12 +14,15 @@
 load receipt -> upsert/reuse Observation -> classify stored execution mode
 -> terminal normalization -> resolve Registry policy -> Unit 14 identity
 -> temporal compare -> desired-state plan -> evaluate exact gates
--> persist one Decision for observation/attempt -> finalize through Unit 08 fence
+-> live+writes+all gates+matched Lead -> synchronizeLeadFromGranot
+   (or already_current exact-link Decision + metadata-only temporal CAS)
+-> otherwise persist one Decision / historical job-level link
+-> finalize through Unit 08 fence
 ```
 
 The processor actor is always `{ actor_type:"system", actor_id:"granot-lifecycle-processor" }`. Receipt `initiator` is threaded in module context for later commands; a webhook may omit it. Clients never supply the processor actor.
 
-Same observation/attempt with identical causal meaning replays the stored Decision. Different meaning is `DecisionIntegrityError`. Technical dependency failures create no Decision.
+Same observation/attempt with identical causal meaning replays the stored Decision. After a committed live mutation, the same Observation+attempt re-plans as `already_current` or `stale`; the stored `applied`/`linked` Decision remains the replay result. A stored `applied` Decision against current historical-link classification is still `DecisionIntegrityError`. Technical dependency failures create no Decision.
 
 ## Temporal tuple
 
@@ -45,12 +48,13 @@ Source Company, Source Granularity, Ingestion Origin, CPL, Booking/Cancellation 
 - Pre-activation and `captured_at < activated_at` stay `historical_shadow` forever. Live-shadow Decisions are never promoted.
 - Historical shadow may create safe job-level Record Link evidence when Job/scope agree. It does not add `lead_ref`, `booking_ref`, source scope, or disputed state.
 - Live shadow persists Decisions only. Eligible matched writes become `shadow_effect_suppressed`.
-- Effect rows are empty unless a safe job-level Record Link establish/confirm actually occurs.
+- Live + `GRANOT_LIFECYCLE_LEAD_WRITES_ENABLED` + all eight gates + a matched eligible Lead invoke `synchronizeLeadFromGranot` for an `applied` plan or for `already_current` that still needs a lead-attached Record Link. Exact current links stay on the Decision-only / metadata CAS path.
+- A failed gate records that gate's outcome/reason and performs no command. Race losers reload and replan. If the replan is still an authorized write, the command retries with the current revision (max 3). Classification outcomes persist Decision-only. Never persist `applied` against a lost claim.
 - Production starting/ending flags stay processing true, shadow true, and all eight effect flags false.
 
 ## Temporal compare-and-swap seam
 
-For a newer Observation whose authorized desired state is already current, injected **`live` + Lead-writes-enabled test posture only** may insert `already_current` / `desired_state_already_current` and atomically advance `last_accepted_granot_observation` with a filter that accepts only an older `(captured_at, observation_id)` tuple. That write does not increment `domain_revision`, write `last_change_*`, create Entity Change, request Sheet Sync, or emit `lead_updated`. Zero matched rows abort the proposed Decision, reload, and re-evaluate; the loser is normally `stale`. Production shadow never invokes this Lead write. Unit 18 owns changed-field command transactions.
+For a newer Observation whose authorized desired state **and** exact lead-attached link are already current, injected **`live` + Lead-writes-enabled test posture** inserts `already_current` / `desired_state_already_current` and may atomically advance `last_accepted_granot_observation` with a filter that accepts only an older `(captured_at, observation_id)` tuple. That write does not increment `domain_revision`, write `last_change_*`, create Entity Change, request Sheet Sync, or emit `lead_updated`. Zero matched rows abort the proposed Decision, reload, and re-evaluate; the loser is normally `stale`. Production shadow never invokes this Lead write. Reportable matched-Lead or Record-Link association mutations use `synchronizeLeadFromGranot`.
 
 ## Flags
 
@@ -58,7 +62,7 @@ Defaults: processing true, shadow true, all eight effect flags false. Processing
 
 ## Out of scope here
 
-Matched Lead field writes and target-link mutation (Unit 18). Authorized Lead creation (Unit 19). Booking/Release cases and commands. Extension/automation adapters. RingCentral adoption.
+Authorized Lead creation and create-reservation (Unit 19). Booking/Release cases and commands. RingCentral adoption. Public Lead Zod / `updateSourceOwnedLead` are not a lifecycle write path.
 
 ## Related
 

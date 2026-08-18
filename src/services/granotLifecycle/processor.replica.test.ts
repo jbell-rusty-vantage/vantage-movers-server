@@ -156,6 +156,21 @@ function replicaProcessorDeps(input: {
     persistDecisionAndLink: async ({ decision }) => {
       decisions.push(decision);
     },
+    findActiveLink: async () =>
+      ({
+        _id: objectId(),
+        provider: "granot",
+        normalized_job_no: "SYNTHETIC JOB 100",
+        job_no_snapshot: "synthetic-job-100",
+        state: "active",
+        lead_ref: { model: "FormLead", id: new mongoose.Types.ObjectId(input.leadId) },
+        disputed: false,
+        established_by_decision_id: objectId(),
+        established_at: capturedAt,
+        last_observation_id: objectId(),
+        last_observed_at: olderCapturedAt,
+        domain_revision: 0,
+      }) as never,
     withTransaction,
   };
 }
