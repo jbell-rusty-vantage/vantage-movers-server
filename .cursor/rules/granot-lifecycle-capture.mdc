@@ -1,17 +1,55 @@
 ---
-description: Granot webhook capture plus fenced claim/drainer and callable Decision skeleton; capture does not invoke the processor
+description: Granot lead-lifecycle software map — webhook receipt capture, Observation/policy/identity/Decision/drain; Booking/Release Reconciliation is the destination and is not live
 globs: src/services/granotLifecycle/**/*.ts,src/services/granotWebhooks/**/*.ts,src/routes/granot-webhook.routes.ts,src/routes/granot-lifecycle-admin.routes.ts,src/routes/granot-lifecycle-cron.routes.ts,api/queues/granot-lifecycle-consumer.ts,src/middleware/requireGranotWebhookSecret.ts,src/config/domain/granotWebhook.ts,src/config/domain/granotLifecycle.ts,src/models/GranotObservationReceipt.ts,src/models/GranotObservation.ts,src/models/SynchronizationDecision.ts,src/models/GranotLifecycleActivation.ts,src/models/GranotRecordLink.ts,src/models/granotLifecycleSchemas.ts,src/validation/v1/granotLifecycle.validation.ts,scripts/migrations/granot-lifecycle-*.ts,.cursor/businesslogic/granotLifecycle*.md
 alwaysApply: false
 ---
 
-# Granot Lifecycle Capture
+# Granot Lead Lifecycle
 
-Owner invariants: [`.cursor/businesslogic/granotLifecycle.capture.md`](../businesslogic/granotLifecycle.capture.md). Identity ladders: [`.cursor/businesslogic/granotLifecycle.identity.md`](../businesslogic/granotLifecycle.identity.md). Decision/activation/Record Link: [`.cursor/businesslogic/granotLifecycle.processor.md`](../businesslogic/granotLifecycle.processor.md). Claim/drainer: [`.cursor/businesslogic/granotLifecycle.drainer.md`](../businesslogic/granotLifecycle.drainer.md).
+Software map for `src/services/granotLifecycle/`. Owner invariants stay in the linked businesslogic files. Locked contracts stay in `scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md`. Delivery branches: [`lead-lifecycle-delivery.mdc`](lead-lifecycle-delivery.mdc). Unit ledger is a navigation aid only: [`UNIT-STATUS.md`](../../scripts/prototypes/granot-lead-lifecycle/delivery/UNIT-STATUS.md). Repository state, migrations/indexes, flags, and tests are authoritative.
 
-- `src/services/granotLifecycle/capture.ts` is the only webhook insert path. `granotWebhooks/` is a deprecated adapter.
-- Authenticate with `requireGranotWebhookSecret`, persist one credential-redacted v2 receipt, return `202` only after Mongo commit, then optionally publish `{ receipt_id }`.
-- Capture still does not normalize or process. `normalization.ts` is a callable Observation module only. `sourcePolicy.ts` is a fail-closed Registry read/gate module. `identity.ts` is a callable read-only Form/Call identity module only. `processor.ts` is a callable Decision/Record Link skeleton only and does not invoke identity. `trustedLeadCreateValidation.ts` is a callable trusted Granot create validator only (`granot_lead_created`, forces `post_to_granot=false`). None of those are invoked from capture, and the trusted create schemas have no live caller. Admin routes activate, requeue dead letters, project a Job, or read health — they do not own claim/match/patch policy.
-- `granot-lifecycle-events*` wake-ups are consumed by `api/queues/granot-lifecycle-consumer.ts`, which accepts only `{ receipt_id }` and calls the shared drainer. Five-minute cron `/api/cron/granot-lifecycle-drain` scans due work. Mongo claim/fence selects the single winner. Publish failure must not change `202`.
-- Processing disabled means no claim; capture and due work remain intact. Shadow/retry/requeue must not create, update, cancel, or un-cancel a Booking.
+Owner invariants: [capture](../businesslogic/granotLifecycle.capture.md), [normalization](../businesslogic/granotLifecycle.normalization.md), [source policy](../businesslogic/granotLifecycle.sourcePolicy.md), [identity](../businesslogic/granotLifecycle.identity.md), [processor](../businesslogic/granotLifecycle.processor.md), [drainer](../businesslogic/granotLifecycle.drainer.md), [revisions](../businesslogic/granotLifecycle.revisions.md).
 
-Delivery branches: [`lead-lifecycle-delivery.mdc`](lead-lifecycle-delivery.mdc). Locked contracts: `scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md`.
+## Goal
+
+Replace ad-hoc Granot webhook, extension, and HTTP apply mutations with one channel-neutral path from Granot evidence to owner-authorized Vantage facts:
+
+webhook / later extension / later HTTP automation → credential-redacted **Granot Observation Receipt** → **Granot Observation** → fail-closed Registry policy + source-scoped identity → **Synchronization Decision** → later matched-Lead sync, authorized Granot Lead create, and owner **Granot Booking / Release Reconciliation** (confirm, update, or No Action).
+
+Granot evidence never becomes an official Booking or Cancellation by itself. CRM Posting, current extension apply, and HTTP automation apply remain separate mutation paths until Units 16–17 converge them onto receipts.
+
+## Current service
+
+`granotLifecycle/` is the shared runtime. `granotWebhooks/` is a deprecated adapter. `capture.ts` is the only webhook insert path and still does not invoke the modules below.
+
+| Module | Role now |
+| --- | --- |
+| `capture.ts` | Authenticate with `requireGranotWebhookSecret`, persist one credential-redacted v2 receipt, return `202` only after Mongo commit, then optionally publish `{ receipt_id }`. |
+| `normalization.ts` | Callable Observation upsert. Exact Section 10 vocabulary. No matching or effects. |
+| `sourcePolicy.ts` | Fail-closed Registry read and seven-layer effect-gate snapshot. No writes. |
+| `identity.ts` | Read-only Form/Call ladders, Agent assertion, Booking delegation context. No Decision or Lead writes. |
+| `processor.ts` | Callable Decision / write-once activation / historical-only job Record Link. Does not invoke identity or plan desired state. |
+| `drainer.ts` | Fenced Mongo claim/lease shared by the queue consumer, five-minute cron, and Owner requeue. |
+| `aggregateRevision.ts` | Compare-and-swap primitive for later consumed aggregates. |
+| `trustedLeadCreateValidation.ts` | Trusted `granot_lead_created` validator only (`post_to_granot=false`). No live caller. |
+
+Admin routes activate, requeue dead letters, project a Job, or read health. They do not own claim, match, or patch policy. Canonical executor / `EntityChange` live in `domainCommands/` and are not invoked as lifecycle or owner commands yet.
+
+## Progress
+
+Units 01–14 are complete on `granot-lead-lifecycle`. Re-verify the matching `UNIT-*-COMPLETION.md` and repository state before editing; do not trust the ledger alone.
+
+**Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, and the identity resolver.
+
+**Next sequential implementation:** Unit 15 — temporal ordering, desired-state planning, and shadow processor orchestration. It must consume `resolveLeadIdentity` rather than reconstructing identity inside `processor.ts`. Deployed posture stays shadow; Lead writes/creation/cases stay false.
+
+**Not started here:** extension receipt apply (16), HTTP automation receipt convergence (17), live matched-Lead writes (18), authorized Granot Lead create (19), RingCentral adoption (20–21), Booking/Release Reconciliation persistence and owner commands (22–29).
+
+## Live constraints
+
+- `202` cannot precede commit. Publish failure must not change `202` or the receipt.
+- `granot-lifecycle-events*` wake-ups are consumed by `api/queues/granot-lifecycle-consumer.ts`, which accepts only `{ receipt_id }` and calls the shared drainer. Five-minute cron `/api/cron/granot-lifecycle-drain` scans due work. Mongo claim/fence selects the single winner.
+- Processing disabled means no claim; capture and due work remain intact.
+- Processing and shadow default true. All eight effect flags stay false.
+- Shadow, retry, and requeue must not create, update, cancel, or un-cancel a Booking.
+- Capture, identity, and trusted-create validators have no Lead/Booking/Cancellation write path. Do not invent one while wiring Unit 15.

@@ -54,7 +54,7 @@ Production API: https://vantage-movers-main-server.vercel.app
 | [domainCommands.service.md](businesslogic/domainCommands.service.md) | `src/services/domainCommands/` — transaction-owning executor, existing-write adapters (including trusted Ingestion Origin on Form/Call create), append-only `EntityChange`, queued outbox atomicity, post-commit finalize; later lifecycle/owner commands remain disabled |
 | [sheetSync.service.md](businesslogic/sheetSync.service.md) | `src/services/sheetSync/` — modes, outbox (`sheet_sync_jobs`), Vercel Queue wake-up, drainer, coordinator API, tombstones, cron/admin |
 | [operationsRegistry.service.md](businesslogic/operationsRegistry.service.md) | `src/services/operationsRegistry/` — catalog/source/CPL/RC inbound-route/Granot CRM source SoR, signed owner mutations, `resolveCpl` |
-| [granotLifecycle.capture.md](businesslogic/granotLifecycle.capture.md) | `src/services/granotLifecycle/` — webhook auth, v2 receipt capture, `{ receipt_id }` wake-up; **no processing** |
+| [granotLifecycle.capture.md](businesslogic/granotLifecycle.capture.md) | `src/services/granotLifecycle/capture.ts` — webhook auth, v2 receipt capture, `{ receipt_id }` wake-up; **no processing**. Program map: `rules/granot-lifecycle-capture.mdc` |
 | [granotLifecycle.normalization.md](businesslogic/granotLifecycle.normalization.md) | `src/services/granotLifecycle/normalization.ts` — one Observation per receipt, exact Section 10 vocabulary; **no matching/effects** |
 | [granotLifecycle.sourcePolicy.md](businesslogic/granotLifecycle.sourcePolicy.md) | `src/services/granotLifecycle/sourcePolicy.ts` — fail-closed Registry policy resolution and seven-layer effect-gate snapshot; **no effects** |
 | [granotLifecycle.identity.md](businesslogic/granotLifecycle.identity.md) | `src/services/granotLifecycle/identity.ts` — source-scoped Form/Call ladders, Agent assertion, Booking delegation context; **read-only, no Decision/Lead writes** |
@@ -103,7 +103,7 @@ Rule files apply when editing matching paths (`globs` in each file frontmatter).
 | `ringcentral-integration.mdc` | RingCentral env, webhooks, cron |
 | `ringcentral-call-lead-candidates.mdc` | Candidate aggregation + ingest boundaries |
 | `form-lead-granot-crm.mdc` | Granot CRM form-lead posting |
-| `granot-lifecycle-capture.mdc` | Webhook capture + `{ receipt_id }` wake-up; callable Observation/policy/processor modules are not invoked by capture |
+| `granot-lifecycle-capture.mdc` | Granot lead-lifecycle software map: goal, current `granotLifecycle/` modules, Units 01–14 shipped / 15 next; capture still does not invoke the processor; Booking/Release Reconciliation is not live |
 | `granot-http-automation.mdc` | HTTP collector / automation runs; direct apply mutations |
 | `lead-lifecycle-delivery.mdc` | Branch plan for Granot lead-lifecycle units (server / admin / extension) |
 | `granot-crm-csv-s3-sync.mdc` | CSV/S3 CRM sync |
