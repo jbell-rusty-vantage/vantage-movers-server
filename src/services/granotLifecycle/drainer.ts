@@ -8,6 +8,7 @@ import { logger } from "../../logger";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { SYNCHRONIZATION_OUTCOMES } from "../../models/granotLifecycleSchemas";
+import type { DurableActor } from "../durableWork/types";
 import { recordOperationalEvent } from "../observability";
 import { ProcessingDisabledError } from "./errors";
 import { classifyTechnicalFailureCode, sanitizeLastError } from "./lastError";
@@ -55,6 +56,7 @@ export type ClaimedReceiptSnapshot = {
   observation_channel: string;
   payload_sha256: string;
   channel_operation_id?: string;
+  initiator?: DurableActor;
   processing: {
     state: ReceiptWorkState;
     technical_attempts: number;
@@ -377,7 +379,10 @@ async function runFencedProcessor(
   try {
     let result: ProcessorResult;
     try {
-      result = await processor.process({ receipt_id: String(claimed.claimed._id) });
+      result = await processor.process({
+        receipt_id: String(claimed.claimed._id),
+        initiator: claimed.claimed.initiator,
+      });
     } catch (error) {
       if (error instanceof ProcessingDisabledError) {
         return finalizeTechnicalFailure({
@@ -802,6 +807,7 @@ function toSnapshot(row: {
   observation_channel: string;
   payload_sha256: string;
   channel_operation_id?: string;
+  initiator?: DurableActor;
   processing: ClaimedReceiptSnapshot["processing"];
 }): ClaimedReceiptSnapshot {
   return {
@@ -810,6 +816,7 @@ function toSnapshot(row: {
     observation_channel: row.observation_channel,
     payload_sha256: row.payload_sha256,
     channel_operation_id: row.channel_operation_id,
+    initiator: row.initiator,
     processing: {
       ...row.processing,
       next_attempt_at: new Date(row.processing.next_attempt_at),

@@ -1,8 +1,20 @@
 import type { IncomingHttpHeaders } from "node:http";
 import { connectMongo } from "../../db";
-import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
+import {
+  getGranotObservationReceiptModel,
+  type GranotObservationReceiptDocument,
+} from "../../models/GranotObservationReceipt";
 import type { GranotWebhookAuthenticationMethod } from "../../middleware/requireGranotWebhookSecret";
-import type { GranotRouteEventClass } from "./types";
+import type { DurableActor } from "../durableWork/types";
+import {
+  CaptureUnavailableError,
+  OperationIdempotencyConflictError,
+} from "./errors";
+import type {
+  ChannelOperationKind,
+  GranotRouteEventClass,
+  ObservationChannel,
+} from "./types";
 import {
   classifyPayloadKind,
   hashCredentialRedactedPayload,
@@ -139,6 +151,195 @@ async function persistGranotWebhookReceipt(
   await connectMongo();
   const receipt = await getGranotObservationReceiptModel().create(document);
   return { receipt_id: receipt._id.toString() };
+}
+
+export type ChannelObservationChannel = Exclude<
+  ObservationChannel,
+  "granot_webhook"
+>;
+
+export type ChannelAuthenticationMethod =
+  | "extension_session"
+  | "automation_owner_approval";
+
+export type CaptureChannelOperationInput = {
+  observation_channel: ChannelObservationChannel;
+  authentication_method: ChannelAuthenticationMethod;
+  channel_operation_kind: ChannelOperationKind;
+  channel_operation_id: string;
+  captured_at: Date;
+  headers: IncomingHttpHeaders | Record<string, unknown>;
+  payload: unknown;
+  initiator: DurableActor;
+  request_id?: string;
+  payload_schema_hint?: string;
+};
+
+export type CaptureChannelOperationResult = {
+  status: "inserted" | "replayed";
+  receipt_id: string;
+  payload_sha256: string;
+};
+
+export type GranotChannelReceiptInsert = {
+  source_system: "granot";
+  observation_channel: ChannelObservationChannel;
+  captured_at: Date;
+  channel_operation_kind: ChannelOperationKind;
+  channel_operation_id: string;
+  authentication_method: ChannelAuthenticationMethod;
+  evidence_version: 2;
+  payload_kind: "object" | "array" | "null" | "primitive";
+  payload_schema_hint?: string;
+  headers: Record<string, string | string[]>;
+  payload: unknown;
+  payload_sha256: string;
+  initiator: DurableActor;
+  processing: {
+    state: "pending";
+    technical_attempts: 0;
+    match_attempt: 0;
+    next_attempt_at: Date;
+    manual_requeue_count: 0;
+  };
+  provider: "granot";
+  schema_version: 1;
+  processing_status: "received";
+  processing_attempts: 0;
+};
+
+export type PersistGranotChannelReceipt = (
+  document: GranotChannelReceiptInsert,
+) => Promise<{ receipt_id: string }>;
+
+export type LoadChannelReceiptByOperation = (input: {
+  observation_channel: ChannelObservationChannel;
+  channel_operation_id: string;
+}) => Promise<Pick<
+  GranotObservationReceiptDocument,
+  "_id" | "payload_sha256"
+> | null>;
+
+export function buildGranotChannelReceiptInsert(
+  input: CaptureChannelOperationInput,
+): GranotChannelReceiptInsert {
+  if (input.observation_channel === ("granot_webhook" as string)) {
+    throw new Error("Channel capture must not accept webhook deliveries");
+  }
+  if (
+    input.authentication_method !== "extension_session" &&
+    input.authentication_method !== "automation_owner_approval"
+  ) {
+    throw new Error("Channel capture requires a proven channel authentication method");
+  }
+  if (
+    input.observation_channel === "browser_extension" &&
+    input.authentication_method !== "extension_session"
+  ) {
+    throw new Error("browser_extension capture requires extension_session authentication");
+  }
+  if (input.initiator.origin !== "browser_extension" && input.observation_channel === "browser_extension") {
+    throw new Error("browser_extension capture requires a browser_extension initiator");
+  }
+
+  const headers = allowlistGranotWebhookHeaders(input.headers);
+  const evidence = hashCredentialRedactedPayload(input.payload);
+  return {
+    source_system: "granot",
+    observation_channel: input.observation_channel,
+    captured_at: input.captured_at,
+    channel_operation_kind: input.channel_operation_kind,
+    channel_operation_id: input.channel_operation_id,
+    authentication_method: input.authentication_method,
+    evidence_version: 2,
+    payload_kind: classifyPayloadKind(evidence.redacted_payload),
+    payload_schema_hint: input.payload_schema_hint,
+    headers,
+    payload: evidence.redacted_payload,
+    payload_sha256: evidence.payload_sha256,
+    initiator: input.initiator,
+    processing: {
+      state: "pending",
+      technical_attempts: 0,
+      match_attempt: 0,
+      next_attempt_at: input.captured_at,
+      manual_requeue_count: 0,
+    },
+    provider: "granot",
+    schema_version: 1,
+    processing_status: "received",
+    processing_attempts: 0,
+  };
+}
+
+export async function captureChannelOperationReceipt(
+  input: CaptureChannelOperationInput,
+  persist: PersistGranotChannelReceipt = persistGranotChannelReceipt,
+  loadExisting: LoadChannelReceiptByOperation = loadChannelReceiptByOperation,
+): Promise<CaptureChannelOperationResult> {
+  const document = buildGranotChannelReceiptInsert(input);
+  try {
+    const result = await persist(document);
+    incrementGranotLifecycleReceiptsTotal({
+      channel: input.observation_channel,
+      event_class: input.channel_operation_kind,
+    });
+    return {
+      status: "inserted",
+      receipt_id: result.receipt_id,
+      payload_sha256: document.payload_sha256,
+    };
+  } catch (error) {
+    if (!isDuplicateKeyError(error)) {
+      throw new CaptureUnavailableError(input.request_id);
+    }
+    const existing = await loadExisting({
+      observation_channel: input.observation_channel,
+      channel_operation_id: input.channel_operation_id,
+    });
+    if (!existing) {
+      throw new CaptureUnavailableError(input.request_id);
+    }
+    if (existing.payload_sha256 !== document.payload_sha256) {
+      throw new OperationIdempotencyConflictError(input.request_id);
+    }
+    return {
+      status: "replayed",
+      receipt_id: existing._id.toString(),
+      payload_sha256: existing.payload_sha256,
+    };
+  }
+}
+
+async function persistGranotChannelReceipt(
+  document: GranotChannelReceiptInsert,
+): Promise<{ receipt_id: string }> {
+  await connectMongo();
+  const receipt = await getGranotObservationReceiptModel().create(document);
+  return { receipt_id: receipt._id.toString() };
+}
+
+async function loadChannelReceiptByOperation(input: {
+  observation_channel: ChannelObservationChannel;
+  channel_operation_id: string;
+}): Promise<Pick<GranotObservationReceiptDocument, "_id" | "payload_sha256"> | null> {
+  await connectMongo();
+  return getGranotObservationReceiptModel()
+    .findOne({
+      observation_channel: input.observation_channel,
+      channel_operation_id: input.channel_operation_id,
+    })
+    .select({ _id: 1, payload_sha256: 1 })
+    .lean();
+}
+
+function isDuplicateKeyError(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: number }).code === 11000,
+  );
 }
 
 function storeHeaderValue(value: unknown): string | string[] | undefined {

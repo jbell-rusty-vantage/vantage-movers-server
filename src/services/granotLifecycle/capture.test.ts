@@ -5,10 +5,18 @@ import { canonicalJson } from "../durableWork/checksum";
 import {
   GRANOT_WEBHOOK_STORED_HEADER_MAX_LENGTH,
   allowlistGranotWebhookHeaders,
+  buildGranotChannelReceiptInsert,
   buildGranotWebhookReceiptInsert,
+  captureChannelOperationReceipt,
   captureGranotLifecycleWebhookReceipt,
+  type GranotChannelReceiptInsert,
   type GranotWebhookReceiptInsert,
 } from "./capture";
+import {
+  GRANOT_LIFECYCLE_ERROR_CODES,
+  OperationIdempotencyConflictError,
+} from "./errors";
+import type { DurableActor } from "../durableWork/types";
 import {
   getGranotLifecycleReceiptsTotal,
   resetGranotLifecycleMetrics,
@@ -206,3 +214,97 @@ function webhookInput() {
     authentication_method: "header_secret" as const,
   };
 }
+
+const ownerInitiator: DurableActor = {
+  actor_type: "owner",
+  actor_id: "owner-1",
+  actor_label: "owner@example.invalid",
+  actor_role: "owner",
+  request_id: "req-extension-1",
+  origin: "browser_extension",
+};
+
+const applyItem = {
+  operation_id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+  operation_kind: "lead_snapshot_apply" as const,
+  granot_statement: { source: "Synthetic Forms", priority: "1", user: "MIKE", rep: "SALES" },
+};
+
+function channelInput(overrides: Record<string, unknown> = {}) {
+  return {
+    observation_channel: "browser_extension" as const,
+    authentication_method: "extension_session" as const,
+    channel_operation_kind: "lead_snapshot_apply" as const,
+    channel_operation_id: applyItem.operation_id,
+    captured_at: capturedAt,
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer must-not-be-stored",
+      cookie: "must-not-be-stored",
+    },
+    payload: applyItem,
+    initiator: ownerInitiator,
+    ...overrides,
+  };
+}
+
+test("[AC-02][AC-33][AC-35] extension channel capture stores one browser_extension receipt and redacts credentials", async () => {
+  const persisted: GranotChannelReceiptInsert[] = [];
+  const result = await captureChannelOperationReceipt(
+    channelInput(),
+    async (document) => {
+      persisted.push(document);
+      return { receipt_id: "ext-receipt-1" };
+    },
+  );
+  assert.equal(result.status, "inserted");
+  assert.equal(result.receipt_id, "ext-receipt-1");
+  assert.equal(persisted.length, 1);
+  const document = persisted[0];
+  assert.ok(document);
+  assert.equal(document.observation_channel, "browser_extension");
+  assert.equal(document.authentication_method, "extension_session");
+  assert.equal(document.channel_operation_kind, "lead_snapshot_apply");
+  assert.equal(document.channel_operation_id, applyItem.operation_id);
+  assert.equal(document.initiator?.origin, "browser_extension");
+  assert.equal(document.evidence_version, 2);
+  assert.deepEqual(document.headers, { "content-type": "application/json" });
+  assert.equal(JSON.stringify(document).includes("must-not-be-stored"), false);
+  assert.equal("route_event_class" in document, false);
+});
+
+test("[AC-02] same extension operation ID + same hash replays the existing receipt", async () => {
+  const firstHash = buildGranotChannelReceiptInsert(channelInput()).payload_sha256;
+  const result = await captureChannelOperationReceipt(
+    channelInput(),
+    async () => {
+      const error = Object.assign(new Error("duplicate"), { code: 11000 });
+      throw error;
+    },
+    async () => ({
+      _id: { toString: () => "winner-receipt" } as never,
+      payload_sha256: firstHash,
+    }),
+  );
+  assert.equal(result.status, "replayed");
+  assert.equal(result.receipt_id, "winner-receipt");
+});
+
+test("[AC-02] same extension operation ID + different hash is GRANOT_OPERATION_IDEMPOTENCY_CONFLICT", async () => {
+  await assert.rejects(
+    captureChannelOperationReceipt(
+      channelInput(),
+      async () => {
+        throw Object.assign(new Error("duplicate"), { code: 11000 });
+      },
+      async () => ({
+        _id: { toString: () => "winner-receipt" } as never,
+        payload_sha256: "a".repeat(64),
+      }),
+    ),
+    (error: unknown) =>
+      error instanceof OperationIdempotencyConflictError &&
+      error.code === GRANOT_LIFECYCLE_ERROR_CODES.OPERATION_IDEMPOTENCY_CONFLICT &&
+      error.statusCode === 409,
+  );
+});

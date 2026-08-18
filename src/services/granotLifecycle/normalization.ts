@@ -280,7 +280,9 @@ function canonicalizeMoney(raw: string): string | undefined {
   return `${strippedWhole}.${fraction}`;
 }
 
-function normalizeBookingAction(raw: string | undefined): GranotBookingAction | undefined {
+export function normalizeBookingAction(
+  raw: string | undefined,
+): GranotBookingAction | undefined {
   const normalized = raw?.trim().toLowerCase();
   if (normalized === "booked") {
     return "booked";
@@ -289,6 +291,23 @@ function normalizeBookingAction(raw: string | undefined): GranotBookingAction | 
     return "release";
   }
   return undefined;
+}
+
+export function isSupportedGranotBookingAction(raw: unknown): boolean {
+  return typeof raw === "string" && normalizeBookingAction(raw) !== undefined;
+}
+
+export function extractNormalizationStatement(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  if (
+    isPlainObject(payload.granot_statement) &&
+    (typeof payload.operation_kind === "string" ||
+      typeof payload.operation_id === "string")
+  ) {
+    return payload.granot_statement;
+  }
+  return payload;
 }
 
 function eventTypeToken(raw: string | undefined): string | undefined {
@@ -765,7 +784,7 @@ export function normalizeGranotReceipt(
     };
   }
 
-  const payload = receipt.payload;
+  const payload = extractNormalizationStatement(receipt.payload);
   const authority = classifyAuthority(receipt, payload, issues);
   const source = normalizeSourceLabel(payload, issues);
   const identity = normalizeIdentity(payload, issues);

@@ -72,6 +72,21 @@ export function createGranotWebhookInitiator(receiptId: string): DurableActor {
   };
 }
 
+export function createBrowserExtensionOwnerInitiator(input: {
+  actor_id: string;
+  actor_label: string;
+  request_id: string;
+}): DurableActor {
+  return {
+    actor_type: "owner",
+    actor_id: input.actor_id,
+    actor_label: input.actor_label,
+    actor_role: "owner",
+    request_id: input.request_id,
+    origin: "browser_extension",
+  };
+}
+
 export function createRingCentralCallIngestActor(
   requestId: string,
 ): DurableActor {

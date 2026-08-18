@@ -16,7 +16,9 @@
 | Route | Function | Persists? |
 |-------|----------|-----------|
 | `POST /api/v1/call-leads/booked-reconciliation/preview` | `previewBookedCallLeadReconciliation` | No — dry-run per row |
-| `POST /api/v1/call-leads/booked-reconciliation/sync` | `syncBookedCallLeadReconciliation` | Yes — when status is `updateable` |
+| `POST /api/v1/call-leads/booked-reconciliation/sync` | Owner extension receipt apply (`extensionApply.ts`) | Receipt capture only in Unit 16; Booking/Lead writes stay off |
+
+`syncBookedCallLeadReconciliation` remains for CSV/HTTP automation until Unit 17. The extension final-apply URL no longer calls it. Preview is unchanged.
 
 Batch schema: `bookedCallLeadReconciliationBatchSchema` (1–100 rows). Row shape mirrors Granot Booked Jobs columns (`job_no`, `source`, `customer`, `phone`, `email`, `from_zip`, `to_zip`, `est_cf`, optional `section`, `prior`, `book_date`).
 

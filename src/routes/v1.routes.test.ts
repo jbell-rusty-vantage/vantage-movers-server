@@ -8,7 +8,21 @@ type RouteLayer = {
     path?: string;
     methods?: Record<string, boolean>;
   };
+  handle?: { stack?: RouteLayer[] };
 };
+
+function collectRoutes(stack: RouteLayer[] | undefined): NonNullable<RouteLayer["route"]>[] {
+  const routes: NonNullable<RouteLayer["route"]>[] = [];
+  for (const layer of stack ?? []) {
+    if (layer.route?.path) {
+      routes.push(layer.route);
+    }
+    if (layer.handle?.stack) {
+      routes.push(...collectRoutes(layer.handle.stack));
+    }
+  }
+  return routes;
+}
 
 const router = (routerModule as { default?: unknown }).default ?? routerModule;
 const ringCentralRouter =
@@ -125,11 +139,7 @@ test("employee booking reconciliation routes are registered", () => {
 
 test("Granot form-lead resolution route is registered before the id route", () => {
   const stack = (router as { stack?: RouteLayer[] }).stack ?? [];
-  const routes = stack
-    .map((layer) => layer.route)
-    .filter((route): route is NonNullable<RouteLayer["route"]> =>
-      Boolean(route?.path),
-    );
+  const routes = collectRoutes(stack);
   const resolverIndex = routes.findIndex(
     (route) =>
       route.path === "/api/v1/form-leads/granot-match" &&

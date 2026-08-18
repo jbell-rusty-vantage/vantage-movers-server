@@ -14,9 +14,9 @@
 | Route | Function | Persists? |
 |-------|----------|-----------|
 | `POST /api/v1/call-leads/enrichment/preview` | `previewCallLeadEnrichment` | No |
-| `POST /api/v1/call-leads/enrichment/sync` | `syncCallLeadEnrichment` | Yes — only `updateable` or `unchanged` after identity guards |
+| `POST /api/v1/call-leads/enrichment/sync` | Owner extension receipt apply (`extensionApply.ts`) | Receipt capture only in Unit 16; Lead writes stay off |
 
-Also called from Granot CSV Follow Up ingest and HTTP automation call apply.
+`syncCallLeadEnrichment` remains for Granot CSV Follow Up ingest and HTTP automation until Unit 17. The extension final-apply URL no longer calls it. Preview is unchanged.
 
 ## Invariants
 

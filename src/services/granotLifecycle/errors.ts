@@ -7,6 +7,8 @@ export const GRANOT_LIFECYCLE_ERROR_CODES = {
   RECEIPT_NOT_FOUND: "GRANOT_RECEIPT_NOT_FOUND",
   REQUEUE_STATE_CONFLICT: "GRANOT_REQUEUE_STATE_CONFLICT",
   DOMAIN_REVISION_CONFLICT: "DOMAIN_REVISION_CONFLICT",
+  OPERATION_IDEMPOTENCY_CONFLICT: "GRANOT_OPERATION_IDEMPOTENCY_CONFLICT",
+  CAPTURE_UNAVAILABLE: "GRANOT_CAPTURE_UNAVAILABLE",
 } as const;
 
 export type GranotLifecycleErrorCode =
@@ -64,6 +66,28 @@ export class DecisionIntegrityError extends GranotLifecycleError {
       "Persisted Decision does not match the current causal inputs",
       GRANOT_LIFECYCLE_ERROR_CODES.DECISION_INTEGRITY,
       409,
+    );
+  }
+}
+
+export class OperationIdempotencyConflictError extends GranotLifecycleError {
+  constructor(request_id?: string) {
+    super(
+      "Same channel operation ID was reused with a different payload",
+      GRANOT_LIFECYCLE_ERROR_CODES.OPERATION_IDEMPOTENCY_CONFLICT,
+      409,
+      request_id,
+    );
+  }
+}
+
+export class CaptureUnavailableError extends GranotLifecycleError {
+  constructor(request_id?: string) {
+    super(
+      "Granot observation receipt could not be stored",
+      GRANOT_LIFECYCLE_ERROR_CODES.CAPTURE_UNAVAILABLE,
+      503,
+      request_id,
     );
   }
 }

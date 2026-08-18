@@ -12,6 +12,7 @@ import extensionAuthRoutes from "./extension-auth.routes";
 import googleDriveOAuthRoutes from "./google-drive-oauth.routes";
 import ringCentralRegistryRoutes from "./ringcentral-registry.routes";
 import granotLifecycleAdminRoutes from "./granot-lifecycle-admin.routes";
+import { createExtensionGranotApplyRouter } from "./extension-granot-apply.routes";
 import {
   recordOperationalEvent,
   getObservabilityOverview,
@@ -39,14 +40,8 @@ import {
 } from "../services/granotHttpCollector/granotFormLeadMatcher";
 import { searchCallLeads } from "../services/callLeadSearch.service";
 import { browseCallLeads, browseFormLeads } from "../services/search";
-import {
-  previewCallLeadEnrichment,
-  syncCallLeadEnrichment,
-} from "../services/callLeadEnrichment.service";
-import {
-  previewBookedCallLeadReconciliation,
-  syncBookedCallLeadReconciliation,
-} from "../services/bookedCallLeadReconciliation.service";
+import { previewCallLeadEnrichment } from "../services/callLeadEnrichment.service";
+import { previewBookedCallLeadReconciliation } from "../services/bookedCallLeadReconciliation.service";
 import { checkGoogleMapsGeocodingHealth } from "../services/googleMaps/geocoding";
 import { sanitizeFormLeadBodyPreview } from "../utils/logging/sanitizeFormLeadForLog";
 import {
@@ -177,7 +172,6 @@ import {
   searchCallLeadsSchema,
   searchFormLeadsSchema,
   resolveGranotFormLeadSchema,
-  granotFormLeadSyncSchema,
   uploadGranotCrmCsvSchema,
   updatePendingEmployeeBookingSchema,
   updateBookedLeadSchema,
@@ -547,7 +541,7 @@ router.get("/api/v1/form-leads/:id", handleFindOne(findFormLead));
 router.post("/api/v1/form-leads/search", handleSearchFormLeads);
 router.post("/api/v1/create-form-test", handleCreateFormLeadTest);
 router.post("/api/v1/form-leads", handleCreateFormLead);
-router.patch("/api/v1/form-leads/:id/granot-sync", handleGranotFormLeadSync);
+router.use(createExtensionGranotApplyRouter());
 router.patch("/api/v1/form-leads/:id", handleUpdateFormLead);
 router.delete(
   "/api/v1/form-leads/:id",
@@ -562,14 +556,9 @@ router.post(
   "/api/v1/call-leads/enrichment/preview",
   handleCallLeadEnrichmentPreview,
 );
-router.post("/api/v1/call-leads/enrichment/sync", handleCallLeadEnrichmentSync);
 router.post(
   "/api/v1/call-leads/booked-reconciliation/preview",
   handleBookedCallLeadReconciliationPreview,
-);
-router.post(
-  "/api/v1/call-leads/booked-reconciliation/sync",
-  handleBookedCallLeadReconciliationSync,
 );
 router.post(
   "/api/v1/call-leads",
@@ -2223,17 +2212,6 @@ async function handleCallLeadEnrichmentPreview(req: Request, res: Response) {
   }
 }
 
-async function handleCallLeadEnrichmentSync(req: Request, res: Response) {
-  try {
-    await connectMongo();
-    const parsed = callLeadEnrichmentBatchSchema.parse(req.body);
-    const data = await syncCallLeadEnrichment(parsed);
-    return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
 async function handleBookedCallLeadReconciliationPreview(
   req: Request,
   res: Response,
@@ -2242,20 +2220,6 @@ async function handleBookedCallLeadReconciliationPreview(
     await connectMongo();
     const parsed = bookedCallLeadReconciliationBatchSchema.parse(req.body);
     const data = await previewBookedCallLeadReconciliation(parsed);
-    return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleBookedCallLeadReconciliationSync(
-  req: Request,
-  res: Response,
-) {
-  try {
-    await connectMongo();
-    const parsed = bookedCallLeadReconciliationBatchSchema.parse(req.body);
-    const data = await syncBookedCallLeadReconciliation(parsed);
     return res.json({ ok: true, data });
   } catch (error) {
     return sendError(req, res, error);
@@ -2424,35 +2388,6 @@ async function handleUpdateFormLead(req: Request, res: Response) {
       phone_number: updatedLead.phone_number,
       updatedFields: Object.keys(parsed),
     });
-    return res.json({ ok: true, data: lead });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleGranotFormLeadSync(req: Request, res: Response) {
-  try {
-    const id = getValidObjectId(req);
-    await connectMongo();
-    const parsed = granotFormLeadSyncSchema.parse(req.body);
-    const lead = (
-      await runExistingUpdateSourceOwnedLead({
-        lead_model: "FormLead",
-        lead_id: id,
-        patch: parsed.patch,
-        expected: buildGranotSyncExpectedFilter(
-          parsed.patch,
-          parsed.expected_source_company,
-          parsed.expected_snapshot,
-        ),
-        context: existingWriteContextFromRequest({
-          req,
-          command_name: "updateSourceOwnedLead",
-          payload: parsed,
-          resource_id: id,
-        }),
-      })
-    ).data;
     return res.json({ ok: true, data: lead });
   } catch (error) {
     return sendError(req, res, error);

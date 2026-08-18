@@ -1,12 +1,12 @@
-**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
-**Primary code:** `src/services/granotLifecycle/capture.ts`, `src/services/granotLifecycle/queuePublisher.ts`, `src/services/granotLifecycle/receiptEvidence.ts`, `src/services/granotLifecycle/metrics.ts`, `src/models/GranotObservationReceipt.ts`, `src/models/granotLifecycleSchemas.ts`, `src/middleware/requireGranotWebhookSecret.ts`, `src/routes/granot-webhook.routes.ts`  
+**Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)
+**Primary code:** `src/services/granotLifecycle/capture.ts`, `src/services/granotLifecycle/extensionApply.ts`, `src/services/granotLifecycle/queuePublisher.ts`, `src/services/granotLifecycle/receiptEvidence.ts`, `src/services/granotLifecycle/metrics.ts`, `src/models/GranotObservationReceipt.ts`, `src/models/granotLifecycleSchemas.ts`, `src/middleware/requireGranotWebhookSecret.ts`, `src/routes/granot-webhook.routes.ts`, `src/routes/extension-granot-apply.routes.ts`
 **Domain terms used:** Granot Observation Receipt, Observation Channel, System of Record
 
-# Granot webhook capture (`granotLifecycle/`)
+# Granot receipt capture (`granotLifecycle/`)
 
-**Role:** Authenticate a Granot webhook delivery, persist one credential-redacted **Granot Observation Receipt**, return `202` only after Mongo commit, then attempt a best-effort `{ receipt_id }` queue wake-up. This path does **not** normalize, process, or mutate a Lead, Booking, or Cancellation.
+**Role:** Persist one credential-redacted **Granot Observation Receipt** per accepted webhook delivery or approved channel operation. Webhook capture returns `202` only after Mongo commit, then attempts a best-effort `{ receipt_id }` queue wake-up. Channel capture hashes the full apply item and enforces operation-ID uniqueness. Capture itself does **not** mutate a Lead, Booking, or Cancellation.
 
-**Stack:** thin webhook route → secret middleware → `capture.ts` → optional Vercel Queue publisher. Mongo is the **System of Record**. The queue is only a wake-up.
+**Stack:** thin webhook route → secret middleware → `capture.ts` → optional Vercel Queue publisher; Owner extension routes call `captureChannelOperationReceipt` then `claimAndProcessOrPoll`. Mongo is the **System of Record**. The queue is only a wake-up.
 
 ## Public routes
 
@@ -62,7 +62,8 @@ A dedicated consumer now exists (`api/queues/granot-lifecycle-consumer.ts`) and 
 ## Related
 
 - CRM Posting on form-lead create does **not** write a receipt and is not triggered by webhooks ([`form-lead.service.md`](form-lead.service.md)).
-- HTTP automation is a separate mutation path ([`granotHttpCollector.service.md`](granotHttpCollector.service.md)).
+- Approved Owner browser-extension apply uses `captureChannelOperationReceipt` (`observation_channel: "browser_extension"`, `authentication_method: "extension_session"`). Same channel + operation ID + hash replays the receipt; a different hash is `409 GRANOT_OPERATION_IDEMPOTENCY_CONFLICT` and creates no row. Unique-index races reload the winner and apply the same hash check. Details: [`granotLifecycle.extensionApply.md`](granotLifecycle.extensionApply.md).
+- HTTP automation is still a separate mutation path until Unit 17 ([`granotHttpCollector.service.md`](granotHttpCollector.service.md)).
 - Software map: [`granot-lifecycle-capture.mdc`](../rules/granot-lifecycle-capture.mdc).
 
 ## Out of scope here
