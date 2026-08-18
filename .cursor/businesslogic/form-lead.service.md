@@ -109,6 +109,7 @@ Form Lead plus Lead Message transaction commits.
 - [`sheetSync.service.md`](sheetSync.service.md) — outbox, drainer, job shapes
 - [`googleSheets.service.md`](googleSheets.service.md) — tab routing, Master vs Source Company Sheet writes
 - [`granotLifecycle.capture.md`](granotLifecycle.capture.md) — webhook receipts (no Form Lead writes)
+- [`granotLifecycle.identity.md`](granotLifecycle.identity.md) — source-scoped Form ladder reads `ref_no`, snapshots, Duplicate/Bad eligibility; no Form Lead writes
 
 ## Related rules
 

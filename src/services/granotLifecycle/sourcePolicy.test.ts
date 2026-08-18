@@ -165,6 +165,7 @@ test("[AC-09] Best Relocation Form same valid states select local; different sel
   assert.equal(local.ok, true);
   if (local.ok) {
     assert.equal(local.snapshot.selected_route_key, "form_local");
+    assert.equal(local.snapshot.selected_lead_model, "FormLead");
     assert.equal(local.snapshot.selected_move_type, "local");
     assert.equal(local.snapshot.source_granularity_id, localGranularityId);
   }

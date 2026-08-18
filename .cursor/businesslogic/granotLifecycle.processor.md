@@ -37,7 +37,7 @@ Defaults: processing true, shadow true, all eight effect flags false. Capture ig
 
 ## Out of scope here
 
-Identity ladders, desired state, Lead writes, post-cutoff link mutation, Entity Changes, Sheet Sync, cases, discrepancies, and notifications. Claim/fencing/retry/requeue: [`granotLifecycle.drainer.md`](granotLifecycle.drainer.md).
+Identity ladders live in [`granotLifecycle.identity.md`](granotLifecycle.identity.md) and are not invoked from this skeleton. Desired state, Lead writes, post-cutoff link mutation, Entity Changes, Sheet Sync, cases, discrepancies, and notifications remain later units. Claim/fencing/retry/requeue: [`granotLifecycle.drainer.md`](granotLifecycle.drainer.md).
 
 ## Related
 

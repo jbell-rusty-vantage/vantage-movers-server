@@ -102,6 +102,7 @@ Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 ## Related businesslogic
 
 - [`form-lead.service.md`](form-lead.service.md) — Form Fill side effects on Form Lead Ingestion
+- [`granotLifecycle.identity.md`](granotLifecycle.identity.md) — source-scoped Call ladder reads Job/phone/ingested phone; Duplicate Call Leads remain readable
 - [`enrichment.service.md`](enrichment.service.md) — Follow Up preview/sync
 - [`ringcentral-call-lead-qualification.service.md`](ringcentral-call-lead-qualification.service.md) — **Call Qualification**, ingest gate
 - [`googleSheets.service.md`](googleSheets.service.md) — Calls / Duplicate Calls tabs

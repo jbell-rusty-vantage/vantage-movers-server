@@ -43,6 +43,7 @@ export type SourcePolicySnapshot = {
   lead_source_company_id?: string;
   source_granularity_id?: string;
   selected_route_key?: string;
+  selected_lead_model?: LeadModel;
   selected_move_type?: "local" | "long_distance" | "any";
   lifecycle_disposition: GranotLifecycleDisposition;
   lead_created_policy: GranotLeadCreatedPolicy;
@@ -265,6 +266,7 @@ async function resolveNormalizedMatches(
       ...baseSnapshot,
       source_granularity_id: selected.route.source_granularity_id,
       selected_route_key: selected.route.route_key,
+      selected_lead_model: selected.route.lead_model,
       selected_move_type: selected.route.move_type,
     },
   };

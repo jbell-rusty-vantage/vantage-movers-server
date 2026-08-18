@@ -27,12 +27,15 @@ const UNIT_FILES: Record<string, string[]> = {
   "13": [
     "scripts/migrations/granot-lifecycle-lead-provenance.replica.test.ts",
   ],
+  "14": [
+    "src/services/granotLifecycle/identity.replica.test.ts",
+  ],
 };
 
 function parseUnit(): string {
   const raw = process.argv.find((arg) => arg.startsWith("--unit="));
   if (!raw) {
-    throw new Error("Usage: pnpm test:granot-lifecycle:replica -- --unit=08|09|10|11|12|13");
+    throw new Error("Usage: pnpm test:granot-lifecycle:replica -- --unit=08|09|10|11|12|13|14");
   }
   return raw.slice("--unit=".length);
 }

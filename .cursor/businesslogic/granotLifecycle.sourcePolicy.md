@@ -11,7 +11,7 @@
 ## Public interface
 
 - `normalizeGranotSourceLabel(raw)` — NFKC, trim, collapse whitespace, lowercase; reject empty/control/bidi rather than stripping them into a usable label.
-- `resolveSourcePolicy(facts, store?)` — exact normalized-label lookup only. Provider `type` is never a classification input.
+- `resolveSourcePolicy(facts, store?)` — exact normalized-label lookup only. Provider `type` is never a classification input. A selected route also stamps `selected_lead_model` so identity can choose the Form or Call ladder without re-resolving Registry semantics.
 - `evaluateEffectGates(facts)` — pure snapshot of every applicable gate in stable order. Unit 07 supplies flag and execution-mode facts; this module still performs no writes.
 
 ## Fail-closed resolution
@@ -44,4 +44,5 @@ Every unreviewed row remains lifecycle-disabled, deferred, observation-only, and
 
 - Registry writes and audit: [`operationsRegistry.service.md`](operationsRegistry.service.md)
 - Observation normalization: [`granotLifecycle.normalization.md`](granotLifecycle.normalization.md)
+- Identity consumes this snapshot and never copies Registry semantics ([`granotLifecycle.identity.md`](granotLifecycle.identity.md)).
 - Decision processor consumes this read/gate snapshot ([`granotLifecycle.processor.md`](granotLifecycle.processor.md)).
