@@ -13,6 +13,8 @@ let lastRequeue: { id: string; reason: string; role: string } | null = null;
 let lastCaseQuery: Record<string, unknown> | null = null;
 let lastCandidateQuery: Record<string, unknown> | null = null;
 let lastConfirm: Record<string, unknown> | null = null;
+let lastUpdate: Record<string, unknown> | null = null;
+let lastNoAction: Record<string, unknown> | null = null;
 
 const app = express();
 app.use(express.json());
@@ -85,6 +87,33 @@ app.use(
         replayed: false,
       };
     },
+    updateBooking: async (input) => {
+      lastUpdate = input as unknown as Record<string, unknown>;
+      return {
+        case_id: input.case_id,
+        case_state: "resolved",
+        case_revision: 2,
+        outcome: "booking_updated",
+        command_execution_id: new mongoose.Types.ObjectId().toHexString(),
+        decision_id: new mongoose.Types.ObjectId().toHexString(),
+        booking_ref: { id: new mongoose.Types.ObjectId().toHexString(), domain_revision: 2 },
+        entity_refs: [],
+        replayed: false,
+      };
+    },
+    noAction: async (input) => {
+      lastNoAction = input as unknown as Record<string, unknown>;
+      return {
+        case_id: input.case_id,
+        case_state: "resolved",
+        case_revision: 2,
+        outcome: "no_action",
+        command_execution_id: new mongoose.Types.ObjectId().toHexString(),
+        decision_id: new mongoose.Types.ObjectId().toHexString(),
+        entity_refs: [],
+        replayed: false,
+      };
+    },
   }),
 );
 
@@ -114,6 +143,8 @@ afterEach(() => {
   lastCaseQuery = null;
   lastCandidateQuery = null;
   lastConfirm = null;
+  lastUpdate = null;
+  lastNoAction = null;
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = SECRET;
 });
 
@@ -312,4 +343,51 @@ test("[AC-22] Admin cannot invoke confirm Booking", async () => {
   });
   assert.equal(response.status, 403);
   assert.equal(lastConfirm, null);
+});
+
+test("[AC-21] [AC-24] Owner update route is strict, idempotent-envelope only, and returns 200", async () => {
+  const path = `/api/v1/admin/granot-lifecycle/booking-cases/${receiptId}/update-booking`;
+  const body = {
+    expected_case_revision: 1,
+    expected_booking_revision: 4,
+    official_booking_details: confirmBody.official_booking_details,
+  };
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { ...signedHeaders("owner", path), "Idempotency-Key": "unit25-update-1" },
+    body: JSON.stringify(body),
+  });
+  assert.equal(response.status, 200);
+  assert.equal(lastUpdate?.case_id, receiptId);
+  assert.equal(lastUpdate?.expected_booking_revision, 4);
+
+  lastUpdate = null;
+  const forbidden = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { ...signedHeaders("owner", path), "Idempotency-Key": "unit25-update-2" },
+    body: JSON.stringify({ ...body, job_no: "forbidden" }),
+  });
+  assert.equal(forbidden.status, 400);
+  assert.equal(lastUpdate, null);
+});
+
+test("[AC-20] [AC-32] Owner No Action accepts optional reason metadata and Admin is denied", async () => {
+  const path = `/api/v1/admin/granot-lifecycle/booking-cases/${receiptId}/no-action`;
+  const body = { expected_case_revision: 1, reason_code: "other" };
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { ...signedHeaders("owner", path), "Idempotency-Key": "unit25-no-action-1" },
+    body: JSON.stringify(body),
+  });
+  assert.equal(response.status, 200);
+  assert.equal(lastNoAction?.reason_code, "other");
+
+  lastNoAction = null;
+  const denied = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { ...signedHeaders("admin", path), "Idempotency-Key": "unit25-no-action-2" },
+    body: JSON.stringify(body),
+  });
+  assert.equal(denied.status, 403);
+  assert.equal(lastNoAction, null);
 });

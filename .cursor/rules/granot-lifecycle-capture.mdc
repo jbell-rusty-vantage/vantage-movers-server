@@ -1,5 +1,5 @@
 ---
-description: Granot lead-lifecycle software map — receipt processing, Lead effects, Booking-case persistence, and protected lifecycle reads; owner commands remain disabled
+description: Granot lead-lifecycle software map — receipt processing, Lead effects, Booking-case persistence, protected reads, and gated Booking owner commands
 globs: src/services/granotLifecycle/**/*.ts,src/services/granotWebhooks/**/*.ts,src/routes/granot-webhook.routes.ts,src/routes/granot-lifecycle-admin.routes.ts,src/routes/granot-lifecycle-cron.routes.ts,api/queues/granot-lifecycle-consumer.ts,src/middleware/requireGranotWebhookSecret.ts,src/config/domain/granotWebhook.ts,src/config/domain/granotLifecycle.ts,src/models/GranotObservationReceipt.ts,src/models/GranotObservation.ts,src/models/SynchronizationDecision.ts,src/models/GranotLifecycleActivation.ts,src/models/GranotRecordLink.ts,src/models/granotLifecycleSchemas.ts,src/validation/v1/granotLifecycle.validation.ts,scripts/migrations/granot-lifecycle-*.ts,.cursor/businesslogic/granotLifecycle*.md
 alwaysApply: false
 ---
@@ -36,9 +36,10 @@ Granot evidence never becomes an official Booking or Cancellation by itself. CRM
 | `processor.ts` | Channel-neutral orchestrator: identity, temporal compare, desired-state plan, gates, Decision, historical job-level Record Link. Live matched-Lead writes enter `synchronizeLeadFromGranot`. Live eligible no-match creation enters `createLeadFromGranot`. |
 | `drainer.ts` | Fenced Mongo claim/lease shared by the queue consumer, five-minute cron, and Owner requeue. |
 | `aggregateRevision.ts` | Compare-and-swap primitive for later consumed aggregates. |
+| `bookingReconciliation.ts` / `bookingConfirmation.ts` / `bookingOwnerCommands.ts` | Booking case open/refresh plus strict Owner confirm, deterministic existing-Booking full update, and zero-effect No Action. Release/Referral remain unavailable. |
 | `trustedLeadCreateValidation.ts` | Trusted `granot_lead_created` validator (`post_to_granot=false`). Live caller is `createLeadFromGranot` only. |
 
-Admin routes activate, requeue dead letters, and expose protected case/candidate/Job/Lead/health reads. Projections compose allowlisted DTOs; routes do not own claim, match, masking, ranking, timeline, or patch policy. Canonical executor / `EntityChange` live in `domainCommands/`. Live lifecycle commands are `synchronizeLeadFromGranot` and `createLeadFromGranot`. Owner Booking/Release commands stay disabled. Checked-in effect flags stay false.
+Admin routes activate, requeue dead letters, expose protected reads, and accept the three exact Booking Owner mutations. Projections compose allowlisted DTOs; routes do not own claim, match, masking, ranking, timeline, or mutation policy. Canonical executor / `EntityChange` live in `domainCommands/`. Live lifecycle capability includes Lead sync/create, confirm Booking, `updateBooking`, and `resolveGranotBookingCaseNoAction`; checked-in effect flags keep them disabled. Release/Referral commands are not exposed.
 
 ## Progress
 
@@ -46,9 +47,9 @@ Units 01–19 are implemented on `granot-lead-lifecycle` (Unit 16 also lands ext
 
 **Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, shadow processor orchestration, extension/automation receipt apply, canonical Lead synchronization/creation, Booking-case persistence, protected masked case/candidate reads, and stable Job/Lead timelines.
 
-**Next sequential work:** Unit 23 read delivery is implemented but remains gated by the required aggregate index verification; Units 24–25 remain Owner-review/command work and Unit 26 owns Release persistence. Deployed posture stays shadow; Lead writes/creation/cases stay false except injected disposable-test posture.
+**Next sequential work:** Units 22–25 deliver Booking reads and standard Owner commands. Unit 26 owns Release persistence; Unit 28 additionally requires reviewed Referral classification. Deployed posture and checked-in defaults do not change from implementation alone.
 
-**Not started here:** RingCentral adoption (20–21), Booking/Release Reconciliation persistence and owner commands (22–29). Unit 19 adds no migration or index.
+**Not started here:** Release/Referral/discrepancy owner behavior (Units 26–29).
 
 ## Live constraints
 

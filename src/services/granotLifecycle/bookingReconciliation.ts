@@ -181,10 +181,20 @@ export interface GranotBookingReconciliation {
 }
 
 export { confirmBooking } from "./bookingConfirmation";
+export {
+  updateExistingBooking,
+  noAction,
+  UPDATE_BOOKING_COMMAND_NAME,
+  BOOKING_NO_ACTION_COMMAND_NAME,
+} from "./bookingOwnerCommands";
 export type {
   BookingOwnerCommandResult,
   ConfirmBookingInput,
 } from "./bookingConfirmation";
+export type {
+  UpdateExistingBookingInput,
+  BookingNoActionInput,
+} from "./bookingOwnerCommands";
 
 export function createGranotBookingReconciliation(input: {
   prepared: PreparedBookingReconciliationDecision;

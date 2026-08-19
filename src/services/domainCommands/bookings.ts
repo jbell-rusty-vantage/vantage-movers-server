@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
+import { Agent } from "../../models/Agent";
 import { BookedLead } from "../../models/BookedLead";
+import { Merchant } from "../../models/Merchant";
 import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconciliationCase";
 import { DomainCommandExecution } from "../../models/DomainCommandExecution";
 import { requireBestRelocationImportSource } from "../bookings/bestRelocationImportGuard";
@@ -9,6 +11,9 @@ import {
   resolveBookingLeadReconciliationInTransaction,
 } from "../employeeBookings/bookingLeadReconciliation.service";
 import { finalizeSheetSync } from "../sheetSync";
+import { persistSheetSyncIntent } from "../sheetSync";
+import { toObjectId } from "../../utils/objectId";
+import type { GranotLifecycleOfficialBookingDetails } from "../../validation/v1/granotLifecycle.validation";
 import {
   BOOKED_LEAD_CHANGE_PATHS,
   CALL_LEAD_CHANGE_PATHS,
@@ -16,7 +21,7 @@ import {
   FORM_LEAD_CHANGE_PATHS,
   persistEntityChangeMutations,
 } from "./entityChange";
-import { executeCanonicalCommandWithPostCommit } from "./idempotency";
+import { executeCanonicalCommandWithPostCommit, executeIdempotentCanonicalCommand } from "./idempotency";
 import {
   runExistingCreateBookingFromLead,
   runExistingCreateLeadlessBooking,
@@ -27,6 +32,7 @@ import {
 import type {
   CanonicalCommandContext,
   CompatibilityCanonicalCommandResult,
+  CanonicalCommandResult,
 } from "./types";
 
 export async function createBookingFromLead(input: {
@@ -56,6 +62,100 @@ export async function updateBookedLead(input: {
   context: CanonicalCommandContext;
 }): Promise<CompatibilityCanonicalCommandResult> {
   return (await runExistingUpdateBookedLead(input)).command;
+}
+
+/** Exact lifecycle aggregate command. Reconciliation composes the same transaction
+ * primitive with its case CAS so case resolution and aggregate evidence remain atomic. */
+export async function updateBooking(input: {
+  booking_id: string;
+  expected_domain_revision: number;
+  official_booking_details: GranotLifecycleOfficialBookingDetails;
+  context: CanonicalCommandContext;
+}): Promise<CanonicalCommandResult> {
+  const changeId = new mongoose.Types.ObjectId();
+  let mutated = false;
+  const outcome = await executeIdempotentCanonicalCommand({
+    command_name: "updateBooking",
+    context: input.context,
+    operation: async ({ session, now, command_execution_id }) => {
+      const before = await BookedLead.findOne({
+        _id: toObjectId(input.booking_id),
+        domain_revision: input.expected_domain_revision,
+        $or: [{ cancelled: null }, { cancelled: { $exists: false } }],
+      }).session(session).lean().exec();
+      if (!before) throw new Error("DOMAIN_REVISION_CONFLICT");
+      const agentIds = input.official_booking_details.agent_allocations.map((row) => toObjectId(row.agent_id));
+      const [agents, merchant] = await Promise.all([
+        Agent.find({ _id: { $in: agentIds }, active: true }).session(session).lean().exec(),
+        Merchant.findOne({ _id: toObjectId(input.official_booking_details.merchant_id), active: true })
+          .session(session).lean().exec(),
+      ]);
+      if (agents.length !== agentIds.length || !merchant) throw new Error("GRANOT_VALIDATION_FAILED");
+      const names = new Map(agents.map((row) => [String(row._id), row.name]));
+      const details = input.official_booking_details;
+      const desired = {
+        book_date: new Date(`${details.book_date}T00:00:00.000Z`),
+        agent_allocations: details.agent_allocations.map((row) => ({
+          agent: toObjectId(row.agent_id),
+          agent_name_snapshot: names.get(row.agent_id)!,
+          binder_amount: Math.round(row.binder_amount * 100) / 100,
+        })),
+        total_binder_amount: Math.round(details.total_binder_amount * 100) / 100,
+        deposit_amount: Math.round(details.deposit_amount * 100) / 100,
+        merchant: merchant.name,
+        over_2000: details.deposit_amount > 2000,
+        over_4000: details.deposit_amount > 4000,
+      };
+      const write = await BookedLead.collection.updateOne(
+        {
+          _id: before._id,
+          domain_revision: input.expected_domain_revision,
+          normalized_job_no: before.normalized_job_no,
+          $or: [{ cancelled: null }, { cancelled: { $exists: false } }],
+        },
+        { $set: desired },
+        { session },
+      );
+      if (write.matchedCount !== 1) throw new Error("DOMAIN_REVISION_CONFLICT");
+      const after = await BookedLead.findById(before._id).session(session).lean().exec();
+      if (!after) throw new Error("Updated Booking could not be reloaded.");
+      const fields = collectDocumentFieldChanges(
+        before as unknown as Record<string, unknown>,
+        after as unknown as Record<string, unknown>,
+        BOOKED_LEAD_CHANGE_PATHS,
+      );
+      if (fields.length > 0) {
+        mutated = true;
+        await persistEntityChangeMutations({
+          session,
+          now,
+          command_name: "updateBooking",
+          command_execution_id,
+          context: input.context,
+          mutations: [{
+            change_id: changeId,
+            entity: { model: "BookedLead", id: input.booking_id },
+            revision_before: before.domain_revision,
+            fields,
+          }],
+        });
+        await persistSheetSyncIntent({
+          resource: "booking_chain",
+          operation: "booked_lead.update",
+          bookingId: input.booking_id,
+        }, session);
+      }
+      return { entity_refs: [{ model: "BookedLead", id: input.booking_id }], warnings: [] };
+    },
+  });
+  if (!outcome.replayed && mutated) {
+    await finalizeSheetSync({
+      resource: "booking_chain",
+      operation: "booked_lead.update",
+      bookingId: input.booking_id,
+    });
+  }
+  return outcome.result;
 }
 
 export async function deleteBookedLead(input: {

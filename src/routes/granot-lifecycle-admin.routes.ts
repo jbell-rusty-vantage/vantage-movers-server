@@ -26,8 +26,12 @@ import {
 } from "../services/granotLifecycle/projections";
 import {
   confirmBooking as confirmGranotBooking,
+  updateExistingBooking as updateGranotBooking,
+  noAction as resolveGranotBookingNoAction,
   type BookingOwnerCommandResult,
+  type BookingNoActionInput,
   type ConfirmBookingInput,
+  type UpdateExistingBookingInput,
 } from "../services/granotLifecycle/bookingReconciliation";
 import { durableActorFromRegistryActor } from "../services/durableWork";
 import {
@@ -41,7 +45,9 @@ import {
   granotLifecycleLeadTimelineParamsSchema,
   granotLifecycleTimelineQuerySchema,
   granotLifecycleActivationCommandSchema,
+  granotLifecycleBookingNoActionCommandSchema,
   granotLifecycleConfirmBookingCommandSchema,
+  granotLifecycleUpdateBookingCommandSchema,
   granotLifecycleRequeueCommandSchema,
 } from "../validation/v1/granotLifecycle.validation";
 
@@ -56,6 +62,8 @@ export type GranotLifecycleAdminRouteDeps = {
   projectLeadTimeline?: typeof projectGranotLeadTimeline;
   projectHealth?: typeof projectGranotLifecycleHealth;
   confirmBooking?: (input: ConfirmBookingInput) => Promise<BookingOwnerCommandResult>;
+  updateBooking?: (input: UpdateExistingBookingInput) => Promise<BookingOwnerCommandResult>;
+  noAction?: (input: BookingNoActionInput) => Promise<BookingOwnerCommandResult>;
 };
 
 export function createGranotLifecycleAdminRouter(
@@ -72,6 +80,8 @@ export function createGranotLifecycleAdminRouter(
   const projectLead = deps.projectLeadTimeline ?? projectGranotLeadTimeline;
   const projectHealth = deps.projectHealth ?? projectGranotLifecycleHealth;
   const confirmBooking = deps.confirmBooking ?? confirmGranotBooking;
+  const updateBooking = deps.updateBooking ?? updateGranotBooking;
+  const noAction = deps.noAction ?? resolveGranotBookingNoAction;
 
   router.post(
     "/api/v1/admin/granot-lifecycle/booking-cases/:id/confirm-booking",
@@ -91,6 +101,50 @@ export function createGranotLifecycleAdminRouter(
         });
         return res.status(data.replayed || data.outcome === "already_satisfied" ? 200 : 201)
           .json({ ok: true, data });
+      } catch (error) {
+        return sendError(res, error, requestId(req));
+      }
+    },
+  );
+
+  router.post(
+    "/api/v1/admin/granot-lifecycle/booking-cases/:id/update-booking",
+    async (req, res) => {
+      try {
+        await connect();
+        const owner = durableActorFromRegistryActor(requireRegistryOwnerActor(req, auth(req)));
+        const { case_id } = granotLifecycleCaseParamsSchema.parse({ case_id: req.params.id });
+        const command = granotLifecycleUpdateBookingCommandSchema.parse(req.body);
+        const data = await updateBooking({
+          case_id,
+          ...command,
+          idempotency_key: readSingleIdempotencyKey(req),
+          owner,
+          request_id: requestId(req),
+        });
+        return res.status(200).json({ ok: true, data });
+      } catch (error) {
+        return sendError(res, error, requestId(req));
+      }
+    },
+  );
+
+  router.post(
+    "/api/v1/admin/granot-lifecycle/booking-cases/:id/no-action",
+    async (req, res) => {
+      try {
+        await connect();
+        const owner = durableActorFromRegistryActor(requireRegistryOwnerActor(req, auth(req)));
+        const { case_id } = granotLifecycleCaseParamsSchema.parse({ case_id: req.params.id });
+        const command = granotLifecycleBookingNoActionCommandSchema.parse(req.body);
+        const data = await noAction({
+          case_id,
+          ...command,
+          idempotency_key: readSingleIdempotencyKey(req),
+          owner,
+          request_id: requestId(req),
+        });
+        return res.status(200).json({ ok: true, data });
       } catch (error) {
         return sendError(res, error, requestId(req));
       }

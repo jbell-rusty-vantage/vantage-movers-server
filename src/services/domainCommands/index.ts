@@ -5,6 +5,7 @@ import {
   createLeadlessBooking,
   deleteBookedLead,
   updateBookedLead,
+  updateBooking,
 } from "./bookings";
 import {
   createCancellation,
@@ -49,6 +50,7 @@ export const canonicalDomainCommands: CanonicalDomainCommands = {
   createCancellation,
   createLeadFromGranot,
   synchronizeLeadFromGranot,
+  updateBooking,
   adoptRingCentralCall,
   markRingCentralConvergenceConflict,
 };

@@ -6,6 +6,7 @@ import type {
   CreateLeadlessBookingInput,
 } from "../../validation/v1.validation";
 import type { GranotAuthorizedLeadDesiredState } from "../granotLifecycle/authorizedDesiredState";
+import type { GranotLifecycleOfficialBookingDetails } from "../../validation/v1/granotLifecycle.validation";
 import type { CreateLeadFromGranotInput } from "../granotLifecycle/createLeadFromGranot";
 import type { SynchronizeLeadExecution } from "../granotLifecycle/synchronizeLeadTypes";
 import type { ObservationChannel } from "../granotLifecycle/types";
@@ -124,6 +125,12 @@ export interface CanonicalDomainCommands {
     desired_state: GranotAuthorizedLeadDesiredState;
     context: CanonicalCommandContext;
     execution: SynchronizeLeadExecution;
+  }): Promise<CanonicalCommandResult>;
+  updateBooking(input: {
+    booking_id: string;
+    expected_domain_revision: number;
+    official_booking_details: GranotLifecycleOfficialBookingDetails;
+    context: CanonicalCommandContext;
   }): Promise<CanonicalCommandResult>;
   adoptRingCentralCall(
     input: AdoptRingCentralCallInput,

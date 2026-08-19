@@ -12,6 +12,7 @@ import { getOperationalEventModel } from "../../models/OperationalEvent";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { getEntityChangeModel } from "../../models/EntityChange";
 import { BookedLead } from "../../models/BookedLead";
+import { Merchant } from "../../models/Merchant";
 import { CancelledLead } from "../../models/CancelledLead";
 import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconciliationCase";
 import { getFormLeadModel } from "../../models/FormLead";
@@ -66,9 +67,10 @@ export type SafeBookingProjection = {
   customer_name: string | null;
   source: string;
   merchant: string;
+  merchant_id?: string;
   deposit_amount: number;
   total_binder_amount: number;
-  agent_allocations: Array<{ agent_name: string; binder_amount: number }>;
+  agent_allocations: Array<{ agent_id: string; agent_name: string; binder_amount: number }>;
   domain_revision: number;
   lead_ref?: EntityRef;
 };
@@ -484,15 +486,18 @@ export async function getGranotLifecycleCaseDetail(
       ? BookingLeadReconciliationCase.findOne({ booking: row.deterministic_booking_id }).lean()
       : null,
   ]);
-  const cancellation = booking
-    ? await CancelledLead.findOne({ booked_lead: booking._id }).lean()
-    : null;
+  const [cancellation, activeMerchant] = booking
+    ? await Promise.all([
+        CancelledLead.findOne({ booked_lead: booking._id }).lean(),
+        Merchant.findOne({ name: booking.merchant, active: true }).select({ _id: 1 }).lean(),
+      ])
+    : [null, null];
   const observationById = new Map(observations.map((item) => [String(item._id), item]));
   const decisionById = new Map(decisions.map((item) => [String(item._id), item]));
   const leadRef = row.suggested_lead?.lead_ref ?? link?.lead_ref;
   const lead = leadRef ? await loadLeadContactProjection(leadRef.model, String(leadRef.id)) : null;
   const timeline = await projectGranotJob(row.normalized_job_no, { limit: DEFAULT_TIMELINE_LIMIT });
-  const safeBooking = booking ? projectBooking(booking) : undefined;
+  const safeBooking = booking ? projectBooking(booking, activeMerchant?._id) : undefined;
   const safeCancellation = cancellation ? projectCancellation(cancellation) : undefined;
   const result: GranotLifecycleCaseDetail = {
     case_id: String(row._id),
@@ -561,7 +566,8 @@ export async function getGranotLifecycleCaseDetail(
     timeline,
     capabilities: {
       commands: getGranotLifecycleFlags().booking_commands_enabled &&
-        row.state === "open" && row.mode === "create_missing_booking",
+        row.state === "open" &&
+        (row.mode === "create_missing_booking" || row.mode === "review_existing_booking"),
       referral: row.mode === "create_referral_booking",
       release_cases: false,
       discrepancies: false,
@@ -943,11 +949,11 @@ function projectBooking(booking: {
   merchant: string;
   deposit_amount: number;
   total_binder_amount: number;
-  agent_allocations: Array<{ agent_name_snapshot: string; binder_amount: number }>;
+  agent_allocations: Array<{ agent: unknown; agent_name_snapshot: string; binder_amount: number }>;
   domain_revision: number;
   lead_ref?: unknown;
   lead_model?: "FormLead" | "CallLead" | null;
-}): SafeBookingProjection {
+}, merchantId?: unknown): SafeBookingProjection {
   return {
     id: String(booking._id),
     normalized_job_no: booking.normalized_job_no ?? "",
@@ -956,9 +962,11 @@ function projectBooking(booking: {
     customer_name: booking.customer_name ?? null,
     source: booking.source,
     merchant: booking.merchant,
+    ...(merchantId ? { merchant_id: String(merchantId) } : {}),
     deposit_amount: booking.deposit_amount,
     total_binder_amount: booking.total_binder_amount,
     agent_allocations: booking.agent_allocations.map((allocation) => ({
+      agent_id: String(allocation.agent),
       agent_name: allocation.agent_name_snapshot,
       binder_amount: allocation.binder_amount,
     })),

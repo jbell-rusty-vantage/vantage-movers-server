@@ -1,10 +1,10 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
-**Primary code:** `src/services/granotLifecycle/bookingReconciliation.ts`, `src/models/GranotBookingReconciliationCase.ts`, `src/services/granotLifecycle/processor.ts`, `scripts/migrations/granot-lifecycle-indexes.ts`  
-**Domain terms used:** Granot Booking Reconciliation Case, Synchronization Decision, Granot Observation, Source Scope, Booking Lead Reconciliation
+**Primary code:** `src/services/granotLifecycle/bookingReconciliation.ts`, `bookingConfirmation.ts`, `bookingOwnerCommands.ts`, `src/models/GranotBookingReconciliationCase.ts`, `src/services/granotLifecycle/processor.ts`
+**Domain terms used:** Granot Booking Reconciliation Case, Update Existing Booking, No Action, Synchronization Decision, Granot Observation, Source Scope
 
 # Granot Booking reconciliation (`granotLifecycle/bookingReconciliation`)
 
-**Role:** Persist evidence-backed owner work for Priority `5` and actual Booked observations. A case is not a Booking and never changes an official Lead, Booking, Cancellation, Record Link, or employee reconciliation workflow.
+**Role:** Persist evidence-backed owner work for Priority `5` and actual Booked observations. A case is not a Booking. Official Booking changes occur only through explicit Owner commands.
 
 ## Trigger and routing
 
@@ -29,7 +29,17 @@ Within one Mongo transaction the service rereads the Observation, active link, c
 
 The exact unique indexes are open `{normalized_job_no, action_kind}` (partial on `state:"open"`) and `{normalized_job_no, action_kind, sequence_number}`. Three additional read indexes cover state/evidence time, Booking/state, and suggested Lead/state. Migration report masks Job/document identifiers, reports collisions before unique creation, creates non-unique definitions first, and never applies without explicit authorization.
 
-Open starts with `case_revision=1`, `evidence_revision=1`. A new Observation appends the four-field evidence tuple and increments only `evidence_revision`; exact replay changes nothing. Suggestion/current-work changes increment `case_revision`. Resolved rows cannot be reopened or otherwise modified, and later evidence creates the next sequence. Unit 22 exposes no resolution writer.
+Open starts with `case_revision=1`, `evidence_revision=1`. A new Observation appends the four-field evidence tuple and increments only `evidence_revision`; exact replay changes nothing. Suggestion/current-work changes increment `case_revision`. Resolved rows cannot be reopened or otherwise modified, and later evidence creates the next sequence. Evidence refresh therefore never stales an Owner draft keyed by `case_revision`.
+
+## Owner commands
+
+Every command requires the exact Owner-derived actor, one strict `Idempotency-Key`, the first case-evidence Receipt/Observation/Decision chain, an enabled Booking-command gate, and current reviewed Registry/source facts. Checked-in command defaults remain false.
+
+- `confirmGranotBooking` resolves a standard create-missing case by creating the first Booking from explicit official inputs.
+- `updateBooking` is available only for open `review_existing_booking`. It revalidates the deterministic active Booking, normalized Job, linked Lead/source, optional active Record Link, exact Booking/case revisions, and active Agent/Merchant IDs. It fully replaces only Book Date, Agent allocations, total Binder, Deposit, and Merchant; derived deposit thresholds alone may mirror to the already-linked Lead. One transaction writes aggregate Change(s), case resolution, Command, and one coalescible queued Booking Chain intent. Identity/source/contact/local/submission/cancellation fields cannot change.
+- `resolveGranotBookingCaseNoAction` is available for open standard create-missing or review-existing cases. Optional reason code/text are metadata only. Its transaction writes the Command plus one case resolution/revision and creates no aggregate revision, `EntityChange`, Sheet Sync intent, link, discrepancy, notification, or replacement case.
+
+Exact replay returns the durable result. A same-state update resolves `already_satisfied` without aggregate Change/outbox. Case and Booking compare-and-swap filters produce one winner; stale case, stale/cancelled Booking, and link/Job/source incompatibility fail closed. External Sheet delivery is post-commit only.
 
 ## Suggestions, privacy, and posture
 
@@ -37,4 +47,4 @@ Suggestions are projections of the current Unit 14 identity result. Record Link,
 
 Evidence contains IDs, capture time, and action only. Bounded display context is separate and never becomes an official Booking input. Open/refresh events contain masked IDs; `granot_lifecycle_open_cases{kind="booking",mode}` is recomputed cardinality, so evidence refresh does not increment it.
 
-Checked-in `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED=false` and every Booking/Release/Referral/email command flag remains false. Unit 23 supplies protected read APIs and the read-only Admin review workflow; separately approved deployment/index verification/Owner review still precede any case enablement. Units 24–25 own owner commands.
+Checked-in `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED=false` and `GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED=false`; Release/Referral/email flags also remain false. Protected reads advertise standard confirm/update/No Action only when the Booking-command flag is true. Deployment, production index verification, and narrow source/effect enablement remain separately authorized.

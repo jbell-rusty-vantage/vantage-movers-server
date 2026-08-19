@@ -55,6 +55,42 @@ const strictCalendarDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must b
   },
 );
 
+export const granotLifecycleOfficialBookingDetailsSchema = z.object({
+  book_date: strictCalendarDateSchema,
+  agent_allocations: z.array(z.object({
+    agent_id: objectIdSchema,
+    binder_amount: exactMoneySchema,
+  }).strict()).min(1).max(20),
+  total_binder_amount: exactMoneySchema,
+  deposit_amount: exactMoneySchema,
+  merchant_id: objectIdSchema,
+}).strict().superRefine((value, ctx) => {
+    const ids = value.agent_allocations.map((row) => row.agent_id);
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["agent_allocations"],
+        message: "agent_id values must be unique",
+      });
+    }
+    const binderCents = value.agent_allocations.reduce(
+      (sum, row) => sum + Math.round(row.binder_amount * 100),
+      0,
+    );
+    const totalCents = Math.round(value.total_binder_amount * 100);
+    if (binderCents !== totalCents) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["total_binder_amount"],
+        message: "agent Binder cents must sum exactly to total_binder_amount",
+      });
+    }
+  });
+
+export type GranotLifecycleOfficialBookingDetails = z.infer<
+  typeof granotLifecycleOfficialBookingDetailsSchema
+>;
+
 export const granotLifecycleConfirmBookingCommandSchema = z
   .object({
     expected_case_revision: z.number().int().min(1),
@@ -63,43 +99,42 @@ export const granotLifecycleConfirmBookingCommandSchema = z
       lead_id: objectIdSchema,
     }).strict(),
     out_of_scope_override_reason: z.string().trim().min(10).max(500).optional(),
-    official_booking_details: z.object({
-      book_date: strictCalendarDateSchema,
-      agent_allocations: z.array(z.object({
-        agent_id: objectIdSchema,
-        binder_amount: exactMoneySchema,
-      }).strict()).min(1).max(20),
-      total_binder_amount: exactMoneySchema,
-      deposit_amount: exactMoneySchema,
-      merchant_id: objectIdSchema,
-    }).strict(),
+    official_booking_details: granotLifecycleOfficialBookingDetailsSchema,
   })
-  .strict()
-  .superRefine((value, ctx) => {
-    const ids = value.official_booking_details.agent_allocations.map((row) => row.agent_id);
-    if (new Set(ids).size !== ids.length) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["official_booking_details", "agent_allocations"],
-        message: "agent_id values must be unique",
-      });
-    }
-    const binderCents = value.official_booking_details.agent_allocations.reduce(
-      (sum, row) => sum + Math.round(row.binder_amount * 100),
-      0,
-    );
-    const totalCents = Math.round(value.official_booking_details.total_binder_amount * 100);
-    if (binderCents !== totalCents) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["official_booking_details", "total_binder_amount"],
-        message: "agent Binder cents must sum exactly to total_binder_amount",
-      });
-    }
-  });
+  .strict();
 
 export type GranotLifecycleConfirmBookingCommandInput = z.infer<
   typeof granotLifecycleConfirmBookingCommandSchema
+>;
+
+export const granotLifecycleUpdateBookingCommandSchema = z.object({
+  expected_case_revision: z.number().int().min(1),
+  expected_booking_revision: z.number().int().min(0),
+  official_booking_details: granotLifecycleOfficialBookingDetailsSchema,
+}).strict();
+
+export type GranotLifecycleUpdateBookingCommandInput = z.infer<
+  typeof granotLifecycleUpdateBookingCommandSchema
+>;
+
+export const granotLifecycleBookingNoActionCommandSchema = z.object({
+  expected_case_revision: z.number().int().min(1),
+  reason_code: z.enum([
+    "already_handled_elsewhere",
+    "granot_action_not_authoritative",
+    "wrong_customer_or_job",
+    "duplicate_granot_action",
+    "booking_still_valid",
+    "granot_change_only",
+    "insufficient_information",
+    "legacy_data",
+    "other",
+  ]).optional(),
+  reason_text: z.string().trim().max(1000).optional(),
+}).strict();
+
+export type GranotLifecycleBookingNoActionCommandInput = z.infer<
+  typeof granotLifecycleBookingNoActionCommandSchema
 >;
 
 const opaqueCursorSchema = z

@@ -5,6 +5,8 @@ import {
   extensionGranotApplyItemSchema,
   granotLifecycleActivationCommandSchema,
   granotLifecycleConfirmBookingCommandSchema,
+  granotLifecycleUpdateBookingCommandSchema,
+  granotLifecycleBookingNoActionCommandSchema,
   granotLifecycleCandidateQuerySchema,
   granotLifecycleCaseListQuerySchema,
   granotLifecycleLeadTimelineParamsSchema,
@@ -238,4 +240,49 @@ test("[AC-22] confirm Booking allocations are unique and bounded to 1-20", () =>
     }),
     /20|Too big/,
   );
+});
+
+test("[AC-24] update Booking is a strict complete replacement with both revisions", () => {
+  const valid = {
+    expected_case_revision: 2,
+    expected_booking_revision: 4,
+    official_booking_details: {
+      book_date: "2026-08-19",
+      agent_allocations: [{ agent_id: "a".repeat(24), binder_amount: 10.25 }],
+      total_binder_amount: 10.25,
+      deposit_amount: 0,
+      merchant_id: "b".repeat(24),
+    },
+  };
+  assert.deepEqual(granotLifecycleUpdateBookingCommandSchema.parse(valid), valid);
+  for (const forbidden of ["case_id", "job_no", "source", "lead_ref", "estimate"]) {
+    assert.equal(granotLifecycleUpdateBookingCommandSchema.safeParse({ ...valid, [forbidden]: "forbidden" }).success, false);
+  }
+  const { merchant_id: _merchant, ...partial } = valid.official_booking_details;
+  assert.equal(granotLifecycleUpdateBookingCommandSchema.safeParse({
+    ...valid,
+    official_booking_details: partial,
+  }).success, false);
+});
+
+test("[AC-20] Booking No Action reasons are independently optional and strict", () => {
+  assert.deepEqual(granotLifecycleBookingNoActionCommandSchema.parse({ expected_case_revision: 1 }), {
+    expected_case_revision: 1,
+  });
+  assert.equal(granotLifecycleBookingNoActionCommandSchema.safeParse({
+    expected_case_revision: 1,
+    reason_code: "other",
+  }).success, true);
+  assert.equal(granotLifecycleBookingNoActionCommandSchema.safeParse({
+    expected_case_revision: 1,
+    reason_text: "Owner reviewed the evidence.",
+  }).success, true);
+  assert.equal(granotLifecycleBookingNoActionCommandSchema.safeParse({
+    expected_case_revision: 1,
+    reason_code: "dismiss",
+  }).success, false);
+  assert.equal(granotLifecycleBookingNoActionCommandSchema.safeParse({
+    expected_case_revision: 1,
+    case_id: "a".repeat(24),
+  }).success, false);
 });

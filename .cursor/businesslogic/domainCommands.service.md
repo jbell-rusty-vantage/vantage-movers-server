@@ -7,7 +7,7 @@
 
 Canonical idempotent write surface for ingest and existing v1 write adapters. Mongo is the System of Record. The executor owns one Mongo transaction, the durable `DomainCommandExecution` result, append-only `EntityChange` rows, aggregate revision stamps, queued Sheet Sync outbox intent, and the replay/conflict decision. Sheet Sync does **not** complete commands.
 
-`synchronizeLeadFromGranot` and `createLeadFromGranot` are the live Granot lifecycle commands. Policy, minimum-data, and desired-state conversion live in `granotLifecycle/`; this registry is a thin entry. The processor is the only caller of both. Owner `updateBooking`, lifecycle `createReferralBooking`, and Record Link correction commands remain disabled. Checked-in effect flags stay false.
+`synchronizeLeadFromGranot`, `createLeadFromGranot`, and exact aggregate `updateBooking` are registered Granot lifecycle commands. Policy and case orchestration live in `granotLifecycle/`; this registry stays thin. Unit 25 composes the Booking replacement primitive with the case CAS so Booking/derived-Lead Changes, case resolution, Command, and queued Booking Chain intent commit atomically. Referral, Release, and Record Link correction commands remain disabled. Checked-in effect flags stay false.
 
 ## Executor sequence
 
@@ -55,4 +55,4 @@ Compatibility context: Command ID is a server ObjectId hex; idempotency is `subm
 
 A semantic no-op performs no aggregate save, revision increment, Change, or outbox write. Exact replay never re-enters the operation.
 
-Owner HTTP `Idempotency-Key` parsing, Booking/Cancellation case commands, `already_satisfied`, and accepted-Observation effects remain later units. The helper `assertOwnerCommandIdempotencyKey` preserves the 8–200 printable envelope.
+Owner Booking commands use `assertOwnerCommandIdempotencyKey` for the 8–200 printable envelope. `updateBooking` persists the exact command name; Booking No Action uses workflow-specific `resolveGranotBookingCaseNoAction`. Already-satisfied, No Action, and replay create no aggregate Change or Sheet work.
