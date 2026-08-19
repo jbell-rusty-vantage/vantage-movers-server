@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 
 export type GranotTemporalTuple = {
   captured_at: Date;
@@ -43,7 +43,7 @@ export function olderTemporalWinnerFilter(
   if (!OBJECT_ID_HEX.test(observationId)) {
     throw new Error("temporal compare-and-swap requires a 24-character Observation ObjectId hex");
   }
-  const incomingObjectId = new mongoose.Types.ObjectId(observationId);
+  const incomingObjectId = toObjectId(observationId);
   return {
     $or: [
       { "last_accepted_granot_observation.captured_at": { $lt: incoming.captured_at } },

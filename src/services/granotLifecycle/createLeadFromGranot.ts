@@ -20,6 +20,7 @@ import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
 import { getRingCentralInboundRouteModel } from "../../models/RingCentralInboundRoute";
 import { getRingCentralInboundRouteAssignmentModel } from "../../models/RingCentralInboundRouteAssignment";
+import { isObjectIdString, toObjectId } from "../../utils/objectId";
 import {
   getSynchronizationDecisionModel,
   type SynchronizationDecisionEffect,
@@ -622,7 +623,7 @@ async function createLead(input: {
       captured_at: observation.captured_at,
     },
     receiver_agent: input.agent
-      ? new mongoose.Types.ObjectId(input.agent.target.id)
+      ? toObjectId(input.agent.target.id)
       : undefined,
     receiver_agent_source: input.agent ? "granot_username_match" : undefined,
     receiver_agent_name_snapshot: input.agent?.name_snapshot,
@@ -758,7 +759,7 @@ async function reserveRecordLink(input: {
     .exec();
   const lead_ref = {
     model: input.lead_ref.model,
-    id: new mongoose.Types.ObjectId(input.lead_ref.id),
+    id: toObjectId(input.lead_ref.id),
   };
   const source_scope = {
     lead_source_company: input.source_scope.lead_source_company,
@@ -867,13 +868,13 @@ function assertCommandEnvelope(input: CreateLeadFromGranotInput): void {
   ) {
     throw new Error("createLeadFromGranot accepts no caller patch or extra input.");
   }
-  if (!mongoose.Types.ObjectId.isValid(input.observation_id)) {
+  if (!isObjectIdString(input.observation_id)) {
     throw new Error("createLeadFromGranot requires a valid observation_id.");
   }
   if (
     !input.source_scope ||
-    !mongoose.Types.ObjectId.isValid(input.source_scope.lead_source_company) ||
-    !mongoose.Types.ObjectId.isValid(input.source_scope.source_granularity_id)
+    !isObjectIdString(input.source_scope.lead_source_company) ||
+    !isObjectIdString(input.source_scope.source_granularity_id)
   ) {
     throw new Error("createLeadFromGranot requires an exact ObjectId source_scope.");
   }
@@ -898,10 +899,10 @@ function assertCommandEnvelope(input: CreateLeadFromGranotInput): void {
 }
 
 function objectId(value: string | null | undefined): mongoose.Types.ObjectId {
-  if (!value || !mongoose.Types.ObjectId.isValid(value)) {
+  if (!value || !isObjectIdString(value)) {
     throw new Error("createLeadFromGranot requires a valid ObjectId provenance reference.");
   }
-  return new mongoose.Types.ObjectId(value);
+  return toObjectId(value);
 }
 
 function compact<T extends Record<string, unknown>>(value: T): T {

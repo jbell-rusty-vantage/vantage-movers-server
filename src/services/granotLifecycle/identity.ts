@@ -4,6 +4,7 @@ import { BookedLead } from "../../models/BookedLead";
 import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
+import { toObjectId } from "../../utils/objectId";
 import { normalizeGranotCrmUsername } from "../operationsRegistry";
 import type { SourcePolicySnapshot } from "./sourcePolicy";
 import type {
@@ -244,8 +245,8 @@ export function createMongoLeadIdentityStore(session?: ClientSession): LeadIdent
       if (or.length === 0) return [];
       const rows = await getFormLeadModel()
         .find({
-          lead_source_company: new mongoose.Types.ObjectId(input.lead_source_company_id),
-          source_granularity_id: new mongoose.Types.ObjectId(input.source_granularity_id),
+          lead_source_company: toObjectId(input.lead_source_company_id),
+          source_granularity_id: toObjectId(input.source_granularity_id),
           duplicate: { $ne: true },
           $or: or,
         })
@@ -257,7 +258,7 @@ export function createMongoLeadIdentityStore(session?: ClientSession): LeadIdent
     async findCallLeadsByScopedJob(input) {
       const rows = await getCallLeadModel()
         .find({
-          source_granularity_id: new mongoose.Types.ObjectId(input.source_granularity_id),
+          source_granularity_id: toObjectId(input.source_granularity_id),
           normalized_job_no: input.normalized_job_no,
         })
         .session(session ?? null)
@@ -269,7 +270,7 @@ export function createMongoLeadIdentityStore(session?: ClientSession): LeadIdent
       if (input.phones.length === 0) return [];
       const rows = await getCallLeadModel()
         .find({
-          source_granularity_id: new mongoose.Types.ObjectId(input.source_granularity_id),
+          source_granularity_id: toObjectId(input.source_granularity_id),
           $or: [
             { normalized_phone_number: { $in: input.phones } },
             {
@@ -300,7 +301,14 @@ export function createMongoLeadIdentityStore(session?: ClientSession): LeadIdent
         ],
       })
         .session(session ?? null)
-        .lean()
+        .lean<
+          Array<{
+            _id: unknown;
+            active?: boolean;
+            granot_identity?: { username?: string };
+            granot_crm_username?: string;
+          }>
+        >()
         .exec();
       return rows.map((row) => ({
         id: String(row._id),

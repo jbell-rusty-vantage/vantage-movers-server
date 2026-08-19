@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import {
   getGranotObservationModel,
   type GranotObservationDocument,
@@ -995,9 +996,9 @@ export async function upsertGranotObservation(
   }
   const receiptId =
     "_id" in receipt && receipt._id != null
-      ? new mongoose.Types.ObjectId(String(receipt._id))
+      ? toObjectId(String(receipt._id))
       : "receipt_id" in input
-        ? new mongoose.Types.ObjectId(input.receipt_id)
+        ? toObjectId(input.receipt_id)
         : undefined;
   if (!receiptId) {
     throw new Error("GranotObservationReceipt is missing _id");

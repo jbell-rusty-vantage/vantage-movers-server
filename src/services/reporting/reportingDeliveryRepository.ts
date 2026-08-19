@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { withTransaction } from "../../db";
 import { ReportingDelivery } from "../../models/ReportingDelivery";
 import { ReportingRun } from "../../models/ReportingRun";
+import { toObjectId } from "../../utils/objectId";
 import {
   assertSafeReportingFailure,
   type ReportingSafeFailureEnvelope,
@@ -630,7 +631,7 @@ function asObjectId(value: string) {
   if (!/^[a-f\d]{24}$/i.test(value)) {
     throw new TypeError("Invalid reporting object ID.");
   }
-  return new mongoose.Types.ObjectId(value);
+  return toObjectId(value);
 }
 
 function isDuplicateKeyError(error: unknown): boolean {

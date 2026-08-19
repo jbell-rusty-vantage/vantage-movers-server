@@ -7,6 +7,7 @@ import {
 import { logger } from "../../logger";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
+import { toObjectId } from "../../utils/objectId";
 import { SYNCHRONIZATION_OUTCOMES } from "../../models/granotLifecycleSchemas";
 import type { DurableActor } from "../durableWork/types";
 import { recordOperationalEvent } from "../observability";
@@ -331,7 +332,7 @@ async function processRequestedReceipt(
   const now = nowFn();
   const owner = (deps.createOwner ?? createLeaseOwner)(trigger);
   const claimed = await (deps.claimOne ?? defaultClaimOne)(
-    buildClaimFilter(now, new mongoose.Types.ObjectId(receiptId)),
+    buildClaimFilter(now, toObjectId(receiptId)),
     buildClaimUpdate(now, owner),
   );
   if (!claimed) {
@@ -457,7 +458,7 @@ async function runFencedProcessor(
         $set: {
           "processing.state": "completed",
           "processing.completed_at": now,
-          "processing.latest_decision_id": new mongoose.Types.ObjectId(result.decision_id),
+          "processing.latest_decision_id": toObjectId(result.decision_id),
           "processing.technical_attempts": 0,
         },
         $unset: {
@@ -506,9 +507,7 @@ async function finalizePendingMatch(input: {
         $set: {
           "processing.state": "completed",
           "processing.completed_at": now,
-          "processing.latest_decision_id": new mongoose.Types.ObjectId(
-            input.result.decision_id,
-          ),
+          "processing.latest_decision_id": toObjectId(input.result.decision_id),
           "processing.technical_attempts": 0,
         },
         $inc: { "processing.match_attempt": 1 },
@@ -522,9 +521,7 @@ async function finalizePendingMatch(input: {
         $set: {
           "processing.state": "retry_scheduled",
           "processing.next_attempt_at": nextDue,
-          "processing.latest_decision_id": new mongoose.Types.ObjectId(
-            input.result.decision_id,
-          ),
+          "processing.latest_decision_id": toObjectId(input.result.decision_id),
           "processing.technical_attempts": 0,
         },
         $inc: { "processing.match_attempt": 1 },

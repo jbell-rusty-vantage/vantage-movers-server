@@ -8,6 +8,7 @@ import { withTransaction as defaultWithTransaction } from "../../db";
 import { logger } from "../../logger";
 import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
+import { toObjectId } from "../../utils/objectId";
 import { getGranotLifecycleActivationModel } from "../../models/GranotLifecycleActivation";
 import { type GranotObservationDocument } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
@@ -650,7 +651,7 @@ async function maybeCreateLead(input: {
         source_granularity_id: String(sourceScope.source_granularity_id),
       },
       context: {
-        command_id: new mongoose.Types.ObjectId().toHexString(),
+        command_id: String(new mongoose.Types.ObjectId()),
         idempotency_key: createLeadFromGranotIdempotencyKey(
           String(input.observation._id),
         ),
@@ -922,7 +923,7 @@ async function maybeSynchronizeMatchedLead(input: {
         expected_domain_revision: expectedRevision,
         desired_state: desired,
         context: {
-          command_id: new mongoose.Types.ObjectId().toHexString(),
+          command_id: String(new mongoose.Types.ObjectId()),
           idempotency_key: synchronizeLeadIdempotencyKey(String(observation._id)),
           payload_checksum: synchronizeLeadPayloadChecksum({
             lead_ref: { model: target.model, id: target.id },
@@ -1454,9 +1455,9 @@ function decisionSourceScope(
     return undefined;
   }
   return {
-    granot_crm_source_id: new mongoose.Types.ObjectId(snapshot.granot_crm_source_id),
-    lead_source_company: new mongoose.Types.ObjectId(snapshot.lead_source_company_id),
-    source_granularity_id: new mongoose.Types.ObjectId(snapshot.source_granularity_id),
+    granot_crm_source_id: toObjectId(snapshot.granot_crm_source_id),
+    lead_source_company: toObjectId(snapshot.lead_source_company_id),
+    source_granularity_id: toObjectId(snapshot.source_granularity_id),
     disposition: snapshot.lifecycle_disposition,
     policy_version: snapshot.lifecycle_policy_version,
   };
@@ -1480,12 +1481,8 @@ function jobProposal(
   const source_scope =
     policy.snapshot.lead_source_company_id && policy.snapshot.source_granularity_id
       ? {
-          lead_source_company: new mongoose.Types.ObjectId(
-            policy.snapshot.lead_source_company_id,
-          ),
-          source_granularity_id: new mongoose.Types.ObjectId(
-            policy.snapshot.source_granularity_id,
-          ),
+          lead_source_company: toObjectId(policy.snapshot.lead_source_company_id),
+          source_granularity_id: toObjectId(policy.snapshot.source_granularity_id),
         }
       : undefined;
   return {
@@ -1941,7 +1938,7 @@ async function defaultAdvanceTemporalWinner(input: {
   const update = {
     $set: {
       last_accepted_granot_observation: {
-        observation_id: new mongoose.Types.ObjectId(input.incoming.observation_id),
+        observation_id: toObjectId(input.incoming.observation_id),
         captured_at: input.incoming.captured_at,
       },
     },

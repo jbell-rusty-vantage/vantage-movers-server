@@ -141,8 +141,9 @@ export function createReportingSheetsAdapterFromApi(
           spreadsheetId,
           fields:
             "sheets(properties(sheetId,title,hidden,gridProperties(rowCount,columnCount)))",
-        });
-        return (response.data.sheets ?? [])
+        }, {});
+        const spreadsheet = response.data as sheets_v4.Schema$Spreadsheet;
+        return (spreadsheet.sheets ?? [])
           .map((sheet) => sheet.properties)
           .filter(
             (

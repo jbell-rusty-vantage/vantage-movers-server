@@ -12,6 +12,7 @@ import {
 import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
+import { isObjectIdString, toObjectId } from "../../utils/objectId";
 import type { EntityRef } from "../granotLifecycle/types";
 import type { CanonicalCommandContext, CommandOrigin } from "./types";
 
@@ -415,7 +416,7 @@ async function stampAggregateRevision(input: {
   const model = writableAggregateModel(input.entity.model);
   const result = await model.collection.updateOne(
     {
-      _id: new mongoose.Types.ObjectId(input.entity.id),
+      _id: toObjectId(input.entity.id),
       domain_revision: input.revision_before,
     },
     {
@@ -452,8 +453,8 @@ function writableAggregateModel(model: EntityRef["model"]) {
 function objectIdOrUndefined(
   value: string | null | undefined,
 ): mongoose.Types.ObjectId | undefined {
-  if (!value || !mongoose.Types.ObjectId.isValid(value)) return undefined;
-  return new mongoose.Types.ObjectId(value);
+  if (!value || !isObjectIdString(value)) return undefined;
+  return toObjectId(value);
 }
 
 function readPath(value: Record<string, unknown>, path: string): unknown {

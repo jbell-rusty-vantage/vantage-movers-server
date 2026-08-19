@@ -28,7 +28,7 @@ export function existingWriteContextFromRequest(input: {
   const actor = compatibilityActorFromAuth(auth, input.req, requestId);
   const durableKey = durableBusinessKey(input.payload);
   return {
-    command_id: new mongoose.Types.ObjectId().toHexString(),
+    command_id: String(new mongoose.Types.ObjectId()),
     idempotency_key: durableKey
       ? `existing:${input.command_name}:${durableKey}`
       : `request:${input.command_name}:${requestId}`,
@@ -174,5 +174,5 @@ function readRequestId(req: Request): string {
   if (typeof raw === "string" && raw.trim()) return raw.trim();
   const header = req.header("x-request-id")?.trim();
   if (header) return header;
-  return new mongoose.Types.ObjectId().toHexString();
+  return String(new mongoose.Types.ObjectId());
 }

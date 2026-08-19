@@ -20,7 +20,10 @@ export type LiveTestGoogleApiFactory = (auth: Auth.OAuth2Client) => LiveTestGoog
 function defaultLiveTestGoogleApiFactory(auth: Auth.OAuth2Client): LiveTestGoogleApiClients {
   return {
     driveApi: google.drive({ version: "v3", auth } as unknown as drive_v3.Options),
-    sheetsApi: google.sheets({ version: "v4", auth }),
+    sheetsApi: google.sheets({
+      version: "v4",
+      auth,
+    } as unknown as sheets_v4.Options),
   };
 }
 

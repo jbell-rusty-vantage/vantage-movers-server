@@ -3,6 +3,7 @@ import { Agent } from "../../models/Agent";
 import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
+import { isObjectIdString, toObjectId } from "../../utils/objectId";
 import {
   getGranotRecordLinkModel,
   type GranotRecordLinkDocument,
@@ -424,7 +425,7 @@ async function applyAssociation(
   const job = input.execution.job!;
   const lead_ref = {
     model: input.lead_ref.model,
-    id: new mongoose.Types.ObjectId(input.lead_ref.id),
+    id: toObjectId(input.lead_ref.id),
   };
   if (action.kind === "establish") {
     const linkId = new mongoose.Types.ObjectId();
@@ -512,7 +513,7 @@ function buildLeadUpdate(
 ): { all: Record<string, unknown>; reportable: Record<string, unknown> } {
   const all: Record<string, unknown> = {};
   const reportable: Record<string, unknown> = {};
-  const observationId = new mongoose.Types.ObjectId(
+  const observationId = toObjectId(
     input.desired_state.temporal_winner.observation_id,
   );
 
@@ -528,7 +529,7 @@ function buildLeadUpdate(
       };
     }
     if (path === "receiver_agent" && typeof value === "string") {
-      value = new mongoose.Types.ObjectId(value);
+      value = toObjectId(value);
     }
     all[path] = value;
     reportable[path] = value;
@@ -635,7 +636,7 @@ async function advanceTemporalWinnerOnly(
     {
       $set: {
         last_accepted_granot_observation: {
-          observation_id: new mongoose.Types.ObjectId(
+          observation_id: toObjectId(
             input.desired_state.temporal_winner.observation_id,
           ),
           captured_at: input.desired_state.temporal_winner.captured_at,
@@ -765,10 +766,10 @@ function leadModel(model: LeadModel): mongoose.Model<Record<string, unknown>> {
 }
 
 function objectId(value: string | null | undefined): mongoose.Types.ObjectId {
-  if (!value || !mongoose.Types.ObjectId.isValid(value)) {
+  if (!value || !isObjectIdString(value)) {
     throw new Error("Decision ID is required.");
   }
-  return new mongoose.Types.ObjectId(value);
+  return toObjectId(value);
 }
 
 function isDuplicateKeyError(error: unknown): boolean {

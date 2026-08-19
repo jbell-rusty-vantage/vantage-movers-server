@@ -164,7 +164,8 @@ export async function runTestArtifactJanitor(input?: {
     includeItemsFromAllDrives: true,
   });
 
-  const candidates: TestArtifactCandidate[] = (listed.data.files ?? [])
+  const files = (listed.data.files ?? []) as drive_v3.Schema$File[];
+  const candidates: TestArtifactCandidate[] = files
     .filter((file) => file.id && file.createdTime)
     .map((file) => ({
       fileId: file.id!,

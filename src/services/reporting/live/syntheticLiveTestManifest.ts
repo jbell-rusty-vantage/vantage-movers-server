@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { toObjectId } from "../../../utils/objectId";
 import { computeChecksum } from "../../durableWork";
 import type { ReportingCandidateManifestV1 } from "../catalog";
 import { buildOutputPageMappings } from "../query/canonicalReporting";
@@ -16,7 +17,7 @@ export const LIVE_TEST_HARNESS_LIMITATION =
   "Canonical Mongo row payloads are not read for page content; synthetic rows are injected via the live-test manifest page adapter while the production worker lease/checkpoint/verify/promotion/Google OAuth path executes. The harness invokes runReportingDeliveryWorker directly (in-process) and does not exercise HTTP routes, Vercel cron, or the reporting queue consumer path.";
 
 export function liveTestFormLeadObjectIds(): mongoose.Types.ObjectId[] {
-  return LIVE_TEST_FORM_LEAD_IDS.map((id) => new mongoose.Types.ObjectId(id));
+  return LIVE_TEST_FORM_LEAD_IDS.map(toObjectId);
 }
 
 export async function seedLiveTestCanonicalFormLeads(): Promise<void> {
@@ -25,7 +26,7 @@ export async function seedLiveTestCanonicalFormLeads(): Promise<void> {
   const timestamp = new Date("2026-01-10T12:00:00.000Z");
   await FormLead.collection.insertMany(
     LIVE_TEST_FORM_LEAD_IDS.map((id) => ({
-      _id: new mongoose.Types.ObjectId(id),
+      _id: toObjectId(id),
       updatedAt,
       createdAt: updatedAt,
       timestamp,

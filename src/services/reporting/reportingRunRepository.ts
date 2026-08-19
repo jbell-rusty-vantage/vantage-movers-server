@@ -1,5 +1,6 @@
 import { ReportingRun } from "../../models/ReportingRun";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import type { ReportingStreamCheckpointV1 } from "./catalog";
 
 export type ReportingRunStatus =
@@ -689,5 +690,5 @@ function asObjectId(value: string) {
   if (!/^[a-f\d]{24}$/i.test(value)) {
     throw new TypeError("Invalid reporting run ID.");
   }
-  return new mongoose.Types.ObjectId(value);
+  return toObjectId(value);
 }

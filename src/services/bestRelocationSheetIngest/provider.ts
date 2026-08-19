@@ -215,7 +215,7 @@ export async function inspectOrRepairManagedIdentity(
       spreadsheetId: tab.spreadsheetId,
       ranges: candidateRepairs.map((repair) => repair.range),
       valueRenderOption: "FORMATTED_VALUE",
-    });
+    }, {});
     for (let index = 0; index < candidateRepairs.length; index += 1) {
       const repair = candidateRepairs[index];
       const actual = String(
@@ -264,12 +264,12 @@ export async function inspectOrRepairManagedIdentity(
           },
         })),
       },
-    });
+    }, {});
     const readBack = await client.spreadsheets.values.batchGet({
       spreadsheetId: tab.spreadsheetId,
       ranges: repairs.map((repair) => repair.range),
       valueRenderOption: "FORMATTED_VALUE",
-    });
+    }, {});
     for (let index = 0; index < repairs.length; index += 1) {
       const changed =
         write.data.replies?.[index]?.findReplace?.occurrencesChanged ?? 0;
@@ -311,8 +311,8 @@ async function inspectLidFormulaHealth(
     range: tab.rangeRead,
     valueRenderOption: "FORMULA",
     majorDimension: "ROWS",
-  });
-  const rows = response.data.values ?? [];
+  }, {});
+  const rows = (response.data.values ?? []) as unknown[][];
   const populated = rows.slice(1).filter((row) =>
     row.some((value) => String(value ?? "").trim()),
   );

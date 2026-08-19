@@ -6,7 +6,7 @@ import mongoose from "mongoose";
 import { parseReceiptWakeup } from "../../src/services/granotLifecycle/drainer";
 
 test("consumer accepts only { receipt_id }", async () => {
-  const receiptId = new mongoose.Types.ObjectId().toHexString();
+  const receiptId = String(new mongoose.Types.ObjectId());
   assert.equal(await parseReceiptWakeup({ receipt_id: receiptId }), receiptId);
   await assert.rejects(() => parseReceiptWakeup({ receipt_id: receiptId, extra: 1 }));
 });

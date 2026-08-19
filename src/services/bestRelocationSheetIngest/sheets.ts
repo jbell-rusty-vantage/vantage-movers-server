@@ -169,11 +169,12 @@ export async function readTab(
   spreadsheetId: string,
   tabName: SourceTab,
 ): Promise<TabReadResult> {
-  const { data: metadata } = await client.spreadsheets.get({
+  const metadataResponse = await client.spreadsheets.get({
     spreadsheetId,
     fields:
       "properties.title,sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)))",
-  });
+  }, {});
+  const metadata = metadataResponse.data as sheets_v4.Schema$Spreadsheet;
   const sheet = metadata.sheets?.find(
     (candidate) => candidate.properties?.title?.trim() === tabName,
   );
@@ -184,14 +185,15 @@ export async function readTab(
   );
   const columnCount = sheet.properties?.gridProperties?.columnCount ?? 26;
   const rangeRead = `'${tabName.replace(/'/g, "''")}'!A1:${columnLetter(columnCount)}${rowCount}`;
-  const { data } = await client.spreadsheets.values.get({
+  const valueResponse = await client.spreadsheets.values.get({
     spreadsheetId,
     range: rangeRead,
     majorDimension: "ROWS",
     valueRenderOption: "FORMATTED_VALUE",
-  });
-  const matrix = (data.values ?? []).map((row) =>
-    Array.isArray(row) ? row.map(cell) : [],
+  }, {});
+  const data = valueResponse.data as sheets_v4.Schema$ValueRange;
+  const matrix = ((data.values ?? []) as unknown[][]).map((row) =>
+    row.map(cell),
   );
   const headerRow = matrix[0] ?? [];
   const lastHeader = headerRow.reduce(

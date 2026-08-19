@@ -6,6 +6,7 @@ import { getCallLeadModel } from "../../../models/CallLead";
 import { CancelledLead } from "../../../models/CancelledLead";
 import { getFormLeadModel } from "../../../models/FormLead";
 import { IngestionConflict } from "../../../models/IngestionConflict";
+import { toObjectId } from "../../../utils/objectId";
 import { canonicalJson, computeChecksum } from "../../durableWork";
 import {
   EXCEPTION_TYPES,
@@ -770,7 +771,7 @@ export function buildScopedUnresolvedCancellationPipeline(
       .filter((granularity) => granularity.companyId === company.id)
       .map((granularity) => granularity.key);
     return {
-      source_company_id: new mongoose.Types.ObjectId(company.id),
+      source_company_id: toObjectId(company.id),
       ...(selectedGranularities.length
         ? {
             source_granularity_key: {

@@ -5,6 +5,7 @@ import {
   DomainCommandExecution,
   readStoredCanonicalCommandResult,
 } from "../../models/DomainCommandExecution";
+import { isObjectIdString, toObjectId } from "../../utils/objectId";
 import { recordOperationalEvent } from "../observability";
 import { assertCommandContext, type CommandContextVerifier } from "./commandContext";
 import {
@@ -65,8 +66,8 @@ export function createIdempotentCanonicalCommandExecutor(input: {
     const context = normalizeCommandContext(command.context);
     await input.connect();
     const now = clock();
-    const commandExecutionId = mongoose.Types.ObjectId.isValid(context.command_id)
-      ? new mongoose.Types.ObjectId(context.command_id)
+    const commandExecutionId = isObjectIdString(context.command_id)
+      ? toObjectId(context.command_id)
       : new mongoose.Types.ObjectId();
 
     let outcome: CanonicalCommandExecutionOutcome;

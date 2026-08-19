@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { ReportingRunManifest } from "../../models/ReportingRunManifest";
+import { toObjectId } from "../../utils/objectId";
 import type { ReportingCandidateManifestV1 } from "./catalog";
 
 export const REPORTING_MANIFEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -104,7 +105,7 @@ function asObjectId(value: string) {
   if (!/^[a-f\d]{24}$/i.test(value)) {
     throw new TypeError("Invalid reporting run ID.");
   }
-  return new mongoose.Types.ObjectId(value);
+  return toObjectId(value);
 }
 
 function isDuplicateKeyError(error: unknown): boolean {

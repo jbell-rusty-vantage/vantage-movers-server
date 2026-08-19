@@ -329,7 +329,7 @@ export async function detectMissingSourceActions(input: {
 }
 
 export function preallocateReceiptId(): string {
-  return new mongoose.Types.ObjectId().toHexString();
+  return String(new mongoose.Types.ObjectId());
 }
 
 export async function resolvedActionIdsForRun(input: {

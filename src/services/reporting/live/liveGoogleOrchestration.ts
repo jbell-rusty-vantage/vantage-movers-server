@@ -6,6 +6,7 @@ import {
 } from "../../../config/domain/reportingLiveTest";
 import { connectMongo } from "../../../db";
 import { ReportingRun } from "../../../models/ReportingRun";
+import { toObjectId } from "../../../utils/objectId";
 import { getGoogleDriveAccessTokenHealth } from "../../googleDriveOAuth/googleDriveOAuth.service";
 import type { ReportingDriveAdapter } from "../google/reportingDriveAdapter";
 import type { ReportingSheetsAdapter } from "../google/reportingSheetsAdapter";
@@ -88,7 +89,7 @@ async function runWorkerToTerminal(input: {
   const maxAttempts = input.maxAttempts ?? 8;
   let attempts = 0;
   let lastStatus = "queued";
-  const runObjectId = new mongoose.Types.ObjectId(input.runId);
+  const runObjectId = toObjectId(input.runId);
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     attempts += 1;
     const outcome = await runReportingDeliveryWorker(
@@ -247,7 +248,7 @@ export async function runLiveGoogleOrchestration(): Promise<LiveGoogleHarnessRes
       drive,
     });
     const replaceRun = await ReportingRun.collection.findOne({
-      _id: new mongoose.Types.ObjectId(replaceSeed.runId),
+      _id: toObjectId(replaceSeed.runId),
     });
     const replaceDelivery = await loadReportingDelivery(replaceSeed.runId);
     steps.push({
@@ -350,7 +351,7 @@ export async function runLiveGoogleOrchestration(): Promise<LiveGoogleHarnessRes
         { sheets, drive },
       );
       const midRun = await ReportingRun.collection.findOne({
-        _id: new mongoose.Types.ObjectId(snapshotSeed.runId),
+        _id: toObjectId(snapshotSeed.runId),
       });
       const resumed = await runWorkerToTerminal({
         runId: snapshotSeed.runId,

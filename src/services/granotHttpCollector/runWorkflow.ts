@@ -1121,7 +1121,7 @@ export function toDurableGranotValue(value: unknown): unknown {
     }
     return value.toISOString();
   }
-  if (value instanceof Types.ObjectId) return value.toHexString();
+  if (value instanceof Types.ObjectId) return String(value);
   if (Array.isArray(value)) return value.map(toDurableGranotValue);
   if (typeof value === "object") {
     const prototype = Object.getPrototypeOf(value);

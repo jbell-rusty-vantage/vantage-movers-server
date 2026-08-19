@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { ReportingDestination } from "../../models/ReportingDestination";
+import { toObjectId } from "../../utils/objectId";
 import type { DurableActor } from "../durableWork";
 import { snapshotChecksumFromDestinationRecord } from "./destinationContract";
 
@@ -68,7 +69,7 @@ export async function casUpdateManagedSheetAfterPromotion(input: {
   }
   return ReportingDestination.collection.findOneAndUpdate(
     {
-      _id: new mongoose.Types.ObjectId(input.destinationId),
+      _id: toObjectId(input.destinationId),
       state: "active",
       strategy: "replace_tab",
       "managed_tab.immutable_sheet_id": input.expectedOldSheetId,
@@ -102,7 +103,7 @@ export async function refreshDestinationHealthAndDenylist(input: {
   if (!mongoose.isValidObjectId(input.destinationId)) return false;
   const result = await ReportingDestination.collection.updateOne(
     {
-      _id: new mongoose.Types.ObjectId(input.destinationId),
+      _id: toObjectId(input.destinationId),
       state: "active",
       access_status: "verified",
     },

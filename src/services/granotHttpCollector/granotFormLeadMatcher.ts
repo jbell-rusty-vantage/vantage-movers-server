@@ -1,4 +1,4 @@
-import { Types } from "mongoose";
+import { isObjectIdString } from "../../utils/objectId";
 import { resolveSourceCompanyFromLabel } from "../../config/domain";
 import { getFormLeadModel, type FormLeadDocument } from "../../models/FormLead";
 import {
@@ -71,7 +71,7 @@ export async function resolveGranotFormLead(
     }
   }
 
-  if (refNo && Types.ObjectId.isValid(refNo)) {
+  if (refNo && isObjectIdString(refNo)) {
     const lead = await (dependencies.findByMongoId ?? findByMongoId)(refNo);
     if (lead) {
       return found("mongo_id", lead, input.source_label);

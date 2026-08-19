@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { connectMongo } from "../../db";
 import { GranotAutomationSource } from "../../models/GranotAutomationSource";
+import { toObjectId } from "../../utils/objectId";
 import type { DurableActor } from "../durableWork";
 import {
   evaluateGranotAutomationCompatibility,
@@ -280,7 +281,7 @@ export function canonicalizeGranotSourceIds(sourceIds: string[]): string[] {
     );
   }
   const canonical = sourceIds.map((id) =>
-    String(new mongoose.Types.ObjectId(id)),
+    String(toObjectId(id)),
   );
   if (new Set(canonical).size !== canonical.length) {
     throw new GranotAutomationSourceValidationError(

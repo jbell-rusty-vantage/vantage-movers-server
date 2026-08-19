@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import mongoose from "mongoose";
+import { isObjectIdString } from "../../utils/objectId";
 import type { LeadDesiredStatePlan } from "./leadDesiredState";
 import type { LeadModel } from "./types";
 
@@ -152,7 +153,7 @@ export function assertAuthorizedLeadDesiredState(
 ): void {
   if (
     !desired.temporal_winner?.observation_id ||
-    !mongoose.Types.ObjectId.isValid(desired.temporal_winner.observation_id) ||
+    !isObjectIdString(desired.temporal_winner.observation_id) ||
     String(desired.temporal_winner.observation_id).length !== 24 ||
     !(desired.temporal_winner.captured_at instanceof Date) ||
     Number.isNaN(desired.temporal_winner.captured_at.getTime())

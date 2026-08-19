@@ -1,4 +1,5 @@
 import mongoose, { type ClientSession } from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { logger } from "../../logger";
 import { withTransaction as defaultWithTransaction } from "../../db";
 import {
@@ -239,7 +240,7 @@ export async function requeueDeadLetterReceipt(
   const owner = durableActorFromOwnerActor(actor);
   const now = deps.now ?? (() => new Date());
   const runTransaction = deps.withTransaction ?? defaultWithTransaction;
-  const receiptId = new mongoose.Types.ObjectId(input.id);
+  const receiptId = toObjectId(input.id);
 
   const occurredAt = now();
   const updated = await runTransaction(async (session) => {

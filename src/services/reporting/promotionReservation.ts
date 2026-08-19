@@ -4,10 +4,11 @@ import { withTransaction } from "../../db";
 import { ReportingDestination } from "../../models/ReportingDestination";
 import { ReportingDelivery } from "../../models/ReportingDelivery";
 import { ReportingRun } from "../../models/ReportingRun";
+import { toObjectId } from "../../utils/objectId";
 import type { PromotionInspection } from "./promotion";
 
 function asObjectId(id: string): mongoose.Types.ObjectId {
-  return new mongoose.Types.ObjectId(id);
+  return toObjectId(id);
 }
 
 export type PromotionReservationStatus =

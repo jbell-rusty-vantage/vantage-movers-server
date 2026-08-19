@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { BookedLead } from "../../models/BookedLead";
+import { toObjectId } from "../../utils/objectId";
 import {
   createBookedLeadSchema,
   createCallLeadSchema,
@@ -448,7 +449,7 @@ export async function runExistingCreateLeadlessBooking(input: {
     data: bookingId
       ? await (async () => {
           const booking = await populateBookedLead(
-            new mongoose.Types.ObjectId(bookingId),
+            toObjectId(bookingId),
           );
           return {
             booking,

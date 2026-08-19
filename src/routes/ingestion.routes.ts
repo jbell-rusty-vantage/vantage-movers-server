@@ -520,7 +520,7 @@ function ownerActor(req: Request) {
 }
 
 function requestId(req: Request): string {
-  return req.header("x-request-id")?.trim() || new mongoose.Types.ObjectId().toHexString();
+  return req.header("x-request-id")?.trim() || String(new mongoose.Types.ObjectId());
 }
 
 function configuredSourceSummary() {
