@@ -64,6 +64,15 @@ export type BookingLeadCandidateProjection = BookingLeadSuggestion & {
   suggested: boolean;
 };
 
+export type BookingCandidateBrowserPolicy = {
+  confidence: "high" | "medium";
+  match_method: SynchronizationMatchMethod;
+  reason_codes: string[];
+  in_source_scope: boolean;
+  suggested: boolean;
+  requires_override_reason: boolean;
+};
+
 export type BookingReconciliationNoCaseReason =
   | "missing_job_number"
   | "not_booking_evidence"
@@ -645,6 +654,46 @@ export async function searchBookingLeadCandidates(
     const current = await store.loadCurrentContext(input.observation_id, session);
     return projectBookingLeadCandidates(current.identity);
   });
+}
+
+export function projectBookingCandidateBrowserPolicy(input: {
+  lead_ref: { model: LeadModel; id: string };
+  lead_normalized_job_no?: string;
+  lead_source_company?: string;
+  lead_source_granularity_id?: string;
+  case_normalized_job_no: string;
+  case_source_scope?: { lead_source_company: string; source_granularity_id: string };
+  canonical_candidates: BookingLeadCandidateProjection[];
+}): BookingCandidateBrowserPolicy {
+  const canonical = input.canonical_candidates.find(
+    (candidate) => candidate.lead_ref.model === input.lead_ref.model &&
+      candidate.lead_ref.id === input.lead_ref.id,
+  );
+  const inSourceScope = Boolean(input.case_source_scope) &&
+    input.lead_source_company === input.case_source_scope?.lead_source_company &&
+    input.lead_source_granularity_id === input.case_source_scope?.source_granularity_id;
+  if (canonical) {
+    return {
+      confidence: canonical.confidence,
+      match_method: canonical.match_method,
+      reason_codes: canonical.reason_codes,
+      in_source_scope: inSourceScope,
+      suggested: canonical.suggested,
+      requires_override_reason: !inSourceScope,
+    };
+  }
+  const exactJob = Boolean(input.lead_normalized_job_no) &&
+    input.lead_normalized_job_no === input.case_normalized_job_no;
+  return {
+    confidence: exactJob ? "high" : "medium",
+    match_method: exactJob
+      ? input.lead_ref.model === "CallLead" ? "call_job_no_exact" : "form_ref_no_exact"
+      : "source_scoped_contact",
+    reason_codes: [exactJob ? "candidate_job_compatible" : "candidate_browse_match"],
+    in_source_scope: inSourceScope,
+    suggested: false,
+    requires_override_reason: !inSourceScope,
+  };
 }
 
 function canonicalCandidateMatchMethod(

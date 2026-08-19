@@ -33,8 +33,8 @@ Open starts with `case_revision=1`, `evidence_revision=1`. A new Observation app
 
 ## Suggestions, privacy, and posture
 
-Suggestions/candidates are projections of the current Unit 14 identity result, not a second matcher. Record Link, exact Form, exact Call Job, and Booking-owner evidence are high confidence; Source Scope contact is medium; ambiguity has no suggestion. Duplicate Form and Bad Form rows are excluded. Candidate search rereads current identity and is available internally for 24 hours only; it never attaches or corrects a Lead.
+Suggestions are projections of the current Unit 14 identity result. Record Link, exact Form, exact Call Job, and Booking-owner evidence are high confidence; Source Scope contact is medium; ambiguity has no suggestion. Unit 23's case-scoped browser additionally queries current eligible Leads for Owner review, defaults to Source Scope, and marks all-scope rows with override-warning metadata. Duplicate Form and Bad Form rows are excluded server-side. Browsing and the 24-hour identity refresh never attach or correct a Lead.
 
 Evidence contains IDs, capture time, and action only. Bounded display context is separate and never becomes an official Booking input. Open/refresh events contain masked IDs; `granot_lifecycle_open_cases{kind="booking",mode}` is recomputed cardinality, so evidence refresh does not increment it.
 
-Checked-in `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED=false` and every Booking/Release/Referral/email command flag remains false. Unit 23 owns read APIs/Admin review before a separately approved case enablement; Units 24–25 own owner commands.
+Checked-in `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED=false` and every Booking/Release/Referral/email command flag remains false. Unit 23 supplies protected read APIs and the read-only Admin review workflow; separately approved deployment/index verification/Owner review still precede any case enablement. Units 24–25 own owner commands.

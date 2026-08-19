@@ -10,6 +10,8 @@ import { createGranotLifecycleAdminRouter } from "./granot-lifecycle-admin.route
 const SECRET = "synthetic-admin-signing-secret";
 const receiptId = new mongoose.Types.ObjectId().toHexString();
 let lastRequeue: { id: string; reason: string; role: string } | null = null;
+let lastCaseQuery: Record<string, unknown> | null = null;
+let lastCandidateQuery: Record<string, unknown> | null = null;
 
 const app = express();
 app.use(express.json());
@@ -27,6 +29,46 @@ app.use(
         payload_sha256: "d".repeat(64),
       };
     },
+    listCases: async (query) => {
+      lastCaseQuery = query;
+      return { items: [], next_cursor: null };
+    },
+    getCaseDetail: async (caseId) => caseId === receiptId ? {
+      case_id: caseId,
+      kind: "booking",
+      state: "open",
+      mode: "create_missing_booking",
+      sequence_number: 1,
+      case_revision: 1,
+      evidence_revision: 1,
+      normalized_job_no: "SYNTHETIC 100",
+      job_no: "synthetic-100",
+      opened_at: "2026-08-17T16:00:00.000Z",
+      last_evidence_at: "2026-08-17T16:00:00.000Z",
+      evidence: [],
+      observed_context: { section_label: "Granot evidence — not official Vantage values" },
+      contacts: {},
+      candidate_search: { available: true, default_scope: "source", all_scope_warning: true },
+      official_current: {},
+      official_draft: {},
+      timeline: {
+        items: [], next_cursor: null, current: {},
+        capabilities: { booking_cases: true, release_cases: false, discrepancies: false, official_facts: true },
+      },
+      capabilities: { commands: false, referral: false, release_cases: false, discrepancies: false },
+    } : null,
+    listCandidates: async (caseId, query) => {
+      lastCandidateQuery = query;
+      return caseId === receiptId ? { items: [], next_cursor: null } : null;
+    },
+    projectLeadTimeline: async (_model, leadId) => leadId === receiptId ? {
+      items: [], next_cursor: null, current: {},
+      capabilities: { booking_cases: true, release_cases: false, discrepancies: false, official_facts: true },
+    } : null,
+    projectJob: async () => ({
+      items: [], next_cursor: null, current: {},
+      capabilities: { booking_cases: true, release_cases: false, discrepancies: false, official_facts: true },
+    }),
   }),
 );
 
@@ -53,10 +95,16 @@ after(async () => {
 
 afterEach(() => {
   lastRequeue = null;
+  lastCaseQuery = null;
+  lastCandidateQuery = null;
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = SECRET;
 });
 
-function signedHeaders(role: "owner" | "admin", path: string): Record<string, string> {
+function signedHeaders(
+  role: "owner" | "admin",
+  path: string,
+  method: "GET" | "POST" = "POST",
+): Record<string, string> {
   const timestamp = `${Date.now()}`;
   const requestId = `req-requeue-${timestamp}`;
   const signature = computeAdminActorSignature(
@@ -66,7 +114,7 @@ function signedHeaders(role: "owner" | "admin", path: string): Record<string, st
       role,
       timestamp,
       requestId,
-      method: "POST",
+      method,
       path,
     },
     SECRET,
@@ -120,4 +168,85 @@ test("[AC-37] invalid requeue body is GRANOT_VALIDATION_FAILED", async () => {
   assert.equal(response.status, 400);
   const body = (await response.json()) as { code: string };
   assert.equal(body.code, GRANOT_LIFECYCLE_ERROR_CODES.VALIDATION_FAILED);
+});
+
+test("[AC-18] [AC-19] read list applies the exact default queue for Owner/Admin", async () => {
+  const path = "/api/v1/admin/granot-lifecycle/cases";
+  for (const role of ["owner", "admin"] as const) {
+    const response = await fetch(`${baseUrl}${path}`, { headers: signedHeaders(role, path, "GET") });
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { ok: boolean; data: { items: unknown[] } };
+    assert.equal(body.ok, true);
+    assert.deepEqual(body.data.items, []);
+    assert.equal(lastCaseQuery?.state, "open");
+    assert.equal(lastCaseQuery?.sort, "last_evidence_at");
+    assert.equal(lastCaseQuery?.order, "desc");
+    assert.equal(lastCaseQuery?.limit, 25);
+  }
+});
+
+test("[AC-35] unsigned lifecycle reads are denied before projection", async () => {
+  const path = "/api/v1/admin/granot-lifecycle/cases";
+  const response = await fetch(`${baseUrl}${path}`);
+  assert.equal(response.status, 403);
+  assert.equal(lastCaseQuery, null);
+});
+
+test("[AC-35] strict case filters reject unknown keys with a safe 400", async () => {
+  const path = "/api/v1/admin/granot-lifecycle/cases?payload=forbidden";
+  const response = await fetch(`${baseUrl}${path}`, { headers: signedHeaders("owner", path, "GET") });
+  assert.equal(response.status, 400);
+  const body = (await response.json()) as { code: string; error: string };
+  assert.equal(body.code, GRANOT_LIFECYCLE_ERROR_CODES.VALIDATION_FAILED);
+  assert.equal(body.error, "Invalid request");
+});
+
+test("[AC-35] [AC-39] case detail has safe 404 and exact read envelope", async () => {
+  const foundPath = `/api/v1/admin/granot-lifecycle/cases/${receiptId}`;
+  const found = await fetch(`${baseUrl}${foundPath}`, { headers: signedHeaders("admin", foundPath, "GET") });
+  assert.equal(found.status, 200);
+  const foundBody = (await found.json()) as { data: { observed_context: { section_label: string } } };
+  assert.equal(foundBody.data.observed_context.section_label, "Granot evidence — not official Vantage values");
+
+  const missingId = new mongoose.Types.ObjectId().toHexString();
+  const missingPath = `/api/v1/admin/granot-lifecycle/cases/${missingId}`;
+  const missing = await fetch(`${baseUrl}${missingPath}`, { headers: signedHeaders("admin", missingPath, "GET") });
+  assert.equal(missing.status, 404);
+  const missingBody = (await missing.json()) as { code: string };
+  assert.equal(missingBody.code, GRANOT_LIFECYCLE_ERROR_CODES.CASE_NOT_FOUND);
+});
+
+test("[AC-35] candidate browser is Owner-only for source and all scope and performs a read", async () => {
+  const path = `/api/v1/admin/granot-lifecycle/cases/${receiptId}/candidates?scope=all&q=synthetic`;
+  const denied = await fetch(`${baseUrl}${path}`, { headers: signedHeaders("admin", path, "GET") });
+  assert.equal(denied.status, 403);
+
+  const allowed = await fetch(`${baseUrl}${path}`, { headers: signedHeaders("owner", path, "GET") });
+  assert.equal(allowed.status, 200);
+  const observed = lastCandidateQuery as Record<string, unknown> | null;
+  assert.ok(observed);
+  assert.equal(observed.scope, "all");
+  assert.equal(observed.q, "synthetic");
+  assert.equal(observed.limit, 25);
+});
+
+test("[AC-40] Lead timeline validates model/ID and preserves generic missing Lead envelope", async () => {
+  const foundPath = `/api/v1/admin/leads/FormLead/${receiptId}/lifecycle`;
+  const found = await fetch(`${baseUrl}${foundPath}`, { headers: signedHeaders("admin", foundPath, "GET") });
+  assert.equal(found.status, 200);
+
+  const missingId = new mongoose.Types.ObjectId().toHexString();
+  const missingPath = `/api/v1/admin/leads/CallLead/${missingId}/lifecycle`;
+  const missing = await fetch(`${baseUrl}${missingPath}`, { headers: signedHeaders("admin", missingPath, "GET") });
+  assert.equal(missing.status, 404);
+  assert.deepEqual(await missing.json(), { ok: false, error: "Lead not found" });
+});
+
+test("[AC-20] Job timeline is readable by Admin and strictly bounds pagination", async () => {
+  const path = "/api/v1/admin/granot-lifecycle/jobs/synthetic-100?limit=200";
+  const response = await fetch(`${baseUrl}${path}`, { headers: signedHeaders("admin", path, "GET") });
+  assert.equal(response.status, 200);
+  const invalidPath = "/api/v1/admin/granot-lifecycle/jobs/synthetic-100?limit=201";
+  const invalid = await fetch(`${baseUrl}${invalidPath}`, { headers: signedHeaders("admin", invalidPath, "GET") });
+  assert.equal(invalid.status, 400);
 });

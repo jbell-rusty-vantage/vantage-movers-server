@@ -33,6 +33,7 @@ alwaysApply: false
 - Booking create can use direct `lead_ref`/`lead_model` plus `agent_allocations`, or `/booked-leads/from-source` with `lead_type` (`FormLead` uses `form_lead_id`; `CallLead` uses `call_job_no` or `call_phone_number`).
 - Cancellation create requires either `booked_lead` or `lead_id`; if both are present, services enforce that they point to the same booking/source lead chain.
 - Owner requeue `POST /api/v1/admin/granot-lifecycle/receipts/:id/requeue` body is `{ reason }` (trim 10–500, unknown keys rejected). Only `dead_letter` is eligible.
+- Granot lifecycle case/Job/Lead reads use strict cursor/filter schemas in `v1/granotLifecycle.validation.ts`. Case list defaults to open/newest evidence; timeline limit is 100 (max 200); candidate browsing defaults to Source Scope and is Owner-only. Unknown keys and malformed IDs/dates/ranges/cursors fail with `GRANOT_VALIDATION_FAILED`.
 
 ## Change Guidance
 

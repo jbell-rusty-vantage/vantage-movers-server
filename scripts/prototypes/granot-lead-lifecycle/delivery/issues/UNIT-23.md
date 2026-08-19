@@ -1,6 +1,6 @@
 # Unit 23 — Booking lifecycle reads, Admin queue/detail, candidate browser, and Job/Lead timeline
 
-> **Contract maturity: implementation-ready; implementation remains blocked by Unit 22.** This is the API/Admin half of S15. It exposes masked cursor-based Booking-case reads, server-owned candidates, complete Job/Lead lifecycle projections, and an Owner-only Admin read workflow. It deploys reads before commands; no owner mutation, Booking/Cancellation effect, or production flag enablement is authorized.
+> **Contract maturity: implemented; delivery gate blocked by aggregate index verification.** Verified Unit 22 repository evidence satisfies the implementation prerequisite. This is the API/Admin half of S15. It exposes masked cursor-based Booking-case reads, server-owned candidates, complete Job/Lead lifecycle projections, and an Owner-only Admin read workflow. It deploys reads before commands; no owner mutation, Booking/Cancellation effect, or production flag enablement is authorized.
 
 ## 1. Authority and required reading
 
@@ -18,7 +18,7 @@ Deliver the read-only owner workflow for Granot Booking Reconciliation. Add auth
 ## 3. Repository, branch, and prerequisites
 
 - **Repositories/branches:** `vantage-main-server` / `granot-lead-lifecycle` and `vantage-admin` / `granot-lead-lifecycle`.
-- **Blocked by:** verified Unit 22 implementation/completion, including exact model/indexes, service DTOs, candidate policy, concurrent proof, flag-off ending posture, and Section 34.5 verify. Unit 22 is currently blocked by Unit 18, so this unit is not implementation-ready in sequence merely because its contract is complete.
+- **Prerequisite result:** Unit 22 is landed and contract-complete, including its exact model/five declared indexes, service/candidate policy, replica concurrency proof, and flag-off posture. The required aggregate read-only index verify still reports 20 missing predecessor indexes in the shared disposable test database; none of Unit 22's five Booking-case indexes is missing or mismatched. No apply is authorized.
 - Verify server compatibility first, then build Admin against exported/tested DTOs. Do not let Admin types become semantic authority.
 - Reverify the protected `/api/v1/admin` mount, Owner/Admin read actor, Owner-only Admin route policy, signed proxy allowlist, URL-state/filter primitives, query keys, and separate Employee Booking Lead Reconciliation UI.
 - Ordinary checks use redacted synthetic data. Runtime reads require `TEST_MODE=true` and an explicit test database; external effects remain disabled. No commit, push, deploy, production flag change, mutation/index apply, live payload inspection, or external send.

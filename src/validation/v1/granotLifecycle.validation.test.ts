@@ -4,7 +4,11 @@ import {
   extensionGranotApplyBatchSchema,
   extensionGranotApplyItemSchema,
   granotLifecycleActivationCommandSchema,
+  granotLifecycleCandidateQuerySchema,
+  granotLifecycleCaseListQuerySchema,
+  granotLifecycleLeadTimelineParamsSchema,
   granotLifecycleRequeueCommandSchema,
+  granotLifecycleTimelineQuerySchema,
 } from "./granotLifecycle.validation";
 import { GRANOT_LIFECYCLE_ERROR_CODES } from "../../services/granotLifecycle/errors";
 
@@ -98,5 +102,55 @@ test("[AC-02] batch rejects duplicate operation IDs and more than 100 items", ()
   assert.throws(
     () => extensionGranotApplyBatchSchema.parse({ items: [item, item] }),
     /duplicate operation_id/,
+  );
+});
+
+test("[AC-18] [AC-19] case list query is strict, bounded, and validates date order", () => {
+  const parsed = granotLifecycleCaseListQuerySchema.parse({
+    state: "open",
+    mode: "create_missing_booking",
+    source_id: "aaaaaaaaaaaaaaaaaaaaaaaa",
+    opened_from: "2026-08-17T00:00:00.000Z",
+    opened_to: "2026-08-18T00:00:00.000Z",
+    limit: "25",
+  });
+  assert.equal(parsed.limit, 25);
+  assert.throws(() => granotLifecycleCaseListQuerySchema.parse({ unknown: "x" }), /unrecognized_keys|unknown/);
+  assert.throws(() => granotLifecycleCaseListQuerySchema.parse({ limit: 101 }), /less than or equal|Too big/);
+  assert.throws(
+    () => granotLifecycleCaseListQuerySchema.parse({
+      opened_from: "2026-08-19T00:00:00.000Z",
+      opened_to: "2026-08-18T00:00:00.000Z",
+    }),
+    /opened_from/,
+  );
+});
+
+test("[AC-35] candidate and timeline queries reject unsafe cursor/contact shapes", () => {
+  const candidate = granotLifecycleCandidateQuerySchema.parse({ q: "   ", limit: "10" });
+  assert.equal(candidate.q, undefined);
+  assert.equal(candidate.scope, "source");
+  assert.equal(candidate.limit, 10);
+  assert.throws(
+    () => granotLifecycleCandidateQuerySchema.parse({ q: "x".repeat(101) }),
+    /Too big|less than or equal/,
+  );
+  assert.throws(
+    () => granotLifecycleTimelineQuerySchema.parse({ cursor: "not+base64" }),
+    /base64url|cursor/,
+  );
+});
+
+test("[AC-40] Lead timeline accepts only the exact model union and ObjectId", () => {
+  assert.equal(
+    granotLifecycleLeadTimelineParamsSchema.parse({
+      lead_model: "FormLead",
+      lead_id: "aaaaaaaaaaaaaaaaaaaaaaaa",
+    }).lead_model,
+    "FormLead",
+  );
+  assert.throws(
+    () => granotLifecycleLeadTimelineParamsSchema.parse({ lead_model: "Lead", lead_id: "x" }),
+    /Invalid option|ObjectId/,
   );
 });

@@ -28,7 +28,7 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 | 20 | RingCentral adoption/convergence and duplicate correctness | 12, 19 | complete | complete | [UNIT-20-COMPLETION.md](completion-reports/UNIT-20-COMPLETION.md) |
 | 21 | RingCentral Call Log lease, telemetry, overlap safety, and 30-minute cadence | 20 | complete | complete | [UNIT-21-COMPLETION.md](completion-reports/UNIT-21-COMPLETION.md) |
 | 22 | Booking Reconciliation persistence, sequencing, and read-only reconciliation service | 07, 14–15, 18 | complete | complete | [UNIT-22-COMPLETION.md](completion-reports/UNIT-22-COMPLETION.md) |
-| 23 | Booking lifecycle reads, Admin queue/detail, candidate browser, and Job/Lead timeline | 22 | ready | complete | — |
+| 23 | Booking lifecycle reads, Admin queue/detail, candidate browser, and Job/Lead timeline | 22 | blocked | complete | [UNIT-23-COMPLETION.md](completion-reports/UNIT-23-COMPLETION.md) |
 | 24 | Confirm missing standard Booking owner workflow | 10–11, 22–23, Owner review | blocked | complete | — |
 | 25 | Existing Booking update and Booking No Action workflows | 24 | blocked | complete | — |
 | 26 | Release Reconciliation persistence, projections, and read-only Admin workflow | 22–23 | blocked | scaffold | — |

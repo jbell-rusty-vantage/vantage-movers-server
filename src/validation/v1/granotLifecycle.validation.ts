@@ -29,6 +29,98 @@ export const granotLifecycleRequeueCommandSchema = z
   })
   .strict();
 
+const objectIdSchema = z
+  .string()
+  .trim()
+  .regex(/^[a-f0-9]{24}$/i, "must be a Mongo ObjectId");
+
+const opaqueCursorSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(2048)
+  .regex(/^[A-Za-z0-9_-]+$/, "cursor must be opaque base64url");
+
+const optionalTrimmed = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    schema.optional(),
+  );
+
+const optionalIsoDate = optionalTrimmed(
+  z.string().trim().datetime({ offset: true }),
+);
+
+export const granotLifecycleCaseListQuerySchema = z
+  .object({
+    kind: optionalTrimmed(z.enum(["booking", "release"])),
+    state: optionalTrimmed(z.enum(["open", "resolved"])),
+    mode: optionalTrimmed(
+      z.string().trim().min(1).max(64).regex(/^[a-z][a-z0-9_]*$/, "mode must be lowercase snake_case"),
+    ),
+    source_id: optionalTrimmed(objectIdSchema),
+    normalized_job_no: optionalTrimmed(z.string().trim().min(1).max(64)),
+    opened_from: optionalIsoDate,
+    opened_to: optionalIsoDate,
+    sort: optionalTrimmed(z.enum(["last_evidence_at", "opened_at"])),
+    order: optionalTrimmed(z.enum(["asc", "desc"])),
+    cursor: optionalTrimmed(opaqueCursorSchema),
+    limit: z.coerce.number().int().min(1).max(100).default(25),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (
+      value.opened_from &&
+      value.opened_to &&
+      Date.parse(value.opened_from) > Date.parse(value.opened_to)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["opened_from"],
+        message: "opened_from must be before or equal to opened_to",
+      });
+    }
+  });
+
+export const granotLifecycleCaseParamsSchema = z
+  .object({ case_id: objectIdSchema })
+  .strict();
+
+export const granotLifecycleCandidateQuerySchema = z
+  .object({
+    scope: optionalTrimmed(z.enum(["source", "all"])),
+    lead_model: optionalTrimmed(z.enum(["FormLead", "CallLead"])),
+    q: optionalTrimmed(z.string().trim().min(1).max(100)),
+    cursor: optionalTrimmed(opaqueCursorSchema),
+    limit: z.coerce.number().int().min(1).max(100).default(25),
+  })
+  .strict()
+  .transform((value) => ({ ...value, scope: value.scope ?? "source" as const }));
+
+export const granotLifecycleTimelineQuerySchema = z
+  .object({
+    cursor: optionalTrimmed(opaqueCursorSchema),
+    limit: z.coerce.number().int().min(1).max(200).default(100),
+  })
+  .strict();
+
+export const granotLifecycleLeadTimelineParamsSchema = z
+  .object({
+    lead_model: z.enum(["FormLead", "CallLead"]),
+    lead_id: objectIdSchema,
+  })
+  .strict();
+
+export type GranotLifecycleCaseListQuery = z.infer<
+  typeof granotLifecycleCaseListQuerySchema
+>;
+export type GranotLifecycleCandidateQuery = z.infer<
+  typeof granotLifecycleCandidateQuerySchema
+>;
+export type GranotLifecycleTimelineQuery = z.infer<
+  typeof granotLifecycleTimelineQuerySchema
+>;
+
 export type GranotLifecycleRequeueCommandInput = z.infer<
   typeof granotLifecycleRequeueCommandSchema
 >;

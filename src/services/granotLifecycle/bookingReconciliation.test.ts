@@ -5,12 +5,32 @@ import {
   classifyBookingReconciliation,
   createGranotBookingReconciliation,
   isBookingCandidateRefreshEligible,
+  projectBookingCandidateBrowserPolicy,
   projectBookingLeadCandidates,
   toBookingLeadSuggestion,
   type BookingReconciliationCurrentContext,
   type BookingReconciliationPersistenceStore,
   type PreparedBookingReconciliationDecision,
 } from "./bookingReconciliation";
+
+it("[AC-35] candidate browser preserves source scope metadata and override warning", () => {
+  const policy = projectBookingCandidateBrowserPolicy({
+    lead_ref: { model: "CallLead", id: "aaaaaaaaaaaaaaaaaaaaaaaa" },
+    lead_normalized_job_no: "SYNTHETIC 23",
+    lead_source_company: "bbbbbbbbbbbbbbbbbbbbbbbb",
+    lead_source_granularity_id: "cccccccccccccccccccccccc",
+    case_normalized_job_no: "SYNTHETIC 23",
+    case_source_scope: {
+      lead_source_company: "dddddddddddddddddddddddd",
+      source_granularity_id: "eeeeeeeeeeeeeeeeeeeeeeee",
+    },
+    canonical_candidates: [],
+  });
+  assert.equal(policy.confidence, "high");
+  assert.equal(policy.match_method, "call_job_no_exact");
+  assert.equal(policy.in_source_scope, false);
+  assert.equal(policy.requires_override_reason, true);
+});
 import type { GranotBookingReconciliationCaseDocument } from "../../models/GranotBookingReconciliationCase";
 import type { SynchronizationDecisionDocument } from "../../models/SynchronizationDecision";
 import {

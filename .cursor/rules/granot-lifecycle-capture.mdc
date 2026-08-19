@@ -1,5 +1,5 @@
 ---
-description: Granot lead-lifecycle software map — webhook receipt capture, Observation/policy/identity/Decision/drain, matched-Lead sync, authorized create-if-missing; Booking/Release Reconciliation is not live
+description: Granot lead-lifecycle software map — receipt processing, Lead effects, Booking-case persistence, and protected lifecycle reads; owner commands remain disabled
 globs: src/services/granotLifecycle/**/*.ts,src/services/granotWebhooks/**/*.ts,src/routes/granot-webhook.routes.ts,src/routes/granot-lifecycle-admin.routes.ts,src/routes/granot-lifecycle-cron.routes.ts,api/queues/granot-lifecycle-consumer.ts,src/middleware/requireGranotWebhookSecret.ts,src/config/domain/granotWebhook.ts,src/config/domain/granotLifecycle.ts,src/models/GranotObservationReceipt.ts,src/models/GranotObservation.ts,src/models/SynchronizationDecision.ts,src/models/GranotLifecycleActivation.ts,src/models/GranotRecordLink.ts,src/models/granotLifecycleSchemas.ts,src/validation/v1/granotLifecycle.validation.ts,scripts/migrations/granot-lifecycle-*.ts,.cursor/businesslogic/granotLifecycle*.md
 alwaysApply: false
 ---
@@ -8,7 +8,7 @@ alwaysApply: false
 
 Software map for `src/services/granotLifecycle/`. Owner invariants stay in the linked businesslogic files. Locked contracts stay in `scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md`. Delivery branches: [`lead-lifecycle-delivery.mdc`](lead-lifecycle-delivery.mdc). Unit ledger is a navigation aid only: [`UNIT-STATUS.md`](../../scripts/prototypes/granot-lead-lifecycle/delivery/UNIT-STATUS.md). Repository state, migrations/indexes, flags, and tests are authoritative.
 
-Owner invariants: [capture](../businesslogic/granotLifecycle.capture.md), [extension apply](../businesslogic/granotLifecycle.extensionApply.md), [automation apply](../businesslogic/granotLifecycle.automationApply.md), [normalization](../businesslogic/granotLifecycle.normalization.md), [source policy](../businesslogic/granotLifecycle.sourcePolicy.md), [identity](../businesslogic/granotLifecycle.identity.md), [desired state](../businesslogic/granotLifecycle.desiredState.md), [processor](../businesslogic/granotLifecycle.processor.md), [drainer](../businesslogic/granotLifecycle.drainer.md), [revisions](../businesslogic/granotLifecycle.revisions.md).
+Owner invariants: [capture](../businesslogic/granotLifecycle.capture.md), [extension apply](../businesslogic/granotLifecycle.extensionApply.md), [automation apply](../businesslogic/granotLifecycle.automationApply.md), [normalization](../businesslogic/granotLifecycle.normalization.md), [source policy](../businesslogic/granotLifecycle.sourcePolicy.md), [identity](../businesslogic/granotLifecycle.identity.md), [desired state](../businesslogic/granotLifecycle.desiredState.md), [processor](../businesslogic/granotLifecycle.processor.md), [drainer](../businesslogic/granotLifecycle.drainer.md), [revisions](../businesslogic/granotLifecycle.revisions.md), [Booking reconciliation](../businesslogic/granotLifecycle.bookingReconciliation.md), and [read projections](../businesslogic/granotLifecycle.projections.md).
 
 ## Goal
 
@@ -38,15 +38,15 @@ Granot evidence never becomes an official Booking or Cancellation by itself. CRM
 | `aggregateRevision.ts` | Compare-and-swap primitive for later consumed aggregates. |
 | `trustedLeadCreateValidation.ts` | Trusted `granot_lead_created` validator (`post_to_granot=false`). Live caller is `createLeadFromGranot` only. |
 
-Admin routes activate, requeue dead letters, project a Job, or read health. They do not own claim, match, or patch policy. Canonical executor / `EntityChange` live in `domainCommands/`. Live lifecycle commands are `synchronizeLeadFromGranot` and `createLeadFromGranot`. Owner Booking/Release commands stay disabled. Checked-in creation/writes flags stay false.
+Admin routes activate, requeue dead letters, and expose protected case/candidate/Job/Lead/health reads. Projections compose allowlisted DTOs; routes do not own claim, match, masking, ranking, timeline, or patch policy. Canonical executor / `EntityChange` live in `domainCommands/`. Live lifecycle commands are `synchronizeLeadFromGranot` and `createLeadFromGranot`. Owner Booking/Release commands stay disabled. Checked-in effect flags stay false.
 
 ## Progress
 
 Units 01–19 are implemented on `granot-lead-lifecycle` (Unit 16 also lands extension `0.2.8` on `granot_sync_extensions_and_services/main`). Re-verify the matching `UNIT-*-COMPLETION.md` and repository state before editing; do not trust the ledger alone.
 
-**Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, shadow processor orchestration, Owner browser-extension receipt apply, HTTP automation receipt apply, canonical `synchronizeLeadFromGranot` for authorized matched-Lead writes, and canonical `createLeadFromGranot` for authorized `create_if_missing` Form/Call creation plus active Record Link reservation.
+**Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, shadow processor orchestration, extension/automation receipt apply, canonical Lead synchronization/creation, Booking-case persistence, protected masked case/candidate reads, and stable Job/Lead timelines.
 
-**Next sequential implementation:** Unit 20 RingCentral qualified-call adoption. Deployed posture stays shadow; Lead writes/creation/cases stay false except injected live test posture.
+**Next sequential work:** Unit 23 read delivery is implemented but remains gated by the required aggregate index verification; Units 24–25 remain Owner-review/command work and Unit 26 owns Release persistence. Deployed posture stays shadow; Lead writes/creation/cases stay false except injected disposable-test posture.
 
 **Not started here:** RingCentral adoption (20–21), Booking/Release Reconciliation persistence and owner commands (22–29). Unit 19 adds no migration or index.
 
