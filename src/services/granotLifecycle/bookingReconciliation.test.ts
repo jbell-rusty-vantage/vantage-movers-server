@@ -104,7 +104,7 @@ describe("Booking Reconciliation classification", () => {
     );
   });
 
-  it("[AC-39] delegates Booking-without-Lead and routes cancellation/referral without Granot case", () => {
+  it("[AC-28][AC-39] delegates employee work, routes cancellation, and owns Referral cases", () => {
     const employeeCase = oid();
     assert.deepEqual(
       classifyBookingReconciliation(context({
@@ -125,7 +125,47 @@ describe("Booking Reconciliation classification", () => {
         booking_action: "booked",
         lifecycle_disposition: "referral_booking",
       })),
-      { kind: "none", reason: "referral_owned_by_unit_28" },
+      { kind: "case", mode: "create_referral_booking", evidence_action: "booked" },
+    );
+    const referralBookingId = oid();
+    assert.deepEqual(
+      classifyBookingReconciliation(context({
+        booking_action: "booked",
+        lifecycle_disposition: "referral_booking",
+        booking: {
+          id: referralBookingId,
+          has_lead: false,
+          officially_cancelled: false,
+          referral: true,
+        },
+      })),
+      {
+        kind: "case",
+        mode: "review_existing_booking",
+        evidence_action: "booked",
+        deterministic_booking_id: referralBookingId,
+      },
+    );
+    assert.deepEqual(
+      classifyBookingReconciliation(context({
+        booking_action: "booked",
+        lifecycle_disposition: "source_scoped_lead",
+        booking: {
+          id: referralBookingId,
+          has_lead: false,
+          officially_cancelled: false,
+          referral: true,
+        },
+      })),
+      { kind: "booking_discrepancy_required", reason_code: "booked_booking_lead_conflict" },
+    );
+    assert.deepEqual(
+      classifyBookingReconciliation(context({
+        lifecycle_disposition: "referral_booking",
+        priority: { canonical: "5", valid: true },
+        booking_action: undefined,
+      })),
+      { kind: "none", reason: "not_booking_evidence" },
     );
     assert.equal(
       classifyBookingReconciliation(context({
@@ -201,6 +241,13 @@ describe("Booking Reconciliation persistence", () => {
       execution_mode: "live",
       outcome: "already_current",
       reason_code: "desired_state_already_current",
+      source_policy: contextValue.reviewed_source_policy
+        ? {
+            granot_crm_source_id: new mongoose.Types.ObjectId(contextValue.reviewed_source_policy.granot_crm_source_id),
+            disposition: contextValue.reviewed_source_policy.disposition,
+            policy_version: contextValue.reviewed_source_policy.policy_version,
+          }
+        : undefined,
       candidates: [],
       evaluated_gates: [{ gate: "global_effect_flag", allowed: true }],
       effects: [],
@@ -282,6 +329,38 @@ describe("Booking Reconciliation persistence", () => {
     assert.equal(memory.cases[0]!.case_revision, 1);
     assert.equal(memory.cases[0]!.evidence_revision, 2);
     assert.equal(memory.cases[0]!.evidence.length, 2);
+  });
+
+  it("[AC-28] opens and refreshes a Referral case without Source Scope or Lead suggestion", async () => {
+    const first = context({
+      booking_action: "booked",
+      lifecycle_disposition: "referral_booking",
+      reviewed_source_policy: {
+        granot_crm_source_id: oid(),
+        disposition: "referral_booking",
+        policy_version: "unit28-referral-v1",
+      },
+      priority: { valid: false },
+    });
+    const memory = memoryStore(first);
+    await createGranotBookingReconciliation({ prepared: prepared(first), store: memory.store })
+      .reconcileObservation({ observation_id: first.observation_id, decision_id: oid() });
+    assert.equal(memory.cases[0]!.mode, "create_referral_booking");
+    assert.equal(memory.cases[0]!.source_scope, undefined);
+    assert.equal(memory.cases[0]!.suggested_lead, undefined);
+    const second = context({
+      observation_id: oid(),
+      booking_action: "booked",
+      lifecycle_disposition: "referral_booking",
+      reviewed_source_policy: first.reviewed_source_policy,
+      priority: { valid: false },
+    });
+    memory.store.loadCurrentContext = async () => second;
+    await createGranotBookingReconciliation({ prepared: prepared(second), store: memory.store })
+      .reconcileObservation({ observation_id: second.observation_id, decision_id: oid() });
+    assert.equal(memory.cases[0]!.case_revision, 1);
+    assert.equal(memory.cases[0]!.evidence_revision, 2);
+    assert.equal(memory.cases[0]!.mode, "create_referral_booking");
   });
 
   it("[AC-20] allocates next sequence after a resolved case and never reopens it", async () => {

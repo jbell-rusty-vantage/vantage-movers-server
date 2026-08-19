@@ -21,6 +21,7 @@ import {
 } from "./leads";
 import { createLeadFromGranot } from "../granotLifecycle/createLeadFromGranot";
 import { synchronizeLeadFromGranot } from "../granotLifecycle/synchronizeLeadFromGranot";
+import { createReferralBookingCanonical } from "../granotLifecycle/referralBooking";
 import {
   adoptRingCentralCall,
   markRingCentralConvergenceConflict,
@@ -51,6 +52,7 @@ export const canonicalDomainCommands: CanonicalDomainCommands = {
   createLeadFromGranot,
   synchronizeLeadFromGranot,
   updateBooking,
+  createReferralBooking: createReferralBookingCanonical,
   adoptRingCentralCall,
   markRingCentralConvergenceConflict,
 };

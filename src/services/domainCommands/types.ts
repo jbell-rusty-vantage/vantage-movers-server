@@ -132,6 +132,12 @@ export interface CanonicalDomainCommands {
     official_booking_details: GranotLifecycleOfficialBookingDetails;
     context: CanonicalCommandContext;
   }): Promise<CanonicalCommandResult>;
+  createReferralBooking(input: {
+    normalized_job_no: string;
+    accepted_observation_id: string;
+    official_booking_details: GranotLifecycleOfficialBookingDetails;
+    context: CanonicalCommandContext;
+  }): Promise<CanonicalCommandResult>;
   adoptRingCentralCall(
     input: AdoptRingCentralCallInput,
   ): Promise<CanonicalCommandResult>;

@@ -84,6 +84,7 @@ Post-commit: `finalizeSheetSync`; operational events `booking.created` or `booki
 - Customer from contact fields only; **no** `mirrorBookingToLead`.
 - Sheet job: `resource: "booked_lead"`, `operation: "referral_booking.create"` (not `booking_chain`).
 - **Update/delete/cancel not supported yet** (409 from booked-lead and cancellation resolvers).
+- Separately, the gated Granot lifecycle Owner command in `granotLifecycle/referralBooking.ts` creates the same canonical no-Lead shape from an accepted immutable Referral Observation plus explicit official fields. It writes through the canonical executor, attaches only a booking-only Granot Record Link, and targets Master Booked. An existing Referral case may fully replace official Booking fields through the lifecycle `updateBooking` command without creating a Lead; legacy public referral update remains unsupported.
 
 ### 4. Leadless (`createLeadlessBooking`)
 
@@ -157,7 +158,7 @@ Booking delete: clears `booked`, `cancelled`, threshold flags on lead. Legacy pa
 | Lead-attached re-book / upsert | `booking_chain` | `booked_lead.upsert` |
 | Lead-attached update | `booking_chain` | `booked_lead.update` |
 | Lead-attached delete | tombstone + `source_lead` | `delete_booked_lead` |
-| Referral create | `booked_lead` | `referral_booking.create` |
+| Referral create / lifecycle update | `booked_lead` | `referral_booking.create`, `referral_booking.update` |
 | Leadless create | `booked_lead` | `leadless_booking.create` |
 | Lead update with booking | `booking_chain` or `source_lead` | from `refreshAttachedBookingFromLead` |
 
@@ -170,7 +171,7 @@ Booking delete: clears `booked`, `cancelled`, threshold flags on lead. Legacy pa
 
 ## Lifecycle revision
 
-`domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical Booking/leadless/Referral create/update/delete adapters persist append-only `EntityChange` rows and stamp `last_change_*` in the executor transaction. One Booking per normalized Job Number remains the unique partial index contract; collisions block unique-index apply. Later Granot owner `updateBooking` and lifecycle Referral commands remain disabled.
+`domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical Booking/leadless/Referral create/update/delete adapters persist append-only `EntityChange` rows and stamp `last_change_*` in the executor transaction. One Booking per normalized Job Number remains the unique partial index contract; collisions block unique-index apply. Granot lifecycle Referral commands are implemented but remain disabled by checked-in gates.
 
 ## Related rules
 

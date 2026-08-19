@@ -395,6 +395,9 @@ export function evaluateEffectGates(facts: EffectGateFacts): EffectGateEvaluatio
     policyPermitsEffect(facts.lead_created_policy, facts.requested_effect) &&
     facts.source_scope_eligible !== false;
   const liveMode = facts.receipt_post_activation && facts.processor_mode === "live";
+  const referralReconciliation = facts.disposition === "referral_booking" &&
+    (facts.requested_effect === "booking_reconciliation" ||
+      facts.requested_effect === "release_reconciliation");
 
   const evaluated_gates: EvaluatedGate[] = [
     { gate: "global_effect_flag", allowed: facts.global_effect_flag },
@@ -402,8 +405,8 @@ export function evaluateEffectGates(facts: EffectGateFacts): EffectGateEvaluatio
     { gate: "operational_enabled", allowed: facts.operational_enabled },
     { gate: "lifecycle_enabled", allowed: facts.lifecycle_enabled },
     { gate: "disposition_permits_effect", allowed: dispositionAllowed },
-    { gate: "source_company_active", allowed: facts.source_company_active },
-    { gate: "source_granularity_active", allowed: facts.source_granularity_active },
+    { gate: "source_company_active", allowed: referralReconciliation || facts.source_company_active },
+    { gate: "source_granularity_active", allowed: referralReconciliation || facts.source_granularity_active },
     { gate: "policy_permits_effect", allowed: policyAllowed },
   ];
 

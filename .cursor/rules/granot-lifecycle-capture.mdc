@@ -36,11 +36,11 @@ Granot evidence never becomes an official Booking or Cancellation by itself. CRM
 | `processor.ts` | Channel-neutral orchestrator: identity, temporal compare, desired-state plan, gates, Decision, historical job-level Record Link. Live matched-Lead writes enter `synchronizeLeadFromGranot`. Live eligible no-match creation enters `createLeadFromGranot`. |
 | `drainer.ts` | Fenced Mongo claim/lease shared by the queue consumer, five-minute cron, and Owner requeue. |
 | `aggregateRevision.ts` | Compare-and-swap primitive for later consumed aggregates. |
-| `bookingReconciliation.ts` / `bookingConfirmation.ts` / `bookingOwnerCommands.ts` | Booking case open/refresh plus strict Owner confirm, deterministic existing-Booking full update, and zero-effect No Action. Referral remains unavailable. |
+| `bookingReconciliation.ts` / `bookingConfirmation.ts` / `bookingOwnerCommands.ts` / `referralBooking.ts` | Booking case open/refresh plus strict Owner standard confirm, explicit no-Lead Referral create, deterministic existing-Booking full update, and zero-effect No Action. |
 | `releaseReconciliation.ts` / `releaseOwnerCommands.ts` | Separate Release case open/refresh plus gated Owner create-Cancellation, full Booking replacement, and No Action commands. |
 | `trustedLeadCreateValidation.ts` | Trusted `granot_lead_created` validator (`post_to_granot=false`). Live caller is `createLeadFromGranot` only. |
 
-Admin routes activate, requeue dead letters, expose protected reads, and accept the three exact Booking plus three exact Release Owner mutations. Projections compose allowlisted DTOs; routes do not own claim, match, masking, ranking, timeline, or mutation policy. Canonical executor / `EntityChange` live in `domainCommands/`. Live lifecycle capability includes Lead sync/create, Booking commands, and Release `createCancellation`, `updateBooking`, and `resolveGranotReleaseCaseNoAction`; checked-in effect flags keep them disabled. Referral commands are not exposed.
+Admin routes activate, requeue dead letters, expose protected reads, and accept the four exact Booking plus three exact Release Owner mutations. Projections compose allowlisted DTOs; routes do not own claim, match, masking, ranking, timeline, or mutation policy. Canonical executor / `EntityChange` live in `domainCommands/`. Live lifecycle capability includes Lead sync/create, standard/Referral Booking commands, and Release `createCancellation`, `updateBooking`, and `resolveGranotReleaseCaseNoAction`; checked-in effect flags keep them disabled.
 
 ## Progress
 
@@ -48,9 +48,9 @@ Units 01–26 are implemented on `granot-lead-lifecycle` (Unit 16 also lands ext
 
 **Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, shadow processor orchestration, extension/automation receipt apply, canonical Lead synchronization/creation, Booking-case persistence/commands, separate Release-case persistence/commands, protected masked reads, and stable Job/Lead timelines.
 
-**Next sequential work:** Unit 28 additionally requires reviewed Referral classification. Deployed posture and checked-in defaults do not change from implementation alone.
+**Next sequential work:** Unit 29 discrepancies/correction. Deployed posture and checked-in defaults do not change from implementation alone.
 
-**Not started here:** Referral and discrepancy owner behavior (Units 28–29).
+**Not started here:** discrepancy owner behavior (Unit 29).
 
 ## Live constraints
 

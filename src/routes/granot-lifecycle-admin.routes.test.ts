@@ -13,6 +13,7 @@ let lastRequeue: { id: string; reason: string; role: string } | null = null;
 let lastCaseQuery: Record<string, unknown> | null = null;
 let lastCandidateQuery: Record<string, unknown> | null = null;
 let lastConfirm: Record<string, unknown> | null = null;
+let lastReferralCreate: Record<string, unknown> | null = null;
 let lastUpdate: Record<string, unknown> | null = null;
 let lastNoAction: Record<string, unknown> | null = null;
 let lastReleaseCancellation: Record<string, unknown> | null = null;
@@ -82,6 +83,21 @@ app.use(
         case_state: "resolved",
         case_revision: 2,
         outcome: "booking_created",
+        command_execution_id: new mongoose.Types.ObjectId().toHexString(),
+        decision_id: new mongoose.Types.ObjectId().toHexString(),
+        booking_ref: { id: new mongoose.Types.ObjectId().toHexString(), domain_revision: 1 },
+        record_link_ref: { id: new mongoose.Types.ObjectId().toHexString(), domain_revision: 1 },
+        entity_refs: [],
+        replayed: false,
+      };
+    },
+    createReferralBooking: async (input) => {
+      lastReferralCreate = input as unknown as Record<string, unknown>;
+      return {
+        case_id: input.case_id,
+        case_state: "resolved",
+        case_revision: 2,
+        outcome: "referral_booking_created",
         command_execution_id: new mongoose.Types.ObjectId().toHexString(),
         decision_id: new mongoose.Types.ObjectId().toHexString(),
         booking_ref: { id: new mongoose.Types.ObjectId().toHexString(), domain_revision: 1 },
@@ -427,6 +443,33 @@ test("[AC-21] [AC-24] Owner update route is strict, idempotent-envelope only, an
   });
   assert.equal(forbidden.status, 400);
   assert.equal(lastUpdate, null);
+});
+
+test("[AC-28] Owner Referral create route accepts only revision plus official fields", async () => {
+  const path = `/api/v1/admin/granot-lifecycle/booking-cases/${receiptId}/create-referral-booking`;
+  const body = {
+    expected_case_revision: 1,
+    official_booking_details: confirmBody.official_booking_details,
+  };
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { ...signedHeaders("owner", path), "Idempotency-Key": "unit28-referral-1" },
+    body: JSON.stringify(body),
+  });
+  assert.equal(response.status, 201);
+  assert.equal(lastReferralCreate?.case_id, receiptId);
+  assert.equal(lastReferralCreate?.idempotency_key, "unit28-referral-1");
+  assert.equal("job_no" in (lastReferralCreate ?? {}), false);
+  assert.equal("selected_lead" in (lastReferralCreate ?? {}), false);
+
+  lastReferralCreate = null;
+  const forbidden = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { ...signedHeaders("owner", path), "Idempotency-Key": "unit28-referral-2" },
+    body: JSON.stringify({ ...body, job_no: "forbidden" }),
+  });
+  assert.equal(forbidden.status, 400);
+  assert.equal(lastReferralCreate, null);
 });
 
 test("[AC-20] [AC-32] Owner No Action accepts optional reason metadata and Admin is denied", async () => {

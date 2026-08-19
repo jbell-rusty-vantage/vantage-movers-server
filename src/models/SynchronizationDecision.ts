@@ -31,6 +31,12 @@ export type SynchronizationDecisionSourceScope = {
   policy_version: string;
 };
 
+export type SynchronizationDecisionSourcePolicy = {
+  granot_crm_source_id: mongoose.Types.ObjectId;
+  disposition: GranotLifecycleDisposition;
+  policy_version: string;
+};
+
 export type SynchronizationDecisionCandidate = {
   target: EntityRef;
   reason_codes: string[];
@@ -57,6 +63,7 @@ export type SynchronizationDecisionDocument = {
   match_method?: SynchronizationMatchMethod;
   target?: EntityRef;
   source_scope?: SynchronizationDecisionSourceScope;
+  source_policy?: SynchronizationDecisionSourcePolicy;
   candidates: SynchronizationDecisionCandidate[];
   evaluated_gates: SynchronizationDecisionEvaluatedGate[];
   effects: SynchronizationDecisionEffect[];
@@ -114,6 +121,20 @@ const SynchronizationDecisionSchema = new Schema<SynchronizationDecisionDocument
           granot_crm_source_id: { type: Schema.Types.ObjectId, required: true },
           lead_source_company: { type: Schema.Types.ObjectId, required: true },
           source_granularity_id: { type: Schema.Types.ObjectId, required: true },
+          disposition: {
+            type: String,
+            required: true,
+            enum: GRANOT_LIFECYCLE_DISPOSITIONS,
+          },
+          policy_version: { type: String, required: true, trim: true },
+        },
+        { _id: false },
+      ),
+    },
+    source_policy: {
+      type: new Schema(
+        {
+          granot_crm_source_id: { type: Schema.Types.ObjectId, required: true },
           disposition: {
             type: String,
             required: true,

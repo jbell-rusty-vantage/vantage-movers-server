@@ -69,6 +69,25 @@ test("[AC-02] Decision documents omit copied contact and payload fields", async 
   }
 });
 
+test("[AC-28] Referral Decision preserves exact reviewed source policy without a Lead Source Scope", async () => {
+  const sourceId = new mongoose.Types.ObjectId();
+  const document = decision({
+    execution_mode: "live",
+    source_policy: {
+      granot_crm_source_id: sourceId,
+      disposition: "referral_booking",
+      policy_version: "granot-lifecycle-source-policy-v1",
+    },
+  });
+  await document.validate();
+  assert.equal(String(document.source_policy?.granot_crm_source_id), String(sourceId));
+  assert.equal(document.source_policy?.disposition, "referral_booking");
+  assert.equal(document.source_scope, undefined);
+  await assert.rejects(decision({
+    source_policy: { granot_crm_source_id: sourceId, disposition: "referral_booking" },
+  }).validate(), /policy_version/);
+});
+
 test("[AC-02] Decision save and query hooks reject post-insert mutation", async () => {
   const document = decision();
   document.isNew = false;

@@ -4,6 +4,7 @@ import { getGranotLifecycleFlags, type GranotLifecycleFlags } from "../../config
 import { Agent } from "../../models/Agent";
 import { BookedLead } from "../../models/BookedLead";
 import { Merchant } from "../../models/Merchant";
+import { getGranotLifecycleActivationModel } from "../../models/GranotLifecycleActivation";
 import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
 import {
@@ -14,6 +15,7 @@ import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
 import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
+import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
 import { toObjectId } from "../../utils/objectId";
@@ -83,11 +85,19 @@ export async function updateExistingBooking(
   });
   const result = await reloadResult(input.case_id, outcome.result.entity_refs, causal.decision_id, outcome.replayed);
   if (!outcome.replayed && result.outcome === "booking_updated" && result.booking_ref) {
-    await finalizeSheetSync({
-      resource: "booking_chain",
-      operation: "booked_lead.update",
-      bookingId: result.booking_ref.id,
-    });
+    const updatedBooking = await BookedLead.findById(result.booking_ref.id)
+      .select({ is_referral_booking: 1 }).lean().exec();
+    await finalizeSheetSync(updatedBooking?.is_referral_booking === true
+      ? {
+          resource: "booked_lead",
+          operation: "referral_booking.update",
+          bookingId: result.booking_ref.id,
+        }
+      : {
+          resource: "booking_chain",
+          operation: "booked_lead.update",
+          bookingId: result.booking_ref.id,
+        });
   }
   return result;
 }
@@ -129,7 +139,6 @@ async function applyUpdate(input: {
   if (!caseRow.deterministic_booking_id) {
     throw lifecycle("Booking case has no deterministic Booking", "IDENTITY_CONFLICT", 409, input.input.request_id);
   }
-  const companySlug = await assertActiveSourceScope(caseRow, input.session, input.input.request_id);
   const bookingBefore = await BookedLead.findById(caseRow.deterministic_booking_id)
     .session(input.session).lean().exec();
   if (
@@ -138,28 +147,35 @@ async function applyUpdate(input: {
   ) {
     throw lifecycle("Booking revision changed or Booking is no longer active", "DOMAIN_REVISION_CONFLICT", 409, input.input.request_id);
   }
+  const referral = bookingBefore.is_referral_booking === true;
+  const companySlug = referral
+    ? await assertActiveReferralPolicy(caseRow, input.session, input.input.request_id)
+    : await assertActiveSourceScope(caseRow, input.session, input.input.request_id);
   if (
     bookingBefore.normalized_job_no !== caseRow.normalized_job_no ||
     bookingBefore.source !== companySlug ||
-    bookingBefore.is_referral_booking || bookingBefore.is_leadless_booking ||
-    !bookingBefore.lead_ref || !bookingBefore.lead_model
+    bookingBefore.is_leadless_booking ||
+    (!referral && (!bookingBefore.lead_ref || !bookingBefore.lead_model)) ||
+    (referral && (Boolean(bookingBefore.lead_ref) || Boolean(bookingBefore.lead_model)))
   ) {
     throw lifecycle("Deterministic Booking identity is incompatible with the case", "IDENTITY_CONFLICT", 409, input.input.request_id);
   }
-  const leadBefore = await loadLead(bookingBefore.lead_model, bookingBefore.lead_ref, input.session);
-  if (
+  const leadBefore = !referral && bookingBefore.lead_model && bookingBefore.lead_ref
+    ? await loadLead(bookingBefore.lead_model, bookingBefore.lead_ref, input.session)
+    : null;
+  if (!referral && (
     !leadBefore || String(leadBefore.booked ?? "") !== String(bookingBefore._id) ||
     String(leadBefore.lead_source_company ?? "") !== String(caseRow.source_scope?.lead_source_company ?? "") ||
     String(leadBefore.source_granularity_id ?? "") !== String(caseRow.source_scope?.source_granularity_id ?? "")
-  ) {
+  )) {
     throw lifecycle("Booking Lead or source identity is incompatible with the case", "IDENTITY_CONFLICT", 409, input.input.request_id);
   }
   const link = await loadAndAssertLink(caseRow, bookingBefore, input.session, input.input.request_id);
   const catalogs = await loadActiveCatalog(input.input.official_booking_details, input.session, input.input.request_id);
   const desired = desiredBooking(input.input.official_booking_details, catalogs);
   const bookingSatisfied = sameOfficialBooking(bookingBefore, desired);
-  const leadSatisfied = Boolean(leadBefore.over_2000) === desired.over_2000 &&
-    Boolean(leadBefore.over_4000) === desired.over_4000;
+  const leadSatisfied = referral || (Boolean(leadBefore?.over_2000) === desired.over_2000 &&
+    Boolean(leadBefore?.over_4000) === desired.over_4000);
   if (bookingSatisfied && leadSatisfied) {
     await resolveCase({
       case_row: caseRow,
@@ -191,7 +207,7 @@ async function applyUpdate(input: {
   if (!bookingAfter) throw new Error("Updated Booking could not be reloaded.");
 
   let leadAfter = leadBefore;
-  if (!leadSatisfied) {
+  if (!leadSatisfied && bookingBefore.lead_model && bookingBefore.lead_ref && leadBefore) {
     const Lead = bookingBefore.lead_model === "FormLead" ? getFormLeadModel() : getCallLeadModel();
     const leadWrite = await Lead.collection.updateOne(
       {
@@ -221,7 +237,7 @@ async function applyUpdate(input: {
       BOOKED_LEAD_CHANGE_PATHS,
     ),
   }];
-  if (!leadSatisfied) {
+  if (!leadSatisfied && bookingBefore.lead_model && bookingBefore.lead_ref && leadBefore) {
     mutations.push({
       change_id: input.change_ids[1]!,
       entity: { model: bookingBefore.lead_model, id: String(bookingBefore.lead_ref) },
@@ -252,11 +268,17 @@ async function applyUpdate(input: {
     session: input.session,
   });
   failAfter(input.test_fail_after, "case");
-  await persistSheetSyncIntent({
-    resource: "booking_chain",
-    operation: "booked_lead.update",
-    bookingId: String(bookingBefore._id),
-  }, input.session);
+  await persistSheetSyncIntent(referral
+    ? {
+        resource: "booked_lead",
+        operation: "referral_booking.update",
+        bookingId: String(bookingBefore._id),
+      }
+    : {
+        resource: "booking_chain",
+        operation: "booked_lead.update",
+        bookingId: String(bookingBefore._id),
+      }, input.session);
   failAfter(input.test_fail_after, "outbox");
   return { entity_refs: ownerRefs(caseRow, bookingBefore._id, bookingBefore.lead_model, bookingBefore.lead_ref, link?._id), warnings: [] };
 }
@@ -270,9 +292,13 @@ async function applyNoAction(input: {
   causal: Awaited<ReturnType<typeof prepareOwnerCommand>>;
   test_fail_after_case?: boolean;
 }) {
-  const caseRow = await loadOpenCase(input.input, input.session, ["create_missing_booking", "review_existing_booking"]);
+  const caseRow = await loadOpenCase(input.input, input.session, ["create_missing_booking", "review_existing_booking", "create_referral_booking"]);
   assertCommandAllowed(caseRow, input.flags, input.input.request_id);
-  await assertActiveSourceScope(caseRow, input.session, input.input.request_id);
+  if (caseRow.source_scope) {
+    await assertActiveSourceScope(caseRow, input.session, input.input.request_id);
+  } else {
+    await assertActiveReferralPolicy(caseRow, input.session, input.input.request_id);
+  }
   const result = await getGranotBookingReconciliationCaseModel().updateOne(
     { _id: caseRow._id, state: "open", case_revision: input.input.expected_case_revision },
     {
@@ -374,9 +400,53 @@ function assertCommandAllowed(row: GranotBookingReconciliationCaseDocument, flag
   if (!flags.booking_commands_enabled) {
     throw lifecycle("Granot Booking commands are disabled", "POLICY_BLOCKED", 422, requestId);
   }
-  if (!row.source_scope || row.mode === "create_referral_booking") {
+  if (!row.source_scope && !flags.referral_booking_enabled) {
+    throw lifecycle("Granot Referral Booking commands are disabled", "POLICY_BLOCKED", 422, requestId);
+  }
+  if (!row.source_scope && row.mode !== "create_referral_booking" && row.mode !== "review_existing_booking") {
     throw lifecycle("Booking case source policy does not permit this command", "POLICY_BLOCKED", 422, requestId);
   }
+}
+
+async function assertActiveReferralPolicy(
+  row: GranotBookingReconciliationCaseDocument,
+  session: ClientSession,
+  requestId?: string,
+) {
+  const first = row.evidence[0];
+  const observation = first
+    ? await getGranotObservationModel().findById(first.observation_id).session(session).lean().exec()
+    : null;
+  const decision = first
+    ? await getSynchronizationDecisionModel().findById(first.decision_id).session(session).lean().exec()
+    : null;
+  const activation = await getGranotLifecycleActivationModel().findOne({ key: "granot_lifecycle" })
+    .session(session).lean().exec();
+  if (
+    !observation || observation.booking_action?.normalized !== "booked" ||
+    !decision || decision.execution_mode !== "live" || !activation ||
+    observation.captured_at < activation.activated_at ||
+    observation.identity?.normalized_job_no !== row.normalized_job_no
+  ) {
+    throw lifecycle("Referral Booking evidence no longer matches the case", "IDENTITY_CONFLICT", 409, requestId);
+  }
+  const sourcePolicy = decision?.source_policy;
+  const source = sourcePolicy?.disposition === "referral_booking"
+    ? await getGranotCrmSourceModel().findOne({
+        _id: sourcePolicy.granot_crm_source_id,
+        enabled: true,
+        lifecycle_enabled: true,
+        lifecycle_disposition: "referral_booking",
+        lead_created_policy: "observation_only",
+        lead_source_company: null,
+        lifecycle_routes: { $size: 0 },
+        lifecycle_policy_version: sourcePolicy.policy_version,
+      }).session(session).lean().exec()
+    : null;
+  if (!source || !source.lifecycle_policy_version) {
+    throw lifecycle("Reviewed Referral source policy is no longer active", "POLICY_BLOCKED", 422, requestId);
+  }
+  return "referral";
 }
 
 async function assertActiveSourceScope(row: GranotBookingReconciliationCaseDocument, session: ClientSession, requestId?: string) {
@@ -552,14 +622,14 @@ async function reloadResult(
 function ownerRefs(
   row: GranotBookingReconciliationCaseDocument,
   bookingId: mongoose.Types.ObjectId,
-  leadModel: LeadModel,
-  leadId: mongoose.Types.ObjectId,
+  leadModel?: LeadModel | null,
+  leadId?: mongoose.Types.ObjectId | null,
   linkId?: mongoose.Types.ObjectId,
 ) {
   return [
     { model: "GranotBookingReconciliationCase", id: String(row._id) },
     { model: "BookedLead", id: String(bookingId) },
-    { model: leadModel, id: String(leadId) },
+    ...(leadModel && leadId ? [{ model: leadModel, id: String(leadId) }] : []),
     ...(linkId ? [{ model: "GranotRecordLink", id: String(linkId) }] : []),
   ];
 }

@@ -63,6 +63,7 @@ function prepared(
   observationId: mongoose.Types.ObjectId,
   receiptId: mongoose.Types.ObjectId,
   decidedAt: Date,
+  sourceId?: mongoose.Types.ObjectId,
 ): PreparedBookingReconciliationDecision {
   return {
     receipt_id: receiptId,
@@ -71,6 +72,13 @@ function prepared(
     execution_mode: "live",
     outcome: "already_current",
     reason_code: "desired_state_already_current",
+    ...(sourceId ? {
+      source_policy: {
+        granot_crm_source_id: sourceId,
+        disposition: "referral_booking",
+        policy_version: "unit28-referral-v1",
+      },
+    } : {}),
     candidates: [],
     evaluated_gates: [{ gate: "global_effect_flag", allowed: true }],
     effects: [],
@@ -82,15 +90,18 @@ async function seedEvidence(
   job: string,
   capturedAt: Date,
   suggestedLeadId?: mongoose.Types.ObjectId,
+  referral = false,
 ): Promise<{
   observationId: mongoose.Types.ObjectId;
   receiptId: mongoose.Types.ObjectId;
   decisionId: mongoose.Types.ObjectId;
+  sourceId?: mongoose.Types.ObjectId;
 }> {
   jobs.add(job);
   const observationId = new mongoose.Types.ObjectId();
   const receiptId = new mongoose.Types.ObjectId();
   const decisionId = new mongoose.Types.ObjectId();
+  const sourceId = referral ? new mongoose.Types.ObjectId() : undefined;
   ids.add(String(observationId));
   ids.add(String(receiptId));
   await getGranotObservationReceiptModel().collection.insertOne({
@@ -107,8 +118,10 @@ async function seedEvidence(
     priority: { valid: false },
     booking_action: { normalized: "booked" },
     synthetic_lead_id: suggestedLeadId,
+    synthetic_referral: referral,
+    synthetic_source_id: sourceId,
   });
-  return { observationId, receiptId, decisionId };
+  return { observationId, receiptId, decisionId, sourceId };
 }
 
 function replicaStore(): BookingReconciliationPersistenceStore {
@@ -129,6 +142,14 @@ function replicaStore(): BookingReconciliationPersistenceStore {
         job_no_snapshot: String(row.identity.job_no_raw),
         priority: { valid: false },
         booking_action: "booked",
+        lifecycle_disposition: row.synthetic_referral ? "referral_booking" : "source_scoped_lead",
+        reviewed_source_policy: row.synthetic_referral
+          ? {
+              granot_crm_source_id: String(row.synthetic_source_id),
+              disposition: "referral_booking",
+              policy_version: "unit28-referral-v1",
+            }
+          : undefined,
         identity: row.synthetic_lead_id
           ? {
               outcome: "linked",
@@ -157,13 +178,35 @@ async function reconcile(
   store = replicaStore(),
 ) {
   return createGranotBookingReconciliation({
-    prepared: prepared(evidence.observationId, evidence.receiptId, new Date()),
+    prepared: prepared(evidence.observationId, evidence.receiptId, new Date(), evidence.sourceId),
     store,
   }).reconcileObservation({
     observation_id: String(evidence.observationId),
     decision_id: String(evidence.decisionId),
   });
 }
+
+test("[AC-28][AC-32] replica simultaneous Referral evidence opens one lead-free case and preserves Decision source policy", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const job = `U28-REFERRAL-RACE-${Date.now().toString(36).toUpperCase()}`;
+  const first = await seedEvidence(job, new Date("2026-08-19T15:00:00.000Z"), undefined, true);
+  const second = await seedEvidence(job, new Date("2026-08-19T15:01:00.000Z"), undefined, true);
+  const results = await Promise.all([reconcile(first), reconcile(second)]);
+  assert.equal(results.filter((row) => row.kind === "opened").length, 1);
+  assert.equal(results.filter((row) => row.kind === "refreshed").length, 1);
+  const row = await getGranotBookingReconciliationCaseModel().findOne({ normalized_job_no: job }).lean();
+  assert.equal(row?.mode, "create_referral_booking");
+  assert.equal(row?.source_scope, undefined);
+  assert.equal(row?.suggested_lead, undefined);
+  assert.equal(row?.evidence.length, 2);
+  const decisions = await getSynchronizationDecisionModel().find({
+    observation_id: { $in: [first.observationId, second.observationId] },
+  }).lean();
+  assert.deepEqual(
+    decisions.map((decision) => decision.source_policy?.disposition),
+    ["referral_booking", "referral_booking"],
+  );
+});
 
 test("[AC-18][AC-20][AC-32][AC-36] replica races converge, replay dedupes, and resolved rows advance max+1", async (t) => {
   if (!(await replicaReady(t))) return;

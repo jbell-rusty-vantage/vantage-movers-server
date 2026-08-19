@@ -5,6 +5,7 @@ import {
   extensionGranotApplyItemSchema,
   granotLifecycleActivationCommandSchema,
   granotLifecycleConfirmBookingCommandSchema,
+  granotLifecycleCreateReferralBookingCommandSchema,
   granotLifecycleUpdateBookingCommandSchema,
   granotLifecycleBookingNoActionCommandSchema,
   granotLifecycleConfirmCancellationCommandSchema,
@@ -206,6 +207,26 @@ test("[AC-22] confirm Booking input is strict and validates exact official cents
     }),
     /sum|total_binder_amount/,
   );
+});
+
+test("[AC-28] Referral Booking input accepts only case revision and strict official details", () => {
+  const body = {
+    expected_case_revision: 1,
+    official_booking_details: {
+      book_date: "2026-08-19",
+      agent_allocations: [{ agent_id: "a".repeat(24), binder_amount: 10 }],
+      total_binder_amount: 10,
+      deposit_amount: 25,
+      merchant_id: "b".repeat(24),
+    },
+  };
+  assert.equal(granotLifecycleCreateReferralBookingCommandSchema.parse(body).expected_case_revision, 1);
+  for (const forbidden of ["job_no", "selected_lead", "accepted_observation_id", "source_scope", "contact"]) {
+    assert.throws(
+      () => granotLifecycleCreateReferralBookingCommandSchema.parse({ ...body, [forbidden]: "forbidden" }),
+      new RegExp(`unrecognized_keys|${forbidden}`),
+    );
+  }
 });
 
 test("[AC-22] confirm Booking allocations are unique and bounded to 1-20", () => {

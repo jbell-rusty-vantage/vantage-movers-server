@@ -315,3 +315,48 @@ test("gate evaluator snapshots every layer in stable order and maps deferred vs 
   assert.equal(deferred.reason, "source_deferred");
   assert.equal(deferred.allowed, false);
 });
+
+test("[AC-28] reviewed Referral reconciliation treats absent Lead scope gates as not applicable", () => {
+  const evaluation = evaluateEffectGates({
+    global_effect_flag: true,
+    receipt_post_activation: true,
+    processor_mode: "live",
+    operational_enabled: true,
+    lifecycle_enabled: true,
+    disposition: "referral_booking",
+    source_company_active: false,
+    source_granularity_active: false,
+    lead_created_policy: "observation_only",
+    requested_effect: "booking_reconciliation",
+  });
+  assert.equal(evaluation.allowed, true);
+  assert.equal(evaluation.evaluated_gates.find((gate) => gate.gate === "source_company_active")?.allowed, true);
+  assert.equal(evaluation.evaluated_gates.find((gate) => gate.gate === "source_granularity_active")?.allowed, true);
+  assert.equal(evaluateEffectGates({
+    ...evaluationFacts(),
+    global_effect_flag: false,
+  }).allowed, false);
+  for (const facts of [
+    { receipt_post_activation: false },
+    { processor_mode: "live_shadow" as const },
+    { processor_mode: "historical_shadow" as const },
+    { lifecycle_enabled: false },
+  ]) {
+    assert.equal(evaluateEffectGates({ ...evaluationFacts(), ...facts }).allowed, false);
+  }
+});
+
+function evaluationFacts(): EffectGateFacts {
+  return {
+    global_effect_flag: true,
+    receipt_post_activation: true,
+    processor_mode: "live",
+    operational_enabled: true,
+    lifecycle_enabled: true,
+    disposition: "referral_booking",
+    source_company_active: false,
+    source_granularity_active: false,
+    lead_created_policy: "observation_only",
+    requested_effect: "booking_reconciliation",
+  };
+}

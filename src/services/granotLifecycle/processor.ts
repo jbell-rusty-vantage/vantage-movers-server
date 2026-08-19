@@ -121,6 +121,7 @@ type PreparedDecision = {
   match_method?: SynchronizationDecisionDocument["match_method"];
   target?: EntityRef;
   source_scope?: SynchronizationDecisionSourceScope;
+  source_policy?: SynchronizationDecisionDocument["source_policy"];
   candidates: SynchronizationDecisionDocument["candidates"];
   evaluated_gates: EvaluatedGate[];
   effects: SynchronizationDecisionEffect[];
@@ -625,6 +626,7 @@ async function maybeReconcileBooking(input: {
     reason_code: input.prepared.decision.reason_code,
     match_method: input.prepared.decision.match_method,
     source_scope: input.prepared.decision.source_scope,
+    source_policy: input.prepared.decision.source_policy,
     candidates: input.prepared.decision.candidates,
     evaluated_gates: gates.evaluated_gates,
     effects: [],
@@ -1319,6 +1321,7 @@ async function prepareDecision(input: {
         target: identity.target,
         candidates: identity.candidates,
         source_scope: decisionSourceScope(policy.snapshot),
+        source_policy: decisionSourcePolicy(policy.snapshot),
         evaluated_gates: policy.snapshot
           ? snapshotEligibleGates(policy.snapshot, input.execution_mode, input.flags, "lead_link")
               .evaluated_gates
@@ -1357,6 +1360,7 @@ async function prepareDecision(input: {
     requested,
   );
   const source_scope = decisionSourceScope(policy.snapshot);
+  const source_policy = decisionSourcePolicy(policy.snapshot);
   const job = jobProposal(input.observation, policy);
   const decided = decidePreparedOutcome({
     plan,
@@ -1375,6 +1379,7 @@ async function prepareDecision(input: {
       match_method: decided.match_method,
       target: decided.target,
       source_scope,
+      source_policy,
       candidates: identity.candidates,
       evaluated_gates: gates.evaluated_gates,
       next_match_attempt_at: plan.next_match_attempt_at,
@@ -1417,7 +1422,8 @@ function snapshotEligibleGates(
       : requested_effect === "lead_enrichment" || requested_effect === "lead_link"
         ? flags.lead_writes_enabled
         : requested_effect === "booking_reconciliation"
-          ? flags.booking_cases_enabled
+          ? flags.booking_cases_enabled &&
+            (snapshot.lifecycle_disposition !== "referral_booking" || flags.referral_booking_enabled)
           : requested_effect === "release_reconciliation"
             ? flags.release_cases_enabled
             : false;
@@ -1604,6 +1610,22 @@ function decisionSourceScope(
   };
 }
 
+function decisionSourcePolicy(
+  snapshot?: SourcePolicySnapshot,
+): SynchronizationDecisionDocument["source_policy"] | undefined {
+  if (
+    !snapshot?.granot_crm_source_id ||
+    !snapshot.lifecycle_policy_version
+  ) {
+    return undefined;
+  }
+  return {
+    granot_crm_source_id: toObjectId(snapshot.granot_crm_source_id),
+    disposition: snapshot.lifecycle_disposition,
+    policy_version: snapshot.lifecycle_policy_version,
+  };
+}
+
 function jobProposal(
   observation: GranotObservationDocument,
   policy: SourcePolicyResolution,
@@ -1686,6 +1708,7 @@ function toDecisionDocument(
     match_method: prepared.match_method,
     target: prepared.target,
     source_scope: prepared.source_scope,
+    source_policy: prepared.source_policy,
     candidates: prepared.candidates,
     evaluated_gates: prepared.evaluated_gates,
     effects: prepared.effects,

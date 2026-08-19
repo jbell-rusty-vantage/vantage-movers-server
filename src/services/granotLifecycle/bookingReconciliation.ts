@@ -41,6 +41,11 @@ export type BookingReconciliationCurrentContext = {
   priority: { canonical?: string; valid: boolean };
   booking_action?: "booked" | "release";
   lifecycle_disposition?: "source_scoped_lead" | "referral_booking" | "deferred";
+  reviewed_source_policy?: {
+    granot_crm_source_id: string;
+    disposition: "source_scoped_lead" | "referral_booking" | "deferred";
+    policy_version: string;
+  };
   identity: LeadIdentityResult;
   observed_context?: GranotBookingReconciliationCaseDocument["observed_context"];
   record_link_id?: string;
@@ -79,13 +84,12 @@ export type BookingReconciliationNoCaseReason =
   | "opposite_action_kind"
   | "priority_5_existing_booking"
   | "priority_5_ineligible_target"
-  | "referral_owned_by_unit_28"
   | "employee_reconciliation_missing";
 
 export type BookingReconciliationClassification =
   | {
       kind: "case";
-      mode: "create_missing_booking" | "review_existing_booking";
+      mode: "create_missing_booking" | "review_existing_booking" | "create_referral_booking";
       evidence_action: "priority_5" | "booked";
       deterministic_booking_id?: string;
     }
@@ -111,6 +115,7 @@ export type PreparedBookingReconciliationDecision = {
   reason_code: SynchronizationReasonCode;
   match_method?: SynchronizationMatchMethod;
   source_scope?: SynchronizationDecisionSourceScope;
+  source_policy?: SynchronizationDecisionDocument["source_policy"];
   candidates: SynchronizationDecisionDocument["candidates"];
   evaluated_gates: EvaluatedGate[];
   effects: SynchronizationDecisionDocument["effects"];
@@ -181,6 +186,7 @@ export interface GranotBookingReconciliation {
 }
 
 export { confirmBooking } from "./bookingConfirmation";
+export { createReferralBooking } from "./referralBooking";
 export {
   updateExistingBooking,
   noAction,
@@ -191,6 +197,7 @@ export type {
   BookingOwnerCommandResult,
   ConfirmBookingInput,
 } from "./bookingConfirmation";
+export type { ReferralBookingInput } from "./referralBooking";
 export type {
   UpdateExistingBookingInput,
   BookingNoActionInput,
@@ -265,7 +272,7 @@ async function recomputeOpenCaseGauge(
 ): Promise<void> {
   try {
     const counts = await store.countOpenCasesByMode();
-    for (const mode of ["create_missing_booking", "review_existing_booking"] as const) {
+    for (const mode of ["create_missing_booking", "review_existing_booking", "create_referral_booking"] as const) {
       setGranotLifecycleOpenBookingCases(
         mode,
         counts.find((row) => row.mode === mode)?.count ?? 0,
@@ -308,6 +315,18 @@ async function reconcileInTransaction(
       );
       return classification;
     }
+    if (current.lifecycle_disposition === "referral_booking") {
+      const currentPolicy = current.reviewed_source_policy;
+      const preparedPolicy = prepared.source_policy;
+      if (
+        !currentPolicy || !preparedPolicy ||
+        currentPolicy.granot_crm_source_id !== String(preparedPolicy.granot_crm_source_id) ||
+        currentPolicy.disposition !== preparedPolicy.disposition ||
+        currentPolicy.policy_version !== preparedPolicy.policy_version
+      ) {
+        throw new Error("Reviewed Referral source policy changed before case persistence.");
+      }
+    }
 
     const evidence: GranotBookingCaseEvidence = {
       observation_id: prepared.observation_id,
@@ -316,7 +335,9 @@ async function reconcileInTransaction(
       action: classification.evidence_action,
     };
     const observed_context = observedContext(current);
-    const suggestion = toBookingLeadSuggestion(current.identity);
+    const suggestion = classification.mode === "create_referral_booking"
+      ? undefined
+      : toBookingLeadSuggestion(current.identity);
     const suggested_lead = suggestion
       ? {
           lead_ref: {
@@ -377,7 +398,7 @@ async function reconcileInTransaction(
           state: "open",
           case_revision: 1,
           evidence_revision: 1,
-          source_scope: prepared.source_scope
+          source_scope: classification.mode !== "create_referral_booking" && prepared.source_scope
             ? {
                 granot_crm_source_id: prepared.source_scope.granot_crm_source_id,
                 lead_source_company: prepared.source_scope.lead_source_company,
@@ -521,6 +542,14 @@ export function createMongoBookingReconciliationStore(): BookingReconciliationPe
         priority: observation.priority,
         booking_action: observation.booking_action?.normalized,
         lifecycle_disposition: policySnapshot.lifecycle_disposition,
+        reviewed_source_policy:
+          policySnapshot.granot_crm_source_id && policySnapshot.lifecycle_policy_version
+            ? {
+                granot_crm_source_id: policySnapshot.granot_crm_source_id,
+                disposition: policySnapshot.lifecycle_disposition,
+                policy_version: policySnapshot.lifecycle_policy_version,
+              }
+            : undefined,
         identity,
         record_link_id: recordLink ? String(recordLink._id) : undefined,
         booking,
@@ -814,6 +843,7 @@ function decisionDocument(
     reason_code: prepared.reason_code,
     match_method: prepared.match_method,
     source_scope: prepared.source_scope,
+    source_policy: prepared.source_policy,
     candidates: prepared.candidates,
     evaluated_gates: prepared.evaluated_gates,
     effects: prepared.effects,
@@ -846,14 +876,39 @@ export function classifyBookingReconciliation(
   }
 
   const booking = context.booking;
-  if (context.lifecycle_disposition === "referral_booking" || booking?.referral) {
-    return { kind: "none", reason: "referral_owned_by_unit_28" };
-  }
   if (actualBooked && booking?.officially_cancelled) {
     return {
       kind: "booking_discrepancy_required",
       reason_code: "booked_after_official_cancellation",
     };
+  }
+  if (context.lifecycle_disposition === "referral_booking") {
+    if (!actualBooked) {
+      return { kind: "none", reason: "not_booking_evidence" };
+    }
+    if (booking) {
+      return booking.referral
+        ? {
+            kind: "case",
+            mode: "review_existing_booking",
+            evidence_action: "booked",
+            deterministic_booking_id: booking.id,
+          }
+        : {
+            kind: "booking_discrepancy_required",
+            reason_code: "booked_booking_lead_conflict",
+          };
+    }
+    return {
+      kind: "case",
+      mode: "create_referral_booking",
+      evidence_action: "booked",
+    };
+  }
+  if (booking?.referral) {
+    return actualBooked
+      ? { kind: "booking_discrepancy_required", reason_code: "booked_booking_lead_conflict" }
+      : { kind: "none", reason: "priority_5_existing_booking" };
   }
   if (booking && !booking.has_lead) {
     return booking.employee_reconciliation_case_id

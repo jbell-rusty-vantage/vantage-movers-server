@@ -107,6 +107,15 @@ export type GranotLifecycleConfirmBookingCommandInput = z.infer<
   typeof granotLifecycleConfirmBookingCommandSchema
 >;
 
+export const granotLifecycleCreateReferralBookingCommandSchema = z.object({
+  expected_case_revision: z.number().int().min(1),
+  official_booking_details: granotLifecycleOfficialBookingDetailsSchema,
+}).strict();
+
+export type GranotLifecycleCreateReferralBookingCommandInput = z.infer<
+  typeof granotLifecycleCreateReferralBookingCommandSchema
+>;
+
 export const granotLifecycleUpdateBookingCommandSchema = z.object({
   expected_case_revision: z.number().int().min(1),
   expected_booking_revision: z.number().int().min(0),

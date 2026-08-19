@@ -26,11 +26,13 @@ import {
 } from "../services/granotLifecycle/projections";
 import {
   confirmBooking as confirmGranotBooking,
+  createReferralBooking as createGranotReferralBooking,
   updateExistingBooking as updateGranotBooking,
   noAction as resolveGranotBookingNoAction,
   type BookingOwnerCommandResult,
   type BookingNoActionInput,
   type ConfirmBookingInput,
+  type ReferralBookingInput,
   type UpdateExistingBookingInput,
 } from "../services/granotLifecycle/bookingReconciliation";
 import {
@@ -56,6 +58,7 @@ import {
   granotLifecycleActivationCommandSchema,
   granotLifecycleBookingNoActionCommandSchema,
   granotLifecycleConfirmBookingCommandSchema,
+  granotLifecycleCreateReferralBookingCommandSchema,
   granotLifecycleUpdateBookingCommandSchema,
   granotLifecycleConfirmCancellationCommandSchema,
   granotLifecycleReleaseNoActionCommandSchema,
@@ -73,6 +76,7 @@ export type GranotLifecycleAdminRouteDeps = {
   projectLeadTimeline?: typeof projectGranotLeadTimeline;
   projectHealth?: typeof projectGranotLifecycleHealth;
   confirmBooking?: (input: ConfirmBookingInput) => Promise<BookingOwnerCommandResult>;
+  createReferralBooking?: (input: ReferralBookingInput) => Promise<BookingOwnerCommandResult>;
   updateBooking?: (input: UpdateExistingBookingInput) => Promise<BookingOwnerCommandResult>;
   noAction?: (input: BookingNoActionInput) => Promise<BookingOwnerCommandResult>;
   confirmCancellation?: (input: ConfirmCancellationInput) => Promise<ReleaseOwnerCommandResult>;
@@ -94,6 +98,7 @@ export function createGranotLifecycleAdminRouter(
   const projectLead = deps.projectLeadTimeline ?? projectGranotLeadTimeline;
   const projectHealth = deps.projectHealth ?? projectGranotLifecycleHealth;
   const confirmBooking = deps.confirmBooking ?? confirmGranotBooking;
+  const createReferralBooking = deps.createReferralBooking ?? createGranotReferralBooking;
   const updateBooking = deps.updateBooking ?? updateGranotBooking;
   const noAction = deps.noAction ?? resolveGranotBookingNoAction;
   const confirmCancellation = deps.confirmCancellation ?? confirmGranotCancellation;
@@ -140,6 +145,29 @@ export function createGranotLifecycleAdminRouter(
           request_id: requestId(req),
         });
         return res.status(200).json({ ok: true, data });
+      } catch (error) {
+        return sendError(res, error, requestId(req));
+      }
+    },
+  );
+
+  router.post(
+    "/api/v1/admin/granot-lifecycle/booking-cases/:id/create-referral-booking",
+    async (req, res) => {
+      try {
+        await connect();
+        const owner = durableActorFromRegistryActor(requireRegistryOwnerActor(req, auth(req)));
+        const { case_id } = granotLifecycleCaseParamsSchema.parse({ case_id: req.params.id });
+        const command = granotLifecycleCreateReferralBookingCommandSchema.parse(req.body);
+        const data = await createReferralBooking({
+          case_id,
+          ...command,
+          idempotency_key: readSingleIdempotencyKey(req),
+          owner,
+          request_id: requestId(req),
+        });
+        return res.status(data.replayed || data.outcome === "already_satisfied" ? 200 : 201)
+          .json({ ok: true, data });
       } catch (error) {
         return sendError(res, error, requestId(req));
       }
