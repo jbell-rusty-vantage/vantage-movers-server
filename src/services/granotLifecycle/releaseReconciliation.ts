@@ -256,11 +256,6 @@ async function reconcileInTransaction(
       };
     }
     if (classification.kind === "release_discrepancy_required") {
-      await store.insertDecision(
-        decisionDocument(toObjectId(input.decision_id), prepared),
-        prepared.receipt_id,
-        session,
-      );
       return classification;
     }
 
@@ -369,6 +364,40 @@ async function reconcileInTransaction(
       evidence_revision: row.evidence_revision,
     };
   });
+}
+
+/** Unit 29 owner commands reuse the production classifier/case store inside their existing transaction. */
+export async function reconcileReleaseCaseAfterDiscrepancy(input: {
+  observation_id: string;
+  decision_id: string;
+  opened_at: Date;
+  session: ClientSession;
+}): Promise<{ model: "GranotReleaseReconciliationCase"; id: string } | undefined> {
+  const store = createMongoReleaseReconciliationStore();
+  const current = await store.loadCurrentContext(input.observation_id, input.session);
+  const classification = classifyReleaseReconciliation(current);
+  if (classification.kind !== "case") return undefined;
+  const decision = await getSynchronizationDecisionModel().findById(input.decision_id).session(input.session).lean().exec();
+  const evidence: GranotReleaseCaseEvidence = { observation_id: toObjectId(input.observation_id), decision_id: toObjectId(input.decision_id), captured_at: current.captured_at, action: "release" };
+  const existing = await store.findOpenCase(current.normalized_job_no!, input.session);
+  let row: GranotReleaseReconciliationCaseDocument;
+  if (existing) {
+    if (String(existing.deterministic_booking_id) !== classification.deterministic_booking_id) throw new Error("Release case cannot silently retarget to a different Booking.");
+    row = existing.evidence.some((item) => String(item.observation_id) === input.observation_id) ? existing : await store.refreshCase({
+      case_id: existing._id, evidence, observed_context: current.observed_context ?? {},
+      owner_state_changed: existing.booking_revision_at_open !== classification.booking_revision_at_open || String(existing.record_link_id ?? "") !== String(current.record_link_id ?? ""),
+    }, input.session);
+  } else {
+    const sequence = (await store.findMaxSequence(current.normalized_job_no!, input.session)) + 1;
+    row = await store.insertCase({
+      _id: new mongoose.Types.ObjectId(), normalized_job_no: current.normalized_job_no!, job_no_snapshot: current.job_no_snapshot!, action_kind: "release", sequence_number: sequence,
+      state: "open", case_revision: 1, evidence_revision: 1, source_scope: decision?.source_scope ? { ...decision.source_scope } : undefined,
+      record_link_id: current.record_link_id ? toObjectId(current.record_link_id) : undefined,
+      deterministic_booking_id: toObjectId(classification.deterministic_booking_id), booking_revision_at_open: classification.booking_revision_at_open,
+      evidence: [evidence], observed_context: current.observed_context ?? {}, opened_at: input.opened_at, last_evidence_at: current.captured_at,
+    }, input.session);
+  }
+  return { model: "GranotReleaseReconciliationCase", id: String(row._id) };
 }
 
 export function createMongoReleaseReconciliationStore(): ReleaseReconciliationPersistenceStore {

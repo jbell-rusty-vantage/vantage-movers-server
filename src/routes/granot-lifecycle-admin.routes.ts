@@ -45,6 +45,17 @@ import {
   type ReleaseOwnerCommandResult,
 } from "../services/granotLifecycle/releaseReconciliation";
 import { durableActorFromRegistryActor } from "../services/durableWork";
+import type { DurableActor } from "../services/durableWork";
+import { getGranotLifecycleDiscrepancyDetail, listGranotLifecycleDiscrepancies } from "../services/granotLifecycle/discrepancyProjections";
+import {
+  correctGranotRecordLink as correctDiscrepancyRecordLink,
+  reEvaluateGranotDiscrepancy,
+  resolveGranotDiscrepancyNoAction,
+  type CorrectRecordLinkInput,
+  type DiscrepancyNoActionInput,
+  type DiscrepancyOwnerCommandResult,
+  type ReEvaluateDiscrepancyInput,
+} from "../services/granotLifecycle/discrepancyOwnerCommands";
 import {
   DomainCommandContextError,
   DomainCommandIdempotencyConflictError,
@@ -63,6 +74,11 @@ import {
   granotLifecycleConfirmCancellationCommandSchema,
   granotLifecycleReleaseNoActionCommandSchema,
   granotLifecycleRequeueCommandSchema,
+  granotLifecycleCorrectRecordLinkCommandSchema,
+  granotLifecycleDiscrepancyListQuerySchema,
+  granotLifecycleDiscrepancyNoActionCommandSchema,
+  granotLifecycleDiscrepancyParamsSchema,
+  granotLifecycleReEvaluateDiscrepancyCommandSchema,
 } from "../validation/v1/granotLifecycle.validation";
 
 export type GranotLifecycleAdminRouteDeps = {
@@ -82,6 +98,18 @@ export type GranotLifecycleAdminRouteDeps = {
   confirmCancellation?: (input: ConfirmCancellationInput) => Promise<ReleaseOwnerCommandResult>;
   updateReleaseBooking?: (input: UpdateReleaseBookingInput) => Promise<ReleaseOwnerCommandResult>;
   releaseNoAction?: (input: ReleaseNoActionInput) => Promise<ReleaseOwnerCommandResult>;
+  listDiscrepancies?: typeof listGranotLifecycleDiscrepancies;
+  getDiscrepancyDetail?: typeof getGranotLifecycleDiscrepancyDetail;
+  reEvaluateDiscrepancy?: (input: ReEvaluateDiscrepancyInput) => Promise<DiscrepancyOwnerCommandResult>;
+  correctRecordLink?: (input: CorrectRecordLinkInput) => Promise<DiscrepancyOwnerCommandResult>;
+  discrepancyNoAction?: (input: DiscrepancyNoActionInput) => Promise<DiscrepancyOwnerCommandResult>;
+};
+
+type EnvelopeForRoute = {
+  discrepancy_id: string;
+  idempotency_key: string;
+  owner: DurableActor;
+  request_id?: string;
 };
 
 export function createGranotLifecycleAdminRouter(
@@ -104,6 +132,48 @@ export function createGranotLifecycleAdminRouter(
   const confirmCancellation = deps.confirmCancellation ?? confirmGranotCancellation;
   const updateReleaseBooking = deps.updateReleaseBooking ?? updateGranotReleaseBooking;
   const releaseNoAction = deps.releaseNoAction ?? resolveGranotReleaseNoAction;
+  const listDiscrepancies = deps.listDiscrepancies ?? listGranotLifecycleDiscrepancies;
+  const getDiscrepancyDetail = deps.getDiscrepancyDetail ?? getGranotLifecycleDiscrepancyDetail;
+  const reEvaluateDiscrepancy = deps.reEvaluateDiscrepancy ?? reEvaluateGranotDiscrepancy;
+  const correctRecordLink = deps.correctRecordLink ?? correctDiscrepancyRecordLink;
+  const discrepancyNoAction = deps.discrepancyNoAction ?? resolveGranotDiscrepancyNoAction;
+
+  router.get("/api/v1/admin/granot-lifecycle/discrepancies", async (req, res) => {
+    try {
+      await connect();
+      requireRegistryReadActor(req, auth(req));
+      const data = await listDiscrepancies(granotLifecycleDiscrepancyListQuerySchema.parse(req.query));
+      return res.status(200).json({ ok: true, data });
+    } catch (error) { return sendError(res, error, requestId(req)); }
+  });
+
+  router.get("/api/v1/admin/granot-lifecycle/discrepancies/:id", async (req, res) => {
+    try {
+      await connect();
+      requireRegistryReadActor(req, auth(req));
+      const { discrepancy_id } = granotLifecycleDiscrepancyParamsSchema.parse({ discrepancy_id: req.params.id });
+      return res.status(200).json({ ok: true, data: await getDiscrepancyDetail(discrepancy_id) });
+    } catch (error) { return sendError(res, error, requestId(req)); }
+  });
+
+  const discrepancyAction = <T extends Record<string, unknown>>(
+    path: string,
+    schema: { parse(value: unknown): T },
+    handler: (input: T & EnvelopeForRoute) => Promise<DiscrepancyOwnerCommandResult>,
+  ) => router.post(path, async (req, res) => {
+    try {
+      await connect();
+      const owner = durableActorFromRegistryActor(requireRegistryOwnerActor(req, auth(req)));
+      const { discrepancy_id } = granotLifecycleDiscrepancyParamsSchema.parse({ discrepancy_id: req.params.id });
+      const command = schema.parse(req.body);
+      const data = await handler({ ...command, discrepancy_id, idempotency_key: readSingleIdempotencyKey(req), owner, request_id: requestId(req) });
+      return res.status(200).json({ ok: true, data });
+    } catch (error) { return sendError(res, error, requestId(req)); }
+  });
+
+  discrepancyAction("/api/v1/admin/granot-lifecycle/discrepancies/:id/re-evaluate", granotLifecycleReEvaluateDiscrepancyCommandSchema, reEvaluateDiscrepancy);
+  discrepancyAction("/api/v1/admin/granot-lifecycle/discrepancies/:id/correct-record-link", granotLifecycleCorrectRecordLinkCommandSchema, correctRecordLink);
+  discrepancyAction("/api/v1/admin/granot-lifecycle/discrepancies/:id/no-action", granotLifecycleDiscrepancyNoActionCommandSchema, discrepancyNoAction);
 
   router.post(
     "/api/v1/admin/granot-lifecycle/booking-cases/:id/confirm-booking",

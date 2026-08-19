@@ -14,6 +14,10 @@ import {
   granotLifecycleLeadTimelineParamsSchema,
   granotLifecycleRequeueCommandSchema,
   granotLifecycleTimelineQuerySchema,
+  granotLifecycleCorrectRecordLinkCommandSchema,
+  granotLifecycleDiscrepancyListQuerySchema,
+  granotLifecycleDiscrepancyNoActionCommandSchema,
+  granotLifecycleReEvaluateDiscrepancyCommandSchema,
 } from "./granotLifecycle.validation";
 import { GRANOT_LIFECYCLE_ERROR_CODES } from "../../services/granotLifecycle/errors";
 
@@ -108,6 +112,18 @@ test("[AC-02] batch rejects duplicate operation IDs and more than 100 items", ()
     () => extensionGranotApplyBatchSchema.parse({ items: [item, item] }),
     /duplicate operation_id/,
   );
+});
+
+test("[AC-23][AC-35][AC-36] discrepancy filters and Owner bodies are strict and revision guarded", () => {
+  assert.equal(granotLifecycleDiscrepancyListQuerySchema.parse({}).limit, 25);
+  assert.equal(granotLifecycleDiscrepancyListQuerySchema.safeParse({ reason_code: "release_record_link_conflict", state: "open" }).success, true);
+  assert.equal(granotLifecycleDiscrepancyListQuerySchema.safeParse({ contact: "forbidden" }).success, false);
+  assert.deepEqual(granotLifecycleReEvaluateDiscrepancyCommandSchema.parse({ expected_revision: 1 }), { expected_revision: 1 });
+  const correction = { expected_revision: 1, expected_link_revision: 0, selected_lead: { lead_model: "FormLead", lead_id: "a".repeat(24) }, reason_text: "Owner reviewed the corrected Lead" };
+  assert.deepEqual(granotLifecycleCorrectRecordLinkCommandSchema.parse(correction), correction);
+  assert.equal(granotLifecycleCorrectRecordLinkCommandSchema.safeParse({ ...correction, booking_id: "b".repeat(24) }).success, false);
+  assert.equal(granotLifecycleCorrectRecordLinkCommandSchema.safeParse({ ...correction, reason_text: "short" }).success, false);
+  assert.deepEqual(granotLifecycleDiscrepancyNoActionCommandSchema.parse({ expected_revision: 2 }), { expected_revision: 2 });
 });
 
 test("[AC-18] [AC-19] case list query is strict, bounded, and validates date order", () => {

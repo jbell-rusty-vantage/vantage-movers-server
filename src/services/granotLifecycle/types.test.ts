@@ -140,7 +140,9 @@ type _EntityRef = Assert<
         | "CancelledLead"
         | "GranotRecordLink"
         | "GranotBookingReconciliationCase"
-        | "GranotReleaseReconciliationCase";
+        | "GranotReleaseReconciliationCase"
+        | "GranotBookingDiscrepancy"
+        | "GranotReleaseDiscrepancy";
       id: string;
     }
   >

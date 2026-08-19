@@ -377,3 +377,9 @@ Do these in order. Do not skip to flags.
 7. Watch `GET /api/v1/admin/granot-lifecycle/operations/health` and Operational Events. First live proof: one unmatched Best Relocation inbound `lead_created` creates one Call Lead; a duplicate delivery replays; a Main Site `lead_created` still does **not** create.
 
 Rollback: set `GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED=false` first, then `SHADOW_MODE=true` if needed. Capture stays on. Do not delete activation, receipts, Decisions, Record Links, or committed Leads. If a single source is wrong, set that row `lifecycle_enabled=false` through the audited activation command — do not edit it in Compass.
+
+## 6. Discrepancy posture (Unit 29)
+
+Unit 29 adds no flag. Automatic Booking-conflict persistence is controlled by `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED`; Release conflicts use `GRANOT_LIFECYCLE_RELEASE_CASES_ENABLED`. Live mode, activation, reviewed source policy, and the corresponding case gate must all pass. Shadow and historical Decisions are never promoted.
+
+Existing discrepancy rows remain readable when a case flag is disabled. Trusted Owner commands additionally require current server facts, strict revisions/idempotency, and their existing command trust boundary; they do not authorize official Booking/Cancellation or Lead-attribution mutation. See [discrepancy-review-and-record-link-correction.md](discrepancy-review-and-record-link-correction.md).

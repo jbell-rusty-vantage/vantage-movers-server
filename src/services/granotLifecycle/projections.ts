@@ -6,6 +6,8 @@ import {
 import { getGranotLifecycleActivationModel } from "../../models/GranotLifecycleActivation";
 import { getGranotBookingReconciliationCaseModel } from "../../models/GranotBookingReconciliationCase";
 import { getGranotReleaseReconciliationCaseModel } from "../../models/GranotReleaseReconciliationCase";
+import { getGranotBookingDiscrepancyModel } from "../../models/GranotBookingDiscrepancy";
+import { getGranotReleaseDiscrepancyModel } from "../../models/GranotReleaseDiscrepancy";
 import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
@@ -695,7 +697,7 @@ export async function getGranotLifecycleCaseDetail(
         mode === "create_referral_booking" || booking?.is_referral_booking === true
       ),
       release_cases: true,
-      discrepancies: false,
+      discrepancies: true,
     },
   };
   assertProjectionSafe(result);
@@ -778,7 +780,7 @@ export async function listGranotLifecycleCaseCandidates(
 async function buildTimelineForJob(
   normalizedJobNo: string,
 ): Promise<Omit<GranotTimelinePage, "next_cursor">> {
-  const [links, observations, bookingCases, releaseCases, booking] = await Promise.all([
+  const [links, observations, bookingCases, releaseCases, bookingDiscrepancies, releaseDiscrepancies, booking] = await Promise.all([
     getGranotRecordLinkModel()
       .find({ provider: "granot", normalized_job_no: normalizedJobNo })
       .lean(),
@@ -791,6 +793,8 @@ async function buildTimelineForJob(
     getGranotReleaseReconciliationCaseModel()
       .find({ normalized_job_no: normalizedJobNo })
       .lean(),
+    getGranotBookingDiscrepancyModel().find({ normalized_job_no: normalizedJobNo }).lean(),
+    getGranotReleaseDiscrepancyModel().find({ normalized_job_no: normalizedJobNo }).lean(),
     BookedLead.findOne({ normalized_job_no: normalizedJobNo }).lean(),
   ]);
   const observationIds = observations.map((row) => row._id);
@@ -928,6 +932,25 @@ async function buildTimelineForJob(
       });
     }
   }
+  for (const { row, kind } of [
+    ...bookingDiscrepancies.map((row) => ({ row, kind: "booking" as const })),
+    ...releaseDiscrepancies.map((row) => ({ row, kind: "release" as const })),
+  ]) {
+    row.evidence.forEach((evidence) => items.push({
+      id: `${row._id}:${evidence.observation_id}`,
+      type: "discrepancy",
+      event_at: iso(evidence.captured_at, "discrepancy.evidence.captured_at"),
+      type_priority: 60,
+      data: { discrepancy_id: String(row._id), kind, state: row.state, reason_code: row.reason_code },
+    }));
+    if (row.resolution) items.push({
+      id: `${row._id}:resolved`,
+      type: "discrepancy",
+      event_at: iso(row.resolution.resolved_at, "discrepancy.resolution.resolved_at"),
+      type_priority: 60,
+      data: { discrepancy_id: String(row._id), kind, state: "resolved", reason_code: row.reason_code },
+    });
+  }
   for (const link of links) {
     const eventAt = link.last_changed_at ?? link.established_at ?? link.last_observed_at;
     const event = link.state === "superseded"
@@ -1049,7 +1072,7 @@ function timelineCapabilities(): GranotTimelinePage["capabilities"] {
   return {
     booking_cases: true,
     release_cases: true,
-    discrepancies: false,
+    discrepancies: true,
     official_facts: true,
   };
 }

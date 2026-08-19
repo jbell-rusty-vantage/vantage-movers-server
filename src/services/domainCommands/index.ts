@@ -27,6 +27,7 @@ import {
   markRingCentralConvergenceConflict,
 } from "../ringcentral/callLeadConvergence.service";
 import type { CanonicalDomainCommands } from "./types";
+import { correctGranotRecordLink, reEvaluateGranotDiscrepancy, resolveGranotDiscrepancyNoAction } from "../granotLifecycle/discrepancyOwnerCommands";
 
 export * from "./bookings";
 export * from "./cancellations";
@@ -55,6 +56,9 @@ export const canonicalDomainCommands: CanonicalDomainCommands = {
   createReferralBooking: createReferralBookingCanonical,
   adoptRingCentralCall,
   markRingCentralConvergenceConflict,
+  reEvaluateGranotDiscrepancy,
+  correctGranotRecordLink,
+  resolveGranotDiscrepancyNoAction,
 };
 
 export const existingWriteCanonicalCommands = {

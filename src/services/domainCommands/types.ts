@@ -11,6 +11,7 @@ import type { CreateLeadFromGranotInput } from "../granotLifecycle/createLeadFro
 import type { SynchronizeLeadExecution } from "../granotLifecycle/synchronizeLeadTypes";
 import type { ObservationChannel } from "../granotLifecycle/types";
 import type { DurableActor } from "../durableWork";
+import type { CorrectRecordLinkInput, DiscrepancyNoActionInput, DiscrepancyOwnerCommandResult, ReEvaluateDiscrepancyInput } from "../granotLifecycle/discrepancyOwnerCommands";
 import type {
   AdoptRingCentralCallInput,
   MarkRingCentralConvergenceConflictInput,
@@ -83,6 +84,9 @@ export type CanonicalCommandOperationEvidence = {
 };
 
 export interface CanonicalDomainCommands {
+  reEvaluateGranotDiscrepancy?(input: ReEvaluateDiscrepancyInput): Promise<DiscrepancyOwnerCommandResult>;
+  correctGranotRecordLink?(input: CorrectRecordLinkInput): Promise<DiscrepancyOwnerCommandResult>;
+  resolveGranotDiscrepancyNoAction?(input: DiscrepancyNoActionInput): Promise<DiscrepancyOwnerCommandResult>;
   createFormLead(input: {
     data: CreateFormLeadInput;
     context: CanonicalCommandContext;

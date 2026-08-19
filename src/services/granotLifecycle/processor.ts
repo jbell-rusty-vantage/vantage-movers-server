@@ -71,6 +71,12 @@ import {
   type ReleaseReconciliationPersistenceStore,
 } from "./releaseReconciliation";
 import {
+  createGranotDiscrepancies,
+  type DiscrepancyEffectResult,
+  type DiscrepancyPersistenceStore,
+  type PreparedDiscrepancyDecision,
+} from "./discrepancies";
+import {
   planLeadDesiredState,
   type LeadDesiredStatePlan,
   type LeadDesiredStateProjection,
@@ -195,6 +201,16 @@ export type GranotLifecycleProcessorDeps = {
     ids: { observation_id: string; decision_id: string },
     prepared: PreparedReleaseReconciliationDecision,
   ) => Promise<ReleaseCaseEffectResult>;
+  discrepancyStore?: DiscrepancyPersistenceStore;
+  reconcileDiscrepancy?: (
+    input: {
+      discrepancy_kind: "booking" | "release";
+      reason_code: import("./types").GranotDiscrepancyReasonCode;
+      observation_id: string;
+      decision_id: string;
+    },
+    prepared: PreparedDiscrepancyDecision,
+  ) => Promise<DiscrepancyEffectResult>;
 };
 
 export function createGranotObservationProcessor(
@@ -548,6 +564,19 @@ async function maybeReconcileRelease(input: {
       }));
   if (result.kind === "none") return undefined;
 
+  if (result.kind === "release_discrepancy_required") {
+    return persistProcessorDiscrepancy({
+      discrepancy_kind: "release",
+      reason_code: result.reason_code,
+      decision_id: decisionId,
+      prepared,
+      observation: input.observation,
+      receipt: input.receipt,
+      deps: input.deps,
+      started: input.started,
+    });
+  }
+
   const opened = result.kind === "opened" || result.kind === "refreshed";
   const alreadyCurrent = result.kind === "already_current";
   const decision = toDecisionDocument(decisionId, {
@@ -647,6 +676,18 @@ async function maybeReconcileBooking(input: {
         observation_id: String(input.observation._id),
         decision_id: String(decisionId),
       }));
+  if (result.kind === "booking_discrepancy_required") {
+    return persistProcessorDiscrepancy({
+      discrepancy_kind: "booking",
+      reason_code: result.reason_code,
+      decision_id: decisionId,
+      prepared,
+      observation: input.observation,
+      receipt: input.receipt,
+      deps: input.deps,
+      started: input.started,
+    });
+  }
   if (result.kind === "none" && result.reason !== "employee_reconciliation_missing") {
     return undefined;
   }
@@ -678,6 +719,69 @@ async function maybeReconcileBooking(input: {
     duration_ms: Date.now() - input.started,
   });
   return toProcessorResult(decision, input.receipt.observation_channel, input.started);
+}
+
+async function persistProcessorDiscrepancy(input: {
+  discrepancy_kind: "booking" | "release";
+  reason_code: import("./types").GranotDiscrepancyReasonCode;
+  decision_id: mongoose.Types.ObjectId;
+  prepared: PreparedBookingReconciliationDecision | PreparedReleaseReconciliationDecision;
+  observation: GranotObservationDocument;
+  receipt: ProcessorReceipt;
+  deps: GranotLifecycleProcessorDeps;
+  started: number;
+}): Promise<ReturnType<typeof toProcessorResult>> {
+  const prepared: PreparedDiscrepancyDecision = {
+    receipt_id: input.prepared.receipt_id,
+    observation_id: input.prepared.observation_id,
+    attempt: input.prepared.attempt,
+    execution_mode: input.prepared.execution_mode,
+    outcome: input.prepared.outcome,
+    reason_code: input.prepared.reason_code,
+    match_method: input.prepared.match_method,
+    source_scope: input.prepared.source_scope,
+    candidates: input.prepared.candidates,
+    evaluated_gates: input.prepared.evaluated_gates,
+    effects: input.prepared.effects,
+    decided_at: input.prepared.decided_at,
+  };
+  const request = {
+    discrepancy_kind: input.discrepancy_kind,
+    reason_code: input.reason_code,
+    observation_id: String(input.observation._id),
+    decision_id: String(input.decision_id),
+  };
+  const result = input.deps.reconcileDiscrepancy
+    ? await input.deps.reconcileDiscrepancy(request, prepared)
+    : await createGranotDiscrepancies({
+        prepared,
+        store: input.deps.discrepancyStore,
+      }).reconcileObservation(request);
+  const decision = toDecisionDocument(input.decision_id, {
+    ...input.prepared,
+    outcome: "conflict",
+    reason_code: result.reason_code,
+    target: result.discrepancy_ref,
+    effects: [{
+      kind: result.kind === "opened" ? "discrepancy_opened" : "discrepancy_refreshed",
+      ref: result.discrepancy_ref,
+    }],
+  });
+  logProcessingCompletion({
+    receipt_id: String(input.receipt._id),
+    observation_id: String(input.observation._id),
+    decision_id: String(input.decision_id),
+    attempt: input.prepared.attempt,
+    execution_mode: input.prepared.execution_mode,
+    outcome: decision.outcome,
+    reason_code: decision.reason_code,
+    duration_ms: Date.now() - input.started,
+  });
+  return toProcessorResult(
+    decision,
+    input.receipt.observation_channel,
+    input.started,
+  );
 }
 
 function bookingGatesFromPrepared(

@@ -82,9 +82,18 @@ import {
   findGranotReleaseCaseCollisions,
   orderedGranotReleaseCaseIndexCreates,
   verifyGranotReleaseCaseIndexDefinitions,
+  GRANOT_BOOKING_DISCREPANCY_COLLECTION,
+  GRANOT_RELEASE_DISCREPANCY_COLLECTION,
+  findGranotDiscrepancyCollisions,
+  orderedGranotBookingDiscrepancyIndexCreates,
+  orderedGranotReleaseDiscrepancyIndexCreates,
+  verifyGranotBookingDiscrepancyIndexDefinitions,
+  verifyGranotReleaseDiscrepancyIndexDefinitions,
 } from "./granot-lifecycle-indexes.lib.js";
 import { GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES } from "../../src/models/GranotBookingReconciliationCase.js";
 import { GRANOT_RELEASE_RECONCILIATION_CASE_INDEXES } from "../../src/models/GranotReleaseReconciliationCase.js";
+import { GRANOT_BOOKING_DISCREPANCY_INDEXES } from "../../src/models/GranotBookingDiscrepancy.js";
+import { GRANOT_RELEASE_DISCREPANCY_INDEXES } from "../../src/models/GranotReleaseDiscrepancy.js";
 import { getRingCentralCollectionName } from "../../src/services/ringcentral/ringcentral-config.js";
 import { RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX } from "../../src/services/ringcentral/call-log-sync-state.store.js";
 import { CALL_LEAD_S08_INDEXES } from "../../src/models/CallLead.js";
@@ -367,6 +376,29 @@ async function loadGranotReleaseCaseRows(): Promise<
   }));
 }
 
+async function loadGranotDiscrepancyRows(collectionName: string): Promise<
+  Array<{
+    _id: string;
+    normalized_job_no?: unknown;
+    discrepancy_kind?: unknown;
+    reason_fingerprint?: unknown;
+    state?: unknown;
+  }>
+> {
+  const collection = mongoose.connection.db?.collection(collectionName);
+  if (!collection) return [];
+  const documents = await collection.find({}, {
+    projection: { normalized_job_no: 1, discrepancy_kind: 1, reason_fingerprint: 1, state: 1 },
+  }).toArray();
+  return documents.map((document) => ({
+    _id: String(document._id),
+    normalized_job_no: document.normalized_job_no,
+    discrepancy_kind: document.discrepancy_kind,
+    reason_fingerprint: document.reason_fingerprint,
+    state: document.state,
+  }));
+}
+
 /**
  * Unit 21 — the RingCentral Call Log sync-state singleton. The collection name
  * follows `RINGCENTRAL_COLLECTION_MODE`, so a test-mode run reports and
@@ -432,6 +464,14 @@ async function main(): Promise<void> {
   const releaseCaseRows = await loadGranotReleaseCaseRows();
   const releaseCaseCollisions = findGranotReleaseCaseCollisions(releaseCaseRows);
   const releaseCaseOrdered = orderedGranotReleaseCaseIndexCreates();
+  const bookingDiscrepancyCollisions = findGranotDiscrepancyCollisions(
+    await loadGranotDiscrepancyRows(GRANOT_BOOKING_DISCREPANCY_COLLECTION),
+  );
+  const releaseDiscrepancyCollisions = findGranotDiscrepancyCollisions(
+    await loadGranotDiscrepancyRows(GRANOT_RELEASE_DISCREPANCY_COLLECTION),
+  );
+  const bookingDiscrepancyOrdered = orderedGranotBookingDiscrepancyIndexCreates();
+  const releaseDiscrepancyOrdered = orderedGranotReleaseDiscrepancyIndexCreates();
   const entityChangeRows = await loadEntityChangeRevisionRows();
   const entityChangeCollisions = findEntityChangeRevisionCollisions(entityChangeRows);
   const entityChangeOrdered = orderedEntityChangeIndexCreates();
@@ -453,6 +493,8 @@ async function main(): Promise<void> {
   let bookedLeadVerify: ReturnType<typeof verifyBookedLeadNormalizedJobIndexDefinitions> | undefined;
   let bookingCaseVerify: ReturnType<typeof verifyGranotBookingCaseIndexDefinitions> | undefined;
   let releaseCaseVerify: ReturnType<typeof verifyGranotReleaseCaseIndexDefinitions> | undefined;
+  let bookingDiscrepancyVerify: ReturnType<typeof verifyGranotBookingDiscrepancyIndexDefinitions> | undefined;
+  let releaseDiscrepancyVerify: ReturnType<typeof verifyGranotReleaseDiscrepancyIndexDefinitions> | undefined;
   let entityChangeVerify: ReturnType<typeof verifyEntityChangeIndexDefinitions> | undefined;
   let formLeadVerify: ReturnType<typeof verifyFormLeadS08IndexDefinitions> | undefined;
   let callLeadVerify: ReturnType<typeof verifyCallLeadS08IndexDefinitions> | undefined;
@@ -479,6 +521,8 @@ async function main(): Promise<void> {
         GRANOT_RELEASE_RECONCILIATION_CASE_COLLECTION,
         releaseCaseOrdered.nonUnique,
       )),
+      ...(await createIndexes(GRANOT_BOOKING_DISCREPANCY_COLLECTION, bookingDiscrepancyOrdered.nonUnique)),
+      ...(await createIndexes(GRANOT_RELEASE_DISCREPANCY_COLLECTION, releaseDiscrepancyOrdered.nonUnique)),
     ];
     if (collisions.length > 0 || observationCollisions.length > 0) {
       const manifest = buildManifest({
@@ -640,6 +684,20 @@ async function main(): Promise<void> {
         } collision group(s).`,
       );
     }
+    if (bookingDiscrepancyCollisions.length > 0 || releaseDiscrepancyCollisions.length > 0) {
+      const manifest = buildManifest({
+        databaseName, mode, collisions, observationCollisions, normalizedLabelCollisions,
+        created, uniqueCreated: [], bookingDiscrepancyCollisions, releaseDiscrepancyCollisions,
+      });
+      await writeGranotLifecycleManifest({
+        directory: OUTPUT_DIR,
+        runId: `granot-lifecycle-indexes-${mode}-${Date.now()}`,
+        manifest,
+      });
+      throw new Error(
+        `Refusing unique Granot discrepancy index create: ${bookingDiscrepancyCollisions.length + releaseDiscrepancyCollisions.length} collision group(s).`,
+      );
+    }
     created = [
       ...created,
       ...(await createIndexes(
@@ -650,6 +708,8 @@ async function main(): Promise<void> {
         GRANOT_RELEASE_RECONCILIATION_CASE_COLLECTION,
         releaseCaseOrdered.unique,
       )),
+      ...(await createIndexes(GRANOT_BOOKING_DISCREPANCY_COLLECTION, bookingDiscrepancyOrdered.unique)),
+      ...(await createIndexes(GRANOT_RELEASE_DISCREPANCY_COLLECTION, releaseDiscrepancyOrdered.unique)),
     ];
     const existingBookedLeadIndexes = await listDeclaredIndexes(BOOKED_LEAD_COLLECTION);
     const bookedLeadAlreadyPresent = verifyBookedLeadNormalizedJobIndexDefinitions(
@@ -743,6 +803,12 @@ async function main(): Promise<void> {
     releaseCaseVerify = verifyGranotReleaseCaseIndexDefinitions(
       await listDeclaredIndexes(GRANOT_RELEASE_RECONCILIATION_CASE_COLLECTION),
     );
+    bookingDiscrepancyVerify = verifyGranotBookingDiscrepancyIndexDefinitions(
+      await listDeclaredIndexes(GRANOT_BOOKING_DISCREPANCY_COLLECTION),
+    );
+    releaseDiscrepancyVerify = verifyGranotReleaseDiscrepancyIndexDefinitions(
+      await listDeclaredIndexes(GRANOT_RELEASE_DISCREPANCY_COLLECTION),
+    );
     entityChangeVerify = verifyEntityChangeIndexDefinitions(
       await listDeclaredIndexes(ENTITY_CHANGE_COLLECTION),
     );
@@ -772,6 +838,8 @@ async function main(): Promise<void> {
     bookingCaseCollisions.sequence.length === 0 &&
     releaseCaseCollisions.open.length === 0 &&
     releaseCaseCollisions.sequence.length === 0
+    && bookingDiscrepancyCollisions.length === 0
+    && releaseDiscrepancyCollisions.length === 0
       ? [
           ...ordered.unique.map((index) => index.name),
           ...observationOrdered.unique.map((index) => index.name),
@@ -784,6 +852,8 @@ async function main(): Promise<void> {
           ...callLogSyncStateOrdered.unique.map((index) => index.name),
           ...bookingCaseOrdered.unique.map((index) => index.name),
           ...releaseCaseOrdered.unique.map((index) => index.name),
+          ...bookingDiscrepancyOrdered.unique.map((index) => index.name),
+          ...releaseDiscrepancyOrdered.unique.map((index) => index.name),
         ]
       : [];
 
@@ -811,6 +881,10 @@ async function main(): Promise<void> {
     bookingCaseVerify,
     releaseCaseCollisions,
     releaseCaseVerify,
+    bookingDiscrepancyCollisions,
+    releaseDiscrepancyCollisions,
+    bookingDiscrepancyVerify,
+    releaseDiscrepancyVerify,
     entityChangeCollisions,
     entityChangeVerify,
     formLeadVerify,
@@ -837,6 +911,8 @@ async function main(): Promise<void> {
       bookedLeadVerify,
       bookingCaseVerify,
       releaseCaseVerify,
+      bookingDiscrepancyVerify,
+      releaseDiscrepancyVerify,
       entityChangeVerify,
       formLeadVerify,
       callLeadVerify,
@@ -864,6 +940,8 @@ function buildManifest(input: {
   bookedLeadCollisions?: ReturnType<typeof findBookedLeadNormalizedJobCollisions>;
   bookingCaseCollisions?: ReturnType<typeof findGranotBookingCaseCollisions>;
   releaseCaseCollisions?: ReturnType<typeof findGranotReleaseCaseCollisions>;
+  bookingDiscrepancyCollisions?: ReturnType<typeof findGranotDiscrepancyCollisions>;
+  releaseDiscrepancyCollisions?: ReturnType<typeof findGranotDiscrepancyCollisions>;
   created: string[];
   uniqueCreated: string[];
   verify?: ReturnType<typeof verifyReceiptIndexDefinitions>;
@@ -876,6 +954,8 @@ function buildManifest(input: {
   bookedLeadVerify?: ReturnType<typeof verifyBookedLeadNormalizedJobIndexDefinitions>;
   bookingCaseVerify?: ReturnType<typeof verifyGranotBookingCaseIndexDefinitions>;
   releaseCaseVerify?: ReturnType<typeof verifyGranotReleaseCaseIndexDefinitions>;
+  bookingDiscrepancyVerify?: ReturnType<typeof verifyGranotBookingDiscrepancyIndexDefinitions>;
+  releaseDiscrepancyVerify?: ReturnType<typeof verifyGranotReleaseDiscrepancyIndexDefinitions>;
   entityChangeCollisions?: ReturnType<typeof findEntityChangeRevisionCollisions>;
   entityChangeVerify?: ReturnType<typeof verifyEntityChangeIndexDefinitions>;
   formLeadVerify?: ReturnType<typeof verifyFormLeadS08IndexDefinitions>;
@@ -903,6 +983,8 @@ function buildManifest(input: {
       RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX.name,
       ...GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES.map((index) => index.name),
       ...GRANOT_RELEASE_RECONCILIATION_CASE_INDEXES.map((index) => index.name),
+      ...GRANOT_BOOKING_DISCREPANCY_INDEXES.map((index) => index.name),
+      ...GRANOT_RELEASE_DISCREPANCY_INDEXES.map((index) => index.name),
     ],
     collision_count:
       input.collisions.length +
@@ -917,7 +999,9 @@ function buildManifest(input: {
       (input.bookingCaseCollisions?.open.length ?? 0) +
       (input.bookingCaseCollisions?.sequence.length ?? 0) +
       (input.releaseCaseCollisions?.open.length ?? 0) +
-      (input.releaseCaseCollisions?.sequence.length ?? 0),
+      (input.releaseCaseCollisions?.sequence.length ?? 0) +
+      (input.bookingDiscrepancyCollisions?.length ?? 0) +
+      (input.releaseDiscrepancyCollisions?.length ?? 0),
     collisions: input.collisions,
     observation_receipt_id_collisions: input.observationCollisions,
     normalized_granot_label_collisions: input.normalizedLabelCollisions,
@@ -942,6 +1026,10 @@ function buildManifest(input: {
     granot_release_case_open_collisions: input.releaseCaseCollisions?.open ?? [],
     granot_release_case_sequence_collisions: input.releaseCaseCollisions?.sequence ?? [],
     granot_release_case_verify: input.releaseCaseVerify,
+    granot_booking_discrepancy_collisions: input.bookingDiscrepancyCollisions ?? [],
+    granot_release_discrepancy_collisions: input.releaseDiscrepancyCollisions ?? [],
+    granot_booking_discrepancy_verify: input.bookingDiscrepancyVerify,
+    granot_release_discrepancy_verify: input.releaseDiscrepancyVerify,
     entity_change_revision_collisions: input.entityChangeCollisions ?? [],
     entity_change_verify: input.entityChangeVerify,
     form_lead_s08_verify: input.formLeadVerify,

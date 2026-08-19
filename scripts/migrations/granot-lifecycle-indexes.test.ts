@@ -49,6 +49,11 @@ import {
   findGranotReleaseCaseCollisions,
   orderedGranotReleaseCaseIndexCreates,
   verifyGranotReleaseCaseIndexDefinitions,
+  findGranotDiscrepancyCollisions,
+  orderedGranotBookingDiscrepancyIndexCreates,
+  orderedGranotReleaseDiscrepancyIndexCreates,
+  verifyGranotBookingDiscrepancyIndexDefinitions,
+  verifyGranotReleaseDiscrepancyIndexDefinitions,
 } from "./granot-lifecycle-indexes.lib";
 import { GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES } from "../../src/models/GranotBookingReconciliationCase";
 import { GRANOT_RELEASE_RECONCILIATION_CASE_INDEXES } from "../../src/models/GranotReleaseReconciliationCase";
@@ -59,6 +64,38 @@ import { GRANOT_AUTOMATION_SOURCE_INDEXES } from "../../src/models/GranotAutomat
 import { BOOKED_LEAD_NORMALIZED_JOB_INDEX } from "../../src/models/BookedLead";
 import { CALL_LEAD_S08_INDEXES } from "../../src/models/CallLead";
 import { FORM_LEAD_S08_INDEXES } from "../../src/models/FormLead";
+import { GRANOT_BOOKING_DISCREPANCY_INDEXES } from "../../src/models/GranotBookingDiscrepancy";
+import { GRANOT_RELEASE_DISCREPANCY_INDEXES } from "../../src/models/GranotReleaseDiscrepancy";
+
+test("[AC-36] discrepancy collisions are PII-safe and indexes are ordered and exact", () => {
+  const rows = [
+    { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", normalized_job_no: "JOB-29", discrepancy_kind: "booking", reason_fingerprint: "f".repeat(64), state: "open" },
+    { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", normalized_job_no: "JOB-29", discrepancy_kind: "booking", reason_fingerprint: "f".repeat(64), state: "open" },
+    { _id: "cccccccccccccccccccccccc", normalized_job_no: "JOB-29", discrepancy_kind: "booking", reason_fingerprint: "f".repeat(64), state: "resolved" },
+  ];
+  const collisions = findGranotDiscrepancyCollisions(rows);
+  assert.equal(collisions.length, 1);
+  assert.equal(collisions[0]?.count, 2);
+  assert.equal(JSON.stringify(collisions).includes("JOB-29"), false);
+  assert.equal(JSON.stringify(collisions).includes("aaaaaaaaaaaaaaaaaaaaaaaa"), false);
+
+  for (const [ordered, definitions, verify] of [
+    [orderedGranotBookingDiscrepancyIndexCreates(), GRANOT_BOOKING_DISCREPANCY_INDEXES, verifyGranotBookingDiscrepancyIndexDefinitions],
+    [orderedGranotReleaseDiscrepancyIndexCreates(), GRANOT_RELEASE_DISCREPANCY_INDEXES, verifyGranotReleaseDiscrepancyIndexDefinitions],
+  ] as const) {
+    assert.equal(ordered.nonUnique.length, 1);
+    assert.equal(ordered.unique.length, 1);
+    assert.deepEqual(
+      ordered.unique[0] && "partialFilterExpression" in ordered.unique[0]
+        ? ordered.unique[0].partialFilterExpression
+        : undefined,
+      { state: "open" },
+    );
+    const actual = definitions.map((index) => ({ ...index, key: { ...index.key } }));
+    assert.equal(verify(actual).ok, true);
+    assert.equal(verify(actual.slice(0, 1)).ok, false);
+  }
+});
 
 test("[AC-02] unique/partial collision report ignores webhook rows without operation ids", () => {
   const collisions = findChannelOperationIdCollisions([

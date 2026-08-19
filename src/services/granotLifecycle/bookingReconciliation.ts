@@ -307,6 +307,9 @@ async function reconcileInTransaction(
       }
       return classification;
     }
+    if (classification.kind === "booking_discrepancy_required") {
+      return classification;
+    }
     if (classification.kind !== "case") {
       await store.insertDecision(
         decisionDocument(toObjectId(input.decision_id), prepared),
@@ -446,6 +449,42 @@ async function reconcileInTransaction(
       evidence_revision: row.evidence_revision,
     };
   });
+}
+
+/** Unit 29 owner commands reuse the production classifier/case store inside their existing transaction. */
+export async function reconcileBookingCaseAfterDiscrepancy(input: {
+  observation_id: string;
+  decision_id: string;
+  opened_at: Date;
+  session: ClientSession;
+}): Promise<{ model: "GranotBookingReconciliationCase"; id: string } | undefined> {
+  const store = createMongoBookingReconciliationStore();
+  const current = await store.loadCurrentContext(input.observation_id, input.session);
+  const classification = classifyBookingReconciliation(current);
+  if (classification.kind !== "case") return undefined;
+  const decision = await getSynchronizationDecisionModel().findById(input.decision_id).session(input.session).lean().exec();
+  const evidence: GranotBookingCaseEvidence = { observation_id: toObjectId(input.observation_id), decision_id: toObjectId(input.decision_id), captured_at: current.captured_at, action: classification.evidence_action };
+  const observed_context = observedContext(current);
+  const suggestion = classification.mode === "create_referral_booking" ? undefined : toBookingLeadSuggestion(current.identity);
+  const suggested_lead = suggestion ? { lead_ref: { model: suggestion.lead_ref.model, id: toObjectId(suggestion.lead_ref.id) }, confidence: suggestion.confidence, match_method: suggestion.match_method, reason_codes: suggestion.reason_codes } : undefined;
+  const existing = await store.findOpenCase(current.normalized_job_no!, input.session);
+  let row: GranotBookingReconciliationCaseDocument;
+  if (existing) {
+    row = existing.evidence.some((item) => String(item.observation_id) === input.observation_id)
+      ? existing
+      : await store.refreshCase({ case_id: existing._id, evidence, observed_context, suggested_lead, suggestion_changed: !suggestionEquals(existing.suggested_lead, suggested_lead) }, input.session);
+  } else {
+    const sequence = (await store.findMaxSequence(current.normalized_job_no!, input.session)) + 1;
+    row = await store.insertCase({
+      _id: new mongoose.Types.ObjectId(), normalized_job_no: current.normalized_job_no!, job_no_snapshot: current.job_no_snapshot!, action_kind: "booked", sequence_number: sequence,
+      mode: classification.mode, state: "open", case_revision: 1, evidence_revision: 1,
+      source_scope: classification.mode !== "create_referral_booking" && decision?.source_scope ? { ...decision.source_scope } : undefined,
+      deterministic_booking_id: classification.deterministic_booking_id ? toObjectId(classification.deterministic_booking_id) : undefined,
+      record_link_id: current.record_link_id ? toObjectId(current.record_link_id) : undefined,
+      evidence: [evidence], observed_context, suggested_lead, opened_at: input.opened_at, last_evidence_at: current.captured_at,
+    }, input.session);
+  }
+  return { model: "GranotBookingReconciliationCase", id: String(row._id) };
 }
 
 export function createMongoBookingReconciliationStore(): BookingReconciliationPersistenceStore {

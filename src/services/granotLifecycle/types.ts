@@ -148,7 +148,9 @@ export type EntityRef = {
     | "CancelledLead"
     | "GranotRecordLink"
     | "GranotBookingReconciliationCase"
-    | "GranotReleaseReconciliationCase";
+    | "GranotReleaseReconciliationCase"
+    | "GranotBookingDiscrepancy"
+    | "GranotReleaseDiscrepancy";
   id: string;
 };
 

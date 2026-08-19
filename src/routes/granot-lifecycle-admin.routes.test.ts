@@ -19,6 +19,8 @@ let lastNoAction: Record<string, unknown> | null = null;
 let lastReleaseCancellation: Record<string, unknown> | null = null;
 let lastReleaseUpdate: Record<string, unknown> | null = null;
 let lastReleaseNoAction: Record<string, unknown> | null = null;
+let lastDiscrepancyAction: Record<string, unknown> | null = null;
+let lastDiscrepancyQuery: Record<string, unknown> | null = null;
 
 const app = express();
 app.use(express.json());
@@ -176,8 +178,27 @@ app.use(
         replayed: false,
       };
     },
+    listDiscrepancies: async (query) => {
+      lastDiscrepancyQuery = query;
+      return { items: [], next_cursor: null };
+    },
+    getDiscrepancyDetail: async (id) => ({
+      discrepancy_id: id, kind: "booking", state: "open", reason_code: "booked_record_link_conflict",
+      normalized_job_no: "SYNTHETIC JOB 29", masked_contact_label: "Contact masked", evidence_count: 1,
+      revision: 1, evidence_revision: 1, opened_at: "2026-08-19T12:00:00.000Z", last_evidence_at: "2026-08-19T12:00:00.000Z",
+      reason_fingerprint: "f".repeat(64), evidence: [], candidates: [], capabilities: { re_evaluate: true, correct_record_link: false, no_action: true },
+    }),
+    reEvaluateDiscrepancy: async (input) => discrepancyResult(input, "still_conflicting"),
+    correctRecordLink: async (input) => discrepancyResult(input, "record_link_corrected"),
+    discrepancyNoAction: async (input) => discrepancyResult(input, "no_action"),
   }),
 );
+
+function discrepancyResult(input: { discrepancy_id: string } & Record<string, unknown>, outcome: "still_conflicting" | "record_link_corrected" | "no_action") {
+  lastDiscrepancyAction = input;
+  return { discrepancy_id: input.discrepancy_id, discrepancy_kind: "booking" as const, state: outcome === "still_conflicting" ? "open" as const : "resolved" as const,
+    revision: outcome === "still_conflicting" ? 1 : 2, evidence_revision: 1, outcome, command_execution_id: new mongoose.Types.ObjectId().toHexString(), replayed: false };
+}
 
 let baseUrl = "";
 let server: ReturnType<typeof app.listen>;
@@ -210,6 +231,8 @@ afterEach(() => {
   lastReleaseCancellation = null;
   lastReleaseUpdate = null;
   lastReleaseNoAction = null;
+  lastDiscrepancyAction = null;
+  lastDiscrepancyQuery = null;
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = SECRET;
 });
 
@@ -370,6 +393,39 @@ test("[AC-20] Job timeline is readable by Admin and strictly bounds pagination",
   assert.equal(response.status, 200);
   const invalidPath = "/api/v1/admin/granot-lifecycle/jobs/synthetic-100?limit=201";
   const invalid = await fetch(`${baseUrl}${invalidPath}`, { headers: signedHeaders("admin", invalidPath, "GET") });
+  assert.equal(invalid.status, 400);
+});
+
+test("[AC-35][AC-36] discrepancy list/detail are signed reads with strict filters", async () => {
+  const listPath = "/api/v1/admin/granot-lifecycle/discrepancies?kind=booking&state=open";
+  const list = await fetch(`${baseUrl}${listPath}`, { headers: signedHeaders("admin", listPath, "GET") });
+  assert.equal(list.status, 200);
+  assert.equal(lastDiscrepancyQuery?.kind, "booking");
+  assert.equal(lastDiscrepancyQuery?.state, "open");
+  const detailPath = `/api/v1/admin/granot-lifecycle/discrepancies/${receiptId}`;
+  const detail = await fetch(`${baseUrl}${detailPath}`, { headers: signedHeaders("admin", detailPath, "GET") });
+  assert.equal(detail.status, 200);
+  assert.equal((await detail.json() as { data: { masked_contact_label: string } }).data.masked_contact_label, "Contact masked");
+  const invalidPath = "/api/v1/admin/granot-lifecycle/discrepancies?contact=forbidden";
+  assert.equal((await fetch(`${baseUrl}${invalidPath}`, { headers: signedHeaders("owner", invalidPath, "GET") })).status, 400);
+});
+
+test("[AC-23][AC-36] discrepancy commands are Owner-only, strict, and route-own identity", async () => {
+  for (const [action, body] of [
+    ["re-evaluate", { expected_revision: 1 }],
+    ["correct-record-link", { expected_revision: 1, expected_link_revision: 0, selected_lead: { lead_model: "FormLead", lead_id: receiptId }, reason_text: "Owner reviewed corrected Lead" }],
+    ["no-action", { expected_revision: 1 }],
+  ] as const) {
+    const path = `/api/v1/admin/granot-lifecycle/discrepancies/${receiptId}/${action}`;
+    const denied = await fetch(`${baseUrl}${path}`, { method: "POST", headers: { ...signedHeaders("admin", path), "Idempotency-Key": `unit29-${action}` }, body: JSON.stringify(body) });
+    assert.equal(denied.status, 403);
+    const allowed = await fetch(`${baseUrl}${path}`, { method: "POST", headers: { ...signedHeaders("owner", path), "Idempotency-Key": `unit29-${action}` }, body: JSON.stringify(body) });
+    assert.equal(allowed.status, 200);
+    assert.equal(lastDiscrepancyAction?.discrepancy_id, receiptId);
+    assert.equal(lastDiscrepancyAction?.idempotency_key, `unit29-${action}`);
+  }
+  const path = `/api/v1/admin/granot-lifecycle/discrepancies/${receiptId}/re-evaluate`;
+  const invalid = await fetch(`${baseUrl}${path}`, { method: "POST", headers: { ...signedHeaders("owner", path), "Idempotency-Key": "unit29-invalid" }, body: JSON.stringify({ expected_revision: 1, discrepancy_id: "forbidden" }) });
   assert.equal(invalid.status, 400);
 });
 

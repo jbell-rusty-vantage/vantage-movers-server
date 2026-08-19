@@ -19,6 +19,14 @@ import {
   GRANOT_RELEASE_RECONCILIATION_CASE_COLLECTION,
   GRANOT_RELEASE_RECONCILIATION_CASE_INDEXES,
 } from "../../src/models/GranotReleaseReconciliationCase";
+import {
+  GRANOT_BOOKING_DISCREPANCY_COLLECTION,
+  GRANOT_BOOKING_DISCREPANCY_INDEXES,
+} from "../../src/models/GranotBookingDiscrepancy";
+import {
+  GRANOT_RELEASE_DISCREPANCY_COLLECTION,
+  GRANOT_RELEASE_DISCREPANCY_INDEXES,
+} from "../../src/models/GranotReleaseDiscrepancy";
 import { FORM_LEAD_S08_INDEXES } from "../../src/models/FormLead";
 import { CALL_LEAD_S08_INDEXES } from "../../src/models/CallLead";
 import { maskReceiptId } from "./granot-lifecycle-migration.lib";
@@ -30,10 +38,12 @@ import {
 import { ENTITY_CHANGE_INDEXES } from "../../src/models/EntityChange";
 import { RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX } from "../../src/services/ringcentral/call-log-sync-state.store";
 
-export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/11";
+export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/12";
 export {
   GRANOT_BOOKING_RECONCILIATION_CASE_COLLECTION,
   GRANOT_RELEASE_RECONCILIATION_CASE_COLLECTION,
+  GRANOT_BOOKING_DISCREPANCY_COLLECTION,
+  GRANOT_RELEASE_DISCREPANCY_COLLECTION,
 };
 export const FORM_LEAD_COLLECTION = "form_leads";
 export const CALL_LEAD_COLLECTION = "call_leads";
@@ -701,6 +711,85 @@ export function verifyGranotReleaseCaseIndexDefinitions(
   actual: readonly DeclaredMongoIndex[],
 ) {
   return verifyNamedIndexDefinitions(actual, GRANOT_RELEASE_RECONCILIATION_CASE_INDEXES);
+}
+
+export type GranotDiscrepancyCollision = {
+  masked_job_no: string;
+  discrepancy_kind: string;
+  reason_fingerprint: string;
+  count: number;
+  masked_ids: string[];
+};
+
+export function findGranotDiscrepancyCollisions(
+  rows: readonly {
+    _id: string;
+    normalized_job_no?: unknown;
+    discrepancy_kind?: unknown;
+    reason_fingerprint?: unknown;
+    state?: unknown;
+  }[],
+): GranotDiscrepancyCollision[] {
+  const groups = new Map<string, { count: number; masked_ids: string[] }>();
+  for (const row of rows) {
+    if (
+      row.state !== "open" ||
+      typeof row.normalized_job_no !== "string" ||
+      typeof row.discrepancy_kind !== "string" ||
+      typeof row.reason_fingerprint !== "string"
+    ) continue;
+    const key = [row.normalized_job_no, row.discrepancy_kind, row.reason_fingerprint].join("\u0000");
+    const current = groups.get(key) ?? { count: 0, masked_ids: [] };
+    current.count += 1;
+    current.masked_ids.push(maskReceiptId(row._id));
+    groups.set(key, current);
+  }
+  return [...groups.entries()]
+    .filter(([, value]) => value.count > 1)
+    .map(([key, value]) => {
+      const [job, discrepancy_kind, reason_fingerprint] = key.split("\u0000");
+      return {
+        masked_job_no: maskReceiptId(job!),
+        discrepancy_kind: discrepancy_kind!,
+        reason_fingerprint: reason_fingerprint!,
+        count: value.count,
+        masked_ids: value.masked_ids.sort(),
+      };
+    })
+    .sort((left, right) =>
+      left.masked_job_no.localeCompare(right.masked_job_no) ||
+      left.discrepancy_kind.localeCompare(right.discrepancy_kind) ||
+      left.reason_fingerprint.localeCompare(right.reason_fingerprint),
+    );
+}
+
+function orderedGranotDiscrepancyIndexCreates<
+  T extends { name: string; key: Record<string, number>; unique?: true; partialFilterExpression?: Record<string, unknown> },
+>(indexes: readonly T[]) {
+  return {
+    nonUnique: indexes.filter((index) => !index.unique),
+    unique: indexes.filter((index) => index.unique),
+  };
+}
+
+export function orderedGranotBookingDiscrepancyIndexCreates() {
+  return orderedGranotDiscrepancyIndexCreates(GRANOT_BOOKING_DISCREPANCY_INDEXES);
+}
+
+export function orderedGranotReleaseDiscrepancyIndexCreates() {
+  return orderedGranotDiscrepancyIndexCreates(GRANOT_RELEASE_DISCREPANCY_INDEXES);
+}
+
+export function verifyGranotBookingDiscrepancyIndexDefinitions(
+  actual: readonly DeclaredMongoIndex[],
+) {
+  return verifyNamedIndexDefinitions(actual, GRANOT_BOOKING_DISCREPANCY_INDEXES);
+}
+
+export function verifyGranotReleaseDiscrepancyIndexDefinitions(
+  actual: readonly DeclaredMongoIndex[],
+) {
+  return verifyNamedIndexDefinitions(actual, GRANOT_RELEASE_DISCREPANCY_INDEXES);
 }
 
 function sameJson(left: unknown, right: unknown): boolean {

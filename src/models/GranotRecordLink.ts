@@ -70,6 +70,8 @@ const ALLOWED_RECORD_LINK_SET_PATHS = new Set([
   "last_change_id",
   "last_changed_at",
   "domain_revision",
+  "state",
+  "superseded_by",
   "updatedAt",
 ]);
 
@@ -98,6 +100,12 @@ export function assertAllowlistedRecordLinkRefreshUpdate(update: unknown): void 
     for (const path of Object.keys(set as Record<string, unknown>)) {
       if (!ALLOWED_RECORD_LINK_SET_PATHS.has(path)) {
         throw new Error(`GranotRecordLink cannot update ${path}`);
+      }
+    }
+    const values = set as Record<string, unknown>;
+    if ("state" in values || "superseded_by" in values) {
+      if (values.state !== "superseded" || !(values.superseded_by instanceof mongoose.Types.ObjectId)) {
+        throw new Error("Record Link correction must atomically set superseded state and superseded_by");
       }
     }
   }

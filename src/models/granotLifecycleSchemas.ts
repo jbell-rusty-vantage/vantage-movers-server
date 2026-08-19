@@ -189,6 +189,8 @@ export const ENTITY_REF_MODELS = [
   "GranotRecordLink",
   "GranotBookingReconciliationCase",
   "GranotReleaseReconciliationCase",
+  "GranotBookingDiscrepancy",
+  "GranotReleaseDiscrepancy",
 ] as const;
 
 export const GRANOT_RECONCILIATION_CASE_STATES = ["open", "resolved"] as const;

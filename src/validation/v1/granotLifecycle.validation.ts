@@ -169,6 +169,30 @@ export type GranotLifecycleReleaseNoActionCommandInput = z.infer<
   typeof granotLifecycleReleaseNoActionCommandSchema
 >;
 
+export const granotLifecycleReEvaluateDiscrepancyCommandSchema = z.object({
+  expected_revision: z.number().int().min(1),
+}).strict();
+
+export const granotLifecycleCorrectRecordLinkCommandSchema = z.object({
+  expected_revision: z.number().int().min(1),
+  expected_link_revision: z.number().int().min(0),
+  selected_lead: z.object({
+    lead_model: z.enum(["FormLead", "CallLead"]),
+    lead_id: objectIdSchema,
+  }).strict(),
+  reason_text: z.string().trim().min(10).max(1000),
+}).strict();
+
+export const granotLifecycleDiscrepancyNoActionCommandSchema = z.object({
+  expected_revision: z.number().int().min(1),
+  reason_code: granotLifecycleBookingNoActionCommandSchema.shape.reason_code,
+  reason_text: z.string().trim().max(1000).optional(),
+}).strict();
+
+export const granotLifecycleDiscrepancyParamsSchema = z.object({
+  discrepancy_id: objectIdSchema,
+}).strict();
+
 const opaqueCursorSchema = z
   .string()
   .trim()
@@ -216,6 +240,39 @@ export const granotLifecycleCaseListQuerySchema = z
       });
     }
   });
+
+export const granotLifecycleDiscrepancyListQuerySchema = z.object({
+  kind: optionalTrimmed(z.enum(["booking", "release"])),
+  reason_code: optionalTrimmed(z.enum([
+    "booked_record_link_conflict",
+    "booked_booking_lead_conflict",
+    "booked_job_number_conflict",
+    "booked_source_scope_conflict",
+    "booked_after_official_cancellation",
+    "release_without_vantage_booking",
+    "release_record_link_conflict",
+    "release_job_number_conflict",
+    "release_source_scope_conflict",
+  ])),
+  state: optionalTrimmed(z.enum(["open", "resolved"])),
+  source_id: optionalTrimmed(objectIdSchema),
+  normalized_job_no: optionalTrimmed(z.string().trim().min(1).max(64)),
+  opened_from: optionalIsoDate,
+  opened_to: optionalIsoDate,
+  sort: optionalTrimmed(z.enum(["last_evidence_at", "opened_at"])),
+  order: optionalTrimmed(z.enum(["asc", "desc"])),
+  cursor: optionalTrimmed(opaqueCursorSchema),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+}).strict().superRefine((value, ctx) => {
+  if (value.opened_from && value.opened_to && Date.parse(value.opened_from) > Date.parse(value.opened_to)) {
+    ctx.addIssue({ code: "custom", path: ["opened_from"], message: "opened_from must be before or equal to opened_to" });
+  }
+});
+
+export type GranotLifecycleDiscrepancyListQuery = z.infer<typeof granotLifecycleDiscrepancyListQuerySchema>;
+export type GranotLifecycleReEvaluateDiscrepancyCommandInput = z.infer<typeof granotLifecycleReEvaluateDiscrepancyCommandSchema>;
+export type GranotLifecycleCorrectRecordLinkCommandInput = z.infer<typeof granotLifecycleCorrectRecordLinkCommandSchema>;
+export type GranotLifecycleDiscrepancyNoActionCommandInput = z.infer<typeof granotLifecycleDiscrepancyNoActionCommandSchema>;
 
 export const granotLifecycleCaseParamsSchema = z
   .object({ case_id: objectIdSchema })

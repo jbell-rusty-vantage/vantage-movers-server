@@ -199,6 +199,8 @@ export const CALL_LEAD_CHANGE_PATHS = [
 ] as const;
 
 export const RECORD_LINK_CHANGE_PATHS = [
+  "state",
+  "superseded_by",
   "lead_ref",
   "booking_ref",
   "source_scope",

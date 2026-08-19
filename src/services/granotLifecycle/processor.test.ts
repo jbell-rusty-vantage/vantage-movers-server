@@ -266,6 +266,7 @@ function memoryDeps(input: {
   createLead?: GranotLifecycleProcessorDeps["createLead"];
   reconcileBooking?: GranotLifecycleProcessorDeps["reconcileBooking"];
   reconcileRelease?: GranotLifecycleProcessorDeps["reconcileRelease"];
+  reconcileDiscrepancy?: GranotLifecycleProcessorDeps["reconcileDiscrepancy"];
 }): GranotLifecycleProcessorDeps & {
   decisions: SynchronizationDecisionDocument[];
   links: GranotRecordLinkDocument[];
@@ -360,6 +361,7 @@ function memoryDeps(input: {
       : undefined,
     reconcileBooking: input.reconcileBooking,
     reconcileRelease: input.reconcileRelease,
+    reconcileDiscrepancy: input.reconcileDiscrepancy,
     withTransaction: async (fn) => fn({} as never),
   };
 }
@@ -458,6 +460,50 @@ test("[AC-25][AC-26][AC-27] processor invokes Release reconciliation only for li
     },
   });
   await processGranotObservation({ receipt_id: String(row.receipt_id) }, disabled);
+});
+
+test("[AC-26][AC-27][AC-36] processor persists typed conflict through the discrepancy module", async () => {
+  const row = observation({
+    kind: "booking_action_snapshot",
+    route_event_class: "booking_status_changed",
+    booking_action: { raw: "Release", normalized: "release" },
+  });
+  let discrepancyCalls = 0;
+  const result = await processGranotObservation(
+    { receipt_id: String(row.receipt_id) },
+    memoryDeps({
+      observation: row,
+      activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+      flags: {
+        ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+        shadow_mode: false,
+        release_cases_enabled: true,
+      },
+      reconcileRelease: async () => ({
+        kind: "release_discrepancy_required",
+        reason_code: "release_without_vantage_booking",
+      }),
+      reconcileDiscrepancy: async (request, prepared) => {
+        discrepancyCalls += 1;
+        assert.equal(request.discrepancy_kind, "release");
+        assert.equal(request.reason_code, "release_without_vantage_booking");
+        assert.equal(prepared.execution_mode, "live");
+        return {
+          kind: "opened",
+          discrepancy_ref: {
+            model: "GranotReleaseDiscrepancy",
+            id: String(objectId()),
+          },
+          reason_code: "release_discrepancy_opened",
+          revision: 1,
+          evidence_revision: 1,
+        };
+      },
+    }),
+  );
+  assert.equal(discrepancyCalls, 1);
+  assert.equal(result.outcome, "conflict");
+  assert.equal(result.effects[0]?.kind, "discrepancy_opened");
 });
 
 function exactLink(leadId: string): GranotRecordLinkDocument {

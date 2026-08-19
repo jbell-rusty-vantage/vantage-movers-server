@@ -59,7 +59,7 @@ test("[AC-32] Record Link establishment defaults and snapshot normalize back to 
   );
 });
 
-test("[AC-32] disputed active links remain lookup-visible and refresh updates are allowlisted", () => {
+test("[AC-23][AC-32] disputed active links remain lookup-visible and correction supersession is narrowly allowlisted", () => {
   const disputed = link({ disputed: true });
   assert.equal(disputed.state, "active");
   assert.equal(disputed.disputed, true);
@@ -73,9 +73,10 @@ test("[AC-32] disputed active links remain lookup-visible and refresh updates ar
     },
     $inc: { domain_revision: 1 },
   });
+  assertAllowlistedRecordLinkRefreshUpdate({ $set: { state: "superseded", superseded_by: new mongoose.Types.ObjectId() } });
   assert.throws(
-    () => assertAllowlistedRecordLinkRefreshUpdate({ $set: { state: "superseded" } }),
-    /cannot update state/,
+    () => assertAllowlistedRecordLinkRefreshUpdate({ $set: { state: "active" } }),
+    /atomically set superseded/,
   );
   assert.throws(
     () => assertAllowlistedRecordLinkRefreshUpdate({ $set: { booking_ref: new mongoose.Types.ObjectId() } }),
