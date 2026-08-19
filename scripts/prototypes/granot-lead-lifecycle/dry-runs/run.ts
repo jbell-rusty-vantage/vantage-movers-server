@@ -16,6 +16,7 @@ import { getGranotObservationModel } from "../../../../src/models/GranotObservat
 import { getGranotObservationReceiptModel } from "../../../../src/models/GranotObservationReceipt.js";
 import { getGranotLifecycleActivationModel } from "../../../../src/models/GranotLifecycleActivation.js";
 import { getGranotRecordLinkModel } from "../../../../src/models/GranotRecordLink.js";
+import type { GranotRouteEventClass } from "../../../../src/services/granotLifecycle/types.js";
 import {
   PRODUCTION_CONFIRMATION,
   assertProductionDryRunArgs,
@@ -217,7 +218,7 @@ async function sampleReceipts(options: SampleOptions): Promise<LegacyWebhookRece
         : Math.max(options.bookingLimit, cohort.count)
       : options.perCohort;
     const rows = await Receipt.find({
-      event_type: eventType,
+      event_type: eventType as GranotRouteEventClass | undefined,
       "payload.event_type": payloadEvent,
       "payload.source": source,
     })
@@ -542,7 +543,7 @@ function formatClass(classification: NonNullable<ReceiptDryRun["policies"][numbe
   if (classification.kind === "employee_booking_lead_reconciliation") {
     return `employee/${classification.case_id}`;
   }
-  return classification.kind;
+  return "unknown";
 }
 
 function summarizeModes(rows: ReceiptDryRun[]): string {

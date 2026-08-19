@@ -180,6 +180,12 @@ export interface GranotBookingReconciliation {
   }): Promise<CaseEffectResult>;
 }
 
+export { confirmBooking } from "./bookingConfirmation";
+export type {
+  BookingOwnerCommandResult,
+  ConfirmBookingInput,
+} from "./bookingConfirmation";
+
 export function createGranotBookingReconciliation(input: {
   prepared: PreparedBookingReconciliationDecision;
   store?: BookingReconciliationPersistenceStore;

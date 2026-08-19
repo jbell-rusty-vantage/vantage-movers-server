@@ -12,6 +12,7 @@ const receiptId = new mongoose.Types.ObjectId().toHexString();
 let lastRequeue: { id: string; reason: string; role: string } | null = null;
 let lastCaseQuery: Record<string, unknown> | null = null;
 let lastCandidateQuery: Record<string, unknown> | null = null;
+let lastConfirm: Record<string, unknown> | null = null;
 
 const app = express();
 app.use(express.json());
@@ -69,6 +70,21 @@ app.use(
       items: [], next_cursor: null, current: {},
       capabilities: { booking_cases: true, release_cases: false, discrepancies: false, official_facts: true },
     }),
+    confirmBooking: async (input) => {
+      lastConfirm = input as unknown as Record<string, unknown>;
+      return {
+        case_id: input.case_id,
+        case_state: "resolved",
+        case_revision: 2,
+        outcome: "booking_created",
+        command_execution_id: new mongoose.Types.ObjectId().toHexString(),
+        decision_id: new mongoose.Types.ObjectId().toHexString(),
+        booking_ref: { id: new mongoose.Types.ObjectId().toHexString(), domain_revision: 1 },
+        record_link_ref: { id: new mongoose.Types.ObjectId().toHexString(), domain_revision: 1 },
+        entity_refs: [],
+        replayed: false,
+      };
+    },
   }),
 );
 
@@ -97,6 +113,7 @@ afterEach(() => {
   lastRequeue = null;
   lastCaseQuery = null;
   lastCandidateQuery = null;
+  lastConfirm = null;
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = SECRET;
 });
 
@@ -249,4 +266,50 @@ test("[AC-20] Job timeline is readable by Admin and strictly bounds pagination",
   const invalidPath = "/api/v1/admin/granot-lifecycle/jobs/synthetic-100?limit=201";
   const invalid = await fetch(`${baseUrl}${invalidPath}`, { headers: signedHeaders("admin", invalidPath, "GET") });
   assert.equal(invalid.status, 400);
+});
+
+const confirmBody = {
+  expected_case_revision: 1,
+  selected_lead: { lead_model: "FormLead", lead_id: new mongoose.Types.ObjectId().toHexString() },
+  official_booking_details: {
+    book_date: "2026-08-19",
+    agent_allocations: [{ agent_id: new mongoose.Types.ObjectId().toHexString(), binder_amount: 10 }],
+    total_binder_amount: 10,
+    deposit_amount: 100,
+    merchant_id: new mongoose.Types.ObjectId().toHexString(),
+  },
+};
+
+test("[AC-21] [AC-22] Owner confirm route requires one idempotency header and returns 201", async () => {
+  const path = `/api/v1/admin/granot-lifecycle/booking-cases/${receiptId}/confirm-booking`;
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { ...signedHeaders("owner", path), "Idempotency-Key": "unit24-attempt-1" },
+    body: JSON.stringify(confirmBody),
+  });
+  assert.equal(response.status, 201);
+  assert.equal((await response.json() as { ok: boolean }).ok, true);
+  assert.equal(lastConfirm?.case_id, receiptId);
+  assert.equal(lastConfirm?.idempotency_key, "unit24-attempt-1");
+
+  lastConfirm = null;
+  const missing = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: signedHeaders("owner", path),
+    body: JSON.stringify(confirmBody),
+  });
+  assert.equal(missing.status, 400);
+  assert.equal((await missing.json() as { code: string }).code, GRANOT_LIFECYCLE_ERROR_CODES.VALIDATION_FAILED);
+  assert.equal(lastConfirm, null);
+});
+
+test("[AC-22] Admin cannot invoke confirm Booking", async () => {
+  const path = `/api/v1/admin/granot-lifecycle/booking-cases/${receiptId}/confirm-booking`;
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { ...signedHeaders("admin", path), "Idempotency-Key": "unit24-attempt-2" },
+    body: JSON.stringify(confirmBody),
+  });
+  assert.equal(response.status, 403);
+  assert.equal(lastConfirm, null);
 });

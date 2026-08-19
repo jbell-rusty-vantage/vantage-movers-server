@@ -200,6 +200,7 @@ export const CALL_LEAD_CHANGE_PATHS = [
 
 export const RECORD_LINK_CHANGE_PATHS = [
   "lead_ref",
+  "booking_ref",
   "source_scope",
   "disputed",
   "dispute_reason",

@@ -264,7 +264,7 @@ export type GranotLifecycleCaseDetail = {
   };
   timeline: GranotTimelinePage;
   capabilities: {
-    commands: false;
+    commands: boolean;
     referral: boolean;
     release_cases: boolean;
     discrepancies: boolean;
@@ -560,7 +560,8 @@ export async function getGranotLifecycleCaseDetail(
     } : undefined,
     timeline,
     capabilities: {
-      commands: false,
+      commands: getGranotLifecycleFlags().booking_commands_enabled &&
+        row.state === "open" && row.mode === "create_missing_booking",
       referral: row.mode === "create_referral_booking",
       release_cases: false,
       discrepancies: false,

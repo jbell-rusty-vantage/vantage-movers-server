@@ -34,6 +34,74 @@ const objectIdSchema = z
   .trim()
   .regex(/^[a-f0-9]{24}$/i, "must be a Mongo ObjectId");
 
+const exactMoneySchema = z.number().finite().min(0).superRefine((value, ctx) => {
+  const cents = value * 100;
+  if (Math.abs(cents - Math.round(cents)) > 1e-8) {
+    ctx.addIssue({ code: "custom", message: "must have at most two decimal places" });
+  }
+});
+
+const strictCalendarDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD").superRefine(
+  (value, ctx) => {
+    const [year, month, day] = value.split("-").map(Number);
+    const date = new Date(Date.UTC(year!, month! - 1, day!));
+    if (
+      date.getUTCFullYear() !== year ||
+      date.getUTCMonth() !== month! - 1 ||
+      date.getUTCDate() !== day
+    ) {
+      ctx.addIssue({ code: "custom", message: "must be a calendar-valid YYYY-MM-DD" });
+    }
+  },
+);
+
+export const granotLifecycleConfirmBookingCommandSchema = z
+  .object({
+    expected_case_revision: z.number().int().min(1),
+    selected_lead: z.object({
+      lead_model: z.enum(["FormLead", "CallLead"]),
+      lead_id: objectIdSchema,
+    }).strict(),
+    out_of_scope_override_reason: z.string().trim().min(10).max(500).optional(),
+    official_booking_details: z.object({
+      book_date: strictCalendarDateSchema,
+      agent_allocations: z.array(z.object({
+        agent_id: objectIdSchema,
+        binder_amount: exactMoneySchema,
+      }).strict()).min(1).max(20),
+      total_binder_amount: exactMoneySchema,
+      deposit_amount: exactMoneySchema,
+      merchant_id: objectIdSchema,
+    }).strict(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const ids = value.official_booking_details.agent_allocations.map((row) => row.agent_id);
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["official_booking_details", "agent_allocations"],
+        message: "agent_id values must be unique",
+      });
+    }
+    const binderCents = value.official_booking_details.agent_allocations.reduce(
+      (sum, row) => sum + Math.round(row.binder_amount * 100),
+      0,
+    );
+    const totalCents = Math.round(value.official_booking_details.total_binder_amount * 100);
+    if (binderCents !== totalCents) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["official_booking_details", "total_binder_amount"],
+        message: "agent Binder cents must sum exactly to total_binder_amount",
+      });
+    }
+  });
+
+export type GranotLifecycleConfirmBookingCommandInput = z.infer<
+  typeof granotLifecycleConfirmBookingCommandSchema
+>;
+
 const opaqueCursorSchema = z
   .string()
   .trim()

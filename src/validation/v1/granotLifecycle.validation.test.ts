@@ -4,6 +4,7 @@ import {
   extensionGranotApplyBatchSchema,
   extensionGranotApplyItemSchema,
   granotLifecycleActivationCommandSchema,
+  granotLifecycleConfirmBookingCommandSchema,
   granotLifecycleCandidateQuerySchema,
   granotLifecycleCaseListQuerySchema,
   granotLifecycleLeadTimelineParamsSchema,
@@ -152,5 +153,89 @@ test("[AC-40] Lead timeline accepts only the exact model union and ObjectId", ()
   assert.throws(
     () => granotLifecycleLeadTimelineParamsSchema.parse({ lead_model: "Lead", lead_id: "x" }),
     /Invalid option|ObjectId/,
+  );
+});
+
+test("[AC-22] confirm Booking input is strict and validates exact official cents", () => {
+  const valid = {
+    expected_case_revision: 1,
+    selected_lead: { lead_model: "FormLead", lead_id: "a".repeat(24) },
+    official_booking_details: {
+      book_date: "2026-02-28",
+      agent_allocations: [
+        { agent_id: "b".repeat(24), binder_amount: 10.25 },
+        { agent_id: "c".repeat(24), binder_amount: 0 },
+      ],
+      total_binder_amount: 10.25,
+      deposit_amount: 100.01,
+      merchant_id: "d".repeat(24),
+    },
+  };
+  assert.equal(
+    granotLifecycleConfirmBookingCommandSchema.parse(valid).official_booking_details.book_date,
+    "2026-02-28",
+  );
+  assert.throws(
+    () => granotLifecycleConfirmBookingCommandSchema.parse({ ...valid, case_id: "e".repeat(24) }),
+    /unrecognized_keys|case_id/,
+  );
+  assert.throws(
+    () => granotLifecycleConfirmBookingCommandSchema.parse({
+      ...valid,
+      official_booking_details: { ...valid.official_booking_details, book_date: "2026-02-30" },
+    }),
+    /calendar-valid|book_date/,
+  );
+  assert.throws(
+    () => granotLifecycleConfirmBookingCommandSchema.parse({
+      ...valid,
+      official_booking_details: { ...valid.official_booking_details, deposit_amount: 1.005 },
+    }),
+    /two decimal|deposit_amount/,
+  );
+  assert.throws(
+    () => granotLifecycleConfirmBookingCommandSchema.parse({
+      ...valid,
+      official_booking_details: { ...valid.official_booking_details, total_binder_amount: 10.24 },
+    }),
+    /sum|total_binder_amount/,
+  );
+});
+
+test("[AC-22] confirm Booking allocations are unique and bounded to 1-20", () => {
+  const allocation = { agent_id: "b".repeat(24), binder_amount: 0 };
+  const base = {
+    expected_case_revision: 1,
+    selected_lead: { lead_model: "CallLead", lead_id: "a".repeat(24) },
+    official_booking_details: {
+      book_date: "2026-08-19",
+      agent_allocations: [allocation],
+      total_binder_amount: 0,
+      deposit_amount: 0,
+      merchant_id: "d".repeat(24),
+    },
+  };
+  assert.throws(
+    () => granotLifecycleConfirmBookingCommandSchema.parse({
+      ...base,
+      official_booking_details: {
+        ...base.official_booking_details,
+        agent_allocations: [allocation, allocation],
+      },
+    }),
+    /unique|agent_id/,
+  );
+  assert.throws(
+    () => granotLifecycleConfirmBookingCommandSchema.parse({
+      ...base,
+      official_booking_details: {
+        ...base.official_booking_details,
+        agent_allocations: Array.from({ length: 21 }, (_, index) => ({
+          agent_id: index.toString(16).padStart(24, "0"),
+          binder_amount: 0,
+        })),
+      },
+    }),
+    /20|Too big/,
   );
 });
