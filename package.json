@@ -13,6 +13,8 @@
     "granot:webhook:generate-secret": "node ./node_modules/tsx/dist/cli.mjs scripts/generate-granot-webhook-secret.ts",
     "ops:dump-name-link-inventory": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dump-operations-name-link-inventory.ts",
     "prototype:granot-lifecycle": "node ./node_modules/tsx/dist/cli.mjs scripts/prototypes/granot-lead-lifecycle/cli.ts",
+    "granot:lifecycle:dry-run": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/prototypes/granot-lead-lifecycle/dry-runs/run.ts",
+    "granot:lifecycle:seed-official-sources": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/prototypes/granot-lead-lifecycle/dry-runs/seed-official-crm-sources.ts",
     "test:granot": "node --import tsx --import ./scripts/test-setup.ts --test \"src/services/granotHttpCollector/*.test.ts\" \"src/routes/granot-automation.routes.test.ts\"",
     "db:ping": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/ping-db.ts",
     "db:ingest-moving-carriers": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ingest-moving-carriers.ts",

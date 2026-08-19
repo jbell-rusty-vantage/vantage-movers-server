@@ -116,7 +116,7 @@ No live/staging payload verification or deployment occurred. Tests use synthetic
 
 - Production must separately verify all exact index definitions before any Booking-case enablement; this handoff proves only the authorized `testvantagemovers` posture.
 - Release persistence/discrepancy timelines remain capability-false until Units 26/29.
-- Unit 23 is complete and the Unit 23 prerequisite for Units 24 and 26 is satisfied. Unit 24 remains blocked on explicit Owner review of the deployed read-only Booking workflow. Unit 26 remains a scaffolded contract and is not implementation-ready merely because its Unit 23 prerequisite is now satisfied.
+- Unit 23 is complete and the Unit 23 prerequisite for Units 24 and 26 is satisfied. Owner review of the Preview read-only Booking workflow was accepted on 2026-08-19, which unblocks Unit 24 after repository re-verification. Unit 26 remains a scaffolded contract and is not implementation-ready merely because its Unit 23 prerequisite is now satisfied. Production merge, production index apply, and any Booking-case flag enablement remain separately authorized later gates.
 - No Booking-case or command flag is authorized or enabled by this completion.
 - The current unrelated payload-example modification was preserved without alteration.
 

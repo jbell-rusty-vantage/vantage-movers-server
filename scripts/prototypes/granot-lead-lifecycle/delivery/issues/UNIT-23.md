@@ -1,6 +1,6 @@
 # Unit 23 — Booking lifecycle reads, Admin queue/detail, candidate browser, and Job/Lead timeline
 
-> **Contract maturity: implemented; delivery gate blocked by aggregate index verification.** Verified Unit 22 repository evidence satisfies the implementation prerequisite. This is the API/Admin half of S15. It exposes masked cursor-based Booking-case reads, server-owned candidates, complete Job/Lead lifecycle projections, and an Owner-only Admin read workflow. It deploys reads before commands; no owner mutation, Booking/Cancellation effect, or production flag enablement is authorized.
+> **Contract maturity: implemented and Owner-reviewed.** Implementation, completion report, authorized `testvantagemovers` index verify, and Owner review of the Preview read-only Booking workflow are accepted as of 2026-08-19. This is the API/Admin half of S15. It exposes masked cursor-based Booking-case reads, server-owned candidates, complete Job/Lead lifecycle projections, and an Owner-only Admin read workflow. It deploys reads before commands; no owner mutation, Booking/Cancellation effect, production merge, or production flag enablement is authorized by this completion.
 
 ## 1. Authority and required reading
 
@@ -18,7 +18,7 @@ Deliver the read-only owner workflow for Granot Booking Reconciliation. Add auth
 ## 3. Repository, branch, and prerequisites
 
 - **Repositories/branches:** `vantage-main-server` / `granot-lead-lifecycle` and `vantage-admin` / `granot-lead-lifecycle`.
-- **Prerequisite result:** Unit 22 is landed and contract-complete, including its exact model/five declared indexes, service/candidate policy, replica concurrency proof, and flag-off posture. The required aggregate read-only index verify still reports 20 missing predecessor indexes in the shared disposable test database; none of Unit 22's five Booking-case indexes is missing or mismatched. No apply is authorized.
+- **Prerequisite result:** Unit 22 is landed and contract-complete, including its exact model/five declared indexes, service/candidate policy, replica concurrency proof, and flag-off posture. The 2026-08-19 authorized Atlas `testvantagemovers` report found zero collisions; the guarded test-database apply created the 42 missing predecessor definitions; aggregate read-only verify then passed with zero missing or mismatched definitions. No production apply is authorized.
 - Verify server compatibility first, then build Admin against exported/tested DTOs. Do not let Admin types become semantic authority.
 - Reverify the protected `/api/v1/admin` mount, Owner/Admin read actor, Owner-only Admin route policy, signed proxy allowlist, URL-state/filter primitives, query keys, and separate Employee Booking Lead Reconciliation UI.
 - Ordinary checks use redacted synthetic data. Runtime reads require `TEST_MODE=true` and an explicit test database; external effects remain disabled. No commit, push, deploy, production flag change, mutation/index apply, live payload inspection, or external send.
@@ -326,4 +326,4 @@ Never resolve/reopen cases, detach suggestions/links, mutate Bookings/Cancellati
 
 Create `delivery/completion-reports/UNIT-23-COMPLETION.md` using Runbook Section 13. Include verified Unit 22 prerequisite/index proof; both repos/branches; behavior-grouped route/validation/projection/API/component/nav/query files; exact DTO/cursor/mask/timeline/candidate/auth contracts and issue-author allocations; invariants/partial AC ownership; migration `none`; flags before/after; server/Admin focused/full/lint/typecheck/build results; masked list/detail/candidate/timeline/delegation/evidence-refresh/accessibility/zero-mutation proof; deployment/enablement actions (normally none); risks; both final Git statuses; and external-action statement.
 
-Successful implementation completes S15's deployable read capability and allows separate Owner review. Units 24–25 remain blocked until that review; Unit 26 may begin once Booking reads/identity are verified stable.
+Successful implementation completed S15's deployable read capability. Owner review of the Preview read-only Booking workflow was accepted on 2026-08-19 and unblocks Unit 24. Unit 25 remains blocked until Unit 24 lands. Unit 26 remains a scaffold. Production merge, production index verify/apply, and any Booking-case flag enablement remain separately authorized later gates and must be set up exactly before those environments change.

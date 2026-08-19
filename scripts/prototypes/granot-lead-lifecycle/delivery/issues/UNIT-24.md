@@ -1,6 +1,6 @@
 # Unit 24 — Confirm missing standard Booking owner workflow
 
-> **Contract maturity: implementation-ready; implementation remains blocked by Units 22–23 and Owner review of the read-only workflow.** This is the confirm-missing portion of S16. It adds one explicit Owner command from a reviewed `create_missing_booking` case to an official standard Booking. It does not enable Booking commands, implement existing-Booking update/No Action, or authorize any automatic Booking effect.
+> **Contract maturity: implementation-ready; implementation is ready after repository re-verification.** Units 10–11 and 22–23 are complete, and Owner review of the deployed Unit 23 Preview read-only Booking workflow was accepted on 2026-08-19. This is the confirm-missing portion of S16. It adds one explicit Owner command from a reviewed `create_missing_booking` case to an official standard Booking. It does not enable Booking commands, implement existing-Booking update/No Action, or authorize any automatic Booking effect.
 
 ## 1. Authority and required reading
 
@@ -19,15 +19,15 @@ Deliver the end-to-end `Confirm Granot Booking` workflow for an open standard `c
 
 - **Repositories/branches:** `vantage-main-server` / `granot-lead-lifecycle` and `vantage-admin` / `granot-lead-lifecycle`. The server contract lands first; Admin consumes the exported DTO/error contract. No extension work.
 - **Specification prerequisites:** Units 10–11 and 22–23 plus Owner review of the deployed read-only Booking cases. Unit 24 must verify their completion reports, repository state, migrations/indexes, flags, and tests—not the ledger alone.
-- **Current sequencing gate:** as of 2026-08-18, only Units 01–15 have completion reports; Units 16–17 are merely ready and Units 18/22/23 remain blocked. Therefore this complete contract remains implementation-blocked.
+- **Current sequencing gate:** as of 2026-08-19, Units 01–23 have completion reports and the Owner accepted the Unit 23 Preview read-only Booking workflow. This complete contract is implementation-ready after repository re-verification of Units 10–11 and 22–23. Production merge, production index apply, and any Booking-command flag enablement remain separately authorized later gates.
 - Before edits, verify the landed Unit 22 case model/indexes and reconciliation interface; Unit 23 case/candidate DTOs, masking, query keys, and detail UI; Unit 10/11 executor, `EntityChange`, queued outbox, revision CAS, and transaction-bound Booking internals; active Booking normalized-Job unique index; active Record Link index; and current Booking/Lead/Registry revisions.
 - Runtime writes use only `TEST_MODE=true`, an explicitly confirmed disposable replica-set database, `SHEET_SYNC_MODE=queued` with post-commit delivery stubbed, synthetic redacted fixtures, and test-injected flags. No commit, push, deploy, production mutation/index apply, flag enablement, live payload inspection, or external send is authorized.
 
 ## 4. Current-state evidence to verify
 
-Observed on 2026-08-18; reverify after every prerequisite lands:
+Observed on 2026-08-18 at authorship; Units 22–23 have since landed. Reverify the current repository rather than treating these statements as permanent:
 
-- Server lifecycle code currently ends at Unit 15. `GranotBookingReconciliationCase`, `bookingReconciliation.ts`, case mutation routes, and confirm-booking validation do not yet exist; Unit 22/23 must supply the exact read/case seams this unit extends.
+- As of authorship, server lifecycle code ended at Unit 15 and confirm-booking validation did not exist. The implementing agent must extend the landed Unit 22 case/service and Unit 23 read DTO/Admin seams, not recreate them.
 - `CanonicalDomainCommands` currently exposes compatibility Booking create/attach operations but not a Granot owner confirm command. `executeIdempotentCanonicalCommand` already owns the Mongo transaction, stored replay, and post-commit boundary; extend that foundation rather than starting a nested transaction.
 - Existing Booking create/update services accept Agent names, resolve Merchant names, and compare Binder with floating-point tolerance. This unit must add ID-based active catalog resolution and exact integer-cents validation for the strict lifecycle contract; it must not weaken legacy endpoint compatibility.
 - `BookedLead` stores canonical Agent ObjectIds/name snapshots and a Merchant name string, has `domain_revision`, and declares the unique partial normalized-Job index. Owner input nevertheless uses `agent_id` and `merchant_id`; resolve each active row by ObjectId inside the command and persist the canonical snapshots/name.
