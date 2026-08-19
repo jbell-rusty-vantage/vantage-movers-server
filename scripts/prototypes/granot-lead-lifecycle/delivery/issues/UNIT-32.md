@@ -1,3 +1,5 @@
+# FROM OWNER: WE are retiring this issue. The vantage CEO has stated he just wants to interact with the dashboard
+
 # Unit 32 — Optional new-case email notifications
 
 > **Contract maturity: scaffold.** This preserves the approved issue spine but is not implementation-ready until every **TODO during refinement** item is resolved against the current repository and authoritative specification. Do not implement from this scaffold alone.

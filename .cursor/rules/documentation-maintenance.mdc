@@ -16,6 +16,7 @@ When these files â€” or the code their `globs` / `Primary code` links point at â
 | Hard-to-reverse architectural decision | `docs/adr/` |
 | Service invariants, routing, side-effect order | Matching `.cursor/businesslogic/*.service.md` |
 | Folder ownership, process mechanics, auth, env | The `.mdc` whose `globs` already match the path |
+| Owner-facing specs / runbooks | Matching file under `docs/` (Granot lifecycle: `docs/granot-lead-lifecycle/`, including `lifecycle-activation-flags-and-source-policies.md`) |
 | New businesslogic file or rule | `.cursor/index.md` catalog row |
 
 Link glossary terms; do not redefine them. Do not copy owner policy into software-logic rules.

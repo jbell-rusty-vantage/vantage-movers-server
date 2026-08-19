@@ -79,7 +79,11 @@ Production API: https://vantage-movers-main-server.vercel.app
 | **Software logic** | `rules/*.mdc` | Folder ownership, thin routes, TEST_MODE, outbox/drainer, TypeScript/testing. |
 | **Long-form human docs** | `docs/` | Owner specs, showcase, implementation plans |
 
-Granot lead-lifecycle long-form (Units 01–25 fulfillment review; code-complete, not production-live): [`docs/granot-lead-lifecycle/sprint-progress-through-unit-25.md`](../docs/granot-lead-lifecycle/sprint-progress-through-unit-25.md). Older `docs/to_review/` webhook notes describe the pre-processor world.
+Granot lead-lifecycle long-form:
+- Units 01–25 fulfillment review (code-complete, not production-live): [`docs/granot-lead-lifecycle/sprint-progress-through-unit-25.md`](../docs/granot-lead-lifecycle/sprint-progress-through-unit-25.md)
+- Owner-facing flags, activation, and Best Relocation source policy: [`docs/granot-lead-lifecycle/lifecycle-activation-flags-and-source-policies.md`](../docs/granot-lead-lifecycle/lifecycle-activation-flags-and-source-policies.md)
+
+Older `docs/to_review/` webhook notes describe the pre-processor world.
 
 Prefer updating the relevant `businesslogic` file when changing a single service; update [`rules/business-logic.mdc`](rules/business-logic.mdc) or workflow rules when invariants span many modules. Terminology changes belong in root [`CONTEXT.md`](../CONTEXT.md), not duplicated here.
 

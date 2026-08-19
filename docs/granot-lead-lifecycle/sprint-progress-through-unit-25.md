@@ -281,6 +281,7 @@ Granot still never automatically creates, updates, cancels, or un-cancels a Book
 
 | Need | Start here |
 | --- | --- |
+| Flags, activation, and source policy | [`lifecycle-activation-flags-and-source-policies.md`](./lifecycle-activation-flags-and-source-policies.md) |
 | Unit ledger | [`delivery/UNIT-STATUS.md`](../../scripts/prototypes/granot-lead-lifecycle/delivery/UNIT-STATUS.md) |
 | Completion evidence | [`delivery/completion-reports/`](../../scripts/prototypes/granot-lead-lifecycle/delivery/completion-reports/) |
 | Processor orchestration | [`.cursor/businesslogic/granotLifecycle.processor.md`](../../.cursor/businesslogic/granotLifecycle.processor.md) |
