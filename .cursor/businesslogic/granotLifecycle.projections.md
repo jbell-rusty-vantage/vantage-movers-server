@@ -5,7 +5,7 @@
 
 # Granot lifecycle read projections
 
-**Role:** Compose read-only, server-authoritative Booking-case, candidate, Job Number timeline, and Lead timeline DTOs for Vantage Admin. These reads never select or attach a Lead, resolve a case, correct a Record Link, invoke a command, or mutate an official Lead, Booking, or Cancellation.
+**Role:** Compose read-only, server-authoritative Booking/Release case, candidate, Job Number timeline, and Lead timeline DTOs for Vantage Admin. These reads never select or attach a Lead, resolve a case, correct a Record Link, invoke a command, or mutate an official Lead, Booking, or Cancellation.
 
 ## Protected read surface
 
@@ -14,7 +14,7 @@
 - Every query is strict Zod input. Case cursors encode only the selected timestamp and ObjectId; timeline cursors encode exactly event time, type priority, and stable ID. Candidate cursors encode only Lead model/ID ordering.
 - Missing cases use `GRANOT_CASE_NOT_FOUND`; a missing Lead keeps the generic v1 `Lead not found` envelope.
 
-The default queue is open cases ordered by newest evidence. Real rows are Booking-only until the Release model lands, while DTOs and Admin rendering retain separate Booking/Release discriminants.
+The default queue merges open Booking and Release cases ordered by newest evidence. `kind` filters either collection; projection-only Release mode is `release`. The selected timestamp plus ObjectId cursor is applied consistently across the merged streams, so pages neither duplicate nor omit cross-collection rows.
 
 ## Projection boundaries
 
@@ -22,13 +22,14 @@ The default queue is open cases ordered by newest evidence. Real rows are Bookin
 - Authorized detail keeps immutable Granot evidence visibly separate from live official Booking/Cancellation fields. Create-missing `official_draft` is empty and never derives defaults from Granot evidence.
 - Submitted/ingested contact and accepted Granot contact are separately labeled. Receipt payloads/headers, credentials, addresses, arbitrary Lead documents, CPL internals, and raw candidate contact never enter these DTOs.
 - Booking-without-Lead detail deep-links the existing Employee Booking Lead Reconciliation work; it does not invent another matcher or selector.
+- Release detail instead shows the deterministic live Booking and current Cancellation with `candidate_search.available=false`, no suggestion, no employee-reconciliation substitution, and `commands=false`.
 - Referral-shaped detail disables candidate browsing. Unit 23 opens no Referral case.
 
 ## Timelines
 
 Job Number is the primary timeline. Available Observations, individual Priority effects and Booked/Release actions, Decisions, case evidence/sequence events, Record Link changes, Entity Changes, and current official Booking/Cancellation facts remain individual entries. Sorting is ascending `(event_at, type_priority, id)` with the locked priorities 10 through 100. Invalid authoritative event time fails projection; request time is never substituted.
 
-Pagination returns `{ items, next_cursor, current, capabilities }`. There is no hidden 100-row cap: `next_cursor` advertises remaining entries. Capability flags remain false for Release cases and discrepancies until their models land.
+Pagination returns `{ items, next_cursor, current, capabilities }`. There is no hidden 100-row cap: `next_cursor` advertises remaining entries. Release-case capability is true; discrepancies remain false until Unit 29.
 
 Lead timeline first verifies the exact Lead, then follows persisted Record Links to linked Job Numbers. It never contact-matches at read time.
 
@@ -38,4 +39,4 @@ The Booking reconciliation service remains the policy seam. Its canonical identi
 
 ## Posture
 
-Reads remain available for existing cases when case creation is disabled. Case/timeline `capabilities.commands` is true only for an open standard create-missing or review-existing case while `GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED` is true; Release and discrepancy flags stay false. Checked-in lifecycle flags remain processing/shadow true and every Lead/Booking/Release/Referral/email effect false. This module adds no migration or index and does not enable the Booking-case or Booking-command flags.
+Reads remain available for existing cases when case creation is disabled. Case/timeline `capabilities.commands` is true only for an open standard create-missing or review-existing Booking case while `GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED` is true. Release reads are advertised but Release commands and discrepancies stay false. Checked-in lifecycle flags remain processing/shadow true and every Lead/Booking/Release/Referral/email effect false.

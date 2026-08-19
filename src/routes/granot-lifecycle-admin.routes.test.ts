@@ -233,6 +233,15 @@ test("[AC-18] [AC-19] read list applies the exact default queue for Owner/Admin"
   }
 });
 
+test("[AC-25][AC-35] read list forwards the explicit Release discriminants", async () => {
+  const path = "/api/v1/admin/granot-lifecycle/cases?kind=release&mode=release&state=open";
+  const response = await fetch(`${baseUrl}${path}`, { headers: signedHeaders("admin", path, "GET") });
+  assert.equal(response.status, 200);
+  assert.equal(lastCaseQuery?.kind, "release");
+  assert.equal(lastCaseQuery?.mode, "release");
+  assert.equal(lastCaseQuery?.state, "open");
+});
+
 test("[AC-35] unsigned lifecycle reads are denied before projection", async () => {
   const path = "/api/v1/admin/granot-lifecycle/cases";
   const response = await fetch(`${baseUrl}${path}`);

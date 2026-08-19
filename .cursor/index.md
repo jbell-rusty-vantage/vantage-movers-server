@@ -65,7 +65,8 @@ Production API: https://vantage-movers-main-server.vercel.app
 | [granotLifecycle.drainer.md](businesslogic/granotLifecycle.drainer.md) | `src/services/granotLifecycle/drainer.ts` — fenced claim/lease, queue/cron drain, technical vs pending-match clocks, dead letter, Owner requeue; **no Lead/Booking effects** |
 | [granotLifecycle.revisions.md](businesslogic/granotLifecycle.revisions.md) | `src/models/granotLifecycleSchemas.ts` + `aggregateRevision.ts` — `domain_revision` / history-boundary fields, Unit 12 Lead provenance storage, CAS primitive; existing adapters stamp `last_change_*` from append-only `EntityChange` |
 | [granotLifecycle.bookingReconciliation.md](businesslogic/granotLifecycle.bookingReconciliation.md) | Booking case open/refresh/sequence plus strict standard confirm, deterministic existing-Booking full update, and zero-effect No Action; checked-in command gate remains false |
-| [granotLifecycle.projections.md](businesslogic/granotLifecycle.projections.md) | `src/services/granotLifecycle/projections.ts` + protected Admin routes — masked case/candidate DTOs and stable Job/Lead timelines; advertises `commands` when the Booking-command flag is true; **reads never invoke mutations** |
+| [granotLifecycle.releaseReconciliation.md](businesslogic/granotLifecycle.releaseReconciliation.md) | Separate Release case open/refresh/sequence, already-cancelled no-effect routing, typed discrepancy seam, and read-only posture; checked-in Release flags remain false |
+| [granotLifecycle.projections.md](businesslogic/granotLifecycle.projections.md) | `src/services/granotLifecycle/projections.ts` + protected Admin routes — masked merged Booking/Release case DTOs and stable Job/Lead timelines; Release has no candidates or commands; **reads never invoke mutations** |
 | [granotHttpCollector.service.md](businesslogic/granotHttpCollector.service.md) | `src/services/granotHttpCollector/` — HTTP session collector, preview/approve/apply runs; apply captures `granot_http_automation` receipts |
 
 **Not duplicated here (yet):** `employeeBookings/`, `leadMessaging/`, `reporting/`, `ingestion/` — mapped in `rules/project-organization.mdc`.
@@ -114,7 +115,7 @@ Rule files apply when editing matching paths (`globs` in each file frontmatter).
 | `ringcentral-integration.mdc` | RingCentral env, webhooks, cron |
 | `ringcentral-call-lead-candidates.mdc` | Candidate aggregation + ingest boundaries |
 | `form-lead-granot-crm.mdc` | Granot CRM form-lead posting |
-| `granot-lifecycle-capture.mdc` | Granot lead-lifecycle software map: webhook capture, extension/automation receipt apply, processor, matched-Lead sync, authorized create-if-missing; Booking/Release Reconciliation is not live |
+| `granot-lifecycle-capture.mdc` | Granot lead-lifecycle software map: webhook capture, extension/automation receipt apply, processor, matched-Lead sync/create, Booking owner commands, and read-only Release-case persistence; effect flags remain false |
 | `granot-http-automation.mdc` | HTTP collector / automation runs; approved apply captures `granot_http_automation` receipts |
 | `lead-lifecycle-delivery.mdc` | Branch plan for Granot lead-lifecycle units (server / admin / extension) |
 | `granot-crm-csv-s3-sync.mdc` | CSV/S3 CRM sync |

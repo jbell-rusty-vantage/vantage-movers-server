@@ -265,6 +265,7 @@ function memoryDeps(input: {
   synchronizeLead?: GranotLifecycleProcessorDeps["synchronizeLead"];
   createLead?: GranotLifecycleProcessorDeps["createLead"];
   reconcileBooking?: GranotLifecycleProcessorDeps["reconcileBooking"];
+  reconcileRelease?: GranotLifecycleProcessorDeps["reconcileRelease"];
 }): GranotLifecycleProcessorDeps & {
   decisions: SynchronizationDecisionDocument[];
   links: GranotRecordLinkDocument[];
@@ -358,6 +359,7 @@ function memoryDeps(input: {
         }
       : undefined,
     reconcileBooking: input.reconcileBooking,
+    reconcileRelease: input.reconcileRelease,
     withTransaction: async (fn) => fn({} as never),
   };
 }
@@ -404,6 +406,55 @@ test("[AC-18][AC-19] processor invokes Booking reconciliation only in live gate-
     flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, shadow_mode: false },
     reconcileBooking: async () => {
       throw new Error("disabled Booking gate must not invoke reconciliation");
+    },
+  });
+  await processGranotObservation({ receipt_id: String(row.receipt_id) }, disabled);
+});
+
+test("[AC-25][AC-26][AC-27] processor invokes Release reconciliation only for live gate-enabled independent Release evidence", async () => {
+  const row = observation({
+    kind: "booking_action_snapshot",
+    route_event_class: "booking_status_changed",
+    normalization_result: "valid_with_issues",
+    priority: { raw: "bad", valid: false },
+    booking_action: { raw: "Release", normalized: "release" },
+  });
+  let calls = 0;
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: {
+      ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+      shadow_mode: false,
+      release_cases_enabled: true,
+    },
+    reconcileRelease: async (ids, prepared) => {
+      calls += 1;
+      assert.equal(ids.observation_id, String(row._id));
+      assert.equal(prepared.execution_mode, "live");
+      assert.equal(prepared.evaluated_gates.length, 8);
+      assert.ok(prepared.evaluated_gates.every((gate) => gate.allowed));
+      return {
+        kind: "opened",
+        case_ref: { model: "GranotReleaseReconciliationCase", id: String(objectId()) },
+        outcome: "linked",
+        reason_code: "release_case_opened",
+        case_revision: 1,
+        evidence_revision: 1,
+      };
+    },
+  });
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(calls, 1);
+  assert.equal(result.outcome, "linked");
+  assert.equal(result.effects[0]?.kind, "release_case_opened");
+
+  const disabled = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, shadow_mode: false },
+    reconcileRelease: async () => {
+      throw new Error("disabled Release gate must not invoke reconciliation");
     },
   });
   await processGranotObservation({ receipt_id: String(row.receipt_id) }, disabled);

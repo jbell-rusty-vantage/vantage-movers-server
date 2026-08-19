@@ -107,13 +107,13 @@ Leave every Booking/Release/Referral/email flag **false** until those workflows 
 ```text
 GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED=true      # open dashboard booking cases
 GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED=true   # Owner confirm/update/No Action
-GRANOT_LIFECYCLE_RELEASE_CASES_ENABLED=true
-GRANOT_LIFECYCLE_RELEASE_COMMANDS_ENABLED=true
+GRANOT_LIFECYCLE_RELEASE_CASES_ENABLED=true      # open read-only deterministic-Booking Release cases
+GRANOT_LIFECYCLE_RELEASE_COMMANDS_ENABLED=true   # Unit 27+ only; remains false after Unit 26
 GRANOT_LIFECYCLE_REFERRAL_BOOKING_ENABLED=true   # also needs Booking cases true
 GRANOT_LIFECYCLE_EMAIL_ENABLED=true              # retired; keep false
 ```
 
-Case reads work without command flags. Commands never come before cases. Booking comes before Release. Email is last and optional.
+Case reads work without command flags. Unit 26 Release reads show separate evidence plus the current deterministic Booking/Cancellation and never expose a selector or mutation. Enable Release cases only after its five indexes verify and Owner review/rollout authorization; Release commands remain false until the later command unit is accepted. Commands never come before cases. Booking comes before Release. Email is last and optional.
 
 ### 1.4 Activation is not an env var
 

@@ -215,6 +215,14 @@ export const GRANOT_BOOKING_RECONCILIATION_OUTCOMES = [
   "superseded_by_current_state",
 ] as const;
 
+export const GRANOT_RELEASE_RECONCILIATION_OUTCOMES = [
+  "cancellation_created",
+  "booking_updated",
+  "no_action",
+  "already_satisfied",
+  "superseded_by_current_state",
+] as const;
+
 export const GRANOT_RECONCILIATION_NO_ACTION_REASON_CODES = [
   "already_handled_elsewhere",
   "granot_action_not_authoritative",

@@ -15,6 +15,7 @@ load receipt -> upsert/reuse Observation -> classify stored execution mode
 -> terminal normalization -> resolve Registry policy -> Unit 14 identity
 -> temporal compare -> desired-state plan -> evaluate exact gates
 -> live+booking evidence+booking-case gate -> Booking case open/refresh/delegation
+-> live+Release evidence+Release-case gate -> Release case open/refresh/already-current/discrepancy seam
 -> live+creation+all gates+eligible no-match -> createLeadFromGranot
 -> else live+writes+all gates+matched Lead -> synchronizeLeadFromGranot
    (or already_current exact-link Decision + metadata-only temporal CAS)
@@ -61,6 +62,12 @@ Post-activation `live` Priority `5` or actual `booked` evidence enters `bookingR
 Priority `5` plus an eligible Lead/no Booking opens `create_missing_booking`; Priority `5` with a Booking does nothing. Actual Booked/no Booking opens create-missing even when Lead identity is ambiguous; actual Booked/one Booking opens `review_existing_booking`. Booking-without-Lead delegates to its existing employee reconciliation case. Official cancellation and identity conflicts return typed non-persisting discrepancy routing; Referral and Release remain later-unit work. No path writes a Lead, Booking, Cancellation, Record Link, Command, Change, outbox, discrepancy, notification, or email.
 
 New evidence appends once by Observation ID and increments only `evidence_revision`; owner-relevant suggestion changes increment `case_revision`. Resolved rows are immutable and later evidence gets `max(sequence)+1`. Suggested/candidate Leads use only canonical Unit 14 identity evidence, exclude Duplicate/Bad Form Leads, and may be refreshed without attachment for 24 hours. Operational events mask identifiers and the open-case gauge is recomputed from current cardinality. Protected reads already exist. Checked-in `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED` remains false; official Booking writes stay on separately gated Owner commands.
+
+## Release reconciliation cases
+
+Post-activation `live` actual Release evidence enters `releaseReconciliation.ts` only when all reviewed Release-case gates pass. The service rereads the immutable Observation and current identity/Booking/Cancellation/link facts inside one transaction. One compatible active Booking opens or refreshes the single open Release case; already cancelled is a no-effect Decision; missing Booking and exact identity conflicts return typed Unit 29 seams. Booking-without-Lead is valid Release work. Priority validity is independent.
+
+Case plus Decision commit atomically with one bounded race retry. Release and Booking collections, uniqueness, sequences, revisions, and timeline entries remain separate. This path never selects a Booking by contact, mutates official state, writes a discrepancy, or invokes a command. Checked-in Release case/command flags remain false.
 
 ## Temporal compare-and-swap seam
 

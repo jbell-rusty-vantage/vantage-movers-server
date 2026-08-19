@@ -15,6 +15,10 @@ import {
   GRANOT_BOOKING_RECONCILIATION_CASE_COLLECTION,
   GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES,
 } from "../../src/models/GranotBookingReconciliationCase";
+import {
+  GRANOT_RELEASE_RECONCILIATION_CASE_COLLECTION,
+  GRANOT_RELEASE_RECONCILIATION_CASE_INDEXES,
+} from "../../src/models/GranotReleaseReconciliationCase";
 import { FORM_LEAD_S08_INDEXES } from "../../src/models/FormLead";
 import { CALL_LEAD_S08_INDEXES } from "../../src/models/CallLead";
 import { maskReceiptId } from "./granot-lifecycle-migration.lib";
@@ -26,8 +30,11 @@ import {
 import { ENTITY_CHANGE_INDEXES } from "../../src/models/EntityChange";
 import { RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX } from "../../src/services/ringcentral/call-log-sync-state.store";
 
-export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/10";
-export { GRANOT_BOOKING_RECONCILIATION_CASE_COLLECTION };
+export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/11";
+export {
+  GRANOT_BOOKING_RECONCILIATION_CASE_COLLECTION,
+  GRANOT_RELEASE_RECONCILIATION_CASE_COLLECTION,
+};
 export const FORM_LEAD_COLLECTION = "form_leads";
 export const CALL_LEAD_COLLECTION = "call_leads";
 
@@ -665,6 +672,35 @@ export function verifyGranotBookingCaseIndexDefinitions(
   actual: readonly DeclaredMongoIndex[],
 ) {
   return verifyNamedIndexDefinitions(actual, GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES);
+}
+
+export function findGranotReleaseCaseCollisions(
+  rows: readonly {
+    _id: string;
+    normalized_job_no?: unknown;
+    action_kind?: unknown;
+    sequence_number?: unknown;
+    state?: unknown;
+  }[],
+): { open: GranotBookingCaseCollision[]; sequence: GranotBookingCaseCollision[] } {
+  return findGranotBookingCaseCollisions(rows);
+}
+
+export function orderedGranotReleaseCaseIndexCreates() {
+  return {
+    nonUnique: GRANOT_RELEASE_RECONCILIATION_CASE_INDEXES.filter(
+      (index) => !("unique" in index),
+    ),
+    unique: GRANOT_RELEASE_RECONCILIATION_CASE_INDEXES.filter(
+      (index) => "unique" in index,
+    ),
+  };
+}
+
+export function verifyGranotReleaseCaseIndexDefinitions(
+  actual: readonly DeclaredMongoIndex[],
+) {
+  return verifyNamedIndexDefinitions(actual, GRANOT_RELEASE_RECONCILIATION_CASE_INDEXES);
 }
 
 function sameJson(left: unknown, right: unknown): boolean {

@@ -46,8 +46,12 @@ import {
   findGranotBookingCaseCollisions,
   orderedGranotBookingCaseIndexCreates,
   verifyGranotBookingCaseIndexDefinitions,
+  findGranotReleaseCaseCollisions,
+  orderedGranotReleaseCaseIndexCreates,
+  verifyGranotReleaseCaseIndexDefinitions,
 } from "./granot-lifecycle-indexes.lib";
 import { GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES } from "../../src/models/GranotBookingReconciliationCase";
+import { GRANOT_RELEASE_RECONCILIATION_CASE_INDEXES } from "../../src/models/GranotReleaseReconciliationCase";
 import { SYNCHRONIZATION_DECISION_INDEXES } from "../../src/models/SynchronizationDecision";
 import { GRANOT_LIFECYCLE_ACTIVATION_INDEXES } from "../../src/models/GranotLifecycleActivation";
 import { GRANOT_RECORD_LINK_INDEXES } from "../../src/models/GranotRecordLink";
@@ -113,6 +117,33 @@ test("[AC-36] Booking-case collisions, ordering, and exact definitions are deter
     verifyGranotBookingCaseIndexDefinitions(actual),
     verifyGranotBookingCaseIndexDefinitions(actual),
   );
+});
+
+test("[AC-36] Release-case collisions, ordering, and exact definitions are deterministic and PII-safe", () => {
+  const collisions = findGranotReleaseCaseCollisions([
+    { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", normalized_job_no: "U26-JOB", action_kind: "release", sequence_number: 1, state: "open" },
+    { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", normalized_job_no: "U26-JOB", action_kind: "release", sequence_number: 1, state: "open" },
+    { _id: "cccccccccccccccccccccccc", normalized_job_no: "U26-JOB", action_kind: "release", sequence_number: 2, state: "resolved" },
+  ]);
+  assert.equal(collisions.open.length, 1);
+  assert.equal(collisions.sequence.length, 1);
+  assert.equal(JSON.stringify(collisions).includes("aaaaaaaaaaaaaaaaaaaaaaaa"), false);
+  assert.equal(JSON.stringify(collisions).includes("U26-JOB"), false);
+  assert.deepEqual(findGranotReleaseCaseCollisions([]), { open: [], sequence: [] });
+
+  const ordered = orderedGranotReleaseCaseIndexCreates();
+  assert.equal(ordered.nonUnique.length, 3);
+  assert.equal(ordered.unique.length, 2);
+  const actual = GRANOT_RELEASE_RECONCILIATION_CASE_INDEXES.map((index) => ({
+    name: index.name,
+    key: { ...index.key },
+    unique: "unique" in index ? true : undefined,
+    partialFilterExpression: "partialFilterExpression" in index
+      ? { ...index.partialFilterExpression }
+      : undefined,
+  }));
+  assert.equal(verifyGranotReleaseCaseIndexDefinitions(actual).ok, true);
+  assert.equal(verifyGranotReleaseCaseIndexDefinitions([]).missing.length, 5);
 });
 
 test("[AC-02] index apply creates non-unique indexes before the unique partial index", () => {

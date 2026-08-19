@@ -65,6 +65,12 @@ import {
   type PreparedBookingReconciliationDecision,
 } from "./bookingReconciliation";
 import {
+  createGranotReleaseReconciliation,
+  type PreparedReleaseReconciliationDecision,
+  type ReleaseCaseEffectResult,
+  type ReleaseReconciliationPersistenceStore,
+} from "./releaseReconciliation";
+import {
   planLeadDesiredState,
   type LeadDesiredStatePlan,
   type LeadDesiredStateProjection,
@@ -183,6 +189,11 @@ export type GranotLifecycleProcessorDeps = {
     ids: { observation_id: string; decision_id: string },
     prepared: PreparedBookingReconciliationDecision,
   ) => Promise<CaseEffectResult>;
+  releaseReconciliationStore?: ReleaseReconciliationPersistenceStore;
+  reconcileRelease?: (
+    ids: { observation_id: string; decision_id: string },
+    prepared: PreparedReleaseReconciliationDecision,
+  ) => Promise<ReleaseCaseEffectResult>;
 };
 
 export function createGranotObservationProcessor(
@@ -256,6 +267,19 @@ export async function processGranotObservation(
     }
     return toProcessorResult(existing, receipt.observation_channel, started);
   }
+
+  const releaseResult = await maybeReconcileRelease({
+    prepared,
+    observation,
+    receipt,
+    flags,
+    execution_mode,
+    deps,
+    started,
+    attempt,
+    sourcePolicy: prepared.policy,
+  });
+  if (releaseResult) return releaseResult;
 
   const bookingResult = await maybeReconcileBooking({
     prepared,
@@ -461,6 +485,101 @@ export async function processGranotObservation(
   return toProcessorResult(persisted, receipt.observation_channel, started);
 }
 
+async function maybeReconcileRelease(input: {
+  prepared: Awaited<ReturnType<typeof prepareDecision>>;
+  observation: GranotObservationDocument;
+  receipt: ProcessorReceipt;
+  flags: GranotLifecycleFlags;
+  execution_mode: ExecutionMode;
+  deps: GranotLifecycleProcessorDeps;
+  started: number;
+  attempt: number;
+  sourcePolicy?: SourcePolicySnapshot;
+}): Promise<ReturnType<typeof toProcessorResult> | undefined> {
+  if (
+    input.observation.booking_action?.normalized !== "release" ||
+    !input.observation.identity?.normalized_job_no ||
+    input.observation.normalization_result === "invalid" ||
+    input.observation.normalization_result === "unsupported"
+  ) {
+    return undefined;
+  }
+
+  const gates = input.sourcePolicy
+    ? snapshotEligibleGates(
+        input.sourcePolicy,
+        input.execution_mode,
+        input.flags,
+        "release_reconciliation",
+      )
+    : releaseGatesFromPrepared(input.prepared.decision.evaluated_gates, input.flags);
+  if (!gates.allowed) return undefined;
+
+  const decisionId = new mongoose.Types.ObjectId();
+  const prepared: PreparedReleaseReconciliationDecision = {
+    receipt_id: input.receipt._id,
+    observation_id: input.observation._id,
+    attempt: input.attempt,
+    execution_mode: input.execution_mode,
+    outcome: input.prepared.decision.outcome,
+    reason_code: input.prepared.decision.reason_code,
+    match_method: input.prepared.decision.match_method,
+    source_scope: input.prepared.decision.source_scope,
+    candidates: input.prepared.decision.candidates,
+    evaluated_gates: gates.evaluated_gates,
+    effects: [],
+    decided_at: input.prepared.decision.decided_at,
+  };
+  const result = await (input.deps.reconcileRelease
+    ? input.deps.reconcileRelease(
+        {
+          observation_id: String(input.observation._id),
+          decision_id: String(decisionId),
+        },
+        prepared,
+      )
+    : createGranotReleaseReconciliation({
+        prepared,
+        store: input.deps.releaseReconciliationStore,
+      }).reconcileObservation({
+        observation_id: String(input.observation._id),
+        decision_id: String(decisionId),
+      }));
+  if (result.kind === "none") return undefined;
+
+  const opened = result.kind === "opened" || result.kind === "refreshed";
+  const alreadyCurrent = result.kind === "already_current";
+  const decision = toDecisionDocument(decisionId, {
+    ...input.prepared.decision,
+    evaluated_gates: gates.evaluated_gates,
+    outcome: opened
+      ? "linked"
+      : alreadyCurrent
+        ? "already_current"
+        : input.prepared.decision.outcome,
+    reason_code: opened || alreadyCurrent
+      ? result.reason_code
+      : input.prepared.decision.reason_code,
+    target: opened
+      ? result.case_ref
+      : alreadyCurrent
+        ? result.target
+        : input.prepared.decision.target,
+    effects: opened ? [{ kind: result.reason_code, ref: result.case_ref }] : [],
+  });
+  logProcessingCompletion({
+    receipt_id: String(input.receipt._id),
+    observation_id: String(input.observation._id),
+    decision_id: String(decisionId),
+    attempt: input.attempt,
+    execution_mode: input.execution_mode,
+    outcome: decision.outcome,
+    reason_code: decision.reason_code,
+    duration_ms: Date.now() - input.started,
+  });
+  return toProcessorResult(decision, input.receipt.observation_channel, input.started);
+}
+
 async function maybeReconcileBooking(input: {
   prepared: Awaited<ReturnType<typeof prepareDecision>>;
   observation: GranotObservationDocument;
@@ -566,6 +685,28 @@ function bookingGatesFromPrepared(
   const evaluated_gates = evaluated.map((gate) => {
     if (gate.gate === "global_effect_flag") {
       return { ...gate, allowed: flags.booking_cases_enabled };
+    }
+    if (gate.gate === "policy_permits_effect") {
+      return { ...gate, allowed: true };
+    }
+    return gate;
+  });
+  const allowed = evaluated_gates.length === 8 && evaluated_gates.every((gate) => gate.allowed);
+  return {
+    evaluated_gates,
+    allowed,
+    outcome: allowed ? "already_current" : "policy_blocked",
+    reason: allowed ? "desired_state_already_current" : "global_effect_disabled",
+  };
+}
+
+function releaseGatesFromPrepared(
+  evaluated: EvaluatedGate[],
+  flags: GranotLifecycleFlags,
+): EffectGateEvaluation {
+  const evaluated_gates = evaluated.map((gate) => {
+    if (gate.gate === "global_effect_flag") {
+      return { ...gate, allowed: flags.release_cases_enabled };
     }
     if (gate.gate === "policy_permits_effect") {
       return { ...gate, allowed: true };

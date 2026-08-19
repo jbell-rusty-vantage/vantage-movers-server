@@ -5,6 +5,7 @@ import {
 } from "../../config/domain/granotLifecycle";
 import { getGranotLifecycleActivationModel } from "../../models/GranotLifecycleActivation";
 import { getGranotBookingReconciliationCaseModel } from "../../models/GranotBookingReconciliationCase";
+import { getGranotReleaseReconciliationCaseModel } from "../../models/GranotReleaseReconciliationCase";
 import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
@@ -206,7 +207,7 @@ export type GranotLifecycleCaseListPage = {
 
 export type GranotLifecycleCaseDetail = {
   case_id: string;
-  kind: "booking";
+  kind: "booking" | "release";
   state: "open" | "resolved";
   mode: string;
   sequence_number: number;
@@ -295,6 +296,34 @@ export type GranotLifecycleCandidateItem = {
 
 type TimelineCursor = { event_at: string; type_priority: number; id: string };
 type ListCursor = { sort_value: string; id: string };
+type LifecycleCaseListRow = {
+  _id: unknown;
+  kind: "booking" | "release";
+  state: "open" | "resolved";
+  mode: string;
+  sequence_number: number;
+  normalized_job_no: string;
+  job_no_snapshot: string;
+  source_scope?: { granot_crm_source_id: unknown };
+  observed_context: {
+    contact?: { name?: string; phone_number?: string; email?: string };
+  };
+  evidence: Array<{ action: "priority_5" | "booked" | "release"; captured_at: Date }>;
+  case_revision: number;
+  evidence_revision: number;
+  deterministic_booking_id?: unknown;
+  opened_at: Date;
+  last_evidence_at: Date;
+  resolved_at?: Date;
+};
+
+function isBookingCaseMode(
+  value: string | undefined,
+): value is "create_missing_booking" | "review_existing_booking" | "create_referral_booking" {
+  return value === "create_missing_booking" ||
+    value === "review_existing_booking" ||
+    value === "create_referral_booking";
+}
 
 export type GranotLifecycleHealthProjection = {
   flags: Record<(typeof GRANOT_LIFECYCLE_FLAG_NAMES)[number], boolean>;
@@ -391,21 +420,19 @@ export async function projectGranotLeadTimeline(
 export async function listGranotLifecycleCases(
   query: GranotLifecycleCaseListQuery,
 ): Promise<GranotLifecycleCaseListPage> {
-  if (query.kind === "release") return { items: [], next_cursor: null };
   const sortField = query.sort ?? "last_evidence_at";
   const order = query.order ?? "desc";
   const direction = order === "asc" ? 1 : -1;
-  const filter: Record<string, unknown> = {};
-  if (query.state) filter.state = query.state;
-  if (query.mode) filter.mode = query.mode;
-  if (query.source_id) filter["source_scope.granot_crm_source_id"] = query.source_id;
+  const commonFilter: Record<string, unknown> = {};
+  if (query.state) commonFilter.state = query.state;
+  if (query.source_id) commonFilter["source_scope.granot_crm_source_id"] = query.source_id;
   if (query.normalized_job_no) {
     const normalized = normalizeJobNo(query.normalized_job_no);
     if (!normalized) throw validationError("normalized_job_no", "must normalize to a Job Number");
-    filter.normalized_job_no = normalized;
+    commonFilter.normalized_job_no = normalized;
   }
   if (query.opened_from || query.opened_to) {
-    filter.opened_at = {
+    commonFilter.opened_at = {
       ...(query.opened_from ? { $gte: new Date(query.opened_from) } : {}),
       ...(query.opened_to ? { $lte: new Date(query.opened_to) } : {}),
     };
@@ -413,17 +440,41 @@ export async function listGranotLifecycleCases(
   if (query.cursor) {
     const cursor = decodeCursor<ListCursor>(query.cursor, isListCursor);
     const operator = direction === 1 ? "$gt" : "$lt";
-    filter.$or = [
+    commonFilter.$or = [
       { [sortField]: { [operator]: new Date(cursor.sort_value) } },
       { [sortField]: new Date(cursor.sort_value), _id: { [operator]: cursor.id } },
     ];
   }
-  const rows = await getGranotBookingReconciliationCaseModel()
-    .find(filter)
-    .sort({ [sortField]: direction, _id: direction })
-    .limit(query.limit + 1)
-    .lean();
-  const visible = rows.slice(0, query.limit);
+
+  const bookingMode = isBookingCaseMode(query.mode) ? query.mode : undefined;
+  const includeBooking = query.kind !== "release" && (!query.mode || Boolean(bookingMode));
+  const includeRelease = query.kind !== "booking" && (!query.mode || query.mode === "release");
+  const [bookingRows, releaseRows] = await Promise.all([
+    includeBooking
+      ? getGranotBookingReconciliationCaseModel()
+          .find({ ...commonFilter, ...(bookingMode ? { mode: bookingMode } : {}) })
+          .sort({ [sortField]: direction, _id: direction })
+          .limit(query.limit + 1)
+          .lean()
+      : [],
+    includeRelease
+      ? getGranotReleaseReconciliationCaseModel()
+          .find(commonFilter)
+          .sort({ [sortField]: direction, _id: direction })
+          .limit(query.limit + 1)
+          .lean()
+      : [],
+  ]);
+  const rows: LifecycleCaseListRow[] = [
+    ...bookingRows.map((row) => ({ ...row, kind: "booking" as const, mode: row.mode })),
+    ...releaseRows.map((row) => ({ ...row, kind: "release" as const, mode: "release" })),
+  ].sort((left, right) => {
+    const leftTime = new Date(left[sortField]).getTime();
+    const rightTime = new Date(right[sortField]).getTime();
+    return direction * (leftTime - rightTime || String(left._id).localeCompare(String(right._id)));
+  });
+  const pageRows = rows.slice(0, query.limit + 1);
+  const visible = pageRows.slice(0, query.limit);
   const sourceIds = [...new Set(visible.flatMap((row) =>
     row.source_scope ? [String(row.source_scope.granot_crm_source_id)] : []))];
   const sources = sourceIds.length
@@ -436,7 +487,7 @@ export async function listGranotLifecycleCases(
       new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime())[0];
     return {
       case_id: String(row._id),
-      kind: "booking" as const,
+      kind: row.kind,
       state: row.state,
       mode: row.mode,
       sequence_number: row.sequence_number,
@@ -462,7 +513,7 @@ export async function listGranotLifecycleCases(
   const last = visible.at(-1);
   const result: GranotLifecycleCaseListPage = {
     items,
-    next_cursor: rows.length > query.limit && last
+    next_cursor: pageRows.length > query.limit && last
       ? encodeCursor({ sort_value: iso(last[sortField], `case.${sortField}`), id: String(last._id) })
       : null,
   };
@@ -473,8 +524,14 @@ export async function listGranotLifecycleCases(
 export async function getGranotLifecycleCaseDetail(
   caseId: string,
 ): Promise<GranotLifecycleCaseDetail | null> {
-  const row = await getGranotBookingReconciliationCaseModel().findById(caseId).lean();
+  const bookingRow = await getGranotBookingReconciliationCaseModel().findById(caseId).lean();
+  const releaseRow = bookingRow
+    ? null
+    : await getGranotReleaseReconciliationCaseModel().findById(caseId).lean();
+  const row = bookingRow ?? releaseRow;
   if (!row) return null;
+  const kind = bookingRow ? "booking" as const : "release" as const;
+  const mode = bookingRow?.mode ?? "release";
   const observationIds = row.evidence.map((item) => item.observation_id);
   const decisionIds = row.evidence.map((item) => item.decision_id);
   const [observations, decisions, link, booking, employeeCase] = await Promise.all([
@@ -482,7 +539,7 @@ export async function getGranotLifecycleCaseDetail(
     getSynchronizationDecisionModel().find({ _id: { $in: decisionIds } }).lean(),
     row.record_link_id ? getGranotRecordLinkModel().findById(row.record_link_id).lean() : null,
     row.deterministic_booking_id ? BookedLead.findById(row.deterministic_booking_id).lean() : null,
-    row.deterministic_booking_id
+    kind === "booking" && row.deterministic_booking_id
       ? BookingLeadReconciliationCase.findOne({ booking: row.deterministic_booking_id }).lean()
       : null,
   ]);
@@ -494,16 +551,18 @@ export async function getGranotLifecycleCaseDetail(
     : [null, null];
   const observationById = new Map(observations.map((item) => [String(item._id), item]));
   const decisionById = new Map(decisions.map((item) => [String(item._id), item]));
-  const leadRef = row.suggested_lead?.lead_ref ?? link?.lead_ref;
+  const leadRef = kind === "booking"
+    ? row.suggested_lead?.lead_ref ?? link?.lead_ref
+    : link?.lead_ref;
   const lead = leadRef ? await loadLeadContactProjection(leadRef.model, String(leadRef.id)) : null;
   const timeline = await projectGranotJob(row.normalized_job_no, { limit: DEFAULT_TIMELINE_LIMIT });
   const safeBooking = booking ? projectBooking(booking, activeMerchant?._id) : undefined;
   const safeCancellation = cancellation ? projectCancellation(cancellation) : undefined;
   const result: GranotLifecycleCaseDetail = {
     case_id: String(row._id),
-    kind: "booking",
+    kind,
     state: row.state,
-    mode: row.mode,
+    mode,
     sequence_number: row.sequence_number,
     case_revision: row.case_revision,
     evidence_revision: row.evidence_revision,
@@ -544,14 +603,14 @@ export async function getGranotLifecycleCaseDetail(
       granot_username: row.observed_context.granot_username,
     },
     contacts: projectLeadContacts(lead),
-    suggestion: row.suggested_lead ? {
+    suggestion: kind === "booking" && row.suggested_lead ? {
       lead_ref: { model: row.suggested_lead.lead_ref.model, id: String(row.suggested_lead.lead_ref.id) },
       confidence: row.suggested_lead.confidence,
       match_method: row.suggested_lead.match_method,
       reason_codes: row.suggested_lead.reason_codes,
     } : undefined,
     candidate_search: {
-      available: row.mode !== "create_referral_booking",
+      available: kind === "booking" && mode !== "create_referral_booking",
       default_scope: "source",
       all_scope_warning: true,
     },
@@ -565,11 +624,12 @@ export async function getGranotLifecycleCaseDetail(
     } : undefined,
     timeline,
     capabilities: {
-      commands: getGranotLifecycleFlags().booking_commands_enabled &&
+      commands: kind === "booking" &&
+        getGranotLifecycleFlags().booking_commands_enabled &&
         row.state === "open" &&
-        (row.mode === "create_missing_booking" || row.mode === "review_existing_booking"),
-      referral: row.mode === "create_referral_booking",
-      release_cases: false,
+        (mode === "create_missing_booking" || mode === "review_existing_booking"),
+      referral: kind === "booking" && mode === "create_referral_booking",
+      release_cases: true,
       discrepancies: false,
     },
   };
@@ -647,7 +707,7 @@ export async function listGranotLifecycleCaseCandidates(
 async function buildTimelineForJob(
   normalizedJobNo: string,
 ): Promise<Omit<GranotTimelinePage, "next_cursor">> {
-  const [links, observations, cases, booking] = await Promise.all([
+  const [links, observations, bookingCases, releaseCases, booking] = await Promise.all([
     getGranotRecordLinkModel()
       .find({ provider: "granot", normalized_job_no: normalizedJobNo })
       .lean(),
@@ -655,6 +715,9 @@ async function buildTimelineForJob(
       .find({ "identity.normalized_job_no": normalizedJobNo })
       .lean(),
     getGranotBookingReconciliationCaseModel()
+      .find({ normalized_job_no: normalizedJobNo })
+      .lean(),
+    getGranotReleaseReconciliationCaseModel()
       .find({ normalized_job_no: normalizedJobNo })
       .lean(),
     BookedLead.findOne({ normalized_job_no: normalizedJobNo }).lean(),
@@ -749,7 +812,11 @@ async function buildTimelineForJob(
       },
     });
   }
-  for (const caseRow of cases) {
+  const cases = [
+    ...bookingCases.map((row) => ({ row, kind: "booking" as const, mode: row.mode })),
+    ...releaseCases.map((row) => ({ row, kind: "release" as const, mode: "release" })),
+  ];
+  for (const { row: caseRow, kind, mode } of cases) {
     const evidence = [...caseRow.evidence].sort((a, b) =>
       new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime());
     evidence.forEach((entry, index) => {
@@ -760,10 +827,10 @@ async function buildTimelineForJob(
         type_priority: 50,
         data: {
           case_id: String(caseRow._id),
-          kind: "booking",
+          kind,
           event: index === 0 ? "opened" : "refreshed",
           state: caseRow.state,
-          mode: caseRow.mode,
+          mode,
           sequence_number: caseRow.sequence_number,
           case_revision: caseRow.case_revision,
           evidence_revision: caseRow.evidence_revision,
@@ -779,10 +846,10 @@ async function buildTimelineForJob(
         type_priority: 50,
         data: {
           case_id: String(caseRow._id),
-          kind: "booking",
+          kind,
           event: "resolved",
           state: "resolved",
-          mode: caseRow.mode,
+          mode,
           sequence_number: caseRow.sequence_number,
           case_revision: caseRow.case_revision,
           evidence_revision: caseRow.evidence_revision,
@@ -910,7 +977,7 @@ function compareTimelineEntryToCursor(entry: GranotTimelineEntry, cursor: Timeli
 function timelineCapabilities(): GranotTimelinePage["capabilities"] {
   return {
     booking_cases: true,
-    release_cases: false,
+    release_cases: true,
     discrepancies: false,
     official_facts: true,
   };

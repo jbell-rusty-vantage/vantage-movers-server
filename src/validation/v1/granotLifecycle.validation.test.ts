@@ -118,6 +118,9 @@ test("[AC-18] [AC-19] case list query is strict, bounded, and validates date ord
     limit: "25",
   });
   assert.equal(parsed.limit, 25);
+  const release = granotLifecycleCaseListQuerySchema.parse({ kind: "release", mode: "release" });
+  assert.equal(release.kind, "release");
+  assert.equal(release.mode, "release");
   assert.throws(() => granotLifecycleCaseListQuerySchema.parse({ unknown: "x" }), /unrecognized_keys|unknown/);
   assert.throws(() => granotLifecycleCaseListQuerySchema.parse({ limit: 101 }), /less than or equal|Too big/);
   assert.throws(
