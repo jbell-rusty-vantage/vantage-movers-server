@@ -1,5 +1,7 @@
 # Lead lifecycle paths: creation → booking → cancellation
 
+> **Stale vs current.** This brief still treats webhooks as capture-only / no processor. Current fulfillment through Unit 25: [`docs/granot-lead-lifecycle/sprint-progress-through-unit-25.md`](../granot-lead-lifecycle/sprint-progress-through-unit-25.md). Current capture: [`.cursor/businesslogic/granotLifecycle.capture.md`](../../.cursor/businesslogic/granotLifecycle.capture.md). Current processor: [`.cursor/businesslogic/granotLifecycle.processor.md`](../../.cursor/businesslogic/granotLifecycle.processor.md). The path catalog below is not rewritten.
+
 Status: architectural exploration brief for another agent. This document catalogs every operational path a Form Lead or Call Lead can take from first contact through Booking and Cancellation, and **projects** Granot webhook deliveries into those paths.
 
 Companion documents:

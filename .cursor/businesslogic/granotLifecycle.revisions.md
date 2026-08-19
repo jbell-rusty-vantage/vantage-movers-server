@@ -19,7 +19,7 @@ Public/admin DTOs reject these fields and the Unit 12 Lead provenance fields (`i
 
 ## Compare-and-swap primitive
 
-Later authoritative mutations must filter `{ _id, domain_revision: expected }` and increment once. A zero-row filter is `DOMAIN_REVISION_CONFLICT`. Existing adapters and `createLeadFromGranot` / `synchronizeLeadFromGranot` stamp this pair from the persisted `EntityChange`. Owner Booking/Release case commands remain later units.
+Later authoritative mutations must filter `{ _id, domain_revision: expected }` and increment once. A zero-row filter is `DOMAIN_REVISION_CONFLICT`. Existing adapters and `createLeadFromGranot` / `synchronizeLeadFromGranot` / Owner Booking commands stamp this pair from the persisted `EntityChange`. `confirmGranotBooking`, `updateBooking`, and `resolveGranotBookingCaseNoAction` exist and stay gated by `GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED`. Release/Referral commands remain unavailable.
 
 ## Migrations
 

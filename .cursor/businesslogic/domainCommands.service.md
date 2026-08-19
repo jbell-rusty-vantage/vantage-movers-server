@@ -7,7 +7,7 @@
 
 Canonical idempotent write surface for ingest and existing v1 write adapters. Mongo is the System of Record. The executor owns one Mongo transaction, the durable `DomainCommandExecution` result, append-only `EntityChange` rows, aggregate revision stamps, queued Sheet Sync outbox intent, and the replay/conflict decision. Sheet Sync does **not** complete commands.
 
-`synchronizeLeadFromGranot`, `createLeadFromGranot`, and exact aggregate `updateBooking` are registered Granot lifecycle commands. Policy and case orchestration live in `granotLifecycle/`; this registry stays thin. Unit 25 composes the Booking replacement primitive with the case CAS so Booking/derived-Lead Changes, case resolution, Command, and queued Booking Chain intent commit atomically. Referral, Release, and Record Link correction commands remain disabled. Checked-in effect flags stay false.
+`synchronizeLeadFromGranot`, `createLeadFromGranot`, `confirmGranotBooking`, exact aggregate `updateBooking`, and `resolveGranotBookingCaseNoAction` are registered Granot lifecycle commands. Policy and case orchestration live in `granotLifecycle/`; this registry stays thin. Unit 25 composes the Booking replacement primitive with the case CAS so Booking/derived-Lead Changes, case resolution, Command, and queued Booking Chain intent commit atomically. Referral, Release, and Record Link correction commands remain disabled. Checked-in effect flags stay false.
 
 ## Executor sequence
 

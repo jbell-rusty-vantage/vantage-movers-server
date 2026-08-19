@@ -30,7 +30,7 @@ alwaysApply: false
 - Granot posts `POST /api/webhooks/granot/{lead-created,priority-updated,booking-status-changed}`.
 - Authenticated deliveries persist one credential-redacted Granot Observation Receipt and return `202`. Capture does **not** create, update, or cancel a Lead, Booking, or Cancellation.
 - After commit, production Vercel may publish `{ receipt_id }` to the lifecycle queue topic. A dedicated consumer and five-minute cron drain due work through one Mongo claim/fence. Capture still does not invoke the processor. Details: `businesslogic/granotLifecycle.drainer.md`.
-- When live + `GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED` + reviewed `create_if_missing` + complete minimum data + no eligible match, the processor creates exactly one Form/Call Lead and reserves the active Record Link through `createLeadFromGranot`. Matched Observations stay on `synchronizeLeadFromGranot`. Checked-in flags keep creation off. Neither path writes a Booking or Cancellation. Details: `businesslogic/granotLifecycle.processor.md`.
+- When live + `GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED` + reviewed `create_if_missing` + complete minimum data + no eligible match, the processor creates exactly one Form/Call Lead and reserves the active Record Link through `createLeadFromGranot`. Matched Observations stay on `synchronizeLeadFromGranot`. Checked-in flags keep creation off. Neither Lead path writes a Booking or Cancellation. Details: `businesslogic/granotLifecycle.processor.md`.
 - CRM Posting on form-lead create is independent of webhook capture. Details: `businesslogic/granotLifecycle.capture.md`.
 
 ## Granot HTTP automation (parallel correction path)
@@ -41,6 +41,7 @@ alwaysApply: false
 
 ## Booking Flow
 
+- Priority `5` / actual Booked Observations may open a **Granot Booking Reconciliation Case**. A case is not a Booking. Official Booking create/update/No Action happen only through Owner `POST /api/v1/admin/granot-lifecycle/booking-cases/:id/{confirm-booking,update-booking,no-action}` (Owner actor + one `Idempotency-Key`). Checked-in `GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED` stays false. Details: `businesslogic/granotLifecycle.bookingReconciliation.md`.
 - The booked-deal Google Form posts to `POST /api/v1/booked-leads` for direct Mongo-id bookings or `POST /api/v1/booked-leads/from-source` for source-driven form/call bookings.
 - Form bookings attach by original form lead Mongo id. Call bookings prefer an existing job-number match, then phone match, and finally create a `created_on_unmatched` call stub so the booked deal is preserved. Sheet Sync skips a misleading Calls-tab row for `created_on_unmatched` stubs (`jobPlanner.ts`).
 - Booking services upsert the booking by `lead_ref` + `lead_model`, resolve/snapshot agent allocations, upsert customer, mirror `booked`, `over_2000`, `over_4000`, `local`, and sometimes `source_company` back to the source lead, then sync the booking chain.

@@ -60,7 +60,7 @@ Post-activation `live` Priority `5` or actual `booked` evidence enters `bookingR
 
 Priority `5` plus an eligible Lead/no Booking opens `create_missing_booking`; Priority `5` with a Booking does nothing. Actual Booked/no Booking opens create-missing even when Lead identity is ambiguous; actual Booked/one Booking opens `review_existing_booking`. Booking-without-Lead delegates to its existing employee reconciliation case. Official cancellation and identity conflicts return typed non-persisting discrepancy routing; Referral and Release remain later-unit work. No path writes a Lead, Booking, Cancellation, Record Link, Command, Change, outbox, discrepancy, notification, or email.
 
-New evidence appends once by Observation ID and increments only `evidence_revision`; owner-relevant suggestion changes increment `case_revision`. Resolved rows are immutable and later evidence gets `max(sequence)+1`. Suggested/candidate Leads use only canonical Unit 14 identity evidence, exclude Duplicate/Bad Form Leads, and may be refreshed without attachment for 24 hours. Operational events mask identifiers and the open-case gauge is recomputed from current cardinality. Checked-in `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED` remains false; Unit 23 must land reviewed reads before any separate enablement.
+New evidence appends once by Observation ID and increments only `evidence_revision`; owner-relevant suggestion changes increment `case_revision`. Resolved rows are immutable and later evidence gets `max(sequence)+1`. Suggested/candidate Leads use only canonical Unit 14 identity evidence, exclude Duplicate/Bad Form Leads, and may be refreshed without attachment for 24 hours. Operational events mask identifiers and the open-case gauge is recomputed from current cardinality. Protected reads already exist. Checked-in `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED` remains false; official Booking writes stay on separately gated Owner commands.
 
 ## Temporal compare-and-swap seam
 
@@ -84,7 +84,7 @@ Defaults: processing true, shadow true, all eight effect flags false. Processing
 
 ## Out of scope here
 
-Booking/Release commands, Booking-case reads/Admin UI, Release/Referral/discrepancy persistence, and owner resolution. RingCentral qualified-call adoption (Units 20–21). Public Lead Zod / `updateSourceOwnedLead` are not a lifecycle write path. Registry policy stays `link_only` until a separately audited Owner mutation; this module does not rewrite Registry rows.
+Official Booking/Release commands, Admin case UI, and Release/Referral/discrepancy persistence — those live in [`granotLifecycle.bookingReconciliation.md`](granotLifecycle.bookingReconciliation.md) and [`granotLifecycle.projections.md`](granotLifecycle.projections.md). Public Lead Zod / `updateSourceOwnedLead` are not a lifecycle write path. Registry policy stays `link_only` until a separately audited Owner mutation; this module does not rewrite Registry rows.
 
 ## Related
 

@@ -1,6 +1,6 @@
 # Granot webhook capture
 
-> **Stale vs current capture (Units 02–03).** Authoritative ops doc: [`.cursor/businesslogic/granotLifecycle.capture.md`](../../.cursor/businesslogic/granotLifecycle.capture.md). Deliveries are **credential-redacted** and hashed; stored headers are an **allowlist** (not a denylist). Capture still does not mutate leads/bookings. Payload-profile notes below remain useful.
+> **Stale vs current.** This note describes pre-processor capture. Current fulfillment through Unit 25: [`docs/granot-lead-lifecycle/sprint-progress-through-unit-25.md`](../granot-lead-lifecycle/sprint-progress-through-unit-25.md). Current capture: [`.cursor/businesslogic/granotLifecycle.capture.md`](../../.cursor/businesslogic/granotLifecycle.capture.md). Current processor: [`.cursor/businesslogic/granotLifecycle.processor.md`](../../.cursor/businesslogic/granotLifecycle.processor.md). Payload-profile notes below remain useful.
 
 Granot sends three server-to-server JSON webhook event classes:
 

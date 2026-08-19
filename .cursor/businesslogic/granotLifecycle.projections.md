@@ -34,8 +34,8 @@ Lead timeline first verifies the exact Lead, then follows persisted Record Links
 
 ## Candidate browser
 
-The Booking reconciliation service remains the policy seam. Its canonical identity candidates retain their existing high/medium confidence and suggestion facts. Case-scoped browsing may additionally search current eligible Form/Call Leads within Source Scope or, for Owner all-scope review, across scopes. Duplicate and Bad Form Leads are excluded server-side. Job-compatible rows rank high; other browse matches rank medium. Out-of-scope rows carry `requires_override_reason=true` but remain read-only; only later command units may act on them.
+The Booking reconciliation service remains the policy seam. Its canonical identity candidates retain their existing high/medium confidence and suggestion facts. Case-scoped browsing may additionally search current eligible Form/Call Leads within Source Scope or, for Owner all-scope review, across scopes. Duplicate and Bad Form Leads are excluded server-side. Job-compatible rows rank high; other browse matches rank medium. Out-of-scope rows carry `requires_override_reason=true`. This module never attaches a Lead; gated Owner confirm may consume a selected candidate when the Booking-command flag is true.
 
 ## Posture
 
-Reads remain available for existing cases when case creation is disabled. Checked-in lifecycle flags are unchanged: processing/shadow true and every Lead/Booking/Release/Referral/email effect false. Unit 23 adds no migration or index and does not enable the Booking-case flag.
+Reads remain available for existing cases when case creation is disabled. Case/timeline `capabilities.commands` is true only for an open standard create-missing or review-existing case while `GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED` is true; Release and discrepancy flags stay false. Checked-in lifecycle flags remain processing/shadow true and every Lead/Booking/Release/Referral/email effect false. This module adds no migration or index and does not enable the Booking-case or Booking-command flags.

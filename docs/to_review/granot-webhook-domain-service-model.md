@@ -1,5 +1,7 @@
 # Granot webhook domain and service model
 
+> **Stale vs current.** This recommendation still claims no live processor. Current fulfillment through Unit 25: [`docs/granot-lead-lifecycle/sprint-progress-through-unit-25.md`](../granot-lead-lifecycle/sprint-progress-through-unit-25.md). Current capture: [`.cursor/businesslogic/granotLifecycle.capture.md`](../../.cursor/businesslogic/granotLifecycle.capture.md). Current processor: [`.cursor/businesslogic/granotLifecycle.processor.md`](../../.cursor/businesslogic/granotLifecycle.processor.md). The proposal body below is not rewritten.
+
 > **Status vs code:** capture + security (Units 02–03) and callable Observation normalization/persistence (Unit 04) are implemented. Capture does not invoke normalization. The processor is **not** live. Current capture: [`.cursor/businesslogic/granotLifecycle.capture.md`](../../.cursor/businesslogic/granotLifecycle.capture.md). Current normalization: [`.cursor/businesslogic/granotLifecycle.normalization.md`](../../.cursor/businesslogic/granotLifecycle.normalization.md).
 
 Status: architecture recommendation based on repository code and a read-only profile of `vantagemovers.granot_webhook_receipts` on 2026-08-13. This document proposes boundaries and rollout steps; it does not mean webhook-driven mutations are enabled.

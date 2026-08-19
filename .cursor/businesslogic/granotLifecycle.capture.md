@@ -68,4 +68,4 @@ A dedicated consumer now exists (`api/queues/granot-lifecycle-consumer.ts`) and 
 
 ## Out of scope here
 
-Capture does not call Observation normalization or the Decision processor. Normalization lives in [`granotLifecycle.normalization.md`](granotLifecycle.normalization.md). The Decision/activation/Record Link skeleton lives in [`granotLifecycle.processor.md`](granotLifecycle.processor.md). Claim/lease/retry/requeue live in [`granotLifecycle.drainer.md`](granotLifecycle.drainer.md). Lead/Booking/Cancellation effects remain later units.
+Capture does not call Observation normalization or the Decision processor. Normalization lives in [`granotLifecycle.normalization.md`](granotLifecycle.normalization.md). Processor orchestration lives in [`granotLifecycle.processor.md`](granotLifecycle.processor.md). Claim/lease/retry/requeue live in [`granotLifecycle.drainer.md`](granotLifecycle.drainer.md). Official Lead/Booking writes and Owner Booking commands stay in those modules; this path still inserts a receipt only.

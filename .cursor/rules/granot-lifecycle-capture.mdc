@@ -1,6 +1,6 @@
 ---
 description: Granot lead-lifecycle software map — receipt processing, Lead effects, Booking-case persistence, protected reads, and gated Booking owner commands
-globs: src/services/granotLifecycle/**/*.ts,src/services/granotWebhooks/**/*.ts,src/routes/granot-webhook.routes.ts,src/routes/granot-lifecycle-admin.routes.ts,src/routes/granot-lifecycle-cron.routes.ts,api/queues/granot-lifecycle-consumer.ts,src/middleware/requireGranotWebhookSecret.ts,src/config/domain/granotWebhook.ts,src/config/domain/granotLifecycle.ts,src/models/GranotObservationReceipt.ts,src/models/GranotObservation.ts,src/models/SynchronizationDecision.ts,src/models/GranotLifecycleActivation.ts,src/models/GranotRecordLink.ts,src/models/granotLifecycleSchemas.ts,src/validation/v1/granotLifecycle.validation.ts,scripts/migrations/granot-lifecycle-*.ts,.cursor/businesslogic/granotLifecycle*.md
+globs: src/services/granotLifecycle/**/*.ts,src/services/granotWebhooks/**/*.ts,src/routes/granot-webhook.routes.ts,src/routes/granot-lifecycle-admin.routes.ts,src/routes/granot-lifecycle-cron.routes.ts,src/routes/extension-granot-apply.routes.ts,api/queues/granot-lifecycle-consumer.ts,src/middleware/requireGranotWebhookSecret.ts,src/config/domain/granotWebhook.ts,src/config/domain/granotLifecycle.ts,src/models/GranotObservationReceipt.ts,src/models/GranotObservation.ts,src/models/SynchronizationDecision.ts,src/models/GranotLifecycleActivation.ts,src/models/GranotRecordLink.ts,src/models/GranotBookingReconciliationCase.ts,src/models/granotLifecycleSchemas.ts,src/validation/v1/granotLifecycle.validation.ts,scripts/migrations/granot-lifecycle-*.ts,.cursor/businesslogic/granotLifecycle*.md
 alwaysApply: false
 ---
 
@@ -43,11 +43,11 @@ Admin routes activate, requeue dead letters, expose protected reads, and accept 
 
 ## Progress
 
-Units 01–19 are implemented on `granot-lead-lifecycle` (Unit 16 also lands extension `0.2.8` on `granot_sync_extensions_and_services/main`). Re-verify the matching `UNIT-*-COMPLETION.md` and repository state before editing; do not trust the ledger alone.
+Units 01–25 are implemented on `granot-lead-lifecycle` (Unit 16 also lands extension `0.2.8` on `granot_sync_extensions_and_services/main`). Re-verify the matching `UNIT-*-COMPLETION.md` and repository state before editing; do not trust the ledger alone.
 
-**Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, shadow processor orchestration, extension/automation receipt apply, canonical Lead synchronization/creation, Booking-case persistence, protected masked case/candidate reads, and stable Job/Lead timelines.
+**Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, shadow processor orchestration, extension/automation receipt apply, canonical Lead synchronization/creation, Booking-case persistence, protected masked case/candidate reads, stable Job/Lead timelines, and gated standard Owner confirm / existing-Booking update / No Action commands.
 
-**Next sequential work:** Units 22–25 deliver Booking reads and standard Owner commands. Unit 26 owns Release persistence; Unit 28 additionally requires reviewed Referral classification. Deployed posture and checked-in defaults do not change from implementation alone.
+**Next sequential work:** Unit 26 owns Release persistence; Unit 28 additionally requires reviewed Referral classification. Deployed posture and checked-in defaults do not change from implementation alone.
 
 **Not started here:** Release/Referral/discrepancy owner behavior (Units 26–29).
 

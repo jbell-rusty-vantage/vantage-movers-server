@@ -35,7 +35,7 @@ Open starts with `case_revision=1`, `evidence_revision=1`. A new Observation app
 
 Every command requires the exact Owner-derived actor, one strict `Idempotency-Key`, the first case-evidence Receipt/Observation/Decision chain, an enabled Booking-command gate, and current reviewed Registry/source facts. Checked-in command defaults remain false.
 
-- `confirmGranotBooking` resolves a standard create-missing case by creating the first Booking from explicit official inputs.
+- `confirmGranotBooking` resolves an open `create_missing_booking` case. It requires an eligible selected Lead (Duplicate/Bad/cancelled rejected; all-scope needs a 10–500 override) and explicit official Booking details. Same-state existing Booking plus matching Record Link is `already_satisfied`.
 - `updateBooking` is available only for open `review_existing_booking`. It revalidates the deterministic active Booking, normalized Job, linked Lead/source, optional active Record Link, exact Booking/case revisions, and active Agent/Merchant IDs. It fully replaces only Book Date, Agent allocations, total Binder, Deposit, and Merchant; derived deposit thresholds alone may mirror to the already-linked Lead. One transaction writes aggregate Change(s), case resolution, Command, and one coalescible queued Booking Chain intent. Identity/source/contact/local/submission/cancellation fields cannot change.
 - `resolveGranotBookingCaseNoAction` is available for open standard create-missing or review-existing cases. Optional reason code/text are metadata only. Its transaction writes the Command plus one case resolution/revision and creates no aggregate revision, `EntityChange`, Sheet Sync intent, link, discrepancy, notification, or replacement case.
 

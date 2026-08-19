@@ -6,7 +6,7 @@
 
 **Role:** Read-only identity half of S09. After reviewed Registry policy resolves as `source_scoped_lead`, run the Form or Call ladder and return deterministic candidates, conflicts, Agent assertion, and Booking context. This module creates no Decision, desired state, Lead/Booking/Cancellation write, case, discrepancy, command, Change, outbox item, or notification.
 
-**Stack:** callable module `identity.ts`. `sourcePolicy.ts` remains the sole Registry semantic resolver. The Unit 15 processor invokes this module after Registry policy and before desired-state planning. Capture, routes, and clients never select candidates. This module remains read-only.
+**Stack:** callable module `identity.ts`. `sourcePolicy.ts` remains the sole Registry semantic resolver. The processor invokes this module after Registry policy and before desired-state planning. Capture, routes, and clients never select candidates. This module remains read-only.
 
 ## Public interface
 
@@ -54,10 +54,10 @@ Resolve the unique current Booking by shared `normalizeJobNo`. Multiple current 
 
 ## Flags and later work
 
-Identity is read-only. Processing remains true, shadow remains true, and all eight effect flags stay false. Unit 15 must consume this resolver rather than reconstructing identity inside the processor.
+Identity is read-only. Processing remains true, shadow remains true, and all eight effect flags stay false. The processor consumes this resolver rather than reconstructing identity.
 
 ## Related
 
 - Policy resolution: [`granotLifecycle.sourcePolicy.md`](granotLifecycle.sourcePolicy.md)
-- Decision skeleton does not select a Lead: [`granotLifecycle.processor.md`](granotLifecycle.processor.md)
+- Processor consumes this resolver and does not reconstruct identity: [`granotLifecycle.processor.md`](granotLifecycle.processor.md)
 - Observation identity fields: [`granotLifecycle.normalization.md`](granotLifecycle.normalization.md)
