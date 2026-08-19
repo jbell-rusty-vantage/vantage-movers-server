@@ -1,6 +1,6 @@
 # Unit 23 — Booking lifecycle reads, Admin queue/detail, candidate browser, and Job/Lead timeline
 
-**Status:** Blocked at delivery gate; implementation and functional verification complete  
+**Status:** Complete
 **Repositories / branches:** `vantage-main-server` / `granot-lead-lifecycle` (`8b507a4` base) and `vantage-admin` / `granot-lead-lifecycle` (`a109d08` base)
 
 ## Authority and prerequisite result
@@ -9,7 +9,7 @@ Implemented final-spec Sections 1–7, 12.3, 18–21, 27, 28.2, 29, and 33–41 
 
 Unit 22 was reverified from landed code at `8b507a4`, not from the ledger alone. Its exact Booking-case model, five named indexes, open/refresh service, candidate policy, processor integration, false effect flags, and tests are present. Current replica proof passed 3/3 for race convergence, replay/sequence behavior, revision splitting, and transaction rollback. The implementation prerequisite is satisfied.
 
-Delivery is nevertheless **blocked** by the contract-required aggregate read-only index command. The shared disposable test database reports 20 missing predecessor index definitions. None of the five Unit 22 Booking-case indexes is missing or mismatched, but the required command is not green and Runbook Section 14 forbids a completion claim. No index apply was attempted.
+The delivery gate was cleared on 2026-08-19 against the explicitly authorized Atlas `testvantagemovers` database. A fresh report found zero collisions across every declared lifecycle index family. The guarded test-database apply created the 42 missing predecessor definitions, and the required aggregate read-only verify then passed with zero missing or mismatched definitions. No production index apply was attempted.
 
 ## Behavior delivered
 
@@ -66,13 +66,15 @@ Delivery is nevertheless **blocked** by the contract-required aggregate read-onl
 
 ## Migration, indexes, and flags
 
-Unit 23 adds **no migration, model, index, or Admin persistence**. Read-only verification ran against the explicit disposable test database with `TEST_MODE=true` and `SHEET_SYNC_MODE=disabled`:
+Unit 23 adds **no migration, model, index, or Admin persistence**. On 2026-08-19, the previously missing predecessor definitions were reconciled through the existing Section 34.5 index flow against the explicitly authorized Atlas `testvantagemovers` database with `TEST_MODE=true` and `SHEET_SYNC_MODE=queued`:
 
 ```text
+pnpm migration:granot-lifecycle:indexes -- --report
+pnpm migration:granot-lifecycle:indexes -- --apply --confirm-production=testvantagemovers
 pnpm migration:granot-lifecycle:indexes -- --verify
 ```
 
-Result: exit 1, 20 missing predecessor indexes, zero mismatches. The missing set covers earlier CRM source, Decision, activation, Entity Change, Lead S08, and Call Log definitions. None of the five Booking-case index names is missing. No `--apply` ran; production index presence and rollout are not claimed.
+Results: report exit 0 with 43 contract names and zero collision groups; guarded apply exit 0 and created 42 missing definitions while preserving the already-present normalized-Booking index; verify exit 0 with every receipt, Observation, CRM/automation source, Decision, activation, Record Link, Booking, Booking-case, Entity Change, Form/Call Lead S08, and Call Log state family reporting `ok:true`, zero missing, and zero mismatches. The apply changed index metadata only in `testvantagemovers`; production index presence and rollout are not claimed.
 
 Checked-in defaults began and end unchanged: processing/shadow `true/true`; Lead write/creation, Booking cases/commands, Release cases/commands, Referral Booking, and email effects all `false`. Existing reads are not gated by case creation.
 
@@ -93,7 +95,7 @@ git diff --check
 - Unit 22 replica prerequisite: 3/3 passed.
 - Unit 23 replica zero-mutation proof: 1/1 passed.
 - Full: 1,435 tests; 1,378 passed, 0 failed, 57 skipped (the Unit 23 replica proof is opt-in in the ordinary suite).
-- Typecheck passed. Diff check passed with CRLF advisories only.
+- Typecheck passed. Diff check passed.
 
 Admin:
 
@@ -110,64 +112,30 @@ git diff --check
 
 No live/staging payload verification or deployment occurred. Tests use synthetic/redacted values. Route/module construction and UI/API surfaces expose reads only; no selection, attachment, correction, resolution, aggregate command, Entity Change, outbox, notification, or email call is reachable. The Unit 23 replica test snapshots and compares real collection counts around queue/detail/candidate/Job/Lead reads for Form/Call Leads, Bookings, Cancellations, cases, links, Commands, Changes, Sheet outbox, operational events, and notifications.
 
-## Risks, blocker, and next units
+## Risks, remaining gates, and next units
 
-- Exact blocker: reconcile the 20 predecessor indexes through a separately reviewed/authorized process, then rerun the aggregate `--verify` command successfully. Production must separately verify all exact definitions before any Booking-case enablement.
-- Release persistence/discrepancy timelines remain capability-false until Units 26/29. Units 24–25 remain blocked on delivery completion plus Owner review; Unit 26 remains blocked on Unit 23 completion.
-- No unit is newly unblocked while the delivery gate is red.
-- Existing/concurrent unrelated server changes were preserved: AI transcription dependency/script edits, two deletions, and separate planning/example documents.
+- Production must separately verify all exact index definitions before any Booking-case enablement; this handoff proves only the authorized `testvantagemovers` posture.
+- Release persistence/discrepancy timelines remain capability-false until Units 26/29.
+- Unit 23 is complete and the Unit 23 prerequisite for Units 24 and 26 is satisfied. Unit 24 remains blocked on explicit Owner review of the deployed read-only Booking workflow. Unit 26 remains a scaffolded contract and is not implementation-ready merely because its Unit 23 prerequisite is now satisfied.
+- No Booking-case or command flag is authorized or enabled by this completion.
+- The current unrelated payload-example modification was preserved without alteration.
 
 ## Repository state and external actions
 
-Final server `git status --short`:
+Final server `git status --short` after blocker reconciliation:
 
 ```text
- M .cursor/businesslogic/granotLifecycle.bookingReconciliation.md
- M .cursor/index.md
- D .cursor/ringcentral_cron_review.md
- M .cursor/rules/granot-lifecycle-capture.mdc
- M .cursor/rules/project-organization.mdc
- M .cursor/rules/schema-and-crud-inputs.mdc
- D claude_prompts/unit_21_instructions.md
- M package.json
- M pnpm-lock.yaml
  M scripts/prototypes/granot-lead-lifecycle/delivery/UNIT-STATUS.md
- M scripts/prototypes/granot-lead-lifecycle/delivery/issues/UNIT-23.md
- M scripts/test-granot-lifecycle-replica.ts
- M src/routes/granot-lifecycle-admin.routes.test.ts
- M src/routes/granot-lifecycle-admin.routes.ts
- M src/services/granotLifecycle/bookingReconciliation.test.ts
- M src/services/granotLifecycle/bookingReconciliation.ts
- M src/services/granotLifecycle/errors.ts
- M src/services/granotLifecycle/projections.test.ts
- M src/services/granotLifecycle/projections.ts
- M src/validation/v1/granotLifecycle.validation.test.ts
- M src/validation/v1/granotLifecycle.validation.ts
-?? .cursor/businesslogic/granotLifecycle.projections.md
-?? docs/to_review/vercel-blob-planned-uses.md
-?? scripts/prototypes/granot-lead-lifecycle/delivery/completion-reports/UNIT-23-COMPLETION.md
-?? scripts/prototypes/granot-lead-lifecycle/delivery/issues/WEBHOOK-RECEIPT-PAYLOAD-EXAMPLES.md
-?? src/services/granotLifecycle/projections.replica.test.ts
+ M scripts/prototypes/granot-lead-lifecycle/delivery/completion-reports/UNIT-23-COMPLETION.md
+ M scripts/prototypes/granot-lead-lifecycle/delivery/issues/WEBHOOK-RECEIPT-PAYLOAD-EXAMPLES.md
 ```
 
 Final Admin `git status --short`:
 
 ```text
- M .cursor/rules/project-organization.mdc
- M lib/query/keys.test.ts
- M lib/query/keys.ts
- M server/auth/authorization.test.ts
- M server/auth/authorization.ts
-?? app/(dashboard)/ingestion/granot/layout.tsx
-?? app/(dashboard)/ingestion/granot/lifecycle/
-?? components/granot-lifecycle/
-?? lib/api/granotLifecycle.test.ts
-?? lib/api/granotLifecycle.ts
-?? lib/query/granotLifecycle.test.ts
-?? lib/query/granotLifecycle.ts
-?? tests/granot-lifecycle-components.test.ts
+(clean)
 ```
 
-Both worktrees remain uncommitted. The server dependency edits, two deletions, and unrelated planning/example documents are concurrent/user changes and were preserved.
+The pre-existing server modification to `WEBHOOK-RECEIPT-PAYLOAD-EXAMPLES.md` is user-owned and was preserved. The index manifests were written only under the gitignored migration output directory.
 
-**No commit, push, deploy, production mutation, production/live payload read, production migration/index apply, Registry change, provider request, external Sheet/CRM send, notification, email, or flag enablement occurred.** Only synthetic disposable replica-set test data was written and cleaned by the test harness.
+**No commit, push, deploy, production mutation, production/live payload read, production migration/index apply, Registry change, provider request, external Sheet/CRM send, notification, email, or flag enablement occurred.** The only persistent external mutation was creation of the reviewed missing index definitions in the explicitly authorized Atlas `testvantagemovers` database. Synthetic replica-set test data was written and cleaned by the test harness.
