@@ -55,12 +55,15 @@ const UNIT_FILES: Record<string, string[]> = {
     "src/services/ringcentral/call-log-sync-lease.replica.test.ts",
     "src/services/ringcentral/callLeadConvergence.replica.test.ts",
   ],
+  "22": [
+    "src/services/granotLifecycle/bookingReconciliation.replica.test.ts",
+  ],
 };
 
 function parseUnit(): string {
   const raw = process.argv.find((arg) => arg.startsWith("--unit="));
   if (!raw) {
-    throw new Error("Usage: pnpm test:granot-lifecycle:replica -- --unit=08|09|10|11|12|13|14|15|16|17|18|19|20|21");
+    throw new Error("Usage: pnpm test:granot-lifecycle:replica -- --unit=08|09|10|11|12|13|14|15|16|17|18|19|20|21|22");
   }
   return raw.slice("--unit=".length);
 }

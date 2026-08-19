@@ -1,5 +1,5 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
-**Primary code:** `src/services/granotLifecycle/processor.ts`, `src/services/granotLifecycle/createLeadFromGranot.ts`, `src/services/granotLifecycle/synchronizeLeadFromGranot.ts`, `src/services/granotLifecycle/leadDesiredState.ts`, `src/services/granotLifecycle/granotTemporal.ts`, `src/config/domain/granotLifecycle.ts`, `src/models/SynchronizationDecision.ts`, `src/models/GranotLifecycleActivation.ts`, `src/models/GranotRecordLink.ts`
+**Primary code:** `src/services/granotLifecycle/processor.ts`, `src/services/granotLifecycle/bookingReconciliation.ts`, `src/services/granotLifecycle/createLeadFromGranot.ts`, `src/services/granotLifecycle/synchronizeLeadFromGranot.ts`, `src/services/granotLifecycle/leadDesiredState.ts`, `src/services/granotLifecycle/granotTemporal.ts`, `src/config/domain/granotLifecycle.ts`, `src/models/SynchronizationDecision.ts`, `src/models/GranotLifecycleActivation.ts`, `src/models/GranotRecordLink.ts`, `src/models/GranotBookingReconciliationCase.ts`
 **Domain terms used:** Synchronization Decision, Granot Record Link, Granot Observation, Granot Observation Receipt, System of Record
 
 # Granot lifecycle processor (`granotLifecycle/processor`)
@@ -14,6 +14,7 @@
 load receipt -> upsert/reuse Observation -> classify stored execution mode
 -> terminal normalization -> resolve Registry policy -> Unit 14 identity
 -> temporal compare -> desired-state plan -> evaluate exact gates
+-> live+booking evidence+booking-case gate -> Booking case open/refresh/delegation
 -> live+creation+all gates+eligible no-match -> createLeadFromGranot
 -> else live+writes+all gates+matched Lead -> synchronizeLeadFromGranot
    (or already_current exact-link Decision + metadata-only temporal CAS)
@@ -53,6 +54,14 @@ Source Company, Source Granularity, Ingestion Origin, CPL, Booking/Cancellation 
 - A failed gate records that gate's outcome/reason and performs no command. Creation race losers (identity, policy, active-link duplicate-key) abort the proposed transaction, reload policy and the full identity ladder, and replan. A now-eligible matched Lead flows through `synchronizeLeadFromGranot`; a pre-existing lead-less active reservation becomes `conflict` / `record_link_conflict`; the processor never retries blind creation. A route/minimum-data race persists `insufficient_creation_data` / `missing_creation_route_data`. Matched-write race losers reload and replan; if the replan is still an authorized write, the command retries with the current revision (max 3). Classification outcomes persist Decision-only. Never persist `applied` against a lost claim.
 - Production starting/ending flags stay processing true, shadow true, and all eight effect flags false. Unit 19 adds no migration or index.
 
+## Booking reconciliation cases
+
+Post-activation `live` Priority `5` or actual `booked` evidence enters `bookingReconciliation.ts` only when all Booking-case gates pass. The processor preallocates the Decision ID; the service rereads the immutable Observation, active link, source-scoped identity, deterministic Booking/Cancellation facts, and existing employee reconciliation work. One transaction opens or refreshes the single open `{normalized_job_no, action_kind:"booked"}` case and inserts the causal Decision. A bounded one-retry path resolves open/sequence unique races.
+
+Priority `5` plus an eligible Lead/no Booking opens `create_missing_booking`; Priority `5` with a Booking does nothing. Actual Booked/no Booking opens create-missing even when Lead identity is ambiguous; actual Booked/one Booking opens `review_existing_booking`. Booking-without-Lead delegates to its existing employee reconciliation case. Official cancellation and identity conflicts return typed non-persisting discrepancy routing; Referral and Release remain later-unit work. No path writes a Lead, Booking, Cancellation, Record Link, Command, Change, outbox, discrepancy, notification, or email.
+
+New evidence appends once by Observation ID and increments only `evidence_revision`; owner-relevant suggestion changes increment `case_revision`. Resolved rows are immutable and later evidence gets `max(sequence)+1`. Suggested/candidate Leads use only canonical Unit 14 identity evidence, exclude Duplicate/Bad Form Leads, and may be refreshed without attachment for 24 hours. Operational events mask identifiers and the open-case gauge is recomputed from current cardinality. Checked-in `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED` remains false; Unit 23 must land reviewed reads before any separate enablement.
+
 ## Temporal compare-and-swap seam
 
 For a newer Observation whose authorized desired state **and** exact lead-attached link are already current, injected **`live` + Lead-writes-enabled test posture** inserts `already_current` / `desired_state_already_current` and may atomically advance `last_accepted_granot_observation` with a filter that accepts only an older `(captured_at, observation_id)` tuple. That write does not increment `domain_revision`, write `last_change_*`, create Entity Change, request Sheet Sync, or emit `lead_updated`. Zero matched rows abort the proposed Decision, reload, and re-evaluate; the loser is normally `stale`. Production shadow never invokes this Lead write. Reportable matched-Lead or Record-Link association mutations use `synchronizeLeadFromGranot`.
@@ -75,7 +84,7 @@ Defaults: processing true, shadow true, all eight effect flags false. Processing
 
 ## Out of scope here
 
-Booking/Release cases and commands. RingCentral qualified-call adoption (Units 20–21). Public Lead Zod / `updateSourceOwnedLead` are not a lifecycle write path. Registry policy stays `link_only` until a separately audited Owner mutation; this module does not rewrite Registry rows.
+Booking/Release commands, Booking-case reads/Admin UI, Release/Referral/discrepancy persistence, and owner resolution. RingCentral qualified-call adoption (Units 20–21). Public Lead Zod / `updateSourceOwnedLead` are not a lifecycle write path. Registry policy stays `link_only` until a separately audited Owner mutation; this module does not rewrite Registry rows.
 
 ## Related
 
@@ -83,5 +92,6 @@ Booking/Release cases and commands. RingCentral qualified-call adoption (Units 2
 - Desired-state planner: [`granotLifecycle.desiredState.md`](granotLifecycle.desiredState.md)
 - Policy/gates: [`granotLifecycle.sourcePolicy.md`](granotLifecycle.sourcePolicy.md)
 - Drain/pending clock: [`granotLifecycle.drainer.md`](granotLifecycle.drainer.md)
+- Booking cases: [`granotLifecycle.bookingReconciliation.md`](granotLifecycle.bookingReconciliation.md)
 - Executor / command registry: [`domainCommands.service.md`](domainCommands.service.md)
 - Software map: [`granot-lifecycle-capture.mdc`](../rules/granot-lifecycle-capture.mdc)

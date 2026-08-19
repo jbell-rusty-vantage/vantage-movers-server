@@ -74,7 +74,12 @@ import {
   reportCallLogSyncStateRows,
   verifyCallLogSyncStateIndexDefinitions,
   type DeclaredMongoIndex,
+  GRANOT_BOOKING_RECONCILIATION_CASE_COLLECTION,
+  findGranotBookingCaseCollisions,
+  orderedGranotBookingCaseIndexCreates,
+  verifyGranotBookingCaseIndexDefinitions,
 } from "./granot-lifecycle-indexes.lib.js";
+import { GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES } from "../../src/models/GranotBookingReconciliationCase.js";
 import { getRingCentralCollectionName } from "../../src/services/ringcentral/ringcentral-config.js";
 import { RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX } from "../../src/services/ringcentral/call-log-sync-state.store.js";
 import { CALL_LEAD_S08_INDEXES } from "../../src/models/CallLead.js";
@@ -130,7 +135,13 @@ async function listDeclaredIndexes(collectionName: string): Promise<DeclaredMong
   if (!collection) {
     throw new Error("Cannot list indexes: Mongo collection is unavailable.");
   }
-  const indexes = await collection.indexes();
+  let indexes;
+  try {
+    indexes = await collection.indexes();
+  } catch (error) {
+    if (isNamespaceNotFound(error)) return [];
+    throw error;
+  }
   return indexes.map((index) => ({
     name: String(index.name),
     key: index.key as Record<string, unknown>,
@@ -139,6 +150,15 @@ async function listDeclaredIndexes(collectionName: string): Promise<DeclaredMong
       | Record<string, unknown>
       | undefined,
   }));
+}
+
+function isNamespaceNotFound(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: number }).code === 26,
+  );
 }
 
 async function createIndexes(
@@ -292,6 +312,31 @@ async function loadBookedLeadNormalizedJobRows(): Promise<
   }));
 }
 
+async function loadGranotBookingCaseRows(): Promise<
+  Array<{
+    _id: string;
+    normalized_job_no?: unknown;
+    action_kind?: unknown;
+    sequence_number?: unknown;
+    state?: unknown;
+  }>
+> {
+  const collection = mongoose.connection.db?.collection(
+    GRANOT_BOOKING_RECONCILIATION_CASE_COLLECTION,
+  );
+  if (!collection) return [];
+  const documents = await collection
+    .find({}, { projection: { normalized_job_no: 1, action_kind: 1, sequence_number: 1, state: 1 } })
+    .toArray();
+  return documents.map((document) => ({
+    _id: String(document._id),
+    normalized_job_no: document.normalized_job_no,
+    action_kind: document.action_kind,
+    sequence_number: document.sequence_number,
+    state: document.state,
+  }));
+}
+
 /**
  * Unit 21 — the RingCentral Call Log sync-state singleton. The collection name
  * follows `RINGCENTRAL_COLLECTION_MODE`, so a test-mode run reports and
@@ -351,6 +396,9 @@ async function main(): Promise<void> {
   const bookedLeadRows = await loadBookedLeadNormalizedJobRows();
   const bookedLeadCollisions = findBookedLeadNormalizedJobCollisions(bookedLeadRows);
   const bookedLeadOrdered = orderedBookedLeadIndexCreates();
+  const bookingCaseRows = await loadGranotBookingCaseRows();
+  const bookingCaseCollisions = findGranotBookingCaseCollisions(bookingCaseRows);
+  const bookingCaseOrdered = orderedGranotBookingCaseIndexCreates();
   const entityChangeRows = await loadEntityChangeRevisionRows();
   const entityChangeCollisions = findEntityChangeRevisionCollisions(entityChangeRows);
   const entityChangeOrdered = orderedEntityChangeIndexCreates();
@@ -370,6 +418,7 @@ async function main(): Promise<void> {
   let activationVerify: ReturnType<typeof verifyGranotLifecycleActivationIndexDefinitions> | undefined;
   let recordLinkVerify: ReturnType<typeof verifyGranotRecordLinkIndexDefinitions> | undefined;
   let bookedLeadVerify: ReturnType<typeof verifyBookedLeadNormalizedJobIndexDefinitions> | undefined;
+  let bookingCaseVerify: ReturnType<typeof verifyGranotBookingCaseIndexDefinitions> | undefined;
   let entityChangeVerify: ReturnType<typeof verifyEntityChangeIndexDefinitions> | undefined;
   let formLeadVerify: ReturnType<typeof verifyFormLeadS08IndexDefinitions> | undefined;
   let callLeadVerify: ReturnType<typeof verifyCallLeadS08IndexDefinitions> | undefined;
@@ -388,6 +437,10 @@ async function main(): Promise<void> {
       ...(await createIndexes(GRANOT_LIFECYCLE_ACTIVATION_COLLECTION, activationOrdered.nonUnique)),
       ...(await createIndexes(GRANOT_RECORD_LINK_COLLECTION, recordLinkOrdered.nonUnique)),
       ...(await createIndexes(ENTITY_CHANGE_COLLECTION, entityChangeOrdered.nonUnique)),
+      ...(await createIndexes(
+        GRANOT_BOOKING_RECONCILIATION_CASE_COLLECTION,
+        bookingCaseOrdered.nonUnique,
+      )),
     ];
     if (collisions.length > 0 || observationCollisions.length > 0) {
       const manifest = buildManifest({
@@ -498,6 +551,38 @@ async function main(): Promise<void> {
         `Refusing unique Booking normalized-Job index create: ${bookedLeadCollisions.length} collision group(s).`,
       );
     }
+    if (
+      bookingCaseCollisions.open.length > 0 ||
+      bookingCaseCollisions.sequence.length > 0
+    ) {
+      const manifest = buildManifest({
+        databaseName,
+        mode,
+        collisions,
+        observationCollisions,
+        normalizedLabelCollisions,
+        created,
+        uniqueCreated: [],
+        bookingCaseCollisions,
+      });
+      await writeGranotLifecycleManifest({
+        directory: OUTPUT_DIR,
+        runId: `granot-lifecycle-indexes-${mode}-${Date.now()}`,
+        manifest,
+      });
+      throw new Error(
+        `Refusing unique Granot Booking-case index create: ${
+          bookingCaseCollisions.open.length + bookingCaseCollisions.sequence.length
+        } collision group(s).`,
+      );
+    }
+    created = [
+      ...created,
+      ...(await createIndexes(
+        GRANOT_BOOKING_RECONCILIATION_CASE_COLLECTION,
+        bookingCaseOrdered.unique,
+      )),
+    ];
     const existingBookedLeadIndexes = await listDeclaredIndexes(BOOKED_LEAD_COLLECTION);
     const bookedLeadAlreadyPresent = verifyBookedLeadNormalizedJobIndexDefinitions(
       existingBookedLeadIndexes,
@@ -584,6 +669,9 @@ async function main(): Promise<void> {
     bookedLeadVerify = verifyBookedLeadNormalizedJobIndexDefinitions(
       await listDeclaredIndexes(BOOKED_LEAD_COLLECTION),
     );
+    bookingCaseVerify = verifyGranotBookingCaseIndexDefinitions(
+      await listDeclaredIndexes(GRANOT_BOOKING_RECONCILIATION_CASE_COLLECTION),
+    );
     entityChangeVerify = verifyEntityChangeIndexDefinitions(
       await listDeclaredIndexes(ENTITY_CHANGE_COLLECTION),
     );
@@ -608,7 +696,9 @@ async function main(): Promise<void> {
     recordLinkCollisions.length === 0 &&
     bookedLeadCollisions.length === 0 &&
     entityChangeCollisions.length === 0 &&
-    callLogSyncStateCollisions.length === 0
+    callLogSyncStateCollisions.length === 0 &&
+    bookingCaseCollisions.open.length === 0 &&
+    bookingCaseCollisions.sequence.length === 0
       ? [
           ...ordered.unique.map((index) => index.name),
           ...observationOrdered.unique.map((index) => index.name),
@@ -619,6 +709,7 @@ async function main(): Promise<void> {
           ...bookedLeadOrdered.unique.map((index) => index.name),
           ...entityChangeOrdered.unique.map((index) => index.name),
           ...callLogSyncStateOrdered.unique.map((index) => index.name),
+          ...bookingCaseOrdered.unique.map((index) => index.name),
         ]
       : [];
 
@@ -642,6 +733,8 @@ async function main(): Promise<void> {
     recordLinkVerify,
     bookedLeadCollisions,
     bookedLeadVerify,
+    bookingCaseCollisions,
+    bookingCaseVerify,
     entityChangeCollisions,
     entityChangeVerify,
     formLeadVerify,
@@ -666,6 +759,7 @@ async function main(): Promise<void> {
       activationVerify,
       recordLinkVerify,
       bookedLeadVerify,
+      bookingCaseVerify,
       entityChangeVerify,
       formLeadVerify,
       callLeadVerify,
@@ -691,6 +785,7 @@ function buildManifest(input: {
   activationCollisions?: ReturnType<typeof findActivationKeyCollisions>;
   recordLinkCollisions?: ReturnType<typeof findActiveRecordLinkJobCollisions>;
   bookedLeadCollisions?: ReturnType<typeof findBookedLeadNormalizedJobCollisions>;
+  bookingCaseCollisions?: ReturnType<typeof findGranotBookingCaseCollisions>;
   created: string[];
   uniqueCreated: string[];
   verify?: ReturnType<typeof verifyReceiptIndexDefinitions>;
@@ -701,6 +796,7 @@ function buildManifest(input: {
   activationVerify?: ReturnType<typeof verifyGranotLifecycleActivationIndexDefinitions>;
   recordLinkVerify?: ReturnType<typeof verifyGranotRecordLinkIndexDefinitions>;
   bookedLeadVerify?: ReturnType<typeof verifyBookedLeadNormalizedJobIndexDefinitions>;
+  bookingCaseVerify?: ReturnType<typeof verifyGranotBookingCaseIndexDefinitions>;
   entityChangeCollisions?: ReturnType<typeof findEntityChangeRevisionCollisions>;
   entityChangeVerify?: ReturnType<typeof verifyEntityChangeIndexDefinitions>;
   formLeadVerify?: ReturnType<typeof verifyFormLeadS08IndexDefinitions>;
@@ -726,6 +822,7 @@ function buildManifest(input: {
       ...FORM_LEAD_S08_INDEXES.map((index) => index.name),
       ...CALL_LEAD_S08_INDEXES.map((index) => index.name),
       RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX.name,
+      ...GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES.map((index) => index.name),
     ],
     collision_count:
       input.collisions.length +
@@ -736,7 +833,9 @@ function buildManifest(input: {
       (input.recordLinkCollisions?.length ?? 0) +
       (input.bookedLeadCollisions?.length ?? 0) +
       (input.entityChangeCollisions?.length ?? 0) +
-      (input.callLogSyncStateCollisions?.length ?? 0),
+      (input.callLogSyncStateCollisions?.length ?? 0) +
+      (input.bookingCaseCollisions?.open.length ?? 0) +
+      (input.bookingCaseCollisions?.sequence.length ?? 0),
     collisions: input.collisions,
     observation_receipt_id_collisions: input.observationCollisions,
     normalized_granot_label_collisions: input.normalizedLabelCollisions,
@@ -755,6 +854,9 @@ function buildManifest(input: {
     granot_record_link_verify: input.recordLinkVerify,
     booked_lead_normalized_job_collisions: input.bookedLeadCollisions ?? [],
     booked_lead_verify: input.bookedLeadVerify,
+    granot_booking_case_open_collisions: input.bookingCaseCollisions?.open ?? [],
+    granot_booking_case_sequence_collisions: input.bookingCaseCollisions?.sequence ?? [],
+    granot_booking_case_verify: input.bookingCaseVerify,
     entity_change_revision_collisions: input.entityChangeCollisions ?? [],
     entity_change_verify: input.entityChangeVerify,
     form_lead_s08_verify: input.formLeadVerify,

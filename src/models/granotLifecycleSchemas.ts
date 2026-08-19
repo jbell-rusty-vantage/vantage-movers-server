@@ -191,6 +191,42 @@ export const ENTITY_REF_MODELS = [
   "GranotReleaseReconciliationCase",
 ] as const;
 
+export const GRANOT_RECONCILIATION_CASE_STATES = ["open", "resolved"] as const;
+
+export const GRANOT_RECONCILIATION_ACTION_KINDS = ["booked", "release"] as const;
+
+export const GRANOT_RECONCILIATION_EVIDENCE_ACTIONS = [
+  "priority_5",
+  ...GRANOT_RECONCILIATION_ACTION_KINDS,
+] as const;
+
+export const GRANOT_BOOKING_RECONCILIATION_MODES = [
+  "create_missing_booking",
+  "review_existing_booking",
+  "create_referral_booking",
+] as const;
+
+export const GRANOT_BOOKING_RECONCILIATION_OUTCOMES = [
+  "booking_created",
+  "booking_updated",
+  "referral_booking_created",
+  "no_action",
+  "already_satisfied",
+  "superseded_by_current_state",
+] as const;
+
+export const GRANOT_RECONCILIATION_NO_ACTION_REASON_CODES = [
+  "already_handled_elsewhere",
+  "granot_action_not_authoritative",
+  "wrong_customer_or_job",
+  "duplicate_granot_action",
+  "booking_still_valid",
+  "granot_change_only",
+  "insufficient_information",
+  "legacy_data",
+  "other",
+] as const;
+
 export const GRANOT_LIFECYCLE_DISPOSITIONS = [
   "source_scoped_lead",
   "referral_booking",

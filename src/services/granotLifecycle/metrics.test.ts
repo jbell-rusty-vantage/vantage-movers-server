@@ -4,6 +4,7 @@ import {
   getGranotLifecycleClaimRecoveriesTotal,
   getGranotLifecycleDeadLettersTotal,
   getGranotLifecycleOldestDueSeconds,
+  getGranotLifecycleOpenBookingCases,
   getGranotLifecycleQueueDue,
   getGranotLifecycleTechnicalRetriesTotal,
   incrementGranotLifecycleClaimRecoveries,
@@ -11,6 +12,7 @@ import {
   incrementGranotLifecycleTechnicalRetries,
   resetGranotLifecycleMetrics,
   setGranotLifecycleOldestDueSeconds,
+  setGranotLifecycleOpenBookingCases,
   setGranotLifecycleQueueDue,
 } from "./metrics";
 
@@ -30,4 +32,13 @@ test("[AC-35] portion Unit 08 metrics accept only bounded error-code labels", ()
   assert.equal(getGranotLifecycleClaimRecoveriesTotal(), 1);
   assert.equal(getGranotLifecycleQueueDue(), 3);
   assert.equal(getGranotLifecycleOldestDueSeconds(), 12);
+});
+
+test("[AC-18][AC-19] Booking-case gauge is current cardinality, not an evidence counter", () => {
+  resetGranotLifecycleMetrics();
+  setGranotLifecycleOpenBookingCases("create_missing_booking", 1);
+  setGranotLifecycleOpenBookingCases("create_missing_booking", 1);
+  setGranotLifecycleOpenBookingCases("review_existing_booking", 2);
+  assert.equal(getGranotLifecycleOpenBookingCases("create_missing_booking"), 1);
+  assert.equal(getGranotLifecycleOpenBookingCases("review_existing_booking"), 2);
 });

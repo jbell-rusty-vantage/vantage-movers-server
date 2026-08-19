@@ -58,6 +58,12 @@ import {
   type LeadIdentityStore,
 } from "./identity";
 import {
+  createGranotBookingReconciliation,
+  type BookingReconciliationPersistenceStore,
+  type CaseEffectResult,
+  type PreparedBookingReconciliationDecision,
+} from "./bookingReconciliation";
+import {
   planLeadDesiredState,
   type LeadDesiredStatePlan,
   type LeadDesiredStateProjection,
@@ -171,6 +177,11 @@ export type GranotLifecycleProcessorDeps = {
   ) => ReturnType<typeof createLeadFromGranot>;
   synchronizeLead?: typeof synchronizeLeadFromGranot;
   withTransaction?: <T>(fn: (session: ClientSession) => Promise<T>) => Promise<T>;
+  bookingReconciliationStore?: BookingReconciliationPersistenceStore;
+  reconcileBooking?: (
+    ids: { observation_id: string; decision_id: string },
+    prepared: PreparedBookingReconciliationDecision,
+  ) => Promise<CaseEffectResult>;
 };
 
 export function createGranotObservationProcessor(
@@ -244,6 +255,19 @@ export async function processGranotObservation(
     }
     return toProcessorResult(existing, receipt.observation_channel, started);
   }
+
+  const bookingResult = await maybeReconcileBooking({
+    prepared,
+    observation,
+    receipt,
+    flags,
+    execution_mode,
+    deps,
+    started,
+    attempt,
+    sourcePolicy: prepared.policy,
+  });
+  if (bookingResult) return bookingResult;
 
   const creation = await maybeCreateLead({
     prepared,
@@ -434,6 +458,126 @@ export async function processGranotObservation(
     duration_ms: Date.now() - started,
   });
   return toProcessorResult(persisted, receipt.observation_channel, started);
+}
+
+async function maybeReconcileBooking(input: {
+  prepared: Awaited<ReturnType<typeof prepareDecision>>;
+  observation: GranotObservationDocument;
+  receipt: ProcessorReceipt;
+  flags: GranotLifecycleFlags;
+  execution_mode: ExecutionMode;
+  deps: GranotLifecycleProcessorDeps;
+  started: number;
+  attempt: number;
+  sourcePolicy?: SourcePolicySnapshot;
+}): Promise<ReturnType<typeof toProcessorResult> | undefined> {
+  const actualBooked = input.observation.booking_action?.normalized === "booked";
+  const priorityFive =
+    input.observation.priority?.valid === true &&
+    input.observation.priority?.canonical === "5";
+  if (
+    (!actualBooked && !priorityFive) ||
+    input.observation.booking_action?.normalized === "release" ||
+    !input.observation.identity?.normalized_job_no ||
+    input.observation.normalization_result === "invalid" ||
+    input.observation.normalization_result === "unsupported"
+  ) {
+    return undefined;
+  }
+
+  const gates = input.sourcePolicy
+    ? snapshotEligibleGates(
+        input.sourcePolicy,
+        input.execution_mode,
+        input.flags,
+        "booking_reconciliation",
+      )
+    : bookingGatesFromPrepared(input.prepared.decision.evaluated_gates, input.flags);
+  if (!gates.allowed) return undefined;
+
+  const decisionId = new mongoose.Types.ObjectId();
+  const prepared: PreparedBookingReconciliationDecision = {
+    receipt_id: input.receipt._id,
+    observation_id: input.observation._id,
+    attempt: input.attempt,
+    execution_mode: input.execution_mode,
+    outcome: input.prepared.decision.outcome,
+    reason_code: input.prepared.decision.reason_code,
+    match_method: input.prepared.decision.match_method,
+    source_scope: input.prepared.decision.source_scope,
+    candidates: input.prepared.decision.candidates,
+    evaluated_gates: gates.evaluated_gates,
+    effects: [],
+    decided_at: input.prepared.decision.decided_at,
+  };
+  const result = await (input.deps.reconcileBooking
+    ? input.deps.reconcileBooking(
+        {
+          observation_id: String(input.observation._id),
+          decision_id: String(decisionId),
+        },
+        prepared,
+      )
+    : createGranotBookingReconciliation({
+        prepared,
+        store: input.deps.bookingReconciliationStore,
+      }).reconcileObservation({
+        observation_id: String(input.observation._id),
+        decision_id: String(decisionId),
+      }));
+  if (result.kind === "none" && result.reason !== "employee_reconciliation_missing") {
+    return undefined;
+  }
+
+  const decision = toDecisionDocument(decisionId, {
+    ...input.prepared.decision,
+    evaluated_gates: gates.evaluated_gates,
+    outcome: result.kind === "opened" || result.kind === "refreshed"
+      ? "linked"
+      : input.prepared.decision.outcome,
+    reason_code: result.kind === "opened" || result.kind === "refreshed"
+      ? result.reason_code
+      : input.prepared.decision.reason_code,
+    target: result.kind === "opened" || result.kind === "refreshed"
+      ? result.case_ref
+      : input.prepared.decision.target,
+    effects: result.kind === "opened" || result.kind === "refreshed"
+      ? [{ kind: result.reason_code, ref: result.case_ref }]
+      : [],
+  });
+  logProcessingCompletion({
+    receipt_id: String(input.receipt._id),
+    observation_id: String(input.observation._id),
+    decision_id: String(decisionId),
+    attempt: input.attempt,
+    execution_mode: input.execution_mode,
+    outcome: decision.outcome,
+    reason_code: decision.reason_code,
+    duration_ms: Date.now() - input.started,
+  });
+  return toProcessorResult(decision, input.receipt.observation_channel, input.started);
+}
+
+function bookingGatesFromPrepared(
+  evaluated: EvaluatedGate[],
+  flags: GranotLifecycleFlags,
+): EffectGateEvaluation {
+  const evaluated_gates = evaluated.map((gate) => {
+    if (gate.gate === "global_effect_flag") {
+      return { ...gate, allowed: flags.booking_cases_enabled };
+    }
+    if (gate.gate === "policy_permits_effect") {
+      return { ...gate, allowed: true };
+    }
+    return gate;
+  });
+  const allowed = evaluated_gates.length === 8 && evaluated_gates.every((gate) => gate.allowed);
+  return {
+    evaluated_gates,
+    allowed,
+    outcome: allowed ? "already_current" : "policy_blocked",
+    reason: allowed ? "desired_state_already_current" : "global_effect_disabled",
+  };
 }
 
 async function maybeCreateLead(input: {
@@ -979,6 +1123,7 @@ async function prepareDecision(input: {
   job?: LinkProposal;
   plan?: LeadDesiredStatePlan;
   identity?: LeadIdentityResult;
+  policy?: SourcePolicySnapshot;
 }> {
   const base: PreparedDecision = {
     observation_id: input.observation._id,
@@ -1096,6 +1241,7 @@ async function prepareDecision(input: {
     job,
     plan,
     identity,
+    policy: policy.snapshot,
   };
 }
 
@@ -1128,7 +1274,11 @@ function snapshotEligibleGates(
       ? flags.lead_creation_enabled
       : requested_effect === "lead_enrichment" || requested_effect === "lead_link"
         ? flags.lead_writes_enabled
-        : false;
+        : requested_effect === "booking_reconciliation"
+          ? flags.booking_cases_enabled
+          : requested_effect === "release_reconciliation"
+            ? flags.release_cases_enabled
+            : false;
   return evaluateEffectGates({
     global_effect_flag: globalFlag,
     receipt_post_activation: mode !== "historical_shadow",

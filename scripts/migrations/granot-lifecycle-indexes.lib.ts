@@ -11,6 +11,10 @@ import { SYNCHRONIZATION_DECISION_INDEXES } from "../../src/models/Synchronizati
 import { GRANOT_LIFECYCLE_ACTIVATION_INDEXES } from "../../src/models/GranotLifecycleActivation";
 import { GRANOT_RECORD_LINK_INDEXES } from "../../src/models/GranotRecordLink";
 import { BOOKED_LEAD_NORMALIZED_JOB_INDEX } from "../../src/models/BookedLead";
+import {
+  GRANOT_BOOKING_RECONCILIATION_CASE_COLLECTION,
+  GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES,
+} from "../../src/models/GranotBookingReconciliationCase";
 import { FORM_LEAD_S08_INDEXES } from "../../src/models/FormLead";
 import { CALL_LEAD_S08_INDEXES } from "../../src/models/CallLead";
 import { maskReceiptId } from "./granot-lifecycle-migration.lib";
@@ -22,7 +26,8 @@ import {
 import { ENTITY_CHANGE_INDEXES } from "../../src/models/EntityChange";
 import { RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX } from "../../src/services/ringcentral/call-log-sync-state.store";
 
-export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/9";
+export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/10";
+export { GRANOT_BOOKING_RECONCILIATION_CASE_COLLECTION };
 export const FORM_LEAD_COLLECTION = "form_leads";
 export const CALL_LEAD_COLLECTION = "call_leads";
 
@@ -582,6 +587,84 @@ export function verifyBookedLeadNormalizedJobIndexDefinitions(
     mismatched: [],
     observed_name: found.name,
   };
+}
+
+export type GranotBookingCaseCollision = {
+  masked_job_no: string;
+  action_kind: string;
+  sequence_number?: number;
+  count: number;
+  masked_ids: string[];
+};
+
+export function findGranotBookingCaseCollisions(
+  rows: readonly {
+    _id: string;
+    normalized_job_no?: unknown;
+    action_kind?: unknown;
+    sequence_number?: unknown;
+    state?: unknown;
+  }[],
+): { open: GranotBookingCaseCollision[]; sequence: GranotBookingCaseCollision[] } {
+  const group = (
+    include: (row: (typeof rows)[number]) => boolean,
+    sequence: boolean,
+  ): GranotBookingCaseCollision[] => {
+    const grouped = new Map<string, { count: number; masked_ids: string[] }>();
+    for (const row of rows) {
+      if (
+        !include(row) ||
+        typeof row.normalized_job_no !== "string" ||
+        typeof row.action_kind !== "string" ||
+        (sequence && typeof row.sequence_number !== "number")
+      ) continue;
+      const key = sequence
+        ? `${row.normalized_job_no}\u0000${row.action_kind}\u0000${row.sequence_number}`
+        : `${row.normalized_job_no}\u0000${row.action_kind}`;
+      const current = grouped.get(key) ?? { count: 0, masked_ids: [] };
+      current.count += 1;
+      current.masked_ids.push(maskReceiptId(row._id));
+      grouped.set(key, current);
+    }
+    return [...grouped.entries()]
+      .filter(([, value]) => value.count > 1)
+      .map(([key, value]) => {
+        const [normalized_job_no, action_kind, sequenceRaw] = key.split("\u0000");
+        return {
+          masked_job_no: maskReceiptId(normalized_job_no!),
+          action_kind: action_kind!,
+          sequence_number: sequence ? Number(sequenceRaw) : undefined,
+          count: value.count,
+          masked_ids: value.masked_ids.sort(),
+        };
+      })
+      .sort((left, right) =>
+        left.masked_job_no.localeCompare(right.masked_job_no) ||
+        left.action_kind.localeCompare(right.action_kind) ||
+        (left.sequence_number ?? 0) - (right.sequence_number ?? 0),
+      );
+  };
+  return {
+    open: group((row) => row.state === "open", false),
+    sequence: group(() => true, true),
+  };
+}
+
+export function orderedGranotBookingCaseIndexCreates() {
+  return {
+    nonUnique: GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES.filter(
+      (index) => !("unique" in index),
+    ),
+    unique: GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES.filter(
+      (index) => "unique" in index,
+    ),
+  };
+}
+
+export function verifyGranotBookingCaseIndexDefinitions(
+  actual: readonly DeclaredMongoIndex[],
+) {
+  return verifyNamedIndexDefinitions(actual, GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES);
 }
 
 function sameJson(left: unknown, right: unknown): boolean {

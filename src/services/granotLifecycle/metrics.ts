@@ -8,6 +8,7 @@ import type {
   SynchronizationOutcome,
   SynchronizationReasonCode,
 } from "./types";
+import type { GranotBookingReconciliationCaseDocument } from "../../models/GranotBookingReconciliationCase";
 
 export type GranotLifecycleReceiptMetricLabels = {
   channel: string;
@@ -31,6 +32,7 @@ let oldestDueSeconds = 0;
 let claimRecoveriesTotal = 0;
 const technicalRetriesTotal = new Map<string, number>();
 const deadLettersTotal = new Map<string, number>();
+const openBookingCases = new Map<GranotBookingReconciliationCaseDocument["mode"], number>();
 
 function boundedErrorCode(code: string): string | null {
   if (!/^[a-z][a-z0-9_]{0,63}$/.test(code)) {
@@ -122,6 +124,22 @@ export function incrementGranotLifecycleDeadLetters(code: string): void {
   deadLettersTotal.set(bounded, (deadLettersTotal.get(bounded) ?? 0) + 1);
 }
 
+export function setGranotLifecycleOpenBookingCases(
+  mode: GranotBookingReconciliationCaseDocument["mode"],
+  count: number,
+): void {
+  openBookingCases.set(
+    mode,
+    Number.isFinite(count) && count > 0 ? Math.floor(count) : 0,
+  );
+}
+
+export function getGranotLifecycleOpenBookingCases(
+  mode: GranotBookingReconciliationCaseDocument["mode"],
+): number {
+  return openBookingCases.get(mode) ?? 0;
+}
+
 export function getGranotLifecycleReceiptsTotal(
   labels: GranotLifecycleReceiptMetricLabels,
 ): number {
@@ -182,4 +200,5 @@ export function resetGranotLifecycleMetrics(): void {
   claimRecoveriesTotal = 0;
   technicalRetriesTotal.clear();
   deadLettersTotal.clear();
+  openBookingCases.clear();
 }

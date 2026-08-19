@@ -43,7 +43,11 @@ import {
   verifyBookedLeadNormalizedJobIndexDefinitions,
   verifyCallLeadS08IndexDefinitions,
   verifyFormLeadS08IndexDefinitions,
+  findGranotBookingCaseCollisions,
+  orderedGranotBookingCaseIndexCreates,
+  verifyGranotBookingCaseIndexDefinitions,
 } from "./granot-lifecycle-indexes.lib";
+import { GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES } from "../../src/models/GranotBookingReconciliationCase";
 import { SYNCHRONIZATION_DECISION_INDEXES } from "../../src/models/SynchronizationDecision";
 import { GRANOT_LIFECYCLE_ACTIVATION_INDEXES } from "../../src/models/GranotLifecycleActivation";
 import { GRANOT_RECORD_LINK_INDEXES } from "../../src/models/GranotRecordLink";
@@ -78,6 +82,36 @@ test("[AC-02] unique/partial collision report ignores webhook rows without opera
   assert.equal(
     JSON.stringify(collisions).includes("aaaaaaaaaaaaaaaaaaaaaaaa"),
     false,
+  );
+});
+
+test("[AC-36] Booking-case collisions, ordering, and exact definitions are deterministic", () => {
+  const collisions = findGranotBookingCaseCollisions([
+    { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", normalized_job_no: "JOB-22", action_kind: "booked", sequence_number: 1, state: "open" },
+    { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", normalized_job_no: "JOB-22", action_kind: "booked", sequence_number: 1, state: "open" },
+    { _id: "cccccccccccccccccccccccc", normalized_job_no: "JOB-22", action_kind: "booked", sequence_number: 2, state: "resolved" },
+  ]);
+  assert.equal(collisions.open.length, 1);
+  assert.equal(collisions.sequence.length, 1);
+  assert.equal(JSON.stringify(collisions).includes("aaaaaaaaaaaaaaaaaaaaaaaa"), false);
+  assert.equal(JSON.stringify(collisions).includes("JOB-22"), false);
+  assert.deepEqual(findGranotBookingCaseCollisions([]), { open: [], sequence: [] });
+  const ordered = orderedGranotBookingCaseIndexCreates();
+  assert.equal(ordered.nonUnique.length, 3);
+  assert.equal(ordered.unique.length, 2);
+  const actual = GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES.map((index) => ({
+    name: index.name,
+    key: { ...index.key },
+    unique: "unique" in index ? true : undefined,
+    partialFilterExpression: "partialFilterExpression" in index
+      ? { ...index.partialFilterExpression }
+      : undefined,
+  }));
+  assert.equal(verifyGranotBookingCaseIndexDefinitions(actual).ok, true);
+  assert.equal(verifyGranotBookingCaseIndexDefinitions([]).missing.length, 5);
+  assert.deepEqual(
+    verifyGranotBookingCaseIndexDefinitions(actual),
+    verifyGranotBookingCaseIndexDefinitions(actual),
   );
 });
 

@@ -264,6 +264,7 @@ function memoryDeps(input: {
   winnerAdvanced?: boolean;
   synchronizeLead?: GranotLifecycleProcessorDeps["synchronizeLead"];
   createLead?: GranotLifecycleProcessorDeps["createLead"];
+  reconcileBooking?: GranotLifecycleProcessorDeps["reconcileBooking"];
 }): GranotLifecycleProcessorDeps & {
   decisions: SynchronizationDecisionDocument[];
   links: GranotRecordLinkDocument[];
@@ -356,9 +357,57 @@ function memoryDeps(input: {
           return input.createLead!(payload);
         }
       : undefined,
+    reconcileBooking: input.reconcileBooking,
     withTransaction: async (fn) => fn({} as never),
   };
 }
+
+test("[AC-18][AC-19] processor invokes Booking reconciliation only in live gate-enabled posture", async () => {
+  const row = observation({
+    kind: "booking_action_snapshot",
+    route_event_class: "booking_status_changed",
+    normalization_result: "valid_with_issues",
+    priority: { raw: "bad", valid: false },
+    booking_action: { raw: "Booked", normalized: "booked" },
+  });
+  let calls = 0;
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: {
+      ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+      shadow_mode: false,
+      booking_cases_enabled: true,
+    },
+    reconcileBooking: async (ids, prepared) => {
+      calls += 1;
+      assert.equal(ids.observation_id, String(row._id));
+      assert.equal(prepared.execution_mode, "live");
+      assert.equal(prepared.evaluated_gates.length, 8);
+      assert.ok(prepared.evaluated_gates.every((gate) => gate.allowed));
+      return {
+        kind: "opened",
+        case_ref: { model: "GranotBookingReconciliationCase", id: String(objectId()) },
+        outcome: "linked",
+        reason_code: "booking_case_opened",
+      };
+    },
+  });
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(calls, 1);
+  assert.equal(result.outcome, "linked");
+  assert.equal(result.effects[0]?.kind, "booking_case_opened");
+
+  const disabled = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, shadow_mode: false },
+    reconcileBooking: async () => {
+      throw new Error("disabled Booking gate must not invoke reconciliation");
+    },
+  });
+  await processGranotObservation({ receipt_id: String(row.receipt_id) }, disabled);
+});
 
 function exactLink(leadId: string): GranotRecordLinkDocument {
   return {
