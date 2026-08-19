@@ -1,5 +1,5 @@
 ---
-description: Granot lead-lifecycle software map — receipt processing, Lead effects, Booking/Release-case persistence, protected reads, and gated Booking owner commands
+description: Granot lead-lifecycle software map — receipt processing, Lead effects, Booking/Release-case persistence, protected reads, and gated Booking/Release owner commands
 globs: src/services/granotLifecycle/**/*.ts,src/services/granotWebhooks/**/*.ts,src/routes/granot-webhook.routes.ts,src/routes/granot-lifecycle-admin.routes.ts,src/routes/granot-lifecycle-cron.routes.ts,src/routes/extension-granot-apply.routes.ts,api/queues/granot-lifecycle-consumer.ts,src/middleware/requireGranotWebhookSecret.ts,src/config/domain/granotWebhook.ts,src/config/domain/granotLifecycle.ts,src/models/GranotObservationReceipt.ts,src/models/GranotObservation.ts,src/models/SynchronizationDecision.ts,src/models/GranotLifecycleActivation.ts,src/models/GranotRecordLink.ts,src/models/GranotBookingReconciliationCase.ts,src/models/GranotReleaseReconciliationCase.ts,src/models/granotLifecycleSchemas.ts,src/validation/v1/granotLifecycle.validation.ts,scripts/migrations/granot-lifecycle-*.ts,.cursor/businesslogic/granotLifecycle*.md,docs/granot-lead-lifecycle/lifecycle-activation-flags-and-source-policies.md
 alwaysApply: false
 ---
@@ -37,20 +37,20 @@ Granot evidence never becomes an official Booking or Cancellation by itself. CRM
 | `drainer.ts` | Fenced Mongo claim/lease shared by the queue consumer, five-minute cron, and Owner requeue. |
 | `aggregateRevision.ts` | Compare-and-swap primitive for later consumed aggregates. |
 | `bookingReconciliation.ts` / `bookingConfirmation.ts` / `bookingOwnerCommands.ts` | Booking case open/refresh plus strict Owner confirm, deterministic existing-Booking full update, and zero-effect No Action. Referral remains unavailable. |
-| `releaseReconciliation.ts` | Separate Release case open/refresh, already-cancelled no-effect Decision, and typed Unit 29 discrepancy seam. No official mutation or Release command. |
+| `releaseReconciliation.ts` / `releaseOwnerCommands.ts` | Separate Release case open/refresh plus gated Owner create-Cancellation, full Booking replacement, and No Action commands. |
 | `trustedLeadCreateValidation.ts` | Trusted `granot_lead_created` validator (`post_to_granot=false`). Live caller is `createLeadFromGranot` only. |
 
-Admin routes activate, requeue dead letters, expose protected reads, and accept the three exact Booking Owner mutations. Projections compose allowlisted DTOs; routes do not own claim, match, masking, ranking, timeline, or mutation policy. Canonical executor / `EntityChange` live in `domainCommands/`. Live lifecycle capability includes Lead sync/create, confirm Booking, `updateBooking`, and `resolveGranotBookingCaseNoAction`; checked-in effect flags keep them disabled. Release/Referral commands are not exposed.
+Admin routes activate, requeue dead letters, expose protected reads, and accept the three exact Booking plus three exact Release Owner mutations. Projections compose allowlisted DTOs; routes do not own claim, match, masking, ranking, timeline, or mutation policy. Canonical executor / `EntityChange` live in `domainCommands/`. Live lifecycle capability includes Lead sync/create, Booking commands, and Release `createCancellation`, `updateBooking`, and `resolveGranotReleaseCaseNoAction`; checked-in effect flags keep them disabled. Referral commands are not exposed.
 
 ## Progress
 
 Units 01–26 are implemented on `granot-lead-lifecycle` (Unit 16 also lands extension `0.2.8` on `granot_sync_extensions_and_services/main`). Re-verify the matching `UNIT-*-COMPLETION.md` and repository state before editing; do not trust the ledger alone.
 
-**Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, shadow processor orchestration, extension/automation receipt apply, canonical Lead synchronization/creation, Booking-case persistence/commands, separate read-only Release-case persistence, protected masked reads, and stable Job/Lead timelines.
+**Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, shadow processor orchestration, extension/automation receipt apply, canonical Lead synchronization/creation, Booking-case persistence/commands, separate Release-case persistence/commands, protected masked reads, and stable Job/Lead timelines.
 
-**Next sequential work:** Unit 27 remains blocked until Owner review accepts the read-only Release cases. Unit 28 additionally requires reviewed Referral classification. Deployed posture and checked-in defaults do not change from implementation alone.
+**Next sequential work:** Unit 28 additionally requires reviewed Referral classification. Deployed posture and checked-in defaults do not change from implementation alone.
 
-**Not started here:** Release commands, Referral, and discrepancy owner behavior (Units 27–29).
+**Not started here:** Referral and discrepancy owner behavior (Units 28–29).
 
 ## Live constraints
 

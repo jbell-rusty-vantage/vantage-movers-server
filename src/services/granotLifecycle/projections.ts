@@ -624,10 +624,12 @@ export async function getGranotLifecycleCaseDetail(
     } : undefined,
     timeline,
     capabilities: {
-      commands: kind === "booking" &&
-        getGranotLifecycleFlags().booking_commands_enabled &&
-        row.state === "open" &&
-        (mode === "create_missing_booking" || mode === "review_existing_booking"),
+      commands: row.state === "open" && (
+        (kind === "booking" &&
+          getGranotLifecycleFlags().booking_commands_enabled &&
+          (mode === "create_missing_booking" || mode === "review_existing_booking")) ||
+        (kind === "release" && getGranotLifecycleFlags().release_commands_enabled)
+      ),
       referral: kind === "booking" && mode === "create_referral_booking",
       release_cases: true,
       discrepancies: false,

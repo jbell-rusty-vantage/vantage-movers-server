@@ -2,8 +2,10 @@ import type mongoose from "mongoose";
 import type { ClientSession } from "mongoose";
 import { getSheetSyncMode, type LeadModelName } from "../../config/domain";
 import { BookedLead } from "../../models/BookedLead";
+import { CancelledLead, type CancelledLeadDocument } from "../../models/CancelledLead";
 import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconciliationCase";
-import { CancelledLead } from "../../models/CancelledLead";
+import { getCallLeadModel } from "../../models/CallLead";
+import { getFormLeadModel } from "../../models/FormLead";
 import { DomainCommandExecution } from "../../models/DomainCommandExecution";
 import type {
   CreateCancelledLeadInput,
@@ -96,6 +98,136 @@ export async function createCancelledLeadInTransaction(
   tx: { session?: ClientSession; now: Date },
 ) {
   return persistCancelledLeadCreateInTransaction(input, options, tx);
+}
+
+/**
+ * Deep transaction primitive for a lifecycle-verified deterministic Booking.
+ * The caller owns policy/case/link revalidation, the canonical command,
+ * Entity Changes, case resolution, and the outbox. This primitive owns only
+ * the exact Booking claim plus official Cancellation/optional Lead mirrors.
+ */
+export async function createCancellationForVerifiedBookingInTransaction(input: {
+  booking_before: Record<string, unknown> & {
+    _id: mongoose.Types.ObjectId;
+    domain_revision: number;
+    normalized_job_no?: string;
+    lead_ref?: mongoose.Types.ObjectId | null;
+    lead_model?: "FormLead" | "CallLead" | null;
+  };
+  expected_domain_revision: number;
+  normalized_job_no: string;
+  cancellation_id: mongoose.Types.ObjectId;
+  official_details: {
+    cancel_date: string;
+    refund_amount: number;
+    reason?: string;
+    notes?: string;
+    cancelled_by?: string;
+  };
+  test_fail_after?: "booking" | "cancellation" | "lead";
+}, tx: { session: ClientSession; now: Date }): Promise<{
+  cancellation: mongoose.HydratedDocument<CancelledLeadDocument>;
+  booking_after: Record<string, unknown>;
+  lead_before: Record<string, unknown> | null;
+  lead_after: Record<string, unknown> | null;
+}> {
+  const booking = input.booking_before;
+  const claim = await BookedLead.collection.updateOne(
+    {
+      _id: booking._id,
+      domain_revision: input.expected_domain_revision,
+      normalized_job_no: input.normalized_job_no,
+      $or: [{ cancelled: null }, { cancelled: { $exists: false } }],
+    },
+    { $set: { cancelled: input.cancellation_id } },
+    { session: tx.session },
+  );
+  if (claim.matchedCount !== 1) throw new Error("DOMAIN_REVISION_CONFLICT");
+  if (input.test_fail_after === "booking") {
+    throw new Error("UNIT27_INJECTED_FAILURE_AFTER_BOOKING");
+  }
+
+  const customer = booking.customer as
+    | { _id?: mongoose.Types.ObjectId; full_name?: string }
+    | mongoose.Types.ObjectId
+    | undefined;
+  const customerId = customer && typeof customer === "object" && "_id" in customer
+    ? customer._id
+    : customer;
+  const customerName = customer && typeof customer === "object" && "full_name" in customer
+    ? customer.full_name
+    : booking.customer_name;
+  const cancellation = new CancelledLead({
+    _id: input.cancellation_id,
+    timestamp: tx.now,
+    booked_lead: booking._id,
+    ...(customerId ? { customer: customerId } : {}),
+    ...(booking.lead_ref ? { lead_ref: booking.lead_ref } : {}),
+    ...(booking.lead_model ? { lead_model: booking.lead_model } : {}),
+    cancel_date: new Date(`${input.official_details.cancel_date}T00:00:00.000Z`),
+    refund_amount: input.official_details.refund_amount,
+    ...(input.official_details.reason !== undefined ? { reason: input.official_details.reason } : {}),
+    ...(input.official_details.notes !== undefined ? { notes: input.official_details.notes } : {}),
+    ...(input.official_details.cancelled_by !== undefined
+      ? { cancelled_by: input.official_details.cancelled_by }
+      : {}),
+    agent: primaryAgentName(booking as unknown as Parameters<typeof primaryAgentName>[0]),
+    book_date: booking.book_date,
+    job_no: booking.job_no,
+    ...(customerName ? { customer_name: customerName } : {}),
+    merchant: booking.merchant,
+    source: booking.source,
+  });
+  await cancellation.save({ session: tx.session });
+  if (input.test_fail_after === "cancellation") {
+    throw new Error("UNIT27_INJECTED_FAILURE_AFTER_CANCELLATION");
+  }
+
+  let leadBefore: Record<string, unknown> | null = null;
+  let leadAfter: Record<string, unknown> | null = null;
+  if (booking.lead_ref && booking.lead_model) {
+    const leadQuery = booking.lead_model === "FormLead"
+      ? getFormLeadModel().findById(booking.lead_ref)
+      : getCallLeadModel().findById(booking.lead_ref);
+    leadBefore = await leadQuery.session(tx.session).lean().exec() as Record<string, unknown> | null;
+    if (!leadBefore || String(leadBefore.booked ?? "") !== String(booking._id)) {
+      throw new Error("GRANOT_IDENTITY_CONFLICT");
+    }
+    const leadFilter = {
+      _id: booking.lead_ref,
+      domain_revision: Number(leadBefore.domain_revision ?? 0),
+      booked: booking._id,
+    };
+    const leadWrite = await (booking.lead_model === "FormLead"
+      ? getFormLeadModel().collection.updateOne(
+        leadFilter,
+        { $set: { cancelled: input.cancellation_id } },
+        { session: tx.session },
+      )
+      : getCallLeadModel().collection.updateOne(
+        leadFilter,
+        { $set: { cancelled: input.cancellation_id } },
+        { session: tx.session },
+      ));
+    if (leadWrite.matchedCount !== 1) throw new Error("DOMAIN_REVISION_CONFLICT");
+    if (input.test_fail_after === "lead") {
+      throw new Error("UNIT27_INJECTED_FAILURE_AFTER_LEAD");
+    }
+    const leadAfterQuery = booking.lead_model === "FormLead"
+      ? getFormLeadModel().findById(booking.lead_ref)
+      : getCallLeadModel().findById(booking.lead_ref);
+    leadAfter = await leadAfterQuery.session(tx.session).lean().exec() as Record<string, unknown> | null;
+    if (!leadAfter) throw new Error("Updated Cancellation Lead could not be reloaded.");
+  }
+
+  const bookingAfter = await BookedLead.findById(booking._id).session(tx.session).lean().exec();
+  if (!bookingAfter) throw new Error("Updated Cancellation Booking could not be reloaded.");
+  return {
+    cancellation,
+    booking_after: bookingAfter as unknown as Record<string, unknown>,
+    lead_before: leadBefore,
+    lead_after: leadAfter,
+  };
 }
 
 export async function persistCancelledLeadCreateInTransaction(

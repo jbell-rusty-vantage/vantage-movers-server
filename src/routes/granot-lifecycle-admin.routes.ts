@@ -33,6 +33,15 @@ import {
   type ConfirmBookingInput,
   type UpdateExistingBookingInput,
 } from "../services/granotLifecycle/bookingReconciliation";
+import {
+  confirmCancellation as confirmGranotCancellation,
+  updateExistingBooking as updateGranotReleaseBooking,
+  noAction as resolveGranotReleaseNoAction,
+  type ConfirmCancellationInput,
+  type UpdateReleaseBookingInput,
+  type ReleaseNoActionInput,
+  type ReleaseOwnerCommandResult,
+} from "../services/granotLifecycle/releaseReconciliation";
 import { durableActorFromRegistryActor } from "../services/durableWork";
 import {
   DomainCommandContextError,
@@ -48,6 +57,8 @@ import {
   granotLifecycleBookingNoActionCommandSchema,
   granotLifecycleConfirmBookingCommandSchema,
   granotLifecycleUpdateBookingCommandSchema,
+  granotLifecycleConfirmCancellationCommandSchema,
+  granotLifecycleReleaseNoActionCommandSchema,
   granotLifecycleRequeueCommandSchema,
 } from "../validation/v1/granotLifecycle.validation";
 
@@ -64,6 +75,9 @@ export type GranotLifecycleAdminRouteDeps = {
   confirmBooking?: (input: ConfirmBookingInput) => Promise<BookingOwnerCommandResult>;
   updateBooking?: (input: UpdateExistingBookingInput) => Promise<BookingOwnerCommandResult>;
   noAction?: (input: BookingNoActionInput) => Promise<BookingOwnerCommandResult>;
+  confirmCancellation?: (input: ConfirmCancellationInput) => Promise<ReleaseOwnerCommandResult>;
+  updateReleaseBooking?: (input: UpdateReleaseBookingInput) => Promise<ReleaseOwnerCommandResult>;
+  releaseNoAction?: (input: ReleaseNoActionInput) => Promise<ReleaseOwnerCommandResult>;
 };
 
 export function createGranotLifecycleAdminRouter(
@@ -82,6 +96,9 @@ export function createGranotLifecycleAdminRouter(
   const confirmBooking = deps.confirmBooking ?? confirmGranotBooking;
   const updateBooking = deps.updateBooking ?? updateGranotBooking;
   const noAction = deps.noAction ?? resolveGranotBookingNoAction;
+  const confirmCancellation = deps.confirmCancellation ?? confirmGranotCancellation;
+  const updateReleaseBooking = deps.updateReleaseBooking ?? updateGranotReleaseBooking;
+  const releaseNoAction = deps.releaseNoAction ?? resolveGranotReleaseNoAction;
 
   router.post(
     "/api/v1/admin/granot-lifecycle/booking-cases/:id/confirm-booking",
@@ -138,6 +155,73 @@ export function createGranotLifecycleAdminRouter(
         const { case_id } = granotLifecycleCaseParamsSchema.parse({ case_id: req.params.id });
         const command = granotLifecycleBookingNoActionCommandSchema.parse(req.body);
         const data = await noAction({
+          case_id,
+          ...command,
+          idempotency_key: readSingleIdempotencyKey(req),
+          owner,
+          request_id: requestId(req),
+        });
+        return res.status(200).json({ ok: true, data });
+      } catch (error) {
+        return sendError(res, error, requestId(req));
+      }
+    },
+  );
+
+  router.post(
+    "/api/v1/admin/granot-lifecycle/release-cases/:id/confirm-cancellation",
+    async (req, res) => {
+      try {
+        await connect();
+        const owner = durableActorFromRegistryActor(requireRegistryOwnerActor(req, auth(req)));
+        const { case_id } = granotLifecycleCaseParamsSchema.parse({ case_id: req.params.id });
+        const command = granotLifecycleConfirmCancellationCommandSchema.parse(req.body);
+        const data = await confirmCancellation({
+          case_id,
+          ...command,
+          idempotency_key: readSingleIdempotencyKey(req),
+          owner,
+          request_id: requestId(req),
+        });
+        return res.status(data.replayed || data.outcome === "already_satisfied" ? 200 : 201)
+          .json({ ok: true, data });
+      } catch (error) {
+        return sendError(res, error, requestId(req));
+      }
+    },
+  );
+
+  router.post(
+    "/api/v1/admin/granot-lifecycle/release-cases/:id/update-booking",
+    async (req, res) => {
+      try {
+        await connect();
+        const owner = durableActorFromRegistryActor(requireRegistryOwnerActor(req, auth(req)));
+        const { case_id } = granotLifecycleCaseParamsSchema.parse({ case_id: req.params.id });
+        const command = granotLifecycleUpdateBookingCommandSchema.parse(req.body);
+        const data = await updateReleaseBooking({
+          case_id,
+          ...command,
+          idempotency_key: readSingleIdempotencyKey(req),
+          owner,
+          request_id: requestId(req),
+        });
+        return res.status(200).json({ ok: true, data });
+      } catch (error) {
+        return sendError(res, error, requestId(req));
+      }
+    },
+  );
+
+  router.post(
+    "/api/v1/admin/granot-lifecycle/release-cases/:id/no-action",
+    async (req, res) => {
+      try {
+        await connect();
+        const owner = durableActorFromRegistryActor(requireRegistryOwnerActor(req, auth(req)));
+        const { case_id } = granotLifecycleCaseParamsSchema.parse({ case_id: req.params.id });
+        const command = granotLifecycleReleaseNoActionCommandSchema.parse(req.body);
+        const data = await releaseNoAction({
           case_id,
           ...command,
           idempotency_key: readSingleIdempotencyKey(req),

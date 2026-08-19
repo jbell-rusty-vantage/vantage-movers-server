@@ -29,6 +29,7 @@ import type {
   SynchronizationOutcome,
   SynchronizationReasonCode,
 } from "./types";
+import * as releaseOwnerCommands from "./releaseOwnerCommands";
 
 export type ReleaseReconciliationCurrentContext = {
   observation_id: string;
@@ -155,7 +156,25 @@ export interface GranotReleaseReconciliation {
     observation_id: string;
     decision_id: string;
   }): Promise<ReleaseCaseEffectResult>;
+  confirmCancellation(input: import("./releaseOwnerCommands").ConfirmCancellationInput):
+    Promise<import("./releaseOwnerCommands").ReleaseOwnerCommandResult>;
+  updateExistingBooking(input: import("./releaseOwnerCommands").UpdateReleaseBookingInput):
+    Promise<import("./releaseOwnerCommands").ReleaseOwnerCommandResult>;
+  noAction(input: import("./releaseOwnerCommands").ReleaseNoActionInput):
+    Promise<import("./releaseOwnerCommands").ReleaseOwnerCommandResult>;
 }
+
+export {
+  confirmCancellation,
+  updateExistingBooking,
+  noAction,
+} from "./releaseOwnerCommands";
+export type {
+  ConfirmCancellationInput,
+  UpdateReleaseBookingInput,
+  ReleaseNoActionInput,
+  ReleaseOwnerCommandResult,
+} from "./releaseOwnerCommands";
 
 export function createGranotReleaseReconciliation(input: {
   prepared: PreparedReleaseReconciliationDecision;
@@ -167,6 +186,9 @@ export function createGranotReleaseReconciliation(input: {
       input.prepared,
       input.store ?? createMongoReleaseReconciliationStore(),
     ),
+    confirmCancellation: releaseOwnerCommands.confirmCancellation,
+    updateExistingBooking: releaseOwnerCommands.updateExistingBooking,
+    noAction: releaseOwnerCommands.noAction,
   };
 }
 

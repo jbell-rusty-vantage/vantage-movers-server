@@ -7,6 +7,7 @@ import {
   granotLifecycleConfirmBookingCommandSchema,
   granotLifecycleUpdateBookingCommandSchema,
   granotLifecycleBookingNoActionCommandSchema,
+  granotLifecycleConfirmCancellationCommandSchema,
   granotLifecycleCandidateQuerySchema,
   granotLifecycleCaseListQuerySchema,
   granotLifecycleLeadTimelineParamsSchema,
@@ -287,5 +288,38 @@ test("[AC-20] Booking No Action reasons are independently optional and strict", 
   assert.equal(granotLifecycleBookingNoActionCommandSchema.safeParse({
     expected_case_revision: 1,
     case_id: "a".repeat(24),
+  }).success, false);
+});
+
+test("[AC-25] Confirm Cancellation accepts only strict official fields with exact date and cents", () => {
+  const valid = {
+    expected_case_revision: 2,
+    expected_booking_revision: 4,
+    official_cancellation_details: {
+      cancel_date: "2026-08-19",
+      refund_amount: 125.25,
+      reason: "Owner-confirmed synthetic cancellation",
+      notes: "Reviewed against the deterministic Booking.",
+      cancelled_by: "Owner",
+    },
+  };
+  assert.deepEqual(granotLifecycleConfirmCancellationCommandSchema.parse(valid), valid);
+  assert.equal(granotLifecycleConfirmCancellationCommandSchema.safeParse({
+    ...valid,
+    case_id: "a".repeat(24),
+  }).success, false);
+  assert.equal(granotLifecycleConfirmCancellationCommandSchema.safeParse({
+    ...valid,
+    official_cancellation_details: {
+      ...valid.official_cancellation_details,
+      cancel_date: "2026-02-30",
+    },
+  }).success, false);
+  assert.equal(granotLifecycleConfirmCancellationCommandSchema.safeParse({
+    ...valid,
+    official_cancellation_details: {
+      ...valid.official_cancellation_details,
+      refund_amount: 1.005,
+    },
   }).success, false);
 });

@@ -15,6 +15,9 @@ let lastCandidateQuery: Record<string, unknown> | null = null;
 let lastConfirm: Record<string, unknown> | null = null;
 let lastUpdate: Record<string, unknown> | null = null;
 let lastNoAction: Record<string, unknown> | null = null;
+let lastReleaseCancellation: Record<string, unknown> | null = null;
+let lastReleaseUpdate: Record<string, unknown> | null = null;
+let lastReleaseNoAction: Record<string, unknown> | null = null;
 
 const app = express();
 app.use(express.json());
@@ -114,6 +117,49 @@ app.use(
         replayed: false,
       };
     },
+    confirmCancellation: async (input) => {
+      lastReleaseCancellation = input as unknown as Record<string, unknown>;
+      return {
+        case_id: input.case_id,
+        case_state: "resolved",
+        case_revision: 2,
+        outcome: "cancellation_created",
+        command_execution_id: new mongoose.Types.ObjectId().toHexString(),
+        decision_id: new mongoose.Types.ObjectId().toHexString(),
+        booking_ref: { id: new mongoose.Types.ObjectId().toHexString(), domain_revision: 2 },
+        cancellation_ref: { id: new mongoose.Types.ObjectId().toHexString(), domain_revision: 1 },
+        entity_refs: [],
+        replayed: false,
+      };
+    },
+    updateReleaseBooking: async (input) => {
+      lastReleaseUpdate = input as unknown as Record<string, unknown>;
+      return {
+        case_id: input.case_id,
+        case_state: "resolved",
+        case_revision: 2,
+        outcome: "booking_updated",
+        command_execution_id: new mongoose.Types.ObjectId().toHexString(),
+        decision_id: new mongoose.Types.ObjectId().toHexString(),
+        booking_ref: { id: new mongoose.Types.ObjectId().toHexString(), domain_revision: 2 },
+        entity_refs: [],
+        replayed: false,
+      };
+    },
+    releaseNoAction: async (input) => {
+      lastReleaseNoAction = input as unknown as Record<string, unknown>;
+      return {
+        case_id: input.case_id,
+        case_state: "resolved",
+        case_revision: 2,
+        outcome: "no_action",
+        command_execution_id: new mongoose.Types.ObjectId().toHexString(),
+        decision_id: new mongoose.Types.ObjectId().toHexString(),
+        booking_ref: { id: new mongoose.Types.ObjectId().toHexString(), domain_revision: 1 },
+        entity_refs: [],
+        replayed: false,
+      };
+    },
   }),
 );
 
@@ -145,6 +191,9 @@ afterEach(() => {
   lastConfirm = null;
   lastUpdate = null;
   lastNoAction = null;
+  lastReleaseCancellation = null;
+  lastReleaseUpdate = null;
+  lastReleaseNoAction = null;
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = SECRET;
 });
 
@@ -399,4 +448,53 @@ test("[AC-20] [AC-32] Owner No Action accepts optional reason metadata and Admin
   });
   assert.equal(denied.status, 403);
   assert.equal(lastNoAction, null);
+});
+
+test("[AC-25] [AC-32] Release Owner routes are strict, idempotent, and use exact statuses", async () => {
+  const cancellationPath = `/api/v1/admin/granot-lifecycle/release-cases/${receiptId}/confirm-cancellation`;
+  const cancellation = await fetch(`${baseUrl}${cancellationPath}`, {
+    method: "POST",
+    headers: { ...signedHeaders("owner", cancellationPath), "Idempotency-Key": "unit27-cancel-1" },
+    body: JSON.stringify({
+      expected_case_revision: 1,
+      expected_booking_revision: 3,
+      official_cancellation_details: { cancel_date: "2026-08-19", refund_amount: 25.5 },
+    }),
+  });
+  assert.equal(cancellation.status, 201);
+  assert.equal(lastReleaseCancellation?.expected_booking_revision, 3);
+
+  const updatePath = `/api/v1/admin/granot-lifecycle/release-cases/${receiptId}/update-booking`;
+  const update = await fetch(`${baseUrl}${updatePath}`, {
+    method: "POST",
+    headers: { ...signedHeaders("owner", updatePath), "Idempotency-Key": "unit27-update-1" },
+    body: JSON.stringify({
+      expected_case_revision: 1,
+      expected_booking_revision: 3,
+      official_booking_details: confirmBody.official_booking_details,
+    }),
+  });
+  assert.equal(update.status, 200);
+  assert.equal(lastReleaseUpdate?.expected_booking_revision, 3);
+
+  const noActionPath = `/api/v1/admin/granot-lifecycle/release-cases/${receiptId}/no-action`;
+  const noActionResponse = await fetch(`${baseUrl}${noActionPath}`, {
+    method: "POST",
+    headers: { ...signedHeaders("owner", noActionPath), "Idempotency-Key": "unit27-no-action-1" },
+    body: JSON.stringify({ expected_case_revision: 1, reason_code: "granot_change_only" }),
+  });
+  assert.equal(noActionResponse.status, 200);
+  assert.equal(lastReleaseNoAction?.reason_code, "granot_change_only");
+
+  const forbidden = await fetch(`${baseUrl}${cancellationPath}`, {
+    method: "POST",
+    headers: { ...signedHeaders("owner", cancellationPath), "Idempotency-Key": "unit27-cancel-2" },
+    body: JSON.stringify({
+      expected_case_revision: 1,
+      expected_booking_revision: 3,
+      booking_id: new mongoose.Types.ObjectId().toHexString(),
+      official_cancellation_details: { cancel_date: "2026-08-19", refund_amount: 25.5 },
+    }),
+  });
+  assert.equal(forbidden.status, 400);
 });

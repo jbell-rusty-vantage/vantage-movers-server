@@ -56,3 +56,5 @@ Compatibility context: Command ID is a server ObjectId hex; idempotency is `subm
 A semantic no-op performs no aggregate save, revision increment, Change, or outbox write. Exact replay never re-enters the operation.
 
 Owner Booking commands use `assertOwnerCommandIdempotencyKey` for the 8–200 printable envelope. `updateBooking` persists the exact command name; Booking No Action uses workflow-specific `resolveGranotBookingCaseNoAction`. Already-satisfied, No Action, and replay create no aggregate Change or Sheet work.
+
+Owner Release commands use the same canonical executor and envelope. Their exact registered names are `createCancellation`, `updateBooking`, and `resolveGranotReleaseCaseNoAction`. The Release adapter owns case/source/link/Booking revalidation, while the cancellation service supplies a transaction-aware primitive that does not open a nested transaction or publish before commit. Create Cancellation emits the complete Booking/Cancellation/optional-Lead causal chain plus one `cancellation_chain` outbox intent; full Booking replacement emits one `booking_chain` intent; verified already-satisfied and No Action emit no aggregate Change or Sheet work.

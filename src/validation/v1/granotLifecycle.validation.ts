@@ -117,6 +117,22 @@ export type GranotLifecycleUpdateBookingCommandInput = z.infer<
   typeof granotLifecycleUpdateBookingCommandSchema
 >;
 
+export const granotLifecycleConfirmCancellationCommandSchema = z.object({
+  expected_case_revision: z.number().int().min(1),
+  expected_booking_revision: z.number().int().min(0),
+  official_cancellation_details: z.object({
+    cancel_date: strictCalendarDateSchema,
+    refund_amount: exactMoneySchema,
+    reason: z.string().trim().max(500).optional(),
+    notes: z.string().trim().max(2000).optional(),
+    cancelled_by: z.string().trim().max(200).optional(),
+  }).strict(),
+}).strict();
+
+export type GranotLifecycleConfirmCancellationCommandInput = z.infer<
+  typeof granotLifecycleConfirmCancellationCommandSchema
+>;
+
 export const granotLifecycleBookingNoActionCommandSchema = z.object({
   expected_case_revision: z.number().int().min(1),
   reason_code: z.enum([
@@ -135,6 +151,13 @@ export const granotLifecycleBookingNoActionCommandSchema = z.object({
 
 export type GranotLifecycleBookingNoActionCommandInput = z.infer<
   typeof granotLifecycleBookingNoActionCommandSchema
+>;
+
+export const granotLifecycleReleaseNoActionCommandSchema =
+  granotLifecycleBookingNoActionCommandSchema;
+
+export type GranotLifecycleReleaseNoActionCommandInput = z.infer<
+  typeof granotLifecycleReleaseNoActionCommandSchema
 >;
 
 const opaqueCursorSchema = z
