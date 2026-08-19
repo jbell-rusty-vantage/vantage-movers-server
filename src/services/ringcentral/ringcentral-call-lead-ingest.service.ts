@@ -28,6 +28,7 @@ import {
   type RingCentralProcessedCallStatus,
 } from "./processed-calls-store";
 import { insertShadowCallLead } from "./shadow-call-leads-store";
+import type { RingCentralAdoptionOutcome } from "./ringcentral-metrics";
 
 /**
  * The single, path-agnostic descriptor of a call that has qualified as a
@@ -72,6 +73,14 @@ export type RingCentralIngestResult = {
   callLeadId: string | null;
   telephonySessionId: string | null;
   callLogId: string | null;
+  /**
+   * Read-only report of the Unit 20 convergence attempt for bounded caller
+   * telemetry (Section 33 `ringcentral_adoptions_total{outcome}`). It reports
+   * what convergence already decided and never changes candidate selection,
+   * transaction, or duplicate rules. `null` means convergence was not reached
+   * because the call was already terminal in the processed-call ledger.
+   */
+  convergenceOutcome: RingCentralAdoptionOutcome | null;
 };
 
 export type RingCentralIngestDependencies = {
@@ -165,6 +174,7 @@ export async function ingestRingCentralQualifiedCall(
       callLeadId: existing.callLeadId,
       telephonySessionId: call.telephonySessionId,
       callLogId: call.callLogId,
+      convergenceOutcome: null,
     };
   }
 
@@ -230,6 +240,7 @@ export async function ingestRingCentralQualifiedCall(
       callLeadId: convergence.callLeadId,
       telephonySessionId: call.telephonySessionId,
       callLogId: call.callLogId,
+      convergenceOutcome: "adopted",
     };
   }
   if (
@@ -395,6 +406,7 @@ export async function ingestRingCentralQualifiedCall(
           callLeadId: raced.callLeadId,
           telephonySessionId: call.telephonySessionId,
           callLogId: call.callLogId,
+          convergenceOutcome: convergence.outcome,
         };
       }
     }
@@ -493,6 +505,7 @@ export async function ingestRingCentralQualifiedCall(
     callLeadId,
     telephonySessionId: call.telephonySessionId,
     callLogId: call.callLogId,
+    convergenceOutcome: convergence.outcome,
   };
 }
 

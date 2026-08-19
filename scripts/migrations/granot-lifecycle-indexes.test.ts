@@ -13,6 +13,10 @@ import {
   findDecisionObservationAttemptCollisions,
   findNormalizedGranotLabelCollisions,
   findObservationReceiptIdCollisions,
+  findCallLogSyncStateKeyCollisions,
+  orderedCallLogSyncStateIndexCreates,
+  reportCallLogSyncStateRows,
+  verifyCallLogSyncStateIndexDefinitions,
   GRANOT_CRM_SOURCE_UNIQUE_INDEX_APPLY_ENABLED,
   orderedGranotAutomationSourceIndexCreates,
   orderedGranotCrmSourceIndexCreates,
@@ -491,5 +495,64 @@ test("[AC-32] EntityChange indexes create non-unique first and verify the unique
       })),
     ).ok,
     true,
+  );
+});
+
+test("[AC-17] Call Log sync state reporting finds duplicate and non-account rows", () => {
+  const rows = [
+    { _id: "aaaaaaaaaaaaaaaaaaaaaaa1", key: "account" },
+    { _id: "aaaaaaaaaaaaaaaaaaaaaaa2", key: "account" },
+    { _id: "aaaaaaaaaaaaaaaaaaaaaaa3", key: "legacy" },
+    { _id: "aaaaaaaaaaaaaaaaaaaaaaa4" },
+  ];
+  const collisions = findCallLogSyncStateKeyCollisions(rows);
+  assert.equal(collisions.length, 1);
+  assert.equal(collisions[0]?.key, "account");
+  assert.equal(collisions[0]?.count, 2);
+  assert.equal(collisions[0]?.masked_ids.length, 2);
+  // Masked identifiers only — no raw row ids in the manifest.
+  for (const masked of collisions[0]?.masked_ids ?? []) {
+    assert.equal(rows.some((row) => row._id === masked), false);
+  }
+
+  const report = reportCallLogSyncStateRows(rows);
+  assert.equal(report.total_row_count, 4);
+  assert.equal(report.account_row_count, 2);
+  assert.equal(report.non_account_row_count, 1);
+  assert.equal(report.missing_key_row_count, 1);
+  assert.equal(report.non_account_masked_ids.length, 1);
+});
+
+test("[AC-17] a clean singleton reports zero collisions", () => {
+  const rows = [{ _id: "aaaaaaaaaaaaaaaaaaaaaaa1", key: "account" }];
+  assert.deepEqual(findCallLogSyncStateKeyCollisions(rows), []);
+  assert.equal(reportCallLogSyncStateRows(rows).account_row_count, 1);
+});
+
+test("[AC-17] the Call Log sync state key index is unique and verifiable", () => {
+  const ordered = orderedCallLogSyncStateIndexCreates();
+  assert.equal(ordered.nonUnique.length, 0);
+  assert.equal(ordered.unique.length, 1);
+  assert.deepEqual(ordered.unique[0], {
+    name: "ringcentral_call_log_sync_state_key_unique",
+    key: { key: 1 },
+    unique: true,
+  });
+
+  assert.equal(
+    verifyCallLogSyncStateIndexDefinitions([
+      { name: "ringcentral_call_log_sync_state_key_unique", key: { key: 1 }, unique: true },
+    ]).ok,
+    true,
+  );
+  assert.deepEqual(verifyCallLogSyncStateIndexDefinitions([]).missing, [
+    "ringcentral_call_log_sync_state_key_unique",
+  ]);
+  // A non-unique key index does not satisfy the singleton contract.
+  assert.equal(
+    verifyCallLogSyncStateIndexDefinitions([
+      { name: "ringcentral_call_log_sync_state_key_unique", key: { key: 1 } },
+    ]).ok,
+    false,
   );
 });

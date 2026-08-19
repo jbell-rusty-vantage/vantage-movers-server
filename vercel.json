@@ -64,7 +64,7 @@
   "crons": [
     {
       "path": "/api/cron/ringcentral-call-log-sync",
-      "schedule": "0 */2 * * *"
+      "schedule": "*/30 * * * *"
     },
     {
       "path": "/api/cron/ringcentral-analytics-reconcile",

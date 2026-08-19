@@ -80,7 +80,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - `operationalWorkbooks/` — Registered operational spreadsheet IDs/masks
 
 ### RingCentral
-- Routes are HTTP/cron boundaries only. Logic lives in `ringcentral/`: auth/client, webhook capture, candidates, Call Log sync, analytics reconcile, duplicate detection, call-lead ingest.
+- Routes are HTTP/cron boundaries only. Logic lives in `ringcentral/`: auth/client, webhook capture, candidates, Call Log sync, analytics reconcile, duplicate detection, call-lead ingest. `call-log-sync-state.store.ts` owns the singleton Call Log cursor plus its five-minute owner-fenced run lease (Mongo, not the cron trigger, elects the winner) and `ringcentral-metrics.ts` owns the Section 33 RingCentral metrics. `ringcentral-cron.routes.ts` exposes `createRingCentralCronRouter(deps)` for tests and maps lease contention to a bounded skip.
 - Operations Registry inbound-route snapshot owns runtime inbound-number → source attribution. `call-lead-sources.ts` is migration/test seed only — do not import it at runtime. `ringcentral-call-lead-ingest.service.ts` is the shared promotion path — do not create RC call leads from routes/scripts directly.
 - `ringcentral-config.ts` is the single source for RC env toggles and write posture.
 

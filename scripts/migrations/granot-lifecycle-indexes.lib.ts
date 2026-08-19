@@ -20,8 +20,9 @@ import {
 } from "./granot-lifecycle-revisions.lib";
 
 import { ENTITY_CHANGE_INDEXES } from "../../src/models/EntityChange";
+import { RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX } from "../../src/services/ringcentral/call-log-sync-state.store";
 
-export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/8";
+export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/9";
 export const FORM_LEAD_COLLECTION = "form_leads";
 export const CALL_LEAD_COLLECTION = "call_leads";
 
@@ -585,6 +586,93 @@ export function verifyBookedLeadNormalizedJobIndexDefinitions(
 
 function sameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
+/**
+ * Unit 21 — RingCentral Call Log sync state singleton.
+ *
+ * The `key: "account"` document carries both the high-water cursor and the
+ * five-minute run lease, so two rows would allow two lease winners. Report
+ * duplicate and non-`account` rows first; create the unique key index only on
+ * a zero-collision report. Never choose, merge, or delete a row automatically.
+ */
+export type CallLogSyncStateKeyCollision = {
+  key: string;
+  count: number;
+  masked_ids: string[];
+};
+
+export function findCallLogSyncStateKeyCollisions(
+  rows: readonly { _id: string; key?: unknown }[],
+): CallLogSyncStateKeyCollision[] {
+  const groups = new Map<string, { count: number; masked_ids: string[] }>();
+  for (const row of rows) {
+    if (typeof row.key !== "string" || !row.key) {
+      continue;
+    }
+    const current = groups.get(row.key) ?? { count: 0, masked_ids: [] };
+    current.count += 1;
+    current.masked_ids.push(maskReceiptId(row._id));
+    groups.set(row.key, current);
+  }
+  return [...groups.entries()]
+    .filter(([, group]) => group.count > 1)
+    .map(([key, group]) => ({
+      key,
+      count: group.count,
+      masked_ids: group.masked_ids.sort(),
+    }))
+    .sort((left, right) => left.key.localeCompare(right.key));
+}
+
+export type CallLogSyncStateRowReport = {
+  total_row_count: number;
+  account_row_count: number;
+  non_account_row_count: number;
+  missing_key_row_count: number;
+  non_account_masked_ids: string[];
+};
+
+export function reportCallLogSyncStateRows(
+  rows: readonly { _id: string; key?: unknown }[],
+): CallLogSyncStateRowReport {
+  const nonAccount = rows.filter(
+    (row) => typeof row.key === "string" && row.key && row.key !== "account",
+  );
+  return {
+    total_row_count: rows.length,
+    account_row_count: rows.filter((row) => row.key === "account").length,
+    non_account_row_count: nonAccount.length,
+    missing_key_row_count: rows.filter(
+      (row) => typeof row.key !== "string" || !row.key,
+    ).length,
+    non_account_masked_ids: nonAccount
+      .map((row) => maskReceiptId(row._id))
+      .sort(),
+  };
+}
+
+export function orderedCallLogSyncStateIndexCreates() {
+  return {
+    nonUnique: [] as Array<typeof RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX>,
+    unique: [RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX],
+  };
+}
+
+export function verifyCallLogSyncStateIndexDefinitions(
+  actual: readonly DeclaredMongoIndex[],
+): { ok: boolean; missing: string[]; mismatched: string[] } {
+  const expected = RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX;
+  const found =
+    actual.find((index) => index.name === expected.name) ??
+    actual.find((index) => sameKey(index.key, expected.key));
+  if (!found) {
+    return { ok: false, missing: [expected.name], mismatched: [] };
+  }
+  if (found.unique !== true || !sameKey(found.key, expected.key)) {
+    return { ok: false, missing: [], mismatched: [found.name] };
+  }
+  return { ok: true, missing: [], mismatched: [] };
 }
 
 export type LeadS08IndexContract = {

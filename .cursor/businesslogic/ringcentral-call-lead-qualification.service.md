@@ -99,17 +99,35 @@ Optional future hardening: `RINGCENTRAL_WEBHOOK_CALL_LOG_VALIDATE` — confirm q
 
 ## 3. Call Log cron (`call-log-sync.service.ts`)
 
-**Route:** `GET|POST /api/cron/ringcentral-call-log-sync` (Vercel cron, `CRON_SECRET`). Gated by `RINGCENTRAL_CALL_LOG_SYNC_ENABLED`.
+**Route:** `GET|POST /api/cron/ringcentral-call-log-sync` (Vercel cron every 30 minutes, `CRON_SECRET`). Gated by `RINGCENTRAL_CALL_LOG_SYNC_ENABLED`. The route is a trigger and mapper only; it coordinates nothing.
 
 Each run:
 
-1. **Window:** `resolveWindowStart` — max of cursor overlap (`lastSyncTo - overlap`, default 15m) and rolling lookback floor (default 12h); first run uses initial lookback (default 30m). Guards long calls and RingCentral finalization lag.
-2. **Fetch:** Detailed inbound voice Call Log, paginated (250/page, max 20 pages).
-3. **Vet:** `vetRingCentralCallLogRecord` per record — same business rule as evaluator; exposes `rejectionReasons[]`.
-4. **Ingest:** Qualified rows → `RingCentralQualifiedCall` with `ingestionSource: "call_log_sync"`, `qualificationReason: "call_log_inbound_target_answered_over_120s"`, `answeredAt = startTime`, `terminalAt = start + duration`.
-5. **Cursor:** Advances only on success; errors leave window for retry. Re-scans are safe — ingest idempotency skips already-processed sessions/logs.
+1. **Claim:** Atomically acquire the `key: "account"` state lease (`leased_until` missing or `<= now`) for five minutes. A cron request is only a trigger — **Mongo state elects the single winner.** A failed claim performs no provider request, route observation, ingest, cursor write, or Lead effect; it returns `{ ok: true, skipped: true, reason: "lease_held" }` and increments `ringcentral_call_log_lease_contention_total`. A disabled route never claims. Runs never wait or spin.
+2. **Window:** `resolveWindowStart` — `windowTo` is the winner's claim instant; `windowFrom` is the earlier of the cursor overlap (`lastSyncTo - overlap`, default 15m) and the rolling lookback floor (default 12h), so the floor always wins for a recent cursor. First run uses the initial lookback (default 30m) under the same floor. The 12-hour floor is locked and does **not** shrink with the cron cadence; it guards long calls and RingCentral finalization lag.
+3. **Fetch:** Detailed inbound voice Call Log, one page at a time (250/page, max 20 pages). A `429` is counted into `last_throttled_count` and rethrown — provider retry policy is unchanged.
+4. **Vet:** `vetRingCentralCallLogRecord` per record — same business rule as evaluator; exposes `rejectionReasons[]`.
+5. **Ingest:** Qualified rows → `RingCentralQualifiedCall` with `ingestionSource: "call_log_sync"`, `qualificationReason: "call_log_inbound_target_answered_over_120s"`, `answeredAt = startTime`, `terminalAt = start + duration`.
+6. **Renew:** The lease is renewed to `now + 5m` before the long pagination/ingest phase and while work remains. Every renewal and terminal write is fenced by `{ key, lease_owner, leased_until: { $gt: now } }`. A zero-document renewal means the lease was lost: the run stops starting new pages/records and writes no success, error, counter, or cursor as the former owner. Already committed effects stay valid and are idempotent on the next rescan.
+7. **Cursor:** `lastSyncFrom`/`lastSyncTo` advance **only** in the fenced full-success update after every page and qualified record completes. Pagination failure, unrecovered throttling, vetting/route failure, adoption/conflict/ledger failure, normal-ingest failure, lease loss, or terminal-write fence loss all leave the cursor untouched, so the next run retries the same range. Re-scans are safe — ingest idempotency skips already-processed sessions/logs.
 
-**Local script:** `pnpm ringcentral:call-log:sync:run`.
+**Lease and telemetry state** (`ringcentral_call_log_sync_state(_test)`, one `key: "account"` row):
+
+| Field | Meaning |
+|-------|---------|
+| `lease_owner`, `leased_until`, `lease_acquired_at` | Five-minute renewable run lease. Absent means claimable; expiry is the only recovery (a terminated process needs no cleanup). |
+| `last_runtime_ms` | Whole nonnegative run milliseconds. |
+| `last_adopted_count`, `last_adoption_conflict_count` | Bounded Unit 20 adoption outcomes observed by the run. |
+| `last_throttled_count` | Provider throttles observed by the client; `0` when none. |
+| `lastError` | A bounded code from a closed set (`route_snapshot_failed`, `provider_request_failed`, `provider_throttled`, `ingest_failed`, `state_write_failed`, `lease_lost`, `unknown_error`) — never a provider body or caller value. |
+
+The singleton needs the unique `{ key: 1 }` index `ringcentral_call_log_sync_state_key_unique`; it is what makes a first-run race yield one winner instead of two rows. Runtime never creates it and **fails closed when it is absent**; deployment is `pnpm migration:granot-lifecycle:indexes -- --report | --apply --confirm-production=<db> | --verify`.
+
+**Metrics (final-spec Section 33):** `ringcentral_call_log_runtime_ms`, `ringcentral_adoptions_total{outcome}` (`adopted|conflict|not_found|ineligible|disabled`), `ringcentral_call_log_lease_contention_total`. **Events:** `started`, `completed`, `failed`, `lease_contended`, `lease_recovered`, `lease_lost` — masked owner hash, window timestamps, duration, counts, and error code only. No caller phone/name, raw call payload, provider body, credential, token, or header ever enters state, metrics, logs, or events.
+
+**Cadence and rollback:** `vercel.json` runs `/api/cron/ringcentral-call-log-sync` at `*/30 * * * *`. Roll back by restoring `0 */2 * * *` first, then `RINGCENTRAL_CALL_LOG_SYNC_ENABLED=false`, then (only if adoption is unsafe) `RINGCENTRAL_GRANOT_ADOPTION_ENABLED=false`. Keep the additive lease/telemetry fields and the unique safety index. Do not rewind a successful cursor without a reviewed recovery plan.
+
+**Local script:** `node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/ringcentral/ringcentral-call-log-sync-run.ts`.
 
 ## 4. Shared ingest (`ringcentral-call-lead-ingest.service.ts`) — promotion gate
 
@@ -235,7 +253,7 @@ Duplicate Call Leads still persist and **Sheet Sync** to `Duplicate Calls` tab (
 | `GET /api/dev/ringcentral/*` | Candidates, sessions, decisions, processed calls, config |
 | `pnpm ringcentral:webhook:monitor` | Live webhook inspection |
 | `pnpm ringcentral:workflow:test` | End-to-end qualification scenarios |
-| `pnpm ringcentral:call-log:sync:run` | Manual cron run + artifact JSON |
+| `scripts/dev_ops/ringcentral/ringcentral-call-log-sync-run.ts` (via `tsx`) | Manual cron run + artifact JSON, including masked lease owner, runtime, and cursor-advanced |
 
 ## Related modules
 
@@ -248,7 +266,10 @@ Duplicate Call Leads still persist and **Sheet Sync** to `Duplicate Calls` tab (
 | `callLeadConvergence.service.ts` | Exact candidate selection and canonical adoption/conflict |
 | `ringcentral-config.ts` | Feature flags, write mode, sync windows |
 | `processed-calls-store.ts` | Ingest idempotency ledger |
+| `call-log-sync-state.store.ts` | Singleton cursor + five-minute renewable run lease with owner-fenced writes |
+| `ringcentral-metrics.ts` | Section 33 RingCentral runtime/adoption/contention metrics |
 | `scripts/migrations/ringcentral-processed-call-indexes.ts` | Report/apply/verify unique call-log race fence |
+| `scripts/migrations/granot-lifecycle-indexes.ts` | Report/apply/verify the unique Call Log sync state singleton key index |
 | `shadow-call-leads-store.ts` | Shadow-mode staging |
 | `leads/callLead.service.ts` | `createRingCentralCallLead` — Mongo + Sheet Sync |
 | [`call-lead.service.md`](call-lead.service.md) | Call Lead create semantics, CPL, sheet tabs |
@@ -263,3 +284,7 @@ Duplicate Call Leads still persist and **Sheet Sync** to `Duplicate Calls` tab (
 - `ringcentral-call-lead-ingest.service.test.ts` — adoption-before-duplicate and continued non-adoption behavior
 - `ringcentral-duplicate-guard.test.ts` — adopted-ID, unresolved-candidate, scope, and prior-window exclusions
 - `processed-calls-store.test.ts` and migration tests — terminal statuses and identity fences
+- `call-log-sync-state.store.test.ts` — AC-17 lease claim/expiry/renewal/takeover/fencing/release and singleton collision (Mongo assertions are replica-gated)
+- `call-log-sync.service.test.ts` — AC-17 claim-before-work, loser no-op, renewal, stop-on-loss, cursor-on-full-success only, 12-hour floor, and telemetry privacy
+- `call-log-sync-lease.replica.test.ts` — AC-17 real concurrent runs, cursor immobility on failure, expiry takeover, and rescan idempotency
+- `ringcentral-cron.routes.test.ts` — auth, disabled skip, `lease_held` skip, safe failure, and the exact `vercel.json` entry

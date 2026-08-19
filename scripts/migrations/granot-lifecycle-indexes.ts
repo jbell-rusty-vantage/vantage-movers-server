@@ -69,8 +69,14 @@ import {
   orderedFormLeadS08IndexCreates,
   verifyCallLeadS08IndexDefinitions,
   verifyFormLeadS08IndexDefinitions,
+  findCallLogSyncStateKeyCollisions,
+  orderedCallLogSyncStateIndexCreates,
+  reportCallLogSyncStateRows,
+  verifyCallLogSyncStateIndexDefinitions,
   type DeclaredMongoIndex,
 } from "./granot-lifecycle-indexes.lib.js";
+import { getRingCentralCollectionName } from "../../src/services/ringcentral/ringcentral-config.js";
+import { RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX } from "../../src/services/ringcentral/call-log-sync-state.store.js";
 import { CALL_LEAD_S08_INDEXES } from "../../src/models/CallLead.js";
 import { FORM_LEAD_S08_INDEXES } from "../../src/models/FormLead.js";
 import {
@@ -286,6 +292,31 @@ async function loadBookedLeadNormalizedJobRows(): Promise<
   }));
 }
 
+/**
+ * Unit 21 — the RingCentral Call Log sync-state singleton. The collection name
+ * follows `RINGCENTRAL_COLLECTION_MODE`, so a test-mode run reports and
+ * verifies the `_test` collection and never the production one.
+ */
+function callLogSyncStateCollectionName(): string {
+  return getRingCentralCollectionName("callLogSyncState");
+}
+
+async function loadCallLogSyncStateRows(): Promise<
+  Array<{ _id: string; key?: unknown }>
+> {
+  const collection = mongoose.connection.db?.collection(
+    callLogSyncStateCollectionName(),
+  );
+  if (!collection) {
+    return [];
+  }
+  const documents = await collection.find({}, { projection: { key: 1 } }).toArray();
+  return documents.map((document) => ({
+    _id: String(document._id),
+    key: document.key,
+  }));
+}
+
 async function main(): Promise<void> {
   const mode = parseGranotLifecycleMigrationMode(process.argv);
   await connectMongo();
@@ -325,6 +356,11 @@ async function main(): Promise<void> {
   const entityChangeOrdered = orderedEntityChangeIndexCreates();
   const formLeadOrdered = orderedFormLeadS08IndexCreates();
   const callLeadOrdered = orderedCallLeadS08IndexCreates();
+  const callLogSyncStateRows = await loadCallLogSyncStateRows();
+  const callLogSyncStateCollisions =
+    findCallLogSyncStateKeyCollisions(callLogSyncStateRows);
+  const callLogSyncStateReport = reportCallLogSyncStateRows(callLogSyncStateRows);
+  const callLogSyncStateOrdered = orderedCallLogSyncStateIndexCreates();
   let created: string[] = [];
   let verify: ReturnType<typeof verifyReceiptIndexDefinitions> | undefined;
   let observationVerify: ReturnType<typeof verifyObservationIndexDefinitions> | undefined;
@@ -337,6 +373,9 @@ async function main(): Promise<void> {
   let entityChangeVerify: ReturnType<typeof verifyEntityChangeIndexDefinitions> | undefined;
   let formLeadVerify: ReturnType<typeof verifyFormLeadS08IndexDefinitions> | undefined;
   let callLeadVerify: ReturnType<typeof verifyCallLeadS08IndexDefinitions> | undefined;
+  let callLogSyncStateVerify:
+    | ReturnType<typeof verifyCallLogSyncStateIndexDefinitions>
+    | undefined;
 
   if (mode === "apply") {
     created = await createIndexes(GRANOT_OBSERVATION_RECEIPT_COLLECTION, ordered.nonUnique);
@@ -485,6 +524,39 @@ async function main(): Promise<void> {
       ...created,
       ...(await createIndexes(CALL_LEAD_COLLECTION, missingCallLead)),
     ];
+
+    // Unit 21 singleton key. Stop and report rather than choosing, merging, or
+    // deleting a state row automatically.
+    if (callLogSyncStateCollisions.length > 0) {
+      const manifest = buildManifest({
+        databaseName,
+        mode,
+        collisions,
+        observationCollisions,
+        normalizedLabelCollisions,
+        created,
+        uniqueCreated: [],
+        verify,
+        observationVerify,
+        callLogSyncStateCollisions,
+        callLogSyncStateReport,
+      });
+      await writeGranotLifecycleManifest({
+        directory: OUTPUT_DIR,
+        runId: `granot-lifecycle-indexes-${mode}-${Date.now()}`,
+        manifest,
+      });
+      throw new Error(
+        `Refusing unique Call Log sync state key index create: ${callLogSyncStateCollisions.length} collision group(s).`,
+      );
+    }
+    created = [
+      ...created,
+      ...(await createIndexes(
+        callLogSyncStateCollectionName(),
+        callLogSyncStateOrdered.unique,
+      )),
+    ];
   }
 
   if (mode === "verify") {
@@ -521,6 +593,9 @@ async function main(): Promise<void> {
     callLeadVerify = verifyCallLeadS08IndexDefinitions(
       await listDeclaredIndexes(CALL_LEAD_COLLECTION),
     );
+    callLogSyncStateVerify = verifyCallLogSyncStateIndexDefinitions(
+      await listDeclaredIndexes(callLogSyncStateCollectionName()),
+    );
   }
 
   const uniqueCreated =
@@ -532,7 +607,8 @@ async function main(): Promise<void> {
     activationCollisions.length === 0 &&
     recordLinkCollisions.length === 0 &&
     bookedLeadCollisions.length === 0 &&
-    entityChangeCollisions.length === 0
+    entityChangeCollisions.length === 0 &&
+    callLogSyncStateCollisions.length === 0
       ? [
           ...ordered.unique.map((index) => index.name),
           ...observationOrdered.unique.map((index) => index.name),
@@ -542,6 +618,7 @@ async function main(): Promise<void> {
           ...recordLinkOrdered.unique.map((index) => index.name),
           ...bookedLeadOrdered.unique.map((index) => index.name),
           ...entityChangeOrdered.unique.map((index) => index.name),
+          ...callLogSyncStateOrdered.unique.map((index) => index.name),
         ]
       : [];
 
@@ -569,6 +646,9 @@ async function main(): Promise<void> {
     entityChangeVerify,
     formLeadVerify,
     callLeadVerify,
+    callLogSyncStateCollisions,
+    callLogSyncStateReport,
+    callLogSyncStateVerify,
   });
   await writeGranotLifecycleManifest({
     directory: OUTPUT_DIR,
@@ -589,6 +669,7 @@ async function main(): Promise<void> {
       entityChangeVerify,
       formLeadVerify,
       callLeadVerify,
+      callLogSyncStateVerify,
     ].filter((result) => result && !result.ok);
     if (failed.length > 0) {
       const missing = failed.flatMap((result) => result?.missing ?? []);
@@ -624,6 +705,9 @@ function buildManifest(input: {
   entityChangeVerify?: ReturnType<typeof verifyEntityChangeIndexDefinitions>;
   formLeadVerify?: ReturnType<typeof verifyFormLeadS08IndexDefinitions>;
   callLeadVerify?: ReturnType<typeof verifyCallLeadS08IndexDefinitions>;
+  callLogSyncStateCollisions?: ReturnType<typeof findCallLogSyncStateKeyCollisions>;
+  callLogSyncStateReport?: ReturnType<typeof reportCallLogSyncStateRows>;
+  callLogSyncStateVerify?: ReturnType<typeof verifyCallLogSyncStateIndexDefinitions>;
 }) {
   return {
     script_version: INDEX_MIGRATION_SCRIPT_VERSION,
@@ -641,6 +725,7 @@ function buildManifest(input: {
       ...ENTITY_CHANGE_INDEXES.map((index) => index.name),
       ...FORM_LEAD_S08_INDEXES.map((index) => index.name),
       ...CALL_LEAD_S08_INDEXES.map((index) => index.name),
+      RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX.name,
     ],
     collision_count:
       input.collisions.length +
@@ -650,7 +735,8 @@ function buildManifest(input: {
       (input.activationCollisions?.length ?? 0) +
       (input.recordLinkCollisions?.length ?? 0) +
       (input.bookedLeadCollisions?.length ?? 0) +
-      (input.entityChangeCollisions?.length ?? 0),
+      (input.entityChangeCollisions?.length ?? 0) +
+      (input.callLogSyncStateCollisions?.length ?? 0),
     collisions: input.collisions,
     observation_receipt_id_collisions: input.observationCollisions,
     normalized_granot_label_collisions: input.normalizedLabelCollisions,
@@ -673,6 +759,11 @@ function buildManifest(input: {
     entity_change_verify: input.entityChangeVerify,
     form_lead_s08_verify: input.formLeadVerify,
     call_lead_s08_verify: input.callLeadVerify,
+    call_log_sync_state_collection: callLogSyncStateCollectionName(),
+    call_log_sync_state_key_collisions: input.callLogSyncStateCollisions ?? [],
+    call_log_sync_state_rows: input.callLogSyncStateReport,
+    call_log_sync_state_index_contract: RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX,
+    call_log_sync_state_verify: input.callLogSyncStateVerify,
     global_unique_lead_job_index: false,
   };
 }
