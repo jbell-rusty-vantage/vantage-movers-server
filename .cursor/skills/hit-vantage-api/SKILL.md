@@ -1,19 +1,96 @@
 ---
-description: Production API host plus the v1/admin route catalog for operator scripts
-alwaysApply: true
+name: hit-vantage-api
+description: Call the Vantage main-server HTTP API from operator scripts using VANTAGE_API_SECRET and x-api-secret. Use when hitting production or local /api/v1 routes, writing a scripts/api script, curling vantage-movers-main-server.vercel.app, probing form-leads, admin, Granot lifecycle, or observability, or when the user asks to hit our own API.
 ---
 
-# Production API
+# Hit the Vantage API
 
-**Host:** `vantage-movers-main-server.vercel.app`
+Work from `vantage-main-server`. Do not read `.env`. Never print, log, or commit `VANTAGE_API_SECRET` or signing secrets.
 
-**Base URL:** `https://vantage-movers-main-server.vercel.app`
+## When to use
 
-Hit `/api/v1/*` with `x-api-secret` from `VANTAGE_API_SECRET` in `vantage-main-server/.env`. Operator scripts: `.cursor/skills/hit-vantage-api/SKILL.md` and `scripts/api/`. Override host with `VANTAGE_API_BASE_URL` (localhost / Preview).
+The user wants to call **this server's HTTP API** (production or local), not Mongo / Sheets / CRM clients.
 
-When a route is added or renamed, update this list **and** `.cursor/skills/hit-vantage-api/SKILL.md`. Source: `src/routes/v1.routes.ts` plus mounted routers.
+## Defaults
 
-## Unguarded
+| Item | Value |
+|------|--------|
+| Production host | `vantage-movers-main-server.vercel.app` |
+| Production base | `https://vantage-movers-main-server.vercel.app` |
+| Local base | `http://localhost:3000` (`pnpm dev`) |
+| Auth header | `x-api-secret: process.env.VANTAGE_API_SECRET` |
+| Env file | `vantage-main-server/.env` via `node --env-file=.env` / `pnpm` |
+| Route source | `src/routes/v1.routes.ts` plus mounted routers |
+| Same route list | `.cursor/rules/production-url.mdc` |
+
+Override host with `VANTAGE_API_BASE_URL` (Preview URL, localhost). Unguarded probes: `GET /`, `GET /health`, `GET /db`.
+
+## Auth
+
+`router.use("/api/v1", requireApiSecret)` in `v1.routes.ts`. Send `x-api-secret`. Missing secret → `401`. Unset server secret → `500`.
+
+Exceptions (no API secret): `/`, `/health`, `/db`, `/api/v1/extension/auth/*`, `GET /api/v1/admin/google-drive/oauth/callback`. Cron/webhook routes use other secrets — not this skill.
+
+### Owner-gated admin
+
+Registry, Granot lifecycle mutations, booking-lead recon, ingestion/reporting/automation owner writes need signed proxy headers **in addition to** `x-api-secret`:
+
+`x-vantage-admin-user-id`, `x-vantage-admin-email`, `x-vantage-admin-role`, `x-vantage-admin-request-id`, `x-vantage-admin-timestamp`, `x-vantage-admin-signature`
+
+HMAC is `VANTAGE_ADMIN_PROXY_SIGNING_SECRET` over the canonical payload in `src/services/operationsRegistry/trustedActorCanonical.ts`. `vantageApi({ signAdmin: true })` builds them when `VANTAGE_ADMIN_USER_ID`, `VANTAGE_ADMIN_EMAIL`, and `VANTAGE_ADMIN_PROXY_SIGNING_SECRET` are set. Role defaults to `owner`.
+
+`POST /api/v1/employee-booking-submissions` is secret-only and also needs `x-public-client-key-hash` (64-char hex).
+
+## Workflow
+
+Copy this checklist:
+
+```
+API hit
+- [ ] 1. Confirm target (production vs VANTAGE_API_BASE_URL / localhost)
+- [ ] 2. Pick METHOD + path from the catalog below
+- [ ] 3. Prefer scripts/api/vantageApi.ts; write a custom script if the task has branching
+- [ ] 4. GET/read first; production POST/PATCH/DELETE needs explicit user OK + --i-mean-it
+- [ ] 5. Run via pnpm / --env-file=.env
+- [ ] 6. Report status + JSON. Never echo secrets.
+```
+
+### Reusable client
+
+```ts
+import { vantageApi } from "./vantageApi";
+
+const result = await vantageApi({
+  method: "GET",
+  path: "/api/v1/form-leads",
+  query: { limit: 5 },
+});
+```
+
+```bash
+pnpm api:hit
+pnpm api:hit -- GET /api/v1/form-leads
+pnpm api:hit -- POST /api/v1/form-leads/search --body '{"phone_number":"5551234567"}'
+pnpm api:hit -- GET /api/v1/admin/granot-lifecycle/cases --sign-admin
+pnpm api:hit -- POST /api/v1/form-leads --body '{...}' --i-mean-it
+```
+
+### Custom script
+
+1. Add `scripts/api/<task>.ts` (not `scripts/migrations/`).
+2. Import `vantageApi` from `./vantageApi`.
+3. Put looping, filters, and output files in the custom script.
+4. Run: `node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/api/<task>.ts`
+
+Zod schemas live in `src/validation/v1.validation.ts` and `src/validation/v1/`. Typical JSON envelope: `{ ok: true, data }` or `{ ok: false, error }`. Deletes often return `204`.
+
+When a route is added or renamed, update this catalog **and** `.cursor/rules/production-url.mdc`.
+
+## Route catalog
+
+Source: `src/routes/v1.routes.ts`, `extension-auth.routes.ts`, `google-drive-oauth.routes.ts`, `extension-granot-apply.routes.ts`, `ringcentral-registry.routes.ts`, `granot-lifecycle-admin.routes.ts`, `granot-automation.routes.ts`, `ingestion.routes.ts`, `reporting.routes.ts`, `src/app.ts`.
+
+### Unguarded
 
 ```
 GET    /
@@ -26,7 +103,7 @@ POST   /api/v1/extension/auth/logout
 GET    /api/v1/admin/google-drive/oauth/callback
 ```
 
-## Public v1 (behind x-api-secret)
+### Public v1 (behind x-api-secret)
 
 ```
 GET    /api/v1/form-leads
@@ -70,7 +147,7 @@ GET    /api/v1/granot-crm/csv/sources
 POST   /api/v1/granot-crm/csv/uploads
 ```
 
-## Admin discovery, catalog, sources, CPL
+### Admin discovery, catalog, sources, CPL
 
 ```
 GET    /api/v1/admin/search
@@ -117,7 +194,7 @@ GET    /api/v1/admin/cpl-corrections/:id
 POST   /api/v1/admin/cpl-corrections/:id/cancel
 ```
 
-## Admin browse, exports, analytics
+### Admin browse, exports, analytics
 
 Browse resources: `form-leads` | `call-leads` | `booked-leads` | `cancelled-leads` | `customers` | `agents`
 
@@ -134,7 +211,7 @@ GET    /api/v1/admin/exports/reports/agent-sales.csv
 
 `{report}`: `summary` | `revenue-trend` | `source-company-performance` | `agent-performance` | `booking-cancellation-ratio` | `source-company-funnel` | `cancellation-reasons` | `lead-source-performance` | `local-vs-long-distance` | `geographic-lanes` | `pickup-state-performance` | `delivery-state-performance` | `receiver-agent-performance` | `receiver-agent-trend` | `receiver-agent-source-breakdown`
 
-## Admin ops, messages, Drive, registry, observability
+### Admin ops, messages, Drive, registry, observability
 
 ```
 GET    /api/v1/admin/testimonials
@@ -189,7 +266,7 @@ GET    /api/v1/admin/exports/observability/incidents.csv
 GET    /api/v1/admin/exports/observability/reports/:id.csv
 ```
 
-## RingCentral inbound routes
+### RingCentral inbound routes
 
 ```
 GET    /api/v1/admin/ringcentral/inbound-routes
@@ -203,7 +280,7 @@ POST   /api/v1/admin/ringcentral/inbound-routes/:id/deactivate
 GET    /api/v1/admin/ringcentral/inbound-routes/:id/dependencies
 ```
 
-## Granot lifecycle
+### Granot lifecycle
 
 ```
 GET    /api/v1/admin/granot-lifecycle/operations/health
@@ -228,7 +305,7 @@ POST   /api/v1/admin/granot-lifecycle/activation
 POST   /api/v1/admin/granot-lifecycle/receipts/:id/requeue
 ```
 
-## Granot automation, ingestion, reporting
+### Granot automation, ingestion, reporting
 
 ```
 GET    /api/v1/admin/granot-automation/runs

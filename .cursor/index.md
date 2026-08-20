@@ -15,6 +15,7 @@ Production API: https://vantage-movers-main-server.vercel.app
 ├── agents/                  ← Cursor subagents (docs-keeper, spec extractor)
 ├── businesslogic/           ← per-service compact domain docs (see below)
 ├── rules/                   ← Cursor rule files (*.mdc), scoped by glob
+├── skills/                  ← project Agent Skills (hit-vantage-api)
 ├── scripts/                 ← local dev helpers (Mongo, API)
 ├── environment.json         ← Cursor cloud agent environment config
 ├── Dockerfile               ← Cursor cloud agent image
@@ -127,6 +128,7 @@ Rule files apply when editing matching paths (`globs` in each file frontmatter).
 | `typescript.mdc` | TS style |
 | `codebase.mdc` | General codebase notes |
 | `branch-test-vercel-workflow.mdc` | Branch deploy / test workflow |
+| `production-url.mdc` | Production host `vantage-movers-main-server.vercel.app` + v1/admin route catalog |
 
 ---
 

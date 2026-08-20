@@ -144,6 +144,7 @@ Run via `package.json` so `.env` + `tsx` stay consistent.
 
 | Folder | Owns |
 |--------|------|
+| `scripts/api/` | HTTP hits against this server (`pnpm api:hit`, `vantageApi.ts`) using `VANTAGE_API_SECRET` → `x-api-secret`. Production host and route catalog: `rules/production-url.mdc`. Skill: `.cursor/skills/hit-vantage-api/` |
 | `scripts/dev_ops/` | Personal/admin DB ops, patches, Twilio, nested Google Sheets/Apps Script/Postman/RingCentral probes — treat as potentially destructive |
 | `scripts/granot-automation/` | Local run + seed sources (`pnpm granot:*`) |
 | `scripts/reporting/` | Live Google harness + artifact janitor (`pnpm reporting:*`) |
