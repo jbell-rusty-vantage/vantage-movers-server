@@ -286,6 +286,17 @@ export const REVIEWED_SOURCE_CLASSIFICATION_MANIFEST = {
   ] as const satisfies readonly ReviewedSourceFamilySpec[],
 } as const;
 
+export type ReviewedSourceFamilyConst =
+  (typeof REVIEWED_SOURCE_CLASSIFICATION_MANIFEST.families)[number];
+
+export function reviewedFamilyCompanySlug(
+  family: ReviewedSourceFamilyConst | ReviewedSourceFamilySpec,
+): string | undefined {
+  return "company_slug" in family && typeof family.company_slug === "string"
+    ? family.company_slug
+    : undefined;
+}
+
 export function reviewedFamilyForNormalizedLabel(
   normalizedLabel: string,
 ): ReviewedSourceFamilySpec | undefined {

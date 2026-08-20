@@ -4,6 +4,7 @@ import {
   LINK_ONLY_AUTOMATION_GRANULARITY_KEYS,
   REVIEWED_SOURCE_CLASSIFICATION_MANIFEST,
   REVIEWED_SOURCE_COMPANY_SLUG,
+  reviewedFamilyCompanySlug,
   REVIEWED_GRANULARITY_KEYS,
   isExcludedProviderType,
   isLinkOnlyAutomationFamily,
@@ -493,8 +494,9 @@ function intendedFromFamily(
   family: ReviewedSourceFamilySpec,
   dependencies: ResolvedDependencies,
 ): PlannedCrmMutation["intended"] {
-  const lead_source_company = family.company_slug
-    ? dependencies.companiesBySlug[family.company_slug]?.id
+  const companySlug = reviewedFamilyCompanySlug(family);
+  const lead_source_company = companySlug
+    ? dependencies.companiesBySlug[companySlug]?.id
     : undefined;
   const lifecycle_routes = family.routes.map((route) => ({
     route_key: route.route_key,
@@ -548,9 +550,10 @@ type ResolvedDependencies = {
 function reviewedCompanySlugs(): string[] {
   return [
     ...new Set(
-      REVIEWED_SOURCE_CLASSIFICATION_MANIFEST.families.flatMap((family) =>
-        family.company_slug ? [family.company_slug] : [],
-      ),
+      REVIEWED_SOURCE_CLASSIFICATION_MANIFEST.families.flatMap((family) => {
+        const companySlug = reviewedFamilyCompanySlug(family);
+        return companySlug ? [companySlug] : [];
+      }),
     ),
   ];
 }
@@ -568,7 +571,8 @@ function familyDependenciesOk(
   family: ReviewedSourceFamilySpec,
   dependencies: ResolvedDependencies,
 ): boolean {
-  if (family.company_slug && !dependencies.companiesBySlug[family.company_slug]) {
+  const companySlug = reviewedFamilyCompanySlug(family);
+  if (companySlug && !dependencies.companiesBySlug[companySlug]) {
     return false;
   }
   return family.routes.every((route) => dependencies.granularities[route.granularity_key]);
@@ -616,9 +620,8 @@ function resolveRequiredDependencies(
 
   const granularities: Record<string, InventoryGranularity> = {};
   for (const family of REVIEWED_SOURCE_CLASSIFICATION_MANIFEST.families) {
-    const company = family.company_slug
-      ? companiesBySlug[family.company_slug]
-      : undefined;
+    const companySlug = reviewedFamilyCompanySlug(family);
+    const company = companySlug ? companiesBySlug[companySlug] : undefined;
     for (const spec of family.routes) {
       resolveGranularityDependency({
         spec,
