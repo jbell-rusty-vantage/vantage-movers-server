@@ -5,7 +5,8 @@
  * --apply --confirm-production=<database-name>.
  *
  *   pnpm migration:granot-lifecycle:receipts -- --report
- *   pnpm migration:granot-lifecycle:receipts -- --apply --confirm-production=testvantagemovers
+ *   pnpm migration:granot-lifecycle:receipts -- --apply --backfill --confirm-production=<db>
+ *   pnpm migration:granot-lifecycle:receipts -- --apply --confirm-production=<db>
  *   pnpm migration:granot-lifecycle:receipts -- --verify
  */
 import mongoose from "mongoose";
@@ -22,7 +23,9 @@ import {
 import {
   RECEIPT_MIGRATION_SCRIPT_VERSION,
   RETIRED_RECEIPT_FIELDS,
+  assertReceiptBackfillApplyAllowed,
   assertReceiptMigrationApplyAllowed,
+  buildReceiptReshapeUpdate,
   planGranotLifecycleReceiptMigration,
   verifyGranotLifecycleReceiptMigration,
   type LegacyReceiptRow,
@@ -75,6 +78,29 @@ async function loadRetiredIndexNames(): Promise<string[]> {
     .sort();
 }
 
+async function applyBackfill(
+  plan: ReturnType<typeof planGranotLifecycleReceiptMigration>,
+): Promise<number> {
+  const collection = mongoose.connection.db?.collection(
+    GRANOT_OBSERVATION_RECEIPT_COLLECTION,
+  );
+  if (!collection) {
+    throw new Error("Cannot apply receipt backfill: Mongo collection is unavailable.");
+  }
+  if (plan.translate.length === 0) return 0;
+  const operations = plan.translate.map((entry) => {
+    const update = buildReceiptReshapeUpdate(entry);
+    return {
+      updateOne: {
+        filter: { _id: new mongoose.Types.ObjectId(entry.id) },
+        update,
+      },
+    };
+  });
+  const result = await collection.bulkWrite(operations, { ordered: true });
+  return result.modifiedCount;
+}
+
 async function applyCleanup(
   plan: ReturnType<typeof planGranotLifecycleReceiptMigration>,
 ): Promise<number> {
@@ -109,9 +135,15 @@ async function main(): Promise<void> {
     });
   }
 
-  const rows = await loadLegacyReceiptRows();
-  const plan = planGranotLifecycleReceiptMigration(rows);
+  let rows = await loadLegacyReceiptRows();
+  let plan = planGranotLifecycleReceiptMigration(rows);
+  const reportPlan = plan;
   const retiredIndexesBefore = await loadRetiredIndexNames();
+  const backfillRequested = process.argv.includes("--backfill");
+  if (backfillRequested && mode !== "apply") {
+    throw new Error("Receipt --backfill requires --apply --confirm-production=<database-name>.");
+  }
+  let translated = 0;
   let applied = 0;
   let droppedLegacyIndexes: string[] = [];
   let verify:
@@ -119,6 +151,12 @@ async function main(): Promise<void> {
     | undefined;
 
   if (mode === "apply") {
+    if (backfillRequested) {
+      assertReceiptBackfillApplyAllowed(plan);
+      translated = await applyBackfill(plan);
+      rows = await loadLegacyReceiptRows();
+      plan = planGranotLifecycleReceiptMigration(rows);
+    }
     assertReceiptMigrationApplyAllowed(plan);
     applied = await applyCleanup(plan);
     const collection = mongoose.connection.db?.collection(
@@ -150,23 +188,25 @@ async function main(): Promise<void> {
     script_version: RECEIPT_MIGRATION_SCRIPT_VERSION,
     database_name: databaseName,
     mode,
-    total: plan.total,
-    status_counts: plan.status_counts,
-    event_class_counts: plan.event_class_counts,
-    credential_key_counts: plan.credential_key_counts,
-    translate_count: plan.translate.length,
-    already_current: plan.already_current,
-    refused_count: plan.refused.length,
-    refused: plan.refused.map(({ masked_id, processing_status }) => ({
+    total: reportPlan.total,
+    status_counts: reportPlan.status_counts,
+    event_class_counts: reportPlan.event_class_counts,
+    credential_key_counts: reportPlan.credential_key_counts,
+    translate_count: reportPlan.translate.length,
+    already_current: reportPlan.already_current,
+    refused_count: reportPlan.refused.length,
+    refused: reportPlan.refused.map(({ masked_id, processing_status }) => ({
       masked_id,
       processing_status,
     })),
-    translated_masked_ids: plan.translate.map((entry) => entry.masked_id),
+    translated_masked_ids: reportPlan.translate.map((entry) => entry.masked_id),
     v2_complete_count: plan.already_current,
-    legacy_field_counts: plan.legacy_field_counts,
+    legacy_field_counts: reportPlan.legacy_field_counts,
     cleanup_count: plan.cleanup_masked_ids.length,
     supported_legacy_consumer_count: plan.supported_legacy_consumers.length,
     retired_index_names: retiredIndexesBefore,
+    backfill_requested: backfillRequested,
+    translated,
     applied,
     dropped_legacy_indexes: droppedLegacyIndexes,
     verify: verify

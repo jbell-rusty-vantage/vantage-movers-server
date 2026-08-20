@@ -401,7 +401,7 @@ async function defaultTransitionDeadLetter(
         },
         $inc: { "processing.manual_requeue_count": 1 },
       },
-      { new: true, session: session ?? null },
+      { returnDocument: "after", session: session ?? null },
     )
     .lean();
 }

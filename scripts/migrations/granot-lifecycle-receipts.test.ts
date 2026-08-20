@@ -12,7 +12,9 @@ import {
   parseGranotLifecycleMigrationMode,
 } from "./granot-lifecycle-migration.lib";
 import {
+  assertReceiptBackfillApplyAllowed,
   assertReceiptMigrationApplyAllowed,
+  buildReceiptReshapeUpdate,
   planGranotLifecycleReceiptMigration,
   verifyGranotLifecycleReceiptMigration,
   type LegacyReceiptRow,
@@ -121,6 +123,20 @@ test("[AC-02] v2-complete rows are cleanup candidates while no consumer is retai
   assert.deepEqual(proven.supported_legacy_consumers, []);
 });
 
+test("[AC-02] backfill apply is allowed for received legacy rows and writes v2 plus unset", () => {
+  const plan = planGranotLifecycleReceiptMigration([legacyReceived()]);
+  assert.equal(plan.translate.length, 1);
+  assert.doesNotThrow(() => assertReceiptBackfillApplyAllowed(plan));
+  assert.throws(() => assertReceiptMigrationApplyAllowed(plan), /not v2-complete/);
+  const update = buildReceiptReshapeUpdate(plan.translate[0]!);
+  assert.equal(update.$set.evidence_version, 2);
+  assert.equal(update.$set.observation_channel, "granot_webhook");
+  assert.equal(update.$set.processing?.state, "pending");
+  assert.equal(update.$unset.schema_version, "");
+  assert.equal(update.$unset.event_type, "");
+  assert.equal(update.$unset.processing_status, "");
+});
+
 test("[AC-02] cleanup refuses incomplete v2 rows and refused statuses", () => {
   const received = planGranotLifecycleReceiptMigration([legacyReceived()]);
   assert.equal(received.translate[0]?.fields.source_system, "granot");
@@ -139,6 +155,10 @@ test("[AC-02] cleanup refuses incomplete v2 rows and refused statuses", () => {
   assert.equal(refused.refused[0]?.processing_status, "failed");
   assert.throws(
     () => assertReceiptMigrationApplyAllowed(refused),
+    /non-received processing_status/,
+  );
+  assert.throws(
+    () => assertReceiptBackfillApplyAllowed(refused),
     /non-received processing_status/,
   );
 });

@@ -48,10 +48,12 @@ isolation, and privacy scan are green. Neither command is production authority.
 
 ### Unit 33 receipt compatibility retirement
 
-After the one-release compatibility window, the receipt command is a cleanup
-gate, not a translator. Report must show every row v2-complete, zero refused
-rows, zero forbidden credential keys, zero supported legacy consumers, and the
-exact flat-field/index removal plan. Apply then unsets only `event_type`,
+The receipt command can reshape remaining v1 rows, then retire compatibility
+fields. `--apply --backfill` writes the missing v2 envelope from
+`fillLegacyWebhookReceiptV2Fields` and unsets the seven retired fields on those
+same rows. Plain `--apply` remains a cleanup gate: it refuses unless every row
+is already v2-complete. Report must show zero refused rows and zero supported
+legacy consumers before either apply. Cleanup then unsets only `event_type`,
 `received_at`, `schema_version`, `processing_status`, `processing_attempts`,
 `processed_at`, and `processing_error`, and drops only the two indexes over
 those fields. Verify fails while any retired field/index or incomplete v2 row

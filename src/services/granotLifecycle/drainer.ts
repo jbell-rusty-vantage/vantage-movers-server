@@ -861,7 +861,7 @@ async function defaultClaimOne(
   update: ReturnType<typeof buildClaimUpdate>,
 ): Promise<ClaimResult | null> {
   const previous = await getGranotObservationReceiptModel()
-    .findOneAndUpdate(filter, update, { new: false })
+    .findOneAndUpdate(filter, update, { returnDocument: "before" })
     .lean();
   if (!previous) {
     return null;

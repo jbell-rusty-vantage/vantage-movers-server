@@ -588,7 +588,7 @@ async function applyAdoption(
       "ringcentral.original_caller": { $exists: false },
     },
     { $set: set },
-    { new: true, session, runValidators: true },
+    { returnDocument: "after", session, runValidators: true },
   )
     .lean()
     .exec();
@@ -715,7 +715,7 @@ async function applyConflict(
             callIdentityHash,
         },
       },
-      { new: true, session, runValidators: true },
+      { returnDocument: "after", session, runValidators: true },
     )
       .lean()
       .exec();

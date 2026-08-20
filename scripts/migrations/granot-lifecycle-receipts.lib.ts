@@ -10,7 +10,7 @@ import {
 } from "../../src/services/granotLifecycle/receiptEvidence";
 import { maskReceiptId } from "./granot-lifecycle-migration.lib";
 
-export const RECEIPT_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-receipts/2";
+export const RECEIPT_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-receipts/3";
 
 export const RETIRED_RECEIPT_FIELDS = [
   "event_type",
@@ -147,6 +147,32 @@ export function planGranotLifecycleReceiptMigration(
     legacy_field_counts,
     cleanup_masked_ids: cleanup_masked_ids.sort(),
     supported_legacy_consumers: [],
+  };
+}
+
+export function assertReceiptBackfillApplyAllowed(plan: ReceiptMigrationPlan): void {
+  if (plan.refused.length > 0) {
+    throw new Error(
+      `Refusing receipt backfill: ${plan.refused.length} row(s) have a non-received processing_status.`,
+    );
+  }
+  if (plan.supported_legacy_consumers.length > 0) {
+    throw new Error("Refusing receipt backfill while supported legacy consumers remain.");
+  }
+}
+
+export function buildReceiptReshapeUpdate(
+  translation: ReceiptMigrationTranslation,
+): {
+  $set: ReceiptMigrationTranslation["set_fields"];
+  $unset: Record<(typeof RETIRED_RECEIPT_FIELDS)[number], "">;
+} {
+  return {
+    $set: translation.set_fields,
+    $unset: Object.fromEntries(RETIRED_RECEIPT_FIELDS.map((field) => [field, ""])) as Record<
+      (typeof RETIRED_RECEIPT_FIELDS)[number],
+      ""
+    >,
   };
 }
 

@@ -145,7 +145,7 @@ export async function completeGoogleDriveOAuth(
       },
       $unset: { last_used_at: 1 },
     },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
+    { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
   );
 
   return getGoogleDriveConnectionStatus();
