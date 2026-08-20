@@ -66,8 +66,14 @@ Standard commands live in `package.json` `scripts` (e.g. `pnpm dev`, `pnpm typec
 
 ### Running and verifying the API
 - `pnpm dev` serves the Express app on `http://localhost:3000` (`scripts/dev-server.ts`).
+  In this Cloud environment use `bash .cursor/scripts/start-api.sh` instead of a raw
+  `pnpm dev` so Atlas/`TEST_MODE=false` secrets cannot win.
 - Unauthenticated probes for quick health checks: `GET /` (banner), `GET /health`, `GET /db`.
-- Hello-world smoke test (create + read a form lead):
+  `/db` must report `host: 127.0.0.1` and `name: testvantagemovers`.
+- Hello-world smoke test (create + read a form lead). A brand-new local replica set has
+  an empty Operations Registry, so the first create returns `Source attribution was not
+  found` until `lead_source_companies` + `lead_source_granularities` contain an active
+  `main_site` / `main_site_form` pair (local `testvantagemovers` only):
   - `curl -X POST localhost:3000/api/v1/form-leads -H 'x-api-secret: <secret>' -H 'Content-Type: application/json' -d '{"source_company":"main_site","name":"Test User","phone_number":"5551234567","pickup_zip":"10001","destination_zip":"94105","move_size":"Studio","ref_no":"smoke"}'`
   - `move_size` must be one of `Studio | 1 Bedroom | 2 Bedrooms | 3 Bedrooms | 4 Bedrooms | 5+ Bedrooms | Office`.
   - The created id is at `data.lead._id`; read back with `GET /api/v1/form-leads/:id`.
