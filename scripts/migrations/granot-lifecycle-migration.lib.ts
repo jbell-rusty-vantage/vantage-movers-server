@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   HISTORICAL_DATABASE,
@@ -45,7 +45,7 @@ export function assertGranotLifecycleDatabaseAllowed(
       `Refusing migration against historical database ${HISTORICAL_DATABASE}.`,
     );
   }
-  if (databaseName === TEST_DATABASE || databaseName === PRODUCTION_DATABASE) {
+  if (/^testvantagemovers(?:_[a-z0-9]+)?$/i.test(databaseName) || databaseName === PRODUCTION_DATABASE) {
     return;
   }
   throw new Error(
@@ -71,7 +71,7 @@ export function assertGranotLifecycleApplyAuthorized(input: {
   if (input.databaseName === PRODUCTION_DATABASE) {
     return;
   }
-  if (input.databaseName === TEST_DATABASE) {
+  if (/^testvantagemovers(?:_[a-z0-9]+)?$/i.test(input.databaseName)) {
     return;
   }
   throw new Error(
@@ -94,11 +94,25 @@ export async function writeGranotLifecycleManifest(input: {
 }): Promise<string> {
   await mkdir(input.directory, { recursive: true });
   const manifestPath = path.join(input.directory, `${input.runId}.json`);
-  await writeFile(manifestPath, `${JSON.stringify(input.manifest, null, 2)}\n`, {
+  const temporaryPath = `${manifestPath}.tmp`;
+  await writeFile(temporaryPath, `${JSON.stringify(sortManifestValue(input.manifest), null, 2)}\n`, {
     encoding: "utf8",
     mode: 0o600,
   });
+  await rename(temporaryPath, manifestPath);
   return manifestPath;
+}
+
+function sortManifestValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortManifestValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, nested]) => [key, sortManifestValue(nested)]),
+    );
+  }
+  return value;
 }
 
 export function granotLifecycleOutputDirectory(scriptName: string): string {

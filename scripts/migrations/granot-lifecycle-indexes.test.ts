@@ -54,6 +54,11 @@ import {
   orderedGranotReleaseDiscrepancyIndexCreates,
   verifyGranotBookingDiscrepancyIndexDefinitions,
   verifyGranotReleaseDiscrepancyIndexDefinitions,
+  findUniqueFieldCollisions,
+  orderedDomainCommandExecutionIndexCreates,
+  orderedRingCentralProcessedCallIndexCreates,
+  verifyDomainCommandExecutionIndexDefinitions,
+  verifyRingCentralProcessedCallIndexDefinitions,
 } from "./granot-lifecycle-indexes.lib";
 import { GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES } from "../../src/models/GranotBookingReconciliationCase";
 import { GRANOT_RELEASE_RECONCILIATION_CASE_INDEXES } from "../../src/models/GranotReleaseReconciliationCase";
@@ -66,6 +71,37 @@ import { CALL_LEAD_S08_INDEXES } from "../../src/models/CallLead";
 import { FORM_LEAD_S08_INDEXES } from "../../src/models/FormLead";
 import { GRANOT_BOOKING_DISCREPANCY_INDEXES } from "../../src/models/GranotBookingDiscrepancy";
 import { GRANOT_RELEASE_DISCREPANCY_INDEXES } from "../../src/models/GranotReleaseDiscrepancy";
+import { DOMAIN_COMMAND_EXECUTION_INDEXES } from "../../src/models/DomainCommandExecution";
+import { RINGCENTRAL_PROCESSED_CALL_INDEXES } from "../../src/services/ringcentral/processed-calls-store";
+
+test("[AC-21][AC-32] command and processed-call identity indexes are exact and collision-gated", () => {
+  const collisions = findUniqueFieldCollisions([
+    { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", value: "private-identity" },
+    { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", value: "private-identity" },
+  ]);
+  assert.equal(collisions.length, 1);
+  assert.equal(JSON.stringify(collisions).includes("private-identity"), false);
+  assert.deepEqual(collisions[0]?.masked_ids, ["aaaa…aaaa", "bbbb…bbbb"]);
+  const commandOrder = orderedDomainCommandExecutionIndexCreates();
+  const processedOrder = orderedRingCentralProcessedCallIndexCreates();
+  assert.equal(commandOrder.unique.length, 2);
+  assert.equal(processedOrder.unique.length, 2);
+  assert.equal(
+    verifyDomainCommandExecutionIndexDefinitions(
+      DOMAIN_COMMAND_EXECUTION_INDEXES.map((index) => ({ ...index, key: { ...index.key } })),
+    ).ok,
+    true,
+  );
+  assert.equal(
+    verifyRingCentralProcessedCallIndexDefinitions(
+      RINGCENTRAL_PROCESSED_CALL_INDEXES.map((index) => ({ ...index, key: { ...index.key } })),
+    ).ok,
+    true,
+  );
+  const sparseDrift = RINGCENTRAL_PROCESSED_CALL_INDEXES.map((index) => ({ ...index, key: { ...index.key } }));
+  delete (sparseDrift[0] as { sparse?: boolean }).sparse;
+  assert.equal(verifyRingCentralProcessedCallIndexDefinitions(sparseDrift).ok, false);
+});
 
 test("[AC-36] discrepancy collisions are PII-safe and indexes are ordered and exact", () => {
   const rows = [

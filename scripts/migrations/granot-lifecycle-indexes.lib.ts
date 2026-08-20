@@ -36,6 +36,8 @@ import {
 } from "./granot-lifecycle-revisions.lib";
 
 import { ENTITY_CHANGE_INDEXES } from "../../src/models/EntityChange";
+import { DOMAIN_COMMAND_EXECUTION_INDEXES } from "../../src/models/DomainCommandExecution";
+import { RINGCENTRAL_PROCESSED_CALL_INDEXES } from "../../src/services/ringcentral/processed-calls-store";
 import { RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX } from "../../src/services/ringcentral/call-log-sync-state.store";
 
 export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/12";
@@ -51,6 +53,10 @@ export const CALL_LEAD_COLLECTION = "call_leads";
 export const GRANOT_CRM_SOURCE_UNIQUE_INDEX_APPLY_ENABLED = true;
 
 export type ReceiptIndexContract = (typeof GRANOT_OBSERVATION_RECEIPT_INDEXES)[number];
+export const GRANOT_OBSERVATION_RECEIPT_NAMED_LEGACY_INDEXES = [
+  { name: "granot_webhook_receipt_event_received_legacy", key: GRANOT_OBSERVATION_RECEIPT_LEGACY_INDEXES[0].key },
+  { name: "granot_webhook_receipt_status_received_legacy", key: GRANOT_OBSERVATION_RECEIPT_LEGACY_INDEXES[1].key },
+] as const;
 export type ObservationIndexContract = (typeof GRANOT_OBSERVATION_INDEXES)[number];
 
 export type OperationIdCollision = {
@@ -64,6 +70,7 @@ export type DeclaredMongoIndex = {
   name: string;
   key: Record<string, unknown>;
   unique?: boolean;
+  sparse?: boolean;
   partialFilterExpression?: Record<string, unknown>;
 };
 
@@ -108,12 +115,13 @@ export function findChannelOperationIdCollisions(
 }
 
 export function orderedReceiptIndexCreates(): {
-  nonUnique: ReceiptIndexContract[];
+  nonUnique: Array<ReceiptIndexContract | (typeof GRANOT_OBSERVATION_RECEIPT_NAMED_LEGACY_INDEXES)[number]>;
   unique: ReceiptIndexContract[];
 } {
-  const nonUnique = GRANOT_OBSERVATION_RECEIPT_INDEXES.filter(
-    (index) => !("unique" in index),
-  );
+  const nonUnique = [
+    ...GRANOT_OBSERVATION_RECEIPT_INDEXES.filter((index) => !("unique" in index)),
+    ...GRANOT_OBSERVATION_RECEIPT_NAMED_LEGACY_INDEXES,
+  ];
   const unique = GRANOT_OBSERVATION_RECEIPT_INDEXES.filter(
     (index) => "unique" in index,
   );
@@ -263,7 +271,7 @@ function verifyNamedIndexDefinitions(
 
 function sameIndexDefinition(
   actual: DeclaredMongoIndex,
-  expected: ReceiptIndexContract | ObservationIndexContract | { name: string; key: Record<string, number>; unique?: true },
+  expected: ReceiptIndexContract | ObservationIndexContract | { name: string; key: Record<string, number>; unique?: true; sparse?: true; partialFilterExpression?: Record<string, unknown> },
 ): boolean {
   const expectedUnique = "unique" in expected ? expected.unique === true : false;
   const actualUnique = actual.unique === true;
@@ -273,6 +281,8 @@ function sameIndexDefinition(
   if (!sameKey(actual.key, expected.key)) {
     return false;
   }
+  const expectedSparse = "sparse" in expected ? expected.sparse === true : false;
+  if ((actual.sparse === true) !== expectedSparse) return false;
   const expectedPartial =
     "partialFilterExpression" in expected
       ? expected.partialFilterExpression
@@ -613,6 +623,45 @@ export type GranotBookingCaseCollision = {
   count: number;
   masked_ids: string[];
 };
+
+export const DOMAIN_COMMAND_EXECUTION_COLLECTION = "domain_command_executions";
+
+export function orderedDomainCommandExecutionIndexCreates() {
+  return {
+    nonUnique: DOMAIN_COMMAND_EXECUTION_INDEXES.filter((index) => !("unique" in index)),
+    unique: DOMAIN_COMMAND_EXECUTION_INDEXES.filter((index) => "unique" in index),
+  };
+}
+
+export function verifyDomainCommandExecutionIndexDefinitions(actual: readonly DeclaredMongoIndex[]) {
+  return verifyNamedIndexDefinitions(actual, DOMAIN_COMMAND_EXECUTION_INDEXES);
+}
+
+export function orderedRingCentralProcessedCallIndexCreates() {
+  return {
+    nonUnique: RINGCENTRAL_PROCESSED_CALL_INDEXES.filter((index) => !("unique" in index)),
+    unique: RINGCENTRAL_PROCESSED_CALL_INDEXES.filter((index) => "unique" in index),
+  };
+}
+
+export function verifyRingCentralProcessedCallIndexDefinitions(actual: readonly DeclaredMongoIndex[]) {
+  return verifyNamedIndexDefinitions(actual, RINGCENTRAL_PROCESSED_CALL_INDEXES);
+}
+
+export function findUniqueFieldCollisions(
+  rows: readonly { _id: unknown; value?: unknown }[],
+): Array<{ identity_hash: string; count: number; masked_ids: string[] }> {
+  const groups = new Map<string, string[]>();
+  for (const row of rows) {
+    if (typeof row.value !== "string" || row.value.trim() === "") continue;
+    const value = row.value.trim();
+    groups.set(value, [...(groups.get(value) ?? []), maskReceiptId(String(row._id))]);
+  }
+  return [...groups.entries()]
+    .filter(([, ids]) => ids.length > 1)
+    .map(([value, ids]) => ({ identity_hash: createHash("sha256").update(value).digest("hex").slice(0, 16), count: ids.length, masked_ids: ids.sort() }))
+    .sort((a, b) => a.identity_hash.localeCompare(b.identity_hash));
+}
 
 export function findGranotBookingCaseCollisions(
   rows: readonly {
@@ -984,3 +1033,4 @@ export function hasGlobalUniqueLeadJobIndex(
       Object.keys(index.key).length === 1,
   );
 }
+import { createHash } from "node:crypto";

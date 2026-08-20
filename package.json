@@ -51,7 +51,9 @@
     "migration:granot-lifecycle:indexes": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-indexes.ts",
     "migration:ringcentral:processed-call-indexes": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/ringcentral-processed-call-indexes.ts",
     "migration:granot-lifecycle:leads": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-lead-provenance.ts",
-    "migration:granot-lifecycle:revisions": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-aggregate-revisions.ts"
+    "migration:granot-lifecycle:revisions": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-aggregate-revisions.ts",
+    "granot:lifecycle:shadow": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-shadow-process.ts",
+    "granot:lifecycle:certify": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-certification.ts"
   },
   "keywords": [],
   "author": "",

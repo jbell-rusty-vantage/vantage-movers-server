@@ -9,6 +9,7 @@
  *   pnpm migration:granot-lifecycle:revisions -- --verify
  */
 import mongoose from "mongoose";
+import { getMongoDatabaseName } from "../../src/config/domain/runtime.js";
 import { connectMongo } from "../../src/db.js";
 import {
   assertGranotLifecycleApplyAuthorized,
@@ -62,9 +63,13 @@ async function loadRows(
 
 async function main(): Promise<void> {
   const mode = parseGranotLifecycleMigrationMode(process.argv);
+  const configuredDatabase = getMongoDatabaseName();
+  assertGranotLifecycleDatabaseAllowed(configuredDatabase);
+  if (mode === "apply") assertGranotLifecycleApplyAuthorized({ args: process.argv, databaseName: configuredDatabase });
   await connectMongo();
   const databaseName = mongoose.connection.db?.databaseName;
   assertGranotLifecycleDatabaseAllowed(databaseName);
+  if (databaseName !== configuredDatabase) throw new Error("Connected database does not match migration preflight database.");
   assertNotHistoricalDatabase(databaseName);
   if (mode === "apply") {
     assertGranotLifecycleApplyAuthorized({
@@ -140,9 +145,8 @@ async function main(): Promise<void> {
 }
 
 main()
-  .catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(message);
+  .catch(() => {
+    console.error("Granot lifecycle revision migration failed with a bounded technical error.");
     process.exitCode = 1;
   })
   .finally(async () => {

@@ -105,8 +105,14 @@ export function shouldWriteSourceLeadSheets(): boolean {
   );
 }
 
-export function getMongoDatabaseName(): "vantagemovers" | "testvantagemovers" {
-  return isTestMode() ? "testvantagemovers" : "vantagemovers";
+export function getMongoDatabaseName(): string {
+  if (!isTestMode()) return "vantagemovers";
+  const isolated = process.env.TEST_MONGO_DATABASE_NAME?.trim();
+  if (!isolated) return "testvantagemovers";
+  if (!/^testvantagemovers_[a-z0-9]+$/i.test(isolated)) {
+    throw new Error("TEST_MONGO_DATABASE_NAME must be an isolated testvantagemovers_<suffix> name.");
+  }
+  return isolated;
 }
 
 export const MONGO_DATABASE_NAME = getMongoDatabaseName();

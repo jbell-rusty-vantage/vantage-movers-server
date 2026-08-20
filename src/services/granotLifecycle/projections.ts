@@ -83,6 +83,7 @@ export type SafeBookingProjection = {
   normalized_job_no: string;
   job_no: string | null;
   book_date: string;
+  /** Masked for lifecycle/Admin transport; never the raw Booking customer name. */
   customer_name: string | null;
   source: string;
   merchant: string;
@@ -98,7 +99,6 @@ export type SafeCancellationProjection = {
   id: string;
   booking_id: string;
   cancel_date: string;
-  reason?: string;
   refund_amount: number;
   domain_revision: number;
 };
@@ -1174,7 +1174,7 @@ function projectBooking(booking: {
     normalized_job_no: booking.normalized_job_no ?? "",
     job_no: booking.job_no ?? null,
     book_date: iso(booking.book_date, "booking.book_date"),
-    customer_name: booking.customer_name ?? null,
+    customer_name: booking.customer_name ? maskPersonName(booking.customer_name) : null,
     source: booking.source,
     merchant: booking.merchant,
     ...(merchantId ? { merchant_id: String(merchantId) } : {}),
@@ -1204,7 +1204,6 @@ function projectCancellation(cancellation: {
     id: String(cancellation._id),
     booking_id: String(cancellation.booked_lead),
     cancel_date: iso(cancellation.cancel_date, "cancellation.cancel_date"),
-    reason: cancellation.reason ?? undefined,
     refund_amount: cancellation.refund_amount,
     domain_revision: cancellation.domain_revision,
   };
@@ -1332,7 +1331,7 @@ async function loadLeadContactProjection(
     : getCallLeadModel().findById(id).select(projection).lean<CandidateLeadView | null>();
 }
 
-function toContact(value: unknown): { name?: string; phone_number?: string; email?: string } | undefined {
+export function maskLifecycleContact(value: unknown): { name?: string; phone_number?: string; email?: string } | undefined {
   if (!value || typeof value !== "object") return undefined;
   const row = value as Record<string, unknown>;
   const joinedName = [stringOrUndefined(row.first_name), stringOrUndefined(row.last_name)]
@@ -1341,7 +1340,32 @@ function toContact(value: unknown): { name?: string; phone_number?: string; emai
   const name = stringOrUndefined(row.display_name) ?? (joinedName || undefined);
   const phone = stringOrUndefined(row.phone_number) ?? stringOrUndefined(row.phone_raw);
   const email = stringOrUndefined(row.email) ?? stringOrUndefined(row.email_raw);
-  return name || phone || email ? { name, phone_number: phone, email } : undefined;
+  return name || phone || email
+    ? {
+        name: name ? maskPersonName(name) : undefined,
+        phone_number: phone ? maskPhone(phone) : undefined,
+        email: email ? maskEmail(email) : undefined,
+      }
+    : undefined;
+}
+
+const toContact = maskLifecycleContact;
+
+function maskPersonName(value: string): string {
+  const trimmed = value.trim();
+  return trimmed ? `${trimmed.slice(0, 1).toUpperCase()}•••` : "•••";
+}
+
+function maskPhone(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  return digits ? `•••${digits.slice(-4)}` : "•••";
+}
+
+function maskEmail(value: string): string {
+  const [local, domain] = value.trim().split("@");
+  return domain
+    ? `${local?.slice(0, 1).toLowerCase() || "•"}•••@${domain.toLowerCase()}`
+    : "•••";
 }
 
 function leadName(lead: { name?: string | null; first_name?: string | null; last_name?: string | null }): string | undefined {

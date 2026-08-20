@@ -9,6 +9,7 @@
  *   pnpm migration:granot-lifecycle:sources -- --verify
  */
 import mongoose from "mongoose";
+import { getMongoDatabaseName } from "../../src/config/domain/runtime.js";
 import { connectMongo } from "../../src/db.js";
 import { GranotAutomationSource } from "../../src/models/GranotAutomationSource.js";
 import { getGranotCrmSourceModel } from "../../src/models/GranotCrmSource.js";
@@ -69,9 +70,13 @@ async function loadInventory() {
 
 async function main(): Promise<void> {
   const mode = parseGranotLifecycleMigrationMode(process.argv);
+  const configuredDatabase = getMongoDatabaseName();
+  assertGranotLifecycleDatabaseAllowed(configuredDatabase);
+  if (mode === "apply") assertGranotLifecycleApplyAuthorized({ args: process.argv, databaseName: configuredDatabase });
   await connectMongo();
   const databaseName = mongoose.connection.db?.databaseName;
   assertGranotLifecycleDatabaseAllowed(databaseName);
+  if (databaseName !== configuredDatabase) throw new Error("Connected database does not match migration preflight database.");
   if (mode === "apply") {
     assertGranotLifecycleApplyAuthorized({
       args: process.argv,
@@ -129,10 +134,8 @@ async function main(): Promise<void> {
           migrationActor(`crm:${mutation.id}:${mutation.action}`),
         );
         changed_crm_ids.push(mutation.id);
-      } catch (error) {
-        apply_errors.push(
-          `crm:${mutation.masked_id}:${error instanceof Error ? error.message : "unknown"}`,
-        );
+      } catch {
+        apply_errors.push(`crm:${mutation.masked_id}:mutation_failed`);
       }
     }
     for (const mutation of plan.automation_mutations) {
@@ -147,10 +150,8 @@ async function main(): Promise<void> {
           migrationActor(`automation:${mutation.id}:link`),
         );
         changed_automation_ids.push(mutation.id);
-      } catch (error) {
-        apply_errors.push(
-          `automation:${mutation.masked_id}:${error instanceof Error ? error.message : "unknown"}`,
-        );
+      } catch {
+        apply_errors.push(`automation:${mutation.masked_id}:mutation_failed`);
       }
     }
     if (apply_errors.length > 0) {
@@ -373,8 +374,11 @@ function toGranularityInventory(row: Record<string, unknown>): InventoryGranular
   };
 }
 
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : "Unknown error";
-  console.error(message);
-  process.exitCode = 1;
-});
+main()
+  .catch(() => {
+    console.error("Granot lifecycle source migration failed with a bounded technical error.");
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await mongoose.disconnect().catch(() => undefined);
+  });

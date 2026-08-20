@@ -9,6 +9,7 @@
  *   pnpm migration:granot-lifecycle:receipts -- --verify
  */
 import mongoose from "mongoose";
+import { getMongoDatabaseName } from "../../src/config/domain/runtime.js";
 import { connectMongo } from "../../src/db.js";
 import { GRANOT_OBSERVATION_RECEIPT_COLLECTION } from "../../src/models/GranotObservationReceipt.js";
 import {
@@ -73,9 +74,13 @@ async function applyTranslations(
 
 async function main(): Promise<void> {
   const mode = parseGranotLifecycleMigrationMode(process.argv);
+  const configuredDatabase = getMongoDatabaseName();
+  assertGranotLifecycleDatabaseAllowed(configuredDatabase);
+  if (mode === "apply") assertGranotLifecycleApplyAuthorized({ args: process.argv, databaseName: configuredDatabase });
   await connectMongo();
   const databaseName = mongoose.connection.db?.databaseName;
   assertGranotLifecycleDatabaseAllowed(databaseName);
+  if (databaseName !== configuredDatabase) throw new Error("Connected database does not match migration preflight database.");
   if (mode === "apply") {
     assertGranotLifecycleApplyAuthorized({
       args: process.argv,
@@ -137,8 +142,11 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : "Unknown error";
-  console.error(message);
-  process.exitCode = 1;
-});
+main()
+  .catch(() => {
+    console.error("Granot lifecycle receipt migration failed with a bounded technical error.");
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await mongoose.disconnect().catch(() => undefined);
+  });

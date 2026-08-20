@@ -7,6 +7,11 @@
 
 **Role:** Compose read-only, server-authoritative Booking/Release case, candidate, Job Number timeline, Lead timeline, and operations-health DTOs for Vantage Admin. These reads never select or attach a Lead, resolve a case, correct a Record Link, invoke a command, or mutate an official Lead, Booking, or Cancellation. Health/alert evaluation is instrumentation only.
 
+Unit 31 masks every case-detail contact and Booking customer label before
+transport and omits free-form Cancellation reason text. Admin receives masked
+display values only; raw receipt payload, headers, and contact remain outside
+all lifecycle projections.
+
 ## Protected read surface
 
 - Owner/Admin: case list/detail, Job Number timeline, Lead timeline, and operations health.

@@ -1,5 +1,51 @@
 # Operations Registry migration runbook
 
+> Granot Lead Lifecycle operators: use the fixed Unit 31 package below together
+> with [`docs/granot-lead-lifecycle/production-operator-runbook.md`](../../docs/granot-lead-lifecycle/production-operator-runbook.md).
+
+## Granot Lead Lifecycle fixed package (Unit 31)
+
+All five commands are report-by-default, reject historical/unknown databases,
+perform a database-name preflight before connecting, and recheck the connected
+database before mutation. Apply always requires the exact target name. Output is
+PII-safe JSON under the gitignored `scripts/output/` tree.
+
+```text
+pnpm migration:granot-lifecycle:receipts -- --report|--verify
+pnpm migration:granot-lifecycle:receipts -- --apply --confirm-production=<db>
+pnpm migration:granot-lifecycle:sources -- --report|--verify
+pnpm migration:granot-lifecycle:sources -- --apply --confirm-production=<db>
+pnpm migration:granot-lifecycle:leads -- --report|--verify
+pnpm migration:granot-lifecycle:leads -- --apply --confirm-production=<db>
+pnpm migration:granot-lifecycle:revisions -- --report|--verify
+pnpm migration:granot-lifecycle:revisions -- --apply --confirm-production=<db>
+pnpm migration:granot-lifecycle:indexes -- --report|--verify
+pnpm migration:granot-lifecycle:indexes -- --apply --confirm-production=<db>
+```
+
+For each command use `report -> human review -> separately authorized apply ->
+verify`, then repeat the cycle. The second apply must be a no-op. Non-unique
+indexes are created first; every unique index is collision-gated. The central
+catalog includes receipts, Observations, Registry/automation, activation,
+Decisions, Record Links, Lead/Booking/case/discrepancy definitions, Entity
+Changes, Domain Command idempotency, RingCentral processed-call identity, and
+the Call Log singleton.
+
+Historical shadow and certification require a confirmed replica-set test
+database, `TEST_MODE=true`, and `SHEET_SYNC_MODE=disabled`:
+
+```text
+pnpm granot:lifecycle:shadow -- --limit=<positive-bounded-n> [--after-id=<exclusive-object-id>]
+pnpm granot:lifecycle:certify
+```
+
+The runner passes receipt IDs only to the production processor, keeps its full
+resume ObjectId only in a private checkpoint, and prints masked IDs. It fails on
+post-cutoff promotion, a forbidden effect, activation drift, aggregate/revision
+drift, or a technical failure. Certification fails closed unless all 15 latest
+migration-mode artifacts, the shadow zero-effect report, flags, replica/external
+isolation, and privacy scan are green. Neither command is production authority.
+
 This directory contains the ordered backfills that turn existing operational
 data into the collections used by the Operations Registry. Run every command
 from the `vantage-main-server` repository root.

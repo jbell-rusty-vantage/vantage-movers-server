@@ -1,4 +1,5 @@
 import type { SourceCompany } from "../../config/domain";
+import { isVantageTestRunner } from "../../config/domain/runtime";
 import type { ClientSession } from "mongoose";
 import { getRingCentralCollectionName } from "./ringcentral-config";
 import { getRingCentralDb } from "./ringcentral-mongo";
@@ -45,6 +46,24 @@ export const RINGCENTRAL_PROCESSED_CALL_LOG_ID_UNIQUE_INDEX = {
   sparse: true,
 } as const;
 
+export const RINGCENTRAL_PROCESSED_CALL_INDEXES = [
+  {
+    name: "ringcentral_processed_call_telephony_session_id_unique",
+    key: { telephonySessionId: 1 },
+    unique: true,
+    sparse: true,
+  },
+  RINGCENTRAL_PROCESSED_CALL_LOG_ID_UNIQUE_INDEX,
+  {
+    name: "ringcentral_processed_call_status_updated",
+    key: { status: 1, updatedAt: -1 },
+  },
+  {
+    name: "ringcentral_processed_call_source_phone",
+    key: { sourceCompany: 1, callerPhoneNumber: 1 },
+  },
+] as const;
+
 export const RINGCENTRAL_PROCESSED_CALL_TERMINAL_STATUSES = [
   "lead_created",
   "lead_created_duplicate",
@@ -79,12 +98,26 @@ async function createIndexes(): Promise<void> {
   const collection = db.collection<RingCentralProcessedCallDocument>(
     getRingCentralCollectionName("processedCalls"),
   );
-  await collection.createIndex(
-    { telephonySessionId: 1 },
-    { unique: true, sparse: true },
-  );
-  await collection.createIndex({ status: 1, updatedAt: -1 });
-  await collection.createIndex({ sourceCompany: 1, callerPhoneNumber: 1 });
+  if (isVantageTestRunner()) {
+    for (const index of RINGCENTRAL_PROCESSED_CALL_INDEXES) {
+      await collection.createIndex(index.key, {
+        name: index.name,
+        ...("unique" in index && index.unique ? { unique: true } : {}),
+        ...("sparse" in index && index.sparse ? { sparse: true } : {}),
+      });
+    }
+    return;
+  }
+  const actual = await collection.indexes();
+  const missing = RINGCENTRAL_PROCESSED_CALL_INDEXES.filter((expected) => !actual.some((index) =>
+    index.name === expected.name &&
+    JSON.stringify(index.key) === JSON.stringify(expected.key) &&
+    Boolean(index.unique) === Boolean("unique" in expected && expected.unique) &&
+    Boolean(index.sparse) === Boolean("sparse" in expected && expected.sparse)
+  ));
+  if (missing.length > 0) {
+    throw new Error("RingCentral processed-call indexes are not predeployed.");
+  }
 }
 
 export async function findProcessedCall(params: {

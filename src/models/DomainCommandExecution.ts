@@ -42,10 +42,9 @@ const DomainCommandExecutionSchema = new Schema(
       type: String,
       required: true,
       enum: COMMAND_ORIGINS,
-      index: true,
     },
     idempotency_key: { type: String, required: true, trim: true },
-    command_id: { type: String, required: true, trim: true, unique: true },
+    command_id: { type: String, required: true, trim: true },
     command_name: { type: String, required: true, trim: true },
     payload_checksum: { type: String, required: true, trim: true },
     actor: { type: Schema.Types.Mixed, required: true },
@@ -68,11 +67,20 @@ const DomainCommandExecutionSchema = new Schema(
   },
 );
 
-DomainCommandExecutionSchema.index(
-  { origin: 1, idempotency_key: 1 },
-  { unique: true, name: "domain_command_origin_idempotency_unique" },
-);
-DomainCommandExecutionSchema.index({ applied_at: -1 });
+export const DOMAIN_COMMAND_EXECUTION_COLLECTION = "domain_command_executions";
+export const DOMAIN_COMMAND_EXECUTION_INDEXES = [
+  { name: "domain_command_origin", key: { origin: 1 } },
+  { name: "domain_command_command_id_unique", key: { command_id: 1 }, unique: true },
+  { name: "domain_command_origin_idempotency_unique", key: { origin: 1, idempotency_key: 1 }, unique: true },
+  { name: "domain_command_applied_at", key: { applied_at: -1 } },
+] as const;
+
+for (const index of DOMAIN_COMMAND_EXECUTION_INDEXES) {
+  DomainCommandExecutionSchema.index(index.key, {
+    name: index.name,
+    ...("unique" in index ? { unique: index.unique } : {}),
+  });
+}
 
 export type DomainCommandExecutionDocument = InferSchemaType<
   typeof DomainCommandExecutionSchema

@@ -83,12 +83,17 @@ const UNIT_FILES: Record<string, string[]> = {
   "30": [
     "src/services/granotLifecycle/operations.replica.test.ts",
   ],
+  "31": [
+    "scripts/migrations/granot-lifecycle-shadow.replica.test.ts",
+    "scripts/migrations/granot-lifecycle-lead-provenance.replica.test.ts",
+    "scripts/migrations/granot-lifecycle-revisions.replica.test.ts",
+  ],
 };
 
 function parseUnit(): string {
   const raw = process.argv.find((arg) => arg.startsWith("--unit="));
   if (!raw) {
-    throw new Error("Usage: pnpm test:granot-lifecycle:replica -- --unit=08|09|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30");
+    throw new Error("Usage: pnpm test:granot-lifecycle:replica -- --unit=08|...|31");
   }
   return raw.slice("--unit=".length);
 }
@@ -116,7 +121,7 @@ async function main(): Promise<void> {
   const unit = parseUnit();
   const files = UNIT_FILES[unit];
   if (!files) {
-    throw new Error(`No replica files registered for unit ${unit}`);
+    throw new Error(`No replica files registered for unit ${unit}; supported units are 08-31.`);
   }
   await assertSafeReplica();
   process.env.GRANOT_LIFECYCLE_REPLICA_TESTS = "true";

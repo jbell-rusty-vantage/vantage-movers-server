@@ -117,7 +117,7 @@ app.use((err: unknown, req: Request, res: Response, next: ErrorNext) => {
     return next(err);
   }
   const log = (req as RequestWithLogger).log ?? logger;
-  log.warn({ err, msg: "http.body.parse_failed" });
+  log.warn({ error_code: "malformed_body", msg: "http.body.parse_failed" });
   void recordOperationalEvent({
     level: "warn",
     eventKey: "http.body.parse_failed",
@@ -128,7 +128,7 @@ app.use((err: unknown, req: Request, res: Response, next: ErrorNext) => {
     statusCode: 400,
     details: {
       contentType: req.headers["content-type"] ?? null,
-      causeMessage: err instanceof Error ? err.message : String(err),
+      errorCode: "malformed_body",
     },
     notificationCandidate: false,
     reportable: false,

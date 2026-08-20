@@ -124,7 +124,8 @@ export type LegacyReceiptCompatibilityFill =
       reason:
         | "refused_legacy_processing_status"
         | "missing_capture_time"
-        | "missing_route_event_class";
+        | "missing_route_event_class"
+        | "missing_payload";
       processing_status: string;
       removed_key_counts: RemovedCredentialKeyCounts;
     };
@@ -154,15 +155,23 @@ export function fillLegacyWebhookReceiptV2Fields(
   input: LegacyReceiptCompatibilityInput,
 ): LegacyReceiptCompatibilityFill {
   const headerRedaction = redactCredentialKeys(input.headers ?? {});
+  const processing_status =
+    typeof input.processing_status === "string"
+      ? input.processing_status
+      : "unknown";
+  if (input.payload === undefined && !hasRequiredReceiptV2Fields(input)) {
+    return {
+      ok: false,
+      reason: "missing_payload",
+      processing_status,
+      removed_key_counts: headerRedaction.removed_key_counts,
+    };
+  }
   const payloadEvidence = hashCredentialRedactedPayload(input.payload);
   const removed_key_counts = mergeRemovedCredentialKeyCounts(
     headerRedaction.removed_key_counts,
     payloadEvidence.removed_key_counts,
   );
-  const processing_status =
-    typeof input.processing_status === "string"
-      ? input.processing_status
-      : "unknown";
 
   if (hasRequiredReceiptV2Fields(input)) {
     return {

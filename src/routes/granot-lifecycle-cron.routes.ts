@@ -7,6 +7,7 @@ import {
 } from "express";
 import { connectMongo } from "../db";
 import { logger } from "../logger";
+import { safeLifecycleFailureLog } from "../services/granotLifecycle/safeLogging";
 import {
   drainDueReceipts,
   emitDrainRunEvent,
@@ -46,7 +47,10 @@ export function createGranotLifecycleCronRouter(
           lease_lost: summary.lease_lost,
         });
       } catch (error) {
-        logger.error({ err: error, msg: "granot_lifecycle.cron.drain.failed" });
+        logger.error(safeLifecycleFailureLog({
+          error,
+          msg: "granot_lifecycle.cron.drain.failed",
+        }));
         await emitDrainRunEvent(
           {
             trigger: "cron",

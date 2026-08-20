@@ -6,6 +6,7 @@ import {
 import { logger } from "../../logger";
 import { incrementGranotLifecycleQueuePublishFailures } from "./metrics";
 import { emitGranotLifecycleEvent } from "./observability";
+import { maskLifecycleId, safeLifecycleFailureLog } from "./safeLogging";
 
 export type GranotLifecycleReceiptWakeup = {
   receipt_id: string;
@@ -30,7 +31,7 @@ export async function publishGranotLifecycleReceiptWakeup(
   if (!shouldPublish()) {
     logger.info({
       msg: "granot_lifecycle.queue.publish_skipped",
-      receipt_id,
+      receipt_id: maskLifecycleId(receipt_id),
       observation_channel: "granot_webhook",
     });
     return { published: false };
@@ -41,18 +42,18 @@ export async function publishGranotLifecycleReceiptWakeup(
     await publish(getGranotLifecycleQueueTopic(), payload);
     logger.info({
       msg: "granot_lifecycle.queue.published",
-      receipt_id,
+      receipt_id: maskLifecycleId(receipt_id),
       observation_channel: "granot_webhook",
     });
     return { published: true };
   } catch (error) {
     incrementGranotLifecycleQueuePublishFailures();
-    logger.error({
-      err: error,
+    logger.error(safeLifecycleFailureLog({
+      error,
       msg: "granot_lifecycle.queue.publish_failed",
       receipt_id,
       observation_channel: "granot_webhook",
-    });
+    }));
     await emitGranotLifecycleEvent({
       level: "error",
       eventKey: "granot_lifecycle.queue.publish_failed",

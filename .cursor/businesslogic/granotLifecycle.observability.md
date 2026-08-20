@@ -17,6 +17,11 @@ Allowed details are bounded enums, booleans, counts, durations, revisions, maske
 
 Emission is best-effort and after the relevant durable commit, except failure transitions that report the failure itself. Activation and manual-requeue audit writes also run after their business transaction commits. Instrumentation failure cannot roll back receipt, case, command, activation, requeue, or aggregate outcomes. Lifecycle identifier keys are normalized and masked case-insensitively; conflict labels are bounded codes.
 
+Unit 31 routes lifecycle logger failures through a bounded error-code projection:
+no `Error` object, stack, provider text, or full causal ID is serialized. The
+certification scanner checks generated migration/shadow artifacts for synthetic
+canaries, credential values, authorization values, and connection strings.
+
 ## Metrics
 
 Exact Section 33 names live in `GRANOT_LIFECYCLE_SECTION_33_METRIC_NAMES`. Receipt `event_class` is a route class or `"none"` for extension/automation receipts. Unknown labels are dropped. `open_cases` and `open_discrepancies` are current-cardinality gauges recomputed from Mongo during health projection. Replay has its own event and does not increment an applied effect twice. Health never depends solely on process-local counters.

@@ -92,7 +92,7 @@ export function reviewedBoundaryDirectory(): string {
 export function granotLifecycleDatabaseCategory(
   databaseName: string,
 ): "test" | "production" {
-  if (databaseName === TEST_DATABASE) return "test";
+  if (/^testvantagemovers(?:_[a-z0-9]+)?$/i.test(databaseName)) return "test";
   if (databaseName === PRODUCTION_DATABASE) return "production";
   throw new Error(`Unknown lifecycle database category for "${databaseName}".`);
 }

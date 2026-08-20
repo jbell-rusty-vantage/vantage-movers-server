@@ -23,7 +23,7 @@ function replicaEnvironmentReady(): string | null {
   if (process.env.GRANOT_LIFECYCLE_REPLICA_TESTS !== "true") {
     return "Replica-set proof is opt-in via GRANOT_LIFECYCLE_REPLICA_TESTS=true.";
   }
-  if (getMongoDatabaseName() !== "testvantagemovers") {
+  if (!/^testvantagemovers(?:_[a-z0-9]+)?$/i.test(getMongoDatabaseName())) {
     return "Replica-set proof requires TEST_MODE=true before process start.";
   }
   return null;
@@ -34,7 +34,7 @@ const skipReason = replicaEnvironmentReady();
 describe("Unit 09 replica-set revision proofs", { concurrency: 1, skip: skipReason ?? false }, () => {
   before(async () => {
     await connectMongo();
-    if (mongoose.connection.db?.databaseName !== "testvantagemovers") {
+    if (mongoose.connection.db?.databaseName !== getMongoDatabaseName()) {
       throw new Error("Refusing replica-set proof against a non-test database.");
     }
     const hello = await mongoose.connection.db?.admin().command({ hello: 1 });

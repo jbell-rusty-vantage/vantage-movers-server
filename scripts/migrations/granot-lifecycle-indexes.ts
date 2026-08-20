@@ -9,6 +9,7 @@
  *   pnpm migration:granot-lifecycle:indexes -- --verify
  */
 import mongoose from "mongoose";
+import { getMongoDatabaseName } from "../../src/config/domain/runtime.js";
 import { connectMongo } from "../../src/db.js";
 import {
   GRANOT_OBSERVATION_COLLECTION,
@@ -89,6 +90,13 @@ import {
   orderedGranotReleaseDiscrepancyIndexCreates,
   verifyGranotBookingDiscrepancyIndexDefinitions,
   verifyGranotReleaseDiscrepancyIndexDefinitions,
+  DOMAIN_COMMAND_EXECUTION_COLLECTION,
+  findUniqueFieldCollisions,
+  orderedDomainCommandExecutionIndexCreates,
+  orderedRingCentralProcessedCallIndexCreates,
+  verifyDomainCommandExecutionIndexDefinitions,
+  verifyRingCentralProcessedCallIndexDefinitions,
+  GRANOT_OBSERVATION_RECEIPT_NAMED_LEGACY_INDEXES,
 } from "./granot-lifecycle-indexes.lib.js";
 import { GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES } from "../../src/models/GranotBookingReconciliationCase.js";
 import { GRANOT_RELEASE_RECONCILIATION_CASE_INDEXES } from "../../src/models/GranotReleaseReconciliationCase.js";
@@ -115,6 +123,8 @@ import {
   GRANOT_RECORD_LINK_COLLECTION,
   GRANOT_RECORD_LINK_INDEXES,
 } from "../../src/models/GranotRecordLink.js";
+import { DOMAIN_COMMAND_EXECUTION_INDEXES } from "../../src/models/DomainCommandExecution.js";
+import { RINGCENTRAL_PROCESSED_CALL_INDEXES } from "../../src/services/ringcentral/processed-calls-store.js";
 
 const OUTPUT_DIR = granotLifecycleOutputDirectory("granot-lifecycle-indexes");
 
@@ -160,6 +170,7 @@ async function listDeclaredIndexes(collectionName: string): Promise<DeclaredMong
     name: String(index.name),
     key: index.key as Record<string, unknown>,
     unique: index.unique === true ? true : undefined,
+    sparse: index.sparse === true ? true : undefined,
     partialFilterExpression: index.partialFilterExpression as
       | Record<string, unknown>
       | undefined,
@@ -181,6 +192,7 @@ async function createIndexes(
     name: string;
     key: Record<string, number>;
     unique?: true;
+    sparse?: true;
     partialFilterExpression?: Record<string, unknown>;
     accepted_names?: readonly string[];
   }[],
@@ -191,9 +203,20 @@ async function createIndexes(
   }
   const created: string[] = [];
   for (const spec of specs) {
+    let existing: Awaited<ReturnType<typeof collection.indexes>> = [];
+    try { existing = await collection.indexes(); } catch (error) { if (!isNamespaceNotFound(error)) throw error; }
+    const equivalent = existing.some((index) =>
+      JSON.stringify(index.key) === JSON.stringify(spec.key) &&
+      (index.unique === true) === ("unique" in spec) &&
+      (index.sparse === true) === ("sparse" in spec) &&
+      JSON.stringify(index.partialFilterExpression) ===
+        JSON.stringify("partialFilterExpression" in spec ? spec.partialFilterExpression : undefined),
+    );
+    if (equivalent) continue;
     await collection.createIndex(spec.key, {
       name: spec.name,
       ...("unique" in spec ? { unique: true } : {}),
+      ...("sparse" in spec ? { sparse: true } : {}),
       ...("partialFilterExpression" in spec
         ? { partialFilterExpression: spec.partialFilterExpression }
         : {}),
@@ -424,11 +447,37 @@ async function loadCallLogSyncStateRows(): Promise<
   }));
 }
 
+async function loadUniqueFieldRows(
+  collectionName: string,
+  field: string,
+): Promise<Array<{ _id: string; value?: unknown }>> {
+  const collection = mongoose.connection.db?.collection(collectionName);
+  if (!collection) return [];
+  const documents = await collection.find({}, { projection: { [field]: 1 } }).toArray();
+  return documents.map((document) => ({ _id: String(document._id), value: document[field] }));
+}
+
+async function loadDomainIdempotencyRows(): Promise<Array<{ _id: string; value?: unknown }>> {
+  const collection = mongoose.connection.db?.collection(DOMAIN_COMMAND_EXECUTION_COLLECTION);
+  if (!collection) return [];
+  const documents = await collection.find({}, { projection: { origin: 1, idempotency_key: 1 } }).toArray();
+  return documents.map((document) => ({
+    _id: String(document._id),
+    value: typeof document.origin === "string" && typeof document.idempotency_key === "string"
+      ? `${document.origin}\u0000${document.idempotency_key}`
+      : undefined,
+  }));
+}
+
 async function main(): Promise<void> {
   const mode = parseGranotLifecycleMigrationMode(process.argv);
+  const configuredDatabase = getMongoDatabaseName();
+  assertGranotLifecycleDatabaseAllowed(configuredDatabase);
+  if (mode === "apply") assertGranotLifecycleApplyAuthorized({ args: process.argv, databaseName: configuredDatabase });
   await connectMongo();
   const databaseName = mongoose.connection.db?.databaseName;
   assertGranotLifecycleDatabaseAllowed(databaseName);
+  if (databaseName !== configuredDatabase) throw new Error("Connected database does not match migration preflight database.");
   if (mode === "apply") {
     assertGranotLifecycleApplyAuthorized({
       args: process.argv,
@@ -482,6 +531,21 @@ async function main(): Promise<void> {
     findCallLogSyncStateKeyCollisions(callLogSyncStateRows);
   const callLogSyncStateReport = reportCallLogSyncStateRows(callLogSyncStateRows);
   const callLogSyncStateOrdered = orderedCallLogSyncStateIndexCreates();
+  const domainCommandOrdered = orderedDomainCommandExecutionIndexCreates();
+  const domainCommandIdCollisions = findUniqueFieldCollisions(
+    await loadUniqueFieldRows(DOMAIN_COMMAND_EXECUTION_COLLECTION, "command_id"),
+  );
+  const domainCommandIdempotencyCollisions = findUniqueFieldCollisions(
+    await loadDomainIdempotencyRows(),
+  );
+  const processedCallCollection = getRingCentralCollectionName("processedCalls");
+  const processedCallOrdered = orderedRingCentralProcessedCallIndexCreates();
+  const processedCallTelephonyCollisions = findUniqueFieldCollisions(
+    await loadUniqueFieldRows(processedCallCollection, "telephonySessionId"),
+  );
+  const processedCallLogCollisions = findUniqueFieldCollisions(
+    await loadUniqueFieldRows(processedCallCollection, "callLogId"),
+  );
   let created: string[] = [];
   let verify: ReturnType<typeof verifyReceiptIndexDefinitions> | undefined;
   let observationVerify: ReturnType<typeof verifyObservationIndexDefinitions> | undefined;
@@ -501,6 +565,8 @@ async function main(): Promise<void> {
   let callLogSyncStateVerify:
     | ReturnType<typeof verifyCallLogSyncStateIndexDefinitions>
     | undefined;
+  let domainCommandVerify: ReturnType<typeof verifyDomainCommandExecutionIndexDefinitions> | undefined;
+  let processedCallVerify: ReturnType<typeof verifyRingCentralProcessedCallIndexDefinitions> | undefined;
 
   if (mode === "apply") {
     created = await createIndexes(GRANOT_OBSERVATION_RECEIPT_COLLECTION, ordered.nonUnique);
@@ -513,6 +579,8 @@ async function main(): Promise<void> {
       ...(await createIndexes(GRANOT_LIFECYCLE_ACTIVATION_COLLECTION, activationOrdered.nonUnique)),
       ...(await createIndexes(GRANOT_RECORD_LINK_COLLECTION, recordLinkOrdered.nonUnique)),
       ...(await createIndexes(ENTITY_CHANGE_COLLECTION, entityChangeOrdered.nonUnique)),
+      ...(await createIndexes(DOMAIN_COMMAND_EXECUTION_COLLECTION, domainCommandOrdered.nonUnique)),
+      ...(await createIndexes(processedCallCollection, processedCallOrdered.nonUnique)),
       ...(await createIndexes(
         GRANOT_BOOKING_RECONCILIATION_CASE_COLLECTION,
         bookingCaseOrdered.nonUnique,
@@ -524,6 +592,16 @@ async function main(): Promise<void> {
       ...(await createIndexes(GRANOT_BOOKING_DISCREPANCY_COLLECTION, bookingDiscrepancyOrdered.nonUnique)),
       ...(await createIndexes(GRANOT_RELEASE_DISCREPANCY_COLLECTION, releaseDiscrepancyOrdered.nonUnique)),
     ];
+    if (
+      domainCommandIdCollisions.length > 0 ||
+      domainCommandIdempotencyCollisions.length > 0 ||
+      processedCallTelephonyCollisions.length > 0 ||
+      processedCallLogCollisions.length > 0
+    ) {
+      throw new Error(
+        `Refusing command/processed-call unique indexes: ${domainCommandIdCollisions.length + domainCommandIdempotencyCollisions.length + processedCallTelephonyCollisions.length + processedCallLogCollisions.length} collision group(s).`,
+      );
+    }
     if (collisions.length > 0 || observationCollisions.length > 0) {
       const manifest = buildManifest({
         databaseName,
@@ -610,6 +688,8 @@ async function main(): Promise<void> {
       ...(entityChangeCollisions.length === 0
         ? await createIndexes(ENTITY_CHANGE_COLLECTION, entityChangeOrdered.unique)
         : []),
+      ...(await createIndexes(DOMAIN_COMMAND_EXECUTION_COLLECTION, domainCommandOrdered.unique)),
+      ...(await createIndexes(processedCallCollection, processedCallOrdered.unique)),
     ];
     if (bookedLeadCollisions.length > 0) {
       const manifest = buildManifest({
@@ -821,6 +901,12 @@ async function main(): Promise<void> {
     callLogSyncStateVerify = verifyCallLogSyncStateIndexDefinitions(
       await listDeclaredIndexes(callLogSyncStateCollectionName()),
     );
+    domainCommandVerify = verifyDomainCommandExecutionIndexDefinitions(
+      await listDeclaredIndexes(DOMAIN_COMMAND_EXECUTION_COLLECTION),
+    );
+    processedCallVerify = verifyRingCentralProcessedCallIndexDefinitions(
+      await listDeclaredIndexes(processedCallCollection),
+    );
   }
 
   const uniqueCreated =
@@ -840,6 +926,10 @@ async function main(): Promise<void> {
     releaseCaseCollisions.sequence.length === 0
     && bookingDiscrepancyCollisions.length === 0
     && releaseDiscrepancyCollisions.length === 0
+    && domainCommandIdCollisions.length === 0
+    && domainCommandIdempotencyCollisions.length === 0
+    && processedCallTelephonyCollisions.length === 0
+    && processedCallLogCollisions.length === 0
       ? [
           ...ordered.unique.map((index) => index.name),
           ...observationOrdered.unique.map((index) => index.name),
@@ -854,6 +944,8 @@ async function main(): Promise<void> {
           ...releaseCaseOrdered.unique.map((index) => index.name),
           ...bookingDiscrepancyOrdered.unique.map((index) => index.name),
           ...releaseDiscrepancyOrdered.unique.map((index) => index.name),
+          ...domainCommandOrdered.unique.map((index) => index.name),
+          ...processedCallOrdered.unique.map((index) => index.name),
         ]
       : [];
 
@@ -892,6 +984,12 @@ async function main(): Promise<void> {
     callLogSyncStateCollisions,
     callLogSyncStateReport,
     callLogSyncStateVerify,
+    domainCommandIdCollisions,
+    domainCommandIdempotencyCollisions,
+    processedCallTelephonyCollisions,
+    processedCallLogCollisions,
+    domainCommandVerify,
+    processedCallVerify,
   });
   await writeGranotLifecycleManifest({
     directory: OUTPUT_DIR,
@@ -917,6 +1015,8 @@ async function main(): Promise<void> {
       formLeadVerify,
       callLeadVerify,
       callLogSyncStateVerify,
+      domainCommandVerify,
+      processedCallVerify,
     ].filter((result) => result && !result.ok);
     if (failed.length > 0) {
       const missing = failed.flatMap((result) => result?.missing ?? []);
@@ -963,6 +1063,12 @@ function buildManifest(input: {
   callLogSyncStateCollisions?: ReturnType<typeof findCallLogSyncStateKeyCollisions>;
   callLogSyncStateReport?: ReturnType<typeof reportCallLogSyncStateRows>;
   callLogSyncStateVerify?: ReturnType<typeof verifyCallLogSyncStateIndexDefinitions>;
+  domainCommandIdCollisions?: ReturnType<typeof findUniqueFieldCollisions>;
+  domainCommandIdempotencyCollisions?: ReturnType<typeof findUniqueFieldCollisions>;
+  processedCallTelephonyCollisions?: ReturnType<typeof findUniqueFieldCollisions>;
+  processedCallLogCollisions?: ReturnType<typeof findUniqueFieldCollisions>;
+  domainCommandVerify?: ReturnType<typeof verifyDomainCommandExecutionIndexDefinitions>;
+  processedCallVerify?: ReturnType<typeof verifyRingCentralProcessedCallIndexDefinitions>;
 }) {
   return {
     script_version: INDEX_MIGRATION_SCRIPT_VERSION,
@@ -970,6 +1076,7 @@ function buildManifest(input: {
     mode: input.mode,
     contract_index_names: [
       ...GRANOT_OBSERVATION_RECEIPT_INDEXES.map((index) => index.name),
+      ...GRANOT_OBSERVATION_RECEIPT_NAMED_LEGACY_INDEXES.map((index) => index.name),
       ...GRANOT_OBSERVATION_INDEXES.map((index) => index.name),
       ...GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES.map((index) => index.name),
       ...GRANOT_AUTOMATION_SOURCE_INDEXES.map((index) => index.name),
@@ -985,6 +1092,8 @@ function buildManifest(input: {
       ...GRANOT_RELEASE_RECONCILIATION_CASE_INDEXES.map((index) => index.name),
       ...GRANOT_BOOKING_DISCREPANCY_INDEXES.map((index) => index.name),
       ...GRANOT_RELEASE_DISCREPANCY_INDEXES.map((index) => index.name),
+      ...DOMAIN_COMMAND_EXECUTION_INDEXES.map((index) => index.name),
+      ...RINGCENTRAL_PROCESSED_CALL_INDEXES.map((index) => index.name),
     ],
     collision_count:
       input.collisions.length +
@@ -1001,7 +1110,11 @@ function buildManifest(input: {
       (input.releaseCaseCollisions?.open.length ?? 0) +
       (input.releaseCaseCollisions?.sequence.length ?? 0) +
       (input.bookingDiscrepancyCollisions?.length ?? 0) +
-      (input.releaseDiscrepancyCollisions?.length ?? 0),
+      (input.releaseDiscrepancyCollisions?.length ?? 0)
+      + (input.domainCommandIdCollisions?.length ?? 0)
+      + (input.domainCommandIdempotencyCollisions?.length ?? 0)
+      + (input.processedCallTelephonyCollisions?.length ?? 0)
+      + (input.processedCallLogCollisions?.length ?? 0),
     collisions: input.collisions,
     observation_receipt_id_collisions: input.observationCollisions,
     normalized_granot_label_collisions: input.normalizedLabelCollisions,
@@ -1039,14 +1152,19 @@ function buildManifest(input: {
     call_log_sync_state_rows: input.callLogSyncStateReport,
     call_log_sync_state_index_contract: RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX,
     call_log_sync_state_verify: input.callLogSyncStateVerify,
+    domain_command_id_collisions: input.domainCommandIdCollisions ?? [],
+    domain_command_idempotency_collisions: input.domainCommandIdempotencyCollisions ?? [],
+    ringcentral_processed_call_telephony_collisions: input.processedCallTelephonyCollisions ?? [],
+    ringcentral_processed_call_log_collisions: input.processedCallLogCollisions ?? [],
+    domain_command_verify: input.domainCommandVerify,
+    ringcentral_processed_call_verify: input.processedCallVerify,
     global_unique_lead_job_index: false,
   };
 }
 
 main()
-  .catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(message);
+  .catch(() => {
+    console.error("Granot lifecycle index migration failed with a bounded technical error.");
     process.exitCode = 1;
   })
   .finally(async () => {

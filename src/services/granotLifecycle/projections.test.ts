@@ -9,6 +9,7 @@ import {
   dueWorkFilter,
   flagsToNamedBooleans,
   maskContactLabel,
+  maskLifecycleContact,
   normalizeJobProjectionPath,
   paginateTimeline,
   type GranotTimelineEntry,
@@ -28,6 +29,22 @@ test("[AC-35] centralized list masking never returns raw contact", () => {
   assert.equal(maskContactLabel({ name: "Synthetic Person" }), "S•••");
   assert.equal(maskContactLabel({ phone_number: "5550001234" }), "•••1234");
   assert.equal(maskContactLabel({ email: "synthetic@example.invalid" }), "s•••@example.invalid");
+});
+
+test("[AC-35] lifecycle detail contact projection masks every contact field", () => {
+  const raw = {
+    first_name: "Privacy",
+    last_name: "Canary",
+    phone_number: "+1 (212) 555-0199",
+    email: "unit31-private-canary@example.invalid",
+  };
+  const projected = maskLifecycleContact(raw);
+  assert.deepEqual(projected, {
+    name: "P•••",
+    phone_number: "•••0199",
+    email: "u•••@example.invalid",
+  });
+  assert.equal(JSON.stringify(projected).includes("unit31-private-canary"), false);
 });
 
 test("[AC-20] [AC-36] [AC-40] timeline order is stable and evidence is not collapsed", () => {

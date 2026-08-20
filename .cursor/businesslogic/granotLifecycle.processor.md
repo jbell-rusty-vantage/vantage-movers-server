@@ -48,6 +48,13 @@ Source Company, Source Granularity, Ingestion Origin, CPL, Booking/Cancellation 
 
 ## Shadow and effects
 
+Unit 31 adds the operator-only `granot:lifecycle:shadow` adapter. It selects
+pre-activation receipt IDs in ascending order and calls this exact processor
+interface; it owns no normalization, matching, or policy. Its private
+checkpoint is resumable, while public output contains masked IDs and bounded
+distributions. Before/after collection fingerprints make any forbidden effect
+or activation drift a failing certification.
+
 - Pre-activation and `captured_at < activated_at` stay `historical_shadow` forever. Live-shadow Decisions are never promoted.
 - Historical shadow may create safe job-level Record Link evidence when Job/scope agree. It does not add `lead_ref`, `booking_ref`, source scope, or disputed state.
 - Live shadow persists Decisions only. Eligible matched writes become `shadow_effect_suppressed`.

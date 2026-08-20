@@ -87,6 +87,7 @@ import {
   recordGranotLifecycleDecisionToEffectMs,
 } from "./metrics";
 import { emitGranotLifecycleEvent } from "./observability";
+import { maskLifecycleId } from "./safeLogging";
 import { upsertGranotObservation } from "./normalization";
 import {
   createMongoSourcePolicyStore,
@@ -1915,9 +1916,9 @@ function logProcessingCompletion(input: {
 }): void {
   logger.info({
     msg: "granot_lifecycle.processing.completed",
-    receipt_id: input.receipt_id,
-    observation_id: input.observation_id,
-    decision_id: input.decision_id,
+    receipt_id: maskLifecycleId(input.receipt_id),
+    observation_id: maskLifecycleId(input.observation_id),
+    decision_id: maskLifecycleId(input.decision_id),
     attempt: input.attempt,
     execution_mode: input.execution_mode,
     outcome: input.outcome,

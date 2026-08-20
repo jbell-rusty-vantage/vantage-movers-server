@@ -13,6 +13,7 @@ import {
 import { incrementGranotLifecycleCaptureFailures } from "../services/granotLifecycle/metrics";
 import { emitGranotLifecycleEvent } from "../services/granotLifecycle/observability";
 import { publishGranotLifecycleReceiptWakeup } from "../services/granotLifecycle/queuePublisher";
+import { safeLifecycleFailureLog } from "../services/granotLifecycle/safeLogging";
 
 type CaptureGranotLifecycleWebhook = (
   input: CaptureGranotLifecycleWebhookInput,
@@ -72,7 +73,12 @@ export function createGranotWebhookRouter(deps: GranotWebhookRouterDeps = {}) {
           });
         } catch (error) {
           incrementGranotLifecycleCaptureFailures();
-          logger.error({ err: error, msg: "granot_lifecycle.capture.failed" });
+          logger.error(safeLifecycleFailureLog({
+            error,
+            msg: "granot_lifecycle.capture.failed",
+            observation_channel: "granot_webhook",
+            route_event_class: route.event_type,
+          }));
           await emitGranotLifecycleEvent({
             level: "error",
             eventKey: "granot_lifecycle.capture.failed",
@@ -94,13 +100,13 @@ export function createGranotWebhookRouter(deps: GranotWebhookRouterDeps = {}) {
         try {
           await publish({ receipt_id: result.receipt_id });
         } catch (error) {
-          logger.error({
-            err: error,
+          logger.error(safeLifecycleFailureLog({
+            error,
             msg: "granot_lifecycle.queue.publish_failed",
             receipt_id: result.receipt_id,
             observation_channel: "granot_webhook",
             route_event_class: route.event_type,
-          });
+          }));
         }
 
         return res.status(202).json({

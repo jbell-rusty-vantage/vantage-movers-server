@@ -19,8 +19,11 @@ test("[AC-21] command execution model keeps unique origin/idempotency and comman
     );
   });
   assert.ok(originKey);
-  const commandId = DomainCommandExecution.schema.path("command_id");
-  assert.equal(commandId?.options.unique, true);
+  const commandId = indexes.find((entry: unknown) => {
+    const [fields, options] = entry as [Record<string, unknown>, { unique?: boolean; name?: string }];
+    return fields.command_id === 1 && options.unique === true && options.name === "domain_command_command_id_unique";
+  });
+  assert.ok(commandId);
 });
 
 test("[AC-32] origin enum accepts the four command origins and nested applied result", () => {
