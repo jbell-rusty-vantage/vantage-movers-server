@@ -38,6 +38,19 @@ not re-run them and do not add them to `package.json`:
   `5557044` link and filled four unlabeled unmapped CRM stubs, then created
   the two remaining unique indexes.
 
+The inbound job-prefix repair is a separate owner-gated operator script. It
+re-queries live `job_number_conflict` Decisions, reports whether current
+identity would now link `P…` / `RF…` CallLeads to digit-only Granot jobs,
+and can persist historical job-level Record Links plus one Grossinger
+booking case. It does not mint official Bookings or rewrite original
+conflict Decisions.
+
+```text
+pnpm migration:granot-lifecycle:inbound-job-prefix-repair -- --report
+pnpm migration:granot-lifecycle:inbound-job-prefix-repair -- --apply --confirm-production=<db>
+pnpm migration:granot-lifecycle:inbound-job-prefix-repair -- --verify --confirm-production=<db>
+```
+
 For each command use `report -> human review -> separately authorized apply ->
 verify`, then repeat the cycle. The second apply must be a no-op. Non-unique
 indexes are created first; every unique index is collision-gated. The central
