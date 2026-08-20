@@ -329,6 +329,40 @@ export function assertInboundJobPrefixRepairApplyAllowed(input: {
   }
 }
 
+export type InboundJobPrefixRepairManifestSummary = {
+  conflict_decisions: number;
+  historical_shadow: number;
+  live_or_live_shadow: number;
+  prefix_equivalent: number;
+  identity_would_link: number;
+  historical_apply_eligible: number;
+  record_links_planned: number;
+  booking_cases_planned: number;
+  official_bookings_planned: number;
+  original_decisions_mutated: number;
+  already_repaired: number;
+  real_conflicts_left: number;
+};
+
+export type InboundJobPrefixRepairManifest = {
+  script_version: string;
+  database_name: string;
+  mode: InboundJobPrefixRepairMode;
+  operator_booking_case_reason: string;
+  summary: InboundJobPrefixRepairManifestSummary;
+  rows: readonly PlannedInboundJobPrefixRepairRow[];
+  writes: readonly InboundJobPrefixRepairWrite[];
+  applied: {
+    record_links: number;
+    booking_cases: number;
+    repair_decisions: number;
+  };
+  verify: {
+    ok: boolean;
+    failures: string[];
+  } | null;
+};
+
 export function buildInboundJobPrefixRepairManifest(input: {
   databaseName: string;
   mode: InboundJobPrefixRepairMode;
@@ -343,7 +377,7 @@ export function buildInboundJobPrefixRepairManifest(input: {
     ok: boolean;
     failures: string[];
   };
-}): Record<string, unknown> {
+}): InboundJobPrefixRepairManifest {
   const historical = input.rows.filter((row) => row.execution_mode === "historical_shadow");
   const live = input.rows.filter((row) => row.execution_mode !== "historical_shadow");
   return {

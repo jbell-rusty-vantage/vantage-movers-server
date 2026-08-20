@@ -584,7 +584,7 @@ async function persistRepairDecision(input: {
     execution_mode: "historical_shadow",
     outcome: "linked",
     reason_code: input.reason_code,
-    match_method: input.row.identity_match_method,
+    match_method: input.identity?.match_method,
     target: input.target,
     candidates: input.identity?.candidates ?? (input.row.identity_target_id && input.row.identity_target_model
       ? [{
