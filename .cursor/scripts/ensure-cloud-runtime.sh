@@ -93,3 +93,30 @@ EOF
 fi
 
 echo "[ensure-cloud-runtime] local Mongo replica set is PRIMARY on 127.0.0.1:27017"
+
+api_health() {
+  curl -sf --max-time 2 "http://127.0.0.1:3000/health" >/dev/null 2>&1
+}
+
+if api_health; then
+  echo "[ensure-cloud-runtime] API already healthy on http://localhost:3000"
+  exit 0
+fi
+
+# Dashboard-managed environments only run `start` (not repo `terminals`), so
+# bring the API up in the background and wait until /health succeeds.
+API_LOG="${API_LOG_FILE:-/home/ubuntu/.local-mongo/api.log}"
+echo "[ensure-cloud-runtime] starting API in background (logs: $API_LOG)..."
+nohup bash "$ROOT/.cursor/scripts/start-api.sh" >>"$API_LOG" 2>&1 &
+
+echo "[ensure-cloud-runtime] waiting for API /health..."
+for _ in $(seq 1 60); do
+  if api_health; then
+    echo "[ensure-cloud-runtime] API healthy on http://localhost:3000"
+    exit 0
+  fi
+  sleep 1
+done
+
+echo "[ensure-cloud-runtime] API did not become healthy on http://localhost:3000" >&2
+exit 1

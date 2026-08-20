@@ -15,12 +15,14 @@ Standard commands live in `package.json` `scripts` (e.g. `pnpm dev`, `pnpm typec
   MongoDB 8.0), so the Dockerfile is the source of truth and any saved snapshot is a no-op.
 - On each agent start it runs `pnpm install`, then `start`
   (`.cursor/scripts/ensure-cloud-runtime.sh`: fork local `mongod` if needed, initiate `rs0`,
-  write a local `.env` if missing) and two `terminals`:
+  write a local `.env` if missing, and start the API in the background if `:3000` is down)
+  and two `terminals`:
   `.cursor/scripts/start-mongo.sh` (attach to / start the MongoDB replica set) and
   `.cursor/scripts/start-api.sh` (wait for PRIMARY, export local-only overrides, then
-  `pnpm dev`). So **MongoDB and the API on `http://localhost:3000` come up automatically** —
-  the manual steps below are a reference/fallback (e.g. when not using this environment, or
-  when restarting a service by hand).
+  `pnpm dev`, or attach if `start` already launched it). So **MongoDB and the API on
+  `http://localhost:3000` come up automatically** — the manual steps below are a
+  reference/fallback (e.g. when not using this environment, or when restarting a service
+  by hand).
 - This personal Cursor Cloud environment is currently **dashboard-managed**
   (`environmentJsonPath` is null). Saving the proposed install/start scripts, or merging a
   repo-file `.cursor/environment.json` and starting from that revision, is what future agents

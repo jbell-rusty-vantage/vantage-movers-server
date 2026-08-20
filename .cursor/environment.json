@@ -12,8 +12,9 @@
   // Dependency refresh on every agent start, after the latest changes are
   // pulled. Idempotent and fast (uses pnpm's content-addressable store).
   "install": "pnpm install",
-  // Per-boot: local mongod replica set + gitignored .env. Returns when PRIMARY.
-  // The API process itself stays in the `api` terminal so its logs stay visible.
+  // Per-boot: local mongod replica set + gitignored .env + API if :3000 is down.
+  // Returns when Mongo is PRIMARY and GET /health succeeds. The `api` terminal
+  // attaches if start already launched the server.
   "start": "bash .cursor/scripts/ensure-cloud-runtime.sh",
   "ports": [
     { "name": "api", "port": 3000 },

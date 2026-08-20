@@ -18,6 +18,15 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.." # repo root
 
+if curl -sf --max-time 2 "http://127.0.0.1:3000/health" >/dev/null 2>&1; then
+  echo "[start-api] API already healthy on http://localhost:3000; attaching..."
+  while curl -sf --max-time 2 "http://127.0.0.1:3000/health" >/dev/null 2>&1; do
+    sleep 10
+  done
+  echo "[start-api] existing API stopped" >&2
+  exit 1
+fi
+
 MONGO_URI_LOCAL="mongodb://127.0.0.1:27017/?replicaSet=rs0"
 
 echo "[start-api] waiting for mongod to accept connections..."
