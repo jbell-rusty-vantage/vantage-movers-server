@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
 import mongoose from "mongoose";
 import { getMongoDatabaseName, isTestMode } from "../src/config/domain/runtime";
 import { connectMongo } from "../src/db";
@@ -10,6 +11,10 @@ const UNIT_33_QUEUED_EFFECT_FILES = [
   "src/services/granotLifecycle/bookingConfirmation.replica.test.ts",
   "src/services/granotLifecycle/releaseOwnerCommands.replica.test.ts",
   "src/services/granotLifecycle/referralBooking.replica.test.ts",
+] as const;
+
+const UNIT_34_CURRENT_SHAPE_FILES = [
+  "scripts/granot-lifecycle-unit34/current-shapes.test.ts",
 ] as const;
 
 const UNIT_FILES: Record<string, string[]> = {
@@ -111,12 +116,30 @@ const UNIT_FILES: Record<string, string[]> = {
     "src/services/ringcentral/callLeadConvergence.replica.test.ts",
     "scripts/migrations/granot-lifecycle-shadow.replica.test.ts",
   ],
+  "34": [
+    ...UNIT_34_CURRENT_SHAPE_FILES,
+    "src/services/granotLifecycle/drainer.replica.test.ts",
+    "src/services/granotLifecycle/identity.replica.test.ts",
+    "src/services/granotLifecycle/processor.replica.test.ts",
+    "src/services/granotLifecycle/extensionApply.replica.test.ts",
+    "src/services/granotLifecycle/automationApply.replica.test.ts",
+    "src/services/granotLifecycle/synchronizeLead.replica.test.ts",
+    "src/services/granotLifecycle/createLeadFromGranot.replica.test.ts",
+    "src/services/granotLifecycle/bookingReconciliation.replica.test.ts",
+    "src/services/granotLifecycle/releaseReconciliation.replica.test.ts",
+    "src/services/granotLifecycle/discrepancies.replica.test.ts",
+    "src/services/granotLifecycle/projections.replica.test.ts",
+    "src/services/granotLifecycle/operations.replica.test.ts",
+    "src/services/ringcentral/call-log-sync-lease.replica.test.ts",
+    "src/services/ringcentral/callLeadConvergence.replica.test.ts",
+    "scripts/migrations/granot-lifecycle-shadow.replica.test.ts",
+  ],
 };
 
 function parseUnit(): string {
   const raw = process.argv.find((arg) => arg.startsWith("--unit="));
   if (!raw) {
-    throw new Error("Usage: pnpm test:granot-lifecycle:replica -- --unit=08|...|31|33");
+    throw new Error("Usage: pnpm test:granot-lifecycle:replica -- --unit=08|...|31|33|34");
   }
   return raw.slice("--unit=".length);
 }
@@ -144,7 +167,13 @@ async function main(): Promise<void> {
   const unit = parseUnit();
   const files = UNIT_FILES[unit];
   if (!files) {
-    throw new Error(`No replica files registered for unit ${unit}; supported units are 08-31 and 33.`);
+    throw new Error(`No replica files registered for unit ${unit}; supported units are 08-31, 33, and 34.`);
+  }
+  if (unit === "34") {
+    const approvedDerivative = process.env.GRANOT_UNIT34_SANITIZED_INPUT_FILE?.trim();
+    if (!approvedDerivative || !path.isAbsolute(approvedDerivative)) {
+      throw new Error("Unit 34 requires an absolute approved sanitized derivative path.");
+    }
   }
   await assertSafeReplica();
   process.env.GRANOT_LIFECYCLE_REPLICA_TESTS = "true";
@@ -156,7 +185,7 @@ async function main(): Promise<void> {
     process.execPath,
     [
       "--import", "tsx", "--import", "./scripts/test-setup.ts", "--test",
-      ...(unit === "33" ? ["--test-force-exit"] : []),
+      ...(unit === "33" || unit === "34" ? ["--test-force-exit"] : []),
       "--test-concurrency=1",
       ...selectedFiles,
     ],
@@ -165,6 +194,20 @@ async function main(): Promise<void> {
       env: {
         ...process.env,
         GRANOT_LIFECYCLE_REPLICA_TESTS: "true",
+        GRANOT_LIFECYCLE_UNIT34_TESTS: unit === "34" ? "true" : "false",
+        // Replica proofs own their gate posture. Never inherit a developer's
+        // live-rollout values from .env, because several tests assert the safe
+        // baseline before selectively widening one gate for their scenario.
+        GRANOT_LIFECYCLE_PROCESSING_ENABLED: "true",
+        GRANOT_LIFECYCLE_SHADOW_MODE: "true",
+        GRANOT_LIFECYCLE_LEAD_WRITES_ENABLED: "false",
+        GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED: "false",
+        GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED: "false",
+        GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED: "false",
+        GRANOT_LIFECYCLE_RELEASE_CASES_ENABLED: "false",
+        GRANOT_LIFECYCLE_RELEASE_COMMANDS_ENABLED: "false",
+        GRANOT_LIFECYCLE_REFERRAL_BOOKING_ENABLED: "false",
+        GRANOT_LIFECYCLE_EMAIL_ENABLED: "false",
         MONGO_DB_NAME: getMongoDatabaseName(),
         RINGCENTRAL_COLLECTION_MODE: "test",
         RINGCENTRAL_GRANOT_ADOPTION_ENABLED: "true",
@@ -177,7 +220,7 @@ async function main(): Promise<void> {
     });
   };
   let code = await runFiles(files, "disabled");
-  if (code === 0 && unit === "33") {
+  if (code === 0 && (unit === "33" || unit === "34")) {
     // Queued mode persists the transactional outbox intent while test-setup
     // blocks queue publication and all Google delivery.
     code = await runFiles(UNIT_33_QUEUED_EFFECT_FILES, "queued");

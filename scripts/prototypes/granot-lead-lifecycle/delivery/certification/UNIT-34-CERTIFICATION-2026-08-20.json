@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "unit": 34,
+  "title": "Final current-Granot-webhook-payload application-logic certification",
+  "certification_date": "2026-08-20",
+  "timezone": "America/New_York",
+  "status": "complete",
+  "recommendation": "go",
+  "recommendation_scope": "isolated_application_logic_only",
+  "rollout_authorized_by_certification": false,
+  "custody": {
+    "source_category": "owner_approved_tracked_examples_copied_to_protected_temporary_storage",
+    "raw_payloads_tracked": false,
+    "raw_payloads_printed": false,
+    "temporary_retention_instruction": "delete_after_certification",
+    "temporary_custody_disposition": "deleted_after_durable_evidence"
+  },
+  "sanitizer": {
+    "payload_count": 6,
+    "family_count": 4,
+    "scanner_ok": true,
+    "violation_count": 0
+  },
+  "families": [
+    {
+      "family_id": "current_shape_001",
+      "occurrence_count": 1,
+      "route_event_class": "lead_created",
+      "schema_fingerprint": "0ee2407f21fd4e8879681130854faef710c02a5e72ee65c5972b0a338a7df73d"
+    },
+    {
+      "family_id": "current_shape_002",
+      "occurrence_count": 1,
+      "route_event_class": "priority_updated",
+      "schema_fingerprint": "545dfd583b4d395b7ec81524c7cc7794ceaa61672cf38958c1d615ace7058bea"
+    },
+    {
+      "family_id": "current_shape_003",
+      "occurrence_count": 3,
+      "route_event_class": "booking_status_changed",
+      "schema_fingerprint": "abcb0091405ca5cf1fa893bf160a8feab449b41da2b3d4c6716e411c49a541e3"
+    },
+    {
+      "family_id": "current_shape_004",
+      "occurrence_count": 1,
+      "route_event_class": null,
+      "schema_fingerprint": "ed2ac5d0e3e4831e24d2fa2be8b1a548a6f9530128903f9b16cf5154350ecaca",
+      "outcome": "failed_closed_empty_payload"
+    }
+  ],
+  "environment": {
+    "database_mode": "disposable_test_replica_set",
+    "database_name": "testvantagemovers_unit34cert",
+    "test_mode": true,
+    "sheet_delivery": "disabled_or_publication_blocked",
+    "google_delivery_count": 0,
+    "external_effects": 0,
+    "email_enabled": false,
+    "disposable_database_disposition": "dropped_after_durable_evidence"
+  },
+  "synthetic_seed": {
+    "companies": 1,
+    "granularities": 3,
+    "reviewed_source_definitions": 5,
+    "redacted_receipts": 1
+  },
+  "migration_gates": {
+    "receipts": "report_apply_verify_green",
+    "source_registry": "report_apply_verify_green",
+    "lead_provenance": "report_apply_verify_green",
+    "aggregate_revisions": "report_apply_verify_green",
+    "indexes": "report_apply_verify_green",
+    "production_apply": false
+  },
+  "tests": {
+    "sanitizer": { "passed": 3, "failed": 0 },
+    "current_shapes": { "passed": 8, "failed": 0 },
+    "replica_core": { "passed": 69, "failed": 0 },
+    "replica_queued_outbox": { "passed": 19, "failed": 0 },
+    "focused_server": { "total": 131, "passed": 129, "skipped": 2, "failed": 0 },
+    "full_server": { "total": 1520, "passed": 1434, "skipped": 86, "failed": 0 },
+    "server_typecheck": "passed",
+    "admin": { "tests_passed": 234, "tests_failed": 0, "lint": "passed", "typecheck": "passed", "build": "passed", "routes": 41 },
+    "extension": { "tests_passed": 146, "tests_failed": 0, "compile": "passed", "chrome_build": "passed", "firefox_build": "passed" }
+  },
+  "queue_and_sheet_evidence": {
+    "durable_outbox_enqueue": "passed",
+    "queue_publication": "blocked_in_certification_environment",
+    "master_leads_intent": "covered_by_replica_matrix",
+    "master_booked_intent": "covered_by_replica_matrix",
+    "no_effect_sheet_intent_absence": "covered_by_replica_matrix",
+    "google_delivery_count": 0
+  },
+  "acceptance_coverage": {
+    "sampled_current_shapes": ["AC-01", "AC-05", "AC-06", "AC-25", "AC-29", "AC-35"],
+    "complete_automated_baseline": "AC-01-through-AC-40 retained from Unit 33 and rerun through the Unit 34 replica matrix"
+  },
+  "defects": [
+    {
+      "classification": "environment_defect",
+      "summary": "Shared test state and inherited local live flags interfered with early attempts.",
+      "resolution": "Used the exact disposable database and explicit safe runner flags.",
+      "rerun": "green"
+    }
+  ],
+  "privacy_and_security": {
+    "credential_findings": 0,
+    "pii_findings": 0,
+    "realistic_contact_findings": 0,
+    "custody_path_findings": 0,
+    "raw_headers_in_artifacts": false,
+    "masked_projections_only": true
+  },
+  "program_notes": {
+    "unit_32": "skipped",
+    "email_behavior_added": false,
+    "domain_behavior_added": false,
+    "owner_release_override": "Owner requested combined Lead, Booking, Release, Referral, and RingCentral adoption after deployment; this certification does not perform or authorize the write-once activation."
+  },
+  "external_action_disclosure": {
+    "production_database_access": false,
+    "production_database_mutation": false,
+    "production_payload_replay": false,
+    "lifecycle_flag_or_registry_change": false,
+    "production_migration_or_index_apply": false,
+    "external_customer_send": false
+  },
+  "sign_off": "Primary agent certification evidence recorded 2026-08-20; no cryptographic signature claimed."
+}

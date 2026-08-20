@@ -51,7 +51,9 @@
     "migration:granot-lifecycle:leads": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-lead-provenance.ts",
     "migration:granot-lifecycle:revisions": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-aggregate-revisions.ts",
     "granot:lifecycle:shadow": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-shadow-process.ts",
-    "granot:lifecycle:certify": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-certification.ts"
+    "granot:lifecycle:certify": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-certification.ts",
+    "granot:lifecycle:unit34:sanitize": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/granot-lifecycle-unit34/sanitize-current-payloads.ts",
+    "granot:lifecycle:unit34:seed": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/granot-lifecycle-unit34/seed-disposable-certification.ts"
   },
   "keywords": [],
   "author": "",
