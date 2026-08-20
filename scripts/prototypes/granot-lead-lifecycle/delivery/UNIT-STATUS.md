@@ -37,14 +37,16 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 | 29 | Booking/Release discrepancies, re-evaluation, and Record Link correction | 24–27 | complete | complete | [UNIT-29-COMPLETION.md](completion-reports/UNIT-29-COMPLETION.md) |
 | 30 | Operational events, metrics, health projection, and rollout alerts | applicable 01–29 | complete | complete | [UNIT-30-COMPLETION.md](completion-reports/UNIT-30-COMPLETION.md) |
 | 31 | Migration/index verification, historical shadow certification, security audit, and runbooks | applicable 01–30 | ready | complete | — |
-| 32 | Optional new-case email notifications | accepted case workflows, explicit inclusion approval | optional | scaffold | — |
-| 33 | Prototype retirement, compatibility cleanup, and complete synthetic regression | 01–31; 32 if included | blocked | scaffold | — |
-| 34 | Final current-Granot-webhook-payload application-logic certification | 01–31, 33; 32 if included | blocked | scaffold | — |
+| 32 | Optional new-case email notifications (skipped for this delivery) | accepted case workflows, explicit inclusion approval | optional | scaffold | — |
+| 33 | Prototype retirement, compatibility cleanup, and complete synthetic regression | 01–31; 32 skipped | blocked | complete | — |
+| 34 | Final current-Granot-webhook-payload application-logic certification | 01–31, 33; 32 skipped | blocked | complete | — |
 
 ## Current ready queue
 
 - Open review findings live in [`warnings/`](warnings/README.md). They do not block the next sequential unit unless repository re-verification shows an applicable finding has become material.
 - Unit 31 is the next sequential unit after Unit 30 repository verification.
+- Unit 32 is intentionally skipped for this delivery. It is not a prerequisite for Units 33 or 34; `GRANOT_LIFECYCLE_EMAIL_ENABLED=false` remains fixed.
+- Unit 33 and Unit 34 contracts are implementation-ready. Unit 33 remains implementation-blocked until Unit 31 completes and compatibility-removal evidence is sufficient. Unit 34 remains final and blocked until Units 31 and 33 complete with ordinary full regression green and no unresolved migration/index/security failure.
 - Units 04–18 are complete on `granot-lead-lifecycle`. Re-verify the matching completion report before depending on a later unit.
 - Unit 08 completes S06 and removes Unit 15's durable-work prerequisite. Unit 14 now supplies the identity resolver Unit 15 must consume.
 - Unit 09 lands aggregate revision tokens, the CAS primitive, and revision-only Lead/Booking/Cancellation backfill. Units 12–13 must preserve those revisions and the persisted history boundary.
