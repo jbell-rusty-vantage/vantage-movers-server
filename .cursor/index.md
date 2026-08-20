@@ -15,7 +15,7 @@ Production API: https://vantage-movers-main-server.vercel.app
 ├── agents/                  ← Cursor subagents (docs-keeper, spec extractor)
 ├── businesslogic/           ← per-service compact domain docs (see below)
 ├── rules/                   ← Cursor rule files (*.mdc), scoped by glob
-├── scripts/                 ← local dev helpers (Mongo, API)
+├── scripts/                 ← Cloud helpers (ensure-cloud-runtime, start-mongo, start-api)
 ├── environment.json         ← Cursor cloud agent environment config
 ├── Dockerfile               ← Cursor cloud agent image
 └── ringcentral_cron_review.md  ← ad-hoc RingCentral cron review notes
