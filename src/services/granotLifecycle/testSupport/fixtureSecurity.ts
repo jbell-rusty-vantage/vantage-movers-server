@@ -55,6 +55,10 @@ function safePathSegment(segment: string): string {
   return segment.replace(/[^A-Za-z0-9_.[\]-]/g, "_");
 }
 
+export function normalizeFixtureInventoryPath(relativePath: string): string {
+  return safePathSegment(relativePath.replace(/[\\/]+/g, "."));
+}
+
 function normalizedKey(key: string): string {
   return key.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -287,7 +291,7 @@ export function scanLifecycleFixtureInventory(
     ) {
       violations.push({
         fixture_id: "fixture_source_inventory",
-        path: safePathSegment(path.relative(workspaceRoot, sourcePath).replaceAll("\\", ".")),
+        path: normalizeFixtureInventoryPath(path.relative(workspaceRoot, sourcePath)),
         code: "unvalidated_fixture_source",
       });
     }
@@ -300,9 +304,7 @@ export function scanLifecycleFixtureInventory(
       if (prohibitedFixtureDirectoryPattern.test(name)) {
         violations.push({
           fixture_id: "fixture_source_inventory",
-          path: safePathSegment(
-            path.relative(workspaceRoot, directoryPath).replaceAll("\\", "."),
-          ),
+          path: normalizeFixtureInventoryPath(path.relative(workspaceRoot, directoryPath)),
           code: "prohibited_fixture_source",
         });
         return false;

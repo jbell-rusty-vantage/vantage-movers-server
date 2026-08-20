@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   assertLifecycleFixturesAreSynthetic,
+  normalizeFixtureInventoryPath,
   scanLifecycleFixtureInventory,
   scanLifecycleFixtureSourcePaths,
   scanLifecycleFixtures,
@@ -14,6 +15,11 @@ import {
   normalizationFixtureSchema,
   type NormalizationFixture,
 } from "./testSupport/normalizationFixture";
+
+test("fixture inventory paths normalize Windows and POSIX separators identically", () => {
+  assert.equal(normalizeFixtureInventoryPath("fixtures\\fixtures.ts"), "fixtures.fixtures.ts");
+  assert.equal(normalizeFixtureInventoryPath("fixtures/fixtures.ts"), "fixtures.fixtures.ts");
+});
 
 test("[AC-03][AC-05][AC-06][AC-29] every committed fixture satisfies the strict contract", () => {
   const parsed = normalizationFixtureSchema.array().parse(normalizationFixtures);
