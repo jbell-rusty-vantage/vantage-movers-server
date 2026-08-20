@@ -43,12 +43,31 @@ re-queries live `job_number_conflict` Decisions, reports whether current
 identity would now link `P…` / `RF…` CallLeads to digit-only Granot jobs,
 and can persist historical job-level Record Links plus one Grossinger
 booking case. It does not mint official Bookings or rewrite original
-conflict Decisions.
+conflict Decisions. Apply requires `SHEET_SYNC_MODE=disabled`.
 
 ```text
 pnpm migration:granot-lifecycle:inbound-job-prefix-repair -- --report
 pnpm migration:granot-lifecycle:inbound-job-prefix-repair -- --apply --confirm-production=<db>
 pnpm migration:granot-lifecycle:inbound-job-prefix-repair -- --verify --confirm-production=<db>
+```
+
+The owner booking-case intake is a sibling owner-gated operator script.
+Report is default. Apply requires `--apply --confirm-production=<db>` and
+`SHEET_SYNC_MODE=disabled`. The default window is Eastern day 2026-08-20
+(`2026-08-20T04:00:00.000Z` to `2026-08-21T04:00:00.000Z`; override with
+`--captured-from` / `--captured-to`). It selects the latest Booked
+Observation per Granot job, classifies case mode
+(`create_missing_booking`, `review_existing_booking`, or
+`create_referral_booking`), and can persist a Granot Booking Reconciliation
+Case plus an operator Synchronization Decision with gate
+`operator_owner_booking_case_intake`. Already-open cases are no-ops
+(including Grossinger `5562530`). It does not mint official Bookings or
+rewrite original Decisions.
+
+```text
+pnpm migration:granot-lifecycle:owner-booking-case-intake -- --report
+pnpm migration:granot-lifecycle:owner-booking-case-intake -- --apply --confirm-production=<db>
+pnpm migration:granot-lifecycle:owner-booking-case-intake -- --verify --confirm-production=<db>
 ```
 
 For each command use `report -> human review -> separately authorized apply ->

@@ -52,6 +52,7 @@
     "migration:granot-lifecycle:leads": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-lead-provenance.ts",
     "migration:granot-lifecycle:revisions": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-aggregate-revisions.ts",
     "migration:granot-lifecycle:inbound-job-prefix-repair": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-inbound-job-prefix-repair.ts",
+    "migration:granot-lifecycle:owner-booking-case-intake": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-owner-booking-case-intake.ts",
     "granot:lifecycle:shadow": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-shadow-process.ts",
     "granot:lifecycle:certify": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/migrations/granot-lifecycle-certification.ts",
     "granot:lifecycle:unit34:sanitize": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/granot-lifecycle-unit34/sanitize-current-payloads.ts",
@@ -88,6 +89,7 @@
   },
   "devDependencies": {
     "@ai-sdk/gateway": "^4.0.54",
+    "@cursor/sdk": "^1.0.28",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/express-serve-static-core": "^5.1.1",

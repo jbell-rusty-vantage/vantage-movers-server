@@ -22,10 +22,13 @@ edited or deleted.
 
 ## Migration and index gate
 
-Run every fixed command in `scripts/migrations/README.md` in report -> review ->
-separately authorized apply -> verify order. Repeat to prove no-op idempotency.
-Stop on unknown database, mismatch, collision, non-idempotency, unsafe manifest,
-or verification drift. Never drop or replace an index automatically.
+Run every fixed Unit 31 command in `scripts/migrations/README.md` in report ->
+review -> separately authorized apply -> verify order. Repeat to prove no-op
+idempotency. Stop on unknown database, mismatch, collision, non-idempotency,
+unsafe manifest, or verification drift. Never drop or replace an index
+automatically. Owner-gated one-shots in that README (inbound job-prefix
+repair and owner booking-case intake) are not the Unit 31 package; each
+needs its own report → review → separately authorized apply cycle.
 
 Source Registry classification uses that README's guarded
 `migration:granot-lifecycle:sources` flow. Production `vantagemovers` already
