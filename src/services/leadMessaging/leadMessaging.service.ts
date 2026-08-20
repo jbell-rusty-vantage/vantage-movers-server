@@ -15,6 +15,7 @@ import {
   shouldAllowLeadMessagingInTestMode,
   type LeadMessageStatus,
 } from "../../config/domain";
+import { logger } from "../../logger";
 import {
   createLeadMessage,
   getLeadMessageModel,
@@ -38,6 +39,16 @@ import {
   type TwilioSender,
 } from "./twilioAdapter";
 
+/** Twilio Message Scheduling accepts SendAt only in this window. */
+const TWILIO_SCHEDULE_MIN_LEAD_MS = 15 * 60_000;
+const TWILIO_SCHEDULE_MAX_LEAD_MS = 35 * 24 * 60 * 60_000;
+const DISPATCH_IN_FLIGHT_STATUSES = new Set([
+  "pending",
+  "queued",
+  "sending",
+  "retry_scheduled",
+]);
+
 export type PersistLeadMessageInput = {
   formLeadId: string;
   destinationPhone: string;
@@ -51,6 +62,18 @@ export type LeadMessagingOutcome = {
   message_id: string | null;
   status: string;
 };
+
+export function assertTwilioScheduleLeadTime(sendAt: Date, now: Date): void {
+  const leadMs = sendAt.getTime() - now.getTime();
+  if (
+    leadMs < TWILIO_SCHEDULE_MIN_LEAD_MS ||
+    leadMs > TWILIO_SCHEDULE_MAX_LEAD_MS
+  ) {
+    throw new Error(
+      `Twilio sendAt must be between 15 minutes and 35 days from now (got ${sendAt.toISOString()})`,
+    );
+  }
+}
 
 export async function persistLeadMessageIntent(
   input: PersistLeadMessageInput,
@@ -134,6 +157,7 @@ export function buildLeadMessageTwilioSendInput(input: {
       statusCallback: input.statusCallback,
     };
   }
+  assertTwilioScheduleLeadTime(sendAt, input.now ?? new Date());
   const messagingServiceSid =
     input.messagingServiceSid === undefined
       ? process.env.TWILIO_MESSAGING_SERVICE_SID?.trim() || null
@@ -151,6 +175,56 @@ export function buildLeadMessageTwilioSendInput(input: {
     sendAt,
     messagingServiceSid,
   };
+}
+
+export async function dispatchOrQueuePersistedLeadMessage(
+  message: LeadMessageDocument | null,
+  dependencies: {
+    dispatch?: typeof dispatchPersistedLeadMessage;
+    queue?: typeof queueInitialLeadMessage;
+    readStatus?: (messageId: string) => Promise<string | null>;
+  } = {},
+): Promise<LeadMessagingOutcome> {
+  if (!message) return { message_id: null, status: "not_requested" };
+  if (message.status === "skipped") {
+    return { message_id: message._id.toString(), status: "skipped" };
+  }
+  try {
+    if (message.dispatch_mode === "queued") {
+      return await (dependencies.queue ?? queueInitialLeadMessage)(
+        message._id.toString(),
+      );
+    }
+    return await (dependencies.dispatch ?? dispatchPersistedLeadMessage)(
+      message._id.toString(),
+    );
+  } catch (error) {
+    logger.error({
+      err: error,
+      msg: "lead_messaging.post_persist_dispatch_failed",
+      leadMessageId: message._id.toString(),
+      leadId: message.form_lead.toString(),
+    });
+    try {
+      const status = dependencies.readStatus
+        ? await dependencies.readStatus(message._id.toString())
+        : ((
+            await getLeadMessageModel()
+              .findById(message._id)
+              .select("status")
+              .lean()
+          )?.status ?? null);
+      if (status && !DISPATCH_IN_FLIGHT_STATUSES.has(status)) {
+        return {
+          message_id: message._id.toString(),
+          status,
+        };
+      }
+    } catch {
+      // Keep the failed outcome when the status lookup cannot run.
+    }
+    return { message_id: message._id.toString(), status: "failed" };
+  }
 }
 
 export async function dispatchPersistedLeadMessage(
@@ -193,24 +267,24 @@ export async function dispatchPersistedLeadMessage(
   }
 
   let result: Awaited<ReturnType<TwilioSender>>;
+  let sendInput: TwilioSendInput | undefined;
   try {
     const send = sender ?? createTwilioSender();
     const credentialsCallback = process.env.TWILIO_STATUS_CALLBACK_URL?.trim();
     if (!credentialsCallback) {
       throw new Error("TWILIO_STATUS_CALLBACK_URL is not set");
     }
-    result = await send(
-      buildLeadMessageTwilioSendInput({
-        to: message.to,
-        from: message.from,
-        body: message.body,
-        statusCallback: credentialsCallback,
-        now: dependencies.now,
-        messagingServiceSid: dependencies.messagingServiceSid,
-      }),
-    );
+    sendInput = buildLeadMessageTwilioSendInput({
+      to: message.to,
+      from: message.from,
+      body: message.body,
+      statusCallback: credentialsCallback,
+      now: dependencies.now,
+      messagingServiceSid: dependencies.messagingServiceSid,
+    });
+    result = await send(sendInput);
   } catch (error) {
-    return handleDispatchFailure(message, startedAt, error);
+    return await handleDispatchFailure(message, startedAt, error);
   }
 
   const providerStatus = result.status || "accepted";
@@ -288,10 +362,21 @@ export async function dispatchPersistedLeadMessage(
     );
     return { message_id: message._id.toString(), status: "uncertain" };
   }
-  await recordMessagingEvent(message, "info", "lead_message.accepted", {
-    twilio_message_sid: result.sid,
-    provider_status: providerStatus,
-  });
+  try {
+    await recordMessagingEvent(message, "info", "lead_message.accepted", {
+      twilio_message_sid: result.sid,
+      provider_status: providerStatus,
+      scheduled_send_at: sendInput?.sendAt?.toISOString() ?? null,
+    });
+  } catch (error) {
+    logger.error({
+      err: error,
+      msg: "lead_message.accepted_event_failed",
+      leadMessageId: message._id.toString(),
+      twilio_message_sid: result.sid,
+      provider_status: providerStatus,
+    });
+  }
   return { message_id: message._id.toString(), status };
 }
 

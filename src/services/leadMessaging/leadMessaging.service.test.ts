@@ -4,8 +4,10 @@ import mongoose from "mongoose";
 import type { LeadMessageDocument } from "../../models/LeadMessage";
 import type { CreateFormLeadInput } from "../../validation/v1.validation";
 import {
+  assertTwilioScheduleLeadTime,
   buildLeadMessageTwilioSendInput,
   classifyLeadMessagingFailure,
+  dispatchOrQueuePersistedLeadMessage,
   dispatchPersistedLeadMessage,
   normalizeSmsDestination,
   persistLeadMessageIntent,
@@ -68,9 +70,23 @@ test("form-lead SMS send input defers overnight Eastern traffic to 8:00 AM via T
     body: "hello",
     statusCallback: "https://example.com/status",
     now: new Date("2026-01-15T13:00:00.000Z"),
+    quietHoursEnabled: true,
+    messagingServiceSid: "MG123",
   });
   assert.equal(daytime.sendAt, undefined);
   assert.equal(daytime.messagingServiceSid, undefined);
+});
+
+test("Twilio schedule window rejects sendAt values Twilio would 400", () => {
+  const now = new Date("2026-01-15T12:50:00.000Z");
+  assert.throws(
+    () =>
+      assertTwilioScheduleLeadTime(new Date("2026-01-15T12:55:00.000Z"), now),
+    /15 minutes and 35 days/,
+  );
+  assert.doesNotThrow(() =>
+    assertTwilioScheduleLeadTime(new Date("2026-01-15T13:10:00.000Z"), now),
+  );
 });
 
 test("overnight deferral fails closed when the Messaging Service SID is missing", () => {
@@ -311,4 +327,63 @@ test("status callbacks do not regress or replace terminal outcomes", () => {
   assert.equal(shouldApplyTwilioStatus("delivered", "sent"), false);
   assert.equal(shouldApplyTwilioStatus("failed", "delivered"), false);
   assert.equal(shouldApplyTwilioStatus("sent", "undelivered"), true);
+});
+
+test("scheduled provider status can advance to queued, sent, or failed", () => {
+  assert.equal(shouldApplyTwilioStatus("scheduled", "queued"), true);
+  assert.equal(shouldApplyTwilioStatus("scheduled", "sent"), true);
+  assert.equal(shouldApplyTwilioStatus("scheduled", "failed"), true);
+  assert.equal(shouldApplyTwilioStatus("queued", "scheduled"), false);
+});
+
+test("post-persist dispatch never rejects the form-lead create path", async () => {
+  const messageId = new mongoose.Types.ObjectId();
+  const skipped = await dispatchOrQueuePersistedLeadMessage({
+    _id: messageId,
+    form_lead: new mongoose.Types.ObjectId(),
+    status: "skipped",
+    dispatch_mode: "inline",
+  } as LeadMessageDocument);
+  assert.deepEqual(skipped, {
+    message_id: messageId.toString(),
+    status: "skipped",
+  });
+
+  const contained = await dispatchOrQueuePersistedLeadMessage(
+    {
+      _id: messageId,
+      form_lead: new mongoose.Types.ObjectId(),
+      status: "pending",
+      dispatch_mode: "inline",
+    } as LeadMessageDocument,
+    {
+      dispatch: async () => {
+        throw new Error("quiet-hours scheduling failed");
+      },
+      readStatus: async () => null,
+    },
+  );
+  assert.deepEqual(contained, {
+    message_id: messageId.toString(),
+    status: "failed",
+  });
+
+  const alreadyAccepted = await dispatchOrQueuePersistedLeadMessage(
+    {
+      _id: messageId,
+      form_lead: new mongoose.Types.ObjectId(),
+      status: "pending",
+      dispatch_mode: "inline",
+    } as LeadMessageDocument,
+    {
+      dispatch: async () => {
+        throw new Error("event write failed after Twilio accepted");
+      },
+      readStatus: async () => "accepted",
+    },
+  );
+  assert.deepEqual(alreadyAccepted, {
+    message_id: messageId.toString(),
+    status: "accepted",
+  });
 });

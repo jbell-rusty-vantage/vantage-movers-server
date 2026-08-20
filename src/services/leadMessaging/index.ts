@@ -2,6 +2,8 @@ export {
   applyTwilioStatusCallback,
   buildLeadMessageTwilioSendInput,
   classifyLeadMessagingFailure,
+  assertTwilioScheduleLeadTime,
+  dispatchOrQueuePersistedLeadMessage,
   dispatchPersistedLeadMessage,
   getLeadMessage,
   listLeadMessages,

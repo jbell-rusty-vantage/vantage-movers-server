@@ -105,7 +105,11 @@ AM that same Eastern calendar day (`scheduleType=fixed`, `sendAt`,
 `TWILIO_MESSAGING_SERVICE_SID`). This is not a cron or `next_attempt_at`
 drain delay. 7:00 AM Eastern and later still send immediately. If the flag is
 on, the quiet-hours window is active, and the Messaging Service SID is
-missing, dispatch fails closed (does not send overnight).
+missing, dispatch fails closed (does not send overnight). Post-commit
+dispatch is awaited and isolated: a quiet-hours / Twilio scheduling error
+marks the Lead Message `failed` and returns that status on the create
+response. It does not throw out of `finalizeFormLeadCreateAfterCommit`, so
+Sheet Sync, CRM Posting, and the 201 create response still complete.
 
 ## Operational Events (create)
 

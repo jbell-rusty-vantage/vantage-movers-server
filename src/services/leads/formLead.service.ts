@@ -74,10 +74,8 @@ import {
 import { recordOperationalEvent } from "../observability";
 import { getRegistryAgent, isRegistryError } from "../operationsRegistry";
 import {
-  dispatchPersistedLeadMessage,
+  dispatchOrQueuePersistedLeadMessage,
   persistLeadMessageIntent,
-  queueInitialLeadMessage,
-  type LeadMessagingOutcome,
 } from "../leadMessaging";
 
 export type FormLeadCreateTransactionResult = {
@@ -295,7 +293,7 @@ export async function finalizeFormLeadCreateAfterCommit(
     });
   }
 
-  const messagingResult = await dispatchLeadMessageAfterPersist(leadMessage);
+  const messagingResult = await dispatchOrQueuePersistedLeadMessage(leadMessage);
 
   for (const job of jobs) {
     await finalizeSheetSync(job);
@@ -432,29 +430,6 @@ export async function finalizeFormLeadCreateAfterCommit(
     messaging_status: messagingResult.status,
     lead_message_id: messagingResult.message_id,
   };
-}
-
-async function dispatchLeadMessageAfterPersist(
-  message: Awaited<ReturnType<typeof persistLeadMessageIntent>>,
-): Promise<LeadMessagingOutcome> {
-  if (!message) return { message_id: null, status: "not_requested" };
-  if (message.status === "skipped") {
-    return { message_id: message._id.toString(), status: "skipped" };
-  }
-  try {
-    if (message.dispatch_mode === "queued") {
-      return queueInitialLeadMessage(message._id.toString());
-    }
-    return dispatchPersistedLeadMessage(message._id.toString());
-  } catch (error) {
-    logger.error({
-      err: error,
-      msg: "lead_messaging.post_persist_dispatch_failed",
-      leadMessageId: message._id.toString(),
-      leadId: message.form_lead.toString(),
-    });
-    return { message_id: message._id.toString(), status: "failed" };
-  }
 }
 
 export async function persistFormLeadUpdateInTransaction(
