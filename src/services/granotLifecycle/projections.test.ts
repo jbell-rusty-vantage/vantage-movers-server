@@ -12,6 +12,7 @@ import {
   maskLifecycleContact,
   normalizeJobProjectionPath,
   paginateTimeline,
+  rankBookingCandidateProjections,
   type GranotTimelineEntry,
 } from "./projections";
 
@@ -29,6 +30,20 @@ test("[AC-35] centralized list masking never returns raw contact", () => {
   assert.equal(maskContactLabel({ name: "Synthetic Person" }), "S•••");
   assert.equal(maskContactLabel({ phone_number: "5550001234" }), "•••1234");
   assert.equal(maskContactLabel({ email: "synthetic@example.invalid" }), "s•••@example.invalid");
+});
+
+test("[AC-23] candidate ranking pins the suggested Lead, then high confidence, and is stable", () => {
+  const rows = [
+    { id: "medium-first", confidence: "medium" as const, suggested: false },
+    { id: "high-first", confidence: "high" as const, suggested: false },
+    { id: "medium-second", confidence: "medium" as const, suggested: false },
+    { id: "suggested", confidence: "medium" as const, suggested: true },
+    { id: "high-second", confidence: "high" as const, suggested: false },
+  ];
+  assert.deepEqual(
+    rankBookingCandidateProjections(rows).map((row) => row.id),
+    ["suggested", "high-first", "high-second", "medium-first", "medium-second"],
+  );
 });
 
 test("[AC-35] lifecycle detail contact projection masks every contact field", () => {

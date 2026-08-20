@@ -42,6 +42,7 @@ import mongoose from "mongoose";
 import {
   projectBookingCandidateBrowserPolicy,
   searchBookingLeadCandidates,
+  type BookingLeadCandidateProjection,
 } from "./bookingReconciliation";
 import {
   GRANOT_LIFECYCLE_ERROR_CODES,
@@ -296,7 +297,9 @@ export type GranotLifecycleCaseDetail = {
 export type GranotLifecycleCandidateItem = {
   lead_ref: EntityRef;
   masked_contact_label: string;
+  contact: { name?: string; phone_number?: string; email?: string };
   job_no?: string;
+  normalized_job_no?: string;
   reference?: string;
   source: {
     lead_source_company?: string;
@@ -783,7 +786,14 @@ export async function listGranotLifecycleCaseCandidates(
   const after = cursor ? ordered.filter((entry) => candidateKey(entry) > cursor.key) : ordered;
   const pageRows = after.slice(0, query.limit + 1);
   const visible = pageRows.slice(0, query.limit);
-  const items = visible.map(({ ref, lead }) => {
+  // Ranked identity matches are pinned ahead of the unranked browse page so the
+  // strongest match is reachable without paging. An explicit search owns its own page.
+  const ranked = cursor || query.q
+    ? []
+    : await loadRankedCandidateLeadViews(policyRows, query.lead_model);
+  const rankedKeys = new Set(ranked.map(candidateKey));
+  const rows = [...ranked, ...visible.filter((entry) => !rankedKeys.has(candidateKey(entry)))];
+  const items = rows.map(({ ref, lead }) => {
     const policy = projectBookingCandidateBrowserPolicy({
       lead_ref: ref,
       lead_normalized_job_no: lead.normalized_job_no ?? undefined,
@@ -803,7 +813,13 @@ export async function listGranotLifecycleCaseCandidates(
         phone_number: lead.phone_number,
         email: lead.email,
       }),
+      contact: {
+        name: leadName(lead),
+        phone_number: lead.phone_number ?? undefined,
+        email: lead.email ?? undefined,
+      },
       job_no: lead.job_no ?? undefined,
+      normalized_job_no: lead.normalized_job_no ?? undefined,
       reference: lead.ref_no ?? undefined,
       source: {
         lead_source_company: lead.lead_source_company ? String(lead.lead_source_company) : undefined,
@@ -1241,6 +1257,21 @@ type CandidateLeadEntry = {
   lead: CandidateLeadView;
 };
 
+const CANDIDATE_LEAD_PROJECTION = {
+  name: 1,
+  first_name: 1,
+  last_name: 1,
+  phone_number: 1,
+  email: 1,
+  job_no: 1,
+  normalized_job_no: 1,
+  ref_no: 1,
+  lead_source_company: 1,
+  source_company_label_snapshot: 1,
+  source_granularity_id: 1,
+  source_granularity_label_snapshot: 1,
+} as const;
+
 async function browseCandidateLeadViews(
   query: GranotLifecycleCandidateQuery,
   sourceScope?: {
@@ -1266,20 +1297,7 @@ async function browseCandidateLeadViews(
       { ref_no: search },
     ];
   }
-  const projection = {
-    name: 1,
-    first_name: 1,
-    last_name: 1,
-    phone_number: 1,
-    email: 1,
-    job_no: 1,
-    normalized_job_no: 1,
-    ref_no: 1,
-    lead_source_company: 1,
-    source_company_label_snapshot: 1,
-    source_granularity_id: 1,
-    source_granularity_label_snapshot: 1,
-  };
+  const projection = CANDIDATE_LEAD_PROJECTION;
   const [cursorModel, cursorId] = cursorKey?.split(":") ?? [];
   const formFilter: Record<string, unknown> = { ...common, duplicate: { $ne: true }, bad_lead: null };
   const callFilter: Record<string, unknown> = { ...common };
@@ -1311,6 +1329,43 @@ async function browseCandidateLeadViews(
 
 function candidateKey(entry: CandidateLeadEntry): string {
   return `${entry.ref.model}:${entry.ref.id}`;
+}
+
+export function rankBookingCandidateProjections<
+  T extends { confidence: "high" | "medium"; suggested: boolean },
+>(rows: readonly T[]): T[] {
+  const weight = (row: T) => (row.suggested ? 0 : row.confidence === "high" ? 1 : 2);
+  return [...rows]
+    .map((row, index) => ({ row, index }))
+    .sort((left, right) => weight(left.row) - weight(right.row) || left.index - right.index)
+    .map((entry) => entry.row);
+}
+
+async function loadRankedCandidateLeadViews(
+  policyRows: readonly BookingLeadCandidateProjection[],
+  leadModel?: "FormLead" | "CallLead",
+): Promise<CandidateLeadEntry[]> {
+  const wanted = rankBookingCandidateProjections(policyRows)
+    .filter((candidate) => !leadModel || candidate.lead_ref.model === leadModel);
+  const loaded = await Promise.all(
+    wanted.map((candidate) =>
+      loadCandidateLeadView(candidate.lead_ref.model, String(candidate.lead_ref.id))),
+  );
+  return wanted.flatMap((candidate, index) => {
+    const lead = loaded[index];
+    return lead
+      ? [{ ref: { model: candidate.lead_ref.model, id: String(candidate.lead_ref.id) }, lead }]
+      : [];
+  });
+}
+
+function loadCandidateLeadView(
+  model: "FormLead" | "CallLead",
+  id: string,
+): Promise<CandidateLeadView | null> {
+  return model === "FormLead"
+    ? getFormLeadModel().findById(id).select(CANDIDATE_LEAD_PROJECTION).lean<CandidateLeadView | null>()
+    : getCallLeadModel().findById(id).select(CANDIDATE_LEAD_PROJECTION).lean<CandidateLeadView | null>();
 }
 
 async function loadLeadContactProjection(
