@@ -9,6 +9,7 @@ import {
   getLeadMessagingDestinationCooldownMs,
   getLeadMessagingHourlyLimit,
   getLeadMessagingMode,
+  isLeadMessagingQuietHoursEnabled,
   isTestMode,
   leadMessagingRetryDelayMs,
   shouldAllowLeadMessagingInTestMode,
@@ -30,7 +31,12 @@ import {
   buildLeadConfirmationMessage,
 } from "./messageBuilder";
 import { publishLeadMessagingWakeup } from "./leadMessagingQueue.service";
-import { createTwilioSender, type TwilioSender } from "./twilioAdapter";
+import { resolveLeadSmsQuietHoursDeferral } from "./quietHours";
+import {
+  createTwilioSender,
+  type TwilioSendInput,
+  type TwilioSender,
+} from "./twilioAdapter";
 
 export type PersistLeadMessageInput = {
   formLeadId: string;
@@ -106,9 +112,51 @@ export async function persistLeadMessageIntent(
   );
 }
 
+export function buildLeadMessageTwilioSendInput(input: {
+  to: string;
+  from: string;
+  body: string;
+  statusCallback: string;
+  now?: Date;
+  messagingServiceSid?: string | null;
+  quietHoursEnabled?: boolean;
+}): TwilioSendInput {
+  const quietHoursEnabled =
+    input.quietHoursEnabled ?? isLeadMessagingQuietHoursEnabled();
+  const sendAt = quietHoursEnabled
+    ? resolveLeadSmsQuietHoursDeferral(input.now ?? new Date())
+    : null;
+  if (!sendAt) {
+    return {
+      to: input.to,
+      from: input.from,
+      body: input.body,
+      statusCallback: input.statusCallback,
+    };
+  }
+  const messagingServiceSid =
+    input.messagingServiceSid === undefined
+      ? process.env.TWILIO_MESSAGING_SERVICE_SID?.trim() || null
+      : input.messagingServiceSid;
+  if (!messagingServiceSid) {
+    throw new Error(
+      "TWILIO_MESSAGING_SERVICE_SID is required to defer SMS during Eastern quiet hours",
+    );
+  }
+  return {
+    to: input.to,
+    from: input.from,
+    body: input.body,
+    statusCallback: input.statusCallback,
+    sendAt,
+    messagingServiceSid,
+  };
+}
+
 export async function dispatchPersistedLeadMessage(
   messageId: string,
   sender?: TwilioSender,
+  dependencies: { now?: Date; messagingServiceSid?: string | null } = {},
 ): Promise<LeadMessagingOutcome> {
   if (
     getLeadMessagingMode() === "disabled" ||
@@ -151,12 +199,16 @@ export async function dispatchPersistedLeadMessage(
     if (!credentialsCallback) {
       throw new Error("TWILIO_STATUS_CALLBACK_URL is not set");
     }
-    result = await send({
-      to: message.to,
-      from: message.from,
-      body: message.body,
-      statusCallback: credentialsCallback,
-    });
+    result = await send(
+      buildLeadMessageTwilioSendInput({
+        to: message.to,
+        from: message.from,
+        body: message.body,
+        statusCallback: credentialsCallback,
+        now: dependencies.now,
+        messagingServiceSid: dependencies.messagingServiceSid,
+      }),
+    );
   } catch (error) {
     return handleDispatchFailure(message, startedAt, error);
   }

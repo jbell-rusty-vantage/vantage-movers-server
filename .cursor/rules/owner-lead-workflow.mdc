@@ -16,7 +16,7 @@ alwaysApply: false
 - Create normalizes source/company/location/phone, derives `local`, stores a CPL snapshot via `resolveLeadCplSnapshot` → Operations Registry `resolveCpl`, generates `lid` when needed, checks duplicates by same source + normalized phone + email, then saves `FormLead`.
 - Duplicate form leads still save and sync to `Duplicates`, but force `post_to_granot=false` so Granot does not receive another CRM row.
 - Non-duplicates post to Granot; the CRM payload `leadno` is the persisted Form Lead Tracking Reference (`FormLead.ref_no`), which Granot exposes as `ref_no`. Exact `FormLead.ref_no` is the primary identity; a valid Mongo `_id`-shaped Granot `ref_no` remains a compatibility fallback only after exact lookup misses.
-- When `sms_consent` parses as true, create may enqueue a Lead Message after the Form Lead + Lead Message transaction commits. Duplicates record a skipped message and never dispatch. See `src/services/leadMessaging/`.
+- When `sms_consent` parses as true, create may enqueue a Lead Message after the Form Lead + Lead Message transaction commits. Dispatch is immediate after commit. Overnight Twilio scheduling (12:00 AM–6:59 AM America/New_York → 8:00 AM) stays off unless `LEAD_MESSAGING_QUIET_HOURS_ENABLED=true`; that path also needs `TWILIO_MESSAGING_SERVICE_SID` and fails closed if the SID is missing. Duplicates record a skipped message and never dispatch. See `src/services/leadMessaging/`.
 
 ## Extension And CRM Updates
 

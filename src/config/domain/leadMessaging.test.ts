@@ -7,6 +7,7 @@ import {
   getLeadMessagingHourlyLimit,
   getLeadMessagingMode,
   getLeadMessagingQueueTopic,
+  isLeadMessagingQuietHoursEnabled,
   shouldPublishLeadMessagingQueue,
 } from "./leadMessaging";
 
@@ -17,10 +18,12 @@ const KEYS = [
   "TWILIO_PRIMARY_AUTH_TOKEN",
   "TWILIO_FROM_NUMBER",
   "TWILIO_STATUS_CALLBACK_URL",
+  "TWILIO_MESSAGING_SERVICE_SID",
   "VERCEL_ENV",
   "LEAD_MESSAGING_ALLOWED_COUNTRY_PREFIXES",
   "LEAD_MESSAGING_DESTINATION_COOLDOWN_MINUTES",
   "LEAD_MESSAGING_HOURLY_LIMIT",
+  "LEAD_MESSAGING_QUIET_HOURS_ENABLED",
 ] as const;
 const original = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
 
@@ -47,13 +50,17 @@ test("lead messaging credentials use only definite environment variables", () =>
   process.env.TWILIO_FROM_NUMBER = "+18885550123";
   process.env.TWILIO_STATUS_CALLBACK_URL =
     "https://example.com/api/webhooks/twilio/message-status";
+  delete process.env.TWILIO_MESSAGING_SERVICE_SID;
   assert.deepEqual(getLeadMessagingCredentials(), {
     accountSid: "AC123",
     authToken: "token",
     fromNumber: "+18885550123",
     statusCallbackUrl:
       "https://example.com/api/webhooks/twilio/message-status",
+    messagingServiceSid: null,
   });
+  process.env.TWILIO_MESSAGING_SERVICE_SID = " MG123 ";
+  assert.equal(getLeadMessagingCredentials().messagingServiceSid, "MG123");
 });
 
 test("lead messaging queue topic is environment scoped and test-safe", () => {
@@ -63,6 +70,15 @@ test("lead messaging queue topic is environment scoped and test-safe", () => {
   process.env.VERCEL_ENV = "preview";
   assert.equal(getLeadMessagingQueueTopic(), "lead-messaging-events-dev");
   assert.equal(shouldPublishLeadMessagingQueue(), false);
+});
+
+test("quiet-hours scheduling is off unless the env flag is exactly true", () => {
+  delete process.env.LEAD_MESSAGING_QUIET_HOURS_ENABLED;
+  assert.equal(isLeadMessagingQuietHoursEnabled(), false);
+  process.env.LEAD_MESSAGING_QUIET_HOURS_ENABLED = "false";
+  assert.equal(isLeadMessagingQuietHoursEnabled(), false);
+  process.env.LEAD_MESSAGING_QUIET_HOURS_ENABLED = " TRUE ";
+  assert.equal(isLeadMessagingQuietHoursEnabled(), true);
 });
 
 test("lead messaging abuse guards have safe defaults and env overrides", () => {

@@ -57,17 +57,31 @@ export function shouldAllowLeadMessagingInTestMode(): boolean {
   );
 }
 
+/**
+ * Off by default. Overnight Twilio scheduling stays inert until this is
+ * explicitly `true`, so deploys keep sending immediately 24/7.
+ */
+export function isLeadMessagingQuietHoursEnabled(): boolean {
+  return (
+    process.env.LEAD_MESSAGING_QUIET_HOURS_ENABLED?.trim().toLowerCase() ===
+    "true"
+  );
+}
+
 export function getLeadMessagingCredentials(): {
   accountSid: string;
   authToken: string;
   fromNumber: string;
   statusCallbackUrl: string;
+  messagingServiceSid: string | null;
 } {
   return {
     accountSid: required("TWILIO_ACCOUNT_SID"),
     authToken: required("TWILIO_PRIMARY_AUTH_TOKEN"),
     fromNumber: required("TWILIO_FROM_NUMBER"),
     statusCallbackUrl: required("TWILIO_STATUS_CALLBACK_URL"),
+    messagingServiceSid:
+      process.env.TWILIO_MESSAGING_SERVICE_SID?.trim() || null,
   };
 }
 

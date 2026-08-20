@@ -76,7 +76,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - `googleAuth/` — Service-account credential loading
 - `googleDriveOAuth/` — Owner OAuth connection, picker, folders, managed tabs, token encryption
 - `googleMaps/` — Geocoding health
-- `leadMessaging/` — Twilio SMS confirmation + voice helpers + queue
+- `leadMessaging/` — Twilio SMS confirmation (Eastern quiet-hours Message Scheduling) + voice helpers + queue
 - `operationalWorkbooks/` — Registered operational spreadsheet IDs/masks
 
 ### RingCentral
@@ -123,7 +123,7 @@ Public v1 extras (still behind the v1 guard unless noted): `POST /api/v1/leadles
 
 ## Config Domain Modules (`src/config/domain/`)
 
-`constants`, `sheets`, `sources`, `cpl` / `cplRateDefinitions`, `runtime`, `googleAuth`, `googleDriveOAuth`, `googlePicker`, `sheetSync`, `granotCsv`, `granotWebhook` (secret + env-scoped lifecycle queue topic/publish guard), `granotLifecycle` (ten processing/shadow/effect flags), `observability`, `leadMessaging`, `employeeBookingMatching`, `bookingReconciliation`, `reportingLiveTest` — barrel-exported via `domain.ts`.
+`constants`, `sheets`, `sources`, `cpl` / `cplRateDefinitions`, `runtime`, `googleAuth`, `googleDriveOAuth`, `googlePicker`, `sheetSync`, `granotCsv`, `granotWebhook` (secret + env-scoped lifecycle queue topic/publish guard), `granotLifecycle` (ten processing/shadow/effect flags), `observability`, `leadMessaging` (`getLeadMessagingCredentials()` includes optional `messagingServiceSid` from `TWILIO_MESSAGING_SERVICE_SID`; overnight scheduling stays off unless `LEAD_MESSAGING_QUIET_HOURS_ENABLED=true`), `employeeBookingMatching`, `bookingReconciliation`, `reportingLiveTest` — barrel-exported via `domain.ts`.
 
 **`reporting`** — delivery limits/flags; import `./domain/reporting` directly (not in barrel).
 
@@ -153,7 +153,7 @@ Run via `package.json` so `.env` + `tsx` stay consistent.
 | `scripts/prototypes/granot-lead-lifecycle/specs/` and `delivery/` | Retained Granot lifecycle contract, traceability, unit history, and certification evidence; executable prototype commands were retired in Unit 33 |
 | `scripts/output/` | Generated artifacts (not runtime) |
 | Root one-offs | `dev-server.ts`, `best-relocation-sheet-ingest.ts`, `generate-granot-webhook-secret.ts`, `test-setup.ts`, `dump-operations-name-link-inventory.ts` (`pnpm ops:dump-name-link-inventory`), `ingest-moving-carriers.ts` (`pnpm db:ingest-moving-carriers`), `test-create-google-spreadsheet.ts` |
-| `scripts/dev_ops/twilio/`, `scripts/dev_ops/ping-db.ts` | `pnpm twilio:*`, `pnpm db:ping` |
+| `scripts/dev_ops/twilio/`, `scripts/dev_ops/ping-db.ts` | `pnpm twilio:*` (incl. `twilio:schedule-sms` to list Messaging Services, dry-run the quiet-hours plan, or create a scheduled message), `pnpm db:ping` |
 | `scripts/dev_ops/ringcentral/` | Manual RC diagnostics/webhook runners — invoke with `tsx` + `.env`; **no** `pnpm ringcentral:*` scripts in `package.json` |
 
 Keep reusable runtime logic in `src/services/`; scripts should call services, not reimplement them.

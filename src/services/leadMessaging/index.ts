@@ -1,5 +1,6 @@
 export {
   applyTwilioStatusCallback,
+  buildLeadMessageTwilioSendInput,
   classifyLeadMessagingFailure,
   dispatchPersistedLeadMessage,
   getLeadMessage,
@@ -14,7 +15,11 @@ export {
   type LeadMessagingOutcome,
 } from "./leadMessaging.service";
 export { buildLeadConfirmationMessage } from "./messageBuilder";
-export { validateTwilioWebhook } from "./twilioAdapter";
+export { resolveLeadSmsQuietHoursDeferral } from "./quietHours";
+export {
+  buildTwilioMessageCreateInput,
+  validateTwilioWebhook,
+} from "./twilioAdapter";
 export {
   buildTwilioVoiceCompletedResponse,
   buildTwilioVoiceForwardResponse,

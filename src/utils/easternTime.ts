@@ -113,22 +113,75 @@ export function floridaCalendarToday(now: Date = new Date()): Date {
   return new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)));
 }
 
-export function toFloridaTimestamp(value: Date = new Date()): Date {
+export type EasternDateTimeParts = {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+};
+
+export function easternDateTimeParts(value: Date): EasternDateTimeParts {
   const parts = easternDateTimeFormatter.formatToParts(value);
   const dateParts = Object.fromEntries(
     parts
       .filter((part) => part.type !== "literal")
       .map((part) => [part.type, part.value]),
   );
+  const hour = Number(dateParts.hour) === 24 ? 0 : Number(dateParts.hour);
 
+  return {
+    year: Number(dateParts.year),
+    month: Number(dateParts.month),
+    day: Number(dateParts.day),
+    hour,
+    minute: Number(dateParts.minute),
+    second: Number(dateParts.second),
+  };
+}
+
+/**
+ * Converts an America/New_York wall-clock time to the UTC instant that
+ * displays as those components. Month is 1-based. Returns null when the
+ * local time does not exist (spring-forward gap).
+ */
+export function easternWallClockToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute = 0,
+  second = 0,
+): Date | null {
+  const desired = Date.UTC(year, month - 1, day, hour, minute, second);
+  for (const offsetHours of [-5, -4]) {
+    const candidate = new Date(desired - offsetHours * 3_600_000);
+    const parts = easternDateTimeParts(candidate);
+    if (
+      parts.year === year &&
+      parts.month === month &&
+      parts.day === day &&
+      parts.hour === hour &&
+      parts.minute === minute &&
+      parts.second === second
+    ) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+export function toFloridaTimestamp(value: Date = new Date()): Date {
+  const parts = easternDateTimeParts(value);
   return new Date(
     Date.UTC(
-      Number(dateParts.year),
-      Number(dateParts.month) - 1,
-      Number(dateParts.day),
-      Number(dateParts.hour),
-      Number(dateParts.minute),
-      Number(dateParts.second),
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour,
+      parts.minute,
+      parts.second,
       value.getMilliseconds(),
     ),
   );

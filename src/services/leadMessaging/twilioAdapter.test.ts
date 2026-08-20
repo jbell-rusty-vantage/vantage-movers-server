@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import twilio from "twilio";
-import { validateTwilioWebhook } from "./twilioAdapter";
+import {
+  buildTwilioMessageCreateInput,
+  validateTwilioWebhook,
+} from "./twilioAdapter";
 
 const originalToken = process.env.TWILIO_PRIMARY_AUTH_TOKEN;
 const originalUrl = process.env.TWILIO_STATUS_CALLBACK_URL;
@@ -13,6 +16,57 @@ afterEach(() => {
   restore("TWILIO_STATUS_CALLBACK_URL", originalUrl);
   restore("TWILIO_ACCOUNT_SID", originalSid);
   restore("TWILIO_FROM_NUMBER", originalFrom);
+});
+
+test("immediate Twilio payloads keep the existing from-number send shape", () => {
+  assert.deepEqual(
+    buildTwilioMessageCreateInput({
+      to: "+15555550123",
+      from: "+18885550123",
+      body: "hello",
+      statusCallback: "https://example.com/status",
+    }),
+    {
+      to: "+15555550123",
+      from: "+18885550123",
+      body: "hello",
+      statusCallback: "https://example.com/status",
+    },
+  );
+});
+
+test("scheduled Twilio payloads require a Messaging Service and use fixed sendAt", () => {
+  const sendAt = new Date("2026-01-15T13:00:00.000Z");
+  assert.deepEqual(
+    buildTwilioMessageCreateInput({
+      to: "+15555550123",
+      from: "+18885550123",
+      body: "hello",
+      statusCallback: "https://example.com/status",
+      sendAt,
+      messagingServiceSid: "MG123",
+    }),
+    {
+      to: "+15555550123",
+      from: "+18885550123",
+      body: "hello",
+      statusCallback: "https://example.com/status",
+      messagingServiceSid: "MG123",
+      scheduleType: "fixed",
+      sendAt,
+    },
+  );
+  assert.throws(
+    () =>
+      buildTwilioMessageCreateInput({
+        to: "+15555550123",
+        from: "+18885550123",
+        body: "hello",
+        statusCallback: "https://example.com/status",
+        sendAt,
+      }),
+    /TWILIO_MESSAGING_SERVICE_SID/,
+  );
 });
 
 test("status callback validation uses the exact configured URL and primary token", () => {

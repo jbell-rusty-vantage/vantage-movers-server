@@ -120,7 +120,7 @@ Case reads work without command flags. Unit 26 Release reads show separate evide
 
 ### 1.4 Activation is not an env var
 
-Until this row exists, **every** receipt is `historical_shadow` and no live effect is eligible — even if `SHADOW_MODE=false`.
+Until this row exists, **every** receipt is `historical_shadow` and no live effect is eligible — even if `SHADOW_MODE=false`. Production `vantagemovers` now has the write-once row. The cutoff is `activated_at` `2026-08-20T18:52:50.047Z`. Receipts captured before that stay `historical_shadow` forever.
 
 ```ts
 // collection: granot_lifecycle_activations
@@ -139,7 +139,7 @@ Owner-only:
 POST /api/v1/admin/granot-lifecycle/activation
 ```
 
-Production `vantagemovers` had **zero** activation rows on 2026-08-19. Do not create it until the first intended live cutoff is chosen. Rollback never deletes this row; it only turns flags off.
+Production `vantagemovers` has exactly one activation row (`key: "granot_lifecycle"`, `processor_version: "granot-lifecycle-processor-v1"`). A second activate is `409`. Rollback never deletes this row; it only turns flags off.
 
 `captured_at < activated_at` stays historical forever. Shadow Decisions are never replay-promoted into live effects.
 

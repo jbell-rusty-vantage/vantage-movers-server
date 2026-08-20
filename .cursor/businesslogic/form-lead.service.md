@@ -95,6 +95,18 @@ matching `LEAD_MESSAGING_ALLOWED_COUNTRY_PREFIXES` (default `+1`), respect the
 per-destination cooldown and hourly capacity, and dispatch only after the
 Form Lead plus Lead Message transaction commits.
 
+Overnight deferral is off unless `LEAD_MESSAGING_QUIET_HOURS_ENABLED=true`.
+When that flag is off (the default), confirmation SMS still send immediately
+24/7 via `TWILIO_FROM_NUMBER`. When it is on, send-time uses the
+America/New_York wall clock (not a fixed EST offset). If the current Eastern
+hour is before 7 (12:00 AM inclusive through 6:59:59 AM), the Twilio API call
+still happens immediately; Twilio Message Scheduling holds the SMS until 8:00
+AM that same Eastern calendar day (`scheduleType=fixed`, `sendAt`,
+`TWILIO_MESSAGING_SERVICE_SID`). This is not a cron or `next_attempt_at`
+drain delay. 7:00 AM Eastern and later still send immediately. If the flag is
+on, the quiet-hours window is active, and the Messaging Service SID is
+missing, dispatch fails closed (does not send overnight).
+
 ## Operational Events (create)
 
 - `lead.form.created`

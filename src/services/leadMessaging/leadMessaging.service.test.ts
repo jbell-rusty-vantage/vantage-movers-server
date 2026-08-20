@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import type { LeadMessageDocument } from "../../models/LeadMessage";
 import type { CreateFormLeadInput } from "../../validation/v1.validation";
 import {
+  buildLeadMessageTwilioSendInput,
   classifyLeadMessagingFailure,
   dispatchPersistedLeadMessage,
   normalizeSmsDestination,
@@ -27,6 +28,65 @@ test("confirmation builder derives the first name from a combined name", () => {
     name: " Gary Evanish ",
   } as CreateFormLeadInput);
   assert.match(body, /^Hi Gary, this is Vantage Movers\./);
+});
+
+test("overnight deferral stays off until quiet hours are explicitly enabled", () => {
+  const previous = process.env.LEAD_MESSAGING_QUIET_HOURS_ENABLED;
+  delete process.env.LEAD_MESSAGING_QUIET_HOURS_ENABLED;
+  try {
+    const overnight = buildLeadMessageTwilioSendInput({
+      to: "+15555550123",
+      from: "+18885550123",
+      body: "hello",
+      statusCallback: "https://example.com/status",
+      now: new Date("2026-01-15T07:30:00.000Z"),
+    });
+    assert.equal(overnight.sendAt, undefined);
+    assert.equal(overnight.messagingServiceSid, undefined);
+  } finally {
+    if (previous === undefined) delete process.env.LEAD_MESSAGING_QUIET_HOURS_ENABLED;
+    else process.env.LEAD_MESSAGING_QUIET_HOURS_ENABLED = previous;
+  }
+});
+
+test("form-lead SMS send input defers overnight Eastern traffic to 8:00 AM via Twilio", () => {
+  const overnight = buildLeadMessageTwilioSendInput({
+    to: "+15555550123",
+    from: "+18885550123",
+    body: "hello",
+    statusCallback: "https://example.com/status",
+    now: new Date("2026-01-15T07:30:00.000Z"),
+    messagingServiceSid: "MG123",
+    quietHoursEnabled: true,
+  });
+  assert.equal(overnight.sendAt?.toISOString(), "2026-01-15T13:00:00.000Z");
+  assert.equal(overnight.messagingServiceSid, "MG123");
+
+  const daytime = buildLeadMessageTwilioSendInput({
+    to: "+15555550123",
+    from: "+18885550123",
+    body: "hello",
+    statusCallback: "https://example.com/status",
+    now: new Date("2026-01-15T13:00:00.000Z"),
+  });
+  assert.equal(daytime.sendAt, undefined);
+  assert.equal(daytime.messagingServiceSid, undefined);
+});
+
+test("overnight deferral fails closed when the Messaging Service SID is missing", () => {
+  assert.throws(
+    () =>
+      buildLeadMessageTwilioSendInput({
+        to: "+15555550123",
+        from: "+18885550123",
+        body: "hello",
+        statusCallback: "https://example.com/status",
+        now: new Date("2026-01-15T07:30:00.000Z"),
+        messagingServiceSid: null,
+        quietHoursEnabled: true,
+      }),
+    /TWILIO_MESSAGING_SERVICE_SID/,
+  );
 });
 
 test("SMS destinations are normalized to E.164 when safely possible", () => {
