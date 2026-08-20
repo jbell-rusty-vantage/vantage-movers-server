@@ -254,7 +254,7 @@ Admin validation and the Registry UI still reject `create_if_missing`; the dropd
 | `Referral` | `observation_only` + `referral_booking` | No Lead. Later Booking-only. |
 | `Paid Overflow` / future `Auto` | `deferred` | Evidence only. |
 | Payload `type=AUTO` | not a source | Provider context. Never a company guess. |
-| Main Site / TBM / Top10 / 10best | keep `link_only` | WordPress and RingCentral remain the creators until separately approved. |
+| Main Site / TBM / TBM Prime / Top10 / 10best | reviewed `link_only` + `source_scoped_lead` | WordPress and RingCentral remain the creators. Automation apply is allowed; Granot does not mint these Leads. |
 
 ## 4. Important new model fields and policies
 

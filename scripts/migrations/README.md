@@ -21,7 +21,22 @@ pnpm migration:granot-lifecycle:revisions -- --report|--verify
 pnpm migration:granot-lifecycle:revisions -- --apply --confirm-production=<db>
 pnpm migration:granot-lifecycle:indexes -- --report|--verify
 pnpm migration:granot-lifecycle:indexes -- --apply --confirm-production=<db>
+pnpm migration:ringcentral:processed-call-indexes -- --report|--verify
+pnpm migration:ringcentral:processed-call-indexes -- --apply --confirm-production=<db>
 ```
+
+Keep this official package in git. Operators re-run report/verify; apply stays
+gated. The processed-call command now creates the four contract names after
+dropping same-key leftovers.
+
+Two one-shot `vantagemovers` repairs stay in git as applied evidence only. Do
+not re-run them and do not add them to `package.json`:
+
+- `granot-lifecycle-indexes-remaining.ts` created the collision-free uniques
+  after the catalog stopped on the Record Link race.
+- `granot-lifecycle-unique-index-repairs.ts` superseded the later job
+  `5557044` link and filled four unlabeled unmapped CRM stubs, then created
+  the two remaining unique indexes.
 
 For each command use `report -> human review -> separately authorized apply ->
 verify`, then repeat the cycle. The second apply must be a no-op. Non-unique
@@ -370,12 +385,20 @@ scope refuses unless both reviewed families are present and every proposed
 Best Relocation change is limited to `lead_created_policy`; it never applies
 unreviewed CRM-source deferrals or automation-reference changes.
 
+An Owner-authorized `link_only` rollout for Main Site, TBM, TBM Prime, Top10,
+and 10best uses `--scope=link_only_automation_sources`. That scope classifies
+those families as `source_scoped_lead` with `link_only` and their existing
+Source Company / Source Granularity routes. It does not change Best Relocation
+creation policy and does not mint Leads.
+
 Omitted mode is report. Historical/unknown databases are rejected. Apply is
 separately authorized and refuses the whole reviewed family when a normalized
 label, company, granularity, or route dependency is invalid. Unique
 normalized-label index apply remains refused while collisions exist.
 
-Reviewed normalized labels only: Best Relocation Call/Form families, Referral,
-Paid Overflow, and source label Auto. Provider payload `type=AUTO` is not a
-classification input. Best Relocation Call/Form creation policy is
-`create_if_missing`; other reviewed policies remain unchanged.
+Reviewed normalized labels: Best Relocation Call/Form families, Main Site
+Forms/Inbounds, TBM Forms, 10best Inbounds, TBM Forms Prime, TBM Prime
+Inbounds, Top10 Forms/Inbounds, Referral, Paid Overflow, and source label
+Auto. Provider payload `type=AUTO` is not a classification input. Best
+Relocation Call/Form creation policy is `create_if_missing`; the other
+reviewed source-scoped families stay `link_only`.

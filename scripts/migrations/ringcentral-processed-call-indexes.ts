@@ -8,7 +8,7 @@ import mongoose from "mongoose";
 import { connectMongo } from "../../src/db.js";
 import { getMongoDatabaseName } from "../../src/config/domain.js";
 import { getRingCentralCollectionName } from "../../src/services/ringcentral/ringcentral-config.js";
-import { RINGCENTRAL_PROCESSED_CALL_LOG_ID_UNIQUE_INDEX } from "../../src/services/ringcentral/processed-calls-store.js";
+import { RINGCENTRAL_PROCESSED_CALL_INDEXES } from "../../src/services/ringcentral/processed-calls-store.js";
 import {
   assertGranotLifecycleApplyAuthorized,
   assertGranotLifecycleDatabaseAllowed,
@@ -52,6 +52,8 @@ async function main(): Promise<void> {
   const sessionPlaceholderRowsBefore = sessionPlaceholderRows;
   const collisions = summarizeProcessedCallIdentityCollisions(rows);
   let indexes = await readIndexes(collection);
+  const droppedIndexNames: string[] = [];
+  const createdIndexNames: string[] = [];
 
   if (mode === "apply") {
     assertGranotLifecycleApplyAuthorized({
@@ -86,28 +88,47 @@ async function main(): Promise<void> {
         telephonySessionId: { $exists: true, $in: [null, ""] },
       });
     }
-    for (const index of indexes) {
-      if (
-        index.name !== "_id_" &&
-        index.key.callLogId === 1 &&
-        Object.keys(index.key).length === 1 &&
-        index.unique !== true
-      ) {
-        await collection.dropIndex(String(index.name));
+    for (const spec of RINGCENTRAL_PROCESSED_CALL_INDEXES) {
+      indexes = await readIndexes(collection);
+      const sameKey = indexes.filter(
+        (index) =>
+          index.name !== "_id_" &&
+          JSON.stringify(index.key) === JSON.stringify(spec.key),
+      );
+      const exact = sameKey.find(
+        (index) =>
+          index.name === spec.name &&
+          Boolean(index.unique) === Boolean("unique" in spec && spec.unique) &&
+          Boolean(index.sparse) === Boolean("sparse" in spec && spec.sparse),
+      );
+      if (exact) {
+        continue;
       }
+      for (const index of sameKey) {
+        await collection.dropIndex(String(index.name));
+        droppedIndexNames.push(String(index.name));
+      }
+      await collection.createIndex(spec.key, {
+        name: spec.name,
+        ...("unique" in spec && spec.unique ? { unique: true } : {}),
+        ...("sparse" in spec && spec.sparse ? { sparse: true } : {}),
+      });
+      createdIndexNames.push(spec.name);
     }
-    await collection.createIndex(
-      RINGCENTRAL_PROCESSED_CALL_LOG_ID_UNIQUE_INDEX.key,
-      {
-        name: RINGCENTRAL_PROCESSED_CALL_LOG_ID_UNIQUE_INDEX.name,
-        unique: true,
-        sparse: true,
-      },
-    );
     indexes = await readIndexes(collection);
   }
 
   const verified = hasRequiredUniqueCallLogIndex(indexes);
+  const missingContractNames = RINGCENTRAL_PROCESSED_CALL_INDEXES.filter(
+    (expected) =>
+      !indexes.some(
+        (index) =>
+          index.name === expected.name &&
+          JSON.stringify(index.key) === JSON.stringify(expected.key) &&
+          Boolean(index.unique) === Boolean("unique" in expected && expected.unique) &&
+          Boolean(index.sparse) === Boolean("sparse" in expected && expected.sparse),
+      ),
+  ).map((index) => index.name);
   const manifest = {
     script_version: RINGCENTRAL_PROCESSED_CALL_INDEX_SCRIPT_VERSION,
     mode,
@@ -121,7 +142,14 @@ async function main(): Promise<void> {
     session_sparse_placeholder_rows_before: sessionPlaceholderRowsBefore,
     session_sparse_placeholder_rows_remaining: sessionPlaceholderRows,
     collisions,
-    required_index_present: verified,
+    required_index_present: verified && missingContractNames.length === 0,
+    missing_contract_index_names: missingContractNames,
+    contract_index_names: RINGCENTRAL_PROCESSED_CALL_INDEXES.map((index) => index.name),
+    dropped_index_names: droppedIndexNames,
+    created_index_names: createdIndexNames,
+    observed_index_names: indexes
+      .map((index) => index.name)
+      .filter((name): name is string => typeof name === "string"),
   };
   const runId = `${mode}-${Date.now()}`;
   const output = await writeGranotLifecycleManifest({
@@ -135,7 +163,8 @@ async function main(): Promise<void> {
     (collisions.length > 0 ||
       placeholderRows > 0 ||
       sessionPlaceholderRows > 0 ||
-      !verified)
+      !verified ||
+      missingContractNames.length > 0)
   ) {
     throw new Error(
       "Processed-call index verification failed: collisions/placeholders remain or the unique sparse callLogId index is missing.",

@@ -34,10 +34,11 @@
 - `ringCentralRegistry.ts` / `ringCentralValidation.ts` — inbound-route snapshot used at Call Qualification time.
 - HTTP: registry overview/health/changes plus catalog, CPL admin, and RC inbound-route routes in `v1.routes.ts`. Mutations require a signed Owner actor.
 - `granotCrmSources.ts` — Owner-only create/update/enable-disable for `GranotCrmSource` lifecycle semantics. Mutation and one `granot_crm_source` `OperationsRegistryChange` share a transaction; policy/list/health cache keys invalidate only after commit. Unreviewed rows stay disabled/deferred/observation-only. Runtime resolution lives in `granotLifecycle/sourcePolicy.ts`, not here.
-- `granotCrmSourceProjections.ts` — list/detail enrichments for Admin: dependency labels/status, automation references plus compatibility, and latest safe audit metadata. No receipt/payload/contact fields.
+- Reviewed classification (checked-in manifest): Best Relocation Call/Form are `source_scoped_lead` + `create_if_missing`. Main Site Forms/Inbounds, TBM Forms, 10best Inbounds, TBM Forms Prime, TBM Prime Inbounds, and Top10 Forms/Inbounds are `source_scoped_lead` + `link_only` against their existing Source Companies / granularities. Referral is `referral_booking` / `observation_only`. Paid Overflow and source label Auto stay deferred. WordPress and RingCentral remain the creators for the `link_only` families; Granot does not mint those Leads.
+- `granotCrmSourceProjections.ts` — list/detail enrichments for Admin: dependency labels/status, automation references plus compatibility, and latest safe audit metadata. No receipt/payload/contact fields. Lifecycle-enabled non-deferred rows with matching routes project `available_for_apply: true`.
 - `granotAutomationSources.ts` — Owner-only exact `GranotAutomationSource.granot_crm_source` link. Same transaction/audit/cache-after-commit rules; entity type `granot_automation_source`.
 - HTTP: `GET/PATCH /api/v1/admin/granot-crm-sources` and `PATCH .../:id/activation`. Reads Owner/Admin; mutations signed Owner. Clients cannot submit `normalized_granot_label` or `create_if_missing`.
-- Classification apply is `scripts/migrations/granot-lifecycle-source-registry.ts` (`pnpm migration:granot-lifecycle:sources -- --report|--apply|--verify`). Report is default. Apply requires `--confirm-production=<db>` and separate authorization. Unique normalized-label index apply is refused while collisions exist.
+- Classification apply is `scripts/migrations/granot-lifecycle-source-registry.ts` (`pnpm migration:granot-lifecycle:sources -- --report|--apply|--verify`). Report is default. Apply requires `--confirm-production=<db>` and separate authorization. `--scope=best_relocation_creation_policy` and `--scope=link_only_automation_sources` are the only scoped modes. Required Source Company / Source Granularity dependencies resolve per reviewed family company slug, not only Best Relocation. Unique normalized-label index apply is refused while collisions exist. Production `vantagemovers` already applied the `link_only_automation_sources` classification through this audited command.
 
 ## Authorization and audit
 
@@ -58,4 +59,5 @@
 
 - [`catalog.service.md`](catalog.service.md) — public catalog facade
 - [`form-lead.service.md`](form-lead.service.md) / [`call-lead.service.md`](call-lead.service.md) — lead CPL snapshots
+- [`granotLifecycle.sourcePolicy.md`](granotLifecycle.sourcePolicy.md) — runtime semantic read of reviewed Registry policy
 - [`rules/operations-registry.mdc`](../rules/operations-registry.mdc), [`rules/cpl-operations.mdc`](../rules/cpl-operations.mdc)

@@ -20,9 +20,39 @@ export const EXCLUDED_PROVIDER_TYPES = ["AUTO"] as const;
 export type ReviewedSourceFamilyKey =
   | "best_relocation_call"
   | "best_relocation_form"
+  | "main_site_form"
+  | "main_site_call"
+  | "tbm_form"
+  | "tbm_call"
+  | "tbm_prime_form"
+  | "tbm_prime_call"
+  | "top10_form"
+  | "top10_call"
   | "referral"
   | "paid_overflow"
   | "auto";
+
+export const LINK_ONLY_AUTOMATION_FAMILY_KEYS = [
+  "main_site_form",
+  "main_site_call",
+  "tbm_form",
+  "tbm_call",
+  "tbm_prime_form",
+  "tbm_prime_call",
+  "top10_form",
+  "top10_call",
+] as const satisfies readonly ReviewedSourceFamilyKey[];
+
+export const LINK_ONLY_AUTOMATION_GRANULARITY_KEYS = {
+  main_site_form: "main_site_form",
+  main_site_call: "main_site_call",
+  tbm_form: "tbm_leads_form",
+  tbm_call: "tbm_leads_call",
+  tbm_prime_form: "tbm_prime_leads_form",
+  tbm_prime_call: "tbm_prime_leads_call",
+  top10_form: "top10_leads_form",
+  top10_call: "top10_leads_call",
+} as const;
 
 export type ReviewedSourceRouteSpec = {
   route_key: string;
@@ -94,6 +124,142 @@ export const REVIEWED_SOURCE_CLASSIFICATION_MANIFEST = {
       ],
     },
     {
+      family: "main_site_form",
+      normalized_labels: ["main site forms"],
+      lifecycle_enabled: true,
+      lifecycle_disposition: "source_scoped_lead",
+      lead_created_policy: "link_only",
+      company_slug: "main_site",
+      routes: [
+        {
+          route_key: "form_any",
+          lead_model: "FormLead",
+          move_type: "any",
+          granularity_key: LINK_ONLY_AUTOMATION_GRANULARITY_KEYS.main_site_form,
+          expected_channel: "form",
+        },
+      ],
+    },
+    {
+      family: "main_site_call",
+      normalized_labels: ["main site inbounds"],
+      lifecycle_enabled: true,
+      lifecycle_disposition: "source_scoped_lead",
+      lead_created_policy: "link_only",
+      company_slug: "main_site",
+      routes: [
+        {
+          route_key: "call_any",
+          lead_model: "CallLead",
+          move_type: "any",
+          granularity_key: LINK_ONLY_AUTOMATION_GRANULARITY_KEYS.main_site_call,
+          expected_channel: "call",
+        },
+      ],
+    },
+    {
+      family: "tbm_form",
+      normalized_labels: ["tbm forms"],
+      lifecycle_enabled: true,
+      lifecycle_disposition: "source_scoped_lead",
+      lead_created_policy: "link_only",
+      company_slug: "tbm_leads",
+      routes: [
+        {
+          route_key: "form_any",
+          lead_model: "FormLead",
+          move_type: "any",
+          granularity_key: LINK_ONLY_AUTOMATION_GRANULARITY_KEYS.tbm_form,
+          expected_channel: "form",
+        },
+      ],
+    },
+    {
+      family: "tbm_call",
+      normalized_labels: ["10best inbounds"],
+      lifecycle_enabled: true,
+      lifecycle_disposition: "source_scoped_lead",
+      lead_created_policy: "link_only",
+      company_slug: "tbm_leads",
+      routes: [
+        {
+          route_key: "call_any",
+          lead_model: "CallLead",
+          move_type: "any",
+          granularity_key: LINK_ONLY_AUTOMATION_GRANULARITY_KEYS.tbm_call,
+          expected_channel: "call",
+        },
+      ],
+    },
+    {
+      family: "tbm_prime_form",
+      normalized_labels: ["tbm forms prime"],
+      lifecycle_enabled: true,
+      lifecycle_disposition: "source_scoped_lead",
+      lead_created_policy: "link_only",
+      company_slug: "tbm_prime_leads",
+      routes: [
+        {
+          route_key: "form_any",
+          lead_model: "FormLead",
+          move_type: "any",
+          granularity_key: LINK_ONLY_AUTOMATION_GRANULARITY_KEYS.tbm_prime_form,
+          expected_channel: "form",
+        },
+      ],
+    },
+    {
+      family: "tbm_prime_call",
+      normalized_labels: ["tbm prime inbounds"],
+      lifecycle_enabled: true,
+      lifecycle_disposition: "source_scoped_lead",
+      lead_created_policy: "link_only",
+      company_slug: "tbm_prime_leads",
+      routes: [
+        {
+          route_key: "call_any",
+          lead_model: "CallLead",
+          move_type: "any",
+          granularity_key: LINK_ONLY_AUTOMATION_GRANULARITY_KEYS.tbm_prime_call,
+          expected_channel: "call",
+        },
+      ],
+    },
+    {
+      family: "top10_form",
+      normalized_labels: ["top10 forms"],
+      lifecycle_enabled: true,
+      lifecycle_disposition: "source_scoped_lead",
+      lead_created_policy: "link_only",
+      company_slug: "top10_leads",
+      routes: [
+        {
+          route_key: "form_any",
+          lead_model: "FormLead",
+          move_type: "any",
+          granularity_key: LINK_ONLY_AUTOMATION_GRANULARITY_KEYS.top10_form,
+          expected_channel: "form",
+        },
+      ],
+    },
+    {
+      family: "top10_call",
+      normalized_labels: ["top10 inbounds"],
+      lifecycle_enabled: true,
+      lifecycle_disposition: "source_scoped_lead",
+      lead_created_policy: "link_only",
+      company_slug: "top10_leads",
+      routes: [
+        {
+          route_key: "call_any",
+          lead_model: "CallLead",
+          move_type: "any",
+          granularity_key: LINK_ONLY_AUTOMATION_GRANULARITY_KEYS.top10_call,
+          expected_channel: "call",
+        },
+      ],
+    },
+    {
       family: "referral",
       normalized_labels: ["referral"],
       lifecycle_enabled: true,
@@ -125,6 +291,15 @@ export function reviewedFamilyForNormalizedLabel(
 ): ReviewedSourceFamilySpec | undefined {
   return REVIEWED_SOURCE_CLASSIFICATION_MANIFEST.families.find((family) =>
     (family.normalized_labels as readonly string[]).includes(normalizedLabel),
+  );
+}
+
+export function isLinkOnlyAutomationFamily(
+  family: ReviewedSourceFamilyKey | undefined,
+): family is (typeof LINK_ONLY_AUTOMATION_FAMILY_KEYS)[number] {
+  return (
+    family !== undefined &&
+    (LINK_ONLY_AUTOMATION_FAMILY_KEYS as readonly string[]).includes(family)
   );
 }
 

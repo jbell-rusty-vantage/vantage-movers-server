@@ -83,7 +83,7 @@ Production API: https://vantage-movers-main-server.vercel.app
 
 Granot lead-lifecycle long-form:
 - Units 01–25 fulfillment review (code-complete, not production-live): [`docs/granot-lead-lifecycle/sprint-progress-through-unit-25.md`](../docs/granot-lead-lifecycle/sprint-progress-through-unit-25.md)
-- Owner-facing flags, activation, and Best Relocation source policy: [`docs/granot-lead-lifecycle/lifecycle-activation-flags-and-source-policies.md`](../docs/granot-lead-lifecycle/lifecycle-activation-flags-and-source-policies.md)
+- Owner-facing flags, activation, and reviewed source policies: [`docs/granot-lead-lifecycle/lifecycle-activation-flags-and-source-policies.md`](../docs/granot-lead-lifecycle/lifecycle-activation-flags-and-source-policies.md)
 
 Older `docs/to_review/` webhook notes describe the pre-processor world.
 

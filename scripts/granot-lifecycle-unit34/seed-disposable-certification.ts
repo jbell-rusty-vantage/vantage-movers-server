@@ -76,7 +76,13 @@ async function main(): Promise<void> {
     },
   ]);
 
-  const sourceRows = REVIEWED_SOURCE_CLASSIFICATION_MANIFEST.families.map((family) => {
+  const sourceRows = REVIEWED_SOURCE_CLASSIFICATION_MANIFEST.families
+    .filter((family) =>
+      family.routes.every(
+        (route) => route.granularity_key in granularities,
+      ),
+    )
+    .map((family) => {
     const label = family.normalized_labels[0]!;
     const routes = family.routes.map((route) => ({
       route_key: route.route_key,

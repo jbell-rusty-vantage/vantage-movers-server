@@ -98,7 +98,7 @@ Defaults: processing true, shadow true, all eight effect flags false. Processing
 
 ## Out of scope here
 
-Official Booking/Release commands, Admin case UI, and Release/Referral/discrepancy persistence — those live in [`granotLifecycle.bookingReconciliation.md`](granotLifecycle.bookingReconciliation.md) and [`granotLifecycle.projections.md`](granotLifecycle.projections.md). Public Lead Zod / `updateSourceOwnedLead` are not a lifecycle write path. Registry policy stays `link_only` until a separately audited Owner mutation; this module does not rewrite Registry rows.
+Official Booking/Release commands, Admin case UI, and Release/Referral/discrepancy persistence — those live in [`granotLifecycle.bookingReconciliation.md`](granotLifecycle.bookingReconciliation.md) and [`granotLifecycle.projections.md`](granotLifecycle.projections.md). Public Lead Zod / `updateSourceOwnedLead` are not a lifecycle write path. This module does not rewrite Registry rows. Current reviewed policies live in [`granotLifecycle.sourcePolicy.md`](granotLifecycle.sourcePolicy.md) and [`operationsRegistry.service.md`](operationsRegistry.service.md).
 
 ## Related
 

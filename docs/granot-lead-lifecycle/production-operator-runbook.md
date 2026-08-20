@@ -27,6 +27,12 @@ separately authorized apply -> verify order. Repeat to prove no-op idempotency.
 Stop on unknown database, mismatch, collision, non-idempotency, unsafe manifest,
 or verification drift. Never drop or replace an index automatically.
 
+Source Registry classification uses that README's guarded
+`migration:granot-lifecycle:sources` flow. Production `vantagemovers` already
+applied `--scope=link_only_automation_sources` for Main Site, TBM, TBM Prime,
+Top10, and 10best. Do not repeat it without new authorization. Those families
+remain `link_only`; WordPress and RingCentral still create their Leads.
+
 Indexes precede their consumers. Required unique definitions include the
 RingCentral Call Log singleton, processed-call telephony/call-log identities,
 command ID/idempotency, one Booking per normalized Job, and every open/sequence

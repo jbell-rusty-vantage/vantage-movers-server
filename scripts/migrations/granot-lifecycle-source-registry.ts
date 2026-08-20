@@ -33,11 +33,12 @@ import {
 } from "./granot-lifecycle-migration.lib.js";
 import {
   SOURCE_REGISTRY_MIGRATION_ACTOR_ID,
-  SOURCE_REGISTRY_MIGRATION_REASON,
   SOURCE_REGISTRY_MIGRATION_SCRIPT_VERSION,
   assertPlanHasNoForbiddenPayload,
+  migrationReasonForScope,
   planGranotLifecycleSourceRegistry,
   readSourceRegistryApplyScope,
+  selectAutomationMutationsForApply,
   selectCrmMutationsForApply,
   type InventoryAutomationSource,
   type InventoryCompany,
@@ -111,10 +112,11 @@ async function main(): Promise<void> {
         ],
         verify: undefined,
       });
-      throw new Error(
-        "Refusing source Registry apply: required Best Relocation dependencies are invalid or a reviewed family was refused.",
+        throw new Error(
+        "Refusing source Registry apply: required reviewed dependencies are invalid or a reviewed family was refused.",
       );
     }
+    const applyReason = migrationReasonForScope(applyScope);
     const crmMutations = selectCrmMutationsForApply(plan, applyScope);
     for (const mutation of crmMutations) {
       if (mutation.action === "noop") continue;
@@ -136,7 +138,7 @@ async function main(): Promise<void> {
             lead_source_company: mutation.intended.lead_source_company ?? null,
             lifecycle_routes: mutation.intended.lifecycle_routes,
             lifecycle_policy_version: mutation.intended.lifecycle_policy_version,
-            reason: SOURCE_REGISTRY_MIGRATION_REASON,
+            reason: applyReason,
           },
           migrationActor(`crm:${mutation.id}:${mutation.action}`),
         );
@@ -145,14 +147,14 @@ async function main(): Promise<void> {
         apply_errors.push(`crm:${mutation.masked_id}:mutation_failed`);
       }
     }
-    for (const mutation of applyScope === "all" ? plan.automation_mutations : []) {
+    for (const mutation of selectAutomationMutationsForApply(plan, applyScope)) {
       if (mutation.action !== "link" || !mutation.intended_reference) continue;
       try {
         await setGranotAutomationSourceReference(
           {
             id: mutation.id,
             granot_crm_source: mutation.intended_reference,
-            reason: SOURCE_REGISTRY_MIGRATION_REASON,
+            reason: applyReason,
           },
           migrationActor(`automation:${mutation.id}:link`),
         );

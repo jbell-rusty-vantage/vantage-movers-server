@@ -42,7 +42,13 @@ async function main(): Promise<void> {
     { _id: granularities.best_relocation_leads_form_local, granularity_key: "best_relocation_leads_form_local", owner_label: "Synthetic Local Form", source_company: companyId, channel: "form", local: "local", active: true },
     { _id: granularities.best_relocation_leads_form_long_distance, granularity_key: "best_relocation_leads_form_long_distance", owner_label: "Synthetic Long Distance Form", source_company: companyId, channel: "form", local: "long_distance", active: true },
   ]);
-  const sourceRows = REVIEWED_SOURCE_CLASSIFICATION_MANIFEST.families.map((family) => {
+  const sourceRows = REVIEWED_SOURCE_CLASSIFICATION_MANIFEST.families
+    .filter((family) =>
+      family.routes.every(
+        (route) => route.granularity_key in granularities,
+      ),
+    )
+    .map((family) => {
     const label = family.normalized_labels[0]!;
     const routes = family.routes.map((route) => ({
       route_key: route.route_key,

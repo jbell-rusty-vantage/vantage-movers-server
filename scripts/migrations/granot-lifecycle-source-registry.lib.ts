@@ -1,9 +1,12 @@
 import { maskReceiptId } from "./granot-lifecycle-migration.lib";
 import {
+  LINK_ONLY_AUTOMATION_FAMILY_KEYS,
+  LINK_ONLY_AUTOMATION_GRANULARITY_KEYS,
   REVIEWED_SOURCE_CLASSIFICATION_MANIFEST,
   REVIEWED_SOURCE_COMPANY_SLUG,
   REVIEWED_GRANULARITY_KEYS,
   isExcludedProviderType,
+  isLinkOnlyAutomationFamily,
   reviewedFamilyForNormalizedLabel,
   type ReviewedSourceFamilyKey,
   type ReviewedSourceFamilySpec,
@@ -23,6 +26,8 @@ export const SOURCE_REGISTRY_MIGRATION_ACTOR_ID =
   "granot-lifecycle-source-registry";
 export const SOURCE_REGISTRY_MIGRATION_REASON =
   "Unit 06 reviewed Granot source Registry classification apply";
+export const SOURCE_REGISTRY_LINK_ONLY_AUTOMATION_REASON =
+  "Owner-reviewed link_only classification for Main Site, TBM, TBM Prime, Top10, and 10best automation sources";
 
 export type InventoryCrmSource = {
   id: string;
@@ -148,6 +153,7 @@ export type SourceRegistryPlan = {
   provider_type_auto_excluded: boolean;
   required_registry_keys: {
     company_slug: string;
+    company_slugs: string[];
     granularity_keys: string[];
   };
   dependency_findings: DependencyFinding[];
@@ -166,7 +172,8 @@ export type SourceRegistryPlan = {
 
 export type SourceRegistryApplyScope =
   | "all"
-  | "best_relocation_creation_policy";
+  | "best_relocation_creation_policy"
+  | "link_only_automation_sources";
 
 export function readSourceRegistryApplyScope(
   args: readonly string[],
@@ -176,6 +183,7 @@ export function readSourceRegistryApplyScope(
     ?.slice("--scope=".length);
   if (!raw || raw === "all") return "all";
   if (raw === "best_relocation_creation_policy") return raw;
+  if (raw === "link_only_automation_sources") return raw;
   throw new Error(`Unsupported source Registry apply scope: ${raw}`);
 }
 
@@ -184,6 +192,27 @@ export function selectCrmMutationsForApply(
   scope: SourceRegistryApplyScope,
 ): SourceRegistryPlan["crm_mutations"] {
   if (scope === "all") return plan.crm_mutations;
+  if (scope === "link_only_automation_sources") {
+    const scoped = plan.crm_mutations.filter((mutation) =>
+      isLinkOnlyAutomationFamily(mutation.family),
+    );
+    const families = new Set(scoped.map((mutation) => mutation.family));
+    for (const family of LINK_ONLY_AUTOMATION_FAMILY_KEYS) {
+      if (!families.has(family)) {
+        throw new Error(
+          `Refusing scoped apply: reviewed link_only family ${family} is absent.`,
+        );
+      }
+    }
+    for (const mutation of scoped) {
+      if (mutation.refused) {
+        throw new Error(
+          "Refusing scoped apply: a reviewed link_only family is invalid.",
+        );
+      }
+    }
+    return scoped;
+  }
   const scoped = plan.crm_mutations.filter(
     (mutation) =>
       mutation.family === "best_relocation_call" ||
@@ -227,7 +256,7 @@ export function planGranotLifecycleSourceRegistry(
 
   for (const family of REVIEWED_SOURCE_CLASSIFICATION_MANIFEST.families) {
     if (family.lifecycle_enabled && family.routes.length > 0) {
-      if (!dependencies.ok) {
+      if (!familyDependenciesOk(family, dependencies)) {
         refusedFamilies.add(family.family);
       }
     }
@@ -282,7 +311,8 @@ export function planGranotLifecycleSourceRegistry(
     provider_type_auto_excluded,
     required_registry_keys: {
       company_slug: REVIEWED_SOURCE_COMPANY_SLUG,
-      granularity_keys: Object.values(REVIEWED_GRANULARITY_KEYS),
+      company_slugs: reviewedCompanySlugs(),
+      granularity_keys: reviewedGranularityKeys(),
     },
     dependency_findings: dependencies.findings,
     required_dependencies_ok: dependencies.ok,
@@ -436,12 +466,35 @@ function planAutomationMutation(
   };
 }
 
+export function selectAutomationMutationsForApply(
+  plan: SourceRegistryPlan,
+  scope: SourceRegistryApplyScope,
+): SourceRegistryPlan["automation_mutations"] {
+  if (scope === "all") return plan.automation_mutations;
+  if (scope === "link_only_automation_sources") {
+    return plan.automation_mutations.filter((mutation) =>
+      isLinkOnlyAutomationFamily(
+        mutation.normalized_label
+          ? reviewedFamilyForNormalizedLabel(mutation.normalized_label)?.family
+          : undefined,
+      ),
+    );
+  }
+  return [];
+}
+
+export function migrationReasonForScope(scope: SourceRegistryApplyScope): string {
+  return scope === "link_only_automation_sources"
+    ? SOURCE_REGISTRY_LINK_ONLY_AUTOMATION_REASON
+    : SOURCE_REGISTRY_MIGRATION_REASON;
+}
+
 function intendedFromFamily(
   family: ReviewedSourceFamilySpec,
   dependencies: ResolvedDependencies,
 ): PlannedCrmMutation["intended"] {
   const lead_source_company = family.company_slug
-    ? dependencies.company?.id
+    ? dependencies.companiesBySlug[family.company_slug]?.id
     : undefined;
   const lifecycle_routes = family.routes.map((route) => ({
     route_key: route.route_key,
@@ -478,127 +531,189 @@ function deferredIntended(
 function defaultChannelForFamily(
   family: ReviewedSourceFamilySpec,
 ): "form" | "call" | "unknown" {
-  if (family.family === "best_relocation_call") return "call";
-  if (family.family === "best_relocation_form") return "form";
+  const channels = new Set(family.routes.map((route) => route.expected_channel));
+  if (channels.size === 1) {
+    return [...channels][0]!;
+  }
   return "unknown";
 }
 
 type ResolvedDependencies = {
   ok: boolean;
   findings: DependencyFinding[];
-  company?: InventoryCompany;
+  companiesBySlug: Record<string, InventoryCompany>;
   granularities: Record<string, InventoryGranularity>;
 };
+
+function reviewedCompanySlugs(): string[] {
+  return [
+    ...new Set(
+      REVIEWED_SOURCE_CLASSIFICATION_MANIFEST.families.flatMap((family) =>
+        family.company_slug ? [family.company_slug] : [],
+      ),
+    ),
+  ];
+}
+
+function reviewedGranularityKeys(): string[] {
+  return [
+    ...new Set([
+      ...Object.values(REVIEWED_GRANULARITY_KEYS),
+      ...Object.values(LINK_ONLY_AUTOMATION_GRANULARITY_KEYS),
+    ]),
+  ];
+}
+
+function familyDependenciesOk(
+  family: ReviewedSourceFamilySpec,
+  dependencies: ResolvedDependencies,
+): boolean {
+  if (family.company_slug && !dependencies.companiesBySlug[family.company_slug]) {
+    return false;
+  }
+  return family.routes.every((route) => dependencies.granularities[route.granularity_key]);
+}
 
 function resolveRequiredDependencies(
   inventory: SourceRegistryInventory,
 ): ResolvedDependencies {
   const findings: DependencyFinding[] = [];
-  const companies = inventory.companies.filter(
-    (company) => company.company_slug === REVIEWED_SOURCE_COMPANY_SLUG,
-  );
-  let company: InventoryCompany | undefined;
-  if (companies.length === 0) {
-    findings.push({
-      kind: "company",
-      key: REVIEWED_SOURCE_COMPANY_SLUG,
-      code: "missing",
-      detail: "Required Source Company is absent.",
-    });
-  } else if (companies.length > 1) {
-    findings.push({
-      kind: "company",
-      key: REVIEWED_SOURCE_COMPANY_SLUG,
-      code: "duplicate",
-      detail: "Required Source Company is duplicated.",
-    });
-  } else if (!companies[0]?.active) {
-    findings.push({
-      kind: "company",
-      key: REVIEWED_SOURCE_COMPANY_SLUG,
-      code: "inactive",
-      detail: "Required Source Company is inactive.",
-    });
-  } else {
-    company = companies[0];
+  const companiesBySlug: Record<string, InventoryCompany> = {};
+
+  for (const slug of reviewedCompanySlugs()) {
+    const companies = inventory.companies.filter(
+      (company) => company.company_slug === slug,
+    );
+    if (companies.length === 0) {
+      findings.push({
+        kind: "company",
+        key: slug,
+        code: "missing",
+        detail: "Required Source Company is absent.",
+      });
+      continue;
+    }
+    if (companies.length > 1) {
+      findings.push({
+        kind: "company",
+        key: slug,
+        code: "duplicate",
+        detail: "Required Source Company is duplicated.",
+      });
+      continue;
+    }
+    if (!companies[0]?.active) {
+      findings.push({
+        kind: "company",
+        key: slug,
+        code: "inactive",
+        detail: "Required Source Company is inactive.",
+      });
+      continue;
+    }
+    companiesBySlug[slug] = companies[0];
   }
 
   const granularities: Record<string, InventoryGranularity> = {};
+  for (const family of REVIEWED_SOURCE_CLASSIFICATION_MANIFEST.families) {
+    const company = family.company_slug
+      ? companiesBySlug[family.company_slug]
+      : undefined;
+    for (const spec of family.routes) {
+      resolveGranularityDependency({
+        spec,
+        company,
+        inventory,
+        findings,
+        granularities,
+      });
+    }
+  }
+
   const specs: ReviewedSourceRouteSpec[] =
     REVIEWED_SOURCE_CLASSIFICATION_MANIFEST.families.flatMap((family) => [
       ...family.routes,
     ]);
-  for (const spec of specs) {
-    const matches = inventory.granularities.filter(
-      (row) => row.granularity_key === spec.granularity_key,
-    );
-    if (matches.length === 0) {
-      findings.push({
-        kind: "granularity",
-        key: spec.granularity_key,
-        code: "missing",
-        detail: "Required Source Granularity is absent.",
-      });
-      continue;
-    }
-    if (matches.length > 1) {
-      findings.push({
-        kind: "granularity",
-        key: spec.granularity_key,
-        code: "duplicate",
-        detail: "Required Source Granularity is duplicated.",
-      });
-      continue;
-    }
-    const row = matches[0]!;
-    if (!row.active) {
-      findings.push({
-        kind: "granularity",
-        key: spec.granularity_key,
-        code: "inactive",
-        detail: "Required Source Granularity is inactive.",
-      });
-    }
-    if (row.channel !== spec.expected_channel) {
-      findings.push({
-        kind: "granularity",
-        key: spec.granularity_key,
-        code: "wrong_channel",
-        detail: `Expected channel ${spec.expected_channel}.`,
-      });
-    }
-    if (spec.expected_local && row.local !== spec.expected_local) {
-      findings.push({
-        kind: "granularity",
-        key: spec.granularity_key,
-        code: "wrong_move_type",
-        detail: `Expected move type ${spec.expected_local}.`,
-      });
-    }
-    if (company && row.source_company_id !== company.id) {
-      findings.push({
-        kind: "granularity",
-        key: spec.granularity_key,
-        code: "company_mismatch",
-        detail: "Granularity does not belong to the reviewed Source Company.",
-      });
-    }
-    if (
-      row.active &&
-      row.channel === spec.expected_channel &&
-      (!spec.expected_local || row.local === spec.expected_local) &&
-      (!company || row.source_company_id === company.id)
-    ) {
-      granularities[spec.granularity_key] = row;
-    }
-  }
-
   return {
-    ok: findings.length === 0 && Boolean(company) && specs.every((spec) => granularities[spec.granularity_key]),
+    ok:
+      findings.length === 0 &&
+      reviewedCompanySlugs().every((slug) => companiesBySlug[slug]) &&
+      specs.every((spec) => granularities[spec.granularity_key]),
     findings,
-    ...(company ? { company } : {}),
+    companiesBySlug,
     granularities,
   };
+}
+
+function resolveGranularityDependency(input: {
+  spec: ReviewedSourceRouteSpec;
+  company?: InventoryCompany;
+  inventory: SourceRegistryInventory;
+  findings: DependencyFinding[];
+  granularities: Record<string, InventoryGranularity>;
+}): void {
+  const matches = input.inventory.granularities.filter(
+    (row) => row.granularity_key === input.spec.granularity_key,
+  );
+  if (matches.length === 0) {
+    input.findings.push({
+      kind: "granularity",
+      key: input.spec.granularity_key,
+      code: "missing",
+      detail: "Required Source Granularity is absent.",
+    });
+    return;
+  }
+  if (matches.length > 1) {
+    input.findings.push({
+      kind: "granularity",
+      key: input.spec.granularity_key,
+      code: "duplicate",
+      detail: "Required Source Granularity is duplicated.",
+    });
+    return;
+  }
+  const row = matches[0]!;
+  if (!row.active) {
+    input.findings.push({
+      kind: "granularity",
+      key: input.spec.granularity_key,
+      code: "inactive",
+      detail: "Required Source Granularity is inactive.",
+    });
+  }
+  if (row.channel !== input.spec.expected_channel) {
+    input.findings.push({
+      kind: "granularity",
+      key: input.spec.granularity_key,
+      code: "wrong_channel",
+      detail: `Expected channel ${input.spec.expected_channel}.`,
+    });
+  }
+  if (input.spec.expected_local && row.local !== input.spec.expected_local) {
+    input.findings.push({
+      kind: "granularity",
+      key: input.spec.granularity_key,
+      code: "wrong_move_type",
+      detail: `Expected move type ${input.spec.expected_local}.`,
+    });
+  }
+  if (input.company && row.source_company_id !== input.company.id) {
+    input.findings.push({
+      kind: "granularity",
+      key: input.spec.granularity_key,
+      code: "company_mismatch",
+      detail: "Granularity does not belong to the reviewed Source Company.",
+    });
+  }
+  if (
+    row.active &&
+    row.channel === input.spec.expected_channel &&
+    (!input.spec.expected_local || row.local === input.spec.expected_local) &&
+    (!input.company || row.source_company_id === input.company.id)
+  ) {
+    input.granularities[input.spec.granularity_key] = row;
+  }
 }
 
 function findCollisions(sources: InventoryCrmSource[]) {

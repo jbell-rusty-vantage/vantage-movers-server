@@ -38,7 +38,7 @@ Every applicable gate is evaluated and snapshotted. Any false gate blocks the re
 
 ## Defaults and later work
 
-Every unreviewed row remains lifecycle-disabled, deferred, observation-only, and route-empty. Unit 06 writes reviewed classifications and automation references through audited Registry commands; this module remains the only runtime semantic read. Best Relocation reviewed policy stays `link_only`. This module authorizes no live effect.
+Every unreviewed row remains lifecycle-disabled, deferred, observation-only, and route-empty. Unit 06 writes reviewed classifications and automation references through audited Registry commands; this module remains the only runtime semantic read. Best Relocation reviewed policy is `create_if_missing`. Main Site, TBM, TBM Prime, Top10, and 10best are reviewed `link_only` / `source_scoped_lead` so HTTP automation can apply against existing Leads without Granot creating them. This module authorizes no live effect.
 
 ## Related
 

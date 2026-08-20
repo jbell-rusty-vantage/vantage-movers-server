@@ -3,6 +3,8 @@ import { test } from "node:test";
 import { selectFormMoveType } from "../../src/services/granotLifecycle/sourceLabel";
 import {
   EXCLUDED_PROVIDER_TYPES,
+  LINK_ONLY_AUTOMATION_FAMILY_KEYS,
+  LINK_ONLY_AUTOMATION_GRANULARITY_KEYS,
   REVIEWED_SOURCE_CLASSIFICATION_MANIFEST,
   REVIEWED_SOURCE_COMPANY_SLUG,
   REVIEWED_GRANULARITY_KEYS,
@@ -27,6 +29,13 @@ const company: InventoryCompany = {
   owner_label: "Best Relocation Leads",
   active: true,
 };
+
+const linkOnlyCompanies: InventoryCompany[] = [
+  { id: "cccccccccccccccccccccc01", company_slug: "main_site", owner_label: "main site", active: true },
+  { id: "cccccccccccccccccccccc02", company_slug: "tbm_leads", owner_label: "TBM Leads", active: true },
+  { id: "cccccccccccccccccccccc03", company_slug: "tbm_prime_leads", owner_label: "TBM Prime Leads", active: true },
+  { id: "cccccccccccccccccccccc04", company_slug: "top10_leads", owner_label: "Top 10 Forms", active: true },
+];
 
 const granularities: InventoryGranularity[] = [
   {
@@ -53,6 +62,70 @@ const granularities: InventoryGranularity[] = [
     source_company_id: company.id,
     channel: "form",
     local: "long_distance",
+    active: true,
+  },
+  {
+    id: "444444444444444444444401",
+    granularity_key: LINK_ONLY_AUTOMATION_GRANULARITY_KEYS.main_site_form,
+    owner_label: "Main Site Forms",
+    source_company_id: "cccccccccccccccccccccc01",
+    channel: "form",
+    active: true,
+  },
+  {
+    id: "444444444444444444444402",
+    granularity_key: LINK_ONLY_AUTOMATION_GRANULARITY_KEYS.main_site_call,
+    owner_label: "Main Site Inbounds",
+    source_company_id: "cccccccccccccccccccccc01",
+    channel: "call",
+    active: true,
+  },
+  {
+    id: "444444444444444444444403",
+    granularity_key: LINK_ONLY_AUTOMATION_GRANULARITY_KEYS.tbm_form,
+    owner_label: "TBM Forms",
+    source_company_id: "cccccccccccccccccccccc02",
+    channel: "form",
+    active: true,
+  },
+  {
+    id: "444444444444444444444404",
+    granularity_key: LINK_ONLY_AUTOMATION_GRANULARITY_KEYS.tbm_call,
+    owner_label: "10best Inbounds",
+    source_company_id: "cccccccccccccccccccccc02",
+    channel: "call",
+    active: true,
+  },
+  {
+    id: "444444444444444444444405",
+    granularity_key: LINK_ONLY_AUTOMATION_GRANULARITY_KEYS.tbm_prime_form,
+    owner_label: "TBM Prime Forms",
+    source_company_id: "cccccccccccccccccccccc03",
+    channel: "form",
+    active: true,
+  },
+  {
+    id: "444444444444444444444406",
+    granularity_key: LINK_ONLY_AUTOMATION_GRANULARITY_KEYS.tbm_prime_call,
+    owner_label: "TBM Prime Inbounds",
+    source_company_id: "cccccccccccccccccccccc03",
+    channel: "call",
+    active: true,
+  },
+  {
+    id: "444444444444444444444407",
+    granularity_key: LINK_ONLY_AUTOMATION_GRANULARITY_KEYS.top10_form,
+    owner_label: "Top10 Forms",
+    source_company_id: "cccccccccccccccccccccc04",
+    channel: "form",
+    active: true,
+  },
+  {
+    id: "444444444444444444444408",
+    granularity_key: LINK_ONLY_AUTOMATION_GRANULARITY_KEYS.top10_call,
+    owner_label: "Top10 Inbounds",
+    source_company_id: "cccccccccccccccccccccc04",
+    channel: "call",
     active: true,
   },
 ];
@@ -98,6 +171,13 @@ function inventory(
       crm({ id: "aaaaaaaaaaaaaaaaaaaaaaa6", granot_label: "Paid Overflow" }),
       crm({ id: "aaaaaaaaaaaaaaaaaaaaaaa7", granot_label: "Auto" }),
       crm({ id: "aaaaaaaaaaaaaaaaaaaaaaa8", granot_label: "TBM Forms" }),
+      crm({ id: "aaaaaaaaaaaaaaaaaaaaaa16", granot_label: "Main Site Forms" }),
+      crm({ id: "aaaaaaaaaaaaaaaaaaaaaa17", granot_label: "Main Site Inbounds" }),
+      crm({ id: "aaaaaaaaaaaaaaaaaaaaaa18", granot_label: "10best Inbounds" }),
+      crm({ id: "aaaaaaaaaaaaaaaaaaaaaa19", granot_label: "TBM Forms Prime" }),
+      crm({ id: "aaaaaaaaaaaaaaaaaaaaaa20", granot_label: "TBM Prime Inbounds" }),
+      crm({ id: "aaaaaaaaaaaaaaaaaaaaaa21", granot_label: "Top10 Forms" }),
+      crm({ id: "aaaaaaaaaaaaaaaaaaaaaa22", granot_label: "Top10 Inbounds" }),
     ],
     automation_sources: [
       automation({
@@ -116,7 +196,7 @@ function inventory(
         supported_operations: ["form_leads"],
       }),
     ],
-    companies: [company],
+    companies: [company, ...linkOnlyCompanies],
     granularities,
     ...overrides,
   };
@@ -132,6 +212,14 @@ test("[AC-29] reviewed manifest contains only the locked normalized labels and e
       "best relocation inbounds",
       "bestrelocation forms",
       "best relocation forms",
+      "main site forms",
+      "main site inbounds",
+      "tbm forms",
+      "10best inbounds",
+      "tbm forms prime",
+      "tbm prime inbounds",
+      "top10 forms",
+      "top10 inbounds",
       "referral",
       "paid overflow",
       "auto",
@@ -213,13 +301,13 @@ test("[AC-38] unmatched and colliding rows stay deferred and never guess a route
   const plan = planGranotLifecycleSourceRegistry(
     inventory({
       crm_sources: [
-        crm({ id: "aaaaaaaaaaaaaaaaaaaaaaa8", granot_label: "TBM Forms" }),
+        crm({ id: "aaaaaaaaaaaaaaaaaaaaaaa8", granot_label: "Unknown Forms" }),
         crm({ id: "aaaaaaaaaaaaaaaaaaaaaaa9", granot_label: "BestRelocation Forms" }),
         crm({ id: "aaaaaaaaaaaaaaaaaaaaaa10", granot_label: "BestRelocation Forms" }),
       ],
     }),
   );
-  const unmatched = plan.crm_mutations.find((mutation) => mutation.granot_label === "TBM Forms");
+  const unmatched = plan.crm_mutations.find((mutation) => mutation.granot_label === "Unknown Forms");
   const collided = plan.crm_mutations.filter(
     (mutation) => mutation.normalized_label === "bestrelocation forms",
   );
@@ -361,5 +449,37 @@ test("[AC-09][AC-38] scoped policy apply admits only Best Relocation lead_create
   assert.throws(
     () => readSourceRegistryApplyScope(["--scope=unknown"]),
     /Unsupported source Registry apply scope/,
+  );
+});
+
+test("[AC-09] Main Site, TBM, TBM Prime, Top10, and 10best classify as link_only source_scoped_lead", () => {
+  const plan = planGranotLifecycleSourceRegistry(inventory());
+  const selected = selectCrmMutationsForApply(plan, "link_only_automation_sources");
+  assert.equal(selected.length, LINK_ONLY_AUTOMATION_FAMILY_KEYS.length);
+  assert.equal(
+    selected.every(
+      (mutation) =>
+        mutation.refused === false &&
+        mutation.intended.lifecycle_enabled === true &&
+        mutation.intended.lifecycle_disposition === "source_scoped_lead" &&
+        mutation.intended.lead_created_policy === "link_only" &&
+        mutation.intended.lifecycle_routes.length === 1,
+    ),
+    true,
+  );
+  const tbm = selected.find((mutation) => mutation.granot_label === "TBM Forms");
+  assert.deepEqual(tbm?.intended.lifecycle_routes, [
+    {
+      route_key: "form_any",
+      lead_model: "FormLead",
+      move_type: "any",
+      source_granularity_id: "444444444444444444444403",
+    },
+  ]);
+  assert.equal(tbm?.intended.lead_source_company, "cccccccccccccccccccccc02");
+  assert.equal(tbm?.intended.default_channel, "form");
+  assert.equal(
+    readSourceRegistryApplyScope(["--scope=link_only_automation_sources"]),
+    "link_only_automation_sources",
   );
 });
