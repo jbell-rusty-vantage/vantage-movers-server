@@ -1,3 +1,5 @@
+NOT INCLUDED WE ARE DEFERRING INDEFINITELY.
+
 # FROM OWNER: WE are retiring this issue. The vantage CEO has stated he just wants to interact with the dashboard
 
 # Unit 32 — Optional new-case email notifications

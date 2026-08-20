@@ -294,7 +294,7 @@ export async function captureChannelOperationReceipt(
     const result = await persist(document);
     incrementGranotLifecycleReceiptsTotal({
       channel: input.observation_channel,
-      event_class: input.channel_operation_kind,
+      event_class: "none",
     });
     return {
       status: "inserted",

@@ -8,7 +8,7 @@ alwaysApply: false
 
 Software map for `src/services/granotLifecycle/`. Owner invariants stay in the linked businesslogic files. Locked contracts stay in `scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md`. Delivery branches: [`lead-lifecycle-delivery.mdc`](lead-lifecycle-delivery.mdc). Unit ledger is a navigation aid only: [`UNIT-STATUS.md`](../../scripts/prototypes/granot-lead-lifecycle/delivery/UNIT-STATUS.md). Owner-facing flags, activation, and Best Relocation source policy: [`lifecycle-activation-flags-and-source-policies.md`](../../docs/granot-lead-lifecycle/lifecycle-activation-flags-and-source-policies.md). Repository state, migrations/indexes, flags, and tests are authoritative.
 
-Owner invariants: [capture](../businesslogic/granotLifecycle.capture.md), [extension apply](../businesslogic/granotLifecycle.extensionApply.md), [automation apply](../businesslogic/granotLifecycle.automationApply.md), [normalization](../businesslogic/granotLifecycle.normalization.md), [source policy](../businesslogic/granotLifecycle.sourcePolicy.md), [identity](../businesslogic/granotLifecycle.identity.md), [desired state](../businesslogic/granotLifecycle.desiredState.md), [processor](../businesslogic/granotLifecycle.processor.md), [drainer](../businesslogic/granotLifecycle.drainer.md), [revisions](../businesslogic/granotLifecycle.revisions.md), [Booking reconciliation](../businesslogic/granotLifecycle.bookingReconciliation.md), [Release reconciliation](../businesslogic/granotLifecycle.releaseReconciliation.md), and [read projections](../businesslogic/granotLifecycle.projections.md).
+Owner invariants: [capture](../businesslogic/granotLifecycle.capture.md), [extension apply](../businesslogic/granotLifecycle.extensionApply.md), [automation apply](../businesslogic/granotLifecycle.automationApply.md), [normalization](../businesslogic/granotLifecycle.normalization.md), [source policy](../businesslogic/granotLifecycle.sourcePolicy.md), [identity](../businesslogic/granotLifecycle.identity.md), [desired state](../businesslogic/granotLifecycle.desiredState.md), [processor](../businesslogic/granotLifecycle.processor.md), [drainer](../businesslogic/granotLifecycle.drainer.md), [revisions](../businesslogic/granotLifecycle.revisions.md), [Booking reconciliation](../businesslogic/granotLifecycle.bookingReconciliation.md), [Release reconciliation](../businesslogic/granotLifecycle.releaseReconciliation.md), [read projections](../businesslogic/granotLifecycle.projections.md), and [observability](../businesslogic/granotLifecycle.observability.md).
 
 ## Goal
 
@@ -39,18 +39,19 @@ Granot evidence never becomes an official Booking or Cancellation by itself. CRM
 | `bookingReconciliation.ts` / `bookingConfirmation.ts` / `bookingOwnerCommands.ts` / `referralBooking.ts` | Booking case open/refresh plus strict Owner standard confirm, explicit no-Lead Referral create, deterministic existing-Booking full update, and zero-effect No Action. |
 | `releaseReconciliation.ts` / `releaseOwnerCommands.ts` | Separate Release case open/refresh plus gated Owner create-Cancellation, full Booking replacement, and No Action commands. |
 | `trustedLeadCreateValidation.ts` | Trusted `granot_lead_created` validator (`post_to_granot=false`). Live caller is `createLeadFromGranot` only. |
+| `observability.ts` / `metrics.ts` / `alerts.ts` | Section 33 catalog, closed labels, Mongo health, and seven rollout alerts. Best-effort; not business authority. |
 
 Admin routes activate, requeue dead letters, expose protected reads, and accept the four exact Booking plus three exact Release Owner mutations. Projections compose allowlisted DTOs; routes do not own claim, match, masking, ranking, timeline, or mutation policy. Canonical executor / `EntityChange` live in `domainCommands/`. Live lifecycle capability includes Lead sync/create, standard/Referral Booking commands, and Release `createCancellation`, `updateBooking`, and `resolveGranotReleaseCaseNoAction`; checked-in effect flags keep them disabled.
 
 ## Progress
 
-Units 01–26 are implemented on `granot-lead-lifecycle` (Unit 16 also lands extension `0.2.8` on `granot_sync_extensions_and_services/main`). Re-verify the matching `UNIT-*-COMPLETION.md` and repository state before editing; do not trust the ledger alone.
+Units 01–30 are implemented on `granot-lead-lifecycle` (Unit 16 also lands extension `0.2.8` on `granot_sync_extensions_and_services/main`). Re-verify the matching `UNIT-*-COMPLETION.md` and repository state before editing; do not trust the ledger alone.
 
-**Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, shadow processor orchestration, extension/automation receipt apply, canonical Lead synchronization/creation, Booking-case persistence/commands, separate Release-case persistence/commands, protected masked reads, and stable Job/Lead timelines.
+**Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, shadow processor orchestration, extension/automation receipt apply, canonical Lead synchronization/creation, Booking-case persistence/commands, separate Release-case persistence/commands, discrepancies/correction, protected masked reads, stable Job/Lead timelines, Section 33 events/metrics, Mongo-backed health, and seven rollout alerts.
 
-**Next sequential work:** Unit 29 discrepancies/correction. Deployed posture and checked-in defaults do not change from implementation alone.
+**Next sequential work:** Unit 31 migration/index verification, historical shadow certification, security audit, and runbooks. Deployed posture and checked-in defaults do not change from implementation alone.
 
-**Not started here:** discrepancy owner behavior (Unit 29).
+**Not started here:** Unit 31 certification package, optional case email, prototype cleanup, current-payload certification.
 
 ## Live constraints
 

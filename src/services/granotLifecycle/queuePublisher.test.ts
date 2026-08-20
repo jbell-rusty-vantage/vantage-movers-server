@@ -67,8 +67,8 @@ test("[AC-35] publish failure is observed safely and does not throw", async () =
   assert.equal(events.length, 1);
   assert.equal(events[0]?.input.eventKey, "granot_lifecycle.queue.publish_failed");
   assert.deepEqual(events[0]?.input.details, {
-    receipt_id: "receipt-failed",
-    observation_channel: "granot_webhook",
+    receipt_id: "receip...iled",
+    channel: "granot_webhook",
   });
   const serialized = JSON.stringify(events);
   assert.equal(serialized.includes("synthetic-queue-unavailable"), false);

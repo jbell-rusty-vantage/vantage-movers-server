@@ -16,6 +16,7 @@ import {
 } from "./errors";
 import { incrementGranotLifecycleActivationsTotal } from "./metrics";
 import type { ReceiptWorkState } from "./types";
+import { maskLifecycleId } from "./observability";
 
 export const PROCESSOR_VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 
@@ -192,7 +193,6 @@ export async function activateGranotLifecycle(
         throw alreadyActivated(actor.requestId);
       }
       await (deps.persistActivation ?? defaultPersistActivation)(document, session);
-      await (deps.persistAudit ?? defaultPersistActivationAudit)(document, session);
     });
   } catch (error) {
     if (isGranotAlreadyActivated(error) || isDuplicateKeyError(error)) {
@@ -201,10 +201,16 @@ export async function activateGranotLifecycle(
     throw error;
   }
 
+  try {
+    await (deps.persistAudit ?? defaultPersistActivationAudit)(document);
+  } catch {
+    // Observability is after-commit and best-effort.
+  }
+
   incrementGranotLifecycleActivationsTotal();
   logger.info({
     msg: "granot_lifecycle.activation.committed",
-    activation_id: String(document._id),
+    activation_id: maskLifecycleId(String(document._id)),
     activated_at: document.activated_at.toISOString(),
     processor_version: document.processor_version,
     request_id: actor.requestId,
@@ -266,24 +272,26 @@ export async function requeueDeadLetterReceipt(
         actor.requestId,
       );
     }
-    await (deps.persistRequeueAudit ?? defaultPersistRequeueAudit)(
-      {
-        receiptId,
-        reason,
-        priorState: "dead_letter",
-        newState: "pending",
-        manual_requeue_count: transitioned.processing.manual_requeue_count,
-        actor: owner,
-        occurredAt,
-      },
-      session,
-    );
     return transitioned;
   });
 
+  try {
+    await (deps.persistRequeueAudit ?? defaultPersistRequeueAudit)({
+      receiptId,
+      reason,
+      priorState: "dead_letter",
+      newState: "pending",
+      manual_requeue_count: updated.processing.manual_requeue_count,
+      actor: owner,
+      occurredAt,
+    });
+  } catch {
+    // Observability is after-commit and best-effort.
+  }
+
   logger.info({
     msg: "granot_lifecycle.manual_requeue.committed",
-    receipt_id: String(updated._id),
+    receipt_id: maskLifecycleId(String(updated._id)),
     prior_state: "dead_letter",
     new_state: "pending",
     manual_requeue_count: updated.processing.manual_requeue_count,
@@ -410,6 +418,7 @@ async function defaultPersistRequeueAudit(
   },
   session?: ClientSession,
 ): Promise<void> {
+  const maskedReceiptId = maskLifecycleId(String(input.receiptId)) ?? "***";
   await getOperationalEventModel().create(
     [
       {
@@ -421,17 +430,15 @@ async function defaultPersistRequeueAudit(
         workflow: "granot_lifecycle",
         summary: "Owner requeued a dead-lettered Granot lifecycle receipt",
         details: {
-          receipt_id: String(input.receiptId),
+          receipt_id: maskedReceiptId,
           prior_state: input.priorState,
           new_state: input.newState,
           manual_requeue_count: input.manual_requeue_count,
-          reason: input.reason,
           actor_role: input.actor.actor_role,
-          actor_id: input.actor.actor_id,
           request_id: input.actor.request_id,
         },
-        fingerprint: `granot_lifecycle.requeue.${String(input.receiptId)}.${input.manual_requeue_count}`,
-        dedupe_key: `granot_lifecycle.requeue.${String(input.receiptId)}.${input.manual_requeue_count}`,
+        fingerprint: `granot_lifecycle.requeue.${maskedReceiptId}.${input.manual_requeue_count}`,
+        dedupe_key: `granot_lifecycle.requeue.${maskedReceiptId}.${input.manual_requeue_count}`,
         environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "development",
         service: "vantage-main-server",
         region: null,
@@ -441,7 +448,7 @@ async function defaultPersistRequeueAudit(
         status_code: 200,
         duration_ms: null,
         entity_type: "GranotObservationReceipt",
-        entity_id: String(input.receiptId),
+        entity_id: maskedReceiptId,
         lead_name: null,
         lead_phone: null,
         lead_email: null,
@@ -464,6 +471,7 @@ async function defaultPersistActivationAudit(
   session?: ClientSession,
 ): Promise<void> {
   const occurredAt = document.activated_at;
+  const maskedActivationId = maskLifecycleId(String(document._id)) ?? "***";
   await getOperationalEventModel().create(
     [
       {
@@ -475,13 +483,13 @@ async function defaultPersistActivationAudit(
         workflow: "granot_lifecycle",
         summary: "Granot lifecycle activation committed",
         details: {
-          activation_id: String(document._id),
+          activation_id: maskedActivationId,
           activated_at: occurredAt.toISOString(),
           processor_version: document.processor_version,
           request_id: document.activated_by.request_id,
         },
-        fingerprint: `granot_lifecycle.activation.${String(document._id)}`,
-        dedupe_key: `granot_lifecycle.activation.${String(document._id)}`,
+        fingerprint: `granot_lifecycle.activation.${maskedActivationId}`,
+        dedupe_key: `granot_lifecycle.activation.${maskedActivationId}`,
         environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "development",
         service: "vantage-main-server",
         region: null,
@@ -491,7 +499,7 @@ async function defaultPersistActivationAudit(
         status_code: 201,
         duration_ms: null,
         entity_type: "GranotLifecycleActivation",
-        entity_id: String(document._id),
+        entity_id: maskedActivationId,
         lead_name: null,
         lead_phone: null,
         lead_email: null,

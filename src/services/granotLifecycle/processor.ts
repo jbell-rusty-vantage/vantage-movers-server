@@ -84,7 +84,9 @@ import {
 import {
   incrementGranotLifecycleDecisionsTotal,
   recordGranotLifecycleCaptureToDecisionMs,
+  recordGranotLifecycleDecisionToEffectMs,
 } from "./metrics";
+import { emitGranotLifecycleEvent } from "./observability";
 import { upsertGranotObservation } from "./normalization";
 import {
   createMongoSourcePolicyStore,
@@ -1881,6 +1883,11 @@ function toProcessorResult(
     channel,
   });
   recordGranotLifecycleCaptureToDecisionMs(Date.now() - started);
+  if (decision.effects.length > 0) {
+    recordGranotLifecycleDecisionToEffectMs(
+      Math.max(0, Date.now() - new Date(decision.decided_at).getTime()),
+    );
+  }
   return {
     observation_id: String(decision.observation_id),
     decision_id: String(decision._id),
@@ -1915,9 +1922,24 @@ function logProcessingCompletion(input: {
     execution_mode: input.execution_mode,
     outcome: input.outcome,
     reason_code: input.reason_code,
-    initiator_actor_id: input.initiator_actor_id,
-    processor_actor_id: input.processor_actor_id,
     duration_ms: input.duration_ms,
+  });
+  void emitGranotLifecycleEvent({
+    eventKey: "granot_lifecycle.processing.completed",
+    category: "mongo",
+    summary: "Granot lifecycle receipt processing completed.",
+    details: {
+      receipt_id: input.receipt_id,
+      observation_id: input.observation_id,
+      decision_id: input.decision_id,
+      attempt: input.attempt,
+      execution_mode: input.execution_mode,
+      outcome: input.outcome,
+      reason_code: input.reason_code,
+      duration_ms: input.duration_ms,
+    },
+    durationMs: input.duration_ms,
+    piiPolicy: "masked",
   });
 }
 

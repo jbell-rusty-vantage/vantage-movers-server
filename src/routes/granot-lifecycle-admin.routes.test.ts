@@ -8,6 +8,54 @@ import { GRANOT_LIFECYCLE_ERROR_CODES } from "../services/granotLifecycle/errors
 import { createGranotLifecycleAdminRouter } from "./granot-lifecycle-admin.routes";
 
 const SECRET = "synthetic-admin-signing-secret";
+const HEALTH_FIXTURE = {
+  generated_at: "2026-08-19T16:00:00.000Z",
+  flags: {
+    GRANOT_LIFECYCLE_PROCESSING_ENABLED: true,
+    GRANOT_LIFECYCLE_SHADOW_MODE: true,
+    GRANOT_LIFECYCLE_LEAD_WRITES_ENABLED: false,
+    GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED: false,
+    GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED: false,
+    GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED: false,
+    GRANOT_LIFECYCLE_RELEASE_CASES_ENABLED: false,
+    GRANOT_LIFECYCLE_RELEASE_COMMANDS_ENABLED: false,
+    GRANOT_LIFECYCLE_REFERRAL_BOOKING_ENABLED: false,
+    GRANOT_LIFECYCLE_EMAIL_ENABLED: false,
+  },
+  activation: { present: false },
+  receipts: {
+    by_work_state: { pending: 0, claimed: 0, retry_scheduled: 0, completed: 0, dead_letter: 0 },
+    due_count: 0,
+    oldest_due_at: null,
+    oldest_due_age_ms: null,
+    claimed_count: 0,
+    expired_claim_count: 0,
+    dead_letter_count: 0,
+  },
+  decisions_last_24h: [
+    { execution_mode: "historical_shadow" as const, outcome: "already_current" as const, reason_code: "desired_state_already_current" as const, count: 2 },
+  ],
+  open_cases: [],
+  open_discrepancies: [],
+  command_conflicts_last_24h: [],
+  record_links: { active: 0, disputed: 0 },
+  last_queue_run: null,
+  last_cron_run: null,
+  ringcentral: {
+    state_present: false,
+    last_run_at: null,
+    last_run_status: null,
+    cursor_to: null,
+    lease: { held: false, acquired_at: null, expires_at: null, age_ms: null, expired: false },
+    last_runtime_ms: null,
+    last_adopted_count: null,
+    last_adoption_conflict_count: null,
+    last_throttled_count: null,
+  },
+  alerts: [
+    { code: "dead_letter_present" as const, state: "ok" as const, observed_value: 0, threshold: 0, unit: "count" as const },
+  ],
+};
 const receiptId = new mongoose.Types.ObjectId().toHexString();
 let lastRequeue: { id: string; reason: string; role: string } | null = null;
 let lastCaseQuery: Record<string, unknown> | null = null;
@@ -191,6 +239,7 @@ app.use(
     reEvaluateDiscrepancy: async (input) => discrepancyResult(input, "still_conflicting"),
     correctRecordLink: async (input) => discrepancyResult(input, "record_link_corrected"),
     discrepancyNoAction: async (input) => discrepancyResult(input, "no_action"),
+    projectHealth: async () => HEALTH_FIXTURE,
   }),
 );
 
@@ -596,4 +645,23 @@ test("[AC-25] [AC-32] Release Owner routes are strict, idempotent, and use exact
     }),
   });
   assert.equal(forbidden.status, 400);
+});
+
+test("[AC-31][AC-35] Owner and Admin can read the health envelope without raw payload keys", async () => {
+  const path = "/api/v1/admin/granot-lifecycle/operations/health";
+  for (const role of ["owner", "admin"] as const) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method: "GET",
+      headers: signedHeaders(role, path, "GET"),
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json() as { ok: boolean; data: typeof HEALTH_FIXTURE };
+    assert.equal(body.ok, true);
+    assert.equal(body.data.generated_at, HEALTH_FIXTURE.generated_at);
+    assert.equal(body.data.flags.GRANOT_LIFECYCLE_SHADOW_MODE, true);
+    assert.equal(body.data.flags.GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED, false);
+    assert.equal(body.data.decisions_last_24h[0]?.execution_mode, "historical_shadow");
+    assert.equal(JSON.stringify(body).includes("payload"), false);
+    assert.equal(JSON.stringify(body).includes("authorization"), false);
+  }
 });

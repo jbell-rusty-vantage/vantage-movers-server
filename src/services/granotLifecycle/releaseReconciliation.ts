@@ -16,6 +16,7 @@ import type {
 } from "../../models/SynchronizationDecision";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { toObjectId } from "../../utils/objectId";
+import { emitGranotLifecycleEvent } from "./observability";
 import {
   createMongoLeadIdentityStore,
   resolveLeadIdentity,
@@ -215,6 +216,26 @@ async function reconcilePreparedObservation(
     }
   }
   if (!result) throw new Error("Release reconciliation did not produce a result.");
+  if (result.kind === "opened" || result.kind === "refreshed") {
+    await emitGranotLifecycleEvent({
+      eventKey: `granot_lifecycle.${result.reason_code}`,
+      category: "booking",
+      workflow: "granot_release_reconciliation",
+      summary: result.kind === "opened"
+        ? "Granot Release reconciliation case opened"
+        : "Granot Release reconciliation case refreshed",
+      details: {
+        case_id: result.case_ref.id,
+        observation_id: input.observation_id,
+        decision_id: input.decision_id,
+        kind: "release",
+        mode: "release",
+        case_revision: result.case_revision,
+        evidence_revision: result.evidence_revision,
+      },
+      piiPolicy: "masked",
+    });
+  }
   return result;
 }
 

@@ -308,7 +308,7 @@ describe("Booking Reconciliation persistence", () => {
     assert.equal(memory.decisions[0]!.reason_code, "booking_case_opened");
     assert.equal(memory.decisions[0]!.effects[0]!.kind, "booking_case_opened");
     const audit = getCapturedOperationalEvents().find(
-      (event) => event.input.eventKey === "granot_lifecycle.booking_case_opened",
+      (event) => event.input.eventKey === "granot_lifecycle.booking_case.opened",
     );
     assert.ok(audit);
     assert.equal(JSON.stringify(audit).includes(current.observation_id), false);

@@ -17,7 +17,7 @@ import type {
 } from "../../models/SynchronizationDecision";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { toObjectId } from "../../utils/objectId";
-import { recordOperationalEvent } from "../observability";
+import { emitGranotLifecycleEvent } from "./observability";
 import { setGranotLifecycleOpenBookingCases } from "./metrics";
 import type { EvaluatedGate } from "./sourcePolicy";
 import { createMongoSourcePolicyStore, resolveSourcePolicy } from "./sourcePolicy";
@@ -243,8 +243,7 @@ async function reconcilePreparedObservation(
 
   if (result.kind === "opened" || result.kind === "refreshed") {
     await recomputeOpenCaseGauge(store);
-    await recordOperationalEvent({
-      level: "info",
+    await emitGranotLifecycleEvent({
       eventKey: `granot_lifecycle.${result.reason_code}`,
       category: "booking",
       workflow: "granot_booking_reconciliation",
@@ -252,15 +251,14 @@ async function reconcilePreparedObservation(
         ? "Granot Booking reconciliation case opened"
         : "Granot Booking reconciliation case refreshed",
       details: {
-        case_id: maskLifecycleId(result.case_ref.id),
-        observation_id: maskLifecycleId(input.observation_id),
-        decision_id: maskLifecycleId(input.decision_id),
+        case_id: result.case_ref.id,
+        observation_id: input.observation_id,
+        decision_id: input.decision_id,
         mode: result.mode ?? "unknown",
+        kind: "booking",
         case_revision: result.case_revision,
         evidence_revision: result.evidence_revision,
       },
-      notificationCandidate: false,
-      reportable: true,
       piiPolicy: "masked",
     });
   }

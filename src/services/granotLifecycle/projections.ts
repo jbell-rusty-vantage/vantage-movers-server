@@ -1,5 +1,6 @@
 import {
   getGranotLifecycleFlags,
+  GRANOT_LIFECYCLE_ALERT_THRESHOLDS,
   GRANOT_LIFECYCLE_FLAG_NAMES,
   type GranotLifecycleFlags,
 } from "../../config/domain/granotLifecycle";
@@ -23,8 +24,21 @@ import { getCallLeadModel } from "../../models/CallLead";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
 import { RECEIPT_WORK_STATES } from "../../models/granotLifecycleSchemas";
 import { applyDueGauges } from "./drainer";
+import { getCallLogSyncState } from "../ringcentral/call-log-sync-state.store";
+import {
+  evaluateGranotLifecycleAlerts,
+  persistGranotLifecycleAlertTransitions,
+  type GranotLifecycleAlertProjection,
+} from "./alerts";
+import {
+  GRANOT_LIFECYCLE_CASE_MODES,
+  GRANOT_LIFECYCLE_DISCREPANCY_REASON_CODES,
+  setGranotLifecycleOpenCases,
+  setGranotLifecycleOpenDiscrepancies,
+  type GranotLifecycleCaseMode,
+} from "./metrics";
 import { normalizeJobNo } from "../bookings/bookingIdentity";
-import type { Types } from "mongoose";
+import mongoose from "mongoose";
 import {
   projectBookingCandidateBrowserPolicy,
   searchBookingLeadCandidates,
@@ -41,6 +55,7 @@ import type {
   NormalizationIssueCode,
   NormalizationResult,
   ReceiptWorkState,
+  GranotDiscrepancyReasonCode,
   SynchronizationOutcome,
   SynchronizationReasonCode,
 } from "./types";
@@ -313,8 +328,8 @@ type LifecycleCaseListRow = {
     contact?: { name?: string; phone_number?: string; email?: string };
   };
   evidence: Array<{
-    observation_id: Types.ObjectId;
-    decision_id: Types.ObjectId;
+    observation_id: mongoose.Types.ObjectId;
+    decision_id: mongoose.Types.ObjectId;
     action: "priority_5" | "booked" | "release";
     captured_at: Date;
   }>;
@@ -335,6 +350,7 @@ function isBookingCaseMode(
 }
 
 export type GranotLifecycleHealthProjection = {
+  generated_at: string;
   flags: Record<(typeof GRANOT_LIFECYCLE_FLAG_NAMES)[number], boolean>;
   activation: {
     present: boolean;
@@ -357,10 +373,48 @@ export type GranotLifecycleHealthProjection = {
     reason_code: SynchronizationReasonCode;
     count: number;
   }>;
+  open_cases: Array<{ kind: "booking" | "release"; mode: string; count: number }>;
+  open_discrepancies: Array<{
+    kind: "booking" | "release";
+    reason_code: GranotDiscrepancyReasonCode;
+    count: number;
+  }>;
+  command_conflicts_last_24h: Array<{ code: string; count: number }>;
   record_links: { active: number; disputed: number };
   last_queue_run: GranotLifecycleLastRunProjection;
   last_cron_run: GranotLifecycleLastRunProjection;
+  ringcentral: GranotLifecycleRingCentralHealth;
+  alerts: GranotLifecycleAlertProjection[];
 };
+
+export type GranotLifecycleRingCentralHealth = {
+  state_present: boolean;
+  last_run_at: string | null;
+  last_run_status: "success" | "error" | null;
+  cursor_to: string | null;
+  lease: {
+    held: boolean;
+    acquired_at: string | null;
+    expires_at: string | null;
+    age_ms: number | null;
+    expired: boolean;
+  };
+  last_runtime_ms: number | null;
+  last_adopted_count: number | null;
+  last_adoption_conflict_count: number | null;
+  last_throttled_count: number | null;
+};
+
+export function dueWorkFilter(now: Date): Record<string, unknown> {
+  return {
+    "processing.state": { $in: ["pending", "retry_scheduled", "claimed"] },
+    "processing.next_attempt_at": { $lte: now },
+    $or: [
+      { "processing.state": { $ne: "claimed" } },
+      { "processing.leased_until": { $lte: now } },
+    ],
+  };
+}
 
 export type GranotLifecycleLastRunProjection = {
   at: string;
@@ -1404,16 +1458,27 @@ export async function projectGranotLifecycleHealth(
 ): Promise<GranotLifecycleHealthProjection> {
   const flags = getGranotLifecycleFlags();
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const claimSince = new Date(now.getTime() - 60 * 60 * 1000);
   const [
     activation,
     receiptStates,
     due,
     expiredClaims,
     decisionCounts,
+    openBookingCases,
+    openReleaseCases,
+    openBookingDiscrepancies,
+    openReleaseDiscrepancies,
+    commandConflicts,
+    captureFailures,
+    claimRecoveries,
+    latencySamples,
+    sourceRates,
     activeLinks,
     disputedLinks,
     lastQueue,
     lastCron,
+    ringcentral,
   ] = await Promise.all([
     getGranotLifecycleActivationModel().findOne({ key: "granot_lifecycle" }).lean(),
     getGranotObservationReceiptModel()
@@ -1426,12 +1491,7 @@ export async function projectGranotLifecycleHealth(
         due_count: number;
         oldest_due_at: Date | null;
       }>([
-        {
-          $match: {
-            "processing.state": { $in: ["pending", "retry_scheduled", "claimed"] },
-            "processing.next_attempt_at": { $lte: now },
-          },
-        },
+        { $match: dueWorkFilter(now) },
         {
           $group: {
             _id: null,
@@ -1467,10 +1527,92 @@ export async function projectGranotLifecycleHealth(
         },
       ])
       .exec(),
+    getGranotBookingReconciliationCaseModel()
+      .aggregate<{ _id: string; count: number }>([
+        { $match: { state: "open" } },
+        { $group: { _id: "$mode", count: { $sum: 1 } } },
+      ])
+      .exec(),
+    getGranotReleaseReconciliationCaseModel()
+      .aggregate<{ _id: string; count: number }>([
+        { $match: { state: "open" } },
+        { $group: { _id: "release", count: { $sum: 1 } } },
+      ])
+      .exec(),
+    getGranotBookingDiscrepancyModel()
+      .aggregate<{ _id: GranotDiscrepancyReasonCode; count: number }>([
+        { $match: { state: "open" } },
+        { $group: { _id: "$reason_code", count: { $sum: 1 } } },
+      ])
+      .exec(),
+    getGranotReleaseDiscrepancyModel()
+      .aggregate<{ _id: GranotDiscrepancyReasonCode; count: number }>([
+        { $match: { state: "open" } },
+        { $group: { _id: "$reason_code", count: { $sum: 1 } } },
+      ])
+      .exec(),
+    getOperationalEventModel()
+      .aggregate<{ _id: string; count: number }>([
+        {
+          $match: {
+            event_key: "granot_lifecycle.owner_command.conflict",
+            occurred_at: { $gte: since },
+          },
+        },
+        { $group: { _id: "$details.code", count: { $sum: 1 } } },
+      ])
+      .exec(),
+    getOperationalEventModel().countDocuments({
+      event_key: "granot_lifecycle.capture.failed",
+      occurred_at: { $gte: since },
+    }),
+    getOperationalEventModel().countDocuments({
+      event_key: "granot_lifecycle.claim.recovered",
+      occurred_at: { $gte: claimSince },
+    }),
+    getSynchronizationDecisionModel()
+      .aggregate<{ duration_ms: number }>([
+        { $match: { decided_at: { $gte: since } } },
+        {
+          $lookup: {
+            from: "granot_observations",
+            localField: "observation_id",
+            foreignField: "_id",
+            as: "observation",
+          },
+        },
+        { $unwind: "$observation" },
+        {
+          $project: {
+            duration_ms: {
+              $subtract: ["$decided_at", "$observation.captured_at"],
+            },
+          },
+        },
+      ])
+      .exec(),
+    getSynchronizationDecisionModel()
+      .aggregate<{
+        _id: { source_id?: unknown; outcome: SynchronizationOutcome };
+        count: number;
+      }>([
+        { $match: { decided_at: { $gte: since } } },
+        {
+          $group: {
+            _id: {
+              source_id: "$source_policy.granot_crm_source_id",
+              outcome: "$outcome",
+            },
+            count: { $sum: 1 },
+          },
+        },
+      ])
+      .exec(),
     getGranotRecordLinkModel().countDocuments({ state: "active" }),
     getGranotRecordLinkModel().countDocuments({ state: "active", disputed: true }),
     loadLastRun("queue"),
     loadLastRun("cron"),
+    projectRingCentralHealth(now),
   ]);
 
   const by_work_state = Object.fromEntries(
@@ -1484,12 +1626,79 @@ export async function projectGranotLifecycleHealth(
 
   const dueRow = due[0];
   const oldestDue = dueRow?.oldest_due_at ? new Date(dueRow.oldest_due_at) : null;
+  const open_cases = [
+    ...openBookingCases
+      .filter((row) => (GRANOT_LIFECYCLE_CASE_MODES as readonly string[]).includes(row._id))
+      .map((row) => ({ kind: "booking" as const, mode: row._id, count: row.count })),
+    ...openReleaseCases.map((row) => ({
+      kind: "release" as const,
+      mode: "release",
+      count: row.count,
+    })),
+  ].sort((a, b) => a.kind.localeCompare(b.kind) || a.mode.localeCompare(b.mode));
+
+  const open_discrepancies = [
+    ...openBookingDiscrepancies.map((row) => ({
+      kind: "booking" as const,
+      reason_code: row._id,
+      count: row.count,
+    })),
+    ...openReleaseDiscrepancies.map((row) => ({
+      kind: "release" as const,
+      reason_code: row._id,
+      count: row.count,
+    })),
+  ]
+    .filter((row) =>
+      (GRANOT_LIFECYCLE_DISCREPANCY_REASON_CODES as readonly string[]).includes(row.reason_code),
+    )
+    .sort((a, b) => a.kind.localeCompare(b.kind) || a.reason_code.localeCompare(b.reason_code));
+
+  const command_conflicts_last_24h = commandConflicts
+    .filter((row) => typeof row._id === "string" && /^[a-zA-Z][a-zA-Z0-9_]{0,63}$/.test(row._id))
+    .map((row) => ({ code: row._id, count: row.count }))
+    .sort((a, b) => a.code.localeCompare(b.code));
+
+  const decisions_last_24h = decisionCounts
+    .map((row) => ({
+      execution_mode: row._id.execution_mode,
+      outcome: row._id.outcome,
+      reason_code: row._id.reason_code,
+      count: row.count,
+    }))
+    .sort((a, b) =>
+      a.execution_mode.localeCompare(b.execution_mode)
+      || a.outcome.localeCompare(b.outcome)
+      || a.reason_code.localeCompare(b.reason_code),
+    );
+
+  const enabledRates = await sourceRatesForEnabledSources(sourceRates);
+  const latency = latencySamples
+    .map((row) => row.duration_ms)
+    .filter((value) => Number.isFinite(value) && value >= 0);
+
+  const alerts = evaluateGranotLifecycleAlerts({
+    oldest_due_age_ms: oldestDue ? Math.max(0, now.getTime() - oldestDue.getTime()) : null,
+    oldest_due_threshold_since: oldestDue
+      ? new Date(oldestDue.getTime() + GRANOT_LIFECYCLE_ALERT_THRESHOLDS.oldest_due_ms)
+      : null,
+    dead_letter_count: by_work_state.dead_letter,
+    capture_503_count_24h: captureFailures,
+    claim_recoveries_1h: claimRecoveries,
+    capture_to_decision_samples_24h: latency,
+    ringcentral_lease_held: ringcentral.lease.held,
+    ringcentral_lease_age_ms: ringcentral.lease.age_ms,
+    source_rates: enabledRates,
+  }, now);
+  await persistGranotLifecycleAlertTransitions(alerts, now);
+
   const health: GranotLifecycleHealthProjection = {
+    generated_at: now.toISOString(),
     flags: flagsToNamedBooleans(flags),
     activation: activation
       ? {
           present: true,
-          id: String(activation._id),
+          id: maskLifecycleId(String(activation._id)),
           activated_at: new Date(activation.activated_at).toISOString(),
           processor_version: activation.processor_version,
         }
@@ -1503,21 +1712,114 @@ export async function projectGranotLifecycleHealth(
       expired_claim_count: expiredClaims,
       dead_letter_count: by_work_state.dead_letter,
     },
-    decisions_last_24h: decisionCounts.map((row) => ({
-      execution_mode: row._id.execution_mode,
-      outcome: row._id.outcome,
-      reason_code: row._id.reason_code,
-      count: row.count,
-    })),
+    decisions_last_24h,
+    open_cases,
+    open_discrepancies,
+    command_conflicts_last_24h,
     record_links: { active: activeLinks, disputed: disputedLinks },
     last_queue_run: lastQueue,
     last_cron_run: lastCron,
+    ringcentral,
+    alerts,
   };
   applyDueGauges({
     due_count: health.receipts.due_count,
     oldest_due_age_ms: health.receipts.oldest_due_age_ms,
   });
+  for (const row of open_cases) {
+    if ((GRANOT_LIFECYCLE_CASE_MODES as readonly string[]).includes(row.mode)) {
+      setGranotLifecycleOpenCases(row.kind, row.mode as GranotLifecycleCaseMode, row.count);
+    }
+  }
+  for (const row of open_discrepancies) {
+    setGranotLifecycleOpenDiscrepancies(row.kind, row.reason_code, row.count);
+  }
+  assertProjectionSafe(health);
   return health;
+}
+
+async function projectRingCentralHealth(now: Date): Promise<GranotLifecycleRingCentralHealth> {
+  const empty: GranotLifecycleRingCentralHealth = {
+    state_present: false,
+    last_run_at: null,
+    last_run_status: null,
+    cursor_to: null,
+    lease: { held: false, acquired_at: null, expires_at: null, age_ms: null, expired: false },
+    last_runtime_ms: null,
+    last_adopted_count: null,
+    last_adoption_conflict_count: null,
+    last_throttled_count: null,
+  };
+  try {
+    const state = await getCallLogSyncState();
+    if (!state) return empty;
+    const acquired = state.lease_acquired_at ? new Date(state.lease_acquired_at) : null;
+    const expires = state.leased_until ? new Date(state.leased_until) : null;
+    const held = Boolean(expires && expires.getTime() > now.getTime());
+    const expired = Boolean(expires && expires.getTime() <= now.getTime());
+    return {
+      state_present: true,
+      last_run_at: state.lastRunAt ? new Date(state.lastRunAt).toISOString() : null,
+      last_run_status: state.lastRunStatus,
+      cursor_to: state.lastSyncTo ? new Date(state.lastSyncTo).toISOString() : null,
+      lease: {
+        held,
+        acquired_at: acquired ? acquired.toISOString() : null,
+        expires_at: expires ? expires.toISOString() : null,
+        age_ms: acquired ? Math.max(0, now.getTime() - acquired.getTime()) : null,
+        expired,
+      },
+      last_runtime_ms: state.last_runtime_ms ?? null,
+      last_adopted_count: state.last_adopted_count ?? null,
+      last_adoption_conflict_count: state.last_adoption_conflict_count ?? null,
+      last_throttled_count: state.last_throttled_count ?? null,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+async function sourceRatesForEnabledSources(
+  rows: Array<{ _id: { source_id?: unknown; outcome: SynchronizationOutcome }; count: number }>,
+): Promise<Array<{ scope_ref: string; numerator: number; denominator: number }>> {
+  const bySource = new Map<string, { numerator: number; denominator: number }>();
+  for (const row of rows) {
+    const sourceId = row._id.source_id != null ? String(row._id.source_id) : "";
+    if (!sourceId) continue;
+    const current = bySource.get(sourceId) ?? { numerator: 0, denominator: 0 };
+    current.denominator += row.count;
+    if (row._id.outcome === "ambiguous" || row._id.outcome === "policy_blocked") {
+      current.numerator += row.count;
+    }
+    bySource.set(sourceId, current);
+  }
+  if (bySource.size === 0) return [];
+  const enabled = await getGranotCrmSourceModel()
+    .find({
+      _id: {
+        $in: [...bySource.keys()].flatMap((id) => {
+          try {
+            return [new mongoose.Types.ObjectId(id)];
+          } catch {
+            return [];
+          }
+        }),
+      },
+      lifecycle_disposition: { $ne: "deferred" },
+      enabled: true,
+      lifecycle_enabled: true,
+    })
+    .select({ _id: 1 })
+    .lean();
+  const enabledIds = new Set(enabled.map((row) => String(row._id)));
+  return [...bySource.entries()]
+    .filter(([id]) => enabledIds.has(id))
+    .map(([id, counts]) => ({
+      scope_ref: maskLifecycleId(id) ?? "***",
+      numerator: counts.numerator,
+      denominator: counts.denominator,
+    }))
+    .sort((a, b) => a.scope_ref.localeCompare(b.scope_ref));
 }
 
 async function loadLastRun(

@@ -5,13 +5,13 @@ import {
   getGranotWebhookAuth,
   requireGranotWebhookSecret,
 } from "../middleware/requireGranotWebhookSecret";
-import { recordOperationalEvent } from "../services/observability";
 import {
   captureGranotLifecycleWebhookReceipt,
   type CaptureGranotLifecycleWebhookInput,
   type CaptureGranotLifecycleWebhookResult,
 } from "../services/granotLifecycle/capture";
 import { incrementGranotLifecycleCaptureFailures } from "../services/granotLifecycle/metrics";
+import { emitGranotLifecycleEvent } from "../services/granotLifecycle/observability";
 import { publishGranotLifecycleReceiptWakeup } from "../services/granotLifecycle/queuePublisher";
 
 type CaptureGranotLifecycleWebhook = (
@@ -73,18 +73,17 @@ export function createGranotWebhookRouter(deps: GranotWebhookRouterDeps = {}) {
         } catch (error) {
           incrementGranotLifecycleCaptureFailures();
           logger.error({ err: error, msg: "granot_lifecycle.capture.failed" });
-          await recordOperationalEvent({
+          await emitGranotLifecycleEvent({
             level: "error",
             eventKey: "granot_lifecycle.capture.failed",
             category: "mongo",
             workflow: "granot_lifecycle_capture",
             summary: "Granot webhook receipt could not be stored.",
             details: {
-              observation_channel: "granot_webhook",
-              route_event_class: route.event_type,
+              channel: "granot_webhook",
+              event_class: route.event_type,
             },
             statusCode: 503,
-            notificationCandidate: false,
           });
           return res.status(503).json({
             ok: false,

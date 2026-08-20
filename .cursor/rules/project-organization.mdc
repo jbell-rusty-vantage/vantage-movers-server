@@ -115,7 +115,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - **Ingestion:** `ingestion/*` (separate `app.use` router)
 - **Reporting:** `reporting/{catalog,destinations,definitions,draft,runs}` (separate `app.use` router)
 - **Granot automation:** `granot-automation/runs/*`, `granot-automation/runs/sources`, `granot-automation/run-groups`, `granot-automation/runs/worker` (separate `app.use` router, before v1)
-- **Granot lifecycle:** mutations `activation` / `receipts/:id/requeue` / Owner `booking-cases/:id/{confirm-booking,update-booking,no-action}`; protected reads `granot-lifecycle/cases`, `cases/:case_id`, Owner-only `cases/:case_id/candidates`, `jobs/:normalized_job_no`, `leads/:lead_model/:lead_id/lifecycle`, and `operations/health` (focused router mounted after the `/api/v1` guard; routes remain policy-free)
+- **Granot lifecycle:** mutations `activation` / `receipts/:id/requeue` / Owner `booking-cases/:id/{confirm-booking,update-booking,no-action}`; protected reads `granot-lifecycle/cases`, `cases/:case_id`, Owner-only `cases/:case_id/candidates`, `jobs/:normalized_job_no`, `leads/:lead_model/:lead_id/lifecycle`, and Owner/Admin `operations/health` (Mongo-backed DTO from `projectGranotLifecycleHealth`; focused router mounted after the `/api/v1` guard; routes remain policy-free)
 
 `database_scope=production|historical|combined` where appropriate. Detail rejects `combined`; historical is read-only. No admin delete routes for core leads/bookings/customers — use public v1 writes so sheet sync stays owned by domain services. Observability deletes are the explicit exception.
 

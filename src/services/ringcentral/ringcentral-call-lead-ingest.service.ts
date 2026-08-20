@@ -215,9 +215,7 @@ export async function ingestRingCentralQualifiedCall(
       : "lead_adopted";
     await deps.recordEvent({
       level: convergence.duplicate ? "warn" : "info",
-      eventKey: convergence.duplicate
-        ? "ringcentral.call_lead.adopted_duplicate"
-        : "ringcentral.call_lead.adopted",
+      eventKey: "ringcentral.granot_adoption.adopted",
       category: "ringcentral",
       workflow: "ringcentral_call_lead_convergence",
       summary: convergence.duplicate
@@ -250,7 +248,9 @@ export async function ingestRingCentralQualifiedCall(
   ) {
     await deps.recordEvent({
       level: convergence.outcome === "conflict" ? "warn" : "info",
-      eventKey: `ringcentral.call_lead.convergence_${convergence.outcome}`,
+      eventKey: convergence.outcome === "conflict"
+        ? "ringcentral.granot_adoption.conflict"
+        : `ringcentral.call_lead.convergence_${convergence.outcome}`,
       category: "ringcentral",
       workflow: "ringcentral_call_lead_convergence",
       summary:

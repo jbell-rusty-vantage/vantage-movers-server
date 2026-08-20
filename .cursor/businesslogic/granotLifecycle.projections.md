@@ -1,15 +1,15 @@
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) Sections 28.2 and 29  
-**Primary code:** `src/services/granotLifecycle/projections.ts`, `src/routes/granot-lifecycle-admin.routes.ts`, `src/validation/v1/granotLifecycle.validation.ts`  
+**Primary code:** `src/services/granotLifecycle/projections.ts`, `src/services/granotLifecycle/alerts.ts`, `src/routes/granot-lifecycle-admin.routes.ts`, `src/validation/v1/granotLifecycle.validation.ts`
 **Domain terms used:** Granot Observation, Granot Booking Reconciliation Case, Job Number, Booking, Cancellation, Source Scope
 
 # Granot lifecycle read projections
 
-**Role:** Compose read-only, server-authoritative Booking/Release case, candidate, Job Number timeline, and Lead timeline DTOs for Vantage Admin. These reads never select or attach a Lead, resolve a case, correct a Record Link, invoke a command, or mutate an official Lead, Booking, or Cancellation.
+**Role:** Compose read-only, server-authoritative Booking/Release case, candidate, Job Number timeline, Lead timeline, and operations-health DTOs for Vantage Admin. These reads never select or attach a Lead, resolve a case, correct a Record Link, invoke a command, or mutate an official Lead, Booking, or Cancellation. Health/alert evaluation is instrumentation only.
 
 ## Protected read surface
 
-- Owner/Admin: case list/detail, Job Number timeline, and Lead timeline.
+- Owner/Admin: case list/detail, Job Number timeline, Lead timeline, and operations health.
 - Owner only: case-scoped candidate browsing, because normalized owner-work contact may be used while evaluating eligibility.
 - Every query is strict Zod input. Case cursors encode only the selected timestamp and ObjectId; timeline cursors encode exactly event time, type priority, and stable ID. Candidate cursors encode only Lead model/ID ordering.
 - Missing cases use `GRANOT_CASE_NOT_FOUND`; a missing Lead keeps the generic v1 `Lead not found` envelope.
@@ -30,7 +30,11 @@ The default queue merges open Booking and Release cases ordered by newest eviden
 
 Job Number is the primary timeline. Available Observations, individual Priority effects and Booked/Release actions, Decisions, case evidence/sequence events, Record Link changes, Entity Changes, and current official Booking/Cancellation facts remain individual entries. Sorting is ascending `(event_at, type_priority, id)` with the locked priorities 10 through 100. Invalid authoritative event time fails projection; request time is never substituted.
 
-Pagination returns `{ items, next_cursor, current, capabilities }`. There is no hidden 100-row cap: `next_cursor` advertises remaining entries. Release-case capability is true; discrepancies remain false until Unit 29.
+Pagination returns `{ items, next_cursor, current, capabilities }`. There is no hidden 100-row cap: `next_cursor` advertises remaining entries. Release-case and discrepancy capabilities are true when those collections exist.
+
+## Operations health
+
+`GET /api/v1/admin/granot-lifecycle/operations/health` projects flags, activation, Mongo due/claim/dead-letter counts, 24-hour Decision groups with execution mode, open Booking/Release cases and discrepancies, command conflicts, last queue/cron runs, RingCentral lease/cursor telemetry, and the seven rollout alerts. Counts come from current models, not process memory. Due work matches Section 26: pending/retry plus claimed only when the lease has expired. Activation IDs and source scope refs are masked. Admin must not recompute due logic, p95, rates, or alerts. See [granotLifecycle.observability.md](granotLifecycle.observability.md).
 
 Lead timeline first verifies the exact Lead, then follows persisted Record Links to linked Job Numbers. It never contact-matches at read time.
 
@@ -40,4 +44,4 @@ The Booking reconciliation service remains the policy seam. Its canonical identi
 
 ## Posture
 
-Reads remain available for existing cases when case creation is disabled. Case/timeline `capabilities.commands` is true only for an open standard create-missing or review-existing Booking case while `GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED` is true. Release reads are advertised but Release commands and discrepancies stay false. Checked-in lifecycle flags remain processing/shadow true and every Lead/Booking/Release/Referral/email effect false.
+Reads remain available for existing cases when case creation is disabled. Case/timeline `capabilities.commands` is true only for an open standard create-missing or review-existing Booking case while `GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED` is true. Checked-in lifecycle flags remain processing/shadow true and every Lead/Booking/Release/Referral/email effect false. Health displays those evaluated values and never treats historical_shadow or live_shadow Decision counts as promoted effects.

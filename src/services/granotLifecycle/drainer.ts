@@ -11,6 +11,7 @@ import { toObjectId } from "../../utils/objectId";
 import { SYNCHRONIZATION_OUTCOMES } from "../../models/granotLifecycleSchemas";
 import type { DurableActor } from "../durableWork/types";
 import { recordOperationalEvent } from "../observability";
+import { emitGranotLifecycleEvent } from "./observability";
 import { ProcessingDisabledError } from "./errors";
 import { classifyTechnicalFailureCode, sanitizeLastError } from "./lastError";
 import {
@@ -340,6 +341,13 @@ async function processRequestedReceipt(
   }
   if (claimed.recovered) {
     incrementGranotLifecycleClaimRecoveries();
+    await emitGranotLifecycleEvent({
+      eventKey: "granot_lifecycle.claim.recovered",
+      category: "mongo",
+      summary: "Granot lifecycle expired claim recovered.",
+      details: { trigger, receipt_id: String(claimed.claimed._id) },
+      entity: { type: "granot_observation_receipt", id: String(claimed.claimed._id) },
+    });
   }
   return runFencedProcessor(claimed, owner, trigger, deps);
 }
@@ -593,7 +601,7 @@ async function finalizeTechnicalFailure(input: {
     incrementGranotLifecycleDeadLetters(last_error.code);
     await input.recordEvent({
       level: "error",
-      eventKey: "granot_lifecycle.dead_letter",
+      eventKey: "granot_lifecycle.dead_letter.entered",
       category: "mongo",
       summary: "Granot lifecycle receipt moved to dead letter.",
       details: {
@@ -612,7 +620,7 @@ async function finalizeTechnicalFailure(input: {
   incrementGranotLifecycleTechnicalRetries(last_error.code);
   await input.recordEvent({
     level: "warn",
-    eventKey: "granot_lifecycle.technical_retry",
+    eventKey: "granot_lifecycle.technical_retry.scheduled",
     category: "mongo",
     summary: "Granot lifecycle technical retry scheduled.",
     details: {
@@ -942,7 +950,7 @@ async function defaultRecordEvent(input: {
     msg: input.eventKey,
     ...input.details,
   });
-  await recordOperationalEvent({
+  await emitGranotLifecycleEvent({
     level: input.level,
     eventKey: input.eventKey,
     category: input.category,
@@ -952,8 +960,6 @@ async function defaultRecordEvent(input: {
     entity: input.entityId
       ? { type: "granot_observation_receipt", id: input.entityId }
       : undefined,
-    notificationCandidate: false,
-    piiPolicy: "none",
   });
 }
 

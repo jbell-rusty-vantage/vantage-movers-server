@@ -21,6 +21,7 @@ import type {
 } from "../../models/SynchronizationDecision";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { toObjectId } from "../../utils/objectId";
+import { emitGranotLifecycleEvent } from "./observability";
 import { canonicalJson } from "../durableWork/checksum";
 import {
   classifyBookingReconciliation,
@@ -321,6 +322,24 @@ async function reconcileDiscrepancy(
     }
   }
   if (!result) throw new Error("Discrepancy reconciliation produced no result.");
+  await emitGranotLifecycleEvent({
+    eventKey: `granot_lifecycle.${result.reason_code}`,
+    category: "admin",
+    workflow: "granot_discrepancy",
+    summary: result.kind === "opened"
+      ? "Granot discrepancy opened"
+      : "Granot discrepancy refreshed",
+    details: {
+      discrepancy_id: result.discrepancy_ref.id,
+      observation_id: input.observation_id,
+      decision_id: input.decision_id,
+      kind: input.discrepancy_kind,
+      reason_code: input.reason_code,
+      revision: result.revision,
+      evidence_revision: result.evidence_revision,
+    },
+    piiPolicy: "masked",
+  });
   return result;
 }
 

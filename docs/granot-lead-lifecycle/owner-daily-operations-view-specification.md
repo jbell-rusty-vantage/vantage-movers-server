@@ -90,8 +90,9 @@ An empty table is indistinguishable from a broken table. **Recommendation:**
 every pane declares a `capability` and renders one of three states —
 `available`, `not_activated` ("Booking intake is built but not enabled"), or
 `not_built` ("Cancellation intake lands in Unit 26"). The Daily View reads
-these from the existing `granot-lifecycle/operations/health` flags projection
-and never guesses. This is the same `capabilities` pattern
+these from the existing `granot-lifecycle/operations/health` projection
+(flags plus Mongo-backed queue, outcome, and alert fields) and never guesses.
+This is the same `capabilities` pattern
 `GranotLifecycleCaseDetail` already uses.
 
 ### 0.2 "Open Cancellation Intakes" is Release Reconciliation, and it is a hard dependency

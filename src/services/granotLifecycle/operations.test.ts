@@ -116,24 +116,20 @@ test("[AC-31] foundation Admin without Owner cannot activate", () => {
   );
 });
 
-test("[AC-31] foundation audit failure aborts activation", async () => {
+test("[AC-31] activation audit failure cannot roll back the committed activation", async () => {
   const deps = memoryActivation();
   deps.persistAudit = async () => {
     throw new Error("audit unavailable");
   };
-  await assert.rejects(
-    () =>
-      activateGranotLifecycle(
+  await activateGranotLifecycle(
         {
           reason: "Synthetic activation for local classification proof",
           processor_version: "granot-lifecycle-processor-v1",
         },
         OWNER,
         deps,
-      ),
-    /audit unavailable/,
-  );
-  assert.equal(deps.stored.length, 0);
+      );
+  assert.equal(deps.stored.length, 1);
 });
 
 test("[AC-31] foundation replica-set concurrent activation has one winner", async (t) => {
@@ -256,6 +252,17 @@ test("[AC-37] Owner requeue moves dead_letter to pending without replacing evide
   assert.equal(result.payload_sha256, "c".repeat(64));
   assert.equal(result.channel_operation_id, "synthetic-channel-op");
   assert.equal(result.manual_requeue_count, 1);
+});
+
+test("[AC-37] requeue audit failure cannot roll back the receipt transition", async () => {
+  const deps = memoryRequeue({ state: "dead_letter" });
+  deps.persistRequeueAudit = async () => { throw new Error("audit unavailable"); };
+  const result = await requeueDeadLetterReceipt(
+    { id: new mongoose.Types.ObjectId().toHexString(), reason: "Owner requeue despite audit outage" },
+    OWNER,
+    deps,
+  );
+  assert.equal(result.state, "pending");
 });
 
 test("[AC-37] requeue of completed or claimed work conflicts and creates no audit", async () => {

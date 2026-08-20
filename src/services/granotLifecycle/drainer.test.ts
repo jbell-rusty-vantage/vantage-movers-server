@@ -346,7 +346,7 @@ test("[AC-30] foundation dependency failure creates no Decision and schedules te
   assert.equal(row.processing.match_attempt, 0);
   assert.equal(deps.decisions.length, 0);
   assert.equal(getGranotLifecycleTechnicalRetriesTotal("dependency_failure"), 1);
-  assert.equal(deps.events.some((event) => event.eventKey === "granot_lifecycle.technical_retry"), true);
+  assert.equal(deps.events.some((event) => event.eventKey === "granot_lifecycle.technical_retry.scheduled"), true);
 });
 
 test("[AC-30] foundation consecutive technical failure 10 dead-letters with a safe error", async () => {

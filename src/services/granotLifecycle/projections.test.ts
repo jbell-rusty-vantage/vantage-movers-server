@@ -6,6 +6,7 @@ import {
   assertProjectionSafe,
   collectForbiddenProjectionKeys,
   compareTimelineEntries,
+  dueWorkFilter,
   flagsToNamedBooleans,
   maskContactLabel,
   normalizeJobProjectionPath,
@@ -49,10 +50,27 @@ test("[AC-35] lifecycle DTO recursive guard rejects raw transport and credential
   assert.deepEqual(collectForbiddenProjectionKeys({ ...safe, payload: { authorization: "redacted" } }).sort(), ["authorization", "payload"]);
 });
 
-test("health flag names match the ten centralized lifecycle flags", () => {
+test("[AC-31] health flag names match the ten centralized lifecycle flags and do not promote effects", () => {
   const flags = flagsToNamedBooleans(GRANOT_LIFECYCLE_FLAG_DEFAULTS);
   assert.equal(flags.GRANOT_LIFECYCLE_PROCESSING_ENABLED, true);
   assert.equal(flags.GRANOT_LIFECYCLE_SHADOW_MODE, true);
   assert.equal(flags.GRANOT_LIFECYCLE_LEAD_WRITES_ENABLED, false);
+  assert.equal(flags.GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED, false);
+  assert.equal(flags.GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED, false);
+  assert.equal(flags.GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED, false);
+  assert.equal(flags.GRANOT_LIFECYCLE_RELEASE_CASES_ENABLED, false);
+  assert.equal(flags.GRANOT_LIFECYCLE_RELEASE_COMMANDS_ENABLED, false);
+  assert.equal(flags.GRANOT_LIFECYCLE_REFERRAL_BOOKING_ENABLED, false);
   assert.equal(flags.GRANOT_LIFECYCLE_EMAIL_ENABLED, false);
+});
+
+test("[AC-37] due work includes expired claims and excludes unexpired claimed leases", () => {
+  const now = new Date("2026-08-19T16:00:00.000Z");
+  const filter = dueWorkFilter(now);
+  assert.deepEqual(filter["processing.state"], { $in: ["pending", "retry_scheduled", "claimed"] });
+  assert.deepEqual(filter["processing.next_attempt_at"], { $lte: now });
+  assert.deepEqual(filter.$or, [
+    { "processing.state": { $ne: "claimed" } },
+    { "processing.leased_until": { $lte: now } },
+  ]);
 });

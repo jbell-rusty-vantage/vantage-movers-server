@@ -13,6 +13,10 @@ import {
   isGranotLifecycleError,
 } from "../services/granotLifecycle/errors";
 import {
+  observeGranotOwnerCommandConflict,
+  observeGranotOwnerCommandResult,
+} from "../services/granotLifecycle/observability";
+import {
   activateGranotLifecycle,
   requeueDeadLetterReceipt,
 } from "../services/granotLifecycle/operations";
@@ -167,6 +171,12 @@ export function createGranotLifecycleAdminRouter(
       const { discrepancy_id } = granotLifecycleDiscrepancyParamsSchema.parse({ discrepancy_id: req.params.id });
       const command = schema.parse(req.body);
       const data = await handler({ ...command, discrepancy_id, idempotency_key: readSingleIdempotencyKey(req), owner, request_id: requestId(req) });
+      void observeGranotOwnerCommandResult({
+        replayed: data.replayed,
+        command: path,
+        discrepancy_kind: data.discrepancy_kind,
+        discrepancy_resolved: data.state === "resolved",
+      });
       return res.status(200).json({ ok: true, data });
     } catch (error) { return sendError(res, error, requestId(req)); }
   });
@@ -191,6 +201,12 @@ export function createGranotLifecycleAdminRouter(
           owner,
           request_id: requestId(req),
         });
+        void observeGranotOwnerCommandResult({
+          replayed: data.replayed,
+          command: "confirmGranotBooking",
+          case_kind: "booking",
+          case_resolved: data.case_state === "resolved",
+        });
         return res.status(data.replayed || data.outcome === "already_satisfied" ? 200 : 201)
           .json({ ok: true, data });
       } catch (error) {
@@ -214,6 +230,12 @@ export function createGranotLifecycleAdminRouter(
           owner,
           request_id: requestId(req),
         });
+        void observeGranotOwnerCommandResult({
+          replayed: data.replayed,
+          command: "updateGranotBooking",
+          case_kind: "booking",
+          case_resolved: data.case_state === "resolved",
+        });
         return res.status(200).json({ ok: true, data });
       } catch (error) {
         return sendError(res, error, requestId(req));
@@ -235,6 +257,12 @@ export function createGranotLifecycleAdminRouter(
           idempotency_key: readSingleIdempotencyKey(req),
           owner,
           request_id: requestId(req),
+        });
+        void observeGranotOwnerCommandResult({
+          replayed: data.replayed,
+          command: "createGranotReferralBooking",
+          case_kind: "booking",
+          case_resolved: data.case_state === "resolved",
         });
         return res.status(data.replayed || data.outcome === "already_satisfied" ? 200 : 201)
           .json({ ok: true, data });
@@ -259,6 +287,12 @@ export function createGranotLifecycleAdminRouter(
           owner,
           request_id: requestId(req),
         });
+        void observeGranotOwnerCommandResult({
+          replayed: data.replayed,
+          command: "resolveGranotBookingNoAction",
+          case_kind: "booking",
+          case_resolved: data.case_state === "resolved",
+        });
         return res.status(200).json({ ok: true, data });
       } catch (error) {
         return sendError(res, error, requestId(req));
@@ -280,6 +314,12 @@ export function createGranotLifecycleAdminRouter(
           idempotency_key: readSingleIdempotencyKey(req),
           owner,
           request_id: requestId(req),
+        });
+        void observeGranotOwnerCommandResult({
+          replayed: data.replayed,
+          command: "confirmGranotCancellation",
+          case_kind: "release",
+          case_resolved: data.case_state === "resolved",
         });
         return res.status(data.replayed || data.outcome === "already_satisfied" ? 200 : 201)
           .json({ ok: true, data });
@@ -304,6 +344,12 @@ export function createGranotLifecycleAdminRouter(
           owner,
           request_id: requestId(req),
         });
+        void observeGranotOwnerCommandResult({
+          replayed: data.replayed,
+          command: "updateGranotReleaseBooking",
+          case_kind: "release",
+          case_resolved: data.case_state === "resolved",
+        });
         return res.status(200).json({ ok: true, data });
       } catch (error) {
         return sendError(res, error, requestId(req));
@@ -325,6 +371,12 @@ export function createGranotLifecycleAdminRouter(
           idempotency_key: readSingleIdempotencyKey(req),
           owner,
           request_id: requestId(req),
+        });
+        void observeGranotOwnerCommandResult({
+          replayed: data.replayed,
+          command: "resolveGranotReleaseNoAction",
+          case_kind: "release",
+          case_resolved: data.case_state === "resolved",
         });
         return res.status(200).json({ ok: true, data });
       } catch (error) {
@@ -507,6 +559,7 @@ export function readSingleIdempotencyKey(req: Request): string {
 }
 
 function sendError(res: Response, error: unknown, requestIdValue?: string) {
+  void observeGranotOwnerCommandConflict(error);
   if (isGranotLifecycleError(error)) {
     return res.status(error.statusCode).json(error.toHttpBody());
   }

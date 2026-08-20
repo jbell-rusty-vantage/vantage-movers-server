@@ -122,3 +122,17 @@ export function classifyExecutionMode(
   }
   return input.shadow_mode ? "live_shadow" : "live";
 }
+
+/** Unit 30 / Section 33 initial rollout thresholds. Not env-overridable. */
+export const GRANOT_LIFECYCLE_ALERT_THRESHOLDS = {
+  oldest_due_ms: 15 * 60 * 1000,
+  oldest_due_continuity_ms: 10 * 60 * 1000,
+  dead_letter_count: 0,
+  capture_503_count: 0,
+  claim_recovery_per_hour: 5,
+  capture_to_decision_p95_ms: 10 * 60 * 1000,
+  ringcentral_lease_held_ms: 10 * 60 * 1000,
+  source_ambiguity_policy_blocked_rate: 0.05,
+  health_window_ms: 24 * 60 * 60 * 1000,
+  claim_recovery_window_ms: 60 * 60 * 1000,
+} as const;
