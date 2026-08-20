@@ -2,6 +2,39 @@ export function normalizeJobNo(value?: string | null): string | undefined {
   return normalizeToken(value, { uppercase: true });
 }
 
+const DIGIT_CORE_JOB = /^[A-Z]*(\d+)$/;
+
+export function jobNumberDigitCore(normalized?: string | null): string | undefined {
+  if (!normalized) return undefined;
+  return DIGIT_CORE_JOB.exec(normalized)?.[1];
+}
+
+export function jobNumbersEquivalent(
+  left?: string | null,
+  right?: string | null,
+): boolean {
+  if (!left || !right) return false;
+  if (left === right) return true;
+  const leftCore = jobNumberDigitCore(left);
+  const rightCore = jobNumberDigitCore(right);
+  return Boolean(leftCore && leftCore === rightCore);
+}
+
+export function equivalentNormalizedJobFilter(
+  normalizedJobNo: string,
+): { normalized_job_no: string } | { $or: Array<{ normalized_job_no: string | { $regex: string } }> } {
+  const core = jobNumberDigitCore(normalizedJobNo);
+  if (!core) return { normalized_job_no: normalizedJobNo };
+  const escaped = core.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return {
+    $or: [
+      { normalized_job_no: normalizedJobNo },
+      { normalized_job_no: core },
+      { normalized_job_no: { $regex: `^[A-Z]+${escaped}$` } },
+    ],
+  };
+}
+
 export function normalizeSubmissionLid(value?: string | null): string | undefined {
   return normalizeToken(value, { uppercase: true, preserveInternalPunctuation: true });
 }

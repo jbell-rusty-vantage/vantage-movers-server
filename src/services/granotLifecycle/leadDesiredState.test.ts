@@ -509,6 +509,32 @@ test("Bad exact Form target plans only valid Priority; Duplicate has no target",
   assert.deepEqual(duplicate.desired_values, {});
 });
 
+test("letter-prefixed Lead Job matches Granot digits and does not conflict", () => {
+  const lead = wordpressLead({
+    normalized_job_no: "P5562366",
+    job_no: "P5562366",
+    granot_priority: "1",
+  });
+  const matched = plan({
+    observation: observation({
+      identity: { job_no_raw: "5562366", normalized_job_no: "5562366" },
+      priority: { valid: true, canonical: "1" },
+    }),
+    lead,
+  });
+  assert.notEqual(matched.outcome, "conflict");
+  assert.notEqual(matched.reason_code, "job_number_conflict");
+
+  const differentDigits = plan({
+    observation: observation({
+      identity: { job_no_raw: "5562365", normalized_job_no: "5562365" },
+    }),
+    lead,
+  });
+  assert.equal(differentDigits.outcome, "conflict");
+  assert.equal(differentDigits.reason_code, "job_number_conflict");
+});
+
 test("equivalent formatting does not manufacture a Job Number change", () => {
   const lead = wordpressLead({
     granot_priority: "1",

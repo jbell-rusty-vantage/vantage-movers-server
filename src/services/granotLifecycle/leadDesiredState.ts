@@ -1,4 +1,4 @@
-import { normalizeJobNo } from "../bookings/bookingIdentity";
+import { jobNumbersEquivalent, normalizeJobNo } from "../bookings/bookingIdentity";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import type { GranotObservationDocument } from "../../models/GranotObservation";
 import type { LeadIdentityResult } from "./identity";
@@ -556,7 +556,7 @@ function conflictingJob(
 ): boolean {
   const incoming = observation.identity?.normalized_job_no;
   const current = lead.normalized_job_no;
-  return Boolean(current && incoming && current !== incoming);
+  return Boolean(current && incoming && !jobNumbersEquivalent(current, incoming));
 }
 
 function hasDeterministicRoute(policy: SourcePolicySnapshot): boolean {

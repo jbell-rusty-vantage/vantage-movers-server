@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { jobNumbersEquivalent } from "../bookings/bookingIdentity";
 import {
   resolveLeadIdentity,
   type IdentityAgent,
@@ -81,7 +82,7 @@ function createModuleStore(seed: Seed = {}): LeadIdentityStore & {
         scoped: true,
         filter: { normalized_job_no: normalizedJobNo },
       });
-      return seed.links?.find((row) => row.normalized_job_no === normalizedJobNo) ?? null;
+      return seed.links?.find((row) => jobNumbersEquivalent(row.normalized_job_no, normalizedJobNo)) ?? null;
     },
     async findFormLeadsByRefNo(refNo) {
       queries.push({ kind: "form_by_ref_no", scoped: false, filter: { ref_no: refNo } });
@@ -132,7 +133,7 @@ function createModuleStore(seed: Seed = {}): LeadIdentityStore & {
       return (seed.callLeads ?? []).filter(
         (row) =>
           row.source_granularity_id === input.source_granularity_id &&
-          row.normalized_job_no === input.normalized_job_no,
+          jobNumbersEquivalent(row.normalized_job_no, input.normalized_job_no),
       );
     },
     async findCallLeadsByScopedPhone(input) {
@@ -167,7 +168,9 @@ function createModuleStore(seed: Seed = {}): LeadIdentityStore & {
         scoped: true,
         filter: { normalized_job_no: normalizedJobNo },
       });
-      return (seed.bookings ?? []).filter((row) => row.normalized_job_no === normalizedJobNo);
+      return (seed.bookings ?? []).filter((row) =>
+        jobNumbersEquivalent(row.normalized_job_no, normalizedJobNo),
+      );
     },
     insert: () => forbidWrite("insert"),
     update: () => forbidWrite("update"),

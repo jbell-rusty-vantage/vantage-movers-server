@@ -16,7 +16,7 @@
 
 | Field group | Planned when |
 | --- | --- |
-| Job Number | fill missing when normalized values agree; conflict never overwrites |
+| Job Number | fill missing when normalized values agree; letter prefixes on the same digit core agree; conflict never overwrites |
 | `granot_priority` | every temporally accepted valid Priority |
 | `receiver_agent` | empty receiver + one active Unit 14 Agent suggestion at any valid Priority |
 | `quoted` | Priority `1`/`5` may set true; never false |

@@ -5,6 +5,10 @@ import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import { toObjectId } from "../../utils/objectId";
+import {
+  equivalentNormalizedJobFilter,
+  jobNumbersEquivalent,
+} from "../bookings/bookingIdentity";
 import { normalizeGranotCrmUsername } from "../operationsRegistry";
 import type { SourcePolicySnapshot } from "./sourcePolicy";
 import type {
@@ -186,8 +190,8 @@ export function createMongoLeadIdentityStore(session?: ClientSession): LeadIdent
       const row = await getGranotRecordLinkModel()
         .findOne({
           provider: "granot",
-          normalized_job_no: normalizedJobNo,
           state: "active",
+          ...equivalentNormalizedJobFilter(normalizedJobNo),
         })
         .session(session ?? null)
         .lean()
@@ -259,7 +263,7 @@ export function createMongoLeadIdentityStore(session?: ClientSession): LeadIdent
       const rows = await getCallLeadModel()
         .find({
           source_granularity_id: toObjectId(input.source_granularity_id),
-          normalized_job_no: input.normalized_job_no,
+          ...equivalentNormalizedJobFilter(input.normalized_job_no),
         })
         .session(session ?? null)
         .lean()
@@ -318,7 +322,9 @@ export function createMongoLeadIdentityStore(session?: ClientSession): LeadIdent
       }));
     },
     async findBookingsByNormalizedJob(normalizedJobNo) {
-      const rows = await BookedLead.find({ normalized_job_no: normalizedJobNo })
+      const rows = await BookedLead.find({
+        ...equivalentNormalizedJobFilter(normalizedJobNo),
+      })
         .session(session ?? null)
         .lean()
         .exec();
@@ -1158,7 +1164,7 @@ function jobConflict(
   observationJob: string | undefined,
   target: EntityRef,
 ): LadderResult | undefined {
-  if (leadJob && observationJob && leadJob !== observationJob) {
+  if (leadJob && observationJob && !jobNumbersEquivalent(leadJob, observationJob)) {
     return {
       outcome: "conflict",
       reason_code: "job_number_conflict",

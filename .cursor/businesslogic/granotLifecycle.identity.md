@@ -29,7 +29,7 @@ Successful `source_scoped_lead` policy with Source Company, Source Granularity, 
 4. Exact Source Company **and** Source Granularity contact match across current, `ingested_contact_snapshot`, and `granot_contact_snapshot` phone/email.
 5. Otherwise `pending_match` / `ambiguous` / `conflict` / `unmatched`.
 
-A job-only link is evidence and the ladder continues. A link with `lead_ref` is a target only when model, existence, restrictions, Job, and Source Scope agree; disagreement is a hard conflict and does not fall through to contact. Blank/`not provided` Form references are never queried. Exact identity with missing or conflicting canonical scope is `conflict` / `source_scope_conflict`. Conflicting nonempty Jobs are `conflict` / `job_number_conflict`.
+A job-only link is evidence and the ladder continues. A link with `lead_ref` is a target only when model, existence, restrictions, Job, and Source Scope agree; disagreement is a hard conflict and does not fall through to contact. Blank/`not provided` Form references are never queried. Exact identity with missing or conflicting canonical scope is `conflict` / `source_scope_conflict`. Conflicting nonempty Jobs are `conflict` / `job_number_conflict`. Leading letter prefixes on an otherwise identical digit core (`P5562366` / `5562366`, `RF5555313` / `5555313`) are the same Job; Record Link, Call Job, and Booking lookups use that equivalence.
 
 Duplicate Form Leads are ineligible (`duplicate_form_lead_ineligible`). A Bad Form Lead may be returned only from Record Link / ref / ObjectId with `priority_only` / `bad_form_lead_priority_only`. Bad Leads are excluded from contact matching, Agent suggestion, Booking suggestion, and creation. `bad_lead` is never cleared.
 
@@ -38,7 +38,7 @@ Same Lead found through current and immutable contact values is one candidate. Z
 ## Call Lead ladder
 
 1. Active Record Link by normalized Job Number.
-2. Exact `CallLead.normalized_job_no` inside the resolved Source Granularity.
+2. Prefix-equivalent `CallLead.normalized_job_no` inside the resolved Source Granularity.
 3. Source Granularity plus normalized phone across current phone and immutable ingested/original caller phone.
 4. Otherwise pending/ambiguous/conflict/unmatched.
 
@@ -50,7 +50,7 @@ Preserve `user_raw` and `rep_raw`. Normalize nonempty values with the Operations
 
 ## Booking context
 
-Resolve the unique current Booking by shared `normalizeJobNo`. Multiple current Bookings are `conflict` / `job_number_conflict`. An existing Booking Lead is deterministic owner context; disagreement with a ladder candidate is conflict evidence, not reassignment. A Booking without a Lead sets `booking_lead_reconciliation_required=true` and delegates to existing `BookingLeadReconciliationCase` — this module does not open or duplicate that workflow. Referral Bookings are intentionally leadless.
+Resolve the unique current Booking by shared `normalizeJobNo` and prefix-equivalent Job lookup. Multiple current Bookings are `conflict` / `job_number_conflict`. An existing Booking Lead is deterministic owner context; disagreement with a ladder candidate is conflict evidence, not reassignment. A Booking without a Lead sets `booking_lead_reconciliation_required=true` and delegates to existing `BookingLeadReconciliationCase` — this module does not open or duplicate that workflow. Referral Bookings are intentionally leadless.
 
 ## Flags and later work
 

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { jobNumbersEquivalent } from "../bookings/bookingIdentity";
 import {
   isMongoObjectIdHex,
   resolveLeadIdentity,
@@ -98,7 +99,7 @@ function createRecordingStore(seed: {
         scoped: true,
         filter: { normalized_job_no: normalizedJobNo },
       });
-      return seed.links?.find((row) => row.normalized_job_no === normalizedJobNo) ?? null;
+      return seed.links?.find((row) => jobNumbersEquivalent(row.normalized_job_no, normalizedJobNo)) ?? null;
     },
     async findFormLeadsByRefNo(refNo) {
       queries.push({ kind: "form_by_ref_no", scoped: false, filter: { ref_no: refNo } });
@@ -156,7 +157,7 @@ function createRecordingStore(seed: {
       return (seed.callLeads ?? []).filter(
         (row) =>
           row.source_granularity_id === input.source_granularity_id &&
-          row.normalized_job_no === input.normalized_job_no,
+          jobNumbersEquivalent(row.normalized_job_no, input.normalized_job_no),
       );
     },
     async findCallLeadsByScopedPhone(input) {
@@ -197,7 +198,9 @@ function createRecordingStore(seed: {
         scoped: true,
         filter: { normalized_job_no: normalizedJobNo },
       });
-      return (seed.bookings ?? []).filter((row) => row.normalized_job_no === normalizedJobNo);
+      return (seed.bookings ?? []).filter((row) =>
+        jobNumbersEquivalent(row.normalized_job_no, normalizedJobNo),
+      );
     },
   };
 }
@@ -608,6 +611,82 @@ test("Bad Form Lead is priority_only from strong exact identity and excluded fro
   );
   assert.equal(contact.outcome, "pending_match");
   assert.equal(contact.target, undefined);
+});
+
+test("inbound letter prefix is the same Job as Granot digits", async () => {
+  const phoneHit = await resolveLeadIdentity(
+    {
+      observation: observation({
+        identity: { normalized_job_no: "5562366" },
+        contact: { normalized_phone: "5550001111" },
+      }),
+      policy: callPolicy(),
+    },
+    createRecordingStore({
+      callLeads: [
+        callLead({
+          normalized_job_no: "P5562366",
+          normalized_phone_number: "5550001111",
+        }),
+      ],
+    }),
+  );
+  assert.equal(phoneHit.outcome, "linked");
+  assert.equal(phoneHit.reason_code, "record_link_confirmed");
+  assert.equal(phoneHit.match_method, "call_job_no_exact");
+  assert.equal(phoneHit.target?.id, CALL_ID);
+
+  const jobHit = await resolveLeadIdentity(
+    {
+      observation: observation({
+        identity: { normalized_job_no: "5562366" },
+      }),
+      policy: callPolicy(),
+    },
+    createRecordingStore({
+      callLeads: [callLead({ normalized_job_no: "P5562366" })],
+    }),
+  );
+  assert.equal(jobHit.outcome, "linked");
+  assert.equal(jobHit.match_method, "call_job_no_exact");
+  assert.equal(jobHit.target?.id, CALL_ID);
+
+  const formHit = await resolveLeadIdentity(
+    {
+      observation: observation({
+        identity: {
+          normalized_form_ref: "synthetic-tracking-ref-14",
+          normalized_job_no: "5562366",
+        },
+      }),
+      policy: formPolicy(),
+    },
+    createRecordingStore({
+      formLeads: [formLead({ normalized_job_no: "P5562366" })],
+    }),
+  );
+  assert.equal(formHit.outcome, "linked");
+  assert.equal(formHit.target?.id, FORM_ID);
+
+  const stillConflict = await resolveLeadIdentity(
+    {
+      observation: observation({
+        identity: { normalized_job_no: "5562366" },
+        contact: { normalized_phone: "5550001111" },
+      }),
+      policy: callPolicy(),
+    },
+    createRecordingStore({
+      callLeads: [
+        callLead({
+          normalized_job_no: "P5562365",
+          normalized_phone_number: "5550001111",
+        }),
+      ],
+    }),
+  );
+  assert.equal(stillConflict.outcome, "conflict");
+  assert.equal(stillConflict.reason_code, "job_number_conflict");
 });
 
 test("conflicting nonempty Job Numbers are a hard conflict", async () => {
