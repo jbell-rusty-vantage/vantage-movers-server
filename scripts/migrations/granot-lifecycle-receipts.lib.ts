@@ -10,7 +10,17 @@ import {
 } from "../../src/services/granotLifecycle/receiptEvidence";
 import { maskReceiptId } from "./granot-lifecycle-migration.lib";
 
-export const RECEIPT_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-receipts/1";
+export const RECEIPT_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-receipts/2";
+
+export const RETIRED_RECEIPT_FIELDS = [
+  "event_type",
+  "received_at",
+  "schema_version",
+  "processing_status",
+  "processing_attempts",
+  "processed_at",
+  "processing_error",
+] as const;
 
 export type LegacyReceiptRow = LegacyReceiptCompatibilityInput & {
   _id: string;
@@ -48,11 +58,17 @@ export type ReceiptMigrationPlan = {
   translate: ReceiptMigrationTranslation[];
   already_current: number;
   refused: ReceiptMigrationRefusal[];
+  legacy_field_counts: Record<(typeof RETIRED_RECEIPT_FIELDS)[number], number>;
+  cleanup_masked_ids: string[];
+  supported_legacy_consumers: readonly string[];
 };
 
 export type ReceiptMigrationVerifyFailure = {
   masked_id: string;
-  code: "missing_v2_fields" | "refused_status_written";
+  code:
+    | "missing_v2_fields"
+    | "legacy_fields_remaining"
+    | "credential_keys_remaining";
 };
 
 export function planGranotLifecycleReceiptMigration(
@@ -64,6 +80,10 @@ export function planGranotLifecycleReceiptMigration(
   const translate: ReceiptMigrationTranslation[] = [];
   const refused: ReceiptMigrationRefusal[] = [];
   let already_current = 0;
+  const legacy_field_counts = Object.fromEntries(
+    RETIRED_RECEIPT_FIELDS.map((field) => [field, 0]),
+  ) as Record<(typeof RETIRED_RECEIPT_FIELDS)[number], number>;
+  const cleanup_masked_ids: string[] = [];
 
   for (const row of rows) {
     const status =
@@ -87,6 +107,13 @@ export function planGranotLifecycleReceiptMigration(
 
     const filled = fillLegacyWebhookReceiptV2Fields(row);
     const masked_id = maskReceiptId(row._id);
+    let hasLegacyField = false;
+    for (const field of RETIRED_RECEIPT_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(row, field)) {
+        legacy_field_counts[field] += 1;
+        hasLegacyField = true;
+      }
+    }
     if (!filled.ok) {
       refused.push({
         id: row._id,
@@ -98,6 +125,7 @@ export function planGranotLifecycleReceiptMigration(
     }
     if (filled.already_current) {
       already_current += 1;
+      if (hasLegacyField) cleanup_masked_ids.push(masked_id);
       continue;
     }
     translate.push({
@@ -116,6 +144,9 @@ export function planGranotLifecycleReceiptMigration(
     translate,
     already_current,
     refused,
+    legacy_field_counts,
+    cleanup_masked_ids: cleanup_masked_ids.sort(),
+    supported_legacy_consumers: [],
   };
 }
 
@@ -125,6 +156,23 @@ export function assertReceiptMigrationApplyAllowed(plan: ReceiptMigrationPlan): 
       `Refusing receipt apply: ${plan.refused.length} row(s) have a non-received processing_status.`,
     );
   }
+  if (plan.translate.length > 0) {
+    throw new Error(
+      `Refusing receipt cleanup: ${plan.translate.length} row(s) are not v2-complete. Run the compatibility backfill release first.`,
+    );
+  }
+  const credentialKeys = Object.values(plan.credential_key_counts).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
+  if (credentialKeys > 0) {
+    throw new Error(
+      `Refusing receipt cleanup: ${credentialKeys} forbidden credential key occurrence(s) remain.`,
+    );
+  }
+  if (plan.supported_legacy_consumers.length > 0) {
+    throw new Error("Refusing receipt cleanup while supported legacy consumers remain.");
+  }
 }
 
 export function verifyGranotLifecycleReceiptMigration(
@@ -133,17 +181,21 @@ export function verifyGranotLifecycleReceiptMigration(
   const failures: ReceiptMigrationVerifyFailure[] = [];
   for (const row of rows) {
     const masked_id = maskReceiptId(row._id);
-    const status =
-      typeof row.processing_status === "string" ? row.processing_status : "unknown";
-    if (status !== "received") {
-      if (asRecord(row.processing)) {
-        failures.push({ masked_id, code: "refused_status_written" });
-      }
-      continue;
-    }
     const filled = fillLegacyWebhookReceiptV2Fields(row);
     if (!filled.ok || !filled.already_current) {
       failures.push({ masked_id, code: "missing_v2_fields" });
+      continue;
+    }
+    if (RETIRED_RECEIPT_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(row, field))) {
+      failures.push({ masked_id, code: "legacy_fields_remaining" });
+    }
+    const headerCounts = redactCredentialKeys(row.headers ?? {}).removed_key_counts;
+    const payloadCounts = redactCredentialKeys(row.payload).removed_key_counts;
+    const credentialCount = Object.values(
+      mergeRemovedCredentialKeyCounts(headerCounts, payloadCounts),
+    ).reduce((sum, count) => sum + count, 0);
+    if (credentialCount > 0) {
+      failures.push({ masked_id, code: "credential_keys_remaining" });
     }
   }
   return { ok: failures.length === 0, failures };

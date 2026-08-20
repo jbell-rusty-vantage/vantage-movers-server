@@ -320,7 +320,7 @@ test("[AC-20] Booking No Action reasons are independently optional and strict", 
   }).success, true);
   assert.equal(granotLifecycleBookingNoActionCommandSchema.safeParse({
     expected_case_revision: 1,
-    reason_code: "dismiss",
+    reason_code: "invented_resolution",
   }).success, false);
   assert.equal(granotLifecycleBookingNoActionCommandSchema.safeParse({
     expected_case_revision: 1,

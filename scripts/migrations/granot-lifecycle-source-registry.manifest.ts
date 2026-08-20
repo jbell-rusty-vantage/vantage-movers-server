@@ -55,7 +55,7 @@ export const REVIEWED_SOURCE_CLASSIFICATION_MANIFEST = {
       ],
       lifecycle_enabled: true,
       lifecycle_disposition: "source_scoped_lead",
-      lead_created_policy: "link_only",
+      lead_created_policy: "create_if_missing",
       company_slug: REVIEWED_SOURCE_COMPANY_SLUG,
       routes: [
         {
@@ -72,7 +72,7 @@ export const REVIEWED_SOURCE_CLASSIFICATION_MANIFEST = {
       normalized_labels: ["bestrelocation forms", "best relocation forms"],
       lifecycle_enabled: true,
       lifecycle_disposition: "source_scoped_lead",
-      lead_created_policy: "link_only",
+      lead_created_policy: "create_if_missing",
       company_slug: REVIEWED_SOURCE_COMPANY_SLUG,
       routes: [
         {

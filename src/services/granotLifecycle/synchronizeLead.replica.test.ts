@@ -39,12 +39,12 @@ async function replicaReady(t: { skip: (reason: string) => void }): Promise<bool
     t.skip("Replica-set proof is opt-in via GRANOT_LIFECYCLE_REPLICA_TESTS=true.");
     return false;
   }
-  if (getMongoDatabaseName() !== "testvantagemovers") {
+  if (!/^testvantagemovers(?:_[a-z0-9]+)?$/i.test(getMongoDatabaseName())) {
     t.skip("Replica-set proof requires TEST_MODE=true before process start.");
     return false;
   }
   await connectMongo();
-  if (mongoose.connection.db?.databaseName !== "testvantagemovers") {
+  if (!/^testvantagemovers(?:_[a-z0-9]+)?$/i.test(mongoose.connection.db?.databaseName ?? "")) {
     t.skip("Refusing replica-set proof against a non-test database.");
     return false;
   }
@@ -187,11 +187,6 @@ async function seedReceipt(
       manual_requeue_count: 0,
     },
     provider: "granot",
-    event_type: "lead_created",
-    received_at: observation.captured_at,
-    schema_version: 1,
-    processing_status: "received",
-    processing_attempts: 0,
   });
 }
 

@@ -3,7 +3,6 @@ import { test } from "node:test";
 import type { DurableActor } from "../durableWork/types";
 import {
   applyExtensionGranotItem,
-  classifyCompatibilityFamily,
   mapSynchronizationOutcomeMessage,
 } from "./extensionApply";
 import type { ProcessorResult } from "./drainer";
@@ -138,9 +137,6 @@ test("[AC-33] expected_target disagreement is a non-syncable conflict and never 
 
 test("[AC-35] compatibility messages are fixed and never echo payload values", () => {
   assert.equal(mapSynchronizationOutcomeMessage("invalid"), "Invalid Granot statement");
-  assert.equal(classifyCompatibilityFamily("created"), "updated");
-  assert.equal(classifyCompatibilityFamily("stale"), "unchanged");
-  assert.equal(classifyCompatibilityFamily("policy_blocked"), "review");
   assert.equal(
     mapSynchronizationOutcomeMessage("conflict").includes("synthetic-ref"),
     false,

@@ -35,13 +35,22 @@ import {
   runSheetSyncWrite,
   type FullSheetSyncJob,
 } from "../sheetSync";
-import { toObjectId } from "../../utils/objectId";
+import { toObjectId } from "../../utils/objectId"; 
+
+// TODO Owner comments 
+/*  
+TODO I really like the structure of the functions in this module. They are highly readable and precisely sequenced 
+TODO The next step is to move them into a formLead folder and break them out into CRUD specific files 
+*/
 // Compatibility imports from the v1 service facade. `deleteBookedLead` and
 // `refreshAttachedBookingFromLead` still live there because the booking
 // extraction (refactor plan 04) has not happened yet. They are only ever
 // referenced inside function bodies, so the temporary circular dependency
 // resolves correctly via ESM/CJS late binding.
-import { deleteBookedLead, refreshAttachedBookingFromLead } from "../v1.service";
+import {
+  deleteBookedLead,
+  refreshAttachedBookingFromLead,
+} from "../v1.service";
 import {
   deriveFormLeadLocal,
   normalizeState,
@@ -240,8 +249,7 @@ export async function createFormLead(input: CreateFormLeadInput) {
         ingestion_origin: "wordpress_form",
       }),
     {
-      forceTransaction:
-        input.sms_consent === true && messagingAllowedInRuntime,
+      forceTransaction: input.sms_consent === true && messagingAllowedInRuntime,
     },
   );
   return finalizeFormLeadCreateAfterCommit(pending);
@@ -414,7 +422,11 @@ export async function finalizeFormLeadCreateAfterCommit(
   return {
     lead,
     sheet_sync_status: "pending",
-    crm_sync_status: shouldPostToGranot ? (crmResult.ok ? "synced" : "failed") : "skipped",
+    crm_sync_status: shouldPostToGranot
+      ? crmResult.ok
+        ? "synced"
+        : "failed"
+      : "skipped",
     crm_company_label: crmResult.payload.label,
     crm_response: crmResult.responseText || crmResult.error || "",
     messaging_status: messagingResult.status,
@@ -499,11 +511,9 @@ export async function updateFormLead(
 
   if (
     lead.duplicate &&
-    (
-      input.quoted !== undefined ||
+    (input.quoted !== undefined ||
       input.cubic_feet !== undefined ||
-      input.receiver_agent_source === "extension_crm_username_match"
-    )
+      input.receiver_agent_source === "extension_crm_username_match")
   ) {
     throw new ConflictError(
       "Cannot update quoted or cubic_feet on a duplicate form lead",
@@ -513,7 +523,10 @@ export async function updateFormLead(
     );
   }
 
-  if (hasOwnInput(input, "bad_lead") && (lead.duplicate || lead.booked || lead.cancelled)) {
+  if (
+    hasOwnInput(input, "bad_lead") &&
+    (lead.duplicate || lead.booked || lead.cancelled)
+  ) {
     throw new ConflictError(
       "Cannot mark a duplicate, booked, or cancelled form lead as bad",
       {
@@ -572,7 +585,8 @@ export async function updateFormLead(
     sourceResolutionForUpdate = await resolveLeadSourceAssignment({
       value: input.source_company ?? lead.source_company,
       company_slug: input.company_slug ?? lead.source_company,
-      granularity_key: input.source_granularity_key ?? lead.source_granularity_key,
+      granularity_key:
+        input.source_granularity_key ?? lead.source_granularity_key,
       channel: "form",
       local: lead.local as LocalType,
       source_site: input.source_company_site ?? lead.source_company_site,
@@ -725,7 +739,10 @@ export async function deleteFormLead(id: string, cascade: boolean) {
             previous_targets: previousTargets,
           },
         },
-        { session, targetHints: previousTargets.map((target) => target.target) },
+        {
+          session,
+          targetHints: previousTargets.map((target) => target.target),
+        },
       );
       await lead.deleteOne({ session });
     });
@@ -762,7 +779,10 @@ export async function deleteFormLeadInTransaction(
     );
   }
   const mutations: Array<{
-    entity: { model: "FormLead" | "CallLead" | "BookedLead" | "CancelledLead"; id: string };
+    entity: {
+      model: "FormLead" | "CallLead" | "BookedLead" | "CancelledLead";
+      id: string;
+    };
     revision_before: number;
     fields: Array<{ path: string; before?: unknown; after?: unknown }>;
     deleted?: boolean;
@@ -770,12 +790,17 @@ export async function deleteFormLeadInTransaction(
   const entity_refs: Array<{ model: string; id: string }> = [
     { model: "FormLead", id },
   ];
-  const { deleteBookedLeadInTransaction } = await import(
-    "../bookings/bookedLead.service.js"
-  );
-  let cascaded: Awaited<ReturnType<typeof deleteBookedLeadInTransaction>> | undefined;
+  const { deleteBookedLeadInTransaction } =
+    await import("../bookings/bookedLead.service.js");
+  let cascaded:
+    | Awaited<ReturnType<typeof deleteBookedLeadInTransaction>>
+    | undefined;
   if (lead.booked && cascade) {
-    cascaded = await deleteBookedLeadInTransaction(lead.booked.toString(), true, tx);
+    cascaded = await deleteBookedLeadInTransaction(
+      lead.booked.toString(),
+      true,
+      tx,
+    );
     mutations.push(...cascaded.mutations);
     entity_refs.push(...cascaded.entity_refs);
   }

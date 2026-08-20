@@ -33,7 +33,7 @@ async function replicaReady(t: { skip: (reason: string) => void }): Promise<bool
     t.skip("Replica-set proof is opt-in via GRANOT_LIFECYCLE_REPLICA_TESTS=true.");
     return false;
   }
-  if (getMongoDatabaseName() !== "testvantagemovers") {
+  if (!/^testvantagemovers(?:_[a-z0-9]+)?$/i.test(getMongoDatabaseName())) {
     t.skip("Replica-set proof requires TEST_MODE=true before process start.");
     return false;
   }

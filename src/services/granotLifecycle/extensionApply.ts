@@ -43,16 +43,6 @@ export type ExtensionApplyDeps = {
   ) => Promise<SyncClaimResult>;
 };
 
-const UPDATED_OUTCOMES = new Set<SynchronizationOutcome>([
-  "created",
-  "applied",
-  "linked",
-]);
-const UNCHANGED_OUTCOMES = new Set<SynchronizationOutcome>([
-  "already_current",
-  "stale",
-]);
-
 const SAFE_MESSAGES: Record<SynchronizationOutcome | "accepted_for_processing", string> = {
   created: "Lead created from Granot evidence",
   applied: "Lead updated from Granot evidence",
@@ -75,14 +65,6 @@ export function mapSynchronizationOutcomeMessage(
   outcome: SynchronizationOutcome | "accepted_for_processing",
 ): string {
   return SAFE_MESSAGES[outcome];
-}
-
-export function classifyCompatibilityFamily(
-  outcome: SynchronizationOutcome,
-): "updated" | "unchanged" | "review" {
-  if (UPDATED_OUTCOMES.has(outcome)) return "updated";
-  if (UNCHANGED_OUTCOMES.has(outcome)) return "unchanged";
-  return "review";
 }
 
 export async function applyExtensionGranotItem(

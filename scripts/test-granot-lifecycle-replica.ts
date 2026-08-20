@@ -6,6 +6,12 @@ import { connectMongo } from "../src/db";
 const FORBIDDEN_DB = /^(vantagemovers|historical|prod|production)/i;
 const ALLOWED_DB = /^(testvantagemovers)(_[a-z0-9]+)?$/i;
 
+const UNIT_33_QUEUED_EFFECT_FILES = [
+  "src/services/granotLifecycle/bookingConfirmation.replica.test.ts",
+  "src/services/granotLifecycle/releaseOwnerCommands.replica.test.ts",
+  "src/services/granotLifecycle/referralBooking.replica.test.ts",
+] as const;
+
 const UNIT_FILES: Record<string, string[]> = {
   "08": [
     "src/services/granotLifecycle/drainer.replica.test.ts",
@@ -88,12 +94,29 @@ const UNIT_FILES: Record<string, string[]> = {
     "scripts/migrations/granot-lifecycle-lead-provenance.replica.test.ts",
     "scripts/migrations/granot-lifecycle-revisions.replica.test.ts",
   ],
+  "33": [
+    "src/services/granotLifecycle/drainer.replica.test.ts",
+    "src/services/granotLifecycle/identity.replica.test.ts",
+    "src/services/granotLifecycle/processor.replica.test.ts",
+    "src/services/granotLifecycle/extensionApply.replica.test.ts",
+    "src/services/granotLifecycle/automationApply.replica.test.ts",
+    "src/services/granotLifecycle/synchronizeLead.replica.test.ts",
+    "src/services/granotLifecycle/createLeadFromGranot.replica.test.ts",
+    "src/services/granotLifecycle/bookingReconciliation.replica.test.ts",
+    "src/services/granotLifecycle/releaseReconciliation.replica.test.ts",
+    "src/services/granotLifecycle/discrepancies.replica.test.ts",
+    "src/services/granotLifecycle/projections.replica.test.ts",
+    "src/services/granotLifecycle/operations.replica.test.ts",
+    "src/services/ringcentral/call-log-sync-lease.replica.test.ts",
+    "src/services/ringcentral/callLeadConvergence.replica.test.ts",
+    "scripts/migrations/granot-lifecycle-shadow.replica.test.ts",
+  ],
 };
 
 function parseUnit(): string {
   const raw = process.argv.find((arg) => arg.startsWith("--unit="));
   if (!raw) {
-    throw new Error("Usage: pnpm test:granot-lifecycle:replica -- --unit=08|...|31");
+    throw new Error("Usage: pnpm test:granot-lifecycle:replica -- --unit=08|...|31|33");
   }
   return raw.slice("--unit=".length);
 }
@@ -121,21 +144,44 @@ async function main(): Promise<void> {
   const unit = parseUnit();
   const files = UNIT_FILES[unit];
   if (!files) {
-    throw new Error(`No replica files registered for unit ${unit}; supported units are 08-31.`);
+    throw new Error(`No replica files registered for unit ${unit}; supported units are 08-31 and 33.`);
   }
   await assertSafeReplica();
   process.env.GRANOT_LIFECYCLE_REPLICA_TESTS = "true";
-  const child = spawn(
+  const runFiles = async (
+    selectedFiles: readonly string[],
+    sheetSyncMode: "disabled" | "queued",
+  ): Promise<number> => {
+    const child = spawn(
     process.execPath,
-    ["--import", "tsx", "--import", "./scripts/test-setup.ts", "--test", "--test-concurrency=1", ...files],
+    [
+      "--import", "tsx", "--import", "./scripts/test-setup.ts", "--test",
+      ...(unit === "33" ? ["--test-force-exit"] : []),
+      "--test-concurrency=1",
+      ...selectedFiles,
+    ],
     {
       stdio: "inherit",
-      env: { ...process.env, GRANOT_LIFECYCLE_REPLICA_TESTS: "true" },
+      env: {
+        ...process.env,
+        GRANOT_LIFECYCLE_REPLICA_TESTS: "true",
+        MONGO_DB_NAME: getMongoDatabaseName(),
+        RINGCENTRAL_COLLECTION_MODE: "test",
+        RINGCENTRAL_GRANOT_ADOPTION_ENABLED: "true",
+        SHEET_SYNC_MODE: sheetSyncMode,
+      },
     },
   );
-  const code = await new Promise<number>((resolve) => {
-    child.on("exit", (exitCode) => resolve(exitCode ?? 1));
-  });
+    return new Promise<number>((resolve) => {
+      child.on("exit", (exitCode) => resolve(exitCode ?? 1));
+    });
+  };
+  let code = await runFiles(files, "disabled");
+  if (code === 0 && unit === "33") {
+    // Queued mode persists the transactional outbox intent while test-setup
+    // blocks queue publication and all Google delivery.
+    code = await runFiles(UNIT_33_QUEUED_EFFECT_FILES, "queued");
+  }
   await mongoose.disconnect().catch(() => undefined);
   process.exit(code);
 }

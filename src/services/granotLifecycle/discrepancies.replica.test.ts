@@ -25,7 +25,7 @@ const id = () => { const value = new mongoose.Types.ObjectId(); ids.add(String(v
 
 async function ready(t: { skip(reason: string): void }) {
   if (process.env.GRANOT_LIFECYCLE_REPLICA_TESTS !== "true") { t.skip("Replica proof is opt-in."); return false; }
-  if (getMongoDatabaseName() !== "testvantagemovers") { t.skip("Replica proof requires testvantagemovers."); return false; }
+  if (!/^testvantagemovers(?:_[a-z0-9]+)?$/i.test(getMongoDatabaseName())) { t.skip("Replica proof requires testvantagemovers."); return false; }
   await connectMongo();
   const hello = await mongoose.connection.db?.admin().command({ hello: 1 });
   if (!hello?.setName) { t.skip("Mongo is not a replica set."); return false; }

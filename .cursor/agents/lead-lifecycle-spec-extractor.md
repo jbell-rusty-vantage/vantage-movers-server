@@ -43,7 +43,7 @@ Quote these whenever the unit could touch them. A code contradiction is a compat
 - `lead_created` is controlled by Registry source policy and may create a Lead immediately when authorized.
 - All valid Granot Priority values are stored; only `1` and `5` authorize broad enrichment and set `quoted = true`.
 - `Booked` and `Release` are repeatable Granot Booking Actions, not Vantage state transitions.
-- Booking Intake and Cancellation Intake are replaced by Booking Reconciliation and Release Reconciliation.
+- Superseded prototype case names are replaced by Booking Reconciliation and Release Reconciliation.
 - An actual Booked action against an existing Booking opens review work.
 - Granot never automatically creates, updates, cancels, or un-cancels a Booking.
 - The RingCentral Call Log schedule becomes every 30 minutes only after lease and convergence protections are live.
@@ -52,16 +52,16 @@ Quote these whenever the unit could touch them. A code contradiction is a compat
 
 | Prototype / domain-model name | Final-spec name |
 | --- | --- |
-| `GranotWebhookReceipt` as the only envelope | `GranotObservationReceipt` (collection name `granot_webhook_receipts` retained) |
-| `GranotBookingIntakeCase` | `GranotBookingReconciliationCase` |
+| superseded receipt model alias | `GranotObservationReceipt` (collection name `granot_webhook_receipts` retained) |
+| superseded Booking prototype case | `GranotBookingReconciliationCase` |
 | `GranotCancellationIntakeCase` | `GranotReleaseReconciliationCase` |
 | `GranotCancellationDiscrepancy` | `GranotReleaseDiscrepancy` |
 | Confirm Granot Booking | owner Confirm Booking command |
 | Confirm Granot Cancellation | owner Confirm Cancellation command |
-| dismiss / Dismiss | `No Action` |
+| superseded case-closing action | `No Action` |
 | Intake / intake case | Reconciliation case |
 | Suggested Booking Lead as authority | owner convenience only until Confirm Booking succeeds |
-| generic lifecycle status enum | composed from current facts; never stored as a lifecycle enum |
+| monolithic status field | composed from current facts; never stored as a lifecycle enum |
 
 If a supporting file still uses a left-column name, report the **right-column** contract and note the alias.
 

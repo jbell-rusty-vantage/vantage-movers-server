@@ -103,7 +103,7 @@ test("[AC-02] missing or unknown processing_status refuses apply instead of defa
   );
 });
 
-test("[AC-02] already-present v2 evidence is a no-op even when auth method is proven", () => {
+test("[AC-02] v2-complete rows are cleanup candidates while no consumer is retained", () => {
   const first = planGranotLifecycleReceiptMigration([legacyReceived()]);
   const translated = first.translate[0];
   assert.ok(translated);
@@ -117,15 +117,20 @@ test("[AC-02] already-present v2 evidence is a no-op even when auth method is pr
   assert.equal(proven.translate.length, 0);
   assert.equal(proven.already_current, 1);
   assert.deepEqual(proven.translate, []);
+  assert.equal(proven.cleanup_masked_ids.length, 1);
+  assert.deepEqual(proven.supported_legacy_consumers, []);
 });
 
-test("[AC-02] received rows translate to pending and refused statuses stop apply", () => {
+test("[AC-02] cleanup refuses incomplete v2 rows and refused statuses", () => {
   const received = planGranotLifecycleReceiptMigration([legacyReceived()]);
   assert.equal(received.translate[0]?.fields.source_system, "granot");
   assert.equal(received.translate[0]?.fields.observation_channel, "granot_webhook");
   assert.equal(received.translate[0]?.fields.evidence_version, 2);
   assert.equal(received.translate[0]?.fields.processing.state, "pending");
-  assert.doesNotThrow(() => assertReceiptMigrationApplyAllowed(received));
+  assert.throws(
+    () => assertReceiptMigrationApplyAllowed(received),
+    /not v2-complete/,
+  );
 
   const refused = planGranotLifecycleReceiptMigration([
     legacyReceived({ processing_status: "failed" }),
@@ -138,7 +143,7 @@ test("[AC-02] received rows translate to pending and refused statuses stop apply
   );
 });
 
-test("[AC-02] receipt apply is idempotent for already-translated rows", () => {
+test("[AC-02] receipt cleanup plan is idempotent for already-translated rows", () => {
   const first = planGranotLifecycleReceiptMigration([legacyReceived()]);
   const translated = first.translate[0];
   assert.ok(translated);
@@ -151,29 +156,31 @@ test("[AC-02] receipt apply is idempotent for already-translated rows", () => {
   assert.equal(second.translate.length, 0);
   assert.equal(second.already_current, 1);
   assert.equal(second.refused.length, 0);
+  assert.doesNotThrow(() => assertReceiptMigrationApplyAllowed(second));
 });
 
-test("[AC-02] verify fails for missing v2 fields and for a refused status that was written", () => {
+test("[AC-02] verify fails for missing v2 fields and remaining legacy fields", () => {
   const missing = verifyGranotLifecycleReceiptMigration([legacyReceived()]);
   assert.equal(missing.ok, false);
   assert.equal(missing.failures[0]?.code, "missing_v2_fields");
 
-  const written = verifyGranotLifecycleReceiptMigration([
-    legacyReceived({
-      processing_status: "ignored",
-      evidence_version: 2,
-      authentication_method: "legacy_unknown",
-      processing: {
-        state: "pending",
-        technical_attempts: 0,
-        match_attempt: 0,
-        next_attempt_at: receivedAt,
-        manual_requeue_count: 0,
-      },
-    }),
+  const first = planGranotLifecycleReceiptMigration([legacyReceived()]).translate[0];
+  assert.ok(first);
+  const withLegacy = verifyGranotLifecycleReceiptMigration([
+    { ...legacyReceived(), ...first.fields },
   ]);
-  assert.equal(written.ok, false);
-  assert.equal(written.failures[0]?.code, "refused_status_written");
+  assert.equal(withLegacy.ok, false);
+  assert.equal(withLegacy.failures[0]?.code, "legacy_fields_remaining");
+
+  const clean = { ...legacyReceived(), ...first.fields } as Record<string, unknown>;
+  for (const field of [
+    "event_type", "received_at", "schema_version", "processing_status",
+    "processing_attempts", "processed_at", "processing_error",
+  ]) delete clean[field];
+  assert.equal(
+    verifyGranotLifecycleReceiptMigration([clean as LegacyReceiptRow]).ok,
+    true,
+  );
 });
 
 test("[AC-35] migration mode parsing rejects combined flags and defaults to report", () => {

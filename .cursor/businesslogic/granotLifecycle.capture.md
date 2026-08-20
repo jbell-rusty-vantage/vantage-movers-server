@@ -33,9 +33,9 @@
 
 - `observation_channel: "granot_webhook"`
 - proven `authentication_method` (`body_secret` or `header_secret`), never `legacy_unknown`
-- route-derived `route_event_class` / compatibility `event_type`
-- pending processing defaults; compatibility `processing_status: "received"`
-- compatibility fields still written on insert: `provider`, `schema_version`, `event_type`, `received_at`, `processing_status`
+- route-derived `route_event_class`; payload `event_type` remains evidence only
+- nested `processing.*` pending defaults; retired flat work fields are neither read nor written
+- `provider: "granot"` is retained while the v2 semantic authority is `source_system`
 - no `channel_operation_kind`, `channel_operation_id`, or human `initiator`
 
 Stored headers are exactly `content-type`, `content-length`, `user-agent`, `x-request-id`, and `x-vercel-id`, each value truncated to 1,024 characters.

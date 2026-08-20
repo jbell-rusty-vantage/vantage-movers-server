@@ -155,7 +155,7 @@ Keep each doc compact (one screen to a few screens). Known gaps stay labeled as 
 - Do not implement features, move runtime files, or “clean up” code while documenting.
 - Do not invent Source IDs, payload meanings, or glossary terms. Missing language → flag for `/domain-modeling`.
 - Do not duplicate `CONTEXT.md` definitions into businesslogic or rules.
-- Do not copy Intake-era names (`GranotBookingIntakeCase`, dismiss, generic lifecycle enum). Use final-spec names.
+- Do not copy superseded prototype terminology. Use the final Booking/Release Reconciliation and No Action vocabulary.
 - Do not treat the OKF/OpenWiki strategy as live. Current system of record for agent business docs is `.cursor/businesslogic/` plus glob-scoped rules.
 - Do not write secrets, `.env` values, raw phones/emails, or webhook payloads into docs.
 - Do not mark generated or inferred policy as human-verified.

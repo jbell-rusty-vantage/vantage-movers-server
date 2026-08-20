@@ -58,7 +58,7 @@ Status vocabulary matches the Granot pack: `ready`, `blocked`, `active`,
 | [D](issues/ODV-D.md) | `LeadConversation` model, redactor, read routes, and one seeded conversation | A | blocked | complete |
 | [E](issues/ODV-E.md) | Conversations tab, drawer conversation panel, and audited audio URL | D | blocked | complete |
 | [F](issues/ODV-F.md) | Agent metrics | A | blocked | complete |
-| [G](issues/ODV-G.md) | Booking Intake and Cancellation Intake tabs | A; Granot 26 for cancellations | blocked | complete |
+| [G](issues/ODV-G.md) | Booking Reconciliation and Release Reconciliation tabs | A; Granot 26 for cancellations | blocked | complete |
 | [H](issues/ODV-H.md) | Automated conversation pipeline | D, E, **Section 7 gates cleared** | **deferred** | complete |
 | [I](issues/ODV-I.md) | SSE transport swap | C | optional | complete |
 
@@ -70,9 +70,9 @@ Status vocabulary matches the Granot pack: `ready`, `blocked`, `active`,
 - **B, C, D, F can run in parallel once A lands.** They touch disjoint services
   and disjoint Admin components. B and D both extend the drawer; B owns the
   drawer shell and its Details/Provenance tabs, E owns the Conversation tab.
-- **G is gated twice.** The Booking Intake half is buildable immediately after A
+- **G is gated twice.** The Booking Reconciliation half is buildable immediately after A
   but renders `not_activated` until `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED` is
-  turned on. The Cancellation Intake half needs Granot Unit 26 (Release
+  turned on. The Release Reconciliation half needs Granot Unit 26 (Release
   Reconciliation) to exist at all.
 - **H is deferred by Owner decision on 2026-08-19**, not by engineering
   readiness. Its gates are specification §5.0 and §7: recurring cost
@@ -92,7 +92,7 @@ carries them; they are not open and should not be relitigated in an issue.
 | --- | --- |
 | Window shape | **Rolling** 24h/48h back from `now`. Not Florida business days. **No third mode.** |
 | `/daily` vs `/` | **Its own page.** `/` stays `HomeOverview`, unchanged. New sidebar entry above Form Leads. |
-| Cancellation Intakes | **Waits for Granot Unit 26.** The Daily View does not wait for it. |
+| Release Reconciliation | **Waits for Granot Unit 26.** The Daily View does not wait for it. |
 
 The remaining open questions all gate ODV-H only — cost, retention, PCI, and
 consent. They block nothing in Units A–G.

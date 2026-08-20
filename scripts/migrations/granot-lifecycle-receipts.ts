@@ -1,5 +1,5 @@
 /**
- * 34.1 — Granot Observation Receipt compatibility backfill.
+ * Unit 33 — guarded retirement of legacy receipt fields and indexes.
  *
  * Dry-run / --report by default. Mutation requires
  * --apply --confirm-production=<database-name>.
@@ -21,6 +21,7 @@ import {
 } from "./granot-lifecycle-migration.lib.js";
 import {
   RECEIPT_MIGRATION_SCRIPT_VERSION,
+  RETIRED_RECEIPT_FIELDS,
   assertReceiptMigrationApplyAllowed,
   planGranotLifecycleReceiptMigration,
   verifyGranotLifecycleReceiptMigration,
@@ -46,9 +47,36 @@ async function loadLegacyReceiptRows(): Promise<StoredReceiptRow[]> {
   }));
 }
 
-async function applyTranslations(
+const RETIRED_RECEIPT_INDEX_KEYS = [
+  { event_type: 1, received_at: -1 },
+  { processing_status: 1, received_at: 1 },
+] as const;
+
+function sameKey(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+async function loadRetiredIndexNames(): Promise<string[]> {
+  const collection = mongoose.connection.db?.collection(
+    GRANOT_OBSERVATION_RECEIPT_COLLECTION,
+  );
+  if (!collection) throw new Error("Cannot inspect receipt indexes: Mongo collection is unavailable.");
+  let indexes: Awaited<ReturnType<typeof collection.indexes>>;
+  try {
+    indexes = await collection.indexes();
+  } catch (error) {
+    if ((error as { codeName?: string }).codeName === "NamespaceNotFound") return [];
+    throw error;
+  }
+  return indexes
+    .filter((index) => RETIRED_RECEIPT_INDEX_KEYS.some((key) => sameKey(index.key, key)))
+    .map((index) => index.name)
+    .filter((name): name is string => typeof name === "string")
+    .sort();
+}
+
+async function applyCleanup(
   plan: ReturnType<typeof planGranotLifecycleReceiptMigration>,
-  rows: readonly StoredReceiptRow[],
 ): Promise<number> {
   const collection = mongoose.connection.db?.collection(
     GRANOT_OBSERVATION_RECEIPT_COLLECTION,
@@ -56,20 +84,13 @@ async function applyTranslations(
   if (!collection) {
     throw new Error("Cannot apply receipts: Mongo collection is unavailable.");
   }
-  const byId = new Map(plan.translate.map((entry) => [entry.id, entry]));
-  let updated = 0;
-  for (const row of rows) {
-    const filled = byId.get(row._id);
-    if (!filled) {
-      continue;
-    }
-    await collection.updateOne(
-      { _id: row.mongo_id },
-      { $set: filled.set_fields },
-    );
-    updated += 1;
-  }
-  return updated;
+  if (plan.cleanup_masked_ids.length === 0) return 0;
+  const unset = Object.fromEntries(RETIRED_RECEIPT_FIELDS.map((field) => [field, ""]));
+  const result = await collection.updateMany(
+    { $or: RETIRED_RECEIPT_FIELDS.map((field) => ({ [field]: { $exists: true } })) },
+    { $unset: unset },
+  );
+  return result.modifiedCount;
 }
 
 async function main(): Promise<void> {
@@ -90,17 +111,39 @@ async function main(): Promise<void> {
 
   const rows = await loadLegacyReceiptRows();
   const plan = planGranotLifecycleReceiptMigration(rows);
+  const retiredIndexesBefore = await loadRetiredIndexNames();
   let applied = 0;
+  let droppedLegacyIndexes: string[] = [];
   let verify:
     | ReturnType<typeof verifyGranotLifecycleReceiptMigration>
     | undefined;
 
   if (mode === "apply") {
     assertReceiptMigrationApplyAllowed(plan);
-    applied = await applyTranslations(plan, rows);
+    applied = await applyCleanup(plan);
+    const collection = mongoose.connection.db?.collection(
+      GRANOT_OBSERVATION_RECEIPT_COLLECTION,
+    );
+    if (!collection) throw new Error("Cannot drop receipt indexes: Mongo collection is unavailable.");
+    for (const name of retiredIndexesBefore) {
+      await collection.dropIndex(name);
+      droppedLegacyIndexes.push(name);
+    }
   }
   if (mode === "verify") {
     verify = verifyGranotLifecycleReceiptMigration(rows);
+    if (retiredIndexesBefore.length > 0) {
+      verify = {
+        ok: false,
+        failures: [
+          ...verify.failures,
+          ...retiredIndexesBefore.map(() => ({
+            masked_id: "index",
+            code: "legacy_fields_remaining" as const,
+          })),
+        ],
+      };
+    }
   }
 
   const manifest = {
@@ -119,7 +162,13 @@ async function main(): Promise<void> {
       processing_status,
     })),
     translated_masked_ids: plan.translate.map((entry) => entry.masked_id),
+    v2_complete_count: plan.already_current,
+    legacy_field_counts: plan.legacy_field_counts,
+    cleanup_count: plan.cleanup_masked_ids.length,
+    supported_legacy_consumer_count: plan.supported_legacy_consumers.length,
+    retired_index_names: retiredIndexesBefore,
     applied,
+    dropped_legacy_indexes: droppedLegacyIndexes,
     verify: verify
       ? {
           ok: verify.ok,

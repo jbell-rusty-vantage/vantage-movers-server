@@ -282,4 +282,4 @@ Remove the Admin `/daily` route and the sidebar entry first — that removes all
 
 Report: files added; the four index definitions and their collision-report output; test and typecheck output for both repositories; preview deployment ids; explicit confirmation that no Granot flag changed and no mutation occurred; and the `activity_at` acceptance case output verbatim.
 
-**Unblocks:** ODV-B, ODV-C, ODV-D, ODV-F, and the Booking Intake half of ODV-G.
+**Unblocks:** ODV-B, ODV-C, ODV-D, ODV-F, and the Booking Reconciliation half of ODV-G.

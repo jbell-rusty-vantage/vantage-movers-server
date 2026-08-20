@@ -19,9 +19,12 @@ sources:
     resource: ../../src/config/domain/granotLifecycle.ts
   - id: source-semantics
     resource: ../../src/models/granotCrmSourceSemantics.ts
-  - id: official-seed
-    resource: ../../scripts/prototypes/granot-lead-lifecycle/dry-runs/seed-official-crm-sources.ts
+  - id: source-migration
+    resource: ../../scripts/migrations/granot-lifecycle-source-registry.ts
 verified:
+  - by: agent:production-policy-apply
+    at: 2026-08-20T03:17:48Z
+    notes: Owner-authorized scoped report/apply/verify/idempotency cycle on vantagemovers; exactly the Best Relocation Forms and Inbounds lead_created_policy fields changed to create_if_missing.
   - by: agent:production-read
     at: 2026-08-19T16:44:00Z
     notes: Read-only Mongo on vantagemovers for Best Relocation company, granularities, GranotCrmSource rows, and activation collection.
@@ -154,11 +157,11 @@ An effect happens only when every applicable gate is true. A disabled gate yield
 
 The Decision stores a snapshot of every evaluated gate. That is why a Best Relocation webhook can be captured and still create nothing: a single false gate is enough.
 
-## 3. Best Relocation seed — current production vs required create policy
+## 3. Best Relocation Registry migration and required create policy
 
 ### 3.1 What already exists in `vantagemovers`
 
-The official seed (`pnpm granot:lifecycle:seed-official-sources -- --confirm-production-db=vantagemovers`) already created the company, granularities, and Granot source rows. **Do not invent a second company.** Do not put `create_if_missing` on the company or granularity documents.
+Use the guarded `migration:granot-lifecycle:sources` report/apply/verify flow for Registry compatibility. The retired prototype seed is not an operational command. **Do not invent a second company.** Do not put `create_if_missing` on company or granularity documents; it belongs only on the reviewed Granot CRM source rows.
 
 | Kind | Key / label | Production `_id` | Active |
 | --- | --- | --- | --- |
@@ -171,20 +174,19 @@ Mapped Granot labels (collection `granot_crm_sources`):
 
 | Granot label | Normalized | Source `_id` | Policy **now** | Routes |
 | --- | --- | --- | --- | --- |
-| `Best Relocation Forms` | `best relocation forms` | `6a8546291ff601e1d4ab962d` | **`link_only`** | Form local + Form long-distance |
-| `BestRelocation Inbounds` | `bestrelocation inbounds` | `6a8546291ff601e1d4ab9630` | **`link_only`** | Call + any |
+| `Best Relocation Forms` | `best relocation forms` | `6a8546291ff601e1d4ab962d` | **`create_if_missing`** | Form local + Form long-distance |
+| `BestRelocation Inbounds` | `bestrelocation inbounds` | `6a8546291ff601e1d4ab9630` | **`create_if_missing`** | Call + any |
 
 Both rows are already `enabled: true`, `lifecycle_enabled: true`, `lifecycle_disposition: "source_scoped_lead"`, `lead_source_company` = Best Relocation, policy version `granot-lifecycle-source-policy-v1`.
 
-`link_only` means: match and attach a Record Link if a Vantage Lead already exists; **never mint one**. That is why Best Relocation `lead_created` webhooks currently cannot create leads even after flags go live.
+The guarded production migration changed only `lead_created_policy`; both rows retained the reviewed company, routes, disposition, activation posture, and nonblank policy version. Creation still requires every runtime flag, activation, identity, route, and minimum-data gate.
 
-### 3.2 Required policy change (not a company/granularity edit)
+### 3.2 Applied policy change (not a company/granularity edit)
 
 Change **only** the two `GranotCrmSource` rows above:
 
 ```ts
 lead_created_policy: "create_if_missing"
-lifecycle_policy_version: "granot-lifecycle-source-policy-v2-best-relocation-create"
 ```
 
 Leave routes, company, granularities, disposition, and `lifecycle_enabled` as they are.
@@ -236,14 +238,14 @@ Body shape (Forms example; keep the existing two routes):
       "source_granularity_id": "6a4d240f04c6e063cb6621f1"
     }
   ],
-  "lifecycle_policy_version": "granot-lifecycle-source-policy-v2-best-relocation-create",
+  "lifecycle_policy_version": "granot-lifecycle-source-policy-v1",
   "reason": "Authorize Best Relocation lead_created to create unmatched Form Leads."
 }
 ```
 
 Inbound body: same company, one `CallLead` + `any` route to `6a4d240f04c6e063cb6621f3`, reason for Call Leads.
 
-**Current blocker:** Admin validation and the Registry UI still reject `create_if_missing`. The dropdown is labeled “later rollout.” HTTP enum is only `link_only | observation_only`. The official seed script can write `create_if_missing` because it calls the service, not the HTTP schema. Unlock that enum in a dedicated Unit 19/34 follow-up **before** treating the dashboard as the way to flip the policy. Until then, the audited seed/script path is the only legal write.
+Admin validation and the Registry UI still reject `create_if_missing`; the dropdown remains a later-rollout surface. The Owner-authorized guarded migration called the audited Registry service directly. Until the UI contract is separately expanded, the guarded migration remains the legal write path for this policy.
 
 ### 3.4 What not to seed
 
@@ -370,8 +372,8 @@ Do these in order. Do not skip to flags.
 
 1. Finish Units 30–31 and 33. Unit 32 email stays omitted.
 2. Unit 34 current-payload certification on redacted live shapes. Any mismatch is a defect against the owning earlier unit — do not weaken policy to make a payload pass.
-3. Unlock `create_if_missing` on the Registry HTTP/Admin enum (currently blocked).
-4. Audited policy update on the two Best Relocation `GranotCrmSource` rows only. Bump `lifecycle_policy_version`.
+3. Best Relocation policy update is complete through the audited scoped migration; do not repeat it through the UI.
+4. Optionally unlock `create_if_missing` on the Registry HTTP/Admin enum as a separately reviewed management-surface change.
 5. Write-once activation with an Owner reason and a chosen cutoff time.
 6. Set the §1.2 env values on the server. Keep Booking/Release/email false.
 7. Watch `GET /api/v1/admin/granot-lifecycle/operations/health` and Operational Events. First live proof: one unmatched Best Relocation inbound `lead_created` creates one Call Lead; a duplicate delivery replays; a Main Site `lead_created` still does **not** create.

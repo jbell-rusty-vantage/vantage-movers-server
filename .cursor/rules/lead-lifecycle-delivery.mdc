@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Lead Lifecycle Delivery
 
-Apply this rule when implementing Granot lead lifecycle (webhooks, observations, Booking/Release Reconciliation, admin UI, extension). Keep all of that work on the branches below. Do not open extra feature branches for this set. Do not use superseded Intake-era names (`GranotBookingIntakeCase`, dismiss, generic lifecycle enum).
+Apply this rule when implementing Granot lead lifecycle (webhooks, observations, Booking/Release Reconciliation, admin UI, extension). Keep all of that work on the branches below. Do not open extra feature branches for this set. Use only the final Booking/Release Reconciliation, No Action, and composed-facts vocabulary.
 
 ## Repos and branches
 

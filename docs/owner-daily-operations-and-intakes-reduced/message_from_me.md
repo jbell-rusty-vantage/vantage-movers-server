@@ -6,8 +6,8 @@ We simply want to spin up the /daily route and put
 
 For the current day . I think a good rule of thumb would be like a 12 hour rolling window or maybe 24 hr  
 Leads
-Booking Intakes
-Cancellation Intakes  
+Booking Reconciliation
+Release Reconciliation
 Completing Bookings
 Completed Cancellations
 

@@ -1,3 +1,9 @@
+/*TODO From the owner. We need to break out types into their own folders and files. 
+ TODO we need to replace unknowns where there are actual current knowns. 
+ TODO we have moved most operational identity to the operations registry collections so we should use those   
+ TODO types where possible  
+*/
+
 export type SourceCompatibility =
   | "exact_granularity"
   | "same_company"
@@ -20,7 +26,9 @@ export function classifyLeadSourceCompatibility(
   lead: SourceComparable,
   expected: SourceExpectation,
 ): SourceCompatibility {
-  const expectedLeadSourceCompany = normalizeObjectId(expected.lead_source_company);
+  const expectedLeadSourceCompany = normalizeObjectId(
+    expected.lead_source_company,
+  );
   const expectedSourceCompany = normalizeString(expected.source_company);
   const expectedGranularity = normalizeString(expected.source_granularity_key);
 
@@ -45,24 +53,29 @@ export function classifyLeadSourceCompatibility(
     return "same_company";
   }
 
-  if (expectedSourceCompany && leadCompany && expectedSourceCompany === leadCompany) {
+  if (
+    expectedSourceCompany &&
+    leadCompany &&
+    expectedSourceCompany === leadCompany
+  ) {
     return expectedGranularity && leadGranularity === expectedGranularity
       ? "exact_granularity"
       : "same_company";
   }
 
-  if (
-    (!leadCompany || leadCompany === "not_provided") &&
-    !leadSourceCompany
-  ) {
+  if ((!leadCompany || leadCompany === "not_provided") && !leadSourceCompany) {
     return "unassigned";
   }
 
   return "conflict";
 }
 
+// TODO we need a dedicated utils module that is aptly named. These are normalizers
+
 function normalizeString(value: unknown): string | undefined {
-  return typeof value === "string" ? value.trim().toLowerCase() || undefined : undefined;
+  return typeof value === "string"
+    ? value.trim().toLowerCase() || undefined
+    : undefined;
 }
 
 function normalizeObjectId(value: unknown): string | undefined {

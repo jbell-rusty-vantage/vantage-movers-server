@@ -6,11 +6,11 @@ import {
   GRANOT_WEBHOOK_STORED_HEADER_MAX_LENGTH,
   allowlistGranotWebhookHeaders,
   buildGranotChannelReceiptInsert,
-  buildGranotWebhookReceiptInsert,
+  buildGranotObservationReceiptInsert,
   captureChannelOperationReceipt,
   captureGranotLifecycleWebhookReceipt,
   type GranotChannelReceiptInsert,
-  type GranotWebhookReceiptInsert,
+  type GranotObservationReceiptInsert,
 } from "./capture";
 import {
   GRANOT_LIFECYCLE_ERROR_CODES,
@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 test("[AC-01][AC-35] capture writes a complete v2 webhook receipt with proven auth and no later fields", async () => {
-  const persisted: GranotWebhookReceiptInsert[] = [];
+  const persisted: GranotObservationReceiptInsert[] = [];
   const result = await captureGranotLifecycleWebhookReceipt(
     {
       route_event_class: "priority_updated",
@@ -67,12 +67,9 @@ test("[AC-01][AC-35] capture writes a complete v2 webhook receipt with proven au
   assert.equal(document.source_system, "granot");
   assert.equal(document.observation_channel, "granot_webhook");
   assert.equal(document.captured_at.toISOString(), capturedAt.toISOString());
-  assert.equal(document.received_at.toISOString(), capturedAt.toISOString());
   assert.equal(document.route_event_class, "priority_updated");
-  assert.equal(document.event_type, "priority_updated");
   assert.equal(document.authentication_method, "body_secret");
   assert.equal(document.evidence_version, 2);
-  assert.equal(document.schema_version, 1);
   assert.equal(document.provider, "granot");
   assert.equal(document.payload_kind, "object");
   assert.deepEqual(document.payload, syntheticPayload);
@@ -87,8 +84,11 @@ test("[AC-01][AC-35] capture writes a complete v2 webhook receipt with proven au
     next_attempt_at: capturedAt,
     manual_requeue_count: 0,
   });
-  assert.equal(document.processing_status, "received");
-  assert.equal(document.processing_attempts, 0);
+  assert.equal("event_type" in document, false);
+  assert.equal("received_at" in document, false);
+  assert.equal("schema_version" in document, false);
+  assert.equal("processing_status" in document, false);
+  assert.equal("processing_attempts" in document, false);
   assert.equal("channel_operation_kind" in document, false);
   assert.equal("channel_operation_id" in document, false);
   assert.equal("initiator" in document, false);
@@ -134,7 +134,7 @@ test("[AC-01][AC-35] header allowlist keeps only the five bounded names", () => 
 });
 
 test("[AC-02][AC-35] hashes the credential-redacted payload after allowlisting headers", () => {
-  const document = buildGranotWebhookReceiptInsert({
+  const document = buildGranotObservationReceiptInsert({
     route_event_class: "lead_created",
     captured_at: capturedAt,
     headers: {
@@ -158,7 +158,7 @@ test("[AC-02][AC-35] hashes the credential-redacted payload after allowlisting h
 });
 
 test("[AC-02] identical webhook deliveries stay distinct receipts and may share the diagnostic hash", async () => {
-  const persisted: GranotWebhookReceiptInsert[] = [];
+  const persisted: GranotObservationReceiptInsert[] = [];
   const first = await captureGranotLifecycleWebhookReceipt(
     webhookInput(),
     async (document) => {
@@ -181,7 +181,7 @@ test("[AC-02] identical webhook deliveries stay distinct receipts and may share 
 });
 
 test("[AC-01] capture refuses an unproven authentication method before persist", async () => {
-  const persisted: GranotWebhookReceiptInsert[] = [];
+  const persisted: GranotObservationReceiptInsert[] = [];
   await assert.rejects(
     captureGranotLifecycleWebhookReceipt(
       {

@@ -70,12 +70,12 @@ Four tabs. One rolling window that binds all of them and lives in the URL.
 | --- | --- | --- |
 | **Today** | NEEDS YOU band, window totals, live event strip (leads + Granot receipts) | — |
 | **Leads** | Form + Call leads in window, one chronological stream | Drawer → full chain |
-| **Intakes** | Booking reconciliation **and** Release reconciliation cases, open first | Handoff to existing case detail |
+| **Reconciliation** | Booking Reconciliation **and** Release Reconciliation cases, open first | Handoff to existing case detail |
 | **Completed** | Completed Bookings + Completed Cancellations in window | Drawer → full chain |
 
-That is the Owner's message, in order: *leads, booking intakes, cancellation
-intakes, completed bookings, completed cancellations*, a separate tab for the
-intake reconciliations, provenance on the records he cares about, and Granot
+That is the Owner's message, in order: *leads, Booking cases, Release cases,
+completed bookings, completed cancellations*, a separate tab for the
+reconciliations, provenance on the records he cares about, and Granot
 receipt polling.
 
 ---
@@ -99,9 +99,9 @@ as *"this shift"* rather than *"yesterday and today"*. §0.3's actual rule —
 
 **Still forbidden:** any calendar-day, business-day, or "Today (Florida)" mode.
 
-### 2.2 Cancellation Intakes ship now, not later
+### 2.2 Release Reconciliation ship now, not later
 
-Full spec §0.2 and the ODV pack both gate Cancellation Intakes on Granot Unit 26
+Full spec §0.2 and the ODV pack both gate Release Reconciliation on Granot Unit 26
 and specify a `not_built` panel. **Unit 26 is complete.** Verified in the
 repository:
 
@@ -116,7 +116,7 @@ repository:
 - The health projection already exposes `GRANOT_LIFECYCLE_RELEASE_CASES_ENABLED`
   (`projections.ts:1301`).
 
-So the Cancellation Intake half is **capability-gated on a flag, not on a missing
+So the Release Reconciliation half is **capability-gated on a flag, not on a missing
 unit**. It renders `not_activated` when the flag is off, exactly like the Booking
 half — never `not_built`.
 
@@ -305,8 +305,8 @@ can see which field bounded the pane without reading the service.
 | Call Leads | `call_leads` | `timestamp` | `ringcentral.start_time` |
 | Completed Bookings | `booked_leads` | `timestamp` | **`book_date`** |
 | Completed Cancellations | `cancelled_leads` | `createdAt` | **`cancel_date`** |
-| Booking Intakes | `granot_booking_reconciliation_cases` | `last_evidence_at` | `opened_at` |
-| Cancellation Intakes | `granot_release_reconciliation_cases` | `last_evidence_at` | `opened_at` |
+| Booking Reconciliation | `granot_booking_reconciliation_cases` | `last_evidence_at` | `opened_at` |
+| Release Reconciliation | `granot_release_reconciliation_cases` | `last_evidence_at` | `opened_at` |
 | Granot events | receipts / decisions | `captured_at` / `decided_at` | — |
 
 ### 6.5 Cursor contract

@@ -43,7 +43,7 @@ export type CaptureGranotLifecycleWebhookResult = {
   receipt_id: string;
 };
 
-export type GranotWebhookReceiptInsert = {
+export type GranotObservationReceiptInsert = {
   source_system: "granot";
   observation_channel: "granot_webhook";
   captured_at: Date;
@@ -62,15 +62,10 @@ export type GranotWebhookReceiptInsert = {
     manual_requeue_count: 0;
   };
   provider: "granot";
-  event_type: GranotRouteEventClass;
-  received_at: Date;
-  schema_version: 1;
-  processing_status: "received";
-  processing_attempts: 0;
 };
 
-export type PersistGranotWebhookReceipt = (
-  document: GranotWebhookReceiptInsert,
+export type PersistGranotObservationReceipt = (
+  document: GranotObservationReceiptInsert,
 ) => Promise<CaptureGranotLifecycleWebhookResult>;
 
 export function allowlistGranotWebhookHeaders(
@@ -91,9 +86,9 @@ export function allowlistGranotWebhookHeaders(
   return stored;
 }
 
-export function buildGranotWebhookReceiptInsert(
+export function buildGranotObservationReceiptInsert(
   input: CaptureGranotLifecycleWebhookInput,
-): GranotWebhookReceiptInsert {
+): GranotObservationReceiptInsert {
   if (
     input.authentication_method !== "body_secret" &&
     input.authentication_method !== "header_secret"
@@ -124,19 +119,14 @@ export function buildGranotWebhookReceiptInsert(
       manual_requeue_count: 0,
     },
     provider: "granot",
-    event_type: input.route_event_class,
-    received_at: input.captured_at,
-    schema_version: 1,
-    processing_status: "received",
-    processing_attempts: 0,
   };
 }
 
 export async function captureGranotLifecycleWebhookReceipt(
   input: CaptureGranotLifecycleWebhookInput,
-  persist: PersistGranotWebhookReceipt = persistGranotWebhookReceipt,
+  persist: PersistGranotObservationReceipt = persistGranotObservationReceipt,
 ): Promise<CaptureGranotLifecycleWebhookResult> {
-  const document = buildGranotWebhookReceiptInsert(input);
+  const document = buildGranotObservationReceiptInsert(input);
   const result = await persist(document);
   incrementGranotLifecycleReceiptsTotal({
     channel: "granot_webhook",
@@ -145,8 +135,8 @@ export async function captureGranotLifecycleWebhookReceipt(
   return { receipt_id: result.receipt_id };
 }
 
-async function persistGranotWebhookReceipt(
-  document: GranotWebhookReceiptInsert,
+async function persistGranotObservationReceipt(
+  document: GranotObservationReceiptInsert,
 ): Promise<CaptureGranotLifecycleWebhookResult> {
   await connectMongo();
   const receipt = await getGranotObservationReceiptModel().create(document);
@@ -203,9 +193,6 @@ export type GranotChannelReceiptInsert = {
     manual_requeue_count: 0;
   };
   provider: "granot";
-  schema_version: 1;
-  processing_status: "received";
-  processing_attempts: 0;
 };
 
 export type PersistGranotChannelReceipt = (
@@ -278,9 +265,6 @@ export function buildGranotChannelReceiptInsert(
       manual_requeue_count: 0,
     },
     provider: "granot",
-    schema_version: 1,
-    processing_status: "received",
-    processing_attempts: 0,
   };
 }
 

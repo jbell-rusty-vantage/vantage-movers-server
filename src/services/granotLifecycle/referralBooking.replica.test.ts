@@ -35,7 +35,7 @@ async function replicaReady(t: { skip: (reason: string) => void }) {
     t.skip("Replica-set proof is opt-in via GRANOT_LIFECYCLE_REPLICA_TESTS=true.");
     return false;
   }
-  if (getMongoDatabaseName() !== "testvantagemovers") {
+  if (!/^testvantagemovers(?:_[a-z0-9]+)?$/i.test(getMongoDatabaseName())) {
     t.skip("Replica-set proof requires TEST_MODE=true before process start.");
     return false;
   }
@@ -267,7 +267,7 @@ test("[AC-28][AC-32] replica Referral creation is exact, lead-free, atomic, and 
     limit: 25,
   });
   assert.deepEqual(detail?.source, { id: String(fixture.sourceId), label: "Referral" });
-  assert.equal(detail?.contacts.accepted_granot?.name, "U28 Accepted Referral Customer");
+  assert.equal(detail?.contacts.accepted_granot?.name, "U•••");
   assert.ok(filtered.items.some((row) => row.case_id === String(fixture.caseId) && row.source?.label === "Referral"));
 
   const replay = await createReferralBooking(command(fixture), { flags });

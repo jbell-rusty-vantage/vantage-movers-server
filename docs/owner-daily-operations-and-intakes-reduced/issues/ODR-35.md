@@ -51,7 +51,7 @@ Observed 2026-08-19 in the repository; **reverify at implementation**.
 - **`/daily` does not replace `/`.** `HomeOverview` is untouched. New sidebar entry above Form Leads.
 - **The window toggle is global and lives in the URL.** Every tab, count, and shared link agree.
 - **Capability, never an empty table.** Every pane resolves to `available`, `not_activated`, or `not_built` and renders the reason.
-- **Cancellation Intakes are `not_activated` on a flag, not `not_built`.** Granot Unit 26 is complete — reduced spec §2.2. Do not copy the full spec's `not_built` panel for this pane.
+- **Release Reconciliation are `not_activated` on a flag, not `not_built`.** Granot Unit 26 is complete — reduced spec §2.2. Do not copy the full spec's `not_built` panel for this pane.
 - **`DailyFeedEvent` is declared exactly once**, in `src/services/ownerDaily/types.ts`. ODR-37 imports it. A parallel declaration is a review failure, not a style preference — reduced spec §10.
 - **The customer name is shown in full on this Owner-only surface; phone and email stay masked.** Reduced spec §2.3. **No masking rule in `granotLifecycle/projections.ts` may be relaxed to achieve this.**
 - **No `$lookup` on any Daily View hot path.** Labels come from snapshots.

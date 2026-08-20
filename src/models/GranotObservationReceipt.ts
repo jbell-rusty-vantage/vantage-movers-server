@@ -2,9 +2,6 @@ import mongoose, { Schema, type Model } from "mongoose";
 import { getMongoDatabaseName } from "../config/domain/runtime";
 import type { DurableActor } from "../services/durableWork/types";
 import {
-  fillLegacyWebhookReceiptV2Fields,
-} from "../services/granotLifecycle/receiptCompatibility";
-import {
   hashCredentialRedactedPayload,
   redactCredentialKeys,
 } from "../services/granotLifecycle/receiptEvidence";
@@ -24,12 +21,6 @@ import {
   assertReceiptChannelShape,
   granotReceiptProcessingSchema,
 } from "./granotLifecycleSchemas";
-
-export type GranotWebhookProcessingStatus =
-  | "received"
-  | "processed"
-  | "ignored"
-  | "failed";
 
 export type GranotObservationReceiptAuthenticationMethod =
   (typeof AUTHENTICATION_METHODS)[number];
@@ -70,22 +61,12 @@ export type GranotObservationReceiptDocument = {
   initiator?: DurableActor;
   processing: GranotObservationReceiptProcessing;
   provider: "granot";
-  event_type?: GranotRouteEventClass;
-  received_at?: Date;
-  schema_version: number;
-  processing_status: GranotWebhookProcessingStatus;
-  processing_attempts: number;
-  processed_at?: Date;
-  processing_error?: unknown;
   createdAt: Date;
   updatedAt: Date;
 };
 
-/** @deprecated Compatibility alias for one release. */
-export type GranotWebhookReceiptDocument = GranotObservationReceiptDocument;
-
 export const GRANOT_OBSERVATION_RECEIPT_COLLECTION = "granot_webhook_receipts";
-export const GRANOT_OBSERVATION_RECEIPT_MODEL_NAME = "GranotWebhookReceipt";
+export const GRANOT_OBSERVATION_RECEIPT_MODEL_NAME = "GranotObservationReceipt";
 
 export const GRANOT_OBSERVATION_RECEIPT_INDEXES = [
   {
@@ -112,11 +93,6 @@ export const GRANOT_OBSERVATION_RECEIPT_INDEXES = [
   },
 ] as const;
 
-export const GRANOT_OBSERVATION_RECEIPT_LEGACY_INDEXES = [
-  { key: { event_type: 1, received_at: -1 } },
-  { key: { processing_status: 1, received_at: 1 } },
-] as const;
-
 export const GRANOT_OBSERVATION_RECEIPT_EVIDENCE_FIELDS = [
   "source_system",
   "observation_channel",
@@ -134,12 +110,9 @@ export const GRANOT_OBSERVATION_RECEIPT_EVIDENCE_FIELDS = [
   "initiator",
   "createdAt",
   "provider",
-  "event_type",
-  "received_at",
-  "schema_version",
 ] as const;
 
-const ALLOWED_UPDATE_OPERATORS = new Set(["$set", "$inc", "$unset"]);
+const ALLOWED_UPDATE_OPERATORS = new Set(["$set", "$inc", "$unset", "$setOnInsert"]);
 
 export function assertAllowlistedReceiptProcessingUpdate(
   update: unknown,
@@ -168,6 +141,9 @@ export function assertAllowlistedReceiptProcessingUpdate(
       );
     }
     for (const path of Object.keys(spec as Record<string, unknown>)) {
+      if (operator === "$setOnInsert" && path === "createdAt") {
+        continue;
+      }
       if (path === "updatedAt") {
         continue;
       }
@@ -228,18 +204,6 @@ const GranotObservationReceiptSchema = new Schema(
     initiator: { type: Schema.Types.Mixed },
     processing: { type: granotReceiptProcessingSchema, required: true },
     provider: { type: String, required: true, enum: ["granot"], default: "granot" },
-    event_type: { type: String, enum: ROUTE_EVENT_CLASSES },
-    received_at: { type: Date },
-    schema_version: { type: Number, required: true, default: 1 },
-    processing_status: {
-      type: String,
-      required: true,
-      enum: ["received", "processed", "ignored", "failed"],
-      default: "received",
-    },
-    processing_attempts: { type: Number, required: true, default: 0 },
-    processed_at: { type: Date },
-    processing_error: { type: Schema.Types.Mixed },
   },
   {
     collection: GRANOT_OBSERVATION_RECEIPT_COLLECTION,
@@ -259,65 +223,17 @@ for (const index of GRANOT_OBSERVATION_RECEIPT_INDEXES) {
   GranotObservationReceiptSchema.index(index.key, options);
 }
 
-GranotObservationReceiptSchema.index({ event_type: 1, received_at: -1 });
-GranotObservationReceiptSchema.index({ processing_status: 1, received_at: 1 });
-
-GranotObservationReceiptSchema.pre("validate", function fillLegacyWebhookCompatibility() {
+GranotObservationReceiptSchema.pre("validate", function normalizeOperationId() {
   if (!this.isNew) {
     return;
   }
 
   const receipt = this as unknown as GranotObservationReceiptDocument & {
-    isNew: boolean;
     set(path: string, value: unknown): void;
   };
 
   if (receipt.channel_operation_id === "") {
     receipt.set("channel_operation_id", undefined);
-  }
-
-  const needsCompatibilityFill =
-    receipt.source_system == null ||
-    receipt.observation_channel == null ||
-    receipt.captured_at == null ||
-    receipt.authentication_method == null ||
-    receipt.evidence_version == null ||
-    receipt.payload_sha256 == null ||
-    receipt.processing == null;
-
-  if (needsCompatibilityFill) {
-    const filled = fillLegacyWebhookReceiptV2Fields({
-      source_system: receipt.source_system,
-      observation_channel: receipt.observation_channel,
-      captured_at: receipt.captured_at,
-      route_event_class: receipt.route_event_class,
-      authentication_method: receipt.authentication_method,
-      evidence_version: receipt.evidence_version,
-      payload_kind: receipt.payload_kind,
-      headers: receipt.headers,
-      payload: receipt.payload,
-      payload_sha256: receipt.payload_sha256,
-      processing: receipt.processing,
-      event_type: receipt.event_type,
-      received_at: receipt.received_at,
-      createdAt: receipt.createdAt,
-      processing_status: receipt.processing_status,
-      processing_attempts: receipt.processing_attempts,
-    });
-
-    if (!filled.ok) {
-      throw new Error(
-        `Refusing legacy receipt insert for ${filled.reason} (${filled.processing_status})`,
-      );
-    }
-
-    if (!filled.already_current) {
-      for (const [path, value] of Object.entries(filled.set_fields)) {
-        if (value !== undefined) {
-          receipt.set(path, value);
-        }
-      }
-    }
   }
 
   const headerRedaction = redactCredentialKeys(receipt.headers ?? {});
@@ -402,9 +318,6 @@ export const GranotObservationReceipt: Model<GranotObservationReceiptDocument> =
     GranotObservationReceiptSchema,
   );
 
-/** @deprecated Compatibility alias for one release. */
-export const GranotWebhookReceipt = GranotObservationReceipt;
-
 export function getGranotObservationReceiptModel(): Model<GranotObservationReceiptDocument> {
   const dbName = getMongoDatabaseName();
   if (mongoose.connection.name === dbName) {
@@ -421,9 +334,4 @@ export function getGranotObservationReceiptModel(): Model<GranotObservationRecei
       GranotObservationReceiptSchema,
     )
   );
-}
-
-/** @deprecated Compatibility alias so current capture/tests keep compiling. */
-export function getGranotWebhookReceiptModel(): Model<GranotObservationReceiptDocument> {
-  return getGranotObservationReceiptModel();
 }

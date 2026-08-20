@@ -12,6 +12,8 @@ import {
   assertPlanHasNoForbiddenPayload,
   intendedPolicyEqualsCurrent,
   planGranotLifecycleSourceRegistry,
+  readSourceRegistryApplyScope,
+  selectCrmMutationsForApply,
   type InventoryAutomationSource,
   type InventoryCompany,
   type InventoryCrmSource,
@@ -148,7 +150,7 @@ test("[AC-29] reviewed manifest contains only the locked normalized labels and e
   );
 });
 
-test("[AC-09] Best Relocation Form plans exact local/long-distance routes and stays link_only", () => {
+test("[AC-09] Best Relocation Form plans exact local/long-distance routes with create_if_missing", () => {
   const plan = planGranotLifecycleSourceRegistry(inventory());
   const forms = plan.crm_mutations.filter(
     (mutation) => mutation.family === "best_relocation_form",
@@ -156,7 +158,7 @@ test("[AC-09] Best Relocation Form plans exact local/long-distance routes and st
   assert.equal(forms.length, 2);
   for (const mutation of forms) {
     assert.equal(mutation.refused, false);
-    assert.equal(mutation.intended.lead_created_policy, "link_only");
+    assert.equal(mutation.intended.lead_created_policy, "create_if_missing");
     assert.equal(mutation.intended.lifecycle_enabled, true);
     assert.deepEqual(
       mutation.intended.lifecycle_routes.map((route) => route.route_key),
@@ -173,14 +175,14 @@ test("[AC-09] Best Relocation Form plans exact local/long-distance routes and st
   assert.equal(selectFormMoveType({}), undefined);
 });
 
-test("[AC-09] Best Relocation Call plans exactly one Call/any route and stays link_only", () => {
+test("[AC-09] Best Relocation Call plans exactly one Call/any route with create_if_missing", () => {
   const plan = planGranotLifecycleSourceRegistry(inventory());
   const calls = plan.crm_mutations.filter(
     (mutation) => mutation.family === "best_relocation_call",
   );
   assert.equal(calls.length, 2);
   for (const mutation of calls) {
-    assert.equal(mutation.intended.lead_created_policy, "link_only");
+    assert.equal(mutation.intended.lead_created_policy, "create_if_missing");
     assert.deepEqual(mutation.intended.lifecycle_routes, [
       {
         route_key: "call_any",
@@ -309,4 +311,55 @@ test("[AC-38] manifests stay PII-safe and never include payload or contact keys"
   const serialized = JSON.stringify(plan);
   assert.equal(serialized.includes("payload"), false);
   assert.equal(serialized.includes("555"), false);
+});
+
+test("[AC-09][AC-38] scoped policy apply admits only Best Relocation lead_created_policy drift", () => {
+  const base = inventory();
+  const intendedById = new Map(
+    planGranotLifecycleSourceRegistry(base).crm_mutations.map((mutation) => [
+      mutation.id,
+      mutation.intended,
+    ]),
+  );
+  const scopedInventory = inventory({
+    crm_sources: base.crm_sources.map((source) => {
+      const intended = intendedById.get(source.id);
+      if (!intended || !source.granot_label.toLowerCase().includes("best relocation") && !source.granot_label.toLowerCase().includes("bestrelocation")) {
+        return source;
+      }
+      return { ...source, ...intended, lead_created_policy: "link_only" };
+    }),
+  });
+  const plan = planGranotLifecycleSourceRegistry(scopedInventory);
+  const selected = selectCrmMutationsForApply(
+    plan,
+    "best_relocation_creation_policy",
+  );
+  assert.equal(selected.length, 4);
+  assert.equal(
+    selected.every(
+      (mutation) =>
+        mutation.action === "classify" &&
+        mutation.drift_fields.join(",") === "lead_created_policy",
+    ),
+    true,
+  );
+  assert.throws(
+    () =>
+      selectCrmMutationsForApply(
+        planGranotLifecycleSourceRegistry(inventory()),
+        "best_relocation_creation_policy",
+      ),
+    /drift is not limited/,
+  );
+  assert.equal(
+    readSourceRegistryApplyScope([
+      "--scope=best_relocation_creation_policy",
+    ]),
+    "best_relocation_creation_policy",
+  );
+  assert.throws(
+    () => readSourceRegistryApplyScope(["--scope=unknown"]),
+    /Unsupported source Registry apply scope/,
+  );
 });

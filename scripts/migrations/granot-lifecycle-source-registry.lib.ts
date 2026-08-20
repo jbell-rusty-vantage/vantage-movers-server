@@ -103,6 +103,15 @@ export type PlannedCrmMutation = {
   action: "classify" | "defer" | "noop";
   refused: boolean;
   refusal_reasons: string[];
+  drift_fields: Array<
+    | "lifecycle_enabled"
+    | "lifecycle_disposition"
+    | "lead_created_policy"
+    | "lead_source_company"
+    | "lifecycle_routes"
+    | "lifecycle_policy_version"
+    | "default_channel"
+  >;
   intended: {
     lifecycle_enabled: boolean;
     lifecycle_disposition: GranotLifecycleDisposition;
@@ -154,6 +163,54 @@ export type SourceRegistryPlan = {
   refused_families: ReviewedSourceFamilyKey[];
   unique_index_ready: boolean;
 };
+
+export type SourceRegistryApplyScope =
+  | "all"
+  | "best_relocation_creation_policy";
+
+export function readSourceRegistryApplyScope(
+  args: readonly string[],
+): SourceRegistryApplyScope {
+  const raw = args
+    .find((arg) => arg.startsWith("--scope="))
+    ?.slice("--scope=".length);
+  if (!raw || raw === "all") return "all";
+  if (raw === "best_relocation_creation_policy") return raw;
+  throw new Error(`Unsupported source Registry apply scope: ${raw}`);
+}
+
+export function selectCrmMutationsForApply(
+  plan: SourceRegistryPlan,
+  scope: SourceRegistryApplyScope,
+): SourceRegistryPlan["crm_mutations"] {
+  if (scope === "all") return plan.crm_mutations;
+  const scoped = plan.crm_mutations.filter(
+    (mutation) =>
+      mutation.family === "best_relocation_call" ||
+      mutation.family === "best_relocation_form",
+  );
+  const families = new Set(scoped.map((mutation) => mutation.family));
+  if (
+    !families.has("best_relocation_call") ||
+    !families.has("best_relocation_form")
+  ) {
+    throw new Error(
+      "Refusing scoped apply: both Best Relocation source families must be present.",
+    );
+  }
+  for (const mutation of scoped) {
+    if (
+      mutation.refused ||
+      mutation.intended.lead_created_policy !== "create_if_missing" ||
+      mutation.drift_fields.some((field) => field !== "lead_created_policy")
+    ) {
+      throw new Error(
+        "Refusing scoped apply: Best Relocation drift is not limited to lead_created_policy.",
+      );
+    }
+  }
+  return scoped;
+}
 
 export function planGranotLifecycleSourceRegistry(
   inventory: SourceRegistryInventory,
@@ -253,6 +310,21 @@ export function intendedPolicyEqualsCurrent(
   );
 }
 
+export function sourcePolicyDriftFields(
+  source: InventoryCrmSource,
+  intended: PlannedCrmMutation["intended"],
+): PlannedCrmMutation["drift_fields"] {
+  const fields: PlannedCrmMutation["drift_fields"] = [];
+  if (source.lifecycle_enabled !== intended.lifecycle_enabled) fields.push("lifecycle_enabled");
+  if (source.lifecycle_disposition !== intended.lifecycle_disposition) fields.push("lifecycle_disposition");
+  if (source.lead_created_policy !== intended.lead_created_policy) fields.push("lead_created_policy");
+  if ((source.lead_source_company ?? "") !== (intended.lead_source_company ?? "")) fields.push("lead_source_company");
+  if (!sameRoutes(source.lifecycle_routes, intended.lifecycle_routes)) fields.push("lifecycle_routes");
+  if (source.lifecycle_policy_version !== intended.lifecycle_policy_version) fields.push("lifecycle_policy_version");
+  if (source.default_channel !== intended.default_channel) fields.push("default_channel");
+  return fields;
+}
+
 export function assertPlanHasNoForbiddenPayload(plan: SourceRegistryPlan): void {
   const serialized = JSON.stringify(plan);
   for (const forbidden of [
@@ -298,7 +370,8 @@ function planCrmMutation(
     : deferredIntended(source);
 
   const refused = Boolean(family && refusal_reasons.length > 0);
-  const already = intendedPolicyEqualsCurrent(source, intended);
+  const drift_fields = sourcePolicyDriftFields(source, intended);
+  const already = drift_fields.length === 0;
   return {
     id: source.id,
     masked_id: maskReceiptId(source.id),
@@ -308,6 +381,7 @@ function planCrmMutation(
     action: refused ? "defer" : already ? "noop" : family ? "classify" : "defer",
     refused,
     refusal_reasons,
+    drift_fields,
     intended,
   };
 }

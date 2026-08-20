@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: Owner Daily Operations View — server, conversations, realtime, and Admin UX
-description: Implementation-ready specification for the Owner's daily operational dashboard — a 24h/48h tabbed view over Leads, Booking and Cancellation intakes, Completed Bookings and Cancellations, and Agent metrics — including the read model, how live updates are achieved on Vercel, and the durable conversation record whose automated pipeline is deferred pending Owner authorization on cost, retention, and PII.
+description: Implementation-ready specification for the Owner's daily operational dashboard — a 24h/48h tabbed view over Leads, Booking and Release Reconciliation cases, Completed Bookings and Cancellations, and Agent metrics — including the read model, how live updates are achieved on Vercel, and the durable conversation record whose automated pipeline is deferred pending Owner authorization on cost, retention, and PII.
 tags:
   - granot
   - lead-lifecycle
@@ -83,21 +83,21 @@ false**. Concretely, on the day this view ships against production defaults:
 | Completed Bookings / Cancellations | Real data — these paths are live |
 | Agent metrics | Real data |
 | Granot event stream | Receipts and shadow Decisions only — no effects |
-| Open Booking Intakes | **Empty.** `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED` is false |
-| Open Cancellation Intakes | **Does not exist.** Units 26–27 are unbuilt |
+| Open Booking Reconciliation | **Empty.** `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED` is false |
+| Open Release Reconciliation | **Does not exist.** Units 26–27 are unbuilt |
 
 An empty table is indistinguishable from a broken table. **Recommendation:**
 every pane declares a `capability` and renders one of three states —
-`available`, `not_activated` ("Booking intake is built but not enabled"), or
-`not_built` ("Cancellation intake lands in Unit 26"). The Daily View reads
+`available`, `not_activated` ("Booking Reconciliation is built but not enabled"), or
+`not_built` ("Release Reconciliation lands in Unit 26"). The Daily View reads
 these from the existing `granot-lifecycle/operations/health` projection
 (flags plus Mongo-backed queue, outcome, and alert fields) and never guesses.
 This is the same `capabilities` pattern
 `GranotLifecycleCaseDetail` already uses.
 
-### 0.2 "Open Cancellation Intakes" is Release Reconciliation, and it is a hard dependency
+### 0.2 "Open Release Reconciliation" is Release Reconciliation, and it is a hard dependency
 
-There is no Cancellation intake concept in the codebase. The nearest things are:
+Release Reconciliation is represented by the final case model. Related cancellation facts are:
 
 - **Release Reconciliation** (Units 26–27) — Granot `release` evidence opening a
   case the Owner resolves by cancelling or updating a Booking. This is what the
@@ -106,7 +106,7 @@ There is no Cancellation intake concept in the codebase. The nearest things are:
   Different workflow, already live, must not be conflated.
 - Unit 29 discrepancies — official Cancellation vs Granot evidence. Later still.
 
-**Recommendation:** the Cancellation Intake tab is specified here in full but is
+**Recommendation:** the Release Reconciliation tab is specified here in full but is
 capability-gated and ships **after Unit 26**. Do not block the rest of the Daily
 View on it.
 
@@ -221,7 +221,7 @@ detail, candidate browser with in-scope/out-of-scope search, `Idempotency-Key`,
 revision guards, `409` draft preservation, out-of-scope override reason. The
 Admin components exist under `vantage-admin/components/granot-lifecycle/`.
 
-**Recommendation:** the Open Booking Intake tab is a **filtered, window-bounded
+**Recommendation:** the Open Booking Reconciliation tab is a **filtered, window-bounded
 list that hands off to the existing case detail**. Reimplementing candidate
 search inside a drawer would fork the revision-guard and idempotency logic —
 the exact code that must not be forked. This removes a large amount of work
@@ -469,8 +469,8 @@ service folder.
 | Call Leads | `call_leads` | `timestamp` | `ringcentral.start_time` |
 | Completed Bookings | `booked_leads` | `timestamp` | **`book_date`** |
 | Completed Cancellations | `cancelled_leads` | `createdAt` | **`cancel_date`** |
-| Open Booking Intakes | `granot_booking_reconciliation_cases` | `last_evidence_at` | `opened_at` |
-| Open Cancellation Intakes | Release cases (Unit 26) | `last_evidence_at` | `opened_at` |
+| Open Booking Reconciliation | `granot_booking_reconciliation_cases` | `last_evidence_at` | `opened_at` |
+| Open Release Reconciliation | Release cases (Unit 26) | `last_evidence_at` | `opened_at` |
 | Granot events | `granot_observation_receipts` / `synchronization_decisions` | `captured_at` / `decided_at` | — |
 | Conversations | `lead_conversations` | `started_at` | `createdAt` (when we found it) |
 
@@ -1049,7 +1049,7 @@ this specification when the first unit lands.
 │ Daily Operations                              [ 24h │ 48h ]   ● Live · 2s ago │
 │ Wed Aug 19, 6:12 AM – Thu Aug 20, 6:12 AM (Florida)                          │
 ├──────────────────────────────────────────────────────────────────────────────┤
-│ Overview │ Leads │ Booking Intakes ② │ Cancel Intakes │ Bookings │ Cancels │  │
+│ Overview │ Leads │ Booking Reconciliation ② │ Release Reconciliation │ Bookings │ Cancels │  │
 │ Agents │ Conversations ③                                                      │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -1070,7 +1070,7 @@ Three bands, densest at the top:
 
 ```text
 ┌─ NEEDS YOU ─────────────────────────────────────────────────────────────────┐
-│  ⬤ 3 Booking intakes open      ⬤ 1 Cancel intake open   ⚠ 2 conversations   │
+│  ⬤ 3 Booking cases open        ⬤ 1 Release case open    ⚠ 2 conversations   │
 │    oldest 4h ago                  oldest 40m ago           failed            │
 └─────────────────────────────────────────────────────────────────────────────┘
 ┌─ LAST 24 HOURS ─────────────────────────────────────────────────────────────┐
@@ -1118,7 +1118,7 @@ Time   Kind  Name           Source              Job/Ref    Status        Conv.
   he is deciding whether to buy.
 - Search is server-side and debounced; filters are URL state.
 
-### 6.5 Booking Intakes and Cancellation Intakes tabs
+### 6.5 Booking Reconciliation and Release Reconciliation tabs
 
 These are the only tabs where the Owner **writes**. Per challenge 0.8 they are a
 window-bounded, capability-gated list that hands off to the existing case
@@ -1477,7 +1477,7 @@ the end of the first one.
 | **D** | `LeadConversation` model + index migration, redactor, Owner-only read routes, seeding script, one real seeded conversation | A | **Shipped scope of the conversation feature.** Section 5.2. No cron, no queue, no discovery. |
 | **E** | Conversations tab (read-only) + drawer conversation panel + audited signed audio URL | D | Renders whatever records exist — one, at first |
 | **F** | Agent metrics tab | A | `receiver_agent` and allocation metrics side by side. Conversation columns render zero until D seeds records. |
-| **G** | Booking Intake tab (gated) + Cancellation Intake tab | A, **Unit 26 for cancellations** | Lists + handoff only |
+| **G** | Booking Reconciliation tab (gated) + Release Reconciliation tab | A, **Unit 26 for cancellations** | Lists + handoff only |
 | *(H)* | **DEFERRED** — automated conversation pipeline: match ladders, discovery crons, RC rate limiter, queue consumer + state machine, media janitor, attach/detach/retry commands | D, E, **and Section 7 gates cleared** | Sections 5.3–5.8. Requires Owner cost authorization, retention policy, and counsel answers on 7.4 questions 1–3. |
 | *(I)* | *Optional* SSE transport swap | C | Only if 3s polling is measurably insufficient |
 
@@ -1511,7 +1511,7 @@ Following the program's existing discipline:
   **must** appear in the 24h Completed Bookings pane. This encodes challenge 0.3
   as a test.
 - **Capability tests**: with `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED` false, the
-  Booking Intake pane returns `not_activated` and never an empty list.
+  Booking Reconciliation pane returns `not_activated` and never an empty list.
 - **Fixtures** stay credential-redacted synthetic, per Unit 01. No live RC
   payload, no real customer transcript, enters the repository.
 - **Seeding-script guards** are tested: no `--confirm-write` spends nothing and
@@ -1550,8 +1550,8 @@ Following the program's existing discipline:
    `/daily` is its own page. `/` remains `HomeOverview` — the analytics overview
    and quick links — unchanged. Daily View is a new sidebar entry above Form
    Leads. No other admin's landing experience changes.
-3. ~~**Cancellation Intake timing.**~~ **DECIDED 2026-08-19: the tab waits.**
-   Cancellation Intakes ship after Granot Unit 26 (Release Reconciliation). The
+3. ~~**Release Reconciliation timing.**~~ **DECIDED 2026-08-19: the tab waits.**
+   Release Reconciliation ship after Granot Unit 26 (Release Reconciliation). The
    Daily View does **not** wait for it — ODV-G ships the Booking half and the
    `not_built` capability panel for the Cancellation half.
 

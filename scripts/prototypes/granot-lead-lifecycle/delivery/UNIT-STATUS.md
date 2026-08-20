@@ -38,15 +38,16 @@ Status vocabulary: `ready`, `blocked`, `active`, `complete`, `rejected`, `option
 | 30 | Operational events, metrics, health projection, and rollout alerts | applicable 01–29 | complete | complete | [UNIT-30-COMPLETION.md](completion-reports/UNIT-30-COMPLETION.md) |
 | 31 | Migration/index verification, historical shadow certification, security audit, and runbooks | applicable 01–30 | complete | complete | [UNIT-31-COMPLETION.md](completion-reports/UNIT-31-COMPLETION.md) |
 | 32 | Optional new-case email notifications (skipped for this delivery) | accepted case workflows, explicit inclusion approval | optional | scaffold | — |
-| 33 | Prototype retirement, compatibility cleanup, and complete synthetic regression | 01–31; 32 skipped | ready | complete | — |
-| 34 | Final current-Granot-webhook-payload application-logic certification | 01–31, 33; 32 skipped | blocked | complete | — |
+| 33 | Prototype retirement, compatibility cleanup, and complete synthetic regression | 01–31; 32 skipped | complete | complete | [UNIT-33-COMPLETION.md](completion-reports/UNIT-33-COMPLETION.md) |
+| 34 | Final current-Granot-webhook-payload application-logic certification | 01–31, 33; 32 skipped | ready | complete | — |
 
 ## Current ready queue
 
 - Open review findings live in [`warnings/`](warnings/README.md). They do not block the next sequential unit unless repository re-verification shows an applicable finding has become material.
 - Unit 31 is complete after an isolated disposable replica report/apply/verify/idempotency cycle, historical-shadow and privacy certification, and full repository verification.
 - Unit 32 is intentionally skipped for this delivery. It is not a prerequisite for Units 33 or 34; `GRANOT_LIFECYCLE_EMAIL_ENABLED=false` remains fixed.
-- Unit 33 is the next sequential unit. Unit 34 remains final and blocked until Unit 33 completes with ordinary full regression green and no unresolved migration/index/security failure.
+- Unit 33 is complete. Its cleanup, disposable receipt/index proof, complete synthetic regression, Owner-authorized two-row production Best Relocation `create_if_missing` migration, and Owner operational-control attestation for zero authorized/active pre-`0.2.8` clients are verified. Supported `0.2.8` receipt endpoints/result fields remain; dead compatibility code and direct patch adapters are retired. See `completion-reports/UNIT-33-COMPLETION.md`.
+- Unit 34 is the next and final ready unit. It alone owns isolated current-payload-shape certification and final go/no-go; it must add no new domain behavior.
 - Units 04–18 are complete on `granot-lead-lifecycle`. Re-verify the matching completion report before depending on a later unit.
 - Unit 08 completes S06 and removes Unit 15's durable-work prerequisite. Unit 14 now supplies the identity resolver Unit 15 must consume.
 - Unit 09 lands aggregate revision tokens, the CAS primitive, and revision-only Lead/Booking/Cancellation backfill. Units 12–13 must preserve those revisions and the persisted history boundary.

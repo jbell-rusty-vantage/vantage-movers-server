@@ -46,6 +46,21 @@ drift, or a technical failure. Certification fails closed unless all 15 latest
 migration-mode artifacts, the shadow zero-effect report, flags, replica/external
 isolation, and privacy scan are green. Neither command is production authority.
 
+### Unit 33 receipt compatibility retirement
+
+After the one-release compatibility window, the receipt command is a cleanup
+gate, not a translator. Report must show every row v2-complete, zero refused
+rows, zero forbidden credential keys, zero supported legacy consumers, and the
+exact flat-field/index removal plan. Apply then unsets only `event_type`,
+`received_at`, `schema_version`, `processing_status`, `processing_attempts`,
+`processed_at`, and `processing_error`, and drops only the two indexes over
+those fields. Verify fails while any retired field/index or incomplete v2 row
+remains. Run the full lifecycle index verifier immediately afterward.
+
+Production apply still requires separate authorization and exact
+`--apply --confirm-production=<db>` confirmation. Ordinary Unit 33 proof uses a
+disposable replica database; no cleanup command accesses current payloads.
+
 This directory contains the ordered backfills that turn existing operational
 data into the collections used by the Operations Registry. Run every command
 from the `vantage-main-server` repository root.
@@ -347,6 +362,12 @@ pnpm migration:granot-lifecycle:sources -- --apply --confirm-production=<db>
 pnpm migration:granot-lifecycle:sources -- --verify
 ```
 
+An Owner-authorized Best Relocation creation-policy-only rollout uses
+`--scope=best_relocation_creation_policy` on report, apply, and verify. This
+scope refuses unless both reviewed families are present and every proposed
+Best Relocation change is limited to `lead_created_policy`; it never applies
+unreviewed CRM-source deferrals or automation-reference changes.
+
 Omitted mode is report. Historical/unknown databases are rejected. Apply is
 separately authorized and refuses the whole reviewed family when a normalized
 label, company, granularity, or route dependency is invalid. Unique
@@ -354,4 +375,5 @@ normalized-label index apply remains refused while collisions exist.
 
 Reviewed normalized labels only: Best Relocation Call/Form families, Referral,
 Paid Overflow, and source label Auto. Provider payload `type=AUTO` is not a
-classification input. Best Relocation creation policy stays `link_only`.
+classification input. Best Relocation Call/Form creation policy is
+`create_if_missing`; other reviewed policies remain unchanged.

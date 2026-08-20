@@ -3,7 +3,7 @@
 **Next agent — model names (do not confuse these):**
 
 - These examples are **raw receipt envelopes** from Mongo collection `granot_webhook_receipts`. That collection was **not** renamed.
-- The application model that superseded `GranotWebhookReceipt` is **`GranotObservationReceipt`** (`src/models/GranotObservationReceipt.ts`). Mongoose still registers as `GranotWebhookReceipt`. Prefer `getGranotObservationReceiptModel()`; `getGranotWebhookReceiptModel()` is a deprecated alias.
+- The application model is **`GranotObservationReceipt`** (`src/models/GranotObservationReceipt.ts`) and is retrieved with `getGranotObservationReceiptModel()`. The physical collection remains `granot_webhook_receipts`.
 - **`GranotObservation`** (`src/models/GranotObservation.ts`, collection `granot_observations`) is a **different** Unit 04 model: write-once normalized evidence linked by `receipt_id`. It did **not** replace receipts. Do not query `granot_observations` for these payload shapes.
 
 Live shapes from `vantagemovers.granot_webhook_receipts` as of 2026-08-19. Contact fields are redacted. Request headers are omitted (IPs, signatures, tokens).

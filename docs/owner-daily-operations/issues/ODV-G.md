@@ -1,10 +1,10 @@
-# Unit G — Booking Intake and Cancellation Intake tabs
+# Unit G — Booking Reconciliation and Release Reconciliation tabs
 
 > **Contract maturity: implementation-ready.** Implementation-blocked until ODV-A lands. The Booking half is buildable immediately after A; the Cancellation half additionally requires **Granot Unit 26**. This unit is a list and a handoff. It deliberately does **not** reimplement the Owner command workflow.
 
 ## 1. Authority and required reading
 
-- **Specification:** **challenge 0.1 (capability states), challenge 0.2 (what a Cancellation Intake actually is), challenge 0.8 (why this is a handoff, not a drawer)**, §3.2, §3.3, §6.5.
+- **Specification:** **challenge 0.1 (capability states), challenge 0.2 (what a Release Reconciliation actually is), challenge 0.8 (why this is a handoff, not a drawer)**, §3.2, §3.3, §6.5.
 - **Wireframes (illustrative only):** `owner-daily-view-planned.txt` §5, §5a.
 - **The workflow this unit hands off to — read it before deciding anything:**
   - `src/routes/granot-lifecycle-admin.routes.ts` — `confirm-booking`, `update-booking`, `no-action`, `cases`, `cases/:id`, `cases/:id/candidates`
@@ -40,7 +40,7 @@ Observed 2026-08-19; reverify at implementation:
 
 - **Do not reimplement the command workflow.** Confirming a Booking involves exact-cent allocations that must equal `total_binder_amount`, an `Idempotency-Key`, expected case and Booking revisions, one-winner concurrency, stored replay, and a `409` that preserves the Owner's draft. Forking any of that forks the logic most dangerous to fork.
 - **Do not put the command form in a drawer.** Specification challenge 0.8. The failure mode of a cramped overlay here is losing typed work.
-- **"Cancellation Intake" means Release Reconciliation (Granot Units 26–27).** It is **not** `BookingLeadReconciliationCase`, which is the employee-booking workflow. Conflating them would route the Owner to the wrong queue.
+- **"Release Reconciliation" means Release Reconciliation (Granot Units 26–27).** It is **not** `BookingLeadReconciliationCase`, which is the employee-booking workflow. Conflating them would route the Owner to the wrong queue.
 - **Capability, never an empty table.** A flag-disabled tab renders its flag name and a link to lifecycle health. An unbuilt tab names the unit that will build it.
 - **Window-bound on `last_evidence_at`**, display `opened_at`. Specification §3.2.
 - Read-only. This unit issues no command, no case resolution, and no Record Link change.
@@ -122,7 +122,7 @@ Reuse ODV-A's `components/daily/pane-capability.tsx`. Content per wireframe §5a
 ## 8. Flags and runtime posture
 
 - **No new flag.** This unit reads `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED` and reports it; it never sets it.
-- The expected production posture on delivery is `not_activated` for Booking Intakes and `not_built` for Cancellation Intakes. **Both tabs must be demonstrably correct in that state** — that is the day-one experience.
+- The expected production posture on delivery is `not_activated` for Booking Reconciliation and `not_built` for Release Reconciliation. **Both tabs must be demonstrably correct in that state** — that is the day-one experience.
 
 ## 9. Migration and indexes
 
@@ -130,8 +130,8 @@ Reuse ODV-A's `components/daily/pane-capability.tsx`. Content per wireframe §5a
 
 ## 10. Acceptance criteria
 
-- [ ] With `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED` false, the Booking Intakes tab renders `not_activated` naming that exact flag — **not** an empty table — and the endpoint returns `200` with a capability, not an error.
-- [ ] With Granot Unit 26 absent, the Cancellation Intakes tab renders `not_built` naming Granot Unit 26.
+- [ ] With `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED` false, the Booking Reconciliation tab renders `not_activated` naming that exact flag — **not** an empty table — and the endpoint returns `200` with a capability, not an error.
+- [ ] With Granot Unit 26 absent, the Release Reconciliation tab renders `not_built` naming Granot Unit 26.
 - [ ] With the flag enabled on a test database holding seeded cases, the list renders window-bounded rows sorted by age descending.
 - [ ] A case whose `last_evidence_at` is inside the window but `opened_at` is outside it **appears** — the window binds on evidence, not opening.
 - [ ] `[Open →]` navigates to the existing case detail, which renders a breadcrumb back to `/daily?tab=booking-intakes` preserving the window.

@@ -150,7 +150,7 @@ Run via `package.json` so `.env` + `tsx` stay consistent.
 | `scripts/historical/` | Historical audits/backfills/repairs (+ relaxed historical models when present) |
 | `scripts/historical_production_db_staged_merge_ingestion/` | Snapshot/plan/apply/verify/rollback (`pnpm historical:*`) |
 | `scripts/migrations/` | Ops-registry seed/backfill/RC migrations (`pnpm migrations:*`) and Granot lifecycle receipt/source-registry/index migrations (`pnpm migration:granot-lifecycle:*`) |
-| `scripts/prototypes/` | Granot lead-lifecycle prototype CLI (`pnpm prototype:granot-lifecycle`) — not runtime |
+| `scripts/prototypes/granot-lead-lifecycle/specs/` and `delivery/` | Retained Granot lifecycle contract, traceability, unit history, and certification evidence; executable prototype commands were retired in Unit 33 |
 | `scripts/output/` | Generated artifacts (not runtime) |
 | Root one-offs | `dev-server.ts`, `best-relocation-sheet-ingest.ts`, `generate-granot-webhook-secret.ts`, `test-setup.ts`, `dump-operations-name-link-inventory.ts` (`pnpm ops:dump-name-link-inventory`), `ingest-moving-carriers.ts` (`pnpm db:ingest-moving-carriers`), `test-create-google-spreadsheet.ts` |
 | `scripts/dev_ops/twilio/`, `scripts/dev_ops/ping-db.ts` | `pnpm twilio:*`, `pnpm db:ping` |

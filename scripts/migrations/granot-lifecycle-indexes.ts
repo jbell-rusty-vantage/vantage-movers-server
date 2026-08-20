@@ -96,7 +96,6 @@ import {
   orderedRingCentralProcessedCallIndexCreates,
   verifyDomainCommandExecutionIndexDefinitions,
   verifyRingCentralProcessedCallIndexDefinitions,
-  GRANOT_OBSERVATION_RECEIPT_NAMED_LEGACY_INDEXES,
 } from "./granot-lifecycle-indexes.lib.js";
 import { GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES } from "../../src/models/GranotBookingReconciliationCase.js";
 import { GRANOT_RELEASE_RECONCILIATION_CASE_INDEXES } from "../../src/models/GranotReleaseReconciliationCase.js";
@@ -1076,7 +1075,6 @@ function buildManifest(input: {
     mode: input.mode,
     contract_index_names: [
       ...GRANOT_OBSERVATION_RECEIPT_INDEXES.map((index) => index.name),
-      ...GRANOT_OBSERVATION_RECEIPT_NAMED_LEGACY_INDEXES.map((index) => index.name),
       ...GRANOT_OBSERVATION_INDEXES.map((index) => index.name),
       ...GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES.map((index) => index.name),
       ...GRANOT_AUTOMATION_SOURCE_INDEXES.map((index) => index.name),

@@ -3,7 +3,6 @@ import { test } from "node:test";
 import { GRANOT_OBSERVATION_INDEXES } from "../../src/models/GranotObservation";
 import {
   GRANOT_OBSERVATION_RECEIPT_INDEXES,
-  GRANOT_OBSERVATION_RECEIPT_LEGACY_INDEXES,
 } from "../../src/models/GranotObservationReceipt";
 import { GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES } from "../../src/models/GranotCrmSource";
 import {
@@ -256,15 +255,18 @@ test("[AC-02] index verify matches the model contract names and definitions", ()
           ? { ...index.partialFilterExpression }
           : undefined,
     })),
-    ...GRANOT_OBSERVATION_RECEIPT_LEGACY_INDEXES.map((index, position) => ({
-      name: `legacy_${position}`,
-      key: { ...index.key },
-    })),
   ];
   const verified = verifyReceiptIndexDefinitions(actual);
   assert.equal(verified.ok, true);
   assert.deepEqual(verified.missing, []);
   assert.deepEqual(verified.mismatched, []);
+
+  const retired = verifyReceiptIndexDefinitions([
+    ...actual,
+    { name: "retired_status", key: { processing_status: 1, received_at: 1 } },
+  ]);
+  assert.equal(retired.ok, false);
+  assert.deepEqual(retired.mismatched, ["retired_status"]);
 
   const missingUnique = verifyReceiptIndexDefinitions(
     actual.filter(

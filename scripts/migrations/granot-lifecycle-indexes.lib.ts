@@ -3,7 +3,6 @@ import {
 } from "../../src/models/GranotObservation";
 import {
   GRANOT_OBSERVATION_RECEIPT_INDEXES,
-  GRANOT_OBSERVATION_RECEIPT_LEGACY_INDEXES,
 } from "../../src/models/GranotObservationReceipt";
 import { GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES } from "../../src/models/GranotCrmSource";
 import { GRANOT_AUTOMATION_SOURCE_INDEXES } from "../../src/models/GranotAutomationSource";
@@ -40,7 +39,7 @@ import { DOMAIN_COMMAND_EXECUTION_INDEXES } from "../../src/models/DomainCommand
 import { RINGCENTRAL_PROCESSED_CALL_INDEXES } from "../../src/services/ringcentral/processed-calls-store";
 import { RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX } from "../../src/services/ringcentral/call-log-sync-state.store";
 
-export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/12";
+export const INDEX_MIGRATION_SCRIPT_VERSION = "granot-lifecycle-indexes/13";
 export {
   GRANOT_BOOKING_RECONCILIATION_CASE_COLLECTION,
   GRANOT_RELEASE_RECONCILIATION_CASE_COLLECTION,
@@ -53,9 +52,9 @@ export const CALL_LEAD_COLLECTION = "call_leads";
 export const GRANOT_CRM_SOURCE_UNIQUE_INDEX_APPLY_ENABLED = true;
 
 export type ReceiptIndexContract = (typeof GRANOT_OBSERVATION_RECEIPT_INDEXES)[number];
-export const GRANOT_OBSERVATION_RECEIPT_NAMED_LEGACY_INDEXES = [
-  { name: "granot_webhook_receipt_event_received_legacy", key: GRANOT_OBSERVATION_RECEIPT_LEGACY_INDEXES[0].key },
-  { name: "granot_webhook_receipt_status_received_legacy", key: GRANOT_OBSERVATION_RECEIPT_LEGACY_INDEXES[1].key },
+export const RETIRED_GRANOT_RECEIPT_INDEX_KEYS = [
+  { event_type: 1, received_at: -1 },
+  { processing_status: 1, received_at: 1 },
 ] as const;
 export type ObservationIndexContract = (typeof GRANOT_OBSERVATION_INDEXES)[number];
 
@@ -115,12 +114,11 @@ export function findChannelOperationIdCollisions(
 }
 
 export function orderedReceiptIndexCreates(): {
-  nonUnique: Array<ReceiptIndexContract | (typeof GRANOT_OBSERVATION_RECEIPT_NAMED_LEGACY_INDEXES)[number]>;
+  nonUnique: ReceiptIndexContract[];
   unique: ReceiptIndexContract[];
 } {
   const nonUnique = [
     ...GRANOT_OBSERVATION_RECEIPT_INDEXES.filter((index) => !("unique" in index)),
-    ...GRANOT_OBSERVATION_RECEIPT_NAMED_LEGACY_INDEXES,
   ];
   const unique = GRANOT_OBSERVATION_RECEIPT_INDEXES.filter(
     (index) => "unique" in index,
@@ -187,11 +185,9 @@ export function verifyReceiptIndexDefinitions(
       mismatched.push(expected.name);
     }
   }
-  for (const expected of GRANOT_OBSERVATION_RECEIPT_LEGACY_INDEXES) {
-    const found = actual.find((index) => sameKey(index.key, expected.key));
-    if (!found) {
-      missing.push(JSON.stringify(expected.key));
-    }
+  for (const retired of RETIRED_GRANOT_RECEIPT_INDEX_KEYS) {
+    const found = actual.find((index) => sameKey(index.key, retired));
+    if (found) mismatched.push(found.name);
   }
   return {
     ok: missing.length === 0 && mismatched.length === 0,

@@ -1,10 +1,10 @@
 # ODR-37 — Intakes tab (both halves) and the live cursor feed
 
-> **Contract maturity: implementation-ready.** The tab where the Owner sees what is waiting on him, and the 3-second cursor poll that keeps the whole board current — including the Granot webhook receipt stream he asked for. Both intake halves ship: Granot Unit 26 is complete, so Cancellation Intakes are flag-gated, not missing. Read-only; every write is a navigation handoff to an existing gated endpoint.
+> **Contract maturity: implementation-ready.** The tab where the Owner sees what is waiting on him, and the 3-second cursor poll that keeps the whole board current — including the Granot webhook receipt stream he asked for. Both intake halves ship: Granot Unit 26 is complete, so Release Reconciliation are flag-gated, not missing. Read-only; every write is a navigation handoff to an existing gated endpoint.
 
 ## 1. Authority and required reading
 
-- **Reduced specification:** [`owner-daily-reduced-specification.md`](../owner-daily-reduced-specification.md) — §2.2 (**Cancellation Intakes ship now**), §4, §6, §7 (**the feed**), §8, §10.
+- **Reduced specification:** [`owner-daily-reduced-specification.md`](../owner-daily-reduced-specification.md) — §2.2 (**Release Reconciliation ship now**), §4, §6, §7 (**the feed**), §8, §10.
 - **Full specification:** [`owner-daily-operations-view-specification.md`](../../granot-lead-lifecycle/owner-daily-operations-view-specification.md) — challenges 0.2, 0.4, 0.5, 0.8; §4.1–4.4; §6.5; §8.
 - **Wireframes (illustrative only):** `vantage-admin/uxdocs/owner-daily-view-planned.txt` §1 (live indicator), §2 (live columns), §5, §5a, §10.
 - **Predecessor:** [`ODR-35.md`](./ODR-35.md) — window contract, `DailyCapabilities`, **`DailyFeedEvent`**, cursor conventions, authorization.
@@ -59,7 +59,7 @@ Other state to confirm:
 - **`DailyFeedEvent` is imported from ODR-35's `types.ts`, never re-declared.**
 - **Idempotent by construction.** The client keys on `event.id`. A retried or duplicated poll **replaces**, never appends. Existing rows never reorder.
 - **Never blank a populated pane because a poll failed.** Keep the last good data, say how old it is, offer a retry.
-- **Cancellation Intakes are `not_activated`, never `not_built`.** Reduced spec §2.2. Copying the full spec's "Release Reconciliation lands in Unit 26" panel is a factual error — that unit is complete.
+- **Release Reconciliation are `not_activated`, never `not_built`.** Reduced spec §2.2. Copying the full spec's "Release Reconciliation lands in Unit 26" panel is a factual error — that unit is complete.
 - **Release cases are read-only until Granot Unit 27.** The Intakes tab links to their detail; it must not render or imply a resolve action for them.
 - **The Intakes tab hands off; it does not embed.** Full spec §0.8. Confirming a booking is exact-cent data entry with revision guards, an `Idempotency-Key`, and a draft-preserving `409`. A cramped overlay is the wrong container for a form whose failure mode is losing typed work, and duplicating it would fork the concurrency logic that most needs not to be forked.
 - **Tab badges count only things needing action.** Open intakes, yes. "Leads exist", never.

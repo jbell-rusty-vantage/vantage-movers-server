@@ -7,10 +7,8 @@ import {
   GRANOT_OBSERVATION_RECEIPT_INDEXES,
   GRANOT_OBSERVATION_RECEIPT_MODEL_NAME,
   GranotObservationReceipt,
-  GranotWebhookReceipt,
   assertAllowlistedReceiptProcessingUpdate,
   getGranotObservationReceiptModel,
-  getGranotWebhookReceiptModel,
 } from "./GranotObservationReceipt";
 
 const capturedAt = new Date("2026-08-14T16:00:00.000Z");
@@ -37,11 +35,6 @@ function webhookReceipt(overrides: Record<string, unknown> = {}) {
       manual_requeue_count: 0,
     },
     provider: "granot",
-    event_type: "lead_created",
-    received_at: capturedAt,
-    schema_version: 1,
-    processing_status: "received",
-    processing_attempts: 0,
     ...overrides,
   });
 }
@@ -50,7 +43,6 @@ function extensionReceipt(overrides: Record<string, unknown> = {}) {
   return webhookReceipt({
     observation_channel: "browser_extension",
     route_event_class: undefined,
-    event_type: undefined,
     channel_operation_kind: "lead_snapshot_apply",
     channel_operation_id: "77777777-7777-4777-8777-777777777777",
     authentication_method: "extension_session",
@@ -62,7 +54,6 @@ function automationReceipt(overrides: Record<string, unknown> = {}) {
   return webhookReceipt({
     observation_channel: "granot_http_automation",
     route_event_class: undefined,
-    event_type: undefined,
     channel_operation_kind: "booking_action_apply",
     channel_operation_id: "run-1:booked_reconciliation:row-1",
     authentication_method: "automation_owner_approval",
@@ -70,23 +61,21 @@ function automationReceipt(overrides: Record<string, unknown> = {}) {
   });
 }
 
-test("[AC-02] deprecated alias keeps the same model, collection, and mongoose name", () => {
+test("[AC-02] receipt keeps the physical collection and mongoose model name", () => {
   assert.equal(GranotObservationReceipt.modelName, GRANOT_OBSERVATION_RECEIPT_MODEL_NAME);
-  assert.equal(GranotObservationReceipt.modelName, "GranotWebhookReceipt");
+  assert.equal(GranotObservationReceipt.modelName, "GranotObservationReceipt");
   assert.equal(
     GranotObservationReceipt.collection.collectionName,
     GRANOT_OBSERVATION_RECEIPT_COLLECTION,
   );
   assert.equal(GranotObservationReceipt.collection.collectionName, "granot_webhook_receipts");
-  assert.equal(GranotWebhookReceipt, GranotObservationReceipt);
-  assert.equal(getGranotWebhookReceiptModel(), getGranotObservationReceiptModel());
   assert.equal(
-    getGranotWebhookReceiptModel().collection.collectionName,
+    getGranotObservationReceiptModel().collection.collectionName,
     "granot_webhook_receipts",
   );
 });
 
-test("[AC-02] declares the five named Section 9.1 indexes and keeps legacy indexes", () => {
+test("[AC-02] declares only the five named Section 9.1 indexes", () => {
   const indexes = GranotObservationReceipt.schema.indexes() as Array<
     [Record<string, unknown>, Record<string, unknown>]
   >;
@@ -113,16 +102,7 @@ test("[AC-02] declares the five named Section 9.1 indexes and keeps legacy index
   );
   assert.notEqual(payloadIndex?.[1].unique, true);
 
-  assert.ok(
-    indexes.some(
-      ([key]) => key.event_type === 1 && key.received_at === -1,
-    ),
-  );
-  assert.ok(
-    indexes.some(
-      ([key]) => key.processing_status === 1 && key.received_at === 1,
-    ),
-  );
+  assert.equal(indexes.length, GRANOT_OBSERVATION_RECEIPT_INDEXES.length);
 });
 
 test("[AC-02] unique operation-id index is partial and payload hash index is never unique", () => {
@@ -142,7 +122,7 @@ test("[AC-02] unique operation-id index is partial and payload hash index is nev
 test("[AC-02] webhook receipts require route_event_class and forbid channel_operation_kind", async () => {
   await webhookReceipt().validate();
   await assert.rejects(
-    webhookReceipt({ route_event_class: undefined, event_type: undefined }).validate(),
+    webhookReceipt({ route_event_class: undefined }).validate(),
     /route_event_class/,
   );
   await assert.rejects(
@@ -240,7 +220,7 @@ test("[AC-02] last_error.message is capped at 500 characters", async () => {
   );
 });
 
-test("[AC-02] legacy capture-shaped create fills specified v2 fields without claiming a proven secret", async () => {
+test("[AC-02] legacy capture-shaped create is rejected after compatibility retirement", async () => {
   const receipt = new GranotObservationReceipt({
     provider: "granot",
     event_type: "booking_status_changed",
@@ -253,20 +233,7 @@ test("[AC-02] legacy capture-shaped create fills specified v2 fields without cla
     processing_attempts: 0,
   });
 
-  await receipt.validate();
-  assert.equal(receipt.source_system, "granot");
-  assert.equal(receipt.observation_channel, "granot_webhook");
-  assert.equal(receipt.captured_at.toISOString(), capturedAt.toISOString());
-  assert.equal(receipt.route_event_class, "booking_status_changed");
-  assert.equal(receipt.evidence_version, 2);
-  assert.equal(receipt.authentication_method, "legacy_unknown");
-  assert.match(receipt.payload_sha256, /^[0-9a-f]{64}$/);
-  assert.equal(receipt.processing.state, "pending");
-  assert.equal(receipt.processing.technical_attempts, 0);
-  assert.equal(receipt.processing.match_attempt, 0);
-  assert.equal(receipt.processing.manual_requeue_count, 0);
-  assert.equal(receipt.schema_version, 1);
-  assert.equal(receipt.processing_status, "received");
+  await assert.rejects(receipt.validate(), /required/);
 });
 
 test("[AC-02] model save rejects post-insert evidence mutation", async () => {
@@ -290,7 +257,12 @@ test("[AC-02] query updates reject non-processing operators and evidence paths",
       $set: { "processing.state": "claimed" },
       $inc: { "processing.technical_attempts": 1 },
       $unset: { "processing.lease_owner": 1 },
+      $setOnInsert: { createdAt: capturedAt },
     }),
+  );
+  assert.throws(
+    () => assertAllowlistedReceiptProcessingUpdate({ $setOnInsert: { payload: {} } }),
+    /processing/,
   );
 });
 

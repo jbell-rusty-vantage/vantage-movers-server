@@ -14,7 +14,7 @@ async function replicaReady(t: { skip: (reason: string) => void }): Promise<bool
     t.skip("Replica-set proof is opt-in via GRANOT_LIFECYCLE_REPLICA_TESTS=true.");
     return false;
   }
-  if (getMongoDatabaseName() !== "testvantagemovers") {
+  if (!/^testvantagemovers(?:_[a-z0-9]+)?$/i.test(getMongoDatabaseName())) {
     t.skip("Replica-set proof requires TEST_MODE=true before process start.");
     return false;
   }
@@ -81,8 +81,6 @@ test("[AC-31][AC-35][AC-37][AC-38] replica health counts come from Mongo and do 
     processing,
     provider: "granot",
     schema_version: 2,
-    processing_status: "received",
-    processing_attempts: 0,
     createdAt: now,
     updatedAt: now,
   });

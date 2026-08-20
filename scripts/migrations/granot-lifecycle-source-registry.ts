@@ -26,6 +26,7 @@ import type { RegistryActorContext } from "../../src/services/operationsRegistry
 import {
   assertGranotLifecycleApplyAuthorized,
   assertGranotLifecycleDatabaseAllowed,
+  GRANOT_LIFECYCLE_PRODUCTION_DATABASE,
   granotLifecycleOutputDirectory,
   parseGranotLifecycleMigrationMode,
   writeGranotLifecycleManifest,
@@ -36,11 +37,14 @@ import {
   SOURCE_REGISTRY_MIGRATION_SCRIPT_VERSION,
   assertPlanHasNoForbiddenPayload,
   planGranotLifecycleSourceRegistry,
+  readSourceRegistryApplyScope,
+  selectCrmMutationsForApply,
   type InventoryAutomationSource,
   type InventoryCompany,
   type InventoryCrmSource,
   type InventoryGranularity,
   type SourceRegistryPlan,
+  type SourceRegistryApplyScope,
 } from "./granot-lifecycle-source-registry.lib.js";
 
 const OUTPUT_DIR = granotLifecycleOutputDirectory("granot-lifecycle-source-registry");
@@ -70,6 +74,7 @@ async function loadInventory() {
 
 async function main(): Promise<void> {
   const mode = parseGranotLifecycleMigrationMode(process.argv);
+  const applyScope = readSourceRegistryApplyScope(process.argv);
   const configuredDatabase = getMongoDatabaseName();
   assertGranotLifecycleDatabaseAllowed(configuredDatabase);
   if (mode === "apply") assertGranotLifecycleApplyAuthorized({ args: process.argv, databaseName: configuredDatabase });
@@ -97,6 +102,7 @@ async function main(): Promise<void> {
       await writeRunManifest({
         databaseName,
         mode,
+        applyScope,
         plan,
         changed_crm_ids,
         changed_automation_ids,
@@ -109,7 +115,8 @@ async function main(): Promise<void> {
         "Refusing source Registry apply: required Best Relocation dependencies are invalid or a reviewed family was refused.",
       );
     }
-    for (const mutation of plan.crm_mutations) {
+    const crmMutations = selectCrmMutationsForApply(plan, applyScope);
+    for (const mutation of crmMutations) {
       if (mutation.action === "noop") continue;
       try {
         const current = inventory.crm_sources.find((row) => row.id === mutation.id);
@@ -138,7 +145,7 @@ async function main(): Promise<void> {
         apply_errors.push(`crm:${mutation.masked_id}:mutation_failed`);
       }
     }
-    for (const mutation of plan.automation_mutations) {
+    for (const mutation of applyScope === "all" ? plan.automation_mutations : []) {
       if (mutation.action !== "link" || !mutation.intended_reference) continue;
       try {
         await setGranotAutomationSourceReference(
@@ -158,6 +165,7 @@ async function main(): Promise<void> {
       await writeRunManifest({
         databaseName,
         mode,
+        applyScope,
         plan,
         changed_crm_ids,
         changed_automation_ids,
@@ -178,6 +186,7 @@ async function main(): Promise<void> {
       await writeRunManifest({
         databaseName,
         mode,
+        applyScope,
         plan: reloaded,
         changed_crm_ids,
         changed_automation_ids,
@@ -193,6 +202,7 @@ async function main(): Promise<void> {
   await writeRunManifest({
     databaseName,
     mode,
+    applyScope,
     plan: mode === "verify" ? planGranotLifecycleSourceRegistry(await loadInventory()) : plan,
     changed_crm_ids,
     changed_automation_ids,
@@ -244,6 +254,7 @@ function verifyPersistedPlan(plan: SourceRegistryPlan): {
 async function writeRunManifest(input: {
   databaseName: string;
   mode: string;
+  applyScope: SourceRegistryApplyScope;
   plan: SourceRegistryPlan;
   changed_crm_ids: string[];
   changed_automation_ids: string[];
@@ -263,7 +274,10 @@ async function writeRunManifest(input: {
       script_version: SOURCE_REGISTRY_MIGRATION_SCRIPT_VERSION,
       database_name: input.databaseName,
       mode: input.mode,
-      production_apply: false,
+      apply_scope: input.applyScope,
+      production_apply:
+        input.mode === "apply" &&
+        input.databaseName === GRANOT_LIFECYCLE_PRODUCTION_DATABASE,
       reviewed_labels: input.plan.reviewed_labels,
       excluded_provider_types: input.plan.excluded_provider_types,
       required_registry_keys: input.plan.required_registry_keys,

@@ -1,0 +1,49 @@
+# Unit 33 synthetic acceptance ledger
+
+Date: 2026-08-19  
+Evidence policy: redacted synthetic fixtures only. “Live/staged” remains pending unless an approved environment was used; Unit 34 owns current-payload certification.
+
+| AC | Owning production-interface test | Level / repository | Latest Unit 33 result | Live/staged observation |
+| --- | --- | --- | --- | --- |
+| AC-01 | `src/routes/granot-webhook.routes.test.ts` — JSON/form/header auth and zero receipt on unauthorized | route / server | green — Unit 33 synthetic matrix | pending |
+| AC-02 | `src/services/granotLifecycle/automationApply.replica.test.ts` — operation replay/hash conflict | Mongo module / server | green — Unit 33 synthetic matrix | pending |
+| AC-03 | `src/services/granotLifecycle/identity.test.ts` — exact `ref_no` then ObjectId fallback; `src/services/crm/formLeadPayload.test.ts` — `leadno` | module / server | green — Unit 33 synthetic matrix | pending |
+| AC-04 | `src/services/granotLifecycle/identity.replica.test.ts` — scoped identity is read-only | Mongo module / server | green — Unit 33 synthetic matrix | pending |
+| AC-05 | `src/services/granotLifecycle/synchronizeLead.replica.test.ts` — Priority/Quoted causal write | Mongo command / server | green — Unit 33 synthetic matrix | pending |
+| AC-06 | `src/services/granotLifecycle/normalization.test.ts` — malformed Priority preserves independent action | module / server | green — Unit 33 synthetic matrix | pending |
+| AC-07 | `src/services/granotLifecycle/createLeadFromGranot.replica.test.ts` — match-before-create/no second Lead | Mongo command / server | green — Unit 33 synthetic matrix | pending |
+| AC-08 | `src/services/granotLifecycle/createLeadFromGranot.replica.test.ts` — one create/link and insufficient data | Mongo command / server | green — Unit 33 synthetic matrix | pending |
+| AC-09 | `src/services/granotLifecycle/createLeadFromGranot.test.ts`; guarded source Registry migration — exact Best Relocation Form state routing and creation policy | module + production migration / server | green — synthetic behavior plus authorized production report/apply/verify/idempotency | `vantagemovers` Best Relocation Forms persisted `create_if_missing`; no live payload used |
+| AC-10 | `src/services/granotLifecycle/synchronizeLead.replica.test.ts` — immutable Form contact/current Granot contact | Mongo command / server | green — Unit 33 synthetic matrix | pending |
+| AC-11 | `src/services/granotLifecycle/synchronizeLead.replica.test.ts` — immutable Form move/current Granot move | Mongo command / server | green — Unit 33 synthetic matrix | pending |
+| AC-12 | `src/services/granotLifecycle/synchronizeLead.replica.test.ts` — Call/Granot current contact plus Change | Mongo command / server | green — Unit 33 synthetic matrix | pending |
+| AC-13 | `src/services/granotLifecycle/leadDesiredState.test.ts` — exact Agent assertion/fill rules | module / server | green — Unit 33 synthetic matrix | pending |
+| AC-14 | `src/services/ringcentral/callLeadConvergence.replica.test.ts` — adoption preserves origin | Mongo integration / server | green — Unit 33 synthetic matrix | pending |
+| AC-15 | `src/services/ringcentral/callLeadConvergence.replica.test.ts` — adopted call and earlier duplicate correctness | Mongo integration / server | green — Unit 33 synthetic matrix | pending |
+| AC-16 | `src/services/ringcentral/callLeadConvergence.replica.test.ts` — zero/multiple candidate conflict | Mongo integration / server | green — Unit 33 synthetic matrix | pending |
+| AC-17 | `src/services/ringcentral/call-log-sync-lease.replica.test.ts` — lease/cursor/overlap | Mongo integration / server | green — Unit 33 synthetic matrix | pending |
+| AC-18 | `src/services/granotLifecycle/bookingReconciliation.replica.test.ts` — Priority 5 modes | Mongo module / server | green — Unit 33 synthetic matrix | pending |
+| AC-19 | `src/services/granotLifecycle/bookingReconciliation.replica.test.ts` — Booked create/review modes | Mongo module / server | green — Unit 33 synthetic matrix | pending |
+| AC-20 | `src/services/granotLifecycle/bookingReconciliation.replica.test.ts` — refresh/sequence/dedupe | Mongo module / server | green — Unit 33 synthetic matrix | pending |
+| AC-21 | `src/services/granotLifecycle/bookingConfirmation.replica.test.ts` — one-winner/replay | Mongo command / server | green — Unit 33 synthetic matrix | pending |
+| AC-22 | `src/services/granotLifecycle/bookingConfirmation.replica.test.ts`; `tests/granot-lifecycle-components.test.ts` — blank reviewed official inputs | Mongo + component / server + Admin | green — Unit 33 synthetic matrix | pending |
+| AC-23 | `src/services/granotLifecycle/discrepancies.replica.test.ts` — link correction preserves scope | Mongo command / server | green — Unit 33 synthetic matrix | pending |
+| AC-24 | `src/services/granotLifecycle/bookingConfirmation.replica.test.ts` — full official replacement/one Job | Mongo command / server | green — Unit 33 synthetic matrix | pending |
+| AC-25 | `src/services/granotLifecycle/releaseOwnerCommands.replica.test.ts`; `tests/granot-lifecycle-components.test.ts` — three explicit actions | Mongo + component / server + Admin | green — Unit 33 synthetic matrix | pending |
+| AC-26 | `src/services/granotLifecycle/discrepancies.replica.test.ts` — already-cancelled and Booked-after-cancel | Mongo module / server | green — Unit 33 synthetic matrix | pending |
+| AC-27 | `src/services/granotLifecycle/releaseReconciliation.replica.test.ts` — conflict discrepancy, zero official effects | Mongo module / server | green — Unit 33 synthetic matrix | pending |
+| AC-28 | `src/services/granotLifecycle/referralBooking.replica.test.ts`; `tests/granot-lifecycle-components.test.ts` — leadless Referral/master-booked only | Mongo + component / server + Admin | green — Unit 33 synthetic matrix | pending |
+| AC-29 | `src/services/granotLifecycle/processor.test.ts` — Paid Overflow/Auto deferred | module / server | green — Unit 33 synthetic matrix | pending |
+| AC-30 | `src/services/granotLifecycle/drainer.test.ts` — exact pending-match clock/expiry | module / server | green — Unit 33 synthetic matrix | pending |
+| AC-31 | `scripts/migrations/granot-lifecycle-shadow.replica.test.ts` — permanent historical shadow/zero effects | Mongo migration / server | green — Unit 33 synthetic matrix | pending |
+| AC-32 | `src/services/granotLifecycle/synchronizeLead.replica.test.ts` — causal chain and zero-work no-op | Mongo command / server | green — Unit 33 synthetic matrix | pending |
+| AC-33 | `src/services/granotLifecycle/crossChannel.test.ts` plus extension/automation apply tests — equivalent receipt outcomes | cross-channel / server | green — Unit 33 synthetic matrix | pending |
+| AC-34 | `src/test/lifecycle-apply.test.ts`; `src/test/lifecycle-version.test.ts`; `UNIT-33-EXTENSION-CLIENT-ATTESTATION.md` — stable retry ID, `0.2.8`, and no supported older active client | client + Owner control / extension | green — 146/146 extension matrix; `0.2.8` uploaded; supported use blocked until `0.2.8` is installed | Owner operational-control attestation accepted; no pre-`0.2.8` client authorized or active |
+| AC-35 | `src/services/granotLifecycle/projections.replica.test.ts`; `tests/granot-lifecycle-components.test.ts` — masked/raw-free reads | Mongo + component / server + Admin | green — Unit 33 synthetic matrix | pending |
+| AC-36 | `src/services/granotLifecycle/discrepancies.replica.test.ts` — partial uniqueness and races | Mongo module / server | green — Unit 33 synthetic matrix | pending |
+| AC-37 | `src/services/granotLifecycle/drainer.replica.test.ts`; admin requeue route tests — fenced requeue/dead letter | Mongo + route / server | green — Unit 33 synthetic matrix | pending |
+| AC-38 | `scripts/migrations/granot-lifecycle-source-registry.test.ts`; `src/services/granotLifecycle/sourcePolicy.test.ts`; guarded source Registry migration — fail-closed ambiguity | migration + module / server | green — scoped safety test plus authorized production report/apply/verify/idempotency | dependencies valid, zero collisions/refused families; Forms/Inbounds persisted `create_if_missing` with no drift |
+| AC-39 | `src/services/granotLifecycle/identity.replica.test.ts`; `tests/granot-lifecycle-components.test.ts` — employee reconciliation delegation | Mongo + component / server + Admin | green — Unit 33 synthetic matrix | pending |
+| AC-40 | `src/services/granotLifecycle/releaseReconciliation.replica.test.ts`; Admin queue component test — cases coexist | Mongo + component / server + Admin | green — Unit 33 synthetic matrix | pending |
+
+The ledger records production-module, route, Mongo, Admin, and extension tests; no row depends on the deleted prototype. Unit 33's focused server matrix was 116 total (114 pass, 2 expected replica opt-in skips), its ordinary server suite was 1,520 total (1,434 pass, 86 expected opt-in/environment skips), and its isolated replica matrix was 83/83 in one `pnpm test:granot-lifecycle:replica -- --unit=33` invocation (64 delivery-disabled lifecycle tests followed by 19 publication-blocked queued-outbox command tests; process exit 0). Admin was 234/234 plus lint/typecheck/build, and extension `0.2.8` was 146/146 plus compile/Chrome/Firefox builds. The deterministic cleanup verifier scanned 1,121 non-ignored worktree paths and 1,015 active text files with 0 findings, including untracked delivery artifacts. The source Registry migration added one focused scope-safety test (10/10 focused migration tests green), and the authorized `vantagemovers` report/apply/verify/idempotency cycle closed AC-09/AC-38 without touching any unreviewed source or automation reference. The Owner operational-control attestation closes AC-34; caller inspection retains the receipt endpoints/result response required by `0.2.8` and removes only dead compatibility code. All final executed matrices had zero failures.

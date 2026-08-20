@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import mongoose from "mongoose";
 import { getMongoDatabaseName } from "../../config/domain/runtime";
 import { connectMongo } from "../../db";
@@ -13,6 +13,7 @@ import {
 import { GRANOT_LIFECYCLE_ERROR_CODES } from "./errors";
 import { getGranotLifecycleClaimRecoveriesTotal, resetGranotLifecycleMetrics } from "./metrics";
 import { requeueDeadLetterReceipt } from "./operations";
+import { maskLifecycleId } from "./observability";
 import type { RegistryActorContext } from "../operationsRegistry/types";
 
 const OWNER: RegistryActorContext = {
@@ -23,17 +24,19 @@ const OWNER: RegistryActorContext = {
   requestId: "req-requeue-replica",
 };
 
+after(async () => mongoose.disconnect().catch(() => undefined));
+
 async function replicaReady(t: { skip: (reason: string) => void }): Promise<boolean> {
   if (process.env.GRANOT_LIFECYCLE_REPLICA_TESTS !== "true") {
     t.skip("Replica-set proof is opt-in via GRANOT_LIFECYCLE_REPLICA_TESTS=true.");
     return false;
   }
-  if (getMongoDatabaseName() !== "testvantagemovers") {
+  if (!/^testvantagemovers(?:_[a-z0-9]+)?$/i.test(getMongoDatabaseName())) {
     t.skip("Replica-set proof requires TEST_MODE=true before process start.");
     return false;
   }
   await connectMongo();
-  if (mongoose.connection.db?.databaseName !== "testvantagemovers") {
+  if (!/^testvantagemovers(?:_[a-z0-9]+)?$/i.test(mongoose.connection.db?.databaseName ?? "")) {
     t.skip("Refusing replica-set proof against a non-test database.");
     return false;
   }
@@ -76,11 +79,6 @@ async function insertReceipt(overrides: {
       manual_requeue_count: 0,
     },
     provider: "granot",
-    event_type: "lead_created",
-    received_at: capturedAt,
-    schema_version: 1,
-    processing_status: "received",
-    processing_attempts: 0,
   });
   return created._id;
 }
@@ -112,7 +110,7 @@ test("[AC-30] replica-set two claimants have one winner", async (t) => {
   const row = await getGranotObservationReceiptModel().findById(id).lean();
   assert.ok(row);
   assert.ok(row.processing.state === "completed" || row.processing.state === "claimed");
-  await getGranotObservationReceiptModel().deleteOne({ _id: id });
+  await getGranotObservationReceiptModel().collection.deleteOne({ _id: id });
 });
 
 test("[AC-30] replica-set expired lease recovers and stale owner cannot finalize", async (t) => {
@@ -140,7 +138,7 @@ test("[AC-30] replica-set expired lease recovers and stale owner cannot finalize
     { $set: { "processing.state": "completed" } },
   );
   assert.equal(stale.matchedCount, 0);
-  await getGranotObservationReceiptModel().deleteOne({ _id: id });
+  await getGranotObservationReceiptModel().collection.deleteOne({ _id: id });
 });
 
 test("[AC-30] replica-set attempt 10 dead-letters with zero Decision", async (t) => {
@@ -162,7 +160,7 @@ test("[AC-30] replica-set attempt 10 dead-letters with zero Decision", async (t)
   const row = await getGranotObservationReceiptModel().findById(id).lean();
   assert.equal(row?.processing.state, "dead_letter");
   assert.equal(row?.processing.latest_decision_id, undefined);
-  await getGranotObservationReceiptModel().deleteOne({ _id: id });
+  await getGranotObservationReceiptModel().collection.deleteOne({ _id: id });
 });
 
 test("[AC-37] replica-set concurrent requeue has one winner and one audit", async (t) => {
@@ -195,13 +193,13 @@ test("[AC-37] replica-set concurrent requeue has one winner and one audit", asyn
   assert.equal(row?.payload_sha256, "ab".repeat(32));
   const audits = await getOperationalEventModel().countDocuments({
     event_key: "granot_lifecycle.manual_requeue",
-    entity_id: String(id),
+    entity_id: maskLifecycleId(String(id)),
   });
   assert.equal(audits, 1);
-  await getGranotObservationReceiptModel().deleteOne({ _id: id });
+  await getGranotObservationReceiptModel().collection.deleteOne({ _id: id });
   await getOperationalEventModel().deleteMany({
     event_key: "granot_lifecycle.manual_requeue",
-    entity_id: String(id),
+    entity_id: maskLifecycleId(String(id)),
   });
 });
 
@@ -216,5 +214,5 @@ test("[AC-30] replica-set queue and cron due scan share the claim fence", async 
   ]);
   const winners = [queue, cron].filter((summary) => summary.claimed === 1);
   assert.equal(winners.length, 1);
-  await getGranotObservationReceiptModel().deleteOne({ _id: id });
+  await getGranotObservationReceiptModel().collection.deleteOne({ _id: id });
 });

@@ -20,7 +20,7 @@ Granot evidence never becomes an official Booking or Cancellation by itself. CRM
 
 ## Current service
 
-`granotLifecycle/` is the shared runtime. `granotWebhooks/` is a deprecated adapter. `capture.ts` is the only webhook insert path and still does not invoke the modules below.
+`granotLifecycle/` is the shared runtime. The deprecated `granotWebhooks/` adapter is retired. `capture.ts` is the only webhook insert path and still does not invoke the modules below.
 
 | Module | Role now |
 | --- | --- |
@@ -45,13 +45,13 @@ Admin routes activate, requeue dead letters, expose protected reads, and accept 
 
 ## Progress
 
-Units 01–30 are implemented on `granot-lead-lifecycle` (Unit 16 also lands extension `0.2.8` on `granot_sync_extensions_and_services/main`). Re-verify the matching `UNIT-*-COMPLETION.md` and repository state before editing; do not trust the ledger alone.
+Units 01–31 are implemented on `granot-lead-lifecycle` (Unit 16 also lands extension `0.2.8` on `granot_sync_extensions_and_services/main`). Re-verify the matching `UNIT-*-COMPLETION.md` and repository state before editing; do not trust the ledger alone.
 
 **Shipped in this service:** receipt model, webhook auth/capture, Observation vocabulary, Registry policy, Decision/activation/historical job link, fenced drain, revision CAS + Lead provenance storage, identity resolver, temporal comparator, desired-state planner, shadow processor orchestration, extension/automation receipt apply, canonical Lead synchronization/creation, Booking-case persistence/commands, separate Release-case persistence/commands, discrepancies/correction, protected masked reads, stable Job/Lead timelines, Section 33 events/metrics, Mongo-backed health, and seven rollout alerts.
 
-**Next sequential work:** Unit 31 migration/index verification, historical shadow certification, security audit, and runbooks. Deployed posture and checked-in defaults do not change from implementation alone.
+**Current sequential work:** Unit 33 retires prototype/runtime receipt compatibility and runs the complete synthetic regression. Deployed posture and checked-in defaults do not change from implementation alone.
 
-**Not started here:** Unit 31 certification package, optional case email, prototype cleanup, current-payload certification.
+**Not part of Unit 33:** optional case email and Unit 34 current-payload certification.
 
 ## Live constraints
 
