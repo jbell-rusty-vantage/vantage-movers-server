@@ -10,7 +10,9 @@
 Unit 31 masks every case-detail contact and Booking customer label before
 transport and omits free-form Cancellation reason text. Admin receives masked
 display values only; raw receipt payload, headers, and contact remain outside
-all lifecycle projections.
+all lifecycle projections. The single exception is the Owner-only candidate
+browser, which also carries normalized owner-work contact so the Owner can tell
+two leads apart before attaching one — see [Candidate browser](#candidate-browser).
 
 ## Protected read surface
 
@@ -26,7 +28,7 @@ The default queue merges open Booking and Release cases ordered by newest eviden
 - Lists contain a centralized irreversible contact label and masked Booking reference only. Raw case context/evidence arrays are absent.
 - Authorized detail keeps immutable Granot evidence visibly separate from live official Booking/Cancellation fields. Create-missing `official_draft` is empty and never derives defaults from Granot evidence.
 - Referral list/detail derives the reviewed Registry source ID/label from immutable Decision `source_policy`, while keeping case `source_scope` absent. `create_referral_booking` exposes no suggestion/candidate search/Lead link; existing Referral review shows current official Booking values with no Lead selector.
-- Submitted/ingested contact and accepted Granot contact are separately labeled. Receipt payloads/headers, credentials, addresses, arbitrary Lead documents, CPL internals, and raw candidate contact never enter these DTOs.
+- Submitted/ingested contact and accepted Granot contact are separately labeled. Receipt payloads/headers, credentials, addresses, arbitrary Lead documents, and CPL internals never enter these DTOs.
 - Booking-without-Lead detail deep-links the existing Employee Booking Lead Reconciliation work; it does not invent another matcher or selector.
 - Release detail instead shows the deterministic live Booking and current Cancellation with `candidate_search.available=false`, no suggestion, no employee-reconciliation substitution, and `commands=false`.
 - Referral-shaped detail disables candidate browsing. Unit 23 opens no Referral case.
@@ -46,6 +48,10 @@ Lead timeline first verifies the exact Lead, then follows persisted Record Links
 ## Candidate browser
 
 The Booking reconciliation service remains the policy seam. Its canonical identity candidates retain their existing high/medium confidence and suggestion facts. Case-scoped browsing may additionally search current eligible Form/Call Leads within Source Scope or, for Owner all-scope review, across scopes. Duplicate and Bad Form Leads are excluded server-side. Job-compatible rows rank high; other browse matches rank medium. Out-of-scope rows carry `requires_override_reason=true`. This module never attaches a Lead; gated Owner confirm may consume a selected candidate when the Booking-command flag is true.
+
+Ordering is not the raw browse order. `rankBookingCandidateProjections` pins the canonical identity matches — suggested first, then high confidence, stable within a tier — ahead of the ObjectId-ordered browse page, so the strongest match is always on the first page and never has to be paged to. An explicit `q` search owns its whole page and pins nothing; cursor pages continue the browse stream only, so a pinned row is never returned twice.
+
+Each candidate item carries both `masked_contact_label` (unchanged) and a normalized `contact` of `name`, `phone_number`, and `email`, plus `job_no`, `normalized_job_no`, and `reference` (`ref_no`). This is the "detail/candidate may return normalized contact fields when required for explicit Owner work" allowance in Unit 23, and it is why the endpoint is Owner-only. It is normalized Lead field data, never a raw Lead document or receipt payload. List DTOs, `maskContactLabel`, `maskLifecycleContact`, `assertProjectionSafe`, and `JOB_PROJECTION_FORBIDDEN_KEYS` are unchanged.
 
 ## Posture
 

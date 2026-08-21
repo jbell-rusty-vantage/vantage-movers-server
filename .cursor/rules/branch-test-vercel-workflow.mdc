@@ -14,4 +14,5 @@ alwaysApply: true
 - For Vercel work, read `.agents/skills/deploy-to-vercel/SKILL.md` first and follow its preview-first workflow.
 - Use `vercel dev` for local Vercel-compatible API testing when route behavior may differ from direct Express tests.
 - Use preview deployments by default. Production deployments require explicit user approval.
+- GitHub Actions owns previews (`vercel.json` has `git.deploymentEnabled: false`). `.github/workflows/vercel-main-server-preview.yml` skips `cursor/*` Cloud Agent branches unless the PR has label `vercel-preview`. Any PR can skip a preview with label `skip-preview`.
 - If Vercel CLI is linked and git-backed, ask before pushing; otherwise use `vercel deploy -y --no-wait` and report the preview URL.

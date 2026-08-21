@@ -2,6 +2,7 @@ name: Vercel Preview
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -28,6 +29,12 @@ env:
 jobs:
   deploy:
     name: Build and deploy preview
+    if: |
+      contains(github.event.pull_request.labels.*.name, 'vercel-preview') ||
+      (
+        !startsWith(github.head_ref, 'cursor/') &&
+        !contains(github.event.pull_request.labels.*.name, 'skip-preview')
+      )
     runs-on: ubuntu-latest
 
     steps:
