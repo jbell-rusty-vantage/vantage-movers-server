@@ -1,12 +1,12 @@
 ---
 description: Keep Vantage docs layered and glob-scoped; delegate drift fixes to the docs-keeper agent
-globs: .cursor/businesslogic/**/*.md,.cursor/rules/*.mdc,.cursor/index.md,.cursor/agents/*.md,docs/**/*.md,CONTEXT.md,AGENTS.md
+globs: docs/knowledge/**/*.md,.cursor/businesslogic/**/*.md,.cursor/rules/*.mdc,.cursor/index.md,.cursor/agents/*.md,docs/**/*.md,CONTEXT.md,AGENTS.md
 alwaysApply: false
 ---
 
 # Documentation Maintenance
 
-When these files — or the code their `globs` / `Primary code` links point at — change, keep documentation current. Prefer the **docs-keeper** agent over ad-hoc rewrites.
+When these files — or the code their `globs` / `Primary code` links point at — change, keep documentation current. Prefer the **docs-keeper** agent over ad-hoc rewrites. The OKF conversion skill owns the one-time move into `docs/knowledge/`; docs-keeper owns later patches.
 
 ## Layers (do not collapse)
 
@@ -14,10 +14,10 @@ When these files — or the code their `globs` / `Primary code` links point at �
 |--------|--------|
 | New or renamed domain term | Workspace-root `CONTEXT.md` via `/domain-modeling` |
 | Hard-to-reverse architectural decision | `docs/adr/` |
-| Service invariants, routing, side-effect order | Matching `.cursor/businesslogic/*.service.md` |
+| Service invariants, routing, side-effect order | Matching `docs/knowledge/**/*.md` (stubs remain under `.cursor/businesslogic/` for one release) |
 | Folder ownership, process mechanics, auth, env | The `.mdc` whose `globs` already match the path |
 | Owner-facing specs / runbooks | Matching file under `docs/` (Granot lifecycle: `docs/granot-lead-lifecycle/`, including `lifecycle-activation-flags-and-source-policies.md`) |
-| New businesslogic file or rule | `.cursor/index.md` catalog row |
+| New Service file or rule | `docs/index.md` row plus `.cursor/index.md` Cursor map |
 
 Link glossary terms; do not redefine them. Do not copy owner policy into software-logic rules.
 
@@ -25,7 +25,7 @@ Link glossary terms; do not redefine them. Do not copy owner policy into softwar
 
 - Edit the rule whose frontmatter `globs` match the changed path. If the path moved, fix that rule’s `globs` rather than creating an always-apply duplicate.
 - Keep `alwaysApply: true` for maps and safety only (`project-organization`, `codebase`, `backend-safety`).
-- One concern per rule. Reference businesslogic docs instead of pasting them.
+- One concern per rule. Reference Service docs under `docs/knowledge/` instead of pasting them.
 
 ## Cross-repo
 

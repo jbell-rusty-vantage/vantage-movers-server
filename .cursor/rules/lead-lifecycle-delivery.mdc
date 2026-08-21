@@ -1,6 +1,6 @@
 ---
 description: Lead lifecycle delivery — branch plan across server, admin, and extension
-globs: scripts/prototypes/granot-lead-lifecycle/**/*,src/services/granotLifecycle/**/*.ts,.cursor/businesslogic/granotLifecycle*.md
+globs: scripts/prototypes/granot-lead-lifecycle/**/*,src/services/granotLifecycle/**/*.ts,docs/knowledge/granot-lifecycle/*.md
 alwaysApply: false
 ---
 

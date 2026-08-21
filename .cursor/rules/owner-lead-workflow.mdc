@@ -8,7 +8,7 @@ alwaysApply: false
 
 - MongoDB is the system of record. Server writes Mongo first, then posts/syncs side effects to Granot CRM and Google Sheets; sheet sync may finish after the API response.
 - Owner-facing reporting lives in Google Sheets, but source truth, matching, booking state, cancellation state, and sync metadata live on Mongo documents.
-- Compact service docs: `.cursor/businesslogic/`. Granot webhook capture is receipt-only. Authorized live create-if-missing writes go through `createLeadFromGranot` after drain; checked-in creation flags stay false.
+- Compact service docs: `docs/knowledge/`. Granot webhook capture is receipt-only. Authorized live create-if-missing writes go through `createLeadFromGranot` after drain; checked-in creation flags stay false.
 
 ## Website To Form Lead
 
@@ -17,7 +17,7 @@ alwaysApply: false
 - Duplicate form leads still save and sync to `Duplicates`, but force `post_to_granot=false` so Granot does not receive another CRM row.
 - Non-duplicates post to Granot; the CRM payload `leadno` is the persisted Form Lead Tracking Reference (`FormLead.ref_no`), which Granot exposes as `ref_no`. Exact `FormLead.ref_no` is the primary identity; a valid Mongo `_id`-shaped Granot `ref_no` remains a compatibility fallback only after exact lookup misses.
 - When `sms_consent` parses as true, create may persist a Lead Message in the Form Lead transaction, then after commit await `dispatchOrQueuePersistedLeadMessage` (never throws to `finalizeFormLeadCreateAfterCommit`). Form create still returns 201 with `messaging_status` when SMS fails. Duplicates record a skipped message and never dispatch.
-- Overnight Twilio Message Scheduling (12:00 AM–6:59 AM America/New_York → SendAt 8:00 AM that Eastern day) stays off unless `LEAD_MESSAGING_QUIET_HOURS_ENABLED=true`. Deferral requires `TWILIO_MESSAGING_SERVICE_SID` and a SendAt inside Twilio's 15-minute / 35-day window before the API call; missing SID or an out-of-window SendAt fails closed. If the helper throws after Twilio already accepted or scheduled, it re-reads the persisted status instead of reporting `failed`. A later `recordMessagingEvent` failure after accept cannot flip that outcome. Status callbacks treat `scheduled` as rank 1 (may advance to queued, sent, or failed). See `src/services/leadMessaging/` and `businesslogic/form-lead.service.md`.
+- Overnight Twilio Message Scheduling (12:00 AM–6:59 AM America/New_York → SendAt 8:00 AM that Eastern day) stays off unless `LEAD_MESSAGING_QUIET_HOURS_ENABLED=true`. Deferral requires `TWILIO_MESSAGING_SERVICE_SID` and a SendAt inside Twilio's 15-minute / 35-day window before the API call; missing SID or an out-of-window SendAt fails closed. If the helper throws after Twilio already accepted or scheduled, it re-reads the persisted status instead of reporting `failed`. A later `recordMessagingEvent` failure after accept cannot flip that outcome. Status callbacks treat `scheduled` as rank 1 (may advance to queued, sent, or failed). See `src/services/leadMessaging/` and `docs/knowledge/services/form-lead.md`.
 
 ## Extension And CRM Updates
 
@@ -30,20 +30,20 @@ alwaysApply: false
 
 - Granot posts `POST /api/webhooks/granot/{lead-created,priority-updated,booking-status-changed}`.
 - Authenticated deliveries persist one credential-redacted Granot Observation Receipt and return `202`. Capture does **not** create, update, or cancel a Lead, Booking, or Cancellation.
-- After commit, production Vercel may publish `{ receipt_id }` to the lifecycle queue topic. A dedicated consumer and five-minute cron drain due work through one Mongo claim/fence. Capture still does not invoke the processor. Details: `businesslogic/granotLifecycle.drainer.md`.
-- When live + `GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED` + reviewed `create_if_missing` + complete minimum data + no eligible match, the processor creates exactly one Form/Call Lead and reserves the active Record Link through `createLeadFromGranot`. Matched Observations stay on `synchronizeLeadFromGranot`. Checked-in flags keep creation off. Neither Lead path writes a Booking or Cancellation. Details: `businesslogic/granotLifecycle.processor.md`.
-- CRM Posting on form-lead create is independent of webhook capture. Details: `businesslogic/granotLifecycle.capture.md`.
+- After commit, production Vercel may publish `{ receipt_id }` to the lifecycle queue topic. A dedicated consumer and five-minute cron drain due work through one Mongo claim/fence. Capture still does not invoke the processor. Details: `docs/knowledge/granot-lifecycle/drainer.md`. // pragma: allowlist secret
+- When live + `GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED` + reviewed `create_if_missing` + complete minimum data + no eligible match, the processor creates exactly one Form/Call Lead and reserves the active Record Link through `createLeadFromGranot`. Matched Observations stay on `synchronizeLeadFromGranot`. Checked-in flags keep creation off. Neither Lead path writes a Booking or Cancellation. Details: `docs/knowledge/granot-lifecycle/processor.md`.
+- CRM Posting on form-lead create is independent of webhook capture. Details: `docs/knowledge/granot-lifecycle/capture.md`.
 
 ## Granot HTTP automation (parallel correction path)
 
 - Admin `/api/v1/admin/granot-automation/*` plans form/call work from an HTTP session collector.
 - Apply requires `GRANOT_AUTOMATION_APPLY_ENABLED` plus explicit owner approval. Selected actions capture a `granot_http_automation` receipt and enter `claimAndProcessOrPoll`. Preview creates no receipt.
-- Details: `businesslogic/granotHttpCollector.service.md` and `businesslogic/granotLifecycle.automationApply.md`.
+- Details: `docs/knowledge/services/granot-http-collector.md` and `docs/knowledge/granot-lifecycle/automation-apply.md`.
 
 ## Booking Flow
 
-- Priority `5` / actual Booked Observations may open a **Granot Booking Reconciliation Case**. A case is not a Booking. Exact reviewed Referral Booked evidence opens `create_referral_booking` without a Lead/Source Scope and can create one explicit no-Lead Referral Booking. Official Booking create/update/No Action happen only through Owner `POST /api/v1/admin/granot-lifecycle/booking-cases/:id/{confirm-booking,create-referral-booking,update-booking,no-action}` (Owner actor + one `Idempotency-Key`). Checked-in Booking-command and Referral flags stay false. Details: `businesslogic/granotLifecycle.bookingReconciliation.md`.
-- Actual Release Observations may open a separate read-only **Granot Release Reconciliation Case** for the deterministic active Booking. A Release case is not a Cancellation and exposes no selector or command. Already-cancelled is a no-effect Decision; missing/conflicting facts return typed Unit 29 seams. Checked-in Release case/command flags stay false. Details: `businesslogic/granotLifecycle.releaseReconciliation.md`.
+- Priority `5` / actual Booked Observations may open a **Granot Booking Reconciliation Case**. A case is not a Booking. Exact reviewed Referral Booked evidence opens `create_referral_booking` without a Lead/Source Scope and can create one explicit no-Lead Referral Booking. Official Booking create/update/No Action happen only through Owner `POST /api/v1/admin/granot-lifecycle/booking-cases/:id/{confirm-booking,create-referral-booking,update-booking,no-action}` (Owner actor + one `Idempotency-Key`). Checked-in Booking-command and Referral flags stay false. Details: `docs/knowledge/granot-lifecycle/booking-reconciliation.md`.
+- Actual Release Observations may open a separate read-only **Granot Release Reconciliation Case** for the deterministic active Booking. A Release case is not a Cancellation and exposes no selector or command. Already-cancelled is a no-effect Decision; missing/conflicting facts return typed Unit 29 seams. Checked-in Release case/command flags stay false. Details: `docs/knowledge/granot-lifecycle/release-reconciliation.md`.
 - The booked-deal Google Form posts to `POST /api/v1/booked-leads` for direct Mongo-id bookings or `POST /api/v1/booked-leads/from-source` for source-driven form/call bookings.
 - Form bookings attach by original form lead Mongo id. Call bookings prefer an existing job-number match, then phone match, and finally create a `created_on_unmatched` call stub so the booked deal is preserved. Sheet Sync skips a misleading Calls-tab row for `created_on_unmatched` stubs (`jobPlanner.ts`).
 - Booking services upsert the booking by `lead_ref` + `lead_model`, resolve/snapshot agent allocations, upsert customer, mirror `booked`, `over_2000`, `over_4000`, `local`, and sometimes `source_company` back to the source lead, then sync the booking chain.
@@ -58,4 +58,4 @@ alwaysApply: false
 ## Change Guidance
 
 - Preserve the owner promise: a lead should remain traceable from website or call source through Granot, Mongo, Sheets, booking, and cancellation.
-- Before changing workflow logic, check `docs/showcase/owner-workflow.md`, the relevant `.cursor/businesslogic/*.service.md`, validation payloads, sheet-sync behavior, and Google Apps Script form submitters.
+- Before changing workflow logic, check `docs/showcase/owner-workflow.md`, the relevant `docs/knowledge/**/*.md`, validation payloads, sheet-sync behavior, and Google Apps Script form submitters.

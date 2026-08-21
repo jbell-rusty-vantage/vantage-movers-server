@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Granot HTTP Automation
 
-Owner invariants: [`.cursor/businesslogic/granotHttpCollector.service.md`](../businesslogic/granotHttpCollector.service.md).
+Owner invariants: [`docs/knowledge/granotHttpCollector.service.md`](../../docs/knowledge/services/granot-http-collector.md).
 
 - Admin surface: `/api/v1/admin/granot-automation/*` behind `requireApiSecret` + `requireRegistryOwnerActor`. Separate `app.use` in `src/app.ts` before v1.
 - Source list/create remain label + `supported_operations` compatible. Apply resolution dereferences `GranotCrmSource` and fails closed with `INVALID_GRANOT_SOURCES` when compatibility is not `ready` (`enabled` + `lifecycle_enabled` + non-`deferred` + matching routes). New labels start as `missing_reference`. Reviewed family inventory: [`operations-registry.md`](../../docs/knowledge/services/operations-registry.md).
