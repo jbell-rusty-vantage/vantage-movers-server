@@ -29,7 +29,7 @@ generated:
 
 # Call Lead Enrichment
 
-**Role:** Preview/sync Granot **Follow Up** row batches onto existing Call Leads. Does not create Call Leads or Bookings. Distinct from booked-jobs reconciliation ([`bookedCallLeadReconciliation.service.md`](./booked-call-lead-reconciliation.md)).
+**Role:** Preview/sync Granot **Follow Up** row batches onto existing Call Leads. Does not create Call Leads or Bookings. Distinct from booked-jobs reconciliation ([`booked-call-lead-reconciliation.md`](./booked-call-lead-reconciliation.md)).
 
 **System of Record:** MongoDB `call_leads`. Granot rows are an input, not linkage authority.
 
@@ -54,6 +54,6 @@ generated:
 
 ## Related
 
-- [`call-lead.service.md`](./call-lead.md), [`sheetSync.service.md`](./sheet-sync.md)
-- [`granotHttpCollector.service.md`](./granot-http-collector.md)
+- [`call-lead.md`](./call-lead.md), [`sheet-sync.md`](./sheet-sync.md)
+- [`granot-http-collector.md`](./granot-http-collector.md)
 - [`granot-crm-csv-s3-sync.mdc`](../../../.cursor/rules/granot-crm-csv-s3-sync.mdc)

@@ -125,14 +125,14 @@ Defaults: processing true, shadow true, all eight effect flags false. Processing
 
 ## Out of scope here
 
-Official Booking/Release commands, Admin case UI, and Release/Referral/discrepancy persistence — those live in [`granotLifecycle.bookingReconciliation.md`](./booking-reconciliation.md) and [`granotLifecycle.projections.md`](./projections.md). Public Lead Zod / `updateSourceOwnedLead` are not a lifecycle write path. This module does not rewrite Registry rows. Current reviewed policies live in [`granotLifecycle.sourcePolicy.md`](./source-policy.md) and [`operations-registry.md`](../services/operations-registry.md).
+Official Booking/Release commands, Admin case UI, and Release/Referral/discrepancy persistence — those live in [`booking-reconciliation.md`](./booking-reconciliation.md) and [`projections.md`](./projections.md). Public Lead Zod / `updateSourceOwnedLead` are not a lifecycle write path. This module does not rewrite Registry rows. Current reviewed policies live in [`source-policy.md`](./source-policy.md) and [`operations-registry.md`](../services/operations-registry.md).
 
 ## Related
 
-- Identity: [`granotLifecycle.identity.md`](./identity.md)
-- Desired-state planner: [`granotLifecycle.desiredState.md`](./desired-state.md)
-- Policy/gates: [`granotLifecycle.sourcePolicy.md`](./source-policy.md)
-- Drain/pending clock: [`granotLifecycle.drainer.md`](./drainer.md)
-- Booking cases: [`granotLifecycle.bookingReconciliation.md`](./booking-reconciliation.md)
-- Executor / command registry: [`domainCommands.service.md`](../services/domain-commands.md)
+- Identity: [`identity.md`](./identity.md)
+- Desired-state planner: [`desired-state.md`](./desired-state.md)
+- Policy/gates: [`source-policy.md`](./source-policy.md)
+- Drain/pending clock: [`drainer.md`](./drainer.md)
+- Booking cases: [`booking-reconciliation.md`](./booking-reconciliation.md)
+- Executor / command registry: [`domain-commands.md`](../services/domain-commands.md)
 - Software map: [`granot-lifecycle-capture.mdc`](../../../.cursor/rules/granot-lifecycle-capture.mdc)

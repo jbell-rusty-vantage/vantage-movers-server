@@ -32,8 +32,8 @@ generated:
 
 | Module | Purpose |
 |--------|---------|
-| `leadBrowse.service.md` | Paginated browse (`GET /call-leads`) with `q`, attachment filters, population |
-| `adminSearch.service.md` | Admin cross-resource typeahead |
+| `lead-browse.md` | Paginated browse (`GET /call-leads`) with `q`, attachment filters, population |
+| `admin-search.md` | Admin cross-resource typeahead |
 | Ring Central **Call Lead Ingestion** | Creates Call Leads; does not use this search |
 
 **Legacy import:** `src/services/callLeadSearch.service.ts` re-exports this file. Prefer `src/services/search`.
@@ -94,6 +94,6 @@ Use **search** when the extension has one or two identifiers and wants quick hit
 
 ## Related modules
 
-- Browse: `leadBrowse.service.md`
-- Call lead writes / duplicates: `call-lead.service.md`
+- Browse: `lead-browse.md`
+- Call lead writes / duplicates: `call-lead.md`
 - Phone utils: `utils/phone.ts`

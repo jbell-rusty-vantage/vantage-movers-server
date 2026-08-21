@@ -71,5 +71,5 @@ The processor converts a plan to `GranotAuthorizedLeadDesiredState` immediately 
 
 ## Related
 
-- Processor orchestration: [`granotLifecycle.processor.md`](./processor.md)
-- Identity input: [`granotLifecycle.identity.md`](./identity.md)
+- Processor orchestration: [`processor.md`](./processor.md)
+- Identity input: [`identity.md`](./identity.md)

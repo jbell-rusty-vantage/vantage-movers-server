@@ -32,8 +32,8 @@ generated:
 
 | Module | Purpose |
 |--------|---------|
-| `leadBrowse.service.md` | Paginated list/browse (`GET /form-leads`) — optional filters, no scoring |
-| `adminSearch.service.md` | Cross-resource admin typeahead (`GET /admin/search`) |
+| `lead-browse.md` | Paginated list/browse (`GET /form-leads`) — optional filters, no scoring |
+| `admin-search.md` | Cross-resource admin typeahead (`GET /admin/search`) |
 
 **Legacy import:** `src/services/formLeadSearch.service.ts` re-exports this file. Prefer `src/services/search`.
 
@@ -124,6 +124,6 @@ Confidence is informational; **`found` vs `ambiguous` is score-tie only**.
 
 ## Related modules
 
-- Browse/list UI: `leadBrowse.service.md`
-- Form lead writes: `form-lead.service.md`
+- Browse/list UI: `lead-browse.md`
+- Form lead writes: `form-lead.md`
 - Tests: `formLeadSearch.service.test.ts` (duplicate filter default)

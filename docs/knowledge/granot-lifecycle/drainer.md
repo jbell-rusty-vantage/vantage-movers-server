@@ -57,6 +57,6 @@ Metrics: `granot_lifecycle_queue_due`, `granot_lifecycle_oldest_due_seconds`, `g
 
 ## Related
 
-- Capture remains receipt-first ([`granotLifecycle.capture.md`](./capture.md)).
-- Processor remains callable and policy-owning ([`granotLifecycle.processor.md`](./processor.md)).
+- Capture remains receipt-first ([`capture.md`](./capture.md)).
+- Processor remains callable and policy-owning ([`processor.md`](./processor.md)).
 - Software map: [`granot-lifecycle-capture.mdc`](../../../.cursor/rules/granot-lifecycle-capture.mdc).

@@ -30,7 +30,7 @@ generated:
 
 **Role:** Convert one immutable **Granot Observation Receipt** into one immutable-in-meaning **Granot Observation**. This module owns every Section 10 field, result, and issue rule. It does **not** match Leads, resolve Registry policy, write Decisions, or mutate a Lead, Booking, or Cancellation.
 
-**Stack:** callable module only. Capture does not invoke this module. The Decision processor upserts an Observation when it is invoked after a fenced claim. Callers pass a receipt ID (or an already-read typed receipt). They must not normalize fields themselves. Claim/drain lives in [`granotLifecycle.drainer.md`](./drainer.md).
+**Stack:** callable module only. Capture does not invoke this module. The Decision processor upserts an Observation when it is invoked after a fenced claim. Callers pass a receipt ID (or an already-read typed receipt). They must not normalize fields themselves. Claim/drain lives in [`drainer.md`](./drainer.md).
 
 ## Public interface
 
@@ -79,7 +79,7 @@ generated:
 
 ## Related
 
-- Capture remains receipt-only ([`granotLifecycle.capture.md`](./capture.md)).
-- Decision processor may upsert an Observation when invoked ([`granotLifecycle.processor.md`](./processor.md)).
-- Queue/cron/requeue enter the fenced claim service ([`granotLifecycle.drainer.md`](./drainer.md)).
-- Approved HTTP automation apply captures a `granot_http_automation` receipt and enters the shared claim/processor ([`granotLifecycle.automationApply.md`](./automation-apply.md)). It does not mutate Leads from this module.
+- Capture remains receipt-only ([`capture.md`](./capture.md)).
+- Decision processor may upsert an Observation when invoked ([`processor.md`](./processor.md)).
+- Queue/cron/requeue enter the fenced claim service ([`drainer.md`](./drainer.md)).
+- Approved HTTP automation apply captures a `granot_http_automation` receipt and enters the shared claim/processor ([`automation-apply.md`](./automation-apply.md)). It does not mutate Leads from this module.

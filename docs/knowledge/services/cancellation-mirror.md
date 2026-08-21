@@ -74,11 +74,11 @@ This avoids double-sync and keeps sheet refresh batched with booking/source row 
 
 - Always load via `getLinkedLead` — do not query form/call collections ad hoc.
 - Never clear `booked` here; booking unlink is `clearBookingFromLead`.
-- When adding a new cancellation write path, pair mirror set with txn + **Cancellation Chain** job (see [`cancelledLead.service.md`](./cancelled-lead.md)).
+- When adding a new cancellation write path, pair mirror set with txn + **Cancellation Chain** job (see [`cancelled-lead.md`](./cancelled-lead.md)).
 - When adding a new cancellation unwind path, clear lead in txn and schedule sheet refresh explicitly if opting out of inline sync.
 
 ## Related modules
 
-- Full cancellation CRUD + resolver: `cancelledLead.service.md`
-- Booking mirror (also clears `cancelled` on booking delete): `bookings.service.md` → `bookingMirror.service.ts`
+- Full cancellation CRUD + resolver: `cancelled-lead.md`
+- Booking mirror (also clears `cancelled` on booking delete): `bookings.md` → `bookingMirror.service.ts`
 - Sheet lead refresh: `syncSourceLead`, `syncBookingAndSource` in `sheetSync/`

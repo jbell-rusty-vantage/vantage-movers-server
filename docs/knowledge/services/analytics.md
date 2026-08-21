@@ -146,7 +146,7 @@ Special merge shapes: `summary` → `{ totals }`, `booking-cancellation-ratio` �
 
 **Receiver-agent reports** (`receiverAgentPerformance.service.ts`) — three admin reports (`receiver-agent-performance`, `receiver-agent-trend`, `receiver-agent-source-breakdown`). Historical scope returns an empty payload with `unsupportedReceiverAgentReport()` metadata (`historical_receiver_agent_supported: false`). Combined merges production rows and keeps that historical warning. Source breakdown uses persisted registry source-company and granularity/CRM label snapshots; owner-created Source Companies keep their canonical slug/label and are never remapped to the legacy Main Site fallback. // pragma: allowlist secret
 
-**Lead cost** (`leadCost.service.ts`) — **overview only**, production all-time / last-7-days. Sums stored **CPL** on billable leads: Form Leads exclude Duplicate Leads; Call Leads exclude **Unmatched Call Leads** (`created_on_unmatched: true`). Lead CPL snapshots now come from Operations Registry resolution (see [`form-lead.service.md`](./form-lead.md)). // pragma: allowlist secret
+**Lead cost** (`leadCost.service.ts`) — **overview only**, production all-time / last-7-days. Sums stored **CPL** on billable leads: Form Leads exclude Duplicate Leads; Call Leads exclude **Unmatched Call Leads** (`created_on_unmatched: true`). Lead CPL snapshots now come from Operations Registry resolution (see [`form-lead.md`](./form-lead.md)). // pragma: allowlist secret
 
 ## Overview (`overview.service.ts`)
 
@@ -169,12 +169,12 @@ Calls `getAnalyticsReport`, flattens payload per report shape (summary single ro
 - `derived_source_company` is the canonical dimension for source-company booking reports; aliases merge in `combined` scope.
 - Historical vs production data are separate collections — `combined` sums both, it does not join by business id. // pragma: allowlist secret
 - Do not bypass `bookedLeadPrefix` / `cancelledLeadPrefix` / `leadMatch` when adding booking- or lead-scoped reports.
-- Agent binder attribution follows allocation snapshots (see `agentAllocation.service.md`).
+- Agent binder attribution follows allocation snapshots (see `agent-allocation.md`).
 
 ## Related modules
 
 - Scope/models: `admin/adminScope.service.ts`
-- Admin browse/search filters: `adminSearch.service.md`
-- Agent allocations on bookings: `agentAllocation.service.md`
-- CPL on leads: `form-lead.service.md`, `call-lead.service.md`
+- Admin browse/search filters: `admin-search.md`
+- Agent allocations on bookings: `agent-allocation.md`
+- CPL on leads: `form-lead.md`, `call-lead.md`
 - RingCentral ops reconcile: `ringcentral/analytics-reconcile.service.ts`

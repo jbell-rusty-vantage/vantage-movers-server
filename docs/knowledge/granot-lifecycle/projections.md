@@ -65,7 +65,7 @@ Pagination returns `{ items, next_cursor, current, capabilities }`. There is no 
 
 ## Operations health
 
-`GET /api/v1/admin/granot-lifecycle/operations/health` projects flags, activation, Mongo due/claim/dead-letter counts, 24-hour Decision groups with execution mode, open Booking/Release cases and discrepancies, command conflicts, last queue/cron runs, RingCentral lease/cursor telemetry, and the seven rollout alerts. Counts come from current models, not process memory. Due work matches Section 26: pending/retry plus claimed only when the lease has expired. Activation IDs and source scope refs are masked. Admin must not recompute due logic, p95, rates, or alerts. See [granotLifecycle.observability.md](./observability.md).
+`GET /api/v1/admin/granot-lifecycle/operations/health` projects flags, activation, Mongo due/claim/dead-letter counts, 24-hour Decision groups with execution mode, open Booking/Release cases and discrepancies, command conflicts, last queue/cron runs, RingCentral lease/cursor telemetry, and the seven rollout alerts. Counts come from current models, not process memory. Due work matches Section 26: pending/retry plus claimed only when the lease has expired. Activation IDs and source scope refs are masked. Admin must not recompute due logic, p95, rates, or alerts. See [observability.md](./observability.md).
 
 Lead timeline first verifies the exact Lead, then follows persisted Record Links to linked Job Numbers. It never contact-matches at read time.
 

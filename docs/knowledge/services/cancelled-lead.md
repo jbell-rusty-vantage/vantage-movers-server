@@ -35,11 +35,11 @@ generated:
 
 | File | Role |
 |------|------|
-| `cancelledLead.service.ts` | CRUD: create, update, delete, list. Canonical wrappers use `createCancelledLeadInTransaction` ([`domainCommands.service.md`](./domain-commands.md)). |
+| `cancelledLead.service.ts` | CRUD: create, update, delete, list. Canonical wrappers use `createCancelledLeadInTransaction` ([`domain-commands.md`](./domain-commands.md)). |
 | `cancellationResolver.ts` | Resolve target booking + enforce lead/booking match invariants |
 | `cancellationMirror.service.ts` | Stamp/clear `cancelled` on linked form/call lead (see dedicated doc) |
 
-Owner reporting via **Sheet Sync**: **Cancellation Chain** refreshes booking + source lead rows, then the `Cancelled Deals` row. Details: [`googleSheets.service.md`](./google-sheets.md), [`sheetSync.service.md`](./sheet-sync.md).
+Owner reporting via **Sheet Sync**: **Cancellation Chain** refreshes booking + source lead rows, then the `Cancelled Deals` row. Details: [`google-sheets.md`](./google-sheets.md), [`sheet-sync.md`](./sheet-sync.md).
 
 ## HTTP entry points
 
@@ -108,7 +108,7 @@ Update does **not** re-snapshot booking fields; patch only cancellation-owned co
 
 ### Lead mirror on create
 
-`mirrorCancellationToLead` sets `lead.cancelled = cancellation._id`. The source lead **keeps** `booked` — cancellation is additive to the booking, not a replacement. See `cancellationMirror.service.md`.
+`mirrorCancellationToLead` sets `lead.cancelled = cancellation._id`. The source lead **keeps** `booked` — cancellation is additive to the booking, not a replacement. See `cancellation-mirror.md`.
 
 ## Update (`updateCancelledLead`)
 
@@ -159,8 +159,8 @@ Delete tombstone coalesces with pending `cancellation_chain` upserts for the sam
 |--------|-------------|
 | `bookings/bookedLead.service.ts` | Booking delete with `cascade=true` removes linked cancellation first; mirrors cleared on lead |
 | `bookings/bookingMirror.service.ts` | `clearBookingFromLead` also clears `cancelled` on lead delete |
-| `agentAllocation.service.md` | Agent on cancellation = primary agent snapshot at create |
-| Analytics | `cancel_date`-scoped cancellation reports (`analytics.service.md`) |
+| `agent-allocation.md` | Agent on cancellation = primary agent snapshot at create |
+| Analytics | `cancel_date`-scoped cancellation reports (`analytics.md`) |
 
 ## Invariants
 
@@ -180,7 +180,7 @@ Delete tombstone coalesces with pending `cancellation_chain` upserts for the sam
 
 ## Related modules
 
-- Lead mirror semantics: `cancellationMirror.service.md`
-- Booking lifecycle: `bookings.service.md`
+- Lead mirror semantics: `cancellation-mirror.md`
+- Booking lifecycle: `bookings.md`
 - Sheets: `syncCancelledLeadToSheets`, `deleteCancelledLeadFromSheets`
 - Resolver exports: `getBookedLeadForCancellation` for reuse

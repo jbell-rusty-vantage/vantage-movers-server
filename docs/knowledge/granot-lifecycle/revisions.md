@@ -58,5 +58,5 @@ One reviewed UTC ISO history boundary and a separately reviewed `baseline_captur
 
 ## Related
 
-- [`form-lead.service.md`](../services/form-lead.md), [`call-lead.service.md`](../services/call-lead.md), [`bookings.service.md`](../services/bookings.md), [`cancelledLead.service.md`](../services/cancelled-lead.md)
-- [`granotLifecycle.processor.md`](./processor.md) — `createLeadFromGranot` and `synchronizeLeadFromGranot` persist creation/mutation Changes in the executor transaction
+- [`form-lead.md`](../services/form-lead.md), [`call-lead.md`](../services/call-lead.md), [`bookings.md`](../services/bookings.md), [`cancelled-lead.md`](../services/cancelled-lead.md)
+- [`processor.md`](./processor.md) — `createLeadFromGranot` and `synchronizeLeadFromGranot` persist creation/mutation Changes in the executor transaction

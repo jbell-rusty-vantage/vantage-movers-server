@@ -81,6 +81,6 @@ Identity is read-only. Processing remains true, shadow remains true, and all eig
 
 ## Related
 
-- Policy resolution: [`granotLifecycle.sourcePolicy.md`](./source-policy.md)
-- Processor consumes this resolver and does not reconstruct identity: [`granotLifecycle.processor.md`](./processor.md)
-- Observation identity fields: [`granotLifecycle.normalization.md`](./normalization.md)
+- Policy resolution: [`source-policy.md`](./source-policy.md)
+- Processor consumes this resolver and does not reconstruct identity: [`processor.md`](./processor.md)
+- Observation identity fields: [`normalization.md`](./normalization.md)

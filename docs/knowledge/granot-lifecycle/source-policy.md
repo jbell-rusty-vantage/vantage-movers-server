@@ -67,7 +67,7 @@ Every unreviewed row remains lifecycle-disabled, deferred, observation-only, and
 ## Related
 
 - Registry writes and audit: [`operations-registry.md`](../services/operations-registry.md)
-- Observation normalization: [`granotLifecycle.normalization.md`](./normalization.md)
-- Identity consumes this snapshot and never copies Registry semantics ([`granotLifecycle.identity.md`](./identity.md)).
-- Decision processor consumes this read/gate snapshot and Unit 14 identity ([`granotLifecycle.processor.md`](./processor.md)).
+- Observation normalization: [`normalization.md`](./normalization.md)
+- Identity consumes this snapshot and never copies Registry semantics ([`identity.md`](./identity.md)).
+- Decision processor consumes this read/gate snapshot and Unit 14 identity ([`processor.md`](./processor.md)).
 - Successful snapshots also carry `operational_enabled`, `lifecycle_enabled`, `source_company_active`, and `source_granularity_active` so Unit 15 can persist real gate facts.

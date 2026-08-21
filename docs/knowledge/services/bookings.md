@@ -34,13 +34,13 @@ generated:
 
 | File | Role |
 |------|------|
-| `bookedLead.service.ts` | Core CRUD: create, update, delete, populate. Canonical wrappers use `createBookedLeadInTransaction` ([`domainCommands.service.md`](./domain-commands.md)). |
+| `bookedLead.service.ts` | Core CRUD: create, update, delete, populate. Canonical wrappers use `createBookedLeadInTransaction` ([`domain-commands.md`](./domain-commands.md)). |
 | `bookedLeadFromSource.service.ts` | Form/phone submission bridge → `createBookedLead` |
 | `bookingMirror.service.ts` | Lead ↔ booking state sync + lead-update refresh |
 | `referralBooking.service.ts` | Referral bookings (no source lead) |
 | `leadlessBooking.service.ts` | Leadless bookings + `BookingLeadReconciliationCase` |
 
-Helpers in same folder: `bookingSourceResolver.ts` (lead lookup/create), `bookingWarnings.ts` (zero-binder warnings). Agent resolution: see `agentAllocation.service.md`.
+Helpers in same folder: `bookingSourceResolver.ts` (lead lookup/create), `bookingWarnings.ts` (zero-binder warnings). Agent resolution: see `agent-allocation.md`.
 
 ## HTTP entry points
 
@@ -120,7 +120,7 @@ Post-commit: `finalizeSheetSync`; operational events `booking.created` or `booki
 
 - Blocks referral bookings and bookings missing lead metadata (409).
 - Merchant re-resolved when provided; deposit drives `over_2000` / `over_4000`.
-- Agent changes: `resolveAgentAllocations` + `patch` (default) or `replace` — see `agentAllocation.service.md`.
+- Agent changes: `resolveAgentAllocations` + `patch` (default) or `replace` — see `agent-allocation.md`.
 - Txn: save booking, `mirrorBookingToLead` (no source_company override on update), `booking_chain` / `booked_lead.update`.
 
 ## Delete (`deleteBookedLead`)
@@ -185,7 +185,7 @@ Booking delete: clears `booked`, `cancelled`, threshold flags on lead. Legacy pa
 | Leadless create | `booked_lead` | `leadless_booking.create` |
 | Lead update with booking | `booking_chain` or `source_lead` | from `refreshAttachedBookingFromLead` |
 
-**Booking Chain** refreshes **Master Booked** (`Booked Deals` tab) and the linked source lead row. Details: [`googleSheets.service.md`](./google-sheets.md), [`sheetSync.service.md`](./sheet-sync.md).
+**Booking Chain** refreshes **Master Booked** (`Booked Deals` tab) and the linked source lead row. Details: [`google-sheets.md`](./google-sheets.md), [`sheet-sync.md`](./sheet-sync.md).
 
 ## Warnings and events
 
@@ -200,11 +200,11 @@ Booking delete: clears `booked`, `cancelled`, threshold flags on lead. Legacy pa
 
 - [`sheet-sync-process.mdc`](../../../.cursor/rules/sheet-sync-process.mdc) — outbox, drainer mechanics
 
-## Related businesslogic
+## Related services
 
-- [`cancelledLead.service.md`](./cancelled-lead.md) — **Cancellation** (referral blocked)
-- [`agentAllocation.service.md`](./agent-allocation.md) — **Agent Allocation**, **Binder**
-- [`analytics.service.md`](./analytics.md) — **Analytics** over bookings
+- [`cancelled-lead.md`](./cancelled-lead.md) — **Cancellation** (referral blocked)
+- [`agent-allocation.md`](./agent-allocation.md) — **Agent Allocation**, **Binder**
+- [`analytics.md`](./analytics.md) — **Analytics** over bookings
 
 ## Do not bypass
 

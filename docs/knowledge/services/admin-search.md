@@ -110,5 +110,5 @@ No cross-resource ranking — each type is capped independently. Empty groups ar
 
 - **Admin search (this doc):** quick jump by name, phone, job no, ref no, or Mongo id across all entity types.
 - **Admin browse:** filtered tables with pagination, sort, date range, source company, duplicate flag, etc. (`adminBrowse.service.ts`).
-- **Extension lead browse:** paginated form/call lists for the Granot extension Search workspace — `leadBrowse.service.md`.
-- **Extension lead search (POST):** scored form identity resolution or call OR-search — `formLeadSearch.service.md`, `callLeadSearch.service.md`.
+- **Extension lead browse:** paginated form/call lists for the Granot extension Search workspace — `lead-browse.md`.
+- **Extension lead search (POST):** scored form identity resolution or call OR-search — `form-lead-search.md`, `call-lead-search.md`.

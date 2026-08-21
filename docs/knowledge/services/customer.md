@@ -80,7 +80,7 @@ Both helpers run inside booking transactions when a `session` is passed.
 | `createReferralBooking` | `upsertCustomerFromBookingContact` from referral contact fields |
 | `refreshAttachedBookingFromLead` | Re-upsert from updated lead; updates `booking.customer` when id changes |
 
-See `bookings.service.md` for when `customer_name` override is stored on the booking document.
+See `bookings.md` for when `customer_name` override is stored on the booking document.
 
 ## HTTP API (`customer.service.ts`)
 
@@ -104,7 +104,7 @@ All routes under `/api/v1/customers` (require `x-api-secret`).
 
 ## Admin UI
 
-- Browse/search/export: `customers` admin resource (`adminBrowse.service.ts`, `adminSearch.service.md`).
+- Browse/search/export: `customers` admin resource (`adminBrowse.service.ts`, `admin-search.md`).
 - Detail loads attached booked + cancelled leads (limit 25 each).
 
 ## Manual CRUD vs upsert helpers
@@ -123,7 +123,7 @@ Manual creates/updates may leave `normalized_name` empty. Later booking upserts 
 
 ## Related modules
 
-- Bookings: `bookings.service.md`, `bookingMirror.service.ts`
+- Bookings: `bookings.md`, `bookingMirror.service.ts`
 - Model: `models/Customer.ts`
 - Validation: `validation/v1/customers.validation.ts`
 - Tests: `customers/customerFromLead.service.test.ts`

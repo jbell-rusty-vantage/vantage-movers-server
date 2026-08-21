@@ -112,8 +112,8 @@ Renaming updates future resolutions; booking snapshots keep prior `agent_name_sn
 
 ## Related modules
 
-- Agent allocation: `agentAllocation.service.md`
-- Booking merchant field: `bookings.service.md`
+- Agent allocation: `agent-allocation.md`
+- Booking merchant field: `bookings.md`
 - Name helper: `agents/agentName.ts`
 - Models: `models/Agent.ts`, `models/Merchant.ts`
 - Validation: `validation/v1/admin.validation.ts`

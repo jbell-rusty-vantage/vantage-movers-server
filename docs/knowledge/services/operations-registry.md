@@ -81,7 +81,7 @@ generated:
 
 ## Related
 
-- [`catalog.service.md`](./catalog.md) — public catalog facade
-- [`form-lead.service.md`](./form-lead.md) / [`call-lead.service.md`](./call-lead.md) — lead CPL snapshots
-- [`granotLifecycle.sourcePolicy.md`](../granot-lifecycle/source-policy.md) — runtime semantic read of reviewed Registry policy
+- [`catalog.md`](./catalog.md) — public catalog facade
+- [`form-lead.md`](./form-lead.md) / [`call-lead.md`](./call-lead.md) — lead CPL snapshots
+- [`source-policy.md`](../granot-lifecycle/source-policy.md) — runtime semantic read of reviewed Registry policy
 - [`operations-registry.mdc`](../../../.cursor/rules/operations-registry.mdc), [`cpl-operations.mdc`](../../../.cursor/rules/cpl-operations.mdc)

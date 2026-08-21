@@ -83,15 +83,15 @@ Identical deliveries are distinct receipts. `payload_sha256` is diagnostic, neve
 
 After commit, publish exactly `{ receipt_id }` when the environment is an approved production Vercel function runtime. Tests and unapproved environments skip publish. Publish failure is logged/metriced as `granot_lifecycle.queue.publish_failed` and cannot change `202` or the receipt. Capture still does not invoke the processor. // pragma: allowlist secret
 
-A dedicated consumer now exists (`api/queues/granot-lifecycle-consumer.ts`) and a five-minute cron safety net scans due work. Both are wake-ups only: Mongo receipt `processing.*` remains the durable work source. Details: [`granotLifecycle.drainer.md`](./drainer.md).
+A dedicated consumer now exists (`api/queues/granot-lifecycle-consumer.ts`) and a five-minute cron safety net scans due work. Both are wake-ups only: Mongo receipt `processing.*` remains the durable work source. Details: [`drainer.md`](./drainer.md).
 
 ## Related
 
-- CRM Posting on form-lead create does **not** write a receipt and is not triggered by webhooks ([`form-lead.service.md`](../services/form-lead.md)).
-- Approved Owner browser-extension apply uses `captureChannelOperationReceipt` (`observation_channel: "browser_extension"`, `authentication_method: "extension_session"`). Same channel + operation ID + hash replays the receipt; a different hash is `409 GRANOT_OPERATION_IDEMPOTENCY_CONFLICT` and creates no row. Unique-index races reload the winner and apply the same hash check. Details: [`granotLifecycle.extensionApply.md`](./extension-apply.md).
-- Approved HTTP automation apply uses `captureChannelOperationReceipt` (`observation_channel: "granot_http_automation"`, `authentication_method: "automation_owner_approval"`). Operation ID is `${run_id}:${action_id}`. Details: [`granotLifecycle.automationApply.md`](./automation-apply.md).
+- CRM Posting on form-lead create does **not** write a receipt and is not triggered by webhooks ([`form-lead.md`](../services/form-lead.md)).
+- Approved Owner browser-extension apply uses `captureChannelOperationReceipt` (`observation_channel: "browser_extension"`, `authentication_method: "extension_session"`). Same channel + operation ID + hash replays the receipt; a different hash is `409 GRANOT_OPERATION_IDEMPOTENCY_CONFLICT` and creates no row. Unique-index races reload the winner and apply the same hash check. Details: [`extension-apply.md`](./extension-apply.md).
+- Approved HTTP automation apply uses `captureChannelOperationReceipt` (`observation_channel: "granot_http_automation"`, `authentication_method: "automation_owner_approval"`). Operation ID is `${run_id}:${action_id}`. Details: [`automation-apply.md`](./automation-apply.md).
 - Software map: [`granot-lifecycle-capture.mdc`](../../../.cursor/rules/granot-lifecycle-capture.mdc).
 
 ## Out of scope here
 
-Capture does not call Observation normalization or the Decision processor. Normalization lives in [`granotLifecycle.normalization.md`](./normalization.md). Processor orchestration lives in [`granotLifecycle.processor.md`](./processor.md). Claim/lease/retry/requeue live in [`granotLifecycle.drainer.md`](./drainer.md). Official Lead/Booking writes and Owner Booking commands stay in those modules; this path still inserts a receipt only.
+Capture does not call Observation normalization or the Decision processor. Normalization lives in [`normalization.md`](./normalization.md). Processor orchestration lives in [`processor.md`](./processor.md). Claim/lease/retry/requeue live in [`drainer.md`](./drainer.md). Official Lead/Booking writes and Owner Booking commands stay in those modules; this path still inserts a receipt only.

@@ -67,6 +67,6 @@ Worker claims `applying` runs under a durable lease (`granot:automation:account`
 
 ## Related
 
-- [`granotLifecycle.automationApply.md`](../granot-lifecycle/automation-apply.md)
-- [`granotLifecycle.capture.md`](../granot-lifecycle/capture.md)
+- [`automation-apply.md`](../granot-lifecycle/automation-apply.md)
+- [`capture.md`](../granot-lifecycle/capture.md)
 - [`granot-http-automation.mdc`](../../../.cursor/rules/granot-http-automation.mdc)

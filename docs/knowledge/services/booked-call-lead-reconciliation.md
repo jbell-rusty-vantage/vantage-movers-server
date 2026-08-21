@@ -30,7 +30,7 @@ generated:
 
 **Role:** Apply Granot **Booked Jobs** CRM row data to existing Vantage **Call Leads** and **Bookings** — refresh fields from CRM without creating Bookings or re-linking leads. Distinct from **Call Lead Enrichment** (Follow Up Estimates path).
 
-**System of Record:** MongoDB `call_leads` and `booked_leads`. Granot CRM rows are an enrichment/reconciliation input, not authoritative for linkage. This service does **not** create Bookings; booking creation stays in [`bookings.service.md`](./bookings.md).
+**System of Record:** MongoDB `call_leads` and `booked_leads`. Granot CRM rows are an enrichment/reconciliation input, not authoritative for linkage. This service does **not** create Bookings; booking creation stays in [`bookings.md`](./bookings.md).
 
 **Facade:** `src/services/bookedCallLeadReconciliation.service.ts` re-exports this folder for routes. New code should import from `src/services/reconciliation/`.
 
@@ -163,8 +163,8 @@ Changes array uses `lead.*`, `booking.*`, `booking.customer` keys for operator v
 | `granotCrmCsv/sync.service.ts` | Booked CSV batch driver |
 | `enrichment/callLeadEnrichment.service.ts` | Follow-Up Estimates call rows (non-booked / non-prior-5) |
 | `bookings/` | Booking creation, mirror, `booking_chain` sync |
-| `call-lead.service.md` | Call lead create/update semantics |
-| `googleSheets.service.md` | Projections behind sheet sync jobs |
+| `call-lead.md` | Call lead create/update semantics |
+| `google-sheets.md` | Projections behind sheet sync jobs |
 | `rules/granot-crm-csv-s3-sync.mdc` | CSV ingest + sync orchestration |
 
 ## Tests

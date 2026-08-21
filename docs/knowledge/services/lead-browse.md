@@ -32,7 +32,7 @@ generated:
 
 **Shared helpers:** `search/leadBrowseShared.ts` (filter builders, summary mappers, populate selects).
 
-**Distinct from scored search:** `formLeadSearch.service.md` / `callLeadSearch.service.md` (POST identity resolution).
+**Distinct from scored search:** `form-lead-search.md` / `call-lead-search.md` (POST identity resolution).
 
 ## HTTP entry points
 
@@ -133,6 +133,6 @@ Unpopulated or broken refs → `null` on the result row.
 
 ## Related modules
 
-- Form/call POST search: `formLeadSearch.service.md`, `callLeadSearch.service.md`
-- Admin list/detail: `adminSearch.service.md` + `admin/adminBrowse.service.ts`
+- Form/call POST search: `form-lead-search.md`, `call-lead-search.md`
+- Admin list/detail: `admin-search.md` + `admin/adminBrowse.service.ts`
 - Barrel: `src/services/search/index.ts`
