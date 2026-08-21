@@ -7,7 +7,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, relative } from "node:path";
 
 const ROOT = process.cwd();
-const SEARCH_ROOTS = ["docs", ".cursor/businesslogic"];
+const SEARCH_ROOTS = ["docs"];
 const SKIP_DIRS = new Set([
   "owner-daily-operations",
   "owner-daily-operations-and-intakes-reduced",

@@ -6,7 +6,7 @@ description: Type-grouped entrypoint for agent-readable concepts.
 
 # Vantage main server knowledge
 
-Query stamped rows with `pnpm okf:query` (`--type Service`, `--tag`, `--status`, `--stale`). Paths below are current on disk. `.cursor/businesslogic/` holds stubs that redirect here.
+Query stamped rows with `pnpm okf:query` (`--type Service`, `--tag`, `--status`, `--stale`). Paths below are current on disk.
 
 Glossary stays in workspace-root [`CONTEXT.md`](../CONTEXT.md) (absent in this standalone checkout). Do not redefine terms here.
 
