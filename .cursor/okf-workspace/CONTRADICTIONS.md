@@ -20,7 +20,7 @@ Format:
 
 ## adr-skipped-absent | open | 2026-08-21T0217Z
 - sources: `../docs/adr/0001-mongodb-system-of-record.md`, `../docs/adr/0002-granot-crm-post-despite-downstream-failures.md`, `../docs/adr/0003-lead-id-granot-leadno-ref-no-contract.md`; this standalone `vantage-main-server` checkout
-- conflict: Pass 1 must stamp those three ADRs in place. They are not present here (`optional_checkout`). `pnpm okf:progress` reports `skipped-absent` for all three.
+- conflict: Conversion Pass 1 could not stamp those three ADRs. They are not present here (`optional_checkout`). Optimization unit `opt-f` must not invent copies. Record a GitHub path if MCP finds them in another Vantage repo.
 - action: leave — do not invent copies. Stamp only if a later checkout includes `../docs/adr/`. Index lists the workspace paths.
 
 ## Closed

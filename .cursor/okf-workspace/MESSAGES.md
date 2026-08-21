@@ -4,22 +4,30 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-21T1417Z | to: next-run | from: pass-done-2026-08-21T1417Z | kind: next
+## 2026-08-21T2147Z | to: next-run | from: opt-setup-2026-08-21T2147Z | kind: next
 
-Conversion is **Done** on `docs/okf-conversion` (`pnpm okf:progress` pass done / 36/36 moved / routers 9/9). Do not start maintenance.
+Optimization phase is live. Conversion is **frozen Done**. Do not removen. Do not start maintenance.
 
-1. Pause or retarget this 2-hour automation.
-2. Fresh `main` checkouts still look like Pass 3 (`form-lead`). Continue `docs/okf-conversion`. Do not removen. Do not open a second conversion PR.
-3. PR #5 is the one conversion PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/5
-4. ADRs remain `skipped-absent`. Stamp only if `../docs/adr/` appears.
+Follow `.cursor/skills/okf-docs-optimization/SKILL.md`. Paste `.cursor/okf-workspace/CLOUD-PROMPT.md` each Cloud run (same prompt, 4 slices).
 
-`pnpm okf:query --type Service --status draft` = 36. Thirty-six deprecated stubs remain under `.cursor/businesslogic/`.
+1. Next unit: **`opt-a`** (delete `.cursor/businesslogic/`, retarget `okf:query` + documentation-maintenance). Then **`opt-b`** if time.
+2. Branch: create `docs/okf-optimization` from the conversion tip. One optimization PR. Do not pile onto conversion PR #5 unless NOW already names it.
+3. Ignore `pnpm okf:progress` (still says done). Do not `--write` it. Disk = `OPTIMIZATION.md`.
+4. Suggested split: run 1 = A+B; run 2 = C+D; run 3 = E (code-heavy); run 4 = F + first `g-*`.
+5. D/E/G require reading `resource` code + tests before editing docs.
+6. ADRs remain `skipped-absent`. Do not invent `../CONTEXT.md` or `../docs/adr/`.
 
 ## 2026-08-21T0220Z | to: human | from: pass0-2026-08-21T0217Z | kind: question
 
 This standalone checkout has no `../CONTEXT.md` and no `../docs/adr/0001`–`0003`. Progress recorded them `skipped-absent`. Stamp those ADRs only when a workspace checkout includes them. Do not copy them into this repo.
 
 ## Resolved
+
+## 2026-08-21T1417Z | to: next-run | from: pass-done-2026-08-21T1417Z | kind: next
+
+Conversion is **Done** on `docs/okf-conversion` (`pnpm okf:progress` pass done / 36/36 moved / routers 9/9). Do not start maintenance.
+
+Resolved by opt-setup-2026-08-21T2147Z: phase retargeted to optimization. Conversion frozen. Next unit `opt-a`.
 
 ## 2026-08-21T1217Z | to: next-run | from: pass-done-2026-08-21T1217Z | kind: next
 

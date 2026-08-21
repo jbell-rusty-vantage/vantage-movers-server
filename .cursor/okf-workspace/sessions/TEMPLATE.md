@@ -1,17 +1,25 @@
 # Session <session-id>
 
 - Date (UTC):
-- Pass started / ended:
+- Phase: optimization
+- Unit started / ended:
 - Lock: taken | stolen | skipped
 - Branch / PR:
 
 ## Disk at start
 
-- `pnpm okf:progress` pass / next:
+- `OPTIMIZATION.md` next unchecked:
+- `.cursor/businesslogic/` exists?:
+- `pnpm okf:query --type Service` count:
+- `pnpm okf:query --type Service --status deprecated` count:
 
 ## Units completed
 
-- id → stamp | move | router | contract | skip
+- id → done | skip | leftover
+
+## Code-truth
+
+- path → what current code forced (or none — mechanical A/B/C)
 
 ## Messages posted
 
