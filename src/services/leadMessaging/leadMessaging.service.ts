@@ -13,7 +13,10 @@ import {
   isTestMode,
   leadMessagingRetryDelayMs,
   shouldAllowLeadMessagingInTestMode,
+  type LeadMessageOrigin,
+  type LeadMessagePurpose,
   type LeadMessageStatus,
+  type OutboundSmsConsentBasis,
 } from "../../config/domain";
 import { logger } from "../../logger";
 import {
@@ -49,7 +52,7 @@ const DISPATCH_IN_FLIGHT_STATUSES = new Set([
   "retry_scheduled",
 ]);
 
-export type PersistLeadMessageInput = {
+export type PersistFormLeadMessageInput = {
   formLeadId: string;
   destinationPhone: string;
   formInput: CreateFormLeadInput;
@@ -57,6 +60,38 @@ export type PersistLeadMessageInput = {
   testMode: boolean;
   session?: ClientSession;
 };
+
+export type PersistGranotLeadMessageInput = {
+  lead_ref: { model: "FormLead" | "CallLead"; id: string };
+  destinationPhone: string;
+  body: string;
+  purpose: Extract<LeadMessagePurpose, "granot_lead_created_confirmation">;
+  message_key: string;
+  template_version: number;
+  origin: Extract<LeadMessageOrigin, "granot_lead_created">;
+  consent_basis: OutboundSmsConsentBasis;
+  observation_id: string;
+  lead_source_company: string;
+  granot_crm_source: string;
+  testMode: boolean;
+  session?: ClientSession;
+};
+
+export type PersistLeadMessageInput =
+  | PersistFormLeadMessageInput
+  | PersistGranotLeadMessageInput;
+
+function isGranotPersistInput(
+  input: PersistLeadMessageInput,
+): input is PersistGranotLeadMessageInput {
+  return "origin" in input && input.origin === "granot_lead_created";
+}
+
+function messageLeadId(message: Pick<LeadMessageDocument, "form_lead" | "lead_ref" | "_id">): string {
+  if (message.form_lead) return message.form_lead.toString();
+  if (message.lead_ref?.id) return String(message.lead_ref.id);
+  return message._id.toString();
+}
 
 export type LeadMessagingOutcome = {
   message_id: string | null;
@@ -87,20 +122,21 @@ export async function persistLeadMessageIntent(
     ) => Promise<string | null>;
   } = {},
 ): Promise<LeadMessageDocument | null> {
-  if (
-    (input.testMode && !shouldAllowLeadMessagingInTestMode()) ||
-    input.formInput.sms_consent !== true
-  ) {
+  if (input.testMode && !shouldAllowLeadMessagingInTestMode()) {
+    return null;
+  }
+  if (!isGranotPersistInput(input) && input.formInput.sms_consent !== true) {
     return null;
   }
 
   const mode = dependencies.mode ?? getLeadMessagingMode();
   const destination = normalizeSmsDestination(input.destinationPhone);
-  let skippedReason = input.duplicate
-    ? "duplicate_lead"
-    : mode === "disabled"
-      ? "messaging_disabled"
-      : null;
+  let skippedReason =
+    !isGranotPersistInput(input) && input.duplicate
+      ? "duplicate_lead"
+      : mode === "disabled"
+        ? "messaging_disabled"
+        : null;
   if (!skippedReason) {
     skippedReason = await (
       dependencies.evaluateGuard ?? reserveLeadMessagingCapacity
@@ -116,9 +152,43 @@ export async function persistLeadMessageIntent(
     process.env.TWILIO_FROM_NUMBER?.trim() ??
     "not_configured";
 
+  if (isGranotPersistInput(input)) {
+    return (dependencies.createMessage ?? createLeadMessage)(
+      {
+        ...(input.lead_ref.model === "FormLead"
+          ? { form_lead: toObjectId(input.lead_ref.id) }
+          : {}),
+        lead_ref: {
+          model: input.lead_ref.model,
+          id: toObjectId(input.lead_ref.id),
+        },
+        origin: input.origin,
+        lead_source_company: toObjectId(input.lead_source_company),
+        granot_crm_source: toObjectId(input.granot_crm_source),
+        observation_id: toObjectId(input.observation_id),
+        consent_basis: input.consent_basis,
+        source_template_version: input.template_version,
+        provider: "twilio",
+        channel: "sms",
+        purpose: input.purpose,
+        message_key: input.message_key,
+        template_version: input.template_version,
+        to: destination,
+        from: configuredFrom,
+        body: input.body,
+        dispatch_mode: mode,
+        status,
+        skip_reason: skippedReason,
+      },
+      input.session,
+    );
+  }
+
   return (dependencies.createMessage ?? createLeadMessage)(
     {
       form_lead: toObjectId(input.formLeadId),
+      lead_ref: { model: "FormLead", id: toObjectId(input.formLeadId) },
+      origin: "public_form",
       provider: "twilio",
       channel: "sms",
       purpose: "quote_request_confirmation",
@@ -203,7 +273,7 @@ export async function dispatchOrQueuePersistedLeadMessage(
       err: error,
       msg: "lead_messaging.post_persist_dispatch_failed",
       leadMessageId: message._id.toString(),
-      leadId: message.form_lead.toString(),
+      leadId: messageLeadId(message),
     });
     try {
       const status = dependencies.readStatus
@@ -903,7 +973,7 @@ async function recordMessagingEvent(
       level === "info"
         ? "Lead message accepted by provider."
         : "Lead message dispatch failed.",
-    entity: { type: "form_lead", id: message.form_lead.toString() },
+    entity: { type: "form_lead", id: messageLeadId(message) },
     leadIdentity: { phone: message.to },
     details: {
       lead_message_id: message._id.toString(),
@@ -920,7 +990,7 @@ async function recordMessagingEvent(
 async function recordStatusCallbackEvent(
   message: Pick<
     LeadMessageDocument,
-    "_id" | "form_lead" | "to" | "from" | "channel" | "purpose"
+    "_id" | "form_lead" | "lead_ref" | "to" | "from" | "channel" | "purpose"
   >,
   input: {
     messageSid: string;
@@ -947,7 +1017,7 @@ async function recordStatusCallbackEvent(
       : applied
         ? `Lead message status changed to ${providerStatus}.`
         : `Lead message status ${providerStatus} was received but not applied.`,
-    entity: { type: "form_lead", id: message.form_lead.toString() },
+    entity: { type: "form_lead", id: messageLeadId(message) },
     leadIdentity: { phone: message.to },
     details: {
       lead_message_id: message._id.toString(),

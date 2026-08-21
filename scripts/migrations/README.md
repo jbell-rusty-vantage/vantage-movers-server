@@ -432,5 +432,54 @@ Reviewed normalized labels: Best Relocation Call/Form families, Main Site
 Forms/Inbounds, TBM Forms, 10best Inbounds, TBM Forms Prime, TBM Prime
 Inbounds, Top10 Forms/Inbounds, Referral, Paid Overflow, and source label
 Auto. Provider payload `type=AUTO` is not a classification input. Best
-Relocation Call/Form creation policy is `create_if_missing`; the other
-reviewed source-scoped families stay `link_only`.
+Relocation Call/Form and Paid Overflow creation policy is
+`create_if_missing`; the other reviewed source-scoped families stay
+`link_only`.
+
+Paid Overflow is a new Source Company / Source Granularity / CRM Source with
+no dedicated lead sheet and no Forms/Inbounds split. Create those documents,
+classify `create_if_missing`, and enable confirmation SMS with:
+
+```text
+pnpm migration:paid-overflow-source -- --report
+pnpm migration:paid-overflow-source -- --apply --confirm-production=<db>
+pnpm migration:paid-overflow-source -- --verify
+```
+
+## Granot CRM Source outbound SMS backfill
+
+`granot-crm-source-outbound-sms.ts` writes the default `outbound_sms`
+subdocument (`enabled: false`, `consent_basis: not_attested`) onto existing
+CRM Sources that lack it. It does not turn texting on.
+
+```text
+pnpm migration:granot-crm-source-outbound-sms -- --report
+pnpm migration:granot-crm-source-outbound-sms -- --backfill --confirm-production=<db>
+pnpm migration:granot-crm-source-outbound-sms -- --verify
+```
+
+Best Relocation Forms and Inbounds keep `create_if_missing` as the creation
+policy. Texting is a separate CRM Source policy (`outbound_sms`). After the
+global default backfill, enable those two names through the audited Owner
+command:
+
+```text
+pnpm migration:granot-crm-source-sms-best-relocation -- --report
+pnpm migration:granot-crm-source-sms-best-relocation -- --apply --confirm-production=<db>
+pnpm migration:granot-crm-source-sms-best-relocation -- --verify
+```
+
+Forms attest `customer_submitted_form`. Inbounds attest
+`existing_relationship`. Live sends still require
+`GRANOT_LEAD_CREATED_SMS_ENABLED=true` and `LEAD_MESSAGING_MODE` not
+`disabled`.
+
+`lead-message-lead-ref.ts` is the phase-1 `LeadMessage.lead_ref` backfill
+(`origin: public_form` where `form_lead` exists). It does not relax
+`form_lead` and does not send messages.
+
+```text
+pnpm migration:lead-message-lead-ref -- --report
+pnpm migration:lead-message-lead-ref -- --backfill --confirm-production=<db>
+pnpm migration:lead-message-lead-ref -- --verify
+```

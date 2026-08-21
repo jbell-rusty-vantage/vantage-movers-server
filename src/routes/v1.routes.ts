@@ -97,6 +97,8 @@ import {
   createOrUpdateSourceCompany,
   createOrUpdateSourceGranularity,
   createOrUpdateGranotCrmSource,
+  listRecentGranotCrmSourceSms,
+  setGranotCrmSourceOutboundSms,
   getProjectedGranotCrmSource,
   getSourceCompany,
   getSourceCompanyBySlug,
@@ -152,6 +154,8 @@ import {
   sourceResolutionPreviewSchema,
   granotCrmSourceRegistryUpdateSchema,
   granotCrmSourceLifecycleActivationSchema,
+  granotCrmSourceOutboundSmsSchema,
+  granotCrmSourceOutboundSmsRecentQuerySchema,
   listMovingCarriersQuerySchema,
   movingCarrierCreateSchema,
   movingCarrierImportSchema,
@@ -361,6 +365,14 @@ router.patch("/api/v1/admin/granot-crm-sources/:id", handleGranotCrmSourceUpdate
 router.patch(
   "/api/v1/admin/granot-crm-sources/:id/activation",
   handleGranotCrmSourceActivation,
+);
+router.patch(
+  "/api/v1/admin/granot-crm-sources/:id/outbound-sms",
+  handleGranotCrmSourceOutboundSms,
+);
+router.get(
+  "/api/v1/admin/granot-crm-sources/:id/outbound-sms/recent",
+  handleGranotCrmSourceOutboundSmsRecent,
 );
 router.post(
   "/api/v1/admin/source-resolution/preview",
@@ -1139,6 +1151,45 @@ async function handleGranotCrmSourceUpdate(req: Request, res: Response) {
     );
     const data = await getProjectedGranotCrmSource(id);
     return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleGranotCrmSourceOutboundSms(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
+    const parsed = granotCrmSourceOutboundSmsSchema.parse(req.body);
+    const data = await setGranotCrmSourceOutboundSms(
+      {
+        granot_crm_source_id: id,
+        enabled: parsed.enabled,
+        body_template: parsed.body_template,
+        consent_basis: parsed.consent_basis,
+        ...(parsed.daily_cap !== undefined ? { daily_cap: parsed.daily_cap } : {}),
+        reason: parsed.reason,
+      },
+      actor,
+    );
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleGranotCrmSourceOutboundSmsRecent(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const parsed = granotCrmSourceOutboundSmsRecentQuerySchema.parse(req.query);
+    const items = await listRecentGranotCrmSourceSms({
+      granot_crm_source_id: id,
+      limit: parsed.limit,
+    });
+    return res.json({ ok: true, data: { items } });
   } catch (error) {
     return sendError(req, res, error);
   }

@@ -1,6 +1,6 @@
 ---
 description: Operations Registry module, authorization, audit, and migration rules
-globs: src/services/operationsRegistry/**/*.ts,src/models/{Agent,Merchant,LeadSourceCompany,LeadSourceGranularity,OperationsRegistryChange,GranotCrmSource,GranotAutomationSource}.ts,scripts/migrations/operations-registry-*.ts,scripts/migrations/granot-lifecycle-source-registry*.ts,src/routes/v1.routes.ts
+globs: src/services/operationsRegistry/**/*.ts,src/models/{Agent,Merchant,LeadSourceCompany,LeadSourceGranularity,OperationsRegistryChange,GranotCrmSource,GranotAutomationSource}.ts,scripts/migrations/operations-registry-*.ts,scripts/migrations/granot-lifecycle-source-registry*.ts,scripts/migrations/granot-crm-source-outbound-sms*.ts,src/routes/v1.routes.ts
 alwaysApply: false
 ---
 
@@ -19,3 +19,4 @@ Software-only notes that are not in those files may stay below (env, ngrok, coll
 - Domain mutation and `operations_registry_changes` insert share one Mongo transaction. Audit failure aborts the mutation. Cache invalidation occurs only after commit. Audit snapshots must be bounded and redact secrets, credentials, tokens, authorization values, and provider payloads.
 - Migration scripts under `scripts/migrations/` are dry-run by default, reject historical/unknown databases, require explicit [REDACTED] apply confirmation, write deterministic redacted manifests, and never import historical models.
 - Granot source classification is `scripts/migrations/granot-lifecycle-source-registry.ts` plus the checked-in manifest. `--scope=best_relocation_creation_policy` and `--scope=link_only_automation_sources` are the only scoped apply modes.
+- CRM Source texting is `GranotCrmSource.outbound_sms`, written only through `setGranotCrmSourceOutboundSms`. `create_if_missing` does not send texts. Default backfill is `pnpm migration:granot-crm-source-outbound-sms`. Best Relocation enable is `pnpm migration:granot-crm-source-sms-best-relocation`. Production posture stays in [`lifecycle-activation-flags-and-source-policies.md`](../../docs/granot-lead-lifecycle/lifecycle-activation-flags-and-source-policies.md); do not copy that table here.

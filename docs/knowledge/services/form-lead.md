@@ -140,6 +140,13 @@ marks the Lead Message `failed` and returns that status on the create
 response. It does not throw out of `finalizeFormLeadCreateAfterCommit`, so
 Sheet Sync, CRM Posting, and the 201 create response still complete.
 
+Granot `create_if_missing` confirmation texts reuse this same sender and
+quiet-hours `sendAt` path after `createLeadFromGranot` commits. They are
+configured on `GranotCrmSource.outbound_sms` and stay off unless
+`GRANOT_LEAD_CREATED_SMS_ENABLED=true`, the source policy is
+`create_if_missing`, and a consent basis is recorded. A failed Granot text
+never affects the created Lead.
+
 ## Operational Events (create)
 
 - `lead.form.created`

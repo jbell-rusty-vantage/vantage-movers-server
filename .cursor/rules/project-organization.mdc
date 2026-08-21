@@ -123,7 +123,7 @@ Public v1 extras (still behind the v1 guard unless noted): `POST /api/v1/leadles
 
 ## Config Domain Modules (`src/config/domain/`)
 
-`constants`, `sheets`, `sources`, `cpl` / `cplRateDefinitions`, `runtime`, `googleAuth`, `googleDriveOAuth`, `googlePicker`, `sheetSync`, `granotCsv`, `granotWebhook` (secret + env-scoped lifecycle queue topic/publish guard), `granotLifecycle` (ten processing/shadow/effect flags), `observability`, `leadMessaging` (`getLeadMessagingCredentials()` includes optional `messagingServiceSid` from `TWILIO_MESSAGING_SERVICE_SID`; overnight scheduling stays off unless `LEAD_MESSAGING_QUIET_HOURS_ENABLED=true`), `employeeBookingMatching`, `bookingReconciliation`, `reportingLiveTest` — barrel-exported via `domain.ts`.
+`constants`, `sheets`, `sources`, `cpl` / `cplRateDefinitions`, `runtime`, `googleAuth`, `googleDriveOAuth`, `googlePicker`, `sheetSync`, `granotCsv`, `granotWebhook` (secret + env-scoped lifecycle queue topic/publish guard), `granotLifecycle` (ten processing/shadow/effect flags), `observability`, `leadMessaging` (`getLeadMessagingCredentials()` includes optional `messagingServiceSid` from `TWILIO_MESSAGING_SERVICE_SID`; overnight scheduling stays off unless `LEAD_MESSAGING_QUIET_HOURS_ENABLED=true`; Granot create-if-missing confirmation SMS stays off unless `GRANOT_LEAD_CREATED_SMS_ENABLED=true`), `employeeBookingMatching`, `bookingReconciliation`, `reportingLiveTest` — barrel-exported via `domain.ts`.
 
 **`reporting`** — delivery limits/flags; import `./domain/reporting` directly (not in barrel).
 
@@ -150,7 +150,7 @@ Run via `package.json` so `.env` + `tsx` stay consistent.
 | `scripts/reporting/` | Live Google harness + artifact janitor (`pnpm reporting:*`) |
 | `scripts/historical/` | Historical audits/backfills/repairs (+ relaxed historical models when present) |
 | `scripts/historical_production_db_staged_merge_ingestion/` | Snapshot/plan/apply/verify/rollback (`pnpm historical:*`) |
-| `scripts/migrations/` | Ops-registry seed/backfill/RC migrations (`pnpm migrations:*`) and Granot lifecycle receipt/source-registry/index plus owner-gated operator scripts (`pnpm migration:granot-lifecycle:*`; commands in `scripts/migrations/README.md`) |
+| `scripts/migrations/` | Ops-registry seed/backfill/RC migrations (`pnpm migrations:*`) and Granot lifecycle receipt/source-registry/index plus owner-gated operator scripts (`pnpm migration:granot-lifecycle:*`, `pnpm migration:granot-crm-source-outbound-sms`, `pnpm migration:granot-crm-source-sms-best-relocation`, `pnpm migration:lead-message-lead-ref`; commands in `scripts/migrations/README.md`) |
 | `scripts/prototypes/granot-lead-lifecycle/specs/` and `delivery/` | Retained Granot lifecycle contract, traceability, unit history, and certification evidence; executable prototype commands were retired in Unit 33 |
 | `scripts/output/` | Generated artifacts (not runtime) |
 | Root one-offs | `dev-server.ts`, `best-relocation-sheet-ingest.ts`, `generate-granot-webhook-secret.ts`, `test-setup.ts`, `dump-operations-name-link-inventory.ts` (`pnpm ops:dump-name-link-inventory`), `ingest-moving-carriers.ts` (`pnpm db:ingest-moving-carriers`), `test-create-google-spreadsheet.ts` |

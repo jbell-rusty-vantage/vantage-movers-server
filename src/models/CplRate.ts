@@ -6,7 +6,7 @@ import { CPL_LEAD_TYPES } from "../config/domain/cplRateDefinitions";
  * Owner-editable CPL (cost-per-lead) rate for one granular lead-type slot,
  * e.g. "Best Relocation Forms" vs "Best Relocation Inbounds". One document
  * per entry in `CPL_RATE_DEFINITIONS` -- see `cplRateDefinitions.ts` for the
- * canonical 13-slot list this collection is seeded from.
+ * canonical 14-slot list this collection is seeded from.
  */
 const CplRateSchema = new Schema(
   {

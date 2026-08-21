@@ -59,6 +59,7 @@ export const CPL_RATE_DEFINITIONS: readonly CplRateDefinition[] = [
   { label: "GetMovers Inbounds", sourceCompany: "get_movers_leads", leadType: "call", defaultCpl: 0 },
   { label: "Main Site Forms", sourceCompany: "main_site", leadType: "form", defaultCpl: 0 },
   { label: "Main Site Inbounds", sourceCompany: "main_site", leadType: "call", defaultCpl: 0 },
+  { label: "Paid Overflow", sourceCompany: "paid_overflow", leadType: "form", defaultCpl: 0 },
 ] as const;
 
 export function findCplRateDefinition(label: string): CplRateDefinition | undefined {

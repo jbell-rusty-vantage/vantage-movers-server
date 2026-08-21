@@ -136,6 +136,10 @@ export {
   listRegistryGranotCrmSources,
   setGranotCrmSourceLifecycleEnabled,
 } from "./granotCrmSources";
+export {
+  listRecentGranotCrmSourceSms,
+  setGranotCrmSourceOutboundSms,
+} from "./crmSourceOutboundSms";
 export type {
   GranotCrmSourceCommand,
   GranotCrmSourceLifecycleActivationCommand,

@@ -144,3 +144,7 @@ test("sheet container id helpers route through the TEST_-prefixed env var in tes
 test("getSourceLeadSheetContainerId returns undefined for not_provided (no source sheet env var)", () => {
   assert.equal(getSourceLeadSheetContainerId("not_provided"), undefined);
 });
+
+test("getSourceLeadSheetContainerId returns undefined for paid_overflow (Master Sheets only)", () => {
+  assert.equal(getSourceLeadSheetContainerId("paid_overflow"), undefined);
+});

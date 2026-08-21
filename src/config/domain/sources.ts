@@ -21,6 +21,7 @@ export const SOURCE_COMPANIES = [
   "best_relocation_leads",
   "get_movers_leads",
   "main_site",
+  "paid_overflow",
   "not_provided",
 ] as const;
 
@@ -41,6 +42,7 @@ export const CRM_SOURCE_LABELS = [
   "GetMovers Inbounds",
   "Main Site Forms",
   "Main Site Inbounds",
+  "Paid Overflow",
 ] as const;
 
 export type CrmSourceLabel = (typeof CRM_SOURCE_LABELS)[number];
@@ -68,6 +70,7 @@ export const SOURCE_LABEL_TO_COMPANY = {
   "BestRelocation Forms": "best_relocation_leads",
   "BestRelocation Locals": "best_relocation_leads",
   "BestRelocation Inbounds": "best_relocation_leads",
+  "Paid Overflow": "paid_overflow",
 } as const satisfies Record<string, SourceCompany>;
 
 export type SourceCompanyConfig = {
@@ -140,6 +143,13 @@ export const SOURCE_COMPANY_CONFIGS = {
       "vantage_movers",
       "vantagemovers.com",
     ],
+  },
+  paid_overflow: {
+    slug: "paid_overflow",
+    label: "Paid Overflow",
+    leadSheetEnvVar: undefined,
+    hasBadTabs: false,
+    aliases: ["Paid Overflow", "paid overflow", "paid_overflow"],
   },
   not_provided: {
     slug: "not_provided",
@@ -229,6 +239,8 @@ export function getFormLeadSourceCompanyLabel(
       return "GetMovers Forms";
     case "main_site":
       return "Main Site Forms";
+    case "paid_overflow":
+      return "Paid Overflow";
     case "not_provided":
       return "Main Site Forms";
     default:
@@ -250,6 +262,8 @@ export function getCallLeadSourceCompanyLabel(sourceCompany: SourceCompany | str
       return "GetMovers Inbounds";
     case "main_site":
       return "Main Site Inbounds";
+    case "paid_overflow":
+      return "Paid Overflow";
     case "not_provided":
       return "Main Site Inbounds";
     default:

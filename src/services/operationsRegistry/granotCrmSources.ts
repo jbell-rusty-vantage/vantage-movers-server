@@ -28,6 +28,7 @@ import type {
   GranotLifecycleDisposition,
   LeadModel,
 } from "../granotLifecycle/types";
+import { toSmsView, type OwnerOutboundSmsView } from "./crmSourceOutboundSms";
 import type { RegistryActorContext, RegistryAuditInput } from "./types";
 
 export type GranotCrmSourceLifecycleRoute = {
@@ -53,6 +54,7 @@ export type GranotCrmSourceRecord = {
   lead_source_company?: string;
   lifecycle_routes: GranotCrmSourceLifecycleRoute[];
   lifecycle_policy_version: string;
+  outbound_sms?: OwnerOutboundSmsView;
 };
 
 export type GranotCrmSourceCommand = {
@@ -390,6 +392,7 @@ function toRecord(row: Record<string, unknown>): GranotCrmSourceRecord {
       : undefined,
     lifecycle_routes: toRoutes(row.lifecycle_routes),
     lifecycle_policy_version: stringValue(row.lifecycle_policy_version) ?? "",
+    outbound_sms: toSmsView(String(row._id ?? row.id), row.outbound_sms),
   };
 }
 

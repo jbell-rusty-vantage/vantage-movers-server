@@ -10,7 +10,7 @@ import { normalizeSourceCompany, type SourceCompany } from "./sources";
  * CPL used to be a static, env-snapshotted table (see git history). It is
  * now owner-editable at runtime through the `cpl_rates` collection -- see
  * `CPL_RATE_DEFINITIONS` in `./cplRateDefinitions.ts` for the canonical
- * 13-slot list and `../../services/cpl/cplRate.service.ts` for the
+ * 14-slot list and `../../services/cpl/cplRate.service.ts` for the
  * DB-backed cache, seeding, and admin read/write operations. This module
  * intentionally reaches into the service layer (breaking the "pure config"
  * convention the rest of `./domain/` follows) because CPL is no longer

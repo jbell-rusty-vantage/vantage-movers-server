@@ -244,6 +244,49 @@ test("duplicate, disabled, and test modes cannot send", async () => {
   assert.equal(records.length, 2);
 });
 
+test("Granot persist shape shares one capacity reservation and does not require form consent", async () => {
+  let reserved = 0;
+  let record: Record<string, unknown> | undefined;
+  const observationId = new mongoose.Types.ObjectId().toString();
+  const leadId = new mongoose.Types.ObjectId().toString();
+  await persistLeadMessageIntent(
+    {
+      lead_ref: { model: "CallLead", id: leadId },
+      destinationPhone: "+19545550142",
+      body: "Hi there. Reply STOP to opt out.",
+      purpose: "granot_lead_created_confirmation",
+      message_key: "granot_lead_created_confirmation",
+      template_version: 1,
+      origin: "granot_lead_created",
+      consent_basis: "existing_relationship",
+      observation_id: observationId,
+      lead_source_company: new mongoose.Types.ObjectId().toString(),
+      granot_crm_source: new mongoose.Types.ObjectId().toString(),
+      testMode: false,
+    },
+    {
+      mode: "inline",
+      fromNumber: "+18885550123",
+      evaluateGuard: async () => {
+        reserved += 1;
+        return null;
+      },
+      createMessage: async (value) => {
+        record = value as unknown as Record<string, unknown>;
+        return {
+          ...(value as object),
+          _id: new mongoose.Types.ObjectId(),
+        } as LeadMessageDocument;
+      },
+    },
+  );
+  assert.equal(reserved, 1);
+  assert.equal(record?.purpose, "granot_lead_created_confirmation");
+  assert.equal(record?.origin, "granot_lead_created");
+  assert.equal(record?.form_lead, undefined);
+  assert.equal((record?.lead_ref as { model?: string } | undefined)?.model, "CallLead");
+});
+
 test("destination policy decisions persist as non-retryable skips", async () => {
   let record: Record<string, unknown> | undefined;
   await persistLeadMessageIntent(

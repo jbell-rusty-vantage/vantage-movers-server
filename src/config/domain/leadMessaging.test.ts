@@ -7,6 +7,7 @@ import {
   getLeadMessagingHourlyLimit,
   getLeadMessagingMode,
   getLeadMessagingQueueTopic,
+  isGranotLeadCreatedSmsEnabled,
   isLeadMessagingQuietHoursEnabled,
   shouldPublishLeadMessagingQueue,
 } from "./leadMessaging";
@@ -24,6 +25,7 @@ const KEYS = [
   "LEAD_MESSAGING_DESTINATION_COOLDOWN_MINUTES",
   "LEAD_MESSAGING_HOURLY_LIMIT",
   "LEAD_MESSAGING_QUIET_HOURS_ENABLED",
+  "GRANOT_LEAD_CREATED_SMS_ENABLED",
 ] as const;
 const original = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
 
@@ -70,6 +72,17 @@ test("lead messaging queue topic is environment scoped and test-safe", () => {
   process.env.VERCEL_ENV = "preview";
   assert.equal(getLeadMessagingQueueTopic(), "lead-messaging-events-dev");
   assert.equal(shouldPublishLeadMessagingQueue(), false);
+});
+
+test("Granot create-if-missing SMS stays off unless the env flag is an explicit boolean true", () => {
+  delete process.env.GRANOT_LEAD_CREATED_SMS_ENABLED;
+  assert.equal(isGranotLeadCreatedSmsEnabled(), false);
+  process.env.GRANOT_LEAD_CREATED_SMS_ENABLED = "false";
+  assert.equal(isGranotLeadCreatedSmsEnabled(), false);
+  process.env.GRANOT_LEAD_CREATED_SMS_ENABLED = "true";
+  assert.equal(isGranotLeadCreatedSmsEnabled(), true);
+  process.env.GRANOT_LEAD_CREATED_SMS_ENABLED = "yes";
+  assert.throws(() => isGranotLeadCreatedSmsEnabled(), /explicit boolean/);
 });
 
 test("quiet-hours scheduling is off unless the env flag is exactly true", () => {

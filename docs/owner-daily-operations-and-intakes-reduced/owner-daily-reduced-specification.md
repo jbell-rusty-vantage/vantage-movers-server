@@ -445,6 +445,28 @@ services and disjoint Admin components; the only shared file is
 **Suggested branch:** `owner-daily-reduced` in both repositories, cut after
 `granot-lead-lifecycle` closes.
 
+### 9.1 The Operations Registry pack — ODR-38 through ODR-40
+
+A second, independent pack lives in this folder:
+[`operations-registry-owner-specification.md`](./operations-registry-owner-specification.md).
+
+It is the *configuration* half of the same problem. `/daily` shows the Owner what
+Granot sent; the registry pack lets him decide what should happen to it — which
+lead source a webhook label belongs to, whether a `lead_created` should create a
+Lead, and whether the customer gets a text.
+
+| Issue | Title | Depends on |
+| --- | --- | --- |
+| [**ODR-38**](issues/ODR-38.md) | Lead sources in the Owner's words | Nothing in this pack |
+| [**ODR-39**](issues/ODR-39.md) | Granot names — mapping, and unlocking `create_if_missing` | ODR-38 |
+| [**ODR-40**](issues/ODR-40.md) | The text we send when a webhook creates a lead | ODR-38, ODR-39 |
+
+**Neither pack depends on the other.** They touch disjoint routes (`/daily` vs
+`/operations-registry`), disjoint services (`ownerDaily/` vs
+`operationsRegistry/`), and disjoint Admin route groups. They share the §1.1
+voice rules in the copy deck and nothing else, so they may run in either order or
+at the same time.
+
 ---
 
 ## 10. Forward compatibility with the full pack

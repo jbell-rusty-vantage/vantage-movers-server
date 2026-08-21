@@ -35,6 +35,7 @@ const linkOnlyCompanies: InventoryCompany[] = [
   { id: "cccccccccccccccccccccc02", company_slug: "tbm_leads", owner_label: "TBM Leads", active: true },
   { id: "cccccccccccccccccccccc03", company_slug: "tbm_prime_leads", owner_label: "TBM Prime Leads", active: true },
   { id: "cccccccccccccccccccccc04", company_slug: "top10_leads", owner_label: "Top 10 Forms", active: true },
+  { id: "cccccccccccccccccccccc05", company_slug: "paid_overflow", owner_label: "Paid Overflow", active: true },
 ];
 
 const granularities: InventoryGranularity[] = [
@@ -126,6 +127,14 @@ const granularities: InventoryGranularity[] = [
     owner_label: "Top10 Inbounds",
     source_company_id: "cccccccccccccccccccccc04",
     channel: "call",
+    active: true,
+  },
+  {
+    id: "121212121212121212121212",
+    granularity_key: REVIEWED_GRANULARITY_KEYS.paid_overflow,
+    owner_label: "Paid Overflow",
+    source_company_id: "cccccccccccccccccccccc05",
+    channel: "form",
     active: true,
   },
 ];
@@ -282,7 +291,7 @@ test("[AC-09] Best Relocation Call plans exactly one Call/any route with create_
   }
 });
 
-test("[AC-29] Referral is observation_only; Paid Overflow and source Auto stay deferred evidence-only", () => {
+test("[AC-29] Referral is observation_only; source Auto stays deferred; Paid Overflow is create_if_missing", () => {
   const plan = planGranotLifecycleSourceRegistry(inventory());
   const referral = plan.crm_mutations.find((mutation) => mutation.family === "referral");
   const overflow = plan.crm_mutations.find((mutation) => mutation.family === "paid_overflow");
@@ -291,8 +300,18 @@ test("[AC-29] Referral is observation_only; Paid Overflow and source Auto stay d
   assert.equal(referral?.intended.lifecycle_disposition, "referral_booking");
   assert.equal(referral?.intended.lead_created_policy, "observation_only");
   assert.deepEqual(referral?.intended.lifecycle_routes, []);
-  assert.equal(overflow?.intended.lifecycle_enabled, false);
-  assert.equal(overflow?.intended.lifecycle_disposition, "deferred");
+  assert.equal(overflow?.intended.lifecycle_enabled, true);
+  assert.equal(overflow?.intended.lifecycle_disposition, "source_scoped_lead");
+  assert.equal(overflow?.intended.lead_created_policy, "create_if_missing");
+  assert.deepEqual(overflow?.intended.lifecycle_routes, [
+    {
+      route_key: "form_any",
+      lead_model: "FormLead",
+      move_type: "any",
+      source_granularity_id: "121212121212121212121212",
+    },
+  ]);
+  assert.equal(overflow?.intended.default_channel, "form");
   assert.equal(auto?.intended.lifecycle_enabled, false);
   assert.equal(auto?.intended.lifecycle_disposition, "deferred");
 });

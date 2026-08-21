@@ -79,6 +79,8 @@ test("Operations Registry entities expose complete lifecycle CRUD surfaces", () 
     "GET /api/v1/admin/granot-crm-sources/:id",
     "PATCH /api/v1/admin/granot-crm-sources/:id",
     "PATCH /api/v1/admin/granot-crm-sources/:id/activation",
+    "PATCH /api/v1/admin/granot-crm-sources/:id/outbound-sms",
+    "GET /api/v1/admin/granot-crm-sources/:id/outbound-sms/recent",
   ]) {
     assert.equal(routes.has(expected), true, `missing route ${expected}`);
   }

@@ -18,7 +18,7 @@ test("LeadMessage validates normalized FormLead relationship and message snapsho
   });
 
   await message.validate();
-  assert.equal(message.form_lead.toString(), leadId.toString());
+  assert.equal(message.form_lead?.toString(), leadId.toString());
   assert.equal(message.provider, "twilio");
   assert.equal(message.channel, "sms");
   assert.equal(message.twilio_message_sid, null);

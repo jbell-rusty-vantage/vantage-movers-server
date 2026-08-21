@@ -68,6 +68,12 @@ test("GetMovers labels resolve to get_movers_leads", () => {
   assert.equal(resolveSourceCompanyFromLabel("GetMovers Inbounds"), "get_movers_leads");
 });
 
+test("Paid Overflow labels resolve to paid_overflow", () => {
+  assert.equal(resolveSourceCompany("Paid Overflow"), "paid_overflow");
+  assert.equal(resolveSourceCompany("paid_overflow"), "paid_overflow");
+  assert.equal(resolveSourceCompanyFromLabel("Paid Overflow"), "paid_overflow");
+});
+
 test("lead sheet source company labels are precise by lead type", () => {
   assert.equal(getFormLeadSourceCompanyLabel("tbm_leads"), "TBM Forms");
   assert.equal(getCallLeadSourceCompanyLabel("tbm_leads"), "10best Inbounds");
@@ -88,4 +94,6 @@ test("lead sheet source company labels are precise by lead type", () => {
   assert.equal(getCallLeadSourceCompanyLabel("get_movers_leads"), "GetMovers Inbounds");
   assert.equal(getFormLeadSourceCompanyLabel("main_site"), "Main Site Forms");
   assert.equal(getCallLeadSourceCompanyLabel("main_site"), "Main Site Inbounds");
+  assert.equal(getFormLeadSourceCompanyLabel("paid_overflow"), "Paid Overflow");
+  assert.equal(getCallLeadSourceCompanyLabel("paid_overflow"), "Paid Overflow");
 });

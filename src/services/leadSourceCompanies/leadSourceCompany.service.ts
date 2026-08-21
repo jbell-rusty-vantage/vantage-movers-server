@@ -605,6 +605,9 @@ function granularityKeyForDefinition(definition: {
   leadType: string;
   local?: string;
 }): string {
+  if (definition.sourceCompany === "paid_overflow") {
+    return "paid_overflow";
+  }
   return normalizeKey(
     [definition.sourceCompany, definition.leadType, definition.local]
       .filter(Boolean)

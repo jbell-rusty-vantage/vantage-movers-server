@@ -36,6 +36,7 @@ const EXPECTED_GRANULARITY_BY_LEGACY_LABEL: Record<string, string> = {
   "BestRelocation Forms": "Best Relocation Forms",
   "BestRelocation Locals": "Best Relocation Locals",
   "BestRelocation Inbounds": "Best Relocation Inbounds",
+  "Paid Overflow": "Paid Overflow",
 };
 
 (mongoose.connection as unknown as { useDb: typeof originalUseDb }).useDb = ((dbName: string) => ({

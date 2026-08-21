@@ -1,3 +1,4 @@
+import { parseExplicitBooleanFlag } from "./granotLifecycle";
 import { isTestMode, isVantageTestRunner } from "./runtime";
 
 export const LEAD_MESSAGING_MODES = ["disabled", "inline", "queued"] as const;
@@ -18,8 +19,24 @@ export const LEAD_MESSAGE_STATUSES = [
 ] as const;
 export type LeadMessageStatus = (typeof LEAD_MESSAGE_STATUSES)[number];
 
-export const LEAD_MESSAGE_PURPOSES = ["quote_request_confirmation"] as const;
+export const LEAD_MESSAGE_PURPOSES = [
+  "quote_request_confirmation",
+  "granot_lead_created_confirmation",
+] as const;
 export type LeadMessagePurpose = (typeof LEAD_MESSAGE_PURPOSES)[number];
+
+export const LEAD_MESSAGE_ORIGINS = ["public_form", "granot_lead_created"] as const;
+export type LeadMessageOrigin = (typeof LEAD_MESSAGE_ORIGINS)[number];
+
+export const OUTBOUND_SMS_CONSENT_BASES = [
+  "not_attested",
+  "customer_submitted_form",
+  "existing_relationship",
+] as const;
+export type OutboundSmsConsentBasis = (typeof OUTBOUND_SMS_CONSENT_BASES)[number];
+
+export const OUTBOUND_SMS_TRIGGERS = ["granot_lead_created"] as const;
+export type OutboundSmsTrigger = (typeof OUTBOUND_SMS_TRIGGERS)[number];
 
 export const LEAD_MESSAGE_PROVIDER_STATUSES = [
   "accepted",
@@ -65,6 +82,18 @@ export function isLeadMessagingQuietHoursEnabled(): boolean {
   return (
     process.env.LEAD_MESSAGING_QUIET_HOURS_ENABLED?.trim().toLowerCase() ===
     "true"
+  );
+}
+
+/**
+ * Off by default. Granot create-if-missing confirmation SMS stay inert until
+ * this is an explicit boolean `true`.
+ */
+export function isGranotLeadCreatedSmsEnabled(): boolean {
+  return parseExplicitBooleanFlag(
+    process.env.GRANOT_LEAD_CREATED_SMS_ENABLED,
+    false,
+    "GRANOT_LEAD_CREATED_SMS_ENABLED",
   );
 }
 

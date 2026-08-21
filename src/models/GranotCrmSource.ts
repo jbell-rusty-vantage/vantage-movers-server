@@ -6,6 +6,8 @@ import mongoose, {
 } from "mongoose";
 import {
   GRANOT_CRM_CSV_KINDS,
+  OUTBOUND_SMS_CONSENT_BASES,
+  OUTBOUND_SMS_TRIGGERS,
   getMongoDatabaseName,
   type GranotCrmCsvKind,
 } from "../config/domain";
@@ -57,6 +59,43 @@ const lastIngestionSchema = new Schema(
     ingestion_id: { type: Schema.Types.ObjectId, ref: "GranotCrmCsvIngestion" },
     s3_key: { type: String, trim: true },
     imported_at: { type: Date },
+  },
+  { _id: false },
+);
+
+const outboundSmsActorSchema = new Schema(
+  {
+    actor_type: { type: String, trim: true },
+    actor_id: { type: String, trim: true },
+    actor_label: { type: String, trim: true },
+    actor_role: { type: String, trim: true },
+  },
+  { _id: false },
+);
+
+const outboundSmsSchema = new Schema(
+  {
+    enabled: { type: Boolean, required: true, default: false },
+    trigger: {
+      type: String,
+      required: true,
+      enum: OUTBOUND_SMS_TRIGGERS,
+      default: "granot_lead_created",
+    },
+    body_template: { type: String, trim: true, maxlength: 320 },
+    template_version: { type: Number, required: true, default: 1 },
+    consent_basis: {
+      type: String,
+      required: true,
+      enum: OUTBOUND_SMS_CONSENT_BASES,
+      default: "not_attested",
+    },
+    consent_attested_by: { type: outboundSmsActorSchema },
+    consent_attested_at: { type: Date },
+    daily_cap: { type: Number, required: true, default: 0, min: 0 },
+    activated_at: { type: Date },
+    deactivated_at: { type: Date },
+    deactivation_reason: { type: String, trim: true },
   },
   { _id: false },
 );
@@ -122,6 +161,7 @@ const GranotCrmSourceSchema = new Schema(
     },
     lifecycle_routes: { type: [lifecycleRouteSchema], default: [] },
     lifecycle_policy_version: { type: String, trim: true, default: "" },
+    outbound_sms: { type: outboundSmsSchema },
   },
   {
     collection: GRANOT_CRM_SOURCE_COLLECTION,

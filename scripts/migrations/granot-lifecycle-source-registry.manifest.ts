@@ -13,6 +13,7 @@ export const REVIEWED_GRANULARITY_KEYS = {
   call: "best_relocation_leads_call",
   form_local: "best_relocation_leads_form_local",
   form_long_distance: "best_relocation_leads_form_long_distance",
+  paid_overflow: "paid_overflow",
 } as const;
 
 export const EXCLUDED_PROVIDER_TYPES = ["AUTO"] as const;
@@ -270,10 +271,19 @@ export const REVIEWED_SOURCE_CLASSIFICATION_MANIFEST = {
     {
       family: "paid_overflow",
       normalized_labels: ["paid overflow"],
-      lifecycle_enabled: false,
-      lifecycle_disposition: "deferred",
-      lead_created_policy: "observation_only",
-      routes: [],
+      lifecycle_enabled: true,
+      lifecycle_disposition: "source_scoped_lead",
+      lead_created_policy: "create_if_missing",
+      company_slug: "paid_overflow",
+      routes: [
+        {
+          route_key: "form_any",
+          lead_model: "FormLead",
+          move_type: "any",
+          granularity_key: REVIEWED_GRANULARITY_KEYS.paid_overflow,
+          expected_channel: "form",
+        },
+      ],
     },
     {
       family: "auto",

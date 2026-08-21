@@ -563,6 +563,9 @@ function reviewedGranularityKeys(): string[] {
     ...new Set([
       ...Object.values(REVIEWED_GRANULARITY_KEYS),
       ...Object.values(LINK_ONLY_AUTOMATION_GRANULARITY_KEYS),
+      ...REVIEWED_SOURCE_CLASSIFICATION_MANIFEST.families.flatMap((family) =>
+        family.routes.map((route) => route.granularity_key),
+      ),
     ]),
   ];
 }

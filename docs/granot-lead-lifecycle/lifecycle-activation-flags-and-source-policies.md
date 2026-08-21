@@ -22,6 +22,9 @@ sources:
   - id: source-migration
     resource: ../../scripts/migrations/granot-lifecycle-source-registry.ts
 verified:
+  - by: agent:production-sms-policy-apply
+    at: 2026-08-21T20:00:00Z
+    notes: Owner-authorized global outbound_sms default backfill on all 15 GranotCrmSource rows (enabled:false, consent_basis:not_attested); then Best Relocation Forms and Inbounds enabled through the audited Owner command; LeadMessage.lead_ref phase-1 backfill updated 1314 messages.
   - by: agent:production-policy-apply
     at: 2026-08-20T03:17:48Z
     notes: Owner-authorized scoped report/apply/verify/idempotency cycle on vantagemovers; exactly the Best Relocation Forms and Inbounds lead_created_policy fields changed to create_if_missing.
@@ -179,6 +182,15 @@ Mapped Granot labels (collection `granot_crm_sources`):
 
 Both rows are already `enabled: true`, `lifecycle_enabled: true`, `lifecycle_disposition: "source_scoped_lead"`, `lead_source_company` = Best Relocation, policy version `granot-lifecycle-source-policy-v1`.
 
+Texting is a separate CRM Source policy (`outbound_sms`). `create_if_missing` does not send texts by itself. Applied 2026-08-21 on `vantagemovers`: the global backfill wrote `outbound_sms` defaults (`enabled: false`, `consent_basis: not_attested`) onto all 15 Granot CRM Sources, then the audited Owner command enabled the two Best Relocation rows. Commands live in `scripts/migrations/README.md` (`pnpm migration:granot-crm-source-outbound-sms`, `pnpm migration:granot-crm-source-sms-best-relocation`). Phase-1 `LeadMessage.lead_ref` backfill (`pnpm migration:lead-message-lead-ref`) updated 1314 messages and does not send texts.
+
+| Granot label | `outbound_sms.enabled` | Consent basis |
+| --- | --- | --- |
+| `Best Relocation Forms` | **`true`** | `customer_submitted_form` |
+| `BestRelocation Inbounds` | **`true`** | `existing_relationship` |
+
+A confirmation SMS is sent only when those two rows have `outbound_sms.enabled`, a recorded consent basis, `GRANOT_LEAD_CREATED_SMS_ENABLED=true`, and `LEAD_MESSAGING_MODE` is not `disabled`. The other 13 CRM Sources keep `outbound_sms.enabled: false`.
+
 The guarded production migration changed only `lead_created_policy`; both rows retained the reviewed company, routes, disposition, activation posture, and nonblank policy version. Creation still requires every runtime flag, activation, identity, route, and minimum-data gate.
 
 ### 3.2 Applied policy change (not a company/granularity edit)
@@ -252,7 +264,8 @@ Admin validation and the Registry UI still reject `create_if_missing`; the dropd
 | Label / thing | Policy | Why |
 | --- | --- | --- |
 | `Referral` | `observation_only` + `referral_booking` | No Lead. Later Booking-only. |
-| `Paid Overflow` / future `Auto` | `deferred` | Evidence only. |
+| `Paid Overflow` | `create_if_missing` + `source_scoped_lead` | New Source Company / one FormLead + any route. Master Sheets only. SMS enabled. |
+| future `Auto` | `deferred` | Evidence only. |
 | Payload `type=AUTO` | not a source | Provider context. Never a company guess. |
 | Main Site / TBM / TBM Prime / Top10 / 10best | reviewed `link_only` + `source_scoped_lead` | WordPress and RingCentral remain the creators. Automation apply is allowed; Granot does not mint these Leads. |
 
@@ -269,7 +282,7 @@ lifecycle_enabled: boolean;      // default false; requires enabled + policy ver
 lifecycle_disposition:
   | "source_scoped_lead"         // Best Relocation, Main Site, TBM, Top10
   | "referral_booking"           // Referral — no Lead
-  | "deferred";                  // Paid Overflow / Auto — evidence only
+  | "deferred";                  // Auto — evidence only
 lead_created_policy:
   | "link_only"                  // match/link only (migration-safe default)
   | "create_if_missing"          // mint Lead when unmatched + complete

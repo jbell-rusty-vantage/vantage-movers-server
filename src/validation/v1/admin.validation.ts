@@ -298,7 +298,11 @@ export const granotCrmSourceRegistryUpdateSchema = z
       "referral_booking",
       "deferred",
     ]),
-    lead_created_policy: z.enum(["link_only", "observation_only"]),
+    lead_created_policy: z.enum([
+      "link_only",
+      "observation_only",
+      "create_if_missing",
+    ]),
     lead_source_company: optionalObjectIdString.nullable(),
     lifecycle_routes: z.array(
       z
@@ -315,6 +319,26 @@ export const granotCrmSourceRegistryUpdateSchema = z
     ),
     lifecycle_policy_version: z.string().trim().max(120).optional(),
     reason: registryReasonSchema,
+  })
+  .strict();
+
+export const granotCrmSourceOutboundSmsSchema = z
+  .object({
+    enabled: booleanInput,
+    body_template: z.string().trim().min(1).max(320),
+    consent_basis: z.enum([
+      "not_attested",
+      "customer_submitted_form",
+      "existing_relationship",
+    ]),
+    daily_cap: z.number().int().min(0).max(10_000).optional(),
+    reason: registryReasonSchema,
+  })
+  .strict();
+
+export const granotCrmSourceOutboundSmsRecentQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(50).optional(),
   })
   .strict();
 
@@ -356,4 +380,7 @@ export type GranotCrmSourceRegistryUpdateInput = z.infer<
 >;
 export type GranotCrmSourceLifecycleActivationInput = z.infer<
   typeof granotCrmSourceLifecycleActivationSchema
+>;
+export type GranotCrmSourceOutboundSmsInput = z.infer<
+  typeof granotCrmSourceOutboundSmsSchema
 >;

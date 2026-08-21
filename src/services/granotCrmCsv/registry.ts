@@ -86,6 +86,12 @@ export const GRANOT_CRM_SOURCE_SEEDS: GranotCrmSourceSeed[] = [
     source_company: "top10_leads",
   },
   {
+    workspace_slug: "paid-overflow",
+    granot_label: "Paid Overflow",
+    default_channel: "form",
+    source_company: "paid_overflow",
+  },
+  {
     workspace_slug: "auto",
     granot_label: "Auto",
     default_channel: "unknown",

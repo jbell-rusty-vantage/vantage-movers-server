@@ -1,12 +1,16 @@
 import mongoose, { Schema, type ClientSession, type Model } from "mongoose";
 import {
+  LEAD_MESSAGE_ORIGINS,
   LEAD_MESSAGE_PURPOSES,
   LEAD_MESSAGE_STATUSES,
   LEAD_MESSAGING_MODES,
+  OUTBOUND_SMS_CONSENT_BASES,
   getMongoDatabaseName,
+  type LeadMessageOrigin,
   type LeadMessagePurpose,
   type LeadMessageStatus,
   type LeadMessagingMode,
+  type OutboundSmsConsentBasis,
 } from "../config/domain";
 
 export type LeadMessageAttempt = {
@@ -29,9 +33,21 @@ export type LeadMessageStatusEvent = {
   error_message: string | null;
 };
 
+export type LeadMessageLeadRef = {
+  model: "FormLead" | "CallLead";
+  id: mongoose.Types.ObjectId;
+};
+
 export type LeadMessageDocument = {
   _id: mongoose.Types.ObjectId;
-  form_lead: mongoose.Types.ObjectId;
+  form_lead?: mongoose.Types.ObjectId;
+  lead_ref?: LeadMessageLeadRef;
+  origin: LeadMessageOrigin;
+  lead_source_company?: mongoose.Types.ObjectId;
+  granot_crm_source?: mongoose.Types.ObjectId;
+  observation_id?: mongoose.Types.ObjectId;
+  consent_basis?: OutboundSmsConsentBasis;
+  source_template_version?: number;
   provider: "twilio";
   channel: "sms";
   purpose: LeadMessagePurpose;
@@ -99,9 +115,33 @@ const LeadMessageSchema = new Schema<LeadMessageDocument>(
     form_lead: {
       type: Schema.Types.ObjectId,
       ref: "FormLead",
-      required: true,
+      required: false,
       index: true,
     },
+    lead_ref: {
+      model: { type: String, enum: ["FormLead", "CallLead"] },
+      id: { type: Schema.Types.ObjectId },
+    },
+    origin: {
+      type: String,
+      enum: LEAD_MESSAGE_ORIGINS,
+      required: true,
+      default: "public_form",
+    },
+    lead_source_company: {
+      type: Schema.Types.ObjectId,
+      ref: "LeadSourceCompany",
+    },
+    granot_crm_source: {
+      type: Schema.Types.ObjectId,
+      ref: "GranotCrmSource",
+    },
+    observation_id: {
+      type: Schema.Types.ObjectId,
+      ref: "GranotObservation",
+    },
+    consent_basis: { type: String, enum: OUTBOUND_SMS_CONSENT_BASES },
+    source_template_version: { type: Number },
     provider: { type: String, required: true, default: "twilio" },
     channel: { type: String, required: true, default: "sms" },
     purpose: { type: String, enum: LEAD_MESSAGE_PURPOSES, required: true },
@@ -146,6 +186,26 @@ const LeadMessageSchema = new Schema<LeadMessageDocument>(
 );
 
 LeadMessageSchema.index({ form_lead: 1, createdAt: -1 });
+LeadMessageSchema.index(
+  { observation_id: 1, purpose: 1 },
+  {
+    name: "lead_message_observation_purpose_unique",
+    unique: true,
+    partialFilterExpression: { observation_id: { $exists: true, $type: "objectId" } },
+  },
+);
+LeadMessageSchema.index(
+  { "lead_ref.model": 1, "lead_ref.id": 1, createdAt: -1 },
+  { name: "lead_message_lead_ref_created" },
+);
+LeadMessageSchema.index(
+  { lead_source_company: 1, createdAt: -1 },
+  { name: "lead_message_lead_source_company_created" },
+);
+LeadMessageSchema.index(
+  { granot_crm_source: 1, createdAt: -1 },
+  { name: "lead_message_granot_crm_source_created" },
+);
 LeadMessageSchema.index(
   { twilio_message_sid: 1 },
   {

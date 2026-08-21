@@ -122,6 +122,8 @@ export {
   sourceResolutionPreviewSchema,
   granotCrmSourceRegistryUpdateSchema,
   granotCrmSourceLifecycleActivationSchema,
+  granotCrmSourceOutboundSmsSchema,
+  granotCrmSourceOutboundSmsRecentQuerySchema,
   adminDatabaseScopeSchema,
   adminSearchQuerySchema,
   type AdminBrowseQuery,

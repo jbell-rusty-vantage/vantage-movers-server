@@ -23,14 +23,12 @@ const validUpdate = {
   reason: "Reviewed Best Relocation Forms policy after Owner inspection",
 };
 
-test("[AC-38] Granot CRM source update rejects create_if_missing and client normalized labels", () => {
-  assert.throws(
-    () =>
-      granotCrmSourceRegistryUpdateSchema.parse({
-        ...validUpdate,
-        lead_created_policy: "create_if_missing",
-      }),
-    /create_if_missing|Invalid/,
+test("[AC-38] Granot CRM source update accepts create_if_missing and rejects client normalized labels", () => {
+  assert.doesNotThrow(() =>
+    granotCrmSourceRegistryUpdateSchema.parse({
+      ...validUpdate,
+      lead_created_policy: "create_if_missing",
+    }),
   );
   assert.throws(
     () =>

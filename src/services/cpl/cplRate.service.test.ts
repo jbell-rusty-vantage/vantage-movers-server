@@ -43,6 +43,7 @@ function stubEmptyLeadSourceCompanyCatalog() {
     "best_relocation_leads",
     "get_movers_leads",
     "main_site",
+    "paid_overflow",
   ].map((company_slug) => ({ company_slug }));
   (leadSourceCompanyModel as unknown as MutableModel).find = (_filter?: unknown, projection?: unknown) =>
     chain(projection ? seededCompanySlugs : []);
@@ -51,7 +52,7 @@ function stubEmptyLeadSourceCompanyCatalog() {
   };
 }
 
-test("listCplRates seeds any missing slots and returns all 13 rates", async () => {
+test("listCplRates seeds any missing slots and returns all 14 rates", async () => {
   stubEmptyLeadSourceCompanyCatalog();
   const existingLabels = [
     { label: "TBM Forms" },
@@ -66,6 +67,7 @@ test("listCplRates seeds any missing slots and returns all 13 rates", async () =
     { label: "GetMovers Forms" },
     { label: "GetMovers Inbounds" },
     { label: "Main Site Forms" },
+    { label: "Paid Overflow" },
     // "Main Site Inbounds" intentionally missing.
   ];
 
@@ -80,7 +82,7 @@ test("listCplRates seeds any missing slots and returns all 13 rates", async () =
 
   const rates = await listCplRates();
 
-  assert.equal(rates.length, 13);
+  assert.equal(rates.length, 14);
   assert.equal(seededInserts.length, 1);
   assert.deepEqual(
     (seededInserts[0].$setOnInsert as Record<string, unknown>).label,

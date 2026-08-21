@@ -42,6 +42,8 @@ import {
   recordMissingLeadCplRate,
   resolveLeadCplSnapshot,
 } from "../leads/leadCplResolution";
+import { logger } from "../../logger";
+import { sendGranotCreatedLeadConfirmation } from "../leadMessaging/granotCreatedLead";
 import { enqueueSheetSyncJob, finalizeSheetSync } from "../sheetSync";
 import {
   createMongoLeadIdentityStore,
@@ -182,6 +184,17 @@ export async function createLeadFromGranot(
       if (pending.cpl_missing) {
         await recordMissingLeadCplRate(pending.cpl_missing);
       }
+      if (pending.sms) {
+        try {
+          await sendGranotCreatedLeadConfirmation(pending.sms);
+        } catch (error) {
+          logger.error({
+            err: error,
+            msg: "createLeadFromGranot.sms.finalize_failed",
+            observationId: pending.sms.observation_id,
+          });
+        }
+      }
     },
   });
   return {
@@ -211,6 +224,14 @@ async function executeCreation(
     sourceCompany: string;
     sourceGranularityId?: string | null;
     sourceGranularityKey?: string | null;
+  };
+  sms?: {
+    lead_ref: { model: "FormLead" | "CallLead"; id: string };
+    observation_id: string;
+    lead_source_company_id: string;
+    granot_crm_source_id: string;
+    destination_phone?: string;
+    first_name?: string;
   };
 }> {
   const observation = await getGranotObservationModel()
@@ -524,6 +545,16 @@ async function executeCreation(
           },
         }
       : {}),
+    sms: {
+      lead_ref: leadRef,
+      observation_id: String(observation._id),
+      lead_source_company_id: String(company._id),
+      granot_crm_source_id: String(snapshot.granot_crm_source_id),
+      destination_phone:
+        observation.contact?.normalized_phone ??
+        observation.contact?.phone_raw,
+      first_name: observation.contact?.first_name,
+    },
   };
 }
 
