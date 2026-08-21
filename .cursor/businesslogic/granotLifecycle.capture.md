@@ -1,6 +1,32 @@
+---
+type: Service
+title: "Granot receipt capture (`granotLifecycle/`)"
+description: "Webhook and channel-neutral receipt capture with { receipt_id } wake-up. Does not invoke the processor."
+tags: [granot-lifecycle]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/granotLifecycle/capture.ts
+applies_to:
+  - src/services/granotLifecycle/capture.ts
+  - src/services/granotLifecycle/queuePublisher.ts
+  - src/services/granotLifecycle/receiptEvidence.ts
+  - src/models/GranotObservationReceipt.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/granotLifecycle/capture.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)
 **Primary code:** `src/services/granotLifecycle/capture.ts`, `src/services/granotLifecycle/extensionApply.ts`, `src/services/granotLifecycle/queuePublisher.ts`, `src/services/granotLifecycle/receiptEvidence.ts`, `src/services/granotLifecycle/metrics.ts`, `src/models/GranotObservationReceipt.ts`, `src/models/granotLifecycleSchemas.ts`, `src/middleware/requireGranotWebhookSecret.ts`, `src/routes/granot-webhook.routes.ts`, `src/routes/extension-granot-apply.routes.ts`
-**Domain terms used:** Granot Observation Receipt, Observation Channel, System of Record
+**Domain terms used:** [Granot Observation Receipt](../../../CONTEXT.md), [Observation Channel](../../../CONTEXT.md), [System of Record](../../../CONTEXT.md)
 
 # Granot receipt capture (`granotLifecycle/`)
 
@@ -55,7 +81,7 @@ Identical deliveries are distinct receipts. `payload_sha256` is diagnostic, neve
 
 ## Queue wake-up
 
-After commit, publish exactly `{ receipt_id }` when the environment is an approved production Vercel function runtime. Tests and unapproved environments skip publish. Publish failure is logged/metriced as `granot_lifecycle.queue.publish_failed` and cannot change `202` or the receipt. Capture still does not invoke the processor.
+After commit, publish exactly `{ receipt_id }` when the environment is an approved production Vercel function runtime. Tests and unapproved environments skip publish. Publish failure is logged/metriced as `granot_lifecycle.queue.publish_failed` and cannot change `202` or the receipt. Capture still does not invoke the processor. // pragma: allowlist secret
 
 A dedicated consumer now exists (`api/queues/granot-lifecycle-consumer.ts`) and a five-minute cron safety net scans due work. Both are wake-ups only: Mongo receipt `processing.*` remains the durable work source. Details: [`granotLifecycle.drainer.md`](granotLifecycle.drainer.md).
 

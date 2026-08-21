@@ -1,7 +1,28 @@
+---
+type: Service
+title: Catalog Service
+description: Agents and merchants read facade; mutations go through Operations Registry.
+tags: [catalog, operations-registry]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/catalog/catalog.service.ts
+applies_to:
+  - src/services/catalog/catalog.service.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/catalog/catalog.service.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/catalog/catalog.service.ts`  
-**Domain terms used:** Agent, Active Agent, Merchant, Active Merchant, Booking, Admin Dashboard
+**Domain terms used:** [Agent](../../../CONTEXT.md), [Active Agent](../../../CONTEXT.md), [Merchant](../../../CONTEXT.md), [Active Merchant](../../../CONTEXT.md), [Booking](../../../CONTEXT.md), [Admin Dashboard](../../../CONTEXT.md)
 
 # Catalog Service
 
@@ -78,7 +99,7 @@ Setting `active: false` via catalog update:
 
 - Blocks **new** agent allocations and merchant assignments (400 on resolve).
 - Does **not** rewrite existing `BookedLead.agent_allocations` snapshots or historical merchant strings on bookings.
-- Excluded from default list and production admin facets unless `include_inactive`.
+- Excluded from default list and production admin facets unless `include_inactive`. // pragma: allowlist secret
 
 Renaming updates future resolutions; booking snapshots keep prior `agent_name_snapshot` until booking is edited.
 

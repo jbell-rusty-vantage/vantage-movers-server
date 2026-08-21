@@ -1,6 +1,30 @@
+---
+type: Service
+title: "Granot source policy (`granotLifecycle/sourcePolicy`)"
+description: Fail-closed Registry policy resolution and effect-gate snapshot. No effects.
+tags: [granot-lifecycle]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/granotLifecycle/sourcePolicy.ts
+applies_to:
+  - src/services/granotLifecycle/sourcePolicy.ts
+  - src/services/granotLifecycle/sourceLabel.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/granotLifecycle/sourcePolicy.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/sourcePolicy.ts`, `src/services/granotLifecycle/sourceLabel.ts`  
-**Domain terms used:** Source Company, Source Granularity, Granot Automation Source, Move Type, Ingestion Origin
+**Domain terms used:** [Source Company](../../../CONTEXT.md), [Source Granularity](../../../CONTEXT.md), [Granot Automation Source](../../../CONTEXT.md), [Move Type](../../../CONTEXT.md), [Ingestion Origin](../../../CONTEXT.md)
 
 # Granot source policy (`granotLifecycle/sourcePolicy`)
 
@@ -42,7 +66,7 @@ Every unreviewed row remains lifecycle-disabled, deferred, observation-only, and
 
 ## Related
 
-- Registry writes and audit: [`operationsRegistry.service.md`](operationsRegistry.service.md)
+- Registry writes and audit: [`operations-registry.md`](../../docs/knowledge/services/operations-registry.md)
 - Observation normalization: [`granotLifecycle.normalization.md`](granotLifecycle.normalization.md)
 - Identity consumes this snapshot and never copies Registry semantics ([`granotLifecycle.identity.md`](granotLifecycle.identity.md)).
 - Decision processor consumes this read/gate snapshot and Unit 14 identity ([`granotLifecycle.processor.md`](granotLifecycle.processor.md)).

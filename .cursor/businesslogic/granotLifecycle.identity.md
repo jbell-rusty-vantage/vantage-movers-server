@@ -1,6 +1,29 @@
+---
+type: Service
+title: "Granot source-scoped identity (`granotLifecycle/identity`)"
+description: Source-scoped Form/Call identity ladders. Read-only; consumed by the processor.
+tags: [granot-lifecycle]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/granotLifecycle/identity.ts
+applies_to:
+  - src/services/granotLifecycle/identity.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/granotLifecycle/identity.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/identity.ts`  
-**Domain terms used:** Granot Observation, Granot Record Link, Source Company, Source Granularity, Booking Lead Reconciliation Case, Active Agent
+**Domain terms used:** [Granot Observation](../../../CONTEXT.md), [Granot Record Link](../../../CONTEXT.md), [Source Company](../../../CONTEXT.md), [Source Granularity](../../../CONTEXT.md), [Booking Lead Reconciliation Case](../../../CONTEXT.md), [Active Agent](../../../CONTEXT.md)
 
 # Granot source-scoped identity (`granotLifecycle/identity`)
 
@@ -11,7 +34,7 @@
 ## Public interface
 
 - `resolveLeadIdentity({ observation, policy, policy_failure? }, store?)` — consume a persisted Observation projection and an already-resolved `SourcePolicySnapshot`.
-- `createMongoLeadIdentityStore()` — production read store. Tests may inject a recording store.
+- `createMongoLeadIdentityStore()` — production read store. Tests may inject a recording store. // pragma: allowlist secret
 - Result fields `target_eligibility`, Agent suggestion, and Booking wrappers are in-memory only. Persisted Decision vocabulary stays `outcome`, `reason_code`, `match_method`, `target`, and `candidates`.
 - Candidates contain IDs and reason codes only. Name, phone, email, address, Job, payload, and unmasked contact values never leave the module.
 

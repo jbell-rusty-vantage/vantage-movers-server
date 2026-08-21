@@ -1,7 +1,30 @@
+---
+type: Service
+title: Booked Call Lead Reconciliation
+description: Refresh Call Leads and bookings from Granot Booked Jobs CSV ingest. Extension and HTTP automation final-apply no longer call this path.
+tags: [call-lead, booking, enrichment]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/reconciliation/bookedCallLeadReconciliation.service.ts
+applies_to:
+  - src/services/reconciliation/bookedCallLeadReconciliation.service.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/reconciliation/bookedCallLeadReconciliation.service.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/reconciliation/bookedCallLeadReconciliation.service.ts`  
-**Domain terms used:** Call Lead Enrichment, Booking Chain, Sheet Sync, Job Number, Granot CRM, System of Record
+**Domain terms used:** [Call Lead Enrichment](../../../CONTEXT.md), [Booking Chain](../../../CONTEXT.md), [Sheet Sync](../../../CONTEXT.md), [Job Number](../../../CONTEXT.md), [Granot CRM](../../../CONTEXT.md), [System of Record](../../../CONTEXT.md)
 
 # Booked Call Lead Reconciliation
 

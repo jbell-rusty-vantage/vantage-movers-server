@@ -1,8 +1,34 @@
+---
+type: Service
+title: "Granot desired-state planner (`granotLifecycle/leadDesiredState`)"
+description: Desired-state planner and temporal compare. Plans only; no writes.
+tags: [granot-lifecycle]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/granotLifecycle/leadDesiredState.ts
+applies_to:
+  - src/services/granotLifecycle/leadDesiredState.ts
+  - src/services/granotLifecycle/granotTemporal.ts
+  - src/services/granotLifecycle/authorizedDesiredState.ts
+  - src/services/granotLifecycle/leadContactProjection.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/granotLifecycle/leadDesiredState.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)
 
 **Primary code:** `src/services/granotLifecycle/leadDesiredState.ts`, `src/services/granotLifecycle/granotTemporal.ts`, `src/services/granotLifecycle/authorizedDesiredState.ts`, `src/services/granotLifecycle/leadContactProjection.ts`
 
-**Domain terms used:** Granot Observation, Synchronization Decision, Ingestion Origin, System of Record
+**Domain terms used:** [Granot Observation](../../../CONTEXT.md), [Synchronization Decision](../../../CONTEXT.md), [Ingestion Origin](../../../CONTEXT.md), [System of Record](../../../CONTEXT.md)
 
 # Granot desired-state planner (`granotLifecycle/leadDesiredState`)
 

@@ -1,7 +1,28 @@
+---
+type: Service
+title: Call Lead Search
+description: OR-based Call Lead lookup returning search summaries.
+tags: [call-lead, search]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/search/callLeadSearch.service.ts
+applies_to:
+  - src/services/search/callLeadSearch.service.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/search/callLeadSearch.service.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/search/callLeadSearch.service.ts`  
-**Domain terms used:** Call Lead, Caller Match Key, Job Number, Duplicate Lead, Form Fill
+**Domain terms used:** [Call Lead](../../../CONTEXT.md), [Caller Match Key](../../../CONTEXT.md), [Job Number](../../../CONTEXT.md), [Duplicate Lead](../../../CONTEXT.md), [Form Fill](../../../CONTEXT.md)
 
 # Call Lead Search
 

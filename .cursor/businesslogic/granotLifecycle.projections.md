@@ -1,7 +1,31 @@
+---
+type: Service
+title: Granot lifecycle read projections
+description: Masked Admin case, job, and lead reads. Reads never invoke mutations.
+tags: [granot-lifecycle]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/granotLifecycle/projections.ts
+applies_to:
+  - src/services/granotLifecycle/projections.ts
+  - src/routes/granot-lifecycle-admin.routes.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/granotLifecycle/projections.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) Sections 28.2 and 29  
 **Primary code:** `src/services/granotLifecycle/projections.ts`, `src/services/granotLifecycle/alerts.ts`, `src/routes/granot-lifecycle-admin.routes.ts`, `src/validation/v1/granotLifecycle.validation.ts`
-**Domain terms used:** Granot Observation, Granot Booking Reconciliation Case, Job Number, Booking, Cancellation, Source Scope
+**Domain terms used:** [Granot Observation](../../../CONTEXT.md), [Granot Booking Reconciliation Case](../../../CONTEXT.md), [Job Number](../../../CONTEXT.md), [Booking](../../../CONTEXT.md), [Cancellation](../../../CONTEXT.md), [Source Scope](../../../CONTEXT.md)
 
 # Granot lifecycle read projections
 

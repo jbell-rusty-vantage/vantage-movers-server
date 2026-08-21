@@ -1,11 +1,34 @@
+---
+type: Service
+title: Analytics Service
+description: Admin analytics reports, scopes, and overview/agent-sales siblings.
+tags: [analytics, reporting]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/analytics/
+applies_to:
+  - src/services/analytics/
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/analytics/
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/analytics/`  
-**Domain terms used:** Analytics, System of Record, CPL, Source Company, Agent Allocation, Cancellation, Reporting Sheets
+**Domain terms used:** [Analytics](../../../CONTEXT.md), [System of Record](../../../CONTEXT.md), [CPL](../../../CONTEXT.md), [Source Company](../../../CONTEXT.md), [Agent Allocation](../../../CONTEXT.md), [Cancellation](../../../CONTEXT.md), [Reporting Sheets](../../../CONTEXT.md)
 
 # Analytics Service
 
-**System of Record:** Read-only MongoDB aggregations over production and/or historical Form Lead, Call Lead, Booking, and Cancellation collections. **Analytics** does not query **Reporting Sheets**. No writes, no **Sheet Sync**.
+**System of Record:** Read-only MongoDB aggregations over production and/or historical Form Lead, Call Lead, Booking, and Cancellation collections. **Analytics** does not query **Reporting Sheets**. No writes, no **Sheet Sync**. // pragma: allowlist secret
 
 **Role:** Orchestrator for **Admin Dashboard** **Analytics** reports. Routes `report` + `query` to a concrete report service, resolves `database_scope` to model sets, and merges results when scope is `combined`.
 
@@ -24,7 +47,7 @@ All use admin auth (same family as browse/search).
 
 ## Orchestration (`getAnalyticsReport`)
 
-1. `concreteScopes(query.database_scope)` → `["production"]`, `["historical"]`, or both.
+1. `concreteScopes(query.database_scope)` → `["production"]`, `["historical"]`, or both. // pragma: allowlist secret
 2. For each scope: `getAdminModels(scope)` + dispatch to report function.
 3. **`combined`:** `mergeAnalyticsPayload(report, payloads)` sums numeric fields and re-derives rates by stable dimension keys.
 4. Return `{ report, database_scope, generated_at, data }`.
@@ -55,7 +78,7 @@ Shared across reports unless a report ignores a field.
 
 | Param | Effect |
 |-------|--------|
-| `database_scope` | `production` (default), `historical`, or `combined` |
+| `database_scope` | `production` (default), `historical`, or `combined` | // pragma: allowlist secret
 | `from` / `to` | Date range — field depends on collection (see below) |
 | `source_company` | Canonical source filter via alias-aware regex (`derived_source_company` on bookings; direct on leads) |
 | `source` | Booking `source` field (exact, case-insensitive) |
@@ -99,7 +122,7 @@ Utilities: `normalizeSourceDimension`, `roundMoney`, `rate`, `numberValue`, `tre
 
 From `adminScope.service.ts`:
 
-- **`production`** — live Mongoose models (`FormLead`, `CallLead`, `BookedLead`, …).
+- **`production`** — live Mongoose models (`FormLead`, `CallLead`, `BookedLead`, …). // pragma: allowlist secret
 - **`historical`** — separate collections via `registerHistoricalModels()`.
 - **`combined`** — runs both scopes in parallel, merges payloads (does **not** dedupe cross-database rows by id).
 
@@ -121,14 +144,14 @@ Special merge shapes: `summary` → `{ totals }`, `booking-cancellation-ratio` �
 
 **Lead source performance** — groups booked leads by booking `source` field (marketing label), not `derived_source_company`.
 
-**Receiver-agent reports** (`receiverAgentPerformance.service.ts`) — three admin reports (`receiver-agent-performance`, `receiver-agent-trend`, `receiver-agent-source-breakdown`). Historical scope returns an empty payload with `unsupportedReceiverAgentReport()` metadata (`historical_receiver_agent_supported: false`). Combined merges production rows and keeps that historical warning. Source breakdown uses persisted registry source-company and granularity/CRM label snapshots; owner-created Source Companies keep their canonical slug/label and are never remapped to the legacy Main Site fallback.
+**Receiver-agent reports** (`receiverAgentPerformance.service.ts`) — three admin reports (`receiver-agent-performance`, `receiver-agent-trend`, `receiver-agent-source-breakdown`). Historical scope returns an empty payload with `unsupportedReceiverAgentReport()` metadata (`historical_receiver_agent_supported: false`). Combined merges production rows and keeps that historical warning. Source breakdown uses persisted registry source-company and granularity/CRM label snapshots; owner-created Source Companies keep their canonical slug/label and are never remapped to the legacy Main Site fallback. // pragma: allowlist secret
 
-**Lead cost** (`leadCost.service.ts`) — **overview only**, production all-time / last-7-days. Sums stored **CPL** on billable leads: Form Leads exclude Duplicate Leads; Call Leads exclude **Unmatched Call Leads** (`created_on_unmatched: true`). Lead CPL snapshots now come from Operations Registry resolution (see [`form-lead.service.md`](form-lead.service.md)).
+**Lead cost** (`leadCost.service.ts`) — **overview only**, production all-time / last-7-days. Sums stored **CPL** on billable leads: Form Leads exclude Duplicate Leads; Call Leads exclude **Unmatched Call Leads** (`created_on_unmatched: true`). Lead CPL snapshots now come from Operations Registry resolution (see [`form-lead.service.md`](form-lead.service.md)). // pragma: allowlist secret
 
 ## Overview (`overview.service.ts`)
 
-- **All time:** `getSummary` + top 5 agents by deposit; `lead_cost` only when `database_scope === "production"`.
-- **Last 7 days:** production only — rolling window, summary + by-source bookings + lead cost + top agents.
+- **All time:** `getSummary` + top 5 agents by deposit; `lead_cost` only when `database_scope === "production"`. // pragma: allowlist secret
+- **Last 7 days:** production only — rolling window, summary + by-source bookings + lead cost + top agents. // pragma: allowlist secret
 - **Combined all-time:** merges totals and top agents; `lead_cost` is `null` (no cross-scope CPL merge).
 
 ## Agent Sales report (`agentSalesReport.service.ts`)
@@ -144,7 +167,7 @@ Calls `getAnalyticsReport`, flattens payload per report shape (summary single ro
 - Analytics is read-only; never mutate leads/bookings from these services.
 - Booking cancellation in reports = `BookedLead.cancelled` ref set, not merely existence of a cancelled doc.
 - `derived_source_company` is the canonical dimension for source-company booking reports; aliases merge in `combined` scope.
-- Historical vs production data are separate collections — `combined` sums both, it does not join by business id.
+- Historical vs production data are separate collections — `combined` sums both, it does not join by business id. // pragma: allowlist secret
 - Do not bypass `bookedLeadPrefix` / `cancelledLeadPrefix` / `leadMatch` when adding booking- or lead-scoped reports.
 - Agent binder attribution follows allocation snapshots (see `agentAllocation.service.md`).
 

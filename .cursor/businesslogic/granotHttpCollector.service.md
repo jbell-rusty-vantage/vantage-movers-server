@@ -1,6 +1,29 @@
+---
+type: Service
+title: Granot HTTP collector / automation
+description: HTTP session collector; approved apply captures granot_http_automation receipts.
+tags: [granot-lifecycle, automation]
+status: draft
+stale_after: 2026-09-20
+resource: src/services/granotHttpCollector/
+applies_to:
+  - src/services/granotHttpCollector/
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/granotHttpCollector/
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)
 **Primary code:** `src/services/granotHttpCollector/`
-**Domain terms used:** Form Lead, Call Lead Enrichment, Granot Observation Receipt, System of Record, Tracking Reference
+**Domain terms used:** [Form Lead](../../../CONTEXT.md), [Call Lead Enrichment](../../../CONTEXT.md), [Granot Observation Receipt](../../../CONTEXT.md), [System of Record](../../../CONTEXT.md), [Tracking Reference](../../../CONTEXT.md)
 
 # Granot HTTP collector / automation
 

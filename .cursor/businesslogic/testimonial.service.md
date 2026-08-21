@@ -1,6 +1,27 @@
+---
+type: Service
+title: Testimonial Service
+description: Read-only testimonials for the marketing site.
+tags: [testimonial, main-site]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/testimonials/testimonial.service.ts
+applies_to:
+  - src/services/testimonials/testimonial.service.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/testimonials/testimonial.service.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Primary code:** `src/services/testimonials/testimonial.service.ts`  
-**Domain terms used:** Main Site (marketing consumer)
+**Domain terms used:** [Main Site (marketing consumer)](../../../CONTEXT.md)
 
 # Testimonial Service
 

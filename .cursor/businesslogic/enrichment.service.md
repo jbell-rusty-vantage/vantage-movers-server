@@ -1,7 +1,31 @@
+---
+type: Service
+title: Call Lead Enrichment
+description: Preview and sync Granot Follow Up rows onto Call Leads. Extension and HTTP automation final-apply no longer call this path.
+tags: [call-lead, enrichment]
+status: draft
+stale_after: 2026-09-20
+resource: src/services/enrichment/callLeadEnrichment.service.ts
+applies_to:
+  - src/services/enrichment/callLeadEnrichment.service.ts
+  - src/services/enrichment/callLeadEnrichmentRows.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/enrichment/callLeadEnrichment.service.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)
 **Primary code:** `src/services/enrichment/callLeadEnrichment.service.ts`, `src/services/enrichment/callLeadEnrichmentRows.ts`
-**Domain terms used:** Call Lead Enrichment, Call Lead, Job Number, Sheet Sync, System of Record
+**Domain terms used:** [Call Lead Enrichment](../../../CONTEXT.md), [Call Lead](../../../CONTEXT.md), [Job Number](../../../CONTEXT.md), [Sheet Sync](../../../CONTEXT.md), [System of Record](../../../CONTEXT.md)
 
 # Call Lead Enrichment
 

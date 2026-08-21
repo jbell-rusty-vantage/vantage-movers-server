@@ -1,7 +1,31 @@
+---
+type: Service
+title: "Domain Commands (`domainCommands/`)"
+description: "Canonical idempotent write surface: one Mongo transaction, EntityChange rows, and post-commit finalize."
+tags: [domain-commands, system-of-record]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/domainCommands/
+applies_to:
+  - src/services/domainCommands/
+  - src/models/EntityChange.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/domainCommands/
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)
 **Authority:** [Final Granot Lead Lifecycle specification](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) Sections 23.1–23.4, 34.5, 35.1, 38/S07
 **Primary code:** `src/services/domainCommands/`, `src/models/EntityChange.ts`
-**Domain terms used:** System of Record, Sheet Sync, Observation Channel, Booking, Cancellation, Entity Change
+**Domain terms used:** [System of Record](../../../CONTEXT.md), [Sheet Sync](../../../CONTEXT.md), [Observation Channel](../../../CONTEXT.md), [Booking](../../../CONTEXT.md), [Cancellation](../../../CONTEXT.md), [Entity Change](../../../CONTEXT.md)
 
 # Domain Commands (`domainCommands/`)
 

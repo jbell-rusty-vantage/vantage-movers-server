@@ -1,6 +1,30 @@
+---
+type: Service
+title: "Granot Observation normalization (`granotLifecycle/normalization`)"
+description: Convert one Granot Observation Receipt into one Observation. No matching or effects.
+tags: [granot-lifecycle]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/granotLifecycle/normalization.ts
+applies_to:
+  - src/services/granotLifecycle/normalization.ts
+  - src/models/GranotObservation.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/granotLifecycle/normalization.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/normalization.ts`, `src/models/GranotObservation.ts`  
-**Domain terms used:** Granot Observation, Granot Observation Receipt, Granot Priority, Granot Booking Action, Observation Channel
+**Domain terms used:** [Granot Observation](../../../CONTEXT.md), [Granot Observation Receipt](../../../CONTEXT.md), [Granot Priority](../../../CONTEXT.md), [Granot Booking Action](../../../CONTEXT.md), [Observation Channel](../../../CONTEXT.md)
 
 # Granot Observation normalization (`granotLifecycle/normalization`)
 

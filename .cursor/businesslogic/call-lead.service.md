@@ -1,7 +1,32 @@
+---
+type: Service
+title: Call Lead Service
+description: Create and update Call Leads from manual and RingCentral ingest, including duplicates and CPL snapshots.
+tags: [call-lead, ingestion]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/leads/callLead.service.ts
+applies_to:
+  - src/services/leads/callLead.service.ts
+  - src/services/leads/leadIngestionProvenance.ts
+  - src/services/leads/leadCplResolution.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/leads/callLead.service.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/leads/callLead.service.ts`, `src/services/leads/leadIngestionProvenance.ts`, `src/services/leads/leadCplResolution.ts`  
-**Domain terms used:** Call Lead, Call Lead Ingestion, Duplicate Lead, Form Fill, CPL, Sheet Sync, Caller Match Key, Lead ID
+**Domain terms used:** [Call Lead](../../../CONTEXT.md), [Call Lead Ingestion](../../../CONTEXT.md), [Duplicate Lead](../../../CONTEXT.md), [Form Fill](../../../CONTEXT.md), [CPL](../../../CONTEXT.md), [Sheet Sync](../../../CONTEXT.md), [Caller Match Key](../../../CONTEXT.md), [Lead ID](../../../CONTEXT.md)
 
 # Call Lead Service
 
@@ -15,7 +40,7 @@
 | `createRingCentralCallLead` | **Call Lead Ingestion** (Ring Central) only | passed in by ingest | `duplicate_zero` / `cpl = 0` when Duplicate Lead, else registry snapshot |
 | `createLeadFromGranot` | Granot lifecycle processor only, after live `create_if_missing` authorization and no eligible match ([`granotLifecycle.processor.md`](granotLifecycle.processor.md)) | `false`; sparse Job-only creation is allowed | exact active Source Granularity rate snapshot |
 
-**Call Qualification** + ingest: [`ringcentral-call-lead-qualification.service.md`](ringcentral-call-lead-qualification.service.md). Duplicate classification: `ringcentral-duplicate-guard.ts`; promotion gate: `ringcentral-call-lead-ingest.service.ts`.
+**Call Qualification** + ingest: [`ringcentral-call-lead-qualification.md`](../../docs/knowledge/services/ringcentral-call-lead-qualification.md). Duplicate classification: `ringcentral-duplicate-guard.ts`; promotion gate: `ringcentral-call-lead-ingest.service.ts`.
 
 ## Create — manual/API (`createCallLead`)
 
@@ -106,7 +131,7 @@ Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 - [`granotLifecycle.processor.md`](granotLifecycle.processor.md) — authorized Granot Call create (sparse Job-only / phone `pending`) and matched-Lead sync
 - [`granotLifecycle.identity.md`](granotLifecycle.identity.md) — source-scoped Call ladder reads Job/phone/ingested phone; Duplicate Call Leads remain readable
 - [`enrichment.service.md`](enrichment.service.md) — Follow Up preview/sync
-- [`ringcentral-call-lead-qualification.service.md`](ringcentral-call-lead-qualification.service.md) — **Call Qualification**, ingest gate
+- [`ringcentral-call-lead-qualification.md`](../../docs/knowledge/services/ringcentral-call-lead-qualification.md) — **Call Qualification**, ingest gate
 - [`googleSheets.service.md`](googleSheets.service.md) — Calls / Duplicate Calls tabs
 
 ## Related rules

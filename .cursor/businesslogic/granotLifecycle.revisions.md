@@ -1,7 +1,32 @@
+---
+type: Service
+title: Aggregate revisions (Unit 09 foundation)
+description: domain_revision CAS primitive and Lead provenance storage fields. Public DTOs reject these fields.
+tags: [granot-lifecycle]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/granotLifecycle/aggregateRevision.ts
+applies_to:
+  - src/models/granotLifecycleSchemas.ts
+  - src/services/granotLifecycle/aggregateRevision.ts
+  - src/services/granotLifecycle/trustedLeadCreateValidation.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/granotLifecycle/aggregateRevision.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) Sections 14.1, 23.2, 34.3–34.5  
 **Primary code:** `src/models/granotLifecycleSchemas.ts`, `src/services/granotLifecycle/aggregateRevision.ts`, `src/services/granotLifecycle/trustedLeadCreateValidation.ts`, `scripts/migrations/granot-lifecycle-lead-provenance.ts`, `scripts/migrations/granot-lifecycle-aggregate-revisions.ts`  
-**Domain terms used:** Form Lead, Call Lead, Booking, Cancellation, System of Record, Job Number
+**Domain terms used:** [Form Lead](../../../CONTEXT.md), [Call Lead](../../../CONTEXT.md), [Booking](../../../CONTEXT.md), [Cancellation](../../../CONTEXT.md), [System of Record](../../../CONTEXT.md), [Job Number](../../../CONTEXT.md)
 
 # Aggregate revisions (Unit 09 foundation)
 
@@ -15,7 +40,7 @@
 | `last_change_id` / `last_changed_at` | Optional pair. Both absent until an existing canonical adapter records a real `EntityChange`. One-sided pairs fail validation. |
 | `change_history_started_at` | Honest start-of-history boundary. New documents receive trusted server creation time. Clients cannot supply it. Write-once outside the reviewed migration seam. |
 
-Public/admin DTOs reject these fields and the Unit 12 Lead provenance fields (`ingestion_origin`, ingested/Granot snapshots, current provenance, temporal winner, `granot_contact_revision`, bounded contact summary, Call `ringcentral_convergence`). Shared provenance/temporal/convergence sub-schemas in `granotLifecycleSchemas.ts` are storage only. Trusted Granot create validators (`trustedLeadCreateValidation.ts`) force `post_to_granot=false` and are invoked only by `createLeadFromGranot`. That command stamps the Lead creation Change (`revision_before:0`) and the active Record Link Change in the same transaction. Unit 19 adds no migration or index. Historical collections are not write targets. Historical consolidation plans omit revision metadata; production schema defaults may attach `domain_revision: 0` and a server history boundary at insert validation without inventing `last_change_*` or `EntityChange` rows. Unit 13 extends `pnpm migration:granot-lifecycle:leads` with fail-closed `legacy_unknown` origin, `normalizeJobNo(job_no)` only, and `legacy_baseline` snapshots from current contact/move fields. It never rewrites business values, `captured_at_ingestion`, revisions, or the history boundary. `baseline_captured_at` is a separately persisted reviewed timestamp and is not `change_history_started_at`. The seven named non-unique Lead indexes are created by `pnpm migration:granot-lifecycle:indexes`. Report writes zero documents/indexes; production apply requires separate authorization.
+Public/admin DTOs reject these fields and the Unit 12 Lead provenance fields (`ingestion_origin`, ingested/Granot snapshots, current provenance, temporal winner, `granot_contact_revision`, bounded contact summary, Call `ringcentral_convergence`). Shared provenance/temporal/convergence sub-schemas in `granotLifecycleSchemas.ts` are storage only. Trusted Granot create validators (`trustedLeadCreateValidation.ts`) force `post_to_granot=false` and are invoked only by `createLeadFromGranot`. That command stamps the Lead creation Change (`revision_before:0`) and the active Record Link Change in the same transaction. Unit 19 adds no migration or index. Historical collections are not write targets. Historical consolidation plans omit revision metadata; production schema defaults may attach `domain_revision: 0` and a server history boundary at insert validation without inventing `last_change_*` or `EntityChange` rows. Unit 13 extends `pnpm migration:granot-lifecycle:leads` with fail-closed `legacy_unknown` origin, `normalizeJobNo(job_no)` only, and `legacy_baseline` snapshots from current contact/move fields. It never rewrites business values, `captured_at_ingestion`, revisions, or the history boundary. `baseline_captured_at` is a separately persisted reviewed timestamp and is not `change_history_started_at`. The seven named non-unique Lead indexes are created by `pnpm migration:granot-lifecycle:indexes`. Report writes zero documents/indexes; production apply requires separate authorization. // pragma: allowlist secret
 
 ## Compare-and-swap primitive
 

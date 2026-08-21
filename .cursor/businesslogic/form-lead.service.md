@@ -1,7 +1,36 @@
+---
+type: Service
+title: Form Lead Service
+description: Create, update, and delete Form Leads, including duplicates, CRM Posting, and Sheet Sync tab routing.
+tags: [form-lead, ingestion, crm-posting]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/leads/formLead.service.ts
+applies_to:
+  - src/services/leads/formLead.service.ts
+  - src/services/leads/leadIngestionProvenance.ts
+  - src/services/leads/leadCplResolution.ts
+  - src/services/crm/crm.service.ts
+  - src/services/crm/formLeadPayload.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/leads/formLead.service.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+  - id: adr-0002
+    resource: ../docs/adr/0002-granot-crm-post-despite-downstream-failures.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) for Granot identity; [`../../../docs/adr/`](../../../docs/adr/) for [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md) and [0002 CRM post survives failures](../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md)
 **Primary code:** `src/services/leads/formLead.service.ts`, `src/services/leads/leadIngestionProvenance.ts`, `src/services/leads/leadCplResolution.ts`, `src/services/crm/crm.service.ts`, `src/services/crm/formLeadPayload.ts`  
-**Domain terms used:** Form Lead Ingestion, Form Lead, Duplicate Lead, CRM Posting, Sheet Sync, Tracking Reference, Lead ID, Form Fill, Move Type, CPL
+**Domain terms used:** [Form Lead Ingestion](../../../CONTEXT.md), [Form Lead](../../../CONTEXT.md), [Duplicate Lead](../../../CONTEXT.md), [CRM Posting](../../../CONTEXT.md), [Sheet Sync](../../../CONTEXT.md), [Tracking Reference](../../../CONTEXT.md), [Lead ID](../../../CONTEXT.md), [Form Fill](../../../CONTEXT.md), [Move Type](../../../CONTEXT.md), [CPL](../../../CONTEXT.md)
 
 # Form Lead Service
 
@@ -121,7 +150,7 @@ Sheet Sync, CRM Posting, and the 201 create response still complete.
 ## Related businesslogic
 
 - [`call-lead.service.md`](call-lead.service.md) — Form Fill on Call Lead create; Call Lead Ingestion
-- [`operationsRegistry.service.md`](operationsRegistry.service.md) — CPL periods + agent lookup
+- [`operations-registry.md`](../../docs/knowledge/services/operations-registry.md) — CPL periods + agent lookup
 - [`sheetSync.service.md`](sheetSync.service.md) — outbox, drainer, job shapes
 - [`googleSheets.service.md`](googleSheets.service.md) — tab routing, Master vs Source Company Sheet writes
 - [`granotLifecycle.capture.md`](granotLifecycle.capture.md) — webhook receipts (no Form Lead writes)

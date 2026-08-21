@@ -1,7 +1,30 @@
+---
+type: Service
+title: Admin Search Service
+description: Global admin free-text search across scoped resources, unlike paginated browse.
+tags: [search, admin]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/admin/adminSearch.service.ts
+applies_to:
+  - src/services/admin/adminSearch.service.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/admin/adminSearch.service.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)
 **Primary code:** `src/services/admin/adminSearch.service.ts`  
-**Domain terms used:** Admin Dashboard, Workflow Observational, Lead ID, Form Lead, Call Lead, Booking, Cancellation, System of Record
+**Domain terms used:** [Admin Dashboard](../../../CONTEXT.md), [Workflow Observational](../../../CONTEXT.md), [Lead ID](../../../CONTEXT.md), [Form Lead](../../../CONTEXT.md), [Call Lead](../../../CONTEXT.md), [Booking](../../../CONTEXT.md), [Cancellation](../../../CONTEXT.md), [System of Record](../../../CONTEXT.md)
 
 # Admin Search Service
 
@@ -14,7 +37,7 @@
 | Param | Default | Notes |
 |-------|---------|-------|
 | `q` | required | Trimmed, min length 1; case-insensitive regex match |
-| `database_scope` | `production` | `production` \| `historical` \| `combined` |
+| `database_scope` | `production` | `production` \| `historical` \| `combined` | // pragma: allowlist secret
 | `limit` | `5` | Per resource type, per concrete scope; max 25 |
 
 Unlike browse (`adminBrowse.service.ts`), search has no pagination, date filters, or facet filters — only free-text `q`.
@@ -25,7 +48,7 @@ Resolved via `adminScope.service.ts`:
 
 | `database_scope` | Behavior |
 |------------------|----------|
-| `production` | Live Mongoose models (`FormLead`, `CallLead`, etc.) |
+| `production` | Live Mongoose models (`FormLead`, `CallLead`, etc.) | // pragma: allowlist secret
 | `historical` | Historical collections via `registerHistoricalModels()` |
 | `combined` | Runs search in **both** scopes; results tagged with `database_scope` on each item |
 
@@ -35,7 +58,7 @@ Detail endpoints reject `combined`; search is one of the few places that support
 
 For each of 6 resource types, in parallel:
 
-1. Expand scope → one or two concrete scopes (`production`, `historical`).
+1. Expand scope → one or two concrete scopes (`production`, `historical`). // pragma: allowlist secret
 2. Per scope: build Mongo filter:
    - If `q` is valid ObjectId → `{ _id: ObjectId(q) }` **or**
    - Regex `$or` across configured string fields (escaped special chars)
