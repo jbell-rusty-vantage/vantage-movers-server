@@ -10,7 +10,7 @@ Pass 0–2 are on disk. Start **Pass 3** at `form-lead` (leads cluster).
 
 1. Run `pnpm okf:progress --write`. Disk wins.
 2. Move the **leads** cluster as a whole: `form-lead`, `call-lead`, `enrichment`. Then bookings → sheets → search → catalog → granot-lifecycle.
-3. Continue branch/PR `docs/okf-conversion`. Do not open a second conversion PR.
+3. Continue branch/PR `docs/okf-conversion` — https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/4. Do not open a second conversion PR.
 4. Do not start Pass 4 routers until every inventory Service is moved and stubbed.
 5. ADRs remain `skipped-absent`. Do not invent `../docs/adr/` or `../CONTEXT.md`.
 
