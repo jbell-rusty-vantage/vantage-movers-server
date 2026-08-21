@@ -1,6 +1,32 @@
+---
+type: Service
+title: "Granot lifecycle claim and drain (`granotLifecycle/drainer`)"
+description: Fenced claim/lease, queue/cron drain, dead letter, and Owner requeue. No Lead or Booking effects.
+tags: [granot-lifecycle]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/granotLifecycle/drainer.ts
+applies_to:
+  - src/services/granotLifecycle/drainer.ts
+  - src/services/granotLifecycle/operations.ts
+  - api/queues/granot-lifecycle-consumer.ts
+  - src/routes/granot-lifecycle-cron.routes.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/granotLifecycle/drainer.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/drainer.ts`, `src/services/granotLifecycle/operations.ts` (requeue), `api/queues/granot-lifecycle-consumer.ts`, `src/routes/granot-lifecycle-cron.routes.ts`  
-**Domain terms used:** Granot Observation Receipt, Synchronization Decision, System of Record
+**Domain terms used:** [Granot Observation Receipt](../../../CONTEXT.md), [Synchronization Decision](../../../CONTEXT.md), [System of Record](../../../CONTEXT.md)
 
 # Granot lifecycle claim and drain (`granotLifecycle/drainer`)
 

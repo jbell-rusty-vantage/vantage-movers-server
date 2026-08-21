@@ -1,7 +1,30 @@
+---
+type: Service
+title: Lead Browse
+description: Extension GET browse for form and call leads with pagination and attachment chips.
+tags: [search, form-lead, call-lead]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/search/formLeadBrowse.service.ts
+applies_to:
+  - src/services/search/formLeadBrowse.service.ts
+  - src/services/search/callLeadBrowse.service.ts
+  - src/services/search/leadBrowseShared.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/search/formLeadBrowse.service.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/search/formLeadBrowse.service.ts`, `callLeadBrowse.service.ts`, `leadBrowseShared.ts`  
-**Domain terms used:** Form Lead, Call Lead, Lead ID, Admin Dashboard (extension search workspace)
+**Domain terms used:** [Form Lead](../../../CONTEXT.md), [Call Lead](../../../CONTEXT.md), [Lead ID](../../../CONTEXT.md), [Admin Dashboard (extension search workspace)](../../../CONTEXT.md)
 
 # Lead Browse
 

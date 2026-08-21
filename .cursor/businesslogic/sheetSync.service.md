@@ -1,7 +1,30 @@
+---
+type: Service
+title: "Sheet Sync (`sheetSync/`)"
+description: Write-behind outbox, queue wake-up, drainer, and sheet-sync modes.
+tags: [sheet-sync, outbox]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/sheetSync/
+applies_to:
+  - src/services/sheetSync/
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/sheetSync/
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/sheetSync/`  
-**Domain terms used:** Sheet Sync, Booking Chain, Cancellation Chain, System of Record, Reporting Sheets, Master Sheets, Operational Event
+**Domain terms used:** [Sheet Sync](../../../CONTEXT.md), [Booking Chain](../../../CONTEXT.md), [Cancellation Chain](../../../CONTEXT.md), [System of Record](../../../CONTEXT.md), [Reporting Sheets](../../../CONTEXT.md), [Master Sheets](../../../CONTEXT.md), [Operational Event](../../../CONTEXT.md)
 
 # Sheet Sync (`sheetSync/`)
 
@@ -109,7 +132,7 @@ For hard deletes before Mongo document removal:
 `publishSheetSyncWakeup({ reason, idempotencyKey?, runHint? })`:
 
 - Sends to env-scoped topic: prod `sheet-sync-events`, else `sheet-sync-events-dev` (override `SHEET_SYNC_QUEUE_TOPIC`).
-- **Only publishes** when `VERCEL=1` **and** `VERCEL_ENV=production` (`shouldPublishSheetSyncQueue`). Preview/local/tests use cron or direct `runSheetSyncDrain`.
+- **Only publishes** when `VERCEL=1` **and** `VERCEL_ENV=production` (`shouldPublishSheetSyncQueue`). Preview/local/tests use cron or direct `runSheetSyncDrain`. // pragma: allowlist secret
 - **Never throws** — failed publish is logged + operational event; domain write already committed.
 - `idempotencyKey` optional for burst dedup within debounce window.
 

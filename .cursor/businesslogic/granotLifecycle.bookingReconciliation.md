@@ -1,6 +1,33 @@
+---
+type: Service
+title: "Granot Booking reconciliation (`granotLifecycle/bookingReconciliation`)"
+description: Booking-case open/refresh plus gated Owner confirm, update, referral, and No Action commands.
+tags: [granot-lifecycle]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/granotLifecycle/bookingReconciliation.ts
+applies_to:
+  - src/services/granotLifecycle/bookingReconciliation.ts
+  - src/services/granotLifecycle/bookingConfirmation.ts
+  - src/services/granotLifecycle/bookingOwnerCommands.ts
+  - src/services/granotLifecycle/referralBooking.ts
+  - src/models/GranotBookingReconciliationCase.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/granotLifecycle/bookingReconciliation.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/bookingReconciliation.ts`, `bookingConfirmation.ts`, `bookingOwnerCommands.ts`, `referralBooking.ts`, `src/models/GranotBookingReconciliationCase.ts`, `src/services/granotLifecycle/processor.ts`
-**Domain terms used:** Granot Booking Reconciliation Case, Referral Booking, Update Existing Booking, No Action, Synchronization Decision, Granot Observation, Source Scope
+**Domain terms used:** [Granot Booking Reconciliation Case](../../../CONTEXT.md), [Referral Booking](../../../CONTEXT.md), [Update Existing Booking](../../../CONTEXT.md), [No Action](../../../CONTEXT.md), [Synchronization Decision](../../../CONTEXT.md), [Granot Observation](../../../CONTEXT.md), [Source Scope](../../../CONTEXT.md)
 
 # Granot Booking reconciliation (`granotLifecycle/bookingReconciliation`)
 
@@ -51,4 +78,4 @@ Suggestions are projections of the current Unit 14 identity result. Record Link,
 
 Evidence contains IDs, capture time, and action only. Bounded display context is separate and never becomes an official Booking input. Open/refresh events contain masked IDs; `granot_lifecycle_open_cases{kind="booking",mode}` is recomputed cardinality, so evidence refresh does not increment it.
 
-Checked-in `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED=false`, `GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED=false`, and `GRANOT_LIFECYCLE_REFERRAL_BOOKING_ENABLED=false`; Release/email flags also remain false. Referral reads remain visible when evidence exists, while create/update/No Action capabilities require the command and Referral gates. Deployment, production index verification, and narrow source/effect enablement remain separately authorized.
+Checked-in `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED=false`, `GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED=false`, and `GRANOT_LIFECYCLE_REFERRAL_BOOKING_ENABLED=false`; Release/email flags also remain false. Referral reads remain visible when evidence exists, while create/update/No Action capabilities require the command and Referral gates. Deployment, production index verification, and narrow source/effect enablement remain separately authorized. // pragma: allowlist secret

@@ -1,6 +1,31 @@
+---
+type: Service
+title: "Browser-extension receipt apply (`granotLifecycle/extensionApply`)"
+description: Owner extension apply items capture a receipt and enter claimAndProcessOrPoll.
+tags: [granot-lifecycle]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/granotLifecycle/extensionApply.ts
+applies_to:
+  - src/services/granotLifecycle/extensionApply.ts
+  - src/services/granotLifecycle/capture.ts
+  - src/routes/extension-granot-apply.routes.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/granotLifecycle/extensionApply.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/extensionApply.ts`, `src/services/granotLifecycle/capture.ts`, `src/routes/extension-granot-apply.routes.ts`, `src/validation/v1/granotLifecycle.validation.ts`  
-**Domain terms used:** Granot Observation Receipt, Observation Channel, Synchronization Decision, System of Record
+**Domain terms used:** [Granot Observation Receipt](../../../CONTEXT.md), [Observation Channel](../../../CONTEXT.md), [Synchronization Decision](../../../CONTEXT.md), [System of Record](../../../CONTEXT.md)
 
 # Browser-extension receipt apply (`granotLifecycle/extensionApply`)
 

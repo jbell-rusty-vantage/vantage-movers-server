@@ -1,7 +1,30 @@
+---
+type: Service
+title: Cancellation Mirror Service
+description: Stamp or clear cancelled on the source Form Lead or Call Lead after a cancellation.
+tags: [cancellation, sheet-sync]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/cancellations/cancellationMirror.service.ts
+applies_to:
+  - src/services/cancellations/cancellationMirror.service.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/cancellations/cancellationMirror.service.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/cancellations/cancellationMirror.service.ts`  
-**Domain terms used:** Cancellation, Booking, Form Lead, Call Lead, Sheet Sync
+**Domain terms used:** [Cancellation](../../../CONTEXT.md), [Booking](../../../CONTEXT.md), [Form Lead](../../../CONTEXT.md), [Call Lead](../../../CONTEXT.md), [Sheet Sync](../../../CONTEXT.md)
 
 # Cancellation Mirror Service
 

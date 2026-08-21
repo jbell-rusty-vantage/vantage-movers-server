@@ -1,6 +1,31 @@
+---
+type: Service
+title: Granot Release reconciliation
+description: Separate Release cases plus gated Owner create-Cancellation, Booking replacement, and No Action.
+tags: [granot-lifecycle]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/granotLifecycle/releaseReconciliation.ts
+applies_to:
+  - src/services/granotLifecycle/releaseReconciliation.ts
+  - src/models/GranotReleaseReconciliationCase.ts
+  - src/services/granotLifecycle/processor.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/granotLifecycle/releaseReconciliation.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/releaseReconciliation.ts`, `src/models/GranotReleaseReconciliationCase.ts`, `src/services/granotLifecycle/processor.ts`, `src/services/granotLifecycle/projections.ts`  
-**Domain terms used:** Granot Release Reconciliation Case, Synchronization Decision, deterministic Booking, Granot Observation
+**Domain terms used:** [Granot Release Reconciliation Case](../../../CONTEXT.md), [Synchronization Decision](../../../CONTEXT.md), [deterministic Booking](../../../CONTEXT.md), [Granot Observation](../../../CONTEXT.md)
 
 # Granot Release reconciliation
 

@@ -1,7 +1,32 @@
+---
+type: Service
+title: Granot lifecycle operational observability
+description: Section 33 event catalog, closed metric labels, rollout alerts, and Owner/Admin health projection.
+tags: [granot-lifecycle]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/granotLifecycle/observability.ts
+applies_to:
+  - src/services/granotLifecycle/observability.ts
+  - src/services/granotLifecycle/metrics.ts
+  - src/services/granotLifecycle/alerts.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/granotLifecycle/observability.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) Sections 28.2 and 33  
 **Primary code:** `src/services/granotLifecycle/observability.ts`, `src/services/granotLifecycle/metrics.ts`, `src/services/granotLifecycle/alerts.ts`, `src/services/granotLifecycle/projections.ts` (`projectGranotLifecycleHealth`)  
-**Domain terms used:** Granot Observation, Synchronization Decision, Booking Reconciliation, Release Reconciliation, Operational Event
+**Domain terms used:** [Granot Observation](../../../CONTEXT.md), [Synchronization Decision](../../../CONTEXT.md), [Booking Reconciliation](../../../CONTEXT.md), [Release Reconciliation](../../../CONTEXT.md), [Operational Event](../../../CONTEXT.md)
 
 # Granot lifecycle operational observability
 

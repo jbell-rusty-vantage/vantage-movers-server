@@ -2,6 +2,7 @@
 
 This file is intentionally thin. See the following for the real guidance:
 
+- **`docs/index.md`** — OKF v0.2 catalog. Start here for Service / ADR / Reference concepts. Query with `pnpm okf:query`.
 - **`CLOUD_AGENTS.md`** — Cursor Cloud dev environment setup and non-obvious runtime caveats
   (`.env` requirement, API-secret header, `SHEET_SYNC_MODE`, the MongoDB replica-set
   requirement, how to start/verify the API, and how to run tests/typecheck).

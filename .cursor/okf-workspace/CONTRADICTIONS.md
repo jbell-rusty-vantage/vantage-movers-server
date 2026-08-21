@@ -13,7 +13,15 @@ Format:
 
 ## Open
 
-none
+## ops-registry-authoritative-plan-absent | open | 2026-08-21T0220Z
+- sources: `docs/knowledge/services/operations-registry.md` header `Authoritative plan`; expected `docs/current_plans/01-operations-registry-specification.md`
+- conflict: The Service still links that plan. The file is not in this checkout (same as before the move). Relative link was rewritten for the new depth only.
+- action: leave — do not invent a copy.
+
+## adr-skipped-absent | open | 2026-08-21T0217Z
+- sources: `../docs/adr/0001-mongodb-system-of-record.md`, `../docs/adr/0002-granot-crm-post-despite-downstream-failures.md`, `../docs/adr/0003-lead-id-granot-leadno-ref-no-contract.md`; this standalone `vantage-main-server` checkout
+- conflict: Pass 1 must stamp those three ADRs in place. They are not present here (`optional_checkout`). `pnpm okf:progress` reports `skipped-absent` for all three.
+- action: leave — do not invent copies. Stamp only if a later checkout includes `../docs/adr/`. Index lists the workspace paths.
 
 ## Closed
 

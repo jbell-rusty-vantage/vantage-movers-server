@@ -39,7 +39,7 @@ MongoDB is the **System of Record** for Form Leads, Call Leads, Bookings, Cancel
 ## Leads
 
 - **Form Lead Ingestion** — Landing Page quote form → Mongo persist (trusted `ingestion_origin` + immutable ingested contact/move snapshots) → post-save workflows (CRM Posting when enabled, Sheet Sync). Duplicate Form Leads always save and Sheet Sync; never CRM-posted ([`form-lead.service.md`](../businesslogic/form-lead.service.md)).
-- **Call Lead Ingestion** — qualified Ring Central call → Mongo persist (`ingestion_origin=ringcentral`, `quoted=false`, immutable ingested contact snapshot) → Sheet Sync. Call leads are not CRM-posted at create; **Enrichment** is separate ([`call-lead.service.md`](../businesslogic/call-lead.service.md), [`ringcentral-call-lead-qualification.service.md`](../businesslogic/ringcentral-call-lead-qualification.service.md)).
+- **Call Lead Ingestion** — qualified Ring Central call → Mongo persist (`ingestion_origin=ringcentral`, `quoted=false`, immutable ingested contact snapshot) → Sheet Sync. Call leads are not CRM-posted at create; **Enrichment** is separate ([`call-lead.service.md`](../businesslogic/call-lead.service.md), [`ringcentral-call-lead-qualification.md`](../../docs/knowledge/services/ringcentral-call-lead-qualification.md)).
 - **Customers** — upserted from source leads or booking contact overrides during booking ([`customer.service.md`](../businesslogic/customer.service.md)).
 - Extension/admin read paths: scored form search + call OR-search + paginated browse; admin global search is separate.
 
@@ -74,4 +74,4 @@ MongoDB is the **System of Record** for Form Leads, Call Leads, Bookings, Cancel
 - Preserve traceability from Landing Page or Call Lead Ingestion through CRM, Mongo, Reporting Sheets, booking, cancellation, and Analytics.
 - Keep routes thin; business decisions in services.
 - Do not bypass helpers for Source Company parsing, phone normalization, CPL/Move Type derivation, agent allocation, Duplicate Lead / Form Fill checks, or Sheet Sync scheduling.
-- Duplicates, Unmatched Call Leads, cancellations, and production backfills are high-risk — focused tests or explicit validation notes required.
+- Duplicates, Unmatched Call Leads, cancellations, and production backfills are high-risk — focused tests or explicit validation notes required. // pragma: allowlist secret

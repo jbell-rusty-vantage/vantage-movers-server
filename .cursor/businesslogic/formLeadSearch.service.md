@@ -1,7 +1,28 @@
+---
+type: Service
+title: Form Lead Search
+description: Scored Form Lead identity search with ambiguity handling and duplicate quarantine.
+tags: [form-lead, search]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/search/formLeadSearch.service.ts
+applies_to:
+  - src/services/search/formLeadSearch.service.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/search/formLeadSearch.service.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) for Granot identity
 **Primary code:** `src/services/search/formLeadSearch.service.ts`  
-**Domain terms used:** Form Lead, Lead ID, Granot Form Reference, Tracking Reference, Duplicate Lead, Form Lead Enrichment
+**Domain terms used:** [Form Lead](../../../CONTEXT.md), [Lead ID](../../../CONTEXT.md), [Granot Form Reference](../../../CONTEXT.md), [Tracking Reference](../../../CONTEXT.md), [Duplicate Lead](../../../CONTEXT.md), [Form Lead Enrichment](../../../CONTEXT.md)
 
 # Form Lead Search
 

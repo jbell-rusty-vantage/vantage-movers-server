@@ -1,10 +1,35 @@
+---
+type: Service
+title: "Granot lifecycle processor (`granotLifecycle/processor`)"
+description: Channel-neutral orchestration from receipt to Decision and gated Lead writes. No official Booking or Cancellation writes.
+tags: [granot-lifecycle]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/granotLifecycle/processor.ts
+applies_to:
+  - src/services/granotLifecycle/processor.ts
+  - src/services/granotLifecycle/synchronizeLeadFromGranot.ts
+  - src/services/granotLifecycle/createLeadFromGranot.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/granotLifecycle/processor.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/processor.ts`, `src/services/granotLifecycle/bookingReconciliation.ts`, `src/services/granotLifecycle/createLeadFromGranot.ts`, `src/services/granotLifecycle/synchronizeLeadFromGranot.ts`, `src/services/granotLifecycle/leadDesiredState.ts`, `src/services/granotLifecycle/granotTemporal.ts`, `src/config/domain/granotLifecycle.ts`, `src/models/SynchronizationDecision.ts`, `src/models/GranotLifecycleActivation.ts`, `src/models/GranotRecordLink.ts`, `src/models/GranotBookingReconciliationCase.ts`
-**Domain terms used:** Synchronization Decision, Granot Record Link, Granot Observation, Granot Observation Receipt, System of Record
+**Domain terms used:** [Synchronization Decision](../../../CONTEXT.md), [Granot Record Link](../../../CONTEXT.md), [Granot Observation](../../../CONTEXT.md), [Granot Observation Receipt](../../../CONTEXT.md), [System of Record](../../../CONTEXT.md)
 
 # Granot lifecycle processor (`granotLifecycle/processor`)
 
-**Role:** Channel-neutral production orchestrator. One receipt becomes one Observation, one Unit 14 identity result, one desired-state plan, and one Synchronization Decision. Historical shadow may establish or confirm a **job-level** Granot Record Link. Authorized live matched-Lead writes enter `synchronizeLeadFromGranot` only. Authorized live `create_if_missing` Lead Created with no eligible match enters `createLeadFromGranot` only. This module never patches a Lead or official Booking/Cancellation fact itself.
+**Role:** Channel-neutral production orchestrator. One receipt becomes one Observation, one Unit 14 identity result, one desired-state plan, and one Synchronization Decision. Historical shadow may establish or confirm a **job-level** Granot Record Link. Authorized live matched-Lead writes enter `synchronizeLeadFromGranot` only. Authorized live `create_if_missing` Lead Created with no eligible match enters `createLeadFromGranot` only. This module never patches a Lead or official Booking/Cancellation fact itself. // pragma: allowlist secret
 
 **Stack:** callable module `processor.ts`. Capture does not invoke it. Queue, cron, and the synchronous claim-and-poll seam invoke it only after a fenced receipt claim (`drainer.ts`). Routes pass receipt identity (and optional initiator); they do not plan patches.
 
@@ -98,7 +123,7 @@ Defaults: processing true, shadow true, all eight effect flags false. Processing
 
 ## Out of scope here
 
-Official Booking/Release commands, Admin case UI, and Release/Referral/discrepancy persistence — those live in [`granotLifecycle.bookingReconciliation.md`](granotLifecycle.bookingReconciliation.md) and [`granotLifecycle.projections.md`](granotLifecycle.projections.md). Public Lead Zod / `updateSourceOwnedLead` are not a lifecycle write path. This module does not rewrite Registry rows. Current reviewed policies live in [`granotLifecycle.sourcePolicy.md`](granotLifecycle.sourcePolicy.md) and [`operationsRegistry.service.md`](operationsRegistry.service.md).
+Official Booking/Release commands, Admin case UI, and Release/Referral/discrepancy persistence — those live in [`granotLifecycle.bookingReconciliation.md`](granotLifecycle.bookingReconciliation.md) and [`granotLifecycle.projections.md`](granotLifecycle.projections.md). Public Lead Zod / `updateSourceOwnedLead` are not a lifecycle write path. This module does not rewrite Registry rows. Current reviewed policies live in [`granotLifecycle.sourcePolicy.md`](granotLifecycle.sourcePolicy.md) and [`operations-registry.md`](../../docs/knowledge/services/operations-registry.md).
 
 ## Related
 

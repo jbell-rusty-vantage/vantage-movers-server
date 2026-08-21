@@ -1,7 +1,30 @@
+---
+type: Service
+title: Customer Service
+description: Customer CRUD and booking-time upsert from lead or contact.
+tags: [customer, booking]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/customers/
+applies_to:
+  - src/services/customers/
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/customers/
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/customers/`  
-**Domain terms used:** Customer, Booking, Form Lead, Call Lead, System of Record
+**Domain terms used:** [Customer](../../../CONTEXT.md), [Booking](../../../CONTEXT.md), [Form Lead](../../../CONTEXT.md), [Call Lead](../../../CONTEXT.md), [System of Record](../../../CONTEXT.md)
 
 # Customer Service
 
@@ -88,7 +111,7 @@ All routes under `/api/v1/customers` (require `x-api-secret`).
 
 `createCustomer` / `updateCustomer` do **not** recompute `normalized_name` from `full_name`. Only `customerFromLead` upserts set it.
 
-Manual creates/updates may leave `normalized_name` empty. Later booking upserts keyed by name could create a **second** customer row for the same person if phone is absent. Prefer upsert paths for production linkage; backfill `normalized_name` when seeding via API.
+Manual creates/updates may leave `normalized_name` empty. Later booking upserts keyed by name could create a **second** customer row for the same person if phone is absent. Prefer upsert paths for production linkage; backfill `normalized_name` when seeding via API. // pragma: allowlist secret
 
 ## Invariants
 

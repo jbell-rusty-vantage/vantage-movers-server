@@ -9,7 +9,7 @@ alwaysApply: false
 Owner invariants: [`.cursor/businesslogic/granotHttpCollector.service.md`](../businesslogic/granotHttpCollector.service.md).
 
 - Admin surface: `/api/v1/admin/granot-automation/*` behind `requireApiSecret` + `requireRegistryOwnerActor`. Separate `app.use` in `src/app.ts` before v1.
-- Source list/create remain label + `supported_operations` compatible. Apply resolution dereferences `GranotCrmSource` and fails closed with `INVALID_GRANOT_SOURCES` when compatibility is not `ready` (`enabled` + `lifecycle_enabled` + non-`deferred` + matching routes). New labels start as `missing_reference`. Reviewed family inventory: [`operationsRegistry.service.md`](../businesslogic/operationsRegistry.service.md).
+- Source list/create remain label + `supported_operations` compatible. Apply resolution dereferences `GranotCrmSource` and fails closed with `INVALID_GRANOT_SOURCES` when compatibility is not `ready` (`enabled` + `lifecycle_enabled` + non-`deferred` + matching routes). New labels start as `missing_reference`. Reviewed family inventory: [`operations-registry.md`](../../docs/knowledge/services/operations-registry.md).
 - Workflows are `preview` or `apply`. Apply requires `GRANOT_AUTOMATION_APPLY_ENABLED` and explicit owner approval of selected plan actions.
 - Approved apply captures one `granot_http_automation` receipt per selected action (`${run_id}:${action_id}`) and enters `claimAndProcessOrPoll`. It must not call `updateFormLead`, `syncCallLeadEnrichment`, or `syncBookedCallLeadReconciliation`.
 - Queue topic `granot-automation-events` → `api/queues/granot-automation-consumer.ts` → `runGranotWorker()`. Cron heartbeat recovers leased runs.

@@ -1,14 +1,14 @@
 # NOW
 
 - Date (UTC): 2026-08-21
-- Pass: 0 (not started)
-- Next atomic unit: `p0-okf-query` — copy `.cursor/skills/okf-docs-conversion/scripts/okf-query.mjs` → `scripts/okf-query.mjs`
+- Pass: 3
+- Next atomic unit: `form-lead` — move cluster leads: `.cursor/businesslogic/form-lead.service.md`
 - Lock: none
 - Lock holder:
 - Lock at:
 - Branch: `docs/okf-conversion`
-- PR: none
-- Last session: none
-- Disk vs this file: run `pnpm okf:progress` — disk wins
+- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/4
+- Last session: `pass0-2026-08-21T0217Z`
+- Disk vs this file: `pnpm okf:progress` pass 3 / next `form-lead`
 
 Do not add narrative here. Messages and ideas have their own files.

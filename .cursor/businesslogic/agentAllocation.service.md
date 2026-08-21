@@ -1,7 +1,30 @@
+---
+type: Service
+title: Agent Allocation Service
+description: Resolve agent names, split binder credit, and snapshot allocations on bookings.
+tags: [agent-allocation, booking]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/agents/agentAllocation.service.ts
+applies_to:
+  - src/services/agents/agentAllocation.service.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/agents/agentAllocation.service.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/agents/agentAllocation.service.ts`  
-**Domain terms used:** Agent Allocation, Agent, Active Agent, Binder, Booking, Cancellation
+**Domain terms used:** [Agent Allocation](../../../CONTEXT.md), [Agent](../../../CONTEXT.md), [Active Agent](../../../CONTEXT.md), [Binder](../../../CONTEXT.md), [Booking](../../../CONTEXT.md), [Cancellation](../../../CONTEXT.md)
 
 # Agent Allocation Service
 
@@ -88,7 +111,7 @@ Returns `agent_allocations[0].agent_name_snapshot` or `""` if missing. Used when
 
 Upserts an agent by `normalized_name` with `created_from: "booked_lead"`, default `active: true`. Handles Mongo `E11000` races by re-read.
 
-**Not used by current production booking/create flows** — exported for historical repair/backfill scripts. Standard API requires pre-existing **active** catalog agents via admin/catalog CRUD.
+**Not used by current production booking/create flows** — exported for historical repair/backfill scripts. Standard API requires pre-existing **active** catalog agents via admin/catalog CRUD. // pragma: allowlist secret
 
 ## Warnings (downstream)
 

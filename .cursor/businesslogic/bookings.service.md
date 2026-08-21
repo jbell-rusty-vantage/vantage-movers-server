@@ -1,7 +1,30 @@
+---
+type: Service
+title: "Bookings (`bookings/`)"
+description: Create, update, and delete Booked Leads, including from-source, referral, leadless, and booking-chain sync.
+tags: [booking, sheet-sync]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/bookings/
+applies_to:
+  - src/services/bookings/
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/bookings/
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/bookings/`  
-**Domain terms used:** Booking, Leadless Booking, Referral Booking, Booking Chain, Sheet Sync, Agent Allocation, Binder, Deposit, Unmatched Call Lead, System of Record
+**Domain terms used:** [Booking](../../../CONTEXT.md), [Leadless Booking](../../../CONTEXT.md), [Referral Booking](../../../CONTEXT.md), [Booking Chain](../../../CONTEXT.md), [Sheet Sync](../../../CONTEXT.md), [Agent Allocation](../../../CONTEXT.md), [Binder](../../../CONTEXT.md), [Deposit](../../../CONTEXT.md), [Unmatched Call Lead](../../../CONTEXT.md), [System of Record](../../../CONTEXT.md)
 
 # Bookings (`bookings/`)
 

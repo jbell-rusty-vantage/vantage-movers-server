@@ -1,7 +1,31 @@
+---
+type: Service
+title: Google Sheets Service
+description: Tab routing, projections, upsert/delete, and master versus source writes.
+tags: [sheet-sync, google-sheets]
+status: draft
+stale_after: 2026-09-20
+resource: src/services/googleSheets/googleSheets.service.ts
+applies_to:
+  - src/services/googleSheets/googleSheets.service.ts
+  - src/services/googleSheets.service.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/googleSheets/googleSheets.service.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
 **Platform glossary:** [`../../../CONTEXT.md`](../../../CONTEXT.md)  
 **ADRs:** [`../../../docs/adr/`](../../../docs/adr/) — [0001 Mongo SoR](../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/googleSheets/googleSheets.service.ts` (facade: `src/services/googleSheets.service.ts`)  
-**Domain terms used:** Sheet Sync, Reporting Sheets, Master Sheets, Source Company Sheet, Duplicate Lead, Bad Lead, Lead ID
+**Domain terms used:** [Sheet Sync](../../../CONTEXT.md), [Reporting Sheets](../../../CONTEXT.md), [Master Sheets](../../../CONTEXT.md), [Source Company Sheet](../../../CONTEXT.md), [Duplicate Lead](../../../CONTEXT.md), [Bad Lead](../../../CONTEXT.md), [Lead ID](../../../CONTEXT.md)
 
 # Google Sheets Service
 
