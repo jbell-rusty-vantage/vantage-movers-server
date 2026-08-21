@@ -14,8 +14,8 @@ Mark `[x]` only when the unit's **Done when** checks are true on disk.
 
 ## Units
 
-- [ ] `opt-a` Stub removal — `.cursor/businesslogic/` gone; query roots `docs` only
-- [ ] `opt-b` Pointer collapse — AGENTS.md thin; `.cursor/index.md` one-screen map
+- [x] `opt-a` Stub removal — `.cursor/businesslogic/` gone; query roots `docs` only
+- [x] `opt-b` Pointer collapse — AGENTS.md thin; `.cursor/index.md` one-screen map
 - [ ] `opt-c` Conversion residue — no `Related businesslogic` / old `.service.md` labels
 - [ ] `opt-d` Thin fat routers — business-logic, owner-lead-workflow, form-lead-granot-crm, sheet-sync-process
 - [ ] `opt-e` Coverage gaps — lead-messaging, employee-bookings, reporting, ingestion (or documented skip)
