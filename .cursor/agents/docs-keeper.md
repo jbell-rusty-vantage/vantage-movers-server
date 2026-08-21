@@ -26,7 +26,7 @@ When sources disagree, **stop and report the contradiction**. Do not silently me
 2. **Locked product / lifecycle contracts** (do not reinterpret): `vantage-main-server/scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md` and `vantage-main-server/.cursor/agents/lead-lifecycle-spec-extractor.md`.
 3. **Platform glossary:** workspace-root `CONTEXT.md`. Implementation-free. Canonical terms for all repos.
 4. **ADRs:** workspace-root `docs/adr/`. Hard-to-reverse decisions only.
-5. **Business logic:** `vantage-main-server/docs/knowledge/services/` and `vantage-main-server/docs/knowledge/granot-lifecycle/` — how owner rules show up in a service. `.cursor/businesslogic/` holds stubs only.
+5. **Business logic:** `vantage-main-server/docs/knowledge/services/` and `vantage-main-server/docs/knowledge/granot-lifecycle/` — how owner rules show up in a service.
 6. **Software logic / maps:** glob-scoped `.cursor/rules/*.mdc` in the owning repo (`project-organization.mdc`, workflow rules, process mechanics).
 7. **Long-form / draft strategy:** `vantage-main-server/docs/` — owner specs, showcase, runbooks. `docs/agent-documentation-maintenance-strategy.md` is a **draft future contract**. Do not invent a 12-hour drift loop. Conversion Cloud runs resume from `.cursor/okf-workspace/`.
 
@@ -44,7 +44,7 @@ Repo-local `CONTEXT.md` files (`vantage-main-server`, `vantage-admin`, `granot_s
 | Product / UI map | `vantage-admin/.cursor/rules/project-organization.mdc` | Admin routes, proxy/ACL, client modules, ownership vs server | Server invariants |
 | Extension map | `granot_sync_extensions_and_services/.cursor/rules/*.mdc` | Layers, workspaces, scan/sync workflows, CSV, auto-sync | Server persist rules (link instead) |
 | Client-site map | `vantage-movers-clients/.cursor/rules/*.mdc` | Apps, packages, quote → Form Lead seam, partner slugs | Admin or CRM workflow internals |
-| Catalog | `vantage-main-server/docs/index.md` (Cursor map: `.cursor/index.md`) | New/removed Service file or rule | Narrative duplication of a service doc |
+| Catalog | `vantage-main-server/docs/index.md` | New/removed Service file or rule | Narrative duplication of a service doc |
 | Long-form | `docs/`, showcase, runbooks | Owner-facing specs the user asked to keep | Cursor-only routing that belongs in a rule |
 
 Use glossary terms; **link — do not redefine**. Follow `/domain-modeling` format when a root `CONTEXT.md` term is actually new. Offer an ADR only when the change is hard to reverse, surprising without context, **and** the result of a real trade-off.
@@ -124,7 +124,7 @@ When patching an OKF concept: set `generated.by` to the keeper process (not `pro
 | `apps/main-site/src/stories/**`, `apps/main-site/src/components/**` | `rules/storybook-promote-to-production.mdc` when the promote workflow changed |
 | Quote schema / `@vantage/api-client` Form Lead fields | Client project-organization **and** `vantage-main-server/docs/knowledge/services/form-lead.md` if the server contract changed |
 
-If no row matches, search `.cursor/rules/*.mdc` frontmatter `globs` and `.cursor/index.md`. Do not create a new always-apply rule to paper over a missing glob — tighten the existing rule’s `globs` instead.
+If no row matches, search `.cursor/rules/*.mdc` frontmatter `globs` and `docs/index.md`. Do not create a new always-apply rule to paper over a missing glob — tighten the existing rule’s `globs` instead.
 
 ## Rule glob hygiene
 
@@ -133,7 +133,7 @@ When you edit a `.mdc` file:
 - Keep `description` specific enough that Cursor can select the rule.
 - Keep `globs` as a comma-separated list of **repo-relative** paths that actually exist (or are about to exist in the same change).
 - Prefer `alwaysApply: false` plus globs. Reserve `alwaysApply: true` for maps and safety (`project-organization`, `codebase`, `backend-safety`).
-- One concern per rule. If a rule grows past a few screens or mixes owner policy with TypeScript style, split it and update `index.md`.
+- One concern per rule. If a rule grows past a few screens or mixes owner policy with TypeScript style, split it and update `docs/index.md` if a Service was added.
 - Cursor recommends **referencing** documents instead of copying them. Rules route and constrain; `docs/knowledge/` holds the owner rules.
 
 ## New Service file
@@ -148,7 +148,7 @@ When a service now owns owner-facing behavior and has no compact doc:
    - **Primary code** → actual `src/services/...` path
    - **Domain terms used** → 2–5 glossary terms (link, do not define)
    - Triggers, invariants, Sheet Sync job types if any, cross-links, related rules
-3. Add a row to `vantage-main-server/docs/index.md` and the Cursor map in `.cursor/index.md`.
+3. Add a row to `vantage-main-server/docs/index.md`.
 4. Patch `rules/business-logic.mdc` only if a **cross-service** invariant changed.
 
 Keep each doc compact (one screen to a few screens). Known gaps stay labeled as gaps; do not “fix” them in prose by describing the desired design as if it already shipped.
