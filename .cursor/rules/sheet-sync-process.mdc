@@ -23,7 +23,7 @@ MongoDB is the source of truth. Google Sheets are owner-facing reporting surface
 - `Booked Deals`: `Timestamp`, `Agent`, `SplitAgent`, `Binder Amount`, `Split`, `Book Date`, `Job No`, `Customer Name`, `Deposit Amount`, `Merchant`, `Source`, `Mongo ID`, `Mongo Lead ID`, `Local`, `Cancelled`.
 - `Cancelled Deals`: `Timestamp`, `Agent`, `Cancel Date`, `Job No`, `Customer Name`, `Refund Amount`, `Source`, `Mongo ID`, `Lead Mongo ID`.
 
-Do not add CPL columns to Sheets. Use projection helpers for owner-facing values such as `booked`, `quoted`, `cancelled`, `local`, source labels, and threshold markers.
+Do not add CPL columns to Sheets. Use projection helpers for owner-facing values such as `booked`, `quoted`, `cancelled`, `local`, source labels, and threshold markers. `Sales Rep` is `lead.receiver_agent_name_snapshot`; do not live-join Agent at sync time.
 
 ## What Gets Written
 

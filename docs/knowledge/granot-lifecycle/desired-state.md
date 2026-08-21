@@ -50,7 +50,7 @@ generated:
 | current location / move date / cubic feet / `local` | Priority `1`/`5`, subject to origin |
 | `granot_move_size`, `granot_service_type` | Priority `1`/`5`; never Vantage `move_size` |
 
-WordPress Form: primary name/phone/email and both ingested snapshots stay off `changed_paths`. Qualified Granot contact plans `granot_contact_snapshot` only. Granot-created and RingCentral-created qualified contact become current operational fields; `last_granot_contact_change.changed_paths` is planner metadata and is stripped before `synchronizeLeadFromGranot`. The command derives provenance, contact hashes, temporal winner, and `EntityChange` field modes.
+WordPress Form: primary name/phone/email and both ingested snapshots stay off `changed_paths`. Qualified Granot contact plans `granot_contact_snapshot` only. Granot-created and RingCentral-created qualified contact become current operational fields; `last_granot_contact_change.changed_paths` is planner metadata and is stripped before `synchronizeLeadFromGranot`. The command derives provenance, contact hashes, temporal winner, and `EntityChange` field modes. A planned `receiver_agent` fill also derives `receiver_agent_name_snapshot` from the loaded Agent catalog name and `receiver_agent_set_at`; those stamps stay off the planner.
 
 ## No-match and minimum data
 
@@ -65,7 +65,7 @@ Equivalent formatting uses existing Job/phone/email/state/date normalizers and d
 
 ## Command conversion and role-safe projection
 
-The processor converts a plan to `GranotAuthorizedLeadDesiredState` immediately before `synchronizeLeadFromGranot`. Extra/missing/duplicate paths, `quoted:false`, forbidden metadata, and model-inapplicable ZIP fields are rejected. Contact hashes and temporal/provenance stamps are server-derived.
+The processor converts a plan to `GranotAuthorizedLeadDesiredState` immediately before `synchronizeLeadFromGranot`. Extra/missing/duplicate paths, `quoted:false`, forbidden metadata, and model-inapplicable ZIP fields are rejected. Contact hashes, temporal/provenance stamps, and receiver catalog snapshot/`set_at` are server-derived.
 
 `projectRoleSafeLeadContacts` keeps WordPress submitted contact and `granot_contact_snapshot` separately identifiable and masks phones/emails. It never reads raw receipt payload.
 

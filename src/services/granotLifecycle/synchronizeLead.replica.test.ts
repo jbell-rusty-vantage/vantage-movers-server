@@ -542,6 +542,9 @@ test("[AC-13] replica Agent fills only an empty receiver through one active matc
     const lead = await FormLead.findById(leadId).lean();
     assert.equal(String(lead?.receiver_agent), String(agentId));
     assert.equal(lead?.receiver_agent_source, "granot_username_match");
+    assert.equal(lead?.receiver_agent_source_value, "mike");
+    assert.equal(lead?.receiver_agent_name_snapshot, "Synthetic Mike");
+    assert.ok(lead?.receiver_agent_set_at instanceof Date);
     assert.equal(lead?.quoted, false);
   } finally {
     await FormLead.deleteMany({ _id: leadId });

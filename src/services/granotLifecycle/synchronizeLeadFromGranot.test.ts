@@ -9,6 +9,7 @@ import {
 import { DomainCommandContextError } from "../domainCommands/types";
 import type { GranotAuthorizedLeadDesiredState } from "./authorizedDesiredState";
 import {
+  receiverAgentCatalogStamps,
   synchronizeLeadFromGranot,
   type SynchronizeLeadFromGranotInput,
 } from "./synchronizeLeadFromGranot";
@@ -156,4 +157,12 @@ test("[AC-32] Granot command context requires the processor actor and webhook in
     () => synchronizeLeadFromGranot(payload),
     DomainCommandContextError,
   );
+});
+
+test("receiver fill derives catalog name snapshot and set_at off the planner", () => {
+  const now = new Date("2026-08-21T17:00:00.000Z");
+  assert.deepEqual(receiverAgentCatalogStamps("Synthetic Mike", now), {
+    receiver_agent_name_snapshot: "Synthetic Mike",
+    receiver_agent_set_at: now,
+  });
 });

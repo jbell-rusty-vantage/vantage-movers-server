@@ -184,7 +184,7 @@ async function applySynchronizeLeadOperation(
 
   if (leadChanged) {
     const before = lead.raw;
-    const updated = await applyLeadMutation(input, leadSet.all, lead, session);
+    const updated = await applyLeadMutation(input, leadSet.all, lead, session, now);
     const paths = input.lead_ref.model === "FormLead" ? FORM_LEAD_CHANGE_PATHS : CALL_LEAD_CHANGE_PATHS;
     const fields = collectDocumentFieldChanges(before, updated, paths);
     if (fields.length > 0) {
@@ -597,9 +597,11 @@ async function applyLeadMutation(
   set: Record<string, unknown>,
   lead: LoadedLead,
   session: ClientSession,
+  now: Date,
 ): Promise<Record<string, unknown>> {
   if (input.desired_state.set.receiver_agent) {
-    await assertReceiverAgentAssignable(input, session);
+    const agent = await assertReceiverAgentAssignable(input, session);
+    Object.assign(set, receiverAgentCatalogStamps(agent.name, now));
   }
   const model = leadModel(input.lead_ref.model);
   const filter: Record<string, unknown> = {
@@ -648,19 +650,27 @@ async function advanceTemporalWinnerOnly(
   return result.matchedCount === 1;
 }
 
+export function receiverAgentCatalogStamps(agentName: string, now: Date) {
+  return {
+    receiver_agent_name_snapshot: agentName,
+    receiver_agent_set_at: now,
+  };
+}
+
 async function assertReceiverAgentAssignable(
   input: SynchronizeLeadFromGranotInput,
   session: ClientSession,
-): Promise<void> {
+): Promise<{ name: string }> {
   const agentId = String(input.desired_state.set.receiver_agent);
   const suggested = input.execution.identity.agent;
   if (!suggested || suggested.target.id !== agentId) {
     throw new SynchronizeLeadRaceError("eligibility");
   }
   const agent = await Agent.findById(agentId).session(session).lean().exec();
-  if (!agent || agent.active !== true) {
+  if (!agent || agent.active !== true || typeof agent.name !== "string" || !agent.name.trim()) {
     throw new SynchronizeLeadRaceError("eligibility");
   }
+  return { name: agent.name };
 }
 
 async function persistDecision(

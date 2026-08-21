@@ -9,6 +9,8 @@ resource: src/services/googleSheets/googleSheets.service.ts
 applies_to:
   - src/services/googleSheets/googleSheets.service.ts
   - src/services/googleSheets.service.ts
+  - src/services/googleSheets/projections/formLeadRow.ts
+  - src/services/googleSheets/projections/callLeadRow.ts
 owners: [team:main-server]
 sources:
   - id: primary
@@ -108,8 +110,8 @@ Form delete also attempts `master_bad_leads`. Call delete uses duplicate-aware p
 
 | Helper | Columns driven by |
 |--------|-------------------|
-| `formLeadToRow` | Timestamp, location, move date, contact, quoted/cubic feet, booking mirrors, Mongo ID, ref_no, source label, bad-lead label |
-| `callLeadToRow` | Timestamp, job no, phone, duration, booking mirrors, local, cubic feet, Mongo ID, inbound source label, `FormFill` |
+| `formLeadToRow` | Timestamp, location, move date, contact, quoted/cubic feet, booking mirrors, Mongo ID, ref_no, source label, bad-lead label, `Sales Rep` from `receiver_agent_name_snapshot` |
+| `callLeadToRow` | Timestamp, job no, phone, duration, booking mirrors, local, cubic feet, Mongo ID, inbound source label, `FormFill`, `Sales Rep` from `receiver_agent_name_snapshot` |
 | `bookedLeadToRow` / `cancelledLeadToRow` | Booking/cancellation owner fields |
 
 **No CPL column** on sheets. Use projection `cells.ts` helpers for booked/quoted/cancelled/threshold formatting.
@@ -123,6 +125,7 @@ Form delete also attempts `master_bad_leads`. Call delete uses duplicate-aware p
 - Tab choice follows **current** document flags (`duplicate`, `bad_lead`) at sync time — routing logic is duplicated in `jobPlanner.ts` for queued mode; keep both in sync when changing rules.
 - Do not treat sheet rows as source of truth for lead state, CPL, or CRM.
 - Do not bypass projections when adding columns; update `sheets.ts` headers + matching `*Row.ts` + drainer/tests.
+- `Sales Rep` is the persisted `receiver_agent_name_snapshot`. Do not live-join Agent at sync time. Empty snapshot stays blank even when `receiver_agent` is set.
 - External Google calls belong here or submodules (`auth`, `tabs`, `retry`) — not in lead/booking services.
 
 ## Related modules
