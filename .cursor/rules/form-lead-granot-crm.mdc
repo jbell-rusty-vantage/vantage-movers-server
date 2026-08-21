@@ -19,4 +19,4 @@ alwaysApply: false
 - `PATCH /api/v1/form-leads/:id` already updates `quoted` (and may set `receiver_agent`) and schedules sheet sync. Do not add a second quoted sync path unless it preserves that side effect.
 - Keep API and Mongo fields in `snake_case`; only translate to CRM field names inside `crm.service.ts`.
 
-Owner invariants: `.cursor/businesslogic/form-lead.service.md`.
+Owner invariants: [`docs/knowledge/services/form-lead.md`](../../docs/knowledge/services/form-lead.md).

@@ -6,52 +6,52 @@ description: Type-grouped entrypoint for agent-readable concepts.
 
 # Vantage main server knowledge
 
-Query stamped rows with `pnpm okf:query` (`--type Service`, `--tag`, `--status`, `--stale`). Paths below are current on disk. Pass 2–3 moves retarget Service rows to `docs/knowledge/`.
+Query stamped rows with `pnpm okf:query` (`--type Service`, `--tag`, `--status`, `--stale`). Paths below are current on disk. `.cursor/businesslogic/` holds stubs that redirect here.
 
 Glossary stays in workspace-root [`CONTEXT.md`](../CONTEXT.md) (absent in this standalone checkout). Do not redefine terms here.
 
 ## Service
 
-Current bodies still live under `.cursor/businesslogic/` until Pass 2–3.
+Canonical bodies live under `docs/knowledge/`.
 
 | Path | Description |
 | --- | --- |
 | [ringcentral-call-lead-qualification.md](knowledge/services/ringcentral-call-lead-qualification.md) | Qualify inbound RingCentral calls (120s) and promote them through shared ingest. |
 | [operations-registry.md](knowledge/services/operations-registry.md) | Catalog, source, CPL, inbound-route, and Granot CRM source system of record. |
-| [form-lead.service.md](../.cursor/businesslogic/form-lead.service.md) | Create, update, and delete Form Leads, including duplicates, CRM Posting, and Sheet Sync. |
-| [call-lead.service.md](../.cursor/businesslogic/call-lead.service.md) | Create and update Call Leads (manual and RingCentral), duplicates, CPL, and sheet tabs. |
-| [enrichment.service.md](../.cursor/businesslogic/enrichment.service.md) | Preview and sync Granot Follow Up rows onto Call Leads. |
-| [bookings.service.md](../.cursor/businesslogic/bookings.service.md) | Booked Lead create/update/delete, from-source, referral, leadless, and booking-chain sync. |
-| [bookedCallLeadReconciliation.service.md](../.cursor/businesslogic/bookedCallLeadReconciliation.service.md) | Refresh Call Leads and bookings from Granot Booked Jobs rows. |
-| [cancelledLead.service.md](../.cursor/businesslogic/cancelledLead.service.md) | Cancelled Lead CRUD, booking resolve, snapshots, and cancellation-chain sync. |
-| [cancellationMirror.service.md](../.cursor/businesslogic/cancellationMirror.service.md) | Stamp or clear `cancelled` on the source lead after a cancellation. |
-| [customer.service.md](../.cursor/businesslogic/customer.service.md) | Customer CRUD and booking-time upsert from lead or contact. |
-| [agentAllocation.service.md](../.cursor/businesslogic/agentAllocation.service.md) | Binder splits, catalog resolve, primary agent, and cancellation snapshot. |
-| [sheetSync.service.md](../.cursor/businesslogic/sheetSync.service.md) | Write-behind outbox, queue wake-up, drainer, and sheet-sync modes. |
-| [googleSheets.service.md](../.cursor/businesslogic/googleSheets.service.md) | Tab routing, projections, upsert/delete, and master vs source writes. |
-| [domainCommands.service.md](../.cursor/businesslogic/domainCommands.service.md) | Transaction-owning command executor, adapters, and append-only EntityChange. |
-| [formLeadSearch.service.md](../.cursor/businesslogic/formLeadSearch.service.md) | Scored Form Lead identity search, ambiguity, and duplicate quarantine. |
-| [callLeadSearch.service.md](../.cursor/businesslogic/callLeadSearch.service.md) | OR-based Call Lead lookup and summaries. |
-| [leadBrowse.service.md](../.cursor/businesslogic/leadBrowse.service.md) | Extension GET browse, pagination, and attachment chips. |
-| [adminSearch.service.md](../.cursor/businesslogic/adminSearch.service.md) | Global admin free-text search across scoped resources. |
-| [analytics.service.md](../.cursor/businesslogic/analytics.service.md) | Admin analytics reports, scopes, and overview/agent-sales siblings. |
-| [catalog.service.md](../.cursor/businesslogic/catalog.service.md) | Agents/merchants read facade; mutations go through Operations Registry. |
-| [testimonial.service.md](../.cursor/businesslogic/testimonial.service.md) | Read-only testimonials for the marketing site. |
-| [granotHttpCollector.service.md](../.cursor/businesslogic/granotHttpCollector.service.md) | HTTP session collector; approved apply captures automation receipts. |
-| [granotLifecycle.capture.md](../.cursor/businesslogic/granotLifecycle.capture.md) | Webhook and channel-neutral receipt capture; `{ receipt_id }` wake-up. |
-| [granotLifecycle.extensionApply.md](../.cursor/businesslogic/granotLifecycle.extensionApply.md) | Owner extension apply items, receipt capture, and claim/process. |
-| [granotLifecycle.automationApply.md](../.cursor/businesslogic/granotLifecycle.automationApply.md) | Owner-approved HTTP automation receipt apply. |
-| [granotLifecycle.normalization.md](../.cursor/businesslogic/granotLifecycle.normalization.md) | One Observation per receipt; exact vocabulary; no matching or effects. |
-| [granotLifecycle.sourcePolicy.md](../.cursor/businesslogic/granotLifecycle.sourcePolicy.md) | Fail-closed Registry policy and effect-gate snapshot; no effects. |
-| [granotLifecycle.identity.md](../.cursor/businesslogic/granotLifecycle.identity.md) | Source-scoped Form/Call identity; read-only; consumed by the processor. |
-| [granotLifecycle.desiredState.md](../.cursor/businesslogic/granotLifecycle.desiredState.md) | Desired-state planner and temporal compare; plans only, no writes. |
-| [granotLifecycle.processor.md](../.cursor/businesslogic/granotLifecycle.processor.md) | Channel-neutral orchestration; no official Booking/Cancellation writes. |
-| [granotLifecycle.drainer.md](../.cursor/businesslogic/granotLifecycle.drainer.md) | Fenced claim/lease, queue/cron drain, dead letter, Owner requeue. |
-| [granotLifecycle.revisions.md](../.cursor/businesslogic/granotLifecycle.revisions.md) | Aggregate revision CAS and Lead provenance storage fields. |
-| [granotLifecycle.bookingReconciliation.md](../.cursor/businesslogic/granotLifecycle.bookingReconciliation.md) | Booking-case open/refresh and gated Owner booking commands. |
-| [granotLifecycle.releaseReconciliation.md](../.cursor/businesslogic/granotLifecycle.releaseReconciliation.md) | Separate Release cases and gated Owner cancellation/update commands. |
-| [granotLifecycle.projections.md](../.cursor/businesslogic/granotLifecycle.projections.md) | Masked Admin case/job/lead reads; reads never invoke mutations. |
-| [granotLifecycle.observability.md](../.cursor/businesslogic/granotLifecycle.observability.md) | Lifecycle events, closed metric labels, and health projection. |
+| [form-lead.md](knowledge/services/form-lead.md) | Create, update, and delete Form Leads, including duplicates, CRM Posting, and Sheet Sync. |
+| [call-lead.md](knowledge/services/call-lead.md) | Create and update Call Leads (manual and RingCentral), duplicates, CPL, and sheet tabs. |
+| [enrichment.md](knowledge/services/enrichment.md) | Preview and sync Granot Follow Up rows onto Call Leads. |
+| [bookings.md](knowledge/services/bookings.md) | Booked Lead create/update/delete, from-source, referral, leadless, and booking-chain sync. |
+| [booked-call-lead-reconciliation.md](knowledge/services/booked-call-lead-reconciliation.md) | Refresh Call Leads and bookings from Granot Booked Jobs rows. |
+| [cancelled-lead.md](knowledge/services/cancelled-lead.md) | Cancelled Lead CRUD, booking resolve, snapshots, and cancellation-chain sync. |
+| [cancellation-mirror.md](knowledge/services/cancellation-mirror.md) | Stamp or clear `cancelled` on the source lead after a cancellation. |
+| [customer.md](knowledge/services/customer.md) | Customer CRUD and booking-time upsert from lead or contact. |
+| [agent-allocation.md](knowledge/services/agent-allocation.md) | Binder splits, catalog resolve, primary agent, and cancellation snapshot. |
+| [sheet-sync.md](knowledge/services/sheet-sync.md) | Write-behind outbox, queue wake-up, drainer, and sheet-sync modes. |
+| [google-sheets.md](knowledge/services/google-sheets.md) | Tab routing, projections, upsert/delete, and master vs source writes. |
+| [domain-commands.md](knowledge/services/domain-commands.md) | Transaction-owning command executor, adapters, and append-only EntityChange. |
+| [form-lead-search.md](knowledge/services/form-lead-search.md) | Scored Form Lead identity search, ambiguity, and duplicate quarantine. |
+| [call-lead-search.md](knowledge/services/call-lead-search.md) | OR-based Call Lead lookup and summaries. |
+| [lead-browse.md](knowledge/services/lead-browse.md) | Extension GET browse, pagination, and attachment chips. |
+| [admin-search.md](knowledge/services/admin-search.md) | Global admin free-text search across scoped resources. |
+| [analytics.md](knowledge/services/analytics.md) | Admin analytics reports, scopes, and overview/agent-sales siblings. |
+| [catalog.md](knowledge/services/catalog.md) | Agents/merchants read facade; mutations go through Operations Registry. |
+| [testimonial.md](knowledge/services/testimonial.md) | Read-only testimonials for the marketing site. |
+| [granot-http-collector.md](knowledge/services/granot-http-collector.md) | HTTP session collector; approved apply captures automation receipts. |
+| [capture.md](knowledge/granot-lifecycle/capture.md) | Webhook and channel-neutral receipt capture; `{ receipt_id }` wake-up. |
+| [extension-apply.md](knowledge/granot-lifecycle/extension-apply.md) | Owner extension apply items, receipt capture, and claim/process. |
+| [automation-apply.md](knowledge/granot-lifecycle/automation-apply.md) | Owner-approved HTTP automation receipt apply. |
+| [normalization.md](knowledge/granot-lifecycle/normalization.md) | One Observation per receipt; exact vocabulary; no matching or effects. |
+| [source-policy.md](knowledge/granot-lifecycle/source-policy.md) | Fail-closed Registry policy and effect-gate snapshot; no effects. |
+| [identity.md](knowledge/granot-lifecycle/identity.md) | Source-scoped Form/Call identity; read-only; consumed by the processor. |
+| [desired-state.md](knowledge/granot-lifecycle/desired-state.md) | Desired-state planner and temporal compare; plans only, no writes. |
+| [processor.md](knowledge/granot-lifecycle/processor.md) | Channel-neutral orchestration; no official Booking/Cancellation writes. |
+| [drainer.md](knowledge/granot-lifecycle/drainer.md) | Fenced claim/lease, queue/cron drain, dead letter, Owner requeue. |
+| [revisions.md](knowledge/granot-lifecycle/revisions.md) | Aggregate revision CAS and Lead provenance storage fields. |
+| [booking-reconciliation.md](knowledge/granot-lifecycle/booking-reconciliation.md) | Booking-case open/refresh and gated Owner booking commands. |
+| [release-reconciliation.md](knowledge/granot-lifecycle/release-reconciliation.md) | Separate Release cases and gated Owner cancellation/update commands. |
+| [projections.md](knowledge/granot-lifecycle/projections.md) | Masked Admin case/job/lead reads; reads never invoke mutations. |
+| [observability.md](knowledge/granot-lifecycle/observability.md) | Lifecycle events, closed metric labels, and health projection. |
 
 ## ADR
 

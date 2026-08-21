@@ -9,8 +9,8 @@ alwaysApply: false
 Owner rules live in the Service concept, not in this rule.
 
 - [operations-registry](../../docs/knowledge/services/operations-registry.md)
-- [granot-lifecycle source-policy](../businesslogic/granotLifecycle.sourcePolicy.md)
-- [catalog](../businesslogic/catalog.service.md)
+- [granot-lifecycle source-policy](../../docs/knowledge/granot-lifecycle/source-policy.md)
+- [catalog](../../docs/knowledge/services/catalog.md)
 
 Software-only notes that are not in those files may stay below (env, ngrok, collection suffix, script names).
 

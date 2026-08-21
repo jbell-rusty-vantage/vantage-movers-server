@@ -1,0 +1,75 @@
+---
+type: Service
+title: "Granot desired-state planner (`granotLifecycle/leadDesiredState`)"
+description: Desired-state planner and temporal compare. Plans only; no writes.
+tags: [granot-lifecycle]
+status: draft
+stale_after: 2026-11-19
+resource: src/services/granotLifecycle/leadDesiredState.ts
+applies_to:
+  - src/services/granotLifecycle/leadDesiredState.ts
+  - src/services/granotLifecycle/granotTemporal.ts
+  - src/services/granotLifecycle/authorizedDesiredState.ts
+  - src/services/granotLifecycle/leadContactProjection.ts
+owners: [team:main-server]
+sources:
+  - id: primary
+    resource: src/services/granotLifecycle/leadDesiredState.ts
+  - id: glossary
+    resource: ../CONTEXT.md
+    title: Platform glossary
+  - id: adr-0001
+    resource: ../docs/adr/0001-mongodb-system-of-record.md
+generated:
+  by: process:okf-docs-conversion
+  at: 2026-08-21T02:20:00Z
+---
+**Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)
+
+**Primary code:** `src/services/granotLifecycle/leadDesiredState.ts`, `src/services/granotLifecycle/granotTemporal.ts`, `src/services/granotLifecycle/authorizedDesiredState.ts`, `src/services/granotLifecycle/leadContactProjection.ts`
+
+**Domain terms used:** [Granot Observation](../../../../CONTEXT.md), [Synchronization Decision](../../../../CONTEXT.md), [Ingestion Origin](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md)
+
+# Granot desired-state planner (`granotLifecycle/leadDesiredState`)
+
+**Role:** Pure origin-specific planner. Given a persisted Observation, Unit 14 identity result, current Lead projection, Registry policy, and temporal order, return a deterministic `LeadDesiredStatePlan`. Routes and clients never supply this object. The plan is not persisted; Decisions keep only target/candidates, reason, gate snapshot, and allowed effect summaries.
+
+## Temporal comparator
+
+`compareGranotTemporal` compares `captured_at` first, then lowercase 24-character Observation ObjectId hex. Missing stored winner is `newer`. Exact same tuple is `same`. Older observations plan `stale` and do not advance the winner.
+
+## Authority matrix
+
+| Field group | Planned when |
+| --- | --- |
+| Job Number | fill missing when normalized values agree; letter prefixes on the same digit core agree; conflict never overwrites |
+| `granot_priority` | every temporally accepted valid Priority |
+| `receiver_agent` | empty receiver + one active Unit 14 Agent suggestion at any valid Priority |
+| `quoted` | Priority `1`/`5` may set true; never false |
+| Granot/current contact | Priority `1`/`5`, subject to origin |
+| current location / move date / cubic feet / `local` | Priority `1`/`5`, subject to origin |
+| `granot_move_size`, `granot_service_type` | Priority `1`/`5`; never Vantage `move_size` |
+
+WordPress Form: primary name/phone/email and both ingested snapshots stay off `changed_paths`. Qualified Granot contact plans `granot_contact_snapshot` only. Granot-created and RingCentral-created qualified contact become current operational fields; `last_granot_contact_change.changed_paths` is planner metadata and is stripped before `synchronizeLeadFromGranot`. The command derives provenance, contact hashes, temporal winner, and `EntityChange` field modes.
+
+## No-match and minimum data
+
+- `link_only`: `pending_match` / `pending_source_scoped_match` with `next_match_attempt_at` from the Unit 08 offsets; at/after 24h `unmatched` / `match_window_expired`
+- incomplete immutable creation data: `insufficient_creation_data` with `missing_creation_job_number`, `missing_creation_contact`, or `missing_creation_route_data`; never pending
+- Form minimum data: normalized Job, deterministic route, name component, normalized phone, valid origin/destination state and 5-digit ZIP
+- Call may be Job-only; telephony, duration, session, qualification, and RingCentral metadata are never fabricated
+- `create_if_missing` with complete minimum data plans immediately `created` / `lead_created_authorized` and `creation_eligibility:"eligible"`; the processor invokes `createLeadFromGranot` only when execution is `live`, `GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED` is true, and every creation gate passes. Shadow and gated-off live stay `shadow_effect_suppressed` / `global_effect_disabled` with no Lead, link, Command, Change, or outbox
+- `observation_only` stays `creation_policy_observation_only`
+
+Equivalent formatting uses existing Job/phone/email/state/date normalizers and does not manufacture a change. `changed_paths` are sorted and deduplicated.
+
+## Command conversion and role-safe projection
+
+The processor converts a plan to `GranotAuthorizedLeadDesiredState` immediately before `synchronizeLeadFromGranot`. Extra/missing/duplicate paths, `quoted:false`, forbidden metadata, and model-inapplicable ZIP fields are rejected. Contact hashes and temporal/provenance stamps are server-derived.
+
+`projectRoleSafeLeadContacts` keeps WordPress submitted contact and `granot_contact_snapshot` separately identifiable and masks phones/emails. It never reads raw receipt payload.
+
+## Related
+
+- Processor orchestration: [`granotLifecycle.processor.md`](./processor.md)
+- Identity input: [`granotLifecycle.identity.md`](./identity.md)

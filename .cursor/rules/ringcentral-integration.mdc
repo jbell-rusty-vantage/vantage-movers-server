@@ -10,7 +10,7 @@ Owner rules live in the Service concept, not in this rule.
 
 - [ringcentral-call-lead-qualification](../../docs/knowledge/services/ringcentral-call-lead-qualification.md)
 - [operations-registry](../../docs/knowledge/services/operations-registry.md)
-- [call-lead](../businesslogic/call-lead.service.md)
+- [call-lead](../../docs/knowledge/services/call-lead.md)
 
 Software-only notes that are not in those files may stay below (env, ngrok, collection suffix, script names).
 

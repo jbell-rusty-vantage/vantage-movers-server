@@ -8,7 +8,7 @@ alwaysApply: false
 
 - Treat observability as best-effort. `recordOperationalEvent()` and notification paths must not break lead, booking, cancellation, CRM, RingCentral, Google Sheets, Granot lifecycle, or cron workflows.
 - Use `src/services/observability/index.ts` as the public import surface for instrumentation in other domains.
-- Granot Lead Lifecycle Section 33 catalog, closed metric labels, and seven rollout alerts live in [`granotLifecycle.observability.md`](../businesslogic/granotLifecycle.observability.md). Emit through `recordOperationalEvent()`; keep those event keys and thresholds in `granotLifecycle/` (not `src/config/domain/observability.ts`).
+- Granot Lead Lifecycle Section 33 catalog, closed metric labels, and seven rollout alerts live in [`granotLifecycle.observability.md`](../../docs/knowledge/granot-lifecycle/observability.md). Emit through `recordOperationalEvent()`; keep those event keys and thresholds in `granotLifecycle/` (not `src/config/domain/observability.ts`).
 - Resolve all observability Mongoose models through `getObservabilityModel()` / model getters so runtime, production, test, and custom collection modes keep working.
 - Keep Mongo/API fields `snake_case`; translate only at response or export boundaries if needed.
 - Put observability env policy in `src/config/domain/observability.ts`. Do not scatter `process.env` reads for capture flags, collection names, email mode, recipients, or alert thresholds.

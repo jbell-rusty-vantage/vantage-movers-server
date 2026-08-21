@@ -47,7 +47,7 @@ For new write paths, prefer:
 2. `persistSheetSyncIntent()` inside the caller's transaction in queued mode.
 3. `finalizeSheetSync()` after commit to publish the queue wake-up or run legacy scheduling.
 
-Canonical command adapters do **not** use `runSheetSyncWrite` to complete a command. The domain-command executor owns that transaction and persists `DomainCommandExecution`, append-only `EntityChange` rows, and queued outbox intent; adapters finalize only after a successful non-replay commit. A no-op writes no Change or outbox row. See [`domainCommands.service.md`](../businesslogic/domainCommands.service.md). Lifecycle callers remain disabled.
+Canonical command adapters do **not** use `runSheetSyncWrite` to complete a command. The domain-command executor owns that transaction and persists `DomainCommandExecution`, append-only `EntityChange` rows, and queued outbox intent; adapters finalize only after a successful non-replay commit. A no-op writes no Change or outbox row. See [`domainCommands.service.md`](../../docs/knowledge/services/domain-commands.md). Lifecycle callers remain disabled.
 
 Keep external side effects such as Google Sheets, queues, CRM, and email outside the transaction callback.
 
