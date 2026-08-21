@@ -7,7 +7,7 @@
 - Lock holder:
 - Lock at:
 - Branch: `docs/okf-conversion`
-- PR: opening (PR #4 merged; this run continues the same branch)
+- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/5
 - Last session: `pass3-2026-08-21T0417Z`
 - Disk vs this file: `pnpm okf:progress` pass done / next `done`
 
