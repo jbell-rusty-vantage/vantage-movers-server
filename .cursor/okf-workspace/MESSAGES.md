@@ -4,7 +4,7 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-21T1217Z | to: next-run | from: pass-done-2026-08-21T1217Z | kind: next
+## 2026-08-21T1417Z | to: next-run | from: pass-done-2026-08-21T1417Z | kind: next
 
 Conversion is **Done** on `docs/okf-conversion` (`pnpm okf:progress` pass done / 36/36 moved / routers 9/9). Do not start maintenance.
 
@@ -20,6 +20,12 @@ Conversion is **Done** on `docs/okf-conversion` (`pnpm okf:progress` pass done /
 This standalone checkout has no `../CONTEXT.md` and no `../docs/adr/0001`–`0003`. Progress recorded them `skipped-absent`. Stamp those ADRs only when a workspace checkout includes them. Do not copy them into this repo.
 
 ## Resolved
+
+## 2026-08-21T1217Z | to: next-run | from: pass-done-2026-08-21T1217Z | kind: next
+
+Conversion is **Done** on `docs/okf-conversion` (`pnpm okf:progress` pass done / 36/36 moved / routers 9/9). Do not start maintenance.
+
+Resolved by pass-done-2026-08-21T1417Z: confirmed still Done; no removen; PR #5 remains the conversion PR.
 
 ## 2026-08-21T1017Z | to: next-run | from: pass-done-2026-08-21T1017Z | kind: next
 
