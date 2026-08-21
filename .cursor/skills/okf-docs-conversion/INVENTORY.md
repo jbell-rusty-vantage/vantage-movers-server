@@ -2,6 +2,8 @@
 
 36 Service files + 3 ADRs + 1 Reference hub. Paths are relative to `vantage-main-server/` except ADRs and `CONTEXT.md`.
 
+Machine copy: `.cursor/okf-workspace/units.json`. Session board: `.cursor/okf-workspace/`. Progress: `pnpm okf:progress`. Do not track conversion status in this file.
+
 Do not add files that are not listed. Do not convert Archives.
 
 ## Leave in place (do not stamp as knowledge)

@@ -1,0 +1,386 @@
+{
+  "version": 1,
+  "branch": "docs/okf-conversion",
+  "lock_ttl_minutes": 90,
+  "contract": [
+    {
+      "id": "p0-okf-query",
+      "title": "Copy okf-query.mjs into scripts/",
+      "check": { "kind": "exists", "path": "scripts/okf-query.mjs" }
+    },
+    {
+      "id": "p0-package-script",
+      "title": "Add okf:query to package.json",
+      "check": { "kind": "package_script", "name": "okf:query" }
+    },
+    {
+      "id": "p0-index",
+      "title": "Write docs/index.md with okf_version 0.2",
+      "check": { "kind": "contains", "path": "docs/index.md", "needle": "okf_version" }
+    },
+    {
+      "id": "p0-agents-bullet",
+      "title": "Point AGENTS.md at docs/index.md",
+      "check": { "kind": "contains", "path": "AGENTS.md", "needle": "docs/index.md" }
+    },
+    {
+      "id": "p0-spec-hub",
+      "title": "Write Granot spec hub (Reference, links only)",
+      "check": { "kind": "yaml_type", "path": "docs/knowledge/granot-lifecycle/spec-hub.md", "type": "Reference" }
+    }
+  ],
+  "adrs": [
+    {
+      "id": "adr-0001",
+      "title": "MongoDB as system of record",
+      "path": "../docs/adr/0001-mongodb-system-of-record.md",
+      "optional_checkout": true
+    },
+    {
+      "id": "adr-0002",
+      "title": "CRM Posting survives downstream failures",
+      "path": "../docs/adr/0002-granot-crm-post-despite-downstream-failures.md",
+      "optional_checkout": true
+    },
+    {
+      "id": "adr-0003",
+      "title": "Lead ID as Granot leadno",
+      "path": "../docs/adr/0003-lead-id-granot-leadno-ref-no-contract.md",
+      "optional_checkout": true
+    }
+  ],
+  "services": [
+    {
+      "id": "ringcentral-call-lead-qualification",
+      "cluster": "pass-2",
+      "move_pass": 2,
+      "current": ".cursor/businesslogic/ringcentral-call-lead-qualification.service.md",
+      "target": "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+    },
+    {
+      "id": "operations-registry",
+      "cluster": "pass-2",
+      "move_pass": 2,
+      "current": ".cursor/businesslogic/operationsRegistry.service.md",
+      "target": "docs/knowledge/services/operations-registry.md"
+    },
+    {
+      "id": "form-lead",
+      "cluster": "leads",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/form-lead.service.md",
+      "target": "docs/knowledge/services/form-lead.md"
+    },
+    {
+      "id": "call-lead",
+      "cluster": "leads",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/call-lead.service.md",
+      "target": "docs/knowledge/services/call-lead.md"
+    },
+    {
+      "id": "enrichment",
+      "cluster": "leads",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/enrichment.service.md",
+      "target": "docs/knowledge/services/enrichment.md"
+    },
+    {
+      "id": "bookings",
+      "cluster": "bookings",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/bookings.service.md",
+      "target": "docs/knowledge/services/bookings.md"
+    },
+    {
+      "id": "booked-call-lead-reconciliation",
+      "cluster": "bookings",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/bookedCallLeadReconciliation.service.md",
+      "target": "docs/knowledge/services/booked-call-lead-reconciliation.md"
+    },
+    {
+      "id": "cancelled-lead",
+      "cluster": "bookings",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/cancelledLead.service.md",
+      "target": "docs/knowledge/services/cancelled-lead.md"
+    },
+    {
+      "id": "cancellation-mirror",
+      "cluster": "bookings",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/cancellationMirror.service.md",
+      "target": "docs/knowledge/services/cancellation-mirror.md"
+    },
+    {
+      "id": "customer",
+      "cluster": "bookings",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/customer.service.md",
+      "target": "docs/knowledge/services/customer.md"
+    },
+    {
+      "id": "agent-allocation",
+      "cluster": "bookings",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/agentAllocation.service.md",
+      "target": "docs/knowledge/services/agent-allocation.md"
+    },
+    {
+      "id": "sheet-sync",
+      "cluster": "sheets",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/sheetSync.service.md",
+      "target": "docs/knowledge/services/sheet-sync.md"
+    },
+    {
+      "id": "google-sheets",
+      "cluster": "sheets",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/googleSheets.service.md",
+      "target": "docs/knowledge/services/google-sheets.md"
+    },
+    {
+      "id": "domain-commands",
+      "cluster": "sheets",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/domainCommands.service.md",
+      "target": "docs/knowledge/services/domain-commands.md"
+    },
+    {
+      "id": "form-lead-search",
+      "cluster": "search",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/formLeadSearch.service.md",
+      "target": "docs/knowledge/services/form-lead-search.md"
+    },
+    {
+      "id": "call-lead-search",
+      "cluster": "search",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/callLeadSearch.service.md",
+      "target": "docs/knowledge/services/call-lead-search.md"
+    },
+    {
+      "id": "lead-browse",
+      "cluster": "search",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/leadBrowse.service.md",
+      "target": "docs/knowledge/services/lead-browse.md"
+    },
+    {
+      "id": "admin-search",
+      "cluster": "search",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/adminSearch.service.md",
+      "target": "docs/knowledge/services/admin-search.md"
+    },
+    {
+      "id": "analytics",
+      "cluster": "search",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/analytics.service.md",
+      "target": "docs/knowledge/services/analytics.md"
+    },
+    {
+      "id": "catalog",
+      "cluster": "catalog",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/catalog.service.md",
+      "target": "docs/knowledge/services/catalog.md"
+    },
+    {
+      "id": "testimonial",
+      "cluster": "catalog",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/testimonial.service.md",
+      "target": "docs/knowledge/services/testimonial.md"
+    },
+    {
+      "id": "granot-http-collector",
+      "cluster": "catalog",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/granotHttpCollector.service.md",
+      "target": "docs/knowledge/services/granot-http-collector.md"
+    },
+    {
+      "id": "granot-capture",
+      "cluster": "granot-lifecycle",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/granotLifecycle.capture.md",
+      "target": "docs/knowledge/granot-lifecycle/capture.md"
+    },
+    {
+      "id": "granot-extension-apply",
+      "cluster": "granot-lifecycle",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/granotLifecycle.extensionApply.md",
+      "target": "docs/knowledge/granot-lifecycle/extension-apply.md"
+    },
+    {
+      "id": "granot-automation-apply",
+      "cluster": "granot-lifecycle",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/granotLifecycle.automationApply.md",
+      "target": "docs/knowledge/granot-lifecycle/automation-apply.md"
+    },
+    {
+      "id": "granot-normalization",
+      "cluster": "granot-lifecycle",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/granotLifecycle.normalization.md",
+      "target": "docs/knowledge/granot-lifecycle/normalization.md"
+    },
+    {
+      "id": "granot-source-policy",
+      "cluster": "granot-lifecycle",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/granotLifecycle.sourcePolicy.md",
+      "target": "docs/knowledge/granot-lifecycle/source-policy.md"
+    },
+    {
+      "id": "granot-identity",
+      "cluster": "granot-lifecycle",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/granotLifecycle.identity.md",
+      "target": "docs/knowledge/granot-lifecycle/identity.md"
+    },
+    {
+      "id": "granot-desired-state",
+      "cluster": "granot-lifecycle",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/granotLifecycle.desiredState.md",
+      "target": "docs/knowledge/granot-lifecycle/desired-state.md"
+    },
+    {
+      "id": "granot-processor",
+      "cluster": "granot-lifecycle",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/granotLifecycle.processor.md",
+      "target": "docs/knowledge/granot-lifecycle/processor.md"
+    },
+    {
+      "id": "granot-drainer",
+      "cluster": "granot-lifecycle",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/granotLifecycle.drainer.md",
+      "target": "docs/knowledge/granot-lifecycle/drainer.md"
+    },
+    {
+      "id": "granot-revisions",
+      "cluster": "granot-lifecycle",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/granotLifecycle.revisions.md",
+      "target": "docs/knowledge/granot-lifecycle/revisions.md"
+    },
+    {
+      "id": "granot-booking-reconciliation",
+      "cluster": "granot-lifecycle",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/granotLifecycle.bookingReconciliation.md",
+      "target": "docs/knowledge/granot-lifecycle/booking-reconciliation.md"
+    },
+    {
+      "id": "granot-release-reconciliation",
+      "cluster": "granot-lifecycle",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/granotLifecycle.releaseReconciliation.md",
+      "target": "docs/knowledge/granot-lifecycle/release-reconciliation.md"
+    },
+    {
+      "id": "granot-projections",
+      "cluster": "granot-lifecycle",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/granotLifecycle.projections.md",
+      "target": "docs/knowledge/granot-lifecycle/projections.md"
+    },
+    {
+      "id": "granot-observability",
+      "cluster": "granot-lifecycle",
+      "move_pass": 3,
+      "current": ".cursor/businesslogic/granotLifecycle.observability.md",
+      "target": "docs/knowledge/granot-lifecycle/observability.md"
+    }
+  ],
+  "routers": [
+    {
+      "id": "r2-ringcentral-candidates",
+      "pass": 2,
+      "title": "Thin ringcentral-call-lead-candidates.mdc",
+      "check": {
+        "kind": "contains",
+        "path": ".cursor/rules/ringcentral-call-lead-candidates.mdc",
+        "needle": "docs/knowledge/"
+      }
+    },
+    {
+      "id": "r2-ringcentral-integration",
+      "pass": 2,
+      "title": "Thin ringcentral-integration.mdc if it restates qualification",
+      "check": {
+        "kind": "contains",
+        "path": ".cursor/rules/ringcentral-integration.mdc",
+        "needle": "docs/knowledge/"
+      }
+    },
+    {
+      "id": "r2-operations-registry",
+      "pass": 2,
+      "title": "Thin operations-registry.mdc",
+      "check": {
+        "kind": "contains",
+        "path": ".cursor/rules/operations-registry.mdc",
+        "needle": "docs/knowledge/"
+      }
+    },
+    {
+      "id": "r4-agents",
+      "pass": 4,
+      "title": "AGENTS.md routes to docs/index.md",
+      "check": { "kind": "contains", "path": "AGENTS.md", "needle": "docs/index.md" }
+    },
+    {
+      "id": "r4-claude",
+      "pass": 4,
+      "title": "CLAUDE.md exists as @AGENTS.md",
+      "check": { "kind": "contains", "path": "CLAUDE.md", "needle": "@AGENTS.md" }
+    },
+    {
+      "id": "r4-documentation-maintenance",
+      "pass": 4,
+      "title": "documentation-maintenance.mdc retargets to docs/knowledge",
+      "check": {
+        "kind": "contains",
+        "path": ".cursor/rules/documentation-maintenance.mdc",
+        "needle": "docs/knowledge"
+      }
+    },
+    {
+      "id": "r4-cursor-index",
+      "pass": 4,
+      "title": ".cursor/index.md catalogs docs/knowledge as canonical",
+      "check": { "kind": "contains", "path": ".cursor/index.md", "needle": "docs/knowledge/" }
+    },
+    {
+      "id": "r4-docs-keeper",
+      "pass": 4,
+      "title": "docs-keeper authority points at docs/knowledge",
+      "check": {
+        "kind": "contains",
+        "path": ".cursor/agents/docs-keeper.md",
+        "needle": "docs/knowledge/services/"
+      }
+    },
+    {
+      "id": "r4-business-logic-mdc",
+      "pass": 4,
+      "title": "business-logic.mdc routes to docs/knowledge",
+      "check": {
+        "kind": "contains",
+        "path": ".cursor/rules/business-logic.mdc",
+        "needle": "docs/knowledge/"
+      }
+    }
+  ]
+}

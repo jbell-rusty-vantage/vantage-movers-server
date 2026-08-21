@@ -85,7 +85,7 @@ Edit both `vantage-main-server/.cursor/agents/docs-keeper.md` and workspace `.cu
 5. Catalog layer → `docs/index.md` (and `.cursor/index.md` as a Cursor-only map).
 6. New Service file recipe → create under `docs/knowledge/`, stamp per [FRONTMATTER.md](FRONTMATTER.md), add an index row.
 
-Do not implement the 12-hour scheduled loop in this pass.
+Do not implement the 12-hour scheduled loop in this pass. Conversion Cloud runs resume from `.cursor/okf-workspace/`, not from a single handoff markdown.
 
 ## Cross-repo
 

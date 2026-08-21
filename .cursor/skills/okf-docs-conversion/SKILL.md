@@ -17,16 +17,16 @@ Copy this checklist and complete it in order:
 
 ```
 Session
-- [ ] 1. Resume
+- [ ] 1. Resume workspace
 - [ ] 2. Detect pass
 - [ ] 3. Do the next unfinished atomic units
 - [ ] 4. Verify with okf:query / index
-- [ ] 5. Write docs/okf-conversion-handoff.md
+- [ ] 5. Write the workspace handoff
 - [ ] 6. Return the conversion brief
 ```
 
-1. **Resume.** Read `docs/okf-conversion-handoff.md` if it exists. Trust the filesystem over the handoff when they disagree.
-2. **Detect pass** from facts, not memory:
+1. **Resume workspace.** Read `.cursor/okf-workspace/README.md`, then `NOW.md`, then the open section of `MESSAGES.md`. Run `pnpm okf:progress --write`. Trust disk over `NOW.md`, session logs, and Cursor Memories. If they disagree, rewrite `NOW.md`.
+2. **Detect pass** from facts, not memory. Prefer `pnpm okf:progress` `pass` / `next`. Confirm with:
 
    | Fact | Pass |
    | --- | --- |
@@ -38,8 +38,8 @@ Session
    | All inventory files live under `docs/knowledge/` or stamped `../docs/adr/`, stubs only at old paths, routers point at the index | **Done.** Stop. Do not start maintenance automation. |
 
 3. **Spend the session.** Finish the current pass if it is mechanical. On Pass 3, finish whole **clusters**, not stray files. Never leave a move half-done.
-4. **Verify.** After Pass 0 exists, run `pnpm okf:query` (add `--type Service` / `--stale` as needed). Index rows must match files on disk.
-5. **Handoff last.** Always write `docs/okf-conversion-handoff.md` before stopping, even if the session ran out of context mid-cluster (then undo the partial file so the tree is consistent).
+4. **Verify.** After Pass 0 exists, run `pnpm okf:query` (add `--type Service` / `--stale` as needed). Index rows must match files on disk. Run `pnpm okf:progress --write` again.
+5. **Handoff last.** Write `.cursor/okf-workspace/sessions/<session-id>.md`. Update `MESSAGES.md` / `IDEAS.md` / `CONTRADICTIONS.md` as needed. Rewrite `NOW.md` last and release the lock. Even if the session ran out of context mid-cluster, undo the partial file so the tree is consistent. Do **not** write `docs/okf-conversion-handoff.md` — that single file is retired.
 6. **Brief.** Return the output format below. Do not push `main`. A Cloud automation may open or update one docs PR; do not auto-merge.
 
 ## Hard rules
@@ -73,7 +73,7 @@ Create, in this order:
 3. Write `docs/index.md` with `okf_version: "0.2"`. Type-grouped list, one-line descriptions, current paths from [INVENTORY.md](INVENTORY.md). No service bodies.
 4. Add one bullet to `AGENTS.md` pointing at `docs/index.md`. Do not rewrite `CLOUD_AGENTS.md`.
 5. Write the Granot Reference hub: `docs/knowledge/granot-lifecycle/spec-hub.md` (see inventory). Link the FINAL SPEC and owner runbooks. Do not copy spec text.
-6. Write the first `docs/okf-conversion-handoff.md`.
+6. Refresh `.cursor/okf-workspace/` (session log, `NOW.md` next unit, `pnpm okf:progress --write`).
 
 ## Pass 1 — stamp in place
 
@@ -118,23 +118,21 @@ Do all of these for one file before touching the next:
 4. Point `docs/index.md` at the new path.
 5. Fix inbound links from already-converted siblings and from `.cursor/index.md`.
 
-## Handoff file
+## Handoff workspace
 
-Write `docs/okf-conversion-handoff.md` as Markdown (not an OKF concept — no `type:`):
+Coordination lives in `.cursor/okf-workspace/`. It is not an OKF concept (no `type:`). `docs/index.md` is the knowledge catalog; the workspace is message passing + progress.
 
-```markdown
-# OKF conversion handoff
-- Date (UTC):
-- Pass completed / pass in progress:
-- Files stamped this session:
-- Files moved this session:
-- Clusters finished:
-- Next atomic unit:
-- Index / okf:query check:
-- Factual updates (path → sentence-level change):
-- Contradictions left open:
-- Do not touch next:
-```
+| File | Role |
+| --- | --- |
+| `NOW.md` | Current pass, next unit id, lock, PR |
+| `MESSAGES.md` | Open / resolved notes to `next-run` or `human` |
+| `IDEAS.md` | Parked ideas. Do not execute unless `NOW.md` names the unit |
+| `CONTRADICTIONS.md` | Standing code vs doc vs glossary vs spec fights |
+| `sessions/<id>.md` | One append-only log per run |
+| `PROGRESS.md` | Generated only by `pnpm okf:progress --write` |
+| `units.json` | Machine inventory. Edit only if this skill's inventory changed |
+
+Follow `.cursor/okf-workspace/README.md` for lock rules and the resume checklist.
 
 ## Output format
 
@@ -142,7 +140,7 @@ Write `docs/okf-conversion-handoff.md` as Markdown (not an OKF concept — no `t
 # OKF conversion — <pass>
 
 ## 1. Detected start state
-- Handoff present: yes/no
+- Workspace NOW / progress pass:
 - Pass started: 0–4 / done
 
 ## 2. Atomic units completed
