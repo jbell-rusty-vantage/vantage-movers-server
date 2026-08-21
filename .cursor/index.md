@@ -44,7 +44,7 @@ Production API: https://vantage-movers-main-server.vercel.app
 | [bookings.service.md](businesslogic/bookings.service.md) | `src/services/bookings/` — create/update/delete, from-source, mirror, referral, leadless, sheet `booking_chain`, idempotency |
 | [bookedCallLeadReconciliation.service.md](businesslogic/bookedCallLeadReconciliation.service.md) | `src/services/reconciliation/bookedCallLeadReconciliation.service.ts` — Granot Booked Jobs → call lead/booking field refresh, match paths, source rules, sheet sync |
 | [enrichment.service.md](businesslogic/enrichment.service.md) | `src/services/enrichment/callLeadEnrichment.service.ts` — Follow Up preview/sync, match/conflict, receiver-agent username match, sheet `call_lead.enrichment.sync` |
-| [ringcentral-call-lead-qualification.service.md](businesslogic/ringcentral-call-lead-qualification.service.md) | `src/services/ringcentral/` — 120s qualification (evaluator + vetting), webhook session aggregation, Call Log cron, shared ingest (idempotency, duplicate, write mode) |
+| [ringcentral-call-lead-qualification.md](../docs/knowledge/services/ringcentral-call-lead-qualification.md) | `src/services/ringcentral/` — 120s qualification (evaluator + vetting), webhook session aggregation, Call Log cron, shared ingest (idempotency, duplicate, write mode). Stub at [businesslogic/ringcentral-call-lead-qualification.service.md](businesslogic/ringcentral-call-lead-qualification.service.md). |
 | [cancelledLead.service.md](businesslogic/cancelledLead.service.md) | `src/services/cancellations/cancelledLead.service.ts` + `cancellationResolver.ts` — create/update/delete, booking resolve, snapshot fields, sheet `cancellation_chain`, referral guard |
 | [cancellationMirror.service.md](businesslogic/cancellationMirror.service.md) | `src/services/cancellations/cancellationMirror.service.ts` — stamp/clear `cancelled` on source lead, syncAfterClear batching |
 | [formLeadSearch.service.md](businesslogic/formLeadSearch.service.md) | `src/services/search/formLeadSearch.service.ts` — scored form identity search, ambiguity, duplicate quarantine, Granot CSV fallback |
@@ -55,7 +55,7 @@ Production API: https://vantage-movers-main-server.vercel.app
 | [testimonial.service.md](businesslogic/testimonial.service.md) | `src/services/testimonials/testimonial.service.ts` — read-only list for marketing site, ingest helpers |
 | [domainCommands.service.md](businesslogic/domainCommands.service.md) | `src/services/domainCommands/` — transaction-owning executor, existing-write adapters, append-only `EntityChange`, queued outbox atomicity, post-commit finalize; Granot Lead, Booking, Release, and leadless Referral Booking commands are registered; checked-in effect flags stay false |
 | [sheetSync.service.md](businesslogic/sheetSync.service.md) | `src/services/sheetSync/` — modes, outbox (`sheet_sync_jobs`), Vercel Queue wake-up, drainer, coordinator API, tombstones, cron/admin |
-| [operationsRegistry.service.md](businesslogic/operationsRegistry.service.md) | `src/services/operationsRegistry/` — catalog/source/CPL/RC inbound-route/Granot CRM source SoR, signed owner mutations, `resolveCpl` |
+| [operations-registry.md](../docs/knowledge/services/operations-registry.md) | `src/services/operationsRegistry/` — catalog/source/CPL/RC inbound-route/Granot CRM source SoR, signed owner mutations, `resolveCpl`. Stub at [businesslogic/operationsRegistry.service.md](businesslogic/operationsRegistry.service.md). |
 | [granotLifecycle.capture.md](businesslogic/granotLifecycle.capture.md) | `src/services/granotLifecycle/capture.ts` — webhook auth, v2 receipt capture, channel-neutral operation-ID capture, `{ receipt_id }` wake-up. Program map: `rules/granot-lifecycle-capture.mdc` |
 | [granotLifecycle.extensionApply.md](businesslogic/granotLifecycle.extensionApply.md) | `src/services/granotLifecycle/extensionApply.ts` — Owner extension apply items, receipt capture, `claimAndProcessOrPoll`, safe compatibility result |
 | [granotLifecycle.automationApply.md](businesslogic/granotLifecycle.automationApply.md) | `src/services/granotLifecycle/automationApply.ts` — Owner-approved HTTP automation receipt apply, resumable `accepted_for_processing` |
@@ -84,7 +84,7 @@ Production API: https://vantage-movers-main-server.vercel.app
 | **Long-form human docs** | `docs/` | Owner specs, showcase, implementation plans |
 
 Granot lead-lifecycle long-form:
-- Units 01–25 fulfillment review (code-complete, not production-live): [`docs/granot-lead-lifecycle/sprint-progress-through-unit-25.md`](../docs/granot-lead-lifecycle/sprint-progress-through-unit-25.md)
+- Units 01–25 fulfillment review (code-complete, not production-live): [`docs/granot-lead-lifecycle/sprint-progress-through-unit-25.md`](../docs/granot-lead-lifecycle/sprint-progress-through-unit-25.md) // pragma: allowlist secret
 - Owner-facing flags, activation, and reviewed source policies: [`docs/granot-lead-lifecycle/lifecycle-activation-flags-and-source-policies.md`](../docs/granot-lead-lifecycle/lifecycle-activation-flags-and-source-policies.md)
 
 Older `docs/to_review/` webhook notes describe the pre-processor world.
@@ -147,7 +147,7 @@ Rule files apply when editing matching paths (`globs` in each file frontmatter).
 | `typescript.mdc` | TS style |
 | `codebase.mdc` | General codebase notes |
 | `branch-test-vercel-workflow.mdc` | Branch deploy / test workflow |
-| `production-url.mdc` | Production host `vantage-movers-main-server.vercel.app` + v1/admin route catalog |
+| `production-url.mdc` | Production host `vantage-movers-main-server.vercel.app` + v1/admin route catalog | // pragma: allowlist secret
 
 ---
 
