@@ -1,6 +1,6 @@
 {
+  // Cursor Cloud Agent environment for vantage-movers-server.
   // JSON schema: https://www.cursor.com/schemas/environment.schema.json
-  "$schema": "https://www.cursor.com/schemas/environment.schema.json",
   "name": "vantage-movers-server",
   "user": "ubuntu",
   // Base image: system-level toolchain (Node 22, pnpm, MongoDB 8.0). Paths are
@@ -12,6 +12,14 @@
   // Dependency refresh on every agent start, after the latest changes are
   // pulled. Idempotent and fast (uses pnpm's content-addressable store).
   "install": "pnpm install",
+  // Per-boot: local mongod replica set + gitignored .env + API if :3000 is down.
+  // Returns when Mongo is PRIMARY and GET /health succeeds. The `api` terminal
+  // attaches if start already launched the server.
+  "start": "bash .cursor/scripts/ensure-cloud-runtime.sh",
+  "ports": [
+    { "name": "api", "port": 3000 },
+    { "name": "mongo", "port": 27017 }
+  ],
   // Long-running processes, started in a shared tmux session after install.
   "terminals": [
     {
@@ -21,7 +29,7 @@
     },
     {
       "name": "api",
-      "description": "Express API dev server on http://localhost:3000. Waits for mongod, initiates the replica set if needed, ensures a local .env, then runs `pnpm dev`.",
+      "description": "Express API on http://localhost:3000. Forces local Mongo + TEST_MODE=true and disables Sheets/RingCentral writes even when dashboard secrets inject an Atlas cluster URI."
       "command": "bash .cursor/scripts/start-api.sh"
     }
   ]
