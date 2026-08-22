@@ -21,8 +21,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-22T06:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)
 **Primary code:** `src/services/granotLifecycle/capture.ts`, `src/services/granotLifecycle/extensionApply.ts`, `src/services/granotLifecycle/queuePublisher.ts`, `src/services/granotLifecycle/receiptEvidence.ts`, `src/services/granotLifecycle/metrics.ts`, `src/models/GranotObservationReceipt.ts`, `src/models/granotLifecycleSchemas.ts`, `src/middleware/requireGranotWebhookSecret.ts`, `src/routes/granot-webhook.routes.ts`, `src/routes/extension-granot-apply.routes.ts`
@@ -81,15 +81,17 @@ Identical deliveries are distinct receipts. `payload_sha256` is diagnostic, neve
 
 ## Queue wake-up
 
-After commit, publish exactly `{ receipt_id }` when the environment is an approved production Vercel function runtime. Tests and unapproved environments skip publish. Publish failure is logged/metriced as `granot_lifecycle.queue.publish_failed` and cannot change `202` or the receipt. Capture still does not invoke the processor. // pragma: allowlist secret
+After webhook commit, `publishGranotLifecycleReceiptWakeup` may send exactly `{ receipt_id }`. Publish requires all of: not the test runner, not `TEST_MODE`, `VERCEL === "1"`, nonempty `VERCEL_REGION`, and [REDACTED] `VERCEL_ENV`. Preview/staging Vercel never publishes. The test runner skips even when those Vercel vars are set. Optional `GRANOT_LIFECYCLE_QUEUE_TOPIC` overrides the default topic (`granot-lifecycle-events` on [REDACTED] Vercel, otherwise `granot-lifecycle-events-dev`). Publish failure is logged/metriced as `granot_lifecycle.queue.publish_failed` and cannot change `202` or the receipt. Capture still does not invoke the processor. // pragma: allowlist secret
 
-A dedicated consumer now exists (`api/queues/granot-lifecycle-consumer.ts`) and a five-minute cron safety net scans due work. Both are wake-ups only: Mongo receipt `processing.*` remains the durable work source. Details: [`drainer.md`](./drainer.md).
+Channel capture (`captureChannelOperationReceipt`) does **not** publish. Extension and automation apply enter `claimAndProcessOrPoll` directly.
+
+A dedicated consumer (`api/queues/granot-lifecycle-consumer.ts`) and five-minute cron `/api/cron/granot-lifecycle-drain` scan due work. Both are wake-ups only: Mongo receipt `processing.*` remains the durable work source. Details: [`drainer.md`](./drainer.md).
 
 ## Related
 
 - CRM Posting on form-lead create does **not** write a receipt and is not triggered by webhooks ([`form-lead.md`](../services/form-lead.md)).
-- Approved Owner browser-extension apply uses `captureChannelOperationReceipt` (`observation_channel: "browser_extension"`, `authentication_method: "extension_session"`). Same channel + operation ID + hash replays the receipt; a different hash is `409 GRANOT_OPERATION_IDEMPOTENCY_CONFLICT` and creates no row. Unique-index races reload the winner and apply the same hash check. Details: [`extension-apply.md`](./extension-apply.md).
-- Approved HTTP automation apply uses `captureChannelOperationReceipt` (`observation_channel: "granot_http_automation"`, `authentication_method: "automation_owner_approval"`). Operation ID is `${run_id}:${action_id}`. Details: [`automation-apply.md`](./automation-apply.md).
+- Approved Owner browser-extension apply uses `captureChannelOperationReceipt` (`observation_channel: "browser_extension"`, `authentication_method: "extension_session"`). Same channel + operation ID + same hash **and** same `channel_operation_kind` replays the receipt. A different hash **or** kind is `409 GRANOT_OPERATION_IDEMPOTENCY_CONFLICT` and creates no row. Unique-index races reload the winner and apply the same check. A race with no reload winner throws `CaptureUnavailableError` (`503 GRANOT_CAPTURE_UNAVAILABLE`). Unique index is `{ observation_channel, channel_operation_id }` partial on string `channel_operation_id`. Details: [`extension-apply.md`](./extension-apply.md).
+- Approved HTTP automation apply uses `captureChannelOperationReceipt` (`observation_channel: "granot_http_automation"`, `authentication_method: "automation_owner_approval"`). Operation ID is `${run_id}:${action_id}`. Same hash/kind conflict rules. Details: [`automation-apply.md`](./automation-apply.md).
 - Software map: [`granot-lifecycle-capture.mdc`](../../../.cursor/rules/granot-lifecycle-capture.mdc).
 
 ## Out of scope here

@@ -19,8 +19,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-22T06:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/normalization.ts`, `src/models/GranotObservation.ts`  
@@ -34,11 +34,13 @@ generated:
 
 ## Public interface
 
-- `normalizeGranotReceipt(receipt)` — pure candidate from typed receipt evidence.
+- `normalizeGranotReceipt(receipt)` — pure candidate from typed receipt evidence. Throws on a malformed receipt envelope (`assertReceiptChannelShape`: webhook missing `route_event_class`, extension/automation missing `channel_operation_kind`).
 - `upsertGranotObservation({ receipt_id } | { receipt })` — persist with one-row-per-`receipt_id` upsert.
 - Invalid and unsupported results **persist**. They are completed business classifications, not thrown parse failures.
 - Technical database failures throw and create no second row.
 - If a concurrent or later candidate differs from the stored row, `ObservationIntegrityError` is thrown. Evidence is never overwritten.
+
+Emitted issue codes: `payload_not_object`, `route_payload_event_conflict`, `missing_payload_event_type`, `unsupported_booking_action`, `invalid_source_label`, `invalid_form_reference`, `invalid_phone`, `invalid_email`, `invalid_move_date`, `invalid_state`, `invalid_cubic_feet`, `invalid_priority`, `invalid_money`. Schema also lists `missing_job_number` and `granot_agent_identity_conflict`; this module never emits those (Agent conflict is later identity policy). Over-bound / non-scalar Job Number is omitted silently with no issue code. Source label reads payload `label` or `source`.
 
 ## Channel authority
 

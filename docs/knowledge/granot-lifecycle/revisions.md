@@ -20,8 +20,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-22T06:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) Sections 14.1, 23.2, 34.3–34.5  
@@ -44,7 +44,18 @@ Public/admin DTOs reject these fields and the Unit 12 Lead provenance fields (`i
 
 ## Compare-and-swap primitive
 
-Later authoritative mutations must filter `{ _id, domain_revision: expected }` and increment once. A zero-row filter is `DOMAIN_REVISION_CONFLICT`. Existing adapters and `createLeadFromGranot` / `synchronizeLeadFromGranot` / Owner Booking commands stamp this pair from the persisted `EntityChange`. `confirmGranotBooking`, `updateBooking`, and `resolveGranotBookingCaseNoAction` exist and stay gated by `GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED`. Release/Referral commands remain unavailable.
+Later authoritative mutations must filter `{ _id, domain_revision: expected }` and increment once. A zero-row filter is `DOMAIN_REVISION_CONFLICT`. Existing adapters and `createLeadFromGranot` / `synchronizeLeadFromGranot` / Owner Booking and Release commands stamp this pair from the persisted `EntityChange`.
+
+Shipped, flag-gated Owner commands:
+
+| Command | Gate(s) |
+|---------|---------|
+| `confirmGranotBooking`, Booking `updateBooking`, `resolveGranotBookingCaseNoAction` | `GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED` |
+| `createReferralBooking` | Booking-command **and** `GRANOT_LIFECYCLE_REFERRAL_BOOKING_ENABLED` |
+| Release `createCancellation`, Release `updateBooking`, `resolveGranotReleaseCaseNoAction` | `GRANOT_LIFECYCLE_RELEASE_COMMANDS_ENABLED` |
+| `reEvaluateGranotDiscrepancy`, `correctGranotRecordLink`, `resolveGranotDiscrepancyNoAction` | registered in `domainCommands/`; Owner routes exist |
+
+Checked-in defaults keep every command flag false. Only lifecycle Lead sync/create, referral create, and the discrepancy commands are in `canonicalDomainCommands`; Booking/Release Owner commands use `executeIdempotentCanonicalCommand` without all being listed there.
 
 ## Migrations
 

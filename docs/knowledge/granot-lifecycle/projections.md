@@ -19,8 +19,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-22T06:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) Sections 28.2 and 29  
@@ -40,8 +40,9 @@ two leads apart before attaching one — see [Candidate browser](#candidate-brow
 
 ## Protected read surface
 
-- Owner/Admin: case list/detail, Job Number timeline, Lead timeline, and operations health.
-- Owner only: case-scoped candidate browsing, because normalized owner-work contact may be used while evaluating eligibility.
+- Owner/Admin (`requireRegistryReadActor`): `GET /api/v1/admin/granot-lifecycle/cases`, `.../cases/:case_id`, `.../jobs/:normalized_job_no`, `GET /api/v1/admin/leads/:lead_model/:lead_id/lifecycle`, `.../operations/health`, `.../discrepancies`, `.../discrepancies/:id`.
+- Owner only: `GET .../cases/:case_id/candidates`; Owner discrepancy mutations `POST .../discrepancies/:id/{re-evaluate,correct-record-link,no-action}`.
+- Default case list query: `state=open`, `sort=last_evidence_at`, `order=desc`.
 - Every query is strict Zod input. Case cursors encode only the selected timestamp and ObjectId; timeline cursors encode exactly event time, type priority, and stable ID. Candidate cursors encode only Lead model/ID ordering.
 - Missing cases use `GRANOT_CASE_NOT_FOUND`; a missing Lead keeps the generic v1 `Lead not found` envelope.
 
@@ -54,8 +55,9 @@ The default queue merges open Booking and Release cases ordered by newest eviden
 - Referral list/detail derives the reviewed Registry source ID/label from immutable Decision `source_policy`, while keeping case `source_scope` absent. `create_referral_booking` exposes no suggestion/candidate search/Lead link; existing Referral review shows current official Booking values with no Lead selector.
 - Submitted/ingested contact and accepted Granot contact are separately labeled. Receipt payloads/headers, credentials, addresses, arbitrary Lead documents, and CPL internals never enter these DTOs.
 - Booking-without-Lead detail deep-links the existing Employee Booking Lead Reconciliation work; it does not invent another matcher or selector.
-- Release detail instead shows the deterministic live Booking and current Cancellation with `candidate_search.available=false`, no suggestion, no employee-reconciliation substitution, and `commands=false`.
-- Referral-shaped detail disables candidate browsing. Unit 23 opens no Referral case.
+- Release detail shows the deterministic live Booking and current Cancellation with `candidate_search.available=false`, no suggestion, and no employee-reconciliation substitution. `capabilities.commands` is true for an **open** Release case when `GRANOT_LIFECYCLE_RELEASE_COMMANDS_ENABLED` is true.
+- Referral-shaped detail disables candidate browsing for `create_referral_booking`. Referral cases **do** open as `create_referral_booking` when Booking-case gates allow.
+- Detail also exposes `capabilities.referral`, `release_cases`, and `discrepancies`.
 
 ## Timelines
 
@@ -79,4 +81,10 @@ Each candidate item carries both `masked_contact_label` (unchanged) and a normal
 
 ## Posture
 
-Reads remain available for existing cases when case creation is disabled. Case/timeline `capabilities.commands` is true only for an open standard create-missing or review-existing Booking case while `GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED` is true. Checked-in lifecycle flags remain processing/shadow true and every Lead/Booking/Release/Referral/email effect false. Health displays those evaluated values and never treats historical_shadow or live_shadow Decision counts as promoted effects.
+Reads remain available for existing cases when case creation is disabled. Case/timeline `capabilities.commands` is true when the case is open **and**:
+
+- Booking `create_missing_booking` / `review_existing_booking` and `GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED`
+- Booking `create_referral_booking` (or current Booking is referral) and both Booking-command **and** `GRANOT_LIFECYCLE_REFERRAL_BOOKING_ENABLED`
+- Release and `GRANOT_LIFECYCLE_RELEASE_COMMANDS_ENABLED`
+
+Checked-in lifecycle flags remain processing/shadow true and every Lead/Booking/Release/Referral/email effect false. Health displays those evaluated values and never treats historical_shadow or live_shadow Decision counts as promoted effects. Health also projects `record_links: { active, disputed }`, `command_conflicts_last_24h`, receipt `by_work_state`, and `expired_claim_count`. Open-case health `mode` values: `create_missing_booking` | `review_existing_booking` | `create_referral_booking` | `release`.

@@ -20,8 +20,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-22T06:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)
 **Primary code:** `src/services/granotLifecycle/automationApply.ts`, `src/services/granotHttpCollector/lifecycleStatement.ts`, `src/services/granotHttpCollector/runWorkflow.ts`
@@ -53,7 +53,9 @@ Before checksum lock, `sealAutomationPlan` attaches:
 
 ## Apply
 
-`applyAutomationPlanAction` captures through `captureChannelOperationReceipt` (`authentication_method: "automation_owner_approval"`, initiator = `approval.approved_by`, hint `granot_apply_item_v1`) and then `claimAndProcessOrPoll`.
+`applyAutomationPlanAction` captures through `captureChannelOperationReceipt` (`authentication_method: "automation_owner_approval"`, initiator = `approval.approved_by`, hint `granot_apply_item_v1`) and then `claimAndProcessOrPoll(receipt_id)` in [`drainer.md`](./drainer.md). It does **not** publish a lifecycle queue wake-up.
+
+`operation_id` is `${run_id}:${action_id}` (`isAutomationOperationId`: nonempty parts, no control/bidi, max 300 chars). It is not required to be ObjectId-shaped. A stored action receipt with terminal outcome is returned without recapture. Stored `pending_match` is **non-terminal** and will recapture/reclaim.
 
 Run action receipt:
 
@@ -68,9 +70,15 @@ Run action receipt:
 }
 ```
 
-Nonterminal claim/retry/`pending_match`/processing-disabled stores `accepted_for_processing`, does not increment completed progress, yields the run lease, and resumes the same operation ID. Dead letter is bounded `technical_failure`. Exact replay returns the stored terminal receipt.
+| Claim / Decision | Automation `outcome` |
+|------------------|----------------------|
+| terminal Decision (`applied`, `created`, `already_current`, …) | that `SynchronizationOutcome` |
+| `pending_match`, lost claim, poll miss | `accepted_for_processing` |
+| processing disabled | `accepted_for_processing` + `error_code: "GRANOT_PROCESSING_DISABLED"` |
+| receipt `dead_letter` | `technical_failure` + `error_code: "GRANOT_RECEIPT_DEAD_LETTER"` |
+| capture `GRANOT_OPERATION_IDEMPOTENCY_CONFLICT` | run maps to `technical_failure` |
 
-Admin GET details redact `granot_statement` from the plan and never project receipt payloads.
+Nonterminal `accepted_for_processing` does not increment completed progress, yields the run lease, and resumes the same operation ID. Exact replay of a **terminal** stored receipt returns that receipt. Admin GET details redact `granot_statement` from the plan and never project receipt payloads.
 
 ## Flags
 

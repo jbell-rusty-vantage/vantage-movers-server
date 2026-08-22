@@ -21,8 +21,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-22T06:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/drainer.ts`, `src/services/granotLifecycle/operations.ts` (requeue), `api/queues/granot-lifecycle-consumer.ts`, `src/routes/granot-lifecycle-cron.routes.ts`  
@@ -34,11 +34,13 @@ generated:
 
 ## Shared entry
 
-Callers pass receipt identity only. The claim predicate is the Section 26 filter: due `pending` / `retry_scheduled` / expired `claimed`, then `$set` claimed + lease owner + five-minute lease and `$inc` `technical_attempts`. Requested-ID claims add `_id`. Due scan batch is 20 with concurrency 4.
+Callers pass receipt identity only. The claim predicate is the Section 26 filter: due `pending` / `retry_scheduled` / expired `claimed`, then `$set` claimed + lease owner + five-minute lease and `$inc` `technical_attempts`. Requested-ID claims add `_id`. Due scan batch is 20 with concurrency 4. Lease renew interval is 2 minutes (`LEASE_RENEW_INTERVAL_MS`).
 
 Renew and every success/retry/dead-letter finalization are fenced by `{_id, state:claimed, lease_owner}`. A zero match means lease lost: stop, write no final state, launch no replacement processor.
 
-Processing disabled: no claim, safe skipped run. Capture and due work remain intact.
+Processing disabled: no claim, safe skipped run (`claimAndProcessOrPoll` returns `{ status: "skipped", reason: "processing_disabled" }`). Capture and due work remain intact. If the processor is invoked directly with processing off, it throws `ProcessingDisabledError`.
+
+`claimAndProcessOrPoll(receipt_id)` lives in this module (not `operations.ts`). Sync poll deadline is 5 seconds with exponential backoff (`syncPollBackoffMs`). Queue `parseReceiptWakeup` accepts `{ receipt_id }` or a Vercel `{ data: { receipt_id } }` wrapper; any other shape fails.
 
 ## Technical vs business clocks
 

@@ -20,8 +20,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-22T06:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) Sections 28.2 and 33  
@@ -53,8 +53,12 @@ Exact Section 33 names live in `GRANOT_LIFECYCLE_SECTION_33_METRIC_NAMES`. Recei
 
 ## Health and alerts
 
-`GET /api/v1/admin/granot-lifecycle/operations/health` remains the single Owner/Admin read. Due work is pending/retry plus claimed-only-when-lease-expired with `next_attempt_at <= now`. Health includes generated time, ten flags, activation, receipt/due/dead-letter counts, 24-hour Decision groups with execution mode, open cases/discrepancies, command conflicts, last queue/cron runs, RingCentral lease/cursor telemetry, and the seven frozen alert codes.
+`GET /api/v1/admin/granot-lifecycle/operations/health` remains the single Owner/Admin read. Due work is pending/retry plus claimed-only-when-lease-expired with `next_attempt_at <= now`. Health includes generated time, ten flags, activation, receipt/due/dead-letter counts plus `by_work_state` and `expired_claim_count`, 24-hour Decision groups with execution mode, open cases/discrepancies, `command_conflicts_last_24h`, `record_links: { active, disputed }`, last queue/cron runs, RingCentral lease/cursor telemetry, and the seven frozen alert codes.
 
-Thresholds are fixed in `GRANOT_LIFECYCLE_ALERT_THRESHOLDS`: oldest due > 15 minutes continuously for 10 minutes (tracked from the current oldest due timestamp crossing the threshold), any dead letter, any capture 503 in 24 hours, claim recoveries > 5 in 1 hour, p95 capture-to-decision > 10 minutes over 24 hours, RingCentral lease held > 10 minutes, and ambiguity/policy-blocked rate > 5% over 24 hours for sources with both `enabled` and `lifecycle_enabled` true and a non-deferred disposition. Empty p95/rate samples are `insufficient_data`; that state never recovers an open alert. p95 is nearest-rank. Public source scope is a masked Registry reference. Firing/recovery persist a deduplicated incident transition only; repeated evaluation does not fan out.
+`GRANOT_LIFECYCLE_ALERT_THRESHOLDS` (not env-overridable): `oldest_due_ms` 15 minutes, `oldest_due_continuity_ms` 10 minutes, `dead_letter_count` 0, `capture_503_count` 0, `claim_recovery_per_hour` 5, `capture_to_decision_p95_ms` 10 minutes, `ringcentral_lease_held_ms` 10 minutes, `source_ambiguity_policy_blocked_rate` 0.05, `health_window_ms` 24 hours, `claim_recovery_window_ms` 1 hour.
+
+Oldest due > 15 minutes continuously for 10 minutes (tracked from the current oldest due timestamp crossing the threshold), any dead letter, any capture 503 in 24 hours, claim recoveries > 5 in 1 hour, p95 capture-to-decision > 10 minutes over 24 hours, RingCentral lease held > 10 minutes, and ambiguity/policy-blocked rate > 5% over 24 hours for sources with both `enabled` and `lifecycle_enabled` true and a non-deferred disposition. Empty p95/rate samples are `insufficient_data`; that state never recovers an open alert. p95 is nearest-rank. Public source scope is a masked Registry reference. Firing/recovery persist a deduplicated incident transition and emit `granot_lifecycle.alert.firing` / `granot_lifecycle.alert.recovered`; repeated evaluation does not fan out.
+
+`open_cases` gauge keys are `kind|mode` (`create_missing_booking`, `review_existing_booking`, `create_referral_booking`, `release`). `open_discrepancies` keys are `kind|reason_code`.
 
 Alert evaluation cannot pause capture or processing. `GRANOT_LIFECYCLE_EMAIL_ENABLED` stays unrelated and false.
