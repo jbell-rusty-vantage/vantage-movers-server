@@ -24,7 +24,7 @@ Mark `[x]` only when the unit's **Done when** checks are true on disk.
 ## G clusters (after A–F)
 
 - [x] `g-leads`
-- [ ] `g-bookings`
+- [x] `g-bookings`
 - [ ] `g-sheets`
 - [ ] `g-search`
 - [ ] `g-catalog`

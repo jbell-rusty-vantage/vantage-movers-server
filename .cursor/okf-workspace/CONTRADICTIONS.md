@@ -16,7 +16,8 @@ Format:
 ## public-v1-referral-cancel-vs-gated-release | open | 2026-08-21T2352Z
 - sources: `src/services/cancellations/cancellationResolver.ts` (`getBookedLeadForCancellation` 409 on `is_referral_booking`); `docs/knowledge/services/cancelled-lead.md`; gated `createCancellation` in Release owner commands / `releaseOwnerCommands.replica.test.ts`
 - conflict: Public `POST /api/v1/cancelled-leads` blocks Referral Bookings. Gated Granot Release `createCancellation` can cancel a referral without a Lead mirror. Checked-in Release flags stay false. The old `business-logic.mdc` / `owner-lead-workflow.mdc` sentences said referral cancel is universally blocked.
-- action: leave — public path stays documented in `cancelled-lead.md`. Do not merge the gated path into the public invariant. Deepen at `g-bookings` / Release Service if flags turn on.
+- action: leave — public path stays documented in `cancelled-lead.md`. Do not merge the gated path into the public invariant. Deepen at Release Service if flags turn on.
+- g-bookings (2026-08-22T0254Z): Public cancel of leadless is allowed only when Best Relocation import sets `allowLeadless`. That is not the gated Release path. Referral public cancel remains 409. Referral/leadless **delete** is allowed on `deleteBookedLead`.
 
 ## ops-registry-authoritative-plan-absent | open | 2026-08-21T0220Z
 - sources: `docs/knowledge/services/operations-registry.md` header `Authoritative plan`; expected `docs/current_plans/01-operations-registry-specification.md`

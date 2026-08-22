@@ -4,6 +4,22 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-08-22T0254Z | to: next-run | from: opt-g-bookings-2026-08-22T0254Z | kind: next
+
+`g-bookings` is done on `docs/okf-optimization`. One optimization PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/6 — update it; do not open a second.
+
+1. Next unit: **`g-sheets`** (code-truth: `sheet-sync.md`, `google-sheets.md`, `domain-commands.md`).
+2. Ignore `pnpm okf:progress`. Disk = `OPTIMIZATION.md`.
+3. Do not removen. Do not start maintenance. Do not recreate `.cursor/businesslogic/`.
+4. `pnpm okf:query --type Service` stays **40**. Deprecated count **0**.
+5. ADRs / workspace `CONTEXT.md` still absent. Do not invent copies.
+
+## 2026-08-21T0220Z | to: human | from: pass0-2026-08-21T0217Z | kind: question
+
+This standalone checkout has no `../CONTEXT.md` and no `../docs/adr/0001`–`0003`. Progress recorded them `skipped-absent`. Stamp those ADRs only when a workspace checkout includes them. Do not copy them into this repo.
+
+## Resolved
+
 ## 2026-08-22T0154Z | to: next-run | from: opt-f-2026-08-22T0154Z | kind: next
 
 `opt-f` and `g-leads` are done on `docs/okf-optimization`. One optimization PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/6 — update it; do not open a second.
@@ -14,11 +30,7 @@ Open items first. Newest on top. Not knowledge.
 4. `pnpm okf:query --type Service` stays **40**. Deprecated count **0**.
 5. ADRs / workspace `CONTEXT.md` still absent on GitHub public Vantage repos. Do not invent copies.
 
-## 2026-08-21T0220Z | to: human | from: pass0-2026-08-21T0217Z | kind: question
-
-This standalone checkout has no `../CONTEXT.md` and no `../docs/adr/0001`–`0003`. Progress recorded them `skipped-absent`. Stamp those ADRs only when a workspace checkout includes them. Do not copy them into this repo.
-
-## Resolved
+Resolved by opt-g-bookings-2026-08-22T0254Z: six booking-cluster Services rewritten from current code; next is `g-sheets`.
 
 ## 2026-08-22T0054Z | to: next-run | from: opt-e-2026-08-22T0054Z | kind: next
 
