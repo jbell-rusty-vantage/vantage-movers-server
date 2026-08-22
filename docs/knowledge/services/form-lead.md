@@ -4,14 +4,16 @@ title: Form Lead Service
 description: Create, update, and delete Form Leads, including duplicates, CRM Posting, and Sheet Sync tab routing.
 tags: [form-lead, ingestion, crm-posting]
 status: draft
-stale_after: 2026-11-19
+stale_after: 2026-11-20
 resource: src/services/leads/formLead.service.ts
 applies_to:
   - src/services/leads/formLead.service.ts
   - src/services/leads/leadIngestionProvenance.ts
   - src/services/leads/leadCplResolution.ts
+  - src/services/leads/duplicateLead.service.ts
   - src/services/crm/crm.service.ts
   - src/services/crm/formLeadPayload.ts
+  - src/routes/v1.routes.ts
 owners: [team:main-server]
 sources:
   - id: primary
@@ -25,7 +27,7 @@ sources:
     resource: ../docs/adr/0002-granot-crm-post-despite-downstream-failures.md
 generated:
   by: process:okf-docs-optimization
-  at: 2026-08-22T00:54:00Z
+  at: 2026-08-22T01:54:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) for Granot identity; [`../../../../docs/adr/`](../../../../docs/adr/) for [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md) and [0002 CRM post survives failures](../../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md)
@@ -38,13 +40,15 @@ generated:
 
 **Triggers:** `POST /api/v1/form-leads` → `createFormLead`; `PATCH /api/v1/form-leads/:id` → `updateFormLead`. Canonical ingest/admin wrappers call `createFormLeadInTransaction` / `updateFormLeadInTransaction` with the executor `{ session, now }` and finalize only after commit ([`domain-commands.md`](./domain-commands.md)). Public routes still own `runSheetSyncWrite`.
 
+Public `createFormLead` always assigns `ingestion_origin: "wordpress_form"` and forces a Mongo transaction when `sms_consent === true` and messaging is allowed in this runtime (`!TEST_MODE` or the test-mode allow flag). Canonical wrappers pass `deriveFormLeadIngestionOrigin`: Best Relocation sheet → `best_relocation_sheet`; Granot lifecycle → `granot_lead_created`; `vantage_admin` + owner/admin actor → `vantage_admin`; `vantage_admin` + system/undefined actor → `wordpress_form`. Unproven command origins throw.
+
 ## Form Lead Ingestion — create (`createFormLead`)
 
 | Step | What happens |
 |------|----------------|
-| 1. Normalize | Name, phone, **Source Company** (`parseSourceCompany`), required location |
-| 2. Derive | **Move Type** (`local` from pickup/delivery states), **CPL** snapshot (`resolveLeadCplSnapshot` → `operationsRegistry.resolveCpl`), Florida `timestamp`, **Tracking Reference** (`ref_no`, default `"not provided"`), `move_date`, trusted `ingestion_origin`, immutable `ingested_contact_snapshot` / `ingested_move_snapshot` (`captured_at_ingestion`, same trusted `now`) |
-| 3. **Duplicate Lead** check | `findDuplicateFormLeadMatch(source, phone, email, timestamp)` — exact Source Granularity, same cohort around the 2026-04-30 Eastern cutoff, earlier non-duplicate Form Lead with same normalized phone **or** email |
+| 1. Normalize | Name, phone, **Source Company** (`resolveLeadSourceAssignment`), required location |
+| 2. Derive | **Move Type** (`deriveFormLeadLocal` from pickup/delivery states; trusted Best Relocation create may pass `local` through when `ingestion_source === "best_relocation_sheet"`), **CPL** snapshot (`resolveLeadCplSnapshot` → `operationsRegistry.resolveCpl`), Florida `timestamp`, **Tracking Reference** (`ref_no`, default `"not provided"`), `lid` (`generateLeadId` when omitted), `move_date` (`input.move_date ?? tx.now` on this create path), trusted `ingestion_origin`, immutable `ingested_contact_snapshot` / `ingested_move_snapshot` (`captured_at_ingestion`, same trusted `now`) |
+| 3. **Duplicate Lead** check | `findDuplicateFormLeadMatch` — throws if Source Granularity is missing; same exact `source_granularity_id`; earlier non-duplicate Form Lead; same cohort around `2026-04-30T04:00:00.000Z` (pre-cutoff looks only before the event timestamp; on/after cutoff looks `[cutoff, event)`); normalized phone **or** email |
 | 4. Persist + Sheet Sync intent | Atomic in queued mode via `runSheetSyncWrite`: save Form Lead with `duplicate` flag; `post_to_granot = post_to_granot && !duplicate` |
 | 4b. Form Fill (non-duplicates only) | `markMatchingCallLeadsWithFormFill` — same source + phone Call Leads → `form_fill=true`; enqueues `call_lead.form_fill.update` jobs in same txn |
 | 4c. Enqueue | `source_lead` / `form_lead.create` Sheet Sync job |
@@ -94,16 +98,19 @@ Job: `resource: source_lead`, `operation: form_lead.create` | `form_lead.update`
 
 ## Update (`updateFormLead`)
 
-- Re-normalizes provided fields; recomputes Move Type + CPL snapshot.
-- Optional `receiver_agent` (+ `receiver_agent_source` / snapshots) via Operations Registry agent lookup. The source enum includes `granot_username_match`; existing extension writes still store `extension_crm_username_match`, which remains readable.
-- **Blocked:** `quoted` / `cubic_feet` on Duplicate Leads; **Bad Lead** on duplicate, Booked, or Cancelled leads.
-- Saves + enqueues attached **Booking Chain** refresh (`form_lead.update`).
+- Re-normalizes provided fields. Strips forbidden lifecycle fields (`omitForbiddenLeadLifecycleFields`).
+- Re-derives **Move Type** only when pickup/delivery zip or state is in the patch. Recomputes the **CPL** snapshot only when source-affecting fields change, `lead_source_company` is missing, or `timestamp` is patched.
+- Optional `receiver_agent` (+ `receiver_agent_source` / snapshots) via Operations Registry agent lookup. Missing agent → 404. The source enum includes `granot_username_match`; existing extension writes still store `extension_crm_username_match`, which remains readable.
+- **Blocked:** `quoted` / `cubic_feet` / `receiver_agent_source === "extension_crm_username_match"` on Duplicate Leads (one ConflictError); **Bad Lead** on duplicate, Booked, or Cancelled leads.
+- `options.expected` miss or Mongoose `VersionError` → ConflictError `preview_drift` ("reload before applying").
+- No field changes → return the lead and skip Sheet Sync.
+- Otherwise saves + enqueues attached **Booking Chain** refresh (`form_lead.update`). Missing CPL after save emits `lead.cpl.missing_rate`.
 
 ## Read / delete
 
 | Function | Behavior |
 |----------|----------|
-| `findFormLead` | Extension lookup; **404 if Duplicate Lead** (not an enrichment target) |
+| `findFormLead` | Extension lookup; projected identity/quote/location/receiver fields only; **404 if missing or Duplicate Lead** (not an enrichment target) |
 | `findAllFormLeads` | Last 200 by `createdAt` |
 | `deleteFormLead` | `cascade=true` required when Booked; queued mode uses Sheet Sync tombstone (`duplicate` preserved for correct tab delete) |
 
@@ -116,9 +123,9 @@ Job: `resource: source_lead`, `operation: form_lead.create` | `form_lead.update`
 | Helpers | Do not bypass Source Company, location, duplicate, or Sheet Sync scheduling |
 | `sms_consent` | Boolean or `"true"`/`"false"` at the route; only parsed `true` creates a Lead Message. Duplicate leads record a skipped message; false/missing creates no message. |
 | Lifecycle revision | `domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical create/update/delete routes persist an append-only `EntityChange` and stamp `last_change_*` in the executor transaction. |
-| Ingestion Origin | Server-assigned and immutable. Ordinary WordPress/`createFormLead` → `wordpress_form`; authenticated Admin actor → `vantage_admin`; trusted Best Relocation command → `best_relocation_sheet`. `createLeadFromGranot` assigns `granot_lead_created` and forces `post_to_granot=false`. Clients cannot set `ingestion_origin`. Historical rows without durable proof receive `legacy_unknown` from the Lead provenance migration only; labels and `ref_no` never decide origin. |
+| Ingestion Origin | Server-assigned and immutable. Public `createFormLead` always stores `wordpress_form`. Canonical `deriveFormLeadIngestionOrigin`: Best Relocation sheet → `best_relocation_sheet`; Granot lifecycle → `granot_lead_created`; `vantage_admin` + owner/admin actor → `vantage_admin`; `vantage_admin` + system/undefined actor → `wordpress_form`. Unproven origins throw. `createLeadFromGranot` assigns `granot_lead_created` and forces `post_to_granot=false`. Clients cannot set `ingestion_origin`. Historical rows without durable proof receive `legacy_unknown` from the Lead provenance migration only; labels and `ref_no` never decide origin. |
 | Immutable creation evidence | New Form Leads persist `ingested_contact_snapshot` and `ingested_move_snapshot` in the create transaction. Later Granot evidence cannot overwrite them. Missing historical snapshots may be labeled `legacy_baseline` from current fields only; `captured_at_ingestion` is never rewritten. `granot_contact_snapshot` is a separate field. |
-| Form Job Number / sparse move facts | Additive `job_no` / `normalized_job_no` via existing `normalizeJobNo`. This is not **Tracking Reference**. CRM Posting still sends `FormLead.ref_no` as `leadno`. Persisted `move_size` and `move_date` are optional so trusted Granot creation can preserve absence; ordinary WordPress/Admin validation remains the authority for those callers. A legacy CRM payload built from an absent date emits an empty `movedte` instead of inventing today. |
+| Form Job Number / sparse move facts | Additive `job_no` / `normalized_job_no` via existing `normalizeJobNo`. This is not **Tracking Reference**. CRM Posting still sends `FormLead.ref_no` as `leadno`. The model allows absent `move_size` / `move_date` so trusted Granot creation can preserve absence. This service's `createFormLeadInTransaction` still writes `move_date: input.move_date ?? tx.now`. A legacy CRM payload built from an absent stored date emits an empty `movedte` instead of inventing today. |
 
 Lead Messaging owner invariants live in [`lead-messaging.md`](./lead-messaging.md).
 Form create persists intent only when `sms_consent` is parsed `true`; duplicates
