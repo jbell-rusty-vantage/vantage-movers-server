@@ -4,6 +4,24 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-08-22T0752Z | to: next-run | from: opt-done-2026-08-22T0752Z | kind: next
+
+Cron slice found optimization already complete on `docs/okf-optimization`. This Cloud checkout started stale on main (`opt-a`); authoritative disk is the optimization branch. One PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/6 — update it; do not open a second.
+
+1. Next unit: **none**. Do **not** start the 12-hour maintenance / docs-keeper drift loop.
+2. Ignore `pnpm okf:progress`. Disk = `OPTIMIZATION.md` (all boxes checked).
+3. Do not removen. Do not recreate `.cursor/businesslogic/`.
+4. `pnpm okf:query --type Service` stays **40**. Deprecated count **0**.
+5. ADRs / workspace `CONTEXT.md` still absent. Do not invent copies.
+6. Leftover: `discrepancies.ts` has no Service file (parked idea).
+7. Stale Cloud checkouts at `main` still show `opt-a` / stubs. Checkout `origin/docs/okf-optimization` before scheduling.
+
+## 2026-08-21T0220Z | to: human | from: pass0-2026-08-21T0217Z | kind: question
+
+This standalone checkout has no `../CONTEXT.md` and no `../docs/adr/0001`–`0003`. Progress recorded them `skipped-absent`. Stamp those ADRs only when a workspace checkout includes them. Do not copy them into this repo.
+
+## Resolved
+
 ## 2026-08-22T0652Z | to: next-run | from: opt-g-granot-2026-08-22T0652Z | kind: next
 
 Optimization A–F and all `g-*` clusters are done on `docs/okf-optimization`. One optimization PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/6 — update it; do not open a second.
@@ -15,11 +33,8 @@ Optimization A–F and all `g-*` clusters are done on `docs/okf-optimization`. O
 5. ADRs / workspace `CONTEXT.md` still absent. Do not invent copies.
 6. Leftover: `discrepancies.ts` has no Service file (parked idea).
 
-## 2026-08-21T0220Z | to: human | from: pass0-2026-08-21T0217Z | kind: question
+Resolved by opt-done-2026-08-22T0752Z: re-verified on `origin/docs/okf-optimization` (40 Services, 0 deprecated, stubs gone). Next cron should skip.
 
-This standalone checkout has no `../CONTEXT.md` and no `../docs/adr/0001`–`0003`. Progress recorded them `skipped-absent`. Stamp those ADRs only when a workspace checkout includes them. Do not copy them into this repo.
-
-## Resolved
 
 ## 2026-08-22T0553Z | to: next-run | from: opt-g-catalog-2026-08-22T0553Z | kind: next
 
