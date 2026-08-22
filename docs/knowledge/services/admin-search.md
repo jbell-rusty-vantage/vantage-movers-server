@@ -4,10 +4,13 @@ title: Admin Search Service
 description: Global admin free-text search across scoped resources, unlike paginated browse.
 tags: [search, admin]
 status: draft
-stale_after: 2026-11-19
+stale_after: 2026-11-20
 resource: src/services/admin/adminSearch.service.ts
 applies_to:
   - src/services/admin/adminSearch.service.ts
+  - src/services/admin/adminScope.service.ts
+  - src/validation/v1/admin.validation.ts
+  - src/routes/v1.routes.ts
 owners: [team:main-server]
 sources:
   - id: primary
@@ -18,69 +21,80 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-22T04:51:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
-**ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)
+**ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/admin/adminSearch.service.ts`  
 **Domain terms used:** [Admin Dashboard](../../../../CONTEXT.md), [Workflow Observational](../../../../CONTEXT.md), [Lead ID](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Cancellation](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md)
 
 # Admin Search Service
 
-**Role:** Cross-resource typeahead / global search for the **Admin Dashboard**. Read-only Mongo lookups; no mutations, **Sheet Sync**, or **CRM Posting**.
+**Role:** Cross-resource typeahead for the **Admin Dashboard**. Read-only Mongo lookups; no mutations, **Sheet Sync**, or **CRM Posting**.
 
-**Entry:** `GET /api/v1/admin/search?q=...&database_scope=...&limit=...` → `globalAdminSearch`.
+**Entry:** `GET /api/v1/admin/search` → `adminSearchQuerySchema` → `globalAdminSearch`.
 
 ## Query parameters (`AdminSearchQuery`)
 
 | Param | Default | Notes |
 |-------|---------|-------|
-| `q` | required | Trimmed, min length 1; case-insensitive regex match |
-| `database_scope` | `production` | `production` \| `historical` \| `combined` | // pragma: allowlist secret
-| `limit` | `5` | Per resource type, per concrete scope; max 25 |
+| `q` | required | Trimmed, min length 1 |
+| `database_scope` | `[REDACTED]` | `[REDACTED]` \| `historical` \| `combined` | // pragma: allowlist secret
+| `limit` | `5` | Per resource type **after** scopes are flattened; max 25 |
 
-Unlike browse (`adminBrowse.service.ts`), search has no pagination, date filters, or facet filters — only free-text `q`.
+Unlike browse (`adminBrowse.service.ts`), search has no pagination, date filters, or facet filters — only free-text `q`. Schema uses `.strip()`.
 
 ## Database scope
 
-Resolved via `adminScope.service.ts`:
+`concreteScopes` in `adminScope.service.ts`:
 
 | `database_scope` | Behavior |
 |------------------|----------|
-| `production` | Live Mongoose models (`FormLead`, `CallLead`, etc.) | // pragma: allowlist secret
-| `historical` | Historical collections via `registerHistoricalModels()` |
-| `combined` | Runs search in **both** scopes; results tagged with `database_scope` on each item |
+| `[REDACTED]` | Live Mongoose models | // pragma: allowlist secret
+| `historical` | `registerHistoricalModels()` |
+| `combined` | Both scopes in parallel; each item tagged with `database_scope` |
 
-Detail endpoints reject `combined`; search is one of the few places that supports it.
+Detail endpoints reject `combined` (`rejectCombinedDetailScope`). Search is one of the few reads that allow it.
 
-## Search algorithm
+## Happy path
 
-For each of 6 resource types, in parallel:
+For each of 6 `SEARCH_CONFIGS` keys, in parallel:
 
-1. Expand scope → one or two concrete scopes (`production`, `historical`). // pragma: allowlist secret
-2. Per scope: build Mongo filter:
-   - If `q` is valid ObjectId → `{ _id: ObjectId(q) }` **or**
-   - Regex `$or` across configured string fields (escaped special chars)
-3. `find(filter).sort({ createdAt: -1 }).limit(limit).lean()`
-4. Map docs → `AdminSearchItem` (labels, badges, admin UI `href`)
-5. Flatten scopes, **slice to `limit`** per resource type
-6. Return only groups with `items.length > 0`
+1. Expand scope → one or two concrete scopes.
+2. Per scope: `q.trim()`; if `mongoose.isValidObjectId(q)` add `{ _id: toObjectId(q) }` **or** (always) regex `$or` across configured string fields (escaped, `/i`).
+3. `find(filter).sort({ createdAt: -1 }).limit(limit).lean()`.
+4. Map → `AdminSearchItem`.
+5. Flatten scopes, **`slice(0, limit)`** per resource (combined can mix scopes but still caps at `limit`).
+6. Drop groups with `items.length === 0`.
 
-No cross-resource ranking — each type is capped independently. Empty groups are omitted from the response.
+No cross-resource ranking. Empty groups omitted (tested: one form-lead hit → one group).
+
+ObjectId probe uses `mongoose.isValidObjectId` (more permissive than 24-hex) then `toObjectId`. The regex `$or` still runs even when the ObjectId clause is present.
 
 ## Resources and indexed fields
 
-| Resource | Search fields | Admin `href` | Badges |
-|----------|---------------|--------------|--------|
-| `form-leads` | name, email, phone_number, source_company, ref_no, lid | `/form-leads/:id` | booked/unbooked, cancelled |
-| `call-leads` | name, email, phone_number, normalized_phone_number, source_company, job_no | `/call-leads/:id` | booked/unbooked, cancelled |
-| `booked-leads` | job_no, normalized_job_no, customer_name, customer_name_snapshot, source, merchant, agent_allocations.agent_name_snapshot | `/bookings/:id` | booked, cancelled |
+| Resource | Search fields | `href` | Badges |
+|----------|---------------|--------|--------|
+| `form-leads` | name, email, phone_number, source_company, **three label snapshots**, **source_granularity_key**, ref_no, lid | `/form-leads/:id` | booked/unbooked, cancelled |
+| `call-leads` | name, email, phone_number, normalized_phone_number, source_company, **three label snapshots**, **source_granularity_key**, job_no | `/call-leads/:id` | booked/unbooked, cancelled |
+| `booked-leads` | job_no, normalized_job_no, customer_name, customer_name_snapshot, source, merchant, `agent_allocations.agent_name_snapshot` | `/bookings/:id` | booked + cancelled if ref set |
 | `cancelled-leads` | job_no, normalized_job_no, customer_name, reason, cancelled_by, source, merchant, agent | `/cancellations/:id` | cancelled |
 | `customers` | full_name, normalized_name, phone_number, email | `/customers/:id` | customer |
 | `agents` | name, normalized_name, role | `/agents/:id` | active/inactive, agent |
 
-**Labels:** `primary_label` / `secondary_label` use first non-empty string among configured doc fields (`label()` helper). Resource-specific primary/secondary precedence is in `SEARCH_CONFIGS`.
+Lead badges: `doc.booked` truthy → `booked` else `unbooked`; plus `cancelled` if the ref is set.
+
+**Labels:** first non-empty string among listed fields (`label()`). Source fallback for secondary: `crm_source_label_snapshot` → granularity snapshot → company snapshot → `source_company`.
+
+| Resource | Primary order | Secondary order |
+|----------|---------------|-----------------|
+| form-leads | ref_no, name, phone, `"Form lead"` | name, email, phone, sourceLabel |
+| call-leads | job_no, name, phone, `"Call lead"` | name, email, phone, sourceLabel |
+| booked-leads | job_no, `"Booking"` | customer_name, snapshot, source, merchant |
+| cancelled-leads | job_no, `"Cancellation"` | customer_name, reason, source |
+| customers | full_name, phone, `"Customer"` | email, phone |
+| agents | name, `"Agent"` | role, `"inactive"`/`"active"` |
 
 ## Response shape
 
@@ -90,25 +104,33 @@ No cross-resource ranking — each type is capped independently. Empty groups ar
 
 `database_scope` on each item tells the UI which DB to open when `combined` was requested.
 
+## Skip / fail paths
+
+- Empty / missing `q` → Zod fail
+- No matches → `{ groups: [] }`
+- Combined cap can hide extra historical hits after the flattened `limit`
+- Does **not** filter Duplicate Leads, bad leads, or inactive agents (inactive is a badge only)
+
 ## Invariants
 
-- Search is **read-only** — never write Mongo or trigger side effects.
-- ObjectId lookup is exact; all other matching is substring regex (not normalized phone logic beyond indexed fields).
-- Does **not** filter out duplicates, bad leads, or shadow records — whatever matches in the collection is returned.
-- Adding a searchable resource requires updates to `AdminResource`, `SEARCH_CONFIGS`, `getAdminModels`, and likely browse/export configs elsewhere.
+- Search is **read-only**.
+- ObjectId lookup is exact; other matching is substring regex (no `normalizePhoneNumberForMatch`).
+- Adding a searchable resource requires `AdminResource`, `SEARCH_CONFIGS`, `getAdminModels`, and usually browse/export configs.
 
 ## Related admin modules
 
 | Module | Relationship |
 |--------|----------------|
 | `adminScope.service.ts` | Model resolution + `concreteScopes` |
-| `adminBrowse.service.ts` | Paginated list/filter/detail (richer filters, duplicate toggle) |
+| `adminBrowse.service.ts` | Paginated list/filter/detail |
 | `adminFacets.service.ts` | Filter option counts |
 | `adminExport.service.ts` | CSV export |
 
 ## When to use search vs browse
 
-- **Admin search (this doc):** quick jump by name, phone, job no, ref no, or Mongo id across all entity types.
-- **Admin browse:** filtered tables with pagination, sort, date range, source company, duplicate flag, etc. (`adminBrowse.service.ts`).
-- **Extension lead browse:** paginated form/call lists for the Granot extension Search workspace — `lead-browse.md`.
-- **Extension lead search (POST):** scored form identity resolution or call OR-search — `form-lead-search.md`, `call-lead-search.md`.
+- **Admin search (this doc):** jump by name, phone, job no, ref no, granularity key, or Mongo id across types.
+- **Admin browse:** tables with pagination, sort, date range, source, duplicate flag.
+- **Extension lead browse:** [`lead-browse.md`](./lead-browse.md).
+- **Extension POST search:** [`form-lead-search.md`](./form-lead-search.md), [`call-lead-search.md`](./call-lead-search.md).
+
+Tests: `admin.service.test.ts` (`global admin search returns grouped results`).

@@ -4,10 +4,14 @@ title: Form Lead Search
 description: Scored Form Lead identity search with ambiguity handling and duplicate quarantine.
 tags: [form-lead, search]
 status: draft
-stale_after: 2026-11-19
+stale_after: 2026-11-20
 resource: src/services/search/formLeadSearch.service.ts
 applies_to:
   - src/services/search/formLeadSearch.service.ts
+  - src/validation/v1/leads.validation.ts
+  - src/routes/v1.routes.ts
+  - src/services/granotCrmCsv/sync.service.ts
+  - src/services/granotHttpCollector/granotFormLeadMatcher.ts
 owners: [team:main-server]
 sources:
   - id: primary
@@ -16,114 +20,136 @@ sources:
     resource: ../CONTEXT.md
     title: Platform glossary
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-22T04:51:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
-**Authority:** [Final Granot Lead Lifecycle specification](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) for Granot identity
+**Authority:** [Final Granot Lead Lifecycle specification](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) for Granot identity  
 **Primary code:** `src/services/search/formLeadSearch.service.ts`  
-**Domain terms used:** [Form Lead](../../../../CONTEXT.md), [Lead ID](../../../../CONTEXT.md), [Granot Form Reference](../../../../CONTEXT.md), [Tracking Reference](../../../../CONTEXT.md), [Duplicate Lead](../../../../CONTEXT.md), [Form Lead Enrichment](../../../../CONTEXT.md)
+**Domain terms used:** [Form Lead](../../../../CONTEXT.md), [Lead ID](../../../../CONTEXT.md), [Granot Form Reference](../../../../CONTEXT.md), [Tracking Reference](../../../../CONTEXT.md), [Duplicate Lead](../../../../CONTEXT.md)
 
 # Form Lead Search
 
-**Role:** Read-only **identity resolution** for Form Leads — find one lead from partial identifiers with scored confidence and explicit ambiguity handling. Backs Granot extension smart search and Granot CSV sync fallback matching after stronger exact identity paths do not resolve a Lead.
+**Role:** Read-only **identity resolution** for Form Leads — pull a bounded candidate set, score in memory, return one lead or an explicit miss/tie. Backs Granot extension smart search and contact fallback after stronger identity paths miss.
 
 **Not the same as:**
 
 | Module | Purpose |
 |--------|---------|
-| `lead-browse.md` | Paginated list/browse (`GET /form-leads`) — optional filters, no scoring |
-| `admin-search.md` | Cross-resource admin typeahead (`GET /admin/search`) |
+| [`lead-browse.md`](./lead-browse.md) | Paginated list (`GET /form-leads`) — optional filters, no scoring |
+| [`admin-search.md`](./admin-search.md) | Cross-resource admin typeahead |
+| `POST /api/v1/form-leads/granot-match` | `resolveGranotFormLead` — exact **Tracking Reference**, then Mongo id, then this search as fallback |
 
 **Legacy import:** `src/services/formLeadSearch.service.ts` re-exports this file. Prefer `src/services/search`.
 
 ## HTTP entry point
 
-`POST /api/v1/form-leads/search` — body validated by `searchFormLeadsSchema`.
+`POST /api/v1/form-leads/search` → `searchFormLeadsSchema` → `searchFormLeads`. Route wraps `{ ok, data }`.
 
 | Field | Notes |
 |-------|-------|
-| `ref_no`, `name`, `email`, `phone_number` | At least one required |
-| `first_name`, `last_name` | Accepted by schema but **not used** by search logic today |
-| `limit` | 1–25, default 10 |
-| `include_duplicates` | Default `false` — excludes **Duplicate Lead** quarantine rows |
+| `ref_no`, `name`, `email`, `phone_number` | Identity fields the scorer uses |
+| `first_name`, `last_name` | Schema refine accepts them (`requireAtLeastOneTruthySearchField`). **Search ignores them.** Name-only first/last → `not_found` after normalize. Refine error text still says “ref_no, name, email, or phone_number” (known gap vs the function). |
+| `email` | `looseEmailString` — not RFC-strict (typo emails pass) |
+| `limit` | 1–25, default 10. Service also `clampSearchLimit` (trunc, same bounds) |
+| `include_duplicates` | Default `false` — `{ duplicate: { $ne: true } }` |
 
 ## Response status
 
 | Status | `found` | Meaning |
 |--------|---------|---------|
-| `found` | `true` | Single best match; includes full `lead` + `best_match` |
-| `not_found` | `false` | No candidates, no usable fields, or zero score after pull |
-| `ambiguous` | `false` | Top two matches share the same score — caller must add another identifier |
+| `found` | `true` | Unique top score; `lead` + `best_match` + all scored `matches` |
+| `not_found` | `false` | No usable fields after normalize, empty `$or`, or every pulled candidate scores 0 |
+| `ambiguous` | `false` | Top two scored matches share the same score |
 
-Ambiguous message (extension): *“Add another identifier before updating quoted.”*
+Ambiguous message (verbatim): `Multiple form leads matched with the same confidence. Add another identifier before updating quoted.`
 
-## Algorithm
+`not_found` with no usable fields: `No usable form lead search fields were provided.`  
+`not_found` after a pull: `No form lead matched the supplied \`field\`, …`.
+
+## Happy path
 
 ```
-normalize input → build candidate $or filter → Mongo find (newest first, limit)
-        → score each candidate in memory → sort by score, then createdAt
-        → 0 matches: not_found
-        → tie on top score: ambiguous
-        → else: found (best_match)
+normalize → searched_fields empty? not_found
+         → build $or (null? not_found)
+         → FormLead.find($or + optional duplicate exclude)
+              .sort({ createdAt: -1 }).limit(limit)
+         → score each candidate; drop score === 0
+         → sort score desc, then createdAt desc
+         → 0 matches: not_found
+         → top two scores equal: ambiguous
+         → else found
 ```
 
-### Normalization
+**Mongo `limit` runs before scoring.** The newest `limit` `$or` hits are the only scored set. An older exact `ref_no` can lose to newer email/phone hits when both fields are supplied.
+
+## Normalization
 
 | Field | Rule |
 |-------|------|
-| `ref_no` | Trim; ignore `"not provided"` (case-insensitive) — current Granot Form Reference is the **Tracking Reference**; a Mongo Lead ID-shaped value is historical compatibility evidence |
+| `ref_no` | Trim; drop `"not provided"` (case-insensitive). No ObjectId special-case in this service — exact string only |
 | `name` | Trim, collapse whitespace, lowercase |
-| `email` | Trim, lowercase (`looseEmailString` at API — not strict RFC) |
-| `phone_number` | Trim; derive `phone_digits` (digits only) for matching |
+| `email` | Trim, lowercase |
+| `phone_number` | Trim; `phone_digits` = digits only |
 
-### Candidate Mongo filter (`$or`)
+## Candidate `$or`
 
-Any supplied field can pull a candidate:
+Any supplied field can pull a row:
 
 - `ref_no` — exact string
-- `email` — exact
-- `phone_number` — exact **or** digit-flex regex when ≥ 7 digits
-- `name` — anchored whole-name regex (`^name$`, case-insensitive, flexible whitespace)
+- `email` — exact lowercase
+- `phone_number` — exact submitted string
+- `phone_digits` length ≥ 7 — digit-flex regex on `phone_number` (`(?:^|\D)d\D*…(?:\D|$)`)
+- `name` — anchored whole-name regex (`^word\s+word$`, case-insensitive)
 
-Default query also adds `{ duplicate: { $ne: true } }` unless `include_duplicates: true`.
+Default query adds `{ duplicate: { $ne: true } }` unless `include_duplicates: true` (tested).
 
-### Scoring (`FIELD_WEIGHTS`)
+## Scoring (`FIELD_WEIGHTS`)
 
-| Field | Weight |
-|-------|--------|
-| `ref_no` | 100 |
-| `email` | 40 |
-| `phone_number` | 35 |
-| `name` | 15 |
+| Field | Weight | Match after normalize |
+|-------|--------|------------------------|
+| `ref_no` | 100 | `lead.ref_no.trim() === criteria.ref_no` |
+| `email` | 40 | lowercase equality |
+| `phone_number` | 35 | digit-string equality (`phone_digits`) |
+| `name` | 15 | lowercase collapsed-whitespace equality |
 
-Score = sum of weights for fields that **exactly** match after normalization. Candidates with `score === 0` are dropped.
+Score 0 rows are dropped (a candidate can be pulled by formatted phone and still fail digit scoring).
 
-### Confidence label
+### Confidence (informational)
 
 | Condition | Confidence |
 |-----------|------------|
-| Matched `ref_no` or score ≥ email + phone | `high` |
-| Score ≥ phone alone or ≥ email alone | `medium` |
+| Matched `ref_no` **or** score ≥ email + phone (75) | `high` |
+| Score ≥ phone (35) or ≥ email (40) | `medium` |
 | Else | `low` |
 
-Confidence is informational; **`found` vs `ambiguous` is score-tie only**.
+`found` vs `ambiguous` is **score-tie only**. Confidence does not break ties.
 
-## Internal callers
+## Skip / fail paths
 
-| Caller | Usage |
-|--------|-------|
-| Granot CSV sync (`granotCrmCsv/sync.service.ts`) | Contact fallback after exact `FormLead.ref_no` and Mongo ID compatibility do not resolve — phone + email + name; `ambiguous` → sync conflict |
+- First/last name only (schema-legal) → no criteria → `not_found`
+- `"not provided"` `ref_no` only → unused → `not_found`
+- Phone with fewer than 7 digits: no regex clause; exact string clause still pulls; scoring still uses whatever digits exist
+- Duplicate quarantine excluded unless `include_duplicates`
+- Score tie on the top two → `ambiguous` (do not pick newest)
+
+## Internal callers (not the POST /search contract)
+
+| Caller | How it uses `searchFormLeads` |
+|--------|-------------------------------|
+| `granotCrmCsv/sync.service.ts` `resolveFormLead` | If Granot `ref_no` is `mongoose.isValidObjectId`, **skips search** and treats the string as `leadId`. Else phone + email + name, limit 10. `found` → that id; `ambiguous` → sync `conflict`; else `no_match`. **No exact `FormLead.ref_no` lookup here.** |
+| `granotHttpCollector/granotFormLeadMatcher.ts` / `POST /form-leads/granot-match` | Exact non-duplicate `ref_no`, then Mongo `_id` (`isObjectIdString`). Fallback **requires phone or email**, then `searchFormLeads` (limit 25, duplicates off). Matcher then source-gates by `resolveSourceCompanyFromLabel` and may use Granot `prior` `0`/`1`/`5` to break quoted ties. Ambiguous after that gate → `conflict`. |
+| Best Relocation ingest script | HTTP client of `POST /form-leads/search` |
 
 ## Invariants
 
-- **Read-only** — never mutate Mongo or trigger **Sheet Sync**.
-- Duplicate exclusion is **search-only**; browse lists include Duplicate Leads unless filtered elsewhere.
-- Do not loosen ambiguity rules for quoted/extension updates without owner sign-off.
-- Scoring runs in memory after a broad `$or` pull — changing weights or tie logic affects extension + CSV sync.
+- **Read-only** — never mutate Mongo or enqueue **Sheet Sync**.
+- Duplicate exclusion is search-only; browse includes Duplicate Leads.
+- Do not loosen score-tie `ambiguous` for quoted/extension updates without owner sign-off.
+- Changing weights, the pre-score Mongo cap, or tie logic affects extension search, CSV fallback, and Granot HTTP match fallback.
 
 ## Related modules
 
-- Browse/list UI: `lead-browse.md`
-- Form lead writes: `form-lead.md`
-- Tests: `formLeadSearch.service.test.ts` (duplicate filter default)
+- Browse: [`lead-browse.md`](./lead-browse.md)
+- Form writes: [`form-lead.md`](./form-lead.md)
+- Tests: `formLeadSearch.service.test.ts` (duplicate filter on/off); `v1.validation.test.ts` (`include_duplicates`, loose email)
