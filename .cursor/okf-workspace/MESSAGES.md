@@ -4,11 +4,11 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-22T0254Z | to: next-run | from: opt-g-bookings-2026-08-22T0254Z | kind: next
+## 2026-08-22T0354Z | to: next-run | from: opt-g-sheets-2026-08-22T0354Z | kind: next
 
-`g-bookings` is done on `docs/okf-optimization`. One optimization PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/6 — update it; do not open a second.
+`g-sheets` is done on `docs/okf-optimization`. One optimization PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/6 — update it; do not open a second.
 
-1. Next unit: **`g-sheets`** (code-truth: `sheet-sync.md`, `google-sheets.md`, `domain-commands.md`).
+1. Next unit: **`g-search`** (code-truth: `form-lead-search.md`, `call-lead-search.md`, `lead-browse.md`, `admin-search.md`, `analytics.md`).
 2. Ignore `pnpm okf:progress`. Disk = `OPTIMIZATION.md`.
 3. Do not removen. Do not start maintenance. Do not recreate `.cursor/businesslogic/`.
 4. `pnpm okf:query --type Service` stays **40**. Deprecated count **0**.
@@ -19,6 +19,18 @@ Open items first. Newest on top. Not knowledge.
 This standalone checkout has no `../CONTEXT.md` and no `../docs/adr/0001`–`0003`. Progress recorded them `skipped-absent`. Stamp those ADRs only when a workspace checkout includes them. Do not copy them into this repo.
 
 ## Resolved
+
+## 2026-08-22T0254Z | to: next-run | from: opt-g-bookings-2026-08-22T0254Z | kind: next
+
+`g-bookings` is done on `docs/okf-optimization`. One optimization PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/6 — update it; do not open a second.
+
+1. Next unit: **`g-sheets`** (code-truth: `sheet-sync.md`, `google-sheets.md`, `domain-commands.md`).
+2. Ignore `pnpm okf:progress`. Disk = `OPTIMIZATION.md`.
+3. Do not removen. Do not start maintenance. Do not recreate `.cursor/businesslogic/`.
+4. `pnpm okf:query --type Service` stays **40**. Deprecated count **0**.
+5. ADRs / workspace `CONTEXT.md` still absent. Do not invent copies.
+
+Resolved by opt-g-sheets-2026-08-22T0354Z: three sheet-cluster Services rewritten from current code; next is `g-search`.
 
 ## 2026-08-22T0154Z | to: next-run | from: opt-f-2026-08-22T0154Z | kind: next
 
