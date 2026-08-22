@@ -10,7 +10,7 @@ Mark `[x]` only when the unit's **Done when** checks are true on disk.
 
 - [x] Conversion Done (36/36 moved). Frozen. Do not removen.
 - [x] Optimization A–F
-- [ ] Optimization G (optional deepen; after A–F)
+- [x] Optimization G (optional deepen; after A–F)
 
 ## Units
 
@@ -28,7 +28,7 @@ Mark `[x]` only when the unit's **Done when** checks are true on disk.
 - [x] `g-sheets`
 - [x] `g-search`
 - [x] `g-catalog`
-- [ ] `g-granot`
+- [x] `g-granot`
 
 ## Suggested Cloud split (2-hour runs)
 
