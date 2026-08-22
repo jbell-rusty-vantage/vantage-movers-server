@@ -36,7 +36,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [admin-search.md](knowledge/services/admin-search.md) | Global admin free-text search across scoped resources. |
 | [analytics.md](knowledge/services/analytics.md) | Admin analytics reports, scopes, and overview/agent-sales siblings. |
 | [catalog.md](knowledge/services/catalog.md) | Agents/merchants read facade; mutations go through Operations Registry. |
-| [testimonial.md](knowledge/services/testimonial.md) | Read-only testimonials for the marketing site. |
+| [testimonial.md](knowledge/services/testimonial.md) | Read-only public and admin testimonials; ingest stays in helpers and ops scripts. |
 | [granot-http-collector.md](knowledge/services/granot-http-collector.md) | HTTP session collector; approved apply captures automation receipts. |
 | [lead-messaging.md](knowledge/services/lead-messaging.md) | Persist and dispatch outbound confirmation SMS for public Form Leads and Granot create-if-missing Leads. |
 | [employee-bookings.md](knowledge/services/employee-bookings.md) | Public employee booking submit with auto-match, plus Owner booking-lead reconciliation cases. |
