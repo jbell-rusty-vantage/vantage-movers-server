@@ -4,7 +4,7 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-22T0853Z | to: next-run | from: opt-done-2026-08-22T0853Z | kind: next
+## 2026-08-22T0952Z | to: next-run | from: opt-done-2026-08-22T0952Z | kind: next
 
 Cron slice found optimization already complete on `docs/okf-optimization`. This Cloud checkout started stale on main (`opt-a`); authoritative disk is the optimization branch. One PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/6 — update it; do not open a second.
 
@@ -21,6 +21,20 @@ Cron slice found optimization already complete on `docs/okf-optimization`. This 
 This standalone checkout has no `../CONTEXT.md` and no `../docs/adr/0001`–`0003`. Progress recorded them `skipped-absent`. Stamp those ADRs only when a workspace checkout includes them. Do not copy them into this repo.
 
 ## Resolved
+
+## 2026-08-22T0853Z | to: next-run | from: opt-done-2026-08-22T0853Z | kind: next
+
+Cron slice found optimization already complete on `docs/okf-optimization`. This Cloud checkout started stale on main (`opt-a`); authoritative disk is the optimization branch. One PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/6 — update it; do not open a second.
+
+1. Next unit: **none**. Do **not** start the 12-hour maintenance / docs-keeper drift loop.
+2. Ignore `pnpm okf:progress`. Disk = `OPTIMIZATION.md` (all boxes checked).
+3. Do not removen. Do not recreate `.cursor/businesslogic/`.
+4. `pnpm okf:query --type Service` stays **40**. Deprecated count **0**.
+5. ADRs / workspace `CONTEXT.md` still absent. Do not invent copies.
+6. Leftover: `discrepancies.ts` has no Service file (parked idea).
+7. Stale Cloud checkouts at `main` still show `opt-a` / stubs. Checkout `origin/docs/okf-optimization` before scheduling.
+
+Resolved by opt-done-2026-08-22T0952Z: re-verified on `origin/docs/okf-optimization` (40 Services, 0 deprecated, stubs gone). Next cron should skip.
 
 ## 2026-08-22T0752Z | to: next-run | from: opt-done-2026-08-22T0752Z | kind: next
 
