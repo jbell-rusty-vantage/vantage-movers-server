@@ -21,8 +21,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-21T23:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -70,7 +70,7 @@ When `bad_lead` is cleared on sync, explicitly deletes the row from `Bad Leads` 
 | no | `Calls` |
 | yes | `Duplicate Calls` |
 
-Same `CALL_SHEET_HEADERS` for both; routing keeps Duplicate Lead spend out of the main Calls tab. **Bad Call** workflow is planned only — tab name exists in config; no mark-bad API yet.
+Same `CALL_SHEET_HEADERS` for both; routing keeps Duplicate Lead spend out of the main Calls tab. Master Leads also provisions **`Duplicate Calls`**. **`Bad Calls`** exists in `SHEET_TAB_NAMES` and may be provisioned on source sheets with `hasBadTabs`, but no sync write path targets it. `Move Size`, `Lead ID`, and `Source Company Site` were removed from form projections; Mongo fields may remain.
 
 ### Bookings / cancellations
 
@@ -85,7 +85,7 @@ Every lead sync **always** writes **Master Sheets** first.
 
 **Source Company Sheets** (TBM, Top10, etc.) are appended **only** when `WRITE_SOURCE_LEAD_SHEETS=true` (`shouldWriteSourceLeadSheets()`). Default is **master-only** — Source Company Sheets derive rows from Master via sheet import queries per glossary. Target plumbing stays in code either way.
 
-`not_provided` has no source container. `main_site` has no bad tabs on source sheets.
+`not_provided` and `paid_overflow` have no source container. `main_site` has no bad tabs on source sheets. Source env names include `GETMOVERS_LEADS_SHEET_ID` for `get_movers_leads`.
 
 ## Upsert mechanics (`syncRows.ts` + `rowLookup.ts`)
 
@@ -139,10 +139,10 @@ Form delete also attempts `master_bad_leads`. Call delete uses duplicate-aware p
 | `sheetSync/` | Scheduling (legacy / queued outbox + drainer) |
 | `config/domain/sheets.ts` | Tab names and header arrays |
 
-## Related businesslogic
+## Related services
 
-- [`sheetSync.service.md`](./sheet-sync.md) — scheduling, outbox, drainer (invokes this module)
-- [`form-lead.service.md`](./form-lead.md), [`call-lead.service.md`](./call-lead.md) — lead tab routing invariants
+- [`sheet-sync.md`](./sheet-sync.md) — scheduling, outbox, drainer (invokes this module)
+- [`form-lead.md`](./form-lead.md), [`call-lead.md`](./call-lead.md) — lead tab routing invariants
 
 ## Related rules
 
@@ -151,4 +151,4 @@ Form delete also attempts `master_bad_leads`. Call delete uses duplicate-aware p
 ## When to read this vs sheet-sync docs
 
 - **This file:** what gets written where, and sync/delete entry points.
-- **`sheetSync.service.md` + `sheet-sync-process.mdc`:** scheduling and software-layer process.
+- **`sheet-sync.md` + `sheet-sync-process.mdc`:** scheduling and software-layer process.

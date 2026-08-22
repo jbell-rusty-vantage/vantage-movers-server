@@ -24,8 +24,8 @@ sources:
   - id: adr-0002
     resource: ../docs/adr/0002-granot-crm-post-despite-downstream-failures.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-21T23:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) for Granot identity; [`../../../../docs/adr/`](../../../../docs/adr/) for [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md) and [0002 CRM post survives failures](../../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md)
@@ -36,7 +36,7 @@ generated:
 
 **System of Record:** MongoDB `form_leads`. Owner reporting via **Sheet Sync** → **Master Sheets** (Source Company Sheets derive via import queries).
 
-**Triggers:** `POST /api/v1/form-leads` → `createFormLead`; `PATCH /api/v1/form-leads/:id` → `updateFormLead`. Canonical ingest/admin wrappers call `createFormLeadInTransaction` / `updateFormLeadInTransaction` with the executor `{ session, now }` and finalize only after commit ([`domainCommands.service.md`](./domain-commands.md)). Public routes still own `runSheetSyncWrite`.
+**Triggers:** `POST /api/v1/form-leads` → `createFormLead`; `PATCH /api/v1/form-leads/:id` → `updateFormLead`. Canonical ingest/admin wrappers call `createFormLeadInTransaction` / `updateFormLeadInTransaction` with the executor `{ session, now }` and finalize only after commit ([`domain-commands.md`](./domain-commands.md)). Public routes still own `runSheetSyncWrite`.
 
 ## Form Lead Ingestion — create (`createFormLead`)
 
@@ -52,20 +52,21 @@ generated:
 
 ### Post-save order (current code vs ADR intent)
 
-| Order | ADR-0002 intent | Current code |
+| Order | ADR-0002 intent | Current code (`finalizeFormLeadCreateAfterCommit`) |
 |-------|-------------------|--------------|
 | 1 | Mongo persist | ✓ (in txn) |
-| 2 | **CRM Posting** (Tracking Reference as `leadno`) | Runs **after** Sheet Sync finalization |
-| 3 | **Sheet Sync** (`finalizeSheetSync`) | Runs **before** CRM Posting |
-| 4 | **Operational Events** | After CRM |
+| 2 | (not in ADR) | `dispatchOrQueuePersistedLeadMessage` — awaited, isolated; never throws out of finalize |
+| 3 | **CRM Posting** (Tracking Reference as `leadno`) | Runs **after** Sheet Sync finalization |
+| 4 | **Sheet Sync** (`finalizeSheetSync`) | Runs **before** CRM Posting |
+| 5 | **Operational Events** | After CRM |
 
 **Known gap (deferred):** `finalizeSheetSync` runs before `submitFormLeadToCrm`. A Sheet Sync failure can block CRM Posting; order is reversed from ADR happy path. CRM Posting should still be best-effort when enabled and lead is not a Duplicate Lead ([ADR-0002](../../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md)).
 
 ### CRM Posting
 
 - When `post_to_granot` and not Duplicate Lead → `submitFormLeadToCrm`
-- Granot source label: `getCrmFormLeadSourceCompanyLabel(source, local)`
-- Payload `leadno` = persisted **Tracking Reference** (`FormLead.ref_no`); Granot exposes it as the **Granot Form Reference** in `ref_no`. Exact `FormLead.ref_no` lookup is primary; a valid Mongo `_id`-shaped Granot `ref_no` is compatibility fallback only after the exact lookup misses.
+- Granot payload `label` comes from Operations Registry `crm_label_snapshot` on the resolved source assignment. Request `crm_company_label` is logged as `requestedCompanyLabel` only; it is not persisted and does not set CRM `label`.
+- Payload `leadno` = persisted **Tracking Reference** (`FormLead.ref_no`); Granot exposes it as the **Granot Form Reference** in `ref_no`. Exact `FormLead.ref_no` lookup is primary; a valid Mongo `_id`-shaped Granot `ref_no` is compatibility fallback only after the exact lookup misses. CRM wire names live in `formLeadPayload.ts` + `crm/types.ts`.
 - Duplicate Form Leads and caller-disabled posting → skip; emit `crm.form_lead.submit.skipped`
 
 ### CPL snapshot
@@ -74,7 +75,7 @@ Create/update store `cpl`, `cpl_rate_period`, `cpl_resolution_status` (`resolved
 
 ### Granot lifecycle boundary
 
-CRM Posting is independent of webhook capture. Capture remains receipt-only ([`granotLifecycle.capture.md`](../granot-lifecycle/capture.md)). Authorized live `create_if_missing` Form creation is owned by `createLeadFromGranot` through the processor, not by `createFormLead` or public Zod ([`granotLifecycle.processor.md`](../granot-lifecycle/processor.md)). That command uses trusted Granot create validators (`post_to_granot=false`) and never CRM-posts. It derives `local` only from accepted origin/destination state facts and leaves `move_date` absent when the Observation has none; the model does not invent either fact. WordPress-created Form Leads that later match a Granot `lead_created` Observation stay on `synchronizeLeadFromGranot` and never mint a second Lead. Approved HTTP automation apply captures a `granot_http_automation` receipt and does not call `updateFormLead` ([`granotHttpCollector.service.md`](./granot-http-collector.md), [`granotLifecycle.automationApply.md`](../granot-lifecycle/automation-apply.md)). Ordinary Form Edit Lead still uses `PATCH /api/v1/form-leads/:id`.
+CRM Posting is independent of webhook capture. Capture remains receipt-only ([`capture.md`](../granot-lifecycle/capture.md)). Authorized live `create_if_missing` Form creation is owned by `createLeadFromGranot` through the processor, not by `createFormLead` or public Zod ([`processor.md`](../granot-lifecycle/processor.md)). That command uses trusted Granot create validators (`post_to_granot=false`) and never CRM-posts. It derives `local` only from accepted origin/destination state facts and leaves `move_date` absent when the Observation has none; the model does not invent either fact. WordPress-created Form Leads that later match a Granot `lead_created` Observation stay on `synchronizeLeadFromGranot` and never mint a second Lead. Approved HTTP automation apply captures a `granot_http_automation` receipt and does not call `updateFormLead` ([`granot-http-collector.md`](./granot-http-collector.md), [`automation-apply.md`](../granot-lifecycle/automation-apply.md)). Ordinary Form Edit Lead still uses `PATCH /api/v1/form-leads/:id`.
 
 ## Sheet Sync tab routing (Form Lead)
 
@@ -131,14 +132,20 @@ America/New_York wall clock (not a fixed EST offset). If the current Eastern
 hour is before 7 (12:00 AM inclusive through 6:59:59 AM), the Twilio API call
 still happens immediately; Twilio Message Scheduling holds the SMS until 8:00
 AM that same Eastern calendar day (`scheduleType=fixed`, `sendAt`,
-`TWILIO_MESSAGING_SERVICE_SID`). This is not a cron or `next_attempt_at`
-drain delay. 7:00 AM Eastern and later still send immediately. If the flag is
-on, the quiet-hours window is active, and the Messaging Service SID is
-missing, dispatch fails closed (does not send overnight). Post-commit
-dispatch is awaited and isolated: a quiet-hours / Twilio scheduling error
-marks the Lead Message `failed` and returns that status on the create
-response. It does not throw out of `finalizeFormLeadCreateAfterCommit`, so
-Sheet Sync, CRM Posting, and the 201 create response still complete.
+`TWILIO_MESSAGING_SERVICE_SID`). `sendAt` must sit inside Twilio's 15-minute /
+35-day window or dispatch fails closed. Missing SID in an active quiet-hours
+window also fails closed. This is not a cron or `next_attempt_at` drain delay.
+7:00 AM Eastern and later still send immediately. If dispatch throws after
+Twilio already accepted or scheduled, the helper re-reads the persisted
+status instead of reporting `failed`. A later `recordMessagingEvent` failure
+after accept cannot flip that outcome (`uncertain` is the persistence miss,
+not `failed`). Status callbacks treat `scheduled` as rank 1 (may advance to
+queued, sent, or failed). Post-commit dispatch is awaited and isolated: a
+quiet-hours / Twilio scheduling error marks the Lead Message `failed` and
+returns that status on the create response. It does not throw out of
+`finalizeFormLeadCreateAfterCommit`, so Sheet Sync, CRM Posting, and the 201
+create response still complete. Dedicated Service file for this module is
+`lead-messaging.md` (opt-e). Until then, owner facts stay here.
 
 Granot `create_if_missing` confirmation texts reuse this same sender and
 quiet-hours `sendAt` path after `createLeadFromGranot` commits. They are
@@ -154,16 +161,16 @@ never affects the created Lead.
 - `lead.form.call_leads_marked_form_fill` (when Call Leads flipped)
 - `crm.form_lead.submit.skipped` (when CRM Posting skipped)
 
-## Related businesslogic
+## Related services
 
-- [`call-lead.service.md`](./call-lead.md) — Form Fill on Call Lead create; Call Lead Ingestion
+- [`call-lead.md`](./call-lead.md) — Form Fill on Call Lead create; Call Lead Ingestion
 - [`operations-registry.md`](./operations-registry.md) — CPL periods + agent lookup
-- [`sheetSync.service.md`](./sheet-sync.md) — outbox, drainer, job shapes
-- [`googleSheets.service.md`](./google-sheets.md) — tab routing, Master vs Source Company Sheet writes
-- [`granotLifecycle.capture.md`](../granot-lifecycle/capture.md) — webhook receipts (no Form Lead writes)
-- [`granotLifecycle.processor.md`](../granot-lifecycle/processor.md) — authorized Granot Form create and matched-Lead sync
-- [`granotLifecycle.identity.md`](../granot-lifecycle/identity.md) — source-scoped Form ladder reads `ref_no`, snapshots, Duplicate/Bad eligibility; no Form Lead writes
-- [`granotLifecycle.automationApply.md`](../granot-lifecycle/automation-apply.md) — HTTP automation apply captures receipts; does not call `updateFormLead`
+- [`sheet-sync.md`](./sheet-sync.md) — outbox, drainer, job shapes
+- [`google-sheets.md`](./google-sheets.md) — tab routing, Master vs Source Company Sheet writes
+- [`capture.md`](../granot-lifecycle/capture.md) — webhook receipts (no Form Lead writes)
+- [`processor.md`](../granot-lifecycle/processor.md) — authorized Granot Form create and matched-Lead sync
+- [`identity.md`](../granot-lifecycle/identity.md) — source-scoped Form ladder reads `ref_no`, snapshots, Duplicate/Bad eligibility; no Form Lead writes
+- [`automation-apply.md`](../granot-lifecycle/automation-apply.md) — HTTP automation apply captures receipts; does not call `updateFormLead`
 
 ## Related rules
 

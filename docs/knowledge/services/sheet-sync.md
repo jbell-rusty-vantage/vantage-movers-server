@@ -18,8 +18,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-21T23:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -132,7 +132,7 @@ For hard deletes before Mongo document removal:
 `publishSheetSyncWakeup({ reason, idempotencyKey?, runHint? })`:
 
 - Sends to env-scoped topic: prod `sheet-sync-events`, else `sheet-sync-events-dev` (override `SHEET_SYNC_QUEUE_TOPIC`).
-- **Only publishes** when `VERCEL=1` **and** `VERCEL_ENV=production` (`shouldPublishSheetSyncQueue`). Preview/local/tests use cron or direct `runSheetSyncDrain`. // pragma: allowlist secret
+- **Only publishes** when `shouldPublishSheetSyncQueue()` is true: not a Vantage test runner, and `VERCEL=1` plus a set `VERCEL_REGION` on the hosted function runtime. Preview/local/tests use cron or direct `runSheetSyncDrain`.
 - **Never throws** — failed publish is logged + operational event; domain write already committed.
 - `idempotencyKey` optional for burst dedup within debounce window.
 
@@ -174,7 +174,7 @@ Domain documents also store `sheet_sync[]` (per-target row cache: spreadsheet, t
 1. **Acquire** global lease; skip if another drain holds it.
 2. **Create** `SheetSyncRun` (`running`).
 3. **Claim** due jobs (`pending`/`retrying`, `due_at ≤ now`, unleased) up to `maxJobsPerDrain` (500), sorted `priority desc, createdAt asc`.
-4. **Plan** each representative via `jobPlanner.ts` — reload current Mongo (or tombstone), mirror tab routing from `googleSheets.service.md`.
+4. **Plan** each representative via `jobPlanner.ts` — reload current Mongo (or tombstone), mirror tab routing from `google-sheets.md`.
 5. **Batch write** per tab via `batchWriter.ts` + `QuotaLimiter` (conservative budgets under Google 60/min user cap).
 6. **Persist** `sheet_sync[]` on domain docs; record `SheetSyncAttempt` rows.
 7. **Finalize** jobs: `synced`, `retrying` (exponential backoff, max 8 attempts), or `failed`. Quota deferral → `retrying` in 60s without burning attempt.
@@ -224,7 +224,9 @@ Some callers still use `scheduleCallLeadSheetSync` / `scheduleBookingChainSheetS
 
 ## Cron safety net
 
-`GET /api/cron/sheet-sync-drain` — auth `CRON_SECRET` (Bearer or `x-cron-secret`). No-op unless `SHEET_SYNC_MODE=queued`. Recovers jobs when queue publish failed. Schedule: every 5 minutes (`vercel.json`).
+`router.all("/api/cron/sheet-sync-drain")` — auth `CRON_SECRET` (Bearer or `x-cron-secret`). No-op unless `SHEET_SYNC_MODE=queued`. Recovers jobs when queue publish failed. Schedule: every 5 minutes (`vercel.json`).
+
+A `SheetSyncRun` that ends `failed` with `claimed > 0` and `synced=failed=deferred=0` is a crash-before-finalization signal; inspect `sheet_sync_jobs` by `run_id`. Run timeout releases leftover claims to `pending`; an unexpected run-level exception releases that run's still-`processing` jobs to `retrying`.
 
 ## Admin surface (`admin/adminSheetSync.service.ts`)
 
@@ -243,34 +245,34 @@ No destructive "heal" that could fight the drainer for the same rows.
 - Queue publish is best-effort; never fail an API response because publish failed.
 - Sheet row identity is always **Lead ID** (`Mongo ID` column); `sheet_sync[].row_number` is a hint only.
 - Delete tombstone must precede hard Mongo delete; tombstone cancels pending upserts for same entity.
-- Tab routing in `jobPlanner.ts` must stay aligned with `googleSheets.service.md` when rules change.
+- Tab routing in `jobPlanner.ts` must stay aligned with `google-sheets.md` when rules change.
 - Do not reset stuck `processing` jobs to `pending` without fixing root cause — use admin retry or operational runbook (`rules/sheet-sync-process.mdc`).
 
 ## Related modules
 
 | Module | Responsibility |
 |--------|----------------|
-| `googleSheets.service.md` | What gets written where (tabs, projections) |
-| `rules/sheet-sync-process.mdc` | Cross-cutting architecture, headers, operational safety |
+| `google-sheets.md` | What gets written where (tabs, projections) |
+| `rules/sheet-sync-process.mdc` | Env, `TEST_` prefixes, quotas, modes, mounts, operational safety |
 | `sheetSyncSourceLookup.ts` | Legacy sync orchestration (chain: booking → source lead) |
 | `sheetSyncPersistence.ts` | `syncAndStore` for legacy inline sync |
 | `config/domain/sheetSync.ts` | Mode, topic, priorities, guardrails, coalescing |
 | `models/SheetSync*.ts` | Outbox, run, attempt, lease schemas |
 
-## Related businesslogic
+## Related services
 
-- [`form-lead.service.md`](./form-lead.md) — Form Lead Ingestion post-save Sheet Sync + ADR-0002 order gap with CRM Posting
-- [`call-lead.service.md`](./call-lead.md) — Call Lead Ingestion jobs
-- [`bookings.service.md`](./bookings.md) — Booking Chain jobs
-- [`cancelledLead.service.md`](./cancelled-lead.md) — Cancellation Chain jobs
-- [`googleSheets.service.md`](./google-sheets.md) — tab routing, projections, Master vs Source Company Sheet writes
+- [`form-lead.md`](./form-lead.md) — Form Lead Ingestion post-save Sheet Sync + ADR-0002 order gap with CRM Posting
+- [`call-lead.md`](./call-lead.md) — Call Lead Ingestion jobs
+- [`bookings.md`](./bookings.md) — Booking Chain jobs
+- [`cancelled-lead.md`](./cancelled-lead.md) — Cancellation Chain jobs
+- [`google-sheets.md`](./google-sheets.md) — tab routing, projections, Master vs Source Company Sheet writes
 
 ## Related rules
 
-- [`sheet-sync-process.mdc`](../../../.cursor/rules/sheet-sync-process.mdc) — outbox architecture, headers, backfill runbooks, failure semantics
+- [`sheet-sync-process.mdc`](../../../.cursor/rules/sheet-sync-process.mdc) — env, `TEST_` prefixes, quotas, modes, mounts
 
 ## When to read this vs other docs
 
 - **This file:** scheduling modes, outbox/queue/collections, coordinator API, drainer lifecycle, domain integration.
-- **`googleSheets.service.md`:** row content, tab routing, upsert/delete mechanics.
-- **`rules/sheet-sync-process.mdc`:** software-layer process details in depth.
+- **`google-sheets.md`:** row content, tab routing, upsert/delete mechanics.
+- **`rules/sheet-sync-process.mdc`:** env names, `TEST_` prefixes, quota knobs, cron/queue mounts.
