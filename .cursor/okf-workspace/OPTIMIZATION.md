@@ -9,7 +9,7 @@ Mark `[x]` only when the unit's **Done when** checks are true on disk.
 ## Phase
 
 - [x] Conversion Done (36/36 moved). Frozen. Do not removen.
-- [ ] Optimization A–F
+- [x] Optimization A–F
 - [ ] Optimization G (optional deepen; after A–F)
 
 ## Units
@@ -19,11 +19,11 @@ Mark `[x]` only when the unit's **Done when** checks are true on disk.
 - [x] `opt-c` Conversion residue — no `Related businesslogic` / old `.service.md` labels
 - [x] `opt-d` Thin fat routers — business-logic, owner-lead-workflow, form-lead-granot-crm, sheet-sync-process
 - [x] `opt-e` Coverage gaps — lead-messaging, employee-bookings, reporting, ingestion (or documented skip)
-- [ ] `opt-f` ADR / glossary — no invented copies; contradictions left open
+- [x] `opt-f` ADR / glossary — no invented copies; contradictions left open
 
 ## G clusters (after A–F)
 
-- [ ] `g-leads`
+- [x] `g-leads`
 - [ ] `g-bookings`
 - [ ] `g-sheets`
 - [ ] `g-search`
