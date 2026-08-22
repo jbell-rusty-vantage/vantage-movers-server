@@ -26,7 +26,7 @@ Mark `[x]` only when the unit's **Done when** checks are true on disk.
 - [x] `g-leads`
 - [x] `g-bookings`
 - [x] `g-sheets`
-- [ ] `g-search`
+- [x] `g-search`
 - [ ] `g-catalog`
 - [ ] `g-granot`
 
