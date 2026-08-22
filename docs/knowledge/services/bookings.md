@@ -18,8 +18,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-22T00:54:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -70,7 +70,7 @@ resolveBookingSourceLead   input.lead_ref/model      no source lead
             Booking Chain Sheet Sync        booked_lead Sheet Sync
 ```
 
-Public employee submit (`src/services/employeeBookings/`) is a separate HTTP path that may book-and-link or create a leadless booking + reconciliation case.
+Public employee submit is a separate HTTP path ([`employee-bookings.md`](./employee-bookings.md)) that may book-and-link or create a leadless booking + reconciliation case.
 
 ### 1. From source (`createBookedLeadFromSource`)
 

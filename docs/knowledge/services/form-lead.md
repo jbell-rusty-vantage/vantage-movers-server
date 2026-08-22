@@ -25,7 +25,7 @@ sources:
     resource: ../docs/adr/0002-granot-crm-post-despite-downstream-failures.md
 generated:
   by: process:okf-docs-optimization
-  at: 2026-08-21T23:52:00Z
+  at: 2026-08-22T00:54:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) for Granot identity; [`../../../../docs/adr/`](../../../../docs/adr/) for [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md) and [0002 CRM post survives failures](../../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md)
@@ -120,39 +120,9 @@ Job: `resource: source_lead`, `operation: form_lead.create` | `form_lead.update`
 | Immutable creation evidence | New Form Leads persist `ingested_contact_snapshot` and `ingested_move_snapshot` in the create transaction. Later Granot evidence cannot overwrite them. Missing historical snapshots may be labeled `legacy_baseline` from current fields only; `captured_at_ingestion` is never rewritten. `granot_contact_snapshot` is a separate field. |
 | Form Job Number / sparse move facts | Additive `job_no` / `normalized_job_no` via existing `normalizeJobNo`. This is not **Tracking Reference**. CRM Posting still sends `FormLead.ref_no` as `leadno`. Persisted `move_size` and `move_date` are optional so trusted Granot creation can preserve absence; ordinary WordPress/Admin validation remains the authority for those callers. A legacy CRM payload built from an absent date emits an empty `movedte` instead of inventing today. |
 
-Lead Messaging defaults to disabled. Active sends require an E.164 destination
-matching `LEAD_MESSAGING_ALLOWED_COUNTRY_PREFIXES` (default `+1`), respect the
-per-destination cooldown and hourly capacity, and dispatch only after the
-Form Lead plus Lead Message transaction commits.
-
-Overnight deferral is off unless `LEAD_MESSAGING_QUIET_HOURS_ENABLED=true`.
-When that flag is off (the default), confirmation SMS still send immediately
-24/7 via `TWILIO_FROM_NUMBER`. When it is on, send-time uses the
-America/New_York wall clock (not a fixed EST offset). If the current Eastern
-hour is before 7 (12:00 AM inclusive through 6:59:59 AM), the Twilio API call
-still happens immediately; Twilio Message Scheduling holds the SMS until 8:00
-AM that same Eastern calendar day (`scheduleType=fixed`, `sendAt`,
-`TWILIO_MESSAGING_SERVICE_SID`). `sendAt` must sit inside Twilio's 15-minute /
-35-day window or dispatch fails closed. Missing SID in an active quiet-hours
-window also fails closed. This is not a cron or `next_attempt_at` drain delay.
-7:00 AM Eastern and later still send immediately. If dispatch throws after
-Twilio already accepted or scheduled, the helper re-reads the persisted
-status instead of reporting `failed`. A later `recordMessagingEvent` failure
-after accept cannot flip that outcome (`uncertain` is the persistence miss,
-not `failed`). Status callbacks treat `scheduled` as rank 1 (may advance to
-queued, sent, or failed). Post-commit dispatch is awaited and isolated: a
-quiet-hours / Twilio scheduling error marks the Lead Message `failed` and
-returns that status on the create response. It does not throw out of
-`finalizeFormLeadCreateAfterCommit`, so Sheet Sync, CRM Posting, and the 201
-create response still complete. Dedicated Service file for this module is
-`lead-messaging.md` (opt-e). Until then, owner facts stay here.
-
-Granot `create_if_missing` confirmation texts reuse this same sender and
-quiet-hours `sendAt` path after `createLeadFromGranot` commits. They are
-configured on `GranotCrmSource.outbound_sms` and stay off unless
-`GRANOT_LEAD_CREATED_SMS_ENABLED=true`, the source policy is
-`create_if_missing`, and a consent basis is recorded. A failed Granot text
-never affects the created Lead.
+Lead Messaging owner invariants live in [`lead-messaging.md`](./lead-messaging.md).
+Form create persists intent only when `sms_consent` is parsed `true`; duplicates
+record a skipped row; dispatch runs after commit and cannot fail the 201.
 
 ## Operational Events (create)
 

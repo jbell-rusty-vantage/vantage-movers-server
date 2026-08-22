@@ -38,6 +38,10 @@ Canonical bodies live under `docs/knowledge/`.
 | [catalog.md](knowledge/services/catalog.md) | Agents/merchants read facade; mutations go through Operations Registry. |
 | [testimonial.md](knowledge/services/testimonial.md) | Read-only testimonials for the marketing site. |
 | [granot-http-collector.md](knowledge/services/granot-http-collector.md) | HTTP session collector; approved apply captures automation receipts. |
+| [lead-messaging.md](knowledge/services/lead-messaging.md) | Persist and dispatch outbound confirmation SMS for public Form Leads and Granot create-if-missing Leads. |
+| [employee-bookings.md](knowledge/services/employee-bookings.md) | Public employee booking submit with auto-match, plus Owner booking-lead reconciliation cases. |
+| [reporting.md](knowledge/services/reporting.md) | Owner-gated report definitions, immutable revisions, confirmed runs, and Google destination delivery. |
+| [ingestion.md](knowledge/services/ingestion.md) | Fenced Best Relocation sheet inspect/preview/apply through canonical domain commands. |
 | [capture.md](knowledge/granot-lifecycle/capture.md) | Webhook and channel-neutral receipt capture; `{ receipt_id }` wake-up. |
 | [extension-apply.md](knowledge/granot-lifecycle/extension-apply.md) | Owner extension apply items, receipt capture, and claim/process. |
 | [automation-apply.md](knowledge/granot-lifecycle/automation-apply.md) | Owner-approved HTTP automation receipt apply. |
