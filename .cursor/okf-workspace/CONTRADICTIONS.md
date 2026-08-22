@@ -22,11 +22,13 @@ Format:
 - sources: `docs/knowledge/services/operations-registry.md` header `Authoritative plan`; expected `docs/current_plans/01-operations-registry-specification.md`
 - conflict: The Service still links that plan. The file is not in this checkout (same as before the move). Relative link was rewritten for the new depth only.
 - action: leave — do not invent a copy.
+- opt-f (2026-08-22T0154Z): GitHub MCP + `gh repo list jbell-rusty-vantage` show only three public repos: `vantage-movers-server`, `vantage-admin`, `vantage-movers-clients`. `docs/current_plans/` is absent on `docs/okf-optimization` and `main`. No canonical GitHub path to record.
 
 ## adr-skipped-absent | open | 2026-08-21T0217Z
 - sources: `../docs/adr/0001-mongodb-system-of-record.md`, `../docs/adr/0002-granot-crm-post-despite-downstream-failures.md`, `../docs/adr/0003-lead-id-granot-leadno-ref-no-contract.md`; this standalone `vantage-main-server` checkout
 - conflict: Conversion Pass 1 could not stamp those three ADRs. They are not present here (`optional_checkout`). Optimization unit `opt-f` must not invent copies. Record a GitHub path if MCP finds them in another Vantage repo.
 - action: leave — do not invent copies. Stamp only if a later checkout includes `../docs/adr/`. Index lists the workspace paths.
+- opt-f (2026-08-22T0154Z): The three public Vantage repos do not contain `docs/adr/0001`–`0003` or a workspace-root `CONTEXT.md`. `vantage-admin/CONTEXT.md` and `vantage-movers-clients/CONTEXT.md` are repo-local and also point at `../CONTEXT.md`. Parent paths are absent on this VM. No canonical GitHub path to record.
 
 ## Closed
 
