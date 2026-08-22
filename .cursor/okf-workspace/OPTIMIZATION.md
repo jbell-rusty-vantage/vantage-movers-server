@@ -18,7 +18,7 @@ Mark `[x]` only when the unit's **Done when** checks are true on disk.
 - [x] `opt-b` Pointer collapse — AGENTS.md thin; `.cursor/index.md` one-screen map
 - [x] `opt-c` Conversion residue — no `Related businesslogic` / old `.service.md` labels
 - [x] `opt-d` Thin fat routers — business-logic, owner-lead-workflow, form-lead-granot-crm, sheet-sync-process
-- [ ] `opt-e` Coverage gaps — lead-messaging, employee-bookings, reporting, ingestion (or documented skip)
+- [x] `opt-e` Coverage gaps — lead-messaging, employee-bookings, reporting, ingestion (or documented skip)
 - [ ] `opt-f` ADR / glossary — no invented copies; contradictions left open
 
 ## G clusters (after A–F)

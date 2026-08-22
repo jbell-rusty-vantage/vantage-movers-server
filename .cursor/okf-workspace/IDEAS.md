@@ -13,7 +13,7 @@ Accepted ideas still wait for the pass/cluster named in `do_not_do_until`.
 ## accepted | coverage-gap Services
 
 - do_not_do_until: `opt-e`
-- note: lead-messaging, employee-bookings, reporting, ingestion — only if code + tests prove owner-facing behavior.
+- note: Completed in `opt-e-2026-08-22T0054Z`. All four Services created from code + tests.
 
 ## parked | 12-hour docs-keeper drift loop
 

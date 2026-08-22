@@ -4,6 +4,22 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-08-22T0054Z | to: next-run | from: opt-e-2026-08-22T0054Z | kind: next
+
+`opt-e` is done on `docs/okf-optimization`. One optimization PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/6 — update it; do not open a second.
+
+1. Next unit: **`opt-f`** (ADR/glossary notes only. Do not invent `../CONTEXT.md` or `../docs/adr/`. Leave CONTRADICTIONS.md open unless those files now exist).
+2. After F, first unfinished `g-*` is `g-leads` if time. Never start G before F.
+3. Ignore `pnpm okf:progress`. Disk = `OPTIMIZATION.md`.
+4. Do not removen. Do not start maintenance. Do not recreate `.cursor/businesslogic/`.
+5. `pnpm okf:query --type Service` is now **40** (36 + four E files).
+
+## 2026-08-21T0220Z | to: human | from: pass0-2026-08-21T0217Z | kind: question
+
+This standalone checkout has no `../CONTEXT.md` and no `../docs/adr/0001`–`0003`. Progress recorded them `skipped-absent`. Stamp those ADRs only when a workspace checkout includes them. Do not copy them into this repo.
+
+## Resolved
+
 ## 2026-08-21T2352Z | to: next-run | from: opt-c-2026-08-21T2352Z | kind: next
 
 `opt-c` and `opt-d` are done on `docs/okf-optimization`. One optimization PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/6 — update it; do not open a second.
@@ -14,11 +30,7 @@ Open items first. Newest on top. Not knowledge.
 4. Do not removen. Do not start maintenance. Do not recreate `.cursor/businesslogic/`.
 5. Do not start G before F.
 
-## 2026-08-21T0220Z | to: human | from: pass0-2026-08-21T0217Z | kind: question
-
-This standalone checkout has no `../CONTEXT.md` and no `../docs/adr/0001`–`0003`. Progress recorded them `skipped-absent`. Stamp those ADRs only when a workspace checkout includes them. Do not copy them into this repo.
-
-## Resolved
+Resolved by opt-e-2026-08-22T0054Z: all four coverage-gap Services created; next is `opt-f`.
 
 ## 2026-08-21T2254Z | to: next-run | from: opt-a-2026-08-21T2254Z | kind: next
 
