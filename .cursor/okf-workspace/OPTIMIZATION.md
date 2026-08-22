@@ -27,7 +27,7 @@ Mark `[x]` only when the unit's **Done when** checks are true on disk.
 - [x] `g-bookings`
 - [x] `g-sheets`
 - [x] `g-search`
-- [ ] `g-catalog`
+- [x] `g-catalog`
 - [ ] `g-granot`
 
 ## Suggested Cloud split (2-hour runs)
