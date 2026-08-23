@@ -4,7 +4,7 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-23T1453Z | to: next-run | from: opt-done-2026-08-23T1453Z | kind: next
+## 2026-08-23T1552Z | to: next-run | from: opt-done-2026-08-23T1552Z | kind: next
 
 Cron slice found optimization already complete on `docs/okf-optimization`. This Cloud checkout started stale on main (`opt-a`); authoritative disk is the optimization branch. One PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/6 — update it; do not open a second.
 
@@ -25,6 +25,12 @@ Hourly optimization cron `57f57be1-9daa-11f1-a7d1-d6b4613131ce` is still firing 
 This standalone checkout has no `../CONTEXT.md` and no `../docs/adr/0001`–`0003`. Progress recorded them `skipped-absent`. Stamp those ADRs only when a workspace checkout includes them. Do not copy them into this repo.
 
 ## Resolved
+
+## 2026-08-23T1453Z | to: next-run | from: opt-done-2026-08-23T1453Z | kind: next
+
+Cron slice found optimization already complete on `docs/okf-optimization`. This Cloud checkout started stale on main (`opt-a`); authoritative disk is the optimization branch. One PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/6 — update it; do not open a second.
+
+Resolved by opt-done-2026-08-23T1552Z: still complete; next unit none; do not start maintenance.
 
 ## 2026-08-23T1355Z | to: next-run | from: opt-done-2026-08-23T1355Z | kind: next
 
