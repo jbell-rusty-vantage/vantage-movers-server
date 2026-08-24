@@ -25,8 +25,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T03:54:00Z
+  by: process:docs-keeper
+  at: 2026-08-24T18:20:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)
 **Authority:** [Final Granot Lead Lifecycle specification](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) Sections 23.1–23.4, 34.5, 35.1, 38/S07
@@ -114,7 +114,7 @@ Update adapters skip `EntityChange` + outbox + finalize when `collectDocumentFie
 
 `updateBooking` (exact aggregate): CAS on `{ _id, domain_revision, not cancelled }`. Inactive agent/merchant → `GRANOT_VALIDATION_FAILED`. Empty field diff → no Change, no outbox, no finalize. Non-replay + mutated → `finalizeSheetSync` `booking_chain` / `booked_lead.update`.
 
-Owner Booking commands use `assertOwnerCommandIdempotencyKey` (8–200 printable, no leading/trailing whitespace). Exact registered name for the aggregate replace is `updateBooking`. Booking No Action uses workflow-specific `resolveGranotBookingCaseNoAction` (not on the thin registry). Already-satisfied, No Action, and replay create no aggregate Change or Sheet work.
+Owner Booking commands use `assertOwnerCommandIdempotencyKey` (8–200 printable, no leading/trailing whitespace). Exact registered name for the aggregate replace is `updateBooking`. Official details are one Binder plus `primary_agent_id` / optional `secondary_agent_id`; `bookings.ts` persists `officialBookingAllocations` (even-cent split), not client per-agent amounts. Booking No Action uses workflow-specific `resolveGranotBookingCaseNoAction` (not on the thin registry). Already-satisfied, No Action, and replay create no aggregate Change or Sheet work.
 
 Owner Release commands (gated) use the same executor and envelope. Exact names in that module are `createCancellation`, `updateBooking`, and `resolveGranotReleaseCaseNoAction`. Public `POST /api/v1/cancelled-leads` is a different `createCancellation` adapter and still 409s Referral Bookings — see CONTRADICTIONS `public-v1-referral-cancel-vs-gated-release`.
 

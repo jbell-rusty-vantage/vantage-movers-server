@@ -12,6 +12,7 @@ import {
 } from "../employeeBookings/bookingLeadReconciliation.service";
 import { finalizeSheetSync } from "../sheetSync";
 import { persistSheetSyncIntent } from "../sheetSync";
+import { officialBookingAgentIds, officialBookingAllocations } from "../agents";
 import { toObjectId } from "../../utils/objectId";
 import type { GranotLifecycleOfficialBookingDetails } from "../../validation/v1/granotLifecycle.validation";
 import {
@@ -84,7 +85,7 @@ export async function updateBooking(input: {
         $or: [{ cancelled: null }, { cancelled: { $exists: false } }],
       }).session(session).lean().exec();
       if (!before) throw new Error("DOMAIN_REVISION_CONFLICT");
-      const agentIds = input.official_booking_details.agent_allocations.map((row) => toObjectId(row.agent_id));
+      const agentIds = officialBookingAgentIds(input.official_booking_details).map((id) => toObjectId(id));
       const [agents, merchant] = await Promise.all([
         Agent.find({ _id: { $in: agentIds }, active: true }).session(session).lean().exec(),
         Merchant.findOne({ _id: toObjectId(input.official_booking_details.merchant_id), active: true })
@@ -95,7 +96,7 @@ export async function updateBooking(input: {
       const details = input.official_booking_details;
       const desired = {
         book_date: new Date(`${details.book_date}T00:00:00.000Z`),
-        agent_allocations: details.agent_allocations.map((row) => ({
+        agent_allocations: officialBookingAllocations(details).map((row) => ({
           agent: toObjectId(row.agent_id),
           agent_name_snapshot: names.get(row.agent_id)!,
           binder_amount: Math.round(row.binder_amount * 100) / 100,

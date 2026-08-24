@@ -209,7 +209,7 @@ test("[AC-21][AC-22][AC-23][AC-32] replica confirm is atomic, replay-safe, exact
     selected_lead: { lead_model: "FormLead" as const, lead_id: String(fixture.leadId) },
     official_booking_details: {
       book_date: "2026-08-20",
-      agent_allocations: [{ agent_id: String(fixture.agentId), binder_amount: 125.25 }],
+      primary_agent_id: String(fixture.agentId),
       total_binder_amount: 125.25,
       deposit_amount: 2500.5,
       merchant_id: String(fixture.merchantId),
@@ -306,7 +306,7 @@ test("[AC-22][AC-23] inactive catalog failure leaves the whole effect set invisi
       selected_lead: { lead_model: "FormLead", lead_id: String(fixture.leadId) },
       official_booking_details: {
         book_date: "2026-08-20",
-        agent_allocations: [{ agent_id: String(fixture.agentId), binder_amount: 10 }],
+        primary_agent_id: String(fixture.agentId),
         total_binder_amount: 10, deposit_amount: 5, merchant_id: String(fixture.merchantId),
       },
       idempotency_key: `unit24-inactive-${fixture.caseId}`,
@@ -329,7 +329,7 @@ test("[AC-21] simultaneous confirms produce one winner and no duplicate effects"
     selected_lead: { lead_model: "FormLead" as const, lead_id: String(fixture.leadId) },
     official_booking_details: {
       book_date: "2026-08-21",
-      agent_allocations: [{ agent_id: String(fixture.agentId), binder_amount: 20 }],
+      primary_agent_id: String(fixture.agentId),
       total_binder_amount: 20, deposit_amount: 10, merchant_id: String(fixture.merchantId),
     },
     idempotency_key: `unit24-race-${suffix}-${fixture.caseId}`,
@@ -380,7 +380,7 @@ test("[AC-20][AC-21][AC-24][AC-32] replica update fully replaces official fields
     selected_lead: { lead_model: "FormLead", lead_id: String(fixture.leadId) },
     official_booking_details: {
       book_date: "2026-08-20",
-      agent_allocations: [{ agent_id: String(fixture.agentId), binder_amount: 10 }],
+      primary_agent_id: String(fixture.agentId),
       total_binder_amount: 10, deposit_amount: 100, merchant_id: String(fixture.merchantId),
     },
     idempotency_key: `unit25-prereq-${fixture.caseId}`, owner,
@@ -392,7 +392,7 @@ test("[AC-20][AC-21][AC-24][AC-32] replica update fully replaces official fields
     case_id: String(reviewCaseId), expected_case_revision: 1, expected_booking_revision: 1,
     official_booking_details: {
       book_date: "2026-09-01",
-      agent_allocations: [{ agent_id: String(fixture.agentId), binder_amount: 125.25 }],
+      primary_agent_id: String(fixture.agentId),
       total_binder_amount: 125.25, deposit_amount: 2500.5, merchant_id: String(fixture.merchantId),
     },
     idempotency_key: `unit25-update-${reviewCaseId}`, owner,
@@ -486,7 +486,7 @@ test("[AC-24][AC-32] replica update rolls back atomically after every persisted 
     const created = await confirmBooking({
       case_id: String(fixture.caseId), expected_case_revision: 1,
       selected_lead: { lead_model: "FormLead", lead_id: String(fixture.leadId) },
-      official_booking_details: { book_date: "2026-08-20", agent_allocations: [{ agent_id: String(fixture.agentId), binder_amount: 10 }], total_binder_amount: 10, deposit_amount: 10, merchant_id: String(fixture.merchantId) },
+      official_booking_details: { book_date: "2026-08-20", primary_agent_id: String(fixture.agentId), total_binder_amount: 10, deposit_amount: 10, merchant_id: String(fixture.merchantId) },
       idempotency_key: `unit25-rollback-prereq-${failure}-${fixture.caseId}`, owner,
     }, { flags });
     const caseId = await createReviewCase(fixture, created.booking_ref!.id, created.record_link_ref!.id);
@@ -495,7 +495,7 @@ test("[AC-24][AC-32] replica update rolls back atomically after every persisted 
     const beforeOutbox = await SheetSyncJob.findOne({ entity_id: created.booking_ref!.id }).lean().exec();
     await assert.rejects(updateExistingBooking({
       case_id: String(caseId), expected_case_revision: 1, expected_booking_revision: 1,
-      official_booking_details: { book_date: "2026-09-02", agent_allocations: [{ agent_id: String(fixture.agentId), binder_amount: 12 }], total_binder_amount: 12, deposit_amount: 2501, merchant_id: String(fixture.merchantId) },
+      official_booking_details: { book_date: "2026-09-02", primary_agent_id: String(fixture.agentId), total_binder_amount: 12, deposit_amount: 2501, merchant_id: String(fixture.merchantId) },
       idempotency_key: `unit25-rollback-${failure}-${caseId}`, owner,
     }, { flags, test_fail_after: failure }), new RegExp(`UNIT25_INJECTED_FAILURE_AFTER_${failure.toUpperCase()}`));
     const [afterBooking, afterLead, afterCase, afterOutbox] = await Promise.all([
@@ -532,14 +532,14 @@ test("[AC-21] replica update versus No Action has one case-revision winner", asy
   const created = await confirmBooking({
     case_id: String(fixture.caseId), expected_case_revision: 1,
     selected_lead: { lead_model: "FormLead", lead_id: String(fixture.leadId) },
-    official_booking_details: { book_date: "2026-08-20", agent_allocations: [{ agent_id: String(fixture.agentId), binder_amount: 10 }], total_binder_amount: 10, deposit_amount: 10, merchant_id: String(fixture.merchantId) },
+    official_booking_details: { book_date: "2026-08-20", primary_agent_id: String(fixture.agentId), total_binder_amount: 10, deposit_amount: 10, merchant_id: String(fixture.merchantId) },
     idempotency_key: `unit25-race-prereq-${fixture.caseId}`, owner,
   }, { flags });
   const caseId = await createReviewCase(fixture, created.booking_ref!.id, created.record_link_ref!.id);
   const results = await Promise.allSettled([
     updateExistingBooking({
       case_id: String(caseId), expected_case_revision: 1, expected_booking_revision: 1,
-      official_booking_details: { book_date: "2026-08-21", agent_allocations: [{ agent_id: String(fixture.agentId), binder_amount: 11 }], total_binder_amount: 11, deposit_amount: 11, merchant_id: String(fixture.merchantId) },
+      official_booking_details: { book_date: "2026-08-21", primary_agent_id: String(fixture.agentId), total_binder_amount: 11, deposit_amount: 11, merchant_id: String(fixture.merchantId) },
       idempotency_key: `unit25-race-update-${caseId}`, owner,
     }, { flags }),
     noAction({ case_id: String(caseId), expected_case_revision: 1, idempotency_key: `unit25-race-no-action-${caseId}`, owner }, { flags }),

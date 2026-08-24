@@ -55,34 +55,24 @@ const strictCalendarDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must b
   },
 );
 
+const optionalAgentIdSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  objectIdSchema.optional(),
+);
+
 export const granotLifecycleOfficialBookingDetailsSchema = z.object({
   book_date: strictCalendarDateSchema,
-  agent_allocations: z.array(z.object({
-    agent_id: objectIdSchema,
-    binder_amount: exactMoneySchema,
-  }).strict()).min(1).max(20),
-  total_binder_amount: exactMoneySchema,
   deposit_amount: exactMoneySchema,
+  total_binder_amount: exactMoneySchema,
   merchant_id: objectIdSchema,
+  primary_agent_id: objectIdSchema,
+  secondary_agent_id: optionalAgentIdSchema,
 }).strict().superRefine((value, ctx) => {
-    const ids = value.agent_allocations.map((row) => row.agent_id);
-    if (new Set(ids).size !== ids.length) {
+    if (value.secondary_agent_id && value.secondary_agent_id === value.primary_agent_id) {
       ctx.addIssue({
         code: "custom",
-        path: ["agent_allocations"],
-        message: "agent_id values must be unique",
-      });
-    }
-    const binderCents = value.agent_allocations.reduce(
-      (sum, row) => sum + Math.round(row.binder_amount * 100),
-      0,
-    );
-    const totalCents = Math.round(value.total_binder_amount * 100);
-    if (binderCents !== totalCents) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["total_binder_amount"],
-        message: "agent Binder cents must sum exactly to total_binder_amount",
+        path: ["secondary_agent_id"],
+        message: "secondary_agent_id must be different from primary_agent_id",
       });
     }
   });

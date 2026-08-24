@@ -23,8 +23,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T06:52:00Z
+  by: process:docs-keeper
+  at: 2026-08-24T18:20:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority (trigger and pairing):** [`booking-reconciliation-booked-only-specification.md`](../../granot-lead-lifecycle/booking-reconciliation-booked-only-specification.md). FINAL SPEC still wins on modes, uniqueness, revisions, Owner commands, Referral, and discrepancies.  
@@ -74,6 +74,7 @@ Open starts with `case_revision=1`, `evidence_revision=1`. A new Observation app
 
 Every command requires `requireRegistryOwnerActor`, one strict `Idempotency-Key`, the first case-evidence Receipt/Observation/Decision chain, an enabled Booking-command gate, and current reviewed Registry/source facts. Flag-off is **422** `POLICY_BLOCKED`. Stale case/Booking revision is **409** `CASE_REVISION_CONFLICT` / `DOMAIN_REVISION_CONFLICT`. Checked-in command defaults remain false.
 
+- Official `official_booking_details` accept `book_date`, `deposit_amount`, `total_binder_amount`, `merchant_id`, `primary_agent_id`, and optional `secondary_agent_id`. Per-agent `agent_allocations[]` is rejected. Stored `BookedLead.agent_allocations` come from `officialBookingAllocations` (even-cent split). See [`agent-allocation.md`](../services/agent-allocation.md). Confirm still requires an eligible selected Lead; optional Lead / Connect Booking to Lead / unmasking are not implemented.
 - `confirmGranotBooking` resolves an open `create_missing_booking` case. It requires an eligible selected Lead (Duplicate/Bad/cancelled rejected; all-scope needs a 10–500 override) and explicit official Booking details. Same-state existing Booking plus matching Record Link is `already_satisfied`.
 - `updateBooking` is available only for open `review_existing_booking`. It revalidates the deterministic active Booking, normalized Job, linked Lead/source, optional active Record Link, exact Booking/case revisions, and active Agent/Merchant IDs. It fully replaces only Book Date, Agent allocations, total Binder, Deposit, and Merchant; derived deposit thresholds alone may mirror to the already-linked Lead. One transaction writes aggregate Change(s), case resolution, Command, and one coalescible queued Booking Chain intent. Identity/source/contact/local/submission/cancellation fields cannot change.
 - `resolveGranotBookingCaseNoAction` is available for open standard create-missing or review-existing cases. Optional reason code/text are metadata only. Its transaction writes the Command plus one case resolution/revision and creates no aggregate revision, `EntityChange`, Sheet Sync intent, link, discrepancy, notification, or replacement case.

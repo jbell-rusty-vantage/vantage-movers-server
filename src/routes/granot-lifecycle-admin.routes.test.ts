@@ -539,7 +539,7 @@ const confirmBody = {
   selected_lead: { lead_model: "FormLead", lead_id: new mongoose.Types.ObjectId().toHexString() },
   official_booking_details: {
     book_date: "2026-08-19",
-    agent_allocations: [{ agent_id: new mongoose.Types.ObjectId().toHexString(), binder_amount: 10 }],
+    primary_agent_id: new mongoose.Types.ObjectId().toHexString(),
     total_binder_amount: 10,
     deposit_amount: 100,
     merchant_id: new mongoose.Types.ObjectId().toHexString(),

@@ -301,7 +301,7 @@ test("[AC-21][AC-25][AC-32] Release Update Booking fully replaces official field
     expected_booking_revision: 0,
     official_booking_details: {
       book_date: "2026-09-02",
-      agent_allocations: [{ agent_id: String(fixture.agentId), binder_amount: 125.25 }],
+      primary_agent_id: String(fixture.agentId),
       total_binder_amount: 125.25,
       deposit_amount: 2500.5,
       merchant_id: String(fixture.merchantId),
@@ -512,7 +512,7 @@ test("[AC-21] all pairwise Release commands have exactly one case-revision winne
       case_id: String(fixture.caseId), expected_case_revision: 1, expected_booking_revision: 0,
       official_booking_details: {
         book_date: "2026-08-21",
-        agent_allocations: [{ agent_id: String(fixture.agentId), binder_amount: 11 }],
+        primary_agent_id: String(fixture.agentId),
         total_binder_amount: 11, deposit_amount: 11, merchant_id: String(fixture.merchantId),
       },
       idempotency_key: `unit27-race-update-${pair}-${fixture.caseId}`, owner,
@@ -557,7 +557,7 @@ test("[AC-32] Cancellation, update, and No Action roll back after every write bo
       case_id: String(fixture.caseId), expected_case_revision: 1, expected_booking_revision: 0,
       official_booking_details: {
         book_date: "2026-09-01",
-        agent_allocations: [{ agent_id: String(fixture.agentId), binder_amount: 12 }],
+        primary_agent_id: String(fixture.agentId),
         total_binder_amount: 12, deposit_amount: 2501, merchant_id: String(fixture.merchantId),
       },
       idempotency_key: `unit27-rollback-update-${failure}-${fixture.caseId}`, owner,

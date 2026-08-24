@@ -185,10 +185,8 @@ test("[AC-22] confirm Booking input is strict and validates exact official cents
     selected_lead: { lead_model: "FormLead", lead_id: "a".repeat(24) },
     official_booking_details: {
       book_date: "2026-02-28",
-      agent_allocations: [
-        { agent_id: "b".repeat(24), binder_amount: 10.25 },
-        { agent_id: "c".repeat(24), binder_amount: 0 },
-      ],
+      primary_agent_id: "b".repeat(24),
+      secondary_agent_id: "c".repeat(24),
       total_binder_amount: 10.25,
       deposit_amount: 100.01,
       merchant_id: "d".repeat(24),
@@ -219,9 +217,12 @@ test("[AC-22] confirm Booking input is strict and validates exact official cents
   assert.throws(
     () => granotLifecycleConfirmBookingCommandSchema.parse({
       ...valid,
-      official_booking_details: { ...valid.official_booking_details, total_binder_amount: 10.24 },
+      official_booking_details: {
+        ...valid.official_booking_details,
+        agent_allocations: [{ agent_id: "b".repeat(24), binder_amount: 10.25 }],
+      },
     }),
-    /sum|total_binder_amount/,
+    /unrecognized_keys|agent_allocations/,
   );
 });
 
@@ -230,7 +231,7 @@ test("[AC-28] Referral Booking input accepts only case revision and strict offic
     expected_case_revision: 1,
     official_booking_details: {
       book_date: "2026-08-19",
-      agent_allocations: [{ agent_id: "a".repeat(24), binder_amount: 10 }],
+      primary_agent_id: "a".repeat(24),
       total_binder_amount: 10,
       deposit_amount: 25,
       merchant_id: "b".repeat(24),
@@ -245,41 +246,41 @@ test("[AC-28] Referral Booking input accepts only case revision and strict offic
   }
 });
 
-test("[AC-22] confirm Booking allocations are unique and bounded to 1-20", () => {
-  const allocation = { agent_id: "b".repeat(24), binder_amount: 0 };
+test("[AC-22] confirm Booking accepts one or two unique Agents and rejects a matching secondary", () => {
   const base = {
     expected_case_revision: 1,
-    selected_lead: { lead_model: "CallLead", lead_id: "a".repeat(24) },
+    selected_lead: { lead_model: "CallLead" as const, lead_id: "a".repeat(24) },
     official_booking_details: {
       book_date: "2026-08-19",
-      agent_allocations: [allocation],
+      primary_agent_id: "b".repeat(24),
       total_binder_amount: 0,
       deposit_amount: 0,
       merchant_id: "d".repeat(24),
     },
   };
-  assert.throws(
-    () => granotLifecycleConfirmBookingCommandSchema.parse({
+  assert.equal(
+    granotLifecycleConfirmBookingCommandSchema.parse(base).official_booking_details.primary_agent_id,
+    "b".repeat(24),
+  );
+  assert.equal(
+    granotLifecycleConfirmBookingCommandSchema.parse({
       ...base,
       official_booking_details: {
         ...base.official_booking_details,
-        agent_allocations: [allocation, allocation],
+        secondary_agent_id: "",
       },
-    }),
-    /unique|agent_id/,
+    }).official_booking_details.secondary_agent_id,
+    undefined,
   );
   assert.throws(
     () => granotLifecycleConfirmBookingCommandSchema.parse({
       ...base,
       official_booking_details: {
         ...base.official_booking_details,
-        agent_allocations: Array.from({ length: 21 }, (_, index) => ({
-          agent_id: index.toString(16).padStart(24, "0"),
-          binder_amount: 0,
-        })),
+        secondary_agent_id: "b".repeat(24),
       },
     }),
-    /20|Too big/,
+    /different|secondary_agent_id/,
   );
 });
 
@@ -289,7 +290,7 @@ test("[AC-24] update Booking is a strict complete replacement with both revision
     expected_booking_revision: 4,
     official_booking_details: {
       book_date: "2026-08-19",
-      agent_allocations: [{ agent_id: "a".repeat(24), binder_amount: 10.25 }],
+      primary_agent_id: "a".repeat(24),
       total_binder_amount: 10.25,
       deposit_amount: 0,
       merchant_id: "b".repeat(24),

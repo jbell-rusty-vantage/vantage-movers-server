@@ -32,6 +32,7 @@ import {
   assertOwnerCommandIdempotencyKey,
   type CanonicalCommandContext,
 } from "../domainCommands/types";
+import { officialBookingAgentIds, officialBookingAllocations } from "../agents";
 import { finalizeSheetSync, persistSheetSyncIntent } from "../sheetSync";
 import type { GranotLifecycleConfirmBookingCommandInput } from "../../validation/v1/granotLifecycle.validation";
 import {
@@ -248,7 +249,7 @@ async function applyConfirmation(input: {
     lead_ref: leadBefore._id,
     lead_model: input.input.selected_lead.lead_model,
     customer_name: leadDisplayName(leadBefore),
-    agent_allocations: input.input.official_booking_details.agent_allocations.map((row) => ({
+    agent_allocations: officialBookingAllocations(input.input.official_booking_details).map((row) => ({
       agent: toObjectId(row.agent_id),
       agent_name_snapshot: catalogs.agent_names.get(row.agent_id)!,
       binder_amount: cents(row.binder_amount) / 100,
@@ -382,7 +383,7 @@ async function loadActiveSourceScope(scope: NonNullable<Awaited<ReturnType<typeo
 }
 
 async function loadActiveCatalog(details: ConfirmBookingInput["official_booking_details"], session: ClientSession, requestId?: string) {
-  const ids = details.agent_allocations.map((row) => toObjectId(row.agent_id));
+  const ids = officialBookingAgentIds(details).map((id) => toObjectId(id));
   const [agents, merchant] = await Promise.all([
     Agent.find({ _id: { $in: ids }, active: true }).session(session).lean().exec(),
     Merchant.findOne({ _id: toObjectId(details.merchant_id), active: true }).session(session).lean().exec(),
@@ -487,12 +488,13 @@ function assertCompatibleLink(link: Record<string, unknown> | null, caseRow: imp
 function sameOfficialBooking(row: Record<string, unknown>, input: ConfirmBookingInput, merchantName: string) {
   const date = row.book_date instanceof Date ? row.book_date.toISOString().slice(0, 10) : new Date(String(row.book_date)).toISOString().slice(0, 10);
   const allocations = (row.agent_allocations as Array<{ agent: unknown; binder_amount: number }> ?? []);
+  const desired = officialBookingAllocations(input.official_booking_details);
   return date === input.official_booking_details.book_date &&
     cents(Number(row.total_binder_amount)) === cents(input.official_booking_details.total_binder_amount) &&
     cents(Number(row.deposit_amount)) === cents(input.official_booking_details.deposit_amount) &&
-    row.merchant === merchantName && allocations.length === input.official_booking_details.agent_allocations.length &&
-    allocations.every((allocation, index) => String(allocation.agent) === input.official_booking_details.agent_allocations[index]?.agent_id &&
-      cents(allocation.binder_amount) === cents(input.official_booking_details.agent_allocations[index]!.binder_amount));
+    row.merchant === merchantName && allocations.length === desired.length &&
+    allocations.every((allocation, index) => String(allocation.agent) === desired[index]?.agent_id &&
+      cents(allocation.binder_amount) === cents(desired[index]!.binder_amount));
 }
 
 async function loadLead(selected: ConfirmBookingInput["selected_lead"], session: ClientSession): Promise<Record<string, unknown> | null> {

@@ -197,7 +197,7 @@ function command(fixture: Awaited<ReturnType<typeof seed>>, suffix = "create") {
     expected_case_revision: 1,
     official_booking_details: {
       book_date: "2026-08-20",
-      agent_allocations: [{ agent_id: String(fixture.agentId), binder_amount: 125.25 }],
+      primary_agent_id: String(fixture.agentId),
       total_binder_amount: 125.25,
       deposit_amount: 2500.5,
       merchant_id: String(fixture.merchantId),
@@ -351,7 +351,7 @@ test("[AC-28] existing Referral Booking supports official update and case-only N
     expected_booking_revision: 1,
     official_booking_details: {
       book_date: "2026-09-01",
-      agent_allocations: [{ agent_id: String(fixture.agentId), binder_amount: 150 }],
+      primary_agent_id: String(fixture.agentId),
       total_binder_amount: 150,
       deposit_amount: 3000,
       merchant_id: String(fixture.merchantId),

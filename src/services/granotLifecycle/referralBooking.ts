@@ -12,6 +12,7 @@ import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel, type GranotRecordLinkDocument } from "../../models/GranotRecordLink";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
+import { officialBookingAgentIds, officialBookingAllocations } from "../agents";
 import { toObjectId } from "../../utils/objectId";
 import type { GranotLifecycleCreateReferralBookingCommandInput } from "../../validation/v1/granotLifecycle.validation";
 import { canonicalJson } from "../durableWork/checksum";
@@ -272,7 +273,7 @@ async function applyReferralBooking(input: {
     book_date: new Date(`${input.input.official_booking_details.book_date}T00:00:00.000Z`),
     job_no: observation.identity.job_no_raw,
     customer_name: customerName,
-    agent_allocations: input.input.official_booking_details.agent_allocations.map((row) => ({
+    agent_allocations: officialBookingAllocations(input.input.official_booking_details).map((row) => ({
       agent: toObjectId(row.agent_id),
       agent_name_snapshot: catalogs.agent_names.get(row.agent_id)!,
       binder_amount: cents(row.binder_amount) / 100,
@@ -358,7 +359,7 @@ async function loadCausalContext(caseId: string, requestId?: string) {
 }
 
 async function loadActiveCatalog(input: ReferralBookingInput, session: ClientSession, requestId?: string) {
-  const ids = input.official_booking_details.agent_allocations.map((row) => toObjectId(row.agent_id));
+  const ids = officialBookingAgentIds(input.official_booking_details).map((id) => toObjectId(id));
   const [agents, merchant] = await Promise.all([
     Agent.find({ _id: { $in: ids }, active: true }).session(session).lean().exec(),
     Merchant.findOne({ _id: toObjectId(input.official_booking_details.merchant_id), active: true })
@@ -519,12 +520,13 @@ function sameOfficialBooking(
     agent_name_snapshot: string;
     binder_amount: number;
   }> | undefined;
+  const desired = officialBookingAllocations(details);
   return bookDate === details.book_date &&
     cents(Number(booking.total_binder_amount)) === cents(details.total_binder_amount) &&
     cents(Number(booking.deposit_amount)) === cents(details.deposit_amount) &&
     booking.merchant === catalogs.merchant_name &&
-    allocations?.length === details.agent_allocations.length &&
-    details.agent_allocations.every((allocation, index) => {
+    allocations?.length === desired.length &&
+    desired.every((allocation, index) => {
       const current = allocations[index];
       return current && String(current.agent) === allocation.agent_id &&
         current.agent_name_snapshot === catalogs.agent_names.get(allocation.agent_id) &&

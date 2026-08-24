@@ -18,6 +18,7 @@ import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
+import { officialBookingAgentIds, officialBookingAllocations } from "../agents";
 import { toObjectId } from "../../utils/objectId";
 import type {
   GranotLifecycleBookingNoActionCommandInput,
@@ -473,7 +474,7 @@ async function assertActiveSourceScope(row: GranotBookingReconciliationCaseDocum
 }
 
 async function loadActiveCatalog(details: GranotLifecycleOfficialBookingDetails, session: ClientSession, requestId?: string) {
-  const ids = details.agent_allocations.map((row) => toObjectId(row.agent_id));
+  const ids = officialBookingAgentIds(details).map((id) => toObjectId(id));
   const [agents, merchant] = await Promise.all([
     Agent.find({ _id: { $in: ids }, active: true }).session(session).lean().exec(),
     Merchant.findOne({ _id: toObjectId(details.merchant_id), active: true }).session(session).lean().exec(),
@@ -521,7 +522,7 @@ async function loadAndAssertLink(
 function desiredBooking(details: GranotLifecycleOfficialBookingDetails, catalogs: Awaited<ReturnType<typeof loadActiveCatalog>>) {
   return {
     book_date: new Date(`${details.book_date}T00:00:00.000Z`),
-    agent_allocations: details.agent_allocations.map((row) => ({
+    agent_allocations: officialBookingAllocations(details).map((row) => ({
       agent: toObjectId(row.agent_id),
       agent_name_snapshot: catalogs.agent_names.get(row.agent_id)!,
       binder_amount: cents(row.binder_amount) / 100,

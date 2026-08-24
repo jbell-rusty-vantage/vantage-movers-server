@@ -8,6 +8,8 @@
 
 This specification lands **before** Owner Daily (`/daily`). Daily Intakes, Completed, and copy must inherit this contract. They must not reintroduce a second binder input, a required Lead on Confirm, masked owner-intake contact, or an Ingestion handoff for booking work.
 
+**Implementation status (2026-08-24):** §5 even Binder has landed (command input, server even-cent split, owner confirm/update/referral forms). Sections 6–11 (optional Lead, Connect Booking to Lead, unmasking, Intakes vs Ingestion) are **not** implemented.
+
 ---
 
 ## 1. Authority and required reading
@@ -49,9 +51,9 @@ This is the common case that usually has a high-confidence Lead. The Leadless pa
 
 ## 3. Current-state evidence (repository, 2026-08-24)
 
-Reverify at implementation. These are the facts this spec is changing.
+Reverify at implementation. These are the facts this spec is changing. **§3.1 is historical** — superseded by landed §5. Sections 3.2–3.4 remain current.
 
-### 3.1 Two binder inputs on the owner form
+### 3.1 Two binder inputs on the owner form (historical)
 
 - [`booking-command-form.tsx`](../../../vantage-admin/components/granot-lifecycle/booking-command-form.tsx), [`booking-update-form.tsx`](../../../vantage-admin/components/granot-lifecycle/booking-update-form.tsx), and [`referral-booking-form.tsx`](../../../vantage-admin/components/granot-lifecycle/referral-booking-form.tsx) each collect **Total Binder Amount** plus a **Binder Amount per agent**, and allow up to 20 agents.
 - [`granotLifecycleOfficialBookingDetailsSchema`](../../src/validation/v1/granotLifecycle.validation.ts) requires `agent_allocations[]` of 1–20 `{ agent_id, binder_amount }` whose cents sum equals `total_binder_amount`.

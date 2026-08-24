@@ -17,6 +17,7 @@ import { getGranotObservationReceiptModel } from "../../models/GranotObservation
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
+import { officialBookingAgentIds, officialBookingAllocations } from "../agents";
 import { canonicalJson } from "../durableWork/checksum";
 import { createGranotLifecycleProcessorActor } from "../durableWork/actors";
 import type { DurableActor } from "../durableWork/types";
@@ -625,7 +626,7 @@ async function loadActiveCatalog(
   session: ClientSession,
   requestId?: string,
 ) {
-  const ids = details.agent_allocations.map((row) => toObjectId(row.agent_id));
+  const ids = officialBookingAgentIds(details).map((id) => toObjectId(id));
   const [agents, merchant] = await Promise.all([
     Agent.find({ _id: { $in: ids }, active: true }).session(session).lean().exec(),
     Merchant.findOne({ _id: toObjectId(details.merchant_id), active: true }).session(session).lean().exec(),
@@ -645,7 +646,7 @@ function desiredBooking(
 ) {
   return {
     book_date: new Date(`${details.book_date}T00:00:00.000Z`),
-    agent_allocations: details.agent_allocations.map((row) => ({
+    agent_allocations: officialBookingAllocations(details).map((row) => ({
       agent: toObjectId(row.agent_id),
       agent_name_snapshot: catalogs.agent_names.get(row.agent_id)!,
       binder_amount: cents(row.binder_amount) / 100,

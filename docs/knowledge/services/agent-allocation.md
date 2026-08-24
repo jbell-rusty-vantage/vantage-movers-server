@@ -21,8 +21,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T02:54:00Z
+  by: process:docs-keeper
+  at: 2026-08-24T18:20:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -60,11 +60,22 @@ Display/storage names are trimmed/collapsed but preserve caller casing until res
 | `POST /api/v1/booked-leads` | Request supplies `agent_allocations[]` (`agent_name`, `binder_amount`) |
 | `createBookedLeadFromSource` | `deriveBookedLeadAgentAllocations({ agent, split_agent, binder_amount })` → `createBookedLead` |
 | `createReferralBooking` / `createLeadlessBooking` | Same derive helper; `binder_amount` input = `total_binder_amount` |
+| Granot Owner confirm / update / referral | `officialBookingAllocations({ primary_agent_id, secondary_agent_id?, total_binder_amount })` — Owner sends one Binder and at most two Agent IDs |
 | `PATCH /api/v1/booked-leads/:id` | Optional `agent_allocations` + `agent_allocation_mode` |
 
 All create/update paths call `resolveAgentAllocations` **before** the booking transaction (agent catalog writes stay outside the booking txn). Best Relocation import passes `{ includeInactive: true }`.
 
 There is **no** `upsertAgentByName` in this module anymore. Standard API requires a pre-existing catalog agent. Historical repair scripts may still upsert agents on their own.
+
+## `splitBinderEvenly` / `officialBookingAllocations`
+
+Shared integer-cent Binder split. Authority for the Granot Owner path: [`owner-booking-intake-and-lead-attachment-specification.md`](../../granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md) §5 only.
+
+- `splitBinderEvenly(total, 1 | 2)` — one Agent keeps the full Binder. Two Agents: secondary gets `floor(total_cents / 2)`; primary gets the remainder (`$100.01` → `$50.01` / `$50.00`).
+- `officialBookingAgentIds` — `[primary]` or `[primary, secondary]`.
+- `officialBookingAllocations` — maps those IDs to derived `{ agent_id, binder_amount }` for confirm, update, referral, and Release update.
+
+`granotLifecycleOfficialBookingDetailsSchema` accepts `primary_agent_id`, optional `secondary_agent_id` (must differ), and `total_binder_amount`. Client-sent `agent_allocations[]` / per-agent amounts are rejected.
 
 ## `deriveBookedLeadAgentAllocations`
 
@@ -73,7 +84,7 @@ Used by form/phone booking submissions, referral, and leadless bookings.
 1. Trim/collapse whitespace on `agent` and optional `split_agent`.
 2. **Reject** when normalized `split_agent` equals normalized `agent` (400 `split_agent must be different from agent`).
 3. **No split:** one allocation with full `binder_amount`.
-4. **With split:** two allocations, each `binder_amount / 2` (even split).
+4. **With split:** two allocations from integer cents. Secondary gets `floor(total_cents / 2)`; primary gets the remainder (`$100.01` → `$50.01` / `$50.00`).
 
 Order is always `[primary agent, split agent]`.
 
@@ -133,7 +144,7 @@ Best Relocation from-source create may stamp the source lead’s receiver from a
 
 ## Tests
 
-`agentAllocation.service.test.ts` — inactive resolve + alias filter; receiver attribution set / not overwrite.
+`agentAllocation.service.test.ts` — even-cent split (`$100.01` → `$50.01` / `$50.00`) for `splitBinderEvenly`, `deriveBookedLeadAgentAllocations`, and `officialBookingAllocations`; inactive resolve + alias filter; receiver attribution set / not overwrite.
 
 ## Related modules
 

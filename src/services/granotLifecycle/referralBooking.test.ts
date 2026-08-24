@@ -13,7 +13,7 @@ test("[AC-28] Referral Booking rejects non-Owner authority before storage access
       expected_case_revision: 1,
       official_booking_details: {
         book_date: "2026-08-20",
-        agent_allocations: [{ agent_id: "64b000000000000000000002", binder_amount: 10 }],
+        primary_agent_id: "64b000000000000000000002",
         total_binder_amount: 10,
         deposit_amount: 10,
         merchant_id: "64b000000000000000000003",

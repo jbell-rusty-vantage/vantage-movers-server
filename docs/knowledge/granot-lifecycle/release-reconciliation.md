@@ -21,8 +21,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T06:52:00Z
+  by: process:docs-keeper
+  at: 2026-08-24T18:20:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/releaseReconciliation.ts`, `src/models/GranotReleaseReconciliationCase.ts`, `src/services/granotLifecycle/processor.ts`, `src/services/granotLifecycle/projections.ts`  
@@ -60,6 +60,6 @@ Implementation lives in `releaseOwnerCommands.ts` (re-exported from `releaseReco
 
 Each requires `requireRegistryOwnerActor` and one `Idempotency-Key`. Flag-off is **422** `POLICY_BLOCKED`. Stale case/Booking revision is **409** `CASE_REVISION_CONFLICT` / `DOMAIN_REVISION_CONFLICT`. Each reruns current source policy, lifecycle/effect gates, open case revision, immutable Job/Booking identity, active Record Link, and current Booking revision inside the canonical transaction. Booking replacement also revalidates active Agent/Merchant catalog rows. Referral Bookings are supported without fabricating a Lead mirror; an optional linked Lead changes only when it still matches the verified Booking/link scope.
 
-Create Cancellation uses the cancellation service's transaction-aware primitive to CAS the active Booking, insert exactly one complete `CancelledLead`, optionally mirror the linked Lead, append adjacent `EntityChange` rows, resolve the case, store the canonical Command result, and enqueue one `cancellation_chain` Sheet outbox intent atomically. A verified matching official cancellation is `already_satisfied` with no aggregate, Change, or Sheet write. Update Booking is a complete official replacement and enqueues one `booking_chain` intent. No Action changes only the case and Command. Replays return the stored result; checksum reuse conflicts and stale races fail closed with stable 409 errors. Queue publishing occurs only after commit.
+Create Cancellation uses the cancellation service's transaction-aware primitive to CAS the active Booking, insert exactly one complete `CancelledLead`, optionally mirror the linked Lead, append adjacent `EntityChange` rows, resolve the case, store the canonical Command result, and enqueue one `cancellation_chain` Sheet outbox intent atomically. A verified matching official cancellation is `already_satisfied` with no aggregate, Change, or Sheet write. Update Booking is a complete official replacement from the same official details as Booking commands (one Binder, at most two Agent IDs; `officialBookingAllocations` derives stored allocations) and enqueues one `booking_chain` intent. No Action changes only the case and Command. Replays return the stored result; checksum reuse conflicts and stale races fail closed with stable 409 errors. Queue publishing occurs only after commit.
 
 Checked-in `GRANOT_LIFECYCLE_RELEASE_CASES_ENABLED=false` and `GRANOT_LIFECYCLE_RELEASE_COMMANDS_ENABLED=false`. Owner mutations, Sheet intents, and discrepancy storage **exist in code** and stay gated. Index report/verify is read-only; apply, deployment, and flag enablement require separate authorization. No email send is attached to these commands (`GRANOT_LIFECYCLE_EMAIL_ENABLED` stays false).
