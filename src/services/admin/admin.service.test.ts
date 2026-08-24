@@ -3,6 +3,7 @@ import { afterEach, test } from "node:test";
 import { inspect } from "node:util";
 import mongoose from "mongoose";
 import { Agent } from "../../models/Agent";
+import { Merchant } from "../../models/Merchant";
 import { BookedLead } from "../../models/BookedLead";
 import { CallLead } from "../../models/CallLead";
 import { FormLead } from "../../models/FormLead";
@@ -13,10 +14,13 @@ import {
   adminBrowseQuerySchema,
   adminSearchQuerySchema,
 } from "../../validation/v1.validation";
+import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
+import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
 import {
   browseAdminResource,
   getAdminResourceDetail,
 } from "./adminBrowse.service";
+import { resetAdminFacetsCacheForTests } from "./adminFacets.service";
 import { exportAdminResourceCsv } from "./adminExport.service";
 import { globalAdminSearch } from "./adminSearch.service";
 
@@ -40,11 +44,16 @@ const originalLeadMessageAggregate = LeadMessage.aggregate as unknown;
 const originalCallLeadFind = CallLead.find as unknown;
 const originalCallLeadCount = CallLead.countDocuments as unknown;
 const originalAgentFind = Agent.find as unknown;
+const originalMerchantFind = Merchant.find as unknown;
 const originalAgentFindById = Agent.findById as unknown;
 const originalAgentCount = Agent.countDocuments as unknown;
 const originalBookedLeadFind = BookedLead.find as unknown;
 const originalBookedLeadCount = BookedLead.countDocuments as unknown;
 const originalBookedLeadAggregate = BookedLead.aggregate as unknown;
+const SourceCompany = getLeadSourceCompanyModel();
+const SourceGranularity = getLeadSourceGranularityModel();
+const originalCompanyFind = SourceCompany.find as unknown;
+const originalGranularityFind = SourceGranularity.find as unknown;
 const historicalModels = registerHistoricalModels();
 const originalHistoricalFormLeadFind = historicalModels.FormLead
   .find as unknown;
@@ -62,6 +71,7 @@ afterEach(() => {
   (CallLead as unknown as MutableModel).find = originalCallLeadFind;
   (CallLead as unknown as MutableModel).countDocuments = originalCallLeadCount;
   (Agent as unknown as MutableModel).find = originalAgentFind;
+  (Merchant as unknown as MutableModel).find = originalMerchantFind;
   (Agent as unknown as MutableModel).findById = originalAgentFindById;
   (Agent as unknown as MutableModel).countDocuments = originalAgentCount;
   (BookedLead as unknown as MutableModel).find = originalBookedLeadFind;
@@ -73,6 +83,9 @@ afterEach(() => {
     originalHistoricalFormLeadFind;
   (historicalModels.FormLead as unknown as MutableModel).countDocuments =
     originalHistoricalFormLeadCount;
+  (SourceCompany as unknown as MutableModel).find = originalCompanyFind;
+  (SourceGranularity as unknown as MutableModel).find = originalGranularityFind;
+  resetAdminFacetsCacheForTests();
 });
 
 test("admin browse builds filters, pagination, sorting, and response shape", async () => {
@@ -184,6 +197,64 @@ test("admin form lead browse filters receiver agent by ObjectId equality", async
   assert.throws(() =>
     adminBrowseQuerySchema.parse({ receiver_agent: "not-an-object-id" }),
   );
+});
+
+test("admin form lead browse matches source_granularity_key exactly and does not substring-match source_company", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(FormLead, capture, []);
+  stubCount(FormLead, 0);
+  stubCatalogFind([
+    {
+      _id: "company-top10",
+      company_slug: "top10_leads",
+      owner_label: "Top 10 Forms",
+      active: true,
+    },
+  ], [
+    {
+      _id: "aaaaaaaaaaaaaaaaaaaaaaaa",
+      source_company: "company-top10",
+      granularity_key: "top10_leads_form",
+      owner_label: "Top10 Forms",
+      crm_label: "Top10 Forms",
+      channel: "form",
+      active: true,
+    },
+  ]);
+
+  const query = adminBrowseQuerySchema.parse({
+    source_granularity_key: "top10_leads_form",
+    source_company: "tbm_leads",
+    limit: 10,
+  });
+  await browseAdminResource("form-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /source_granularity_key/);
+  assert.match(filterPreview, /top10_leads_form/);
+  assert.match(filterPreview, /source_granularity_id/);
+  assert.doesNotMatch(filterPreview, /tbm_leads/);
+});
+
+test("admin form lead browse still accepts source_company as bookmark compatibility", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(FormLead, capture, []);
+  stubCount(FormLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({
+    source_company: "tbm_leads",
+    limit: 10,
+  });
+  await browseAdminResource("form-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /tbm_leads/);
+  assert.match(filterPreview, /source_company/);
+  const regexes = collectRegexes(capture.filter).filter((regex) => regex.source.includes("tbm_leads"));
+  assert.ok(regexes.length > 0);
+  assert.ok(regexes.every((regex) => regex.source.startsWith("^") && regex.source.endsWith("$")));
+  assert.ok(regexes.every((regex) => regex.test("tbm_leads")));
+  assert.ok(regexes.every((regex) => !regex.test("tbm_prime_leads")));
 });
 
 test("admin booked lead browse filters source company slugs on the source field", async () => {
@@ -534,6 +605,24 @@ function stubCount(model: unknown, count: number) {
   });
 }
 
+function stubCatalogFind(
+  companies: Record<string, unknown>[],
+  granularities: Record<string, unknown>[],
+) {
+  const queryResult = (rows: Record<string, unknown>[]) => {
+    const query = {
+      sort: () => query,
+      lean: () => query,
+      exec: () => Promise.resolve(rows),
+    };
+    return query;
+  };
+  (SourceCompany as unknown as MutableModel).find = () => queryResult(companies);
+  (SourceGranularity as unknown as MutableModel).find = () => queryResult(granularities);
+  (Agent as unknown as MutableModel).find = () => queryResult([]);
+  (Merchant as unknown as MutableModel).find = () => queryResult([]);
+}
+
 function stubAggregate(
   model: unknown,
   rows: Record<string, unknown>[],
@@ -579,6 +668,13 @@ function chain(capture: QueryCapture, result: unknown) {
     },
     exec: async () => result,
   };
+}
+
+function collectRegexes(value: unknown): RegExp[] {
+  if (value instanceof RegExp) return [value];
+  if (Array.isArray(value)) return value.flatMap(collectRegexes);
+  if (!value || typeof value !== "object") return [];
+  return Object.values(value).flatMap(collectRegexes);
 }
 
 function stubOtherSearchModelsEmpty() {

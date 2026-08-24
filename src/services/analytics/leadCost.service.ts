@@ -1,18 +1,15 @@
 import type { AnalyticsQuery } from "../../validation/v1.validation";
 import type { AdminModels } from "../admin/adminScope.service";
 import {
-  leadMatch,
+  leadMatchForQuery,
   numberValue,
   roundMoney,
   type AnalyticsRow,
 } from "./analyticsFilters";
 import {
-  companyOnlySourceRows,
-  loadProductionSourceLabelIndex,
-  nestSourceCompanyRows,
+  nestObservedSourceRows,
   sourceCompanyFromRow,
   sourceGranularityFromRow,
-  type SourceLabelIndex,
 } from "./sourceHierarchy";
 
 export type LeadCostResult = {
@@ -21,8 +18,8 @@ export type LeadCostResult = {
   by_source_company: AnalyticsRow[];
 };
 
-function billableFormLeadMatch(query: AnalyticsQuery): Record<string, unknown> {
-  const base = leadMatch("FormLead", query);
+async function billableFormLeadMatch(query: AnalyticsQuery): Promise<Record<string, unknown>> {
+  const base = await leadMatchForQuery("FormLead", query);
   const duplicateFilter = { duplicate: { $ne: true } };
   if (!Object.keys(base).length) {
     return duplicateFilter;
@@ -33,8 +30,8 @@ function billableFormLeadMatch(query: AnalyticsQuery): Record<string, unknown> {
   return { $and: [base, duplicateFilter] };
 }
 
-function billableCallLeadMatch(query: AnalyticsQuery): Record<string, unknown> {
-  const base = leadMatch("CallLead", query);
+async function billableCallLeadMatch(query: AnalyticsQuery): Promise<Record<string, unknown>> {
+  const base = await leadMatchForQuery("CallLead", query);
   const unmatchedFilter = { created_on_unmatched: { $ne: true } };
   if (!Object.keys(base).length) {
     return unmatchedFilter;
@@ -48,9 +45,8 @@ function billableCallLeadMatch(query: AnalyticsQuery): Record<string, unknown> {
 async function leadCostRowsBySource(
   models: AdminModels,
   query: AnalyticsQuery,
-  sourceLabels?: SourceLabelIndex,
 ): Promise<AnalyticsRow[]> {
-  const supportsSourceGranularity = query.database_scope === "production";
+  const supportsSourceGranularity = query.database_scope !== "historical";
   const groupId = supportsSourceGranularity
     ? {
         source_company: "$source_company",
@@ -59,7 +55,7 @@ async function leadCostRowsBySource(
     : "$source_company";
   const [formRows, callRows] = await Promise.all([
     models["form-leads"].aggregate([
-      { $match: billableFormLeadMatch(query) },
+      { $match: await billableFormLeadMatch(query) },
       {
         $group: {
           _id: groupId,
@@ -80,7 +76,7 @@ async function leadCostRowsBySource(
       },
     ]),
     models["call-leads"].aggregate([
-      { $match: billableCallLeadMatch(query) },
+      { $match: await billableCallLeadMatch(query) },
       {
         $group: {
           _id: groupId,
@@ -139,11 +135,7 @@ async function leadCostRowsBySource(
   const sort = (left: AnalyticsRow, right: AnalyticsRow) =>
     numberValue(right.total_lead_cost) - numberValue(left.total_lead_cost) ||
     String(left.source_company).localeCompare(String(right.source_company));
-  if (!supportsSourceGranularity) {
-    return companyOnlySourceRows(leaves, { sort });
-  }
-  const labels = sourceLabels ?? await loadProductionSourceLabelIndex();
-  return nestSourceCompanyRows(leaves, labels, {
+  return nestObservedSourceRows(leaves, query, {
     additiveFields: ["lead_count", "unresolved_cpl_count", "total_lead_cost"],
     derive: (row) => ({
       ...row,
@@ -156,9 +148,8 @@ async function leadCostRowsBySource(
 export async function getLeadCost(
   models: AdminModels,
   query: AnalyticsQuery,
-  sourceLabels?: SourceLabelIndex,
 ): Promise<LeadCostResult> {
-  const by_source_company = await leadCostRowsBySource(models, query, sourceLabels);
+  const by_source_company = await leadCostRowsBySource(models, query);
   const total = roundMoney(
     by_source_company.reduce((sum, row) => sum + numberValue(row.total_lead_cost), 0),
   );

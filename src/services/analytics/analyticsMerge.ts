@@ -94,17 +94,38 @@ export function mergeRows(rows: AnalyticsRow[], keyFields: string[]): AnalyticsR
         existing[field] = numberValue(existing[field]) + numberValue(row[field]);
       }
     }
-    const incomingGranularities = arrayValue(row.granularities);
+    let incomingGranularities = arrayValue(row.granularities);
+    const existingGranularities = arrayValue(existing.granularities);
+    if (!incomingGranularities.length && existingGranularities.length) {
+      incomingGranularities = [
+        {
+          ...row,
+          granularities: undefined,
+          source_granularity_key: row.source_granularity_key ?? row.source_company,
+          source_granularity_label: row.source_company_label ?? row.source_company,
+        },
+      ];
+    }
     if (incomingGranularities.length) {
-      const existingGranularities = arrayValue(existing.granularities);
       existing.granularities = existingGranularities.length
         ? mergeRows(
             [...existingGranularities, ...incomingGranularities],
             ["source_granularity_key"],
           )
         : [...incomingGranularities];
-      if (typeof row.source_company_label === "string") {
+      if (
+        typeof row.source_company_label === "string" &&
+        typeof existing.source_company_label !== "string"
+      ) {
         existing.source_company_label = row.source_company_label;
+      }
+      for (const field of NUMERIC_FIELDS) {
+        if (arrayValue(existing.granularities).some((child) => field in child)) {
+          existing[field] = arrayValue(existing.granularities).reduce(
+            (sum, child) => sum + numberValue(child[field]),
+            0,
+          );
+        }
       }
     }
   }
@@ -186,7 +207,7 @@ function keyFieldsForReport(report: AnalyticsReport): string[] {
     case "cancellation-reasons":
       return ["reason"];
     case "lead-source-performance":
-      return ["lead_source"];
+      return ["source_company"];
     case "local-vs-long-distance":
       return ["local_type"];
     case "pickup-state-performance":
@@ -197,7 +218,7 @@ function keyFieldsForReport(report: AnalyticsReport): string[] {
     case "receiver-agent-trend":
       return ["period", "receiver_agent_id", "receiver_agent_name"];
     case "receiver-agent-source-breakdown":
-      return ["receiver_agent_id", "receiver_agent_name", "source_label", "source_company", "lead_type"];
+      return ["receiver_agent_id", "receiver_agent_name", "source_granularity_key", "source_company", "lead_type"];
     default:
       return ["label"];
   }

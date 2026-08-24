@@ -2,7 +2,8 @@ import mongoose, { type PipelineStage } from "mongoose";
 import type { AnalyticsQuery } from "../../validation/v1.validation";
 import type { AdminModels } from "../admin/adminScope.service";
 import {
-  leadMatch,
+  leadMatchForQuery,
+  normalizeDimensionKey,
   normalizeSourceDimension,
   numberValue,
   rate,
@@ -11,6 +12,8 @@ import {
   type AnalyticsRow,
 } from "./analyticsFilters";
 import { toObjectId } from "../../utils/objectId";
+import { getAdminFacets } from "../admin/adminFacets.service";
+import { sourceLabelIndexFromCatalog } from "./sourceHierarchy";
 
 const RECEIVER_AGENT_UNSUPPORTED_METADATA = {
   receiver_agent_scope: "unsupported",
@@ -55,11 +58,27 @@ export async function getReceiverAgentSourceBreakdown(models: AdminModels, query
     "receiver_agent_id",
     "receiver_agent_name",
     "source_company",
-    "source_label",
+    "source_granularity_key",
     "lead_type",
   ]);
+  const catalog = (await getAdminFacets(query.database_scope)).catalog;
+  const labels = sourceLabelIndexFromCatalog(catalog);
   return {
-    items: rows.map(deriveReceiverRates).sort(receiverPerformanceSort),
+    items: rows
+      .map((row) => {
+        const key = normalizeDimensionKey(row.source_granularity_key);
+        const catalogLabel = labels.granularityByKey.get(key)?.label;
+        return deriveReceiverRates({
+          ...row,
+          source_granularity_key: key === "unknown" ? row.source_granularity_key : key,
+          source_granularity_label:
+            catalogLabel ??
+            (typeof row.source_granularity_label === "string"
+              ? row.source_granularity_label
+              : "Unknown"),
+        });
+      })
+      .sort(receiverPerformanceSort),
     metadata: receiverAgentMetadata(),
   };
 }
@@ -87,7 +106,7 @@ async function leadRowsForType(
   }
 
   const model = leadType === "FormLead" ? models["form-leads"] : models["call-leads"];
-  const match = receiverLeadMatch(leadType, query);
+  const match = await receiverLeadMatch(leadType, query);
   const pipeline: PipelineStage[] = [
     { $match: match },
     ...receiverLeadLookups(leadType),
@@ -96,6 +115,8 @@ async function leadRowsForType(
         period: trendDateExpression(query),
         lead_type: leadType,
         source_company: { $ifNull: ["$source_company", "not_provided"] },
+        source_granularity_key: { $ifNull: ["$source_granularity_key", "unknown"] },
+        source_granularity_label: { $ifNull: ["$source_granularity_label_snapshot", ""] },
         source_label: sourceLabelExpression(leadType),
         receiver_agent_id: {
           $cond: [
@@ -200,8 +221,11 @@ async function leadRowsForType(
   return model.aggregate(pipeline);
 }
 
-function receiverLeadMatch(leadType: "FormLead" | "CallLead", query: AnalyticsQuery): Record<string, unknown> {
-  const base = leadMatch(leadType, query);
+async function receiverLeadMatch(
+  leadType: "FormLead" | "CallLead",
+  query: AnalyticsQuery,
+): Promise<Record<string, unknown>> {
+  const base = await leadMatchForQuery(leadType, query);
   const receiverAgent = typeof query.receiver_agent === "string" ? query.receiver_agent.trim() : "";
   if (!receiverAgent) {
     return base;

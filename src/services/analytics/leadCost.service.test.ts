@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
+import { Agent } from "../../models/Agent";
 import { CallLead } from "../../models/CallLead";
 import { FormLead } from "../../models/FormLead";
+import { Merchant } from "../../models/Merchant";
+import { resetAdminFacetsCacheForTests } from "../admin/adminFacets.service";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
 import { analyticsQuerySchema } from "../../validation/v1.validation";
@@ -15,12 +18,17 @@ const SourceCompany = getLeadSourceCompanyModel();
 const SourceGranularity = getLeadSourceGranularityModel();
 const originalCompanyFind = SourceCompany.find as unknown;
 const originalGranularityFind = SourceGranularity.find as unknown;
+const originalAgentFind = Agent.find as unknown;
+const originalMerchantFind = Merchant.find as unknown;
 
 afterEach(() => {
   (FormLead as unknown as MutableModel).aggregate = originalFormAggregate;
   (CallLead as unknown as MutableModel).aggregate = originalCallAggregate;
   (SourceCompany as unknown as MutableModel).find = originalCompanyFind;
   (SourceGranularity as unknown as MutableModel).find = originalGranularityFind;
+  (Agent as unknown as MutableModel).find = originalAgentFind;
+  (Merchant as unknown as MutableModel).find = originalMerchantFind;
+  resetAdminFacetsCacheForTests();
 });
 
 test("lead cost excludes duplicate form leads and unmatched call leads", async () => {
@@ -64,6 +72,8 @@ test("lead cost excludes duplicate form leads and unmatched call leads", async (
         active: true,
       },
     ]);
+  (Agent as unknown as MutableModel).find = () => queryResult([]);
+  (Merchant as unknown as MutableModel).find = () => queryResult([]);
 
   const query = analyticsQuerySchema.parse({ database_scope: "production" });
   const result = await getLeadCost(

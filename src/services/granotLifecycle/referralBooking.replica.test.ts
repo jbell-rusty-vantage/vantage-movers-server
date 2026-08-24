@@ -267,7 +267,7 @@ test("[AC-28][AC-32] replica Referral creation is exact, lead-free, atomic, and 
     limit: 25,
   });
   assert.deepEqual(detail?.source, { id: String(fixture.sourceId), label: "Referral" });
-  assert.equal(detail?.contacts.accepted_granot?.name, "U•••");
+  assert.equal(detail?.contacts.accepted_granot?.name, "U28 Accepted Referral Customer");
   assert.ok(filtered.items.some((row) => row.case_id === String(fixture.caseId) && row.source?.label === "Referral"));
 
   const replay = await createReferralBooking(command(fixture), { flags });

@@ -12,11 +12,7 @@ import { bookedLeadPrefix, type AnalyticsRow } from "./analyticsFilters";
 import { mergeAnalyticsPayload, mergeRows, type AnalyticsPayload } from "./analyticsMerge";
 import { getLeadCost, type LeadCostResult } from "./leadCost.service";
 import { getSummary } from "./summary.service";
-import {
-  loadProductionSourceLabelIndex,
-  nestSourceCompanyRows,
-  type SourceLabelIndex,
-} from "./sourceHierarchy";
+import { nestObservedSourceRows } from "./sourceHierarchy";
 
 export type OverviewPeriod = {
   from: string;
@@ -56,17 +52,12 @@ export function rollingLast7DaysWindow(): { from: Date; to: Date } {
 
 export async function getOverviewReport(query: OverviewQuery): Promise<OverviewResponse> {
   const scopes = concreteScopes(query.database_scope);
-  const sourceLabels =
-    query.database_scope === "production"
-      ? await loadProductionSourceLabelIndex()
-      : undefined;
   const allTimePayloads = await Promise.all(
     scopes.map((scope) =>
       buildAllTimeSection(
         getAdminModels(scope),
         scope,
         query.database_scope,
-        sourceLabels,
       ),
     ),
   );
@@ -84,7 +75,6 @@ export async function getOverviewReport(query: OverviewQuery): Promise<OverviewR
       getAdminModels("production"),
       rangeQuery,
       { from, to },
-      sourceLabels!,
     );
   }
 
@@ -100,7 +90,6 @@ async function buildAllTimeSection(
   models: AdminModels,
   scope: ConcreteAdminScope,
   requestedScope: AdminDatabaseScope,
-  sourceLabels?: SourceLabelIndex,
 ): Promise<OverviewAllTime> {
   const emptyQuery = analyticsQuerySchema.parse({ database_scope: scope });
   const [summary, topAgents] = await Promise.all([
@@ -110,7 +99,7 @@ async function buildAllTimeSection(
 
   const lead_cost =
     requestedScope === "production" && scope === "production"
-      ? await getLeadCost(models, emptyQuery, sourceLabels)
+      ? await getLeadCost(models, emptyQuery)
       : null;
 
   return {
@@ -124,12 +113,11 @@ async function buildLast7DaysSection(
   models: AdminModels,
   query: ReturnType<typeof analyticsQuerySchema.parse>,
   window: { from: Date; to: Date },
-  sourceLabels: SourceLabelIndex,
 ): Promise<OverviewLast7Days> {
   const [summary, by_source_company, lead_cost, top_agents] = await Promise.all([
     getSummary(models, query),
-    getSalesBySourceCompany(models, query, sourceLabels),
-    getLeadCost(models, query, sourceLabels),
+    getSalesBySourceCompany(models, query),
+    getLeadCost(models, query),
     getTopAgentsByDeposit(models, query, 5),
   ]);
 
@@ -148,7 +136,6 @@ async function buildLast7DaysSection(
 async function getSalesBySourceCompany(
   models: AdminModels,
   query: ReturnType<typeof analyticsQuerySchema.parse>,
-  sourceLabels: SourceLabelIndex,
 ): Promise<AnalyticsRow[]> {
   const leaves = await models["booked-leads"].aggregate([
     ...bookedLeadPrefix(query),
@@ -165,7 +152,7 @@ async function getSalesBySourceCompany(
       },
     },
   ]);
-  return nestSourceCompanyRows(leaves, sourceLabels, {
+  return nestObservedSourceRows(leaves, query, {
     additiveFields: ["bookings", "total_deposit_amount"],
     derive: (row) => ({
       ...row,

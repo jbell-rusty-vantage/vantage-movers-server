@@ -10,9 +10,10 @@ import {
   compareTimelineEntries,
   dueWorkFilter,
   flagsToNamedBooleans,
+  customerLabel,
   maskContactLabel,
-  maskLifecycleContact,
   normalizeJobProjectionPath,
+  projectOwnerVisibleContact,
   paginateTimeline,
   projectCaseDetailPriorityPairing,
   rankBookingCandidateProjections,
@@ -30,10 +31,17 @@ test("[AC-35] Job path normalization rejects empty values", () => {
   );
 });
 
-test("[AC-35] centralized list masking never returns raw contact", () => {
+test("[AC-35] the discrepancy queue still masks the contact it never asks anyone to call", () => {
   assert.equal(maskContactLabel({ name: "Synthetic Person" }), "S•••");
   assert.equal(maskContactLabel({ phone_number: "5550001234" }), "•••1234");
   assert.equal(maskContactLabel({ email: "synthetic@example.invalid" }), "s•••@example.invalid");
+});
+
+test("an intake names the customer the Owner has to call, and falls back to how to reach them", () => {
+  assert.equal(customerLabel({ name: "Synthetic Person" }), "Synthetic Person");
+  assert.equal(customerLabel({ phone_number: "(555) 000-1234" }), "(555) 000-1234");
+  assert.equal(customerLabel({ email: "synthetic@example.invalid" }), "synthetic@example.invalid");
+  assert.equal(customerLabel(undefined), "No customer name on this job");
 });
 
 test("[AC-23] candidate ranking pins the suggested Lead, then high confidence, and is stable", () => {
@@ -50,20 +58,20 @@ test("[AC-23] candidate ranking pins the suggested Lead, then high confidence, a
   );
 });
 
-test("[AC-35] lifecycle detail contact projection masks every contact field", () => {
+test("intake case detail hands the Owner the whole contact, not an initial and four digits", () => {
   const raw = {
-    first_name: "Privacy",
-    last_name: "Canary",
+    first_name: "Synthetic",
+    last_name: "Customer",
     phone_number: "+1 (212) 555-0199",
-    email: "unit31-private-canary@example.invalid",
+    email: "synthetic-customer@example.invalid",
   };
-  const projected = maskLifecycleContact(raw);
-  assert.deepEqual(projected, {
-    name: "P•••",
-    phone_number: "•••0199",
-    email: "u•••@example.invalid",
+  assert.deepEqual(projectOwnerVisibleContact(raw), {
+    name: "Synthetic Customer",
+    phone_number: "+1 (212) 555-0199",
+    email: "synthetic-customer@example.invalid",
   });
-  assert.equal(JSON.stringify(projected).includes("unit31-private-canary"), false);
+  assert.equal(projectOwnerVisibleContact({}), undefined);
+  assert.equal(projectOwnerVisibleContact(undefined), undefined);
 });
 
 test("[AC-20] [AC-36] [AC-40] timeline order is stable and evidence is not collapsed", () => {

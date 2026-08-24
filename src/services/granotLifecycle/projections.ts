@@ -219,7 +219,7 @@ export type GranotLifecycleCaseListItem = {
   normalized_job_no: string;
   job_no: string;
   source?: { id?: string; label?: string };
-  masked_contact_label: string;
+  customer_label: string;
   latest_action: "priority_5" | "booked" | "release";
   evidence_count: number;
   case_revision: number;
@@ -311,7 +311,7 @@ export type GranotLifecycleCaseDetail = {
 
 export type GranotLifecycleCandidateItem = {
   lead_ref: EntityRef;
-  masked_contact_label: string;
+  customer_label: string;
   contact: { name?: string; phone_number?: string; email?: string };
   job_no?: string;
   normalized_job_no?: string;
@@ -608,7 +608,7 @@ export async function listGranotLifecycleCases(
       normalized_job_no: row.normalized_job_no,
       job_no: row.job_no_snapshot,
       source: { id: sourceId, label: sourceId ? sourceLabels.get(sourceId) : undefined },
-      masked_contact_label: maskContactLabel(row.observed_context.contact),
+      customer_label: customerLabel(row.observed_context.contact),
       latest_action: latest?.action ?? "booked",
       evidence_count: row.evidence.length,
       case_revision: row.case_revision,
@@ -852,7 +852,7 @@ export async function listGranotLifecycleCaseCandidates(
     });
     return {
       lead_ref: ref,
-      masked_contact_label: maskContactLabel({
+      customer_label: customerLabel({
         name: leadName(lead),
         phone_number: lead.phone_number,
         email: lead.email,
@@ -1234,7 +1234,7 @@ function projectBooking(booking: {
     normalized_job_no: booking.normalized_job_no ?? "",
     job_no: booking.job_no ?? null,
     book_date: iso(booking.book_date, "booking.book_date"),
-    customer_name: booking.customer_name ? maskPersonName(booking.customer_name) : null,
+    customer_name: booking.customer_name ?? null,
     source: booking.source,
     merchant: booking.merchant,
     ...(merchantId ? { merchant_id: String(merchantId) } : {}),
@@ -1430,7 +1430,14 @@ async function loadLeadContactProjection(
     : getCallLeadModel().findById(id).select(projection).lean<CandidateLeadView | null>();
 }
 
-export function maskLifecycleContact(value: unknown): { name?: string; phone_number?: string; email?: string } | undefined {
+/**
+ * The Owner works these cases by calling the customer, so intake reads carry the
+ * contact as it was captured. Masking belongs on surfaces nobody has to act on —
+ * see `maskContactLabel` below, which still serves the discrepancy queue.
+ */
+export function projectOwnerVisibleContact(
+  value: unknown,
+): { name?: string; phone_number?: string; email?: string } | undefined {
   if (!value || typeof value !== "object") return undefined;
   const row = value as Record<string, unknown>;
   const joinedName = [stringOrUndefined(row.first_name), stringOrUndefined(row.last_name)]
@@ -1439,32 +1446,23 @@ export function maskLifecycleContact(value: unknown): { name?: string; phone_num
   const name = stringOrUndefined(row.display_name) ?? (joinedName || undefined);
   const phone = stringOrUndefined(row.phone_number) ?? stringOrUndefined(row.phone_raw);
   const email = stringOrUndefined(row.email) ?? stringOrUndefined(row.email_raw);
-  return name || phone || email
-    ? {
-        name: name ? maskPersonName(name) : undefined,
-        phone_number: phone ? maskPhone(phone) : undefined,
-        email: email ? maskEmail(email) : undefined,
-      }
-    : undefined;
+  return name || phone || email ? { name, phone_number: phone, email } : undefined;
 }
 
-const toContact = maskLifecycleContact;
+const toContact = projectOwnerVisibleContact;
 
-function maskPersonName(value: string): string {
-  const trimmed = value.trim();
-  return trimmed ? `${trimmed.slice(0, 1).toUpperCase()}•••` : "•••";
-}
-
-function maskPhone(value: string): string {
-  const digits = value.replace(/\D/g, "");
-  return digits ? `•••${digits.slice(-4)}` : "•••";
-}
-
-function maskEmail(value: string): string {
-  const [local, domain] = value.trim().split("@");
-  return domain
-    ? `${local?.slice(0, 1).toLowerCase() || "•"}•••@${domain.toLowerCase()}`
-    : "•••";
+/** How one customer is named in an intake list: the name if we have it, else the way to reach them. */
+export function customerLabel(contact?: {
+  name?: string | null;
+  phone_number?: string | null;
+  email?: string | null;
+}): string {
+  return (
+    stringOrUndefined(contact?.name)?.trim() ??
+    stringOrUndefined(contact?.phone_number)?.trim() ??
+    stringOrUndefined(contact?.email)?.trim() ??
+    "No customer name on this job"
+  );
 }
 
 function leadName(lead: { name?: string | null; first_name?: string | null; last_name?: string | null }): string | undefined {

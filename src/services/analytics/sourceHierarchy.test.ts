@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { FilterCatalog } from "../admin/filterCatalog";
 import {
   buildSourceLabelIndex,
   companyOnlySourceRows,
@@ -134,6 +135,73 @@ test("source hierarchy folds normalized company and granularity collisions", () 
   assert.equal(rows[0].granularities[0].cancelled_bookings, 2);
   assert.equal(rows[0].granularities[0].cancellation_rate, 0.4);
   assert.equal(rows[0].granularities[0].source_granularity_label, "TBM Prime Forms");
+});
+
+test("nestSourceCompanyRows seeds catalog children including zeros", () => {
+  const catalog: FilterCatalog = {
+    source_companies: [
+      {
+        id: "company-1",
+        company_slug: "tbm_prime_leads",
+        owner_label: "TBM Prime Leads",
+        active: true,
+        origin: "registry",
+      },
+    ],
+    source_granularities: [
+      {
+        id: "g-form",
+        source_company_id: "company-1",
+        company_slug: "tbm_prime_leads",
+        company_owner_label: "TBM Prime Leads",
+        granularity_key: "tbm_prime_leads_form",
+        channel: "form",
+        owner_label: "TBM Prime Forms",
+        active: true,
+        origin: "registry",
+      },
+      {
+        id: "g-call",
+        source_company_id: "company-1",
+        company_slug: "tbm_prime_leads",
+        company_owner_label: "TBM Prime Leads",
+        granularity_key: "tbm_prime_leads_call",
+        channel: "call",
+        owner_label: "TBM Prime Inbounds",
+        active: true,
+        origin: "registry",
+      },
+    ],
+    agents: [],
+    merchants: [],
+  };
+
+  const rows = nestSourceCompanyRows(
+    [
+      {
+        source_company: "tbm_prime_leads",
+        source_granularity_key: "tbm_prime_leads_form",
+        bookings: 8,
+        total_deposit_amount: 1000,
+      },
+    ],
+    labels,
+    {
+      additiveFields: ["bookings", "total_deposit_amount"],
+      catalog,
+      seedZeros: true,
+    },
+  );
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].source_company_label, "TBM Prime Leads");
+  assert.equal(rows[0].granularities.length, 2);
+  assert.equal(rows[0].bookings, 8);
+  assert.equal(rows[0].total_deposit_amount, 1000);
+  assert.equal(rows[0].granularities[0].source_granularity_label, "TBM Prime Forms");
+  assert.equal(rows[0].granularities[0].bookings, 8);
+  assert.equal(rows[0].granularities[1].source_granularity_label, "TBM Prime Inbounds");
+  assert.equal(rows[0].granularities[1].bookings, 0);
 });
 
 test("company-only source rows use domain labels and never create children", () => {

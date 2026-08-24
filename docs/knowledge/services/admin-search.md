@@ -122,14 +122,14 @@ Lead badges: `doc.booked` truthy → `booked` else `unbooked`; plus `cancelled` 
 | Module | Relationship |
 |--------|----------------|
 | `adminScope.service.ts` | Model resolution + `concreteScopes` |
-| `adminBrowse.service.ts` | Paginated list/filter/detail |
-| `adminFacets.service.ts` | Filter option counts |
+| `adminBrowse.service.ts` | Paginated list/filter/detail. Form/Call **Source Company** filter is exact `source_granularity_key` (plus snapshot / catalog id). Historical scope (including the historical half of combined) also exact-matches catalog `company_slug` on the matching channel. Leftover `source_company` is bookmark compatibility only, exact (not substring), and loses when both params are present. |
+| `adminFacets.service.ts` / `filterCatalog.ts` | Filter Catalog (`catalog`) plus compatibility arrays. `"facets"` invalidation evicts production **and** historical caches. Historical catalog attaches label snapshots onto the matching key row; overlay dedupes by `granularity_key` and drops company-slug options when a keyed child exists for that company. |
 | `adminExport.service.ts` | CSV export |
 
 ## When to use search vs browse
 
 - **Admin search (this doc):** jump by name, phone, job no, ref no, granularity key, or Mongo id across types.
-- **Admin browse:** tables with pagination, sort, date range, source, duplicate flag.
+- **Admin browse:** tables with pagination, sort, date range, Source Company (`source_granularity_key`), duplicate flag.
 - **Extension lead browse:** [`lead-browse.md`](./lead-browse.md).
 - **Extension POST search:** [`form-lead-search.md`](./form-lead-search.md), [`call-lead-search.md`](./call-lead-search.md).
 

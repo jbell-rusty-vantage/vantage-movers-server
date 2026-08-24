@@ -1,10 +1,10 @@
 import { SOURCE_COMPANY_CONFIGS } from "../../config/domain/sources";
 import {
-  listSourceCompanies,
-  listSourceGranularities,
   type SourceCompanyItem,
   type SourceGranularityItem,
 } from "../operationsRegistry/sourceRegistry";
+import { getAdminFacets } from "../admin/adminFacets.service";
+import type { FilterCatalog, FilterCatalogGranularity } from "../admin/filterCatalog";
 import {
   normalizeDimension,
   normalizeSourceDimension,
@@ -34,16 +34,68 @@ export type SourceLabelIndex = {
 
 export type NestSourceRowsOptions = {
   additiveFields: readonly string[];
+  catalog?: FilterCatalog;
+  channel?: "form" | "call";
+  seedZeros?: boolean;
   derive?: (row: AnalyticsRow) => AnalyticsRow;
   sort?: (left: SourceCompanyMetricRow, right: SourceCompanyMetricRow) => number;
 };
 
 export async function loadProductionSourceLabelIndex(): Promise<SourceLabelIndex> {
-  const [companies, granularities] = await Promise.all([
-    listSourceCompanies({ includeInactive: true }),
-    listSourceGranularities({ includeInactive: true }),
-  ]);
-  return buildSourceLabelIndex(companies, granularities);
+  const facets = await getAdminFacets("production");
+  return sourceLabelIndexFromCatalog(facets.catalog);
+}
+
+export function sourceLabelIndexFromCatalog(catalog: FilterCatalog): SourceLabelIndex {
+  const companyBySlug = new Map<string, { label: string }>();
+  for (const company of catalog.source_companies) {
+    companyBySlug.set(normalizeSourceDimension(company.company_slug), {
+      label: company.owner_label,
+    });
+  }
+  const granularityByKey = new Map<
+    string,
+    { label: string; channel?: string | null; companySlug: string }
+  >();
+  for (const granularity of catalog.source_granularities) {
+    granularityByKey.set(normalizeDimension(granularity.granularity_key).toLowerCase(), {
+      label: granularity.owner_label,
+      channel: granularity.channel ?? null,
+      companySlug: normalizeSourceDimension(granularity.company_slug || granularity.company_owner_label),
+    });
+  }
+  return { companyBySlug, granularityByKey };
+}
+
+export function catalogChannelFromLeadType(
+  leadType?: "FormLead" | "CallLead" | string,
+): "form" | "call" | undefined {
+  if (leadType === "FormLead" || leadType === "form") return "form";
+  if (leadType === "CallLead" || leadType === "call") return "call";
+  return undefined;
+}
+
+export async function nestObservedSourceRows(
+  leaves: readonly AnalyticsRow[],
+  query: { database_scope: "production" | "historical" | "combined"; lead_type?: string },
+  options: NestSourceRowsOptions,
+): Promise<SourceCompanyMetricRow[]> {
+  const catalog = (await getAdminFacets(query.database_scope)).catalog;
+  const channel = catalogChannelFromLeadType(query.lead_type);
+  const labels = sourceLabelIndexFromCatalog(catalog);
+  const hasGranularityKeys = leaves.some((leaf) => {
+    const key = sourceGranularityFromRow(leaf);
+    return Boolean(key && key !== "unknown");
+  });
+  if (query.database_scope === "historical" && !hasGranularityKeys) {
+    return companyOnlySourceRows(leaves, { ...options, catalog });
+  }
+  return nestSourceCompanyRows(leaves, labels, {
+    ...options,
+    catalog,
+    channel,
+    seedZeros: query.database_scope !== "historical",
+  });
 }
 
 export function buildSourceLabelIndex(
@@ -89,6 +141,12 @@ export function nestSourceCompanyRows(
   labels: SourceLabelIndex,
   options: NestSourceRowsOptions,
 ): SourceCompanyMetricRow[] {
+  const catalogLabels = options.catalog
+    ? sourceLabelIndexFromCatalog(options.catalog)
+    : labels;
+  const effectiveLeaves = options.catalog
+    ? seedCatalogLeaves(leaves, options.catalog, options)
+    : leaves;
   const companies = new Map<
     string,
     {
@@ -96,10 +154,10 @@ export function nestSourceCompanyRows(
       children: Map<string, AnalyticsRow>;
     }
   >();
-  for (const input of leaves) {
+  for (const input of effectiveLeaves) {
     const sourceCompany = sourceCompanyFromRow(input);
     const granularityKey = sourceGranularityFromRow(input);
-    const label = labels.granularityByKey.get(granularityKey);
+    const label = catalogLabels.granularityByKey.get(granularityKey);
     const child: AnalyticsRow = {
       ...withoutAggregateId(input),
       source_company: sourceCompany,
@@ -112,7 +170,7 @@ export function nestSourceCompanyRows(
       {
         row: {
           source_company: sourceCompany,
-          source_company_label: resolveCompanyLabel(sourceCompany, labels),
+          source_company_label: resolveCompanyLabel(sourceCompany, catalogLabels),
           granularities: [],
         } as SourceCompanyMetricRow,
         children: new Map<string, AnalyticsRow>(),
@@ -149,15 +207,18 @@ export function nestSourceCompanyRows(
 
 export function companyOnlySourceRows(
   rows: readonly AnalyticsRow[],
-  options: Pick<NestSourceRowsOptions, "derive" | "sort"> = {},
+  options: Pick<NestSourceRowsOptions, "derive" | "sort" | "catalog"> = {},
 ): SourceCompanyMetricRow[] {
+  const labels = options.catalog ? sourceLabelIndexFromCatalog(options.catalog) : undefined;
   return rows
     .map((input) => {
       const sourceCompany = sourceCompanyFromRow(input);
       const base: SourceCompanyMetricRow = {
         ...withoutAggregateId(input),
         source_company: sourceCompany,
-        source_company_label: fallbackCompanyLabel(sourceCompany),
+        source_company_label: labels
+          ? resolveCompanyLabel(sourceCompany, labels)
+          : fallbackCompanyLabel(sourceCompany),
         granularities: [],
       };
       return (options.derive?.(base) ?? base) as SourceCompanyMetricRow;
@@ -195,6 +256,72 @@ export function humanizeSourceKey(value: string): string {
     .replace(/[_-]+/g, " ")
     .trim()
     .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function seedCatalogLeaves(
+  observed: readonly AnalyticsRow[],
+  catalog: FilterCatalog,
+  options: NestSourceRowsOptions,
+): AnalyticsRow[] {
+  const candidates = catalog.source_granularities.filter((row) =>
+    granularityInChannelScope(row, options.channel),
+  );
+  const observedByKey = new Map<string, AnalyticsRow>();
+  const extras: AnalyticsRow[] = [];
+  for (const leaf of observed) {
+    const key = sourceGranularityFromRow(leaf);
+    if (!key || key === "unknown") {
+      extras.push(leaf);
+      continue;
+    }
+    const existing = observedByKey.get(key);
+    if (!existing) {
+      observedByKey.set(key, { ...withoutAggregateId(leaf) });
+      continue;
+    }
+    for (const field of options.additiveFields) {
+      existing[field] = numberValue(existing[field]) + numberValue(leaf[field]);
+    }
+  }
+
+  const seeded: AnalyticsRow[] = [];
+  for (const candidate of candidates) {
+    const key = candidate.granularity_key.toLowerCase();
+    const observedLeaf = observedByKey.get(key);
+    observedByKey.delete(key);
+    if (observedLeaf) {
+      seeded.push({
+        ...observedLeaf,
+        source_company: candidate.company_slug || sourceCompanyFromRow(observedLeaf),
+        source_granularity_key: candidate.granularity_key,
+        source_granularity_label: candidate.owner_label,
+        channel: candidate.channel ?? null,
+      });
+      continue;
+    }
+    if (options.seedZeros === false) continue;
+    const zeroLeaf: AnalyticsRow = {
+      source_company: candidate.company_slug,
+      source_granularity_key: candidate.granularity_key,
+      source_granularity_label: candidate.owner_label,
+      channel: candidate.channel ?? null,
+    };
+    for (const field of options.additiveFields) {
+      zeroLeaf[field] = 0;
+    }
+    seeded.push(zeroLeaf);
+  }
+
+  for (const leftover of observedByKey.values()) extras.push(leftover);
+  return [...seeded, ...extras];
+}
+
+function granularityInChannelScope(
+  row: FilterCatalogGranularity,
+  channel?: "form" | "call",
+): boolean {
+  if (!channel) return true;
+  return row.channel === channel;
 }
 
 function withoutAggregateId(row: AnalyticsRow): AnalyticsRow {

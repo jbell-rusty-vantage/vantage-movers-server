@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
+import { inspect } from "node:util";
+import { Agent } from "../../models/Agent";
 import { BookedLead } from "../../models/BookedLead";
+import { Merchant } from "../../models/Merchant";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
 import { analyticsQuerySchema, analyticsReportSchema } from "../../validation/v1.validation";
-import { bookedLeadPrefix } from "./analyticsFilters";
+import { bookedLeadPrefix, leadMatch, sourceGranularityMatch } from "./analyticsFilters";
+import type { FilterCatalog } from "../admin/filterCatalog";
+import { resetAdminFacetsCacheForTests } from "../admin/adminFacets.service";
 import {
   exportAnalyticsReportCsv,
   rowsForCsv,
@@ -18,11 +23,16 @@ const SourceCompany = getLeadSourceCompanyModel();
 const SourceGranularity = getLeadSourceGranularityModel();
 const originalCompanyFind = SourceCompany.find as unknown;
 const originalGranularityFind = SourceGranularity.find as unknown;
+const originalAgentFind = Agent.find as unknown;
+const originalMerchantFind = Merchant.find as unknown;
 
 afterEach(() => {
   (BookedLead as unknown as MutableModel).aggregate = originalBookedAggregate;
   (SourceCompany as unknown as MutableModel).find = originalCompanyFind;
   (SourceGranularity as unknown as MutableModel).find = originalGranularityFind;
+  (Agent as unknown as MutableModel).find = originalAgentFind;
+  (Merchant as unknown as MutableModel).find = originalMerchantFind;
+  resetAdminFacetsCacheForTests();
 });
 
 test("analytics validation accepts report filters and rejects invalid report names", () => {
@@ -45,6 +55,26 @@ test("analytics validation accepts report filters and rejects invalid report nam
   assert.equal(analyticsReportSchema.parse("receiver-agent-performance"), "receiver-agent-performance");
   assert.throws(() => analyticsReportSchema.parse("unknown-report"));
   assert.throws(() => analyticsQuerySchema.parse({ receiver_agent: "not-an-object-id" }));
+});
+
+test("sourceGranularityMatch filters derived key only and wins over source_company", () => {
+  const granularityOnly = bookedLeadPrefix(
+    analyticsQuerySchema.parse({
+      source_granularity_key: "top10_leads_form",
+      source_company: "tbm_leads",
+    }),
+  );
+  const last = granularityOnly[granularityOnly.length - 1] as {
+    $match?: { derived_source_granularity_key?: RegExp };
+  };
+  const matcher = last.$match?.derived_source_granularity_key;
+  assert.ok(matcher instanceof RegExp);
+  assert.equal(matcher.source, "^top10_leads_form$");
+  assert.doesNotMatch(JSON.stringify(granularityOnly), /tbm_leads/);
+  assert.deepEqual(
+    sourceGranularityMatch("derived_source_granularity_key", "top10_leads_form")[0],
+    last,
+  );
 });
 
 test("analytics booked lead filters start with a leading date match", () => {
@@ -89,6 +119,7 @@ test("booked lead source attribution falls back to the employee source snapshot"
     "employee_source_snapshot.source_granularity_key",
     "form_lead.source_granularity_key",
     "call_lead.source_granularity_key",
+    "source",
   ]);
 
   const leadlessBooking = {
@@ -137,6 +168,71 @@ test("booked lead source attribution falls back to the employee source snapshot"
     ?.derived_source_granularity_key as RegExp;
   assert.ok(matcher instanceof RegExp);
   assert.equal(matcher.test("TBM_PRIME_LEADS_FORM"), true);
+
+  const bookedOnly = { source: "Old Booked Source" };
+  assert.equal(firstPresent(granularityReferences, bookedOnly), "Old Booked Source");
+});
+
+test("leadMatch matches historical slug options and channel-scoped company slugs", () => {
+  const catalog: FilterCatalog = {
+    source_companies: [],
+    source_granularities: [
+      {
+        id: "aaaaaaaaaaaaaaaaaaaaaaaa",
+        source_company_id: "company-top10",
+        company_slug: "top10_leads",
+        company_owner_label: "Top 10 Forms",
+        granularity_key: "top10_leads_form",
+        channel: "form",
+        owner_label: "Top10 Forms",
+        active: true,
+        origin: "registry",
+      },
+      {
+        id: "",
+        source_company_id: "",
+        company_slug: "legacy_sheet",
+        company_owner_label: "legacy_sheet",
+        granularity_key: "legacy_sheet",
+        channel: "form",
+        owner_label: "legacy_sheet",
+        active: true,
+        origin: "historical_distinct",
+      },
+    ],
+    agents: [],
+    merchants: [],
+  };
+  const legacy = leadMatch(
+    "FormLead",
+    analyticsQuerySchema.parse({
+      database_scope: "historical",
+      source_granularity_key: "legacy_sheet",
+    }),
+    catalog,
+  );
+  const legacyPreview = inspect(legacy, { depth: null });
+  assert.match(legacyPreview, /source_company/);
+  assert.match(legacyPreview, /\^legacy_sheet\$/);
+
+  const formMatch = leadMatch(
+    "FormLead",
+    analyticsQuerySchema.parse({
+      database_scope: "combined",
+      source_granularity_key: "top10_leads_form",
+    }),
+    catalog,
+  );
+  const callMatch = leadMatch(
+    "CallLead",
+    analyticsQuerySchema.parse({
+      database_scope: "combined",
+      source_granularity_key: "top10_leads_form",
+    }),
+    catalog,
+  );
+  assert.match(inspect(formMatch, { depth: null }), /\^top10_leads\$/);
+  assert.doesNotMatch(inspect(callMatch, { depth: null }), /\^top10_leads\$/);
 });
 
 test("combined source analytics merge by stable text dimension instead of ids", () => {
@@ -185,7 +281,7 @@ test("combined revenue trend merges rows by date period", () => {
   assert.equal(items[0].total_deposit_amount, 3000);
 });
 
-test("combined source analytics merge parent metrics and retain production children only", () => {
+test("combined source analytics merge parent metrics and keep company-only extras as leaves", () => {
   const merged = mergeAnalyticsPayload("source-company-funnel", [
     {
       items: [
@@ -219,10 +315,13 @@ test("combined source analytics merge parent metrics and retain production child
   ]);
 
   const items = merged.items as Record<string, unknown>[];
+  const children = items[0].granularities as Array<{ source_granularity_key?: string }>;
   assert.equal(items[0].total_leads, 10);
   assert.equal(items[0].reconciled_bookings, 5);
   assert.equal(items[0].booking_rate, 0.5);
-  assert.equal((items[0].granularities as unknown[]).length, 1);
+  assert.equal(children.length, 2);
+  assert.ok(children.some((child) => child.source_granularity_key === "main_site_form"));
+  assert.ok(children.some((child) => child.source_granularity_key === "main_site"));
 });
 
 test("combined receiver-agent analytics merge production rows and keep historical warning metadata", () => {
@@ -320,6 +419,8 @@ test("analytics CSV export uses the selected report rows", async () => {
         active: true,
       },
     ]);
+  (Agent as unknown as MutableModel).find = () => queryResult([]);
+  (Merchant as unknown as MutableModel).find = () => queryResult([]);
 
   const query = analyticsQuerySchema.parse({ database_scope: "production" });
   const result = await exportAnalyticsReportCsv("source-company-performance", query);

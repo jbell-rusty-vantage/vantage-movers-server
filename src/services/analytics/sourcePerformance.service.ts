@@ -2,43 +2,35 @@ import type { AnalyticsQuery } from "../../validation/v1.validation";
 import type { AdminModels } from "../admin/adminScope.service";
 import {
   bookedLeadPrefix,
-  leadMatch,
+  leadMatchForQuery,
   numberValue,
   rate,
   roundMoney,
   type AnalyticsRow,
 } from "./analyticsFilters";
 import {
-  companyOnlySourceRows,
-  loadProductionSourceLabelIndex,
-  nestSourceCompanyRows,
+  nestObservedSourceRows,
   sourceCompanyFromRow,
   sourceGranularityFromRow,
 } from "./sourceHierarchy";
 
 export async function getSourceCompanyPerformance(models: AdminModels, query: AnalyticsQuery) {
-  const supportsSourceGranularity = query.database_scope === "production";
+  const supportsSourceGranularity = query.database_scope !== "historical";
   const leaves = await bookedBySource(models, query, supportsSourceGranularity);
-  const items = supportsSourceGranularity
-    ? nestSourceCompanyRows(
-        leaves,
-        await loadProductionSourceLabelIndex(),
-        {
-          additiveFields: [
-            "bookings",
-            "cancelled_bookings",
-            "total_deposit_amount",
-            "total_binder_amount",
-          ],
-          derive: derivePerformanceRow,
-        },
-      )
-    : companyOnlySourceRows(leaves, { derive: derivePerformanceRow });
+  const items = await nestObservedSourceRows(leaves, query, {
+    additiveFields: [
+      "bookings",
+      "cancelled_bookings",
+      "total_deposit_amount",
+      "total_binder_amount",
+    ],
+    derive: derivePerformanceRow,
+  });
   return { items };
 }
 
 export async function getSourceCompanyFunnel(models: AdminModels, query: AnalyticsQuery) {
-  const supportsSourceGranularity = query.database_scope === "production";
+  const supportsSourceGranularity = query.database_scope !== "historical";
   const [formStats, callStats, bookedStats] = await Promise.all([
     leadStatsBySource(models, "FormLead", query, supportsSourceGranularity),
     leadStatsBySource(models, "CallLead", query, supportsSourceGranularity),
@@ -97,13 +89,10 @@ export async function getSourceCompanyFunnel(models: AdminModels, query: Analyti
     "total_deposit_amount",
     "total_binder_amount",
   ];
-  const items = supportsSourceGranularity
-    ? nestSourceCompanyRows(
-        leaves,
-        await loadProductionSourceLabelIndex(),
-        { additiveFields, derive: deriveFunnelRow },
-      )
-    : companyOnlySourceRows(leaves, { derive: deriveFunnelRow });
+  const items = await nestObservedSourceRows(leaves, query, {
+    additiveFields,
+    derive: deriveFunnelRow,
+  });
   return {
     items: items.sort(
       (left, right) => numberValue(right.total_deposit_amount) - numberValue(left.total_deposit_amount),
@@ -112,40 +101,17 @@ export async function getSourceCompanyFunnel(models: AdminModels, query: Analyti
 }
 
 export async function getLeadSourcePerformance(models: AdminModels, query: AnalyticsQuery) {
-  const items = await models["booked-leads"].aggregate([
-    ...bookedLeadPrefix(query),
-    {
-      $set: {
-        lead_source: {
-          $cond: [{ $or: [{ $eq: ["$source", null] }, { $eq: ["$source", ""] }] }, "unknown", "$source"],
-        },
-      },
-    },
-    {
-      $group: {
-        _id: "$lead_source",
-        bookings: { $sum: 1 },
-        cancelled_bookings: { $sum: { $cond: ["$is_cancelled", 1, 0] } },
-        total_deposit_amount: { $sum: { $ifNull: ["$deposit_amount", 0] } },
-        total_binder_amount: { $sum: { $ifNull: ["$total_binder_amount", 0] } },
-      },
-    },
-    {
-      $project: {
-        _id: 0,
-        lead_source: "$_id",
-        bookings: 1,
-        cancelled_bookings: 1,
-        total_deposit_amount: { $round: ["$total_deposit_amount", 2] },
-        total_binder_amount: { $round: ["$total_binder_amount", 2] },
-        cancellation_rate: {
-          $cond: [{ $eq: ["$bookings", 0] }, 0, { $divide: ["$cancelled_bookings", "$bookings"] }],
-        },
-      },
-    },
-    { $sort: { total_deposit_amount: -1, bookings: -1 } },
-    { $limit: 75 },
-  ]);
+  const supportsSourceGranularity = query.database_scope !== "historical";
+  const leaves = await bookedBySource(models, query, supportsSourceGranularity);
+  const items = await nestObservedSourceRows(leaves, query, {
+    additiveFields: [
+      "bookings",
+      "cancelled_bookings",
+      "total_deposit_amount",
+      "total_binder_amount",
+    ],
+    derive: derivePerformanceRow,
+  });
   return { items };
 }
 
@@ -183,7 +149,7 @@ async function leadStatsBySource(
 ): Promise<AnalyticsRow[]> {
   const model = leadType === "FormLead" ? models["form-leads"] : models["call-leads"];
   return model.aggregate([
-    { $match: leadMatch(leadType, query) },
+    { $match: await leadMatchForQuery(leadType, query) },
     {
       $group: {
         _id: supportsSourceGranularity

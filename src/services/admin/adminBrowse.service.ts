@@ -15,7 +15,9 @@ import {
   getAgentBrowseMetrics,
   normalizeAgentMetricKey,
 } from "./agentBrowseMetrics.service";
-import { toObjectId } from "../../utils/objectId";
+import { getAdminFacets } from "./adminFacets.service";
+import { findCatalogGranularity } from "./filterCatalog";
+import { isObjectIdString, toObjectId } from "../../utils/objectId";
 
 type AdminRecord = Record<string, unknown>;
 type AdminFilter = QueryFilter<AdminRecord>;
@@ -303,7 +305,14 @@ async function browseConcrete(
   const models = getAdminModels(scope);
   const model = models[resource];
   const config = RESOURCE_CONFIGS[resource];
-  const filter = applyResourceFilter(resource, query, buildFilter(config, query));
+  const filter = applyResourceFilter(
+    resource,
+    query,
+    mergeFilters(
+      buildFilter(config, query),
+      await leadSourceGranularityFilter(resource, query, scope),
+    ),
+  );
   const sortField = safeSortField(resource, query.sort);
   const sort = { [sortField]: query.direction === "asc" ? 1 : -1 } as Record<string, 1 | -1>;
   const skip = (query.page - 1) * query.limit;
@@ -480,13 +489,15 @@ function buildFilter(config: ResourceConfig, query: AdminBrowseQuery): AdminFilt
   const clauses: AdminFilter[] = [];
   addDateClause(clauses, config, query);
   addQClause(clauses, config.qFields, query.q);
+  const granularitySelected =
+    typeof query.source_granularity_key === "string" && Boolean(query.source_granularity_key.trim());
   for (const [param, fields] of Object.entries(config.stringFilters)) {
+    if (param === "source_granularity_key") continue;
+    if (param === "source_company" && granularitySelected) continue;
     const value = query[param as keyof AdminBrowseQuery];
     if (typeof value === "string" && value.trim()) {
       clauses.push(
-        param === "source_granularity_key"
-          ? orExact(fields, value)
-          : orContains(fields, value),
+        param === "source_company" ? orExact(fields, value) : orContains(fields, value),
       );
     }
   }
@@ -531,6 +542,58 @@ function addQClause(clauses: AdminFilter[], fields: string[], q?: string) {
     ? [{ _id: toObjectId(q) }]
     : [];
   clauses.push({ $or: [...objectIdClause, ...containsClauses(fields, q)] });
+}
+
+async function leadSourceGranularityFilter(
+  resource: AdminResource,
+  query: AdminBrowseQuery,
+  scope: ConcreteAdminScope,
+): Promise<AdminFilter> {
+  if (resource !== "form-leads" && resource !== "call-leads") {
+    return {};
+  }
+  const submitted =
+    typeof query.source_granularity_key === "string" ? query.source_granularity_key.trim() : "";
+  if (!submitted) {
+    return {};
+  }
+
+  const fields = ["source_granularity_key", "source_granularity_label_snapshot"];
+  const catalog = (await getAdminFacets(scope)).catalog;
+  const row = findCatalogGranularity(catalog, submitted);
+  const expectedChannel = resource === "form-leads" ? "form" : "call";
+  const companySlug =
+    (scope === "historical" || row?.origin === "historical_distinct") &&
+    row?.company_slug &&
+    row.channel === expectedChannel &&
+    row.company_slug.trim().toLowerCase() !== submitted.toLowerCase()
+      ? row.company_slug
+      : undefined;
+  if (row?.id && isObjectIdString(row.id)) {
+    return {
+      $or: [
+        ...fields.map((field) => ({ [field]: exactCaseInsensitivePattern(submitted) })),
+        { source_granularity_id: toObjectId(row.id) },
+        ...(row.origin === "historical_distinct" || companySlug
+          ? [{ source_company: exactCaseInsensitivePattern(submitted) }]
+          : []),
+        ...(companySlug ? [{ source_company: exactCaseInsensitivePattern(companySlug) }] : []),
+      ],
+    };
+  }
+
+  if (row?.origin === "historical_distinct" || scope === "historical" || companySlug) {
+    fields.push("source_company");
+  }
+  if (companySlug) {
+    return {
+      $or: [
+        ...fields.map((field) => ({ [field]: exactCaseInsensitivePattern(submitted) })),
+        { source_company: exactCaseInsensitivePattern(companySlug) },
+      ],
+    };
+  }
+  return orExact(fields, submitted);
 }
 
 function orContains(fields: string[], value: string): AdminFilter {

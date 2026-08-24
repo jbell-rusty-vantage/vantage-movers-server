@@ -18,6 +18,12 @@ applies_to:
 
 # Operations Registry source connections and Owner UI
 
+> **Delivery:** this specification is being executed in four passes by the
+> [Operations Registry source connections delivery pack](operations-registry-source-connections/README.md).
+> Live status is in [`PROGRESS.md`](operations-registry-source-connections/PROGRESS.md).
+> This document remains the authority; the pack sequences it and never adds
+> semantics. Where the two disagree, this document wins.
+
 ## 1. Decision
 
 The Operations Registry has one canonical attribution hierarchy:

@@ -3,7 +3,7 @@ import type { AdminModels } from "../admin/adminScope.service";
 import {
   bookedLeadPrefix,
   cancelledLeadPrefix,
-  leadMatch,
+  leadMatchForQuery,
   numberValue,
   rate,
   roundMoney,
@@ -11,8 +11,8 @@ import {
 
 export async function getSummary(models: AdminModels, query: AnalyticsQuery) {
   const [formLeads, callLeads, [booked = {}], [cancelled = {}]] = await Promise.all([
-    models["form-leads"].countDocuments(leadMatch("FormLead", query)).exec(),
-    models["call-leads"].countDocuments(leadMatch("CallLead", query)).exec(),
+    models["form-leads"].countDocuments(await leadMatchForQuery("FormLead", query)).exec(),
+    models["call-leads"].countDocuments(await leadMatchForQuery("CallLead", query)).exec(),
     models["booked-leads"].aggregate([
       ...bookedLeadPrefix(query),
       {

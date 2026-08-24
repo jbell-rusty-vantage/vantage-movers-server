@@ -1,6 +1,6 @@
 import type { AnalyticsQuery } from "../../validation/v1.validation";
 import type { AdminModels } from "../admin/adminScope.service";
-import { bookedLeadPrefix, leadMatch } from "./analyticsFilters";
+import { bookedLeadPrefix, leadMatchForQuery } from "./analyticsFilters";
 
 export async function getLocalVsLongDistance(models: AdminModels, query: AnalyticsQuery) {
   const items = await models["booked-leads"].aggregate([
@@ -62,7 +62,7 @@ export async function getStatePerformance(
   return { items };
 }
 
-function stateStats(
+async function stateStats(
   models: AdminModels,
   leadType: "FormLead" | "CallLead",
   query: AnalyticsQuery,
@@ -70,7 +70,7 @@ function stateStats(
 ): Promise<StateRow[]> {
   const model = leadType === "FormLead" ? models["form-leads"] : models["call-leads"];
   return model.aggregate<StateRow>([
-    { $match: leadMatch(leadType, query) },
+    { $match: await leadMatchForQuery(leadType, query) },
     {
       $set: {
         state: {
@@ -113,10 +113,10 @@ function mergeStateRows(rows: StateRow[]) {
     .slice(0, 50);
 }
 
-function laneStats(models: AdminModels, leadType: "FormLead" | "CallLead", query: AnalyticsQuery) {
+async function laneStats(models: AdminModels, leadType: "FormLead" | "CallLead", query: AnalyticsQuery) {
   const model = leadType === "FormLead" ? models["form-leads"] : models["call-leads"];
   return model.aggregate([
-    { $match: leadMatch(leadType, query) },
+    { $match: await leadMatchForQuery(leadType, query) },
     {
       $set: {
         pickup: {

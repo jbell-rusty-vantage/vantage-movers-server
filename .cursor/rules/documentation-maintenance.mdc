@@ -31,6 +31,6 @@ Link glossary terms; do not redefine them. Do not copy owner policy into softwar
 
 Server behavior stays in `vantage-main-server`. Admin UI maps live in `vantage-admin/.cursor/rules/`. Extension workflows live in `granot_sync_extensions_and_services/.cursor/rules/`. Client-site / `@vantage/api-client` maps live in `vantage-movers-clients/.cursor/rules/`. Cross-link; do not fork the same invariant.
 
-`.cursor/okf-workspace/` is agent coordination (NOW, messages, ideas, generated progress). It is not a knowledge layer. Do not copy Service invariants there.
+`.cursor/okf-workspace/` and `.cursor/story-refactor-workspace/` are agent coordination (NOW, messages, ideas, generated progress). They are not a knowledge layer. Do not copy Service invariants there.
 
 If no documentation update is needed, say so.

@@ -44,6 +44,10 @@ const CSV_COLUMNS: Record<AnalyticsReport, string[]> = {
   ],
   "booking-cancellation-ratio": [
     "source_company",
+    "source_company_label",
+    "source_granularity_key",
+    "source_granularity_label",
+    "channel",
     "booked_leads",
     "cancelled_leads",
     "active_booked_leads",
@@ -75,7 +79,18 @@ const CSV_COLUMNS: Record<AnalyticsReport, string[]> = {
     "affected_deposit_amount",
     "affected_binder_amount",
   ],
-  "lead-source-performance": ["lead_source", "bookings", "cancelled_bookings", "total_deposit_amount", "total_binder_amount", "cancellation_rate"],
+  "lead-source-performance": [
+    "source_company",
+    "source_company_label",
+    "source_granularity_key",
+    "source_granularity_label",
+    "channel",
+    "bookings",
+    "cancelled_bookings",
+    "total_deposit_amount",
+    "total_binder_amount",
+    "cancellation_rate",
+  ],
   "local-vs-long-distance": ["local_type", "bookings", "cancelled_bookings", "total_deposit_amount", "total_binder_amount", "cancellation_rate"],
   "geographic-lanes": ["lead_type", "pickup_state", "delivery_state", "leads", "booked_leads", "cancelled_leads", "booking_rate"],
   "pickup-state-performance": ["state", "leads", "booked_leads", "cancelled_leads", "booking_rate"],
@@ -114,7 +129,8 @@ const CSV_COLUMNS: Record<AnalyticsReport, string[]> = {
   "receiver-agent-source-breakdown": [
     "receiver_agent_id",
     "receiver_agent_name",
-    "source_label",
+    "source_granularity_key",
+    "source_granularity_label",
     "source_company",
     "lead_type",
     "received_leads",
@@ -149,7 +165,7 @@ export function rowsForCsv(
   if (report === "booking-cancellation-ratio") {
     return [
       { source_company: "overall", ...objectValue(data.overall) },
-      ...arrayValue(data.by_source_company),
+      ...flattenSourceHierarchyRows(arrayValue(data.by_source_company)),
     ];
   }
   if (report === "geographic-lanes") {
@@ -160,20 +176,25 @@ export function rowsForCsv(
   }
   if (
     report === "source-company-performance" ||
-    report === "source-company-funnel"
+    report === "source-company-funnel" ||
+    report === "lead-source-performance"
   ) {
-    return arrayValue(data.items).flatMap((company) => {
-      const granularities = arrayValue(company.granularities);
-      const { granularities: _ignored, ...parent } = company;
-      if (!granularities.length) return [parent];
-      return granularities.map((granularity) => ({
-        source_company: company.source_company,
-        source_company_label: company.source_company_label,
-        ...granularity,
-      }));
-    });
+    return flattenSourceHierarchyRows(arrayValue(data.items));
   }
   return arrayValue(data.items);
+}
+
+function flattenSourceHierarchyRows(rows: CsvRow[]): CsvRow[] {
+  return rows.flatMap((company) => {
+    const granularities = arrayValue(company.granularities);
+    const { granularities: _ignored, ...parent } = company;
+    if (!granularities.length) return [parent];
+    return granularities.map((granularity) => ({
+      source_company: company.source_company,
+      source_company_label: company.source_company_label,
+      ...granularity,
+    }));
+  });
 }
 
 function arrayValue(value: unknown): CsvRow[] {

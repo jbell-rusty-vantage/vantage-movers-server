@@ -1,20 +1,24 @@
 import type { AdminDatabaseScope } from "../../validation/v1.validation";
-import { listCatalogItems } from "../catalog";
+import { onRegistryCacheInvalidation } from "../operationsRegistry";
+import type { ConcreteAdminScope } from "./adminScope.service";
 import {
-  listSourceCompanies,
-  listSourceGranularities,
-} from "../operationsRegistry";
-import { getAdminModels, type ConcreteAdminScope } from "./adminScope.service";
+  EMPTY_FILTER_CATALOG,
+  type FilterCatalog,
+  loadHistoricalCatalog,
+  loadProductionCatalog,
+  mergeCatalogs,
+} from "./filterCatalog";
 
-/**
- * Distinct filter values ("facets") per database scope. Production filters
- * mirror the fixed Google Form dropdowns / source-company enum, while
- * historical filters are computed live from the `vantagemovershistorical`
- * collections (agents, source companies, source labels, merchants) because
- * that data set is open-ended and read-only. Results are cached briefly to
- * avoid re-scanning the historical collections on every dashboard load.
- */
+export type {
+  FilterCatalog,
+  FilterCatalogAgent,
+  FilterCatalogCompany,
+  FilterCatalogGranularity,
+  FilterCatalogMerchant,
+} from "./filterCatalog";
+
 export type AdminFacets = {
+  catalog: FilterCatalog;
   agents: string[];
   source_companies: string[];
   source_granularities: string[];
@@ -25,6 +29,13 @@ export type AdminFacets = {
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
 const cache = new Map<ConcreteAdminScope, { value: AdminFacets; expiresAt: number }>();
+
+onRegistryCacheInvalidation((keys) => {
+  if (keys.includes("facets")) {
+    cache.delete("production");
+    cache.delete("historical");
+  }
+});
 
 export async function getAdminFacets(scope: AdminDatabaseScope): Promise<AdminFacets> {
   if (scope === "combined") {
@@ -40,87 +51,38 @@ export async function getAdminFacets(scope: AdminDatabaseScope): Promise<AdminFa
     return cached.value;
   }
 
-  const value = scope === "production" ? await productionFacets() : await historicalFacets();
+  const catalog =
+    scope === "production"
+      ? await loadProductionCatalog()
+      : await loadHistoricalCatalog((await getAdminFacets("production")).catalog);
+  const value = withCompatibility(catalog);
   cache.set(scope, { value, expiresAt: Date.now() + CACHE_TTL_MS });
   return value;
 }
 
-async function productionFacets(): Promise<AdminFacets> {
-  const [agents, merchants, sourceCompanies, sourceGranularities] = await Promise.all([
-    listCatalogItems("agents"),
-    listCatalogItems("merchants"),
-    listSourceCompanies(),
-    listSourceGranularities(),
-  ]);
+export function resetAdminFacetsCacheForTests(): void {
+  cache.clear();
+}
+
+function withCompatibility(catalog: FilterCatalog): AdminFacets {
   return {
-    agents: agents.map((item) => item.name),
-    source_companies: sourceCompanies.map((company) => company.company_slug),
-    source_granularities: sourceGranularities.map(
+    catalog,
+    source_companies: catalog.source_companies.map((company) => company.company_slug),
+    source_granularities: catalog.source_granularities.map(
       (granularity) => granularity.granularity_key,
     ),
-    sources: sourceGranularities.map((granularity) => granularity.crm_label),
-    merchants: merchants.map((item) => item.name),
+    sources: catalog.source_granularities
+      .map((granularity) => granularity.crm_label)
+      .filter((label): label is string => Boolean(label && label.trim())),
+    agents: catalog.agents.map((agent) => agent.name),
+    merchants: catalog.merchants.map((merchant) => merchant.name),
   };
 }
 
-async function historicalFacets(): Promise<AdminFacets> {
-  const models = getAdminModels("historical");
-  const booked = models["booked-leads"];
-  const formLeads = models["form-leads"];
-  const callLeads = models["call-leads"];
-
-  const [agentRows, sources, formSources, callSources, formGranularities, callGranularities, merchants] = await Promise.all([
-    booked.aggregate<{ _id: unknown }>([
-      { $unwind: "$agent_allocations" },
-      { $group: { _id: "$agent_allocations.agent_name_snapshot" } },
-    ]),
-    booked.distinct("source"),
-    formLeads.distinct("source_company"),
-    callLeads.distinct("source_company"),
-    formLeads.distinct("source_granularity_key"),
-    callLeads.distinct("source_granularity_key"),
-    booked.distinct("merchant"),
-  ]);
-
-  const sourceList = cleanStrings(sources);
-  return {
-    agents: cleanStrings(agentRows.map((row) => row._id)),
-    // The analytics source-company filter matches the derived source company,
-    // which can be either a lead source_company slug or the booked `source`
-    // label, so expose the union of both for historical scope.
-    source_companies: cleanStrings([...formSources, ...callSources, ...sourceList]),
-    source_granularities: cleanStrings([...formGranularities, ...callGranularities]),
-    sources: sourceList,
-    merchants: cleanStrings(merchants),
-  };
+function mergeFacets(production: AdminFacets, historical: AdminFacets): AdminFacets {
+  return withCompatibility(mergeCatalogs(production.catalog, historical.catalog));
 }
 
-function cleanStrings(values: unknown[]): string[] {
-  const seen = new Map<string, string>();
-  for (const value of values) {
-    if (typeof value !== "string") {
-      continue;
-    }
-    const trimmed = value.trim();
-    if (!trimmed) {
-      continue;
-    }
-    const key = trimmed.toLowerCase();
-    if (!seen.has(key)) {
-      seen.set(key, trimmed);
-    }
-  }
-  return Array.from(seen.values()).sort((left, right) =>
-    left.localeCompare(right, "en", { sensitivity: "base" }),
-  );
-}
-
-function mergeFacets(left: AdminFacets, right: AdminFacets): AdminFacets {
-  return {
-    agents: cleanStrings([...left.agents, ...right.agents]),
-    source_companies: cleanStrings([...left.source_companies, ...right.source_companies]),
-    source_granularities: cleanStrings([...left.source_granularities, ...right.source_granularities]),
-    sources: cleanStrings([...left.sources, ...right.sources]),
-    merchants: cleanStrings([...left.merchants, ...right.merchants]),
-  };
+export function catalogOrEmpty(catalog: FilterCatalog | undefined): FilterCatalog {
+  return catalog ?? EMPTY_FILTER_CATALOG;
 }
