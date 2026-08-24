@@ -23,7 +23,7 @@ generated:
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/operationsRegistry/`  
-**Authoritative plan:** [`../../../docs/current_plans/01-operations-registry-specification.md`](../../../docs/current_plans/01-operations-registry-specification.md)
+**Source connection and Owner UI specification:** [`../../operations-registry-source-connections-owner-ui-specification.md`](../../operations-registry-source-connections-owner-ui-specification.md)
 
 # Operations Registry
 

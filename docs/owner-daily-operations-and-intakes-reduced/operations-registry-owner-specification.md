@@ -8,7 +8,8 @@ tags:
   - owner-dashboard
   - lead-messaging
   - delivery
-status: draft
+status: superseded
+superseded_by: ../operations-registry-source-connections-owner-ui-specification.md
 stale_after: 2026-11-21
 generated:
   by: claude-opus-5
@@ -41,6 +42,12 @@ applies_to:
 ---
 
 # Operations Registry (Owner) — specification
+
+> Superseded for source-connection logic and Owner UI by
+> [`operations-registry-source-connections-owner-ui-specification.md`](../operations-registry-source-connections-owner-ui-specification.md).
+> This file remains as the historical ODR-38 through ODR-40 issue pack. In
+> particular, its proposal to place text policy on `LeadSourceCompany` is not
+> current: implemented and final ownership is `GranotCrmSource.outbound_sms`.
 
 ## Why this document exists
 

@@ -21,8 +21,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T06:52:00Z
+  by: process:okf-docs-keeper
+  at: 2026-08-24T18:54:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)
 **Primary code:** `src/services/granotLifecycle/capture.ts`, `src/services/granotLifecycle/extensionApply.ts`, `src/services/granotLifecycle/queuePublisher.ts`, `src/services/granotLifecycle/receiptEvidence.ts`, `src/services/granotLifecycle/metrics.ts`, `src/models/GranotObservationReceipt.ts`, `src/models/granotLifecycleSchemas.ts`, `src/middleware/requireGranotWebhookSecret.ts`, `src/routes/granot-webhook.routes.ts`, `src/routes/extension-granot-apply.routes.ts`
@@ -66,7 +66,7 @@ generated:
 
 Stored headers are exactly `content-type`, `content-length`, `user-agent`, `x-request-id`, and `x-vercel-id`, each value truncated to 1,024 characters.
 
-Identical deliveries are distinct receipts. `payload_sha256` is diagnostic, never idempotency.
+Identical deliveries are distinct receipts. `payload_sha256` is diagnostic, never idempotency. Webhook payload keys are not schema-validated. Granot may add unused fields or omit unused ones (for example `service_type` or `cubic_rate`). Capture stores the credential-redacted body as Mixed evidence; normalization later reads only known optional keys.
 
 ## Responses
 

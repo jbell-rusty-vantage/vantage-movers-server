@@ -57,6 +57,7 @@ Units 01–31 are implemented on `granot-lead-lifecycle` (Unit 16 also lands ext
 ## Live constraints
 
 - `202` cannot precede commit. Publish failure must not change `202` or the receipt.
+- Webhook payload keys are not schema-validated. Unused Granot fields may appear or disappear; capture stores the body as evidence.
 - `granot-lifecycle-events*` wake-ups are consumed by `api/queues/granot-lifecycle-consumer.ts`, which accepts only `{ receipt_id }` and calls the shared drainer. Five-minute cron `/api/cron/granot-lifecycle-drain` scans due work. Mongo claim/fence selects the single winner.
 - Processing disabled means no claim; capture and due work remain intact.
 - Processing and shadow default true. All eight effect flags stay false.

@@ -19,8 +19,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T06:52:00Z
+  by: process:okf-docs-keeper
+  at: 2026-08-24T18:54:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/normalization.ts`, `src/models/GranotObservation.ts`  
@@ -63,7 +63,7 @@ Emitted issue codes: `payload_not_object`, `route_payload_event_conflict`, `miss
 
 ## Scalar, source, and display rules
 
-- Only scalars participate in scalar fields. Arrays/objects never stringify to `[object Object]`.
+- Only scalars participate in scalar fields. Arrays/objects never stringify to `[object Object]`. Unknown payload keys are ignored. `service_type` and cubic feet are optional; absence does not emit an issue. Unused fields such as `cubic_rate` stay on the receipt and are not copied onto the Observation.
 - Strings are Unicode NFKC, trimmed, and bounded. Over-bound input emits the applicable issue and does not manufacture a valid identity.
 - Source lookup label uses the shared `normalizeGranotSourceLabel` helper (NFKC + trim + collapsed whitespace + lowercase). Empty/control/bidi/invalid → `invalid_source_label`. Registry commands and `sourcePolicy.ts` must use the same helper.
 - Job Number uses `normalizeJobNo`. Form reference sentinels `not provided` / `not_provided` / blank become absent identities.

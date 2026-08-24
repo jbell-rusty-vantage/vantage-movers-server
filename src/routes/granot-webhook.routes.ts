@@ -64,6 +64,8 @@ export function createGranotWebhookRouter(deps: GranotWebhookRouterDeps = {}) {
 
         let result: CaptureGranotLifecycleWebhookResult;
         try {
+          // Payload keys are evidence, not a schema. Granot may add unused
+          // fields or drop unused ones (for example service_type / cubic_rate).
           result = await capture({
             route_event_class: route.event_type,
             captured_at: new Date(),

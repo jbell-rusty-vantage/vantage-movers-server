@@ -206,6 +206,29 @@ test("[AC-01] both valid secrets attach header_secret after the body is also val
   assert.deepEqual(captures[0]?.payload, { job_no: "567632" });
 });
 
+test("[AC-02] unused Granot field additions or omissions are captured as-is and still return 202", async () => {
+  process.env.GRANOT_WEBHOOK_SECRET = SYNTHETIC_SECRET;
+  const payload = {
+    event_type: "lead_created",
+    job_no: "567632",
+    priority: "1",
+    label: "Synthetic Forms",
+    est_cf: "800",
+    cubic_rate: "4.25",
+  };
+
+  const response = await post("lead-created", payload, SYNTHETIC_SECRET);
+  assert.equal(response.status, 202);
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    accepted: true,
+    event_type: "lead_created",
+    receipt_id: "receipt-1",
+  });
+  assert.deepEqual(captures[0]?.payload, payload);
+  assert.equal("service_type" in (captures[0]?.payload as object), false);
+});
+
 test("[AC-02] capture happens before 202 and uses the invoked route class", async () => {
   process.env.GRANOT_WEBHOOK_SECRET = SYNTHETIC_SECRET;
   const cases = [

@@ -430,6 +430,26 @@ test("[AC-05][AC-29] source, identity, contact, move, money, and agent rules cov
   assert.ok(!agent.issues.some((issue) => issue.code === "granot_agent_identity_conflict"));
 });
 
+test("[AC-05] omitted service_type and unused cubic_rate do not change extracted webhook facts", () => {
+  const actual = normalizeGranotReceipt(
+    webhookReceipt("lead_created", {
+      event_type: "lead_created",
+      job_no: "synthetic-job-100",
+      priority: "1",
+      est_cf: "800",
+      cubic_rate: "4.25",
+    }),
+  );
+  assert.equal(actual.normalization_result, "valid");
+  assert.deepEqual(actual.issues, []);
+  assert.equal(actual.identity.normalized_job_no, "SYNTHETIC JOB 100");
+  assert.equal(actual.priority.canonical, "1");
+  assert.equal(actual.move.service_type_raw, undefined);
+  assert.equal(actual.move.estimated_cubic_feet_raw, "800");
+  assert.equal(actual.move.estimated_cubic_feet, 800);
+  assert.equal("cubic_rate" in actual.move, false);
+});
+
 test("[AC-05] display money never becomes domain command input", () => {
   const actual = normalizeGranotReceipt(
     webhookReceipt("booking_status_changed", {
