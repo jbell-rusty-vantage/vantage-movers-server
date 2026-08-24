@@ -4,13 +4,17 @@ title: Google Sheets Service
 description: Tab routing, projections, upsert/delete, and master versus source writes.
 tags: [sheet-sync, google-sheets]
 status: draft
-stale_after: 2026-09-20
+stale_after: 2026-09-21
 resource: src/services/googleSheets/googleSheets.service.ts
 applies_to:
   - src/services/googleSheets/googleSheets.service.ts
   - src/services/googleSheets.service.ts
+  - src/services/googleSheets/targets.ts
+  - src/services/googleSheets/syncRows.ts
+  - src/services/googleSheets/deleteRows.ts
   - src/services/googleSheets/projections/formLeadRow.ts
   - src/services/googleSheets/projections/callLeadRow.ts
+  - src/services/sheetSync/drainer/jobPlanner.ts
 owners: [team:main-server]
 sources:
   - id: primary
@@ -21,8 +25,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-22T03:54:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -33,7 +37,7 @@ generated:
 
 **Role:** Projects Mongo Form Lead, Call Lead, Booking, and Cancellation documents into **Reporting Sheets**. **System of Record** is MongoDB; sheets are eventually consistent reporting only — never authoritative for lead state, CPL, or CRM.
 
-**Facade:** `src/services/googleSheets.service.ts` re-exports this module. Callers include legacy sheet sync (`sheetSyncSourceLookup`) and the queued drainer (`jobPlanner` mirrors the same tab routing).
+**Facade:** `src/services/googleSheets.service.ts` re-exports this module. Legacy sheet sync (`sheetSyncSourceLookup` → `runFullSheetSyncProcess`) calls these functions. The queued drainer (`jobPlanner.ts`) **mirrors the same tab routing** and writes through `batchWriter` instead of this facade.
 
 ## Public API
 
@@ -41,27 +45,30 @@ generated:
 |----------|--------|----------------|
 | `syncFormLeadToSheets` | Form Lead | **Master Leads** (+ optional Source Company Sheet) |
 | `syncCallLeadToSheets` | Call Lead | **Master Leads** (+ optional Source Company Sheet) |
-| `syncBookedLeadToSheets` | Booking | **Master Booked** |
-| `syncCancelledLeadToSheets` | Cancellation | **Master Booked** |
-| `deleteFormLeadFromSheets` | Form lead | Primary tab + `Bad Leads` if present |
-| `deleteCallLeadFromSheets` | Call lead | Primary tab only |
+| `syncBookedLeadToSheets` | Booking | **Master Booked** / `Booked Deals` |
+| `syncCancelledLeadToSheets` | Cancellation | **Master Booked** / `Cancelled Deals` |
+| `deleteFormLeadFromSheets` | Form lead | Current primary tab(s) + `master_bad_leads` in the delete-target list |
+| `deleteCallLeadFromSheets` | Call lead | Duplicate-aware **current** primary tab(s) only (Calls **or** Duplicate Calls) |
 | `deleteBookedLeadFromSheets` | Booking | `Booked Deals` |
 | `deleteCancelledLeadFromSheets` | Cancellation | `Cancelled Deals` |
-| `ensureAllConfiguredSheetTabs` | — | Provisions all tabs/headers at bootstrap |
+| `ensureAllConfiguredSheetTabs` | — | Provisions Master Leads, Master Booked, and every source container that has an env id |
 
-All sync functions return `SheetSyncEntry[]` (per-target row number, status, errors). Deletes are void; legacy delete path uses these directly; queued mode prefers tombstones in the outbox.
+All sync functions return `SheetSyncEntry[]` (per-target row number, status, errors). Deletes are void on the facade; queued mode prefers tombstones in the outbox. Per-target failures are captured; other targets still attempt.
 
-## Tab routing (this file’s decisions)
+## Tab routing (legacy facade **and** `jobPlanner.ts`)
 
-### Form leads (`syncFormLeadToSheets` / `deleteFormLeadFromSheets`)
+### Form leads
 
-| Duplicate Lead? | Bad Lead? | Primary tab(s) |
-|-----------------|-----------|----------------|
+| Duplicate Lead? | Bad Lead? | Writes |
+|-----------------|-----------|--------|
 | no | no | `Forms` |
 | yes | no | `Duplicates` |
-| either | yes | primary tab **+** `Bad Leads` |
+| either | yes | primary tab **+** Master `Bad Leads` |
 
-When `bad_lead` is cleared on sync, explicitly deletes the row from `Bad Leads` (master only).
+When `bad_lead` is cleared:
+
+- **Legacy** `syncFormLeadToSheets` always calls `deleteRowsFromTargets` on Master `Bad Leads`.
+- **Queued** `planSourceLead` deletes Master `Bad Leads` only when `sheet_sync[]` already has `master_bad_leads`.
 
 ### Call leads (`callLeadTargetBase`)
 
@@ -70,22 +77,30 @@ When `bad_lead` is cleared on sync, explicitly deletes the row from `Bad Leads` 
 | no | `Calls` |
 | yes | `Duplicate Calls` |
 
-Same `CALL_SHEET_HEADERS` for both; routing keeps Duplicate Lead spend out of the main Calls tab. **Bad Call** workflow is planned only — tab name exists in config; no mark-bad API yet.
+Same `CALL_SHEET_HEADERS` for both. On every call sync, the **stale** opposite tab is deleted (legacy and queued), even when `sheet_sync[]` is empty — lookup is by Mongo ID. Master Leads also provisions **`Duplicate Calls`**.
+
+**`Bad Calls`** exists in `SHEET_TAB_NAMES` and is added to source tab sets when `hasBadTabs` is true. **No sync write path targets it.**
+
+`created_on_unmatched` Call Leads are skipped **before** this module (`syncSourceLead` / `planSourceLead`). This facade will write a Calls row if invoked directly.
 
 ### Bookings / cancellations
 
-- Bookings → Master Booked / `Booked Deals`
-- Cancellations → Master Booked / `Cancelled Deals`
+- Bookings → Master Booked / `Booked Deals` only (no source booked sheet).
+- Cancellations → Master Booked / `Cancelled Deals` only.
+- A **Booking Chain** job writes the booked row, then the linked source lead (if `lead_ref` + `lead_model` exist). Referral / leadless use `booked_lead` (booked row only).
+- A **Cancellation Chain** job writes the booking chain first, then the cancellation row.
 
-Header constants live in `src/config/domain/sheets.ts`. Row shape built by `projections/*Row.ts`.
+Header constants live in `src/config/domain/sheets.ts`. Row shape is built by `projections/*Row.ts`.
 
 ## Write targets (`getLeadTargets` in `targets.ts`)
 
 Every lead sync **always** writes **Master Sheets** first.
 
-**Source Company Sheets** (TBM, Top10, etc.) are appended **only** when `WRITE_SOURCE_LEAD_SHEETS=true` (`shouldWriteSourceLeadSheets()`). Default is **master-only** — Source Company Sheets derive rows from Master via sheet import queries per glossary. Target plumbing stays in code either way.
+**Source Company Sheets** are appended **only** when `shouldWriteSourceLeadSheets()` is true. That helper is true only for `WRITE_SOURCE_LEAD_SHEETS` trimmed/lowercased to the literal `"true"` (`"1"` / `"false"` stay off). Default is **master-only**. Target plumbing stays in code either way.
 
-`not_provided` has no source container. `main_site` has no bad tabs on source sheets.
+`not_provided` and `paid_overflow` have no source container env. `main_site` has `hasBadTabs: false`. Source env names include `GETMOVERS_LEADS_SHEET_ID` for `get_movers_leads`.
+
+`getSourceLeadTabs`: base set is the Master Leads tabs (Forms, Calls, Duplicates, Duplicate Calls, Bad Leads). When `hasBadTabs` is true, the helper also appends `Bad Leads` and `Bad Calls`.
 
 ## Upsert mechanics (`syncRows.ts` + `rowLookup.ts`)
 
@@ -93,62 +108,52 @@ For each target:
 
 1. Ensure the **single tab being written** exists with correct headers (not full sibling tab provisioning — that is `ensureAllConfiguredSheetTabs`).
 2. **Upsert by Lead ID:** lookup `Mongo ID` column; update row if found, else append.
-3. Use `document.sheet_sync[].row_number` when still valid (verified before update).
-4. Per-target failures are captured in results; other targets still attempt.
+3. Use `document.sheet_sync[].row_number` when it still contains that Mongo ID.
+4. Per-target failures stay on that result; other targets still attempt.
 
-Returns updated `sheet_sync` entries stored on the Mongo document by `syncAndStore`.
+Returns updated `sheet_sync` entries stored on the Mongo document by `syncAndStore` (legacy) or the drainer's `updateOne` (queued).
 
 ## Delete mechanics (`deleteRows.ts`)
 
 1. Resolve targets from fallback list + historical `sheet_sync` entries (`getDeleteTargets`).
 2. Find row by Mongo ID (prefer cached `row_number` when it still matches).
-3. Delete sheet row via `batchUpdate.deleteDimension`.
+3. Delete via `batchUpdate.deleteDimension`. Missing tab or missing row is a no-op (idempotent).
 
-Form delete also attempts `master_bad_leads`. Call delete uses duplicate-aware primary targets only.
+Form delete also lists `master_bad_leads` in `syncedTargets`. Call delete uses the current duplicate-aware primary targets only (it does not also delete the stale opposite tab — that happens on **sync**). Queued deletes use the tombstone `previous_targets` snapshot.
 
-## Projections (not in this file — do not inline row values here)
+## Projections (do not inline live cell values elsewhere)
 
 | Helper | Columns driven by |
 |--------|-------------------|
-| `formLeadToRow` | Timestamp, location, move date, contact, quoted/cubic feet, booking mirrors, Mongo ID, ref_no, source label, bad-lead label, `Sales Rep` from `receiver_agent_name_snapshot` |
-| `callLeadToRow` | Timestamp, job no, phone, duration, booking mirrors, local, cubic feet, Mongo ID, inbound source label, `FormFill`, `Sales Rep` from `receiver_agent_name_snapshot` |
-| `bookedLeadToRow` / `cancelledLeadToRow` | Booking/cancellation owner fields |
+| `formLeadToRow` | Timestamp, name, zips/states (empty state → `FORM_LEAD_UNKNOWN_STATE`), local, move date, contact, quoted/cubic feet, booking mirrors, Mongo ID, `ref_no` or `"not provided"`, source label (`crm_source_label_snapshot` → `source_granularity_label_snapshot` → `getFormLeadSourceCompanyLabel`), `formatFormLeadBadLeadReason(bad_lead)`, `Sales Rep` = `receiver_agent_name_snapshot` |
+| `callLeadToRow` | Timestamp, job no, phone, duration, booking mirrors, local, cubic feet, Mongo ID, inbound source label (same snapshot fallback → `getCallLeadSourceCompanyLabel`), `FormFill`, `Sales Rep` from snapshot |
+| `bookedLeadToRow` | Agent / SplitAgent from `agent_allocations[0..1].agent_name_snapshot`, binder/deposit, book date, job, customer `full_name` else `customer_name`, merchant, resolved source, Mongo ID, lead Mongo ID, local, cancelled |
+| `cancelledLeadToRow` | Agent, cancel date, job, `customer_name` snapshot, refund, source, Mongo ID, lead Mongo ID |
 
-**No CPL column** on sheets. Use projection `cells.ts` helpers for booked/quoted/cancelled/threshold formatting.
+**No CPL column** on sheets. Use projection `cells.ts` helpers for booked/quoted/cancelled/threshold formatting. `Move Size`, `Lead ID`, and `Source Company Site` were removed from form projections; Mongo fields may remain.
 
 ## Bootstrap
 
-`ensureAllConfiguredSheetTabs()` — ensures Master Leads tabs, Master Booked tabs, and every configured source lead container (skips `not_provided` / missing env). Used at startup/scripts, not on every row sync.
+`ensureAllConfiguredSheetTabs()` — Master Leads tabs, Master Booked tabs, and every configured source lead container (skips missing env / no `leadSheetEnvVar`). Used at startup/scripts, not on every row sync.
 
 ## Invariants
 
-- Tab choice follows **current** document flags (`duplicate`, `bad_lead`) at sync time — routing logic is duplicated in `jobPlanner.ts` for queued mode; keep both in sync when changing rules.
+- Tab choice follows **current** document flags (`duplicate`, `bad_lead`) at sync time. Keep `googleSheets.service.ts` and `jobPlanner.ts` aligned.
 - Do not treat sheet rows as source of truth for lead state, CPL, or CRM.
 - Do not bypass projections when adding columns; update `sheets.ts` headers + matching `*Row.ts` + drainer/tests.
 - `Sales Rep` is the persisted `receiver_agent_name_snapshot`. Do not live-join Agent at sync time. Empty snapshot stays blank even when `receiver_agent` is set.
 - External Google calls belong here or submodules (`auth`, `tabs`, `retry`) — not in lead/booking services.
 
-## Related modules
+## Related services
 
-| Module | Responsibility |
-|--------|----------------|
-| `targets.ts` | Target resolution, header lookup, tab sets |
-| `syncRows.ts` | Multi-target upsert loop |
-| `deleteRows.ts` | Row deletion |
-| `projections/` | Mongo → string[] row mapping |
-| `sheetSync/` | Scheduling (legacy / queued outbox + drainer) |
-| `config/domain/sheets.ts` | Tab names and header arrays |
-
-## Related businesslogic
-
-- [`sheetSync.service.md`](./sheet-sync.md) — scheduling, outbox, drainer (invokes this module)
-- [`form-lead.service.md`](./form-lead.md), [`call-lead.service.md`](./call-lead.md) — lead tab routing invariants
+- [`sheet-sync.md`](./sheet-sync.md) — scheduling, outbox, drainer
+- [`form-lead.md`](./form-lead.md), [`call-lead.md`](./call-lead.md) — when those services enqueue work
 
 ## Related rules
 
-- [`sheet-sync-process.mdc`](../../../.cursor/rules/sheet-sync-process.mdc) — outbox modes, drainer, quotas, coalescing, tombstones
+- [`sheet-sync-process.mdc`](../../../.cursor/rules/sheet-sync-process.mdc) — env, `TEST_` prefixes, quotas, modes
 
 ## When to read this vs sheet-sync docs
 
 - **This file:** what gets written where, and sync/delete entry points.
-- **`sheetSync.service.md` + `sheet-sync-process.mdc`:** scheduling and software-layer process.
+- **`sheet-sync.md` + `sheet-sync-process.mdc`:** scheduling and software-layer process.

@@ -19,8 +19,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-22T06:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/sourcePolicy.ts`, `src/services/granotLifecycle/sourceLabel.ts`  
@@ -28,15 +28,17 @@ generated:
 
 # Granot source policy (`granotLifecycle/sourcePolicy`)
 
-**Role:** Sole runtime semantic read boundary for a Granot source label. Resolve an exact normalized label to a typed policy snapshot or a fail-closed result, and evaluate the seven layered effect gates. This module performs no target lookup, Lead/Booking/Cancellation mutation, Decision write, or cache write of uncommitted policy.
+**Role:** Sole runtime semantic read boundary for a Granot source label. Resolve an exact normalized label to a typed policy snapshot or a fail-closed result, and evaluate the **eight** layered effect gates in `EFFECT_GATE_NAMES`. This module performs no target lookup, Lead/Booking/Cancellation mutation, Decision write, or cache write of uncommitted policy.
 
 **Stack:** callable module only. Registry writes stay in `src/services/operationsRegistry/granotCrmSources.ts`. Observation normalization may share `sourceLabel.ts` but does not resolve policy.
 
 ## Public interface
 
 - `normalizeGranotSourceLabel(raw)` — NFKC, trim, collapse whitespace, lowercase; reject empty/control/bidi rather than stripping them into a usable label.
-- `resolveSourcePolicy(facts, store?)` — exact normalized-label lookup only. Provider `type` is never a classification input. A selected route also stamps `selected_lead_model` so identity can choose the Form or Call ladder without re-resolving Registry semantics.
+- `resolveSourcePolicy(facts, store?)` — exact normalized-label lookup only. Provider `type` is never a classification input. A selected route also stamps `selected_lead_model` so identity can choose the Form or Call ladder without re-resolving Registry semantics. `referral_booking` can return `ok: true` **without** `selected_lead_model`, `source_granularity_id`, or route fields.
 - `evaluateEffectGates(facts)` — pure snapshot of every applicable gate in stable eight-name order. The processor now passes real Registry `enabled` / `lifecycle_enabled` and company/granularity `active` facts from the snapshot, not Boolean id-presence approximations. This module still performs no writes.
+
+`RequestedLifecycleEffect`: `lead_created` | `lead_link` | `lead_enrichment` | `booking_reconciliation` | `release_reconciliation`. For Referral + booking/release reconciliation, the company/granularity-active gates are forced true (`referralReconciliation`). Mongo store treats `row.enabled !== false` (absent defaults true).
 
 ## Fail-closed resolution
 
@@ -52,13 +54,20 @@ generated:
 
 Every applicable gate is evaluated and snapshotted. Any false gate blocks the requested effect. Deferred disposition maps to `deferred`; other disabled gates map to `policy_blocked`. Conflicting/ineligible Source Scope fails gates with `conflict` / `source_scope_conflict` and no reassignment output.
 
-1. named global effect flag
-2. post-activation receipt and processor mode `live`
-3. operational `enabled` and `lifecycle_enabled` as separate named booleans
-4. disposition permits the requested effect
-5. Source Company active
-6. selected Source Granularity active
-7. Lead-created or reconciliation policy permits the requested effect
+Exact `EFFECT_GATE_NAMES` order:
+
+1. `global_effect_flag`
+2. `post_activation_live_mode`
+3. `operational_enabled`
+4. `lifecycle_enabled`
+5. `disposition_permits_effect`
+6. `source_company_active`
+7. `source_granularity_active`
+8. `policy_permits_effect`
+
+First blocking reasons include `global_effect_disabled`, `shadow_effect_suppressed`, `historical_shadow`, `source_disabled`, `source_deferred`, `target_source_company_inactive`, `target_source_granularity_inactive`, `source_scope_conflict`, `creation_policy_observation_only`, `creation_policy_link_only`.
+
+Route-selection failures (never first-row fallback): Form + Call routes both present → `conflict` / `missing_creation_route_data`; route count ≠ 1 → `ambiguous` / `missing_creation_route_data`; missing granularity → `policy_blocked` / `missing_creation_route_data`; wrong company → `conflict` / `source_scope_conflict`; wrong channel → `conflict` / `missing_creation_route_data`; inactive granularity → `policy_blocked` / `target_source_granularity_inactive`.
 
 ## Defaults and later work
 
@@ -67,7 +76,7 @@ Every unreviewed row remains lifecycle-disabled, deferred, observation-only, and
 ## Related
 
 - Registry writes and audit: [`operations-registry.md`](../services/operations-registry.md)
-- Observation normalization: [`granotLifecycle.normalization.md`](./normalization.md)
-- Identity consumes this snapshot and never copies Registry semantics ([`granotLifecycle.identity.md`](./identity.md)).
-- Decision processor consumes this read/gate snapshot and Unit 14 identity ([`granotLifecycle.processor.md`](./processor.md)).
+- Observation normalization: [`normalization.md`](./normalization.md)
+- Identity consumes this snapshot and never copies Registry semantics ([`identity.md`](./identity.md)).
+- Decision processor consumes this read/gate snapshot and Unit 14 identity ([`processor.md`](./processor.md)).
 - Successful snapshots also carry `operational_enabled`, `lifecycle_enabled`, `source_company_active`, and `source_granularity_active` so Unit 15 can persist real gate facts.

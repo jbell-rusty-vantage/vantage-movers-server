@@ -6,105 +6,29 @@ alwaysApply: false
 
 # Google Sheets Sync Process
 
-MongoDB is the source of truth. Google Sheets are owner-facing reporting surfaces that are synchronized after Mongo writes, never the authority for lead, booking, or cancellation state.
+Owner invariants (tabs, projections, outbox, drain): [`sheet-sync.md`](../../docs/knowledge/services/sheet-sync.md), [`google-sheets.md`](../../docs/knowledge/services/google-sheets.md). Canonical commands: [`domain-commands.md`](../../docs/knowledge/services/domain-commands.md).
 
-## Configuration And Targets
+## Env, modes, quotas
 
-- Canonical sheet names, tabs, headers, source-company mappings, priorities, budgets, and guardrails live under `src/config/domain/`. `src/config/domain.ts` is a backward-compatible barrel.
-- Runtime sheet env vars are mode-aware. `TEST_MODE=true` reads the `TEST_`-prefixed container ids through `src/config/domain/runtime.ts`.
-- Container ids are env-driven: `MASTER_LEADS_SHEET_ID`, `MASTER_BOOKED_SHEET_ID`, and source containers such as `TBM_LEADS_SHEET_ID`, `TBM_PRIME_LEADS_SHEET_ID`, `TOP10_LEADS_SHEET_ID`, `BEST_RELOCATION_LEADS_SHEET_ID`, and `MAINSITE_LEADS_SHEET_ID`.
-- Master Leads has `Forms`, `Calls`, `Duplicates`, and bad-lead surfaces. Source lead sheets can have `Forms`, `Calls`, `Duplicates`, `Bad Leads`, and `Bad Calls`; `main_site` has no bad tabs and `not_provided` has no source sheet target.
-- Master Booked has `Booked Deals` and `Cancelled Deals`.
+- `TEST_MODE=true` reads `TEST_`-prefixed container ids through `src/config/domain/runtime.ts`.
+- Container env names (`src/config/domain/sheets.ts`): `MASTER_LEADS_SHEET_ID`, `MASTER_BOOKED_SHEET_ID`, `TBM_LEADS_SHEET_ID`, `TBM_PRIME_LEADS_SHEET_ID`, `TOP10_LEADS_SHEET_ID`, `BEST_RELOCATION_LEADS_SHEET_ID`, `GETMOVERS_LEADS_SHEET_ID`, `MAINSITE_LEADS_SHEET_ID`.
+- `WRITE_SOURCE_LEAD_SHEETS` defaults false (`shouldWriteSourceLeadSheets()`; only literal `"true"` enables dual writes).
+- `SHEET_SYNC_MODE`: `legacy` (default / unknown fallback), `queued`, `disabled` (`getSheetSyncMode()`).
+- Queue publish (`shouldPublishSheetSyncQueue`): not a Vantage test runner; hosted function runtime (`VERCEL=1` plus `VERCEL_REGION`); **and** non-preview `VERCEL_ENV` (`shouldPublishSheetSyncQueue`). Preview/local never publish. `SHEET_SYNC_QUEUE_LOCAL_PUBLISH` does not enable publish. Topic `sheet-sync-events` / `sheet-sync-events-dev` (`SHEET_SYNC_QUEUE_TOPIC` override). Admin retry starts `runSheetSyncDrain("admin")` and does not publish.
+- Cron: `router.all("/api/cron/sheet-sync-drain")`, auth `CRON_SECRET` (Bearer or `x-cron-secret`), no-op unless queued, every 5 minutes (`vercel.json`). Consumer: `api/queues/sheet-sync-consumer.ts` (payload ignored).
+- Google hard ceilings: 60 reads/min and 60 writes/min per user. Default operational budgets 45/45 (`SHEET_SYNC_READS_PER_MINUTE_BUDGET`, `SHEET_SYNC_WRITES_PER_MINUTE_BUDGET`). Other knobs: `SHEET_SYNC_MAX_JOBS_PER_DRAIN` (500), `SHEET_SYNC_DEBOUNCE_WINDOW_MS` (3000), `SHEET_SYNC_MAX_ATTEMPTS` (8), payload/batch/lease/run-duration envs in `getSheetSyncBudgets` / `getSheetSyncDrainGuardrails`.
+- Quota deferral retries in 60s and does not burn an attempt. Coalesce only `pending`/`retrying`.
 
-## Canonical Headers
+## Operational safety
 
-- `Forms`, `Duplicates`, `Bad Leads`: `Timestamp`, `Name`, `Pickup Zip`, `Destination Zip`, `Pickup State`, `Delivery State`, `Local`, `Move Date`, `Phone Number`, `Email`, `Quoted`, `Cubic Feet`, `Booked`, `OVER 2000`, `OVER 4000`, `Booked Date`, `Cancelled`, `Mongo ID`, `Ref No`, `Source Company`, `Bad Lead`, `Sales Rep`. (`Move Size`, `Lead ID`, and `Source Company Site` were removed; the Mongo fields still exist but are no longer projected.)
-- `Calls`, `Bad Calls`: `Timestamp`, `Job No`, `Phone Number`, `Duration`, `Booked`, `Booked Date`, `Over 2000`, `Over 4000`, `Cancelled`, `Local`, `Cubic Feet`, `Mongo ID`, `Source Company`, `FormFill`, `Sales Rep`.
-- `Booked Deals`: `Timestamp`, `Agent`, `SplitAgent`, `Binder Amount`, `Split`, `Book Date`, `Job No`, `Customer Name`, `Deposit Amount`, `Merchant`, `Source`, `Mongo ID`, `Mongo Lead ID`, `Local`, `Cancelled`.
-- `Cancelled Deals`: `Timestamp`, `Agent`, `Cancel Date`, `Job No`, `Customer Name`, `Refund Amount`, `Source`, `Mongo ID`, `Lead Mongo ID`.
+- Before manually changing jobs, count/group by `status`, `run_id`, `operation`, `resource`, `entity_model`, and creation window.
+- Prefer `cancelled` plus a clear `last_error` over `failed` when abandoning verified backfill work.
+- Never reset stuck `processing` jobs to `pending` until the underlying failure is fixed. The drainer may release leftover claims to `pending` on run timeout by design.
+- After cleanup, confirm `processing` is zero and live statuses are expected.
 
-Do not add CPL columns to Sheets. Use projection helpers for owner-facing values such as `booked`, `quoted`, `cancelled`, `local`, source labels, and threshold markers. `Sales Rep` is `lead.receiver_agent_name_snapshot`; do not live-join Agent at sync time.
+## Files
 
-## What Gets Written
-
-- Form/call lead writes are gated by `shouldWriteSourceLeadSheets()` (env `WRITE_SOURCE_LEAD_SHEETS`, default `false`). Default is **master-only**: source-company lead sheets are formula derivatives of the master. `getLeadTargets()` only appends the source target when the flag is enabled. Source-target plumbing (tabs, projections, delete fallback via `sheet_sync[]`) is retained either way.
-- Form leads sync to master `Forms` (plus source `Forms` only when the flag is on); duplicate form leads sync to master `Duplicates` (plus source when enabled).
-- Call leads sync to master `Calls` (plus source `Calls` only when the flag is on); call leads created only for unmatched bookings are skipped until real call data exists.
-- Booked leads sync to master `Booked Deals`, then their linked form/call lead is refreshed so mirrored booking fields stay aligned. Some booking-only updates are intentional no-ops for lead rows but still refresh owner-facing source headers in Master Booked.
-- Cancelled leads sync the booking chain first, then the cancellation row to master `Cancelled Deals`.
-
-## Scheduling Modes
-
-`getSheetSyncMode()` controls the execution path:
-
-- `legacy`: schedule the older `waitUntil(runFullSheetSyncProcess)` path after the API response.
-- `queued`: write a durable `SheetSyncJob` outbox row inside the Mongo transaction, then publish a queue wake-up after commit.
-- `disabled`: log the intent and do not write Sheets.
-
-For new write paths, prefer:
-
-1. `runSheetSyncWrite()` around the Mongo mutation on **public/legacy** services.
-2. `persistSheetSyncIntent()` inside the caller's transaction in queued mode.
-3. `finalizeSheetSync()` after commit to publish the queue wake-up or run legacy scheduling.
-
-Canonical command adapters do **not** use `runSheetSyncWrite` to complete a command. The domain-command executor owns that transaction and persists `DomainCommandExecution`, append-only `EntityChange` rows, and queued outbox intent; adapters finalize only after a successful non-replay commit. A no-op writes no Change or outbox row. See [`domainCommands.service.md`](../../docs/knowledge/services/domain-commands.md). Lifecycle callers remain disabled.
-
-Keep external side effects such as Google Sheets, queues, CRM, and email outside the transaction callback.
-
-## Durable Outbox
-
-`SheetSyncJob` rows live in `sheet_sync_jobs` and represent domain-level sync intent. Important fields:
-
-- `status`: `pending`, `retrying`, `processing`, `synced`, `failed`, or `cancelled`.
-- `resource`: `source_lead`, `booked_lead`, `booking_chain`, `cancellation_chain`, or delete tombstone resources.
-- `entity_model` and `entity_id`: the Mongo document to reload at drain time.
-- `coalescing_key`: collapses repeated pending/retrying work for the same entity.
-- `priority` and `due_at`: decide drain order after debounce.
-- `leased_until`, `lease_owner`, and `run_id`: track in-flight claims.
-- `target_hints`: restrict retries to targets that failed or were deferred.
-- `tombstone`: durable delete metadata captured before hard-deleting a Mongo document.
-
-Only `pending` and `retrying` jobs are coalesced. Do not coalesce onto `processing`: a write during processing should create a fresh pending job so the drainer reloads latest Mongo state later.
-
-## Queue, Cron, And Drain Lifecycle
-
-- `api/queues/sheet-sync-consumer.ts` handles Vercel Queue wake-ups and calls `runSheetSyncDrain("queue")`.
-- `src/routes/sheet-sync-cron.routes.ts` is a cron safety net. It is authenticated by `CRON_SECRET` and is a no-op unless `SHEET_SYNC_MODE=queued`.
-- The wake-up payload is intentionally ignored. Mongo owns due/coalescing/priority/quota decisions.
-- `runSheetSyncDrain()` takes a global `sheet-sync:drain` lease so queue wake-ups and cron never drain concurrently.
-- The drainer claims due jobs by setting `status="processing"`, `leased_until`, `lease_owner`, and `run_id`.
-- Claimed jobs are defensively de-duplicated by `coalescing_key`; duplicate claims are marked synced after the representative completes.
-- Each job is planned by reloading current Mongo state in `jobPlanner.ts`; Sheets are written in tab batches by `batchWriter.ts`.
-- Google row identity is always the `Mongo ID` column. `sheet_sync[].row_number` is only a cached hint and must be verified against the live tab map before update/delete.
-- After sheet writes, attempts are recorded in `sheet_sync_attempts`, the domain document `sheet_sync[]` metadata is updated, and each job becomes `synced`, `retrying`, `failed`, or `cancelled`.
-
-## Failure And Retry Behavior
-
-- Sheet API failures become per-write outcomes. A job with any failed outcome is marked `retrying` with exponential backoff until max attempts, then `failed`.
-- Quota exhaustion is a deferral, not a burned attempt. The job becomes `retrying` for the failed/deferred targets only.
-- Planning failures for one job should not abort the whole run; mark that job failure and keep draining.
-- `sheet_sync[]` metadata persistence must not abort the run. Use direct model updates for metadata-only writes and convert metadata persistence errors into per-job failures/retries.
-- If an unexpected run-level exception happens after jobs are claimed, release that run owner's still-`processing` jobs back to `retrying` with `leased_until` cleared so the queue does not strand work.
-- A failed `SheetSyncRun` with `claimed > 0` and `synced=failed=deferred=0` is a sign the run crashed before job finalization; inspect `sheet_sync_jobs` by `run_id`.
-
-## Deletes And Tombstones
-
-- For hard deletes, capture `sheet_sync[]` into a tombstone before deleting Mongo so the drainer can remove known sheet rows later.
-- Tombstones include previous target, spreadsheet id, tab name, row number hint, and linked entity context.
-- A delete tombstone cancels any pending/retrying upsert for the same entity; deletes bypass debounce because stale upserts could re-add removed rows.
-- Delete writes are idempotent: if the row is already gone, the writer treats it as successful.
-
-## Operational Safety
-
-- Before manually changing sheet-sync jobs, count and group by `status`, `run_id`, `operation`, `resource`, `entity_model`, and creation window.
-- When retiring verified historical/backfill jobs, prefer `cancelled` with a clear `last_error` marker over `failed` if the work is intentionally being abandoned after manual validation.
-- Never reset stuck `processing` jobs to `pending` until the underlying failure is fixed; otherwise cron can repeat the same run-level failure and strand the batch again.
-- For backfills, validate both job metadata and underlying document dates. Operation names may not always include the historical batch name for source-lead jobs.
-- After cleanup, confirm `processing` is zero and that no live statuses (`pending`, `retrying`, `processing`, `failed`) remain unexpectedly.
-
-## Files To Know
-
-- Models: `src/models/SheetSyncJob.ts`, `src/models/SheetSyncRun.ts`, `src/models/SheetSyncAttempt.ts`, `src/models/SheetSyncLease.ts`.
-- Scheduling: `src/services/sheetSync/sheetSyncCoordinator.ts`, `src/services/sheetSync/sheetSyncOutbox.service.ts`, `src/services/sheetSync/sheetSyncQueue.service.ts`.
-- Execution: `src/services/sheetSync/drainer/runSheetSyncDrain.ts`, `jobPlanner.ts`, `batchWriter.ts`, `tabRowMap.ts`, `quotaLimiter.ts`, `leases.ts`.
-- Sheet details: `src/services/googleSheets/targets.ts`, `tabs.ts`, projection helpers, and `src/config/domain/sheets.ts`.
+- Models: `src/models/SheetSyncJob.ts`, `SheetSyncRun.ts`, `SheetSyncAttempt.ts`, `SheetSyncLease.ts`.
+- Scheduling: `sheetSyncCoordinator.ts`, `sheetSyncOutbox.service.ts`, `sheetSyncQueue.service.ts`.
+- Execution: `drainer/runSheetSyncDrain.ts`, `jobPlanner.ts`, `batchWriter.ts`, `tabRowMap.ts`, `quotaLimiter.ts`, `leases.ts`.
+- Sheet details: `src/services/googleSheets/targets.ts`, `tabs.ts`, `src/config/domain/sheets.ts`.

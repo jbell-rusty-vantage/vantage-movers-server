@@ -1,6 +1,6 @@
 ---
 description: Keep Vantage docs layered and glob-scoped; delegate drift fixes to the docs-keeper agent
-globs: docs/knowledge/**/*.md,.cursor/businesslogic/**/*.md,.cursor/rules/*.mdc,.cursor/index.md,.cursor/agents/*.md,docs/**/*.md,CONTEXT.md,AGENTS.md
+globs: docs/knowledge/**/*.md,.cursor/rules/*.mdc,.cursor/index.md,.cursor/agents/*.md,docs/**/*.md,CONTEXT.md,AGENTS.md
 alwaysApply: false
 ---
 
@@ -14,10 +14,10 @@ When these files â€” or the code their `globs` / `Primary code` links point at â
 |--------|--------|
 | New or renamed domain term | Workspace-root `CONTEXT.md` via `/domain-modeling` |
 | Hard-to-reverse architectural decision | `docs/adr/` |
-| Service invariants, routing, side-effect order | Matching `docs/knowledge/**/*.md` (stubs remain under `.cursor/businesslogic/` for one release) |
+| Service invariants, routing, side-effect order | Matching `docs/knowledge/**/*.md` |
 | Folder ownership, process mechanics, auth, env | The `.mdc` whose `globs` already match the path |
 | Owner-facing specs / runbooks | Matching file under `docs/` (Granot lifecycle: `docs/granot-lead-lifecycle/`, including `lifecycle-activation-flags-and-source-policies.md`) |
-| New Service file or rule | `docs/index.md` row plus `.cursor/index.md` Cursor map |
+| New Service file or rule | `docs/index.md` row |
 
 Link glossary terms; do not redefine them. Do not copy owner policy into software-logic rules.
 

@@ -230,7 +230,7 @@ For adoption, the guard excludes the adopted Lead ID and the current telephony s
 | **Idempotency** | `ringcentral_processed_calls` unique sparse session and call-log identity indexes + unique sparse `ringcentral.telephony_session_id` on `call_leads` | Same physical call (webhook + cron, concurrent cron, or double webhook) has one terminal winner |
 | **Business Duplicate Lead** | `classifyRingCentralCallLeadDuplicate` (earlier-only 90-day window per glossary) | Different prior call, same caller + exact Source Granularity → Duplicate Lead, zero CPL |
 
-Duplicate Call Leads still persist and **Sheet Sync** to `Duplicate Calls` tab (see [`call-lead.service.md`](./call-lead.md)).
+Duplicate Call Leads still persist and **Sheet Sync** to `Duplicate Calls` tab (see [`call-lead.md`](./call-lead.md)).
 
 **Config note:** `duplicateWindowHours` in `ringcentral-config.ts` (`RINGCENTRAL_DUPLICATE_WINDOW_HOURS`, default 24) is debug metadata only — not used by the duplicate guard (hardcoded 90 days).
 
@@ -293,7 +293,7 @@ Duplicate Call Leads still persist and **Sheet Sync** to `Duplicate Calls` tab (
 | `scripts/migrations/granot-lifecycle-indexes.ts` | Report/apply/verify the unique Call Log sync state singleton key index |
 | `shadow-call-leads-store.ts` | Shadow-mode staging |
 | `leads/callLead.service.ts` | `createRingCentralCallLead` — Mongo + Sheet Sync |
-| [`call-lead.service.md`](./call-lead.md) | Call Lead create semantics, CPL, sheet tabs |
+| [`call-lead.md`](./call-lead.md) | Call Lead create semantics, CPL, sheet tabs |
 | [`ringcentral-integration.mdc`](../../../.cursor/rules/ringcentral-integration.mdc) | Env, webhooks, cron wiring |
 | [`ringcentral-call-lead-candidates.mdc`](../../../.cursor/rules/ringcentral-call-lead-candidates.mdc) | Pipeline boundaries |
 

@@ -6,72 +6,37 @@ alwaysApply: false
 
 # Vantage Movers Business Logic
 
-Read the matching Service under [`docs/knowledge/`](../../docs/index.md). This rule keeps only cross-service invariants that are not already in one Service file. Prefer the **docs-keeper** agent (`.cursor/agents/docs-keeper.md`) so the matching glob-scoped rule and layer stay in sync. If no update is needed, say so in the final response.
+Read the matching Service under [`docs/knowledge/`](../../docs/index.md). This rule keeps only cross-service invariants that are not already in one Service file. Prefer the **docs-keeper** agent so the matching glob-scoped rule and layer stay in sync.
 
 ## Three documentation layers
 
 | Layer | Location | Contains |
 |-------|----------|----------|
-| **Domain language** | [`CONTEXT.md`](../../../CONTEXT.md) + [`docs/adr/`](../../../docs/adr/) | What things **are** — Form Lead, Sheet Sync, CRM Posting, Main Site vs Landing Page. No routes, env vars, or step lists. |
-| **Business logic** | `docs/knowledge/**/*.md` | How owner rules manifest in each service: invariants, match rules, tab routing, post-save order, edge cases. **Use glossary terms; link — do not redefine.** |
-| **Software logic** | `.cursor/rules/*.mdc` | Folder ownership, thin routes, TEST_MODE, outbox/drainer mechanics, TypeScript/testing. Module/Seam vocabulary lives here — not in `CONTEXT.md`. |
-
-**Platform glossary (canonical terms):** [`vantage/CONTEXT.md`](../../../CONTEXT.md)  
-**Cross-cutting ADRs:** [`vantage/docs/adr/`](../../../docs/adr/)
+| **Domain language** | [`CONTEXT.md`](../../../CONTEXT.md) + [`docs/adr/`](../../../docs/adr/) | What things **are**. No routes, env vars, or step lists. |
+| **Business logic** | `docs/knowledge/**/*.md` | How owner rules manifest in each service. **Link glossary terms; do not redefine.** |
+| **Software logic** | `.cursor/rules/*.mdc` | Folder ownership, thin routes, TEST_MODE, outbox/drainer, TypeScript/testing. |
 
 ## Drift policy
 
 | Change type | Update |
 |-------------|--------|
-| New or renamed domain term | Root [`CONTEXT.md`](../../../CONTEXT.md) via `/domain-modeling` — not Service headers |
-| Architectural decision (hard to reverse, surprising, real trade-off) | [`docs/adr/`](../../../docs/adr/) |
-| Service behavior, invariants, routing, side-effect order | Relevant `docs/knowledge/**/*.md` |
-| Cross-service structure, env, process mechanics | Relevant `.cursor/rules/*.mdc` |
+| New or renamed domain term | Root [`CONTEXT.md`](../../../CONTEXT.md) via `/domain-modeling` |
+| Architectural decision | [`docs/adr/`](../../../docs/adr/) |
+| Service behavior, invariants, routing, side-effect order | Matching `docs/knowledge/**/*.md` |
+| Cross-service structure, env, process mechanics | The `.mdc` whose `globs` already match |
 
-Do **not** duplicate glossary definitions into Service files — link and use canonical terms.
+## Cross-service invariants
 
-**Service docs:** `docs/knowledge/` — per-service compact rules (form lead, call lead, RingCentral qualification, sheet sync, bookings, cancellations, …).
-
-## System of record
-
-MongoDB is the **System of Record** for Form Leads, Call Leads, Bookings, Cancellations, and related domain data ([ADR-0001](../../../docs/adr/0001-mongodb-system-of-record.md)). Reporting Sheets and Granot CRM follow Mongo; they are not authoritative.
-
-## Leads
-
-- **Form Lead Ingestion** — Landing Page quote form → Mongo persist (trusted `ingestion_origin` + immutable ingested contact/move snapshots) → post-save workflows (CRM Posting when enabled, Sheet Sync). Duplicate Form Leads always save and Sheet Sync; never CRM-posted ([`form-lead.service.md`](../../docs/knowledge/services/form-lead.md)).
-- **Call Lead Ingestion** — qualified Ring Central call → Mongo persist (`ingestion_origin=ringcentral`, `quoted=false`, immutable ingested contact snapshot) → Sheet Sync. Call leads are not CRM-posted at create; **Enrichment** is separate ([`call-lead.service.md`](../../docs/knowledge/services/call-lead.md), [`ringcentral-call-lead-qualification.md`](../../docs/knowledge/services/ringcentral-call-lead-qualification.md)).
-- **Customers** — upserted from source leads or booking contact overrides during booking ([`customer.service.md`](../../docs/knowledge/services/customer.md)).
-- Extension/admin read paths: scored form search + call OR-search + paginated browse; admin global search is separate.
-
-## Quotes, estimates, and CPL
-
-- `quoted`, `cubic_feet`, CPL, deposit, binder, and threshold flags span lead, Enrichment, booking, and Analytics.
-- **CPL** is granular by Source Company + Lead Channel + Move Type per glossary. Lead create/update stores a snapshot via `leads/leadCplResolution.ts` → `operationsRegistry.resolveCpl` (statuses include `resolved`, `duplicate_zero`, `missing_rate`, `not_applicable`). Legacy `cpl.ts` / `cplRate.service.ts` remain for older reads; do not treat them as the write-path authority.
-
-## Bookings and cancellations
-
-- Form Lead, Call Lead, Booking, and Cancellation documents carry additive `domain_revision` and `change_history_started_at`. Public/admin DTOs cannot set them. Existing canonical adapters persist append-only `EntityChange` rows and stamp `last_change_*` / `domain_revision` in the executor transaction ([`granotLifecycle.revisions.md`](../../docs/knowledge/granot-lifecycle/revisions.md), [`domainCommands.service.md`](../../docs/knowledge/services/domain-commands.md)). Historical Lead origin/snapshot backfill is metadata-only (`legacy_unknown` / `legacy_baseline`) and never rewrites current contact, move, Job, source, or revision facts.
-- Bookings link to a source lead via `lead_ref` / `lead_model` except **Referral Booking** and **leadless bookings** ([`bookings.service.md`](../../docs/knowledge/services/bookings.md)). Employee public submit is a separate path (`employeeBookings/`).
-- One lead-attached booking per `(lead_ref, lead_model)`; repeat creates upsert unless `submission_id` matches.
-- **Booking Chain** Sheet Sync on create/update; referral uses `booked_lead` job.
-- Cancellations attach to lead-attached bookings only; referral blocked ([`cancelledLead.service.md`](../../docs/knowledge/services/cancelled-lead.md)). **Cancellation Chain** on create.
-- Lead mirror semantics: [`cancellationMirror.service.md`](../../docs/knowledge/services/cancellation-mirror.md).
-
-## Integrations
-
-- **CRM Posting** — non-duplicate Form Leads only; persisted Tracking Reference (`FormLead.ref_no`) as `leadno` → Granot `ref_no`. Exact Tracking Reference is primary identity; Mongo Lead ID is compatibility fallback only ([final Granot Lead Lifecycle specification](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md), [ADR-0002](../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md)). Must survive non-critical downstream failures; known code order gap in `formLead.service.ts` documented inline.
-- **Sheet Sync** — Master Sheets only; Source Company Sheets via import queries ([`sheetSync.service.md`](../../docs/knowledge/services/sheet-sync.md), [`googleSheets.service.md`](../../docs/knowledge/services/google-sheets.md)).
-- **Call Qualification** — webhook + Call Log sync → shared ingest; Analytics reconcile is count-only, must not create leads.
-- Granot Booked Jobs CSV reconciliation: [`bookedCallLeadReconciliation.service.md`](../../docs/knowledge/services/booked-call-lead-reconciliation.md).
-- **Call Lead Enrichment** (Follow Up rows): [`enrichment.service.md`](../../docs/knowledge/services/enrichment.md).
-- Granot HTTP automation (preview/approve/receipt apply): [`granotHttpCollector.service.md`](../../docs/knowledge/services/granot-http-collector.md), [`granotLifecycle.automationApply.md`](../../docs/knowledge/granot-lifecycle/automation-apply.md).
-- Canonical domain commands go through the transaction-owning executor ([`domainCommands.service.md`](../../docs/knowledge/services/domain-commands.md)). Stored results are `applied`; replay is telemetry/`replayed`, not a rewritten row. Existing v1 write routes enter adapters; they do not patch models. Live Granot lifecycle commands are `synchronizeLeadFromGranot`, `createLeadFromGranot`, `confirmGranotBooking`, `updateBooking`, and `resolveGranotBookingCaseNoAction`. Release/Referral/correction commands remain unavailable. Checked-in effect flags stay false.
-- Granot webhook capture is receipt-only — no Lead/Booking mutation ([`granotLifecycle.capture.md`](../../docs/knowledge/granot-lifecycle/capture.md)). Owner extension apply captures a `browser_extension` receipt and enters the shared processor ([`granotLifecycle.extensionApply.md`](../../docs/knowledge/granot-lifecycle/extension-apply.md)). Observation normalization is a callable evidence module only ([`granotLifecycle.normalization.md`](../../docs/knowledge/granot-lifecycle/normalization.md)). Source-policy resolution is a fail-closed read module only ([`granotLifecycle.sourcePolicy.md`](../../docs/knowledge/granot-lifecycle/source-policy.md)). Source-scoped identity is a read-only Form/Call ladder invoked by the processor ([`granotLifecycle.identity.md`](../../docs/knowledge/granot-lifecycle/identity.md)). Desired-state planning is pure ([`granotLifecycle.desiredState.md`](../../docs/knowledge/granot-lifecycle/desired-state.md)). The processor is channel-neutral orchestration: historical job-level links, live Booking-case open/refresh when its gate is true ([`granotLifecycle.bookingReconciliation.md`](../../docs/knowledge/granot-lifecycle/booking-reconciliation.md)), live matched-Lead writes through `synchronizeLeadFromGranot`, and live authorized create-if-missing through `createLeadFromGranot` ([`granotLifecycle.processor.md`](../../docs/knowledge/granot-lifecycle/processor.md)). Trusted Granot Lead create validators (`granot_lead_created`, `post_to_granot=false`) are invoked only by `createLeadFromGranot`. Queue/cron/requeue enter one fenced claim service ([`granotLifecycle.drainer.md`](../../docs/knowledge/granot-lifecycle/drainer.md)). Software map and unit progress: [`granot-lifecycle-capture.mdc`](granot-lifecycle-capture.mdc). Checked-in Lead writes/creation/case/command flags stay false.
-- Marketing testimonials: [`testimonial.service.md`](../../docs/knowledge/services/testimonial.md).
-
-## Invariants
-
+- Lead create/update CPL snapshots go through `leads/leadCplResolution.ts` → `operationsRegistry.resolveCpl`. Legacy `cpl.ts` / `cplRate.service.ts` are older reads, not the write-path authority.
 - Preserve traceability from Landing Page or Call Lead Ingestion through CRM, Mongo, Reporting Sheets, booking, cancellation, and Analytics.
-- Keep routes thin; business decisions in services.
 - Do not bypass helpers for Source Company parsing, phone normalization, CPL/Move Type derivation, agent allocation, Duplicate Lead / Form Fill checks, or Sheet Sync scheduling.
-- Duplicates, Unmatched Call Leads, cancellations, and production backfills are high-risk — focused tests or explicit validation notes required. // pragma: allowlist secret
+- Duplicates, Unmatched Call Leads, cancellations, and [REDACTED] backfills are high-risk — focused tests or explicit validation notes required. // pragma: allowlist secret
+
+## Service index
+
+- Leads: [`form-lead.md`](../../docs/knowledge/services/form-lead.md), [`call-lead.md`](../../docs/knowledge/services/call-lead.md), [`ringcentral-call-lead-qualification.md`](../../docs/knowledge/services/ringcentral-call-lead-qualification.md)
+- Bookings / cancellations: [`bookings.md`](../../docs/knowledge/services/bookings.md), [`cancelled-lead.md`](../../docs/knowledge/services/cancelled-lead.md), [`cancellation-mirror.md`](../../docs/knowledge/services/cancellation-mirror.md), [`customer.md`](../../docs/knowledge/services/customer.md)
+- Search: [`form-lead-search.md`](../../docs/knowledge/services/form-lead-search.md), [`call-lead-search.md`](../../docs/knowledge/services/call-lead-search.md), [`lead-browse.md`](../../docs/knowledge/services/lead-browse.md), [`admin-search.md`](../../docs/knowledge/services/admin-search.md)
+- Integrations: [`sheet-sync.md`](../../docs/knowledge/services/sheet-sync.md), [`google-sheets.md`](../../docs/knowledge/services/google-sheets.md), [`enrichment.md`](../../docs/knowledge/services/enrichment.md), [`domain-commands.md`](../../docs/knowledge/services/domain-commands.md), [`operations-registry.md`](../../docs/knowledge/services/operations-registry.md)
+- Granot: [`granot-lifecycle-capture.mdc`](granot-lifecycle-capture.mdc) → [`docs/knowledge/granot-lifecycle/`](../../docs/knowledge/granot-lifecycle/)
+- ADR SoR / CRM post: [`0001`](../../../docs/adr/0001-mongodb-system-of-record.md), [`0002`](../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md)

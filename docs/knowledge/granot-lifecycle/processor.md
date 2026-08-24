@@ -10,6 +10,7 @@ applies_to:
   - src/services/granotLifecycle/processor.ts
   - src/services/granotLifecycle/synchronizeLeadFromGranot.ts
   - src/services/granotLifecycle/createLeadFromGranot.ts
+  - src/services/granotLifecycle/discrepancies.ts
 owners: [team:main-server]
 sources:
   - id: primary
@@ -20,8 +21,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-22T06:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/processor.ts`, `src/services/granotLifecycle/bookingReconciliation.ts`, `src/services/granotLifecycle/createLeadFromGranot.ts`, `src/services/granotLifecycle/synchronizeLeadFromGranot.ts`, `src/services/granotLifecycle/leadDesiredState.ts`, `src/services/granotLifecycle/granotTemporal.ts`, `src/config/domain/granotLifecycle.ts`, `src/models/SynchronizationDecision.ts`, `src/models/GranotLifecycleActivation.ts`, `src/models/GranotRecordLink.ts`, `src/models/GranotBookingReconciliationCase.ts`
@@ -91,15 +92,15 @@ or activation drift a failing certification.
 
 Post-activation `live` Priority `5` or actual `booked` evidence enters `bookingReconciliation.ts` only when all Booking-case gates pass. The processor preallocates the Decision ID; the service rereads the immutable Observation, active link, source-scoped identity, deterministic Booking/Cancellation facts, and existing employee reconciliation work. One transaction opens or refreshes the single open `{normalized_job_no, action_kind:"booked"}` case and inserts the causal Decision. A bounded one-retry path resolves open/sequence unique races.
 
-Priority `5` plus an eligible Lead/no Booking opens `create_missing_booking`; Priority `5` with a Booking does nothing. Actual Booked/no Booking opens create-missing even when Lead identity is ambiguous; actual Booked/one Booking opens `review_existing_booking`. Booking-without-Lead delegates to its existing employee reconciliation case. Official cancellation and identity conflicts return typed non-persisting discrepancy routing; Referral and Release remain later-unit work. No path writes a Lead, Booking, Cancellation, Record Link, Command, Change, outbox, discrepancy, notification, or email.
+Priority `5` plus an eligible Lead/no Booking opens `create_missing_booking`; Priority `5` with a Booking does nothing. Actual Booked/no Booking opens create-missing even when Lead identity is ambiguous; actual Booked/one Booking opens `review_existing_booking`. Booking-without-Lead delegates to its existing employee reconciliation case. Official cancellation and identity conflicts return typed `booking_discrepancy_required` / identity-conflict classifications. The processor **persists** those as Granot discrepancies via `persistProcessorDiscrepancy` → `createGranotDiscrepancies` (`discrepancies.ts`). There is no standalone discrepancy Service file in this cluster. Referral Booked evidence can open `create_referral_booking`. Release evidence is a separate module ([`release-reconciliation.md`](./release-reconciliation.md)). Case open/refresh writes no Lead, Booking, Cancellation, Record Link, Command, Change, outbox, notification, or email.
 
 New evidence appends once by Observation ID and increments only `evidence_revision`; owner-relevant suggestion changes increment `case_revision`. Resolved rows are immutable and later evidence gets `max(sequence)+1`. Suggested/candidate Leads use only canonical Unit 14 identity evidence, exclude Duplicate/Bad Form Leads, and may be refreshed without attachment for 24 hours. Operational events mask identifiers and the open-case gauge is recomputed from current cardinality. Protected reads already exist. Checked-in `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED` remains false; official Booking writes stay on separately gated Owner commands.
 
 ## Release reconciliation cases
 
-Post-activation `live` actual Release evidence enters `releaseReconciliation.ts` only when all reviewed Release-case gates pass. The service rereads the immutable Observation and current identity/Booking/Cancellation/link facts inside one transaction. One compatible active Booking opens or refreshes the single open Release case; already cancelled is a no-effect Decision; missing Booking and exact identity conflicts return typed Unit 29 seams. Booking-without-Lead is valid Release work. Priority validity is independent.
+Post-activation `live` actual Release evidence enters `releaseReconciliation.ts` only when all reviewed Release-case gates pass. The service rereads the immutable Observation and current identity/Booking/Cancellation/link facts inside one transaction. One compatible active Booking opens or refreshes the single open Release case; already cancelled is a no-effect Decision; missing Booking and exact identity conflicts return typed `release_discrepancy_required` seams. The processor persists those discrepancies the same way as Booking conflicts. Booking-without-Lead is valid Release work. Priority validity is independent.
 
-Case plus Decision commit atomically with one bounded race retry. Release and Booking collections, uniqueness, sequences, revisions, and timeline entries remain separate. This path never selects a Booking by contact, mutates official state, writes a discrepancy, or invokes a command. Checked-in Release case/command flags remain false.
+Case plus Decision commit atomically with one bounded race retry. Release and Booking collections, uniqueness, sequences, revisions, and timeline entries remain separate. This path never selects a Booking by contact, mutates official Booking/Cancellation state, or invokes an Owner command. Checked-in Release case/command flags remain false.
 
 ## Temporal compare-and-swap seam
 
@@ -115,24 +116,25 @@ Inside one executor transaction the command reloads Observation, Registry, gates
 
 Form creation requires a name component, normalized phone, valid origin/destination USPS state and five-digit ZIP, and the exact selected Local/long-distance Form Granularity (same two valid states → Local; differing valid states → long-distance). It derives persisted `local` from those accepted states and leaves `move_date` absent when the Observation omits it. Call Job-only creation is legal here; `ringcentral_convergence.state` is `pending` when a normalized phone exists and `not_applicable` when Job-only. The command stores available Granot facts only and fabricates no `local`, duration, start/end time, RingCentral session/call-log IDs, qualification, assignment, target number, or transport source. RingCentral assignment validation is configured-only: when any assignment row exists for the exact Call Source Company + Granularity, exactly one must be active/effective and point to an active, valid route; otherwise creation becomes `insufficient_creation_data` / `missing_creation_route_data`. Zero assignment rows means the route remains Granot-only and no assignment is invented. WordPress-created Form Leads that later match stay on `synchronizeLeadFromGranot` and never mint a second Lead.
 
-After commit, `finalize` may send one Granot create-if-missing confirmation Lead Message through the existing Twilio path. That send is gated on `GRANOT_LEAD_CREATED_SMS_ENABLED`, the CRM Source `outbound_sms` policy, `lead_created_policy=create_if_missing`, and a recorded consent basis. A failed or blocked text never changes the Lead, Record Link, Decision, or Sheet Sync job. Quiet hours reuse `resolveLeadSmsQuietHoursDeferral` (midnight–6:59 AM America/New_York held until 8:00 AM).
+After commit, `finalize` may send one Granot create-if-missing confirmation Lead Message through `sendGranotCreatedLeadConfirmation`. `evaluateGranotLeadSmsGates` requires all of: `LEAD_MESSAGING_MODE !== "disabled"`, `GRANOT_LEAD_CREATED_SMS_ENABLED`, CRM Source `outbound_sms` enabled, `lead_created_policy=create_if_missing`, a recorded consent basis (not `not_attested`), and a destination. A failed or blocked text never changes the Lead, Record Link, Decision, or Sheet Sync job. Quiet hours stay off unless `LEAD_MESSAGING_QUIET_HOURS_ENABLED=true`; then `resolveLeadSmsQuietHoursDeferral` applies (midnight–6:59 AM America/New_York held until 8:00 AM). Details: [`lead-messaging.md`](../services/lead-messaging.md).
 
 Creation never opens a Booking/Release case, writes a Booking or Cancellation, sends email, or invokes RingCentral adoption. Checked-in flags stay processing true, shadow true, Lead writes/creation false. Unit 19 adds no migration, backfill, or index.
 
 ## Flags
 
-Defaults: processing true, shadow true, all eight effect flags false. Processing false refuses this module unless a test supplies config.
+Ten centralized flags (`src/config/domain/granotLifecycle.ts`): `GRANOT_LIFECYCLE_PROCESSING_ENABLED` and `GRANOT_LIFECYCLE_SHADOW_MODE` default true; the eight effect flags (`LEAD_WRITES`, `LEAD_CREATION`, `BOOKING_CASES`, `BOOKING_COMMANDS`, `RELEASE_CASES`, `RELEASE_COMMANDS`, `REFERRAL_BOOKING`, `EMAIL`) default false. Booking-case path also snapshots `referral_booking_enabled`. Processing false refuses this module unless a test supplies config.
 
 ## Out of scope here
 
-Official Booking/Release commands, Admin case UI, and Release/Referral/discrepancy persistence — those live in [`granotLifecycle.bookingReconciliation.md`](./booking-reconciliation.md) and [`granotLifecycle.projections.md`](./projections.md). Public Lead Zod / `updateSourceOwnedLead` are not a lifecycle write path. This module does not rewrite Registry rows. Current reviewed policies live in [`granotLifecycle.sourcePolicy.md`](./source-policy.md) and [`operations-registry.md`](../services/operations-registry.md).
+Official Booking/Release Owner commands live in [`booking-reconciliation.md`](./booking-reconciliation.md) and [`release-reconciliation.md`](./release-reconciliation.md). Admin reads live in [`projections.md`](./projections.md). Discrepancy persistence is `discrepancies.ts` (no Service file in this cluster). Public Lead Zod / `updateSourceOwnedLead` are not a lifecycle write path. This module does not rewrite Registry rows. Current reviewed policies live in [`source-policy.md`](./source-policy.md) and [`operations-registry.md`](../services/operations-registry.md). `claimAndProcessOrPoll` lives in [`drainer.md`](./drainer.md), not `operations.ts`.
 
 ## Related
 
-- Identity: [`granotLifecycle.identity.md`](./identity.md)
-- Desired-state planner: [`granotLifecycle.desiredState.md`](./desired-state.md)
-- Policy/gates: [`granotLifecycle.sourcePolicy.md`](./source-policy.md)
-- Drain/pending clock: [`granotLifecycle.drainer.md`](./drainer.md)
-- Booking cases: [`granotLifecycle.bookingReconciliation.md`](./booking-reconciliation.md)
-- Executor / command registry: [`domainCommands.service.md`](../services/domain-commands.md)
+- Identity: [`identity.md`](./identity.md)
+- Desired-state planner: [`desired-state.md`](./desired-state.md)
+- Policy/gates: [`source-policy.md`](./source-policy.md)
+- Drain/pending clock: [`drainer.md`](./drainer.md)
+- Booking cases: [`booking-reconciliation.md`](./booking-reconciliation.md)
+- Release cases: [`release-reconciliation.md`](./release-reconciliation.md)
+- Executor / command registry: [`domain-commands.md`](../services/domain-commands.md)
 - Software map: [`granot-lifecycle-capture.mdc`](../../../.cursor/rules/granot-lifecycle-capture.mdc)

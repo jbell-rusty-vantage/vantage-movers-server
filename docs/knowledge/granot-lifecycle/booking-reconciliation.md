@@ -22,8 +22,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-22T06:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/bookingReconciliation.ts`, `bookingConfirmation.ts`, `bookingOwnerCommands.ts`, `referralBooking.ts`, `src/models/GranotBookingReconciliationCase.ts`, `src/services/granotLifecycle/processor.ts`
@@ -35,7 +35,7 @@ generated:
 
 ## Trigger and routing
 
-The channel-neutral processor is the only caller. It passes only immutable Observation/Decision IDs after activation, live-mode classification, source policy/identity, and the exact Booking-case gate snapshot. Historical shadow, live shadow, disabled gates, Release, missing Job, and unsupported evidence create no case.
+The channel-neutral processor is the only **automatic** caller (`maybeReconcileBooking`). `discrepancyOwnerCommands.ts` may also call `reconcileBookingCaseAfterDiscrepancy` after an Owner discrepancy correction. Automatic open/refresh passes only immutable Observation/Decision IDs after activation, live-mode classification, source policy/identity, and the exact Booking-case gate snapshot. Historical shadow, live shadow, disabled gates, Release, missing Job, and unsupported evidence create no case.
 
 | Current evidence/fact | Result |
 | --- | --- |
@@ -44,11 +44,11 @@ The channel-neutral processor is the only caller. It passes only immutable Obser
 | actual Booked, no Booking | open/refresh `create_missing_booking`; ambiguous Lead means no suggestion |
 | actual Booked, one active Booking | open/refresh `review_existing_booking` with its ID |
 | Booking without Lead | delegate to existing `BookingLeadReconciliationCase`; fail closed if missing |
-| officially cancelled Booking | typed `booked_after_official_cancellation` routing only |
+| officially cancelled Booking | `booked_after_official_cancellation` → processor persists a discrepancy (no Booking case) |
 | actual Booked from exact reviewed Referral, no Booking | open/refresh `create_referral_booking`; no Source Scope, suggestion, or Lead search |
 | actual Booked with one active Referral Booking | open/refresh `review_existing_booking` with its ID and no Lead requirement |
 | Priority-only Referral | no case |
-| identity/Job/source conflict | typed Unit 29 routing only |
+| identity/Job/source conflict | typed discrepancy classification; processor persists via `createGranotDiscrepancies` |
 
 Priority validity never suppresses a valid actual Booked action. Priority `5` alone never opens review-existing. Booking work never reads, closes, or mutates Release work.
 
@@ -62,7 +62,14 @@ Open starts with `case_revision=1`, `evidence_revision=1`. A new Observation app
 
 ## Owner commands
 
-Every command requires the exact Owner-derived actor, one strict `Idempotency-Key`, the first case-evidence Receipt/Observation/Decision chain, an enabled Booking-command gate, and current reviewed Registry/source facts. Checked-in command defaults remain false.
+| Method | Path | Command | HTTP |
+|--------|------|---------|------|
+| `POST` | `/api/v1/admin/granot-lifecycle/booking-cases/:id/confirm-booking` | `confirmGranotBooking` | 201 (200 on replay/`already_satisfied`) |
+| `POST` | `.../update-booking` | `updateBooking` (route telemetry `updateGranotBooking`) | 200 |
+| `POST` | `.../create-referral-booking` | `createReferralBooking` (route telemetry `createGranotReferralBooking`) | 201 (200 on replay/`already_satisfied`) |
+| `POST` | `.../no-action` | `resolveGranotBookingCaseNoAction` (route telemetry `resolveGranotBookingNoAction`) | 200 |
+
+Every command requires `requireRegistryOwnerActor`, one strict `Idempotency-Key`, the first case-evidence Receipt/Observation/Decision chain, an enabled Booking-command gate, and current reviewed Registry/source facts. Flag-off is **422** `POLICY_BLOCKED`. Stale case/Booking revision is **409** `CASE_REVISION_CONFLICT` / `DOMAIN_REVISION_CONFLICT`. Checked-in command defaults remain false.
 
 - `confirmGranotBooking` resolves an open `create_missing_booking` case. It requires an eligible selected Lead (Duplicate/Bad/cancelled rejected; all-scope needs a 10–500 override) and explicit official Booking details. Same-state existing Booking plus matching Record Link is `already_satisfied`.
 - `updateBooking` is available only for open `review_existing_booking`. It revalidates the deterministic active Booking, normalized Job, linked Lead/source, optional active Record Link, exact Booking/case revisions, and active Agent/Merchant IDs. It fully replaces only Book Date, Agent allocations, total Binder, Deposit, and Merchant; derived deposit thresholds alone may mirror to the already-linked Lead. One transaction writes aggregate Change(s), case resolution, Command, and one coalescible queued Booking Chain intent. Identity/source/contact/local/submission/cancellation fields cannot change.

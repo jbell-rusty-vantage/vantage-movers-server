@@ -18,8 +18,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-22T06:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/identity.ts`  
@@ -42,7 +42,7 @@ generated:
 
 Successful `source_scoped_lead` policy with Source Company, Source Granularity, and `selected_lead_model` is required before a Lead query. Missing/invalid/inactive scope, deferred disposition, and `policy_failure` return immediately without a global or scoped Lead search. Payload `type=AUTO` / `provider_context` is ignored. Client `expected_target` is not an input. `legacy_unknown` is never reinterpreted as a match signal.
 
-`referral_booking` returns `referral_leadless=true`, no Lead ladder, and no Lead search.
+`referral_booking` returns `outcome: "unmatched"`, `reason_code: "creation_policy_observation_only"`, `referral_leadless=true`, no Lead ladder, and no Lead search.
 
 ## Form Lead ladder
 
@@ -65,11 +65,13 @@ Same Lead found through current and immutable contact values is one candidate. Z
 3. Source Granularity plus normalized phone across current phone and immutable ingested/original caller phone.
 4. Otherwise pending/ambiguous/conflict/unmatched.
 
-Job and contact queries always include `source_granularity_id`. Duplicate Call Leads remain readable. Job and phone pointing at different eligible Leads are `conflict`; multiple same-rung candidates are `ambiguous`. Current and immutable phones are alternative evidence for one Lead.
+Match methods: `granot_record_link`, `form_ref_no_exact`, `form_mongo_id_compatibility`, `call_job_no_exact`, `booking_job_no_exact`, `source_scoped_contact`. Linked success reason is `record_link_confirmed`.
+
+Job and contact queries always include `source_granularity_id`. Duplicate Call Leads remain readable. Job and phone pointing at different eligible Leads are `conflict`. Multiple same-rung Call candidates are **`conflict` / `multiple_eligible_matches`** (not `ambiguous`). Form exact-ladder multiple eligible is also `conflict` / `multiple_eligible_matches`; Form contact multi-match is `ambiguous`. Call phone matching uses current `normalized_phone_number` plus `ingested_contact_snapshot` only (no Call `granot_contact_snapshot`). Current and immutable phones are alternative evidence for one Lead. Booking-owner scope miss: Form → `ambiguous` / `record_link_conflict`; Call → `conflict` / `record_link_conflict`.
 
 ## Agent assertion
 
-Preserve `user_raw` and `rep_raw`. Normalize nonempty values with the Operations Registry Granot username normalizer. Equal normalized values are one assertion. Different nonempty values yield `granot_agent_identity_conflict` (`agent_assertion: "conflict"`), return no Agent, and do not block non-Agent identity. Suggest an Agent only when exactly one active row matches `granot_identity.username` or compatibility `granot_crm_username`. Never call `applyGranotCrmUsernameReceiverMatch`. Never create, activate, verify, or mutate an Agent. Existing receiver overwrite is planned by Unit 15 and applied by Unit 18.
+Preserve `user_raw` and `rep_raw`. Normalize nonempty values with the Operations Registry Granot username normalizer. Equal normalized values are one assertion. Different nonempty values yield `agent_assertion: "conflict"`, return no Agent, and do not block non-Agent identity. This module does **not** emit issue code `granot_agent_identity_conflict`. Zero or 2+ Agent rows for one username stay `agent_assertion: "single"` with no `agent`. Suggest an Agent only when exactly one active row matches `granot_identity.username` or compatibility `granot_crm_username`. Never call `applyGranotCrmUsernameReceiverMatch`. Never create, activate, verify, or mutate an Agent. Existing receiver overwrite is planned by Unit 15 and applied by Unit 18.
 
 ## Booking context
 
@@ -81,6 +83,6 @@ Identity is read-only. Processing remains true, shadow remains true, and all eig
 
 ## Related
 
-- Policy resolution: [`granotLifecycle.sourcePolicy.md`](./source-policy.md)
-- Processor consumes this resolver and does not reconstruct identity: [`granotLifecycle.processor.md`](./processor.md)
-- Observation identity fields: [`granotLifecycle.normalization.md`](./normalization.md)
+- Policy resolution: [`source-policy.md`](./source-policy.md)
+- Processor consumes this resolver and does not reconstruct identity: [`processor.md`](./processor.md)
+- Observation identity fields: [`normalization.md`](./normalization.md)

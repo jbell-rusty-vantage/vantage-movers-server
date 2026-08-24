@@ -19,8 +19,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-22T06:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/normalization.ts`, `src/models/GranotObservation.ts`  
@@ -30,15 +30,17 @@ generated:
 
 **Role:** Convert one immutable **Granot Observation Receipt** into one immutable-in-meaning **Granot Observation**. This module owns every Section 10 field, result, and issue rule. It does **not** match Leads, resolve Registry policy, write Decisions, or mutate a Lead, Booking, or Cancellation.
 
-**Stack:** callable module only. Capture does not invoke this module. The Decision processor upserts an Observation when it is invoked after a fenced claim. Callers pass a receipt ID (or an already-read typed receipt). They must not normalize fields themselves. Claim/drain lives in [`granotLifecycle.drainer.md`](./drainer.md).
+**Stack:** callable module only. Capture does not invoke this module. The Decision processor upserts an Observation when it is invoked after a fenced claim. Callers pass a receipt ID (or an already-read typed receipt). They must not normalize fields themselves. Claim/drain lives in [`drainer.md`](./drainer.md).
 
 ## Public interface
 
-- `normalizeGranotReceipt(receipt)` — pure candidate from typed receipt evidence.
+- `normalizeGranotReceipt(receipt)` — pure candidate from typed receipt evidence. Throws on a malformed receipt envelope (`assertReceiptChannelShape`: webhook missing `route_event_class`, extension/automation missing `channel_operation_kind`).
 - `upsertGranotObservation({ receipt_id } | { receipt })` — persist with one-row-per-`receipt_id` upsert.
 - Invalid and unsupported results **persist**. They are completed business classifications, not thrown parse failures.
 - Technical database failures throw and create no second row.
 - If a concurrent or later candidate differs from the stored row, `ObservationIntegrityError` is thrown. Evidence is never overwritten.
+
+Emitted issue codes: `payload_not_object`, `route_payload_event_conflict`, `missing_payload_event_type`, `unsupported_booking_action`, `invalid_source_label`, `invalid_form_reference`, `invalid_phone`, `invalid_email`, `invalid_move_date`, `invalid_state`, `invalid_cubic_feet`, `invalid_priority`, `invalid_money`. Schema also lists `missing_job_number` and `granot_agent_identity_conflict`; this module never emits those (Agent conflict is later identity policy). Over-bound / non-scalar Job Number is omitted silently with no issue code. Source label reads payload `label` or `source`.
 
 ## Channel authority
 
@@ -79,7 +81,7 @@ generated:
 
 ## Related
 
-- Capture remains receipt-only ([`granotLifecycle.capture.md`](./capture.md)).
-- Decision processor may upsert an Observation when invoked ([`granotLifecycle.processor.md`](./processor.md)).
-- Queue/cron/requeue enter the fenced claim service ([`granotLifecycle.drainer.md`](./drainer.md)).
-- Approved HTTP automation apply captures a `granot_http_automation` receipt and enters the shared claim/processor ([`granotLifecycle.automationApply.md`](./automation-apply.md)). It does not mutate Leads from this module.
+- Capture remains receipt-only ([`capture.md`](./capture.md)).
+- Decision processor may upsert an Observation when invoked ([`processor.md`](./processor.md)).
+- Queue/cron/requeue enter the fenced claim service ([`drainer.md`](./drainer.md)).
+- Approved HTTP automation apply captures a `granot_http_automation` receipt and enters the shared claim/processor ([`automation-apply.md`](./automation-apply.md)). It does not mutate Leads from this module.

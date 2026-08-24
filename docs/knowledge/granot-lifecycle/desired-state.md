@@ -21,8 +21,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  by: process:okf-docs-optimization
+  at: 2026-08-22T06:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)
 
@@ -58,8 +58,10 @@ WordPress Form: primary name/phone/email and both ingested snapshots stay off `c
 - incomplete immutable creation data: `insufficient_creation_data` with `missing_creation_job_number`, `missing_creation_contact`, or `missing_creation_route_data`; never pending
 - Form minimum data: normalized Job, deterministic route, name component, normalized phone, valid origin/destination state and 5-digit ZIP
 - Call may be Job-only; telephony, duration, session, qualification, and RingCentral metadata are never fabricated
-- `create_if_missing` with complete minimum data plans immediately `created` / `lead_created_authorized` and `creation_eligibility:"eligible"`; the processor invokes `createLeadFromGranot` only when execution is `live`, `GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED` is true, and every creation gate passes. Shadow and gated-off live stay `shadow_effect_suppressed` / `global_effect_disabled` with no Lead, link, Command, Change, or outbox
+- `create_if_missing` with complete minimum data plans immediately `created` / `lead_created_authorized` and `creation_eligibility:"eligible"`; the processor invokes `createLeadFromGranot` only when execution is `live`, `GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED` is true, and every creation gate passes. Those gates reuse `evaluateEffectGates` with `requested_effect: "lead_created"` and `global_effect_flag: flags.lead_creation_enabled` — not a separate gate list. Shadow and gated-off live stay `shadow_effect_suppressed` / `global_effect_disabled` with no Lead, link, Command, Change, or outbox
 - `observation_only` stays `creation_policy_observation_only`
+- `isInvalidPriorityUpdate` is only `route_event_class === "priority_updated"` plus `invalid_priority`. Other routes with `valid_with_issues` + `invalid_priority` skip Priority fields and continue
+- Call create-if-missing may acquire a RingCentral convergence scope lock and reject when pre-creation RC candidates exist (`acquireRingCentralConvergenceScopeLock`)
 
 Equivalent formatting uses existing Job/phone/email/state/date normalizers and does not manufacture a change. `changed_paths` are sorted and deduplicated.
 
@@ -71,5 +73,5 @@ The processor converts a plan to `GranotAuthorizedLeadDesiredState` immediately 
 
 ## Related
 
-- Processor orchestration: [`granotLifecycle.processor.md`](./processor.md)
-- Identity input: [`granotLifecycle.identity.md`](./identity.md)
+- Processor orchestration: [`processor.md`](./processor.md)
+- Identity input: [`identity.md`](./identity.md)
