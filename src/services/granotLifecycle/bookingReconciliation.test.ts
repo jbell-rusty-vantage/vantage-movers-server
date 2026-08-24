@@ -500,6 +500,7 @@ describe("Booking Reconciliation persistence", () => {
         payload_event_type_raw: "Priority",
         identity: { normalized_job_no: booked.normalized_job_no },
         priority: { valid: true, canonical: "5" },
+        booking_action: {},
       },
     ];
     await createGranotBookingReconciliation({

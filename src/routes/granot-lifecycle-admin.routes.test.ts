@@ -114,6 +114,7 @@ app.use(
         capabilities: { booking_cases: true, release_cases: false, discrepancies: false, official_facts: true },
       },
       capabilities: { commands: false, referral: false, release_cases: false, discrepancies: false },
+      priority_pairing: null,
     } : null,
     getCreatingObservation: async (caseId) => {
       lastCreatingObservationCaseId = caseId;
@@ -142,6 +143,7 @@ app.use(
           agent_identity: {},
         },
         granot_statement: { event_type: "Booked", job_no: "synthetic-100" },
+        priority_pairing: null,
       } : null;
     },
     listCandidates: async (caseId, query) => {

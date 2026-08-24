@@ -386,8 +386,11 @@ test("[AC-18] processor does not invoke Booking reconciliation for Priority 5", 
     },
   });
   const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
-  assert.notEqual(result.reason_code, "booking_case_opened");
-  assert.notEqual(result.reason_code, "booking_case_refreshed");
+  assert.ok(
+    result.effects.every((effect) =>
+      effect.kind !== "booking_case_opened" && effect.kind !== "booking_case_refreshed",
+    ),
+  );
 });
 
 test("[AC-18] Priority 5 with booking cases enabled still applies lead desired-state", async () => {
@@ -426,7 +429,7 @@ test("[AC-18] Priority 5 with booking cases enabled still applies lead desired-s
   const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
   assert.equal(deps.synchronizeCalls, 1);
   assert.equal(result.outcome, "applied");
-  assert.notEqual(result.reason_code, "booking_case_opened");
+  assert.ok(result.effects.every((effect) => effect.kind !== "booking_case_opened"));
 });
 
 test("[AC-18][AC-19] processor invokes Booking reconciliation only in live gate-enabled posture", async () => {

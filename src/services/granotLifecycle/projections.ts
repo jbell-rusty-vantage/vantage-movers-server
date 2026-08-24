@@ -2072,7 +2072,7 @@ async function listPriorityPairingByCase(
 
   const missingSnapshotIds = bookingRows
     .filter((item) => !item.row.priority_pairing)
-    .map((item) => item.selected.item.observation_id);
+    .map((item) => new mongoose.Types.ObjectId(String(item.selected.item.observation_id)));
   const creatingDocs = missingSnapshotIds.length
     ? await getGranotObservationModel().find({ _id: { $in: missingSnapshotIds } }).lean()
     : [];
