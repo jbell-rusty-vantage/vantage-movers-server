@@ -8,6 +8,7 @@ stale_after: 2026-11-19
 resource: src/services/granotLifecycle/bookingReconciliation.ts
 applies_to:
   - src/services/granotLifecycle/bookingReconciliation.ts
+  - src/services/granotLifecycle/bookingPriorityPairing.ts
   - src/services/granotLifecycle/bookingConfirmation.ts
   - src/services/granotLifecycle/bookingOwnerCommands.ts
   - src/services/granotLifecycle/referralBooking.ts
@@ -26,12 +27,13 @@ generated:
   at: 2026-08-22T06:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
-**Primary code:** `src/services/granotLifecycle/bookingReconciliation.ts`, `bookingConfirmation.ts`, `bookingOwnerCommands.ts`, `referralBooking.ts`, `src/models/GranotBookingReconciliationCase.ts`, `src/services/granotLifecycle/processor.ts`
-**Domain terms used:** [Granot Booking Reconciliation Case](../../../../CONTEXT.md), [Referral Booking](../../../../CONTEXT.md), [Update Existing Booking](../../../../CONTEXT.md), [No Action](../../../../CONTEXT.md), [Synchronization Decision](../../../../CONTEXT.md), [Granot Observation](../../../../CONTEXT.md), [Source Scope](../../../../CONTEXT.md)
+**Authority (trigger and pairing):** [`booking-reconciliation-booked-only-specification.md`](../../granot-lead-lifecycle/booking-reconciliation-booked-only-specification.md). FINAL SPEC still wins on modes, uniqueness, revisions, Owner commands, Referral, and discrepancies.  
+**Primary code:** `src/services/granotLifecycle/bookingReconciliation.ts`, `bookingPriorityPairing.ts`, `bookingConfirmation.ts`, `bookingOwnerCommands.ts`, `referralBooking.ts`, `src/models/GranotBookingReconciliationCase.ts`, `src/services/granotLifecycle/processor.ts`
+**Domain terms used:** [Granot Booking Reconciliation Case](../../../../CONTEXT.md), [Booking Priority Pairing](../../../../CONTEXT.md), [Referral Booking](../../../../CONTEXT.md), [Update Existing Booking](../../../../CONTEXT.md), [No Action](../../../../CONTEXT.md), [Synchronization Decision](../../../../CONTEXT.md), [Granot Observation](../../../../CONTEXT.md), [Source Scope](../../../../CONTEXT.md)
 
 # Granot Booking reconciliation (`granotLifecycle/bookingReconciliation`)
 
-**Role:** Persist evidence-backed owner work for Priority `5` and actual Booked observations. A case is not a Booking. Official Booking changes occur only through explicit Owner commands.
+**Role:** Persist evidence-backed owner work for actual Booked observations. A case is not a Booking. Official Booking changes occur only through explicit Owner commands. [Booking Priority Pairing](../../../../CONTEXT.md) is an audit projection on the case, not a trigger.
 
 ## Trigger and routing
 
@@ -39,8 +41,7 @@ The channel-neutral processor is the only **automatic** caller (`maybeReconcileB
 
 | Current evidence/fact | Result |
 | --- | --- |
-| Priority `5`, eligible Lead, no Booking | open/refresh `create_missing_booking` |
-| Priority `5`, existing Booking | no case |
+| Priority `5` without Booked | `not_booking_evidence`; no case; Observation may apply lead desired-state |
 | actual Booked, no Booking | open/refresh `create_missing_booking`; ambiguous Lead means no suggestion |
 | actual Booked, one active Booking | open/refresh `review_existing_booking` with its ID |
 | Booking without Lead | delegate to existing `BookingLeadReconciliationCase`; fail closed if missing |
@@ -48,9 +49,11 @@ The channel-neutral processor is the only **automatic** caller (`maybeReconcileB
 | actual Booked from exact reviewed Referral, no Booking | open/refresh `create_referral_booking`; no Source Scope, suggestion, or Lead search |
 | actual Booked with one active Referral Booking | open/refresh `review_existing_booking` with its ID and no Lead requirement |
 | Priority-only Referral | no case |
-| identity/Job/source conflict | typed discrepancy classification; processor persists via `createGranotDiscrepancies` |
+| identity/Job/source conflict on actual Booked | typed discrepancy classification; processor persists via `createGranotDiscrepancies` |
 
-Priority validity never suppresses a valid actual Booked action. Priority `5` alone never opens review-existing. Booking work never reads, closes, or mutates Release work.
+Classifier `evidence_action` for new traffic is `booked` only; it never emits `priority_5`. Stored evidence still allows historical `priority_5` rows. Priority validity never suppresses a valid actual Booked action. Persist and `reconcileBookingCaseAfterDiscrepancy` fail closed unless the classification is actual Booked. Booking work never reads, closes, or mutates Release work.
+
+On Booked open or a new Booked evidence append, the same transaction writes an optional `priority_pairing` snapshot from `projectBookingPriorityPairing`: pairing class (`priority_5_then_booked` | `booked_carries_priority_5` | `booked_without_priority_5`), creating Booked Observation id and Priority flags, and preceding Priority 5 Observation id/time when one exists. `later_priority_5` is never stored. Exact Observation replay does not rewrite the snapshot. Pairing never increments `case_revision` by itself. Historical Priority-5-only cases keep their evidence and have no pairing snapshot.
 
 ## Transaction, uniqueness, and revisions
 

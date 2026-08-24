@@ -10,11 +10,14 @@ export { normalizeAgentName } from "./agentName";
 
 export {
   deriveBookedLeadAgentAllocations,
+  officialBookingAgentIds,
+  officialBookingAllocations,
   patchAgentAllocations,
   primaryAgentName,
   receiverAttributionFromPrimaryAllocation,
   resolveAgentAllocations,
   resolveTotalBinderAmount,
+  splitBinderEvenly,
   type AgentAllocationDocumentInput,
   type AgentAllocationInput,
 } from "./agentAllocation.service";

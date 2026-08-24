@@ -625,11 +625,8 @@ async function maybeReconcileBooking(input: {
   sourcePolicy?: SourcePolicySnapshot;
 }): Promise<ReturnType<typeof toProcessorResult> | undefined> {
   const actualBooked = input.observation.booking_action?.normalized === "booked";
-  const priorityFive =
-    input.observation.priority?.valid === true &&
-    input.observation.priority?.canonical === "5";
   if (
-    (!actualBooked && !priorityFive) ||
+    !actualBooked ||
     input.observation.booking_action?.normalized === "release" ||
     !input.observation.identity?.normalized_job_no ||
     input.observation.normalization_result === "invalid" ||

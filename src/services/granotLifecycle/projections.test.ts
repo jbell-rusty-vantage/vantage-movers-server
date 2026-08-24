@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { GRANOT_LIFECYCLE_FLAG_DEFAULTS } from "../../config/domain/granotLifecycle";
 import { GRANOT_LIFECYCLE_ERROR_CODES } from "./errors";
+import mongoose from "mongoose";
 import {
   assertProjectionSafe,
   collectForbiddenProjectionKeys,
+  compactCaseListPriorityPairing,
   compareTimelineEntries,
   dueWorkFilter,
   flagsToNamedBooleans,
@@ -12,9 +14,11 @@ import {
   maskLifecycleContact,
   normalizeJobProjectionPath,
   paginateTimeline,
+  projectCaseDetailPriorityPairing,
   rankBookingCandidateProjections,
   type GranotTimelineEntry,
 } from "./projections";
+import { projectBookingPriorityPairing } from "./bookingPriorityPairing";
 
 test("[AC-35] Job path normalization rejects empty values", () => {
   assert.equal(normalizeJobProjectionPath("synthetic-job-100"), "SYNTHETIC JOB 100");
@@ -105,4 +109,126 @@ test("[AC-37] due work includes expired claims and excludes unexpired claimed le
     { "processing.state": { $ne: "claimed" } },
     { "processing.leased_until": { $lte: now } },
   ]);
+});
+
+test("[AC-P7] list compact pairing matches the creating Booked class and omits Release rows", () => {
+  const bookedEvidence = [{
+    observation_id: "64b7f4d9e6c2a1b0f3d5e788",
+    captured_at: "2026-08-24T15:01:00.000Z",
+    action: "booked" as const,
+  }];
+  const pairing = projectBookingPriorityPairing({
+    creating_booked: {
+      _id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e788"),
+      receipt_id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e781"),
+      captured_at: new Date("2026-08-24T15:01:00.000Z"),
+      route_event_class: "booking_status_changed",
+      payload_event_type_raw: "Booked",
+      identity: { normalized_job_no: "SYNTHETIC JOB PAIR" },
+      priority: { valid: true, canonical: "5" },
+      booking_action: { normalized: "booked" },
+    } as never,
+    job_observations: [{
+      _id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e780"),
+      receipt_id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e782"),
+      captured_at: new Date("2026-08-24T15:00:00.000Z"),
+      route_event_class: "priority_updated",
+      payload_event_type_raw: "Priority",
+      identity: { normalized_job_no: "SYNTHETIC JOB PAIR" },
+      priority: { valid: true, canonical: "5" },
+    }],
+  });
+  assert.deepEqual(
+    compactCaseListPriorityPairing({
+      kind: "booking",
+      evidence: bookedEvidence,
+      pairing,
+      has_later_priority_5: true,
+    }),
+    {
+      pairing: "priority_5_then_booked",
+      creating_booked_priority_is_5: true,
+      has_preceding_priority_5: true,
+      has_later_priority_5: true,
+    },
+  );
+  assert.equal(
+    compactCaseListPriorityPairing({
+      kind: "release",
+      evidence: [{ observation_id: "rel", captured_at: "2026-08-24T15:01:00.000Z", action: "release" }],
+      pairing,
+      has_later_priority_5: false,
+    }),
+    undefined,
+  );
+  assert.equal(
+    compactCaseListPriorityPairing({
+      kind: "booking",
+      evidence: [{ observation_id: "p5", captured_at: "2026-08-24T15:00:00.000Z", action: "priority_5" }],
+      pairing,
+      has_later_priority_5: false,
+    }),
+    undefined,
+  );
+});
+
+test("[AC-P4][AC-P6][AC-P7] detail pairing includes later Priority 5 and is null for historical Priority 5 only", () => {
+  const creating = {
+    _id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e788"),
+    receipt_id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e781"),
+    captured_at: new Date("2026-08-24T15:01:00.000Z"),
+    route_event_class: "booking_status_changed" as const,
+    payload_event_type_raw: "Booked",
+    identity: { normalized_job_no: "SYNTHETIC JOB PAIR" },
+    priority: { valid: false },
+    booking_action: { normalized: "booked" as const },
+  };
+  const later = {
+    _id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e789"),
+    receipt_id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e783"),
+    captured_at: new Date("2026-08-24T15:02:00.000Z"),
+    route_event_class: "priority_updated" as const,
+    payload_event_type_raw: "Priority",
+    identity: { normalized_job_no: "SYNTHETIC JOB PAIR" },
+    priority: { valid: true, canonical: "5" },
+  };
+  const detail = projectCaseDetailPriorityPairing({
+    kind: "booking",
+    evidence: [{
+      observation_id: String(creating._id),
+      captured_at: creating.captured_at,
+      action: "booked",
+    }],
+    creating,
+    jobObservations: [creating, later],
+  });
+  assert.equal(detail?.pairing, "booked_without_priority_5");
+  assert.equal(detail?.later_priority_5?.observation_id, String(later._id));
+  assert.equal(JSON.stringify(detail).includes("contact"), false);
+  assert.equal(
+    projectCaseDetailPriorityPairing({
+      kind: "booking",
+      evidence: [{
+        observation_id: "64b7f4d9e6c2a1b0f3d5e780",
+        captured_at: "2026-08-24T15:00:00.000Z",
+        action: "priority_5",
+      }],
+      creating,
+      jobObservations: [creating],
+    }),
+    null,
+  );
+  assert.equal(
+    projectCaseDetailPriorityPairing({
+      kind: "release",
+      evidence: [{
+        observation_id: String(creating._id),
+        captured_at: creating.captured_at,
+        action: "booked",
+      }],
+      creating,
+      jobObservations: [creating],
+    }),
+    null,
+  );
 });

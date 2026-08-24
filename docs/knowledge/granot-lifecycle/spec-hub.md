@@ -12,6 +12,7 @@ applies_to:
   - docs/granot-lead-lifecycle/[REDACTED]-operator-runbook.md
   - docs/granot-lead-lifecycle/sprint-progress-through-unit-25.md
   - docs/granot-lead-lifecycle/booking-reconciliation-booked-only-specification.md
+  - docs/granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md
 owners: [team:main-server]
 sources:
   - id: final-spec
@@ -26,6 +27,9 @@ sources:
   - id: booked-only-delta
     resource: docs/granot-lead-lifecycle/booking-reconciliation-booked-only-specification.md
     title: Booking Reconciliation Booked-only trigger and Priority pairing audit
+  - id: owner-booking-intake
+    resource: docs/granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md
+    title: Owner booking intake, even Binder, optional Lead, and Connect Booking to Lead
 generated:
   by: process:okf-docs-conversion
   at: 2026-08-21T02:17:00Z
@@ -37,6 +41,7 @@ This file is a **Reference** hub only. It points at the locked contract and owne
 
 - [FINAL SPECIFICATION GRANOT LEAD LIFECYCLE](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) — locked contract (do not OKF-ify).
 - [Booking Reconciliation Booked-only trigger and Priority pairing](../../granot-lead-lifecycle/booking-reconciliation-booked-only-specification.md) — delta that supersedes FINAL SPEC §19 trigger and AC-18.
+- [Owner booking intake and lead attachment](../../granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md) — prerequisite for Owner Daily: even Binder, Confirm without a required Lead, Connect Booking to Lead, and owner-readable Intakes.
 - [Lifecycle activation flags and source policies](../../granot-lead-lifecycle/lifecycle-activation-flags-and-source-policies.md)
 - [Owner operator runbook](../../granot-lead-lifecycle/[REDACTED]-operator-runbook.md)
 - [Sprint progress through Unit 25](../../granot-lead-lifecycle/sprint-progress-through-unit-25.md)

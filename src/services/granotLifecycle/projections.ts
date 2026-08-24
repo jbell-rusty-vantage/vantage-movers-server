@@ -45,6 +45,17 @@ import {
   type BookingLeadCandidateProjection,
 } from "./bookingReconciliation";
 import {
+  projectBookingPriorityPairing,
+  toBookingPriorityPairingProjection,
+  toListPriorityPairing,
+  type BookingPriorityPairingListItem,
+  type BookingPriorityPairingProjection,
+} from "./bookingPriorityPairing";
+import { selectCreatingObservationEvidence } from "./creatingObservation";
+import { compareGranotTemporal } from "./granotTemporal";
+import type { GranotBookingReconciliationCaseDocument } from "../../models/GranotBookingReconciliationCase";
+import type { GranotObservationDocument } from "../../models/GranotObservation";
+import {
   GRANOT_LIFECYCLE_ERROR_CODES,
   GranotLifecycleError,
 } from "./errors";
@@ -217,7 +228,10 @@ export type GranotLifecycleCaseListItem = {
   opened_at: string;
   last_evidence_at: string;
   resolved_at?: string;
+  priority_pairing?: BookingPriorityPairingListItem;
 };
+
+export type { BookingPriorityPairingListItem, BookingPriorityPairingProjection };
 
 export type GranotLifecycleCaseListPage = {
   items: GranotLifecycleCaseListItem[];
@@ -292,6 +306,7 @@ export type GranotLifecycleCaseDetail = {
     release_cases: boolean;
     discrepancies: boolean;
   };
+  priority_pairing: BookingPriorityPairingProjection | null;
 };
 
 export type GranotLifecycleCandidateItem = {
@@ -342,6 +357,7 @@ type LifecycleCaseListRow = {
   opened_at: Date;
   last_evidence_at: Date;
   resolved_at?: Date;
+  priority_pairing?: GranotBookingReconciliationCaseDocument["priority_pairing"];
 };
 
 function isBookingCaseMode(
@@ -574,6 +590,7 @@ export async function listGranotLifecycleCases(
     ? await getGranotCrmSourceModel().find({ _id: { $in: sourceIds } }).select({ granot_label: 1 }).lean()
     : [];
   const sourceLabels = new Map(sources.map((source) => [String(source._id), source.granot_label]));
+  const listPairing = await listPriorityPairingByCase(visible);
   const items = visible.map((row) => {
     const sourceId = row.source_scope
       ? String(row.source_scope.granot_crm_source_id)
@@ -605,6 +622,7 @@ export async function listGranotLifecycleCases(
       opened_at: iso(row.opened_at, "case.opened_at"),
       last_evidence_at: iso(row.last_evidence_at, "case.last_evidence_at"),
       resolved_at: row.resolved_at ? iso(row.resolved_at, "case.resolved_at") : undefined,
+      priority_pairing: listPairing.get(String(row._id)),
     } satisfies GranotLifecycleCaseListItem;
   });
   const last = visible.at(-1);
@@ -652,7 +670,27 @@ export async function getGranotLifecycleCaseDetail(
     ? row.suggested_lead?.lead_ref ?? link?.lead_ref
     : link?.lead_ref;
   const lead = leadRef ? await loadLeadContactProjection(leadRef.model, String(leadRef.id)) : null;
+  const jobObservations = kind === "booking"
+    ? await getGranotObservationModel()
+        .find({ "identity.normalized_job_no": row.normalized_job_no })
+        .select({
+          _id: 1,
+          receipt_id: 1,
+          captured_at: 1,
+          route_event_class: 1,
+          payload_event_type_raw: 1,
+          priority: 1,
+          identity: 1,
+          booking_action: 1,
+        })
+        .lean()
+    : [];
   const timeline = await projectGranotJob(row.normalized_job_no, { limit: DEFAULT_TIMELINE_LIMIT });
+  const selectedCreating = selectCreatingObservationEvidence(row.evidence);
+  const creatingBooked = selectedCreating?.item.action === "booked"
+    ? jobObservations.find((item) => String(item._id) === String(selectedCreating.item.observation_id))
+      ?? observationById.get(String(selectedCreating.item.observation_id))
+    : undefined;
   const safeBooking = booking ? projectBooking(booking, activeMerchant?._id) : undefined;
   const safeCancellation = cancellation ? projectCancellation(cancellation) : undefined;
   const firstObservation = row.evidence[0]
@@ -756,6 +794,12 @@ export async function getGranotLifecycleCaseDetail(
       release_cases: true,
       discrepancies: true,
     },
+    priority_pairing: projectCaseDetailPriorityPairing({
+      kind,
+      evidence: row.evidence,
+      creating: creatingBooked,
+      jobObservations,
+    }),
   };
   assertProjectionSafe(result);
   return result;
@@ -1922,6 +1966,148 @@ async function loadLastRun(
     at: new Date(row.occurred_at).toISOString(),
     status: row.event_key.endsWith(".failed") ? "failed" : "completed",
   };
+}
+
+export function projectCaseDetailPriorityPairing(input: {
+  kind: "booking" | "release";
+  evidence: Array<{
+    observation_id: { toString(): string } | string;
+    captured_at: Date | string;
+    action: "priority_5" | "booked" | "release";
+  }>;
+  creating?: Pick<
+    GranotObservationDocument,
+    | "_id"
+    | "receipt_id"
+    | "captured_at"
+    | "route_event_class"
+    | "payload_event_type_raw"
+    | "priority"
+    | "identity"
+    | "booking_action"
+  >;
+  jobObservations: Array<
+    Pick<
+      GranotObservationDocument,
+      | "_id"
+      | "receipt_id"
+      | "captured_at"
+      | "route_event_class"
+      | "payload_event_type_raw"
+      | "priority"
+      | "identity"
+    >
+  >;
+}): BookingPriorityPairingProjection | null {
+  if (input.kind !== "booking") return null;
+  const selected = selectCreatingObservationEvidence(input.evidence);
+  if (!selected || selected.item.action !== "booked" || !input.creating) return null;
+  if (input.creating.booking_action?.normalized !== "booked") return null;
+  return toBookingPriorityPairingProjection(projectBookingPriorityPairing({
+    creating_booked: input.creating,
+    job_observations: input.jobObservations,
+  }));
+}
+
+export function compactCaseListPriorityPairing(input: {
+  kind: "booking" | "release";
+  evidence: Array<{
+    observation_id: { toString(): string } | string;
+    captured_at: Date | string;
+    action: "priority_5" | "booked" | "release";
+  }>;
+  snapshot?: GranotBookingReconciliationCaseDocument["priority_pairing"];
+  pairing?: ReturnType<typeof projectBookingPriorityPairing> | null;
+  has_later_priority_5: boolean;
+}): BookingPriorityPairingListItem | undefined {
+  if (input.kind === "release") return undefined;
+  const selected = selectCreatingObservationEvidence(input.evidence);
+  if (!selected || selected.item.action !== "booked") return undefined;
+  if (input.pairing) {
+    return {
+      ...toListPriorityPairing(input.pairing),
+      has_later_priority_5: input.has_later_priority_5,
+    };
+  }
+  if (input.snapshot) {
+    return {
+      pairing: input.snapshot.pairing,
+      creating_booked_priority_is_5: input.snapshot.creating_booked_priority_is_5,
+      has_preceding_priority_5: Boolean(input.snapshot.preceding_priority_5_observation_id),
+      has_later_priority_5: input.has_later_priority_5,
+    };
+  }
+  return undefined;
+}
+
+async function listPriorityPairingByCase(
+  rows: LifecycleCaseListRow[],
+): Promise<Map<string, BookingPriorityPairingListItem>> {
+  const result = new Map<string, BookingPriorityPairingListItem>();
+  const bookingRows = rows.flatMap((row) => {
+    if (row.kind !== "booking") return [];
+    const selected = selectCreatingObservationEvidence(row.evidence);
+    return selected?.item.action === "booked" ? [{ row, selected }] : [];
+  });
+  if (bookingRows.length === 0) return result;
+
+  const jobNos = [...new Set(bookingRows.map((item) => item.row.normalized_job_no))];
+  const priorityFives = await getGranotObservationModel()
+    .find({
+      "identity.normalized_job_no": { $in: jobNos },
+      route_event_class: "priority_updated",
+      "priority.valid": true,
+      "priority.canonical": "5",
+    })
+    .select({
+      _id: 1,
+      receipt_id: 1,
+      captured_at: 1,
+      route_event_class: 1,
+      payload_event_type_raw: 1,
+      priority: 1,
+      identity: 1,
+    })
+    .lean();
+
+  const missingSnapshotIds = bookingRows
+    .filter((item) => !item.row.priority_pairing)
+    .map((item) => item.selected.item.observation_id);
+  const creatingDocs = missingSnapshotIds.length
+    ? await getGranotObservationModel().find({ _id: { $in: missingSnapshotIds } }).lean()
+    : [];
+  const creatingById = new Map(creatingDocs.map((doc) => [String(doc._id), doc]));
+
+  for (const { row, selected } of bookingRows) {
+    const creatingId = String(selected.item.observation_id);
+    const creatingTuple = {
+      captured_at: new Date(selected.item.captured_at),
+      observation_id: creatingId,
+    };
+    const hasLater = priorityFives.some((observation) =>
+      observation.identity?.normalized_job_no === row.normalized_job_no &&
+      compareGranotTemporal(creatingTuple, {
+        captured_at: observation.captured_at,
+        observation_id: String(observation._id),
+      }) === "older",
+    );
+    const compact = compactCaseListPriorityPairing({
+      kind: "booking",
+      evidence: row.evidence,
+      snapshot: row.priority_pairing,
+      pairing: (() => {
+        const creating = creatingById.get(creatingId);
+        if (!creating || creating.booking_action?.normalized !== "booked") return null;
+        return projectBookingPriorityPairing({
+          creating_booked: creating,
+          job_observations: priorityFives,
+        });
+      })(),
+      has_later_priority_5: hasLater,
+    });
+    if (compact) result.set(String(row._id), compact);
+  }
+  return result;
 }
 
 export const JOB_PROJECTION_FORBIDDEN_KEYS = [

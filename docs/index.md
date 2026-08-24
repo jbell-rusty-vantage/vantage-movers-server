@@ -71,7 +71,9 @@ Workspace ADRs are outside this repo. This standalone checkout does not contain 
 
 | Path | Description |
 | --- | --- |
-| [granot-lifecycle/spec-hub.md](knowledge/granot-lifecycle/spec-hub.md) | Links to the locked FINAL SPEC and owner runbooks. No copied spec rules. |
+| [granot-lifecycle/spec-hub.md](knowledge/granot-lifecycle/spec-hub.md) | Links to the locked FINAL SPEC, Booked-only delta, owner booking-intake spec, and owner runbooks. No copied spec rules. |
+| [granot-lifecycle/owner-booking-intake.md](knowledge/granot-lifecycle/owner-booking-intake.md) | Pointer to the owner booking-intake contract. Does not copy spec rules. |
+| [granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md](granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md) | Owner booking intake: even Binder, optional Lead, Connect Booking to Lead, owner-readable Intakes. Prerequisite for Owner Daily. |
 
 ## Archives
 

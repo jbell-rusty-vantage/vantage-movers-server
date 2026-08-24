@@ -3,8 +3,11 @@ import { afterEach, test } from "node:test";
 import mongoose from "mongoose";
 import { Agent } from "../../models/Agent";
 import {
+  deriveBookedLeadAgentAllocations,
+  officialBookingAllocations,
   receiverAttributionFromPrimaryAllocation,
   resolveAgentAllocations,
+  splitBinderEvenly,
 } from "./agentAllocation.service";
 
 type MutableModel = Record<string, unknown>;
@@ -13,6 +16,34 @@ const originalFindOne = Agent.findOne as unknown;
 
 afterEach(() => {
   (Agent as unknown as MutableModel).findOne = originalFindOne;
+});
+
+test("even Binder split uses integer cents and gives the leftover cent to the primary Agent", () => {
+  assert.deepEqual(splitBinderEvenly(100, 1), [100]);
+  assert.deepEqual(splitBinderEvenly(100, 2), [50, 50]);
+  assert.deepEqual(splitBinderEvenly(100.01, 2), [50.01, 50]);
+  assert.deepEqual(
+    deriveBookedLeadAgentAllocations({
+      agent: "Alex",
+      split_agent: "Sam",
+      binder_amount: 100.01,
+    }),
+    [
+      { agent_name: "Alex", binder_amount: 50.01 },
+      { agent_name: "Sam", binder_amount: 50 },
+    ],
+  );
+  assert.deepEqual(
+    officialBookingAllocations({
+      total_binder_amount: 100.01,
+      primary_agent_id: "a".repeat(24),
+      secondary_agent_id: "b".repeat(24),
+    }),
+    [
+      { agent_id: "a".repeat(24), binder_amount: 50.01 },
+      { agent_id: "b".repeat(24), binder_amount: 50 },
+    ],
+  );
 });
 
 test("Best Relocation allocation resolves an existing inactive agent", async () => {

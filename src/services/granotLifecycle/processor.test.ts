@@ -366,6 +366,69 @@ function memoryDeps(input: {
   };
 }
 
+test("[AC-18] processor does not invoke Booking reconciliation for Priority 5", async () => {
+  const row = observation({
+    kind: "lead_snapshot",
+    route_event_class: "priority_updated",
+    priority: { raw: "5", valid: true, canonical: "5" },
+    booking_action: {},
+  });
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: {
+      ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+      shadow_mode: false,
+      booking_cases_enabled: true,
+    },
+    reconcileBooking: async () => {
+      throw new Error("Priority 5 must not invoke Booking reconciliation");
+    },
+  });
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.notEqual(result.reason_code, "booking_case_opened");
+  assert.notEqual(result.reason_code, "booking_case_refreshed");
+});
+
+test("[AC-18] Priority 5 with booking cases enabled still applies lead desired-state", async () => {
+  const row = observation({
+    kind: "lead_snapshot",
+    route_event_class: "priority_updated",
+    priority: { raw: "5", valid: true, canonical: "5" },
+    booking_action: {},
+  });
+  const leadId = String(objectId());
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: {
+      ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+      shadow_mode: false,
+      lead_writes_enabled: true,
+      booking_cases_enabled: true,
+    },
+    identity: matchedFormIdentity(leadId),
+    lead: currentLead(leadId, {
+      granot_priority: "8",
+      quoted: false,
+      normalized_job_no: "SYNTHETIC JOB 100",
+      job_no: "synthetic-job-100",
+    }),
+    reconcileBooking: async () => {
+      throw new Error("Priority 5 must not invoke Booking reconciliation");
+    },
+    synchronizeLead: async (input) => {
+      assert.equal(input.lead_ref.id, leadId);
+      assert.equal(input.desired_state.set.granot_priority, "5");
+      return { status: "applied", entity_refs: [input.lead_ref], warnings: [] };
+    },
+  });
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(deps.synchronizeCalls, 1);
+  assert.equal(result.outcome, "applied");
+  assert.notEqual(result.reason_code, "booking_case_opened");
+});
+
 test("[AC-18][AC-19] processor invokes Booking reconciliation only in live gate-enabled posture", async () => {
   const row = observation({
     kind: "booking_action_snapshot",

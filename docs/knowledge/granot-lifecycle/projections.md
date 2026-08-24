@@ -9,6 +9,7 @@ resource: src/services/granotLifecycle/projections.ts
 applies_to:
   - src/services/granotLifecycle/projections.ts
   - src/services/granotLifecycle/creatingObservation.ts
+  - src/services/granotLifecycle/bookingPriorityPairing.ts
   - src/routes/granot-lifecycle-admin.routes.ts
 owners: [team:main-server]
 sources:
@@ -24,9 +25,9 @@ generated:
   at: 2026-08-24T01:24:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
-**Authority:** [Final Granot Lead Lifecycle specification](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) Sections 28.2 and 29  
-**Primary code:** `src/services/granotLifecycle/projections.ts`, `src/services/granotLifecycle/creatingObservation.ts`, `src/services/granotLifecycle/alerts.ts`, `src/routes/granot-lifecycle-admin.routes.ts`, `src/validation/v1/granotLifecycle.validation.ts`
-**Domain terms used:** [Granot Observation](../../../../CONTEXT.md), [Granot Booking Reconciliation Case](../../../../CONTEXT.md), [Job Number](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Cancellation](../../../../CONTEXT.md), [Source Scope](../../../../CONTEXT.md)
+**Authority:** [Final Granot Lead Lifecycle specification](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) Sections 28.2 and 29. Pairing DTOs: [`booking-reconciliation-booked-only-specification.md`](../../granot-lead-lifecycle/booking-reconciliation-booked-only-specification.md) §7.  
+**Primary code:** `src/services/granotLifecycle/projections.ts`, `src/services/granotLifecycle/creatingObservation.ts`, `src/services/granotLifecycle/bookingPriorityPairing.ts`, `src/services/granotLifecycle/alerts.ts`, `src/routes/granot-lifecycle-admin.routes.ts`, `src/validation/v1/granotLifecycle.validation.ts`
+**Domain terms used:** [Granot Observation](../../../../CONTEXT.md), [Granot Booking Reconciliation Case](../../../../CONTEXT.md), [Booking Priority Pairing](../../../../CONTEXT.md), [Job Number](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Cancellation](../../../../CONTEXT.md), [Source Scope](../../../../CONTEXT.md)
 
 # Granot lifecycle read projections
 
@@ -51,6 +52,8 @@ credential-redacted Granot statement selected from that Booking case's evidence
 - Missing cases use `GRANOT_CASE_NOT_FOUND`; a missing Lead keeps the generic v1 `Lead not found` envelope.
 
 The default queue merges open Booking and Release cases ordered by newest evidence. `kind` filters either collection; projection-only Release mode is `release`. The selected timestamp plus ObjectId cursor is applied consistently across the merged streams, so pages neither duplicate nor omit cross-collection rows.
+
+Booking list rows expose compact [Booking Priority Pairing](../../../../CONTEXT.md) when the case has a creating Booked Observation: `pairing` (`priority_5_then_booked` | `booked_carries_priority_5` | `booked_without_priority_5`), `creating_booked_priority_is_5`, `has_preceding_priority_5`, and current `has_later_priority_5`. Release rows and historical Priority-5-only Booking rows omit it. List may use the persisted snapshot for the first three fields; `has_later_priority_5` is always computed from one post-Booked Priority 5 query for the page's Booking jobs. Case detail adds full `priority_pairing` (including `later_priority_5`) or `null`. Pairing carries Observation IDs, times, route, and Priority only — no contact and no raw Priority Update payload.
 
 ## Projection boundaries
 
@@ -77,7 +80,7 @@ Lead timeline first verifies the exact Lead, then follows persisted Record Links
 
 ## Creating observation
 
-`GET /api/v1/admin/granot-lifecycle/cases/:case_id/creating-observation` is Owner-only and scoped to a Granot Booking Reconciliation Case. It is not part of the masked case-detail DTO and is not available for Release cases. The read prefers the latest case evidence with action `booked` (the `booking_status_changed` Booked Granot Observation). If no booked evidence exists, it falls back to the latest creating evidence. Missing booking case, empty evidence, or missing Granot Observation return `GRANOT_CASE_NOT_FOUND`. The envelope returns the projected Granot Observation (identity, contact, move, booking action) plus `granot_statement`, the credential-redacted receipt payload. Headers, secrets, and list/detail projections stay unchanged.
+`GET /api/v1/admin/granot-lifecycle/cases/:case_id/creating-observation` is Owner-only and scoped to a Granot Booking Reconciliation Case. It is not part of the masked case-detail DTO and is not available for Release cases. The read prefers the latest case evidence with action `booked` (the `booking_status_changed` Booked Granot Observation). If no booked evidence exists, it falls back to the latest creating evidence. Missing booking case, empty evidence, or missing Granot Observation return `GRANOT_CASE_NOT_FOUND`. The envelope returns the projected Granot Observation (identity, contact, move, booking action) plus `granot_statement`, the credential-redacted receipt payload, `priority_pairing` (or `null` for historical Priority-5-only cases), and optional `paired_priority_5_observation` for the preceding Priority 5 snapshot. Booked-without-5 still returns 200 with the Booked statement. Absence of Priority 5 is not `GRANOT_CASE_NOT_FOUND`. Headers, secrets, and list/detail masking stay unchanged.
 
 ## Candidate browser
 

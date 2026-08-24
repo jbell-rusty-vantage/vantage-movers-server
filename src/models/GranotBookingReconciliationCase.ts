@@ -2,6 +2,7 @@ import mongoose, { Schema, type Model } from "mongoose";
 import { getMongoDatabaseName } from "../config/domain/runtime";
 import type { DurableActor } from "../services/durableWork/types";
 import type { EntityRef, LeadModel } from "../services/granotLifecycle/types";
+import type { BookingPriorityPairingClass } from "../services/granotLifecycle/bookingPriorityPairing";
 import {
   ENTITY_REF_MODELS,
   GRANOT_BOOKING_RECONCILIATION_MODES,
@@ -70,6 +71,16 @@ export type GranotBookingReconciliationCaseDocument = {
   opened_at: Date;
   last_evidence_at: Date;
   resolved_at?: Date;
+  priority_pairing?: {
+    pairing: BookingPriorityPairingClass;
+    creating_booked_observation_id: mongoose.Types.ObjectId;
+    creating_booked_priority_canonical?: string;
+    creating_booked_priority_valid: boolean;
+    creating_booked_priority_is_5: boolean;
+    preceding_priority_5_observation_id?: mongoose.Types.ObjectId;
+    preceding_priority_5_captured_at?: Date;
+    computed_at: Date;
+  };
 };
 
 export const GRANOT_BOOKING_RECONCILIATION_CASE_COLLECTION =
@@ -235,6 +246,29 @@ const GranotBookingReconciliationCaseSchema =
       opened_at: { type: Date, required: true },
       last_evidence_at: { type: Date, required: true },
       resolved_at: { type: Date },
+      priority_pairing: {
+        type: new Schema(
+          {
+            pairing: {
+              type: String,
+              required: true,
+              enum: [
+                "priority_5_then_booked",
+                "booked_carries_priority_5",
+                "booked_without_priority_5",
+              ],
+            },
+            creating_booked_observation_id: { type: Schema.Types.ObjectId, required: true },
+            creating_booked_priority_canonical: { type: String, trim: true },
+            creating_booked_priority_valid: { type: Boolean, required: true },
+            creating_booked_priority_is_5: { type: Boolean, required: true },
+            preceding_priority_5_observation_id: { type: Schema.Types.ObjectId },
+            preceding_priority_5_captured_at: { type: Date },
+            computed_at: { type: Date, required: true },
+          },
+          { _id: false },
+        ),
+      },
     },
     {
       collection: GRANOT_BOOKING_RECONCILIATION_CASE_COLLECTION,

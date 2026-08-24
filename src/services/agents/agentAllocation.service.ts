@@ -47,6 +47,41 @@ export function receiverAttributionFromPrimaryAllocation(
 }
 
 /**
+ * Splits one Binder across one or two Agents using integer cents.
+ * Two Agents: secondary gets `floor(total_cents / 2)`; primary gets the remainder.
+ */
+export function splitBinderEvenly(totalAmount: number, agentCount: 1 | 2): number[] {
+  const totalCents = Math.round(totalAmount * 100);
+  if (agentCount === 1) {
+    return [totalCents / 100];
+  }
+  const secondaryCents = Math.floor(totalCents / 2);
+  return [(totalCents - secondaryCents) / 100, secondaryCents / 100];
+}
+
+export function officialBookingAgentIds(details: {
+  primary_agent_id: string;
+  secondary_agent_id?: string;
+}): string[] {
+  return details.secondary_agent_id
+    ? [details.primary_agent_id, details.secondary_agent_id]
+    : [details.primary_agent_id];
+}
+
+export function officialBookingAllocations(details: {
+  total_binder_amount: number;
+  primary_agent_id: string;
+  secondary_agent_id?: string;
+}): Array<{ agent_id: string; binder_amount: number }> {
+  const ids = officialBookingAgentIds(details);
+  const amounts = splitBinderEvenly(details.total_binder_amount, ids.length === 2 ? 2 : 1);
+  return ids.map((agent_id, index) => ({
+    agent_id,
+    binder_amount: amounts[index]!,
+  }));
+}
+
+/**
  * Derives the agent allocation list for a booked-from-source request.
  *
  * Behavior preserved from `v1.service.ts`:
@@ -67,13 +102,13 @@ export function deriveBookedLeadAgentAllocations(
   }
 
   if (!splitAgent) {
-    return [{ agent_name: agent, binder_amount: input.binder_amount }];
+    return [{ agent_name: agent, binder_amount: splitBinderEvenly(input.binder_amount, 1)[0]! }];
   }
 
-  const halfBinderAmount = input.binder_amount / 2;
+  const [primaryAmount, secondaryAmount] = splitBinderEvenly(input.binder_amount, 2);
   return [
-    { agent_name: agent, binder_amount: halfBinderAmount },
-    { agent_name: splitAgent, binder_amount: halfBinderAmount },
+    { agent_name: agent, binder_amount: primaryAmount! },
+    { agent_name: splitAgent, binder_amount: secondaryAmount! },
   ];
 }
 

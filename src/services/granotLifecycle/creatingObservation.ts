@@ -5,6 +5,12 @@ import {
 } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { toObjectId } from "../../utils/objectId";
+import {
+  projectBookingPriorityPairing,
+  toBookingPriorityPairingProjection,
+  type BookingPriorityPairingJobObservation,
+  type BookingPriorityPairingProjection,
+} from "./bookingPriorityPairing";
 import { GRANOT_LIFECYCLE_ERROR_CODES, GranotLifecycleError } from "./errors";
 import { redactCredentialKeys } from "./receiptEvidence";
 import type { GranotBookingAction, GranotRouteEventClass } from "./types";
@@ -51,6 +57,8 @@ export type BookingIntakeCreatingObservation = {
   selection: CreatingObservationSelection;
   observation: CreatingObservationSnapshot;
   granot_statement: unknown;
+  priority_pairing: BookingPriorityPairingProjection | null;
+  paired_priority_5_observation?: CreatingObservationSnapshot;
 };
 
 export type CreatingObservationLoaders = {
@@ -68,6 +76,9 @@ export type CreatingObservationLoaders = {
   findReceipt(
     receiptId: string,
   ): Promise<{ payload?: unknown } | null>;
+  findJobObservations(
+    normalizedJobNo: string,
+  ): Promise<BookingPriorityPairingJobObservation[]>;
 };
 
 const defaultLoaders: CreatingObservationLoaders = {
@@ -90,6 +101,21 @@ const defaultLoaders: CreatingObservationLoaders = {
     return getGranotObservationReceiptModel()
       .findById(toObjectId(receiptId))
       .select({ payload: 1 })
+      .lean();
+  },
+  async findJobObservations(normalizedJobNo) {
+    return getGranotObservationModel()
+      .find({ "identity.normalized_job_no": normalizedJobNo })
+      .select({
+        _id: 1,
+        receipt_id: 1,
+        captured_at: 1,
+        route_event_class: 1,
+        payload_event_type_raw: 1,
+        priority: 1,
+        identity: 1,
+        booking_action: 1,
+      })
       .lean();
   },
 };
@@ -121,6 +147,12 @@ export async function getBookingIntakeCreatingObservation(
   if (!observation) return null;
   const receipt = await loaders.findReceipt(String(observation.receipt_id));
   const capturedAt = iso(selected.item.captured_at, "creating_observation.captured_at");
+  const pairing = await projectCreatingObservationPairing({
+    selected,
+    observation,
+    normalizedJobNo: row.normalized_job_no,
+    loaders,
+  });
   return {
     case_id: String(row._id),
     job_no: row.job_no_snapshot,
@@ -135,6 +167,42 @@ export async function getBookingIntakeCreatingObservation(
     selection: selected.selection,
     observation: projectObservation(observation, capturedAt),
     granot_statement: redactCredentialKeys(receipt?.payload).value,
+    priority_pairing: pairing.priority_pairing,
+    paired_priority_5_observation: pairing.paired_priority_5_observation,
+  };
+}
+
+async function projectCreatingObservationPairing(input: {
+  selected: { item: BookingIntakeEvidenceItem; selection: CreatingObservationSelection };
+  observation: GranotObservationDocument;
+  normalizedJobNo: string;
+  loaders: CreatingObservationLoaders;
+}): Promise<{
+  priority_pairing: BookingPriorityPairingProjection | null;
+  paired_priority_5_observation?: CreatingObservationSnapshot;
+}> {
+  if (
+    input.selected.item.action !== "booked" ||
+    input.observation.booking_action?.normalized !== "booked" ||
+    !input.observation.identity?.normalized_job_no
+  ) {
+    return { priority_pairing: null };
+  }
+  const jobObservations = await input.loaders.findJobObservations(input.normalizedJobNo);
+  const pairing = projectBookingPriorityPairing({
+    creating_booked: input.observation,
+    job_observations: jobObservations,
+  });
+  const projected = toBookingPriorityPairingProjection(pairing);
+  if (!pairing.preceding_priority_5) {
+    return { priority_pairing: projected };
+  }
+  const paired = await input.loaders.findObservation(pairing.preceding_priority_5.observation_id);
+  return {
+    priority_pairing: projected,
+    paired_priority_5_observation: paired
+      ? projectObservation(paired, pairing.preceding_priority_5.captured_at.toISOString())
+      : undefined,
   };
 }
 

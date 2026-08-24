@@ -8,7 +8,14 @@ import type {
   GranotBookingReconciliationCaseDocument,
 } from "../../models/GranotBookingReconciliationCase";
 import { getGranotBookingReconciliationCaseModel } from "../../models/GranotBookingReconciliationCase";
-import { getGranotObservationModel } from "../../models/GranotObservation";
+import {
+  getGranotObservationModel,
+  type GranotObservationDocument,
+} from "../../models/GranotObservation";
+import {
+  projectBookingPriorityPairing,
+  type BookingPriorityPairing,
+} from "./bookingPriorityPairing";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import type {
@@ -142,6 +149,7 @@ export type BookingCaseRefreshInput = {
   observed_context: GranotBookingReconciliationCaseDocument["observed_context"];
   suggested_lead?: GranotBookingReconciliationCaseDocument["suggested_lead"];
   suggestion_changed: boolean;
+  priority_pairing?: GranotBookingReconciliationCaseDocument["priority_pairing"];
 };
 
 export interface BookingReconciliationPersistenceStore {
@@ -176,6 +184,22 @@ export interface BookingReconciliationPersistenceStore {
   countOpenCasesByMode(
     session?: ClientSession,
   ): Promise<Array<{ mode: string; count: number }>>;
+  listJobObservations?(
+    normalizedJobNo: string,
+    session: ClientSession,
+  ): Promise<Array<
+    Pick<
+      GranotObservationDocument,
+      | "_id"
+      | "receipt_id"
+      | "captured_at"
+      | "route_event_class"
+      | "payload_event_type_raw"
+      | "priority"
+      | "identity"
+      | "booking_action"
+    >
+  >>;
 }
 
 export interface GranotBookingReconciliation {
@@ -329,12 +353,21 @@ async function reconcileInTransaction(
       }
     }
 
+    if (classification.evidence_action !== "booked") {
+      throw new Error("Booking case persist requires actual Booked evidence.");
+    }
     const evidence: GranotBookingCaseEvidence = {
       observation_id: prepared.observation_id,
       decision_id: toObjectId(input.decision_id),
       captured_at: current.captured_at,
       action: classification.evidence_action,
     };
+    const priority_pairing = await computePersistedPriorityPairing(
+      current,
+      store,
+      session,
+      prepared.decided_at,
+    );
     const observed_context = observedContext(current);
     const suggestion = classification.mode === "create_referral_booking"
       ? undefined
@@ -381,6 +414,7 @@ async function reconcileInTransaction(
           observed_context,
           suggested_lead,
           suggestion_changed: !suggestionEquals(existing.suggested_lead, suggested_lead),
+          priority_pairing,
         },
         session,
       );
@@ -415,6 +449,7 @@ async function reconcileInTransaction(
           evidence: [evidence],
           observed_context,
           suggested_lead,
+          priority_pairing,
           opened_at: prepared.decided_at,
           last_evidence_at: current.captured_at,
         },
@@ -460,8 +495,18 @@ export async function reconcileBookingCaseAfterDiscrepancy(input: {
   const current = await store.loadCurrentContext(input.observation_id, input.session);
   const classification = classifyBookingReconciliation(current);
   if (classification.kind !== "case") return undefined;
+  if (classification.evidence_action !== "booked") {
+    throw new Error("Booking case after discrepancy requires actual Booked evidence.");
+  }
   const decision = await getSynchronizationDecisionModel().findById(input.decision_id).session(input.session).lean().exec();
   const evidence: GranotBookingCaseEvidence = { observation_id: toObjectId(input.observation_id), decision_id: toObjectId(input.decision_id), captured_at: current.captured_at, action: classification.evidence_action };
+  const storeForPairing = store;
+  const priority_pairing = await computePersistedPriorityPairing(
+    current,
+    storeForPairing,
+    input.session,
+    input.opened_at,
+  );
   const observed_context = observedContext(current);
   const suggestion = classification.mode === "create_referral_booking" ? undefined : toBookingLeadSuggestion(current.identity);
   const suggested_lead = suggestion ? { lead_ref: { model: suggestion.lead_ref.model, id: toObjectId(suggestion.lead_ref.id) }, confidence: suggestion.confidence, match_method: suggestion.match_method, reason_codes: suggestion.reason_codes } : undefined;
@@ -470,7 +515,14 @@ export async function reconcileBookingCaseAfterDiscrepancy(input: {
   if (existing) {
     row = existing.evidence.some((item) => String(item.observation_id) === input.observation_id)
       ? existing
-      : await store.refreshCase({ case_id: existing._id, evidence, observed_context, suggested_lead, suggestion_changed: !suggestionEquals(existing.suggested_lead, suggested_lead) }, input.session);
+      : await store.refreshCase({
+        case_id: existing._id,
+        evidence,
+        observed_context,
+        suggested_lead,
+        suggestion_changed: !suggestionEquals(existing.suggested_lead, suggested_lead),
+        priority_pairing,
+      }, input.session);
   } else {
     const sequence = (await store.findMaxSequence(current.normalized_job_no!, input.session)) + 1;
     row = await store.insertCase({
@@ -479,7 +531,7 @@ export async function reconcileBookingCaseAfterDiscrepancy(input: {
       source_scope: classification.mode !== "create_referral_booking" && decision?.source_scope ? { ...decision.source_scope } : undefined,
       deterministic_booking_id: classification.deterministic_booking_id ? toObjectId(classification.deterministic_booking_id) : undefined,
       record_link_id: current.record_link_id ? toObjectId(current.record_link_id) : undefined,
-      evidence: [evidence], observed_context, suggested_lead, opened_at: input.opened_at, last_evidence_at: current.captured_at,
+      evidence: [evidence], observed_context, suggested_lead, priority_pairing, opened_at: input.opened_at, last_evidence_at: current.captured_at,
     }, input.session);
   }
   return { model: "GranotBookingReconciliationCase", id: String(row._id) };
@@ -622,6 +674,7 @@ export function createMongoBookingReconciliationStore(): BookingReconciliationPe
         observed_context: input.observed_context,
         last_evidence_at: input.evidence.captured_at,
       };
+      if (input.priority_pairing) set.priority_pairing = input.priority_pairing;
       if (input.suggested_lead) set.suggested_lead = input.suggested_lead;
       const unset = input.suggested_lead ? undefined : { suggested_lead: 1 };
       const updated = await getGranotBookingReconciliationCaseModel()
@@ -657,6 +710,23 @@ export function createMongoBookingReconciliationStore(): BookingReconciliationPe
         { $set: { "processing.latest_decision_id": decision._id } },
         { session },
       );
+    },
+    async listJobObservations(normalizedJobNo, session) {
+      return getGranotObservationModel()
+        .find({ "identity.normalized_job_no": normalizedJobNo })
+        .select({
+          _id: 1,
+          receipt_id: 1,
+          captured_at: 1,
+          route_event_class: 1,
+          payload_event_type_raw: 1,
+          priority: 1,
+          identity: 1,
+          booking_action: 1,
+        })
+        .session(session)
+        .lean()
+        .exec();
     },
     async findDecision(observationId, attempt, session) {
       return getSynchronizationDecisionModel()
@@ -895,6 +965,71 @@ function observedContext(
   return current.observed_context ?? {};
 }
 
+function creatingBookedFromContext(
+  current: BookingReconciliationCurrentContext,
+): Pick<
+  GranotObservationDocument,
+  | "_id"
+  | "receipt_id"
+  | "captured_at"
+  | "route_event_class"
+  | "payload_event_type_raw"
+  | "priority"
+  | "identity"
+  | "booking_action"
+> {
+  return {
+    _id: toObjectId(current.observation_id),
+    receipt_id: toObjectId(current.receipt_id),
+    captured_at: current.captured_at,
+    route_event_class: current.booking_action === "booked" ? "booking_status_changed" : undefined,
+    identity: { normalized_job_no: current.normalized_job_no },
+    priority: current.priority,
+    booking_action: { normalized: current.booking_action },
+  };
+}
+
+function toPersistedPriorityPairing(
+  pairing: BookingPriorityPairing,
+  computedAt: Date,
+): NonNullable<GranotBookingReconciliationCaseDocument["priority_pairing"]> {
+  return {
+    pairing: pairing.pairing,
+    creating_booked_observation_id: toObjectId(pairing.creating_booked.observation_id),
+    creating_booked_priority_canonical: pairing.creating_booked.priority_canonical,
+    creating_booked_priority_valid: pairing.creating_booked.priority_valid,
+    creating_booked_priority_is_5: pairing.creating_booked.priority_is_5,
+    preceding_priority_5_observation_id: pairing.preceding_priority_5
+      ? toObjectId(pairing.preceding_priority_5.observation_id)
+      : undefined,
+    preceding_priority_5_captured_at: pairing.preceding_priority_5?.captured_at,
+    computed_at: computedAt,
+  };
+}
+
+async function computePersistedPriorityPairing(
+  current: BookingReconciliationCurrentContext,
+  store: BookingReconciliationPersistenceStore,
+  session: ClientSession,
+  computedAt: Date,
+): Promise<NonNullable<GranotBookingReconciliationCaseDocument["priority_pairing"]>> {
+  if (current.booking_action !== "booked") {
+    throw new Error("Booking Priority Pairing snapshot requires actual Booked evidence.");
+  }
+  const jobObservations = store.listJobObservations
+    ? await store.listJobObservations(current.normalized_job_no!, session)
+    : [];
+  const creating = creatingBookedFromContext(current);
+  const pairing = projectBookingPriorityPairing({
+    creating_booked: creating,
+    job_observations: [
+      ...jobObservations.filter((row) => String(row._id) !== current.observation_id),
+      creating,
+    ],
+  });
+  return toPersistedPriorityPairing(pairing, computedAt);
+}
+
 export function classifyBookingReconciliation(
   context: BookingReconciliationCurrentContext,
 ): BookingReconciliationClassification {
@@ -903,12 +1038,11 @@ export function classifyBookingReconciliation(
   }
 
   const actualBooked = context.booking_action === "booked";
-  const priorityFive = context.priority.valid && context.priority.canonical === "5";
 
   if (context.booking_action === "release") {
     return { kind: "none", reason: "opposite_action_kind" };
   }
-  if (!actualBooked && !priorityFive) {
+  if (!actualBooked) {
     return { kind: "none", reason: "not_booking_evidence" };
   }
 
@@ -962,36 +1096,18 @@ export function classifyBookingReconciliation(
     };
   }
 
-  if (actualBooked) {
-    return booking
-      ? {
-          kind: "case",
-          mode: "review_existing_booking",
-          evidence_action: "booked",
-          deterministic_booking_id: booking.id,
-        }
-      : {
-          kind: "case",
-          mode: "create_missing_booking",
-          evidence_action: "booked",
-        };
-  }
-
-  if (booking) {
-    return { kind: "none", reason: "priority_5_existing_booking" };
-  }
-  if (
-    !context.identity.target ||
-    context.identity.target_eligibility !== "full" ||
-    context.identity.outcome === "ambiguous"
-  ) {
-    return { kind: "none", reason: "priority_5_ineligible_target" };
-  }
-  return {
-    kind: "case",
-    mode: "create_missing_booking",
-    evidence_action: "priority_5",
-  };
+  return booking
+    ? {
+        kind: "case",
+        mode: "review_existing_booking",
+        evidence_action: "booked",
+        deterministic_booking_id: booking.id,
+      }
+    : {
+        kind: "case",
+        mode: "create_missing_booking",
+        evidence_action: "booked",
+      };
 }
 
 export function toBookingLeadSuggestion(

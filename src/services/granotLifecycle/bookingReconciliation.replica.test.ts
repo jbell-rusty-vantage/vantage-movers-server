@@ -312,3 +312,50 @@ test("[AC-20][AC-32] replica transaction rolls back case create, refresh, and De
   assert.equal(row?.evidence_revision, 1);
   assert.equal(await getSynchronizationDecisionModel().countDocuments({ observation_id: second.observationId }), 0);
 });
+
+test("[AC-P8] replica persists pairing on Booked open, replay is a no-op, later Priority 5 does not write", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const job = `U-PAIR-${Date.now().toString(36).toUpperCase()}`;
+  const first = await seedEvidence(job, new Date("2026-08-24T15:01:00.000Z"));
+  const opened = await reconcile(first);
+  assert.equal(opened.kind, "opened");
+  let row = await getGranotBookingReconciliationCaseModel().findOne({ normalized_job_no: job }).lean();
+  assert.equal(row?.priority_pairing?.pairing, "booked_without_priority_5");
+  assert.equal(row?.priority_pairing?.creating_booked_priority_is_5, false);
+  assert.equal(row?.evidence.length, 1);
+  assert.equal(row?.evidence[0]?.action, "booked");
+  const snapshot = row?.priority_pairing;
+
+  const replay = await reconcile(first);
+  assert.equal(replay.kind, "refreshed");
+  row = await getGranotBookingReconciliationCaseModel().findOne({ normalized_job_no: job }).lean();
+  assert.equal(row?.evidence.length, 1);
+  assert.equal(row?.evidence_revision, 1);
+  assert.equal(String(row?.priority_pairing?.computed_at), String(snapshot?.computed_at));
+
+  const second = await seedEvidence(job, new Date("2026-08-24T15:02:00.000Z"));
+  await reconcile(second);
+  row = await getGranotBookingReconciliationCaseModel().findOne({ normalized_job_no: job }).lean();
+  assert.equal(row?.evidence.length, 2);
+  assert.equal(row?.evidence_revision, 2);
+  assert.equal(String(row?.priority_pairing?.creating_booked_observation_id), String(second.observationId));
+
+  const priority = await seedEvidence(job, new Date("2026-08-24T15:03:00.000Z"));
+  await getGranotObservationModel().collection.updateOne(
+    { _id: priority.observationId },
+    { $set: { booking_action: {}, priority: { valid: true, canonical: "5" }, route_event_class: "priority_updated" } },
+  );
+  const store = replicaStore();
+  store.loadCurrentContext = async (observationId, session) => {
+    const current = await replicaStore().loadCurrentContext(observationId, session);
+    if (observationId === String(priority.observationId)) {
+      return { ...current, booking_action: undefined, priority: { valid: true, canonical: "5" } };
+    }
+    return current;
+  };
+  const ignored = await reconcile(priority, store);
+  assert.deepEqual(ignored, { kind: "none", reason: "not_booking_evidence" });
+  row = await getGranotBookingReconciliationCaseModel().findOne({ normalized_job_no: job }).lean();
+  assert.equal(row?.evidence.length, 2);
+  assert.equal(row?.evidence_revision, 2);
+});

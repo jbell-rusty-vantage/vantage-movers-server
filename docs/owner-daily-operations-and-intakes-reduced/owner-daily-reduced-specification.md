@@ -51,6 +51,13 @@ throwaway, and nothing here has to be unwound when ODV-D through ODV-I land.
 **Authority order.** The full specification wins on every conflict *except* the
 four deviations recorded in §2, which are deliberate and are marked as such.
 
+**Prerequisite.** Implement
+[Owner booking intake and lead attachment](../granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md)
+**before** this Daily pack. That spec wins on the booking form (one Binder, two
+Agents), Confirm without a required Lead, Connect Booking to Lead, full contact
+on Intakes, and the Intakes vs Ingestion split. ODR-35's intake masking rule and
+ODR-37's handoff to `/ingestion/granot/lifecycle/cases/:id` are stale against it.
+
 ---
 
 ## 1. What ships, in one screen
