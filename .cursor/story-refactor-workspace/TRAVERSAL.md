@@ -19,10 +19,10 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 
 - Wave: A
 - Services visited / in-progress / unvisited: **0 / 1 / 37**
-- Recommendations on disk: **1** (`form-lead.md`)
+- Recommendations on disk: **4** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`)
 - Current service: `leads`
-- Next module: `callLead.service.ts`
-- Last session: seed — `formLead.service.ts` is the quality bar
+- Next module: `leadSourceCompany.ts`
+- Last session: `story-leads-ingestion-provenance-2026-08-24T2310Z`
 
 ## How to read a service row
 
@@ -45,10 +45,10 @@ Folder: `src/services/leads/`
 | Module | Verdict |
 | --- | --- |
 | `formLead.service.ts` | recommended → [recommendations/form-lead.md](recommendations/form-lead.md) |
-| `callLead.service.ts` | **next** |
-| `duplicateLead.service.ts` | |
-| `leadIngestionProvenance.ts` | |
-| `leadSourceCompany.ts` | |
+| `callLead.service.ts` | recommended → [recommendations/leads-call-lead.md](recommendations/leads-call-lead.md) |
+| `duplicateLead.service.ts` | recommended → [recommendations/leads-duplicate-lead.md](recommendations/leads-duplicate-lead.md) |
+| `leadIngestionProvenance.ts` | recommended → [recommendations/leads-ingestion-provenance.md](recommendations/leads-ingestion-provenance.md) |
+| `leadSourceCompany.ts` | **next** |
 | `leadCplResolution.ts` | |
 | `leadLocation.service.ts` | |
 | `leadName.service.ts` | |
