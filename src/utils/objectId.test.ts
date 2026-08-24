@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   isObjectIdString,
+  newObjectIdHex,
   toObjectId,
   toObjectIdOrUndefined,
 } from "./objectId";
@@ -22,4 +23,13 @@ test("toObjectIdOrUndefined maps empty values to undefined", () => {
   assert.equal(toObjectIdOrUndefined(null), undefined);
   assert.equal(toObjectIdOrUndefined(""), undefined);
   assert.equal(toObjectIdOrUndefined(SAMPLE)?.toString(), SAMPLE);
+});
+
+test("newObjectIdHex returns a distinct 24-char hex id", () => {
+  const first = newObjectIdHex();
+  const second = newObjectIdHex();
+  assert.match(first, /^[a-f0-9]{24}$/);
+  assert.match(second, /^[a-f0-9]{24}$/);
+  assert.notEqual(first, second);
+  assert.equal(toObjectId(first).toString(), first);
 });

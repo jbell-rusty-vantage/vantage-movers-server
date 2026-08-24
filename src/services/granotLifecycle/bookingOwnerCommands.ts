@@ -19,7 +19,7 @@ import { getSynchronizationDecisionModel } from "../../models/SynchronizationDec
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
 import { officialBookingAgentIds, officialBookingAllocations } from "../agents";
-import { toObjectId } from "../../utils/objectId";
+import { newObjectIdHex, toObjectId } from "../../utils/objectId";
 import type {
   GranotLifecycleBookingNoActionCommandInput,
   GranotLifecycleOfficialBookingDetails,
@@ -357,7 +357,7 @@ async function prepareOwnerCommand(
   const observationId = String(first.observation_id);
   const decisionId = String(first.decision_id);
   const context: CanonicalCommandContext = {
-    command_id: new mongoose.Types.ObjectId().toHexString(),
+    command_id: newObjectIdHex(),
     idempotency_key: input.idempotency_key,
     payload_checksum: createHash("sha256").update(canonicalJson({
       command_name: commandName,

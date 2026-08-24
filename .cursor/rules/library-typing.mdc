@@ -11,8 +11,9 @@ Full guide: `docs/typescript-library-typing-pitfalls.md`.
 ## Mongoose ObjectId
 
 - Validate with `mongoose.isValidObjectId(id)`, never `Types.ObjectId.isValid` in new code.
-- Construct/parse hex ids through `toObjectId` / `isObjectIdString` in `src/utils/objectId.ts`, not scattered `createFromHexString` / raw `new mongoose.Types.ObjectId(id)` copies.
-- If CI reports `Expected 0 arguments, but got 1` or missing `ObjectId`/statics, fix via the helper (a typed runtime view of `mongoose.mongo` inside `toObjectId`) — do not `@ts-ignore` call sites, and do not use a named `import { ObjectId } from "mongodb"` in serverless route helpers (Vercel has emitted `mongodb_1 is not defined` at runtime).
+- Construct/parse hex ids through `toObjectId` / `isObjectIdString` / `newObjectIdHex` in `src/utils/objectId.ts`, not scattered `createFromHexString` / raw `new mongoose.Types.ObjectId(id)` copies.
+- Convert an existing ObjectId with `String(id)`. Do not call `.toHexString()` — TypeScript 6 often types `Types.ObjectId` as a 0-arg class without that method.
+- If CI reports `Expected 0 arguments, but got 1` or missing `ObjectId`/statics/`toHexString`, fix via the helper (a typed runtime view of `mongoose.mongo` inside `toObjectId` / `newObjectIdHex`) — do not `@ts-ignore` call sites, and do not use a named `import { ObjectId } from "mongodb"` in serverless route helpers (Vercel has emitted `mongodb_1 is not defined` at runtime).
 - `Schema.Types.ObjectId` is for schemas only, not value construction.
 
 ## AWS S3

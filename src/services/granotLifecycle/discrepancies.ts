@@ -183,7 +183,7 @@ async function reconcileDiscrepancy(
 ): Promise<DiscrepancyEffectResult> {
   if (
     prepared.execution_mode !== "live" ||
-    prepared.observation_id.toHexString() !== input.observation_id ||
+    String(prepared.observation_id) !== input.observation_id ||
     !prepared.evaluated_gates.every((gate) => gate.allowed)
   ) {
     throw new Error("Discrepancy persistence requires current live evidence and allowed gates.");
@@ -199,7 +199,7 @@ async function reconcileDiscrepancy(
         );
         if (
           current.observation_id !== input.observation_id ||
-          current.receipt_id !== prepared.receipt_id.toHexString() ||
+          current.receipt_id !== String(prepared.receipt_id) ||
           current.classified_reason_code !== input.reason_code
         ) {
           throw new Error("Discrepancy classification changed before persistence.");
