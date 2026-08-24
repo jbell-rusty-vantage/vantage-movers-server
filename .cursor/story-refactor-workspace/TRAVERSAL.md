@@ -19,10 +19,10 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 
 - Wave: A
 - Services visited / in-progress / unvisited: **0 / 1 / 37**
-- Recommendations on disk: **1** (`form-lead.md`)
+- Recommendations on disk: **2** (`form-lead.md`, `leads-call-lead.md`)
 - Current service: `leads`
-- Next module: `callLead.service.ts`
-- Last session: seed — `formLead.service.ts` is the quality bar
+- Next module: `duplicateLead.service.ts`
+- Last session: `story-leads-call-lead-2026-08-24T2125Z`
 
 ## How to read a service row
 
@@ -45,8 +45,8 @@ Folder: `src/services/leads/`
 | Module | Verdict |
 | --- | --- |
 | `formLead.service.ts` | recommended → [recommendations/form-lead.md](recommendations/form-lead.md) |
-| `callLead.service.ts` | **next** |
-| `duplicateLead.service.ts` | |
+| `callLead.service.ts` | recommended → [recommendations/leads-call-lead.md](recommendations/leads-call-lead.md) |
+| `duplicateLead.service.ts` | **next** |
 | `leadIngestionProvenance.ts` | |
 | `leadSourceCompany.ts` | |
 | `leadCplResolution.ts` | |

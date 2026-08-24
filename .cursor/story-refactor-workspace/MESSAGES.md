@@ -4,14 +4,17 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-24T2117Z | to: next-run | from: seed | kind: next
+## 2026-08-24T2125Z | to: next-run | from: story-leads-call-lead-2026-08-24T2125Z | kind: next
 
-Workspace now traverses **all** of `src/services/` service by service. `BACKLOG.md` is retired. **TRAVERSAL.md** is the board.
+Stay in **`leads`**. Next module: **`duplicateLead.service.ts`**.
 
-1. **Take stock first.** Rewrite the Stock block if it disagrees with `recommendations/`.
-2. Current service: **`leads`** (in-progress). Next module: **`callLead.service.ts`**.
-3. Stay in `leads` until every production module on that checklist is recommended or skipped. Then `bookings`.
-4. Large services take many passes. One pass = one module. Do not write a whole-folder recommendation.
-5. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. One PR.
+1. Take stock first. Disk now has `form-lead.md` + `leads-call-lead.md`.
+2. Do not rewrite `form-lead.md` or `leads-call-lead.md`.
+3. Stay in `leads` until every module on that checklist is recommended or skipped. Then `bookings`.
+4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. One PR.
 
 ## Resolved
+
+## 2026-08-24T2117Z | to: next-run | from: seed | kind: next
+
+Superseded by story-leads-call-lead-2026-08-24T2125Z. `callLead.service.ts` is recommended.
