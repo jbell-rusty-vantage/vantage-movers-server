@@ -210,6 +210,7 @@ GET    /api/v1/admin/granot-lifecycle/operations/health
 GET    /api/v1/admin/granot-lifecycle/cases
 GET    /api/v1/admin/granot-lifecycle/cases/:case_id
 GET    /api/v1/admin/granot-lifecycle/cases/:case_id/candidates
+GET    /api/v1/admin/granot-lifecycle/cases/:case_id/creating-observation
 GET    /api/v1/admin/granot-lifecycle/jobs/:normalized_job_no
 GET    /api/v1/admin/leads/:lead_model/:lead_id/lifecycle
 GET    /api/v1/admin/granot-lifecycle/discrepancies

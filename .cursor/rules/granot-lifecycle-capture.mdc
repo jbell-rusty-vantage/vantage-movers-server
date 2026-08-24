@@ -40,8 +40,9 @@ Granot evidence never becomes an official Booking or Cancellation by itself. CRM
 | `releaseReconciliation.ts` / `releaseOwnerCommands.ts` | Separate Release case open/refresh plus gated Owner create-Cancellation, full Booking replacement, and No Action commands. |
 | `trustedLeadCreateValidation.ts` | Trusted `granot_lead_created` validator (`post_to_granot=false`). Live caller is `createLeadFromGranot` only. |
 | `observability.ts` / `metrics.ts` / `alerts.ts` | Section 33 catalog, closed labels, Mongo health, and seven rollout alerts. Best-effort; not business authority. |
+| `creatingObservation.ts` | Owner-only Booking-intake read of the selected creating Granot Observation plus credential-redacted receipt `granot_statement`. Not a mutation. Routes stay policy-free. |
 
-Admin routes activate, requeue dead letters, expose protected reads, and accept the four exact Booking plus three exact Release Owner mutations. Projections compose allowlisted DTOs; routes do not own claim, match, masking, ranking, timeline, or mutation policy. Canonical executor / `EntityChange` live in `domainCommands/`. Live lifecycle capability includes Lead sync/create, standard/Referral Booking commands, and Release `createCancellation`, `updateBooking`, and `resolveGranotReleaseCaseNoAction`; checked-in effect flags keep them disabled.
+Admin routes activate, requeue dead letters, expose protected reads (including Owner-only candidates and creating-observation), and accept the four exact Booking plus three exact Release Owner mutations. Projections compose allowlisted DTOs; routes do not own claim, match, masking, ranking, timeline, or mutation policy. Canonical executor / `EntityChange` live in `domainCommands/`. Live lifecycle capability includes Lead sync/create, standard/Referral Booking commands, and Release `createCancellation`, `updateBooking`, and `resolveGranotReleaseCaseNoAction`; checked-in effect flags keep them disabled.
 
 ## Progress
 

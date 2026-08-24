@@ -20,6 +20,7 @@ import {
   activateGranotLifecycle,
   requeueDeadLetterReceipt,
 } from "../services/granotLifecycle/operations";
+import { getBookingIntakeCreatingObservation } from "../services/granotLifecycle/creatingObservation";
 import {
   getGranotLifecycleCaseDetail,
   listGranotLifecycleCaseCandidates,
@@ -92,6 +93,7 @@ export type GranotLifecycleAdminRouteDeps = {
   projectJob?: typeof projectGranotJob;
   listCases?: typeof listGranotLifecycleCases;
   getCaseDetail?: typeof getGranotLifecycleCaseDetail;
+  getCreatingObservation?: typeof getBookingIntakeCreatingObservation;
   listCandidates?: typeof listGranotLifecycleCaseCandidates;
   projectLeadTimeline?: typeof projectGranotLeadTimeline;
   projectHealth?: typeof projectGranotLifecycleHealth;
@@ -126,6 +128,7 @@ export function createGranotLifecycleAdminRouter(
   const projectJob = deps.projectJob ?? projectGranotJob;
   const listCases = deps.listCases ?? listGranotLifecycleCases;
   const getCaseDetail = deps.getCaseDetail ?? getGranotLifecycleCaseDetail;
+  const getCreatingObservation = deps.getCreatingObservation ?? getBookingIntakeCreatingObservation;
   const listCandidates = deps.listCandidates ?? listGranotLifecycleCaseCandidates;
   const projectLead = deps.projectLeadTimeline ?? projectGranotLeadTimeline;
   const projectHealth = deps.projectHealth ?? projectGranotLifecycleHealth;
@@ -472,6 +475,29 @@ export function createGranotLifecycleAdminRouter(
       return sendError(res, error, requestId(req));
     }
   });
+
+  router.get(
+    "/api/v1/admin/granot-lifecycle/cases/:case_id/creating-observation",
+    async (req, res) => {
+      try {
+        await connect();
+        requireRegistryOwnerActor(req, auth(req));
+        const { case_id } = granotLifecycleCaseParamsSchema.parse(req.params);
+        const data = await getCreatingObservation(case_id);
+        if (!data) {
+          throw new GranotLifecycleError(
+            "Granot reconciliation case not found",
+            GRANOT_LIFECYCLE_ERROR_CODES.CASE_NOT_FOUND,
+            404,
+            requestId(req),
+          );
+        }
+        return res.json({ ok: true, data });
+      } catch (error) {
+        return sendError(res, error, requestId(req));
+      }
+    },
+  );
 
   router.get(
     "/api/v1/admin/granot-lifecycle/cases/:case_id/candidates",

@@ -54,7 +54,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [revisions.md](knowledge/granot-lifecycle/revisions.md) | Aggregate revision CAS and Lead provenance storage fields. |
 | [booking-reconciliation.md](knowledge/granot-lifecycle/booking-reconciliation.md) | Booking-case open/refresh and gated Owner booking commands. |
 | [release-reconciliation.md](knowledge/granot-lifecycle/release-reconciliation.md) | Separate Release cases and gated Owner cancellation/update commands. |
-| [projections.md](knowledge/granot-lifecycle/projections.md) | Masked Admin case/job/lead reads; reads never invoke mutations. |
+| [projections.md](knowledge/granot-lifecycle/projections.md) | Masked Admin case/job/lead reads plus Owner-only creating-observation; reads never invoke mutations. |
 | [observability.md](knowledge/granot-lifecycle/observability.md) | Lifecycle events, closed metric labels, and health projection. |
 
 ## ADR

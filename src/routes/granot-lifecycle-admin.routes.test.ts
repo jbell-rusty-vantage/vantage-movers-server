@@ -60,6 +60,7 @@ const receiptId = new mongoose.Types.ObjectId().toHexString();
 let lastRequeue: { id: string; reason: string; role: string } | null = null;
 let lastCaseQuery: Record<string, unknown> | null = null;
 let lastCandidateQuery: Record<string, unknown> | null = null;
+let lastCreatingObservationCaseId: string | null = null;
 let lastConfirm: Record<string, unknown> | null = null;
 let lastReferralCreate: Record<string, unknown> | null = null;
 let lastUpdate: Record<string, unknown> | null = null;
@@ -114,6 +115,35 @@ app.use(
       },
       capabilities: { commands: false, referral: false, release_cases: false, discrepancies: false },
     } : null,
+    getCreatingObservation: async (caseId) => {
+      lastCreatingObservationCaseId = caseId;
+      return caseId === receiptId ? {
+        case_id: caseId,
+        job_no: "synthetic-100",
+        normalized_job_no: "SYNTHETIC 100",
+        observation_id: receiptId,
+        receipt_id: receiptId,
+        captured_at: "2026-08-17T16:00:00.000Z",
+        route_event_class: "booking_status_changed",
+        payload_event_type_raw: "Booked",
+        booking_action: "booked",
+        evidence_action: "booked",
+        selection: "preferred_booked",
+        observation: {
+          observation_id: receiptId,
+          receipt_id: receiptId,
+          captured_at: "2026-08-17T16:00:00.000Z",
+          identity: {},
+          contact: {},
+          move: {},
+          priority: { valid: true },
+          booking_action: { normalized: "booked" },
+          display_money: {},
+          agent_identity: {},
+        },
+        granot_statement: { event_type: "Booked", job_no: "synthetic-100" },
+      } : null;
+    },
     listCandidates: async (caseId, query) => {
       lastCandidateQuery = query;
       return caseId === receiptId ? { items: [], next_cursor: null } : null;
@@ -274,6 +304,7 @@ afterEach(() => {
   lastRequeue = null;
   lastCaseQuery = null;
   lastCandidateQuery = null;
+  lastCreatingObservationCaseId = null;
   lastConfirm = null;
   lastUpdate = null;
   lastNoAction = null;
@@ -405,6 +436,31 @@ test("[AC-35] [AC-39] case detail has safe 404 and exact read envelope", async (
   const missingId = new mongoose.Types.ObjectId().toHexString();
   const missingPath = `/api/v1/admin/granot-lifecycle/cases/${missingId}`;
   const missing = await fetch(`${baseUrl}${missingPath}`, { headers: signedHeaders("admin", missingPath, "GET") });
+  assert.equal(missing.status, 404);
+  const missingBody = (await missing.json()) as { code: string };
+  assert.equal(missingBody.code, GRANOT_LIFECYCLE_ERROR_CODES.CASE_NOT_FOUND);
+});
+
+test("creating observation is Owner-only and returns the Booked statement for a booking case", async () => {
+  const path = `/api/v1/admin/granot-lifecycle/cases/${receiptId}/creating-observation`;
+  const denied = await fetch(`${baseUrl}${path}`, { headers: signedHeaders("admin", path, "GET") });
+  assert.equal(denied.status, 403);
+  assert.equal(lastCreatingObservationCaseId, null);
+
+  const allowed = await fetch(`${baseUrl}${path}`, { headers: signedHeaders("owner", path, "GET") });
+  assert.equal(allowed.status, 200);
+  const body = (await allowed.json()) as {
+    ok: boolean;
+    data: { selection: string; granot_statement: { event_type: string } };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.selection, "preferred_booked");
+  assert.equal(body.data.granot_statement.event_type, "Booked");
+  assert.equal(lastCreatingObservationCaseId, receiptId);
+
+  const missingId = new mongoose.Types.ObjectId().toHexString();
+  const missingPath = `/api/v1/admin/granot-lifecycle/cases/${missingId}/creating-observation`;
+  const missing = await fetch(`${baseUrl}${missingPath}`, { headers: signedHeaders("owner", missingPath, "GET") });
   assert.equal(missing.status, 404);
   const missingBody = (await missing.json()) as { code: string };
   assert.equal(missingBody.code, GRANOT_LIFECYCLE_ERROR_CODES.CASE_NOT_FOUND);
