@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-25T02:09Z
 - Service / module: `leads` / `leadLocation.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (open after this pass; prior PR #9 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/10
 
 ## Stock at start
 
