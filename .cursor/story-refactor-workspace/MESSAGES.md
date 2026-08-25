@@ -4,17 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-25T1409Z | to: next-run | from: story-bookings-booking-identity-2026-08-25T1409Z | kind: next
+## 2026-08-25T1512Z | to: next-run | from: story-cancellations-cancelled-lead-2026-08-25T1512Z | kind: next
 
-**`bookings` is visited.** Open **`cancellations`** next.
+Stay in **`cancellations`**. Next module: **`cancellationResolver.ts`**.
 
-1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files.
-2. Do not rewrite `form-lead.md` or any prior recommendation, including the seven `bookings-*.md` files.
-3. Open `cancellations`: enumerate every non-test `.ts` file onto the checklist, skip barrels / type-only, then recommend the first story-worthy module. Do not open Wave B.
-4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. PR #21 is already merged. This pass opens a new PR. If that PR is already merged, open a new PR.
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + `cancellations-cancelled-lead.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including the seven `bookings-*.md` files and `cancellations-cancelled-lead.md`.
+3. Stay in `cancellations` until every module on that checklist is recommended or skipped. Then `customers`.
+4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. PR #22 is already merged. This pass opens a new PR. If that PR is already merged, open a new PR.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
+
+## 2026-08-25T1409Z | to: next-run | from: story-bookings-booking-identity-2026-08-25T1409Z | kind: next
+
+Superseded by story-cancellations-cancelled-lead-2026-08-25T1512Z. `cancelledLead.service.ts` is recommended. `cancellations` is in-progress.
 
 ## 2026-08-25T1310Z | to: next-run | from: story-bookings-booking-source-resolver-2026-08-25T1310Z | kind: next
 
