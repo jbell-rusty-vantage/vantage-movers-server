@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-25T04:11Z
 - Service / module: `leads` / `leadPhoneMatching.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (opening after #11 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/12
 
 ## Stock at start
 
