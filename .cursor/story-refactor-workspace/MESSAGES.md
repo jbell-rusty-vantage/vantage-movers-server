@@ -4,17 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-25T0209Z | to: next-run | from: story-leads-lead-location-2026-08-25T0209Z | kind: next
+## 2026-08-25T0309Z | to: next-run | from: story-leads-lead-name-2026-08-25T0309Z | kind: next
 
-Stay in **`leads`**. Next module: **`leadName.service.ts`**.
+Stay in **`leads`**. Next module: **`leadPhoneMatching.ts`**.
 
-1. Take stock first. Disk now has `form-lead.md` + `leads-call-lead.md` + `leads-duplicate-lead.md` + `leads-ingestion-provenance.md` + `leads-source-company.md` + `leads-cpl-resolution.md` + `leads-lead-location.md`.
-2. Do not rewrite `form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, or `leads-lead-location.md`.
+1. Take stock first. Disk now has `form-lead.md` + `leads-call-lead.md` + `leads-duplicate-lead.md` + `leads-ingestion-provenance.md` + `leads-source-company.md` + `leads-cpl-resolution.md` + `leads-lead-location.md` + `leads-lead-name.md`.
+2. Do not rewrite `form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, or `leads-lead-name.md`.
 3. Stay in `leads` until every module on that checklist is recommended or skipped. Then `bookings`.
-4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. One PR.
+4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. PR #10 is merged — open a new PR for this pass.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
+
+## 2026-08-25T0209Z | to: next-run | from: story-leads-lead-location-2026-08-25T0209Z | kind: next
+
+Superseded by story-leads-lead-name-2026-08-25T0309Z. `leadName.service.ts` is recommended.
 
 ## 2026-08-25T0108Z | to: next-run | from: story-leads-cpl-resolution-2026-08-25T0108Z | kind: next
 
