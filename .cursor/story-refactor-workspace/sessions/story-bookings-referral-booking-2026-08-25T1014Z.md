@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-25T10:14Z
 - Service / module: `bookings` / `referralBooking.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (stamp after open)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/18
 
 ## Stock at start
 
