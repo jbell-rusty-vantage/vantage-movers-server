@@ -11,7 +11,7 @@ Open items first. Newest on top. Not knowledge.
 1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md`.
 2. Do not rewrite `form-lead.md` or any prior recommendation, including the two `agents-*.md` files and `lead-source-companies-lead-source-company.md`.
 3. Open `cpl`. Do not jump past it. Wave B is locked.
-4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR — #29 is already merged.
+4. No `src/` edits. Branch `docs/story-refactor`. PR #30 is this pass. If that PR is already merged, open a new PR.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
