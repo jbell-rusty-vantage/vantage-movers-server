@@ -18,11 +18,11 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 ## Stock (rewrite every run)
 
 - Wave: A
-- Services visited / in-progress / unvisited: **6 / 0 / 32**
-- Recommendations on disk: **27** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`, `cancellations-cancellation-resolver.md`, `cancellations-cancellation-mirror.md`, `customers-customer.md`, `customers-customer-from-lead.md`, `agents-agent-allocation.md`, `agents-receiver-agent-crm-username.md`, `lead-source-companies-lead-source-company.md`)
-- Current service: `cpl` (unvisited)
-- Next module: enumerate `src/services/cpl/`, then first story-worthy module
-- Last session: `story-lead-source-companies-lead-source-company-2026-08-25T2209Z`
+- Services visited / in-progress / unvisited: **7 / 0 / 31**
+- Recommendations on disk: **28** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`, `cancellations-cancellation-resolver.md`, `cancellations-cancellation-mirror.md`, `customers-customer.md`, `customers-customer-from-lead.md`, `agents-agent-allocation.md`, `agents-receiver-agent-crm-username.md`, `lead-source-companies-lead-source-company.md`, `cpl-cpl-rate.md`)
+- Current service: `catalog` (unvisited)
+- Next module: enumerate `src/services/catalog/`, then first story-worthy module
+- Last session: `story-cpl-cpl-rate-2026-08-25T2308Z`
 
 ## How to read a service row
 
@@ -116,9 +116,13 @@ Folder: `src/services/leadSourceCompanies/`
 | `leadSourceCompany.service.ts` | recommended → [recommendations/lead-source-companies-lead-source-company.md](recommendations/lead-source-companies-lead-source-company.md) |
 | `index.ts` | skip — barrel |
 
-### 7. `cpl` — small — unvisited
+### 7. `cpl` — small — **visited**
 
-`src/services/cpl/`
+Folder: `src/services/cpl/`
+
+| Module | Verdict |
+| --- | --- |
+| `cplRate.service.ts` | recommended → [recommendations/cpl-cpl-rate.md](recommendations/cpl-cpl-rate.md) |
 
 ### 8. `catalog` — small — unvisited
 
