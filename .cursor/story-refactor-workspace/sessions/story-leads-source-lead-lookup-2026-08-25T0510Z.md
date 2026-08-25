@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-25T05:10Z
 - Service / module: `leads` / `sourceLeadLookup.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (opening this pass; #12 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/13
 
 ## Stock at start
 
