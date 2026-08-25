@@ -19,10 +19,10 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 
 - Wave: A
 - Services visited / in-progress / unvisited: **0 / 1 / 37**
-- Recommendations on disk: **5** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`)
+- Recommendations on disk: **6** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`)
 - Current service: `leads`
-- Next module: `leadCplResolution.ts`
-- Last session: `story-leads-source-company-2026-08-25T0013Z`
+- Next module: `leadLocation.service.ts`
+- Last session: `story-leads-cpl-resolution-2026-08-25T0108Z`
 
 ## How to read a service row
 
@@ -49,8 +49,8 @@ Folder: `src/services/leads/`
 | `duplicateLead.service.ts` | recommended → [recommendations/leads-duplicate-lead.md](recommendations/leads-duplicate-lead.md) |
 | `leadIngestionProvenance.ts` | recommended → [recommendations/leads-ingestion-provenance.md](recommendations/leads-ingestion-provenance.md) |
 | `leadSourceCompany.ts` | recommended → [recommendations/leads-source-company.md](recommendations/leads-source-company.md) |
-| `leadCplResolution.ts` | **next** |
-| `leadLocation.service.ts` | |
+| `leadCplResolution.ts` | recommended → [recommendations/leads-cpl-resolution.md](recommendations/leads-cpl-resolution.md) |
+| `leadLocation.service.ts` | **next** |
 | `leadName.service.ts` | |
 | `leadPhoneMatching.ts` | |
 | `sourceLeadLookup.service.ts` | |
