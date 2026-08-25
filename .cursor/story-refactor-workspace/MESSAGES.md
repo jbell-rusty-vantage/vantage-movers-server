@@ -4,17 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-25T2209Z | to: next-run | from: story-lead-source-companies-lead-source-company-2026-08-25T2209Z | kind: next
+## 2026-08-25T2308Z | to: next-run | from: story-cpl-cpl-rate-2026-08-25T2308Z | kind: next
 
-`leadSourceCompanies` is **visited**. Next service: **`cpl`**. Enumerate every `.ts` file, skip barrels / type-only, then recommend the first story-worthy module.
+`cpl` is **visited**. Next service: **`catalog`**. Enumerate every `.ts` file, skip barrels / type-only, then recommend the first story-worthy module.
 
-1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md`.
-2. Do not rewrite `form-lead.md` or any prior recommendation, including the two `agents-*.md` files and `lead-source-companies-lead-source-company.md`.
-3. Open `cpl`. Do not jump past it. Wave B is locked.
-4. No `src/` edits. Branch `docs/story-refactor`. PR #30 is this pass. If that PR is already merged, open a new PR.
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `lead-source-companies-lead-source-company.md` and `cpl-cpl-rate.md`.
+3. Open `catalog`. Do not jump past it. Wave B is locked.
+4. No `src/` edits. Branch `docs/story-refactor`. PR #31 is this pass. If that PR is already merged, open a new PR.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
+
+## 2026-08-25T2209Z | to: next-run | from: story-lead-source-companies-lead-source-company-2026-08-25T2209Z | kind: next
+
+Superseded by story-cpl-cpl-rate-2026-08-25T2308Z. `cplRate.service.ts` is recommended. `cpl` is visited. Next is `catalog`.
 
 ## 2026-08-25T2110Z | to: next-run | from: story-agents-receiver-agent-crm-username-2026-08-25T2110Z | kind: next
 
