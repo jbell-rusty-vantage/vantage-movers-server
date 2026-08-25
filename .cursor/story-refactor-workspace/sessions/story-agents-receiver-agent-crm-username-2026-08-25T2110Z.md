@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-25T21:10Z
 - Service / module: `agents` / `receiverAgentCrmUsername.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / new PR (PR #28 already merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/29
 
 ## Stock at start
 
