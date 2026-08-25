@@ -18,11 +18,11 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 ## Stock (rewrite every run)
 
 - Wave: A
-- Services visited / in-progress / unvisited: **1 / 1 / 36**
-- Recommendations on disk: **18** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`)
-- Current service: `bookings` (in-progress)
-- Next module: `bookingIdentity.ts`
-- Last session: `story-bookings-booking-source-resolver-2026-08-25T1310Z`
+- Services visited / in-progress / unvisited: **2 / 0 / 36**
+- Recommendations on disk: **19** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`)
+- Current service: `bookings` (visited)
+- Next module: none — next service `cancellations` is unvisited (enumerate on first open)
+- Last session: `story-bookings-booking-identity-2026-08-25T1409Z`
 
 ## How to read a service row
 
@@ -58,7 +58,7 @@ Folder: `src/services/leads/`
 | `leadSourceCompatibility.ts` | recommended → [recommendations/leads-lead-source-compatibility.md](recommendations/leads-lead-source-compatibility.md) |
 | `index.ts` | skip — barrel |
 
-### 2. `bookings` — large — **in-progress**
+### 2. `bookings` — large — **visited**
 
 Folder: `src/services/bookings/`
 
@@ -70,7 +70,7 @@ Folder: `src/services/bookings/`
 | `leadlessBooking.service.ts` | recommended → [recommendations/bookings-leadless-booking.md](recommendations/bookings-leadless-booking.md) |
 | `bookingMirror.service.ts` | recommended → [recommendations/bookings-booking-mirror.md](recommendations/bookings-booking-mirror.md) |
 | `bookingSourceResolver.ts` | recommended → [recommendations/bookings-booking-source-resolver.md](recommendations/bookings-booking-source-resolver.md) |
-| `bookingIdentity.ts` | **next** |
+| `bookingIdentity.ts` | recommended → [recommendations/bookings-booking-identity.md](recommendations/bookings-booking-identity.md) |
 | `bookingWarnings.ts` | skip — thin warning helper |
 | `bestRelocationImportGuard.ts` | skip — import fence |
 | `index.ts` | skip — barrel |
