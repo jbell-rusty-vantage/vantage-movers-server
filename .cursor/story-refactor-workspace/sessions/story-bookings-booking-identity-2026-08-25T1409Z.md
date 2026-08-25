@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-25T14:09Z
 - Service / module: `bookings` / `bookingIdentity.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (opened after #21 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/22
 
 ## Stock at start
 
