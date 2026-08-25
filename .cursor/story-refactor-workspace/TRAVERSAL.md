@@ -18,11 +18,11 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 ## Stock (rewrite every run)
 
 - Wave: A
-- Services visited / in-progress / unvisited: **3 / 1 / 34**
-- Recommendations on disk: **23** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`, `cancellations-cancellation-resolver.md`, `cancellations-cancellation-mirror.md`, `customers-customer.md`)
-- Current service: `customers` (in-progress)
-- Next module: `customerFromLead.service.ts`
-- Last session: `story-customers-customer-2026-08-25T1809Z`
+- Services visited / in-progress / unvisited: **4 / 0 / 34**
+- Recommendations on disk: **24** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`, `cancellations-cancellation-resolver.md`, `cancellations-cancellation-mirror.md`, `customers-customer.md`, `customers-customer-from-lead.md`)
+- Current service: `agents` (unvisited)
+- Next module: enumerate `src/services/agents/`, then first story-worthy module
+- Last session: `story-customers-customer-from-lead-2026-08-25T1908Z`
 
 ## How to read a service row
 
@@ -86,14 +86,14 @@ Folder: `src/services/cancellations/`
 | `cancellationMirror.service.ts` | recommended → [recommendations/cancellations-cancellation-mirror.md](recommendations/cancellations-cancellation-mirror.md) |
 | `index.ts` | skip — barrel |
 
-### 4. `customers` — small — **in-progress**
+### 4. `customers` — small — **visited**
 
 Folder: `src/services/customers/`
 
 | Module | Verdict |
 | --- | --- |
 | `customer.service.ts` | recommended → [recommendations/customers-customer.md](recommendations/customers-customer.md) |
-| `customerFromLead.service.ts` | **next** |
+| `customerFromLead.service.ts` | recommended → [recommendations/customers-customer-from-lead.md](recommendations/customers-customer-from-lead.md) |
 | `index.ts` | skip — barrel |
 
 ### 5. `agents` — small — unvisited
