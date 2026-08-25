@@ -19,10 +19,10 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 
 - Wave: A
 - Services visited / in-progress / unvisited: **1 / 1 / 36**
-- Recommendations on disk: **16** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`)
+- Recommendations on disk: **17** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`)
 - Current service: `bookings` (in-progress)
-- Next module: `bookingMirror.service.ts`
-- Last session: `story-bookings-leadless-booking-2026-08-25T1113Z`
+- Next module: `bookingSourceResolver.ts`
+- Last session: `story-bookings-booking-mirror-2026-08-25T1230Z`
 
 ## How to read a service row
 
@@ -68,8 +68,8 @@ Folder: `src/services/bookings/`
 | `bookedLeadFromSource.service.ts` | recommended → [recommendations/bookings-booked-lead-from-source.md](recommendations/bookings-booked-lead-from-source.md) |
 | `referralBooking.service.ts` | recommended → [recommendations/bookings-referral-booking.md](recommendations/bookings-referral-booking.md) |
 | `leadlessBooking.service.ts` | recommended → [recommendations/bookings-leadless-booking.md](recommendations/bookings-leadless-booking.md) |
-| `bookingMirror.service.ts` | **next** |
-| `bookingSourceResolver.ts` | |
+| `bookingMirror.service.ts` | recommended → [recommendations/bookings-booking-mirror.md](recommendations/bookings-booking-mirror.md) |
+| `bookingSourceResolver.ts` | **next** |
 | `bookingIdentity.ts` | |
 | `bookingWarnings.ts` | skip — thin warning helper |
 | `bestRelocationImportGuard.ts` | skip — import fence |
