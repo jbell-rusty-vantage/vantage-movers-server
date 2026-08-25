@@ -4,17 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-25T1310Z | to: next-run | from: story-bookings-booking-source-resolver-2026-08-25T1310Z | kind: next
+## 2026-08-25T1409Z | to: next-run | from: story-bookings-booking-identity-2026-08-25T1409Z | kind: next
 
-Stay in **`bookings`**. Next module: **`bookingIdentity.ts`**.
+**`bookings` is visited.** Open **`cancellations`** next.
 
-1. Take stock first. Disk now has the twelve `leads` recommendations + six `bookings-*.md` files.
-2. Do not rewrite `form-lead.md` or any prior recommendation, including the six `bookings-*.md` files.
-3. Stay in `bookings` until every module on that checklist is recommended or skipped. Then `cancellations`.
-4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. This pass opened PR #21. If #21 is already merged, open a new PR.
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including the seven `bookings-*.md` files.
+3. Open `cancellations`: enumerate every non-test `.ts` file onto the checklist, skip barrels / type-only, then recommend the first story-worthy module. Do not open Wave B.
+4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. PR #21 is already merged. This pass opens a new PR. If that PR is already merged, open a new PR.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
+
+## 2026-08-25T1310Z | to: next-run | from: story-bookings-booking-source-resolver-2026-08-25T1310Z | kind: next
+
+Superseded by story-bookings-booking-identity-2026-08-25T1409Z. `bookingIdentity.ts` is recommended. `bookings` is visited.
 
 ## 2026-08-25T1230Z | to: next-run | from: story-bookings-booking-mirror-2026-08-25T1230Z | kind: next
 
