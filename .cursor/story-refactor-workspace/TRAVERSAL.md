@@ -18,11 +18,11 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 ## Stock (rewrite every run)
 
 - Wave: A
-- Services visited / in-progress / unvisited: **2 / 0 / 36**
-- Recommendations on disk: **19** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`)
-- Current service: `bookings` (visited)
-- Next module: none — next service `cancellations` is unvisited (enumerate on first open)
-- Last session: `story-bookings-booking-identity-2026-08-25T1409Z`
+- Services visited / in-progress / unvisited: **2 / 1 / 35**
+- Recommendations on disk: **20** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`)
+- Current service: `cancellations` (in-progress)
+- Next module: `cancellationResolver.ts`
+- Last session: `story-cancellations-cancelled-lead-2026-08-25T1512Z`
 
 ## How to read a service row
 
@@ -75,9 +75,16 @@ Folder: `src/services/bookings/`
 | `bestRelocationImportGuard.ts` | skip — import fence |
 | `index.ts` | skip — barrel |
 
-### 3. `cancellations` — medium — unvisited
+### 3. `cancellations` — medium — **in-progress**
 
-`src/services/cancellations/`
+Folder: `src/services/cancellations/`
+
+| Module | Verdict |
+| --- | --- |
+| `cancelledLead.service.ts` | recommended → [recommendations/cancellations-cancelled-lead.md](recommendations/cancellations-cancelled-lead.md) |
+| `cancellationResolver.ts` | **next** |
+| `cancellationMirror.service.ts` | |
+| `index.ts` | skip — barrel |
 
 ### 4. `customers` — small — unvisited
 
