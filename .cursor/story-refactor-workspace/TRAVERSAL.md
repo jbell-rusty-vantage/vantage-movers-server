@@ -19,10 +19,10 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 
 - Wave: A
 - Services visited / in-progress / unvisited: **1 / 1 / 36**
-- Recommendations on disk: **13** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`)
+- Recommendations on disk: **14** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`)
 - Current service: `bookings` (in-progress)
-- Next module: `bookedLeadFromSource.service.ts`
-- Last session: `story-bookings-booked-lead-2026-08-25T0810Z`
+- Next module: `referralBooking.service.ts`
+- Last session: `story-bookings-booked-lead-from-source-2026-08-25T0911Z`
 
 ## How to read a service row
 
@@ -65,8 +65,8 @@ Folder: `src/services/bookings/`
 | Module | Verdict |
 | --- | --- |
 | `bookedLead.service.ts` | recommended → [recommendations/bookings-booked-lead.md](recommendations/bookings-booked-lead.md) |
-| `bookedLeadFromSource.service.ts` | **next** |
-| `referralBooking.service.ts` | |
+| `bookedLeadFromSource.service.ts` | recommended → [recommendations/bookings-booked-lead-from-source.md](recommendations/bookings-booked-lead-from-source.md) |
+| `referralBooking.service.ts` | **next** |
 | `leadlessBooking.service.ts` | |
 | `bookingMirror.service.ts` | |
 | `bookingSourceResolver.ts` | |
