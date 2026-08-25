@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-25T17:13Z
 - Service / module: `cancellations` / `cancellationMirror.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (opens after #24 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/25
 
 ## Stock at start
 
