@@ -3,14 +3,14 @@
 - Date (UTC): 2026-08-25
 - Wave: A (`src/services/`)
 - Current service: `leads` (in-progress)
-- Next module: `leadPhoneMatching.ts`
+- Next module: `sourceLeadLookup.service.ts`
 - Stock: visited 0 / in-progress 1 / unvisited 37
-- Recommendations on disk: 8 (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`)
+- Recommendations on disk: 9 (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`)
 - Lock: none
 - Lock holder:
 - Lock at:
 - Branch: `docs/story-refactor`
-- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/11
-- Last session: story-leads-lead-name-2026-08-25T0309Z
+- PR: (opening after #11 merged)
+- Last session: story-leads-lead-phone-matching-2026-08-25T0411Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
