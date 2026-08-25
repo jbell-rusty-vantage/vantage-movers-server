@@ -18,11 +18,11 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 ## Stock (rewrite every run)
 
 - Wave: A
-- Services visited / in-progress / unvisited: **0 / 1 / 37**
-- Recommendations on disk: **11** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`)
-- Current service: `leads`
-- Next module: `leadSourceCompatibility.ts`
-- Last session: `story-leads-call-lead-source-match-2026-08-25T0610Z`
+- Services visited / in-progress / unvisited: **1 / 0 / 37**
+- Recommendations on disk: **12** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`)
+- Current service: `bookings` (unvisited)
+- Next module: enumerate `src/services/bookings/`
+- Last session: `story-leads-lead-source-compatibility-2026-08-25T0710Z`
 
 ## How to read a service row
 
@@ -38,7 +38,7 @@ Size is a hint, not a quota: `large` expects several passes.
 
 Order is the domain tour from `project-organization`. Next work is the first `in-progress` service’s next unchecked module, or the first `unvisited` service if none are in progress.
 
-### 1. `leads` — large — **in-progress**
+### 1. `leads` — large — **visited**
 
 Folder: `src/services/leads/`
 
@@ -55,7 +55,7 @@ Folder: `src/services/leads/`
 | `leadPhoneMatching.ts` | recommended → [recommendations/leads-lead-phone-matching.md](recommendations/leads-lead-phone-matching.md) |
 | `sourceLeadLookup.service.ts` | recommended → [recommendations/leads-source-lead-lookup.md](recommendations/leads-source-lead-lookup.md) |
 | `callLeadSourceMatch.ts` | recommended → [recommendations/leads-call-lead-source-match.md](recommendations/leads-call-lead-source-match.md) |
-| `leadSourceCompatibility.ts` | **next** |
+| `leadSourceCompatibility.ts` | recommended → [recommendations/leads-lead-source-compatibility.md](recommendations/leads-lead-source-compatibility.md) |
 | `index.ts` | skip — barrel |
 
 ### 2. `bookings` — large — unvisited
