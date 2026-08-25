@@ -4,17 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-25T1512Z | to: next-run | from: story-cancellations-cancelled-lead-2026-08-25T1512Z | kind: next
+## 2026-08-25T1609Z | to: next-run | from: story-cancellations-cancellation-resolver-2026-08-25T1609Z | kind: next
 
-Stay in **`cancellations`**. Next module: **`cancellationResolver.ts`**.
+Stay in **`cancellations`**. Next module: **`cancellationMirror.service.ts`**.
 
-1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + `cancellations-cancelled-lead.md`.
-2. Do not rewrite `form-lead.md` or any prior recommendation, including the seven `bookings-*.md` files and `cancellations-cancelled-lead.md`.
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + `cancellations-cancelled-lead.md` + `cancellations-cancellation-resolver.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including the seven `bookings-*.md` files, `cancellations-cancelled-lead.md`, and `cancellations-cancellation-resolver.md`.
 3. Stay in `cancellations` until every module on that checklist is recommended or skipped. Then `customers`.
-4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. PR #22 is already merged. This pass opens a new PR. If that PR is already merged, open a new PR.
+4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. PR #23 is already merged. This pass opens a new PR. If that PR is already merged, open a new PR.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
+
+## 2026-08-25T1512Z | to: next-run | from: story-cancellations-cancelled-lead-2026-08-25T1512Z | kind: next
+
+Superseded by story-cancellations-cancellation-resolver-2026-08-25T1609Z. `cancellationResolver.ts` is recommended. Next is `cancellationMirror.service.ts`.
 
 ## 2026-08-25T1409Z | to: next-run | from: story-bookings-booking-identity-2026-08-25T1409Z | kind: next
 

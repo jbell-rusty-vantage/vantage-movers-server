@@ -19,10 +19,10 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 
 - Wave: A
 - Services visited / in-progress / unvisited: **2 / 1 / 35**
-- Recommendations on disk: **20** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`)
+- Recommendations on disk: **21** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`, `cancellations-cancellation-resolver.md`)
 - Current service: `cancellations` (in-progress)
-- Next module: `cancellationResolver.ts`
-- Last session: `story-cancellations-cancelled-lead-2026-08-25T1512Z`
+- Next module: `cancellationMirror.service.ts`
+- Last session: `story-cancellations-cancellation-resolver-2026-08-25T1609Z`
 
 ## How to read a service row
 
@@ -82,8 +82,8 @@ Folder: `src/services/cancellations/`
 | Module | Verdict |
 | --- | --- |
 | `cancelledLead.service.ts` | recommended → [recommendations/cancellations-cancelled-lead.md](recommendations/cancellations-cancelled-lead.md) |
-| `cancellationResolver.ts` | **next** |
-| `cancellationMirror.service.ts` | |
+| `cancellationResolver.ts` | recommended → [recommendations/cancellations-cancellation-resolver.md](recommendations/cancellations-cancellation-resolver.md) |
+| `cancellationMirror.service.ts` | **next** |
 | `index.ts` | skip — barrel |
 
 ### 4. `customers` — small — unvisited
