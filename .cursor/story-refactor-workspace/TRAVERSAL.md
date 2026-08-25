@@ -19,10 +19,10 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 
 - Wave: A
 - Services visited / in-progress / unvisited: **0 / 1 / 37**
-- Recommendations on disk: **9** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`)
+- Recommendations on disk: **10** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`)
 - Current service: `leads`
-- Next module: `sourceLeadLookup.service.ts`
-- Last session: `story-leads-lead-phone-matching-2026-08-25T0411Z`
+- Next module: `callLeadSourceMatch.ts`
+- Last session: `story-leads-source-lead-lookup-2026-08-25T0510Z`
 
 ## How to read a service row
 
@@ -53,8 +53,8 @@ Folder: `src/services/leads/`
 | `leadLocation.service.ts` | recommended → [recommendations/leads-lead-location.md](recommendations/leads-lead-location.md) |
 | `leadName.service.ts` | recommended → [recommendations/leads-lead-name.md](recommendations/leads-lead-name.md) |
 | `leadPhoneMatching.ts` | recommended → [recommendations/leads-lead-phone-matching.md](recommendations/leads-lead-phone-matching.md) |
-| `sourceLeadLookup.service.ts` | **next** |
-| `callLeadSourceMatch.ts` | |
+| `sourceLeadLookup.service.ts` | recommended → [recommendations/leads-source-lead-lookup.md](recommendations/leads-source-lead-lookup.md) |
+| `callLeadSourceMatch.ts` | **next** |
 | `leadSourceCompatibility.ts` | |
 | `index.ts` | skip — barrel |
 
