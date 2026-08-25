@@ -39,6 +39,7 @@ import {
 } from "./metrics";
 import { normalizeJobNo } from "../bookings/bookingIdentity";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import {
   projectBookingCandidateBrowserPolicy,
   searchBookingLeadCandidates,
@@ -1920,7 +1921,7 @@ async function sourceRatesForEnabledSources(
       _id: {
         $in: [...bySource.keys()].flatMap((id) => {
           try {
-            return [new mongoose.Types.ObjectId(id)];
+            return [toObjectId(id)];
           } catch {
             return [];
           }
@@ -2070,7 +2071,7 @@ async function listPriorityPairingByCase(
 
   const missingSnapshotIds = bookingRows
     .filter((item) => !item.row.priority_pairing)
-    .map((item) => new mongoose.Types.ObjectId(String(item.selected.item.observation_id)));
+    .map((item) => toObjectId(String(item.selected.item.observation_id)));
   const creatingDocs = missingSnapshotIds.length
     ? await getGranotObservationModel().find({ _id: { $in: missingSnapshotIds } }).lean()
     : [];

@@ -46,7 +46,7 @@ import {
 } from "./errors";
 import type { ObservationChannel } from "./types";
 import type { LeadModel } from "./types";
-import { toObjectId } from "../../utils/objectId";
+import { newObjectIdHex, toObjectId } from "../../utils/objectId";
 import { finalizeSheetSync, persistSheetSyncIntent } from "../sheetSync";
 import { createCancellationForVerifiedBookingInTransaction } from "../cancellations/cancelledLead.service";
 
@@ -453,7 +453,7 @@ async function prepareOwnerCommand(
   const observationId = String(first.observation_id);
   const decisionId = String(first.decision_id);
   const context: CanonicalCommandContext = {
-    command_id: new mongoose.Types.ObjectId().toHexString(),
+    command_id: newObjectIdHex(),
     idempotency_key: input.idempotency_key,
     payload_checksum: createHash("sha256").update(canonicalJson({
       command_name: commandName,

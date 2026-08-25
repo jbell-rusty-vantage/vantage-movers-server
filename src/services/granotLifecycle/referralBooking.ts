@@ -13,7 +13,7 @@ import { getGranotObservationReceiptModel } from "../../models/GranotObservation
 import { getGranotRecordLinkModel, type GranotRecordLinkDocument } from "../../models/GranotRecordLink";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { officialBookingAgentIds, officialBookingAllocations } from "../agents";
-import { toObjectId } from "../../utils/objectId";
+import { newObjectIdHex, toObjectId } from "../../utils/objectId";
 import type { GranotLifecycleCreateReferralBookingCommandInput } from "../../validation/v1/granotLifecycle.validation";
 import { canonicalJson } from "../durableWork/checksum";
 import { createGranotLifecycleProcessorActor } from "../durableWork/actors";
@@ -100,7 +100,7 @@ export async function createReferralBooking(
   assertOwner(input.owner, input.request_id);
   const causal = await loadCausalContext(input.case_id, input.request_id);
   const context: CanonicalCommandContext = {
-    command_id: new mongoose.Types.ObjectId().toHexString(),
+    command_id: newObjectIdHex(),
     idempotency_key: input.idempotency_key,
     payload_checksum: createHash("sha256").update(canonicalJson({
       command_name: CREATE_REFERRAL_BOOKING_COMMAND_NAME,

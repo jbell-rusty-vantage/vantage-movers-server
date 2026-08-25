@@ -15,7 +15,7 @@ import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import type { GranotRecordLinkDocument } from "../../models/GranotRecordLink";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
-import { toObjectId } from "../../utils/objectId";
+import { newObjectIdHex, toObjectId } from "../../utils/objectId";
 import { canonicalJson } from "../durableWork/checksum";
 import { createGranotLifecycleProcessorActor } from "../durableWork/actors";
 import type { DurableActor } from "../durableWork/types";
@@ -72,7 +72,7 @@ export async function confirmBooking(
   const causal = await loadCausalContext(input.case_id, input.request_id);
   const validatedBody = commandBody(input);
   const context: CanonicalCommandContext = {
-    command_id: new mongoose.Types.ObjectId().toHexString(),
+    command_id: newObjectIdHex(),
     idempotency_key: input.idempotency_key,
     payload_checksum: createHash("sha256").update(canonicalJson({
       command_name: COMMAND_NAME,

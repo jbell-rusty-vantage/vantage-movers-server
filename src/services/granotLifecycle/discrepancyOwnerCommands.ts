@@ -8,7 +8,7 @@ import { getGranotReleaseDiscrepancyModel } from "../../models/GranotReleaseDisc
 import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel, type GranotRecordLinkDocument } from "../../models/GranotRecordLink";
-import { toObjectId } from "../../utils/objectId";
+import { newObjectIdHex, toObjectId } from "../../utils/objectId";
 import type { GranotLifecycleCorrectRecordLinkCommandInput, GranotLifecycleDiscrepancyNoActionCommandInput, GranotLifecycleReEvaluateDiscrepancyCommandInput } from "../../validation/v1/granotLifecycle.validation";
 import { createGranotLifecycleProcessorActor } from "../durableWork/actors";
 import { canonicalJson } from "../durableWork/checksum";
@@ -159,7 +159,7 @@ async function prepare(input: Envelope, commandName: string, validatedBody: Reco
   if (!newest || !observation || !receipt) throw lifecycle("Discrepancy causal evidence is unavailable", "IDENTITY_CONFLICT", 409, input.request_id);
   const receiptId = String(receipt._id);
   const context: CanonicalCommandContext = {
-    command_id: new mongoose.Types.ObjectId().toHexString(), idempotency_key: input.idempotency_key,
+    command_id: newObjectIdHex(), idempotency_key: input.idempotency_key,
     payload_checksum: createHash("sha256").update(canonicalJson({ command_name: commandName, discrepancy_id: input.discrepancy_id, validated_body: validatedBody })).digest("hex"),
     actor: createGranotLifecycleProcessorActor(receiptId), initiator: input.owner,
     provenance: { origin: "granot_lifecycle", run_id: null, source_receipt_id: receiptId, source_connection_key: null,
