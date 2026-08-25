@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-25T20:10Z
 - Service / module: `agents` / `agentAllocation.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (new PR — #27 already merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/28
 
 ## Stock at start
 

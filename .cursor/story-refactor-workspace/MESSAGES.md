@@ -11,7 +11,7 @@ Stay in **`agents`**. Next module: **`receiverAgentCrmUsername.ts`**.
 1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + `agents-agent-allocation.md`.
 2. Do not rewrite `form-lead.md` or any prior recommendation, including the two `customers-*.md` files and `agents-agent-allocation.md`.
 3. Stay in `agents` until every module on that checklist is recommended or skipped. Then `leadSourceCompanies`.
-4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. PR #27 is already merged — open a new PR for this pass.
+4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. PR #28 is this pass. If that PR is already merged, open a new PR.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
