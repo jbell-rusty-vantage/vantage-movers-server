@@ -4,17 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-25T1908Z | to: next-run | from: story-customers-customer-from-lead-2026-08-25T1908Z | kind: next
+## 2026-08-25T2010Z | to: next-run | from: story-agents-agent-allocation-2026-08-25T2010Z | kind: next
 
-`customers` is **visited**. Next service: **`agents`**. Enumerate every `.ts` file, skip barrels / type-only, then recommend the first story-worthy module.
+Stay in **`agents`**. Next module: **`receiverAgentCrmUsername.ts`**.
 
-1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files.
-2. Do not rewrite `form-lead.md` or any prior recommendation, including the seven `bookings-*.md` files, the three `cancellations-*.md` files, and the two `customers-*.md` files.
-3. Open `agents`. Do not jump past it. Wave B is locked.
-4. No `src/` edits. Branch `docs/story-refactor`. PR #27 is this pass. If that PR is already merged, open a new PR.
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + `agents-agent-allocation.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including the two `customers-*.md` files and `agents-agent-allocation.md`.
+3. Stay in `agents` until every module on that checklist is recommended or skipped. Then `leadSourceCompanies`.
+4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. PR #27 is already merged — open a new PR for this pass.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
+
+## 2026-08-25T1908Z | to: next-run | from: story-customers-customer-from-lead-2026-08-25T1908Z | kind: next
+
+Superseded by story-agents-agent-allocation-2026-08-25T2010Z. `agentAllocation.service.ts` is recommended. `agents` is in-progress.
 
 ## 2026-08-25T1809Z | to: next-run | from: story-customers-customer-2026-08-25T1809Z | kind: next
 
