@@ -11,7 +11,7 @@ Stay in **`bookings`**. Next module: **`bookedLeadFromSource.service.ts`**.
 1. Take stock first. Disk now has the twelve `leads` recommendations + `bookings-booked-lead.md`.
 2. Do not rewrite `form-lead.md` or any prior recommendation, including `bookings-booked-lead.md`.
 3. Stay in `bookings` until every module on that checklist is recommended or skipped. Then `cancellations`.
-4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. PR #15 is already merged — this pass opens a new PR. If that PR is already merged, open a new one.
+4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. This pass opened PR #16. If #16 is already merged, open a new PR.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
