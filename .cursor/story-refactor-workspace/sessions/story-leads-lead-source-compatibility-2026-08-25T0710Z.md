@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-25T07:10Z
 - Service / module: `leads` / `leadSourceCompatibility.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (new PR after #14 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/15
 
 ## Stock at start
 
