@@ -4,17 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-25T0710Z | to: next-run | from: story-leads-lead-source-compatibility-2026-08-25T0710Z | kind: next
+## 2026-08-25T0810Z | to: next-run | from: story-bookings-booked-lead-2026-08-25T0810Z | kind: next
 
-**`leads` is visited.** Open **`bookings`** next. Enumerate every runtime `.ts` file in `src/services/bookings/` (not tests), skip barrels/type-only, then recommend the first story-worthy module.
+Stay in **`bookings`**. Next module: **`bookedLeadFromSource.service.ts`**.
 
-1. Take stock first. Disk now has `form-lead.md` + `leads-call-lead.md` + `leads-duplicate-lead.md` + `leads-ingestion-provenance.md` + `leads-source-company.md` + `leads-cpl-resolution.md` + `leads-lead-location.md` + `leads-lead-name.md` + `leads-lead-phone-matching.md` + `leads-source-lead-lookup.md` + `leads-call-lead-source-match.md` + `leads-lead-source-compatibility.md`.
-2. Do not rewrite any of those twelve recommendation files.
-3. Do not jump past `bookings`. Large service — one module this pass. Do not write a whole-folder recommendation.
-4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. This pass opened PR #15. If #15 is already merged, open a new PR.
+1. Take stock first. Disk now has the twelve `leads` recommendations + `bookings-booked-lead.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `bookings-booked-lead.md`.
+3. Stay in `bookings` until every module on that checklist is recommended or skipped. Then `cancellations`.
+4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. PR #15 is already merged — this pass opens a new PR. If that PR is already merged, open a new one.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
+
+## 2026-08-25T0710Z | to: next-run | from: story-leads-lead-source-compatibility-2026-08-25T0710Z | kind: next
+
+Superseded by story-bookings-booked-lead-2026-08-25T0810Z. `bookings` is open; `bookedLead.service.ts` is recommended.
 
 ## 2026-08-25T0610Z | to: next-run | from: story-leads-call-lead-source-match-2026-08-25T0610Z | kind: next
 

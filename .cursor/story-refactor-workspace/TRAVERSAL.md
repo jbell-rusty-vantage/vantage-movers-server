@@ -18,11 +18,11 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 ## Stock (rewrite every run)
 
 - Wave: A
-- Services visited / in-progress / unvisited: **1 / 0 / 37**
-- Recommendations on disk: **12** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`)
-- Current service: `bookings` (unvisited)
-- Next module: enumerate `src/services/bookings/`
-- Last session: `story-leads-lead-source-compatibility-2026-08-25T0710Z`
+- Services visited / in-progress / unvisited: **1 / 1 / 36**
+- Recommendations on disk: **13** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`)
+- Current service: `bookings` (in-progress)
+- Next module: `bookedLeadFromSource.service.ts`
+- Last session: `story-bookings-booked-lead-2026-08-25T0810Z`
 
 ## How to read a service row
 
@@ -58,9 +58,22 @@ Folder: `src/services/leads/`
 | `leadSourceCompatibility.ts` | recommended → [recommendations/leads-lead-source-compatibility.md](recommendations/leads-lead-source-compatibility.md) |
 | `index.ts` | skip — barrel |
 
-### 2. `bookings` — large — unvisited
+### 2. `bookings` — large — **in-progress**
 
-`src/services/bookings/` — Booked create/update/delete, from-source, referral, leadless, mirrors.
+Folder: `src/services/bookings/`
+
+| Module | Verdict |
+| --- | --- |
+| `bookedLead.service.ts` | recommended → [recommendations/bookings-booked-lead.md](recommendations/bookings-booked-lead.md) |
+| `bookedLeadFromSource.service.ts` | **next** |
+| `referralBooking.service.ts` | |
+| `leadlessBooking.service.ts` | |
+| `bookingMirror.service.ts` | |
+| `bookingSourceResolver.ts` | |
+| `bookingIdentity.ts` | |
+| `bookingWarnings.ts` | skip — thin warning helper |
+| `bestRelocationImportGuard.ts` | skip — import fence |
+| `index.ts` | skip — barrel |
 
 ### 3. `cancellations` — medium — unvisited
 
