@@ -19,10 +19,10 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 
 - Wave: A
 - Services visited / in-progress / unvisited: **1 / 1 / 36**
-- Recommendations on disk: **14** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`)
+- Recommendations on disk: **15** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`)
 - Current service: `bookings` (in-progress)
-- Next module: `referralBooking.service.ts`
-- Last session: `story-bookings-booked-lead-from-source-2026-08-25T0911Z`
+- Next module: `leadlessBooking.service.ts`
+- Last session: `story-bookings-referral-booking-2026-08-25T1014Z`
 
 ## How to read a service row
 
@@ -66,8 +66,8 @@ Folder: `src/services/bookings/`
 | --- | --- |
 | `bookedLead.service.ts` | recommended → [recommendations/bookings-booked-lead.md](recommendations/bookings-booked-lead.md) |
 | `bookedLeadFromSource.service.ts` | recommended → [recommendations/bookings-booked-lead-from-source.md](recommendations/bookings-booked-lead-from-source.md) |
-| `referralBooking.service.ts` | **next** |
-| `leadlessBooking.service.ts` | |
+| `referralBooking.service.ts` | recommended → [recommendations/bookings-referral-booking.md](recommendations/bookings-referral-booking.md) |
+| `leadlessBooking.service.ts` | **next** |
 | `bookingMirror.service.ts` | |
 | `bookingSourceResolver.ts` | |
 | `bookingIdentity.ts` | |
