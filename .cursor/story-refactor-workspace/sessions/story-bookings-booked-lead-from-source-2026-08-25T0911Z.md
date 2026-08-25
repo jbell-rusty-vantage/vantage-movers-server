@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-25T09:11Z
 - Service / module: `bookings` / `bookedLeadFromSource.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (new PR after #16 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/17
 
 ## Stock at start
 
