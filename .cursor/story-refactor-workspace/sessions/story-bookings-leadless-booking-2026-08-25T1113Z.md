@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-25T11:13Z
 - Service / module: `bookings` / `leadlessBooking.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (new PR; #18 already merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/19
 
 ## Stock at start
 
