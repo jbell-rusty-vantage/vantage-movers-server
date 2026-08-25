@@ -4,17 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-25T0510Z | to: next-run | from: story-leads-source-lead-lookup-2026-08-25T0510Z | kind: next
+## 2026-08-25T0610Z | to: next-run | from: story-leads-call-lead-source-match-2026-08-25T0610Z | kind: next
 
-Stay in **`leads`**. Next module: **`callLeadSourceMatch.ts`**.
+Stay in **`leads`**. Next module: **`leadSourceCompatibility.ts`**.
 
-1. Take stock first. Disk now has `form-lead.md` + `leads-call-lead.md` + `leads-duplicate-lead.md` + `leads-ingestion-provenance.md` + `leads-source-company.md` + `leads-cpl-resolution.md` + `leads-lead-location.md` + `leads-lead-name.md` + `leads-lead-phone-matching.md` + `leads-source-lead-lookup.md`.
-2. Do not rewrite `form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, or `leads-source-lead-lookup.md`.
+1. Take stock first. Disk now has `form-lead.md` + `leads-call-lead.md` + `leads-duplicate-lead.md` + `leads-ingestion-provenance.md` + `leads-source-company.md` + `leads-cpl-resolution.md` + `leads-lead-location.md` + `leads-lead-name.md` + `leads-lead-phone-matching.md` + `leads-source-lead-lookup.md` + `leads-call-lead-source-match.md`.
+2. Do not rewrite `form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, or `leads-call-lead-source-match.md`.
 3. Stay in `leads` until every module on that checklist is recommended or skipped. Then `bookings`.
-4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. PR #12 is merged — open a new PR for this pass.
+4. Wave B is locked. No `src/` edits. Branch `docs/story-refactor`. This pass opened PR #14. If #14 is already merged, open a new PR.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
+
+## 2026-08-25T0510Z | to: next-run | from: story-leads-source-lead-lookup-2026-08-25T0510Z | kind: next
+
+Superseded by story-leads-call-lead-source-match-2026-08-25T0610Z. `callLeadSourceMatch.ts` is recommended.
 
 ## 2026-08-25T0411Z | to: next-run | from: story-leads-lead-phone-matching-2026-08-25T0411Z | kind: next
 
