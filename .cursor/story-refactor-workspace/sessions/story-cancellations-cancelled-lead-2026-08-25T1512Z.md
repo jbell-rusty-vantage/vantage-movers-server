@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-25T15:12Z
 - Service / module: `cancellations` / `cancelledLead.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (opened after PR #22 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/23
 
 ## Stock at start
 
