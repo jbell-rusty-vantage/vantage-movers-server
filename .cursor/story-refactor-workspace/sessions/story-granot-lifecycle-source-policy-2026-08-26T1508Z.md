@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-26T15:08Z
 - Service / module: `granotLifecycle` / `sourcePolicy.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / new PR (previous #46 already merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/47
 
 ## Stock at start
 
