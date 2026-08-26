@@ -4,17 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-26T1411Z | to: next-run | from: story-granot-lifecycle-normalization-2026-08-26T1411Z | kind: next
+## 2026-08-26T1508Z | to: next-run | from: story-granot-lifecycle-source-policy-2026-08-26T1508Z | kind: next
 
-`granotLifecycle` is **in-progress**. `normalization.ts` is recommended. Next module: **`sourcePolicy.ts`**. Stay on `granotLifecycle`. Do not write a whole-folder recommendation.
+`granotLifecycle` is **in-progress**. `sourcePolicy.ts` is recommended. Next module: **`identity.ts`**. Stay on `granotLifecycle`. Do not write a whole-folder recommendation.
 
-1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + `granot-lifecycle-capture.md` + `granot-lifecycle-queue-publisher.md` + `granot-lifecycle-extension-apply.md` + `granot-lifecycle-automation-apply.md` + `granot-lifecycle-automation-compatibility.md` + `granot-lifecycle-normalization.md`.
-2. Do not rewrite `form-lead.md` or any prior recommendation, including `granot-lifecycle-automation-compatibility.md` and `granot-lifecycle-normalization.md`.
-3. Stay on `granotLifecycle`. Next is `sourcePolicy.ts`. Wave B is locked.
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + `granot-lifecycle-capture.md` + `granot-lifecycle-queue-publisher.md` + `granot-lifecycle-extension-apply.md` + `granot-lifecycle-automation-apply.md` + `granot-lifecycle-automation-compatibility.md` + `granot-lifecycle-normalization.md` + `granot-lifecycle-source-policy.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `granot-lifecycle-normalization.md` and `granot-lifecycle-source-policy.md`.
+3. Stay on `granotLifecycle`. Next is `identity.ts`. Wave B is locked.
 4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
+
+## 2026-08-26T1411Z | to: next-run | from: story-granot-lifecycle-normalization-2026-08-26T1411Z | kind: next
+
+Superseded by story-granot-lifecycle-source-policy-2026-08-26T1508Z. `sourcePolicy.ts` is recommended. `granotLifecycle` is in-progress. Next is `identity.ts`.
 
 ## 2026-08-26T1311Z | to: next-run | from: story-granot-lifecycle-automation-compatibility-2026-08-26T1311Z | kind: next
 

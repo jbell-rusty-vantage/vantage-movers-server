@@ -19,10 +19,10 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 
 - Wave: A
 - Services visited / in-progress / unvisited: **11 / 1 / 26**
-- Recommendations on disk: **43** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`, `cancellations-cancellation-resolver.md`, `cancellations-cancellation-mirror.md`, `customers-customer.md`, `customers-customer-from-lead.md`, `agents-agent-allocation.md`, `agents-receiver-agent-crm-username.md`, `lead-source-companies-lead-source-company.md`, `cpl-cpl-rate.md`, `catalog-catalog.md`, `search-form-lead-search.md`, `search-form-lead-browse.md`, `search-call-lead-search.md`, `search-call-lead-browse.md`, `enrichment-call-lead-enrichment.md`, `enrichment-call-lead-enrichment-rows.md`, `reconciliation-booked-call-lead.md`, `reconciliation-booked-call-lead-rows.md`, `granot-lifecycle-capture.md`, `granot-lifecycle-queue-publisher.md`, `granot-lifecycle-extension-apply.md`, `granot-lifecycle-automation-apply.md`, `granot-lifecycle-automation-compatibility.md`, `granot-lifecycle-normalization.md`)
+- Recommendations on disk: **44** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`, `cancellations-cancellation-resolver.md`, `cancellations-cancellation-mirror.md`, `customers-customer.md`, `customers-customer-from-lead.md`, `agents-agent-allocation.md`, `agents-receiver-agent-crm-username.md`, `lead-source-companies-lead-source-company.md`, `cpl-cpl-rate.md`, `catalog-catalog.md`, `search-form-lead-search.md`, `search-form-lead-browse.md`, `search-call-lead-search.md`, `search-call-lead-browse.md`, `enrichment-call-lead-enrichment.md`, `enrichment-call-lead-enrichment-rows.md`, `reconciliation-booked-call-lead.md`, `reconciliation-booked-call-lead-rows.md`, `granot-lifecycle-capture.md`, `granot-lifecycle-queue-publisher.md`, `granot-lifecycle-extension-apply.md`, `granot-lifecycle-automation-apply.md`, `granot-lifecycle-automation-compatibility.md`, `granot-lifecycle-normalization.md`, `granot-lifecycle-source-policy.md`)
 - Current service: `granotLifecycle` (in-progress)
-- Next module: `sourcePolicy.ts`
-- Last session: `story-granot-lifecycle-normalization-2026-08-26T1411Z`
+- Next module: `identity.ts`
+- Last session: `story-granot-lifecycle-source-policy-2026-08-26T1508Z`
 
 ## How to read a service row
 
@@ -188,7 +188,7 @@ Folder: `src/services/granotLifecycle/` — many passes. Do not treat as one rec
 | `automationApply.ts` | recommended → [recommendations/granot-lifecycle-automation-apply.md](recommendations/granot-lifecycle-automation-apply.md) |
 | `automationCompatibility.ts` | recommended → [recommendations/granot-lifecycle-automation-compatibility.md](recommendations/granot-lifecycle-automation-compatibility.md) |
 | `normalization.ts` | recommended → [recommendations/granot-lifecycle-normalization.md](recommendations/granot-lifecycle-normalization.md) |
-| `sourcePolicy.ts` | |
+| `sourcePolicy.ts` | recommended → [recommendations/granot-lifecycle-source-policy.md](recommendations/granot-lifecycle-source-policy.md) |
 | `identity.ts` | |
 | `granotTemporal.ts` | |
 | `leadDesiredState.ts` | |
