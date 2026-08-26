@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-26T05:12Z
 - Service / module: `enrichment` / `callLeadEnrichment.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (open after this pass; #36 already merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/37
 
 ## Stock at start
 
