@@ -18,11 +18,11 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 ## Stock (rewrite every run)
 
 - Wave: A
-- Services visited / in-progress / unvisited: **11 / 0 / 27**
-- Recommendations on disk: **37** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`, `cancellations-cancellation-resolver.md`, `cancellations-cancellation-mirror.md`, `customers-customer.md`, `customers-customer-from-lead.md`, `agents-agent-allocation.md`, `agents-receiver-agent-crm-username.md`, `lead-source-companies-lead-source-company.md`, `cpl-cpl-rate.md`, `catalog-catalog.md`, `search-form-lead-search.md`, `search-form-lead-browse.md`, `search-call-lead-search.md`, `search-call-lead-browse.md`, `enrichment-call-lead-enrichment.md`, `enrichment-call-lead-enrichment-rows.md`, `reconciliation-booked-call-lead.md`, `reconciliation-booked-call-lead-rows.md`)
-- Current service: `granotLifecycle` (unvisited)
-- Next module: enumerate `src/services/granotLifecycle/`
-- Last session: `story-reconciliation-booked-call-lead-rows-2026-08-26T0811Z`
+- Services visited / in-progress / unvisited: **11 / 1 / 26**
+- Recommendations on disk: **38** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`, `cancellations-cancellation-resolver.md`, `cancellations-cancellation-mirror.md`, `customers-customer.md`, `customers-customer-from-lead.md`, `agents-agent-allocation.md`, `agents-receiver-agent-crm-username.md`, `lead-source-companies-lead-source-company.md`, `cpl-cpl-rate.md`, `catalog-catalog.md`, `search-form-lead-search.md`, `search-form-lead-browse.md`, `search-call-lead-search.md`, `search-call-lead-browse.md`, `enrichment-call-lead-enrichment.md`, `enrichment-call-lead-enrichment-rows.md`, `reconciliation-booked-call-lead.md`, `reconciliation-booked-call-lead-rows.md`, `granot-lifecycle-capture.md`)
+- Current service: `granotLifecycle` (in-progress)
+- Next module: `queuePublisher.ts`
+- Last session: `story-granot-lifecycle-capture-2026-08-26T0916Z`
 
 ## How to read a service row
 
@@ -166,9 +166,56 @@ Folder: `src/services/reconciliation/`
 | `bookedCallLeadRows.ts` | recommended → [recommendations/reconciliation-booked-call-lead-rows.md](recommendations/reconciliation-booked-call-lead-rows.md) |
 | `index.ts` | skip — barrel |
 
-### 12. `granotLifecycle` — large — unvisited
+### 12. `granotLifecycle` — large — **in-progress**
 
-`src/services/granotLifecycle/` — many passes. Enumerate on first open. Do not treat as one recommendation.
+Folder: `src/services/granotLifecycle/` — many passes. Do not treat as one recommendation.
+
+| Module | Verdict |
+| --- | --- |
+| `types.ts` | skip — type-only |
+| `receiptEvidence.ts` | skip — redact helpers |
+| `receiptCompatibility.ts` | skip — legacy fill |
+| `errors.ts` | skip — error types |
+| `applyItem.ts` | skip — apply hints |
+| `safeLogging.ts` | skip — log mask |
+| `synchronizeLeadTypes.ts` | skip — type-only |
+| `sourceLabel.ts` | skip — label fold |
+| `lastError.ts` | skip — error sanitize |
+| `schedules.ts` | skip — retry clock |
+| `capture.ts` | recommended → [recommendations/granot-lifecycle-capture.md](recommendations/granot-lifecycle-capture.md) |
+| `queuePublisher.ts` | |
+| `extensionApply.ts` | |
+| `automationApply.ts` | |
+| `automationCompatibility.ts` | |
+| `normalization.ts` | |
+| `sourcePolicy.ts` | |
+| `identity.ts` | |
+| `granotTemporal.ts` | |
+| `leadDesiredState.ts` | |
+| `authorizedDesiredState.ts` | |
+| `leadContactProjection.ts` | |
+| `processor.ts` | |
+| `operations.ts` | |
+| `projections.ts` | |
+| `creatingObservation.ts` | |
+| `drainer.ts` | |
+| `aggregateRevision.ts` | |
+| `trustedLeadCreateValidation.ts` | |
+| `synchronizeLeadFromGranot.ts` | |
+| `createLeadFromGranot.ts` | |
+| `bookingReconciliation.ts` | |
+| `bookingConfirmation.ts` | |
+| `bookingOwnerCommands.ts` | |
+| `bookingPriorityPairing.ts` | |
+| `referralBooking.ts` | |
+| `releaseReconciliation.ts` | |
+| `releaseOwnerCommands.ts` | |
+| `discrepancies.ts` | |
+| `discrepancyOwnerCommands.ts` | |
+| `discrepancyProjections.ts` | |
+| `observability.ts` | |
+| `metrics.ts` | |
+| `alerts.ts` | |
 
 ### 13. `granotHttpCollector` — medium — unvisited
 
