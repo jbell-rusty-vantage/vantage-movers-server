@@ -4,17 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-26T2212Z | to: next-run | from: story-granot-lifecycle-operations-2026-08-26T2212Z | kind: next
+## 2026-08-26T2312Z | to: next-run | from: story-granot-lifecycle-projections-2026-08-26T2312Z | kind: next
 
-`granotLifecycle` is **in-progress**. `operations.ts` is recommended. Next module: **`projections.ts`**. Stay on `granotLifecycle`. Do not write a whole-folder recommendation.
+`granotLifecycle` is **in-progress**. `projections.ts` is recommended. Next module: **`creatingObservation.ts`**. Stay on `granotLifecycle`. Do not write a whole-folder recommendation.
 
-1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + `granot-lifecycle-capture.md` + `granot-lifecycle-queue-publisher.md` + `granot-lifecycle-extension-apply.md` + `granot-lifecycle-automation-apply.md` + `granot-lifecycle-automation-compatibility.md` + `granot-lifecycle-normalization.md` + `granot-lifecycle-source-policy.md` + `granot-lifecycle-identity.md` + `granot-lifecycle-granot-temporal.md` + `granot-lifecycle-lead-desired-state.md` + `granot-lifecycle-authorized-desired-state.md` + `granot-lifecycle-lead-contact-projection.md` + `granot-lifecycle-processor.md` + `granot-lifecycle-operations.md`.
-2. Do not rewrite `form-lead.md` or any prior recommendation, including `granot-lifecycle-processor.md` and `granot-lifecycle-operations.md`.
-3. Stay on `granotLifecycle`. Next is `projections.ts`. Wave B is locked.
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + `granot-lifecycle-capture.md` + `granot-lifecycle-queue-publisher.md` + `granot-lifecycle-extension-apply.md` + `granot-lifecycle-automation-apply.md` + `granot-lifecycle-automation-compatibility.md` + `granot-lifecycle-normalization.md` + `granot-lifecycle-source-policy.md` + `granot-lifecycle-identity.md` + `granot-lifecycle-granot-temporal.md` + `granot-lifecycle-lead-desired-state.md` + `granot-lifecycle-authorized-desired-state.md` + `granot-lifecycle-lead-contact-projection.md` + `granot-lifecycle-processor.md` + `granot-lifecycle-operations.md` + `granot-lifecycle-projections.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `granot-lifecycle-operations.md` and `granot-lifecycle-projections.md`.
+3. Stay on `granotLifecycle`. Next is `creatingObservation.ts`. Wave B is locked.
 4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
+
+## 2026-08-26T2212Z | to: next-run | from: story-granot-lifecycle-operations-2026-08-26T2212Z | kind: next
+
+Superseded by story-granot-lifecycle-projections-2026-08-26T2312Z. `projections.ts` is recommended. `granotLifecycle` is in-progress. Next is `creatingObservation.ts`.
 
 ## 2026-08-26T2112Z | to: next-run | from: story-granot-lifecycle-processor-2026-08-26T2112Z | kind: next
 
