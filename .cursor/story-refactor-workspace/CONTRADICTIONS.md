@@ -4,6 +4,11 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Referral identity returns `unmatched` / `creation_policy_observation_only`. The row is Referral, not observation-only. The Referral test locks leadless + no Lead query, not the reason. Do not invent `referral_booking`. See `recommendations/granot-lifecycle-identity.md`.
+- Successful Form/Call contact or tracking-ref match writes `reason_code: "record_link_confirmed"` while `match_method` is the honest rung. Do not start writing a Record Link so the reason “wins.” See `recommendations/granot-lifecycle-identity.md`.
+- `agent_assertion: "single"` covers zero, one, or many active rows. Only exactly one suggests an Agent. AC-13 locks two-plus with no `agent`. Do not pick the first row. See `recommendations/granot-lifecycle-identity.md`.
+- This file’s Agent store queries `granot_identity.username` **or** `granot_crm_username`. `findAgentByGranotCrmUsername` / Registry query only the nested field. Do not silently merge. See `recommendations/granot-lifecycle-identity.md` and `recommendations/agents-receiver-agent-crm-username.md`.
+- `IdentityRecordLink.disputed` is mapped and never read. Do not start failing disputed links so the field “wins.” See `recommendations/granot-lifecycle-identity.md`.
 - `evaluateEffectGates` always returns a fail-closed `outcome` / `reason`. When every gate passes, the leftover is `policy_blocked` / `source_disabled`. Referral booking with inactive company/granularity is `allowed: true` and still `target_source_company_inactive`. Processor and create-if-missing only read those fields when `allowed === false`. Do not invent a success outcome, and do not fail Referral because the leftover reason “wins.” See `recommendations/granot-lifecycle-source-policy.md`.
 - Referral refusing `lead_created` is labeled `source_deferred` (`firstBlockingReason` maps any failed non-deferred disposition to that reason). The row is Referral, not deferred. Do not silently merge. See `recommendations/granot-lifecycle-source-policy.md`.
 - `source_scope_eligible` is only passed by `sourcePolicy.test.ts` AC-04. `processor.ts` `snapshotEligibleGates` and `createLeadFromGranot` omit it. Do not wire the processor to pass it so “the gate is live.” See `recommendations/granot-lifecycle-source-policy.md`.
