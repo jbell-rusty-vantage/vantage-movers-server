@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-26T09:16Z
 - Service / module: `granotLifecycle` / `capture.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (new — #40 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/41
 
 ## Stock at start
 
