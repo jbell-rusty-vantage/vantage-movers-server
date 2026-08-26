@@ -301,6 +301,7 @@ const analyticsReports = [
   "receiver-agent-performance",
   "receiver-agent-trend",
   "receiver-agent-source-breakdown",
+  "sms-successfully-sent-then-booked",
 ] as const;
 
 router.get("/api/v1/admin/search", handleAdminSearch);

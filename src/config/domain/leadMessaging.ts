@@ -19,6 +19,15 @@ export const LEAD_MESSAGE_STATUSES = [
 ] as const;
 export type LeadMessageStatus = (typeof LEAD_MESSAGE_STATUSES)[number];
 
+/** Lead Message statuses that count as a successful confirmation text. */
+export const SUCCESSFUL_LEAD_MESSAGE_STATUSES = [
+  "accepted",
+  "sent",
+  "delivered",
+] as const;
+export type SuccessfulLeadMessageStatus =
+  (typeof SUCCESSFUL_LEAD_MESSAGE_STATUSES)[number];
+
 export const LEAD_MESSAGE_PURPOSES = [
   "quote_request_confirmation",
   "granot_lead_created_confirmation",

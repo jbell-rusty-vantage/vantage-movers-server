@@ -142,6 +142,14 @@ const CSV_COLUMNS: Record<AnalyticsReport, string[]> = {
     "booking_rate",
     "cancellation_rate",
   ],
+  "sms-successfully-sent-then-booked": [
+    "origin",
+    "label",
+    "texted_leads",
+    "booked_leads",
+    "not_booked_leads",
+    "booking_rate",
+  ],
 };
 
 export async function exportAnalyticsReportCsv(

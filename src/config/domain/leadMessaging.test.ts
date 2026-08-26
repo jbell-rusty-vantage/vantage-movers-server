@@ -10,6 +10,7 @@ import {
   isGranotLeadCreatedSmsEnabled,
   isLeadMessagingQuietHoursEnabled,
   shouldPublishLeadMessagingQueue,
+  SUCCESSFUL_LEAD_MESSAGE_STATUSES,
 } from "./leadMessaging";
 
 const KEYS = [
@@ -108,4 +109,12 @@ test("lead messaging abuse guards have safe defaults and env overrides", () => {
   assert.deepEqual(getLeadMessagingAllowedCountryPrefixes(), ["+1", "+44"]);
   assert.equal(getLeadMessagingDestinationCooldownMs(), 30 * 60_000);
   assert.equal(getLeadMessagingHourlyLimit(), 50);
+});
+
+test("a successful confirmation text is accepted, sent, or delivered", () => {
+  assert.deepEqual([...SUCCESSFUL_LEAD_MESSAGE_STATUSES], [
+    "accepted",
+    "sent",
+    "delivered",
+  ]);
 });

@@ -20,6 +20,10 @@ import {
   unsupportedReceiverAgentReport,
 } from "./receiverAgentPerformance.service";
 import {
+  getSmsSuccessfullySentThenBooked,
+  unsupportedSmsConversionReport,
+} from "./smsConversion.service";
+import {
   getLeadSourcePerformance,
   getSourceCompanyFunnel,
   getSourceCompanyPerformance,
@@ -87,5 +91,7 @@ async function getConcreteAnalyticsReport(
       return scope === "historical" ? unsupportedReceiverAgentReport() : getReceiverAgentTrend(models, query);
     case "receiver-agent-source-breakdown":
       return scope === "historical" ? unsupportedReceiverAgentReport() : getReceiverAgentSourceBreakdown(models, query);
+    case "sms-successfully-sent-then-booked":
+      return scope === "historical" ? unsupportedSmsConversionReport() : getSmsSuccessfullySentThenBooked(models, query);
   }
 }

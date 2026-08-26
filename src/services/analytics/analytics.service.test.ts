@@ -53,6 +53,10 @@ test("analytics validation accepts report filters and rejects invalid report nam
   assert.equal(query.granularity, "day");
   assert.equal(analyticsReportSchema.parse("revenue-trend"), "revenue-trend");
   assert.equal(analyticsReportSchema.parse("receiver-agent-performance"), "receiver-agent-performance");
+  assert.equal(
+    analyticsReportSchema.parse("sms-successfully-sent-then-booked"),
+    "sms-successfully-sent-then-booked",
+  );
   assert.throws(() => analyticsReportSchema.parse("unknown-report"));
   assert.throws(() => analyticsQuerySchema.parse({ receiver_agent: "not-an-object-id" }));
 });
@@ -356,6 +360,47 @@ test("combined receiver-agent analytics merge production rows and keep historica
   assert.equal(items[0].booking_rate, 0.5);
   assert.equal(items[0].average_cpl, 100);
   assert.equal(metadata.historical_receiver_agent_supported, false);
+});
+
+test("combined SMS conversion merge keeps production rows and historical warning metadata", () => {
+  const merged = mergeAnalyticsPayload("sms-successfully-sent-then-booked", [
+    {
+      items: [
+        {
+          origin: "all",
+          label: "All",
+          texted_leads: 3,
+          booked_leads: 1,
+          not_booked_leads: 2,
+          booking_rate: 1 / 3,
+        },
+        {
+          origin: "public_form",
+          label: "Public form",
+          texted_leads: 3,
+          booked_leads: 1,
+          not_booked_leads: 2,
+          booking_rate: 1 / 3,
+        },
+      ],
+    },
+    {
+      items: [],
+      metadata: {
+        sms_conversion_scope: "unsupported",
+        historical_sms_conversion_supported: false,
+      },
+    },
+  ]);
+
+  const items = merged.items as Record<string, unknown>[];
+  const metadata = merged.metadata as Record<string, unknown>;
+  assert.equal(items.length, 2);
+  assert.equal(items[0].origin, "all");
+  assert.equal(items[0].texted_leads, 3);
+  assert.equal(items[0].booking_rate, 1 / 3);
+  assert.equal(items[0].not_booked_leads, 2);
+  assert.equal(metadata.historical_sms_conversion_supported, false);
 });
 
 test("analytics CSV export uses the selected report rows", async () => {

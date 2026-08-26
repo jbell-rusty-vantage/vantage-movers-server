@@ -255,6 +255,7 @@ Per-report source dimension today:
 | `booking-cancellation-ratio` | `derived_source_company` only | never |
 | `lead-source-performance` | `booked_leads.source` (CRM string) | never |
 | `receiver-agent-source-breakdown` | CRM `source_label`, not granularity | never |
+| `sms-successfully-sent-then-booked` | message `origin` (source filters apply to the joined Lead) | never |
 | `summary`, trends, geography, agent reports | no source rows | n/a |
 
 `loadProductionSourceLabelIndex` already reads first-class companies and

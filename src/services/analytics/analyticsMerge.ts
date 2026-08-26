@@ -42,6 +42,8 @@ const NUMERIC_FIELDS = [
   "billable_received_leads",
   "unresolved_cpl_count",
   "total_lead_cost",
+  "texted_leads",
+  "not_booked_leads",
 ];
 
 export function mergeAnalyticsPayload(report: AnalyticsReport, payloads: AnalyticsPayload[]): AnalyticsPayload {
@@ -67,6 +69,18 @@ export function mergeAnalyticsPayload(report: AnalyticsReport, payloads: Analyti
         historical_receiver_agent_supported: false,
         historical_excluded_from_receiver_agent_metrics: true,
         message: "Combined scope shows production receiver-agent metrics only. Historical lead records do not include receiver_agent attribution.",
+      },
+    };
+  }
+  if (report === "sms-successfully-sent-then-booked") {
+    const items = mergeRows(payloads.flatMap((payload) => arrayValue(payload.items)), ["origin"]);
+    return {
+      items,
+      metadata: {
+        sms_conversion_scope: "production_only",
+        historical_sms_conversion_supported: false,
+        historical_excluded_from_sms_conversion_metrics: true,
+        message: "Combined scope shows the production texted-lead booking rate only. Lead Messages are not stored historically.",
       },
     };
   }
@@ -174,8 +188,13 @@ function deriveRates(row: AnalyticsRow): AnalyticsRow {
       next.cancellations ||
       next.reconciled_cancelled_bookings,
   );
-  const leads = numberValue(next.total_leads || next.leads || next.received_leads);
-  if (bookings || cancellations) {
+  const leads = numberValue(
+    next.total_leads || next.leads || next.received_leads || next.texted_leads,
+  );
+  if ("texted_leads" in next) {
+    next.not_booked_leads = Math.max(numberValue(next.texted_leads) - numberValue(next.booked_leads), 0);
+  }
+  if ((bookings || cancellations) && !("texted_leads" in next)) {
     next.cancellation_rate = rate(cancellations, bookings);
     next.active_bookings = numberValue(next.active_bookings) || Math.max(bookings - cancellations, 0);
   }
@@ -219,6 +238,8 @@ function keyFieldsForReport(report: AnalyticsReport): string[] {
       return ["period", "receiver_agent_id", "receiver_agent_name"];
     case "receiver-agent-source-breakdown":
       return ["receiver_agent_id", "receiver_agent_name", "source_granularity_key", "source_company", "lead_type"];
+    case "sms-successfully-sent-then-booked":
+      return ["origin"];
     default:
       return ["label"];
   }

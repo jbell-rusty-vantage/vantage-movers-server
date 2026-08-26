@@ -32,6 +32,7 @@ export const analyticsReportSchema = z.enum([
   "receiver-agent-performance",
   "receiver-agent-trend",
   "receiver-agent-source-breakdown",
+  "sms-successfully-sent-then-booked",
 ]);
 
 export const analyticsQuerySchema = z

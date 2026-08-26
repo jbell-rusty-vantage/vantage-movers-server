@@ -114,6 +114,7 @@ test("admin analytics receiver-agent reports have GET routes", () => {
   assert.equal(getRoutes.has("/api/v1/admin/analytics/receiver-agent-performance"), true);
   assert.equal(getRoutes.has("/api/v1/admin/analytics/receiver-agent-trend"), true);
   assert.equal(getRoutes.has("/api/v1/admin/analytics/receiver-agent-source-breakdown"), true);
+  assert.equal(getRoutes.has("/api/v1/admin/analytics/sms-successfully-sent-then-booked"), true);
 });
 
 test("employee booking reconciliation routes are registered", () => {

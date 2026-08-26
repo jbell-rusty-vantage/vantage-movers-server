@@ -13,6 +13,7 @@ applies_to:
   - src/services/analytics/analyticsExport.service.ts
   - src/services/analytics/overview.service.ts
   - src/services/analytics/leadCost.service.ts
+  - src/services/analytics/smsConversion.service.ts
   - src/services/analytics/agentSalesReport.service.ts
   - src/validation/v1/analytics.validation.ts
   - src/routes/v1.routes.ts
@@ -32,7 +33,7 @@ generated:
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/analytics/`  
-**Domain terms used:** [Analytics](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md), [CPL](../../../../CONTEXT.md), [Source Company](../../../../CONTEXT.md), [Agent Allocation](../../../../CONTEXT.md), [Cancellation](../../../../CONTEXT.md), [Reporting Sheets](../../../../CONTEXT.md)
+**Domain terms used:** [Analytics](../../../../CONTEXT.md), [Lead Message](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md), [CPL](../../../../CONTEXT.md), [Source Company](../../../../CONTEXT.md), [Agent Allocation](../../../../CONTEXT.md), [Cancellation](../../../../CONTEXT.md), [Reporting Sheets](../../../../CONTEXT.md)
 
 # Analytics Service
 
@@ -74,8 +75,9 @@ Admin auth (same family as browse/search). Report names: `analyticsReportSchema`
 | `geographic-lanes` | `geographicAnalytics.service.ts` | form + call (pickup × delivery) |
 | `pickup-state-performance` / `delivery-state-performance` | `geographicAnalytics.service.ts` | form + call |
 | `receiver-agent-performance` / `trend` / `source-breakdown` | `receiverAgentPerformance.service.ts` | form + call (`receiver_agent`) |
+| `sms-successfully-sent-then-booked` | `smsConversion.service.ts` | `lead_messages` + form/call (`lead.booked`) |
 
-**Historical skip:** each receiver-agent report returns `unsupportedReceiverAgentReport()` (`items: []` + `historical_receiver_agent_supported: false`). Combined merge keeps [REDACTED] rows and that warning metadata. // pragma: allowlist secret
+**Historical skip:** each receiver-agent report returns `unsupportedReceiverAgentReport()` (`items: []` + `historical_receiver_agent_supported: false`). Combined merge keeps [REDACTED] rows and that warning metadata. `sms-successfully-sent-then-booked` is the same shape: historical returns `unsupportedSmsConversionReport()`; combined keeps [REDACTED] rows plus a Lead Message warning. // pragma: allowlist secret
 
 ## Query filters (`analyticsQuerySchema`)
 
@@ -100,6 +102,7 @@ Admin auth (same family as browse/search). Report names: `analyticsReportSchema`
 | Collection | Range field |
 |------------|-------------|
 | `form_leads` / `call_leads` | `timestamp` (`leadMatchForQuery`) |
+| `sms-successfully-sent-then-booked` | joined Lead `timestamp` after a successful Lead Message |
 | `booked_leads` | `book_date` (`directBookedLeadMatch`) |
 | `cancelled_leads` | `cancel_date` |
 | Revenue trend buckets | `report_date` via `trendDateExpression` (`%Y-%m-%d` or `%Y-%m`) |
@@ -122,7 +125,7 @@ Admin auth (same family as browse/search). Report names: `analyticsReportSchema`
 
 **`cancelledLeadPrefix`:** cancel-field match → lookup booking → join lead_ref/model → lookup form/call → same derived fields + filters.
 
-**`leadMatchForQuery`:** when `source_granularity_key` is set, loads the Filter Catalog via `getAdminFacets(query.database_scope)` then calls `leadMatch`. Callers: `sourcePerformance`, `leadCost`, `summary`, `geographicAnalytics`, `receiverAgentPerformance`.
+**`leadMatchForQuery`:** when `source_granularity_key` is set, loads the Filter Catalog via `getAdminFacets(query.database_scope)` then calls `leadMatch`. Callers: `sourcePerformance`, `leadCost`, `summary`, `geographicAnalytics`, `receiverAgentPerformance`, `smsConversion`.
 
 **`leadMatch`:** timestamp range, local, leftover `source_company` variants when the dropdown is unset, otherwise exact key / snapshot / submitted `source_company` / catalog id (historical/combined also catalog `company_slug` on that channel), lead_type exclusion.
 
@@ -132,7 +135,7 @@ Company variants: `resolveSourceCompany` + config label/aliases + `SOURCE_LABEL_
 
 Keys: `source_company` via `normalizeSourceDimension`; other dimensions lowercased. Numeric counters sum; `booking_rate` / `cancellation_rate` / `average_cpl` recomputed.
 
-Special shapes: `summary` → `{ totals }`; `booking-cancellation-ratio` → `{ overall, by_source_company }`; `geographic-lanes` → `{ form_lanes, call_lanes }`; receiver-agent reports keep warning metadata. Source-company merge keeps child `granularities`; company-only incoming rows become extra leaves; parent totals recompute from children. // pragma: allowlist secret
+Special shapes: `summary` → `{ totals }`; `booking-cancellation-ratio` → `{ overall, by_source_company }`; `geographic-lanes` → `{ form_lanes, call_lanes }`; receiver-agent and SMS-conversion reports keep production-only warning metadata. Source-company merge keeps child `granularities`; company-only incoming rows become extra leaves; parent totals recompute from children. // pragma: allowlist secret
 
 ## Report semantics (high-signal)
 
@@ -149,6 +152,8 @@ Special shapes: `summary` → `{ totals }`; `booking-cancellation-ratio` → `{ 
 **Lead source performance** — groups by `source_granularity_key` and catalog `owner_label`, same hierarchy as source-company performance. Does not group by `booked_leads.source`.
 
 **Receiver-agent reports** — historical empty + unsupported metadata. Combined = [REDACTED] rows + warning. Source breakdown groups by `source_granularity_key` and catalog `owner_label`. // pragma: allowlist secret
+
+**SMS successfully sent then booked** — production `lead_messages` only. Successful text = status `accepted` | `sent` | `delivered`. One Lead, one vote (`lead_ref.id`, fallback `form_lead`). Booked is the official Lead `booked` ref, not a `booked_leads` lookup. Rate = distinct texted-and-booked Leads / distinct texted Leads. Payload is an `all` totals row plus a breakout by message `origin`. Date/source/`local` filters apply to the joined Lead, not the message.
 
 **Lead cost** (`leadCost.service.ts`) — **overview only**, [REDACTED] all-time / last-7-days. Sums stored **CPL**: Form Leads `duplicate: { $ne: true }`; Call Leads `created_on_unmatched: { $ne: true }`. Null `cpl` increments `unresolved_count` and contributes 0. Production and scoped reports seed every catalog Source Granularity in scope (zeros remain); historical group id is company only when no granularity key exists. // pragma: allowlist secret
 
@@ -181,6 +186,7 @@ Hard-coded `getAdminModels("[REDACTED]")`. Requires `from`/`to`. Optional `agent
 - Admin search: [`admin-search.md`](./admin-search.md)
 - Agent allocations: [`agent-allocation.md`](./agent-allocation.md)
 - CPL on leads: [`form-lead.md`](./form-lead.md), [`call-lead.md`](./call-lead.md)
+- Lead Messages / successful-text statuses: [`lead-messaging.md`](./lead-messaging.md)
 - RingCentral ops reconcile: `ringcentral/analytics-reconcile.service.ts`
 
-Tests: `analytics.service.test.ts` (query schema, booked prefix + employee snapshot, combined merges, receiver-agent warning, CSV flatten).
+Tests: `analytics.service.test.ts` (query schema, booked prefix + employee snapshot, combined merges, receiver-agent and SMS-conversion warnings, CSV flatten); `smsConversion.service.test.ts` (origin rows, historical unsupported payload).

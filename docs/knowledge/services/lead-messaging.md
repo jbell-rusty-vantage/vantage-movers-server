@@ -86,6 +86,8 @@ If `dispatchOrQueuePersistedLeadMessage` throws after Twilio already accepted, i
 
 Status callbacks apply only to the current `twilio_message_sid` and never move backward. `scheduled` is rank 1 (may advance to queued, sent, or failed). Terminal `delivered` / `read` / `failed` / `undelivered` / `canceled` ignore later callbacks. Sid-mismatch history is recorded but does not change `status`.
 
+`SUCCESSFUL_LEAD_MESSAGE_STATUSES` is `accepted` | `sent` | `delivered`. Analytics `sms-successfully-sent-then-booked` uses that set as the texted-lead cohort. `failed`, `undelivered`, `skipped`, and in-flight statuses do not count.
+
 ## Happy path — Granot create-if-missing
 
 `createLeadFromGranot` always attaches an `sms` payload in `pending`. Finalize calls `sendGranotCreatedLeadConfirmation` after Sheet Sync and swallows throws so a failed text never affects the created Lead.
@@ -110,3 +112,4 @@ Body uses the CRM Source template (placeholders `{first_name}`, `{company}` only
 - [`form-lead.md`](./form-lead.md) — when create persists intent
 - [`domain-commands.md`](./domain-commands.md) — Granot create finalize
 - [`operations-registry.md`](./operations-registry.md) — CRM Source `outbound_sms` writes
+- [`analytics.md`](./analytics.md) — `sms-successfully-sent-then-booked` uses `SUCCESSFUL_LEAD_MESSAGE_STATUSES` as the texted-lead cohort
