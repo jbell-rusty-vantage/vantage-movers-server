@@ -57,6 +57,7 @@ const HEALTH_FIXTURE = {
   ],
 };
 const receiptId = new mongoose.Types.ObjectId().toHexString();
+const releaseCaseId = new mongoose.Types.ObjectId().toHexString();
 let lastRequeue: { id: string; reason: string; role: string } | null = null;
 let lastCaseQuery: Record<string, unknown> | null = null;
 let lastCandidateQuery: Record<string, unknown> | null = null;
@@ -118,6 +119,35 @@ app.use(
     } : null,
     getCreatingObservation: async (caseId) => {
       lastCreatingObservationCaseId = caseId;
+      if (caseId === releaseCaseId) {
+        return {
+          case_id: caseId,
+          job_no: "synthetic-200",
+          normalized_job_no: "SYNTHETIC 200",
+          observation_id: releaseCaseId,
+          receipt_id: releaseCaseId,
+          captured_at: "2026-08-24T16:00:00.000Z",
+          route_event_class: "booking_status_changed",
+          payload_event_type_raw: "Release",
+          booking_action: "release",
+          evidence_action: "release",
+          selection: "preferred_release",
+          observation: {
+            observation_id: releaseCaseId,
+            receipt_id: releaseCaseId,
+            captured_at: "2026-08-24T16:00:00.000Z",
+            identity: {},
+            contact: {},
+            move: {},
+            priority: { valid: true },
+            booking_action: { normalized: "release" },
+            display_money: {},
+            agent_identity: {},
+          },
+          granot_statement: { event_type: "Release", job_no: "synthetic-200" },
+          priority_pairing: null,
+        };
+      }
       return caseId === receiptId ? {
         case_id: caseId,
         job_no: "synthetic-100",
@@ -466,6 +496,20 @@ test("creating observation is Owner-only and returns the Booked statement for a 
   assert.equal(missing.status, 404);
   const missingBody = (await missing.json()) as { code: string };
   assert.equal(missingBody.code, GRANOT_LIFECYCLE_ERROR_CODES.CASE_NOT_FOUND);
+});
+
+test("creating observation returns the Release statement for a cancellation intake", async () => {
+  const path = `/api/v1/admin/granot-lifecycle/cases/${releaseCaseId}/creating-observation`;
+  const allowed = await fetch(`${baseUrl}${path}`, { headers: signedHeaders("owner", path, "GET") });
+  assert.equal(allowed.status, 200);
+  const body = (await allowed.json()) as {
+    ok: boolean;
+    data: { selection: string; granot_statement: { event_type: string } };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.selection, "preferred_release");
+  assert.equal(body.data.granot_statement.event_type, "Release");
+  assert.equal(lastCreatingObservationCaseId, releaseCaseId);
 });
 
 test("[AC-35] candidate browser is Owner-only for source and all scope and performs a read", async () => {

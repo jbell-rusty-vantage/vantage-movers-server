@@ -25,7 +25,7 @@ remainder — do not tick a row to make the table look finished.
 
 | Spec § | Subject | Pass | Done | Evidence |
 | --- | --- | --- | --- | --- |
-| §2.1–2.2 | `owner_label` / `crm_label` / alias ownership stated correctly in Owner copy | ORS-4 | ☐ | |
+| §2.1–2.4 | Field ownership, three matching paths, create-vs-activate consequences | ORS-4 | ☐ | |
 | §3.1 | Lead Source model; embedded `granularities[]` reported | ORS-1 | ☐ | |
 | §3.2 | Feed model unchanged; activation stays fail-closed | ORS-1 | ☐ | |
 | §3.3 | `lead_source_label_mappings` first-class collection | ORS-1 | ☐ | |
@@ -38,7 +38,7 @@ remainder — do not tick a row to make the table look finished.
 | §4.1 | Three `lead_created` policies in Owner language | ORS-2 | ☐ | |
 | §4.2 | SMS invariant on **both** write paths; template version resets | ORS-2 | ☐ | |
 | §4.2 | `daily_cap` resolved (enforced or removed from Owner contract) | ORS-2 | ☐ | |
-| §4.3 | Text preview: `{company}`, empty first name, appended opt-out, on+edit stays off | ORS-4 | ☐ | |
+| §4.3 | Text preview: Vantage Movers brand, empty first name, appended opt-out, on+edit stays off | ORS-4 | ☐ | |
 | §5.1 | Sheet/legacy resolution collection-first, instrumented fallback | ORS-1 | ☐ | |
 | §5.2 | Granot observation resolution + decision snapshot | ORS-2 | ☐ | |
 | §5.3 | RingCentral call resolution unchanged, explained in DTO | ORS-3 | ☐ | |
@@ -92,7 +92,7 @@ evidence.
 | 17 | Owner is told before first activation that the number locks and earlier calls are not back-filled | ORS-4 | ☐ |
 | 18 | An active number with failed validation reads as "stopped filing calls" | ORS-4 | ☐ |
 | 19 | Feed display name and "what Vantage sends to Granot" are distinct, and the sheet consequence is stated | ORS-4 | ☐ |
-| 20 | Text preview resolves `{company}`, the empty first name, and the appended opt-out | ORS-4 | ☐ |
+| 20 | Text preview shows Vantage Movers, the empty first name, and the appended opt-out — not the Lead Source name | ORS-4 | ☐ |
 | 21 | Requesting texting on with an edited body results in off, said before and shown after | ORS-2, ORS-4 | ☐ |
 
 ## Cross-pass findings
@@ -106,6 +106,7 @@ record it here and in the target pass's issue.
 | spec review 2026-08-24 | ORS-1 | Alias matching is `trim`+`lowercase` only while Granot matching is NFKC+collapse+lowercase. An alias with doubled or non-breaking whitespace can never match. Decide whether to align the normalizers or only to warn at input. | spec §2.2, §8 |
 | spec review 2026-08-24 | ORS-3 | `previewRingCentralRouteDependencies` returns a hardcoded `can_deactivate: true` — it counts dependencies but gates nothing. Either make it a real gate or stop returning the field. | spec §11 |
 | spec review 2026-08-24 | ORS-2 | `crm_label` uniqueness is enforced only at Feed activation. The setup command must apply the same predicate early; factor it out of `assertExactIdentifiersAvailable` rather than duplicating the regex. | ORS-3 §6.3 |
+| spec review 2026-08-26 | ORS-2, ORS-4 | Customer texts identify **Vantage Movers**. `{company}` is a leftover placeholder; Owner copy must not present `LeadSourceCompany.name` as the SMS brand. Current admin preview interpolates `lead_source_company_label` and is wrong for the default template. | spec §4.3, §11 |
 
 ## Open questions for the Owner
 
@@ -127,4 +128,9 @@ Append-only. Newest last. One entry per pickup, block, and close.
              ORS-2 §6.1 gains the derived-field table; ORS-3 §6.3 becomes the combined setup + preview command;
              ORS-4 §6.4 becomes the five-step wizard with two commit points. Four cross-pass findings recorded.
              No code changed. Pass statuses unchanged.
+2026-08-26 · specification re-aligned to live matching, Granot policy, SMS brand, and RingCentral create.
+             §2.3 three matching paths; §2.4 create-vs-activate consequences; §4.3 texts say Vantage Movers
+             (not Lead Source name); sheet column corrected to Source Company; Lead Source + Granot name
+             remain one Owner flow; inbound-number create is unfinished until validated and mapped to a
+             call Feed. Cross-pass finding recorded for ORS-2/ORS-4 SMS preview. No code changed.
 ```

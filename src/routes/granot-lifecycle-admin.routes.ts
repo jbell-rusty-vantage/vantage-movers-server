@@ -20,7 +20,7 @@ import {
   activateGranotLifecycle,
   requeueDeadLetterReceipt,
 } from "../services/granotLifecycle/operations";
-import { getBookingIntakeCreatingObservation } from "../services/granotLifecycle/creatingObservation";
+import { getIntakeCreatingObservation } from "../services/granotLifecycle/creatingObservation";
 import {
   getGranotLifecycleCaseDetail,
   listGranotLifecycleCaseCandidates,
@@ -93,7 +93,7 @@ export type GranotLifecycleAdminRouteDeps = {
   projectJob?: typeof projectGranotJob;
   listCases?: typeof listGranotLifecycleCases;
   getCaseDetail?: typeof getGranotLifecycleCaseDetail;
-  getCreatingObservation?: typeof getBookingIntakeCreatingObservation;
+  getCreatingObservation?: typeof getIntakeCreatingObservation;
   listCandidates?: typeof listGranotLifecycleCaseCandidates;
   projectLeadTimeline?: typeof projectGranotLeadTimeline;
   projectHealth?: typeof projectGranotLifecycleHealth;
@@ -128,7 +128,7 @@ export function createGranotLifecycleAdminRouter(
   const projectJob = deps.projectJob ?? projectGranotJob;
   const listCases = deps.listCases ?? listGranotLifecycleCases;
   const getCaseDetail = deps.getCaseDetail ?? getGranotLifecycleCaseDetail;
-  const getCreatingObservation = deps.getCreatingObservation ?? getBookingIntakeCreatingObservation;
+  const getCreatingObservation = deps.getCreatingObservation ?? getIntakeCreatingObservation;
   const listCandidates = deps.listCandidates ?? listGranotLifecycleCaseCandidates;
   const projectLead = deps.projectLeadTimeline ?? projectGranotLeadTimeline;
   const projectHealth = deps.projectHealth ?? projectGranotLifecycleHealth;

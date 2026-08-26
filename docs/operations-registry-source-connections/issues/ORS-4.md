@@ -160,7 +160,8 @@ specification §7.3's exact order:
    long-distance pickers.
 5. **When a lead arrives** — the three §4.1 choices in Owner language.
 6. **Text the customer** — available only for create-if-missing; shows consent,
-   preview, the actual on/off state, and recent sends.
+   preview with **Vantage Movers** as the brand, the actual on/off state, and
+   recent sends. Do not offer `{company}` as a partner-name insert.
 7. **Review** — one sentence before save.
 
 Review sentences, exactly as specified:

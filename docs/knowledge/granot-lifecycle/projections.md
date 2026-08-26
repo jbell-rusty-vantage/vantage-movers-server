@@ -39,8 +39,8 @@ display values only; raw receipt payload, headers, and contact remain outside
 all lifecycle list/detail/timeline/health DTOs. Two Owner-only exceptions exist:
 the candidate browser, which also carries normalized owner-work contact so the
 Owner can tell two leads apart before attaching one — see [Candidate browser](#candidate-browser);
-and the booking-intake creating-observation read, which returns the
-credential-redacted Granot statement selected from that Booking case's evidence
+and the intake creating-observation read, which returns the
+credential-redacted Granot statement selected from that Booking or Release case's evidence
 — see [Creating observation](#creating-observation).
 
 ## Protected read surface
@@ -80,7 +80,7 @@ Lead timeline first verifies the exact Lead, then follows persisted Record Links
 
 ## Creating observation
 
-`GET /api/v1/admin/granot-lifecycle/cases/:case_id/creating-observation` is Owner-only and scoped to a Granot Booking Reconciliation Case. It is not part of the masked case-detail DTO and is not available for Release cases. The read prefers the latest case evidence with action `booked` (the `booking_status_changed` Booked Granot Observation). If no booked evidence exists, it falls back to the latest creating evidence. Missing booking case, empty evidence, or missing Granot Observation return `GRANOT_CASE_NOT_FOUND`. The envelope returns the projected Granot Observation (identity, contact, move, booking action) plus `granot_statement`, the credential-redacted receipt payload, `priority_pairing` (or `null` for historical Priority-5-only cases), and optional `paired_priority_5_observation` for the preceding Priority 5 snapshot. Booked-without-5 still returns 200 with the Booked statement. Absence of Priority 5 is not `GRANOT_CASE_NOT_FOUND`. Headers, secrets, and list/detail masking stay unchanged.
+`GET /api/v1/admin/granot-lifecycle/cases/:case_id/creating-observation` is Owner-only and scoped to a Granot Booking or Release Reconciliation Case. It is not part of the masked case-detail DTO. The route default is `getIntakeCreatingObservation`, which looks up the Booking case first (`getBookingIntakeCreatingObservation`), then the Release case (`getCancellationIntakeCreatingObservation`). Booking uses `selectCreatingObservationEvidence`: latest evidence with action `booked` (`selection: "preferred_booked"`, the `booking_status_changed` Booked Granot Observation) and falls back to the latest creating evidence (`latest_creating`). Release uses `selectReleaseCreatingObservationEvidence`: latest evidence with action `release` (`selection: "preferred_release"`) and the same `latest_creating` fallback. Missing case, empty evidence, or missing Granot Observation return `GRANOT_CASE_NOT_FOUND`. The envelope returns the projected Granot Observation (identity, contact, move, booking action), `selection`, and `granot_statement`, the credential-redacted receipt payload. Booking envelopes also include `priority_pairing` (or `null` for historical Priority-5-only cases) and optional `paired_priority_5_observation` for the preceding Priority 5 snapshot. Release envelopes return `priority_pairing: null` and do not pair Priority 5. Booked-without-5 still returns 200 with the Booked statement. Absence of Priority 5 is not `GRANOT_CASE_NOT_FOUND`. Headers, secrets, and list/detail masking stay unchanged.
 
 ## Candidate browser
 

@@ -4,6 +4,7 @@ import {
   type GranotObservationDocument,
 } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
+import { getGranotReleaseReconciliationCaseModel } from "../../models/GranotReleaseReconciliationCase";
 import { toObjectId } from "../../utils/objectId";
 import {
   projectBookingPriorityPairing,
@@ -16,7 +17,10 @@ import { redactCredentialKeys } from "./receiptEvidence";
 import type { GranotBookingAction, GranotRouteEventClass } from "./types";
 
 export type BookingIntakeEvidenceAction = "priority_5" | "booked" | "release";
-export type CreatingObservationSelection = "preferred_booked" | "latest_creating";
+export type CreatingObservationSelection =
+  | "preferred_booked"
+  | "preferred_release"
+  | "latest_creating";
 
 export type BookingIntakeEvidenceItem = {
   observation_id: { toString(): string } | string;
@@ -61,15 +65,16 @@ export type BookingIntakeCreatingObservation = {
   paired_priority_5_observation?: CreatingObservationSnapshot;
 };
 
+export type CreatingObservationCaseRow = {
+  _id: { toString(): string };
+  job_no_snapshot: string;
+  normalized_job_no: string;
+  evidence: BookingIntakeEvidenceItem[];
+};
+
 export type CreatingObservationLoaders = {
-  findBookingCase(
-    caseId: string,
-  ): Promise<{
-    _id: { toString(): string };
-    job_no_snapshot: string;
-    normalized_job_no: string;
-    evidence: BookingIntakeEvidenceItem[];
-  } | null>;
+  findBookingCase(caseId: string): Promise<CreatingObservationCaseRow | null>;
+  findReleaseCase(caseId: string): Promise<CreatingObservationCaseRow | null>;
   findObservation(
     observationId: string,
   ): Promise<GranotObservationDocument | null>;
@@ -84,6 +89,16 @@ export type CreatingObservationLoaders = {
 const defaultLoaders: CreatingObservationLoaders = {
   async findBookingCase(caseId) {
     return getGranotBookingReconciliationCaseModel()
+      .findById(toObjectId(caseId))
+      .select({
+        job_no_snapshot: 1,
+        normalized_job_no: 1,
+        evidence: 1,
+      })
+      .lean();
+  },
+  async findReleaseCase(caseId) {
+    return getGranotReleaseReconciliationCaseModel()
       .findById(toObjectId(caseId))
       .select({
         job_no_snapshot: 1,
@@ -134,6 +149,20 @@ export function selectCreatingObservationEvidence(
   return latest ? { item: latest, selection: "latest_creating" } : null;
 }
 
+export function selectReleaseCreatingObservationEvidence(
+  evidence: BookingIntakeEvidenceItem[],
+): { item: BookingIntakeEvidenceItem; selection: CreatingObservationSelection } | null {
+  if (evidence.length === 0) return null;
+  const released = evidence
+    .filter((item) => item.action === "release")
+    .sort(compareEvidenceNewestFirst)[0];
+  if (released) {
+    return { item: released, selection: "preferred_release" };
+  }
+  const latest = [...evidence].sort(compareEvidenceNewestFirst)[0];
+  return latest ? { item: latest, selection: "latest_creating" } : null;
+}
+
 export async function getBookingIntakeCreatingObservation(
   caseId: string,
   loaders: CreatingObservationLoaders = defaultLoaders,
@@ -170,6 +199,47 @@ export async function getBookingIntakeCreatingObservation(
     priority_pairing: pairing.priority_pairing,
     paired_priority_5_observation: pairing.paired_priority_5_observation,
   };
+}
+
+export async function getCancellationIntakeCreatingObservation(
+  caseId: string,
+  loaders: CreatingObservationLoaders = defaultLoaders,
+): Promise<BookingIntakeCreatingObservation | null> {
+  const row = await loaders.findReleaseCase(caseId);
+  if (!row) return null;
+  const selected = selectReleaseCreatingObservationEvidence(row.evidence);
+  if (!selected) return null;
+  const observationId = String(selected.item.observation_id);
+  const observation = await loaders.findObservation(observationId);
+  if (!observation) return null;
+  const receipt = await loaders.findReceipt(String(observation.receipt_id));
+  const capturedAt = iso(selected.item.captured_at, "creating_observation.captured_at");
+  return {
+    case_id: String(row._id),
+    job_no: row.job_no_snapshot,
+    normalized_job_no: row.normalized_job_no,
+    observation_id: observationId,
+    receipt_id: String(observation.receipt_id),
+    captured_at: capturedAt,
+    route_event_class: observation.route_event_class,
+    payload_event_type_raw: observation.payload_event_type_raw,
+    booking_action: observation.booking_action?.normalized,
+    evidence_action: selected.item.action,
+    selection: selected.selection,
+    observation: projectObservation(observation, capturedAt),
+    granot_statement: redactCredentialKeys(receipt?.payload).value,
+    priority_pairing: null,
+  };
+}
+
+export async function getIntakeCreatingObservation(
+  caseId: string,
+  loaders: CreatingObservationLoaders = defaultLoaders,
+): Promise<BookingIntakeCreatingObservation | null> {
+  return (
+    (await getBookingIntakeCreatingObservation(caseId, loaders))
+    ?? (await getCancellationIntakeCreatingObservation(caseId, loaders))
+  );
 }
 
 async function projectCreatingObservationPairing(input: {

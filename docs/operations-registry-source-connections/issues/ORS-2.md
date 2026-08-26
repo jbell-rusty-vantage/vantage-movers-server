@@ -241,7 +241,9 @@ Verify, and fix if the evidence in §4 does not hold:
   come from that **persisted connection**.
 - When `create_if_missing` actually creates a Lead, that same resolved Lead
   Source ID is what reaches `sendGranotCreatedLeadConfirmation`. The texting
-  step performs **no second label-to-company lookup**.
+  step performs **no second label-to-company lookup**. That handoff is for
+  audit and gates. The customer body still identifies **Vantage Movers**
+  (specification §4.3). Do not treat `LeadSourceCompany.name` as the SMS brand.
 - A link or enrich of an existing Lead sends nothing.
 - One observation yields at most one message, bounded by the persisted
   observation/message identity — not by an in-process guard.
