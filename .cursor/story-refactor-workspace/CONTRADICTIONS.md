@@ -4,6 +4,8 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Knowledge `desired-state.md` titles the Service “desired-state planner” and lists `authorizedDesiredState.ts` as primary planner code. The file converts / refuses / fingerprints; it does not plan fields. Do not move `planLeadDesiredState` here so the title “wins.” See `recommendations/granot-lifecycle-authorized-desired-state.md`.
+- AC-11 test title says CallLead `delivery_zip` is “required instead.” Assert only forbids the wrong ZIP name; an empty CallLead patch is legal. Do not require a dest ZIP on every Call patch so the title “wins.” See `recommendations/granot-lifecycle-authorized-desired-state.md`.
 - In-memory temporal compare treats a missing stored winner as `newer`. `olderTemporalWinnerFilter` has no `$exists: false` (AC-32). Sync omits the filter when no stamp exists; processor `defaultAdvanceTemporalWinner` always spreads it. Do not add `$exists` so “first winner can CAS.” See `recommendations/granot-lifecycle-granot-temporal.md`.
 - Planner maps temporal `same` to `already_current` and will not advance. Sync throws `SynchronizeLeadRaceError("temporal")` on `same` or `older`. Do not silently merge. See `recommendations/granot-lifecycle-granot-temporal.md`.
 - Compare folds lowercase hex strings; the CAS filter `$lt`s stored ObjectId. Do not switch one type so the other “wins.” See `recommendations/granot-lifecycle-granot-temporal.md`.
