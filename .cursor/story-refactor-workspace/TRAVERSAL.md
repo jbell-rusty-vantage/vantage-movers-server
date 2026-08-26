@@ -18,11 +18,11 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 ## Stock (rewrite every run)
 
 - Wave: A
-- Services visited / in-progress / unvisited: **9 / 0 / 29**
-- Recommendations on disk: **33** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`, `cancellations-cancellation-resolver.md`, `cancellations-cancellation-mirror.md`, `customers-customer.md`, `customers-customer-from-lead.md`, `agents-agent-allocation.md`, `agents-receiver-agent-crm-username.md`, `lead-source-companies-lead-source-company.md`, `cpl-cpl-rate.md`, `catalog-catalog.md`, `search-form-lead-search.md`, `search-form-lead-browse.md`, `search-call-lead-search.md`, `search-call-lead-browse.md`)
-- Current service: `enrichment` (unvisited)
-- Next module: enumerate `src/services/enrichment/`
-- Last session: `story-search-call-lead-browse-2026-08-26T0408Z`
+- Services visited / in-progress / unvisited: **9 / 1 / 28**
+- Recommendations on disk: **34** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`, `cancellations-cancellation-resolver.md`, `cancellations-cancellation-mirror.md`, `customers-customer.md`, `customers-customer-from-lead.md`, `agents-agent-allocation.md`, `agents-receiver-agent-crm-username.md`, `lead-source-companies-lead-source-company.md`, `cpl-cpl-rate.md`, `catalog-catalog.md`, `search-form-lead-search.md`, `search-form-lead-browse.md`, `search-call-lead-search.md`, `search-call-lead-browse.md`, `enrichment-call-lead-enrichment.md`)
+- Current service: `enrichment` (in-progress)
+- Next module: `callLeadEnrichmentRows.ts`
+- Last session: `story-enrichment-call-lead-enrichment-2026-08-26T0512Z`
 
 ## How to read a service row
 
@@ -146,9 +146,15 @@ Folder: `src/services/search/`
 | `leadBrowseShared.ts` | skip — browse helpers |
 | `index.ts` | skip — barrel |
 
-### 10. `enrichment` — medium — unvisited
+### 10. `enrichment` — medium — **in-progress**
 
-`src/services/enrichment/`
+Folder: `src/services/enrichment/`
+
+| Module | Verdict |
+| --- | --- |
+| `callLeadEnrichment.service.ts` | recommended → [recommendations/enrichment-call-lead-enrichment.md](recommendations/enrichment-call-lead-enrichment.md) |
+| `callLeadEnrichmentRows.ts` | |
+| `index.ts` | skip — barrel |
 
 ### 11. `reconciliation` — medium — unvisited
 
