@@ -4,6 +4,9 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Follow Up row parse uses `resolveSourceCompany` — an empty source cell becomes leftover `not_provided`. Booked-jobs row parse uses `resolveSourceCompanyFromLabel` — empty stays `undefined`. Do not silently merge. See `recommendations/enrichment-call-lead-enrichment-rows.md`.
+- CSV Follow Up `toEnrichmentPayload` omits `from`, `to`, and `granot_crm_username`. HTTP automation `mapEnrichmentRow` sends them. This file still parses those keys. Do not add them to CSV, and do not drop the parse. See `recommendations/enrichment-call-lead-enrichment-rows.md`.
+- `ParsedCallLeadEnrichmentRow.source_cpl` is declared and never assigned. Sibling prices after a write via `resolveLeadCplSnapshot`. Do not populate the parsed field. See `recommendations/enrichment-call-lead-enrichment-rows.md`.
 - `POST /api/v1/call-leads/enrichment/sync` is `applyExtensionGranotItem` (`lead_snapshot_apply` only). `syncCallLeadEnrichment` is Granot CSV Follow Up `--apply`. HTTP automation approved apply also must not call it. Do not point the URL back at this write, and do not delete the CSV helper so the route table “wins.” See `recommendations/enrichment-call-lead-enrichment.md`.
 - `syncCallLeadEnrichment` still accepts `expectedCallLeadId` / `expectedUpdatedAt` / `expectedReceiverAgent` / `targetReceiverAgent`. CSV `processFollowUpCallRow` passes none of them. Do not delete the guards, and do not wire the extension URL back through them. See `recommendations/enrichment-call-lead-enrichment.md`.
 - Call browse `job_no` is substring contains on stored `job_no` (`P55` hits `P5556767`). Call lookup and booked-from-source find use exact `{ job_no }`. Identity / Granot use digit-core equivalence. Four “same Job” meanings. Do not switch browse to exact or `normalized_job_no` so “search finds the Job.” See `recommendations/search-call-lead-browse.md`.

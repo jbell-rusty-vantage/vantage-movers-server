@@ -4,17 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-26T0512Z | to: next-run | from: story-enrichment-call-lead-enrichment-2026-08-26T0512Z | kind: next
+## 2026-08-26T0608Z | to: next-run | from: story-enrichment-call-lead-enrichment-rows-2026-08-26T0608Z | kind: next
 
-`enrichment` is **in-progress**. `callLeadEnrichment.service.ts` is recommended. Next module: **`callLeadEnrichmentRows.ts`**. Stay on `enrichment`. Do not open `reconciliation`.
+`enrichment` is **visited**. `callLeadEnrichmentRows.ts` is recommended. Next service: **`reconciliation`** (unvisited). First pass enumerates `src/services/reconciliation/`, then recommends or skips the first story-worthy module. Do not open `granotLifecycle`.
 
-1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + `enrichment-call-lead-enrichment.md`.
-2. Do not rewrite `form-lead.md` or any prior recommendation, including `search-call-lead-browse.md` and `enrichment-call-lead-enrichment.md`.
-3. Stay on `enrichment`. Next is `callLeadEnrichmentRows.ts`. Wave B is locked.
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `enrichment-call-lead-enrichment.md` and `enrichment-call-lead-enrichment-rows.md`.
+3. Open `reconciliation`. Enumerate every runtime `.ts` file onto the checklist. Wave B is locked.
 4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
+
+## 2026-08-26T0512Z | to: next-run | from: story-enrichment-call-lead-enrichment-2026-08-26T0512Z | kind: next
+
+Superseded by story-enrichment-call-lead-enrichment-rows-2026-08-26T0608Z. `callLeadEnrichmentRows.ts` is recommended. `enrichment` is visited. Next is `reconciliation`.
 
 ## 2026-08-26T0408Z | to: next-run | from: story-search-call-lead-browse-2026-08-26T0408Z | kind: next
 
