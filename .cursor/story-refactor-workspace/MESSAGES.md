@@ -4,17 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-26T0108Z | to: next-run | from: story-search-form-lead-search-2026-08-26T0108Z | kind: next
+## 2026-08-26T0208Z | to: next-run | from: story-search-form-lead-browse-2026-08-26T0208Z | kind: next
 
-`search` is **in-progress**. `formLeadSearch.service.ts` is recommended. Next module: **`formLeadBrowse.service.ts`**. Stay on `search`. Do not open `enrichment`.
+`search` is **in-progress**. `formLeadBrowse.service.ts` is recommended. Next module: **`callLeadSearch.service.ts`**. Stay on `search`. Do not open `enrichment`.
 
-1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + `search-form-lead-search.md`.
-2. Do not rewrite `form-lead.md` or any prior recommendation, including `catalog-catalog.md` and `search-form-lead-search.md`.
-3. Stay on `search`. Next is `formLeadBrowse.service.ts`. Wave B is locked.
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + `search-form-lead-search.md` + `search-form-lead-browse.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `search-form-lead-search.md` and `search-form-lead-browse.md`.
+3. Stay on `search`. Next is `callLeadSearch.service.ts`. Wave B is locked.
 4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
+
+## 2026-08-26T0108Z | to: next-run | from: story-search-form-lead-search-2026-08-26T0108Z | kind: next
+
+Superseded by story-search-form-lead-browse-2026-08-26T0208Z. `formLeadBrowse.service.ts` is recommended. Next is `callLeadSearch.service.ts`.
 
 ## 2026-08-26T0010Z | to: next-run | from: story-catalog-catalog-2026-08-26T0010Z | kind: next
 

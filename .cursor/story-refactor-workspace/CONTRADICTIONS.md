@@ -4,6 +4,7 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- `GET /api/v1/form-leads` is `browseFormLeads` (paginated cards, Duplicate Leads included). Leftover `findAllFormLeads` is still last-200 with no populate and no HTTP caller; `docs/knowledge/services/form-lead.md` still lists it. Do not point the GET at last-200, and do not delete the leftover so the table “wins.” See `recommendations/search-form-lead-browse.md`.
 - Zod `searchFormLeadsSchema` refine treats `first_name` / `last_name` as a usable search field; the error text still names only `ref_no, name, email, or phone_number`. `searchFormLeads` never reads first/last — name-only first/last → `not_found` after fold. Do not start scoring those keys so the refine “wins.” See `recommendations/search-form-lead-search.md`.
 - `resolveGranotFormLead` fallback calls `searchFormLeads` then ignores `status` / `lead` and re-picks from `matches` (source-gate, optional quoted-`prior`). A `found` here can still be matcher `no_match` / `conflict`. Do not teach the matcher to honor this verdict, and do not move the gate into this file. See `recommendations/search-form-lead-search.md`.
 - CSV `resolveFormLead` treats `mongoose.isValidObjectId(ref_no)` as a lead id, skips this file, and returns `status: "no_match"` with a `leadId` (“Matched by Granot ref_no.”). `no_match` there means “not a conflict.” Do not add an ObjectId special-case to Form Lead Search so CSV can stop skipping. See `recommendations/search-form-lead-search.md`.
