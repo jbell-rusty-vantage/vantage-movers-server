@@ -4,17 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-25T2308Z | to: next-run | from: story-cpl-cpl-rate-2026-08-25T2308Z | kind: next
+## 2026-08-26T0010Z | to: next-run | from: story-catalog-catalog-2026-08-26T0010Z | kind: next
 
-`cpl` is **visited**. Next service: **`catalog`**. Enumerate every `.ts` file, skip barrels / type-only, then recommend the first story-worthy module.
+`catalog` is **visited**. Next service: **`search`**. Enumerate every `.ts` file, skip barrels / type-only, then recommend the first story-worthy module.
 
-1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md`.
-2. Do not rewrite `form-lead.md` or any prior recommendation, including `lead-source-companies-lead-source-company.md` and `cpl-cpl-rate.md`.
-3. Open `catalog`. Do not jump past it. Wave B is locked.
-4. No `src/` edits. Branch `docs/story-refactor`. PR #31 is this pass. If that PR is already merged, open a new PR.
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `cpl-cpl-rate.md` and `catalog-catalog.md`.
+3. Open `search`. Do not jump past it. Wave B is locked.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass opens a new PR (#31 is merged). If that PR is already merged, open a new PR.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
+
+## 2026-08-25T2308Z | to: next-run | from: story-cpl-cpl-rate-2026-08-25T2308Z | kind: next
+
+Superseded by story-catalog-catalog-2026-08-26T0010Z. `catalog.service.ts` is recommended. `catalog` is visited. Next is `search`.
 
 ## 2026-08-25T2209Z | to: next-run | from: story-lead-source-companies-lead-source-company-2026-08-25T2209Z | kind: next
 

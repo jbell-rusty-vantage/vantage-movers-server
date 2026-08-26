@@ -4,6 +4,10 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- `docs/knowledge/services/catalog.md` Role says this service does Owner create, rename, username, **and activation**. `catalog.service.ts` never sees `/activation` or `/dependencies` — the leftover route calls Registry and pastes its own flatten. Do not move those commands here so the Role line “wins.” See `recommendations/catalog-catalog.md`.
+- Knowledge Downstream and “Not the same as” say `agentAllocation.service.ts` consumes `resolveActiveAgentByName`. Allocation calls `resolveAgentByName` (Best Relocation may pass `includeInactive`). The active-only export is tests + barrel only. Do not switch allocation to the active-only alias. See `recommendations/catalog-catalog.md`.
+- Knowledge Downstream names `adminFacets.service.ts` as the `listCatalogItems` caller. The import is `admin/filterCatalog.ts`. Facets only load that catalog. Do not pull facet merge into the leftover catalog file. See `recommendations/catalog-catalog.md`.
+- Zod `catalogCreateSchema` still points at a `CATALOGS` map in `catalog.service.ts` for omitted `created_from`. The map is gone. Registry defaults `"admin"`. Do not add `CATALOGS` back. See `recommendations/catalog-catalog.md`.
 - Comments, `CplRate` model, `config/domain/cpl.ts`, and the operations-registry inventory still name `updateCplRate` / “Owner-editable” `cpl_rates` / “admin read/write.” `cplRate.service.ts` only seeds, lists, and reads. Owner writes are Registry schedule commands. Do not add the missing write so the comments “win.” See `recommendations/cpl-cpl-rate.md`.
 - Cache JSDoc says `getCplRate` is on the hot lead-create path. Lead writes use Registry via `leadCplResolution.ts`. `getCplForSource` has no ingest caller. Do not route ingest through leftover `cpl_rates`. See `recommendations/cpl-cpl-rate.md`.
 - Leftover admin list (`listCplRates`) prefers nested `granularity.cpl` whenever leftover Source Company seed produced any company. Leftover slot read (`getCplRate`) only opens `cpl_rates`. Two leftover books, two answers. Do not silently merge. See `recommendations/cpl-cpl-rate.md`.
