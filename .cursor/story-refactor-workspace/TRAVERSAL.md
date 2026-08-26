@@ -18,11 +18,11 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 ## Stock (rewrite every run)
 
 - Wave: A
-- Services visited / in-progress / unvisited: **0 / 1 / 37**
-- Recommendations on disk: **1** (`form-lead.md`)
-- Current service: `leads`
-- Next module: `callLead.service.ts`
-- Last session: seed — `formLead.service.ts` is the quality bar
+- Services visited / in-progress / unvisited: **11 / 1 / 26**
+- Recommendations on disk: **45** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`, `cancellations-cancellation-resolver.md`, `cancellations-cancellation-mirror.md`, `customers-customer.md`, `customers-customer-from-lead.md`, `agents-agent-allocation.md`, `agents-receiver-agent-crm-username.md`, `lead-source-companies-lead-source-company.md`, `cpl-cpl-rate.md`, `catalog-catalog.md`, `search-form-lead-search.md`, `search-form-lead-browse.md`, `search-call-lead-search.md`, `search-call-lead-browse.md`, `enrichment-call-lead-enrichment.md`, `enrichment-call-lead-enrichment-rows.md`, `reconciliation-booked-call-lead.md`, `reconciliation-booked-call-lead-rows.md`, `granot-lifecycle-capture.md`, `granot-lifecycle-queue-publisher.md`, `granot-lifecycle-extension-apply.md`, `granot-lifecycle-automation-apply.md`, `granot-lifecycle-automation-compatibility.md`, `granot-lifecycle-normalization.md`, `granot-lifecycle-source-policy.md`, `granot-lifecycle-identity.md`)
+- Current service: `granotLifecycle` (in-progress)
+- Next module: `granotTemporal.ts`
+- Last session: `story-granot-lifecycle-identity-2026-08-26T1611Z`
 
 ## How to read a service row
 
@@ -38,69 +38,184 @@ Size is a hint, not a quota: `large` expects several passes.
 
 Order is the domain tour from `project-organization`. Next work is the first `in-progress` service’s next unchecked module, or the first `unvisited` service if none are in progress.
 
-### 1. `leads` — large — **in-progress**
+### 1. `leads` — large — **visited**
 
 Folder: `src/services/leads/`
 
 | Module | Verdict |
 | --- | --- |
 | `formLead.service.ts` | recommended → [recommendations/form-lead.md](recommendations/form-lead.md) |
-| `callLead.service.ts` | **next** |
-| `duplicateLead.service.ts` | |
-| `leadIngestionProvenance.ts` | |
-| `leadSourceCompany.ts` | |
-| `leadCplResolution.ts` | |
-| `leadLocation.service.ts` | |
-| `leadName.service.ts` | |
-| `leadPhoneMatching.ts` | |
-| `sourceLeadLookup.service.ts` | |
-| `callLeadSourceMatch.ts` | |
-| `leadSourceCompatibility.ts` | |
+| `callLead.service.ts` | recommended → [recommendations/leads-call-lead.md](recommendations/leads-call-lead.md) |
+| `duplicateLead.service.ts` | recommended → [recommendations/leads-duplicate-lead.md](recommendations/leads-duplicate-lead.md) |
+| `leadIngestionProvenance.ts` | recommended → [recommendations/leads-ingestion-provenance.md](recommendations/leads-ingestion-provenance.md) |
+| `leadSourceCompany.ts` | recommended → [recommendations/leads-source-company.md](recommendations/leads-source-company.md) |
+| `leadCplResolution.ts` | recommended → [recommendations/leads-cpl-resolution.md](recommendations/leads-cpl-resolution.md) |
+| `leadLocation.service.ts` | recommended → [recommendations/leads-lead-location.md](recommendations/leads-lead-location.md) |
+| `leadName.service.ts` | recommended → [recommendations/leads-lead-name.md](recommendations/leads-lead-name.md) |
+| `leadPhoneMatching.ts` | recommended → [recommendations/leads-lead-phone-matching.md](recommendations/leads-lead-phone-matching.md) |
+| `sourceLeadLookup.service.ts` | recommended → [recommendations/leads-source-lead-lookup.md](recommendations/leads-source-lead-lookup.md) |
+| `callLeadSourceMatch.ts` | recommended → [recommendations/leads-call-lead-source-match.md](recommendations/leads-call-lead-source-match.md) |
+| `leadSourceCompatibility.ts` | recommended → [recommendations/leads-lead-source-compatibility.md](recommendations/leads-lead-source-compatibility.md) |
 | `index.ts` | skip — barrel |
 
-### 2. `bookings` — large — unvisited
+### 2. `bookings` — large — **visited**
 
-`src/services/bookings/` — Booked create/update/delete, from-source, referral, leadless, mirrors.
+Folder: `src/services/bookings/`
 
-### 3. `cancellations` — medium — unvisited
+| Module | Verdict |
+| --- | --- |
+| `bookedLead.service.ts` | recommended → [recommendations/bookings-booked-lead.md](recommendations/bookings-booked-lead.md) |
+| `bookedLeadFromSource.service.ts` | recommended → [recommendations/bookings-booked-lead-from-source.md](recommendations/bookings-booked-lead-from-source.md) |
+| `referralBooking.service.ts` | recommended → [recommendations/bookings-referral-booking.md](recommendations/bookings-referral-booking.md) |
+| `leadlessBooking.service.ts` | recommended → [recommendations/bookings-leadless-booking.md](recommendations/bookings-leadless-booking.md) |
+| `bookingMirror.service.ts` | recommended → [recommendations/bookings-booking-mirror.md](recommendations/bookings-booking-mirror.md) |
+| `bookingSourceResolver.ts` | recommended → [recommendations/bookings-booking-source-resolver.md](recommendations/bookings-booking-source-resolver.md) |
+| `bookingIdentity.ts` | recommended → [recommendations/bookings-booking-identity.md](recommendations/bookings-booking-identity.md) |
+| `bookingWarnings.ts` | skip — thin warning helper |
+| `bestRelocationImportGuard.ts` | skip — import fence |
+| `index.ts` | skip — barrel |
 
-`src/services/cancellations/`
+### 3. `cancellations` — medium — **visited**
 
-### 4. `customers` — small — unvisited
+Folder: `src/services/cancellations/`
 
-`src/services/customers/`
+| Module | Verdict |
+| --- | --- |
+| `cancelledLead.service.ts` | recommended → [recommendations/cancellations-cancelled-lead.md](recommendations/cancellations-cancelled-lead.md) |
+| `cancellationResolver.ts` | recommended → [recommendations/cancellations-cancellation-resolver.md](recommendations/cancellations-cancellation-resolver.md) |
+| `cancellationMirror.service.ts` | recommended → [recommendations/cancellations-cancellation-mirror.md](recommendations/cancellations-cancellation-mirror.md) |
+| `index.ts` | skip — barrel |
 
-### 5. `agents` — small — unvisited
+### 4. `customers` — small — **visited**
 
-`src/services/agents/`
+Folder: `src/services/customers/`
 
-### 6. `leadSourceCompanies` — small — unvisited
+| Module | Verdict |
+| --- | --- |
+| `customer.service.ts` | recommended → [recommendations/customers-customer.md](recommendations/customers-customer.md) |
+| `customerFromLead.service.ts` | recommended → [recommendations/customers-customer-from-lead.md](recommendations/customers-customer-from-lead.md) |
+| `index.ts` | skip — barrel |
 
-`src/services/leadSourceCompanies/`
+### 5. `agents` — small — **visited**
 
-### 7. `cpl` — small — unvisited
+Folder: `src/services/agents/`
 
-`src/services/cpl/`
+| Module | Verdict |
+| --- | --- |
+| `agentAllocation.service.ts` | recommended → [recommendations/agents-agent-allocation.md](recommendations/agents-agent-allocation.md) |
+| `receiverAgentCrmUsername.ts` | recommended → [recommendations/agents-receiver-agent-crm-username.md](recommendations/agents-receiver-agent-crm-username.md) |
+| `agentName.ts` | skip — name fold |
+| `index.ts` | skip — barrel |
 
-### 8. `catalog` — small — unvisited
+### 6. `leadSourceCompanies` — small — **visited**
 
-`src/services/catalog/`
+Folder: `src/services/leadSourceCompanies/`
 
-### 9. `search` — medium — unvisited
+| Module | Verdict |
+| --- | --- |
+| `leadSourceCompany.service.ts` | recommended → [recommendations/lead-source-companies-lead-source-company.md](recommendations/lead-source-companies-lead-source-company.md) |
+| `index.ts` | skip — barrel |
 
-`src/services/search/` — extension browse/search. Thin facades may skip; enumerate first.
+### 7. `cpl` — small — **visited**
 
-### 10. `enrichment` — medium — unvisited
+Folder: `src/services/cpl/`
 
-`src/services/enrichment/`
+| Module | Verdict |
+| --- | --- |
+| `cplRate.service.ts` | recommended → [recommendations/cpl-cpl-rate.md](recommendations/cpl-cpl-rate.md) |
 
-### 11. `reconciliation` — medium — unvisited
+### 8. `catalog` — small — **visited**
 
-`src/services/reconciliation/`
+Folder: `src/services/catalog/`
 
-### 12. `granotLifecycle` — large — unvisited
+| Module | Verdict |
+| --- | --- |
+| `catalog.service.ts` | recommended → [recommendations/catalog-catalog.md](recommendations/catalog-catalog.md) |
+| `index.ts` | skip — barrel |
 
-`src/services/granotLifecycle/` — many passes. Enumerate on first open. Do not treat as one recommendation.
+### 9. `search` — medium — **visited**
+
+Folder: `src/services/search/`
+
+| Module | Verdict |
+| --- | --- |
+| `formLeadSearch.service.ts` | recommended → [recommendations/search-form-lead-search.md](recommendations/search-form-lead-search.md) |
+| `formLeadBrowse.service.ts` | recommended → [recommendations/search-form-lead-browse.md](recommendations/search-form-lead-browse.md) |
+| `callLeadSearch.service.ts` | recommended → [recommendations/search-call-lead-search.md](recommendations/search-call-lead-search.md) |
+| `callLeadBrowse.service.ts` | recommended → [recommendations/search-call-lead-browse.md](recommendations/search-call-lead-browse.md) |
+| `leadBrowseShared.ts` | skip — browse helpers |
+| `index.ts` | skip — barrel |
+
+### 10. `enrichment` — medium — **visited**
+
+Folder: `src/services/enrichment/`
+
+| Module | Verdict |
+| --- | --- |
+| `callLeadEnrichment.service.ts` | recommended → [recommendations/enrichment-call-lead-enrichment.md](recommendations/enrichment-call-lead-enrichment.md) |
+| `callLeadEnrichmentRows.ts` | recommended → [recommendations/enrichment-call-lead-enrichment-rows.md](recommendations/enrichment-call-lead-enrichment-rows.md) |
+| `index.ts` | skip — barrel |
+
+### 11. `reconciliation` — medium — **visited**
+
+Folder: `src/services/reconciliation/`
+
+| Module | Verdict |
+| --- | --- |
+| `bookedCallLeadReconciliation.service.ts` | recommended → [recommendations/reconciliation-booked-call-lead.md](recommendations/reconciliation-booked-call-lead.md) |
+| `bookedCallLeadRows.ts` | recommended → [recommendations/reconciliation-booked-call-lead-rows.md](recommendations/reconciliation-booked-call-lead-rows.md) |
+| `index.ts` | skip — barrel |
+
+### 12. `granotLifecycle` — large — **in-progress**
+
+Folder: `src/services/granotLifecycle/` — many passes. Do not treat as one recommendation.
+
+| Module | Verdict |
+| --- | --- |
+| `types.ts` | skip — type-only |
+| `receiptEvidence.ts` | skip — redact helpers |
+| `receiptCompatibility.ts` | skip — legacy fill |
+| `errors.ts` | skip — error types |
+| `applyItem.ts` | skip — apply hints |
+| `safeLogging.ts` | skip — log mask |
+| `synchronizeLeadTypes.ts` | skip — type-only |
+| `sourceLabel.ts` | skip — label fold |
+| `lastError.ts` | skip — error sanitize |
+| `schedules.ts` | skip — retry clock |
+| `capture.ts` | recommended → [recommendations/granot-lifecycle-capture.md](recommendations/granot-lifecycle-capture.md) |
+| `queuePublisher.ts` | recommended → [recommendations/granot-lifecycle-queue-publisher.md](recommendations/granot-lifecycle-queue-publisher.md) |
+| `extensionApply.ts` | recommended → [recommendations/granot-lifecycle-extension-apply.md](recommendations/granot-lifecycle-extension-apply.md) |
+| `automationApply.ts` | recommended → [recommendations/granot-lifecycle-automation-apply.md](recommendations/granot-lifecycle-automation-apply.md) |
+| `automationCompatibility.ts` | recommended → [recommendations/granot-lifecycle-automation-compatibility.md](recommendations/granot-lifecycle-automation-compatibility.md) |
+| `normalization.ts` | recommended → [recommendations/granot-lifecycle-normalization.md](recommendations/granot-lifecycle-normalization.md) |
+| `sourcePolicy.ts` | recommended → [recommendations/granot-lifecycle-source-policy.md](recommendations/granot-lifecycle-source-policy.md) |
+| `identity.ts` | recommended → [recommendations/granot-lifecycle-identity.md](recommendations/granot-lifecycle-identity.md) |
+| `granotTemporal.ts` | |
+| `leadDesiredState.ts` | |
+| `authorizedDesiredState.ts` | |
+| `leadContactProjection.ts` | |
+| `processor.ts` | |
+| `operations.ts` | |
+| `projections.ts` | |
+| `creatingObservation.ts` | |
+| `drainer.ts` | |
+| `aggregateRevision.ts` | |
+| `trustedLeadCreateValidation.ts` | |
+| `synchronizeLeadFromGranot.ts` | |
+| `createLeadFromGranot.ts` | |
+| `bookingReconciliation.ts` | |
+| `bookingConfirmation.ts` | |
+| `bookingOwnerCommands.ts` | |
+| `bookingPriorityPairing.ts` | |
+| `referralBooking.ts` | |
+| `releaseReconciliation.ts` | |
+| `releaseOwnerCommands.ts` | |
+| `discrepancies.ts` | |
+| `discrepancyOwnerCommands.ts` | |
+| `discrepancyProjections.ts` | |
+| `observability.ts` | |
+| `metrics.ts` | |
+| `alerts.ts` | |
 
 ### 13. `granotHttpCollector` — medium — unvisited
 
