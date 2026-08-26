@@ -4,6 +4,9 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- `upsertGranotObservation` drops `payload_schema_hint` when rebuilding the candidate (both `receipt_id` load and already-read receipt). Envelope unwrap still happens when kind/id match. Do not silently start passing the hint in this rename. See `recommendations/granot-lifecycle-normalization.md`.
+- `PRIORITY_BROAD_ENRICHMENT_CANONICALS` is exported here and unused by runtime callers. `leadDesiredState.ts` and `createLeadFromGranot.ts` hard-code `1` / `5` and set `quoted`. This file never sets `quoted`. Do not start setting it here so the constant “wins.” See `recommendations/granot-lifecycle-normalization.md`.
+- `NormalizationIssueCode` lists `missing_job_number` and `granot_agent_identity_conflict`. This fold never emits them. Over-bound / non-scalar Job Number is omitted with no issue code. Do not start emitting those codes so the union “wins.” See `recommendations/granot-lifecycle-normalization.md`.
 - Automation readiness maps `deferred` (and operational / lifecycle disable) to `source_disabled`. Processor `sourcePolicy.ts` maps deferred to `deferred` / `source_deferred`. Do not silently merge. See `recommendations/granot-lifecycle-automation-compatibility.md`.
 - Empty `requested_operations` on an otherwise ready Registry row returns `ready`. Catalog callers always pass operations today. Do not treat empty as `operation_not_permitted` in this rename. See `recommendations/granot-lifecycle-automation-compatibility.md`.
 - Leftover `partitionGranotAutomationSources` still filters on catalog `supported_operations`. Resolve uses `partitionGranotAutomationSourcesByRegistry` + this file’s route fold. Do not silently merge. See `recommendations/granot-lifecycle-automation-compatibility.md`.
