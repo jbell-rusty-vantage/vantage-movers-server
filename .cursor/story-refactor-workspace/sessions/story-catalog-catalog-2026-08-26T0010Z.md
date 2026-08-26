@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-26T00:10Z
 - Service / module: `catalog` / `catalog.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (open after this commit)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/32
 
 ## Stock at start
 
