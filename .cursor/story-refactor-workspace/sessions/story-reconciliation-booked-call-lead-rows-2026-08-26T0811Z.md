@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-26T08:11Z
 - Service / module: `reconciliation` / `bookedCallLeadRows.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / pending (PR #39 already merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/40
 
 ## Stock at start
 
