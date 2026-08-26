@@ -4,6 +4,11 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- `POST /api/v1/call-leads/booked-reconciliation/sync` is `applyExtensionGranotItem` (`booking_action_apply` only). `syncBookedCallLeadReconciliation` is Granot CSV Booked Jobs `--apply`. HTTP automation approved apply also must not call it. Do not point the URL back at this write, and do not delete the CSV helper so the route table “wins.” See `recommendations/reconciliation-booked-call-lead.md`.
+- `syncBookedCallLeadReconciliation` still accepts expected lead/booking ids + `updatedAt` + receiver ids. CSV `processBookedCallRow` passes none of them. Do not delete the guards, and do not wire the extension URL back through them. See `recommendations/reconciliation-booked-call-lead.md`.
+- Follow Up enrichment remembers Sheet Sync inside the Mongo write (`persistSheetSyncIntent`) and finalizes after. Booked-jobs recon `schedule*`s after `commitTransaction` and never persists intent in the session. Do not silently merge. See `recommendations/reconciliation-booked-call-lead.md`.
+- Follow Up enrichment prices only when `local` or `source_company` is in the update. Booked-jobs recon prices on every lead patch. Do not silently merge. See `recommendations/reconciliation-booked-call-lead.md`.
+- `BookedCallLeadReconciliationStatus` and CSV `mapCallStatus` still name `booking_missing`. This file emits `no_match` when both the Booking and the Call Lead miss. Do not start emitting `booking_missing` so the union “wins.” See `recommendations/reconciliation-booked-call-lead.md`.
 - Follow Up row parse uses `resolveSourceCompany` — an empty source cell becomes leftover `not_provided`. Booked-jobs row parse uses `resolveSourceCompanyFromLabel` — empty stays `undefined`. Do not silently merge. See `recommendations/enrichment-call-lead-enrichment-rows.md`.
 - CSV Follow Up `toEnrichmentPayload` omits `from`, `to`, and `granot_crm_username`. HTTP automation `mapEnrichmentRow` sends them. This file still parses those keys. Do not add them to CSV, and do not drop the parse. See `recommendations/enrichment-call-lead-enrichment-rows.md`.
 - `ParsedCallLeadEnrichmentRow.source_cpl` is declared and never assigned. Sibling prices after a write via `resolveLeadCplSnapshot`. Do not populate the parsed field. See `recommendations/enrichment-call-lead-enrichment-rows.md`.
