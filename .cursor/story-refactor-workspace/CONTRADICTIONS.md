@@ -4,6 +4,10 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Webhook `payload_sha256` is diagnostic (identical deliveries stay distinct receipts). Channel `payload_sha256` plus `channel_operation_kind` is the replay key. Same helper, two meanings. Do not silently merge. See `recommendations/granot-lifecycle-capture.md`.
+- Knowledge capture Role names `queuePublisher.ts` on the stack. `capture.ts` never publishes. The webhook route publishes after commit; channel apply claims instead. Do not move publish into capture so the Role line “wins.” See `recommendations/granot-lifecycle-capture.md`.
+- `provider: "granot"` is still written beside v2 `source_system: "granot"`. Knowledge keeps both. Do not delete `provider` so v2 “wins.” See `recommendations/granot-lifecycle-capture.md`.
+- This checkout’s `CONTEXT.md` does not define Granot Observation Receipt / Observation Channel / System of Record (knowledge capture frontmatter still links the parent glossary). Do not invent a glossary copy. See `recommendations/granot-lifecycle-capture.md`.
 - CSV Booked Jobs `toBookedPayload` omits `from`, `to`, and `granot_crm_username`. HTTP automation `mapBookedRow` sends them. `bookedCallLeadRows.ts` still parses those keys. Do not add them to CSV, and do not drop the parse. See `recommendations/reconciliation-booked-call-lead-rows.md`.
 - `ParsedBookedCallLeadRow.source_cpl` is declared and never assigned. Sibling prices after a write via `resolveLeadCplSnapshot`. Do not populate the parsed field. See `recommendations/reconciliation-booked-call-lead-rows.md`.
 - Knowledge says unknown booked-jobs labels “warn and fail validation.” Parse always warns on catalog `ValidationError`. Validate fails only when leftover `resolveSourceCompanyFromLabel` also left `source_company` empty. A display label in the label map still validates after a catalog skip. Do not silently merge. See `recommendations/reconciliation-booked-call-lead-rows.md`.

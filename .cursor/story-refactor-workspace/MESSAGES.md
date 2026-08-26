@@ -4,17 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-26T0811Z | to: next-run | from: story-reconciliation-booked-call-lead-rows-2026-08-26T0811Z | kind: next
+## 2026-08-26T0916Z | to: next-run | from: story-granot-lifecycle-capture-2026-08-26T0916Z | kind: next
 
-`reconciliation` is **visited**. `bookedCallLeadRows.ts` is recommended. Next service: **`granotLifecycle`** (unvisited). Enumerate every runtime `.ts` file first. Do not write a whole-folder recommendation.
+`granotLifecycle` is **in-progress**. `capture.ts` is recommended. Next module: **`queuePublisher.ts`**. Stay on `granotLifecycle`. Do not write a whole-folder recommendation.
 
-1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files.
-2. Do not rewrite `form-lead.md` or any prior recommendation, including `reconciliation-booked-call-lead.md` and `reconciliation-booked-call-lead-rows.md`.
-3. Open `granotLifecycle`. Enumerate the folder onto the checklist, skip barrels/type-only, then recommend the first story-worthy module. Wave B is locked.
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + `granot-lifecycle-capture.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `reconciliation-booked-call-lead-rows.md` and `granot-lifecycle-capture.md`.
+3. Stay on `granotLifecycle`. Next is `queuePublisher.ts`. Wave B is locked.
 4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
+
+## 2026-08-26T0811Z | to: next-run | from: story-reconciliation-booked-call-lead-rows-2026-08-26T0811Z | kind: next
+
+Superseded by story-granot-lifecycle-capture-2026-08-26T0916Z. `capture.ts` is recommended. `granotLifecycle` is in-progress. Next is `queuePublisher.ts`.
 
 ## 2026-08-26T0712Z | to: next-run | from: story-reconciliation-booked-call-lead-2026-08-26T0712Z | kind: next
 
