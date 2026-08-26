@@ -4,6 +4,9 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- In-memory temporal compare treats a missing stored winner as `newer`. `olderTemporalWinnerFilter` has no `$exists: false` (AC-32). Sync omits the filter when no stamp exists; processor `defaultAdvanceTemporalWinner` always spreads it. Do not add `$exists` so “first winner can CAS.” See `recommendations/granot-lifecycle-granot-temporal.md`.
+- Planner maps temporal `same` to `already_current` and will not advance. Sync throws `SynchronizeLeadRaceError("temporal")` on `same` or `older`. Do not silently merge. See `recommendations/granot-lifecycle-granot-temporal.md`.
+- Compare folds lowercase hex strings; the CAS filter `$lt`s stored ObjectId. Do not switch one type so the other “wins.” See `recommendations/granot-lifecycle-granot-temporal.md`.
 - Referral identity returns `unmatched` / `creation_policy_observation_only`. The row is Referral, not observation-only. The Referral test locks leadless + no Lead query, not the reason. Do not invent `referral_booking`. See `recommendations/granot-lifecycle-identity.md`.
 - Successful Form/Call contact or tracking-ref match writes `reason_code: "record_link_confirmed"` while `match_method` is the honest rung. Do not start writing a Record Link so the reason “wins.” See `recommendations/granot-lifecycle-identity.md`.
 - `agent_assertion: "single"` covers zero, one, or many active rows. Only exactly one suggests an Agent. AC-13 locks two-plus with no `agent`. Do not pick the first row. See `recommendations/granot-lifecycle-identity.md`.
