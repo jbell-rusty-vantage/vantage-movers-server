@@ -4,17 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
-## 2026-08-26T0309Z | to: next-run | from: story-search-call-lead-search-2026-08-26T0309Z | kind: next
+## 2026-08-26T0408Z | to: next-run | from: story-search-call-lead-browse-2026-08-26T0408Z | kind: next
 
-`search` is **in-progress**. `callLeadSearch.service.ts` is recommended. Next module: **`callLeadBrowse.service.ts`**. Stay on `search`. Do not open `enrichment`.
+`search` is **visited**. `callLeadBrowse.service.ts` is recommended. Next service: **`enrichment`** (unvisited). Enumerate `src/services/enrichment/` first. Do not open Wave B.
 
-1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + `search-form-lead-search.md` + `search-form-lead-browse.md` + `search-call-lead-search.md`.
-2. Do not rewrite `form-lead.md` or any prior recommendation, including `search-form-lead-browse.md` and `search-call-lead-search.md`.
-3. Stay on `search`. Next is `callLeadBrowse.service.ts`. Wave B is locked.
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + `search-form-lead-search.md` + `search-form-lead-browse.md` + `search-call-lead-search.md` + `search-call-lead-browse.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `search-call-lead-search.md` and `search-call-lead-browse.md`.
+3. Open `enrichment`. Enumerate every `.ts` file in the folder, skip barrels/type-only, then recommend the first story-worthy module. Wave B is locked.
 4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## Resolved
+
+## 2026-08-26T0309Z | to: next-run | from: story-search-call-lead-search-2026-08-26T0309Z | kind: next
+
+Superseded by story-search-call-lead-browse-2026-08-26T0408Z. `callLeadBrowse.service.ts` is recommended. `search` is visited. Next is `enrichment`.
 
 ## 2026-08-26T0208Z | to: next-run | from: story-search-form-lead-browse-2026-08-26T0208Z | kind: next
 
