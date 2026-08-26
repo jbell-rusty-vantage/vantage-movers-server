@@ -4,6 +4,9 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Automation readiness maps `deferred` (and operational / lifecycle disable) to `source_disabled`. Processor `sourcePolicy.ts` maps deferred to `deferred` / `source_deferred`. Do not silently merge. See `recommendations/granot-lifecycle-automation-compatibility.md`.
+- Empty `requested_operations` on an otherwise ready Registry row returns `ready`. Catalog callers always pass operations today. Do not treat empty as `operation_not_permitted` in this rename. See `recommendations/granot-lifecycle-automation-compatibility.md`.
+- Leftover `partitionGranotAutomationSources` still filters on catalog `supported_operations`. Resolve uses `partitionGranotAutomationSourcesByRegistry` + this file’s route fold. Do not silently merge. See `recommendations/granot-lifecycle-automation-compatibility.md`.
 - `automationApply.replica.test.ts` proofs concurrent `captureChannelOperationReceipt` uniqueness in two cases and never imports `applyAutomationPlanAction` there. The third case does call apply. Do not treat the whole file as apply coverage. See `recommendations/granot-lifecycle-automation-apply.md`.
 - `isTerminalStoredReceipt` in `automationApply.ts` reprints `isTerminalAutomationActionOutcome` from `granotHttpCollector/lifecycleStatement.ts` (`technical_failure` is terminal; `pending_match` is not). The file already imports the pending helper. Do not invent a third terminal check. See `recommendations/granot-lifecycle-automation-apply.md`.
 - `translateAutomationClaimResult` is exported and unused. Runtime callers and unit tests only call `applyAutomationPlanAction`. Do not grow a second translation table. See `recommendations/granot-lifecycle-automation-apply.md`.
