@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-26T03:09Z
 - Service / module: `search` / `callLeadSearch.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (open after this pass; PR #34 already closed)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/35
 
 ## Stock at start
 
