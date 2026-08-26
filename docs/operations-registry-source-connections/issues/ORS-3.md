@@ -166,42 +166,57 @@ ORS-2 added. An untranslated code must surface as itself with a generic action �
 health module can emit; that test fails when someone adds a code without a
 translation, which is the point.
 
-### 6.3 Single-feed setup command
+### 6.3 Combined setup command
+
+Read specification §6.3 and §7.4 in full before starting this. The command's
+shape is decided there and this section only sequences it.
 
 ```text
 POST /api/v1/admin/operations-registry/lead-source-setups
+POST /api/v1/admin/operations-registry/lead-source-setups/preview
 ```
 
-New `src/services/operationsRegistry/leadSourceSetup.ts`. One audited
-transaction creating:
+New `src/services/operationsRegistry/leadSourceSetup.ts`. **One audited
+transaction** creating, all inactive:
 
-1. an **inactive** `LeadSourceCompany` with a server-derived immutable
-   `company_slug`;
-2. one **inactive** `LeadSourceGranularity` with an immutable
-   `granularity_key`, the requested `channel`, an Owner display name, and a
-   `crm_label`.
+1. a `LeadSourceCompany` with a server-derived immutable `company_slug`;
+2. one `LeadSourceGranularity` with an immutable `granularity_key`, the
+   requested `channel`, an Owner display name, and a `crm_label`;
+3. **when the Owner supplied one**, a `GranotCrmSource` connected to that Feed,
+   with `outbound_sms` not written at all.
 
-Command shape:
+Step 3 is what makes the Owner flow one flow rather than three forms. Either all
+the requested records exist and are mutually consistent, or none do. Reuse
+ORS-2's `createGranotNameFromOwnerIntent` translation — do **not** write a
+second Granot assembly path — and run it inside this transaction's session.
 
-```ts
-type LeadSourceSetupCommand = {
-  name: string;
-  owner_label?: string;          // defaults to name
-  channel: "form" | "call";
-  feed_display_name?: string;    // defaults to a channel-appropriate name
-  crm_label: string;             // what Vantage sends to Granot
-  reason: string;                // 10–1000 characters
-};
-```
+Command shape is specification §6.3's `LeadSourceSetupCommand` verbatim. All of
+`company_slug`, `granularity_key`, `normalized_granot_label`, `crm_origin`,
+`workspace_slug`, `lifecycle_disposition`, `lead_model`, and the single `any`
+route are server-derived; the route rejects them if sent.
 
-Validation before any write: the derived `company_slug` and `granularity_key`
-are unique; `crm_label` does not collide with an existing Feed's; `reason` is in
-range. On any failure, nothing is written.
+Validation runs completely before any write, and the command is rejected whole:
 
-The response returns both created records plus the readiness gates still
-outstanding, so the Owner flow can go straight to activation and then to the
-Granot connection. It does **not** create a Granot CRM Source — that is ORS-2's
-command, invoked next by the Owner.
+1. `reason` is 10–1000 characters.
+2. Derived `company_slug` and `granularity_key` are unused.
+3. `crm_label` does not collide, case-insensitively, with any **active** Feed of
+   the same channel — the same predicate `assertExactIdentifiersAvailable` uses
+   at activation. Factor that predicate out rather than duplicating the regex.
+4. No alias on either record resolves to an existing active company or Feed;
+   report collisions naming both sides.
+5. The Granot label normalizes to a value no existing source holds, and the
+   derived `workspace_slug` is free.
+
+**`/preview` runs exactly the same validation and writes nothing**, returning
+the derived keys, the normalized Granot label, every collision, and the
+outstanding readiness gates. ORS-4's review step renders that response; a
+second, client-side validation path is a defect, not a convenience.
+
+The success response returns all created records plus an ordered **readiness
+plan** — the gates from specification §3.4.2 and §7.4.2 step 5, each naming the
+existing audited command that satisfies it and the gate it is waiting on. The
+go-live checklist is rendered from this, so ORS-4 never reconstructs the
+ordering in the browser.
 
 The advanced path is unchanged: create a Lead Source and add multiple Feeds
 through the existing routes before connecting Granot.

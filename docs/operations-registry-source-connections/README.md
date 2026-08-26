@@ -60,7 +60,7 @@ live.
 | --- | --- | --- | --- | --- |
 | [ORS-1](issues/ORS-1.md) | Typed label mappings and collection-first source resolution | none | main-server | `ready` |
 | [ORS-2](issues/ORS-2.md) | Granot name Owner command, SMS invariant, and texting company context | none | main-server | `ready` |
-| [ORS-3](issues/ORS-3.md) | Aggregate Lead Source projection, single-feed setup, RingCentral DTO enrichment | ORS-1, ORS-2 | main-server | `blocked` |
+| [ORS-3](issues/ORS-3.md) | Aggregate Lead Source projection, combined setup command, RingCentral DTO enrichment | ORS-1, ORS-2 | main-server | `blocked` |
 | [ORS-4](issues/ORS-4.md) | Owner UI, language deck, and acceptance sweep | ORS-3 | main-server, vantage-admin | `blocked` |
 
 Status vocabulary: `ready`, `blocked`, `active`, `complete`, `deferred`.

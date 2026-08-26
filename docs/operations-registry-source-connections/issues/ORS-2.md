@@ -160,6 +160,18 @@ Translation table — implement exactly this, and derive nothing else:
 | `destination.kind: "one_feed"` | one route, `route_key` `any`, `lead_model` derived from the Feed's channel |
 | `destination.kind: "form_by_move_type"` | two `FormLead` routes keyed by move type |
 
+**Derived, never accepted from the client** (specification §3.4.3 — these are
+required by the model and absent from the DTO, so without a derivation rule
+creation fails at the database):
+
+| Field | Rule |
+| --- | --- |
+| `crm_origin` | `GRANOT_CRM_DEFAULT_ORIGIN` |
+| `workspace_slug` | deterministic from the normalized Granot label; a collision on the unique `{crm_origin, workspace_slug}` index is rejected by name, never silently suffixed |
+| `source_company` (legacy CSV string) | left at its `"not_provided"` default; never populated from `lead_source_company`, never returned to an Owner surface |
+
+The route rejects these three keys if a client sends them.
+
 Validation order, all before any write:
 
 1. `name_received_from_granot` normalizes to a value not already held by an

@@ -183,11 +183,42 @@ only in a diagnostic drawer, never as primary controls.
 
 ### 6.4 New Lead Source setup and inbound number editor
 
-**Setup** (§7.4) — a short guided flow: name → how leads arrive → "Use one feed
-with the same name?" (selected by default) → create both via ORS-3's
-`lead-source-setups` → add the name Granot sends and connect it → choose what
-happens on lead arrival → configure or explain texting. **Add separate feeds** is
-the alternate branch for companies with genuinely multiple streams.
+**Setup** (§7.4) — read specification §7.4 in full; it is the longest and most
+prescriptive section in this pass and it fixes the copy, the step order, and the
+commit boundaries.
+
+New `components/operations-registry/lead-sources/setup/` — a **five-step linear
+wizard with back navigation** and **two commit points**:
+
+- **Commit 1, "Save as draft"** — one call to ORS-3's `lead-source-setups`,
+  creating the Lead Source, its Feed, and (optionally) its Granot name, all
+  inactive. All or nothing.
+- **Commit 2, "Turn it on"** — the go-live checklist, running the existing
+  audited commands one at a time. Never batched.
+
+Steps, with §7.4.2's copy used verbatim: 1 the lead source → 2 how the leads
+arrive → 3 the Granot name (**skippable** — most sources are created from a form
+submission and get their Granot name later) → 4 review → 5 go live.
+
+Three rules this wizard must not break:
+
+- **Step 4 renders ORS-3's `/preview` response.** Do not reimplement any
+  validation in the browser; a collision the server can detect must be shown in
+  the server's words.
+- **Step 5 is not part of the wizard.** It is a persistent readiness checklist
+  component owned by the Lead Source detail page, rendered from the server's
+  readiness plan, so it survives navigation and so an existing Lead Source that
+  has fallen out of readiness renders the identical component. Each action
+  re-reads readiness from the server; no row ticks itself.
+- **A blocked row states which earlier row it waits on.** Greying out without a
+  reason is the failure mode this whole pack exists to remove.
+
+Texting is configured in step 3 but **saved in step 5**, because the Granot name
+must exist before the SMS command can target it. The wizard says so rather than
+appearing to save it twice.
+
+**Add separate feeds** is the alternate branch for companies with genuinely
+multiple streams: it repeats step 2 per Feed before review.
 
 **Inbound number editor** (§7.5) — rename **Display label** to **Number
 nickname** with the helper text *"Only helps you recognize this number in
@@ -206,6 +237,21 @@ checklist: save number, validate, choose Feed, activate. Company is derived from
 the Feed and displayed read-only. Reassignment copy states that new calls use
 the new Feed immediately while old calls and Leads keep their historical
 assignment.
+
+Specification §7.5.1's ingestion copy is **required, not illustrative**. Use it
+verbatim for: the pre-activation confirmation (30-minute first sync, no
+back-fill, phone number locked permanently), the stale-validation message, the
+healthy "Filing calls" line, the failed-validation "stopped filing calls" line,
+and the deactivation message.
+
+The status line is derived from `validation_status`, `validated_at`,
+`last_seen_in_call_log_at`, and the open assignment's `effective_from` — **never
+from `active` alone**, because an active route whose validation has since failed
+is not filing calls. A test must cover that exact state and assert the screen
+says the number has stopped filing calls.
+
+Step 3 of the checklist stays disabled until validation succeeds, and its
+disabled reason is displayed.
 
 ### 6.5 Language deck as a test
 

@@ -13,6 +13,10 @@ applies_to:
   - src/models/RingCentralInboundRoute.ts
   - src/models/RingCentralInboundRouteAssignment.ts
   - src/services/operationsRegistry/**
+  - src/services/granotLifecycle/sourcePolicy.ts
+  - src/services/leadMessaging/granotCreatedLead.ts
+  - src/services/googleSheets/projections/**
+  - src/services/ringcentral/call-log-sync.service.ts
   - ../vantage-admin/components/operations-registry/**
 ---
 
@@ -72,13 +76,67 @@ The final ownership is:
 | `name` | Lead Source | Canonical business name |
 | `owner_label` | Lead Source | Owner-facing display name |
 | accepted sheet label | Feed through `LeadSourceLabelMapping` | Exact label read from a sheet or legacy boundary |
-| `crm_label` | Feed | Label Vantage sends to Granot when this Feed creates/posts a Lead |
+| `crm_label` | Feed | Label Vantage sends to Granot **and writes into the sheet Lead Source column** |
 | `granot_label` | Granot CRM Source | Label Granot sends to Vantage |
 | `display_label` | RingCentral Inbound Route | Owner nickname for the phone number; never attribution logic |
 
 “Granot label” must never be used unqualified in implementation or UI copy.
 Use **What Vantage sends to Granot** for `LeadSourceGranularity.crm_label` and
 **Name received from Granot** for `GranotCrmSource.granot_label`.
+
+### 2.1 Correction: `owner_label` is not the sheet spelling
+
+A working assumption in review was that the Feed's `owner_label` is both the
+display name and the spelling that lands in the sheet's **Lead Source** column.
+**It is not.** The code is unambiguous and the distinction matters, because one
+field is cosmetic and the other is a matching key that history depends on.
+
+| Field | Where it actually appears | Consequence of changing it |
+| --- | --- | --- |
+| `LeadSourceGranularity.crm_label` | The value Vantage posts to Granot; the value written to the sheet **Lead Source** column via `crm_source_label_snapshot` (`googleSheets/projections/formLeadRow.ts:41`, `callLeadRow.ts:28`); an exact resolution identifier (`sourceResolution.ts:94`) | Reports keyed on the old spelling split; new rows carry the new spelling while old rows keep the old one. Must stay unique, case-insensitively, among **active Feeds of the same channel** (`sourceRegistry.ts:787-810`) |
+| `LeadSourceGranularity.owner_label` | The option text in the admin **Source Company** filter (Filter Catalog displays `owner_label`, submits `granularity_key`); `source_granularity_label_snapshot` on each Lead; registry list ordering | Display only — **except** it becomes the sheet value as a fallback when `crm_source_label_snapshot` is empty on a Lead (`formLeadRow.ts:42`). That fallback is why the two must never be allowed to drift silently |
+| `LeadSourceCompany.owner_label` | `company_label_snapshot` on Leads and in the RingCentral route snapshot; registry list ordering | Display only |
+| `LeadSourceCompany.name` | The `{company}` placeholder rendered into the customer's confirmation text (`leadMessaging/granotCreatedLead.ts` → `loadSendContext`) | **Customer-visible.** A careless edit changes what a real person receives by SMS |
+
+The Owner form must therefore label these three things distinctly and never
+auto-mirror one into another after creation:
+
+- **Lead source name** (`name`) — the business name; also what `{company}` puts
+  in a customer text.
+- **Display name in Vantage** (`owner_label`) — what you will pick from filter
+  dropdowns.
+- **What Vantage sends to Granot** (`crm_label`) — the exact spelling that goes
+  to Granot and into the sheet's Lead Source column. Unique per channel.
+
+At creation the form may prefill `owner_label` from `name`. After the first
+save, the fields are edited independently and each carries its own consequence
+sentence.
+
+### 2.2 What aliases do, exactly
+
+Aliases are a **fallback matcher**, not a display or export field, and the two
+alias lists do different jobs:
+
+| List | Matched against | Priority |
+| --- | --- | --- |
+| `LeadSourceCompany.aliases` | The incoming company identifier, alongside `company_slug` (`sourceResolution.ts:190-194`) | Selects the company before any Feed is considered |
+| `LeadSourceGranularity.aliases` | `fallback_alias` — the raw inbound label — only **after** exact `granularity_key`, `crm_label`, and `source_site` have all missed (`sourceResolution.ts:128-145`) | Lowest. Ties are broken by `priority`; a remaining tie is **ambiguous** and fails closed |
+
+Two constraints the Owner form must enforce and explain:
+
+1. **Alias matching is `trim` + `lowercase` only** — it is *not* NFKC-normalized
+   and does *not* collapse internal whitespace, unlike Granot label matching
+   (`granotLifecycle/sourceLabel.ts`). `"Best  Relocation"` with two spaces
+   matches a Granot name and does **not** match a Feed alias. The form must
+   normalize on input and warn when a pasted alias contains doubled or
+   non-breaking whitespace.
+2. **An alias that resolves to two active Feeds at the same priority breaks
+   attribution for every lead carrying it** — the resolver returns `ambiguous`
+   and refuses. The form must check the alias against all active Feeds before
+   save and refuse a collision, naming both Feeds.
+
+Aliases are the Owner's tool for tolerating a partner's inconsistent spelling.
+They are never the identifier a report or an export is keyed on.
 
 ## 3. Canonical models
 
@@ -197,6 +255,70 @@ lowercasing. Similar spelling may produce a suggestion in the Owner form, but
 the Owner must confirm the exact stored mapping. Fuzzy matching is prohibited
 in webhook processing.
 
+#### 3.4.1 Why the spelling has to be exact, in Owner words
+
+`normalized_granot_label` carries a unique index
+(`granot_crm_source_normalized_label_unique`). At webhook time the payload's
+source label is normalized and looked up; **zero matches and two matches both
+fail closed** (`granotLifecycle/sourcePolicy.ts:197-210`), producing
+`source_unclassified` or `multiple_eligible_matches`. There is no near-match,
+no trailing-character tolerance, and no per-partner special case.
+
+The form must therefore make the exactness visible rather than implied:
+
+- show the raw value the Owner typed and, in advanced details, the normalized
+  form that will actually be matched;
+- warn when normalization changes the value (trailing space, doubled space,
+  smart quote, non-breaking space, mixed case) — the Owner is usually pasting
+  out of Granot and these are invisible;
+- refuse a duplicate normalized label at submit, naming the existing Granot name
+  it collides with and linking to it;
+- state the failure mode plainly: **"If the spelling in Granot differs by even
+  one character, leads under that name will not be recognized here."**
+
+#### 3.4.2 The activation ladder
+
+A Granot name is not live because it was created. Five stored gates and two
+runtime flags stand between creation and effect
+(`sourcePolicy.ts:389-425`, `granotCrmSourceSemantics.ts:135-145`):
+
+| Gate | Stored as | Owner phrasing |
+| --- | --- | --- |
+| Vantage-wide Granot processing is on | runtime flag | *Granot processing is on for the whole system* |
+| The observation is post-activation and the processor is live | runtime mode | *We are in live mode, not shadow* |
+| This name is enabled | `enabled` | *This Granot name is switched on* |
+| This name is live in lifecycle processing | `lifecycle_enabled` | *This Granot name is used in live processing* |
+| Its kind allows an effect | `lifecycle_disposition` | *This is one of our lead sources* |
+| Its Lead Source is active | company `active` | *The lead source is active* |
+| Its Feed is active | Feed `active` | *The feed is active* |
+| Its arrival policy allows the effect | `lead_created_policy` | *What we do when a lead arrives* |
+
+`lifecycle_enabled` additionally requires `enabled`, a nonempty
+`lifecycle_policy_version`, and — for a source-scoped name — a normalized label,
+an **active** Lead Source, and **active** Feeds on every route. That is why the
+Granot name cannot be switched live before its Feed has been activated, and why
+the combined setup flow in §7.4 has two commit points rather than one.
+
+The Owner screen must render these as a checklist with the first failing gate
+named, never as a single boolean labelled "enabled". Choosing a policy does not
+make anything live, and the UI must not imply that it does.
+
+#### 3.4.3 Fields the Owner never chooses, and what the server must derive
+
+`GranotCrmSource` carries three storage fields that are required by the model
+but meaningless to an Owner. The intent DTO in §6.3 omits them, so the server
+must derive all three or creation fails at the database:
+
+| Field | Constraint | Server rule |
+| --- | --- | --- |
+| `crm_origin` | required | default `GRANOT_CRM_DEFAULT_ORIGIN` |
+| `workspace_slug` | required; **unique with `crm_origin`** | derive deterministically from the normalized Granot label; on collision, reject with a named conflict rather than silently suffixing |
+| `source_company` (legacy CSV string) | required, defaults `"not_provided"` | leave at its default; **never** populate it from `lead_source_company` and never display it |
+
+The legacy `source_company` string and the ObjectId `lead_source_company` are
+different fields with confusingly similar names. Nothing in the Owner surface
+may read the string one.
+
 ### 3.5 Single-Feed Lead Sources, including Paid Overflow
 
 A Lead Source that has only one channel still receives one first-class Feed in
@@ -239,6 +361,74 @@ company ID. This existing behavior is the correct iron-clad contract.
 Assignments are effective-dated. At call time the resolver selects the one
 assignment whose interval contains the call start. Reassignment closes the old
 interval and opens the new one atomically; historical Call Leads are unchanged.
+
+#### 3.6.1 What actually starts and stops ingestion
+
+The Owner's mental model is "activate the number and calls start coming in."
+That is true, but four preconditions and one delay sit underneath it, and the UI
+must state all five rather than let the Owner infer them from silence.
+
+**A number ingests calls only while every one of these holds** — verified in
+`ringCentralSnapshot.ts:142-152` and `ringCentralRegistry.ts:393-468`:
+
+| # | Condition | Where it is enforced |
+| --- | --- | --- |
+| 1 | `validation_status: "valid"` — the number was found in the RingCentral account | `loadSnapshotFromDatabase` filter |
+| 2 | `ever_activated: true` — it has been activated at least once | same filter |
+| 3 | Exactly one assignment interval contains the call's start time | `resolveRingCentralInboundRoute` |
+| 4 | The assigned Feed is active, `channel: call`, and belongs to the stored active Lead Source | `buildRingCentralRouteSnapshot:179-182` |
+| 5 | `RINGCENTRAL_CALL_LOG_SYNC_ENABLED` is true | `routes/ringcentral-cron.routes.ts:54` |
+
+**Activation preconditions** (`assertValidFreshValidation`, `loadAssignmentTarget`):
+
+- validation must be `valid` **and no older than `RINGCENTRAL_ROUTE_VALIDATION_MAX_AGE_MS`,
+  default 24 hours**. A number validated last week cannot be activated; it must
+  be validated again first. This is the single most likely point of Owner
+  confusion and needs explicit copy, not a generic error toast.
+- the chosen Feed must be active and `channel: call`;
+- its Lead Source must be active;
+- the Lead Source company is **derived from the Feed** — the client never sends
+  a company ID.
+
+**Irreversible side effect of first activation:** `phone_locked` is set to
+`true` and the phone number becomes immutable for the life of the record
+(`ringCentralRegistry.ts:450`, model `phone_number.immutable`). The Owner must
+be told this *before* the first activation, not after: a typo'd number can only
+be fixed by creating a second route.
+
+**The ingestion delay is real and must be stated.** Attribution flows through a
+cached snapshot, and calls arrive through a cron:
+
+- registry snapshot cache: **5 minutes** (`RINGCENTRAL_REGISTRY_SNAPSHOT_MAX_AGE_MS`),
+  though an activation invalidates it immediately through `cacheInvalidation`;
+- call-log sync cron: **every 30 minutes** (`vercel.json` →
+  `/api/cron/ringcentral-call-log-sync`, `*/30 * * * *`).
+
+So the honest Owner sentence is *"calls to this number will start being filed on
+the next call-log sync, normally within 30 minutes"* — not *"immediately."*
+
+**Calls that arrived before activation are never back-filled.** The sync window
+reaches back up to 12 hours, but the assignment's `effective_from` is stamped at
+activation time, and resolution requires `effective_from <= call start`. Earlier
+calls in the same window resolve to nothing and are rejected as
+`target_number_not_matched`. Say so on the activation screen.
+
+**Deactivation stops ingestion; a failed re-validation stops it silently.**
+Deactivating closes the open assignment in the same transaction, so new calls
+stop resolving — correct and visible. But if a later validation returns
+`invalid`, the number drops out of the snapshot filter and calls stop being
+filed while the route still reads "active" in the list. Registry Health does
+raise `registry.ringcentral_validation_failed`, but the finding does not say
+what it costs. Its Owner sentence must be:
+
+> **This number has stopped filing calls.** RingCentral no longer recognizes it.
+> Calls to it are being received but not attributed to any lead source until
+> validation passes again.
+
+**The activation checklist** (§7.5) is therefore four steps with a stated gate
+on each: save number → validate against RingCentral → choose the Feed calls are
+filed under → activate. Step 3 is disabled until step 2 succeeds, and its
+disabled reason is shown, never hidden.
 
 ## 4. Granot behavior and text messaging
 
@@ -305,6 +495,47 @@ Current finding: `daily_cap` is persisted and returned but is not consulted by
 the send path. Do not expose it to the Owner as a working safety control. Either
 implement an atomic per-source/day limiter and define `0` explicitly, or remove
 the field from the Owner contract.
+
+### 4.3 The message the customer actually receives
+
+The Owner edits a template, not a message. Four transformations sit between the
+two (`leadMessaging/granotCreatedLead.ts`), and each has been a source of
+surprise:
+
+1. **`{first_name}`** renders the lead's first name, or the literal word
+   `there` when it is missing. The preview must show the empty-name case, not
+   only the happy one.
+2. **`{company}`** renders `LeadSourceCompany.name` — the **lead source's**
+   business name, falling back to its `owner_label`, then to `"Vantage Movers"`.
+   It does **not** render the Vantage brand. An Owner who writes
+   *"this is {company}"* is telling the customer the name of the partner site,
+   which may be exactly right or exactly wrong. The preview must resolve
+   `{company}` against the actually selected Lead Source and say which record it
+   came from.
+3. **No other placeholder is permitted.** Anything matching `{word}` outside the
+   two allowed names is rejected at save with the offending names listed.
+4. **`Reply STOP to opt out.` is appended by the server**, and any Owner-typed
+   copy of that sentence is stripped first so it cannot appear twice. The
+   preview must show the appended sentence and count it against the 320-character
+   limit, because the stored template is capped at 320 and the sent body is
+   longer than what the Owner typed.
+
+Two behaviors of the save path must be rendered truthfully rather than
+discovered:
+
+- **Turning texting on and editing the template in the same save leaves texting
+  off.** `crmSourceOutboundSms.ts:134` computes
+  `enabled = requested && !templateChanged && !basisReverted`. The request
+  succeeds, the version increments, and texting is off. The form must either
+  block that combination with an explanation, or state before save: *"Saving a
+  new message turns texting off. You will turn it back on after reviewing the
+  new message."* — and then show the resulting off state.
+- **Reverting the consent basis to "not attested" turns texting off** and stamps
+  `consent_basis_reverted`. Same rule: say it before, show it after.
+
+Every one of these states is already returned in the command result. The UI's
+obligation is to show the state that came back, never the state that was
+requested.
 
 ## 5. Runtime resolution contracts
 
@@ -421,7 +652,9 @@ type OwnerGranotNameCommand = {
 
 The server translates this into the constrained disposition, policy, and route
 shape, then runs the existing semantic validator. Advanced raw fields may be
-visible in a diagnostic drawer but are not primary form controls.
+visible in a diagnostic drawer but are not primary form controls. `crm_origin`,
+`workspace_slug`, and the legacy CSV `source_company` are derived per §3.4.3 —
+the DTO deliberately omits them and the route must reject them if sent.
 
 For `one_feed`, the server derives `lead_model` from the selected Feed channel
 and writes one `any` route. It also derives and validates the Lead Source from
@@ -431,12 +664,77 @@ Add an atomic convenience command for the new-company workflow:
 
 ```text
 POST /api/v1/admin/operations-registry/lead-source-setups
+POST /api/v1/admin/operations-registry/lead-source-setups/preview
 ```
 
-It creates an inactive Lead Source plus one inactive default Feed in one audited
-transaction. The Owner then reviews readiness/activation and creates the Granot
-CRM Source connection. This is the default path for Paid Overflow-like sources;
-the advanced path still permits adding multiple Feeds before connecting Granot.
+**One audited transaction creates the Lead Source, its default Feed, and — when
+the Owner supplied one — its Granot CRM Source, all inactive.** This is the
+server half of the single flow in §7.4. Creating the Granot name in the same
+transaction is what makes "Lead source and Granot name are one flow" true in
+storage and not merely true in the UI: either all three records exist and are
+consistent, or none of them do.
+
+```ts
+type LeadSourceSetupCommand = {
+  // Step 1 — the lead source
+  name: string;                    // also the {company} value in customer texts
+  owner_label?: string;            // defaults to name
+  aliases?: string[];              // other spellings that should map here
+
+  // Step 2 — its first feed
+  channel: "form" | "call";
+  feed_display_name?: string;      // defaults to a channel-appropriate name
+  crm_label: string;               // what Vantage sends to Granot; unique per channel
+  move_type?: "local" | "long_distance";
+  feed_aliases?: string[];
+  source_sites?: string[];
+
+  // Step 3 — the Granot name, optional
+  granot?: {
+    name_received_from_granot: string;
+    when_lead_arrives: "watch_only" | "existing_only" | "create_if_missing";
+  } | null;
+
+  reason: string;                  // 10–1000 characters
+};
+```
+
+Derivations the client never supplies: `company_slug`, `granularity_key`,
+`normalized_granot_label`, `crm_origin`, `workspace_slug`, the Granot
+disposition, `lead_model`, and the single `any` route pointing at the created
+Feed. When `granot.when_lead_arrives` is `create_if_missing`, the disposition is
+source-scoped; the Feed is the created Feed by construction, so the
+company/Feed consistency check cannot fail.
+
+**Everything is created inactive, and `outbound_sms` is not written at all.**
+Texting is configured only after the Granot name exists and its policy is known,
+through the existing SMS command.
+
+Validation runs completely before any write, and the command is rejected whole:
+
+1. `reason` is 10–1000 characters.
+2. Derived `company_slug` and `granularity_key` are unused.
+3. `crm_label` does not collide, case-insensitively, with any **active** Feed of
+   the same channel — the same rule `assertExactIdentifiersAvailable` applies at
+   activation, checked early so the Owner learns it now rather than three screens
+   later.
+4. No alias, on either record, resolves to an existing active Feed or company;
+   collisions are named on both sides.
+5. `granot.name_received_from_granot` normalizes to a value no existing Granot
+   name holds, and its derived `workspace_slug` is free.
+
+The **preview** endpoint runs exactly this validation and writes nothing. It
+returns the derived keys, the normalized Granot label, every collision, and the
+readiness gates that will still be outstanding after creation. The wizard calls
+it on the review step so the Owner sees the whole outcome before committing.
+
+The response returns all created records plus an ordered **readiness plan** —
+the remaining gates from §3.4.2 and §7.4, each with the command that satisfies
+it — so the go-live screen is rendered from the server's own account of what is
+missing rather than from client-side guesswork.
+
+The advanced path is unchanged: create a Lead Source, add several Feeds, and
+connect Granot names individually through the existing routes.
 
 ### 6.4 RingCentral
 
@@ -519,22 +817,192 @@ If the Owner changes **When a lead arrives** away from **Use an existing lead,
 or create it if missing**, the review screen says **Customer text will be turned
 off because this Granot name will no longer create Leads**.
 
-### 7.4 New Lead Source setup
+### 7.4 New Lead Source setup — one flow, two commit points
 
-Use a short guided flow:
+This is the flow the Owner uses most, and the one the specification previously
+under-described. It is a **single multi-step wizard**, not a sequence of
+separate forms, and it covers the Lead Source, its Feed, and its Granot CRM
+Source together.
 
-1. **Lead source name** — for example, Paid Overflow.
-2. **How do leads arrive?** — Web forms or Inbound calls.
-3. **Use one feed with the same name?** — selected by default.
-4. Create the Lead Source and default Feed together.
-5. **Add the name Granot sends** and connect it to that Feed.
-6. Choose what happens on `lead_created`.
-7. If `create_if_missing`, configure customer text; otherwise explain why text
-   is unavailable.
+#### 7.4.1 Why a wizard, and why two commits and not one
 
-The Owner can choose **Add separate feeds** when the company genuinely has form,
-call, local, or long-distance streams. “No granularities” is therefore an Owner
-experience, not a storage exception: a single-feed source still has one Feed.
+A wizard is the right shape because the three records are not independent: the
+Feed cannot exist without the Lead Source, the Granot route cannot point at a
+Feed that does not exist, and — critically — **the Owner cannot supply the
+Granot connection correctly unless the Feed identity is already decided.** Three
+sibling forms would make the Owner carry that ordering in their head and would
+leave orphaned half-configurations behind whenever they abandoned midway.
+
+But the flow cannot be a single commit either, and it is worth being precise
+about why, because the constraint is in the code and not a matter of taste:
+
+- A Feed can only be activated once a **valid CPL schedule** exists for it
+  (`setSourceGranularityActivation` → `validateCplSchedule`). CPL rates are
+  their own surface with their own effective-dating; they are not a field on
+  this wizard.
+- A Feed can only be activated **after its Lead Source is active**, and the same
+  command must make it the company's channel default (`replacement_default_id`
+  must equal the Feed's own id).
+- A Granot name can only be switched live **after** its Lead Source and Feed are
+  both active.
+- Texting can only be turned on **after** the Granot name exists with
+  `create_if_missing`, and consent must be attested in the same command.
+
+Forcing all of that into one submit would either require the wizard to own the
+CPL surface, or require the server to activate things whose gates are not yet
+satisfiable. Both are worse than admitting the truth to the Owner.
+
+So the flow has **two commit points**, and the UI names them:
+
+```text
+Commit 1 — "Save as draft"        Commit 2 — "Turn it on"
+one atomic transaction            a checklist of audited commands
+Lead source   (inactive)          set the lead cost
+Feed          (inactive)          activate the lead source
+Granot name   (inactive, no SMS)  activate the feed  (becomes the default)
+                                  switch the Granot name live
+                                  turn on the customer text  (optional)
+```
+
+Commit 1 is `POST /operations-registry/lead-source-setups` (§6.3) — all or
+nothing. Commit 2 is the existing audited commands, run one at a time from a
+readiness checklist, each with its own reason and its own audit entry. Nothing
+in commit 2 is batched, because each of those commands is individually
+consequential and individually reversible.
+
+Between the two, the draft is harmless: an inactive Lead Source matches nothing,
+an inactive Feed accepts nothing, and an inactive Granot name is `deferred`
+under `observation_only`. The Owner can leave and come back.
+
+#### 7.4.2 The five steps
+
+Each step states its consequence at the point of entry, not in a help panel.
+The wizard is linear with back navigation; the Review step is reachable only
+when every prior step validates.
+
+**Step 1 — The lead source**
+
+> Who sends you these leads?
+
+| Field | Copy | Helper |
+| --- | --- | --- |
+| Lead source name | *Lead source name* | *The company's real name, for example Best Relocation. If you send a confirmation text later, this is the name the customer can see.* |
+| Display name in Vantage | *Show it as* | *What you will pick in filters and reports. Defaults to the name above.* |
+| Other spellings | *Also accept these spellings* | *Used only when an incoming lead does not match exactly. Not shown anywhere and not used in reports.* |
+
+Live validation: the derived internal key is unique; each alias is checked
+against every existing active company and Feed and refuses a collision by name.
+
+**Step 2 — How the leads arrive**
+
+> Where do these leads come from?
+
+Two choices, **Web forms** or **Inbound calls**, then, for web forms only,
+*Do local and long-distance moves need to be tracked separately?* — off by
+default, which is the single-Feed case.
+
+| Field | Copy | Helper |
+| --- | --- | --- |
+| Feed name | *Name this feed* | *Defaults to "Web forms" or "Inbound calls".* |
+| Granot spelling | *What Vantage sends to Granot* | *The exact label Vantage puts on every lead from this feed when it posts to Granot. **This is also the spelling that appears in the Lead Source column of your sheet.** It must not match any other active feed of the same kind.* |
+
+Live validation: `crm_label` uniqueness against active same-channel Feeds,
+checked now rather than at activation.
+
+The channel choice is worth one sentence of warning, because it is close to
+irreversible: a Feed's `channel` is immutable once it has ever been activated.
+
+**Step 3 — The Granot name** *(skippable)*
+
+> Does Granot send you leads under a name for this source?
+
+- **Yes** — reveals the name field and the arrival policy.
+- **Not yet** — skips to Review. Leads will still arrive through the form or
+  the phone number; only the Granot webhook path is left unconnected, and the
+  Lead Source detail will show it as a suggested next step.
+
+That "Not yet" branch matters: most lead sources are created from a WordPress or
+landing-page submission, and their Granot name is added later. The flow must not
+imply a Granot name is mandatory.
+
+| Field | Copy | Helper |
+| --- | --- | --- |
+| Name received from Granot | *Name received from Granot* | *Type it exactly as Granot spells it. If it differs by even one character, leads under that name will not be recognized here.* |
+| — | *(normalized preview, shown only when normalization changed the input)* | *We will match this as `best relocation`. Your entry had extra spacing.* |
+
+**When a lead arrives** — the three §4.1 choices, in Owner language, with the
+consequence under each:
+
+- **Watch only** — *We record it as evidence. Nothing is created or changed.*
+- **Use an existing lead only** — *We attach it to a lead we already have.
+  We never create one.*
+- **Use an existing lead, or create it if missing** — *If we have no matching
+  lead, we create one in this feed. This is the only choice that can text the
+  customer.*
+
+Choosing the third reveals **Text the customer** inline — off by default, with
+the template, the live preview per §4.3, and the consent attestation. It is
+configured here but **saved in commit 2**, because the Granot name must exist
+before the SMS command can target it. The wizard says so:
+
+> Texting is set up after the Granot name is saved. We will bring you back to
+> this on the next screen.
+
+**Step 4 — Review**
+
+Rendered from the `lead-source-setups/preview` response, so the Owner is
+reading the server's answer, not the client's optimism. It shows the derived
+keys, the connection as a sentence, and the outstanding gates:
+
+```text
+You are creating
+
+  Paid Overflow                                       lead source
+    └─ Web forms                                      feed
+         Vantage sends to Granot:  Paid Overflow
+         Sheet Lead Source column: Paid Overflow
+
+  Granot name "Paid Overflow"                         granot name
+       lands in:  Paid Overflow → Web forms
+       on arrival: use an existing lead, or create it if missing
+       customer text: to be set up after saving
+
+Nothing is live yet. After saving you will:
+  1. set the lead cost for this feed
+  2. activate the lead source
+  3. activate the feed
+  4. switch the Granot name into live processing
+  5. turn on the customer text
+```
+
+**Step 5 — Go live**
+
+A persistent checklist owned by the Lead Source detail page, not by the wizard —
+so it survives leaving and returning, and so an existing Lead Source that has
+fallen out of readiness renders the same component.
+
+Each row shows its gate, its state, the Owner action, and — when blocked — the
+reason and what unblocks it:
+
+| Step | Blocked until | Action |
+| --- | --- | --- |
+| Set the lead cost | — | opens the Lead costs surface for this Feed |
+| Activate the lead source | — | audited company activation |
+| Activate the feed | lead source active **and** lead cost valid | audited Feed activation; the same command makes it the channel default |
+| Switch the Granot name live | feed active | audited lifecycle activation |
+| Turn on the customer text | Granot name live **and** policy is create-if-missing **and** consent attested | audited SMS command |
+
+Rows are strictly ordered and a blocked row is never merely greyed out — it
+states which earlier row it is waiting on. Each action's result re-reads the
+readiness plan from the server rather than optimistically ticking its own row.
+
+#### 7.4.3 Adding separate feeds
+
+**Add separate feeds** remains the alternate branch for a company that genuinely
+has form, call, local, and long-distance streams. It repeats step 2 per Feed
+before Review, and step 3's Feed picker then offers the created Feeds, including
+the move-type pair. "No granularities" is an Owner experience, not a storage
+exception: a single-feed source still has exactly one first-class Feed.
 
 ### 7.5 Inbound number editor
 
@@ -564,10 +1032,59 @@ Company is derived from Feed selection and displayed read-only. Reassignment
 copy must state that new calls use the new Feed immediately while old calls and
 Leads keep their historical assignment.
 
+#### 7.5.1 Required ingestion copy
+
+The Owner's question is always *"is this number bringing leads in yet?"* The
+screen must answer it directly, from §3.6.1's facts.
+
+**On the activation step, before the Owner confirms:**
+
+> Once you activate this number, calls to it are read from RingCentral's call
+> log and filed under **Best Relocation → Inbound calls**. The first sync
+> normally runs within 30 minutes. Calls that came in before now will not be
+> back-filled.
+>
+> Activating locks the phone number. If it is wrong, you will need to add a new
+> number instead of editing this one.
+
+**On the validation step, when validation is older than the allowed window:**
+
+> This number was checked against RingCentral more than 24 hours ago. Check it
+> again before activating.
+
+**On an active, healthy number:**
+
+> **Filing calls.** Last call seen 14 minutes ago. Calls to this number are
+> filed under Best Relocation → Inbound calls, effective since 3 Aug 2026.
+
+**On an active number whose validation has since failed:**
+
+> **This number has stopped filing calls.** RingCentral no longer recognizes it.
+> Calls are still arriving but are not being attributed to any lead source.
+> Check it against RingCentral again.
+
+**On deactivation:**
+
+> New calls to this number will stop being filed. Calls already recorded and the
+> leads created from them keep the lead source and feed they were filed under.
+
+The status line must be derived from stored evidence — `validation_status`,
+`validated_at`, `last_seen_in_call_log_at`, and the open assignment's
+`effective_from` — and never from `active` alone, because `active` is true in
+the failed-validation case above.
+
 ### 7.6 Language deck
 
 | Avoid | Use |
 | --- | --- |
+| Owner label | Show it as *(Lead source)* / Name this feed *(Feed)* |
+| CRM label | What Vantage sends to Granot |
+| Alias | Other spellings we should accept |
+| Validation status | Checked against RingCentral |
+| Route assignment | Where calls to this number are filed |
+| Outbound SMS | Customer text |
+| Consent basis | Why we may text this customer |
+| Template version | Message version |
 | Sources | Lead sources |
 | Granularity | Feed |
 | Granot sources | Granot names |
@@ -598,10 +1115,25 @@ Add fail-closed health findings for:
 - active Feed without complete CPL coverage or valid channel default;
 - any runtime use of the static source-label compatibility maps;
 - SMS shown as on while any source-level gate is false;
-- configured SMS daily cap until enforcement exists.
+- configured SMS daily cap until enforcement exists;
+- **an active RingCentral route whose validation has since failed** — the number
+  reads as active but has silently left the resolution snapshot, so calls are
+  arriving unattributed;
+- **a Feed alias, or a Lead Source alias, that resolves to more than one active
+  destination** — every lead carrying it fails attribution as `ambiguous`;
+- **an alias whose stored spelling differs from its own normalized form**
+  (doubled, leading, trailing, or non-breaking whitespace), because alias
+  matching does not collapse whitespace and such an alias can never match;
+- **a Lead Source with no Feed at all**, which is the storage state a
+  partly-abandoned setup leaves behind and which no current check reports.
 
 The aggregate Lead Source projection translates each finding into one Owner
 action and a deep link. Raw health codes stay available in advanced details.
+
+Every finding's Owner sentence must state the **operational cost**, not the
+inconsistency. "Route assignment targets an inactive granularity" is a
+description; "calls to (954) 555-0142 are not being filed anywhere" is a
+finding an Owner can act on.
 
 ## 9. Migration and rollout
 
@@ -646,6 +1178,30 @@ No production mutation or SMS activation is authorized by this specification.
   `route_key`, `lead_model`, `policy_version`, or raw ObjectIds.
 - Static label-map compatibility usage is visible in Registry Health and reaches
   zero before removal.
+- A single guided flow creates a Lead Source, its Feed, and its Granot CRM
+  Source, and a failure at any point in that flow leaves **none** of the three
+  records behind.
+- The review step of that flow is rendered from a server preview that performed
+  the full validation, and every collision it can report — internal key,
+  `crm_label`, alias, normalized Granot label, `workspace_slug` — is reachable
+  in a test.
+- The Granot name step can be skipped, and the resulting Lead Source is valid,
+  usable, and shows "connect a Granot name" as an available next step.
+- Go-live is a persistent, server-derived checklist: every blocked step names
+  the step it is waiting on, and no step ticks itself without re-reading
+  readiness from the server.
+- An Owner is told, before the first activation of an inbound number, that
+  activation locks the phone number and that earlier calls are not back-filled.
+- An active inbound number whose validation has since failed is reported as
+  having stopped filing calls, not merely as failing validation.
+- The Owner form distinguishes the Feed's display name from what Vantage sends
+  to Granot, and states that the latter is also the sheet's Lead Source column
+  value.
+- The customer-text preview resolves `{company}` against the selected Lead
+  Source, shows the empty-first-name rendering, and shows the server-appended
+  opt-out sentence.
+- Saving a new message body while requesting texting on results in texting off,
+  and the UI says so before the save and shows the returned state after it.
 
 ## 11. Current-code findings that drive this specification
 
@@ -668,3 +1224,65 @@ No production mutation or SMS activation is authorized by this specification.
 - RingCentral route DTOs expose assignment IDs without joined Lead Source/Feed
   labels, forcing the browser to reconstruct the explanation.
 - SMS `daily_cap` is not enforced by the send path.
+
+Verified 2026-08-24 while specifying §2.1–2.2, §3.4.1–3.4.3, §3.6.1, §4.3, and
+§7.4. **Reverify at implementation.**
+
+- The sheet **Lead Source** column is written from `crm_source_label_snapshot`
+  first, `source_granularity_label_snapshot` second, and a static per-company
+  function third (`googleSheets/projections/formLeadRow.ts:41-43`,
+  `callLeadRow.ts:28-30`). It is the Feed's `crm_label`, not its `owner_label` —
+  but `owner_label` reaches the sheet whenever the CRM snapshot is absent, so
+  the two are coupled by a fallback and cannot be treated as fully independent.
+- The admin **Source Company** filter is built from Feeds: it displays
+  `owner_label` and submits `granularity_key`
+  (`docs/admin-filter-catalog-and-analytics-specification.md`, and the filter
+  catalog handoff). Its *label* says "Source Company" while its *options* are
+  Feeds, which contradicts the §7.6 deck. The deck belongs to this document; the
+  filter surface belongs to the filter-catalog specification. Reconciling them is
+  a cross-specification item, not a silent rename in either one.
+- Alias matching is `trim` + `lowercase` only (`sourceResolution.ts:283-286`),
+  while Granot label matching is NFKC + whitespace-collapse + lowercase
+  (`granotLifecycle/sourceLabel.ts`). The two normalizers disagree, and an alias
+  containing doubled or non-breaking whitespace can never match.
+- `crm_label` uniqueness is enforced **only at Feed activation**, case-insensitively,
+  against active Feeds of the same channel (`sourceRegistry.ts:787-810`). Nothing
+  prevents creating a colliding draft, so the Owner meets the error at the worst
+  moment unless the setup command checks it early.
+- Feed activation additionally requires a valid CPL schedule and requires the
+  Feed to become its company's channel default **in the same command**
+  (`sourceRegistry.ts:499-554`). Company activation requires that any already-active
+  channel has a valid default (`assertActiveDefaultsValid`). This ordering is
+  what forces §7.4's second commit point.
+- `createOrUpdateGranotCrmSource` never writes `outbound_sms`
+  (`granotCrmSources.ts:259-327`), which confirms §4.2's finding: a policy change
+  away from `create_if_missing` leaves texting enabled. The invariant is enforced
+  only on the SMS command's own path.
+- `crm_origin` and `workspace_slug` are required on `GranotCrmSource` and carry a
+  unique compound index, but appear nowhere in the Owner intent DTO. Without a
+  server derivation rule the Owner create route cannot succeed.
+- `setGranotCrmSourceOutboundSms` computes
+  `enabled = requested && !templateChanged && !basisReverted`
+  (`crmSourceOutboundSms.ts:130-134`). Requesting "on" with an edited body
+  returns success with texting off.
+- `{company}` in a confirmation text renders `LeadSourceCompany.name`, falling
+  back to `owner_label`, then `"Vantage Movers"`
+  (`leadMessaging/granotCreatedLead.ts` → `loadSendContext`). The lead source's
+  name is customer-visible.
+- The RingCentral resolution snapshot selects routes on
+  `{ ever_activated: true, validation_status: "valid" }` and never reads
+  `active` (`ringCentralSnapshot.ts:148`). Deactivation stops ingestion by
+  closing the assignment interval, not by the flag — and a route that later
+  fails validation leaves the snapshot while still reading as active.
+- Activation requires validation no older than
+  `RINGCENTRAL_ROUTE_VALIDATION_MAX_AGE_MS`, default 24 hours
+  (`ringCentralRegistry.ts:564-592`), and sets `phone_locked`, making the number
+  permanently immutable (`:450`). Neither fact is currently surfaced to the Owner.
+- Call ingestion runs on `/api/cron/ringcentral-call-log-sync` every 30 minutes
+  (`vercel.json`), gated by `RINGCENTRAL_CALL_LOG_SYNC_ENABLED`, over a rolling
+  window reaching back up to 12 hours. Assignments are stamped `effective_from:
+  now` at activation, so calls inside that window but before activation resolve
+  to nothing and are rejected as `target_number_not_matched`.
+- `previewRingCentralRouteDependencies` returns a hardcoded
+  `can_deactivate: true` (`ringCentralRegistry.ts:136`); it counts dependencies
+  but gates nothing.
