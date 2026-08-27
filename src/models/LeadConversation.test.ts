@@ -12,7 +12,9 @@ test("LeadConversation unique recording index is the only unique index", () => {
 
 test("LeadConversation schema declares the seven contract indexes", () => {
   const declared = new Set(
-    LeadConversation.schema.indexes().map((index) => index[1]?.name),
+    (LeadConversation.schema.indexes() as Array<[unknown, { name?: string }]>).map(
+      ([, options]) => options?.name,
+    ),
   );
   for (const index of LEAD_CONVERSATION_INDEXES) {
     assert.equal(declared.has(index.name), true, `missing ${index.name}`);

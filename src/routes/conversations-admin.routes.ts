@@ -101,7 +101,7 @@ export function createConversationsAdminRouter(
         jobNo: conversation.normalized_job_no,
         details: {
           conversation_id: String(conversation._id),
-          actor_id: actor.adminId,
+          actor_id: actor.actorId,
           expires_at: data.expires_at,
         },
         piiPolicy: "none",

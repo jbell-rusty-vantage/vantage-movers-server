@@ -106,6 +106,7 @@ app.use(
     }),
     auditAudio: async (input) => {
       audits.push({ eventKey: input.eventKey, details: input.details });
+      return null;
     },
   }),
 );
