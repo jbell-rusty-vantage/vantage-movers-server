@@ -4,6 +4,12 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- These three commands are on `canonicalDomainCommands`. Booking / Release Owner review is not. There is no discrepancy command flag. Do not invent `GRANOT_LIFECYCLE_DISCREPANCY_COMMANDS_ENABLED`, and do not remove these from the registry so “they match Booking review.” See `recommendations/granot-lifecycle-discrepancy-owner-commands.md`.
+- Re-evaluate must reuse fingerprint + store and must not call `reconcileObservation` (that persist inserts a Decision). Do not move re-evaluate into `discrepancies.ts` so “one discrepancy writer.” See `recommendations/granot-lifecycle-discrepancy-owner-commands.md`.
+- Correction always resolves even if the Job still fights after the new link. The owner cannot re-evaluate a resolved row. Do not call persist from correction so “the leftover fight is saved.” See `recommendations/granot-lifecycle-discrepancy-owner-commands.md`.
+- `still_conflicting` writes a Command and does not increment `revision`. Do not skip the Command so “nothing changed.” See `recommendations/granot-lifecycle-discrepancy-owner-commands.md`.
+- Observability after discrepancy commands is route-owned (`observeGranotOwnerCommandResult`). This file has no after-commit sheet finalize. Do not enqueue Sheet Sync so “review matches Booking-case review.” See `recommendations/granot-lifecycle-discrepancy-owner-commands.md`.
+- This checkout’s `CONTEXT.md` does not define Granot Booking Discrepancy / Granot Release Discrepancy / Granot Record Link / No Action. Do not invent a glossary copy. See `recommendations/granot-lifecycle-discrepancy-owner-commands.md`.
 - Knowledge `processor.md` says there is no standalone discrepancy Service file and names persist on the processor. This file only opens or refreshes the mismatch row. Do not invent `docs/knowledge/granot-lifecycle/discrepancies.md` so “every persist has a Service,” and do not move persist into `processor.ts` so the Primary-code line “wins.” See `recommendations/granot-lifecycle-discrepancies.md`.
 - `discrepancies.replica.test.ts` names this module and tests Owner No Action / re-evaluate / Correct Record Link. Do not count those as persist proof. See `recommendations/granot-lifecycle-discrepancies.md`.
 - A Booked Observation with no Booking opens a create-missing case. A Release Observation with no Booking is `release_without_vantage_booking`. Do not open a discrepancy for Booking create-missing so “every gap is a fight.” See `recommendations/granot-lifecycle-discrepancies.md`.
