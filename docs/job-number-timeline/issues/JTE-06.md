@@ -34,6 +34,12 @@ Observed in the enhancement spec: production proof found 48 historical
 Cancellations and only 11 surviving Booking links from which Job Number
 can be recovered. Re-run that count before any apply.
 
+JTE-02 2026-08-27: assemble already attaches an orphan Cancellation when
+`normalized_job_no_snapshot` / `job_no_snapshot` is present on an injected
+row. The Mongo loader maps those fields on booking-linked rows only. It does
+**not** query `cancelled_leads` by snapshot — the field is absent and has no
+index. After the write + index land, add that hop. Do not collection-scan.
+
 `CancelledLead` does not yet carry:
 
 ```ts

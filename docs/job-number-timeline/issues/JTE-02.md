@@ -38,7 +38,8 @@ not delete rows.
 
 ## 4. Current-state evidence to verify
 
-Reverify after JTE-01. At pack creation (2026-08-27):
+Reverify after JTE-01. At pack creation (2026-08-27), **reverified
+2026-08-27 after JTE-01** — still accurate:
 
 - Eleven event kinds. `JOB_TIMELINE_TYPE_PRIORITY` is 10–110. Insert
   `source_received` as a new origin-stage kind **without** relabelling
@@ -54,7 +55,9 @@ Reverify after JTE-01. At pack creation (2026-08-27):
   invent one.
 - Cancellation rows have no `job_no_snapshot` / `lead_ref_snapshot` yet
   (JTE-06). Orphan cancellations stay unattached unless a durable snapshot
-  already exists.
+  already exists. The v1 assemble heuristic that attached every
+  cancellation when bookings were empty and release cases existed is
+  replaced by snapshot-or-booking-link only.
 
 ## 5. Locked decisions and invariants at risk
 
@@ -141,17 +144,17 @@ do not apply to production.
 
 ## 10. Acceptance criteria
 
-- [ ] `schema_version` is `"job_timeline.v2"` on `ok` pages.
-- [ ] Named test: `source receipt and lead creation remain separate events`.
-- [ ] Named test: `wordpress creation reports no invented receipt event`.
-- [ ] Named test: `dual clocks order by occurred time and preserve recorded time`.
-- [ ] Named test: `related receipt decision change and sheet rows share activity id`.
-- [ ] Named test: `activity grouping does not remove original evidence events`.
-- [ ] Named test: `orphan cancellation is not attached without durable job snapshot`.
-- [ ] Named test: `event cap returns explicit truncation limitation`.
-- [ ] Named test: `serialized v2 page contains no forbidden fields or contact`.
-- [ ] All JTE-01 / prototype regressions still pass.
-- [ ] v1 fields (`event_at`, `clock_field`, `coverage`, `headline`, safe
+- [x] `schema_version` is `"job_timeline.v2"` on `ok` pages.
+- [x] Named test: `source receipt and lead creation remain separate events`.
+- [x] Named test: `wordpress creation reports no invented receipt event`.
+- [x] Named test: `dual clocks order by occurred time and preserve recorded time`.
+- [x] Named test: `related receipt decision change and sheet rows share activity id`.
+- [x] Named test: `activity grouping does not remove original evidence events`.
+- [x] Named test: `orphan cancellation is not attached without durable job snapshot`.
+- [x] Named test: `event cap returns explicit truncation limitation`.
+- [x] Named test: `serialized v2 page contains no forbidden fields or contact`.
+- [x] All JTE-01 / prototype regressions still pass.
+- [x] v1 fields (`event_at`, `clock_field`, `coverage`, `headline`, safe
       `data`) remain populated.
 
 ## 11. Required tests and commands

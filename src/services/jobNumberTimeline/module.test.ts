@@ -210,10 +210,25 @@ test("module company/granularity mismatch is filtered_out", async () => {
   assert.deepEqual(result.scopes, []);
 });
 
-test("module unused now stays on the interface", async () => {
+test("module without now still stamps assembled_at after reads", async () => {
+  const before = Date.now();
+  const page = await moduleFor(wordpressRows()).read({ job_no: WP_JOB });
+  const after = Date.now();
+  assert.equal(page.status, "ok");
+  if (page.status !== "ok") throw new Error("expected ok");
+  const assembled = Date.parse(page.page.assembled_at);
+  assert.equal(Number.isNaN(assembled), false);
+  assert.ok(assembled >= before - 1000 && assembled <= after + 1000);
+});
+
+test("module now sets assembled_at after reads", async () => {
+  const now = new Date("2026-08-27T18:00:00.000Z");
   const page = await moduleFor(wordpressRows()).read({
     job_no: WP_JOB,
-    now: new Date("2026-08-27T18:00:00.000Z"),
+    now,
   });
   assert.equal(page.status, "ok");
+  if (page.status !== "ok") throw new Error("expected ok");
+  assert.equal(page.page.schema_version, "job_timeline.v2");
+  assert.equal(page.page.assembled_at, now.toISOString());
 });

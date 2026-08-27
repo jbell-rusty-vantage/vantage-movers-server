@@ -45,6 +45,7 @@ export function createJobNumberTimelineModule(deps: {
           company_granularity_ids,
         },
         rows,
+        now: input.now ?? new Date(),
       });
       if (result.status === "ok") {
         return {

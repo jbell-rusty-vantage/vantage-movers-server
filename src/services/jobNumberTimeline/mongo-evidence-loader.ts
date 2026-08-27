@@ -1,9 +1,11 @@
 import type { Db, Document } from "mongodb";
 import { isObjectIdString, toObjectId } from "../../utils/objectId.js";
+import { getRingCentralCollectionName } from "../ringcentral/ringcentral-config.js";
 import type { JobNumberTimelineEvidenceLoader } from "./evidence-loader.port.js";
 import { equivalentNormalizedJobFilter } from "./normalize.js";
 import type {
   BookingRow,
+  CallLogCursorRow,
   CancellationRow,
   CaseRow,
   CrmSourceRow,
@@ -14,7 +16,9 @@ import type {
   JobTimelineRows,
   LeadMessageRow,
   LeadRow,
+  ObservationReceiptRow,
   ObservationRow,
+  ProcessedCallRow,
   RecordLinkRow,
   SheetSyncJobRow,
 } from "./rows.js";
@@ -159,6 +163,7 @@ export async function loadJobNumberTimelineRows(
     release_cases,
     booking_discrepancies,
     release_discrepancies,
+    callLogCursorDoc,
   ] = await Promise.all([
     db.collection("granot_observations").find(observationJobFilter(normalizedJobNo)).toArray(),
     db.collection("granot_record_links").find(jobFilter).toArray(),
@@ -167,12 +172,30 @@ export async function loadJobNumberTimelineRows(
     db.collection("granot_release_reconciliation_cases").find(jobFilter).toArray(),
     db.collection("granot_booking_discrepancies").find(jobFilter).toArray(),
     db.collection("granot_release_discrepancies").find(jobFilter).toArray(),
+    db.collection(getRingCentralCollectionName("callLogSyncState")).findOne({ key: "account" }),
   ]);
 
   const observationIds = observations.map((row) => row._id);
-  const decisions = observationIds.length > 0
-    ? await db.collection("synchronization_decisions").find({ observation_id: { $in: observationIds } }).toArray()
-    : [];
+  const receiptIds = observations
+    .map((row) => row.receipt_id)
+    .filter((id): id is NonNullable<typeof id> => Boolean(id));
+  const [decisions, receiptDocs] = await Promise.all([
+    observationIds.length > 0
+      ? db.collection("synchronization_decisions").find({ observation_id: { $in: observationIds } }).toArray()
+      : Promise.resolve([]),
+    receiptIds.length > 0
+      ? db.collection("granot_webhook_receipts").find({
+          _id: { $in: receiptIds.map((id) => asMongoId(asId(id))) },
+        } as Document).project({
+          captured_at: 1,
+          createdAt: 1,
+          route_event_class: 1,
+          observation_channel: 1,
+          channel_operation_kind: 1,
+          "processing.state": 1,
+        }).toArray()
+      : Promise.resolve([]),
+  ]);
 
   const mappedObservations = observations.map(mapObservation);
   const mappedDecisions = decisions.map(mapDecision);
@@ -221,12 +244,40 @@ export async function loadJobNumberTimelineRows(
         booked_lead: { $in: bookingIds.map(asMongoId) },
       }).toArray()
     : [];
-  const mappedCancellations: CancellationRow[] = cancellations.map((row) => ({
-    id: asId(row._id),
-    booked_lead: row.booked_lead ? asId(row.booked_lead) : undefined,
-    last_changed_at: row.last_changed_at ? asIso(row.last_changed_at) : undefined,
-    createdAt: row.createdAt ? asIso(row.createdAt) : undefined,
-  }));
+  const mappedCancellations: CancellationRow[] = cancellations.map((row) => {
+    const leadRef = row.lead_ref_snapshot as Document | undefined;
+    return {
+      id: asId(row._id),
+      booked_lead: row.booked_lead ? asId(row.booked_lead) : undefined,
+      last_changed_at: row.last_changed_at ? asIso(row.last_changed_at) : undefined,
+      createdAt: row.createdAt ? asIso(row.createdAt) : undefined,
+      job_no_snapshot: asString(row.job_no_snapshot) ?? null,
+      normalized_job_no_snapshot: asString(row.normalized_job_no_snapshot) ?? null,
+      lead_ref_snapshot: leadRef?.id && (leadRef.model === "FormLead" || leadRef.model === "CallLead")
+        ? { model: leadRef.model, id: asId(leadRef.id) }
+        : null,
+    };
+  });
+  const mappedReceipts: ObservationReceiptRow[] = receiptDocs.map((row) => {
+    const processing = (row.processing ?? {}) as Document;
+    return {
+      id: asId(row._id),
+      captured_at: asIso(row.captured_at),
+      createdAt: row.createdAt ? asIso(row.createdAt) : undefined,
+      route_event_class: asString(row.route_event_class),
+      observation_channel: asString(row.observation_channel),
+      processing_state: asString(processing.state),
+      channel_operation_kind: asString(row.channel_operation_kind),
+    };
+  });
+  const mappedCursor: CallLogCursorRow | null = callLogCursorDoc
+    ? {
+        lastSyncTo: callLogCursorDoc.lastSyncTo ? asIso(callLogCursorDoc.lastSyncTo) : null,
+        lastSyncFrom: callLogCursorDoc.lastSyncFrom ? asIso(callLogCursorDoc.lastSyncFrom) : null,
+        lastRunAt: callLogCursorDoc.lastRunAt ? asIso(callLogCursorDoc.lastRunAt) : null,
+        lastRunStatus: asString(callLogCursorDoc.lastRunStatus) ?? null,
+      }
+    : null;
 
   const leadRef = mappedLinks.find((row) => row.state === "active" && row.lead_ref)?.lead_ref
     ?? (mappedBookings.find((row) => row.lead_ref && row.lead_model)
@@ -243,6 +294,7 @@ export async function loadJobNumberTimelineRows(
   let leads: LeadRow[] = [];
   let entity_changes: EntityChangeRow[] = [];
   let lead_messages: LeadMessageRow[] = [];
+  let mappedProcessedCalls: ProcessedCallRow[] = [];
   if (leadRef && (leadRef.model === "FormLead" || leadRef.model === "CallLead")) {
     const collection = leadRef.model === "FormLead" ? "form_leads" : "call_leads";
     const leadDoc = await db.collection(collection).findOne({
@@ -262,10 +314,30 @@ export async function loadJobNumberTimelineRows(
         source_granularity_id: granularityId,
         source_company_id: leadDoc.source_company_id ? asId(leadDoc.source_company_id) : undefined,
       }];
-      const changes = await db.collection("entity_changes").find({
-        "entity.model": leadRef.model,
-        "entity.id": asId(leadDoc._id),
-      }).toArray();
+      const messageFilter: Document = leadRef.model === "FormLead"
+        ? { $or: [{ "lead_ref.id": leadDoc._id }, { form_lead: leadDoc._id }] }
+        : { "lead_ref.id": leadDoc._id };
+      const processedCallQuery = leadRef.model === "CallLead"
+        ? db.collection(getRingCentralCollectionName("processedCalls")).find({
+            callLeadId: asId(leadDoc._id),
+          }).project({
+            status: 1,
+            qualificationReason: 1,
+            firstProcessedAt: 1,
+            updatedAt: 1,
+            ingestionSource: 1,
+            duplicate: 1,
+            callLeadId: 1,
+          }).toArray()
+        : Promise.resolve([]);
+      const [changes, messages, processedCallDocs] = await Promise.all([
+        db.collection("entity_changes").find({
+          "entity.model": leadRef.model,
+          "entity.id": asId(leadDoc._id),
+        }).toArray(),
+        db.collection("lead_messages").find(messageFilter).toArray(),
+        processedCallQuery,
+      ]);
       entity_changes = changes.map((row) => ({
         id: asId(row._id),
         entity_model: String((row.entity as Document | undefined)?.model ?? ""),
@@ -274,10 +346,16 @@ export async function loadJobNumberTimelineRows(
         applied_at: asIso(row.applied_at),
         changed_paths: Array.isArray(row.changed_paths) ? row.changed_paths.map(String) : [],
       }));
-      const messageFilter: Document = leadRef.model === "FormLead"
-        ? { $or: [{ "lead_ref.id": leadDoc._id }, { form_lead: leadDoc._id }] }
-        : { "lead_ref.id": leadDoc._id };
-      const messages = await db.collection("lead_messages").find(messageFilter).toArray();
+      mappedProcessedCalls = processedCallDocs.map((row) => ({
+        id: asId(row._id),
+        callLeadId: String(row.callLeadId ?? ""),
+        status: String(row.status ?? ""),
+        qualificationReason: asString(row.qualificationReason) ?? null,
+        firstProcessedAt: asIso(row.firstProcessedAt),
+        updatedAt: row.updatedAt ? asIso(row.updatedAt) : undefined,
+        ingestionSource: asString(row.ingestionSource),
+        duplicate: row.duplicate === true,
+      }));
       lead_messages = messages.map((row) => ({
         id: asId(row._id),
         lead_id: row.lead_ref && typeof row.lead_ref === "object"
@@ -404,6 +482,9 @@ export async function loadJobNumberTimelineRows(
     sheet_sync_jobs: mappedSheetJobs,
     granot_crm_sources: mappedSources,
     source_granularities: mappedGranularities,
+    observation_receipts: mappedReceipts,
+    processed_calls: mappedProcessedCalls,
+    call_log_cursor: mappedCursor,
   };
 }
 

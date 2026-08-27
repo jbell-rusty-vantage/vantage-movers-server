@@ -22,14 +22,14 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:docs-keeper
-  at: 2026-08-27T19:00:00Z
+  at: 2026-08-27T19:30:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/jobNumberTimeline/` (`createJobNumberTimelineModule`)  
 **CLI / proof adapter:** [`scripts/prototypes/job-number-timeline/`](../../../scripts/prototypes/job-number-timeline/README.md)  
-**Enhancement workspace:** [`../../job-number-timeline/README.md`](../../job-number-timeline/README.md) — JTE-01 closed the extract. v2 fields are not shipped.  
-**Domain terms used:** [Job Number](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md)
+**Enhancement workspace:** [`../../job-number-timeline/README.md`](../../job-number-timeline/README.md) — JTE-01 extract and JTE-02 v2 projection shipped. JTE-03 owns outcome, attention, and limitation evaluators.  
+**Domain terms used:** [Job Number](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Granot Observation Receipt](../../../../CONTEXT.md)
 
 # Job Number timeline
 
@@ -38,6 +38,8 @@ generated:
 This is not `GET /api/v1/admin/granot-lifecycle/jobs/:normalized_job_no`. That forensic page is [`projections.md`](../granot-lifecycle/projections.md) (`GranotTimelineEntry`). This path does not call `projections.ts`.
 
 Runtime code lives in `src/services/jobNumberTimeline/`. Callers use `createJobNumberTimelineModule({ loader }).read(...)`. The HTTP route and the CLI `render` / `discover` modes call that same interface. Tests use a memory loader; production uses a Mongo loader. No file under `src/` imports `scripts/prototypes/job-number-timeline`.
+
+Internal v2 files: `projector.ts`, `evidence.ts`, `clocks.ts`. Golden pages: `golden-pages.ts`.
 
 ## HTTP
 
@@ -59,22 +61,46 @@ The HTTP read uses the server's connected Mongo (`connectMongo` / `TEST_MODE`). 
 
 `createJobNumberTimelineModule({ loader }).read({ job_no, source_granularity_id?, source_company_id?, now? })`.
 
-Callers do not know collection names, walk-back order, sort priorities, or redaction rules. `now` is accepted and unused in v1.
+The seam is unchanged from JTE-01. Callers do not know collection names, walk-back order, sort priorities, or redaction rules. The module passes `input.now ?? new Date()` into assemble as `assembled_at` and `freshness.mongo_read_at`.
 
-`assembleJobNumberTimeline` remains a pure function over injected rows. The module normalizes the typed Job Number, loads company granularities when a company filter is present, loads rows through the loader, assembles, and redacts.
+`assembleJobNumberTimeline` remains a pure function over injected rows. It builds the v1 chain, then `projectEnhancedPage` wraps an `ok` page. The module normalizes the typed Job Number, loads company granularities when a company filter is present, loads rows through the loader, assembles, and redacts.
 
 `JobTimelineAssembleResult`:
 
 | `status` | When |
 | --- | --- |
-| `ok` | First hop found a job-scoped row and optional source filters matched; `page` is `JobTimelinePage` |
+| `ok` | First hop found a job-scoped row and optional source filters matched; `page` is `EnhancedJobTimelinePage` with `schema_version: "job_timeline.v2"` |
 | `invalid_job_number` | Typed value does not normalize |
 | `not_found` | No observation, record link, booking, booking/release case, or discrepancy on the first hop |
 | `filtered_out` | Job exists, but no resolved scope matches the requested granularity/company |
 
-`page.events` kinds (type priority 10–110): `lead_created`, `lead_message`, `job_number_acquired`, `lead_updated`, `granot_observation`, `synchronization_decision`, `booking_intake`, `cancellation_intake`, `official_booking`, `official_cancellation`, `sheet_sync`.
+Every v1 page and event field remains (`event_at`, `clock_field`, `coverage`, `headline`, safe `data`).
 
-v2 fields (`schema_version`, stages, `source_received`, attention, dual clocks) are not shipped.
+`page.events` kinds (type priority 5–110): `source_received` (5), `lead_created` (10), `lead_message` (20), `job_number_acquired` (30), `lead_updated` (40), `granot_observation` (50), `synchronization_decision` (60), `booking_intake` (70), `cancellation_intake` (80), `official_booking` (90), `official_cancellation` (100), `sheet_sync` (110).
+
+`source_received` is emitted only when a durable ingress fact was loaded:
+
+- Granot: observation has a `receipt_id` and that [Granot Observation Receipt](../../../../CONTEXT.md) is in the loaded rows.
+- RingCentral: resolved [Call Lead](../../../../CONTEXT.md) plus a processed-call ledger row whose `callLeadId` matches and whose status is `lead_created`, `lead_created_duplicate`, `lead_adopted`, or `lead_adopted_duplicate`.
+- WordPress: no invented receipt event. `lead_created` stays the origin row.
+
+Each event has dual clocks (`time.occurred_at` / `time.recorded_at`). Default order is still `occurred_at` ASC, then type priority, then id. Events also carry `evidence_level`, `stage`, `correlation`, and `causality.activity_id`. `activities` group related rows; grouping does not delete events. Official Booking and official Cancellation keep independent activity ids.
+
+Cap is 250 (`JOB_TIMELINE_EVENT_CAP`). Overflow is a named `TIMELINE_TRUNCATED` limitation with `counts_by_stage` of the omitted events. Never a silent drop.
+
+### JTE-03 stubs (evaluators not shipped)
+
+`current_outcome` is `"unknown"`. `stage_assessments` and `attention` are empty. `summary.headline` is empty. `limitations` is empty except `TIMELINE_TRUNCATED`. `freshness.ringcentral_covered_through` may be filled from the RingCentral call-log cursor; `ringcentral_cursor_lag_seconds` is always `null`. JTE-03 owns the outcome, stage-assessment, attention, and limitation evaluators.
+
+### Loader
+
+Mongo loader reads observations, latest decisions, record links, bookings, cancellations, booking/release cases, discrepancies, leads, entity changes, lead messages, sheet sync jobs, Granot CRM sources, and granularities. It also reads:
+
+- `granot_webhook_receipts` (safe projection: `captured_at`, `createdAt`, `route_event_class`, `observation_channel`, `channel_operation_kind`, `processing.state`)
+- processed-call ledger via `getRingCentralCollectionName("processedCalls")` (`ringcentral_processed_calls`: `status`, `qualificationReason`, `firstProcessedAt`, `updatedAt`, `ingestionSource`, `duplicate`, `callLeadId`)
+- call-log cursor via `getRingCentralCollectionName("callLogSyncState")` (`ringcentral_call_log_sync_state`, `{ key: "account" }`)
+
+Safe projections only: no payload, headers, phone, transcript, recording, `last_error`, or `spreadsheet_id`.
 
 ## CLI
 

@@ -30,6 +30,13 @@ and it names every unsupported edge.
 
 Reverify after JTE-02.
 
+- JTE-02 2026-08-27: `ok` pages are `job_timeline.v2`. Event fields,
+  `source_received`, dual clocks, correlation, and activities are real.
+  `current_outcome` is the stub `"unknown"`; `stage_assessments` /
+  `attention` are empty; `limitations` is empty except
+  `TIMELINE_TRUNCATED`. `freshness.ringcentral_covered_through` may be
+  filled; `ringcentral_cursor_lag_seconds` is `null`. Golden pages live
+  in `src/services/jobNumberTimeline/golden-pages.ts`.
 - v1 `page.coverage` still uses present/absent chips. Keep those fields
   for compatibility. Owner-facing meaning moves to `stage_assessments`.
 - Attention and limitation catalogs are specification §8. Do not invent
