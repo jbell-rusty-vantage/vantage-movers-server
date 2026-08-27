@@ -4,6 +4,12 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- This file’s persisted command name is `createReferralBooking`. `bookings/referralBooking.service.ts` already exports public `createReferralBooking` / `createReferralBookingInTransaction` reached as `createExistingReferralBooking`. Do not route Granot mint through the public write so “one Referral.” See `recommendations/granot-lifecycle-referral-booking.md`.
+- Admin mint finalizes the Master Booked sheet after commit. Registry `createReferralBookingCanonical` does not. Do not move `finalizeSheetSync` inside `applyReferralBooking` so “both adapters complete.” See `recommendations/granot-lifecycle-referral-booking.md`.
+- Knowledge `booking-reconciliation.md` Primary code lists this file beside `bookingReconciliation.ts`. This file does not open or refresh a case. Do not move it into the persist file so the Primary-code line “wins.” See `recommendations/granot-lifecycle-referral-booking.md`.
+- Referral stamps `is_leadless_booking: false` with no `lead_ref`. Leadless is a different origin. Do not stamp leadless true so “no Lead means Leadless.” See `recommendations/granot-lifecycle-referral-booking.md`.
+- `BookingOwnerCommandResult` still lives on `bookingConfirmation.ts`. This file remaps anything that is not `already_satisfied` to `referral_booking_created`. Do not start returning `booking_created` from mint so “the union is honest.” See `recommendations/granot-lifecycle-referral-booking.md`.
+- This checkout’s `CONTEXT.md` does not define Referral Booking / Granot Booking Reconciliation Case (knowledge booking-reconciliation frontmatter still links the parent glossary). Do not invent a glossary copy. See `recommendations/granot-lifecycle-referral-booking.md`.
 - Knowledge lists this file as primary code on both `booking-reconciliation.md` and `projections.md`. This file neither persists a case nor builds list/detail DTOs. Do not move it into either sibling so a Primary-code line “wins.” See `recommendations/granot-lifecycle-booking-priority-pairing.md`.
 - `later_priority_5` is computed here; persist drops it; list recomputes later itself. Do not store later on the case so “one snapshot is complete.” See `recommendations/granot-lifecycle-booking-priority-pairing.md`.
 - `booked_without_priority_5` still names a preceding Priority 5 when one exists. Do not clear the ref so “without means no pair.” See `recommendations/granot-lifecycle-booking-priority-pairing.md`.
