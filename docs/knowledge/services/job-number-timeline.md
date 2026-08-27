@@ -22,13 +22,13 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:docs-keeper
-  at: 2026-08-27T19:50:00Z
+  at: 2026-08-27T20:46:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/jobNumberTimeline/` (`createJobNumberTimelineModule`)  
 **CLI / proof adapter:** [`scripts/prototypes/job-number-timeline/`](../../../scripts/prototypes/job-number-timeline/README.md)  
-**Enhancement workspace:** [`../../job-number-timeline/README.md`](../../job-number-timeline/README.md) — JTE-01 extract, JTE-02 v2 projection, and JTE-03 evaluators shipped. JTE-04 (Admin UI) has not.  
+**Enhancement workspace:** [`../../job-number-timeline/README.md`](../../job-number-timeline/README.md) — JTE-01 extract, JTE-02 v2 projection, JTE-03 evaluators, and JTE-04 Admin UI shipped. JTE-05 (live proof, deep links) has not.  
 **Domain terms used:** [Job Number](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Granot Observation Receipt](../../../../CONTEXT.md)
 
 # Job Number timeline
@@ -92,7 +92,7 @@ Cap is 250 (`JOB_TIMELINE_EVENT_CAP`). Overflow is a named `TIMELINE_TRUNCATED` 
 
 The module evaluates page-level v2 fields after events and activities are finalized. `projector.ts` calls the evaluators. The external seam is unchanged: `createJobNumberTimelineModule({ loader }).read`. The HTTP route still only authorize → validate → `module.read` → respond. Tests call that same interface.
 
-JTE-03 evaluators shipped. JTE-04 (Admin UI) has not.
+JTE-03 evaluators shipped. JTE-04 Admin UI shipped — it displays these arrays; it does not recompute them.
 
 `outcome.ts` owns current outcome and stage assessments:
 
@@ -115,7 +115,7 @@ WordPress-born pages emit `WORDPRESS_RECEIPT_UNAVAILABLE` (no invented receipt e
 
 Sheet `synced` means outbox completion, not Google equality. Delivery stage is `unverifiable` even when every outbox job is synced. Move completion is a limitation, never a stage or event.
 
-Golden pages for JTE-04 fixtures live in `golden-pages.ts` (`GOLDEN_EXPECTATIONS`, `ALWAYS_LIMITATION_CODES`, plus extra builders for policy skip, resolved-without-fact, contradictory chronology, and open cancellation intake). Admin must display those arrays; it must not recompute them.
+Golden pages for Admin fixtures live in `golden-pages.ts` (`GOLDEN_EXPECTATIONS`, `ALWAYS_LIMITATION_CODES`, plus extra builders for policy skip, resolved-without-fact, contradictory chronology, and open cancellation intake). Admin displays those arrays; it must not recompute them.
 
 ### Residuals
 
@@ -152,4 +152,4 @@ A company/granularity mismatch prints `filtered_out` and exits 0 (JTE-01 residua
 
 - Prototype README: [`scripts/prototypes/job-number-timeline/README.md`](../../../scripts/prototypes/job-number-timeline/README.md)
 - Forensic Granot job/lead reads: [`projections.md`](../granot-lifecycle/projections.md)
-- Admin tab `/job-timeline` and `lib/api/jobNumberTimeline.ts` live in `vantage-admin` (Owner-only page and proxy path). JTE-04 (enhanced Owner UI) has not shipped.
+- Admin tab `/job-timeline` and `lib/api/jobNumberTimeline.ts` live in `vantage-admin` (Owner-only page and proxy path). JTE-04 shipped: Admin consumes the server v2 page and copies DTO types additively. Admin types are never the semantic authority. Live proof and deep links are JTE-05.

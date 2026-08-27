@@ -13,8 +13,8 @@ Pack created 2026-08-27. Protocol: [`AGENT-PROTOCOL.md`](AGENT-PROTOCOL.md).
 | [JTE-01](issues/JTE-01.md) | Extract deep runtime module; route and CLI use it | current timeline | `complete` | agent | 2026-08-27 | 2026-08-27 | [reports/JTE-01-completion.md](reports/JTE-01-completion.md) |
 | [JTE-02](issues/JTE-02.md) | v2 types, dual clocks, evidence/correlation/activity | JTE-01 | `complete` | agent | 2026-08-27 | 2026-08-27 | [reports/JTE-02-completion.md](reports/JTE-02-completion.md) |
 | [JTE-03](issues/JTE-03.md) | Outcome, stage assessment, attention, limitations, freshness | JTE-02 | `complete` | agent | 2026-08-27 | 2026-08-27 | [reports/JTE-03-completion.md](reports/JTE-03-completion.md) |
-| [JTE-04](issues/JTE-04.md) | Enhanced Owner UI and evidence expansion | JTE-03 | `ready` | — | — | — | — |
-| [JTE-05](issues/JTE-05.md) | Live proof, security, accessibility, performance, deep links | JTE-04 | `blocked` | — | — | — | — |
+| [JTE-04](issues/JTE-04.md) | Enhanced Owner UI and evidence expansion | JTE-03 | `complete` | agent | 2026-08-27 | 2026-08-27 | [reports/JTE-04-completion.md](reports/JTE-04-completion.md) |
+| [JTE-05](issues/JTE-05.md) | Live proof, security, accessibility, performance, deep links | JTE-04 | `ready` | — | — | — | — |
 | [JTE-06](issues/JTE-06.md) | Cancellation correlation snapshots and report-first backfill | JTE-02; write approval | `deferred` | — | — | — | — |
 | [JTE-07](issues/JTE-07.md) | WordPress durable receipt capture | source-assurance approval | `deferred` | — | — | — | — |
 
@@ -39,7 +39,7 @@ by the issue that closes it, with the evidence named.
 | §1.3, §10, §15 Phase 0 | Production module; no runtime import of the prototype | JTE-01 | ☑ | `rg` empty under `src/`; `createJobNumberTimelineModule`; report JTE-01 |
 | §4.1 `source_received`, §5, §6 event fields, §7 | v2 events, dual clocks, correlation, activities | JTE-02 | ☑ | `source_received` priority 5; named tests in `v2.test.ts`; report JTE-02 |
 | §4.2–4.3, §6 page fields, §8 | Outcome, stages, attention, limitations, freshness | JTE-03 | ☑ | `outcome.ts` / `attention.ts`; named tests in `evaluators.test.ts`; report JTE-03 |
-| §9 | Enhanced Owner UI | JTE-04 | ☐ | |
+| §9 | Enhanced Owner UI | JTE-04 | ☑ | Stage strip / attention / clustered spine; named v1 fixture test; report JTE-04 |
 | §12, §13.3, §15 Phase 4 | Proof, security, a11y, performance, deep links | JTE-05 | ☐ | |
 | §11.1 | Cancellation snapshots | JTE-06 | ☐ | deferred |
 | §11.2 | WordPress receipt | JTE-07 | ☐ | deferred |
@@ -59,12 +59,12 @@ early with evidence.
 | 5 | Stage assessments distinguish not started, not applicable, attention, unverifiable | JTE-03 | ☑ | Policy skip `not_applicable`; booked cancellation `not_started`; delivery `unverifiable` |
 | 6 | WordPress receipt and Google destination limitations are explicit | JTE-03 | ☑ | `WORDPRESS_RECEIPT_UNAVAILABLE`; `GOOGLE_DESTINATION_UNVERIFIED` |
 | 7 | RingCentral confidence is bounded by its displayed provider cursor | JTE-03 | ☑ | `ringcentral_covered_through` + `ringcentral_cursor_lag_seconds` + `RINGCENTRAL_CURSOR_BOUNDED` |
-| 8 | Sheet `synced` is never described as destination equality | JTE-03, JTE-04 | ☐ | JTE-03 emits `GOOGLE_DESTINATION_UNVERIFIED` even when outbox is `synced`. JTE-04 still owns Owner copy. |
+| 8 | Sheet `synced` is never described as destination equality | JTE-03, JTE-04 | ☑ | JTE-03 emits `GOOGLE_DESTINATION_UNVERIFIED`. JTE-04 quotes that label in Proof boundaries; never “Sheet verified”. |
 | 9 | No move-completion event appears without a new official fact | JTE-02 | ☑ | No move-completion kind added |
 | 10 | No contact, content, provider payload, Sheet ID, or raw error leaks | JTE-01, JTE-05 | ☑ | JTE-01 masking + module redaction tests. JTE-05 still owns live proof. |
-| 11 | The server is the only evaluator of outcome, attention, and limitations | JTE-03, JTE-04 | ☐ | JTE-03 shipped one evaluator per §8 code. JTE-04 must only display the arrays. |
+| 11 | The server is the only evaluator of outcome, attention, and limitations | JTE-03, JTE-04 | ☑ | JTE-03 evaluators. JTE-04 renders `current_outcome`, `stage_assessments`, `attention`, `limitations` as given. |
 | 12 | Runtime code no longer imports the prototype folder | JTE-01 | ☑ | `rg "scripts/prototypes/job-number-timeline" src` empty |
-| 13 | Existing timeline tests and the new named tests pass | JTE-01–05 | ☐ | JTE-03: 63 focused + 6 prototype pass. JTE-04/05 still add tests. |
+| 13 | Existing timeline tests and the new named tests pass | JTE-01–05 | ☐ | JTE-04: `v1 fixture remains renderable during client migration` + 321 Admin tests. JTE-05 still adds live proof. |
 | 14 | Production proof is read-only, masked, and count-stable | JTE-05 | ☐ |
 | 15 | The Timeline sends no notification and performs no reconciliation write | all | ☐ |
 | 16 | Daily Assurance can link to the page without importing its query logic | JTE-05 | ☐ |
@@ -116,4 +116,13 @@ Append-only. Newest last. One entry per pickup, block, and close.
 2026-08-27 · JTE-03 closed · complete · evaluators fill outcome, stages,
              attention, limitations, freshness; JTE-04 is ready. Admin UI
              is not shipped. See reports/JTE-03-completion.md.
+2026-08-27 · JTE-04 picked up · status active · repos: vantage-admin
+             (implementation) + vantage-main-server (docs ledger + JTE-03
+             goldens/types read-only) · branch: job-timeline-enhancement
+             (created from clean vantage-admin main; server branch already
+             existed). No extra feature branches. Not pushed.
+2026-08-27 · JTE-04 closed · complete · Admin renders server v2 hierarchy
+             (stage strip, attention, clustered spine, proof boundaries);
+             v1 fixtures remain renderable. JTE-05 is ready. Live proof
+             and deep links were not done. See reports/JTE-04-completion.md.
 ```

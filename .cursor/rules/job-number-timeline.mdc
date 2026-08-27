@@ -20,8 +20,9 @@ Start there → `AGENT-PROTOCOL.md` → the `ready` issue in `PROGRESS.md`.
 Specification wins on additive behavior; the prototype spec wins on event
 truth, correlation, and masking.
 
-JTE-01 extract, JTE-02 v2 projection, and JTE-03 evaluators shipped.
-JTE-04 (Admin UI) has not. Do not start JTE-04 docs as if implemented.
+JTE-01 extract, JTE-02 v2 projection, JTE-03 evaluators, and JTE-04
+Admin UI shipped. JTE-05 (live proof, deep links) has not. Admin
+displays server arrays; it does not evaluate.
 
 ## Seams
 
@@ -52,7 +53,8 @@ JTE-04 (Admin UI) has not. Do not start JTE-04 docs as if implemented.
 - Never leak contact, SMS body, transcript, recording, provider payload,
   Sheet ID, Sheet row, or raw error body.
 - Admin must not recompute outcome, attention, or limitations. Golden
-  pages in `golden-pages.ts` are JTE-04 fixtures, not a shipped UI.
+  pages in `golden-pages.ts` remain test fixtures. JTE-04 Admin UI
+  displays those arrays; it does not evaluate them.
 - WordPress Lead creation is not a source receipt
   (`WORDPRESS_RECEIPT_UNAVAILABLE`). Sheet `synced` is not Google
   equality. Delivery stays `unverifiable` even when every outbox job is

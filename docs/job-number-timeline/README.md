@@ -78,8 +78,8 @@ Live values live in [`PROGRESS.md`](PROGRESS.md).
 | [JTE-01](issues/JTE-01.md) | Extract deep runtime module; route and CLI use it | current timeline | complete | complete |
 | [JTE-02](issues/JTE-02.md) | v2 types, dual clocks, evidence/correlation/activity, source receipt | JTE-01 | complete | complete |
 | [JTE-03](issues/JTE-03.md) | Outcome, stage assessment, attention, limitations, freshness | JTE-02 | complete | complete |
-| [JTE-04](issues/JTE-04.md) | Enhanced Owner UI and evidence expansion | JTE-03 | ready | complete |
-| [JTE-05](issues/JTE-05.md) | Live proof, security, accessibility, performance, deep links | JTE-04 | blocked | complete |
+| [JTE-04](issues/JTE-04.md) | Enhanced Owner UI and evidence expansion | JTE-03 | complete | complete |
+| [JTE-05](issues/JTE-05.md) | Live proof, security, accessibility, performance, deep links | JTE-04 | ready | complete |
 | [JTE-06](issues/JTE-06.md) | Cancellation correlation snapshots and report-first backfill | JTE-02; separate write approval | deferred | complete |
 | [JTE-07](issues/JTE-07.md) | WordPress durable receipt capture | separate source-assurance approval | deferred | complete |
 
@@ -89,11 +89,11 @@ Live values live in [`PROGRESS.md`](PROGRESS.md).
   `src/services/jobNumberTimeline/`.
 - **JTE-02 is complete.** `ok` pages are `job_timeline.v2`.
 - **JTE-03 is complete.** The module evaluates outcome, stages, attention,
-  limitations, and freshness. JTE-04 is the only startable issue. Do not
-  describe Admin UI as shipped.
-- **JTE-04 is Admin-only.** Consume the exported, tested golden pages.
-  Admin types are never the semantic authority. Do not recompute codes.
+  limitations, and freshness.
+- **JTE-04 is complete.** Admin renders the server v2 hierarchy. Do not
+  describe live proof or deep links as shipped.
 - **JTE-05 does not invent new semantics.** It certifies and links.
+  It is the only startable issue.
 - **JTE-06 and JTE-07 stay deferred** until the Owner authorizes a write-path
   change. The honest timeline ships without them.
 
@@ -184,9 +184,13 @@ day. Each issue's §4 repeats the subset it depends on.
 - CLI: `pnpm prototype:job-number-timeline` modes `render` and `discover`
   only. Tests: `pnpm test:prototype:job-number-timeline`. Golden pages:
   `src/services/jobNumberTimeline/golden-pages.ts`.
-- Admin `/job-timeline` exists and still renders v1 `JobTimelinePage` via
-  `lib/api/jobNumberTimeline.ts`. Coverage chips live in
-  `coverage-chips.tsx`. Headlines are locked. There is no catalog.
+- Admin `/job-timeline?job=` renders the server-evaluated v2 page via
+  additive types on `lib/api/jobNumberTimeline.ts` (identity +
+  `summary.headline`, stage strip, attention if present, oldest-first
+  clustered spine, collapsed Proof boundaries). Density `?view=` hides
+  rows only. v1 fixtures without `schema_version` still use
+  `coverage-chips.tsx`. Headlines are locked. There is no catalog. Live
+  proof and deep links are JTE-05.
 
 ## Layout
 
