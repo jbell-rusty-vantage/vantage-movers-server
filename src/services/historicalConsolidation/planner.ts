@@ -1,4 +1,5 @@
 import { normalizeJobNo } from "../bookings/bookingIdentity";
+import { cancellationCorrelationSnapshotsFromBooking } from "../cancellations/cancellationCorrelationSnapshots";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import { buildHistoricalManifest } from "./manifest";
 import { classifyHistoricalLeads, FORM_DUPLICATE_CUTOFF, type CanonicalLead } from "./classification";
@@ -462,7 +463,8 @@ function planCancellations(rows: Row[], bookings: Map<string, BookingPlan>, prod
     const existing = documents(production, "cancelled_leads").find((entry) => objectIdField(entry, "booked_lead") === booking.target_id && dateString(entry.cancel_date) === cancelDate.value && normalizeExact(String(entry.agent ?? "")) === normalizeExact(agent));
     const targetId = existing ? objectId(existing) : deterministicObjectId("historical-cancellation", identity);
     const bookingDoc = booking.document;
-    const document: Record<string, unknown> = { timestamp: { $date: timestamp.value }, booked_lead: { $oid: booking.target_id }, customer: bookingDoc.customer, lead_ref: bookingDoc.lead_ref, lead_model: bookingDoc.lead_model, reason: normalizeDisplay(String(row.values.Status ?? "")) || undefined, notes: normalizeDisplay(String(row.values.Status ?? "")) || undefined, cancel_date: { $date: cancelDate.value }, agent, book_date: bookingDoc.book_date, job_no: String(row.values["Job Number:"] ?? "").trim(), customer_name: normalizeDisplay(String(row.values["Customer Name"] ?? "")), refund_amount: refund.value / 100, merchant: bookingDoc.merchant ?? normalizeDisplay(String(row.values.Merchant ?? "")), source: bookingDoc.source ?? normalizeDisplay(String(row.values["Lead Source"] ?? "")), sheet_sync: [], createdAt: { $date: timestamp.value }, updatedAt: { $date: input.planning_timestamp } };
+    const snapshots = cancellationCorrelationSnapshotsFromPlannerBooking(bookingDoc);
+    const document: Record<string, unknown> = { timestamp: { $date: timestamp.value }, booked_lead: { $oid: booking.target_id }, customer: bookingDoc.customer, lead_ref: bookingDoc.lead_ref, lead_model: bookingDoc.lead_model, reason: normalizeDisplay(String(row.values.Status ?? "")) || undefined, notes: normalizeDisplay(String(row.values.Status ?? "")) || undefined, cancel_date: { $date: cancelDate.value }, agent, book_date: bookingDoc.book_date, job_no: String(row.values["Job Number:"] ?? "").trim(), customer_name: normalizeDisplay(String(row.values["Customer Name"] ?? "")), refund_amount: refund.value / 100, merchant: bookingDoc.merchant ?? normalizeDisplay(String(row.values.Merchant ?? "")), source: bookingDoc.source ?? normalizeDisplay(String(row.values["Lead Source"] ?? "")), sheet_sync: [], job_no_snapshot: snapshots.job_no_snapshot, normalized_job_no_snapshot: snapshots.normalized_job_no_snapshot, lead_ref_snapshot: snapshots.lead_ref_snapshot, booking_created_at_snapshot: snapshots.booking_created_at_snapshot, createdAt: { $date: timestamp.value }, updatedAt: { $date: input.planning_timestamp } };
     if (existing) planSafeUpdate("CancelledLead", "cancelled_leads", targetId, `cancellation:${identity}`, document, existing, [row.provenance], 50, conflicts, operations, new Set(["timestamp", "cancel_date"]));
     else operations.push({ migration_key: `cancellation:${identity}`, order: 50, action: "insert", model: "CancelledLead", collection: "cancelled_leads", target_id: targetId, provenance: [row.provenance], document, precondition: { _id: { $exists: false } } });
     planCancellationRelationships(booking, targetId, production, input.planning_timestamp, [row.provenance], conflicts, operations);
@@ -675,6 +677,36 @@ function documents(database: HistoricalSnapshot["mongo"][number], collection: st
 function objectId(record: Record<string, unknown>, field = "_id"): string { const value = record[field] as { $oid?: string } | string | undefined; const id = typeof value === "string" ? value : value?.$oid; if (!id) throw new Error(`Expected ObjectId in ${field}`); return id; }
 function objectIdField(record: Record<string, unknown>, field: string): string | undefined { try { return objectId(record, field); } catch { return undefined; } }
 function withoutId(record: Record<string, unknown>): Record<string, unknown> { const { _id, ...rest } = record; return rest; }
+function plannerOid(value: unknown): string | undefined {
+  if (typeof value === "string" && value) return value;
+  if (value && typeof value === "object" && typeof (value as { $oid?: unknown }).$oid === "string") {
+    return (value as { $oid: string }).$oid;
+  }
+  return undefined;
+}
+
+function cancellationCorrelationSnapshotsFromPlannerBooking(bookingDoc: Record<string, unknown>) {
+  const snapshots = cancellationCorrelationSnapshotsFromBooking({
+    job_no: bookingDoc.job_no,
+    normalized_job_no: bookingDoc.normalized_job_no,
+    lead_ref: plannerOid(bookingDoc.lead_ref) ?? bookingDoc.lead_ref,
+    lead_model: bookingDoc.lead_model,
+    createdAt: dateString(bookingDoc.createdAt)
+      ? new Date(dateString(bookingDoc.createdAt)!)
+      : bookingDoc.createdAt,
+  });
+  return {
+    job_no_snapshot: snapshots.job_no_snapshot,
+    normalized_job_no_snapshot: snapshots.normalized_job_no_snapshot,
+    lead_ref_snapshot: snapshots.lead_ref_snapshot
+      ? { model: snapshots.lead_ref_snapshot.model, id: { $oid: snapshots.lead_ref_snapshot.id } }
+      : null,
+    booking_created_at_snapshot: snapshots.booking_created_at_snapshot
+      ? { $date: snapshots.booking_created_at_snapshot.toISOString() }
+      : null,
+  };
+}
+
 function dateString(value: unknown): string | undefined { if (typeof value === "string") return value; if (value && typeof value === "object" && typeof (value as { $date?: unknown }).$date === "string") return (value as { $date: string }).$date; return undefined; }
 function toClassifierLead(lead: LeadCandidate): CanonicalLead { return { id: lead.id, kind: lead.kind, timestamp: lead.timestamp, source_company_id: lead.source_company_id, source_granularity_id: lead.source_granularity_id, normalized_phone: lead.normalized_phone, normalized_email: lead.normalized_email, duplicate: lead.production_id ? Boolean(lead.document.duplicate) : false, preserve_duplicate: lead.preserve_duplicate }; }
 function compareLead(a: LeadCandidate, b: LeadCandidate) { return a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id); }

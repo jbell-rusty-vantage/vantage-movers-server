@@ -29,7 +29,7 @@ generated:
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/jobNumberTimeline/` (`createJobNumberTimelineModule`)  
 **CLI / proof adapter:** [`scripts/prototypes/job-number-timeline/`](../../../scripts/prototypes/job-number-timeline/README.md)  
-**Enhancement workspace:** [`../../job-number-timeline/README.md`](../../job-number-timeline/README.md) — JTE-01 extract, JTE-02 v2 projection, JTE-03 evaluators, JTE-04 Admin UI, and JTE-05 (live proof, deep links) shipped. JTE-06 and JTE-07 stay deferred.  
+**Enhancement workspace:** [`../../job-number-timeline/README.md`](../../job-number-timeline/README.md) — JTE-01 extract, JTE-02 v2 projection, JTE-03 evaluators, JTE-04 Admin UI, JTE-05 (live proof, deep links), and JTE-06 (cancellation correlation snapshots) shipped. JTE-07 stays deferred.  
 **Domain terms used:** [Job Number](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Granot Observation Receipt](../../../../CONTEXT.md)
 
 # Job Number timeline
@@ -121,7 +121,8 @@ Golden pages for Admin fixtures live in `golden-pages.ts` (`GOLDEN_EXPECTATIONS`
 ### Residuals
 
 - JTE-01: CLI company/granularity mismatch prints `filtered_out` (exit 0).
-- JTE-02: the module stamps `assembled_at` with `input.now ?? new Date()`. RingCentral `source_received` is qualified ledger statuses only (`lead_created`, `lead_created_duplicate`, `lead_adopted`, `lead_adopted_duplicate`). Mongo does not query orphan Cancellations by snapshot (no field, no index — JTE-06).
+- JTE-02: the module stamps `assembled_at` with `input.now ?? new Date()`. RingCentral `source_received` is qualified ledger statuses only (`lead_created`, `lead_created_duplicate`, `lead_adopted`, `lead_adopted_duplicate`).
+- JTE-07 stays deferred (WordPress receipts / source-assurance). Do not start JTE-07 without recorded source-assurance approval. `/daily` does not exist.
 
 ### Loader
 
@@ -133,7 +134,7 @@ Mongo loader reads observations, latest decisions, record links, bookings, cance
 
 Safe projections only: no payload, headers, phone, transcript, recording, `last_error`, or `spreadsheet_id`.
 
-Cancellations load by Booking id (`booked_lead` in the loaded bookings). Mongo does not query orphan Cancellations by snapshot (no field, no index — JTE-06).
+Cancellations load by Booking id (`booked_lead` in the loaded bookings), merged with an indexed hop on `cancelled_leads.normalized_job_no_snapshot` via `equivalentNormalizedJobSnapshotFilter` when that snapshot is present. No collection scan. Assemble still refuses orphans without a durable job snapshot (named tests `orphan cancellation is not attached without durable job snapshot` and `cancellation snapshot restores exact job correlation`).
 
 ## CLI
 
@@ -154,4 +155,4 @@ A company/granularity mismatch prints `filtered_out` and exits 0 (JTE-01 residua
 
 - Prototype README: [`scripts/prototypes/job-number-timeline/README.md`](../../../scripts/prototypes/job-number-timeline/README.md)
 - Forensic Granot job/lead reads: [`projections.md`](../granot-lifecycle/projections.md)
-- Admin tab `/job-timeline` and `lib/api/jobNumberTimeline.ts` live in `vantage-admin` (Owner-only page and proxy path). JTE-04 shipped: Admin consumes the server v2 page and copies DTO types additively. Admin types are never the semantic authority. JTE-05 shipped: CLI `proof` mode; Owner deep links via `JobTimelineDeepLink` / `buildJobTimelineHref({ job })` on Lead / Booking / Cancellation / intake surfaces. JTE-06 and JTE-07 stay deferred. `/daily` does not exist.
+- Admin tab `/job-timeline` and `lib/api/jobNumberTimeline.ts` live in `vantage-admin` (Owner-only page and proxy path). JTE-04 shipped: Admin consumes the server v2 page and copies DTO types additively. Admin types are never the semantic authority. JTE-05 shipped: CLI `proof` mode; Owner deep links via `JobTimelineDeepLink` / `buildJobTimelineHref({ job })` on Lead / Booking / Cancellation / intake surfaces. JTE-06 shipped: official Cancellation create stamps four immutable correlation snapshots; Mongo hops by indexed `normalized_job_no_snapshot`. JTE-07 stays deferred. `/daily` does not exist.

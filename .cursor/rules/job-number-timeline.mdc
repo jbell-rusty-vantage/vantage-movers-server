@@ -21,9 +21,9 @@ Start there → `AGENT-PROTOCOL.md` → `PROGRESS.md`. There is no
 spec wins on event truth, correlation, and masking.
 
 JTE-01 extract, JTE-02 v2 projection, JTE-03 evaluators, JTE-04
-Admin UI, and JTE-05 (live proof, deep links) shipped. JTE-06 and
-JTE-07 stay deferred. Admin displays server arrays; it does not
-evaluate.
+Admin UI, JTE-05 (live proof, deep links), and JTE-06 (cancellation
+correlation snapshots) shipped. JTE-07 stays deferred. Admin
+displays server arrays; it does not evaluate.
 
 ## Seams
 
@@ -66,6 +66,10 @@ evaluate.
   `not_performed`. `consistency` stays `multi_query_best_effort`.
 - `SHEET_SYNC_PENDING_TOO_LONG_MS` default is 1 hour (module constant,
   not `process.env`).
+- After JTE-06, the Mongo loader hops `cancelled_leads` by indexed
+  `normalized_job_no_snapshot` when present (`equivalentNormalizedJobSnapshotFilter`),
+  merged with booking-linked rows. Assemble still refuses orphans
+  without a durable job snapshot.
 
 ## Residuals
 
@@ -73,8 +77,8 @@ evaluate.
   (exit 0).
 - JTE-02: the module stamps `assembled_at` with
   `input.now ?? new Date()`. RingCentral `source_received` is qualified
-  ledger statuses only. Mongo does not query orphan Cancellations by
-  snapshot (no field, no index — JTE-06).
+  ledger statuses only.
+- JTE-07 stays deferred.
 
-Do not start JTE-06 or JTE-07 without recorded write / source-assurance
-approval. Do not implement Daily Assurance here.
+Do not start JTE-07 without recorded source-assurance approval. Do
+not implement Daily Assurance here.

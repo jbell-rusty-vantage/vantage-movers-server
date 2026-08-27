@@ -70,6 +70,7 @@ export type CancellationRow = {
   job_no_snapshot?: string | null;
   normalized_job_no_snapshot?: string | null;
   lead_ref_snapshot?: { model: JobTimelineLeadModel; id: string } | null;
+  booking_created_at_snapshot?: string | null;
 };
 
 export type ObservationReceiptRow = {

@@ -2,7 +2,7 @@ import type { Db, Document } from "mongodb";
 import { isObjectIdString, toObjectId } from "../../utils/objectId.js";
 import { getRingCentralCollectionName } from "../ringcentral/ringcentral-config.js";
 import type { JobNumberTimelineEvidenceLoader } from "./evidence-loader.port.js";
-import { equivalentNormalizedJobFilter } from "./normalize.js";
+import { equivalentNormalizedJobFilter, equivalentNormalizedJobSnapshotFilter } from "./normalize.js";
 import type {
   BookingRow,
   CallLogCursorRow,
@@ -239,12 +239,20 @@ export async function loadJobNumberTimelineRows(
   }));
 
   const bookingIds = mappedBookings.map((row) => row.id);
-  const cancellations = bookingIds.length > 0
-    ? await db.collection("cancelled_leads").find({
-        booked_lead: { $in: bookingIds.map(asMongoId) },
-      }).toArray()
-    : [];
-  const mappedCancellations: CancellationRow[] = cancellations.map((row) => {
+  const snapshotFilter = equivalentNormalizedJobSnapshotFilter(normalizedJobNo);
+  const [linkedCancellations, snapshotCancellations] = await Promise.all([
+    bookingIds.length > 0
+      ? db.collection("cancelled_leads").find({
+          booked_lead: { $in: bookingIds.map(asMongoId) },
+        }).toArray()
+      : Promise.resolve([]),
+    db.collection("cancelled_leads").find(snapshotFilter).toArray(),
+  ]);
+  const cancellationsById = new Map<string, Document>();
+  for (const row of [...linkedCancellations, ...snapshotCancellations]) {
+    cancellationsById.set(asId(row._id), row);
+  }
+  const mappedCancellations: CancellationRow[] = [...cancellationsById.values()].map((row) => {
     const leadRef = row.lead_ref_snapshot as Document | undefined;
     return {
       id: asId(row._id),
@@ -255,6 +263,9 @@ export async function loadJobNumberTimelineRows(
       normalized_job_no_snapshot: asString(row.normalized_job_no_snapshot) ?? null,
       lead_ref_snapshot: leadRef?.id && (leadRef.model === "FormLead" || leadRef.model === "CallLead")
         ? { model: leadRef.model, id: asId(leadRef.id) }
+        : null,
+      booking_created_at_snapshot: row.booking_created_at_snapshot
+        ? asIso(row.booking_created_at_snapshot)
         : null,
     };
   });

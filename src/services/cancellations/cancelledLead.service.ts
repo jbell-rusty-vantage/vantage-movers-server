@@ -37,6 +37,7 @@ import {
   clearCancellationFromLead,
   mirrorCancellationToLead,
 } from "./cancellationMirror.service";
+import { snapshotsForCancelledLeadCreate } from "./cancellationCorrelationSnapshots";
 import { resolveBookedLeadForCancellation } from "./cancellationResolver";
 
 /**
@@ -174,6 +175,7 @@ export async function createCancellationForVerifiedBookingInTransaction(input: {
     agent: primaryAgentName(booking as unknown as Parameters<typeof primaryAgentName>[0]),
     book_date: booking.book_date,
     job_no: booking.job_no,
+    ...snapshotsForCancelledLeadCreate(booking),
     ...(customerName ? { customer_name: customerName } : {}),
     merchant: booking.merchant,
     source: booking.source,
@@ -294,6 +296,7 @@ export async function persistCancelledLeadCreateInTransaction(
       agent: primaryAgentName(booking),
       book_date: booking.book_date,
       job_no: booking.job_no,
+      ...snapshotsForCancelledLeadCreate(booking),
       customer_name: customer?.full_name,
       refund_amount: input.refund_amount,
       merchant: booking.merchant,

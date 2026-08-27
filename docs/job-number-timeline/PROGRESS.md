@@ -15,7 +15,7 @@ Pack created 2026-08-27. Protocol: [`AGENT-PROTOCOL.md`](AGENT-PROTOCOL.md).
 | [JTE-03](issues/JTE-03.md) | Outcome, stage assessment, attention, limitations, freshness | JTE-02 | `complete` | agent | 2026-08-27 | 2026-08-27 | [reports/JTE-03-completion.md](reports/JTE-03-completion.md) |
 | [JTE-04](issues/JTE-04.md) | Enhanced Owner UI and evidence expansion | JTE-03 | `complete` | agent | 2026-08-27 | 2026-08-27 | [reports/JTE-04-completion.md](reports/JTE-04-completion.md) |
 | [JTE-05](issues/JTE-05.md) | Live proof, security, accessibility, performance, deep links | JTE-04 | `complete` | agent | 2026-08-27 | 2026-08-27 | [reports/JTE-05-completion.md](reports/JTE-05-completion.md) |
-| [JTE-06](issues/JTE-06.md) | Cancellation correlation snapshots and report-first backfill | JTE-02; write approval | `deferred` | — | — | — | — |
+| [JTE-06](issues/JTE-06.md) | Cancellation correlation snapshots and report-first backfill | JTE-02; write approval | `complete` | agent | 2026-08-27 | 2026-08-27 | [reports/JTE-06-completion.md](reports/JTE-06-completion.md) |
 | [JTE-07](issues/JTE-07.md) | WordPress durable receipt capture | source-assurance approval | `deferred` | — | — | — | — |
 
 Status vocabulary: `ready` · `active` · `blocked` · `complete` · `deferred`.
@@ -41,7 +41,7 @@ by the issue that closes it, with the evidence named.
 | §4.2–4.3, §6 page fields, §8 | Outcome, stages, attention, limitations, freshness | JTE-03 | ☑ | `outcome.ts` / `attention.ts`; named tests in `evaluators.test.ts`; report JTE-03 |
 | §9 | Enhanced Owner UI | JTE-04 | ☑ | Stage strip / attention / clustered spine; named v1 fixture test; report JTE-04 |
 | §12, §13.3, §15 Phase 4 | Proof, security, a11y, performance, deep links | JTE-05 | ☑ | Deep links + `reports/JTE-05-live-proof.md`; warm p95 471 ms; report JTE-05 |
-| §11.1 | Cancellation snapshots | JTE-06 | ☐ | deferred |
+| §11.1 | Cancellation snapshots | JTE-06 | ☑ | report JTE-06; test apply 4/25; production 48/11 unchanged |
 | §11.2 | WordPress receipt | JTE-07 | ☐ | deferred |
 | §11.3–11.4, §14 | Google read-back, move completion, Daily Assurance | **out of pack** | — | later Assurance |
 
@@ -90,7 +90,7 @@ hits one sets itself `blocked` and adds a row.
 
 | Raised by | Date | Question | Answer | Answered |
 | --- | --- | --- | --- | --- |
-| — | — | — | — | — |
+| JTE-06 | 2026-08-27 | Write-path + report-first backfill authorization for Cancellation snapshots? | Owner authorized JTE-06 write-path + report-first backfill on the **test database only** (`testvantagemovers`). Production apply, production index apply, and any backfill of `vantagemovers` remain unauthorized until a later explicit Owner approval plus the existing CLI confirm flag. | 2026-08-27 |
 
 ## Issue log
 
@@ -134,4 +134,15 @@ Append-only. Newest last. One entry per pickup, block, and close.
              proof, forbidden-field scan, a11y names, warm p95 471 ms.
              JTE-06/07 stay leftover. See reports/JTE-05-completion.md
              and reports/JTE-05-live-proof.md.
+2026-08-27 · JTE-06 picked up · status active · repos: vantage-main-server ·
+             branch: job-timeline-enhancement (existing pack branch;
+             no extra feature branches). Not pushed. Owner authorized
+             write-path + report-first backfill on testvantagemovers only.
+             Production apply / index / vantagemovers backfill remain
+             unauthorized. JTE-07 stays leftover.
+2026-08-27 · JTE-06 closed · complete · four immutable snapshots on official
+             Cancellation create; report-first inventory (prod 48/11, test
+             25/4); test-DB index + 4-row backfill only; Mongo hop by
+             indexed normalized_job_no_snapshot. JTE-07 stays leftover.
+             See reports/JTE-06-completion.md.
 ```

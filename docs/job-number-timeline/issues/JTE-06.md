@@ -1,7 +1,7 @@
 # JTE-06 — Cancellation correlation snapshots
 
-> **Contract maturity: specified, not authorized.** Deferred. Improves
-> future Job traceability. Does **not** block the enhanced timeline.
+> **Contract maturity: specified and authorized on the test database.**
+> Improves future Job traceability. Does **not** block the enhanced timeline.
 
 **Do not start this issue until the Owner authorizes a write-path change
 and a report-first backfill.** The honest timeline ships without it
@@ -30,17 +30,23 @@ with deterministic surviving evidence. Report the irreducible remainder.
 
 ## 4. Current-state evidence to verify
 
-Observed in the enhancement spec: production proof found 48 historical
-Cancellations and only 11 surviving Booking links from which Job Number
-can be recovered. Re-run that count before any apply.
+Reverified 2026-08-27 after JTE-05, report-only, before any apply:
+
+| Database | Historical | Recoverable Booking links | Remainder | Already stamped |
+| --- | --- | --- | --- | --- |
+| `vantagemovers` | **48** | **11** | 37 | 0 |
+| `testvantagemovers` | 25 | 4 | 21 | 0 |
+
+Production 48 / 11 did not drift from the enhancement spec. Authorized apply
+target is `testvantagemovers` only.
 
 JTE-02 2026-08-27: assemble already attaches an orphan Cancellation when
 `normalized_job_no_snapshot` / `job_no_snapshot` is present on an injected
-row. The Mongo loader maps those fields on booking-linked rows only. It does
-**not** query `cancelled_leads` by snapshot — the field is absent and has no
+row. The Mongo loader mapped those fields on booking-linked rows only and did
+**not** query `cancelled_leads` by snapshot — the field was absent and had no
 index. After the write + index land, add that hop. Do not collection-scan.
 
-`CancelledLead` does not yet carry:
+`CancelledLead` did not yet carry (pre-JTE-06):
 
 ```ts
 job_no_snapshot: string | null;
@@ -81,12 +87,19 @@ apply from issue authorship alone.
 
 ## 10. Acceptance criteria
 
-- [ ] New Cancellations persist the four snapshot fields.
-- [ ] Historical report names deterministic count and remainder.
-- [ ] Backfill applied only to deterministic rows, after approval.
-- [ ] Timeline uses snapshots when present and still refuses orphans
+- [x] New Cancellations persist the four snapshot fields.
+      Evidence: `CancelledLead persists the four correlation snapshot fields`;
+      both official create paths spread `snapshotsForCancelledLeadCreate`.
+- [x] Historical report names deterministic count and remainder.
+      Evidence: test 25 / 4 / 21; production report-only 48 / 11 / 37.
+- [x] Backfill applied only to deterministic rows, after approval.
+      Evidence: test apply updated 4; remainder ids unchanged on verify.
+- [x] Timeline uses snapshots when present and still refuses orphans
       without them.
-- [ ] Named test 15 passes.
+      Evidence: named tests §13.2 #14–15; loader hop by indexed
+      `normalized_job_no_snapshot`.
+- [x] Named test 15 passes.
+      Evidence: `cancellation snapshot restores exact job correlation`.
 
 ## 11. Required tests and commands
 

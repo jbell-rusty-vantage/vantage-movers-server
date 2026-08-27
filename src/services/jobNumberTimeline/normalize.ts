@@ -1,5 +1,6 @@
 import {
   equivalentNormalizedJobFilter,
+  equivalentNormalizedJobSnapshotFilter,
   jobNumbersEquivalent,
   normalizeJobNo,
 } from "../bookings/bookingIdentity.js";
@@ -16,4 +17,4 @@ export function jobsEquivalent(
   return jobNumbersEquivalent(left, right);
 }
 
-export { equivalentNormalizedJobFilter, normalizeJobNo };
+export { equivalentNormalizedJobFilter, equivalentNormalizedJobSnapshotFilter, normalizeJobNo };
