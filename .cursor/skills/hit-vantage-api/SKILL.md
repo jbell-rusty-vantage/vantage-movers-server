@@ -306,6 +306,12 @@ POST   /api/v1/admin/granot-lifecycle/activation
 POST   /api/v1/admin/granot-lifecycle/receipts/:id/requeue
 ```
 
+### Job Number timeline
+
+```
+GET    /api/v1/admin/job-number-timeline
+```
+
 ### Granot automation, ingestion, reporting
 
 ```
