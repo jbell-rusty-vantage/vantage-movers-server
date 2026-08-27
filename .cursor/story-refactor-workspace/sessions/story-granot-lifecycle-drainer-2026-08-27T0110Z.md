@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-27T0110Z
 - Service / module: `granotLifecycle` / `drainer.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (open after #56 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/57
 
 ## Stock at start
 
