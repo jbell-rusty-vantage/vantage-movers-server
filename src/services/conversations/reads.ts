@@ -93,9 +93,8 @@ export function toConversationListItem(
 }
 
 export function assertListProjectionSafe(item: ConversationListItem): void {
-  const serialized = JSON.stringify(item);
   for (const key of FORBIDDEN_LIST_KEYS) {
-    if (new RegExp(`"${key}"\\s*:`).test(serialized)) {
+    if (Object.hasOwn(item, key)) {
       throw new Error(`Conversation list projection leaked ${key}`);
     }
   }
