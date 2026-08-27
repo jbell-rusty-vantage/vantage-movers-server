@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-27T0710Z
 - Service / module: `granotLifecycle` / `bookingConfirmation.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (open after #62 closed)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/63
 
 ## Stock at start
 
