@@ -4,15 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-08-27T0208Z | to: next-run | from: story-granot-lifecycle-aggregate-revision-2026-08-27T0208Z | kind: next
+
+`granotLifecycle` is **in-progress**. `aggregateRevision.ts` is recommended. Next module: **`trustedLeadCreateValidation.ts`**. Stay on `granotLifecycle`. Do not write a whole-folder recommendation.
+
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + `granot-lifecycle-capture.md` + `granot-lifecycle-queue-publisher.md` + `granot-lifecycle-extension-apply.md` + `granot-lifecycle-automation-apply.md` + `granot-lifecycle-automation-compatibility.md` + `granot-lifecycle-normalization.md` + `granot-lifecycle-source-policy.md` + `granot-lifecycle-identity.md` + `granot-lifecycle-granot-temporal.md` + `granot-lifecycle-lead-desired-state.md` + `granot-lifecycle-authorized-desired-state.md` + `granot-lifecycle-lead-contact-projection.md` + `granot-lifecycle-processor.md` + `granot-lifecycle-operations.md` + `granot-lifecycle-projections.md` + `granot-lifecycle-creating-observation.md` + `granot-lifecycle-drainer.md` + `granot-lifecycle-aggregate-revision.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `granot-lifecycle-drainer.md` and `granot-lifecycle-aggregate-revision.md`.
+3. Stay on `granotLifecycle`. Next is `trustedLeadCreateValidation.ts`. Wave B is locked.
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened after #57 merged).
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-08-27T0110Z | to: next-run | from: story-granot-lifecycle-drainer-2026-08-27T0110Z | kind: next
 
-`granotLifecycle` is **in-progress**. `drainer.ts` is recommended. Next module: **`aggregateRevision.ts`**. Stay on `granotLifecycle`. Do not write a whole-folder recommendation.
-
-1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + `granot-lifecycle-capture.md` + `granot-lifecycle-queue-publisher.md` + `granot-lifecycle-extension-apply.md` + `granot-lifecycle-automation-apply.md` + `granot-lifecycle-automation-compatibility.md` + `granot-lifecycle-normalization.md` + `granot-lifecycle-source-policy.md` + `granot-lifecycle-identity.md` + `granot-lifecycle-granot-temporal.md` + `granot-lifecycle-lead-desired-state.md` + `granot-lifecycle-authorized-desired-state.md` + `granot-lifecycle-lead-contact-projection.md` + `granot-lifecycle-processor.md` + `granot-lifecycle-operations.md` + `granot-lifecycle-projections.md` + `granot-lifecycle-creating-observation.md` + `granot-lifecycle-drainer.md`.
-2. Do not rewrite `form-lead.md` or any prior recommendation, including `granot-lifecycle-creating-observation.md` and `granot-lifecycle-drainer.md`.
-3. Stay on `granotLifecycle`. Next is `aggregateRevision.ts`. Wave B is locked.
-4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged.
-5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+Superseded by story-granot-lifecycle-aggregate-revision-2026-08-27T0208Z. `aggregateRevision.ts` is recommended. `granotLifecycle` is in-progress. Next is `trustedLeadCreateValidation.ts`.
 
 ## Resolved
 
