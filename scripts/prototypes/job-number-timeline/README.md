@@ -23,6 +23,11 @@ Default live target is `testvantagemovers`. Production reads require
 
 **Specification:** [`specs/job-number-timeline-prototype-specification.md`](./specs/job-number-timeline-prototype-specification.md)
 
+**Production enhancement workspace:**
+[`docs/job-number-timeline/README.md`](../../../docs/job-number-timeline/README.md)
+(specification, JTE issues, agent protocol). After JTE-01 this CLI adapts
+over `src/services/jobNumberTimeline/`; do not add new runtime behavior here.
+
 ## Admin tab
 
 Owner-only `/job-timeline` in `vantage-admin` (`isNew` + `NewFeatureBadge`).

@@ -39,6 +39,6 @@ Service / ADR / Reference catalog: [`docs/index.md`](../docs/index.md). Query wi
 
 ## `rules/`
 
-Glob-scoped `*.mdc`. Highlights: `documentation-maintenance`, `business-logic`, `owner-lead-workflow`, `sheet-sync-process`, `project-organization`, `form-lead-granot-crm`, `granot-lifecycle-capture`, `granot-http-automation`, `ringcentral-integration`, `operations-registry`, `observability-service`, `schema-and-crud-inputs`, `backend-safety`, `testing`, `typescript`, `codebase`, `branch-test-vercel-workflow`.
+Glob-scoped `*.mdc`. Highlights: `documentation-maintenance`, `business-logic`, `owner-lead-workflow`, `sheet-sync-process`, `project-organization`, `form-lead-granot-crm`, `granot-lifecycle-capture`, `granot-http-automation`, `ringcentral-integration`, `operations-registry`, `observability-service`, `job-number-timeline`, `schema-and-crud-inputs`, `backend-safety`, `testing`, `typescript`, `codebase`, `branch-test-vercel-workflow`.
 
 New Service: stamp under `docs/knowledge/` and add a row to [`docs/index.md`](../docs/index.md) only.

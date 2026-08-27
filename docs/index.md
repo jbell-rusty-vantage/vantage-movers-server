@@ -75,6 +75,7 @@ Workspace ADRs are outside this repo. This standalone checkout does not contain 
 | --- | --- |
 | [admin-filter-catalog-and-analytics-specification.md](admin-filter-catalog-and-analytics-specification.md) | Implementation-ready Filter Catalog: one Source Company dropdown of Form/Call Source Granularities (`owner_label`) for lead search, duplicates, and catalog-complete Analytics. |
 | [operations-registry-source-connections-owner-ui-specification.md](operations-registry-source-connections-owner-ui-specification.md) | Final proposed connection and Owner-facing contract for Lead Sources, Feeds, sheet labels, Granot names, RingCentral inbound numbers, and texting. |
+| [job-timeline-enhancement-specification.md](job-number-timeline/job-timeline-enhancement-specification.md) | Enhancement plan for a precise, evidence-aware Owner Job timeline; keeps window-wide assurance and notifications as a later module. |
 | [granot-lifecycle/spec-hub.md](knowledge/granot-lifecycle/spec-hub.md) | Links to the locked FINAL SPEC, Booked-only delta, owner booking-intake spec, and owner runbooks. No copied spec rules. |
 | [granot-lifecycle/owner-booking-intake.md](knowledge/granot-lifecycle/owner-booking-intake.md) | Pointer to the owner booking-intake contract. Does not copy spec rules. |
 | [granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md](granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md) | Owner booking intake. §5 even Binder is current; optional Lead, Connect Booking to Lead, and unmasking are not implemented. Prerequisite for Owner Daily. |
@@ -86,6 +87,7 @@ Active work packs. The ledger inside each is a navigation aid; the repository is
 | Path | Description |
 | --- | --- |
 | [operations-registry-source-connections/README.md](operations-registry-source-connections/README.md) | Four-pass delivery of the Operations Registry source-connection spec: typed label mappings, the Granot name Owner command, the aggregate Lead Source projection, and the Owner UI. |
+| [job-number-timeline/README.md](job-number-timeline/README.md) | Four-session enhancement of the Owner Job Number timeline (JTE-01–05). Daily Assurance and notifications stay out of pack. |
 
 ## Archives
 

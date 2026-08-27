@@ -1,0 +1,44 @@
+---
+description: Job Number timeline enhancement — production module, read-only projection, no prototype imports from src/
+globs: src/services/jobNumberTimeline/**/*,src/routes/job-number-timeline-admin.routes.ts,scripts/prototypes/job-number-timeline/**/*,docs/job-number-timeline/**/*.md,docs/knowledge/services/job-number-timeline.md
+alwaysApply: false
+---
+
+# Job Number timeline
+
+Owner-only typed Job Number retrieval. Not the forensic Granot lifecycle
+projection (`projections.ts` / `GranotTimelineEntry`).
+
+## Workspace
+
+Enhancement work is the delivery pack
+[`docs/job-number-timeline/README.md`](../../docs/job-number-timeline/README.md).
+Start there → `AGENT-PROTOCOL.md` → the `ready` issue in `PROGRESS.md`.
+Specification wins on additive behavior; the prototype spec wins on event
+truth, correlation, and masking.
+
+## Seams
+
+- After JTE-01, **no file under `src/` imports**
+  `scripts/prototypes/job-number-timeline`. The CLI may adapt over
+  `src/services/jobNumberTimeline`.
+- Route stays thin: authorize, validate, `module.read`, respond.
+- Tests call the same module interface as the route. Mongo and memory
+  loaders both exist, or the loader seam is fake.
+
+## Invariants
+
+- Read-time projection only. No `OperationalEvent`, no second event
+  stream, no mutation, no notification.
+- Intake is never the official outcome. Latest Decision attempt only.
+  Sheet Sync joins by entity ID, never Job Number.
+- No inferred events. No Job Number catalog. No `$lookup` on the hot
+  route. Cap 250 events with a named truncation limitation.
+- Never leak contact, SMS body, transcript, recording, provider payload,
+  Sheet ID, Sheet row, or raw error body.
+- Admin must not recompute outcome, attention, or limitations.
+- WordPress Lead creation is not a source receipt. Sheet `synced` is not
+  Google equality. Move completion is not a stage.
+
+Do not start JTE-06 or JTE-07 without recorded write / source-assurance
+approval. Do not implement Daily Assurance here.

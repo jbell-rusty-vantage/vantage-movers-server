@@ -28,6 +28,7 @@ generated:
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `scripts/prototypes/job-number-timeline/src/assemble.ts`, `src/routes/job-number-timeline-admin.routes.ts`  
+**Enhancement workspace (not shipped):** [`../../job-number-timeline/README.md`](../../job-number-timeline/README.md) — JTE-01 moves primary code to `src/services/jobNumberTimeline/`.  
 **Domain terms used:** [Job Number](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md)
 
 # Job Number timeline
