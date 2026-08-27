@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-27T1011Z
 - Service / module: `granotLifecycle` / `referralBooking.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (open after #65 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/66
 
 ## Stock at start
 
