@@ -4,9 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-08-27T1809Z | to: next-run | from: story-granot-lifecycle-alerts-2026-08-27T1809Z | kind: next
+
+`granotLifecycle` is **visited**. `alerts.ts` is recommended. Next service: **`granotHttpCollector`** (unvisited). First pass enumerates every runtime `.ts` file, then recommends or skips the first story-worthy module. Wave B is locked.
+
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + thirty-four `granot-lifecycle-*.md` files including `granot-lifecycle-alerts.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `granot-lifecycle-metrics.md` and `granot-lifecycle-alerts.md`.
+3. Open `granotHttpCollector`. Enumerate first. Do not write a whole-folder recommendation for a large service. Wave B is locked.
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened after #73 merged).
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-08-27T1709Z | to: next-run | from: story-granot-lifecycle-metrics-2026-08-27T1709Z | kind: next
 
-`granotLifecycle` is **in-progress**. `metrics.ts` is recommended. Next module: **`alerts.ts`**. Stay on `granotLifecycle`. Do not write a whole-folder recommendation.
+Superseded by story-granot-lifecycle-alerts-2026-08-27T1809Z. `alerts.ts` is recommended. `granotLifecycle` is visited. Next is `granotHttpCollector`.
 
 1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + `granot-lifecycle-capture.md` + `granot-lifecycle-queue-publisher.md` + `granot-lifecycle-extension-apply.md` + `granot-lifecycle-automation-apply.md` + `granot-lifecycle-automation-compatibility.md` + `granot-lifecycle-normalization.md` + `granot-lifecycle-source-policy.md` + `granot-lifecycle-identity.md` + `granot-lifecycle-granot-temporal.md` + `granot-lifecycle-lead-desired-state.md` + `granot-lifecycle-authorized-desired-state.md` + `granot-lifecycle-lead-contact-projection.md` + `granot-lifecycle-processor.md` + `granot-lifecycle-operations.md` + `granot-lifecycle-projections.md` + `granot-lifecycle-creating-observation.md` + `granot-lifecycle-drainer.md` + `granot-lifecycle-aggregate-revision.md` + `granot-lifecycle-trusted-lead-create-validation.md` + `granot-lifecycle-synchronize-lead-from-granot.md` + `granot-lifecycle-create-lead-from-granot.md` + `granot-lifecycle-booking-reconciliation.md` + `granot-lifecycle-booking-confirmation.md` + `granot-lifecycle-booking-owner-commands.md` + `granot-lifecycle-booking-priority-pairing.md` + `granot-lifecycle-referral-booking.md` + `granot-lifecycle-release-reconciliation.md` + `granot-lifecycle-release-owner-commands.md` + `granot-lifecycle-discrepancies.md` + `granot-lifecycle-discrepancy-owner-commands.md` + `granot-lifecycle-discrepancy-projections.md` + `granot-lifecycle-observability.md` + `granot-lifecycle-metrics.md`.
 2. Do not rewrite `form-lead.md` or any prior recommendation, including `granot-lifecycle-observability.md` and `granot-lifecycle-metrics.md`.
