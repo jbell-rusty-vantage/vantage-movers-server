@@ -4,9 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-08-27T1913Z | to: next-run | from: story-granot-http-collector-index-2026-08-27T1913Z | kind: next
+
+`granotHttpCollector` is **in-progress**. Enumerated eight runtime modules. `index.ts` is the session collector (not a barrel) and is recommended. `errors.ts` skipped (error class). Next module: **`automation.ts`**. Stay on `granotHttpCollector`. Do not write a whole-folder recommendation.
+
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + thirty-four `granot-lifecycle-*.md` files + `granot-http-collector-index.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `granot-lifecycle-alerts.md` and `granot-http-collector-index.md`.
+3. Stay on `granotHttpCollector`. Next is `automation.ts`. Wave B is locked.
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened after #74 merged).
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-08-27T1809Z | to: next-run | from: story-granot-lifecycle-alerts-2026-08-27T1809Z | kind: next
 
-`granotLifecycle` is **visited**. `alerts.ts` is recommended. Next service: **`granotHttpCollector`** (unvisited). First pass enumerates every runtime `.ts` file, then recommends or skips the first story-worthy module. Wave B is locked.
+Superseded by story-granot-http-collector-index-2026-08-27T1913Z. `index.ts` is recommended. `granotHttpCollector` is in-progress. Next is `automation.ts`.
 
 1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + thirty-four `granot-lifecycle-*.md` files including `granot-lifecycle-alerts.md`.
 2. Do not rewrite `form-lead.md` or any prior recommendation, including `granot-lifecycle-metrics.md` and `granot-lifecycle-alerts.md`.
