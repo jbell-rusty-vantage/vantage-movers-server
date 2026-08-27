@@ -4,6 +4,11 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Folder `HANDOFF.md` still says the source catalog does not record which Lead workflows a source supports. The code already persists `supported_operations` and seeds the nine-label Form/Call partition. Do not silently rewrite HANDOFF so the story “owns the folder note.” See `recommendations/granot-http-collector-source-catalog.md`.
+- Leftover `partitionGranotAutomationSources` still filters on catalog `supported_operations`. Resolve uses private `partitionGranotAutomationSourcesByRegistry` + the readiness sibling’s route fold. Tests lock the leftover, not resolve. Do not silently merge. See `recommendations/granot-http-collector-source-catalog.md` and `recommendations/granot-lifecycle-automation-compatibility.md`.
+- Knowledge already says `createGranotRun` with `source_labels` only does not call `resolveGranotAutomationSources`. Do not teach the catalog to accept raw labels so that gap “closes.” See `recommendations/granot-http-collector-source-catalog.md`.
+- The 200-label cap counts every document, including inactive. List returns active only. Do not change the count to active-only, and do not list inactive rows, so “the cap is honest.” See `recommendations/granot-http-collector-source-catalog.md`.
+- This checkout’s `CONTEXT.md` does not define Granot Automation Source / Granot CRM Source / Granot Observation Receipt. Do not invent a glossary copy. See `recommendations/granot-http-collector-source-catalog.md`.
 - Knowledge `observability.md` lists `alerts.ts` plus `observability.ts`, `metrics.ts`, and `projectGranotLifecycleHealth` as Primary code. This file only judges a snapshot and persists start/clear. Do not merge emit, counters, or health snapshot assembly here so the Primary-code line “wins.” See `recommendations/granot-lifecycle-alerts.md`.
 - Alert codes live on `observability.ts`; thresholds live on `config/domain/granotLifecycle.ts` and are not env-overridable. Do not move either dictionary into this file so “the alert module owns the names.” See `recommendations/granot-lifecycle-alerts.md`.
 - Persist is untested at this interface. Replica health deletes firing/recovered events afterward. Do not treat that cleanup as persist proof. See `recommendations/granot-lifecycle-alerts.md`.
