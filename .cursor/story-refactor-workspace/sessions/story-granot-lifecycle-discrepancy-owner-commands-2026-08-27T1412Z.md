@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-27T1412Z
 - Service / module: `granotLifecycle` / `discrepancyOwnerCommands.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (new PR after #69 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/70
 
 ## Stock at start
 
