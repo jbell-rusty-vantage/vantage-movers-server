@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import {
   isObjectIdString,
@@ -23,6 +25,18 @@ test("toObjectIdOrUndefined maps empty values to undefined", () => {
   assert.equal(toObjectIdOrUndefined(null), undefined);
   assert.equal(toObjectIdOrUndefined(""), undefined);
   assert.equal(toObjectIdOrUndefined(SAMPLE)?.toString(), SAMPLE);
+});
+
+test("job-number-timeline loader does not value-import ObjectId from mongodb", () => {
+  const source = readFileSync(
+    path.join(
+      process.cwd(),
+      "scripts/prototypes/job-number-timeline/src/load.ts",
+    ),
+    "utf8",
+  );
+  assert.match(source, /import type \{ Db, Document \} from "mongodb"/);
+  assert.doesNotMatch(source, /import \{[^}]*ObjectId[^}]*\} from "mongodb"/);
 });
 
 test("newObjectIdHex returns a distinct 24-char hex id", () => {

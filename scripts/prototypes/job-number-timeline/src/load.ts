@@ -1,7 +1,8 @@
-import { ObjectId, type Db, type Document } from "mongodb";
+import type { Db, Document } from "mongodb";
 import mongoose from "mongoose";
 import { PRODUCTION_CONFIRMATION } from "../../../migrations/operations-registry-inventory.lib.js";
 import { TEST_DATABASE } from "../../../migrations/operations-registry-migration.lib.js";
+import { isObjectIdString, toObjectId } from "../../../../src/utils/objectId.js";
 import { equivalentNormalizedJobFilter } from "./normalize.js";
 import type {
   BookingRow,
@@ -33,8 +34,8 @@ function asId(value: unknown): string {
   return String(value);
 }
 
-function asMongoId(value: string): string | ObjectId {
-  return ObjectId.isValid(value) ? new ObjectId(value) : value;
+function asMongoId(value: string): string | ReturnType<typeof toObjectId> {
+  return isObjectIdString(value) ? toObjectId(value) : value;
 }
 
 function asIso(value: unknown): string {
