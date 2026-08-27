@@ -3,6 +3,7 @@
  *
  *   pnpm prototype:job-number-timeline -- render --job-no <raw>
  *   pnpm prototype:job-number-timeline -- discover
+ *   pnpm prototype:job-number-timeline -- proof
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -15,6 +16,15 @@ import { normalizeTypedJobNo } from "../../../../src/services/jobNumberTimeline/
 import type { JobTimelinePage } from "../../../../src/services/jobNumberTimeline/types.js";
 import { granotLifecycleOutputDirectory } from "../../../migrations/granot-lifecycle-migration.lib.js";
 import { discoverJobNumberTimelines } from "./discover.js";
+import {
+  aliasJobNumber,
+  analyzeProofPage,
+  collectionCountDeltas,
+  countProofCollections,
+  percentile,
+  proofCollectionNames,
+  selectProofAliases,
+} from "./live-proof.js";
 import {
   assertTimelineDatabaseAllowed,
   PRODUCTION_CONFIRMATION,
@@ -33,12 +43,15 @@ const OUTPUT_DIR = granotLifecycleOutputDirectory("job-number-timeline");
 const KNOWN_FLAGS = new Set([
   "render",
   "discover",
+  "proof",
   "--",
   "--job-no",
   "--source-granularity-id",
   "--source-company-id",
   "--limit",
   "--min-score",
+  "--max-jobs",
+  "--warm-runs",
   PRODUCTION_CONFIRMATION,
 ]);
 
@@ -180,6 +193,182 @@ async function runDiscover(args: readonly string[]): Promise<void> {
   process.stdout.write(`\nWrote ${filePath}\n`);
 }
 
+async function collectDistinctJobNos(
+  db: Awaited<ReturnType<typeof timelineDatabase>>,
+): Promise<string[]> {
+  const prioritized: string[] = [];
+  const rest: string[] = [];
+  const add = (value: unknown, first = false) => {
+    if (typeof value !== "string" || !value.trim()) return;
+    if (first) {
+      if (!prioritized.includes(value)) prioritized.push(value);
+      const index = rest.indexOf(value);
+      if (index >= 0) rest.splice(index, 1);
+      return;
+    }
+    if (!prioritized.includes(value) && !rest.includes(value)) rest.push(value);
+  };
+  for (const value of await db.collection("granot_release_reconciliation_cases").distinct("normalized_job_no")) {
+    add(value, true);
+  }
+  for (const value of await db.collection("call_leads").distinct("normalized_job_no")) {
+    add(value, true);
+  }
+  for (const collection of [
+    "granot_record_links",
+    "booked_leads",
+    "granot_booking_reconciliation_cases",
+    "form_leads",
+  ]) {
+    for (const value of await db.collection(collection).distinct("normalized_job_no")) {
+      add(value);
+    }
+  }
+  for (const value of await db.collection("granot_observations").distinct("identity.normalized_job_no")) {
+    add(value);
+  }
+  return [...prioritized, ...rest];
+}
+
+async function inspectAttentionSourceRows(
+  page: JobTimelinePage,
+): Promise<Array<{
+  code: string;
+  event_id: string;
+  kind: string;
+  status: string | null;
+  evidence_refs: number;
+}>> {
+  if (!("attention" in page) || !Array.isArray(page.attention)) return [];
+  const rows: Array<{
+    code: string;
+    event_id: string;
+    kind: string;
+    status: string | null;
+    evidence_refs: number;
+  }> = [];
+  for (const item of page.attention) {
+    if (item.event_ids.length === 0) {
+      rows.push({
+        code: item.code,
+        event_id: "",
+        kind: "none",
+        status: null,
+        evidence_refs: 0,
+      });
+      continue;
+    }
+    for (const eventId of item.event_ids) {
+      const event = page.events.find((row) => row.id === eventId);
+      const status = event && typeof event.data?.status === "string" ? event.data.status : null;
+      rows.push({
+        code: item.code,
+        event_id: event ? "present" : "missing",
+        kind: event?.kind ?? "missing",
+        status,
+        evidence_refs: event && "evidence" in event && Array.isArray(event.evidence)
+          ? event.evidence.length
+          : 0,
+      });
+    }
+  }
+  return rows;
+}
+
+async function runProof(args: readonly string[]): Promise<void> {
+  const databaseName = resolveTimelineDatabase(args);
+  assertTimelineDatabaseAllowed(databaseName, args);
+  const maxJobs = Number(readFlag(args, "--max-jobs") ?? "200");
+  const warmRuns = Number(readFlag(args, "--warm-runs") ?? "20");
+  const extraJob = readFlag(args, "--job-no");
+  await connectMongo();
+  const db = await timelineDatabase(mongoose, databaseName);
+  const { getRingCentralCollectionName } = await import("../../../../src/services/ringcentral/ringcentral-config.js");
+  const collectionNames = proofCollectionNames({
+    callLogSyncState: getRingCentralCollectionName("callLogSyncState"),
+    processedCalls: getRingCentralCollectionName("processedCalls"),
+  });
+  const countsBefore = await countProofCollections(db, collectionNames);
+  const module = createProductionModule(db);
+  const jobNos = await collectDistinctJobNos(db);
+  if (extraJob) {
+    const normalized = normalizeTypedJobNo(extraJob);
+    if (normalized) jobNos.unshift(normalized);
+  }
+
+  const aliases = new Map<string, string>();
+  const pages: JobTimelinePage[] = [];
+  let scanned = 0;
+  for (const jobNo of jobNos) {
+    if (scanned >= maxJobs) break;
+    scanned += 1;
+    const result = await module.read(readInput(args, jobNo));
+    if (result.status === "ok") pages.push(result.page);
+  }
+
+  const notes = pages.map((page) => {
+    const alias = aliasJobNumber(page.normalized_job_no, aliases);
+    return analyzeProofPage(page, alias);
+  });
+  const selection = selectProofAliases(notes);
+  const selectedAliases = new Set(
+    [
+      ...Object.values(selection.origin_shapes),
+      selection.pre_job_walkback,
+      selection.booking_intake_and_official,
+      selection.cancellation_intake,
+      selection.official_cancellation,
+      selection.attention_sample,
+    ].filter((value): value is string => Boolean(value)),
+  );
+
+  const selectedPages = pages.filter((page) => selectedAliases.has(aliases.get(page.normalized_job_no) ?? ""));
+  const timings: number[] = [];
+  for (const page of selectedPages) {
+    for (let run = 0; run < Math.max(1, warmRuns); run += 1) {
+      const started = performance.now();
+      await module.read(readInput(args, page.normalized_job_no));
+      timings.push(performance.now() - started);
+    }
+  }
+  const warm = timings.slice(selectedPages.length);
+  const attentionPage = pages.find((page) => aliases.get(page.normalized_job_no) === selection.attention_sample);
+  const attentionInspection = attentionPage ? await inspectAttentionSourceRows(attentionPage) : [];
+
+  const countsAfter = await countProofCollections(db, collectionNames);
+  const deltas = collectionCountDeltas(countsBefore, countsAfter);
+  const payload = {
+    database: databaseName,
+    generated_at: new Date().toISOString(),
+    read_only: true,
+    jobs_seen: jobNos.length,
+    jobs_scanned: scanned,
+    ok_pages: pages.length,
+    selection,
+    notes,
+    attention_source_rows: attentionInspection,
+    collection_counts_before: countsBefore,
+    collection_counts_after: countsAfter,
+    collection_count_deltas: deltas,
+    count_stable: Object.keys(deltas).length === 0,
+    forbidden_scan: notes.every((note) => note.forbidden_scan === "pass") ? "pass" : "fail",
+    activity_grouping_preserves_counts: notes.every((note) => note.activity_grouping_preserves_counts),
+    latency_ms: {
+      samples: timings.length,
+      warm_samples: warm.length,
+      warm_p95: Math.round(percentile(warm.length > 0 ? warm : timings, 95)),
+      warm_median: Math.round(percentile(warm.length > 0 ? warm : timings, 50)),
+    },
+  };
+  process.stdout.write(`database: ${databaseName}\n`);
+  process.stdout.write(`ok_pages: ${pages.length}\n`);
+  process.stdout.write(`count_stable: ${payload.count_stable}\n`);
+  process.stdout.write(`forbidden_scan: ${payload.forbidden_scan}\n`);
+  process.stdout.write(`warm_p95_ms: ${payload.latency_ms.warm_p95}\n`);
+  const filePath = await writeReport("proof", payload);
+  process.stdout.write(`\nWrote ${filePath}\n`);
+}
+
 export async function main(argv = process.argv.slice(2)): Promise<void> {
   assertKnownArgs(argv);
   if (argv.includes("list")) {
@@ -193,7 +382,11 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     await runDiscover(argv);
     return;
   }
-  throw new JobTimelineCliError("Expected render or discover.");
+  if (argv.includes("proof")) {
+    await runProof(argv);
+    return;
+  }
+  throw new JobTimelineCliError("Expected render, discover, or proof.");
 }
 
 function isDirectExecution(): boolean {

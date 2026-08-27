@@ -36,7 +36,8 @@ test("CLI and load stay zero-mutation", () => {
   const here = path.join(process.cwd(), "scripts/prototypes/job-number-timeline/src");
   const load = readFileSync(path.join(here, "load.ts"), "utf8");
   const cli = readFileSync(path.join(here, "cli.ts"), "utf8");
-  for (const source of [load, cli]) {
+  const proof = readFileSync(path.join(here, "live-proof.ts"), "utf8");
+  for (const source of [load, cli, proof]) {
     assert.doesNotMatch(source, /\.insert(One|Many)?\(/);
     assert.doesNotMatch(source, /\.update(One|Many)?\(/);
     assert.doesNotMatch(source, /\.delete(One|Many)?\(/);

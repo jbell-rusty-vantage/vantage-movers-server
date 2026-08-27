@@ -16,13 +16,14 @@ Service doc:
 
 Enhancement work is the delivery pack
 [`docs/job-number-timeline/README.md`](../../docs/job-number-timeline/README.md).
-Start there → `AGENT-PROTOCOL.md` → the `ready` issue in `PROGRESS.md`.
-Specification wins on additive behavior; the prototype spec wins on event
-truth, correlation, and masking.
+Start there → `AGENT-PROTOCOL.md` → `PROGRESS.md`. There is no
+`ready` issue. Specification wins on additive behavior; the prototype
+spec wins on event truth, correlation, and masking.
 
-JTE-01 extract, JTE-02 v2 projection, JTE-03 evaluators, and JTE-04
-Admin UI shipped. JTE-05 (live proof, deep links) has not. Admin
-displays server arrays; it does not evaluate.
+JTE-01 extract, JTE-02 v2 projection, JTE-03 evaluators, JTE-04
+Admin UI, and JTE-05 (live proof, deep links) shipped. JTE-06 and
+JTE-07 stay deferred. Admin displays server arrays; it does not
+evaluate.
 
 ## Seams
 

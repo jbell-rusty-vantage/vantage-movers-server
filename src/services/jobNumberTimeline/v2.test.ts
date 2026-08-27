@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { T0, T1, T2, T3, WP_JOB, wordpressRows } from "./fixtures.js";
+import { LEAD_NAME, LEAD_PHONE, OBS_CONTACT, SMS_BODY, T0, T1, T2, T3, WP_JOB, wordpressRows } from "./fixtures.js";
 import {
   ALWAYS_LIMITATION_CODES,
   GOLDEN_EXPECTATIONS,
@@ -8,10 +8,16 @@ import {
   T_RECORDED,
   goldenBookedRows,
   goldenCancelledRows,
+  goldenContradictoryChronologyRows,
   goldenGranotRows,
+  goldenOpenCancellationIntakeRows,
+  goldenPolicySkipRows,
+  goldenResolvedBookingWithoutFactRows,
+  goldenResolvedReleaseWithoutFactRows,
   goldenRingCentralRows,
   goldenWordpressRows,
 } from "./golden-pages.js";
+import { assertPageSafe, pageContainsForbiddenContact } from "./masking.js";
 import { createMemoryEvidenceLoader } from "./memory-evidence-loader.js";
 import { createJobNumberTimelineModule } from "./module.js";
 import { emptyJobTimelineRows, type JobTimelineRows } from "./rows.js";
@@ -196,20 +202,39 @@ test("event cap returns explicit truncation limitation", async () => {
 });
 
 test("serialized v2 page contains no forbidden fields or contact", async () => {
-  const page = await ok(WP_JOB, wordpressRows());
-  const serialized = JSON.stringify(page);
-  assert.equal(serialized.includes("Ada Lovelace"), false);
-  assert.equal(serialized.includes("5550001234"), false);
-  assert.equal(serialized.includes("Thanks for requesting a quote"), false);
-  assert.equal(serialized.includes("Ada L contact"), false);
-  assert.equal(serialized.includes("spreadsheet_id"), false);
-  assert.equal(serialized.includes("last_error"), false);
-  assert.equal(serialized.includes("phone_raw"), false);
-  assert.equal(page.events.every((event) => event.evidence_level !== undefined), true);
-  assert.equal(
-    page.events.some((event) => String(event.evidence_level) === "inferred"),
-    false,
-  );
+  const goldens: Array<[string, string, JobTimelineRows]> = [
+    ["wordpress", GOLDEN_JOBS.wordpress, goldenWordpressRows()],
+    ["granot", GOLDEN_JOBS.granot, goldenGranotRows()],
+    ["ringcentral", GOLDEN_JOBS.ringcentral, goldenRingCentralRows()],
+    ["booked", GOLDEN_JOBS.booked, goldenBookedRows()],
+    ["cancelled", GOLDEN_JOBS.cancelled, goldenCancelledRows()],
+    ["policySkip", GOLDEN_JOBS.policySkip, goldenPolicySkipRows()],
+    ["resolvedBookingWithoutFact", GOLDEN_JOBS.resolvedBookingWithoutFact, goldenResolvedBookingWithoutFactRows()],
+    ["resolvedReleaseWithoutFact", GOLDEN_JOBS.resolvedReleaseWithoutFact, goldenResolvedReleaseWithoutFactRows()],
+    ["contradictory", GOLDEN_JOBS.contradictory, goldenContradictoryChronologyRows()],
+    ["cancellationIntakeOpen", GOLDEN_JOBS.cancellationIntakeOpen, goldenOpenCancellationIntakeRows()],
+  ];
+  for (const [name, jobNo, rows] of goldens) {
+    const page = await ok(jobNo, rows);
+    const serialized = JSON.stringify(page);
+    assertPageSafe(serialized);
+    assert.equal(
+      pageContainsForbiddenContact(serialized, [LEAD_NAME, LEAD_PHONE, SMS_BODY, OBS_CONTACT]),
+      false,
+      `${name} leaked a forbidden contact token`,
+    );
+    assert.equal(serialized.includes("spreadsheet_id"), false, name);
+    assert.equal(serialized.includes("last_error"), false, name);
+    assert.equal(serialized.includes("phone_raw"), false, name);
+    assert.equal(serialized.includes("transcript"), false, name);
+    assert.equal(serialized.includes("recording_url"), false, name);
+    assert.equal(page.events.every((event) => event.evidence_level !== undefined), true, name);
+    assert.equal(
+      page.events.some((event) => String(event.evidence_level) === "inferred"),
+      false,
+      name,
+    );
+  }
 });
 
 test("golden pages cover origin and official-fact shapes", async () => {

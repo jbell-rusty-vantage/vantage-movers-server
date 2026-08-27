@@ -11,6 +11,7 @@ applies_to:
   - src/routes/job-number-timeline-admin.routes.ts
   - scripts/prototypes/job-number-timeline/src/cli.ts
   - scripts/prototypes/job-number-timeline/src/discover.ts
+  - scripts/prototypes/job-number-timeline/src/live-proof.ts
 owners: [team:main-server]
 sources:
   - id: primary
@@ -22,13 +23,13 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:docs-keeper
-  at: 2026-08-27T20:46:00Z
+  at: 2026-08-27T21:25:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/jobNumberTimeline/` (`createJobNumberTimelineModule`)  
 **CLI / proof adapter:** [`scripts/prototypes/job-number-timeline/`](../../../scripts/prototypes/job-number-timeline/README.md)  
-**Enhancement workspace:** [`../../job-number-timeline/README.md`](../../job-number-timeline/README.md) — JTE-01 extract, JTE-02 v2 projection, JTE-03 evaluators, and JTE-04 Admin UI shipped. JTE-05 (live proof, deep links) has not.  
+**Enhancement workspace:** [`../../job-number-timeline/README.md`](../../job-number-timeline/README.md) — JTE-01 extract, JTE-02 v2 projection, JTE-03 evaluators, JTE-04 Admin UI, and JTE-05 (live proof, deep links) shipped. JTE-06 and JTE-07 stay deferred.  
 **Domain terms used:** [Job Number](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Granot Observation Receipt](../../../../CONTEXT.md)
 
 # Job Number timeline
@@ -37,7 +38,7 @@ generated:
 
 This is not `GET /api/v1/admin/granot-lifecycle/jobs/:normalized_job_no`. That forensic page is [`projections.md`](../granot-lifecycle/projections.md) (`GranotTimelineEntry`). This path does not call `projections.ts`.
 
-Runtime code lives in `src/services/jobNumberTimeline/`. Callers use `createJobNumberTimelineModule({ loader }).read(...)`. The HTTP route and the CLI `render` / `discover` modes call that same interface. Tests use a memory loader; production uses a Mongo loader. No file under `src/` imports `scripts/prototypes/job-number-timeline`.
+Runtime code lives in `src/services/jobNumberTimeline/`. Callers use `createJobNumberTimelineModule({ loader }).read(...)`. The HTTP route and the CLI `render` / `discover` / `proof` modes call that same interface. Tests use a memory loader; production uses a Mongo loader. No file under `src/` imports `scripts/prototypes/job-number-timeline`.
 
 Internal v2 files: `projector.ts`, `evidence.ts`, `clocks.ts`, `outcome.ts`, `attention.ts`. Golden pages: `golden-pages.ts`.
 
@@ -139,12 +140,13 @@ Cancellations load by Booking id (`booked_lead` in the loaded bookings). Mongo d
 ```text
 pnpm prototype:job-number-timeline -- render --job-no <raw>
 pnpm prototype:job-number-timeline -- discover
+pnpm prototype:job-number-timeline -- proof --max-jobs 200 --warm-runs 12
 pnpm test:prototype:job-number-timeline
 ```
 
-Modes are only `render` and `discover`. There is no list mode. Optional `--source-granularity-id`, `--source-company-id`; discover also `--limit` and `--min-score`. Default live target is `testvantagemovers`. Production reads require `--confirm-production-db=vantagemovers`. No Mongo, Sheet, or CRM writes. Local gitignored reports may land under `scripts/output/job-number-timeline/`.
+Modes are `render`, `discover`, and `proof`. There is no list mode. Optional `--source-granularity-id`, `--source-company-id`; discover also `--limit` and `--min-score`; proof also `--max-jobs` and `--warm-runs`. Default live target is `testvantagemovers`. Production reads require `--confirm-production-db=vantagemovers` plus explicit user approval. No Mongo, Sheet, or CRM writes. Local gitignored reports may land under `scripts/output/job-number-timeline/`.
 
-`render` and `discover` call `createJobNumberTimelineModule`. `discover.ts` remains a CLI-only ranking helper. It is not an HTTP catalog.
+`render`, `discover`, and `proof` call `createJobNumberTimelineModule`. `discover.ts` remains a CLI-only ranking helper. It is not an HTTP catalog. `proof` (`live-proof.ts`) is read-only, count-stable, and masks Job Numbers as `JOB-n`. JTE-05 named test `serialized v2 page contains no forbidden fields or contact` serializes all 10 v2 goldens via `assertPageSafe`. No evaluator or projection semantics changed.
 
 A company/granularity mismatch prints `filtered_out` and exits 0 (JTE-01 residual).
 
@@ -152,4 +154,4 @@ A company/granularity mismatch prints `filtered_out` and exits 0 (JTE-01 residua
 
 - Prototype README: [`scripts/prototypes/job-number-timeline/README.md`](../../../scripts/prototypes/job-number-timeline/README.md)
 - Forensic Granot job/lead reads: [`projections.md`](../granot-lifecycle/projections.md)
-- Admin tab `/job-timeline` and `lib/api/jobNumberTimeline.ts` live in `vantage-admin` (Owner-only page and proxy path). JTE-04 shipped: Admin consumes the server v2 page and copies DTO types additively. Admin types are never the semantic authority. Live proof and deep links are JTE-05.
+- Admin tab `/job-timeline` and `lib/api/jobNumberTimeline.ts` live in `vantage-admin` (Owner-only page and proxy path). JTE-04 shipped: Admin consumes the server v2 page and copies DTO types additively. Admin types are never the semantic authority. JTE-05 shipped: CLI `proof` mode; Owner deep links via `JobTimelineDeepLink` / `buildJobTimelineHref({ job })` on Lead / Booking / Cancellation / intake surfaces. JTE-06 and JTE-07 stay deferred. `/daily` does not exist.
