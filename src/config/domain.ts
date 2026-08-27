@@ -44,3 +44,4 @@ export * from "./domain/leadMessaging";
 export * from "./domain/employeeBookingMatching";
 export * from "./domain/bookingReconciliation";
 export * from "./domain/granotLifecycle";
+export * from "./domain/conversations";

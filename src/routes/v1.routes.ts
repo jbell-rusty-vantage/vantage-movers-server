@@ -13,6 +13,7 @@ import googleDriveOAuthRoutes from "./google-drive-oauth.routes";
 import ringCentralRegistryRoutes from "./ringcentral-registry.routes";
 import granotLifecycleAdminRoutes from "./granot-lifecycle-admin.routes";
 import jobNumberTimelineAdminRoutes from "./job-number-timeline-admin.routes";
+import conversationsAdminRoutes from "./conversations-admin.routes";
 import { createExtensionGranotApplyRouter } from "./extension-granot-apply.routes";
 import {
   recordOperationalEvent,
@@ -269,6 +270,7 @@ router.use("/api/v1", requireApiSecret);
 router.use(ringCentralRegistryRoutes);
 router.use(granotLifecycleAdminRoutes);
 router.use(jobNumberTimelineAdminRoutes);
+router.use(conversationsAdminRoutes);
 
 type RequestWithLogger = Request & {
   log?: Logger;

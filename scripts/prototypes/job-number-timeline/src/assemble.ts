@@ -626,6 +626,9 @@ function proofShape(lead: LeadRow | undefined, created: JobTimelineEvent | undef
   if (origin === "ringcentral" || created?.data.command_name === "createCallLead") {
     return "ringcentral_born";
   }
+  if (origin === "legacy_unknown") {
+    return "other";
+  }
   if (created && acquired && created.event_at < acquired.event_at) {
     return "wordpress_born";
   }

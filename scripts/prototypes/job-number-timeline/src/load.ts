@@ -1,4 +1,4 @@
-import type { Db, Document } from "mongodb";
+import { ObjectId, type Db, type Document } from "mongodb";
 import mongoose from "mongoose";
 import { PRODUCTION_CONFIRMATION } from "../../../migrations/operations-registry-inventory.lib.js";
 import { TEST_DATABASE } from "../../../migrations/operations-registry-migration.lib.js";
@@ -31,6 +31,10 @@ function asId(value: unknown): string {
     return String((value as { toHexString: () => string }).toHexString());
   }
   return String(value);
+}
+
+function asMongoId(value: string): string | ObjectId {
+  return ObjectId.isValid(value) ? new ObjectId(value) : value;
 }
 
 function asIso(value: unknown): string {
@@ -173,7 +177,7 @@ export async function loadCompanyGranularityIds(
   sourceCompanyId: string,
 ): Promise<string[]> {
   const rows = await db.collection("lead_source_granularities").find({
-    source_company: sourceCompanyId,
+    source_company: asMongoId(sourceCompanyId),
   }).project({ _id: 1 }).toArray();
   return rows.map((row) => asId(row._id));
 }
@@ -249,7 +253,9 @@ export async function loadJobNumberTimelineRows(
 
   const bookingIds = mappedBookings.map((row) => row.id);
   const cancellations = bookingIds.length > 0
-    ? await db.collection("cancelled_leads").find({ booked_lead: { $in: bookingIds } }).toArray()
+    ? await db.collection("cancelled_leads").find({
+        booked_lead: { $in: bookingIds.map(asMongoId) },
+      }).toArray()
     : [];
   const mappedCancellations: CancellationRow[] = cancellations.map((row) => ({
     id: asId(row._id),
@@ -275,7 +281,9 @@ export async function loadJobNumberTimelineRows(
   let lead_messages: LeadMessageRow[] = [];
   if (leadRef && (leadRef.model === "FormLead" || leadRef.model === "CallLead")) {
     const collection = leadRef.model === "FormLead" ? "form_leads" : "call_leads";
-    const leadDoc = await db.collection(collection).findOne({ _id: leadRef.id } as Document);
+    const leadDoc = await db.collection(collection).findOne({
+      _id: asMongoId(leadRef.id),
+    } as Document);
     if (leadDoc) {
       const granularityId = leadDoc.source_granularity_id ? asId(leadDoc.source_granularity_id) : undefined;
       leads = [{
@@ -292,7 +300,7 @@ export async function loadJobNumberTimelineRows(
       }];
       const changes = await db.collection("entity_changes").find({
         "entity.model": leadRef.model,
-        "entity.id": leadDoc._id,
+        "entity.id": asId(leadDoc._id),
       }).toArray();
       entity_changes = changes.map((row) => ({
         id: asId(row._id),
@@ -385,7 +393,9 @@ export async function loadJobNumberTimelineRows(
     .map((row) => row.granot_crm_source_id)
     .filter((id): id is string => Boolean(id));
   const crmSources = sourceIds.length > 0
-    ? await db.collection("granot_crm_sources").find({ _id: { $in: sourceIds } } as Document).toArray()
+    ? await db.collection("granot_crm_sources").find({
+        _id: { $in: sourceIds.map(asMongoId) },
+      } as Document).toArray()
     : [];
   const mappedSources: CrmSourceRow[] = crmSources.map((row) => {
     const route = (row.reviewed_route ?? row.route ?? {}) as Document;
@@ -403,7 +413,9 @@ export async function loadJobNumberTimelineRows(
     ...mappedSources.map((row) => row.source_granularity_id),
   ].filter((id): id is string => Boolean(id));
   const granularities = granularityIds.length > 0
-    ? await db.collection("lead_source_granularities").find({ _id: { $in: granularityIds } } as Document).toArray()
+    ? await db.collection("lead_source_granularities").find({
+        _id: { $in: granularityIds.map(asMongoId) },
+      } as Document).toArray()
     : [];
   const mappedGranularities: GranularityRow[] = granularities.map((row) => ({
     id: asId(row._id),

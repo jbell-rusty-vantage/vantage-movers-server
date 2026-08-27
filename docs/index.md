@@ -20,6 +20,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [operations-registry.md](knowledge/services/operations-registry.md) | Catalog, source, CPL, inbound-route, and Granot CRM source system of record. |
 | [form-lead.md](knowledge/services/form-lead.md) | Create, update, and delete Form Leads, including duplicates, CRM Posting, and Sheet Sync. |
 | [call-lead.md](knowledge/services/call-lead.md) | Create and update Call Leads (manual and RingCentral), duplicates, CPL, and sheet tabs. |
+| [lead-conversation.md](knowledge/services/lead-conversation.md) | Seeded Lead Conversation evidence: redacted transcript, sectioned summary, private audio. |
 | [enrichment.md](knowledge/services/enrichment.md) | Preview and sync Granot Follow Up rows onto Call Leads. |
 | [bookings.md](knowledge/services/bookings.md) | Booked Lead create/update/delete, from-source, referral, leadless, and booking-chain sync. |
 | [booked-call-lead-reconciliation.md](knowledge/services/booked-call-lead-reconciliation.md) | Refresh Call Leads and bookings from Granot Booked Jobs rows. |
