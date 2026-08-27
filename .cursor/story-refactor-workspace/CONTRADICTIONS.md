@@ -4,6 +4,12 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Knowledge `observability.md` lists `alerts.ts` plus `observability.ts`, `metrics.ts`, and `projectGranotLifecycleHealth` as Primary code. This file only judges a snapshot and persists start/clear. Do not merge emit, counters, or health snapshot assembly here so the Primary-code line “wins.” See `recommendations/granot-lifecycle-alerts.md`.
+- Alert codes live on `observability.ts`; thresholds live on `config/domain/granotLifecycle.ts` and are not env-overridable. Do not move either dictionary into this file so “the alert module owns the names.” See `recommendations/granot-lifecycle-alerts.md`.
+- Persist is untested at this interface. Replica health deletes firing/recovered events afterward. Do not treat that cleanup as persist proof. See `recommendations/granot-lifecycle-alerts.md`.
+- This file never reads `metrics.ts`. p95 samples are Mongo Decision durations health already loaded. Do not call process-local getters so “one latency number.” See `recommendations/granot-lifecycle-alerts.md`.
+- Empty p95 / empty source rates are `insufficient_data` and never recover an open incident. Do not map empty samples to `ok` so “no data means healthy.” See `recommendations/granot-lifecycle-alerts.md`.
+- This checkout’s `CONTEXT.md` does not define Operational Event / rollout alert / Section 33. Do not invent a glossary copy. See `recommendations/granot-lifecycle-alerts.md`.
 - These three commands are on `canonicalDomainCommands`. Booking / Release Owner review is not. There is no discrepancy command flag. Do not invent `GRANOT_LIFECYCLE_DISCREPANCY_COMMANDS_ENABLED`, and do not remove these from the registry so “they match Booking review.” See `recommendations/granot-lifecycle-discrepancy-owner-commands.md`.
 - Re-evaluate must reuse fingerprint + store and must not call `reconcileObservation` (that persist inserts a Decision). Do not move re-evaluate into `discrepancies.ts` so “one discrepancy writer.” See `recommendations/granot-lifecycle-discrepancy-owner-commands.md`.
 - Correction always resolves even if the Job still fights after the new link. The owner cannot re-evaluate a resolved row. Do not call persist from correction so “the leftover fight is saved.” See `recommendations/granot-lifecycle-discrepancy-owner-commands.md`.
