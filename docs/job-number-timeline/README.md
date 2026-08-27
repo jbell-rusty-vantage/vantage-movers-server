@@ -77,8 +77,8 @@ Live values live in [`PROGRESS.md`](PROGRESS.md).
 | --- | --- | --- | --- | --- |
 | [JTE-01](issues/JTE-01.md) | Extract deep runtime module; route and CLI use it | current timeline | complete | complete |
 | [JTE-02](issues/JTE-02.md) | v2 types, dual clocks, evidence/correlation/activity, source receipt | JTE-01 | complete | complete |
-| [JTE-03](issues/JTE-03.md) | Outcome, stage assessment, attention, limitations, freshness | JTE-02 | ready | complete |
-| [JTE-04](issues/JTE-04.md) | Enhanced Owner UI and evidence expansion | JTE-03 | blocked | complete |
+| [JTE-03](issues/JTE-03.md) | Outcome, stage assessment, attention, limitations, freshness | JTE-02 | complete | complete |
+| [JTE-04](issues/JTE-04.md) | Enhanced Owner UI and evidence expansion | JTE-03 | ready | complete |
 | [JTE-05](issues/JTE-05.md) | Live proof, security, accessibility, performance, deep links | JTE-04 | blocked | complete |
 | [JTE-06](issues/JTE-06.md) | Cancellation correlation snapshots and report-first backfill | JTE-02; separate write approval | deferred | complete |
 | [JTE-07](issues/JTE-07.md) | WordPress durable receipt capture | separate source-assurance approval | deferred | complete |
@@ -87,10 +87,12 @@ Live values live in [`PROGRESS.md`](PROGRESS.md).
 
 - **JTE-01 is complete.** The production module seam exists at
   `src/services/jobNumberTimeline/`.
-- **JTE-02 is complete.** `ok` pages are `job_timeline.v2`. JTE-03 is the
-  only startable issue. Do not parallelize JTE-03 with Admin work.
-- **JTE-04 is Admin-only** once JTE-03 has exported, tested golden pages.
-  Admin types are never the semantic authority.
+- **JTE-02 is complete.** `ok` pages are `job_timeline.v2`.
+- **JTE-03 is complete.** The module evaluates outcome, stages, attention,
+  limitations, and freshness. JTE-04 is the only startable issue. Do not
+  describe Admin UI as shipped.
+- **JTE-04 is Admin-only.** Consume the exported, tested golden pages.
+  Admin types are never the semantic authority. Do not recompute codes.
 - **JTE-05 does not invent new semantics.** It certifies and links.
 - **JTE-06 and JTE-07 stay deferred** until the Owner authorizes a write-path
   change. The honest timeline ships without them.
@@ -163,10 +165,15 @@ day. Each issue's §4 repeats the subset it depends on.
   `activities` group rows without deleting them. Official Booking and official
   Cancellation keep independent activity ids. Cap 250 is a named
   `TIMELINE_TRUNCATED` limitation (`counts_by_stage`); never a silent drop.
-- Outcome, stage assessments, attention, and the limitation catalog are
-  **stubs** (`current_outcome: "unknown"`; empty arrays except truncation).
-  JTE-03 owns those evaluators. `freshness.ringcentral_covered_through` may
-  come from the call-log cursor; `ringcentral_cursor_lag_seconds` is `null`.
+- Outcome, stage assessments, attention, limitations, and freshness are
+  evaluated inside the module (`outcome.ts`, `attention.ts`). One evaluator
+  per specification §8 code. Admin must not recompute them. Always-on
+  limitations: `MULTI_QUERY_READ`, `MOVE_COMPLETION_UNAVAILABLE`,
+  `GOOGLE_DESTINATION_UNVERIFIED`. `TIMELINE_TRUNCATED` still marks the
+  250 cap. `freshness.google_destination_readback` stays `not_performed`.
+  RingCentral-born pages publish `ringcentral_covered_through` and
+  `ringcentral_cursor_lag_seconds`. Golden pages:
+  `src/services/jobNumberTimeline/golden-pages.ts`.
 - Loader reads observations, latest decisions, record links, bookings,
   cancellations, booking/release cases, discrepancies, leads, entity changes,
   lead messages, sheet sync jobs, Granot CRM sources, granularities,

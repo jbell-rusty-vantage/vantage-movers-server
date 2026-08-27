@@ -87,16 +87,35 @@ export type TimelineEvidenceRef = {
   ref: string;
 };
 
+export type TimelineAttentionCode =
+  | "LEAD_UNRESOLVED"
+  | "BOOKING_CASE_RESOLVED_WITHOUT_FACT"
+  | "CANCELLATION_CASE_RESOLVED_WITHOUT_FACT"
+  | "ORPHAN_CANCELLATION_REFERENCE"
+  | "SHEET_SYNC_PENDING_TOO_LONG"
+  | "SHEET_SYNC_TERMINAL_FAILURE"
+  | "CONTRADICTORY_OFFICIAL_STATE"
+  | "SOURCE_SCOPE_CONFLICT"
+  | "PROCESSING_EVIDENCE_GAP";
+
+export type TimelineLimitationCode =
+  | "WORDPRESS_RECEIPT_UNAVAILABLE"
+  | "RINGCENTRAL_CURSOR_BOUNDED"
+  | "GOOGLE_DESTINATION_UNVERIFIED"
+  | "MOVE_COMPLETION_UNAVAILABLE"
+  | "MULTI_QUERY_READ"
+  | "TIMELINE_TRUNCATED";
+
 export type TimelineAttention = {
-  code: string;
-  reason_code: string;
+  code: TimelineAttentionCode;
+  reason_code: TimelineAttentionCode;
   label: string;
   event_ids: string[];
 };
 
 export type TimelineLimitation = {
-  code: string;
-  reason_code: string;
+  code: TimelineLimitationCode;
+  reason_code: TimelineLimitationCode;
   label: string;
   event_ids: string[];
   counts_by_stage?: Partial<Record<JobTimelineStage, number>>;

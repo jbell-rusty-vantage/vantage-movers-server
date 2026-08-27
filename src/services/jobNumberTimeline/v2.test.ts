@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { T0, T1, T2, T3, WP_JOB, wordpressRows } from "./fixtures.js";
 import {
+  ALWAYS_LIMITATION_CODES,
+  GOLDEN_EXPECTATIONS,
   GOLDEN_JOBS,
   T_RECORDED,
   goldenBookedRows,
@@ -57,6 +59,7 @@ test("wordpress creation reports no invented receipt event", async () => {
   assert.equal(page.events.some((event) => event.kind === "source_received"), false);
   assert.equal(page.events.some((event) => event.kind === "lead_created"), true);
   assert.equal(page.events.find((event) => event.kind === "lead_created")?.data.ingestion_origin, "wordpress_form");
+  assert.ok(page.limitations.some((row) => row.code === "WORDPRESS_RECEIPT_UNAVAILABLE"));
 });
 
 test("dual clocks order by occurred time and preserve recorded time", async () => {
@@ -141,6 +144,7 @@ test("orphan cancellation is not attached without durable job snapshot", async (
   assert.equal(page.events.some((event) => event.kind === "official_cancellation"), false);
   assert.equal(page.coverage.official_cancellation, false);
   assert.equal(page.current.cancellation_id, undefined);
+  assert.ok(page.attention.some((row) => row.code === "ORPHAN_CANCELLATION_REFERENCE"));
 });
 
 test("cancellation snapshot restores exact job correlation", async () => {
@@ -225,6 +229,21 @@ test("golden pages cover origin and official-fact shapes", async () => {
   assert.equal(rcReceipt?.data.qualification_outcome, "qualified_inbound");
   assert.equal("callerPhoneNumber" in (rcReceipt?.data ?? {}), false);
   assert.equal(ringcentral.freshness.ringcentral_covered_through, T3);
+  assert.equal(wordpress.current_outcome, GOLDEN_EXPECTATIONS.wordpress.outcome);
+  assert.equal(granot.current_outcome, GOLDEN_EXPECTATIONS.granot.outcome);
+  assert.equal(ringcentral.current_outcome, GOLDEN_EXPECTATIONS.ringcentral.outcome);
+  assert.equal(booked.current_outcome, GOLDEN_EXPECTATIONS.booked.outcome);
+  assert.equal(cancelled.current_outcome, GOLDEN_EXPECTATIONS.cancelled.outcome);
+  assert.ok(wordpress.limitations.some((row) => row.code === "WORDPRESS_RECEIPT_UNAVAILABLE"));
+  assert.ok(ringcentral.limitations.some((row) => row.code === "RINGCENTRAL_CURSOR_BOUNDED"));
+  for (const page of [wordpress, granot, ringcentral, booked, cancelled]) {
+    assert.equal(page.stage_assessments.length, 7);
+    for (const code of ALWAYS_LIMITATION_CODES) {
+      assert.ok(page.limitations.some((row) => row.code === code), `${page.proof_shape} missing ${code}`);
+    }
+    assert.equal(page.summary.attention_count, page.attention.length);
+    assert.ok(page.summary.headline);
+  }
   assert.equal(booked.coverage.official_booking, true);
   assert.equal(booked.events.some((event) => event.kind === "official_booking"), true);
   assert.equal(cancelled.coverage.official_cancellation, true);

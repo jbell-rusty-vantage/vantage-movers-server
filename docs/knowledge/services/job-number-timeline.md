@@ -22,13 +22,13 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:docs-keeper
-  at: 2026-08-27T19:30:00Z
+  at: 2026-08-27T19:50:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/jobNumberTimeline/` (`createJobNumberTimelineModule`)  
 **CLI / proof adapter:** [`scripts/prototypes/job-number-timeline/`](../../../scripts/prototypes/job-number-timeline/README.md)  
-**Enhancement workspace:** [`../../job-number-timeline/README.md`](../../job-number-timeline/README.md) — JTE-01 extract and JTE-02 v2 projection shipped. JTE-03 owns outcome, attention, and limitation evaluators.  
+**Enhancement workspace:** [`../../job-number-timeline/README.md`](../../job-number-timeline/README.md) — JTE-01 extract, JTE-02 v2 projection, and JTE-03 evaluators shipped. JTE-04 (Admin UI) has not.  
 **Domain terms used:** [Job Number](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Granot Observation Receipt](../../../../CONTEXT.md)
 
 # Job Number timeline
@@ -39,7 +39,7 @@ This is not `GET /api/v1/admin/granot-lifecycle/jobs/:normalized_job_no`. That f
 
 Runtime code lives in `src/services/jobNumberTimeline/`. Callers use `createJobNumberTimelineModule({ loader }).read(...)`. The HTTP route and the CLI `render` / `discover` modes call that same interface. Tests use a memory loader; production uses a Mongo loader. No file under `src/` imports `scripts/prototypes/job-number-timeline`.
 
-Internal v2 files: `projector.ts`, `evidence.ts`, `clocks.ts`. Golden pages: `golden-pages.ts`.
+Internal v2 files: `projector.ts`, `evidence.ts`, `clocks.ts`, `outcome.ts`, `attention.ts`. Golden pages: `golden-pages.ts`.
 
 ## HTTP
 
@@ -88,9 +88,39 @@ Each event has dual clocks (`time.occurred_at` / `time.recorded_at`). Default or
 
 Cap is 250 (`JOB_TIMELINE_EVENT_CAP`). Overflow is a named `TIMELINE_TRUNCATED` limitation with `counts_by_stage` of the omitted events. Never a silent drop.
 
-### JTE-03 stubs (evaluators not shipped)
+### Evaluators (JTE-03 shipped)
 
-`current_outcome` is `"unknown"`. `stage_assessments` and `attention` are empty. `summary.headline` is empty. `limitations` is empty except `TIMELINE_TRUNCATED`. `freshness.ringcentral_covered_through` may be filled from the RingCentral call-log cursor; `ringcentral_cursor_lag_seconds` is always `null`. JTE-03 owns the outcome, stage-assessment, attention, and limitation evaluators.
+The module evaluates page-level v2 fields after events and activities are finalized. `projector.ts` calls the evaluators. The external seam is unchanged: `createJobNumberTimelineModule({ loader }).read`. The HTTP route still only authorize → validate → `module.read` → respond. Tests call that same interface.
+
+JTE-03 evaluators shipped. JTE-04 (Admin UI) has not.
+
+`outcome.ts` owns current outcome and stage assessments:
+
+- `evaluateCurrentOutcome` uses specification §4.2 precedence, not last-event-wins. Intake is never the official outcome.
+- `assessStages` emits one assessment per §4.1 stage. Labels follow §9.2. States are expectation-aware (`complete`, `active`, `not_started`, `not_applicable`, `attention`, `unverifiable`).
+- `outcomeHeadline` fills `summary.headline` from the decided outcome.
+
+On `ok`, `page` stays `EnhancedJobTimelinePage` with `schema_version: "job_timeline.v2"`. Every v1 field and every JTE-02 event field remains.
+
+`current_outcome` values: `lead_active` | `booking_intake_open` | `booked` | `cancellation_intake_open` | `cancelled` | `contradictory` | `unknown`.
+
+`attention.ts` owns one evaluator per specification §8 attention and limitation code, plus freshness:
+
+- `evaluateAttention` / `evaluateLimitations` / `evaluateFreshness`
+- `SHEET_SYNC_PENDING_TOO_LONG_MS` default is 1 hour (module constant, not `process.env`)
+
+Always emit limitations: `MULTI_QUERY_READ`, `MOVE_COMPLETION_UNAVAILABLE`, `GOOGLE_DESTINATION_UNVERIFIED`. Keep `TIMELINE_TRUNCATED` when the 250 cap hits. Do not invent extra §8 codes.
+
+WordPress-born pages emit `WORDPRESS_RECEIPT_UNAVAILABLE` (no invented receipt event). RingCentral-born pages emit `RINGCENTRAL_CURSOR_BOUNDED` and fill `freshness.ringcentral_covered_through` plus `ringcentral_cursor_lag_seconds`. `freshness.google_destination_readback` stays `"not_performed"`. `freshness.consistency` stays `"multi_query_best_effort"`.
+
+Sheet `synced` means outbox completion, not Google equality. Delivery stage is `unverifiable` even when every outbox job is synced. Move completion is a limitation, never a stage or event.
+
+Golden pages for JTE-04 fixtures live in `golden-pages.ts` (`GOLDEN_EXPECTATIONS`, `ALWAYS_LIMITATION_CODES`, plus extra builders for policy skip, resolved-without-fact, contradictory chronology, and open cancellation intake). Admin must display those arrays; it must not recompute them.
+
+### Residuals
+
+- JTE-01: CLI company/granularity mismatch prints `filtered_out` (exit 0).
+- JTE-02: the module stamps `assembled_at` with `input.now ?? new Date()`. RingCentral `source_received` is qualified ledger statuses only (`lead_created`, `lead_created_duplicate`, `lead_adopted`, `lead_adopted_duplicate`). Mongo does not query orphan Cancellations by snapshot (no field, no index — JTE-06).
 
 ### Loader
 
@@ -101,6 +131,8 @@ Mongo loader reads observations, latest decisions, record links, bookings, cance
 - call-log cursor via `getRingCentralCollectionName("callLogSyncState")` (`ringcentral_call_log_sync_state`, `{ key: "account" }`)
 
 Safe projections only: no payload, headers, phone, transcript, recording, `last_error`, or `spreadsheet_id`.
+
+Cancellations load by Booking id (`booked_lead` in the loaded bookings). Mongo does not query orphan Cancellations by snapshot (no field, no index — JTE-06).
 
 ## CLI
 
@@ -114,8 +146,10 @@ Modes are only `render` and `discover`. There is no list mode. Optional `--sourc
 
 `render` and `discover` call `createJobNumberTimelineModule`. `discover.ts` remains a CLI-only ranking helper. It is not an HTTP catalog.
 
+A company/granularity mismatch prints `filtered_out` and exits 0 (JTE-01 residual).
+
 ## Related
 
 - Prototype README: [`scripts/prototypes/job-number-timeline/README.md`](../../../scripts/prototypes/job-number-timeline/README.md)
 - Forensic Granot job/lead reads: [`projections.md`](../granot-lifecycle/projections.md)
-- Admin tab `/job-timeline` and `lib/api/jobNumberTimeline.ts` live in `vantage-admin` (Owner-only page and proxy path)
+- Admin tab `/job-timeline` and `lib/api/jobNumberTimeline.ts` live in `vantage-admin` (Owner-only page and proxy path). JTE-04 (enhanced Owner UI) has not shipped.

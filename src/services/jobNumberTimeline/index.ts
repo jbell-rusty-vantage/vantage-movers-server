@@ -17,5 +17,7 @@ export type {
   JobTimelineStage,
   TimelineActivity,
   TimelineAttention,
+  TimelineAttentionCode,
   TimelineLimitation,
+  TimelineLimitationCode,
 } from "./types.js";

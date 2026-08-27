@@ -1,3 +1,9 @@
+import {
+  evaluateAttention,
+  evaluateFreshness,
+  evaluateLimitations,
+  hasProcessingEvidenceGap,
+} from "./attention.js";
 import { compareOccurredThenPriority, selectEventTime } from "./clocks.js";
 import {
   correlationFor,
@@ -7,6 +13,7 @@ import {
   eventSummary,
   stageForKind,
 } from "./evidence.js";
+import { assessStages, evaluateCurrentOutcome, outcomeHeadline } from "./outcome.js";
 import type { JobTimelineRows } from "./rows.js";
 import type {
   EnhancedJobTimelineEvent,
@@ -239,33 +246,49 @@ export function projectEnhancedPage(input: ProjectEnhancedPageInput): EnhancedJo
   const keptIds = new Set(kept.map((event) => event.id));
   const activities = buildActivities(kept);
   const assembled_at = assembledAt(input.page, input.now);
-  const cursor = input.rows.call_log_cursor;
-  const ringcentral_covered_through = cursor?.lastSyncTo ?? null;
-  const limitations: TimelineLimitation[] = dropped.length > 0
+  const now = input.now ?? new Date(assembled_at);
+  const freshness = evaluateFreshness({ assembled_at, rows: input.rows });
+  const current_outcome = evaluateCurrentOutcome({
+    coverage: input.page.coverage,
+    events: kept,
+  });
+  const processingGap = hasProcessingEvidenceGap({ rows: input.rows, events: kept });
+  const stage_assessments = assessStages({
+    coverage: input.page.coverage,
+    events: kept,
+    processingGap,
+  });
+  const attention = evaluateAttention({
+    page: input.page,
+    events: kept,
+    rows: input.rows,
+    now,
+  });
+  const truncated: TimelineLimitation[] = dropped.length > 0
     ? [truncationLimitation(dropped)]
     : [];
+  const limitations = evaluateLimitations({
+    page: input.page,
+    events: kept,
+    existing: truncated,
+    ringcentral_covered_through: freshness.ringcentral_covered_through,
+  });
 
   return {
     ...input.page,
     schema_version: "job_timeline.v2",
     assembled_at,
-    current_outcome: "unknown",
+    current_outcome,
     summary: {
-      headline: "",
+      headline: outcomeHeadline(current_outcome),
       origin_label: originLabel(input.page),
       latest_activity_at: kept[kept.length - 1]?.time.occurred_at ?? null,
       event_count: kept.length,
-      attention_count: 0,
+      attention_count: attention.length,
     },
-    freshness: {
-      mongo_read_at: assembled_at,
-      consistency: "multi_query_best_effort",
-      ringcentral_covered_through,
-      ringcentral_cursor_lag_seconds: null,
-      google_destination_readback: "not_performed",
-    },
-    stage_assessments: [],
-    attention: [],
+    freshness,
+    stage_assessments,
+    attention,
     limitations,
     activities,
     events: kept.map((event) => ({
