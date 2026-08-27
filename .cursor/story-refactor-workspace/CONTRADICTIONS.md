@@ -4,6 +4,11 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Knowledge lists this file as primary code on both `booking-reconciliation.md` and `projections.md`. This file neither persists a case nor builds list/detail DTOs. Do not move it into either sibling so a Primary-code line “wins.” See `recommendations/granot-lifecycle-booking-priority-pairing.md`.
+- `later_priority_5` is computed here; persist drops it; list recomputes later itself. Do not store later on the case so “one snapshot is complete.” See `recommendations/granot-lifecycle-booking-priority-pairing.md`.
+- `booked_without_priority_5` still names a preceding Priority 5 when one exists. Do not clear the ref so “without means no pair.” See `recommendations/granot-lifecycle-booking-priority-pairing.md`.
+- `projectBookingPriorityPairing` names a DTO fold and the classify. Persist then throws away `later_priority_5`. Do not drop later from the in-memory type so “project matches persist.” See `recommendations/granot-lifecycle-booking-priority-pairing.md`.
+- This checkout’s `CONTEXT.md` does not define Booking Priority Pairing (knowledge booking-reconciliation / projections frontmatter still link the parent glossary). Do not invent a glossary copy. See `recommendations/granot-lifecycle-booking-priority-pairing.md`.
 - This file’s persisted command name is `updateBooking`. `domainCommands/bookings.ts` already exports a registry `updateBooking` that takes a Booking id and no case. Do not route Owner review through the registry primitive so “one `updateBooking`.” See `recommendations/granot-lifecycle-booking-owner-commands.md`.
 - Knowledge `booking-reconciliation.md` first says No Action is for open standard create-missing or review-existing. The same page later says Referral review reuses No Action, and the code also accepts `create_referral_booking`. Do not delete the Referral mode so the first sentence “wins.” See `recommendations/granot-lifecycle-booking-owner-commands.md`.
 - Knowledge `booking-reconciliation.md` Primary code lists this file beside `bookingReconciliation.ts`. This file does not open or refresh a case. Do not move it into the persist file so the Primary-code line “wins.” See `recommendations/granot-lifecycle-booking-owner-commands.md`.
