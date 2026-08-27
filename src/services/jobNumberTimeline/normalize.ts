@@ -2,7 +2,7 @@ import {
   equivalentNormalizedJobFilter,
   jobNumbersEquivalent,
   normalizeJobNo,
-} from "../../../../src/services/bookings/bookingIdentity.js";
+} from "../bookings/bookingIdentity.js";
 
 export function normalizeTypedJobNo(raw: string | null | undefined): string | undefined {
   return normalizeJobNo(raw?.trim() ?? "");

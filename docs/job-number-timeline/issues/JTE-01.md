@@ -157,20 +157,20 @@ None. This issue writes no collection and applies no index.
 
 ## 10. Acceptance criteria
 
-- [ ] `src/services/jobNumberTimeline/` exists and exports
+- [x] `src/services/jobNumberTimeline/` exists and exports
       `createJobNumberTimelineModule`.
-- [ ] `rg "scripts/prototypes/job-number-timeline" src` is empty.
-- [ ] HTTP envelope, status values, event kinds, headlines, and safe `data`
+- [x] `rg "scripts/prototypes/job-number-timeline" src` is empty.
+- [x] HTTP envelope, status values, event kinds, headlines, and safe `data`
       match current route tests and assembler fixtures.
-- [ ] Route tests still inject `deps.read` and still prove Owner-only vs
+- [x] Route tests still inject `deps.read` and still prove Owner-only vs
       Admin 403.
-- [ ] Memory loader + module interface reproduce the existing assembler
+- [x] Memory loader + module interface reproduce the existing assembler
       cases (WordPress walk-back, Granot-born, latest Decision only, intake
       is not official, equivalent Job Number, Sheet Sync by entity ID).
-- [ ] CLI `render` uses the production module. Discover remains CLI-only.
-- [ ] Masking still strips contact, SMS body, and raw payloads.
-- [ ] Service doc names `src/services/jobNumberTimeline/` as primary code.
-- [ ] No Command, `EntityChange`, case, outbox row, or notification is
+- [x] CLI `render` uses the production module. Discover remains CLI-only.
+- [x] Masking still strips contact, SMS body, and raw payloads.
+- [x] Service doc names `src/services/jobNumberTimeline/` as primary code.
+- [x] No Command, `EntityChange`, case, outbox row, or notification is
       produced.
 
 ## 11. Required tests and commands

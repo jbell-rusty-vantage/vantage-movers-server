@@ -39,7 +39,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [catalog.md](knowledge/services/catalog.md) | Agents/merchants read facade; mutations go through Operations Registry. |
 | [testimonial.md](knowledge/services/testimonial.md) | Read-only public and admin testimonials; ingest stays in helpers and ops scripts. |
 | [granot-http-collector.md](knowledge/services/granot-http-collector.md) | HTTP session collector; approved apply captures automation receipts. |
-| [job-number-timeline.md](knowledge/services/job-number-timeline.md) | Owner-only typed Job Number chain; prototype assembler, not Granot lifecycle projections. |
+| [job-number-timeline.md](knowledge/services/job-number-timeline.md) | Owner-only typed Job Number chain; production module `src/services/jobNumberTimeline/`, not Granot lifecycle projections. |
 | [lead-messaging.md](knowledge/services/lead-messaging.md) | Persist and dispatch outbound confirmation SMS for public Form Leads and Granot create-if-missing Leads. |
 | [employee-bookings.md](knowledge/services/employee-bookings.md) | Public employee booking submit with auto-match, plus Owner booking-lead reconciliation cases. |
 | [reporting.md](knowledge/services/reporting.md) | Owner-gated report definitions, immutable revisions, confirmed runs, and Google destination delivery. |

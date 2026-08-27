@@ -44,3 +44,13 @@ test("CLI and load stay zero-mutation", () => {
     assert.doesNotMatch(source, /\.save\(/);
   }
 });
+
+test("CLI render uses the production module", () => {
+  const cli = readFileSync(
+    path.join(process.cwd(), "scripts/prototypes/job-number-timeline/src/cli.ts"),
+    "utf8",
+  );
+  assert.match(cli, /createJobNumberTimelineModule/);
+  assert.match(cli, /src\/services\/jobNumberTimeline/);
+  assert.doesNotMatch(cli, /from "\.\/assemble/);
+});

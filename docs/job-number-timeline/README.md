@@ -43,7 +43,7 @@ Resolve paths from the `vantage-main-server` repository root.
 | 1 | [`job-timeline-enhancement-specification.md`](job-timeline-enhancement-specification.md) — **wins on every conflict** for additive enhancement behavior |
 | 2 | [`scripts/prototypes/job-number-timeline/specs/job-number-timeline-prototype-specification.md`](../../scripts/prototypes/job-number-timeline/specs/job-number-timeline-prototype-specification.md) — **wins on event truth, correlation, and masking** until this enhancement spec is explicitly amended with migration tests |
 | 3 | Current repository code, migrations, and tests — the actual seam each session extends |
-| 4 | [`docs/knowledge/services/job-number-timeline.md`](../knowledge/services/job-number-timeline.md) — current Service concept (prototype assembler is still primary until JTE-01 closes) |
+| 4 | [`docs/knowledge/services/job-number-timeline.md`](../knowledge/services/job-number-timeline.md) — current Service concept (`src/services/jobNumberTimeline/` is primary; the prototype folder is a retained CLI/proof adapter) |
 | 5 | `.cursor/rules/project-organization.mdc` and `.cursor/rules/job-number-timeline.mdc` |
 | 6 | `vantage-admin/uxdocs/HANDOFF-job-timeline-enhancement.md` — Admin-side orientation |
 | 7 | This pack's issues — sequencing and scope only, never new semantics |
@@ -75,8 +75,8 @@ Live values live in [`PROGRESS.md`](PROGRESS.md).
 
 | Issue | Title | Prerequisites | Status | Contract |
 | --- | --- | --- | --- | --- |
-| [JTE-01](issues/JTE-01.md) | Extract deep runtime module; route and CLI use it | current timeline | ready | complete |
-| [JTE-02](issues/JTE-02.md) | v2 types, dual clocks, evidence/correlation/activity, source receipt | JTE-01 | blocked | complete |
+| [JTE-01](issues/JTE-01.md) | Extract deep runtime module; route and CLI use it | current timeline | complete | complete |
+| [JTE-02](issues/JTE-02.md) | v2 types, dual clocks, evidence/correlation/activity, source receipt | JTE-01 | ready | complete |
 | [JTE-03](issues/JTE-03.md) | Outcome, stage assessment, attention, limitations, freshness | JTE-02 | blocked | complete |
 | [JTE-04](issues/JTE-04.md) | Enhanced Owner UI and evidence expansion | JTE-03 | blocked | complete |
 | [JTE-05](issues/JTE-05.md) | Live proof, security, accessibility, performance, deep links | JTE-04 | blocked | complete |
@@ -85,10 +85,11 @@ Live values live in [`PROGRESS.md`](PROGRESS.md).
 
 ## Ready queue
 
-- **JTE-01 is the only startable issue.** Everything else depends on the
-  production module seam existing.
-- **JTE-02 and JTE-03 are sequential and same-module.** Do not parallelize
-  them. JTE-03 consumes the v2 event fields JTE-02 adds.
+- **JTE-01 is complete.** The production module seam exists at
+  `src/services/jobNumberTimeline/`.
+- **JTE-02 is the only startable issue.** JTE-03 stays blocked until JTE-02
+  closes. Do not parallelize them. JTE-03 consumes the v2 event fields
+  JTE-02 adds.
 - **JTE-04 is Admin-only** once JTE-03 has exported, tested golden pages.
   Admin types are never the semantic authority.
 - **JTE-05 does not invent new semantics.** It certifies and links.
@@ -136,18 +137,23 @@ These apply to all issues and are not repeated as scope in each one.
 - Automatic repair, retry, or reconciliation.
 - Customer conversation transcript or call recording.
 
-## Verified current state at pack creation
+## Verified current state
 
-Observed 2026-08-27. **Reverify at implementation** — each issue's §4 repeats
-the subset it depends on.
+Observed at pack creation 2026-08-27; **reverified after JTE-01** the same
+day. Each issue's §4 repeats the subset it depends on.
 
-- Production HTTP route `src/routes/job-number-timeline-admin.routes.ts`
-  imports assembler, loader, masking, and types from
-  `scripts/prototypes/job-number-timeline/src/`. `src/services/jobNumberTimeline/`
-  **does not exist**.
+- Production HTTP route `src/routes/job-number-timeline-admin.routes.ts` is
+  authorize → validate → `createJobNumberTimelineModule({ loader }).read` →
+  respond. Redaction is inside the module. Primary code:
+  `src/services/jobNumberTimeline/`. No file under `src/` imports
+  `scripts/prototypes/job-number-timeline`. The prototype folder is a
+  retained CLI/proof adapter (`cli.ts` `render` / `discover` call the
+  module; `discover.ts` is ranking only; `load.ts` is DB-name /
+  production-confirm helpers only).
 - Route is Owner-only, mounted after the `/api/v1` guard in `v1.routes.ts`.
   Envelope `{ ok: true, data: JobTimelineAssembleResult }`. Success HTTP is
   always `200`, including `not_found` / `filtered_out` / `invalid_job_number`.
+  v1 response contract is unchanged.
 - Eleven event kinds. No `source_received`. Coverage chips are
   present/absent. No `schema_version`, stages, dual clocks, activities,
   attention, or limitations.

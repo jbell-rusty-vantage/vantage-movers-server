@@ -8,20 +8,19 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import mongoose from "mongoose";
 import { connectMongo } from "../../../../src/db.js";
+import { createJobNumberTimelineModule } from "../../../../src/services/jobNumberTimeline/index.js";
+import { redactTimelineValue } from "../../../../src/services/jobNumberTimeline/masking.js";
+import { createMongoEvidenceLoader } from "../../../../src/services/jobNumberTimeline/mongo-evidence-loader.js";
+import { normalizeTypedJobNo } from "../../../../src/services/jobNumberTimeline/normalize.js";
+import type { JobTimelinePage } from "../../../../src/services/jobNumberTimeline/types.js";
 import { granotLifecycleOutputDirectory } from "../../../migrations/granot-lifecycle-migration.lib.js";
-import { assembleJobNumberTimeline } from "./assemble.js";
 import { discoverJobNumberTimelines } from "./discover.js";
 import {
   assertTimelineDatabaseAllowed,
-  loadCompanyGranularityIds,
-  loadJobNumberTimelineRows,
   PRODUCTION_CONFIRMATION,
   resolveTimelineDatabase,
   timelineDatabase,
 } from "./load.js";
-import { redactTimelineValue } from "./masking.js";
-import { normalizeTypedJobNo } from "./normalize.js";
-import type { JobTimelinePage } from "./types.js";
 
 export {
   assertTimelineDatabaseAllowed,
@@ -82,20 +81,17 @@ async function writeReport(kind: string, payload: unknown): Promise<string> {
   return filePath;
 }
 
-async function expandFilters(args: readonly string[], db: Awaited<ReturnType<typeof timelineDatabase>>) {
-  const sourceGranularityId = readFlag(args, "--source-granularity-id");
-  const sourceCompanyId = readFlag(args, "--source-company-id");
-  let companyGranularityIds: string[] | undefined;
-  if (sourceCompanyId) {
-    companyGranularityIds = await loadCompanyGranularityIds(db, sourceCompanyId);
-    if (sourceGranularityId && !companyGranularityIds.includes(sourceGranularityId)) {
-      throw new JobTimelineCliError("source-granularity-id does not belong to source-company-id");
-    }
-  }
+function createProductionModule(db: Awaited<ReturnType<typeof timelineDatabase>>) {
+  return createJobNumberTimelineModule({
+    loader: createMongoEvidenceLoader({ db }),
+  });
+}
+
+function readInput(args: readonly string[], jobNo: string) {
   return {
-    source_granularity_id: sourceGranularityId,
-    source_company_id: sourceCompanyId,
-    company_granularity_ids: companyGranularityIds,
+    job_no: jobNo,
+    source_granularity_id: readFlag(args, "--source-granularity-id"),
+    source_company_id: readFlag(args, "--source-company-id"),
   };
 }
 
@@ -113,9 +109,7 @@ async function runRender(args: readonly string[]): Promise<void> {
   assertTimelineDatabaseAllowed(databaseName, args);
   await connectMongo();
   const db = await timelineDatabase(mongoose, databaseName);
-  const filters = await expandFilters(args, db);
-  const rows = await loadJobNumberTimelineRows(db, normalized);
-  const result = assembleJobNumberTimeline({ rawJobNo, filters, rows });
+  const result = await createProductionModule(db).read(readInput(args, rawJobNo));
   if (result.status === "not_found") {
     process.stdout.write(`not_found ${result.normalized_job_no}\n`);
     return;
@@ -147,7 +141,7 @@ async function runDiscover(args: readonly string[]): Promise<void> {
   const minScore = Number(readFlag(args, "--min-score") ?? "4");
   await connectMongo();
   const db = await timelineDatabase(mongoose, databaseName);
-  const filters = await expandFilters(args, db);
+  const module = createProductionModule(db);
   const jobNos = new Set<string>();
   for (const collection of [
     "granot_record_links",
@@ -167,8 +161,7 @@ async function runDiscover(args: readonly string[]): Promise<void> {
 
   const pages: JobTimelinePage[] = [];
   for (const jobNo of jobNos) {
-    const rows = await loadJobNumberTimelineRows(db, jobNo);
-    const result = assembleJobNumberTimeline({ rawJobNo: jobNo, filters, rows });
+    const result = await module.read(readInput(args, jobNo));
     if (result.status === "ok") pages.push(result.page);
   }
   const ranked = discoverJobNumberTimelines(pages, { limit, minScore });
