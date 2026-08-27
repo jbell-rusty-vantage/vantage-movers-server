@@ -4,9 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-08-27T0412Z | to: next-run | from: story-granot-lifecycle-synchronize-lead-from-granot-2026-08-27T0412Z | kind: next
+
+`granotLifecycle` is **in-progress**. `synchronizeLeadFromGranot.ts` is recommended. Next module: **`createLeadFromGranot.ts`**. Stay on `granotLifecycle`. Do not write a whole-folder recommendation.
+
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + `granot-lifecycle-capture.md` + `granot-lifecycle-queue-publisher.md` + `granot-lifecycle-extension-apply.md` + `granot-lifecycle-automation-apply.md` + `granot-lifecycle-automation-compatibility.md` + `granot-lifecycle-normalization.md` + `granot-lifecycle-source-policy.md` + `granot-lifecycle-identity.md` + `granot-lifecycle-granot-temporal.md` + `granot-lifecycle-lead-desired-state.md` + `granot-lifecycle-authorized-desired-state.md` + `granot-lifecycle-lead-contact-projection.md` + `granot-lifecycle-processor.md` + `granot-lifecycle-operations.md` + `granot-lifecycle-projections.md` + `granot-lifecycle-creating-observation.md` + `granot-lifecycle-drainer.md` + `granot-lifecycle-aggregate-revision.md` + `granot-lifecycle-trusted-lead-create-validation.md` + `granot-lifecycle-synchronize-lead-from-granot.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `granot-lifecycle-trusted-lead-create-validation.md` and `granot-lifecycle-synchronize-lead-from-granot.md`.
+3. Stay on `granotLifecycle`. Next is `createLeadFromGranot.ts`. Wave B is locked.
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened after #59 merged).
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-08-27T0309Z | to: next-run | from: story-granot-lifecycle-trusted-lead-create-validation-2026-08-27T0309Z | kind: next
 
-`granotLifecycle` is **in-progress**. `trustedLeadCreateValidation.ts` is recommended. Next module: **`synchronizeLeadFromGranot.ts`**. Stay on `granotLifecycle`. Do not write a whole-folder recommendation.
+Superseded by story-granot-lifecycle-synchronize-lead-from-granot-2026-08-27T0412Z. `synchronizeLeadFromGranot.ts` is recommended. `granotLifecycle` is in-progress. Next is `createLeadFromGranot.ts`.
 
 1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + `granot-lifecycle-capture.md` + `granot-lifecycle-queue-publisher.md` + `granot-lifecycle-extension-apply.md` + `granot-lifecycle-automation-apply.md` + `granot-lifecycle-automation-compatibility.md` + `granot-lifecycle-normalization.md` + `granot-lifecycle-source-policy.md` + `granot-lifecycle-identity.md` + `granot-lifecycle-granot-temporal.md` + `granot-lifecycle-lead-desired-state.md` + `granot-lifecycle-authorized-desired-state.md` + `granot-lifecycle-lead-contact-projection.md` + `granot-lifecycle-processor.md` + `granot-lifecycle-operations.md` + `granot-lifecycle-projections.md` + `granot-lifecycle-creating-observation.md` + `granot-lifecycle-drainer.md` + `granot-lifecycle-aggregate-revision.md` + `granot-lifecycle-trusted-lead-create-validation.md`.
 2. Do not rewrite `form-lead.md` or any prior recommendation, including `granot-lifecycle-aggregate-revision.md` and `granot-lifecycle-trusted-lead-create-validation.md`.
