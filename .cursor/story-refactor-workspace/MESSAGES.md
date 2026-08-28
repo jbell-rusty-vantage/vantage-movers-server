@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-08-28T1435Z | to: next-run | from: story-sheet-sync-queue-2026-08-28T1435Z | kind: next
+
+`sheetSync` is **in-progress**. `sheetSyncQueue.service.ts` is recommended. Next module: **`sheetSyncPersistence.ts`**. Stay on `sheetSync`. Wave B is locked.
+
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + thirty-four `granot-lifecycle-*.md` files + seven `granot-http-collector-*.md` files + `granot-crm-csv-upload.md` + `granot-crm-csv-sync.md` + `granot-crm-csv-registry.md` + `granot-crm-csv-parser.md` + `crm-crm-service.md` + `crm-form-lead-payload.md` + `lead-messaging-lead-messaging.md` + `lead-messaging-granot-created-lead.md` + `lead-messaging-lead-messaging-queue.md` + `lead-messaging-twilio-adapter.md` + `sheet-sync-coordinator.md` + `sheet-sync-outbox.md` + `sheet-sync-queue.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `sheet-sync-coordinator.md`, `sheet-sync-outbox.md`, and `sheet-sync-queue.md`.
+3. Stay on `sheetSync`. Next is `sheetSyncPersistence.ts`. Do not write a whole-folder recommendation. Wave B is locked.
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already closed (this pass opened a new PR after #93 closed).
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-08-28T1322Z | to: next-run | from: story-sheet-sync-outbox-2026-08-28T1322Z | kind: next
+
+Superseded by story-sheet-sync-queue-2026-08-28T1435Z. `sheetSyncQueue.service.ts` is recommended. `sheetSync` is in-progress. Next is `sheetSyncPersistence.ts`.
 
 `sheetSync` is **in-progress**. `sheetSyncOutbox.service.ts` is recommended. Next module: **`sheetSyncQueue.service.ts`**. Stay on `sheetSync`. Wave B is locked.
 
