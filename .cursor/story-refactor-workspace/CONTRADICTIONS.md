@@ -4,6 +4,13 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Folder `HANDOFF.md` calls `runWorkflow.ts` the durable create/plan/approve/apply interface and still says Form writes cross `updateFormLead` / Call writes re-preview then sync. `[AC-02]` and knowledge forbid those imports. Do not restore the bypass so HANDOFF “wins.” See `recommendations/granot-http-collector-run-workflow.md`.
+- Knowledge `automation-apply.md` Primary code lists `runWorkflow.ts` beside capture. This file walks selected actions into `applyAutomationPlanAction`; it does not insert a receipt. Do not move capture here so the Primary-code line “wins.” See `recommendations/granot-http-collector-run-workflow.md`.
+- The checksum envelope still says `schema_version: 1` while the payload is the sealed schema-2 plan. Do not bump the envelope so “the numbers match.” See `recommendations/granot-http-collector-run-workflow.md`.
+- `createGranotRun` with `source_labels` only still skips `resolveGranotAutomationSources`. This file owns that caller gap. Do not close it in this rename. See `recommendations/granot-http-collector-run-workflow.md` and `recommendations/granot-http-collector-source-catalog.md`.
+- `buildFormExpectedFilter` is still exported from `runWorkflow.ts` and only locked by its own test. Apply never calls it. Do not wire it back so “expected values return.” See `recommendations/granot-http-collector-run-workflow.md`.
+- `recoverGranotRuns` and `continueGranotRuns` reprint the leftover-work query. Collapse the exists fold; do not publish `create` from recover. See `recommendations/granot-http-collector-run-workflow.md`.
+- `formWorkflow.test.ts` still locks `granotApplyEnabled` from `runWorkflow.ts`. Claim that gate on the run-workflow **interface**; do not move the test into Form plan. See `recommendations/granot-http-collector-run-workflow.md`.
 - Folder `HANDOFF.md` omits `lifecycleStatement.ts` from the module map and still says Form writes cross `updateFormLead`. Approved apply must not restore that bypass. Do not silently rewrite HANDOFF so the story “owns the folder note.” See `recommendations/granot-http-collector-lifecycle-statement.md`.
 - Knowledge `automation-apply.md` Primary code lists `lifecycleStatement.ts` beside capture. This file does not insert a receipt. Do not move capture here so the Primary-code line “wins.” See `recommendations/granot-http-collector-lifecycle-statement.md`.
 - Collector Call-row map collapses `user || rep` into `granot_crm_username`. The sealed statement keeps both raw columns and deletes that key. Do not collapse `user`/`rep` so “preview and statement match.” See `recommendations/granot-http-collector-lifecycle-statement.md`.

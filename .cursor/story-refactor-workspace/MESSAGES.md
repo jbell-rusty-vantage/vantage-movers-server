@@ -4,9 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-08-28T0127Z | to: next-run | from: story-granot-http-collector-run-workflow-2026-08-28T0127Z | kind: next
+
+`granotHttpCollector` is **visited**. `runWorkflow.ts` is recommended. Next service: **`granotCrmCsv`**. Open it and enumerate first. Wave B is locked.
+
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + thirty-four `granot-lifecycle-*.md` files + `granot-http-collector-index.md` + `granot-http-collector-automation.md` + `granot-http-collector-source-catalog.md` + `granot-http-collector-form-workflow.md` + `granot-http-collector-form-lead-matcher.md` + `granot-http-collector-lifecycle-statement.md` + `granot-http-collector-run-workflow.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `granot-http-collector-lifecycle-statement.md` and `granot-http-collector-run-workflow.md`.
+3. Open `granotCrmCsv`. Enumerate first. Do not write a whole-folder recommendation for a large service. Wave B is locked.
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened after #80 merged).
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-08-28T0018Z | to: next-run | from: story-granot-http-collector-lifecycle-statement-2026-08-28T0018Z | kind: next
 
-`granotHttpCollector` is **in-progress**. `lifecycleStatement.ts` is recommended. Next module: **`runWorkflow.ts`**. Stay on `granotHttpCollector`. Do not write a whole-folder recommendation.
+Superseded by story-granot-http-collector-run-workflow-2026-08-28T0127Z. `runWorkflow.ts` is recommended. `granotHttpCollector` is visited. Next is `granotCrmCsv`.
 
 1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + thirty-four `granot-lifecycle-*.md` files + `granot-http-collector-index.md` + `granot-http-collector-automation.md` + `granot-http-collector-source-catalog.md` + `granot-http-collector-form-workflow.md` + `granot-http-collector-form-lead-matcher.md` + `granot-http-collector-lifecycle-statement.md`.
 2. Do not rewrite `form-lead.md` or any prior recommendation, including `granot-http-collector-form-lead-matcher.md` and `granot-http-collector-lifecycle-statement.md`.
