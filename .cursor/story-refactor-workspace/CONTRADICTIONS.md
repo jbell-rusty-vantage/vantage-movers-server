@@ -4,6 +4,11 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Form Lead Ingestion skip fabricates `CrmSubmitResult` `{ ok: true, status: 0 }`. `submitFormLeadToCrm` never returns skipped. Do not add a skip branch here so “one result owns `crm_sync_status`.” See `recommendations/crm-crm-service.md` and `recommendations/form-lead.md`.
+- File comment says the function never throws. `recordOperationalEvent` is awaited on success and inside `catch`. An observability throw after a good POST drops the payload Form Lead Ingestion needs. Do not silently wrap observability so “the comment becomes true.” See `recommendations/crm-crm-service.md`.
+- HTTP-error logs write raw Granot `responseText`. The request payload is summarized. Do not redact the returned `crm_response` in this rename. See `recommendations/crm-crm-service.md`.
+- Knowledge `form-lead.md` links ADR-0002 for CRM Posting after Sheet Sync. `docs/adr/` is absent here. Do not invent the ADR, and do not reorder `finalizeSheetSync` before this post so that link “wins.” See `recommendations/crm-crm-service.md`.
+- This checkout’s `CONTEXT.md` mentions “Granot CRM posting” in the intro and does not define CRM Posting / Tracking Reference / Granot Form Reference. Do not invent a glossary copy. See `recommendations/crm-crm-service.md`.
 - `GET /api/v1/granot-crm/csv/sources?seed=true` plants seventeen leftover `granot_crm_sources` behind `x-api-secret` only. Owner Registry writes go through `createOrUpdateGranotCrmSource`. Do not move plant onto the Owner command so “one writer,” and do not change the GET into a POST in this rename. See `recommendations/granot-crm-csv-registry.md`.
 - Seed `$setOnInsert`s identity and only `$set`s named `csv_paths` (TBM Prime Inbounds). Changing the constant does not update an existing label / `enabled`. Do not `$set` identity so “the constant wins.” See `recommendations/granot-crm-csv-registry.md`.
 - Bind find slugifies workspace **without** slash; auto-create keeps `unmapped/<file>`. A later upload that sends that slug looks up `unmapped-file` and misses. Do not add `allowSlash` to find so “lookup matches create.” See `recommendations/granot-crm-csv-registry.md`.
