@@ -14,7 +14,7 @@ import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularit
 import { BookedLead } from "../../models/BookedLead";
 import { CancelledLead } from "../../models/CancelledLead";
 import { createRingCentralCallLeadInTransaction } from "./callLead.service";
-import { createFormLeadInTransaction } from "./formLead.service";
+import { beginFormLeadIngestion } from "./formLead.service";
 import { formLeadCreationProvenanceFields } from "./leadIngestionProvenance";
 import { createFormLeadSchema } from "../../validation/v1/leads.validation";
 
@@ -112,7 +112,7 @@ test("[AC-10] [AC-11] replica WordPress Form create captures origin and snapshot
   const prefix = `u12f-${Date.now()}`;
   const { company, granularity } = await seedFormSource(prefix);
   const now = new Date("2026-08-17T16:20:00.000Z");
-  const pending = await createFormLeadInTransaction(
+  const pending = await beginFormLeadIngestion(
     createFormLeadSchema.parse({
       source_company: company.company_slug,
       name: "U12 Form Synthetic",

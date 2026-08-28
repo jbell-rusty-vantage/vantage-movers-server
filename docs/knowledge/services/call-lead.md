@@ -110,7 +110,7 @@ Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 ## Read
 
 - `findAllCallLeads` — last 200 by `createdAt`.
-- No “hide duplicate” read helper (unlike Form Lead `findFormLead`).
+- No “hide duplicate” read helper (unlike Form Lead `findFormLeadForEnrichment`).
 
 ## Invariants
 

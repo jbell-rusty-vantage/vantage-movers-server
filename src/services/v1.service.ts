@@ -25,6 +25,10 @@ export {
   findAllCallLeads,
   findAllFormLeads,
   findFormLead,
+  findFormLeadForEnrichment,
+  ingestFormLead,
+  correctFormLead,
+  removeFormLead,
   updateCallLead,
   updateFormLead,
 } from "./leads";

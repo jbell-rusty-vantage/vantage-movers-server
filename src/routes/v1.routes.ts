@@ -49,7 +49,7 @@ import { sanitizeFormLeadBodyPreview } from "../utils/logging/sanitizeFormLeadFo
 import {
   createCustomer,
   deleteCustomer,
-  findFormLead,
+  findFormLeadForEnrichment,
   findAllBookedLeads,
   findAllCancelledLeads,
   findAllCustomers,
@@ -554,7 +554,7 @@ router.post("/api/v1/granot-crm/csv/uploads", handleGranotCrmCsvUpload);
 
 router.get("/api/v1/form-leads", handleBrowseFormLeads);
 router.post("/api/v1/form-leads/granot-match", handleResolveGranotFormLead);
-router.get("/api/v1/form-leads/:id", handleFindOne(findFormLead));
+router.get("/api/v1/form-leads/:id", handleFindOne(findFormLeadForEnrichment));
 router.post("/api/v1/form-leads/search", handleSearchFormLeads);
 router.post("/api/v1/create-form-test", handleCreateFormLeadTest);
 router.post("/api/v1/form-leads", handleCreateFormLead);

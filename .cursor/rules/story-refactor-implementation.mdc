@@ -1,0 +1,32 @@
+---
+description: Before a major feature or story-refactor implementation, decide naming and module shape, then follow the story-refactor skill
+globs: src/services/**/*.ts,src/routes/**/*.ts,.cursor/story-refactor-workspace/recommendations/**/*.md,.cursor/story-implementation-workspace/**/*.md
+alwaysApply: false
+---
+
+# Decide first, then implement the story
+
+Before a major feature or a story-refactor pass, do not start editing `src/`
+until these four decisions are written down:
+
+1. **Operational story name** — the verb phrase callers will learn.
+2. **Module seam** — what the barrel exports vs what stays internal.
+3. **Type home** — colocate, sibling `types.ts`, or a named family file.
+   Never a new `types/` directory.
+4. **Helper home** — owning file, named sibling, or `src/utils/<capability>.ts`.
+   Never a new `utils.ts` / `helpers.ts`.
+
+Then follow the workspace skill
+`.agents/skills/story-refactor-implementation/SKILL.md`.
+
+- **Functional parity** is the gate: names change, outcomes do not.
+- Inventory every export, caller, and side-effect order before editing.
+- Keep old names as exact one-line aliases until named callers migrate.
+- Do not change persisted `command_name` strings.
+- Do not silently fix a flagged ADR in the same pass.
+- Tests name the operation and stay on the public interface.
+- Optional explore subagent first; **required** review subagent after.
+- Stamp `.cursor/story-implementation-workspace/` only. Never write
+  recommendations or `TRAVERSAL.md` in `story-refactor-workspace/`.
+- Update the matching knowledge Service and the glob-scoped rule that
+  already owns the file.

@@ -4,7 +4,7 @@ import { getGranotCrmCsvIngestionModel } from "../../models/GranotCrmCsvIngestio
 import { getGranotCrmSyncRunModel } from "../../models/GranotCrmSyncRun";
 import { getFormLeadModel } from "../../models/FormLead";
 import { searchFormLeads } from "../search/formLeadSearch.service";
-import { updateFormLead } from "../leads/formLead.service";
+import { correctFormLead } from "../leads/formLead.service";
 import {
   previewCallLeadEnrichment,
   syncCallLeadEnrichment,
@@ -208,7 +208,7 @@ async function processFormRow(
     }
 
     if (options.apply) {
-      await updateFormLead(current._id.toString(), patch);
+      await correctFormLead(current._id.toString(), patch);
     }
     return {
       ingestion_id: ingestionId,

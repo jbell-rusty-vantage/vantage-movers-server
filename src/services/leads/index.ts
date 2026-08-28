@@ -7,10 +7,18 @@
  */
 
 export {
+  beginFormLeadIngestion,
+  beginFormLeadRemoval,
+  completeFormLeadIngestion,
+  correctFormLead,
   createFormLead,
   deleteFormLead,
   findAllFormLeads,
   findFormLead,
+  findFormLeadForEnrichment,
+  ingestFormLead,
+  listRecentFormLeads,
+  removeFormLead,
   updateFormLead,
 } from "./formLead.service";
 

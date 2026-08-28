@@ -3,7 +3,11 @@ import { afterEach, test } from "node:test";
 import mongoose from "mongoose";
 import { FormLead } from "../../models/FormLead";
 import { ConflictError, NotFoundError } from "../errors";
-import { findFormLead, updateFormLead } from "./formLead.service";
+import {
+  correctFormLead,
+  findFormLeadForEnrichment,
+  removeFormLead,
+} from "./formLead.service";
 import {
   deriveFormLeadIngestionOrigin,
   omitForbiddenLeadLifecycleFields,
@@ -22,7 +26,7 @@ afterEach(() => {
   mongoose.connection.useDb = originalUseDb;
 });
 
-test("findFormLead returns not found for duplicate quarantine leads", async () => {
+test("findFormLeadForEnrichment does not return a Duplicate Lead", async () => {
   stubFindById({
     _id: "6a19ddd4bf20b878123aac14",
     duplicate: true,
@@ -31,7 +35,7 @@ test("findFormLead returns not found for duplicate quarantine leads", async () =
   });
 
   await assert.rejects(
-    () => findFormLead("6a19ddd4bf20b878123aac14"),
+    () => findFormLeadForEnrichment("6a19ddd4bf20b878123aac14"),
     (error: unknown) => {
       assert.ok(error instanceof NotFoundError);
       assert.match(error.message, /not found/i);
@@ -40,7 +44,16 @@ test("findFormLead returns not found for duplicate quarantine leads", async () =
   );
 });
 
-test("updateFormLead rejects quoted and cubic_feet updates on duplicate leads", async () => {
+test("findFormLeadForEnrichment is not found when the Form Lead is missing", async () => {
+  stubFindById(null);
+
+  await assert.rejects(
+    () => findFormLeadForEnrichment("6a19ddd4bf20b878123aac14"),
+    (error: unknown) => error instanceof NotFoundError,
+  );
+});
+
+test("correctFormLead refuses quoted and cubic feet on a Duplicate Lead", async () => {
   const lead = {
     _id: "6a19ddd4bf20b878123aac14",
     duplicate: true,
@@ -52,15 +65,12 @@ test("updateFormLead rejects quoted and cubic_feet updates on duplicate leads", 
   stubFindById(lead);
 
   await assert.rejects(
-    () => updateFormLead("6a19ddd4bf20b878123aac14", { quoted: true }),
-    (error: unknown) => {
-      assert.ok(error instanceof ConflictError);
-      return true;
-    },
+    () => correctFormLead("6a19ddd4bf20b878123aac14", { quoted: true }),
+    (error: unknown) => error instanceof ConflictError,
   );
 });
 
-test("updateFormLead rejects bad_lead updates on duplicate, booked, or cancelled leads", async () => {
+test("correctFormLead refuses Bad Lead on duplicate, Booked, or Cancelled", async () => {
   for (const lead of [
     { duplicate: true, booked: undefined, cancelled: undefined },
     { duplicate: false, booked: "booking-id", cancelled: undefined },
@@ -78,15 +88,29 @@ test("updateFormLead rejects bad_lead updates on duplicate, booked, or cancelled
 
     await assert.rejects(
       () =>
-        updateFormLead("6a19ddd4bf20b878123aac14", {
+        correctFormLead("6a19ddd4bf20b878123aac14", {
           bad_lead: "auto_only",
         }),
-      (error: unknown) => {
-        assert.ok(error instanceof ConflictError);
-        return true;
-      },
+      (error: unknown) => error instanceof ConflictError,
     );
   }
+});
+
+test("removeFormLead refuses a Booked Form Lead without cascade", async () => {
+  stubFindById({
+    _id: "6a19ddd4bf20b878123aac14",
+    booked: { toString: () => "booking-id" },
+    duplicate: false,
+  });
+
+  await assert.rejects(
+    () => removeFormLead("6a19ddd4bf20b878123aac14", false),
+    (error: unknown) => {
+      assert.ok(error instanceof ConflictError);
+      assert.match(String(error), /cascade=true/);
+      return true;
+    },
+  );
 });
 
 test("[AC-10] WordPress and Admin Form create paths derive exact origins", () => {

@@ -37,10 +37,10 @@ import {
   deleteCallLeadInTransaction,
 } from "../leads/callLead.service";
 import {
-  createFormLeadInTransaction,
-  finalizeFormLeadCreateAfterCommit,
-  updateFormLeadInTransaction,
-  deleteFormLeadInTransaction,
+  beginFormLeadIngestion,
+  beginFormLeadRemoval,
+  completeFormLeadIngestion,
+  correctFormLead,
 } from "../leads/formLead.service";
 import {
   deriveCallLeadIngestionOrigin,
@@ -111,7 +111,7 @@ export async function runExistingCreateFormLead(input: {
   context: CanonicalCommandContext;
 }): Promise<{
   command: CompatibilityCanonicalCommandResult;
-  data: Awaited<ReturnType<typeof finalizeFormLeadCreateAfterCommit>>;
+  data: Awaited<ReturnType<typeof completeFormLeadIngestion>>;
 }> {
   const parsed = createFormLeadSchema.parse(
     input.context.provenance.origin === "external_sheet_ingestion" &&
@@ -137,12 +137,12 @@ export async function runExistingCreateFormLead(input: {
     );
   }
   const changeIds = preallocatedChangeIds(1);
-  let finalized: Awaited<ReturnType<typeof finalizeFormLeadCreateAfterCommit>>;
+  let finalized: Awaited<ReturnType<typeof completeFormLeadIngestion>>;
   const command = await executeCanonicalCommandWithPostCommit({
     command_name: "createFormLead",
     context: input.context,
     operation: async (tx) => {
-      const pending = await createFormLeadInTransaction(data, {
+      const pending = await beginFormLeadIngestion(data, {
         ...tx,
         ingestion_origin: deriveFormLeadIngestionOrigin({
           commandOrigin: input.context.provenance.origin,
@@ -170,7 +170,7 @@ export async function runExistingCreateFormLead(input: {
       };
     },
     finalize: async (pending) => {
-      finalized = await finalizeFormLeadCreateAfterCommit(pending);
+      finalized = await completeFormLeadIngestion(pending);
     },
   });
   return { command, data: finalized! };
@@ -256,11 +256,13 @@ export async function runExistingUpdateSourceOwnedLead(input: {
       }
       const before = await loadLeadSnapshot(input.lead_model, input.lead_id, tx.session);
       if (input.lead_model === "FormLead") {
-        updated = await updateFormLeadInTransaction(
+        updated = await correctFormLead(
           input.lead_id,
           updateFormLeadSchema.parse(update),
-          tx,
-          input.expected ? { expected: input.expected } : {},
+          {
+            transaction: tx,
+            ...(input.expected ? { expected: input.expected } : {}),
+          },
         );
       } else {
         updated = await updateCallLeadInTransaction(
@@ -729,7 +731,7 @@ export async function runExistingDeleteFormLead(input: {
     command_name: "deleteFormLead",
     context: input.context,
     operation: async (tx) => {
-      const pending = await deleteFormLeadInTransaction(
+      const pending = await beginFormLeadRemoval(
         input.lead_id,
         input.cascade,
         tx,
