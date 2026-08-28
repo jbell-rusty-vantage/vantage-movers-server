@@ -32,6 +32,8 @@ generated:
 
 **Role:** Read-only **identity resolution** for Form Leads — pull a bounded candidate set, score in memory, return one lead or an explicit miss/tie. Backs Granot extension smart search and contact fallback after stronger identity paths miss.
 
+Scored search still ignores ingested and Granot contact snapshots. Extension Form browse, Admin browse, and Admin typeahead are the any-known-contact surfaces.
+
 **Not the same as:**
 
 | Module | Purpose |

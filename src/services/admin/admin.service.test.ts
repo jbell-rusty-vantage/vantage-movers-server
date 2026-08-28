@@ -129,6 +129,58 @@ test("admin browse builds filters, pagination, sorting, and response shape", asy
   assert.match(filterPreview, /booked/);
 });
 
+test("admin form lead browse q includes snapshot contact paths", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(FormLead, capture, []);
+  stubCount(FormLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({ q: "granot-only-name", limit: 10 });
+  await browseAdminResource("form-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /granot_contact_snapshot\.name/);
+  assert.match(filterPreview, /ingested_contact_snapshot\.name/);
+});
+
+test("admin form lead browse name email and phone include snapshot paths", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(FormLead, capture, []);
+  stubCount(FormLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({
+    name: "Ada",
+    email: "ada@example.com",
+    phone_number: "555-1234",
+    limit: 10,
+  });
+  await browseAdminResource("form-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /granot_contact_snapshot\.name/);
+  assert.match(filterPreview, /ingested_contact_snapshot\.email/);
+  assert.match(filterPreview, /granot_contact_snapshot\.email/);
+  assert.match(filterPreview, /granot_contact_snapshot\.phone_number/);
+  assert.match(filterPreview, /ingested_contact_snapshot\.normalized_phone_number/);
+});
+
+test("admin duplicate form lead browse uses the same contact paths", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(FormLead, capture, []);
+  stubCount(FormLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({
+    duplicate: "true",
+    name: "Ada",
+    limit: 10,
+  });
+  await browseAdminResource("form-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /duplicate:\s*true/);
+  assert.match(filterPreview, /granot_contact_snapshot\.name/);
+  assert.match(filterPreview, /ingested_contact_snapshot\.name/);
+});
+
 test("admin form lead browse excludes duplicates by default", async () => {
   const capture: QueryCapture = { populated: [] };
   stubFind(FormLead, capture, []);
@@ -518,6 +570,22 @@ test("admin historical browse uses historical models and remains read-only", asy
     typeof (historicalModels.FormLead as unknown as MutableModel).deleteOne,
     "function",
   );
+});
+
+test("global admin search form leads include Granot snapshot contact paths", async () => {
+  const formCapture: QueryCapture = { populated: [] };
+  const callCapture: QueryCapture = { populated: [] };
+  stubOtherSearchModelsEmpty();
+  stubFind(FormLead, formCapture, []);
+  stubFind(CallLead, callCapture, []);
+
+  const query = adminSearchQuerySchema.parse({ q: "555-9999", limit: 3 });
+  await globalAdminSearch(query);
+
+  const formPreview = inspect(formCapture.filter, { depth: null });
+  assert.match(formPreview, /granot_contact_snapshot\.(?:phone_number|email)/);
+  const callPreview = inspect(callCapture.filter, { depth: null });
+  assert.doesNotMatch(callPreview, /granot_contact_snapshot/);
 });
 
 test("global admin search returns grouped results", async () => {

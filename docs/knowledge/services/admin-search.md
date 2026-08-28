@@ -22,7 +22,7 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:okf-docs-optimization
-  at: 2026-08-22T04:51:00Z
+  at: 2026-08-28T16:13:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -76,7 +76,7 @@ ObjectId probe uses `mongoose.isValidObjectId` (more permissive than 24-hex) the
 
 | Resource | Search fields | `href` | Badges |
 |----------|---------------|--------|--------|
-| `form-leads` | name, email, phone_number, source_company, **three label snapshots**, **source_granularity_key**, ref_no, lid | `/form-leads/:id` | booked/unbooked, cancelled |
+| `form-leads` | live + ingested + Granot contact name / email / phone paths (`FORM_LEAD_CONTACT_*_PATHS`), source_company, **three label snapshots**, **source_granularity_key**, ref_no, lid | `/form-leads/:id` | booked/unbooked, cancelled |
 | `call-leads` | name, email, phone_number, normalized_phone_number, source_company, **three label snapshots**, **source_granularity_key**, job_no | `/call-leads/:id` | booked/unbooked, cancelled |
 | `booked-leads` | job_no, normalized_job_no, customer_name, customer_name_snapshot, source, merchant, `agent_allocations.agent_name_snapshot` | `/bookings/:id` | booked + cancelled if ref set |
 | `cancelled-leads` | job_no, normalized_job_no, customer_name, reason, cancelled_by, source, merchant, agent | `/cancellations/:id` | cancelled |
@@ -85,7 +85,9 @@ ObjectId probe uses `mongoose.isValidObjectId` (more permissive than 24-hex) the
 
 Lead badges: `doc.booked` truthy → `booked` else `unbooked`; plus `cancelled` if the ref is set.
 
-**Labels:** first non-empty string among listed fields (`label()`). Source fallback for secondary: `crm_source_label_snapshot` → granularity snapshot → company snapshot → `source_company`.
+**Labels:** first non-empty string among listed fields (`label()`). Form typeahead **labels stay live** `name` / `email` / `phone_number` — a Granot-only match still shows the Form submitted name. Source fallback for secondary: `crm_source_label_snapshot` → granularity snapshot → company snapshot → `source_company`.
+
+Admin browse (`adminBrowse.service.ts`) Form `q` / `name` / `email` / `phone_number` use the same shared contact path lists. Call typeahead still omits `granot_contact_snapshot`.
 
 | Resource | Primary order | Secondary order |
 |----------|---------------|-----------------|

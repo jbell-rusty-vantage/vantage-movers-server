@@ -74,6 +74,8 @@ Workspace ADRs are outside this repo. This standalone checkout does not contain 
 
 | Path | Description |
 | --- | --- |
+| [form-lead-contact-snapshots-display-and-search-specification.md](form-lead-contact-snapshots-display-and-search-specification.md) | Show Form submitted vs Granot contact on Admin Form Leads, and search both plus the ingested snapshot. |
+| [granot-lead-lifecycle/booking-intake-form-lead-contact-snapshots-specification.md](granot-lead-lifecycle/booking-intake-form-lead-contact-snapshots-specification.md) | Draft, not fully developed. Booking-intake lead search/selection should find and show Form submitted vs Granot. Do not implement until the Owner finishes the file. |
 | [admin-filter-catalog-and-analytics-specification.md](admin-filter-catalog-and-analytics-specification.md) | Implementation-ready Filter Catalog: one Source Company dropdown of Form/Call Source Granularities (`owner_label`) for lead search, duplicates, and catalog-complete Analytics. |
 | [operations-registry-source-connections-owner-ui-specification.md](operations-registry-source-connections-owner-ui-specification.md) | Final proposed connection and Owner-facing contract for Lead Sources, Feeds, sheet labels, Granot names, RingCentral inbound numbers, and texting. |
 | [job-timeline-enhancement-specification.md](job-number-timeline/job-timeline-enhancement-specification.md) | Enhancement plan for a precise, evidence-aware Owner Job timeline; keeps window-wide assurance and notifications as a later module. |

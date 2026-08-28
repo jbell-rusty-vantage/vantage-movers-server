@@ -24,6 +24,38 @@ export type LeadCancellationSummary = {
 export const BOOKING_SUMMARY_SELECT = "job_no book_date cancelled";
 export const CANCELLATION_SUMMARY_SELECT = "cancel_date reason job_no";
 
+/**
+ * Any-known-contact paths for Form Lead desk search. Admin browse, Admin
+ * typeahead, and extension Form browse share this list so they cannot drift.
+ * Scored Form Lead Search and Call Lead browse do not use these.
+ */
+export const FORM_LEAD_CONTACT_NAME_PATHS = [
+  "name",
+  "first_name",
+  "last_name",
+  "ingested_contact_snapshot.name",
+  "ingested_contact_snapshot.first_name",
+  "ingested_contact_snapshot.last_name",
+  "granot_contact_snapshot.name",
+  "granot_contact_snapshot.first_name",
+  "granot_contact_snapshot.last_name",
+] as const;
+
+export const FORM_LEAD_CONTACT_EMAIL_PATHS = [
+  "email",
+  "ingested_contact_snapshot.email",
+  "granot_contact_snapshot.email",
+] as const;
+
+export const FORM_LEAD_CONTACT_PHONE_PATHS = [
+  "phone_number",
+  "normalized_phone_number",
+  "ingested_contact_snapshot.phone_number",
+  "ingested_contact_snapshot.normalized_phone_number",
+  "granot_contact_snapshot.phone_number",
+  "granot_contact_snapshot.normalized_phone_number",
+] as const;
+
 export function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

@@ -23,7 +23,7 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:okf-docs-optimization
-  at: 2026-08-22T04:51:00Z
+  at: 2026-08-28T16:13:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -49,7 +49,7 @@ Schemas are `.strict()` — unknown keys 400 (tested). Defaults: `limit` 50 (max
 
 | Param | Notes |
 |-------|-------|
-| `q` | Loose substring across identifying + source-snapshot fields |
+| `q` | Loose substring across identifying + source-snapshot fields. Form `q` also hits ingested and Granot snapshot contact paths |
 | `source_company` | Standalone **exact** match (case-insensitive) on slug **or** three label snapshots |
 | `lead_source_company` | `objectIdSchema` — exact `{ lead_source_company }` (not regex) |
 | `source_granularity_key` | Anchored exact (`fieldEqualsClause`) |
@@ -76,8 +76,8 @@ Case-insensitive substring (`fullTextClause`) on:
 
 | Lead type | Fields |
 |-----------|--------|
-| Form | `name`, `first_name`, `last_name`, `email`, `phone_number`, `source_company`, `source_company_label_snapshot`, `source_granularity_label_snapshot`, `crm_source_label_snapshot`, `ref_no` |
-| Call | same snapshots + `job_no` (no `ref_no`) |
+| Form | Live + ingested + Granot contact name / email / phone paths (`FORM_LEAD_CONTACT_NAME_PATHS` / `EMAIL` / `PHONE` in `leadBrowseShared.ts`), then `source_company`, three label snapshots, `ref_no` |
+| Call | live name / email / phone, `source_company`, three label snapshots, `job_no` (no `ref_no`, no contact snapshots) |
 
 ## Field-specific filters
 
@@ -86,9 +86,9 @@ Case-insensitive substring (`fullTextClause`) on:
 | `source_company` | `$or` of anchored exact on `source_company`, `source_company_label_snapshot`, `source_granularity_label_snapshot`, `crm_source_label_snapshot` — **not** slug-only |
 | `lead_source_company` | Exact ObjectId string |
 | `source_granularity_key` | Anchored exact |
-| `name` | Substring `$or` on `name` / `first_name` / `last_name` |
-| `email` | Substring on `email` (input lowercased) |
-| `phone_number` | Substring on `phone_number` (not `normalizePhoneNumberForMatch`) |
+| `name` | Form: substring `$or` on `FORM_LEAD_CONTACT_NAME_PATHS` (live + ingested + Granot). Call: `name` / `first_name` / `last_name` |
+| `email` | Form: lowercase input, substring `$or` on `FORM_LEAD_CONTACT_EMAIL_PATHS`. Call: substring on `email` |
+| `phone_number` | Form: typed-substring `$or` on `FORM_LEAD_CONTACT_PHONE_PATHS` (not `normalizePhoneNumberForMatch`, not scored digit-flex). Call: substring on `phone_number` |
 | `job_no` | Substring on `job_no` (call only) |
 | `booked: true` | `{ booked: { $ne: null, $exists: true } }` |
 | `booked: false` | null or missing |
@@ -119,6 +119,8 @@ Populate selects:
 
 Unpopulated or missing `_id` on a ref → `null` chip (`toBookingSummary` / `toCancellationSummary`).
 
+Form cards stay live-field cards. `ingested_contact_snapshot` and `granot_contact_snapshot` are not projected onto `FormLeadBrowseResult`.
+
 ## Shared helpers (do not duplicate)
 
 | Helper | Purpose |
@@ -129,12 +131,13 @@ Unpopulated or missing `_id` on a ref → `null` chip (`toBookingSummary` / `toC
 | `attachmentClause` | Booked/cancelled presence |
 | `combineClauses` | `{}` / single clause / `$and` |
 | `toBookingSummary` / `toCancellationSummary` | Lean-doc → chip |
+| `FORM_LEAD_CONTACT_NAME_PATHS` / `EMAIL` / `PHONE` | Shared any-known-contact paths. Admin browse, Admin typeahead, and Form browse import these. Match style stays per surface. |
 
 ## Skip / fail paths
 
 - Unknown query keys fail Zod (tested)
 - Empty `{}` is valid — latest leads
-- No dedicated browse service test (known gap). Schema coverage is `v1.validation.test.ts`
+- Schema coverage is `v1.validation.test.ts`. Form browse filter + card-shape tests are `formLeadBrowse.service.test.ts`
 
 ## Browse vs search vs admin
 

@@ -2,6 +2,11 @@ import mongoose from "mongoose";
 import type { AdminSearchQuery } from "../../validation/v1.validation";
 import { concreteScopes, getAdminModels, type AdminResource, type ConcreteAdminScope } from "./adminScope.service";
 import { toObjectId } from "../../utils/objectId";
+import {
+  FORM_LEAD_CONTACT_EMAIL_PATHS,
+  FORM_LEAD_CONTACT_NAME_PATHS,
+  FORM_LEAD_CONTACT_PHONE_PATHS,
+} from "../search/leadBrowseShared";
 
 type AdminSearchDoc = Record<string, unknown> & {
   _id: mongoose.Types.ObjectId | string;
@@ -32,10 +37,10 @@ const SEARCH_CONFIGS: Record<
   }
 > = {
   "form-leads": {
-    fields: [
-      "name",
-      "email",
-      "phone_number",
+    fields: uniqueSearchFields([
+      ...FORM_LEAD_CONTACT_NAME_PATHS,
+      ...FORM_LEAD_CONTACT_EMAIL_PATHS,
+      ...FORM_LEAD_CONTACT_PHONE_PATHS,
       "source_company",
       "source_company_label_snapshot",
       "source_granularity_label_snapshot",
@@ -43,7 +48,7 @@ const SEARCH_CONFIGS: Record<
       "source_granularity_key",
       "ref_no",
       "lid",
-    ],
+    ]),
     hrefPrefix: "/form-leads",
     primary: (doc) => label(doc.ref_no, doc.name, doc.phone_number, "Form lead"),
     secondary: (doc) => label(doc.name, doc.email, doc.phone_number, sourceLabel(doc)),
@@ -157,6 +162,10 @@ function sourceLabel(doc: Record<string, unknown>): unknown {
 
 function label(...values: unknown[]): string {
   return values.find((value) => typeof value === "string" && value.trim()) as string || "";
+}
+
+function uniqueSearchFields(fields: string[]): string[] {
+  return [...new Set(fields)];
 }
 
 function escapeRegex(value: string): string {
