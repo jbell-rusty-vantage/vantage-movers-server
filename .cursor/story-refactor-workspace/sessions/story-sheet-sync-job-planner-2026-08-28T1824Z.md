@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-28T18:24Z
 - Service / module: `sheetSync` / `drainer/jobPlanner.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / new PR after #97 merged
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/98
 
 ## Stock at start
 
