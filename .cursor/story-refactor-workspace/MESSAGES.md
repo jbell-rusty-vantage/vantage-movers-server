@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-08-28T0515Z | to: next-run | from: story-granot-crm-csv-parser-2026-08-28T0515Z | kind: next
+
+`granotCrmCsv` is **visited**. `parser.ts` is recommended. Next service: **`crm`**. Open it and enumerate first. Wave B is locked.
+
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + thirty-four `granot-lifecycle-*.md` files + seven `granot-http-collector-*.md` files + `granot-crm-csv-upload.md` + `granot-crm-csv-sync.md` + `granot-crm-csv-registry.md` + `granot-crm-csv-parser.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `granot-crm-csv-upload.md`, `granot-crm-csv-sync.md`, `granot-crm-csv-registry.md`, and `granot-crm-csv-parser.md`.
+3. Open `crm`. Enumerate first. Do not write a whole-folder recommendation for a large service. Wave B is locked.
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened after #84 merged).
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-08-28T0424Z | to: next-run | from: story-granot-crm-csv-registry-2026-08-28T0424Z | kind: next
+
+Superseded by story-granot-crm-csv-parser-2026-08-28T0515Z. `parser.ts` is recommended. `granotCrmCsv` is visited. Next is `crm`.
 
 `granotCrmCsv` is **in-progress**. `registry.ts` is recommended. Next module: **`parser.ts`**. Stay on `granotCrmCsv`. Wave B is locked.
 
