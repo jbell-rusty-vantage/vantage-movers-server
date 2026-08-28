@@ -4,6 +4,12 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Folder `HANDOFF.md` omits `lifecycleStatement.ts` from the module map and still says Form writes cross `updateFormLead`. Approved apply must not restore that bypass. Do not silently rewrite HANDOFF so the story “owns the folder note.” See `recommendations/granot-http-collector-lifecycle-statement.md`.
+- Knowledge `automation-apply.md` Primary code lists `lifecycleStatement.ts` beside capture. This file does not insert a receipt. Do not move capture here so the Primary-code line “wins.” See `recommendations/granot-http-collector-lifecycle-statement.md`.
+- Collector Call-row map collapses `user || rep` into `granot_crm_username`. The sealed statement keeps both raw columns and deletes that key. Do not collapse `user`/`rep` so “preview and statement match.” See `recommendations/granot-http-collector-lifecycle-statement.md`.
+- Form seal finds by `source_label` + HTML `row_id`. Call seal finds by mapped `${sourceLabel}:${entry.id}`. Do not unify those finders. See `recommendations/granot-http-collector-lifecycle-statement.md`.
+- `isSealedAutomationPlan` rebuilds `${prefixBeforeFirstColon}:${action_id}` because `run_id` has no colon and `action_id` often does. Do not split on the last colon. See `recommendations/granot-http-collector-lifecycle-statement.md`.
+- This checkout’s `CONTEXT.md` does not define Granot Observation Receipt / Observation Channel / Granot HTTP collector. Do not invent a glossary copy. See `recommendations/granot-http-collector-lifecycle-statement.md`.
 - Knowledge `granot-http-collector.md` `applies_to` omits `granotFormLeadMatcher.ts` and names `resolveGranotFormLead` only as a Form-planner step. The identity ladder lives here; the detailed contract is on `form-lead-search.md`. Do not invent a new Service file, and do not silently add this path to `applies_to` in this rename. See `recommendations/granot-http-collector-form-lead-matcher.md`.
 - Exact / Mongo hits **warn** on Source Company mismatch and still `found`. Fallback **refuses** other companies (unknown label is source-gated `not_found`). Do not merge those gates so “one source rule.” See `recommendations/granot-http-collector-form-lead-matcher.md`.
 - CSV `resolveFormLead` treats `mongoose.isValidObjectId(ref_no)` as a lead id and skips search. This file uses the same ObjectId helper **after** exact `FormLead.ref_no` misses. Do not skip the exact field so “CSV and HTTP share one ObjectId path.” See `recommendations/granot-http-collector-form-lead-matcher.md`.
