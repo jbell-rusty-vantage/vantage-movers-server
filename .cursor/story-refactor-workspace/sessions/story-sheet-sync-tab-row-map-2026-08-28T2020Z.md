@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-28T20:20Z
 - Service / module: `sheetSync` / `drainer/tabRowMap.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (open after #99 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/100
 
 ## Stock at start
 
