@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-28T0127Z
 - Service / module: `granotHttpCollector` / `runWorkflow.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (opened after #80 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/81
 
 ## Stock at start
 
