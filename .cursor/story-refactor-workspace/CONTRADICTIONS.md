@@ -4,6 +4,14 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- This file is mode-blind. Persist owns the queued gate. Granot / RingCentral call `enqueueSheetSyncJob` directly. Do not add `getSheetSyncMode()` here so “legacy cannot write,” and do not silently route those callers through persist. See `recommendations/sheet-sync-outbox.md`.
+- Booked-lead tombstone cancels `booked_lead:{id}` only. It does not cancel `booking_chain:{id}`. Knowledge names this. Do not cancel Booking Chain so “one delete owns the Booking.” See `recommendations/sheet-sync-outbox.md`.
+- Coalesce is `pending` / `retrying` only. A write during drain creates a fresh `pending` job. Do not fold onto `processing` so “one row owns the entity.” See `recommendations/sheet-sync-outbox.md`.
+- `$set target_hints: []` on every upsert coalesce. Do not preserve old hints so “retry keeps its tab list.” See `recommendations/sheet-sync-outbox.md`.
+- `dueAt` has no runtime caller. Admin retry mutates the job row and starts drain. Do not wire retry through `dueAt` so “the comment becomes true.” See `recommendations/sheet-sync-outbox.md`.
+- Persist’s mode-gate test lives in `sheetSyncOutbox.service.test.ts`. This file does not check mode. Do not treat that assertion as outbox proof. See `recommendations/sheet-sync-outbox.md`.
+- Call Lead delete wraps snapshot with fallback Calls / Duplicate Calls tabs. Do not pull those fallbacks here so “one snapshot owns every delete.” See `recommendations/sheet-sync-outbox.md`.
+- This checkout’s `CONTEXT.md` names Sheet Sync in the intro and does not define outbox / coalescing / tombstone. Do not invent a glossary copy. See `recommendations/sheet-sync-outbox.md`.
 - `getLeadMessagingCredentials()` is loaded by `createTwilioSender` and only `accountSid` / `authToken` are used. `fromNumber` / `statusCallbackUrl` / `messagingServiceSid` already sit on the sibling send input. Do not start sending `credentials.fromNumber` so “the adapter owns From.” See `recommendations/lead-messaging-twilio-adapter.md`.
 - Webhook validation reads `TWILIO_PRIMARY_AUTH_TOKEN` and `TWILIO_STATUS_CALLBACK_URL` via `getRequiredEnv`, not the credentials bag. Voice’s `requestUrl` would be lost if this switched to `credentials.statusCallbackUrl` alone. Do not unify the reads so “one bag owns both.” See `recommendations/lead-messaging-twilio-adapter.md`.
 - Two Messaging Service error strings: sibling quiet-hours “defer SMS during Eastern quiet hours” vs this file “schedule an SMS.” Do not unify so “one error wins.” See `recommendations/lead-messaging-twilio-adapter.md`.
