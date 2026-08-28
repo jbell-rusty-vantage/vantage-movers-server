@@ -4,6 +4,13 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Gate 6 is named `destination_and_capacity` and only checks destination trim. Capacity / E.164 / country / cooldown still run inside sibling persist. Do not pull reservation into the pure evaluator so “the name becomes true.” See `recommendations/lead-messaging-granot-created-lead.md`.
+- `evaluated_gates` is computed and send returns only `blocked:<first_gate>`. ODR-40 wanted the full array for the Owner “why blocked” line. Do not add the array to the mint outcome so “the Owner UI can read it.” See `recommendations/lead-messaging-granot-created-lead.md`.
+- A missing CRM Source defaults to `observation_only` / `not_attested` / disabled, so the first blocker after mode + flag is `source_policy_create_if_missing`, not `source_missing`. Do not add a seventh gate so “missing source is honest.” See `recommendations/lead-messaging-granot-created-lead.md`.
+- Granot persist hardcodes `testMode: false`, so sibling persist’s TEST_MODE skip never fires. Dispatch still returns `disabled` and can leave that row. Do not pass `isTestMode()` so “Granot matches public form.” See `recommendations/lead-messaging-granot-created-lead.md`.
+- `dependencies.now` is accepted and never read. Do not start using it so “Granot owns overnight.” See `recommendations/lead-messaging-granot-created-lead.md`.
+- Persist remaps any attested consent that is not `customer_submitted_form` / `existing_relationship` to `existing_relationship`. Do not persist the raw basis so “the gate wins.” See `recommendations/lead-messaging-granot-created-lead.md`.
+- Default template hardcodes “Vantage Movers”, not `{company}`. Do not change the default so “the brand is the Source Company.” See `recommendations/lead-messaging-granot-created-lead.md`.
 - `shouldApplyTwilioStatus` is exported and folder-tested. `applyTwilioStatusCallback` rebuilds rank with `allowedCurrent` and never calls the helper. Do not silently wire the helper so “one rank function wins.” See `recommendations/lead-messaging-lead-messaging.md`.
 - After-commit containment can return `failed` while the row is still `pending` / `queued` / `sending` / `retry_scheduled`. The Form Lead 201 then says failed while drain may still send. Do not silently return the in-flight status so “the 201 becomes honest.” See `recommendations/lead-messaging-lead-messaging.md`.
 - Disabled at send time returns `{ status: "disabled" }` and leaves a `pending` row. Drain no-ops. Do not mark those rows `skipped` so “disabled means skipped.” See `recommendations/lead-messaging-lead-messaging.md`.
