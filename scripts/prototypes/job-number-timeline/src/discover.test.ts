@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assembleJobNumberTimeline } from "./assemble.js";
+import { assembleJobNumberTimeline } from "../../../../src/services/jobNumberTimeline/assemble.js";
+import { emptyJobTimelineRows } from "../../../../src/services/jobNumberTimeline/rows.js";
+import type { JobTimelinePage } from "../../../../src/services/jobNumberTimeline/types.js";
 import { discoverJobNumberTimelines } from "./discover.js";
-import { emptyJobTimelineRows } from "./rows.js";
-import type { JobTimelinePage } from "./types.js";
 
 const T0 = "2026-03-01T10:00:00.000Z";
 const T1 = "2026-03-01T11:00:00.000Z";

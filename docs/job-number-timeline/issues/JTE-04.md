@@ -142,22 +142,36 @@ None.
 
 ## 10. Acceptance criteria
 
-- [ ] Coverage chips are gone from the default v2 render. Stage strip
+- [x] Coverage chips are gone from the default v2 render. Stage strip
       uses server `stage_assessments`.
-- [ ] Attention panel is absent when `attention` is empty.
-- [ ] Proof boundaries are collapsed by default and quote Google-not-
+      Evidence: `v2 default render uses stage assessments and hides coverage chips`.
+- [x] Attention panel is absent when `attention` is empty.
+      Evidence: `attention panel is absent when attention is empty`.
+- [x] Proof boundaries are collapsed by default and quote Google-not-
       verified / WordPress-receipt / RingCentral-cursor language from the
       server, not invented client copy for those codes.
-- [ ] Density filters hide rows only; header counts stay stable.
-- [ ] Activity groups retain every event when expanded.
-- [ ] Official Booking and official Cancellation remain independently
+      Evidence: `proof boundaries stay collapsed and quote server limitation labels`
+      (Google + WordPress labels from JTE-03). RingCentral uses the same
+      `limitation.label` render path.
+- [x] Density filters hide rows only; header counts stay stable.
+      Evidence: `density filters hide rows only and keep header counts stable`.
+- [x] Activity groups retain every event when expanded.
+      Evidence: `activity groups retain every event when expanded`.
+- [x] Official Booking and official Cancellation remain independently
       visible.
-- [ ] Named test: `v1 fixture remains renderable during client migration`.
-- [ ] Existing not-found / invalid / filtered-out copy still holds.
-- [ ] No forbidden fields rendered. No raw JSON.
-- [ ] Keyboard: search, expand evidence, and filter are reachable without
+      Evidence: `official Booking and official Cancellation remain independently visible`.
+- [x] Named test: `v1 fixture remains renderable during client migration`.
+- [x] Existing not-found / invalid / filtered-out copy still holds.
+      Evidence: existing tests plus `invalid_job_number and filtered_out copy still hold`.
+- [x] No forbidden fields rendered. No raw JSON.
+      Evidence: `v2 render never dumps raw JSON or contact`.
+- [x] Keyboard: search, expand evidence, and filter are reachable without
       a pointer.
-- [ ] `pnpm test && pnpm typecheck && pnpm lint` in `vantage-admin`.
+      Evidence: native search form, `<details>/<summary>`, density `role="radio"`.
+- [x] `pnpm test && pnpm typecheck && pnpm lint` in `vantage-admin`.
+      Evidence: 321 tests pass; `tsc --noEmit` exit 0; JTE-04 files eslint
+      exit 0. Repo-wide `pnpm lint` still has 3 pre-existing errors in
+      `granot-crm-sources-manager.tsx` (untouched).
 
 ## 11. Required tests and commands
 

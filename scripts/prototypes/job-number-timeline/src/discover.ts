@@ -1,5 +1,9 @@
-import { hasSuccessfulLeadMessage } from "./assemble.js";
-import type { JobTimelineEvent, JobTimelinePage, JobTimelineProofShape } from "./types.js";
+import { hasSuccessfulLeadMessage } from "../../../../src/services/jobNumberTimeline/assemble.js";
+import type {
+  JobTimelineEvent,
+  JobTimelinePage,
+  JobTimelineProofShape,
+} from "../../../../src/services/jobNumberTimeline/types.js";
 
 export type DiscoverScoreInput = {
   page: JobTimelinePage;

@@ -5,6 +5,7 @@ export type IdLike = string;
 export type ObservationRow = {
   id: IdLike;
   captured_at: string;
+  createdAt?: string;
   normalized_job_no?: string;
   job_no_snapshot?: string;
   identity?: { normalized_job_no?: string; job_no_raw?: string };
@@ -66,6 +67,47 @@ export type CancellationRow = {
   booked_lead?: string;
   last_changed_at?: string;
   createdAt?: string;
+  job_no_snapshot?: string | null;
+  normalized_job_no_snapshot?: string | null;
+  lead_ref_snapshot?: { model: JobTimelineLeadModel; id: string } | null;
+  booking_created_at_snapshot?: string | null;
+};
+
+export type ObservationReceiptRow = {
+  id: IdLike;
+  captured_at: string;
+  createdAt?: string;
+  route_event_class?: string;
+  observation_channel?: string;
+  processing_state?: string;
+  channel_operation_kind?: string;
+};
+
+export type WordpressFormSubmissionReceiptRow = {
+  id: IdLike;
+  received_at: string;
+  createdAt?: string;
+  submission_key?: string;
+  processing_status?: "received" | "lead_created";
+  lead_id?: string;
+};
+
+export type ProcessedCallRow = {
+  id: IdLike;
+  callLeadId: string;
+  status: string;
+  qualificationReason?: string | null;
+  firstProcessedAt: string;
+  updatedAt?: string;
+  ingestionSource?: string;
+  duplicate?: boolean;
+};
+
+export type CallLogCursorRow = {
+  lastSyncTo?: string | null;
+  lastSyncFrom?: string | null;
+  lastRunAt?: string | null;
+  lastRunStatus?: string | null;
 };
 
 export type CaseEvidenceRow = {
@@ -190,6 +232,10 @@ export type JobTimelineRows = {
   granot_crm_sources?: CrmSourceRow[];
   granularities?: GranularityRow[];
   source_granularities?: GranularityRow[];
+  observation_receipts?: ObservationReceiptRow[];
+  wordpress_form_submission_receipts?: WordpressFormSubmissionReceiptRow[];
+  processed_calls?: ProcessedCallRow[];
+  call_log_cursor?: CallLogCursorRow | null;
 };
 
 export type JobTimelineAssembleInput = {
@@ -200,6 +246,7 @@ export type JobTimelineAssembleInput = {
     company_granularity_ids?: string[];
   };
   rows: JobTimelineRows;
+  now?: Date;
 };
 
 export function emptyJobTimelineRows(): Required<JobTimelineRows> {
@@ -221,5 +268,9 @@ export function emptyJobTimelineRows(): Required<JobTimelineRows> {
     granot_crm_sources: [],
     granularities: [],
     source_granularities: [],
+    observation_receipts: [],
+    wordpress_form_submission_receipts: [],
+    processed_calls: [],
+    call_log_cursor: null,
   };
 }

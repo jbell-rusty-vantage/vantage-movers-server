@@ -1,9 +1,9 @@
 import type { Db, Document } from "mongodb";
 import mongoose from "mongoose";
-import type { JobTimelinePage } from "../../job-number-timeline/src/types.js";
-import { assembleJobNumberTimeline } from "../../job-number-timeline/src/assemble.js";
+import { assembleJobNumberTimeline } from "../../../../src/services/jobNumberTimeline/assemble.js";
+import { loadJobNumberTimelineRows } from "../../../../src/services/jobNumberTimeline/mongo-evidence-loader.js";
+import type { JobTimelinePage } from "../../../../src/services/jobNumberTimeline/types.js";
 import { scoreJobNumberTimeline } from "../../job-number-timeline/src/discover.js";
-import { loadJobNumberTimelineRows } from "../../job-number-timeline/src/load.js";
 import type {
   BookingEvidence,
   CancellationEvidence,

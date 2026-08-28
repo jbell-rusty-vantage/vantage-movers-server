@@ -31,7 +31,7 @@ test("job-number-timeline loader does not value-import ObjectId from mongodb", (
   const source = readFileSync(
     path.join(
       process.cwd(),
-      "scripts/prototypes/job-number-timeline/src/load.ts",
+      "src/services/jobNumberTimeline/mongo-evidence-loader.ts",
     ),
     "utf8",
   );

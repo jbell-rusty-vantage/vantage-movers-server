@@ -28,15 +28,25 @@ must be ready for it.
 
 ## 4. Current-state evidence to verify
 
+Reverified 2026-08-27 after JTE-04 on `job-timeline-enhancement` in both
+repos.
+
 - `buildJobTimelineHref` already exists. Home overview and Granot
   navigation already link to `/job-timeline`.
 - `/intakes` reference drawers still mount forensic
   `components/granot-lifecycle/job-timeline.tsx`.
-- Lead search, Booking, and Cancellation surfaces show Job Numbers
-  today; they do not deep-link to the owner timeline.
+- Call Lead, Booking, and Cancellation list/detail show Job Numbers as
+  plain text and do not deep-link to the owner timeline.
+- Form Lead list/detail columns do not include `job_no` today even when
+  the record has one. This issue adds the Job cell and link only when
+  `job_no` is present — not a catalog.
 - Owner Daily (`/daily`) does not exist. Do not create it.
 - Performance target in the spec is a **recommended** warm p95 under
   750 ms after measurement — measure first, do not invent an alert.
+- Owner vs Admin 403 tests already exist on the server route and Admin
+  proxy; this issue re-runs them.
+- Named forbidden-field test covers the WordPress golden only; this
+  issue serializes all v2 goldens.
 
 ## 5. Locked decisions and invariants at risk
 
@@ -115,16 +125,16 @@ production apply.
 
 ## 10. Acceptance criteria
 
-- [ ] Specification §17 boxes that remain open are evidenced or honestly
+- [x] Specification §17 boxes that remain open are evidenced or honestly
       leftover (JTE-06/07 items stay leftover).
-- [ ] Deep links land on `/job-timeline?job=` and do not invent a catalog.
-- [ ] Owner-only proven again at both gates.
-- [ ] Live proof report exists, redacted, count-stable.
-- [ ] Forbidden-field scan is green on goldens and the live sample.
-- [ ] Keyboard and screen-reader checks recorded.
-- [ ] Latency measurement recorded; no alert added from an unmeasured
+- [x] Deep links land on `/job-timeline?job=` and do not invent a catalog.
+- [x] Owner-only proven again at both gates.
+- [x] Live proof report exists, redacted, count-stable.
+- [x] Forbidden-field scan is green on goldens and the live sample.
+- [x] Keyboard and screen-reader checks recorded.
+- [x] Latency measurement recorded; no alert added from an unmeasured
       target.
-- [ ] `pnpm test && pnpm typecheck` in both repos; Admin `pnpm lint`.
+- [x] `pnpm test && pnpm typecheck` in both repos; Admin `pnpm lint`.
 
 ## 11. Required tests and commands
 

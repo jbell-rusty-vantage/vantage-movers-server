@@ -9,13 +9,23 @@ alwaysApply: false
 Owner-only typed Job Number retrieval. Not the forensic Granot lifecycle
 projection (`projections.ts` / `GranotTimelineEntry`).
 
+Service doc:
+[`docs/knowledge/services/job-number-timeline.md`](../../docs/knowledge/services/job-number-timeline.md).
+
 ## Workspace
 
 Enhancement work is the delivery pack
 [`docs/job-number-timeline/README.md`](../../docs/job-number-timeline/README.md).
-Start there → `AGENT-PROTOCOL.md` → the `ready` issue in `PROGRESS.md`.
-Specification wins on additive behavior; the prototype spec wins on event
-truth, correlation, and masking.
+Start there → `AGENT-PROTOCOL.md` → `PROGRESS.md`. There is no
+`ready` issue. Specification wins on additive behavior; the prototype
+spec wins on event truth, correlation, and masking.
+
+JTE-01 extract, JTE-02 v2 projection, JTE-03 evaluators, JTE-04
+Admin UI, JTE-05 (live proof, deep links), JTE-06 (cancellation
+correlation snapshots), and JTE-07 (WordPress Form Submission
+Receipt capture) shipped. Admin displays server arrays; it does
+not evaluate. `goldenWordpressRows` / `wordpressRows()` job
+`9001001` stays the no-receipt WordPress golden.
 
 ## Seams
 
@@ -25,20 +35,59 @@ truth, correlation, and masking.
 - Route stays thin: authorize, validate, `module.read`, respond.
 - Tests call the same module interface as the route. Mongo and memory
   loaders both exist, or the loader seam is fake.
+- `projector.ts` calls `outcome.ts` (`evaluateCurrentOutcome`,
+  `assessStages`, `outcomeHeadline`) and `attention.ts` (one evaluator
+  per specification §8 attention and limitation code, `evaluateFreshness`)
+  after events and activities are finalized. The external seam stays
+  `createJobNumberTimelineModule({ loader }).read`.
 
 ## Invariants
 
 - Read-time projection only. No `OperationalEvent`, no second event
   stream, no mutation, no notification.
-- Intake is never the official outcome. Latest Decision attempt only.
-  Sheet Sync joins by entity ID, never Job Number.
+- Intake is never the official outcome. `evaluateCurrentOutcome` uses
+  specification §4.2 precedence, not last-event-wins. Latest Decision
+  attempt only. Sheet Sync joins by entity ID, never Job Number.
 - No inferred events. No Job Number catalog. No `$lookup` on the hot
   route. Cap 250 events with a named truncation limitation.
+- Always emit `MULTI_QUERY_READ`, `MOVE_COMPLETION_UNAVAILABLE`, and
+  `GOOGLE_DESTINATION_UNVERIFIED`. Keep `TIMELINE_TRUNCATED` when the
+  250 cap hits. Do not invent extra §8 codes.
 - Never leak contact, SMS body, transcript, recording, provider payload,
   Sheet ID, Sheet row, or raw error body.
-- Admin must not recompute outcome, attention, or limitations.
-- WordPress Lead creation is not a source receipt. Sheet `synced` is not
-  Google equality. Move completion is not a stage.
+- Admin must not recompute outcome, attention, or limitations. Golden
+  pages in `golden-pages.ts` remain test fixtures. JTE-04 Admin UI
+  displays those arrays; it does not evaluate them.
+- WordPress `source_received` (`ingress: "wordpress"`) emits only
+  when a WordPress Form Submission Receipt row is loaded. Until that
+  WordPress ingress exists, WordPress-born pages keep
+  `WORDPRESS_RECEIPT_UNAVAILABLE`. A later Granot receipt does not
+  clear it. Sheet `synced` is not Google equality. Delivery stays
+  `unverifiable` even when every outbox job is synced. Move
+  completion is a limitation, never a stage or event.
+- RingCentral-born pages emit `RINGCENTRAL_CURSOR_BOUNDED` and fill
+  `freshness.ringcentral_covered_through` plus
+  `ringcentral_cursor_lag_seconds`. `google_destination_readback` stays
+  `not_performed`. `consistency` stays `multi_query_best_effort`.
+- `SHEET_SYNC_PENDING_TOO_LONG_MS` default is 1 hour (module constant,
+  not `process.env`).
+- After JTE-06, the Mongo loader hops `cancelled_leads` by indexed
+  `normalized_job_no_snapshot` when present (`equivalentNormalizedJobSnapshotFilter`),
+  merged with booking-linked rows. Assemble still refuses orphans
+  without a durable job snapshot.
+- After JTE-07, the Mongo loader hops `wordpress_form_submission_receipts`
+  by indexed `lead_ref.id` when the resolved lead is a Form Lead.
+  No collection scan.
 
-Do not start JTE-06 or JTE-07 without recorded write / source-assurance
-approval. Do not implement Daily Assurance here.
+## Residuals
+
+- JTE-01: CLI company/granularity mismatch prints `filtered_out`
+  (exit 0).
+- JTE-02: the module stamps `assembled_at` with
+  `input.now ?? new Date()`. RingCentral `source_received` is qualified
+  ledger statuses only.
+- JTE-07 shipped: WordPress `source_received` only from a loaded
+  receipt. Capture writes belong to Form Lead create
+  (`form-lead.md`), not this module.
+
+Do not implement Daily Assurance here.

@@ -94,16 +94,16 @@ It adds:
 - attention codes that can later feed Daily Assurance and notifications;
 - a production module extraction and phased implementation plan.
 
-### 1.3 Current implementation debt to resolve first
+### 1.3 Production module seam (JTE-01 complete)
 
-The production HTTP route currently imports its assembler and loader from
-`scripts/prototypes/job-number-timeline`. That proved the design quickly, but a
-runtime route importing a prototype is not the final seam.
+JTE-01 moved the production implementation under
+`src/services/jobNumberTimeline/` (`createJobNumberTimelineModule`). The HTTP
+route and CLI call that module. No file under `src/` imports
+`scripts/prototypes/job-number-timeline`. The prototype folder is a retained
+CLI/proof adapter. The route stays thin: authorize, validate, `module.read`,
+respond. Redaction is inside the module.
 
-Before adding substantial behavior, move the production implementation under
-`src/services/jobNumberTimeline/`. Keep the CLI as an adapter over the production
-module. The route stays thin: authorize, validate, call the module, redact, and
-respond.
+v2 fields are specified below; they are not shipped.
 
 ## 2. Product scope
 
@@ -775,6 +775,7 @@ notifiable. This prevents UI rendering from becoming a notification producer.
    prototype is a retained CLI/proof adapter.
 
 **Exit:** no runtime file imports `scripts/prototypes/job-number-timeline`.
+**Status:** complete (JTE-01).
 
 ### Phase 1 — v2 evidence contract
 

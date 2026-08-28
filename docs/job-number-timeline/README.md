@@ -43,7 +43,7 @@ Resolve paths from the `vantage-main-server` repository root.
 | 1 | [`job-timeline-enhancement-specification.md`](job-timeline-enhancement-specification.md) — **wins on every conflict** for additive enhancement behavior |
 | 2 | [`scripts/prototypes/job-number-timeline/specs/job-number-timeline-prototype-specification.md`](../../scripts/prototypes/job-number-timeline/specs/job-number-timeline-prototype-specification.md) — **wins on event truth, correlation, and masking** until this enhancement spec is explicitly amended with migration tests |
 | 3 | Current repository code, migrations, and tests — the actual seam each session extends |
-| 4 | [`docs/knowledge/services/job-number-timeline.md`](../knowledge/services/job-number-timeline.md) — current Service concept (prototype assembler is still primary until JTE-01 closes) |
+| 4 | [`docs/knowledge/services/job-number-timeline.md`](../knowledge/services/job-number-timeline.md) — current Service concept (`src/services/jobNumberTimeline/` is primary; the prototype folder is a retained CLI/proof adapter) |
 | 5 | `.cursor/rules/project-organization.mdc` and `.cursor/rules/job-number-timeline.mdc` |
 | 6 | `vantage-admin/uxdocs/HANDOFF-job-timeline-enhancement.md` — Admin-side orientation |
 | 7 | This pack's issues — sequencing and scope only, never new semantics |
@@ -75,25 +75,27 @@ Live values live in [`PROGRESS.md`](PROGRESS.md).
 
 | Issue | Title | Prerequisites | Status | Contract |
 | --- | --- | --- | --- | --- |
-| [JTE-01](issues/JTE-01.md) | Extract deep runtime module; route and CLI use it | current timeline | ready | complete |
-| [JTE-02](issues/JTE-02.md) | v2 types, dual clocks, evidence/correlation/activity, source receipt | JTE-01 | blocked | complete |
-| [JTE-03](issues/JTE-03.md) | Outcome, stage assessment, attention, limitations, freshness | JTE-02 | blocked | complete |
-| [JTE-04](issues/JTE-04.md) | Enhanced Owner UI and evidence expansion | JTE-03 | blocked | complete |
-| [JTE-05](issues/JTE-05.md) | Live proof, security, accessibility, performance, deep links | JTE-04 | blocked | complete |
+| [JTE-01](issues/JTE-01.md) | Extract deep runtime module; route and CLI use it | current timeline | complete | complete |
+| [JTE-02](issues/JTE-02.md) | v2 types, dual clocks, evidence/correlation/activity, source receipt | JTE-01 | complete | complete |
+| [JTE-03](issues/JTE-03.md) | Outcome, stage assessment, attention, limitations, freshness | JTE-02 | complete | complete |
+| [JTE-04](issues/JTE-04.md) | Enhanced Owner UI and evidence expansion | JTE-03 | complete | complete |
+| [JTE-05](issues/JTE-05.md) | Live proof, security, accessibility, performance, deep links | JTE-04 | complete | complete |
 | [JTE-06](issues/JTE-06.md) | Cancellation correlation snapshots and report-first backfill | JTE-02; separate write approval | deferred | complete |
-| [JTE-07](issues/JTE-07.md) | WordPress durable receipt capture | separate source-assurance approval | deferred | complete |
+| [JTE-07](issues/JTE-07.md) | WordPress durable receipt capture | separate source-assurance approval | complete | complete |
 
 ## Ready queue
 
-- **JTE-01 is the only startable issue.** Everything else depends on the
-  production module seam existing.
-- **JTE-02 and JTE-03 are sequential and same-module.** Do not parallelize
-  them. JTE-03 consumes the v2 event fields JTE-02 adds.
-- **JTE-04 is Admin-only** once JTE-03 has exported, tested golden pages.
-  Admin types are never the semantic authority.
-- **JTE-05 does not invent new semantics.** It certifies and links.
-- **JTE-06 and JTE-07 stay deferred** until the Owner authorizes a write-path
-  change. The honest timeline ships without them.
+- **JTE-01 is complete.** The production module seam exists at
+  `src/services/jobNumberTimeline/`.
+- **JTE-02 is complete.** `ok` pages are `job_timeline.v2`.
+- **JTE-03 is complete.** The module evaluates outcome, stages, attention,
+  limitations, and freshness.
+- **JTE-04 is complete.** Admin renders the server v2 hierarchy.
+- **JTE-05 is complete.** Deep links, live proof, and certification
+  shipped.
+- **JTE-07 is complete.** WordPress durable receipt capture shipped on
+  the authorized test path. `goldenWordpressRows` stays the no-receipt
+  golden. Live status for the rest of the pack is [`PROGRESS.md`](PROGRESS.md).
 
 ## Standing constraints for every issue
 
@@ -136,31 +138,60 @@ These apply to all issues and are not repeated as scope in each one.
 - Automatic repair, retry, or reconciliation.
 - Customer conversation transcript or call recording.
 
-## Verified current state at pack creation
+## Verified current state
 
-Observed 2026-08-27. **Reverify at implementation** — each issue's §4 repeats
-the subset it depends on.
+Observed at pack creation 2026-08-27; **reverified after JTE-02** the same
+day. Each issue's §4 repeats the subset it depends on.
 
-- Production HTTP route `src/routes/job-number-timeline-admin.routes.ts`
-  imports assembler, loader, masking, and types from
-  `scripts/prototypes/job-number-timeline/src/`. `src/services/jobNumberTimeline/`
-  **does not exist**.
+- Production HTTP route `src/routes/job-number-timeline-admin.routes.ts` is
+  authorize → validate → `createJobNumberTimelineModule({ loader }).read` →
+  respond. Redaction is inside the module. Primary code:
+  `src/services/jobNumberTimeline/`. No file under `src/` imports
+  `scripts/prototypes/job-number-timeline`. The prototype folder is a
+  retained CLI/proof adapter (`cli.ts` `render` / `discover` call the
+  module; `discover.ts` is ranking only; `load.ts` is DB-name /
+  production-confirm helpers only).
 - Route is Owner-only, mounted after the `/api/v1` guard in `v1.routes.ts`.
   Envelope `{ ok: true, data: JobTimelineAssembleResult }`. Success HTTP is
   always `200`, including `not_found` / `filtered_out` / `invalid_job_number`.
-- Eleven event kinds. No `source_received`. Coverage chips are
-  present/absent. No `schema_version`, stages, dual clocks, activities,
-  attention, or limitations.
+  On `ok`, `page` is `EnhancedJobTimelinePage` with
+  `schema_version: "job_timeline.v2"`. Every v1 field remains.
+- Twelve event kinds. `source_received` is type priority 5 (below
+  `lead_created` 10). Granot emits it only when a loaded Observation Receipt
+  exists; RingCentral only for qualified processed-call ledger rows
+  (`lead_created` / `lead_adopted` and duplicate variants) correlated by
+  `callLeadId`; WordPress invents no receipt event. Events carry dual clocks,
+  `evidence_level`, `stage`, `correlation`, and `causality.activity_id`.
+  `activities` group rows without deleting them. Official Booking and official
+  Cancellation keep independent activity ids. Cap 250 is a named
+  `TIMELINE_TRUNCATED` limitation (`counts_by_stage`); never a silent drop.
+- Outcome, stage assessments, attention, limitations, and freshness are
+  evaluated inside the module (`outcome.ts`, `attention.ts`). One evaluator
+  per specification §8 code. Admin must not recompute them. Always-on
+  limitations: `MULTI_QUERY_READ`, `MOVE_COMPLETION_UNAVAILABLE`,
+  `GOOGLE_DESTINATION_UNVERIFIED`. `TIMELINE_TRUNCATED` still marks the
+  250 cap. `freshness.google_destination_readback` stays `not_performed`.
+  RingCentral-born pages publish `ringcentral_covered_through` and
+  `ringcentral_cursor_lag_seconds`. Golden pages:
+  `src/services/jobNumberTimeline/golden-pages.ts`.
 - Loader reads observations, latest decisions, record links, bookings,
   cancellations, booking/release cases, discrepancies, leads, entity changes,
-  lead messages, sheet sync jobs, Granot CRM sources, and granularities. It
-  does **not** load Observation Receipts as first-class rows, RingCentral
-  `ringcentral_processed_calls`, or `ringcentral_call_log_sync_state`.
+  lead messages, sheet sync jobs, Granot CRM sources, granularities,
+  `granot_webhook_receipts`, `ringcentral_processed_calls` (via
+  `getRingCentralCollectionName`), and the `ringcentral_call_log_sync_state`
+  cursor. Safe projections only: no payload, headers, phone, transcript,
+  recording, `last_error`, or `spreadsheet_id`.
 - CLI: `pnpm prototype:job-number-timeline` modes `render` and `discover`
-  only. Tests: `pnpm test:prototype:job-number-timeline`.
-- Admin `/job-timeline` exists and renders v1 `JobTimelinePage` via
-  `lib/api/jobNumberTimeline.ts`. Coverage chips live in
-  `coverage-chips.tsx`. Headlines are locked. There is no catalog.
+  only. Tests: `pnpm test:prototype:job-number-timeline`. Golden pages:
+  `src/services/jobNumberTimeline/golden-pages.ts`.
+- Admin `/job-timeline?job=` renders the server-evaluated v2 page via
+  additive types on `lib/api/jobNumberTimeline.ts` (identity +
+  `summary.headline`, stage strip, attention if present, oldest-first
+  clustered spine, collapsed Proof boundaries). Density `?view=` hides
+  rows only. v1 fixtures without `schema_version` still use
+  `coverage-chips.tsx`. Headlines are locked. There is no catalog. Owner
+  Job Number deep links use `buildJobTimelineHref({ job })`. Live proof:
+  `reports/JTE-05-live-proof.md`.
 
 ## Layout
 
@@ -169,6 +200,7 @@ docs/job-number-timeline/
 ├── job-timeline-enhancement-specification.md   ← the contract
 ├── README.md                                   ← you are here
 ├── AGENT-PROTOCOL.md
+├── LOCAL-ADMIN.md                          ← local dashboard is on :3001
 ├── PROGRESS.md
 ├── issues/
 │   ├── JTE-01.md … JTE-07.md

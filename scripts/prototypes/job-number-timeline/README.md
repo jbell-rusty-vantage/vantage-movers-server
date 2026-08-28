@@ -12,11 +12,13 @@ catalog of every Job Number.
 ```text
 pnpm prototype:job-number-timeline -- render --job-no <raw>
 pnpm prototype:job-number-timeline -- discover
+pnpm prototype:job-number-timeline -- proof
 pnpm test:prototype:job-number-timeline
 ```
 
 Optional filters: `--source-granularity-id`, `--source-company-id`.
-Discover also accepts `--limit` and `--min-score`.
+Discover also accepts `--limit` and `--min-score`. Proof also accepts
+`--max-jobs` and `--warm-runs`. Proof is read-only and count-stable.
 
 Default live target is `testvantagemovers`. Production reads require
 `--confirm-production-db=vantagemovers`. Zero writes.

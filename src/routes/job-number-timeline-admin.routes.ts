@@ -7,14 +7,11 @@ import {
   isRegistryError,
   requireRegistryOwnerActor,
 } from "../services/operationsRegistry";
-import { assembleJobNumberTimeline } from "../../scripts/prototypes/job-number-timeline/src/assemble.js";
 import {
-  loadCompanyGranularityIds,
-  loadJobNumberTimelineRows,
-} from "../../scripts/prototypes/job-number-timeline/src/load.js";
-import { redactTimelineValue } from "../../scripts/prototypes/job-number-timeline/src/masking.js";
-import { normalizeTypedJobNo } from "../../scripts/prototypes/job-number-timeline/src/normalize.js";
-import type { JobTimelineAssembleResult } from "../../scripts/prototypes/job-number-timeline/src/types.js";
+  createJobNumberTimelineModule,
+  type JobTimelineAssembleResult,
+} from "../services/jobNumberTimeline";
+import { createMongoEvidenceLoader } from "../services/jobNumberTimeline/mongo-evidence-loader";
 
 const querySchema = z.object({
   job_no: z.string().trim().min(1),
@@ -40,34 +37,9 @@ async function defaultRead(input: {
   if (!db) {
     throw new Error("Mongo is not connected");
   }
-  const normalized = normalizeTypedJobNo(input.job_no);
-  if (!normalized) {
-    return { status: "invalid_job_number", normalized_job_no: null };
-  }
-  let company_granularity_ids: string[] | undefined;
-  if (input.source_company_id) {
-    company_granularity_ids = await loadCompanyGranularityIds(db, input.source_company_id);
-    if (
-      input.source_granularity_id
-      && !company_granularity_ids.includes(input.source_granularity_id)
-    ) {
-      return { status: "filtered_out", normalized_job_no: normalized, scopes: [] };
-    }
-  }
-  const rows = await loadJobNumberTimelineRows(db, normalized);
-  const result = assembleJobNumberTimeline({
-    rawJobNo: input.job_no,
-    filters: {
-      source_granularity_id: input.source_granularity_id,
-      source_company_id: input.source_company_id,
-      company_granularity_ids,
-    },
-    rows,
-  });
-  if (result.status === "ok") {
-    return { status: "ok", page: redactTimelineValue(result.page) as typeof result.page };
-  }
-  return result;
+  return createJobNumberTimelineModule({
+    loader: createMongoEvidenceLoader({ db }),
+  }).read(input);
 }
 
 export function createJobNumberTimelineAdminRouter(

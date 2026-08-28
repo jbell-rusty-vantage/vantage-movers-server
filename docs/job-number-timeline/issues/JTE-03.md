@@ -30,6 +30,15 @@ and it names every unsupported edge.
 
 Reverify after JTE-02.
 
+- Reverified 2026-08-27 after JTE-02 close: still accurate. `ok` pages
+  are `job_timeline.v2`. Event fields, `source_received`, dual clocks,
+  correlation, and activities are real. `current_outcome` is the stub
+  `"unknown"`; `stage_assessments` / `attention` are empty; `limitations`
+  is empty except `TIMELINE_TRUNCATED`.
+  `freshness.ringcentral_covered_through` may be filled;
+  `ringcentral_cursor_lag_seconds` is `null`. Golden pages live in
+  `src/services/jobNumberTimeline/golden-pages.ts`. `projector.ts` still
+  writes those stubs. No evaluator files exist yet.
 - v1 `page.coverage` still uses present/absent chips. Keep those fields
   for compatibility. Owner-facing meaning moves to `stage_assessments`.
 - Attention and limitation catalogs are specification §8. Do not invent
@@ -135,21 +144,21 @@ None.
 
 ## 10. Acceptance criteria
 
-- [ ] Named test: `text policy skip is not applicable rather than attention`.
-- [ ] Named test: `open booking intake yields active stage and no official booking`.
-- [ ] Named test: `resolved finalizing booking case without fact yields attention`.
-- [ ] Named test: `ordinary booked job has no cancellation attention`.
-- [ ] Named test: `resolved release case without cancellation yields attention`.
-- [ ] Named test: `official cancellation determines cancelled outcome`.
-- [ ] Named test: `contradictory official chronology yields contradictory outcome`.
-- [ ] Named test: `synced sheet job still reports google destination unverified`.
-- [ ] WordPress-born golden includes `WORDPRESS_RECEIPT_UNAVAILABLE`.
-- [ ] RingCentral-born golden bounds confidence with the cursor fields.
-- [ ] `MOVE_COMPLETION_UNAVAILABLE` and `MULTI_QUERY_READ` appear as
+- [x] Named test: `text policy skip is not applicable rather than attention`.
+- [x] Named test: `open booking intake yields active stage and no official booking`.
+- [x] Named test: `resolved finalizing booking case without fact yields attention`.
+- [x] Named test: `ordinary booked job has no cancellation attention`.
+- [x] Named test: `resolved release case without cancellation yields attention`.
+- [x] Named test: `official cancellation determines cancelled outcome`.
+- [x] Named test: `contradictory official chronology yields contradictory outcome`.
+- [x] Named test: `synced sheet job still reports google destination unverified`.
+- [x] WordPress-born golden includes `WORDPRESS_RECEIPT_UNAVAILABLE`.
+- [x] RingCentral-born golden bounds confidence with the cursor fields.
+- [x] `MOVE_COMPLETION_UNAVAILABLE` and `MULTI_QUERY_READ` appear as
       limitations, not stages or events.
-- [ ] Admin-facing arrays are complete enough that JTE-04 can render
+- [x] Admin-facing arrays are complete enough that JTE-04 can render
       without recomputing codes.
-- [ ] JTE-01 and JTE-02 regressions still pass.
+- [x] JTE-01 and JTE-02 regressions still pass.
 
 ## 11. Required tests and commands
 

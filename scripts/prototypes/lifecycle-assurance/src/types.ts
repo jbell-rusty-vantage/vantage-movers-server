@@ -1,4 +1,4 @@
-import type { JobTimelinePage } from "../../job-number-timeline/src/types.js";
+import type { JobTimelinePage } from "../../../../src/services/jobNumberTimeline/types.js";
 
 export type Confidence = "verified" | "strong" | "bounded" | "unknown";
 

@@ -1,15 +1,20 @@
 import { jobsEquivalent, normalizeTypedJobNo } from "./normalize.js";
+import { projectEnhancedPage } from "./projector.js";
 import type { JobTimelineAssembleInput } from "./rows.js";
 import type {
   BookingRow,
+  CancellationRow,
   CaseRow,
   DecisionRow,
   EntityChangeRow,
   LeadMessageRow,
   LeadRow,
+  ObservationReceiptRow,
   ObservationRow,
+  ProcessedCallRow,
   RecordLinkRow,
   SheetSyncJobRow,
+  WordpressFormSubmissionReceiptRow,
 } from "./rows.js";
 import {
   JOB_TIMELINE_TYPE_PRIORITY,
@@ -34,6 +39,12 @@ const UPDATE_COMMANDS = new Set([
 ]);
 const JOB_NUMBER_PATHS = new Set(["job_no", "normalized_job_no"]);
 const APPLIED_OUTCOMES = new Set(["applied", "created"]);
+const QUALIFIED_PROCESSED_CALL_STATUSES = new Set([
+  "lead_created",
+  "lead_created_duplicate",
+  "lead_adopted",
+  "lead_adopted_duplicate",
+]);
 
 function asList<T>(value: T[] | undefined): T[] {
   return value ?? [];
@@ -243,6 +254,105 @@ function jobNumberChange(changes: EntityChangeRow[]): EntityChangeRow | undefine
 
 function onlyJobNumberPaths(paths: string[]): boolean {
   return paths.length > 0 && paths.every((path) => JOB_NUMBER_PATHS.has(path));
+}
+
+function emitSourceReceived(input: {
+  observations: ObservationRow[];
+  receipts: ObservationReceiptRow[];
+  wordpressReceipts: WordpressFormSubmissionReceiptRow[];
+  processedCalls: ProcessedCallRow[];
+  lead?: LeadRow;
+}): JobTimelineEvent[] {
+  const events: JobTimelineEvent[] = [];
+  const receiptsById = new Map(input.receipts.map((row) => [row.id, row]));
+
+  if (input.lead?.model === "FormLead") {
+    for (const receipt of input.wordpressReceipts.filter((row) =>
+      row.lead_id === input.lead?.id,
+    )) {
+      events.push(event("source_received", {
+        id: `source_received:wordpress:${receipt.id}`,
+        event_at: receipt.received_at,
+        clock_field: "wordpress_receipt.received_at",
+        coverage: "evidence_only",
+        headline: "Source received (wordpress)",
+        data: {
+          ingress: "wordpress",
+          receipt_id: receipt.id,
+          processing_status: receipt.processing_status ?? null,
+        },
+      }));
+    }
+  }
+
+  for (const observation of input.observations) {
+    if (!observation.receipt_id) continue;
+    const receipt = receiptsById.get(observation.receipt_id);
+    if (!receipt) continue;
+    events.push(event("source_received", {
+      id: `source_received:granot:${receipt.id}`,
+      event_at: receipt.captured_at,
+      clock_field: "receipt.captured_at",
+      coverage: "evidence_only",
+      headline: "Source received (granot)",
+      data: {
+        ingress: "granot",
+        receipt_id: receipt.id,
+        observation_id: observation.id,
+        route_event_class: receipt.route_event_class ?? observation.route_event_class ?? null,
+        processing_state: receipt.processing_state ?? null,
+        observation_channel: receipt.observation_channel ?? null,
+        channel_operation_kind: receipt.channel_operation_kind ?? null,
+      },
+    }));
+  }
+
+  if (input.lead?.model === "CallLead") {
+    for (const row of input.processedCalls.filter((call) =>
+      call.callLeadId === input.lead?.id
+      && QUALIFIED_PROCESSED_CALL_STATUSES.has(call.status),
+    )) {
+      events.push(event("source_received", {
+        id: `source_received:ringcentral:${row.id}`,
+        event_at: row.firstProcessedAt,
+        clock_field: "processed_call.firstProcessedAt",
+        coverage: "evidence_only",
+        headline: "Source received (ringcentral)",
+        data: {
+          ingress: "ringcentral",
+          status: row.status,
+          qualification_outcome: row.qualificationReason ?? null,
+          processed_at: row.firstProcessedAt,
+          ingestion_source: row.ingestionSource ?? null,
+          duplicate: row.duplicate ?? false,
+        },
+      }));
+    }
+  }
+
+  return events;
+}
+
+function cancellationAttachedBySnapshot(
+  row: CancellationRow,
+  normalized: string,
+): boolean {
+  const snapshot = row.normalized_job_no_snapshot
+    || (row.job_no_snapshot ? normalizeTypedJobNo(row.job_no_snapshot) : null);
+  return Boolean(snapshot && matchesJob(snapshot, normalized));
+}
+
+function selectCancellations(input: {
+  rows: CancellationRow[];
+  bookingIds: Set<string>;
+  normalized: string;
+}): { cancellations: CancellationRow[]; viaSnapshot: boolean } {
+  const linked = input.rows.filter((row) => row.booked_lead && input.bookingIds.has(row.booked_lead));
+  if (linked.length > 0) {
+    return { cancellations: linked, viaSnapshot: false };
+  }
+  const snapped = input.rows.filter((row) => cancellationAttachedBySnapshot(row, input.normalized));
+  return { cancellations: snapped, viaSnapshot: snapped.length > 0 };
 }
 
 function emitLeadCreated(lead: LeadRow, changes: EntityChangeRow[]): JobTimelineEvent {
@@ -747,10 +857,12 @@ export function assembleJobNumberTimeline(
   const changes = lead ? leadChanges(asList(input.rows.entity_changes), lead) : [];
   const booking = hop.bookings[0];
   const bookingIds = new Set(hop.bookings.map((row) => row.id));
-  const cancellations = asList(input.rows.cancellations).filter((row) =>
-    (row.booked_lead && bookingIds.has(row.booked_lead))
-    || (hop.bookings.length === 0 && hop.release_cases.length > 0),
-  );
+  const selectedCancellations = selectCancellations({
+    rows: asList(input.rows.cancellations),
+    bookingIds,
+    normalized,
+  });
+  const cancellations = selectedCancellations.cancellations;
   const cancellation = cancellations[0];
   const allowedEntityIds = new Set<string>([
     ...(lead ? [lead.id] : []),
@@ -780,6 +892,13 @@ export function assembleJobNumberTimeline(
   }
 
   const events: JobTimelineEvent[] = [];
+  events.push(...emitSourceReceived({
+    observations: hop.observations,
+    receipts: asList(input.rows.observation_receipts),
+    wordpressReceipts: asList(input.rows.wordpress_form_submission_receipts),
+    processedCalls: asList(input.rows.processed_calls),
+    lead,
+  }));
   let created: JobTimelineEvent | undefined;
   if (lead) {
     created = emitLeadCreated(lead, changes);
@@ -852,7 +971,15 @@ export function assembleJobNumberTimeline(
     events: sorted,
   };
 
-  return { status: "ok", page };
+  return {
+    status: "ok",
+    page: projectEnhancedPage({
+      page,
+      rows: input.rows,
+      now: rawInput.now,
+      cancellationViaSnapshot: selectedCancellations.viaSnapshot,
+    }),
+  };
 }
 
 export function hasSuccessfulLeadMessage(events: JobTimelineEvent[]): boolean {
