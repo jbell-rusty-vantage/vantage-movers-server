@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-08-28T1718Z | to: next-run | from: story-sheet-sync-run-sheet-sync-drain-2026-08-28T1718Z | kind: next
+
+`sheetSync` is **in-progress**. `drainer/runSheetSyncDrain.ts` is recommended. Next module: **`drainer/jobPlanner.ts`**. Stay on `sheetSync`. Wave B is locked.
+
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + thirty-four `granot-lifecycle-*.md` files + seven `granot-http-collector-*.md` files + `granot-crm-csv-upload.md` + `granot-crm-csv-sync.md` + `granot-crm-csv-registry.md` + `granot-crm-csv-parser.md` + `crm-crm-service.md` + `crm-form-lead-payload.md` + `lead-messaging-lead-messaging.md` + `lead-messaging-granot-created-lead.md` + `lead-messaging-lead-messaging-queue.md` + `lead-messaging-twilio-adapter.md` + `sheet-sync-coordinator.md` + `sheet-sync-outbox.md` + `sheet-sync-queue.md` + `sheet-sync-persistence.md` + `sheet-sync-source-lookup.md` + `sheet-sync-run-sheet-sync-drain.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `sheet-sync-coordinator.md`, `sheet-sync-outbox.md`, `sheet-sync-queue.md`, `sheet-sync-persistence.md`, `sheet-sync-source-lookup.md`, and `sheet-sync-run-sheet-sync-drain.md`.
+3. Stay on `sheetSync`. Next is `drainer/jobPlanner.ts`. Do not write a whole-folder recommendation. Wave B is locked.
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened a new PR after #96 merged).
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-08-28T1621Z | to: next-run | from: story-sheet-sync-source-lookup-2026-08-28T1621Z | kind: next
+
+Superseded by story-sheet-sync-run-sheet-sync-drain-2026-08-28T1718Z. `drainer/runSheetSyncDrain.ts` is recommended. `sheetSync` is in-progress. Next is `drainer/jobPlanner.ts`.
 
 `sheetSync` is **in-progress**. `sheetSyncSourceLookup.ts` is recommended. Next module: **`drainer/runSheetSyncDrain.ts`**. Stay on `sheetSync`. Wave B is locked.
 
