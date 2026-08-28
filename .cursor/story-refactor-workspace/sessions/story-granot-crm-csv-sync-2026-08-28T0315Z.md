@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-28T0315Z
 - Service / module: `granotCrmCsv` / `sync.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / opened after #82 merged
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/83
 
 ## Stock at start
 
