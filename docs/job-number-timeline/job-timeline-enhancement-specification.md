@@ -398,6 +398,9 @@ can render the current UI for a v1 fixture.
 - For Granot, connect Receipt → Observation → latest Decision.
 - For WordPress, state: “Lead creation is recorded; independent WordPress
   submission receipt is unavailable.” This is a limitation, not a fake event.
+- For WordPress `lead_created`, expanded evidence may show the immutable
+  ingested form snapshot: masked contact plus move facts captured at create.
+  Live Lead fields are not a substitute for that snapshot.
 
 ### 7.2 Lead Message
 
@@ -411,11 +414,14 @@ can render the current UI for a v1 fixture.
 ### 7.3 Lead updates
 
 - Keep one event per EntityChange, not one event per changed field.
+- Headline is `Lead updated (${command_name})`. Do not put changed-path lists
+  in the headline.
 - Translate changed paths into owner groups: Contact, Move, Assignment,
   Attribution, Job identity, Booking state, and Other.
 - Default summary: “Move details and assignment updated from Granot.”
 - Expanded evidence lists exact safe field names and command name. Values remain
-  hidden unless separately approved as safe owner data.
+  hidden unless separately approved as safe owner data. The ingested form
+  snapshot on `lead_created` is approved as masked owner data.
 - Latest Decision attempt only remains mandatory.
 
 ### 7.4 Booking and Cancellation
@@ -461,7 +467,7 @@ Initial attention codes:
 | `SHEET_SYNC_TERMINAL_FAILURE` | A relevant outbox job is terminally failed. |
 | `CONTRADICTORY_OFFICIAL_STATE` | Official facts or their clocks cannot produce one coherent outcome. |
 | `SOURCE_SCOPE_CONFLICT` | Resolved source scopes disagree. |
-| `PROCESSING_EVIDENCE_GAP` | A claimed applied Decision lacks its required EntityChange. |
+| `PROCESSING_EVIDENCE_GAP` | A claimed applied Decision lacks its required EntityChange. The required change is the row linked by `provenance.decision_id`, or an exact `applied_at === decided_at` fallback. Apply clocks may be later than decide clocks. |
 
 Initial limitations:
 

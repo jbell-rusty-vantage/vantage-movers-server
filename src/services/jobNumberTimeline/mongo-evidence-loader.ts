@@ -84,6 +84,48 @@ function mapObservation(row: Document): ObservationRow {
   };
 }
 
+function mapIngestedContact(value: unknown): LeadRow["ingested_contact_snapshot"] {
+  if (!value || typeof value !== "object") return undefined;
+  const row = value as Document;
+  const snapshot = {
+    name: asString(row.name),
+    first_name: asString(row.first_name),
+    last_name: asString(row.last_name),
+    phone_number: asString(row.phone_number),
+    email: asString(row.email),
+  };
+  return Object.values(snapshot).some(Boolean) ? snapshot : undefined;
+}
+
+function mapIngestedMove(value: unknown): LeadRow["ingested_move_snapshot"] {
+  if (!value || typeof value !== "object") return undefined;
+  const row = value as Document;
+  const snapshot = {
+    pickup_city: asString(row.pickup_city),
+    pickup_state: asString(row.pickup_state),
+    pickup_zip: asString(row.pickup_zip),
+    delivery_city: asString(row.delivery_city),
+    delivery_state: asString(row.delivery_state),
+    destination_zip: asString(row.destination_zip),
+    move_date: row.move_date ? asIso(row.move_date) : undefined,
+    move_size: asString(row.move_size),
+  };
+  return Object.values(snapshot).some(Boolean) ? snapshot : undefined;
+}
+
+function mapEntityChange(row: Document, fallbackModel?: string): EntityChangeRow {
+  const provenance = (row.provenance ?? {}) as Document;
+  return {
+    id: asId(row._id),
+    entity_model: fallbackModel ?? String((row.entity as Document | undefined)?.model ?? ""),
+    entity_id: asId((row.entity as Document | undefined)?.id),
+    command_name: String(row.command_name ?? ""),
+    applied_at: asIso(row.applied_at),
+    changed_paths: Array.isArray(row.changed_paths) ? row.changed_paths.map(String) : [],
+    decision_id: provenance.decision_id ? asId(provenance.decision_id) : undefined,
+  };
+}
+
 function mapDecision(row: Document): DecisionRow {
   const scope = (row.source_scope ?? {}) as Document;
   const target = row.target as Document | undefined;
@@ -326,6 +368,8 @@ export async function loadJobNumberTimelineRows(
           : undefined,
         source_granularity_id: granularityId,
         source_company_id: leadDoc.source_company_id ? asId(leadDoc.source_company_id) : undefined,
+        ingested_contact_snapshot: mapIngestedContact(leadDoc.ingested_contact_snapshot),
+        ingested_move_snapshot: mapIngestedMove(leadDoc.ingested_move_snapshot),
       }];
       const messageFilter: Document = leadRef.model === "FormLead"
         ? { $or: [{ "lead_ref.id": leadDoc._id }, { form_lead: leadDoc._id }] }
@@ -374,14 +418,7 @@ export async function loadJobNumberTimelineRows(
           lead_id: leadRefDoc?.id ? asId(leadRefDoc.id) : undefined,
         };
       });
-      entity_changes = changes.map((row) => ({
-        id: asId(row._id),
-        entity_model: String((row.entity as Document | undefined)?.model ?? ""),
-        entity_id: asId((row.entity as Document | undefined)?.id),
-        command_name: String(row.command_name ?? ""),
-        applied_at: asIso(row.applied_at),
-        changed_paths: Array.isArray(row.changed_paths) ? row.changed_paths.map(String) : [],
-      }));
+      entity_changes = changes.map((row) => mapEntityChange(row));
       mappedProcessedCalls = processedCallDocs.map((row) => ({
         id: asId(row._id),
         callLeadId: String(row.callLeadId ?? ""),
@@ -427,22 +464,8 @@ export async function loadJobNumberTimelineRows(
     : [];
   entity_changes = [
     ...entity_changes,
-    ...bookingChanges.map((row) => ({
-      id: asId(row._id),
-      entity_model: "BookedLead",
-      entity_id: asId((row.entity as Document | undefined)?.id),
-      command_name: String(row.command_name ?? ""),
-      applied_at: asIso(row.applied_at),
-      changed_paths: Array.isArray(row.changed_paths) ? row.changed_paths.map(String) : [],
-    })),
-    ...cancellationChanges.map((row) => ({
-      id: asId(row._id),
-      entity_model: "CancelledLead",
-      entity_id: asId((row.entity as Document | undefined)?.id),
-      command_name: String(row.command_name ?? ""),
-      applied_at: asIso(row.applied_at),
-      changed_paths: Array.isArray(row.changed_paths) ? row.changed_paths.map(String) : [],
-    })),
+    ...bookingChanges.map((row) => mapEntityChange(row, "BookedLead")),
+    ...cancellationChanges.map((row) => mapEntityChange(row, "CancelledLead")),
   ];
 
   const entityIds = [

@@ -75,6 +75,19 @@ export function wordpressRows(): JobTimelineRows {
         name: LEAD_NAME,
         phone: LEAD_PHONE,
         email: "ada@example.invalid",
+        ingested_contact_snapshot: {
+          name: LEAD_NAME,
+          phone_number: LEAD_PHONE,
+          email: "ada@example.invalid",
+        },
+        ingested_move_snapshot: {
+          pickup_state: "NY",
+          pickup_zip: "10001",
+          delivery_state: "FL",
+          destination_zip: "33101",
+          move_date: "2026-04-01T00:00:00.000Z",
+          move_size: "2 Bedrooms",
+        },
       },
     ],
     entity_changes: [
@@ -92,6 +105,7 @@ export function wordpressRows(): JobTimelineRows {
         entity_id: "lead-wp-1",
         command_name: "synchronizeLeadFromGranot",
         applied_at: T2,
+        decision_id: "dec-wp-1",
         changed_paths: ["job_no", "normalized_job_no"],
       },
     ],

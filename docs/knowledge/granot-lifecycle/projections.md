@@ -46,7 +46,7 @@ credential-redacted Granot statement selected from that Booking or Release case'
 ## Protected read surface
 
 - Owner/Admin (`requireRegistryReadActor`): `GET /api/v1/admin/granot-lifecycle/cases`, `.../cases/:case_id`, `.../jobs/:normalized_job_no`, `GET /api/v1/admin/leads/:lead_model/:lead_id/lifecycle`, `.../operations/health`, `.../discrepancies`, `.../discrepancies/:id`.
-- Owner only: `GET .../cases/:case_id/candidates`, `GET .../cases/:case_id/creating-observation`; Owner discrepancy mutations `POST .../discrepancies/:id/{re-evaluate,correct-record-link,no-action}`.
+- Owner only: `GET .../cases/:case_id/candidates`, `GET .../cases/:case_id/creating-observation`, `GET .../receipts/live` (SSE; see [live-receipts.md](./live-receipts.md)); Owner discrepancy mutations `POST .../discrepancies/:id/{re-evaluate,correct-record-link,no-action}`.
 - Default case list query: `state=open`, `sort=last_evidence_at`, `order=desc`.
 - Every query is strict Zod input. Case cursors encode only the selected timestamp and ObjectId; timeline cursors encode exactly event time, type priority, and stable ID. Candidate cursors encode only Lead model/ID ordering.
 - Missing cases use `GRANOT_CASE_NOT_FOUND`; a missing Lead keeps the generic v1 `Lead not found` envelope.

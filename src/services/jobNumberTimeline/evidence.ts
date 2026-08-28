@@ -1,3 +1,5 @@
+import { maskEmail, maskName, maskPhone } from "./masking.js";
+import type { LeadRow } from "./rows.js";
 import type {
   EvidenceLevel,
   JobTimelineEvent,
@@ -69,6 +71,39 @@ function ownerGroupForPath(path: string): OwnerFieldGroup {
     return "Booking state";
   }
   return "Other";
+}
+
+export type OwnerFormSnapshot = {
+  submitted_as?: string;
+  phone_masked?: string;
+  email_masked?: string;
+  move_date?: string;
+  move_size?: string;
+  pickup?: string;
+  delivery?: string;
+};
+
+function placeLine(city?: string, state?: string, zip?: string): string | undefined {
+  const locality = [city, [state, zip].filter(Boolean).join(" ")].filter((part) => part);
+  return locality.length > 0 ? locality.join(", ") : undefined;
+}
+
+export function formSnapshotForLead(lead: LeadRow): OwnerFormSnapshot | null {
+  const contact = lead.ingested_contact_snapshot;
+  const move = lead.ingested_move_snapshot;
+  const joinedName = [contact?.first_name, contact?.last_name].filter(Boolean).join(" ");
+  const name = (contact?.name?.trim() || joinedName || "").trim();
+  const snapshot: OwnerFormSnapshot = {};
+  if (name) snapshot.submitted_as = maskName(name);
+  if (contact?.phone_number) snapshot.phone_masked = maskPhone(contact.phone_number);
+  if (contact?.email) snapshot.email_masked = maskEmail(contact.email);
+  if (move?.move_date) snapshot.move_date = move.move_date;
+  if (move?.move_size) snapshot.move_size = move.move_size;
+  const pickup = placeLine(move?.pickup_city, move?.pickup_state, move?.pickup_zip);
+  const delivery = placeLine(move?.delivery_city, move?.delivery_state, move?.destination_zip);
+  if (pickup) snapshot.pickup = pickup;
+  if (delivery) snapshot.delivery = delivery;
+  return Object.keys(snapshot).length > 0 ? snapshot : null;
 }
 
 export function leadUpdateSummary(commandName: string, paths: string[]): string {

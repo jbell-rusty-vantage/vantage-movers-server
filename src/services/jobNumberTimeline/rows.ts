@@ -135,6 +135,25 @@ export type DiscrepancyRow = {
   normalized_job_no: string;
 };
 
+export type IngestedContactSnapshotRow = {
+  name?: string;
+  first_name?: string;
+  last_name?: string;
+  phone_number?: string;
+  email?: string;
+};
+
+export type IngestedMoveSnapshotRow = {
+  pickup_city?: string;
+  pickup_state?: string;
+  pickup_zip?: string;
+  delivery_city?: string;
+  delivery_state?: string;
+  destination_zip?: string;
+  move_date?: string;
+  move_size?: string;
+};
+
 export type LeadRow = {
   id: IdLike;
   model: JobTimelineLeadModel;
@@ -152,6 +171,8 @@ export type LeadRow = {
   email?: string;
   job_no?: string;
   normalized_job_no?: string;
+  ingested_contact_snapshot?: IngestedContactSnapshotRow;
+  ingested_move_snapshot?: IngestedMoveSnapshotRow;
 };
 
 export type EntityChangeRow = {
@@ -162,6 +183,7 @@ export type EntityChangeRow = {
   command_name: string;
   applied_at: string;
   changed_paths: string[];
+  decision_id?: string;
 };
 
 export type LeadMessageRow = {

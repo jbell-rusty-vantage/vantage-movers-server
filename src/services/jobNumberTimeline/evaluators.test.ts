@@ -528,3 +528,62 @@ test("applied decision without entity change yields processing evidence gap", as
   assert.equal(stage(page, "processing").state, "attention");
   assertAlwaysLimitations(page);
 });
+
+test("applied decision linked by entity change decision id is not a processing evidence gap", async () => {
+  const page = await ok("8002003", {
+    ...emptyJobTimelineRows(),
+    observations: [
+      {
+        id: "obs-linked",
+        captured_at: T0,
+        normalized_job_no: "8002003",
+        route_event_class: "lead_created",
+      },
+    ],
+    decisions: [
+      {
+        id: "dec-linked",
+        observation_id: "obs-linked",
+        attempt: 1,
+        decided_at: T0,
+        outcome: "applied",
+        reason_code: "lead_state_changed",
+        target: { model: "FormLead", id: "lead-linked" },
+        effect_kinds: ["lead_updated"],
+      },
+    ],
+    leads: [
+      {
+        id: "lead-linked",
+        model: "FormLead",
+        ingestion_origin: "wordpress_form",
+        timestamp: T0,
+        createdAt: T0,
+        job_no: "8002003",
+        normalized_job_no: "8002003",
+      },
+    ],
+    entity_changes: [
+      {
+        id: "chg-linked-create",
+        entity_model: "FormLead",
+        entity_id: "lead-linked",
+        command_name: "createFormLead",
+        applied_at: T0,
+        changed_paths: ["name"],
+      },
+      {
+        id: "chg-linked-sync",
+        entity_model: "FormLead",
+        entity_id: "lead-linked",
+        command_name: "synchronizeLeadFromGranot",
+        applied_at: T1,
+        decision_id: "dec-linked",
+        changed_paths: ["job_no"],
+      },
+    ],
+  });
+  assert.equal(codes(page).includes("PROCESSING_EVIDENCE_GAP"), false);
+  assert.equal(stage(page, "processing").state, "complete");
+  assertAlwaysLimitations(page);
+});

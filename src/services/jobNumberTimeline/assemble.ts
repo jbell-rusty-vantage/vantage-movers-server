@@ -1,3 +1,4 @@
+import { formSnapshotForLead } from "./evidence.js";
 import { jobsEquivalent, normalizeTypedJobNo } from "./normalize.js";
 import { projectEnhancedPage } from "./projector.js";
 import type { JobTimelineAssembleInput } from "./rows.js";
@@ -355,6 +356,17 @@ function selectCancellations(input: {
   return { cancellations: snapped, viaSnapshot: snapped.length > 0 };
 }
 
+function leadCreatedData(
+  lead: LeadRow,
+  extras: Record<string, unknown>,
+): Record<string, unknown> {
+  const form_snapshot = formSnapshotForLead(lead);
+  return {
+    ...extras,
+    ...(form_snapshot ? { form_snapshot } : {}),
+  };
+}
+
 function emitLeadCreated(lead: LeadRow, changes: EntityChangeRow[]): JobTimelineEvent {
   const created = createChange(changes);
   if (created) {
@@ -364,11 +376,11 @@ function emitLeadCreated(lead: LeadRow, changes: EntityChangeRow[]): JobTimeline
       clock_field: "entity_change.applied_at",
       coverage: "command_backed",
       headline: `Lead created (${lead.ingestion_origin ?? "unknown"})`,
-      data: {
+      data: leadCreatedData(lead, {
         ingestion_origin: lead.ingestion_origin ?? null,
         command_name: created.command_name,
         lead_model: lead.model,
-      },
+      }),
     });
   }
   const clock = lead.timestamp || lead.createdAt || lead.change_history_started_at || "";
@@ -382,11 +394,11 @@ function emitLeadCreated(lead: LeadRow, changes: EntityChangeRow[]): JobTimeline
         : "lead.change_history_started_at",
     coverage: "official_fact_only",
     headline: `Lead created (${lead.ingestion_origin ?? "legacy_unknown"})`,
-    data: {
+    data: leadCreatedData(lead, {
       ingestion_origin: lead.ingestion_origin ?? "legacy_unknown",
       command_name: null,
       lead_model: lead.model,
-    },
+    }),
   });
 }
 
@@ -500,7 +512,7 @@ function emitLeadUpdates(
         event_at: row.applied_at,
         clock_field: "entity_change.applied_at",
         coverage: "command_backed",
-        headline: `Lead updated (${row.command_name}: ${row.changed_paths.join(", ")})`,
+        headline: `Lead updated (${row.command_name})`,
         data: { command_name: row.command_name, changed_paths: row.changed_paths },
       }),
     );

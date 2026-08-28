@@ -228,7 +228,10 @@ function evaluateProcessingEvidenceGap(
     );
     const satisfied = decision.outcome === "created"
       ? targetChanges.some((row) => CREATE_COMMANDS.has(row.command_name))
-      : targetChanges.some((row) => row.applied_at === decision.decided_at);
+      : targetChanges.some((row) =>
+        row.decision_id === decision.id
+        || row.applied_at === decision.decided_at
+      );
     if (!satisfied) {
       const event = events.find((row) => row.data.decision_id === decision.id);
       if (event) gapIds.push(event.id);

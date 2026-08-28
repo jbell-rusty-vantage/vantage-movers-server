@@ -7,6 +7,7 @@ import {
   SMS_BODY,
   T0,
   T1,
+  T2,
   WP_JOB,
   granotRows,
   wordpressRows,
@@ -49,7 +50,38 @@ test("WordPress walk-back", () => {
   assert.equal(page.events[acquired]?.headline, "Job Number acquired");
   assert.equal(page.events[intake]?.headline, "Booking intake opened (confirm)");
   assert.ok(page.events.some((event) => event.kind === "sheet_sync"));
-  assert.equal(page.events.find((event) => event.kind === "lead_created")?.data.ingestion_origin, "wordpress_form");
+  const createdEvent = page.events.find((event) => event.kind === "lead_created");
+  assert.equal(createdEvent?.data.ingestion_origin, "wordpress_form");
+  assert.deepEqual(createdEvent?.data.form_snapshot, {
+    submitted_as: "A•••",
+    phone_masked: "•••1234",
+    email_masked: "a•••@example.invalid",
+    move_date: "2026-04-01T00:00:00.000Z",
+    move_size: "2 Bedrooms",
+    pickup: "NY 10001",
+    delivery: "FL 33101",
+  });
+});
+
+test("Lead updated headline omits changed paths", () => {
+  const page = ok(WP_JOB, {
+    ...wordpressRows(),
+    entity_changes: [
+      ...(wordpressRows().entity_changes ?? []),
+      {
+        id: "chg-wp-priority",
+        entity_model: "FormLead",
+        entity_id: "lead-wp-1",
+        command_name: "synchronizeLeadFromGranot",
+        applied_at: T2,
+        changed_paths: ["granot_priority", "cubic_feet", "pickup_city"],
+      },
+    ],
+  });
+  const updated = page.events.filter((event) => event.kind === "lead_updated");
+  assert.ok(updated.length >= 1);
+  assert.ok(updated.every((event) => event.headline === "Lead updated (synchronizeLeadFromGranot)"));
+  assert.equal(updated.some((event) => event.headline.includes("cubic_feet")), false);
 });
 
 test("Granot-born", () => {

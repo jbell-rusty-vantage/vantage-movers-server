@@ -57,6 +57,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [booking-reconciliation.md](knowledge/granot-lifecycle/booking-reconciliation.md) | Booking-case open/refresh and gated Owner booking commands. |
 | [release-reconciliation.md](knowledge/granot-lifecycle/release-reconciliation.md) | Separate Release cases and gated Owner cancellation/update commands. |
 | [projections.md](knowledge/granot-lifecycle/projections.md) | Masked Admin case/job/lead reads plus Owner-only creating-observation; reads never invoke mutations. |
+| [live-receipts.md](knowledge/granot-lifecycle/live-receipts.md) | Owner-only SSE of Granot webhook receipts; Mongo watermark poll, not in-process emit. |
 | [observability.md](knowledge/granot-lifecycle/observability.md) | Lifecycle events, closed metric labels, and health projection. |
 
 ## ADR
