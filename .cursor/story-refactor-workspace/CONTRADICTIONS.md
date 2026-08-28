@@ -4,6 +4,12 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- The Lead Messaging consumer ignores `{ kind, reason }` and drains due Mongo. Do not parse `reason` so “the consumer knows why,” and do not send `message_id` so “the consumer can claim this row.” See `recommendations/lead-messaging-lead-messaging-queue.md`.
+- `LeadMessagingWakeupReason` includes `cron` and no caller publishes it. Cron drains directly. Do not publish from `/api/cron/lead-messaging-drain` so “every drain uses the queue.” See `recommendations/lead-messaging-lead-messaging-queue.md`.
+- A closed publish gate returns `false` with no skip log. Fail logs only. Do not add a skip log so “we match Sheet Sync,” and do not emit `publish_failed` on skip. See `recommendations/lead-messaging-lead-messaging-queue.md`.
+- All three callers ignore the boolean. `queueInitialLeadMessage` always returns `{ status: "queued" }`. Do not throw so “queued mode can fail the 201.” See `recommendations/lead-messaging-lead-messaging-queue.md`.
+- Publish fail is `logger.error` only. Sheet Sync / Granot write operational events. Do not add `recordOperationalEvent` so “every queue matches.” See `recommendations/lead-messaging-lead-messaging-queue.md`.
+- There is no `leadMessagingQueue.service.test.ts`. Config tests lock topic + preview-off only. Do not treat those as wake-up proof. See `recommendations/lead-messaging-lead-messaging-queue.md`.
 - Gate 6 is named `destination_and_capacity` and only checks destination trim. Capacity / E.164 / country / cooldown still run inside sibling persist. Do not pull reservation into the pure evaluator so “the name becomes true.” See `recommendations/lead-messaging-granot-created-lead.md`.
 - `evaluated_gates` is computed and send returns only `blocked:<first_gate>`. ODR-40 wanted the full array for the Owner “why blocked” line. Do not add the array to the mint outcome so “the Owner UI can read it.” See `recommendations/lead-messaging-granot-created-lead.md`.
 - A missing CRM Source defaults to `observation_only` / `not_attested` / disabled, so the first blocker after mode + flag is `source_policy_create_if_missing`, not `source_missing`. Do not add a seventh gate so “missing source is honest.” See `recommendations/lead-messaging-granot-created-lead.md`.
