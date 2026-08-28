@@ -14,6 +14,7 @@ import type {
   ProcessedCallRow,
   RecordLinkRow,
   SheetSyncJobRow,
+  WordpressFormSubmissionReceiptRow,
 } from "./rows.js";
 import {
   JOB_TIMELINE_TYPE_PRIORITY,
@@ -258,11 +259,31 @@ function onlyJobNumberPaths(paths: string[]): boolean {
 function emitSourceReceived(input: {
   observations: ObservationRow[];
   receipts: ObservationReceiptRow[];
+  wordpressReceipts: WordpressFormSubmissionReceiptRow[];
   processedCalls: ProcessedCallRow[];
   lead?: LeadRow;
 }): JobTimelineEvent[] {
   const events: JobTimelineEvent[] = [];
   const receiptsById = new Map(input.receipts.map((row) => [row.id, row]));
+
+  if (input.lead?.model === "FormLead") {
+    for (const receipt of input.wordpressReceipts.filter((row) =>
+      row.lead_id === input.lead?.id,
+    )) {
+      events.push(event("source_received", {
+        id: `source_received:wordpress:${receipt.id}`,
+        event_at: receipt.received_at,
+        clock_field: "wordpress_receipt.received_at",
+        coverage: "evidence_only",
+        headline: "Source received (wordpress)",
+        data: {
+          ingress: "wordpress",
+          receipt_id: receipt.id,
+          processing_status: receipt.processing_status ?? null,
+        },
+      }));
+    }
+  }
 
   for (const observation of input.observations) {
     if (!observation.receipt_id) continue;
@@ -874,6 +895,7 @@ export function assembleJobNumberTimeline(
   events.push(...emitSourceReceived({
     observations: hop.observations,
     receipts: asList(input.rows.observation_receipts),
+    wordpressReceipts: asList(input.rows.wordpress_form_submission_receipts),
     processedCalls: asList(input.rows.processed_calls),
     lead,
   }));

@@ -21,6 +21,7 @@ import type {
   ProcessedCallRow,
   RecordLinkRow,
   SheetSyncJobRow,
+  WordpressFormSubmissionReceiptRow,
 } from "./rows.js";
 import type { JobTimelineLeadModel } from "./types.js";
 
@@ -306,6 +307,7 @@ export async function loadJobNumberTimelineRows(
   let entity_changes: EntityChangeRow[] = [];
   let lead_messages: LeadMessageRow[] = [];
   let mappedProcessedCalls: ProcessedCallRow[] = [];
+  let mappedWordpressReceipts: WordpressFormSubmissionReceiptRow[] = [];
   if (leadRef && (leadRef.model === "FormLead" || leadRef.model === "CallLead")) {
     const collection = leadRef.model === "FormLead" ? "form_leads" : "call_leads";
     const leadDoc = await db.collection(collection).findOne({
@@ -341,14 +343,37 @@ export async function loadJobNumberTimelineRows(
             callLeadId: 1,
           }).toArray()
         : Promise.resolve([]);
-      const [changes, messages, processedCallDocs] = await Promise.all([
+      const wordpressReceiptQuery = leadRef.model === "FormLead"
+        ? db.collection("wordpress_form_submission_receipts").find({
+            "lead_ref.id": leadDoc._id,
+          }).project({
+            received_at: 1,
+            createdAt: 1,
+            processing_status: 1,
+            "lead_ref.id": 1,
+          }).toArray()
+        : Promise.resolve([]);
+      const [changes, messages, processedCallDocs, wordpressReceiptDocs] = await Promise.all([
         db.collection("entity_changes").find({
           "entity.model": leadRef.model,
           "entity.id": asId(leadDoc._id),
         }).toArray(),
         db.collection("lead_messages").find(messageFilter).toArray(),
         processedCallQuery,
+        wordpressReceiptQuery,
       ]);
+      mappedWordpressReceipts = wordpressReceiptDocs.map((row) => {
+        const leadRefDoc = row.lead_ref as Document | undefined;
+        return {
+          id: asId(row._id),
+          received_at: asIso(row.received_at),
+          createdAt: row.createdAt ? asIso(row.createdAt) : undefined,
+          processing_status: row.processing_status === "lead_created" || row.processing_status === "received"
+            ? row.processing_status
+            : undefined,
+          lead_id: leadRefDoc?.id ? asId(leadRefDoc.id) : undefined,
+        };
+      });
       entity_changes = changes.map((row) => ({
         id: asId(row._id),
         entity_model: String((row.entity as Document | undefined)?.model ?? ""),
@@ -494,6 +519,7 @@ export async function loadJobNumberTimelineRows(
     granot_crm_sources: mappedSources,
     source_granularities: mappedGranularities,
     observation_receipts: mappedReceipts,
+    wordpress_form_submission_receipts: mappedWordpressReceipts,
     processed_calls: mappedProcessedCalls,
     call_log_cursor: mappedCursor,
   };

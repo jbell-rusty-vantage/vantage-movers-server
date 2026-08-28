@@ -21,9 +21,11 @@ Start there → `AGENT-PROTOCOL.md` → `PROGRESS.md`. There is no
 spec wins on event truth, correlation, and masking.
 
 JTE-01 extract, JTE-02 v2 projection, JTE-03 evaluators, JTE-04
-Admin UI, JTE-05 (live proof, deep links), and JTE-06 (cancellation
-correlation snapshots) shipped. JTE-07 stays deferred. Admin
-displays server arrays; it does not evaluate.
+Admin UI, JTE-05 (live proof, deep links), JTE-06 (cancellation
+correlation snapshots), and JTE-07 (WordPress Form Submission
+Receipt capture) shipped. Admin displays server arrays; it does
+not evaluate. `goldenWordpressRows` / `wordpressRows()` job
+`9001001` stays the no-receipt WordPress golden.
 
 ## Seams
 
@@ -56,10 +58,13 @@ displays server arrays; it does not evaluate.
 - Admin must not recompute outcome, attention, or limitations. Golden
   pages in `golden-pages.ts` remain test fixtures. JTE-04 Admin UI
   displays those arrays; it does not evaluate them.
-- WordPress Lead creation is not a source receipt
-  (`WORDPRESS_RECEIPT_UNAVAILABLE`). Sheet `synced` is not Google
-  equality. Delivery stays `unverifiable` even when every outbox job is
-  synced. Move completion is a limitation, never a stage or event.
+- WordPress `source_received` (`ingress: "wordpress"`) emits only
+  when a WordPress Form Submission Receipt row is loaded. Until that
+  WordPress ingress exists, WordPress-born pages keep
+  `WORDPRESS_RECEIPT_UNAVAILABLE`. A later Granot receipt does not
+  clear it. Sheet `synced` is not Google equality. Delivery stays
+  `unverifiable` even when every outbox job is synced. Move
+  completion is a limitation, never a stage or event.
 - RingCentral-born pages emit `RINGCENTRAL_CURSOR_BOUNDED` and fill
   `freshness.ringcentral_covered_through` plus
   `ringcentral_cursor_lag_seconds`. `google_destination_readback` stays
@@ -70,6 +75,9 @@ displays server arrays; it does not evaluate.
   `normalized_job_no_snapshot` when present (`equivalentNormalizedJobSnapshotFilter`),
   merged with booking-linked rows. Assemble still refuses orphans
   without a durable job snapshot.
+- After JTE-07, the Mongo loader hops `wordpress_form_submission_receipts`
+  by indexed `lead_ref.id` when the resolved lead is a Form Lead.
+  No collection scan.
 
 ## Residuals
 
@@ -78,7 +86,8 @@ displays server arrays; it does not evaluate.
 - JTE-02: the module stamps `assembled_at` with
   `input.now ?? new Date()`. RingCentral `source_received` is qualified
   ledger statuses only.
-- JTE-07 stays deferred.
+- JTE-07 shipped: WordPress `source_received` only from a loaded
+  receipt. Capture writes belong to Form Lead create
+  (`form-lead.md`), not this module.
 
-Do not start JTE-07 without recorded source-assurance approval. Do
-not implement Daily Assurance here.
+Do not implement Daily Assurance here.

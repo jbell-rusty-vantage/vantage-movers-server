@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { LEAD_NAME, LEAD_PHONE, OBS_CONTACT, SMS_BODY, T0, T1, T2, T3, WP_JOB, wordpressRows } from "./fixtures.js";
+import { LEAD_NAME, LEAD_PHONE, OBS_CONTACT, SMS_BODY, T0, T1, T2, T3, WP_JOB, wordpressReceiptRows, wordpressRows } from "./fixtures.js";
 import {
   ALWAYS_LIMITATION_CODES,
   GOLDEN_EXPECTATIONS,
@@ -66,6 +66,25 @@ test("wordpress creation reports no invented receipt event", async () => {
   assert.equal(page.events.some((event) => event.kind === "lead_created"), true);
   assert.equal(page.events.find((event) => event.kind === "lead_created")?.data.ingestion_origin, "wordpress_form");
   assert.ok(page.limitations.some((row) => row.code === "WORDPRESS_RECEIPT_UNAVAILABLE"));
+});
+
+test("timeline emits wordpress source_received only when the receipt exists", async () => {
+  const withReceipt = await ok(WP_JOB, wordpressReceiptRows());
+  const receipts = withReceipt.events.filter((event) => event.kind === "source_received");
+  assert.equal(withReceipt.proof_shape, "wordpress_born");
+  assert.equal(receipts.length, 1);
+  assert.equal(receipts[0]?.data.ingress, "wordpress");
+  assert.equal(receipts[0]?.type_priority, 5);
+  assert.ok(withReceipt.events.findIndex((event) => event.kind === "source_received")
+    < withReceipt.events.findIndex((event) => event.kind === "lead_created"));
+  assert.equal(
+    withReceipt.limitations.some((row) => row.code === "WORDPRESS_RECEIPT_UNAVAILABLE"),
+    false,
+  );
+
+  const withoutReceipt = await ok(WP_JOB, wordpressRows());
+  assert.equal(withoutReceipt.events.some((event) => event.kind === "source_received"), false);
+  assert.ok(withoutReceipt.limitations.some((row) => row.code === "WORDPRESS_RECEIPT_UNAVAILABLE"));
 });
 
 test("dual clocks order by occurred time and preserve recorded time", async () => {

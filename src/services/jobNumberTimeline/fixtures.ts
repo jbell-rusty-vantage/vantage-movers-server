@@ -135,6 +135,21 @@ export function wordpressRows(): JobTimelineRows {
   };
 }
 
+export function wordpressReceiptRows(): JobTimelineRows {
+  return {
+    ...wordpressRows(),
+    wordpress_form_submission_receipts: [
+      {
+        id: "wp-rcpt-1",
+        received_at: T0,
+        createdAt: T0,
+        processing_status: "lead_created",
+        lead_id: "lead-wp-1",
+      },
+    ],
+  };
+}
+
 export function granotRows(): JobTimelineRows {
   return {
     ...emptyJobTimelineRows(),

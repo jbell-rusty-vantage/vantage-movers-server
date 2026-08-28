@@ -16,7 +16,7 @@ Pack created 2026-08-27. Protocol: [`AGENT-PROTOCOL.md`](AGENT-PROTOCOL.md).
 | [JTE-04](issues/JTE-04.md) | Enhanced Owner UI and evidence expansion | JTE-03 | `complete` | agent | 2026-08-27 | 2026-08-27 | [reports/JTE-04-completion.md](reports/JTE-04-completion.md) |
 | [JTE-05](issues/JTE-05.md) | Live proof, security, accessibility, performance, deep links | JTE-04 | `complete` | agent | 2026-08-27 | 2026-08-27 | [reports/JTE-05-completion.md](reports/JTE-05-completion.md) |
 | [JTE-06](issues/JTE-06.md) | Cancellation correlation snapshots and report-first backfill | JTE-02; write approval | `complete` | agent | 2026-08-27 | 2026-08-27 | [reports/JTE-06-completion.md](reports/JTE-06-completion.md) |
-| [JTE-07](issues/JTE-07.md) | WordPress durable receipt capture | source-assurance approval | `deferred` | — | — | — | — |
+| [JTE-07](issues/JTE-07.md) | WordPress durable receipt capture | source-assurance approval | `complete` | agent | 2026-08-27 | 2026-08-27 | [reports/JTE-07-completion.md](reports/JTE-07-completion.md) |
 
 Status vocabulary: `ready` · `active` · `blocked` · `complete` · `deferred`.
 
@@ -42,7 +42,7 @@ by the issue that closes it, with the evidence named.
 | §9 | Enhanced Owner UI | JTE-04 | ☑ | Stage strip / attention / clustered spine; named v1 fixture test; report JTE-04 |
 | §12, §13.3, §15 Phase 4 | Proof, security, a11y, performance, deep links | JTE-05 | ☑ | Deep links + `reports/JTE-05-live-proof.md`; warm p95 471 ms; report JTE-05 |
 | §11.1 | Cancellation snapshots | JTE-06 | ☑ | report JTE-06; test apply 4/25; production 48/11 unchanged |
-| §11.2 | WordPress receipt | JTE-07 | ☐ | deferred |
+| §11.2 | WordPress receipt | JTE-07 | ☑ | report JTE-07; test-path write + unique index on testvantagemovers; no-receipt golden kept |
 | §11.3–11.4, §14 | Google read-back, move completion, Daily Assurance | **out of pack** | — | later Assurance |
 
 ## Acceptance criteria (specification §17)
@@ -91,6 +91,7 @@ hits one sets itself `blocked` and adds a row.
 | Raised by | Date | Question | Answer | Answered |
 | --- | --- | --- | --- | --- |
 | JTE-06 | 2026-08-27 | Write-path + report-first backfill authorization for Cancellation snapshots? | Owner authorized JTE-06 write-path + report-first backfill on the **test database only** (`testvantagemovers`). Production apply, production index apply, and any backfill of `vantagemovers` remain unauthorized until a later explicit Owner approval plus the existing CLI confirm flag. | 2026-08-27 |
+| JTE-07 | 2026-08-27 | Source-assurance authorization for WordPress durable receipt capture? | Owner authorized a **new WordPress receipt write path on the test form path / `testvantagemovers` only**. Unique idempotency index is report-first; apply on the test DB only if the write is unusable without it. Production form injection, production index apply, and backfilling receipts onto historical WordPress Leads remain unauthorized. | 2026-08-27 |
 
 ## Issue log
 
@@ -145,4 +146,19 @@ Append-only. Newest last. One entry per pickup, block, and close.
              25/4); test-DB index + 4-row backfill only; Mongo hop by
              indexed normalized_job_no_snapshot. JTE-07 stays leftover.
              See reports/JTE-06-completion.md.
+2026-08-27 · JTE-07 picked up · status active · repos: vantage-main-server
+             (implementation; vantage-movers-clients participation to
+             confirm). branch: job-timeline-enhancement (existing pack
+             branch; no extra feature branches). Not pushed. Owner
+             authorized WordPress receipt write on the test form path /
+             testvantagemovers only. Unique idempotency index is
+             report-first. Production form injection / index apply /
+             historical backfill remain unauthorized. Schema to be
+             authored in JTE-07.md before any runtime edit.
+2026-08-27 · JTE-07 closed · complete · WordPress receipt on authorized
+             test form path / testvantagemovers; unique + lead-ref
+             indexes applied on test DB only; timeline emits wordpress
+             source_received only when the receipt exists; no-receipt
+             golden kept. vantage-movers-clients did not participate.
+             See reports/JTE-07-completion.md. Pack ready to ship.
 ```

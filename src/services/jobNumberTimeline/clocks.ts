@@ -29,6 +29,23 @@ export function selectEventTime(event: JobTimelineEvent, rows: JobTimelineRows):
   const occurred_at = event.event_at;
   const occurred_at_field = event.clock_field;
 
+  if (event.kind === "source_received" && event.data.ingress === "wordpress") {
+    const receiptId = typeof event.data.receipt_id === "string" ? event.data.receipt_id : undefined;
+    const receipt = receiptId
+      ? (rows.wordpress_form_submission_receipts ?? []).find((row) => row.id === receiptId)
+      : undefined;
+    const recorded_at = asIso(receipt?.createdAt) ?? asIso(receipt?.received_at) ?? occurred_at;
+    return {
+      occurred_at,
+      occurred_at_field,
+      recorded_at,
+      recorded_at_field: receipt?.createdAt
+        ? "wordpress_receipt.createdAt"
+        : "wordpress_receipt.received_at",
+      precision: "capture",
+    };
+  }
+
   if (event.kind === "source_received" && event.data.ingress === "granot") {
     const receipt = receiptForEvent(event, rows);
     const recorded_at = asIso(receipt?.createdAt) ?? asIso(receipt?.captured_at) ?? occurred_at;

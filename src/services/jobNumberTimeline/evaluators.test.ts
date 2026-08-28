@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SHEET_SYNC_PENDING_TOO_LONG_MS } from "./attention.js";
-import { T0, T1, T3, WP_JOB, wordpressRows } from "./fixtures.js";
+import { T0, T1, T2, T3, WP_JOB, wordpressRows } from "./fixtures.js";
 import {
   ALWAYS_LIMITATION_CODES,
   GOLDEN_EXPECTATIONS,
@@ -190,6 +190,32 @@ test("wordpress-born golden includes wordpress receipt limitation", async () => 
   assert.ok(limitationCodes(page).includes("WORDPRESS_RECEIPT_UNAVAILABLE"));
   assert.equal(page.current_outcome, GOLDEN_EXPECTATIONS.wordpress.outcome);
   assertAlwaysLimitations(page);
+});
+
+test("later Granot receipt does not clear wordpress receipt limitation", async () => {
+  const rows = wordpressRows();
+  const page = await ok(WP_JOB, {
+    ...rows,
+    observation_receipts: [
+      {
+        id: "rcpt-wp-1",
+        captured_at: T2,
+        createdAt: T2,
+        route_event_class: "priority_updated",
+        processing_state: "completed",
+      },
+    ],
+  });
+  assert.equal(page.proof_shape, "wordpress_born");
+  assert.equal(
+    page.events.some((event) => event.kind === "source_received" && event.data.ingress === "granot"),
+    true,
+  );
+  assert.equal(
+    page.events.some((event) => event.kind === "source_received" && event.data.ingress === "wordpress"),
+    false,
+  );
+  assert.ok(limitationCodes(page).includes("WORDPRESS_RECEIPT_UNAVAILABLE"));
 });
 
 test("ringcentral-born golden bounds confidence with the cursor", async () => {

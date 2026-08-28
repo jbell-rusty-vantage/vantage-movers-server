@@ -146,6 +146,9 @@ export function eventSummary(event: JobTimelineEvent): string | null {
       : [];
     return leadUpdateSummary(command, paths);
   }
+  if (event.kind === "source_received" && event.data.ingress === "wordpress") {
+    return "WordPress form-submission receipt captured.";
+  }
   if (event.kind === "source_received" && event.data.ingress === "granot") {
     const route = event.data.route_event_class ? String(event.data.route_event_class) : "observation";
     return `Granot Observation Receipt captured (${route}).`;
@@ -167,6 +170,13 @@ export function correlationFor(
     cancellation_via_snapshot: boolean;
   },
 ): TimelineCorrelation {
+  if (event.kind === "source_received" && event.data.ingress === "wordpress") {
+    return {
+      method: "lead_reference",
+      confidence: "exact",
+      explanation: "WordPress form-submission receipt is the durable ingress fact for this Form Lead.",
+    };
+  }
   if (event.kind === "source_received" && event.data.ingress === "granot") {
     return {
       method: "observation_reference",
@@ -260,7 +270,11 @@ export function evidenceRefsFor(event: JobTimelineEvent): TimelineEvidenceRef[] 
       refs.push({ source_kind, safe_label, ref });
     }
   };
-  push("receipt", "Observation Receipt", event.data.receipt_id);
+  if (event.kind === "source_received" && event.data.ingress === "wordpress") {
+    push("wordpress_receipt", "WordPress submission receipt", event.data.receipt_id);
+  } else {
+    push("receipt", "Observation Receipt", event.data.receipt_id);
+  }
   push("observation", "Granot Observation", event.data.observation_id);
   push("decision", "Synchronization Decision", event.data.decision_id);
   push("entity_change", "EntityChange", event.kind === "lead_updated" || event.kind === "lead_created"

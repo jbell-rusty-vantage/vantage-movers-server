@@ -137,6 +137,12 @@ export const createFormLeadSchema = z
     ingestion_source: z.literal("best_relocation_sheet").optional(),
     // Parsed here before the service applies the strict true-only messaging gate.
     sms_consent: booleanInput.optional(),
+    wordpress_submission_key: z
+      .string()
+      .trim()
+      .min(8)
+      .max(128)
+      .optional(),
   })
   .strict()
   .refine(

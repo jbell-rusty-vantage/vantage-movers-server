@@ -256,7 +256,9 @@ function evaluateWordpressReceiptUnavailable(
   events: EnhancedJobTimelineEvent[],
 ): TimelineLimitation | null {
   if (page.proof_shape !== "wordpress_born") return null;
-  if (events.some((event) => event.kind === "source_received")) return null;
+  if (events.some((event) => event.kind === "source_received" && event.data.ingress === "wordpress")) {
+    return null;
+  }
   return limitation(
     "WORDPRESS_RECEIPT_UNAVAILABLE",
     "Lead creation is recorded; independent WordPress submission receipt is unavailable.",

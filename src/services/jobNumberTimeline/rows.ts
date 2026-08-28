@@ -83,6 +83,15 @@ export type ObservationReceiptRow = {
   channel_operation_kind?: string;
 };
 
+export type WordpressFormSubmissionReceiptRow = {
+  id: IdLike;
+  received_at: string;
+  createdAt?: string;
+  submission_key?: string;
+  processing_status?: "received" | "lead_created";
+  lead_id?: string;
+};
+
 export type ProcessedCallRow = {
   id: IdLike;
   callLeadId: string;
@@ -224,6 +233,7 @@ export type JobTimelineRows = {
   granularities?: GranularityRow[];
   source_granularities?: GranularityRow[];
   observation_receipts?: ObservationReceiptRow[];
+  wordpress_form_submission_receipts?: WordpressFormSubmissionReceiptRow[];
   processed_calls?: ProcessedCallRow[];
   call_log_cursor?: CallLogCursorRow | null;
 };
@@ -259,6 +269,7 @@ export function emptyJobTimelineRows(): Required<JobTimelineRows> {
     granularities: [],
     source_granularities: [],
     observation_receipts: [],
+    wordpress_form_submission_receipts: [],
     processed_calls: [],
     call_log_cursor: null,
   };

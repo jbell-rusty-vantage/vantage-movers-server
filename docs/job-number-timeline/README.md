@@ -81,7 +81,7 @@ Live values live in [`PROGRESS.md`](PROGRESS.md).
 | [JTE-04](issues/JTE-04.md) | Enhanced Owner UI and evidence expansion | JTE-03 | complete | complete |
 | [JTE-05](issues/JTE-05.md) | Live proof, security, accessibility, performance, deep links | JTE-04 | complete | complete |
 | [JTE-06](issues/JTE-06.md) | Cancellation correlation snapshots and report-first backfill | JTE-02; separate write approval | deferred | complete |
-| [JTE-07](issues/JTE-07.md) | WordPress durable receipt capture | separate source-assurance approval | deferred | complete |
+| [JTE-07](issues/JTE-07.md) | WordPress durable receipt capture | separate source-assurance approval | complete | complete |
 
 ## Ready queue
 
@@ -92,9 +92,10 @@ Live values live in [`PROGRESS.md`](PROGRESS.md).
   limitations, and freshness.
 - **JTE-04 is complete.** Admin renders the server v2 hierarchy.
 - **JTE-05 is complete.** Deep links, live proof, and certification
-  shipped. Do not describe JTE-06/07 as started.
-- **JTE-06 and JTE-07 stay deferred** until the Owner authorizes a write-path
-  change. The honest timeline ships without them.
+  shipped.
+- **JTE-07 is complete.** WordPress durable receipt capture shipped on
+  the authorized test path. `goldenWordpressRows` stays the no-receipt
+  golden. Live status for the rest of the pack is [`PROGRESS.md`](PROGRESS.md).
 
 ## Standing constraints for every issue
 

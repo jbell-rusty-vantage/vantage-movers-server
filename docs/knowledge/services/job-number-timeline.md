@@ -23,14 +23,14 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:docs-keeper
-  at: 2026-08-27T21:25:00Z
+  at: 2026-08-28T00:25:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/jobNumberTimeline/` (`createJobNumberTimelineModule`)  
 **CLI / proof adapter:** [`scripts/prototypes/job-number-timeline/`](../../../scripts/prototypes/job-number-timeline/README.md)  
-**Enhancement workspace:** [`../../job-number-timeline/README.md`](../../job-number-timeline/README.md) — JTE-01 extract, JTE-02 v2 projection, JTE-03 evaluators, JTE-04 Admin UI, JTE-05 (live proof, deep links), and JTE-06 (cancellation correlation snapshots) shipped. JTE-07 stays deferred.  
-**Domain terms used:** [Job Number](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Granot Observation Receipt](../../../../CONTEXT.md)
+**Enhancement workspace:** [`../../job-number-timeline/README.md`](../../job-number-timeline/README.md) — JTE-01 extract, JTE-02 v2 projection, JTE-03 evaluators, JTE-04 Admin UI, JTE-05 (live proof, deep links), JTE-06 (cancellation correlation snapshots), and JTE-07 (WordPress Form Submission Receipt capture) shipped.  
+**Domain terms used:** [Job Number](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Granot Observation Receipt](../../../../CONTEXT.md), [WordPress Form Submission Receipt](../../../../CONTEXT.md)
 
 # Job Number timeline
 
@@ -83,7 +83,7 @@ Every v1 page and event field remains (`event_at`, `clock_field`, `coverage`, `h
 
 - Granot: observation has a `receipt_id` and that [Granot Observation Receipt](../../../../CONTEXT.md) is in the loaded rows.
 - RingCentral: resolved [Call Lead](../../../../CONTEXT.md) plus a processed-call ledger row whose `callLeadId` matches and whose status is `lead_created`, `lead_created_duplicate`, `lead_adopted`, or `lead_adopted_duplicate`.
-- WordPress: no invented receipt event. `lead_created` stays the origin row.
+- WordPress: a [WordPress Form Submission Receipt](../../../../CONTEXT.md) row is loaded and its `lead_ref` matches the Form Lead. `assemble.ts` then emits `source_received` with `ingress: "wordpress"`. No receipt row → no invented WordPress receipt event; `lead_created` stays the origin row.
 
 Each event has dual clocks (`time.occurred_at` / `time.recorded_at`). Default order is still `occurred_at` ASC, then type priority, then id. Events also carry `evidence_level`, `stage`, `correlation`, and `causality.activity_id`. `activities` group related rows; grouping does not delete events. Official Booking and official Cancellation keep independent activity ids.
 
@@ -112,7 +112,7 @@ On `ok`, `page` stays `EnhancedJobTimelinePage` with `schema_version: "job_timel
 
 Always emit limitations: `MULTI_QUERY_READ`, `MOVE_COMPLETION_UNAVAILABLE`, `GOOGLE_DESTINATION_UNVERIFIED`. Keep `TIMELINE_TRUNCATED` when the 250 cap hits. Do not invent extra §8 codes.
 
-WordPress-born pages emit `WORDPRESS_RECEIPT_UNAVAILABLE` (no invented receipt event). RingCentral-born pages emit `RINGCENTRAL_CURSOR_BOUNDED` and fill `freshness.ringcentral_covered_through` plus `ringcentral_cursor_lag_seconds`. `freshness.google_destination_readback` stays `"not_performed"`. `freshness.consistency` stays `"multi_query_best_effort"`.
+WordPress-born pages emit `WORDPRESS_RECEIPT_UNAVAILABLE` until a **WordPress** `source_received` exists (`ingress: "wordpress"`). A later Granot receipt does not clear that limitation. `goldenWordpressRows` / `wordpressRows()` job `9001001` stays the no-receipt WordPress golden. RingCentral-born pages emit `RINGCENTRAL_CURSOR_BOUNDED` and fill `freshness.ringcentral_covered_through` plus `ringcentral_cursor_lag_seconds`. `freshness.google_destination_readback` stays `"not_performed"`. `freshness.consistency` stays `"multi_query_best_effort"`.
 
 Sheet `synced` means outbox completion, not Google equality. Delivery stage is `unverifiable` even when every outbox job is synced. Move completion is a limitation, never a stage or event.
 
@@ -122,13 +122,14 @@ Golden pages for Admin fixtures live in `golden-pages.ts` (`GOLDEN_EXPECTATIONS`
 
 - JTE-01: CLI company/granularity mismatch prints `filtered_out` (exit 0).
 - JTE-02: the module stamps `assembled_at` with `input.now ?? new Date()`. RingCentral `source_received` is qualified ledger statuses only (`lead_created`, `lead_created_duplicate`, `lead_adopted`, `lead_adopted_duplicate`).
-- JTE-07 stays deferred (WordPress receipts / source-assurance). Do not start JTE-07 without recorded source-assurance approval. `/daily` does not exist.
+- JTE-07 shipped: WordPress `source_received` only when a [WordPress Form Submission Receipt](../../../../CONTEXT.md) is loaded. Capture writes live on the authorized test path in Form Lead create — see [`form-lead.md`](./form-lead.md). `/daily` does not exist.
 
 ### Loader
 
 Mongo loader reads observations, latest decisions, record links, bookings, cancellations, booking/release cases, discrepancies, leads, entity changes, lead messages, sheet sync jobs, Granot CRM sources, and granularities. It also reads:
 
 - `granot_webhook_receipts` (safe projection: `captured_at`, `createdAt`, `route_event_class`, `observation_channel`, `channel_operation_kind`, `processing.state`)
+- `wordpress_form_submission_receipts` by indexed `lead_ref.id` when the resolved lead is a Form Lead (safe projection: `received_at`, `createdAt`, `processing_status`, `lead_ref.id`). No collection scan.
 - processed-call ledger via `getRingCentralCollectionName("processedCalls")` (`ringcentral_processed_calls`: `status`, `qualificationReason`, `firstProcessedAt`, `updatedAt`, `ingestionSource`, `duplicate`, `callLeadId`)
 - call-log cursor via `getRingCentralCollectionName("callLogSyncState")` (`ringcentral_call_log_sync_state`, `{ key: "account" }`)
 
@@ -155,4 +156,4 @@ A company/granularity mismatch prints `filtered_out` and exits 0 (JTE-01 residua
 
 - Prototype README: [`scripts/prototypes/job-number-timeline/README.md`](../../../scripts/prototypes/job-number-timeline/README.md)
 - Forensic Granot job/lead reads: [`projections.md`](../granot-lifecycle/projections.md)
-- Admin tab `/job-timeline` and `lib/api/jobNumberTimeline.ts` live in `vantage-admin` (Owner-only page and proxy path). JTE-04 shipped: Admin consumes the server v2 page and copies DTO types additively. Admin types are never the semantic authority. JTE-05 shipped: CLI `proof` mode; Owner deep links via `JobTimelineDeepLink` / `buildJobTimelineHref({ job })` on Lead / Booking / Cancellation / intake surfaces. JTE-06 shipped: official Cancellation create stamps four immutable correlation snapshots; Mongo hops by indexed `normalized_job_no_snapshot`. JTE-07 stays deferred. `/daily` does not exist.
+- Admin tab `/job-timeline` and `lib/api/jobNumberTimeline.ts` live in `vantage-admin` (Owner-only page and proxy path). JTE-04 shipped: Admin consumes the server v2 page and copies DTO types additively. Admin types are never the semantic authority. JTE-05 shipped: CLI `proof` mode; Owner deep links via `JobTimelineDeepLink` / `buildJobTimelineHref({ job })` on Lead / Booking / Cancellation / intake surfaces. JTE-06 shipped: official Cancellation create stamps four immutable correlation snapshots; Mongo hops by indexed `normalized_job_no_snapshot`. JTE-07 shipped: WordPress `source_received` when a receipt row is loaded; Admin still renders the no-receipt golden / `WORDPRESS_RECEIPT_UNAVAILABLE` until that ingress exists. `/daily` does not exist.
