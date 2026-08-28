@@ -21,6 +21,7 @@
     "api:hit": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/api/starter.ts",
     "test:granot": "node --import tsx --import ./scripts/test-setup.ts --test \"src/services/granotHttpCollector/*.test.ts\" \"src/routes/granot-automation.routes.test.ts\"",
     "db:ping": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/ping-db.ts",
+    "ops:time-dates": "node --harmony-temporal --env-file=.env --import tsx scripts/dev_ops/time_and_dates/playground.ts",
     "db:ingest-moving-carriers": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ingest-moving-carriers.ts",
     "ingest:best-relocation": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/best-relocation-sheet-ingest.ts",
     "historical:audit-sheets": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/historical/audit-consolidation-sheets.ts",
