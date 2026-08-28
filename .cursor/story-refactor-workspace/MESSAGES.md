@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-08-28T2130Z | to: next-run | from: story-sheet-sync-quota-limiter-2026-08-28T2130Z | kind: next
+
+`sheetSync` is **visited**. `drainer/quotaLimiter.ts` is recommended. Next service: **`googleSheets`**. Open it and enumerate first. Wave B is locked.
+
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + thirty-four `granot-lifecycle-*.md` files + seven `granot-http-collector-*.md` files + `granot-crm-csv-upload.md` + `granot-crm-csv-sync.md` + `granot-crm-csv-registry.md` + `granot-crm-csv-parser.md` + `crm-crm-service.md` + `crm-form-lead-payload.md` + `lead-messaging-lead-messaging.md` + `lead-messaging-granot-created-lead.md` + `lead-messaging-lead-messaging-queue.md` + `lead-messaging-twilio-adapter.md` + `sheet-sync-coordinator.md` + `sheet-sync-outbox.md` + `sheet-sync-queue.md` + `sheet-sync-persistence.md` + `sheet-sync-source-lookup.md` + `sheet-sync-run-sheet-sync-drain.md` + `sheet-sync-job-planner.md` + `sheet-sync-batch-writer.md` + `sheet-sync-tab-row-map.md` + `sheet-sync-quota-limiter.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `sheet-sync-coordinator.md`, `sheet-sync-outbox.md`, `sheet-sync-queue.md`, `sheet-sync-persistence.md`, `sheet-sync-source-lookup.md`, `sheet-sync-run-sheet-sync-drain.md`, `sheet-sync-job-planner.md`, `sheet-sync-batch-writer.md`, `sheet-sync-tab-row-map.md`, and `sheet-sync-quota-limiter.md`.
+3. Open `googleSheets`. Enumerate first. Do not write a whole-folder recommendation for a large service. Wave B is locked.
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/101 after #100 merged).
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-08-28T2020Z | to: next-run | from: story-sheet-sync-tab-row-map-2026-08-28T2020Z | kind: next
+
+Superseded by story-sheet-sync-quota-limiter-2026-08-28T2130Z. `drainer/quotaLimiter.ts` is recommended. `sheetSync` is visited. Next is `googleSheets`.
 
 `sheetSync` is **in-progress**. `drainer/tabRowMap.ts` is recommended. Next module: **`drainer/quotaLimiter.ts`**. Stay on `sheetSync`. Wave B is locked.
 
