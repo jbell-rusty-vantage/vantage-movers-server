@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-28T11:13Z
 - Service / module: `leadMessaging` / `twilioAdapter.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / new PR after #90 merged
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/91
 
 ## Stock at start
 

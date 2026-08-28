@@ -10,7 +10,7 @@
 - Lock holder:
 - Lock at:
 - Branch: `docs/story-refactor`
-- PR: new after #90 merged
+- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/91
 - Last session: story-lead-messaging-twilio-adapter-2026-08-28T1113Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
