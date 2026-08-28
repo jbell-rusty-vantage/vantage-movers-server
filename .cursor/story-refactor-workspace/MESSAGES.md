@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-08-28T1113Z | to: next-run | from: story-lead-messaging-twilio-adapter-2026-08-28T1113Z | kind: next
+
+`leadMessaging` is **visited**. `twilioAdapter.ts` is recommended. Next service: **`sheetSync`**. Open it and enumerate first. Wave B is locked.
+
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + thirty-four `granot-lifecycle-*.md` files + seven `granot-http-collector-*.md` files + `granot-crm-csv-upload.md` + `granot-crm-csv-sync.md` + `granot-crm-csv-registry.md` + `granot-crm-csv-parser.md` + `crm-crm-service.md` + `crm-form-lead-payload.md` + `lead-messaging-lead-messaging.md` + `lead-messaging-granot-created-lead.md` + `lead-messaging-lead-messaging-queue.md` + `lead-messaging-twilio-adapter.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `lead-messaging-lead-messaging.md`, `lead-messaging-granot-created-lead.md`, `lead-messaging-lead-messaging-queue.md`, and `lead-messaging-twilio-adapter.md`.
+3. Open `sheetSync`. Enumerate first. Do not write a whole-folder recommendation for a large service. Wave B is locked.
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/91 after #90 merged).
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-08-28T1020Z | to: next-run | from: story-lead-messaging-lead-messaging-queue-2026-08-28T1020Z | kind: next
+
+Superseded by story-lead-messaging-twilio-adapter-2026-08-28T1113Z. `twilioAdapter.ts` is recommended. `leadMessaging` is visited. Next is `sheetSync`.
 
 `leadMessaging` is **in-progress**. `leadMessagingQueue.service.ts` is recommended. Next module: **`twilioAdapter.ts`**. Stay on `leadMessaging`. Wave B is locked.
 
