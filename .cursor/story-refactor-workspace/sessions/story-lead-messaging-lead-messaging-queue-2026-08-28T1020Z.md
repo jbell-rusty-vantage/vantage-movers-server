@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-28T10:20Z
 - Service / module: `leadMessaging` / `leadMessagingQueue.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (open after #89 closed)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/90
 
 ## Stock at start
 
