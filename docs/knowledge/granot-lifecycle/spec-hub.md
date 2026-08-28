@@ -41,8 +41,8 @@ This file is a **Reference** hub only. It points at the locked contract and owne
 
 - [FINAL SPECIFICATION GRANOT LEAD LIFECYCLE](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) — locked contract (do not OKF-ify).
 - [Booking Reconciliation Booked-only trigger and Priority pairing](../../granot-lead-lifecycle/booking-reconciliation-booked-only-specification.md) — delta that supersedes FINAL SPEC §19 trigger and AC-18.
-- [Owner booking intake and lead attachment](../../granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md) — prerequisite for Owner Daily. §5 even Binder is current; optional Lead, Connect Booking to Lead, and unmasking are not implemented.
-- [Booking intake Form Lead contact snapshots](../../granot-lead-lifecycle/booking-intake-form-lead-contact-snapshots-specification.md) — **not fully developed.** Intake lead search/display of Form submitted vs Granot. Do not implement yet.
+- [Owner booking intake and lead attachment](../../granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md) — prerequisite for Owner Daily. §5 even Binder and BILA-01 intake any-known-contact search/display are current; optional Lead, Connect Booking to Lead, and unmasking are not implemented.
+- [Booking intake Form Lead contact snapshots](../../granot-lead-lifecycle/booking-intake-form-lead-contact-snapshots-specification.md) — **superseded.** BILA-01 shipped intake search/display. Do not implement from this draft. Remaining slices live in the [booking-intake robustness pack](../../booking-intake-lead-attachment/README.md).
 - [Lifecycle activation flags and source policies](../../granot-lead-lifecycle/lifecycle-activation-flags-and-source-policies.md)
 - [Owner operator runbook](../../granot-lead-lifecycle/[REDACTED]-operator-runbook.md)
 - [Sprint progress through Unit 25](../../granot-lead-lifecycle/sprint-progress-through-unit-25.md)

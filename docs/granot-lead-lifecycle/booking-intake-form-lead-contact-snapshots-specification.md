@@ -1,14 +1,14 @@
 ---
 type: Specification
 title: Booking intake — Form Lead contact snapshots in lead search and selection
-description: Draft. Let the Owner find a WordPress Form Lead by any known contact when choosing who a booking is for, and show Form submitted vs Granot so the two cards are understandable. This file is not fully developed.
+description: Superseded. Search/display absorbed into the booking-intake robustness pack (BILA-01 shipped). Do not implement from this file.
 tags:
   - form-lead
   - booking-intake
   - admin-dashboard
   - search
   - granot-lifecycle
-status: draft
+status: superseded
 stale_after: 2026-11-28
 owners: [team:main-server, team:vantage-admin]
 applies_to:
@@ -37,16 +37,13 @@ sources:
 
 # Booking intake — Form Lead contact snapshots in lead search and selection
 
-> **This specification is not fully developed.** The Owner will add at least
-> one more requirement to this file. Do not treat it as implementation-ready.
-> Do not start coding from this draft. Product rules already written below
-> are the intended direction for the booking-intake search and display slice;
-> they can still change until this banner is removed and the status becomes
-> `proposed-final`.
+> **Superseded 2026-08-28.** Do not implement from this file. The search and
+> display rules below were absorbed, completed, and sequenced with optional
+> Lead on Confirm and Connect Booking to Lead from the Bookings tab in
+> [`../booking-intake-lead-attachment/booking-intake-lead-attachment-specification.md`](../booking-intake-lead-attachment/booking-intake-lead-attachment-specification.md).
+> Agents start at [`../booking-intake-lead-attachment/README.md`](../booking-intake-lead-attachment/README.md).
 >
-> File citations are evidence; reverify line numbers at implementation.
-> This file does not change Granot write rules, scored Form Lead Search,
-> processor identity, or Call Lead display.
+> File citations below are historical evidence. Reverify in the successor.
 
 **Prepared:** 2026-08-28
 **Repos:** `vantage-main-server`, `vantage-admin`
@@ -58,15 +55,9 @@ sources:
 
 ## 0. Completeness
 
-| Area | State |
-| --- | --- |
-| Problem and surfaces in scope for booking-intake lead search / selection | Drafted below. Still reviewable. |
-| Shared search path lists (reuse, do not copy) | Drafted below. |
-| Owner-facing display of Form submitted vs Granot on the matched customer and on search rows | Drafted below. |
-| Tests and browser checks for that slice | Drafted below. |
-| Further Owner requirements | **Not written.** Reserved in §11. |
-
-Until §11 is empty or explicitly deferred, agents must not implement this file.
+**Closed.** Further Owner requirements that used to live in §11 are specified
+in the successor pack: optional Lead on Confirm, high-confidence auto-attach
+only, and Connect Booking to Lead from `/bookings`.
 
 ---
 
@@ -410,12 +401,13 @@ The parent Form Leads Admin spec stays the authority for `/form-leads`.
 
 ---
 
-## 11. Open additions (not yet specified)
+## 11. Open additions (closed — see successor)
 
-The Owner will append at least one more requirement here. Until that lands,
-this file is incomplete.
+Specified in the successor pack, not here:
 
-- _Reserved. Do not invent work to fill this list._
+1. Booking-intake search/display of Form submitted vs Granot (this file’s slice).
+2. Confirm Granot Booking without a required Lead; auto-attach only a unique High-Confidence Booking Lead.
+3. Connect Booking to Lead from the Bookings tab (search → connect → EntityChange + Sheet Sync).
 
 ---
 

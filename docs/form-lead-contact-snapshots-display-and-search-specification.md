@@ -342,8 +342,12 @@ and `job_no`. Render:
 | present and `differs_from_ingested === true` | emphasis chip **Changed in Granot** |
 
 Use the stored `differs_from_ingested` flag. Do not recompute equality in
-the UI. A row can be flagged differs when first/last split or display-name
-formatting moved even if the full name string looks the same.
+the UI. The write path stamps that flag with the same semantic contact
+compare as the planner: US phone digits (so `5089899090` and `+15089899090`
+are the same), case-insensitive email, and case/whitespace-insensitive
+name parts. A name-only landing-page card is the same person as Granot
+first/last peeled the same way CRM posts (`splitNameForCrm`). A row still
+flags when first/last, phone, or email identity actually moved.
 
 Optional tooltip on the chip: Granot name and phone when present. Do not
 show `observation_id`.

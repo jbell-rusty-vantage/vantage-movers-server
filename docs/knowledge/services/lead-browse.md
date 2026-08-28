@@ -131,7 +131,7 @@ Form cards stay live-field cards. `ingested_contact_snapshot` and `granot_contac
 | `attachmentClause` | Booked/cancelled presence |
 | `combineClauses` | `{}` / single clause / `$and` |
 | `toBookingSummary` / `toCancellationSummary` | Lean-doc → chip |
-| `FORM_LEAD_CONTACT_NAME_PATHS` / `EMAIL` / `PHONE` | Shared any-known-contact paths. Admin browse, Admin typeahead, and Form browse import these. Match style stays per surface. |
+| `FORM_LEAD_CONTACT_NAME_PATHS` / `EMAIL` / `PHONE` | Shared any-known-contact paths. Admin browse, Admin typeahead, Form browse, and Owner Form candidate `q` (`browseCandidateLeadViews`) import these. Match style stays per surface. |
 
 ## Skip / fail paths
 

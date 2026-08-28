@@ -464,6 +464,36 @@ test("[AC-32] no-op desired state creates no changed paths", () => {
   assert.equal(result.temporal_winner_should_advance, true);
 });
 
+test("WordPress snapshot formatting-only Granot contact does not remanufacture a change", () => {
+  const lead = wordpressLead({
+    granot_priority: "1",
+    quoted: true,
+    granot_contact_snapshot: {
+      first_name: "ADA",
+      last_name: "lovelace",
+      name: "Ada  Lovelace",
+      phone_number: "+15551234567",
+      normalized_phone_number: "5551234567",
+      email: "Ada@Example.Test",
+    },
+    pickup_city: "New York",
+    pickup_zip: "10001",
+    pickup_state: "NY",
+    delivery_city: "Brooklyn",
+    destination_zip: "10002",
+    delivery_state: "NY",
+    move_date: new Date("2026-09-01T00:00:00.000Z"),
+    cubic_feet: 400,
+    local: "local",
+    granot_move_size: "2 Bedroom",
+    granot_service_type: "Moving",
+    normalized_job_no: "SYNTHETIC JOB 100",
+    job_no: "synthetic-job-100",
+  });
+  const result = plan({ lead });
+  assert.equal(result.changed_paths.includes("granot_contact_snapshot"), false);
+});
+
 test("[AC-32] older temporal winner is stale and plans no desired-state effect", () => {
   const lead = wordpressLead({
     last_accepted_granot_observation: {

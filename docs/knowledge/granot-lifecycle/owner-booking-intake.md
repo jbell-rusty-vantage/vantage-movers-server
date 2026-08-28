@@ -32,9 +32,10 @@ generated:
 This file is a **Reference** pointer only. It does not copy contract rules.
 
 - [Owner booking intake and lead attachment](../../granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md) — even Binder, Confirm without a required Lead, Connect Booking to Lead, owner-readable Intakes. **Prerequisite for Owner Daily.**
+- [Booking intake robustness pack](../../booking-intake-lead-attachment/README.md) — BILA-01 search/display shipped; remaining workspace for optional Lead on Confirm and Connect from `/bookings`. **Wins on the Connect surface.**
 
-**Landed:** §5 even Binder only — one Binder, at most two Agents, server even-cent split. See [`agent-allocation.md`](../services/agent-allocation.md) and [`booking-reconciliation.md`](./booking-reconciliation.md).
+**Landed:** §5 even Binder — one Binder, at most two Agents, server even-cent split. See [`agent-allocation.md`](../services/agent-allocation.md) and [`booking-reconciliation.md`](./booking-reconciliation.md). **BILA-01** — Form candidate `q` is any-known-contact; DTO carries `known_contacts`; intake shows Form submitted vs Granot. See [`projections.md`](./projections.md).
 
-**Not implemented:** optional Lead on Confirm, Connect Booking to Lead, owner-intake unmasking, and the rest of that spec.
+**Not implemented:** optional Lead on Confirm, Connect Booking to Lead (Bookings tab), owner-intake unmasking, and the rest of the 2026-08-24 spec. Implement those two from the robustness pack, not from the absorbed snapshots draft.
 
 Current-state service docs for remaining sections: [`booking-reconciliation.md`](./booking-reconciliation.md), [`bookings.md`](../services/bookings.md), [`employee-bookings.md`](../services/employee-bookings.md), [`projections.md`](./projections.md).

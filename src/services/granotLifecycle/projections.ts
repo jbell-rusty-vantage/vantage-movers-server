@@ -77,6 +77,11 @@ import type {
   GranotLifecycleCaseListQuery,
   GranotLifecycleTimelineQuery,
 } from "../../validation/v1/granotLifecycle.validation";
+import {
+  FORM_LEAD_CONTACT_EMAIL_PATHS,
+  FORM_LEAD_CONTACT_NAME_PATHS,
+  FORM_LEAD_CONTACT_PHONE_PATHS,
+} from "../search/leadBrowseShared";
 
 export const DEFAULT_TIMELINE_LIMIT = 100;
 export const JOB_PROJECTION_LIMIT = DEFAULT_TIMELINE_LIMIT;
@@ -310,10 +315,29 @@ export type GranotLifecycleCaseDetail = {
   priority_pairing: BookingPriorityPairingProjection | null;
 };
 
+export type CandidateKnownContact = {
+  name?: string;
+  first_name?: string;
+  last_name?: string;
+  phone_number?: string;
+  email?: string;
+};
+
+export type CandidateKnownGranotContact = CandidateKnownContact & {
+  differs_from_ingested: boolean;
+  captured_at?: string;
+};
+
+export type CandidateKnownContacts = {
+  form_submitted: CandidateKnownContact;
+  granot?: CandidateKnownGranotContact;
+};
+
 export type GranotLifecycleCandidateItem = {
   lead_ref: EntityRef;
   customer_label: string;
   contact: { name?: string; phone_number?: string; email?: string };
+  known_contacts?: CandidateKnownContacts;
   job_no?: string;
   normalized_job_no?: string;
   reference?: string;
@@ -836,8 +860,7 @@ export async function listGranotLifecycleCaseCandidates(
   const ranked = cursor || query.q
     ? []
     : await loadRankedCandidateLeadViews(policyRows, query.lead_model);
-  const rankedKeys = new Set(ranked.map(candidateKey));
-  const rows = [...ranked, ...visible.filter((entry) => !rankedKeys.has(candidateKey(entry)))];
+  const rows = assembleCandidateEntries(query, ranked, visible);
   const items = rows.map(({ ref, lead }) => {
     const policy = projectBookingCandidateBrowserPolicy({
       lead_ref: ref,
@@ -863,6 +886,7 @@ export async function listGranotLifecycleCaseCandidates(
         phone_number: lead.phone_number ?? undefined,
         email: lead.email ?? undefined,
       },
+      ...(ref.model === "FormLead" ? { known_contacts: projectCandidateKnownContacts(lead) } : {}),
       job_no: lead.job_no ?? undefined,
       normalized_job_no: lead.normalized_job_no ?? undefined,
       reference: lead.ref_no ?? undefined,
@@ -1317,6 +1341,12 @@ const CANDIDATE_LEAD_PROJECTION = {
   source_granularity_label_snapshot: 1,
 } as const;
 
+const FORM_CANDIDATE_LEAD_PROJECTION = {
+  ...CANDIDATE_LEAD_PROJECTION,
+  ingested_contact_snapshot: 1,
+  granot_contact_snapshot: 1,
+} as const;
+
 async function browseCandidateLeadViews(
   query: GranotLifecycleCandidateQuery,
   sourceScope?: {
@@ -1330,22 +1360,14 @@ async function browseCandidateLeadViews(
     common.lead_source_company = sourceScope.lead_source_company;
     common.source_granularity_id = sourceScope.source_granularity_id;
   }
-  if (query.q) {
-    const search = new RegExp(escapeRegExp(query.q), "i");
-    common.$or = [
-      { name: search },
-      { first_name: search },
-      { last_name: search },
-      { phone_number: search },
-      { email: search },
-      { job_no: search },
-      { ref_no: search },
-    ];
-  }
-  const projection = CANDIDATE_LEAD_PROJECTION;
+  const search = query.q ? new RegExp(escapeRegExp(query.q), "i") : undefined;
   const [cursorModel, cursorId] = cursorKey?.split(":") ?? [];
   const formFilter: Record<string, unknown> = { ...common, duplicate: { $ne: true }, bad_lead: null };
   const callFilter: Record<string, unknown> = { ...common };
+  if (search) {
+    formFilter.$or = formLeadCandidateSearchOr(search);
+    callFilter.$or = callLeadCandidateSearchOr(search);
+  }
   if (cursorModel === "FormLead" && cursorId) formFilter._id = { $gt: cursorId };
   if (cursorModel === "CallLead" && cursorId) callFilter._id = { $gt: cursorId };
   const [forms, calls] = await Promise.all([
@@ -1353,7 +1375,7 @@ async function browseCandidateLeadViews(
       ? Promise.resolve([] as CandidateLeadView[])
       : getFormLeadModel()
           .find(formFilter)
-          .select(projection)
+          .select(FORM_CANDIDATE_LEAD_PROJECTION)
           .sort({ _id: 1 })
           .limit(query.limit + 1)
           .lean<CandidateLeadView[]>(),
@@ -1361,7 +1383,7 @@ async function browseCandidateLeadViews(
       ? Promise.resolve([] as CandidateLeadView[])
       : getCallLeadModel()
           .find(callFilter)
-          .select(projection)
+          .select(CANDIDATE_LEAD_PROJECTION)
           .sort({ _id: 1 })
           .limit(query.limit + 1)
           .lean<CandidateLeadView[]>(),
@@ -1374,6 +1396,101 @@ async function browseCandidateLeadViews(
 
 function candidateKey(entry: CandidateLeadEntry): string {
   return `${entry.ref.model}:${entry.ref.id}`;
+}
+
+export function formLeadCandidateSearchOr(search: RegExp): Record<string, RegExp>[] {
+  return [
+    ...FORM_LEAD_CONTACT_NAME_PATHS.map((path) => ({ [path]: search })),
+    ...FORM_LEAD_CONTACT_EMAIL_PATHS.map((path) => ({ [path]: search })),
+    ...FORM_LEAD_CONTACT_PHONE_PATHS.map((path) => ({ [path]: search })),
+    { job_no: search },
+    { ref_no: search },
+  ];
+}
+
+export function callLeadCandidateSearchOr(search: RegExp): Record<string, RegExp>[] {
+  return [
+    { name: search },
+    { first_name: search },
+    { last_name: search },
+    { phone_number: search },
+    { email: search },
+    { job_no: search },
+    { ref_no: search },
+  ];
+}
+
+/** Ranked identity pins first when `q` is empty and this is the first page. */
+export function assembleCandidateEntries<T extends { ref: { model: string; id: string } }>(
+  query: { q?: string; cursor?: string },
+  ranked: readonly T[],
+  browsed: readonly T[],
+): T[] {
+  const pins = query.cursor || query.q ? [] : [...ranked];
+  const pinKeys = new Set(pins.map((entry) => `${entry.ref.model}:${entry.ref.id}`));
+  return [...pins, ...browsed.filter((entry) => !pinKeys.has(`${entry.ref.model}:${entry.ref.id}`))];
+}
+
+export function projectCandidateKnownContacts(lead: CandidateLeadView): CandidateKnownContacts {
+  const form_submitted: CandidateKnownContact = {
+    name: leadName(lead),
+    first_name: stringOrUndefined(lead.first_name),
+    last_name: stringOrUndefined(lead.last_name),
+    phone_number: stringOrUndefined(lead.phone_number),
+    email: stringOrUndefined(lead.email),
+  };
+  const snapshot = readGranotContactSnapshot(lead.granot_contact_snapshot);
+  if (!snapshot) {
+    return { form_submitted };
+  }
+  const granot: CandidateKnownGranotContact = {
+    name: snapshotName(snapshot),
+    first_name: stringOrUndefined(snapshot.first_name),
+    last_name: stringOrUndefined(snapshot.last_name),
+    phone_number: stringOrUndefined(snapshot.phone_number),
+    email: stringOrUndefined(snapshot.email),
+    differs_from_ingested: snapshot.differs_from_ingested === true,
+    ...(optionalIso(snapshot.captured_at) ? { captured_at: optionalIso(snapshot.captured_at) } : {}),
+  };
+  return { form_submitted, granot };
+}
+
+function readGranotContactSnapshot(value: unknown): {
+  name?: unknown;
+  first_name?: unknown;
+  last_name?: unknown;
+  phone_number?: unknown;
+  email?: unknown;
+  differs_from_ingested?: unknown;
+  captured_at?: unknown;
+} | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  return value as {
+    name?: unknown;
+    first_name?: unknown;
+    last_name?: unknown;
+    phone_number?: unknown;
+    email?: unknown;
+    differs_from_ingested?: unknown;
+    captured_at?: unknown;
+  };
+}
+
+function snapshotName(snapshot: {
+  name?: unknown;
+  first_name?: unknown;
+  last_name?: unknown;
+}): string | undefined {
+  return stringOrUndefined(snapshot.name)
+    ?? ([stringOrUndefined(snapshot.first_name), stringOrUndefined(snapshot.last_name)]
+      .filter(Boolean)
+      .join(" ") || undefined);
+}
+
+function optionalIso(value: unknown): string | undefined {
+  if (value == null || value === "") return undefined;
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
 }
 
 export function rankBookingCandidateProjections<
@@ -1409,7 +1526,7 @@ function loadCandidateLeadView(
   id: string,
 ): Promise<CandidateLeadView | null> {
   return model === "FormLead"
-    ? getFormLeadModel().findById(id).select(CANDIDATE_LEAD_PROJECTION).lean<CandidateLeadView | null>()
+    ? getFormLeadModel().findById(id).select(FORM_CANDIDATE_LEAD_PROJECTION).lean<CandidateLeadView | null>()
     : getCallLeadModel().findById(id).select(CANDIDATE_LEAD_PROJECTION).lean<CandidateLeadView | null>();
 }
 

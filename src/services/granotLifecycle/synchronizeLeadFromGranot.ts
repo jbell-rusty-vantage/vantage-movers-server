@@ -35,7 +35,11 @@ import {
   type GranotLeadWritePath,
 } from "./authorizedDesiredState";
 import { compareGranotTemporal, olderTemporalWinnerFilter } from "./granotTemporal";
-import type { LeadDesiredStateProjection, LeadContactSnapshot } from "./leadDesiredState";
+import {
+  contactSemanticallyEqual,
+  type LeadContactSnapshot,
+  type LeadDesiredStateProjection,
+} from "./leadDesiredState";
 import type { SynchronizeLeadExecution, SynchronizeLeadJobProposal } from "./synchronizeLeadTypes";
 import type { EntityRef, LeadModel, SynchronizationOutcome, SynchronizationReasonCode } from "./types";
 
@@ -523,7 +527,10 @@ function buildLeadUpdate(
       const semantic = value as LeadContactSnapshot;
       value = {
         ...semantic,
-        differs_from_ingested: !contactEqual(lead.ingested_contact_snapshot, semantic),
+        differs_from_ingested: granotSnapshotDiffersFromIngested(
+          lead.ingested_contact_snapshot,
+          semantic,
+        ),
         observation_id: observationId,
         captured_at: input.execution.observation.captured_at,
       };
@@ -791,18 +798,11 @@ function isDuplicateKeyError(error: unknown): boolean {
   );
 }
 
-function contactEqual(
+export function granotSnapshotDiffersFromIngested(
   current: LeadContactSnapshot | undefined,
   incoming: LeadContactSnapshot,
 ): boolean {
-  return (
-    normalize(current?.name) === normalize(incoming.name) &&
-    normalize(current?.first_name) === normalize(incoming.first_name) &&
-    normalize(current?.last_name) === normalize(incoming.last_name) &&
-    normalize(current?.phone_number) === normalize(incoming.phone_number) &&
-    normalize(current?.normalized_phone_number) === normalize(incoming.normalized_phone_number) &&
-    normalize(current?.email) === normalize(incoming.email)
-  );
+  return !contactSemanticallyEqual(current, incoming);
 }
 
 function snapshotContact(value: unknown): LeadContactSnapshot | undefined {
@@ -824,11 +824,6 @@ function pick(
   path: GranotLeadWritePath,
 ): unknown {
   return path in set ? set[path] : (lead as Record<string, unknown>)[path];
-}
-
-function normalize(value?: string): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed || undefined;
 }
 
 function absent<T>(value: T | null | undefined): T | undefined {

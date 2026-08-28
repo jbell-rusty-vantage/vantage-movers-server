@@ -9,6 +9,7 @@ import {
 import { DomainCommandContextError } from "../domainCommands/types";
 import type { GranotAuthorizedLeadDesiredState } from "./authorizedDesiredState";
 import {
+  granotSnapshotDiffersFromIngested,
   receiverAgentCatalogStamps,
   synchronizeLeadFromGranot,
   type SynchronizeLeadFromGranotInput,
@@ -165,4 +166,107 @@ test("receiver fill derives catalog name snapshot and set_at off the planner", (
     receiver_agent_name_snapshot: "Synthetic Mike",
     receiver_agent_set_at: now,
   });
+});
+
+const ingestedKellie = {
+  first_name: "Kellie",
+  last_name: "Boone",
+  name: "Kellie Boone",
+  phone_number: "5089899090",
+  normalized_phone_number: "5089899090",
+  email: "kfboone127@gmail.com",
+};
+
+test("Changed in Granot ignores US country-code phone formatting", () => {
+  assert.equal(
+    granotSnapshotDiffersFromIngested(ingestedKellie, {
+      ...ingestedKellie,
+      phone_number: "+15089899090",
+    }),
+    false,
+  );
+});
+
+test("Changed in Granot ignores email case and name capitalization", () => {
+  assert.equal(
+    granotSnapshotDiffersFromIngested(ingestedKellie, {
+      first_name: "kellie",
+      last_name: "BOONE",
+      name: "Kellie  Boone",
+      phone_number: "(508) 989-9090",
+      normalized_phone_number: "5089899090",
+      email: "KFBoone127@Gmail.com",
+    }),
+    false,
+  );
+});
+
+test("Changed in Granot ignores Granot first/last split of a name-only form submit", () => {
+  assert.equal(
+    granotSnapshotDiffersFromIngested(
+      {
+        name: "Andrew dillon",
+        phone_number: "7723415290",
+        normalized_phone_number: "7723415290",
+        email: "dillonandrew996@gmail.com",
+      },
+      {
+        first_name: "Andrew",
+        last_name: "Dillon",
+        name: "Andrew Dillon",
+        phone_number: "7723415290",
+        normalized_phone_number: "7723415290",
+        email: "dillonandrew996@gmail.com",
+      },
+    ),
+    false,
+  );
+});
+
+test("Changed in Granot stays true when Granot last name adds another person", () => {
+  assert.equal(
+    granotSnapshotDiffersFromIngested(
+      {
+        name: "Bailey Thompson",
+        phone_number: "7045168418",
+        normalized_phone_number: "7045168418",
+        email: "bailey@example.test",
+      },
+      {
+        first_name: "Bailey",
+        last_name: "Thompson / Sebastian Perez Ramirez",
+        name: "Bailey Thompson / Sebastian Perez Ramirez",
+        phone_number: "7045168418",
+        normalized_phone_number: "7045168418",
+        email: "bailey@example.test",
+      },
+    ),
+    true,
+  );
+});
+
+test("Changed in Granot stays true for a different person or reach path", () => {
+  assert.equal(
+    granotSnapshotDiffersFromIngested(ingestedKellie, {
+      ...ingestedKellie,
+      first_name: "Kelly",
+      name: "Kelly Boone",
+    }),
+    true,
+  );
+  assert.equal(
+    granotSnapshotDiffersFromIngested(ingestedKellie, {
+      ...ingestedKellie,
+      phone_number: "+15089899091",
+      normalized_phone_number: "5089899091",
+    }),
+    true,
+  );
+  assert.equal(
+    granotSnapshotDiffersFromIngested(ingestedKellie, {
+      ...ingestedKellie,
+      email: "other@example.test",
+    }),
+    true,
+  );
 });
