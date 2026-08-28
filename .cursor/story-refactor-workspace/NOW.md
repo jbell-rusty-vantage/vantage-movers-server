@@ -2,15 +2,15 @@
 
 - Date (UTC): 2026-08-28
 - Wave: A (`src/services/`)
-- Current service: `granotCrmCsv` (in-progress)
-- Next module: `parser.ts`
-- Stock: visited 13 / in-progress 1 / unvisited 24
-- Recommendations on disk: 81 (`form-lead.md` through `granot-crm-csv-registry.md`)
+- Current service: `crm` (unvisited)
+- Next module: enumerate `src/services/crm/` first
+- Stock: visited 14 / in-progress 0 / unvisited 24
+- Recommendations on disk: 82 (`form-lead.md` through `granot-crm-csv-parser.md`)
 - Lock: none
 - Lock holder:
 - Lock at:
 - Branch: `docs/story-refactor`
-- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/84
-- Last session: story-granot-crm-csv-registry-2026-08-28T0424Z
+- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/85
+- Last session: story-granot-crm-csv-parser-2026-08-28T0515Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
