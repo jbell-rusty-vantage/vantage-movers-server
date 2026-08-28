@@ -4,6 +4,12 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- `GET /api/v1/granot-crm/csv/sources?seed=true` plants seventeen leftover `granot_crm_sources` behind `x-api-secret` only. Owner Registry writes go through `createOrUpdateGranotCrmSource`. Do not move plant onto the Owner command so “one writer,” and do not change the GET into a POST in this rename. See `recommendations/granot-crm-csv-registry.md`.
+- Seed `$setOnInsert`s identity and only `$set`s named `csv_paths` (TBM Prime Inbounds). Changing the constant does not update an existing label / `enabled`. Do not `$set` identity so “the constant wins.” See `recommendations/granot-crm-csv-registry.md`.
+- Bind find slugifies workspace **without** slash; auto-create keeps `unmapped/<file>`. A later upload that sends that slug looks up `unmapped-file` and misses. Do not add `allowSlash` to find so “lookup matches create.” See `recommendations/granot-crm-csv-registry.md`.
+- Leftover CSV list and Owner Registry list both read `granot_crm_sources`. This GET projects `csv_paths` / `last_ingestions`. Do not point `/csv/sources` at `listRegistryGranotCrmSources`. See `recommendations/granot-crm-csv-registry.md`.
+- Seventeen leftover CSV slugs are not the HTTP automation nine (different collection; Main Site Forms vs Inbounds; Get Movers only here). Do not merge the seed lists. See `recommendations/granot-crm-csv-registry.md` and `recommendations/granot-http-collector-source-catalog.md`.
+- There is no `registry.test.ts`. Folder tests lock parse and key folds only. Do not treat those as leftover-catalog proof. See `recommendations/granot-crm-csv-registry.md`.
 - Software rule `granot-crm-csv-s3-sync.mdc` still names `scripts/granot_crm_csv/sync-from-s3.ts`. That path is not on this checkout; `package.json` has no `granot*csv*` command; there is no `/csv/sync` route. Apply is `runGranotCrmCsvSync` with zero runtime callers besides the barrel. Do not invent the script or route so the rule “wins,” and do not call apply from upload. See `recommendations/granot-crm-csv-upload.md` and `recommendations/granot-crm-csv-sync.md`.
 - Dry-run Form corrections and Call `updateable` rows are counted as `unchanged`. Only the message says a write would happen. Do not add an `updateable` status so “the enum matches enrichment.” See `recommendations/granot-crm-csv-sync.md`.
 - `resolveFormLead` returns `status: "no_match"` on an ObjectId hit. The walker only reads `leadId`. Do not treat that status as a miss. See `recommendations/granot-crm-csv-sync.md`.
