@@ -77,15 +77,13 @@ Live values live in [`PROGRESS.md`](PROGRESS.md).
 | --- | --- | --- | --- | --- |
 | [BILA-01](issues/BILA-01.md) | Intake any-known-contact search and Form submitted vs Granot display | current intake | complete | complete |
 | [BILA-02](issues/BILA-02.md) | Confirm without a required Lead; high-confidence auto-attach | BILA-01 | complete | complete |
-| [BILA-03](issues/BILA-03.md) | Connect Booking to Lead from `/bookings` | BILA-01; BILA-02 for Leadless follow-through | ready | complete |
+| [BILA-03](issues/BILA-03.md) | Connect Booking to Lead from `/bookings` | BILA-01; BILA-02 for Leadless follow-through | complete | complete |
 
 ## Ready queue
 
-- **BILA-01 and BILA-02 are complete.** Next startable issue is BILA-03.
-- BILA-03 is Connect Booking to Lead from `/bookings`. Granot official
-  Leadless Bookings are now legal and reviewable. The shared helper
-  already exists. Do not treat Owner copy that a Lead can be connected
-  later as a shipped Connect UI.
+- **BILA-01, BILA-02, and BILA-03 are complete.** Connect Booking to Lead
+  lives on `/bookings` only. Do not add it to `/intakes`, Daily, or
+  `/bookings/reconciliation`.
 
 ## Standing constraints for every issue
 

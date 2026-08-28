@@ -23,6 +23,7 @@ import {
 import { getIntakeCreatingObservation } from "../services/granotLifecycle/creatingObservation";
 import {
   getGranotLifecycleCaseDetail,
+  listConnectLeadCandidates,
   listGranotLifecycleCaseCandidates,
   listGranotLifecycleCases,
   projectGranotJob,
@@ -74,6 +75,11 @@ import {
   type ReEvaluateDiscrepancyInput,
 } from "../services/granotLifecycle/discrepancyOwnerCommands";
 import {
+  connectBookingToLead as connectGranotBookingToLead,
+  type ConnectBookingToLeadInput,
+  type ConnectBookingToLeadResult,
+} from "../services/granotLifecycle/connectBookingToLead";
+import {
   DomainCommandContextError,
   DomainCommandIdempotencyConflictError,
 } from "../services/domainCommands/types";
@@ -85,7 +91,10 @@ import {
   granotLifecycleTimelineQuerySchema,
   granotLifecycleActivationCommandSchema,
   granotLifecycleBookingNoActionCommandSchema,
+  granotLifecycleBookingParamsSchema,
   granotLifecycleConfirmBookingCommandSchema,
+  granotLifecycleConnectLeadCandidateQuerySchema,
+  granotLifecycleConnectLeadCommandSchema,
   granotLifecycleCreateReferralBookingCommandSchema,
   granotLifecycleUpdateBookingCommandSchema,
   granotLifecycleConfirmCancellationCommandSchema,
@@ -107,6 +116,8 @@ export type GranotLifecycleAdminRouteDeps = {
   getCaseDetail?: typeof getGranotLifecycleCaseDetail;
   getCreatingObservation?: typeof getIntakeCreatingObservation;
   listCandidates?: typeof listGranotLifecycleCaseCandidates;
+  listConnectLeadCandidates?: typeof listConnectLeadCandidates;
+  connectBookingToLead?: (input: ConnectBookingToLeadInput) => Promise<ConnectBookingToLeadResult>;
   projectLeadTimeline?: typeof projectGranotLeadTimeline;
   projectHealth?: typeof projectGranotLifecycleHealth;
   confirmBooking?: (input: ConfirmBookingInput) => Promise<BookingOwnerCommandResult>;
@@ -149,6 +160,8 @@ export function createGranotLifecycleAdminRouter(
   const getCaseDetail = deps.getCaseDetail ?? getGranotLifecycleCaseDetail;
   const getCreatingObservation = deps.getCreatingObservation ?? getIntakeCreatingObservation;
   const listCandidates = deps.listCandidates ?? listGranotLifecycleCaseCandidates;
+  const listConnectCandidates = deps.listConnectLeadCandidates ?? listConnectLeadCandidates;
+  const connectBookingToLead = deps.connectBookingToLead ?? connectGranotBookingToLead;
   const projectLead = deps.projectLeadTimeline ?? projectGranotLeadTimeline;
   const projectHealth = deps.projectHealth ?? projectGranotLifecycleHealth;
   const confirmBooking = deps.confirmBooking ?? confirmGranotBooking;
@@ -255,6 +268,46 @@ export function createGranotLifecycleAdminRouter(
   discrepancyAction("/api/v1/admin/granot-lifecycle/discrepancies/:id/re-evaluate", granotLifecycleReEvaluateDiscrepancyCommandSchema, reEvaluateDiscrepancy);
   discrepancyAction("/api/v1/admin/granot-lifecycle/discrepancies/:id/correct-record-link", granotLifecycleCorrectRecordLinkCommandSchema, correctRecordLink);
   discrepancyAction("/api/v1/admin/granot-lifecycle/discrepancies/:id/no-action", granotLifecycleDiscrepancyNoActionCommandSchema, discrepancyNoAction);
+
+  router.get(
+    "/api/v1/admin/bookings/:bookingId/connect-lead-candidates",
+    async (req, res) => {
+      try {
+        await connect();
+        requireRegistryOwnerActor(req, auth(req));
+        const { booking_id } = granotLifecycleBookingParamsSchema.parse({ booking_id: req.params.bookingId });
+        const query = granotLifecycleConnectLeadCandidateQuerySchema.parse(req.query);
+        const data = await listConnectCandidates(booking_id, query);
+        return res.status(200).json({ ok: true, data });
+      } catch (error) {
+        return sendError(res, error, requestId(req));
+      }
+    },
+  );
+
+  router.post(
+    "/api/v1/admin/bookings/:bookingId/connect-lead",
+    async (req, res) => {
+      try {
+        await connect();
+        const owner = durableActorFromRegistryActor(requireRegistryOwnerActor(req, auth(req)));
+        const { booking_id } = granotLifecycleBookingParamsSchema.parse({ booking_id: req.params.bookingId });
+        const command = granotLifecycleConnectLeadCommandSchema.parse(req.body);
+        const idempotency_key = readSingleIdempotencyKey(req);
+        const data = await connectBookingToLead({
+          booking_id,
+          ...command,
+          idempotency_key,
+          owner,
+          request_id: requestId(req),
+        });
+        return res.status(data.replayed || data.outcome === "already_satisfied" ? 200 : 201)
+          .json({ ok: true, data });
+      } catch (error) {
+        return sendError(res, error, requestId(req));
+      }
+    },
+  );
 
   router.post(
     "/api/v1/admin/granot-lifecycle/booking-cases/:id/confirm-booking",

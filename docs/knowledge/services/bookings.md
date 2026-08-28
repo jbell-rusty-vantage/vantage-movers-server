@@ -17,7 +17,10 @@ applies_to:
   - src/services/granotLifecycle/bookingConfirmation.ts
   - src/services/granotLifecycle/confirmAttachment.ts
   - src/services/granotLifecycle/bookingOwnerCommands.ts
+  - src/services/granotLifecycle/connectBookingToLead.ts
+  - src/services/granotLifecycle/connectLead.ts
   - src/routes/v1.routes.ts
+  - src/routes/granot-lifecycle-admin.routes.ts
 owners: [team:main-server]
 sources:
   - id: primary
@@ -29,7 +32,7 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:docs-keeper
-  at: 2026-08-28T18:22:00Z
+  at: 2026-08-28T19:15:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -65,6 +68,8 @@ Helpers: `bookingSourceResolver.ts`, `bookingWarnings.ts`, `bookingIdentity.ts`,
 | `GET /api/v1/booked-leads` | `findAllBookedLeads` (last 200) |
 | `POST /api/v1/referral-bookings` | `createExistingReferralBooking` → `createReferralBooking` |
 | `POST /api/v1/leadless-bookings` | `createLeadlessBooking` |
+| `GET /api/v1/admin/bookings/:bookingId/connect-lead-candidates` | Owner-only `listConnectLeadCandidates` |
+| `POST /api/v1/admin/bookings/:bookingId/connect-lead` | Owner-only `connectBookingToLead` |
 
 Public employee submit is a separate HTTP path ([`employee-bookings.md`](./employee-bookings.md)) that may book-and-link via `claimAvailableLeadForBooking` or create a leadless booking + reconciliation case. Gated Granot Owner Confirm may also mint an official [Leadless Booking](../../../../CONTEXT.md) — see **5. Granot Owner Confirm / Update** below. That path is not `POST /api/v1/leadless-bookings` and does not open a `BookingLeadReconciliationCase`.
 
@@ -143,7 +148,7 @@ Gated Owner commands in `granotLifecycle/` (`bookingConfirmation.ts`, `confirmAt
 
 - **Confirm** may attach a Lead or write official `is_leadless_booking: true` (no `lead_ref` / `lead_model`, customer from Observation contact, booking-only Record Link). Attachment resolution is server-owned. Lost attached-path claim fails closed; it does not fall through to Leadless. See [`booking-reconciliation.md`](../granot-lifecycle/booking-reconciliation.md).
 - **Update Existing Booking** (`updateExistingBooking`) allows a Granot official Leadless Booking: `isGranotOfficialLeadlessBooking` — leadless, not referral, not `booking_origin=employee_booking`, no `lead_ref` / `lead_model`. Official fields only; Master Booked sheet. Employee and public leadless rows stay rejected here.
-- **Connect Booking to Lead** from `/bookings` is not shipped.
+- **Connect Booking to Lead** (`connectBookingToLead`) is an Owner-only command on a connectable Leadless Booking: present, not cancelled, not Referral, and Leadless or missing `lead_ref`. The Owner picks an eligible unbooked Form or Call Lead from `/bookings` (not `/bookings/reconciliation`). The command claims the Lead, sets `lead_ref` / `lead_model` / `is_leadless_booking: false`, mirrors booked onto the Lead without rewriting official Binder / Agents / Deposit / Merchant / book date or CPL, writes EntityChange for Booking and Lead (and an existing Record Link if one is already there — it does not mint a new link), and queues one coalescible `booking_chain` / `booked_lead.connect_lead`. Exact same Lead is `already_satisfied`. A different Lead or an already-booked Lead is `IDENTITY_CONFLICT`. Stale booking revision is `DOMAIN_REVISION_CONFLICT`. Flag-off is `422 POLICY_BLOCKED`. Candidate search is `GET /api/v1/admin/bookings/:bookingId/connect-lead-candidates`; empty `q` returns an empty page. See [`owner-booking-intake.md`](../granot-lifecycle/owner-booking-intake.md).
 
 ## Update (`updateBookedLead`)
 
@@ -224,6 +229,7 @@ Atomic `updateOne` used by employee submit. Filter: not booked, not cancelled, n
 | Granot Confirm Leadless | `booked_lead` | `granot_booking.create_leadless` |
 | Granot Update attached | `booking_chain` | `booked_lead.update` |
 | Granot Update Leadless | `booked_lead` | `booked_lead.update` |
+| Granot Connect Booking to Lead | `booking_chain` | `booked_lead.connect_lead` |
 | Lead update with booking | `booking_chain` or `source_lead` | from `refreshAttachedBookingFromLead` |
 
 **Booking Chain** refreshes **Master Booked** (`Booked Deals` tab) and the linked source lead row. Details: [`google-sheets.md`](./google-sheets.md), [`sheet-sync.md`](./sheet-sync.md).
@@ -244,6 +250,9 @@ Atomic `updateOne` used by employee submit. Filter: not booked, not cancelled, n
 - `bestRelocationImportGuard.test.ts` — source-company fence
 - `agentAllocation.service.test.ts` — inactive-agent resolve + receiver attribution
 - Domain-command adapters in `domainCommands.test.ts`
+- `connectLead.test.ts` — connectable booking / eligible Lead fences, sheet intent `booking_chain` / `booked_lead.connect_lead`
+- `connectLeadCandidates.test.ts` — empty `q` is an empty page; non-connectable booking is `IDENTITY_CONFLICT`
+- `connectBookingToLead.replica.test.ts` — happy-path EntityChange + sheet intent (skipped unless the Booking-command flag is on)
 
 ## Related services
 

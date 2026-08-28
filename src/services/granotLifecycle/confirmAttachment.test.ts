@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   confirmSheetIntent,
+  connectSheetIntent,
   isGranotOfficialLeadlessBooking,
   resolveConfirmAttachment,
   updateBookingSheetIntent,
@@ -78,6 +79,10 @@ test("Sheet intents distinguish attached Confirm from Leadless Confirm and Updat
   assert.deepEqual(updateBookingSheetIntent({ referral: true, leadless: false }), {
     resource: "booked_lead",
     operation: "referral_booking.update",
+  });
+  assert.deepEqual(connectSheetIntent(), {
+    resource: "booking_chain",
+    operation: "booked_lead.connect_lead",
   });
 });
 

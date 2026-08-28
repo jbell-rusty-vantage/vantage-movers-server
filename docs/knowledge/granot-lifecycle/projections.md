@@ -22,7 +22,7 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:docs-keeper
-  at: 2026-08-24T01:24:00Z
+  at: 2026-08-28T19:15:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) Sections 28.2 and 29. Pairing DTOs: [`booking-reconciliation-booked-only-specification.md`](../../granot-lead-lifecycle/booking-reconciliation-booked-only-specification.md) §7.  
@@ -46,7 +46,7 @@ credential-redacted Granot statement selected from that Booking or Release case'
 ## Protected read surface
 
 - Owner/Admin (`requireRegistryReadActor`): `GET /api/v1/admin/granot-lifecycle/cases`, `.../cases/:case_id`, `.../jobs/:normalized_job_no`, `GET /api/v1/admin/leads/:lead_model/:lead_id/lifecycle`, `.../operations/health`, `.../discrepancies`, `.../discrepancies/:id`.
-- Owner only: `GET .../cases/:case_id/candidates`, `GET .../cases/:case_id/creating-observation`, `GET .../receipts/live` (SSE; see [live-receipts.md](./live-receipts.md)); Owner discrepancy mutations `POST .../discrepancies/:id/{re-evaluate,correct-record-link,no-action}`.
+- Owner only: `GET .../cases/:case_id/candidates`, `GET .../cases/:case_id/creating-observation`, `GET .../receipts/live` (SSE; see [live-receipts.md](./live-receipts.md)), `GET /api/v1/admin/bookings/:bookingId/connect-lead-candidates` (`listConnectLeadCandidates`; empty `q` is an empty page — see [`bookings.md`](../services/bookings.md)); Owner discrepancy mutations `POST .../discrepancies/:id/{re-evaluate,correct-record-link,no-action}`.
 - Default case list query: `state=open`, `sort=last_evidence_at`, `order=desc`.
 - Every query is strict Zod input. Case cursors encode only the selected timestamp and ObjectId; timeline cursors encode exactly event time, type priority, and stable ID. Candidate cursors encode only Lead model/ID ordering.
 - Missing cases use `GRANOT_CASE_NOT_FOUND`; a missing Lead keeps the generic v1 `Lead not found` envelope.
@@ -84,7 +84,7 @@ Lead timeline first verifies the exact Lead, then follows persisted Record Links
 
 ## Candidate browser
 
-The Booking reconciliation service remains the policy seam. Its canonical identity candidates retain their existing high/medium confidence and suggestion facts. Case-scoped browsing may additionally search current eligible Form/Call Leads within Source Scope or, for Owner all-scope review, across scopes. Duplicate and Bad Form Leads are excluded server-side. Job-compatible rows rank high; other browse matches rank medium. Out-of-scope rows carry `requires_override_reason=true`. This module never attaches a Lead; gated Owner confirm may consume a selected candidate when the Booking-command flag is true.
+The Booking reconciliation service remains the policy seam. Its canonical identity candidates retain their existing high/medium confidence and suggestion facts. Case-scoped browsing may additionally search current eligible Form/Call Leads within Source Scope or, for Owner all-scope review, across scopes. Connect Booking to Lead search is a separate booking-scoped Owner read (`listConnectLeadCandidates`), not this case browser. Duplicate and Bad Form Leads are excluded server-side. Job-compatible rows rank high; other browse matches rank medium. Out-of-scope rows carry `requires_override_reason=true`. This module never attaches a Lead; gated Owner confirm may consume a selected candidate when the Booking-command flag is true.
 
 Ordering is not the raw browse order. `rankBookingCandidateProjections` pins the canonical identity matches — suggested first, then high confidence, stable within a tier — ahead of the ObjectId-ordered browse page, so the strongest match is always on the first page and never has to be paged to. An explicit `q` search owns its whole page and pins nothing; cursor pages continue the browse stream only, so a pinned row is never returned twice.
 

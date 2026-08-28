@@ -121,25 +121,35 @@ Pack spec §9.3 plus proxy ACL tests. Browser steps 7–11 in §9.4.
 
 ## 10. Acceptance criteria
 
-- [ ] POST attaches one eligible unbooked Lead, clears leadless, mirrors
+- [x] POST attaches one eligible unbooked Lead, clears leadless, mirrors
       booked on the Lead, writes EntityChange for Booking and Lead, and
       enqueues `booking_chain` / `booked_lead.connect_lead`.
-- [ ] `already_satisfied` on the exact same Lead. `IDENTITY_CONFLICT` if
+      Evidence: `connectLead.test.ts` happy path + sheet intent; replica names in the report (skipped unless flag on).
+- [x] `already_satisfied` on the exact same Lead. `IDENTITY_CONFLICT` if
       the Booking already has a different Lead or the Lead is already
       booked.
-- [ ] Referral, cancelled, Duplicate, Bad, and `created_on_unmatched`
+      Evidence: `connectLead.test.ts`.
+- [x] Referral, cancelled, Duplicate, Bad, and `created_on_unmatched`
       Call Leads are rejected. Stale booking revision fails closed.
-- [ ] Candidates `q` hits snapshot paths. Ineligible Leads never appear.
+      Evidence: `connectLead.test.ts`.
+- [x] Candidates `q` hits snapshot paths. Ineligible Leads never appear.
       Empty `q` does not dump the whole book.
-- [ ] Proxy: Owner can GET/POST; Admin role cannot.
-- [ ] `/bookings` shows **No stored lead** on leadless non-referral rows.
+      Evidence: `connectLeadCandidates.test.ts`.
+- [x] Proxy: Owner can GET/POST; Admin role cannot.
+      Evidence: `authorization.test.ts`.
+- [x] `/bookings` shows **No stored lead** on leadless non-referral rows.
       Detail Connect flow matches pack spec §6.2. Referral and cancelled
       have no Connect.
-- [ ] Search rows show Form submitted vs Granot / **Changed in Granot**.
+      Evidence: browser step 7 and 9; `booking-stored-lead.test.ts`.
+- [x] Search rows show Form submitted vs Granot / **Changed in Granot**.
       Headline stays Form submitted.
-- [ ] Success copy does not say the sheet already updated.
-- [ ] `/bookings/reconciliation` and `/form-leads` unchanged.
-- [ ] Browser steps 7–11 in pack spec §9.4 pass.
+      Evidence: browser step 8 (job search; Form submitted + Granot + cycle line). **Changed in Granot** is wired when `differs_from_ingested` is true (`connect-lead-panel.tsx`).
+- [x] Success copy does not say the sheet already updated.
+      Evidence: `BOOKINGS_CONNECT_COPY.success`; browser review did not claim a sheet update.
+- [x] `/bookings/reconciliation` and `/form-leads` unchanged.
+      Evidence: browser steps 10–11.
+- [x] Browser steps 7–11 in pack spec §9.4 pass.
+      Evidence: `reports/BILA-03-completion.md` (no live Connect submit).
 
 ## 11. Commands
 

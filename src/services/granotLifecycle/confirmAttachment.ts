@@ -94,3 +94,13 @@ export function updateBookingSheetIntent(input: {
   }
   return { resource: "booking_chain", operation: "booked_lead.update" };
 }
+
+export const CONNECT_LEAD_OWNER_NOTICE =
+  "Master Leads and Master Booked will update.";
+
+export function connectSheetIntent(): {
+  resource: "booking_chain";
+  operation: "booked_lead.connect_lead";
+} {
+  return { resource: "booking_chain", operation: "booked_lead.connect_lead" };
+}

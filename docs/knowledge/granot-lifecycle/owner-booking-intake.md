@@ -16,6 +16,9 @@ applies_to:
   - vantage-admin/components/granot-lifecycle/referral-booking-form.tsx
   - vantage-admin/components/granot-lifecycle/official-binder-agents-fields.tsx
   - vantage-admin/app/(dashboard)/intakes
+  - vantage-admin/app/(dashboard)/bookings
+  - vantage-admin/components/bookings/booking-stored-lead-section.tsx
+  - src/services/granotLifecycle/connectBookingToLead.ts
 owners: [team:main-server, team:vantage-admin]
 sources:
   - id: spec
@@ -23,7 +26,7 @@ sources:
     title: Owner booking intake and lead attachment
 generated:
   by: process:docs-keeper
-  at: 2026-08-28T18:22:00Z
+  at: 2026-08-28T19:15:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority:** [`owner-booking-intake-and-lead-attachment-specification.md`](../../granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md)
@@ -33,10 +36,10 @@ generated:
 This file is a **Reference** pointer only. It does not copy contract rules.
 
 - [Owner booking intake and lead attachment](../../granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md) — even Binder, Confirm without a required Lead, Connect Booking to Lead, owner-readable Intakes. **Prerequisite for Owner Daily.**
-- [Booking intake robustness pack](../../booking-intake-lead-attachment/README.md) — remaining workspace for Connect from `/bookings`. **Wins on the Connect surface.** Live values: [`PROGRESS.md`](../../booking-intake-lead-attachment/PROGRESS.md).
+- [Booking intake robustness pack](../../booking-intake-lead-attachment/README.md) — BILA-01–BILA-03 shipped. **Wins on the Connect surface** (`/bookings` only; not `/bookings/reconciliation`). Live values: [`PROGRESS.md`](../../booking-intake-lead-attachment/PROGRESS.md).
 
-**Landed:** §5 even Binder — one Binder, at most two Agents, server even-cent split. See [`agent-allocation.md`](../services/agent-allocation.md) and [`booking-reconciliation.md`](./booking-reconciliation.md). **BILA-01** — Form candidate `q` is any-known-contact; DTO carries `known_contacts`; intake shows Form submitted vs Granot. See [`projections.md`](./projections.md). **BILA-02** — Confirm `selected_lead` is optional; unique high-confidence auto-attach or official [Leadless Booking](../../../../CONTEXT.md); later Booked opens `review_existing_booking`. See [`booking-reconciliation.md`](./booking-reconciliation.md) and [`bookings.md`](../services/bookings.md).
+**Landed:** §5 even Binder — one Binder, at most two Agents, server even-cent split. See [`agent-allocation.md`](../services/agent-allocation.md) and [`booking-reconciliation.md`](./booking-reconciliation.md). **BILA-01** — Form candidate `q` is any-known-contact; DTO carries `known_contacts`; intake shows Form submitted vs Granot. See [`projections.md`](./projections.md). **BILA-02** — Confirm `selected_lead` is optional; unique high-confidence auto-attach or official [Leadless Booking](../../../../CONTEXT.md); later Booked opens `review_existing_booking`. See [`booking-reconciliation.md`](./booking-reconciliation.md) and [`bookings.md`](../services/bookings.md). **BILA-03** — Connect Booking to Lead from `/bookings`: Owner searches eligible unbooked Leads, connects one, and the command writes EntityChange plus `booking_chain` / `booked_lead.connect_lead`. Referral and cancelled Bookings have no Connect. See [`bookings.md`](../services/bookings.md).
 
-**Not implemented:** Connect Booking to Lead (Bookings tab), owner-intake unmasking, and the rest of the 2026-08-24 spec. Implement Connect from the robustness pack, not from the absorbed snapshots draft. Do not treat Owner copy that a Lead can be connected later as a shipped `/bookings` Connect UI.
+**Not implemented:** owner-intake unmasking and the rest of the 2026-08-24 spec. Connect is not on `/intakes`, Daily Completed, or `/bookings/reconciliation`.
 
 Current-state service docs for remaining sections: [`booking-reconciliation.md`](./booking-reconciliation.md), [`bookings.md`](../services/bookings.md), [`employee-bookings.md`](../services/employee-bookings.md), [`projections.md`](./projections.md).

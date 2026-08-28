@@ -75,8 +75,14 @@ import type {
 import type {
   GranotLifecycleCandidateQuery,
   GranotLifecycleCaseListQuery,
+  GranotLifecycleConnectLeadCandidateQuery,
   GranotLifecycleTimelineQuery,
 } from "../../validation/v1/granotLifecycle.validation";
+import {
+  bookingSourceAssignment,
+  isConnectableLeadlessBooking,
+  leadMatchesBookingSource,
+} from "./connectLead";
 import {
   FORM_LEAD_CONTACT_EMAIL_PATHS,
   FORM_LEAD_CONTACT_NAME_PATHS,
@@ -916,6 +922,134 @@ export async function listGranotLifecycleCaseCandidates(
   return result;
 }
 
+export async function listConnectLeadCandidates(
+  bookingId: string,
+  query: GranotLifecycleConnectLeadCandidateQuery,
+): Promise<{ items: GranotLifecycleCandidateItem[]; next_cursor: string | null }> {
+  const booking = await BookedLead.findById(bookingId).lean().exec();
+  if (!booking) {
+    throw new GranotLifecycleError(
+      "Booking was not found",
+      GRANOT_LIFECYCLE_ERROR_CODES.CASE_NOT_FOUND,
+      404,
+    );
+  }
+  if (!isConnectableLeadlessBooking(booking)) {
+    throw new GranotLifecycleError(
+      "Booking is not a connectable Leadless Booking",
+      GRANOT_LIFECYCLE_ERROR_CODES.IDENTITY_CONFLICT,
+      409,
+    );
+  }
+  if (!query.q) {
+    return { items: [], next_cursor: null };
+  }
+  const link = await getGranotRecordLinkModel().findOne({
+    provider: "granot",
+    booking_ref: booking._id,
+    state: "active",
+  }).lean().exec();
+  const assignment = bookingSourceAssignment(booking, link?.source_scope);
+  const cursor = query.cursor ? decodeCursor<{ key: string }>(query.cursor, isCandidateCursor) : undefined;
+  const browsed = await browseConnectLeadViews(query, cursor?.key);
+  const ordered = browsed.sort((left, right) => candidateKey(left).localeCompare(candidateKey(right)));
+  const after = cursor ? ordered.filter((entry) => candidateKey(entry) > cursor.key) : ordered;
+  const pageRows = after.slice(0, query.limit + 1);
+  const visible = pageRows.slice(0, query.limit);
+  const items = visible.map(({ ref, lead }) => {
+    const inScope = leadMatchesBookingSource(lead, assignment);
+    return {
+      lead_ref: ref,
+      customer_label: customerLabel({
+        name: leadName(lead),
+        phone_number: lead.phone_number,
+        email: lead.email,
+      }),
+      contact: {
+        name: leadName(lead),
+        phone_number: lead.phone_number ?? undefined,
+        email: lead.email ?? undefined,
+      },
+      ...(ref.model === "FormLead" ? { known_contacts: projectCandidateKnownContacts(lead) } : {}),
+      job_no: lead.job_no ?? undefined,
+      normalized_job_no: lead.normalized_job_no ?? undefined,
+      reference: lead.ref_no ?? undefined,
+      source: {
+        lead_source_company: lead.lead_source_company ? String(lead.lead_source_company) : undefined,
+        source_company_label: lead.source_company_label_snapshot ?? undefined,
+        source_granularity_id: lead.source_granularity_id ? String(lead.source_granularity_id) : undefined,
+        source_granularity_label: lead.source_granularity_label_snapshot ?? undefined,
+      },
+      confidence: "medium" as const,
+      reason_codes: [],
+      match_method: "connect_search",
+      in_source_scope: inScope,
+      eligibility: "eligible" as const,
+      suggested: false,
+      requires_override_reason: !inScope,
+    } satisfies GranotLifecycleCandidateItem;
+  });
+  const last = visible.at(-1);
+  const result = {
+    items,
+    next_cursor: pageRows.length > query.limit && last
+      ? encodeCursor({ key: candidateKey(last) })
+      : null,
+  };
+  assertProjectionSafe(result);
+  return result;
+}
+
+async function browseConnectLeadViews(
+  query: GranotLifecycleConnectLeadCandidateQuery,
+  cursorKey?: string,
+): Promise<CandidateLeadEntry[]> {
+  const search = query.q ? new RegExp(escapeRegExp(query.q), "i") : undefined;
+  if (!search) return [];
+  const [cursorModel, cursorId] = cursorKey?.split(":") ?? [];
+  const available: Record<string, unknown> = {
+    duplicate: { $ne: true },
+    $and: [
+      { $or: [{ booked: null }, { booked: { $exists: false } }] },
+      { $or: [{ cancelled: null }, { cancelled: { $exists: false } }] },
+    ],
+  };
+  const formFilter: Record<string, unknown> = {
+    ...available,
+    bad_lead: null,
+    $or: formLeadCandidateSearchOr(search),
+  };
+  const callFilter: Record<string, unknown> = {
+    ...available,
+    created_on_unmatched: { $ne: true },
+    $or: callLeadCandidateSearchOr(search),
+  };
+  if (cursorModel === "FormLead" && cursorId) formFilter._id = { $gt: cursorId };
+  if (cursorModel === "CallLead" && cursorId) callFilter._id = { $gt: cursorId };
+  const [forms, calls] = await Promise.all([
+    query.lead_model === "CallLead"
+      ? Promise.resolve([] as CandidateLeadView[])
+      : getFormLeadModel()
+          .find(formFilter)
+          .select(FORM_CANDIDATE_LEAD_PROJECTION)
+          .sort({ _id: 1 })
+          .limit(query.limit + 1)
+          .lean<CandidateLeadView[]>(),
+    query.lead_model === "FormLead" || cursorModel === "FormLead"
+      ? Promise.resolve([] as CandidateLeadView[])
+      : getCallLeadModel()
+          .find(callFilter)
+          .select(CANDIDATE_LEAD_PROJECTION)
+          .sort({ _id: 1 })
+          .limit(query.limit + 1)
+          .lean<CandidateLeadView[]>(),
+  ]);
+  return [
+    ...forms.map((lead) => ({ ref: { model: "FormLead" as const, id: String(lead._id) }, lead })),
+    ...calls.map((lead) => ({ ref: { model: "CallLead" as const, id: String(lead._id) }, lead })),
+  ];
+}
+
 async function buildTimelineForJob(
   normalizedJobNo: string,
 ): Promise<Omit<GranotTimelinePage, "next_cursor">> {
@@ -1314,6 +1448,7 @@ type CandidateLeadView = {
   normalized_job_no?: string | null;
   ref_no?: string | null;
   lead_source_company?: unknown;
+  source_company?: string | null;
   source_company_label_snapshot?: string | null;
   source_granularity_id?: unknown;
   source_granularity_label_snapshot?: string | null;
@@ -1336,6 +1471,7 @@ const CANDIDATE_LEAD_PROJECTION = {
   normalized_job_no: 1,
   ref_no: 1,
   lead_source_company: 1,
+  source_company: 1,
   source_company_label_snapshot: 1,
   source_granularity_id: 1,
   source_granularity_label_snapshot: 1,
