@@ -4,6 +4,14 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- `shouldApplyTwilioStatus` is exported and folder-tested. `applyTwilioStatusCallback` rebuilds rank with `allowedCurrent` and never calls the helper. Do not silently wire the helper so “one rank function wins.” See `recommendations/lead-messaging-lead-messaging.md`.
+- After-commit containment can return `failed` while the row is still `pending` / `queued` / `sending` / `retry_scheduled`. The Form Lead 201 then says failed while drain may still send. Do not silently return the in-flight status so “the 201 becomes honest.” See `recommendations/lead-messaging-lead-messaging.md`.
+- Disabled at send time returns `{ status: "disabled" }` and leaves a `pending` row. Drain no-ops. Do not mark those rows `skipped` so “disabled means skipped.” See `recommendations/lead-messaging-lead-messaging.md`.
+- Hourly capacity `$inc`s before the limit check. A skip for `hourly_capacity_reached` still burned a count. Do not decrement on skip in this rename. See `recommendations/lead-messaging-lead-messaging.md`.
+- Owner events always say `entity.type: "form_lead"` even when Granot create-if-missing texts a Call Lead. Do not change the entity type so “Call Lead events match the Lead.” See `recommendations/lead-messaging-lead-messaging.md`.
+- Owner list filters `form_lead` as a raw string. Do not wrap `toObjectId` in this rename. See `recommendations/lead-messaging-lead-messaging.md`.
+- Quiet hours is Twilio Message Scheduling `sendAt`, not a drain `next_attempt_at`. Do not add an overnight delay on drain so “the cron waits until 8.” See `recommendations/lead-messaging-lead-messaging.md`.
+- This checkout’s `CONTEXT.md` does not define Lead Message / confirmation SMS / quiet hours. Do not invent a glossary copy. See `recommendations/lead-messaging-lead-messaging.md`.
 - Form Lead Ingestion skip fabricates `CrmSubmitResult` `{ ok: true, status: 0 }`. `submitFormLeadToCrm` never returns skipped. Do not add a skip branch here so “one result owns `crm_sync_status`.” See `recommendations/crm-crm-service.md` and `recommendations/form-lead.md`.
 - File comment says the function never throws. `recordOperationalEvent` is awaited on success and inside `catch`. An observability throw after a good POST drops the payload Form Lead Ingestion needs. Do not silently wrap observability so “the comment becomes true.” See `recommendations/crm-crm-service.md`.
 - HTTP-error logs write raw Granot `responseText`. The request payload is summarized. Do not redact the returned `crm_response` in this rename. See `recommendations/crm-crm-service.md`.
