@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-08-28T0315Z | to: next-run | from: story-granot-crm-csv-sync-2026-08-28T0315Z | kind: next
+
+`granotCrmCsv` is **in-progress**. `sync.service.ts` is recommended. Next module: **`registry.ts`**. Stay on `granotCrmCsv`. Wave B is locked.
+
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + thirty-four `granot-lifecycle-*.md` files + seven `granot-http-collector-*.md` files + `granot-crm-csv-upload.md` + `granot-crm-csv-sync.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `granot-crm-csv-upload.md` and `granot-crm-csv-sync.md`.
+3. Stay on `granotCrmCsv`. Next is `registry.ts`. Wave B is locked.
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened after #82 merged).
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-08-28T0245Z | to: next-run | from: story-granot-crm-csv-upload-2026-08-28T0245Z | kind: next
+
+Superseded by story-granot-crm-csv-sync-2026-08-28T0315Z. `sync.service.ts` is recommended. `granotCrmCsv` is in-progress. Next is `registry.ts`.
 
 `granotCrmCsv` is **in-progress**. `upload.service.ts` is recommended. Next module: **`sync.service.ts`**. Stay on `granotCrmCsv`. Wave B is locked.
 

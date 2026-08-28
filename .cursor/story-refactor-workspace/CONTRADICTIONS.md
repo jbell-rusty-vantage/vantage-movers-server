@@ -4,7 +4,13 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
-- Software rule `granot-crm-csv-s3-sync.mdc` still names `scripts/granot_crm_csv/sync-from-s3.ts`. That path is not on this checkout; `package.json` has no `granot*csv*` command. Apply lives on `sync.service.ts`. Do not invent the script so the rule “wins,” and do not call apply from upload. See `recommendations/granot-crm-csv-upload.md`.
+- Software rule `granot-crm-csv-s3-sync.mdc` still names `scripts/granot_crm_csv/sync-from-s3.ts`. That path is not on this checkout; `package.json` has no `granot*csv*` command; there is no `/csv/sync` route. Apply is `runGranotCrmCsvSync` with zero runtime callers besides the barrel. Do not invent the script or route so the rule “wins,” and do not call apply from upload. See `recommendations/granot-crm-csv-upload.md` and `recommendations/granot-crm-csv-sync.md`.
+- Dry-run Form corrections and Call `updateable` rows are counted as `unchanged`. Only the message says a write would happen. Do not add an `updateable` status so “the enum matches enrichment.” See `recommendations/granot-crm-csv-sync.md`.
+- `resolveFormLead` returns `status: "no_match"` on an ObjectId hit. The walker only reads `leadId`. Do not treat that status as a miss. See `recommendations/granot-crm-csv-sync.md`.
+- CSV Form match treats ObjectId `ref_no` as `_id` and skips exact `FormLead.ref_no`. HTTP matcher does exact field first. Do not merge those ladders. See `recommendations/granot-crm-csv-sync.md` and `recommendations/granot-http-collector-form-lead-matcher.md`.
+- ObjectId `ref_no` steals Booked / Follow Up rows away from Call apply. Do not flip kind-first so “the file type wins.” See `recommendations/granot-crm-csv-sync.md`.
+- There is no `sync.service.test.ts`. Folder tests lock parse and key folds only. Do not treat those as apply proof. See `recommendations/granot-crm-csv-sync.md`.
+- This checkout’s `CONTEXT.md` does not define Granot CRM CSV ingestion / S3 latest object / sync run. Do not invent a glossary copy. See `recommendations/granot-crm-csv-sync.md`.
 - `uploadGranotCrmCsvSchema` accepts `frame_url` and `byte_length`. The upload file ignores both and stores `Buffer.byteLength(csv_text)`. Do not persist those fields so “the body works.” See `recommendations/granot-crm-csv-upload.md`.
 - Ingestion model status includes `failed`. Upload never writes it — S3/Mongo errors throw. Do not start writing a failed row so “the enum is honest.” See `recommendations/granot-crm-csv-upload.md`.
 - S3 history/latest/meta then Mongo ingestion then `last_ingestions` stamp. A Mongo miss after latest overwrite leaves S3 ahead of the skip hash. Do not silently write Mongo first in this rename. See `recommendations/granot-crm-csv-upload.md`.
