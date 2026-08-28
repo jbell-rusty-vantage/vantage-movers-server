@@ -18,11 +18,11 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 ## Stock (rewrite every run)
 
 - Wave: A
-- Services visited / in-progress / unvisited: **17 / 0 / 21**
-- Recommendations on disk: **98** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`, `cancellations-cancellation-resolver.md`, `cancellations-cancellation-mirror.md`, `customers-customer.md`, `customers-customer-from-lead.md`, `agents-agent-allocation.md`, `agents-receiver-agent-crm-username.md`, `lead-source-companies-lead-source-company.md`, `cpl-cpl-rate.md`, `catalog-catalog.md`, `search-form-lead-search.md`, `search-form-lead-browse.md`, `search-call-lead-search.md`, `search-call-lead-browse.md`, `enrichment-call-lead-enrichment.md`, `enrichment-call-lead-enrichment-rows.md`, `reconciliation-booked-call-lead.md`, `reconciliation-booked-call-lead-rows.md`, `granot-lifecycle-capture.md`, `granot-lifecycle-queue-publisher.md`, `granot-lifecycle-extension-apply.md`, `granot-lifecycle-automation-apply.md`, `granot-lifecycle-automation-compatibility.md`, `granot-lifecycle-normalization.md`, `granot-lifecycle-source-policy.md`, `granot-lifecycle-identity.md`, `granot-lifecycle-granot-temporal.md`, `granot-lifecycle-lead-desired-state.md`, `granot-lifecycle-authorized-desired-state.md`, `granot-lifecycle-lead-contact-projection.md`, `granot-lifecycle-processor.md`, `granot-lifecycle-operations.md`, `granot-lifecycle-projections.md`, `granot-lifecycle-creating-observation.md`, `granot-lifecycle-drainer.md`, `granot-lifecycle-aggregate-revision.md`, `granot-lifecycle-trusted-lead-create-validation.md`, `granot-lifecycle-synchronize-lead-from-granot.md`, `granot-lifecycle-create-lead-from-granot.md`, `granot-lifecycle-booking-reconciliation.md`, `granot-lifecycle-booking-confirmation.md`, `granot-lifecycle-booking-owner-commands.md`, `granot-lifecycle-booking-priority-pairing.md`, `granot-lifecycle-referral-booking.md`, `granot-lifecycle-release-reconciliation.md`, `granot-lifecycle-release-owner-commands.md`, `granot-lifecycle-discrepancies.md`, `granot-lifecycle-discrepancy-owner-commands.md`, `granot-lifecycle-discrepancy-projections.md`, `granot-lifecycle-observability.md`, `granot-lifecycle-metrics.md`, `granot-lifecycle-alerts.md`, `granot-http-collector-index.md`, `granot-http-collector-automation.md`, `granot-http-collector-source-catalog.md`, `granot-http-collector-form-workflow.md`, `granot-http-collector-form-lead-matcher.md`, `granot-http-collector-lifecycle-statement.md`, `granot-http-collector-run-workflow.md`, `granot-crm-csv-upload.md`, `granot-crm-csv-sync.md`, `granot-crm-csv-registry.md`, `granot-crm-csv-parser.md`, `crm-crm-service.md`, `crm-form-lead-payload.md`, `lead-messaging-lead-messaging.md`, `lead-messaging-granot-created-lead.md`, `lead-messaging-lead-messaging-queue.md`, `lead-messaging-twilio-adapter.md`, `sheet-sync-coordinator.md`, `sheet-sync-outbox.md`, `sheet-sync-queue.md`, `sheet-sync-persistence.md`, `sheet-sync-source-lookup.md`, `sheet-sync-run-sheet-sync-drain.md`, `sheet-sync-job-planner.md`, `sheet-sync-batch-writer.md`, `sheet-sync-tab-row-map.md`, `sheet-sync-quota-limiter.md`)
-- Current service: `googleSheets` (unvisited)
-- Next module: enumerate first
-- Last session: `story-sheet-sync-quota-limiter-2026-08-28T2130Z`
+- Services visited / in-progress / unvisited: **17 / 1 / 20**
+- Recommendations on disk: **99** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`, `cancellations-cancellation-resolver.md`, `cancellations-cancellation-mirror.md`, `customers-customer.md`, `customers-customer-from-lead.md`, `agents-agent-allocation.md`, `agents-receiver-agent-crm-username.md`, `lead-source-companies-lead-source-company.md`, `cpl-cpl-rate.md`, `catalog-catalog.md`, `search-form-lead-search.md`, `search-form-lead-browse.md`, `search-call-lead-search.md`, `search-call-lead-browse.md`, `enrichment-call-lead-enrichment.md`, `enrichment-call-lead-enrichment-rows.md`, `reconciliation-booked-call-lead.md`, `reconciliation-booked-call-lead-rows.md`, `granot-lifecycle-capture.md`, `granot-lifecycle-queue-publisher.md`, `granot-lifecycle-extension-apply.md`, `granot-lifecycle-automation-apply.md`, `granot-lifecycle-automation-compatibility.md`, `granot-lifecycle-normalization.md`, `granot-lifecycle-source-policy.md`, `granot-lifecycle-identity.md`, `granot-lifecycle-granot-temporal.md`, `granot-lifecycle-lead-desired-state.md`, `granot-lifecycle-authorized-desired-state.md`, `granot-lifecycle-lead-contact-projection.md`, `granot-lifecycle-processor.md`, `granot-lifecycle-operations.md`, `granot-lifecycle-projections.md`, `granot-lifecycle-creating-observation.md`, `granot-lifecycle-drainer.md`, `granot-lifecycle-aggregate-revision.md`, `granot-lifecycle-trusted-lead-create-validation.md`, `granot-lifecycle-synchronize-lead-from-granot.md`, `granot-lifecycle-create-lead-from-granot.md`, `granot-lifecycle-booking-reconciliation.md`, `granot-lifecycle-booking-confirmation.md`, `granot-lifecycle-booking-owner-commands.md`, `granot-lifecycle-booking-priority-pairing.md`, `granot-lifecycle-referral-booking.md`, `granot-lifecycle-release-reconciliation.md`, `granot-lifecycle-release-owner-commands.md`, `granot-lifecycle-discrepancies.md`, `granot-lifecycle-discrepancy-owner-commands.md`, `granot-lifecycle-discrepancy-projections.md`, `granot-lifecycle-observability.md`, `granot-lifecycle-metrics.md`, `granot-lifecycle-alerts.md`, `granot-http-collector-index.md`, `granot-http-collector-automation.md`, `granot-http-collector-source-catalog.md`, `granot-http-collector-form-workflow.md`, `granot-http-collector-form-lead-matcher.md`, `granot-http-collector-lifecycle-statement.md`, `granot-http-collector-run-workflow.md`, `granot-crm-csv-upload.md`, `granot-crm-csv-sync.md`, `granot-crm-csv-registry.md`, `granot-crm-csv-parser.md`, `crm-crm-service.md`, `crm-form-lead-payload.md`, `lead-messaging-lead-messaging.md`, `lead-messaging-granot-created-lead.md`, `lead-messaging-lead-messaging-queue.md`, `lead-messaging-twilio-adapter.md`, `sheet-sync-coordinator.md`, `sheet-sync-outbox.md`, `sheet-sync-queue.md`, `sheet-sync-persistence.md`, `sheet-sync-source-lookup.md`, `sheet-sync-run-sheet-sync-drain.md`, `sheet-sync-job-planner.md`, `sheet-sync-batch-writer.md`, `sheet-sync-tab-row-map.md`, `sheet-sync-quota-limiter.md`, `google-sheets-google-sheets.md`)
+- Current service: `googleSheets` (in-progress)
+- Next module: `targets.ts`
+- Last session: `story-google-sheets-google-sheets-2026-08-28T2230Z`
 
 ## How to read a service row
 
@@ -296,9 +296,27 @@ Folder: `src/services/sheetSync/` — several passes. Do not treat as one recomm
 | `drainer/types.ts` | skip — type-only |
 | `drainer/index.ts` | skip — barrel |
 
-### 18. `googleSheets` — large — unvisited
+### 18. `googleSheets` — large — **in-progress**
 
-`src/services/googleSheets/`
+Folder: `src/services/googleSheets/` — several passes. Do not treat as one recommendation.
+
+| Module | Verdict |
+| --- | --- |
+| `googleSheets.service.ts` | recommended → [recommendations/google-sheets-google-sheets.md](recommendations/google-sheets-google-sheets.md) |
+| `targets.ts` | |
+| `tabs.ts` | |
+| `syncRows.ts` | |
+| `rowLookup.ts` | |
+| `deleteRows.ts` | |
+| `retry.ts` | |
+| `auth.ts` | skip — client factory |
+| `diagnostics.ts` | skip — error format |
+| `types.ts` | skip — type-only |
+| `projections/formLeadRow.ts` | |
+| `projections/callLeadRow.ts` | |
+| `projections/bookedLeadRow.ts` | |
+| `projections/cancelledLeadRow.ts` | |
+| `projections/cells.ts` | skip — cell format |
 
 ### 19. `googleAuth` — small — unvisited
 
