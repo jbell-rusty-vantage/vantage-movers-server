@@ -81,7 +81,7 @@ Workspace ADRs are outside this repo. This standalone checkout does not contain 
 | [job-timeline-enhancement-specification.md](job-number-timeline/job-timeline-enhancement-specification.md) | Enhancement plan for a precise, evidence-aware Owner Job timeline; keeps window-wide assurance and notifications as a later module. |
 | [granot-lifecycle/spec-hub.md](knowledge/granot-lifecycle/spec-hub.md) | Links to the locked FINAL SPEC, Booked-only delta, owner booking-intake spec, and owner runbooks. No copied spec rules. |
 | [granot-lifecycle/owner-booking-intake.md](knowledge/granot-lifecycle/owner-booking-intake.md) | Pointer to the owner booking-intake contract. Does not copy spec rules. |
-| [granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md](granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md) | Owner booking intake. §5 even Binder and BILA-01 search/display are current; optional Lead, Connect Booking to Lead, and unmasking are not implemented. Prerequisite for Owner Daily. |
+| [granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md](granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md) | Owner booking intake. §5 even Binder, BILA-01 search/display, and BILA-02 optional Lead on Confirm are current; Connect Booking to Lead and unmasking are not implemented. Prerequisite for Owner Daily. |
 
 ## Delivery packs
 
@@ -91,7 +91,7 @@ Active work packs. The ledger inside each is a navigation aid; the repository is
 | --- | --- |
 | [operations-registry-source-connections/README.md](operations-registry-source-connections/README.md) | Four-pass delivery of the Operations Registry source-connection spec: typed label mappings, the Granot name Owner command, the aggregate Lead Source projection, and the Owner UI. |
 | [job-number-timeline/README.md](job-number-timeline/README.md) | Four-session enhancement of the Owner Job Number timeline (JTE-01–05). Daily Assurance and notifications stay out of pack. |
-| [booking-intake-lead-attachment/README.md](booking-intake-lead-attachment/README.md) | Three-issue pack. BILA-01 (intake any-known-contact + Form submitted vs Granot) shipped. Optional Lead (BILA-02) and Connect from `/bookings` (BILA-03) are not current. |
+| [booking-intake-lead-attachment/README.md](booking-intake-lead-attachment/README.md) | Three-issue pack. BILA-01 (intake search/display) and BILA-02 (optional Lead on Confirm) shipped. Connect from `/bookings` (BILA-03) is not current. |
 
 ## Archives
 

@@ -549,3 +549,190 @@ test("[AC-21] replica update versus No Action has one case-revision winner", asy
   assert.equal(await DomainCommandExecution.countDocuments({ "provenance.case_id": String(caseId) }), 1);
   assert.equal((await getGranotBookingReconciliationCaseModel().findById(caseId).lean().exec())?.case_revision, 2);
 });
+
+async function stampSuggestion(
+  caseId: mongoose.Types.ObjectId,
+  leadId: mongoose.Types.ObjectId,
+  confidence: "high" | "medium",
+  match_method: string,
+) {
+  await getGranotBookingReconciliationCaseModel().collection.updateOne(
+    { _id: caseId },
+    {
+      $set: {
+        suggested_lead: {
+          lead_ref: { model: "FormLead", id: leadId },
+          confidence,
+          match_method,
+          reason_codes: [match_method],
+        },
+      },
+    },
+  );
+}
+
+function confirmOwner(caseId: mongoose.Types.ObjectId, suffix: string) {
+  return {
+    actor_type: "owner" as const,
+    actor_id: "unit-bila02-owner",
+    actor_label: "unit-bila02-owner@example.invalid",
+    actor_role: "owner" as const,
+    request_id: `unit-bila02-${suffix}-${caseId}`,
+    origin: "vantage_admin" as const,
+  };
+}
+
+test("Confirm omit selected_lead with unique high suggestion attaches and queues booking_chain", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const fixture = await seed();
+  await stampSuggestion(fixture.caseId, fixture.leadId, "high", "form_ref_no_exact");
+  const result = await confirmBooking({
+    case_id: String(fixture.caseId),
+    expected_case_revision: 1,
+    official_booking_details: {
+      book_date: "2026-08-20",
+      primary_agent_id: String(fixture.agentId),
+      total_binder_amount: 10,
+      deposit_amount: 20,
+      merchant_id: String(fixture.merchantId),
+    },
+    idempotency_key: `bila02-high-auto-${fixture.caseId}`,
+    owner: confirmOwner(fixture.caseId, "high-auto"),
+  }, { flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, booking_commands_enabled: true } });
+  assert.equal(result.outcome, "booking_created");
+  assert.equal(result.is_leadless_booking, false);
+  const booking = await BookedLead.findById(result.booking_ref!.id).lean().exec();
+  assert.equal(booking?.is_leadless_booking, false);
+  assert.equal(String(booking?.lead_ref), String(fixture.leadId));
+  const job = await SheetSyncJob.findOne({ entity_id: result.booking_ref!.id }).lean().exec();
+  assert.equal(job?.resource, "booking_chain");
+  assert.equal(job?.operation, "booked_lead.create");
+});
+
+test("Confirm omit selected_lead with medium-only suggestion creates a Leadless Booking", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const fixture = await seed();
+  await stampSuggestion(fixture.caseId, fixture.leadId, "medium", "source_scoped_contact");
+  const result = await confirmBooking({
+    case_id: String(fixture.caseId),
+    expected_case_revision: 1,
+    official_booking_details: {
+      book_date: "2026-08-20",
+      primary_agent_id: String(fixture.agentId),
+      total_binder_amount: 10,
+      deposit_amount: 20,
+      merchant_id: String(fixture.merchantId),
+    },
+    idempotency_key: `bila02-medium-leadless-${fixture.caseId}`,
+    owner: confirmOwner(fixture.caseId, "medium-leadless"),
+  }, { flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, booking_commands_enabled: true } });
+  assert.equal(result.outcome, "booking_created");
+  assert.equal(result.is_leadless_booking, true);
+  assert.match(result.owner_notice ?? "", /No stored lead was attached/);
+  const booking = await BookedLead.findById(result.booking_ref!.id).lean().exec();
+  assert.equal(booking?.is_leadless_booking, true);
+  assert.equal(booking?.lead_ref, undefined);
+  assert.equal(booking?.is_referral_booking, false);
+  const lead = await getFormLeadModel().findById(fixture.leadId).lean().exec();
+  assert.equal(lead?.booked, undefined);
+  const job = await SheetSyncJob.findOne({ entity_id: result.booking_ref!.id }).lean().exec();
+  assert.equal(job?.resource, "booked_lead");
+  assert.equal(job?.operation, "granot_booking.create_leadless");
+});
+
+test("Confirm Owner-selected medium attaches that Lead", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const fixture = await seed();
+  await stampSuggestion(fixture.caseId, fixture.leadId, "medium", "source_scoped_contact");
+  const result = await confirmBooking({
+    case_id: String(fixture.caseId),
+    expected_case_revision: 1,
+    selected_lead: { lead_model: "FormLead", lead_id: String(fixture.leadId) },
+    official_booking_details: {
+      book_date: "2026-08-20",
+      primary_agent_id: String(fixture.agentId),
+      total_binder_amount: 10,
+      deposit_amount: 20,
+      merchant_id: String(fixture.merchantId),
+    },
+    idempotency_key: `bila02-owner-medium-${fixture.caseId}`,
+    owner: confirmOwner(fixture.caseId, "owner-medium"),
+  }, { flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, booking_commands_enabled: true } });
+  assert.equal(result.outcome, "booking_created");
+  assert.equal(result.is_leadless_booking, false);
+  const booking = await BookedLead.findById(result.booking_ref!.id).lean().exec();
+  assert.equal(String(booking?.lead_ref), String(fixture.leadId));
+});
+
+test("Confirm lost claim fails closed and does not fall through to Leadless", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const fixture = await seed();
+  await stampSuggestion(fixture.caseId, fixture.leadId, "high", "form_ref_no_exact");
+  await getFormLeadModel().collection.updateOne(
+    { _id: fixture.leadId },
+    { $set: { booked: new mongoose.Types.ObjectId() } },
+  );
+  await assert.rejects(
+    confirmBooking({
+      case_id: String(fixture.caseId),
+      expected_case_revision: 1,
+      official_booking_details: {
+        book_date: "2026-08-20",
+        primary_agent_id: String(fixture.agentId),
+        total_binder_amount: 10,
+        deposit_amount: 20,
+        merchant_id: String(fixture.merchantId),
+      },
+      idempotency_key: `bila02-lost-claim-${fixture.caseId}`,
+      owner: confirmOwner(fixture.caseId, "lost-claim"),
+    }, { flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, booking_commands_enabled: true } }),
+    (error: unknown) => (error as { code?: string }).code === "GRANOT_IDENTITY_CONFLICT",
+  );
+  assert.equal(await BookedLead.countDocuments({ normalized_job_no: fixture.job }), 0);
+  assert.equal((await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec())?.state, "open");
+});
+
+test("Update Existing Booking on a Granot Leadless Booking writes official fields and Master Booked only", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const fixture = await seed();
+  const flags = { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, booking_commands_enabled: true };
+  const owner = confirmOwner(fixture.caseId, "leadless-update");
+  const created = await confirmBooking({
+    case_id: String(fixture.caseId),
+    expected_case_revision: 1,
+    official_booking_details: {
+      book_date: "2026-08-20",
+      primary_agent_id: String(fixture.agentId),
+      total_binder_amount: 10,
+      deposit_amount: 20,
+      merchant_id: String(fixture.merchantId),
+    },
+    idempotency_key: `bila02-leadless-prereq-${fixture.caseId}`,
+    owner,
+  }, { flags });
+  assert.equal(created.is_leadless_booking, true);
+  const reviewCaseId = await createReviewCase(fixture, created.booking_ref!.id, created.record_link_ref!.id);
+  const result = await updateExistingBooking({
+    case_id: String(reviewCaseId),
+    expected_case_revision: 1,
+    expected_booking_revision: created.booking_ref!.domain_revision,
+    official_booking_details: {
+      book_date: "2026-09-01",
+      primary_agent_id: String(fixture.agentId),
+      total_binder_amount: 30,
+      deposit_amount: 40,
+      merchant_id: String(fixture.merchantId),
+    },
+    idempotency_key: `bila02-leadless-update-${reviewCaseId}`,
+    owner,
+  }, { flags });
+  assert.equal(result.outcome, "booking_updated");
+  const after = await BookedLead.findById(created.booking_ref!.id).lean().exec();
+  assert.equal(after?.is_leadless_booking, true);
+  assert.equal(after?.lead_ref, undefined);
+  assert.equal(after?.book_date.toISOString().slice(0, 10), "2026-09-01");
+  assert.equal(after?.total_binder_amount, 30);
+  const jobs = await SheetSyncJob.find({ entity_id: created.booking_ref!.id }).lean().exec();
+  assert.equal(jobs.some((job) => job.resource === "booking_chain"), false);
+  assert.ok(jobs.some((job) => job.resource === "booked_lead" && job.operation === "booked_lead.update"));
+});

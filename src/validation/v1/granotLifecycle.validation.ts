@@ -87,7 +87,7 @@ export const granotLifecycleConfirmBookingCommandSchema = z
     selected_lead: z.object({
       lead_model: z.enum(["FormLead", "CallLead"]),
       lead_id: objectIdSchema,
-    }).strict(),
+    }).strict().optional(),
     out_of_scope_override_reason: z.string().trim().min(10).max(500).optional(),
     official_booking_details: granotLifecycleOfficialBookingDetailsSchema,
   })

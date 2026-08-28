@@ -224,6 +224,18 @@ test("[AC-22] confirm Booking input is strict and validates exact official cents
     }),
     /unrecognized_keys|agent_allocations/,
   );
+  const { selected_lead: _omitted, ...withoutLead } = valid;
+  assert.equal(
+    granotLifecycleConfirmBookingCommandSchema.parse(withoutLead).selected_lead,
+    undefined,
+  );
+  assert.throws(
+    () => granotLifecycleConfirmBookingCommandSchema.parse({
+      ...withoutLead,
+      unknown_mode: "leadless",
+    }),
+    /unrecognized_keys|unknown_mode/,
+  );
 });
 
 test("[AC-28] Referral Booking input accepts only case revision and strict official details", () => {

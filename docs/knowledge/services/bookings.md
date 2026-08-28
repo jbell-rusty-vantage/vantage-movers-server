@@ -14,6 +14,9 @@ applies_to:
   - src/services/bookings/referralBooking.service.ts
   - src/services/bookings/leadlessBooking.service.ts
   - src/services/bookings/bestRelocationImportGuard.ts
+  - src/services/granotLifecycle/bookingConfirmation.ts
+  - src/services/granotLifecycle/confirmAttachment.ts
+  - src/services/granotLifecycle/bookingOwnerCommands.ts
   - src/routes/v1.routes.ts
 owners: [team:main-server]
 sources:
@@ -25,8 +28,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T02:54:00Z
+  by: process:docs-keeper
+  at: 2026-08-28T18:22:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -63,7 +66,7 @@ Helpers: `bookingSourceResolver.ts`, `bookingWarnings.ts`, `bookingIdentity.ts`,
 | `POST /api/v1/referral-bookings` | `createExistingReferralBooking` → `createReferralBooking` |
 | `POST /api/v1/leadless-bookings` | `createLeadlessBooking` |
 
-Public employee submit is a separate HTTP path ([`employee-bookings.md`](./employee-bookings.md)) that may book-and-link via `claimAvailableLeadForBooking` or create a leadless booking + reconciliation case.
+Public employee submit is a separate HTTP path ([`employee-bookings.md`](./employee-bookings.md)) that may book-and-link via `claimAvailableLeadForBooking` or create a leadless booking + reconciliation case. Gated Granot Owner Confirm may also mint an official [Leadless Booking](../../../../CONTEXT.md) — see **5. Granot Owner Confirm / Update** below. That path is not `POST /api/v1/leadless-bookings` and does not open a `BookingLeadReconciliationCase`.
 
 ## Create paths
 
@@ -134,9 +137,17 @@ Post-commit: `finalizeSheetSync`; events `booking.created` or `booking.upserted`
 - Sheet job: `resource: "booked_lead"`, `operation: "leadless_booking.create"`.
 - Public **update is 409**. Public **delete is allowed**. Public **cancel is 409** unless Best Relocation import sets `allowLeadless`.
 
+### 5. Granot Owner Confirm / Update — official Leadless
+
+Gated Owner commands in `granotLifecycle/` (`bookingConfirmation.ts`, `confirmAttachment.ts`, `bookingOwnerCommands.ts`). Distinct from `POST /api/v1/leadless-bookings` and from employee submit.
+
+- **Confirm** may attach a Lead or write official `is_leadless_booking: true` (no `lead_ref` / `lead_model`, customer from Observation contact, booking-only Record Link). Attachment resolution is server-owned. Lost attached-path claim fails closed; it does not fall through to Leadless. See [`booking-reconciliation.md`](../granot-lifecycle/booking-reconciliation.md).
+- **Update Existing Booking** (`updateExistingBooking`) allows a Granot official Leadless Booking: `isGranotOfficialLeadlessBooking` — leadless, not referral, not `booking_origin=employee_booking`, no `lead_ref` / `lead_model`. Official fields only; Master Booked sheet. Employee and public leadless rows stay rejected here.
+- **Connect Booking to Lead** from `/bookings` is not shipped.
+
 ## Update (`updateBookedLead`)
 
-- **409** for referral, leadless, or missing `lead_ref`/`lead_model`. **404** if missing.
+- Public `updateBookedLead` **409** for referral, leadless, or missing `lead_ref`/`lead_model`. **404** if missing. That public 409 still applies. The gated Granot Owner path above is the exception for Granot official Leadless.
 - Merchant re-resolved when provided; deposit drives `over_2000` / `over_4000`.
 - Agent changes: `resolveAgentAllocations` + `patch` (default) or `replace` — see [`agent-allocation.md`](./agent-allocation.md). Warnings are built from the **incoming** resolved list, not the merged list.
 - `local` = `input.local ?? booking.local ?? lead.local`.
@@ -208,7 +219,11 @@ Atomic `updateOne` used by employee submit. Filter: not booked, not cancelled, n
 | Lead-attached update | `booking_chain` | `booked_lead.update` |
 | Lead-attached delete | tombstone `delete_booked_lead` + optional `source_lead` | `delete_booked_lead` |
 | Referral create / lifecycle update | `booked_lead` | `referral_booking.create`, `referral_booking.update` |
-| Leadless create | `booked_lead` | `leadless_booking.create` |
+| Leadless create (`POST /api/v1/leadless-bookings`) | `booked_lead` | `leadless_booking.create` |
+| Granot Confirm attached | `booking_chain` | `booked_lead.create` |
+| Granot Confirm Leadless | `booked_lead` | `granot_booking.create_leadless` |
+| Granot Update attached | `booking_chain` | `booked_lead.update` |
+| Granot Update Leadless | `booked_lead` | `booked_lead.update` |
 | Lead update with booking | `booking_chain` or `source_lead` | from `refreshAttachedBookingFromLead` |
 
 **Booking Chain** refreshes **Master Booked** (`Booked Deals` tab) and the linked source lead row. Details: [`google-sheets.md`](./google-sheets.md), [`sheet-sync.md`](./sheet-sync.md).
@@ -232,9 +247,10 @@ Atomic `updateOne` used by employee submit. Filter: not booked, not cancelled, n
 
 ## Related services
 
-- [`cancelled-lead.md`](./cancelled-lead.md) — **Cancellation** (public referral blocked; leadless only via Best Relocation import)
+- [`cancelled-lead.md`](./cancelled-lead.md) — **Cancellation** (public referral blocked; public leadless only via Best Relocation import). Confirm Granot Cancellation on Granot official Leadless succeeds without a Lead mirror ([`release-reconciliation.md`](../granot-lifecycle/release-reconciliation.md)).
 - [`agent-allocation.md`](./agent-allocation.md) — **Agent Allocation**, **Binder**
 - [`employee-bookings.md`](./employee-bookings.md) — public submit + Owner cases
+- [`booking-reconciliation.md`](../granot-lifecycle/booking-reconciliation.md) — gated Confirm / Update / Referral / No Action
 - [`analytics.md`](./analytics.md) — **Analytics** over bookings
 
 ## Do not bypass

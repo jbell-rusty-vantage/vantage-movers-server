@@ -62,6 +62,7 @@ export type BookingReconciliationCurrentContext = {
     officially_cancelled: boolean;
     referral: boolean;
     employee_reconciliation_case_id?: string;
+    booking_origin?: "employee_booking";
   };
 };
 
@@ -619,6 +620,7 @@ export function createMongoBookingReconciliationStore(): BookingReconciliationPe
           officially_cancelled: officialCancellation,
           referral: row.is_referral_booking === true,
           employee_reconciliation_case_id: employeeCase ? String(employeeCase._id) : undefined,
+          ...(row.booking_origin === "employee_booking" ? { booking_origin: "employee_booking" as const } : {}),
         };
       }
 
@@ -1082,12 +1084,26 @@ export function classifyBookingReconciliation(
       : { kind: "none", reason: "priority_5_existing_booking" };
   }
   if (booking && !booking.has_lead) {
-    return booking.employee_reconciliation_case_id
-      ? {
-          kind: "employee_booking_lead_reconciliation",
-          case_id: booking.employee_reconciliation_case_id,
-        }
-      : { kind: "none", reason: "employee_reconciliation_missing" };
+    if (booking.booking_origin === "employee_booking") {
+      return booking.employee_reconciliation_case_id
+        ? {
+            kind: "employee_booking_lead_reconciliation",
+            case_id: booking.employee_reconciliation_case_id,
+          }
+        : { kind: "none", reason: "employee_reconciliation_missing" };
+    }
+    if (booking.employee_reconciliation_case_id) {
+      return {
+        kind: "employee_booking_lead_reconciliation",
+        case_id: booking.employee_reconciliation_case_id,
+      };
+    }
+    return {
+      kind: "case",
+      mode: "review_existing_booking",
+      evidence_action: "booked",
+      deterministic_booking_id: booking.id,
+    };
   }
   if (context.identity.outcome === "conflict") {
     return {

@@ -76,15 +76,16 @@ Live values live in [`PROGRESS.md`](PROGRESS.md).
 | Issue | Title | Prerequisites | Status | Contract |
 | --- | --- | --- | --- | --- |
 | [BILA-01](issues/BILA-01.md) | Intake any-known-contact search and Form submitted vs Granot display | current intake | complete | complete |
-| [BILA-02](issues/BILA-02.md) | Confirm without a required Lead; high-confidence auto-attach | BILA-01 | ready | complete |
-| [BILA-03](issues/BILA-03.md) | Connect Booking to Lead from `/bookings` | BILA-01; BILA-02 for Leadless follow-through | blocked | complete |
+| [BILA-02](issues/BILA-02.md) | Confirm without a required Lead; high-confidence auto-attach | BILA-01 | complete | complete |
+| [BILA-03](issues/BILA-03.md) | Connect Booking to Lead from `/bookings` | BILA-01; BILA-02 for Leadless follow-through | ready | complete |
 
 ## Ready queue
 
-- **BILA-01 is complete.** Next startable issue is BILA-02.
-- BILA-02 is optional Lead on Confirm. The candidate DTO and contact cards are in place.
-- BILA-03 waits on BILA-02 making a Granot Leadless Booking a legal,
-  reviewable official Booking. The shared helper already exists.
+- **BILA-01 and BILA-02 are complete.** Next startable issue is BILA-03.
+- BILA-03 is Connect Booking to Lead from `/bookings`. Granot official
+  Leadless Bookings are now legal and reviewable. The shared helper
+  already exists. Do not treat Owner copy that a Lead can be connected
+  later as a shipped Connect UI.
 
 ## Standing constraints for every issue
 
@@ -129,9 +130,9 @@ These apply to all issues and are not repeated as scope in each one.
 
 ## Verified current state
 
-Observed at pack creation 2026-08-28; BILA-01 bullets restamped 2026-08-28
-after ship. Each remaining issue's §4 repeats the subset it depends on.
-**Reverify before coding.**
+Observed at pack creation 2026-08-28; BILA-01 and BILA-02 bullets
+restamped 2026-08-28 after ship. Each remaining issue's §4 repeats the
+subset it depends on. **Reverify before coding.**
 
 - Admin `/form-leads` shows Form submitted vs Granot and searches both
   snapshots. Shared path lists exist in `leadBrowseShared.ts`. Intake
@@ -146,10 +147,12 @@ after ship. Each remaining issue's §4 repeats the subset it depends on.
   `differs_from_ingested`; no `observation_id`). Empty `q` still pins
   ranked identity; explicit `q` pins nothing. Intake hero/search show
   Form submitted vs Granot via `intake-known-contacts.tsx`.
-- `granotLifecycleConfirmBookingCommandSchema.selected_lead` is required.
-  `bookingConfirmation.ts` always writes `is_leadless_booking: false`.
-  `BookingCommandForm` blocks submit without a matched Lead.
-  `pickBestCandidate` can pre-select medium confidence.
+- **BILA-02 shipped.** `selected_lead` is optional on Confirm Zod
+  (unknown keys still reject). `resolveConfirmAttachment` auto-attaches
+  unique high only; medium / none / `source_scoped_contact` is Leadless.
+  Confirm Leadless writes `is_leadless_booking: true` and Master Booked
+  only. `pickBestCandidate` returns high only. Intake Review is enabled
+  without a Lead once official details are valid.
 - `POST /api/v1/admin/bookings/:id/connect-lead` does not exist.
 - `/bookings` is `OperationalResourcePage` with a Leadless filter and no
   Stored-lead chip / Connect section.

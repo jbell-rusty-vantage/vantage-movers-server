@@ -121,21 +121,21 @@ Do not claim Connect from Bookings is current until BILA-03 ships.
 
 ## 10. Acceptance criteria
 
-- [ ] Zod accepts omitted `selected_lead` and still rejects unknown keys.
-- [ ] No `selected_lead` + unique high → attach + `booking_chain`.
-- [ ] No `selected_lead` + medium-only or ambiguous high → Leadless +
+- [x] Zod accepts omitted `selected_lead` and still rejects unknown keys.
+- [x] No `selected_lead` + unique high → attach + `booking_chain`.
+- [x] No `selected_lead` + medium-only or ambiguous high → Leadless +
       Master Booked only. Medium Lead is not attached.
-- [ ] Explicit Owner `selected_lead` attaches even when medium
+- [x] Explicit Owner `selected_lead` attaches even when medium
       (eligibility and override still apply).
-- [ ] Lost claim returns the current conflict envelope, not Leadless.
-- [ ] Later Booked on a Granot Leadless Booking opens
+- [x] Lost claim returns the current conflict envelope, not Leadless.
+- [x] Later Booked on a Granot Leadless Booking opens
       `review_existing_booking` and does not require an employee case.
-- [ ] Update Existing Booking and Confirm Granot Cancellation succeed on
+- [x] Update Existing Booking and Confirm Granot Cancellation succeed on
       a Granot Leadless Booking.
-- [ ] Admin form submits with no Lead once official details are valid.
+- [x] Admin form submits with no Lead once official details are valid.
       Medium is not pre-selected. Review names the Lead or
       **No lead — Master Booked only**.
-- [ ] Browser steps 5–6 in pack spec §9.4 pass.
+- [x] Browser steps 5–6 in pack spec §9.4 pass.
 
 ## 11. Commands
 
