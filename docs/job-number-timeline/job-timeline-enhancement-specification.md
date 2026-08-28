@@ -11,8 +11,8 @@ tags:
 status: draft
 stale_after: 2026-11-27
 generated:
-  by: codex
-  at: 2026-08-27T00:00:00Z
+  by: process:docs-keeper
+  at: 2026-08-28T01:50:00Z
 sources:
   - id: current-prototype-spec
     resource: ../../scripts/prototypes/job-number-timeline/specs/job-number-timeline-prototype-specification.md
@@ -203,12 +203,16 @@ type JobTimelineOutcome =
 Precedence is not a blind last-event-wins rule:
 
 - official Cancellation after official Booking → `cancelled`;
+- official Cancellation recovered by a durable Job snapshot with no
+  surviving Booking → `cancelled` plus `OFFICIAL_BOOKING_UNAVAILABLE`.
+  Do not invent an `official_booking` event;
 - open Cancellation intake with an official Booking →
   `cancellation_intake_open`;
 - official Booking without official Cancellation → `booked`;
 - open Booking intake without official Booking → `booking_intake_open`;
 - resolved Lead with none of the above → `lead_active`;
-- incompatible official facts or chronologies → `contradictory` plus attention;
+- incompatible official facts or chronologies (Cancellation clock
+  before Booking clock) → `contradictory` plus attention;
 - unresolved Lead and no official fact → `unknown`.
 
 An intake case never becomes the official outcome by itself.
@@ -241,6 +245,9 @@ Examples:
 - No text with no known gate decision → `not_started`, not “missing”.
 - Open Booking case → `active`.
 - Resolved create-missing Booking case with no official Booking → `attention`.
+- Official Cancellation with no surviving Booking → booking stage
+  `attention`, label "Official Booking no longer present", reason
+  `BOOKING_UNAVAILABLE_AFTER_CANCELLATION`.
 - No Cancellation activity on an active Booking → cancellation
   `not_started`, not a gap.
 - Google row not read back → delivery `unverifiable`, even when every outbox job
@@ -421,6 +428,9 @@ can render the current UI for a v1 fixture.
 - If a resolved finalizing case lacks the official fact, emit attention.
 - If Booking and Cancellation facts conflict chronologically, show both and set
   `current_outcome: "contradictory"`.
+- A snapshot-recovered official Cancellation without a surviving Booking
+  is `cancelled`, not contradictory. Show `OFFICIAL_BOOKING_UNAVAILABLE`.
+  Do not invent the missing Booking event.
 
 ### 7.5 Sheet Sync
 
@@ -446,6 +456,7 @@ Initial attention codes:
 | `BOOKING_CASE_RESOLVED_WITHOUT_FACT` | A finalizing/resolved Booking case lacks an official Booking. |
 | `CANCELLATION_CASE_RESOLVED_WITHOUT_FACT` | A finalizing/resolved Cancellation case lacks an official Cancellation. |
 | `ORPHAN_CANCELLATION_REFERENCE` | A Cancellation references a missing Booking and lacks a durable Job snapshot. |
+| `OFFICIAL_BOOKING_UNAVAILABLE` | Official Cancellation is on this Job; the Booking document is no longer present. |
 | `SHEET_SYNC_PENDING_TOO_LONG` | A live job exceeds the configured age threshold. |
 | `SHEET_SYNC_TERMINAL_FAILURE` | A relevant outbox job is terminally failed. |
 | `CONTRADICTORY_OFFICIAL_STATE` | Official facts or their clocks cannot produce one coherent outcome. |
@@ -497,7 +508,8 @@ Recommended labels:
 
 - Lead recorded
 - Text delivered / Text skipped / No text recorded
-- Booking intake open / Booked / Not yet booked
+- Booking intake open / Booked / Official Booking no longer present /
+  Not yet booked
 - Cancellation intake open / Cancelled / No cancellation activity
 - Sheet caught up / Sheet pending / Sheet failed / Google not verified
 
@@ -642,14 +654,21 @@ booking_created_at_snapshot: Date | null;
 
 This is a separate write-path migration and requires its own report-first
 backfill plan. The timeline enhancement may read these fields when present but
-must not silently guess them for historical rows.
+must not silently guess them for historical rows. A snapshot-matching
+Cancellation (`normalized_job_no_snapshot` / `job_no_snapshot`) is a
+first-hop survivor: snapshot-only jobs are `ok`, not `not_found`. Orphans
+without a durable snapshot stay refused / `not_found` if nothing else is
+on the first hop.
 
 ### 11.2 WordPress receipt
 
-Add a durable WordPress submission receipt before Lead creation in a later
-source-assurance issue. It should have an idempotency key, received time,
-processing status, and resulting Lead reference. Until then, the timeline shows
-the limitation.
+JTE-07 shipped a durable WordPress Form Submission Receipt on the authorized
+test form path / `testvantagemovers` only. Capture runs before Lead persist.
+Attach after persist is fail-closed: an existing unattached receipt
+(`lead_ref` null) refuses a second Form Lead. Authorized capture with
+`wordpress_submission_key` forces `runSheetSyncWrite({ forceTransaction: true })`.
+No production form injection. Pages without a loaded receipt still show
+`WORDPRESS_RECEIPT_UNAVAILABLE`.
 
 ### 11.3 Google destination verification
 
@@ -671,7 +690,10 @@ state on the appropriate aggregate before adding the stage.
 
 - Owner-only at server and Admin gates.
 - No contact, SMS body, transcript, recording URL, provider payload, Sheet ID,
-  Sheet row, or raw error body in the response.
+  Sheet row, or raw error body in the response. Unhandled
+  `GET /api/v1/admin/job-number-timeline` failures return HTTP `500`
+  `{ error: "Internal error" }` and log the real message server-side.
+  They do not echo `error.message`.
 - Prefer parallel bounded reads after the first Job-scoped hop.
 - No unbounded distinct Job Number query and no `$lookup` pipeline on the hot
   route.
@@ -715,9 +737,10 @@ All current prototype tests remain regression requirements, especially:
 13. `synced sheet job still reports google destination unverified`.
 14. `orphan cancellation is not attached without durable job snapshot`.
 15. `cancellation snapshot restores exact job correlation`.
-16. `event cap returns explicit truncation limitation`.
-17. `serialized v2 page contains no forbidden fields or contact`.
-18. `v1 fixture remains renderable during client migration`.
+16. `snapshot-only cancellation is a found cancelled page`.
+17. `event cap returns explicit truncation limitation`.
+18. `serialized v2 page contains no forbidden fields or contact`.
+19. `v1 fixture remains renderable during client migration`.
 
 ### 13.3 Live read-only proof
 

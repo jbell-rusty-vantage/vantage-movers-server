@@ -4,7 +4,7 @@ title: Form Lead Service
 description: Create, update, and delete Form Leads, including duplicates, CRM Posting, and Sheet Sync tab routing.
 tags: [form-lead, ingestion, crm-posting]
 status: draft
-stale_after: 2026-11-20
+stale_after: 2026-11-27
 resource: src/services/leads/formLead.service.ts
 applies_to:
   - src/services/leads/formLead.service.ts
@@ -29,7 +29,7 @@ sources:
     resource: ../docs/adr/0002-granot-crm-post-despite-downstream-failures.md
 generated:
   by: process:docs-keeper
-  at: 2026-08-28T00:25:00Z
+  at: 2026-08-28T01:50:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) for Granot identity; [`../../../../docs/adr/`](../../../../docs/adr/) for [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md) and [0002 CRM post survives failures](../../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md)
@@ -79,7 +79,7 @@ Write only when **all** of these hold:
 - `TEST_MODE` and the connected database matches `^testvantagemovers(?:_[a-z0-9]+)?$`
 - request supplied `wordpress_submission_key` (8–128). Never inferred from the Lead, `lid`, phone, email, payload, or **Tracking Reference**.
 
-Fail closed: capture failure aborts Lead create. Same key + existing `lead_ref` whose Lead still exists: reuse that Lead. No second receipt, Lead, Sheet Sync job, CRM Post, or EntityChange. Unauthorized / missing key / production DB: no receipt write; Lead create continues; Job Number timeline stays on `WORDPRESS_RECEIPT_UNAVAILABLE` ([`job-number-timeline.md`](./job-number-timeline.md)).
+Fail closed: capture failure aborts Lead create. Attach after Lead persist is also fail-closed: attach failure throws and does not leave a retry that can create a second Form Lead. Same key + existing unattached receipt (`lead_ref` null): refuse another Lead create. Same key + existing `lead_ref` whose Lead still exists: reuse that Lead. No second receipt, Lead, Sheet Sync job, CRM Post, or EntityChange. Authorized capture with a submission key forces the Form Lead write onto the same Mongo transaction so insert + Lead + attach abort together. Unauthorized / missing key / production DB: no receipt write; Lead create continues; Job Number timeline stays on `WORDPRESS_RECEIPT_UNAVAILABLE` ([`job-number-timeline.md`](./job-number-timeline.md)).
 
 Indexes are report-first: `pnpm migration:wordpress-form-submission-receipts`. Applied on `testvantagemovers` only. Production apply is refused in the CLI.
 
@@ -144,7 +144,7 @@ Job: `resource: source_lead`, `operation: form_lead.create` | `form_lead.update`
 | Lifecycle revision | `domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical create/update/delete routes persist an append-only `EntityChange` and stamp `last_change_*` in the executor transaction. |
 | Ingestion Origin | Server-assigned and immutable. Public `createFormLead` always stores `wordpress_form`. Canonical `deriveFormLeadIngestionOrigin`: Best Relocation sheet → `best_relocation_sheet`; Granot lifecycle → `granot_lead_created`; `vantage_admin` + owner/admin actor → `vantage_admin`; `vantage_admin` + system/undefined actor → `wordpress_form`. Unproven origins throw. `createLeadFromGranot` assigns `granot_lead_created` and forces `post_to_granot=false`. Clients cannot set `ingestion_origin`. Historical rows without durable proof receive `legacy_unknown` from the Lead provenance migration only; labels and `ref_no` never decide origin. |
 | Immutable creation evidence | New Form Leads persist `ingested_contact_snapshot` and `ingested_move_snapshot` in the create transaction. Later Granot evidence cannot overwrite them. Missing historical snapshots may be labeled `legacy_baseline` from current fields only; `captured_at_ingestion` is never rewritten. `granot_contact_snapshot` is a separate field. |
-| WordPress Form Submission Receipt | Independent ingress fact, not a Lead and not a Granot Observation Receipt. Capture-before-create on the authorized test path only. Fail closed. Same submission key reuses the existing Lead. Field stripped before persist. |
+| WordPress Form Submission Receipt | Independent ingress fact, not a Lead and not a Granot Observation Receipt. Capture-before-create on the authorized test path only. Capture and attach after persist are fail-closed. Same key + unattached receipt (`lead_ref` null) refuses a second Lead; same key + existing `lead_ref` reuses that Lead. Authorized capture with a submission key forces `runSheetSyncWrite({ forceTransaction: true })`. Field stripped before persist. |
 | Form Job Number / sparse move facts | Additive `job_no` / `normalized_job_no` via existing `normalizeJobNo`. This is not **Tracking Reference**. CRM Posting still sends `FormLead.ref_no` as `leadno`. The model allows absent `move_size` / `move_date` so trusted Granot creation can preserve absence. This service's `createFormLeadInTransaction` still writes `move_date: input.move_date ?? tx.now`. A legacy CRM payload built from an absent stored date emits an empty `movedte` instead of inventing today. |
 
 Lead Messaging owner invariants live in [`lead-messaging.md`](./lead-messaging.md).

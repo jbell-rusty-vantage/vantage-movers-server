@@ -23,6 +23,7 @@ export const STAGE_REASON = {
   BOOKING_OFFICIAL: "BOOKING_OFFICIAL",
   BOOKING_INTAKE_OPEN: "BOOKING_INTAKE_OPEN",
   BOOKING_RESOLVED_WITHOUT_FACT: "BOOKING_RESOLVED_WITHOUT_FACT",
+  BOOKING_UNAVAILABLE_AFTER_CANCELLATION: "BOOKING_UNAVAILABLE_AFTER_CANCELLATION",
   BOOKING_NOT_STARTED: "BOOKING_NOT_STARTED",
   CANCELLATION_OFFICIAL: "CANCELLATION_OFFICIAL",
   CANCELLATION_INTAKE_OPEN: "CANCELLATION_INTAKE_OPEN",
@@ -61,8 +62,7 @@ function firstClock(events: EnhancedJobTimelineEvent[]): string | undefined {
 export function officialFactsContradict(events: EnhancedJobTimelineEvent[]): boolean {
   const bookings = eventsOf(events, "official_booking");
   const cancellations = eventsOf(events, "official_cancellation");
-  if (cancellations.length === 0) return false;
-  if (bookings.length === 0) return true;
+  if (cancellations.length === 0 || bookings.length === 0) return false;
   const bookingAt = firstClock(bookings);
   const cancellationAt = firstClock(cancellations);
   return Boolean(bookingAt && cancellationAt && cancellationAt < bookingAt);
@@ -81,7 +81,7 @@ export function evaluateCurrentOutcome(input: {
   if (officialFactsContradict(input.events)) {
     return "contradictory";
   }
-  if (officialCancellation && officialBooking) {
+  if (officialCancellation) {
     return "cancelled";
   }
   if (openCancellationIntake && officialBooking) {
@@ -244,6 +244,15 @@ function assessBooking(coverage: JobTimelinePage["coverage"], events: EnhancedJo
       state: "complete",
       label: "Booked",
       reason_code: STAGE_REASON.BOOKING_OFFICIAL,
+      event_ids,
+    };
+  }
+  if (coverage.official_cancellation) {
+    return {
+      stage: "booking",
+      state: "attention",
+      label: "Official Booking no longer present",
+      reason_code: STAGE_REASON.BOOKING_UNAVAILABLE_AFTER_CANCELLATION,
       event_ids,
     };
   }

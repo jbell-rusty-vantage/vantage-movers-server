@@ -12,6 +12,11 @@ app.use(express.json());
 app.use(
   createJobNumberTimelineAdminRouter({
     connect: async () => undefined,
+    listRecentOfficialBookings: async () => [
+      { job_no: "P9003", booked_at: "2026-08-20T14:00:00.000Z" },
+      { job_no: "P9002", booked_at: "2026-08-19T14:00:00.000Z" },
+      { job_no: "P9001", booked_at: "2026-08-18T14:00:00.000Z" },
+    ],
     read: async (input) => {
       if (input.job_no.trim() === "") {
         return { status: "invalid_job_number", normalized_job_no: null };
@@ -173,4 +178,57 @@ test("typed miss returns not_found without an event list", async () => {
   const body = await response.json() as { ok: true; data: { status: string; page?: unknown } };
   assert.equal(body.data.status, "not_found");
   assert.equal(body.data.page, undefined);
+});
+
+test("Owner recent official booking examples return only Job Numbers", async () => {
+  const path = "/api/v1/admin/job-number-timeline/recent-official-bookings";
+  const response = await fetch(`${baseUrl()}${path}`, {
+    headers: signedHeaders("owner", "/api/v1/admin/job-number-timeline/recent-official-bookings"),
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json() as {
+    ok: true;
+    data: { bookings: Array<{ job_no: string; booked_at: string; customer_name?: string }> };
+  };
+  assert.equal(body.ok, true);
+  assert.deepEqual(body.data.bookings.map((row) => row.job_no), ["P9003", "P9002", "P9001"]);
+  assert.equal(body.data.bookings[0]?.booked_at, "2026-08-20T14:00:00.000Z");
+  assert.equal("customer_name" in (body.data.bookings[0] ?? {}), false);
+});
+
+test("unhandled timeline read failure does not echo error.message", async () => {
+  const failingApp = express();
+  failingApp.use(
+    createJobNumberTimelineAdminRouter({
+      connect: async () => undefined,
+      read: async () => {
+        throw new Error("mongo connection string leaked");
+      },
+    }),
+  );
+  const failingServer = failingApp.listen(0);
+  try {
+    const path = "/api/v1/admin/job-number-timeline?job_no=P5562924";
+    const response = await fetch(
+      `http://127.0.0.1:${(failingServer.address() as AddressInfo).port}${path}`,
+      { headers: signedHeaders("owner", "/api/v1/admin/job-number-timeline") },
+    );
+    assert.equal(response.status, 500);
+    const body = await response.json() as { ok: false; error: string };
+    assert.equal(body.ok, false);
+    assert.equal(body.error, "Internal error");
+    assert.equal(JSON.stringify(body).includes("mongo connection string leaked"), false);
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      failingServer.close((error?: Error) => (error ? reject(error) : resolve())),
+    );
+  }
+});
+
+test("Admin cannot read recent official booking examples", async () => {
+  const path = "/api/v1/admin/job-number-timeline/recent-official-bookings";
+  const response = await fetch(`${baseUrl()}${path}`, {
+    headers: signedHeaders("admin", "/api/v1/admin/job-number-timeline/recent-official-bookings"),
+  });
+  assert.equal(response.status, 403);
 });

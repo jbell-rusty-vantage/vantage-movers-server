@@ -161,4 +161,9 @@ Append-only. Newest last. One entry per pickup, block, and close.
              source_received only when the receipt exists; no-receipt
              golden kept. vantage-movers-clients did not participate.
              See reports/JTE-07-completion.md. Pack ready to ship.
+2026-08-27 · review follow-up · Owner approved four warnings from the
+             Job Timeline Enhancement Review. Snapshot-only Cancellation
+             is a found cancelled page plus OFFICIAL_BOOKING_UNAVAILABLE;
+             WordPress attach is fail-closed and forces a transaction;
+             timeline admin 500 no longer echoes error.message.
 ```

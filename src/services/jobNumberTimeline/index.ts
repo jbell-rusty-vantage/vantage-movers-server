@@ -1,5 +1,10 @@
 export { createJobNumberTimelineModule } from "./module.js";
 export type { JobNumberTimelineModule } from "./module.js";
+export {
+  RECENT_OFFICIAL_BOOKING_EXAMPLE_LIMIT,
+  listRecentOfficialBookingExamples,
+} from "./recent-official-bookings.js";
+export type { RecentOfficialBookingExample } from "./recent-official-bookings.js";
 export type {
   EnhancedJobTimelineEvent,
   EnhancedJobTimelinePage,

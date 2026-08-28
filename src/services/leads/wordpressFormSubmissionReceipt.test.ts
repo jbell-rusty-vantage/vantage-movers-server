@@ -131,6 +131,90 @@ test("unauthorized or keyless WordPress create does not write a receipt", async 
   assert.equal(store.list().length, 0);
 });
 
+test("unattached receipt refuses a second Lead create", async () => {
+  const store = createMemoryWordpressReceiptStore();
+  await store.insertReceived({
+    submission_key: "wp-sub-unattached-1",
+    received_at: NOW,
+  });
+  let created = false;
+
+  await assert.rejects(
+    () =>
+      captureWordpressReceiptThenCreateLead({
+        authorization: {
+          ingestionOrigin: "wordpress_form",
+          testMode: true,
+          databaseName: "testvantagemovers",
+        },
+        submissionKey: "wp-sub-unattached-1",
+        now: NOW,
+        store,
+        createLead: async () => {
+          created = true;
+          return { leadId: "lead-wp-second" };
+        },
+      }),
+    /unattached/,
+  );
+  assert.equal(created, false);
+  assert.equal(store.list().length, 1);
+  assert.equal(store.list()[0]?.lead_ref, null);
+});
+
+test("attach failure does not leave a creatable second Lead", async () => {
+  let creates = 0;
+  const store = createMemoryWordpressReceiptStore();
+  const failingAttach = {
+    insertReceived: store.insertReceived.bind(store),
+    findBySubmissionKey: store.findBySubmissionKey.bind(store),
+    async attachLeadRef() {
+      throw new Error("mongo attach failed");
+    },
+  };
+
+  await assert.rejects(
+    () =>
+      captureWordpressReceiptThenCreateLead({
+        authorization: {
+          ingestionOrigin: "wordpress_form",
+          testMode: true,
+          databaseName: "testvantagemovers",
+        },
+        submissionKey: "wp-sub-attach-fail",
+        now: NOW,
+        store: failingAttach,
+        createLead: async () => {
+          creates += 1;
+          return { leadId: "lead-wp-attach-fail" };
+        },
+      }),
+    /receipt attach failed/,
+  );
+  assert.equal(creates, 1);
+  assert.equal(store.list()[0]?.lead_ref, null);
+
+  await assert.rejects(
+    () =>
+      captureWordpressReceiptThenCreateLead({
+        authorization: {
+          ingestionOrigin: "wordpress_form",
+          testMode: true,
+          databaseName: "testvantagemovers",
+        },
+        submissionKey: "wp-sub-attach-fail",
+        now: NOW,
+        store,
+        createLead: async () => {
+          creates += 1;
+          return { leadId: "lead-wp-second" };
+        },
+      }),
+    /unattached/,
+  );
+  assert.equal(creates, 1);
+});
+
 test("capture failure aborts Lead create", async () => {
   let created = false;
   await assert.rejects(

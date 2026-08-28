@@ -27,6 +27,7 @@ const ATTENTION_CATALOG: TimelineAttentionCode[] = [
   "BOOKING_CASE_RESOLVED_WITHOUT_FACT",
   "CANCELLATION_CASE_RESOLVED_WITHOUT_FACT",
   "ORPHAN_CANCELLATION_REFERENCE",
+  "OFFICIAL_BOOKING_UNAVAILABLE",
   "SHEET_SYNC_PENDING_TOO_LONG",
   "SHEET_SYNC_TERMINAL_FAILURE",
   "CONTRADICTORY_OFFICIAL_STATE",
@@ -262,6 +263,37 @@ test("unresolved lead without official fact is unknown and lead unresolved", asy
   assert.equal(page.coverage.lead, "unresolved");
   assert.ok(codes(page).includes("LEAD_UNRESOLVED"));
   assertAlwaysLimitations(page);
+});
+
+test("snapshot-only cancellation is a found cancelled page", async () => {
+  const page = await ok("7703", {
+    ...emptyJobTimelineRows(),
+    cancellations: [
+      {
+        id: "cancel-snap-only",
+        booked_lead: "deleted-booking",
+        createdAt: T1,
+        job_no_snapshot: "7703",
+        normalized_job_no_snapshot: "7703",
+        lead_ref_snapshot: { model: "FormLead", id: "lead-gone" },
+        booking_created_at_snapshot: T0,
+      },
+    ],
+  });
+  assert.equal(page.current_outcome, "cancelled");
+  assert.equal(page.summary.headline, "Cancelled");
+  assert.equal(page.coverage.official_cancellation, true);
+  assert.equal(page.coverage.official_booking, false);
+  assert.equal(page.events.some((event) => event.kind === "official_booking"), false);
+  assert.ok(page.events.some((event) => event.kind === "official_cancellation"));
+  assert.ok(codes(page).includes("OFFICIAL_BOOKING_UNAVAILABLE"));
+  assert.equal(codes(page).includes("CONTRADICTORY_OFFICIAL_STATE"), false);
+  assert.equal(stage(page, "booking").state, "attention");
+  assert.equal(stage(page, "booking").label, "Official Booking no longer present");
+  assert.equal(stage(page, "booking").reason_code, "BOOKING_UNAVAILABLE_AFTER_CANCELLATION");
+  assert.equal(stage(page, "cancellation").state, "complete");
+  assertAlwaysLimitations(page);
+  assertCatalogOnly(page);
 });
 
 test("orphan cancellation without snapshot yields orphan attention", async () => {

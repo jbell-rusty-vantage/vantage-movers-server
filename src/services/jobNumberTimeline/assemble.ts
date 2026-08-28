@@ -832,6 +832,9 @@ export function assembleJobNumberTimeline(
   }
 
   const hop = firstHop(input, normalized);
+  const snapshotCancellations = asList(input.rows.cancellations).filter((row) =>
+    cancellationAttachedBySnapshot(row, normalized),
+  );
   const firstHopEmpty =
     hop.observations.length === 0
     && hop.record_links.length === 0
@@ -839,7 +842,8 @@ export function assembleJobNumberTimeline(
     && hop.booking_cases.length === 0
     && hop.release_cases.length === 0
     && hop.booking_discrepancies.length === 0
-    && hop.release_discrepancies.length === 0;
+    && hop.release_discrepancies.length === 0
+    && snapshotCancellations.length === 0;
   if (firstHopEmpty) {
     return { status: "not_found", normalized_job_no: normalized };
   }
@@ -935,6 +939,7 @@ export function assembleJobNumberTimeline(
     || hop.observations[0]?.job_no_snapshot
     || hop.booking_cases[0]?.job_no_snapshot
     || hop.release_cases[0]?.job_no_snapshot
+    || cancellation?.job_no_snapshot
     || null;
 
   const primaryScope = scopes[0];

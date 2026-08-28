@@ -312,7 +312,9 @@ export async function createFormLead(input: CreateFormLeadInput) {
         ingestion_origin: "wordpress_form",
       }),
     {
-      forceTransaction: input.sms_consent === true && messagingAllowedInRuntime,
+      forceTransaction:
+        (input.sms_consent === true && messagingAllowedInRuntime)
+        || Boolean(input.wordpress_submission_key),
     },
   );
   return finalizeFormLeadCreateAfterCommit(pending);

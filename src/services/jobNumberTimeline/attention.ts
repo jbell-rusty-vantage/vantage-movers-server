@@ -136,6 +136,18 @@ function evaluateSheetSyncTerminalFailure(events: EnhancedJobTimelineEvent[]): T
   );
 }
 
+function evaluateOfficialBookingUnavailable(
+  coverage: JobTimelinePage["coverage"],
+  events: EnhancedJobTimelineEvent[],
+): TimelineAttention | null {
+  if (!coverage.official_cancellation || coverage.official_booking) return null;
+  return item(
+    "OFFICIAL_BOOKING_UNAVAILABLE",
+    "Official Cancellation is on this Job; the Booking document is no longer present.",
+    idsForKind(events, "official_cancellation"),
+  );
+}
+
 function evaluateContradictoryOfficialState(events: EnhancedJobTimelineEvent[]): TimelineAttention | null {
   if (!officialFactsContradict(events)) return null;
   return item(
@@ -243,6 +255,7 @@ export function evaluateAttention(input: {
     evaluateBookingCaseResolvedWithoutFact(input.page.coverage, input.events),
     evaluateCancellationCaseResolvedWithoutFact(input.page.coverage, input.events),
     evaluateOrphanCancellationReference(input.rows, input.events),
+    evaluateOfficialBookingUnavailable(input.page.coverage, input.events),
     evaluateSheetSyncPendingTooLong(input.events, input.now, threshold),
     evaluateSheetSyncTerminalFailure(input.events),
     evaluateContradictoryOfficialState(input.events),

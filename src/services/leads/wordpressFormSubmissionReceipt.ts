@@ -265,6 +265,31 @@ export async function captureWordpressReceiptThenCreateLead(input: {
     return { receipt: null, createdLead: true, reusedLeadId: null };
   }
 
+  const existing = await input.store.findBySubmissionKey(
+    submission_key,
+    input.session,
+  );
+  if (existing?.lead_ref) {
+    const exists = input.leadExists
+      ? await input.leadExists(existing.lead_ref.id)
+      : true;
+    if (!exists) {
+      throw new ServiceUnavailableError(
+        "WordPress submission receipt points at a missing Form Lead; refusing to invent a replacement",
+      );
+    }
+    return {
+      receipt: existing,
+      createdLead: false,
+      reusedLeadId: existing.lead_ref.id,
+    };
+  }
+  if (existing && !existing.lead_ref) {
+    throw new ServiceUnavailableError(
+      "WordPress submission receipt is unattached; refusing to create a second Form Lead",
+    );
+  }
+
   let receipt: WordpressFormSubmissionReceiptRecord;
   try {
     receipt = await input.store.insertReceived({
@@ -296,10 +321,23 @@ export async function captureWordpressReceiptThenCreateLead(input: {
   }
 
   const created = await input.createLead();
-  const attached = await input.store.attachLeadRef({
-    receipt_id: receipt.id,
-    lead_id: created.leadId,
-    session: input.session,
-  });
+  let attached: WordpressFormSubmissionReceiptRecord;
+  try {
+    attached = await input.store.attachLeadRef({
+      receipt_id: receipt.id,
+      lead_id: created.leadId,
+      session: input.session,
+    });
+  } catch (error) {
+    throw new ServiceUnavailableError(
+      "WordPress submission receipt attach failed; refusing to continue",
+      { cause: error instanceof Error ? error : undefined },
+    );
+  }
+  if (!attached.lead_ref || attached.lead_ref.id !== created.leadId) {
+    throw new ServiceUnavailableError(
+      "WordPress submission receipt attach failed; refusing to continue",
+    );
+  }
   return { receipt: attached, createdLead: true, reusedLeadId: null };
 }

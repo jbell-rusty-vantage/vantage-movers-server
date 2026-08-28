@@ -357,6 +357,23 @@ test("Unresolved Lead has no source-lead Sheet Sync", () => {
   assert.equal(kinds(page).includes("sheet_sync"), false);
 });
 
+test("orphan cancellation without snapshot is not a first-hop survivor", () => {
+  const result = assembleJobNumberTimeline({
+    rawJobNo: "7704",
+    rows: {
+      ...emptyJobTimelineRows(),
+      cancellations: [
+        {
+          id: "cancel-orphan-only",
+          booked_lead: "missing-booking",
+          createdAt: T1,
+        },
+      ],
+    },
+  });
+  assert.equal(result.status, "not_found");
+});
+
 test("Typed search not_found", () => {
   const result = assembleJobNumberTimeline({
     rawJobNo: "1999",

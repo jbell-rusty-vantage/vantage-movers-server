@@ -80,7 +80,7 @@ Live values live in [`PROGRESS.md`](PROGRESS.md).
 | [JTE-03](issues/JTE-03.md) | Outcome, stage assessment, attention, limitations, freshness | JTE-02 | complete | complete |
 | [JTE-04](issues/JTE-04.md) | Enhanced Owner UI and evidence expansion | JTE-03 | complete | complete |
 | [JTE-05](issues/JTE-05.md) | Live proof, security, accessibility, performance, deep links | JTE-04 | complete | complete |
-| [JTE-06](issues/JTE-06.md) | Cancellation correlation snapshots and report-first backfill | JTE-02; separate write approval | deferred | complete |
+| [JTE-06](issues/JTE-06.md) | Cancellation correlation snapshots and report-first backfill | JTE-02; separate write approval | complete | complete |
 | [JTE-07](issues/JTE-07.md) | WordPress durable receipt capture | separate source-assurance approval | complete | complete |
 
 ## Ready queue
@@ -93,9 +93,16 @@ Live values live in [`PROGRESS.md`](PROGRESS.md).
 - **JTE-04 is complete.** Admin renders the server v2 hierarchy.
 - **JTE-05 is complete.** Deep links, live proof, and certification
   shipped.
+- **JTE-06 is complete.** Official Cancellation create stamps the four
+  immutable correlation snapshots. A snapshot-matching Cancellation is a
+  first-hop survivor (`ok` / `cancelled`, not `not_found`).
 - **JTE-07 is complete.** WordPress durable receipt capture shipped on
-  the authorized test path. `goldenWordpressRows` stays the no-receipt
-  golden. Live status for the rest of the pack is [`PROGRESS.md`](PROGRESS.md).
+  the authorized test path. Attach after persist is fail-closed.
+  `goldenWordpressRows` stays the no-receipt golden. Live status for the
+  rest of the pack is [`PROGRESS.md`](PROGRESS.md). Review follow-up:
+  snapshot-only Cancellation is a found cancelled page plus
+  `OFFICIAL_BOOKING_UNAVAILABLE`; unhandled timeline admin 500 returns
+  `{ error: "Internal error" }` and does not echo `error.message`.
 
 ## Standing constraints for every issue
 
@@ -143,18 +150,24 @@ These apply to all issues and are not repeated as scope in each one.
 Observed at pack creation 2026-08-27; **reverified after JTE-02** the same
 day. Each issue's §4 repeats the subset it depends on.
 
-- Production HTTP route `src/routes/job-number-timeline-admin.routes.ts` is
-  authorize → validate → `createJobNumberTimelineModule({ loader }).read` →
-  respond. Redaction is inside the module. Primary code:
-  `src/services/jobNumberTimeline/`. No file under `src/` imports
-  `scripts/prototypes/job-number-timeline`. The prototype folder is a
-  retained CLI/proof adapter (`cli.ts` `render` / `discover` call the
-  module; `discover.ts` is ranking only; `load.ts` is DB-name /
-  production-confirm helpers only).
-- Route is Owner-only, mounted after the `/api/v1` guard in `v1.routes.ts`.
-  Envelope `{ ok: true, data: JobTimelineAssembleResult }`. Success HTTP is
-  always `200`, including `not_found` / `filtered_out` / `invalid_job_number`.
-  On `ok`, `page` is `EnhancedJobTimelinePage` with
+- Production typed Job Number HTTP route
+  `src/routes/job-number-timeline-admin.routes.ts` is authorize → validate
+  → `createJobNumberTimelineModule({ loader }).read` → respond. Redaction
+  is inside the module. Primary code: `src/services/jobNumberTimeline/`.
+  No file under `src/` imports `scripts/prototypes/job-number-timeline`.
+  The prototype folder is a retained CLI/proof adapter (`cli.ts`
+  `render` / `discover` call the module; `discover.ts` is ranking only;
+  `load.ts` is DB-name / production-confirm helpers only).
+- A separate Owner-only
+  `GET /api/v1/admin/job-number-timeline/recent-official-bookings` is
+  registered first on that same router. It returns at most three official
+  Booking Job Numbers (`job_no` + `booked_at`) from
+  `recent-official-bookings.ts`. It is not `module.read`, not a catalog,
+  dropdown, or paginated list.
+- Typed Job Number route is Owner-only, mounted after the `/api/v1` guard
+  in `v1.routes.ts`. Envelope `{ ok: true, data: JobTimelineAssembleResult }`.
+  Success HTTP is always `200`, including `not_found` / `filtered_out` /
+  `invalid_job_number`. On `ok`, `page` is `EnhancedJobTimelinePage` with
   `schema_version: "job_timeline.v2"`. Every v1 field remains.
 - Twelve event kinds. `source_received` is type priority 5 (below
   `lead_created` 10). Granot emits it only when a loaded Observation Receipt
@@ -189,9 +202,12 @@ day. Each issue's §4 repeats the subset it depends on.
   `summary.headline`, stage strip, attention if present, oldest-first
   clustered spine, collapsed Proof boundaries). Density `?view=` hides
   rows only. v1 fixtures without `schema_version` still use
-  `coverage-chips.tsx`. Headlines are locked. There is no catalog. Owner
-  Job Number deep links use `buildJobTimelineHref({ job })`. Live proof:
-  `reports/JTE-05-live-proof.md`.
+  `coverage-chips.tsx`. Headlines are locked. There is no catalog. The
+  empty `/job-timeline` state (and the same chips under search after a
+  page is open) may show the bounded official Booking sample as
+  `JobTimelineDeepLink` chips. Owner Job Number deep links use
+  `buildJobTimelineHref({ job })`. Search draft syncs when `?job=`
+  changes. Live proof: `reports/JTE-05-live-proof.md`.
 
 ## Layout
 

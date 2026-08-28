@@ -32,9 +32,13 @@ not evaluate. `goldenWordpressRows` / `wordpressRows()` job
 - After JTE-01, **no file under `src/` imports**
   `scripts/prototypes/job-number-timeline`. The CLI may adapt over
   `src/services/jobNumberTimeline`.
-- Route stays thin: authorize, validate, `module.read`, respond.
-- Tests call the same module interface as the route. Mongo and memory
-  loaders both exist, or the loader seam is fake.
+- Typed Job Number route stays thin: authorize, validate, `module.read`,
+  respond.
+- `GET .../recent-official-bookings` is registered first on the same
+  router. It calls `listRecentOfficialBookingExamples` in
+  `recent-official-bookings.ts`. It does not call `module.read`.
+- Tests call the same module interface as the typed Job Number route.
+  Mongo and memory loaders both exist, or the loader seam is fake.
 - `projector.ts` calls `outcome.ts` (`evaluateCurrentOutcome`,
   `assessStages`, `outcomeHeadline`) and `attention.ts` (one evaluator
   per specification §8 attention and limitation code, `evaluateFreshness`)
@@ -50,9 +54,13 @@ not evaluate. `goldenWordpressRows` / `wordpressRows()` job
   attempt only. Sheet Sync joins by entity ID, never Job Number.
 - No inferred events. No Job Number catalog. No `$lookup` on the hot
   route. Cap 250 events with a named truncation limitation.
+  `GET .../recent-official-bookings` is a separate Owner-only sample of
+  at most three official Booking Job Numbers. It is not a catalog.
 - Always emit `MULTI_QUERY_READ`, `MOVE_COMPLETION_UNAVAILABLE`, and
   `GOOGLE_DESTINATION_UNVERIFIED`. Keep `TIMELINE_TRUNCATED` when the
-  250 cap hits. Do not invent extra §8 codes.
+  250 cap hits. `OFFICIAL_BOOKING_UNAVAILABLE` is the approved §8
+  addition for snapshot-recovered Cancellation without a live Booking.
+  Do not invent other §8 codes.
 - Never leak contact, SMS body, transcript, recording, provider payload,
   Sheet ID, Sheet row, or raw error body.
 - Admin must not recompute outcome, attention, or limitations. Golden
@@ -73,8 +81,14 @@ not evaluate. `goldenWordpressRows` / `wordpressRows()` job
   not `process.env`).
 - After JTE-06, the Mongo loader hops `cancelled_leads` by indexed
   `normalized_job_no_snapshot` when present (`equivalentNormalizedJobSnapshotFilter`),
-  merged with booking-linked rows. Assemble still refuses orphans
-  without a durable job snapshot.
+  merged with booking-linked rows. A snapshot-matching Cancellation is
+  a first-hop survivor. Assemble still refuses orphans without a
+  durable job snapshot. Snapshot-only official Cancellation is
+  `ok` / `cancelled` plus `OFFICIAL_BOOKING_UNAVAILABLE`, not
+  `not_found` or `contradictory`. Booking stage label is
+  "Official Booking no longer present" /
+  `BOOKING_UNAVAILABLE_AFTER_CANCELLATION`. Do not invent an
+  `official_booking` event.
 - After JTE-07, the Mongo loader hops `wordpress_form_submission_receipts`
   by indexed `lead_ref.id` when the resolved lead is a Form Lead.
   No collection scan.

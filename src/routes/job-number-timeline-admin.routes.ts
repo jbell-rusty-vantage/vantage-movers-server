@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import mongoose from "mongoose";
 import { z } from "zod";
 import { connectMongo } from "../db";
+import { logger } from "../logger";
 import type { VantageAuthContext } from "../middleware/requireApiSecret";
 import {
   isRegistryError,
@@ -12,6 +13,11 @@ import {
   type JobTimelineAssembleResult,
 } from "../services/jobNumberTimeline";
 import { createMongoEvidenceLoader } from "../services/jobNumberTimeline/mongo-evidence-loader";
+import {
+  createMongoRecentOfficialBookingLister,
+  listRecentOfficialBookingExamples,
+  type RecentOfficialBookingExample,
+} from "../services/jobNumberTimeline/recent-official-bookings";
 
 const querySchema = z.object({
   job_no: z.string().trim().min(1),
@@ -26,6 +32,7 @@ export type JobNumberTimelineAdminDeps = {
     source_granularity_id?: string;
     source_company_id?: string;
   }) => Promise<JobTimelineAssembleResult>;
+  listRecentOfficialBookings?: () => Promise<RecentOfficialBookingExample[]>;
 };
 
 async function defaultRead(input: {
@@ -42,12 +49,33 @@ async function defaultRead(input: {
   }).read(input);
 }
 
+async function defaultListRecentOfficialBookings(): Promise<RecentOfficialBookingExample[]> {
+  const db = mongoose.connection.db;
+  if (!db) {
+    throw new Error("Mongo is not connected");
+  }
+  return listRecentOfficialBookingExamples(createMongoRecentOfficialBookingLister(db));
+}
+
 export function createJobNumberTimelineAdminRouter(
   deps: JobNumberTimelineAdminDeps = {},
 ): Router {
   const router = Router();
   const connect = deps.connect ?? connectMongo;
   const read = deps.read ?? defaultRead;
+  const listRecentOfficialBookings =
+    deps.listRecentOfficialBookings ?? defaultListRecentOfficialBookings;
+
+  router.get("/api/v1/admin/job-number-timeline/recent-official-bookings", async (req, res) => {
+    try {
+      await connect();
+      requireRegistryOwnerActor(req, auth(req));
+      const bookings = await listRecentOfficialBookings();
+      return res.status(200).json({ ok: true, data: { bookings } });
+    } catch (error) {
+      return sendError(res, error, requestId(req));
+    }
+  });
 
   router.get("/api/v1/admin/job-number-timeline", async (req, res) => {
     try {
@@ -89,9 +117,14 @@ function sendError(res: Response, error: unknown, requestIdValue?: string) {
       request_id: requestIdValue ?? null,
     });
   }
+  logger.error({
+    err: error,
+    request_id: requestIdValue ?? null,
+    msg: "job-number-timeline.admin.unhandled",
+  });
   return res.status(500).json({
     ok: false,
-    error: error instanceof Error ? error.message : "Internal error",
+    error: "Internal error",
     request_id: requestIdValue ?? null,
   });
 }
