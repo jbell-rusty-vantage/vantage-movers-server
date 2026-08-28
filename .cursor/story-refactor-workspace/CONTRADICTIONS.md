@@ -4,6 +4,12 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Software rule `granot-crm-csv-s3-sync.mdc` still names `scripts/granot_crm_csv/sync-from-s3.ts`. That path is not on this checkout; `package.json` has no `granot*csv*` command. Apply lives on `sync.service.ts`. Do not invent the script so the rule “wins,” and do not call apply from upload. See `recommendations/granot-crm-csv-upload.md`.
+- `uploadGranotCrmCsvSchema` accepts `frame_url` and `byte_length`. The upload file ignores both and stores `Buffer.byteLength(csv_text)`. Do not persist those fields so “the body works.” See `recommendations/granot-crm-csv-upload.md`.
+- Ingestion model status includes `failed`. Upload never writes it — S3/Mongo errors throw. Do not start writing a failed row so “the enum is honest.” See `recommendations/granot-crm-csv-upload.md`.
+- S3 history/latest/meta then Mongo ingestion then `last_ingestions` stamp. A Mongo miss after latest overwrite leaves S3 ahead of the skip hash. Do not silently write Mongo first in this rename. See `recommendations/granot-crm-csv-upload.md`.
+- There is no `upload.service.test.ts`. Folder tests lock parse and key folds only. Do not treat those as upload proof. See `recommendations/granot-crm-csv-upload.md`.
+- This checkout’s `CONTEXT.md` does not define Granot CRM CSV ingestion / S3 latest object. Do not invent a glossary copy. See `recommendations/granot-crm-csv-upload.md`.
 - Folder `HANDOFF.md` calls `runWorkflow.ts` the durable create/plan/approve/apply interface and still says Form writes cross `updateFormLead` / Call writes re-preview then sync. `[AC-02]` and knowledge forbid those imports. Do not restore the bypass so HANDOFF “wins.” See `recommendations/granot-http-collector-run-workflow.md`.
 - Knowledge `automation-apply.md` Primary code lists `runWorkflow.ts` beside capture. This file walks selected actions into `applyAutomationPlanAction`; it does not insert a receipt. Do not move capture here so the Primary-code line “wins.” See `recommendations/granot-http-collector-run-workflow.md`.
 - The checksum envelope still says `schema_version: 1` while the payload is the sealed schema-2 plan. Do not bump the envelope so “the numbers match.” See `recommendations/granot-http-collector-run-workflow.md`.

@@ -18,11 +18,11 @@ Production module = a `.ts` file that is not `*.test.ts`, `*.replica.test.ts`, o
 ## Stock (rewrite every run)
 
 - Wave: A
-- Services visited / in-progress / unvisited: **13 / 0 / 24**
-- Recommendations on disk: **78** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`, `cancellations-cancellation-resolver.md`, `cancellations-cancellation-mirror.md`, `customers-customer.md`, `customers-customer-from-lead.md`, `agents-agent-allocation.md`, `agents-receiver-agent-crm-username.md`, `lead-source-companies-lead-source-company.md`, `cpl-cpl-rate.md`, `catalog-catalog.md`, `search-form-lead-search.md`, `search-form-lead-browse.md`, `search-call-lead-search.md`, `search-call-lead-browse.md`, `enrichment-call-lead-enrichment.md`, `enrichment-call-lead-enrichment-rows.md`, `reconciliation-booked-call-lead.md`, `reconciliation-booked-call-lead-rows.md`, `granot-lifecycle-capture.md`, `granot-lifecycle-queue-publisher.md`, `granot-lifecycle-extension-apply.md`, `granot-lifecycle-automation-apply.md`, `granot-lifecycle-automation-compatibility.md`, `granot-lifecycle-normalization.md`, `granot-lifecycle-source-policy.md`, `granot-lifecycle-identity.md`, `granot-lifecycle-granot-temporal.md`, `granot-lifecycle-lead-desired-state.md`, `granot-lifecycle-authorized-desired-state.md`, `granot-lifecycle-lead-contact-projection.md`, `granot-lifecycle-processor.md`, `granot-lifecycle-operations.md`, `granot-lifecycle-projections.md`, `granot-lifecycle-creating-observation.md`, `granot-lifecycle-drainer.md`, `granot-lifecycle-aggregate-revision.md`, `granot-lifecycle-trusted-lead-create-validation.md`, `granot-lifecycle-synchronize-lead-from-granot.md`, `granot-lifecycle-create-lead-from-granot.md`, `granot-lifecycle-booking-reconciliation.md`, `granot-lifecycle-booking-confirmation.md`, `granot-lifecycle-booking-owner-commands.md`, `granot-lifecycle-booking-priority-pairing.md`, `granot-lifecycle-referral-booking.md`, `granot-lifecycle-release-reconciliation.md`, `granot-lifecycle-release-owner-commands.md`, `granot-lifecycle-discrepancies.md`, `granot-lifecycle-discrepancy-owner-commands.md`, `granot-lifecycle-discrepancy-projections.md`, `granot-lifecycle-observability.md`, `granot-lifecycle-metrics.md`, `granot-lifecycle-alerts.md`, `granot-http-collector-index.md`, `granot-http-collector-automation.md`, `granot-http-collector-source-catalog.md`, `granot-http-collector-form-workflow.md`, `granot-http-collector-form-lead-matcher.md`, `granot-http-collector-lifecycle-statement.md`, `granot-http-collector-run-workflow.md`)
-- Current service: `granotHttpCollector` (visited)
-- Next module: open `granotCrmCsv` (enumerate first)
-- Last session: `story-granot-http-collector-run-workflow-2026-08-28T0127Z`
+- Services visited / in-progress / unvisited: **13 / 1 / 23**
+- Recommendations on disk: **79** (`form-lead.md`, `leads-call-lead.md`, `leads-duplicate-lead.md`, `leads-ingestion-provenance.md`, `leads-source-company.md`, `leads-cpl-resolution.md`, `leads-lead-location.md`, `leads-lead-name.md`, `leads-lead-phone-matching.md`, `leads-source-lead-lookup.md`, `leads-call-lead-source-match.md`, `leads-lead-source-compatibility.md`, `bookings-booked-lead.md`, `bookings-booked-lead-from-source.md`, `bookings-referral-booking.md`, `bookings-leadless-booking.md`, `bookings-booking-mirror.md`, `bookings-booking-source-resolver.md`, `bookings-booking-identity.md`, `cancellations-cancelled-lead.md`, `cancellations-cancellation-resolver.md`, `cancellations-cancellation-mirror.md`, `customers-customer.md`, `customers-customer-from-lead.md`, `agents-agent-allocation.md`, `agents-receiver-agent-crm-username.md`, `lead-source-companies-lead-source-company.md`, `cpl-cpl-rate.md`, `catalog-catalog.md`, `search-form-lead-search.md`, `search-form-lead-browse.md`, `search-call-lead-search.md`, `search-call-lead-browse.md`, `enrichment-call-lead-enrichment.md`, `enrichment-call-lead-enrichment-rows.md`, `reconciliation-booked-call-lead.md`, `reconciliation-booked-call-lead-rows.md`, `granot-lifecycle-capture.md`, `granot-lifecycle-queue-publisher.md`, `granot-lifecycle-extension-apply.md`, `granot-lifecycle-automation-apply.md`, `granot-lifecycle-automation-compatibility.md`, `granot-lifecycle-normalization.md`, `granot-lifecycle-source-policy.md`, `granot-lifecycle-identity.md`, `granot-lifecycle-granot-temporal.md`, `granot-lifecycle-lead-desired-state.md`, `granot-lifecycle-authorized-desired-state.md`, `granot-lifecycle-lead-contact-projection.md`, `granot-lifecycle-processor.md`, `granot-lifecycle-operations.md`, `granot-lifecycle-projections.md`, `granot-lifecycle-creating-observation.md`, `granot-lifecycle-drainer.md`, `granot-lifecycle-aggregate-revision.md`, `granot-lifecycle-trusted-lead-create-validation.md`, `granot-lifecycle-synchronize-lead-from-granot.md`, `granot-lifecycle-create-lead-from-granot.md`, `granot-lifecycle-booking-reconciliation.md`, `granot-lifecycle-booking-confirmation.md`, `granot-lifecycle-booking-owner-commands.md`, `granot-lifecycle-booking-priority-pairing.md`, `granot-lifecycle-referral-booking.md`, `granot-lifecycle-release-reconciliation.md`, `granot-lifecycle-release-owner-commands.md`, `granot-lifecycle-discrepancies.md`, `granot-lifecycle-discrepancy-owner-commands.md`, `granot-lifecycle-discrepancy-projections.md`, `granot-lifecycle-observability.md`, `granot-lifecycle-metrics.md`, `granot-lifecycle-alerts.md`, `granot-http-collector-index.md`, `granot-http-collector-automation.md`, `granot-http-collector-source-catalog.md`, `granot-http-collector-form-workflow.md`, `granot-http-collector-form-lead-matcher.md`, `granot-http-collector-lifecycle-statement.md`, `granot-http-collector-run-workflow.md`, `granot-crm-csv-upload.md`)
+- Current service: `granotCrmCsv` (in-progress)
+- Next module: `sync.service.ts`
+- Last session: `story-granot-crm-csv-upload-2026-08-28T0245Z`
 
 ## How to read a service row
 
@@ -232,9 +232,20 @@ Folder: `src/services/granotHttpCollector/` — several passes. Do not treat as 
 | `runWorkflow.ts` | recommended → [recommendations/granot-http-collector-run-workflow.md](recommendations/granot-http-collector-run-workflow.md) |
 | `errors.ts` | skip — error class |
 
-### 14. `granotCrmCsv` — medium — unvisited
+### 14. `granotCrmCsv` — medium — **in-progress**
 
-`src/services/granotCrmCsv/`
+Folder: `src/services/granotCrmCsv/` — several passes. Do not treat as one recommendation.
+
+| Module | Verdict |
+| --- | --- |
+| `upload.service.ts` | recommended → [recommendations/granot-crm-csv-upload.md](recommendations/granot-crm-csv-upload.md) |
+| `sync.service.ts` | |
+| `registry.ts` | |
+| `parser.ts` | |
+| `keys.ts` | skip — key fold |
+| `storage.ts` | skip — S3 adapter |
+| `types.ts` | skip — type-only |
+| `index.ts` | skip — barrel |
 
 ### 15. `crm` — medium — unvisited
 
