@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-28T16:21Z
 - Service / module: `sheetSync` / `sheetSyncSourceLookup.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (open after this pass — #95 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/96
 
 ## Stock at start
 
