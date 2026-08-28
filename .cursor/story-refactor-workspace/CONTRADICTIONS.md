@@ -4,6 +4,13 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- `docs/knowledge/services/cancelled-lead.md` labels `syncCancellationChainById` as “drainer/legacy.” The drain never imports `sheetSyncSourceLookup.ts`; it uses `planCancellationChain`. `finalizeSheetSync` reaches this file only in legacy through `runFullSheetSyncProcess`. Do not add a drain import so the sentence “becomes true.” See `recommendations/sheet-sync-source-lookup.md`.
+- Missing Booking / Cancellation is warn + return. Missing source Lead is `getLinkedLead` 404. Planner missing Booking / Cancellation is an empty plan marked `synced`; a missing source Lead still throws. Do not empty-return a missing Lead so “every miss is quiet.” See `recommendations/sheet-sync-source-lookup.md`.
+- `syncBookingAndSource` uses `orFail`. Chain entry (`syncBookingChainById` / `syncBookedLeadById`) warns + returns. Leftover Cancellation delete already found the Booking. Do not unify so “one helper owns both.” See `recommendations/sheet-sync-source-lookup.md`.
+- Unmatched Call skip lives here (`sheet_sync.call_lead.created_on_unmatched.skipped`) and again in `jobPlanner` (`sheet_sync.drain.call_lead.created_on_unmatched.skipped`). The googleSheets facade will write a Calls row if invoked directly. Do not teach `getLinkedLead` to 404 unmatched stubs. See `recommendations/sheet-sync-source-lookup.md`.
+- Booking Chain loads twice (unpopulated, then populated). Planner loads once. Do not merge the loads in this rename so “we match queued.” See `recommendations/sheet-sync-source-lookup.md`.
+- Leftover `syncAfterClear` default still calls `syncSourceLead`. Every current caller passes `false`. Do not delete the inline sync so the cancellation-mirror Role line “wins.” See `recommendations/sheet-sync-source-lookup.md` and `recommendations/cancellations-cancellation-mirror.md`.
+- This checkout’s `CONTEXT.md` names Sheet Sync in the intro and does not define Booking Chain / Cancellation Chain. Do not invent a glossary copy. See `recommendations/sheet-sync-source-lookup.md`.
 - This file is mode-blind. Persist owns the queued gate. Granot / RingCentral call `enqueueSheetSyncJob` directly. Do not add `getSheetSyncMode()` here so “legacy cannot write,” and do not silently route those callers through persist. See `recommendations/sheet-sync-outbox.md`.
 - Booked-lead tombstone cancels `booked_lead:{id}` only. It does not cancel `booking_chain:{id}`. Knowledge names this. Do not cancel Booking Chain so “one delete owns the Booking.” See `recommendations/sheet-sync-outbox.md`.
 - Coalesce is `pending` / `retrying` only. A write during drain creates a fresh `pending` job. Do not fold onto `processing` so “one row owns the entity.” See `recommendations/sheet-sync-outbox.md`.
