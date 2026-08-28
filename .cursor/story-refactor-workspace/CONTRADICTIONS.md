@@ -4,6 +4,14 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- `getLeadMessagingCredentials()` is loaded by `createTwilioSender` and only `accountSid` / `authToken` are used. `fromNumber` / `statusCallbackUrl` / `messagingServiceSid` already sit on the sibling send input. Do not start sending `credentials.fromNumber` so “the adapter owns From.” See `recommendations/lead-messaging-twilio-adapter.md`.
+- Webhook validation reads `TWILIO_PRIMARY_AUTH_TOKEN` and `TWILIO_STATUS_CALLBACK_URL` via `getRequiredEnv`, not the credentials bag. Voice’s `requestUrl` would be lost if this switched to `credentials.statusCallbackUrl` alone. Do not unify the reads so “one bag owns both.” See `recommendations/lead-messaging-twilio-adapter.md`.
+- Two Messaging Service error strings: sibling quiet-hours “defer SMS during Eastern quiet hours” vs this file “schedule an SMS.” Do not unify so “one error wins.” See `recommendations/lead-messaging-twilio-adapter.md`.
+- Scheduled Twilio create still includes `from` plus `messagingServiceSid`. Do not drop `from` so “Messaging Service owns the number.” See `recommendations/lead-messaging-twilio-adapter.md`.
+- Status webhook never passes `requestUrl`; voice always does. Do not start using `req.originalUrl` so “we match the request host.” See `recommendations/lead-messaging-twilio-adapter.md`.
+- Missing env throws (routes → 500). Bad signature returns false (routes → 403). Do not return false on missing token so “invalid config looks like a forged callback.” See `recommendations/lead-messaging-twilio-adapter.md`.
+- `createTwilioSender` has no interface test. Folder tests lock payload shape and the default-URL signature only. Do not add a live Twilio network test. See `recommendations/lead-messaging-twilio-adapter.md`.
+- Knowledge `applies_to` omits `twilioAdapter.ts`. Do not add it to `docs/knowledge` in this rename. See `recommendations/lead-messaging-twilio-adapter.md`.
 - The Lead Messaging consumer ignores `{ kind, reason }` and drains due Mongo. Do not parse `reason` so “the consumer knows why,” and do not send `message_id` so “the consumer can claim this row.” See `recommendations/lead-messaging-lead-messaging-queue.md`.
 - `LeadMessagingWakeupReason` includes `cron` and no caller publishes it. Cron drains directly. Do not publish from `/api/cron/lead-messaging-drain` so “every drain uses the queue.” See `recommendations/lead-messaging-lead-messaging-queue.md`.
 - A closed publish gate returns `false` with no skip log. Fail logs only. Do not add a skip log so “we match Sheet Sync,” and do not emit `publish_failed` on skip. See `recommendations/lead-messaging-lead-messaging-queue.md`.
