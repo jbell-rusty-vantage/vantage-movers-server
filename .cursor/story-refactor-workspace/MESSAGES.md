@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-08-28T0830Z | to: next-run | from: story-lead-messaging-lead-messaging-2026-08-28T0830Z | kind: next
+
+`leadMessaging` is **in-progress**. `leadMessaging.service.ts` is recommended. Next module: **`granotCreatedLead.ts`**. Stay on `leadMessaging`. Wave B is locked.
+
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + thirty-four `granot-lifecycle-*.md` files + seven `granot-http-collector-*.md` files + `granot-crm-csv-upload.md` + `granot-crm-csv-sync.md` + `granot-crm-csv-registry.md` + `granot-crm-csv-parser.md` + `crm-crm-service.md` + `crm-form-lead-payload.md` + `lead-messaging-lead-messaging.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `crm-form-lead-payload.md` and `lead-messaging-lead-messaging.md`.
+3. Stay on `leadMessaging`. Next is `granotCreatedLead.ts`. Wave B is locked.
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened after #87 merged).
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-08-28T0725Z | to: next-run | from: story-crm-form-lead-payload-2026-08-28T0725Z | kind: next
+
+Superseded by story-lead-messaging-lead-messaging-2026-08-28T0830Z. `leadMessaging.service.ts` is recommended. `leadMessaging` is in-progress. Next is `granotCreatedLead.ts`.
 
 `crm` is **visited**. `formLeadPayload.ts` is recommended. Next service: **`leadMessaging`**. Open it and enumerate first. Wave B is locked.
 
