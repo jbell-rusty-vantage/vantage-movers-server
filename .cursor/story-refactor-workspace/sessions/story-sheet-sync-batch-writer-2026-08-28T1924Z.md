@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-28T19:24Z
 - Service / module: `sheetSync` / `drainer/batchWriter.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / new PR after #98 merged
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/99
 
 ## Stock at start
 
