@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-29T16:21Z
 - Service / module: `googleDriveOAuth` / `picker.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (open after this pass — #119 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/120
 
 ## Stock at start
 
