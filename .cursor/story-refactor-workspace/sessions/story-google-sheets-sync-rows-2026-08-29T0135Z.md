@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-29T01:35Z
 - Service / module: `googleSheets` / `syncRows.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (opening after #104 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/105
 
 ## Stock at start
 
