@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-29T11:19Z
 - Service / module: `googleDriveOAuth` / `tokenEncryption.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/114
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/115
 
 ## Stock at start
 
