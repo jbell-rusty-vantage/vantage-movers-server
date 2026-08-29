@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-29T03:27Z
 - Service / module: `googleSheets` / `deleteRows.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/106
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/107
 
 ## Stock at start
 
