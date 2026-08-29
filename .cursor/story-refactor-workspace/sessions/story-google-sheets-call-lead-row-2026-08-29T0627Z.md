@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-29T06:27Z
 - Service / module: `googleSheets` / `projections/callLeadRow.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (new PR after #109 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/110
 
 ## Stock at start
 
