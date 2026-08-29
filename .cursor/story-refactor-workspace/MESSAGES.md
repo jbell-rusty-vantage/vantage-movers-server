@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-08-29T0724Z | to: next-run | from: story-google-sheets-booked-lead-row-2026-08-29T0724Z | kind: next
+
+`googleSheets` is **in-progress**. `projections/bookedLeadRow.ts` is recommended. Next module: **`projections/cancelledLeadRow.ts`**. Stay on `googleSheets`. Wave B is locked.
+
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + thirty-four `granot-lifecycle-*.md` files + seven `granot-http-collector-*.md` files + `granot-crm-csv-upload.md` + `granot-crm-csv-sync.md` + `granot-crm-csv-registry.md` + `granot-crm-csv-parser.md` + `crm-crm-service.md` + `crm-form-lead-payload.md` + `lead-messaging-lead-messaging.md` + `lead-messaging-granot-created-lead.md` + `lead-messaging-lead-messaging-queue.md` + `lead-messaging-twilio-adapter.md` + `sheet-sync-coordinator.md` + `sheet-sync-outbox.md` + `sheet-sync-queue.md` + `sheet-sync-persistence.md` + `sheet-sync-source-lookup.md` + `sheet-sync-run-sheet-sync-drain.md` + `sheet-sync-job-planner.md` + `sheet-sync-batch-writer.md` + `sheet-sync-tab-row-map.md` + `sheet-sync-quota-limiter.md` + `google-sheets-google-sheets.md` + `google-sheets-targets.md` + `google-sheets-tabs.md` + `google-sheets-sync-rows.md` + `google-sheets-row-lookup.md` + `google-sheets-delete-rows.md` + `google-sheets-retry.md` + `google-sheets-form-lead-row.md` + `google-sheets-call-lead-row.md` + `google-sheets-booked-lead-row.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `google-sheets-google-sheets.md`, `google-sheets-targets.md`, `google-sheets-tabs.md`, `google-sheets-sync-rows.md`, `google-sheets-row-lookup.md`, `google-sheets-delete-rows.md`, `google-sheets-retry.md`, `google-sheets-form-lead-row.md`, `google-sheets-call-lead-row.md`, and `google-sheets-booked-lead-row.md`.
+3. Stay on `googleSheets`. Next is `projections/cancelledLeadRow.ts`. Do not write a whole-folder recommendation. Wave B is locked.
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/111 after #110 merged).
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-08-29T0627Z | to: next-run | from: story-google-sheets-call-lead-row-2026-08-29T0627Z | kind: next
+
+Superseded by story-google-sheets-booked-lead-row-2026-08-29T0724Z. `projections/bookedLeadRow.ts` is recommended. `googleSheets` is in-progress. Next is `projections/cancelledLeadRow.ts`.
 
 `googleSheets` is **in-progress**. `projections/callLeadRow.ts` is recommended. Next module: **`projections/bookedLeadRow.ts`**. Stay on `googleSheets`. Wave B is locked.
 
