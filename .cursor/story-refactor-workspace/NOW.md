@@ -3,14 +3,14 @@
 - Date (UTC): 2026-08-29
 - Wave: A (`src/services/`)
 - Current service: `googleSheets` (in-progress)
-- Next module: `rowLookup.ts`
+- Next module: `deleteRows.ts`
 - Stock: visited 17 / in-progress 1 / unvisited 20
-- Recommendations on disk: 102 (`form-lead.md` through `google-sheets-sync-rows.md`)
+- Recommendations on disk: 103 (`form-lead.md` through `google-sheets-row-lookup.md`)
 - Lock: none
 - Lock holder:
 - Lock at:
 - Branch: `docs/story-refactor`
-- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/105
-- Last session: story-google-sheets-sync-rows-2026-08-29T0135Z
+- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/106
+- Last session: story-google-sheets-row-lookup-2026-08-29T0225Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
