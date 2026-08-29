@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-29T22:38Z
 - Service / module: `operationalWorkbooks` / `registry.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (open after #125 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/126
 
 ## Stock at start
 
