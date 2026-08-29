@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-29T21:20Z
 - Service / module: `googleMaps` / `geocoding.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (new PR after #124 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/125
 
 ## Stock at start
 
