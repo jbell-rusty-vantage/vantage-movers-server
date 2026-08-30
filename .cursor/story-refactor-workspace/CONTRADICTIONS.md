@@ -4,6 +4,10 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Knowledge pipeline draws evaluate after upsert. `call-candidate-store.ts` folds, **asks** already-recommended evaluate, and writes `decisionStatus` in one upsert. Wave B then appends the trail. Do not split evaluate back out so “the diagram becomes true.” See `recommendations/ringcentral-call-candidate-store.md`.
+- The fold placeholder can be `not_candidate`. Already-recommended evaluate never returns that sixth status. Persisted rows always have evaluate’s five. Do not silently map the placeholder to `rejected` so “one status enum.” See `recommendations/ringcentral-call-candidate-store.md`.
+- Every webhook tick appends a party decision. Leftover session persist only appends on a status change. Do not silently gate the party trail so “both trails match.” See `recommendations/ringcentral-call-candidate-store.md`.
+- `CALL_CANDIDATES_TEST_COLLECTION` is leftover config’s runtime name (default `_test` suffix), not test-only. Do not silently rename the collections. See `recommendations/ringcentral-call-candidate-store.md`.
 - `docs/knowledge/services/cancelled-lead.md` labels `syncCancellationChainById` as “drainer/legacy.” The drain never imports `sheetSyncSourceLookup.ts`; it uses `planCancellationChain`. `finalizeSheetSync` reaches this file only in legacy through `runFullSheetSyncProcess`. Do not add a drain import so the sentence “becomes true.” See `recommendations/sheet-sync-source-lookup.md`.
 - Missing Booking / Cancellation is warn + return. Missing source Lead is `getLinkedLead` 404. Planner missing Booking / Cancellation is an empty plan marked `synced`; a missing source Lead still throws. Do not empty-return a missing Lead so “every miss is quiet.” See `recommendations/sheet-sync-source-lookup.md`.
 - `syncBookingAndSource` uses `orFail`. Chain entry (`syncBookingChainById` / `syncBookedLeadById`) warns + returns. Leftover Cancellation delete already found the Booking. Do not unify so “one helper owns both.” See `recommendations/sheet-sync-source-lookup.md`.
