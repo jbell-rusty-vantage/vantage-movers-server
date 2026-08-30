@@ -4,6 +4,10 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Knowledge draws evaluate per-party after upsert, then aggregate. `call-session-aggregator.ts` **asks** already-recommended evaluate again on a synthetic merged candidate. Do not delete the second ask so “we already judged each party.” See `recommendations/ringcentral-call-session-aggregator.md`.
+- The aggregator comment says “inbound AND matched” is first. The score treats inbound (+1_000_000) and matched-with-source (+500_000) as two additives. An inbound unmatched party beats a matched outbound party. Do not silently switch to a lexicographic AND so “the comment becomes true.” See `recommendations/ringcentral-call-session-aggregator.md`.
+- Canonical / lifecycle recency is `updatedAt.getTime() / 1_000_000` then `min(…, 9_000)`. Every 2026 party saturates. Do not silently change the divisor so “most recently updated works.” See `recommendations/ringcentral-call-session-aggregator.md`.
+- Session `answeredAt` is the earliest answered party. Hangup is the lifecycle party. Duration can span two legs. Do not silently use only `lifecycleParty.answeredAt` so “one party owns the clock.” See `recommendations/ringcentral-call-session-aggregator.md`.
 - Knowledge pipeline draws evaluate after upsert. `call-candidate-store.ts` folds, **asks** already-recommended evaluate, and writes `decisionStatus` in one upsert. Wave B then appends the trail. Do not split evaluate back out so “the diagram becomes true.” See `recommendations/ringcentral-call-candidate-store.md`.
 - The fold placeholder can be `not_candidate`. Already-recommended evaluate never returns that sixth status. Persisted rows always have evaluate’s five. Do not silently map the placeholder to `rejected` so “one status enum.” See `recommendations/ringcentral-call-candidate-store.md`.
 - Every webhook tick appends a party decision. Leftover session persist only appends on a status change. Do not silently gate the party trail so “both trails match.” See `recommendations/ringcentral-call-candidate-store.md`.
