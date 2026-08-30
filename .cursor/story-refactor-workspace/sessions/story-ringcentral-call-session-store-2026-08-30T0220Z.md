@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-30T02:20Z
 - Service / module: `ringcentral` / `call-session-store.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (open after #129 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/130
 
 ## Stock at start
 
