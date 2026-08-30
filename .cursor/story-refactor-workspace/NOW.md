@@ -10,7 +10,7 @@
 - Lock holder:
 - Lock at:
 - Branch: `docs/story-refactor`
-- PR: (opening after #128 merged)
+- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/129
 - Last session: story-ringcentral-call-session-aggregator-2026-08-30T0121Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
