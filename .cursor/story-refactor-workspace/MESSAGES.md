@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-08-30T0419Z | to: next-run | from: story-ringcentral-webhook-subscriptions-2026-08-30T0419Z | kind: next
+
+`ringcentral` is **in-progress**. `webhook-subscriptions.ts` is recommended. Next module: **`ringcentral-call-lead-ingest.service.ts`**. Stay on `ringcentral`. Wave B is locked.
+
+1. Take stock first. Disk now has the twelve `leads` recommendations + seven `bookings-*.md` files + three `cancellations-*.md` files + two `customers-*.md` files + two `agents-*.md` files + `lead-source-companies-lead-source-company.md` + `cpl-cpl-rate.md` + `catalog-catalog.md` + four `search-*.md` files + two `enrichment-*.md` files + two `reconciliation-*.md` files + thirty-four `granot-lifecycle-*.md` files + seven `granot-http-collector-*.md` files + `granot-crm-csv-upload.md` + `granot-crm-csv-sync.md` + `granot-crm-csv-registry.md` + `granot-crm-csv-parser.md` + `crm-crm-service.md` + `crm-form-lead-payload.md` + `lead-messaging-lead-messaging.md` + `lead-messaging-granot-created-lead.md` + `lead-messaging-lead-messaging-queue.md` + `lead-messaging-twilio-adapter.md` + `sheet-sync-coordinator.md` + `sheet-sync-outbox.md` + `sheet-sync-queue.md` + `sheet-sync-persistence.md` + `sheet-sync-source-lookup.md` + `sheet-sync-run-sheet-sync-drain.md` + `sheet-sync-job-planner.md` + `sheet-sync-batch-writer.md` + `sheet-sync-tab-row-map.md` + `sheet-sync-quota-limiter.md` + `google-sheets-google-sheets.md` + `google-sheets-targets.md` + `google-sheets-tabs.md` + `google-sheets-sync-rows.md` + `google-sheets-row-lookup.md` + `google-sheets-delete-rows.md` + `google-sheets-retry.md` + `google-sheets-form-lead-row.md` + `google-sheets-call-lead-row.md` + `google-sheets-booked-lead-row.md` + `google-sheets-cancelled-lead-row.md` + `google-auth-service-account.md` + `google-drive-oauth-google-drive-oauth.md` + `google-drive-oauth-token-encryption.md` + `google-drive-oauth-oauth-scopes.md` + `google-drive-oauth-oauth-security.md` + `google-drive-oauth-owner-auth.md` + `google-drive-oauth-spreadsheet.md` + `google-drive-oauth-picker.md` + `google-drive-oauth-picker-nonce-store.md` + `google-drive-oauth-picker-selection-store.md` + `google-drive-oauth-drive-metadata.md` + `google-drive-oauth-managed-tab.md` + `google-maps-geocoding.md` + `operational-workbooks-registry.md` + `ringcentral-call-candidate-evaluator.md` + `ringcentral-call-candidate-store.md` + `ringcentral-call-session-aggregator.md` + `ringcentral-call-session-store.md` + `ringcentral-webhook-capture.md` + `ringcentral-webhook-subscriptions.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `ringcentral-call-candidate-evaluator.md`, `ringcentral-call-candidate-store.md`, `ringcentral-call-session-aggregator.md`, `ringcentral-call-session-store.md`, `ringcentral-webhook-capture.md`, and `ringcentral-webhook-subscriptions.md`.
+3. Stay on `ringcentral`. Next is `ringcentral-call-lead-ingest.service.ts`. Do not write a whole-folder recommendation. Wave B is locked. `ringcentral` is large — one module this pass.
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened a new PR after #131 merged).
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-08-30T0317Z | to: next-run | from: story-ringcentral-webhook-capture-2026-08-30T0317Z | kind: next
+
+Superseded by story-ringcentral-webhook-subscriptions-2026-08-30T0419Z. `webhook-subscriptions.ts` is recommended. `ringcentral` is in-progress. Next is `ringcentral-call-lead-ingest.service.ts`.
 
 `ringcentral` is **in-progress**. `webhook-capture.ts` is recommended. Next module: **`webhook-subscriptions.ts`**. Stay on `ringcentral`. Wave B is locked.
 
