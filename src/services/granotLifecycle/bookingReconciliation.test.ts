@@ -164,7 +164,7 @@ describe("Booking Reconciliation classification", () => {
     assert.deepEqual(
       classifyBookingReconciliation(context({
         booking_action: "booked",
-        booking: { id: oid(), has_lead: false, officially_cancelled: false, referral: false, employee_reconciliation_case_id: employeeCase },
+        booking: { id: oid(), has_lead: false, officially_cancelled: false, referral: false, booking_origin: "employee_booking", employee_reconciliation_case_id: employeeCase },
       })),
       { kind: "employee_booking_lead_reconciliation", case_id: employeeCase },
     );
@@ -231,6 +231,7 @@ describe("Booking Reconciliation classification", () => {
           has_lead: false,
           officially_cancelled: false,
           referral: false,
+          booking_origin: "employee_booking",
           employee_reconciliation_case_id: employeeCase,
         },
       })).kind,
@@ -619,6 +620,7 @@ describe("Booking Reconciliation persistence", () => {
         has_lead: false,
         officially_cancelled: false,
         referral: false,
+        booking_origin: "employee_booking",
       },
     });
     const memory = memoryStore(current);
@@ -629,5 +631,44 @@ describe("Booking Reconciliation persistence", () => {
     assert.deepEqual(result, { kind: "none", reason: "employee_reconciliation_missing" });
     assert.equal(memory.cases.length, 0);
     assert.equal(memory.decisions.length, 1);
+  });
+
+  it("actual Booked on a Granot official Leadless Booking opens review_existing_booking", async () => {
+    const bookingId = oid();
+    assert.deepEqual(
+      classifyBookingReconciliation(context({
+        booking_action: "booked",
+        booking: {
+          id: bookingId,
+          has_lead: false,
+          officially_cancelled: false,
+          referral: false,
+        },
+      })),
+      {
+        kind: "case",
+        mode: "review_existing_booking",
+        evidence_action: "booked",
+        deterministic_booking_id: bookingId,
+      },
+    );
+    const current = context({
+      booking_action: "booked",
+      booking: {
+        id: bookingId,
+        has_lead: false,
+        officially_cancelled: false,
+        referral: false,
+      },
+    });
+    const memory = memoryStore(current);
+    const result = await createGranotBookingReconciliation({
+      prepared: prepared(current),
+      store: memory.store,
+    }).reconcileObservation({ observation_id: current.observation_id, decision_id: oid() });
+    assert.equal(result.kind, "opened");
+    assert.equal(memory.cases.length, 1);
+    assert.equal(memory.cases[0]?.mode, "review_existing_booking");
+    assert.equal(String(memory.cases[0]?.deterministic_booking_id), bookingId);
   });
 });

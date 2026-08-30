@@ -5,6 +5,8 @@ import {
   extensionGranotApplyItemSchema,
   granotLifecycleActivationCommandSchema,
   granotLifecycleConfirmBookingCommandSchema,
+  granotLifecycleConnectLeadCandidateQuerySchema,
+  granotLifecycleConnectLeadCommandSchema,
   granotLifecycleCreateReferralBookingCommandSchema,
   granotLifecycleUpdateBookingCommandSchema,
   granotLifecycleBookingNoActionCommandSchema,
@@ -223,6 +225,63 @@ test("[AC-22] confirm Booking input is strict and validates exact official cents
       },
     }),
     /unrecognized_keys|agent_allocations/,
+  );
+  const { selected_lead: _omitted, ...withoutLead } = valid;
+  assert.equal(
+    granotLifecycleConfirmBookingCommandSchema.parse(withoutLead).selected_lead,
+    undefined,
+  );
+  assert.throws(
+    () => granotLifecycleConfirmBookingCommandSchema.parse({
+      ...withoutLead,
+      unknown_mode: "leadless",
+    }),
+    /unrecognized_keys|unknown_mode/,
+  );
+});
+
+test("Connect Booking to Lead input is strict and requires selected_lead", () => {
+  const valid = {
+    expected_booking_revision: 2,
+    selected_lead: { lead_model: "FormLead" as const, lead_id: "a".repeat(24) },
+  };
+  assert.deepEqual(granotLifecycleConnectLeadCommandSchema.parse(valid), valid);
+  assert.equal(
+    granotLifecycleConnectLeadCommandSchema.parse({
+      ...valid,
+      out_of_scope_override_reason: "Owner confirmed this is the same household.",
+    }).out_of_scope_override_reason,
+    "Owner confirmed this is the same household.",
+  );
+  assert.throws(
+    () => granotLifecycleConnectLeadCommandSchema.parse({
+      expected_booking_revision: 2,
+    }),
+    /selected_lead/,
+  );
+  assert.throws(
+    () => granotLifecycleConnectLeadCommandSchema.parse({
+      ...valid,
+      official_booking_details: { book_date: "2026-08-01" },
+    }),
+    /unrecognized_keys|official_booking_details/,
+  );
+  assert.throws(
+    () => granotLifecycleConnectLeadCommandSchema.parse({
+      ...valid,
+      out_of_scope_override_reason: "short",
+    }),
+    /out_of_scope_override_reason/,
+  );
+});
+
+test("Connect candidate query allows empty q and rejects unknown keys", () => {
+  assert.equal(granotLifecycleConnectLeadCandidateQuerySchema.parse({}).q, undefined);
+  assert.equal(granotLifecycleConnectLeadCandidateQuerySchema.parse({ q: "  " }).q, undefined);
+  assert.equal(granotLifecycleConnectLeadCandidateQuerySchema.parse({ q: "Granot Later" }).q, "Granot Later");
+  assert.throws(
+    () => granotLifecycleConnectLeadCandidateQuerySchema.parse({ scope: "source" }),
+    /unrecognized_keys|scope/,
   );
 });
 

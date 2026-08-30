@@ -1,5 +1,6 @@
 import mongoose, { type ClientSession } from "mongoose";
 import {
+  getMongoDatabaseName,
   getSheetSyncMode,
   isTestMode,
   shouldAllowLeadMessagingInTestMode,
@@ -24,7 +25,7 @@ import {
   collectDocumentFieldChanges,
   FORM_LEAD_CHANGE_PATHS,
 } from "../domainCommands/entityChange";
-import { ConflictError, NotFoundError } from "../errors";
+import { ConflictError, NotFoundError, ServiceUnavailableError } from "../errors";
 import { deleteFormLeadFromSheets } from "../googleSheets.service";
 import {
   buildTombstonePreviousTargets,
@@ -77,6 +78,10 @@ import {
   dispatchOrQueuePersistedLeadMessage,
   persistLeadMessageIntent,
 } from "../leadMessaging";
+import {
+  captureWordpressReceiptThenCreateLead,
+  createMongoWordpressReceiptStore,
+} from "./wordpressFormSubmissionReceipt";
 
 export type FormLeadCreateTransactionResult = {
   lead: InstanceType<ReturnType<typeof getFormLeadModel>>;
@@ -92,6 +97,7 @@ export type FormLeadCreateTransactionResult = {
   duplicateMatch: Awaited<ReturnType<typeof findDuplicateFormLeadMatch>>;
   crm_company_label: string | undefined;
   sms_consent: boolean | undefined;
+  reusedExistingLead?: boolean;
 };
 
 export async function createFormLeadInTransaction(
@@ -108,6 +114,7 @@ export async function createFormLeadInTransaction(
     post_to_granot,
     sms_consent,
     ingestion_source,
+    wordpress_submission_key,
     ...formLeadInput
   } = input;
   const normalizedFormLeadInput = normalizeLeadName(formLeadInput);
@@ -153,6 +160,7 @@ export async function createFormLeadInTransaction(
     storedBusinessTimestamp: leadTimestamp,
   });
   const lid = normalizedFormLeadInput.lid?.trim() || generateLeadId();
+  const persistNewFormLead = async (): Promise<FormLeadCreateTransactionResult> => {
   const created = new FormLead({
     ...normalizedFormLeadInput,
     ...location,
@@ -234,6 +242,63 @@ export async function createFormLeadInTransaction(
     crm_company_label,
     sms_consent,
   };
+  };
+
+  let createdPending: FormLeadCreateTransactionResult | undefined;
+  const capture = await captureWordpressReceiptThenCreateLead({
+    authorization: {
+      ingestionOrigin: tx.ingestion_origin,
+      testMode: isTestMode(),
+      databaseName: getMongoDatabaseName(),
+    },
+    submissionKey: wordpress_submission_key,
+    now: tx.now,
+    store: createMongoWordpressReceiptStore(),
+    session: tx.session,
+    leadExists: async (leadId) => {
+      const existing = await FormLead.findById(leadId).session(tx.session ?? null);
+      return Boolean(existing);
+    },
+    createLead: async () => {
+      createdPending = await persistNewFormLead();
+      return { leadId: createdPending.lead._id.toString() };
+    },
+  });
+  if (!capture.createdLead && capture.reusedLeadId) {
+    const existing = await FormLead.findById(capture.reusedLeadId).session(
+      tx.session ?? null,
+    );
+    if (!existing) {
+      throw new ServiceUnavailableError(
+        "WordPress submission receipt points at a missing Form Lead; refusing to invent a replacement",
+      );
+    }
+    return {
+      lead: existing,
+      jobs: [],
+      leadMessage: null,
+      shouldPostToGranot: false,
+      crmLabel: existing.crm_source_label_snapshot ?? "",
+      source_company: existing.source_company as SourceCompany,
+      sourceAssignment: {
+        source_company: existing.source_company,
+        lead_source_company: existing.lead_source_company,
+        source_granularity_id: existing.source_granularity_id,
+        source_granularity_key: existing.source_granularity_key,
+      } as FormLeadCreateTransactionResult["sourceAssignment"],
+      duplicate: existing.duplicate === true,
+      duplicateMatch: { duplicate: existing.duplicate === true, matchedBy: null, matchedLeadIds: [] },
+      crm_company_label,
+      sms_consent,
+      reusedExistingLead: true,
+    };
+  }
+  if (!createdPending) {
+    throw new ServiceUnavailableError(
+      "WordPress submission receipt capture failed; Form Lead was not created",
+    );
+  }
+  return createdPending;
 }
 
 export async function createFormLead(input: CreateFormLeadInput) {
@@ -247,7 +312,9 @@ export async function createFormLead(input: CreateFormLeadInput) {
         ingestion_origin: "wordpress_form",
       }),
     {
-      forceTransaction: input.sms_consent === true && messagingAllowedInRuntime,
+      forceTransaction:
+        (input.sms_consent === true && messagingAllowedInRuntime)
+        || Boolean(input.wordpress_submission_key),
     },
   );
   return finalizeFormLeadCreateAfterCommit(pending);
@@ -256,6 +323,18 @@ export async function createFormLead(input: CreateFormLeadInput) {
 export async function finalizeFormLeadCreateAfterCommit(
   pending: FormLeadCreateTransactionResult,
 ) {
+  if (pending.reusedExistingLead) {
+    const crmLabel = pending.crmLabel;
+    return {
+      lead: pending.lead,
+      sheet_sync_status: "skipped" as const,
+      crm_sync_status: "skipped" as const,
+      crm_company_label: crmLabel,
+      crm_response: "",
+      messaging_status: "skipped",
+      lead_message_id: undefined,
+    };
+  }
   const {
     lead,
     jobs,

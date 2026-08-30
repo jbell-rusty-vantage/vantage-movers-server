@@ -93,6 +93,7 @@ When patching an OKF concept: set `generated.by` to the keeper process (not `pro
 | `src/services/operationsRegistry/**`, registry models, `scripts/migrations/operations-registry-*.ts` | `docs/knowledge/services/operations-registry.md`; `rules/operations-registry.mdc`; `rules/cpl-operations.mdc` when CPL schedules/corrections/snapshots change |
 | `src/services/observability/**`, operational models, notification cron | `rules/observability-service.mdc` |
 | `src/models/**`, `src/validation/**` | `rules/schema-and-crud-inputs.mdc`; plus the Service doc whose payload/invariants changed |
+| `src/services/jobNumberTimeline/**`, `src/routes/job-number-timeline-admin.routes.ts`, `scripts/prototypes/job-number-timeline/**` | `docs/knowledge/services/job-number-timeline.md`; `rules/job-number-timeline.mdc`; `rules/project-organization.mdc` Job Number timeline row. Enhancement issues stay in `docs/job-number-timeline/` — update the Service doc when primary code moves, not when an issue is only authored |
 | `src/routes/**`, `src/app.ts`, `api/index.ts`, `api/queues/**` | `rules/project-organization.mdc` (launch map, auth, mounts) |
 | `src/config/domain/**` | `rules/project-organization.mdc` config list; the integration rule that owns those env/toggles |
 | `src/**/*.ts`, `scripts/**/*.ts` (style/safety/tests only) | `rules/typescript.mdc`, `library-typing.mdc`, `testing.mdc`, `backend-safety.mdc` — only if the **convention** changed, not for ordinary feature work |
@@ -104,6 +105,7 @@ When patching an OKF concept: set `generated.by` to the keeper process (not `pro
 | Changed glob | Update |
 | --- | --- |
 | `app/**`, `components/**`, `lib/api/**`, `server/**`, `proxy.ts` | `vantage-admin/.cursor/rules/project-organization.mdc` (routes, clients, auth/proxy, ownership) |
+| `components/job-number-timeline/**`, `lib/api/jobNumberTimeline.ts`, `app/(dashboard)/job-timeline/**` | `vantage-admin/.cursor/rules/job-number-timeline.mdc` plus the Admin project-organization Job timeline row |
 | New admin-only domain term | `vantage-admin/CONTEXT.md` (not the root glossary unless the term is platform-wide) |
 
 ### `granot_sync_extensions_and_services`

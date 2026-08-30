@@ -149,19 +149,21 @@ export async function runExistingCreateFormLead(input: {
           actorType: input.context.actor.actor_type,
         }),
       });
-      await persistPlannedMutations(
-        "createFormLead",
-        input.context,
-        tx,
-        [
-          {
-            entity: { model: "FormLead", id: pending.lead._id.toString() },
-            revision_before: 0,
-            fields: createFields(pending.lead, FORM_LEAD_CHANGE_PATHS),
-          },
-        ],
-        changeIds,
-      );
+      if (!pending.reusedExistingLead) {
+        await persistPlannedMutations(
+          "createFormLead",
+          input.context,
+          tx,
+          [
+            {
+              entity: { model: "FormLead", id: pending.lead._id.toString() },
+              revision_before: 0,
+              fields: createFields(pending.lead, FORM_LEAD_CHANGE_PATHS),
+            },
+          ],
+          changeIds,
+        );
+      }
       return {
         entity_refs: [{ model: "FormLead", id: pending.lead._id.toString() }],
         pending,

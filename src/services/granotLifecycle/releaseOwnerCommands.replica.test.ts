@@ -498,6 +498,37 @@ test("[AC-25][AC-32] verified Referral Booking cancels without fabricating a Lea
   assert.equal(lead?.cancelled, undefined);
 });
 
+test("Confirm Granot Cancellation succeeds on a Granot official Leadless Booking without a Lead mirror", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const fixture = await seedReleaseCase();
+  await Promise.all([
+    BookedLead.collection.updateOne(
+      { _id: fixture.bookingId },
+      {
+        $set: { is_leadless_booking: true, is_referral_booking: false },
+        $unset: { lead_ref: "", lead_model: "" },
+      },
+    ),
+    getGranotRecordLinkModel().collection.updateOne(
+      { _id: (await getGranotReleaseReconciliationCaseModel().findById(fixture.caseId).lean().exec())!.record_link_id },
+      { $unset: { lead_ref: "" } },
+    ),
+  ]);
+  const flags = { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, release_commands_enabled: true };
+  const result = await confirmCancellation({
+    case_id: String(fixture.caseId),
+    expected_case_revision: 1,
+    expected_booking_revision: 0,
+    official_cancellation_details: { cancel_date: "2026-08-19", refund_amount: 0 },
+    idempotency_key: `bila02-leadless-cancel-${fixture.caseId}`,
+    owner,
+  }, { flags });
+  assert.equal(result.outcome, "cancellation_created");
+  assert.equal(result.entity_refs.some((ref) => ref.model === "FormLead" || ref.model === "CallLead"), false);
+  const lead = await getFormLeadModel().findById(fixture.leadId).lean().exec();
+  assert.equal(lead?.cancelled, undefined);
+});
+
 test("[AC-21] all pairwise Release commands have exactly one case-revision winner", async (t) => {
   if (!(await replicaReady(t))) return;
   const flags = { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, release_commands_enabled: true };

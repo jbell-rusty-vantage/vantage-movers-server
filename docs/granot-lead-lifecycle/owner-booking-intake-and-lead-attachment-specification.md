@@ -1,5 +1,12 @@
 # Owner Booking Intake — even Binder, optional Lead, and owner-readable data
 
+> **Implementation workspace (2026-08-28):** remaining optional-Lead, high-confidence
+> auto-attach, and Connect Booking to Lead work is sequenced in
+> [`../booking-intake-lead-attachment/README.md`](../booking-intake-lead-attachment/README.md).
+> That pack **wins on the Connect surface** — first-class on `/bookings`, not
+> `/intakes`. This file still wins on command shapes, eligibility, Sheet Sync
+> names, and processor Leadless follow-through. Even Binder (§5) has landed.
+>
 > **Contract maturity: implementation-ready.** Delta over the locked FINAL SPEC and a **prerequisite** for the Owner Daily pack. It does **not** rewrite [`FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md`](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md). Do not edit that file unless the owner explicitly asks.
 
 **Prepared:** 2026-08-24  

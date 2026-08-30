@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   equivalentNormalizedJobFilter,
+  equivalentNormalizedJobSnapshotFilter,
   jobNumberDigitCore,
   jobNumbersEquivalent,
   normalizeJobNo,
@@ -32,4 +33,14 @@ test("equivalent job filter matches exact, core, and letter-prefixed variants", 
   assert.deepEqual(filter.$or?.[0], { normalized_job_no: "5562366" });
   assert.deepEqual(filter.$or?.[1], { normalized_job_no: "5562366" });
   assert.deepEqual(filter.$or?.[2], { normalized_job_no: { $regex: "^[A-Z]+5562366$" } });
+});
+
+test("equivalent snapshot filter remaps to the indexed cancellation snapshot field", () => {
+  assert.deepEqual(equivalentNormalizedJobSnapshotFilter("SYNTHETIC JOB 100"), {
+    normalized_job_no_snapshot: "SYNTHETIC JOB 100",
+  });
+  const filter = equivalentNormalizedJobSnapshotFilter("7702");
+  assert.ok("$or" in filter);
+  assert.deepEqual(filter.$or?.[0], { normalized_job_no_snapshot: "7702" });
+  assert.deepEqual(filter.$or?.[2], { normalized_job_no_snapshot: { $regex: "^[A-Z]+7702$" } });
 });

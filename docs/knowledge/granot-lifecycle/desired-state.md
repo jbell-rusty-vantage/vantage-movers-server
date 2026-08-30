@@ -63,7 +63,7 @@ WordPress Form: primary name/phone/email and both ingested snapshots stay off `c
 - `isInvalidPriorityUpdate` is only `route_event_class === "priority_updated"` plus `invalid_priority`. Other routes with `valid_with_issues` + `invalid_priority` skip Priority fields and continue
 - Call create-if-missing may acquire a RingCentral convergence scope lock and reject when pre-creation RC candidates exist (`acquireRingCentralConvergenceScopeLock`)
 
-Equivalent formatting uses existing Job/phone/email/state/date normalizers and does not manufacture a change. `changed_paths` are sorted and deduplicated.
+Equivalent formatting uses existing Job/phone/email/state/date normalizers and does not manufacture a change. Contact snapshots also treat US `+1` vs 10-digit phones, email case, name capitalization/whitespace, and a name-only card vs the same tokens split into first/last (`splitNameForCrm`) as the same card. `synchronizeLeadFromGranot` stamps `differs_from_ingested` with that same compare. `changed_paths` are sorted and deduplicated.
 
 ## Command conversion and role-safe projection
 

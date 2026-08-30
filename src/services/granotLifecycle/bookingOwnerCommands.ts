@@ -47,6 +47,7 @@ import {
   GranotLifecycleError,
 } from "./errors";
 import type { BookingOwnerCommandResult } from "./bookingConfirmation";
+import { isGranotOfficialLeadlessBooking, updateBookingSheetIntent } from "./confirmAttachment";
 import type { LeadModel, ObservationChannel } from "./types";
 
 export const UPDATE_BOOKING_COMMAND_NAME = "updateBooking";
@@ -87,18 +88,16 @@ export async function updateExistingBooking(
   const result = await reloadResult(input.case_id, outcome.result.entity_refs, causal.decision_id, outcome.replayed);
   if (!outcome.replayed && result.outcome === "booking_updated" && result.booking_ref) {
     const updatedBooking = await BookedLead.findById(result.booking_ref.id)
-      .select({ is_referral_booking: 1 }).lean().exec();
-    await finalizeSheetSync(updatedBooking?.is_referral_booking === true
-      ? {
-          resource: "booked_lead",
-          operation: "referral_booking.update",
-          bookingId: result.booking_ref.id,
-        }
-      : {
-          resource: "booking_chain",
-          operation: "booked_lead.update",
-          bookingId: result.booking_ref.id,
-        });
+      .select({ is_referral_booking: 1, is_leadless_booking: 1, booking_origin: 1, lead_ref: 1, lead_model: 1 })
+      .lean()
+      .exec();
+    await finalizeSheetSync({
+      ...updateBookingSheetIntent({
+        referral: updatedBooking?.is_referral_booking === true,
+        leadless: Boolean(updatedBooking && isGranotOfficialLeadlessBooking(updatedBooking)),
+      }),
+      bookingId: result.booking_ref.id,
+    });
   }
   return result;
 }
@@ -149,22 +148,23 @@ async function applyUpdate(input: {
     throw lifecycle("Booking revision changed or Booking is no longer active", "DOMAIN_REVISION_CONFLICT", 409, input.input.request_id);
   }
   const referral = bookingBefore.is_referral_booking === true;
+  const granotLeadless = isGranotOfficialLeadlessBooking(bookingBefore);
   const companySlug = referral
     ? await assertActiveReferralPolicy(caseRow, input.session, input.input.request_id)
     : await assertActiveSourceScope(caseRow, input.session, input.input.request_id);
   if (
     bookingBefore.normalized_job_no !== caseRow.normalized_job_no ||
     bookingBefore.source !== companySlug ||
-    bookingBefore.is_leadless_booking ||
-    (!referral && (!bookingBefore.lead_ref || !bookingBefore.lead_model)) ||
+    (bookingBefore.is_leadless_booking && !granotLeadless) ||
+    (!referral && !granotLeadless && (!bookingBefore.lead_ref || !bookingBefore.lead_model)) ||
     (referral && (Boolean(bookingBefore.lead_ref) || Boolean(bookingBefore.lead_model)))
   ) {
     throw lifecycle("Deterministic Booking identity is incompatible with the case", "IDENTITY_CONFLICT", 409, input.input.request_id);
   }
-  const leadBefore = !referral && bookingBefore.lead_model && bookingBefore.lead_ref
+  const leadBefore = !referral && !granotLeadless && bookingBefore.lead_model && bookingBefore.lead_ref
     ? await loadLead(bookingBefore.lead_model, bookingBefore.lead_ref, input.session)
     : null;
-  if (!referral && (
+  if (!referral && !granotLeadless && (
     !leadBefore || String(leadBefore.booked ?? "") !== String(bookingBefore._id) ||
     String(leadBefore.lead_source_company ?? "") !== String(caseRow.source_scope?.lead_source_company ?? "") ||
     String(leadBefore.source_granularity_id ?? "") !== String(caseRow.source_scope?.source_granularity_id ?? "")
@@ -175,7 +175,7 @@ async function applyUpdate(input: {
   const catalogs = await loadActiveCatalog(input.input.official_booking_details, input.session, input.input.request_id);
   const desired = desiredBooking(input.input.official_booking_details, catalogs);
   const bookingSatisfied = sameOfficialBooking(bookingBefore, desired);
-  const leadSatisfied = referral || (Boolean(leadBefore?.over_2000) === desired.over_2000 &&
+  const leadSatisfied = referral || granotLeadless || (Boolean(leadBefore?.over_2000) === desired.over_2000 &&
     Boolean(leadBefore?.over_4000) === desired.over_4000);
   if (bookingSatisfied && leadSatisfied) {
     await resolveCase({
@@ -269,17 +269,10 @@ async function applyUpdate(input: {
     session: input.session,
   });
   failAfter(input.test_fail_after, "case");
-  await persistSheetSyncIntent(referral
-    ? {
-        resource: "booked_lead",
-        operation: "referral_booking.update",
-        bookingId: String(bookingBefore._id),
-      }
-    : {
-        resource: "booking_chain",
-        operation: "booked_lead.update",
-        bookingId: String(bookingBefore._id),
-      }, input.session);
+  await persistSheetSyncIntent({
+    ...updateBookingSheetIntent({ referral, leadless: granotLeadless }),
+    bookingId: String(bookingBefore._id),
+  }, input.session);
   failAfter(input.test_fail_after, "outbox");
   return { entity_refs: ownerRefs(caseRow, bookingBefore._id, bookingBefore.lead_model, bookingBefore.lead_ref, link?._id), warnings: [] };
 }

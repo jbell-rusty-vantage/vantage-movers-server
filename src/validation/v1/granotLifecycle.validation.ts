@@ -87,7 +87,7 @@ export const granotLifecycleConfirmBookingCommandSchema = z
     selected_lead: z.object({
       lead_model: z.enum(["FormLead", "CallLead"]),
       lead_id: objectIdSchema,
-    }).strict(),
+    }).strict().optional(),
     out_of_scope_override_reason: z.string().trim().min(10).max(500).optional(),
     official_booking_details: granotLifecycleOfficialBookingDetailsSchema,
   })
@@ -114,6 +114,25 @@ export const granotLifecycleUpdateBookingCommandSchema = z.object({
 
 export type GranotLifecycleUpdateBookingCommandInput = z.infer<
   typeof granotLifecycleUpdateBookingCommandSchema
+>;
+
+export const granotLifecycleBookingParamsSchema = z
+  .object({ booking_id: objectIdSchema })
+  .strict();
+
+export const granotLifecycleConnectLeadCommandSchema = z
+  .object({
+    expected_booking_revision: z.number().int().min(0),
+    selected_lead: z.object({
+      lead_model: z.enum(["FormLead", "CallLead"]),
+      lead_id: objectIdSchema,
+    }).strict(),
+    out_of_scope_override_reason: z.string().trim().min(10).max(500).optional(),
+  })
+  .strict();
+
+export type GranotLifecycleConnectLeadCommandInput = z.infer<
+  typeof granotLifecycleConnectLeadCommandSchema
 >;
 
 export const granotLifecycleConfirmCancellationCommandSchema = z.object({
@@ -199,6 +218,19 @@ const optionalTrimmed = <T extends z.ZodTypeAny>(schema: T) =>
 const optionalIsoDate = optionalTrimmed(
   z.string().trim().datetime({ offset: true }),
 );
+
+export const granotLifecycleConnectLeadCandidateQuerySchema = z
+  .object({
+    lead_model: optionalTrimmed(z.enum(["FormLead", "CallLead"])),
+    q: optionalTrimmed(z.string().trim().min(1).max(100)),
+    cursor: optionalTrimmed(opaqueCursorSchema),
+    limit: z.coerce.number().int().min(1).max(100).default(25),
+  })
+  .strict();
+
+export type GranotLifecycleConnectLeadCandidateQuery = z.infer<
+  typeof granotLifecycleConnectLeadCandidateQuerySchema
+>;
 
 export const granotLifecycleCaseListQuerySchema = z
   .object({

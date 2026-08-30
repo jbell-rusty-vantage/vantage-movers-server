@@ -1,4 +1,5 @@
 import { jobNumbersEquivalent, normalizeJobNo } from "../bookings/bookingIdentity";
+import { splitNameForCrm } from "../crm/formLeadPayload";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import type { GranotObservationDocument } from "../../models/GranotObservation";
 import type { LeadIdentityResult } from "./identity";
@@ -474,20 +475,44 @@ function valuesSemanticallyEqual(path: string, current: unknown, incoming: unkno
   return Object.is(current, incoming);
 }
 
-function contactSemanticallyEqual(
+export function contactSemanticallyEqual(
   current: LeadContactSnapshot | undefined,
   incoming: LeadContactSnapshot | undefined,
 ): boolean {
   if (!current && !incoming) return true;
   if (!current || !incoming) return false;
   return (
-    normalizeOptionalString(current.first_name) === normalizeOptionalString(incoming.first_name) &&
-    normalizeOptionalString(current.last_name) === normalizeOptionalString(incoming.last_name) &&
-    normalizeOptionalString(current.name) === normalizeOptionalString(incoming.name) &&
+    contactNamesEquivalent(current, incoming) &&
     (normalizePhone(current.normalized_phone_number ?? current.phone_number) ?? null) ===
       (normalizePhone(incoming.normalized_phone_number ?? incoming.phone_number) ?? null) &&
     normalizeEmail(current.email) === normalizeEmail(incoming.email)
   );
+}
+
+function contactNamesEquivalent(
+  current: LeadContactSnapshot,
+  incoming: LeadContactSnapshot,
+): boolean {
+  const left = nameParts(current);
+  const right = nameParts(incoming);
+  return left.first === right.first && left.last === right.last;
+}
+
+function nameParts(card: LeadContactSnapshot): {
+  first: string | undefined;
+  last: string | undefined;
+} {
+  let first = normalizeContactName(card.first_name);
+  let last = normalizeContactName(card.last_name);
+  if (!first || !last) {
+    const name = normalizeContactName(card.name);
+    if (name) {
+      const peeled = splitNameForCrm(name);
+      first = first ?? normalizeContactName(peeled.firstname);
+      last = last ?? normalizeContactName(peeled.lastname);
+    }
+  }
+  return { first, last };
 }
 
 function observationContact(observation: GranotObservationDocument): LeadContactSnapshot {
@@ -614,10 +639,10 @@ function normalizeEmail(value: unknown): string | undefined {
   return trimmed || undefined;
 }
 
-function normalizeOptionalString(value?: string): string | undefined {
+function normalizeContactName(value?: string): string | undefined {
   if (!value) return undefined;
-  const trimmed = value.trim();
-  return trimmed || undefined;
+  const normalized = value.trim().replace(/\s+/g, " ").toLowerCase();
+  return normalized || undefined;
 }
 
 function normalizePhone(value?: string): string | undefined {

@@ -33,8 +33,15 @@ import {
   type CanonicalCommandContext,
 } from "../domainCommands/types";
 import { officialBookingAgentIds, officialBookingAllocations } from "../agents";
+import { upsertCustomerFromBookingContact } from "../customers";
 import { finalizeSheetSync, persistSheetSyncIntent } from "../sheetSync";
 import type { GranotLifecycleConfirmBookingCommandInput } from "../../validation/v1/granotLifecycle.validation";
+import {
+  LEADLESS_CONFIRM_OWNER_NOTICE,
+  confirmSheetIntent,
+  resolveConfirmAttachment,
+  type ConfirmSelectedLead,
+} from "./confirmAttachment";
 import {
   GRANOT_LIFECYCLE_ERROR_CODES,
   GranotLifecycleError,
@@ -54,6 +61,8 @@ export type BookingOwnerCommandResult = {
   record_link_ref?: { id: string; domain_revision: number };
   entity_refs: Array<{ model: string; id: string }>;
   replayed: boolean;
+  owner_notice?: string;
+  is_leadless_booking?: boolean;
 };
 
 export type ConfirmBookingInput = GranotLifecycleConfirmBookingCommandInput & {
@@ -132,18 +141,15 @@ export async function confirmBooking(
   const bookingId = entityId(outcome.result.entity_refs, "BookedLead");
   const linkId = entityId(outcome.result.entity_refs, "GranotRecordLink");
   const [booking, link] = await Promise.all([
-    BookedLead.findById(bookingId).select({ domain_revision: 1 }).lean().exec(),
+    BookedLead.findById(bookingId).select({ domain_revision: 1, is_leadless_booking: 1 }).lean().exec(),
     getGranotRecordLinkModel().findById(linkId).select({ domain_revision: 1 }).lean().exec(),
   ]);
   if (!execution || !resolvedCase?.resolution || !booking || !link) {
     throw new Error("Committed Booking confirmation evidence could not be reloaded.");
   }
+  const leadless = booking.is_leadless_booking === true;
   if (!outcome.replayed && resolvedCase.resolution.outcome === "booking_created") {
-    await finalizeSheetSync({
-      resource: "booking_chain",
-      operation: "booked_lead.create",
-      bookingId,
-    });
+    await finalizeSheetSync({ ...confirmSheetIntent(leadless), bookingId });
   }
   return {
     case_id: input.case_id,
@@ -158,6 +164,10 @@ export async function confirmBooking(
     record_link_ref: { id: linkId, domain_revision: link.domain_revision },
     entity_refs: outcome.result.entity_refs.map((row) => ({ ...row })),
     replayed: outcome.replayed,
+    is_leadless_booking: leadless,
+    ...(leadless && resolvedCase.resolution.outcome === "booking_created"
+      ? { owner_notice: LEADLESS_CONFIRM_OWNER_NOTICE }
+      : {}),
   };
 }
 
@@ -189,8 +199,48 @@ async function applyConfirmation(input: {
     throw lifecycle("Booking case has no reviewed source scope", "POLICY_BLOCKED", 422, input.input.request_id);
   }
   assertStableCausalEvidence(caseRow, input.causal);
-  const source = await loadActiveSourceScope(caseRow.source_scope, input.input.selected_lead.lead_model, input.session, input.input.request_id);
-  const leadBefore = await loadLead(input.input.selected_lead, input.session);
+  const attachment = resolveConfirmAttachment({
+    selected_lead: input.input.selected_lead,
+    suggested_lead: caseRow.suggested_lead
+      ? {
+          lead_ref: {
+            model: caseRow.suggested_lead.lead_ref.model,
+            id: caseRow.suggested_lead.lead_ref.id,
+          },
+          confidence: caseRow.suggested_lead.confidence,
+          match_method: caseRow.suggested_lead.match_method,
+        }
+      : undefined,
+  });
+  const selectedLead = attachment.kind === "attach" ? attachment.selected_lead : undefined;
+  const source = await loadActiveSourceScope(
+    caseRow.source_scope,
+    attachment.kind === "attach" ? attachment.selected_lead.lead_model : undefined,
+    input.session,
+    input.input.request_id,
+  );
+  const catalogs = await loadActiveCatalog(input.input.official_booking_details, input.session, input.input.request_id);
+  const activeLink = await getGranotRecordLinkModel().findOne({
+    provider: "granot",
+    normalized_job_no: caseRow.normalized_job_no,
+    state: "active",
+  }).session(input.session).lean().exec();
+  const existingByJob = await BookedLead.findOne({ normalized_job_no: caseRow.normalized_job_no })
+    .session(input.session).lean().exec();
+  assertCompatibleLink(activeLink, caseRow, existingByJob?._id, input.input.request_id);
+
+  if (attachment.kind === "leadless" || !selectedLead) {
+    return persistLeadlessConfirmation({
+      input,
+      caseRow,
+      source,
+      catalogs,
+      activeLink,
+      existingByJob,
+    });
+  }
+
+  const leadBefore = await loadLead(selectedLead, input.session);
   if (!leadBefore || leadBefore.duplicate === true || ("bad_lead" in leadBefore && leadBefore.bad_lead != null)) {
     throw lifecycle("Selected Lead is not eligible", "IDENTITY_CONFLICT", 409, input.input.request_id);
   }
@@ -204,21 +254,12 @@ async function applyConfirmation(input: {
   if (leadBefore.cancelled) {
     throw lifecycle("Selected Lead is already cancelled", "IDENTITY_CONFLICT", 409, input.input.request_id);
   }
-  const catalogs = await loadActiveCatalog(input.input.official_booking_details, input.session, input.input.request_id);
-  const activeLink = await getGranotRecordLinkModel().findOne({
-    provider: "granot",
-    normalized_job_no: caseRow.normalized_job_no,
-    state: "active",
-  }).session(input.session).lean().exec();
-  const existingByJob = await BookedLead.findOne({ normalized_job_no: caseRow.normalized_job_no })
-    .session(input.session).lean().exec();
-  assertCompatibleLink(activeLink, caseRow, existingByJob?._id, input.input.request_id);
   if (existingByJob) {
     if (!sameOfficialBooking(existingByJob, input.input, catalogs.merchant_name) ||
-      String(existingByJob.lead_ref ?? "") !== input.input.selected_lead.lead_id ||
-      existingByJob.lead_model !== input.input.selected_lead.lead_model ||
+      String(existingByJob.lead_ref ?? "") !== selectedLead.lead_id ||
+      existingByJob.lead_model !== selectedLead.lead_model ||
       !activeLink || String(activeLink.booking_ref ?? "") !== String(existingByJob._id) ||
-      !sameLeadRef(activeLink.lead_ref, input.input.selected_lead)) {
+      !sameLeadRef(activeLink.lead_ref, selectedLead)) {
       throw lifecycle("A conflicting Booking or Record Link already exists", "IDENTITY_CONFLICT", 409, input.input.request_id);
     }
     await resolveCase({
@@ -232,11 +273,11 @@ async function applyConfirmation(input: {
       now: input.now,
       session: input.session,
     });
-    return { entity_refs: refs(caseRow._id, existingByJob._id, input.input.selected_lead, activeLink._id), warnings: [] };
+    return { entity_refs: refs(caseRow._id, existingByJob._id, selectedLead, activeLink._id), warnings: [] };
   }
   if (leadBefore.booked || await BookedLead.exists({
-    lead_ref: toObjectId(input.input.selected_lead.lead_id),
-    lead_model: input.input.selected_lead.lead_model,
+    lead_ref: toObjectId(selectedLead.lead_id),
+    lead_model: selectedLead.lead_model,
   }).session(input.session)) {
     throw lifecycle("Selected Lead is already attached to another Booking", "IDENTITY_CONFLICT", 409, input.input.request_id);
   }
@@ -247,7 +288,7 @@ async function applyConfirmation(input: {
     book_date: new Date(`${input.input.official_booking_details.book_date}T00:00:00.000Z`),
     job_no: caseRow.job_no_snapshot,
     lead_ref: leadBefore._id,
-    lead_model: input.input.selected_lead.lead_model,
+    lead_model: selectedLead.lead_model,
     customer_name: leadDisplayName(leadBefore),
     agent_allocations: officialBookingAllocations(input.input.official_booking_details).map((row) => ({
       agent: toObjectId(row.agent_id),
@@ -267,7 +308,7 @@ async function applyConfirmation(input: {
   });
   await booking.save({ session: input.session });
 
-  const leadUpdate = await updateLeadForBooking(input.input.selected_lead.lead_model,
+  const leadUpdate = await updateLeadForBooking(selectedLead.lead_model,
     {
       _id: leadBefore._id,
       domain_revision: Number(leadBefore.domain_revision ?? 0),
@@ -276,7 +317,7 @@ async function applyConfirmation(input: {
         { $or: [{ booked: null }, { booked: { $exists: false } }] },
         { $or: [{ cancelled: null }, { cancelled: { $exists: false } }] },
       ],
-      ...(input.input.selected_lead.lead_model === "FormLead" ? { bad_lead: { $in: [null, ""] } } : {}),
+      ...(selectedLead.lead_model === "FormLead" ? { bad_lead: { $in: [null, ""] } } : {}),
     },
     { $set: { booked: booking._id, over_2000: booking.over_2000, over_4000: booking.over_4000 } },
     input.session,
@@ -284,13 +325,13 @@ async function applyConfirmation(input: {
   if (leadUpdate.matchedCount !== 1) {
     throw lifecycle("Selected Lead revision changed", "DOMAIN_REVISION_CONFLICT", 409, input.input.request_id);
   }
-  const leadAfter = await loadLead(input.input.selected_lead, input.session);
+  const leadAfter = await loadLead(selectedLead, input.session);
   if (!leadAfter) throw new Error("Selected Lead disappeared during Booking confirmation.");
 
   const link = await persistLink({
     current: activeLink,
     case_row: caseRow,
-    selected_lead: input.input.selected_lead,
+    selected_lead: selectedLead,
     booking_id: booking._id,
     causal: input.causal,
     now: input.now,
@@ -304,10 +345,10 @@ async function applyConfirmation(input: {
       fields: collectDocumentFieldChanges(null, bookingAfter, BOOKED_LEAD_CHANGE_PATHS),
     },
     {
-      change_id: input.change_ids[1]!, entity: { model: input.input.selected_lead.lead_model, id: input.input.selected_lead.lead_id },
+      change_id: input.change_ids[1]!, entity: { model: selectedLead.lead_model, id: selectedLead.lead_id },
       revision_before: Number(leadBefore.domain_revision ?? 0),
       fields: collectDocumentFieldChanges(leadBefore as Record<string, unknown>, leadAfter as Record<string, unknown>,
-        input.input.selected_lead.lead_model === "FormLead" ? FORM_LEAD_CHANGE_PATHS : CALL_LEAD_CHANGE_PATHS),
+        selectedLead.lead_model === "FormLead" ? FORM_LEAD_CHANGE_PATHS : CALL_LEAD_CHANGE_PATHS),
     },
     {
       change_id: input.change_ids[2]!, entity: { model: "GranotRecordLink" as const, id: String(link.after._id) },
@@ -335,11 +376,138 @@ async function applyConfirmation(input: {
     session: input.session,
   });
   await persistSheetSyncIntent({
-    resource: "booking_chain",
-    operation: "booked_lead.create",
+    ...confirmSheetIntent(false),
     bookingId: String(booking._id),
   }, input.session);
-  return { entity_refs: refs(caseRow._id, booking._id, input.input.selected_lead, link.after._id), warnings: [] };
+  return { entity_refs: refs(caseRow._id, booking._id, selectedLead, link.after._id), warnings: [] };
+}
+
+async function persistLeadlessConfirmation(input: {
+  input: Parameters<typeof applyConfirmation>[0];
+  caseRow: import("../../models/GranotBookingReconciliationCase").GranotBookingReconciliationCaseDocument;
+  source: { company_slug: string };
+  catalogs: Awaited<ReturnType<typeof loadActiveCatalog>>;
+  activeLink: GranotRecordLinkDocument | null;
+  existingByJob: Record<string, unknown> | null;
+}) {
+  const { caseRow, source, catalogs, activeLink, existingByJob } = input;
+  if (existingByJob) {
+    if (
+      existingByJob.is_leadless_booking !== true ||
+      existingByJob.lead_ref ||
+      existingByJob.lead_model ||
+      existingByJob.is_referral_booking === true ||
+      !sameOfficialBooking(existingByJob, input.input.input, catalogs.merchant_name) ||
+      !activeLink || String(activeLink.booking_ref ?? "") !== String(existingByJob._id) ||
+      activeLink.lead_ref
+    ) {
+      throw lifecycle("A conflicting Booking or Record Link already exists", "IDENTITY_CONFLICT", 409, input.input.input.request_id);
+    }
+    await resolveCase({
+      case_id: caseRow._id,
+      expected_revision: input.input.input.expected_case_revision,
+      outcome: "already_satisfied",
+      booking_id: existingByJob._id as mongoose.Types.ObjectId,
+      link_id: activeLink._id,
+      command_execution_id: input.input.command_execution_id,
+      actor: input.input.input.owner,
+      now: input.input.now,
+      session: input.input.session,
+    });
+    return { entity_refs: refs(caseRow._id, existingByJob._id as mongoose.Types.ObjectId, undefined, activeLink._id), warnings: [] };
+  }
+
+  const observation = await getGranotObservationModel()
+    .findById(input.input.causal.observation_id)
+    .session(input.input.session)
+    .lean()
+    .exec();
+  const contact = observation?.contact;
+  const customerName = contact?.display_name
+    || [contact?.first_name, contact?.last_name].filter(Boolean).join(" ")
+    || undefined;
+  const customer = customerName
+    ? await upsertCustomerFromBookingContact(
+        { customer_name: customerName, customer_phone: contact?.phone_raw },
+        input.input.session,
+      )
+    : undefined;
+
+  const booking = new BookedLead({
+    _id: new mongoose.Types.ObjectId(),
+    timestamp: input.input.now,
+    book_date: new Date(`${input.input.input.official_booking_details.book_date}T00:00:00.000Z`),
+    job_no: caseRow.job_no_snapshot,
+    ...(customerName ? { customer_name: customerName } : {}),
+    ...(customer ? { customer: customer._id } : {}),
+    agent_allocations: officialBookingAllocations(input.input.input.official_booking_details).map((row) => ({
+      agent: toObjectId(row.agent_id),
+      agent_name_snapshot: catalogs.agent_names.get(row.agent_id)!,
+      binder_amount: cents(row.binder_amount) / 100,
+    })),
+    total_binder_amount: cents(input.input.input.official_booking_details.total_binder_amount) / 100,
+    deposit_amount: cents(input.input.input.official_booking_details.deposit_amount) / 100,
+    merchant: catalogs.merchant_name,
+    source: source.company_slug,
+    over_2000: input.input.input.official_booking_details.deposit_amount > 2000,
+    over_4000: input.input.input.official_booking_details.deposit_amount > 4000,
+    is_referral_booking: false,
+    is_leadless_booking: true,
+    domain_revision: 0,
+  });
+  await booking.save({ session: input.input.session });
+
+  const link = await persistLink({
+    current: activeLink,
+    case_row: caseRow,
+    selected_lead: undefined,
+    booking_id: booking._id,
+    causal: input.input.causal,
+    now: input.input.now,
+    session: input.input.session,
+    request_id: input.input.input.request_id,
+  });
+  await persistEntityChangeMutations({
+    session: input.input.session,
+    now: input.input.now,
+    command_name: COMMAND_NAME,
+    command_execution_id: input.input.command_execution_id,
+    context: input.input.context,
+    mutations: [
+      {
+        change_id: input.input.change_ids[0]!,
+        entity: { model: "BookedLead" as const, id: String(booking._id) },
+        revision_before: 0,
+        fields: collectDocumentFieldChanges(null, booking.toObject() as Record<string, unknown>, BOOKED_LEAD_CHANGE_PATHS),
+      },
+      {
+        change_id: input.input.change_ids[2]!,
+        entity: { model: "GranotRecordLink" as const, id: String(link.after._id) },
+        revision_before: Number(link.before?.domain_revision ?? 0),
+        fields: collectDocumentFieldChanges(
+          link.before as Record<string, unknown> | null,
+          link.after as Record<string, unknown>,
+          RECORD_LINK_CHANGE_PATHS,
+        ),
+      },
+    ],
+  });
+  await resolveCase({
+    case_id: caseRow._id,
+    expected_revision: input.input.input.expected_case_revision,
+    outcome: "booking_created",
+    booking_id: booking._id,
+    link_id: link.after._id,
+    command_execution_id: input.input.command_execution_id,
+    actor: input.input.input.owner,
+    now: input.input.now,
+    session: input.input.session,
+  });
+  await persistSheetSyncIntent({
+    ...confirmSheetIntent(true),
+    bookingId: String(booking._id),
+  }, input.input.session);
+  return { entity_refs: refs(caseRow._id, booking._id, undefined, link.after._id), warnings: [] };
 }
 
 async function loadCausalContext(caseId: string, requestId?: string) {
@@ -359,7 +527,7 @@ async function loadCausalContext(caseId: string, requestId?: string) {
   };
 }
 
-async function loadActiveSourceScope(scope: NonNullable<Awaited<ReturnType<typeof getGranotBookingReconciliationCaseModel>> extends never ? never : import("../../models/GranotBookingReconciliationCase").GranotBookingReconciliationCaseDocument["source_scope"]>, leadModel: LeadModel, session: ClientSession, requestId?: string) {
+async function loadActiveSourceScope(scope: NonNullable<Awaited<ReturnType<typeof getGranotBookingReconciliationCaseModel>> extends never ? never : import("../../models/GranotBookingReconciliationCase").GranotBookingReconciliationCaseDocument["source_scope"]>, leadModel: LeadModel | undefined, session: ClientSession, requestId?: string) {
   const [granotSource, company, granularity] = await Promise.all([
     getGranotCrmSourceModel().findOne({
       _id: scope.granot_crm_source_id,
@@ -373,7 +541,7 @@ async function loadActiveSourceScope(scope: NonNullable<Awaited<ReturnType<typeo
       _id: scope.source_granularity_id,
       source_company: scope.lead_source_company,
       active: true,
-      channel: leadModel === "FormLead" ? "form" : "call",
+      ...(leadModel ? { channel: leadModel === "FormLead" ? "form" : "call" } : {}),
     }).session(session).lean().exec(),
   ]);
   if (!granotSource || !company || !granularity) {
@@ -400,7 +568,7 @@ async function loadActiveCatalog(details: ConfirmBookingInput["official_booking_
 async function persistLink(input: {
   current: GranotRecordLinkDocument | null;
   case_row: import("../../models/GranotBookingReconciliationCase").GranotBookingReconciliationCaseDocument;
-  selected_lead: ConfirmBookingInput["selected_lead"];
+  selected_lead?: ConfirmSelectedLead;
   booking_id: mongoose.Types.ObjectId;
   causal: Awaited<ReturnType<typeof loadCausalContext>>;
   now: Date;
@@ -415,7 +583,9 @@ async function persistLink(input: {
       normalized_job_no: input.case_row.normalized_job_no,
       job_no_snapshot: input.case_row.job_no_snapshot,
       state: "active",
-      lead_ref: { model: input.selected_lead.lead_model, id: toObjectId(input.selected_lead.lead_id) },
+      ...(input.selected_lead
+        ? { lead_ref: { model: input.selected_lead.lead_model, id: toObjectId(input.selected_lead.lead_id) } }
+        : {}),
       booking_ref: input.booking_id,
       source_scope: input.case_row.source_scope ? {
         lead_source_company: input.case_row.source_scope.lead_source_company,
@@ -435,7 +605,9 @@ async function persistLink(input: {
   const updated = await Link.collection.updateOne(
     { _id: before._id, state: "active", domain_revision: before.domain_revision },
     { $set: {
-      lead_ref: { model: input.selected_lead.lead_model, id: toObjectId(input.selected_lead.lead_id) },
+      ...(input.selected_lead
+        ? { lead_ref: { model: input.selected_lead.lead_model, id: toObjectId(input.selected_lead.lead_id) } }
+        : {}),
       booking_ref: input.booking_id,
       disputed: false,
       dispute_reason: undefined,
@@ -497,7 +669,7 @@ function sameOfficialBooking(row: Record<string, unknown>, input: ConfirmBooking
       cents(allocation.binder_amount) === cents(desired[index]!.binder_amount));
 }
 
-async function loadLead(selected: ConfirmBookingInput["selected_lead"], session: ClientSession): Promise<Record<string, unknown> | null> {
+async function loadLead(selected: ConfirmSelectedLead, session: ClientSession): Promise<Record<string, unknown> | null> {
   if (selected.lead_model === "FormLead") {
     return getFormLeadModel().findById(selected.lead_id).session(session).lean().exec() as Promise<Record<string, unknown> | null>;
   }
@@ -518,25 +690,25 @@ async function updateLeadForBooking(
 function commandBody(input: ConfirmBookingInput): GranotLifecycleConfirmBookingCommandInput {
   return {
     expected_case_revision: input.expected_case_revision,
-    selected_lead: input.selected_lead,
+    ...(input.selected_lead ? { selected_lead: input.selected_lead } : {}),
     ...(input.out_of_scope_override_reason ? { out_of_scope_override_reason: input.out_of_scope_override_reason.trim() } : {}),
     official_booking_details: input.official_booking_details,
   };
 }
 function cents(value: number) { return Math.round(value * 100); }
 function validOverride(value?: string) { return Boolean(value && value === value.trim() && value.length >= 10 && value.length <= 500); }
-function sameLeadRef(ref: unknown, selected: ConfirmBookingInput["selected_lead"]) {
+function sameLeadRef(ref: unknown, selected: ConfirmSelectedLead) {
   const row = ref as { model?: unknown; id?: unknown } | undefined;
   return row?.model === selected.lead_model && String(row.id ?? "") === selected.lead_id;
 }
 function leadDisplayName(lead: Record<string, unknown>) {
   return String(lead.name ?? [lead.first_name, lead.last_name].filter(Boolean).join(" ") ?? "").trim() || undefined;
 }
-function refs(caseId: mongoose.Types.ObjectId, bookingId: mongoose.Types.ObjectId, selected: ConfirmBookingInput["selected_lead"], linkId: mongoose.Types.ObjectId): EntityRef[] {
+function refs(caseId: mongoose.Types.ObjectId, bookingId: mongoose.Types.ObjectId, selected: ConfirmSelectedLead | undefined, linkId: mongoose.Types.ObjectId): EntityRef[] {
   return [
     { model: "GranotBookingReconciliationCase", id: String(caseId) },
     { model: "BookedLead", id: String(bookingId) },
-    { model: selected.lead_model, id: selected.lead_id },
+    ...(selected ? [{ model: selected.lead_model, id: selected.lead_id }] : []),
     { model: "GranotRecordLink", id: String(linkId) },
   ];
 }

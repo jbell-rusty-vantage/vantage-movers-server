@@ -371,6 +371,33 @@ test("updateFormLeadSchema accepts and clears bad_lead reasons", () => {
   assert.equal(invalid.success, false);
 });
 
+test("createFormLeadSchema accepts optional wordpress_submission_key", () => {
+  const parsed = createFormLeadSchema.parse({
+    source_company: "main_site",
+    name: "Jane Customer",
+    pickup_zip: "10001",
+    destination_zip: "33101",
+    move_size: "Studio",
+    email: "jane@example.com",
+    phone_number: "5555551212",
+    wordpress_submission_key: "wp-sub-test-1",
+  });
+  assert.equal(parsed.wordpress_submission_key, "wp-sub-test-1");
+  assert.equal(
+    createFormLeadSchema.safeParse({
+      source_company: "main_site",
+      name: "Jane Customer",
+      pickup_zip: "10001",
+      destination_zip: "33101",
+      move_size: "Studio",
+      email: "jane@example.com",
+      phone_number: "5555551212",
+      wordpress_submission_key: "short",
+    }).success,
+    false,
+  );
+});
+
 test("createFormLeadSchema defaults post_to_granot to false when omitted", () => {
   const parsed = createFormLeadSchema.parse({
     source_company: "main_site",

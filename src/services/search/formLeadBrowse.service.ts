@@ -7,6 +7,9 @@ import {
   combineClauses,
   fieldContainsClause,
   fieldEqualsClause,
+  FORM_LEAD_CONTACT_EMAIL_PATHS,
+  FORM_LEAD_CONTACT_NAME_PATHS,
+  FORM_LEAD_CONTACT_PHONE_PATHS,
   fullTextClause,
   normalizeValue,
   toBookingSummary,
@@ -23,11 +26,9 @@ import {
  */
 
 const FULL_TEXT_FIELDS = [
-  "name",
-  "first_name",
-  "last_name",
-  "email",
-  "phone_number",
+  ...FORM_LEAD_CONTACT_NAME_PATHS,
+  ...FORM_LEAD_CONTACT_EMAIL_PATHS,
+  ...FORM_LEAD_CONTACT_PHONE_PATHS,
   "source_company",
   "source_company_label_snapshot",
   "source_granularity_label_snapshot",
@@ -127,23 +128,17 @@ function buildFormLeadBrowseFilter(
 
   const name = normalizeValue(query.name);
   if (name) {
-    clauses.push({
-      $or: [
-        fieldContainsClause("name", name),
-        fieldContainsClause("first_name", name),
-        fieldContainsClause("last_name", name),
-      ],
-    });
+    clauses.push(orContainsPaths(FORM_LEAD_CONTACT_NAME_PATHS, name));
   }
 
   const email = normalizeValue(query.email)?.toLowerCase();
   if (email) {
-    clauses.push(fieldContainsClause("email", email));
+    clauses.push(orContainsPaths(FORM_LEAD_CONTACT_EMAIL_PATHS, email));
   }
 
   const phone = normalizeValue(query.phone_number);
   if (phone) {
-    clauses.push(fieldContainsClause("phone_number", phone));
+    clauses.push(orContainsPaths(FORM_LEAD_CONTACT_PHONE_PATHS, phone));
   }
 
   if (typeof query.booked === "boolean") {
@@ -188,6 +183,13 @@ function mapFormLead(doc: Record<string, unknown>): FormLeadBrowseResult {
     booked: toBookingSummary(doc.booked),
     cancelled: toCancellationSummary(doc.cancelled),
   };
+}
+
+function orContainsPaths(
+  paths: readonly string[],
+  value: string,
+): Record<string, unknown> {
+  return { $or: paths.map((field) => fieldContainsClause(field, value)) };
 }
 
 function getReceiverAgentCrmUsername(receiverAgent: unknown): string | undefined {

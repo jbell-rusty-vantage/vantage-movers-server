@@ -16,7 +16,7 @@ When these files â€” or the code their `globs` / `Primary code` links point at â
 | Hard-to-reverse architectural decision | `docs/adr/` |
 | Service invariants, routing, side-effect order | Matching `docs/knowledge/**/*.md` |
 | Folder ownership, process mechanics, auth, env | The `.mdc` whose `globs` already match the path |
-| Owner-facing specs / runbooks | Matching file under `docs/` (Granot lifecycle: `docs/granot-lead-lifecycle/`, including `lifecycle-activation-flags-and-source-policies.md`) |
+| Owner-facing specs / runbooks | Matching file under `docs/` (Granot lifecycle: `docs/granot-lead-lifecycle/`; Job timeline enhancement: `docs/job-number-timeline/`) |
 | New Service file or rule | `docs/index.md` row |
 
 Link glossary terms; do not redefine them. Do not copy owner policy into software-logic rules.

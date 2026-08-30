@@ -23,12 +23,25 @@ import {
 import { getIntakeCreatingObservation } from "../services/granotLifecycle/creatingObservation";
 import {
   getGranotLifecycleCaseDetail,
+  listConnectLeadCandidates,
   listGranotLifecycleCaseCandidates,
   listGranotLifecycleCases,
   projectGranotJob,
   projectGranotLeadTimeline,
   projectGranotLifecycleHealth,
 } from "../services/granotLifecycle/projections";
+import {
+  listLiveWebhookReceiptSnapshot,
+  listLiveWebhookReceiptsAfter,
+  type LiveReceiptCursor,
+  type LiveWebhookReceipt,
+} from "../services/granotLifecycle/liveReceipts";
+import {
+  LIVE_RECEIPT_HEARTBEAT_MS,
+  LIVE_RECEIPT_MAX_MS,
+  LIVE_RECEIPT_POLL_MS,
+  runLiveReceiptSse,
+} from "../services/granotLifecycle/liveReceiptStream";
 import {
   confirmBooking as confirmGranotBooking,
   createReferralBooking as createGranotReferralBooking,
@@ -62,6 +75,11 @@ import {
   type ReEvaluateDiscrepancyInput,
 } from "../services/granotLifecycle/discrepancyOwnerCommands";
 import {
+  connectBookingToLead as connectGranotBookingToLead,
+  type ConnectBookingToLeadInput,
+  type ConnectBookingToLeadResult,
+} from "../services/granotLifecycle/connectBookingToLead";
+import {
   DomainCommandContextError,
   DomainCommandIdempotencyConflictError,
 } from "../services/domainCommands/types";
@@ -73,7 +91,10 @@ import {
   granotLifecycleTimelineQuerySchema,
   granotLifecycleActivationCommandSchema,
   granotLifecycleBookingNoActionCommandSchema,
+  granotLifecycleBookingParamsSchema,
   granotLifecycleConfirmBookingCommandSchema,
+  granotLifecycleConnectLeadCandidateQuerySchema,
+  granotLifecycleConnectLeadCommandSchema,
   granotLifecycleCreateReferralBookingCommandSchema,
   granotLifecycleUpdateBookingCommandSchema,
   granotLifecycleConfirmCancellationCommandSchema,
@@ -95,6 +116,8 @@ export type GranotLifecycleAdminRouteDeps = {
   getCaseDetail?: typeof getGranotLifecycleCaseDetail;
   getCreatingObservation?: typeof getIntakeCreatingObservation;
   listCandidates?: typeof listGranotLifecycleCaseCandidates;
+  listConnectLeadCandidates?: typeof listConnectLeadCandidates;
+  connectBookingToLead?: (input: ConnectBookingToLeadInput) => Promise<ConnectBookingToLeadResult>;
   projectLeadTimeline?: typeof projectGranotLeadTimeline;
   projectHealth?: typeof projectGranotLifecycleHealth;
   confirmBooking?: (input: ConfirmBookingInput) => Promise<BookingOwnerCommandResult>;
@@ -109,6 +132,13 @@ export type GranotLifecycleAdminRouteDeps = {
   reEvaluateDiscrepancy?: (input: ReEvaluateDiscrepancyInput) => Promise<DiscrepancyOwnerCommandResult>;
   correctRecordLink?: (input: CorrectRecordLinkInput) => Promise<DiscrepancyOwnerCommandResult>;
   discrepancyNoAction?: (input: DiscrepancyNoActionInput) => Promise<DiscrepancyOwnerCommandResult>;
+  listLiveReceiptSnapshot?: () => Promise<LiveWebhookReceipt[]>;
+  listLiveReceiptsAfter?: (cursor: LiveReceiptCursor) => Promise<LiveWebhookReceipt[]>;
+  liveStreamSleep?: (ms: number) => Promise<void>;
+  liveStreamNow?: () => number;
+  liveStreamPollMs?: number;
+  liveStreamHeartbeatMs?: number;
+  liveStreamMaxMs?: number;
 };
 
 type EnvelopeForRoute = {
@@ -130,6 +160,8 @@ export function createGranotLifecycleAdminRouter(
   const getCaseDetail = deps.getCaseDetail ?? getGranotLifecycleCaseDetail;
   const getCreatingObservation = deps.getCreatingObservation ?? getIntakeCreatingObservation;
   const listCandidates = deps.listCandidates ?? listGranotLifecycleCaseCandidates;
+  const listConnectCandidates = deps.listConnectLeadCandidates ?? listConnectLeadCandidates;
+  const connectBookingToLead = deps.connectBookingToLead ?? connectGranotBookingToLead;
   const projectLead = deps.projectLeadTimeline ?? projectGranotLeadTimeline;
   const projectHealth = deps.projectHealth ?? projectGranotLifecycleHealth;
   const confirmBooking = deps.confirmBooking ?? confirmGranotBooking;
@@ -144,6 +176,55 @@ export function createGranotLifecycleAdminRouter(
   const reEvaluateDiscrepancy = deps.reEvaluateDiscrepancy ?? reEvaluateGranotDiscrepancy;
   const correctRecordLink = deps.correctRecordLink ?? correctDiscrepancyRecordLink;
   const discrepancyNoAction = deps.discrepancyNoAction ?? resolveGranotDiscrepancyNoAction;
+  const listLiveSnapshot = deps.listLiveReceiptSnapshot ?? listLiveWebhookReceiptSnapshot;
+  const listLiveAfter = deps.listLiveReceiptsAfter ?? listLiveWebhookReceiptsAfter;
+
+  router.get("/api/v1/admin/granot-lifecycle/receipts/live", async (req, res) => {
+    try {
+      await connect();
+      requireRegistryOwnerActor(req, auth(req));
+    } catch (error) {
+      return sendError(res, error, requestId(req));
+    }
+
+    res.status(200);
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    const abort = new AbortController();
+    req.on("close", () => abort.abort());
+    try {
+      await runLiveReceiptSse(
+        {
+          write: (chunk) => {
+            res.write(chunk);
+          },
+        },
+        {
+          listSnapshot: listLiveSnapshot,
+          listAfter: listLiveAfter,
+          sleep: deps.liveStreamSleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
+          now: deps.liveStreamNow ?? Date.now,
+          pollMs: deps.liveStreamPollMs ?? LIVE_RECEIPT_POLL_MS,
+          heartbeatMs: deps.liveStreamHeartbeatMs ?? LIVE_RECEIPT_HEARTBEAT_MS,
+          maxMs: deps.liveStreamMaxMs ?? LIVE_RECEIPT_MAX_MS,
+          signal: abort.signal,
+        },
+        req.header("last-event-id"),
+      );
+    } catch (error) {
+      if (!res.writableEnded) {
+        res.write(`event: error\ndata: ${JSON.stringify({ error: "Live stream failed" })}\n\n`);
+      }
+      void error;
+    }
+    if (!res.writableEnded) {
+      res.end();
+    }
+  });
 
   router.get("/api/v1/admin/granot-lifecycle/discrepancies", async (req, res) => {
     try {
@@ -187,6 +268,46 @@ export function createGranotLifecycleAdminRouter(
   discrepancyAction("/api/v1/admin/granot-lifecycle/discrepancies/:id/re-evaluate", granotLifecycleReEvaluateDiscrepancyCommandSchema, reEvaluateDiscrepancy);
   discrepancyAction("/api/v1/admin/granot-lifecycle/discrepancies/:id/correct-record-link", granotLifecycleCorrectRecordLinkCommandSchema, correctRecordLink);
   discrepancyAction("/api/v1/admin/granot-lifecycle/discrepancies/:id/no-action", granotLifecycleDiscrepancyNoActionCommandSchema, discrepancyNoAction);
+
+  router.get(
+    "/api/v1/admin/bookings/:bookingId/connect-lead-candidates",
+    async (req, res) => {
+      try {
+        await connect();
+        requireRegistryOwnerActor(req, auth(req));
+        const { booking_id } = granotLifecycleBookingParamsSchema.parse({ booking_id: req.params.bookingId });
+        const query = granotLifecycleConnectLeadCandidateQuerySchema.parse(req.query);
+        const data = await listConnectCandidates(booking_id, query);
+        return res.status(200).json({ ok: true, data });
+      } catch (error) {
+        return sendError(res, error, requestId(req));
+      }
+    },
+  );
+
+  router.post(
+    "/api/v1/admin/bookings/:bookingId/connect-lead",
+    async (req, res) => {
+      try {
+        await connect();
+        const owner = durableActorFromRegistryActor(requireRegistryOwnerActor(req, auth(req)));
+        const { booking_id } = granotLifecycleBookingParamsSchema.parse({ booking_id: req.params.bookingId });
+        const command = granotLifecycleConnectLeadCommandSchema.parse(req.body);
+        const idempotency_key = readSingleIdempotencyKey(req);
+        const data = await connectBookingToLead({
+          booking_id,
+          ...command,
+          idempotency_key,
+          owner,
+          request_id: requestId(req),
+        });
+        return res.status(data.replayed || data.outcome === "already_satisfied" ? 200 : 201)
+          .json({ ok: true, data });
+      } catch (error) {
+        return sendError(res, error, requestId(req));
+      }
+    },
+  );
 
   router.post(
     "/api/v1/admin/granot-lifecycle/booking-cases/:id/confirm-booking",

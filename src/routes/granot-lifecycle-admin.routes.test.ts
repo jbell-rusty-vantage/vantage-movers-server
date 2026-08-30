@@ -288,6 +288,33 @@ app.use(
         replayed: false,
       };
     },
+    listLiveReceiptSnapshot: async () => [
+      {
+        receipt_id: receiptId,
+        captured_at: "2026-08-28T15:00:00.000Z",
+        route_event_class: "lead_created",
+        observation_channel: "granot_webhook",
+        processing_state: "pending",
+        lead: {
+          display_name: "Ada Lovelace",
+          first_name: "Ada",
+          last_name: "Lovelace",
+          email: "ada@example.invalid",
+          phone: "212-555-0100",
+          job_no: "P5562401",
+          event_type: "Lead",
+          priority: null,
+          origin: null,
+          destination: null,
+          move_date: null,
+        },
+        granot_statement: { first_name: "Ada", last_name: "Lovelace", job_no: "P5562401" },
+      },
+    ],
+    listLiveReceiptsAfter: async () => [],
+    liveStreamSleep: async () => undefined,
+    liveStreamNow: () => Date.parse("2026-08-28T15:00:00.000Z"),
+    liveStreamMaxMs: 0,
     listDiscrepancies: async (query) => {
       lastDiscrepancyQuery = query;
       return { items: [], next_cursor: null };
@@ -747,6 +774,27 @@ test("[AC-25] [AC-32] Release Owner routes are strict, idempotent, and use exact
     }),
   });
   assert.equal(forbidden.status, 400);
+});
+
+test("Owner can open the live webhook SSE stream; Admin cannot", async () => {
+  const path = "/api/v1/admin/granot-lifecycle/receipts/live";
+  const owner = await fetch(`${baseUrl}${path}`, {
+    method: "GET",
+    headers: signedHeaders("owner", path, "GET"),
+  });
+  assert.equal(owner.status, 200);
+  assert.match(owner.headers.get("content-type") ?? "", /text\/event-stream/);
+  const body = await owner.text();
+  assert.match(body, /event: snapshot/);
+  assert.match(body, /lead_created/);
+  assert.match(body, /Ada Lovelace/);
+  assert.equal(body.includes("x-api-secret"), false);
+
+  const admin = await fetch(`${baseUrl}${path}`, {
+    method: "GET",
+    headers: signedHeaders("admin", path, "GET"),
+  });
+  assert.equal(admin.status, 403);
 });
 
 test("[AC-31][AC-35] Owner and Admin can read the health envelope without raw payload keys", async () => {

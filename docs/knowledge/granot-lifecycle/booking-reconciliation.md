@@ -10,6 +10,7 @@ applies_to:
   - src/services/granotLifecycle/bookingReconciliation.ts
   - src/services/granotLifecycle/bookingPriorityPairing.ts
   - src/services/granotLifecycle/bookingConfirmation.ts
+  - src/services/granotLifecycle/confirmAttachment.ts
   - src/services/granotLifecycle/bookingOwnerCommands.ts
   - src/services/granotLifecycle/referralBooking.ts
   - src/models/GranotBookingReconciliationCase.ts
@@ -24,12 +25,12 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:docs-keeper
-  at: 2026-08-24T18:20:00Z
+  at: 2026-08-28T19:15:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority (trigger and pairing):** [`booking-reconciliation-booked-only-specification.md`](../../granot-lead-lifecycle/booking-reconciliation-booked-only-specification.md). FINAL SPEC still wins on modes, uniqueness, revisions, Owner commands, Referral, and discrepancies.  
-**Primary code:** `src/services/granotLifecycle/bookingReconciliation.ts`, `bookingPriorityPairing.ts`, `bookingConfirmation.ts`, `bookingOwnerCommands.ts`, `referralBooking.ts`, `src/models/GranotBookingReconciliationCase.ts`, `src/services/granotLifecycle/processor.ts`
-**Domain terms used:** [Granot Booking Reconciliation Case](../../../../CONTEXT.md), [Booking Priority Pairing](../../../../CONTEXT.md), [Referral Booking](../../../../CONTEXT.md), [Update Existing Booking](../../../../CONTEXT.md), [No Action](../../../../CONTEXT.md), [Synchronization Decision](../../../../CONTEXT.md), [Granot Observation](../../../../CONTEXT.md), [Source Scope](../../../../CONTEXT.md)
+**Primary code:** `src/services/granotLifecycle/bookingReconciliation.ts`, `bookingPriorityPairing.ts`, `bookingConfirmation.ts`, `confirmAttachment.ts`, `bookingOwnerCommands.ts`, `referralBooking.ts`, `src/models/GranotBookingReconciliationCase.ts`, `src/services/granotLifecycle/processor.ts`
+**Domain terms used:** [Granot Booking Reconciliation Case](../../../../CONTEXT.md), [Booking Priority Pairing](../../../../CONTEXT.md), [Referral Booking](../../../../CONTEXT.md), [Leadless Booking](../../../../CONTEXT.md), [Update Existing Booking](../../../../CONTEXT.md), [No Action](../../../../CONTEXT.md), [Synchronization Decision](../../../../CONTEXT.md), [Granot Observation](../../../../CONTEXT.md), [Source Scope](../../../../CONTEXT.md)
 
 # Granot Booking reconciliation (`granotLifecycle/bookingReconciliation`)
 
@@ -44,7 +45,8 @@ The channel-neutral processor is the only **automatic** caller (`maybeReconcileB
 | Priority `5` without Booked | `not_booking_evidence`; no case; Observation may apply lead desired-state |
 | actual Booked, no Booking | open/refresh `create_missing_booking`; ambiguous Lead means no suggestion |
 | actual Booked, one active Booking | open/refresh `review_existing_booking` with its ID |
-| Booking without Lead | delegate to existing `BookingLeadReconciliationCase`; fail closed if missing |
+| Booking without Lead, `booking_origin=employee_booking` (or existing employee case) | delegate to that `BookingLeadReconciliationCase`; persist Decision and stop if the employee case is missing (`employee_reconciliation_missing`). Employee pending Leadless path unchanged |
+| Booking without Lead, Granot official Leadless | open/refresh `review_existing_booking` with the Booking ID. Do not fail closed. Confirm does not open a `BookingLeadReconciliationCase` |
 | officially cancelled Booking | `booked_after_official_cancellation` → processor persists a discrepancy (no Booking case) |
 | actual Booked from exact reviewed Referral, no Booking | open/refresh `create_referral_booking`; no Source Scope, suggestion, or Lead search |
 | actual Booked with one active Referral Booking | open/refresh `review_existing_booking` with its ID and no Lead requirement |
@@ -74,9 +76,9 @@ Open starts with `case_revision=1`, `evidence_revision=1`. A new Observation app
 
 Every command requires `requireRegistryOwnerActor`, one strict `Idempotency-Key`, the first case-evidence Receipt/Observation/Decision chain, an enabled Booking-command gate, and current reviewed Registry/source facts. Flag-off is **422** `POLICY_BLOCKED`. Stale case/Booking revision is **409** `CASE_REVISION_CONFLICT` / `DOMAIN_REVISION_CONFLICT`. Checked-in command defaults remain false.
 
-- Official `official_booking_details` accept `book_date`, `deposit_amount`, `total_binder_amount`, `merchant_id`, `primary_agent_id`, and optional `secondary_agent_id`. Per-agent `agent_allocations[]` is rejected. Stored `BookedLead.agent_allocations` come from `officialBookingAllocations` (even-cent split). See [`agent-allocation.md`](../services/agent-allocation.md). Confirm still requires an eligible selected Lead; optional Lead / Connect Booking to Lead / unmasking are not implemented.
-- `confirmGranotBooking` resolves an open `create_missing_booking` case. It requires an eligible selected Lead (Duplicate/Bad/cancelled rejected; all-scope needs a 10–500 override) and explicit official Booking details. Same-state existing Booking plus matching Record Link is `already_satisfied`.
-- `updateBooking` is available only for open `review_existing_booking`. It revalidates the deterministic active Booking, normalized Job, linked Lead/source, optional active Record Link, exact Booking/case revisions, and active Agent/Merchant IDs. It fully replaces only Book Date, Agent allocations, total Binder, Deposit, and Merchant; derived deposit thresholds alone may mirror to the already-linked Lead. One transaction writes aggregate Change(s), case resolution, Command, and one coalescible queued Booking Chain intent. Identity/source/contact/local/submission/cancellation fields cannot change.
+- Official `official_booking_details` accept `book_date`, `deposit_amount`, `total_binder_amount`, `merchant_id`, `primary_agent_id`, and optional `secondary_agent_id`. Per-agent `agent_allocations[]` is rejected. Stored `BookedLead.agent_allocations` come from `officialBookingAllocations` (even-cent split). See [`agent-allocation.md`](../services/agent-allocation.md). Confirm `selected_lead` is optional. Connect Booking to Lead ships from `/bookings` ([`bookings.md`](../services/bookings.md)); unmasking is not implemented.
+- `confirmGranotBooking` resolves an open `create_missing_booking` case. Official details are required. Attachment is server-owned in `resolveConfirmAttachment`: Owner `selected_lead` always wins (Duplicate/Bad/cancelled rejected; all-scope needs a 10–500 override); unique high suggestion auto-attaches only when `confidence === "high"` and the match method is in `HIGH_CONFIDENCE_BOOKING_MATCH_METHODS`; medium / none / `source_scoped_contact` is Leadless. Attached persist is unchanged eligibility/override/CAS; a lost claim fails closed (`IDENTITY_CONFLICT` / `DOMAIN_REVISION_CONFLICT`) and does not fall through to Leadless. Leadless persist writes official `is_leadless_booking: true`, no `lead_ref`, customer from Observation contact, booking-only Record Link, Master Booked intent, and `owner_notice`. Same-state existing Booking plus matching Record Link is `already_satisfied`.
+- `updateBooking` is available only for open `review_existing_booking`. It revalidates the deterministic active Booking, normalized Job, linked Lead/source **or** Granot official Leadless (`isGranotOfficialLeadlessBooking`: leadless, not referral, not `employee_booking` origin, no `lead_ref`/`lead_model`), optional active Record Link, exact Booking/case revisions, and active Agent/Merchant IDs. It fully replaces only Book Date, Agent allocations, total Binder, Deposit, and Merchant; derived deposit thresholds alone may mirror to an already-linked Lead. One transaction writes aggregate Change(s), case resolution, Command, and one coalescible queued intent (`booking_chain` / `booked_lead.update` when attached; `booked_lead` / `booked_lead.update` when Leadless). Identity/source/contact/local/submission/cancellation fields cannot change.
 - `resolveGranotBookingCaseNoAction` is available for open standard create-missing or review-existing cases. Optional reason code/text are metadata only. Its transaction writes the Command plus one case resolution/revision and creates no aggregate revision, `EntityChange`, Sheet Sync intent, link, discrepancy, notification, or replacement case.
 - `createReferralBooking` is available only for open `create_referral_booking` behind both Booking-command and Referral gates. It derives the accepted first Observation/Decision and exact reviewed Referral source from immutable evidence, accepts only complete blank-entered official fields, and atomically creates one no-Lead Referral Booking, one active booking-only Record Link, two Changes, case resolution, Command, and one `booked_lead` / `referral_booking.create` intent. The planner targets only Master Booked.
 - Existing Referral `review_existing_booking` reuses full official update and No Action, but revalidates the Referral Decision/source policy, never attaches or mutates a Lead/Source Scope, and queues `referral_booking.update` as a master-only Booking write.

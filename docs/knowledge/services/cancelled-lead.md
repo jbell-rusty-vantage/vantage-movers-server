@@ -10,6 +10,8 @@ applies_to:
   - src/services/cancellations/cancelledLead.service.ts
   - src/services/cancellations/cancellationResolver.ts
   - src/services/cancellations/cancellationMirror.service.ts
+  - src/services/cancellations/cancellationCorrelationSnapshots.ts
+  - src/models/CancelledLead.ts
   - src/routes/v1.routes.ts
 owners: [team:main-server]
 sources:
@@ -26,7 +28,7 @@ generated:
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
-**Primary code:** `src/services/cancellations/cancelledLead.service.ts`, `cancellationResolver.ts`  
+**Primary code:** `src/services/cancellations/cancelledLead.service.ts`, `cancellationResolver.ts`, `cancellationCorrelationSnapshots.ts`  
 **Domain terms used:** [Cancellation](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Cancellation Chain](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Referral Booking](../../../../CONTEXT.md), [Agent](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md)
 
 # Cancelled Lead Service
@@ -110,13 +112,21 @@ Copied from the populated booking so cancellation rows remain usable independent
 | `customer_name` | Populated `customer.full_name` only on this public path (not `booking.customer_name`) |
 | `agent` | `primaryAgentName(booking)` — first `agent_allocations[]` snapshot |
 | `book_date`, `job_no`, `merchant`, `source` | Booking |
+| `job_no_snapshot` | Surviving Booking `job_no` (trimmed) |
+| `normalized_job_no_snapshot` | Booking `normalized_job_no`, else normalize of `job_no` |
+| `lead_ref_snapshot` | `{ model: FormLead \| CallLead; id }` from Booking lead refs |
+| `booking_created_at_snapshot` | Booking `createdAt` |
 | `cancel_date` | Input or defaults to `timestamp` |
 | `timestamp` | Input or `tx.now` / `new Date()` |
 | `refund_amount`, `reason`, `notes`, `cancelled_by` | Request |
 
+The four correlation snapshot fields are **immutable after insert** (`CancelledLead` pre-validate). Official create (`persistCancelledLeadCreateInTransaction` and `createCancellationForVerifiedBookingInTransaction`) stamps them from the surviving Booking via `snapshotsForCancelledLeadCreate`. Historical consolidation planner insert of CancelledLead stamps from the planned Booking document, not the Sheet Job Number cell. Schema `autoIndex` is false. Named partial index `CANCELLED_LEAD_NORMALIZED_JOB_SNAPSHOT_INDEX` = `cancelled_lead_normalized_job_no_snapshot` on `normalized_job_no_snapshot`.
+
+Report-first backfill: `pnpm migration:cancellation-correlation-snapshots -- --report | --apply --confirm-production=<db> | --verify` (`scripts/migrations/cancellation-correlation-snapshots.ts` and `.lib.ts`). Default live target is `testvantagemovers` (`TEST_MODE=true`). Remainder rows are not guessed. Production apply, production index, and `vantagemovers` backfill remain unauthorized.
+
 The lifecycle primitive `createCancellationForVerifiedBookingInTransaction` is a separate CAS claim (`domain_revision` + `normalized_job_no` + unset `cancelled`). It may fall back to `booking.customer_name` and parses official `cancel_date` as UTC midnight. It is not the public route.
 
-Update does **not** re-snapshot booking fields; patch only cancellation-owned columns.
+Update does **not** re-snapshot booking fields; patch only cancellation-owned columns. Correlation snapshots stay immutable on update.
 
 ### Lead mirror and cases on create
 
@@ -199,5 +209,6 @@ Delete tombstone coalesces with pending `cancellation_chain` upserts for the sam
 
 - Lead mirror semantics: [`cancellation-mirror.md`](./cancellation-mirror.md)
 - Booking lifecycle: [`bookings.md`](./bookings.md)
+- Job Number timeline hop by `normalized_job_no_snapshot`: [`job-number-timeline.md`](./job-number-timeline.md)
 - Sheets: `syncCancelledLeadToSheets`, `deleteCancelledLeadFromSheets`
 - Resolver exports: `getBookedLeadForCancellation` for reuse

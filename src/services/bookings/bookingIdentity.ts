@@ -35,6 +35,29 @@ export function equivalentNormalizedJobFilter(
   };
 }
 
+export function remapNormalizedJobFilter<T extends string>(
+  filter: ReturnType<typeof equivalentNormalizedJobFilter>,
+  field: T,
+): Record<T, string> | { $or: Array<Record<T, string | { $regex: string }>> } {
+  if ("normalized_job_no" in filter) {
+    return { [field]: filter.normalized_job_no } as Record<T, string>;
+  }
+  return {
+    $or: filter.$or.map((clause) => ({
+      [field]: clause.normalized_job_no,
+    }) as Record<T, string | { $regex: string }>),
+  };
+}
+
+export function equivalentNormalizedJobSnapshotFilter(
+  normalizedJobNo: string,
+): ReturnType<typeof remapNormalizedJobFilter<"normalized_job_no_snapshot">> {
+  return remapNormalizedJobFilter(
+    equivalentNormalizedJobFilter(normalizedJobNo),
+    "normalized_job_no_snapshot",
+  );
+}
+
 export function normalizeSubmissionLid(value?: string | null): string | undefined {
   return normalizeToken(value, { uppercase: true, preserveInternalPunctuation: true });
 }
