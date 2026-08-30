@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-30T03:17Z
 - Service / module: `ringcentral` / `webhook-capture.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (PR URL stamped after open)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/131
 
 ## Stock at start
 
