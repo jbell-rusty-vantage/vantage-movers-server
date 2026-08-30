@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-30T05:15Z
 - Service / module: `ringcentral` / `ringcentral-call-lead-ingest.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (opening after #132 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/133
 
 ## Stock at start
 
