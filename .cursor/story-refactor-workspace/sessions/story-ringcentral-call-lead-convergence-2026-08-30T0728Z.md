@@ -3,7 +3,7 @@
 - Date (UTC): 2026-08-30T07:28Z
 - Service / module: `ringcentral` / `callLeadConvergence.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / pending new PR after #134 closed
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/135
 
 ## Stock at start
 
