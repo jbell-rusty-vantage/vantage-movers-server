@@ -98,3 +98,97 @@ test("SSE reconnect with Last-Event-ID skips the snapshot and continues from the
   assert.equal(seenCursor, "2026-08-28T14:59:00.000Z:64aaaaaaaaaaaaaaaaaaaaaa");
   assert.equal(chunks.join("").includes("event: snapshot"), false);
 });
+
+test("[AC-L4] late intake_link emits receipt_updated without advancing the capture cursor", async () => {
+  const chunks: string[] = [];
+  let now = Date.parse("2026-08-28T15:00:00.000Z");
+  const pending = receipt({
+    receipt_id: "64aaaaaaaaaaaaaaaaaaaaaa",
+    captured_at: "2026-08-28T14:59:00.000Z",
+    route_event_class: "booking_status_changed",
+    processing_state: "pending",
+    intake_link: null,
+  });
+  const bound = {
+    ...pending,
+    processing_state: "completed",
+    observation_id: "65aaaaaaaaaaaaaaaaaaaaaa",
+    intake_link: {
+      case_id: "66aaaaaaaaaaaaaaaaaaaaaa",
+      kind: "booking" as const,
+      state: "open" as const,
+      matched_via: "evidence_observation_id" as const,
+    },
+  };
+  const seenCursors: string[] = [];
+  let polls = 0;
+
+  await runLiveReceiptSse(
+    { write: (chunk) => chunks.push(chunk) },
+    {
+      listSnapshot: async () => [pending],
+      listAfter: async (cursor) => {
+        seenCursors.push(`${cursor.captured_at}:${cursor.receipt_id}`);
+        return [];
+      },
+      listUpdated: async () => {
+        polls += 1;
+        return polls === 1 ? [pending] : [bound];
+      },
+      sleep: async () => {
+        now += 8_000;
+      },
+      now: () => now,
+      pollMs: 1,
+      heartbeatMs: 60_000,
+      maxMs: 20_000,
+    },
+  );
+
+  const joined = chunks.join("");
+  assert.match(joined, /event: snapshot/);
+  assert.match(joined, /"intake_link":null/);
+  assert.match(joined, /event: receipt_updated/);
+  assert.match(joined, /66aaaaaaaaaaaaaaaaaaaaaa/);
+  assert.equal(joined.includes("event: receipt\n"), false);
+  const updatedBlock = chunks.find((chunk) => chunk.includes("event: receipt_updated"));
+  assert.ok(updatedBlock);
+  assert.equal(updatedBlock.includes("\nid: "), false);
+  assert.ok(seenCursors.length >= 2);
+  assert.ok(seenCursors.every((value) => value === "2026-08-28T14:59:00.000Z:64aaaaaaaaaaaaaaaaaaaaaa"));
+});
+
+test("SSE does not emit receipt_updated for a brand-new receipt just sent as receipt", async () => {
+  const chunks: string[] = [];
+  let now = Date.parse("2026-08-28T15:00:00.000Z");
+  const newer = receipt({
+    receipt_id: "64bbbbbbbbbbbbbbbbbbbbbb",
+    captured_at: "2026-08-28T15:00:05.000Z",
+    processing_state: "pending",
+    intake_link: null,
+  });
+  let polls = 0;
+
+  await runLiveReceiptSse(
+    { write: (chunk) => chunks.push(chunk) },
+    {
+      listSnapshot: async () => [],
+      listAfter: async () => {
+        polls += 1;
+        return polls === 1 ? [newer] : [];
+      },
+      listUpdated: async () => (polls === 1 ? [newer] : []),
+      sleep: async () => {
+        now += 8_000;
+      },
+      now: () => now,
+      pollMs: 1,
+      heartbeatMs: 60_000,
+      maxMs: 20_000,
+    },
+  );
+
+  const joined = chunks.join("");
+  assert.match(joined, /event: receipt/);
+  assert.equal(joined.includes("event: receipt_updated"), false);
+});

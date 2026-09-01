@@ -54,10 +54,11 @@ export type BookingOwnerCommandResult = {
   case_id: string;
   case_state: "resolved";
   case_revision: number;
-  outcome: "booking_created" | "booking_updated" | "referral_booking_created" | "no_action" | "already_satisfied";
+  outcome: "booking_created" | "booking_updated" | "referral_booking_created" | "cancellation_created" | "no_action" | "already_satisfied";
   command_execution_id: string;
   decision_id: string;
   booking_ref?: { id: string; domain_revision: number };
+  cancellation_ref?: { id: string; domain_revision: number };
   record_link_ref?: { id: string; domain_revision: number };
   entity_refs: Array<{ model: string; id: string }>;
   replayed: boolean;

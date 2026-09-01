@@ -145,6 +145,12 @@ export function selectCreatingObservationEvidence(
   if (booked) {
     return { item: booked, selection: "preferred_booked" };
   }
+  const released = evidence
+    .filter((item) => item.action === "release")
+    .sort(compareEvidenceNewestFirst)[0];
+  if (released) {
+    return { item: released, selection: "preferred_release" };
+  }
   const latest = [...evidence].sort(compareEvidenceNewestFirst)[0];
   return latest ? { item: latest, selection: "latest_creating" } : null;
 }
@@ -232,6 +238,12 @@ export async function getCancellationIntakeCreatingObservation(
   };
 }
 
+/**
+ * Technical case-id lookup: booking case first, then a historical Release case.
+ * Owner Intakes only requests booking case ids (list is booking-only), so it
+ * never uses the Release fallback. Keep the fallback for
+ * `GET .../cases/:id/creating-observation` on a historical Release id.
+ */
 export async function getIntakeCreatingObservation(
   caseId: string,
   loaders: CreatingObservationLoaders = defaultLoaders,

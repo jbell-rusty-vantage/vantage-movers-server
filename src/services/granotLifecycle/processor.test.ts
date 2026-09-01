@@ -479,7 +479,7 @@ test("[AC-18][AC-19] processor invokes Booking reconciliation only in live gate-
   await processGranotObservation({ receipt_id: String(row.receipt_id) }, disabled);
 });
 
-test("[AC-25][AC-26][AC-27] processor invokes Release reconciliation only for live gate-enabled independent Release evidence", async () => {
+test("[AC-25][AC-26][AC-27][AC-P5] processor invokes Booking reconciliation for live gate-enabled Release evidence", async () => {
   const row = observation({
     kind: "booking_action_snapshot",
     route_event_class: "booking_status_changed",
@@ -487,54 +487,64 @@ test("[AC-25][AC-26][AC-27] processor invokes Release reconciliation only for li
     priority: { raw: "bad", valid: false },
     booking_action: { raw: "Release", normalized: "release" },
   });
-  let calls = 0;
+  let bookingCalls = 0;
   const deps = memoryDeps({
     observation: row,
     activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
     flags: {
       ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
       shadow_mode: false,
-      release_cases_enabled: true,
+      booking_cases_enabled: true,
     },
-    reconcileRelease: async (ids, prepared) => {
-      calls += 1;
+    reconcileBooking: async (ids, prepared) => {
+      bookingCalls += 1;
       assert.equal(ids.observation_id, String(row._id));
       assert.equal(prepared.execution_mode, "live");
       assert.equal(prepared.evaluated_gates.length, 8);
       assert.ok(prepared.evaluated_gates.every((gate) => gate.allowed));
       return {
         kind: "opened",
-        case_ref: { model: "GranotReleaseReconciliationCase", id: String(objectId()) },
+        case_ref: { model: "GranotBookingReconciliationCase", id: String(objectId()) },
         outcome: "linked",
-        reason_code: "release_case_opened",
-        case_revision: 1,
-        evidence_revision: 1,
+        reason_code: "booking_case_opened",
       };
+    },
+    reconcileRelease: async () => {
+      throw new Error("Release owner path must not invoke reconcileRelease");
     },
   });
   const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
-  assert.equal(calls, 1);
+  assert.equal(bookingCalls, 1);
   assert.equal(result.outcome, "linked");
-  assert.equal(result.effects[0]?.kind, "release_case_opened");
+  assert.equal(result.effects[0]?.kind, "booking_case_opened");
+  assert.ok(
+    result.effects.every((effect) =>
+      effect.kind !== "release_case_opened" && effect.kind !== "release_case_refreshed",
+    ),
+  );
 
   const disabled = memoryDeps({
     observation: row,
     activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
     flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, shadow_mode: false },
+    reconcileBooking: async () => {
+      throw new Error("disabled Booking gate must not invoke reconciliation");
+    },
     reconcileRelease: async () => {
-      throw new Error("disabled Release gate must not invoke reconciliation");
+      throw new Error("Release owner path must not invoke reconcileRelease");
     },
   });
   await processGranotObservation({ receipt_id: String(row.receipt_id) }, disabled);
 });
 
-test("[AC-26][AC-27][AC-36] processor persists typed conflict through the discrepancy module", async () => {
+test("[AC-26][AC-27][AC-36][AC-R6] processor persists Release identity conflict through the discrepancy module", async () => {
   const row = observation({
     kind: "booking_action_snapshot",
     route_event_class: "booking_status_changed",
     booking_action: { raw: "Release", normalized: "release" },
   });
   let discrepancyCalls = 0;
+  let bookingCalls = 0;
   const result = await processGranotObservation(
     { receipt_id: String(row.receipt_id) },
     memoryDeps({
@@ -543,16 +553,23 @@ test("[AC-26][AC-27][AC-36] processor persists typed conflict through the discre
       flags: {
         ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
         shadow_mode: false,
-        release_cases_enabled: true,
+        booking_cases_enabled: true,
       },
-      reconcileRelease: async () => ({
-        kind: "release_discrepancy_required",
-        reason_code: "release_without_vantage_booking",
-      }),
+      reconcileBooking: async () => {
+        bookingCalls += 1;
+        return {
+          kind: "booking_discrepancy_required",
+          reason_code: "release_record_link_conflict",
+        };
+      },
+      reconcileRelease: async () => {
+        throw new Error("Release identity conflict must not invoke reconcileRelease");
+      },
       reconcileDiscrepancy: async (request, prepared) => {
         discrepancyCalls += 1;
         assert.equal(request.discrepancy_kind, "release");
-        assert.equal(request.reason_code, "release_without_vantage_booking");
+        assert.equal(request.reason_code, "release_record_link_conflict");
+        assert.notEqual(request.reason_code, "release_without_vantage_booking");
         assert.equal(prepared.execution_mode, "live");
         return {
           kind: "opened",
@@ -567,9 +584,106 @@ test("[AC-26][AC-27][AC-36] processor persists typed conflict through the discre
       },
     }),
   );
+  assert.equal(bookingCalls, 1);
   assert.equal(discrepancyCalls, 1);
   assert.equal(result.outcome, "conflict");
   assert.equal(result.effects[0]?.kind, "discrepancy_opened");
+});
+
+test("[AC-R4] officially cancelled Booking + Release is already_current via Booking reconciliation", async () => {
+  resetGranotLifecycleMetrics();
+  const row = observation({
+    kind: "booking_action_snapshot",
+    route_event_class: "booking_status_changed",
+    booking_action: { raw: "Releas", normalized: "release" },
+  });
+  const cancellationId = String(objectId());
+  let bookingCalls = 0;
+  const result = await processGranotObservation(
+    { receipt_id: String(row.receipt_id) },
+    memoryDeps({
+      observation: row,
+      activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+      flags: {
+        ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+        shadow_mode: false,
+        booking_cases_enabled: true,
+      },
+      reconcileBooking: async () => {
+        bookingCalls += 1;
+        return {
+          kind: "already_current",
+          outcome: "already_current",
+          reason_code: "booking_already_cancelled",
+          target: { model: "CancelledLead", id: cancellationId },
+        };
+      },
+      reconcileRelease: async () => {
+        throw new Error("already_current Release must not open a Release case");
+      },
+      reconcileDiscrepancy: async (request) => {
+        throw new Error(
+          `already_current must not open a discrepancy (${request.reason_code})`,
+        );
+      },
+    }),
+  );
+  assert.equal(bookingCalls, 1);
+  assert.equal(result.outcome, "already_current");
+  assert.deepEqual(result.target, { model: "CancelledLead", id: cancellationId });
+  assert.equal(result.effects.length, 0);
+  assert.equal(
+    getGranotLifecycleDecisionsTotal({
+      outcome: "already_current",
+      reason_code: "booking_already_cancelled",
+      channel: "granot_webhook",
+    }),
+    1,
+  );
+});
+
+test("Release booking-case early-return does not invoke synchronizeLeadFromGranot", async () => {
+  const row = observation({
+    kind: "booking_action_snapshot",
+    route_event_class: "booking_status_changed",
+    booking_action: { raw: "Release", normalized: "release" },
+  });
+  const leadId = String(objectId());
+  for (const reason_code of ["booking_case_opened", "booking_case_refreshed"] as const) {
+    const deps = memoryDeps({
+      observation: row,
+      activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+      flags: {
+        ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+        shadow_mode: false,
+        lead_writes_enabled: true,
+        booking_cases_enabled: true,
+      },
+      identity: matchedFormIdentity(leadId),
+      lead: currentLead(leadId, {
+        granot_priority: "8",
+        quoted: false,
+        normalized_job_no: "SYNTHETIC JOB 100",
+        job_no: "synthetic-job-100",
+      }),
+      reconcileBooking: async () => ({
+        kind: reason_code === "booking_case_opened" ? "opened" : "refreshed",
+        case_ref: { model: "GranotBookingReconciliationCase", id: String(objectId()) },
+        outcome: "linked",
+        reason_code,
+      }),
+      reconcileRelease: async () => {
+        throw new Error("Release booking-case early-return must not invoke reconcileRelease");
+      },
+      synchronizeLead: async () => {
+        throw new Error("booking case open/refresh must not invoke synchronizeLeadFromGranot");
+      },
+    });
+    const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+    assert.equal(deps.synchronizeCalls, 0);
+    assert.equal(result.outcome, "linked");
+    assert.equal(result.effects[0]?.kind, reason_code);
+  }
 });
 
 function exactLink(leadId: string): GranotRecordLinkDocument {

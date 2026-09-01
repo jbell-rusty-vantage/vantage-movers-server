@@ -116,6 +116,10 @@ export const GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES = [
       state: 1,
     },
   },
+  {
+    name: "granot_booking_case_evidence_observation_id",
+    key: { "evidence.observation_id": 1 },
+  },
 ] as const;
 
 const entityRefSchema = new Schema(

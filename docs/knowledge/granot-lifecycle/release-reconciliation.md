@@ -1,16 +1,16 @@
 ---
 type: Service
 title: Granot Release reconciliation
-description: Separate Release cases plus gated Owner create-Cancellation, Booking replacement, and No Action.
+description: Historical Release-case module and HTTP routes. New Release evidence lands on the booking intake.
 tags: [granot-lifecycle]
 status: draft
-stale_after: 2026-11-19
+stale_after: 2026-12-01
 resource: src/services/granotLifecycle/releaseReconciliation.ts
 applies_to:
   - src/services/granotLifecycle/releaseReconciliation.ts
   - src/services/granotLifecycle/releaseOwnerCommands.ts
   - src/models/GranotReleaseReconciliationCase.ts
-  - src/services/granotLifecycle/processor.ts
+  - scripts/migrations/granot-lifecycle-release-cases-into-booking-intake.ts
 owners: [team:main-server]
 sources:
   - id: primary
@@ -22,36 +22,22 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:docs-keeper
-  at: 2026-08-24T18:20:00Z
+  at: 2026-09-01T18:20:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
-**Later contract (not implemented):** [`release-into-booking-intake.md`](./release-into-booking-intake.md). This file still describes current code.  
-**Primary code:** `src/services/granotLifecycle/releaseReconciliation.ts`, `src/models/GranotReleaseReconciliationCase.ts`, `src/services/granotLifecycle/processor.ts`, `src/services/granotLifecycle/projections.ts`  
-**Domain terms used:** [Granot Release Reconciliation Case](../../../../CONTEXT.md), [Synchronization Decision](../../../../CONTEXT.md), [deterministic Booking](../../../../CONTEXT.md), [Granot Observation](../../../../CONTEXT.md)
+**Authority (owner surface retired):** [`release-into-booking-intake.md`](./release-into-booking-intake.md). New Release evidence is booking-case work in [`booking-reconciliation.md`](./booking-reconciliation.md). FINAL SPEC still wins on identity-conflict discrepancy reasons.  
+**Primary code:** `src/services/granotLifecycle/releaseReconciliation.ts`, `src/models/GranotReleaseReconciliationCase.ts`, `src/services/granotLifecycle/releaseOwnerCommands.ts`, `scripts/migrations/granot-lifecycle-release-cases-into-booking-intake.ts`  
+**Domain terms used:** [Granot Release Reconciliation Case](../../../../CONTEXT.md), [Granot Booking Reconciliation Case](../../../../CONTEXT.md), [Confirm Granot Cancellation](../../../../CONTEXT.md), [Synchronization Decision](../../../../CONTEXT.md), [Granot Observation](../../../../CONTEXT.md)
 
 # Granot Release reconciliation
 
-**Role:** Persist owner work for an actual Granot Release, then allow an Owner to explicitly create the official Cancellation, fully replace the existing Booking, or resolve No Action. Automatic processing still never changes a Booking, Cancellation, Lead, Record Link, or Sheet. Conflict classifications persist **discrepancies** through the processor (`discrepancies.ts`), not through this module. A Release case is not itself a Cancellation and is separate from a Booking case.
+**Role:** Historical only. A [Granot Release Reconciliation Case](../../../../CONTEXT.md) is a retired owner work item. The processor no longer opens or refreshes these cases. New Release Granot Observations land on the [Granot Booking Reconciliation Case](../../../../CONTEXT.md). Existing rows stay readable for audit. They are not a Cancellation and never auto-cancelled. Conflict classifications for identity still persist as [Granot Release Discrepancy](../../../../CONTEXT.md) rows through the processor (`discrepancies.ts`), not through this module.
 
-## Trigger and routing
+## Owner surface retired
 
-The processor is the only automatic caller. It invokes the service only for post-activation `live` evidence whose independent `booking_action.normalized` is `release`, whose reviewed source gates all allow the effect, and whose Release-case flag is true. Malformed Priority does not suppress an otherwise valid Release. Shadow, disabled/deferred/unclassified source policy, missing Job, unsupported action, or a false flag creates no Release case.
+`maybeReconcileRelease` is **removed** from `processor.ts`. `createGranotReleaseReconciliation` is not invoked from the processor. Release case/command flags stay false; do not enable them to make new owner work appear. Missing Booking is not `release_without_vantage_booking` for new traffic.
 
-Inside the transaction, current Unit 14 identity and deterministic Booking/Cancellation facts are reread. One compatible active Booking opens or refreshes a case even when that Booking has no Lead. An officially cancelled Booking writes an `already_current` / `booking_already_cancelled` Decision and no case. No Booking returns `release_without_vantage_booking`; exact identity conflicts return `release_record_link_conflict`, `release_job_number_conflict`, or `release_source_scope_conflict`. This module does not write discrepancy rows; the processor persists those classifications via `createGranotDiscrepancies`.
-
-## Persistence contract
-
-`GranotReleaseReconciliationCase` is a separate collection with fixed `action_kind:"release"` and no persisted mode. It requires the deterministic Booking ID and immutable `booking_revision_at_open`. Evidence contains only Observation ID, Decision ID, capture time, and `action:"release"`; bounded observed display context is not official state.
-
-One transaction allocates `max(job+release sequence)+1`, opens or refreshes the case, and inserts the causal Decision. The partial-open and job/action/sequence unique indexes are separate from Booking-case uniqueness. One bounded retry converges duplicate/open/sequence races. Exact Observation replay is a no-op. New evidence increments `evidence_revision`; an owner-relevant current Booking revision or link change increments `case_revision` without rewriting the opening Booking revision. A case never silently retargets. Resolved rows and existing evidence IDs are immutable; later evidence gets the next Release sequence.
-
-## Read-only posture
-
-Protected case list/detail and Job/Lead timelines project Release as `kind:"release"`, `mode:"release"`. Default lists merge Booking and Release under stable selected timestamp plus ObjectId cursor ordering. Detail shows immutable Granot evidence separately from the live deterministic Booking and current Cancellation. It has no suggestion, employee-reconciliation substitution, or candidate search. An open case exposes command capability only when `release_commands_enabled` is true. Booking and Release entries remain distinct in timelines and may coexist open for one Job.
-
-## Owner commands
-
-Implementation lives in `releaseOwnerCommands.ts` (re-exported from `releaseReconciliation.ts`).
+HTTP Release-case routes remain for **historical** open cases until an operator runs the migrate helper and those cases resolve:
 
 | Method | Path | Command | HTTP |
 |--------|------|---------|------|
@@ -59,8 +45,30 @@ Implementation lives in `releaseOwnerCommands.ts` (re-exported from `releaseReco
 | `POST` | `.../update-booking` | `updateBooking` (route telemetry `updateGranotReleaseBooking`) | 200 |
 | `POST` | `.../no-action` | `resolveGranotReleaseCaseNoAction` (route telemetry `resolveGranotReleaseNoAction`) | 200 |
 
-Each requires `requireRegistryOwnerActor` and one `Idempotency-Key`. Flag-off is **422** `POLICY_BLOCKED`. Stale case/Booking revision is **409** `CASE_REVISION_CONFLICT` / `DOMAIN_REVISION_CONFLICT`. Each reruns current source policy, lifecycle/effect gates, open case revision, immutable Job/Booking identity, active Record Link, and current Booking revision inside the canonical transaction. Booking replacement also revalidates active Agent/Merchant catalog rows. Referral Bookings are supported without fabricating a Lead mirror; Granot official Leadless cancel succeeds with no Lead mirror. An optional linked Lead changes only when it still matches the verified Booking/link scope.
+New UI must not create these cases. Confirm Granot Cancellation for new work is `POST .../booking-cases/:id/confirm-cancellation` — see [`booking-reconciliation.md`](./booking-reconciliation.md). Official write + case-resolve CAS is shared (`officialCancellationWrite.ts`).
 
-Create Cancellation uses the cancellation service's transaction-aware primitive to CAS the active Booking, insert exactly one complete `CancelledLead`, optionally mirror the linked Lead, append adjacent `EntityChange` rows, resolve the case, store the canonical Command result, and enqueue one `cancellation_chain` Sheet outbox intent atomically. A verified matching official cancellation is `already_satisfied` with no aggregate, Change, or Sheet write. Update Booking is a complete official replacement from the same official details as Booking commands (one Binder, at most two Agent IDs; `officialBookingAllocations` derives stored allocations) and enqueues one `booking_chain` intent. No Action changes only the case and Command. Replays return the stored result; checksum reuse conflicts and stale races fail closed with stable 409 errors. Queue publishing occurs only after commit.
+## Persistence contract (historical rows)
 
-Checked-in `GRANOT_LIFECYCLE_RELEASE_CASES_ENABLED=false` and `GRANOT_LIFECYCLE_RELEASE_COMMANDS_ENABLED=false`. Owner mutations, Sheet intents, and discrepancy storage **exist in code** and stay gated. Index report/verify is read-only; apply, deployment, and flag enablement require separate authorization. No email send is attached to these commands (`GRANOT_LIFECYCLE_EMAIL_ENABLED` stays false).
+`GranotReleaseReconciliationCase` is a separate collection with fixed `action_kind:"release"` and no persisted mode. Existing rows require the deterministic Booking ID and immutable `booking_revision_at_open`. Evidence contains only Observation ID, Decision ID, capture time, and `action:"release"`. Collections are **not** dropped in this change set.
+
+The partial-open and job/action/sequence unique indexes stay separate from Booking-case uniqueness. Resolved rows and existing evidence IDs remain immutable. New Booked or Release Observations do **not** refresh a historical Release case.
+
+## Read-only posture
+
+Protected technical case list/detail can still project `kind:"release"` when the caller asks for `kind=release`. Default Owner Intakes (`/intakes`) is booking-only — see [`projections.md`](./projections.md). An open historical Release case exposes command capability only when `release_commands_enabled` is true. Job timeline still renders historical `cancellation_intake` events; new Release evidence emits `booking_intake`.
+
+## Migrate helper
+
+Operator script (not applied to production by this change set):
+
+`scripts/migrations/granot-lifecycle-release-cases-into-booking-intake.ts`
+
+Package script: `migration:granot-lifecycle:release-cases-into-booking-intake`.
+
+For each open Release case the planner finds or opens the `{normalized_job_no, action_kind:"booked"}` booking case, appends missing Release evidence (`action: "release"`), keeps/sets `review_existing_booking` when a live official Booking exists, and resolves the Release case with `outcome: "no_action"`, `reason_code: "already_handled_elsewhere"`, `reason_text: "migrated_to_booking_intake"`. It does not invent official Booking or Cancellation writes. Open `release_without_vantage_booking` discrepancies are left historical (`discrepancy.action: "leave_historical"`). Apply requires `--confirm-production` matching the connected name; historical DB is refused.
+
+## Historical Owner commands
+
+Implementation lives in `releaseOwnerCommands.ts` (re-exported from `releaseReconciliation.ts`). Each requires `requireRegistryOwnerActor` and one `Idempotency-Key`. Flag-off is **422** `POLICY_BLOCKED`. Stale case/Booking revision is **409** `CASE_REVISION_CONFLICT` / `DOMAIN_REVISION_CONFLICT`. Create Cancellation uses the shared official-write helper. Update Booking is a complete official replacement. No Action changes only the case and Command.
+
+Checked-in `GRANOT_LIFECYCLE_RELEASE_CASES_ENABLED=false` and `GRANOT_LIFECYCLE_RELEASE_COMMANDS_ENABLED=false`. Owner mutations on historical cases stay gated. Index report/verify is read-only; apply, deployment, and flag enablement require separate authorization. No email send is attached to these commands (`GRANOT_LIFECYCLE_EMAIL_ENABLED` stays false).

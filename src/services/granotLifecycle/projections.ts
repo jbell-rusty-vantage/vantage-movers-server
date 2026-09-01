@@ -53,6 +53,11 @@ import {
   type BookingPriorityPairingProjection,
 } from "./bookingPriorityPairing";
 import { selectCreatingObservationEvidence } from "./creatingObservation";
+import {
+  selectBookingIntakeLatestAction,
+  type BookingIntakeLatestAction,
+  type BookingIntakeLatestActionEvidence,
+} from "./bookingIntakeLatestAction";
 import { compareGranotTemporal } from "./granotTemporal";
 import type { GranotBookingReconciliationCaseDocument } from "../../models/GranotBookingReconciliationCase";
 import type { GranotObservationDocument } from "../../models/GranotObservation";
@@ -312,9 +317,11 @@ export type GranotLifecycleCaseDetail = {
     href: string;
   };
   timeline: GranotTimelinePage;
+  latest_action: "priority_5" | "booked" | "release";
   capabilities: {
     commands: boolean;
     referral: boolean;
+    confirm_cancellation: boolean;
     release_cases: boolean;
     discrepancies: boolean;
   };
@@ -397,6 +404,78 @@ function isBookingCaseMode(
   return value === "create_missing_booking" ||
     value === "review_existing_booking" ||
     value === "create_referral_booking";
+}
+
+/** Owner Intakes (omitted kind or kind=booking) never merge historical Release cases. */
+export function includeReleaseCasesInList(query: { kind?: string; mode?: string }): boolean {
+  return query.kind === "release" && (!query.mode || query.mode === "release");
+}
+
+export function includeBookingCasesInList(query: { kind?: string; mode?: string }): boolean {
+  const bookingMode = isBookingCaseMode(query.mode) ? query.mode : undefined;
+  return query.kind !== "release" && (!query.mode || Boolean(bookingMode));
+}
+
+export function toBookingIntakeLatestActionEvidence(
+  evidence: Array<{
+    action: "priority_5" | "booked" | "release";
+    captured_at: Date | string;
+    observation_id: { toString(): string } | string;
+  }>,
+): BookingIntakeLatestActionEvidence[] {
+  return evidence.map((item) => ({
+    action: item.action,
+    captured_at: item.captured_at instanceof Date ? item.captured_at : new Date(item.captured_at),
+    observation_id: String(item.observation_id),
+  }));
+}
+
+export function projectCaseLatestAction(
+  evidence: Array<{
+    action: "priority_5" | "booked" | "release";
+    captured_at: Date | string;
+    observation_id: { toString(): string } | string;
+  }>,
+): BookingIntakeLatestAction {
+  return selectBookingIntakeLatestAction(toBookingIntakeLatestActionEvidence(evidence)) ?? "booked";
+}
+
+export function projectBookingIntakeCapabilities(input: {
+  kind: "booking" | "release";
+  state: "open" | "resolved";
+  mode: string;
+  latest_action: BookingIntakeLatestAction;
+  booking_commands_enabled: boolean;
+  referral_booking_enabled: boolean;
+  release_commands_enabled: boolean;
+  is_referral_booking?: boolean;
+}): GranotLifecycleCaseDetail["capabilities"] {
+  const referral = input.kind === "booking" && (
+    input.mode === "create_referral_booking" || input.is_referral_booking === true
+  );
+  const commands = input.state === "open" && (
+    (input.kind === "booking" &&
+      input.booking_commands_enabled &&
+      (referral
+        ? input.referral_booking_enabled
+        : input.mode === "create_missing_booking" || input.mode === "review_existing_booking")) ||
+    (input.kind === "release" && input.release_commands_enabled)
+  );
+  const confirm_cancellation = Boolean(
+    commands &&
+    input.kind === "booking" &&
+    input.state === "open" &&
+    input.mode === "review_existing_booking" &&
+    input.latest_action === "release" &&
+    input.booking_commands_enabled,
+  );
+  return {
+    commands,
+    referral,
+    confirm_cancellation,
+    release_cases: true,
+    discrepancies: true,
+  };
 }
 
 export type GranotLifecycleHealthProjection = {
@@ -571,8 +650,8 @@ export async function listGranotLifecycleCases(
   }
 
   const bookingMode = isBookingCaseMode(query.mode) ? query.mode : undefined;
-  const includeBooking = query.kind !== "release" && (!query.mode || Boolean(bookingMode));
-  const includeRelease = query.kind !== "booking" && (!query.mode || query.mode === "release");
+  const includeBooking = includeBookingCasesInList(query);
+  const includeRelease = includeReleaseCasesInList(query);
   const [bookingRows, releaseRows] = await Promise.all([
     includeBooking
       ? getGranotBookingReconciliationCaseModel()
@@ -628,8 +707,6 @@ export async function listGranotLifecycleCases(
       : row.evidence[0]
         ? referralSourceByDecision.get(String(row.evidence[0].decision_id))
         : undefined;
-    const latest = [...row.evidence].sort((a, b) =>
-      new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime())[0];
     return {
       case_id: String(row._id),
       kind: row.kind,
@@ -640,7 +717,7 @@ export async function listGranotLifecycleCases(
       job_no: row.job_no_snapshot,
       source: { id: sourceId, label: sourceId ? sourceLabels.get(sourceId) : undefined },
       customer_label: customerLabel(row.observed_context.contact),
-      latest_action: latest?.action ?? "booked",
+      latest_action: projectCaseLatestAction(row.evidence),
       evidence_count: row.evidence.length,
       case_revision: row.case_revision,
       evidence_revision: row.evidence_revision,
@@ -738,6 +815,8 @@ export async function getGranotLifecycleCaseDetail(
   const source = sourceId
     ? await getGranotCrmSourceModel().findById(sourceId).select({ granot_label: 1 }).lean()
     : null;
+  const latest_action = projectCaseLatestAction(row.evidence);
+  const flags = getGranotLifecycleFlags();
   const result: GranotLifecycleCaseDetail = {
     case_id: String(row._id),
     kind,
@@ -810,21 +889,17 @@ export async function getGranotLifecycleCaseDetail(
       href: `/bookings/reconciliation?case=${encodeURIComponent(String(employeeCase._id))}`,
     } : undefined,
     timeline,
-    capabilities: {
-      commands: row.state === "open" && (
-        (kind === "booking" &&
-          getGranotLifecycleFlags().booking_commands_enabled &&
-          ((mode === "create_referral_booking" || booking?.is_referral_booking === true)
-            ? getGranotLifecycleFlags().referral_booking_enabled
-            : mode === "create_missing_booking" || mode === "review_existing_booking")) ||
-        (kind === "release" && getGranotLifecycleFlags().release_commands_enabled)
-      ),
-      referral: kind === "booking" && (
-        mode === "create_referral_booking" || booking?.is_referral_booking === true
-      ),
-      release_cases: true,
-      discrepancies: true,
-    },
+    latest_action,
+    capabilities: projectBookingIntakeCapabilities({
+      kind,
+      state: row.state,
+      mode,
+      latest_action,
+      booking_commands_enabled: flags.booking_commands_enabled,
+      referral_booking_enabled: flags.referral_booking_enabled,
+      release_commands_enabled: flags.release_commands_enabled,
+      is_referral_booking: booking?.is_referral_booking === true,
+    }),
     priority_pairing: projectCaseDetailPriorityPairing({
       kind,
       evidence: row.evidence,

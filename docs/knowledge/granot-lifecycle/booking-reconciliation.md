@@ -1,17 +1,19 @@
 ---
 type: Service
 title: "Granot Booking reconciliation (`granotLifecycle/bookingReconciliation`)"
-description: Booking-case open/refresh plus gated Owner confirm, update, referral, and No Action commands.
+description: Booking-case open/refresh for Booked or Release evidence, plus gated Owner confirm, update, referral, Confirm Granot Cancellation, and No Action.
 tags: [granot-lifecycle]
 status: draft
 stale_after: 2026-11-19
 resource: src/services/granotLifecycle/bookingReconciliation.ts
 applies_to:
   - src/services/granotLifecycle/bookingReconciliation.ts
+  - src/services/granotLifecycle/bookingIntakeLatestAction.ts
   - src/services/granotLifecycle/bookingPriorityPairing.ts
   - src/services/granotLifecycle/bookingConfirmation.ts
   - src/services/granotLifecycle/confirmAttachment.ts
   - src/services/granotLifecycle/bookingOwnerCommands.ts
+  - src/services/granotLifecycle/officialCancellationWrite.ts
   - src/services/granotLifecycle/referralBooking.ts
   - src/models/GranotBookingReconciliationCase.ts
 owners: [team:main-server]
@@ -25,38 +27,42 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:docs-keeper
-  at: 2026-08-28T19:15:00Z
+  at: 2026-09-01T18:20:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
-**Authority (trigger and pairing):** [`booking-reconciliation-booked-only-specification.md`](../../granot-lead-lifecycle/booking-reconciliation-booked-only-specification.md). FINAL SPEC still wins on modes, uniqueness, revisions, Owner commands, Referral, and discrepancies.  
-**Later contract (not implemented):** [`release-into-booking-intake.md`](./release-into-booking-intake.md). This file still describes current code.  
-**Primary code:** `src/services/granotLifecycle/bookingReconciliation.ts`, `bookingPriorityPairing.ts`, `bookingConfirmation.ts`, `confirmAttachment.ts`, `bookingOwnerCommands.ts`, `referralBooking.ts`, `src/models/GranotBookingReconciliationCase.ts`, `src/services/granotLifecycle/processor.ts`
-**Domain terms used:** [Granot Booking Reconciliation Case](../../../../CONTEXT.md), [Booking Priority Pairing](../../../../CONTEXT.md), [Referral Booking](../../../../CONTEXT.md), [Leadless Booking](../../../../CONTEXT.md), [Update Existing Booking](../../../../CONTEXT.md), [No Action](../../../../CONTEXT.md), [Synchronization Decision](../../../../CONTEXT.md), [Granot Observation](../../../../CONTEXT.md), [Source Scope](../../../../CONTEXT.md)
+**Authority (Release routing, booking-intake upsert, Confirm Granot Cancellation on a booking case):** [`release-into-booking-intake.md`](./release-into-booking-intake.md). Booked-only still wins on Priority 5, pairing, AC-18 / AC-P1–P4 / AC-P6–P8 (AC-P5 superseded). FINAL SPEC still wins on uniqueness, revisions, Referral, official-field blankness, and identity-conflict discrepancies.  
+**Primary code:** `src/services/granotLifecycle/bookingReconciliation.ts`, `bookingIntakeLatestAction.ts`, `bookingPriorityPairing.ts`, `bookingConfirmation.ts`, `confirmAttachment.ts`, `bookingOwnerCommands.ts`, `officialCancellationWrite.ts`, `referralBooking.ts`, `src/models/GranotBookingReconciliationCase.ts`, `src/services/granotLifecycle/processor.ts`
+**Domain terms used:** [Granot Booking Reconciliation Case](../../../../CONTEXT.md), [Granot Booking Action](../../../../CONTEXT.md), [Booking Priority Pairing](../../../../CONTEXT.md), [Referral Booking](../../../../CONTEXT.md), [Leadless Booking](../../../../CONTEXT.md), [Update Existing Booking](../../../../CONTEXT.md), [Confirm Granot Cancellation](../../../../CONTEXT.md), [No Action](../../../../CONTEXT.md), [Synchronization Decision](../../../../CONTEXT.md), [Granot Observation](../../../../CONTEXT.md), [Source Scope](../../../../CONTEXT.md)
 
 # Granot Booking reconciliation (`granotLifecycle/bookingReconciliation`)
 
-**Role:** Persist evidence-backed owner work for actual Booked observations. A case is not a Booking. Official Booking changes occur only through explicit Owner commands. [Booking Priority Pairing](../../../../CONTEXT.md) is an audit projection on the case, not a trigger.
+**Role:** Persist evidence-backed owner work for actual Booked **or** Release [Granot Booking Action](../../../../CONTEXT.md) observations. A case is not a Booking. Official Booking or Cancellation changes occur only through explicit Owner commands. [Booking Priority Pairing](../../../../CONTEXT.md) is an audit projection on the case, not a trigger.
 
 ## Trigger and routing
 
-The channel-neutral processor is the only **automatic** caller (`maybeReconcileBooking`). `discrepancyOwnerCommands.ts` may also call `reconcileBookingCaseAfterDiscrepancy` after an Owner discrepancy correction. Automatic open/refresh passes only immutable Observation/Decision IDs after activation, live-mode classification, source policy/identity, and the exact Booking-case gate snapshot. Historical shadow, live shadow, disabled gates, Release, missing Job, and unsupported evidence create no case.
+The channel-neutral processor is the only **automatic** caller (`maybeReconcileBooking`). `discrepancyOwnerCommands.ts` may also call `reconcileBookingCaseAfterDiscrepancy` after an Owner discrepancy correction. Automatic open/refresh passes only immutable Observation/Decision IDs after activation, live-mode classification, source policy/identity, and the exact Booking-case gate snapshot. Historical shadow, live shadow, disabled gates, Priority 5, missing Job, and unsupported evidence create no case.
 
 | Current evidence/fact | Result |
 | --- | --- |
 | Priority `5` without Booked | `not_booking_evidence`; no case; Observation may apply lead desired-state |
-| actual Booked, no Booking | open/refresh `create_missing_booking`; ambiguous Lead means no suggestion |
-| actual Booked, one active Booking | open/refresh `review_existing_booking` with its ID |
+| actual Booked or Release, no Booking | open/refresh `create_missing_booking`; ambiguous Lead means no suggestion |
+| actual Booked or Release, one active Booking | open/refresh `review_existing_booking` with its ID |
 | Booking without Lead, `booking_origin=employee_booking` (or existing employee case) | delegate to that `BookingLeadReconciliationCase`; persist Decision and stop if the employee case is missing (`employee_reconciliation_missing`). Employee pending Leadless path unchanged |
 | Booking without Lead, Granot official Leadless | open/refresh `review_existing_booking` with the Booking ID. Do not fail closed. Confirm does not open a `BookingLeadReconciliationCase` |
-| officially cancelled Booking | `booked_after_official_cancellation` → processor persists a discrepancy (no Booking case) |
-| actual Booked from exact reviewed Referral, no Booking | open/refresh `create_referral_booking`; no Source Scope, suggestion, or Lead search |
-| actual Booked with one active Referral Booking | open/refresh `review_existing_booking` with its ID and no Lead requirement |
+| officially cancelled Booking + **Booked** | `booked_after_official_cancellation` → processor persists a discrepancy (no Booking case) |
+| officially cancelled Booking + **Release** | `already_current` / `booking_already_cancelled`; Decision only; no case, no discrepancy |
+| actual Booked or Release from exact reviewed Referral, no Booking | open/refresh `create_referral_booking`; no Source Scope, suggestion, or Lead search |
+| actual Booked or Release with one active Referral Booking | open/refresh `review_existing_booking` with its ID and no Lead requirement |
 | Priority-only Referral | no case |
-| identity/Job/source conflict on actual Booked | typed discrepancy classification; processor persists via `createGranotDiscrepancies` |
+| identity/Job/source conflict on actual Booked | typed `booked_*` discrepancy; processor persists via `createGranotDiscrepancies` |
+| identity/Job/source conflict on actual Release | typed `release_*` discrepancy (`release_record_link_conflict` / `release_job_number_conflict` / `release_source_scope_conflict`); no booking case |
+| missing Booking + Release (no identity conflict) | booking intake evidence; **not** `release_without_vantage_booking` |
 
-Classifier `evidence_action` for new traffic is `booked` only; it never emits `priority_5`. Stored evidence still allows historical `priority_5` rows. Priority validity never suppresses a valid actual Booked action. Persist and `reconcileBookingCaseAfterDiscrepancy` fail closed unless the classification is actual Booked. Booking work never reads, closes, or mutates Release work.
+Classifier `evidence_action` for new traffic is `booked` or `release`; it never emits `priority_5`. Stored evidence still allows historical `priority_5` rows. Priority validity never suppresses a valid Booked or Release action. Persist and `reconcileBookingCaseAfterDiscrepancy` fail closed unless the classification is actual Booked or Release. New Release evidence does not open or refresh a Granot Release Reconciliation Case.
 
-On Booked open or a new Booked evidence append, the same transaction writes an optional `priority_pairing` snapshot from `projectBookingPriorityPairing`: pairing class (`priority_5_then_booked` | `booked_carries_priority_5` | `booked_without_priority_5`), creating Booked Observation id and Priority flags, and preceding Priority 5 Observation id/time when one exists. `later_priority_5` is never stored. Exact Observation replay does not rewrite the snapshot. Pairing never increments `case_revision` by itself. Historical Priority-5-only cases keep their evidence and have no pairing snapshot.
+`latest_action` is derived by `selectBookingIntakeLatestAction` (`bookingIntakeLatestAction.ts`): temporally latest evidence row (`captured_at`, then Observation ObjectId hex). Historical `priority_5` never wins when any `booked` or `release` row exists. Projections use this for list/detail and Confirm Granot Cancellation capability.
+
+On Booked open or a new Booked evidence append, the same transaction writes an optional `priority_pairing` snapshot from `projectBookingPriorityPairing`: pairing class (`priority_5_then_booked` | `booked_carries_priority_5` | `booked_without_priority_5`), creating Booked Observation id and Priority flags, and preceding Priority 5 Observation id/time when one exists. `later_priority_5` is never stored. Exact Observation replay does not rewrite the snapshot. Pairing never increments `case_revision` by itself. Pairing stays **Booked-only**: Release persist omits `priority_pairing` and does not wipe an existing snapshot. Release-only cases have `priority_pairing: null`. A later Booked on the same case computes pairing as today. Historical Priority-5-only cases keep their evidence and have no pairing snapshot.
 
 ## Transaction, uniqueness, and revisions
 
@@ -73,6 +79,7 @@ Open starts with `case_revision=1`, `evidence_revision=1`. A new Observation app
 | `POST` | `/api/v1/admin/granot-lifecycle/booking-cases/:id/confirm-booking` | `confirmGranotBooking` | 201 (200 on replay/`already_satisfied`) |
 | `POST` | `.../update-booking` | `updateBooking` (route telemetry `updateGranotBooking`) | 200 |
 | `POST` | `.../create-referral-booking` | `createReferralBooking` (route telemetry `createGranotReferralBooking`) | 201 (200 on replay/`already_satisfied`) |
+| `POST` | `.../confirm-cancellation` | `confirmCancellation` (route telemetry `confirmGranotCancellation`, `case_kind: "booking"`) | 201 (200 on replay/`already_satisfied`) |
 | `POST` | `.../no-action` | `resolveGranotBookingCaseNoAction` (route telemetry `resolveGranotBookingNoAction`) | 200 |
 
 Every command requires `requireRegistryOwnerActor`, one strict `Idempotency-Key`, the first case-evidence Receipt/Observation/Decision chain, an enabled Booking-command gate, and current reviewed Registry/source facts. Flag-off is **422** `POLICY_BLOCKED`. Stale case/Booking revision is **409** `CASE_REVISION_CONFLICT` / `DOMAIN_REVISION_CONFLICT`. Checked-in command defaults remain false.
@@ -80,6 +87,7 @@ Every command requires `requireRegistryOwnerActor`, one strict `Idempotency-Key`
 - Official `official_booking_details` accept `book_date`, `deposit_amount`, `total_binder_amount`, `merchant_id`, `primary_agent_id`, and optional `secondary_agent_id`. Per-agent `agent_allocations[]` is rejected. Stored `BookedLead.agent_allocations` come from `officialBookingAllocations` (even-cent split). See [`agent-allocation.md`](../services/agent-allocation.md). Confirm `selected_lead` is optional. Connect Booking to Lead ships from `/bookings` ([`bookings.md`](../services/bookings.md)); unmasking is not implemented.
 - `confirmGranotBooking` resolves an open `create_missing_booking` case. Official details are required. Attachment is server-owned in `resolveConfirmAttachment`: Owner `selected_lead` always wins (Duplicate/Bad/cancelled rejected; all-scope needs a 10–500 override); unique high suggestion auto-attaches only when `confidence === "high"` and the match method is in `HIGH_CONFIDENCE_BOOKING_MATCH_METHODS`; medium / none / `source_scoped_contact` is Leadless. Attached persist is unchanged eligibility/override/CAS; a lost claim fails closed (`IDENTITY_CONFLICT` / `DOMAIN_REVISION_CONFLICT`) and does not fall through to Leadless. Leadless persist writes official `is_leadless_booking: true`, no `lead_ref`, customer from Observation contact, booking-only Record Link, Master Booked intent, and `owner_notice`. Same-state existing Booking plus matching Record Link is `already_satisfied`.
 - `updateBooking` is available only for open `review_existing_booking`. It revalidates the deterministic active Booking, normalized Job, linked Lead/source **or** Granot official Leadless (`isGranotOfficialLeadlessBooking`: leadless, not referral, not `employee_booking` origin, no `lead_ref`/`lead_model`), optional active Record Link, exact Booking/case revisions, and active Agent/Merchant IDs. It fully replaces only Book Date, Agent allocations, total Binder, Deposit, and Merchant; derived deposit thresholds alone may mirror to an already-linked Lead. One transaction writes aggregate Change(s), case resolution, Command, and one coalescible queued intent (`booking_chain` / `booked_lead.update` when attached; `booked_lead` / `booked_lead.update` when Leadless). Identity/source/contact/local/submission/cancellation fields cannot change.
+- `confirmCancellation` is [Confirm Granot Cancellation](../../../../CONTEXT.md) on the **booking** case. It is allowed only when the case is open, mode is `review_existing_booking`, `selectBookingIntakeLatestAction(evidence) === "release"`, a deterministic official Booking is still active, and `GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED` is true. It does **not** require Release case/command flags. Create-missing and create-referral never expose this command, even when `latest_action === "release"`. Wrong posture (including latest Booked on review) is **409** `CASE_REVISION_CONFLICT` and writes no Cancellation. Official write + case-resolve CAS is shared with the historical Release command (`officialCancellationWrite.ts`). Input equals today's Release confirm: `expected_case_revision`, `expected_booking_revision`, official `cancel_date`, `refund_amount`, optional reason/notes/`cancelled_by`. One `Idempotency-Key`. Owner actor.
 - `resolveGranotBookingCaseNoAction` is available for open standard create-missing or review-existing cases. Optional reason code/text are metadata only. Its transaction writes the Command plus one case resolution/revision and creates no aggregate revision, `EntityChange`, Sheet Sync intent, link, discrepancy, notification, or replacement case.
 - `createReferralBooking` is available only for open `create_referral_booking` behind both Booking-command and Referral gates. It derives the accepted first Observation/Decision and exact reviewed Referral source from immutable evidence, accepts only complete blank-entered official fields, and atomically creates one no-Lead Referral Booking, one active booking-only Record Link, two Changes, case resolution, Command, and one `booked_lead` / `referral_booking.create` intent. The planner targets only Master Booked.
 - Existing Referral `review_existing_booking` reuses full official update and No Action, but revalidates the Referral Decision/source policy, never attaches or mutates a Lead/Source Scope, and queues `referral_booking.update` as a master-only Booking write.

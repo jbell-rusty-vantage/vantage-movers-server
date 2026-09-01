@@ -7,7 +7,7 @@ import {
 } from "./GranotBookingReconciliationCase";
 
 describe("GranotBookingReconciliationCase model", () => {
-  it("[AC-20] declares the exact five named indexes and open partial uniqueness", () => {
+  it("[AC-20] declares the exact six named indexes and open partial uniqueness", () => {
     assert.deepEqual(GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES, [
       {
         name: "granot_booking_case_open_job_kind_unique",
@@ -36,9 +36,13 @@ describe("GranotBookingReconciliationCase model", () => {
           state: 1,
         },
       },
+      {
+        name: "granot_booking_case_evidence_observation_id",
+        key: { "evidence.observation_id": 1 },
+      },
     ]);
     const indexes = GranotBookingReconciliationCase.schema.indexes();
-    assert.equal(indexes.length, 5);
+    assert.equal(indexes.length, 6);
   });
 
   it("[AC-18] validates exact defaults, enums, evidence shape, and bounded context", async () => {

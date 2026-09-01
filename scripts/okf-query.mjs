@@ -13,7 +13,6 @@ const SKIP_DIRS = new Set([
   "owner-daily-operations-and-intakes-reduced",
   "showcase",
   "historical_production_db_staged_merge_ingestion_plans", // pragma: allowlist secret
-  "mongodb-backup-automation",
   "node_modules",
 ]);
 

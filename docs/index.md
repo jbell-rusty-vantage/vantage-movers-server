@@ -60,6 +60,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [projections.md](knowledge/granot-lifecycle/projections.md) | Masked Admin case/job/lead reads plus Owner-only creating-observation; reads never invoke mutations. |
 | [live-receipts.md](knowledge/granot-lifecycle/live-receipts.md) | Owner-only SSE of Granot webhook receipts; Mongo watermark poll, not in-process emit. |
 | [observability.md](knowledge/granot-lifecycle/observability.md) | Lifecycle events, closed metric labels, and health projection. |
+| [mongodb-backup.md](knowledge/services/mongodb-backup.md) | Daily logical mongodump of `vantagemovers` to GCS in project `vantage-sheets-496816`. |
 
 ## ADR
 
@@ -85,6 +86,9 @@ Workspace ADRs are outside this repo. This standalone checkout does not contain 
 | [granot-lifecycle/owner-booking-intake.md](knowledge/granot-lifecycle/owner-booking-intake.md) | Pointer to the owner booking-intake contract. Does not copy spec rules. |
 | [granot-lifecycle/release-into-booking-intake.md](knowledge/granot-lifecycle/release-into-booking-intake.md) | Pointer to the Release-into-intake contract. Does not copy spec rules. |
 | [granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md](granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md) | Owner booking intake. §5 even Binder, BILA-01 search/display, BILA-02 optional Lead on Confirm, and BILA-03 Connect Booking to Lead from `/bookings` are current; unmasking is not implemented. Prerequisite for Owner Daily. |
+| [operational-surfaces-specification.md](operational-surfaces/operational-surfaces-specification.md) | Admin presentation: tabbed operational detail panel, row action cluster, grouped filters. Shared `OperationalResourcePage` shell. No main-server invariant changes. |
+| [granot-lifecycle-surfaces-specification.md](granot-lifecycle-surfaces/granot-lifecycle-surfaces-specification.md) | Ingestion cleanup, Granot Lifecycle System tab (Health + searchable webhook-channel Granot Observation Receipts). Job Timeline stays Records. Live Events SSE unchanged. |
+| [mongodb-backup-automation/README.md](mongodb-backup-automation/README.md) | Operator playbook: list, trigger, inspect, and restore-drill GCS backups. Invariants stay in the Service. |
 
 ## Delivery packs
 
@@ -95,6 +99,8 @@ Active work packs. The ledger inside each is a navigation aid; the repository is
 | [operations-registry-source-connections/README.md](operations-registry-source-connections/README.md) | Four-pass delivery of the Operations Registry source-connection spec: typed label mappings, the Granot name Owner command, the aggregate Lead Source projection, and the Owner UI. |
 | [job-number-timeline/README.md](job-number-timeline/README.md) | Four-session enhancement of the Owner Job Number timeline (JTE-01–05). Daily Assurance and notifications stay out of pack. |
 | [booking-intake-lead-attachment/README.md](booking-intake-lead-attachment/README.md) | Three-issue pack. BILA-01–BILA-03 shipped (intake search/display, optional Lead on Confirm, Connect from `/bookings`). |
+| [operational-surfaces/README.md](operational-surfaces/README.md) | Five-issue pack. Tabbed operational detail panel, row cluster, grouped filters on the shared Admin list shell (OSE-01–05). Admin only. |
+| [granot-lifecycle-surfaces/README.md](granot-lifecycle-surfaces/README.md) | Three-issue pack. GLS-01 Ingestion IA + Health home; GLS-02 receipt search API; GLS-03 Receipts tab. Job Timeline stays `/job-timeline`. |
 
 ## Archives
 
@@ -103,5 +109,6 @@ Unstamped. Index links only.
 - [Owner daily operations / ODV issues](owner-daily-operations/README.md)
 - [Showcase](showcase/owner-workflow.md)
 - [Historical production DB staged merge plans](historical_[REDACTED]_db_staged_merge_ingestion_plans/historical-database-consolidation-plan.md) // pragma: allowlist secret
-- [MongoDB backup automation](mongodb-backup-automation/cloud-run-job-implementation-plan.md)
+- [MongoDB backup implementation plan](mongodb-backup-automation/cloud-run-job-implementation-plan.md) (historical; live Service is [mongodb-backup.md](knowledge/services/mongodb-backup.md))
+- [MongoDB backup deployment record](mongodb-backup-automation/deployment-record.md)
 - [Agent documentation maintenance strategy](agent-documentation-maintenance-strategy.md) (draft; not a live runbook)

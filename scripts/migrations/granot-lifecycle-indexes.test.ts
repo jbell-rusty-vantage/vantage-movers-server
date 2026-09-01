@@ -173,7 +173,7 @@ test("[AC-36] Booking-case collisions, ordering, and exact definitions are deter
   assert.equal(JSON.stringify(collisions).includes("JOB-22"), false);
   assert.deepEqual(findGranotBookingCaseCollisions([]), { open: [], sequence: [] });
   const ordered = orderedGranotBookingCaseIndexCreates();
-  assert.equal(ordered.nonUnique.length, 3);
+  assert.equal(ordered.nonUnique.length, 4);
   assert.equal(ordered.unique.length, 2);
   const actual = GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES.map((index) => ({
     name: index.name,
@@ -184,7 +184,7 @@ test("[AC-36] Booking-case collisions, ordering, and exact definitions are deter
       : undefined,
   }));
   assert.equal(verifyGranotBookingCaseIndexDefinitions(actual).ok, true);
-  assert.equal(verifyGranotBookingCaseIndexDefinitions([]).missing.length, 5);
+  assert.equal(verifyGranotBookingCaseIndexDefinitions([]).missing.length, 6);
   assert.deepEqual(
     verifyGranotBookingCaseIndexDefinitions(actual),
     verifyGranotBookingCaseIndexDefinitions(actual),

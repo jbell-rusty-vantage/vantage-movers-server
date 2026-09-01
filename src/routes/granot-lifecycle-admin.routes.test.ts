@@ -4,7 +4,7 @@ import { after, afterEach, before, test } from "node:test";
 import express from "express";
 import mongoose from "mongoose";
 import { computeAdminActorSignature } from "../services/operationsRegistry/trustedActor";
-import { GRANOT_LIFECYCLE_ERROR_CODES } from "../services/granotLifecycle/errors";
+import { GRANOT_LIFECYCLE_ERROR_CODES, GranotLifecycleError } from "../services/granotLifecycle/errors";
 import { createGranotLifecycleAdminRouter } from "./granot-lifecycle-admin.routes";
 
 const SECRET = "synthetic-admin-signing-secret";
@@ -58,6 +58,8 @@ const HEALTH_FIXTURE = {
 };
 const receiptId = new mongoose.Types.ObjectId().toHexString();
 const releaseCaseId = new mongoose.Types.ObjectId().toHexString();
+const createMissingCaseId = new mongoose.Types.ObjectId().toHexString();
+const bookedPostureCaseId = new mongoose.Types.ObjectId().toHexString();
 let lastRequeue: { id: string; reason: string; role: string } | null = null;
 let lastCaseQuery: Record<string, unknown> | null = null;
 let lastCandidateQuery: Record<string, unknown> | null = null;
@@ -66,6 +68,7 @@ let lastConfirm: Record<string, unknown> | null = null;
 let lastReferralCreate: Record<string, unknown> | null = null;
 let lastUpdate: Record<string, unknown> | null = null;
 let lastNoAction: Record<string, unknown> | null = null;
+let lastBookingCancellation: Record<string, unknown> | null = null;
 let lastReleaseCancellation: Record<string, unknown> | null = null;
 let lastReleaseUpdate: Record<string, unknown> | null = null;
 let lastReleaseNoAction: Record<string, unknown> | null = null;
@@ -114,7 +117,8 @@ app.use(
         items: [], next_cursor: null, current: {},
         capabilities: { booking_cases: true, release_cases: false, discrepancies: false, official_facts: true },
       },
-      capabilities: { commands: false, referral: false, release_cases: false, discrepancies: false },
+      latest_action: "booked",
+      capabilities: { commands: false, referral: false, confirm_cancellation: false, release_cases: false, discrepancies: false },
       priority_pairing: null,
     } : null,
     getCreatingObservation: async (caseId) => {
@@ -245,6 +249,28 @@ app.use(
         replayed: false,
       };
     },
+    confirmBookingCancellation: async (input) => {
+      lastBookingCancellation = input as unknown as Record<string, unknown>;
+      if (input.case_id === createMissingCaseId || input.case_id === bookedPostureCaseId) {
+        throw new GranotLifecycleError(
+          "Granot reconciliation case revision changed",
+          GRANOT_LIFECYCLE_ERROR_CODES.CASE_REVISION_CONFLICT,
+          409,
+        );
+      }
+      return {
+        case_id: input.case_id,
+        case_state: "resolved",
+        case_revision: 2,
+        outcome: "cancellation_created",
+        command_execution_id: new mongoose.Types.ObjectId().toHexString(),
+        decision_id: new mongoose.Types.ObjectId().toHexString(),
+        booking_ref: { id: new mongoose.Types.ObjectId().toHexString(), domain_revision: 2 },
+        cancellation_ref: { id: new mongoose.Types.ObjectId().toHexString(), domain_revision: 1 },
+        entity_refs: [],
+        replayed: false,
+      };
+    },
     confirmCancellation: async (input) => {
       lastReleaseCancellation = input as unknown as Record<string, unknown>;
       return {
@@ -367,6 +393,7 @@ afterEach(() => {
   lastConfirm = null;
   lastUpdate = null;
   lastNoAction = null;
+  lastBookingCancellation = null;
   lastReleaseCancellation = null;
   lastReleaseUpdate = null;
   lastReleaseNoAction = null;
@@ -725,6 +752,56 @@ test("[AC-20] [AC-32] Owner No Action accepts optional reason metadata and Admin
   });
   assert.equal(denied.status, 403);
   assert.equal(lastNoAction, null);
+});
+
+test("[AC-R9] Owner booking-case confirm-cancellation succeeds and rejects create-missing posture", async () => {
+  const path = `/api/v1/admin/granot-lifecycle/booking-cases/${receiptId}/confirm-cancellation`;
+  const body = {
+    expected_case_revision: 1,
+    expected_booking_revision: 3,
+    official_cancellation_details: { cancel_date: "2026-08-19", refund_amount: 25.5 },
+  };
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { ...signedHeaders("owner", path), "Idempotency-Key": "unit-r9-cancel-1" },
+    body: JSON.stringify(body),
+  });
+  assert.equal(response.status, 201);
+  assert.equal(lastBookingCancellation?.case_id, receiptId);
+  assert.equal(lastBookingCancellation?.expected_booking_revision, 3);
+  assert.equal(lastBookingCancellation?.idempotency_key, "unit-r9-cancel-1");
+
+  const createMissingPath = `/api/v1/admin/granot-lifecycle/booking-cases/${createMissingCaseId}/confirm-cancellation`;
+  const rejected = await fetch(`${baseUrl}${createMissingPath}`, {
+    method: "POST",
+    headers: { ...signedHeaders("owner", createMissingPath), "Idempotency-Key": "unit-r9-cancel-missing" },
+    body: JSON.stringify(body),
+  });
+  assert.equal(rejected.status, 409);
+  assert.equal((await rejected.json() as { code: string }).code, GRANOT_LIFECYCLE_ERROR_CODES.CASE_REVISION_CONFLICT);
+  assert.equal(lastBookingCancellation?.case_id, createMissingCaseId);
+
+  const bookedPosturePath = `/api/v1/admin/granot-lifecycle/booking-cases/${bookedPostureCaseId}/confirm-cancellation`;
+  const bookedRejected = await fetch(`${baseUrl}${bookedPosturePath}`, {
+    method: "POST",
+    headers: { ...signedHeaders("owner", bookedPosturePath), "Idempotency-Key": "unit-r9-cancel-booked" },
+    body: JSON.stringify(body),
+  });
+  assert.equal(bookedRejected.status, 409);
+  assert.equal((await bookedRejected.json() as { code: string }).code, GRANOT_LIFECYCLE_ERROR_CODES.CASE_REVISION_CONFLICT);
+  assert.equal(lastBookingCancellation?.case_id, bookedPostureCaseId);
+
+  lastBookingCancellation = null;
+  const forbidden = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { ...signedHeaders("owner", path), "Idempotency-Key": "unit-r9-cancel-2" },
+    body: JSON.stringify({
+      ...body,
+      booking_id: new mongoose.Types.ObjectId().toHexString(),
+    }),
+  });
+  assert.equal(forbidden.status, 400);
+  assert.equal(lastBookingCancellation, null);
 });
 
 test("[AC-25] [AC-32] Release Owner routes are strict, idempotent, and use exact statuses", async () => {

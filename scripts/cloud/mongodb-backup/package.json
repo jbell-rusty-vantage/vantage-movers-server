@@ -1,0 +1,16 @@
+{
+  "name": "vantage-mongodb-backup",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node backup.mjs",
+    "test": "node --test backup.test.mjs"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "^7.17.3"
+  }
+}

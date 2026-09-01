@@ -36,7 +36,7 @@ sources:
     title: Owner booking intake, even Binder, optional Lead, and Connect Booking to Lead
 generated:
   by: process:docs-keeper
-  at: 2026-08-28T19:15:00Z
+  at: 2026-09-01T18:20:00Z
 ---
 
 # Granot lead-lifecycle spec hub

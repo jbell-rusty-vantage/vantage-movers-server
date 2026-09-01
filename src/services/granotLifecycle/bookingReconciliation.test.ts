@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import mongoose from "mongoose";
+import { selectBookingIntakeLatestAction } from "./bookingIntakeLatestAction";
 import {
   classifyBookingReconciliation,
   createGranotBookingReconciliation,
@@ -85,6 +86,7 @@ describe("Booking Reconciliation classification", () => {
     const classified = [
       classifyBookingReconciliation(context()),
       classifyBookingReconciliation(context({ booking_action: "booked" })),
+      classifyBookingReconciliation(context({ booking_action: "release" })),
     ];
     assert.equal(
       classified.some((row) => row.kind === "case" && row.evidence_action === "priority_5"),
@@ -124,6 +126,31 @@ describe("Booking Reconciliation classification", () => {
         kind: "case",
         mode: "review_existing_booking",
         evidence_action: "booked",
+        deterministic_booking_id: referralBookingId,
+      },
+    );
+    assert.deepEqual(
+      classifyBookingReconciliation(context({
+        booking_action: "release",
+        lifecycle_disposition: "referral_booking",
+      })),
+      { kind: "case", mode: "create_referral_booking", evidence_action: "release" },
+    );
+    assert.deepEqual(
+      classifyBookingReconciliation(context({
+        booking_action: "release",
+        lifecycle_disposition: "referral_booking",
+        booking: {
+          id: referralBookingId,
+          has_lead: false,
+          officially_cancelled: false,
+          referral: true,
+        },
+      })),
+      {
+        kind: "case",
+        mode: "review_existing_booking",
+        evidence_action: "release",
         deterministic_booking_id: referralBookingId,
       },
     );
@@ -239,11 +266,7 @@ describe("Booking Reconciliation classification", () => {
     );
   });
 
-  it("[AC-40] ignores Release work and excludes Bad/Duplicate or ambiguous suggestions", () => {
-    assert.deepEqual(classifyBookingReconciliation(context({ booking_action: "release" })), {
-      kind: "none",
-      reason: "opposite_action_kind",
-    });
+  it("[AC-40] excludes Bad/Duplicate or ambiguous suggestions", () => {
     assert.equal(toBookingLeadSuggestion(context().identity)?.confidence, "high");
     assert.equal(toBookingLeadSuggestion({
       ...context().identity,
@@ -516,14 +539,41 @@ describe("Booking Reconciliation persistence", () => {
     assert.deepEqual(memory.cases[0]!.evidence.map((row) => row.action), ["booked"]);
   });
 
-  it("[AC-P5] Releas writes no Booking case and later Booked refreshes the same open case", async () => {
+  it("[AC-P5] Releas/Release with no official Booking opens a booked booking case with release evidence", async () => {
+    for (const booking_action of ["release"] as const) {
+      const current = context({ booking_action });
+      assert.deepEqual(classifyBookingReconciliation(current), {
+        kind: "case",
+        mode: "create_missing_booking",
+        evidence_action: "release",
+      });
+      const memory = memoryStore(current);
+      const result = await createGranotBookingReconciliation({
+        prepared: prepared(current),
+        store: memory.store,
+      }).reconcileObservation({ observation_id: current.observation_id, decision_id: oid() });
+      assert.equal(result.kind, "opened");
+      assert.equal(result.kind === "opened" ? result.reason_code : undefined, "booking_case_opened");
+      assert.equal(memory.cases.length, 1);
+      assert.equal(memory.cases[0]!.action_kind, "booked");
+      assert.equal(memory.cases[0]!.mode, "create_missing_booking");
+      assert.equal(memory.cases[0]!.evidence[0]!.action, "release");
+      assert.equal(memory.cases[0]!.priority_pairing, undefined);
+      assert.equal(memory.decisions[0]!.reason_code, "booking_case_opened");
+    }
+  });
+
+  it("[AC-R1] later Releas appends Release evidence on the same open Booked case", async () => {
     const first = context({ booking_action: "booked" });
     const memory = memoryStore(first);
-    await createGranotBookingReconciliation({
+    const opened = await createGranotBookingReconciliation({
       prepared: prepared(first),
       store: memory.store,
     }).reconcileObservation({ observation_id: first.observation_id, decision_id: oid() });
+    assert.equal(opened.kind, "opened");
     const openId = String(memory.cases[0]!._id);
+    const pairing = memory.cases[0]!.priority_pairing;
+    assert.ok(pairing);
 
     const release = context({
       observation_id: oid(),
@@ -531,17 +581,44 @@ describe("Booking Reconciliation persistence", () => {
       captured_at: new Date("2026-08-18T12:30:00.000Z"),
     });
     memory.store.loadCurrentContext = async () => release;
-    const ignored = await createGranotBookingReconciliation({
+    const refreshed = await createGranotBookingReconciliation({
       prepared: prepared(release),
       store: memory.store,
-    }).reconcileObservation({
-      observation_id: release.observation_id,
-      decision_id: oid(),
-    });
-    assert.deepEqual(ignored, { kind: "none", reason: "opposite_action_kind" });
+    }).reconcileObservation({ observation_id: release.observation_id, decision_id: oid() });
+    assert.equal(refreshed.kind, "refreshed");
+    assert.equal(refreshed.kind === "refreshed" ? refreshed.reason_code : undefined, "booking_case_refreshed");
     assert.equal(memory.cases.length, 1);
-    assert.equal(memory.cases[0]!.evidence.length, 1);
-    assert.equal(memory.cases[0]!.evidence_revision, 1);
+    assert.equal(String(memory.cases[0]!._id), openId);
+    assert.equal(memory.cases[0]!.mode, "create_missing_booking");
+    assert.equal(memory.cases[0]!.case_revision, 1);
+    assert.equal(memory.cases[0]!.evidence_revision, 2);
+    assert.deepEqual(memory.cases[0]!.evidence.map((row) => row.action), ["booked", "release"]);
+    assert.deepEqual(memory.cases[0]!.priority_pairing, pairing);
+    assert.equal(
+      selectBookingIntakeLatestAction(
+        memory.cases[0]!.evidence.map((row) => ({
+          action: row.action,
+          captured_at: row.captured_at,
+          observation_id: String(row.observation_id),
+        })),
+      ),
+      "release",
+    );
+  });
+
+  it("[AC-R2] Releas first opens create-missing; later Booked refreshes the same case", async () => {
+    const first = context({ booking_action: "release" });
+    const memory = memoryStore(first);
+    const opened = await createGranotBookingReconciliation({
+      prepared: prepared(first),
+      store: memory.store,
+    }).reconcileObservation({ observation_id: first.observation_id, decision_id: oid() });
+    assert.equal(opened.kind, "opened");
+    assert.equal(memory.cases[0]!.mode, "create_missing_booking");
+    assert.equal(memory.cases[0]!.evidence[0]!.action, "release");
+    const firstPairing = memory.cases[0]!.priority_pairing;
+    assert.equal(firstPairing, undefined);
+    const openId = String(memory.cases[0]!._id);
 
     const later = context({
       observation_id: oid(),
@@ -556,8 +633,127 @@ describe("Booking Reconciliation persistence", () => {
     assert.equal(refreshed.kind, "refreshed");
     assert.equal(memory.cases.length, 1);
     assert.equal(String(memory.cases[0]!._id), openId);
-    assert.equal(memory.cases[0]!.evidence.length, 2);
+    assert.equal(memory.cases[0]!.case_revision, 1);
     assert.equal(memory.cases[0]!.evidence_revision, 2);
+    assert.deepEqual(memory.cases[0]!.evidence.map((row) => row.action), ["release", "booked"]);
+    assert.equal(memory.cases[0]!.priority_pairing?.pairing, "booked_carries_priority_5");
+    assert.equal(
+      selectBookingIntakeLatestAction(
+        memory.cases[0]!.evidence.map((row) => ({
+          action: row.action,
+          captured_at: row.captured_at,
+          observation_id: String(row.observation_id),
+        })),
+      ),
+      "booked",
+    );
+  });
+
+  it("[AC-R3] official active Booking + Releas opens review_existing_booking with release evidence", async () => {
+    const bookingId = oid();
+    const current = context({
+      booking_action: "release",
+      booking: { id: bookingId, has_lead: true, officially_cancelled: false, referral: false },
+    });
+    assert.deepEqual(classifyBookingReconciliation(current), {
+      kind: "case",
+      mode: "review_existing_booking",
+      evidence_action: "release",
+      deterministic_booking_id: bookingId,
+    });
+    const memory = memoryStore(current);
+    const result = await createGranotBookingReconciliation({
+      prepared: prepared(current),
+      store: memory.store,
+    }).reconcileObservation({ observation_id: current.observation_id, decision_id: oid() });
+    assert.equal(result.kind, "opened");
+    assert.equal(memory.cases[0]!.mode, "review_existing_booking");
+    assert.equal(memory.cases[0]!.evidence[0]!.action, "release");
+    assert.equal(String(memory.cases[0]!.deterministic_booking_id), bookingId);
+  });
+
+  it("[AC-R4] officially cancelled Booking + Releas is already_current and writes no booking case", async () => {
+    const bookingId = oid();
+    const cancellationId = oid();
+    const current = context({
+      booking_action: "release",
+      booking: {
+        id: bookingId,
+        has_lead: true,
+        officially_cancelled: true,
+        referral: false,
+        cancellation_id: cancellationId,
+      },
+    });
+    assert.deepEqual(classifyBookingReconciliation(current), {
+      kind: "already_current",
+      reason_code: "booking_already_cancelled",
+      booking_id: bookingId,
+      cancellation_id: cancellationId,
+    });
+    const memory = memoryStore(current);
+    const result = await createGranotBookingReconciliation({
+      prepared: prepared(current),
+      store: memory.store,
+    }).reconcileObservation({ observation_id: current.observation_id, decision_id: oid() });
+    assert.deepEqual(result, {
+      kind: "already_current",
+      outcome: "already_current",
+      reason_code: "booking_already_cancelled",
+      target: { model: "CancelledLead", id: cancellationId },
+    });
+    assert.equal(memory.cases.length, 0);
+    assert.equal(memory.decisions[0]!.outcome, "already_current");
+    assert.equal(memory.decisions[0]!.reason_code, "booking_already_cancelled");
+    assert.notEqual(memory.decisions[0]!.reason_code, "release_without_vantage_booking");
+  });
+
+  it("[AC-R5] officially cancelled Booking + Booked still opens booked_after_official_cancellation", async () => {
+    const current = context({
+      booking_action: "booked",
+      booking: { id: oid(), has_lead: true, officially_cancelled: true, referral: false },
+    });
+    assert.deepEqual(classifyBookingReconciliation(current), {
+      kind: "booking_discrepancy_required",
+      reason_code: "booked_after_official_cancellation",
+    });
+    const memory = memoryStore(current);
+    const result = await createGranotBookingReconciliation({
+      prepared: prepared(current),
+      store: memory.store,
+    }).reconcileObservation({ observation_id: current.observation_id, decision_id: oid() });
+    assert.deepEqual(result, {
+      kind: "booking_discrepancy_required",
+      reason_code: "booked_after_official_cancellation",
+    });
+    assert.equal(memory.cases.length, 0);
+  });
+
+  it("[AC-R6] identity conflict on Release opens a release_* discrepancy and no booking case", async () => {
+    for (const [reason, expected] of [
+      ["record_link_conflict", "release_record_link_conflict"],
+      ["job_number_conflict", "release_job_number_conflict"],
+      ["source_scope_conflict", "release_source_scope_conflict"],
+    ] as const) {
+      const current = context({
+        booking_action: "release",
+        identity: { outcome: "conflict", reason_code: reason, candidates: [] },
+      });
+      assert.deepEqual(classifyBookingReconciliation(current), {
+        kind: "booking_discrepancy_required",
+        reason_code: expected,
+      });
+      const memory = memoryStore(current);
+      const result = await createGranotBookingReconciliation({
+        prepared: prepared(current),
+        store: memory.store,
+      }).reconcileObservation({ observation_id: current.observation_id, decision_id: oid() });
+      assert.deepEqual(result, {
+        kind: "booking_discrepancy_required",
+        reason_code: expected,
+      });
+      assert.equal(memory.cases.length, 0);
+    }
   });
 
   it("[AC-P2][AC-P3][AC-P4] second Booked refreshes evidence and pairing snapshot", async () => {
@@ -670,5 +866,22 @@ describe("Booking Reconciliation persistence", () => {
     assert.equal(memory.cases.length, 1);
     assert.equal(memory.cases[0]?.mode, "review_existing_booking");
     assert.equal(String(memory.cases[0]?.deterministic_booking_id), bookingId);
+    assert.deepEqual(
+      classifyBookingReconciliation(context({
+        booking_action: "release",
+        booking: {
+          id: bookingId,
+          has_lead: false,
+          officially_cancelled: false,
+          referral: false,
+        },
+      })),
+      {
+        kind: "case",
+        mode: "review_existing_booking",
+        evidence_action: "release",
+        deterministic_booking_id: bookingId,
+      },
+    );
   });
 });

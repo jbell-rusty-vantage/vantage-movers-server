@@ -1,5 +1,9 @@
 import mongoose from "mongoose";
+import { getGranotBookingReconciliationCaseModel } from "../../models/GranotBookingReconciliationCase";
+import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
+import { recordOperationalEvent } from "../observability";
+import { isSupportedGranotBookingAction } from "./normalization";
 import { redactCredentialKeys } from "./receiptEvidence";
 import type { GranotRouteEventClass, ObservationChannel, ReceiptWorkState } from "./types";
 
@@ -25,14 +29,48 @@ export type LiveWebhookLead = {
   move_date: string | null;
 };
 
+export type LiveWebhookIntakeLink = {
+  case_id: string;
+  kind: "booking";
+  state: "open" | "resolved";
+  matched_via: "evidence_observation_id";
+};
+
 export type LiveWebhookReceipt = {
   receipt_id: string;
   captured_at: string;
   route_event_class: LiveWebhookEventClass;
   observation_channel: "granot_webhook";
   processing_state: ReceiptWorkState | string;
+  observation_id?: string | null;
+  intake_link?: LiveWebhookIntakeLink | null;
   lead: LiveWebhookLead;
   granot_statement: unknown;
+};
+
+export type LiveReceiptObservationRow = {
+  _id: string;
+  receipt_id: string;
+  route_event_class?: string;
+  payload_event_type_raw?: string | null;
+};
+
+export type LiveReceiptBookingCaseRow = {
+  _id: string;
+  state: "open" | "resolved";
+  evidence: Array<{ observation_id: string }>;
+};
+
+export type LiveReceiptIntakeLinkStores = {
+  findObservationsByReceiptIds: (receiptIds: string[]) => Promise<LiveReceiptObservationRow[]>;
+  findBookingCasesByObservationIds: (
+    observationIds: string[],
+  ) => Promise<LiveReceiptBookingCaseRow[]>;
+  recordAmbiguousIntakeLink?: (input: {
+    receipt_id: string;
+    observation_id: string;
+    case_ids: string[];
+  }) => Promise<void>;
 };
 
 export type LiveReceiptCursor = {
@@ -102,7 +140,13 @@ export function extractLiveWebhookLead(payload: unknown): LiveWebhookLead {
   };
 }
 
-export function projectLiveWebhookReceipt(row: ReceiptRow): LiveWebhookReceipt | null {
+export function projectLiveWebhookReceipt(
+  row: ReceiptRow,
+  intake?: {
+    observation_id?: string | null;
+    intake_link?: LiveWebhookIntakeLink | null;
+  },
+): LiveWebhookReceipt | null {
   if (row.observation_channel !== LIVE_CHANNEL) {
     return null;
   }
@@ -119,6 +163,8 @@ export function projectLiveWebhookReceipt(row: ReceiptRow): LiveWebhookReceipt |
     route_event_class: row.route_event_class,
     observation_channel: "granot_webhook",
     processing_state: row.processing?.state ?? "pending",
+    observation_id: intake?.observation_id ?? null,
+    intake_link: intake?.intake_link ?? null,
     lead: extractLiveWebhookLead(granot_statement),
     granot_statement,
   };
@@ -169,7 +215,261 @@ function projectRows(rows: ReceiptRow[]): LiveWebhookReceipt[] {
   return projected;
 }
 
-export async function listLiveWebhookReceiptSnapshot(now = new Date()): Promise<LiveWebhookReceipt[]> {
+function asIdString(value: unknown): string | null {
+  if (value instanceof mongoose.Types.ObjectId) {
+    return String(value);
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+  return null;
+}
+
+function eventTypeQualifiesForIntakeLink(eventType: string | null | undefined): boolean {
+  if (!eventType || eventType.trim().length === 0) {
+    return false;
+  }
+  return isSupportedGranotBookingAction(eventType);
+}
+
+async function recordAmbiguousIntakeLinkDefault(input: {
+  receipt_id: string;
+  observation_id: string;
+  case_ids: string[];
+}): Promise<void> {
+  await recordOperationalEvent({
+    level: "error",
+    eventKey: "granot_lifecycle.live_receipt.ambiguous_intake_link",
+    category: "admin",
+    workflow: "granot_lifecycle",
+    summary: "Multiple booking cases share one Observation; Live Events intake link omitted.",
+    details: {
+      observation_id: input.observation_id,
+      case_count: input.case_ids.length,
+    },
+    entity: { type: "granot_observation", id: input.observation_id },
+    piiPolicy: "none",
+    reportable: true,
+    ownerVisible: false,
+  });
+}
+
+async function defaultFindObservationsByReceiptIds(
+  receiptIds: string[],
+): Promise<LiveReceiptObservationRow[]> {
+  const ids = receiptIds.map(asObjectId).filter((id): id is mongoose.Types.ObjectId => id !== null);
+  if (ids.length === 0) {
+    return [];
+  }
+  const rows = await getGranotObservationModel()
+    .find({ receipt_id: { $in: ids } })
+    .select({
+      _id: 1,
+      receipt_id: 1,
+      route_event_class: 1,
+      payload_event_type_raw: 1,
+    })
+    .lean()
+    .exec();
+  return rows.flatMap((row) => {
+    const id = asIdString(row._id);
+    const receiptId = asIdString(row.receipt_id);
+    if (!id || !receiptId) {
+      return [];
+    }
+    return [
+      {
+        _id: id,
+        receipt_id: receiptId,
+        route_event_class: row.route_event_class,
+        payload_event_type_raw: row.payload_event_type_raw ?? null,
+      },
+    ];
+  });
+}
+
+async function defaultFindBookingCasesByObservationIds(
+  observationIds: string[],
+): Promise<LiveReceiptBookingCaseRow[]> {
+  const ids = observationIds
+    .map(asObjectId)
+    .filter((id): id is mongoose.Types.ObjectId => id !== null);
+  if (ids.length === 0) {
+    return [];
+  }
+  const rows = await getGranotBookingReconciliationCaseModel()
+    .find({ "evidence.observation_id": { $in: ids } })
+    .select({ _id: 1, state: 1, "evidence.observation_id": 1 })
+    .lean()
+    .exec();
+  return rows.flatMap((row) => {
+    const id = asIdString(row._id);
+    if (!id || (row.state !== "open" && row.state !== "resolved")) {
+      return [];
+    }
+    return [
+      {
+        _id: id,
+        state: row.state,
+        evidence: (row.evidence ?? []).flatMap((item) => {
+          const observationId = asIdString(item.observation_id);
+          return observationId ? [{ observation_id: observationId }] : [];
+        }),
+      },
+    ];
+  });
+}
+
+function defaultIntakeLinkStores(): LiveReceiptIntakeLinkStores {
+  return {
+    findObservationsByReceiptIds: defaultFindObservationsByReceiptIds,
+    findBookingCasesByObservationIds: defaultFindBookingCasesByObservationIds,
+    recordAmbiguousIntakeLink: recordAmbiguousIntakeLinkDefault,
+  };
+}
+
+function casesForObservation(
+  cases: LiveReceiptBookingCaseRow[],
+  observationId: string,
+): LiveReceiptBookingCaseRow[] {
+  return cases.filter((row) =>
+    row.evidence.some((evidence) => evidence.observation_id === observationId),
+  );
+}
+
+async function resolveIntakeForReceipt(input: {
+  receipt: Pick<LiveWebhookReceipt, "receipt_id" | "route_event_class" | "lead">;
+  observation: LiveReceiptObservationRow | undefined;
+  cases: LiveReceiptBookingCaseRow[];
+  stores: LiveReceiptIntakeLinkStores;
+}): Promise<{
+  observation_id: string | null;
+  intake_link: LiveWebhookIntakeLink | null;
+}> {
+  if (!input.observation) {
+    return { observation_id: null, intake_link: null };
+  }
+  const observation_id = input.observation._id;
+  const matches = casesForObservation(input.cases, observation_id);
+  if (matches.length > 1) {
+    await (input.stores.recordAmbiguousIntakeLink ?? recordAmbiguousIntakeLinkDefault)({
+      receipt_id: input.receipt.receipt_id,
+      observation_id,
+      case_ids: matches.map((row) => row._id),
+    });
+    return { observation_id, intake_link: null };
+  }
+  const bookingCase = matches[0];
+  if (!bookingCase) {
+    return { observation_id, intake_link: null };
+  }
+  const routeClass = isLiveWebhookEventClass(input.observation.route_event_class)
+    ? input.observation.route_event_class
+    : input.receipt.route_event_class;
+  if (routeClass !== "booking_status_changed") {
+    return { observation_id, intake_link: null };
+  }
+  const eventType =
+    input.observation.payload_event_type_raw ?? input.receipt.lead.event_type ?? null;
+  if (!eventTypeQualifiesForIntakeLink(eventType)) {
+    return { observation_id, intake_link: null };
+  }
+  return {
+    observation_id,
+    intake_link: {
+      case_id: bookingCase._id,
+      kind: "booking",
+      state: bookingCase.state,
+      matched_via: "evidence_observation_id",
+    },
+  };
+}
+
+export async function enrichLiveWebhookReceipts(
+  receipts: LiveWebhookReceipt[],
+  stores: LiveReceiptIntakeLinkStores = defaultIntakeLinkStores(),
+): Promise<LiveWebhookReceipt[]> {
+  if (receipts.length === 0) {
+    return receipts;
+  }
+  const observations = await stores.findObservationsByReceiptIds(
+    receipts.map((receipt) => receipt.receipt_id),
+  );
+  const observationsByReceiptId = new Map(
+    observations.map((row) => [row.receipt_id, row] as const),
+  );
+  const observationIds = [...new Set(observations.map((row) => row._id))];
+  const cases =
+    observationIds.length > 0
+      ? await stores.findBookingCasesByObservationIds(observationIds)
+      : [];
+  const enriched: LiveWebhookReceipt[] = [];
+  for (const receipt of receipts) {
+    const intake = await resolveIntakeForReceipt({
+      receipt,
+      observation: observationsByReceiptId.get(receipt.receipt_id),
+      cases,
+      stores,
+    });
+    enriched.push({
+      ...receipt,
+      observation_id: intake.observation_id,
+      intake_link: intake.intake_link,
+    });
+  }
+  return enriched;
+}
+
+export async function resolveLiveReceiptIntakeLink(
+  input: { receipt_id: string },
+  stores: LiveReceiptIntakeLinkStores = defaultIntakeLinkStores(),
+): Promise<{
+  observation_id: string | null;
+  intake_link: LiveWebhookIntakeLink | null;
+}> {
+  const [resolved] = await enrichLiveWebhookReceipts(
+    [
+      {
+        receipt_id: input.receipt_id,
+        captured_at: "1970-01-01T00:00:00.000Z",
+        route_event_class: "booking_status_changed",
+        observation_channel: "granot_webhook",
+        processing_state: "completed",
+        lead: {
+          display_name: null,
+          first_name: null,
+          last_name: null,
+          email: null,
+          phone: null,
+          job_no: null,
+          event_type: null,
+          priority: null,
+          origin: null,
+          destination: null,
+          move_date: null,
+        },
+        granot_statement: {},
+      },
+    ],
+    stores,
+  );
+  return {
+    observation_id: resolved?.observation_id ?? null,
+    intake_link: resolved?.intake_link ?? null,
+  };
+}
+
+async function projectAndEnrich(
+  rows: ReceiptRow[],
+  stores?: LiveReceiptIntakeLinkStores,
+): Promise<LiveWebhookReceipt[]> {
+  return enrichLiveWebhookReceipts(projectRows(rows), stores);
+}
+
+export async function listLiveWebhookReceiptSnapshot(
+  now = new Date(),
+  stores?: LiveReceiptIntakeLinkStores,
+): Promise<LiveWebhookReceipt[]> {
   const rows = await getGranotObservationReceiptModel()
     .find({
       ...webhookFilter(),
@@ -186,11 +486,19 @@ export async function listLiveWebhookReceiptSnapshot(now = new Date()): Promise<
     })
     .lean()
     .exec();
-  return projectRows(rows as ReceiptRow[]);
+  return projectAndEnrich(rows as ReceiptRow[], stores);
+}
+
+export async function listLiveWebhookReceiptsUpdated(
+  now = new Date(),
+  stores?: LiveReceiptIntakeLinkStores,
+): Promise<LiveWebhookReceipt[]> {
+  return listLiveWebhookReceiptSnapshot(now, stores);
 }
 
 export async function listLiveWebhookReceiptsAfter(
   cursor: LiveReceiptCursor,
+  stores?: LiveReceiptIntakeLinkStores,
 ): Promise<LiveWebhookReceipt[]> {
   const since = new Date(cursor.captured_at);
   if (Number.isNaN(since.getTime())) {
@@ -220,7 +528,7 @@ export async function listLiveWebhookReceiptsAfter(
     })
     .lean()
     .exec();
-  return projectRows(rows as ReceiptRow[]);
+  return projectAndEnrich(rows as ReceiptRow[], stores);
 }
 
 export function cursorFromReceipt(receipt: LiveWebhookReceipt): LiveReceiptCursor {

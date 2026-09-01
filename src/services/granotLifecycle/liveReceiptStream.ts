@@ -17,6 +17,7 @@ export type LiveReceiptSseWriter = {
 export type LiveReceiptSseDeps = {
   listSnapshot: () => Promise<LiveWebhookReceipt[]>;
   listAfter: (cursor: LiveReceiptCursor) => Promise<LiveWebhookReceipt[]>;
+  listUpdated?: () => Promise<LiveWebhookReceipt[]>;
   sleep: (ms: number) => Promise<void>;
   now: () => number;
   pollMs?: number;
@@ -24,6 +25,34 @@ export type LiveReceiptSseDeps = {
   maxMs?: number;
   signal?: AbortSignal;
 };
+
+type LiveReceiptEmittedFingerprint = {
+  processing_state: string;
+  intake_link: string;
+};
+
+function fingerprintIntakeLink(link: LiveWebhookReceipt["intake_link"]): string {
+  if (!link) {
+    return "";
+  }
+  return `${link.case_id}:${link.kind}:${link.state}:${link.matched_via}`;
+}
+
+function fingerprintReceipt(receipt: LiveWebhookReceipt): LiveReceiptEmittedFingerprint {
+  return {
+    processing_state: receipt.processing_state,
+    intake_link: fingerprintIntakeLink(receipt.intake_link),
+  };
+}
+
+function rememberReceipts(
+  remembered: Map<string, LiveReceiptEmittedFingerprint>,
+  receipts: LiveWebhookReceipt[],
+): void {
+  for (const receipt of receipts) {
+    remembered.set(receipt.receipt_id, fingerprintReceipt(receipt));
+  }
+}
 
 function formatSse(event: string, data: unknown, id?: string): string {
   const lines = [
@@ -47,14 +76,18 @@ export async function runLiveReceiptSse(
   const started = deps.now();
   let lastHeartbeat = started;
   let cursor = decodeLiveReceiptEventId(lastEventId);
+  const remembered = new Map<string, LiveReceiptEmittedFingerprint>();
 
   if (!cursor) {
     const snapshot = await deps.listSnapshot();
     writer.write(formatSse("snapshot", { receipts: snapshot }));
+    rememberReceipts(remembered, snapshot);
     const newest = snapshot[0];
     cursor = newest
       ? cursorFromReceipt(newest)
       : { captured_at: new Date(started).toISOString(), receipt_id: "0".repeat(24) };
+  } else if (deps.listUpdated) {
+    rememberReceipts(remembered, await deps.listUpdated());
   }
 
   while (deps.now() - started < maxMs) {
@@ -62,11 +95,41 @@ export async function runLiveReceiptSse(
       return;
     }
     const next = await deps.listAfter(cursor);
+    const justEmitted = new Set<string>();
     for (const receipt of next) {
       writer.write(
         formatSse("receipt", receipt, encodeLiveReceiptEventId(cursorFromReceipt(receipt))),
       );
       cursor = cursorFromReceipt(receipt);
+      remembered.set(receipt.receipt_id, fingerprintReceipt(receipt));
+      justEmitted.add(receipt.receipt_id);
+    }
+    if (deps.listUpdated) {
+      const window = await deps.listUpdated();
+      const windowIds = new Set<string>();
+      for (const receipt of window) {
+        windowIds.add(receipt.receipt_id);
+        if (justEmitted.has(receipt.receipt_id)) {
+          remembered.set(receipt.receipt_id, fingerprintReceipt(receipt));
+          continue;
+        }
+        const previous = remembered.get(receipt.receipt_id);
+        if (previous) {
+          const current = fingerprintReceipt(receipt);
+          if (
+            previous.processing_state !== current.processing_state ||
+            previous.intake_link !== current.intake_link
+          ) {
+            writer.write(formatSse("receipt_updated", receipt));
+          }
+          remembered.set(receipt.receipt_id, current);
+        }
+      }
+      for (const receiptId of [...remembered.keys()]) {
+        if (!windowIds.has(receiptId) && !justEmitted.has(receiptId)) {
+          remembered.delete(receiptId);
+        }
+      }
     }
     const tick = deps.now();
     if (tick - lastHeartbeat >= heartbeatMs) {

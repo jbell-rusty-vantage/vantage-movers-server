@@ -24,7 +24,6 @@ import type { DurableActor } from "../durableWork/types";
 import { executeIdempotentCanonicalCommand } from "../domainCommands/idempotency";
 import {
   BOOKED_LEAD_CHANGE_PATHS,
-  CANCELLED_LEAD_CHANGE_PATHS,
   CALL_LEAD_CHANGE_PATHS,
   collectDocumentFieldChanges,
   FORM_LEAD_CHANGE_PATHS,
@@ -48,9 +47,13 @@ import type { ObservationChannel } from "./types";
 import type { LeadModel } from "./types";
 import { newObjectIdHex, toObjectId } from "../../utils/objectId";
 import { finalizeSheetSync, persistSheetSyncIntent } from "../sheetSync";
-import { createCancellationForVerifiedBookingInTransaction } from "../cancellations/cancelledLead.service";
+import {
+  CREATE_CANCELLATION_COMMAND_NAME,
+  applyOfficialCancellationWrite,
+  type OfficialCancellationFailAfter,
+} from "./officialCancellationWrite";
 
-export const CREATE_CANCELLATION_COMMAND_NAME = "createCancellation";
+export { CREATE_CANCELLATION_COMMAND_NAME } from "./officialCancellationWrite";
 export const UPDATE_RELEASE_BOOKING_COMMAND_NAME = "updateBooking";
 export const RELEASE_NO_ACTION_COMMAND_NAME = "resolveGranotReleaseCaseNoAction";
 
@@ -88,7 +91,7 @@ export type ReleaseOwnerCommandResult = {
 type ReleaseOwnerCommandOptions = {
   flags?: GranotLifecycleFlags;
   test_fail_after_case?: boolean;
-  test_fail_after?: "booking" | "cancellation" | "lead" | "changes" | "case" | "outbox";
+  test_fail_after?: OfficialCancellationFailAfter;
 };
 
 export async function confirmCancellation(
@@ -121,120 +124,31 @@ export async function confirmCancellation(
       assertLeadIdentity(caseRow, bookingBefore, leadBefore, input.request_id);
       await loadAndAssertLink(caseRow, bookingBefore, session, input.request_id);
 
-      const existingCancellations = await CancelledLead.find({ booked_lead: bookingBefore._id })
-        .session(session).limit(2).lean().exec();
-      if (bookingBefore.cancelled || existingCancellations.length > 0) {
-        const exact = existingCancellations.length === 1 &&
-          String(existingCancellations[0]!._id) === String(bookingBefore.cancelled ?? "");
-        if (!exact) {
-          throw lifecycle("Official Cancellation chain is incompatible with the Booking", "IDENTITY_CONFLICT", 409, input.request_id);
-        }
-        await resolveCase({
+      return applyOfficialCancellationWrite({
+        bookingBefore: bookingBefore as unknown as Parameters<typeof applyOfficialCancellationWrite>[0]["bookingBefore"],
+        normalized_job_no: caseRow.normalized_job_no,
+        expected_booking_revision: input.expected_booking_revision,
+        official_cancellation_details: input.official_cancellation_details,
+        command_execution_id,
+        context: causal.context,
+        session,
+        now,
+        cancellationId,
+        changeIds,
+        request_id: input.request_id,
+        test_fail_after: options.test_fail_after,
+        resolveCase: ({ outcome, entity_id }) => resolveCase({
           case_row: caseRow,
           command_execution_id,
           actor: input.owner,
-          outcome: "already_satisfied",
+          outcome,
           now,
           session,
           entity_model: "CancelledLead",
-          entity_id: existingCancellations[0]!._id,
-        });
-        return {
-          entity_refs: cancellationRefs(caseRow, bookingBefore, existingCancellations[0]!._id),
-          warnings: [],
-        };
-      }
-      if (bookingBefore.domain_revision !== input.expected_booking_revision) {
-        throw lifecycle("Booking revision changed", "DOMAIN_REVISION_CONFLICT", 409, input.request_id);
-      }
-
-      let created: Awaited<ReturnType<typeof createCancellationForVerifiedBookingInTransaction>>;
-      try {
-        created = await createCancellationForVerifiedBookingInTransaction({
-          booking_before: bookingBefore as unknown as Parameters<typeof createCancellationForVerifiedBookingInTransaction>[0]["booking_before"],
-          expected_domain_revision: input.expected_booking_revision,
-          normalized_job_no: caseRow.normalized_job_no,
-          cancellation_id: cancellationId,
-          official_details: input.official_cancellation_details,
-          ...(options.test_fail_after === "booking" ||
-          options.test_fail_after === "cancellation" ||
-          options.test_fail_after === "lead"
-            ? { test_fail_after: options.test_fail_after }
-            : {}),
-        }, { session, now });
-      } catch (error) {
-        if (error instanceof Error && error.message === "DOMAIN_REVISION_CONFLICT") {
-          throw lifecycle("Booking or Lead revision changed", "DOMAIN_REVISION_CONFLICT", 409, input.request_id);
-        }
-        if (error instanceof Error && error.message === "GRANOT_IDENTITY_CONFLICT") {
-          throw lifecycle("Booking Lead identity changed", "IDENTITY_CONFLICT", 409, input.request_id);
-        }
-        throw error;
-      }
-      const cancellationAfter = created.cancellation.toObject() as unknown as Record<string, unknown>;
-      const mutations: AggregateMutationPlan[] = [
-        {
-          change_id: changeIds[0]!,
-          entity: { model: "BookedLead", id: String(bookingBefore._id) },
-          revision_before: bookingBefore.domain_revision,
-          fields: collectDocumentFieldChanges(
-            bookingBefore as unknown as Record<string, unknown>,
-            created.booking_after,
-            BOOKED_LEAD_CHANGE_PATHS,
-          ),
-        },
-        {
-          change_id: changeIds[1]!,
-          entity: { model: "CancelledLead", id: String(cancellationId) },
-          revision_before: 0,
-          fields: collectDocumentFieldChanges(null, cancellationAfter, CANCELLED_LEAD_CHANGE_PATHS),
-        },
-      ];
-      if (
-        created.lead_before && created.lead_after &&
-        bookingBefore.lead_ref && bookingBefore.lead_model
-      ) {
-        mutations.push({
-          change_id: changeIds[2]!,
-          entity: { model: bookingBefore.lead_model, id: String(bookingBefore.lead_ref) },
-          revision_before: Number(created.lead_before.domain_revision ?? 0),
-          fields: collectDocumentFieldChanges(
-            created.lead_before,
-            created.lead_after,
-            bookingBefore.lead_model === "FormLead" ? FORM_LEAD_CHANGE_PATHS : CALL_LEAD_CHANGE_PATHS,
-          ),
-        });
-      }
-      await persistEntityChangeMutations({
-        session,
-        now,
-        command_name: CREATE_CANCELLATION_COMMAND_NAME,
-        command_execution_id,
-        context: causal.context,
-        mutations,
+          entity_id,
+        }),
+        base_refs: releaseRefs(caseRow, bookingBefore),
       });
-      failAfter(options.test_fail_after, "changes");
-      await resolveCase({
-        case_row: caseRow,
-        command_execution_id,
-        actor: input.owner,
-        outcome: "cancellation_created",
-        now,
-        session,
-        entity_model: "CancelledLead",
-        entity_id: cancellationId,
-      });
-      failAfter(options.test_fail_after, "case");
-      await persistSheetSyncIntent({
-        resource: "cancellation_chain",
-        operation: "cancelled_lead.create",
-        cancellationId: String(cancellationId),
-      }, session);
-      failAfter(options.test_fail_after, "outbox");
-      return {
-        entity_refs: cancellationRefs(caseRow, bookingBefore, cancellationId),
-        warnings: [],
-      };
     },
   });
   const result = await reloadResult(input.case_id, outcome.result.entity_refs, causal.decision_id, outcome.replayed);
@@ -707,21 +621,6 @@ function releaseRefs(
       ? [{ model: booking.lead_model, id: String(booking.lead_ref) }]
       : []),
     ...(row.record_link_id ? [{ model: "GranotRecordLink", id: String(row.record_link_id) }] : []),
-  ];
-}
-
-function cancellationRefs(
-  row: GranotReleaseReconciliationCaseDocument,
-  booking: {
-    _id: mongoose.Types.ObjectId;
-    lead_ref?: mongoose.Types.ObjectId | null;
-    lead_model?: LeadModel | null;
-  },
-  cancellationId: mongoose.Types.ObjectId,
-) {
-  return [
-    ...releaseRefs(row, booking),
-    { model: "CancelledLead", id: String(cancellationId) },
   ];
 }
 

@@ -11,7 +11,7 @@ alwaysApply: true
 - `src/services/` owns business behavior and side effects across leads, bookings, cancellations, customers, agents, catalog, CPL, search, enrichment, reconciliation, CRM, Granot (CSV, HTTP automation, lifecycle capture, webhooks adapter), RingCentral, Google Sheets/sheet sync, tariff spreadsheet append (`tariff/`, not Sheet Sync), Google Drive OAuth, lead messaging, observability, operations registry, analytics, admin, reporting, Best Relocation ingestion, employee bookings, domain commands, durable work, historical consolidation, operational workbooks, and legacy compatibility helpers (`leadSourceCompanies/`, root `*.service.ts` barrels).
 - `src/models/` owns Mongoose runtime schemas and model helpers. `src/db.ts` owns the shared Mongo connection and must preserve `TEST_MODE` boundaries.
 - `src/config/` owns mode-aware domain configuration such as source companies, sheet targets, CPL, observability, Google auth, and runtime DB selection.
-- `scripts/` contains operational tooling: dev ops, historical backfill/repair, Google Sheets inspection/backfill, RingCentral management, Postman sync, demos, generated docs, and tests setup.
+- `scripts/` contains operational tooling: Cloud Run backup job (`scripts/cloud/mongodb-backup/`), dev ops, historical backfill/repair, Google Sheets inspection/backfill, RingCentral management, Postman sync, demos, generated docs, and tests setup.
 - Architecture, operational, and workflow notes belong in `docs/`, `.cursor/rules/`, or existing internal docs.
 
 # Drift Policy

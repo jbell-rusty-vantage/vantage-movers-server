@@ -10,6 +10,8 @@ import {
 import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
+import { getGranotReleaseReconciliationCaseModel } from "../../models/GranotReleaseReconciliationCase";
+import { selectBookingIntakeLatestAction } from "./bookingIntakeLatestAction";
 import {
   createGranotBookingReconciliation,
   createMongoBookingReconciliationStore,
@@ -17,6 +19,13 @@ import {
   type BookingReconciliationPersistenceStore,
   type PreparedBookingReconciliationDecision,
 } from "./bookingReconciliation";
+
+type ReplicaBookingHook = {
+  id: string;
+  has_lead: boolean;
+  officially_cancelled: boolean;
+  referral: boolean;
+};
 
 const ids = new Set<string>();
 const jobs = new Set<string>();
@@ -51,6 +60,7 @@ async function replicaReady(t: { skip: (reason: string) => void }): Promise<bool
 after(async () => {
   if (mongoose.connection.readyState === 1) {
     await getGranotBookingReconciliationCaseModel().deleteMany({ normalized_job_no: { $in: [...jobs] } });
+    await getGranotReleaseReconciliationCaseModel().deleteMany({ normalized_job_no: { $in: [...jobs] } });
     const objectIds = [...ids].map((id) => new mongoose.Types.ObjectId(id));
     await getSynchronizationDecisionModel().collection.deleteMany({ observation_id: { $in: objectIds } });
     await getGranotObservationModel().collection.deleteMany({ _id: { $in: objectIds } });
@@ -91,6 +101,8 @@ async function seedEvidence(
   capturedAt: Date,
   suggestedLeadId?: mongoose.Types.ObjectId,
   referral = false,
+  bookingAction: "booked" | "release" = "booked",
+  booking?: ReplicaBookingHook,
 ): Promise<{
   observationId: mongoose.Types.ObjectId;
   receiptId: mongoose.Types.ObjectId;
@@ -116,10 +128,11 @@ async function seedEvidence(
     captured_at: capturedAt,
     identity: { normalized_job_no: job, job_no_raw: job },
     priority: { valid: false },
-    booking_action: { normalized: "booked" },
+    booking_action: { normalized: bookingAction },
     synthetic_lead_id: suggestedLeadId,
     synthetic_referral: referral,
     synthetic_source_id: sourceId,
+    ...(booking ? { synthetic_booking: booking } : {}),
   });
   return { observationId, receiptId, decisionId, sourceId };
 }
@@ -141,7 +154,7 @@ function replicaStore(): BookingReconciliationPersistenceStore {
         normalized_job_no: String(row.identity.normalized_job_no),
         job_no_snapshot: String(row.identity.job_no_raw),
         priority: { valid: false },
-        booking_action: "booked",
+        booking_action: observationBookingAction(row.booking_action),
         lifecycle_disposition: row.synthetic_referral ? "referral_booking" : "source_scoped_lead",
         reviewed_source_policy: row.synthetic_referral
           ? {
@@ -167,10 +180,78 @@ function replicaStore(): BookingReconciliationPersistenceStore {
               reason_code: "multiple_eligible_matches",
               candidates: [],
             },
+        booking: syntheticBooking(row.synthetic_booking),
       };
       return context;
     },
   };
+}
+
+function observationBookingAction(value: unknown): "booked" | "release" | undefined {
+  const normalized = value && typeof value === "object" && "normalized" in value
+    ? (value as { normalized?: unknown }).normalized
+    : undefined;
+  return normalized === "booked" || normalized === "release" ? normalized : undefined;
+}
+
+function syntheticBooking(value: unknown): BookingReconciliationCurrentContext["booking"] {
+  if (!value || typeof value !== "object") return undefined;
+  const row = value as Partial<ReplicaBookingHook>;
+  if (!row.id) return undefined;
+  return {
+    id: String(row.id),
+    has_lead: row.has_lead === true,
+    officially_cancelled: row.officially_cancelled === true,
+    referral: row.referral === true,
+  };
+}
+
+function latestActionFromCase(row: { evidence?: Array<{
+  action: "priority_5" | "booked" | "release";
+  captured_at: Date;
+  observation_id: mongoose.Types.ObjectId;
+}> }) {
+  return selectBookingIntakeLatestAction(
+    (row.evidence ?? []).map((item) => ({
+      action: item.action,
+      captured_at: item.captured_at,
+      observation_id: String(item.observation_id),
+    })),
+  );
+}
+
+async function resolveOpenCase(caseId: mongoose.Types.ObjectId, actorId: string) {
+  const resolutionId = new mongoose.Types.ObjectId();
+  const resolved = await getGranotBookingReconciliationCaseModel().updateOne(
+    { _id: caseId, state: "open" },
+    {
+      $set: {
+        state: "resolved",
+        resolved_at: new Date(),
+        resolution: {
+          outcome: "no_action",
+          command_execution_id: resolutionId,
+          actor: {
+            actor_type: "system",
+            actor_id: actorId,
+            actor_label: "Unit replica",
+            actor_role: "system",
+            request_id: String(resolutionId),
+            origin: "granot_lifecycle",
+          },
+          reason_code: "duplicate_granot_action",
+          resolved_at: new Date(),
+        },
+      },
+      $inc: { case_revision: 1 },
+    },
+    { runValidators: true },
+  );
+  assert.equal(resolved.modifiedCount, 1);
+}
+
+async function countReleaseCases(job: string): Promise<number> {
+  return getGranotReleaseReconciliationCaseModel().countDocuments({ normalized_job_no: job });
 }
 
 async function reconcile(
@@ -358,4 +439,172 @@ test("[AC-P8] replica persists pairing on Booked open, replay is a no-op, later 
   row = await getGranotBookingReconciliationCaseModel().findOne({ normalized_job_no: job }).lean();
   assert.equal(row?.evidence.length, 2);
   assert.equal(row?.evidence_revision, 2);
+});
+
+test("[AC-R1] replica later Releas appends Release evidence on the same open Booked case", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const job = `U-REL-R1-${Date.now().toString(36).toUpperCase()}`;
+  const booked = await seedEvidence(job, new Date("2026-09-01T12:00:00.000Z"));
+  const opened = await reconcile(booked);
+  assert.equal(opened.kind, "opened");
+  assert.equal(opened.kind === "opened" ? opened.mode : undefined, "create_missing_booking");
+  const Case = getGranotBookingReconciliationCaseModel();
+  let row = await Case.findOne({ normalized_job_no: job }).lean();
+  assert.equal(row?.action_kind, "booked");
+  assert.equal(row?.mode, "create_missing_booking");
+  assert.equal(row?.sequence_number, 1);
+  assert.equal(row?.state, "open");
+  assert.equal(row?.case_revision, 1);
+  assert.equal(row?.evidence_revision, 1);
+  assert.deepEqual(row?.evidence.map((item) => item.action), ["booked"]);
+  const openId = String(row?._id);
+
+  const release = await seedEvidence(
+    job,
+    new Date("2026-09-01T12:30:00.000Z"),
+    undefined,
+    false,
+    "release",
+  );
+  const refreshed = await reconcile(release);
+  assert.equal(refreshed.kind, "refreshed");
+  assert.equal(refreshed.kind === "refreshed" ? refreshed.reason_code : undefined, "booking_case_refreshed");
+  row = await Case.findOne({ normalized_job_no: job }).lean();
+  assert.equal(String(row?._id), openId);
+  assert.equal(row?.mode, "create_missing_booking");
+  assert.equal(row?.case_revision, 1);
+  assert.equal(row?.evidence_revision, 2);
+  assert.deepEqual(row?.evidence.map((item) => item.action), ["booked", "release"]);
+  assert.equal(latestActionFromCase(row!), "release");
+  assert.equal(await Case.countDocuments({ normalized_job_no: job }), 1);
+  assert.equal(await countReleaseCases(job), 0);
+});
+
+test("[AC-R2] replica Releas first opens create-missing; later Booked refreshes the same case", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const job = `U-REL-R2-${Date.now().toString(36).toUpperCase()}`;
+  const release = await seedEvidence(
+    job,
+    new Date("2026-09-01T13:00:00.000Z"),
+    undefined,
+    false,
+    "release",
+  );
+  const opened = await reconcile(release);
+  assert.equal(opened.kind, "opened");
+  const Case = getGranotBookingReconciliationCaseModel();
+  let row = await Case.findOne({ normalized_job_no: job }).lean();
+  assert.equal(row?.mode, "create_missing_booking");
+  assert.equal(row?.evidence[0]?.action, "release");
+  assert.equal(row?.priority_pairing, undefined);
+  const openId = String(row?._id);
+
+  const booked = await seedEvidence(job, new Date("2026-09-01T13:30:00.000Z"));
+  const refreshed = await reconcile(booked);
+  assert.equal(refreshed.kind, "refreshed");
+  row = await Case.findOne({ normalized_job_no: job }).lean();
+  assert.equal(String(row?._id), openId);
+  assert.equal(row?.mode, "create_missing_booking");
+  assert.equal(row?.case_revision, 1);
+  assert.equal(row?.evidence_revision, 2);
+  assert.deepEqual(row?.evidence.map((item) => item.action), ["release", "booked"]);
+  assert.ok(row?.evidence.some((item) => item.action === "booked"));
+  assert.equal(latestActionFromCase(row!), "booked");
+  // Replica store inherits production listJobObservations, so a later Booked
+  // computes pairing from seeded job observations. Do not fake pairing.
+  assert.equal(row?.priority_pairing?.pairing, "booked_without_priority_5");
+  assert.equal(String(row?.priority_pairing?.creating_booked_observation_id), String(booked.observationId));
+  assert.equal(await countReleaseCases(job), 0);
+});
+
+test("[AC-R7] replica later Releas after resolve opens sequence+1 create-missing; no Release case", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const job = `U-REL-R7-CREATE-${Date.now().toString(36).toUpperCase()}`;
+  const first = await seedEvidence(job, new Date("2026-09-01T14:00:00.000Z"));
+  await reconcile(first);
+  const Case = getGranotBookingReconciliationCaseModel();
+  let rows = await Case.find({ normalized_job_no: job }).lean();
+  assert.equal(rows.length, 1);
+  await resolveOpenCase(rows[0]!._id, "unit-r7-create");
+
+  const laterRelease = await seedEvidence(
+    job,
+    new Date("2026-09-01T14:30:00.000Z"),
+    undefined,
+    false,
+    "release",
+  );
+  const opened = await reconcile(laterRelease);
+  assert.equal(opened.kind, "opened");
+  rows = await Case.find({ normalized_job_no: job }).sort({ sequence_number: 1 }).lean();
+  assert.deepEqual(rows.map((row) => row.sequence_number), [1, 2]);
+  assert.deepEqual(rows.map((row) => row.state), ["resolved", "open"]);
+  assert.equal(rows[1]!.mode, "create_missing_booking");
+  assert.deepEqual(rows[1]!.evidence.map((item) => item.action), ["release"]);
+  assert.equal(latestActionFromCase(rows[1]!), "release");
+  assert.equal(await countReleaseCases(job), 0);
+});
+
+test("[AC-R7] replica later Releas after resolve opens sequence+1 review when Booking is still active", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const job = `U-REL-R7-REVIEW-${Date.now().toString(36).toUpperCase()}`;
+  const first = await seedEvidence(job, new Date("2026-09-01T15:00:00.000Z"));
+  await reconcile(first);
+  const Case = getGranotBookingReconciliationCaseModel();
+  let rows = await Case.find({ normalized_job_no: job }).lean();
+  assert.equal(rows.length, 1);
+  await resolveOpenCase(rows[0]!._id, "unit-r7-review");
+
+  const bookingId = new mongoose.Types.ObjectId();
+  const laterRelease = await seedEvidence(
+    job,
+    new Date("2026-09-01T15:30:00.000Z"),
+    undefined,
+    false,
+    "release",
+    {
+      id: String(bookingId),
+      has_lead: true,
+      officially_cancelled: false,
+      referral: false,
+    },
+  );
+  const opened = await reconcile(laterRelease);
+  assert.equal(opened.kind, "opened");
+  rows = await Case.find({ normalized_job_no: job }).sort({ sequence_number: 1 }).lean();
+  assert.deepEqual(rows.map((row) => row.sequence_number), [1, 2]);
+  assert.deepEqual(rows.map((row) => row.state), ["resolved", "open"]);
+  assert.equal(rows[1]!.mode, "review_existing_booking");
+  assert.equal(String(rows[1]!.deterministic_booking_id), String(bookingId));
+  assert.deepEqual(rows[1]!.evidence.map((item) => item.action), ["release"]);
+  assert.equal(await countReleaseCases(job), 0);
+});
+
+test("[AC-R8] replica exact Release Observation replay is a no-op", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const job = `U-REL-R8-${Date.now().toString(36).toUpperCase()}`;
+  const release = await seedEvidence(
+    job,
+    new Date("2026-09-01T16:00:00.000Z"),
+    undefined,
+    false,
+    "release",
+  );
+  const opened = await reconcile(release);
+  assert.equal(opened.kind, "opened");
+  const Case = getGranotBookingReconciliationCaseModel();
+  let row = await Case.findOne({ normalized_job_no: job }).lean();
+  assert.equal(row?.evidence.length, 1);
+  assert.equal(row?.evidence_revision, 1);
+  assert.equal(row?.evidence[0]?.action, "release");
+  assert.equal(await getSynchronizationDecisionModel().countDocuments({ observation_id: release.observationId }), 1);
+
+  const replay = await reconcile(release);
+  assert.equal(replay.kind, "refreshed");
+  row = await Case.findOne({ normalized_job_no: job }).lean();
+  assert.equal(row?.evidence.length, 1);
+  assert.equal(row?.evidence_revision, 1);
+  assert.equal(row?.case_revision, 1);
+  assert.equal(await getSynchronizationDecisionModel().countDocuments({ observation_id: release.observationId }), 1);
+  assert.equal(await countReleaseCases(job), 0);
 });

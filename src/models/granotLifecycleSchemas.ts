@@ -212,6 +212,7 @@ export const GRANOT_BOOKING_RECONCILIATION_OUTCOMES = [
   "booking_created",
   "booking_updated",
   "referral_booking_created",
+  "cancellation_created",
   "no_action",
   "already_satisfied",
   "superseded_by_current_state",

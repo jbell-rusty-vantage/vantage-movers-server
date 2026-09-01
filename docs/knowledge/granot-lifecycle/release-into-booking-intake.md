@@ -23,7 +23,7 @@ sources:
     title: Release into booking intake and Live Events intake link
 generated:
   by: process:docs-keeper
-  at: 2026-09-01T16:20:00Z
+  at: 2026-09-01T18:20:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority:** [`release-into-booking-intake-specification.md`](../../granot-lead-lifecycle/release-into-booking-intake-specification.md)
@@ -34,4 +34,4 @@ This file is a **Reference** pointer only. It does not copy contract rules.
 
 - [Release into booking intake](../../granot-lead-lifecycle/release-into-booking-intake-specification.md) — `Releas` / `Release` upsert onto the Granot Booking Reconciliation Case; cancellation intakes retired; Live Events **Open booking intake** when that receipt’s Observation is on the case.
 
-Service docs to reverify after implementation: [`booking-reconciliation.md`](./booking-reconciliation.md), [`release-reconciliation.md`](./release-reconciliation.md), [`processor.md`](./processor.md), [`projections.md`](./projections.md), [`live-receipts.md`](./live-receipts.md).
+Service docs describe current behavior: [`booking-reconciliation.md`](./booking-reconciliation.md), [`release-reconciliation.md`](./release-reconciliation.md), [`processor.md`](./processor.md), [`projections.md`](./projections.md), [`live-receipts.md`](./live-receipts.md). Locked rules stay in the spec.

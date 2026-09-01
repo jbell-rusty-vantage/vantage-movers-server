@@ -21,11 +21,11 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T06:52:00Z
+  by: process:docs-keeper
+  at: 2026-09-01T18:20:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
-**Later contract (not implemented):** [`release-into-booking-intake.md`](./release-into-booking-intake.md). This file still describes current code.  
+**Authority (Release routing):** [`release-into-booking-intake.md`](./release-into-booking-intake.md). FINAL SPEC still wins on uniqueness, revisions, Referral, official-field blankness, and identity-conflict discrepancies.  
 **Primary code:** `src/services/granotLifecycle/processor.ts`, `src/services/granotLifecycle/bookingReconciliation.ts`, `src/services/granotLifecycle/createLeadFromGranot.ts`, `src/services/granotLifecycle/synchronizeLeadFromGranot.ts`, `src/services/granotLifecycle/leadDesiredState.ts`, `src/services/granotLifecycle/granotTemporal.ts`, `src/config/domain/granotLifecycle.ts`, `src/models/SynchronizationDecision.ts`, `src/models/GranotLifecycleActivation.ts`, `src/models/GranotRecordLink.ts`, `src/models/GranotBookingReconciliationCase.ts`
 **Domain terms used:** [Synchronization Decision](../../../../CONTEXT.md), [Granot Record Link](../../../../CONTEXT.md), [Granot Observation](../../../../CONTEXT.md), [Granot Observation Receipt](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md)
 
@@ -41,8 +41,7 @@ generated:
 load receipt -> upsert/reuse Observation -> classify stored execution mode
 -> terminal normalization -> resolve Registry policy -> Unit 14 identity
 -> temporal compare -> desired-state plan -> evaluate exact gates
--> live+booking evidence+booking-case gate -> Booking case open/refresh/delegation
--> live+Release evidence+Release-case gate -> Release case open/refresh/already-current/discrepancy seam
+-> live+Booked-or-Release evidence+booking-case gate -> Booking case open/refresh/already-current/delegation/discrepancy
 -> live+creation+all gates+eligible no-match -> createLeadFromGranot
 -> else live+writes+all gates+matched Lead -> synchronizeLeadFromGranot
    (or already_current exact-link Decision + metadata-only temporal CAS)
@@ -91,17 +90,17 @@ or activation drift a failing certification.
 
 ## Booking reconciliation cases
 
-Post-activation `live` actual `booked` evidence (`booking_action.normalized === "booked"`) enters `bookingReconciliation.ts` only when all Booking-case gates pass. Priority `5` is not booking evidence: that Observation continues through lead desired-state (`maybeCreateLead` / `maybeSynchronizeMatchedLead`) and never calls Booking reconciliation. The processor preallocates the Decision ID; the service rereads the immutable Observation, active link, source-scoped identity, deterministic Booking/Cancellation facts, and existing employee reconciliation work. One transaction opens or refreshes the single open `{normalized_job_no, action_kind:"booked"}` case and inserts the causal Decision. A bounded one-retry path resolves open/sequence unique races.
+Post-activation `live` actual Booked **or** Release evidence (`booking_action.normalized` is `booked` or `release`) enters `bookingReconciliation.ts` only when all Booking-case gates pass. Priority `5` is not booking evidence: that Observation continues through lead desired-state (`maybeCreateLead` / `maybeSynchronizeMatchedLead`) and never calls Booking reconciliation. The processor preallocates the Decision ID; the service rereads the immutable Observation, active link, source-scoped identity, deterministic Booking/Cancellation facts, and existing employee reconciliation work. One transaction opens or refreshes the single open `{normalized_job_no, action_kind:"booked"}` case and inserts the causal Decision. A bounded one-retry path resolves open/sequence unique races. Locked Release routing: [`release-into-booking-intake.md`](./release-into-booking-intake.md).
 
-Actual Booked/no Booking opens create-missing even when Lead identity is ambiguous or Priority is missing/invalid/non-`5`; actual Booked/one Booking opens `review_existing_booking`. Booking-without-Lead delegates to its existing employee reconciliation case. Official cancellation and identity conflicts return typed `booking_discrepancy_required` / identity-conflict classifications. The processor **persists** those as Granot discrepancies via `persistProcessorDiscrepancy` → `createGranotDiscrepancies` (`discrepancies.ts`). There is no standalone discrepancy Service file in this cluster. Referral Booked evidence can open `create_referral_booking`. Release evidence is a separate module ([`release-reconciliation.md`](./release-reconciliation.md)). A Booked case Decision still returns before lead desired-state on that same Observation. Case open/refresh writes no Lead, Booking, Cancellation, Record Link, Command, Change, outbox, notification, or email.
+Actual Booked or Release with no Booking opens create-missing even when Lead identity is ambiguous or Priority is missing/invalid/non-`5`; one active Booking opens `review_existing_booking`. Booking-without-Lead delegates to its existing employee reconciliation case. Officially cancelled Booking + Release is `already_current` / `booking_already_cancelled` (Decision only; no case, no discrepancy). Officially cancelled Booking + Booked still returns `booked_after_official_cancellation`. Identity conflicts return typed `booking_discrepancy_required` with existing `booked_*` or `release_*` reasons. Missing Booking + Release is not `release_without_vantage_booking`. The processor **persists** those discrepancies via `persistProcessorDiscrepancy` → `createGranotDiscrepancies` (`discrepancies.ts`). There is no standalone discrepancy Service file in this cluster. Referral Booked or Release evidence can open `create_referral_booking`. A booking-case Decision (open, refresh, or `already_current`) **returns before** lead desired-state on that same Observation — no `synchronizeLeadFromGranot` or `createLeadFromGranot` on that receipt. Case open/refresh writes no Lead, Booking, Cancellation, Record Link, Command, Change, outbox, notification, or email.
 
 New evidence appends once by Observation ID and increments only `evidence_revision`; owner-relevant suggestion changes increment `case_revision`. Resolved rows are immutable and later evidence gets `max(sequence)+1`. Suggested/candidate Leads use only canonical Unit 14 identity evidence, exclude Duplicate/Bad Form Leads, and may be refreshed without attachment for 24 hours. Operational events mask identifiers and the open-case gauge is recomputed from current cardinality. Protected reads already exist. Checked-in `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED` remains false; official Booking writes stay on separately gated Owner commands.
 
 ## Release reconciliation cases
 
-Post-activation `live` actual Release evidence enters `releaseReconciliation.ts` only when all reviewed Release-case gates pass. The service rereads the immutable Observation and current identity/Booking/Cancellation/link facts inside one transaction. One compatible active Booking opens or refreshes the single open Release case; already cancelled is a no-effect Decision; missing Booking and exact identity conflicts return typed `release_discrepancy_required` seams. The processor persists those discrepancies the same way as Booking conflicts. Booking-without-Lead is valid Release work. Priority validity is independent.
+The processor **does not** call `maybeReconcileRelease` (removed, not shimmed). `createGranotReleaseReconciliation` is not invoked from this module. New Release evidence is booking-case work above. Historical Granot Release Reconciliation Cases stay readable; see [`release-reconciliation.md`](./release-reconciliation.md). Checked-in Release case/command flags remain false. Do not enable them to route new owner work.
 
-Case plus Decision commit atomically with one bounded race retry. Release and Booking collections, uniqueness, sequences, revisions, and timeline entries remain separate. This path never selects a Booking by contact, mutates official Booking/Cancellation state, or invokes an Owner command. Checked-in Release case/command flags remain false.
+Identity `release_*` discrepancies still open through the booking classifier: `persistProcessorDiscrepancy` sets `discrepancy_kind` to `"release"` when `reason_code` starts with `release_`. Missing Booking is not one of those reasons.
 
 ## Temporal compare-and-swap seam
 
@@ -127,7 +126,7 @@ Ten centralized flags (`src/config/domain/granotLifecycle.ts`): `GRANOT_LIFECYCL
 
 ## Out of scope here
 
-Official Booking/Release Owner commands live in [`booking-reconciliation.md`](./booking-reconciliation.md) and [`release-reconciliation.md`](./release-reconciliation.md). Admin reads live in [`projections.md`](./projections.md). Discrepancy persistence is `discrepancies.ts` (no Service file in this cluster). Public Lead Zod / `updateSourceOwnedLead` are not a lifecycle write path. This module does not rewrite Registry rows. Current reviewed policies live in [`source-policy.md`](./source-policy.md) and [`operations-registry.md`](../services/operations-registry.md). `claimAndProcessOrPoll` lives in [`drainer.md`](./drainer.md), not `operations.ts`.
+Official Booking Owner commands (including Confirm Granot Cancellation on a booking case) live in [`booking-reconciliation.md`](./booking-reconciliation.md). Historical Release-case HTTP routes remain in [`release-reconciliation.md`](./release-reconciliation.md). Admin reads live in [`projections.md`](./projections.md). Discrepancy persistence is `discrepancies.ts` (no Service file in this cluster). Public Lead Zod / `updateSourceOwnedLead` are not a lifecycle write path. This module does not rewrite Registry rows. Current reviewed policies live in [`source-policy.md`](./source-policy.md) and [`operations-registry.md`](../services/operations-registry.md). `claimAndProcessOrPoll` lives in [`drainer.md`](./drainer.md), not `operations.ts`.
 
 ## Related
 

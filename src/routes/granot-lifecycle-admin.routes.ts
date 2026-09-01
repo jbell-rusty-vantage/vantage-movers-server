@@ -33,6 +33,7 @@ import {
 import {
   listLiveWebhookReceiptSnapshot,
   listLiveWebhookReceiptsAfter,
+  listLiveWebhookReceiptsUpdated,
   type LiveReceiptCursor,
   type LiveWebhookReceipt,
 } from "../services/granotLifecycle/liveReceipts";
@@ -47,9 +48,11 @@ import {
   createReferralBooking as createGranotReferralBooking,
   updateExistingBooking as updateGranotBooking,
   noAction as resolveGranotBookingNoAction,
+  confirmCancellation as confirmGranotBookingCancellation,
   type BookingOwnerCommandResult,
   type BookingNoActionInput,
   type ConfirmBookingInput,
+  type ConfirmCancellationInput as BookingConfirmCancellationInput,
   type ReferralBookingInput,
   type UpdateExistingBookingInput,
 } from "../services/granotLifecycle/bookingReconciliation";
@@ -124,6 +127,7 @@ export type GranotLifecycleAdminRouteDeps = {
   createReferralBooking?: (input: ReferralBookingInput) => Promise<BookingOwnerCommandResult>;
   updateBooking?: (input: UpdateExistingBookingInput) => Promise<BookingOwnerCommandResult>;
   noAction?: (input: BookingNoActionInput) => Promise<BookingOwnerCommandResult>;
+  confirmBookingCancellation?: (input: BookingConfirmCancellationInput) => Promise<BookingOwnerCommandResult>;
   confirmCancellation?: (input: ConfirmCancellationInput) => Promise<ReleaseOwnerCommandResult>;
   updateReleaseBooking?: (input: UpdateReleaseBookingInput) => Promise<ReleaseOwnerCommandResult>;
   releaseNoAction?: (input: ReleaseNoActionInput) => Promise<ReleaseOwnerCommandResult>;
@@ -134,6 +138,7 @@ export type GranotLifecycleAdminRouteDeps = {
   discrepancyNoAction?: (input: DiscrepancyNoActionInput) => Promise<DiscrepancyOwnerCommandResult>;
   listLiveReceiptSnapshot?: () => Promise<LiveWebhookReceipt[]>;
   listLiveReceiptsAfter?: (cursor: LiveReceiptCursor) => Promise<LiveWebhookReceipt[]>;
+  listLiveReceiptsUpdated?: () => Promise<LiveWebhookReceipt[]>;
   liveStreamSleep?: (ms: number) => Promise<void>;
   liveStreamNow?: () => number;
   liveStreamPollMs?: number;
@@ -168,6 +173,7 @@ export function createGranotLifecycleAdminRouter(
   const createReferralBooking = deps.createReferralBooking ?? createGranotReferralBooking;
   const updateBooking = deps.updateBooking ?? updateGranotBooking;
   const noAction = deps.noAction ?? resolveGranotBookingNoAction;
+  const confirmBookingCancellation = deps.confirmBookingCancellation ?? confirmGranotBookingCancellation;
   const confirmCancellation = deps.confirmCancellation ?? confirmGranotCancellation;
   const updateReleaseBooking = deps.updateReleaseBooking ?? updateGranotReleaseBooking;
   const releaseNoAction = deps.releaseNoAction ?? resolveGranotReleaseNoAction;
@@ -178,6 +184,7 @@ export function createGranotLifecycleAdminRouter(
   const discrepancyNoAction = deps.discrepancyNoAction ?? resolveGranotDiscrepancyNoAction;
   const listLiveSnapshot = deps.listLiveReceiptSnapshot ?? listLiveWebhookReceiptSnapshot;
   const listLiveAfter = deps.listLiveReceiptsAfter ?? listLiveWebhookReceiptsAfter;
+  const listLiveUpdated = deps.listLiveReceiptsUpdated ?? listLiveWebhookReceiptsUpdated;
 
   router.get("/api/v1/admin/granot-lifecycle/receipts/live", async (req, res) => {
     try {
@@ -206,6 +213,7 @@ export function createGranotLifecycleAdminRouter(
         {
           listSnapshot: listLiveSnapshot,
           listAfter: listLiveAfter,
+          listUpdated: listLiveUpdated,
           sleep: deps.liveStreamSleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
           now: deps.liveStreamNow ?? Date.now,
           pollMs: deps.liveStreamPollMs ?? LIVE_RECEIPT_POLL_MS,
@@ -385,6 +393,35 @@ export function createGranotLifecycleAdminRouter(
         void observeGranotOwnerCommandResult({
           replayed: data.replayed,
           command: "createGranotReferralBooking",
+          case_kind: "booking",
+          case_resolved: data.case_state === "resolved",
+        });
+        return res.status(data.replayed || data.outcome === "already_satisfied" ? 200 : 201)
+          .json({ ok: true, data });
+      } catch (error) {
+        return sendError(res, error, requestId(req));
+      }
+    },
+  );
+
+  router.post(
+    "/api/v1/admin/granot-lifecycle/booking-cases/:id/confirm-cancellation",
+    async (req, res) => {
+      try {
+        await connect();
+        const owner = durableActorFromRegistryActor(requireRegistryOwnerActor(req, auth(req)));
+        const { case_id } = granotLifecycleCaseParamsSchema.parse({ case_id: req.params.id });
+        const command = granotLifecycleConfirmCancellationCommandSchema.parse(req.body);
+        const data = await confirmBookingCancellation({
+          case_id,
+          ...command,
+          idempotency_key: readSingleIdempotencyKey(req),
+          owner,
+          request_id: requestId(req),
+        });
+        void observeGranotOwnerCommandResult({
+          replayed: data.replayed,
+          command: "confirmGranotCancellation",
           case_kind: "booking",
           case_resolved: data.case_state === "resolved",
         });

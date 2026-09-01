@@ -3,6 +3,7 @@ import mongoose, { type ClientSession } from "mongoose";
 import { getGranotLifecycleFlags, type GranotLifecycleFlags } from "../../config/domain/granotLifecycle";
 import { Agent } from "../../models/Agent";
 import { BookedLead } from "../../models/BookedLead";
+import { CancelledLead } from "../../models/CancelledLead";
 import { Merchant } from "../../models/Merchant";
 import { getGranotLifecycleActivationModel } from "../../models/GranotLifecycleActivation";
 import { getCallLeadModel } from "../../models/CallLead";
@@ -22,6 +23,7 @@ import { officialBookingAgentIds, officialBookingAllocations } from "../agents";
 import { newObjectIdHex, toObjectId } from "../../utils/objectId";
 import type {
   GranotLifecycleBookingNoActionCommandInput,
+  GranotLifecycleConfirmCancellationCommandInput,
   GranotLifecycleOfficialBookingDetails,
   GranotLifecycleUpdateBookingCommandInput,
 } from "../../validation/v1/granotLifecycle.validation";
@@ -47,7 +49,16 @@ import {
   GranotLifecycleError,
 } from "./errors";
 import type { BookingOwnerCommandResult } from "./bookingConfirmation";
+import {
+  selectBookingIntakeLatestAction,
+  type BookingIntakeLatestActionEvidence,
+} from "./bookingIntakeLatestAction";
 import { isGranotOfficialLeadlessBooking, updateBookingSheetIntent } from "./confirmAttachment";
+import {
+  CREATE_CANCELLATION_COMMAND_NAME,
+  applyOfficialCancellationWrite,
+  type OfficialCancellationFailAfter,
+} from "./officialCancellationWrite";
 import type { LeadModel, ObservationChannel } from "./types";
 
 export const UPDATE_BOOKING_COMMAND_NAME = "updateBooking";
@@ -62,7 +73,35 @@ type OwnerEnvelope = {
 
 export type UpdateExistingBookingInput = GranotLifecycleUpdateBookingCommandInput & OwnerEnvelope;
 export type BookingNoActionInput = GranotLifecycleBookingNoActionCommandInput & OwnerEnvelope;
+export type ConfirmCancellationInput = GranotLifecycleConfirmCancellationCommandInput & OwnerEnvelope;
 type UpdateFailurePoint = "booking" | "lead" | "changes" | "case" | "outbox";
+
+export function assertBookingIntakeCancelAllowed(
+  caseRow: {
+    state: string;
+    mode: string;
+    evidence: Array<{
+      action: BookingIntakeLatestActionEvidence["action"];
+      captured_at: Date;
+      observation_id: { toString(): string } | string;
+    }>;
+  },
+  requestId?: string,
+): void {
+  if (caseRow.state !== "open" || caseRow.mode !== "review_existing_booking") {
+    throw lifecycle("Granot reconciliation case revision changed", "CASE_REVISION_CONFLICT", 409, requestId);
+  }
+  const latest = selectBookingIntakeLatestAction(
+    caseRow.evidence.map((row) => ({
+      action: row.action,
+      captured_at: row.captured_at,
+      observation_id: String(row.observation_id),
+    })),
+  );
+  if (latest !== "release") {
+    throw lifecycle("Granot reconciliation case revision changed", "CASE_REVISION_CONFLICT", 409, requestId);
+  }
+}
 
 export async function updateExistingBooking(
   input: UpdateExistingBookingInput,
@@ -121,6 +160,43 @@ export async function noAction(
     }),
   });
   return reloadResult(input.case_id, outcome.result.entity_refs, causal.decision_id, outcome.replayed);
+}
+
+export async function confirmCancellation(
+  input: ConfirmCancellationInput,
+  options: { flags?: GranotLifecycleFlags; test_fail_after?: OfficialCancellationFailAfter } = {},
+): Promise<BookingOwnerCommandResult> {
+  const causal = await prepareOwnerCommand(input, CREATE_CANCELLATION_COMMAND_NAME, cancellationBody(input));
+  const cancellationId = new mongoose.Types.ObjectId();
+  const changeIds = [
+    new mongoose.Types.ObjectId(),
+    new mongoose.Types.ObjectId(),
+    new mongoose.Types.ObjectId(),
+  ];
+  const outcome = await executeIdempotentCanonicalCommand({
+    command_name: CREATE_CANCELLATION_COMMAND_NAME,
+    context: causal.context,
+    operation: ({ session, now, command_execution_id }) => applyConfirmCancellation({
+      input,
+      flags: options.flags ?? getGranotLifecycleFlags(),
+      session,
+      now,
+      command_execution_id,
+      context: causal.context,
+      cancellationId,
+      changeIds,
+      test_fail_after: options.test_fail_after,
+    }),
+  });
+  const result = await reloadResult(input.case_id, outcome.result.entity_refs, causal.decision_id, outcome.replayed);
+  if (!outcome.replayed && result.outcome === "cancellation_created" && result.cancellation_ref) {
+    await finalizeSheetSync({
+      resource: "cancellation_chain",
+      operation: "cancelled_lead.create",
+      cancellationId: result.cancellation_ref.id,
+    });
+  }
+  return result;
 }
 
 async function applyUpdate(input: {
@@ -326,6 +402,84 @@ async function applyNoAction(input: {
     ],
     warnings: [],
   };
+}
+
+async function applyConfirmCancellation(input: {
+  input: ConfirmCancellationInput;
+  flags: GranotLifecycleFlags;
+  session: ClientSession;
+  now: Date;
+  command_execution_id: mongoose.Types.ObjectId;
+  context: CanonicalCommandContext;
+  cancellationId: mongoose.Types.ObjectId;
+  changeIds: mongoose.Types.ObjectId[];
+  test_fail_after?: OfficialCancellationFailAfter;
+}) {
+  if (!input.flags.booking_commands_enabled) {
+    throw lifecycle("Granot Booking commands are disabled", "POLICY_BLOCKED", 422, input.input.request_id);
+  }
+  const caseRow = await loadOpenCase(input.input, input.session, ["review_existing_booking"]);
+  assertCommandAllowed(caseRow, input.flags, input.input.request_id);
+  assertBookingIntakeCancelAllowed(caseRow, input.input.request_id);
+  if (!caseRow.deterministic_booking_id) {
+    throw lifecycle("Booking case has no deterministic Booking", "IDENTITY_CONFLICT", 409, input.input.request_id);
+  }
+  const bookingBefore = await BookedLead.findById(caseRow.deterministic_booking_id)
+    .session(input.session).lean().exec();
+  if (!bookingBefore) {
+    throw lifecycle("Deterministic Booking no longer exists", "DOMAIN_REVISION_CONFLICT", 409, input.input.request_id);
+  }
+  const referral = bookingBefore.is_referral_booking === true;
+  const granotLeadless = isGranotOfficialLeadlessBooking(bookingBefore);
+  const companySlug = referral
+    ? await assertActiveReferralPolicy(caseRow, input.session, input.input.request_id)
+    : await assertActiveSourceScope(caseRow, input.session, input.input.request_id);
+  if (
+    bookingBefore.normalized_job_no !== caseRow.normalized_job_no ||
+    bookingBefore.source !== companySlug ||
+    (bookingBefore.is_leadless_booking && !granotLeadless) ||
+    (!referral && !granotLeadless && (!bookingBefore.lead_ref || !bookingBefore.lead_model)) ||
+    (referral && (Boolean(bookingBefore.lead_ref) || Boolean(bookingBefore.lead_model)))
+  ) {
+    throw lifecycle("Deterministic Booking identity is incompatible with the case", "IDENTITY_CONFLICT", 409, input.input.request_id);
+  }
+  const leadBefore = !referral && !granotLeadless && bookingBefore.lead_model && bookingBefore.lead_ref
+    ? await loadLead(bookingBefore.lead_model, bookingBefore.lead_ref, input.session)
+    : null;
+  if (!referral && !granotLeadless && (
+    !leadBefore || String(leadBefore.booked ?? "") !== String(bookingBefore._id) ||
+    String(leadBefore.lead_source_company ?? "") !== String(caseRow.source_scope?.lead_source_company ?? "") ||
+    String(leadBefore.source_granularity_id ?? "") !== String(caseRow.source_scope?.source_granularity_id ?? "")
+  )) {
+    throw lifecycle("Booking Lead or source identity is incompatible with the case", "IDENTITY_CONFLICT", 409, input.input.request_id);
+  }
+  const link = await loadAndAssertLink(caseRow, bookingBefore, input.session, input.input.request_id);
+  return applyOfficialCancellationWrite({
+    bookingBefore: bookingBefore as unknown as Parameters<typeof applyOfficialCancellationWrite>[0]["bookingBefore"],
+    normalized_job_no: caseRow.normalized_job_no,
+    expected_booking_revision: input.input.expected_booking_revision,
+    official_cancellation_details: input.input.official_cancellation_details,
+    command_execution_id: input.command_execution_id,
+    context: input.context,
+    session: input.session,
+    now: input.now,
+    cancellationId: input.cancellationId,
+    changeIds: input.changeIds,
+    request_id: input.input.request_id,
+    test_fail_after: input.test_fail_after,
+    resolveCase: ({ outcome, entity_id }) => resolveCase({
+      case_row: caseRow,
+      command_execution_id: input.command_execution_id,
+      actor: input.input.owner,
+      outcome,
+      booking_id: bookingBefore._id,
+      entity_model: "CancelledLead",
+      entity_id,
+      now: input.now,
+      session: input.session,
+    }),
+    base_refs: ownerRefs(caseRow, bookingBefore._id, bookingBefore.lead_model, bookingBefore.lead_ref, link?._id),
+  });
 }
 
 async function prepareOwnerCommand(
@@ -556,11 +710,14 @@ async function resolveCase(input: {
   case_row: GranotBookingReconciliationCaseDocument;
   command_execution_id: mongoose.Types.ObjectId;
   actor: DurableActor;
-  outcome: "booking_updated" | "already_satisfied";
+  outcome: "booking_updated" | "already_satisfied" | "cancellation_created";
   booking_id: mongoose.Types.ObjectId;
+  entity_model?: "BookedLead" | "CancelledLead";
+  entity_id?: mongoose.Types.ObjectId;
   now: Date;
   session: ClientSession;
 }) {
+  const entityId = input.entity_id ?? input.booking_id;
   const result = await getGranotBookingReconciliationCaseModel().updateOne(
     { _id: input.case_row._id, state: "open", case_revision: input.case_row.case_revision },
     {
@@ -572,7 +729,7 @@ async function resolveCase(input: {
           command_execution_id: input.command_execution_id,
           actor: input.actor,
           resolved_at: input.now,
-          entity_ref: { model: "BookedLead", id: String(input.booking_id) },
+          entity_ref: { model: input.entity_model ?? "BookedLead", id: String(entityId) },
         },
       },
       $inc: { case_revision: 1 },
@@ -593,9 +750,13 @@ async function reloadResult(
   const row = await getGranotBookingReconciliationCaseModel().findById(caseId).lean().exec();
   if (!row?.resolution) throw new Error("Committed Booking owner-command evidence could not be reloaded.");
   const bookingId = entityRefs.find((entry) => entry.model === "BookedLead")?.id;
+  const cancellationId = entityRefs.find((entry) => entry.model === "CancelledLead")?.id;
   const linkId = entityRefs.find((entry) => entry.model === "GranotRecordLink")?.id;
-  const [booking, link] = await Promise.all([
+  const [booking, cancellation, link] = await Promise.all([
     bookingId ? BookedLead.findById(bookingId).select({ domain_revision: 1 }).lean().exec() : null,
+    cancellationId
+      ? CancelledLead.findById(cancellationId).select({ domain_revision: 1 }).lean().exec()
+      : null,
     linkId ? getGranotRecordLinkModel().findById(linkId).select({ domain_revision: 1 }).lean().exec() : null,
   ]);
   return {
@@ -603,10 +764,14 @@ async function reloadResult(
     case_state: "resolved",
     case_revision: row.case_revision,
     outcome: row.resolution.outcome === "booking_updated" ? "booking_updated" :
-      row.resolution.outcome === "already_satisfied" ? "already_satisfied" : "no_action",
+      row.resolution.outcome === "already_satisfied" ? "already_satisfied" :
+      row.resolution.outcome === "cancellation_created" ? "cancellation_created" : "no_action",
     command_execution_id: String(row.resolution.command_execution_id),
     decision_id: decisionId,
     ...(bookingId && booking ? { booking_ref: { id: bookingId, domain_revision: booking.domain_revision } } : {}),
+    ...(cancellationId && cancellation
+      ? { cancellation_ref: { id: cancellationId, domain_revision: cancellation.domain_revision } }
+      : {}),
     ...(linkId && link ? { record_link_ref: { id: linkId, domain_revision: link.domain_revision } } : {}),
     entity_refs: entityRefs.map((entry) => ({ ...entry })),
     replayed,
@@ -641,6 +806,16 @@ function noActionBody(input: BookingNoActionInput): GranotLifecycleBookingNoActi
     expected_case_revision: input.expected_case_revision,
     ...(input.reason_code ? { reason_code: input.reason_code } : {}),
     ...(input.reason_text !== undefined ? { reason_text: input.reason_text } : {}),
+  };
+}
+
+function cancellationBody(
+  input: ConfirmCancellationInput,
+): GranotLifecycleConfirmCancellationCommandInput {
+  return {
+    expected_case_revision: input.expected_case_revision,
+    expected_booking_revision: input.expected_booking_revision,
+    official_cancellation_details: input.official_cancellation_details,
   };
 }
 

@@ -278,13 +278,13 @@ test("[AC-25][AC-29][AC-40] Booking and Release cases coexist without forbidden 
   await reconcile(evidence, replicaStore(bookingId, () => 4));
   assert.equal(await getGranotBookingReconciliationCaseModel().countDocuments({ normalized_job_no: job }), 1);
   assert.equal(await getGranotReleaseReconciliationCaseModel().countDocuments({ normalized_job_no: job }), 1);
-  const mixedQueue = await listGranotLifecycleCases({
+  const defaultQueue = await listGranotLifecycleCases({
     normalized_job_no: job,
     sort: "last_evidence_at",
     order: "desc",
     limit: 25,
   });
-  assert.deepEqual(new Set(mixedQueue.items.map((item) => item.kind)), new Set(["booking", "release"]));
+  assert.deepEqual(new Set(defaultQueue.items.map((item) => item.kind)), new Set(["booking"]));
   const firstPage = await listGranotLifecycleCases({
     normalized_job_no: job,
     sort: "last_evidence_at",
@@ -292,16 +292,7 @@ test("[AC-25][AC-29][AC-40] Booking and Release cases coexist without forbidden 
     limit: 1,
   });
   assert.equal(firstPage.items.length, 1);
-  assert.ok(firstPage.next_cursor);
-  const secondPage = await listGranotLifecycleCases({
-    normalized_job_no: job,
-    sort: "last_evidence_at",
-    order: "desc",
-    cursor: firstPage.next_cursor ?? undefined,
-    limit: 1,
-  });
-  assert.equal(secondPage.items.length, 1);
-  assert.notEqual(firstPage.items[0]!.case_id, secondPage.items[0]!.case_id);
+  assert.equal(firstPage.items[0]!.kind, "booking");
   const releaseOnly = await listGranotLifecycleCases({
     kind: "release",
     normalized_job_no: job,

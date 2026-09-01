@@ -11,8 +11,12 @@ import {
   dueWorkFilter,
   flagsToNamedBooleans,
   customerLabel,
+  includeBookingCasesInList,
+  includeReleaseCasesInList,
   maskContactLabel,
   normalizeJobProjectionPath,
+  projectBookingIntakeCapabilities,
+  projectCaseLatestAction,
   projectOwnerVisibleContact,
   paginateTimeline,
   projectCaseDetailPriorityPairing,
@@ -239,4 +243,160 @@ test("[AC-P4][AC-P6][AC-P7] detail pairing includes later Priority 5 and is null
     }),
     null,
   );
+});
+
+test("[AC-R10] default intakes list is booking-only; kind=release still lists historical Release cases", () => {
+  assert.equal(includeBookingCasesInList({}), true);
+  assert.equal(includeReleaseCasesInList({}), false);
+  assert.equal(includeBookingCasesInList({ kind: "booking" }), true);
+  assert.equal(includeReleaseCasesInList({ kind: "booking" }), false);
+  assert.equal(includeBookingCasesInList({ kind: "release" }), false);
+  assert.equal(includeReleaseCasesInList({ kind: "release" }), true);
+  assert.equal(includeReleaseCasesInList({ kind: "release", mode: "release" }), true);
+  assert.equal(includeBookingCasesInList({ mode: "create_missing_booking" }), true);
+  assert.equal(includeReleaseCasesInList({ mode: "create_missing_booking" }), false);
+});
+
+test("list latest_action uses booking-intake selection so later Priority 5 cannot win", () => {
+  assert.equal(
+    projectCaseLatestAction([
+      {
+        observation_id: "aaaaaaaaaaaaaaaaaaaaaaaa",
+        captured_at: "2026-08-21T09:00:00.000Z",
+        action: "booked",
+      },
+      {
+        observation_id: "bbbbbbbbbbbbbbbbbbbbbbbb",
+        captured_at: "2026-08-23T12:00:00.000Z",
+        action: "priority_5",
+      },
+    ]),
+    "booked",
+  );
+  assert.equal(
+    projectCaseLatestAction([
+      {
+        observation_id: "aaaaaaaaaaaaaaaaaaaaaaaa",
+        captured_at: "2026-08-21T09:00:00.000Z",
+        action: "booked",
+      },
+      {
+        observation_id: "cccccccccccccccccccccccc",
+        captured_at: "2026-08-24T16:00:00.000Z",
+        action: "release",
+      },
+    ]),
+    "release",
+  );
+});
+
+test("[AC-R3] pairing is omitted on a Release-only booking case", () => {
+  const releaseEvidence = [{
+    observation_id: "64b7f4d9e6c2a1b0f3d5e790",
+    captured_at: "2026-08-24T16:00:00.000Z",
+    action: "release" as const,
+  }];
+  assert.equal(
+    compactCaseListPriorityPairing({
+      kind: "booking",
+      evidence: releaseEvidence,
+      pairing: null,
+      has_later_priority_5: false,
+    }),
+    undefined,
+  );
+  assert.equal(
+    projectCaseDetailPriorityPairing({
+      kind: "booking",
+      evidence: releaseEvidence,
+      jobObservations: [],
+    }),
+    null,
+  );
+});
+
+test("[AC-R3] capabilities matrix follows spec §7 and hides Confirm Cancellation when commands are off", () => {
+  const reviewRelease = projectBookingIntakeCapabilities({
+    kind: "booking",
+    state: "open",
+    mode: "review_existing_booking",
+    latest_action: "release",
+    booking_commands_enabled: true,
+    referral_booking_enabled: false,
+    release_commands_enabled: false,
+  });
+  assert.equal(reviewRelease.commands, true);
+  assert.equal(reviewRelease.confirm_cancellation, true);
+
+  const reviewBooked = projectBookingIntakeCapabilities({
+    kind: "booking",
+    state: "open",
+    mode: "review_existing_booking",
+    latest_action: "booked",
+    booking_commands_enabled: true,
+    referral_booking_enabled: false,
+    release_commands_enabled: false,
+  });
+  assert.equal(reviewBooked.commands, true);
+  assert.equal(reviewBooked.confirm_cancellation, false);
+
+  const createMissingRelease = projectBookingIntakeCapabilities({
+    kind: "booking",
+    state: "open",
+    mode: "create_missing_booking",
+    latest_action: "release",
+    booking_commands_enabled: true,
+    referral_booking_enabled: false,
+    release_commands_enabled: false,
+  });
+  assert.equal(createMissingRelease.commands, true);
+  assert.equal(createMissingRelease.confirm_cancellation, false);
+
+  const createReferralRelease = projectBookingIntakeCapabilities({
+    kind: "booking",
+    state: "open",
+    mode: "create_referral_booking",
+    latest_action: "release",
+    booking_commands_enabled: true,
+    referral_booking_enabled: true,
+    release_commands_enabled: false,
+  });
+  assert.equal(createReferralRelease.commands, true);
+  assert.equal(createReferralRelease.confirm_cancellation, false);
+
+  const commandsOff = projectBookingIntakeCapabilities({
+    kind: "booking",
+    state: "open",
+    mode: "review_existing_booking",
+    latest_action: "release",
+    booking_commands_enabled: false,
+    referral_booking_enabled: false,
+    release_commands_enabled: true,
+  });
+  assert.equal(commandsOff.commands, false);
+  assert.equal(commandsOff.confirm_cancellation, false);
+
+  const resolved = projectBookingIntakeCapabilities({
+    kind: "booking",
+    state: "resolved",
+    mode: "review_existing_booking",
+    latest_action: "release",
+    booking_commands_enabled: true,
+    referral_booking_enabled: false,
+    release_commands_enabled: false,
+  });
+  assert.equal(resolved.commands, false);
+  assert.equal(resolved.confirm_cancellation, false);
+
+  const historicalPriority = projectBookingIntakeCapabilities({
+    kind: "booking",
+    state: "open",
+    mode: "review_existing_booking",
+    latest_action: "priority_5",
+    booking_commands_enabled: true,
+    referral_booking_enabled: false,
+    release_commands_enabled: false,
+  });
+  assert.equal(historicalPriority.commands, true);
+  assert.equal(historicalPriority.confirm_cancellation, false);
 });

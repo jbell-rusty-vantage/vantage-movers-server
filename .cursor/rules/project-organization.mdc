@@ -146,6 +146,7 @@ Run via `package.json` so `.env` + `tsx` stay consistent.
 
 | Folder | Owns |
 |--------|------|
+| `scripts/cloud/mongodb-backup/` | Production Cloud Run Job package for daily `vantagemovers` `mongodump` to `gs://vantage-mongodb-backups-496816`. Service: [`mongodb-backup.md`](../../docs/knowledge/services/mongodb-backup.md). Playbook: [`docs/mongodb-backup-automation/README.md`](../../docs/mongodb-backup-automation/README.md). Not `scripts/dev_ops/`. |
 | `scripts/api/` | HTTP hits against this server (`pnpm api:hit`, `vantageApi.ts`) using `VANTAGE_API_SECRET` → `x-api-secret`. Production host and route catalog: `rules/production-url.mdc`. Skill: `.cursor/skills/hit-vantage-api/` |
 | `scripts/dev_ops/` | Personal/admin DB ops, patches, Twilio, nested Google Sheets/Apps Script/Postman/RingCentral probes — treat as potentially destructive |
 | `scripts/granot-automation/` | Local run + seed sources (`pnpm granot:*`) |

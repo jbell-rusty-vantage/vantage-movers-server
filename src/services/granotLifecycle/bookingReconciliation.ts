@@ -61,6 +61,7 @@ export type BookingReconciliationCurrentContext = {
     has_lead: boolean;
     officially_cancelled: boolean;
     referral: boolean;
+    cancellation_id?: string;
     employee_reconciliation_case_id?: string;
     booking_origin?: "employee_booking";
   };
@@ -98,7 +99,7 @@ export type BookingReconciliationClassification =
   | {
       kind: "case";
       mode: "create_missing_booking" | "review_existing_booking" | "create_referral_booking";
-      evidence_action: "priority_5" | "booked";
+      evidence_action: "priority_5" | "booked" | "release";
       deterministic_booking_id?: string;
     }
   | {
@@ -108,6 +109,12 @@ export type BookingReconciliationClassification =
   | {
       kind: "booking_discrepancy_required";
       reason_code: GranotDiscrepancyReasonCode;
+    }
+  | {
+      kind: "already_current";
+      reason_code: "booking_already_cancelled";
+      booking_id: string;
+      cancellation_id?: string;
     }
   | {
       kind: "none";
@@ -142,7 +149,13 @@ export type CaseEffectResult =
     }
   | { kind: "none"; reason: BookingReconciliationNoCaseReason }
   | { kind: "employee_booking_lead_reconciliation"; case_id: string }
-  | { kind: "booking_discrepancy_required"; reason_code: GranotDiscrepancyReasonCode };
+  | { kind: "booking_discrepancy_required"; reason_code: GranotDiscrepancyReasonCode }
+  | {
+      kind: "already_current";
+      outcome: "already_current";
+      reason_code: "booking_already_cancelled";
+      target: { model: "BookedLead" | "CancelledLead"; id: string };
+    };
 
 export type BookingCaseRefreshInput = {
   case_id: mongoose.Types.ObjectId;
@@ -215,6 +228,7 @@ export { createReferralBooking } from "./referralBooking";
 export {
   updateExistingBooking,
   noAction,
+  confirmCancellation,
   UPDATE_BOOKING_COMMAND_NAME,
   BOOKING_NO_ACTION_COMMAND_NAME,
 } from "./bookingOwnerCommands";
@@ -226,6 +240,7 @@ export type { ReferralBookingInput } from "./referralBooking";
 export type {
   UpdateExistingBookingInput,
   BookingNoActionInput,
+  ConfirmCancellationInput,
 } from "./bookingOwnerCommands";
 
 export function createGranotBookingReconciliation(input: {
@@ -333,6 +348,27 @@ async function reconcileInTransaction(
     if (classification.kind === "booking_discrepancy_required") {
       return classification;
     }
+    if (classification.kind === "already_current") {
+      const target = classification.cancellation_id
+        ? { model: "CancelledLead" as const, id: classification.cancellation_id }
+        : { model: "BookedLead" as const, id: classification.booking_id };
+      await store.insertDecision(
+        decisionDocument(toObjectId(input.decision_id), prepared, {
+          outcome: "already_current",
+          reason_code: "booking_already_cancelled",
+          target,
+          effects: [],
+        }),
+        prepared.receipt_id,
+        session,
+      );
+      return {
+        kind: "already_current",
+        outcome: "already_current",
+        reason_code: "booking_already_cancelled",
+        target,
+      };
+    }
     if (classification.kind !== "case") {
       await store.insertDecision(
         decisionDocument(toObjectId(input.decision_id), prepared),
@@ -354,8 +390,8 @@ async function reconcileInTransaction(
       }
     }
 
-    if (classification.evidence_action !== "booked") {
-      throw new Error("Booking case persist requires actual Booked evidence.");
+    if (classification.evidence_action !== "booked" && classification.evidence_action !== "release") {
+      throw new Error("Booking case persist requires actual Booked or Release evidence.");
     }
     const evidence: GranotBookingCaseEvidence = {
       observation_id: prepared.observation_id,
@@ -496,8 +532,8 @@ export async function reconcileBookingCaseAfterDiscrepancy(input: {
   const current = await store.loadCurrentContext(input.observation_id, input.session);
   const classification = classifyBookingReconciliation(current);
   if (classification.kind !== "case") return undefined;
-  if (classification.evidence_action !== "booked") {
-    throw new Error("Booking case after discrepancy requires actual Booked evidence.");
+  if (classification.evidence_action !== "booked" && classification.evidence_action !== "release") {
+    throw new Error("Booking case after discrepancy requires actual Booked or Release evidence.");
   }
   const decision = await getSynchronizationDecisionModel().findById(input.decision_id).session(input.session).lean().exec();
   const evidence: GranotBookingCaseEvidence = { observation_id: toObjectId(input.observation_id), decision_id: toObjectId(input.decision_id), captured_at: current.captured_at, action: classification.evidence_action };
@@ -602,9 +638,12 @@ export function createMongoBookingReconciliationStore(): BookingReconciliationPe
       let booking: BookingReconciliationCurrentContext["booking"];
       if (bookingRow) {
         const row = bookingRow;
-        const officialCancellation =
-          Boolean(row.cancelled) ||
-          Boolean(await CancelledLead.exists({ booked_lead: row._id }).session(session));
+        const cancellation = await CancelledLead.findOne({ booked_lead: row._id })
+          .session(session)
+          .select({ _id: 1 })
+          .lean()
+          .exec();
+        const officialCancellation = Boolean(row.cancelled) || Boolean(cancellation);
         const hasLead = Boolean(row.lead_ref && row.lead_model);
         const employeeCase = !hasLead && row.is_referral_booking !== true
           ? await BookingLeadReconciliationCase.findOne({ booking: row._id })
@@ -619,6 +658,7 @@ export function createMongoBookingReconciliationStore(): BookingReconciliationPe
           has_lead: hasLead,
           officially_cancelled: officialCancellation,
           referral: row.is_referral_booking === true,
+          cancellation_id: cancellation ? String(cancellation._id) : undefined,
           employee_reconciliation_case_id: employeeCase ? String(employeeCase._id) : undefined,
           ...(row.booking_origin === "employee_booking" ? { booking_origin: "employee_booking" as const } : {}),
         };
@@ -1014,9 +1054,9 @@ async function computePersistedPriorityPairing(
   store: BookingReconciliationPersistenceStore,
   session: ClientSession,
   computedAt: Date,
-): Promise<NonNullable<GranotBookingReconciliationCaseDocument["priority_pairing"]>> {
+): Promise<GranotBookingReconciliationCaseDocument["priority_pairing"] | undefined> {
   if (current.booking_action !== "booked") {
-    throw new Error("Booking Priority Pairing snapshot requires actual Booked evidence.");
+    return undefined;
   }
   const jobObservations = store.listJobObservations
     ? await store.listJobObservations(current.normalized_job_no!, session)
@@ -1039,32 +1079,37 @@ export function classifyBookingReconciliation(
     return { kind: "none", reason: "missing_job_number" };
   }
 
-  const actualBooked = context.booking_action === "booked";
+  const evidence_action = context.booking_action;
+  const actualBooked = evidence_action === "booked";
+  const actualRelease = evidence_action === "release";
+  const actualBookingAction = actualBooked || actualRelease;
 
-  if (context.booking_action === "release") {
-    return { kind: "none", reason: "opposite_action_kind" };
-  }
-  if (!actualBooked) {
+  if (!actualBookingAction || !evidence_action) {
     return { kind: "none", reason: "not_booking_evidence" };
   }
 
   const booking = context.booking;
-  if (actualBooked && booking?.officially_cancelled) {
+  if (booking?.officially_cancelled) {
+    if (actualRelease) {
+      return {
+        kind: "already_current",
+        reason_code: "booking_already_cancelled",
+        booking_id: booking.id,
+        cancellation_id: booking.cancellation_id,
+      };
+    }
     return {
       kind: "booking_discrepancy_required",
       reason_code: "booked_after_official_cancellation",
     };
   }
   if (context.lifecycle_disposition === "referral_booking") {
-    if (!actualBooked) {
-      return { kind: "none", reason: "not_booking_evidence" };
-    }
     if (booking) {
       return booking.referral
         ? {
             kind: "case",
             mode: "review_existing_booking",
-            evidence_action: "booked",
+            evidence_action,
             deterministic_booking_id: booking.id,
           }
         : {
@@ -1075,13 +1120,14 @@ export function classifyBookingReconciliation(
     return {
       kind: "case",
       mode: "create_referral_booking",
-      evidence_action: "booked",
+      evidence_action,
     };
   }
   if (booking?.referral) {
-    return actualBooked
-      ? { kind: "booking_discrepancy_required", reason_code: "booked_booking_lead_conflict" }
-      : { kind: "none", reason: "priority_5_existing_booking" };
+    return {
+      kind: "booking_discrepancy_required",
+      reason_code: "booked_booking_lead_conflict",
+    };
   }
   if (booking && !booking.has_lead) {
     if (booking.booking_origin === "employee_booking") {
@@ -1101,14 +1147,20 @@ export function classifyBookingReconciliation(
     return {
       kind: "case",
       mode: "review_existing_booking",
-      evidence_action: "booked",
+      evidence_action,
       deterministic_booking_id: booking.id,
     };
   }
   if (context.identity.outcome === "conflict") {
+    const reason_code = actualRelease
+      ? releaseDiscrepancyReason(context.identity.reason_code)
+      : discrepancyReason(context.identity.reason_code);
+    if (!reason_code) {
+      return { kind: "none", reason: "not_booking_evidence" };
+    }
     return {
       kind: "booking_discrepancy_required",
-      reason_code: discrepancyReason(context.identity.reason_code),
+      reason_code,
     };
   }
 
@@ -1116,13 +1168,13 @@ export function classifyBookingReconciliation(
     ? {
         kind: "case",
         mode: "review_existing_booking",
-        evidence_action: "booked",
+        evidence_action,
         deterministic_booking_id: booking.id,
       }
     : {
         kind: "case",
         mode: "create_missing_booking",
-        evidence_action: "booked",
+        evidence_action,
       };
 }
 
@@ -1161,4 +1213,11 @@ function discrepancyReason(reason: string): GranotDiscrepancyReasonCode {
   if (reason === "source_scope_conflict") return "booked_source_scope_conflict";
   if (reason === "record_link_conflict") return "booked_record_link_conflict";
   return "booked_booking_lead_conflict";
+}
+
+function releaseDiscrepancyReason(reason: string): GranotDiscrepancyReasonCode | undefined {
+  if (reason === "record_link_conflict") return "release_record_link_conflict";
+  if (reason === "job_number_conflict") return "release_job_number_conflict";
+  if (reason === "source_scope_conflict") return "release_source_scope_conflict";
+  return undefined;
 }
