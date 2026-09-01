@@ -307,7 +307,7 @@ export async function createGranotNameFromOwnerIntent(
   let defaultChannel: "form" | "call" | "unknown" = "unknown";
 
   if (destination?.kind === "one_feed") {
-    const feed = await loadActiveFeed(destination.feed_id);
+    const feed = await loadDestinationFeed(destination.feed_id);
     leadSourceId = resolveLeadSourceId(command.lead_source_id, [feed]);
     const leadModel = leadModelFromFeedChannel(feed.channel);
     defaultChannel = feed.channel;
@@ -323,8 +323,8 @@ export async function createGranotNameFromOwnerIntent(
     if (destination.local_feed_id === destination.long_distance_feed_id) {
       throw invalid("form_by_move_type cannot use the same Feed twice.");
     }
-    const localFeed = await loadActiveFeed(destination.local_feed_id);
-    const longFeed = await loadActiveFeed(destination.long_distance_feed_id);
+    const localFeed = await loadDestinationFeed(destination.local_feed_id);
+    const longFeed = await loadDestinationFeed(destination.long_distance_feed_id);
     if (localFeed.channel !== "form" || longFeed.channel !== "form") {
       throw invalid("form_by_move_type requires two Form Feeds.");
     }
@@ -464,7 +464,7 @@ function resolveLeadSourceId(
   return derived;
 }
 
-async function loadActiveFeed(feedId: string): Promise<LoadedFeed> {
+async function loadDestinationFeed(feedId: string): Promise<LoadedFeed> {
   const row = await getLeadSourceGranularityModel().findById(feedId).lean().exec();
   if (!row) {
     throw new RegistryError("Feed not found.", {
@@ -472,24 +472,16 @@ async function loadActiveFeed(feedId: string): Promise<LoadedFeed> {
     });
   }
   const companyId = String(row.source_company);
-  if (row.active !== true) {
-    throw invalid(`Feed ${String(row._id)} is not active.`);
-  }
   const company = await getLeadSourceCompanyModel().findById(companyId).lean().exec();
   if (!company) {
     throw invalid(
       `Feed ${String(row._id)} belongs to a missing Lead Source ${companyId}.`,
     );
   }
-  if (company.active !== true) {
-    throw invalid(
-      `Feed ${String(row._id)} belongs to inactive Lead Source ${companyId}.`,
-    );
-  }
   return {
     id: String(row._id),
     source_company_id: companyId,
-    active: true,
+    active: row.active === true,
     channel: row.channel,
     local: row.local ?? undefined,
   };

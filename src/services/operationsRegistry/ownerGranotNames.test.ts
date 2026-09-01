@@ -316,6 +316,27 @@ test("one_feed Call Feed derives CallLead", async () => {
   assert.equal(routes[0]?.lead_model, "CallLead");
 });
 
+test("Owner create accepts an inactive Feed on an inactive Lead Source as a draft", async () => {
+  stubCatalog();
+  (Company as unknown as MutableModel).findById = (id: unknown) => {
+    if (String(id) === String(companyId)) {
+      return leanById({ _id: companyId, active: false });
+    }
+    return leanById(null);
+  };
+  (Granularity as unknown as MutableModel).findById = (id: unknown) => {
+    if (String(id) === String(formFeedId)) {
+      return leanById(feedDoc(formFeedId, { channel: "form", local: undefined, active: false }));
+    }
+    return leanById(null);
+  };
+  stubCreatePath(createdRecord());
+  const result = await createGranotNameFromOwnerIntent(ownerIntent(), OWNER, auditDeps);
+  assert.equal(result.enabled, false);
+  assert.equal(result.lifecycle_enabled, false);
+  assert.equal(String(result.lifecycle_routes[0]?.source_granularity_id), String(formFeedId));
+});
+
 test("submitted lead_source_id that disagrees with the Feed is rejected naming both sides", async () => {
   stubCatalog();
   (Source as unknown as MutableModel).findOne = () => leanFindOne(null);
