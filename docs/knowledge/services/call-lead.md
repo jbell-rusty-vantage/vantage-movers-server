@@ -1,7 +1,7 @@
 ---
 type: Service
 title: Call Lead Service
-description: Create and update Call Leads from manual and RingCentral ingest, including duplicates and CPL snapshots.
+description: Ingest, correct, list, and remove Call Leads from Admin/sheet and RingCentral paths, including duplicates and CPL snapshots.
 tags: [call-lead, ingestion]
 status: draft
 stale_after: 2026-11-20
@@ -35,32 +35,35 @@ generated:
 
 **System of Record:** MongoDB `call_leads`. Owner reporting via **Sheet Sync** → **Master Sheets**.
 
-**Three create paths** — same collection, different origin and Duplicate Lead rules:
+**Three ingest origins** — same collection, different Duplicate Lead rules. Story names are the real implementations; old `create*` / `update*` / `delete*` exports are aliases.
 
 | Function | Caller | Duplicate Lead | CPL |
 |----------|--------|----------------|-----|
-| `createCallLead` | `POST /api/v1/call-leads` (manual, Invoca, tests). Hardcodes `ingestion_origin: "vantage_admin"`. Canonical wrappers use `createCallLeadInTransaction` + `deriveCallLeadIngestionOrigin` ([`domain-commands.md`](./domain-commands.md)). | never passed; stays false | `resolveLeadCplSnapshot` (no `duplicate` flag) |
-| `createRingCentralCallLead` | **Call Lead Ingestion** (Ring Central) only | passed in by ingest | `resolveLeadCplSnapshot({ duplicate })` → `duplicate_zero` / `cpl = 0` when Duplicate Lead, else registry snapshot |
-| `createLeadFromGranot` | Granot lifecycle processor only, after live `create_if_missing` authorization and no eligible match ([`processor.md`](../granot-lifecycle/processor.md)) | `false`; sparse Job-only creation is allowed | exact active Source Granularity rate snapshot |
+| `ingestCallLead` (alias `createCallLead`) | Leftover public / `v1.service` path. Hardcodes `ingestion_origin: "vantage_admin"`. **Not** the HTTP path. | never passed; stays false | `resolveLeadCplSnapshot` (no `duplicate` flag) |
+| `beginCallLeadIngestion` / `completeCallLeadIngestion` | Canonical `POST /api/v1/call-leads` via `runExistingCreateCallLead` + `deriveCallLeadIngestionOrigin` ([`domain-commands.md`](./domain-commands.md)). Default RingCentral ingest also calls `completeCallLeadIngestion` after `beginRingCentralCallLeadIngestion`. | Admin/sheet never passed | Admin/sheet: no `duplicate` flag. After commit: sheets, missing CPL, **`lead.call.created`**, Form Fill event |
+| `ingestRingCentralCallLead` (alias `createRingCentralCallLead`) | Injectable ingest adapter only (`dependencies.createLead`). Default ingest does **not** call this. | passed in by ingest | `resolveLeadCplSnapshot({ duplicate })` → `duplicate_zero` / `cpl = 0` when Duplicate Lead. After commit: sheets, missing CPL, Form Fill — **not** `lead.call.created` |
+| `beginRingCentralCallLeadIngestion` | Default RingCentral ingest write + replica tests | passed in by ingest | same snapshot as the injectable adapter |
+| `createLeadFromGranot` | Granot lifecycle processor only, after live `create_if_missing` authorization and no eligible match ([`processor.md`](../granot-lifecycle/processor.md)). Not this file. | `false`; sparse Job-only creation is allowed | exact active Source Granularity rate snapshot |
 
 **Call Qualification** + ingest: [`ringcentral-call-lead-qualification.md`](./ringcentral-call-lead-qualification.md). Duplicate classification: `ringcentral-duplicate-guard.ts`; promotion gate: `ringcentral-call-lead-ingest.service.ts`.
 
-## Create — manual/API (`createCallLead`)
+## Call Lead Ingestion — Admin / sheet (`ingestCallLead` / `begin` / `complete`)
 
 1. Normalize name, parse **Source Company** (`resolveLeadSourceAssignment`, channel `call`), optional location (`resolveOptionalLocation`).
 2. **Form Fill** check — `hasFormFillForCallLead(source, phone)`: true when a non-duplicate Form Lead exists with same source + normalized phone. Missing/unparseable phone → `false`.
-3. Save via `callLeadCreationProvenanceFields`: `quoted=false`, trusted `ingestion_origin`, immutable `ingested_contact_snapshot`. Public `createCallLead` origin is `vantage_admin`. Canonical `deriveCallLeadIngestionOrigin`: undefined/`vantage_admin` → `vantage_admin`; `ringcentral` → `ringcentral`; sheet ingest → `best_relocation_sheet`; Granot lifecycle → `granot_lead_created`. Unproven origins throw.
-4. Enqueue `call_lead.create`; `finalizeCallLeadCreateAfterCommit` runs Sheet Sync, then `lead.cpl.missing_rate` if needed, then `lead.call.created`, then `lead.call.form_fill_detected` when `form_fill`.
-5. No Ring Central metadata; no Call Lead duplicate window logic.
+3. Save via `callLeadCreationProvenanceFields`: `quoted=false`, trusted `ingestion_origin`, immutable `ingested_contact_snapshot`. Public `ingestCallLead` origin is `vantage_admin`. Canonical `deriveCallLeadIngestionOrigin`: undefined/`vantage_admin` → `vantage_admin`; `ringcentral` → `ringcentral`; sheet ingest → `best_relocation_sheet`; Granot lifecycle → `granot_lead_created`. Unproven origins throw.
+4. Before commit: remember Sheet Sync intent (`call_lead.create`). After commit `completeCallLeadIngestion` projects onto sheets, then `lead.cpl.missing_rate` if needed, then `lead.call.created`, then `lead.call.form_fill_detected` when `form_fill`.
+5. No Ring Central metadata; no Call Lead duplicate window logic; no CRM Posting.
 
-## Create — Ring Central (`createRingCentralCallLead`)
+## Call Lead Ingestion — Ring Central (`ingestRingCentralCallLead` / `beginRingCentralCallLeadIngestion`)
 
 1. Caller supplies `duplicate` (from ingest duplicate guard) and a resolved source assignment.
-2. Same Form Fill check as manual path.
-3. Save with `ringcentral.*` transport provenance (session id, call log id, nested `ingestion_source`, **Call Qualification**, timestamps) plus `callLeadCreationProvenanceFields({ origin: "ringcentral" })` (`quoted=false`, immutable contact snapshot).
+2. Same Form Fill check as Admin path.
+3. Save with `ringcentral.*` transport provenance (session id, call log id, nested `ingestion_source`, **Call Qualification**, timestamps) plus `callLeadCreationProvenanceFields({ origin: "ringcentral" })` (`quoted=false`, immutable contact snapshot). Nested `ingestion_source` stays transport, not Ingestion Origin.
 4. **`cpl = 0` when Duplicate Lead** — `resolveLeadCplSnapshot` is called with `duplicate`; status `duplicate_zero` keeps `base_period_id` when present.
-5. After commit: `finalizeSheetSync`, then `lead.cpl.missing_rate` if needed, then `lead.call.form_fill_detected` when `form_fill`. This function does **not** emit `lead.call.created` (ingest emits `ringcentral.call_lead.created` / `ringcentral.call_lead.duplicate_created`).
-6. Unique sparse index on `ringcentral.telephony_session_id` prevents the **same call** from inserting twice (webhook vs cron idempotency — separate from business Duplicate Lead).
+5. `ingestRingCentralCallLead` after commit: sheets, then `lead.cpl.missing_rate` if needed, then `lead.call.form_fill_detected` when `form_fill`. This adapter does **not** emit `lead.call.created` (ingest emits `ringcentral.call_lead.created` / `ringcentral.call_lead.duplicate_created`).
+6. Default ingest (`beginRingCentralCallLeadIngestion` + `completeCallLeadIngestion`) currently **does** emit `lead.call.created` in addition to the ingest `ringcentral.call_lead.*` event. Do not silently drop or add that event to make the two completes agree.
+7. Unique sparse index on `ringcentral.telephony_session_id` prevents the **same call** from inserting twice (webhook vs cron idempotency — separate from business Duplicate Lead).
 
 ### Duplicate Lead rule (upstream of this service)
 
@@ -94,23 +97,25 @@ Delete/tombstone uses `lead.duplicate` for correct tab. `FormFill` column reflec
 
 Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 
-## Update (`updateCallLead`)
+## Correction (`correctCallLead`)
 
 - Strips forbidden lifecycle fields. Optional location (including explicit `local`); re-derives states/local only when zip/state/`local` is in the patch. Optional `receiver_agent` via Operations Registry (missing agent → 404). The source enum includes `granot_username_match`; existing extension writes still store `extension_crm_username_match`, which remains readable.
 - **Blocked:** `duplicate === true` when the Call Lead is already Booked (ConflictError). Does not re-run the 90-day Duplicate Lead guard.
 - Recomputes the **CPL** snapshot only when source-affecting fields change, `lead_source_company` is missing, `timestamp` is patched, or `duplicate` is patched (`resolveLeadCplSnapshot` receives current `lead.duplicate`).
-- No field changes → return the lead and skip Sheet Sync. Otherwise saves + refreshes attached **Booking Chain** (`call_lead.update`). Missing CPL after save emits `lead.cpl.missing_rate`.
+- No field changes → return the lead and skip Sheet Sync. Otherwise `persistTheCorrectionAndRefreshTheBookingChain` saves + refreshes attached **Booking Chain** (`call_lead.update`). Missing CPL after save emits `lead.cpl.missing_rate` even on the in-transaction command path (before command commit). Move that report only as a separate, tested change.
+- Canonical PATCH uses `correctCallLead(..., { transaction })`. Persisted `command_name` remains `updateSourceOwnedLead`.
 
-## Delete (`deleteCallLead`)
+## Removal (`removeCallLead` / `beginCallLeadRemoval`)
 
 - Same cascade rules as Form Leads (`cascade=true` when Booked).
-- Queued mode: tombstone `delete_source_lead` / `delete_call_lead` with `duplicate` plus `buildCallLeadDeletePreviousTargets`. That helper always adds Master **Calls** and **Duplicate Calls** fallbacks even when `sheet_sync` is empty, and keeps known row numbers from existing `sheet_sync` entries.
+- Queued mode: tombstone `delete_source_lead` / `delete_call_lead` with `duplicate` plus `rememberBothCallSheetTabsForTombstone` (alias `buildCallLeadDeletePreviousTargets`). That helper always adds Master **Calls** and **Duplicate Calls** fallbacks even when `sheet_sync` is empty, and keeps known row numbers from existing `sheet_sync` entries.
 - Legacy: `deleteCallLeadFromSheets` then Mongo delete.
+- Standalone cascade still goes through `v1.service.deleteBookedLead`; the command path dynamically imports `bookings/bookedLead.service`. Persisted `command_name` remains `deleteCallLead`.
 
-## Read
+## List
 
-- `findAllCallLeads` — last 200 by `createdAt`.
-- No “hide duplicate” read helper (unlike Form Lead `findFormLeadForEnrichment`).
+- `listRecentCallLeads` (alias `findAllCallLeads`) — last 200 by `createdAt`. Duplicate Leads stay visible.
+- `GET /api/v1/call-leads` uses browse, not this leftover last-200.
 
 ## Invariants
 
@@ -125,8 +130,9 @@ Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 
 | Path | Events |
 |------|--------|
-| Manual create | `lead.call.created`, `lead.call.form_fill_detected` when applicable |
-| Ring Central create | ingest emits `ringcentral.call_lead.created` or `ringcentral.call_lead.duplicate_created`; form-fill event from this service when `form_fill` |
+| Admin/sheet complete | `lead.call.created`, `lead.call.form_fill_detected` when applicable |
+| `ingestRingCentralCallLead` | form-fill event from this service when `form_fill`; **no** `lead.call.created` |
+| Default RingCentral ingest (`begin` + `complete`) | `lead.call.created` from complete, plus ingest `ringcentral.call_lead.created` / `duplicate_created` |
 
 ## Lifecycle revision
 

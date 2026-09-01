@@ -13,7 +13,7 @@ import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
 import { BookedLead } from "../../models/BookedLead";
 import { CancelledLead } from "../../models/CancelledLead";
-import { createRingCentralCallLeadInTransaction } from "./callLead.service";
+import { beginRingCentralCallLeadIngestion } from "./callLead.service";
 import { beginFormLeadIngestion } from "./formLead.service";
 import { formLeadCreationProvenanceFields } from "./leadIngestionProvenance";
 import { createFormLeadSchema } from "../../validation/v1/leads.validation";
@@ -191,7 +191,7 @@ test("[AC-12] replica RingCentral Call create captures origin, quoted false, and
 
   const prefix = `u12c-${Date.now()}`;
   const now = new Date("2026-08-17T16:22:00.000Z");
-  const pending = await createRingCentralCallLeadInTransaction(
+  const pending = await beginRingCentralCallLeadIngestion(
     ringCentralInput(prefix),
     { now },
   );
@@ -210,7 +210,7 @@ test("[AC-12] replica RingCentral Call create captures origin, quoted false, and
   const rollbackPhone = "5550100121";
   await assert.rejects(async () => {
     await mongoose.connection.transaction(async (session) => {
-      await createRingCentralCallLeadInTransaction(
+      await beginRingCentralCallLeadIngestion(
         {
           ...ringCentralInput(`${prefix}-rb`),
           phone_number: rollbackPhone,

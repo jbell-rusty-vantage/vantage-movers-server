@@ -2,9 +2,9 @@ import { logger } from "../../logger";
 import { withTransaction } from "../../db";
 import { recordOperationalEvent } from "../observability";
 import {
-  createRingCentralCallLead,
-  createRingCentralCallLeadInTransaction,
-  finalizeCallLeadCreateAfterCommit,
+  beginRingCentralCallLeadIngestion,
+  completeCallLeadIngestion,
+  ingestRingCentralCallLead,
   type CreateRingCentralCallLeadInput,
 } from "../leads/callLead.service";
 import type { RingCentralRouteResolution } from "../operationsRegistry";
@@ -90,7 +90,7 @@ export type RingCentralIngestDependencies = {
   resolveWriteMode: typeof resolveRingCentralLeadWriteMode;
   adoptionEnabled: typeof isRingCentralGranotAdoptionEnabled;
   assertAdoptionIndexes: typeof assertProcessedCallAdoptionIndexes;
-  createLead: typeof createRingCentralCallLead;
+  createLead: typeof ingestRingCentralCallLead;
   insertShadow: typeof insertShadowCallLead;
   upsertProcessedCall: typeof upsertProcessedCall;
   recordEvent: typeof recordOperationalEvent;
@@ -103,7 +103,7 @@ const defaultIngestDependencies: RingCentralIngestDependencies = {
   resolveWriteMode: resolveRingCentralLeadWriteMode,
   adoptionEnabled: isRingCentralGranotAdoptionEnabled,
   assertAdoptionIndexes: assertProcessedCallAdoptionIndexes,
-  createLead: createRingCentralCallLead,
+  createLead: ingestRingCentralCallLead,
   insertShadow: insertShadowCallLead,
   upsertProcessedCall,
   recordEvent: recordOperationalEvent,
@@ -352,7 +352,7 @@ export async function ingestRingCentralQualifiedCall(
               throw new RingCentralConvergenceScopeRaceError();
             }
           }
-          const created = await createRingCentralCallLeadInTransaction(
+          const created = await beginRingCentralCallLeadIngestion(
             createInput,
             { session, now },
           );
@@ -379,7 +379,7 @@ export async function ingestRingCentralQualifiedCall(
           return created;
         });
         callLeadId = pending.lead._id.toString();
-        await finalizeCallLeadCreateAfterCommit(pending);
+        await completeCallLeadIngestion(pending);
       } catch (error) {
         if (
           error instanceof RingCentralConvergenceScopeRaceError &&

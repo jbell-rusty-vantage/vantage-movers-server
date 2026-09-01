@@ -23,9 +23,16 @@ export {
 } from "./formLead.service";
 
 export {
+  beginCallLeadIngestion,
+  beginCallLeadRemoval,
+  completeCallLeadIngestion,
+  correctCallLead,
   createCallLead,
   deleteCallLead,
   findAllCallLeads,
+  ingestCallLead,
+  listRecentCallLeads,
+  removeCallLead,
   updateCallLead,
 } from "./callLead.service";
 

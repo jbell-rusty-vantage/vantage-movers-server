@@ -31,10 +31,10 @@ import {
 import { requireBestRelocationImportSource } from "../bookings/bestRelocationImportGuard";
 import { getLinkedLead } from "../leads";
 import {
-  createCallLeadInTransaction,
-  finalizeCallLeadCreateAfterCommit,
-  updateCallLeadInTransaction,
-  deleteCallLeadInTransaction,
+  beginCallLeadIngestion,
+  beginCallLeadRemoval,
+  completeCallLeadIngestion,
+  correctCallLead,
 } from "../leads/callLead.service";
 import {
   beginFormLeadIngestion,
@@ -181,7 +181,7 @@ export async function runExistingCreateCallLead(input: {
   context: CanonicalCommandContext;
 }): Promise<{
   command: CompatibilityCanonicalCommandResult;
-  data: Awaited<ReturnType<typeof finalizeCallLeadCreateAfterCommit>>;
+  data: Awaited<ReturnType<typeof completeCallLeadIngestion>>;
 }> {
   const data = createCallLeadSchema.parse(input.data);
   if (input.context.provenance.origin === "external_sheet_ingestion") {
@@ -191,12 +191,12 @@ export async function runExistingCreateCallLead(input: {
     );
   }
   const changeIds = preallocatedChangeIds(1);
-  let finalized: Awaited<ReturnType<typeof finalizeCallLeadCreateAfterCommit>>;
+  let finalized: Awaited<ReturnType<typeof completeCallLeadIngestion>>;
   const command = await executeCanonicalCommandWithPostCommit({
     command_name: "createCallLead",
     context: input.context,
     operation: async (tx) => {
-      const pending = await createCallLeadInTransaction(data, {
+      const pending = await beginCallLeadIngestion(data, {
         ...tx,
         ingestion_origin: deriveCallLeadIngestionOrigin({
           commandOrigin: input.context.provenance.origin,
@@ -221,7 +221,7 @@ export async function runExistingCreateCallLead(input: {
       };
     },
     finalize: async (pending) => {
-      finalized = await finalizeCallLeadCreateAfterCommit(pending);
+      finalized = await completeCallLeadIngestion(pending);
     },
   });
   return { command, data: finalized! };
@@ -265,10 +265,10 @@ export async function runExistingUpdateSourceOwnedLead(input: {
           },
         );
       } else {
-        updated = await updateCallLeadInTransaction(
+        updated = await correctCallLead(
           input.lead_id,
           updateCallLeadSchema.parse(update),
-          tx,
+          { transaction: tx },
         );
       }
       const after = (updated as { toObject: () => Record<string, unknown> }).toObject();
@@ -762,7 +762,7 @@ export async function runExistingDeleteCallLead(input: {
     command_name: "deleteCallLead",
     context: input.context,
     operation: async (tx) => {
-      const pending = await deleteCallLeadInTransaction(
+      const pending = await beginCallLeadRemoval(
         input.lead_id,
         input.cascade,
         tx,

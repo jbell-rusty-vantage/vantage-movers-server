@@ -1,0 +1,17 @@
+---
+description: How to find and search OKF business-logic docs for this server
+alwaysApply: true
+---
+
+# Knowledge lookup
+
+Business logic lives in stamped Service files, not in this rule.
+
+1. **Catalog:** [`docs/index.md`](../../docs/index.md)
+2. **Filter:** from this package root, `pnpm okf:query --type Service`. Optional: `--tag <kebab>`, `--status`, `--stale`, `--json`. There is no `--q`. `--help` is ignored and dumps every stamped row.
+3. **Concept search:** Grep `docs/knowledge/` (e.g. Duplicate Lead). Tags are clusters (`form-lead`, `granot-lifecycle`), not concepts (`duplicate`).
+4. **Read** the matching `docs/knowledge/services/*.md` or `docs/knowledge/granot-lifecycle/*.md`. Follow **Related** links. Package map: [`AGENTS.md`](../../AGENTS.md).
+5. **Glossary:** workspace-root [`CONTEXT.md`](../../../CONTEXT.md). Link terms; do not redefine.
+6. **ADRs:** workspace-root `docs/adr/` (listed in `docs/index.md`; `--type ADR` is empty in this checkout).
+
+Do not invent invariants from `src/` before reading the Service. After a behavior change, update the matching Service (prefer docs-keeper). `.cursor/okf-workspace/` is a session board, not knowledge.

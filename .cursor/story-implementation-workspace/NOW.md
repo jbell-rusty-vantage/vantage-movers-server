@@ -1,13 +1,13 @@
 # NOW
 
-- Date (UTC): 2026-08-28
-- Current story: `form-lead` (in-progress)
-- Recommendation: `.cursor/story-refactor-workspace/recommendations/form-lead.md`
-- Target: `src/services/leads/formLead.service.ts`
-- Branch: `refactor/form-lead-story`
+- Date (UTC): 2026-09-01
+- Current story: `call-lead` (implemented; local main after commit)
+- Recommendation: `.cursor/story-refactor-workspace/recommendations/leads-call-lead.md`
+- Target: `src/services/leads/callLead.service.ts`
+- Branch: `refactor/call-lead-story`
 - PR:
-- Last session: `impl-form-lead-2026-08-28T2130Z`
-- Next story: `leads-call-lead` (`recommendations/leads-call-lead.md`) after this branch is committed / merged
+- Last session: `impl-call-lead-2026-08-28T2152Z`
+- Next story: remaining `leads` recs after local main picks up `origin/main`
 
 Do not add narrative here. Rows live in `BOARD.md`.
 Do not edit `.cursor/story-refactor-workspace/`.
