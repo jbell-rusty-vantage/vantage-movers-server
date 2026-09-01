@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
+import mongoose from "mongoose";
 import {
   SOURCE_COMPANY_CONFIGS,
   SOURCE_LABEL_TO_COMPANY,
 } from "../../config/domain";
+import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
+import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
+import { getLeadSourceLabelMappingModel } from "../../models/LeadSourceLabelMapping";
+import {
+  getStaticSourceLabelMapConsultCount,
+  resetStaticSourceLabelMapConsultsForTests,
+  resolveSheetOrLegacyLabel,
+} from "./labelMappings";
 import {
   previewSourceAttribution,
   type RegistrySourceCompanyRecord,
@@ -256,4 +265,189 @@ test("all legacy source-label fixtures preserve company attribution", () => {
       assert.equal(result.attribution.company_slug, expectedCompany, label);
     }
   }
+});
+
+const mappingCompanyId = new mongoose.Types.ObjectId();
+const mappingFeedId = new mongoose.Types.ObjectId();
+const mappingId = new mongoose.Types.ObjectId();
+const Mapping = getLeadSourceLabelMappingModel();
+const Company = getLeadSourceCompanyModel();
+const Granularity = getLeadSourceGranularityModel();
+const originalFind = Mapping.find;
+const originalCompanyFindById = Company.findById;
+const originalGranularityFindById = Granularity.findById;
+
+afterEach(() => {
+  (Mapping as unknown as Record<string, unknown>).find = originalFind;
+  (Company as unknown as Record<string, unknown>).findById = originalCompanyFindById;
+  (Granularity as unknown as Record<string, unknown>).findById =
+    originalGranularityFindById;
+  resetStaticSourceLabelMapConsultsForTests();
+});
+
+function lean(result: unknown) {
+  return {
+    session() {
+      return this;
+    },
+    lean() {
+      return this;
+    },
+    exec: async () => result,
+  };
+}
+
+test("resolves without touching the static map", async () => {
+  resetStaticSourceLabelMapConsultsForTests();
+  (Mapping as unknown as Record<string, unknown>).find = () =>
+    lean([
+      {
+        _id: mappingId,
+        namespace: "sheet_lead_source",
+        normalized_label: "best relocation forms",
+        source_company: mappingCompanyId,
+        source_granularity: mappingFeedId,
+        active: true,
+      },
+    ]);
+  (Granularity as unknown as Record<string, unknown>).findById = () =>
+    lean({
+      _id: mappingFeedId,
+      source_company: mappingCompanyId,
+      active: true,
+      granularity_key: "best_relocation_leads_form",
+      owner_label: "Best Relocation Forms",
+      crm_label: "Best Relocation Forms",
+    });
+  (Company as unknown as Record<string, unknown>).findById = () =>
+    lean({
+      _id: mappingCompanyId,
+      active: true,
+      company_slug: "best_relocation_leads",
+      owner_label: "Best Relocation Leads",
+    });
+
+  const result = await resolveSheetOrLegacyLabel(
+    "sheet_lead_source",
+    "Best Relocation Forms",
+  );
+  assert.equal(result.status, "resolved");
+  if (result.status === "resolved" && result.source === "mapping") {
+    assert.equal(result.source_granularity_id, String(mappingFeedId));
+    assert.equal(result.company_slug, "best_relocation_leads");
+  }
+  assert.equal(
+    getStaticSourceLabelMapConsultCount(),
+    0,
+    "collection hit must not read SOURCE_LABEL_TO_COMPANY",
+  );
+});
+
+test("empty collection falls back to the static map and emits exactly one compatibility-read event", async () => {
+  (Mapping as unknown as Record<string, unknown>).find = () => lean([]);
+  let compatibilityReads = 0;
+  const result = await resolveSheetOrLegacyLabel(
+    "sheet_lead_source",
+    "Best Relocation Forms",
+    {
+      recordCompatibilityRead: async () => {
+        compatibilityReads += 1;
+      },
+      recordResolutionFailure: async () => {
+        throw new Error("fallback must not raise a resolution failure");
+      },
+    },
+  );
+  assert.equal(result.status, "resolved");
+  if (result.status === "resolved") {
+    assert.equal(result.source, "compatibility");
+    if (result.source === "compatibility") {
+      assert.equal(result.source_company_slug, "best_relocation_leads");
+    }
+  }
+  assert.equal(getStaticSourceLabelMapConsultCount(), 1);
+  assert.equal(compatibilityReads, 1);
+});
+
+test("ambiguous mapping fails closed and does not consult the static map", async () => {
+  (Mapping as unknown as Record<string, unknown>).find = () =>
+    lean([
+      {
+        _id: mappingId,
+        namespace: "sheet_lead_source",
+        normalized_label: "best relocation forms",
+        source_company: mappingCompanyId,
+        source_granularity: mappingFeedId,
+        active: true,
+      },
+      {
+        _id: new mongoose.Types.ObjectId(),
+        namespace: "sheet_lead_source",
+        normalized_label: "best relocation forms",
+        source_company: mappingCompanyId,
+        source_granularity: mappingFeedId,
+        active: true,
+      },
+    ]);
+  const failures: string[] = [];
+  const result = await resolveSheetOrLegacyLabel(
+    "sheet_lead_source",
+    "Best Relocation Forms",
+    {
+      consultStaticMap: () => {
+        throw new Error("static map must not be consulted on ambiguous");
+      },
+      recordResolutionFailure: async (kind) => {
+        failures.push(kind);
+      },
+    },
+  );
+  assert.equal(result.status, "ambiguous");
+  assert.deepEqual(failures, ["ambiguous"]);
+  assert.equal(getStaticSourceLabelMapConsultCount(), 0);
+});
+
+test("inactive-Feed mapping fails closed and does not fall back to the static map", async () => {
+  (Mapping as unknown as Record<string, unknown>).find = () =>
+    lean([
+      {
+        _id: mappingId,
+        namespace: "sheet_lead_source",
+        normalized_label: "best relocation forms",
+        source_company: mappingCompanyId,
+        source_granularity: mappingFeedId,
+        active: true,
+      },
+    ]);
+  (Granularity as unknown as Record<string, unknown>).findById = () =>
+    lean({
+      _id: mappingFeedId,
+      source_company: mappingCompanyId,
+      active: false,
+      granularity_key: "best_relocation_leads_form",
+      owner_label: "Best Relocation Forms",
+      crm_label: "Best Relocation Forms",
+    });
+  (Company as unknown as Record<string, unknown>).findById = () =>
+    lean({
+      _id: mappingCompanyId,
+      active: true,
+      company_slug: "best_relocation_leads",
+    });
+  const failures: string[] = [];
+  const result = await resolveSheetOrLegacyLabel(
+    "sheet_lead_source",
+    "Best Relocation Forms",
+    {
+      consultStaticMap: () => {
+        throw new Error("static map must not be consulted on inactive Feed");
+      },
+      recordResolutionFailure: async (kind) => {
+        failures.push(kind);
+      },
+    },
+  );
+  assert.equal(result.status, "inactive_destination");
+  assert.deepEqual(failures, ["inactive_destination"]);
+  assert.equal(getStaticSourceLabelMapConsultCount(), 0);
 });

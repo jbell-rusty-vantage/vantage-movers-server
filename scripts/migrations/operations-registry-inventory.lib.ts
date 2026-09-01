@@ -11,6 +11,7 @@ import {
   RINGCENTRAL_INBOUND_NUMBER_TO_SOURCE,
 } from "../../src/services/ringcentral/call-lead-sources";
 import { normalizePhoneNumberToE164Like } from "../../src/services/ringcentral/phone-normalization";
+import { normalizeSourceLabel } from "../../src/services/operationsRegistry/sourceLabelNormalize";
 
 export const SCRIPT_VERSION = "operations-registry-inventory-s0";
 export const PRODUCTION_DATABASE = "vantagemovers";
@@ -760,6 +761,10 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function hashInventoryValue(value: unknown): string {
+  return createHash("sha256").update(stableStringify(value)).digest("hex");
+}
+
 export function computeInventoryChecksum(snapshot: InventorySnapshot): string {
   const collisions = collectInventoryCollisions(snapshot);
   const payload = {
@@ -785,7 +790,7 @@ export function computeInventoryChecksum(snapshot: InventorySnapshot): string {
     collisions,
     static_authority_references: STATIC_AUTHORITY_REFERENCES,
   };
-  return createHash("sha256").update(stableStringify(payload)).digest("hex");
+  return hashInventoryValue(payload);
 }
 
 function summarizeCollisions(collisions: InventoryCollision[]) {
@@ -1006,4 +1011,332 @@ function redactInventoryValue(value: unknown): unknown {
     }
   }
   return redacted;
+}
+
+export type LabelMappingProposalClassification =
+  | "ok"
+  | "zero_match"
+  | "multiple_match"
+  | "cross_company";
+
+export type LabelInventoryOrigin =
+  | "static_map"
+  | "feed_crm_label"
+  | "feed_alias"
+  | "lead_snapshot";
+
+export type LabelInventoryEntry = {
+  label: string;
+  namespace: "sheet_lead_source" | "legacy_api_source";
+  static_company_slug?: string;
+  origin: LabelInventoryOrigin;
+};
+
+export type LabelMappingProposal = {
+  label: string;
+  normalized_label: string;
+  namespace: "sheet_lead_source" | "legacy_api_source";
+  origin: LabelInventoryOrigin;
+  static_company_slug?: string;
+  matched_feed_ids: string[];
+  matched_company_ids: string[];
+  matched_company_slugs: string[];
+  classification: LabelMappingProposalClassification;
+  source_company?: string;
+  source_granularity?: string;
+};
+
+export type LabelMappingProposalInput = {
+  labels: Array<{
+    label: string;
+    namespace: "sheet_lead_source" | "legacy_api_source";
+    static_company_slug?: string;
+    origin?: LabelInventoryOrigin;
+  }>;
+  feeds: Array<{
+    id: string;
+    company_id: string;
+    company_slug: string;
+    crm_label: string;
+    aliases: string[];
+    active: boolean;
+  }>;
+};
+
+const LABEL_ORIGIN_RANK: Record<LabelInventoryOrigin, number> = {
+  static_map: 0,
+  feed_crm_label: 1,
+  feed_alias: 2,
+  lead_snapshot: 3,
+};
+
+/**
+ * Deduplicate inventory labels by namespace + normalized spelling.
+ * Prefer the static map, then Feed crm_label, then Feed alias, then Lead snapshot.
+ */
+export function collectLabelMappingInventoryLabels(input: {
+  staticLabels: Array<{
+    label: string;
+    namespace: "sheet_lead_source" | "legacy_api_source";
+    static_company_slug?: string;
+  }>;
+  feeds: Array<{ crm_label: string; aliases: string[] }>;
+  leadSnapshots: readonly string[];
+}): LabelInventoryEntry[] {
+  const candidates: LabelInventoryEntry[] = [];
+  for (const entry of input.staticLabels) {
+    candidates.push({ ...entry, origin: "static_map" });
+  }
+  for (const feed of input.feeds) {
+    if (feed.crm_label.trim()) {
+      candidates.push({
+        label: feed.crm_label,
+        namespace: "sheet_lead_source",
+        origin: "feed_crm_label",
+      });
+    }
+    for (const alias of feed.aliases) {
+      if (alias.trim()) {
+        candidates.push({
+          label: alias,
+          namespace: "sheet_lead_source",
+          origin: "feed_alias",
+        });
+      }
+    }
+  }
+  for (const snapshot of input.leadSnapshots) {
+    if (snapshot.trim()) {
+      candidates.push({
+        label: snapshot,
+        namespace: "sheet_lead_source",
+        origin: "lead_snapshot",
+      });
+    }
+  }
+
+  const best = new Map<string, LabelInventoryEntry>();
+  for (const candidate of candidates) {
+    const key = `${candidate.namespace}:${normalizeSourceLabel(candidate.label)}`;
+    const existing = best.get(key);
+    if (
+      !existing ||
+      LABEL_ORIGIN_RANK[candidate.origin] < LABEL_ORIGIN_RANK[existing.origin]
+    ) {
+      best.set(key, candidate);
+    }
+  }
+  return [...best.values()].sort((left, right) =>
+    `${left.namespace}:${normalizeSourceLabel(left.label)}`.localeCompare(
+      `${right.namespace}:${normalizeSourceLabel(right.label)}`,
+    ),
+  );
+}
+
+export type LabelMappingManifest = {
+  kind: "operations-registry-label-mappings";
+  proposals: Array<{
+    label: string;
+    normalized_label: string;
+    namespace: "sheet_lead_source" | "legacy_api_source";
+    source_company: string;
+    source_granularity: string;
+    classification: "ok";
+  }>;
+  checksum: string;
+};
+
+export function proposeLabelMappings(
+  input: LabelMappingProposalInput,
+): LabelMappingProposal[] {
+  return input.labels.map((entry) => {
+    const normalized = normalizeSourceLabel(entry.label);
+    const matches = input.feeds.filter((feed) => {
+      const labels = [feed.crm_label, ...feed.aliases];
+      return labels.some((candidate) => normalizeSourceLabel(candidate) === normalized);
+    });
+    const companyIds = [...new Set(matches.map((feed) => feed.company_id))];
+    const companySlugs = [...new Set(matches.map((feed) => feed.company_slug))];
+    let classification: LabelMappingProposalClassification = "ok";
+    if (matches.length === 0) {
+      classification = "zero_match";
+    } else if (matches.length > 1 || companyIds.length > 1) {
+      classification = companyIds.length > 1 ? "cross_company" : "multiple_match";
+    } else if (
+      entry.static_company_slug &&
+      companySlugs[0] &&
+      entry.static_company_slug !== companySlugs[0]
+    ) {
+      classification = "cross_company";
+    }
+    const firstMatch = matches[0];
+    return {
+      label: entry.label,
+      normalized_label: normalized,
+      namespace: entry.namespace,
+      origin: entry.origin ?? "static_map",
+      static_company_slug: entry.static_company_slug,
+      matched_feed_ids: matches.map((feed) => feed.id),
+      matched_company_ids: companyIds,
+      matched_company_slugs: companySlugs,
+      classification,
+      ...(classification === "ok" && firstMatch
+        ? {
+            source_company: firstMatch.company_id,
+            source_granularity: firstMatch.id,
+          }
+        : {}),
+    };
+  });
+}
+
+export function summarizeLabelMappingClassifications(
+  proposals: readonly LabelMappingProposal[],
+): Record<LabelMappingProposalClassification, number> {
+  return {
+    ok: proposals.filter((item) => item.classification === "ok").length,
+    zero_match: proposals.filter((item) => item.classification === "zero_match").length,
+    multiple_match: proposals.filter((item) => item.classification === "multiple_match").length,
+    cross_company: proposals.filter((item) => item.classification === "cross_company").length,
+  };
+}
+
+export function blockingLabelMappingProposals(
+  proposals: readonly LabelMappingProposal[],
+): LabelMappingProposal[] {
+  return proposals.filter((item) => item.classification !== "ok");
+}
+
+export function buildLabelMappingManifest(
+  proposals: readonly LabelMappingProposal[],
+): LabelMappingManifest {
+  const blocking = blockingLabelMappingProposals(proposals);
+  if (blocking.length) {
+    throw new Error(
+      `Refusing to emit a label-mapping manifest while ${blocking.length} proposal(s) are not ok: ${blocking
+        .map((item) => `${item.label} (${item.classification})`)
+        .join(", ")}.`,
+    );
+  }
+  const ok = proposals
+    .filter((item) => item.classification === "ok")
+    .map((item) => ({
+      label: item.label,
+      normalized_label: item.normalized_label,
+      namespace: item.namespace,
+      source_company: item.source_company!,
+      source_granularity: item.source_granularity!,
+      classification: "ok" as const,
+    }))
+    .sort((left, right) =>
+      `${left.namespace}:${left.normalized_label}`.localeCompare(
+        `${right.namespace}:${right.normalized_label}`,
+      ),
+    );
+  return {
+    kind: "operations-registry-label-mappings",
+    proposals: ok,
+    checksum: computeLabelMappingManifestChecksum(ok),
+  };
+}
+
+export function computeLabelMappingManifestChecksum(
+  proposals: LabelMappingManifest["proposals"],
+): string {
+  return hashInventoryValue({
+    kind: "operations-registry-label-mappings",
+    proposals,
+  });
+}
+
+export function summarizeLabelInventoryOrigins(
+  proposals: readonly LabelMappingProposal[],
+): Record<LabelInventoryOrigin, number> {
+  return {
+    static_map: proposals.filter((item) => item.origin === "static_map").length,
+    feed_crm_label: proposals.filter((item) => item.origin === "feed_crm_label").length,
+    feed_alias: proposals.filter((item) => item.origin === "feed_alias").length,
+    lead_snapshot: proposals.filter((item) => item.origin === "lead_snapshot").length,
+  };
+}
+
+export function assertLabelMappingManifestChecksum(manifest: LabelMappingManifest): void {
+  const expected = computeLabelMappingManifestChecksum(manifest.proposals);
+  if (manifest.checksum !== expected) {
+    throw new Error(
+      `Label-mapping manifest checksum mismatch. Expected ${expected}, received ${manifest.checksum}.`,
+    );
+  }
+}
+
+export type EmbeddedGranularityUsageReport = {
+  indexes: Array<{
+    fields: string;
+    purpose: string;
+  }>;
+  readers: Array<{
+    path: string;
+    kind: "read" | "write" | "index" | "test" | "script";
+    still_live: boolean;
+    notes: string;
+  }>;
+  removed_in_this_pass: false;
+};
+
+export function reportEmbeddedGranularitiesUsage(): EmbeddedGranularityUsageReport {
+  return {
+    indexes: [
+      {
+        fields: "granularities.granularity_key",
+        purpose: "legacy embedded Feed key lookup",
+      },
+      {
+        fields: "granularities.crm_label",
+        purpose: "legacy embedded outgoing-label lookup",
+      },
+      {
+        fields: "granularities.inbound_phone_numbers",
+        purpose: "legacy embedded inbound-phone lookup",
+      },
+    ],
+    readers: [
+      {
+        path: "src/models/LeadSourceCompany.ts",
+        kind: "index",
+        still_live: true,
+        notes: "Schema still embeds granularities[] and declares the three indexes. Nothing dropped.",
+      },
+      {
+        path: "src/services/leadSourceCompanies/leadSourceCompany.service.ts",
+        kind: "read",
+        still_live: true,
+        notes: "Seed, list, and legacy resolveLeadSource still project the embedded array.",
+      },
+      {
+        path: "src/services/operationsRegistry/sourceRegistry.ts",
+        kind: "read",
+        still_live: true,
+        notes: "toCompanyItem still maps doc.granularities when present.",
+      },
+      {
+        path: "src/services/cpl/cplRate.service.ts",
+        kind: "read",
+        still_live: true,
+        notes: "Admin CPL list still walks company.granularities.",
+      },
+      {
+        path: "src/services/operationsRegistry/sourceModels.test.ts",
+        kind: "write",
+        still_live: true,
+        notes: "Validation fixture still writes an embedded granularity for schema defaults.",
+      },
+      {
+        path: "scripts/migrations/operations-registry-inventory.lib.ts",
+        kind: "script",
+        still_live: true,
+        notes: "Inventory still records embedded granularities as migration evidence.",
+      },
+    ],
+    removed_in_this_pass: false,
+  };
 }

@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, test } from "node:test";
 import {
   resetRegistryCacheInvalidationForTests,
@@ -7,6 +9,7 @@ import {
   resetGranotCrmSourceCachesForTests,
   writeGranotSourcePolicyCache,
 } from "../operationsRegistry/granotCrmSourceCache";
+import { evaluateGranotLeadSmsGates } from "../leadMessaging/granotCreatedLead";
 import {
   EFFECT_GATE_NAMES,
   evaluateEffectGates,
@@ -344,6 +347,110 @@ test("[AC-28] reviewed Referral reconciliation treats absent Lead scope gates as
   ]) {
     assert.equal(evaluateEffectGates({ ...evaluationFacts(), ...facts }).allowed, false);
   }
+});
+
+test("source-policy suite never imports the Twilio adapter", () => {
+  const policySource = readFileSync(
+    path.join(process.cwd(), "src/services/granotLifecycle/sourcePolicy.ts"),
+    "utf8",
+  );
+  assert.equal(policySource.includes("createTwilioSender"), false);
+  assert.equal(policySource.includes("twilioAdapter"), false);
+  assert.equal(policySource.includes("twilio"), false);
+});
+
+test("twelve policy × effect outcomes are independent for link, enrich, create, and text", () => {
+  const passing: EffectGateFacts = {
+    global_effect_flag: true,
+    receipt_post_activation: true,
+    processor_mode: "live",
+    operational_enabled: true,
+    lifecycle_enabled: true,
+    disposition: "source_scoped_lead",
+    source_company_active: true,
+    source_granularity_active: true,
+    lead_created_policy: "create_if_missing",
+    requested_effect: "lead_created",
+  };
+  const rows: Array<{
+    policy: EffectGateFacts["lead_created_policy"];
+    effect: "lead_link" | "lead_enrichment" | "lead_created" | "text";
+    allowed: boolean;
+  }> = [
+    { policy: "observation_only", effect: "lead_link", allowed: false },
+    { policy: "observation_only", effect: "lead_enrichment", allowed: false },
+    { policy: "observation_only", effect: "lead_created", allowed: false },
+    { policy: "observation_only", effect: "text", allowed: false },
+    { policy: "link_only", effect: "lead_link", allowed: true },
+    { policy: "link_only", effect: "lead_enrichment", allowed: true },
+    { policy: "link_only", effect: "lead_created", allowed: false },
+    { policy: "link_only", effect: "text", allowed: false },
+    { policy: "create_if_missing", effect: "lead_link", allowed: true },
+    { policy: "create_if_missing", effect: "lead_enrichment", allowed: true },
+    { policy: "create_if_missing", effect: "lead_created", allowed: true },
+    { policy: "create_if_missing", effect: "text", allowed: true },
+  ];
+
+  for (const row of rows) {
+    if (row.effect === "text") {
+      const evaluation = evaluateGranotLeadSmsGates({
+        messaging_mode: "inline",
+        granot_sms_flag: true,
+        lead_created_policy: row.policy,
+        outbound_sms_enabled: true,
+        consent_basis: "existing_relationship",
+        destination: "+19545550142",
+      });
+      assert.equal(evaluation.allowed, row.allowed, `${row.policy} × text`);
+      continue;
+    }
+    const evaluation = evaluateEffectGates({
+      ...passing,
+      lead_created_policy: row.policy,
+      requested_effect: row.effect,
+    });
+    assert.equal(evaluation.allowed, row.allowed, `${row.policy} × ${row.effect}`);
+  }
+});
+
+test("a later store edit does not mutate an already-returned SourcePolicySnapshot", async () => {
+  const row = formSource({
+    lead_created_policy: "create_if_missing",
+    lifecycle_policy_version: "snap-v1",
+  });
+  const rows = [row];
+  const first = await resolveSourcePolicy(
+    {
+      source_label: "BestRelocation Forms",
+      origin_state: "NY",
+      destination_state: "NY",
+    },
+    store(rows),
+  );
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  const snapshot = { ...first.snapshot };
+  row.lead_created_policy = "link_only";
+  row.lifecycle_policy_version = "snap-v2";
+  const second = await resolveSourcePolicy(
+    {
+      source_label: "BestRelocation Forms",
+      origin_state: "NY",
+      destination_state: "NY",
+    },
+    store(rows),
+  );
+  assert.equal(second.ok, true);
+  if (second.ok) {
+    assert.equal(second.snapshot.lead_created_policy, "link_only");
+    assert.equal(second.snapshot.lifecycle_policy_version, "snap-v2");
+  }
+  assert.equal(snapshot.lead_created_policy, "create_if_missing");
+  assert.equal(snapshot.lifecycle_policy_version, "snap-v1");
+  assert.equal(snapshot.granot_crm_source_id, sourceId);
+  assert.equal(snapshot.lead_source_company_id, companyId);
+  assert.equal(snapshot.source_granularity_id, localGranularityId);
+  assert.equal(snapshot.selected_route_key, "form_local");
 });
 
 function evaluationFacts(): EffectGateFacts {

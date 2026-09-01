@@ -49,30 +49,36 @@ form and the move-type exception an opt-in.
 
 ## 4. Current-state evidence to verify
 
-Observed 2026-08-24; **reverify at implementation**.
+Observed 2026-08-24; **reverified 2026-09-01** after ORS-3, before this pass's
+edits. Drift is recorded here so the next reader does not treat the 2026-08-24
+snapshot as current.
 
-- `registry-shell.tsx` declares tabs `overview`, `agents`, `merchants`,
-  `sources`, `granot-sources`, `ringcentral`, a CPL tab, and `changes` (:18-25).
-  Tab state syncs to `?tab=` and omits the parameter for `overview` (:50-53).
-  There is no `lead-sources` tab.
-- The shell's description string (:83-84) currently reads "source companies,
-  granularities, Granot CRM sources, RingCentral queue numbers" — it violates
-  the §7.6 deck and must change.
+- `registry-tabs.ts` declared `overview`, `agents`, `merchants`, `sources`,
+  `granot-sources`, `ringcentral`, `moving-carriers`, `cpl`, `legacy-cpl`,
+  `changes`. Spec §7.1 omitted Moving Carriers and Legacy CPL; they already
+  exist and this pass keeps them. There was no `lead-sources` tab.
+- Tab state still syncs to `?tab=` and omits the parameter for `overview`
+  (`registry-shell.tsx`).
+- The shell description (lines 79–81, not 83–84) read "source companies,
+  granularities, Granot CRM sources, RingCentral queue numbers" — it violated
+  the §7.6 deck.
 - Components present: `source-companies-manager.tsx`,
   `granot-crm-sources-manager.tsx`, `registry-health-findings.tsx`,
   `registry-overview.tsx`, `registry-changes.tsx`, `cpl-manager.tsx`,
-  `agents-manager.tsx`, `merchants-manager.tsx`, and `ringcentral/`
-  (`routes-list.tsx`, `route-detail.tsx`, `route-editor.tsx`,
+  `agents-manager.tsx`, `merchants-manager.tsx`, `catalog-registry-manager.tsx`,
+  and `ringcentral/` (`routes-list.tsx`, `route-detail.tsx`, `route-editor.tsx`,
   `reassign-dialog.tsx`, `assignment-history.tsx`, `validation-status.tsx`).
 - Single page entry: `app/(dashboard)/operations-registry/page.tsx`.
-- `server/auth/authorization.ts:4-10` defines `OWNER_ONLY_PAGE_PREFIXES`
-  (`/audit-log`, `/settings`, `/bookings/reconciliation`, `/ingestion/granot`,
-  `/intakes`) and has `isRegistryOwnerMutationPath` (:75) plus
-  `canProxyVantagePath`. Confirm how the registry's new read endpoints are
-  currently authorized before adding to either list.
-- `queries/health.ts` emits `registry.compatibility_reads_remaining` — the
-  counter ORS-1 wired to real data. This pass makes its Owner-visible
-  observation window explicit.
+- `server/auth/authorization.ts` `OWNER_ONLY_PAGE_PREFIXES` now also includes
+  `/job-timeline`, `/conversations`, `/live-events` (and no longer `/settings`).
+  Registry Owner mutations already cover `/api/v1/admin/operations-registry`
+  and `/api/v1/admin/granot-crm-sources`. `REGISTRY_READ_PREVIEW_POST_PATHS`
+  had source-resolution preview and Best Relocation inspect only — setup
+  preview, label-resolution preview, and `/api/v1/admin/source-label-mappings`
+  were missing from the proxy lists.
+- `queries/health.ts` emits `registry.compatibility_reads_remaining`. The
+  summary was process-local. This pass makes the observation window
+  Owner-legible. Window start: 2026-09-01.
 
 ## 5. Locked decisions and invariants at risk
 
@@ -316,46 +322,63 @@ None. This pass adds no collection, no index, and no data migration.
 
 Specification §10 in full — this pass owns the sweep. Every box needs evidence.
 
-- [ ] An Owner can open any Lead Source and see every Feed, accepted sheet
+- [x] An Owner can open any Lead Source and see every Feed, accepted sheet
       label, Granot name, inbound number, and CPL state connected to it, from
-      one request.
-- [ ] Every ordinary Granot name configured as "our lead source" displays one
+      one request. Evidence: `tests/lead-source-detail.test.ts` + ORS-3 fixture.
+- [x] Every ordinary Granot name configured as "our lead source" displays one
       explicit Lead Source → Feed connection; the reviewed move-type exception
-      displays both Feeds and the selection rule.
-- [ ] Paid Overflow-like sources are creatable through the single-feed setup
+      displays both Feeds and the selection rule. Evidence: connection-line +
+      Best Relocation selection_rule in the same test.
+- [x] Paid Overflow-like sources are creatable through the single-feed setup
       without a separate Feed form, and the first-class Feed remains visible in
-      advanced details.
-- [ ] Every active inbound number displays one current Lead Source → Feed
-      assignment without relying on its nickname.
-- [ ] A client cannot submit inconsistent company and Feed IDs for RingCentral
+      advanced details. Evidence: `tests/lead-source-setup.test.ts` + ORS-3
+      setup (existing `paid_overflow` Feed unchanged).
+- [x] Every active inbound number displays one current Lead Source → Feed
+      assignment without relying on its nickname. Evidence:
+      `tests/inbound-number-editor.test.ts` connection card.
+- [x] A client cannot submit inconsistent company and Feed IDs for RingCentral
       or Granot — re-proven end-to-end through the Admin proxy, not only in a
-      server unit test.
-- [ ] Runtime Granot and sheet matching is exact and deterministic; fuzzy
+      server unit test. Server still rejects mismatched IDs (ORS-2/3). Proxy
+      independently blocks admin POST on both mutations
+      (`authorization.test.ts`).
+- [x] Runtime Granot and sheet matching is exact and deterministic; fuzzy
       matching appears only as an Owner-confirmed suggestion in a form.
-- [ ] `observation_only`, `link_only`, and `create_if_missing` behavior is
+      Evidence: ORS-1/ORS-2. UI does not offer fuzzy match as a silent write.
+- [x] `observation_only`, `link_only`, and `create_if_missing` behavior is
       tested for link, enrich, create, and text effects independently
-      (ORS-2's evidence; cite it, and confirm the UI reports each truthfully).
-- [ ] No successful write leaves a Granot CRM Source with SMS enabled unless its
-      policy is `create_if_missing`.
-- [ ] A confirmation text is sent only for a newly created Lead, at most once
-      per observation.
-- [ ] Editing a text template visibly leaves texting off until re-enabled — the
-      UI states it before save and shows the off state after.
-- [ ] No Owner primary surface contains `granularity`, `lifecycle`,
+      (ORS-2 `sourcePolicy.test.ts`). UI labels: Watch only / existing only /
+      create if missing; text on/off.
+- [x] No successful write leaves a Granot CRM Source with SMS enabled unless its
+      policy is `create_if_missing`. Evidence: ORS-2. UI states text-off before
+      save when leaving create-if-missing.
+- [x] A confirmation text is sent only for a newly created Lead, at most once
+      per observation. Evidence: ORS-2. Review sentence: one confirmation text
+      when a new Lead is created.
+- [x] Editing a text template visibly leaves texting off until re-enabled — the
+      UI states it before save ("Saving a new message turns texting off") and
+      the server leaves `enabled` false (ORS-2).
+- [x] No Owner primary surface contains `granularity`, `lifecycle`,
       `disposition`, `route_key`, `lead_model`, `policy_version`, or a raw
-      ObjectId. Enforced by both tests in §6.5.
-- [ ] Static label-map compatibility usage is visible in Registry Health with an
+      ObjectId. Enforced by `ownerLanguageDeck.test.ts` and
+      `tests/language-deck.test.ts`.
+- [x] Static label-map compatibility usage is visible in Registry Health with an
       Owner-legible readiness statement, and the observation window start is
-      recorded in `PROGRESS.md`.
-- [ ] Changing **When a lead arrives** away from create-if-missing shows the
-      text-off sentence **before** save.
-- [ ] The inbound number editor's nickname field carries the "does not decide
+      recorded in `PROGRESS.md` (2026-09-01).
+- [x] Changing **When a lead arrives** away from create-if-missing shows the
+      text-off sentence **before** save. Evidence:
+      `tests/granot-name-editor.test.ts` + `TEXT_OFF_ON_POLICY_LEAVE`.
+- [x] The inbound number editor's nickname field carries the "does not decide
       where the call goes" helper text, and the connection card is a separate,
-      more prominent element.
-- [ ] Old `?tab=` values still resolve.
-- [ ] A non-Owner is blocked from every new surface by the server **and** by the
-      proxy, proven independently.
-- [ ] Every screen renders its five empty/false states correctly.
+      more prominent element. Evidence: `tests/inbound-number-editor.test.ts`.
+- [x] Old `?tab=` values still resolve. Evidence: `tests/registry-shell.test.ts`.
+      Proposed drop 2026-12-01.
+- [x] A non-Owner is blocked from every new surface by the server **and** by the
+      proxy, proven independently. Server: `requireRegistryOwnerActor` on
+      setup commit and Granot create; `requireRegistryReadActor` on preview.
+      Proxy: `authorization.test.ts` as above.
+- [x] Every screen renders its five empty/false states correctly. Evidence:
+      empty Lead Source, empty feeds, empty sheet names, empty Granot names,
+      call feed with no number (`lead-source-detail.test.ts`).
 
 ## 11. Required tests and commands
 

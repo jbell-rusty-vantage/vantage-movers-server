@@ -13,7 +13,7 @@ import {
 import { recordOperationalEvent } from "../observability";
 import { REGISTRY_ERROR_CODES } from "../errors/registryErrorCodes";
 import { RegistryError } from "./errors";
-import { withRegistryMutation } from "./registryAudit";
+import { withRegistryMutation, type RegistryAuditDeps } from "./registryAudit";
 import { validateCplSchedule } from "./cplSchedule";
 import {
   previewSourceAttribution,
@@ -161,6 +161,7 @@ export async function getSourceGranularity(id: string): Promise<SourceGranularit
 export async function createOrUpdateSourceCompany(
   command: SourceCompanyCommand,
   actor: RegistryActorContext,
+  deps: RegistryAuditDeps = {},
 ): Promise<SourceCompanyItem> {
   assertOwner(actor);
   const Company = getLeadSourceCompanyModel();
@@ -295,12 +296,13 @@ export async function createOrUpdateSourceCompany(
       audit.after = item as unknown as Record<string, unknown>;
       return item;
     },
-  });
+  }, deps);
 }
 
 export async function createOrUpdateSourceGranularity(
   command: SourceGranularityCommand,
   actor: RegistryActorContext,
+  deps: RegistryAuditDeps = {},
 ): Promise<SourceGranularityItem> {
   assertOwner(actor);
   const Granularity = getLeadSourceGranularityModel();
@@ -410,7 +412,7 @@ export async function createOrUpdateSourceGranularity(
       audit.after = item as unknown as Record<string, unknown>;
       return item;
     },
-  });
+  }, deps);
 }
 
 export async function setSourceCompanyActivation(
@@ -784,29 +786,110 @@ async function assertActiveDefaultsValid(
   }
 }
 
-async function assertExactIdentifiersAvailable(
-  granularity: LeadSourceGranularityDocument,
-  session: ClientSession,
+export async function assertExactIdentifiersAvailable(
+  granularity: Pick<
+    LeadSourceGranularityDocument,
+    "_id" | "channel" | "crm_label" | "source_sites"
+  >,
+  session?: ClientSession | null,
 ): Promise<void> {
-  const conflicts = await getLeadSourceGranularityModel()
-    .find({
-      _id: { $ne: granularity._id },
-      active: true,
-      channel: granularity.channel,
-      $or: [
-        { crm_label: new RegExp(`^${escapeRegex(granularity.crm_label)}$`, "i") },
-        ...(granularity.source_sites ?? []).map((site) => ({
-          source_sites: new RegExp(`^${escapeRegex(site)}$`, "i"),
-        })),
-      ],
-    })
-    .session(session)
-    .select({ _id: 1 })
+  const query = getLeadSourceGranularityModel().find({
+    _id: { $ne: granularity._id },
+    active: true,
+    channel: granularity.channel,
+    $or: [
+      { crm_label: new RegExp(`^${escapeRegex(granularity.crm_label)}$`, "i") },
+      ...(granularity.source_sites ?? []).map((site) => ({
+        source_sites: new RegExp(`^${escapeRegex(site)}$`, "i"),
+      })),
+    ],
+  });
+  const conflicts = await (session ? query.session(session) : query)
+    .select({ _id: 1, owner_label: 1, crm_label: 1 })
     .lean()
     .exec();
   if (conflicts.length) {
     throw duplicateIdentifier("active exact source identifier");
   }
+}
+
+export function deriveRegistryKey(value: string): string | undefined {
+  return normalizeKey(value);
+}
+
+export async function persistNewSourceCompanyInSession(
+  input: {
+    company_slug: string;
+    name: string;
+    owner_label: string;
+    aliases: string[];
+    created_from?: string;
+  },
+  session: ClientSession,
+): Promise<SourceCompanyItem> {
+  const Company = getLeadSourceCompanyModel();
+  const doc = first(
+    await Company.create(
+      [
+        {
+          company_slug: input.company_slug,
+          name: canonical(input.name),
+          owner_label: canonical(input.owner_label),
+          aliases: normalizedList(input.aliases),
+          active: false,
+          granularities: [],
+          sheet_config: {
+            has_bad_tabs: false,
+            projection_mode: "derived_import",
+          },
+          created_from: input.created_from?.trim() || "lead_source_setup",
+        },
+      ],
+      { session },
+    ),
+  );
+  return toCompanyItem(doc.toObject({ virtuals: true }) as Record<string, unknown>);
+}
+
+export async function persistNewSourceGranularityInSession(
+  input: {
+    source_company_id: string;
+    granularity_key: string;
+    channel: RegistrySourceChannel;
+    owner_label: string;
+    crm_label: string;
+    aliases: string[];
+    local?: "local" | "long_distance";
+    source_sites: string[];
+    created_from?: string;
+  },
+  session: ClientSession,
+): Promise<SourceGranularityItem> {
+  const Granularity = getLeadSourceGranularityModel();
+  const doc = first(
+    await Granularity.create(
+      [
+        {
+          source_company: input.source_company_id,
+          granularity_key: input.granularity_key,
+          channel: input.channel,
+          owner_label: canonical(input.owner_label),
+          crm_label: canonical(input.crm_label),
+          aliases: normalizedList(input.aliases),
+          ...(input.local ? { local: input.local } : {}),
+          source_sites: normalizedList(input.source_sites),
+          priority: 0,
+          active: false,
+          schedule_revision: 0,
+          created_from: input.created_from?.trim() || "lead_source_setup",
+        },
+      ],
+      { session },
+    ),
+  );
+  return toGranularityItem(
+    doc.toObject({ virtuals: true }) as unknown as Record<string, unknown>,
+  );
 }
 
 function toCompanyItem(doc: Record<string, unknown>): SourceCompanyItem {

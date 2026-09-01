@@ -331,7 +331,41 @@ export const granotCrmSourceOutboundSmsSchema = z
       "customer_submitted_form",
       "existing_relationship",
     ]),
-    daily_cap: z.number().int().min(0).max(10_000).optional(),
+    reason: registryReasonSchema,
+  })
+  .strict();
+
+const objectIdString = z
+  .string()
+  .trim()
+  .regex(/^[a-f\d]{24}$/i, "Invalid Mongo ObjectId");
+
+export const ownerGranotNameCreateSchema = z
+  .object({
+    name_received_from_granot: z.string().trim().min(1).max(200),
+    handling: z.enum(["our_lead_source", "referral_booking", "watch_only"]),
+    lead_source_id: optionalObjectIdString,
+    destination: z.union([
+      z
+        .object({
+          kind: z.literal("one_feed"),
+          feed_id: objectIdString,
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal("form_by_move_type"),
+          local_feed_id: objectIdString,
+          long_distance_feed_id: objectIdString,
+        })
+        .strict(),
+      z.null(),
+    ]),
+    when_lead_arrives: z.enum([
+      "watch_only",
+      "existing_only",
+      "create_if_missing",
+    ]),
     reason: registryReasonSchema,
   })
   .strict();
@@ -383,4 +417,7 @@ export type GranotCrmSourceLifecycleActivationInput = z.infer<
 >;
 export type GranotCrmSourceOutboundSmsInput = z.infer<
   typeof granotCrmSourceOutboundSmsSchema
+>;
+export type OwnerGranotNameCreateInput = z.infer<
+  typeof ownerGranotNameCreateSchema
 >;

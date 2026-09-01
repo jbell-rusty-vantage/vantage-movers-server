@@ -8,7 +8,7 @@ import { normalizePhoneNumberToE164Like } from "../ringcentral/phone-normalizati
 import { recordOperationalEvent } from "../observability";
 import { REGISTRY_ERROR_CODES } from "../errors/registryErrorCodes";
 import { RegistryError } from "./errors";
-import { withRegistryMutation } from "./registryAudit";
+import { withRegistryMutation, type RegistryAuditDeps } from "./registryAudit";
 import { RINGCENTRAL_ROUTE_CACHE_KEY } from "./ringCentralSnapshot";
 import type { RegistryActorContext } from "./types";
 import {
@@ -43,6 +43,11 @@ export type RingCentralRouteAssignmentItem = {
   route_id: string;
   source_company_id: string;
   source_granularity_id: string;
+  lead_source_name?: string;
+  lead_source_company_slug?: string;
+  feed_display_name?: string;
+  granularity_key?: string;
+  channel?: "form" | "call";
   effective_from: Date;
   effective_until?: Date;
   active: boolean;
@@ -92,11 +97,13 @@ export async function listRingCentralInboundRoutes(
     const key = String(assignment.route);
     grouped.set(key, [...(grouped.get(key) ?? []), assignment]);
   }
-  return routes.map((route) =>
-    toRouteItem(
-      route as unknown as Record<string, unknown>,
-      grouped.get(String(route._id)) ?? [],
-      options.includeHistory === true,
+  return enrichRouteAssignments(
+    routes.map((route) =>
+      toRouteItem(
+        route as unknown as Record<string, unknown>,
+        grouped.get(String(route._id)) ?? [],
+        options.includeHistory === true,
+      ),
     ),
   );
 }
@@ -108,11 +115,14 @@ export async function getRingCentralInboundRoute(
   if (!route) throw notFound();
   const assignments = await getRingCentralInboundRouteAssignmentModel()
     .find({ route: id }).sort({ effective_from: -1 }).lean().exec();
-  return toRouteItem(
-    route as unknown as Record<string, unknown>,
-    assignments as unknown as Record<string, unknown>[],
-    true,
-  );
+  const [item] = await enrichRouteAssignments([
+    toRouteItem(
+      route as unknown as Record<string, unknown>,
+      assignments as unknown as Record<string, unknown>[],
+      true,
+    ),
+  ]);
+  return item!;
 }
 
 export async function previewRingCentralRouteDependencies(id: string) {
@@ -133,7 +143,6 @@ export async function previewRingCentralRouteDependencies(id: string) {
     active_assignment_count: activeAssignmentCount,
     assignment_history_count: historyCount,
     call_lead_count: callLeadCount,
-    can_deactivate: true,
   };
 }
 
@@ -330,15 +339,17 @@ export async function validateRingCentralRoute(
 export async function activateRingCentralRoute(
   command: RingCentralRouteActivationCommand,
   actor: RegistryActorContext,
+  deps: RegistryAuditDeps = {},
 ): Promise<RingCentralRouteItem> {
-  return mutateAssignment("activate", command, actor);
+  return mutateAssignment("activate", command, actor, deps);
 }
 
 export async function reassignRingCentralRoute(
   command: RingCentralRouteActivationCommand,
   actor: RegistryActorContext,
+  deps: RegistryAuditDeps = {},
 ): Promise<RingCentralRouteItem> {
-  return mutateAssignment("reassign", command, actor);
+  return mutateAssignment("reassign", command, actor, deps);
 }
 
 export async function deactivateRingCentralRoute(
@@ -394,6 +405,7 @@ async function mutateAssignment(
   action: "activate" | "reassign",
   command: RingCentralRouteActivationCommand,
   actor: RegistryActorContext,
+  deps: RegistryAuditDeps = {},
 ): Promise<RingCentralRouteItem> {
   assertOwner(actor);
   const Route = getRingCentralInboundRouteModel();
@@ -463,7 +475,7 @@ async function mutateAssignment(
       };
       return after;
     },
-  });
+  }, deps);
   return getRingCentralInboundRoute(command.id);
 }
 
@@ -589,6 +601,86 @@ function assertValidFreshValidation(
       remediation: { summary: "Validate the route again before activation." },
     });
   }
+}
+
+async function enrichRouteAssignments(
+  routes: RingCentralRouteItem[],
+): Promise<RingCentralRouteItem[]> {
+  const assignments = routes.flatMap((route) => [
+    ...(route.current_assignment ? [route.current_assignment] : []),
+    ...(route.assignment_history ?? []),
+  ]);
+  const companyIds = [
+    ...new Set(assignments.map((assignment) => assignment.source_company_id).filter(Boolean)),
+  ];
+  const feedIds = [
+    ...new Set(assignments.map((assignment) => assignment.source_granularity_id).filter(Boolean)),
+  ];
+  if (!companyIds.length && !feedIds.length) return routes;
+  const [companies, feeds] = await Promise.all([
+    companyIds.length
+      ? getLeadSourceCompanyModel()
+          .find({ _id: { $in: companyIds } })
+          .select({ name: 1, owner_label: 1, company_slug: 1 })
+          .lean()
+          .exec()
+      : Promise.resolve([]),
+    feedIds.length
+      ? getLeadSourceGranularityModel()
+          .find({ _id: { $in: feedIds } })
+          .select({ owner_label: 1, granularity_key: 1, channel: 1 })
+          .lean()
+          .exec()
+      : Promise.resolve([]),
+  ]);
+  const companyById = new Map(
+    companies.map((company) => [
+      String(company._id),
+      {
+        name: String(company.owner_label ?? company.name),
+        company_slug: String(company.company_slug),
+      },
+    ]),
+  );
+  const feedById = new Map(
+    feeds.map((feed) => [
+      String(feed._id),
+      {
+        display_name: String(feed.owner_label),
+        granularity_key: String(feed.granularity_key),
+        channel: feed.channel === "call" ? ("call" as const) : ("form" as const),
+      },
+    ]),
+  );
+  const decorate = (assignment: RingCentralRouteAssignmentItem): RingCentralRouteAssignmentItem => {
+    const company = companyById.get(assignment.source_company_id);
+    const feed = feedById.get(assignment.source_granularity_id);
+    return {
+      ...assignment,
+      ...(company
+        ? {
+            lead_source_name: company.name,
+            lead_source_company_slug: company.company_slug,
+          }
+        : {}),
+      ...(feed
+        ? {
+            feed_display_name: feed.display_name,
+            granularity_key: feed.granularity_key,
+            channel: feed.channel,
+          }
+        : {}),
+    };
+  };
+  return routes.map((route) => ({
+    ...route,
+    ...(route.current_assignment
+      ? { current_assignment: decorate(route.current_assignment) }
+      : {}),
+    ...(route.assignment_history
+      ? { assignment_history: route.assignment_history.map(decorate) }
+      : {}),
+  }));
 }
 
 function toRouteItem(

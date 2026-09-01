@@ -76,11 +76,16 @@ test("Operations Registry entities expose complete lifecycle CRUD surfaces", () 
     "POST /api/v1/admin/cpl/simple-schedule",
     "POST /api/v1/admin/source-granularities/:id/cpl-schedule/commands",
     "GET /api/v1/admin/granot-crm-sources",
+    "POST /api/v1/admin/granot-crm-sources",
     "GET /api/v1/admin/granot-crm-sources/:id",
     "PATCH /api/v1/admin/granot-crm-sources/:id",
     "PATCH /api/v1/admin/granot-crm-sources/:id/activation",
     "PATCH /api/v1/admin/granot-crm-sources/:id/outbound-sms",
     "GET /api/v1/admin/granot-crm-sources/:id/outbound-sms/recent",
+    "GET /api/v1/admin/operations-registry/lead-sources",
+    "GET /api/v1/admin/operations-registry/lead-sources/:id",
+    "POST /api/v1/admin/operations-registry/lead-source-setups",
+    "POST /api/v1/admin/operations-registry/lead-source-setups/preview",
   ]) {
     assert.equal(routes.has(expected), true, `missing route ${expected}`);
   }
@@ -222,6 +227,19 @@ test("Granot sync expected filter enforces fill-only and empty receiver fields",
       ],
     },
   );
+});
+
+test("Lead Source projection and setup routes are registered next to overview", () => {
+  const routes = registeredMethods(router);
+  for (const expected of [
+    "GET /api/v1/admin/operations-registry/lead-sources",
+    "GET /api/v1/admin/operations-registry/lead-sources/:id",
+    "POST /api/v1/admin/operations-registry/lead-source-setups",
+    "POST /api/v1/admin/operations-registry/lead-source-setups/preview",
+    "GET /api/v1/admin/operations-registry/overview",
+  ]) {
+    assert.equal(routes.has(expected), true, `missing route ${expected}`);
+  }
 });
 
 test("legacy CPL rates remain read-only after temporal schedule cutover", () => {

@@ -55,6 +55,7 @@ export type GranotCrmSourceRecord = {
   lifecycle_routes: GranotCrmSourceLifecycleRoute[];
   lifecycle_policy_version: string;
   outbound_sms?: OwnerOutboundSmsView;
+  customer_text_turned_off_due_to_policy_change?: boolean;
 };
 
 export type GranotCrmSourceCommand = {
@@ -116,68 +117,97 @@ export async function getRegistryGranotCrmSource(
   return item;
 }
 
+export async function persistGranotCrmSourceInSession(
+  command: GranotCrmSourceCommand,
+  actor: RegistryActorContext,
+  session: ClientSession,
+): Promise<{ item: GranotCrmSourceRecord; audit: RegistryAuditInput }> {
+  const reason = requiredReason(command.reason);
+  const Source = getGranotCrmSourceModel();
+  const audit = mutableAudit(command.id, reason);
+  const before = command.id
+    ? await Source.findById(command.id).session(session).lean().exec()
+    : null;
+  if (command.id && !before) {
+    throw notFound("Granot CRM source");
+  }
+  const intended = intendedSemantics(command, before as Record<string, unknown> | null);
+  const refs = await loadSemanticsRefs(intended, session);
+  const validated = validateGranotCrmSourceSemantics(intended, refs);
+  if (!validated.ok) {
+    throw invalid(validated.message);
+  }
+  if (validated.normalized_granot_label) {
+    const duplicate = await Source.findOne({
+      normalized_granot_label: validated.normalized_granot_label,
+      ...(command.id ? { _id: { $ne: command.id } } : {}),
+    })
+      .session(session)
+      .select({ _id: 1 })
+      .lean()
+      .exec();
+    if (duplicate) {
+      throw duplicateNormalizedLabel();
+    }
+  }
+
+  const update = buildUpdate(command, before as Record<string, unknown> | null, validated.normalized_granot_label);
+  const smsOff = applySmsOffWhenPolicyLeavesCreateIfMissing(
+    update,
+    before as Record<string, unknown> | null,
+    command,
+  );
+  const doc = command.id
+    ? await Source.findByIdAndUpdate(
+        command.id,
+        { $set: update },
+        { session, returnDocument: "after", runValidators: true },
+      ).orFail()
+    : first(
+        await Source.create(
+          [update as never],
+          { session },
+        ),
+      );
+  const item = toRecord(doc.toObject() as unknown as Record<string, unknown>);
+  if (smsOff) {
+    item.customer_text_turned_off_due_to_policy_change = true;
+  }
+  audit.entityId = item.id;
+  audit.before = policyProjection(before as Record<string, unknown> | null);
+  audit.after = policyProjection(item);
+  audit.metadata = {
+    request_id: actor.requestId,
+    reason,
+    ...(smsOff
+      ? {
+          customer_text_turned_off_due_to_policy_change: true,
+          customer_text_review_sentence:
+            "Customer text will be turned off because this Granot name will no longer create Leads.",
+        }
+      : {}),
+  };
+  return { item, audit };
+}
+
 export async function createOrUpdateGranotCrmSource(
   command: GranotCrmSourceCommand,
   actor: RegistryActorContext,
   deps: RegistryAuditDeps = {},
 ): Promise<GranotCrmSourceRecord> {
   assertOwner(actor);
-  const reason = requiredReason(command.reason);
-  const Source = getGranotCrmSourceModel();
-  const audit = mutableAudit(command.id, reason);
+  const audit = mutableAudit(command.id, requiredReason(command.reason));
   return withRegistryMutation({
     actor,
     audit,
     invalidateKeys: [...GRANOT_LIFECYCLE_SOURCE_CACHE_KEYS],
     mutate: async (session) => {
-      const before = command.id
-        ? await Source.findById(command.id).session(session).lean().exec()
-        : null;
-      if (command.id && !before) {
-        throw notFound("Granot CRM source");
-      }
-      const intended = intendedSemantics(command, before as Record<string, unknown> | null);
-      const refs = await loadSemanticsRefs(intended, session);
-      const validated = validateGranotCrmSourceSemantics(intended, refs);
-      if (!validated.ok) {
-        throw invalid(validated.message);
-      }
-      if (validated.normalized_granot_label) {
-        const duplicate = await Source.findOne({
-          normalized_granot_label: validated.normalized_granot_label,
-          ...(command.id ? { _id: { $ne: command.id } } : {}),
-        })
-          .session(session)
-          .select({ _id: 1 })
-          .lean()
-          .exec();
-        if (duplicate) {
-          throw duplicateNormalizedLabel();
-        }
-      }
-
-      const update = buildUpdate(command, before as Record<string, unknown> | null, validated.normalized_granot_label);
-      const doc = command.id
-        ? await Source.findByIdAndUpdate(
-            command.id,
-            { $set: update },
-            { session, returnDocument: "after", runValidators: true },
-          ).orFail()
-        : first(
-            await Source.create(
-              [update as never],
-              { session },
-            ),
-          );
-      const item = toRecord(doc.toObject() as unknown as Record<string, unknown>);
-      audit.entityId = item.id;
-      audit.before = policyProjection(before as Record<string, unknown> | null);
-      audit.after = policyProjection(item);
-      audit.metadata = {
-        request_id: actor.requestId,
-        reason,
-      };
-      return item;
+      const persisted = await persistGranotCrmSourceInSession(command, actor, session);
+      audit.entityId = persisted.audit.entityId;
+      audit.before = persisted.audit.before;
+      audit.after = persisted.audit.after;
+      audit.metadata = persisted.audit.metadata;
+      return persisted.item;
     },
   }, deps);
 }
@@ -324,6 +354,39 @@ function buildUpdate(
       stringValue(before?.lifecycle_policy_version) ??
       "",
   };
+}
+
+function applySmsOffWhenPolicyLeavesCreateIfMissing(
+  update: Record<string, unknown>,
+  before: Record<string, unknown> | null,
+  command: GranotCrmSourceCommand,
+): boolean {
+  if (!before) {
+    return false;
+  }
+  const previousPolicy =
+    (stringValue(before.lead_created_policy) as GranotLeadCreatedPolicy | undefined) ??
+    "observation_only";
+  const nextPolicy =
+    command.lead_created_policy ??
+    (stringValue(before.lead_created_policy) as GranotLeadCreatedPolicy | undefined) ??
+    "observation_only";
+  const previousSms = record(before.outbound_sms);
+  if (
+    previousPolicy !== "create_if_missing" ||
+    nextPolicy === "create_if_missing" ||
+    previousSms?.enabled !== true
+  ) {
+    return false;
+  }
+  const now = new Date();
+  update.outbound_sms = {
+    ...previousSms,
+    enabled: false,
+    deactivated_at: now,
+    deactivation_reason: "lead_created_policy_changed_from_create_if_missing",
+  };
+  return true;
 }
 
 async function loadSemanticsRefs(

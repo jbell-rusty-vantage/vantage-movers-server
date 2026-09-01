@@ -91,6 +91,10 @@ import {
   getRegistryOverview,
   getRegistryHealth,
   listRegistryChanges,
+  listLeadSourceProjections,
+  getLeadSourceProjection,
+  createLeadSourceSetup,
+  previewLeadSourceSetup,
   requireRegistryReadActor,
   requireRegistryOwnerActor,
   isRegistryError,
@@ -100,6 +104,7 @@ import {
   createOrUpdateSourceCompany,
   createOrUpdateSourceGranularity,
   createOrUpdateGranotCrmSource,
+  createGranotNameFromOwnerIntent,
   listRecentGranotCrmSourceSms,
   setGranotCrmSourceOutboundSms,
   getProjectedGranotCrmSource,
@@ -120,6 +125,10 @@ import {
   createDefaultCplCorrectionDependencies,
   previewSourceDependency,
   previewSourceResolution,
+  previewLabelResolution,
+  createLabelMapping,
+  listLabelMappings,
+  setLabelMappingActivation,
   setSourceCompanyActivation,
   setSourceGranularityActivation,
   type RegistryCatalogItem,
@@ -155,10 +164,18 @@ import {
   sourceGranularityUpdateSchema,
   sourceActivationSchema,
   sourceResolutionPreviewSchema,
+  sourceLabelMappingCreateSchema,
+  sourceLabelMappingActivationSchema,
+  sourceLabelMappingListQuerySchema,
+  sourceLabelResolutionPreviewSchema,
   granotCrmSourceRegistryUpdateSchema,
   granotCrmSourceLifecycleActivationSchema,
   granotCrmSourceOutboundSmsSchema,
   granotCrmSourceOutboundSmsRecentQuerySchema,
+  ownerGranotNameCreateSchema,
+  leadSourceSetupCommandSchema,
+  leadSourceListQuerySchema,
+  leadSourceDetailQuerySchema,
   listMovingCarriersQuerySchema,
   movingCarrierCreateSchema,
   movingCarrierImportSchema,
@@ -366,6 +383,7 @@ router.get(
   handleSourceGranularityDependencies,
 );
 router.get("/api/v1/admin/granot-crm-sources", handleGranotCrmSourcesList);
+router.post("/api/v1/admin/granot-crm-sources", handleGranotCrmSourceCreate);
 router.get("/api/v1/admin/granot-crm-sources/:id", handleGranotCrmSourceDetail);
 router.patch("/api/v1/admin/granot-crm-sources/:id", handleGranotCrmSourceUpdate);
 router.patch(
@@ -383,6 +401,22 @@ router.get(
 router.post(
   "/api/v1/admin/source-resolution/preview",
   handleSourceResolutionPreview,
+);
+router.post(
+  "/api/v1/admin/source-label-mappings",
+  handleSourceLabelMappingCreate,
+);
+router.patch(
+  "/api/v1/admin/source-label-mappings/:id/activation",
+  handleSourceLabelMappingActivation,
+);
+router.get(
+  "/api/v1/admin/source-label-mappings",
+  handleSourceLabelMappingsList,
+);
+router.post(
+  "/api/v1/admin/source-label-resolution/preview",
+  handleSourceLabelResolutionPreview,
 );
 router.get("/api/v1/admin/cpl/snapshot", handleCplSnapshot);
 router.post("/api/v1/admin/cpl/simple-schedule", handleSimpleCplSchedule);
@@ -483,6 +517,22 @@ router.post("/api/v1/admin/lead-messages/:id/retry", handleLeadMessageRetry);
 router.get(
   "/api/v1/admin/operations-registry/overview",
   handleOperationsRegistryOverview,
+);
+router.get(
+  "/api/v1/admin/operations-registry/lead-sources",
+  handleLeadSourceProjectionList,
+);
+router.get(
+  "/api/v1/admin/operations-registry/lead-sources/:id",
+  handleLeadSourceProjectionDetail,
+);
+router.post(
+  "/api/v1/admin/operations-registry/lead-source-setups/preview",
+  handleLeadSourceSetupPreview,
+);
+router.post(
+  "/api/v1/admin/operations-registry/lead-source-setups",
+  handleLeadSourceSetupCreate,
 );
 router.get(
   "/api/v1/admin/operations-registry/health",
@@ -1108,6 +1158,18 @@ async function handleSourceGranularityDependencies(req: Request, res: Response) 
   }
 }
 
+async function handleGranotCrmSourceCreate(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
+    const parsed = ownerGranotNameCreateSchema.parse(req.body);
+    const data = await createGranotNameFromOwnerIntent(parsed, actor);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
 async function handleGranotCrmSourcesList(req: Request, res: Response) {
   try {
     await connectMongo();
@@ -1137,7 +1199,7 @@ async function handleGranotCrmSourceUpdate(req: Request, res: Response) {
     await connectMongo();
     const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
     const parsed = granotCrmSourceRegistryUpdateSchema.parse(req.body);
-    await createOrUpdateGranotCrmSource(
+    const mutation = await createOrUpdateGranotCrmSource(
       {
         id,
         granot_label: parsed.granot_label,
@@ -1157,7 +1219,19 @@ async function handleGranotCrmSourceUpdate(req: Request, res: Response) {
       actor,
     );
     const data = await getProjectedGranotCrmSource(id);
-    return res.json({ ok: true, data });
+    return res.json({
+      ok: true,
+      data: {
+        ...data,
+        ...(mutation.customer_text_turned_off_due_to_policy_change
+          ? {
+              customer_text_turned_off_due_to_policy_change: true,
+              customer_text_review_sentence:
+                "Customer text will be turned off because this Granot name will no longer create Leads.",
+            }
+          : {}),
+      },
+    });
   } catch (error) {
     return sendError(req, res, error);
   }
@@ -1175,7 +1249,6 @@ async function handleGranotCrmSourceOutboundSms(req: Request, res: Response) {
         enabled: parsed.enabled,
         body_template: parsed.body_template,
         consent_basis: parsed.consent_basis,
-        ...(parsed.daily_cap !== undefined ? { daily_cap: parsed.daily_cap } : {}),
         reason: parsed.reason,
       },
       actor,
@@ -1229,6 +1302,60 @@ async function handleSourceResolutionPreview(req: Request, res: Response) {
     requireRegistryReadActor(req, getVantageAuth(req));
     const parsed = sourceResolutionPreviewSchema.parse(req.body);
     const data = await previewSourceResolution(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSourceLabelMappingCreate(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
+    const parsed = sourceLabelMappingCreateSchema.parse(req.body);
+    const data = await createLabelMapping(parsed, actor);
+    return res.status(201).json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSourceLabelMappingActivation(req: Request, res: Response) {
+  try {
+    const id = getValidObjectId(req);
+    await connectMongo();
+    const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
+    const parsed = sourceLabelMappingActivationSchema.parse(req.body);
+    const data = await setLabelMappingActivation(
+      id,
+      parsed.active,
+      parsed.reason,
+      actor,
+    );
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSourceLabelMappingsList(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const parsed = sourceLabelMappingListQuerySchema.parse(req.query);
+    const data = await listLabelMappings(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSourceLabelResolutionPreview(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const parsed = sourceLabelResolutionPreviewSchema.parse(req.body);
+    const data = await previewLabelResolution(parsed);
     return res.json({ ok: true, data });
   } catch (error) {
     return sendError(req, res, error);
@@ -1508,6 +1635,53 @@ async function handleGoogleMapsGeocodingHealth(req: Request, res: Response) {
     const zip = typeof req.query.zip === "string" ? req.query.zip : undefined;
     const data = await checkGoogleMapsGeocodingHealth(zip);
     return res.status(data.ok ? 200 : 503).json({ ok: data.ok, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleLeadSourceProjectionList(req: Request, res: Response) {
+  try {
+    leadSourceListQuerySchema.parse(req.query);
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const data = await listLeadSourceProjections();
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleLeadSourceProjectionDetail(req: Request, res: Response) {
+  try {
+    leadSourceDetailQuerySchema.parse(req.query);
+    const id = getValidObjectId(req);
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const data = await getLeadSourceProjection(id);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleLeadSourceSetupPreview(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    requireRegistryReadActor(req, getVantageAuth(req));
+    const parsed = leadSourceSetupCommandSchema.parse(req.body);
+    const data = await previewLeadSourceSetup(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleLeadSourceSetupCreate(req: Request, res: Response) {
+  try {
+    await connectMongo();
+    const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
+    const parsed = leadSourceSetupCommandSchema.parse(req.body);
+    const data = await createLeadSourceSetup(parsed, actor);
+    return res.status(201).json({ ok: true, data });
   } catch (error) {
     return sendError(req, res, error);
   }

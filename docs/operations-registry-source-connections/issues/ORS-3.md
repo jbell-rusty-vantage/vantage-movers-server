@@ -53,29 +53,42 @@ where it should return the connection.
 
 ## 4. Current-state evidence to verify
 
-Observed 2026-08-24; **reverify at implementation**, and reconcile against both
-prerequisite completion reports.
+Observed 2026-08-24; **reverified 2026-09-01** after ORS-1 and ORS-2. Drift
+corrected below.
 
-- `queries/overview.ts` exports one function, `getRegistryOverview()`. There is
-  **no** per-Lead-Source aggregate projection.
-- `v1.routes.ts` mounts the low-level collections separately:
-  `/admin/source-companies` (:329-342, including `/:id/dependencies`),
-  `/admin/source-granularities` (:344-360, plus CPL routes at :384-389),
-  `/admin/granot-crm-sources` (:362-375),
-  `/admin/operations-registry/overview` (:478), `/health` (:482), `/changes` (:486).
-  There is no `/admin/operations-registry/lead-sources`.
+- `queries/overview.ts` still exports one function, `getRegistryOverview()`.
+  There is **no** per-Lead-Source aggregate projection.
+- `v1.routes.ts` mounts the low-level collections separately (line numbers
+  shifted by ORS-1/2):
+  `/admin/source-companies` (:345-357, including `/:id/dependencies`),
+  `/admin/source-granularities` (:360-375, plus CPL routes at :417-421),
+  `/admin/granot-crm-sources` (:378-391, **now includes ORS-2 POST create**),
+  `/admin/operations-registry/overview` (now adjacent to the new lead-source
+  block). At pass start there was no `/admin/operations-registry/lead-sources`.
+  This pass mounted `GET …/lead-sources`, `GET …/lead-sources/:id`,
+  `POST …/lead-source-setups/preview`, and `POST …/lead-source-setups` as one
+  contiguous block next to overview. Label-mapping and Granot POST routes were
+  not reordered.
 - `src/routes/ringcentral-registry.routes.ts` mounts inbound-route list (:29),
-  detail (:44), create (:58), update (:70), and several `POST` actions
-  (:83-127). Confirm which of those are validate / activate / reassign before
-  editing their DTOs.
-- Existing health codes to translate include
-  `registry.ringcentral_validation_failed`,
-  `registry.ringcentral_route_inconsistent`,
-  `registry.ringcentral_assignment_inconsistent`,
-  `registry.source_granularity_inactive_company`,
-  `registry.source_default_invalid`, `registry.cpl_schedule_invalid`,
-  `registry.cpl_missing_rate_leads`, `registry.compatibility_reads_remaining`,
-  `registry.source_resolution_failures`, plus everything ORS-1 and ORS-2 added.
+  detail (:44), create (:58), update (:70), validate (:83), activate (:102),
+  reassign (:106), deactivate (:110), dependencies (:128).
+- Health codes to translate include the 2026-08-24 set plus ORS-1
+  (`registry.label_mapping_destination_invalid`,
+  `registry.label_mapping_collision`) and ORS-2
+  (`registry.granot_source_destination_invalid`,
+  `registry.granot_source_route_shape_invalid`,
+  `registry.granot_sms_gate_inconsistent`,
+  `registry.granot_sms_daily_cap_configured`,
+  `registry.granot_source_label_collision`). Interpolated collision codes
+  `registry.source_crm_label_ambiguous` and
+  `registry.source_source_site_ambiguous` are also emitted. The translation
+  test, not this list, is the authority.
+- `assertExactIdentifiersAvailable` was private at `sourceRegistry.ts:787` at
+  pass start. This pass exported it (and session-aware persist helpers).
+  `createGranotNameFromOwnerIntent` still requires an **active** Feed via
+  `loadActiveFeed`; setup uses `assembleOwnerGranotCreateForKnownFeed` instead.
+- `previewRingCentralRouteDependencies` returned hardcoded
+  `can_deactivate: true` at pass start. This pass stopped returning the field.
 - Paid Overflow already has a first-class `paid_overflow` Form Feed and one
   `FormLead + any` route (`pnpm migration:paid-overflow-source` exists). **Its
   Feed identity is correct and must not be removed** — §3.5 is about the Owner
@@ -269,38 +282,38 @@ report. **No production index apply is authorized.**
 
 ## 10. Acceptance criteria
 
-- [ ] `GET /admin/operations-registry/lead-sources/:id` returns, in one request,
+- [x] `GET /admin/operations-registry/lead-sources/:id` returns, in one request,
       every Feed with its accepted sheet labels, Granot names, assigned inbound
       numbers, and CPL readiness. A test asserts ORS-4's §7.2 render needs no
       second request.
-- [ ] A Lead Source with two Form Feeds distinguished only by move type renders
+- [x] A Lead Source with two Form Feeds distinguished only by move type renders
       both, each with its own label set — no field collapses them.
-- [ ] A Granot name with `form_by_move_type` appears under **both** target Feeds
+- [x] A Granot name with `form_by_move_type` appears under **both** target Feeds
       and carries the selection rule; a `one_feed` name appears under exactly
       one.
-- [ ] Every finding in the projection has a non-empty `owner_action` and
+- [x] Every finding in the projection has a non-empty `owner_action` and
       `deep_link`; a test asserts the translation table covers every code the
       health module can emit and fails on an unknown code.
-- [ ] Findings retain their raw `code` in advanced details.
-- [ ] `POST /lead-source-setups` creates exactly one Lead Source and one Feed,
+- [x] Findings retain their raw `code` in advanced details.
+- [x] `POST /lead-source-setups` creates exactly one Lead Source and one Feed,
       both inactive, in one transaction; the response names the outstanding
       readiness gates.
-- [ ] A setup whose derived `company_slug`, `granularity_key`, or `crm_label`
+- [x] A setup whose derived `company_slug`, `granularity_key`, or `crm_label`
       collides writes **nothing** — asserted by document counts before and after.
-- [ ] A setup command failing mid-transaction leaves neither record.
-- [ ] A Paid Overflow-shaped source created through the setup command has one
+- [x] A setup command failing mid-transaction leaves neither record.
+- [x] A Paid Overflow-shaped source created through the setup command has one
       first-class Feed, and the existing `paid_overflow` Feed is unchanged.
-- [ ] `current_assignment` and every history entry carry Lead Source name and
+- [x] `current_assignment` and every history entry carry Lead Source name and
       Feed display name alongside their IDs.
-- [ ] A RingCentral reassignment request carrying a company ID is still
+- [x] A RingCentral reassignment request carrying a company ID is still
       rejected, and one carrying an inactive or non-`call` Feed is still
       rejected.
-- [ ] The projection issues a bounded number of round trips — assert an upper
+- [x] The projection issues a bounded number of round trips — assert an upper
       bound per request and record the measured count.
-- [ ] No projection request produces a Command, `EntityChange`, revision,
+- [x] No projection request produces a Command, `EntityChange`, revision,
       outbox row, or notification. Proven by counting those collections before
       and after.
-- [ ] The projection renders correctly for a Lead Source with zero Feeds, a Feed
+- [x] The projection renders correctly for a Lead Source with zero Feeds, a Feed
       with zero labels, and a call Feed with no number — each an explicit empty
       state.
 
@@ -358,3 +371,9 @@ Then update [`../PROGRESS.md`](../PROGRESS.md): tick §3.5, §3.6, §5.3, §6.1,
 ORS-3 `complete`; move ORS-4 to `ready`.
 
 **Unblocks:** ORS-4.
+
+## ORS-4 amendment (2026-09-01)
+
+Detail projection gained two additive Owner fields so the go-live checklist can
+re-read from one GET: `GranotLandingItem.live` and `LeadSourceDetail.readiness_plan`.
+No mutation or matching change. See ORS-3-completion.md.

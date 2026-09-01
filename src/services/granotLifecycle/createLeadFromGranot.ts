@@ -548,6 +548,7 @@ async function executeCreation(
     sms: {
       lead_ref: leadRef,
       observation_id: String(observation._id),
+      // Resolved snapshot ID — no second label-to-company lookup.
       lead_source_company_id: String(company._id),
       granot_crm_source_id: String(snapshot.granot_crm_source_id),
       destination_phone:

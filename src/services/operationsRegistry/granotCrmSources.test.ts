@@ -506,6 +506,78 @@ test("[AC-38] replica-set create commits mutation and audit together then invali
   }
 });
 
+test("changing lead_created_policy away from create_if_missing turns SMS off on the stored document", async () => {
+  stubActiveDependencies();
+  const existing = createdDoc({
+    lead_created_policy: "create_if_missing",
+    outbound_sms: {
+      enabled: true,
+      trigger: "granot_lead_created",
+      body_template: "Hi {first_name}",
+      template_version: 2,
+      consent_basis: "existing_relationship",
+      daily_cap: 3,
+    },
+  });
+  let stored: Record<string, unknown> = { ...existing };
+  (Source as unknown as MutableModel).findById = () => leanById(stored);
+  (Source as unknown as MutableModel).findOne = () => ({
+    session() {
+      return this;
+    },
+    select() {
+      return this;
+    },
+    lean() {
+      return this;
+    },
+    exec: async () => null,
+  });
+  (Source as unknown as MutableModel).findByIdAndUpdate = (
+    _id: unknown,
+    update: { $set?: Record<string, unknown> },
+  ) => ({
+    orFail: async () => {
+      stored = {
+        ...stored,
+        ...(update.$set ?? {}),
+        toObject() {
+          return { ...this };
+        },
+      };
+      return stored;
+    },
+  });
+
+  const result = await createOrUpdateGranotCrmSource(
+    ownerCommand({
+      id: String(sourceId),
+      lead_created_policy: "link_only",
+    }),
+    OWNER,
+    {
+      withTransaction: async (fn) => fn({} as ClientSession),
+      insertAudit: async () => undefined,
+    },
+  );
+
+  const persisted = stored.outbound_sms as {
+    enabled?: boolean;
+    deactivation_reason?: string;
+    deactivated_at?: Date;
+    daily_cap?: number;
+  };
+  assert.equal(persisted.enabled, false);
+  assert.equal(
+    persisted.deactivation_reason,
+    "lead_created_policy_changed_from_create_if_missing",
+  );
+  assert.ok(persisted.deactivated_at);
+  assert.equal(persisted.daily_cap, 3);
+  assert.equal(result.customer_text_turned_off_due_to_policy_change, true);
+  assert.equal(result.lead_created_policy, "link_only");
+});
+
 function restoreModelStubs(): void {
   (Source as unknown as MutableModel).findById = originals.sourceFindById;
   (Source as unknown as MutableModel).findOne = originals.sourceFindOne;

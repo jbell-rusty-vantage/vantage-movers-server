@@ -124,6 +124,7 @@ export {
   granotCrmSourceLifecycleActivationSchema,
   granotCrmSourceOutboundSmsSchema,
   granotCrmSourceOutboundSmsRecentQuerySchema,
+  ownerGranotNameCreateSchema,
   adminDatabaseScopeSchema,
   adminSearchQuerySchema,
   type AdminBrowseQuery,
@@ -144,6 +145,24 @@ export {
   type GranotCrmSourceRegistryUpdateInput,
   type GranotCrmSourceLifecycleActivationInput,
 } from "./v1/admin.validation";
+
+export {
+  sourceLabelMappingCreateSchema,
+  sourceLabelMappingActivationSchema,
+  sourceLabelMappingListQuerySchema,
+  sourceLabelResolutionPreviewSchema,
+  type SourceLabelMappingCreateInput,
+  type SourceLabelMappingActivationInput,
+  type SourceLabelMappingListQuery,
+  type SourceLabelResolutionPreviewInput,
+} from "./v1/sourceLabelMappings.validation";
+
+export {
+  leadSourceSetupCommandSchema,
+  leadSourceListQuerySchema,
+  leadSourceDetailQuerySchema,
+  type LeadSourceSetupCommandInput,
+} from "./v1/leadSourceSetup.validation";
 
 export {
   analyticsQuerySchema,

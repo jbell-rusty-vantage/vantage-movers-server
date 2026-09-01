@@ -5,6 +5,41 @@ export {
   getRegistryHealth,
 } from "./queries/health";
 export {
+  getLeadSourceProjection,
+  listLeadSourceProjections,
+  getProjectionRoundTripCount,
+  resetProjectionRoundTripCount,
+  PROJECTION_ROUND_TRIP_BOUNDS,
+} from "./queries/leadSourceProjection";
+export type {
+  LeadSourceDetail,
+  LeadSourceDetailResult,
+  LeadSourceListItem,
+  LeadSourceListResult,
+  OwnerReadinessPlanRow,
+  OwnerReadinessAction,
+} from "./queries/leadSourceProjection";
+export {
+  translateFinding,
+  translateFindings,
+  FINDING_TRANSLATIONS,
+  TRANSLATED_HEALTH_CODES,
+} from "./queries/findingTranslation";
+export type { OwnerFinding } from "./queries/findingTranslation";
+export {
+  createLeadSourceSetup,
+  previewLeadSourceSetup,
+  validateLeadSourceSetup,
+  deriveSetupKeys,
+  buildReadinessPlan,
+} from "./leadSourceSetup";
+export type {
+  LeadSourceSetupCommand,
+  LeadSourceSetupPreview,
+  LeadSourceSetupResult,
+  ReadinessPlanRow,
+} from "./leadSourceSetup";
+export {
   listRegistryChanges,
 } from "./queries/changes";
 
@@ -31,6 +66,7 @@ export {
 
 export {
   withRegistryMutation,
+  withMultiEntityRegistryMutation,
   insertRegistryChangeAudit,
 } from "./registryAudit";
 
@@ -119,6 +155,25 @@ export type {
 } from "./catalogRegistry";
 
 export {
+  createLabelMapping,
+  listLabelMappings,
+  normalizeSourceLabel,
+  previewLabelResolution,
+  resolveLabelToFeed,
+  resolveSheetOrLegacyLabel,
+  setLabelMappingActivation,
+  consultStaticSourceLabelMap,
+  getStaticSourceLabelMapConsultCount,
+  resetStaticSourceLabelMapConsultsForTests,
+} from "./labelMappings";
+export type {
+  CreateLabelMappingCommand,
+  LabelMappingRecord,
+  LabelResolution,
+  LabelMappingNamespace,
+} from "./labelMappings";
+
+export {
   previewSourceAttribution,
 } from "./sourceResolution";
 export type {
@@ -132,10 +187,25 @@ export type {
 
 export {
   createOrUpdateGranotCrmSource,
+  persistGranotCrmSourceInSession,
   getRegistryGranotCrmSource,
   listRegistryGranotCrmSources,
   setGranotCrmSourceLifecycleEnabled,
 } from "./granotCrmSources";
+export {
+  createGranotNameFromOwnerIntent,
+  translateOwnerArrivalPolicy,
+  translateOwnerHandling,
+  workspaceSlugFromNormalizedLabel,
+  assembleOwnerGranotCreateForKnownFeed,
+  assembleOneFeedRoutes,
+  assertGranotNameAvailable,
+} from "./ownerGranotNames";
+export type {
+  OwnerGranotNameCommand,
+  OwnerGranotNameCreateResult,
+  OwnerGranotNameGateState,
+} from "./ownerGranotNames";
 export {
   listRecentGranotCrmSourceSms,
   setGranotCrmSourceOutboundSms,
@@ -162,6 +232,10 @@ export {
 } from "./granotCrmSourceCache";
 
 export {
+  assertExactIdentifiersAvailable,
+  deriveRegistryKey,
+  persistNewSourceCompanyInSession,
+  persistNewSourceGranularityInSession,
   createOrUpdateSourceCompany,
   createOrUpdateSourceGranularity,
   getSourceCompany,

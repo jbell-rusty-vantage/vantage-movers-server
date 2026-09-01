@@ -271,3 +271,16 @@ test("[AC-08] command envelope rejects invalid Observation, missing provenance, 
     /no caller patch or extra input/,
   );
 });
+
+test("create_if_missing SMS handoff requires the resolved Lead Source ID from source_scope", () => {
+  const companyId = String(objectId());
+  const scope = sourceScope({ lead_source_company: new mongoose.Types.ObjectId(companyId) });
+  assert.equal(String(scope.lead_source_company), companyId);
+  assert.equal("lead_source_company" in scope, true);
+  const checksum = createLeadFromGranotPayloadChecksum({
+    observation: observation(),
+    source_scope: scope,
+    lead_model: "FormLead",
+  });
+  assert.match(checksum, /^[a-f0-9]{64}$/);
+});

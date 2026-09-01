@@ -7,6 +7,7 @@ export type RegistryCompatibilityConsumer =
   | "booking_legacy_parse"
   | "enrichment"
   | "reconciliation"
+  | "sheet_legacy_resolution"
   | "unknown";
 
 type ResolverState = {

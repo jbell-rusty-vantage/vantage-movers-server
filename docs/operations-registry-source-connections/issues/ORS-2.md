@@ -57,10 +57,12 @@ by nothing.
 
 Observed 2026-08-24; **reverify at implementation**.
 
-- `v1.routes.ts:362-375` mounts `GET /admin/granot-crm-sources`,
+- `v1.routes.ts:376-390` (ORS-1 shifted this block; label-mapping routes follow
+  `/source-resolution/preview`) mounts `GET /admin/granot-crm-sources`,
   `GET /:id`, `PATCH /:id`, `PATCH /:id/activation`, `PATCH /:id/outbound-sms`,
-  `GET /:id/outbound-sms/recent`. There is **no `POST`** — the Owner cannot
-  create a Granot name, though `createOrUpdateGranotCrmSource` supports it.
+  `GET /:id/outbound-sms/recent`. Before this pass there was **no `POST`**.
+  Mount the Owner create adjacent to this Granot block. Do not reorder ORS-1's
+  label-mapping routes.
 - `src/routes/granot-crm-sources.routes.test.ts` exists with **no sibling routes
   file**; these routes are mounted inline in `v1.routes.ts`. Follow that, or
   extract deliberately and say so — do not half-extract.
@@ -78,16 +80,18 @@ Observed 2026-08-24; **reverify at implementation**.
 - **The gap:** `createOrUpdateGranotCrmSource` can change
   `lead_created_policy` away from `create_if_missing` **without** touching
   `outbound_sms.enabled`. That is the invariant hole this pass closes.
-- `daily_cap`: written at `v1.routes.ts:1171` and
+- `daily_cap`: written at `v1.routes.ts:1202` (was `:1171` on 2026-08-24) and
   `crmSourceOutboundSms.ts:160,276`, validated at `admin.validation.ts:334`
   (`int, 0..10_000`), defaulted `0` at `GranotCrmSource.ts:95`. **No send path
-  reads it.** Confirm with a fresh repository-wide search before acting.
+  reads it.** Reverified 2026-09-01.
 - `sendGranotCreatedLeadConfirmation` (`granotCreatedLead.ts:110`) already takes
   `lead_source_company_id` and loads the company name from it (~:220-237). Trace
   the caller in `src/services/granotLifecycle/` to confirm whether that ID comes
   from the resolved Granot source connection or from a second label lookup —
   **this is the §4.2 claim you must verify, not assume.**
 - `queries/health.ts` emits no Granot CRM Source semantic finding today.
+  ORS-1 appended label-mapping findings at the **end** of assembly. Append
+  Granot findings after those. Do not reorder existing entries.
 
 ## 5. Locked decisions and invariants at risk
 
@@ -303,46 +307,46 @@ automatically** — each row is an Owner decision.
 
 ## 10. Acceptance criteria
 
-- [ ] `POST /api/v1/admin/granot-crm-sources` creates an inactive, SMS-off
+- [x] `POST /api/v1/admin/granot-crm-sources` creates an inactive, SMS-off
       source from a valid `one_feed` intent, and the stored document has exactly
       one route with `route_key` `any` and a `lead_model` derived from the Feed.
-- [ ] Submitting `lead_source_id` that disagrees with the Feed's Lead Source is
+- [x] Submitting `lead_source_id` that disagrees with the Feed's Lead Source is
       rejected, and the error names both.
-- [ ] Submitting `lead_model` or `route_key` directly on the Owner route is
+- [x] Submitting `lead_model` or `route_key` directly on the Owner route is
       rejected as an unknown key.
-- [ ] `form_by_move_type` with two Call Feeds, with two local Feeds, with the
+- [x] `form_by_move_type` with two Call Feeds, with two local Feeds, with the
       same Feed twice, or with Feeds from different Lead Sources is rejected —
       four separate named tests.
-- [ ] `handling: "watch_only"` with a non-null `destination` is rejected.
-- [ ] A duplicate normalized `name_received_from_granot` is rejected.
-- [ ] Changing an existing source's policy from `create_if_missing` to
+- [x] `handling: "watch_only"` with a non-null `destination` is rejected.
+- [x] A duplicate normalized `name_received_from_granot` is rejected.
+- [x] Changing an existing source's policy from `create_if_missing` to
       `link_only` while SMS is enabled leaves SMS **off**, stamps a
       `deactivation_reason`, and reports the change — in one mutation. Asserted
       by reading the stored document, not the command result.
-- [ ] No write path can produce a stored source with `outbound_sms.enabled` true
+- [x] No write path can produce a stored source with `outbound_sms.enabled` true
       and a policy other than `create_if_missing`. Proven by exercising **both**
       the SMS route and the update route.
-- [ ] Editing a template increments `template_version` and leaves `enabled`
+- [x] Editing a template increments `template_version` and leaves `enabled`
       false until explicitly re-enabled. (Verify the existing behavior; regression
       test it.)
-- [ ] `daily_cap` no longer appears in the Owner request body or view, the
+- [x] `daily_cap` no longer appears in the Owner request body or view, the
       stored field is untouched, and a stored non-zero cap raises
       `registry.granot_sms_daily_cap_configured`.
-- [ ] `observation_only`, `link_only`, and `create_if_missing` are tested
+- [x] `observation_only`, `link_only`, and `create_if_missing` are tested
       independently for link, enrich, create, and text effects — twelve
       outcomes, not one combined test.
-- [ ] A `create_if_missing` observation that creates a Lead passes the **resolved**
+- [x] A `create_if_missing` observation that creates a Lead passes the **resolved**
       Lead Source ID to the texting step; a test asserts no second
       label-to-company lookup occurs.
-- [ ] A `link_only` observation that enriches an existing Lead sends nothing.
-- [ ] Replaying one observation twice produces at most one message, enforced by
+- [x] A `link_only` observation that enriches an existing Lead sends nothing.
+- [x] Replaying one observation twice produces at most one message, enforced by
       the persisted identity.
-- [ ] Every successful decision snapshots Granot source ID, Lead Source ID, Feed
+- [x] Every successful decision snapshots Granot source ID, Lead Source ID, Feed
       ID, route key, policy, and policy version; editing the registry afterwards
       does not alter the snapshot.
-- [ ] Each of the five health findings has a fixture that raises it and a
+- [x] Each of the five health findings has a fixture that raises it and a
       fixture that does not.
-- [ ] Every mutation appears in the registry audit trail with actor and reason.
+- [x] Every mutation appears in the registry audit trail with actor and reason.
 
 ## 11. Required tests and commands
 

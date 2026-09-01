@@ -64,10 +64,18 @@ Observed 2026-08-24; **reverify at implementation**.
   `CRM_SOURCE_LABELS`, and `SOURCE_LABEL_TO_COMPANY` (a label → **company**
   map — it cannot express Feed-level attribution, which is the whole problem).
   It deliberately reads no `process.env`.
-- Live importers of that module: `src/services/analytics/analyticsFilters.ts`,
-  `src/services/analytics/sourceHierarchy.ts`,
-  `src/services/cpl/cplRate.service.ts`, `src/services/crm/formLeadPayload.ts`,
-  `src/services/ringcentral/call-lead-sources.ts`. Script importers:
+- Live / seed importers of `SOURCE_LABEL_TO_COMPANY` as of 2026-09-01 reverify:
+  `src/services/analytics/analyticsFilters.ts` (reporting — leave on the static
+  map), `src/services/leadSourceCompanies/leadSourceCompany.service.ts` (seed
+  aliases only), `src/services/ringcentral/call-lead-sources.ts` (M5 / fixture
+  seed re-export; not a runtime write path). `resolveSourceCompanyFromLabel`
+  is also called from `resolveSourceCompany` (company-slug resolution),
+  `src/services/granotHttpCollector/granotFormLeadMatcher.ts`, and
+  `src/services/reconciliation/bookedCallLeadRows.ts`.
+- **Drift from 2026-08-24:** `sourceHierarchy.ts` imports `SOURCE_COMPANY_CONFIGS`
+  only. `cplRate.service.ts` imports the `SourceCompany` type only (its
+  compatibility telemetry is `legacy_cpl_rates`). `formLeadPayload.ts` does not
+  import the static map. Script importers remain:
   `scripts/dump-operations-name-link-inventory.ts`,
   `scripts/historical/audit-consolidation-databases.ts`,
   `scripts/migrations/dump-operations-registry-seed-surface.ts`,
@@ -86,11 +94,13 @@ Observed 2026-08-24; **reverify at implementation**.
   `src/services/operationsRegistry/types.ts:10`. The specification's §3.3 sketch
   says `RegistryActorSnapshot`; **use the real type name** and note the
   divergence in your completion report.
-- `scripts/migrations/operations-registry-inventory.lib.ts` is 1009 lines and
-  already models `StaticAuthorityReference`, `GranularityInventoryRecord`,
+- `scripts/migrations/operations-registry-inventory.lib.ts` already models
+  `StaticAuthorityReference`, `GranularityInventoryRecord`,
   `SourceCompanyInventoryRecord`, `collectInventoryCollisions`, and
   `computeInventoryChecksum`. `pnpm migrations:operations-registry-inventory`
-  exists in `package.json`.
+  exists in `package.json`. ORS-1 extends this file; it does not add a second
+  inventory. Manifest checksums reuse the same `hashInventoryValue` primitive
+  that `computeInventoryChecksum` uses.
 
 ## 5. Locked decisions and invariants at risk
 
@@ -293,34 +303,34 @@ first, apply explicitly second. **No production index apply is authorized.**
 
 ## 10. Acceptance criteria
 
-- [ ] `normalizeSourceLabel` is one exported function used by both the write and
+- [x] `normalizeSourceLabel` is one exported function used by both the write and
       read paths; NFKC, whitespace collapse, trim, and lowercase each have a
       named test, including a full-width and a non-breaking-space case.
-- [ ] Creating a second active mapping for the same `{ namespace, normalized_label }`
+- [x] Creating a second active mapping for the same `{ namespace, normalized_label }`
       is rejected by the service **and** by the unique index, proven separately.
-- [ ] Creating a mapping whose Feed belongs to a different Lead Source than the
+- [x] Creating a mapping whose Feed belongs to a different Lead Source than the
       one submitted is rejected; the error names both.
-- [ ] A client-supplied `normalized_label` is rejected, not overridden.
-- [ ] `change_reason` shorter than 10 or longer than 1000 characters is rejected.
-- [ ] There is no code path that edits a mapping's destination in place;
+- [x] A client-supplied `normalized_label` is rejected, not overridden.
+- [x] `change_reason` shorter than 10 or longer than 1000 characters is rejected.
+- [x] There is no code path that edits a mapping's destination in place;
       correction is deactivate + create, and the archived row survives.
-- [ ] A label with exactly one active mapping resolves to that Feed and derives
+- [x] A label with exactly one active mapping resolves to that Feed and derives
       its Lead Source, with **no** consultation of the static map.
-- [ ] A label with no mapping falls back to the static map, emits exactly one
+- [x] A label with no mapping falls back to the static map, emits exactly one
       durable compatibility-read event, and increments
       `registry.compatibility_reads_remaining`.
-- [ ] A label with an inactive-Feed mapping fails closed and raises
+- [x] A label with an inactive-Feed mapping fails closed and raises
       `registry.source_resolution_failures`. It does not fall back.
-- [ ] An active mapping pointed at an inactive Feed produces
+- [x] An active mapping pointed at an inactive Feed produces
       `registry.label_mapping_destination_invalid` in Registry Health.
-- [ ] `--report` on a fixture containing one `cross_company` label exits without
+- [x] `--report` on a fixture containing one `cross_company` label exits without
       emitting a manifest and names the offending label.
-- [ ] `--apply` refuses a manifest whose checksum does not match its content.
-- [ ] The §9.2 report lists every reader of embedded `granularities[]`, and
+- [x] `--apply` refuses a manifest whose checksum does not match its content.
+- [x] The §9.2 report lists every reader of embedded `granularities[]`, and
       nothing in this pass removed it.
-- [ ] Every mapping mutation appears in the registry audit trail with the actor
+- [x] Every mapping mutation appears in the registry audit trail with the actor
       and the reason.
-- [ ] Registry Health renders correctly with an empty mappings collection.
+- [x] Registry Health renders correctly with an empty mappings collection.
 
 ## 11. Required tests and commands
 

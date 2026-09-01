@@ -18,7 +18,6 @@ export type OutboundSmsCommand = {
   enabled: boolean;
   body_template: string;
   consent_basis: OutboundSmsConsentBasis;
-  daily_cap?: number;
   reason: string;
 };
 
@@ -36,7 +35,6 @@ export type OwnerOutboundSmsView = {
     actor_role?: string;
   };
   consent_attested_at?: string;
-  daily_cap: number;
   activated_at?: string;
   deactivated_at?: string;
   deactivation_reason?: string;
@@ -157,7 +155,11 @@ export async function setGranotCrmSourceOutboundSms(
             : previous.consent_attested_at
               ? new Date(previous.consent_attested_at)
               : undefined,
-          daily_cap: command.daily_cap ?? previous.daily_cap,
+          daily_cap:
+            typeof (before.outbound_sms as { daily_cap?: number } | undefined)
+              ?.daily_cap === "number"
+              ? (before.outbound_sms as { daily_cap: number }).daily_cap
+              : 0,
           activated_at: enabled
             ? previous.activated_at
               ? new Date(previous.activated_at)
@@ -273,8 +275,6 @@ export function toSmsView(
     ...(row.consent_attested_at
       ? { consent_attested_at: new Date(String(row.consent_attested_at)).toISOString() }
       : {}),
-    daily_cap:
-      typeof row.daily_cap === "number" && row.daily_cap >= 0 ? row.daily_cap : 0,
     ...(row.activated_at
       ? { activated_at: new Date(String(row.activated_at)).toISOString() }
       : {}),

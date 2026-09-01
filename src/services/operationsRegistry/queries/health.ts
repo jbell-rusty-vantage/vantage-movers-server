@@ -3,6 +3,16 @@ import { Agent } from "../../../models/Agent";
 import { Merchant } from "../../../models/Merchant";
 import { getLeadSourceCompanyModel } from "../../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../../models/LeadSourceGranularity";
+import { getLeadSourceLabelMappingModel } from "../../../models/LeadSourceLabelMapping";
+import { getGranotCrmSourceModel } from "../../../models/GranotCrmSource";
+import {
+  validateGranotCrmSourceSemantics,
+  type GranotCrmSourceRouteInput,
+} from "../../../models/granotCrmSourceSemantics";
+import type {
+  GranotLeadCreatedPolicy,
+  GranotLifecycleDisposition,
+} from "../../granotLifecycle/types";
 import { getCplRatePeriodModel } from "../../../models/CplRatePeriod";
 import { getFormLeadModel } from "../../../models/FormLead";
 import { getCallLeadModel } from "../../../models/CallLead";
@@ -68,6 +78,8 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
     sourceResolutionEvents,
     compatibilityEvents,
     latestMigrationChange,
+    labelMappings,
+    granotSources,
   ] = await Promise.all([
     Agent.countDocuments({ active: false }),
     Merchant.countDocuments({ active: false }),
@@ -122,6 +134,8 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
       .sort({ created_at: -1 })
       .lean()
       .exec(),
+    getLeadSourceLabelMappingModel().find({}).lean().exec(),
+    getGranotCrmSourceModel().find({}).lean().exec(),
   ]);
 
   if (inactiveAgentsUsedRecently > 0) {
@@ -172,83 +186,34 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
       })),
     ),
   );
-  const sourceCompanyById = new Map(
-    sourceCompanies.map((company) => [String(company._id), company]),
+  findings.push(
+    ...buildRingCentralHealthFindings(
+      ringCentralRoutes.map((route) => ({
+        id: String(route._id),
+        active: route.active === true,
+        validation_status: String(route.validation_status ?? "unvalidated"),
+        validation_code: route.validation_code ?? undefined,
+        validated_at: route.validated_at instanceof Date ? route.validated_at : undefined,
+        phone_number: route.phone_number,
+      })),
+      ringCentralAssignments.map((assignment) => ({
+        route_id: String(assignment.route),
+        source_company_id: String(assignment.source_company),
+        source_granularity_id: String(assignment.source_granularity),
+        active: assignment.active === true,
+      })),
+      sourceCompanies.map((company) => ({
+        id: String(company._id),
+        active: company.active === true,
+      })),
+      sourceGranularities.map((granularity) => ({
+        id: String(granularity._id),
+        source_company: String(granularity.source_company),
+        active: granularity.active === true,
+        channel: granularity.channel,
+      })),
+    ),
   );
-  const sourceGranularityById = new Map(
-    sourceGranularities.map((granularity) => [String(granularity._id), granularity]),
-  );
-  const openAssignmentsByRoute = new Map<string, typeof ringCentralAssignments>();
-  for (const assignment of ringCentralAssignments) {
-    const routeId = String(assignment.route);
-    openAssignmentsByRoute.set(routeId, [
-      ...(openAssignmentsByRoute.get(routeId) ?? []),
-      assignment,
-    ]);
-  }
-  for (const route of ringCentralRoutes) {
-    if (route.validation_status === "invalid") {
-      findings.push({
-        code: "registry.ringcentral_validation_failed",
-        severity: "error",
-        summary: "RingCentral route failed provider-account validation.",
-        entity_type: "ringcentral_route",
-        entity_id: String(route._id),
-        last_observed_at:
-          route.validated_at?.toISOString() ?? new Date().toISOString(),
-        actionable: true,
-        evidence: {
-          validation_code: route.validation_code ?? "invalid",
-        },
-        remediation: {
-          summary: "Correct the route metadata and re-run provider validation.",
-          action: "validate_ringcentral_route",
-        },
-      });
-    }
-    if (!route.active) continue;
-    const open = openAssignmentsByRoute.get(String(route._id)) ?? [];
-    if (route.validation_status !== "valid" || open.length !== 1) {
-      findings.push({
-        code: "registry.ringcentral_route_inconsistent",
-        severity: "error",
-        summary:
-          "Active RingCentral route requires valid account validation and exactly one open assignment.",
-        entity_type: "ringcentral_route",
-        entity_id: String(route._id),
-        remediation: {
-          summary: "Validate the route and repair its current assignment.",
-          action: "edit_ringcentral_route",
-        },
-      });
-      continue;
-    }
-    const assignment = open[0]!;
-    const granularity = sourceGranularityById.get(
-      String(assignment.source_granularity),
-    );
-    const company = sourceCompanyById.get(String(assignment.source_company));
-    if (
-      !assignment.active ||
-      !granularity?.active ||
-      granularity.channel !== "call" ||
-      !company?.active ||
-      String(granularity.source_company) !== String(company._id)
-    ) {
-      findings.push({
-        code: "registry.ringcentral_assignment_inconsistent",
-        severity: "error",
-        summary:
-          "RingCentral route assignment targets an inactive or invalid source.",
-        entity_type: "ringcentral_route",
-        entity_id: String(route._id),
-        remediation: {
-          summary: "Reassign the route to an active call granularity.",
-          action: "reassign_ringcentral_route",
-        },
-      });
-    }
-  }
   findings.push(
     ...buildCplRegistryHealthFindings(
       sourceGranularities
@@ -335,6 +300,68 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
         },
   );
 
+  findings.push(
+    ...buildLabelMappingHealthFindings(
+      labelMappings.map((mapping) => ({
+        id: String(mapping._id),
+        namespace: String(mapping.namespace),
+        normalized_label: String(mapping.normalized_label),
+        source_company: String(mapping.source_company),
+        source_granularity: String(mapping.source_granularity),
+        active: mapping.active !== false,
+      })),
+      sourceCompanies.map((company) => ({
+        id: String(company._id),
+        active: company.active,
+      })),
+      sourceGranularities.map((granularity) => ({
+        id: String(granularity._id),
+        source_company: String(granularity.source_company),
+        active: granularity.active,
+      })),
+    ),
+  );
+
+  findings.push(
+    ...buildGranotSourceHealthFindings(
+      granotSources.map((source) => ({
+        id: String(source._id),
+        enabled: source.enabled !== false,
+        granot_label: source.granot_label,
+        normalized_granot_label: source.normalized_granot_label ?? undefined,
+        lifecycle_disposition: source.lifecycle_disposition ?? "deferred",
+        lead_created_policy: source.lead_created_policy ?? "observation_only",
+        lead_source_company: source.lead_source_company
+          ? String(source.lead_source_company)
+          : undefined,
+        lifecycle_routes: (source.lifecycle_routes ?? []).map((route) => ({
+          route_key: String(route.route_key ?? ""),
+          lead_model: route.lead_model,
+          move_type: route.move_type,
+          source_granularity_id: String(route.source_granularity_id ?? ""),
+        })),
+        outbound_sms: source.outbound_sms
+          ? {
+              enabled: source.outbound_sms.enabled === true,
+              consent_basis: source.outbound_sms.consent_basis,
+              daily_cap: source.outbound_sms.daily_cap,
+            }
+          : undefined,
+      })),
+      sourceCompanies.map((company) => ({
+        id: String(company._id),
+        active: company.active === true,
+      })),
+      sourceGranularities.map((granularity) => ({
+        id: String(granularity._id),
+        source_company: String(granularity.source_company),
+        active: granularity.active === true,
+        channel: granularity.channel,
+        local: granularity.local ?? undefined,
+      })),
+    ),
+  );
+
   return {
     generated_at: new Date().toISOString(),
     findings: finalizeHealthFindings(findings),
@@ -412,27 +439,430 @@ export function buildRuntimeRegistryHealthFindings(
       .map((item) => item.last_used_at)
       .sort()
       .at(-1)!;
+    const readCount = telemetry.compatibility_reads.reduce(
+      (sum, item) => sum + item.count,
+      0,
+    );
     findings.push({
       code: "registry.compatibility_reads_remaining",
       severity: "warn",
-      summary: `${telemetry.compatibility_reads.reduce(
-        (sum, item) => sum + item.count,
-        0,
-      )} retained compatibility read(s) were observed in this server process.`,
+      summary: `${readCount} compatibility read(s) used the old static list since the observation window opened on 2026-09-01. Removal is blocked until this count holds at zero.`,
       entity_type: "registry_compatibility",
       last_observed_at: lastUsedAt,
       actionable: true,
       evidence: {
         path_count: telemetry.compatibility_reads.length,
+        read_count: readCount,
+        observation_window_started_at: "2026-09-01",
+        removal_blocked_until_zero: true,
       },
       remediation: {
         summary:
-          "Review consumer categories and retire each path after usage reaches zero.",
+          "Removal of the old static list is blocked until compatibility reads hold at zero. Add official sheet or leftover names on the lead source that should own them.",
         action: "review_compatibility_reads",
       },
     });
   }
   return findings.sort((left, right) => left.code.localeCompare(right.code));
+}
+
+export function buildLabelMappingHealthFindings(
+  mappings: readonly {
+    id: string;
+    namespace: string;
+    normalized_label: string;
+    source_company: string;
+    source_granularity: string;
+    active: boolean;
+  }[],
+  companies: readonly { id: string; active: boolean }[],
+  granularities: readonly {
+    id: string;
+    source_company: string;
+    active: boolean;
+  }[],
+): RegistryHealthFindingDraft[] {
+  const findings: RegistryHealthFindingDraft[] = [];
+  const companyById = new Map(companies.map((company) => [company.id, company]));
+  const granularityById = new Map(
+    granularities.map((granularity) => [granularity.id, granularity]),
+  );
+  const activeByKey = new Map<string, string[]>();
+
+  for (const mapping of mappings) {
+    if (mapping.active !== true) continue;
+    const key = `${mapping.namespace}\0${mapping.normalized_label}`;
+    activeByKey.set(key, [...(activeByKey.get(key) ?? []), mapping.id]);
+
+    const feed = granularityById.get(mapping.source_granularity);
+    const company = companyById.get(mapping.source_company);
+    const destinationInvalid =
+      !feed ||
+      !company ||
+      feed.active !== true ||
+      company.active !== true ||
+      feed.source_company !== mapping.source_company;
+    if (!destinationInvalid) continue;
+    findings.push({
+      code: "registry.label_mapping_destination_invalid",
+      severity: "error",
+      summary:
+        "Active label mapping points at a missing, inactive, or mismatched Feed / Lead Source.",
+      entity_type: "source_label_mapping",
+      entity_id: mapping.id,
+      actionable: true,
+      evidence: {
+        namespace: mapping.namespace,
+        normalized_label: mapping.normalized_label,
+        source_company: mapping.source_company,
+        source_granularity: mapping.source_granularity,
+      },
+      remediation: {
+        summary:
+          "Deactivate the mapping and create a replacement that points at an active Feed of the stored Lead Source.",
+        action: "review_label_mapping",
+      },
+    });
+  }
+
+  for (const [key, ids] of activeByKey) {
+    if (ids.length < 2) continue;
+    const [namespace, normalizedLabel] = key.split("\0");
+    findings.push({
+      code: "registry.label_mapping_collision",
+      severity: "error",
+      summary: `Two active mappings share ${namespace} / ${normalizedLabel}. The unique index is missing or bypassed.`,
+      entity_type: "source_label_mapping",
+      entity_id: ids.slice().sort()[0],
+      actionable: true,
+      evidence: {
+        namespace: namespace ?? "",
+        normalized_label: normalizedLabel ?? "",
+        mapping_count: ids.length,
+      },
+      remediation: {
+        summary:
+          "Restore the partial unique index and deactivate all but one of the colliding mappings.",
+        action: "review_label_mapping_collision",
+      },
+    });
+  }
+
+  return findings;
+}
+
+export type GranotHealthSourceInput = {
+  id: string;
+  enabled: boolean;
+  granot_label?: string;
+  normalized_granot_label?: string;
+  lifecycle_disposition: GranotLifecycleDisposition;
+  lead_created_policy: GranotLeadCreatedPolicy;
+  lead_source_company?: string;
+  lifecycle_routes: Array<{
+    route_key: string;
+    lead_model: GranotCrmSourceRouteInput["lead_model"];
+    move_type: GranotCrmSourceRouteInput["move_type"];
+    source_granularity_id: string;
+  }>;
+  outbound_sms?: {
+    enabled?: boolean;
+    consent_basis?: string;
+    daily_cap?: number;
+  };
+};
+
+export function buildGranotSourceHealthFindings(
+  sources: readonly GranotHealthSourceInput[],
+  companies: readonly { id: string; active: boolean }[],
+  feeds: readonly {
+    id: string;
+    source_company: string;
+    active: boolean;
+    channel?: "form" | "call";
+    local?: "local" | "long_distance";
+  }[],
+): RegistryHealthFindingDraft[] {
+  const findings: RegistryHealthFindingDraft[] = [];
+  const companyById = new Map(companies.map((company) => [company.id, company]));
+  const feedById = new Map(feeds.map((feed) => [feed.id, feed]));
+  const byNormalized = new Map<string, string[]>();
+
+  for (const source of sources) {
+    const normalized = source.normalized_granot_label?.trim();
+    if (normalized) {
+      byNormalized.set(normalized, [...(byNormalized.get(normalized) ?? []), source.id]);
+    }
+
+    if (source.enabled) {
+      const destinationInvalid = granotDestinationInvalid(source, companyById, feedById);
+      if (destinationInvalid) {
+        findings.push({
+          code: "registry.granot_source_destination_invalid",
+          severity: "error",
+          summary:
+            "Enabled Granot name points at a missing, inactive, or mismatched Lead Source or Feed.",
+          entity_type: "granot_crm_source",
+          entity_id: source.id,
+          actionable: true,
+          evidence: destinationInvalid,
+          remediation: {
+            summary:
+              "Point this Granot name at an active Feed of an active Lead Source, or switch the name off.",
+            action: "review_granot_name",
+          },
+        });
+      }
+    }
+
+    const shape = validateGranotCrmSourceSemantics({
+      granot_label: source.granot_label,
+      normalized_granot_label: source.normalized_granot_label,
+      enabled: source.enabled,
+      lifecycle_enabled: false,
+      lifecycle_disposition: source.lifecycle_disposition,
+      lead_created_policy: source.lead_created_policy,
+      lead_source_company: source.lead_source_company,
+      lifecycle_routes: source.lifecycle_routes,
+    });
+    if (!shape.ok && isRouteShapeFailure(shape.message)) {
+      findings.push({
+        code: "registry.granot_source_route_shape_invalid",
+        severity: "error",
+        summary: "Granot name route shape is not one Feed, or one local plus one long-distance Form Feed.",
+        entity_type: "granot_crm_source",
+        entity_id: source.id,
+        actionable: true,
+        evidence: { message: shape.message },
+        remediation: {
+          summary: "Replace the routes with one Feed, or two Form Feeds keyed by move type.",
+          action: "review_granot_name",
+        },
+      });
+    }
+
+    const smsOn = source.outbound_sms?.enabled === true;
+    const sourceLevelGateFalse =
+      source.lead_created_policy !== "create_if_missing" ||
+      source.enabled !== true ||
+      source.outbound_sms?.consent_basis === "not_attested" ||
+      !source.outbound_sms?.consent_basis;
+    if (smsOn && sourceLevelGateFalse) {
+      findings.push({
+        code: "registry.granot_sms_gate_inconsistent",
+        severity: "error",
+        summary: "Customer text is shown as on while a source-level gate is false.",
+        entity_type: "granot_crm_source",
+        entity_id: source.id,
+        actionable: true,
+        evidence: {
+          outbound_sms_enabled: true,
+          lead_created_policy: source.lead_created_policy,
+          source_enabled: source.enabled,
+          consent_basis: source.outbound_sms?.consent_basis ?? "not_attested",
+        },
+        remediation: {
+          summary:
+            "Turn customer text off, or restore create_if_missing, an enabled name, and an attested consent basis.",
+          action: "review_granot_sms",
+        },
+      });
+    }
+
+    const dailyCap = source.outbound_sms?.daily_cap;
+    if (typeof dailyCap === "number" && dailyCap > 0) {
+      findings.push({
+        code: "registry.granot_sms_daily_cap_configured",
+        severity: "warn",
+        summary: "A stored SMS daily cap is configured, but enforcement does not exist.",
+        entity_type: "granot_crm_source",
+        entity_id: source.id,
+        actionable: true,
+        evidence: { daily_cap: dailyCap },
+        remediation: {
+          summary:
+            "Do not treat daily_cap as a working safety control. Leave the stored value until a reviewed migration removes it.",
+          action: "review_granot_sms",
+        },
+      });
+    }
+  }
+
+  for (const [normalized, ids] of byNormalized) {
+    if (ids.length < 2) continue;
+    findings.push({
+      code: "registry.granot_source_label_collision",
+      severity: "error",
+      summary: `Two Granot names share the normalized spelling ${normalized}.`,
+      entity_type: "granot_crm_source",
+      entity_id: ids.slice().sort()[0],
+      actionable: true,
+      evidence: {
+        normalized_granot_label: normalized,
+        source_count: ids.length,
+      },
+      remediation: {
+        summary: "Keep one exact spelling and deactivate or rename the other.",
+        action: "review_granot_name_collision",
+      },
+    });
+  }
+
+  return findings;
+}
+
+function granotDestinationInvalid(
+  source: GranotHealthSourceInput,
+  companyById: Map<string, { id: string; active: boolean }>,
+  feedById: Map<
+    string,
+    {
+      id: string;
+      source_company: string;
+      active: boolean;
+    }
+  >,
+): Record<string, string | number | boolean | null> | null {
+  if (source.lifecycle_disposition !== "source_scoped_lead") {
+    return null;
+  }
+  const companyId = source.lead_source_company;
+  const company = companyId ? companyById.get(companyId) : undefined;
+  if (!companyId || !company || company.active !== true) {
+    return {
+      lead_source_company: companyId ?? null,
+      company_missing: !company,
+      company_active: company?.active === true,
+    };
+  }
+  if (source.lifecycle_routes.length === 0) {
+    return { route_count: 0 };
+  }
+  for (const route of source.lifecycle_routes) {
+    const feed = feedById.get(route.source_granularity_id);
+    if (!feed || feed.active !== true || feed.source_company !== companyId) {
+      return {
+        feed_id: route.source_granularity_id,
+        feed_missing: !feed,
+        feed_active: feed?.active === true,
+        feed_lead_source: feed?.source_company ?? null,
+        source_lead_source: companyId,
+      };
+    }
+  }
+  return null;
+}
+
+function isRouteShapeFailure(message: string): boolean {
+  return (
+    message.includes("route") ||
+    message.includes("Form routing") ||
+    message.includes("Call routing") ||
+    message.includes("Call and Form") ||
+    message.includes("duplicate route")
+  );
+}
+
+export function buildRingCentralHealthFindings(
+  routes: readonly {
+    id: string;
+    active: boolean;
+    validation_status: string;
+    validation_code?: string | null;
+    validated_at?: Date | null;
+    phone_number?: string;
+  }[],
+  openAssignments: readonly {
+    route_id: string;
+    source_company_id: string;
+    source_granularity_id: string;
+    active: boolean;
+  }[],
+  companies: readonly { id: string; active: boolean }[],
+  granularities: readonly {
+    id: string;
+    source_company: string;
+    active: boolean;
+    channel: "form" | "call";
+  }[],
+): RegistryHealthFindingDraft[] {
+  const findings: RegistryHealthFindingDraft[] = [];
+  const companyById = new Map(companies.map((company) => [company.id, company]));
+  const granularityById = new Map(
+    granularities.map((granularity) => [granularity.id, granularity]),
+  );
+  const openAssignmentsByRoute = new Map<string, typeof openAssignments[number][]>();
+  for (const assignment of openAssignments) {
+    openAssignmentsByRoute.set(assignment.route_id, [
+      ...(openAssignmentsByRoute.get(assignment.route_id) ?? []),
+      assignment,
+    ]);
+  }
+  for (const route of routes) {
+    if (route.validation_status === "invalid") {
+      findings.push({
+        code: "registry.ringcentral_validation_failed",
+        severity: "error",
+        summary: "RingCentral route failed provider-account validation.",
+        entity_type: "ringcentral_route",
+        entity_id: route.id,
+        last_observed_at:
+          route.validated_at?.toISOString() ?? new Date().toISOString(),
+        actionable: true,
+        evidence: {
+          validation_code: route.validation_code ?? "invalid",
+          ...(route.phone_number ? { phone_number: route.phone_number } : {}),
+        },
+        remediation: {
+          summary: "Correct the route metadata and re-run provider validation.",
+          action: "validate_ringcentral_route",
+        },
+      });
+    }
+    if (!route.active) continue;
+    const open = openAssignmentsByRoute.get(route.id) ?? [];
+    if (route.validation_status !== "valid" || open.length !== 1) {
+      findings.push({
+        code: "registry.ringcentral_route_inconsistent",
+        severity: "error",
+        summary:
+          "Active RingCentral route requires valid account validation and exactly one open assignment.",
+        entity_type: "ringcentral_route",
+        entity_id: route.id,
+        evidence: route.phone_number ? { phone_number: route.phone_number } : undefined,
+        remediation: {
+          summary: "Validate the route and repair its current assignment.",
+          action: "edit_ringcentral_route",
+        },
+      });
+      continue;
+    }
+    const assignment = open[0]!;
+    const granularity = granularityById.get(assignment.source_granularity_id);
+    const company = companyById.get(assignment.source_company_id);
+    if (
+      !assignment.active ||
+      !granularity?.active ||
+      granularity.channel !== "call" ||
+      !company?.active ||
+      granularity.source_company !== company.id
+    ) {
+      findings.push({
+        code: "registry.ringcentral_assignment_inconsistent",
+        severity: "error",
+        summary:
+          "RingCentral route assignment targets an inactive or invalid source.",
+        entity_type: "ringcentral_route",
+        entity_id: route.id,
+        evidence: route.phone_number ? { phone_number: route.phone_number } : undefined,
+        remediation: {
+          summary: "Reassign the route to an active call granularity.",
+          action: "reassign_ringcentral_route",
+        },
+      });
+    }
+  }
+  return findings;
 }
 
 export function buildCplRegistryHealthFindings(
@@ -641,6 +1071,7 @@ function isCompatibilityConsumer(
     "booking_legacy_parse",
     "enrichment",
     "reconciliation",
+    "sheet_legacy_resolution",
     "unknown",
   ].includes(String(value));
 }

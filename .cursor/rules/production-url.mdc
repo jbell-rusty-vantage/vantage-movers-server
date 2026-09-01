@@ -106,10 +106,15 @@ GET    /api/v1/admin/source-granularities/:id/dependencies
 GET    /api/v1/admin/source-granularities/:id/cpl-periods
 POST   /api/v1/admin/source-granularities/:id/cpl-schedule/commands
 GET    /api/v1/admin/granot-crm-sources
+POST   /api/v1/admin/granot-crm-sources
 GET    /api/v1/admin/granot-crm-sources/:id
 PATCH  /api/v1/admin/granot-crm-sources/:id
 PATCH  /api/v1/admin/granot-crm-sources/:id/activation
 POST   /api/v1/admin/source-resolution/preview
+GET    /api/v1/admin/source-label-mappings
+POST   /api/v1/admin/source-label-mappings
+PATCH  /api/v1/admin/source-label-mappings/:id/activation
+POST   /api/v1/admin/source-label-resolution/preview
 GET    /api/v1/admin/cpl/snapshot
 POST   /api/v1/admin/cpl/simple-schedule
 POST   /api/v1/admin/cpl-corrections/preview
@@ -169,6 +174,10 @@ PATCH  /api/v1/admin/booking-lead-reconciliations/:id/booking
 POST   /api/v1/admin/booking-lead-reconciliations/:id/resolve
 POST   /api/v1/admin/booking-lead-reconciliations/:id/reopen
 GET    /api/v1/admin/operations-registry/overview
+GET    /api/v1/admin/operations-registry/lead-sources
+GET    /api/v1/admin/operations-registry/lead-sources/:id
+POST   /api/v1/admin/operations-registry/lead-source-setups/preview
+POST   /api/v1/admin/operations-registry/lead-source-setups
 GET    /api/v1/admin/operations-registry/health
 GET    /api/v1/admin/operations-registry/changes
 GET    /api/v1/admin/observability/overview

@@ -89,7 +89,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - `admin/` — Scope (`production|historical|combined`), browse/detail/export, search/facets, sheet-sync admin
 - `analytics/` — Summary/trends/funnels + overview + agent-sales + SMS conversion (`sms-successfully-sent-then-booked`)
 - `observability/` — Events, incidents, notifications, operational reports
-- `operationsRegistry/` — Agents/merchants/sources/granularities/CPL schedules+corrections/RC inbound routes + Granot CRM source lifecycle Registry commands + change audit
+- `operationsRegistry/` — Agents/merchants/sources/granularities/label mappings/CPL schedules+corrections/RC inbound routes + Granot CRM source lifecycle Registry commands + Owner Granot create / lead-source setup / lead-source projection + change audit
 
 ### Reporting / ingestion / automation / durable
 - `reporting/` — Definitions, revisions, previews, runs, deliveries, destinations; Google adapters; queue worker; live harness/janitor
@@ -104,12 +104,12 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 
 - **Discovery:** `search`, `facets`
 - **Catalog/people:** `catalog/agents|merchants`, `agents`, `merchants` (+ activation/dependencies)
-- **Sources/CPL:** `source-companies`, `source-granularities`, `source-resolution/preview`, `cpl-rates`, `cpl/snapshot|simple-schedule`, CPL periods/commands, `cpl-corrections*`
+- **Sources/CPL:** `source-companies`, `source-granularities`, `source-resolution/preview`, `source-label-mappings`, `POST granot-crm-sources`, `cpl-rates`, `cpl/snapshot|simple-schedule`, CPL periods/commands, `cpl-corrections*`
 - **Browse + CSV:** `form-leads`, `call-leads`, `booked-leads`, `cancelled-leads`, `customers`, `agents` (+ `exports/{resource}.csv`)
 - **Analytics/reports:** `analytics/*` (incl. `overview`, `receiver-agent-*`, `sms-successfully-sent-then-booked`), `exports/analytics/:report.csv`, `exports/reports/agent-sales.csv`, `reports/agent-sales`
 - **Ops tooling:** `sheet-sync/*`, `google-maps/geocoding-health`, `lead-messages/*`, `testimonials` (+ `reviewer-names`), `moving-carriers` (+ `import`)
 - **Booking recon:** `booking-lead-reconciliations/*`
-- **Registry:** `operations-registry/{overview,health,changes}`
+- **Registry:** `operations-registry/{overview,health,changes,lead-sources,lead-source-setups}`
 - **RingCentral:** `ringcentral/inbound-routes*`
 - **Observability:** `observability/*` + exports
 - **Google Drive:** `google-drive/*` (router file nested in `v1.routes.ts`)
