@@ -33,6 +33,7 @@
     "historical:verify": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/historical_production_db_staged_merge_ingestion/verify.ts",
     "historical:rollback": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/historical_production_db_staged_merge_ingestion/rollback.ts",
     "google-sheets:test-create": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/test-create-google-spreadsheet.ts",
+    "prove:tariff-append": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/prove-tariff-append.ts",
     "twilio:send-sms": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/twilio/twilio-send-sms.ts",
     "twilio:schedule-sms": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/twilio/twilio-schedule-sms.ts",
     "twilio:send-email": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/twilio/twilio-send-email.ts",
