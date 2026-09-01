@@ -1035,8 +1035,9 @@ record, not from whenever the pipeline lands.
 
 **DECIDED 2026-08-19.** New route group `vantage-admin/app/(dashboard)/daily/`.
 Daily View is **its own page and does not replace `/`.** The existing `/`
-`HomeOverview` — analytics overview and quick links — stays exactly as it is, so
-no other admin's landing experience changes. Daily View is a **new sidebar item
+`HomeOverview` — Owner waiting intakes, this-week pulse, compact all-time, create
+Booking/Cancellation — stays the `/` desk, so no other admin's landing experience
+changes. It is not Daily View. Daily View is a **new sidebar item
 above Form Leads**, because it is the Owner's first click of the day.
 
 `vantage-admin/uxdocs/owner-daily-view-planned.txt` is replaced by a pointer to
@@ -1547,9 +1548,10 @@ Following the program's existing discipline:
    24h/48h back from `now`. Reasoning is recorded in challenge 0.3. No third
    mode. Comparable day-over-day numbers stay an analytics concern.
 2. ~~**Does Daily View become the home page?**~~ **DECIDED 2026-08-19: no.**
-   `/daily` is its own page. `/` remains `HomeOverview` — the analytics overview
-   and quick links — unchanged. Daily View is a new sidebar entry above Form
-   Leads. No other admin's landing experience changes.
+   `/daily` is its own page. `/` remains `HomeOverview` — waiting intakes, this-week
+   pulse, compact all-time, create Booking/Cancellation — not Daily View. Daily View
+   is a new sidebar entry above Form Leads. No other admin's landing experience
+   changes.
 3. ~~**Release Reconciliation timing.**~~ **DECIDED 2026-08-19: the tab waits.**
    Release Reconciliation ship after Granot Unit 26 (Release Reconciliation). The
    Daily View does **not** wait for it — ODV-G ships the Booking half and the

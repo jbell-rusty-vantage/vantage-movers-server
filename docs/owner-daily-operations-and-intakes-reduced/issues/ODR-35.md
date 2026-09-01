@@ -48,7 +48,7 @@ Observed 2026-08-19 in the repository; **reverify at implementation**.
 
 - **`activity_at` binds every window, never a business date.** Reduced spec §6.4 is the binding table. A Booking with `book_date` two weeks ago and `timestamp` now **must** appear in the 24h pane. This is the single most consequential rule in the pack.
 - **The window is rolling and has exactly three positions: `"12h" | "24h" | "48h"`, default `24h`.** Reduced spec §2.1. Display renders in Florida time; the bound is a rolling instant. **Do not add a business-day, calendar-day, or "Today (Florida)" mode.** `resolveDailyWindow` stays one function with one behaviour.
-- **`/daily` does not replace `/`.** `HomeOverview` is untouched. New sidebar entry above Form Leads.
+- **`/daily` does not replace `/`.** `/` stays `HomeOverview` (waiting intakes + this-week pulse; not Daily View). New sidebar entry above Form Leads. This pack does not rewrite `/`.
 - **The window toggle is global and lives in the URL.** Every tab, count, and shared link agree.
 - **Capability, never an empty table.** Every pane resolves to `available`, `not_activated`, or `not_built` and renders the reason.
 - **Release Reconciliation are `not_activated` on a flag, not `not_built`.** Granot Unit 26 is complete — reduced spec §2.2. Do not copy the full spec's `not_built` panel for this pane.

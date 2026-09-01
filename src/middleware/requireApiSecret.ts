@@ -26,6 +26,14 @@ export type VantageAuthContext =
   | { kind: "scoped_key"; scopedKeyName: string; scopedKeyFingerprint: string }
   | { kind: "user"; userId: string; email: string; role: ExtensionRole };
 
+const EMPLOYEE_BEARER_ALLOWED_ROUTES: ScopedApiRoute[] = [
+  { method: "POST", path: "/api/v1/tariff-adjustments" },
+];
+
+export const vantageAuthLookups = {
+  getExtensionUserFromAccessToken,
+};
+
 type RequestWithVantageAuth = Request & {
   vantageAuth?: VantageAuthContext;
 };
@@ -63,9 +71,11 @@ export async function requireVantageAuth(
   }
 
   if (bearerToken) {
-    const user = await getExtensionUserFromAccessToken(bearerToken);
+    const user = await vantageAuthLookups.getExtensionUserFromAccessToken(
+      bearerToken,
+    );
     if (user) {
-      if (user.role === "employee") {
+      if (user.role === "employee" && !isEmployeeAllowedRoute(req)) {
         await recordAuthEvent(req, {
           level: "warn",
           eventKey: "auth.user.forbidden",
@@ -189,6 +199,14 @@ export async function requireVantageAuth(
 }
 
 export const requireApiSecret = requireVantageAuth;
+
+export function isEmployeeAllowedRoute(req: Request): boolean {
+  const method = req.method.toUpperCase();
+  const path = normalizePath((req.originalUrl ?? req.url).split("?")[0]);
+  return EMPLOYEE_BEARER_ALLOWED_ROUTES.some(
+    (route) => route.method === method && route.path === path,
+  );
+}
 
 type AuthEventInput = {
   level: "info" | "warn" | "error";

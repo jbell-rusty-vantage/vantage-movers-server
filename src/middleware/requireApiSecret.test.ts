@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test, { afterEach, beforeEach } from "node:test";
 import type { NextFunction, Request, Response } from "express";
-import { requireApiSecret } from "./requireApiSecret";
+import type { PublicExtensionUser } from "../auth/extension";
+import { requireApiSecret, vantageAuthLookups } from "./requireApiSecret";
 
 const originalApiSecret = process.env.VANTAGE_API_SECRET;
 const originalScopedApiKeys = process.env.VANTAGE_SCOPED_API_KEYS;
@@ -13,7 +14,10 @@ beforeEach(() => {
   process.env.OBSERVABILITY_ENABLED = "false";
 });
 
+const originalLookup = vantageAuthLookups.getExtensionUserFromAccessToken;
+
 afterEach(() => {
+  vantageAuthLookups.getExtensionUserFromAccessToken = originalLookup;
   process.env.VANTAGE_API_SECRET = originalApiSecret;
   process.env.VANTAGE_SCOPED_API_KEYS = originalScopedApiKeys;
   if (originalObservabilityEnabled === undefined) {
@@ -134,6 +138,74 @@ test("requireApiSecret rejects a scoped key for a different source company", asy
   assert.deepEqual(ctx.jsonBody, { ok: false, error: "Forbidden" });
 });
 
+test("requireApiSecret rejects Employee Bearer on form-lead data routes", async () => {
+  process.env.VANTAGE_API_SECRET = "global-secret";
+  delete process.env.VANTAGE_SCOPED_API_KEYS;
+  stubExtensionUser({
+    id: "emp-1",
+    email: "employee@example.invalid",
+    role: "employee",
+  });
+
+  const post = await invokeMiddleware({
+    authorization: "Bearer employee-token",
+    method: "POST",
+    path: "/api/v1/form-leads",
+    body: { source_company: "main_site" },
+  });
+  const get = await invokeMiddleware({
+    authorization: "Bearer employee-token",
+    method: "GET",
+    path: "/api/v1/form-leads",
+  });
+
+  assert.equal(post.nextCalled, false);
+  assert.equal(post.statusCode, 403);
+  assert.deepEqual(post.jsonBody, { ok: false, error: "Forbidden" });
+  assert.equal(get.nextCalled, false);
+  assert.equal(get.statusCode, 403);
+});
+
+test("requireApiSecret allows Employee Bearer on Tariff Adjustment Submit", async () => {
+  process.env.VANTAGE_API_SECRET = "global-secret";
+  delete process.env.VANTAGE_SCOPED_API_KEYS;
+  stubExtensionUser({
+    id: "emp-1",
+    email: "employee@example.invalid",
+    role: "employee",
+  });
+
+  const ctx = await invokeMiddleware({
+    authorization: "Bearer employee-token",
+    method: "POST",
+    path: "/api/v1/tariff-adjustments",
+    body: { rows: [] },
+  });
+
+  assert.equal(ctx.nextCalled, true);
+  assert.equal(ctx.statusCode, undefined);
+});
+
+test("requireApiSecret allows Owner Bearer on Tariff Adjustment Submit", async () => {
+  process.env.VANTAGE_API_SECRET = "global-secret";
+  delete process.env.VANTAGE_SCOPED_API_KEYS;
+  stubExtensionUser({
+    id: "owner-1",
+    email: "owner@example.invalid",
+    role: "owner",
+  });
+
+  const ctx = await invokeMiddleware({
+    authorization: "Bearer owner-token",
+    method: "POST",
+    path: "/api/v1/tariff-adjustments",
+    body: { rows: [] },
+  });
+
+  assert.equal(ctx.nextCalled, true);
+  assert.equal(ctx.statusCode, undefined);
+});
+
 test("requireApiSecret rejects unknown secrets", async () => {
   process.env.VANTAGE_API_SECRET = "global-secret";
   process.env.VANTAGE_SCOPED_API_KEYS = JSON.stringify([
@@ -157,8 +229,13 @@ test("requireApiSecret rejects unknown secrets", async () => {
   assert.deepEqual(ctx.jsonBody, { ok: false, error: "Unauthorized" });
 });
 
+function stubExtensionUser(user: PublicExtensionUser): void {
+  vantageAuthLookups.getExtensionUserFromAccessToken = async () => user;
+}
+
 async function invokeMiddleware(input: {
   secret?: string;
+  authorization?: string;
   method: string;
   path: string;
   body?: unknown;
@@ -176,7 +253,14 @@ async function invokeMiddleware(input: {
     body: input.body,
     headers: {},
     header(name: string) {
-      return name.toLowerCase() === "x-api-secret" ? input.secret : undefined;
+      const key = name.toLowerCase();
+      if (key === "x-api-secret") {
+        return input.secret;
+      }
+      if (key === "authorization") {
+        return input.authorization;
+      }
+      return undefined;
     },
   } as unknown as Request;
 

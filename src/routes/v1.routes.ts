@@ -15,6 +15,7 @@ import granotLifecycleAdminRoutes from "./granot-lifecycle-admin.routes";
 import jobNumberTimelineAdminRoutes from "./job-number-timeline-admin.routes";
 import conversationsAdminRoutes from "./conversations-admin.routes";
 import { createExtensionGranotApplyRouter } from "./extension-granot-apply.routes";
+import { createTariffAdjustmentsRouter } from "./tariff-adjustments.routes";
 import {
   recordOperationalEvent,
   getObservabilityOverview,
@@ -558,6 +559,7 @@ router.get("/api/v1/form-leads/:id", handleFindOne(findFormLeadForEnrichment));
 router.post("/api/v1/form-leads/search", handleSearchFormLeads);
 router.post("/api/v1/create-form-test", handleCreateFormLeadTest);
 router.post("/api/v1/form-leads", handleCreateFormLead);
+router.use(createTariffAdjustmentsRouter());
 router.use(createExtensionGranotApplyRouter());
 router.patch("/api/v1/form-leads/:id", handleUpdateFormLead);
 router.delete(

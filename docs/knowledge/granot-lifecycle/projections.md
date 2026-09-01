@@ -26,6 +26,7 @@ generated:
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) Sections 28.2 and 29. Pairing DTOs: [`booking-reconciliation-booked-only-specification.md`](../../granot-lead-lifecycle/booking-reconciliation-booked-only-specification.md) §7.  
+**Later contract (not implemented):** [`release-into-booking-intake.md`](./release-into-booking-intake.md). This file still describes current code.  
 **Primary code:** `src/services/granotLifecycle/projections.ts`, `src/services/granotLifecycle/creatingObservation.ts`, `src/services/granotLifecycle/bookingPriorityPairing.ts`, `src/services/granotLifecycle/alerts.ts`, `src/routes/granot-lifecycle-admin.routes.ts`, `src/validation/v1/granotLifecycle.validation.ts`
 **Domain terms used:** [Granot Observation](../../../../CONTEXT.md), [Granot Booking Reconciliation Case](../../../../CONTEXT.md), [Booking Priority Pairing](../../../../CONTEXT.md), [Job Number](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Cancellation](../../../../CONTEXT.md), [Source Scope](../../../../CONTEXT.md)
 

@@ -22,9 +22,10 @@ catalog. No contact search.
 | Booking / Cancellation workbench | `booking-intake-workbench.tsx`, `cancellation-intake-workbench.tsx` | headline Job Number links to the owner page |
 | Intake reference drawer | `intake-reference.tsx` | `Open Job timeline` **in addition to** the forensic `JobTimeline` drawer |
 
-Unchanged on purpose: Home `OverviewJobTimelineLink` (`/job-timeline`),
-sidebar nav, Granot nav. Employee booking and other non-Owner pages
-were not linked.
+Unchanged on purpose at ship: sidebar nav, Granot nav. Employee booking
+and other non-Owner pages were not linked. Home `OverviewJobTimelineLink`
+was later removed with the Overview desk change; `/` no longer launches
+Job Timeline.
 
 Browser check on local Owner session: Bookings list had 50+
 `/job-timeline?job=` hrefs plus the existing nav `/job-timeline`. No

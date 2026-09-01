@@ -194,8 +194,8 @@ likely to be broken by someone reading only this document.
   `cancel_date` are displayed as columns and never bound anything.
 - **Rolling, not calendar.** The window is `now - N` to `now`. Display renders in
   Florida time via the existing `vantage-admin/lib/floridaTime.ts`.
-- **`/daily` is its own page.** `/` stays `HomeOverview`, unchanged. New sidebar
-  entry above Form Leads.
+- **`/daily` is its own page.** `/` stays `HomeOverview` (waiting intakes + this-week
+  pulse; not Daily View). New sidebar entry above Form Leads.
 - **Capability, never an empty table.** Every pane resolves to `available`,
   `not_activated`, or `not_built` and renders the reason.
 - **Owner-only at both gates** — Admin BFF *and* server, independently, on every

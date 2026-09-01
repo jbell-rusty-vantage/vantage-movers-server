@@ -3,11 +3,14 @@ type: Service
 title: Tariff Service
 description: Append-only tariff adjustment rows to TARIFF_SHEET_ID. No customer or job identifiers.
 tags: [tariff, google-sheets]
-status: draft
+status: active
 stale_after: 2026-12-01
 resource: src/services/tariff/append.ts
 applies_to:
   - src/services/tariff/append.ts
+  - src/routes/tariff-adjustments.routes.ts
+  - src/validation/v1/tariffAdjustments.validation.ts
+  - src/middleware/requireApiSecret.ts
   - src/config/domain/tariff.ts
   - scripts/prove-tariff-append.ts
 owners: [team:main-server]
@@ -42,6 +45,10 @@ generated:
 
 ## Public API
 
-`appendTariffAdjustmentRows(rows, options?)` ensures the tab and header row, then `values.append`s. Inject `sheets` / `spreadsheetId` in tests.
+`POST /api/v1/tariff-adjustments` accepts Owner or Employee Bearer (this route only). The body is two snake_case rows. The server owns the spreadsheet id, `TARIFFS` tab, and headers. Response `data` is `{ appended, tab_name, updated_range, rows }` and never includes the spreadsheet id.
+
+`appendTariffAdjustmentRows(rows, options?)` ensures the tab and header row, then `values.append`s. Inject `sheets` / `spreadsheetId` in tests. The route does not use Sheet Sync or Mongo.
+
+Employee Bearer stays 403 on every other `/api/v1` data route.
 
 Proof runner: `pnpm prove:tariff-append`.

@@ -1,6 +1,8 @@
 # Booking Reconciliation — Booked-only trigger and Priority pairing audit
 
 > **Contract maturity: implementation-ready.** Delta over the locked FINAL SPEC. It supersedes Section 19’s trigger paragraph and AC-18. It does **not** rewrite [`FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md`](../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md). Do not edit that file unless the owner explicitly asks.
+>
+> **AC-P5 superseded (2026-09-01):** Releas / Release now upsert onto the booking intake. See [`release-into-booking-intake-specification.md`](./release-into-booking-intake-specification.md). Priority 5 still never opens a case.
 
 **Prepared:** 2026-08-24  
 **Repos:** `vantage-main-server`, `vantage-admin`  
@@ -336,7 +338,7 @@ Replace AC-18. Add pairing ACs. Keep AC-19.
 | AC-P2 | Booked Observation with valid canonical `5` and no preceding `priority_updated` `5`. Case opens. `pairing === "booked_carries_priority_5"`. `preceding_priority_5` absent. |
 | AC-P3 | Booked Observation whose Priority is missing, invalid, or not `5`. Case still opens. `pairing === "booked_without_priority_5"`. `creating_booked.priority_is_5 === false`. Creating-observation returns 200 with the Booked statement. |
 | AC-P4 | After a Booked-without-5 case is open, a later `priority_updated` `5` does not refresh case evidence or increment `evidence_revision`. Read-time `later_priority_5` points at that Observation. |
-| AC-P5 | `booking_status_changed` `event_type: Releas` still returns `opposite_action_kind` and writes no Booking case. Open `{normalized_job_no, action_kind: "booked"}` uniqueness is unchanged. A later Booked refreshes the same open case. |
+| AC-P5 | **Superseded.** See [`release-into-booking-intake-specification.md`](./release-into-booking-intake-specification.md) AC-P5: Releas / Release write booking-case evidence. |
 | AC-P6 | Historical open case whose evidence is only `priority_5` still reads. `priority_pairing` is `null`. creatingObservation uses `latest_creating`. |
 | AC-P7 | Case list, case detail, and creating-observation all expose the same pairing class for the same creating Booked Observation. No contact or raw Priority Update payload appears on pairing. |
 | AC-P8 | Exact Booked Observation replay does not append evidence, does not change pairing snapshot, and returns the stored Decision. |
@@ -368,7 +370,7 @@ No live Mongo, no production flag change, no FINAL SPEC edit.
 ## 11. Out of scope
 
 - Enabling or disabling `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED` / `BOOKING_COMMANDS`.
-- Opening Release cases, or auto-closing a Booking case on Releas.
+- Opening Release cases, or auto-closing a Booking case on Releas. **Superseded for routing:** Release now upserts onto the booking intake ([`release-into-booking-intake-specification.md`](./release-into-booking-intake-specification.md)). This file still does not authorize auto-closing a case.
 - Making Booked also apply lead desired-state on the same Observation.
 - Prefilling official Booking fields from Granot Priority or money.
 - Backfilling `priority_pairing` onto existing cases (read-time compute covers them).

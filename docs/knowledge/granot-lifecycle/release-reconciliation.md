@@ -25,6 +25,7 @@ generated:
   at: 2026-08-24T18:20:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
+**Later contract (not implemented):** [`release-into-booking-intake.md`](./release-into-booking-intake.md). This file still describes current code.  
 **Primary code:** `src/services/granotLifecycle/releaseReconciliation.ts`, `src/models/GranotReleaseReconciliationCase.ts`, `src/services/granotLifecycle/processor.ts`, `src/services/granotLifecycle/projections.ts`  
 **Domain terms used:** [Granot Release Reconciliation Case](../../../../CONTEXT.md), [Synchronization Decision](../../../../CONTEXT.md), [deterministic Booking](../../../../CONTEXT.md), [Granot Observation](../../../../CONTEXT.md)
 

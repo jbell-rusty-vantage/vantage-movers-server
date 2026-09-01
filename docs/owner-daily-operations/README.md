@@ -91,7 +91,7 @@ carries them; they are not open and should not be relitigated in an issue.
 | Decision | Answer |
 | --- | --- |
 | Window shape | **Rolling** 24h/48h back from `now`. Not Florida business days. **No third mode.** |
-| `/daily` vs `/` | **Its own page.** `/` stays `HomeOverview`, unchanged. New sidebar entry above Form Leads. |
+| `/daily` vs `/` | **Its own page.** `/` stays `HomeOverview` (waiting intakes + this-week pulse; not Daily View). New sidebar entry above Form Leads. |
 | Release Reconciliation | **Waits for Granot Unit 26.** The Daily View does not wait for it. |
 
 The remaining open questions all gate ODV-H only — cost, retention, PCI, and

@@ -29,6 +29,7 @@ generated:
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority (trigger and pairing):** [`booking-reconciliation-booked-only-specification.md`](../../granot-lead-lifecycle/booking-reconciliation-booked-only-specification.md). FINAL SPEC still wins on modes, uniqueness, revisions, Owner commands, Referral, and discrepancies.  
+**Later contract (not implemented):** [`release-into-booking-intake.md`](./release-into-booking-intake.md). This file still describes current code.  
 **Primary code:** `src/services/granotLifecycle/bookingReconciliation.ts`, `bookingPriorityPairing.ts`, `bookingConfirmation.ts`, `confirmAttachment.ts`, `bookingOwnerCommands.ts`, `referralBooking.ts`, `src/models/GranotBookingReconciliationCase.ts`, `src/services/granotLifecycle/processor.ts`
 **Domain terms used:** [Granot Booking Reconciliation Case](../../../../CONTEXT.md), [Booking Priority Pairing](../../../../CONTEXT.md), [Referral Booking](../../../../CONTEXT.md), [Leadless Booking](../../../../CONTEXT.md), [Update Existing Booking](../../../../CONTEXT.md), [No Action](../../../../CONTEXT.md), [Synchronization Decision](../../../../CONTEXT.md), [Granot Observation](../../../../CONTEXT.md), [Source Scope](../../../../CONTEXT.md)
 

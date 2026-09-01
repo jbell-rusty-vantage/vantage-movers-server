@@ -35,6 +35,7 @@ generated:
 
 This file is a **Reference** pointer only. It does not copy contract rules.
 
+- [Release into booking intake](../../granot-lead-lifecycle/release-into-booking-intake-specification.md) — Releas / Release land on the booking intake; Live Events can link to that case. **Wins on Release routing.**
 - [Owner booking intake and lead attachment](../../granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md) — even Binder, Confirm without a required Lead, Connect Booking to Lead, owner-readable Intakes. **Prerequisite for Owner Daily.**
 - [Booking intake robustness pack](../../booking-intake-lead-attachment/README.md) — BILA-01–BILA-03 shipped. **Wins on the Connect surface** (`/bookings` only; not `/bookings/reconciliation`). Live values: [`PROGRESS.md`](../../booking-intake-lead-attachment/PROGRESS.md).
 

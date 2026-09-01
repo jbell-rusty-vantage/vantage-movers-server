@@ -151,6 +151,18 @@ test("employee booking reconciliation routes are registered", () => {
   );
 });
 
+test("Tariff Adjustment Submit route is registered", () => {
+  const stack = (router as { stack?: RouteLayer[] }).stack ?? [];
+  const routes = collectRoutes(stack);
+  assert.ok(
+    routes.some(
+      (route) =>
+        route.path === "/api/v1/tariff-adjustments" && route.methods?.post,
+    ),
+    "missing POST /api/v1/tariff-adjustments",
+  );
+});
+
 test("Granot form-lead resolution route is registered before the id route", () => {
   const stack = (router as { stack?: RouteLayer[] }).stack ?? [];
   const routes = collectRoutes(stack);

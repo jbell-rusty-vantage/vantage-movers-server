@@ -35,7 +35,7 @@ alwaysApply: true
 
 | Mechanism | Scope |
 |-----------|--------|
-| `x-api-secret` → extension Bearer (owner only on data routes; employees 403) → scoped keys (`VANTAGE_SCOPED_API_KEYS`) | Protected `/api/v1/*` after extension mount. Sets `req.vantageAuth`: `secret` \| `scoped_key` \| `user`. Scoped keys may also constrain Source Company + Source Granularity. |
+| `x-api-secret` → extension Bearer (Owner on data routes; Employee only on `POST /api/v1/tariff-adjustments`, else 403) → scoped keys (`VANTAGE_SCOPED_API_KEYS`) | Protected `/api/v1/*` after extension mount. Sets `req.vantageAuth`: `secret` \| `scoped_key` \| `user`. Scoped keys may also constrain Source Company + Source Granularity. |
 | Extension auth (unguarded) | `/api/v1/extension/auth/{login,refresh,me,logout}` |
 | Admin proxy actors | Trusted `x-vantage-admin-*` (+ optional HMAC). Registry/source/CPL/RC/ingestion/granot/booking-recon owner gates use `requireRegistry*Actor` patterns |
 | Google Drive owner gate | Drive OAuth/Picker admin routes |
@@ -121,7 +121,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 
 `database_scope=production|historical|combined` where appropriate. Detail rejects `combined`; historical is read-only. No admin delete routes for core leads/bookings/customers — use public v1 writes so sheet sync stays owned by domain services. Observability deletes are the explicit exception.
 
-Public v1 extras (still behind the v1 guard unless noted): `POST /api/v1/leadless-bookings`, `POST /api/v1/employee-booking-{options,submissions}` (secret + `x-public-client-key-hash` on submit), `POST /api/v1/form-leads/granot-match`, `/api/v1/granot-crm/csv/*`.
+Public v1 extras (still behind the v1 guard unless noted): `POST /api/v1/leadless-bookings`, `POST /api/v1/employee-booking-{options,submissions}` (secret + `x-public-client-key-hash` on submit), `POST /api/v1/form-leads/granot-match`, `/api/v1/granot-crm/csv/*`, `POST /api/v1/tariff-adjustments` (Owner or Employee Bearer; Employee is allowed on this route only).
 
 ## Config Domain Modules (`src/config/domain/`)
 

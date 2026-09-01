@@ -41,7 +41,7 @@ Observed 2026-08-19; reverify at implementation:
 
 - **`activity_at` binds every window, never a business date.** Specification §3.2 is the binding table. A Booking with `book_date` two weeks ago and `timestamp` now **must** appear in the 24h pane. This is the single most consequential rule in the pack.
 - **The window is rolling — DECIDED 2026-08-19.** 24h or 48h back from `now`, not a Florida calendar day. Display renders in Florida time; the bound is a rolling instant. **Do not add a business-day mode, a "Today" mode, or any third mode.** Specification challenge 0.3 records the reasoning; comparable day-over-day numbers are an analytics concern and already live in `/analytics`, `/`, and the agent sales report.
-- **`/daily` does not replace `/` — DECIDED 2026-08-19.** `HomeOverview` stays exactly as it is. Daily View is a new sidebar entry above Form Leads.
+- **`/daily` does not replace `/` — DECIDED 2026-08-19.** `/` stays `HomeOverview` (waiting intakes + this-week pulse; not Daily View). Daily View is a new sidebar entry above Form Leads. Daily View work does not rewrite `/`.
 - **The window toggle is global and lives in the URL.** Every tab, count, and shared link agree.
 - **No `$lookup` on any Daily View hot path.** Labels come from snapshots.
 - **Capability, never an empty table.** Every pane resolves to `available`, `not_activated`, or `not_built` and renders the reason. An empty table is indistinguishable from a broken one.

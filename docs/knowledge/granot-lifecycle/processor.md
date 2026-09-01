@@ -25,6 +25,7 @@ generated:
   at: 2026-08-22T06:52:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
+**Later contract (not implemented):** [`release-into-booking-intake.md`](./release-into-booking-intake.md). This file still describes current code.  
 **Primary code:** `src/services/granotLifecycle/processor.ts`, `src/services/granotLifecycle/bookingReconciliation.ts`, `src/services/granotLifecycle/createLeadFromGranot.ts`, `src/services/granotLifecycle/synchronizeLeadFromGranot.ts`, `src/services/granotLifecycle/leadDesiredState.ts`, `src/services/granotLifecycle/granotTemporal.ts`, `src/config/domain/granotLifecycle.ts`, `src/models/SynchronizationDecision.ts`, `src/models/GranotLifecycleActivation.ts`, `src/models/GranotRecordLink.ts`, `src/models/GranotBookingReconciliationCase.ts`
 **Domain terms used:** [Synchronization Decision](../../../../CONTEXT.md), [Granot Record Link](../../../../CONTEXT.md), [Granot Observation](../../../../CONTEXT.md), [Granot Observation Receipt](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md)
 

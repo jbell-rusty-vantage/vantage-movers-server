@@ -21,7 +21,8 @@ generated:
   by: process:docs-keeper
   at: 2026-08-28T15:20:00Z
 ---
-**Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)
+**Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
+**Later contract (not implemented):** [`release-into-booking-intake.md`](./release-into-booking-intake.md). This file still describes current code.  
 **Primary code:** `src/services/granotLifecycle/liveReceipts.ts`, `src/services/granotLifecycle/liveReceiptStream.ts`, `src/routes/granot-lifecycle-admin.routes.ts`
 **Domain terms used:** [Granot Observation Receipt](../../../../CONTEXT.md)
 

@@ -24,10 +24,11 @@ This specification lands **before** Owner Daily (`/daily`). Daily Intakes, Compl
 Read in this order. Stop and report contradictions; do not silently merge.
 
 1. **This file** — wins on owner booking-form shape, Confirm-without-Lead, High-Confidence auto-attach, Connect Booking to Lead, owner-intake contact visibility, evidence/timeline presentation, and the Intakes vs Ingestion split.
-2. **[Booking Reconciliation Booked-only](./booking-reconciliation-booked-only-specification.md)** — still wins on the Booked-only trigger and Booking Priority Pairing.
-3. **FINAL SPEC** — still wins on everything this file does not change: case uniqueness, revisions, Referral, discrepancies, Release, and official-field blankness (Granot numbers are never copied into official inputs).
-4. **Glossary:** [`CONTEXT.md`](../../../CONTEXT.md) — Confirm Granot Booking, Leadless Booking, High-Confidence Booking Lead, Suggested Booking Lead, Connect Booking to Lead, Binder, Agent Allocation, Booking Lead Reconciliation.
-5. **Current service docs (reverify, do not copy as contract):** [`booking-reconciliation.md`](../knowledge/granot-lifecycle/booking-reconciliation.md), [`bookings.md`](../knowledge/services/bookings.md), [`agent-allocation.md`](../knowledge/services/agent-allocation.md), [`employee-bookings.md`](../knowledge/services/employee-bookings.md), [`projections.md`](../knowledge/granot-lifecycle/projections.md).
+2. **[Release into booking intake](./release-into-booking-intake-specification.md)** — wins on Releas / Release upsert onto the booking case, cancellation-intake retirement, and Live Events → intake link.
+3. **[Booking Reconciliation Booked-only](./booking-reconciliation-booked-only-specification.md)** — still wins on Priority 5 never opening a case and Booking Priority Pairing. AC-P5 in that file is superseded by the Release-into-intake spec.
+4. **FINAL SPEC** — still wins on everything these files do not change: case uniqueness, revisions, Referral, identity-conflict discrepancies, and official-field blankness (Granot numbers are never copied into official inputs).
+5. **Glossary:** [`CONTEXT.md`](../../../CONTEXT.md) — Confirm Granot Booking, Leadless Booking, High-Confidence Booking Lead, Suggested Booking Lead, Connect Booking to Lead, Binder, Agent Allocation, Booking Lead Reconciliation.
+6. **Current service docs (reverify, do not copy as contract):** [`booking-reconciliation.md`](../knowledge/granot-lifecycle/booking-reconciliation.md), [`bookings.md`](../knowledge/services/bookings.md), [`agent-allocation.md`](../knowledge/services/agent-allocation.md), [`employee-bookings.md`](../knowledge/services/employee-bookings.md), [`projections.md`](../knowledge/granot-lifecycle/projections.md).
 
 FINAL SPEC / current-code citations this delta replaces:
 

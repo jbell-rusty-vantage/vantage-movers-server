@@ -115,6 +115,7 @@ PATCH  /api/v1/form-leads/:id
 PATCH  /api/v1/form-leads/:id/granot-sync
 DELETE /api/v1/form-leads/:id
 POST   /api/v1/create-form-test
+POST   /api/v1/tariff-adjustments
 GET    /api/v1/call-leads
 POST   /api/v1/call-leads
 POST   /api/v1/call-leads/search
