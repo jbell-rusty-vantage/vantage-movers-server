@@ -24,12 +24,12 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:okf-docs-optimization
-  at: 2026-08-22T01:54:00Z
+  at: 2026-09-02T18:00:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/leads/callLead.service.ts`, `src/services/leads/leadIngestionProvenance.ts`, `src/services/leads/leadCplResolution.ts`  
-**Domain terms used:** [Call Lead](../../../../CONTEXT.md), [Call Lead Ingestion](../../../../CONTEXT.md), [Duplicate Lead](../../../../CONTEXT.md), [Form Fill](../../../../CONTEXT.md), [CPL](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Caller Match Key](../../../../CONTEXT.md), [Lead ID](../../../../CONTEXT.md)
+**Domain terms used:** [Call Lead](../../../../CONTEXT.md), [Call Lead Ingestion](../../../../CONTEXT.md), [Call Qualification](../../../../CONTEXT.md), [Duplicate Lead](../../../../CONTEXT.md), [Form Fill](../../../../CONTEXT.md), [CPL](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Caller Match Key](../../../../CONTEXT.md), [Lead ID](../../../../CONTEXT.md), [Source Granularity](../../../../CONTEXT.md), [RingCentral Call Adoption](../../../../CONTEXT.md), [Ingestion Origin](../../../../CONTEXT.md)
 
 # Call Lead Service
 
@@ -43,9 +43,19 @@ generated:
 | `beginCallLeadIngestion` / `completeCallLeadIngestion` | Canonical `POST /api/v1/call-leads` via `runExistingCreateCallLead` + `deriveCallLeadIngestionOrigin` ([`domain-commands.md`](./domain-commands.md)). Default RingCentral ingest also calls `completeCallLeadIngestion` after `beginRingCentralCallLeadIngestion`. | Admin/sheet never passed | Admin/sheet: no `duplicate` flag. After commit: sheets, missing CPL, **`lead.call.created`**, Form Fill event |
 | `ingestRingCentralCallLead` (alias `createRingCentralCallLead`) | Injectable ingest adapter only (`dependencies.createLead`). Default ingest does **not** call this. | passed in by ingest | `resolveLeadCplSnapshot({ duplicate })` → `duplicate_zero` / `cpl = 0` when Duplicate Lead. After commit: sheets, missing CPL, Form Fill — **not** `lead.call.created` |
 | `beginRingCentralCallLeadIngestion` | Default RingCentral ingest write + replica tests | passed in by ingest | same snapshot as the injectable adapter |
-| `createLeadFromGranot` | Granot lifecycle processor only, after live `create_if_missing` authorization and no eligible match ([`processor.md`](../granot-lifecycle/processor.md)). Not this file. | `false`; sparse Job-only creation is allowed | exact active Source Granularity rate snapshot |
+| `createLeadFromGranot` | Granot lifecycle processor only, after live `create_if_missing` authorization and no eligible match ([`processor.md`](../granot-lifecycle/processor.md)). Call may mint on `lead_created` or `priority_updated`. Not this file. | `false`; sparse Job-only creation is allowed | exact active Source Granularity rate snapshot |
 
 **Call Qualification** + ingest: [`ringcentral-call-lead-qualification.md`](./ringcentral-call-lead-qualification.md). Duplicate classification: `ringcentral-duplicate-guard.ts`; promotion gate: `ringcentral-call-lead-ingest.service.ts`.
+
+## Inbound Granot create and fences
+
+Inbound `create_if_missing` is the safety net when [Call Qualification](../../../../CONTEXT.md) does not see the call (unmapped number, under 120 seconds on a mapped queue, or a transfer that never hits a reviewed inbound assignment). Mapped qualifying calls stay RingCentral-created or adopted via [RingCentral Call Adoption](../../../../CONTEXT.md).
+
+Owner language uses [Caller Match Key](../../../../CONTEXT.md). The locked implementation key is exact Source Granularity + normalized phone — never Source Company alone.
+
+When `createLeadFromGranot` mints a Call Lead and the Observation has a normalized phone, both Granot lock sites always run (`ensureRingCentralConvergenceScopeLock` before the transaction; `acquire` + pre-creation candidate check inside it). The adoption flag does not gate that Granot fence. A later inbound Observation for the same Job or the same exact Source Granularity + phone **synchronizes**; it does not mint a second Lead. Job-only create (no Observation phone) remains legal and skips both sites — a residual hole; do not invent a phone. The ingest-side lock stays flagged; it is not always on.
+
+`assertSingleActiveRingCentralAssignment` allows 0 assignment rows (Granot-only, Best Relocation Inbounds) or exactly one active valid route. Before flipping Main Site / 10best / TBM Prime / Top10 Inbounds, that Call granularity must have **0 or 1** active valid assignment. Those families stay `link_only` until an Owner command; they are not already flipped. Best Relocation Inbounds already has `create_if_missing` and inherits `priority_updated` create from the shipped event-class code, including the existing `sendGranotCreatedLeadConfirmation` finalize when messaging gates are on. Other inbound families stay silent until a separate `outbound_sms` command.
 
 ## Call Lead Ingestion — Admin / sheet (`ingestCallLead` / `begin` / `complete`)
 

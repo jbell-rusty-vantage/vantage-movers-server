@@ -766,6 +766,7 @@ test("Call Job and phone pointing at different Leads is conflict", async () => {
     }),
   );
   assert.equal(result.outcome, "conflict");
+  assert.equal(result.reason_code, "job_number_conflict");
   assert.equal(result.candidates.length, 2);
 });
 

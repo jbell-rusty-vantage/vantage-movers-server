@@ -78,13 +78,13 @@ at OSE-05.
 
 ## 10. Acceptance criteria
 
-- [ ] Form Leads sidebar shows the four groups; Find and Status are open.
-- [ ] Setting Source Company opens Attribution and adds a chip.
-- [ ] Reset clears chips and `?record=` / `?panel=`.
-- [ ] No new filter query keys appear on the wire.
-- [ ] Observational `FilterBar` is unused by operational pages.
-- [ ] `pnpm test && pnpm typecheck && pnpm lint` in `vantage-admin`.
-- [ ] Browser smoke on `/form-leads` and `/cancellations`.
+- [x] Form Leads sidebar shows the four groups; Find and Status are open.
+- [x] Setting Source Company opens Attribution and adds a chip.
+- [x] Reset clears chips and `?record=` / `?panel=`.
+- [x] No new filter query keys appear on the wire.
+- [x] Observational `FilterBar` is unused by operational pages.
+- [x] `pnpm test && pnpm typecheck && pnpm lint` in `vantage-admin`.
+- [x] Browser smoke on `/form-leads` and `/cancellations`.
 
 ## 11. Commands
 

@@ -1,6 +1,9 @@
 // Tests for: createLeadFromGranot — idempotency/checksum helpers and strict command envelope
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
 import type { GranotObservationDocument } from "../../models/GranotObservation";
 import type { SynchronizationDecisionSourceScope } from "../../models/SynchronizationDecision";
@@ -13,6 +16,8 @@ import {
   createLeadFromGranot,
   createLeadFromGranotIdempotencyKey,
   createLeadFromGranotPayloadChecksum,
+  observationLoadAllowsCreateRouteEventClass,
+  snapshotAllowsCreateRouteEventClass,
   type CreateLeadFromGranotInput,
 } from "./createLeadFromGranot";
 
@@ -283,4 +288,93 @@ test("create_if_missing SMS handoff requires the resolved Lead Source ID from so
     lead_model: "FormLead",
   });
   assert.match(checksum, /^[a-f0-9]{64}$/);
+});
+
+test("observation-load create guard allows lead_created or priority_updated without CallLead", () => {
+  assert.equal(observationLoadAllowsCreateRouteEventClass("lead_created"), true);
+  assert.equal(observationLoadAllowsCreateRouteEventClass("priority_updated"), true);
+  assert.equal(observationLoadAllowsCreateRouteEventClass("booking_status_changed"), false);
+  assert.equal(observationLoadAllowsCreateRouteEventClass(undefined), false);
+});
+
+test("command accepts priority_updated for Call create_if_missing and rejects it for Form", () => {
+  assert.equal(
+    snapshotAllowsCreateRouteEventClass({
+      route_event_class: "priority_updated",
+      selected_lead_model: "CallLead",
+      lead_created_policy: "create_if_missing",
+    }),
+    true,
+  );
+  assert.equal(
+    snapshotAllowsCreateRouteEventClass({
+      route_event_class: "priority_updated",
+      selected_lead_model: "FormLead",
+      lead_created_policy: "create_if_missing",
+    }),
+    false,
+  );
+  assert.equal(
+    snapshotAllowsCreateRouteEventClass({
+      route_event_class: "priority_updated",
+      selected_lead_model: "CallLead",
+      lead_created_policy: "link_only",
+    }),
+    false,
+  );
+  assert.equal(
+    snapshotAllowsCreateRouteEventClass({
+      route_event_class: "lead_created",
+      selected_lead_model: "FormLead",
+      lead_created_policy: "create_if_missing",
+    }),
+    true,
+  );
+  assert.equal(
+    snapshotAllowsCreateRouteEventClass({
+      route_event_class: "lead_created",
+      selected_lead_model: "CallLead",
+      lead_created_policy: "create_if_missing",
+    }),
+    true,
+  );
+  assert.equal(
+    snapshotAllowsCreateRouteEventClass({
+      route_event_class: "booking_status_changed",
+      selected_lead_model: "CallLead",
+      lead_created_policy: "create_if_missing",
+    }),
+    false,
+  );
+});
+
+test("executeCreation requested_effect stays lead_created on the Call priority_updated path", () => {
+  const source = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "createLeadFromGranot.ts"),
+    "utf8",
+  );
+  const requestedEffects = [...source.matchAll(/requested_effect:\s*"([^"]+)"/g)].map(
+    (match) => match[1],
+  );
+  assert.deepEqual(requestedEffects, ["lead_created"]);
+  assert.equal(source.includes('requested_effect: "priority_updated"'), false);
+});
+
+test("both Granot phone-fence sites run without the adoption flag; Job-only still skips", () => {
+  const source = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "createLeadFromGranot.ts"),
+    "utf8",
+  );
+  assert.equal(source.includes("isRingCentralGranotAdoptionEnabled"), false);
+  assert.match(
+    source,
+    /if \(input\.lead_model === "CallLead"\) \{[\s\S]*normalizedPhone[\s\S]*ensureRingCentralConvergenceScopeLock/,
+  );
+  assert.match(
+    source,
+    /selectedModel === "CallLead" &&\s+observation\.contact\?\.normalized_phone\s+\) \{\s+await acquireRingCentralConvergenceScopeLock/,
+  );
+  assert.match(source, /findPreCreationRingCentralConvergenceCandidates/);
+  assert.equal(source.includes("Job-only create remains"), true);
+  assert.equal(source.includes("residual hole"), true);
 });

@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
 import {
   selectRingCentralConvergenceCandidates,
@@ -218,6 +221,53 @@ test("[AC-16] Job-only/missing-phone input is never an adoption candidate", asyn
     outcome: "ineligible",
     reason: "missing_caller_phone",
   });
+});
+
+test("adoption match key stays exact Source Granularity plus ingested phone", () => {
+  const source = readFileSync(
+    path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "callLeadConvergence.service.ts",
+    ),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /source_granularity_id: query\.source_granularity_id/,
+  );
+  assert.match(
+    source,
+    /ingestion_origin: "granot_lead_created"/,
+  );
+  assert.match(
+    source,
+    /"ringcentral_convergence\.state": "pending"/,
+  );
+  assert.match(
+    source,
+    /"ingested_contact_snapshot\.normalized_phone_number":\s+query\.normalized_phone_number/,
+  );
+  assert.equal(source.includes("lead_source_company: query"), false);
+  assert.match(
+    source,
+    /source_granularity_id: input\.source_granularity_id/,
+  );
+});
+
+test("[AC-16] different Source Granularity with the same phone is not an adoption candidate", async () => {
+  const otherGranularity = "507f1f77bcf86cd799439099";
+  const result = await selectRingCentralConvergenceCandidates(
+    qualifiedCall(),
+    undefined,
+    {
+      findCandidates: async (query) => {
+        assert.equal(query.source_granularity_id, "507f1f77bcf86cd799439004");
+        assert.notEqual(query.source_granularity_id, otherGranularity);
+        return [];
+      },
+    },
+  );
+  assert.deepEqual(result, { outcome: "not_found", candidates: [] });
 });
 
 test("[AC-14] current-contact drift cannot replace immutable creation phone", async () => {

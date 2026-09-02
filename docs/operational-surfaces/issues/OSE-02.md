@@ -33,12 +33,15 @@ Observed 2026-09-01; reverify after OSE-01.
 
 - `SidePanel` (`components/ui/side-panel.tsx`) has title, description,
   close, and a scrolling body. No tab slot.
-- `DetailPanel` is a vertical stack ending in Raw Identifiers
-  `JSON.stringify(record)`. `lead-message-section` (ex-SmsMessageSection)
-  still dumps message JSON.
-- URL keys: `record`, `connect`. `apiFiltersFromUrlState` does not strip
-  `panel`.
-- `?connect=1` starts `BookingStoredLeadSection` with `startOpen`.
+- `DetailPanel` lives in `operational-detail-panel.tsx` (OSE-01). It is a
+  vertical stack ending in Raw Identifiers `JSON.stringify(record)`.
+  `lead-message-section.tsx` still dumps message JSON. Owner heading is
+  still “SMS Message”.
+- URL keys: `record`, `connect`. `apiFiltersFromUrlState` stays on
+  `operational-resource-page.tsx` and still strips only `record` and
+  `connect` — not `panel`.
+- `?connect=1` starts `BookingStoredLeadSection` with `startOpen` from
+  the page `startConnect` prop.
 
 ## 5. Locked decisions and invariants at risk
 
@@ -86,15 +89,15 @@ OSE-05 / docs-keeper will point.
 
 ## 10. Acceptance criteria
 
-- [ ] Form Lead panel shows the six tabs in §6.2 when eligible.
-- [ ] Call Lead has no Lead Message tab and no Bad Lead on Actions.
-- [ ] Booking Contact owns Stored lead; `?connect=1` opens Contact.
-- [ ] Cancellation has no Actions tab; View booking is on Contact.
-- [ ] Both JSON dumps are gone from the render.
-- [ ] `?panel=message` on a Booking falls back to Summary.
-- [ ] `panel` is not sent to the list API.
-- [ ] `pnpm test && pnpm typecheck && pnpm lint` in `vantage-admin`.
-- [ ] Browser smoke: `/form-leads` and `/bookings` tab jump works.
+- [x] Form Lead panel shows the six tabs in §6.2 when eligible. (`visibleDetailTabs` + tab-strip render)
+- [x] Call Lead has no Lead Message tab and no Bad Lead on Actions. (matrix test; `WorkflowActions` still Form Lead-only for Bad Lead)
+- [x] Booking Contact owns Stored lead; `?connect=1` opens Contact. (`resolveActivePanel` + existing `BookingStoredLeadSection` / `startConnect` scan)
+- [x] Cancellation has no Actions tab; View booking is on Contact. (matrix + Contact tab markup)
+- [x] Both JSON dumps are gone from the render. (source-scan + Lead Message render)
+- [x] `?panel=message` on a Booking falls back to Summary.
+- [x] `panel` is not sent to the list API. (`apiFiltersFromUrlState` + export URL)
+- [x] `pnpm test && pnpm typecheck && pnpm lint` in `vantage-admin`. (410/410; typecheck clean; lint errors only pre-existing outside this pack)
+- [ ] Browser smoke: `/form-leads` and `/bookings` tab jump works. **Blocked:** localhost:3000 and :3001 were not running. See completion report §6.
 
 ## 11. Commands
 

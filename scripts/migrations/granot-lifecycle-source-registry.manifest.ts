@@ -324,6 +324,22 @@ export function isLinkOnlyAutomationFamily(
   );
 }
 
+export const INBOUND_CALL_CREATION_FAMILY_KEYS = [
+  "main_site_call",
+  "tbm_call",
+  "tbm_prime_call",
+  "top10_call",
+] as const satisfies readonly ReviewedSourceFamilyKey[];
+
+export function isInboundCallCreationFamily(
+  family: ReviewedSourceFamilyKey | undefined,
+): family is (typeof INBOUND_CALL_CREATION_FAMILY_KEYS)[number] {
+  return (
+    family !== undefined &&
+    (INBOUND_CALL_CREATION_FAMILY_KEYS as readonly string[]).includes(family)
+  );
+}
+
 export function isExcludedProviderType(value: unknown): boolean {
   return (
     typeof value === "string" &&

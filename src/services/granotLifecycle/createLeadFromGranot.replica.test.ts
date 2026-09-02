@@ -1,5 +1,6 @@
 // Tests for: createLeadFromGranot — replica-set atomic creation, reservation, replay, rollback, and same-job race
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { after, test } from "node:test";
 import mongoose from "mongoose";
 import { GRANOT_LIFECYCLE_FLAG_DEFAULTS } from "../../config/domain/granotLifecycle";
@@ -33,6 +34,8 @@ import {
   createLeadFromGranotPayloadChecksum,
 } from "./createLeadFromGranot";
 import { processGranotObservation } from "./processor";
+import { getRingCentralCollectionName } from "../ringcentral/ringcentral-config";
+import { getRingCentralDb } from "../ringcentral/ringcentral-mongo";
 
 const capturedAt = new Date("2026-08-18T16:00:00.000Z");
 const SYNTHETIC_PHONE = "5550001919";
@@ -137,7 +140,7 @@ async function seedReceipt(observation: GranotObservationDocument): Promise<void
     source_system: "granot",
     observation_channel: "granot_webhook",
     captured_at: observation.captured_at,
-    route_event_class: "lead_created",
+    route_event_class: observation.route_event_class,
     authentication_method: "header_secret",
     evidence_version: 2,
     payload_kind: "object",
@@ -161,6 +164,7 @@ async function seedObservation(input: {
   label: string;
   contact?: GranotObservationDocument["contact"];
   move?: GranotObservationDocument["move"];
+  route_event_class?: GranotObservationDocument["route_event_class"];
 }): Promise<GranotObservationDocument> {
   const observedAt = await postActivationCaptureAt();
   const row = await getGranotObservationModel().create({
@@ -168,7 +172,7 @@ async function seedObservation(input: {
     schema_version: 1,
     kind: "lead_snapshot",
     normalization_result: "valid",
-    route_event_class: "lead_created",
+    route_event_class: input.route_event_class ?? "lead_created",
     captured_at: observedAt,
     source_label_raw: input.label,
     normalized_source_label: input.label.toLowerCase(),
@@ -476,6 +480,19 @@ async function cleanup(ids: {
   if (ids.routeIds?.length) {
     await getRingCentralInboundRouteModel().deleteMany({ _id: { $in: ids.routeIds } });
   }
+}
+
+async function countConvergenceLocks(
+  sourceGranularityId: string,
+  phone: string,
+): Promise<number> {
+  const identity = createHash("sha256")
+    .update(`v1:${sourceGranularityId}:${phone}`)
+    .digest("hex");
+  const db = await getRingCentralDb();
+  return db
+    .collection(getRingCentralCollectionName("convergenceLocks"))
+    .countDocuments({ _id: identity as never });
 }
 
 test("[AC-08] replica concurrent same-Observation replay commits one atomic Form creation chain", async (t) => {
@@ -921,6 +938,121 @@ test("[AC-07][AC-08] replica competing scoped Call phone identity creates nothin
       sourceIds: [registry.sourceId],
       leadIds: [existing._id],
       jobs: [job.normalized],
+      routeIds: [registry.routeId],
+      assignmentIds: [registry.assignmentId],
+    });
+  }
+});
+
+test("Race A: existing RingCentral Call Lead synchronizes even with adoption off", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const previousAdoption = process.env.RINGCENTRAL_GRANOT_ADOPTION_ENABLED;
+  process.env.RINGCENTRAL_GRANOT_ADOPTION_ENABLED = "false";
+  const suffix = `${Date.now().toString(36)}gicc02a`;
+  const registry = await seedCallRegistry(suffix);
+  const createdJob = jobPair(`${suffix}-sync`);
+  const fenceJob = jobPair(`${suffix}-fence`);
+  const createdObs = await seedObservation({
+    job: createdJob,
+    label: registry.label,
+    move: {},
+    route_event_class: "lead_created",
+  });
+  const priorityObs = await seedObservation({
+    job: createdJob,
+    label: registry.label,
+    move: {},
+    route_event_class: "priority_updated",
+  });
+  const fenceObs = await seedObservation({
+    job: fenceJob,
+    label: registry.label,
+    move: {},
+    route_event_class: "priority_updated",
+  });
+  const existing = await getCallLeadModel().create({
+    phone_number: SYNTHETIC_PHONE,
+    source_company: `u19-call-${suffix}`,
+    lead_source_company: registry.companyId,
+    source_granularity_id: registry.granularityId,
+    ingestion_origin: "ringcentral",
+    post_to_granot: false,
+    timestamp: capturedAt,
+    ingested_contact_snapshot: {
+      phone_number: SYNTHETIC_PHONE,
+      normalized_phone_number: SYNTHETIC_PHONE,
+      captured_at: capturedAt,
+      evidence_status: "captured_at_ingestion",
+    },
+  });
+  try {
+    assert.equal(process.env.RINGCENTRAL_GRANOT_ADOPTION_ENABLED, "false");
+    for (const observation of [createdObs, priorityObs]) {
+      const result = await processGranotObservation(
+        { receipt_id: String(observation.receipt_id) },
+        {
+          flags: liveCreationFlags(),
+          upsertObservation: async () => observation,
+        },
+      );
+      assert.notEqual(result.outcome, "created");
+      assert.ok(
+        result.outcome === "applied" || result.outcome === "already_current",
+      );
+    }
+    const leads = await getCallLeadModel()
+      .find({
+        source_granularity_id: registry.granularityId,
+        normalized_phone_number: SYNTHETIC_PHONE,
+      })
+      .lean();
+    assert.equal(leads.length, 1);
+    assert.equal(String(leads[0]?._id), String(existing._id));
+    assert.equal(leads[0]?.ingestion_origin, "ringcentral");
+
+    await assert.rejects(
+      () =>
+        createLeadFromGranot(
+          commandInput({
+            observation: fenceObs,
+            lead_model: "CallLead",
+            source_scope: {
+              granot_crm_source_id: registry.sourceId,
+              lead_source_company: registry.companyId,
+              source_granularity_id: registry.granularityId,
+            },
+          }),
+          { flags: liveCreationFlags() },
+        ),
+      /identity race/,
+    );
+    assert.equal(
+      await countConvergenceLocks(String(registry.granularityId), SYNTHETIC_PHONE),
+      1,
+    );
+    assert.equal(
+      await getCallLeadModel().countDocuments({
+        source_granularity_id: registry.granularityId,
+        normalized_phone_number: SYNTHETIC_PHONE,
+      }),
+      1,
+    );
+    const afterFence = await getCallLeadModel().findById(existing._id).lean();
+    assert.equal(afterFence?.ingestion_origin, "ringcentral");
+  } finally {
+    if (previousAdoption === undefined) {
+      delete process.env.RINGCENTRAL_GRANOT_ADOPTION_ENABLED;
+    } else {
+      process.env.RINGCENTRAL_GRANOT_ADOPTION_ENABLED = previousAdoption;
+    }
+    await cleanup({
+      observationIds: [createdObs._id, priorityObs._id, fenceObs._id],
+      receiptIds: [createdObs.receipt_id, priorityObs.receipt_id, fenceObs.receipt_id],
+      companyIds: [registry.companyId],
+      granularityIds: [registry.granularityId],
+      sourceIds: [registry.sourceId],
+      leadIds: [existing._id],
+      jobs: [createdJob.normalized, fenceJob.normalized],
       routeIds: [registry.routeId],
       assignmentIds: [registry.assignmentId],
     });

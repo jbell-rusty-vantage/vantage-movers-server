@@ -86,14 +86,14 @@ No new root-glossary term.
 
 ## 10. Acceptance criteria
 
-- [ ] Every step in spec §11.3 recorded with what was clicked and what
+- [x] Every step in spec §11.3 recorded with what was clicked and what
       was seen (redacted).
-- [ ] Historical scope checked.
-- [ ] Duplicate Call Leads banner checked.
-- [ ] Deep link reload keeps the same tab.
-- [ ] Spec §12 criteria 1–9 ticked in `PROGRESS.md` with evidence.
-- [ ] `pnpm test && pnpm typecheck && pnpm lint` in `vantage-admin`.
-- [ ] Knowledge pointers updated.
+- [x] Historical scope checked.
+- [x] Duplicate Call Leads banner checked.
+- [x] Deep link reload keeps the same tab.
+- [x] Spec §12 criteria 1–9 ticked in `PROGRESS.md` with evidence.
+- [x] `pnpm test && pnpm typecheck && pnpm lint` in `vantage-admin`.
+- [x] Knowledge pointers updated.
 
 ## 11. Commands
 

@@ -79,14 +79,14 @@ None beyond the later docs-keeper pass. Do not claim the pack is live.
 
 ## 10. Acceptance criteria
 
-- [ ] Leading `__book` / `__mark_bad` / `__cancel` / `__delete` /
+- [x] Leading `__book` / `__mark_bad` / `__cancel` / `__delete` /
       `__related` columns are gone.
-- [ ] Form Lead row shows identity + chips + right cluster.
-- [ ] Call Lead row has no Bad Lead control.
-- [ ] Book click does not open the panel; row click does.
-- [ ] Matching `?record=` row is `aria-selected`.
-- [ ] `pnpm test && pnpm typecheck && pnpm lint` in `vantage-admin`.
-- [ ] Browser smoke on `/form-leads` and `/bookings`.
+- [x] Form Lead row shows identity + chips + right cluster.
+- [x] Call Lead row has no Bad Lead control.
+- [x] Book click does not open the panel; row click does.
+- [x] Matching `?record=` row is `aria-selected`.
+- [x] `pnpm test && pnpm typecheck && pnpm lint` in `vantage-admin`.
+- [x] Browser smoke on `/form-leads` and `/bookings`.
 
 ## 11. Commands
 

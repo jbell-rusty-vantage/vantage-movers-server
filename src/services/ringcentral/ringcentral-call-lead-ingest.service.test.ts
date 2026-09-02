@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import type { RingCentralProcessedCallDocument } from "./processed-calls-store";
 import {
   ingestRingCentralQualifiedCall,
@@ -195,4 +198,51 @@ test("[AC-14] call-log-only create fails closed before candidate or Lead work wi
     /missing identity fence/,
   );
   assert.equal(convergenceCalls, 0);
+});
+
+test("adoption off still creates a RingCentral-origin Call Lead (documented Race B twin)", async () => {
+  let createCalls = 0;
+  let convergenceEnabled: boolean | undefined;
+  const result = await ingestRingCentralQualifiedCall(call(), new Date(), {
+    findProcessedCall: async () => null,
+    adoptionEnabled: () => false,
+    assertAdoptionIndexes: async () => undefined,
+    resolveWriteMode: () => "create",
+    attemptConvergence: async ({ enabled }) => {
+      convergenceEnabled = enabled;
+      return { outcome: "disabled" };
+    },
+    classifyDuplicate: async () => ({
+      isDuplicate: false,
+      reason: "unique",
+      existingLeadId: null,
+      windowDays: 90,
+      matchCount: 0,
+    }),
+    createLead: async (input) => {
+      createCalls += 1;
+      assert.equal(input.phone_number, "5550002001");
+      return { _id: { toString: () => "507f1f77bcf86cd799439099" } };
+    },
+    upsertProcessedCall: async () => undefined,
+    recordEvent: noEvent,
+  });
+  assert.equal(convergenceEnabled, false);
+  assert.equal(createCalls, 1);
+  assert.equal(result.action, "lead_created");
+  assert.equal(result.callLeadId, "507f1f77bcf86cd799439099");
+});
+
+test("RingCentral ingest lock stays gated on the adoption flag", () => {
+  const source = readFileSync(
+    path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "ringcentral-call-lead-ingest.service.ts",
+    ),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /if \(adoptionEnabled\) \{\s*await acquireRingCentralConvergenceScopeLock/,
+  );
 });

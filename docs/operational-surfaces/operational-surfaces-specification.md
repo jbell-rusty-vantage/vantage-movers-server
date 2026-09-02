@@ -19,6 +19,14 @@ stale_after: 2026-12-01
 owners: [team:vantage-admin]
 applies_to:
   - ../vantage-admin/components/operational/operational-resource-page.tsx
+  - ../vantage-admin/components/operational/operational-configs.ts
+  - ../vantage-admin/components/operational/operational-columns.tsx
+  - ../vantage-admin/components/operational/operational-filter-panel.tsx
+  - ../vantage-admin/components/operational/operational-detail-panel.tsx
+  - ../vantage-admin/components/operational/operational-actions.tsx
+  - ../vantage-admin/components/operational/mark-bad-lead-control.tsx
+  - ../vantage-admin/components/operational/lead-message-section.tsx
+  - ../vantage-admin/components/operational/operational-copy.ts
   - ../vantage-admin/components/ui/side-panel.tsx
   - ../vantage-admin/components/data-table/table-shell.tsx
   - ../vantage-admin/components/filters/

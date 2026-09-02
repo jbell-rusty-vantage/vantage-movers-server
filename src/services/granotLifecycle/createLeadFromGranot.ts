@@ -67,7 +67,6 @@ import {
   ensureRingCentralConvergenceScopeLock,
   findPreCreationRingCentralConvergenceCandidates,
 } from "../ringcentral/callLeadConvergence.service";
-import { isRingCentralGranotAdoptionEnabled } from "../ringcentral/ringcentral-config";
 
 export const CREATE_LEAD_FROM_GRANOT_COMMAND_NAME = "createLeadFromGranot";
 
@@ -104,6 +103,27 @@ export class CreateLeadFromGranotRaceError extends Error {
 
 export function createLeadFromGranotIdempotencyKey(observationId: string): string {
   return `granot:create-lead:${observationId}`;
+}
+
+export function observationLoadAllowsCreateRouteEventClass(
+  route_event_class: GranotObservationDocument["route_event_class"],
+): route_event_class is "lead_created" | "priority_updated" {
+  return route_event_class === "lead_created" || route_event_class === "priority_updated";
+}
+
+export function snapshotAllowsCreateRouteEventClass(input: {
+  route_event_class: GranotObservationDocument["route_event_class"];
+  selected_lead_model: SourcePolicySnapshot["selected_lead_model"];
+  lead_created_policy: SourcePolicySnapshot["lead_created_policy"];
+}): boolean {
+  if (input.route_event_class === "lead_created") {
+    return true;
+  }
+  return (
+    input.route_event_class === "priority_updated" &&
+    input.selected_lead_model === "CallLead" &&
+    input.lead_created_policy === "create_if_missing"
+  );
 }
 
 export function createLeadFromGranotPayloadChecksum(input: {
@@ -152,19 +172,21 @@ export async function createLeadFromGranot(
   deps: CreateLeadFromGranotDependencies = {},
 ): Promise<CanonicalCommandResult> {
   assertCommandEnvelope(input);
-  if (
-    input.lead_model === "CallLead" &&
-    isRingCentralGranotAdoptionEnabled()
-  ) {
+  if (input.lead_model === "CallLead") {
     const observation = await getGranotObservationModel()
       .findById(input.observation_id)
       .select({ "contact.normalized_phone": 1 })
       .lean()
       .exec();
-    await ensureRingCentralConvergenceScopeLock({
-      source_granularity_id: input.source_scope.source_granularity_id,
-      normalized_phone_number: observation?.contact?.normalized_phone,
-    });
+    const normalizedPhone = observation?.contact?.normalized_phone;
+    // No Observation phone → skip both lock sites. Job-only create remains
+    // legal (pack spec §7 residual hole). Do not invent a phone.
+    if (normalizedPhone) {
+      await ensureRingCentralConvergenceScopeLock({
+        source_granularity_id: input.source_scope.source_granularity_id,
+        normalized_phone_number: normalizedPhone,
+      });
+    }
   }
   const command = await executeCanonicalCommandWithPostCommit({
     command_name: CREATE_LEAD_FROM_GRANOT_COMMAND_NAME,
@@ -238,7 +260,8 @@ async function executeCreation(
     .findById(input.observation_id)
     .session(session)
     .exec();
-  if (!observation || observation.route_event_class !== "lead_created") {
+  // Observation-load: selected_lead_model is unknown. Do not require CallLead here.
+  if (!observation || !observationLoadAllowsCreateRouteEventClass(observation.route_event_class)) {
     throw new CreateLeadFromGranotRaceError("policy");
   }
   const receiptId = objectId(input.context.provenance.source_receipt_id);
@@ -274,6 +297,16 @@ async function executeCreation(
     throw new CreateLeadFromGranotRaceError("policy");
   }
   const snapshot = policy.snapshot;
+  // After selected_lead_model and policy: priority_updated only for CallLead + create_if_missing.
+  if (
+    !snapshotAllowsCreateRouteEventClass({
+      route_event_class: observation.route_event_class,
+      selected_lead_model: snapshot.selected_lead_model,
+      lead_created_policy: snapshot.lead_created_policy,
+    })
+  ) {
+    throw new CreateLeadFromGranotRaceError("policy");
+  }
   const gates = evaluateEffectGates({
     global_effect_flag: flags.lead_creation_enabled,
     receipt_post_activation: executionMode !== "historical_shadow",
@@ -315,8 +348,7 @@ async function executeCreation(
   }
   if (
     selectedModel === "CallLead" &&
-    observation.contact?.normalized_phone &&
-    isRingCentralGranotAdoptionEnabled()
+    observation.contact?.normalized_phone
   ) {
     await acquireRingCentralConvergenceScopeLock({
       source_granularity_id: snapshot.source_granularity_id,

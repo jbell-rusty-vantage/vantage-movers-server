@@ -96,6 +96,24 @@ function pendingIdentity(): LeadIdentityResult {
   };
 }
 
+function unmatchedIdentity(): LeadIdentityResult {
+  return {
+    outcome: "unmatched",
+    reason_code: "pending_source_scoped_match",
+    candidates: [],
+  };
+}
+
+function callCreatePolicy(overrides: Partial<SourcePolicySnapshot> = {}): SourcePolicySnapshot {
+  return policy({
+    selected_route_key: "call_any",
+    selected_lead_model: "CallLead",
+    selected_move_type: "any",
+    lead_created_policy: "create_if_missing",
+    ...overrides,
+  });
+}
+
 function wordpressLead(
   overrides: Partial<LeadDesiredStateProjection> = {},
 ): LeadDesiredStateProjection {
@@ -594,4 +612,90 @@ test("observation_only policy stays evidence-only", () => {
   assert.equal(result.outcome, "policy_blocked");
   assert.equal(result.reason_code, "creation_policy_observation_only");
   assert.equal(result.next_match_attempt_at, undefined);
+});
+
+test("Call create_if_missing + priority_updated + unmatched + Job is eligible", () => {
+  const result = plan({
+    observation: observation({ route_event_class: "priority_updated" }),
+    identity: unmatchedIdentity(),
+    policy: callCreatePolicy(),
+  });
+  assert.equal(result.creation_eligibility, "eligible");
+  assert.equal(result.creation_model, "CallLead");
+  assert.equal(result.outcome, "created");
+  assert.equal(result.reason_code, "lead_created_authorized");
+  assert.equal(result.target, undefined);
+});
+
+test("Call create_if_missing + lead_created stays eligible", () => {
+  const result = plan({
+    observation: observation({ route_event_class: "lead_created" }),
+    identity: pendingIdentity(),
+    policy: callCreatePolicy(),
+  });
+  assert.equal(result.creation_eligibility, "eligible");
+  assert.equal(result.creation_model, "CallLead");
+  assert.equal(result.outcome, "created");
+  assert.equal(result.reason_code, "lead_created_authorized");
+});
+
+test("Form create_if_missing + lead_created stays eligible", () => {
+  const result = plan({
+    identity: pendingIdentity(),
+    policy: policy({ lead_created_policy: "create_if_missing" }),
+  });
+  assert.equal(result.creation_eligibility, "eligible");
+  assert.equal(result.creation_model, "FormLead");
+  assert.equal(result.outcome, "created");
+  assert.equal(result.reason_code, "lead_created_authorized");
+});
+
+test("Call link_only + priority_updated is not eligible", () => {
+  const result = plan({
+    observation: observation({ route_event_class: "priority_updated" }),
+    identity: unmatchedIdentity(),
+    policy: callCreatePolicy({ lead_created_policy: "link_only" }),
+  });
+  assert.notEqual(result.creation_eligibility, "eligible");
+  assert.notEqual(result.outcome, "created");
+  assert.notEqual(result.reason_code, "lead_created_authorized");
+});
+
+test("Form create_if_missing + priority_updated is not eligible", () => {
+  const result = plan({
+    observation: observation({ route_event_class: "priority_updated" }),
+    identity: pendingIdentity(),
+    policy: policy({ lead_created_policy: "create_if_missing" }),
+  });
+  assert.notEqual(result.creation_eligibility, "eligible");
+  assert.notEqual(result.outcome, "created");
+  assert.notEqual(result.reason_code, "lead_created_authorized");
+});
+
+test("Call create_if_missing + booking_status_changed is not eligible", () => {
+  const result = plan({
+    observation: observation({ route_event_class: "booking_status_changed" }),
+    identity: unmatchedIdentity(),
+    policy: callCreatePolicy(),
+  });
+  assert.notEqual(result.creation_eligibility, "eligible");
+  assert.notEqual(result.outcome, "created");
+  assert.notEqual(result.reason_code, "lead_created_authorized");
+});
+
+test("invalid Call priority_updated never creates even with create_if_missing", () => {
+  const result = plan({
+    observation: observation({
+      route_event_class: "priority_updated",
+      normalization_result: "invalid",
+      issues: [{ code: "invalid_priority", severity: "error" }],
+      priority: { valid: false },
+    }),
+    identity: unmatchedIdentity(),
+    policy: callCreatePolicy(),
+  });
+  assert.equal(result.outcome, "invalid");
+  assert.equal(result.reason_code, "invalid_priority_update");
+  assert.notEqual(result.creation_eligibility, "eligible");
+  assert.deepEqual(result.desired_values, {});
 });

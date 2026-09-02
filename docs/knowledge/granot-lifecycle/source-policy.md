@@ -20,11 +20,11 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:okf-docs-optimization
-  at: 2026-08-22T06:52:00Z
+  at: 2026-09-02T18:00:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/sourcePolicy.ts`, `src/services/granotLifecycle/sourceLabel.ts`  
-**Domain terms used:** [Source Company](../../../../CONTEXT.md), [Source Granularity](../../../../CONTEXT.md), [Granot Automation Source](../../../../CONTEXT.md), [Move Type](../../../../CONTEXT.md), [Ingestion Origin](../../../../CONTEXT.md)
+**Domain terms used:** [Source Company](../../../../CONTEXT.md), [Source Granularity](../../../../CONTEXT.md), [Granot Automation Source](../../../../CONTEXT.md), [Granot CRM Source](../../../../CONTEXT.md), [Move Type](../../../../CONTEXT.md), [Ingestion Origin](../../../../CONTEXT.md), [Call Qualification](../../../../CONTEXT.md)
 
 # Granot source policy (`granotLifecycle/sourcePolicy`)
 
@@ -38,7 +38,7 @@ generated:
 - `resolveSourcePolicy(facts, store?)` — exact normalized-label lookup only. Provider `type` is never a classification input. A selected route also stamps `selected_lead_model` so identity can choose the Form or Call ladder without re-resolving Registry semantics. `referral_booking` can return `ok: true` **without** `selected_lead_model`, `source_granularity_id`, or route fields.
 - `evaluateEffectGates(facts)` — pure snapshot of every applicable gate in stable eight-name order. The processor now passes real Registry `enabled` / `lifecycle_enabled` and company/granularity `active` facts from the snapshot, not Boolean id-presence approximations. This module still performs no writes.
 
-`RequestedLifecycleEffect`: `lead_created` | `lead_link` | `lead_enrichment` | `booking_reconciliation` | `release_reconciliation`. For Referral + booking/release reconciliation, the company/granularity-active gates are forced true (`referralReconciliation`). Mongo store treats `row.enabled !== false` (absent defaults true).
+`RequestedLifecycleEffect`: `lead_created` | `lead_link` | `lead_enrichment` | `booking_reconciliation` | `release_reconciliation`. For Referral + booking/release reconciliation, the company/granularity-active gates are forced true (`referralReconciliation`). Mongo store treats `row.enabled !== false` (absent defaults true). `evaluateEffectGates` / `policyPermitsEffect` do not read `route_event_class`. Once the planner marks Call `priority_updated` eligible, `requested_effect` stays `"lead_created"`. There is no ninth gate and no fourth `lead_created_policy` value.
 
 ## Fail-closed resolution
 
@@ -71,7 +71,7 @@ Route-selection failures (never first-row fallback): Form + Call routes both pre
 
 ## Defaults and later work
 
-Every unreviewed row remains lifecycle-disabled, deferred, observation-only, and route-empty. Unit 06 writes reviewed classifications and automation references through audited Registry commands; this module remains the only runtime semantic read. Best Relocation reviewed policy is `create_if_missing`. Main Site, TBM, TBM Prime, Top10, and 10best are reviewed `link_only` / `source_scoped_lead` so HTTP automation can apply against existing Leads without Granot creating them. This module authorizes no live effect.
+Every unreviewed row remains lifecycle-disabled, deferred, observation-only, and route-empty. Unit 06 writes reviewed classifications and automation references through audited Registry commands; this module remains the only runtime semantic read. `lead_created_policy` stays exactly three values: `link_only` | `create_if_missing` | `observation_only`. Best Relocation reviewed policy is already `create_if_missing` (Forms and Inbounds). Reviewed inbound Call families — Main Site Inbounds, 10best Inbounds (TBM Call), TBM Prime Inbounds, Top10 Inbounds — were flipped to `create_if_missing` on 2026-09-02 through audited `createOrUpdateGranotCrmSource`. Inbound `create_if_missing` is the safety net when Call Qualification does not see the call; mapped qualifying calls stay RingCentral-created or adopted. Form families on those companies stay `link_only` unless a separate Owner command says otherwise. Customer text stays a separate `outbound_sms` command. This module authorizes no live effect and does not invent a fourth policy value, inbound mint boolean, or ninth gate.
 
 ## Related
 

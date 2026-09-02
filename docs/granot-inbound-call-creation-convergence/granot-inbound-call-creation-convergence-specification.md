@@ -485,6 +485,11 @@ assignments) and will inherit `priority_updated` create from the code
 change alone — including the existing confirmation-SMS finalize if
 messaging gates are on.
 
+The Owner checklist for that later flip lives in
+[`lifecycle-activation-flags-and-source-policies.md`](../granot-lead-lifecycle/lifecycle-activation-flags-and-source-policies.md)
+§7–§8. It is not a second contract. GICC-03 does not apply production
+Registry policy or flags.
+
 ### 8.3 Companion operational work (not coded here)
 
 Expand RingCentral inbound assignments for overflow / transfer numbers

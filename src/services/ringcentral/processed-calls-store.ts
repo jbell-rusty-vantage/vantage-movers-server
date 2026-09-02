@@ -99,7 +99,16 @@ async function createIndexes(): Promise<void> {
     getRingCentralCollectionName("processedCalls"),
   );
   if (isVantageTestRunner()) {
+    const existing = await collection.indexes();
     for (const index of RINGCENTRAL_PROCESSED_CALL_INDEXES) {
+      const conflict = existing.find(
+        (row) =>
+          row.name !== index.name &&
+          JSON.stringify(row.key) === JSON.stringify(index.key),
+      );
+      if (conflict?.name && conflict.name !== "_id_") {
+        await collection.dropIndex(conflict.name);
+      }
       await collection.createIndex(index.key, {
         name: index.name,
         ...("unique" in index && index.unique ? { unique: true } : {}),

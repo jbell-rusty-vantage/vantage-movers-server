@@ -17,12 +17,12 @@ sources:
     title: Platform glossary
 generated:
   by: process:okf-docs-conversion
-  at: 2026-08-21T02:20:00Z
+  at: 2026-09-02T18:00:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/ringcentral/`  
-**Domain terms used:** [Call Qualification](../../../../CONTEXT.md), [Call Lead Ingestion](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Duplicate Lead](../../../../CONTEXT.md), [Caller Match Key](../../../../CONTEXT.md), [Operational Event](../../../../CONTEXT.md), [Main Site](../../../../CONTEXT.md)
+**Domain terms used:** [Call Qualification](../../../../CONTEXT.md), [Call Lead Ingestion](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Duplicate Lead](../../../../CONTEXT.md), [Caller Match Key](../../../../CONTEXT.md), [RingCentral Call Adoption](../../../../CONTEXT.md), [Source Granularity](../../../../CONTEXT.md), [Operational Event](../../../../CONTEXT.md), [Main Site](../../../../CONTEXT.md)
 
 # RingCentral Call Lead Qualification
 
@@ -193,7 +193,11 @@ Exactly one candidate is adopted through the canonical `adoptRingCentralCall` co
 - sets convergence to `adopted`, performs business duplicate classification, records one revision/Entity Change and `call_lead.update` outbox intent; and
 - writes the processed-call ledger in the same Mongo transaction.
 
-Granot Call creation and RingCentral adoption/normal creation share a hashed Source Granularity + normalized-phone scope fence in `ringcentral_convergence_locks`. The lock contains no raw phone. Both paths ensure the lock row before opening their canonical transaction, update it inside the transaction before checking the counterpart, and re-read/replan on revision or idempotency races. This closes the absent-row race where Granot and RingCentral could otherwise each create a Lead.
+Granot Call creation and RingCentral ingest share a hashed Source Granularity + normalized-phone scope fence in `ringcentral_convergence_locks`. Owner language uses [Caller Match Key](../../../../CONTEXT.md); the locked implementation key is exact Source Granularity + normalized phone — never Source Company alone. The lock contains no raw phone.
+
+The Granot fence is **always on** when the Observation has a normalized phone: `ensureRingCentralConvergenceScopeLock` before the create transaction and `acquireRingCentralConvergenceScopeLock` + `findPreCreationRingCentralConvergenceCandidates` inside it. `RINGCENTRAL_GRANOT_ADOPTION_ENABLED` does **not** gate those Granot sites. Job-only Observations skip both sites (residual hole; do not invent a phone).
+
+The ingest-side lock in `ringcentral-call-lead-ingest.service.ts` still runs **only** when `RINGCENTRAL_GRANOT_ADOPTION_ENABLED` is true. [RingCentral Call Adoption](../../../../CONTEXT.md) mutations stay flagged. Do not describe the ingest lock as always on. Concurrent one-Lead safety is required with adoption on and RingCentral write mode `create`; adoption off plus a later qualifying create can mint a twin (that is why inbound `create_if_missing` on sources with RingCentral assignments waits for the adoption companion).
 
 More than one candidate is never guessed. `markRingCentralConvergenceConflict` atomically revalidates the full candidate set, sets every still-eligible row to `conflict` with reason `multiple_adoption_candidates` and a bounded call-identity hash, records canonical Change/outbox evidence, then allows the qualified call to continue through normal ingest. A failed conflict transaction is a technical failure, not a silent fallback. Zero/ineligible candidates also continue through normal create/shadow/dry-run behavior without mutating an existing Lead.
 

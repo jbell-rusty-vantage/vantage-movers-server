@@ -438,52 +438,216 @@ test(
     await t.test(
       "[AC-14][AC-16] concurrent Granot creation and RingCentral ingest share one scope fence",
       async () => {
-        const start = new Date();
-        const phone = "5550002006";
-        const callLogId = "u20-log-cross-path-race";
-        await ensureRingCentralConvergenceScopeLock({
-          source_granularity_id: String(GRANULARITY_ID),
-          normalized_phone_number: phone,
-        });
-        const granotPath = withTransaction(async (session) => {
-          await acquireRingCentralConvergenceScopeLock({
+        const previousCreate = process.env.RINGCENTRAL_CREATE_CALL_LEADS;
+        process.env.RINGCENTRAL_CREATE_CALL_LEADS = "true";
+        try {
+          assert.equal(process.env.RINGCENTRAL_GRANOT_ADOPTION_ENABLED, "true");
+          const start = new Date();
+          const phone = "5550002006";
+          const callLogId = "u20-log-cross-path-race";
+          await ensureRingCentralConvergenceScopeLock({
             source_granularity_id: String(GRANULARITY_ID),
             normalized_phone_number: phone,
-            session,
-            now: start,
           });
-          const existing =
-            await findPreCreationRingCentralConvergenceCandidates({
+          const granotPath = withTransaction(async (session) => {
+            await acquireRingCentralConvergenceScopeLock({
               source_granularity_id: String(GRANULARITY_ID),
               normalized_phone_number: phone,
               session,
+              now: start,
             });
-          if (existing.length > 0) return existing[0]!.call_lead_id;
-          const [created] = await getCallLeadModel().create(
-            [candidatePayload(phone, start)],
-            { session },
+            const existing =
+              await findPreCreationRingCentralConvergenceCandidates({
+                source_granularity_id: String(GRANULARITY_ID),
+                normalized_phone_number: phone,
+                session,
+              });
+            if (existing.length > 0) return existing[0]!.call_lead_id;
+            const [created] = await getCallLeadModel().create(
+              [candidatePayload(phone, start)],
+              { session },
+            );
+            return String(created!._id);
+          });
+          const ringCentralPath = ingestRingCentralQualifiedCall(
+            qualifiedCall({ phone, start, callLogId }),
+            start,
           );
-          return String(created!._id);
+          await Promise.all([granotPath, ringCentralPath]);
+          const leads = await getCallLeadModel()
+            .find({
+              source_granularity_id: GRANULARITY_ID,
+              normalized_phone_number: phone,
+            })
+            .lean()
+            .exec();
+          assert.equal(leads.length, 1);
+          assert.equal(
+            await processedCollection().then((collection) =>
+              collection.countDocuments({ callLogId }),
+            ),
+            1,
+          );
+        } finally {
+          if (previousCreate === undefined) {
+            delete process.env.RINGCENTRAL_CREATE_CALL_LEADS;
+          } else {
+            process.env.RINGCENTRAL_CREATE_CALL_LEADS = previousCreate;
+          }
+        }
+      },
+    );
+
+    await t.test(
+      "Job-only Granot Call Lead is not adopted; qualified call may create",
+      async () => {
+        const previousCreate = process.env.RINGCENTRAL_CREATE_CALL_LEADS;
+        process.env.RINGCENTRAL_CREATE_CALL_LEADS = "true";
+        const start = new Date();
+        const phone = "5550002010";
+        const callLogId = "u20-log-job-only";
+        const jobOnly = await getCallLeadModel().create({
+          source_company: SOURCE_SLUG,
+          lead_source_company: COMPANY_ID,
+          source_granularity_id: GRANULARITY_ID,
+          source_granularity_key: "unit20_synthetic_calls",
+          job_no: "u20-synthetic-job-only",
+          timestamp: start,
+          quoted: false,
+          duplicate: false,
+          cpl: 0,
+          ingestion_origin: "granot_lead_created",
+          ringcentral_convergence: { state: "not_applicable" },
+          createdAt: start,
+          updatedAt: start,
         });
-        const ringCentralPath = ingestRingCentralQualifiedCall(
-          qualifiedCall({ phone, start, callLogId }),
-          start,
-        );
-        await Promise.all([granotPath, ringCentralPath]);
-        const leads = await getCallLeadModel()
-          .find({
-            source_granularity_id: GRANULARITY_ID,
-            normalized_phone_number: phone,
-          })
-          .lean()
-          .exec();
-        assert.equal(leads.length, 1);
-        assert.equal(
-          await processedCollection().then((collection) =>
-            collection.countDocuments({ callLogId }),
-          ),
-          1,
-        );
+        try {
+          const result = await ingestRingCentralQualifiedCall(
+            qualifiedCall({ phone, start, callLogId }),
+            start,
+          );
+          assert.notEqual(result.action, "lead_adopted");
+          assert.notEqual(result.action, "lead_adopted_duplicate");
+          const stored = await getCallLeadModel()
+            .findById(jobOnly._id)
+            .lean()
+            .exec();
+          assert.equal(stored?.ingestion_origin, "granot_lead_created");
+          assert.equal(stored?.ringcentral_convergence?.state, "not_applicable");
+          assert.ok(
+            result.action === "lead_created" ||
+              result.action === "lead_created_duplicate",
+          );
+        } finally {
+          if (previousCreate === undefined) {
+            delete process.env.RINGCENTRAL_CREATE_CALL_LEADS;
+          } else {
+            process.env.RINGCENTRAL_CREATE_CALL_LEADS = previousCreate;
+          }
+        }
+      },
+    );
+
+    await t.test(
+      "different Source Granularity with the same phone is not adopted",
+      async () => {
+        const previousCreate = process.env.RINGCENTRAL_CREATE_CALL_LEADS;
+        process.env.RINGCENTRAL_CREATE_CALL_LEADS = "true";
+        const start = new Date();
+        const phone = "5550002011";
+        const callLogId = "u20-log-other-granularity";
+        const otherGranularityId = new mongoose.Types.ObjectId();
+        await getLeadSourceGranularityModel().create({
+          _id: otherGranularityId,
+          source_company: COMPANY_ID,
+          granularity_key: "unit20_other_calls",
+          channel: "call",
+          owner_label: "Unit 20 Other Calls",
+          crm_label: "Unit 20 Other Calls",
+          active: true,
+          activated_at: start,
+          created_from: "unit20-test",
+        });
+        const otherLead = await getCallLeadModel().create({
+          ...candidatePayload(phone, start),
+          source_granularity_id: otherGranularityId,
+          source_granularity_key: "unit20_other_calls",
+        });
+        try {
+          const result = await ingestRingCentralQualifiedCall(
+            qualifiedCall({ phone, start, callLogId }),
+            start,
+          );
+          assert.notEqual(result.action, "lead_adopted");
+          assert.notEqual(result.action, "lead_adopted_duplicate");
+          const stored = await getCallLeadModel()
+            .findById(otherLead._id)
+            .lean()
+            .exec();
+          assert.equal(stored?.ringcentral_convergence?.state, "pending");
+          assert.equal(stored?.ingestion_origin, "granot_lead_created");
+          assert.ok(
+            result.action === "lead_created" ||
+              result.action === "lead_created_duplicate",
+          );
+        } finally {
+          await getCallLeadModel().deleteOne({ _id: otherLead._id });
+          await getLeadSourceGranularityModel().deleteOne({
+            _id: otherGranularityId,
+          });
+          if (previousCreate === undefined) {
+            delete process.env.RINGCENTRAL_CREATE_CALL_LEADS;
+          } else {
+            process.env.RINGCENTRAL_CREATE_CALL_LEADS = previousCreate;
+          }
+        }
+      },
+    );
+
+    await t.test(
+      "adoption off lets a later qualified call mint a RingCentral-origin twin",
+      async () => {
+        const previousAdoption = process.env.RINGCENTRAL_GRANOT_ADOPTION_ENABLED;
+        const previousCreate = process.env.RINGCENTRAL_CREATE_CALL_LEADS;
+        process.env.RINGCENTRAL_GRANOT_ADOPTION_ENABLED = "false";
+        process.env.RINGCENTRAL_CREATE_CALL_LEADS = "true";
+        const start = new Date();
+        const phone = "5550002012";
+        const callLogId = "u20-log-adoption-off-twin";
+        const candidate = await createCandidate(phone, start);
+        try {
+          const result = await ingestRingCentralQualifiedCall(
+            qualifiedCall({ phone, start, callLogId }),
+            start,
+          );
+          assert.equal(result.action, "lead_created");
+          assert.notEqual(result.callLeadId, String(candidate._id));
+          const leads = await getCallLeadModel()
+            .find({
+              source_granularity_id: GRANULARITY_ID,
+              normalized_phone_number: phone,
+            })
+            .lean()
+            .exec();
+          assert.equal(leads.length, 2);
+          assert.ok(
+            leads.some((lead) => lead.ingestion_origin === "granot_lead_created"),
+          );
+          assert.ok(
+            leads.some((lead) => lead.ingestion_origin === "ringcentral"),
+          );
+        } finally {
+          if (previousAdoption === undefined) {
+            delete process.env.RINGCENTRAL_GRANOT_ADOPTION_ENABLED;
+          } else {
+            process.env.RINGCENTRAL_GRANOT_ADOPTION_ENABLED = previousAdoption;
+          }
+          if (previousCreate === undefined) {
+            delete process.env.RINGCENTRAL_CREATE_CALL_LEADS;
+          } else {
+            process.env.RINGCENTRAL_CREATE_CALL_LEADS = previousCreate;
+          }
+        }
       },
     );
 

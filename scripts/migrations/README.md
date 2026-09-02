@@ -421,7 +421,23 @@ An Owner-authorized `link_only` rollout for Main Site, TBM, TBM Prime, Top10,
 and 10best uses `--scope=link_only_automation_sources`. That scope classifies
 those families as `source_scoped_lead` with `link_only` and their existing
 Source Company / Source Granularity routes. It does not change Best Relocation
-creation policy and does not mint Leads.
+creation policy and does not mint Leads. After the inbound Call
+`create_if_missing` Owner flip, that scoped apply refuses to revert Main Site /
+10best / TBM Prime / Top10 Inbounds back to `link_only`.
+
+An Owner-authorized inbound Call creation-policy flip uses:
+
+```text
+pnpm migration:granot-inbound-call-creation-policy -- --report
+pnpm migration:granot-inbound-call-creation-policy -- --apply --confirm-production=<db>
+pnpm migration:granot-inbound-call-creation-policy -- --verify
+```
+
+That script verifies each inbound Granot CRM Source references the exact Call
+Source Granularity on its Lead Source Company (10best Inbounds is TBM Call),
+checks the 0-or-1 active valid RingCentral assignment gate, and writes only
+`lead_created_policy=create_if_missing` through `createOrUpdateGranotCrmSource`.
+It does not enable `outbound_sms`. Form families stay `link_only`.
 
 Omitted mode is report. Historical/unknown databases are rejected. Apply is
 separately authorized and refuses the whole reviewed family when a normalized

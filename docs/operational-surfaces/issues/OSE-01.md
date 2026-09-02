@@ -30,19 +30,27 @@ change one seam at a time.
 
 ## 4. Current-state evidence to verify
 
-Observed 2026-09-01; **reverify at implementation**.
+Observed 2026-09-01; **reverified 2026-09-02** at 2615 lines with the
+listed symbols inline, then extracted in this issue.
 
-- `components/operational/operational-resource-page.tsx` is ~2,600 lines
-  and defines `operationalConfigs`, `OperationalFilterPanel`,
-  `DetailPanel`, `EditForm`, `MarkBadLeadControl`, `WorkflowActions`,
-  `SmsMessageSection`, `buildColumns`, and `formatCell`.
+- Pre-extract: `operational-resource-page.tsx` defined `operationalConfigs`,
+  `OperationalFilterPanel`, `DetailPanel`, `EditForm`, `MarkBadLeadControl`,
+  `WorkflowActions`, `SmsMessageSection`, `buildColumns`, and `formatCell`.
+- After extract the page composes only. Symbol homes: configs →
+  `operational-configs.ts`; columns → `operational-columns.tsx`; filter
+  sidebar → `operational-filter-panel.tsx`; detail →
+  `operational-detail-panel.tsx`; actions/delete dialog →
+  `operational-actions.tsx`; Bad Lead → `mark-bad-lead-control.tsx`;
+  Lead Message (ex-`SmsMessageSection`) → `lead-message-section.tsx`;
+  banner → `operational-copy.ts`. Shared non-UI helpers that would cycle
+  live in `operational-helpers.tsx`.
 - Pages under `app/(dashboard)/{form-leads,call-leads,bookings,
   cancellations,duplicate-form-leads,duplicate-call-leads,customers,
   agents}/page.tsx` only render `<OperationalResourcePage resource="…" />`.
-- Duplicate read-only banner copy is hardcoded to Duplicate form leads
-  (around the historical / readOnly warning near `DetailPanel`).
-- `form-lead-contacts.tsx` and `components/bookings/` are already
-  separate. Do not move them into the monolith extract.
+- Duplicate read-only banner is resource-aware via
+  `OPERATIONAL_COPY.duplicateReadOnlyBanner` (Form Leads vs Call Leads).
+- `form-lead-contacts.tsx` and `components/bookings/` stayed where they
+  were.
 
 ## 5. Locked decisions and invariants at risk
 
@@ -105,14 +113,18 @@ have shipped.
 
 ## 10. Acceptance criteria
 
-- [ ] Eight list pages still compile against `OperationalResourcePage`.
-- [ ] The listed extract files exist and the page file no longer defines
+- [x] Eight list pages still compile against `OperationalResourcePage`.
+- [x] The listed extract files exist and the page file no longer defines
       `operationalConfigs` or `DetailPanel` inline.
-- [ ] Visual behavior is unchanged except the duplicate banner.
-- [ ] Duplicate Call Leads banner does not say Duplicate Form Leads.
-- [ ] `form-lead-contacts.tsx` and `components/bookings/` paths unchanged
+- [x] Visual behavior is unchanged except the duplicate banner.
+- [x] Duplicate Call Leads banner does not say Duplicate Form Leads.
+- [x] `form-lead-contacts.tsx` and `components/bookings/` paths unchanged
       in meaning.
-- [ ] `pnpm test && pnpm typecheck && pnpm lint` in `vantage-admin`.
+- [x] `pnpm test && pnpm typecheck && pnpm lint` in `vantage-admin`.
+      Tests 395/395. Typecheck clean. Full `pnpm lint` still exits 1 on
+      pre-existing errors in `needs-you.tsx`, `job-timeline-dashboard.tsx`,
+      and `global-search.tsx` (not in this diff). Extracted files: 0 errors,
+      1 pre-existing exhaustive-deps warning copied from the monolith.
 
 ## 11. Commands
 

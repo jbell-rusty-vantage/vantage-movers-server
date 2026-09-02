@@ -1617,6 +1617,39 @@ test("[AC-08] live eligible no-match invokes createLeadFromGranot once with the 
   assert.ok(result.effects.some((effect) => effect.kind === "lead_created"));
 });
 
+function matchedCallIdentity(leadId: string): LeadIdentityResult {
+  return {
+    outcome: "linked",
+    reason_code: "record_link_confirmed",
+    match_method: "source_scoped_contact",
+    target: { model: "CallLead", id: leadId },
+    target_eligibility: "full",
+    candidates: [
+      {
+        target: { model: "CallLead", id: leadId },
+        reason_codes: ["source_scoped_contact"],
+      },
+    ],
+    agent_assertion: "empty",
+  };
+}
+
+function completeCallObservation(
+  overrides: Partial<GranotObservationDocument> = {},
+): GranotObservationDocument {
+  return observation({
+    source_label_raw: "Synthetic Calls",
+    normalized_source_label: "synthetic calls",
+    contact: {
+      first_name: "Ada",
+      display_name: "Ada",
+      phone_raw: "5550002001",
+      normalized_phone: "5550002001",
+    },
+    ...overrides,
+  });
+}
+
 test("[AC-08] live authorized Job-only Call invokes creation and multiple candidates block it", async () => {
   const row = observation();
   const created = memoryDeps({
@@ -1666,6 +1699,122 @@ test("[AC-08] live authorized Job-only Call invokes creation and multiple candid
   assert.equal(conflicted.createLeadCalls, 0);
   assert.equal(conflict.outcome, "conflict");
   assert.equal(conflicted.decisions[0]?.reason_code, "multiple_eligible_matches");
+});
+
+test("RingCentral-origin Call Lead plus later Granot Call observation synchronizes and does not create", async () => {
+  const leadId = String(objectId());
+  for (const route_event_class of ["lead_created", "priority_updated"] as const) {
+    const row = completeCallObservation({ route_event_class });
+    const deps = memoryDeps({
+      observation: row,
+      activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+      flags: liveCreationFlags(),
+      store: callCreateStore(),
+      identity: matchedCallIdentity(leadId),
+      lead: currentLead(leadId, {
+        model: "CallLead",
+        ingestion_origin: "ringcentral",
+        granot_priority: "8",
+        quoted: false,
+        normalized_phone_number: "5550002001",
+      }),
+      createLead: async () => {
+        throw new Error("matched RingCentral Call Lead must not invoke createLeadFromGranot");
+      },
+      synchronizeLead: async (input) => {
+        assert.equal(input.lead_ref.id, leadId);
+        assert.equal(input.lead_ref.model, "CallLead");
+        return { status: "applied", entity_refs: [input.lead_ref], warnings: [] };
+      },
+    });
+    const result = await processGranotObservation(
+      { receipt_id: String(row.receipt_id) },
+      deps,
+    );
+    assert.equal(deps.createLeadCalls, 0);
+    assert.equal(deps.synchronizeCalls, 1);
+    assert.equal(result.outcome, "applied");
+    assert.equal(result.target?.id, leadId);
+  }
+});
+
+test("fence identity race replans Call create_if_missing onto the RingCentral Call Lead", async () => {
+  const row = completeCallObservation({ route_event_class: "priority_updated" });
+  const leadId = String(objectId());
+  let identityLoads = 0;
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: liveCreationFlags(),
+    store: callCreateStore(),
+    lead: currentLead(leadId, {
+      model: "CallLead",
+      ingestion_origin: "ringcentral",
+      granot_priority: "8",
+      quoted: false,
+      normalized_phone_number: "5550002001",
+    }),
+    createLead: async () => {
+      throw new CreateLeadFromGranotRaceError("identity");
+    },
+    synchronizeLead: async (input) => {
+      assert.equal(input.lead_ref.id, leadId);
+      assert.equal(input.lead_ref.model, "CallLead");
+      return { status: "applied", entity_refs: [input.lead_ref], warnings: [] };
+    },
+  });
+  deps.resolveIdentity = async () => {
+    identityLoads += 1;
+    return identityLoads === 1 ? pendingIdentity() : matchedCallIdentity(leadId);
+  };
+  const result = await processGranotObservation(
+    { receipt_id: String(row.receipt_id) },
+    deps,
+  );
+  assert.equal(deps.createLeadCalls, 1);
+  assert.equal(deps.synchronizeCalls, 1);
+  assert.equal(result.outcome, "applied");
+});
+
+test("Call Job versus phone pointing at two Leads is job_number_conflict and never creates", async () => {
+  const row = completeCallObservation({
+    route_event_class: "priority_updated",
+    identity: {
+      job_no_raw: "synthetic-job-100",
+      normalized_job_no: "SYNTHETIC JOB 100",
+    },
+    contact: { normalized_phone: "5550002001" },
+  });
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: liveCreationFlags(),
+    store: callCreateStore(),
+    identity: {
+      outcome: "conflict",
+      reason_code: "job_number_conflict",
+      candidates: [
+        {
+          target: { model: "CallLead", id: String(objectId()) },
+          reason_codes: ["call_job_no_exact"],
+        },
+        {
+          target: { model: "CallLead", id: String(objectId()) },
+          reason_codes: ["source_scoped_contact"],
+        },
+      ],
+    },
+    createLead: async () => {
+      throw new Error("job_number_conflict must not invoke createLeadFromGranot");
+    },
+  });
+  const result = await processGranotObservation(
+    { receipt_id: String(row.receipt_id) },
+    deps,
+  );
+  assert.equal(deps.createLeadCalls, 0);
+  assert.equal(result.outcome, "conflict");
+  assert.equal(deps.decisions[0]?.reason_code, "job_number_conflict");
 });
 
 test("[AC-07] live matched Lead Created never invokes createLeadFromGranot", async () => {

@@ -16,3 +16,4 @@ alwaysApply: false
 - Prior Lead rewrites require the separate Owner preview/apply correction workflow. Freeze reviewed IDs and state, reject drift as `CPL_PREVIEW_STALE`, touch production Form/Call collections only, and keep immutable before/after evidence.
 - Correction workers use owner-guarded leases, stable cursors, transactional Lead-plus-checkpoint writes, resumable failures, safe cancellation, bounded windows/targets, and sanitized events/errors.
 - M4 is dry-run by default, creates one reviewed open cutover period per active granularity, blocks source disagreements, and never infers history or updates existing Lead fields.
+- **Planned pack (not shipped):** Owner date-range edits become server `set_range`. Live Advanced UI still uses command names (`add_future` / `split` / `correct_period` / `replace_schedule`). Pack: [`docs/lead-costs-owner-editing/`](../../docs/lead-costs-owner-editing/README.md).

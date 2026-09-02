@@ -1,7 +1,7 @@
 ---
 type: Operations
 title: Granot lifecycle activation flags and source policies
-description: Owner-ready .env postures, Best Relocation create-if-missing seed facts, and the model fields that actually gate lead_created behavior.
+description: Owner-ready .env postures, Best Relocation create-if-missing seed facts, inbound Call event-class + adoption companion, and the model fields that actually gate lead_created behavior.
 tags:
   - granot
   - lead-lifecycle
@@ -11,7 +11,7 @@ status: draft
 stale_after: 2026-10-19
 generated:
   by: cursor-grok-4.6
-  at: 2026-08-19T16:50:00Z
+  at: 2026-09-02T18:00:00Z
 sources:
   - id: final-spec
     resource: ../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md
@@ -103,8 +103,8 @@ What each of those four “on” values does:
 | `PROCESSING_ENABLED` | Drainer/processor may run. Off = capture only. |
 | `SHADOW_MODE=false` | Post-activation receipts become `live` instead of `live_shadow`. Historical receipts stay `historical_shadow` forever. |
 | `LEAD_WRITES_ENABLED` | A matched existing Lead may receive authorized Granot fill (`synchronizeLeadFromGranot`). |
-| `LEAD_CREATION_ENABLED` | An unmatched `lead_created` may mint a Lead **if** Registry policy is `create_if_missing`. |
-| `RINGCENTRAL_GRANOT_ADOPTION_ENABLED` | A later RingCentral qualified call may attach to a Granot-created Call Lead instead of minting a twin. |
+| `LEAD_CREATION_ENABLED` | An unmatched `lead_created` may mint a Lead **if** Registry policy is `create_if_missing`. Call `create_if_missing` may also mint on `priority_updated`. Form create stays `lead_created` only. |
+| `RINGCENTRAL_GRANOT_ADOPTION_ENABLED` | A later RingCentral qualified call may attach to a Granot-created Call Lead instead of minting a twin. Adoption mutations stay flagged. The Granot phone fence is always on when the Observation has a phone; the ingest lock is not always on. |
 
 Leave every Booking/Release/Referral/email flag **false** until those workflows are separately accepted. Email stays retired.
 
@@ -189,7 +189,7 @@ Texting is a separate CRM Source policy (`outbound_sms`). `create_if_missing` do
 | `Best Relocation Forms` | **`true`** | `customer_submitted_form` |
 | `BestRelocation Inbounds` | **`true`** | `existing_relationship` |
 
-A confirmation SMS is sent only when those two rows have `outbound_sms.enabled`, a recorded consent basis, `GRANOT_LEAD_CREATED_SMS_ENABLED=true`, and `LEAD_MESSAGING_MODE` is not `disabled`. The other 13 CRM Sources keep `outbound_sms.enabled: false`.
+A confirmation SMS is sent only when those two rows have `outbound_sms.enabled`, a recorded consent basis, `GRANOT_LEAD_CREATED_SMS_ENABLED=true`, and `LEAD_MESSAGING_MODE` is not `disabled`. The other 13 CRM Sources keep `outbound_sms.enabled: false`. Best Relocation Inbounds already inherits `priority_updated` Call create from shipped GICC-01 code; those inbound creates use the existing `sendGranotCreatedLeadConfirmation` finalize when those messaging gates are on. That is existing finalize, not a new SMS feature. Other inbound families stay silent until a separate `outbound_sms` command.
 
 The guarded production migration changed only `lead_created_policy`; both rows retained the reviewed company, routes, disposition, activation posture, and nonblank policy version. Creation still requires every runtime flag, activation, identity, route, and minimum-data gate.
 
@@ -207,7 +207,7 @@ Expected behavior after flags + activation + this policy:
 
 | Incoming Granot label | Selected granularity | Lead minted when unmatched |
 | --- | --- | --- |
-| `BestRelocation Inbounds` (and reviewed spacing alias) | `best_relocation_leads_call` | Call Lead, `ingestion_origin: "granot_lead_created"`, `post_to_granot: false` |
+| `BestRelocation Inbounds` (and reviewed spacing alias) | `best_relocation_leads_call` | Call Lead on `lead_created` **or** `priority_updated`, `ingestion_origin: "granot_lead_created"`, `post_to_granot: false`. Already `create_if_missing`; no second policy flip. |
 | `Best Relocation Forms`, same origin/destination state | `best_relocation_leads_form_local` | Form Lead, same origin |
 | `Best Relocation Forms`, different valid states | `best_relocation_leads_form_long_distance` | Form Lead, same origin |
 | `Best Relocation Forms`, invalid/missing states | none | `insufficient_creation_data` — no Lead |
@@ -267,7 +267,7 @@ Admin validation and the Registry UI still reject `create_if_missing`; the dropd
 | `Paid Overflow` | `create_if_missing` + `source_scoped_lead` | New Source Company / one FormLead + any route. Master Sheets only. SMS enabled. |
 | future `Auto` | `deferred` | Evidence only. |
 | Payload `type=AUTO` | not a source | Provider context. Never a company guess. |
-| Main Site / TBM / TBM Prime / Top10 / 10best | reviewed `link_only` + `source_scoped_lead` | WordPress and RingCentral remain the creators. Automation apply is allowed; Granot does not mint these Leads. |
+| Main Site / TBM / TBM Prime / Top10 / 10best | Form families stay `link_only`. Inbound Call families are `create_if_missing` after the 2026-09-02 Owner command | WordPress remains the Form creator. Inbound `create_if_missing` is the safety net when Call Qualification does not see the call. Customer text stays off until a separate `outbound_sms` command. |
 
 ## 4. Important new model fields and policies
 
@@ -365,7 +365,7 @@ Creation reserves a **new** active link. A pre-existing lead-less reservation is
 | `GranotObservation` | Normalized evidence. Granot is **not** Booking/Cancellation authority. |
 | `SynchronizationDecision` | Business outcome + gate snapshot. `created` / `applied` / `already_current` / `pending_match` / `unmatched` / `ambiguous` / `conflict` / `deferred` / `policy_blocked` / `insufficient_creation_data` / … |
 
-`route_event_class` on the receipt is `lead_created | priority_updated | booking_status_changed`. Only `lead_created` may invoke `createLeadFromGranot`.
+`route_event_class` on the receipt is `lead_created | priority_updated | booking_status_changed`. Form `create_if_missing` may invoke `createLeadFromGranot` on `lead_created` only. Call `create_if_missing` may invoke it on `lead_created` **or** `priority_updated`. `requested_effect` stays `"lead_created"` when `creation_eligibility` is `eligible`. `booking_status_changed` and Form `priority_updated` never mint. There is no ninth gate and no fourth `lead_created_policy` value.
 
 ### 4.6 Execution modes
 
@@ -389,7 +389,7 @@ Do these in order. Do not skip to flags.
 4. Optionally unlock `create_if_missing` on the Registry HTTP/Admin enum as a separately reviewed management-surface change.
 5. Write-once activation with an Owner reason and a chosen cutoff time.
 6. Set the §1.2 env values on the server. Keep Booking/Release/email false.
-7. Watch `GET /api/v1/admin/granot-lifecycle/operations/health` and Operational Events. First live proof: one unmatched Best Relocation inbound `lead_created` creates one Call Lead; a duplicate delivery replays; a Main Site `lead_created` still does **not** create.
+7. Watch `GET /api/v1/admin/granot-lifecycle/operations/health` and Operational Events. First live proof: one unmatched Best Relocation inbound `priority_updated` (or `lead_created`) creates one Call Lead; a duplicate delivery replays; a Main Site inbound still does **not** create until the §7 Owner command.
 
 Rollback: set `GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED=false` first, then `SHADOW_MODE=true` if needed. Capture stays on. Do not delete activation, receipts, Decisions, Record Links, or committed Leads. If a single source is wrong, set that row `lifecycle_enabled=false` through the audited activation command — do not edit it in Compass.
 
@@ -398,3 +398,58 @@ Rollback: set `GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED=false` first, then `SHADOW
 Unit 29 adds no flag. Automatic Booking-conflict persistence is controlled by `GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED`; Release conflicts use `GRANOT_LIFECYCLE_RELEASE_CASES_ENABLED`. Live mode, activation, reviewed source policy, and the corresponding case gate must all pass. Shadow and historical Decisions are never promoted.
 
 Existing discrepancy rows remain readable when a case flag is disabled. Trusted Owner commands additionally require current server facts, strict revisions/idempotency, and their existing command trust boundary; they do not authorize official Booking/Cancellation or Lead-attribution mutation. See [discrepancy-review-and-record-link-correction.md](discrepancy-review-and-record-link-correction.md).
+
+## 7. Owner checklist — inbound Call `create_if_missing` flip
+
+This section is the live Owner checklist. The inbound Call policy flip is **applied** on production `vantagemovers` (2026-09-02). See §7.4. Customer text was not enabled. Form families stay `link_only`.
+
+Inbound `create_if_missing` is the safety net when Call Qualification does not see the call; mapped qualifying calls stay RingCentral-created or adopted. Owner language uses Caller Match Key; the locked implementation key is exact Source Granularity + normalized phone — never Source Company alone.
+
+### 7.1 Already shipped (do not re-do)
+
+- GICC-01 shipped: Call `create_if_missing` may create on `priority_updated`. Focused tests green.
+- GICC-02 shipped: Granot phone fence always on when the Observation has a phone; Race A synchronizes even with adoption off; Race B adopts when adoption is on. Tests green.
+- No new Registry policy. The flip is still `link_only` → `create_if_missing` on the existing Granot CRM Source `lead_created_policy` field. Still three values (`link_only` | `create_if_missing` | `observation_only`). `requested_effect` stays `"lead_created"`. No ninth gate.
+
+### 7.2 Best Relocation Inbounds — already inherits
+
+Best Relocation Inbounds stays Granot-only (zero RingCentral assignments) and **already inherits** `priority_updated` create from the shipped event-class code. It does **not** need a second policy flip.
+
+Confirmation SMS uses the existing `sendGranotCreatedLeadConfirmation` finalize if messaging gates are on (`GRANOT_LEAD_CREATED_SMS_ENABLED`, CRM Source `outbound_sms.enabled`, `create_if_missing`, recorded consent, destination). This is not a new SMS feature. Other inbound families stay silent until a separate `outbound_sms` command. Do not enable customer text as a side effect of a later inbound policy flip.
+
+### 7.3 Before flipping any inbound source that has a RingCentral assignment
+
+Do these **before** flipping Main Site Inbounds, 10best Inbounds, TBM Prime Inbounds, or Top10 Inbounds:
+
+1. `RINGCENTRAL_GRANOT_ADOPTION_ENABLED=true`
+2. RingCentral write mode `create` (`RINGCENTRAL_CREATE_CALL_LEADS=true`)
+3. That Call Source Granularity has **0 or 1** active valid RingCentral assignment (`assertSingleActiveRingCentralAssignment`). Write **0-or-1** before flipping those four families. Zero rows is Granot-only and create proceeds; if any assignment rows exist, exactly one must be active and point at a valid route.
+
+### 7.4 Applied 2026-09-02 — inbound Call sources now `create_if_missing`
+
+Owner command `createOrUpdateGranotCrmSource` via `pnpm migration:granot-inbound-call-creation-policy -- --apply --confirm-production=vantagemovers`. Each inbound Granot CRM Source still references its exact Call Source Granularity. Customer text stays a separate `outbound_sms` command; this flip did not enable it.
+
+| Granot CRM Source | Source Company | Call Source Granularity | RingCentral assignments | Policy now |
+| --- | --- | --- | --- | --- |
+| 10best Inbounds | `tbm_leads` (TBM Call) | `tbm_leads_call` | 1 active valid | `create_if_missing` |
+| Main Site Inbounds | `main_site` | `main_site_call` | 1 active valid | `create_if_missing` |
+| TBM Prime Inbounds | `tbm_prime_leads` | `tbm_prime_leads_call` | 1 active valid | `create_if_missing` |
+| Top10 Inbounds | `top10_leads` | `top10_leads_call` | 1 active valid | `create_if_missing` |
+
+Do not put `create_if_missing` on Source Company or Source Granularity documents. Do not re-run `--scope=link_only_automation_sources` to revert these four. Form families stay `link_only`.
+
+### 7.5 Companion operations (not this pack)
+
+Expand unmapped inbound RingCentral numbers as companion operations. That shrinks how often Granot has to mint. This pack still ships if those numbers stay unmapped.
+
+## 8. Residual holes this pack names and does not close
+
+| Hole | Why it remains | Owner-visible result |
+| --- | --- | --- |
+| Job-only Granot create (no phone) while a RingCentral Call Lead exists on phone + granularity | Call minimum data is Job-only; phone rung and the fence both require an Observation phone | Possible twin. Prefer Observations that carry phone. Do not invent a phone. |
+| Job-only Granot create, later qualified call | RingCentral Call Adoption requires immutable phone | RingCentral may create a second Lead. Booking intake can still high-confidence attach via Job. |
+| Booked arrives with no prior Lead | Booking-case Decision returns before create | `create_missing_booking` with no suggestion. A later `priority_updated` may create or synchronize. Confirm may be Leadless. Do **not** create on `booking_status_changed` to paper this over. |
+| Call never qualifies and Granot never sends Job | Create stays `insufficient_creation_data` | Still no Lead — we cannot invent a Job. |
+| Same phone, different inbound Source Company | Correct attribution | Two Call Leads. Not a twin inside one stream. |
+| Unmapped RingCentral number | Call Qualification never runs | Granot create is the intended safety net. |
+| Adoption-off Race B twin | Ingest lock and adoption mutations stay flagged | `RINGCENTRAL_GRANOT_ADOPTION_ENABLED=false` plus live inbound `create_if_missing` plus a later qualifying create mints a twin. That is why §7.3 comes first. |

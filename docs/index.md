@@ -86,7 +86,8 @@ Workspace ADRs are outside this repo. This standalone checkout does not contain 
 | [granot-lifecycle/owner-booking-intake.md](knowledge/granot-lifecycle/owner-booking-intake.md) | Pointer to the owner booking-intake contract. Does not copy spec rules. |
 | [granot-lifecycle/release-into-booking-intake.md](knowledge/granot-lifecycle/release-into-booking-intake.md) | Pointer to the Release-into-intake contract. Does not copy spec rules. |
 | [granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md](granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md) | Owner booking intake. §5 even Binder, BILA-01 search/display, BILA-02 optional Lead on Confirm, and BILA-03 Connect Booking to Lead from `/bookings` are current; unmasking is not implemented. Prerequisite for Owner Daily. |
-| [operational-surfaces-specification.md](operational-surfaces/operational-surfaces-specification.md) | Admin presentation: tabbed operational detail panel, row action cluster, grouped filters. Shared `OperationalResourcePage` shell. No main-server invariant changes. |
+| [operational-surfaces-specification.md](operational-surfaces/operational-surfaces-specification.md) | Shipped (OSE-01–05). Admin presentation: tabbed operational detail panel, row action cluster, grouped filters. Shared `OperationalResourcePage` shell. No main-server invariant changes. |
+| [lead-costs-owner-editing-specification.md](lead-costs-owner-editing/lead-costs-owner-editing-specification.md) | Operations Registry Lead Costs: Owner From / Through / Amount on one Feed. New `set_range` command. Schedule edits still never rewrite stamped Lead CPL. |
 | [granot-lifecycle-surfaces-specification.md](granot-lifecycle-surfaces/granot-lifecycle-surfaces-specification.md) | Ingestion cleanup, Granot Lifecycle System tab (Health + searchable webhook-channel Granot Observation Receipts). Job Timeline stays Records. Live Events SSE unchanged. |
 | [mongodb-backup-automation/README.md](mongodb-backup-automation/README.md) | Operator playbook: list, trigger, inspect, and restore-drill GCS backups. Invariants stay in the Service. |
 
@@ -99,8 +100,9 @@ Active work packs. The ledger inside each is a navigation aid; the repository is
 | [operations-registry-source-connections/README.md](operations-registry-source-connections/README.md) | Four-pass delivery of the Operations Registry source-connection spec: typed label mappings, the Granot name Owner command, the aggregate Lead Source projection, and the Owner UI. |
 | [job-number-timeline/README.md](job-number-timeline/README.md) | Four-session enhancement of the Owner Job Number timeline (JTE-01–05). Daily Assurance and notifications stay out of pack. |
 | [booking-intake-lead-attachment/README.md](booking-intake-lead-attachment/README.md) | Three-issue pack. BILA-01–BILA-03 shipped (intake search/display, optional Lead on Confirm, Connect from `/bookings`). |
-| [operational-surfaces/README.md](operational-surfaces/README.md) | Five-issue pack. Tabbed operational detail panel, row cluster, grouped filters on the shared Admin list shell (OSE-01–05). Admin only. |
+| [operational-surfaces/README.md](operational-surfaces/README.md) | Five-issue pack. OSE-01–05 shipped (extract, tabbed detail, row cluster, grouped filters, browser walk). Admin presentation only; no main-server invariant changes. |
 | [granot-lifecycle-surfaces/README.md](granot-lifecycle-surfaces/README.md) | Three-issue pack. GLS-01 Ingestion IA + Health home; GLS-02 receipt search API; GLS-03 Receipts tab. Job Timeline stays `/job-timeline`. |
+| [lead-costs-owner-editing/README.md](lead-costs-owner-editing/README.md) | Five-issue pack. LCE-01 server `set_range`; LCE-02 By date form; LCE-03 copy/URL/handoff; LCE-04 structured rebuild; LCE-05 browser proof. Simple construction and CPL Correction workers stay. |
 
 ## Archives
 
