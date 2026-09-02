@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
 import {
   selectRingCentralConvergenceCandidates,
@@ -226,7 +225,7 @@ test("[AC-16] Job-only/missing-phone input is never an adoption candidate", asyn
 test("adoption match key stays exact Source Granularity plus ingested phone", () => {
   const source = readFileSync(
     path.join(
-      path.dirname(fileURLToPath(import.meta.url)),
+      __dirname,
       "callLeadConvergence.service.ts",
     ),
     "utf8",

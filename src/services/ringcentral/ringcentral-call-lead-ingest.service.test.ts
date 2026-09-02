@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 import type { RingCentralProcessedCallDocument } from "./processed-calls-store";
 import {
   ingestRingCentralQualifiedCall,
@@ -236,7 +235,7 @@ test("adoption off still creates a RingCentral-origin Call Lead (documented Race
 test("RingCentral ingest lock stays gated on the adoption flag", () => {
   const source = readFileSync(
     path.join(
-      path.dirname(fileURLToPath(import.meta.url)),
+      __dirname,
       "ringcentral-call-lead-ingest.service.ts",
     ),
     "utf8",

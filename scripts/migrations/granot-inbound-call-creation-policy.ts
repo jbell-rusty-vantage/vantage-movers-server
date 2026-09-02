@@ -253,7 +253,8 @@ async function main(): Promise<void> {
         },
         migrationActor(finding.family),
       );
-      if (updated.outbound_sms?.enabled === true) {
+      const outboundSmsEnabled = updated.outbound_sms?.enabled === true;
+      if (outboundSmsEnabled) {
         throw new Error(
           `${source.granot_label} unexpectedly has outbound_sms enabled after the policy flip.`,
         );
@@ -265,7 +266,7 @@ async function main(): Promise<void> {
         lead_created_policy: updated.lead_created_policy,
         lead_source_company: updated.lead_source_company,
         granularity_id: updated.lifecycle_routes[0]?.source_granularity_id,
-        outbound_sms_enabled: updated.outbound_sms?.enabled === true,
+        outbound_sms_enabled: outboundSmsEnabled,
       });
     }
     await writeGranotLifecycleManifest({

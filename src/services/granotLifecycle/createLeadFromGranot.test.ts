@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
 import type { GranotObservationDocument } from "../../models/GranotObservation";
 import type { SynchronizationDecisionSourceScope } from "../../models/SynchronizationDecision";
@@ -350,7 +349,7 @@ test("command accepts priority_updated for Call create_if_missing and rejects it
 
 test("executeCreation requested_effect stays lead_created on the Call priority_updated path", () => {
   const source = readFileSync(
-    path.join(path.dirname(fileURLToPath(import.meta.url)), "createLeadFromGranot.ts"),
+    path.join(__dirname, "createLeadFromGranot.ts"),
     "utf8",
   );
   const requestedEffects = [...source.matchAll(/requested_effect:\s*"([^"]+)"/g)].map(
@@ -362,7 +361,7 @@ test("executeCreation requested_effect stays lead_created on the Call priority_u
 
 test("both Granot phone-fence sites run without the adoption flag; Job-only still skips", () => {
   const source = readFileSync(
-    path.join(path.dirname(fileURLToPath(import.meta.url)), "createLeadFromGranot.ts"),
+    path.join(__dirname, "createLeadFromGranot.ts"),
     "utf8",
   );
   assert.equal(source.includes("isRingCentralGranotAdoptionEnabled"), false);

@@ -90,7 +90,9 @@ export type RingCentralIngestDependencies = {
   resolveWriteMode: typeof resolveRingCentralLeadWriteMode;
   adoptionEnabled: typeof isRingCentralGranotAdoptionEnabled;
   assertAdoptionIndexes: typeof assertProcessedCallAdoptionIndexes;
-  createLead: typeof ingestRingCentralCallLead;
+  createLead: (
+    input: CreateRingCentralCallLeadInput,
+  ) => Promise<{ _id: { toString(): string } }>;
   insertShadow: typeof insertShadowCallLead;
   upsertProcessedCall: typeof upsertProcessedCall;
   recordEvent: typeof recordOperationalEvent;
