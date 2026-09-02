@@ -23,7 +23,7 @@ import {
 } from "./backup.mjs";
 
 const validEnv = {
-  MONGO_URI: "mongodb+srv://user:super-secret-password@cluster.mongodb.net/",
+  MONGO_URI: "mongodb+srv://user:super-secret-password@cluster.example.test/",
   MONGO_DATABASE: "vantagemovers",
   BACKUP_BUCKET: "vantage-mongodb-backups-496816",
   BACKUP_SCHEMA_VERSION: "1",
@@ -242,7 +242,7 @@ describe("metadata and manifest serialization", () => {
 describe("secret and URI redaction", () => {
   it("redacts URI-like values and explicit secrets", () => {
     const raw =
-      'failed mongodb+srv://user:super-secret-password@cluster.mongodb.net/db extra super-secret-password';
+      'failed mongodb+srv://user:super-secret-password@cluster.example.test/db extra super-secret-password';
     const redacted = redactSecrets(raw, [validEnv.MONGO_URI]);
     assert.equal(redacted.includes("super-secret-password"), false);
     assert.equal(redacted.includes("mongodb+srv://"), false);
