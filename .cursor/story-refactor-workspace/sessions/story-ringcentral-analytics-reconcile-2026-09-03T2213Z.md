@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-03T22:13Z
 - Service / module: `ringcentral` / `analytics-reconcile.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (open after #140 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/141
 
 ## Stock at start
 
