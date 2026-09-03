@@ -289,21 +289,21 @@ test("create_if_missing SMS handoff requires the resolved Lead Source ID from so
   assert.match(checksum, /^[a-f0-9]{64}$/);
 });
 
-test("observation-load create guard allows lead_created or priority_updated without CallLead", () => {
+test("observation-load create guard allows lead_created only", () => {
   assert.equal(observationLoadAllowsCreateRouteEventClass("lead_created"), true);
-  assert.equal(observationLoadAllowsCreateRouteEventClass("priority_updated"), true);
+  assert.equal(observationLoadAllowsCreateRouteEventClass("priority_updated"), false);
   assert.equal(observationLoadAllowsCreateRouteEventClass("booking_status_changed"), false);
   assert.equal(observationLoadAllowsCreateRouteEventClass(undefined), false);
 });
 
-test("command accepts priority_updated for Call create_if_missing and rejects it for Form", () => {
+test("command rejects priority_updated even for Call create_if_missing", () => {
   assert.equal(
     snapshotAllowsCreateRouteEventClass({
       route_event_class: "priority_updated",
       selected_lead_model: "CallLead",
       lead_created_policy: "create_if_missing",
     }),
-    true,
+    false,
   );
   assert.equal(
     snapshotAllowsCreateRouteEventClass({
@@ -347,7 +347,7 @@ test("command accepts priority_updated for Call create_if_missing and rejects it
   );
 });
 
-test("executeCreation requested_effect stays lead_created on the Call priority_updated path", () => {
+test("executeCreation requested_effect stays lead_created", () => {
   const source = readFileSync(
     path.join(__dirname, "createLeadFromGranot.ts"),
     "utf8",

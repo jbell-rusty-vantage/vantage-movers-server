@@ -421,23 +421,21 @@ An Owner-authorized `link_only` rollout for Main Site, TBM, TBM Prime, Top10,
 and 10best uses `--scope=link_only_automation_sources`. That scope classifies
 those families as `source_scoped_lead` with `link_only` and their existing
 Source Company / Source Granularity routes. It does not change Best Relocation
-creation policy and does not mint Leads. After the inbound Call
-`create_if_missing` Owner flip, that scoped apply refuses to revert Main Site /
-10best / TBM Prime / Top10 Inbounds back to `link_only`.
+creation policy and does not mint Leads.
 
-An Owner-authorized inbound Call creation-policy flip uses:
+An Owner-authorized inbound Call creation-policy revert uses:
 
 ```text
-pnpm migration:granot-inbound-call-creation-policy -- --report
-pnpm migration:granot-inbound-call-creation-policy -- --apply --confirm-production=<db>
-pnpm migration:granot-inbound-call-creation-policy -- --verify
+pnpm migration:granot-inbound-call-creation-policy-revert -- --report
+pnpm migration:granot-inbound-call-creation-policy-revert -- --apply --confirm-production=<db>
+pnpm migration:granot-inbound-call-creation-policy-revert -- --verify
 ```
 
-That script verifies each inbound Granot CRM Source references the exact Call
-Source Granularity on its Lead Source Company (10best Inbounds is TBM Call),
-checks the 0-or-1 active valid RingCentral assignment gate, and writes only
-`lead_created_policy=create_if_missing` through `createOrUpdateGranotCrmSource`.
-It does not enable `outbound_sms`. Form families stay `link_only`.
+That script writes `lead_created_policy=link_only` through
+`createOrUpdateGranotCrmSource` for Main Site Inbounds, 10best Inbounds,
+TBM Prime Inbounds, and Top10 Inbounds. It does not touch Best Relocation
+Forms or Inbounds. Form families stay `link_only`. The earlier flip command
+`pnpm migration:granot-inbound-call-creation-policy` remains historical.
 
 Omitted mode is report. Historical/unknown databases are rejected. Apply is
 separately authorized and refuses the whole reviewed family when a normalized

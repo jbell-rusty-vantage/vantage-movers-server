@@ -230,31 +230,6 @@ function planNoMatch(input: LeadDesiredStateInput): LeadDesiredStatePlan {
     }
   }
 
-  // CallLead + create_if_missing may also mint on priority_updated. Form must not.
-  if (
-    input.observation.route_event_class === "priority_updated" &&
-    input.policy.lead_created_policy === "create_if_missing" &&
-    input.policy.selected_lead_model === "CallLead"
-  ) {
-    const minimum = evaluateMinimumCreationData({
-      observation: input.observation,
-      policy: input.policy,
-    });
-    if (minimum.eligibility === "insufficient") {
-      return emptyPlan({
-        outcome: "insufficient_creation_data",
-        reason_code: minimum.reason_code,
-        creation_eligibility: "insufficient",
-      });
-    }
-    return emptyPlan({
-      outcome: "created",
-      reason_code: "lead_created_authorized",
-      creation_eligibility: "eligible",
-      creation_model: input.policy.selected_lead_model,
-    });
-  }
-
   if (input.identity.outcome === "unmatched" && input.identity.reason_code !== "pending_source_scoped_match") {
     return emptyPlan({
       outcome: input.identity.outcome,

@@ -107,8 +107,8 @@ export function createLeadFromGranotIdempotencyKey(observationId: string): strin
 
 export function observationLoadAllowsCreateRouteEventClass(
   route_event_class: GranotObservationDocument["route_event_class"],
-): route_event_class is "lead_created" | "priority_updated" {
-  return route_event_class === "lead_created" || route_event_class === "priority_updated";
+): route_event_class is "lead_created" {
+  return route_event_class === "lead_created";
 }
 
 export function snapshotAllowsCreateRouteEventClass(input: {
@@ -116,14 +116,9 @@ export function snapshotAllowsCreateRouteEventClass(input: {
   selected_lead_model: SourcePolicySnapshot["selected_lead_model"];
   lead_created_policy: SourcePolicySnapshot["lead_created_policy"];
 }): boolean {
-  if (input.route_event_class === "lead_created") {
-    return true;
-  }
-  return (
-    input.route_event_class === "priority_updated" &&
-    input.selected_lead_model === "CallLead" &&
-    input.lead_created_policy === "create_if_missing"
-  );
+  void input.selected_lead_model;
+  void input.lead_created_policy;
+  return input.route_event_class === "lead_created";
 }
 
 export function createLeadFromGranotPayloadChecksum(input: {
@@ -297,7 +292,7 @@ async function executeCreation(
     throw new CreateLeadFromGranotRaceError("policy");
   }
   const snapshot = policy.snapshot;
-  // After selected_lead_model and policy: priority_updated only for CallLead + create_if_missing.
+  // Create stays lead_created-only. Call + create_if_missing on priority_updated is not a mint path.
   if (
     !snapshotAllowsCreateRouteEventClass({
       route_event_class: observation.route_event_class,

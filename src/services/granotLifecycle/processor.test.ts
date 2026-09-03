@@ -1739,7 +1739,7 @@ test("RingCentral-origin Call Lead plus later Granot Call observation synchroniz
 });
 
 test("fence identity race replans Call create_if_missing onto the RingCentral Call Lead", async () => {
-  const row = completeCallObservation({ route_event_class: "priority_updated" });
+  const row = completeCallObservation({ route_event_class: "lead_created" });
   const leadId = String(objectId());
   let identityLoads = 0;
   const deps = memoryDeps({

@@ -614,17 +614,15 @@ test("observation_only policy stays evidence-only", () => {
   assert.equal(result.next_match_attempt_at, undefined);
 });
 
-test("Call create_if_missing + priority_updated + unmatched + Job is eligible", () => {
+test("Call create_if_missing + priority_updated + unmatched + Job is not eligible", () => {
   const result = plan({
     observation: observation({ route_event_class: "priority_updated" }),
     identity: unmatchedIdentity(),
     policy: callCreatePolicy(),
   });
-  assert.equal(result.creation_eligibility, "eligible");
-  assert.equal(result.creation_model, "CallLead");
-  assert.equal(result.outcome, "created");
-  assert.equal(result.reason_code, "lead_created_authorized");
-  assert.equal(result.target, undefined);
+  assert.notEqual(result.creation_eligibility, "eligible");
+  assert.notEqual(result.outcome, "created");
+  assert.notEqual(result.reason_code, "lead_created_authorized");
 });
 
 test("Call create_if_missing + lead_created stays eligible", () => {

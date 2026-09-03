@@ -968,7 +968,7 @@ test("Race A: existing RingCentral Call Lead synchronizes even with adoption off
     job: fenceJob,
     label: registry.label,
     move: {},
-    route_event_class: "priority_updated",
+    route_event_class: "lead_created",
   });
   const existing = await getCallLeadModel().create({
     phone_number: SYNTHETIC_PHONE,

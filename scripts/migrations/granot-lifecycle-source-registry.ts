@@ -31,7 +31,6 @@ import {
   parseGranotLifecycleMigrationMode,
   writeGranotLifecycleManifest,
 } from "./granot-lifecycle-migration.lib.js";
-import { isInboundCallCreationFamily } from "./granot-lifecycle-source-registry.manifest.js";
 import {
   SOURCE_REGISTRY_MIGRATION_ACTOR_ID,
   SOURCE_REGISTRY_MIGRATION_SCRIPT_VERSION,
@@ -124,15 +123,6 @@ async function main(): Promise<void> {
       try {
         const current = inventory.crm_sources.find((row) => row.id === mutation.id);
         if (!current) continue;
-        if (
-          isInboundCallCreationFamily(mutation.family) &&
-          current.lead_created_policy === "create_if_missing" &&
-          mutation.intended.lead_created_policy === "link_only"
-        ) {
-          throw new Error(
-            `Refusing to revert inbound Call ${mutation.granot_label} from create_if_missing to link_only.`,
-          );
-        }
         await createOrUpdateGranotCrmSource(
           {
             id: mutation.id,

@@ -20,6 +20,12 @@ applies_to:
 
 # Inbound Call create_if_missing and RingCentral convergence
 
+> **Reversed 2026-09-03.** Call create is `lead_created` only again. Mapped
+> inbound Granot CRM Sources (Main Site / 10best / TBM Prime / Top10) return
+> to `link_only`. Best Relocation Forms and Inbounds keep `create_if_missing`.
+> RingCentral-first synchronize, Granot-first adoption, and the always-on
+> Granot phone fence stay.
+
 Three shippable issues. This pack follows
 `docs/booking-intake-lead-attachment/`: same fourteen-section issue
 contract, same rule that **repository state is authoritative and the
