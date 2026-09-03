@@ -283,8 +283,11 @@ export {
 export {
   granotLifecycleActivationCommandSchema,
   granotLifecycleRequeueCommandSchema,
+  granotLifecycleReceiptSearchQuerySchema,
+  GRANOT_WEBHOOK_RECEIPT_SEARCH_QUERY_KEYS,
   type GranotLifecycleActivationCommandInput,
   type GranotLifecycleRequeueCommandInput,
+  type GranotLifecycleReceiptSearchQuery,
 } from "./v1/granotLifecycle.validation";
 
 export {
@@ -293,3 +296,8 @@ export {
   type CreateTariffAdjustmentsInput,
   type TariffAdjustmentRequestRow,
 } from "./v1/tariffAdjustments.validation";
+
+export {
+  createExtensionUserSchema,
+  type CreateExtensionUserBody,
+} from "./v1/extensionUsers.validation";

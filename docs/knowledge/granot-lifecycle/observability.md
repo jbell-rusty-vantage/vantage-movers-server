@@ -53,7 +53,7 @@ Exact Section 33 names live in `GRANOT_LIFECYCLE_SECTION_33_METRIC_NAMES`. Recei
 
 ## Health and alerts
 
-`GET /api/v1/admin/granot-lifecycle/operations/health` remains the single Owner/Admin read. Due work is pending/retry plus claimed-only-when-lease-expired with `next_attempt_at <= now`. Health includes generated time, ten flags, activation, receipt/due/dead-letter counts plus `by_work_state` and `expired_claim_count`, 24-hour Decision groups with execution mode, open cases/discrepancies, `command_conflicts_last_24h`, `record_links: { active, disputed }`, last queue/cron runs, RingCentral lease/cursor telemetry, and the seven frozen alert codes.
+`GET /api/v1/admin/granot-lifecycle/operations/health` remains the single Owner/Admin read. The Admin Health page is `/granot-lifecycle/health` (`GRANOT_LIFECYCLE_HEALTH_HREF`). The GET path did not move. Due work is pending/retry plus claimed-only-when-lease-expired with `next_attempt_at <= now`. Health includes generated time, ten flags, activation, receipt/due/dead-letter counts plus `by_work_state` and `expired_claim_count`, 24-hour Decision groups with execution mode, open cases/discrepancies, `command_conflicts_last_24h`, `record_links: { active, disputed }`, last queue/cron runs, RingCentral lease/cursor telemetry, and the seven frozen alert codes.
 
 `GRANOT_LIFECYCLE_ALERT_THRESHOLDS` (not env-overridable): `oldest_due_ms` 15 minutes, `oldest_due_continuity_ms` 10 minutes, `dead_letter_count` 0, `capture_503_count` 0, `claim_recovery_per_hour` 5, `capture_to_decision_p95_ms` 10 minutes, `ringcentral_lease_held_ms` 10 minutes, `source_ambiguity_policy_blocked_rate` 0.05, `health_window_ms` 24 hours, `claim_recovery_window_ms` 1 hour.
 

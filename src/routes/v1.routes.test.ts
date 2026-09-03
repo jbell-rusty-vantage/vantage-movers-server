@@ -122,6 +122,14 @@ test("admin analytics receiver-agent reports have GET routes", () => {
   assert.equal(getRoutes.has("/api/v1/admin/analytics/sms-successfully-sent-then-booked"), true);
 });
 
+test("Owner Extension User routes are registered", () => {
+  const stack = (router as { stack?: RouteLayer[] }).stack ?? [];
+  const routes = new Set(
+    collectRoutes(stack).map((route) => route.path).filter((path): path is string => Boolean(path)),
+  );
+  assert.equal(routes.has("/api/v1/admin/extension-users"), true);
+});
+
 test("Owner conversation read routes are registered", () => {
   const stack = (router as { stack?: RouteLayer[] }).stack ?? [];
   const routes = new Set(

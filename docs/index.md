@@ -21,6 +21,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [form-lead.md](knowledge/services/form-lead.md) | Create, update, and delete Form Leads, including duplicates, CRM Posting, and Sheet Sync. |
 | [call-lead.md](knowledge/services/call-lead.md) | Create and update Call Leads (manual and RingCentral), duplicates, CPL, and sheet tabs. |
 | [lead-conversation.md](knowledge/services/lead-conversation.md) | Seeded Lead Conversation evidence: redacted transcript, sectioned summary, private audio. |
+| [extension-users.md](knowledge/services/extension-users.md) | Owner-only Admin Dashboard create and list for Extension User email, password, and role. |
 | [enrichment.md](knowledge/services/enrichment.md) | Preview and sync Granot Follow Up rows onto Call Leads. |
 | [bookings.md](knowledge/services/bookings.md) | Booked Lead create/update/delete, from-source, referral, leadless, and booking-chain sync. |
 | [booked-call-lead-reconciliation.md](knowledge/services/booked-call-lead-reconciliation.md) | Refresh Call Leads and bookings from Granot Booked Jobs rows. |
@@ -58,7 +59,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [booking-reconciliation.md](knowledge/granot-lifecycle/booking-reconciliation.md) | Booking-case open/refresh and gated Owner booking commands. |
 | [release-reconciliation.md](knowledge/granot-lifecycle/release-reconciliation.md) | Separate Release cases and gated Owner cancellation/update commands. |
 | [projections.md](knowledge/granot-lifecycle/projections.md) | Masked Admin case/job/lead reads plus Owner-only creating-observation; reads never invoke mutations. |
-| [live-receipts.md](knowledge/granot-lifecycle/live-receipts.md) | Owner-only SSE of Granot webhook receipts; Mongo watermark poll, not in-process emit. |
+| [live-receipts.md](knowledge/granot-lifecycle/live-receipts.md) | Owner-only live SSE of Granot webhook receipts plus sibling historical list GET; Mongo watermark poll, not in-process emit. |
 | [observability.md](knowledge/granot-lifecycle/observability.md) | Lifecycle events, closed metric labels, and health projection. |
 | [mongodb-backup.md](knowledge/services/mongodb-backup.md) | Daily logical mongodump of `vantagemovers` to GCS in project `vantage-sheets-496816`. |
 
@@ -101,7 +102,7 @@ Active work packs. The ledger inside each is a navigation aid; the repository is
 | [job-number-timeline/README.md](job-number-timeline/README.md) | Four-session enhancement of the Owner Job Number timeline (JTE-01–05). Daily Assurance and notifications stay out of pack. |
 | [booking-intake-lead-attachment/README.md](booking-intake-lead-attachment/README.md) | Three-issue pack. BILA-01–BILA-03 shipped (intake search/display, optional Lead on Confirm, Connect from `/bookings`). |
 | [operational-surfaces/README.md](operational-surfaces/README.md) | Five-issue pack. OSE-01–05 shipped (extract, tabbed detail, row cluster, grouped filters, browser walk). Admin presentation only; no main-server invariant changes. |
-| [granot-lifecycle-surfaces/README.md](granot-lifecycle-surfaces/README.md) | Three-issue pack. GLS-01 Ingestion IA + Health home; GLS-02 receipt search API; GLS-03 Receipts tab. Job Timeline stays `/job-timeline`. |
+| [granot-lifecycle-surfaces/README.md](granot-lifecycle-surfaces/README.md) | Three-issue pack. GLS-01 Ingestion IA + Health home shipped; GLS-02 receipt search API shipped; GLS-03 Receipts tab not shipped. Job Timeline stays `/job-timeline`. |
 | [lead-costs-owner-editing/README.md](lead-costs-owner-editing/README.md) | Five-issue pack. LCE-01 server `set_range`; LCE-02 By date form; LCE-03 copy/URL/handoff; LCE-04 structured rebuild; LCE-05 browser proof. Simple construction and CPL Correction workers stay. |
 
 ## Archives

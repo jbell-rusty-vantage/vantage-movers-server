@@ -38,6 +38,10 @@ import {
   type LiveWebhookReceipt,
 } from "../services/granotLifecycle/liveReceipts";
 import {
+  searchReceipts,
+  type GranotWebhookReceiptListPage,
+} from "../services/granotLifecycle/receiptSearch";
+import {
   LIVE_RECEIPT_HEARTBEAT_MS,
   LIVE_RECEIPT_MAX_MS,
   LIVE_RECEIPT_POLL_MS,
@@ -108,6 +112,8 @@ import {
   granotLifecycleDiscrepancyNoActionCommandSchema,
   granotLifecycleDiscrepancyParamsSchema,
   granotLifecycleReEvaluateDiscrepancyCommandSchema,
+  granotLifecycleReceiptSearchQuerySchema,
+  type GranotLifecycleReceiptSearchQuery,
 } from "../validation/v1/granotLifecycle.validation";
 
 export type GranotLifecycleAdminRouteDeps = {
@@ -139,6 +145,7 @@ export type GranotLifecycleAdminRouteDeps = {
   listLiveReceiptSnapshot?: () => Promise<LiveWebhookReceipt[]>;
   listLiveReceiptsAfter?: (cursor: LiveReceiptCursor) => Promise<LiveWebhookReceipt[]>;
   listLiveReceiptsUpdated?: () => Promise<LiveWebhookReceipt[]>;
+  searchReceipts?: (query: GranotLifecycleReceiptSearchQuery) => Promise<GranotWebhookReceiptListPage>;
   liveStreamSleep?: (ms: number) => Promise<void>;
   liveStreamNow?: () => number;
   liveStreamPollMs?: number;
@@ -185,6 +192,7 @@ export function createGranotLifecycleAdminRouter(
   const listLiveSnapshot = deps.listLiveReceiptSnapshot ?? listLiveWebhookReceiptSnapshot;
   const listLiveAfter = deps.listLiveReceiptsAfter ?? listLiveWebhookReceiptsAfter;
   const listLiveUpdated = deps.listLiveReceiptsUpdated ?? listLiveWebhookReceiptsUpdated;
+  const searchWebhookReceipts = deps.searchReceipts ?? searchReceipts;
 
   router.get("/api/v1/admin/granot-lifecycle/receipts/live", async (req, res) => {
     try {
@@ -231,6 +239,18 @@ export function createGranotLifecycleAdminRouter(
     }
     if (!res.writableEnded) {
       res.end();
+    }
+  });
+
+  router.get("/api/v1/admin/granot-lifecycle/receipts", async (req, res) => {
+    try {
+      await connect();
+      requireRegistryOwnerActor(req, auth(req));
+      const query = granotLifecycleReceiptSearchQuerySchema.parse(req.query);
+      const data = await searchWebhookReceipts(query);
+      return res.status(200).json({ ok: true, data });
+    } catch (error) {
+      return sendError(res, error, requestId(req));
     }
   });
 

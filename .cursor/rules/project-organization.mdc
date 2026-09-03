@@ -16,7 +16,7 @@ alwaysApply: true
 - `src/routes/` owns HTTP boundaries — keep thin: auth → Zod → service → response.
 - `src/routes/v1.routes.ts` is the main surface (public v1 + admin browse/search/export/analytics/registry/observability + extension workflows). Mounted after most cron/webhook routes.
 - Before the `/api/v1` guard inside v1: `extension-auth.routes.ts` (`/api/v1/extension/auth/*`, no secret) and `google-drive-oauth.routes.ts` (mounted **inside** `v1.routes.ts`, not a separate `app.use`). OAuth callback is unguarded; other `/api/v1/admin/google-drive/*` routes attach per-route `requireApiSecret` + owner gate.
-- After the guard: `ringcentral-registry.routes.ts` (`/api/v1/admin/ringcentral/inbound-routes*`), `granot-lifecycle-admin.routes.ts` (`/api/v1/admin/granot-lifecycle/*`, including Owner-only `GET .../receipts/live` SSE, plus Owner-only `GET /api/v1/admin/bookings/:bookingId/connect-lead-candidates` and `POST .../connect-lead`), and `job-number-timeline-admin.routes.ts` (`GET /api/v1/admin/job-number-timeline` and `GET .../recent-official-bookings`).
+- After the guard: `ringcentral-registry.routes.ts` (`/api/v1/admin/ringcentral/inbound-routes*`), `granot-lifecycle-admin.routes.ts` (`/api/v1/admin/granot-lifecycle/*`, including Owner-only `GET .../receipts` historical webhook-channel list and `GET .../receipts/live` SSE, plus Owner-only `GET /api/v1/admin/bookings/:bookingId/connect-lead-candidates` and `POST .../connect-lead`), `job-number-timeline-admin.routes.ts` (`GET /api/v1/admin/job-number-timeline` and `GET .../recent-official-bookings`), and `extension-users-admin.routes.ts` (Owner-only `GET/POST /api/v1/admin/extension-users`).
 - Separate admin routers mounted from `src/app.ts` (still under `/api/v1/admin/...`, with `requireApiSecret`):
   - `granot-automation.routes.ts` — Granot HTTP automation (mounted **before** v1)
   - `ingestion.routes.ts` — Best Relocation ingestion (after v1)
@@ -37,7 +37,7 @@ alwaysApply: true
 |-----------|--------|
 | `x-api-secret` → extension Bearer (Owner on data routes; Employee only on `POST /api/v1/tariff-adjustments`, else 403) → scoped keys (`VANTAGE_SCOPED_API_KEYS`) | Protected `/api/v1/*` after extension mount. Sets `req.vantageAuth`: `secret` \| `scoped_key` \| `user`. Scoped keys may also constrain Source Company + Source Granularity. |
 | Extension auth (unguarded) | `/api/v1/extension/auth/{login,refresh,me,logout}` |
-| Admin proxy actors | Trusted `x-vantage-admin-*` (+ optional HMAC). Registry/source/CPL/RC/ingestion/granot/booking-recon owner gates use `requireRegistry*Actor` patterns |
+| Admin proxy actors | Trusted `x-vantage-admin-*` (+ optional HMAC). Registry/source/CPL/RC/ingestion/granot/booking-recon/extension-users owner gates use `requireRegistry*Actor` patterns |
 | Google Drive owner gate | Drive OAuth/Picker admin routes |
 | Employee booking | Secret-only; submit also needs `x-public-client-key-hash` |
 | Cron | Bearer or `x-cron-secret` |
@@ -61,6 +61,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - `testimonials/`, `movingCarriers/` — Testimonials + carrier admin
 - `tariff/` — Append-only tariff adjustment rows to `TARIFF_SHEET_ID` / `TARIFFS`. Carrier is Granot Agent text until a Moving Carrier map exists. Not Sheet Sync.
 - `search/` — Extension browse/search for form/call leads
+- `extensionUsers/` — Owner-only Admin Dashboard create/list of Extension User logins. Model: `ExtensionUser`. Service: [`extension-users.md`](../../docs/knowledge/services/extension-users.md)
 - `errors/` — `AppError`, codes, registry error shapes
 
 ### Extension & Granot
@@ -118,6 +119,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - **Granot automation:** `granot-automation/runs/*`, `granot-automation/runs/sources`, `granot-automation/run-groups`, `granot-automation/runs/worker` (separate `app.use` router, before v1)
 - **Granot lifecycle:** mutations `activation` / `receipts/:id/requeue` / Owner `booking-cases/:id/{confirm-booking,update-booking,no-action}` / Owner `POST /api/v1/admin/bookings/:bookingId/connect-lead`; protected reads `granot-lifecycle/cases`, `cases/:case_id`, Owner-only `cases/:case_id/candidates` and `cases/:case_id/creating-observation`, Owner-only `GET /api/v1/admin/bookings/:bookingId/connect-lead-candidates`, `jobs/:normalized_job_no`, `leads/:lead_model/:lead_id/lifecycle`, and Owner/Admin `operations/health` (Mongo-backed DTO from `projectGranotLifecycleHealth`; focused router mounted after the `/api/v1` guard; routes remain policy-free)
 - **Job Number timeline:** Owner-only `GET /api/v1/admin/job-number-timeline?job_no=` (optional `source_granularity_id`, `source_company_id`). Envelope `{ ok, data: JobTimelineAssembleResult }`. Route is authorize → validate → `createJobNumberTimelineModule({ loader }).read` → respond. Unhandled 500 is `{ ok: false, error: "Internal error" }` and does not echo `error.message`. Does not use `projections.ts` or `GranotTimelineEntry`. Separate Owner-only `GET /api/v1/admin/job-number-timeline/recent-official-bookings` is registered first on the same router and returns at most three official Booking Job Numbers (`job_no` + `booked_at`) via `recent-official-bookings.ts` — not `module.read`, not a catalog. CLI (typed module only, no extra HTTP route): `render`, `discover`, and read-only count-stable `proof`. Primary code: `src/services/jobNumberTimeline/`. Enhancement workspace: [`docs/job-number-timeline/README.md`](../../docs/job-number-timeline/README.md). Service: [`job-number-timeline.md`](../../docs/knowledge/services/job-number-timeline.md).
+- **Extension Users:** Owner-only `GET /api/v1/admin/extension-users` and `POST /api/v1/admin/extension-users` (`{ email, password, role }`). Admin `403`. Does not create an Agent. Login stays `POST /api/v1/extension/auth/login`. Service: [`extension-users.md`](../../docs/knowledge/services/extension-users.md).
 
 `database_scope=production|historical|combined` where appropriate. Detail rejects `combined`; historical is read-only. No admin delete routes for core leads/bookings/customers — use public v1 writes so sheet sync stays owned by domain services. Observability deletes are the explicit exception.
 

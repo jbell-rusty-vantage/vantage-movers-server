@@ -245,6 +245,15 @@ POST   /api/v1/admin/granot-lifecycle/receipts/:id/requeue
 GET    /api/v1/admin/job-number-timeline
 ```
 
+## Extension Users
+
+Owner-only (`requireRegistryOwnerActor`). Admin `403`.
+
+```
+GET    /api/v1/admin/extension-users
+POST   /api/v1/admin/extension-users
+```
+
 ## Granot automation, ingestion, reporting
 
 ```

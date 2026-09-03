@@ -1,7 +1,7 @@
 ---
 type: Service
 title: Granot live webhook receipts
-description: Owner-only SSE of Granot webhook receipts. Polls Mongo; does not emit in-process.
+description: Owner-only live SSE and historical list of webhook-channel Granot Observation Receipts. SSE polls Mongo; does not emit in-process.
 tags: [granot-lifecycle]
 status: draft
 stale_after: 2026-12-01
@@ -9,6 +9,8 @@ resource: src/services/granotLifecycle/liveReceipts.ts
 applies_to:
   - src/services/granotLifecycle/liveReceipts.ts
   - src/services/granotLifecycle/liveReceiptStream.ts
+  - src/services/granotLifecycle/receiptSearch.ts
+  - src/validation/v1/granotLifecycle.validation.ts
   - src/routes/granot-lifecycle-admin.routes.ts
 owners: [team:main-server]
 sources:
@@ -19,16 +21,17 @@ sources:
     title: Platform glossary
 generated:
   by: process:docs-keeper
-  at: 2026-09-01T18:20:00Z
+  at: 2026-09-03T17:35:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority (intake_link, receipt_updated):** [`release-into-booking-intake.md`](./release-into-booking-intake.md) Part B.  
-**Primary code:** `src/services/granotLifecycle/liveReceipts.ts`, `src/services/granotLifecycle/liveReceiptStream.ts`, `src/routes/granot-lifecycle-admin.routes.ts`  
-**Domain terms used:** [Granot Observation Receipt](../../../../CONTEXT.md), [Granot Observation](../../../../CONTEXT.md), [Granot Booking Reconciliation Case](../../../../CONTEXT.md)
+**Authority (historical list DTO):** [`../../granot-lifecycle-surfaces/granot-lifecycle-surfaces-specification.md`](../../granot-lifecycle-surfaces/granot-lifecycle-surfaces-specification.md) §6.  
+**Primary code:** `src/services/granotLifecycle/liveReceipts.ts`, `src/services/granotLifecycle/liveReceiptStream.ts`, `src/services/granotLifecycle/receiptSearch.ts`, `src/validation/v1/granotLifecycle.validation.ts`, `src/routes/granot-lifecycle-admin.routes.ts`  
+**Domain terms used:** [Granot Observation Receipt](../../../../CONTEXT.md), [Granot Observation](../../../../CONTEXT.md), [Granot Booking Reconciliation Case](../../../../CONTEXT.md), [Granot Booking Action](../../../../CONTEXT.md), [Source Company](../../../../CONTEXT.md)
 
 # Granot live webhook receipts
 
-**Role:** Stream Owner-visible Granot webhook receipts (`lead_created`, `priority_updated`, `booking_status_changed`) as Server-Sent Events. Capture, the queue consumer, and this read are separate Vercel invocations, so the stream **polls Mongo** on `captured_at`. It does not use `EventEmitter`, module-level response registries, or WebSockets.
+**Role:** Stream Owner-visible Granot webhook receipts (`lead_created`, `priority_updated`, `booking_status_changed`) as Server-Sent Events, and list the same webhook-channel receipts historically. Capture, the queue consumer, and the live read are separate Vercel invocations, so the stream **polls Mongo** on `captured_at`. It does not use `EventEmitter`, module-level response registries, or WebSockets. The historical list is a sibling GET; it does not change SSE.
 
 ## Public route
 
@@ -68,3 +71,17 @@ Named index `granot_booking_case_evidence_observation_id` (`{ "evidence.observat
 ## SSE late update
 
 Capture SSE may first emit `intake_link: null` while processing is pending. After the processor opens or refreshes the booking case, `listUpdated` re-lists the 30-minute window and emits `receipt_updated` when `processing_state` or `intake_link` changed. Do not emit `receipt_updated` for a receipt just sent as `receipt`. Still Mongo-polled; no in-process emit from the processor.
+
+## Historical list (sibling)
+
+`GET /api/v1/admin/granot-lifecycle/receipts` — Owner only (`requireRegistryOwnerActor`). JSON `{ ok: true, data }`. Not SSE. Admin is 403. Isolated unsigned calls on this router are **403 `OWNER_REQUIRED`** (same as live SSE), not 401. Placed after `/receipts/live` and before `/receipts/:id/requeue`.
+
+`searchReceipts` in `src/services/granotLifecycle/receiptSearch.ts`. Query is `granotLifecycleReceiptSearchQuerySchema` / `GRANOT_WEBHOOK_RECEIPT_SEARCH_QUERY_KEYS`: `ref_no`, `job_no`, `name`, `phone`, `email`, `source_company_id`, `route_event_class`, `booking_action`, `captured_from`, `captured_to`, `processing_state`, `cursor`, `limit` (default 25, max 100). Strict. `booking_action` without `route_event_class` implies `booking_status_changed`; any other pairing is 400.
+
+Webhook channel only. Same three route classes as live. Extension and HTTP-automation receipts are excluded. Newest `captured_at`, then `_id`, descending. Cursor is `{ sort_value, id }`.
+
+Identity filters (`ref_no`, `job_no`, `name`, `phone`, `email`) may match a pending receipt via the Live-Events extract. `source_company_id` and `booking_action` match only rows that already have a Granot Observation.
+
+DTO is pack spec §6 (`GranotWebhookReceiptListItem` / `GranotWebhookReceiptListPage`). Phone and email are masked. No `granot_statement`, no raw payload, no credentials. `intake_case_id` is the open or resolved Granot Booking Reconciliation Case for that Job Number when one exists (open wins; this list does not use the live `evidence.observation_id` join).
+
+Live SSE (`liveReceipts.ts`, `liveReceiptStream.ts`) is unchanged. No `granot_observation_normalized_email_captured` index was added. Admin Owner Receipts search is wired (GLS-03). This GET remains the list API; Admin role is 403.

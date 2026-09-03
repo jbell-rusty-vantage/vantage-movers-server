@@ -63,6 +63,12 @@ import {
  * normal ingest, ledger persistence, and lease ownership must all have
  * succeeded. Any failure, throttle, or lease loss leaves the window intact so
  * the next run retries the same range.
+ *
+ * After every page is fetched, the run sorts records by Call Log `startTime`
+ * oldest-first before ingest. RingCentral pages newest-first; Duplicate Lead
+ * classification is earlier-only, so same-run callbacks must see the earlier
+ * call persist first. A later page-fetch failure now happens before any ingest
+ * from that run. Already-committed effects on a retry stay idempotent.
  */
 const PER_PAGE = 250;
 const MAX_PAGES = 20;
@@ -313,6 +319,7 @@ export async function runRingCentralCallLogSync(
     // Renew before the potentially long provider pagination/ingest phase.
     await renewIfDue(true);
 
+    const collectedRecords: unknown[] = [];
     for (let page = 1; page <= deps.maxPages; page += 1) {
       stage = "provider_fetch";
       const pageRecords = await fetchPageCountingThrottles(
@@ -323,17 +330,26 @@ export async function runRingCentralCallLogSync(
         page,
       );
       summary.fetchedRecords += pageRecords.length;
-
-      for (const record of pageRecords) {
-        await renewIfDue();
-        stage = "ingest";
-        await processRecord(deps, summary, record, routeSnapshot, windowTo);
-      }
+      collectedRecords.push(...pageRecords);
 
       if (pageRecords.length < deps.perPage) {
         break;
       }
       await renewIfDue();
+    }
+
+    // RingCentral pages newest-first. Duplicate Lead classification is
+    // earlier-only, so the same run must ingest oldest startTime first.
+    const orderedRecords = sortCallLogRecordsOldestFirst(
+      collectedRecords,
+      deps.vetRecord,
+      routeSnapshot,
+    );
+
+    for (const record of orderedRecords) {
+      await renewIfDue();
+      stage = "ingest";
+      await processRecord(deps, summary, record, routeSnapshot, windowTo);
     }
 
     stage = "state_write";
@@ -517,6 +533,28 @@ export async function runRingCentralCallLogSync(
 
     throw error;
   }
+}
+
+function sortCallLogRecordsOldestFirst(
+  records: unknown[],
+  vetRecord: RingCentralCallLogSyncDependencies["vetRecord"],
+  routeSnapshot: Awaited<ReturnType<typeof loadRingCentralRouteSnapshot>>,
+): unknown[] {
+  return records
+    .map((record, index) => ({
+      record,
+      index,
+      startMs:
+        vetRecord(record, routeSnapshot).startTime?.getTime() ??
+        Number.POSITIVE_INFINITY,
+    }))
+    .sort((left, right) => {
+      if (left.startMs !== right.startMs) {
+        return left.startMs - right.startMs;
+      }
+      return left.index - right.index;
+    })
+    .map((row) => row.record);
 }
 
 async function processRecord(

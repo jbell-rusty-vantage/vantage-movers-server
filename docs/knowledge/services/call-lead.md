@@ -81,6 +81,7 @@ Per glossary and `ringcentral-duplicate-guard.ts`:
 
 - Same exact **Source Granularity** + normalized phone as an earlier existing **non-duplicate** Call Lead in the inclusive prior 90-day window.
 - Excludes the current `telephony_session_id`.
+- Call Log sync ingests one run oldest-first so same-batch callbacks classify against the earlier call. The window itself stays earlier-only.
 - Duplicate Call Leads still persist and **Sheet Sync**; they are **never CRM-posted** (Call Lead Enrichment is separate).
 
 **Config note:** `RINGCENTRAL_DUPLICATE_WINDOW_HOURS` in `ringcentral-config.ts` is exposed for debug display only; the guard uses hardcoded `RINGCENTRAL_CALL_LEAD_DUPLICATE_WINDOW_DAYS = 90`.

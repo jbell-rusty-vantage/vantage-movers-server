@@ -20,6 +20,7 @@ import {
   granotLifecycleDiscrepancyListQuerySchema,
   granotLifecycleDiscrepancyNoActionCommandSchema,
   granotLifecycleReEvaluateDiscrepancyCommandSchema,
+  granotLifecycleReceiptSearchQuerySchema,
 } from "./granotLifecycle.validation";
 import { GRANOT_LIFECYCLE_ERROR_CODES } from "../../services/granotLifecycle/errors";
 
@@ -126,6 +127,51 @@ test("[AC-23][AC-35][AC-36] discrepancy filters and Owner bodies are strict and 
   assert.equal(granotLifecycleCorrectRecordLinkCommandSchema.safeParse({ ...correction, booking_id: "b".repeat(24) }).success, false);
   assert.equal(granotLifecycleCorrectRecordLinkCommandSchema.safeParse({ ...correction, reason_text: "short" }).success, false);
   assert.deepEqual(granotLifecycleDiscrepancyNoActionCommandSchema.parse({ expected_revision: 2 }), { expected_revision: 2 });
+});
+
+test("receipt search query is strict, normalizes identity, and implies booking_status_changed", () => {
+  const empty = granotLifecycleReceiptSearchQuerySchema.parse({});
+  assert.equal(empty.limit, 25);
+  assert.equal(empty.route_event_class, undefined);
+
+  const implied = granotLifecycleReceiptSearchQuerySchema.parse({ booking_action: "release" });
+  assert.equal(implied.booking_action, "release");
+  assert.equal(implied.route_event_class, "booking_status_changed");
+
+  const identity = granotLifecycleReceiptSearchQuerySchema.parse({
+    job_no: "p5562401",
+    phone: "212-555-0100",
+    email: "Ada@example.invalid",
+    ref_no: "  synthetic-tracking-ref-02  ",
+  });
+  assert.equal(identity.job_no, "P5562401");
+  assert.equal(identity.phone, "2125550100");
+  assert.equal(identity.email, "ada@example.invalid");
+  assert.equal(identity.ref_no, "synthetic-tracking-ref-02");
+
+  assert.throws(
+    () => granotLifecycleReceiptSearchQuerySchema.parse({
+      booking_action: "release",
+      route_event_class: "lead_created",
+    }),
+    /booking_action|booking_status_changed/,
+  );
+  assert.throws(
+    () => granotLifecycleReceiptSearchQuerySchema.parse({ payload: "forbidden" }),
+    /unrecognized_keys|payload/,
+  );
+  assert.throws(
+    () => granotLifecycleReceiptSearchQuerySchema.parse({ limit: 101 }),
+    /less than or equal|Too big/,
+  );
+  assert.throws(
+    () => granotLifecycleReceiptSearchQuerySchema.parse({ ref_no: "not provided" }),
+    /ref_no|sentinel/,
+  );
+  assert.throws(
+    () => granotLifecycleReceiptSearchQuerySchema.parse({ ref_no: "not_provided" }),
+    /ref_no|sentinel/,
+  );
 });
 
 test("[AC-18] [AC-19] case list query is strict, bounded, and validates date order", () => {

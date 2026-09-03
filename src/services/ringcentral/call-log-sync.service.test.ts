@@ -49,12 +49,15 @@ function at(offsetMs: number): Date {
   return new Date(T0.getTime() + offsetMs);
 }
 
-function qualifiedVet(index: number): RingCentralCallLogVetResult {
+function qualifiedVet(
+  index: number,
+  startTime: Date = at(-60_000),
+): RingCentralCallLogVetResult {
   return {
     callLogId: `call-log-${index}`,
     sessionId: `session-${index}`,
     telephonySessionId: `telephony-${index}`,
-    startTime: at(-60_000),
+    startTime,
     durationSeconds: 300,
     direction: "Inbound",
     result: "Accepted",
@@ -96,10 +99,11 @@ type Calls = {
   errors: Array<Parameters<RingCentralCallLogSyncDependencies["recordError"]>[0]>;
   releases: number;
   routeObservations: number;
-  ingested: number;
-  pages: number[];
-  indexAsserts: number;
-};
+    ingested: number;
+    ingestedCallLogIds: string[];
+    pages: number[];
+    indexAsserts: number;
+  };
 
 type HarnessOptions = {
   /** Records returned per page, in page order. */
@@ -130,6 +134,7 @@ function harness(options: HarnessOptions = {}) {
     releases: 0,
     routeObservations: 0,
     ingested: 0,
+    ingestedCallLogIds: [],
     pages: [],
     indexAsserts: 0,
   };
@@ -209,9 +214,10 @@ function harness(options: HarnessOptions = {}) {
       }
       return options.pages?.[page - 1] ?? [];
     },
-    ingestCall: async () => {
+    ingestCall: async (call) => {
       calls.order.push("ingest");
       calls.ingested += 1;
+      calls.ingestedCallLogIds.push(call.callLogId ?? "");
       if (
         options.ingestError &&
         calls.ingested === (options.failIngestAtRecord ?? 1)
@@ -606,6 +612,29 @@ test("[AC-17] pagination stops at a short page and continues through full pages"
   assert.deepEqual(calls.pages, [1, 2]);
   assert.equal(summary.fetchedRecords, 3);
   assert.equal(summary.cursorAdvanced, true);
+});
+
+test("a newest-first Call Log page ingests oldest-first so same-run Duplicate Leads classify", async () => {
+  const later = qualifiedVet(2, at(-5 * 60 * 1000));
+  const earlier = qualifiedVet(1, at(-20 * 60 * 1000));
+  const { calls, deps } = harness({ pages: [[later, earlier]] });
+
+  await runRingCentralCallLogSync(T0, deps);
+
+  assert.deepEqual(calls.ingestedCallLogIds, ["call-log-1", "call-log-2"]);
+});
+
+test("Call Log pages across a newest-first split still ingest oldest-first in one run", async () => {
+  const later = qualifiedVet(2, at(-5 * 60 * 1000));
+  const earlier = qualifiedVet(1, at(-20 * 60 * 1000));
+  const { calls, deps } = harness({
+    pages: [[later], [earlier]],
+    perPage: 1,
+  });
+
+  await runRingCentralCallLogSync(T0, deps);
+
+  assert.deepEqual(calls.ingestedCallLogIds, ["call-log-1", "call-log-2"]);
 });
 
 test("[AC-17] Call Log telemetry and events carry no caller or provider content", async () => {

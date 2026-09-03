@@ -33,7 +33,7 @@ Exceptions (no API secret): `/`, `/health`, `/db`, `/api/v1/extension/auth/*`, `
 
 ### Owner-gated admin
 
-Registry, Granot lifecycle mutations, booking-lead recon, ingestion/reporting/automation owner writes need signed proxy headers **in addition to** `x-api-secret`:
+Registry, Granot lifecycle mutations, booking-lead recon, ingestion/reporting/automation owner writes, and Extension User list/create need signed proxy headers **in addition to** `x-api-secret`:
 
 `x-vantage-admin-user-id`, `x-vantage-admin-email`, `x-vantage-admin-role`, `x-vantage-admin-request-id`, `x-vantage-admin-timestamp`, `x-vantage-admin-signature`
 
@@ -88,7 +88,7 @@ When a route is added or renamed, update this catalog **and** `.cursor/rules/pro
 
 ## Route catalog
 
-Source: `src/routes/v1.routes.ts`, `extension-auth.routes.ts`, `google-drive-oauth.routes.ts`, `extension-granot-apply.routes.ts`, `ringcentral-registry.routes.ts`, `granot-lifecycle-admin.routes.ts`, `granot-automation.routes.ts`, `ingestion.routes.ts`, `reporting.routes.ts`, `src/app.ts`.
+Source: `src/routes/v1.routes.ts`, `extension-auth.routes.ts`, `extension-users-admin.routes.ts`, `google-drive-oauth.routes.ts`, `extension-granot-apply.routes.ts`, `ringcentral-registry.routes.ts`, `granot-lifecycle-admin.routes.ts`, `granot-automation.routes.ts`, `ingestion.routes.ts`, `reporting.routes.ts`, `src/app.ts`.
 
 ### Unguarded
 
@@ -311,6 +311,15 @@ POST   /api/v1/admin/granot-lifecycle/receipts/:id/requeue
 
 ```
 GET    /api/v1/admin/job-number-timeline
+```
+
+### Extension Users
+
+Owner-only (`requireRegistryOwnerActor`). Use `--sign-admin`. Admin `403`.
+
+```
+GET    /api/v1/admin/extension-users
+POST   /api/v1/admin/extension-users
 ```
 
 ### Granot automation, ingestion, reporting

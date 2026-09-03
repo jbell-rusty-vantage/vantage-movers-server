@@ -71,7 +71,7 @@ A call qualifies when **all** are true:
           │                                                     │
  aggregateRingCentralCallSession (all parties)                  │
           │                                                     │
- ingest when qualified + terminal                    ingest each qualified record
+   ingest when qualified + terminal                    ingest oldest-first in one run
 ```
 
 ## 1. Qualification evaluator (`call-candidate-evaluator.ts`)
@@ -126,11 +126,12 @@ Each run:
 
 1. **Claim:** Atomically acquire the `key: "account"` state lease (`leased_until` missing or `<= now`) for five minutes. A cron request is only a trigger — **Mongo state elects the single winner.** A failed claim performs no provider request, route observation, ingest, cursor write, or Lead effect; it returns `{ ok: true, skipped: true, reason: "lease_held" }` and increments `ringcentral_call_log_lease_contention_total`. A disabled route never claims. Runs never wait or spin.
 2. **Window:** `resolveWindowStart` — `windowTo` is the winner's claim instant; `windowFrom` is the earlier of the cursor overlap (`lastSyncTo - overlap`, default 15m) and the rolling lookback floor (default 12h), so the floor always wins for a recent cursor. First run uses the initial lookback (default 30m) under the same floor. The 12-hour floor is locked and does **not** shrink with the cron cadence; it guards long calls and RingCentral finalization lag.
-3. **Fetch:** Detailed inbound voice Call Log, one page at a time (250/page, max 20 pages). A `429` is counted into `last_throttled_count` and rethrown — provider retry policy is unchanged.
-4. **Vet:** `vetRingCentralCallLogRecord` per record — same business rule as evaluator; exposes `rejectionReasons[]`.
-5. **Ingest:** Qualified rows → `RingCentralQualifiedCall` with `ingestionSource: "call_log_sync"`, `qualificationReason: "call_log_inbound_target_answered_over_120s"`, `answeredAt = startTime`, `terminalAt = start + duration`.
-6. **Renew:** The lease is renewed to `now + 5m` before the long pagination/ingest phase and while work remains. Every renewal and terminal write is fenced by `{ key, lease_owner, leased_until: { $gt: now } }`. A zero-document renewal means the lease was lost: the run stops starting new pages/records and writes no success, error, counter, or cursor as the former owner. Already committed effects stay valid and are idempotent on the next rescan.
-7. **Cursor:** `lastSyncFrom`/`lastSyncTo` advance **only** in the fenced full-success update after every page and qualified record completes. Pagination failure, unrecovered throttling, vetting/route failure, adoption/conflict/ledger failure, normal-ingest failure, lease loss, or terminal-write fence loss all leave the cursor untouched, so the next run retries the same range. Re-scans are safe — ingest idempotency skips already-processed sessions/logs.
+3. **Fetch:** Detailed inbound voice Call Log, one page at a time (250/page, max 20 pages). A `429` is counted into `last_throttled_count` and rethrown — provider retry policy is unchanged. The run collects every page before ingest.
+4. **Order:** Sort collected records by Call Log `startTime` oldest-first (missing `startTime` last). RingCentral pages newest-first; Duplicate Lead classification is earlier-only, so the same cron run must persist the earlier call before the later callback. A later page-fetch failure now happens before any ingest from that run.
+5. **Vet:** `vetRingCentralCallLogRecord` per record — same business rule as evaluator; exposes `rejectionReasons[]`.
+6. **Ingest:** Qualified rows → `RingCentralQualifiedCall` with `ingestionSource: "call_log_sync"`, `qualificationReason: "call_log_inbound_target_answered_over_120s"`, `answeredAt = startTime`, `terminalAt = start + duration`.
+7. **Renew:** The lease is renewed to `now + 5m` before the long pagination/ingest phase and while work remains. Every renewal and terminal write is fenced by `{ key, lease_owner, leased_until: { $gt: now } }`. A zero-document renewal means the lease was lost: the run stops starting new pages/records and writes no success, error, counter, or cursor as the former owner. Already committed effects stay valid and are idempotent on the next rescan.
+8. **Cursor:** `lastSyncFrom`/`lastSyncTo` advance **only** in the fenced full-success update after every page and qualified record completes. Pagination failure, unrecovered throttling, vetting/route failure, adoption/conflict/ledger failure, normal-ingest failure, lease loss, or terminal-write fence loss all leave the cursor untouched, so the next run retries the same range. Re-scans are safe — ingest idempotency skips already-processed sessions/logs.
 
 **Lease and telemetry state** (`ringcentral_call_log_sync_state(_test)`, one `key: "account"` row):
 
@@ -203,7 +204,7 @@ More than one candidate is never guessed. `markRingCentralConvergenceConflict` a
 
 ### Duplicate correctness
 
-The existing business rule remains exact Source Granularity + normalized phone + a different non-duplicate Call Lead in the earlier-only 90-day window: timestamp is `>= call time - 90 days` and `< call time`. The lower 90-day boundary is inclusive; future/same-time rows are not prior Leads. Source Company alone is never the boundary.
+The existing business rule remains exact Source Granularity + normalized phone + a different non-duplicate Call Lead in the earlier-only 90-day window: timestamp is `>= call time - 90 days` and `< call time`. The lower 90-day boundary is inclusive; future/same-time rows are not prior Leads. Source Company alone is never the boundary. Call Log sync therefore ingests a run oldest-first so a same-batch callback can see the earlier Lead. A later call that arrives first on the webhook path, then an earlier call on a later cron run, can still miss; that residual is outside this sort.
 
 For adoption, the guard excludes the adopted Lead ID and the current telephony session. It also excludes unresolved `granot_lead_created` rows in `pending` or `conflict` when no RingCentral session/call-log identity is attached; those rows alone cannot cause a false duplicate. An adopted Granot-created Lead from another physical call and eligible legacy/current Call Leads remain ordinary prior candidates. A true duplicate retains the existing `duplicate:true` and zero-CPL behavior.
 
@@ -310,6 +311,6 @@ Duplicate Call Leads still persist and **Sheet Sync** to `Duplicate Calls` tab (
 - `ringcentral-duplicate-guard.test.ts` — adopted-ID, unresolved-candidate, scope, and prior-window exclusions
 - `processed-calls-store.test.ts` and migration tests — terminal statuses and identity fences
 - `call-log-sync-state.store.test.ts` — AC-17 lease claim/expiry/renewal/takeover/fencing/release and singleton collision (Mongo assertions are replica-gated)
-- `call-log-sync.service.test.ts` — AC-17 claim-before-work, loser no-op, renewal, stop-on-loss, cursor-on-full-success only, 12-hour floor, and telemetry privacy
+- `call-log-sync.service.test.ts` — AC-17 claim-before-work, loser no-op, renewal, stop-on-loss, cursor-on-full-success only, 12-hour floor, telemetry privacy, and oldest-first same-run ingest
 - `call-log-sync-lease.replica.test.ts` — AC-17 real concurrent runs, cursor immobility on failure, expiry takeover, and rescan idempotency
 - `ringcentral-cron.routes.test.ts` — auth, disabled skip, `lease_held` skip, safe failure, and the exact `vercel.json` entry

@@ -74,6 +74,7 @@ let lastReleaseUpdate: Record<string, unknown> | null = null;
 let lastReleaseNoAction: Record<string, unknown> | null = null;
 let lastDiscrepancyAction: Record<string, unknown> | null = null;
 let lastDiscrepancyQuery: Record<string, unknown> | null = null;
+let lastReceiptSearchQuery: Record<string, unknown> | null = null;
 
 const app = express();
 app.use(express.json());
@@ -338,6 +339,28 @@ app.use(
       },
     ],
     listLiveReceiptsAfter: async () => [],
+    searchReceipts: async (query) => {
+      lastReceiptSearchQuery = query;
+      return {
+        items: [
+          {
+            receipt_id: receiptId,
+            captured_at: "2026-08-28T15:00:00.000Z",
+            route_event_class: "lead_created",
+            booking_action: null,
+            processing_state: "pending",
+            observation_id: null,
+            decision_outcome: null,
+            ref_no: null,
+            job_no: "P5562401",
+            contact: { display_name: "Ada Lovelace", phone: "•••0100", email: "a•••@example.invalid" },
+            source_company: null,
+            intake_case_id: null,
+          },
+        ],
+        next_cursor: null,
+      };
+    },
     liveStreamSleep: async () => undefined,
     liveStreamNow: () => Date.parse("2026-08-28T15:00:00.000Z"),
     liveStreamMaxMs: 0,
@@ -399,6 +422,7 @@ afterEach(() => {
   lastReleaseNoAction = null;
   lastDiscrepancyAction = null;
   lastDiscrepancyQuery = null;
+  lastReceiptSearchQuery = null;
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = SECRET;
 });
 
@@ -851,6 +875,60 @@ test("[AC-25] [AC-32] Release Owner routes are strict, idempotent, and use exact
     }),
   });
   assert.equal(forbidden.status, 400);
+});
+
+test("Owner can search webhook receipts; Admin cannot; unsigned is denied", async () => {
+  const path = "/api/v1/admin/granot-lifecycle/receipts";
+  const owner = await fetch(`${baseUrl}${path}`, {
+    method: "GET",
+    headers: signedHeaders("owner", path, "GET"),
+  });
+  assert.equal(owner.status, 200);
+  const ownerBody = (await owner.json()) as {
+    ok: boolean;
+    data: { items: Array<{ receipt_id: string; contact: { phone: string } }>; next_cursor: string | null };
+  };
+  assert.equal(ownerBody.ok, true);
+  assert.equal(ownerBody.data.items[0]?.receipt_id, receiptId);
+  assert.equal(ownerBody.data.items[0]?.contact.phone, "•••0100");
+  assert.equal(JSON.stringify(ownerBody).includes("granot_statement"), false);
+  assert.equal(JSON.stringify(ownerBody).includes("212-555-0100"), false);
+  assert.equal(JSON.stringify(ownerBody).includes("ada@example.invalid"), false);
+  assert.equal(lastReceiptSearchQuery?.limit, 25);
+
+  lastReceiptSearchQuery = null;
+  const admin = await fetch(`${baseUrl}${path}`, {
+    method: "GET",
+    headers: signedHeaders("admin", path, "GET"),
+  });
+  assert.equal(admin.status, 403);
+  const adminBody = (await admin.json()) as { code: string };
+  assert.equal(adminBody.code, GRANOT_LIFECYCLE_ERROR_CODES.OWNER_REQUIRED);
+  assert.equal(lastReceiptSearchQuery, null);
+
+  const unauth = await fetch(`${baseUrl}${path}`);
+  assert.equal(unauth.status, 403);
+  assert.equal(lastReceiptSearchQuery, null);
+});
+
+test("receipt search booking_action=release with lead_created is 400; booking_action alone implies booking_status_changed", async () => {
+  const path = "/api/v1/admin/granot-lifecycle/receipts";
+  const invalid = await fetch(`${baseUrl}${path}?booking_action=release&route_event_class=lead_created`, {
+    method: "GET",
+    headers: signedHeaders("owner", path, "GET"),
+  });
+  assert.equal(invalid.status, 400);
+  const invalidBody = (await invalid.json()) as { code: string };
+  assert.equal(invalidBody.code, GRANOT_LIFECYCLE_ERROR_CODES.VALIDATION_FAILED);
+  assert.equal(lastReceiptSearchQuery === null, true);
+
+  const implied = await fetch(`${baseUrl}${path}?booking_action=release`, {
+    method: "GET",
+    headers: signedHeaders("owner", path, "GET"),
+  });
+  assert.equal(implied.status, 200);
+  assert.equal(lastReceiptSearchQuery?.booking_action, "release");
+  assert.equal(lastReceiptSearchQuery?.route_event_class, "booking_status_changed");
 });
 
 test("Owner can open the live webhook SSE stream; Admin cannot", async () => {

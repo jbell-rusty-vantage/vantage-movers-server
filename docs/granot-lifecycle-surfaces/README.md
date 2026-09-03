@@ -72,13 +72,13 @@ Live values live in [`PROGRESS.md`](PROGRESS.md).
 
 | Issue | Title | Prerequisites | Status | Contract |
 | --- | --- | --- | --- | --- |
-| [GLS-01](issues/GLS-01.md) | Ingestion cleanup and Granot Lifecycle Health home | current nav | ready | complete |
-| [GLS-02](issues/GLS-02.md) | Owner webhook receipt search API | current receipts | ready | complete |
-| [GLS-03](issues/GLS-03.md) | Receipts tab on Granot Lifecycle | GLS-01, GLS-02 | blocked | complete |
+| [GLS-01](issues/GLS-01.md) | Ingestion cleanup and Granot Lifecycle Health home | current nav | complete | complete |
+| [GLS-02](issues/GLS-02.md) | Owner webhook receipt search API | current receipts | complete | complete |
+| [GLS-03](issues/GLS-03.md) | Receipts tab on Granot Lifecycle | GLS-01, GLS-02 | complete | complete |
 
 ## Ready queue
 
-- **GLS-01 and GLS-02 are startable.** GLS-03 waits for both.
+- **Pack complete.** GLS-01, GLS-02, and GLS-03 are `complete`.
 
 ## Standing constraints for every issue
 

@@ -14,6 +14,7 @@ import ringCentralRegistryRoutes from "./ringcentral-registry.routes";
 import granotLifecycleAdminRoutes from "./granot-lifecycle-admin.routes";
 import jobNumberTimelineAdminRoutes from "./job-number-timeline-admin.routes";
 import conversationsAdminRoutes from "./conversations-admin.routes";
+import extensionUsersAdminRoutes from "./extension-users-admin.routes";
 import { createExtensionGranotApplyRouter } from "./extension-granot-apply.routes";
 import { createTariffAdjustmentsRouter } from "./tariff-adjustments.routes";
 import {
@@ -291,6 +292,7 @@ router.use(ringCentralRegistryRoutes);
 router.use(granotLifecycleAdminRoutes);
 router.use(jobNumberTimelineAdminRoutes);
 router.use(conversationsAdminRoutes);
+router.use(extensionUsersAdminRoutes);
 
 type RequestWithLogger = Request & {
   log?: Logger;

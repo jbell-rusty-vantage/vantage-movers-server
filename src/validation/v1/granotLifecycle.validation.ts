@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeJobNo } from "../../services/bookings/bookingIdentity";
 import { PROCESSOR_VERSION_PATTERN } from "../../services/granotLifecycle/operations";
 import {
   NORMALIZATION_FIELD_BOUNDS,
@@ -6,6 +7,7 @@ import {
 } from "../../services/granotLifecycle/normalization";
 import { resolveForbiddenCredentialKey } from "../../services/granotLifecycle/receiptEvidence";
 import { assertChannelOperationId } from "../../models/granotLifecycleSchemas";
+import { normalizePhoneNumberForMatch } from "../../utils/phone";
 
 export const granotLifecycleActivationCommandSchema = z
   .object({
@@ -337,6 +339,124 @@ export type GranotLifecycleTimelineQuery = z.infer<
 
 export type GranotLifecycleRequeueCommandInput = z.infer<
   typeof granotLifecycleRequeueCommandSchema
+>;
+
+const RECEIPT_WORK_STATES = [
+  "pending",
+  "claimed",
+  "retry_scheduled",
+  "completed",
+  "dead_letter",
+] as const;
+
+const LIVE_WEBHOOK_ROUTE_EVENT_CLASSES = [
+  "lead_created",
+  "priority_updated",
+  "booking_status_changed",
+] as const;
+
+const BOOKING_ACTIONS = ["booked", "release"] as const;
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const FORM_REF_ABSENT = /^(not provided|not_provided)$/i;
+
+export const GRANOT_WEBHOOK_RECEIPT_SEARCH_QUERY_KEYS = [
+  "ref_no",
+  "job_no",
+  "name",
+  "phone",
+  "email",
+  "source_company_id",
+  "route_event_class",
+  "booking_action",
+  "captured_from",
+  "captured_to",
+  "processing_state",
+  "cursor",
+  "limit",
+] as const;
+
+export const granotLifecycleReceiptSearchQuerySchema = z
+  .object({
+    ref_no: optionalTrimmed(z.string().trim().min(1).max(NORMALIZATION_FIELD_BOUNDS.form_ref)),
+    job_no: optionalTrimmed(z.string().trim().min(1).max(NORMALIZATION_FIELD_BOUNDS.job_no)),
+    name: optionalTrimmed(z.string().trim().min(1).max(NORMALIZATION_FIELD_BOUNDS.person_name)),
+    phone: optionalTrimmed(z.string().trim().min(1).max(NORMALIZATION_FIELD_BOUNDS.phone)),
+    email: optionalTrimmed(z.string().trim().min(1).max(NORMALIZATION_FIELD_BOUNDS.email)),
+    source_company_id: optionalTrimmed(objectIdSchema),
+    route_event_class: optionalTrimmed(z.enum(LIVE_WEBHOOK_ROUTE_EVENT_CLASSES)),
+    booking_action: optionalTrimmed(z.enum(BOOKING_ACTIONS)),
+    captured_from: optionalIsoDate,
+    captured_to: optionalIsoDate,
+    processing_state: optionalTrimmed(z.enum(RECEIPT_WORK_STATES)),
+    cursor: optionalTrimmed(opaqueCursorSchema),
+    limit: z.coerce.number().int().min(1).max(100).default(25),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.booking_action && value.route_event_class && value.route_event_class !== "booking_status_changed") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["booking_action"],
+        message: "booking_action requires route_event_class booking_status_changed",
+      });
+    }
+    if (
+      value.captured_from &&
+      value.captured_to &&
+      Date.parse(value.captured_from) > Date.parse(value.captured_to)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["captured_from"],
+        message: "captured_from must be before or equal to captured_to",
+      });
+    }
+    if (value.ref_no && FORM_REF_ABSENT.test(value.ref_no.trim())) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["ref_no"],
+        message: "ref_no must be a form reference, not a sentinel",
+      });
+    }
+    if (value.job_no && !normalizeJobNo(value.job_no)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["job_no"],
+        message: "job_no must normalize to a Job Number",
+      });
+    }
+    if (value.phone && !normalizePhoneNumberForMatch(value.phone)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["phone"],
+        message: "phone must normalize to a matchable number",
+      });
+    }
+    if (value.email) {
+      const normalized = value.email.trim().toLowerCase();
+      if (!EMAIL.test(normalized)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["email"],
+          message: "email must be a valid email",
+        });
+      }
+    }
+  })
+  .transform((value) => ({
+    ...value,
+    route_event_class:
+      value.route_event_class ?? (value.booking_action ? ("booking_status_changed" as const) : undefined),
+    ref_no: value.ref_no?.trim(),
+    job_no: value.job_no ? normalizeJobNo(value.job_no) : undefined,
+    name: value.name?.trim(),
+    phone: value.phone ? normalizePhoneNumberForMatch(value.phone) : undefined,
+    email: value.email ? value.email.trim().toLowerCase() : undefined,
+  }));
+
+export type GranotLifecycleReceiptSearchQuery = z.infer<
+  typeof granotLifecycleReceiptSearchQuerySchema
 >;
 
 export const EXTENSION_APPLY_BATCH_MAX = 100;
