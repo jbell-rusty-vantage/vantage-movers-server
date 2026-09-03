@@ -62,6 +62,214 @@ export async function readBestRelocationWorkbooks(
   };
 }
 
+export type BestRelocationTabCount = {
+  workbook: "leads" | "booked";
+  tab: SourceTab;
+  populated_rows: number;
+  parsed_rows: number;
+  in_window_rows: number;
+  pre_cutoff_rows: number;
+  missing_timestamp_rows: number;
+  missing_durable_identity_rows: number;
+  best_relocation_source_rows?: number;
+  in_window_best_relocation_source_rows?: number;
+};
+
+export async function inspectBestRelocationWorkbookCounts(
+  input: {
+    leadsSheetId?: string;
+    bookedSheetId?: string;
+    sheetsClient?: SheetsClient;
+    cutoff?: Date;
+    sourceReadThrough?: Date;
+  } = {},
+): Promise<{
+  cutoff: string;
+  source_read_through: string;
+  leads: { id: string; title: string };
+  booked: { id: string; title: string };
+  tabs: BestRelocationTabCount[];
+}> {
+  const { leadsSheetId, bookedSheetId } = resolveWorkbookIds(input);
+  const cutoff = input.cutoff ?? BEST_RELOCATION_CUTOFF;
+  const sourceReadThrough = input.sourceReadThrough ?? new Date();
+  const client = input.sheetsClient ?? createSheetsClient();
+  const [forms, localForms, calls, booked, refunds] = await Promise.all([
+    readTab(client, leadsSheetId, "Forms"),
+    readTab(client, leadsSheetId, "Local Forms"),
+    readTab(client, leadsSheetId, "Calls"),
+    readTab(client, bookedSheetId, "Booked Deals"),
+    readTab(client, bookedSheetId, "Refunds"),
+  ]);
+  return {
+    cutoff: cutoff.toISOString(),
+    source_read_through: sourceReadThrough.toISOString(),
+    leads: { id: leadsSheetId, title: forms.spreadsheetTitle },
+    booked: { id: bookedSheetId, title: booked.spreadsheetTitle },
+    tabs: [
+      countFormTab(forms, "Forms", cutoff, sourceReadThrough),
+      countFormTab(localForms, "Local Forms", cutoff, sourceReadThrough),
+      countCallTab(calls, cutoff, sourceReadThrough),
+      countBookedTab(booked, cutoff, sourceReadThrough),
+      countRefundTab(refunds, cutoff, sourceReadThrough),
+    ],
+  };
+}
+
+function countFormTab(
+  tab: TabReadResult,
+  sourceTab: "Forms" | "Local Forms",
+  cutoff: Date,
+  readThrough: Date,
+): BestRelocationTabCount {
+  const parsed = parseFormRows(tab, sourceTab);
+  return {
+    workbook: "leads",
+    tab: sourceTab,
+    populated_rows: populatedRowCount(tab),
+    parsed_rows: parsed.length,
+    ...windowCounts(parsed, cutoff, readThrough),
+    missing_durable_identity_rows: parsed.filter(
+      (row) => !row.lead_id?.trim() && !row.ref_no?.trim(),
+    ).length,
+  };
+}
+
+function countCallTab(
+  tab: TabReadResult,
+  cutoff: Date,
+  readThrough: Date,
+): BestRelocationTabCount {
+  const parsed = parseCallRows(tab);
+  return {
+    workbook: "leads",
+    tab: "Calls",
+    populated_rows: populatedRowCount(tab),
+    parsed_rows: parsed.length,
+    ...windowCounts(parsed, cutoff, readThrough),
+    missing_durable_identity_rows: 0,
+  };
+}
+
+function countBookedTab(
+  tab: TabReadResult,
+  cutoff: Date,
+  readThrough: Date,
+): BestRelocationTabCount {
+  const parsed = parseBookedDealRows(tab);
+  const windowed = windowedRows(parsed, cutoff, readThrough);
+  return {
+    workbook: "booked",
+    tab: "Booked Deals",
+    populated_rows: populatedRowCount(tab),
+    parsed_rows: parsed.length,
+    ...windowCounts(parsed, cutoff, readThrough),
+    missing_durable_identity_rows: parsed.filter((row) => !row.normalized_job_no)
+      .length,
+    best_relocation_source_rows: parsed.filter((row) => row.is_best_relocation_source)
+      .length,
+    in_window_best_relocation_source_rows: windowed.filter(
+      (row) => row.is_best_relocation_source,
+    ).length,
+  };
+}
+
+function countRefundTab(
+  tab: TabReadResult,
+  cutoff: Date,
+  readThrough: Date,
+): BestRelocationTabCount {
+  const parsed = parseRefundRows(tab);
+  const windowed = windowedRows(
+    parsed,
+    cutoff,
+    readThrough,
+    (row) => row.timestamp,
+  );
+  return {
+    workbook: "booked",
+    tab: "Refunds",
+    populated_rows: populatedRowCount(tab),
+    parsed_rows: parsed.length,
+    ...windowCounts(parsed, cutoff, readThrough, (row) => row.timestamp),
+    missing_durable_identity_rows: parsed.filter((row) => !row.normalized_job_no)
+      .length,
+    best_relocation_source_rows: parsed.filter((row) => row.is_best_relocation_source)
+      .length,
+    in_window_best_relocation_source_rows: windowed.filter(
+      (row) => row.is_best_relocation_source,
+    ).length,
+  };
+}
+
+function populatedRowCount(tab: TabReadResult): number {
+  return tab.matrix.slice(1).filter((row) =>
+    row.some((value) => String(value ?? "").trim()),
+  ).length;
+}
+
+function windowedRows<T extends { timestamp_ms?: number; timestamp?: string }>(
+  rows: T[],
+  cutoff: Date,
+  readThrough: Date,
+  selectTimestamp?: (row: T) => string | number | undefined,
+): T[] {
+  return rows.filter((row) => {
+    const timestamp = rowTimestampMs(row, selectTimestamp);
+    return (
+      Number.isFinite(timestamp) &&
+      timestamp >= cutoff.getTime() &&
+      timestamp < readThrough.getTime()
+    );
+  });
+}
+
+function rowTimestampMs<T extends { timestamp_ms?: number; timestamp?: string }>(
+  row: T,
+  selectTimestamp?: (row: T) => string | number | undefined,
+): number {
+  const selected = selectTimestamp?.(row);
+  if (typeof selected === "number") return selected;
+  if (selected) return Date.parse(selected);
+  return (
+    row.timestamp_ms ??
+    (row.timestamp ? Date.parse(row.timestamp) : Number.NaN)
+  );
+}
+
+function windowCounts<T extends { timestamp_ms?: number; timestamp?: string }>(
+  rows: T[],
+  cutoff: Date,
+  readThrough: Date,
+  selectTimestamp?: (row: T) => string | number | undefined,
+): Pick<
+  BestRelocationTabCount,
+  "in_window_rows" | "pre_cutoff_rows" | "missing_timestamp_rows"
+> {
+  let inWindowRows = 0;
+  let preCutoff = 0;
+  let missingTimestamp = 0;
+  for (const row of rows) {
+    const timestamp = rowTimestampMs(row, selectTimestamp);
+    if (!Number.isFinite(timestamp)) {
+      missingTimestamp += 1;
+      continue;
+    }
+    if (timestamp < cutoff.getTime()) {
+      preCutoff += 1;
+      continue;
+    }
+    if (timestamp < readThrough.getTime()) {
+      inWindowRows += 1;
+    }
+  }
+  return {
+    in_window_rows: inWindowRows,
+    pre_cutoff_rows: preCutoff,
+    missing_timestamp_rows: missingTimestamp,
+  };
+}
+
 export function createSheetsClient(): SheetsClient {
   return createSheetsClientWithScope(
     "https://www.googleapis.com/auth/spreadsheets.readonly",

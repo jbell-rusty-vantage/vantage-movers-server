@@ -371,6 +371,32 @@ test("extension owner Bearer auth cannot mutate non-catalog registry routes", ()
   );
 });
 
+test("extension sales Bearer auth is not a registry actor", () => {
+  process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = TEST_SECRET;
+  process.env.NODE_ENV = "production";
+
+  assert.throws(
+    () =>
+      verifyRegistryActor({
+        method: "GET",
+        path: "/api/v1/admin/catalog/agents",
+        headers: {},
+        auth: {
+          kind: "user",
+          userId: "ext_sales_1",
+          email: "sales@example.test",
+          role: "sales",
+        },
+        now: Date.now(),
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof RegistryError);
+      assert.equal(error.registryCode, REGISTRY_ERROR_CODES.ACTOR_SIGNATURE_MISSING);
+      return true;
+    },
+  );
+});
+
 test("extension employee Bearer auth is not a registry actor", () => {
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = TEST_SECRET;
   process.env.NODE_ENV = "production";

@@ -497,3 +497,16 @@ pnpm migration:lead-message-lead-ref -- --report
 pnpm migration:lead-message-lead-ref -- --backfill --confirm-production=<db>
 pnpm migration:lead-message-lead-ref -- --verify
 ```
+
+## Extension User roles Sales backfill
+
+Remaps selected leftover Employee Extension Users to Sales. Report is default.
+Apply is gated and increments `token_version`. It does not create users and
+does not print passwords or hashes. Service:
+[`docs/knowledge/services/extension-users.md`](../../docs/knowledge/services/extension-users.md).
+
+```text
+pnpm migration:extension-user-roles-sales-backfill
+pnpm migration:extension-user-roles-sales-backfill -- --report
+pnpm migration:extension-user-roles-sales-backfill -- --apply --confirm-production=<db>
+```

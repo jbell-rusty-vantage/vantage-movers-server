@@ -26,9 +26,16 @@ export type VantageAuthContext =
   | { kind: "scoped_key"; scopedKeyName: string; scopedKeyFingerprint: string }
   | { kind: "user"; userId: string; email: string; role: ExtensionRole };
 
-const EMPLOYEE_BEARER_ALLOWED_ROUTES: ScopedApiRoute[] = [
-  { method: "POST", path: "/api/v1/tariff-adjustments" },
-];
+const TARIFF_ADJUSTMENT_BEARER_ROUTE: ScopedApiRoute = {
+  method: "POST",
+  path: "/api/v1/tariff-adjustments",
+};
+
+const LIMITED_EXTENSION_ROLE_ALLOWED_ROUTES: Record<string, readonly ScopedApiRoute[]> = {
+  customer_service: [TARIFF_ADJUSTMENT_BEARER_ROUTE],
+  employee: [TARIFF_ADJUSTMENT_BEARER_ROUTE],
+  sales: [],
+};
 
 export const vantageAuthLookups = {
   getExtensionUserFromAccessToken,
@@ -75,15 +82,15 @@ export async function requireVantageAuth(
       bearerToken,
     );
     if (user) {
-      if (user.role === "employee" && !isEmployeeAllowedRoute(req)) {
+      if (user.role !== "owner" && !isLimitedExtensionRoleAllowedRoute(req, user.role)) {
         await recordAuthEvent(req, {
           level: "warn",
           eventKey: "auth.user.forbidden",
-          summary: "Extension employee user denied protected API route.",
+          summary: "Extension user denied protected API route.",
           details: {
             user_id: user.id,
             role: user.role,
-            forbidden_reason: "employee_data_route",
+            forbidden_reason: "role_route_not_allowed",
           },
           notificationCandidate: false,
           reportable: false,
@@ -200,10 +207,17 @@ export async function requireVantageAuth(
 
 export const requireApiSecret = requireVantageAuth;
 
-export function isEmployeeAllowedRoute(req: Request): boolean {
+export function isLimitedExtensionRoleAllowedRoute(
+  req: Request,
+  role: string,
+): boolean {
+  const allowedRoutes = LIMITED_EXTENSION_ROLE_ALLOWED_ROUTES[role];
+  if (!allowedRoutes || allowedRoutes.length === 0) {
+    return false;
+  }
   const method = req.method.toUpperCase();
   const path = normalizePath((req.originalUrl ?? req.url).split("?")[0]);
-  return EMPLOYEE_BEARER_ALLOWED_ROUTES.some(
+  return allowedRoutes.some(
     (route) => route.method === method && route.path === path,
   );
 }

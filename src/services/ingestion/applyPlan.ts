@@ -168,6 +168,8 @@ export async function applyBestRelocationPlan(input: {
         continue;
       }
       if (action.command === "adopt_existing") {
+        const adoptedId = action.adopted_entity_refs?.[0]?.id;
+        if (adoptedId) resolved.set(action.action_key, adoptedId);
         await persistReceipt(
           input,
           persistence,

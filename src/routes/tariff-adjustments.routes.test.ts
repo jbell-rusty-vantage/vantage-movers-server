@@ -57,7 +57,7 @@ const app = express();
 app.use(express.json());
 app.use((req, _res, next) => {
   const role = req.header("x-test-role");
-  if (role === "owner" || role === "employee") {
+  if (role === "owner" || role === "employee" || role === "customer_service") {
     (req as express.Request & {
       vantageAuth?: { kind: "user"; userId: string; email: string; role: string };
     }).vantageAuth = {
@@ -140,6 +140,15 @@ test("Owner can append two Tariff Adjustment rows", async () => {
 
 test("Employee can append two Tariff Adjustment rows", async () => {
   const response = await post(VALID_BODY, { "x-test-role": "employee" });
+  const body = (await response.json()) as { ok: boolean; data: { appended: number } };
+
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.data.appended, 2);
+});
+
+test("Customer Service can append two Tariff Adjustment rows", async () => {
+  const response = await post(VALID_BODY, { "x-test-role": "customer_service" });
   const body = (await response.json()) as { ok: boolean; data: { appended: number } };
 
   assert.equal(response.status, 200);

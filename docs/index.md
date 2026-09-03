@@ -21,7 +21,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [form-lead.md](knowledge/services/form-lead.md) | Create, update, and delete Form Leads, including duplicates, CRM Posting, and Sheet Sync. |
 | [call-lead.md](knowledge/services/call-lead.md) | Create and update Call Leads (manual and RingCentral), duplicates, CPL, and sheet tabs. |
 | [lead-conversation.md](knowledge/services/lead-conversation.md) | Seeded Lead Conversation evidence: redacted transcript, sectioned summary, private audio. |
-| [extension-users.md](knowledge/services/extension-users.md) | Owner-only Admin Dashboard create and list for Extension User email, password, and role. |
+| [extension-users.md](knowledge/services/extension-users.md) | Owner-only Admin Dashboard create and list for Extension User email, password, and Owner, Sales, or Customer Service role. |
 | [enrichment.md](knowledge/services/enrichment.md) | Preview and sync Granot Follow Up rows onto Call Leads. |
 | [bookings.md](knowledge/services/bookings.md) | Booked Lead create/update/delete, from-source, referral, leadless, and booking-chain sync. |
 | [booked-call-lead-reconciliation.md](knowledge/services/booked-call-lead-reconciliation.md) | Refresh Call Leads and bookings from Granot Booked Jobs rows. |
@@ -45,7 +45,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [employee-bookings.md](knowledge/services/employee-bookings.md) | Public employee booking submit with auto-match, plus Owner booking-lead reconciliation cases. |
 | [reporting.md](knowledge/services/reporting.md) | Owner-gated report definitions, immutable revisions, confirmed runs, and Google destination delivery. |
 | [tariff.md](knowledge/services/tariff.md) | Append-only tariff adjustment rows to TARIFF_SHEET_ID. No customer or job identifiers. |
-| [ingestion.md](knowledge/services/ingestion.md) | Fenced Best Relocation sheet inspect/preview/apply through canonical domain commands. |
+| [ingestion.md](knowledge/services/ingestion.md) | Fenced Best Relocation sheet inspect/preview/adopt/apply through canonical domain commands. |
 | [capture.md](knowledge/granot-lifecycle/capture.md) | Webhook and channel-neutral receipt capture; `{ receipt_id }` wake-up. |
 | [extension-apply.md](knowledge/granot-lifecycle/extension-apply.md) | Owner extension apply items, receipt capture, and claim/process. |
 | [automation-apply.md](knowledge/granot-lifecycle/automation-apply.md) | Owner-approved HTTP automation receipt apply. |

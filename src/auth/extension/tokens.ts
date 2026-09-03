@@ -1,4 +1,5 @@
 import jwt, { type JwtPayload } from "jsonwebtoken";
+import { STORED_EXTENSION_ROLES } from "../../models/ExtensionUser";
 import { getExtensionAuthConfig } from "./config";
 import type { ExtensionRole } from "./types";
 
@@ -53,7 +54,14 @@ function isAccessTokenPayload(payload: string | JwtPayload): payload is Verified
     typeof payload !== "string" &&
     typeof payload.sub === "string" &&
     typeof payload.email === "string" &&
-    (payload.role === "owner" || payload.role === "employee")
+    isStoredExtensionRole(payload.role)
+  );
+}
+
+function isStoredExtensionRole(role: unknown): role is ExtensionRole {
+  return (
+    typeof role === "string" &&
+    (STORED_EXTENSION_ROLES as readonly string[]).includes(role)
   );
 }
 

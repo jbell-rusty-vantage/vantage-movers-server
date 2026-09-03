@@ -64,7 +64,7 @@ test("createExtensionUser rejects a duplicate email", async () => {
     {
       id: "existing",
       email: "rep@vantage.com",
-      role: "employee",
+      role: "sales",
       active: true,
       created_at: "2026-09-01T12:00:00.000Z",
       last_login_at: null,
@@ -74,7 +74,7 @@ test("createExtensionUser rejects a duplicate email", async () => {
   await assert.rejects(
     () =>
       createExtensionUser(
-        { email: "Rep@Vantage.com", password: "secret-pass", role: "employee" },
+        { email: "Rep@Vantage.com", password: "secret-pass", role: "sales" },
         { store, hashPassword: async () => "hashed" },
       ),
     (error: unknown) =>

@@ -2,7 +2,9 @@ export { applyIngestPlan, type ApplyResult } from "./apply";
 export * from "./adapter";
 export * from "./applicationPlan";
 export * from "./bootstrap";
+export * from "./canonicalLeadAdoption";
 export { formatPlanSummary, writeDryRunArtifacts } from "./dryRun";
+export { writeBestRelocationDryRunReports } from "./dryRunReports";
 export * from "./identity";
 export {
   matchLeadsToBookings,
@@ -35,6 +37,7 @@ export {
 export {
   BEST_RELOCATION_CUTOFF,
   BEST_RELOCATION_TIMEZONE,
+  inspectBestRelocationWorkbookCounts,
   isWithinIngestionWindow,
   readBestRelocationWorkbooks,
   resolveWorkbookIds,

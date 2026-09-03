@@ -1,13 +1,23 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 
-export const EXTENSION_ROLES = ["owner", "employee"] as const;
-export type ExtensionRole = (typeof EXTENSION_ROLES)[number];
+export const EXTENSION_ROLES = ["owner", "sales", "customer_service"] as const;
+export const LEGACY_EXTENSION_ROLES = ["employee"] as const;
+export const STORED_EXTENSION_ROLES = [
+  ...EXTENSION_ROLES,
+  ...LEGACY_EXTENSION_ROLES,
+] as const;
+export type ExtensionRole = (typeof STORED_EXTENSION_ROLES)[number];
 
 const ExtensionUserSchema = new Schema(
   {
     email: { type: String, required: true, trim: true, lowercase: true },
     password_hash: { type: String, required: true },
-    role: { type: String, required: true, enum: EXTENSION_ROLES, default: "owner" },
+    role: {
+      type: String,
+      required: true,
+      enum: STORED_EXTENSION_ROLES,
+      default: "owner",
+    },
     active: { type: Boolean, required: true, default: true },
     token_version: { type: Number, required: true, default: 0 },
     created_at: { type: Date, required: true, default: Date.now },

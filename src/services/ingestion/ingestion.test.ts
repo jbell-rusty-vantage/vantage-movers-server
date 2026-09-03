@@ -1348,6 +1348,140 @@ test("apply resumes from checkpoint without replaying successful actions", async
   assert.equal(receipts.length, 1);
 });
 
+test("adopt_existing Form Lead supplies the Booking lead_ref without creating a second Lead", async () => {
+  const built = buildBestRelocationApplicationPlan({
+    data: fixture(),
+    trigger: "manual",
+    cutoff: BEST_RELOCATION_CUTOFF,
+    sourceReadThrough: new Date("2026-05-03T00:00:00.000Z"),
+  });
+  const leadAction = {
+    action_key: "create_form_lead:forms:adopted",
+    command: "adopt_existing" as const,
+    classification: "adoption" as const,
+    dataset_key: "forms",
+    stable_source_row_id: managed("8"),
+    content_hash: "b".repeat(64),
+    schema_profile: "forms:v2",
+    schema_version: 2,
+    provenance: {
+      workbook_id: "leads",
+      workbook_title: "Leads",
+      tab: "Forms" as const,
+      sheet_row: 2,
+      source_row_key: managed("8"),
+      raw: {},
+    },
+    depends_on: [],
+    adopted_entity_refs: [{ model: "FormLead", id: "507f1f77bcf86cd799439011" }],
+  };
+  const bookingAction = {
+    action_key: "create_booked_from_source:booked:adopted-lead",
+    command: "create_booked_from_source" as const,
+    classification: "create" as const,
+    dataset_key: "booked_deals",
+    stable_source_row_id: managed("1"),
+    content_hash: "c".repeat(64),
+    schema_profile: "booked_deals:v2",
+    schema_version: 2,
+    provenance: {
+      workbook_id: "booked",
+      workbook_title: "Booked",
+      tab: "Booked Deals" as const,
+      sheet_row: 2,
+      source_row_key: managed("1"),
+      raw: {},
+    },
+    command_payload: { job_no: "P123" },
+    depends_on: [leadAction.action_key],
+  };
+  const plan = { ...built.plan, actions: [leadAction, bookingAction] };
+  const checksum = computeChecksum({
+    checksum_version: 1,
+    artifact_kind: "ingestion_plan",
+    schema_version: plan.schema_version,
+    payload: plan,
+  });
+  const leaseStore = new InMemoryLeaseStore();
+  const now = new Date("2026-05-03T12:00:00.000Z");
+  const lease = await leaseStore.acquire({
+    scope: "ingestion:best_relocation:apply",
+    owner: "test-worker",
+    ttl_ms: 60_000,
+    now,
+  });
+  assert.ok(lease);
+  let bookingLeadRef: unknown;
+  const actor = createBestRelocationIngestionActor("run-adopt");
+  const result = await applyBestRelocationPlan({
+    plan,
+    checksum,
+    run_id: "507f1f77bcf86cd799439000",
+    connection_id: "507f1f77bcf86cd799439001",
+    actor,
+    initiator: actor,
+    lease: lease!,
+    leaseStore,
+    now: () => now,
+    commands: {
+      createFormLead: async () => {
+        throw new Error("must not mint a second Form Lead");
+      },
+      createCallLead: async () => {
+        throw new Error("unexpected");
+      },
+      updateSourceOwnedLead: async () => {
+        throw new Error("unexpected");
+      },
+      createBookingFromLead: async (input) => {
+        bookingLeadRef = (input.data as { lead_ref?: unknown }).lead_ref;
+        return {
+          status: "applied",
+          entity_refs: [{ model: "BookedLead", id: "507f1f77bcf86cd799439012" }],
+          warnings: [],
+        };
+      },
+      createLeadlessBooking: async () => {
+        throw new Error("unexpected");
+      },
+      attachBookingToLead: async () => {
+        throw new Error("unexpected");
+      },
+      createCancellation: async () => {
+        throw new Error("unexpected");
+      },
+      updateBooking: async () => {
+        throw new Error("unexpected");
+      },
+      createReferralBooking: async () => {
+        throw new Error("unexpected");
+      },
+      createLeadFromGranot: async () => {
+        throw new Error("unexpected");
+      },
+      synchronizeLeadFromGranot: async () => {
+        throw new Error("unexpected");
+      },
+      adoptRingCentralCall: async () => {
+        throw new Error("unexpected");
+      },
+      markRingCentralConvergenceConflict: async () => {
+        throw new Error("unexpected");
+      },
+    },
+    persistence: {
+      appendSourceReceipt: async () => ({ id: "r1", inserted: true }),
+      openIngestionConflict: async () => ({ id: "c1", inserted: true }),
+      isIngestionConflictDispositioned: async () => false,
+      preallocateReceiptId: () => "507f1f77bcf86cd799439099",
+      resolvedActionIdsForRun: async () => new Map(),
+    },
+  });
+  assert.equal(bookingLeadRef, "507f1f77bcf86cd799439011");
+  assert.equal(result.applied, 1);
+  assert.equal(result.completed_units, 2);
+});
+
 test("failed lead dependency blocks dependent booking and continues independently", async () => {
   const leadAction = {
     action_key: "create_form_lead:forms:dep",

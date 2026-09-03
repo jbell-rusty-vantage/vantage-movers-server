@@ -88,7 +88,7 @@ function compatibilityActorFromAuth(
   requestId: string,
 ): DurableActor {
   if (auth?.kind === "user") {
-    if (auth.role === "employee") {
+    if (auth.role !== "owner") {
       throw new DomainCommandContextError(
         "Existing write commands require an owner or admin actor.",
       );

@@ -2,8 +2,13 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import mongoose from "mongoose";
+import { connectMongo } from "../src/db";
+import { computeChecksum } from "../src/services/durableWork";
 import {
+  applyCanonicalAdoptionPolicy,
   applyIngestPlan,
+  applySourceChangePolicy,
   AUTO_LINK_THRESHOLD,
   BEST_RELOCATION_CUTOFF,
   buildBestRelocationApplicationPlan,
@@ -11,10 +16,14 @@ import {
   buildIngestPlan,
   DEFAULT_MATCH_THRESHOLD,
   DEFAULT_PRODUCTION_BASE_URL,
+  inspectBestRelocationWorkbookCounts,
   readBestRelocationWorkbooks,
   type IngestPlan,
+  writeBestRelocationDryRunReports,
   writeDryRunArtifacts,
 } from "../src/services/bestRelocationSheetIngest";
+import { BEST_RELOCATION_CONNECTION_KEY } from "../src/services/ingestion/repository";
+import { ExternalDataConnection } from "../src/models/ExternalDataConnection";
 
 const DEFAULT_OUTPUT_DIRECTORY = path.join(
   process.cwd(),
@@ -38,17 +47,55 @@ async function main(): Promise<void> {
       "CLI live apply is retired. Approve the immutable application-owned run through /api/v1/admin/ingestion.",
     );
   }
-  console.log("Reading Best Relocation and Booked Deal workbooks...");
+  console.log("Inspecting Best Relocation and Booked Deal tabs...");
   const sourceReadThrough = new Date();
+  const inspection = await inspectBestRelocationWorkbookCounts({
+    cutoff: BEST_RELOCATION_CUTOFF,
+    sourceReadThrough,
+  });
+  console.log("Reading workbooks for the application plan...");
   const data = await readBestRelocationWorkbooks({
     cutoff: BEST_RELOCATION_CUTOFF,
     sourceReadThrough,
   });
-  const { plan, checksum } = buildBestRelocationApplicationPlan({
+  const built = buildBestRelocationApplicationPlan({
     data,
     trigger: "preview",
     cutoff: BEST_RELOCATION_CUTOFF,
     sourceReadThrough,
+  });
+  let plan = built.plan;
+  let receiptsApplied = false;
+  let canonicalAdoptionApplied = false;
+  let connectionId: string | undefined;
+  try {
+    await connectMongo();
+    const connection = await ExternalDataConnection.findOne({
+      key: BEST_RELOCATION_CONNECTION_KEY,
+    })
+      .select("_id")
+      .lean()
+      .exec();
+    connectionId = connection ? String(connection._id) : undefined;
+    if (connectionId) {
+      plan = await applySourceChangePolicy({
+        connection_id: connectionId,
+        plan,
+      });
+      receiptsApplied = true;
+    }
+    plan = await applyCanonicalAdoptionPolicy({ plan });
+    canonicalAdoptionApplied = true;
+  } finally {
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.disconnect().catch(() => undefined);
+    }
+  }
+  const checksum = computeChecksum({
+    checksum_version: 1,
+    artifact_kind: "ingestion_plan",
+    schema_version: plan.schema_version,
+    payload: plan,
   });
   await fs.mkdir(options.outputDirectory, { recursive: true, mode: 0o700 });
   const jsonPath = path.join(options.outputDirectory, "ingest-plan.json");
@@ -65,6 +112,8 @@ async function main(): Promise<void> {
         source_read_through: plan.source_read_through,
         counters: plan.counters,
         warnings: plan.warnings,
+        receipts_applied: receiptsApplied,
+        canonical_adoption_applied: canonicalAdoptionApplied,
       },
       null,
       2,
@@ -76,13 +125,40 @@ async function main(): Promise<void> {
     `${checksum}  ingest-plan.json\n`,
     { encoding: "utf8", mode: 0o600 },
   );
+  const reportInput = {
+    checksum,
+    inspection,
+    raw_counters: built.plan.counters,
+    policy_plan: plan,
+    policy: {
+      receipts_applied: receiptsApplied,
+      canonical_adoption_applied: canonicalAdoptionApplied,
+      connection_id: connectionId,
+    },
+  };
+  const reports = await writeBestRelocationDryRunReports({
+    outputDirectory: options.outputDirectory,
+    ...reportInput,
+  });
+  const visibleReportDir = path.join(
+    process.cwd(),
+    "scripts/output/best-relocation-ingest-dry-run",
+  );
+  await writeBestRelocationDryRunReports({
+    outputDirectory: visibleReportDir,
+    ...reportInput,
+  });
   console.log(JSON.stringify(plan.counters, null, 2));
   console.log(`Plan JSON: ${path.relative(process.cwd(), jsonPath)}`);
   console.log(`Summary:   ${path.relative(process.cwd(), summaryPath)}`);
-
+  console.log(`Report:    ${path.relative(process.cwd(), reports.markdownPath)}`);
+  console.log(
+    `Copy:      ${path.relative(process.cwd(), path.join(visibleReportDir, "DRY-RUN-REPORT.md"))}`,
+  );
   console.log(`Canonical plan SHA-256: ${checksum}`);
   console.log("Dry run complete. No HTTP mutations were sent.");
   console.log("Warning: ingest-plan.json contains customer PII; keep it restricted.");
+  console.log("DRY-RUN-REPORT.md is sanitized (no names, phones, or emails).");
 }
 
 function parseArgs(args: string[]): {

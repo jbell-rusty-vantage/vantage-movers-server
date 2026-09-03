@@ -33,7 +33,12 @@ const app = express();
 app.use(express.json());
 app.use((req, _res, next) => {
   const role = req.header("x-test-role");
-  if (role === "owner" || role === "employee") {
+  if (
+    role === "owner" ||
+    role === "employee" ||
+    role === "sales" ||
+    role === "customer_service"
+  ) {
     (req as express.Request & {
       vantageAuth?: { kind: "user"; userId: string; email: string; role: string };
     }).vantageAuth = {
@@ -157,6 +162,8 @@ test("[AC-35] Admin, secret, and unauthenticated apply create no receipt", async
   const denied: Record<string, string>[] = [
     {},
     { "x-test-role": "employee" },
+    { "x-test-role": "sales" },
+    { "x-test-role": "customer_service" },
     { "x-test-role": "secret" },
   ];
   for (const headers of denied) {

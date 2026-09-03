@@ -4,6 +4,7 @@ import { IngestionRun } from "../../models/IngestionRun";
 import { SheetSyncLease } from "../../models/SheetSyncLease";
 import {
   BEST_RELOCATION_CUTOFF,
+  applyCanonicalAdoptionPolicy,
   applySourceChangePolicy,
   createBestRelocationIngestionAdapter,
   planBootstrapAdoption,
@@ -230,6 +231,9 @@ export async function runBestRelocationIngestionWorker(): Promise<{
             connection_id: connectionId,
             plan: withEvidence,
           });
+    if (trigger !== "bootstrap") {
+      plan = await applyCanonicalAdoptionPolicy({ plan });
+    }
     const missingActions = await detectMissingSourceActions({
       connection_id: connectionId,
       current_actions: plan.actions,

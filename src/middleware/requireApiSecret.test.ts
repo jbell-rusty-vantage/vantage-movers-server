@@ -186,6 +186,77 @@ test("requireApiSecret allows Employee Bearer on Tariff Adjustment Submit", asyn
   assert.equal(ctx.statusCode, undefined);
 });
 
+test("requireApiSecret rejects Sales Bearer on tariff and form-lead data routes", async () => {
+  process.env.VANTAGE_API_SECRET = "global-secret";
+  delete process.env.VANTAGE_SCOPED_API_KEYS;
+  stubExtensionUser({
+    id: "sales-1",
+    email: "sales@example.invalid",
+    role: "sales",
+  });
+
+  const tariff = await invokeMiddleware({
+    authorization: "Bearer sales-token",
+    method: "POST",
+    path: "/api/v1/tariff-adjustments",
+    body: { rows: [] },
+  });
+  const formLead = await invokeMiddleware({
+    authorization: "Bearer sales-token",
+    method: "POST",
+    path: "/api/v1/form-leads",
+    body: { source_company: "main_site" },
+  });
+
+  assert.equal(tariff.nextCalled, false);
+  assert.equal(tariff.statusCode, 403);
+  assert.deepEqual(tariff.jsonBody, { ok: false, error: "Forbidden" });
+  assert.equal(formLead.nextCalled, false);
+  assert.equal(formLead.statusCode, 403);
+  assert.deepEqual(formLead.jsonBody, { ok: false, error: "Forbidden" });
+});
+
+test("requireApiSecret allows Customer Service Bearer on Tariff Adjustment Submit", async () => {
+  process.env.VANTAGE_API_SECRET = "global-secret";
+  delete process.env.VANTAGE_SCOPED_API_KEYS;
+  stubExtensionUser({
+    id: "cs-1",
+    email: "cs@example.invalid",
+    role: "customer_service",
+  });
+
+  const ctx = await invokeMiddleware({
+    authorization: "Bearer cs-token",
+    method: "POST",
+    path: "/api/v1/tariff-adjustments",
+    body: { rows: [] },
+  });
+
+  assert.equal(ctx.nextCalled, true);
+  assert.equal(ctx.statusCode, undefined);
+});
+
+test("requireApiSecret rejects Customer Service Bearer on form-lead data routes", async () => {
+  process.env.VANTAGE_API_SECRET = "global-secret";
+  delete process.env.VANTAGE_SCOPED_API_KEYS;
+  stubExtensionUser({
+    id: "cs-1",
+    email: "cs@example.invalid",
+    role: "customer_service",
+  });
+
+  const ctx = await invokeMiddleware({
+    authorization: "Bearer cs-token",
+    method: "POST",
+    path: "/api/v1/form-leads",
+    body: { source_company: "main_site" },
+  });
+
+  assert.equal(ctx.nextCalled, false);
+  assert.equal(ctx.statusCode, 403);
+  assert.deepEqual(ctx.jsonBody, { ok: false, error: "Forbidden" });
+});
+
 test("requireApiSecret allows Owner Bearer on Tariff Adjustment Submit", async () => {
   process.env.VANTAGE_API_SECRET = "global-secret";
   delete process.env.VANTAGE_SCOPED_API_KEYS;

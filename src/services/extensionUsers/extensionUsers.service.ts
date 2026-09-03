@@ -1,5 +1,6 @@
 import { hashPassword, normalizeEmail } from "../../auth/extension";
 import {
+  EXTENSION_ROLES,
   ExtensionUser,
   type ExtensionRole,
   type ExtensionUserDocument,
@@ -18,7 +19,7 @@ export type AdminExtensionUser = {
 export type CreateExtensionUserInput = {
   email: string;
   password: string;
-  role: ExtensionRole;
+  role: (typeof EXTENSION_ROLES)[number];
 };
 
 export type ExtensionUserStore = {

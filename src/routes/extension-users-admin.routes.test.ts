@@ -134,15 +134,30 @@ test("Owner can create an Extension User", async () => {
     body: JSON.stringify({
       email: "rep@vantage.com",
       password: "secret-pass",
-      role: "employee",
+      role: "sales",
     }),
   });
   assert.equal(response.status, 201);
   const body = (await response.json()) as { ok: true; data: AdminExtensionUser };
   assert.equal(body.data.email, "rep@vantage.com");
-  assert.equal(body.data.role, "employee");
+  assert.equal(body.data.role, "sales");
   assert.equal("password" in body.data, false);
   assert.equal(created.length, 1);
+});
+
+test("Owner cannot create an Extension User with legacy employee role", async () => {
+  const path = "/api/v1/admin/extension-users";
+  const response = await fetch(`${baseUrl()}${path}`, {
+    method: "POST",
+    headers: signedHeaders("owner", path, "POST"),
+    body: JSON.stringify({
+      email: "legacy@vantage.com",
+      password: "secret-pass",
+      role: "employee",
+    }),
+  });
+  assert.equal(response.status, 400);
+  assert.equal(created.length, 0);
 });
 
 test("create rejects an invalid payload and a duplicate email", async () => {
