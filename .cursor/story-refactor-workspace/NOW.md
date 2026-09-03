@@ -8,7 +8,7 @@
 - Recommendations on disk: 134 (`form-lead.md` through `ringcentral-processed-calls-store.md`)
 - Lock: none
 - Branch: `docs/story-refactor`
-- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/135
+- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/137
 - Last session: story-ringcentral-processed-calls-store-2026-09-03T1830Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
