@@ -154,17 +154,27 @@ export async function importMovingCarriersFromCsv(
     }).exec();
 
     if (!existing) {
-      const doc = await MovingCarrier.create({
-        name: row.name,
-        normalized_name: row.normalized_name,
-        dot_number: row.dot_number,
-        mc_number: row.mc_number,
-        ...(row.granot_carrier_code ? { granot_carrier_code: row.granot_carrier_code } : {}),
-        active: true,
-        created_from: "csv_import",
-      });
-      created += 1;
-      importedItems.push(toMovingCarrierItem(doc.toObject({ virtuals: true })));
+      try {
+        const doc = await MovingCarrier.create({
+          name: row.name,
+          normalized_name: row.normalized_name,
+          dot_number: row.dot_number,
+          mc_number: row.mc_number,
+          ...(row.granot_carrier_code ? { granot_carrier_code: row.granot_carrier_code } : {}),
+          active: true,
+          created_from: "csv_import",
+        });
+        created += 1;
+        importedItems.push(toMovingCarrierItem(doc.toObject({ virtuals: true })));
+      } catch (error) {
+        if (isMongoDuplicateKeyError(error)) {
+          throw duplicateCarrierError(error, {
+            dot_number: row.dot_number,
+            mc_number: row.mc_number,
+          });
+        }
+        throw error;
+      }
       continue;
     }
 
@@ -183,7 +193,14 @@ export async function importMovingCarriersFromCsv(
 
     if (Object.keys(updates).length > 0) {
       existing.set(updates);
-      await existing.save();
+      try {
+        await existing.save();
+      } catch (error) {
+        if (isMongoDuplicateKeyError(error)) {
+          throw duplicateCarrierError(error);
+        }
+        throw error;
+      }
       updated += 1;
     }
     importedItems.push(toMovingCarrierItem(existing.toObject({ virtuals: true })));
@@ -232,6 +249,7 @@ export function parseMovingCarrierCsv(csvText: string): {
   const rows: ParsedCarrierRow[] = [];
   const errors: Array<{ row: number; message: string }> = [];
   const identityKeys = new Set<string>();
+  const granotCodes = new Set<string>();
   let skipped = 0;
 
   for (let index = 1; index < records.length; index += 1) {
@@ -263,7 +281,19 @@ export function parseMovingCarrierCsv(csvText: string): {
       continue;
     }
 
+    if (granot_carrier_code && granotCodes.has(granot_carrier_code)) {
+      skipped += 1;
+      errors.push({
+        row: rowNumber,
+        message: `Duplicate Granot Carrier Code in CSV: ${granot_carrier_code}`,
+      });
+      continue;
+    }
+
     identityKeys.add(key);
+    if (granot_carrier_code) {
+      granotCodes.add(granot_carrier_code);
+    }
     rows.push({
       row: rowNumber,
       name,

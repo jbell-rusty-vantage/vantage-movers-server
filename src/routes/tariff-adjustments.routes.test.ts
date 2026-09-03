@@ -78,6 +78,7 @@ app.use(
   createTariffAdjustmentsRouter({
     appendRows: (rows) => appendImpl(rows),
     now: () => new Date(2026, 8, 1),
+    connect: async () => undefined,
   }),
 );
 

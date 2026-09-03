@@ -47,6 +47,20 @@ test("carrier CSV parser normalizes headers and rejects duplicate compound ident
   assert.equal(parsed.errors[0].message, "Duplicate carrier identity in CSV: DOT 1883785, MC 679114");
 });
 
+test("carrier CSV parser rejects duplicate Granot Carrier Codes", () => {
+  const parsed = parseMovingCarrierCsv(
+    [
+      "Carrier Name,DOT,MC,Granot Carrier Code",
+      "ALL-ROADS EXPRESS CORP,1883785,679114,ALLROAD",
+      "ALLSAFE RELOCATION LLC,3453793,1125199,ALLROAD",
+    ].join("\n"),
+  );
+
+  assert.equal(parsed.rows.length, 1);
+  assert.equal(parsed.skipped, 1);
+  assert.equal(parsed.errors[0].message, "Duplicate Granot Carrier Code in CSV: ALLROAD");
+});
+
 test("carrier list defaults to active rows and applies q across searchable fields", async () => {
   const capture: { filter?: Record<string, unknown> } = {};
   (MovingCarrier as unknown as MutableModel).find = (filter: Record<string, unknown>) => {

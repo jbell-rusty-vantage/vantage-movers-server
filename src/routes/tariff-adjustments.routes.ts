@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { ZodError } from "zod";
+import { connectMongo } from "../db";
 import { logger as rootLogger } from "../logger";
 import { AppError } from "../services/errors";
 import type { VantageAuthContext } from "../middleware/requireApiSecret";
@@ -19,6 +20,7 @@ export type TariffAdjustmentsRouteDeps = {
     rows: TariffAdjustmentRow[],
   ) => Promise<AppendTariffAdjustmentRowsResult>;
   now?: () => Date;
+  connect?: typeof connectMongo;
 };
 
 export function createTariffAdjustmentsRouter(
@@ -27,12 +29,14 @@ export function createTariffAdjustmentsRouter(
   const router = Router();
   const appendRows = deps.appendRows ?? appendTariffAdjustmentRows;
   const now = deps.now ?? (() => new Date());
+  const connect = deps.connect ?? connectMongo;
 
   router.post("/api/v1/tariff-adjustments", async (req, res) => {
     const auth = getVantageAuth(req);
     try {
       const parsed = createTariffAdjustmentsSchema.parse(req.body);
       const rows = toServiceRows(parsed, now());
+      await connect();
       const result = await appendRows(rows);
       rootLogger.info({
         msg: "tariff_adjustment.append.succeeded",

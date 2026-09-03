@@ -11,6 +11,13 @@ const MovingCarrierSchema = new Schema(
       trim: true,
       uppercase: true,
       default: undefined,
+      set(value: unknown) {
+        if (typeof value !== "string") {
+          return undefined;
+        }
+        const code = value.trim().replace(/\s+/g, "").toUpperCase();
+        return code || undefined;
+      },
     },
     active: { type: Boolean, required: true, default: true, index: true },
     created_from: { type: String, required: true, trim: true, default: "admin" },
@@ -24,7 +31,13 @@ const MovingCarrierSchema = new Schema(
 );
 
 MovingCarrierSchema.index({ dot_number: 1, mc_number: 1 }, { unique: true });
-MovingCarrierSchema.index({ granot_carrier_code: 1 }, { unique: true, sparse: true });
+MovingCarrierSchema.index(
+  { granot_carrier_code: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { granot_carrier_code: { $type: "string", $gt: "" } },
+  },
+);
 MovingCarrierSchema.index({ active: 1, name: 1 });
 
 export type MovingCarrierDocument = InferSchemaType<typeof MovingCarrierSchema> & {

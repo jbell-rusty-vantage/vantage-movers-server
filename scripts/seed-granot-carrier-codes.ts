@@ -29,6 +29,7 @@ async function main(): Promise<void> {
 
   let updated = 0;
   if (apply) {
+    await MovingCarrier.collection.dropIndex("granot_carrier_code_1").catch(() => undefined);
     await MovingCarrier.syncIndexes();
     for (const plan of plans) {
       if (plan.outcome !== "will_set" && plan.outcome !== "will_replace") {
