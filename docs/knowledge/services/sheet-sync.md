@@ -50,6 +50,7 @@ generated:
 | `api/queues/sheet-sync-consumer.ts` | `runSheetSyncDrain("queue")` — dedicated function; payload ignored |
 | `GET /api/v1/admin/sheet-sync/{health,jobs,runs,runs/:id}` | read-only admin |
 | `POST /api/v1/admin/sheet-sync/retry` | `retrySheetSyncJobs` then `runSheetSyncDrain("admin")` via `waitUntil` |
+| `POST /api/v1/admin/sheet-sync/contains` | Owner-only live Master Sheet membership check (`checkSheetContains`). Read only; does not enqueue or drain. |
 
 ## Execution modes (`SHEET_SYNC_MODE`)
 

@@ -71,6 +71,9 @@ export const SHEET_SYNC_ENTITY_MODELS = [
 ] as const;
 export type SheetSyncEntityModel = (typeof SHEET_SYNC_ENTITY_MODELS)[number];
 
+/** Owner contains-check: max Mongo ids in one live Master Sheet query. */
+export const SHEET_CONTAINS_MAX_IDS = 25;
+
 export const SHEET_SYNC_CREATED_BY = ["api", "cron", "admin", "script"] as const;
 export type SheetSyncCreatedBy = (typeof SHEET_SYNC_CREATED_BY)[number];
 

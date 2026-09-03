@@ -1,5 +1,7 @@
 import { z } from "zod";
 import {
+  SHEET_CONTAINS_MAX_IDS,
+  SHEET_SYNC_ENTITY_MODELS,
   SHEET_SYNC_JOB_STATUSES,
   SHEET_SYNC_RESOURCES,
   SHEET_SYNC_RUN_STATUSES,
@@ -48,6 +50,18 @@ export const sheetSyncRetrySchema = z
   })
   .strip();
 
+/**
+ * `POST /api/v1/admin/sheet-sync/contains` body. Owner-only live read of
+ * Master Sheets for a bounded set of Mongo ids. Does not write or retry.
+ */
+export const sheetContainsSchema = z
+  .object({
+    entity_model: z.enum(SHEET_SYNC_ENTITY_MODELS),
+    ids: z.array(objectIdSchema).min(1).max(SHEET_CONTAINS_MAX_IDS),
+  })
+  .strip();
+
 export type SheetSyncJobsQuery = z.infer<typeof sheetSyncJobsQuerySchema>;
 export type SheetSyncRunsQuery = z.infer<typeof sheetSyncRunsQuerySchema>;
 export type SheetSyncRetryInput = z.infer<typeof sheetSyncRetrySchema>;
+export type SheetContainsInput = z.infer<typeof sheetContainsSchema>;

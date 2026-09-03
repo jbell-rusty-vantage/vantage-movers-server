@@ -22,3 +22,4 @@ export {
   listSheetSyncRuns,
   retrySheetSyncJobs,
 } from "./adminSheetSync.service";
+export { checkSheetContains } from "../googleSheets/sheetContains";

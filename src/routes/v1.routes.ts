@@ -184,6 +184,7 @@ import {
   sheetSyncJobsQuerySchema,
   sheetSyncRunsQuerySchema,
   sheetSyncRetrySchema,
+  sheetContainsSchema,
   adminTestimonialsQuerySchema,
   listTestimonialsQuerySchema,
   bookedCallLeadReconciliationBatchSchema,
@@ -230,6 +231,7 @@ import {
 } from "../validation/v1.validation";
 import {
   browseAdminResource,
+  checkSheetContains,
   exportAdminResourceCsv,
   getAdminFacets,
   getAdminResourceDetail,
@@ -482,6 +484,7 @@ router.get("/api/v1/admin/sheet-sync/jobs", handleSheetSyncJobs);
 router.get("/api/v1/admin/sheet-sync/runs", handleSheetSyncRuns);
 router.get("/api/v1/admin/sheet-sync/runs/:id", handleSheetSyncRunDetail);
 router.post("/api/v1/admin/sheet-sync/retry", handleSheetSyncRetry);
+router.post("/api/v1/admin/sheet-sync/contains", handleSheetContains);
 router.get(
   "/api/v1/admin/booking-lead-reconciliations",
   handleBookingLeadReconciliationsList,
@@ -1951,6 +1954,18 @@ async function handleSheetSyncRetry(req: Request, res: Response) {
     await connectMongo();
     const parsed = sheetSyncRetrySchema.parse(req.body);
     const data = await retrySheetSyncJobs(parsed);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+async function handleSheetContains(req: Request, res: Response) {
+  try {
+    requireOwnerActor(req);
+    await connectMongo();
+    const parsed = sheetContainsSchema.parse(req.body);
+    const data = await checkSheetContains(parsed);
     return res.json({ ok: true, data });
   } catch (error) {
     return sendError(req, res, error);

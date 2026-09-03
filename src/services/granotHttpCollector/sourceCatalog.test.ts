@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   canonicalizeGranotSourceIds,
+  compatibilityOperationsForSource,
   GranotAutomationSourceValidationError,
   partitionGranotAutomationSources,
   type GranotAutomationSourceItem,
@@ -82,6 +83,67 @@ test("[AC-38] unavailable resolve issues keep INVALID_GRANOT_SOURCES and per-sou
   assert.equal(error.code, "INVALID_GRANOT_SOURCES");
   assert.equal(error.issues[0]?.source_id, formId.toLowerCase());
   assert.equal(error.issues[0]?.code, "granot_crm_source_reference_missing");
+});
+
+test("run-group resolve asks each source only for operations its Registry routes permit", () => {
+  assert.deepEqual(
+    compatibilityOperationsForSource({
+      requested_operations: ["form_leads", "call_leads"],
+      lifecycle_routes: [{ lead_model: "FormLead" }],
+    }),
+    ["form_leads"],
+  );
+  assert.deepEqual(
+    compatibilityOperationsForSource({
+      requested_operations: ["form_leads", "call_leads"],
+      lifecycle_routes: [{ lead_model: "CallLead" }],
+    }),
+    ["call_leads"],
+  );
+  const formOnlyReady = evaluateGranotAutomationCompatibility({
+    granot_crm_source_id: formId.toLowerCase(),
+    requested_operations: compatibilityOperationsForSource({
+      requested_operations: ["form_leads", "call_leads"],
+      lifecycle_routes: [{ lead_model: "FormLead" }],
+    }),
+    referenced: {
+      id: formId.toLowerCase(),
+      enabled: true,
+      lifecycle_enabled: true,
+      lifecycle_disposition: "source_scoped_lead",
+      lifecycle_routes: [{ lead_model: "FormLead" }],
+      normalized_granot_label: "form source",
+    },
+  });
+  assert.equal(formOnlyReady.available_for_apply, true);
+  assert.equal(formOnlyReady.status, "ready");
+});
+
+test("a source with no matching Registry route still fails the asked operation", () => {
+  assert.deepEqual(
+    compatibilityOperationsForSource({
+      requested_operations: ["form_leads"],
+      lifecycle_routes: [{ lead_model: "CallLead" }],
+    }),
+    ["form_leads"],
+  );
+  const compatibility = evaluateGranotAutomationCompatibility({
+    granot_crm_source_id: callId,
+    requested_operations: compatibilityOperationsForSource({
+      requested_operations: ["form_leads"],
+      lifecycle_routes: [{ lead_model: "CallLead" }],
+    }),
+    referenced: {
+      id: callId,
+      enabled: true,
+      lifecycle_enabled: true,
+      lifecycle_disposition: "source_scoped_lead",
+      lifecycle_routes: [{ lead_model: "CallLead" }],
+      normalized_granot_label: "call source",
+    },
+  });
+  assert.equal(compatibility.available_for_apply, false);
+  assert.equal(compatibility.status, "operation_not_permitted");
 });
 
 test("[AC-38] resolve never treats label or supported_operations as semantic authority", () => {

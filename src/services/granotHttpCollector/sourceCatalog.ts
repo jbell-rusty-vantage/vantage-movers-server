@@ -292,6 +292,16 @@ export function canonicalizeGranotSourceIds(sourceIds: string[]): string[] {
   return canonical;
 }
 
+export function compatibilityOperationsForSource(input: {
+  requested_operations: GranotSourceOperation[];
+  lifecycle_routes?: Array<{ lead_model: "FormLead" | "CallLead" }>;
+}): GranotSourceOperation[] {
+  const permitted = input.requested_operations.filter((operation) =>
+    automationOperationPermittedByRoutes(input.lifecycle_routes ?? [], operation),
+  );
+  return permitted.length > 0 ? permitted : input.requested_operations;
+}
+
 export function partitionGranotAutomationSources(
   sources: GranotAutomationSourceItem[],
   operations: GranotSourceOperation[],
@@ -389,7 +399,10 @@ async function projectAutomationSources(
     if (referenced) {
       routesBySourceId.set(item.id, referenced.lifecycle_routes);
     }
-    const operations = requestedOperations ?? item.supported_operations;
+    const operations = compatibilityOperationsForSource({
+      requested_operations: requestedOperations ?? item.supported_operations,
+      lifecycle_routes: referenced?.lifecycle_routes,
+    });
     return {
       ...item,
       compatibility: evaluateGranotAutomationCompatibility({

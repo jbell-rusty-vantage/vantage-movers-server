@@ -179,9 +179,11 @@ export {
   sheetSyncJobsQuerySchema,
   sheetSyncRunsQuerySchema,
   sheetSyncRetrySchema,
+  sheetContainsSchema,
   type SheetSyncJobsQuery,
   type SheetSyncRunsQuery,
   type SheetSyncRetryInput,
+  type SheetContainsInput,
 } from "./v1/sheetSync.validation";
 
 export {

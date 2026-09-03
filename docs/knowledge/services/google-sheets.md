@@ -14,6 +14,8 @@ applies_to:
   - src/services/googleSheets/deleteRows.ts
   - src/services/googleSheets/projections/formLeadRow.ts
   - src/services/googleSheets/projections/callLeadRow.ts
+  - src/services/googleSheets/expectedSheetTabs.ts
+  - src/services/googleSheets/sheetContains.ts
   - src/services/sheetSync/drainer/jobPlanner.ts
 owners: [team:main-server]
 sources:
@@ -135,6 +137,25 @@ Form delete also lists `master_bad_leads` in `syncedTargets`. Call delete uses t
 ## Bootstrap
 
 `ensureAllConfiguredSheetTabs()` — Master Leads tabs, Master Booked tabs, and every configured source lead container (skips missing env / no `leadSheetEnvVar`). Used at startup/scripts, not on every row sync.
+
+## Owner contains check
+
+`POST /api/v1/admin/sheet-sync/contains` is an Owner-only **read** of Master Sheets. It does not write, retry, or trust `sheet_sync[]`.
+
+`checkSheetContains` in `src/services/googleSheets/sheetContains.ts` loads the selected Mongo documents, uses `planExpectedSheetTabs` (`expectedSheetTabs.ts`) for the live tab map, reads each needed tab once, and returns Found / Missing / Wrong tab / Not expected plus row evidence.
+
+| Entity | Master workbook | Expected tab |
+|--------|-----------------|--------------|
+| Form Lead (not duplicate) | Master Leads | `Forms` |
+| Form Lead (duplicate) | Master Leads | `Duplicates` |
+| Form Lead + Bad Lead | Master Leads | primary tab **and** `Bad Leads` |
+| Call Lead (not duplicate) | Master Leads | `Calls` |
+| Call Lead (duplicate) | Master Leads | `Duplicate Calls` |
+| Call Lead `created_on_unmatched` | — | not written |
+| Booking | Master Booked | `Booked Deals` |
+| Cancellation | Master Booked | `Cancelled Deals` |
+
+Sibling tabs on the same workbook are scanned so a leftover row is **Wrong tab**, not a silent miss. Source Company Sheets are not queried. Cap: 25 ids.
 
 ## Invariants
 

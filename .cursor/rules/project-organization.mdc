@@ -107,7 +107,7 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
 - **Sources/CPL:** `source-companies`, `source-granularities`, `source-resolution/preview`, `source-label-mappings`, `POST granot-crm-sources`, `cpl-rates`, `cpl/snapshot|simple-schedule`, CPL periods/commands, `cpl-corrections*`
 - **Browse + CSV:** `form-leads`, `call-leads`, `booked-leads`, `cancelled-leads`, `customers`, `agents` (+ `exports/{resource}.csv`)
 - **Analytics/reports:** `analytics/*` (incl. `overview`, `receiver-agent-*`, `sms-successfully-sent-then-booked`), `exports/analytics/:report.csv`, `exports/reports/agent-sales.csv`, `reports/agent-sales`
-- **Ops tooling:** `sheet-sync/*`, `google-maps/geocoding-health`, `lead-messages/*`, `testimonials` (+ `reviewer-names`), `moving-carriers` (+ `import`)
+- **Ops tooling:** `sheet-sync/*` (Owner-only `POST .../contains` live Master Sheet check; Admin may `POST .../retry`), `google-maps/geocoding-health`, `lead-messages/*`, `testimonials` (+ `reviewer-names`), `moving-carriers` (+ `import`)
 - **Booking recon:** `booking-lead-reconciliations/*`
 - **Registry:** `operations-registry/{overview,health,changes,lead-sources,lead-source-setups}`
 - **RingCentral:** `ringcentral/inbound-routes*`

@@ -72,6 +72,8 @@ Create body: `from`/`to` as real `MM/DD/YYYY`; `source_ids` **or** `source_label
 
 `ready` requires a referenced `GranotCrmSource` that is operationally enabled, `lifecycle_enabled`, not `deferred`, unambiguous on `normalized_granot_label`, and whose `lifecycle_routes` permit the requested Form/Call operation. Missing `granot_crm_source` → `missing_reference`. New admin labels start that way until an Owner or reviewed migration attaches an exact Registry row.
 
+Run-group resolve asks each selected source only for the requested operations its Registry routes permit, then partitions by those routes. A Form-only source in a Form+Call group stays `available_for_apply` and lands in `form_leads`. A source whose routes permit none of the requested operations still fails `operation_not_permitted`.
+
 `resolveGranotAutomationSources` (the **`source_ids`** path, including run-groups) fails closed with `INVALID_GRANOT_SOURCES` and per-source issues when the row is missing, inactive, unclassified, not `available_for_apply`, or has no Registry route for the operation. Duplicate/malformed IDs fail the same code.
 
 **Known gap:** `createGranotRun` with **`source_labels` only** does not call `resolveGranotAutomationSources`. Compatibility is enforced on `source_ids` / run-groups, not on the label-only create path.
