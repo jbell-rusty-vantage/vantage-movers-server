@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-03T21:22Z
 - Service / module: `ringcentral` / `call-log-vetting.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (new PR after #139 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/140
 
 ## Stock at start
 
