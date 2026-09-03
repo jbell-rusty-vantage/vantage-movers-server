@@ -1,3 +1,4 @@
+import { normalizeGranotCarrierCode } from "../../config/domain/granotCarrierCodes";
 import { MovingCarrier } from "../../models/MovingCarrier";
 import { normalizeCsvCell, normalizeCsvHeader, parseCsvRecords } from "../../utils/csvParse";
 import type {
@@ -15,6 +16,7 @@ export type MovingCarrierItem = {
   normalized_name: string;
   dot_number: string;
   mc_number: string;
+  granot_carrier_code?: string;
   active: boolean;
   created_from: string;
   createdAt?: Date;
@@ -47,6 +49,7 @@ type ParsedCarrierRow = {
   normalized_name: string;
   dot_number: string;
   mc_number: string;
+  granot_carrier_code?: string;
 };
 
 export async function listMovingCarriers(
@@ -83,10 +86,7 @@ export async function createMovingCarrier(
     return toMovingCarrierItem(doc.toObject({ virtuals: true }));
   } catch (error) {
     if (isMongoDuplicateKeyError(error)) {
-      throw new V1ServiceError(
-        `Moving carrier already exists for DOT ${payload.dot_number} and MC ${payload.mc_number}`,
-        409,
-      );
+      throw duplicateCarrierError(error, payload);
     }
     throw error;
   }
@@ -96,36 +96,41 @@ export async function updateMovingCarrier(
   id: string,
   input: MovingCarrierUpdateInput,
 ): Promise<MovingCarrierItem> {
-  const update: Record<string, unknown> = {};
+  const set: Record<string, unknown> = {};
+  const unset: Record<string, 1> = {};
 
   if (input.name !== undefined) {
     const name = canonicalCarrierName(input.name);
-    update.name = name;
-    update.normalized_name = normalizeCarrierName(name);
+    set.name = name;
+    set.normalized_name = normalizeCarrierName(name);
   }
   if (input.dot_number !== undefined) {
-    update.dot_number = normalizeCarrierNumber(input.dot_number);
+    set.dot_number = normalizeCarrierNumber(input.dot_number);
   }
   if (input.mc_number !== undefined) {
-    update.mc_number = normalizeCarrierNumber(input.mc_number);
+    set.mc_number = normalizeCarrierNumber(input.mc_number);
   }
   if (input.active !== undefined) {
-    update.active = input.active;
+    set.active = input.active;
   }
   if (input.created_from !== undefined) {
-    update.created_from = input.created_from.trim();
+    set.created_from = input.created_from.trim();
   }
+  assignGranotCarrierCodeWrite(input.granot_carrier_code, set, unset);
 
   try {
     const doc = await MovingCarrier.findByIdAndUpdate(
       id,
-      { $set: update },
+      {
+        ...(Object.keys(set).length > 0 ? { $set: set } : {}),
+        ...(Object.keys(unset).length > 0 ? { $unset: unset } : {}),
+      },
       { returnDocument: "after", runValidators: true },
     ).orFail();
     return toMovingCarrierItem(doc.toObject({ virtuals: true }));
   } catch (error) {
     if (isMongoDuplicateKeyError(error)) {
-      throw new V1ServiceError("Moving carrier already exists for that DOT and MC", 409);
+      throw duplicateCarrierError(error);
     }
     if (error instanceof Error && error.name === "DocumentNotFoundError") {
       throw new V1ServiceError("Moving carrier not found", 404);
@@ -154,6 +159,7 @@ export async function importMovingCarriersFromCsv(
         normalized_name: row.normalized_name,
         dot_number: row.dot_number,
         mc_number: row.mc_number,
+        ...(row.granot_carrier_code ? { granot_carrier_code: row.granot_carrier_code } : {}),
         active: true,
         created_from: "csv_import",
       });
@@ -168,6 +174,12 @@ export async function importMovingCarriersFromCsv(
       updates.normalized_name = row.normalized_name;
     }
     if (existing.active !== true) updates.active = true;
+    if (
+      row.granot_carrier_code &&
+      existing.granot_carrier_code !== row.granot_carrier_code
+    ) {
+      updates.granot_carrier_code = row.granot_carrier_code;
+    }
 
     if (Object.keys(updates).length > 0) {
       existing.set(updates);
@@ -228,6 +240,9 @@ export function parseMovingCarrierCsv(csvText: string): {
     const name = canonicalCarrierName(record.carrier_name ?? record.name ?? "");
     const dot_number = normalizeCarrierNumber(record.dot ?? record.dot_number ?? "");
     const mc_number = normalizeCarrierNumber(record.mc ?? record.mc_number ?? "");
+    const granot_carrier_code = normalizeOptionalGranotCarrierCode(
+      record.granot_carrier_code ?? record.granot_code ?? record.agent ?? "",
+    );
 
     if (!name || !dot_number || !mc_number) {
       skipped += 1;
@@ -255,6 +270,7 @@ export function parseMovingCarrierCsv(csvText: string): {
       normalized_name: normalizeCarrierName(name),
       dot_number,
       mc_number,
+      ...(granot_carrier_code ? { granot_carrier_code } : {}),
     });
   }
 
@@ -284,6 +300,7 @@ function buildMovingCarrierFilter(query: ListMovingCarriersQuery): Record<string
       { normalized_name: expression },
       { dot_number: expression },
       { mc_number: expression },
+      { granot_carrier_code: expression },
     ];
   }
 
@@ -297,6 +314,7 @@ function toCarrierPayload(input: MovingCarrierCreateInput): Record<string, unkno
     normalized_name: normalizeCarrierName(name),
     dot_number: normalizeCarrierNumber(input.dot_number),
     mc_number: normalizeCarrierNumber(input.mc_number),
+    ...optionalGranotCarrierCodePayload(input.granot_carrier_code),
     active: input.active ?? true,
     created_from: input.created_from?.trim() || "admin",
   };
@@ -335,6 +353,9 @@ function toMovingCarrierItem(doc: Record<string, unknown>): MovingCarrierItem {
     normalized_name: String(doc.normalized_name ?? ""),
     dot_number: String(doc.dot_number ?? ""),
     mc_number: String(doc.mc_number ?? ""),
+    ...(typeof doc.granot_carrier_code === "string" && doc.granot_carrier_code
+      ? { granot_carrier_code: doc.granot_carrier_code }
+      : {}),
     active: doc.active === true,
     created_from: String(doc.created_from ?? ""),
     ...(doc.createdAt instanceof Date ? { createdAt: doc.createdAt } : {}),
@@ -353,4 +374,56 @@ function isMongoDuplicateKeyError(error: unknown): boolean {
     "code" in error &&
     (error as { code?: unknown }).code === 11000
   );
+}
+
+function duplicateCarrierError(
+  error: unknown,
+  payload?: Record<string, unknown>,
+): V1ServiceError {
+  if (duplicateKeyIncludes(error, "granot_carrier_code")) {
+    return new V1ServiceError("Granot Carrier Code already in use", 409);
+  }
+  if (payload?.dot_number && payload.mc_number) {
+    return new V1ServiceError(
+      `Moving carrier already exists for DOT ${payload.dot_number} and MC ${payload.mc_number}`,
+      409,
+    );
+  }
+  return new V1ServiceError("Moving carrier already exists for that DOT and MC", 409);
+}
+
+function duplicateKeyIncludes(error: unknown, field: string): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  const keyPattern = (error as { keyPattern?: Record<string, unknown> }).keyPattern;
+  const keyValue = (error as { keyValue?: Record<string, unknown> }).keyValue;
+  return Boolean(keyPattern?.[field] !== undefined || keyValue?.[field] !== undefined);
+}
+
+function assignGranotCarrierCodeWrite(
+  value: string | undefined,
+  set: Record<string, unknown>,
+  unset: Record<string, 1>,
+): void {
+  if (value === undefined) {
+    return;
+  }
+  if (value === "") {
+    unset.granot_carrier_code = 1;
+    return;
+  }
+  set.granot_carrier_code = normalizeGranotCarrierCode(value);
+}
+
+function optionalGranotCarrierCodePayload(
+  value: string | undefined,
+): { granot_carrier_code: string } | Record<string, never> {
+  const code = normalizeOptionalGranotCarrierCode(value ?? "");
+  return code ? { granot_carrier_code: code } : {};
+}
+
+function normalizeOptionalGranotCarrierCode(value: string): string | undefined {
+  const code = normalizeGranotCarrierCode(value);
+  return code || undefined;
 }

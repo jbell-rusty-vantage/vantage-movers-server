@@ -6,6 +6,16 @@ const optionalTrimmedString = z.preprocess(
   z.string().trim().optional(),
 );
 
+const optionalGranotCarrierCode = z.preprocess((value) => {
+  if (value === null) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value.trim().replace(/\s+/g, "").toUpperCase();
+  }
+  return value;
+}, z.string().regex(/^[A-Z0-9]*$/, "Granot Carrier Code must be letters and numbers").max(32).optional());
+
 export const listMovingCarriersQuerySchema = z
   .object({
     q: optionalTrimmedString,
@@ -21,6 +31,7 @@ export const movingCarrierCreateSchema = z
     name: nonEmptyString,
     dot_number: nonEmptyString,
     mc_number: nonEmptyString,
+    granot_carrier_code: optionalGranotCarrierCode,
     active: booleanInput.optional(),
     created_from: nonEmptyString.optional(),
   })

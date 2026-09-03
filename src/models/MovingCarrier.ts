@@ -6,6 +6,12 @@ const MovingCarrierSchema = new Schema(
     normalized_name: { type: String, required: true, trim: true, lowercase: true, index: true },
     dot_number: { type: String, required: true, trim: true, unique: true },
     mc_number: { type: String, required: true, trim: true, unique: true },
+    granot_carrier_code: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: undefined,
+    },
     active: { type: Boolean, required: true, default: true, index: true },
     created_from: { type: String, required: true, trim: true, default: "admin" },
   },
@@ -18,6 +24,7 @@ const MovingCarrierSchema = new Schema(
 );
 
 MovingCarrierSchema.index({ dot_number: 1, mc_number: 1 }, { unique: true });
+MovingCarrierSchema.index({ granot_carrier_code: 1 }, { unique: true, sparse: true });
 MovingCarrierSchema.index({ active: 1, name: 1 });
 
 export type MovingCarrierDocument = InferSchemaType<typeof MovingCarrierSchema> & {

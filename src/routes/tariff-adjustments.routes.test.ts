@@ -38,10 +38,11 @@ let appendImpl: (
   appended.push(rows);
   return {
     spreadsheetId: "must-not-leak",
-    tabName: "TARIFFS",
+    tabName: "Master",
     appended: 2,
-    updatedRange: "TARIFFS!A2:G3",
+    updatedRange: "Master!A2:H3",
     rows: rows.map((row) => [
+      "9/1/2026 12:00:00",
       row.effectiveDate,
       row.pickupZone,
       row.deliveryZone,
@@ -103,10 +104,11 @@ afterEach(() => {
     appended.push(rows);
     return {
       spreadsheetId: "must-not-leak",
-      tabName: "TARIFFS",
+      tabName: "Master",
       appended: 2,
-      updatedRange: "TARIFFS!A2:G3",
+      updatedRange: "Master!A2:H3",
       rows: rows.map((row) => [
+        "9/1/2026 12:00:00",
         row.effectiveDate,
         row.pickupZone,
         row.deliveryZone,
@@ -129,7 +131,7 @@ test("Owner can append two Tariff Adjustment rows", async () => {
   assert.equal(response.status, 200);
   assert.equal(body.ok, true);
   assert.equal(body.data.appended, 2);
-  assert.equal(body.data.tab_name, "TARIFFS");
+  assert.equal(body.data.tab_name, "Master");
   assert.equal(body.data.spreadsheetId, undefined);
   assert.equal(JSON.stringify(body).includes("must-not-leak"), false);
   assert.equal(appended.length, 1);

@@ -30,10 +30,10 @@ test("carrier normalization collapses whitespace and lowercases names", () => {
 test("carrier CSV parser normalizes headers and rejects duplicate compound identities", () => {
   const parsed = parseMovingCarrierCsv(
     [
-      "Carrier Name,DOT,MC",
-      " ALL-ROADS   EXPRESS CORP ,1883785,679114",
-      "Duplicate All Roads,1883785,679114",
-      ",123,456",
+      "Carrier Name,DOT,MC,Granot Carrier Code",
+      " ALL-ROADS   EXPRESS CORP ,1883785,679114, allroad ",
+      "Duplicate All Roads,1883785,679114,ALLROAD",
+      ",123,456,",
     ].join("\n"),
   );
 
@@ -42,6 +42,7 @@ test("carrier CSV parser normalizes headers and rejects duplicate compound ident
   assert.equal(parsed.rows[0].name, "ALL-ROADS EXPRESS CORP");
   assert.equal(parsed.rows[0].dot_number, "1883785");
   assert.equal(parsed.rows[0].mc_number, "679114");
+  assert.equal(parsed.rows[0].granot_carrier_code, "ALLROAD");
   assert.equal(parsed.skipped, 2);
   assert.equal(parsed.errors[0].message, "Duplicate carrier identity in CSV: DOT 1883785, MC 679114");
 });

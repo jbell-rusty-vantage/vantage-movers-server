@@ -25,8 +25,6 @@ const PROOF_ROWS: TariffAdjustmentRow[] = [
     service: "Linehaul",
     rule: "300 cf",
     newRule: "$3.75 per cf",
-    // Granot Agent text from the form. We will create a map from this
-    // acronym to a Moving Carrier name + DOT later.
     carrier: "C2C",
   },
   {
@@ -36,8 +34,6 @@ const PROOF_ROWS: TariffAdjustmentRow[] = [
     service: "Additional Services",
     rule: "Binding Estimate Fee",
     newRule: "$956.25",
-    // Granot Agent text from the form. We will create a map from this
-    // acronym to a Moving Carrier name + DOT later.
     carrier: "C2C",
   },
 ];
@@ -75,7 +71,7 @@ async function main(): Promise<void> {
 
   const readBack = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `${escapeSheetTitleForRange(result.tabName)}!A1:G`,
+    range: `${escapeSheetTitleForRange(result.tabName)}!A1:H`,
   });
   const values = readBack.data.values ?? [];
   const header = values[0] ?? [];

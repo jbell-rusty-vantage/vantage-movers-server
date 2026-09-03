@@ -4,10 +4,13 @@ import {
   TARIFF_SHEET_TAB_NAME,
   getTariffSheetId,
 } from "../../config/domain/tariff";
+import { toFloridaTimestamp } from "../../utils/easternTime";
 import { escapeSheetTitleForRange } from "../../utils/googleSheets/ranges";
+import { formatTimestamp } from "../googleSheets/projections/cells";
 import { getSheetsClient } from "../googleSheets/auth";
 import { withSheetsRetry } from "../googleSheets/retry";
 import { columnLetter, ensureTabsAndHeaders } from "../googleSheets/tabs";
+import { resolveTariffCarrierCell } from "./resolveCarrier";
 
 export const TARIFF_SERVICES = ["Linehaul", "Additional Services"] as const;
 export type TariffService = (typeof TARIFF_SERVICES)[number];
@@ -19,8 +22,6 @@ export type TariffAdjustmentRow = {
   service: TariffService;
   rule: string;
   newRule: string;
-  // Granot Forms View Agent text for now. A Granot Agent → Moving Carrier
-  // name+DOT map will be added later; do not invent a match here.
   carrier: string;
 };
 
@@ -38,6 +39,8 @@ export async function appendTariffAdjustmentRows(
     sheets?: sheets_v4.Sheets;
     spreadsheetId?: string;
     tabName?: string;
+    now?: Date;
+    resolveCarrier?: (granotCarrierCode: string) => Promise<string>;
   } = {},
 ): Promise<AppendTariffAdjustmentRowsResult> {
   if (rows.length === 0) {
@@ -47,7 +50,18 @@ export async function appendTariffAdjustmentRows(
   const spreadsheetId = options.spreadsheetId ?? getTariffSheetId();
   const tabName = options.tabName ?? TARIFF_SHEET_TAB_NAME;
   const sheets = options.sheets ?? getSheetsClient();
-  const values = rows.map(toTariffSheetRow);
+  const timestamp = formatTimestamp(toFloridaTimestamp(options.now ?? new Date()));
+  const resolveCarrier = options.resolveCarrier ?? resolveTariffCarrierCell;
+  const carrierCells = await resolveCarrierCells(
+    rows.map((row) => row.carrier),
+    resolveCarrier,
+  );
+  const values = rows.map((row, index) =>
+    toTariffSheetRow(
+      { ...row, carrier: carrierCells[index] ?? row.carrier },
+      timestamp,
+    ),
+  );
 
   await ensureTabsAndHeaders(sheets, spreadsheetId, [
     { tabName, headers: TARIFF_SHEET_HEADERS },
@@ -72,8 +86,12 @@ export async function appendTariffAdjustmentRows(
   };
 }
 
-export function toTariffSheetRow(row: TariffAdjustmentRow): string[] {
+export function toTariffSheetRow(
+  row: TariffAdjustmentRow,
+  timestamp: string,
+): string[] {
   return [
+    timestamp,
     row.effectiveDate,
     row.pickupZone,
     row.deliveryZone,
@@ -82,4 +100,16 @@ export function toTariffSheetRow(row: TariffAdjustmentRow): string[] {
     row.newRule,
     row.carrier,
   ];
+}
+
+async function resolveCarrierCells(
+  codes: string[],
+  resolveCarrier: (granotCarrierCode: string) => Promise<string>,
+): Promise<string[]> {
+  const unique = [...new Set(codes)];
+  const resolved = new Map<string, string>();
+  for (const code of unique) {
+    resolved.set(code, await resolveCarrier(code));
+  }
+  return codes.map((code) => resolved.get(code) ?? code);
 }

@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { ZodError } from "zod";
 import { logger as rootLogger } from "../logger";
+import { AppError } from "../services/errors";
 import type { VantageAuthContext } from "../middleware/requireApiSecret";
 import {
   appendTariffAdjustmentRows,
@@ -92,6 +93,12 @@ function sendError(res: Response, error: unknown) {
       ok: false,
       error: "Invalid request payload",
       issues: error.issues,
+    });
+  }
+  if (error instanceof AppError) {
+    return res.status(error.statusCode).json({
+      ok: false,
+      error: error.message,
     });
   }
   return res.status(500).json({

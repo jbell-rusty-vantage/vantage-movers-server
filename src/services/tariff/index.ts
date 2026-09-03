@@ -6,3 +6,8 @@ export {
   type TariffAdjustmentRow,
   type TariffService,
 } from "./append";
+export {
+  formatTariffCarrierCell,
+  resolveTariffCarrierCell,
+  type TariffCarrierLookup,
+} from "./resolveCarrier";
