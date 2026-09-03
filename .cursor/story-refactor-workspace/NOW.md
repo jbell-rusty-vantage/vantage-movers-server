@@ -3,14 +3,14 @@
 - Date (UTC): 2026-09-03
 - Wave: A (`src/services/`)
 - Current service: `ringcentral` (in-progress)
-- Next module: `call-log-sync-state.store.ts`
+- Next module: `call-log-vetting.ts`
 - Stock: visited 22 / in-progress 1 / unvisited 15
-- Recommendations on disk: 135 (`form-lead.md` through `ringcentral-call-log-sync.md`)
+- Recommendations on disk: 136 (`form-lead.md` through `ringcentral-call-log-sync-state-store.md`)
 - Lock: none
 - Lock holder:
 - Lock at:
 - Branch: `docs/story-refactor`
-- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/138
-- Last session: story-ringcentral-call-log-sync-2026-09-03T1921Z
+- PR: (open after #138 merged)
+- Last session: story-ringcentral-call-log-sync-state-store-2026-09-03T2013Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
