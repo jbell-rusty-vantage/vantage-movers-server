@@ -76,23 +76,30 @@ export async function decideFormLeadAdoption(input: {
       return {
         classification: "conflict",
         type: "ambiguous_lead_match",
-        refs: byIdentity.map((doc) => ({ model: "FormLead" as const, id: doc.id })),
+        refs: byIdentity.map((doc) => ({
+          model: "FormLead" as const,
+          id: doc.id,
+        })),
       };
     }
   }
 
-  const phone = normalizePhoneNumberForMatch(stringValue(input.payload.phone_number));
+  const phone = normalizePhoneNumberForMatch(
+    stringValue(input.payload.phone_number),
+  );
   const name = normalizeComparisonName(stringValue(input.payload.name));
   const timestamp = parseTimestamp(input.payload.timestamp);
   if (!phone || !name || !timestamp) {
     return { classification: "create" };
   }
 
-  const byContact = (await input.store.findFormLeadsByPhoneNameDate({
-    phone,
-    name,
-    timestamp,
-  })).filter((doc) => formPhoneNameDateMatches(doc, phone, name, timestamp));
+  const byContact = (
+    await input.store.findFormLeadsByPhoneNameDate({
+      phone,
+      name,
+      timestamp,
+    })
+  ).filter((doc) => formPhoneNameDateMatches(doc, phone, name, timestamp));
 
   if (byContact.length === 1) {
     return {
@@ -105,7 +112,10 @@ export async function decideFormLeadAdoption(input: {
     return {
       classification: "conflict",
       type: "ambiguous_lead_match",
-      refs: byContact.map((doc) => ({ model: "FormLead" as const, id: doc.id })),
+      refs: byContact.map((doc) => ({
+        model: "FormLead" as const,
+        id: doc.id,
+      })),
     };
   }
   return { classification: "create" };
@@ -190,10 +200,16 @@ export function createMongoCanonicalAdoptionStore(): CanonicalAdoptionStore {
         $or: [
           { ref_no: { $in: identities } },
           { lid: { $in: identities } },
-          { normalized_lid: { $in: identities.map((value) => value.toLowerCase()) } },
+          {
+            normalized_lid: {
+              $in: identities.map((value) => value.toLowerCase()),
+            },
+          },
         ],
       })
-        .select("_id name phone_number normalized_phone_number timestamp ref_no lid normalized_lid")
+        .select(
+          "_id name phone_number normalized_phone_number timestamp ref_no lid normalized_lid",
+        )
         .limit(5)
         .lean()
         .exec();
@@ -209,7 +225,9 @@ export function createMongoCanonicalAdoptionStore(): CanonicalAdoptionStore {
           { phone_number: input.phone },
         ],
       })
-        .select("_id name phone_number normalized_phone_number timestamp ref_no lid normalized_lid")
+        .select(
+          "_id name phone_number normalized_phone_number timestamp ref_no lid normalized_lid",
+        )
         .limit(20)
         .lean()
         .exec();
@@ -241,7 +259,7 @@ export function createMongoCanonicalAdoptionStore(): CanonicalAdoptionStore {
         .exec();
       return docs.map((doc) => ({
         id: String(doc._id),
-        normalized_job_no: doc.normalized_job_no,
+        normalized_job_no: absent(doc.normalized_job_no),
       }));
     },
     async findCancellationsByBooking(bookingId) {
@@ -264,7 +282,10 @@ function formPhoneNameDateMatches(
   name: string,
   timestamp: Date,
 ): boolean {
-  if (!doc.timestamp || doc.timestamp.getTime() < BEST_RELOCATION_CUTOFF.getTime()) {
+  if (
+    !doc.timestamp ||
+    doc.timestamp.getTime() < BEST_RELOCATION_CUTOFF.getTime()
+  ) {
     return false;
   }
   const docPhone =
@@ -288,7 +309,11 @@ async function adoptCallLead(
   if (!phone || !timestamp) return action;
   const docs = await store.findCallLeadsByPhoneTimestamp({ phone, timestamp });
   if (docs.length === 1) {
-    return asAdopted(action, [{ model: "CallLead", id: docs[0].id }], "phone_timestamp");
+    return asAdopted(
+      action,
+      [{ model: "CallLead", id: docs[0].id }],
+      "phone_timestamp",
+    );
   }
   if (docs.length > 1) {
     return asConflict(
@@ -308,7 +333,11 @@ async function adoptBooking(
   if (!job) return action;
   const docs = await store.findBookingsByJob(job);
   if (docs.length === 1) {
-    return asAdopted(action, [{ model: "BookedLead", id: docs[0].id }], "job_no");
+    return asAdopted(
+      action,
+      [{ model: "BookedLead", id: docs[0].id }],
+      "job_no",
+    );
   }
   if (docs.length > 1) {
     return asConflict(
@@ -389,11 +418,13 @@ function asConflict(
 }
 
 function uniqueIdentities(payload: Record<string, unknown>): string[] {
-  return [...new Set(
-    [payload.ref_no, payload.lid]
-      .map(stringValue)
-      .filter((value): value is string => Boolean(value)),
-  )];
+  return [
+    ...new Set(
+      [payload.ref_no, payload.lid]
+        .map(stringValue)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
 }
 
 function stringValue(value: unknown): string | undefined {
@@ -423,25 +454,29 @@ function newYorkDateKey(timestamp: Date): string {
   }).format(timestamp);
 }
 
+function absent<T>(value: T | null | undefined): T | undefined {
+  return value ?? undefined;
+}
+
 function asLeadDoc(doc: {
   _id: unknown;
-  name?: string;
-  phone_number?: string;
-  normalized_phone_number?: string;
-  timestamp?: Date;
-  ref_no?: string;
-  lid?: string;
-  normalized_lid?: string;
+  name?: string | null;
+  phone_number?: string | null;
+  normalized_phone_number?: string | null;
+  timestamp?: Date | null;
+  ref_no?: string | null;
+  lid?: string | null;
+  normalized_lid?: string | null;
 }): CanonicalLeadDoc {
   return {
     id: String(doc._id),
-    name: doc.name,
-    phone_number: doc.phone_number,
-    normalized_phone_number: doc.normalized_phone_number,
-    timestamp: doc.timestamp,
-    ref_no: doc.ref_no,
-    lid: doc.lid,
-    normalized_lid: doc.normalized_lid,
+    name: absent(doc.name),
+    phone_number: absent(doc.phone_number),
+    normalized_phone_number: absent(doc.normalized_phone_number),
+    timestamp: absent(doc.timestamp),
+    ref_no: absent(doc.ref_no),
+    lid: absent(doc.lid),
+    normalized_lid: absent(doc.normalized_lid),
   };
 }
 
