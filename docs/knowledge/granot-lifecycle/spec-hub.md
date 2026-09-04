@@ -14,6 +14,7 @@ applies_to:
   - docs/granot-lead-lifecycle/booking-reconciliation-booked-only-specification.md
   - docs/granot-lead-lifecycle/release-into-booking-intake-specification.md
   - docs/granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md
+  - docs/call-lead-contact-provenance/call-lead-contact-provenance-specification.md
 owners: [team:main-server]
 sources:
   - id: final-spec
@@ -48,6 +49,7 @@ This file is a **Reference** hub only. It points at the locked contract and owne
 - [Release into booking intake and Live Events link](../../granot-lead-lifecycle/release-into-booking-intake-specification.md) — Releas / Release upsert onto the Granot Booking Reconciliation Case; cancellation intakes retired; Live Events → booking intake. Pointer: [`release-into-booking-intake.md`](./release-into-booking-intake.md).
 - [Owner booking intake and lead attachment](../../granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md) — prerequisite for Owner Daily. §5 even Binder, BILA-01 intake any-known-contact search/display, BILA-02 optional Lead on Confirm, and BILA-03 Connect Booking to Lead from `/bookings` are current; unmasking is not implemented. Pointer: [`owner-booking-intake.md`](./owner-booking-intake.md).
 - [Booking intake Form Lead contact snapshots](../../granot-lead-lifecycle/booking-intake-form-lead-contact-snapshots-specification.md) — **superseded.** BILA-01 shipped intake search/display. Do not implement from this draft. Remaining slices live in the [booking-intake robustness pack](../../booking-intake-lead-attachment/README.md).
+- [Call Lead contact provenance](../../call-lead-contact-provenance/call-lead-contact-provenance-specification.md) — operational phone stays the ingested caller; Granot contact coalesces on `granot_contact_snapshot` by Job Number. Delivery: [`call-lead-contact-provenance/README.md`](../../call-lead-contact-provenance/README.md). Do not copy rules here.
 - [Lifecycle activation flags and source policies](../../granot-lead-lifecycle/lifecycle-activation-flags-and-source-policies.md)
 - [Owner operator runbook](../../granot-lead-lifecycle/[REDACTED]-operator-runbook.md)
 - [Sprint progress through Unit 25](../../granot-lead-lifecycle/sprint-progress-through-unit-25.md)

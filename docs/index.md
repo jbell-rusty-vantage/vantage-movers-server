@@ -78,6 +78,7 @@ Workspace ADRs are outside this repo. This standalone checkout does not contain 
 | Path | Description |
 | --- | --- |
 | [form-lead-contact-snapshots-display-and-search-specification.md](form-lead-contact-snapshots-display-and-search-specification.md) | Show Form submitted vs Granot contact on Admin Form Leads, and search both plus the ingested snapshot. |
+| [call-lead-contact-provenance/call-lead-contact-provenance-specification.md](call-lead-contact-provenance/call-lead-contact-provenance-specification.md) | Lock Call Lead operational phone to the ingested caller; store Granot contact only on `granot_contact_snapshot` coalesced by Job Number. |
 | [granot-lead-lifecycle/booking-intake-form-lead-contact-snapshots-specification.md](granot-lead-lifecycle/booking-intake-form-lead-contact-snapshots-specification.md) | Superseded. BILA-01 shipped intake any-known-contact search and Form submitted vs Granot display. Remaining slices live in the robustness pack. |
 | [admin-filter-catalog-and-analytics-specification.md](admin-filter-catalog-and-analytics-specification.md) | Implementation-ready Filter Catalog: one Source Company dropdown of Form/Call Source Granularities (`owner_label`) for lead search, duplicates, and catalog-complete Analytics. |
 | [operations-registry-source-connections-owner-ui-specification.md](operations-registry-source-connections-owner-ui-specification.md) | Final proposed connection and Owner-facing contract for Lead Sources, Feeds, sheet labels, Granot names, RingCentral inbound numbers, and texting. |
@@ -104,6 +105,7 @@ Active work packs. The ledger inside each is a navigation aid; the repository is
 | [operational-surfaces/README.md](operational-surfaces/README.md) | Five-issue pack. OSE-01–05 shipped (extract, tabbed detail, row cluster, grouped filters, browser walk). Admin presentation only; no main-server invariant changes. |
 | [granot-lifecycle-surfaces/README.md](granot-lifecycle-surfaces/README.md) | Three-issue pack. GLS-01 Ingestion IA + Health home shipped; GLS-02 receipt search API shipped; GLS-03 Receipts tab not shipped. Job Timeline stays `/job-timeline`. |
 | [lead-costs-owner-editing/README.md](lead-costs-owner-editing/README.md) | Five-issue pack. LCE-01 server `set_range`; LCE-02 By date form; LCE-03 copy/URL/handoff; LCE-04 structured rebuild; LCE-05 browser proof. Simple construction and CPL Correction workers stay. |
+| [call-lead-contact-provenance/README.md](call-lead-contact-provenance/README.md) | Four required issues (CLCP-01–04). Lock Call operational phone; Granot snapshot coalesce by Job; Job-wins identity. CLCP-05 Owner desk search deferred. |
 
 ## Archives
 
