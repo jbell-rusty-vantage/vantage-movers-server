@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-04T23:21Z
 - Service / module: `admin` / `adminExport.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (open after #166 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/167
 
 ## Stock at start
 
