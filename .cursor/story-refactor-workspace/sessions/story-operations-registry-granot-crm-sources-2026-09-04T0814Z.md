@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-04T08:14Z
 - Service / module: `operationsRegistry` / `granotCrmSources.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/150
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/151
 
 ## Stock at start
 
