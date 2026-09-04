@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-04T20:21Z
 - Service / module: `operationsRegistry` / `leadSourceSetup.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / pending (new PR after #163 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/164
 
 ## Stock at start
 
