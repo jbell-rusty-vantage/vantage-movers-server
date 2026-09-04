@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-04T14:18Z
 - Service / module: `operationsRegistry` / `runtimeTelemetry.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (open after #156 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/157
 
 ## Stock at start
 

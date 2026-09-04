@@ -10,7 +10,7 @@
 - Lock holder:
 - Lock at:
 - Branch: `docs/story-refactor`
-- PR: (open after #156 merged)
+- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/157
 - Last session: story-operations-registry-runtime-telemetry-2026-09-04T1418Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
