@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-04T19:26Z
 - Service / module: `operationsRegistry` / `ownerGranotNames.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (opening after #162 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/163
 
 ## Stock at start
 
