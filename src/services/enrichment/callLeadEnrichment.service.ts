@@ -29,6 +29,10 @@ import {
   sourceDisplayLabel,
 } from "../leads/callLeadSourceMatch";
 import { resolveLeadCplSnapshot } from "../leads/leadCplResolution";
+import {
+  contactSemanticallyEqual,
+  type LeadContactSnapshot,
+} from "../granotLifecycle/leadDesiredState";
 
 export type CallLeadEnrichmentStatus =
   | "updateable"
@@ -375,7 +379,17 @@ async function resolveEnrichmentRow(
   const update = buildUpdate(lead, parsed, base.warnings, {
     skipJobNo: hasJobConflict,
   });
+  const snapshotCoalesce = granotCardWouldCoalesce(lead, parsed);
+  if (snapshotCoalesce) {
+    base.warnings.push(
+      "CSV contact stayed observation-only until lifecycle apply.",
+    );
+  }
   const changes = Object.keys(update);
+  if (snapshotCoalesce) {
+    changes.push("granot_contact_snapshot");
+  }
+  const persistableUpdate = Object.keys(update).length > 0 ? update : undefined;
 
   if (lead.booked) {
     if (changes.length === 0) {
@@ -390,7 +404,7 @@ async function resolveEnrichmentRow(
     }
     return {
       lead,
-      update,
+      update: persistableUpdate,
       result: {
         ...base,
         status: "updateable",
@@ -413,7 +427,7 @@ async function resolveEnrichmentRow(
 
   return {
     lead,
-    update,
+    update: persistableUpdate,
     result: {
       ...base,
       status: "updateable",
@@ -473,20 +487,32 @@ async function findBestCallLeadMatch(
   const normalizedPhone = parsed.normalized_phone_number;
   const jobNo = parsed.job_no;
 
+  if (jobNo) {
+    const byJobNo = await CallLead.find({ job_no: jobNo })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .exec();
+    if (byJobNo.length > 0) {
+      const jobMatch = selectSourceCompatibleCallLead(byJobNo, parsed, "job_no", jobNo);
+      if (jobMatch.conflict || jobMatch.lead) {
+        return { ...jobMatch, matchMethod: "job_no_only" };
+      }
+    }
+  }
+
   if (normalizedPhone) {
     const candidates = (
       await CallLead.find({
         $or: [
           { normalized_phone_number: normalizedPhone },
           { phone_number: buildPhoneRegex(normalizedPhone) },
+          { "ingested_contact_snapshot.normalized_phone_number": normalizedPhone },
         ],
       })
         .sort({ createdAt: -1 })
         .limit(25)
         .exec()
-    ).filter(
-      (lead) => normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone,
-    );
+    ).filter((lead) => leadOperationalOrIngestedPhoneMatches(lead, normalizedPhone));
 
     if (candidates.length > 0) {
       const phoneMatch = selectSourceCompatibleCallLead(
@@ -506,20 +532,25 @@ async function findBestCallLeadMatch(
     }
   }
 
-  if (jobNo) {
-    const byJobNo = await CallLead.find({ job_no: jobNo })
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .exec();
-    if (byJobNo.length > 0) {
-      const jobMatch = selectSourceCompatibleCallLead(byJobNo, parsed, "job_no", jobNo);
-      if (jobMatch.conflict || jobMatch.lead) {
-        return { ...jobMatch, matchMethod: "job_no_only" };
-      }
-    }
-  }
-
   return { warnings: [], matchMethod: "none" };
+}
+
+function leadOperationalOrIngestedPhoneMatches(
+  lead: HydratedDocument<CallLeadDocument>,
+  normalizedPhone: string,
+): boolean {
+  if (normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone) {
+    return true;
+  }
+  if (lead.normalized_phone_number === normalizedPhone) {
+    return true;
+  }
+  const ingested = lead.ingested_contact_snapshot;
+  if (!ingested) return false;
+  return (
+    ingested.normalized_phone_number === normalizedPhone ||
+    normalizePhoneNumberForMatch(ingested.phone_number) === normalizedPhone
+  );
 }
 
 function selectSourceCompatibleCallLead(
@@ -589,8 +620,6 @@ function buildUpdate(
   } else {
     assignIfChanged(update, lead, "source_company", parsed.source_company);
   }
-  assignIfChanged(update, lead, "name", parsed.name);
-  assignIfChanged(update, lead, "email", parsed.email);
   assignIfChanged(update, lead, "pickup_city", parsed.pickup_city);
   assignIfChanged(update, lead, "pickup_zip", parsed.pickup_zip);
   assignIfChanged(update, lead, "delivery_city", parsed.delivery_city);
@@ -606,6 +635,44 @@ function buildUpdate(
   }
 
   return update;
+}
+
+function incomingGranotContactFromParsed(
+  parsed: ParsedCallLeadEnrichmentRow,
+): LeadContactSnapshot | undefined {
+  if (!parsed.name && !parsed.phone && !parsed.normalized_phone_number && !parsed.email) {
+    return undefined;
+  }
+  return {
+    name: parsed.name,
+    phone_number: parsed.phone,
+    normalized_phone_number: parsed.normalized_phone_number,
+    email: parsed.email,
+  };
+}
+
+function storedGranotCard(
+  lead: HydratedDocument<CallLeadDocument>,
+): LeadContactSnapshot | undefined {
+  const stored = lead.granot_contact_snapshot;
+  if (!stored) return undefined;
+  return {
+    first_name: stored.first_name ?? undefined,
+    last_name: stored.last_name ?? undefined,
+    name: stored.name ?? undefined,
+    phone_number: stored.phone_number ?? undefined,
+    normalized_phone_number: stored.normalized_phone_number ?? undefined,
+    email: stored.email ?? undefined,
+  };
+}
+
+function granotCardWouldCoalesce(
+  lead: HydratedDocument<CallLeadDocument>,
+  parsed: ParsedCallLeadEnrichmentRow,
+): boolean {
+  const incoming = incomingGranotContactFromParsed(parsed);
+  if (!incoming) return false;
+  return !contactSemanticallyEqual(storedGranotCard(lead), incoming);
 }
 
 function assignSourceAssignmentIfChanged(

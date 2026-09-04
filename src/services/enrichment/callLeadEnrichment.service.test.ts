@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, test } from "node:test";
 import mongoose from "mongoose";
 import { CallLead } from "../../models/CallLead";
@@ -23,7 +25,7 @@ afterEach(() => {
   (CallLead as unknown as StubbedModel).find = originalCallLeadFind;
 });
 
-test("call lead enrichment prefers source-compatible phone matches", async () => {
+test("call lead enrichment prefers source-compatible Job Number matches when the row has a Job Number", async () => {
   const tbmLeadId = new mongoose.Types.ObjectId();
   const mainSiteLeadId = new mongoose.Types.ObjectId();
   stubCallLeadFind(() => [
@@ -63,7 +65,7 @@ test("call lead enrichment prefers source-compatible phone matches", async () =>
 
   assert.equal(result.status, "updateable");
   assert.equal(result.call_lead_id, tbmLeadId.toString());
-  assert.equal(result.match_method, "phone_only");
+  assert.equal(result.match_method, "job_no_only");
   assert.ok(result.changes.includes("job_no"));
   assert.ok(!result.changes.includes("source_company"));
   assert.match(
@@ -161,6 +163,202 @@ test("call lead enrichment can claim an unassigned phone-matched call lead sourc
     /Claiming unassigned call lead source as Main Site Inbounds/,
   );
 });
+
+test("preview does not write live phone, name, or email", async () => {
+  const leadId = new mongoose.Types.ObjectId();
+  stubCallLeadFind((query) => {
+    if (isJobQuery(query)) {
+      return [
+        CallLead.hydrate({
+          _id: leadId,
+          source_company: "main_site",
+          source_granularity_key: "main_site_call",
+          crm_source_label_snapshot: "Main Site Inbounds",
+          job_no: "P123",
+          name: "Called Name",
+          email: "called@example.invalid",
+          phone_number: "5551112222",
+          normalized_phone_number: "5551112222",
+          timestamp: new Date("2026-05-20T12:00:00Z"),
+        }),
+      ];
+    }
+    return [];
+  });
+
+  const [result] = await previewCallLeadEnrichment({
+    rows: [
+      {
+        row_id: "follow-live-contact",
+        job_no: "P123",
+        source: "Main Site Inbounds",
+        phone: "555-000-9999",
+        customer: "Granot Name",
+        email: "granot@example.invalid",
+      },
+    ],
+  });
+
+  assert.equal(result.status, "updateable");
+  assert.equal(result.call_lead_id, leadId.toString());
+  assert.equal(result.match_method, "job_no_only");
+  assert.ok(!result.changes.includes("phone_number"));
+  assert.ok(!result.changes.includes("normalized_phone_number"));
+  assert.ok(!result.changes.includes("name"));
+  assert.ok(!result.changes.includes("email"));
+});
+
+test("conflicting stored Job Number is not overwritten", async () => {
+  const leadId = new mongoose.Types.ObjectId();
+  stubCallLeadFind((query) => {
+    if (isJobQuery(query)) return [];
+    return [
+      CallLead.hydrate({
+        _id: leadId,
+        source_company: "main_site",
+        source_granularity_key: "main_site_call",
+        crm_source_label_snapshot: "Main Site Inbounds",
+        job_no: "JOB-OLD",
+        phone_number: "5551112222",
+        normalized_phone_number: "5551112222",
+        timestamp: new Date("2026-05-20T12:00:00Z"),
+      }),
+    ];
+  });
+
+  const [result] = await previewCallLeadEnrichment({
+    rows: [
+      {
+        row_id: "follow-job-conflict",
+        job_no: "JOB-NEW",
+        source: "Main Site Inbounds",
+        phone: "555-111-2222",
+      },
+    ],
+  });
+
+  assert.equal(result.call_lead_id, leadId.toString());
+  assert.ok(!result.changes.includes("job_no"));
+  assert.match(result.warnings.join(" "), /already has job_no JOB-OLD/i);
+});
+
+test("row Job on Lead A plus Granot phone equal to Lead B ANI selects A", async () => {
+  const leadAId = new mongoose.Types.ObjectId();
+  const leadBId = new mongoose.Types.ObjectId();
+  const leadA = CallLead.hydrate({
+    _id: leadAId,
+    source_company: "main_site",
+    source_granularity_key: "main_site_call",
+    crm_source_label_snapshot: "Main Site Inbounds",
+    job_no: "JOB-A",
+    phone_number: "5550001111",
+    normalized_phone_number: "5550001111",
+    timestamp: new Date("2026-05-21T12:00:00Z"),
+  });
+  const leadB = CallLead.hydrate({
+    _id: leadBId,
+    source_company: "main_site",
+    source_granularity_key: "main_site_call",
+    crm_source_label_snapshot: "Main Site Inbounds",
+    phone_number: "5550002222",
+    normalized_phone_number: "5550002222",
+    timestamp: new Date("2026-05-20T12:00:00Z"),
+  });
+
+  stubCallLeadFind((query) => {
+    if (isJobQuery(query)) return [leadA];
+    if (isPhoneQuery(query)) return [leadB];
+    return [];
+  });
+
+  const [result] = await previewCallLeadEnrichment({
+    rows: [
+      {
+        row_id: "follow-steal",
+        job_no: "JOB-A",
+        source: "Main Site Inbounds",
+        phone: "555-000-2222",
+        customer: "Granot Card",
+      },
+    ],
+  });
+
+  assert.equal(result.status, "updateable");
+  assert.equal(result.call_lead_id, leadAId.toString());
+  assert.notEqual(result.call_lead_id, leadBId.toString());
+  assert.equal(result.match_method, "job_no_only");
+});
+
+test("contact-only Granot card diff is updateable", async () => {
+  const leadId = new mongoose.Types.ObjectId();
+  stubCallLeadFind((query) => {
+    if (isJobQuery(query)) {
+      return [
+        CallLead.hydrate({
+          _id: leadId,
+          source_company: "main_site",
+          source_granularity_key: "main_site_call",
+          crm_source_label_snapshot: "Main Site Inbounds",
+          job_no: "P555",
+          name: "Called Name",
+          phone_number: "5551112222",
+          normalized_phone_number: "5551112222",
+          granot_contact_snapshot: { name: "Old Granot" },
+          timestamp: new Date("2026-05-20T12:00:00Z"),
+        }),
+      ];
+    }
+    return [];
+  });
+
+  const [result] = await previewCallLeadEnrichment({
+    rows: [
+      {
+        row_id: "follow-snapshot-only",
+        job_no: "P555",
+        source: "Main Site Inbounds",
+        phone: "555-111-2222",
+        customer: "New Granot",
+      },
+    ],
+  });
+
+  assert.equal(result.status, "updateable");
+  assert.equal(result.call_lead_id, leadId.toString());
+  assert.ok(result.changes.includes("granot_contact_snapshot"));
+  assert.ok(!result.changes.includes("name"));
+  assert.ok(!result.changes.includes("email"));
+  assert.ok(!result.changes.includes("phone_number"));
+  assert.match(
+    result.warnings.join(" "),
+    /CSV contact stayed observation-only until lifecycle apply/,
+  );
+});
+
+test("preview phone rung does not query granot_contact_snapshot", () => {
+  const source = readFileSync(
+    path.join(__dirname, "callLeadEnrichment.service.ts"),
+    "utf8",
+  );
+  const matchFn = source.match(
+    /async function findBestCallLeadMatch\([\s\S]*?\nfunction leadOperationalOrIngestedPhoneMatches/,
+  );
+  assert.ok(matchFn);
+  const phoneOr = matchFn[0].match(/\$or:\s*\[[\s\S]*?\]/);
+  assert.ok(phoneOr);
+  assert.equal(phoneOr[0].includes("granot_contact_snapshot"), false);
+  assert.match(phoneOr[0], /normalized_phone_number/);
+  assert.match(phoneOr[0], /ingested_contact_snapshot\.normalized_phone_number/);
+  assert.ok(matchFn[0].indexOf("job_no:") < matchFn[0].indexOf("$or:"));
+});
+
+function isJobQuery(query: Record<string, unknown>): boolean {
+  return "job_no" in query && !Array.isArray(query.$or);
+}
+
+function isPhoneQuery(query: Record<string, unknown>): boolean {
+  return Array.isArray(query.$or);
+}
 
 function stubCallLeadFind(
   resolver: (query: Record<string, unknown>) => unknown[],

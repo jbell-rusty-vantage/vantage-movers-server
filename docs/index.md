@@ -21,7 +21,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [form-lead.md](knowledge/services/form-lead.md) | Create, update, and delete Form Leads, including duplicates, CRM Posting, and Sheet Sync. |
 | [call-lead.md](knowledge/services/call-lead.md) | Create and update Call Leads (manual and RingCentral), duplicates, CPL, and sheet tabs. |
 | [lead-conversation.md](knowledge/services/lead-conversation.md) | Seeded Lead Conversation evidence: redacted transcript, sectioned summary, private audio. |
-| [extension-users.md](knowledge/services/extension-users.md) | Owner-only Admin Dashboard create and list for Extension User email, password, and Owner, Sales, or Customer Service role. |
+| [extension-users.md](knowledge/services/extension-users.md) | Owner-only Admin Dashboard create, list, edit, and delete for Extension User email, password, and roles[]. Leftover Employee dual-reads as Sales plus Customer Service; credential or roles change increments access-token token_version. |
 | [enrichment.md](knowledge/services/enrichment.md) | Preview and sync Granot Follow Up rows onto Call Leads. |
 | [bookings.md](knowledge/services/bookings.md) | Booked Lead create/update/delete, from-source, referral, leadless, and booking-chain sync. |
 | [booked-call-lead-reconciliation.md](knowledge/services/booked-call-lead-reconciliation.md) | Refresh Call Leads and bookings from Granot Booked Jobs rows. |
@@ -78,7 +78,7 @@ Workspace ADRs are outside this repo. This standalone checkout does not contain 
 | Path | Description |
 | --- | --- |
 | [form-lead-contact-snapshots-display-and-search-specification.md](form-lead-contact-snapshots-display-and-search-specification.md) | Show Form submitted vs Granot contact on Admin Form Leads, and search both plus the ingested snapshot. |
-| [call-lead-contact-provenance/call-lead-contact-provenance-specification.md](call-lead-contact-provenance/call-lead-contact-provenance-specification.md) | Lock Call Lead operational phone to the ingested caller; store Granot contact only on `granot_contact_snapshot` coalesced by Job Number. |
+| [call-lead-contact-provenance/call-lead-contact-provenance-specification.md](call-lead-contact-provenance/call-lead-contact-provenance-specification.md) | Lock Call Lead operational phone to the ingested caller; store Granot contact only on `granot_contact_snapshot` coalesced by Job Number. HTTP Automation and extension apply share that processor. Owner desk search finds any known contact. |
 | [granot-lead-lifecycle/booking-intake-form-lead-contact-snapshots-specification.md](granot-lead-lifecycle/booking-intake-form-lead-contact-snapshots-specification.md) | Superseded. BILA-01 shipped intake any-known-contact search and Form submitted vs Granot display. Remaining slices live in the robustness pack. |
 | [admin-filter-catalog-and-analytics-specification.md](admin-filter-catalog-and-analytics-specification.md) | Implementation-ready Filter Catalog: one Source Company dropdown of Form/Call Source Granularities (`owner_label`) for lead search, duplicates, and catalog-complete Analytics. |
 | [operations-registry-source-connections-owner-ui-specification.md](operations-registry-source-connections-owner-ui-specification.md) | Final proposed connection and Owner-facing contract for Lead Sources, Feeds, sheet labels, Granot names, RingCentral inbound numbers, and texting. |
@@ -105,7 +105,8 @@ Active work packs. The ledger inside each is a navigation aid; the repository is
 | [operational-surfaces/README.md](operational-surfaces/README.md) | Five-issue pack. OSE-01–05 shipped (extract, tabbed detail, row cluster, grouped filters, browser walk). Admin presentation only; no main-server invariant changes. |
 | [granot-lifecycle-surfaces/README.md](granot-lifecycle-surfaces/README.md) | Three-issue pack. GLS-01 Ingestion IA + Health home shipped; GLS-02 receipt search API shipped; GLS-03 Receipts tab not shipped. Job Timeline stays `/job-timeline`. |
 | [lead-costs-owner-editing/README.md](lead-costs-owner-editing/README.md) | Five-issue pack. LCE-01 server `set_range`; LCE-02 By date form; LCE-03 copy/URL/handoff; LCE-04 structured rebuild; LCE-05 browser proof. Simple construction and CPL Correction workers stay. |
-| [call-lead-contact-provenance/README.md](call-lead-contact-provenance/README.md) | Four required issues (CLCP-01–04). Lock Call operational phone; Granot snapshot coalesce by Job; Job-wins identity. CLCP-05 Owner desk search deferred. |
+| [call-lead-contact-provenance/README.md](call-lead-contact-provenance/README.md) | Five required issues (CLCP-01–05). Lock Call operational phone; Granot snapshot coalesce by Job; Job-wins identity; shared HTTP/extension preview; Owner desk any-known-contact. |
+| [extension-user-management](../../granot_sync_extensions_and_services/docs/extension-user-management/README.md) | Four-issue pack. EUM-01–04 shipped. Extension User `roles[]`; leftover Employee → Sales + Customer Service; Owner edit/delete; session invalidation. |
 
 ## Archives
 

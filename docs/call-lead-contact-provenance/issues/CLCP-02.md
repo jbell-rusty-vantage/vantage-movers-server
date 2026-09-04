@@ -56,9 +56,10 @@ Observed 2026-09-04; **reverify at implementation**.
 - Link `lead_ref` model/scope disagreement still hard-stops.
 - First bind: no Job on Lead, phone equals operational/ingested → still
   `source_scoped_contact`.
-- Booking intake uses this same ladder. After this issue, Booked-after-
-  enrich suggests by Job even when Granot phone ≠ ANI. Booked-first
-  still uses operational phone. Do not change `callLeadCandidateSearchOr`.
+- Booking intake **automatic** suggestion uses this same ladder. After
+  this issue, Booked-after-enrich suggests by Job even when Granot phone
+  ≠ ANI. Booked-first still uses operational phone. Do not change
+  `callLeadCandidateSearchOr` in **this** issue (CLCP-05 owns desk `q`).
 
 ## 6. Deliverables and exact contract
 
@@ -93,14 +94,14 @@ Job bind.
 
 ## 10. Acceptance criteria
 
-- [ ] Unique Job + Observation phone = other Lead’s ANI → linked on Job
+- [x] Unique Job + Observation phone = other Lead’s ANI → linked on Job
       Lead, not `job_number_conflict`
-- [ ] No Job + matching operational/ingested phone → still phone bind
-- [ ] Two eligible Call Jobs still conflict
-- [ ] Call phone query still omits `granot_contact_snapshot`
-- [ ] Form ladder tests unchanged
-- [ ] `callLeadCandidateSearchOr` / Connect Call `q` unchanged
-- [ ] Focused tests in §8 pass
+- [x] No Job + matching operational/ingested phone → still phone bind
+- [x] Two eligible Call Jobs still conflict
+- [x] Call phone query still omits `granot_contact_snapshot`
+- [x] Form ladder tests unchanged
+- [x] `callLeadCandidateSearchOr` / Connect Call `q` unchanged
+- [x] Focused tests in §8 pass
 
 ## 11. Commands
 

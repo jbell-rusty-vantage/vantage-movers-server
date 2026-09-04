@@ -39,13 +39,21 @@ app.use((req, _res, next) => {
     role === "sales" ||
     role === "customer_service"
   ) {
+    const roles =
+      role === "employee"
+        ? (["sales", "customer_service"] as const)
+        : role === "owner"
+          ? (["owner"] as const)
+          : role === "sales"
+            ? (["sales"] as const)
+            : (["customer_service"] as const);
     (req as express.Request & {
-      vantageAuth?: { kind: "user"; userId: string; email: string; role: string };
+      vantageAuth?: { kind: "user"; userId: string; email: string; roles: readonly string[] };
     }).vantageAuth = {
       kind: "user",
       userId: "user-1",
       email: "owner@example.invalid",
-      role,
+      roles: [...roles],
     };
   } else if (role === "secret") {
     (req as express.Request & { vantageAuth?: { kind: "secret" } }).vantageAuth = {

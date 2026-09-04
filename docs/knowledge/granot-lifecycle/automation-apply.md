@@ -20,8 +20,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T06:52:00Z
+  by: process:docs-keeper
+  at: 2026-09-04T20:00:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)
 **Primary code:** `src/services/granotLifecycle/automationApply.ts`, `src/services/granotHttpCollector/lifecycleStatement.ts`, `src/services/granotHttpCollector/runWorkflow.ts`
@@ -29,7 +29,7 @@ generated:
 
 # Granot HTTP automation apply (`granotLifecycle/`)
 
-**Role:** Convert each selected Owner-approved, checksum-locked HTTP-automation action into one `granot_http_automation` receipt under `${run_id}:${action_id}`, then enter Unit 08 `claimAndProcessOrPoll`. The locked plan statement is evidence. Apply does **not** call `updateFormLead`, `syncCallLeadEnrichment`, or `syncBookedCallLeadReconciliation`.
+**Role:** Convert each selected Owner-approved, checksum-locked HTTP-automation action into one `granot_http_automation` receipt under `${run_id}:${action_id}`, then enter Unit 08 `claimAndProcessOrPoll`. The locked plan statement is evidence. Apply does **not** call `updateFormLead`, `syncCallLeadEnrichment`, or `syncBookedCallLeadReconciliation`. Call contact follows the same snapshot-only rule as webhook synchronize; this path does not bypass enrichment into live phone/name/email.
 
 Mongo is the **System of Record**. Preview still uses existing matching services and creates no receipt.
 

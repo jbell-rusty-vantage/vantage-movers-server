@@ -47,6 +47,7 @@ const observationId = new mongoose.Types.ObjectId();
 const decisionId = new mongoose.Types.ObjectId();
 const caseId = new mongoose.Types.ObjectId();
 const formLeadId = new mongoose.Types.ObjectId();
+const callLeadId = new mongoose.Types.ObjectId();
 
 afterEach(() => {
   if (FormLead && originalFormFind) FormLead.find = originalFormFind;
@@ -88,10 +89,12 @@ test("Form q still hits job_no and ref_no", () => {
   assert.match(preview, /SYNTHJOB99/);
 });
 
-test("Call q still omits granot_contact_snapshot", () => {
+test("Call q includes ingested and Granot snapshot contact paths", () => {
   const preview = inspect(callLeadCandidateSearchOr(/Granot-only Name/i), { depth: null });
-  assert.doesNotMatch(preview, /granot_contact_snapshot/);
-  assert.doesNotMatch(preview, /ingested_contact_snapshot/);
+  assert.match(preview, /granot_contact_snapshot\.name/);
+  assert.match(preview, /ingested_contact_snapshot\.name/);
+  assert.match(preview, /granot_contact_snapshot\.phone_number/);
+  assert.match(preview, /ingested_contact_snapshot\.normalized_phone_number/);
   assert.match(preview, /Granot-only Name/);
 });
 
@@ -191,12 +194,12 @@ test("listGranotLifecycleCaseCandidates Form q uses snapshot paths, excludes Dup
   assert.equal(JSON.stringify(item.known_contacts).includes("observation_id"), false);
 });
 
-test("listGranotLifecycleCaseCandidates Call q omits snapshot paths on the Call filter", async () => {
+test("listGranotLifecycleCaseCandidates Call q uses snapshot paths and maps known_contacts", async () => {
   stubFind(bindForm(), []);
-  const call = stubFind(bindCall(), []);
+  const call = stubFind(bindCall(), [callLeadWithSnapshot()]);
   stubCase();
 
-  await listGranotLifecycleCaseCandidates(String(caseId), {
+  const result = await listGranotLifecycleCaseCandidates(String(caseId), {
     scope: "source",
     lead_model: "CallLead",
     q: "Granot-only Name",
@@ -204,10 +207,43 @@ test("listGranotLifecycleCaseCandidates Call q omits snapshot paths on the Call 
   });
 
   const preview = inspect(call.filter, { depth: null });
-  assert.doesNotMatch(preview, /granot_contact_snapshot/);
-  assert.doesNotMatch(preview, /ingested_contact_snapshot/);
+  assert.match(preview, /granot_contact_snapshot\.name/);
+  assert.match(preview, /ingested_contact_snapshot\.name/);
   const projectionPreview = inspect(call.projection, { depth: null });
-  assert.doesNotMatch(projectionPreview, /granot_contact_snapshot/);
+  assert.match(projectionPreview, /granot_contact_snapshot/);
+  assert.match(projectionPreview, /ingested_contact_snapshot/);
+
+  const item = result?.items[0];
+  assert.ok(item);
+  assert.equal(item.contact.name, "Called Live");
+  assert.equal(item.customer_label, "Called Live");
+  assert.equal(item.known_contacts?.form_submitted.name, "Called Live");
+  assert.equal(item.known_contacts?.granot?.name, "Granot-only Name");
+  assert.equal(item.known_contacts?.granot?.differs_from_ingested, true);
+  assert.equal(JSON.stringify(item.known_contacts).includes("observation_id"), false);
+});
+
+test("listGranotLifecycleCaseCandidates Call q for Granot-only phone hits snapshot phone paths", async () => {
+  stubFind(bindForm(), []);
+  const call = stubFind(bindCall(), [callLeadWithSnapshot()]);
+  stubCase();
+
+  const result = await listGranotLifecycleCaseCandidates(String(caseId), {
+    scope: "source",
+    lead_model: "CallLead",
+    q: "555-9999",
+    limit: 25,
+  });
+
+  const preview = inspect(call.filter, { depth: null });
+  assert.match(preview, /granot_contact_snapshot\.phone_number/);
+  assert.match(preview, /ingested_contact_snapshot\.normalized_phone_number/);
+  assert.match(preview, /555-9999/);
+
+  const item = result?.items[0];
+  assert.ok(item);
+  assert.equal(item.contact.phone_number, "555-0001");
+  assert.equal(item.known_contacts?.granot?.phone_number, "555-9999");
 });
 
 function bindForm(): StubbableModel {
@@ -279,6 +315,38 @@ function stubFind(model: object, docs: Record<string, unknown>[]): QueryCapture 
     lean: async () => null,
   });
   return capture;
+}
+
+function callLeadWithSnapshot(): Record<string, unknown> {
+  return {
+    _id: callLeadId,
+    name: "Called Live",
+    first_name: "Called",
+    last_name: "Live",
+    phone_number: "555-0001",
+    email: "called@example.invalid",
+    job_no: "SYNTHJOB1",
+    normalized_job_no: "SYNTHJOB1",
+    lead_source_company: sourceId,
+    source_granularity_id: granularityId,
+    source_company_label_snapshot: "Synthetic Source",
+    source_granularity_label_snapshot: "Synthetic Inbounds",
+    ingested_contact_snapshot: {
+      name: "Called Live",
+      email: "called@example.invalid",
+    },
+    granot_contact_snapshot: {
+      name: "Granot-only Name",
+      first_name: "Granot",
+      last_name: "Later",
+      phone_number: "555-9999",
+      email: "granot@example.invalid",
+      differs_from_ingested: true,
+      observation_id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e799"),
+      evidence_status: "qualified",
+      captured_at: new Date("2026-08-01T12:00:00.000Z"),
+    },
+  };
 }
 
 function formLeadWithSnapshot(): Record<string, unknown> {

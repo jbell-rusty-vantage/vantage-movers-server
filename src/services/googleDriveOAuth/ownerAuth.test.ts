@@ -98,7 +98,7 @@ test("google drive owner auth requires signed owner matching configured identity
       kind: "user",
       userId: "admin_123",
       email: OWNER_EMAIL,
-      role: "owner",
+      roles: ["owner"],
     },
   } as unknown as Request);
   assert.equal(actor.actorLabel, OWNER_EMAIL);

@@ -436,7 +436,7 @@ test("[AC-05][AC-07][AC-10][AC-11][AC-32] replica WordPress matched write is one
   }
 });
 
-test("[AC-12] replica RingCentral Call qualified contact becomes current", async (t) => {
+test("[AC-12] replica RingCentral Call qualified contact writes snapshot only", async (t) => {
   if (!(await replicaReady(t))) return;
   const CallLead = getCallLeadModel();
   const leadId = objectId();
@@ -461,15 +461,15 @@ test("[AC-12] replica RingCentral Call qualified contact becomes current", async
     });
     assert.equal(result.outcome, "applied");
     const lead = await CallLead.findById(leadId).lean();
-    assert.equal(lead?.name, "Granot Caller");
-    assert.equal(lead?.granot_contact_revision, 1);
-    assert.equal(lead?.current_contact_provenance?.source_system, "granot");
-    assert.ok(lead?.last_granot_contact_change?.before_hash);
-    assert.equal(lead?.last_granot_contact_change?.before_hash?.includes("555"), false);
+    assert.equal(lead?.name, "Caller Name");
+    assert.equal(lead?.phone_number, SYNTHETIC_PHONE);
+    assert.equal(lead?.granot_contact_snapshot?.name, "Granot Caller");
+    assert.equal(lead?.granot_contact_snapshot?.differs_from_ingested, true);
     const change = await getEntityChangeModel().findOne({ "entity.id": String(leadId) }).lean();
-    const nameField = change?.fields.find((field) => field.path === "name");
-    assert.equal(nameField?.value_mode, "reference_only");
-    assert.equal(nameField?.after, undefined);
+    const snapshotField = change?.fields.find((field) => field.path === "granot_contact_snapshot");
+    assert.equal(snapshotField?.value_mode, "reference_only");
+    assert.equal(snapshotField?.after, undefined);
+    assert.equal(change?.fields.some((field) => field.path === "name"), false);
     const outbox = await SheetSyncJob.findOne({ entity_id: String(leadId) }).lean();
     assert.equal(outbox?.operation, "call_lead.update");
   } finally {
@@ -502,8 +502,8 @@ test("[AC-12] replica Granot-created Form contact becomes current and keeps orig
     assert.equal(result.outcome, "applied");
     const lead = await FormLead.findById(leadId).lean();
     assert.equal(lead?.ingestion_origin, "granot_lead_created");
-    assert.equal(lead?.name, "Granot Created");
-    assert.equal(lead?.granot_contact_revision, 1);
+    assert.equal(lead?.name, "Submitted Name");
+    assert.equal(lead?.granot_contact_snapshot?.name, "Granot Created");
   } finally {
     await FormLead.deleteMany({ _id: leadId });
     await deleteLinks([job.normalized]);

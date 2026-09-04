@@ -22,8 +22,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-28T16:13:00Z
+  by: process:docs-keeper
+  at: 2026-09-04T20:00:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -49,7 +49,7 @@ Schemas are `.strict()` — unknown keys 400 (tested). Defaults: `limit` 50 (max
 
 | Param | Notes |
 |-------|-------|
-| `q` | Loose substring across identifying + source-snapshot fields. Form `q` also hits ingested and Granot snapshot contact paths |
+| `q` | Loose substring across identifying + source-snapshot fields. Form and Call `q` hit live + ingested + Granot contact paths |
 | `source_company` | Standalone **exact** match (case-insensitive) on slug **or** three label snapshots |
 | `lead_source_company` | `objectIdSchema` — exact `{ lead_source_company }` (not regex) |
 | `source_granularity_key` | Anchored exact (`fieldEqualsClause`) |
@@ -77,7 +77,7 @@ Case-insensitive substring (`fullTextClause`) on:
 | Lead type | Fields |
 |-----------|--------|
 | Form | Live + ingested + Granot contact name / email / phone paths (`FORM_LEAD_CONTACT_NAME_PATHS` / `EMAIL` / `PHONE` in `leadBrowseShared.ts`), then `source_company`, three label snapshots, `ref_no` |
-| Call | live name / email / phone, `source_company`, three label snapshots, `job_no` (no `ref_no`, no contact snapshots) |
+| Call | Same any-known-contact lists via `CALL_LEAD_CONTACT_*_PATHS` (aliases of the Form lists), then `source_company`, three label snapshots, `job_no` (no `ref_no`) |
 
 ## Field-specific filters
 
@@ -86,9 +86,9 @@ Case-insensitive substring (`fullTextClause`) on:
 | `source_company` | `$or` of anchored exact on `source_company`, `source_company_label_snapshot`, `source_granularity_label_snapshot`, `crm_source_label_snapshot` — **not** slug-only |
 | `lead_source_company` | Exact ObjectId string |
 | `source_granularity_key` | Anchored exact |
-| `name` | Form: substring `$or` on `FORM_LEAD_CONTACT_NAME_PATHS` (live + ingested + Granot). Call: `name` / `first_name` / `last_name` |
-| `email` | Form: lowercase input, substring `$or` on `FORM_LEAD_CONTACT_EMAIL_PATHS`. Call: substring on `email` |
-| `phone_number` | Form: typed-substring `$or` on `FORM_LEAD_CONTACT_PHONE_PATHS` (not `normalizePhoneNumberForMatch`, not scored digit-flex). Call: substring on `phone_number` |
+| `name` | Form: substring `$or` on `FORM_LEAD_CONTACT_NAME_PATHS`. Call: same via `CALL_LEAD_CONTACT_NAME_PATHS` |
+| `email` | Form: lowercase input, substring `$or` on `FORM_LEAD_CONTACT_EMAIL_PATHS`. Call: same via `CALL_LEAD_CONTACT_EMAIL_PATHS` |
+| `phone_number` | Form: typed-substring `$or` on `FORM_LEAD_CONTACT_PHONE_PATHS` (not `normalizePhoneNumberForMatch`, not scored digit-flex). Call: same via `CALL_LEAD_CONTACT_PHONE_PATHS` |
 | `job_no` | Substring on `job_no` (call only) |
 | `booked: true` | `{ booked: { $ne: null, $exists: true } }` |
 | `booked: false` | null or missing |
@@ -119,7 +119,7 @@ Populate selects:
 
 Unpopulated or missing `_id` on a ref → `null` chip (`toBookingSummary` / `toCancellationSummary`).
 
-Form cards stay live-field cards. `ingested_contact_snapshot` and `granot_contact_snapshot` are not projected onto `FormLeadBrowseResult`.
+Form cards stay live-field cards (headline Form submitted). Call cards stay live-field cards (headline **Called**). `ingested_contact_snapshot` and `granot_contact_snapshot` are not projected onto browse result cards. Processor identity still omits Call snapshot phone.
 
 ## Shared helpers (do not duplicate)
 
@@ -131,7 +131,7 @@ Form cards stay live-field cards. `ingested_contact_snapshot` and `granot_contac
 | `attachmentClause` | Booked/cancelled presence |
 | `combineClauses` | `{}` / single clause / `$and` |
 | `toBookingSummary` / `toCancellationSummary` | Lean-doc → chip |
-| `FORM_LEAD_CONTACT_NAME_PATHS` / `EMAIL` / `PHONE` | Shared any-known-contact paths. Admin browse, Admin typeahead, Form browse, and Owner Form candidate `q` (`browseCandidateLeadViews`) import these. Match style stays per surface. |
+| `FORM_LEAD_CONTACT_*_PATHS` / `CALL_LEAD_CONTACT_*_PATHS` | Shared any-known-contact paths. Call lists alias the Form lists. Admin browse (including Manual attach `name` / `email` / `phone_number` filters), Admin typeahead, Form/Call browse, intake / Connect `q`, Owner booking-lead reconciliation candidate search, and `POST /call-leads/search` import these. Processor identity and automatic booking match do not. Match style stays per surface. |
 
 ## Skip / fail paths
 

@@ -18,8 +18,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T06:52:00Z
+  by: process:docs-keeper
+  at: 2026-09-04T20:00:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/identity.ts`  
@@ -60,14 +60,14 @@ Same Lead found through current and immutable contact values is one candidate. Z
 
 ## Call Lead ladder
 
-1. Active Record Link by normalized Job Number.
-2. Prefix-equivalent `CallLead.normalized_job_no` inside the resolved Source Granularity.
-3. Source Granularity plus normalized phone across current phone and immutable ingested/original caller phone.
+1. Active Record Link by normalized Job Number. A unique link target returns here and skips the phone rung.
+2. Prefix-equivalent `CallLead.normalized_job_no` inside the resolved Source Granularity. A unique Job target returns here and skips the phone rung.
+3. Source Granularity plus normalized phone across current phone and immutable ingested/original caller phone — only when no unique Job/link target exists.
 4. Otherwise pending/ambiguous/conflict/unmatched.
 
 Match methods: `granot_record_link`, `form_ref_no_exact`, `form_mongo_id_compatibility`, `call_job_no_exact`, `booking_job_no_exact`, `source_scoped_contact`. Linked success reason is `record_link_confirmed`.
 
-Job and contact queries always include `source_granularity_id`. Duplicate Call Leads remain readable. Job and phone pointing at different eligible Leads are `conflict`. Multiple same-rung Call candidates are **`conflict` / `multiple_eligible_matches`** (not `ambiguous`). Form exact-ladder multiple eligible is also `conflict` / `multiple_eligible_matches`; Form contact multi-match is `ambiguous`. Call phone matching uses current `normalized_phone_number` plus `ingested_contact_snapshot` only (no Call `granot_contact_snapshot`). Current and immutable phones are alternative evidence for one Lead. Booking-owner scope miss: Form → `ambiguous` / `record_link_conflict`; Call → `conflict` / `record_link_conflict`.
+Job and contact queries always include `source_granularity_id`. Duplicate Call Leads remain readable. Unique Call Job or Record Link does not compare against a competing phone Lead; there is no Call Job-vs-other-ANI `job_number_conflict`. Conflicting nonempty Jobs still conflict. Multiple same-rung Call candidates are **`conflict` / `multiple_eligible_matches`** (not `ambiguous`). Form exact-ladder multiple eligible is also `conflict` / `multiple_eligible_matches`; Form contact multi-match is `ambiguous`. Call phone matching uses current `normalized_phone_number` plus `ingested_contact_snapshot` only (`findCallLeadsByScopedPhone` does not query Call `granot_contact_snapshot`). Desk Call `q` is different — see [`lead-browse.md`](../services/lead-browse.md). Current and immutable phones are alternative evidence for one Lead. Booking-owner scope miss: Form → `ambiguous` / `record_link_conflict`; Call → `conflict` / `record_link_conflict`.
 
 ## Agent assertion
 

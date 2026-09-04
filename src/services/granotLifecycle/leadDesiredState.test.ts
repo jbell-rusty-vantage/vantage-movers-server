@@ -336,7 +336,7 @@ test("[AC-11] WordPress immutable move snapshot and Vantage move_size stay uncha
   assert.equal(result.desired_values.cubic_feet, 400);
 });
 
-test("[AC-12] Call/Granot-created qualified contact plans current fields and a bounded summary", () => {
+test("[AC-12] RingCentral Call qualified contact plans Granot Contact Snapshot only", () => {
   const lead: LeadDesiredStateProjection = {
     model: "CallLead",
     id: String(objectId()),
@@ -353,17 +353,104 @@ test("[AC-12] Call/Granot-created qualified contact plans current fields and a b
     },
     lead,
   });
-  assert.equal(result.desired_values.name, "Ada Lovelace");
-  assert.equal(result.desired_values.normalized_phone_number, "5551234567");
-  assert.deepEqual(result.desired_values["last_granot_contact_change.changed_paths"], [
+  assert.ok(result.changed_paths.includes("granot_contact_snapshot"));
+  assert.deepEqual(result.desired_values.granot_contact_snapshot, {
+    first_name: "Ada",
+    last_name: "Lovelace",
+    name: "Ada Lovelace",
+    phone_number: "5551234567",
+    normalized_phone_number: "5551234567",
+    email: "ada@example.test",
+  });
+  for (const path of [
+    "phone_number",
+    "normalized_phone_number",
+    "name",
     "email",
     "first_name",
     "last_name",
-    "name",
-    "normalized_phone_number",
+    "ingested_contact_snapshot",
+    "last_granot_contact_change.changed_paths",
+  ]) {
+    assert.equal(result.changed_paths.includes(path), false);
+    assert.equal(result.desired_values[path], undefined);
+  }
+});
+
+test("granot_lead_created Call later different Granot phone plans snapshot only", () => {
+  const lead: LeadDesiredStateProjection = {
+    model: "CallLead",
+    id: String(objectId()),
+    ingestion_origin: "granot_lead_created",
+    quoted: true,
+    granot_priority: "1",
+    name: "Original Caller",
+    first_name: "Original",
+    last_name: "Caller",
+    phone_number: "5550000000",
+    normalized_phone_number: "5550000000",
+    email: "caller@example.test",
+    granot_contact_snapshot: {
+      first_name: "Original",
+      last_name: "Caller",
+      name: "Original Caller",
+      phone_number: "5550000000",
+      normalized_phone_number: "5550000000",
+      email: "caller@example.test",
+    },
+  };
+  const result = plan({
+    identity: {
+      ...matchedIdentity(lead.id),
+      target: { model: "CallLead", id: lead.id },
+    },
+    lead,
+  });
+  assert.ok(result.changed_paths.includes("granot_contact_snapshot"));
+  assert.deepEqual(result.desired_values.granot_contact_snapshot, {
+    first_name: "Ada",
+    last_name: "Lovelace",
+    name: "Ada Lovelace",
+    phone_number: "5551234567",
+    normalized_phone_number: "5551234567",
+    email: "ada@example.test",
+  });
+  for (const path of [
     "phone_number",
-  ]);
-  assert.equal(result.changed_paths.includes("ingested_contact_snapshot"), false);
+    "normalized_phone_number",
+    "name",
+    "email",
+    "first_name",
+    "last_name",
+  ]) {
+    assert.equal(result.changed_paths.includes(path), false);
+    assert.equal(result.desired_values[path], undefined);
+  }
+});
+
+test("Priority 8 Call Lead does not plan Granot Contact Snapshot", () => {
+  const lead: LeadDesiredStateProjection = {
+    model: "CallLead",
+    id: String(objectId()),
+    ingestion_origin: "ringcentral",
+    quoted: false,
+    name: "Original Caller",
+    phone_number: "5550000000",
+    normalized_phone_number: "5550000000",
+  };
+  const result = plan({
+    observation: observation({ priority: { valid: true, canonical: "8" } }),
+    identity: {
+      ...matchedIdentity(lead.id),
+      target: { model: "CallLead", id: lead.id },
+    },
+    lead,
+  });
+  assert.equal(result.changed_paths.includes("granot_contact_snapshot"), false);
+  assert.equal(result.changed_paths.includes("phone_number"), false);
+  assert.equal(result.changed_paths.includes("normalized_phone_number"), false);
+  assert.equal(result.changed_paths.includes("name"), false);
+  assert.equal(result.desired_values.granot_contact_snapshot, undefined);
 });
 
 test("[AC-13] empty receiver fills from one active Agent at a non-1/5 Priority", () => {
@@ -480,6 +567,48 @@ test("[AC-32] no-op desired state creates no changed paths", () => {
   assert.equal(result.reason_code, "desired_state_already_current");
   assert.deepEqual(result.changed_paths, []);
   assert.equal(result.temporal_winner_should_advance, true);
+});
+
+test("Call Lead snapshot formatting-only Granot contact does not remanufacture a change", () => {
+  const lead: LeadDesiredStateProjection = {
+    model: "CallLead",
+    id: String(objectId()),
+    ingestion_origin: "ringcentral",
+    granot_priority: "1",
+    quoted: true,
+    name: "Original Caller",
+    phone_number: "5550000000",
+    normalized_phone_number: "5550000000",
+    granot_contact_snapshot: {
+      first_name: "ADA",
+      last_name: "lovelace",
+      name: "Ada  Lovelace",
+      phone_number: "+15551234567",
+      normalized_phone_number: "5551234567",
+      email: "Ada@Example.Test",
+    },
+    pickup_city: "New York",
+    pickup_zip: "10001",
+    pickup_state: "NY",
+    delivery_city: "Brooklyn",
+    delivery_zip: "10002",
+    delivery_state: "NY",
+    move_date: new Date("2026-09-01T00:00:00.000Z"),
+    cubic_feet: 400,
+    local: "local",
+    granot_move_size: "2 Bedroom",
+    granot_service_type: "Moving",
+    normalized_job_no: "SYNTHETIC JOB 100",
+    job_no: "synthetic-job-100",
+  };
+  const result = plan({
+    identity: {
+      ...matchedIdentity(lead.id),
+      target: { model: "CallLead", id: lead.id },
+    },
+    lead,
+  });
+  assert.equal(result.changed_paths.includes("granot_contact_snapshot"), false);
 });
 
 test("WordPress snapshot formatting-only Granot contact does not remanufacture a change", () => {

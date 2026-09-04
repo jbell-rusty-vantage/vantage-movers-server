@@ -20,7 +20,7 @@ test("existing write context maps an Owner extension user to an owner actor", ()
       kind: "user",
       userId: "owner-1",
       email: "owner@example.invalid",
-      role: "owner",
+      roles: ["owner"],
     }),
     command_name: "create_form_lead",
     payload: {},
@@ -31,16 +31,32 @@ test("existing write context maps an Owner extension user to an owner actor", ()
   assert.equal(context.actor.actor_id, "owner-1");
 });
 
-for (const role of ["sales", "customer_service", "employee"] as const) {
-  test(`existing write context rejects a ${role} extension user`, () => {
+test("existing write context maps Owner plus Sales to an owner actor", () => {
+  const context = existingWriteContextFromRequest({
+    req: requestWithAuth({
+      kind: "user",
+      userId: "owner-2",
+      email: "owner@example.invalid",
+      roles: ["owner", "sales"],
+    }),
+    command_name: "create_form_lead",
+    payload: {},
+  });
+
+  assert.equal(context.actor.actor_type, "owner");
+  assert.equal(context.actor.actor_id, "owner-2");
+});
+
+for (const roles of [["sales"], ["customer_service"], ["sales", "customer_service"]] as const) {
+  test(`existing write context rejects ${roles.join("+")} extension user`, () => {
     assert.throws(
       () =>
         existingWriteContextFromRequest({
           req: requestWithAuth({
             kind: "user",
-            userId: `${role}-1`,
-            email: `${role}@example.invalid`,
-            role,
+            userId: `${roles.join("-")}-1`,
+            email: `${roles[0]}@example.invalid`,
+            roles: [...roles],
           }),
           command_name: "create_form_lead",
           payload: {},

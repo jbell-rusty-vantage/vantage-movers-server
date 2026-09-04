@@ -23,8 +23,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-09-02T18:00:00Z
+  by: process:docs-keeper
+  at: 2026-09-04T20:00:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -49,7 +49,7 @@ generated:
 
 ## Inbound Granot create and fences
 
-[Call Qualification](../../../../CONTEXT.md) remains the Call Lead qualifier for mapped inbound streams. Best Relocation Forms and Inbounds keep `create_if_missing`. Main Site / 10best / TBM Prime / Top10 Inbounds stay `link_only` after the 2026-09-03 revert. If an Owner later puts `create_if_missing` on one of those companies, mapped qualifying calls stay RingCentral-created or adopted via [RingCentral Call Adoption](../../../../CONTEXT.md), and a later Granot Observation **synchronizes** onto an existing RingCentral Call Lead.
+[Call Qualification](../../../../CONTEXT.md) remains the Call Lead qualifier for mapped inbound streams. Best Relocation Forms and Inbounds keep `create_if_missing`. Main Site / 10best / TBM Prime / Top10 Inbounds stay `link_only` after the 2026-09-03 revert. If an Owner later puts `create_if_missing` on one of those companies, mapped qualifying calls stay RingCentral-created or adopted via [RingCentral Call Adoption](../../../../CONTEXT.md), and a later Granot Observation **synchronizes** onto an existing RingCentral Call Lead. Matched synchronize does not overwrite operational phone/name/email. Qualified Granot contact coalesces on `granot_contact_snapshot` by [Job Number](../../../../CONTEXT.md).
 
 Owner language uses [Caller Match Key](../../../../CONTEXT.md). The locked implementation key is exact Source Granularity + normalized phone — never Source Company alone.
 
@@ -136,6 +136,7 @@ Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 | Idempotency vs Duplicate Lead | Same telephony session ≠ business duplicate (different calls, same caller within ±90 days) |
 | CRM | Call leads not CRM-posted at create; **Call Lead Enrichment** is separate |
 | Helpers | Do not bypass phone normalization, Form Fill, Source Company parsing, or Sheet Sync scheduling |
+| Granot synchronize | Operational phone stays the ingested caller; snapshot coalesces by Job. Not a live-contact upsert |
 
 ## Operational Events
 
@@ -153,7 +154,7 @@ Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 
 - [`form-lead.md`](./form-lead.md) — Form Fill side effects on Form Lead Ingestion
 - [`processor.md`](../granot-lifecycle/processor.md) — authorized Granot Call create (sparse Job-only / phone `pending`) and matched-Lead sync
-- [`identity.md`](../granot-lifecycle/identity.md) — source-scoped Call ladder reads Job/phone/ingested phone; Duplicate Call Leads remain readable
+- [`identity.md`](../granot-lifecycle/identity.md) — unique Call Job/link skips competing phone; phone rung is live + ingested only (no snapshot phone)
 - [`enrichment.md`](./enrichment.md) — Follow Up preview/sync
 - [`ringcentral-call-lead-qualification.md`](./ringcentral-call-lead-qualification.md) — **Call Qualification**, ingest gate
 - [`google-sheets.md`](./google-sheets.md) — Calls / Duplicate Calls tabs

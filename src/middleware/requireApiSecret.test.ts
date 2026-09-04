@@ -138,23 +138,23 @@ test("requireApiSecret rejects a scoped key for a different source company", asy
   assert.deepEqual(ctx.jsonBody, { ok: false, error: "Forbidden" });
 });
 
-test("requireApiSecret rejects Employee Bearer on form-lead data routes", async () => {
+test("requireApiSecret rejects Sales plus Customer Service Bearer on form-lead data routes", async () => {
   process.env.VANTAGE_API_SECRET = "global-secret";
   delete process.env.VANTAGE_SCOPED_API_KEYS;
   stubExtensionUser({
-    id: "emp-1",
-    email: "employee@example.invalid",
-    role: "employee",
+    id: "both-1",
+    email: "both@example.invalid",
+    roles: ["sales", "customer_service"],
   });
 
   const post = await invokeMiddleware({
-    authorization: "Bearer employee-token",
+    authorization: "Bearer both-token",
     method: "POST",
     path: "/api/v1/form-leads",
     body: { source_company: "main_site" },
   });
   const get = await invokeMiddleware({
-    authorization: "Bearer employee-token",
+    authorization: "Bearer both-token",
     method: "GET",
     path: "/api/v1/form-leads",
   });
@@ -166,17 +166,17 @@ test("requireApiSecret rejects Employee Bearer on form-lead data routes", async 
   assert.equal(get.statusCode, 403);
 });
 
-test("requireApiSecret allows Employee Bearer on Tariff Adjustment Submit", async () => {
+test("requireApiSecret allows Sales plus Customer Service Bearer on Tariff Adjustment Submit", async () => {
   process.env.VANTAGE_API_SECRET = "global-secret";
   delete process.env.VANTAGE_SCOPED_API_KEYS;
   stubExtensionUser({
-    id: "emp-1",
-    email: "employee@example.invalid",
-    role: "employee",
+    id: "both-1",
+    email: "both@example.invalid",
+    roles: ["sales", "customer_service"],
   });
 
   const ctx = await invokeMiddleware({
-    authorization: "Bearer employee-token",
+    authorization: "Bearer both-token",
     method: "POST",
     path: "/api/v1/tariff-adjustments",
     body: { rows: [] },
@@ -186,13 +186,13 @@ test("requireApiSecret allows Employee Bearer on Tariff Adjustment Submit", asyn
   assert.equal(ctx.statusCode, undefined);
 });
 
-test("requireApiSecret rejects Sales Bearer on tariff and form-lead data routes", async () => {
+test("requireApiSecret rejects Sales-only Bearer on tariff, form-lead, and Enrichment apply routes", async () => {
   process.env.VANTAGE_API_SECRET = "global-secret";
   delete process.env.VANTAGE_SCOPED_API_KEYS;
   stubExtensionUser({
     id: "sales-1",
     email: "sales@example.invalid",
-    role: "sales",
+    roles: ["sales"],
   });
 
   const tariff = await invokeMiddleware({
@@ -207,6 +207,18 @@ test("requireApiSecret rejects Sales Bearer on tariff and form-lead data routes"
     path: "/api/v1/form-leads",
     body: { source_company: "main_site" },
   });
+  const apply = await invokeMiddleware({
+    authorization: "Bearer sales-token",
+    method: "PATCH",
+    path: "/api/v1/form-leads/507f1f77bcf86cd799439011/granot-sync",
+    body: {},
+  });
+  const enrichment = await invokeMiddleware({
+    authorization: "Bearer sales-token",
+    method: "POST",
+    path: "/api/v1/call-leads/enrichment/sync",
+    body: {},
+  });
 
   assert.equal(tariff.nextCalled, false);
   assert.equal(tariff.statusCode, 403);
@@ -214,6 +226,10 @@ test("requireApiSecret rejects Sales Bearer on tariff and form-lead data routes"
   assert.equal(formLead.nextCalled, false);
   assert.equal(formLead.statusCode, 403);
   assert.deepEqual(formLead.jsonBody, { ok: false, error: "Forbidden" });
+  assert.equal(apply.nextCalled, false);
+  assert.equal(apply.statusCode, 403);
+  assert.equal(enrichment.nextCalled, false);
+  assert.equal(enrichment.statusCode, 403);
 });
 
 test("requireApiSecret allows Customer Service Bearer on Tariff Adjustment Submit", async () => {
@@ -222,7 +238,7 @@ test("requireApiSecret allows Customer Service Bearer on Tariff Adjustment Submi
   stubExtensionUser({
     id: "cs-1",
     email: "cs@example.invalid",
-    role: "customer_service",
+    roles: ["customer_service"],
   });
 
   const ctx = await invokeMiddleware({
@@ -242,7 +258,7 @@ test("requireApiSecret rejects Customer Service Bearer on form-lead data routes"
   stubExtensionUser({
     id: "cs-1",
     email: "cs@example.invalid",
-    role: "customer_service",
+    roles: ["customer_service"],
   });
 
   const ctx = await invokeMiddleware({
@@ -263,7 +279,7 @@ test("requireApiSecret allows Owner Bearer on Tariff Adjustment Submit", async (
   stubExtensionUser({
     id: "owner-1",
     email: "owner@example.invalid",
-    role: "owner",
+    roles: ["owner"],
   });
 
   const ctx = await invokeMiddleware({

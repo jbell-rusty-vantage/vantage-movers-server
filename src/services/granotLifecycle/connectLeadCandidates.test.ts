@@ -30,6 +30,7 @@ const originalLinkFindOne = Link.findOne;
 
 const bookingId = new mongoose.Types.ObjectId();
 const formLeadId = new mongoose.Types.ObjectId();
+const callLeadId = new mongoose.Types.ObjectId();
 
 afterEach(() => {
   if (FormLead && originalFormFind) FormLead.find = originalFormFind;
@@ -77,22 +78,56 @@ test("Connect Form q hits snapshot paths and omits ineligible Leads", async () =
   assert.equal(JSON.stringify(item.known_contacts).includes("observation_id"), false);
 });
 
-test("Connect Call q omits snapshot paths and excludes unmatched Call Leads", async () => {
+test("Connect Call q hits snapshot paths and excludes unmatched Call Leads", async () => {
   stubBooking({ is_leadless_booking: true, is_referral_booking: false });
   stubFind(bindForm(), []);
-  const call = stubFind(bindCall(), []);
+  const call = stubFind(bindCall(), [callLeadWithSnapshot()]);
   stubLink();
 
-  await listConnectLeadCandidates(String(bookingId), {
+  const result = await listConnectLeadCandidates(String(bookingId), {
     q: "Granot-only Name",
     lead_model: "CallLead",
     limit: 25,
   });
 
   const preview = inspect(call.filter, { depth: null });
-  assert.doesNotMatch(preview, /granot_contact_snapshot/);
+  assert.match(preview, /granot_contact_snapshot\.name/);
+  assert.match(preview, /ingested_contact_snapshot\.name/);
   assert.match(preview, /created_on_unmatched/);
   assert.match(preview, /booked/);
+  const projectionPreview = inspect(call.projection, { depth: null });
+  assert.match(projectionPreview, /granot_contact_snapshot/);
+
+  const item = result.items[0];
+  assert.ok(item);
+  assert.equal(item.contact.name, "Called Live");
+  assert.equal(item.known_contacts?.form_submitted.name, "Called Live");
+  assert.equal(item.known_contacts?.granot?.name, "Granot-only Name");
+  assert.equal(item.known_contacts?.granot?.differs_from_ingested, true);
+  assert.equal(JSON.stringify(item.known_contacts).includes("observation_id"), false);
+});
+
+test("Connect Call q for Granot-only phone hits snapshot phone paths", async () => {
+  stubBooking({ is_leadless_booking: true, is_referral_booking: false });
+  stubFind(bindForm(), []);
+  const call = stubFind(bindCall(), [callLeadWithSnapshot()]);
+  stubLink();
+
+  const result = await listConnectLeadCandidates(String(bookingId), {
+    q: "555-9999",
+    lead_model: "CallLead",
+    limit: 25,
+  });
+
+  const preview = inspect(call.filter, { depth: null });
+  assert.match(preview, /granot_contact_snapshot\.phone_number/);
+  assert.match(preview, /ingested_contact_snapshot\.normalized_phone_number/);
+  assert.match(preview, /555-9999/);
+
+  const item = result.items[0];
+  assert.ok(item);
+  assert.equal(item.contact.phone_number, "555-0001");
+  assert.equal(item.known_contacts?.granot?.phone_number, "555-9999");
 });
 
 test("Connect candidates fail closed on Referral and cancelled Bookings", async () => {
@@ -160,6 +195,25 @@ function stubFind(model: MutableModel, docs: Record<string, unknown>[]): QueryCa
     };
   };
   return capture;
+}
+
+function callLeadWithSnapshot(): Record<string, unknown> {
+  return {
+    _id: callLeadId,
+    name: "Called Live",
+    first_name: "Called",
+    last_name: "Live",
+    phone_number: "555-0001",
+    email: "called@example.invalid",
+    granot_contact_snapshot: {
+      name: "Granot-only Name",
+      phone_number: "555-9999",
+      differs_from_ingested: true,
+      observation_id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e799"),
+      evidence_status: "qualified",
+      captured_at: new Date("2026-08-01T12:00:00.000Z"),
+    },
+  };
 }
 
 function formLeadWithSnapshot(): Record<string, unknown> {

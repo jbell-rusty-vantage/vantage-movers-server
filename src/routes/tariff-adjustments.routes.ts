@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 import { connectMongo } from "../db";
 import { logger as rootLogger } from "../logger";
 import { AppError } from "../services/errors";
+import { formatTariffActorRole } from "../auth/extension/roles";
 import type { VantageAuthContext } from "../middleware/requireApiSecret";
 import {
   appendTariffAdjustmentRows,
@@ -41,7 +42,7 @@ export function createTariffAdjustmentsRouter(
       rootLogger.info({
         msg: "tariff_adjustment.append.succeeded",
         actor_kind: auth?.kind,
-        actor_role: auth?.kind === "user" ? auth.role : undefined,
+        actor_role: auth?.kind === "user" ? formatTariffActorRole(auth.roles) : undefined,
         actor_email: auth?.kind === "user" ? auth.email : undefined,
         appended: result.appended,
         tab_name: result.tabName,
@@ -59,7 +60,7 @@ export function createTariffAdjustmentsRouter(
       rootLogger.warn({
         msg: "tariff_adjustment.append.failed",
         actor_kind: auth?.kind,
-        actor_role: auth?.kind === "user" ? auth.role : undefined,
+        actor_role: auth?.kind === "user" ? formatTariffActorRole(auth.roles) : undefined,
         actor_email: auth?.kind === "user" ? auth.email : undefined,
         error: error instanceof Error ? error.message : String(error),
       });

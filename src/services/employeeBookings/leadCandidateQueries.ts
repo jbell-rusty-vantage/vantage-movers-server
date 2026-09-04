@@ -144,6 +144,7 @@ function addCandidates(
         booked: doc.booked ? String(doc.booked) : undefined,
         cancelled: doc.cancelled ? String(doc.cancelled) : undefined,
         duplicate: doc.duplicate === true,
+        ...leadContactSnapshotsFromDoc(doc),
       },
     };
 
@@ -247,4 +248,64 @@ function buildPhoneRegex(normalizedPhone: string): RegExp {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+export type PublicLeadContactSnapshot = {
+  name?: string;
+  first_name?: string;
+  last_name?: string;
+  phone_number?: string;
+  email?: string;
+  differs_from_ingested?: boolean;
+  captured_at?: string;
+};
+
+export function toPublicLeadContactSnapshot(
+  value: unknown,
+): PublicLeadContactSnapshot | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const raw = value as Record<string, unknown>;
+  const capturedAt =
+    raw.captured_at instanceof Date
+      ? raw.captured_at.toISOString()
+      : stringValue(raw.captured_at);
+  const snapshot: PublicLeadContactSnapshot = {};
+  const name = stringValue(raw.name);
+  const firstName = stringValue(raw.first_name);
+  const lastName = stringValue(raw.last_name);
+  const phone = stringValue(raw.phone_number);
+  const email = stringValue(raw.email);
+  if (name) snapshot.name = name;
+  if (firstName) snapshot.first_name = firstName;
+  if (lastName) snapshot.last_name = lastName;
+  if (phone) snapshot.phone_number = phone;
+  if (email) snapshot.email = email;
+  if (typeof raw.differs_from_ingested === "boolean") {
+    snapshot.differs_from_ingested = raw.differs_from_ingested;
+  }
+  if (capturedAt) snapshot.captured_at = capturedAt;
+  if (
+    !snapshot.name &&
+    !snapshot.first_name &&
+    !snapshot.last_name &&
+    !snapshot.phone_number &&
+    !snapshot.email
+  ) {
+    return undefined;
+  }
+  return snapshot;
+}
+
+export function leadContactSnapshotsFromDoc(doc: Record<string, unknown>): {
+  ingested_contact_snapshot?: PublicLeadContactSnapshot;
+  granot_contact_snapshot?: PublicLeadContactSnapshot;
+} {
+  const ingested = toPublicLeadContactSnapshot(doc.ingested_contact_snapshot);
+  const granot = toPublicLeadContactSnapshot(doc.granot_contact_snapshot);
+  return {
+    ...(ingested ? { ingested_contact_snapshot: ingested } : {}),
+    ...(granot ? { granot_contact_snapshot: granot } : {}),
+  };
 }

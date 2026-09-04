@@ -3,6 +3,9 @@ import type { BrowseCallLeadsQuery } from "../../validation/v1.validation";
 import {
   attachmentClause,
   BOOKING_SUMMARY_SELECT,
+  CALL_LEAD_CONTACT_EMAIL_PATHS,
+  CALL_LEAD_CONTACT_NAME_PATHS,
+  CALL_LEAD_CONTACT_PHONE_PATHS,
   CANCELLATION_SUMMARY_SELECT,
   combineClauses,
   fieldContainsClause,
@@ -23,11 +26,9 @@ import {
  */
 
 const FULL_TEXT_FIELDS = [
-  "name",
-  "first_name",
-  "last_name",
-  "email",
-  "phone_number",
+  ...CALL_LEAD_CONTACT_NAME_PATHS,
+  ...CALL_LEAD_CONTACT_EMAIL_PATHS,
+  ...CALL_LEAD_CONTACT_PHONE_PATHS,
   "source_company",
   "source_company_label_snapshot",
   "source_granularity_label_snapshot",
@@ -126,23 +127,17 @@ function buildCallLeadBrowseFilter(
 
   const name = normalizeValue(query.name);
   if (name) {
-    clauses.push({
-      $or: [
-        fieldContainsClause("name", name),
-        fieldContainsClause("first_name", name),
-        fieldContainsClause("last_name", name),
-      ],
-    });
+    clauses.push(orContainsPaths(CALL_LEAD_CONTACT_NAME_PATHS, name));
   }
 
   const email = normalizeValue(query.email)?.toLowerCase();
   if (email) {
-    clauses.push(fieldContainsClause("email", email));
+    clauses.push(orContainsPaths(CALL_LEAD_CONTACT_EMAIL_PATHS, email));
   }
 
   const phone = normalizeValue(query.phone_number);
   if (phone) {
-    clauses.push(fieldContainsClause("phone_number", phone));
+    clauses.push(orContainsPaths(CALL_LEAD_CONTACT_PHONE_PATHS, phone));
   }
 
   const jobNo = normalizeValue(query.job_no);
@@ -191,6 +186,13 @@ function mapCallLead(doc: Record<string, unknown>): CallLeadBrowseResult {
     booked: toBookingSummary(doc.booked),
     cancelled: toCancellationSummary(doc.cancelled),
   };
+}
+
+function orContainsPaths(
+  paths: readonly string[],
+  value: string,
+): Record<string, unknown> {
+  return { $or: paths.map((field) => fieldContainsClause(field, value)) };
 }
 
 function getReceiverAgentCrmUsername(receiverAgent: unknown): string | undefined {

@@ -3,6 +3,9 @@ import type { AdminSearchQuery } from "../../validation/v1.validation";
 import { concreteScopes, getAdminModels, type AdminResource, type ConcreteAdminScope } from "./adminScope.service";
 import { toObjectId } from "../../utils/objectId";
 import {
+  CALL_LEAD_CONTACT_EMAIL_PATHS,
+  CALL_LEAD_CONTACT_NAME_PATHS,
+  CALL_LEAD_CONTACT_PHONE_PATHS,
   FORM_LEAD_CONTACT_EMAIL_PATHS,
   FORM_LEAD_CONTACT_NAME_PATHS,
   FORM_LEAD_CONTACT_PHONE_PATHS,
@@ -55,18 +58,17 @@ const SEARCH_CONFIGS: Record<
     badges: leadBadges,
   },
   "call-leads": {
-    fields: [
-      "name",
-      "email",
-      "phone_number",
-      "normalized_phone_number",
+    fields: uniqueSearchFields([
+      ...CALL_LEAD_CONTACT_NAME_PATHS,
+      ...CALL_LEAD_CONTACT_EMAIL_PATHS,
+      ...CALL_LEAD_CONTACT_PHONE_PATHS,
       "source_company",
       "source_company_label_snapshot",
       "source_granularity_label_snapshot",
       "crm_source_label_snapshot",
       "source_granularity_key",
       "job_no",
-    ],
+    ]),
     hrefPrefix: "/call-leads",
     primary: (doc) => label(doc.job_no, doc.name, doc.phone_number, "Call lead"),
     secondary: (doc) => label(doc.name, doc.email, doc.phone_number, sourceLabel(doc)),

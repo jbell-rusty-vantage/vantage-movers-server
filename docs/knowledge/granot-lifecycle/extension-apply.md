@@ -20,8 +20,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T06:52:00Z
+  by: process:docs-keeper
+  at: 2026-09-04T20:00:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/granotLifecycle/extensionApply.ts`, `src/services/granotLifecycle/capture.ts`, `src/routes/extension-granot-apply.routes.ts`, `src/validation/v1/granotLifecycle.validation.ts`  
@@ -29,7 +29,7 @@ generated:
 
 # Browser-extension receipt apply (`granotLifecycle/extensionApply`)
 
-**Role:** Accept a strict Owner apply item on the existing v1 URLs, capture one `browser_extension` receipt, enter Unit 08 `claimAndProcessOrPoll`, and return a PII-safe compatibility result. The extension does not decide identity or desired state. Preview URLs stay read-only.
+**Role:** Accept a strict Owner apply item on the existing v1 URLs, capture one `browser_extension` receipt, enter Unit 08 `claimAndProcessOrPoll`, and return a PII-safe compatibility result. The extension does not decide identity or desired state. Call contact follows the same snapshot-only rule as webhook synchronize; this path does not call `syncCallLeadEnrichment`. Preview URLs stay read-only.
 
 ## Public routes
 

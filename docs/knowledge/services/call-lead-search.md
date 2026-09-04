@@ -21,8 +21,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T04:51:00Z
+  by: process:docs-keeper
+  at: 2026-09-04T20:00:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -77,10 +77,10 @@ CallLead.find(filter).sort({ createdAt: -1 }).limit(limit) → map summaries
 
 | Field | Match |
 |-------|-------|
-| `phone_number` | `normalizePhoneNumberForMatch` → **undefined when fewer than 8 digits**. Else `{ $or: [ { normalized_phone_number: exact }, { phone_number: digit-flex regex } ] }` |
+| `phone_number` | `normalizePhoneNumberForMatch` → **undefined when fewer than 8 digits**. Else `$or` across `CALL_LEAD_CONTACT_PHONE_PATHS` (live + ingested + Granot): exact on `*normalized_phone_number`, digit-flex regex on the other phone paths |
 | `job_no` | Exact trim on `job_no` only — **not** `normalized_job_no` |
-| `email` | Exact lowercase trim |
-| `name` | Trim + collapse whitespace (**not** lowercased). Unanchored word-sequence regex (`word\s+word`, `/i`) — substring, not whole-name |
+| `email` | Exact lowercase trim `$or` across `CALL_LEAD_CONTACT_EMAIL_PATHS` |
+| `name` | Trim + collapse whitespace (**not** lowercased). Unanchored word-sequence regex (`word\s+word`, `/i`) `$or` across `CALL_LEAD_CONTACT_NAME_PATHS` |
 
 Name is looser than form search (form name is anchored `^…$` after lowercase).
 
@@ -89,7 +89,7 @@ Name is looser than form search (form name is anchored `^…$` after lowercase).
 - Schema-legal `first_name`/`last_name` only → empty clauses → guaranteed empty list
 - Phone with fewer than 8 digits after `normalizePhoneNumberForMatch` → no phone clause (form search still uses a 7-or-more-digit regex)
 - All provided identity strings empty after trim → empty list
-- No dedicated `callLeadSearch.service.test.ts` (known gap). Schema tests live in `v1.validation.test.ts`.
+- Filter builder tests live in `callLeadSearch.service.test.ts`. Schema tests live in `v1.validation.test.ts`.
 
 ## Search vs browse
 
@@ -106,7 +106,7 @@ Name is looser than form search (form name is anchored `^…$` after lowercase).
 - **Read-only** — no writes or side effects.
 - Phone matching must go through `normalizePhoneNumberForMatch` + the shared digit-flex regex.
 - OR semantics are intentional; switching to AND would shrink extension hits.
-- Does not search `normalized_job_no`, RingCentral nested fields, or source snapshots.
+- Does not search `normalized_job_no`, RingCentral nested fields, or source snapshots. Summaries stay live **Called** fields. Processor identity still omits Call snapshot phone.
 
 ## Related modules
 

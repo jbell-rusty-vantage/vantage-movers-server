@@ -42,7 +42,7 @@ test("deriveTrustedOwnerActor accepts trusted owner headers with primary secret"
 test("deriveTrustedOwnerActor accepts owner users directly", () => {
   assert.deepEqual(
     deriveTrustedOwnerActor(
-      { kind: "user", role: "owner", userId: "user-id", email: "Owner@Example.com" } as any,
+      { kind: "user", roles: ["owner"], userId: "user-id", email: "Owner@Example.com" } as any,
       { adminUserId: undefined, adminEmail: undefined, adminRole: undefined },
     ),
     {
@@ -57,7 +57,7 @@ test("deriveTrustedOwnerActor rejects non-owner users and bare secrets", () => {
   assert.throws(
     () =>
       deriveTrustedOwnerActor(
-        { kind: "user", role: "member", userId: "user-id", email: "user@example.com" } as any,
+        { kind: "user", roles: ["sales", "customer_service"], userId: "user-id", email: "user@example.com" } as any,
         { adminUserId: undefined, adminEmail: undefined, adminRole: undefined },
       ),
     /Forbidden/,
@@ -166,6 +166,22 @@ test("assertLiveBookingState blocks cancelled and invalid booking states", () =>
         action: "reassign",
       }),
     /no attached lead to reassign/,
+  );
+  assert.throws(
+    () =>
+      assertLiveBookingState({
+        cancelled: false,
+        hasLead: true,
+        action: "reopen",
+      }),
+    /already attached to a lead/,
+  );
+  assert.doesNotThrow(() =>
+    assertLiveBookingState({
+      cancelled: false,
+      hasLead: false,
+      action: "reopen",
+    }),
   );
 });
 

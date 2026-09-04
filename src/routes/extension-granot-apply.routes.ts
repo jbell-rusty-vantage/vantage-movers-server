@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import mongoose from "mongoose";
 import { ZodError } from "zod";
 import { connectMongo } from "../db";
+import { hasExtensionRole } from "../auth/extension/roles";
 import type { VantageAuthContext } from "../middleware/requireApiSecret";
 import { createBrowserExtensionOwnerInitiator } from "../services/durableWork/actors";
 import {
@@ -123,7 +124,7 @@ export function createExtensionGranotApplyRouter(
 
 function requireExtensionOwnerInitiator(req: Request) {
   const auth = (req as Request & { vantageAuth?: VantageAuthContext }).vantageAuth;
-  if (auth?.kind !== "user" || auth.role !== "owner") {
+  if (auth?.kind !== "user" || !hasExtensionRole(auth.roles, "owner")) {
     throw new GranotLifecycleError(
       "Extension apply requires an authenticated Owner session",
       GRANOT_LIFECYCLE_ERROR_CODES.OWNER_REQUIRED,

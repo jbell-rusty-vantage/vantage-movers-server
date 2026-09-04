@@ -114,7 +114,7 @@ The write path and Admin Form Leads display/search are already shipped. Read the
 
 **WordPress Form Lead.** Live name, phone, and email stay [Form Submitted Contact](../../../CONTEXT.md). Qualified Granot contact lives only on `granot_contact_snapshot`.
 
-**Call Lead / Granot-born Form Lead.** Live fields already are the enrichment. Call identity does not query `granot_contact_snapshot`. This file does not add a Granot chip to Call Lead rows.
+**Call Lead / Granot-born Form Lead.** Live fields are no longer “the enrichment.” Qualified Granot contact is snapshot-only after [Call Lead contact provenance](../call-lead-contact-provenance/call-lead-contact-provenance-specification.md). Call identity still does not query `granot_contact_snapshot`. Automatic suggestion still uses Job else operational phone — not snapshot phone. Owner desk Call `q` is any-known-contact (CLCP-05). This file does not reopen those slices.
 
 **Processor identity vs Owner desk search.** Identity already ORs current, ingested, and Granot phone/email inside one Source Company and Source Granularity. The Owner candidate browser does not. That gap is why a later Granot phone can attach automatically in some identity paths and still be unfindable when the Owner types it in **Find the right customer**.
 

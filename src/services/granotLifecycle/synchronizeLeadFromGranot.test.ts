@@ -7,15 +7,24 @@ import {
   createGranotWebhookInitiator,
 } from "../durableWork/actors";
 import { DomainCommandContextError } from "../domainCommands/types";
-import type { GranotAuthorizedLeadDesiredState } from "./authorizedDesiredState";
+import {
+  toAuthorizedLeadDesiredState,
+  type GranotAuthorizedLeadDesiredState,
+} from "./authorizedDesiredState";
+import {
+  planLeadDesiredState,
+  type LeadDesiredStateProjection,
+} from "./leadDesiredState";
 import {
   granotSnapshotDiffersFromIngested,
   receiverAgentCatalogStamps,
   synchronizeLeadFromGranot,
   type SynchronizeLeadFromGranotInput,
 } from "./synchronizeLeadFromGranot";
-import type { SynchronizeLeadExecution } from "./synchronizeLeadTypes";
 import type { GranotObservationDocument } from "../../models/GranotObservation";
+import type { LeadIdentityResult } from "./identity";
+import type { SourcePolicySnapshot } from "./sourcePolicy";
+import type { SynchronizeLeadExecution } from "./synchronizeLeadTypes";
 
 const observationId = new mongoose.Types.ObjectId();
 const receiptId = new mongoose.Types.ObjectId();
@@ -269,4 +278,111 @@ test("Changed in Granot stays true for a different person or reach path", () => 
     }),
     true,
   );
+});
+
+test("Call Lead synchronize persists Granot Contact Snapshot and leaves live phone unchanged", () => {
+  const callLeadId = String(leadId);
+  const ingested = {
+    first_name: "Original",
+    last_name: "Caller",
+    name: "Original Caller",
+    phone_number: "5550000000",
+    normalized_phone_number: "5550000000",
+    email: "caller@example.test",
+  };
+  const incomingSnapshot = {
+    first_name: "Ada",
+    last_name: "Lovelace",
+    name: "Ada Lovelace",
+    phone_number: "5551234567",
+    normalized_phone_number: "5551234567",
+    email: "ada@example.test",
+  };
+  const observation = {
+    _id: observationId,
+    receipt_id: receiptId,
+    schema_version: 1,
+    kind: "lead_snapshot",
+    normalization_result: "valid",
+    route_event_class: "lead_created",
+    captured_at: capturedAt,
+    source_label_raw: "Synthetic Inbounds",
+    normalized_source_label: "synthetic inbounds",
+    identity: {
+      job_no_raw: "synthetic-job-100",
+      normalized_job_no: "SYNTHETIC JOB 100",
+    },
+    contact: {
+      first_name: "Ada",
+      last_name: "Lovelace",
+      display_name: "Ada Lovelace",
+      phone_raw: "5551234567",
+      normalized_phone: "5551234567",
+      normalized_email: "ada@example.test",
+    },
+    move: {},
+    priority: { valid: true, canonical: "1" },
+    booking_action: {},
+    display_money: {},
+    agent_identity: {},
+    provider_context: {},
+    issues: [],
+    createdAt: capturedAt,
+    updatedAt: capturedAt,
+  } as GranotObservationDocument;
+  const lead: LeadDesiredStateProjection = {
+    model: "CallLead",
+    id: callLeadId,
+    ingestion_origin: "ringcentral",
+    quoted: true,
+    granot_priority: "1",
+    name: ingested.name,
+    first_name: ingested.first_name,
+    last_name: ingested.last_name,
+    phone_number: ingested.phone_number,
+    normalized_phone_number: ingested.normalized_phone_number,
+    email: ingested.email,
+    ingested_contact_snapshot: ingested,
+    job_no: "synthetic-job-100",
+    normalized_job_no: "SYNTHETIC JOB 100",
+  };
+  const identity: LeadIdentityResult = {
+    outcome: "linked",
+    reason_code: "record_link_confirmed",
+    match_method: "call_job_no_exact",
+    target: { model: "CallLead", id: callLeadId },
+    target_eligibility: "full",
+    candidates: [{ target: { model: "CallLead", id: callLeadId }, reason_codes: ["call_job_no_exact"] }],
+    agent_assertion: "empty",
+  };
+  const policy: SourcePolicySnapshot = {
+    granot_crm_source_id: String(new mongoose.Types.ObjectId()),
+    lead_source_company_id: String(new mongoose.Types.ObjectId()),
+    source_granularity_id: String(new mongoose.Types.ObjectId()),
+    selected_route_key: "call_any",
+    selected_lead_model: "CallLead",
+    selected_move_type: "any",
+    lifecycle_disposition: "source_scoped_lead",
+    lead_created_policy: "link_only",
+  };
+  const planned = planLeadDesiredState({
+    observation,
+    identity,
+    lead,
+    policy,
+    now: capturedAt,
+    attempt: 1,
+  });
+  const authorized = toAuthorizedLeadDesiredState({
+    plan: planned,
+    lead_model: "CallLead",
+    temporal_winner: { observation_id: String(observationId), captured_at: capturedAt },
+  });
+  assert.ok(authorized.changed_paths.includes("granot_contact_snapshot"));
+  assert.deepEqual(authorized.set.granot_contact_snapshot, incomingSnapshot);
+  assert.equal(authorized.changed_paths.includes("phone_number"), false);
+  assert.equal(authorized.changed_paths.includes("normalized_phone_number"), false);
+  assert.equal(authorized.changed_paths.includes("name"), false);
+  assert.deepEqual(authorized.contact_changed_paths, []);
+  assert.equal(granotSnapshotDiffersFromIngested(ingested, incomingSnapshot), true);
 });

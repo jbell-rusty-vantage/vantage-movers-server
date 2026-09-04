@@ -1,12 +1,12 @@
 import jwt, { type JwtPayload } from "jsonwebtoken";
-import { STORED_EXTENSION_ROLES } from "../../models/ExtensionUser";
+import { normalizeExtensionRoles, type CurrentExtensionRole } from "./roles";
 import { getExtensionAuthConfig } from "./config";
-import type { ExtensionRole } from "./types";
 
 export type AccessTokenPayload = {
   sub: string;
   email: string;
-  role: ExtensionRole;
+  roles: CurrentExtensionRole[];
+  token_version: number;
 };
 
 export type RefreshTokenPayload = {
@@ -49,19 +49,18 @@ export function verifyRefreshToken(token: string): VerifiedRefreshToken {
   return payload;
 }
 
-function isAccessTokenPayload(payload: string | JwtPayload): payload is VerifiedAccessToken {
+export function isAccessTokenPayload(
+  payload: string | JwtPayload,
+): payload is VerifiedAccessToken {
+  if (typeof payload === "string") {
+    return false;
+  }
+  const roles = normalizeExtensionRoles(payload.roles);
   return (
-    typeof payload !== "string" &&
     typeof payload.sub === "string" &&
     typeof payload.email === "string" &&
-    isStoredExtensionRole(payload.role)
-  );
-}
-
-function isStoredExtensionRole(role: unknown): role is ExtensionRole {
-  return (
-    typeof role === "string" &&
-    (STORED_EXTENSION_ROLES as readonly string[]).includes(role)
+    typeof payload.token_version === "number" &&
+    roles !== null
   );
 }
 

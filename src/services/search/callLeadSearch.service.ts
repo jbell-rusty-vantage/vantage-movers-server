@@ -1,6 +1,11 @@
 import { CallLead, type CallLeadDocument } from "../../models/CallLead";
 import type { SearchCallLeadsInput } from "../../validation/v1.validation";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
+import {
+  CALL_LEAD_CONTACT_EMAIL_PATHS,
+  CALL_LEAD_CONTACT_NAME_PATHS,
+  CALL_LEAD_CONTACT_PHONE_PATHS,
+} from "./leadBrowseShared";
 
 export type CallLeadSearchSummary = Pick<
   CallLeadDocument,
@@ -60,15 +65,17 @@ export function summarizeCallLead(lead: CallLeadDocument): CallLeadSearchSummary
   };
 }
 
-function buildCallLeadSearchFilter(input: SearchCallLeadsInput): Record<string, unknown> {
+export function buildCallLeadSearchFilter(input: SearchCallLeadsInput): Record<string, unknown> {
   const clauses: Record<string, unknown>[] = [];
   const normalizedPhone = normalizePhoneNumberForMatch(input.phone_number);
   if (normalizedPhone) {
+    const phoneRegex = buildPhoneRegex(normalizedPhone);
     clauses.push({
-      $or: [
-        { normalized_phone_number: normalizedPhone },
-        { phone_number: buildPhoneRegex(normalizedPhone) },
-      ],
+      $or: CALL_LEAD_CONTACT_PHONE_PATHS.map((path) =>
+        path.endsWith("normalized_phone_number")
+          ? { [path]: normalizedPhone }
+          : { [path]: phoneRegex },
+      ),
     });
   }
 
@@ -79,12 +86,17 @@ function buildCallLeadSearchFilter(input: SearchCallLeadsInput): Record<string, 
 
   const email = normalizeValue(input.email)?.toLowerCase();
   if (email) {
-    clauses.push({ email });
+    clauses.push({
+      $or: CALL_LEAD_CONTACT_EMAIL_PATHS.map((path) => ({ [path]: email })),
+    });
   }
 
   const name = normalizeName(input.name);
   if (name) {
-    clauses.push({ name: buildNameRegex(name) });
+    const nameRegex = buildNameRegex(name);
+    clauses.push({
+      $or: CALL_LEAD_CONTACT_NAME_PATHS.map((path) => ({ [path]: nameRegex })),
+    });
   }
 
   if (clauses.length === 0) {
