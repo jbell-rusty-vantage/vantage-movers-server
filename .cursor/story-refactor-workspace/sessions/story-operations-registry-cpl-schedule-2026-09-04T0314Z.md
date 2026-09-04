@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-04T03:14Z
 - Service / module: `operationsRegistry` / `cplSchedule.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (opening after #145 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/146
 
 ## Stock at start
 
