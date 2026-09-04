@@ -25,9 +25,13 @@ export const BOOKING_SUMMARY_SELECT = "job_no book_date cancelled";
 export const CANCELLATION_SUMMARY_SELECT = "cancel_date reason job_no";
 
 /**
- * Any-known-contact paths for Form Lead desk search. Admin browse, Admin
- * typeahead, and extension Form browse share this list so they cannot drift.
- * Scored Form Lead Search and Call Lead browse do not use these.
+ * Any-known-contact paths for Form Lead and Call Lead desk search. Admin
+ * browse (including Manual attach filters), Admin typeahead, intake /
+ * Connect `q`, extension browse, and Owner booking-lead reconciliation
+ * candidate search share these lists so they cannot drift. Scored Form Lead
+ * Search does not use them. Call Lead Search (`POST /call-leads/search`)
+ * uses the Call aliases as an OR lookup, not Form-style scoring. Processor
+ * identity and automatic booking match do not.
  */
 export const FORM_LEAD_CONTACT_NAME_PATHS = [
   "name",
@@ -55,6 +59,10 @@ export const FORM_LEAD_CONTACT_PHONE_PATHS = [
   "granot_contact_snapshot.phone_number",
   "granot_contact_snapshot.normalized_phone_number",
 ] as const;
+
+export const CALL_LEAD_CONTACT_NAME_PATHS = FORM_LEAD_CONTACT_NAME_PATHS;
+export const CALL_LEAD_CONTACT_EMAIL_PATHS = FORM_LEAD_CONTACT_EMAIL_PATHS;
+export const CALL_LEAD_CONTACT_PHONE_PATHS = FORM_LEAD_CONTACT_PHONE_PATHS;
 
 export function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

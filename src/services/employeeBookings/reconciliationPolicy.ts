@@ -1,3 +1,4 @@
+import { hasExtensionRole } from "../../auth/extension/roles";
 import type { VantageAuthContext } from "../../middleware/requireApiSecret";
 import { V1ServiceError } from "../v1ServiceError";
 
@@ -23,7 +24,7 @@ export function deriveTrustedOwnerActor(
     adminRole?: string | null;
   },
 ): { actor: string; ownerId?: string; ownerEmail?: string } {
-  if (auth?.kind === "user" && auth.role === "owner") {
+  if (auth?.kind === "user" && hasExtensionRole(auth.roles, "owner")) {
     return {
       actor: `owner:${auth.userId}`,
       ownerId: auth.userId,
@@ -133,7 +134,7 @@ export function assertLiveBookingState(args: {
     throw new V1ServiceError("Booking is cancelled", 409);
   }
   if (
-    ["attach_existing", "create_and_attach", "update_pending", "dismiss"].includes(
+    ["attach_existing", "create_and_attach", "update_pending", "dismiss", "reopen"].includes(
       args.action,
     ) &&
     args.hasLead

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Request } from "express";
 import mongoose from "mongoose";
+import { hasExtensionRole } from "../../auth/extension/roles";
 import type { VantageAuthContext } from "../../middleware/requireApiSecret";
 import type { DurableActor } from "../durableWork/types";
 import { DomainCommandContextError, type CanonicalCommandContext } from "./types";
@@ -88,7 +89,7 @@ function compatibilityActorFromAuth(
   requestId: string,
 ): DurableActor {
   if (auth?.kind === "user") {
-    if (auth.role !== "owner") {
+    if (!hasExtensionRole(auth.roles, "owner")) {
       throw new DomainCommandContextError(
         "Existing write commands require an owner or admin actor.",
       );

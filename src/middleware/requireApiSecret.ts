@@ -2,7 +2,8 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import {
   getExtensionUserFromAccessToken,
-  type ExtensionRole,
+  hasExtensionRole,
+  type CurrentExtensionRole,
 } from "../auth/extension";
 import { resolveSourceCompany } from "../config/domain";
 import { shouldCaptureAuthEvents } from "../config/domain/observability";
@@ -24,7 +25,7 @@ type ScopedApiKey = {
 export type VantageAuthContext =
   | { kind: "secret" }
   | { kind: "scoped_key"; scopedKeyName: string; scopedKeyFingerprint: string }
-  | { kind: "user"; userId: string; email: string; role: ExtensionRole };
+  | { kind: "user"; userId: string; email: string; roles: CurrentExtensionRole[] };
 
 const TARIFF_ADJUSTMENT_BEARER_ROUTE: ScopedApiRoute = {
   method: "POST",
@@ -33,7 +34,6 @@ const TARIFF_ADJUSTMENT_BEARER_ROUTE: ScopedApiRoute = {
 
 const LIMITED_EXTENSION_ROLE_ALLOWED_ROUTES: Record<string, readonly ScopedApiRoute[]> = {
   customer_service: [TARIFF_ADJUSTMENT_BEARER_ROUTE],
-  employee: [TARIFF_ADJUSTMENT_BEARER_ROUTE],
   sales: [],
 };
 
@@ -82,14 +82,17 @@ export async function requireVantageAuth(
       bearerToken,
     );
     if (user) {
-      if (user.role !== "owner" && !isLimitedExtensionRoleAllowedRoute(req, user.role)) {
+      if (
+        !hasExtensionRole(user.roles, "owner") &&
+        !isAnyLimitedExtensionRoleAllowedRoute(req, user.roles)
+      ) {
         await recordAuthEvent(req, {
           level: "warn",
           eventKey: "auth.user.forbidden",
           summary: "Extension user denied protected API route.",
           details: {
             user_id: user.id,
-            role: user.role,
+            roles: user.roles,
             forbidden_reason: "role_route_not_allowed",
           },
           notificationCandidate: false,
@@ -102,7 +105,7 @@ export async function requireVantageAuth(
         kind: "user",
         userId: user.id,
         email: user.email,
-        role: user.role,
+        roles: user.roles,
       });
       return next();
     }
@@ -220,6 +223,13 @@ export function isLimitedExtensionRoleAllowedRoute(
   return allowedRoutes.some(
     (route) => route.method === method && route.path === path,
   );
+}
+
+function isAnyLimitedExtensionRoleAllowedRoute(
+  req: Request,
+  roles: readonly CurrentExtensionRole[],
+): boolean {
+  return roles.some((role) => isLimitedExtensionRoleAllowedRoute(req, role));
 }
 
 type AuthEventInput = {

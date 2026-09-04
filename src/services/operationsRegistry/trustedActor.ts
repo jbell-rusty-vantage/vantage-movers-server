@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Request } from "express";
+import { hasExtensionRole } from "../../auth/extension/roles";
 import type { VantageAuthContext } from "../../middleware/requireApiSecret";
 import {
   getAdminProxySignatureMaxAgeMs,
@@ -204,7 +205,7 @@ function verifyPreviewUnsignedActor(input: VerifyActorInput): RegistryActorConte
     });
   }
 
-  if (input.auth?.kind === "user" && input.auth.role === "owner") {
+  if (input.auth?.kind === "user" && hasExtensionRole(input.auth.roles, "owner")) {
     return {
       actorType: "owner",
       actorId: input.auth.userId,
@@ -245,7 +246,7 @@ function isExtensionOwnerCatalogMutationPath(method: string, path: string): bool
 function extensionOwnerActor(
   input: VerifyActorInput,
 ): RegistryActorContext | null {
-  if (input.auth?.kind !== "user" || input.auth.role !== "owner") {
+  if (input.auth?.kind !== "user" || !hasExtensionRole(input.auth.roles, "owner")) {
     return null;
   }
 

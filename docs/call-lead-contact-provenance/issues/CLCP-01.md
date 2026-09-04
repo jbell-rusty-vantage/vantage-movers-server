@@ -81,9 +81,10 @@ Observed 2026-09-04; **reverify at implementation**.
 
 ## 7. Out of scope
 
-Identity Job-wins (CLCP-02). CSV/preview (CLCP-03). Intake `q`. Admin
-UI. `createLeadFromGranot` mint behavior. Flag enablement. Backfill
-script.
+Identity Job-wins (CLCP-02). CSV/preview (CLCP-03). Intake / Admin `q`
+(CLCP-05). `createLeadFromGranot` mint behavior. Flag enablement.
+Backfill script. HTTP and extension apply already share this planner —
+do not add a second write path.
 
 ## 8. Tests
 
@@ -105,17 +106,17 @@ fields. CLCP-04 writes the Service.
 
 ## 10. Acceptance criteria
 
-- [ ] RingCentral Call + Priority `1`/`5` plans `granot_contact_snapshot`
+- [x] RingCentral Call + Priority `1`/`5` plans `granot_contact_snapshot`
       only
-- [ ] Live `phone_number` / `name` / `email` absent from `changed_paths`
-- [ ] `ingested_contact_snapshot` never planned
-- [ ] `granot_lead_created` later different phone → snapshot only
-- [ ] Semantic-equal contact → no snapshot rewrite
-- [ ] Priority `8` does not plan snapshot contact
-- [ ] WordPress Form snapshot-only behavior unchanged
-- [ ] Synchronize test: snapshot persisted, live phone unchanged
-- [ ] `identity.ts` and `callLeadEnrichment.service.ts` unchanged
-- [ ] Focused tests in §8 pass
+- [x] Live `phone_number` / `name` / `email` absent from `changed_paths`
+- [x] `ingested_contact_snapshot` never planned
+- [x] `granot_lead_created` later different phone → snapshot only
+- [x] Semantic-equal contact → no snapshot rewrite
+- [x] Priority `8` does not plan snapshot contact
+- [x] WordPress Form snapshot-only behavior unchanged
+- [x] Synchronize test: snapshot persisted, live phone unchanged
+- [x] `identity.ts` and `callLeadEnrichment.service.ts` unchanged
+- [x] Focused tests in §8 pass
 
 ## 11. Commands
 

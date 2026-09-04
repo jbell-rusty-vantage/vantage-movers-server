@@ -9,16 +9,25 @@ import {
 } from "../services/operationsRegistry";
 import {
   createExtensionUser,
+  deleteExtensionUser,
   listExtensionUsers,
+  updateExtensionUser,
   type AdminExtensionUser,
   type CreateExtensionUserInput,
+  type UpdateExtensionUserInput,
 } from "../services/extensionUsers";
-import { createExtensionUserSchema } from "../validation/v1/extensionUsers.validation";
+import {
+  createExtensionUserSchema,
+  extensionUserIdParamSchema,
+  updateExtensionUserSchema,
+} from "../validation/v1/extensionUsers.validation";
 
 export type ExtensionUsersAdminDeps = {
   connect?: typeof connectMongo;
   list?: () => Promise<AdminExtensionUser[]>;
   create?: (input: CreateExtensionUserInput) => Promise<AdminExtensionUser>;
+  update?: (id: string, input: UpdateExtensionUserInput) => Promise<AdminExtensionUser>;
+  delete?: (id: string) => Promise<{ id: string }>;
 };
 
 export function createExtensionUsersAdminRouter(
@@ -28,6 +37,8 @@ export function createExtensionUsersAdminRouter(
   const connect = deps.connect ?? connectMongo;
   const list = deps.list ?? listExtensionUsers;
   const create = deps.create ?? createExtensionUser;
+  const update = deps.update ?? updateExtensionUser;
+  const remove = deps.delete ?? deleteExtensionUser;
 
   router.get("/api/v1/admin/extension-users", async (req, res) => {
     try {
@@ -47,6 +58,31 @@ export function createExtensionUsersAdminRouter(
       const parsed = createExtensionUserSchema.parse(req.body);
       const data = await create(parsed);
       return res.status(201).json({ ok: true, data });
+    } catch (error) {
+      return sendError(res, error, requestId(req));
+    }
+  });
+
+  router.patch("/api/v1/admin/extension-users/:id", async (req, res) => {
+    try {
+      await connect();
+      requireRegistryOwnerActor(req, auth(req));
+      const { id } = extensionUserIdParamSchema.parse(req.params);
+      const parsed = updateExtensionUserSchema.parse(req.body);
+      const data = await update(id, parsed);
+      return res.status(200).json({ ok: true, data });
+    } catch (error) {
+      return sendError(res, error, requestId(req));
+    }
+  });
+
+  router.delete("/api/v1/admin/extension-users/:id", async (req, res) => {
+    try {
+      await connect();
+      requireRegistryOwnerActor(req, auth(req));
+      const { id } = extensionUserIdParamSchema.parse(req.params);
+      const data = await remove(id);
+      return res.status(200).json({ ok: true, data });
     } catch (error) {
       return sendError(res, error, requestId(req));
     }

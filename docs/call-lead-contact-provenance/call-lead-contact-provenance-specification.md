@@ -2,27 +2,31 @@
 type: Specification
 title: Call Lead contact provenance — operational phone locked, Granot snapshot coalesce
 description: >-
-  Implementation-ready contract so RingCentral-created Call Leads keep the
-  ingested caller as the operational phone forever, store Granot contact only
-  on granot_contact_snapshot coalesced by Job Number, and treat Job as
-  authoritative after the first phone bind. Booking-intake automatic match
-  does not need Call snapshot search.
+  Implementation-ready contract so Call Leads keep the ingested caller as the
+  operational phone, store Granot contact only on granot_contact_snapshot
+  coalesced by Job Number, treat Job as authoritative after the first phone
+  bind, keep HTTP Automation and extension apply on that same processor, and
+  let Owner desk search find any known contact (phone first).
 tags:
   - call-lead
   - granot-lifecycle
   - enrichment
   - ringcentral
+  - admin-dashboard
 status: proposed-final
 stale_after: 2026-12-04
-owners: [team:main-server]
+owners: [team:main-server, team:vantage-admin, team:extension]
 applies_to:
   - src/services/granotLifecycle/leadDesiredState.ts
   - src/services/granotLifecycle/authorizedDesiredState.ts
   - src/services/granotLifecycle/synchronizeLeadFromGranot.ts
   - src/services/granotLifecycle/identity.ts
   - src/services/granotLifecycle/createLeadFromGranot.ts
+  - src/services/granotLifecycle/extensionApply.ts
+  - src/services/granotLifecycle/automationApply.ts
   - src/services/enrichment/callLeadEnrichment.service.ts
   - src/services/search/leadBrowseShared.ts
+  - src/services/search/callLeadSearch.service.ts
   - src/services/granotLifecycle/projections.ts
   - docs/knowledge/granot-lifecycle/desired-state.md
   - docs/knowledge/granot-lifecycle/identity.md
@@ -53,24 +57,28 @@ sources:
 # Call Lead contact provenance
 
 > **Contract maturity: implementation-ready.** Product rules in this file win
-> for Call Lead operational phone, Granot contact snapshots, and Call identity
-> after Job bind. File citations are evidence; reverify line numbers at
-> implementation. Agents work from [`README.md`](README.md) →
+> for Call Lead operational phone, Granot contact snapshots, Call identity
+> after Job bind, shared HTTP/extension apply, and Owner desk any-known-contact
+> search. File citations are evidence; reverify line numbers at implementation.
+> Agents work from [`README.md`](README.md) →
 > [`AGENT-PROTOCOL.md`](AGENT-PROTOCOL.md) → the matching issue. Do not start
 > coding from chat notes.
 
 **Prepared:** 2026-09-04
-**Repos:** `vantage-main-server` (core). `vantage-admin` only if CLCP-05 is un-deferred.
+**Repos:** `vantage-main-server` (writes, identity, preview, search). `vantage-admin` (CLCP-05 chips and Contact cards). `granot_sync_extensions_and_services` (CLCP-03 apply/preview copy; Search browse uses server paths).
 **Canonical terms:** [Call Lead](../../../CONTEXT.md), [Call Qualification](../../../CONTEXT.md), [Call Lead Ingestion](../../../CONTEXT.md), [Caller Match Key](../../../CONTEXT.md), [Ingestion Origin](../../../CONTEXT.md), [Source Granularity](../../../CONTEXT.md), [Job Number](../../../CONTEXT.md), [Granot Observation](../../../CONTEXT.md), [Granot Record Link](../../../CONTEXT.md), [Synchronization Decision](../../../CONTEXT.md), [Form Submitted Contact](../../../CONTEXT.md), [Granot Contact Snapshot](../../../CONTEXT.md)
 
 RingCentral Call Qualification creates most inbound Call Leads as **phone +
-Source Granularity**. A later `priority_updated` or HTTP-automation
-`lead_snapshot_apply` matches that caller and fills Job Number. Today the
-desired-state planner then **overwrites live name/phone/email** on
-RingCentral-origin and Granot-created Call Leads. Form (WordPress) already
-keeps submitted contact live and writes Granot contact only to
-`granot_contact_snapshot`. This pack gives Call Leads the same provenance
-split, with Job Number as the coalesce key after the first phone bind.
+Source Granularity**. A later `priority_updated`, HTTP-automation
+`lead_snapshot_apply`, or extension Follow Up apply matches that caller and
+fills Job Number. Today the desired-state planner then **overwrites live
+name/phone/email** on RingCentral-origin and Granot-created Call Leads. Form
+(WordPress) already keeps submitted contact live and writes Granot contact
+only to `granot_contact_snapshot`. This pack gives Call Leads the same
+provenance split, with Job Number as the coalesce key after the first phone
+bind. HTTP Automation and the extension Call Leads workspace already share
+that processor door; this pack keeps them there and aligns preview/gates so
+Owner guidance matches apply.
 
 ---
 
@@ -84,11 +92,12 @@ Read in this order. Stop and report contradictions; do not silently merge.
 | 2 | [`docs/knowledge/granot-lifecycle/desired-state.md`](../knowledge/granot-lifecycle/desired-state.md), [`identity.md`](../knowledge/granot-lifecycle/identity.md), [`processor.md`](../knowledge/granot-lifecycle/processor.md) — current shipped Services; this pack changes them |
 | 3 | [`docs/knowledge/services/form-lead.md`](../knowledge/services/form-lead.md) — Form snapshot pattern to copy, not rewrite |
 | 4 | [`docs/knowledge/services/call-lead.md`](../knowledge/services/call-lead.md), [`enrichment.md`](../knowledge/services/enrichment.md) |
-| 5 | [`docs/booking-intake-lead-attachment/booking-intake-lead-attachment-specification.md`](../booking-intake-lead-attachment/booking-intake-lead-attachment-specification.md) §2 — BILA left Call snapshot search out; this pack **does not** require flipping that for intake correctness |
-| 6 | FINAL SPEC contact/snapshot vocabulary — do not OKF-ify; do not invent a second snapshot document |
-| 7 | Current repository code and tests |
-| 8 | Workspace-root `CONTEXT.md` |
-| 9 | This pack's issues — sequencing and scope only |
+| 5 | [`docs/booking-intake-lead-attachment/booking-intake-lead-attachment-specification.md`](../booking-intake-lead-attachment/booking-intake-lead-attachment-specification.md) §2 — BILA left Call snapshot search out; this pack **does** add desk `q` (CLCP-05). Automatic suggestion still uses identity, not snapshot phone |
+| 6 | [`docs/knowledge/granot-lifecycle/extension-apply.md`](../knowledge/granot-lifecycle/extension-apply.md), [`automation-apply.md`](../knowledge/granot-lifecycle/automation-apply.md) — same capture → `claimAndProcessOrPoll` door; this pack must not restore a Call enrichment bypass |
+| 7 | FINAL SPEC contact/snapshot vocabulary — do not OKF-ify; do not invent a second snapshot document |
+| 8 | Current repository code and tests |
+| 9 | Workspace-root `CONTEXT.md` |
+| 10 | This pack's issues — sequencing and scope only |
 
 Where an issue disagrees with this file, this file wins and the issue author
 fixes the issue in the same change.
@@ -112,8 +121,15 @@ After this pack:
    **not** overwrite live phone, and does **not** conflict with another Call
    Lead that happens to have that Granot phone as its operational number.
 6. Booking-intake **automatic** suggestion stays Job, else granularity +
-   operational phone. Call snapshot search is **not** required for that
-   discovery.
+   operational phone. Snapshot phone is **not** an automatic identity key.
+7. HTTP Automation apply and extension Call Lead apply stay on the **same**
+   processor (`captureChannelOperationReceipt` → `claimAndProcessOrPoll` →
+   planner / identity / synchronize). Preview and the HTTP `syncable` gate
+   classify snapshot contact the same way apply will write it.
+8. Owner desk search (Admin browse / typeahead, intake Find / Connect,
+   extension `GET /call-leads` and `POST /call-leads/search`) matches **any
+   known contact**. Phone is the path that must not miss. Headline stays
+   **Called** (live / ingested). Granot card is the snapshot.
 
 Do not say “upsert” for later inbound match. Say **synchronize**.
 
@@ -126,14 +142,15 @@ Do not say “upsert” for later inbound match. Say **synchronize**.
   candidate selection (those become more stable because live phone no longer
   moves).
 - Adding Call `granot_contact_snapshot` phone to the **processor** identity
-  ladder.
+  ladder (`findCallLeadsByScopedPhone`). Desk search is a different surface.
 - Enabling `GRANOT_LIFECYCLE_LEAD_WRITES_ENABLED` or any other effect flag.
-- Owner Admin Call-browse / intake `known_contacts` chips (CLCP-05, deferred).
 - Reconstructing historical live phones that were already overwritten
   (optional backfill, not required to close the pack).
-- Changing scored `POST /api/v1/call-leads/search` weights.
 - Changing Form WordPress contact rules.
 - Official Booking customer fields, Sheet column layout, or SMS copy.
+- Restoring `syncCallLeadEnrichment` on HTTP or extension **apply**.
+- Auto-attach on snapshot-phone-only confidence (BILA-02 high confidence
+  only).
 
 ---
 
@@ -211,13 +228,31 @@ never Source Company alone
 ([`docs/knowledge/services/call-lead.md`](../knowledge/services/call-lead.md)
 Inbound Granot create and fences).
 
-### 3.4 Webhook and HTTP apply already share the processor
+### 3.4 Webhook, HTTP apply, and extension apply already share the processor
 
 - `priority_updated` capture:
   [`docs/knowledge/granot-lifecycle/capture.md`](../knowledge/granot-lifecycle/capture.md).
-- HTTP apply does **not** call `syncCallLeadEnrichment`:
-  [`docs/knowledge/granot-lifecycle/automation-apply.md`](../knowledge/granot-lifecycle/automation-apply.md),
-  [`docs/knowledge/services/granot-http-collector.md`](../knowledge/services/granot-http-collector.md).
+- HTTP apply (`applyAutomationPlanAction`) captures
+  `granot_http_automation` and enters `claimAndProcessOrPoll`. It does
+  **not** call `syncCallLeadEnrichment`:
+  [`automation-apply.md`](../knowledge/granot-lifecycle/automation-apply.md),
+  [`granot-http-collector.md`](../knowledge/services/granot-http-collector.md).
+- Extension apply (`applyExtensionGranotItem`) captures
+  `browser_extension` on the existing v1 URLs and enters the **same**
+  claim/processor:
+  [`extension-apply.md`](../knowledge/granot-lifecycle/extension-apply.md),
+  `src/routes/extension-granot-apply.routes.ts`
+  (`POST /api/v1/call-leads/enrichment/sync`,
+  `POST /api/v1/call-leads/booked-reconciliation/sync`).
+- Extension client:
+  `granot_sync_extensions_and_services/src/workflows/call-leads/apply.ts`
+  builds a raw statement (`lead_snapshot_apply` /
+  `booking_action_apply`) and POSTs `{ items }`. Popup and background
+  auto-sync share that apply. Preview stays on the enrichment DTOs.
+- Channel and auth differ (`browser_extension` /
+  `extension_session` vs `granot_http_automation` /
+  `automation_owner_approval`). That is transport. Contact rules must
+  not fork.
 - Booking-case Decision **returns before** lead desired-state
   ([`processor.md`](../knowledge/granot-lifecycle/processor.md) Booking
   reconciliation cases). Booked never writes `job_no` onto an unmatched
@@ -225,18 +260,31 @@ Inbound Granot create and fences).
 
 ### 3.5 CSV / preview still use the old enrichment matcher
 
-[`src/services/enrichment/callLeadEnrichment.service.ts`](../../src/services/enrichment/callLeadEnrichment.service.ts):
+[`src/services/enrichment/callLeadEnrichment.service.ts`](../../src/services/enrichment/callLeadEnrichment.service.ts)
+`findBestCallLeadMatch` (~470–523):
 
-- Phone first, then `job_no` (`resolveEnrichmentRow` / match comments in
-  [`enrichment.md`](../knowledge/services/enrichment.md) § Preview / match).
+- **Phone first** on the Granot row phone, then `job_no` only if phone
+  misses. After Job bind, Granot mobile ≠ caller can **hit another Call
+  Lead** whose operational phone equals that Granot mobile and never
+  reach `job_no`.
 - `buildUpdate` (~577–608) writes `job_no`, source, **name, email**,
   location, cubic feet. **Does not write phone or `move_date`.**
 - Existing different `job_no` is not overwritten.
 
-HTTP preview uses this matcher as **guidance only**. Apply rematches in
-identity.
+HTTP collector `planCallWorkflow` and the extension Call Leads preview
+both call this matcher. HTTP `syncable` is
+`preview.status === "updateable"` (or a receiver-agent bind). After
+CLCP-01, a contact-only Granot change would still look `updateable`
+because live name/email differ, or become `unchanged` if CLCP-03 removes
+those assigns without teaching preview to detect snapshot diffs — and
+then HTTP Automation would **not** offer the row. That is the
+synchronization gap this pack closes in §5.6.
 
-### 3.6 Booking intake Call search is live-only (and that is OK)
+Apply rematches in identity. `expected_target` disagreement becomes
+extension `conflict` (`maybeConflictOutcome`). Wrong preview target is
+not “guidance only” for the Owner.
+
+### 3.6 Owner desk Call search is live-only (must change)
 
 [`projections.ts`](../../src/services/granotLifecycle/projections.ts)
 `callLeadCandidateSearchOr` (~1622–1631): live name/email/phone + `job_no`
@@ -246,11 +294,24 @@ identity.
 [`connectLeadCandidates.test.ts`](../../src/services/granotLifecycle/connectLeadCandidates.test.ts)
 ~80–96 asserts Call `q` omits snapshot paths.
 
+Admin Call browse / typeahead and extension `GET /call-leads` are
+live-only ([`lead-browse.md`](../knowledge/services/lead-browse.md),
+[`admin-search.md`](../knowledge/services/admin-search.md)).
+`POST /api/v1/call-leads/search` is an OR lookup (not Form-style
+weighted scoring) and also omits snapshots
+([`call-lead-search.md`](../knowledge/services/call-lead-search.md)).
+
+Admin `/call-leads` has no Granot chip. Contact tab is a single live
+Name/Phone/Email grid
+(`vantage-admin/components/operational/operational-detail-panel.tsx`).
+Form already has `FormLeadContactsSection` and a `granot_contact` column.
+
 BILA-01: “Call Lead / Granot-born Form Lead. Live fields already are the
 enrichment.”
 ([`booking-intake-lead-attachment-specification.md`](../booking-intake-lead-attachment/booking-intake-lead-attachment-specification.md)
-§2). After this pack that sentence is false for **display**, but automatic
-intake discovery does **not** need snapshot `q`. See §7.
+§2). After this pack that sentence is false. Automatic suggestion still
+uses identity (Job, else operational phone). Desk `q` must find the
+later Granot phone. See §7.
 
 Checked-in `GRANOT_LIFECYCLE_LEAD_WRITES_ENABLED` remains false. Planner
 and identity changes are still required so shadow plans and a later write
@@ -318,14 +379,14 @@ Observation. Invalid `priority_updated` still plans no contact.
 RC (or Admin/sheet) create
   → operational phone + ingested snapshot; no job_no
 
-First matched Granot Observation (usually priority_updated or
-lead_snapshot_apply), no job on Lead
+First matched Granot Observation (usually priority_updated,
+HTTP lead_snapshot_apply, or extension Follow Up apply), no job on Lead
   → identity: Source Granularity + operational/ingested phone
   → fill job_no / normalized_job_no (prefix-equivalent)
   → write granot_contact_snapshot (if Priority 1/5 + qualified contact)
   → do not change live phone/name/email
 
-Later Observation with same Job (webhook or HTTP apply)
+Later Observation with same Job (webhook, HTTP apply, or extension apply)
   → identity: Record Link or call_job_no_exact; skip competing phone rung
   → coalesce snapshot; live phone unchanged
 ```
@@ -359,6 +420,8 @@ contact).
 - Later inbound match **synchronizes**. Do not say upsert.
 - Operational phone = live fields = ingested caller (after this pack).
 - Granot card = `granot_contact_snapshot` only.
+- Owner desk labels: **Called** (live / ingested), **Granot**,
+  **Changed in Granot**. Never print snapshot field names.
 
 ---
 
@@ -439,22 +502,55 @@ Must **not** write `phone_number` (already true). Must **not** write live
   observation-only until lifecycle apply.
 
 Do not restore a live-phone write. Do not overwrite a conflicting `job_no`
-(already true). HTTP apply must not start calling this helper.
+(already true). HTTP apply and extension apply must not start calling this
+helper.
 
-### 5.6 HTTP / extension preview
+### 5.6 Shared HTTP / extension apply and preview (CLCP-03)
 
-Preview may keep phone-first then `job_no` fallback. After Job bind,
-preview should still find the Lead via `job_no` even when Granot phone ≠
-operational phone. Document that phone-first using the **Granot** number
-misses until the `job_no` fallback. Do not teach preview to query
-`granot_contact_snapshot` as identity (optional later; not this pack’s
-core). Preview remains non-authoritative.
+**Apply door (already shipped — do not regress):**
 
-Booked-jobs reconciliation Path B phone fallback
-([`booked-call-lead-reconciliation.md`](../knowledge/services/booked-call-lead-reconciliation.md)
-~106–111) is the same: Job path first; live-phone fallback uses
-operational phone. Do not change that matcher in CLCP-01/02. CLCP-03 may
-add a comment/test that phone fallback does not read Granot snapshot.
+| Surface | Capture | Then |
+| --- | --- | --- |
+| HTTP Automation selected action | `granot_http_automation` / `automation_owner_approval` | `claimAndProcessOrPoll` |
+| Extension Follow Up / Booked Jobs | `browser_extension` / `extension_session` | `claimAndProcessOrPoll` |
+
+Same planner, identity, and `synchronizeLeadFromGranot`. Same snapshot
+rules as webhook `priority_updated`. Do not import
+`syncCallLeadEnrichment` or `syncBookedCallLeadReconciliation` from
+`automationApply.ts` or `extensionApply.ts`. Extension
+`workflows/call-leads/apply.ts` stays raw-statement `{ items }` on the
+existing sync URLs.
+
+**Preview matcher (must change):**
+`findBestCallLeadMatch` / booked Path B are shared by
+`planCallWorkflow` and the extension Call Leads workspace.
+
+1. If the row has a Job Number, match **Job first** (scoped / exact
+   `job_no` as today). Do not phone-first on the Granot mobile.
+2. Phone only when Job is missing or Job misses — first bind. Phone
+   compares **operational + ingested** only. Do **not** query
+   `granot_contact_snapshot` as identity.
+3. After Job bind, Granot phone ≠ caller still finds the Job Lead.
+   Granot phone equal to **another** caller’s ANI must not select that
+   other Lead when the row has a Job.
+
+**`updateable` / HTTP `syncable` (must change):**
+Preview `updateable` means the processor would change something the
+Owner can approve: Job fill, location / cubic feet / `local`, empty
+receiver bind, **or** `granot_contact_snapshot` coalesce. It must **not**
+mean “live name/email/phone would change.” A contact-only Granot card
+diff stays `updateable` so HTTP Automation still offers the row.
+Extension apply gates (`updateable` / `unchanged` / `updated`) stay;
+copy must not say live name or phone will update. Owner labels:
+**Called**, **Granot**, **Changed in Granot**.
+
+Booked-jobs Path B already prefers Job; live-phone fallback stays
+operational phone. Add a test that the fallback does not read the
+snapshot as identity.
+
+`expected_target` from Job-first preview should be the Job Lead so
+extension `maybeConflictOutcome` does not false-conflict after apply
+identity wins on Job.
 
 ---
 
@@ -508,16 +604,17 @@ Automatic suggestion uses Unit 14 identity
 | Booked **first** (no `job_no` on Lead yet) | Granularity + operational phone. Booked **does not** write `job_no`. |
 | Booked first, Granot phone ≠ ANI | No automatic match. Snapshot search cannot help (no snapshot yet). Owner Confirm Leadless / later Connect, or wait for a later Priority Update to bind. |
 
-**Call snapshot `q` is not required** for intake correctness. Ranked
-suggestion + search by Job Number or operational phone covers the
-lifecycle. CLCP-05 (deferred) is only Owner convenience: pasting Granot
-name/mobile from the creating Observation after a prior bind, when live
-name is empty.
+Automatic suggestion does **not** use snapshot phone. Ranked suggestion
++ Job / operational phone covers bind. After a prior Job bind, the Owner
+must still be able to **type** the later Granot phone or name in Find
+the right customer / Connect and hit the same Call Lead. That is CLCP-05
+desk `q`, required.
 
 Do not auto-attach on snapshot-phone-only confidence (BILA-02 high
 confidence only).
 
-Do not change `callLeadCandidateSearchOr` in CLCP-01–04.
+Do not change `callLeadCandidateSearchOr` in CLCP-01–03. CLCP-05 owns
+desk `q` and `known_contacts`.
 
 ---
 
@@ -531,9 +628,11 @@ Do not change `callLeadCandidateSearchOr` in CLCP-01–04.
 | Master Calls sheet (`callLeadToRow`) | Phone column stays caller | None |
 | Lead Message SMS | Destination stays caller | None |
 | Customer upsert at booking | `$setOnInsert` from lead phone | None |
-| Admin / extension Call browse | Live-only `q` | Deferred CLCP-05 |
-| Intake / Connect Call `known_contacts` | Still omitted | Deferred CLCP-05 |
-| Scored Call search | Live phone + `job_no` | None |
+| Admin / extension Call browse | Any-known-contact `q`; headline Called | CLCP-05 |
+| Admin `/call-leads` chip + Contact cards | Called vs Granot / Changed in Granot | CLCP-05 |
+| Intake / Connect Call `known_contacts` | Same as Form; headline Called | CLCP-05 |
+| `POST /api/v1/call-leads/search` | OR includes snapshot phone/name/email | CLCP-05 |
+| HTTP / extension preview match | Job first when row has Job; snapshot `updateable` | CLCP-03 |
 
 ---
 
@@ -564,8 +663,9 @@ Minimum focused suites (issue files name the exact commands):
 | Authorize | `authorizedDesiredState.test.ts` | Snapshot-only plan converts; live phone on a Call synchronize plan from this planner is rejected or never produced |
 | Sync command | `synchronizeLeadFromGranot.test.ts` | Snapshot written; live phone unchanged; `differs_from_ingested` |
 | Identity | `identity.test.ts` | Invert Job-vs-phone conflict; first-bind phone still works; two Jobs still conflict; Form unchanged |
-| CSV | `callLeadEnrichment.service.test.ts` | No live phone; no live name/email (or snapshot write) |
+| CSV / preview | `callLeadEnrichment.service.test.ts` | No live phone/name/email (or snapshot write); Job-first when row has Job; Granot phone = other ANI does not steal the Job Lead; contact-only snapshot diff is `updateable` |
 | Create | `createLeadFromGranot.test.ts` | Mint still sets live = ingested; Job-only still has no invented phone |
+| Desk search | `connectLeadCandidates.test.ts`, browse / admin / `callLeadSearch` tests | Call `q` hits snapshot phone; identity still omits it |
 
 Do not skip required tests. Replica tests only if an issue touches a
 transaction seam and existing replica files already cover that command.
@@ -585,19 +685,26 @@ Services) for:
 - [`call-lead.md`](../knowledge/services/call-lead.md) — operational phone
   immutable under Granot synchronize; snapshot coalesce by Job.
 - [`enrichment.md`](../knowledge/services/enrichment.md) — CSV does not
-  write live contact; apply still processor.
+  write live contact; preview is Job-first; apply still processor.
 - [`processor.md`](../knowledge/granot-lifecycle/processor.md) — one
   sentence: matched Call synchronize does not overwrite operational
   phone.
-- [`lead-browse.md`](../knowledge/services/lead-browse.md) — Call browse
-  stays live-only until CLCP-05; do not claim Call any-known-contact.
+- [`lead-browse.md`](../knowledge/services/lead-browse.md),
+  [`admin-search.md`](../knowledge/services/admin-search.md),
+  [`call-lead-search.md`](../knowledge/services/call-lead-search.md),
+  [`projections.md`](../knowledge/granot-lifecycle/projections.md) —
+  Call desk `q` is any-known-contact after CLCP-05. Headline stays Called.
+- [`extension-apply.md`](../knowledge/granot-lifecycle/extension-apply.md)
+  / [`automation-apply.md`](../knowledge/granot-lifecycle/automation-apply.md)
+  — one sentence: same snapshot contact rule; no enrichment bypass.
 - BILA spec §2 sentence “Call live fields already are the enrichment” —
   add a one-line pointer to this pack (do not reopen BILA issues).
 - [`docs/index.md`](../index.md) already lists this pack after authoring.
 - [`spec-hub.md`](../knowledge/granot-lifecycle/spec-hub.md) — link this
   pack; do not copy rules.
 
-Do not invent glossary terms. Link existing ones.
+Do not invent glossary terms. Link existing ones. Owner-facing labels
+stay **Called** / **Granot** / **Changed in Granot**.
 
 ---
 
@@ -616,19 +723,25 @@ Do not invent glossary terms. Link existing ones.
 5. `priority_updated` / `booking_status_changed` still never mint.
 6. CSV / old enrichment never writes live phone; after CLCP-03 never
    writes live name/email.
-7. Booking-intake Call `q` unchanged in this pack. Automatic suggestion
-   uses Job else operational phone.
-8. No effect flags enabled. `sourcePolicy.ts` unchanged.
-9. Knowledge Services in §11 match shipped code.
+7. HTTP Automation and extension apply stay on capture → claim. Preview
+   is Job-first when the row has a Job. Contact-only snapshot diffs stay
+   HTTP-approvable. Extension copy does not promise live phone/name writes.
+8. Booking-intake **automatic** suggestion uses Job else operational
+   phone. Desk Call `q` (intake, Connect, Admin, extension browse,
+   `POST /call-leads/search`) matches live + ingested + Granot contact.
+   Phone is the path that must not miss. Headline stays Called.
+9. No effect flags enabled. `sourcePolicy.ts` unchanged.
+10. Knowledge Services in §11 match shipped code.
 
 ---
 
 ## 13. Rollback
 
-Revert planner, identity, CSV, and tests. No migration ships in the core
-issues. Documents revert with the same commit or a follow-up. Checked-in
-Lead writes were already off; shadow Decisions may have planned live phones —
-those Decisions are immutable evidence and are not rewritten.
+Revert planner, identity, preview/CSV, desk search, Admin chips, and tests.
+No migration ships in the core issues. Documents revert with the same
+commit or a follow-up. Checked-in Lead writes were already off; shadow
+Decisions may have planned live phones — those Decisions are immutable
+evidence and are not rewritten.
 
 ---
 
@@ -638,14 +751,14 @@ those Decisions are immutable evidence and are not rewritten.
 | --- | --- |
 | [CLCP-01](issues/CLCP-01.md) | Planner + authorize + synchronize snapshot-only contact |
 | [CLCP-02](issues/CLCP-02.md) | Call identity Job-wins (skip competing phone) |
-| [CLCP-03](issues/CLCP-03.md) | CSV / preview alignment (no live name/email) |
-| [CLCP-04](issues/CLCP-04.md) | Knowledge + BILA pointer + spec-hub |
-| [CLCP-05](issues/CLCP-05.md) | Deferred: Owner desk any-known-contact + Call `known_contacts` |
+| [CLCP-03](issues/CLCP-03.md) | Shared HTTP/extension preview + CSV; apply stays processor |
+| [CLCP-05](issues/CLCP-05.md) | Required: Owner desk any-known-contact + Called/Granot cards |
+| [CLCP-04](issues/CLCP-04.md) | Knowledge + BILA pointer + spec-hub (last) |
 
 Do not start CLCP-02 before CLCP-01 is `complete` (sync without Job-wins
 still conflicts on the common “Granot phone = someone else’s ANI” case,
 but CLCP-01 alone already stops overwriting the matched Lead’s phone).
 CLCP-02 may begin in the same session after CLCP-01 tests are green.
-CLCP-03 after CLCP-01 (CSV must not undo the provenance rule).
-CLCP-04 last among the required issues. Do not start CLCP-05 unless the
-Owner un-defers it.
+CLCP-03 after CLCP-01 (preview/CSV must not undo the provenance rule).
+CLCP-05 after CLCP-01 (desk search needs the write contract). CLCP-04
+last after CLCP-02, CLCP-03, and CLCP-05.

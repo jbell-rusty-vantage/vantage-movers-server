@@ -1,13 +1,13 @@
 # CLCP-04 — Knowledge and BILA pointer
 
 > **Contract maturity: implementation-ready.** Last required issue.
-> Rewrite Services so they describe shipped CLCP-01–03. No live-cluster
-> apply. No new glossary terms.
+> Rewrite Services so they describe shipped CLCP-01–03 and CLCP-05. No
+> live-cluster apply. No new glossary terms.
 
 ## 1. Authority and required reading
 
 - **Pack specification:** [`../call-lead-contact-provenance-specification.md`](../call-lead-contact-provenance-specification.md)
-  — §7, §11, §12.7–12.9.
+  — §7, §11, §12.8–12.10.
 - **docs-keeper:** `.cursor/agents/docs-keeper.md` (preferred).
 - **Pack rules:** [`../README.md`](../README.md), [`../AGENT-PROTOCOL.md`](../AGENT-PROTOCOL.md)
 - **Index:** [`../../index.md`](../../index.md) (pack row already added
@@ -15,32 +15,37 @@
 
 ## 2. Objective
 
-Knowledge files match repository state after CLCP-01–03. BILA §2 gets a
-pointer that Call live fields are no longer “the enrichment.” Spec hub
-links this pack. Do not copy this specification into Service bodies.
+Knowledge files match repository state after CLCP-01–03 and CLCP-05.
+BILA §2 gets a pointer that Call live fields are no longer “the
+enrichment.” Spec hub links this pack. Do not copy this specification
+into Service bodies.
 
 ## 3. Repository, branch, and prerequisites
 
 - **Repository:** `vantage-main-server` only.
-- **Prerequisites:** CLCP-02 and CLCP-03 `complete`.
+- **Prerequisites:** CLCP-02, CLCP-03, and CLCP-05 `complete`.
 - Invoke docs-keeper when more than one Service or glob rule may be
   stale.
 
 ## 4. Current-state evidence to verify
 
-Reverify after CLCP-01–03. At pack authoring these sentences are stale
-once those issues ship:
+Reverify after CLCP-01–03 and CLCP-05. At pack authoring these sentences
+are stale once those issues ship:
 
 - `desired-state.md` — “Granot-created and RingCentral-created qualified
   contact become current operational fields”
 - `identity.md` — “Job and phone pointing at different eligible Leads
   are `conflict`” (Call, after unique Job)
 - `call-lead.md` — enrichment still described as filling live contact
-- `enrichment.md` — sync still lists name/email as live writes
+- `enrichment.md` — after CLCP-03: leftover CSV does not write live
+  contact; preview is Job-first; apply still processor. File still
+  lists name/email as live writes.
+- `extension-apply.md` / `automation-apply.md` — need one sentence:
+  same snapshot contact rule as webhook synchronize
 - `processor.md` — may omit “synchronize does not overwrite operational
   phone”
-- `lead-browse.md` — Call browse stays live-only (do **not** claim
-  any-known-contact)
+- `lead-browse.md` / `admin-search.md` / `call-lead-search.md` /
+  `projections.md` — Call desk `q` is any-known-contact after CLCP-05
 - BILA spec §2 — “Live fields already are the enrichment”
 - `spec-hub.md` — no link to this pack (authoring may already add one)
 
@@ -51,20 +56,23 @@ pack. Confirm they still exist.
 
 - Link glossary terms; do not redefine.
 - Do not mark `human: verified`.
-- Do not un-defer CLCP-05 in the Services. Say Call desk search stays
-  live-only until that issue.
+- Do not claim processor identity searches Call snapshot phone.
+  Desk search does.
 - Do not enable flags. Do not change `sourcePolicy.ts`.
 - Do not rewrite FINAL SPEC.
 
 ## 6. Deliverables and exact contract
 
-Update exactly the files in pack spec §11. One pointer paragraph in
-BILA §2 is enough — do not reopen BILA-01–03.
+Update exactly the files in pack spec §11 (including browse / search /
+projections after CLCP-05, and one sentence on extension-apply /
+automation-apply). One pointer paragraph in BILA §2 is enough — do not
+reopen BILA-01–03. Also update Admin CONTEXT “Form Lead contact
+snapshots” pointer so Call Leads are named.
 
 ## 7. Out of scope
 
-Runtime code. CLCP-05 Admin UI. Live Registry rows. New Service files
-unless docs-keeper requires a stub pointer.
+Runtime code. Live Registry rows. New Service files unless docs-keeper
+requires a stub pointer.
 
 ## 8. Tests
 
@@ -81,17 +89,19 @@ This issue **is** the knowledge update.
 
 ## 10. Acceptance criteria
 
-- [ ] `desired-state.md` says Call/Granot-created qualified contact
+- [x] `desired-state.md` says Call/Granot-created qualified contact
       plans `granot_contact_snapshot` only
-- [ ] `identity.md` says unique Call Job/link skips competing phone
-- [ ] `call-lead.md` says operational phone is not Granot-upserted
-- [ ] `enrichment.md` matches CLCP-03 (no live contact write)
-- [ ] `processor.md` has one sentence on operational phone
-- [ ] `lead-browse.md` does not claim Call snapshot search
-- [ ] BILA §2 points here
-- [ ] `spec-hub.md` links this pack
-- [ ] `okf:query` lists the touched Services
-- [ ] No runtime diff except comments if a source comment would lie
+- [x] `identity.md` says unique Call Job/link skips competing phone
+- [x] `call-lead.md` says operational phone is not Granot-upserted
+- [x] `enrichment.md` matches CLCP-03 (no live contact write)
+- [x] `processor.md` has one sentence on operational phone
+- [x] `lead-browse.md` / `admin-search.md` / `call-lead-search.md` /
+      `projections.md` say Call desk `q` is any-known-contact; identity
+      still omits snapshot phone
+- [x] BILA §2 points here
+- [x] `spec-hub.md` links this pack
+- [x] `okf:query` lists the touched Services
+- [x] No runtime diff except comments if a source comment would lie
 
 ## 11. Commands
 
@@ -103,9 +113,9 @@ pnpm okf:query --type Service --tag granot-lifecycle
 
 ## 12. Risks
 
-- Rewriting BILA as if intake Call snapshot search shipped.
+- Rewriting BILA as if **automatic** intake uses snapshot phone.
 - Copying this pack’s full spec into a Service file.
-- Claiming CLCP-05 is done.
+- Claiming processor identity searches Call snapshot phone.
 
 ## 13. Rollback
 
@@ -116,4 +126,4 @@ Revert the markdown files.
 - Files changed
 - `okf:query` output (paths only)
 - Confirmation no flags / no identity/planner rewrites
-- Explicit “CLCP-05 still deferred”
+- Confirmation desk search docs match CLCP-05; identity docs still omit snapshot phone

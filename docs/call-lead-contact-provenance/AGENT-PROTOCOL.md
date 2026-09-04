@@ -25,8 +25,12 @@ extra feature branches per issue.
   specification and fix the issue.
 - Scope is §6 bounded by §7. Do not widen. Cross-issue findings go in
   `PROGRESS.md`.
-- Server code stays in `vantage-main-server`. Admin UI exists only in
-  CLCP-05 and only after the Owner un-defers it.
+- Server writes, identity, preview, and search stay in
+  `vantage-main-server`. Admin chips and Contact cards live in
+  `vantage-admin` (CLCP-05). Extension apply/preview copy lives in
+  `granot_sync_extensions_and_services` (CLCP-03) on that repo’s
+  `main` (package `0.2.8`). Do not invent a second Call contact write
+  path in the extension.
 - If you are blocked, set the status to `blocked`, record the exact
   question, and stop.
 
@@ -49,9 +53,9 @@ evidence and every command in its §11 has been run.
   from Granot synchronize, HTTP apply, extension apply, or CSV.**
 - **Never add Call `granot_contact_snapshot` to `findCallLeadsByScopedPhone`.**
 - **Never mint on `booking_status_changed` or `priority_updated`.**
+- **Never restore `syncCallLeadEnrichment` on HTTP or extension apply.**
 - **Never enable a write flag, apply a [REDACTED] Registry row, deploy,
   or read a live customer payload** unless the user explicitly asks.
-- **Never un-defer CLCP-05 yourself.**
 - **`PROGRESS.md` is a ledger, not an authority.**
 
 ## 5. Language
@@ -59,4 +63,5 @@ evidence and every command in its §11 has been run.
 Use workspace-root `CONTEXT.md`. Operational phone is the ingested
 caller. Later match synchronizes. Job Number coalesces the Granot card.
 Automatic booking-intake discovery is Job, else granularity +
-operational phone — not snapshot search.
+operational phone. Desk search is any known contact. Owner labels:
+Called / Granot / Changed in Granot.

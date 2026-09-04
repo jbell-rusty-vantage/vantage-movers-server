@@ -86,6 +86,31 @@ test("[AC-05] quoted:false is rejected and no write path sets it false", () => {
   assert.ok(!GRANOT_LEAD_WRITE_PATHS.includes("quoted" as never) || true);
 });
 
+test("snapshot-only Call plan converts and keeps live phone off contact_changed_paths", () => {
+  const converted = toAuthorizedLeadDesiredState({
+    plan: plan({
+      desired_values: {
+        granot_contact_snapshot: {
+          first_name: "Ada",
+          last_name: "Lovelace",
+          name: "Ada Lovelace",
+          phone_number: "5551234567",
+          normalized_phone_number: "5551234567",
+          email: "ada@example.test",
+        },
+      },
+      changed_paths: ["granot_contact_snapshot"],
+    }),
+    lead_model: "CallLead",
+    temporal_winner: { observation_id: observationId, captured_at: capturedAt },
+  });
+  assert.deepEqual(converted.changed_paths, ["granot_contact_snapshot"]);
+  assert.deepEqual(converted.contact_changed_paths, []);
+  assert.equal("phone_number" in converted.set, false);
+  assert.equal("normalized_phone_number" in converted.set, false);
+  assert.doesNotThrow(() => assertAuthorizedLeadDesiredState(converted, "CallLead"));
+});
+
 test("[AC-10] [AC-12] contact leaves stay on current-contact paths; snapshot is not a contact leaf", () => {
   const converted = toAuthorizedLeadDesiredState({
     plan: plan({

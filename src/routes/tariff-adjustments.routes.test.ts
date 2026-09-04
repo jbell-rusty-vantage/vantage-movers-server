@@ -59,13 +59,19 @@ app.use(express.json());
 app.use((req, _res, next) => {
   const role = req.header("x-test-role");
   if (role === "owner" || role === "employee" || role === "customer_service") {
+    const roles =
+      role === "employee"
+        ? (["sales", "customer_service"] as const)
+        : role === "owner"
+          ? (["owner"] as const)
+          : (["customer_service"] as const);
     (req as express.Request & {
-      vantageAuth?: { kind: "user"; userId: string; email: string; role: string };
+      vantageAuth?: { kind: "user"; userId: string; email: string; roles: readonly string[] };
     }).vantageAuth = {
       kind: "user",
       userId: "user-1",
       email: `${role}@example.invalid`,
-      role,
+      roles: [...roles],
     };
   } else if (role === "secret") {
     (req as express.Request & { vantageAuth?: { kind: "secret" } }).vantageAuth = {

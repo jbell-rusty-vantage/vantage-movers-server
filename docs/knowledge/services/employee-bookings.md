@@ -4,7 +4,7 @@ title: Employee Bookings
 description: Public employee booking submit with auto-match, plus Owner booking-lead reconciliation cases.
 tags: [booking, employee-booking]
 status: draft
-stale_after: 2026-11-20
+stale_after: 2026-11-21
 resource: src/services/employeeBookings/submitEmployeeBooking.service.ts
 applies_to:
   - src/services/employeeBookings/submitEmployeeBooking.service.ts
@@ -21,8 +21,8 @@ sources:
     resource: ../CONTEXT.md
     title: Platform glossary
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T00:54:00Z
+  by: process:docs-keeper
+  at: 2026-09-04T20:50:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/employeeBookings/`  
@@ -85,11 +85,13 @@ Claim-time failures (Lead cancelled / already booked / duplicate / Call `created
 |-------------|---------|
 | `pending` | `dismiss`, `attach_existing`, `create_and_attach`, `update_pending` |
 | `dismissed` | `attach_existing`, `reassign`, `reopen` |
-| `resolved` or `dismissed` | `reassign`, `reopen` |
+| `resolved` | `reassign`, `reopen` |
 
-Cancelled Booking: only `reopen` / `dismiss`. Already attached: cannot attach / create / update / dismiss. `reassign` requires an attached Lead.
+`assertLiveBookingStateForAction` delegates to `assertLiveBookingState`. Cancelled Booking: only `reopen` / `dismiss`. Already attached: cannot attach / create / update / dismiss / reopen — use `reassign` to change the Lead. `reassign` requires an attached Lead. `reopen` is for a leadless dismissed or leadless resolved case.
 
 Overrideable warnings (`duplicate_lead`, `source_conflict`, `channel_conflict`, `source_unassigned`, `same_company_legacy`, `created_on_unmatched`) must be listed **exactly**. `lead_already_booked` and `lead_cancelled` are not overrideable.
+
+Owner candidate search (`searchBookingLeadCandidates` / `searchCandidates`) is any-known-contact: `q`, `name`, `email`, and `phone_number` OR live + ingested + Granot paths from `CALL_LEAD_CONTACT_*_PATHS` (aliases of the Form lists). Dedicated `phone_number` still uses `normalizePhoneNumberForMatch` on `*.normalized_phone_number` and typed-substring regex on `*.phone_number`. Owner search results and auto-match candidate snapshots return sanitized `ingested_contact_snapshot` and `granot_contact_snapshot` for owner display. Automatic submit match (`queryEmployeeBookingCandidates`) stays Job / operational phone and does not search Granot snapshot paths.
 
 ## Auto-rematch cron
 

@@ -1,11 +1,11 @@
-import type { ExtensionRole } from "../../models/ExtensionUser";
+import type { CurrentExtensionRole } from "./roles";
 
-export type { ExtensionRole };
+export type ExtensionRole = CurrentExtensionRole;
 
 export type PublicExtensionUser = {
   id: string;
   email: string;
-  role: ExtensionRole;
+  roles: CurrentExtensionRole[];
 };
 
 export type AuthTokens = {

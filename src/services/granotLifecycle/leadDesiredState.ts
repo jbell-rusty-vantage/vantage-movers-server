@@ -353,30 +353,8 @@ function planQualifiedContact(
   lead: LeadDesiredStateProjection,
 ): void {
   const incoming = observationContact(observation);
-  if (lead.ingestion_origin === "wordpress_form") {
-    if (!contactSemanticallyEqual(lead.granot_contact_snapshot, incoming)) {
-      desired.set("granot_contact_snapshot", incoming);
-    }
-    return;
-  }
-  const contactLeaves: Array<[string, unknown]> = [
-    ["first_name", incoming.first_name],
-    ["last_name", incoming.last_name],
-    ["name", incoming.name],
-    ["phone_number", incoming.phone_number],
-    ["normalized_phone_number", incoming.normalized_phone_number],
-    ["email", incoming.email],
-  ];
-  const summaryPaths: string[] = [];
-  for (const [path, value] of contactLeaves) {
-    if (value === undefined) continue;
-    if (!valuesSemanticallyEqual(path, readLeadValue(lead, path), value)) {
-      desired.set(path, value);
-      summaryPaths.push(path);
-    }
-  }
-  if (summaryPaths.length > 0) {
-    desired.set("last_granot_contact_change.changed_paths", sortUnique(summaryPaths));
+  if (!contactSemanticallyEqual(lead.granot_contact_snapshot, incoming)) {
+    desired.set("granot_contact_snapshot", incoming);
   }
 }
 

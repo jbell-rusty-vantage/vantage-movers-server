@@ -510,3 +510,18 @@ pnpm migration:extension-user-roles-sales-backfill
 pnpm migration:extension-user-roles-sales-backfill -- --report
 pnpm migration:extension-user-roles-sales-backfill -- --apply --confirm-production=<db>
 ```
+
+## Extension User roles array
+
+Converts leftover singular `role` to `roles[]`. Leftover Employee becomes
+Sales plus Customer Service. Report is default. Apply is gated, unsets
+`role`, and increments `token_version` only on converted rows. Documents
+that already have `roles` are unchanged. It does not print passwords or
+hashes. Service:
+[`docs/knowledge/services/extension-users.md`](../../docs/knowledge/services/extension-users.md).
+
+```text
+pnpm migration:extension-user-roles-array
+pnpm migration:extension-user-roles-array -- --report
+pnpm migration:extension-user-roles-array -- --apply --confirm-production=<db>
+```

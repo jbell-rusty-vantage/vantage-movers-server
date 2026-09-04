@@ -24,7 +24,10 @@ import { recordOperationalEvent } from "../observability";
 import { finalizeSheetSync, persistSheetSyncIntent, runSheetSyncWrite } from "../sheetSync";
 import { V1ServiceError } from "../v1ServiceError";
 import { prepareEmployeeBookingSubmission } from "./employeeBookingPreparation";
-import { queryEmployeeBookingCandidates } from "./leadCandidateQueries";
+import {
+  leadContactSnapshotsFromDoc,
+  queryEmployeeBookingCandidates,
+} from "./leadCandidateQueries";
 import { evaluateEmployeeBookingMatch } from "./leadMatchEvaluator";
 import {
   attachLeadToEmployeeBooking,
@@ -35,6 +38,7 @@ import {
 import {
   assertAllowedCaseAction,
   assertExactWarningOverrides,
+  assertLiveBookingState,
   decodeDateIdCursor,
   encodeDateIdCursor,
   getOverrideableWarnings,
@@ -46,6 +50,11 @@ import type {
 } from "./types";
 import { createHash } from "node:crypto";
 import { toObjectId } from "../../utils/objectId";
+import {
+  CALL_LEAD_CONTACT_EMAIL_PATHS,
+  CALL_LEAD_CONTACT_NAME_PATHS,
+  CALL_LEAD_CONTACT_PHONE_PATHS,
+} from "../search/leadBrowseShared";
 
 export async function listBookingLeadReconciliationCases(
   query: BookingLeadReconciliationListQuery,
@@ -547,6 +556,14 @@ export async function reopenBookingLeadReconciliation(
       throw new NotFoundError("Booking lead reconciliation case not found");
     }
     assertRevision(caseDoc.revision, command.revision);
+    assertAllowedCaseAction(caseDoc.status, "reopen");
+    const booking = await BookedLead.findById(caseDoc.booking)
+      .session(session ?? null)
+      .exec();
+    if (!booking) {
+      throw new NotFoundError("Booked lead not found");
+    }
+    assertLiveBookingStateForAction(booking, "reopen");
     const prepared = preparedFromCase(caseDoc);
     const candidateQuery = await queryEmployeeBookingCandidates(prepared, session);
     const evaluated = await evaluateEmployeeBookingMatch(
@@ -598,17 +615,25 @@ async function searchCandidates(query: BookingLeadCandidateSearchInput) {
   if (normalizedLid) clauses.push({ normalized_lid: normalizedLid });
   const normalizedJobNo = normalizeJobNo(query.job_no);
   if (normalizedJobNo) clauses.push({ normalized_job_no: normalizedJobNo });
-  if (query.email?.trim()) clauses.push({ email: query.email.trim().toLowerCase() });
-  if (query.phone_number?.trim()) {
-    const normalizedPhone = normalizePhoneNumberForMatch(query.phone_number);
+  if (query.email?.trim()) {
+    const email = query.email.trim().toLowerCase();
     clauses.push({
-      $or: [
-        ...(normalizedPhone
-          ? [{ normalized_phone_number: normalizedPhone }]
-          : []),
-        { phone_number: new RegExp(escapeRegex(query.phone_number), "i") },
-      ],
+      $or: CALL_LEAD_CONTACT_EMAIL_PATHS.map((path) => ({ [path]: email })),
     });
+  }
+  if (query.phone_number?.trim()) {
+    const rawPhone = query.phone_number.trim();
+    const normalizedPhone = normalizePhoneNumberForMatch(rawPhone);
+    const rawRegex = new RegExp(escapeRegex(rawPhone), "i");
+    const phoneOr: Record<string, unknown>[] = [];
+    for (const path of CALL_LEAD_CONTACT_PHONE_PATHS) {
+      if (path.endsWith("normalized_phone_number")) {
+        if (normalizedPhone) phoneOr.push({ [path]: normalizedPhone });
+        continue;
+      }
+      phoneOr.push({ [path]: rawRegex });
+    }
+    clauses.push({ $or: phoneOr });
   }
   const cursor = decodeDateIdCursor(query.cursor);
   if (cursor) {
@@ -622,7 +647,12 @@ async function searchCandidates(query: BookingLeadCandidateSearchInput) {
       ],
     });
   }
-  if (query.name?.trim()) clauses.push({ name: new RegExp(escapeRegex(query.name.trim()), "i") });
+  if (query.name?.trim()) {
+    const nameRegex = new RegExp(escapeRegex(query.name.trim()), "i");
+    clauses.push({
+      $or: CALL_LEAD_CONTACT_NAME_PATHS.map((path) => ({ [path]: nameRegex })),
+    });
+  }
   if (query.lead_source_company) {
     clauses.push({
       lead_source_company: toObjectId(query.lead_source_company),
@@ -644,9 +674,9 @@ async function searchCandidates(query: BookingLeadCandidateSearchInput) {
     const regex = new RegExp(escapeRegex(query.q.trim()), "i");
     clauses.push({
       $or: [
-        { name: regex },
-        { email: regex },
-        { phone_number: regex },
+        ...CALL_LEAD_CONTACT_NAME_PATHS.map((path) => ({ [path]: regex })),
+        ...CALL_LEAD_CONTACT_EMAIL_PATHS.map((path) => ({ [path]: regex })),
+        ...CALL_LEAD_CONTACT_PHONE_PATHS.map((path) => ({ [path]: regex })),
         { job_no: regex },
         { lid: regex },
         { source_company_label_snapshot: regex },
@@ -915,6 +945,7 @@ function toLeadSearchResult(
     name: lead.name,
     phone_number: lead.phone_number,
     email: lead.email,
+    ...leadContactSnapshotsFromDoc(lead),
     lid: lead.lid,
     job_no: lead.job_no,
     duplicate: lead.duplicate === true,
@@ -962,21 +993,11 @@ function assertLiveBookingStateForAction(
     | "reopen"
     | "update_pending",
 ) {
-  if (booking.cancelled && !["reopen", "dismiss"].includes(action)) {
-    throw new V1ServiceError("Booking is cancelled", 409);
-  }
-  const hasLead = Boolean(booking.lead_ref && booking.lead_model);
-  if (
-    ["dismiss", "attach_existing", "create_and_attach", "update_pending"].includes(
-      action,
-    ) &&
-    hasLead
-  ) {
-    throw new V1ServiceError("Booking is already attached to a lead", 409);
-  }
-  if (action === "reassign" && !hasLead) {
-    throw new V1ServiceError("Booking has no current lead attachment", 409);
-  }
+  assertLiveBookingState({
+    cancelled: Boolean(booking.cancelled),
+    hasLead: Boolean(booking.lead_ref && booking.lead_model),
+    action,
+  });
 }
 
 function compareCreatedAtDesc(

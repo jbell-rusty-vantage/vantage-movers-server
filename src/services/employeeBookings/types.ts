@@ -79,6 +79,24 @@ export type EvaluatedLeadCandidate = {
     booked?: string;
     cancelled?: string;
     duplicate?: boolean;
+    ingested_contact_snapshot?: {
+      name?: string;
+      first_name?: string;
+      last_name?: string;
+      phone_number?: string;
+      email?: string;
+      differs_from_ingested?: boolean;
+      captured_at?: string;
+    };
+    granot_contact_snapshot?: {
+      name?: string;
+      first_name?: string;
+      last_name?: string;
+      phone_number?: string;
+      email?: string;
+      differs_from_ingested?: boolean;
+      captured_at?: string;
+    };
   };
 };
 

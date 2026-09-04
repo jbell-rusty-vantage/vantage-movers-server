@@ -89,6 +89,9 @@ import {
   leadMatchesBookingSource,
 } from "./connectLead";
 import {
+  CALL_LEAD_CONTACT_EMAIL_PATHS,
+  CALL_LEAD_CONTACT_NAME_PATHS,
+  CALL_LEAD_CONTACT_PHONE_PATHS,
   FORM_LEAD_CONTACT_EMAIL_PATHS,
   FORM_LEAD_CONTACT_NAME_PATHS,
   FORM_LEAD_CONTACT_PHONE_PATHS,
@@ -967,7 +970,7 @@ export async function listGranotLifecycleCaseCandidates(
         phone_number: lead.phone_number ?? undefined,
         email: lead.email ?? undefined,
       },
-      ...(ref.model === "FormLead" ? { known_contacts: projectCandidateKnownContacts(lead) } : {}),
+      known_contacts: projectCandidateKnownContacts(lead),
       job_no: lead.job_no ?? undefined,
       normalized_job_no: lead.normalized_job_no ?? undefined,
       reference: lead.ref_no ?? undefined,
@@ -1045,7 +1048,7 @@ export async function listConnectLeadCandidates(
         phone_number: lead.phone_number ?? undefined,
         email: lead.email ?? undefined,
       },
-      ...(ref.model === "FormLead" ? { known_contacts: projectCandidateKnownContacts(lead) } : {}),
+      known_contacts: projectCandidateKnownContacts(lead),
       job_no: lead.job_no ?? undefined,
       normalized_job_no: lead.normalized_job_no ?? undefined,
       reference: lead.ref_no ?? undefined,
@@ -1550,6 +1553,8 @@ const CANDIDATE_LEAD_PROJECTION = {
   source_company_label_snapshot: 1,
   source_granularity_id: 1,
   source_granularity_label_snapshot: 1,
+  ingested_contact_snapshot: 1,
+  granot_contact_snapshot: 1,
 } as const;
 
 const FORM_CANDIDATE_LEAD_PROJECTION = {
@@ -1621,11 +1626,9 @@ export function formLeadCandidateSearchOr(search: RegExp): Record<string, RegExp
 
 export function callLeadCandidateSearchOr(search: RegExp): Record<string, RegExp>[] {
   return [
-    { name: search },
-    { first_name: search },
-    { last_name: search },
-    { phone_number: search },
-    { email: search },
+    ...CALL_LEAD_CONTACT_NAME_PATHS.map((path) => ({ [path]: search })),
+    ...CALL_LEAD_CONTACT_EMAIL_PATHS.map((path) => ({ [path]: search })),
+    ...CALL_LEAD_CONTACT_PHONE_PATHS.map((path) => ({ [path]: search })),
     { job_no: search },
     { ref_no: search },
   ];

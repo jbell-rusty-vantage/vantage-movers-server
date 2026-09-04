@@ -1,8 +1,12 @@
 // Tests for: booking lead reconciliation service — list/detail response shape
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { afterEach, test } from "node:test";
+import { inspect } from "node:util";
+import path from "node:path";
 import { Types } from "mongoose";
 import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconciliationCase";
+import { CallLead } from "../../models/CallLead";
 import { FormLead } from "../../models/FormLead";
 import {
   getBookingLeadReconciliationCase,
@@ -21,11 +25,13 @@ type ChainResult<T> = {
 const originalFind = BookingLeadReconciliationCase.find;
 const originalFindById = BookingLeadReconciliationCase.findById;
 const originalFormLeadFind = FormLead.find;
+const originalCallLeadFind = CallLead.find;
 
 afterEach(() => {
   (BookingLeadReconciliationCase as any).find = originalFind;
   (BookingLeadReconciliationCase as any).findById = originalFindById;
   (FormLead as any).find = originalFormLeadFind;
+  (CallLead as any).find = originalCallLeadFind;
 });
 
 test("listBookingLeadReconciliationCases returns admin-facing summary fields", async () => {
@@ -285,6 +291,163 @@ test("searchBookingLeadCandidates returns compact case-aware results with a curs
   assert.deepEqual(result.items[0]?.warnings, []);
   assert.equal("internal_secret" in result.items[0]!, false);
   assert.ok(result.next_cursor);
+});
+
+test("searchBookingLeadCandidates Call q and contact filters include snapshot paths", async () => {
+  const bookingId = new Types.ObjectId("64c0f47e4d8b0e1010101010");
+  const sourceCompanyId = new Types.ObjectId("64c0f47e4d8b0e2020202020");
+  const granularityId = new Types.ObjectId("64c0f47e4d8b0e3030303030");
+  (BookingLeadReconciliationCase as any).findById = () =>
+    buildChain({
+      _id: new Types.ObjectId("64c0f47e4d8b0e4040404040"),
+      booking: { _id: bookingId },
+      submission: {
+        submission_id: "05db9651-8a3b-4743-bf35-e5a3ebae0f91",
+        lead_name: "Casey Booker",
+        normalized_name: "casey booker",
+        phone_number: "2125550101",
+        normalized_phone_number: "2125550101",
+        email: "casey@example.test",
+        normalized_email: "casey@example.test",
+        job_no: "JOB-100",
+        normalized_job_no: "JOB-100",
+        binder_amount: 1200,
+        deposit_amount: 250,
+        merchant: "Merchant",
+        agent: "Agent One",
+        book_date: new Date("2026-07-23T00:00:00.000Z"),
+        source_assignment: {
+          lead_source_company: sourceCompanyId,
+          source_granularity_id: granularityId,
+          source_granularity_key: "source-key",
+          source_company: "source-slug",
+          source_company_label_snapshot: "Source",
+          source_granularity_label_snapshot: "Source Forms",
+          crm_source_label_snapshot: "Source Forms CRM",
+          channel: "call" as const,
+        },
+      },
+    });
+  let capturedFilter: unknown;
+  (CallLead as any).find = (filter: unknown) => {
+    capturedFilter = filter;
+    return buildChain([]);
+  };
+
+  await searchBookingLeadCandidates("case-id", {
+    lead_model: "CallLead",
+    q: "555-9999",
+    phone_number: "555-9999",
+    name: "Granot-only Name",
+    email: "granot@example.invalid",
+    limit: 10,
+  } as any);
+
+  const preview = inspect(capturedFilter, { depth: null });
+  assert.match(preview, /granot_contact_snapshot\.phone_number/);
+  assert.match(preview, /ingested_contact_snapshot\.normalized_phone_number/);
+  assert.match(preview, /granot_contact_snapshot\.name/);
+  assert.match(preview, /ingested_contact_snapshot\.name/);
+  assert.match(preview, /granot_contact_snapshot\.email/);
+  assert.match(preview, /555-9999/);
+});
+
+test("searchBookingLeadCandidates returns Granot and ingested contact snapshots", async () => {
+  const bookingId = new Types.ObjectId("64c0f47e4d8b0e1010101010");
+  const sourceCompanyId = new Types.ObjectId("64c0f47e4d8b0e2020202020");
+  const granularityId = new Types.ObjectId("64c0f47e4d8b0e3030303030");
+  (BookingLeadReconciliationCase as any).findById = () =>
+    buildChain({
+      _id: new Types.ObjectId("64c0f47e4d8b0e4040404040"),
+      booking: { _id: bookingId },
+      submission: {
+        submission_id: "05db9651-8a3b-4743-bf35-e5a3ebae0f91",
+        lead_name: "Casey Booker",
+        normalized_name: "casey booker",
+        phone_number: "2125550101",
+        normalized_phone_number: "2125550101",
+        email: "casey@example.test",
+        normalized_email: "casey@example.test",
+        job_no: "JOB-100",
+        normalized_job_no: "JOB-100",
+        binder_amount: 1200,
+        deposit_amount: 250,
+        merchant: "Merchant",
+        agent: "Agent One",
+        book_date: new Date("2026-07-23T00:00:00.000Z"),
+        source_assignment: {
+          lead_source_company: sourceCompanyId,
+          source_granularity_id: granularityId,
+          source_granularity_key: "source-key",
+          source_company: "source-slug",
+          source_company_label_snapshot: "Source",
+          source_granularity_label_snapshot: "Source Forms",
+          crm_source_label_snapshot: "Source Forms CRM",
+          channel: "call" as const,
+        },
+      },
+    });
+  (CallLead as any).find = () =>
+    buildChain([
+      {
+        _id: new Types.ObjectId("64c0f47e4d8b0e7070707070"),
+        lead_model: "CallLead",
+        name: "",
+        phone_number: "",
+        email: "",
+        job_no: "JOB-100",
+        source_company: "source-slug",
+        source_company_label_snapshot: "Source",
+        lead_source_company: sourceCompanyId,
+        source_granularity_key: "source-key",
+        ingested_contact_snapshot: {
+          name: "Ingested Caller",
+          phone_number: "2125550101",
+          secret: "must-not-leak",
+        },
+        granot_contact_snapshot: {
+          name: "Granot Caller",
+          phone_number: "555-9999",
+          email: "granot@example.invalid",
+          differs_from_ingested: true,
+          captured_at: new Date("2026-08-01T12:00:00.000Z"),
+        },
+        createdAt: new Date("2026-07-23T12:00:00.000Z"),
+      },
+    ]);
+
+  const result = await searchBookingLeadCandidates("case-id", {
+    lead_model: "CallLead",
+    limit: 10,
+  } as any);
+
+  assert.equal(result.items.length, 1);
+  assert.deepEqual(result.items[0]?.ingested_contact_snapshot, {
+    name: "Ingested Caller",
+    phone_number: "2125550101",
+  });
+  assert.deepEqual(result.items[0]?.granot_contact_snapshot, {
+    name: "Granot Caller",
+    phone_number: "555-9999",
+    email: "granot@example.invalid",
+    differs_from_ingested: true,
+    captured_at: "2026-08-01T12:00:00.000Z",
+  });
+  assert.equal("secret" in (result.items[0]?.ingested_contact_snapshot ?? {}), false);
+});
+
+test("reopenBookingLeadReconciliation guards status and live booking before rematch", () => {
+  const source = readFileSync(
+    path.join(__dirname, "bookingLeadReconciliation.service.ts"),
+    "utf8",
+  );
+  const reopen = source.slice(
+    source.indexOf("export async function reopenBookingLeadReconciliation"),
+    source.indexOf("async function searchCandidates"),
+  );
+  assert.match(reopen, /assertAllowedCaseAction\(caseDoc\.status, "reopen"\)/);
+  assert.match(reopen, /BookedLead\.findById\(caseDoc\.booking\)/);
+  assert.match(reopen, /assertLiveBookingStateForAction\(booking, "reopen"\)/);
 });
 
 function buildChain<T>(value: T): ChainResult<T> {

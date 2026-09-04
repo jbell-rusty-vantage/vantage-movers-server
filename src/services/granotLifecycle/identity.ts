@@ -810,6 +810,8 @@ async function resolveCallLadder(
     jobMatch = classified.result.target ? classified.result : undefined;
   }
 
+  if (jobMatch?.target) return jobMatch;
+
   let phoneMatch: LadderResult | undefined;
   if (phones.length > 0) {
     const byPhone = await store.findCallLeadsByScopedPhone({
@@ -823,17 +825,6 @@ async function resolveCallLadder(
     phoneMatch = classified.result.target ? classified.result : undefined;
   }
 
-  if (jobMatch?.target && phoneMatch?.target && jobMatch.target.id !== phoneMatch.target.id) {
-    return {
-      outcome: "conflict",
-      reason_code: "job_number_conflict",
-      candidates: [
-        { target: jobMatch.target, reason_codes: ["call_job_no_exact"] },
-        { target: phoneMatch.target, reason_codes: ["source_scoped_contact"] },
-      ],
-    };
-  }
-  if (jobMatch?.target) return jobMatch;
   if (phoneMatch?.target) return phoneMatch;
   if (job || phones.length > 0) return unmatchedPending();
   return {

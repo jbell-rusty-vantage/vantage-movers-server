@@ -22,7 +22,7 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:docs-keeper
-  at: 2026-09-02T18:00:00Z
+  at: 2026-09-04T20:00:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority (Release routing):** [`release-into-booking-intake.md`](./release-into-booking-intake.md). FINAL SPEC still wins on uniqueness, revisions, Referral, official-field blankness, and identity-conflict discrepancies.  
@@ -63,8 +63,8 @@ Ordering is latest accepted Vantage `captured_at`; equal times use the lexicogra
 
 - every temporally accepted valid Priority plans `granot_priority`; only `1`/`5` plan broad enrichment and `quoted=true`; no Priority plans false
 - malformed Priority Update is `invalid` / `invalid_priority_update`; the same issue on Lead Created/Booked/Release skips Priority and continues
-- WordPress primary contact and both ingested snapshots never enter `changed_paths`; qualified Granot contact stays on `granot_contact_snapshot`; qualified move may plan current location/date/cubic feet and derived `local`; Vantage `move_size` is never planned
-- RingCentral-created and Granot-created qualified contact/move plan current fields plus a bounded `last_granot_contact_change.changed_paths` summary; no Entity Change is claimed
+- WordPress primary contact and both ingested snapshots never enter `changed_paths`; qualified Granot contact stays on `granot_contact_snapshot` for every origin; qualified move may plan current location/date/cubic feet and derived `local`; Vantage `move_size` is never planned
+- Matched Call synchronize does not overwrite operational phone. `last_granot_contact_change.changed_paths` is planner metadata stripped before `synchronizeLeadFromGranot`; no Entity Change is claimed
 - one Unit 14 Agent suggestion may fill an empty receiver at any valid Priority via `granot_username_match`; conflicts and existing receivers never overwrite. `synchronizeLeadFromGranot` stamps `receiver_agent_name_snapshot` from the loaded Agent catalog name and `receiver_agent_set_at`; sheet SalesRep reads that snapshot, not a live Agent join
 - Duplicate Form has no target; Bad exact Form is Priority plus safe link evidence only
 - `link_only` no-match is `pending_match` until the Unit 08 24h clock, then `unmatched` / `match_window_expired`; incomplete creation data is terminal `insufficient_creation_data` (`missing_creation_job_number`, `missing_creation_contact`, or `missing_creation_route_data`) and is never pending

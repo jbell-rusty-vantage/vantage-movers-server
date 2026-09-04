@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { test } from "node:test";
 import { jobNumbersEquivalent } from "../bookings/bookingIdentity";
 import {
@@ -746,7 +748,61 @@ test("Call Job rung is scoped and Duplicate Call Leads remain readable", async (
   assert.equal(result.target?.id, CALL_ID);
 });
 
-test("Call Job and phone pointing at different Leads is conflict", async () => {
+test("Call unique Job wins when Observation phone matches a different Lead", async () => {
+  const store = createRecordingStore({
+    callLeads: [
+      callLead({ normalized_job_no: "SYNTH JOB 14A" }),
+      callLead({
+        id: CALL_ID_B,
+        normalized_phone_number: "5550001111",
+      }),
+    ],
+  });
+  const result = await resolveLeadIdentity(
+    {
+      observation: observation({
+        identity: { normalized_job_no: "SYNTH JOB 14A" },
+        contact: { normalized_phone: "5550001111" },
+      }),
+      policy: callPolicy(),
+    },
+    store,
+  );
+  assert.equal(result.outcome, "linked");
+  assert.equal(result.reason_code, "record_link_confirmed");
+  assert.equal(result.match_method, "call_job_no_exact");
+  assert.equal(result.target?.id, CALL_ID);
+  assert.equal(
+    result.candidates.some((candidate) => candidate.target.id === CALL_ID_B),
+    false,
+  );
+  assert.equal(
+    store.queries.some((query) => query.kind === "call_scoped_phone"),
+    false,
+  );
+});
+
+test("Call with no Job on the Lead still binds by operational phone", async () => {
+  const store = createRecordingStore({
+    callLeads: [callLead({ normalized_phone_number: "5550001111" })],
+  });
+  const result = await resolveLeadIdentity(
+    {
+      observation: observation({
+        identity: { normalized_job_no: "SYNTH JOB 14A" },
+        contact: { normalized_phone: "5550001111" },
+      }),
+      policy: callPolicy(),
+    },
+    store,
+  );
+  assert.equal(result.outcome, "linked");
+  assert.equal(result.match_method, "source_scoped_contact");
+  assert.equal(result.target?.id, CALL_ID);
+  assert.ok(store.queries.some((query) => query.kind === "call_scoped_phone"));
+});
+
+test("two eligible Call Jobs are a conflict", async () => {
   const result = await resolveLeadIdentity(
     {
       observation: observation({
@@ -758,16 +814,25 @@ test("Call Job and phone pointing at different Leads is conflict", async () => {
     createRecordingStore({
       callLeads: [
         callLead({ normalized_job_no: "SYNTH JOB 14A" }),
-        callLead({
-          id: CALL_ID_B,
-          normalized_phone_number: "5550001111",
-        }),
+        callLead({ id: CALL_ID_B, normalized_job_no: "SYNTH JOB 14A" }),
       ],
     }),
   );
   assert.equal(result.outcome, "conflict");
-  assert.equal(result.reason_code, "job_number_conflict");
+  assert.equal(result.reason_code, "multiple_eligible_matches");
+  assert.equal(result.target, undefined);
   assert.equal(result.candidates.length, 2);
+});
+
+test("Call phone query omits granot_contact_snapshot", () => {
+  const source = readFileSync(path.join(__dirname, "identity.ts"), "utf8");
+  const phoneQuery = source.match(
+    /async findCallLeadsByScopedPhone\(input\) \{[\s\S]*?async findCallLeadById/,
+  );
+  assert.ok(phoneQuery);
+  assert.equal(phoneQuery[0].includes("granot_contact_snapshot"), false);
+  assert.match(phoneQuery[0], /normalized_phone_number/);
+  assert.match(phoneQuery[0], /ingested_contact_snapshot\.normalized_phone_number/);
 });
 
 test("Call current and ingested phones dedupe to one Lead", async () => {

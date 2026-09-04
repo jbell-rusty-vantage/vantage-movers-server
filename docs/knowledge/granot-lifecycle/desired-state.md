@@ -21,8 +21,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-09-02T18:00:00Z
+  by: process:docs-keeper
+  at: 2026-09-04T20:00:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)
 
@@ -50,7 +50,7 @@ generated:
 | current location / move date / cubic feet / `local` | Priority `1`/`5`, subject to origin |
 | `granot_move_size`, `granot_service_type` | Priority `1`/`5`; never Vantage `move_size` |
 
-WordPress Form: primary name/phone/email and both ingested snapshots stay off `changed_paths`. Qualified Granot contact plans `granot_contact_snapshot` only. Granot-created and RingCentral-created qualified contact become current operational fields; `last_granot_contact_change.changed_paths` is planner metadata and is stripped before `synchronizeLeadFromGranot`. The command derives provenance, contact hashes, temporal winner, and `EntityChange` field modes. A planned `receiver_agent` fill also derives `receiver_agent_name_snapshot` from the loaded Agent catalog name and `receiver_agent_set_at`; those stamps stay off the planner.
+WordPress Form: primary name/phone/email and both ingested snapshots stay off `changed_paths`. Qualified Granot contact — every origin, including Granot-created and RingCentral-created Call — plans `granot_contact_snapshot` only. Live phone/name/email are not planned. `ingested_contact_snapshot` is never planned. Priority `1`/`5` still gates snapshot contact. `last_granot_contact_change.changed_paths` is planner metadata and is stripped before `synchronizeLeadFromGranot`. The command derives provenance, contact hashes, temporal winner, and `EntityChange` field modes. A planned `receiver_agent` fill also derives `receiver_agent_name_snapshot` from the loaded Agent catalog name and `receiver_agent_set_at`; those stamps stay off the planner.
 
 ## No-match and minimum data
 

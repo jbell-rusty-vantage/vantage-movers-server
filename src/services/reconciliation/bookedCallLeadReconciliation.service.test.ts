@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, test } from "node:test";
 import mongoose from "mongoose";
 import { CallLead } from "../../models/CallLead";
@@ -185,6 +187,19 @@ test("booked reconciliation prefers phone/source candidates without conflicting 
   assert.equal(result.status, "updateable");
   assert.equal(result.call_lead_id, safeLeadId.toString());
   assert.ok(result.changes.includes("lead.job_no"));
+});
+
+test("Path B phone fallback does not read granot_contact_snapshot as identity", () => {
+  const source = readFileSync(
+    path.join(__dirname, "bookedCallLeadReconciliation.service.ts"),
+    "utf8",
+  );
+  const fn = source.match(
+    /async function findEligibleCallLeadCandidates\([\s\S]*?\nfunction selectSourceCompatibleLead/,
+  );
+  assert.ok(fn);
+  assert.equal(fn[0].includes("granot_contact_snapshot"), false);
+  assert.match(fn[0], /normalized_phone_number/);
 });
 
 function stubBookedLeadMissing() {

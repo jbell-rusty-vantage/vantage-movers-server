@@ -311,7 +311,7 @@ test("extension owner Bearer auth can read agent catalog without signed proxy he
       kind: "user",
       userId: "ext_owner_1",
       email: "Owner@Example.test",
-      role: "owner",
+      roles: ["owner"],
     },
     now: Date.now(),
   });
@@ -334,7 +334,7 @@ test("extension owner Bearer auth can create agents without signed proxy headers
       kind: "user",
       userId: "ext_owner_1",
       email: "owner@example.test",
-      role: "owner",
+      roles: ["owner", "sales"],
     },
     requireOwner: true,
     now: Date.now(),
@@ -358,7 +358,7 @@ test("extension owner Bearer auth cannot mutate non-catalog registry routes", ()
           kind: "user",
           userId: "ext_owner_1",
           email: "owner@example.test",
-          role: "owner",
+          roles: ["owner"],
         },
         requireOwner: true,
         now: Date.now(),
@@ -385,7 +385,7 @@ test("extension sales Bearer auth is not a registry actor", () => {
           kind: "user",
           userId: "ext_sales_1",
           email: "sales@example.test",
-          role: "sales",
+          roles: ["sales"],
         },
         now: Date.now(),
       }),
@@ -397,7 +397,7 @@ test("extension sales Bearer auth is not a registry actor", () => {
   );
 });
 
-test("extension employee Bearer auth is not a registry actor", () => {
+test("extension Sales plus Customer Service Bearer auth is not a registry actor", () => {
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = TEST_SECRET;
   process.env.NODE_ENV = "production";
 
@@ -411,7 +411,7 @@ test("extension employee Bearer auth is not a registry actor", () => {
           kind: "user",
           userId: "ext_employee_1",
           email: "employee@example.test",
-          role: "employee",
+          roles: ["sales", "customer_service"],
         },
         now: Date.now(),
       }),

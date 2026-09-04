@@ -19,6 +19,9 @@ import { getAdminFacets } from "./adminFacets.service";
 import { findCatalogGranularity } from "./filterCatalog";
 import { isObjectIdString, toObjectId } from "../../utils/objectId";
 import {
+  CALL_LEAD_CONTACT_EMAIL_PATHS,
+  CALL_LEAD_CONTACT_NAME_PATHS,
+  CALL_LEAD_CONTACT_PHONE_PATHS,
   FORM_LEAD_CONTACT_EMAIL_PATHS,
   FORM_LEAD_CONTACT_NAME_PATHS,
   FORM_LEAD_CONTACT_PHONE_PATHS,
@@ -96,12 +99,9 @@ const RESOURCE_CONFIGS: Record<AdminResource, ResourceConfig> = {
     defaultDateField: "timestamp",
     dateFields: ["timestamp", "createdAt", "start_time", "end_time"],
     qFields: [
-      "name",
-      "first_name",
-      "last_name",
-      "email",
-      "phone_number",
-      "normalized_phone_number",
+      ...CALL_LEAD_CONTACT_NAME_PATHS,
+      ...CALL_LEAD_CONTACT_EMAIL_PATHS,
+      ...CALL_LEAD_CONTACT_PHONE_PATHS,
       "source_company",
       "source_company_label_snapshot",
       "source_granularity_label_snapshot",
@@ -118,9 +118,9 @@ const RESOURCE_CONFIGS: Record<AdminResource, ResourceConfig> = {
         "crm_source_label_snapshot",
       ],
       source_granularity_key: ["source_granularity_key"],
-      name: ["name", "first_name", "last_name"],
-      email: ["email"],
-      phone_number: ["phone_number", "normalized_phone_number"],
+      name: [...CALL_LEAD_CONTACT_NAME_PATHS],
+      email: [...CALL_LEAD_CONTACT_EMAIL_PATHS],
+      phone_number: [...CALL_LEAD_CONTACT_PHONE_PATHS],
       job_no: ["job_no", "normalized_job_no"],
       pickup_city: ["pickup_city"],
       pickup_state: ["pickup_state"],
