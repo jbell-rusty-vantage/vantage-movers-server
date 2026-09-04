@@ -887,7 +887,7 @@ test("Owner can search webhook receipts; Admin cannot; unsigned is denied", asyn
   assert.equal(owner.status, 200);
   const ownerBody = (await owner.json()) as {
     ok: boolean;
-    data: { items: Array<{ receipt_id: string; contact: { phone: string } }>; next_cursor: string | null };
+    data: { items: Array<{ receipt_id: string; contact: { phone: string; email: string } }>; next_cursor: string | null };
   };
   assert.equal(ownerBody.ok, true);
   assert.equal(ownerBody.data.items[0]?.receipt_id, receiptId);
