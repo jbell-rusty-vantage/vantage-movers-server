@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-04T16:16Z
 - Service / module: `operationsRegistry` / `queries/health.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/158
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/159
 
 ## Stock at start
 
@@ -12,7 +12,7 @@
 - Recommendations on disk: 155
 - Current service / next module (TRAVERSAL): `operationsRegistry` (in-progress) / `queries/health.ts`
 
-This checkout booted on `cursor/vantage-server-story-refactor-2b42` with a stale seed (NOW pointed at `queries/overview.ts`, 154 recs, PR #157). Disk on `docs/story-refactor` already had `operations-registry-queries-overview.md` (155 recs, next `queries/health.ts`, PR #158). Checked out `docs/story-refactor` before choosing the module. NOW.md held the lock for this session id.
+This checkout booted on `cursor/vantage-server-story-refactor-2b42` with a stale seed (NOW pointed at `queries/overview.ts`, 154 recs, PR #157). Disk on `docs/story-refactor` already had `operations-registry-queries-overview.md` (155 recs, next `queries/health.ts`, PR #158, already merged). Checked out `docs/story-refactor` before choosing the module. NOW.md held the lock for this session id. This pass opened https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/159.
 
 Checklist already listed leftover `labelMappings.ts`, `ownerGranotNames.ts`, `leadSourceSetup.ts`, `queries/leadSourceProjection.ts` after the query trio. Runtime `.ts` files in `src/services/operationsRegistry/` matched the row. No files added this pass.
 
