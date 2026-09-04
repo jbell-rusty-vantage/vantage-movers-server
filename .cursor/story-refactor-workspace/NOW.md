@@ -3,14 +3,14 @@
 - Date (UTC): 2026-09-04
 - Wave: A (`src/services/`)
 - Current service: `operationsRegistry` (in-progress)
-- Next module: `trustedActor.ts`
+- Next module: `registryAudit.ts`
 - Stock: visited 23 / in-progress 1 / unvisited 14
-- Recommendations on disk: 151 (`form-lead.md` through `operations-registry-granot-automation-sources.md`)
+- Recommendations on disk: 152 (`form-lead.md` through `operations-registry-trusted-actor.md`)
 - Lock: none
 - Lock holder:
 - Lock at:
 - Branch: `docs/story-refactor`
-- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/154
-- Last session: story-operations-registry-granot-automation-sources-2026-09-04T1108Z
+- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/155
+- Last session: story-operations-registry-trusted-actor-2026-09-04T1214Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
