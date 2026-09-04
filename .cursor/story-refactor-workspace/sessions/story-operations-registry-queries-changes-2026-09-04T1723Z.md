@@ -12,7 +12,7 @@
 - Recommendations on disk: 156
 - Current service / next module (TRAVERSAL): `operationsRegistry` (in-progress) / `queries/changes.ts`
 
-This checkout booted on `cursor/vantage-server-story-refactor-6752` with a stale seed (NOW pointed at `queries/health.ts`, 155 recs, PR #158). Disk on `docs/story-refactor` already had `operations-registry-queries-health.md` (156 recs, next `queries/changes.ts`, PR #159, already merged). Checked out `docs/story-refactor` before choosing the module. NOW.md held the lock for this session id.
+This checkout booted on `cursor/vantage-server-story-refactor-6752` with a stale seed (NOW pointed at `queries/health.ts`, 155 recs, PR #158). Disk on `docs/story-refactor` already had `operations-registry-queries-health.md` (156 recs, next `queries/changes.ts`, PR #159, already merged). Checked out `docs/story-refactor` before choosing the module. NOW.md held the lock for this session id. This pass opened https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/160.
 
 Checklist already listed leftover `labelMappings.ts`, `ownerGranotNames.ts`, `leadSourceSetup.ts`, `queries/leadSourceProjection.ts` after the query trio. Runtime `.ts` files in `src/services/operationsRegistry/` matched the row. No files added this pass.
 
