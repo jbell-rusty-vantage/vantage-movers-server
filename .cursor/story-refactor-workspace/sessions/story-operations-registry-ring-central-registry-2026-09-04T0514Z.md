@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-04T05:14Z
 - Service / module: `operationsRegistry` / `ringCentralRegistry.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/147
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/148
 
 ## Stock at start
 
