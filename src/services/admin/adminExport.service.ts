@@ -86,7 +86,21 @@ const CSV_COLUMNS: Record<AdminResource, string[]> = {
     "refund_amount",
   ],
   customers: ["_id", "database_scope", "createdAt", "full_name", "phone_number", "email"],
-  agents: ["_id", "database_scope", "createdAt", "name", "normalized_name", "active", "role", "created_from"],
+  agents: [
+    "_id",
+    "database_scope",
+    "createdAt",
+    "name",
+    "normalized_name",
+    "active",
+    "role",
+    "created_from",
+    "booking_count",
+    "total_binder_amount",
+    "total_deposit_amount",
+    "cancellation_count",
+    "cancellation_rate",
+  ],
 };
 
 export async function exportAdminResourceCsv(

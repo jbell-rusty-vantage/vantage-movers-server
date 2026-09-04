@@ -35,7 +35,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [form-lead-search.md](knowledge/services/form-lead-search.md) | Scored Form Lead identity search, ambiguity, and duplicate quarantine. |
 | [call-lead-search.md](knowledge/services/call-lead-search.md) | OR-based Call Lead lookup and summaries. |
 | [lead-browse.md](knowledge/services/lead-browse.md) | Extension GET browse, pagination, and attachment chips. |
-| [admin-search.md](knowledge/services/admin-search.md) | Global admin free-text search across scoped resources. |
+| [admin-search.md](knowledge/services/admin-search.md) | Global admin free-text search across scoped resources. Browse sibling: Agents list/detail/export enrich distinct-booking metrics (`agentBrowseMetrics.service.ts`). |
 | [analytics.md](knowledge/services/analytics.md) | Admin analytics reports, scopes, and overview/agent-sales siblings. |
 | [catalog.md](knowledge/services/catalog.md) | Agents/merchants read facade; mutations go through Operations Registry. |
 | [testimonial.md](knowledge/services/testimonial.md) | Read-only public and admin testimonials; ingest stays in helpers and ops scripts. |
@@ -59,7 +59,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [booking-reconciliation.md](knowledge/granot-lifecycle/booking-reconciliation.md) | Booking-case open/refresh and gated Owner booking commands. |
 | [release-reconciliation.md](knowledge/granot-lifecycle/release-reconciliation.md) | Separate Release cases and gated Owner cancellation/update commands. |
 | [projections.md](knowledge/granot-lifecycle/projections.md) | Masked Admin case/job/lead reads plus Owner-only creating-observation; reads never invoke mutations. |
-| [live-receipts.md](knowledge/granot-lifecycle/live-receipts.md) | Owner-only live SSE of Granot webhook receipts plus sibling historical list GET; Mongo watermark poll, not in-process emit. |
+| [live-receipts.md](knowledge/granot-lifecycle/live-receipts.md) | Owner-only live SSE of Granot webhook receipts plus sibling historical list GET (unmasked contact + credential-redacted `granot_statement`; pack spec §6 masked list is superseded); Mongo watermark poll, not in-process emit. |
 | [observability.md](knowledge/granot-lifecycle/observability.md) | Lifecycle events, closed metric labels, and health projection. |
 | [mongodb-backup.md](knowledge/services/mongodb-backup.md) | Daily logical mongodump of `vantagemovers` to GCS in project `vantage-sheets-496816`. |
 

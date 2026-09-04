@@ -1,5 +1,10 @@
 # GLS-03 — Receipts tab on Granot Lifecycle
 
+> **Current Receipts UI:** stacked unmasked Name / Phone / Email; wrapping
+> event-type chip; View payload `SidePanel` on `?receipt=` (credential-redacted
+> `granot_statement`). Pack checks below that require masked contact and
+> “no `granot_statement`” are historical.
+
 > **Contract maturity: implementation-ready.** Session 2 (Admin).
 > Consume the GLS-02 list API. Receipts becomes the Granot Lifecycle
 > default tab. **No server change unless GLS-02 left a documented

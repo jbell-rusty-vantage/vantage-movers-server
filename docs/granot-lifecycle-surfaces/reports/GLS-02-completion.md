@@ -24,7 +24,7 @@ Keys: `ref_no`, `job_no`, `name`, `phone`, `email`, `source_company_id`, `route_
 
 `booking_action` without `route_event_class` implies `booking_status_changed`. Other pairings are 400.
 
-DTO is spec §6. Contact masked (`maskPhone` / `maskEmail`). No `granot_statement`. `intake_case_id` is a Granot Booking Reconciliation Case **by Job Number**.
+DTO at close matched spec §6: contact masked (`maskPhone` / `maskEmail`), no `granot_statement`. **Later override:** the live GET is unmasked contact plus credential-redacted `granot_statement` — [`../../knowledge/granot-lifecycle/live-receipts.md`](../../knowledge/granot-lifecycle/live-receipts.md). `intake_case_id` is a Granot Booking Reconciliation Case **by Job Number**.
 
 ## Indexes
 

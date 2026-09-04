@@ -35,8 +35,8 @@ by the issue that closes it, with the evidence named.
 | §2.1–2.3 | Sidebar Granot Lifecycle; Ingestion order; Automation-only Granot workflow | GLS-01 | ☑ | [GLS-01-completion.md](reports/GLS-01-completion.md) |
 | §2.4–2.5 | Redirects and moved deep links | GLS-01 | ☑ | [GLS-01-completion.md](reports/GLS-01-completion.md) |
 | §3 | Auth: Owner Receipts, Owner/Admin Health | GLS-01, GLS-02 | ☑ | GLS-01 page/proxy + GLS-02 Owner list |
-| §4–6 | Receipt list object, filters, DTO | GLS-02 | ☑ | `receiptSearch.ts` + query schema |
-| §7 | Receipts UI | GLS-03 | ☑ | [GLS-03-completion.md](reports/GLS-03-completion.md) |
+| §4–6 | Receipt list object, filters, DTO | GLS-02 | ☑ | `receiptSearch.ts` + query schema. **Live DTO overrides §6:** unmasked contact + credential-redacted `granot_statement` ([live-receipts.md](../knowledge/granot-lifecycle/live-receipts.md)) |
+| §7 | Receipts UI | GLS-03 | ☑ | [GLS-03-completion.md](reports/GLS-03-completion.md). **Live UI:** stacked unmasked contact; View payload on `?receipt=` |
 | §8 | Server search module | GLS-02 | ☑ | `src/services/granotLifecycle/receiptSearch.ts` |
 
 ## Acceptance criteria (specification §12)
@@ -49,7 +49,7 @@ by the issue that closes it, with the evidence named.
 | 4 | Health at `/granot-lifecycle/health`; old URL redirects | GLS-01 | ☑ |
 | 5 | Lifecycle queue and job URLs redirect | GLS-01 | ☑ |
 | 6 | Owner receipt search; Admin 403 | GLS-02, GLS-03 | ☑ |
-| 7 | Rows deep-link Job Timeline and Intake; no raw payload | GLS-03 | ☑ |
+| 7 | Rows deep-link Job Timeline and Intake; no raw payload | GLS-03 | ☑ | Pack AC text. **Live:** View payload SidePanel on credential-redacted `granot_statement` |
 | 8 | Live Events, Intakes commands, Job Timeline, Automation apply unchanged | all | ☑ |
 
 ## Cross-issue findings

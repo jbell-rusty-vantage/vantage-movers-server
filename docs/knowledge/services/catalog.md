@@ -19,8 +19,8 @@ sources:
     resource: ../CONTEXT.md
     title: Platform glossary
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T05:53:00Z
+  by: process:docs-keeper
+  at: 2026-09-04T21:50:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -67,14 +67,16 @@ List/detail/dependencies: `requireRegistryReadActor`. Create/update/activation: 
 
 | Operation | Agents | Merchants |
 |-----------|--------|-----------|
-| List | `GET /api/v1/admin/catalog/agents`, `GET /api/v1/admin/agents` | `GET /api/v1/admin/merchants` only — **no** `/admin/catalog/merchants` alias |
-| Detail | `GET /api/v1/admin/agents/:id` | `GET /api/v1/admin/merchants/:id` |
+| List | `GET /api/v1/admin/catalog/agents` only (`{ items }`, `include_inactive`) | `GET /api/v1/admin/merchants` and `GET /api/v1/admin/catalog/merchants` |
+| Detail | Catalog detail is not on `/admin/agents/:id` — that path is browse/detail with Booking metrics ([`admin-search.md`](./admin-search.md)) | `GET /api/v1/admin/merchants/:id` |
 | Create | `POST /api/v1/admin/agents` | `POST /api/v1/admin/merchants` |
 | Update | `PATCH /api/v1/admin/agents/:id` | `PATCH /api/v1/admin/merchants/:id` |
 | Activation | `POST /api/v1/admin/agents/:id/activation` | `POST /api/v1/admin/merchants/:id/activation` |
 | Dependencies | `GET /api/v1/admin/agents/:id/dependencies` | `GET /api/v1/admin/merchants/:id/dependencies` |
 
 List query (`catalogListQuerySchema`): `include_inactive=true` lists deactivated rows. Default filter is `{ active: true }`. Sort is `name` ascending.
+
+Dashboard `/agents` uses `GET /api/v1/admin/agents` browse (`browseAdminResource("agents")`) and `exports/agents.csv`. Those attach distinct-booking metric fields — [`admin-search.md`](./admin-search.md). Catalog pickers and the extension list Agents at `GET /api/v1/admin/catalog/agents` only.
 
 Create (`catalogCreateSchema`): required `name`; optional `role` (agents), `granot_crm_username` (agents), `active`, `created_from`. Update is partial plus optional `reason`; at least one of `name`, `role`, `granot_crm_username`, `active`, `created_from` is required. Activation body is `{ active, reason? }`.
 

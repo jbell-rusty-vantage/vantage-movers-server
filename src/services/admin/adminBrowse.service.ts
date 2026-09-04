@@ -11,9 +11,9 @@ import {
   type ConcreteAdminScope,
 } from "./adminScope.service";
 import {
-  emptyAgentBrowseMetrics,
+  collectAgentMatchNames,
   getAgentBrowseMetrics,
-  normalizeAgentMetricKey,
+  lookupAgentBrowseMetrics,
 } from "./agentBrowseMetrics.service";
 import { getAdminFacets } from "./adminFacets.service";
 import { findCatalogGranularity } from "./filterCatalog";
@@ -671,11 +671,11 @@ async function enrichAgentItems(
   models: ReturnType<typeof getAdminModels>,
   query: AdminBrowseQuery,
 ): Promise<AdminRecord[]> {
-  const agentNames = items.map((item) => (typeof item.name === "string" ? item.name : ""));
+  const agentNames = items.flatMap(collectAgentMatchNames);
   const metricsByAgent = await getAgentBrowseMetrics(models, query, agentNames);
   return items.map((item) => ({
     ...item,
-    ...(metricsByAgent.get(normalizeAgentMetricKey(item.name)) ?? emptyAgentBrowseMetrics()),
+    ...lookupAgentBrowseMetrics(metricsByAgent, item),
   }));
 }
 

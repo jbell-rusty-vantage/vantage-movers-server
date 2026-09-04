@@ -1,13 +1,16 @@
 ---
 type: Service
 title: Admin Search Service
-description: Global admin free-text search across scoped resources, unlike paginated browse.
+description: Global admin free-text search across scoped resources, unlike paginated browse. Browse sibling documents Agents list metric enrichment.
 tags: [search, admin]
 status: draft
 stale_after: 2026-11-20
 resource: src/services/admin/adminSearch.service.ts
 applies_to:
   - src/services/admin/adminSearch.service.ts
+  - src/services/admin/adminBrowse.service.ts
+  - src/services/admin/agentBrowseMetrics.service.ts
+  - src/services/admin/adminExport.service.ts
   - src/services/admin/adminScope.service.ts
   - src/validation/v1/admin.validation.ts
   - src/routes/v1.routes.ts
@@ -22,7 +25,7 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:docs-keeper
-  at: 2026-09-04T20:00:00Z
+  at: 2026-09-04T21:50:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -124,14 +127,14 @@ Admin browse (`adminBrowse.service.ts`) Form and Call `q` / `name` / `email` / `
 | Module | Relationship |
 |--------|----------------|
 | `adminScope.service.ts` | Model resolution + `concreteScopes` |
-| `adminBrowse.service.ts` | Paginated list/filter/detail. Form/Call **Source Company** filter is exact `source_granularity_key` (plus snapshot / catalog id). Historical scope (including the historical half of combined) also exact-matches catalog `company_slug` on the matching channel. Leftover `source_company` is bookmark compatibility only, exact (not substring), and loses when both params are present. |
+| `adminBrowse.service.ts` | Paginated list/filter/detail. Form/Call **Source Company** filter is exact `source_granularity_key` (plus snapshot / catalog id). Historical scope (including the historical half of combined) also exact-matches catalog `company_slug` on the matching channel. Leftover `source_company` is bookmark compatibility only, exact (not substring), and loses when both params are present. **Agents** list and detail call `enrichAgentItems` → `getAgentBrowseMetrics` (`agentBrowseMetrics.service.ts`): distinct Booking rows after unwind+group-by booking. `booking_count` and `cancellation_count` count those Bookings; `total_binder_amount` sums this Agent’s allocations; `total_deposit_amount` takes deposit once per Booking; `cancellation_rate` is `cancellation_count / booking_count` (0 when no Bookings). Date range uses booked-lead prefix (`book_date`), not Agent `createdAt`. Zero-booking Agents still return the five fields as 0. Same fields on `GET /api/v1/admin/agents/:id` detail. |
 | `adminFacets.service.ts` / `filterCatalog.ts` | Filter Catalog (`catalog`) plus compatibility arrays. `"facets"` invalidation evicts production **and** historical caches. Historical catalog attaches label snapshots onto the matching key row; overlay dedupes by `granularity_key` and drops company-slug options when a keyed child exists for that company. |
-| `adminExport.service.ts` | CSV export |
+| `adminExport.service.ts` | CSV export. Agents columns include `booking_count`, `total_binder_amount`, `total_deposit_amount`, `cancellation_count`, `cancellation_rate`. |
 
 ## When to use search vs browse
 
 - **Admin search (this doc):** jump by name, phone, job no, ref no, granularity key, or Mongo id across types.
-- **Admin browse:** tables with pagination, sort, date range, Source Company (`source_granularity_key`), duplicate flag.
+- **Admin browse:** tables with pagination, sort, date range, Source Company (`source_granularity_key`), duplicate flag. Agents `/agents` rows are browse-enriched (not catalog-only) when `browseAdminResource("agents")` serves the request.
 - **Extension lead browse:** [`lead-browse.md`](./lead-browse.md).
 - **Extension POST search:** [`form-lead-search.md`](./form-lead-search.md), [`call-lead-search.md`](./call-lead-search.md).
 

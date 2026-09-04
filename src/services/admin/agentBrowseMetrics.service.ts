@@ -23,43 +23,62 @@ type AgentMetricRow = AgentBrowseMetrics & {
   agent_key: string;
 };
 
+type AgentNameFields = {
+  name?: unknown;
+  normalized_name?: unknown;
+};
+
 export async function getAgentBrowseMetrics(
   models: AdminModels,
   query: AdminBrowseQuery,
   agentNames: string[],
 ): Promise<Map<string, AgentBrowseMetrics>> {
-  const uniqueNames = uniqueAgentNames(agentNames);
-  if (!uniqueNames.length) {
+  const matchKeys = uniqueLowercasedAgentNames(agentNames);
+  if (!matchKeys.length) {
     return new Map();
   }
 
-  const rows = await models["booked-leads"].aggregate<AgentMetricRow>([
+  const rows = await models["booked-leads"].aggregate<AgentMetricRow>(
+    buildAgentBrowseMetricsPipeline(query, matchKeys) as PipelineStage[],
+  );
+
+  return new Map(rows.map((row) => [row.agent_key, toMetricFields(row)]));
+}
+
+export function buildAgentBrowseMetricsPipeline(
+  query: AdminBrowseQuery,
+  matchKeys: string[],
+): PipelineStage[] {
+  return [
     ...bookedLeadPrefix(toAnalyticsCompatibleQuery(query)),
     { $unwind: "$agent_allocations" },
     {
       $set: {
-        agent_name: {
-          $cond: [
-            {
-              $or: [
-                { $eq: ["$agent_allocations.agent_name_snapshot", null] },
-                { $eq: ["$agent_allocations.agent_name_snapshot", ""] },
-              ],
+        agent_key: {
+          $toLower: {
+            $trim: {
+              input: { $ifNull: ["$agent_allocations.agent_name_snapshot", ""] },
             },
-            "unknown",
-            "$agent_allocations.agent_name_snapshot",
-          ],
+          },
         },
       },
     },
-    { $match: { agent_name: { $in: uniqueNames.map(exactCaseInsensitivePattern) } } },
+    { $match: { agent_key: { $in: matchKeys } } },
     {
       $group: {
-        _id: { $toLower: "$agent_name" },
-        booking_count: { $sum: 1 },
-        cancellation_count: { $sum: { $cond: ["$is_cancelled", 1, 0] } },
+        _id: { agent_key: "$agent_key", booking_id: "$_id" },
         total_binder_amount: { $sum: { $ifNull: ["$agent_allocations.binder_amount", 0] } },
-        total_deposit_amount: { $sum: { $ifNull: ["$deposit_amount", 0] } },
+        deposit_amount: { $first: { $ifNull: ["$deposit_amount", 0] } },
+        is_cancelled: { $max: { $cond: ["$is_cancelled", 1, 0] } },
+      },
+    },
+    {
+      $group: {
+        _id: "$_id.agent_key",
+        booking_count: { $sum: 1 },
+        cancellation_count: { $sum: "$is_cancelled" },
+        total_binder_amount: { $sum: "$total_binder_amount" },
+        total_deposit_amount: { $sum: "$deposit_amount" },
       },
     },
     {
@@ -75,9 +94,7 @@ export async function getAgentBrowseMetrics(
         },
       },
     },
-  ] as PipelineStage[]);
-
-  return new Map(rows.map((row) => [row.agent_key, toMetricFields(row)]));
+  ];
 }
 
 export function emptyAgentBrowseMetrics(): AgentBrowseMetrics {
@@ -86,6 +103,33 @@ export function emptyAgentBrowseMetrics(): AgentBrowseMetrics {
 
 export function normalizeAgentMetricKey(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+export function collectAgentMatchNames(item: AgentNameFields): string[] {
+  const names: string[] = [];
+  if (typeof item.name === "string") names.push(item.name);
+  if (typeof item.normalized_name === "string") names.push(item.normalized_name);
+  return names;
+}
+
+export function lookupAgentBrowseMetrics(
+  metricsByAgent: Map<string, AgentBrowseMetrics>,
+  item: AgentNameFields,
+): AgentBrowseMetrics {
+  for (const name of collectAgentMatchNames(item)) {
+    const metrics = metricsByAgent.get(normalizeAgentMetricKey(name));
+    if (metrics) return metrics;
+  }
+  return emptyAgentBrowseMetrics();
+}
+
+export function uniqueLowercasedAgentNames(agentNames: string[]): string[] {
+  const keys = new Set<string>();
+  for (const name of agentNames) {
+    const key = normalizeAgentMetricKey(name);
+    if (key) keys.add(key);
+  }
+  return Array.from(keys);
 }
 
 function toMetricFields(row: AgentMetricRow): AgentBrowseMetrics {
@@ -112,27 +156,6 @@ function toAnalyticsCompatibleQuery(query: AdminBrowseQuery) {
     lead_type: undefined,
     granularity: "month" as const,
   };
-}
-
-function uniqueAgentNames(agentNames: string[]): string[] {
-  const namesByKey = new Map<string, string>();
-  for (const name of agentNames) {
-    const trimmed = name.trim();
-    if (!trimmed) continue;
-    const key = normalizeAgentMetricKey(trimmed);
-    if (!namesByKey.has(key)) {
-      namesByKey.set(key, trimmed);
-    }
-  }
-  return Array.from(namesByKey.values());
-}
-
-function exactCaseInsensitivePattern(value: string): RegExp {
-  return new RegExp(`^${escapeRegex(value)}$`, "i");
-}
-
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function numberValue(value: unknown): number {

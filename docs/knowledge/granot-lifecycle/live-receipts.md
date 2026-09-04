@@ -21,11 +21,11 @@ sources:
     title: Platform glossary
 generated:
   by: process:docs-keeper
-  at: 2026-09-03T17:35:00Z
+  at: 2026-09-04T21:38:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority (intake_link, receipt_updated):** [`release-into-booking-intake.md`](./release-into-booking-intake.md) Part B.  
-**Authority (historical list DTO):** [`../../granot-lifecycle-surfaces/granot-lifecycle-surfaces-specification.md`](../../granot-lifecycle-surfaces/granot-lifecycle-surfaces-specification.md) §6.  
+**Authority (historical list DTO):** this Service file. Pack spec §6 still records the original GLS-02/03 masked list without `granot_statement`; that contract is superseded for this GET.  
 **Primary code:** `src/services/granotLifecycle/liveReceipts.ts`, `src/services/granotLifecycle/liveReceiptStream.ts`, `src/services/granotLifecycle/receiptSearch.ts`, `src/validation/v1/granotLifecycle.validation.ts`, `src/routes/granot-lifecycle-admin.routes.ts`  
 **Domain terms used:** [Granot Observation Receipt](../../../../CONTEXT.md), [Granot Observation](../../../../CONTEXT.md), [Granot Booking Reconciliation Case](../../../../CONTEXT.md), [Granot Booking Action](../../../../CONTEXT.md), [Source Company](../../../../CONTEXT.md)
 
@@ -82,6 +82,6 @@ Webhook channel only. Same three route classes as live. Extension and HTTP-autom
 
 Identity filters (`ref_no`, `job_no`, `name`, `phone`, `email`) may match a pending receipt via the Live-Events extract. `source_company_id` and `booking_action` match only rows that already have a Granot Observation.
 
-DTO is pack spec §6 (`GranotWebhookReceiptListItem` / `GranotWebhookReceiptListPage`). Phone and email are masked. No `granot_statement`, no raw payload, no credentials. `intake_case_id` is the open or resolved Granot Booking Reconciliation Case for that Job Number when one exists (open wins; this list does not use the live `evidence.observation_id` join).
+DTO is `GranotWebhookReceiptListItem` / `GranotWebhookReceiptListPage`. Phone and email are unmasked. Contact prefers the Granot Observation (unmasked `display_name` or first+last; `normalized_phone` or `phone_raw`; `normalized_email` or `email_raw`). Pending receipts (no Observation) use `extractLiveWebhookLead` on the redacted payload. If Observation name exists but phone/email are empty, those fields fill from that extract. Credential-redacted `granot_statement` is included so the Owner who bought the Lead can inspect the facts Granot sent (`redactCredentialKeys(row.payload).value`, same as live SSE). No raw unredacted payload and no credentials. `intake_case_id` is the open or resolved Granot Booking Reconciliation Case for that Job Number when one exists (open wins; this list does not use the live `evidence.observation_id` join).
 
 Live SSE (`liveReceipts.ts`, `liveReceiptStream.ts`) is unchanged. No `granot_observation_normalized_email_captured` index was added. Admin Owner Receipts search is wired (GLS-03). This GET remains the list API; Admin role is 403.

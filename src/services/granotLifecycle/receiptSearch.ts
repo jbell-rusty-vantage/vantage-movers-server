@@ -6,7 +6,6 @@ import { getGranotObservationReceiptModel } from "../../models/GranotObservation
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { normalizeJobNo } from "../bookings/bookingIdentity";
-import { maskEmail, maskPhone } from "../jobNumberTimeline/masking";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import { GRANOT_LIFECYCLE_ERROR_CODES, GranotLifecycleError } from "./errors";
 import {
@@ -38,6 +37,7 @@ export type GranotWebhookReceiptListItem = {
     owner_label: string;
   } | null;
   intake_case_id: string | null;
+  granot_statement: unknown;
 };
 
 export type GranotWebhookReceiptListPage = {
@@ -62,7 +62,9 @@ export type ReceiptSearchObservationRow = {
     display_name?: string;
     first_name?: string;
     last_name?: string;
+    phone_raw?: string;
     normalized_phone?: string;
+    email_raw?: string;
     normalized_email?: string;
   };
   booking_action?: { normalized?: string };
@@ -363,24 +365,27 @@ function projectReceiptRow(input: {
     return null;
   }
 
-  const pending = input.observation
-    ? null
-    : extractPendingIdentity(input.row.payload);
+  const granot_statement = redactCredentialKeys(input.row.payload).value;
+  const pending = extractPendingIdentity(input.row.payload);
   const ref_no = input.observation
     ? input.observation.identity?.normalized_form_ref ?? null
-    : pending?.ref_no ?? null;
+    : pending.ref_no;
   const job_no = input.observation
     ? input.observation.identity?.normalized_job_no ?? null
-    : pending?.job_no ?? null;
+    : pending.job_no;
   const display_name = input.observation
     ? observationDisplayName(input.observation)
-    : pending?.display_name ?? null;
-  const phone = input.observation
-    ? maskNullable(input.observation.contact?.normalized_phone, maskPhone)
-    : maskNullable(pending?.phone, maskPhone);
-  const email = input.observation
-    ? maskNullable(input.observation.contact?.normalized_email, maskEmail)
-    : maskNullable(pending?.email, maskEmail);
+    : pending.display_name;
+  const phone = firstNonEmpty([
+    input.observation?.contact?.normalized_phone,
+    input.observation?.contact?.phone_raw,
+    pending.phone,
+  ]);
+  const email = firstNonEmpty([
+    input.observation?.contact?.normalized_email,
+    input.observation?.contact?.email_raw,
+    pending.email,
+  ]);
   const booking_action =
     input.row.route_event_class === "booking_status_changed"
       ? asBookingAction(input.observation?.booking_action?.normalized)
@@ -404,6 +409,7 @@ function projectReceiptRow(input: {
     contact: { display_name, phone, email },
     source_company,
     intake_case_id: job_no ? input.caseByJobNo.get(job_no) ?? null : null,
+    granot_statement,
   };
 }
 
@@ -524,11 +530,13 @@ function isLiveWebhookEventClass(value: unknown): value is LiveWebhookEventClass
   );
 }
 
-function maskNullable(
-  value: string | null | undefined,
-  mask: (value: string) => string,
-): string | null {
-  return value ? mask(value) : null;
+function firstNonEmpty(values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return null;
 }
 
 function uniqueIds(values: string[]): string[] {

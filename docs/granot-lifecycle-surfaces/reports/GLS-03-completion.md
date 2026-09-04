@@ -8,6 +8,10 @@ owners: [team:vantage-admin]
 
 # GLS-03 completion
 
+> **Later UI override:** Receipts now shows stacked unmasked contact and
+> View payload on `?receipt=` (credential-redacted `granot_statement`).
+> Pack “no raw JSON / masked contact” checks are historical.
+
 Repository: `vantage-admin` on current `main`. No commit. Server runtime unchanged.
 
 ## Files

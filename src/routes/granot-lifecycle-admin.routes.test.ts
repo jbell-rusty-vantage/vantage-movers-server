@@ -353,9 +353,10 @@ app.use(
             decision_outcome: null,
             ref_no: null,
             job_no: "P5562401",
-            contact: { display_name: "Ada Lovelace", phone: "•••0100", email: "a•••@example.invalid" },
+            contact: { display_name: "Ada Lovelace", phone: "212-555-0100", email: "ada@example.invalid" },
             source_company: null,
             intake_case_id: null,
+            granot_statement: { first_name: "Ada", last_name: "Lovelace", job_no: "P5562401" },
           },
         ],
         next_cursor: null,
@@ -890,10 +891,11 @@ test("Owner can search webhook receipts; Admin cannot; unsigned is denied", asyn
   };
   assert.equal(ownerBody.ok, true);
   assert.equal(ownerBody.data.items[0]?.receipt_id, receiptId);
-  assert.equal(ownerBody.data.items[0]?.contact.phone, "•••0100");
-  assert.equal(JSON.stringify(ownerBody).includes("granot_statement"), false);
-  assert.equal(JSON.stringify(ownerBody).includes("212-555-0100"), false);
-  assert.equal(JSON.stringify(ownerBody).includes("ada@example.invalid"), false);
+  assert.equal(ownerBody.data.items[0]?.contact.phone, "212-555-0100");
+  assert.equal(ownerBody.data.items[0]?.contact.email, "ada@example.invalid");
+  assert.equal(JSON.stringify(ownerBody).includes("granot_statement"), true);
+  assert.equal(JSON.stringify(ownerBody).includes("212-555-0100"), true);
+  assert.equal(JSON.stringify(ownerBody).includes("ada@example.invalid"), true);
   assert.equal(lastReceiptSearchQuery?.limit, 25);
 
   lastReceiptSearchQuery = null;

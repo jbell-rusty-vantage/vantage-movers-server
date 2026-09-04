@@ -397,7 +397,7 @@ test("lead_created and priority_updated never return a booking action on the DTO
   assert.ok(page.items.every((item) => item.booking_action === null));
 });
 
-test("masking omits full phone, email, payload, and granot_statement", async () => {
+test("Owner list returns unmasked contact and credential-redacted granot_statement", async () => {
   const hit = observedWebhook();
   const stores = memoryStores({
     receipts: [
@@ -406,7 +406,7 @@ test("masking omits full phone, email, payload, and granot_statement", async () 
         payload: {
           ...((hit.receipt.payload as Record<string, unknown>) ?? {}),
           "x-api-secret": "must-not-leak",
-          granot_statement: { event_type: "Lead" },
+          authorization: "secret-token",
         },
       },
     ],
@@ -414,15 +414,53 @@ test("masking omits full phone, email, payload, and granot_statement", async () 
     ...defaultRegistry(),
   });
   const page = await searchReceipts(parse({}), stores);
+  const item = page.items[0];
+  assert.equal(item?.contact.display_name, "Ada Lovelace");
+  assert.equal(item?.contact.phone, FULL_PHONE);
+  assert.equal(item?.contact.email, FULL_EMAIL);
+  assert.ok(item?.granot_statement && typeof item.granot_statement === "object");
+  const statement = item.granot_statement as Record<string, unknown>;
+  assert.equal(statement.email, FULL_EMAIL);
+  assert.equal(statement.phone, "212-555-0100");
+  assert.equal("x-api-secret" in statement, false);
+  assert.equal("authorization" in statement, false);
   const serialized = JSON.stringify(page);
-  assert.equal(serialized.includes(FULL_PHONE), false);
-  assert.equal(serialized.includes("212-555-0100"), false);
-  assert.equal(serialized.includes(FULL_EMAIL), false);
   assert.equal(serialized.includes("must-not-leak"), false);
-  assert.equal(serialized.includes("granot_statement"), false);
+  assert.equal(serialized.includes("secret-token"), false);
   assert.equal(serialized.includes("x-api-secret"), false);
-  assert.equal(page.items[0]?.contact.phone, "•••0100");
-  assert.equal(page.items[0]?.contact.email, "a•••@example.invalid");
+});
+
+test("pending receipt and empty Observation phone or email fill from the redacted payload", async () => {
+  const pendingId = oid("64bbbbbbbbbbbbbbbbbbbbbb");
+  const incomplete = observedWebhook({ receiptId: oid("64aaaaaaaaaaaaaaaaaaaaaa") });
+  incomplete.observation.contact = {
+    display_name: "Ada Lovelace",
+    first_name: "Ada",
+    last_name: "Lovelace",
+  };
+  const stores = memoryStores({
+    receipts: [
+      incomplete.receipt,
+      receipt({
+        id: pendingId,
+        captured_at: "2026-08-28T16:00:00.000Z",
+        processing_state: "pending",
+      }),
+    ],
+    observations: [incomplete.observation],
+    ...defaultRegistry(),
+  });
+  const page = await searchReceipts(parse({}), stores);
+  const observed = page.items.find((item) => item.receipt_id === incomplete.receipt._id);
+  const pending = page.items.find((item) => item.receipt_id === pendingId);
+  assert.equal(observed?.contact.display_name, "Ada Lovelace");
+  assert.equal(observed?.contact.phone, FULL_PHONE);
+  assert.equal(observed?.contact.email, FULL_EMAIL);
+  assert.equal(pending?.observation_id, null);
+  assert.equal(pending?.contact.display_name, "Ada Lovelace");
+  assert.equal(pending?.contact.phone, FULL_PHONE);
+  assert.equal(pending?.contact.email, FULL_EMAIL);
+  assert.ok(pending?.granot_statement && typeof pending.granot_statement === "object");
 });
 
 test("cursor page is stable newest-first", async () => {

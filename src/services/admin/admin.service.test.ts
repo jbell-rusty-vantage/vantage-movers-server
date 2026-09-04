@@ -395,7 +395,7 @@ test("admin agents browse returns metrics for list rows", async () => {
 test("admin agents browse applies date range to booked lead metrics", async () => {
   const aggregateCapture: { pipeline?: unknown[] } = {};
   stubFind(Agent, { populated: [] }, [
-    { _id: new mongoose.Types.ObjectId(), name: "Alice Agent" },
+    { _id: new mongoose.Types.ObjectId(), name: "Alice Agent", normalized_name: "alice agent" },
   ]);
   stubCount(Agent, 1);
   stubAggregate(BookedLead, [], aggregateCapture);
@@ -410,7 +410,57 @@ test("admin agents browse applies date range to booked lead metrics", async () =
   assert.match(pipelinePreview, /\$unwind/);
   assert.match(pipelinePreview, /agent_allocations\.binder_amount/);
   assert.match(pipelinePreview, /is_cancelled/);
+  assert.match(pipelinePreview, /\$toLower/);
   assert.doesNotMatch(pipelinePreview, /createdAt: \{/);
+  const matchKeys = agentMatchKeysFromPipeline(aggregateCapture.pipeline);
+  assert.deepEqual(matchKeys, ["alice agent"]);
+  assert.ok(matchKeys.every((value) => typeof value === "string"));
+});
+
+test("admin agents browse matches catalog names case-insensitively", async () => {
+  stubFind(Agent, { populated: [] }, [
+    { _id: new mongoose.Types.ObjectId(), name: "ALICE AGENT", normalized_name: "alice agent" },
+  ]);
+  stubCount(Agent, 1);
+  stubAggregate(BookedLead, [
+    {
+      agent_key: "alice agent",
+      booking_count: 1,
+      total_binder_amount: 100,
+      total_deposit_amount: 200,
+      cancellation_count: 0,
+      cancellation_rate: 0,
+    },
+  ]);
+
+  const result = await browseAdminResource("agents", adminBrowseQuerySchema.parse({ limit: 10 }));
+
+  assert.equal(result.items[0].booking_count, 1);
+  assert.equal(result.items[0].total_binder_amount, 100);
+  assert.equal(result.items[0].total_deposit_amount, 200);
+});
+
+test("admin agents browse matches allocations on normalized_name when display name differs", async () => {
+  stubFind(Agent, { populated: [] }, [
+    { _id: new mongoose.Types.ObjectId(), name: "Mike Smith", normalized_name: "mike" },
+  ]);
+  stubCount(Agent, 1);
+  stubAggregate(BookedLead, [
+    {
+      agent_key: "mike",
+      booking_count: 4,
+      total_binder_amount: 800,
+      total_deposit_amount: 1600,
+      cancellation_count: 1,
+      cancellation_rate: 0.25,
+    },
+  ]);
+
+  const result = await browseAdminResource("agents", adminBrowseQuerySchema.parse({ limit: 10 }));
+
+  assert.equal(result.items[0].booking_count, 4);
+  assert.equal(result.items[0].total_binder_amount, 800);
+  assert.equal(result.items[0].cancellation_rate, 0.25);
 });
 
 test("admin agents browse returns zero metric fields for agents without bookings", async () => {
@@ -651,6 +701,37 @@ test("global admin search returns grouped results", async () => {
   assert.deepEqual(result.groups[0].items[0].badges, ["booked"]);
 });
 
+test("admin agents export includes booking metric columns", async () => {
+  stubFind(Agent, { populated: [] }, [
+    {
+      _id: new mongoose.Types.ObjectId(),
+      name: "Alice Agent",
+      normalized_name: "alice agent",
+      active: true,
+      role: "sales",
+    },
+  ]);
+  stubCount(Agent, 1);
+  stubAggregate(BookedLead, [
+    {
+      agent_key: "alice agent",
+      booking_count: 2,
+      total_binder_amount: 500,
+      total_deposit_amount: 1200,
+      cancellation_count: 1,
+      cancellation_rate: 0.5,
+    },
+  ]);
+
+  const result = await exportAdminResourceCsv(
+    "agents",
+    adminBrowseQuerySchema.parse({ limit: 10 }),
+  );
+
+  assert.match(result.csv, /booking_count,total_binder_amount,total_deposit_amount,cancellation_count,cancellation_rate/);
+  assert.match(result.csv, /,2,500,1200,1,0\.5/);
+});
+
 test("admin CSV export uses browse rows and escapes CSV body", async () => {
   stubFind(FormLead, { populated: [] }, [
     {
@@ -732,6 +813,18 @@ function stubCatalogFind(
   (SourceGranularity as unknown as MutableModel).find = () => queryResult(granularities);
   (Agent as unknown as MutableModel).find = () => queryResult([]);
   (Merchant as unknown as MutableModel).find = () => queryResult([]);
+}
+
+function agentMatchKeysFromPipeline(pipeline: unknown[] | undefined): string[] {
+  for (const stage of pipeline ?? []) {
+    if (!stage || typeof stage !== "object") continue;
+    const match = (stage as { $match?: { agent_key?: { $in?: unknown } } }).$match;
+    const values = match?.agent_key?.$in;
+    if (Array.isArray(values)) {
+      return values.filter((value): value is string => typeof value === "string");
+    }
+  }
+  return [];
 }
 
 function stubAggregate(

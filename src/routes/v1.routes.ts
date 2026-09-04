@@ -334,8 +334,9 @@ router.get("/api/v1/admin/search", handleAdminSearch);
 router.get("/api/v1/admin/facets", handleAdminFacets);
 router.get("/api/v1/admin/catalog/agents", handleCatalogList("agents"));
 router.get("/api/v1/admin/catalog/merchants", handleCatalogList("merchants"));
-router.get("/api/v1/admin/agents", handleCatalogList("agents"));
-router.get("/api/v1/admin/agents/:id", handleCatalogDetail("agents"));
+// GET /api/v1/admin/agents and /:id are browse/detail (metrics). Do not
+// register catalog list/detail on those paths — Express first-match would
+// hide handleAdminBrowse and the Agents table would omit booking metrics.
 router.post("/api/v1/admin/agents", handleCatalogCreate("agents"));
 router.patch("/api/v1/admin/agents/:id", handleCatalogUpdate("agents"));
 router.post("/api/v1/admin/agents/:id/activation", handleCatalogActivation("agents"));

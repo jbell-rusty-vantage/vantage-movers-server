@@ -44,9 +44,9 @@ Resolve paths from the `vantage-main-server` repository root.
 
 | Order | Authority |
 | --- | --- |
-| 1 | [`granot-lifecycle-surfaces-specification.md`](granot-lifecycle-surfaces-specification.md) — **wins on every conflict** |
+| 1 | [`granot-lifecycle-surfaces-specification.md`](granot-lifecycle-surfaces-specification.md) — **wins on every conflict except the historical list DTO** |
 | 2 | Current repository code — the actual seam each issue extends |
-| 3 | [`../knowledge/granot-lifecycle/live-receipts.md`](../knowledge/granot-lifecycle/live-receipts.md) — live SSE (do not rebuild) |
+| 3 | [`../knowledge/granot-lifecycle/live-receipts.md`](../knowledge/granot-lifecycle/live-receipts.md) — live SSE **and** the current Owner list GET (unmasked contact + credential-redacted `granot_statement`; supersedes pack spec §6) |
 | 4 | [`../knowledge/granot-lifecycle/observability.md`](../knowledge/granot-lifecycle/observability.md) — Health GET (URL moves, projection does not) |
 | 5 | Workspace-root `CONTEXT.md` and `vantage-admin/.cursor/rules/project-organization.mdc` |
 | 6 | This pack's issues — sequencing and scope only, never new semantics |
@@ -123,7 +123,9 @@ These apply to all issues and are not repeated as scope in each one.
 - A discrepancies tab.
 - Cancellation intakes.
 - Searching extension or HTTP-automation receipts.
-- Raw payload drawer, unmasking, or receipt writes.
+- Receipt writes. The original “no payload drawer / no unmasking” pack
+  constraint is **superseded** for the Owner list GET — see
+  [`../knowledge/granot-lifecycle/live-receipts.md`](../knowledge/granot-lifecycle/live-receipts.md).
 - Atlas Search.
 
 ## Verified current state

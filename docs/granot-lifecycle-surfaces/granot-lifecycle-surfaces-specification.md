@@ -46,10 +46,18 @@ sources:
 
 # Granot Lifecycle surfaces — Ingestion cleanup, Health home, and webhook receipt search
 
-> **Contract maturity: implementation-ready.** Product rules in §§1–12 win.
+> **Contract maturity: implementation-ready.** Product rules in §§1–12 win
+> except the historical list GET (see current-contract note below).
 > File citations are evidence; reverify at implementation.
 > This file does not change capture, normalize, processor, Intakes
 > commands, Live Events SSE, or Job Timeline evaluation.
+
+> **Current list contract (overrides §6, §7 “no raw JSON”, §10 payload/unmasking, and AC 7):**
+> `GET /api/v1/admin/granot-lifecycle/receipts` returns unmasked Lead
+> contact and a credential-redacted `granot_statement`. Owner Receipts
+> shows stacked Name / Phone / Email and a View payload `SidePanel` on
+> `?receipt=`. Authority: [`../knowledge/granot-lifecycle/live-receipts.md`](../knowledge/granot-lifecycle/live-receipts.md).
+> §§6–7 below remain the original GLS-02/03 pack text.
 
 **Prepared:** 2026-09-01
 **Repos:** `vantage-admin` (IA and Receipts UI). `vantage-main-server` (historical receipt search API only).

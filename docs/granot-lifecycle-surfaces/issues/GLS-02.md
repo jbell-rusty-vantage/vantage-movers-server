@@ -1,5 +1,9 @@
 # GLS-02 — Owner webhook receipt search API
 
+> **Current list contract:** unmasked contact + credential-redacted
+> `granot_statement`. Pack §6 masking / “no `granot_statement`” below is
+> historical. Authority: [`../../knowledge/granot-lifecycle/live-receipts.md`](../../knowledge/granot-lifecycle/live-receipts.md).
+
 > **Contract maturity: implementation-ready.** Session 1 (server,
 > parallel with GLS-01). Historical list of webhook-channel Granot
 > Observation Receipts. **No Admin UI. No Live Events change.**
