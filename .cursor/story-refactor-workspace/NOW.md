@@ -3,14 +3,14 @@
 - Date (UTC): 2026-09-05
 - Wave: A (`src/services/`)
 - Current service: `analytics` (in-progress)
-- Next module: `agentSalesReport.service.ts`
+- Next module: `leadCost.service.ts`
 - Stock: visited 25 / in-progress 1 / unvisited 12
-- Recommendations on disk: 178 (`form-lead.md` through `analytics-sms-conversion.md`)
+- Recommendations on disk: 179 (`form-lead.md` through `analytics-agent-sales-report.md`)
 - Lock: none
 - Lock holder:
 - Lock at:
 - Branch: `docs/story-refactor`
-- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/182
-- Last session: story-analytics-sms-conversion-2026-09-05T1412Z
+- PR: (opening after #182 merged)
+- Last session: story-analytics-agent-sales-report-2026-09-05T1510Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
