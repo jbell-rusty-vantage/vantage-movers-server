@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-05T11:10Z
 - Service / module: `analytics` / `cancellationAnalytics.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / pending (open after #178 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/179
 
 ## Stock at start
 
