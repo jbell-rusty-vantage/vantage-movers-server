@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-05T22:12Z
 - Service / module: `observability` / `emailNotification.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/187
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/188
 
 ## Stock at start
 
