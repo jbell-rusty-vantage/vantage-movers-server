@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-05T18:12Z
 - Service / module: `analytics` / `analyticsFilters.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/184
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/185
 
 ## Stock at start
 
@@ -12,7 +12,7 @@
 - Recommendations on disk: 181
 - Current service / next module (TRAVERSAL): `analytics` (in-progress) / `analyticsFilters.ts`
 
-This checkout booted on `cursor/vantage-server-story-refactor-48dd` with a stale seed (NOW pointed at `leadCost.service.ts` / 179 recs / PR #183). Checked out `docs/story-refactor` before choosing the module. Disk already had `analytics-analytics-export.md`, lock none, `analytics` in-progress, next `analyticsFilters.ts`, PR #184 still the open story-refactor PR.
+This checkout booted on `cursor/vantage-server-story-refactor-48dd` with a stale seed (NOW pointed at `leadCost.service.ts` / 179 recs / PR #183). Checked out `docs/story-refactor` before choosing the module. Disk already had `analytics-analytics-export.md`, lock none, `analytics` in-progress, next `analyticsFilters.ts`. PR #184 had already merged; this pass opened https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/185.
 
 Stayed on `analytics`. Next unchecked module: `analyticsFilters.ts`.
 
