@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-05T14:12Z
 - Service / module: `analytics` / `smsConversion.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / pending
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/182
 
 ## Stock at start
 
