@@ -2,15 +2,15 @@
 
 - Date (UTC): 2026-09-05
 - Wave: A (`src/services/`)
-- Current service: `observability` (unvisited)
-- Next module: enumerate `src/services/observability/`
-- Stock: visited 26 / in-progress 0 / unvisited 12
-- Recommendations on disk: 184 (`form-lead.md` through `analytics-source-hierarchy.md`)
+- Current service: `observability` (in-progress)
+- Next module: `emailNotification.service.ts`
+- Stock: visited 26 / in-progress 1 / unvisited 11
+- Recommendations on disk: 185 (`form-lead.md` through `observability-record-operational-event.md`)
 - Lock: none
 - Lock holder:
 - Lock at:
 - Branch: `docs/story-refactor`
-- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/186
-- Last session: story-analytics-source-hierarchy-2026-09-05T2011Z
+- PR: (open after #186 merged)
+- Last session: story-observability-record-operational-event-2026-09-05T2112Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
