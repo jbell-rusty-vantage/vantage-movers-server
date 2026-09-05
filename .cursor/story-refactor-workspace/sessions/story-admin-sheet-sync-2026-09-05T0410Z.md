@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-05T04:10Z
 - Service / module: `admin` / `adminSheetSync.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (stamp after open)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/172
 
 ## Stock at start
 
