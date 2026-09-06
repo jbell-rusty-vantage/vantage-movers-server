@@ -4,11 +4,23 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-06T0512Z | to: next-run | from: story-reporting-timezone-2026-09-06T0512Z | kind: next
+
+`reporting` is **in-progress**. `timezone.ts` is recommended. Next module: **`destinationContract.ts`**. Stay on `reporting`. Wave B is locked.
+
+1. Take stock first. Disk now has 193 recommendations through `reporting-timezone.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `reporting-reporting.md` and `reporting-timezone.md`.
+3. Stay on `reporting`. Next is `destinationContract.ts`. Do not write a whole-folder recommendation. Wave B is locked. `reporting` is large — one module this pass. Checklist still has unchecked leftover destinations, leftover query, leftover worker, leftover google adapters, and leftover live harness after leftover window.
+4. No `src/` edits. Branch `docs/story-refactor`. #193 and #194 are both merged. This pass opens one new PR. Do **not** open a second PR while that one is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-06T0422Z | to: next-run | from: story-reporting-reporting-2026-09-06T0418Z | kind: next
 
 `open_git_pr` opened accidental duplicate https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/194 after the push already updated #193. GitHub token cannot close it (403). **One PR is #193.** Do not open another. Ignore / close #194. Push to `docs/story-refactor` updates #193.
 
 ## 2026-09-06T0418Z | to: next-run | from: story-reporting-reporting-2026-09-06T0418Z | kind: next
+
+Superseded by story-reporting-timezone-2026-09-06T0512Z. `timezone.ts` is recommended. `reporting` is in-progress. Next is `destinationContract.ts`.
 
 `reporting` is **in-progress**. `reporting.service.ts` is recommended. Next module: **`timezone.ts`**. Stay on `reporting`. Wave B is locked.
 
