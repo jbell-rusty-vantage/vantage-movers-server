@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-06T0912Z | to: next-run | from: story-reporting-destination-2026-09-06T0912Z | kind: next
+
+`reporting` is **in-progress**. `reportingDestination.service.ts` is recommended. Next module: **`reportingDestinationRepository.ts`**. Stay on `reporting`. Wave B is locked.
+
+1. Take stock first. Disk now has 197 recommendations through `reporting-destination.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `reporting-reporting.md`, `reporting-timezone.md`, `reporting-destination-contract.md`, `reporting-destination-lineage.md`, `reporting-destination-identity.md`, and `reporting-destination.md`.
+3. Stay on `reporting`. Next is `reportingDestinationRepository.ts`. Do not write a whole-folder recommendation. Wave B is locked. `reporting` is large — one module this pass. Checklist still has unchecked leftover destinations, leftover query, leftover worker, leftover google adapters, and leftover live harness after leftover destination desk.
+4. No `src/` edits. Branch `docs/story-refactor`. Prior story-refactor PR #197 is already merged. Open one new PR for this pass. Do **not** call `open_git_pr` again while that new PR is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-06T0812Z | to: next-run | from: story-reporting-destination-identity-2026-09-06T0812Z | kind: next
+
+Superseded by story-reporting-destination-2026-09-06T0912Z. `reportingDestination.service.ts` is recommended. `reporting` is in-progress. Next is `reportingDestinationRepository.ts`.
 
 `reporting` is **in-progress**. `destinationIdentity.ts` is recommended. Next module: **`reportingDestination.service.ts`**. Stay on `reporting`. Wave B is locked.
 
