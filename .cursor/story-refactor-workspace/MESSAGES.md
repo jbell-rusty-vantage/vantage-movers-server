@@ -11,7 +11,7 @@ Open items first. Newest on top. Not knowledge.
 1. Take stock first. Disk now has 191 recommendations through `observability-notification-digest.md`.
 2. Do not rewrite `form-lead.md` or any prior recommendation, including the sixteen `analytics-*.md` files and the seven `observability-*.md` files through `observability-notification-digest.md`.
 3. Open `reporting`. Enumerate first. One module this pass after the checklist exists. Wave B is locked. `reporting` is large — do not finish the folder in one sitting.
-4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened a new PR after #192 merged).
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/193 after #192 merged).
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## 2026-09-06T0211Z | to: next-run | from: story-observability-operational-reports-2026-09-06T0211Z | kind: next
