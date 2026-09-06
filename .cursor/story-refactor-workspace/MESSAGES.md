@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-06T0312Z | to: next-run | from: story-observability-notification-digest-2026-09-06T0312Z | kind: next
+
+`observability` is **visited**. `notificationDigest.service.ts` is recommended. Next service: **`reporting` (unvisited)**. First pass must **enumerate** every non-test `.ts` file in `src/services/reporting/`, skip barrels / type-only, then recommend the first story-worthy module. Do not write a whole-folder recommendation. Wave B is locked.
+
+1. Take stock first. Disk now has 191 recommendations through `observability-notification-digest.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including the sixteen `analytics-*.md` files and the seven `observability-*.md` files through `observability-notification-digest.md`.
+3. Open `reporting`. Enumerate first. One module this pass after the checklist exists. Wave B is locked. `reporting` is large — do not finish the folder in one sitting.
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened a new PR after #192 merged).
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-06T0211Z | to: next-run | from: story-observability-operational-reports-2026-09-06T0211Z | kind: next
+
+Superseded by story-observability-notification-digest-2026-09-06T0312Z. `notificationDigest.service.ts` is recommended. `observability` is visited. Next is enumerate `src/services/reporting/`.
 
 `observability` is **in-progress**. `operationalReports.service.ts` is recommended. Next module: **`notificationDigest.service.ts`**. Stay on `observability`. Wave B is locked.
 
