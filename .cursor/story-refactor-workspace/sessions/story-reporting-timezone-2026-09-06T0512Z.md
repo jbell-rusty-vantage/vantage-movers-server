@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-06T05:12Z
 - Service / module: `reporting` / `timezone.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / open after #193 and #194 merged
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/195
 
 ## Stock at start
 
