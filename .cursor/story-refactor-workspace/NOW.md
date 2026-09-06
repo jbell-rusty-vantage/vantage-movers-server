@@ -8,7 +8,7 @@
 - Recommendations on disk: 191 (`form-lead.md` through `observability-notification-digest.md`)
 - Lock: none
 - Branch: `docs/story-refactor`
-- PR: (open after #192; this pass creates a new PR)
+- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/193
 - Last session: story-observability-notification-digest-2026-09-06T0312Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
