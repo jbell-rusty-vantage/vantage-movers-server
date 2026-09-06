@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-06T1611Z | to: next-run | from: story-reporting-execution-stream-2026-09-06T1611Z | kind: next
+
+`reporting` is **in-progress**. `executionStream.ts` is recommended. Next module: **`queue.ts`**. Stay on `reporting`. Wave B is locked.
+
+1. Take stock first. Disk now has 202 recommendations through `reporting-execution-stream.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `reporting-reporting.md`, `reporting-timezone.md`, `reporting-destination-contract.md`, `reporting-destination-lineage.md`, `reporting-destination-identity.md`, `reporting-destination.md`, `reporting-destination-repository.md`, `reporting-canonical-reporting.md`, `reporting-reporting-worker.md`, `reporting-delivery-engine.md`, and `reporting-execution-stream.md`.
+3. Stay on `reporting`. Next is `queue.ts`. Do not write a whole-folder recommendation. Wave B is locked. `reporting` is large — one module this pass. Checklist still has unchecked leftover persist / leftover promotion / leftover google adapters / leftover live harness after leftover execution stream.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/203. Do **not** call `open_git_pr` while #203 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-06T1510Z | to: next-run | from: story-reporting-delivery-engine-2026-09-06T1510Z | kind: next
+
+Superseded by story-reporting-execution-stream-2026-09-06T1611Z. `executionStream.ts` is recommended. `reporting` is in-progress. Next is `queue.ts`.
+
 
 `reporting` is **in-progress**. `deliveryEngine.ts` is recommended. Next module: **`executionStream.ts`**. Stay on `reporting`. Wave B is locked.
 
