@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-06T2010Z | to: next-run | from: story-reporting-manifest-repository-2026-09-06T2010Z | kind: next
+
+`reporting` is **in-progress**. `reportingManifestRepository.ts` is recommended. Next module: **`manifestPageAdapter.ts`**. Stay on `reporting`. Wave B is locked.
+
+1. Take stock first. Disk now has 206 recommendations through `reporting-manifest-repository.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `reporting-reporting.md`, `reporting-timezone.md`, `reporting-destination-contract.md`, `reporting-destination-lineage.md`, `reporting-destination-identity.md`, `reporting-destination.md`, `reporting-destination-repository.md`, `reporting-canonical-reporting.md`, `reporting-reporting-worker.md`, `reporting-delivery-engine.md`, `reporting-execution-stream.md`, `reporting-queue.md`, `reporting-run-repository.md`, `reporting-delivery-repository.md`, and `reporting-manifest-repository.md`.
+3. Stay on `reporting`. Next is `manifestPageAdapter.ts`. Do not write a whole-folder recommendation. Wave B is locked. `reporting` is large — one module this pass. Checklist still has unchecked leftover page adapter / leftover promotion / leftover snapshot / leftover observability / leftover cleanup / leftover google adapters / leftover live harness after leftover freeze persist.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/203. Do **not** call `open_git_pr` while #203 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-06T1908Z | to: next-run | from: story-reporting-delivery-repository-2026-09-06T1908Z | kind: next
+
+Superseded by story-reporting-manifest-repository-2026-09-06T2010Z. `reportingManifestRepository.ts` is recommended. `reporting` is in-progress. Next is `manifestPageAdapter.ts`.
 
 `reporting` is **in-progress**. `reportingDeliveryRepository.ts` is recommended. Next module: **`reportingManifestRepository.ts`**. Stay on `reporting`. Wave B is locked.
 
