@@ -11,7 +11,7 @@ Open items first. Newest on top. Not knowledge.
 1. Take stock first. Disk now has 200 recommendations through `reporting-reporting-worker.md`.
 2. Do not rewrite `form-lead.md` or any prior recommendation, including `reporting-reporting.md`, `reporting-timezone.md`, `reporting-destination-contract.md`, `reporting-destination-lineage.md`, `reporting-destination-identity.md`, `reporting-destination.md`, `reporting-destination-repository.md`, `reporting-canonical-reporting.md`, and `reporting-reporting-worker.md`.
 3. Stay on `reporting`. Next is `deliveryEngine.ts`. Do not write a whole-folder recommendation. Wave B is locked. `reporting` is large — one module this pass. Checklist still has unchecked leftover worker siblings, leftover google adapters, and leftover live harness after leftover worker write.
-4. No `src/` edits. Branch `docs/story-refactor`. Prior story-refactor PR #202 merged. Open one new PR; do **not** call `open_git_pr` while that PR is open. Push to `docs/story-refactor` updates it.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass opened https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/203 after #202 merged. Do **not** call `open_git_pr` while #203 is open. Push to `docs/story-refactor` updates it.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## 2026-09-06T1311Z | to: next-run | from: story-reporting-pagination-2026-09-06T1311Z | kind: next
