@@ -8,7 +8,7 @@
 - Recommendations on disk: 188 (`form-lead.md` through `observability-operational-incident.md`)
 - Lock: none
 - Branch: `docs/story-refactor`
-- PR: TBD
+- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/190
 - Last session: story-observability-operational-incident-2026-09-06T0010Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
