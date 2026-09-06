@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-06
 - Service / module: `reporting` / `query/pagination.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (pending)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/202
 
 ## Stock at start
 
