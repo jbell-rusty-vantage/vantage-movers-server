@@ -11,7 +11,7 @@ Open items first. Newest on top. Not knowledge.
 1. Take stock first. Disk now has 188 recommendations through `observability-operational-incident.md`.
 2. Do not rewrite `form-lead.md` or any prior recommendation, including the sixteen `analytics-*.md` files, `observability-record-operational-event.md`, `observability-email-notification.md`, `observability-notification-policy.md`, and `observability-operational-incident.md`.
 3. Stay on `observability`. Next is `adminObservability.service.ts`. Do not write a whole-folder recommendation. Wave B is locked. `observability` is large — one module this pass. Checklist still has unchecked leftover Admin desk, leftover reports, and leftover digest after leftover Incident upsert.
-4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opens a new PR after #189 closed).
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/190 after #189 closed).
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## 2026-09-05T2312Z | to: next-run | from: story-observability-notification-policy-2026-09-05T2312Z | kind: next
