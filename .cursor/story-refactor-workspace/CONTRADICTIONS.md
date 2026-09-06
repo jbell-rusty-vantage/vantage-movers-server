@@ -4,6 +4,7 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Knowledge says reporting windows are America/New_York half-open `[from,to)`. `timezone.ts` is IANA-generic; draft `timezone` is any non-empty string; tests use New York. Leftover `revisionToQueryInput` re-resolves rolling windows at estimate / confirm with `new Date()`; frozen `resolved_window` is not the leftover query clock. Do not hardcode Eastern or swap in the frozen pair in this rename. See `recommendations/reporting-timezone.md`.
 - File comment on `notificationDigest.service.ts` says the digest summarizes “the last day’s health.” `getObservabilityOverview({})` uses Eastern start-of-day through now. Vercel cron is `0 12 * * *` UTC. Retry uses last-twenty-four-hours on Delivery `createdAt`. Do not silently change the letter window so “the comment becomes true.” See `recommendations/observability-notification-digest.md`.
 - `digest_sent_at` exists on `OperationalIncident` and is never written by this folder. `getAlertEmailDailyDigestCronTime()` and near-worthy digest env helpers are unused by the morning letter. Do not start writing the stamp or reading those knobs in this rename. See `recommendations/observability-notification-digest.md`.
 - `overall_status` is `critical` / `degraded` / `healthy` from live open/acknowledged Incidents; open warnings do not move the subject. Knowledge / review notes that say error/warn/ok or last-day snapshot are stale. See `recommendations/observability-notification-digest.md`.
