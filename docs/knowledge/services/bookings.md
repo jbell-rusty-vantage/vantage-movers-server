@@ -37,7 +37,7 @@ generated:
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/bookings/`  
-**Domain terms used:** [Booking](../../../../CONTEXT.md), [Leadless Booking](../../../../CONTEXT.md), [Referral Booking](../../../../CONTEXT.md), [Booking Chain](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Agent Allocation](../../../../CONTEXT.md), [Binder](../../../../CONTEXT.md), [Unmatched Call Lead](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md)
+**Domain terms used:** [Booking](../../../../CONTEXT.md), [Leadless Booking](../../../../CONTEXT.md), [Referral Booking](../../../../CONTEXT.md), [Booking Chain](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Agent Allocation](../../../../CONTEXT.md), [Binder](../../../../CONTEXT.md), [Unmatched Call Lead](../../../../CONTEXT.md), [No-Sync Lead](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md)
 
 # Bookings (`bookings/`)
 
@@ -213,7 +213,7 @@ Atomic `updateOne` used by employee submit. Filter: not booked, not cancelled, n
 
 **Upsert vs duplicate:** Second create for the same lead **updates** the booking unless `submission_id` matches — then no-op with the existing doc returned.
 
-**Unmatched Call Leads:** Created at booking time when call identity cannot be resolved; `created_on_unmatched: true`. Sheet Sync skips a misleading Calls-tab row for those stubs (`jobPlanner.ts`).
+**Unmatched Call Leads:** Created at booking time when call identity cannot be resolved; `created_on_unmatched: true`. Sheet Sync skips a misleading Calls-tab row for those stubs (`jobPlanner.ts`). Distinct from [No-Sync Lead](../../../../CONTEXT.md).
 
 ## Sheet Sync
 
@@ -233,6 +233,8 @@ Atomic `updateOne` used by employee submit. Filter: not booked, not cancelled, n
 | Lead update with booking | `booking_chain` or `source_lead` | from `refreshAttachedBookingFromLead` |
 
 **Booking Chain** refreshes **Master Booked** (`Booked Deals` tab) and the linked source lead row. Details: [`google-sheets.md`](./google-sheets.md), [`sheet-sync.md`](./sheet-sync.md).
+
+[Booking Chain](../../../../CONTEXT.md) + ordinary [No-Sync Lead](../../../../CONTEXT.md): Booked Deals still writes the Mongo Lead ID. The matched source Lead must not upsert Forms or Calls — same `planSourceLead` / `syncSourceLead` `noSyncAppliesToNormalTabs` predicate. Duplicate / Bad routing on that Lead is unchanged. Do not gate only `persistSheetSyncIntent`.
 
 ## Warnings and events
 

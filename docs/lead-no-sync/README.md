@@ -35,8 +35,10 @@ Start here → [`AGENT-PROTOCOL.md`](AGENT-PROTOCOL.md) → your issue →
 record the result in [`PROGRESS.md`](PROGRESS.md).
 
 This pack does **not** exclude No-Sync Leads from lead-cost analytics,
-change Bad Lead dual-write, or make Booking Chain update-only for
-ordinary Leads.
+change Bad Lead or Duplicate Lead sheet routing, apply `no_sync` to any
+Master Leads tab other than Forms and Calls, or skip Booked Deals when
+Booking Chain matches a No-Sync Lead. Booking Chain must still write
+Booked Deals and must **not** upsert Forms or Calls for that Lead.
 
 ## Authorities
 
@@ -70,9 +72,11 @@ and LNS-03 are `complete`.
 ## Language
 
 Use workspace-root `CONTEXT.md`. Say [No-Sync Lead](../../../CONTEXT.md),
-`no_sync`, Off Master Leads, Keep off Master Leads. Do not call this an
-[Unmatched Call Lead](../../../CONTEXT.md). Do not say Sheet `synced`
-means Google equals Mongo. Owner UI never prints `no_sync`.
+`no_sync`, Hide from Master Leads, Show on Master Leads, Hidden from
+Master Leads. Do not call this an
+[Unmatched Call Lead](../../../CONTEXT.md). Do not say Hide from
+Sheets. Do not say Sheet `synced` means Google equals Mongo. Owner UI
+never prints `no_sync`.
 
 ## Unit ledger
 
@@ -93,14 +97,28 @@ These apply to all issues and are not repeated as scope in each one.
 - **Glossary words.** No-Sync Lead is not an Unmatched Call Lead.
 - **One skip owner.** Shared predicate in `planSourceLead` and
   `syncSourceLead`. Do not gate only `persistSheetSyncIntent`.
-- **`no_sync` wins over Duplicate and Bad** for Master Leads writes.
-- **Mark true deletes.** Empty skip is not enough.
+- **`no_sync` applies only to ordinary Forms and Calls.** Those are
+  the only Master Leads tabs this pack may skip or delete. Duplicate
+  Lead and Bad Lead sheet routing is untouched, even when the flag
+  is stored.
+- **Mark true deletes.** Empty skip is not enough. Delete Forms or
+  Calls only — never “every Master Leads row.”
 - **Master Booked still writes.** Mongo Lead ID stays on Booked Deals.
+  Booking Chain must **not** upsert Forms or Calls for an ordinary
+  No-Sync Lead. Do not gate only `persistSheetSyncIntent`.
+- **Owner unmark is the only revival.** Other origins cannot mint
+  `no_sync: true` from the client body.
+- **Contains Not expected is the desk proof.** No leftover-row tab
+  read. No post-mark full-tab sheet scan. Search is Find `q` plus
+  the **Hidden from Master Leads** Status filter / column.
+- **Hide / show is Actions-tab only**, with confirm and a success
+  or failure message. Not on the row Actions cluster.
 - **Contains skip ships with the planner.** Do not leave a window where
   contains says Missing.
 - **CPL / analytics unchanged.**
-- **Do not change** Bad dual-write, Form leftover-Forms on duplicate
-  flip, scored `POST /form-leads/search`, or `identity.ts`.
+- **Do not change** Bad dual-write, Call Duplicate stale-delete, Form
+  leftover-Forms, scored `POST /form-leads/search`, or `identity.ts`.
+  Do not delete Duplicates, Duplicate Calls, or Bad Leads.
 - Ordinary checks use redacted synthetic data. Runtime reads require
   `TEST_MODE=true` and an explicit test database.
 - No commit, push, deploy, production flag change, live payload read,
@@ -115,8 +133,12 @@ These apply to all issues and are not repeated as scope in each one.
 ## What this pack deliberately does not do
 
 - Lead-cost / CPL exclusion for No-Sync Leads.
-- Booking Chain update-only for ordinary Leads.
-- Moving Bad Leads off Forms.
+- Booking Chain skipping Booked Deals, or upserting Forms/Calls
+  because a No-Sync Lead matched.
+- Moving Bad Leads off Forms, or deleting Duplicates / Duplicate
+  Calls / Bad Leads as part of `no_sync`.
+- Leftover-row contains verdict, post-mark full-tab sheet scan, or
+  global-search badge.
 - Setting `created_on_unmatched` on Manual create.
 - Intake / Connect / employee submit changes.
 

@@ -32,6 +32,7 @@ import type {
   SyncTarget,
 } from "../../googleSheets/types";
 import { getLinkedLead } from "../../leads/sourceLeadLookup.service";
+import { noSyncAppliesToNormalTabs } from "../noSyncLead";
 import type { SheetSyncDocument } from "../sheetSyncPersistence";
 import type { PlannedWrite } from "./types";
 
@@ -154,16 +155,39 @@ async function planSourceLead(
 ): Promise<PlannedDoc[]> {
   const jobId = job._id.toString();
   const lead = await getLinkedLead(leadModel, leadId);
+  const looseDoc = lead as unknown as SheetSyncDocument;
+  const docKey = `${leadModel}:${leadId}`;
+  if (
+    noSyncAppliesToNormalTabs({
+      no_sync: lead.get("no_sync") as boolean | null | undefined,
+      duplicate: lead.get("duplicate") as boolean | null | undefined,
+      bad_lead: lead.get("bad_lead"),
+    })
+  ) {
+    const sourceCompany = lead.get("source_company") as SourceCompany;
+    const base =
+      leadModel === "FormLead" ? formLeadTargetBase(false) : callLeadTargetBase(false);
+    const headers = leadModel === "FormLead" ? FORM_SHEET_HEADERS : CALL_SHEET_HEADERS;
+    const targets = getLeadTargets(
+      base.masterTarget,
+      base.sourceTarget,
+      sourceCompany,
+      base.tabName,
+      headers,
+    );
+    const writes = filterTargets(job, targets).map((target) =>
+      targetToDeleteWrite(jobId, docKey, leadId, looseDoc, target),
+    );
+    return [{ docKey, doc: looseDoc, writes }];
+  }
   if (leadModel === "CallLead" && lead.get("created_on_unmatched") === true) {
     logger.info({ msg: "sheet_sync.drain.call_lead.created_on_unmatched.skipped", leadId });
     return [];
   }
-  const looseDoc = lead as unknown as SheetSyncDocument;
   await looseDoc.populate({ path: "booked", populate: { path: "customer" } });
 
   const sourceCompany = lead.get("source_company") as SourceCompany;
   const duplicate = lead.get("duplicate") as boolean | undefined;
-  const docKey = `${leadModel}:${leadId}`;
 
   if (leadModel === "FormLead") {
     const base = formLeadTargetBase(duplicate);

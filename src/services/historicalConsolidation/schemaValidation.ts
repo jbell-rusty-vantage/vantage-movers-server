@@ -19,6 +19,7 @@ const SERVER_OWNED_REVISION_DEFAULTS = new Set([
   "change_history_started_at",
   "granot_contact_revision",
   "quoted",
+  "no_sync",
 ]);
 
 type ParityRecord = Record<string, unknown>;

@@ -622,6 +622,24 @@ test("[AC-32] v1 write routes enter existing adapters and do not patch models", 
   );
 });
 
+test("runExistingUpdateSourceOwnedLead still uses updateSourceOwnedLead and pending source_lead update", async () => {
+  const source = await readFile(path.join(__dirname, "existingWrites.ts"), "utf8");
+  const start = source.indexOf("export async function runExistingUpdateSourceOwnedLead");
+  assert.ok(start >= 0, "missing runExistingUpdateSourceOwnedLead");
+  const next = source.indexOf("\nexport async function ", start + 1);
+  const body = next === -1 ? source.slice(start) : source.slice(start, next);
+  assert.match(body, /command_name:\s*"updateSourceOwnedLead"/);
+  assert.match(body, /persistPlannedMutations/);
+  assert.match(body, /FORM_LEAD_CHANGE_PATHS/);
+  assert.match(body, /CALL_LEAD_CHANGE_PATHS/);
+  assert.match(body, /collectDocumentFieldChanges/);
+  assert.match(body, /fields\.length > 0/);
+  assert.match(body, /resource:\s*"source_lead"/);
+  assert.match(body, /form_lead\.update/);
+  assert.match(body, /call_lead\.update/);
+  assert.doesNotMatch(body, /command_name:\s*"[^"]*no_sync/);
+});
+
 test("[AC-32] existing write adapters persist Changes inside the executor and keep later commands disabled", async () => {
   const source = await readFile(path.join(__dirname, "existingWrites.ts"), "utf8");
   assert.match(source, /persistEntityChangeMutations|persistPlannedMutations/);

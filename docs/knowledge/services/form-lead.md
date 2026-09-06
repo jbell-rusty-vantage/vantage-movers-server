@@ -34,7 +34,7 @@ generated:
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) for Granot identity; [`../../../../docs/adr/`](../../../../docs/adr/) for [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md) and [0002 CRM post survives failures](../../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md)
 **Primary code:** `src/services/leads/formLead.service.ts`, `src/services/leads/wordpressFormSubmissionReceipt.ts`, `src/services/leads/leadIngestionProvenance.ts`, `src/services/leads/leadCplResolution.ts`, `src/services/crm/crm.service.ts`, `src/services/crm/formLeadPayload.ts`  
-**Domain terms used:** [Form Lead Ingestion](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Ingestion Origin](../../../../CONTEXT.md), [WordPress Form Submission Receipt](../../../../CONTEXT.md), [Duplicate Lead](../../../../CONTEXT.md), [CRM Posting](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Tracking Reference](../../../../CONTEXT.md), [Lead ID](../../../../CONTEXT.md), [Form Fill](../../../../CONTEXT.md), [Move Type](../../../../CONTEXT.md), [CPL](../../../../CONTEXT.md)
+**Domain terms used:** [Form Lead Ingestion](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Ingestion Origin](../../../../CONTEXT.md), [WordPress Form Submission Receipt](../../../../CONTEXT.md), [Duplicate Lead](../../../../CONTEXT.md), [No-Sync Lead](../../../../CONTEXT.md), [CRM Posting](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Tracking Reference](../../../../CONTEXT.md), [Lead ID](../../../../CONTEXT.md), [Form Fill](../../../../CONTEXT.md), [Move Type](../../../../CONTEXT.md), [CPL](../../../../CONTEXT.md)
 
 # Form Lead Service
 
@@ -54,7 +54,7 @@ Public `ingestFormLead` always assigns `ingestion_origin: "wordpress_form"` and 
 | 3b. [WordPress Form Submission Receipt](../../../../CONTEXT.md) | Authorized test path only — see **WordPress Form Submission Receipt** below. Capture runs **before** `FormLead.save`. Unauthorized / missing key / production DB: no receipt write; Lead create continues. |
 | 4. Persist + Sheet Sync intent | Atomic in queued mode via `runSheetSyncWrite`: save Form Lead with `duplicate` flag; `post_to_granot = post_to_granot && !duplicate`. `wordpress_submission_key` is stripped before persist. |
 | 4b. Form Fill (non-duplicates only) | `markMatchingCallLeadsWithFormFill` — same source + phone Call Leads → `form_fill=true`; enqueues `call_lead.form_fill.update` jobs in same txn |
-| 4c. Enqueue | `source_lead` / `form_lead.create` Sheet Sync job |
+| 4c. Enqueue | `source_lead` / `form_lead.create` unless persisted `no_sync === true` |
 | 5. Post-commit | See **Post-save order** below |
 
 ### Post-save order (current code vs ADR intent)
@@ -114,6 +114,8 @@ derived from cell color. Duplicate, Booked, and Cancelled state keeps
 precedence; the migration records the legacy disposition as provenance.
 
 Job: `resource: source_lead`, `operation: form_lead.create` | `form_lead.update`. Delete: tombstone `delete_source_lead` / `delete_form_lead`.
+
+Manual / `vantage_admin` create defaults [No-Sync Lead](../../../../CONTEXT.md) (`input.no_sync ?? true` via `noSyncOnCreate`). Other origins persist `false` and ignore client `true`. Create with `no_sync: true` skips the `form_lead.create` outbox. Owner PATCH `no_sync` is `updateSourceOwnedLead`. Ordinary No-Sync skips/deletes Forms only; the Duplicate / Bad routing above is unchanged — `no_sync` does not delete or skip those tabs. Owner UI copy is Hide / Show / Hidden from Master Leads and never prints `no_sync`.
 
 ## Correction (`correctFormLead`)
 

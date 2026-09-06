@@ -8,6 +8,7 @@ import {
   deriveCallLeadIngestionOrigin,
   deriveFormLeadIngestionOrigin,
   formLeadCreationProvenanceFields,
+  noSyncOnCreate,
   omitForbiddenLeadLifecycleFields,
 } from "./leadIngestionProvenance";
 
@@ -116,6 +117,16 @@ test("[AC-12] Call creation provenance forces quoted false and captured_at_inges
   assert.equal(call.ingestion_origin, "ringcentral");
   assert.equal(call.ingested_contact_snapshot.evidence_status, "captured_at_ingestion");
   assert.equal(buildIngestedContactSnapshot({}, now).evidence_status, "captured_at_ingestion");
+});
+
+test("noSyncOnCreate defaults true for vantage_admin and ignores other-origin client true", () => {
+  assert.equal(noSyncOnCreate("vantage_admin"), true);
+  assert.equal(noSyncOnCreate("vantage_admin", undefined), true);
+  assert.equal(noSyncOnCreate("vantage_admin", false), false);
+  assert.equal(noSyncOnCreate("wordpress_form", true), false);
+  assert.equal(noSyncOnCreate("ringcentral", true), false);
+  assert.equal(noSyncOnCreate("granot_lead_created", true), false);
+  assert.equal(noSyncOnCreate("best_relocation_sheet", true), false);
 });
 
 test("[AC-07] omitForbiddenLeadLifecycleFields strips internal metadata from updates", () => {

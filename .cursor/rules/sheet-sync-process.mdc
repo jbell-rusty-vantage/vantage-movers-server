@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Google Sheets Sync Process
 
-Owner invariants (tabs, projections, outbox, drain): [`sheet-sync.md`](../../docs/knowledge/services/sheet-sync.md), [`google-sheets.md`](../../docs/knowledge/services/google-sheets.md). Canonical commands: [`domain-commands.md`](../../docs/knowledge/services/domain-commands.md).
+Owner invariants (tabs, projections, outbox, drain): [`sheet-sync.md`](../../docs/knowledge/services/sheet-sync.md), [`google-sheets.md`](../../docs/knowledge/services/google-sheets.md). Canonical commands: [`domain-commands.md`](../../docs/knowledge/services/domain-commands.md). Ordinary [No-Sync Lead](../../../CONTEXT.md) (`noSyncAppliesToNormalTabs` in `src/services/sheetSync/noSyncLead.ts`) skips/deletes Master Leads Forms and Calls only; [Unmatched Call Lead](../../../CONTEXT.md) stays a separate empty-plan skip (`created_on_unmatched`).
 
 ## Env, modes, quotas
 

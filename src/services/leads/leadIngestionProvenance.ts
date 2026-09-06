@@ -168,6 +168,16 @@ export function buildIngestedMoveSnapshot(
   };
 }
 
+export function noSyncOnCreate(
+  origin: FormLeadIngestionOrigin | CallLeadIngestionOrigin,
+  requested?: boolean | null,
+): boolean {
+  if (origin === "vantage_admin") {
+    return requested ?? true;
+  }
+  return false;
+}
+
 export function formLeadCreationProvenanceFields(input: {
   origin: FormLeadIngestionOrigin;
   now: Date;

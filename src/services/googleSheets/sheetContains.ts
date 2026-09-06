@@ -255,6 +255,7 @@ async function loadSheetContainsRecords(
     duplicate: record.duplicate,
     bad_lead: record.bad_lead,
     created_on_unmatched: record.created_on_unmatched,
+    no_sync: record.no_sync,
     sheet_sync: record.sheet_sync,
   }));
 }
@@ -268,6 +269,7 @@ type LeanContainsDoc = {
   duplicate?: boolean | null;
   bad_lead?: string | null;
   created_on_unmatched?: boolean | null;
+  no_sync?: boolean | null;
   sheet_sync?: SheetSyncEntry[];
 };
 

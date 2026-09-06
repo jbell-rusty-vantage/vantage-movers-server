@@ -33,7 +33,7 @@ generated:
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/googleSheets/googleSheets.service.ts` (facade: `src/services/googleSheets.service.ts`)  
-**Domain terms used:** [Sheet Sync](../../../../CONTEXT.md), [Reporting Sheets](../../../../CONTEXT.md), [Master Sheets](../../../../CONTEXT.md), [Source Company Sheet](../../../../CONTEXT.md), [Duplicate Lead](../../../../CONTEXT.md), [Bad Lead](../../../../CONTEXT.md), [Lead ID](../../../../CONTEXT.md)
+**Domain terms used:** [Sheet Sync](../../../../CONTEXT.md), [Reporting Sheets](../../../../CONTEXT.md), [Master Sheets](../../../../CONTEXT.md), [Source Company Sheet](../../../../CONTEXT.md), [Duplicate Lead](../../../../CONTEXT.md), [Bad Lead](../../../../CONTEXT.md), [No-Sync Lead](../../../../CONTEXT.md), [Unmatched Call Lead](../../../../CONTEXT.md), [Lead ID](../../../../CONTEXT.md)
 
 # Google Sheets Service
 
@@ -83,7 +83,7 @@ Same `CALL_SHEET_HEADERS` for both. On every call sync, the **stale** opposite t
 
 **`Bad Calls`** exists in `SHEET_TAB_NAMES` and is added to source tab sets when `hasBadTabs` is true. **No sync write path targets it.**
 
-`created_on_unmatched` Call Leads are skipped **before** this module (`syncSourceLead` / `planSourceLead`). This facade will write a Calls row if invoked directly.
+`created_on_unmatched` Call Leads are skipped **before** this module (`syncSourceLead` / `planSourceLead`). This facade will write a Calls row if invoked directly. Ordinary [No-Sync Lead](../../../../CONTEXT.md) skip/delete is the same callers (`noSyncAppliesToNormalTabs`); this facade does not own it. The Bad dual-write and Call stale-delete tables above are unchanged — `no_sync` does not delete or skip those tabs.
 
 ### Bookings / cancellations
 
@@ -151,11 +151,14 @@ Form delete also lists `master_bad_leads` in `syncedTargets`. Call delete uses t
 | Form Lead + Bad Lead | Master Leads | primary tab **and** `Bad Leads` |
 | Call Lead (not duplicate) | Master Leads | `Calls` |
 | Call Lead (duplicate) | Master Leads | `Duplicate Calls` |
-| Call Lead `created_on_unmatched` | — | not written |
+| Call Lead `created_on_unmatched` | — | not written (`skipReason: "created_on_unmatched"` → Not expected; no tab reads) |
+| Ordinary [No-Sync Lead](../../../../CONTEXT.md) (`noSyncAppliesToNormalTabs`) | — | not written (`skipReason: "no_sync"` → Not expected; no tab reads) |
 | Booking | Master Booked | `Booked Deals` |
 | Cancellation | Master Booked | `Cancelled Deals` |
 
 Sibling tabs on the same workbook are scanned so a leftover row is **Wrong tab**, not a silent miss. Source Company Sheets are not queried. Cap: 25 ids.
+
+Contains `skipReason: "no_sync"` fires only when `noSyncAppliesToNormalTabs`. Bad Lead + `no_sync` and Duplicate + `no_sync` use today's expected tabs (reads run). Unmatched Call Lead `skipReason` stays `created_on_unmatched`.
 
 ## Invariants
 

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import mongoose, { Types } from "mongoose";
 import { SHEET_TAB_NAMES } from "../../../config/domain";
+import { BookedLead } from "../../../models/BookedLead";
 import { CallLead } from "../../../models/CallLead";
 import { FormLead } from "../../../models/FormLead";
 import type { SheetSyncJobDocument } from "../../../models/SheetSyncJob";
@@ -32,18 +33,24 @@ type StubbedCallLeadModel = {
 
 const originalCallLeadFindById = CallLead.findById as unknown;
 const originalFindById = FormLead.findById as unknown;
+const originalBookedFindById = BookedLead.findById as unknown;
 const originalUseDb = mongoose.connection.useDb;
 const originalMasterLeadsSheetId = process.env.MASTER_LEADS_SHEET_ID;
 const originalTestMasterLeadsSheetId = process.env.TEST_MASTER_LEADS_SHEET_ID;
+const originalMasterBookedSheetId = process.env.MASTER_BOOKED_SHEET_ID;
+const originalTestMasterBookedSheetId = process.env.TEST_MASTER_BOOKED_SHEET_ID;
 
 afterEach(() => {
   (CallLead as unknown as StubbedCallLeadModel).findById =
     originalCallLeadFindById as StubbedCallLeadModel["findById"];
   (FormLead as unknown as StubbedFormLeadModel).findById =
     originalFindById as StubbedFormLeadModel["findById"];
+  BookedLead.findById = originalBookedFindById as typeof BookedLead.findById;
   mongoose.connection.useDb = originalUseDb;
   process.env.MASTER_LEADS_SHEET_ID = originalMasterLeadsSheetId;
   process.env.TEST_MASTER_LEADS_SHEET_ID = originalTestMasterLeadsSheetId;
+  process.env.MASTER_BOOKED_SHEET_ID = originalMasterBookedSheetId;
+  process.env.TEST_MASTER_BOOKED_SHEET_ID = originalTestMasterBookedSheetId;
 });
 
 function tombstoneJob(
@@ -283,4 +290,271 @@ test("planJobWrites deletes stale Calls row when duplicate call lead lacks sheet
   const staleDelete = planned[0].writes.find((write) => write.target === "master_calls");
   assert.equal(staleDelete?.knownRowNumber, undefined);
   assert.equal(staleDelete?.mongoId, leadId);
+});
+
+function useMasterSheetIds(): void {
+  process.env.MASTER_LEADS_SHEET_ID = "master-leads-test";
+  process.env.TEST_MASTER_LEADS_SHEET_ID = "master-leads-test";
+  process.env.MASTER_BOOKED_SHEET_ID = "master-booked-test";
+  process.env.TEST_MASTER_BOOKED_SHEET_ID = "master-booked-test";
+}
+
+function writeKeys(writes: { op: string; target: string; tabName: string }[]) {
+  return writes.map((write) => `${write.op}:${write.target}:${write.tabName}`);
+}
+
+function formLeadStub(overrides: Record<string, unknown> = {}) {
+  const leadObjectId = new Types.ObjectId();
+  const lead = {
+    _id: leadObjectId,
+    timestamp: new Date("2026-05-27T15:04:05.000Z"),
+    name: "Jane Tester",
+    pickup_zip: "10001",
+    destination_zip: "90210",
+    pickup_state: "NY",
+    delivery_state: "CA",
+    move_size: "Studio",
+    move_date: new Date("2026-06-01T00:00:00.000Z"),
+    phone_number: "5551112222",
+    email: "jane@example.com",
+    ref_no: "ref-1",
+    local: "long_distance",
+    source_company: "main_site",
+    sheet_sync: [{ target: "master_forms", row_number: 7 }],
+    get(key: string) {
+      return this[key as keyof typeof lead];
+    },
+    populate: async () => lead,
+    ...overrides,
+  };
+  return lead;
+}
+
+function callLeadStub(overrides: Record<string, unknown> = {}) {
+  const leadObjectId = new Types.ObjectId();
+  const lead = {
+    _id: leadObjectId,
+    timestamp: new Date("2026-06-09T10:10:47.392Z"),
+    job_no: "",
+    phone_number: "(260) 446-6873",
+    duration: 1738,
+    booked: null,
+    over_2000: false,
+    over_4000: false,
+    cancelled: null,
+    local: "long_distance",
+    cubic_feet: null,
+    source_company: "tbm_leads",
+    form_fill: false,
+    sheet_sync: [],
+    get(key: string) {
+      return this[key as keyof typeof lead];
+    },
+    populate: async () => lead,
+    ...overrides,
+  };
+  return lead;
+}
+
+function stubBookedLead(document: Record<string, unknown>): void {
+  const query = {
+    populate() {
+      return query;
+    },
+    then(resolve: (value: unknown) => void) {
+      resolve(document);
+    },
+  };
+  BookedLead.findById = (() => query) as unknown as typeof BookedLead.findById;
+}
+
+test("ordinary No-Sync Form deletes Forms only and does not upsert", async () => {
+  useMasterSheetIds();
+  const lead = formLeadStub({ no_sync: true });
+  stubFormLead(lead);
+
+  const planned = await planJobWrites(sourceLeadJob(lead._id.toString()));
+
+  assert.equal(planned.length, 1);
+  assert.deepEqual(writeKeys(planned[0].writes), [
+    `delete:master_forms:${SHEET_TAB_NAMES.forms}`,
+  ]);
+  assert.equal(
+    planned[0].writes.some((write) => write.op === "upsert"),
+    false,
+  );
+  assert.equal(
+    planned[0].writes.some((write) =>
+      ["master_duplicates", "master_bad_leads"].includes(write.target),
+    ),
+    false,
+  );
+});
+
+test("ordinary No-Sync Call deletes Calls only and does not upsert", async () => {
+  useMasterSheetIds();
+  const lead = callLeadStub({ no_sync: true });
+  stubCallLead(lead);
+
+  const planned = await planJobWrites(sourceLeadJob(lead._id.toString(), "CallLead"));
+
+  assert.equal(planned.length, 1);
+  assert.deepEqual(writeKeys(planned[0].writes), [
+    `delete:master_calls:${SHEET_TAB_NAMES.calls}`,
+  ]);
+  assert.equal(
+    planned[0].writes.some((write) => write.op === "upsert"),
+    false,
+  );
+  assert.equal(
+    planned[0].writes.some((write) => write.target === "master_duplicate_calls"),
+    false,
+  );
+});
+
+test("Booking Chain + ordinary No-Sync Call upserts Booked Deals and deletes Calls", async () => {
+  useMasterSheetIds();
+  const call = callLeadStub({ no_sync: true });
+  stubCallLead(call);
+  const bookingId = new Types.ObjectId();
+  const booking = {
+    _id: bookingId,
+    timestamp: new Date("2026-06-09T10:10:47.392Z"),
+    book_date: new Date("2026-06-09T00:00:00.000Z"),
+    job_no: "JN-1",
+    customer_name: "Synthetic Booked",
+    source: "tbm_leads",
+    merchant: "authorize_net",
+    lead_ref: call._id,
+    lead_model: "CallLead",
+    agent_allocations: [],
+    sheet_sync: [],
+    get(key: string) {
+      return this[key as keyof typeof booking];
+    },
+  };
+  stubBookedLead(booking);
+
+  const planned = await planJobWrites({
+    _id: new Types.ObjectId(),
+    resource: "booking_chain",
+    operation: "booked_lead.update",
+    entity_id: bookingId.toString(),
+  } as unknown as SheetSyncJobDocument);
+
+  assert.ok(
+    planned.some((doc) =>
+      doc.writes.some(
+        (write) => write.op === "upsert" && write.target === "master_booked",
+      ),
+    ),
+  );
+  const leadPlan = planned.find((doc) => doc.docKey.startsWith("CallLead:"));
+  assert.ok(leadPlan);
+  assert.deepEqual(writeKeys(leadPlan.writes), [
+    `delete:master_calls:${SHEET_TAB_NAMES.calls}`,
+  ]);
+  assert.equal(
+    leadPlan.writes.some((write) => write.op === "upsert"),
+    false,
+  );
+});
+
+test("Unmatched Call without no_sync stays an empty plan with no deletes", async () => {
+  useMasterSheetIds();
+  const lead = callLeadStub({ created_on_unmatched: true });
+  stubCallLead(lead);
+
+  const planned = await planJobWrites(sourceLeadJob(lead._id.toString(), "CallLead"));
+
+  assert.deepEqual(planned, []);
+});
+
+test("no_sync + bad_lead matches today's Bad Form dual-write", async () => {
+  useMasterSheetIds();
+  const baseline = formLeadStub({ bad_lead: "auto_only" });
+  stubFormLead(baseline);
+  const baselineWrites = writeKeys(
+    (await planJobWrites(sourceLeadJob(baseline._id.toString())))[0].writes,
+  );
+
+  const twin = formLeadStub({ bad_lead: "auto_only", no_sync: true });
+  stubFormLead(twin);
+  const twinWrites = writeKeys(
+    (await planJobWrites(sourceLeadJob(twin._id.toString())))[0].writes,
+  );
+
+  assert.deepEqual(baselineWrites, [
+    `upsert:master_forms:${SHEET_TAB_NAMES.forms}`,
+    `upsert:master_bad_leads:${SHEET_TAB_NAMES.badLeads}`,
+  ]);
+  assert.deepEqual(twinWrites, baselineWrites);
+});
+
+test("no_sync + Call duplicate matches today's Duplicate Calls plan", async () => {
+  useMasterSheetIds();
+  const baseline = callLeadStub({ duplicate: true });
+  stubCallLead(baseline);
+  const baselineWrites = writeKeys(
+    (await planJobWrites(sourceLeadJob(baseline._id.toString(), "CallLead")))[0].writes,
+  );
+
+  const twin = callLeadStub({ duplicate: true, no_sync: true });
+  stubCallLead(twin);
+  const twinWrites = writeKeys(
+    (await planJobWrites(sourceLeadJob(twin._id.toString(), "CallLead")))[0].writes,
+  );
+
+  assert.deepEqual(baselineWrites, [
+    `upsert:master_duplicate_calls:${SHEET_TAB_NAMES.duplicateCalls}`,
+    `delete:master_calls:${SHEET_TAB_NAMES.calls}`,
+  ]);
+  assert.deepEqual(twinWrites, baselineWrites);
+});
+
+test("Form Duplicate upserts Duplicates and does not delete leftover Forms", async () => {
+  useMasterSheetIds();
+  const lead = formLeadStub({ duplicate: true });
+  stubFormLead(lead);
+
+  const planned = await planJobWrites(sourceLeadJob(lead._id.toString()));
+
+  assert.deepEqual(writeKeys(planned[0].writes), [
+    `upsert:master_duplicates:${SHEET_TAB_NAMES.duplicates}`,
+  ]);
+});
+
+test("no_sync + Form duplicate matches today's Form Duplicate plan", async () => {
+  useMasterSheetIds();
+  const baseline = formLeadStub({ duplicate: true });
+  stubFormLead(baseline);
+  const baselineWrites = writeKeys(
+    (await planJobWrites(sourceLeadJob(baseline._id.toString())))[0].writes,
+  );
+
+  const twin = formLeadStub({ duplicate: true, no_sync: true });
+  stubFormLead(twin);
+  const twinWrites = writeKeys(
+    (await planJobWrites(sourceLeadJob(twin._id.toString())))[0].writes,
+  );
+
+  assert.deepEqual(twinWrites, baselineWrites);
+});
+
+test("clear no_sync on an ordinary Form upserts Forms", async () => {
+  useMasterSheetIds();
+  const cleared = formLeadStub({ no_sync: false });
+  stubFormLead(cleared);
+  const clearedWrites = writeKeys(
+    (await planJobWrites(sourceLeadJob(cleared._id.toString())))[0].writes,
+  );
+
+  const missing = formLeadStub();
+  stubFormLead(missing);
+  const missingWrites = writeKeys(
+    (await planJobWrites(sourceLeadJob(missing._id.toString())))[0].writes,
+  );
+
+  assert.deepEqual(clearedWrites, [`upsert:master_forms:${SHEET_TAB_NAMES.forms}`]);
+  assert.deepEqual(missingWrites, clearedWrites);
 });

@@ -171,6 +171,128 @@ test("unmatched Call Lead is not_expected and does not read tabs", async () => {
   assert.equal(reads, 0);
 });
 
+test("ordinary No-Sync Form Lead is not_expected and does not read tabs", async () => {
+  let reads = 0;
+  const result = await runSheetContainsCheck(
+    { entity_model: "FormLead", ids: [FORM_ID] },
+    {
+      ...fakeDeps({
+        records: [
+          {
+            id: FORM_ID,
+            label: "Ada Form",
+            no_sync: true,
+            duplicate: false,
+          },
+        ],
+        tabs: {
+          [`master_leads:${SHEET_TAB_NAMES.forms}`]: formRow(FORM_ID),
+        },
+      }),
+      readTab: async (tab, spreadsheetId) => {
+        reads += 1;
+        return { spreadsheetId, rows: new Map() };
+      },
+    },
+  );
+
+  assert.equal(result.items[0]?.verdict, "not_expected");
+  assert.equal(result.items[0]?.reason, "no_sync");
+  assert.equal(reads, 0);
+});
+
+test("ordinary No-Sync Call Lead is not_expected and does not read tabs", async () => {
+  let reads = 0;
+  const result = await runSheetContainsCheck(
+    { entity_model: "CallLead", ids: [CALL_ID] },
+    {
+      ...fakeDeps({
+        records: [
+          {
+            id: CALL_ID,
+            label: "Job 99",
+            no_sync: true,
+            duplicate: false,
+          },
+        ],
+        tabs: {},
+      }),
+      readTab: async (_tab, spreadsheetId) => {
+        reads += 1;
+        return { spreadsheetId, rows: new Map() };
+      },
+    },
+  );
+
+  assert.equal(result.items[0]?.verdict, "not_expected");
+  assert.equal(result.items[0]?.reason, "no_sync");
+  assert.equal(reads, 0);
+});
+
+test("No-Sync + Bad Lead uses today's Bad expected tabs, not the no_sync skip", async () => {
+  const result = await runSheetContainsCheck(
+    { entity_model: "FormLead", ids: [FORM_ID] },
+    fakeDeps({
+      records: [
+        {
+          id: FORM_ID,
+          label: "Ada Form",
+          no_sync: true,
+          duplicate: false,
+          bad_lead: "disconnected_number",
+        },
+      ],
+      tabs: {
+        [`master_leads:${SHEET_TAB_NAMES.forms}`]: formRow(FORM_ID),
+      },
+    }),
+  );
+
+  assert.equal(result.items[0]?.verdict, "found");
+  assert.notEqual(result.items[0]?.reason, "no_sync");
+  assert.deepEqual(result.items[0]?.missing_expected_tabs, [SHEET_TAB_NAMES.badLeads]);
+});
+
+test("No-Sync + Duplicate Call Lead uses today's Duplicate Calls tab, not the no_sync skip", async () => {
+  const result = await runSheetContainsCheck(
+    { entity_model: "CallLead", ids: [CALL_ID] },
+    fakeDeps({
+      records: [
+        {
+          id: CALL_ID,
+          label: "Job 99",
+          no_sync: true,
+          duplicate: true,
+        },
+      ],
+      tabs: {
+        [`master_leads:${SHEET_TAB_NAMES.duplicateCalls}`]: {
+          spreadsheetId: "master-leads-id",
+          gid: 33,
+          rows: new Map([[CALL_ID, { rowNumber: 5, cells: { "Job No": "99" } }]]),
+        },
+      },
+    }),
+  );
+
+  assert.equal(result.items[0]?.verdict, "found");
+  assert.notEqual(result.items[0]?.reason, "no_sync");
+  assert.deepEqual(result.items[0]?.expected_tabs, [SHEET_TAB_NAMES.duplicateCalls]);
+});
+
+test("ordinary Call missing from Calls is still missing", async () => {
+  const result = await runSheetContainsCheck(
+    { entity_model: "CallLead", ids: [CALL_ID] },
+    fakeDeps({
+      records: [{ id: CALL_ID, label: "Job 99", duplicate: false }],
+      tabs: {},
+    }),
+  );
+
+  assert.equal(result.items[0]?.verdict, "missing");
+  assert.deepEqual(result.items[0]?.missing_expected_tabs, [SHEET_TAB_NAMES.calls]);
+});
+
 test("unknown Mongo id is not_found", async () => {
   const result = await runSheetContainsCheck(
     { entity_model: "FormLead", ids: [FORM_ID] },

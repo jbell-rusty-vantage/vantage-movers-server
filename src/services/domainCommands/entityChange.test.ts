@@ -3,9 +3,11 @@ import { test } from "node:test";
 import {
   buildDeleteChangeFields,
   buildEntityChangeFields,
+  CALL_LEAD_CHANGE_PATHS,
   changedPathsFromFields,
   classifyEntityChangePath,
   collectDocumentFieldChanges,
+  FORM_LEAD_CHANGE_PATHS,
 } from "./entityChange";
 import { DELETED_ENTITY_CHANGE_PATH } from "../../models/EntityChange";
 
@@ -54,6 +56,37 @@ test("[AC-32] no-op field collection emits no Change descriptors", () => {
   const before = { quoted: true, phone_number: "5550000011" };
   assert.deepEqual(
     collectDocumentFieldChanges(before, { ...before }, ["quoted", "phone_number"]),
+    [],
+  );
+});
+
+test("FORM and CALL CHANGE_PATHS include no_sync so a flip is not a silent no-op", () => {
+  assert.equal(FORM_LEAD_CHANGE_PATHS.includes("no_sync"), true);
+  assert.equal(CALL_LEAD_CHANGE_PATHS.includes("no_sync"), true);
+  assert.equal(classifyEntityChangePath("no_sync"), "stored");
+});
+
+test("collectDocumentFieldChanges reports no_sync when it flips and no-ops when unchanged", () => {
+  const flipped = collectDocumentFieldChanges(
+    { no_sync: false },
+    { no_sync: true },
+    FORM_LEAD_CHANGE_PATHS,
+  );
+  assert.deepEqual(flipped, [{ path: "no_sync", before: false, after: true }]);
+
+  const cleared = collectDocumentFieldChanges(
+    { no_sync: true },
+    { no_sync: false },
+    CALL_LEAD_CHANGE_PATHS,
+  );
+  assert.deepEqual(cleared, [{ path: "no_sync", before: true, after: false }]);
+
+  assert.deepEqual(
+    collectDocumentFieldChanges({ no_sync: true }, { no_sync: true }, FORM_LEAD_CHANGE_PATHS),
+    [],
+  );
+  assert.deepEqual(
+    collectDocumentFieldChanges({ quoted: true }, { quoted: true }, FORM_LEAD_CHANGE_PATHS),
     [],
   );
 });

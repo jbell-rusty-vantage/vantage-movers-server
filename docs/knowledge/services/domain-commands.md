@@ -110,7 +110,7 @@ Compatibility context (`existingWriteContextFromRequest`):
 - Actor: owner user from extension JWT; or `x-vantage-admin-*` plus API secret; or scoped-key fingerprint; or `vantage-api-secret`. Employee role throws.
 - Provenance origin is always `vantage_admin` on this helper. No credential or key value is persisted.
 
-Update adapters skip `EntityChange` + outbox + finalize when `collectDocumentFieldChanges` is empty (`pending` omitted). Create-from-lead duplicate outcome skips mutations but still finalizes the existing booking after-commit hook.
+Update adapters skip `EntityChange` + outbox + finalize when `collectDocumentFieldChanges` is empty (`pending` omitted). `updateSourceOwnedLead` `FORM_LEAD_CHANGE_PATHS` / `CALL_LEAD_CHANGE_PATHS` include `no_sync`; empty or same-value still no-ops. No new command. EntityChange `STORED_PATHS` includes `no_sync`. Create-from-lead duplicate outcome skips mutations but still finalizes the existing booking after-commit hook.
 
 `updateBooking` (exact aggregate): CAS on `{ _id, domain_revision, not cancelled }`. Inactive agent/merchant → `GRANOT_VALIDATION_FAILED`. Empty field diff → no Change, no outbox, no finalize. Non-replay + mutated → `finalizeSheetSync` `booking_chain` / `booked_lead.update`.
 

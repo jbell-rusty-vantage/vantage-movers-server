@@ -69,6 +69,44 @@ test("Unmatched Call Lead is not expected on Master Leads", () => {
   assert.equal(plan.skipReason, "created_on_unmatched");
 });
 
+test("ordinary No-Sync Form Lead skips Master Leads with no_sync", () => {
+  const plan = planExpectedSheetTabs("FormLead", { no_sync: true, duplicate: false });
+  assert.deepEqual(plan.expected, []);
+  assert.deepEqual(plan.siblings, []);
+  assert.equal(plan.skipReason, "no_sync");
+});
+
+test("ordinary No-Sync Call Lead skips Master Leads with no_sync", () => {
+  const plan = planExpectedSheetTabs("CallLead", { no_sync: true, duplicate: false });
+  assert.deepEqual(plan.expected, []);
+  assert.equal(plan.skipReason, "no_sync");
+});
+
+test("No-Sync + Bad Lead still expects today's Bad tabs", () => {
+  const plan = planExpectedSheetTabs("FormLead", {
+    no_sync: true,
+    duplicate: false,
+    bad_lead: "disconnected_number",
+  });
+  assert.equal(plan.skipReason, undefined);
+  assert.deepEqual(
+    plan.expected.map((tab) => tab.tabName),
+    [SHEET_TAB_NAMES.forms, SHEET_TAB_NAMES.badLeads],
+  );
+});
+
+test("No-Sync + Duplicate Call Lead still expects Duplicate Calls", () => {
+  const plan = planExpectedSheetTabs("CallLead", {
+    no_sync: true,
+    duplicate: true,
+  });
+  assert.equal(plan.skipReason, undefined);
+  assert.deepEqual(
+    plan.expected.map((tab) => tab.tabName),
+    [SHEET_TAB_NAMES.duplicateCalls],
+  );
+});
+
 test("Booking expects Master Booked Booked Deals", () => {
   const plan = planExpectedSheetTabs("BookedLead");
   assert.deepEqual(

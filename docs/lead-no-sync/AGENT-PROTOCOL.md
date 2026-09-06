@@ -62,9 +62,15 @@ output recorded.
   Report it incomplete and say which criterion failed.
 - **Never reuse `created_on_unmatched` for Manual create or No-Sync.**
 - **Never leave contains reporting Missing** for a No-Sync Lead after
-  LNS-01.
-- **Never change Bad dual-write or Form leftover-Forms** except as the
-  specified `no_sync` delete side-effect.
+  LNS-01. Not expected / no tab reads is the desk proof. Do not add a
+  leftover-row read.
+- **Never change Bad dual-write, Call Duplicate stale-delete, or Form
+  leftover-Forms.** Never delete Duplicates, Duplicate Calls, or Bad
+  Leads as part of `no_sync`. Forms and Calls are the only tabs this
+  pack may skip or delete.
+- **Never let Booking Chain upsert Forms or Calls** for an ordinary
+  No-Sync Lead. Booked Deals still writes. Do not gate only
+  `persistSheetSyncIntent`.
 - **Never enable a write, apply a production index, deploy to production,
   or read a live customer payload** unless the user explicitly asks.
 - **`PROGRESS.md` is a ledger, not an authority.** If it disagrees with
@@ -74,5 +80,6 @@ output recorded.
 
 Use glossary terms from workspace-root `CONTEXT.md`. A No-Sync Lead is
 not an Unmatched Call Lead. Sheet `synced` is not Google-equals-Mongo.
-Owner-facing copy uses Off Master Leads / Keep off Master Leads /
-Not expected.
+Owner-facing copy uses Hide from Master Leads / Show on Master
+Leads / Hidden from Master Leads / Not expected. Do not say Hide
+from Sheets. Never print `no_sync`.

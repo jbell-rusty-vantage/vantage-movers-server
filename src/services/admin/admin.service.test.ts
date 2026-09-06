@@ -560,6 +560,82 @@ test("admin call lead browse can filter to duplicates only", async () => {
   assert.match(filterPreview, /duplicate:\s*true/);
 });
 
+test("admin form lead browse no_sync true is exact true, not presence", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(FormLead, capture, []);
+  stubCount(FormLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({ no_sync: "true", limit: 10 });
+  await browseAdminResource("form-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /no_sync:\s*true/);
+  assert.doesNotMatch(filterPreview, /no_sync:[\s\S]*\$exists/);
+});
+
+test("admin form lead browse no_sync false uses $ne true so missing-field rows count", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(FormLead, capture, []);
+  stubCount(FormLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({ no_sync: "false", limit: 10 });
+  await browseAdminResource("form-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /no_sync:\s*\{\s*['"]?\$ne['"]?:\s*true\s*\}/);
+  assert.doesNotMatch(filterPreview, /no_sync:[\s\S]*\$exists/);
+});
+
+test("admin form lead browse omit does not mention no_sync", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(FormLead, capture, []);
+  stubCount(FormLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({ limit: 10 });
+  await browseAdminResource("form-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.doesNotMatch(filterPreview, /no_sync/);
+});
+
+test("admin call lead browse no_sync true is exact true, not presence", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(CallLead, capture, []);
+  stubCount(CallLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({ no_sync: "true", limit: 10 });
+  await browseAdminResource("call-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /no_sync:\s*true/);
+  assert.doesNotMatch(filterPreview, /no_sync:[\s\S]*\$exists/);
+});
+
+test("admin call lead browse no_sync false uses $ne true so missing-field rows count", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(CallLead, capture, []);
+  stubCount(CallLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({ no_sync: "false", limit: 10 });
+  await browseAdminResource("call-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.match(filterPreview, /no_sync:\s*\{\s*['"]?\$ne['"]?:\s*true\s*\}/);
+  assert.doesNotMatch(filterPreview, /no_sync:[\s\S]*\$exists/);
+});
+
+test("admin call lead browse omit does not mention no_sync", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(CallLead, capture, []);
+  stubCount(CallLead, 0);
+
+  const query = adminBrowseQuerySchema.parse({ limit: 10 });
+  await browseAdminResource("call-leads", query);
+
+  const filterPreview = inspect(capture.filter, { depth: null });
+  assert.doesNotMatch(filterPreview, /no_sync/);
+});
+
 test("admin detail lookup returns normalized production record", async () => {
   const id = new mongoose.Types.ObjectId();
   const capture: QueryCapture = { populated: [] };

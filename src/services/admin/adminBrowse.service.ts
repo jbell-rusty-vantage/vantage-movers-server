@@ -90,7 +90,7 @@ const RESOURCE_CONFIGS: Record<AdminResource, ResourceConfig> = {
       move_size: ["move_size"],
       local: ["local"],
     },
-    booleanFilters: { booked: "booked", cancelled: "cancelled" },
+    booleanFilters: { booked: "booked", cancelled: "cancelled", no_sync: "no_sync" },
     populate: ["booked", "cancelled"],
   },
   "call-leads": {
@@ -130,7 +130,7 @@ const RESOURCE_CONFIGS: Record<AdminResource, ResourceConfig> = {
       delivery_zip: ["delivery_zip"],
       local: ["local"],
     },
-    booleanFilters: { booked: "booked", cancelled: "cancelled" },
+    booleanFilters: { booked: "booked", cancelled: "cancelled", no_sync: "no_sync" },
     populate: ["booked", "cancelled"],
   },
   "booked-leads": {
@@ -507,7 +507,7 @@ function buildFilter(config: ResourceConfig, query: AdminBrowseQuery): AdminFilt
   for (const [param, field] of Object.entries(config.booleanFilters ?? {})) {
     const value = query[param as keyof AdminBrowseQuery];
     if (typeof value === "boolean") {
-      clauses.push(field === "active" ? { [field]: value } : presenceClause(field, value));
+      clauses.push(booleanFilterClause(field, value));
     }
   }
   for (const [field, params] of Object.entries(config.numberRanges ?? {})) {
@@ -610,6 +610,16 @@ function orExact(fields: string[], value: string): AdminFilter {
 function containsClauses(fields: string[], value: string): AdminFilter[] {
   const regex = new RegExp(escapeRegex(value), "i");
   return fields.map((field) => ({ [field]: regex }));
+}
+
+function booleanFilterClause(field: string, value: boolean): AdminFilter {
+  if (field === "active") {
+    return { [field]: value };
+  }
+  if (field === "no_sync") {
+    return value ? { no_sync: true } : { no_sync: { $ne: true } };
+  }
+  return presenceClause(field, value);
 }
 
 function presenceClause(field: string, present: boolean): AdminFilter {

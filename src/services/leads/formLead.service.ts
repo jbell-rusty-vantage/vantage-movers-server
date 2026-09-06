@@ -58,6 +58,7 @@ import {
 } from "./leadCplResolution";
 import {
   formLeadCreationProvenanceFields,
+  noSyncOnCreate,
   omitForbiddenLeadLifecycleFields,
 } from "./leadIngestionProvenance";
 import {
@@ -107,6 +108,7 @@ type FormLeadPersistInput = Omit<
   | "sms_consent"
   | "ingestion_source"
   | "wordpress_submission_key"
+  | "no_sync"
 >;
 
 type PreparedQuote = {
@@ -326,6 +328,7 @@ async function prepareTheQuoteForIngestion(
     sms_consent,
     ingestion_source,
     wordpress_submission_key,
+    no_sync: _requestedNoSync,
     ...formLeadInput
   } = input;
   const normalized = normalizeTheCustomer(formLeadInput);
@@ -449,6 +452,7 @@ async function writeTheFormLead(
         move_size: prepared.normalized.move_size,
       },
     }),
+    no_sync: noSyncOnCreate(tx.ingestion_origin, prepared.input.no_sync),
   });
   await created.save({ session: tx.session });
 
@@ -466,13 +470,15 @@ async function writeTheFormLead(
     );
     sheetSyncJobs.push(...formFillJobs);
   }
-  const formLeadJob: FullSheetSyncJob = {
-    resource: "source_lead",
-    operation: "form_lead.create",
-    leadModel: "FormLead",
-    leadId,
-  };
-  sheetSyncJobs.push(formLeadJob);
+  if (created.no_sync !== true) {
+    const formLeadJob: FullSheetSyncJob = {
+      resource: "source_lead",
+      operation: "form_lead.create",
+      leadModel: "FormLead",
+      leadId,
+    };
+    sheetSyncJobs.push(formLeadJob);
+  }
   for (const job of sheetSyncJobs) {
     await persistSheetSyncIntent(job, tx.session);
   }

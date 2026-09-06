@@ -39,6 +39,7 @@ import { hasFormFillForCallLead } from "./duplicateLead.service";
 import { normalizeLeadName, normalizeLeadNameUpdate } from "./leadName.service";
 import {
   callLeadCreationProvenanceFields,
+  noSyncOnCreate,
   omitForbiddenLeadLifecycleFields,
 } from "./leadIngestionProvenance";
 import type { CallLeadIngestionOrigin } from "../granotLifecycle/types";
@@ -158,10 +159,13 @@ export async function beginCallLeadIngestion(
       phone_number: normalizedInput.phone_number,
       email: normalizedInput.email,
     }),
+    no_sync: noSyncOnCreate(tx.ingestion_origin, input.no_sync),
   });
   await writeTheCallLead(created, tx.session);
   const job = callLeadCreateJob(created._id.toString());
-  await rememberSheetSync(job, tx.session);
+  if (created.no_sync !== true) {
+    await rememberSheetSync(job, tx.session);
+  }
   return { lead: created, job, source_company, sourceAssignment, form_fill };
 }
 
@@ -169,7 +173,9 @@ export async function completeCallLeadIngestion(
   pending: CallLeadIngestionInProgress,
 ) {
   const { lead, job, source_company, sourceAssignment, form_fill } = pending;
-  await projectTheLeadOntoSheets(job);
+  if (lead.no_sync !== true) {
+    await projectTheLeadOntoSheets(job);
+  }
   await reportAMissingCplRate(lead, source_company, sourceAssignment);
 
   const callLeadIdentity = { name: lead.name ?? null, phone: lead.phone_number };
@@ -298,11 +304,14 @@ export async function beginRingCentralCallLeadIngestion(
       name: input.name,
       phone_number: input.phone_number,
     }),
+    no_sync: noSyncOnCreate("ringcentral"),
     ringcentral: rememberRingCentralTransport(input),
   });
   await writeTheCallLead(created, tx.session);
   const job = callLeadCreateJob(created._id.toString());
-  await rememberSheetSync(job, tx.session);
+  if (created.no_sync !== true) {
+    await rememberSheetSync(job, tx.session);
+  }
   return { lead: created, job, source_company, sourceAssignment, form_fill };
 }
 
@@ -322,7 +331,9 @@ export async function ingestRingCentralCallLead(
   );
   const { lead, source_company, sourceAssignment, form_fill } = pending;
 
-  await projectTheLeadOntoSheets(callLeadCreateJob(lead._id.toString()));
+  if (lead.no_sync !== true) {
+    await projectTheLeadOntoSheets(callLeadCreateJob(lead._id.toString()));
+  }
   await reportAMissingCplRate(lead, source_company, sourceAssignment);
   await recordFormFillWhenTrue(lead, source_company, form_fill, {
     workflow: "ringcentral_call_lead_create",

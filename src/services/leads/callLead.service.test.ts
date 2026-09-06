@@ -21,6 +21,7 @@ import {
 import {
   callLeadCreationProvenanceFields,
   deriveCallLeadIngestionOrigin,
+  noSyncOnCreate,
 } from "./leadIngestionProvenance";
 
 type StubbedCallLeadModel = {
@@ -252,6 +253,70 @@ test("removeCallLead refuses a Booked Call Lead without cascade", async () => {
       return true;
     },
   );
+});
+
+test("refuseToMarkABookedCallAsDuplicate does not mention no_sync", async () => {
+  const source = await readFile(path.join(__dirname, "callLead.service.ts"), "utf8");
+  const start = source.indexOf("function refuseToMarkABookedCallAsDuplicate");
+  assert.ok(start >= 0, "missing refuseToMarkABookedCallAsDuplicate");
+  const refuse = source.slice(start, source.indexOf("function applyTheAllowedPatch", start));
+  assert.doesNotMatch(refuse, /no_sync/);
+  assert.match(refuse, /duplicate/);
+  assert.match(refuse, /ConflictError/);
+});
+
+test("correctCallLead does not throw ConflictError when marking no_sync on booked or duplicate", async () => {
+  for (const lead of [
+    { duplicate: false, booked: { toString: () => "booking-id" } },
+    { duplicate: true, booked: undefined },
+  ]) {
+    const document = {
+      _id: "6a19ddd4bf20b878123aac14",
+      source_company: "top10_leads",
+      no_sync: false,
+      save: async () => document,
+      ...lead,
+    };
+    stubFindById(document);
+    try {
+      await correctCallLead("6a19ddd4bf20b878123aac14", { no_sync: true });
+    } catch (error: unknown) {
+      assert.ok(
+        !(error instanceof ConflictError),
+        `no_sync on ${JSON.stringify(lead)} must not 409: ${String(error)}`,
+      );
+    }
+  }
+});
+
+test("Admin Call create stamps no_sync from origin and skips call_lead.create outbox when true", async () => {
+  const source = await readFile(path.join(__dirname, "callLead.service.ts"), "utf8");
+  const begin = extractExportedFunction(source, "beginCallLeadIngestion");
+  assert.match(begin, /noSyncOnCreate\(tx\.ingestion_origin, input\.no_sync\)/);
+  assert.match(begin, /if \(created\.no_sync !== true\)/);
+  assert.match(begin, /rememberSheetSync/);
+  const rcBegin = extractExportedFunction(source, "beginRingCentralCallLeadIngestion");
+  assert.match(rcBegin, /noSyncOnCreate\("ringcentral"\)/);
+});
+
+test("Admin Call omit stamps no_sync true; RingCentral client true stamps false", () => {
+  const admin = new CallLead({
+    phone_number: "5550100101",
+    no_sync: noSyncOnCreate("vantage_admin"),
+  });
+  assert.equal(admin.no_sync, true);
+
+  const ringcentral = new CallLead({
+    phone_number: "5550100101",
+    no_sync: noSyncOnCreate("ringcentral", true),
+  });
+  assert.equal(ringcentral.no_sync, false);
+});
+
+test("CallLead schema defaults no_sync to false so missing-field documents stay syncable", () => {
+  const field = CallLead.schema.path("no_sync") as { defaultValue?: unknown } | undefined;
+  assert.ok(field);
+  assert.equal(field.defaultValue, false);
 });
 
 test("begin remembers Sheet Sync before commit; complete dispatches and records owner events", async () => {

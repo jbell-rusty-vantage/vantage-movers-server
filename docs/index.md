@@ -77,6 +77,7 @@ Workspace ADRs are outside this repo. This standalone checkout does not contain 
 
 | Path | Description |
 | --- | --- |
+| [daily-operations/daily-operations-workspace.md](daily-operations/daily-operations-workspace.md) | Recommendation: Owner Daily Operations workspace — categorized live feed, running NY-day counts, origin/company aggregates, pace vs yesterday. New `/daily` + day projection. Not Analytics, Live Events, or Observational. |
 | [form-lead-contact-snapshots-display-and-search-specification.md](form-lead-contact-snapshots-display-and-search-specification.md) | Show Form submitted vs Granot contact on Admin Form Leads, and search both plus the ingested snapshot. |
 | [call-lead-contact-provenance/call-lead-contact-provenance-specification.md](call-lead-contact-provenance/call-lead-contact-provenance-specification.md) | Lock Call Lead operational phone to the ingested caller; store Granot contact only on `granot_contact_snapshot` coalesced by Job Number. HTTP Automation and extension apply share that processor. Owner desk search finds any known contact. |
 | [lead-no-sync/lead-no-sync-specification.md](lead-no-sync/lead-no-sync-specification.md) | No-Sync Lead (`no_sync`): default on Manual create; skip and delete Master Leads rows; Owner mark; desk filter; contains is Not expected. Distinct from Unmatched Call Lead. |

@@ -57,6 +57,7 @@ const adminQueryBase = {
   local: optionalTrimmedString,
   booked: booleanInput.optional(),
   cancelled: booleanInput.optional(),
+  no_sync: booleanInput.optional(),
   leadless: booleanInput.optional(),
   pickup_city: optionalTrimmedString,
   pickup_state: optionalTrimmedString,

@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { afterEach, test } from "node:test";
 import mongoose from "mongoose";
 import { FormLead } from "../../models/FormLead";
@@ -10,6 +12,7 @@ import {
 } from "./formLead.service";
 import {
   deriveFormLeadIngestionOrigin,
+  noSyncOnCreate,
   omitForbiddenLeadLifecycleFields,
 } from "./leadIngestionProvenance";
 
@@ -68,6 +71,42 @@ test("correctFormLead refuses quoted and cubic feet on a Duplicate Lead", async 
     () => correctFormLead("6a19ddd4bf20b878123aac14", { quoted: true }),
     (error: unknown) => error instanceof ConflictError,
   );
+});
+
+test("refuseIllegalCorrections does not mention no_sync", async () => {
+  const source = await readFile(path.join(__dirname, "formLead.service.ts"), "utf8");
+  const start = source.indexOf("function refuseIllegalCorrections");
+  assert.ok(start >= 0, "missing refuseIllegalCorrections");
+  const refuse = source.slice(start, source.indexOf("function applyTheAllowedPatch", start));
+  assert.doesNotMatch(refuse, /no_sync/);
+  assert.match(refuse, /bad_lead/);
+  assert.match(refuse, /ConflictError/);
+});
+
+test("correctFormLead does not throw ConflictError when marking no_sync on booked, duplicate, or bad", async () => {
+  for (const lead of [
+    { duplicate: false, booked: "booking-id", cancelled: undefined, bad_lead: undefined },
+    { duplicate: true, booked: undefined, cancelled: undefined, bad_lead: undefined },
+    { duplicate: false, booked: undefined, cancelled: undefined, bad_lead: "auto_only" },
+  ]) {
+    const document = {
+      _id: "6a19ddd4bf20b878123aac14",
+      source_company: "top10_leads",
+      local: "local",
+      no_sync: false,
+      save: async () => document,
+      ...lead,
+    };
+    stubFindById(document);
+    try {
+      await correctFormLead("6a19ddd4bf20b878123aac14", { no_sync: true });
+    } catch (error: unknown) {
+      assert.ok(
+        !(error instanceof ConflictError),
+        `no_sync on ${JSON.stringify(lead)} must not 409: ${String(error)}`,
+      );
+    }
+  }
 });
 
 test("correctFormLead refuses Bad Lead on duplicate, Booked, or Cancelled", async () => {
@@ -133,6 +172,53 @@ test("[AC-10] WordPress and Admin Form create paths derive exact origins", () =>
     deriveFormLeadIngestionOrigin({ commandOrigin: "external_sheet_ingestion" }),
     "best_relocation_sheet",
   );
+});
+
+test("Admin Form create omit stores no_sync true and skips form_lead.create outbox", async () => {
+  const source = await readFile(path.join(__dirname, "formLead.service.ts"), "utf8");
+  const writeStart = source.indexOf("async function writeTheFormLead");
+  assert.ok(writeStart >= 0);
+  const write = source.slice(writeStart, source.indexOf("async function reportAMissingCplRate", writeStart));
+  assert.match(write, /noSyncOnCreate\(tx\.ingestion_origin, prepared\.input\.no_sync\)/);
+  assert.match(write, /if \(created\.no_sync !== true\)/);
+  assert.match(write, /operation:\s*"form_lead\.create"/);
+  assert.match(write, /sheetSyncJobs\.push\(formLeadJob\)/);
+});
+
+test("Admin Form omit stamps no_sync true; opt-in false and WordPress client true stamp correctly", () => {
+  assert.equal(noSyncOnCreate("vantage_admin"), true);
+  const omitted = new FormLead({
+    name: "Synthetic Admin Form",
+    phone_number: "5550100110",
+    pickup_zip: "10001",
+    destination_zip: "94105",
+    no_sync: noSyncOnCreate("vantage_admin"),
+  });
+  assert.equal(omitted.no_sync, true);
+
+  const optedIn = new FormLead({
+    name: "Synthetic Admin Form",
+    phone_number: "5550100110",
+    pickup_zip: "10001",
+    destination_zip: "94105",
+    no_sync: noSyncOnCreate("vantage_admin", false),
+  });
+  assert.equal(optedIn.no_sync, false);
+
+  const wordpress = new FormLead({
+    name: "Synthetic WP Form",
+    phone_number: "5550100110",
+    pickup_zip: "10001",
+    destination_zip: "94105",
+    no_sync: noSyncOnCreate("wordpress_form", true),
+  });
+  assert.equal(wordpress.no_sync, false);
+});
+
+test("FormLead schema defaults no_sync to false so missing-field documents stay syncable", () => {
+  const field = FormLead.schema.path("no_sync") as { defaultValue?: unknown } | undefined;
+  assert.ok(field);
+  assert.equal(field.defaultValue, false);
 });
 
 test("[AC-10] Form updates cannot carry internal snapshot or origin fields", () => {

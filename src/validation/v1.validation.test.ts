@@ -1102,6 +1102,25 @@ test("[AC-12] public/admin Call create and patch reject internal lifecycle metad
   );
 });
 
+test("create and update Form and Call schemas accept optional no_sync", () => {
+  assert.equal(
+    createFormLeadSchema.parse({ ...FORM_CREATE_BASE, no_sync: false }).no_sync,
+    false,
+  );
+  assert.equal(
+    createFormLeadSchema.parse({ ...FORM_CREATE_BASE }).no_sync,
+    undefined,
+  );
+  assert.equal(
+    createCallLeadSchema.parse({ phone_number: "5550100101", no_sync: true }).no_sync,
+    true,
+  );
+  assert.equal(updateFormLeadSchema.parse({ no_sync: true }).no_sync, true);
+  assert.equal(updateFormLeadSchema.parse({ no_sync: false }).no_sync, false);
+  assert.equal(updateCallLeadSchema.parse({ no_sync: true }).no_sync, true);
+  assert.equal(updateCallLeadSchema.parse({ no_sync: false }).no_sync, false);
+});
+
 test("[AC-07] ordinary Form create still requires move_size; ordinary Call still requires phone or job_no", () => {
   const { move_size: _moveSize, ...withoutMoveSize } = FORM_CREATE_BASE;
   assert.equal(createFormLeadSchema.safeParse(withoutMoveSize).success, false);

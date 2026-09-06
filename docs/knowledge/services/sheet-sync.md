@@ -12,6 +12,7 @@ applies_to:
   - src/services/sheetSync/sheetSyncQueue.service.ts
   - src/services/sheetSync/drainer/runSheetSyncDrain.ts
   - src/services/sheetSync/drainer/jobPlanner.ts
+  - src/services/sheetSync/noSyncLead.ts
   - src/config/domain/sheetSync.ts
   - src/routes/sheet-sync-cron.routes.ts
   - api/queues/sheet-sync-consumer.ts
@@ -32,7 +33,7 @@ generated:
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/sheetSync/`  
-**Domain terms used:** [Sheet Sync](../../../../CONTEXT.md), [Booking Chain](../../../../CONTEXT.md), [Cancellation Chain](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md), [Reporting Sheets](../../../../CONTEXT.md), [Master Sheets](../../../../CONTEXT.md), [Operational Event](../../../../CONTEXT.md)
+**Domain terms used:** [Sheet Sync](../../../../CONTEXT.md), [Booking Chain](../../../../CONTEXT.md), [Cancellation Chain](../../../../CONTEXT.md), [No-Sync Lead](../../../../CONTEXT.md), [Unmatched Call Lead](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md), [Reporting Sheets](../../../../CONTEXT.md), [Master Sheets](../../../../CONTEXT.md), [Operational Event](../../../../CONTEXT.md)
 
 # Sheet Sync (`sheetSync/`)
 
@@ -171,7 +172,8 @@ Reasons: `domain_write`, `domain_delete`, `cron`, `admin_retry`, `manual`. Admin
 
 Planner skip/fail paths (also true on the legacy `syncSourceLead` path):
 
-- `CallLead.created_on_unmatched === true` → empty plan / no Calls row (do not invent a lead row).
+- Ordinary [No-Sync Lead](../../../../CONTEXT.md) (`noSyncAppliesToNormalTabs` in `src/services/sheetSync/noSyncLead.ts`): `planSourceLead` / `syncSourceLead` skip Forms/Calls upserts and delete living Forms or Calls rows only. Duplicate Lead and Bad Lead still run today's planner — `no_sync` does not delete or skip Duplicates, Duplicate Calls, or Bad Leads. [Booking Chain](../../../../CONTEXT.md) still writes Booked Deals (Mongo Lead ID stays); the linked ordinary source Lead uses the same predicate and must not upsert Forms or Calls. Do not gate only `persistSheetSyncIntent`. Create with `no_sync: true` does not enqueue `form_lead.create` / `call_lead.create`.
+- [Unmatched Call Lead](../../../../CONTEXT.md) (`CallLead.created_on_unmatched === true`) → empty plan / no Calls row (do not invent a lead row). Distinct from No-Sync; unmatched is not a living-lead delete.
 - Missing booking or cancellation → empty plan, job marked `synced`.
 - Form `bad_lead` set → primary tab **plus** Master `Bad Leads` upsert. Cleared `bad_lead` deletes Master `Bad Leads` only when `sheet_sync[]` already has that target (queued). Legacy `syncFormLeadToSheets` always attempts the Bad Leads delete when `bad_lead` is falsy.
 - Call duplicate flip → upsert current tab and **delete** the stale Calls / Duplicate Calls tab even when `sheet_sync[]` is empty (Mongo-id lookup).

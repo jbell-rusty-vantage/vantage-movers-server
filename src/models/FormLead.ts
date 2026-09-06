@@ -83,6 +83,7 @@ const FormLeadSchema = new Schema(
     },
     quoted: { type: Boolean, default: false },
     duplicate: { type: Boolean, default: false, index: true },
+    no_sync: { type: Boolean, default: false },
     bad_lead: {
       type: String,
       enum: FORM_LEAD_BAD_LEAD_REASONS,

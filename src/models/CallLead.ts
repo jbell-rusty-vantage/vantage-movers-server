@@ -119,6 +119,7 @@ const CallLeadSchema = new Schema(
     duplicate: { type: Boolean, default: false, index: true },
     ringcentral: { type: ringCentralCallMetadataSchema, default: undefined },
     created_on_unmatched: { type: Boolean, default: false, index: true },
+    no_sync: { type: Boolean, default: false },
     pickup_city: { type: String, trim: true },
     pickup_zip: { type: String, trim: true },
     delivery_city: { type: String, trim: true },

@@ -143,6 +143,7 @@ export const createFormLeadSchema = z
       .min(8)
       .max(128)
       .optional(),
+    no_sync: booleanInput.optional(),
   })
   .strict()
   .refine(
@@ -156,6 +157,7 @@ export const updateFormLeadSchema = z
     ...formLeadFields,
     duplicate: booleanInput.optional(),
     bad_lead: z.enum(FORM_LEAD_BAD_LEAD_REASONS).nullable().optional(),
+    no_sync: booleanInput.optional(),
   })
   .partial()
   .strict()
@@ -284,6 +286,7 @@ export const createCallLeadSchema = z
   .object({
     ...callLeadFields,
     source_company: sourceCompanySchema.default("not_provided"),
+    no_sync: booleanInput.optional(),
   })
   .strict()
   .refine(
@@ -295,6 +298,7 @@ export const updateCallLeadSchema = z
   .object({
     ...callLeadFields,
     duplicate: booleanInput.optional(),
+    no_sync: booleanInput.optional(),
   })
   .partial()
   .strict()

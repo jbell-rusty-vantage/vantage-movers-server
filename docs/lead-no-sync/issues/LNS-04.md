@@ -18,9 +18,10 @@
 ## 2. Objective
 
 An agent reading Service docs can state: what `no_sync` is, who
-defaults it, where the skip lives, that mark-true deletes, that
-contains is Not expected, and that Bad/Duplicate orders are unchanged
-when the Lead is syncable.
+defaults it, that it applies only to Forms and Calls, where the skip
+lives, that mark-true deletes those tabs only, that contains is Not
+expected, that Booking Chain still writes Booked Deals and must not
+upsert Forms/Calls, and that Bad/Duplicate orders are unchanged.
 
 ## 3. Repository, branch, and prerequisites
 
@@ -77,13 +78,28 @@ This issue **is** the knowledge update.
 
 ## 10. Acceptance criteria
 
-- [ ] Each file in spec §14 states the shipped `no_sync` behavior.
-- [ ] Unmatched Call Lead remains a distinct sentence.
-- [ ] Bad dual-write and Call stale-delete are not rewritten into
-      “move off Forms/Calls first.”
-- [ ] `CONTEXT.md` No-Sync Lead still matches the stored field name.
-- [ ] `catalog.md` untouched.
-- [ ] `docs/index.md` lists this pack.
+- [x] Each file in spec §14 states the shipped `no_sync` behavior.
+      Evidence: sentences in `reports/LNS-04-completion.md`;
+      `sheet-sync.md` planner bullet; `google-sheets.md` contains row;
+      form/call create default; `bookings.md` Booking Chain paragraph;
+      `admin-search.md` browse clause; `domain-commands.md` CHANGE_PATHS.
+- [x] Unmatched Call Lead remains a distinct sentence.
+      Evidence: `sheet-sync.md` unmatched bullet after No-Sync;
+      `google-sheets.md` unmatched table row + skipReason stays
+      `created_on_unmatched`; `call-lead.md` / `bookings.md` “Distinct from”.
+- [x] Bad dual-write and Call stale-delete are not rewritten. Docs
+      must say `no_sync` does not delete or skip those tabs.
+      Evidence: `sheet-sync.md` “does not delete or skip Duplicates,
+      Duplicate Calls, or Bad Leads”; `google-sheets.md` “tables above
+      are unchanged”; form/call “routing above is unchanged”.
+- [x] `CONTEXT.md` No-Sync Lead still matches the stored field name.
+      Evidence: “Stored as `no_sync`”. No glossary edit.
+- [x] `catalog.md` untouched.
+      Evidence: `git status` does not list
+      `docs/knowledge/services/catalog.md`.
+- [x] `docs/index.md` lists this pack.
+      Evidence: Delivery + Reference rows from pack authoring kept;
+      this issue did not add a catalog row.
 
 ## 11. Commands
 

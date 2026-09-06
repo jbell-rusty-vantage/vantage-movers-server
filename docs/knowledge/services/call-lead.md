@@ -29,7 +29,7 @@ generated:
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/leads/callLead.service.ts`, `src/services/leads/leadIngestionProvenance.ts`, `src/services/leads/leadCplResolution.ts`  
-**Domain terms used:** [Call Lead](../../../../CONTEXT.md), [Call Lead Ingestion](../../../../CONTEXT.md), [Call Qualification](../../../../CONTEXT.md), [Duplicate Lead](../../../../CONTEXT.md), [Form Fill](../../../../CONTEXT.md), [CPL](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Caller Match Key](../../../../CONTEXT.md), [Lead ID](../../../../CONTEXT.md), [Source Granularity](../../../../CONTEXT.md), [RingCentral Call Adoption](../../../../CONTEXT.md), [Ingestion Origin](../../../../CONTEXT.md)
+**Domain terms used:** [Call Lead](../../../../CONTEXT.md), [Call Lead Ingestion](../../../../CONTEXT.md), [Call Qualification](../../../../CONTEXT.md), [Duplicate Lead](../../../../CONTEXT.md), [No-Sync Lead](../../../../CONTEXT.md), [Unmatched Call Lead](../../../../CONTEXT.md), [Form Fill](../../../../CONTEXT.md), [CPL](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Caller Match Key](../../../../CONTEXT.md), [Lead ID](../../../../CONTEXT.md), [Source Granularity](../../../../CONTEXT.md), [RingCentral Call Adoption](../../../../CONTEXT.md), [Ingestion Origin](../../../../CONTEXT.md)
 
 # Call Lead Service
 
@@ -62,7 +62,7 @@ When `createLeadFromGranot` mints a Call Lead and the Observation has a normaliz
 1. Normalize name, parse **Source Company** (`resolveLeadSourceAssignment`, channel `call`), optional location (`resolveOptionalLocation`).
 2. **Form Fill** check — `hasFormFillForCallLead(source, phone)`: true when a non-duplicate Form Lead exists with same source + normalized phone. Missing/unparseable phone → `false`.
 3. Save via `callLeadCreationProvenanceFields`: `quoted=false`, trusted `ingestion_origin`, immutable `ingested_contact_snapshot`. Public `ingestCallLead` origin is `vantage_admin`. Canonical `deriveCallLeadIngestionOrigin`: undefined/`vantage_admin` → `vantage_admin`; `ringcentral` → `ringcentral`; sheet ingest → `best_relocation_sheet`; Granot lifecycle → `granot_lead_created`. Unproven origins throw.
-4. Before commit: remember Sheet Sync intent (`call_lead.create`). After commit `completeCallLeadIngestion` projects onto sheets, then `lead.cpl.missing_rate` if needed, then `lead.call.created`, then `lead.call.form_fill_detected` when `form_fill`.
+4. Before commit: remember Sheet Sync intent (`call_lead.create`) unless persisted `no_sync === true`. After commit `completeCallLeadIngestion` projects onto sheets, then `lead.cpl.missing_rate` if needed, then `lead.call.created`, then `lead.call.form_fill_detected` when `form_fill`.
 5. No Ring Central metadata; no Call Lead duplicate window logic; no CRM Posting.
 
 ## Call Lead Ingestion — Ring Central (`ingestRingCentralCallLead` / `beginRingCentralCallLeadIngestion`)
@@ -98,6 +98,8 @@ Create/update use `resolveLeadCplSnapshot` (Operations Registry periods). Duplic
 | Duplicate Lead | `Duplicate Calls` |
 
 Delete/tombstone uses `lead.duplicate` for correct tab. `FormFill` column reflects `form_fill`.
+
+Manual / `vantage_admin` create defaults [No-Sync Lead](../../../../CONTEXT.md) (`input.no_sync ?? true` via `noSyncOnCreate`). Other origins persist `false` and ignore client `true`. Create with `no_sync: true` skips the `call_lead.create` outbox. Owner PATCH `no_sync` is `updateSourceOwnedLead`. Ordinary No-Sync skips/deletes Calls only; Duplicate Calls routing above is unchanged — `no_sync` does not delete or skip that tab. Distinct from [Unmatched Call Lead](../../../../CONTEXT.md) (`created_on_unmatched`), which is a separate empty-plan skip. Owner UI copy is Hide / Show / Hidden from Master Leads and never prints `no_sync`.
 
 ## Form Fill linkage
 

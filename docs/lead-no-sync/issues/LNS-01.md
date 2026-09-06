@@ -16,10 +16,13 @@
 
 ## 2. Objective
 
-A Lead can be a No-Sync Lead in Mongo. Vantage Admin create makes that
-the default. Sheet Sync never upserts that Lead onto Master Leads and
-deletes any row already there. Owner contains reports **Not expected**,
-not **Missing**. Booked Deals still writes.
+A Lead can be a No-Sync Lead in Mongo. Vantage Admin create (manual) makes that
+the default. For an ordinary Lead, Sheet Sync never upserts Forms or
+Calls and deletes that one tab if present. Duplicate and Bad sheet
+paths stay as they are. Owner contains reports **Not expected** for
+the ordinary case, not **Missing**. Booked Deals still writes. When
+Booking Chain matches an ordinary No-Sync Lead it must not upsert
+Forms or Calls.
 
 ## 3. Repository, branch, and prerequisites
 
@@ -52,16 +55,21 @@ Observed 2026-09-06; **reverify at implementation**.
 
 - Shared `isNoSyncLead` predicate. `no_sync === true` only.
 - Evaluate `no_sync` before unmatched.
-- `no_sync` wins over Duplicate and Bad for Master Leads writes.
-- Mark true / create true → delete all model-appropriate Master Leads
-  tabs by Mongo ID (and `sheet_sync[]` hints). Missing row is a no-op.
+- `no_sync` applies only to ordinary Forms and Calls. Those are the
+  only Master Leads tabs this issue may skip or delete. Duplicate and
+  Bad sheet routing is untouched even when the flag is stored.
+- Mark true / create true on an ordinary Lead → delete `Forms` or
+  `Calls` only. Missing row is a no-op. Never delete Duplicates,
+  Duplicate Calls, or Bad Leads.
 - Unmatched without `no_sync` stays empty-plan, no deletes.
 - Vantage Admin create: `input.no_sync ?? true`. Other origins: `false`,
   ignore client `true`.
 - Create with `no_sync: true` does not enqueue `source_lead` create.
-- Master Booked unchanged.
-- Do not change Bad dual-write or Call stale-delete when `no_sync`
-  is false.
+- Master Booked unchanged. Booking Chain must still write Booked
+  Deals and must **not** upsert Forms or Calls for an ordinary
+  No-Sync Lead. Do not gate only `persistSheetSyncIntent`.
+- Do not change Bad dual-write, Call stale-delete, or Form Duplicate
+  leftover-Forms whether or not `no_sync` is stored.
 
 ## 6. Deliverables and exact contract
 
@@ -71,9 +79,12 @@ Observed 2026-09-06; **reverify at implementation**.
 3. Optional `no_sync` on create Zod (server still overrides by origin).
 4. Shared predicate module imported by `jobPlanner.ts` and
    `sheetSyncSourceLookup.ts`.
-5. `planSourceLead`: if no-sync, emit §6.3 deletes only; never upsert.
-   Same for `syncSourceLead` (legacy deletes then return).
-6. `planExpectedSheetTabs` + record flags: `skipReason: "no_sync"`.
+5. `planSourceLead`: if `noSyncAppliesToNormalTabs`, emit §6.3
+   Forms-or-Calls delete only; never upsert those tabs. If Duplicate
+   or Bad, run today's planner unchanged. Same split in
+   `syncSourceLead`.
+6. `planExpectedSheetTabs`: `skipReason: "no_sync"` only when
+   `noSyncAppliesToNormalTabs`.
 7. Tests in spec §10.1, create cases in §10.2, contains in §10.3.
 
 ## 7. Out of scope
@@ -100,21 +111,26 @@ Pointer-only until LNS-04:
 
 ## 10. Acceptance criteria
 
-- [ ] Admin Call/Form create omit `no_sync` → stored `true`; no create
+- [x] Admin Call/Form create omit `no_sync` → stored `true`; no create
       outbox.
-- [ ] Admin create `{ no_sync: false }` → stored `false`; create outbox
+- [x] Admin create `{ no_sync: false }` → stored `false`; create outbox
       present.
-- [ ] Non-admin origin with client `no_sync: true` → stored `false`.
-- [ ] No-Sync Form/Call planner: no Master Leads upserts; deletes the
-      specified tabs; missing row no-ops.
-- [ ] Booking Chain + No-Sync: Booked Deals upsert; no Calls/Forms upsert.
-- [ ] Unmatched without `no_sync`: empty plan, no deletes.
-- [ ] `no_sync` + `bad_lead` / Call duplicate: no extra-tab upserts.
-- [ ] Contains Form and Call `no_sync` → `not_expected`,
+- [x] Non-admin origin with client `no_sync: true` → stored `false`.
+- [x] Ordinary No-Sync Form/Call planner: no Forms/Calls upserts;
+      deletes that one tab; missing row no-ops; no Duplicates /
+      Duplicate Calls / Bad Leads writes.
+- [x] Booking Chain + No-Sync: Booked Deals upsert; no Calls/Forms upsert.
+      Matching the Lead is not a Forms/Calls update.
+- [x] Unmatched without `no_sync`: empty plan, no deletes.
+- [x] `no_sync` + `bad_lead` / Call or Form duplicate: planner matches
+      today's fixtures (no new skip, no new exception-tab delete).
+- [x] Contains ordinary Form and Call `no_sync` → `not_expected`,
       `reason: "no_sync"`, no tab reads.
-- [ ] Ordinary missing Call still `missing`. Unmatched still
+- [x] Contains `no_sync` + Bad or Duplicate → today's expected tabs,
+      not the `no_sync` skip.
+- [x] Ordinary missing Call still `missing`. Unmatched still
       `created_on_unmatched`.
-- [ ] Existing Bad dual-write and Call stale-delete tests still pass.
+- [x] Existing Bad dual-write and Call stale-delete tests still pass.
 
 ## 11. Commands
 
@@ -128,8 +144,10 @@ Paste output in the completion report.
 ## 12. Risks
 
 - Gating only `persistSheetSyncIntent` so Booking Chain still upserts
-  Calls.
-- Empty skip without deletes, leaving stale Forms/Calls rows.
+  Forms or Calls for a matched No-Sync Lead. That is a ship-blocker.
+- Empty skip without deleting Forms/Calls, leaving a stale normal
+  tab row.
+- Deleting Duplicates / Duplicate Calls / Bad Leads “to be thorough.”
 - Forgetting contains so Owner sees Missing.
 - Reusing `created_on_unmatched` on Admin create.
 
@@ -143,6 +161,7 @@ Unmatched and Bad/Duplicate paths must remain intact.
 - Create provenance evidence (origin × stored `no_sync` × outbox).
 - Planner write lists for no-sync Form, no-sync Call, Booking Chain.
 - Contains fixture verdicts (redacted).
-- Which tests prove Bad/Duplicate unchanged when syncable.
+- Which tests prove Bad/Duplicate planner output is unchanged when
+  `no_sync` is also stored.
 - What you did not do (LNS-02/03/04).
 - Any §4 drift you corrected.

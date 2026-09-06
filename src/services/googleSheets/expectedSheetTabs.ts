@@ -7,6 +7,7 @@ import {
   SHEET_SYNC_ENTITY_MODELS,
   SHEET_TAB_NAMES,
 } from "../../config/domain";
+import { noSyncAppliesToNormalTabs } from "../sheetSync/noSyncLead";
 
 export const SHEET_CONTAINS_ENTITY_MODELS = SHEET_SYNC_ENTITY_MODELS;
 export type SheetContainsEntityModel = (typeof SHEET_CONTAINS_ENTITY_MODELS)[number];
@@ -37,7 +38,7 @@ export type SheetContainsTabRef = {
   role: "expected" | "sibling";
 };
 
-export type SheetContainsSkipReason = "created_on_unmatched";
+export type SheetContainsSkipReason = "created_on_unmatched" | "no_sync";
 
 export type SheetContainsTabPlan = {
   expected: SheetContainsTabRef[];
@@ -49,6 +50,7 @@ export type SheetContainsRecordFlags = {
   duplicate?: boolean | null;
   bad_lead?: string | null;
   created_on_unmatched?: boolean | null;
+  no_sync?: boolean | null;
 };
 
 const FORM_EVIDENCE_HEADERS = ["Name", "Ref No", "Source Company", "Phone Number"] as const;
@@ -153,6 +155,11 @@ export function planExpectedSheetTabs(
   entityModel: SheetContainsEntityModel,
   flags: SheetContainsRecordFlags = {},
 ): SheetContainsTabPlan {
+  if (entityModel === "FormLead" || entityModel === "CallLead") {
+    if (noSyncAppliesToNormalTabs(flags)) {
+      return { expected: [], siblings: [], skipReason: "no_sync" };
+    }
+  }
   switch (entityModel) {
     case "FormLead": {
       const expected = [formPrimary(flags.duplicate)];

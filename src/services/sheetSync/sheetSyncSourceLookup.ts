@@ -1,8 +1,17 @@
 import mongoose from "mongoose";
-import type { LeadModelName } from "../../config/domain";
+import {
+  CALL_SHEET_HEADERS,
+  FORM_SHEET_HEADERS,
+  SHEET_TAB_NAMES,
+  type LeadModelName,
+  type SourceCompany,
+} from "../../config/domain";
 import { logger } from "../../logger";
 import { BookedLead } from "../../models/BookedLead";
 import { CancelledLead } from "../../models/CancelledLead";
+import { deleteRowsFromTargets } from "../googleSheets/deleteRows";
+import { getLeadTargets } from "../googleSheets/targets";
+import type { SyncableDocument } from "../googleSheets/types";
 import {
   syncBookedLeadToSheets,
   syncCallLeadToSheets,
@@ -10,7 +19,12 @@ import {
   syncFormLeadToSheets,
 } from "../googleSheets.service";
 import { getLinkedLead } from "../leads/sourceLeadLookup.service";
-import { syncAndStore, type SheetSyncDocument } from "./sheetSyncPersistence";
+import { noSyncAppliesToNormalTabs } from "./noSyncLead";
+import {
+  syncAndStore,
+  type SheetSyncDocument,
+  type SheetSyncUpdateEntry,
+} from "./sheetSyncPersistence";
 
 /**
  * Looks up a source lead by id+model and runs its sheet sync.
@@ -107,6 +121,16 @@ export async function syncSourceLead(
   lead: SheetSyncDocument,
   leadModel: LeadModelName,
 ): Promise<void> {
+  if (
+    noSyncAppliesToNormalTabs({
+      no_sync: lead.get("no_sync") as boolean | null | undefined,
+      duplicate: lead.get("duplicate") as boolean | null | undefined,
+      bad_lead: lead.get("bad_lead"),
+    })
+  ) {
+    await syncAndStore(lead, (doc) => deleteOrdinaryNoSyncLeadRows(doc, leadModel));
+    return;
+  }
   if (leadModel === "CallLead") {
     if (lead.get("created_on_unmatched") === true) {
       logger.info({
@@ -122,4 +146,29 @@ export async function syncSourceLead(
 
   await lead.populate({ path: "booked", populate: { path: "customer" } });
   await syncAndStore(lead, syncFormLeadToSheets);
+}
+
+async function deleteOrdinaryNoSyncLeadRows(
+  lead: SheetSyncDocument,
+  leadModel: LeadModelName,
+): Promise<SheetSyncUpdateEntry[]> {
+  const sourceCompany = lead.get("source_company") as SourceCompany;
+  const isForm = leadModel === "FormLead";
+  const masterTarget = isForm ? "master_forms" : "master_calls";
+  const sourceTarget = isForm ? "source_forms" : "source_calls";
+  const tabName = isForm ? SHEET_TAB_NAMES.forms : SHEET_TAB_NAMES.calls;
+  const headers = isForm ? FORM_SHEET_HEADERS : CALL_SHEET_HEADERS;
+  const targets = getLeadTargets(
+    masterTarget,
+    sourceTarget,
+    sourceCompany,
+    tabName,
+    headers,
+  );
+  const deletedTargets = await deleteRowsFromTargets(
+    lead as unknown as SyncableDocument,
+    targets,
+    [masterTarget, sourceTarget],
+  );
+  return deletedTargets.map((target) => ({ target, status: "deleted" as const }));
 }
