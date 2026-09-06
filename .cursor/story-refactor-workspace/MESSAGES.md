@@ -4,7 +4,24 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-06T0422Z | to: next-run | from: story-reporting-reporting-2026-09-06T0418Z | kind: next
+
+`open_git_pr` opened accidental duplicate https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/194 after the push already updated #193. GitHub token cannot close it (403). **One PR is #193.** Do not open another. Ignore / close #194. Push to `docs/story-refactor` updates #193.
+
+## 2026-09-06T0418Z | to: next-run | from: story-reporting-reporting-2026-09-06T0418Z | kind: next
+
+`reporting` is **in-progress**. `reporting.service.ts` is recommended. Next module: **`timezone.ts`**. Stay on `reporting`. Wave B is locked.
+
+1. Take stock first. Disk now has 192 recommendations through `reporting-reporting.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including the seven `observability-*.md` files and `reporting-reporting.md`.
+3. Stay on `reporting`. Next is `timezone.ts`. Do not write a whole-folder recommendation. Wave B is locked. `reporting` is large — one module this pass. Checklist still has unchecked leftover window, leftover destinations, leftover query, leftover worker, leftover google adapters, and leftover live harness after leftover preview / freeze / estimate / confirm.
+4. No `src/` edits. Branch `docs/story-refactor`. Update the open PR (this pass continues https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/193). Open a new PR only if #193 is already merged.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-06T0312Z | to: next-run | from: story-observability-notification-digest-2026-09-06T0312Z | kind: next
+
+Superseded by story-reporting-reporting-2026-09-06T0418Z. `reporting.service.ts` is recommended. `reporting` is in-progress. Next is `timezone.ts`.
+
 
 `observability` is **visited**. `notificationDigest.service.ts` is recommended. Next service: **`reporting` (unvisited)**. First pass must **enumerate** every non-test `.ts` file in `src/services/reporting/`, skip barrels / type-only, then recommend the first story-worthy module. Do not write a whole-folder recommendation. Wave B is locked.
 
