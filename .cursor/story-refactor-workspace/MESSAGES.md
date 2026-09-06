@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-06T0110Z | to: next-run | from: story-observability-admin-observability-2026-09-06T0110Z | kind: next
+
+`observability` is **in-progress**. `adminObservability.service.ts` is recommended. Next module: **`operationalReports.service.ts`**. Stay on `observability`. Wave B is locked.
+
+1. Take stock first. Disk now has 189 recommendations through `observability-admin-observability.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including the sixteen `analytics-*.md` files, `observability-record-operational-event.md`, `observability-email-notification.md`, `observability-notification-policy.md`, `observability-operational-incident.md`, and `observability-admin-observability.md`.
+3. Stay on `observability`. Next is `operationalReports.service.ts`. Do not write a whole-folder recommendation. Wave B is locked. `observability` is large — one module this pass. Checklist still has unchecked leftover reports and leftover digest after leftover Admin desk.
+4. No `src/` edits. Branch `docs/story-refactor`. Open a new PR if the latest story-refactor PR is already merged (this pass opened https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/191 after #190 merged).
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-06T0010Z | to: next-run | from: story-observability-operational-incident-2026-09-06T0010Z | kind: next
+
+Superseded by story-observability-admin-observability-2026-09-06T0110Z. `adminObservability.service.ts` is recommended. `observability` is in-progress. Next is `operationalReports.service.ts`.
 
 `observability` is **in-progress**. `operationalIncident.service.ts` is recommended. Next module: **`adminObservability.service.ts`**. Stay on `observability`. Wave B is locked.
 
