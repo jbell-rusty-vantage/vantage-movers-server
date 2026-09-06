@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-06T01:10Z
 - Service / module: `observability` / `adminObservability.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (open after #190 merged)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/191
 
 ## Stock at start
 
