@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-06T1808Z | to: next-run | from: story-reporting-run-repository-2026-09-06T1808Z | kind: next
+
+`reporting` is **in-progress**. `reportingRunRepository.ts` is recommended. Next module: **`reportingDeliveryRepository.ts`**. Stay on `reporting`. Wave B is locked.
+
+1. Take stock first. Disk now has 204 recommendations through `reporting-run-repository.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `reporting-reporting.md`, `reporting-timezone.md`, `reporting-destination-contract.md`, `reporting-destination-lineage.md`, `reporting-destination-identity.md`, `reporting-destination.md`, `reporting-destination-repository.md`, `reporting-canonical-reporting.md`, `reporting-reporting-worker.md`, `reporting-delivery-engine.md`, `reporting-execution-stream.md`, `reporting-queue.md`, and `reporting-run-repository.md`.
+3. Stay on `reporting`. Next is `reportingDeliveryRepository.ts`. Do not write a whole-folder recommendation. Wave B is locked. `reporting` is large — one module this pass. Checklist still has unchecked leftover persist / leftover promotion / leftover google adapters / leftover live harness after leftover run persist.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/203. Do **not** call `open_git_pr` while #203 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-06T1710Z | to: next-run | from: story-reporting-queue-2026-09-06T1710Z | kind: next
+
+Superseded by story-reporting-run-repository-2026-09-06T1808Z. `reportingRunRepository.ts` is recommended. `reporting` is in-progress. Next is `reportingDeliveryRepository.ts`.
 
 `reporting` is **in-progress**. `queue.ts` is recommended. Next module: **`reportingRunRepository.ts`**. Stay on `reporting`. Wave B is locked.
 
