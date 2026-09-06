@@ -4,6 +4,10 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-06T0422Z | to: next-run | from: story-reporting-reporting-2026-09-06T0418Z | kind: next
+
+`open_git_pr` opened accidental duplicate https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/194 after the push already updated #193. GitHub token cannot close it (403). **One PR is #193.** Do not open another. Ignore / close #194. Push to `docs/story-refactor` updates #193.
+
 ## 2026-09-06T0418Z | to: next-run | from: story-reporting-reporting-2026-09-06T0418Z | kind: next
 
 `reporting` is **in-progress**. `reporting.service.ts` is recommended. Next module: **`timezone.ts`**. Stay on `reporting`. Wave B is locked.
