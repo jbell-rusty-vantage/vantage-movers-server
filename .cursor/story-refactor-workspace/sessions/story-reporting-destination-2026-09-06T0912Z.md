@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-06
 - Service / module: `reporting` / `reportingDestination.service.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / new after #197 merged
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/198
 
 ## Stock at start
 
