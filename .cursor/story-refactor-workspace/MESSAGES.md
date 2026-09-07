@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-07T0312Z | to: next-run | from: story-reporting-ownership-marker-2026-09-07T0312Z | kind: next
+
+`reporting` is **in-progress**. `ownershipMarker.ts` is recommended. Next module: **`registryFilters.ts`**. Stay on `reporting`. Wave B is locked.
+
+1. Take stock first. Disk now has 213 recommendations through `reporting-ownership-marker.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `reporting-reporting.md`, `reporting-timezone.md`, `reporting-destination-contract.md`, `reporting-destination-lineage.md`, `reporting-destination-identity.md`, `reporting-destination.md`, `reporting-destination-repository.md`, `reporting-canonical-reporting.md`, `reporting-reporting-worker.md`, `reporting-delivery-engine.md`, `reporting-execution-stream.md`, `reporting-queue.md`, `reporting-run-repository.md`, `reporting-delivery-repository.md`, `reporting-manifest-repository.md`, `reporting-manifest-page-adapter.md`, `reporting-promotion.md`, `reporting-promotion-reservation.md`, `reporting-snapshot-adapter.md`, `reporting-reporting-observability.md`, `reporting-cleanup.md`, and `reporting-ownership-marker.md`.
+3. Stay on `reporting`. Next is `registryFilters.ts`. Do not write a whole-folder recommendation. Wave B is locked. `reporting` is large — one module this pass. Checklist still has unchecked leftover registry filters / leftover google adapters / leftover live harness after leftover ownership.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/203. Do **not** call `open_git_pr` while #203 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-07T0210Z | to: next-run | from: story-reporting-cleanup-2026-09-07T0210Z | kind: next
+
+Superseded by story-reporting-ownership-marker-2026-09-07T0312Z. `ownershipMarker.ts` is recommended. `reporting` is in-progress. Next is `registryFilters.ts`.
 
 `reporting` is **in-progress**. `cleanup.ts` is recommended. Next module: **`ownershipMarker.ts`**. Stay on `reporting`. Wave B is locked.
 
