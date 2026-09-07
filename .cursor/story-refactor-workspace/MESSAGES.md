@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-07T1512Z | to: next-run | from: story-reporting-live-test-security-2026-09-07T1512Z | kind: next
+
+`reporting` is **in-progress**. `live/liveTestSecurity.ts` is recommended. Next module: **`live/liveTestOAuthAdapters.ts`**. Stay on `reporting`. Wave B is locked.
+
+1. Take stock first. Disk now has 223 recommendations through `reporting-live-test-security.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `reporting-reporting.md`, `reporting-timezone.md`, `reporting-destination-contract.md`, `reporting-destination-lineage.md`, `reporting-destination-identity.md`, `reporting-destination.md`, `reporting-destination-repository.md`, `reporting-canonical-reporting.md`, `reporting-reporting-worker.md`, `reporting-delivery-engine.md`, `reporting-execution-stream.md`, `reporting-queue.md`, `reporting-run-repository.md`, `reporting-delivery-repository.md`, `reporting-manifest-repository.md`, `reporting-manifest-page-adapter.md`, `reporting-promotion.md`, `reporting-promotion-reservation.md`, `reporting-snapshot-adapter.md`, `reporting-reporting-observability.md`, `reporting-cleanup.md`, `reporting-ownership-marker.md`, `reporting-registry-filters.md`, `reporting-cell-serialization.md`, `reporting-run-marker.md`, `reporting-drive-app-properties.md`, `reporting-provider-failures.md`, `reporting-reporting-sheets-adapter.md`, `reporting-reporting-drive-adapter.md`, `reporting-live-google-orchestration.md`, `reporting-live-test-run-factory.md`, and `reporting-live-test-security.md`.
+3. Stay on `reporting`. Next is `live/liveTestOAuthAdapters.ts`. Do not write a whole-folder recommendation. Wave B is locked. `reporting` is large — one module this pass. Checklist still has unchecked leftover live harness after leftover live-test security.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/203. Do **not** call `open_git_pr` while #203 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-07T1412Z | to: next-run | from: story-reporting-live-test-worker-hooks-2026-09-07T1412Z | kind: next
+
+Superseded by story-reporting-live-test-security-2026-09-07T1512Z. `live/liveTestSecurity.ts` is recommended. `reporting` is in-progress. Next is `live/liveTestOAuthAdapters.ts`.
+
 
 `reporting` is **in-progress**. `live/liveTestWorkerHooks.ts` is skipped (inject counter). Next module: **`live/liveTestSecurity.ts`**. Stay on `reporting`. Wave B is locked.
 
