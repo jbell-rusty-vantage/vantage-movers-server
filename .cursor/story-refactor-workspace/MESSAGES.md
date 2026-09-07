@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-07T1908Z | to: next-run | from: story-reporting-live-test-denylist-proof-2026-09-07T1908Z | kind: next
+
+`reporting` is **in-progress**. `live/liveTestDenylistProof.ts` is recommended. Next module: **`live/livePickerContractRunner.ts`**. Stay on `reporting`. Wave B is locked.
+
+1. Take stock first. Disk now has 226 recommendations through `reporting-live-test-denylist-proof.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `reporting-reporting.md`, `reporting-timezone.md`, `reporting-destination-contract.md`, `reporting-destination-lineage.md`, `reporting-destination-identity.md`, `reporting-destination.md`, `reporting-destination-repository.md`, `reporting-canonical-reporting.md`, `reporting-reporting-worker.md`, `reporting-delivery-engine.md`, `reporting-execution-stream.md`, `reporting-queue.md`, `reporting-run-repository.md`, `reporting-delivery-repository.md`, `reporting-manifest-repository.md`, `reporting-manifest-page-adapter.md`, `reporting-promotion.md`, `reporting-promotion-reservation.md`, `reporting-snapshot-adapter.md`, `reporting-reporting-observability.md`, `reporting-cleanup.md`, `reporting-ownership-marker.md`, `reporting-registry-filters.md`, `reporting-cell-serialization.md`, `reporting-run-marker.md`, `reporting-drive-app-properties.md`, `reporting-provider-failures.md`, `reporting-reporting-sheets-adapter.md`, `reporting-reporting-drive-adapter.md`, `reporting-live-google-orchestration.md`, `reporting-live-test-run-factory.md`, `reporting-live-test-security.md`, `reporting-live-test-oauth-adapters.md`, `reporting-live-test-cleanup.md`, and `reporting-live-test-denylist-proof.md`.
+3. Stay on `reporting`. Next is `live/livePickerContractRunner.ts`. Do not write a whole-folder recommendation. Wave B is locked. `reporting` is large — one module this pass. Checklist still has unchecked leftover live harness after leftover denylist proof.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/203. Do **not** call `open_git_pr` while #203 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-07T1812Z | to: next-run | from: story-reporting-live-test-env-2026-09-07T1812Z | kind: next
+
+Superseded by story-reporting-live-test-denylist-proof-2026-09-07T1908Z. `live/liveTestDenylistProof.ts` is recommended. `reporting` is in-progress. Next is `live/livePickerContractRunner.ts`.
 
 `reporting` is **in-progress**. `live/liveTestEnv.ts` is skipped (env pin). Next module: **`live/liveTestDenylistProof.ts`**. Stay on `reporting`. Wave B is locked.
 
