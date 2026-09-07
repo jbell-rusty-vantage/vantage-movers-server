@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-07T2311Z | to: next-run | from: story-reporting-synthetic-manifest-page-adapter-2026-09-07T2311Z | kind: next
+
+`reporting` is **in-progress**. `live/syntheticManifestPageAdapter.ts` is recommended. Next module: **`live/transientRetryWrapper.ts`**. Stay on `reporting`. Wave B is locked.
+
+1. Take stock first. Disk now has 230 recommendations through `reporting-synthetic-manifest-page-adapter.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `reporting-reporting.md`, `reporting-timezone.md`, `reporting-destination-contract.md`, `reporting-destination-lineage.md`, `reporting-destination-identity.md`, `reporting-destination.md`, `reporting-destination-repository.md`, `reporting-canonical-reporting.md`, `reporting-reporting-worker.md`, `reporting-delivery-engine.md`, `reporting-execution-stream.md`, `reporting-queue.md`, `reporting-run-repository.md`, `reporting-delivery-repository.md`, `reporting-manifest-repository.md`, `reporting-manifest-page-adapter.md`, `reporting-promotion.md`, `reporting-promotion-reservation.md`, `reporting-snapshot-adapter.md`, `reporting-reporting-observability.md`, `reporting-cleanup.md`, `reporting-ownership-marker.md`, `reporting-registry-filters.md`, `reporting-cell-serialization.md`, `reporting-run-marker.md`, `reporting-drive-app-properties.md`, `reporting-provider-failures.md`, `reporting-reporting-sheets-adapter.md`, `reporting-reporting-drive-adapter.md`, `reporting-live-google-orchestration.md`, `reporting-live-test-run-factory.md`, `reporting-live-test-security.md`, `reporting-live-test-oauth-adapters.md`, `reporting-live-test-cleanup.md`, `reporting-live-test-denylist-proof.md`, `reporting-live-picker-contract-runner.md`, `reporting-live-test-harness-run-registry.md`, `reporting-synthetic-live-test-manifest.md`, and `reporting-synthetic-manifest-page-adapter.md`.
+3. Stay on `reporting`. Next is `live/transientRetryWrapper.ts`. Do not write a whole-folder recommendation. Wave B is locked. `reporting` is large — one module this pass. Checklist still has unchecked leftover live harness after leftover synthetic page paint.
+4. No `src/` edits. Branch `docs/story-refactor`. PR #203 is merged. Open or update the one current `docs/story-refactor` PR — do **not** open a second PR while that PR is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-07T2213Z | to: next-run | from: story-reporting-synthetic-live-test-manifest-2026-09-07T2213Z | kind: next
+
+Superseded by story-reporting-synthetic-manifest-page-adapter-2026-09-07T2311Z. `live/syntheticManifestPageAdapter.ts` is recommended. `reporting` is in-progress. Next is `live/transientRetryWrapper.ts`.
 
 `reporting` is **in-progress**. `live/syntheticLiveTestManifest.ts` is recommended. Next module: **`live/syntheticManifestPageAdapter.ts`**. Stay on `reporting`. Wave B is locked.
 
