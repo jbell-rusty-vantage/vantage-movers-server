@@ -17,10 +17,12 @@
  * explicit runner that targets isolated test collections only.
  */
 import { markVantageTestRunner } from "../src/config/domain/runtime";
+import { installTestDailyOperationsSink } from "../src/services/dailyOperations/testDailyOperationsSink";
 import { installTestObservabilitySink } from "../src/services/observability/testObservabilitySink";
 
 markVantageTestRunner();
 installTestObservabilitySink();
+installTestDailyOperationsSink();
 
 process.env.VANTAGE_TEST_RUNNER = "true";
 process.env.OBSERVABILITY_COLLECTION_MODE = "test";

@@ -46,6 +46,7 @@ import {
   synchronizeLeadFromGranot,
   SynchronizeLeadRaceError,
 } from "./synchronizeLeadFromGranot";
+import { recordGranotProcessorOutcomeDailyOperationsFact } from "../dailyOperations/recordGranotFacts";
 import type { SynchronizeLeadExecution } from "./synchronizeLeadTypes";
 import {
   compareGranotTemporal,
@@ -472,6 +473,7 @@ export async function processGranotObservation(
       initiator_actor_id: moduleContext.initiator?.actor_id,
       processor_actor_id: moduleContext.processor_actor.actor_id,
       duration_ms: Date.now() - started,
+      job_no: jobNoFromObservation(observation),
     });
     return toProcessorResult(staleDecision, receipt.observation_channel, started);
   }
@@ -487,6 +489,7 @@ export async function processGranotObservation(
     initiator_actor_id: moduleContext.initiator?.actor_id,
     processor_actor_id: moduleContext.processor_actor.actor_id,
     duration_ms: Date.now() - started,
+    job_no: jobNoFromObservation(observation),
   });
   return toProcessorResult(persisted, receipt.observation_channel, started);
 }
@@ -599,6 +602,7 @@ async function maybeReconcileBooking(input: {
     outcome: decision.outcome,
     reason_code: decision.reason_code,
     duration_ms: Date.now() - input.started,
+    job_no: jobNoFromObservation(input.observation),
   });
   return toProcessorResult(decision, input.receipt.observation_channel, input.started);
 }
@@ -658,6 +662,7 @@ async function persistProcessorDiscrepancy(input: {
     outcome: decision.outcome,
     reason_code: decision.reason_code,
     duration_ms: Date.now() - input.started,
+    job_no: jobNoFromObservation(input.observation),
   });
   return toProcessorResult(
     decision,
@@ -814,6 +819,7 @@ async function maybeCreateLead(input: {
         initiator_actor_id: input.moduleContext.initiator?.actor_id,
         processor_actor_id: input.moduleContext.processor_actor.actor_id,
         duration_ms: Date.now() - input.started,
+        job_no: jobNoFromObservation(input.observation),
       });
       return {
         prepared,
@@ -1090,6 +1096,7 @@ async function maybeSynchronizeMatchedLead(input: {
       initiator_actor_id: input.moduleContext.initiator?.actor_id,
       processor_actor_id: input.moduleContext.processor_actor.actor_id,
       duration_ms: Date.now() - input.started,
+      job_no: jobNoFromObservation(observation),
     });
     return toProcessorResult(persisted, receipt.observation_channel, input.started);
   }
@@ -1136,6 +1143,7 @@ async function persistRaceReplan(input: {
     initiator_actor_id: input.moduleContext.initiator?.actor_id,
     processor_actor_id: input.moduleContext.processor_actor.actor_id,
     duration_ms: Date.now() - input.started,
+    job_no: jobNoFromObservation(input.observation),
   });
   return toProcessorResult(decision, input.receipt.observation_channel, input.started);
 }
@@ -1759,6 +1767,16 @@ function toProcessorResult(
   };
 }
 
+function jobNoFromObservation(
+  observation: Pick<GranotObservationDocument, "identity"> | undefined,
+): string | null {
+  return (
+    observation?.identity?.job_no_raw ??
+    observation?.identity?.normalized_job_no ??
+    null
+  );
+}
+
 function logProcessingCompletion(input: {
   receipt_id: string;
   observation_id: string;
@@ -1770,6 +1788,7 @@ function logProcessingCompletion(input: {
   initiator_actor_id?: string;
   processor_actor_id?: string;
   duration_ms: number;
+  job_no?: string | null;
 }): void {
   logger.info({
     msg: "granot_lifecycle.processing.completed",
@@ -1798,6 +1817,12 @@ function logProcessingCompletion(input: {
     },
     durationMs: input.duration_ms,
     piiPolicy: "masked",
+  });
+  void recordGranotProcessorOutcomeDailyOperationsFact({
+    receipt_id: input.receipt_id,
+    decision_id: input.decision_id,
+    outcome: input.outcome,
+    job_no: input.job_no ?? null,
   });
 }
 

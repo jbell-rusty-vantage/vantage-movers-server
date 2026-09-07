@@ -31,7 +31,7 @@ Redis.
 
 ## 4. Current-state evidence to verify
 
-Observed 2026-09-06; **reverify before coding.**
+Observed 2026-09-06; **re-verified 2026-09-06 before coding. No drift.**
 
 - No `DailyOperationsEvent` / `DailyOperationsDay` models.
 - No `src/services/dailyOperations/` module.
@@ -85,13 +85,20 @@ None required. DOP-08 / docs-keeper owns the Service pointer.
 
 ## 10. Acceptance criteria
 
-- [ ] Unique `dedupe_key` insert increments the named `metric_touches`.
-- [ ] Duplicate `dedupe_key` is a no-op (no second `$inc`, no XADD).
-- [ ] Closed day skips `$inc` and records `metric_touches: []`.
-- [ ] Missing Redis client still persists the event and day increment.
-- [ ] Test runner never constructs a publish that would call Upstash.
-- [ ] `2026-06-01T03:00:00.000Z` maps to NY day `2026-05-31`.
-- [ ] Package tests for the new module + typecheck.
+- [x] Unique `dedupe_key` insert increments the named `metric_touches`.
+      Evidence: `recordDailyOperationsFact.test.ts` — form/total/hourly.23/origin/company became 1.
+- [x] Duplicate `dedupe_key` is a no-op (no second `$inc`, no XADD).
+      Evidence: second call `outcome: "duplicate"`; increment and XADD stayed 1.
+- [x] Closed day skips `$inc` and records `metric_touches: []`.
+      Evidence: `incrementCalls === 0`; event touches `[]`; day form count unchanged.
+- [x] Missing Redis client still persists the event and day increment.
+      Evidence: `getRedis` returned null; event + increment still recorded.
+- [x] Test runner never constructs a publish that would call Upstash.
+      Evidence: default gate false; injected `getRedis` was not called.
+- [x] `2026-06-01T03:00:00.000Z` maps to NY day `2026-05-31`.
+      Evidence: `dayDocument.test.ts` (hour 23).
+- [x] Package tests for the new module + typecheck.
+      Evidence: 22 passed, 0 failed; `pnpm typecheck` exit 0. See report.
 
 ## 11. Commands
 

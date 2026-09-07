@@ -46,6 +46,10 @@ import {
   deriveCallLeadIngestionOrigin,
   deriveFormLeadIngestionOrigin,
 } from "../leads/leadIngestionProvenance";
+import {
+  recordBookingDailyOperationsFact,
+  recordCancellationDailyOperationsFact,
+} from "../dailyOperations/recordDomainFacts";
 import { finalizeSheetSync, finalizeSheetSyncDelete } from "../sheetSync";
 import {
   BOOKED_LEAD_CHANGE_PATHS,
@@ -446,6 +450,13 @@ export async function runExistingCreateLeadlessBooking(input: {
         operation: "leadless_booking.create",
         bookingId: pending.booking._id.toString(),
       });
+      await recordBookingDailyOperationsFact({
+        bookingId: pending.booking._id.toString(),
+        bookingKind: "leadless",
+        customer_name: pending.booking.customer_name ?? null,
+        job_no: pending.booking.job_no ?? null,
+        source_company: pending.booking.source ?? null,
+      });
     },
   });
   return {
@@ -504,6 +515,13 @@ export async function runExistingCreateReferralBooking(input: {
     },
     finalize: async (pending) => {
       finalized = await pending.finalize();
+      await recordBookingDailyOperationsFact({
+        bookingId: pending.booking._id.toString(),
+        bookingKind: "referral",
+        customer_name: pending.booking.customer_name ?? null,
+        job_no: pending.booking.job_no ?? null,
+        source_company: pending.booking.source ?? null,
+      });
     },
   });
   return { command, data: finalized };
@@ -595,6 +613,25 @@ export async function runExistingCreateCancellation(input: {
     },
     finalize: async (pending) => {
       await finalizeSheetSync(pending.job);
+      const cancellationDoc = pending.cancellation as {
+        _id: { toString(): string };
+        customer_name?: string | null;
+        job_no?: string | null;
+        lead_ref?: { toString(): string } | null;
+        lead_model?: "FormLead" | "CallLead" | null;
+      };
+      await recordCancellationDailyOperationsFact({
+        cancellationId: cancellationDoc._id.toString(),
+        bookingId: pending.booking._id.toString(),
+        customer_name: cancellationDoc.customer_name ?? pending.booking.customer_name ?? null,
+        job_no: cancellationDoc.job_no ?? pending.booking.job_no ?? null,
+        source_company: pending.booking.source ?? null,
+        lead_id: cancellationDoc.lead_ref?.toString() ?? pending.booking.lead_ref?.toString() ?? null,
+        lead_model:
+          cancellationDoc.lead_model ??
+          (pending.booking.lead_model as "FormLead" | "CallLead" | null) ??
+          null,
+      });
     },
   });
   return { command, data: cancellation };

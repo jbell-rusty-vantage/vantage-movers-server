@@ -28,6 +28,7 @@ import {
   type CanonicalCommandResult,
 } from "../domainCommands/types";
 import { enqueueSheetSyncJob, finalizeSheetSync } from "../sheetSync";
+import { recordGranotLinkedDailyOperationsFact } from "../dailyOperations/recordGranotFacts";
 import {
   assertAuthorizedLeadDesiredState,
   hashGranotContactLeaves,
@@ -91,15 +92,18 @@ export async function synchronizeLeadFromGranot(
     context: input.context,
     operation: async (tx) => {
       const result = await applySynchronizeLeadOperation(input, tx.session, tx.now, tx.command_execution_id);
-      sheetJob = result.sheetJob;
+      sheetJob = result.pending.sheetJob;
       return {
         entity_refs: result.entity_refs,
-        pending: result.sheetJob,
+        pending: result.pending,
       };
     },
     finalize: async (pending) => {
+      if (pending?.sheetJob) {
+        await finalizeSheetSync(pending.sheetJob);
+      }
       if (pending) {
-        await finalizeSheetSync(pending);
+        await recordGranotLinkedDailyOperationsFact(pending);
       }
     },
   });
@@ -112,6 +116,43 @@ export async function synchronizeLeadFromGranot(
   };
 }
 
+type SynchronizeLeadDailyOperationsPending = {
+  sheetJob?: {
+    resource: "source_lead";
+    operation: "form_lead.update" | "call_lead.update";
+    leadModel: LeadModel;
+    leadId: string;
+  };
+  outcome: SynchronizationOutcome;
+  source_receipt_id: string;
+  decision_id: string;
+  job_no: string | null;
+  source_company: string | null;
+  lead_id: string;
+  lead_model: LeadModel;
+};
+
+function synchronizeDailyOperationsPending(
+  input: SynchronizeLeadFromGranotInput,
+  extras: {
+    outcome: SynchronizationOutcome;
+    job_no?: string | null;
+    source_company?: string | null;
+    sheetJob?: SynchronizeLeadDailyOperationsPending["sheetJob"];
+  },
+): SynchronizeLeadDailyOperationsPending {
+  return {
+    sheetJob: extras.sheetJob,
+    outcome: extras.outcome,
+    source_receipt_id: input.context.provenance.source_receipt_id ?? "",
+    decision_id: input.context.provenance.decision_id ?? "",
+    job_no: extras.job_no ?? input.execution.job?.job_no_snapshot ?? null,
+    source_company: extras.source_company ?? null,
+    lead_id: input.lead_ref.id,
+    lead_model: input.lead_ref.model,
+  };
+}
+
 async function applySynchronizeLeadOperation(
   input: SynchronizeLeadFromGranotInput,
   session: ClientSession,
@@ -119,12 +160,7 @@ async function applySynchronizeLeadOperation(
   commandExecutionId: mongoose.Types.ObjectId,
 ): Promise<{
   entity_refs: Array<{ model: string; id: string }>;
-  sheetJob?: {
-    resource: "source_lead";
-    operation: "form_lead.update" | "call_lead.update";
-    leadModel: LeadModel;
-    leadId: string;
-  };
+  pending: SynchronizeLeadDailyOperationsPending;
 }> {
   const lead = await loadLeadSnapshot(input.lead_ref, session);
   if (!lead) {
@@ -267,7 +303,15 @@ async function applySynchronizeLeadOperation(
     await enqueueSheetSyncJob(sheetJob, { session, createdBy: "api" });
   }
 
-  return { entity_refs, sheetJob };
+  return {
+    entity_refs,
+    pending: synchronizeDailyOperationsPending(input, {
+      outcome,
+      job_no: lead.job_no ?? input.execution.job?.job_no_snapshot ?? null,
+      source_company: lead.source_company ?? null,
+      sheetJob,
+    }),
+  };
 }
 
 function revalidateDesiredAgainstLead(
@@ -356,7 +400,7 @@ async function persistConflict(
   commandExecutionId: mongoose.Types.ObjectId,
 ): Promise<{
   entity_refs: Array<{ model: string; id: string }>;
-  sheetJob?: undefined;
+  pending: SynchronizeLeadDailyOperationsPending;
 }> {
   const decisionId = objectId(input.context.provenance.decision_id);
   const linkId = action.link._id;
@@ -416,6 +460,10 @@ async function persistConflict(
       { model: input.lead_ref.model, id: input.lead_ref.id },
       { model: "GranotRecordLink", id: String(linkId) },
     ],
+    pending: synchronizeDailyOperationsPending(input, {
+      outcome: "conflict",
+      job_no: input.execution.job?.job_no_snapshot ?? null,
+    }),
   };
 }
 
@@ -697,6 +745,7 @@ type LoadedLead = LeadDesiredStateProjection & {
   raw: Record<string, unknown>;
   duplicate?: boolean;
   granot_contact_revision?: number;
+  source_company?: string;
   contact: LeadContactSnapshot;
 };
 
@@ -718,6 +767,7 @@ async function loadLeadSnapshot(
     ingestion_origin: absent(row.ingestion_origin as string | undefined),
     job_no: absent(row.job_no as string | undefined),
     normalized_job_no: absent(row.normalized_job_no as string | undefined),
+    source_company: absent(row.source_company as string | undefined),
     granot_priority: absent(row.granot_priority as string | undefined),
     quoted: row.quoted as boolean | undefined,
     receiver_agent: row.receiver_agent ? String(row.receiver_agent) : undefined,

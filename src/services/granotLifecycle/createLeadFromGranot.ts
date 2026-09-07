@@ -45,6 +45,7 @@ import {
 import { logger } from "../../logger";
 import { sendGranotCreatedLeadConfirmation } from "../leadMessaging/granotCreatedLead";
 import { enqueueSheetSyncJob, finalizeSheetSync } from "../sheetSync";
+import { recordGranotMintedDailyOperationsFact } from "../dailyOperations/recordGranotFacts";
 import {
   createMongoLeadIdentityStore,
   resolveLeadIdentity,
@@ -212,6 +213,14 @@ export async function createLeadFromGranot(
           });
         }
       }
+      await recordGranotMintedDailyOperationsFact({
+        source_receipt_id: pending.source_receipt_id,
+        decision_id: pending.decision_id,
+        job_no: pending.job_no,
+        source_company: pending.source_company,
+        lead_id: pending.lead_id,
+        lead_model: pending.lead_model,
+      });
     },
   });
   return {
@@ -250,6 +259,12 @@ async function executeCreation(
     destination_phone?: string;
     first_name?: string;
   };
+  source_receipt_id: string;
+  decision_id: string;
+  job_no: string | null;
+  source_company: string | null;
+  lead_id: string;
+  lead_model: LeadModel;
 }> {
   const observation = await getGranotObservationModel()
     .findById(input.observation_id)
@@ -583,6 +598,15 @@ async function executeCreation(
         observation.contact?.phone_raw,
       first_name: observation.contact?.first_name,
     },
+    source_receipt_id: String(receipt._id),
+    decision_id: String(decisionId),
+    job_no:
+      observation.identity?.job_no_raw ??
+      observation.identity?.normalized_job_no ??
+      null,
+    source_company: company.company_slug ?? null,
+    lead_id: String(lead._id),
+    lead_model: selectedModel,
   };
 }
 

@@ -48,6 +48,7 @@ import {
   collectDocumentFieldChanges,
   FORM_LEAD_CHANGE_PATHS,
 } from "../domainCommands/entityChange";
+import { recordBookingDailyOperationsFact } from "../dailyOperations/recordDomainFacts";
 import { V1ServiceError } from "../v1ServiceError";
 import { recordOperationalEvent } from "../observability";
 import {
@@ -370,6 +371,17 @@ export async function finalizeBookedLeadCreateAfterCommit(
 
   const booking = await populateBookedLead(outcome.bookingId);
   const isCreate = outcome.kind === "create";
+  const bookingContext = bookingEventContext(booking, outcome.sourceCompany);
+  await recordBookingDailyOperationsFact({
+    bookingId: booking._id.toString(),
+    bookingKind: "admin",
+    customer_name: bookingContext.leadIdentity.name,
+    phone: bookingContext.leadIdentity.phone,
+    job_no: booking.job_no ?? null,
+    source_company: outcome.sourceCompany,
+    lead_id: input.lead_ref,
+    lead_model: input.lead_model,
+  });
   await recordOperationalEvent({
     level: "info",
     eventKey: isCreate ? "booking.created" : "booking.upserted",

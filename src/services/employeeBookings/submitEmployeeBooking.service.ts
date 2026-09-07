@@ -9,6 +9,7 @@ import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconcili
 import { PublicSubmissionThrottleBucket } from "../../models/PublicSubmissionThrottleBucket";
 import { floridaCalendarToday, toFloridaTimestamp } from "../../utils/easternTime";
 import type { CreateEmployeeBookingSubmissionInput } from "../../validation/v1.validation";
+import { recordBookingDailyOperationsFact } from "../dailyOperations/recordDomainFacts";
 import { AppError, ConflictError } from "../errors";
 import { recordOperationalEvent } from "../observability";
 import { getLinkedLead } from "../leads";
@@ -322,6 +323,14 @@ export async function submitEmployeeBooking(
 
     await finalizeSheetSync(outcome.job);
     if (outcome.kind === "linked") {
+      await recordBookingDailyOperationsFact({
+        bookingId: outcome.bookingId,
+        bookingKind: "employee_linked",
+        customer_name: prepared.leadName,
+        phone: prepared.phoneNumber,
+        job_no: prepared.jobNo,
+        source_company: prepared.sourceAssignment.source_company,
+      });
       await recordOperationalEvent({
         level: "info",
         eventKey: "booking.employee_submission.created_linked",
@@ -343,6 +352,15 @@ export async function submitEmployeeBooking(
       };
     }
 
+    await recordBookingDailyOperationsFact({
+      bookingId: outcome.bookingId,
+      bookingKind: "employee_pending",
+      employeePending: true,
+      customer_name: prepared.leadName,
+      phone: prepared.phoneNumber,
+      job_no: prepared.jobNo,
+      source_company: prepared.sourceAssignment.source_company,
+    });
     await recordOperationalEvent({
       level: outcome.reason === "matching_unavailable" ? "error" : "warn",
       eventKey:

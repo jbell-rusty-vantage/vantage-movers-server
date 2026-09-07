@@ -26,6 +26,11 @@ import {
 } from "../../models/LeadMessage";
 import { getLeadMessageRateLimitModel } from "../../models/LeadMessageRateLimit";
 import type { CreateFormLeadInput } from "../../validation/v1.validation";
+import {
+  recordLeadMessageAfterStatusCallback,
+  recordLeadMessageAfterTwilioAccept,
+  recordLeadMessageSkipped,
+} from "../dailyOperations/recordDomainFacts";
 import { ConflictError, NotFoundError } from "../errors";
 import { recordOperationalEvent } from "../observability";
 import { toObjectId } from "../../utils/objectId";
@@ -257,6 +262,7 @@ export async function dispatchOrQueuePersistedLeadMessage(
 ): Promise<LeadMessagingOutcome> {
   if (!message) return { message_id: null, status: "not_requested" };
   if (message.status === "skipped") {
+    await recordLeadMessageSkipped(message);
     return { message_id: message._id.toString(), status: "skipped" };
   }
   try {
@@ -447,6 +453,11 @@ export async function dispatchPersistedLeadMessage(
       provider_status: providerStatus,
     });
   }
+  await recordLeadMessageAfterTwilioAccept({
+    message,
+    sendAt: sendInput?.sendAt,
+    status,
+  });
   return { message_id: message._id.toString(), status };
 }
 
@@ -1034,5 +1045,10 @@ async function recordStatusCallbackEvent(
     errorMessage: deliveryFailed ? input.errorMessage ?? providerStatus : null,
     notificationCandidate: false,
     reportable: applied,
+  });
+  await recordLeadMessageAfterStatusCallback({
+    message,
+    providerStatus,
+    applied,
   });
 }

@@ -1,5 +1,6 @@
 import { logger } from "../../logger";
 import { withTransaction } from "../../db";
+import { recordAdoptionConflictDailyOperationsFact } from "../dailyOperations/recordDomainFacts";
 import { recordOperationalEvent } from "../observability";
 import {
   beginRingCentralCallLeadIngestion,
@@ -270,6 +271,16 @@ export async function ingestRingCentralQualifiedCall(
       notificationCandidate: false,
       reportable: false,
     });
+    if (convergence.outcome === "conflict") {
+      const fingerprint =
+        call.telephonySessionId ?? call.sessionId ?? call.callLogId;
+      if (fingerprint) {
+        await recordAdoptionConflictDailyOperationsFact({
+          telephonySessionId: fingerprint,
+          source_company: call.sourceCompany,
+        });
+      }
+    }
   }
 
   const callTimestamp = call.startTime ?? call.answeredAt ?? now;

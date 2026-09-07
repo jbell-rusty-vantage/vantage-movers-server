@@ -47,3 +47,4 @@ export * from "./domain/granotLifecycle";
 export * from "./domain/conversations";
 export * from "./domain/tariff";
 export * from "./domain/granotCarrierCodes";
+export * from "./domain/dailyOperations";

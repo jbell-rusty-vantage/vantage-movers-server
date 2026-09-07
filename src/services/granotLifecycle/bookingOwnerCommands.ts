@@ -43,6 +43,7 @@ import {
   assertOwnerCommandIdempotencyKey,
   type CanonicalCommandContext,
 } from "../domainCommands/types";
+import { recordCancellationDailyOperationsFact } from "../dailyOperations/recordDomainFacts";
 import { finalizeSheetSync, persistSheetSyncIntent } from "../sheetSync";
 import {
   GRANOT_LIFECYCLE_ERROR_CODES,
@@ -194,6 +195,10 @@ export async function confirmCancellation(
       resource: "cancellation_chain",
       operation: "cancelled_lead.create",
       cancellationId: result.cancellation_ref.id,
+    });
+    await recordCancellationDailyOperationsFact({
+      cancellationId: result.cancellation_ref.id,
+      bookingId: result.booking_ref?.id,
     });
   }
   return result;

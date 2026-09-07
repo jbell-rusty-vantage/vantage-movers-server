@@ -95,15 +95,15 @@ None required. DOP-08 owns pointers.
 
 ## 10. Acceptance criteria
 
-- [ ] `lead_created` capture increments `webhooks.lead_created` only.
-- [ ] `createLeadFromGranot` finalize increments `decisions.minted`
+- [x] `lead_created` capture increments `webhooks.lead_created` only.
+- [x] `createLeadFromGranot` finalize increments `decisions.minted`
       and does **not** increment `leads.*`.
-- [ ] Outcome card has `parent_receipt_id` of the receipt card.
-- [ ] Booked / Release increment `webhooks.booked` / `.release` once.
-- [ ] Intake opened increments `intakes.opened`; refresh does not.
-- [ ] Extension / automation capture is not hooked.
-- [ ] Replay does not increment.
-- [ ] Focused tests + typecheck.
+- [x] Outcome card has `parent_receipt_id` of the receipt card.
+- [x] Booked / Release increment `webhooks.booked` / `.release` once.
+- [x] Intake opened increments `intakes.opened`; refresh does not.
+- [x] Extension / automation capture is not hooked.
+- [x] Replay does not increment.
+- [x] Focused tests + typecheck.
 
 ## 11. Commands
 

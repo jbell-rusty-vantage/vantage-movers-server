@@ -34,6 +34,7 @@ import {
 } from "../domainCommands/types";
 import { officialBookingAgentIds, officialBookingAllocations } from "../agents";
 import { upsertCustomerFromBookingContact } from "../customers";
+import { recordBookingDailyOperationsFact } from "../dailyOperations/recordDomainFacts";
 import { finalizeSheetSync, persistSheetSyncIntent } from "../sheetSync";
 import type { GranotLifecycleConfirmBookingCommandInput } from "../../validation/v1/granotLifecycle.validation";
 import {
@@ -151,6 +152,11 @@ export async function confirmBooking(
   const leadless = booking.is_leadless_booking === true;
   if (!outcome.replayed && resolvedCase.resolution.outcome === "booking_created") {
     await finalizeSheetSync({ ...confirmSheetIntent(leadless), bookingId });
+    await recordBookingDailyOperationsFact({
+      bookingId,
+      bookingKind: "granot_confirm",
+      job_no: resolvedCase.normalized_job_no ?? null,
+    });
   }
   return {
     case_id: input.case_id,

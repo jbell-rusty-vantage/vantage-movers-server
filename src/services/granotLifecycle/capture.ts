@@ -20,6 +20,7 @@ import {
   hashCredentialRedactedPayload,
 } from "./receiptEvidence";
 import { incrementGranotLifecycleReceiptsTotal } from "./metrics";
+import { recordGranotReceiptDailyOperationsFact } from "../dailyOperations/recordGranotFacts";
 
 export const GRANOT_WEBHOOK_STORED_HEADER_ALLOWLIST = [
   "content-type",
@@ -131,6 +132,12 @@ export async function captureGranotLifecycleWebhookReceipt(
   incrementGranotLifecycleReceiptsTotal({
     channel: "granot_webhook",
     event_class: input.route_event_class,
+  });
+  await recordGranotReceiptDailyOperationsFact({
+    receipt_id: result.receipt_id,
+    route_event_class: input.route_event_class,
+    captured_at: input.captured_at,
+    payload: document.payload,
   });
   return { receipt_id: result.receipt_id };
 }

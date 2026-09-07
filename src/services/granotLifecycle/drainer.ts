@@ -22,6 +22,7 @@ import {
   setGranotLifecycleQueueDue,
 } from "./metrics";
 import { granotObservationProcessor } from "./processor";
+import { recordGranotDeadLetterDailyOperationsFact } from "../dailyOperations/recordGranotFacts";
 import {
   CLAIM_BATCH_SIZE,
   CLAIM_CONCURRENCY,
@@ -610,6 +611,10 @@ async function finalizeTechnicalFailure(input: {
         trigger: input.trigger,
       },
       entityId: String(input.claimed.claimed._id),
+    });
+    await recordGranotDeadLetterDailyOperationsFact({
+      receipt_id: String(input.claimed.claimed._id),
+      detail: last_error.code,
     });
     return {
       status: "dead_letter",

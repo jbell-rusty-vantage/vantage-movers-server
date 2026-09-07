@@ -21,6 +21,10 @@ import {
   getGranotLifecycleReceiptsTotal,
   resetGranotLifecycleMetrics,
 } from "./metrics";
+import {
+  clearCapturedDailyOperationsFacts,
+  getCapturedDailyOperationsFacts,
+} from "../dailyOperations/testDailyOperationsSink";
 
 const capturedAt = new Date("2026-08-17T16:00:00.000Z");
 const syntheticPayload = {
@@ -31,6 +35,7 @@ const syntheticPayload = {
 
 afterEach(() => {
   resetGranotLifecycleMetrics();
+  clearCapturedDailyOperationsFacts();
 });
 
 test("[AC-01][AC-35] capture writes a complete v2 webhook receipt with proven auth and no later fields", async () => {
@@ -205,13 +210,19 @@ test("[AC-01] capture refuses an unproven authentication method before persist",
   );
 });
 
-function webhookInput() {
+function webhookInput(
+  overrides: Partial<{
+    route_event_class: "lead_created" | "priority_updated" | "booking_status_changed";
+    payload: unknown;
+  }> = {},
+) {
   return {
     route_event_class: "lead_created" as const,
     captured_at: capturedAt,
     headers: { "content-type": "application/json" },
     payload: syntheticPayload,
     authentication_method: "header_secret" as const,
+    ...overrides,
   };
 }
 
@@ -340,6 +351,123 @@ function automationInput(overrides: Record<string, unknown> = {}) {
   };
 }
 
+test("webhook capture records a Daily Operations receipt fact after persist", async () => {
+  await captureGranotLifecycleWebhookReceipt(
+    webhookInput(),
+    async () => ({ receipt_id: "dop-receipt-1" }),
+  );
+  const facts = getCapturedDailyOperationsFacts();
+  assert.equal(facts.length, 1);
+  assert.equal(facts[0]?.input.kind, "granot.lead_created");
+  assert.equal(facts[0]?.input.dedupe_key, "receipt:dop-receipt-1:lead_created");
+  assert.deepEqual(facts[0]?.input.metric_touches, [
+    "webhooks.lead_created",
+    "hourly.webhooks",
+  ]);
+  assert.equal(facts[0]?.input.parent_receipt_id, null);
+});
+
+test("booking_status_changed Booked payload records granot.booked at capture", async () => {
+  await captureGranotLifecycleWebhookReceipt(
+    {
+      ...webhookInput(),
+      route_event_class: "booking_status_changed",
+      payload: { event_type: "Booked", job_no: "JOB-22" },
+    },
+    async () => ({ receipt_id: "dop-booked-1" }),
+  );
+  const facts = getCapturedDailyOperationsFacts();
+  assert.equal(facts[0]?.input.kind, "granot.booked");
+  assert.deepEqual(facts[0]?.input.metric_touches, [
+    "webhooks.booking_status_changed",
+    "webhooks.booked",
+    "hourly.webhooks",
+  ]);
+  assert.equal(
+    facts[0]?.input.dedupe_key,
+    "receipt:dop-booked-1:booking_status_changed:booked",
+  );
+});
+
+test("identical webhook deliveries increment Daily Operations once per receipt", async () => {
+  await captureGranotLifecycleWebhookReceipt(
+    webhookInput(),
+    async () => ({ receipt_id: "dop-receipt-a" }),
+  );
+  await captureGranotLifecycleWebhookReceipt(
+    webhookInput(),
+    async () => ({ receipt_id: "dop-receipt-b" }),
+  );
+  assert.equal(getCapturedDailyOperationsFacts().length, 2);
+});
+
+test("extension channel capture does not record a Daily Operations fact", async () => {
+  await captureChannelOperationReceipt(
+    channelInput(),
+    async () => ({ receipt_id: "ext-dop-1" }),
+  );
+  assert.deepEqual(getCapturedDailyOperationsFacts(), []);
+});
+
+test("Booked webhook capture increments class and booked once", async () => {
+  await captureGranotLifecycleWebhookReceipt(
+    webhookInput({
+      route_event_class: "booking_status_changed",
+      payload: { event_type: "Booked", job_no: "JOB-22" },
+    }),
+    async () => ({ receipt_id: "dop-booked-1" }),
+  );
+  const facts = getCapturedDailyOperationsFacts();
+  assert.equal(facts.length, 1);
+  assert.equal(facts[0]?.input.kind, "granot.booked");
+  assert.deepEqual(facts[0]?.input.metric_touches, [
+    "webhooks.booking_status_changed",
+    "webhooks.booked",
+    "hourly.webhooks",
+  ]);
+  assert.equal(
+    facts[0]?.input.dedupe_key,
+    "receipt:dop-booked-1:booking_status_changed:booked",
+  );
+});
+
+test("unclassified booking_status_changed increments class only", async () => {
+  await captureGranotLifecycleWebhookReceipt(
+    webhookInput({
+      route_event_class: "booking_status_changed",
+      payload: { job_no: "JOB-22" },
+    }),
+    async () => ({ receipt_id: "dop-unk-1" }),
+  );
+  const facts = getCapturedDailyOperationsFacts();
+  assert.equal(facts.length, 1);
+  assert.deepEqual(facts[0]?.input.metric_touches, [
+    "webhooks.booking_status_changed",
+    "hourly.webhooks",
+  ]);
+  assert.equal(
+    facts[0]?.input.metric_touches.includes("webhooks.booked"),
+    false,
+  );
+});
+
+test("channel capture replay does not increment Daily Operations", async () => {
+  const firstHash = buildGranotChannelReceiptInsert(channelInput()).payload_sha256;
+  const result = await captureChannelOperationReceipt(
+    channelInput(),
+    async () => {
+      throw Object.assign(new Error("duplicate"), { code: 11000 });
+    },
+    async () => ({
+      _id: { toString: () => "winner-receipt" } as never,
+      payload_sha256: firstHash,
+      channel_operation_kind: "lead_snapshot_apply",
+    }),
+  );
+  assert.equal(result.status, "replayed");
+  assert.deepEqual(getCapturedDailyOperationsFacts(), []);
+});
+
 test("[AC-02] automation channel capture stores one granot_http_automation receipt", async () => {
   const persisted: GranotChannelReceiptInsert[] = [];
   const result = await captureChannelOperationReceipt(
@@ -355,6 +483,7 @@ test("[AC-02] automation channel capture stores one granot_http_automation recei
   assert.equal(persisted[0]?.channel_operation_id, automationItem.operation_id);
   assert.equal(persisted[0]?.initiator?.origin, "vantage_admin");
   assert.deepEqual(persisted[0]?.headers, {});
+  assert.deepEqual(getCapturedDailyOperationsFacts(), []);
 });
 
 test("[AC-02] same automation operation ID + different kind is GRANOT_OPERATION_IDEMPOTENCY_CONFLICT", async () => {

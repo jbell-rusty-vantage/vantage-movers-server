@@ -14,6 +14,7 @@ import ringCentralWebhookLocalRoutes from "./routes/ringcentral-webhook-local.ro
 import ringCentralWebhookRoutes from "./routes/ringcentral-webhook.routes";
 import granotWebhookRoutes from "./routes/granot-webhook.routes";
 import sheetSyncCronRoutes from "./routes/sheet-sync-cron.routes";
+import dailyOperationsCronRoutes from "./routes/daily-operations-cron.routes";
 import leadMessagingCronRoutes from "./routes/lead-messaging-cron.routes";
 import cplCorrectionCronRoutes from "./routes/cpl-correction-cron.routes";
 import twilioMessageStatusRoutes from "./routes/twilio-message-status.routes";
@@ -56,6 +57,7 @@ app.use(ringCentralWebhookLocalRoutes);
 app.use(ringCentralCronRoutes);
 app.use(bookingReconciliationCronRoutes);
 app.use(sheetSyncCronRoutes);
+app.use(dailyOperationsCronRoutes);
 app.use(leadMessagingCronRoutes);
 app.use(cplCorrectionCronRoutes);
 app.use(notificationCronRoutes);

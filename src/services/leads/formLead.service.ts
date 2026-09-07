@@ -48,6 +48,7 @@ import {
   deleteBookedLead,
   refreshAttachedBookingFromLead,
 } from "../v1.service";
+import { recordFormLeadDailyOperationsFact } from "../dailyOperations/recordDomainFacts";
 import {
   findDuplicateFormLeadMatch,
   markMatchingCallLeadsWithFormFill,
@@ -303,6 +304,7 @@ export async function completeFormLeadIngestion(
   });
 
   await recordWhatTheOwnerNeedsToKnow(pending);
+  await recordFormLeadDailyOperationsFact(pending);
 
   return {
     lead,

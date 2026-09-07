@@ -104,19 +104,34 @@ None required. DOP-08 owns pointers.
 
 ## 10. Acceptance criteria
 
-- [ ] Form create increments `leads.form` + origin + company once.
-- [ ] Duplicate Form increments `leads.duplicate_form` only.
-- [ ] Call unmatched increments `leads.unmatched_call` only.
-- [ ] Quiet hours at 02:14 ET → `text.deferred` + `card.text.send_at`
+- [x] Form create increments `leads.form` + origin + company once.
+      Evidence: `recordDomainFacts.test.ts` captured `metric_touches`.
+- [x] Duplicate Form increments `leads.duplicate_form` only.
+      Evidence: same file, kind `form_lead.duplicate`.
+- [x] Call unmatched increments `leads.unmatched_call` only.
+      Evidence: same file, kind `call_lead.unmatched`.
+- [x] Quiet hours at 02:14 ET → `text.deferred` + `card.text.send_at`
       8:00 AM ET; no `messages.successful`.
-- [ ] 07:00 ET send → `text.sent` only (not deferred).
-- [ ] First `sent`/`delivered` after deferred → `text.sent` once.
-- [ ] Zip `33101` + state `not_found` → Lead counts **and**
+      Evidence: `send_at` `2026-01-15T13:00:00.000Z`; touches
+      `messages.deferred` only.
+- [x] 07:00 ET send → `text.sent` only (not deferred).
+      Evidence: same file, kinds `["text.sent"]`.
+- [x] First `sent`/`delivered` after deferred → `text.sent` once.
+      Evidence: both callbacks use `message:<id>:successful`.
+- [x] Zip `33101` + state `not_found` → Lead counts **and**
       `exception.zip_missing`.
-- [ ] Replay / reused WordPress lead / duplicate booking submission
+      Evidence: `form_lead.created` includes `leads.total` plus zip-miss
+      fingerprint `exception:zip_missing:FormLead:<leadId>`.
+- [x] Replay / reused WordPress lead / duplicate booking submission
       do not call the writer (or the writer no-ops via dedupe).
-- [ ] `applyBestRelocationPlan` is not a hook site.
-- [ ] Focused tests + typecheck.
+      Evidence: reused helper leaves sink empty; duplicate booking
+      finalize returns before the writer; canonical finalize skipped
+      when `replayed`.
+- [x] `applyBestRelocationPlan` is not a hook site.
+      Evidence: source-search in `recordDomainFacts.test.ts`.
+- [x] Focused tests + typecheck.
+      Evidence: 121 pass; `pnpm typecheck` exit 0. See
+      `reports/DOP-02-completion.md`.
 
 ## 11. Commands
 

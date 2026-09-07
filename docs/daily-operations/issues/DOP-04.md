@@ -82,16 +82,16 @@ None required. DOP-08 owns pointers.
 
 ## 10. Acceptance criteria
 
-- [ ] Snapshot includes `yesterday_by_now` per headline metric.
-- [ ] All `SOURCE_COMPANIES` slugs Daily Operations tracks appear,
+- [x] Snapshot includes `yesterday_by_now` per headline metric.
+- [x] All `SOURCE_COMPANIES` slugs Daily Operations tracks appear,
       including zeros.
-- [ ] `wordpress_form: 0` is a valid, present key.
-- [ ] `intakes.still_open` is a live case count, not a day increment.
-- [ ] `texts.held_now` is a live scheduled-message count.
-- [ ] Rebuild of an open day changes counters, not event rows.
-- [ ] Close cron sets yesterday `status: "closed"`.
-- [ ] Non-owner / missing API secret is 401/403.
-- [ ] Focused tests + typecheck.
+- [x] `wordpress_form: 0` is a valid, present key.
+- [x] `intakes.still_open` is a live case count, not a day increment.
+- [x] `texts.held_now` is a live scheduled-message count.
+- [x] Rebuild of an open day changes counters, not event rows.
+- [x] Close cron sets yesterday `status: "closed"`.
+- [x] Non-owner / missing API secret is 401/403.
+- [x] Focused tests + typecheck.
 
 ## 11. Commands
 
