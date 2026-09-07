@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-07T23:11:16Z
 - Service / module: `reporting` / `live/syntheticManifestPageAdapter.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / (PR #203 merged; this pass opens or updates the current docs/story-refactor PR)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/205
 
 ## Stock at start
 
