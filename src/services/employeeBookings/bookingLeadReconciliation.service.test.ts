@@ -5,12 +5,14 @@ import { afterEach, test } from "node:test";
 import { inspect } from "node:util";
 import path from "node:path";
 import { Types } from "mongoose";
+import { BookedLead } from "../../models/BookedLead";
 import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconciliationCase";
 import { CallLead } from "../../models/CallLead";
 import { FormLead } from "../../models/FormLead";
 import {
   getBookingLeadReconciliationCase,
   listBookingLeadReconciliationCases,
+  persistBookingLeadReconciliationResolveInTransaction,
   searchBookingLeadCandidates,
 } from "./bookingLeadReconciliation.service";
 
@@ -26,12 +28,16 @@ const originalFind = BookingLeadReconciliationCase.find;
 const originalFindById = BookingLeadReconciliationCase.findById;
 const originalFormLeadFind = FormLead.find;
 const originalCallLeadFind = CallLead.find;
+const originalBookedLeadFindById = BookedLead.findById;
+const originalCallLeadCreate = CallLead.create;
 
 afterEach(() => {
   (BookingLeadReconciliationCase as any).find = originalFind;
   (BookingLeadReconciliationCase as any).findById = originalFindById;
   (FormLead as any).find = originalFormLeadFind;
   (CallLead as any).find = originalCallLeadFind;
+  (BookedLead as any).findById = originalBookedLeadFindById;
+  (CallLead as any).create = originalCallLeadCreate;
 });
 
 test("listBookingLeadReconciliationCases returns admin-facing summary fields", async () => {
@@ -183,8 +189,8 @@ test("getBookingLeadReconciliationCase returns detail fields consumed by admin",
         reason: "no_match",
         candidate_count: 0,
         candidate_snapshot_hash: "hash",
-        auto_match_policy_version: "employee-booking-v1",
-        enabled_auto_match_rules: ["channel_phone_exact"],
+        auto_match_policy_version: "exact-job-v1",
+        enabled_auto_match_rules: ["call_job_no_exact", "form_job_no_exact"],
       },
     ],
     retry: { attempt_count: 0 },
@@ -434,6 +440,83 @@ test("searchBookingLeadCandidates returns Granot and ingested contact snapshots"
     captured_at: "2026-08-01T12:00:00.000Z",
   });
   assert.equal("secret" in (result.items[0]?.ingested_contact_snapshot ?? {}), false);
+});
+
+test("dismissing an owner_booking pending case leaves the Booking Leadless", async () => {
+  const bookingId = new Types.ObjectId("64c0f47e4d8b0eaaaaaaa001");
+  const caseId = new Types.ObjectId("64c0f47e4d8b0eaaaaaaa002");
+  let createdCallLeads = 0;
+  const booking = {
+    _id: bookingId,
+    is_leadless_booking: true,
+    booking_origin: "owner_booking",
+    lead_ref: undefined,
+    lead_model: undefined,
+    cancelled: undefined,
+  };
+  const caseDoc = {
+    _id: caseId,
+    booking: bookingId,
+    origin: "owner_booking",
+    status: "pending",
+    revision: 0,
+    resolution_history: [] as unknown[],
+    submission: {
+      submission_id: "owner-booking:JOB-100",
+      lead_name: "Unknown",
+      normalized_name: "unknown",
+      phone_number: "not provided",
+      normalized_phone_number: "not_provided",
+      job_no: "JOB-100",
+      normalized_job_no: "JOB-100",
+      binder_amount: 900,
+      deposit_amount: 300,
+      merchant: "Card",
+      agent: "JOSH",
+      book_date: new Date("2026-05-21T00:00:00.000Z"),
+      source_assignment: {
+        lead_source_company: new Types.ObjectId(),
+        source_granularity_id: new Types.ObjectId(),
+        source_granularity_key: "key",
+        source_company: "best_relocation_leads",
+        source_company_label_snapshot: "Best Relocation",
+        source_granularity_label_snapshot: "Forms",
+        crm_source_label_snapshot: "Forms",
+        channel: "form",
+      },
+    },
+    async save() {
+      return this;
+    },
+  };
+  (BookingLeadReconciliationCase as any).findById = () => ({
+    session: () => ({ exec: async () => caseDoc }),
+  });
+  (BookedLead as any).findById = () => ({
+    session: () => ({ exec: async () => booking }),
+  });
+  (CallLead as any).create = async () => {
+    createdCallLeads += 1;
+    return {};
+  };
+
+  await persistBookingLeadReconciliationResolveInTransaction(
+    caseId.toString(),
+    { action: "dismiss", revision: 0 },
+    { actor: "owner@example.test" },
+    { now: new Date() },
+  );
+
+  assert.equal(caseDoc.status, "dismissed");
+  assert.equal(booking.is_leadless_booking, true);
+  assert.equal(booking.lead_ref, undefined);
+  assert.equal(booking.lead_model, undefined);
+  assert.equal(booking.booking_origin, "owner_booking");
+  assert.equal(createdCallLeads, 0);
+  assert.equal(
+    (caseDoc.resolution_history.at(-1) as { action?: string } | undefined)?.action,
+    "dismiss",
+  );
 });
 
 test("reopenBookingLeadReconciliation guards status and live booking before rematch", () => {

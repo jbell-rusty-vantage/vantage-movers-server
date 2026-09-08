@@ -39,6 +39,13 @@ export type DailyOperationsCard = {
     code: string;
     detail: string;
   };
+  sheet_sync?: {
+    resource: string;
+    operation: string;
+    entity_model?: string | null;
+    attempts?: number;
+    error?: string | null;
+  };
 };
 
 export type DailyOperationsLinks = {

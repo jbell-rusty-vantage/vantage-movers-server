@@ -60,6 +60,7 @@ const SNAPSHOT_FIXTURE = {
       dead_letter: 0,
       adoption_conflict: 0,
     },
+    sheet_sync: { completed: 0, failed: 0 },
   },
   origins: {
     granot_lead_created: 20,

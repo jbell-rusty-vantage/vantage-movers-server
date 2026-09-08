@@ -1012,7 +1012,11 @@ export async function listConnectLeadCandidates(
       404,
     );
   }
-  if (!isConnectableLeadlessBooking(booking)) {
+  const openCase = await BookingLeadReconciliationCase.exists({
+    booking: booking._id,
+    status: "pending",
+  });
+  if (!isConnectableLeadlessBooking(booking, { hasOpenReconciliationCase: Boolean(openCase) })) {
     throw new GranotLifecycleError(
       "Booking is not a connectable Leadless Booking",
       GRANOT_LIFECYCLE_ERROR_CODES.IDENTITY_CONFLICT,

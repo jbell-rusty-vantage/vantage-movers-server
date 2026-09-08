@@ -49,6 +49,34 @@ test("missing open day returns seeded zeros, not 404", async () => {
   assert.equal(snapshot.hourly.today.length, 24);
 });
 
+test("sheet_sync touches increment the day and surface on the snapshot; pre-hook days read zero", async () => {
+  const today = dayWithTouches(
+    "2026-09-06",
+    ["sheet_sync.completed", "sheet_sync.completed", "sheet_sync.failed"],
+    14,
+  );
+  const legacy = buildDaySeed("2026-09-06") as Record<string, unknown>;
+  delete legacy.sheet_sync;
+  const deps = {
+    now: () => new Date("2026-09-06T18:14:00.000Z"),
+    countOpenIntakes: async () => 0,
+    countHeldMessages: async () => 0,
+    redisConfigured: () => false,
+  };
+
+  const snapshot = await getDailyOperationsSnapshot({
+    ...deps,
+    loadDay: async (day) => (day === "2026-09-06" ? (today as never) : null),
+  });
+  assert.deepEqual(snapshot.metrics.sheet_sync, { completed: 2, failed: 1 });
+
+  const preHook = await getDailyOperationsSnapshot({
+    ...deps,
+    loadDay: async (day) => (day === "2026-09-06" ? (legacy as never) : null),
+  });
+  assert.deepEqual(preHook.metrics.sheet_sync, { completed: 0, failed: 0 });
+});
+
 test("missing yesterday yields null totals so the UI can show a dash", async () => {
   const today = dayWithTouches(
     "2026-09-06",

@@ -17,6 +17,7 @@ import {
   recordFormLeadDailyOperationsFact,
   recordLeadMessageAfterStatusCallback,
   recordLeadMessageAfterTwilioAccept,
+  recordSheetSyncDailyOperationsFact,
   zipMissSides,
 } from "./recordDomainFacts";
 import {
@@ -544,6 +545,74 @@ test("duplicate booking finalize returns before the Daily Operations writer", as
   const next = source.indexOf("\nexport async function ", start + 1);
   const body = source.slice(start, next === -1 ? undefined : next);
   assert.ok(body.indexOf('outcome.kind === "duplicate"') < body.indexOf("recordBookingDailyOperationsFact"));
+});
+
+test("Sheet Sync job outcomes record one deduped fact per job and outcome with a metric touch", async () => {
+  const jobId = new mongoose.Types.ObjectId();
+  const job = {
+    _id: jobId,
+    resource: "source_lead",
+    operation: "form_lead.create",
+    entity_model: "FormLead",
+    entity_id: "lead-1",
+    attempts: 0,
+  };
+  await recordSheetSyncDailyOperationsFact({
+    job,
+    outcome: "failed",
+    attempts: 1,
+    error: "quota",
+  });
+  await recordSheetSyncDailyOperationsFact({ job, outcome: "completed" });
+
+  const failed = capturedOf("sheet_sync.failed");
+  assert.equal(failed.length, 1);
+  assert.equal(failed[0]!.input.dedupe_key, `sheet_sync:${jobId.toString()}:failed`);
+  assert.deepEqual(failed[0]!.input.metric_touches, ["sheet_sync.failed"]);
+  assert.equal(failed[0]!.input.entity_type, "SheetSyncJob");
+  assert.deepEqual(failed[0]!.input.links, { lead_id: "lead-1", lead_model: "FormLead" });
+  assert.deepEqual(failed[0]!.input.card, {
+    sheet_sync: {
+      resource: "source_lead",
+      operation: "form_lead.create",
+      entity_model: "FormLead",
+      attempts: 1,
+      error: "quota",
+    },
+  });
+
+  const completed = capturedOf("sheet_sync.completed");
+  assert.equal(completed.length, 1);
+  assert.equal(completed[0]!.input.dedupe_key, `sheet_sync:${jobId.toString()}:completed`);
+  assert.deepEqual(completed[0]!.input.metric_touches, ["sheet_sync.completed"]);
+
+  await recordSheetSyncDailyOperationsFact({
+    job: { ...job, resource: "booking_chain", entity_id: "booking-9" },
+    outcome: "completed",
+  });
+  assert.deepEqual(capturedOf("sheet_sync.completed")[1]!.input.links, { booking_id: "booking-9" });
+});
+
+test("the drainer records Sheet Sync facts on synced and failed jobs, never on coalesced duplicates or deferrals", async () => {
+  const source = (
+    await readFile(path.join(__dirname, "../sheetSync/drainer/runSheetSyncDrain.ts"), "utf8")
+  ).replace(/\r\n/g, "\n");
+  const coordinator = await readFile(
+    path.join(__dirname, "../sheetSync/sheetSyncCoordinator.ts"),
+    "utf8",
+  );
+  assert.equal(source.match(/recordJobCompletedFact\(job\)/g)?.length, 2);
+  assert.match(source, /recordSheetSyncDailyOperationsFact\(\{\s*job,\s*outcome: "failed"/);
+  const duplicatesLoop = source.slice(source.indexOf("for (const job of duplicates)"));
+  const duplicatesBody = duplicatesLoop.slice(0, duplicatesLoop.indexOf("\n    }\n"));
+  assert.match(duplicatesBody, /coalesced_into_representative/);
+  assert.doesNotMatch(duplicatesBody, /recordJobCompletedFact/);
+  const deferStart = source.indexOf("else if (anyDeferred)");
+  const deferBranch = source.slice(deferStart, source.indexOf("} else {", deferStart));
+  assert.match(deferBranch, /deferJob\(job/);
+  assert.doesNotMatch(deferBranch, /recordSheetSyncDailyOperationsFact|recordJobCompletedFact/);
+  // Spec §15.9: finalizeSheetSync is a queue wake-up, not a job outcome.
+  assert.doesNotMatch(coordinator, /recordSheetSyncDailyOperationsFact/);
 });
 
 test("completeCallLeadIngestion is the only Call Lead volume hook", async () => {

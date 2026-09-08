@@ -25,6 +25,14 @@ afterEach(() => {
   }
 });
 
+test("getBookingReconciliationConfig defaults rematch reasons to matching_unavailable and no_match", () => {
+  delete process.env.BOOKING_RECONCILIATION_AUTO_REMATCH_REASONS;
+  assert.deepEqual(getBookingReconciliationConfig().autoRematchReasons, [
+    "matching_unavailable",
+    "no_match",
+  ]);
+});
+
 test("parseBookingReconciliationReasons rejects unknown values", () => {
   assert.throws(
     () => parseBookingReconciliationReasons("matching_unavailable,unknown"),

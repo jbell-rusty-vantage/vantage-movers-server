@@ -40,5 +40,7 @@
 
 ## 6. Acceptance criteria
 
-- [ ] Knowledge sentences match the shipped code, not the next idea.
-- [ ] Glossary terms used; no new synonyms.
+- [x] Knowledge sentences match the shipped code, not the next idea.
+  Evidence: Reverified `employeeBookingMatching.ts` (job-only parse + `exact-job-v1` + `snapshotEmployeeBookingAutoMatchPolicy`), `bookingReconciliation.ts` (default rematch `matching_unavailable,no_match`), `leadMatchEvaluator.ts` (same-job multiples → `multiple_matches`; job vs phone on different Leads → `identity_conflict`), `ownerBookingAttach.ts` / `bookedLeadFromSource.service.ts` / `bookingSourceResolver.ts` (Owner Call Lead Exact Job Booking Attach; import still phone-match / unmatched mint), `leadlessBooking.service.ts` (`owner_booking.create_pending`), `connectLead.ts` / `confirmAttachment.ts` (Connect = official Granot Leadless and no pending case). Admin copy: `booking-form-copy.ts`, `booking-stored-lead.ts`, `booking-reconciliation-copy.ts`. Patched `employee-bookings.md`, `bookings.md`, `owner-booking-intake.md`, Admin `project-organization.mdc`. Report: [`../reports/EJBA-04-completion.md`](../reports/EJBA-04-completion.md).
+- [x] Glossary terms used; no new synonyms.
+  Evidence: Exact Job Booking Attach, Precise Booking Form, Booking Lead Reconciliation, Booking Lead Reconciliation Case, Leadless Booking, Connect Booking to Lead, Employee Booking Submission, Unmatched Call Lead. Field names (`owner_booking`, `dismiss`) kept as code identifiers.

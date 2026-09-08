@@ -545,6 +545,74 @@ export async function recordCrmFailedDailyOperationsFact(input: {
   });
 }
 
+export type SheetSyncJobFactSnapshot = {
+  _id: { toString(): string };
+  resource: string;
+  operation: string;
+  entity_model?: string | null;
+  entity_id: string;
+  attempts?: number | null;
+};
+
+function sheetSyncLinks(job: SheetSyncJobFactSnapshot): DailyOperationsLinks {
+  const entityId = job.entity_id;
+  if (!entityId) return {};
+  switch (job.resource) {
+    case "source_lead":
+      return {
+        lead_id: entityId,
+        ...(job.entity_model === "FormLead" || job.entity_model === "CallLead"
+          ? { lead_model: job.entity_model }
+          : {}),
+      };
+    case "booked_lead":
+    case "booking_chain":
+      return { booking_id: entityId };
+    case "cancellation_chain":
+      return { cancellation_id: entityId };
+    default:
+      return {};
+  }
+}
+
+/**
+ * One Sheet Sync fact per drained job outcome (spec §15.9). Dedupe key is per
+ * job and outcome, so a job that fails, retries, and then syncs leaves one
+ * `failed` and one `completed` fact — retries of the same failure are silent.
+ * Quota deferrals are not outcomes and are never recorded.
+ */
+export async function recordSheetSyncDailyOperationsFact(input: {
+  job: SheetSyncJobFactSnapshot;
+  outcome: "completed" | "failed";
+  attempts?: number;
+  error?: string | null;
+  occurred_at?: Date;
+}): Promise<void> {
+  const jobId = input.job._id.toString();
+  const kind: DailyOperationsKind =
+    input.outcome === "completed" ? "sheet_sync.completed" : "sheet_sync.failed";
+  const attempts = input.attempts ?? input.job.attempts ?? undefined;
+  await recordDailyOperationsFact({
+    kind,
+    dedupe_key: `sheet_sync:${jobId}:${input.outcome}`,
+    occurred_at: input.occurred_at,
+    title: titleForKind(kind),
+    entity_type: "SheetSyncJob",
+    entity_id: jobId,
+    links: sheetSyncLinks(input.job),
+    card: {
+      sheet_sync: {
+        resource: input.job.resource,
+        operation: input.job.operation,
+        entity_model: input.job.entity_model ?? null,
+        ...(attempts != null ? { attempts } : {}),
+        ...(input.error ? { error: input.error } : {}),
+      },
+    },
+    metric_touches: buildMetricTouches(kind),
+  });
+}
+
 export async function recordAdoptionConflictDailyOperationsFact(input: {
   telephonySessionId: string;
   source_company?: string | null;

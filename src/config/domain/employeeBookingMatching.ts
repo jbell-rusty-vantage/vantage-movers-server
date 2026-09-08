@@ -1,9 +1,6 @@
 const ALLOWED_AUTO_MATCH_RULES = [
-  "form_lid_exact",
   "call_job_no_exact",
-  "form_contact_triple_exact",
-  "form_email_phone_exact",
-  "channel_phone_exact",
+  "form_job_no_exact",
 ] as const;
 
 export type EmployeeBookingAutoMatchRule =
@@ -17,7 +14,7 @@ export type EmployeeBookingMatchingConfig = {
 export function getEmployeeBookingMatchingConfig(): EmployeeBookingMatchingConfig {
   const policyVersion =
     process.env.EMPLOYEE_BOOKING_AUTO_MATCH_POLICY_VERSION?.trim() ||
-    "employee-booking-v1";
+    "exact-job-v1";
   const configuredRules =
     process.env.EMPLOYEE_BOOKING_AUTO_MATCH_RULES?.trim() ||
     ALLOWED_AUTO_MATCH_RULES.join(",");
@@ -25,6 +22,17 @@ export function getEmployeeBookingMatchingConfig(): EmployeeBookingMatchingConfi
   return {
     policyVersion,
     enabledRules: parseEmployeeBookingAutoMatchRules(configuredRules),
+  };
+}
+
+export function snapshotEmployeeBookingAutoMatchPolicy(): {
+  auto_match_policy_version: string;
+  enabled_auto_match_rules: EmployeeBookingAutoMatchRule[];
+} {
+  const config = getEmployeeBookingMatchingConfig();
+  return {
+    auto_match_policy_version: config.policyVersion,
+    enabled_auto_match_rules: config.enabledRules,
   };
 }
 

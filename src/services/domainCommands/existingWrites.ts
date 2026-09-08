@@ -410,6 +410,7 @@ export async function runExistingCreateLeadlessBooking(input: {
   const data = createLeadlessBookingSchema.parse(input.data);
   const changeIds = preallocatedChangeIds(1);
   let bookingId: string | undefined;
+  let reconciliationCaseId: string | undefined;
   const command = await executeCanonicalCommandWithPostCommit({
     command_name: "createLeadlessBooking",
     context: input.context,
@@ -425,6 +426,7 @@ export async function runExistingCreateLeadlessBooking(input: {
         tx,
       );
       bookingId = pending.booking._id.toString();
+      reconciliationCaseId = pending.reconciliation_case_id;
       await persistPlannedMutations(
         "createLeadlessBooking",
         input.context,
@@ -445,11 +447,7 @@ export async function runExistingCreateLeadlessBooking(input: {
       };
     },
     finalize: async (pending) => {
-      await finalizeSheetSync({
-        resource: "booked_lead",
-        operation: "leadless_booking.create",
-        bookingId: pending.booking._id.toString(),
-      });
+      await finalizeSheetSync(pending.sheetJob);
       await recordBookingDailyOperationsFact({
         bookingId: pending.booking._id.toString(),
         bookingKind: "leadless",
@@ -471,6 +469,9 @@ export async function runExistingCreateLeadlessBooking(input: {
             message: "Leadless booking created.",
             warnings: command.warnings,
             total_binder_amount: booking.total_binder_amount,
+            ...(booking.booking_origin === "owner_booking" && reconciliationCaseId
+              ? { reconciliation_case_id: reconciliationCaseId }
+              : {}),
           };
         })()
       : null,

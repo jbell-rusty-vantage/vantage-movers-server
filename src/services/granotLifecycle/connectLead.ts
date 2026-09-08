@@ -1,3 +1,4 @@
+import { isGranotOfficialLeadlessBooking } from "./confirmAttachment";
 import type { LeadModel } from "./types";
 
 export type ConnectSelectedLead = {
@@ -9,6 +10,7 @@ export type ConnectBookingView = {
   cancelled?: unknown;
   is_referral_booking?: boolean;
   is_leadless_booking?: boolean;
+  booking_origin?: string | null;
   lead_ref?: unknown;
   lead_model?: unknown;
   domain_revision?: number;
@@ -46,11 +48,14 @@ export type ConnectEvaluation =
       message: string;
     };
 
-export function isConnectableLeadlessBooking(booking: ConnectBookingView | null | undefined): boolean {
+export function isConnectableLeadlessBooking(
+  booking: ConnectBookingView | null | undefined,
+  options?: { hasOpenReconciliationCase?: boolean },
+): boolean {
   if (!booking) return false;
   if (booking.cancelled) return false;
-  if (booking.is_referral_booking === true) return false;
-  return booking.is_leadless_booking === true || !booking.lead_ref;
+  if (options?.hasOpenReconciliationCase === true) return false;
+  return isGranotOfficialLeadlessBooking(booking);
 }
 
 export function isEligibleConnectLead(
@@ -133,6 +138,7 @@ export function evaluateConnectPreconditions(input: {
   lead_owned_by_other_booking: boolean;
   source_assignment?: ConnectSourceAssignment;
   out_of_scope_override_reason?: string;
+  hasOpenReconciliationCase?: boolean;
 }): ConnectEvaluation {
   const booking = input.booking;
   if (!booking) {
@@ -154,7 +160,9 @@ export function evaluateConnectPreconditions(input: {
       message: "This Booking already has a different stored lead",
     };
   }
-  if (!isConnectableLeadlessBooking(booking)) {
+  if (!isConnectableLeadlessBooking(booking, {
+    hasOpenReconciliationCase: input.hasOpenReconciliationCase,
+  })) {
     return { kind: "reject", code: "IDENTITY_CONFLICT", message: "Booking is not a connectable Leadless Booking" };
   }
   if (booking.domain_revision !== input.expected_booking_revision) {

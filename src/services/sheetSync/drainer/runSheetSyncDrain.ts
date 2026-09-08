@@ -7,6 +7,7 @@ import {
 import { connectMongo } from "../../../db";
 import { logger } from "../../../logger";
 import { recordOperationalEvent } from "../../observability";
+import { recordSheetSyncDailyOperationsFact } from "../../dailyOperations/recordDomainFacts";
 import {
   mergeSheetSyncEntries,
   removeSheetSyncEntries,
@@ -197,6 +198,7 @@ export async function runSheetSyncDrain(
       await requireActiveLease();
       await markJobSynced(job);
       syncedJobs += 1;
+      await recordJobCompletedFact(job);
     }
 
     // Apply per-job status from its write outcomes.
@@ -240,10 +242,12 @@ export async function runSheetSyncDrain(
       } else {
         await markJobSynced(job);
         syncedJobs += 1;
+        await recordJobCompletedFact(job);
       }
     }
 
-    // Duplicate jobs are fully covered by their representative's sync.
+    // Duplicate jobs are fully covered by their representative's sync; the
+    // representative's Daily Operations fact speaks for them.
     for (const job of duplicates) {
       await requireActiveLease();
       await markJobSynced(job, "coalesced_into_representative");
@@ -609,13 +613,28 @@ function drainEnvironment(): string {
 }
 
 /**
+ * Daily Operations Sheet Sync panel: one `sheet_sync.completed` fact per job
+ * that reached `synced` (spec §15.9). After-commit, never throws.
+ */
+async function recordJobCompletedFact(job: SheetSyncJobDocument): Promise<void> {
+  await recordSheetSyncDailyOperationsFact({ job, outcome: "completed" });
+}
+
+/**
  * Records a per-job sheet write failure (and an `exhausted` event when the job
- * has reached its max attempts). Best-effort.
+ * has reached its max attempts). Best-effort. Also leaves the Daily Operations
+ * `sheet_sync.failed` fact (deduped per job, so retries stay quiet).
  */
 async function recordJobFailureEvent(
   job: SheetSyncJobDocument,
   outcome: { terminal: boolean; attempts: number; message: string },
 ): Promise<void> {
+  await recordSheetSyncDailyOperationsFact({
+    job,
+    outcome: "failed",
+    attempts: outcome.attempts,
+    error: outcome.message,
+  });
   await recordOperationalEvent({
     level: "error",
     eventKey: "sheet_sync.write.failed",

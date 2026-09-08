@@ -4,6 +4,7 @@ import {
   getDailyOperationsDayModel,
   type DailyOperationsDayDocument,
 } from "../../models/DailyOperationsDay";
+import { getDailyOperationsEventModel } from "../../models/DailyOperationsEvent";
 import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
 import { getGranotBookingReconciliationCaseModel } from "../../models/GranotBookingReconciliationCase";
@@ -48,6 +49,7 @@ export type DailyOperationsRebuildCounters = Pick<
   | "cancellations"
   | "intakes"
   | "exceptions"
+  | "sheet_sync"
   | "hourly"
 >;
 
@@ -353,7 +355,16 @@ async function defaultAggregateOpenDay(
     },
   });
 
+  // Sheet Sync has no domain collection that records "job done today"; the
+  // append-only, per-job-deduped Daily Operations Events are the record.
+  const Event = getDailyOperationsEventModel();
+  const [sheetSyncCompleted, sheetSyncFailed] = await Promise.all([
+    Event.countDocuments({ day: input.day, kind: "sheet_sync.completed" }),
+    Event.countDocuments({ day: input.day, kind: "sheet_sync.failed" }),
+  ]);
+
   return {
+    sheet_sync: { completed: sheetSyncCompleted, failed: sheetSyncFailed },
     leads: seed.leads,
     origins: seed.origins,
     companies: seed.companies,

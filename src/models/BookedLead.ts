@@ -54,7 +54,7 @@ const BookedLeadSchema = new Schema(
     source: { type: String, required: true, trim: true },
     booking_origin: {
       type: String,
-      enum: ["employee_booking"],
+      enum: ["employee_booking", "owner_booking"],
       index: true,
     },
     is_referral_booking: { type: Boolean, required: true, default: false, index: true },
@@ -74,8 +74,9 @@ const BookedLeadSchema = new Schema(
       rule: {
         type: String,
         enum: [
-          "form_lid_exact",
           "call_job_no_exact",
+          "form_job_no_exact",
+          "form_lid_exact",
           "form_contact_triple_exact",
           "form_email_phone_exact",
           "channel_phone_exact",

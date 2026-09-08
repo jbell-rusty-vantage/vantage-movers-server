@@ -40,9 +40,16 @@ test("Connect sheet intent is booking_chain / booked_lead.connect_lead", () => {
   assert.match(CONNECT_LEAD_OWNER_NOTICE, /Master Booked/);
 });
 
-test("Leadless non-referral non-cancelled Bookings are connectable", () => {
+test("only Granot official Leadless Bookings without an open case are connectable", () => {
   assert.equal(isConnectableLeadlessBooking(leadlessBooking), true);
-  assert.equal(isConnectableLeadlessBooking({ lead_ref: undefined, is_referral_booking: false }), true);
+  assert.equal(isConnectableLeadlessBooking({
+    is_leadless_booking: true,
+    is_referral_booking: false,
+  }), true);
+  assert.equal(isConnectableLeadlessBooking({
+    lead_ref: undefined,
+    is_referral_booking: false,
+  }), false);
   assert.equal(isConnectableLeadlessBooking({
     is_leadless_booking: true,
     is_referral_booking: true,
@@ -56,6 +63,59 @@ test("Leadless non-referral non-cancelled Bookings are connectable", () => {
     lead_ref: leadId,
     lead_model: "FormLead",
   }), false);
+});
+
+test("Connect rejects owner_booking and employee_booking Leadless and any open case", () => {
+  assert.equal(isConnectableLeadlessBooking({
+    is_leadless_booking: true,
+    is_referral_booking: false,
+    booking_origin: "owner_booking",
+  }), false);
+  assert.equal(isConnectableLeadlessBooking({
+    is_leadless_booking: true,
+    is_referral_booking: false,
+    booking_origin: "employee_booking",
+  }), false);
+  assert.equal(isConnectableLeadlessBooking(leadlessBooking, {
+    hasOpenReconciliationCase: true,
+  }), false);
+
+  const ownerReject = evaluateConnectPreconditions({
+    booking: {
+      ...leadlessBooking,
+      booking_origin: "owner_booking",
+    },
+    expected_booking_revision: 2,
+    selected_lead: selected,
+    lead: eligibleLead,
+    lead_owned_by_other_booking: false,
+  });
+  assert.equal(ownerReject.kind, "reject");
+  if (ownerReject.kind === "reject") assert.equal(ownerReject.code, "IDENTITY_CONFLICT");
+
+  const employeeReject = evaluateConnectPreconditions({
+    booking: {
+      ...leadlessBooking,
+      booking_origin: "employee_booking",
+    },
+    expected_booking_revision: 2,
+    selected_lead: selected,
+    lead: eligibleLead,
+    lead_owned_by_other_booking: false,
+  });
+  assert.equal(employeeReject.kind, "reject");
+  if (employeeReject.kind === "reject") assert.equal(employeeReject.code, "IDENTITY_CONFLICT");
+
+  const openCaseReject = evaluateConnectPreconditions({
+    booking: leadlessBooking,
+    expected_booking_revision: 2,
+    selected_lead: selected,
+    lead: eligibleLead,
+    lead_owned_by_other_booking: false,
+    hasOpenReconciliationCase: true,
+  });
+  assert.equal(openCaseReject.kind, "reject");
+  if (openCaseReject.kind === "reject") assert.equal(openCaseReject.code, "IDENTITY_CONFLICT");
 });
 
 test("Eligible Connect Leads exclude Duplicate, Bad, cancelled, booked, and unmatched Call Leads", () => {

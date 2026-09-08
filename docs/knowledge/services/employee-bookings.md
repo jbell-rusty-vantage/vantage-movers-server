@@ -4,7 +4,7 @@ title: Employee Bookings
 description: Public employee booking submit with auto-match, plus Owner booking-lead reconciliation cases.
 tags: [booking, employee-booking]
 status: draft
-stale_after: 2026-11-21
+stale_after: 2026-12-08
 resource: src/services/employeeBookings/submitEmployeeBooking.service.ts
 applies_to:
   - src/services/employeeBookings/submitEmployeeBooking.service.ts
@@ -22,17 +22,17 @@ sources:
     title: Platform glossary
 generated:
   by: process:docs-keeper
-  at: 2026-09-04T20:50:00Z
+  at: 2026-09-08T20:30:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/employeeBookings/`  
-**Domain terms used:** [Booking](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Source Company](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md)
+**Domain terms used:** [Employee Booking Submission](../../../../CONTEXT.md), [Exact Job Booking Attach](../../../../CONTEXT.md), [Booking Lead Reconciliation](../../../../CONTEXT.md), [Booking Lead Reconciliation Case](../../../../CONTEXT.md), [Leadless Booking](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md)
 
 # Employee Bookings
 
 **System of Record:** MongoDB `booked_leads` plus `booking_lead_reconciliation_cases`. This path is **not** the Granot Booking Reconciliation Case ([`booking-reconciliation.md`](../granot-lifecycle/booking-reconciliation.md)).
 
-**Role:** Public employee submit creates a Booking. A unique source-compatible auto-match attaches the Lead in the same transaction; otherwise the Booking is leadless and an Owner case is opened. Canonical `POST /api/v1/leadless-bookings` remains a separate admin path ([`bookings.md`](./bookings.md)).
+**Role:** Public [Employee Booking Submission](../../../../CONTEXT.md) creates a Booking. [Exact Job Booking Attach](../../../../CONTEXT.md) links a unique Job Number Lead in the same transaction; otherwise the Booking is a [Leadless Booking](../../../../CONTEXT.md) and a [Booking Lead Reconciliation Case](../../../../CONTEXT.md) is opened. Canonical `POST /api/v1/leadless-bookings` remains a separate admin path ([`bookings.md`](./bookings.md)).
 
 ## HTTP / cron
 
@@ -57,25 +57,22 @@ Confirmation code is the last 8 hex chars of the Booking id.
 
 ## Auto-match (current code)
 
-Preferred model follows the submitted granularity channel (`form` → Form Lead, `call` → Call Lead). Enabled rules default to all five, or `EMPLOYEE_BOOKING_AUTO_MATCH_RULES` (`none` disables auto-link).
+[Exact Job Booking Attach](../../../../CONTEXT.md). Preferred model follows the submitted granularity channel (`form` → Form Lead, `call` → Call Lead). Default policy version is `exact-job-v1`. Enabled rules default to `call_job_no_exact,form_job_no_exact`, or `EMPLOYEE_BOOKING_AUTO_MATCH_RULES`. The parser rejects `form_lid_exact`, `form_contact_triple_exact`, `form_email_phone_exact`, and `channel_phone_exact`. `none` disables automatic attach.
 
 | Before any rule | Outcome |
 |-----------------|---------|
-| Identity conflict across candidates | `pending` / `identity_conflict` |
-| Candidate query overflow | `pending` / `multiple_matches` — never auto-links |
+| Job Number and phone on different Leads, or LID vs Job Number on different Leads | `pending` / `identity_conflict` |
+| Two Call Leads (or two Form Leads) with the same Job Number; candidate query overflow | `pending` / `multiple_matches` — never auto-links |
 | Strongest blocked reason (channel-only, source, duplicate, booked, cancelled) | that pending reason |
 
 Positive rules, first enabled winner:
 
 | Rule | Links when |
 |------|------------|
-| `form_lid_exact` | Form channel + unique LID-eligible Form Lead, source-compatible |
-| `call_job_no_exact` | Call channel + unique job-number Call Lead |
-| `form_contact_triple_exact` | Form channel, no LID candidate, unique phone+email+name at exact granularity |
-| `form_email_phone_exact` | Form channel, no LID candidate, unique phone+email at exact granularity, no `name_contradiction` |
-| `channel_phone_exact` | Unique preferred-model phone at exact granularity |
+| `call_job_no_exact` | Call channel + unique job-number Call Lead, source-compatible |
+| `form_job_no_exact` | Form channel + unique job-number Form Lead, source-compatible |
 
-Claim-time failures (Lead cancelled / already booked / duplicate / Call `created_on_unmatched`) downgrade a would-be link to pending. Opposite-channel-only hits stay `channel_conflict`.
+Phone, email, name, and LID never auto-attach. Claim-time failures (Lead cancelled / already booked / duplicate / Call `created_on_unmatched`) downgrade a would-be link to pending. Opposite-channel-only Job Number stays `channel_conflict`. Rematch and Owner pending snapshots use `snapshotEmployeeBookingAutoMatchPolicy()`.
 
 ## Owner case actions
 
@@ -87,7 +84,7 @@ Claim-time failures (Lead cancelled / already booked / duplicate / Call `created
 | `dismissed` | `attach_existing`, `reassign`, `reopen` |
 | `resolved` | `reassign`, `reopen` |
 
-`assertLiveBookingStateForAction` delegates to `assertLiveBookingState`. Cancelled Booking: only `reopen` / `dismiss`. Already attached: cannot attach / create / update / dismiss / reopen — use `reassign` to change the Lead. `reassign` requires an attached Lead. `reopen` is for a leadless dismissed or leadless resolved case.
+`assertLiveBookingStateForAction` delegates to `assertLiveBookingState`. Cancelled Booking: only `reopen` / `dismiss`. Already attached: cannot attach / create / update / dismiss / reopen — use `reassign` to change the Lead. `reassign` requires an attached Lead. `reopen` is for a leadless dismissed or leadless resolved case. `dismiss` stays `dismiss`. An `owner_booking` pending case can be dismissed with no Lead; the Booking stays a [Leadless Booking](../../../../CONTEXT.md).
 
 Overrideable warnings (`duplicate_lead`, `source_conflict`, `channel_conflict`, `source_unassigned`, `same_company_legacy`, `created_on_unmatched`) must be listed **exactly**. `lead_already_booked` and `lead_cancelled` are not overrideable.
 
@@ -95,7 +92,7 @@ Owner candidate search (`searchBookingLeadCandidates` / `searchCandidates`) is a
 
 ## Auto-rematch cron
 
-Default `BOOKING_RECONCILIATION_AUTO_REMATCH_ENABLED` is on unless the env is the string `false`. Default reason list is only `matching_unavailable`. Delays default `5,30,120` minutes. Cron skips entirely when the flag is off.
+Default `BOOKING_RECONCILIATION_AUTO_REMATCH_ENABLED` is on unless the env is the string `false`. Default reason list is `matching_unavailable,no_match`. Delays default `5,30,120` minutes. Cron skips entirely when the flag is off.
 
 ## Related services
 

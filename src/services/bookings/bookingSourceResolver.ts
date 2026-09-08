@@ -24,20 +24,15 @@ import { bestRelocationImportLeadFilter } from "./bestRelocationImportGuard";
 /**
  * Locates (or creates) the source lead a booked-from-source request points at.
  *
- * Behavior preserved from `v1.service.ts`:
- *   - `FormLead` requests look the lead up by `form_lead_id` and reuse the
- *     submitted `job_no`.
- *   - `CallLead` requests with a job number find an existing call lead
- *     (rejecting with 409 if multiple share the same job number) and
- *     refresh its phone number when one was submitted.
- *   - When no job-number match is found, the resolver falls back to a
- *     phone-based match using `findBestCallLeadMatchByPhone`. Matched call
- *     leads receive the submitted job number and phone number before they
- *     are returned.
- *   - When neither path finds a match, a brand-new `CallLead` is created
- *     with `created_on_unmatched: true` so the unmatched call sheet sync
- *     path skips it. `form_fill` is computed via `hasFormFillForCallLead`
- *     against the resolved source company.
+ * Owner Precise Booking Form Call Lead create does **not** use this resolver.
+ * That path asks Exact Job Booking Attach (`evaluateEmployeeBookingMatch`)
+ * and never phone-matches or mints an Unmatched Call Lead.
+ *
+ * This resolver remains for:
+ *   - `FormLead` requests (Owner-selected Mongo ID).
+ *   - Best Relocation import Call Lead (`ingestion_source=best_relocation_sheet`):
+ *     job lookup (409 if 2+), then `findBestCallLeadMatchByPhone`, then mint
+ *     `created_on_unmatched`.
  */
 export async function resolveBookingSourceLead(
   input: CreateBookedLeadFromSourceInput,

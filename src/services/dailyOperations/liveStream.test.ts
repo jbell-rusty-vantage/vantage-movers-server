@@ -61,6 +61,7 @@ const SNAPSHOT: DailyOperationsSnapshot = {
       dead_letter: 0,
       adoption_conflict: 0,
     },
+    sheet_sync: { completed: 0, failed: 0 },
   },
   origins: {
     granot_lead_created: 20,
@@ -292,6 +293,49 @@ test("missing Redis uses Mongo tail oldest-after-cursor and still emits facts", 
   assert.match(joined, /granot.lead_created/);
   assert.match(joined, /event: metrics/);
   assert.equal(seenDay, "2026-09-08");
+});
+
+test("a burst of facts in one wake keeps every touch in the metrics frame", async () => {
+  const chunks: string[] = [];
+  let now = Date.parse("2026-09-08T15:43:00.000Z");
+  const first = eventRow({
+    _id: { toString: () => LATER_ID },
+    occurred_at: new Date("2026-09-08T15:44:05.000Z"),
+  });
+  const second = eventRow({
+    _id: { toString: () => "66ddc0ffee0000000000000c" },
+    occurred_at: new Date("2026-09-08T15:44:06.000Z"),
+  });
+  let polls = 0;
+
+  await runDailyOperationsLiveSse(
+    { write: (chunk) => chunks.push(chunk) },
+    {
+      getSnapshot: async () => SNAPSHOT,
+      findEventById: async () => null,
+      listAfter: async () => {
+        polls += 1;
+        return polls === 1 ? [first, second] : [];
+      },
+      getRedis: () => null,
+      sleep: async () => {
+        now += 8_000;
+      },
+      now: () => now,
+      pollMs: 1,
+      heartbeatMs: 60_000,
+      maxMs: 20_000,
+    },
+  );
+
+  const metricsBlock = chunks.find((chunk) => chunk.includes("event: metrics"));
+  assert.ok(metricsBlock);
+  // Two Form Leads → two `leads.total`, not one deduped touch.
+  assert.match(
+    metricsBlock,
+    /"metric_touches":\["leads.form","leads.total","leads.form","leads.total"\]/,
+  );
+  assert.equal((chunks.join("").match(/event: event\n/g) ?? []).length, 2);
 });
 
 test("Redis throw degrades to Mongo tail for that loop", async () => {

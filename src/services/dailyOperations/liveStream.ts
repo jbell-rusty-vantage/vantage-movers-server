@@ -332,13 +332,18 @@ async function emitWakes(args: {
   return touches;
 }
 
+/**
+ * One `metrics` frame per wake batch, carrying every touch **with
+ * multiplicity**: three Form Leads in one poll are three `leads.total`, not
+ * one. A consumer that adds the frame to its tiles must see every increment;
+ * a consumer that counts per `event` (the Admin board) can ignore it.
+ */
 function emitMetricsIfTouched(
   writer: DailyOperationsLiveWriter,
   touches: string[],
 ): void {
   if (touches.length === 0) return;
-  const metric_touches = [...new Set(touches)];
-  writer.write(formatDailyOperationsSse("metrics", { metric_touches }));
+  writer.write(formatDailyOperationsSse("metrics", { metric_touches: touches }));
 }
 
 function parseXreadEntry(entry: unknown): DailyOperationsRedisWake | null {

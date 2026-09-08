@@ -16,7 +16,10 @@ export async function queryEmployeeBookingCandidates(
   submission: PreparedEmployeeBookingSubmission,
   session?: ClientSession,
 ): Promise<EmployeeBookingCandidateQueryResult> {
-  const [formByLid, callByJobNo, formByPhone, callByPhone, formByEmail, formByName] =
+  const hasPhone =
+    Boolean(submission.normalizedPhoneNumber) &&
+    submission.normalizedPhoneNumber !== "not_provided";
+  const [formByLid, formByJobNo, callByJobNo, formByPhone, callByPhone, formByEmail, formByName] =
     await Promise.all([
       submission.normalizedLid
         ? runQuery(
@@ -25,27 +28,35 @@ export async function queryEmployeeBookingCandidates(
           )
         : Promise.resolve([]),
       runQuery(
+        FormLead.find({ normalized_job_no: submission.normalizedJobNo }).limit(CANDIDATE_QUERY_LIMIT),
+        session,
+      ),
+      runQuery(
         CallLead.find({ normalized_job_no: submission.normalizedJobNo }).limit(CANDIDATE_QUERY_LIMIT),
         session,
       ),
-      runQuery(
-        FormLead.find({
-          $or: [
-            { normalized_phone_number: submission.normalizedPhoneNumber },
-            { phone_number: buildPhoneRegex(submission.normalizedPhoneNumber) },
-          ],
-        }).limit(CANDIDATE_QUERY_LIMIT),
-        session,
-      ),
-      runQuery(
-        CallLead.find({
-          $or: [
-            { normalized_phone_number: submission.normalizedPhoneNumber },
-            { phone_number: buildPhoneRegex(submission.normalizedPhoneNumber) },
-          ],
-        }).limit(CANDIDATE_QUERY_LIMIT),
-        session,
-      ),
+      hasPhone
+        ? runQuery(
+            FormLead.find({
+              $or: [
+                { normalized_phone_number: submission.normalizedPhoneNumber },
+                { phone_number: buildPhoneRegex(submission.normalizedPhoneNumber) },
+              ],
+            }).limit(CANDIDATE_QUERY_LIMIT),
+            session,
+          )
+        : Promise.resolve([]),
+      hasPhone
+        ? runQuery(
+            CallLead.find({
+              $or: [
+                { normalized_phone_number: submission.normalizedPhoneNumber },
+                { phone_number: buildPhoneRegex(submission.normalizedPhoneNumber) },
+              ],
+            }).limit(CANDIDATE_QUERY_LIMIT),
+            session,
+          )
+        : Promise.resolve([]),
       submission.normalizedEmail
         ? runQuery(
             FormLead.find({ email: submission.normalizedEmail }).limit(CANDIDATE_QUERY_LIMIT),
@@ -65,6 +76,7 @@ export async function queryEmployeeBookingCandidates(
   const merged = new Map<string, EvaluatedLeadCandidate>();
   const queryResults = [
     formByLid,
+    formByJobNo,
     callByJobNo,
     formByPhone,
     callByPhone,
@@ -73,6 +85,7 @@ export async function queryEmployeeBookingCandidates(
   ];
   const hasOverflow = queryResults.some((docs) => docs.length > CANDIDATE_QUERY_CAP);
   addCandidates(merged, "FormLead", formByLid.slice(0, CANDIDATE_QUERY_CAP), "lid", submission);
+  addCandidates(merged, "FormLead", formByJobNo.slice(0, CANDIDATE_QUERY_CAP), "job_no", submission);
   addCandidates(merged, "CallLead", callByJobNo.slice(0, CANDIDATE_QUERY_CAP), "job_no", submission);
   addCandidates(merged, "FormLead", formByPhone.slice(0, CANDIDATE_QUERY_CAP), "phone", submission);
   addCandidates(merged, "CallLead", callByPhone.slice(0, CANDIDATE_QUERY_CAP), "phone", submission);

@@ -1,14 +1,18 @@
-import type { LocalType } from "../../config/domain";
+import type { ClientSession } from "mongoose";
+import type { LeadModelName, LocalType } from "../../config/domain";
 import { BookedLead } from "../../models/BookedLead";
 import {
   createBookedLeadFromSourceSchema,
   type CreateBookedLeadFromSourceInput,
+  type CreateLeadlessBookingInput,
 } from "../../validation/v1.validation";
 import { deriveBookedLeadAgentAllocations } from "../agents";
+import { getLinkedLead, type SourceLeadDocument } from "../leads";
 import {
   createBookedLead,
   createBookedLeadInTransaction,
   finalizeBookedLeadCreateAfterCommit,
+  populateBookedLead,
 } from "./bookedLead.service";
 import {
   effectiveBookingSourceCompany,
@@ -20,6 +24,87 @@ import {
   resolveLeadCplSnapshot,
 } from "../leads/leadCplResolution";
 import { requireBestRelocationImportSource } from "./bestRelocationImportGuard";
+import { createLeadlessBookingInTransaction } from "./leadlessBooking.service";
+import { finalizeSheetSync } from "../sheetSync";
+import {
+  evaluateOwnerCallLeadMatch,
+  isBestRelocationFromSource,
+  linkedLeadStillEligible,
+  ownerSnapshotLeadName,
+  ownerSnapshotPhone,
+  type OwnerPendingMatchExtras,
+} from "./ownerBookingAttach";
+
+export type FromSourceAttachPlan =
+  | {
+      kind: "attach";
+      lead: SourceLeadDocument;
+      leadModel: LeadModelName;
+      jobNo?: string;
+      bookingOrigin?: "owner_booking";
+    }
+  | {
+      kind: "owner_pending";
+      extras: OwnerPendingMatchExtras;
+      jobNo: string;
+    };
+
+export async function resolveFromSourceAttach(
+  input: CreateBookedLeadFromSourceInput,
+  session?: ClientSession,
+  deps: {
+    evaluateOwnerCallLeadMatch?: typeof evaluateOwnerCallLeadMatch;
+    resolveBookingSourceLead?: typeof resolveBookingSourceLead;
+    getLinkedLead?: typeof getLinkedLead;
+    linkedLeadStillEligible?: typeof linkedLeadStillEligible;
+  } = {},
+): Promise<FromSourceAttachPlan> {
+  const resolveSourceLead = deps.resolveBookingSourceLead ?? resolveBookingSourceLead;
+  const evaluateOwnerMatch = deps.evaluateOwnerCallLeadMatch ?? evaluateOwnerCallLeadMatch;
+  const loadLinkedLead = deps.getLinkedLead ?? getLinkedLead;
+  const confirmLinkedEligible = deps.linkedLeadStillEligible ?? linkedLeadStillEligible;
+
+  if (input.lead_type === "FormLead") {
+    const resolved = await resolveSourceLead(input);
+    return {
+      kind: "attach",
+      ...resolved,
+      bookingOrigin: isBestRelocationFromSource(input) ? undefined : "owner_booking",
+    };
+  }
+
+  if (isBestRelocationFromSource(input)) {
+    const resolved = await resolveSourceLead(input);
+    return { kind: "attach", ...resolved };
+  }
+
+  let match = await evaluateOwnerMatch(input, session);
+  if (match.kind === "linked") {
+    match = await confirmLinkedEligible(match, session);
+  }
+  if (match.kind === "linked") {
+    const lead = await loadLinkedLead(match.leadModel, match.leadId, session);
+    return {
+      kind: "attach",
+      lead,
+      leadModel: match.leadModel,
+      jobNo: input.call_job_no?.trim() || undefined,
+      bookingOrigin: "owner_booking",
+    };
+  }
+
+  return {
+    kind: "owner_pending",
+    jobNo: (input.call_job_no ?? "").trim(),
+    extras: {
+      reason: match.reason,
+      candidates: match.candidates,
+      channel: "call",
+      phoneNumber: ownerSnapshotPhone(input.call_phone_number, input.customer_phone),
+      leadName: ownerSnapshotLeadName(input.customer_name),
+    },
+  };
+}
 
 /**
  * Bridges Google Form / phone-driven booking submissions onto the generic
@@ -37,7 +122,11 @@ export async function createBookedLeadFromSourceInTransaction(
   tx: { session?: import("mongoose").ClientSession; now: Date },
 ) {
   const input = createBookedLeadFromSourceSchema.parse(rawInput);
-  const { lead, leadModel, jobNo } = await resolveBookingSourceLead(input);
+  const plan = await resolveFromSourceAttach(input, tx.session);
+  if (plan.kind === "owner_pending") {
+    return persistOwnerFromSourcePendingInTransaction(input, plan, tx);
+  }
+  const { lead, leadModel, jobNo, bookingOrigin } = plan;
   const overrideSource = input.source_company?.trim();
   const overrideResolution = overrideSource
     ? await resolveLeadSourceAssignment({
@@ -109,6 +198,7 @@ export async function createBookedLeadFromSourceInTransaction(
       receiver_agent_source_value: isBestRelocationImport
         ? `Booked Deals:${jobNo ?? "unknown-job"}`
         : undefined,
+      ...(bookingOrigin ? { booking_origin: bookingOrigin } : {}),
     },
     tx,
   );
@@ -172,6 +262,7 @@ export async function createBookedLeadFromSourceInTransaction(
           submission_id: input.submission_id,
           customer_name: input.customer_name,
           customer_phone: input.customer_phone,
+          ...(bookingOrigin ? { booking_origin: bookingOrigin } : {}),
         },
         pending.merchant,
         pending.warnings,
@@ -194,7 +285,11 @@ export async function createBookedLeadFromSourceInTransaction(
 }
 
 export async function createBookedLeadFromSource(input: CreateBookedLeadFromSourceInput) {
-  const { lead, leadModel, jobNo } = await resolveBookingSourceLead(input);
+  const plan = await resolveFromSourceAttach(input);
+  if (plan.kind === "owner_pending") {
+    return persistOwnerFromSourcePending(input, plan);
+  }
+  const { lead, leadModel, jobNo, bookingOrigin } = plan;
   const overrideSource = input.source_company?.trim();
   const overrideResolution = overrideSource
     ? await resolveLeadSourceAssignment({
@@ -266,6 +361,7 @@ export async function createBookedLeadFromSource(input: CreateBookedLeadFromSour
     receiver_agent_source_value: isBestRelocationImport
       ? `Booked Deals:${jobNo ?? "unknown-job"}`
       : undefined,
+    ...(bookingOrigin ? { booking_origin: bookingOrigin } : {}),
   });
 }
 
@@ -299,4 +395,85 @@ function sourceDisplayLabelFromAssignment(assignment: {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function leadlessInputFromOwnerCallLead(
+  input: CreateBookedLeadFromSourceInput,
+  jobNo: string,
+): CreateLeadlessBookingInput {
+  const callPhone =
+    input.lead_type === "CallLead" ? input.call_phone_number : undefined;
+  return {
+    book_date: input.book_date,
+    job_no: jobNo,
+    source_company: input.source_company?.trim() || "not_provided",
+    source: input.source_company,
+    customer_name: input.customer_name,
+    customer_phone: callPhone ?? input.customer_phone,
+    agent: input.agent,
+    split_agent: input.split_agent,
+    total_binder_amount: input.binder_amount,
+    deposit_amount: input.deposit_amount,
+    merchant: input.merchant,
+  };
+}
+
+async function persistOwnerFromSourcePendingInTransaction(
+  input: CreateBookedLeadFromSourceInput,
+  plan: Extract<FromSourceAttachPlan, { kind: "owner_pending" }>,
+  tx: { session?: ClientSession; now: Date },
+) {
+  const pending = await createLeadlessBookingInTransaction(
+    leadlessInputFromOwnerCallLead(input, plan.jobNo),
+    tx,
+    plan.extras,
+  );
+  const bookingId = pending.booking._id.toString();
+  return {
+    result: undefined as unknown,
+    warnings: pending.warnings,
+    entity_refs: [{ model: "BookedLead" as const, id: bookingId }],
+    mutations: [
+      {
+        entity: { model: "BookedLead" as const, id: bookingId },
+        revision_before: 0,
+        fields: [
+          { path: "job_no", after: plan.jobNo },
+          { path: "is_leadless_booking", after: true },
+          { path: "booking_origin", after: "owner_booking" },
+        ],
+      },
+    ],
+    finalize: async () => {
+      await finalizeSheetSync(pending.sheetJob);
+      const booking = await populateBookedLead(pending.booking._id);
+      return {
+        booking,
+        message: "Booking created pending Booking Lead Reconciliation.",
+        warnings: pending.warnings,
+        total_binder_amount: booking.total_binder_amount,
+        reconciliation_case_id: pending.reconciliation_case_id,
+      };
+    },
+  };
+}
+
+async function persistOwnerFromSourcePending(
+  input: CreateBookedLeadFromSourceInput,
+  plan: Extract<FromSourceAttachPlan, { kind: "owner_pending" }>,
+) {
+  const pending = await createLeadlessBookingInTransaction(
+    leadlessInputFromOwnerCallLead(input, plan.jobNo),
+    { now: new Date() },
+    plan.extras,
+  );
+  await finalizeSheetSync(pending.sheetJob);
+  const booking = await populateBookedLead(pending.booking._id);
+  return {
+    booking,
+    message: "Booking created pending Booking Lead Reconciliation.",
+    warnings: pending.warnings,
+    total_binder_amount: booking.total_binder_amount,
+    reconciliation_case_id: pending.reconciliation_case_id,
+  };
 }
