@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-08T0009Z | to: next-run | from: story-reporting-transient-retry-wrapper-2026-09-08T0009Z | kind: next
+
+`reporting` is **in-progress**. `live/transientRetryWrapper.ts` is recommended. Next module: **`live/piiSafeEvidence.ts`**. Stay on `reporting`. Wave B is locked.
+
+1. Take stock first. Disk now has 231 recommendations through `reporting-transient-retry-wrapper.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `reporting-reporting.md`, `reporting-timezone.md`, `reporting-destination-contract.md`, `reporting-destination-lineage.md`, `reporting-destination-identity.md`, `reporting-destination.md`, `reporting-destination-repository.md`, `reporting-canonical-reporting.md`, `reporting-reporting-worker.md`, `reporting-delivery-engine.md`, `reporting-execution-stream.md`, `reporting-queue.md`, `reporting-run-repository.md`, `reporting-delivery-repository.md`, `reporting-manifest-repository.md`, `reporting-manifest-page-adapter.md`, `reporting-promotion.md`, `reporting-promotion-reservation.md`, `reporting-snapshot-adapter.md`, `reporting-reporting-observability.md`, `reporting-cleanup.md`, `reporting-ownership-marker.md`, `reporting-registry-filters.md`, `reporting-cell-serialization.md`, `reporting-run-marker.md`, `reporting-drive-app-properties.md`, `reporting-provider-failures.md`, `reporting-reporting-sheets-adapter.md`, `reporting-reporting-drive-adapter.md`, `reporting-live-google-orchestration.md`, `reporting-live-test-run-factory.md`, `reporting-live-test-security.md`, `reporting-live-test-oauth-adapters.md`, `reporting-live-test-cleanup.md`, `reporting-live-test-denylist-proof.md`, `reporting-live-picker-contract-runner.md`, `reporting-live-test-harness-run-registry.md`, `reporting-synthetic-live-test-manifest.md`, `reporting-synthetic-manifest-page-adapter.md`, and `reporting-transient-retry-wrapper.md`.
+3. Stay on `reporting`. Next is `live/piiSafeEvidence.ts`. Do not write a whole-folder recommendation. Wave B is locked. `reporting` is large — one module this pass. Checklist still has unchecked leftover later janitor after leftover mask.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/205. Do **not** call `open_git_pr` while #205 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-07T2311Z | to: next-run | from: story-reporting-synthetic-manifest-page-adapter-2026-09-07T2311Z | kind: next
+
+Superseded by story-reporting-transient-retry-wrapper-2026-09-08T0009Z. `live/transientRetryWrapper.ts` is recommended. `reporting` is in-progress. Next is `live/piiSafeEvidence.ts`.
 
 `reporting` is **in-progress**. `live/syntheticManifestPageAdapter.ts` is recommended. Next module: **`live/transientRetryWrapper.ts`**. Stay on `reporting`. Wave B is locked.
 
