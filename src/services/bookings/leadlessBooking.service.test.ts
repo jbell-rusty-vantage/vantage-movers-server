@@ -57,8 +57,17 @@ const input = {
 } as any;
 
 test("Owner leadless create opens owner_booking case and sets booking_origin", async () => {
-  let savedBooking: { booking_origin?: string; is_leadless_booking?: boolean; lead_ref?: unknown };
-  let createdCase: { origin?: string; reason?: string; submission?: { submission_id?: string; lid?: unknown } };
+  let savedBooking:
+    | { booking_origin?: string; is_leadless_booking?: boolean; lead_ref?: unknown }
+    | undefined;
+  let createdCase:
+    | {
+        origin?: string;
+        reason?: string;
+        submission?: { submission_id?: string; lid?: unknown };
+        _id?: unknown;
+      }
+    | undefined;
   BookedLead.prototype.save = async function save() {
     savedBooking = this as any;
     (this as any)._id ??= new Types.ObjectId();
@@ -85,13 +94,13 @@ test("Owner leadless create opens owner_booking case and sets booking_origin", a
   assert.equal(createdCase!.reason, "no_match");
   assert.equal(createdCase!.submission?.submission_id, "owner-booking:JOB 100");
   assert.equal(createdCase!.submission?.lid, undefined);
-  assert.equal(result.reconciliation_case_id, String((createdCase as { _id?: unknown })._id));
+  assert.equal(result.reconciliation_case_id, String(createdCase!._id));
   assert.equal(result.sheetJob.operation, "owner_booking.create_pending");
 });
 
 test("Best Relocation import leadless keeps external_sheet_ingestion and no booking_origin", async () => {
-  let savedBooking: { booking_origin?: string };
-  let createdCase: { origin?: string };
+  let savedBooking: { booking_origin?: string } | undefined;
+  let createdCase: { origin?: string } | undefined;
   BookedLead.prototype.save = async function save() {
     savedBooking = this as any;
     (this as any)._id ??= new Types.ObjectId();
