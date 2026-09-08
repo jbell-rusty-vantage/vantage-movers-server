@@ -4,9 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-08T0710Z | to: next-run | from: story-ingestion-health-2026-09-08T0710Z | kind: next
+
+`ingestion` is **in-progress**. `health.ts` is recommended. Next module: **`queue.ts`**. Stay on `ingestion`. Wave B is locked.
+
+1. Take stock first. Disk now has 238 recommendations through `ingestion-health.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `reporting-*.md` through `reporting-janitor-completion.md`, `ingestion-worker.md`, `ingestion-apply-plan.md`, `ingestion-repository.md`, and `ingestion-health.md`.
+3. Stay on `ingestion`. Next is `queue.ts`. Do not write a whole-folder recommendation. Wave B is locked. `ingestion` is medium — one module this pass. Checklist still has leftover wakeup after leftover health.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-08T0611Z | to: next-run | from: story-ingestion-repository-2026-09-08T0611Z | kind: next
 
-`ingestion` is **in-progress**. `repository.ts` is recommended. Next module: **`health.ts`**. Stay on `ingestion`. Wave B is locked.
+Superseded by story-ingestion-health-2026-09-08T0710Z. `health.ts` is recommended. `ingestion` is in-progress. Next is `queue.ts`.
 
 1. Take stock first. Disk now has 237 recommendations through `ingestion-repository.md`.
 2. Do not rewrite `form-lead.md` or any prior recommendation, including every `reporting-*.md` through `reporting-janitor-completion.md`, `ingestion-worker.md`, `ingestion-apply-plan.md`, and `ingestion-repository.md`.
