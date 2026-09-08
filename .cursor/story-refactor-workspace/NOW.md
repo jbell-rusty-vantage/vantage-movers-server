@@ -3,14 +3,14 @@
 - Date (UTC): 2026-09-08
 - Wave: A (`src/services/`)
 - Current service: `bestRelocationSheetIngest` (in-progress)
-- Next module: `canonicalLeadAdoption.ts`
+- Next module: `bootstrap.ts`
 - Stock: visited 29 / in-progress 1 / unvisited 8
-- Recommendations on disk: 247 (`form-lead.md` through `best-relocation-sheet-ingest-source-change-policy.md`)
+- Recommendations on disk: 248 (`form-lead.md` through `best-relocation-sheet-ingest-canonical-lead-adoption.md`)
 - Lock: none
 - Lock holder:
 - Lock at:
 - Branch: `docs/story-refactor`
 - PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206
-- Last session: story-best-relocation-sheet-ingest-source-change-policy-2026-09-08T1611Z
+- Last session: story-best-relocation-sheet-ingest-canonical-lead-adoption-2026-09-08T1713Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
