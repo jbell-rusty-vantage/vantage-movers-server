@@ -23,13 +23,24 @@ import {
   normalizeJobNo,
 } from "./bookingIdentity";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
+import {
+  buildOwnerPendingCasePayload,
+  ownerPendingSheetJob,
+  ownerSnapshotLeadName,
+  ownerSnapshotPhone,
+  type OwnerPendingMatchExtras,
+} from "./ownerBookingAttach";
 
-function leadlessBookingJob(bookingId: string): FullSheetSyncJob {
+function importLeadlessBookingJob(bookingId: string): FullSheetSyncJob {
   return {
     resource: "booked_lead",
     operation: "leadless_booking.create",
     bookingId,
   };
+}
+
+function leadlessSheetJob(bookingId: string, ownerPending: boolean): FullSheetSyncJob {
+  return ownerPending ? ownerPendingSheetJob(bookingId) : importLeadlessBookingJob(bookingId);
 }
 
 async function resolveLeadlessBookingSource(
@@ -103,20 +114,24 @@ export async function createLeadlessBooking(input: CreateLeadlessBookingInput) {
     ),
   );
 
-  const { booking } = outcome;
-  await finalizeSheetSync(leadlessBookingJob(booking._id.toString()));
+  const { booking, reconciliation_case_id, sheetJob } = outcome;
+  await finalizeSheetSync(sheetJob);
 
   return {
     booking: await populateBookedLead(booking._id),
     message: "Leadless booking created.",
     warnings,
     total_binder_amount: booking.total_binder_amount,
+    ...(reconciliation_case_id
+      ? { reconciliation_case_id }
+      : {}),
   };
 }
 
 export async function createLeadlessBookingInTransaction(
   input: CreateLeadlessBookingInput,
   tx: { session?: ClientSession; now: Date },
+  extras?: OwnerPendingMatchExtras,
 ) {
   const jobNo = input.job_no.trim();
   const resolvedSource = await resolveLeadlessBookingSource(
@@ -162,6 +177,7 @@ export async function createLeadlessBookingInTransaction(
       source,
     },
     tx,
+    extras,
   );
 }
 
@@ -179,7 +195,12 @@ export async function persistLeadlessBookingCreateInTransaction(
     source: string;
   },
   tx: { session?: ClientSession; now: Date },
+  extras?: OwnerPendingMatchExtras,
+  deps: {
+    persistSheetSyncIntent?: typeof persistSheetSyncIntent;
+  } = {},
 ) {
+  const persistSheetIntent = deps.persistSheetSyncIntent ?? persistSheetSyncIntent;
   const session = tx.session;
   const {
     jobNo,
@@ -198,6 +219,7 @@ export async function persistLeadlessBookingCreateInTransaction(
           session,
         )
       : undefined;
+    const isOwnerPending = !isBestRelocationImport;
     const created = new BookedLead({
       timestamp: toFloridaTimestamp(tx.now),
       book_date: input.book_date,
@@ -210,11 +232,13 @@ export async function persistLeadlessBookingCreateInTransaction(
       merchant,
       source,
       is_leadless_booking: true,
+      ...(isOwnerPending ? { booking_origin: "owner_booking" as const } : {}),
       local: input.local,
       over_2000: depositAmount > 2000,
       over_4000: depositAmount > 4000,
     });
     await created.save({ session });
+    let reconciliation_case_id: string | undefined;
     if (isBestRelocationImport) {
       const phone = input.customer_phone?.trim() || "not provided";
       const leadName = customerName || "Unknown";
@@ -273,7 +297,39 @@ export async function persistLeadlessBookingCreateInTransaction(
         ],
         { session },
       );
+    } else {
+      const phone = ownerSnapshotPhone(extras?.phoneNumber, input.customer_phone);
+      const leadName = extras?.leadName ?? ownerSnapshotLeadName(customerName);
+      const channel = extras?.channel ?? resolvedSource.channel;
+      const ownerCase = new BookingLeadReconciliationCase(
+        buildOwnerPendingCasePayload({
+          bookingId: created._id,
+          jobNo,
+          phoneNumber: phone,
+          leadName,
+          binderAmount: input.total_binder_amount,
+          depositAmount,
+          merchant,
+          agent: input.agent,
+          splitAgent: input.split_agent,
+          bookDate: input.book_date,
+          sourceAssignment: {
+            ...resolvedSource.assignment,
+            channel,
+          },
+          reason: extras?.reason ?? "no_match",
+          candidates: extras?.candidates,
+        }),
+      );
+      await ownerCase.save({ session });
+      reconciliation_case_id = ownerCase._id.toString();
     }
-    await persistSheetSyncIntent(leadlessBookingJob(created._id.toString()), session);
-    return { booking: created, warnings };
+    const sheetJob = leadlessSheetJob(created._id.toString(), isOwnerPending);
+    await persistSheetIntent(sheetJob, session);
+    return {
+      booking: created,
+      warnings,
+      reconciliation_case_id,
+      sheetJob,
+    };
 }

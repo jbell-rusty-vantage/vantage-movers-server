@@ -57,13 +57,15 @@ sources:
 > Daily Operations View.
 
 **Prepared:** 2026-09-06
-**Amended:** 2026-09-08 — complementary Arrivals band (DOP-09).
+**Amended:** 2026-09-08 — complementary Arrivals band (DOP-09);
+  live workspace (DOP-10); solo Panel view, overlay, motion, live
+  clock, count per `event` (DOP-11); Sheet Sync drain hook (DOP-11).
 **Repos:** `vantage-main-server` (projection, hooks, snapshot, SSE, Redis
 doorbell). `vantage-admin` (Owner `/daily` workspace).
 **Owner-facing labels:** Daily Operations, Today, Leads, Form, Call,
 Duplicates, Texts, Held until 8:00 AM, Granot, Intakes, Still open,
 Bookings, Cancellations, Exceptions, Quiet priorities, Arrivals,
-Just now, Live
+Just now, Live, All panels, Panel view, Open all, Open full stream
 **Canonical facts:** [Daily Operations](../../../CONTEXT.md),
 [Daily Operations Event](../../../CONTEXT.md),
 [Daily Operations Panel](../../../CONTEXT.md),
@@ -126,7 +128,7 @@ It answers, continuously, in `America/New_York`:
 2. What just happened — in the category the Owner already thinks in, and across the day in Arrivals.
 3. What needs a look — intakes Waiting for you, texts held until morning, zip that did not produce a state, failed texts, dead letters.
 
-The Owner develops that sense by seeing **counts and changes on every category at once**, not by hunting a mixed firehose as the only view and not by flipping tabs that hide the rest of the day.
+The Owner develops that sense by seeing **counts and changes on every category at once** (All panels), not by hunting a mixed firehose as the only view and not by flipping the 2026-08-19 Daily View tabs. **DOP-11:** a Panel view strip on the same board can show one Daily Operations Panel alone; All panels remains the default reading of the day.
 
 **Presentation:** one page, five bands, **one Daily Operations Panel per major category**, plus a complementary Arrivals strip.
 **Transport:** one EventSource. One Granot stream. Client fans events into panels and slices the same list for Arrivals.
@@ -175,7 +177,7 @@ The Owner can answer, without clicking:
 
 > 42 leads — 4 ahead of yesterday at this hour. 19 texts, 3 held until 8:00 AM. 3 intakes opened, 2 Waiting for you. 6 Bookings. 1 Cancellation. 2 zip misses.
 
-Clicking a headline tile or a panel header **focuses** that panel (`?lane=`). **DOP-10:** focus *expands* the panel in place — it moves to the first grid cell, spans the full grid width, shows up to 40 cards and **Load earlier**. Every other panel stays in the grid at its default size; the count rail is gone. Clicking the same tile / header again, or **Collapse**, clears `?lane=`. The day does not navigate away. `?lane=all` (default) is the command-center grid. Each panel also has **Show all (N)** to reveal every in-memory card for that lane without focusing.
+Clicking a headline tile, a panel header, or a Panel view control **isolates** that Daily Operations Panel (`?lane=`). **DOP-11** (replaces DOP-10 expand-in-place): a `role="tablist"` strip labelled **Panel view** sits above the panels — **All panels** plus one control per visible lane. Choosing a lane is a **solo view**: only that panel renders (`data-panels-view="solo"`). **All panels** clears `lane` (`data-panels-view="all"`). Clicking the same lane control / tile / header again returns to All panels. The day does not navigate away. Sheet Sync joins the strip only after opt-in (or `lane=sheet_sync`). Each panel has **Open all (N)** to open the full-stream overlay for that lane.
 
 One socket still serves every panel. Lane and company filters apply in memory.
 
@@ -192,7 +194,7 @@ Every headline tile and every panel header shows the same four numbers when they
 | `today` | Running New York-day total |
 | `yesterday_by_now` | Sum of yesterday's hourly buckets `0..currentNyHour` |
 | `pace` | `today − yesterday_by_now` (ahead / behind / even) |
-| `session_delta` | Change since this tab opened, derived from SSE `metric_touches` |
+| `session_delta` | Change since this tab opened, derived from each SSE `event`'s `metric_touches` (deduped by `event_id`). **DOP-11:** the Admin board does not add the `metrics` frame. |
 
 `yesterday` (closed full day) is available on hover / secondary line. Pace is the comparison the Owner uses at 2:14pm. End-of-day yesterday versus a half-finished today always looks like a miss.
 
@@ -205,6 +207,8 @@ Every headline tile and every panel header shows the same four numbers when they
 | secondary line | `Yesterday by now 31 · Yesterday 38 · Day before 35` |
 
 Rules: baseline `null` → `—` (`missing`); baseline `0` and today `0` → `even`; baseline `0` and today `> 0` → `ahead` with the label **new** (never `Infinity`). Tone words are `ahead` / `behind` / `even` / `missing`. When no baseline exists at all the chip is hidden and the line reads **no prior day yet**.
+
+**DOP-11 — live clock.** `yesterday_by_now` / `day_before_by_now` and the sparkline / Hourly Rhythm `now` hour follow the **browser clock** (15s tick) via `withLiveDailyOperationsClock`, not the snapshot's `generated_at`. Baselines the server left `null` stay `null`. Once the America/New_York day differs from `snapshot.today` the function leaves the snapshot alone and the resync takes over.
 
 v1 does **not** show lead cost, binder, or deposit. Those stay on Analytics.
 
@@ -297,24 +301,25 @@ panels. Arrivals is still before the panels in the DOM.
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-Focus (`?lane=lead`) — **DOP-10** (the count rail from DOP-07 is gone):
+Solo view (`?lane=lead`) — **DOP-11** (replaces DOP-10 expand-in-place;
+the count rail from DOP-07 stays gone):
 
 ```
-┌─ LEADS  42  +4 · +12% vs yesterday by now         [Collapse] ─┐
+Panel view  [ All panels ] [ Leads 42 ] [ Texts 19 ] …
+┌─ LEADS  42  +4 · +12% vs yesterday by now      [All panels] ─┐
 │ 2:13  Call Lead · Maria Chen · Top 10 · RingCentral  [Open]    │
 │ 2:11  Form Lead · … · ZIP 33101 · state not found    [Open]    │
-│ … up to 40 cards · [Load earlier]                              │
+│ … up to 40 cards · [Open all] · [Load earlier]                 │
 └────────────────────────────────────────────────────────────────┘
-┌ Texts 19 ┐ ┌ Granot 55 ┐ ┌ Intakes 3 ┐ ┌ Bookings 6 ┐ …  (unchanged)
 ```
 
-Arrivals stays on the page beside / above this focused panel and stays
-cross-lane.
+Only that Daily Operations Panel renders. Arrivals stays on the page
+beside / above it and stays cross-lane.
 
 Clicking a company row sets `?company=` and filters every panel **and
 Arrivals**. Clicking the row again (or Clear) removes the filter. The
-company table highlights the selected row. `?lane=` focuses a panel; it
-does not hide or lane-filter Arrivals.
+company table highlights the selected row. `?lane=` is a solo Panel
+view; it does not hide or lane-filter Arrivals.
 
 `?open=` is a Daily Operations alias that **maps onto desks that
 already exist**. Do not fork a second drawer. Confirm work stays on
@@ -356,11 +361,16 @@ the category panel grid. See §3.2.
   `board.events`. No second socket. No Redis in the browser.
 - Default show **20** newest after Quiet priorities and `?company=`.
   Do not apply `?lane=` as a filter.
-- Focus does not hide Arrivals. A Cancellation stays visible when
-  Granot floods and when the Owner is focused on Leads.
+- Solo view does not hide Arrivals. A Cancellation stays visible when
+  Granot floods and when the Owner is on Leads alone.
 - Reuse the shared card shell (§8). Name + last four only. No Confirm.
-- New insert: slide-in + 1.5s highlight (§4.1). Existing cards shift
-  down; they do not reshuffle.
+- New insert: enter motion + 1.5s highlight (§4.1). Facts that fall
+  off the visible slice exit. Existing cards shift down; they do not
+  reshuffle. Arrival highlights are shared with the panels and the
+  overlay (**DOP-11**).
+- **Open full stream** opens the full-stream overlay for every
+  in-memory Arrivals fact (**DOP-11**). No "Load earlier" on the
+  strip itself.
 - Empty: one quiet line (`Nothing has arrived yet today.`). Do not
   occupy a tall hero.
 - Session still ticks tiles (`session_delta`) independently.
@@ -397,6 +407,7 @@ a weekly pulse. This page is a live day.
 | **DOP-10** kind tone | Every catalog kind and every lane resolves to one of a fixed set of named **tones** (static Tailwind class bundles in `lib/api/dailyOperationsColors.ts`). The card left rail, kind dot, kind badge, panel header accent, and Arrivals dot read the resolved tone. |
 | **DOP-10** Owner overrides | `localStorage` key `vantage-admin-daily-kind-colors`; edited from the **Colours** toolbar panel (kinds grouped by lane, swatch picker, **Reset colours**). URL untouched. Unknown stored tone names fall back to the default. |
 | **DOP-10** rippling live dot | `◉ Live` uses a CSS ripple (`daily-live-ripple`); Paused / Reconnecting / Off use the same dot without ripple. |
+| **DOP-11** enter / exit | New facts `daily-row-enter`; facts that fall off a slice `daily-row-exit`. Tile / panel / mix / Hourly Rhythm counts tween. Bars (`daily-bar`, `daily-svg-bar`) transition. Hourly Rhythm `now` column pulses (`daily-now-pulse`). All motion is off under `prefers-reduced-motion: reduce`. |
 
 Reuse `Card`, `StatusBadge` / existing chips, `FeedbackMessage`,
 `floridaTime`, `SOURCE_COMPANY_LABELS`. Do not invent a second design
@@ -409,14 +420,22 @@ from a variable.
 
 - Headline: one row on `xl`, wrap on smaller. No money.
 - Arrivals: **20** newest across lanes after filters. No "Load
-  earlier" on this strip (that stays on focused panels). Empty state
-  is one line.
+  earlier" on this strip. **Open full stream** opens the overlay
+  (**DOP-11**). Empty state is one line.
 - Panels: CSS grid `xl:grid-cols-2 2xl:grid-cols-3` beside the
-  Arrivals rail (**DOP-10**). The focused panel spans the full grid
-  width; the others keep their cells.
-- Default cards visible per panel: **8**, plus **Show all (N)**
-  (**DOP-10**, in-memory only). Focused panel: **40**, then
-  "Load earlier" against `GET .../events`.
+  Arrivals rail (**DOP-10**). **DOP-11:** All panels keeps that grid.
+  Solo view renders one Daily Operations Panel (`data-panels-view="solo"`).
+- Default cards visible per panel: **8**. **Open all (N)**
+  (**DOP-11**) opens the full-stream overlay for every in-memory card
+  of that lane. Solo panel: **40**, then "Load earlier" against
+  `GET .../events` from the oldest in-memory fact **of that lane**.
+- Panel backfill (**DOP-11**): the first events page is newest-80
+  across every lane, so a Granot flood can starve other panels. Any
+  visible panel holding fewer in-memory facts of its lane than
+  `min(count, 8)` fetches that lane's newest page (`limit=40`) once
+  (`lanesNeedingBackfill`). Never `exception` (its count is not a
+  fact count). A panel count must never sit above an empty or
+  under-filled stack.
 - Card title is one Owner sentence. Second line is identity. Then
   (**DOP-10**) a labelled fact grid with every populated stored field
   (§8.1), then attention chips, then links. No raw JSON. No Granot
@@ -462,8 +481,11 @@ percent versus yesterday at this hour (§2.3); a visible secondary line
 reads `Yesterday by now N · Yesterday N · Day before N`; a 24-bucket
 hourly sparkline for today renders when `hourly.today` is present.
 Chips and line are hidden, and the tile says **no prior day yet**, when
-no baseline exists. Clicking the tile focuses the matching panel
-(`?lane=`); clicking the focused tile again clears the focus.
+no baseline exists. Clicking the tile opens the matching Daily
+Operations Panel as a solo view (`?lane=`); clicking it again
+returns to All panels. **DOP-11:** like-hour baselines on the tiles
+follow the browser clock (§2.3). The Form / Call tile shows a split
+share bar (`formShare` / `callShare`).
 
 Granot tile secondary line: `lead_created` · `priority_updated` ·
 Booked / Release. Intakes secondary line: `{opened} opened · {still_open}
@@ -513,8 +535,11 @@ Referral is a Booking kind, not a Lead Source Company row on this board.
 
 ## 7. Daily Operations Panels
 
-Default `?lane=all` shows every **on-by-default** panel. Sheet Sync is
-off until the Owner opts in (local preference + URL `lane=sheet_sync`).
+Default All panels (`?lane=` absent) shows every **on-by-default**
+panel. Sheet Sync is off until the Owner opts in (local preference +
+URL `lane=sheet_sync`). **DOP-11:** the Panel view strip lists All
+panels plus each visible lane; `lane=sheet_sync` also puts Sheet Sync
+on the strip.
 
 | Panel | Lane | Default | Header counts |
 | --- | --- | --- | --- |
@@ -525,14 +550,14 @@ off until the Owner opts in (local preference + URL `lane=sheet_sync`).
 | Bookings | `booking` | On | Official writes; kind chips |
 | Cancellations | `cancellation` | On | Official writes |
 | Exceptions | `exception` | On | Zip miss, CRM fail, dead letter, adoption conflict |
-| Sheet Sync | `sheet_sync` | Off | Completed / failed jobs — progress only |
+| Sheet Sync | `sheet_sync` | Off | Count = `completed + failed`; header `N completed · M failed` |
 
 ### 7.1 Granot panel chips (not separate pages)
 
 Lead created · Priority updated · Booked · Release.
 
 **Quiet priorities:** Owner control that hides `granot.priority_updated`
-cards in the Granot panel (and in focus). Counts still include them.
+cards in the Granot panel (and in solo view). Counts still include them.
 Persist the control in `localStorage` (`vantage-admin-daily-quiet-priorities`)
 and mirror it on the URL as `quiet_priorities=1` when on. This is the
 pressure valve for high-volume, low-action Priority Updates.
@@ -636,6 +661,13 @@ type DailyOperationsCard = {
   exception?: {
     code: string;
     detail: string;
+  };
+  sheet_sync?: {                    // DOP-11 drain hook
+    resource: string;
+    operation: string;
+    entity_model?: string | null;
+    attempts?: number;
+    error?: string | null;
   };
 };
 ```
@@ -994,7 +1026,9 @@ Copy `runLiveReceiptSse`
    - For each envelope, `find` the Mongo event by `event_id` (skip if
      missing — replica lag: retry next loop)
    - Emit SSE `event` with `id: encodeDailyOpsEventId({ occurred_at, event_id })`
-   - Emit SSE `metrics` when `metric_touches` is present
+   - Emit SSE `metrics` when `metric_touches` is present, **with
+     multiplicity** (**DOP-11** — no `Set` dedupe). The Admin board
+     counts per `event` and ignores this frame.
    - If Redis is null or throws: `listDailyOperationsEventsAfter(cursor)`
      on Mongo (same `$or` captured_at / `_id` pattern as live receipts)
    - Heartbeat
@@ -1172,6 +1206,11 @@ type DailyOperationsDayDocument = {
     adoption_conflict: number;
   };
 
+  sheet_sync: {                     // DOP-11; optional on pre-hook day docs
+    completed: number;
+    failed: number;
+  };
+
   hourly: Array<{
     hour: number;
     leads: number;
@@ -1193,7 +1232,8 @@ type DailyOperationsDayDocument = {
 `hourly.{nyHour}.leads` and `revision`.
 
 Seed known Source Company slugs on first insert so GET always includes
-zeros.
+zeros. Seed `sheet_sync: { completed: 0, failed: 0 }` on first insert.
+Older day documents omit the field; `$inc` creates it.
 
 Closed days: cron shortly after 00:05 America/New_York.
 `updateOne({ day, status: "open" }, { $set: { status: "closed", closed_at } })`.
@@ -1246,8 +1286,8 @@ They do not talk to Redis themselves.
 | `booking.created` | booking | `bookings.total` + kind bucket, hourly.bookings |
 | `booking.employee_pending` | booking | `bookings.total`, `bookings.employee_pending`, hourly.bookings |
 | `cancellation.created` | cancellation | `cancellations.total`, hourly.cancellations |
-| `sheet_sync.completed` | sheet_sync | none |
-| `sheet_sync.failed` | sheet_sync | none |
+| `sheet_sync.completed` | sheet_sync | `sheet_sync.completed` (panel only) |
+| `sheet_sync.failed` | sheet_sync | `sheet_sync.failed` (panel only) |
 | `exception.zip_missing` | exception | `exceptions.zip_missing` |
 | `exception.crm_failed` | exception | `exceptions.crm_failed` |
 | `exception.dead_letter` | exception | `exceptions.dead_letter` |
@@ -1411,11 +1451,30 @@ Canonical finalize already runs.
 
 ### 15.9 Sheet Sync (opt-in panel)
 
+**DOP-11:** drain hook implemented. Production is `SHEET_SYNC_MODE=queued`, so
+`runSheetSyncDrain` is the only place jobs finish.
+
 | Function | File | When |
 | --- | --- | --- |
-| Drain completion | `src/services/sheetSync/drainer/runSheetSyncDrain.ts` | After run update — `sheet_sync.completed` / `.failed` |
+| `runSheetSyncDrain` | `src/services/sheetSync/drainer/runSheetSyncDrain.ts` | After `markJobSynced` for a representative or empty job → `sheet_sync.completed`; inside `recordJobFailureEvent` (planning or write failure) → `sheet_sync.failed` with attempts + error on the card |
 
-Do **not** hook `finalizeSheetSync` (queue wakeup, not job done).
+Recorder: `recordSheetSyncDailyOperationsFact` in
+`src/services/dailyOperations/recordDomainFacts.ts`.
+`dedupe_key` `sheet_sync:<jobId>:<completed|failed>`.
+`entity_type` `SheetSyncJob`; `entity_id` = job id.
+Links: `source_lead` → `lead_id` (+ `lead_model` when FormLead / CallLead);
+`booked_lead` / `booking_chain` → `booking_id`;
+`cancellation_chain` → `cancellation_id`.
+Metric touches are the kind itself only — no leads, hourly, or tiles.
+
+A job that fails, retries, then syncs leaves exactly one `failed` fact and
+one `completed` fact (dedupe). Repeated failures of the same job are silent.
+Quota deferrals are not outcomes and never record. Coalesced duplicate jobs
+(`coalesced_into_representative`) do **not** record — the representative's
+fact speaks for them.
+
+Do **not** hook `finalizeSheetSync` (queue wakeup, not job done). Legacy
+`runFullSheetSyncProcess` is not hooked (no job id).
 
 ---
 
@@ -1470,7 +1529,8 @@ Owner-only. Mount on the Granot-lifecycle-admin style router (full
       "release": { "today": 3, "yesterday": 3 }
     },
     "intakes": { "opened_today": 3, "still_open": 2 },
-    "exceptions": { "zip_missing": 2, "crm_failed": 0, "dead_letter": 0, "adoption_conflict": 0 }
+    "exceptions": { "zip_missing": 2, "crm_failed": 0, "dead_letter": 0, "adoption_conflict": 0 },
+    "sheet_sync": { "completed": 0, "failed": 0 }
   },
   "origins": {
     "granot_lead_created": 20,
@@ -1494,6 +1554,12 @@ Message schema has **no** `sendAt` / `scheduled_for` field.
 Missing open day → treat as zeros. Missing closed yesterday →
 `yesterday` totals null and UI shows `—`.
 
+**DOP-11 — Sheet Sync counters.** `metrics.sheet_sync: { completed, failed }`
+reads `?? 0` when an older day document omits `sheet_sync` (`$inc` creates
+the field on the first fact). The panel count is `completed + failed`.
+Admin `normalizeDailyOperationsSnapshot` fills `{0,0}` when an older
+server omits the field.
+
 **DOP-10 — the day before (additive).** The snapshot loads **three**
 day documents. New fields, all optional for older clients:
 
@@ -1508,13 +1574,20 @@ day documents. New fields, all optional for older clients:
 Missing day before → `null`, same rule as yesterday. Existing fields
 are unchanged.
 
+**DOP-11 — client rebases like-hour.** The snapshot still stamps
+`*_by_now` at `generated_at` / `currentNyHour`. While the board stays
+on the same `today`, the Admin client rebases those fields from
+`hourly.yesterday` / `hourly.day_before` at the browser clock (§2.3).
+A 5-minute visible resync refreshes `held_now` / `still_open` and
+corrects drift — not a live poll.
+
 ### 16.2 SSE events
 
 | Event | When | `id:` |
 | --- | --- | --- |
 | `snapshot` | First open (no Last-Event-ID) | no |
 | `event` | New Daily Operations Event | yes `{occurred_at}:{event_id}` |
-| `metrics` | After a wake batch that touched tiles | no |
+| `metrics` | After a wake batch that touched tiles. **DOP-11:** every touch **with multiplicity** (no `Set` dedupe). The Admin board acknowledges the frame and does not add it. | no |
 | `heartbeat` | 15s idle | no |
 | `error` | Stream failed | no |
 
@@ -1531,6 +1604,8 @@ Admin BFF: `app/api/daily-operations-live/route.ts` — clone
 Rebuild **open** today from domain collections (NY day bounds). Rebuild
 replaces the open day document and does **not** delete events. Closed
 days are not rebuilt unless an explicit later Owner confirm is added.
+**DOP-11:** `sheet_sync` counters are counted from the day's Daily
+Operations Events (append-only, deduped per job), not a domain collection.
 
 | Counter | Source |
 | --- | --- |
@@ -1543,6 +1618,7 @@ days are not rebuilt unless an explicit later Owner confirm is added.
 | Bookings / Cancellations | `booked_leads` / `cancelled_leads` on `createdAt` |
 | Intakes opened | cases `createdAt` |
 | Zip miss | leads with zip present and state `not_found` / empty |
+| Sheet Sync | Day's Daily Operations Events (`kind: sheet_sync.completed` / `sheet_sync.failed`). Append-only, deduped per job. No domain collection records "job done today". |
 
 ---
 
@@ -1557,10 +1633,12 @@ days are not rebuilt unless an explicit later Owner confirm is added.
 | `components/daily/origins-panel.tsx` | Ingestion Origin |
 | `components/daily/companies-table.tsx` | Source Company |
 | `components/daily/arrivals-stream.tsx` | Complementary Arrivals strip |
-| `components/daily/category-panels.tsx` | Grid + focus |
+| `components/daily/category-panels.tsx` | Grid + Panel view strip + solo view |
+| `components/daily/events-overlay.tsx` | Full-stream overlay (**DOP-11**) |
 | `components/daily/event-card.tsx` | Shared card + links |
-| `lib/api/dailyOperations.ts` | Snapshot via `/api/proxy` |
-| `lib/api/dailyOperationsLive.ts` | Types + merge (copy `granotLiveReceipts.ts`) |
+| `lib/api/dailyOperations.ts` | Snapshot via `/api/proxy`; `withLiveDailyOperationsClock` |
+| `lib/api/dailyOperationsLive.ts` | Types + merge; count per `event` |
+| `lib/api/dailyOperationsBoard.ts` | Panel view (`panelsForDailyOperationsView`), per-lane Load earlier |
 | `app/api/daily-operations-live/route.ts` | SSE BFF |
 | `lib/query/keys.ts` | `queryKeys.dailyOperations.snapshot` |
 
@@ -1571,15 +1649,23 @@ const source = new EventSource("/api/daily-operations-live");
 ```
 
 Native reconnect. No custom backoff. `onerror` → status `reconnecting`.
-Merge events by `event_id`. Apply `metrics` to the tile store. Filter
+Merge events by `event_id`. **DOP-11:** apply each `event`'s
+`metric_touches` to tiles / `+N` / hourly buckets (once per
+`event_id`). Acknowledge `metrics` and otherwise ignore it. Filter
 lanes / Quiet priorities / company **in memory**. Fan each event into
 exactly one panel by `lane`. Slice Arrivals from the same merged list
 (newest 20 after Quiet + company). Do not open a second EventSource.
-Do not filter Arrivals by `?lane=`.
+Do not filter Arrivals by `?lane=`. **Load earlier** pages from the
+oldest in-memory fact of the requested lane.
 
-Do not add a 3s HTTP poll of the snapshot while SSE is live. Optional:
-one snapshot fetch on tab focus if the stream was hidden long enough to
-miss `maxDuration` reconnect.
+**DOP-11 — snapshot resync (not a live poll).** Refetch the snapshot
+every 5 minutes while the tab is visible (`refetchInterval` — refreshes
+`held_now` / `still_open` and corrects drift), when the tab returns
+after being hidden ≥ 240s, and when the America/New_York day leaves
+`snapshot.today`. `receiveDailyOperationsSnapshot` treats every fetched
+or streamed snapshot as authoritative; a new `today` drops yesterday's
+facts and the session `+N` badges and reconnects the live socket. Do
+not add a 3s HTTP poll of the snapshot while SSE is live.
 
 Deep links use existing desks. Confirm stays on `/intakes`.
 
@@ -1625,8 +1711,8 @@ pattern as sheet-sync / RingCentral.
 
 ## 20. Phasing and issues
 
-Nine shippable issues (DOP-01–08 shipped; DOP-09 is the Arrivals
-append). The specification wins; issues sequence work.
+Eleven shippable issues (DOP-01–11 shipped). The specification wins;
+issues sequence work.
 
 | Issue | Ships | Repos |
 | --- | --- | --- |
@@ -1639,6 +1725,8 @@ append). The specification wins; issues sequence work.
 | [DOP-07](issues/DOP-07.md) | Category panels, cards, links, Quiet priorities, exceptions | admin |
 | [DOP-08](issues/DOP-08.md) | Browser proof + docs | both |
 | [DOP-09](issues/DOP-09.md) | Complementary Arrivals band on `/daily` | admin |
+| [DOP-10](issues/DOP-10.md) | Live workspace: trend %, full cards, kind colours (expand-in-place superseded by DOP-11) | both |
+| [DOP-11](issues/DOP-11.md) | Solo Panel view, overlay, motion, live clock, count per `event` | both |
 
 ### Slice mapping
 
@@ -1648,9 +1736,13 @@ append). The specification wins; issues sequence work.
 | Category board | DOP-07 | The command-center the Owner asked for |
 | Proof | DOP-08 | Walk + knowledge pointers |
 | Arrivals motion | DOP-09 | Facts arrive on `/daily` without leaving the board |
+| Live workspace | DOP-10 | Trend %, full-fact cards, kind colours, Arrivals rail |
+| Solo + clock | DOP-11 | Panel view solo, overlay, motion, honest like-hour, count per fact |
 
-Sheet Sync panel may land in DOP-07 as opt-in or wait for a later
-polish issue. v1 may ship the lane off with a working card renderer.
+Sheet Sync panel shipped opt-in in DOP-07 (lane off by default, working
+card renderer). **DOP-11:** the drain hook in `runSheetSyncDrain` records
+`sheet_sync.completed` / `sheet_sync.failed`; the panel count is
+`completed + failed`.
 
 ### Out of v1
 
@@ -1669,7 +1761,7 @@ polish issue. v1 may ship the lane off with a working card renderer.
 ## 21. Locked decisions
 
 1. `/daily` is a new Owner page. Not a tab on Live Events, Overview, or Observational.
-2. **Category panels on one board.** Not one mixed feed as the only view. Not tabs. Not a page per category.
+2. **Category panels on one board.** Not one mixed feed as the only view. Not the 2026-08-19 tabbed Daily View. Not a page per category. **DOP-11:** a Panel view strip on the same board chooses All panels (the default reading of the day) or one solo Daily Operations Panel (`?lane=`).
 3. **One Granot stream**, one EventSource. No per-class live space. Granot chips live inside the Granot panel.
 4. Mongo is SoR for events and counts. Redis is a doorbell (`XADD` Stream). Degrade to Mongo tail if Redis is absent.
 5. After-commit hooks only. Same seam as `recordOperationalEvent`. Never Granot 202 for Lead / Booking / Decision counts.
@@ -1685,7 +1777,8 @@ polish issue. v1 may ship the lane off with a working card renderer.
 15. A zip that does not produce a state is an Exception **and** a chip on the Lead card. The Lead still counts.
 16. No mutations from Daily Operations. Confirm stays on `/intakes`.
 17. Do not implement the 2026-08-19 Owner Daily Operations View.
-18. **Complementary Arrivals** on `/daily` between mix and panels. Not a tab. Not mixed-feed-as-only-view. Same EventSource. Default 20 newest across lanes after Quiet + company. `?lane=` does not filter Arrivals.
+18. **Complementary Arrivals** on `/daily` between mix and panels. Not a Daily Operations Panel. Not mixed-feed-as-only-view. Same EventSource. Default 20 newest across lanes after Quiet + company. `?lane=` does not filter Arrivals.
+19. **DOP-11.** Count per `event` (`metric_touches`, once per `event_id`); Admin ignores the `metrics` frame (the frame still carries multiplicity). Like-hour `*_by_now` follows the browser clock on the same America/New_York day. Snapshot resyncs every 5 minutes while visible, when the tab returns after hidden ≥ 240s, and on New York day rollover — not a live poll. Load earlier is per lane. Sheet Sync drain hook in `runSheetSyncDrain` records `sheet_sync.completed` / `sheet_sync.failed` (panel counters only); coalesced duplicates and quota deferrals never record; do not hook `finalizeSheetSync`.
 
 ---
 

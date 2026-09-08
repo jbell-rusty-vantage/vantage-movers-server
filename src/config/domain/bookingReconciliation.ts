@@ -30,7 +30,7 @@ export function getBookingReconciliationConfig(): BookingReconciliationConfig {
       "false",
     autoRematchReasons: parseBookingReconciliationReasons(
       process.env.BOOKING_RECONCILIATION_AUTO_REMATCH_REASONS?.trim() ||
-        "matching_unavailable",
+        "matching_unavailable,no_match",
     ),
     autoRematchDelaysMinutes: parseMinuteList(
       process.env.BOOKING_RECONCILIATION_AUTO_REMATCH_DELAYS_MINUTES?.trim() ||

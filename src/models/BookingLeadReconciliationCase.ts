@@ -100,7 +100,7 @@ const BookingLeadReconciliationCaseSchema = new Schema(
     },
     origin: {
       type: String,
-      enum: ["employee_booking", "external_sheet_ingestion"],
+      enum: ["employee_booking", "owner_booking", "external_sheet_ingestion"],
       required: true,
       default: "employee_booking",
       index: true,

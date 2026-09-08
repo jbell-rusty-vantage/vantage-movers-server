@@ -228,6 +228,7 @@ export const BOOKED_LEAD_CHANGE_PATHS = [
   "lead_model",
   "is_referral_booking",
   "is_leadless_booking",
+  "booking_origin",
   "customer_name",
   "customer_phone",
 ] as const;

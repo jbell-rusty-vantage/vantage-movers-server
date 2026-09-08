@@ -77,6 +77,8 @@ export type DailyOperationsDayDocument = {
     dead_letter: number;
     adoption_conflict: number;
   };
+  /** Sheet Sync drain outcomes per job (DOP-11 hook). Absent on days written before it. */
+  sheet_sync?: { completed: number; failed: number };
   hourly: DailyOperationsHourlyBucket[];
   createdAt: Date;
   updatedAt: Date;
@@ -163,6 +165,10 @@ const DailyOperationsDaySchema = new Schema<DailyOperationsDayDocument>(
       crm_failed: { type: Number, default: 0 },
       dead_letter: { type: Number, default: 0 },
       adoption_conflict: { type: Number, default: 0 },
+    },
+    sheet_sync: {
+      completed: { type: Number, default: 0 },
+      failed: { type: Number, default: 0 },
     },
     hourly: { type: [hourlyBucketSchema], default: [] },
   },

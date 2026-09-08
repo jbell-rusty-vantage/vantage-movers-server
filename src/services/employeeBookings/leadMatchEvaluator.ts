@@ -56,30 +56,11 @@ export async function evaluateEmployeeBookingMatch(
 
 function evaluatePositiveRule(
   rule: EmployeeBookingAutoMatchRule,
-  submission: PreparedEmployeeBookingSubmission,
+  _submission: PreparedEmployeeBookingSubmission,
   candidates: EvaluatedLeadCandidate[],
   preferredModel: "FormLead" | "CallLead",
 ): EmployeeBookingMatchOutcome | null {
-  const formLidProducedCandidate = candidates.some(
-    (candidate) =>
-      candidate.leadModel === "FormLead" &&
-      candidate.matchMethods.includes("lid"),
-  );
   switch (rule) {
-    case "form_lid_exact":
-      if (preferredModel !== "FormLead" || !submission.normalizedLid) {
-        return null;
-      }
-      return linkSingleEligible(
-        rule,
-        candidates.filter(
-          (candidate) =>
-            candidate.leadModel === "FormLead" &&
-            candidate.matchMethods.includes("lid") &&
-            isSourceCompatibleForAutoAttach(candidate),
-        ),
-        candidates,
-      );
     case "call_job_no_exact":
       if (preferredModel !== "CallLead") {
         return null;
@@ -94,13 +75,8 @@ function evaluatePositiveRule(
         ),
         candidates,
       );
-    case "form_contact_triple_exact":
-      if (
-        preferredModel !== "FormLead" ||
-        !submission.normalizedEmail ||
-        !submission.normalizedLeadName ||
-        formLidProducedCandidate
-      ) {
+    case "form_job_no_exact":
+      if (preferredModel !== "FormLead") {
         return null;
       }
       return linkSingleEligible(
@@ -108,41 +84,8 @@ function evaluatePositiveRule(
         candidates.filter(
           (candidate) =>
             candidate.leadModel === "FormLead" &&
-            candidate.matchMethods.includes("phone") &&
-            candidate.matchMethods.includes("email") &&
-            candidate.matchMethods.includes("normalized_name") &&
-            candidate.sourceCompatibility === "exact_granularity",
-        ),
-        candidates,
-      );
-    case "form_email_phone_exact":
-      if (
-        preferredModel !== "FormLead" ||
-        !submission.normalizedEmail ||
-        formLidProducedCandidate
-      ) {
-        return null;
-      }
-      return linkSingleEligible(
-        rule,
-        candidates.filter(
-          (candidate) =>
-            candidate.leadModel === "FormLead" &&
-            candidate.matchMethods.includes("phone") &&
-            candidate.matchMethods.includes("email") &&
-            candidate.sourceCompatibility === "exact_granularity" &&
-            !candidate.warnings.includes("name_contradiction"),
-        ),
-        candidates,
-      );
-    case "channel_phone_exact":
-      return linkSingleEligible(
-        rule,
-        candidates.filter(
-          (candidate) =>
-            candidate.leadModel === preferredModel &&
-            candidate.matchMethods.includes("phone") &&
-            candidate.sourceCompatibility === "exact_granularity",
+            candidate.matchMethods.includes("job_no") &&
+            isSourceCompatibleForAutoAttach(candidate),
         ),
         candidates,
       );
@@ -195,7 +138,16 @@ function detectIdentityConflict(
   ) {
     return true;
   }
-  if (primaryIds.size > 1) {
+  const lidIds = idsFor("lid");
+  const jobIds = idsFor("job_no");
+  // LID vs Job Number on different Leads is an identity conflict. Two Job
+  // Number hits (or two LID hits) of the same kind are multiple_matches.
+  if (
+    lidIds.size > 0 &&
+    jobIds.size > 0 &&
+    ([...lidIds].some((leadId) => !jobIds.has(leadId)) ||
+      [...jobIds].some((leadId) => !lidIds.has(leadId)))
+  ) {
     return true;
   }
 

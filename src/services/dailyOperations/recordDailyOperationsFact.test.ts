@@ -349,14 +349,21 @@ test("test sink captures when stores are not injected", async () => {
   clearCapturedDailyOperationsFacts();
 });
 
-test("granot.minted increments decisions only and sheet sync increments none", () => {
+test("granot.minted increments decisions only and sheet sync increments only its own panel counter", () => {
   assert.deepEqual([...defaultMetricTouches("granot.minted")], ["decisions.minted"]);
   assert.equal(
     defaultMetricTouches("granot.minted").some((touch) => touch.startsWith("leads.")),
     false,
   );
-  assert.deepEqual([...defaultMetricTouches("sheet_sync.completed")], []);
-  assert.deepEqual([...defaultMetricTouches("sheet_sync.failed")], []);
+  assert.deepEqual([...defaultMetricTouches("sheet_sync.completed")], ["sheet_sync.completed"]);
+  assert.deepEqual([...defaultMetricTouches("sheet_sync.failed")], ["sheet_sync.failed"]);
+  for (const kind of ["sheet_sync.completed", "sheet_sync.failed"] as const) {
+    assert.equal(
+      defaultMetricTouches(kind).some((touch) => !touch.startsWith("sheet_sync.")),
+      false,
+      `${kind} must not touch leads / hourly / tiles`,
+    );
+  }
   assert.equal(DAILY_OPERATIONS_KIND_CATALOG["text.deferred"].lane, "text");
   assert.deepEqual(
     [...defaultMetricTouches("text.deferred")],

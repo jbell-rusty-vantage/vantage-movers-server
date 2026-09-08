@@ -84,6 +84,7 @@ export type DailyOperationsSnapshot = {
       dead_letter: number;
       adoption_conflict: number;
     };
+    sheet_sync: { completed: number; failed: number };
   };
   origins: Record<DailyOperationsOriginKey, number>;
   companies: DailyOperationsSnapshotCompany[];
@@ -235,6 +236,10 @@ export async function getDailyOperationsSnapshot(
         crm_failed: today.exceptions.crm_failed,
         dead_letter: today.exceptions.dead_letter,
         adoption_conflict: today.exceptions.adoption_conflict,
+      },
+      sheet_sync: {
+        completed: Number(today.sheet_sync?.completed ?? 0),
+        failed: Number(today.sheet_sync?.failed ?? 0),
       },
     },
     origins,

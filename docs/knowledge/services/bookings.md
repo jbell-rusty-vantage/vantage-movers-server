@@ -4,12 +4,13 @@ title: "Bookings (`bookings/`)"
 description: Create, update, and delete Booked Leads, including from-source, referral, leadless, and booking-chain sync.
 tags: [booking, sheet-sync]
 status: draft
-stale_after: 2026-11-20
+stale_after: 2026-12-08
 resource: src/services/bookings/bookedLead.service.ts
 applies_to:
   - src/services/bookings/bookedLead.service.ts
   - src/services/bookings/bookedLeadFromSource.service.ts
   - src/services/bookings/bookingSourceResolver.ts
+  - src/services/bookings/ownerBookingAttach.ts
   - src/services/bookings/bookingMirror.service.ts
   - src/services/bookings/referralBooking.service.ts
   - src/services/bookings/leadlessBooking.service.ts
@@ -32,12 +33,12 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:docs-keeper
-  at: 2026-08-28T19:15:00Z
+  at: 2026-09-08T20:30:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/bookings/`  
-**Domain terms used:** [Booking](../../../../CONTEXT.md), [Leadless Booking](../../../../CONTEXT.md), [Referral Booking](../../../../CONTEXT.md), [Booking Chain](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Agent Allocation](../../../../CONTEXT.md), [Binder](../../../../CONTEXT.md), [Unmatched Call Lead](../../../../CONTEXT.md), [No-Sync Lead](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md)
+**Domain terms used:** [Booking](../../../../CONTEXT.md), [Precise Booking Form](../../../../CONTEXT.md), [Exact Job Booking Attach](../../../../CONTEXT.md), [Employee Booking Submission](../../../../CONTEXT.md), [Leadless Booking](../../../../CONTEXT.md), [Booking Lead Reconciliation Case](../../../../CONTEXT.md), [Connect Booking to Lead](../../../../CONTEXT.md), [Referral Booking](../../../../CONTEXT.md), [Unmatched Call Lead](../../../../CONTEXT.md), [Booking Chain](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md)
 
 # Bookings (`bookings/`)
 
@@ -53,9 +54,9 @@ Public mutating routes go through canonical adapters (`handleCanonicalCreate` / 
 | `bookedLeadFromSource.service.ts` | Form/phone submission bridge → `createBookedLead` |
 | `bookingMirror.service.ts` | Lead ↔ booking state sync + lead-update refresh + employee claim |
 | `referralBooking.service.ts` | Referral bookings (no source lead) |
-| `leadlessBooking.service.ts` | Leadless bookings; Best Relocation import may open a `BookingLeadReconciliationCase` |
+| `leadlessBooking.service.ts` | [Leadless Booking](../../../../CONTEXT.md) create; Owner [Precise Booking Form](../../../../CONTEXT.md) pending and Best Relocation import each open a [Booking Lead Reconciliation Case](../../../../CONTEXT.md) |
 
-Helpers: `bookingSourceResolver.ts`, `bookingWarnings.ts`, `bookingIdentity.ts`, `bestRelocationImportGuard.ts`. Agent resolution: [`agent-allocation.md`](./agent-allocation.md).
+Helpers: `bookingSourceResolver.ts`, `ownerBookingAttach.ts`, `bookingWarnings.ts`, `bookingIdentity.ts`, `bestRelocationImportGuard.ts`. Agent resolution: [`agent-allocation.md`](./agent-allocation.md).
 
 ## HTTP entry points
 
@@ -71,16 +72,16 @@ Helpers: `bookingSourceResolver.ts`, `bookingWarnings.ts`, `bookingIdentity.ts`,
 | `GET /api/v1/admin/bookings/:bookingId/connect-lead-candidates` | Owner-only `listConnectLeadCandidates` |
 | `POST /api/v1/admin/bookings/:bookingId/connect-lead` | Owner-only `connectBookingToLead` |
 
-Public employee submit is a separate HTTP path ([`employee-bookings.md`](./employee-bookings.md)) that may book-and-link via `claimAvailableLeadForBooking` or create a leadless booking + reconciliation case. Gated Granot Owner Confirm may also mint an official [Leadless Booking](../../../../CONTEXT.md) — see **5. Granot Owner Confirm / Update** below. That path is not `POST /api/v1/leadless-bookings` and does not open a `BookingLeadReconciliationCase`.
+Public [Employee Booking Submission](../../../../CONTEXT.md) is a separate HTTP path ([`employee-bookings.md`](./employee-bookings.md)) that may book-and-link via `claimAvailableLeadForBooking` or create a [Leadless Booking](../../../../CONTEXT.md) + [Booking Lead Reconciliation Case](../../../../CONTEXT.md). Gated Granot Owner Confirm may also mint an official [Leadless Booking](../../../../CONTEXT.md) — see **5. Granot Owner Confirm / Update** below. Confirm is not `POST /api/v1/leadless-bookings` and does not open a case.
 
 ## Create paths
 
 ```
-Form/phone intake          Direct API                 Referral / leadless
-(from-source)              (booked-leads)
+From-source attach plan    Direct API                 Referral / leadless
+(resolveFromSourceAttach)  (booked-leads)
       │                          │                          │
       ▼                          ▼                          ▼
-resolveBookingSourceLead   input.lead_ref/model      no source lead
+linked or Owner pending    input.lead_ref/model      no source lead
       │                          │                          │
       └──────── createBookedLead ─┘         createReferralBooking
                     │                       createLeadlessBooking
@@ -91,18 +92,26 @@ resolveBookingSourceLead   input.lead_ref/model      no source lead
 
 ### 1. From source (`createBookedLeadFromSource`)
 
-1. **`resolveBookingSourceLead`** (`bookingSourceResolver.ts`):
-   - **FormLead:** load by `form_lead_id`; use submitted `job_no`.
-   - **CallLead:** match `job_no` (Best Relocation import also filters `source_company=best_relocation_leads`). **409** if more than one match (search is newest-first, limit 5). A single job match may overwrite `phone_number` when the request sent one.
-   - Else phone via `findBestCallLeadMatchByPhone` (same import filter). A phone match writes submitted `job_no` / `phone_number` onto the lead.
-   - Else **create** a Call Lead with `created_on_unmatched: true`, `form_fill` from `hasFormFillForCallLead`, Florida `timestamp`, and CPL snapshot with `applicable: false`. Requires `call_job_no` or `call_phone_number` at Zod.
-   - Direct `createBookedLead` may omit `job_no` so a Call Lead can be booked before a Job Number exists. Public `/booked-leads` Zod still requires `job_no`.
-2. Optional `source_company` override runs `resolveLeadSourceAssignment` (channel from lead model). That assignment + a new CPL snapshot is written onto the lead **before** booking. Missing CPL after that write emits `lead.cpl.missing_rate` on the public path (canonical path emits it in `finalize`).
-3. Display `source` on the booking is the lead/assignment snapshot label when present, else the company slug.
-4. **`deriveBookedLeadAgentAllocations`** from `agent`, optional `split_agent`, `binder_amount`.
-5. Delegates to **`createBookedLead`** with `lead_ref`, optional `customer_name`/`customer_phone`, `submission_id`.
+`resolveFromSourceAttach` (`bookedLeadFromSource.service.ts`) picks the attach plan.
 
-**Best Relocation import** (`ingestion_source=best_relocation_sheet`): `requireBestRelocationImportSource` requires `best_relocation_leads`. When true, create may resolve **inactive** catalog agents (`allow_inactive_agents`) and, if the lead has no receiver yet, stamp primary-agent receiver attribution (`receiver_agent_source: best_relocation_sheet`, value `Booked Deals:<job_no>`).
+**Owner [Precise Booking Form](../../../../CONTEXT.md)** (not Best Relocation import):
+
+- **Form Lead + Mongo ID:** Owner-selected attach via `resolveBookingSourceLead`. Linked, no case, `booking_origin=owner_booking`.
+- **Call Lead:** [Exact Job Booking Attach](../../../../CONTEXT.md) (`evaluateOwnerCallLeadMatch` → `queryEmployeeBookingCandidates` / `evaluateEmployeeBookingMatch`). No `findBestCallLeadMatchByPhone`. No [Unmatched Call Lead](../../../../CONTEXT.md) mint. Zod requires `call_job_no`; phone is optional. Unique job → linked, no case, `booking_origin=owner_booking`. Miss or ambiguous → [Leadless Booking](../../../../CONTEXT.md) + pending [Booking Lead Reconciliation Case](../../../../CONTEXT.md) `origin=owner_booking`, `booking_origin=owner_booking`, HTTP 201, `data.reconciliation_case_id`.
+
+**Best Relocation import** (`ingestion_source=best_relocation_sheet`) still uses `resolveBookingSourceLead` for Call Lead: job lookup (**409** if more than one; newest-first, limit 5), else `findBestCallLeadMatchByPhone`, else mint `created_on_unmatched: true` (Unmatched Call Lead). Phone-or-job identity at Zod. Unchanged.
+
+`resolveBookingSourceLead` remains for Form Lead requests and that import Call Lead path only.
+
+Then:
+
+1. Optional `source_company` override runs `resolveLeadSourceAssignment` (channel from lead model). That assignment + a new CPL snapshot is written onto the lead **before** booking. Missing CPL after that write emits `lead.cpl.missing_rate` on the public path (canonical path emits it in `finalize`).
+2. Display `source` on the booking is the lead/assignment snapshot label when present, else the company slug.
+3. **`deriveBookedLeadAgentAllocations`** from `agent`, optional `split_agent`, `binder_amount`.
+4. Linked plans delegate to **`createBookedLead`** with `lead_ref`, optional `customer_name`/`customer_phone`, `submission_id`, and `booking_origin=owner_booking` on the Owner path. Pending Owner Call Lead plans go through `createLeadlessBookingInTransaction` (sheet `owner_booking.create_pending`).
+5. Direct `createBookedLead` may omit `job_no` so a Call Lead can be booked before a Job Number exists. Public `/booked-leads` Zod still requires `job_no`.
+
+**Best Relocation import** also: `requireBestRelocationImportSource` requires `best_relocation_leads`. When true, create may resolve **inactive** catalog agents (`allow_inactive_agents`) and, if the lead has no receiver yet, stamp primary-agent receiver attribution (`receiver_agent_source: best_relocation_sheet`, value `Booked Deals:<job_no>`).
 
 ### 2. Direct (`createBookedLead`)
 
@@ -131,24 +140,26 @@ Post-commit: `finalizeSheetSync`; events `booking.created` or `booking.upserted`
 - Customer from contact fields only; **no** `mirrorBookingToLead`.
 - Sheet job: `resource: "booked_lead"`, `operation: "referral_booking.create"` (not `booking_chain`).
 - Public **update is 409**. Public **delete is allowed** (no linked lead required when `is_referral_booking`). Public **cancel is 409** ([`cancelled-lead.md`](./cancelled-lead.md)).
+- No [Booking Lead Reconciliation Case](../../../../CONTEXT.md). No `booking_origin`.
 - Separately, the gated Granot lifecycle Owner command in `granotLifecycle/referralBooking.ts` creates the same canonical no-Lead shape from an accepted immutable Referral Observation plus explicit official fields. Checked-in Referral flags stay false.
 
 ### 4. Leadless (`createLeadlessBooking`)
 
 - `POST /api/v1/leadless-bookings`. Sets `is_leadless_booking`. **409** if `job_no` already exists.
 - Resolves source via `resolveLeadSourceAssignment`. Channel is `call` when the optional `source` label matches `/inbound|call/i`, else `form`. Stored `source` is the request label or the assignment snapshot.
-- **Does not** open a `BookingLeadReconciliationCase` on the ordinary admin path. A case is created only when `ingestion_source=best_relocation_sheet` (origin `external_sheet_ingestion`, `status=pending`, `reason=no_match`). Employee public submit opens its own cases ([`employee-bookings.md`](./employee-bookings.md)).
+- **Owner (non-import), including explicit [Precise Booking Form](../../../../CONTEXT.md) Leadless:** always opens a pending [Booking Lead Reconciliation Case](../../../../CONTEXT.md) `origin=owner_booking`, `reason=no_match`, sets `booking_origin=owner_booking`, HTTP 201, `reconciliation_case_id`. Sheet job: `resource: "booked_lead"`, `operation: "owner_booking.create_pending"`.
+- **Best Relocation import** (`ingestion_source=best_relocation_sheet`): case `origin=external_sheet_ingestion`, `status=pending`, `reason=no_match`. Sheet stays `leadless_booking.create`. No `booking_origin`. Unchanged.
+- Employee public submit opens its own cases ([`employee-bookings.md`](./employee-bookings.md)).
 - Best Relocation import may resolve inactive agents.
-- Sheet job: `resource: "booked_lead"`, `operation: "leadless_booking.create"`.
 - Public **update is 409**. Public **delete is allowed**. Public **cancel is 409** unless Best Relocation import sets `allowLeadless`.
 
 ### 5. Granot Owner Confirm / Update — official Leadless
 
 Gated Owner commands in `granotLifecycle/` (`bookingConfirmation.ts`, `confirmAttachment.ts`, `bookingOwnerCommands.ts`). Distinct from `POST /api/v1/leadless-bookings` and from employee submit.
 
-- **Confirm** may attach a Lead or write official `is_leadless_booking: true` (no `lead_ref` / `lead_model`, customer from Observation contact, booking-only Record Link). Attachment resolution is server-owned. Lost attached-path claim fails closed; it does not fall through to Leadless. See [`booking-reconciliation.md`](../granot-lifecycle/booking-reconciliation.md).
-- **Update Existing Booking** (`updateExistingBooking`) allows a Granot official Leadless Booking: `isGranotOfficialLeadlessBooking` — leadless, not referral, not `booking_origin=employee_booking`, no `lead_ref` / `lead_model`. Official fields only; Master Booked sheet. Employee and public leadless rows stay rejected here.
-- **Connect Booking to Lead** (`connectBookingToLead`) is an Owner-only command on a connectable Leadless Booking: present, not cancelled, not Referral, and Leadless or missing `lead_ref`. The Owner picks an eligible unbooked Form or Call Lead from `/bookings` or `/manual` (not `/bookings/reconciliation`). The command claims the Lead, sets `lead_ref` / `lead_model` / `is_leadless_booking: false`, mirrors booked onto the Lead without rewriting official Binder / Agents / Deposit / Merchant / book date or CPL, writes EntityChange for Booking and Lead (and an existing Record Link if one is already there — it does not mint a new link), and queues one coalescible `booking_chain` / `booked_lead.connect_lead`. Exact same Lead is `already_satisfied`. A different Lead or an already-booked Lead is `IDENTITY_CONFLICT`. Stale booking revision is `DOMAIN_REVISION_CONFLICT`. Flag-off is `422 POLICY_BLOCKED`. Candidate search is `GET /api/v1/admin/bookings/:bookingId/connect-lead-candidates`; empty `q` returns an empty page. See [`owner-booking-intake.md`](../granot-lifecycle/owner-booking-intake.md).
+- **Confirm** may attach a Lead or write official `is_leadless_booking: true` (no `lead_ref` / `lead_model`, customer from Observation contact, booking-only Record Link). Attachment resolution is server-owned. Lost attached-path claim fails closed; it does not fall through to Leadless. Confirm does **not** open a [Booking Lead Reconciliation Case](../../../../CONTEXT.md). Missing `booking_origin` is still official Granot Leadless. See [`booking-reconciliation.md`](../granot-lifecycle/booking-reconciliation.md).
+- **Update Existing Booking** (`updateExistingBooking`) allows a Granot official Leadless Booking: `isGranotOfficialLeadlessBooking` — leadless, not referral, not `booking_origin=employee_booking` or `owner_booking`, no `lead_ref` / `lead_model`. Official fields only; Master Booked sheet. Employee and Precise Form pending rows stay rejected here.
+- **Connect Booking to Lead** (`connectBookingToLead`) is an Owner-only command on a connectable Leadless Booking: `isConnectableLeadlessBooking` = `isGranotOfficialLeadlessBooking` **and** no pending [Booking Lead Reconciliation Case](../../../../CONTEXT.md). `owner_booking` and `employee_booking` are not official. The Owner picks an eligible unbooked Form or Call Lead from `/bookings` or `/manual` (not `/bookings/reconciliation`). The command claims the Lead, sets `lead_ref` / `lead_model` / `is_leadless_booking: false`, mirrors booked onto the Lead without rewriting official Binder / Agents / Deposit / Merchant / book date or CPL, writes EntityChange for Booking and Lead (and an existing Record Link if one is already there — it does not mint a new link), and queues one coalescible `booking_chain` / `booked_lead.connect_lead`. Exact same Lead is `already_satisfied`. A different Lead or an already-booked Lead is `IDENTITY_CONFLICT`. Stale booking revision is `DOMAIN_REVISION_CONFLICT`. Flag-off is `422 POLICY_BLOCKED`. Candidate search is `GET /api/v1/admin/bookings/:bookingId/connect-lead-candidates`; empty `q` returns an empty page. See [`owner-booking-intake.md`](../granot-lifecycle/owner-booking-intake.md).
 
 ## Update (`updateBookedLead`)
 
@@ -213,7 +224,7 @@ Atomic `updateOne` used by employee submit. Filter: not booked, not cancelled, n
 
 **Upsert vs duplicate:** Second create for the same lead **updates** the booking unless `submission_id` matches — then no-op with the existing doc returned.
 
-**Unmatched Call Leads:** Created at booking time when call identity cannot be resolved; `created_on_unmatched: true`. Sheet Sync skips a misleading Calls-tab row for those stubs (`jobPlanner.ts`). Distinct from [No-Sync Lead](../../../../CONTEXT.md).
+**Unmatched Call Leads:** Best Relocation import (and any other remaining `resolveBookingSourceLead` Call path) may mint `created_on_unmatched: true` when call identity cannot be resolved. [Precise Booking Form](../../../../CONTEXT.md) Call Lead create never mints one. Sheet Sync skips a misleading Calls-tab row for those stubs (`jobPlanner.ts`). Distinct from [No-Sync Lead](../../../../CONTEXT.md).
 
 ## Sheet Sync
 
@@ -224,7 +235,8 @@ Atomic `updateOne` used by employee submit. Filter: not booked, not cancelled, n
 | Lead-attached update | `booking_chain` | `booked_lead.update` |
 | Lead-attached delete | tombstone `delete_booked_lead` + optional `source_lead` | `delete_booked_lead` |
 | Referral create / lifecycle update | `booked_lead` | `referral_booking.create`, `referral_booking.update` |
-| Leadless create (`POST /api/v1/leadless-bookings`) | `booked_lead` | `leadless_booking.create` |
+| Leadless create (Best Relocation import) | `booked_lead` | `leadless_booking.create` |
+| Owner Precise Form pending / Owner leadless | `booked_lead` | `owner_booking.create_pending` |
 | Granot Confirm attached | `booking_chain` | `booked_lead.create` |
 | Granot Confirm Leadless | `booked_lead` | `granot_booking.create_leadless` |
 | Granot Update attached | `booking_chain` | `booked_lead.update` |
@@ -252,7 +264,8 @@ Atomic `updateOne` used by employee submit. Filter: not booked, not cancelled, n
 - `bestRelocationImportGuard.test.ts` — source-company fence
 - `agentAllocation.service.test.ts` — inactive-agent resolve + receiver attribution
 - Domain-command adapters in `domainCommands.test.ts`
-- `connectLead.test.ts` — connectable booking / eligible Lead fences, sheet intent `booking_chain` / `booked_lead.connect_lead`
+- `ownerBookingAttach.test.ts`, `bookedLeadFromSource.service.test.ts`, `leadlessBooking.service.test.ts` — Owner Exact Job Booking Attach, pending `owner_booking` case, no Unmatched Call Lead on the Owner path
+- `connectLead.test.ts` — connectable booking / eligible Lead fences, `owner_booking` / `employee_booking` rejected, sheet intent `booking_chain` / `booked_lead.connect_lead`
 - `connectLeadCandidates.test.ts` — empty `q` is an empty page; non-connectable booking is `IDENTITY_CONFLICT`
 - `connectBookingToLead.replica.test.ts` — happy-path EntityChange + sheet intent (skipped unless the Booking-command flag is on)
 
@@ -266,7 +279,7 @@ Atomic `updateOne` used by employee submit. Filter: not booked, not cancelled, n
 
 ## Do not bypass
 
-- `resolveBookingSourceLead` / `resolveLeadSourceAssignment` for from-source creates
+- `resolveFromSourceAttach` (Owner Call Lead Exact Job Booking Attach; Form Lead / Best Relocation import still `resolveBookingSourceLead`) / `resolveLeadSourceAssignment` for from-source creates
 - `resolveAgentAllocations`, `resolveTotalBinderAmount` for allocation writes
 - `mirrorBookingToLead` / `clearBookingFromLead` / `claimAvailableLeadForBooking` for lead state
 - `runSheetSyncWrite` + `persistSheetSyncIntent` / tombstone helpers for sheet-backed mutations

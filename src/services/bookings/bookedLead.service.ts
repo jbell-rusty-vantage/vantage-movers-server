@@ -78,6 +78,7 @@ type CreateBookedLeadServiceInput = Omit<CreateBookedLeadInput, "job_no"> & {
   set_primary_agent_as_receiver?: boolean;
   receiver_agent_source_value?: string;
   ingestion_source?: typeof BEST_RELOCATION_INGESTION_SOURCE;
+  booking_origin?: "employee_booking" | "owner_booking";
 };
 
 function assignPrimaryAgentAsReceiver(

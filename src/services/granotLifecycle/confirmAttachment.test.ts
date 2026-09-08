@@ -109,4 +109,12 @@ test("Referral is not a Granot official Leadless Booking", () => {
     }),
     true,
   );
+  assert.equal(
+    isGranotOfficialLeadlessBooking({
+      is_leadless_booking: true,
+      is_referral_booking: false,
+      booking_origin: "owner_booking",
+    }),
+    false,
+  );
 });

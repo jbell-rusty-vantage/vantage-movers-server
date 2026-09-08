@@ -179,16 +179,17 @@ export const DAILY_OPERATIONS_KIND_CATALOG = {
     title: "Cancellation written",
     metricTouches: ["cancellations.total", "hourly.cancellations"],
   },
-  // Drain hook is out of DOP-02 (optional v1; do not hook finalizeSheetSync).
+  // Recorded by the drainer per job outcome (spec §15.9). Never hook
+  // finalizeSheetSync: that is a queue wake-up, not a job done.
   "sheet_sync.completed": {
     lane: "sheet_sync",
     title: "Sheet Sync completed",
-    metricTouches: [],
+    metricTouches: ["sheet_sync.completed"],
   },
   "sheet_sync.failed": {
     lane: "sheet_sync",
     title: "Sheet Sync failed",
-    metricTouches: [],
+    metricTouches: ["sheet_sync.failed"],
   },
   "exception.zip_missing": {
     lane: "exception",

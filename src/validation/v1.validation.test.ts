@@ -233,8 +233,26 @@ test("createBookedLeadFromSourceSchema accepts transient CallLead booking phone"
   assert.equal(parsed.ingestion_source, "best_relocation_sheet");
 });
 
-test("createBookedLeadFromSourceSchema accepts CallLead booking with only phone", () => {
+test("createBookedLeadFromSourceSchema accepts CallLead booking with only phone on Best Relocation import", () => {
   const parsed = createBookedLeadFromSourceSchema.parse({
+    lead_type: "CallLead",
+    call_phone_number: "(240) 555-0199",
+    book_date: "2026-05-21",
+    agent: "JOSH",
+    binder_amount: 900,
+    deposit_amount: 900,
+    merchant: "Card",
+    source_company: "BestRelocation Inbounds",
+    ingestion_source: "best_relocation_sheet",
+  });
+
+  assert.equal(parsed.lead_type, "CallLead");
+  assert.equal(parsed.call_job_no, undefined);
+  assert.equal(parsed.call_phone_number, "(240) 555-0199");
+});
+
+test("createBookedLeadFromSourceSchema rejects Owner Call Lead booking with only phone", () => {
+  const parsed = createBookedLeadFromSourceSchema.safeParse({
     lead_type: "CallLead",
     call_phone_number: "(240) 555-0199",
     book_date: "2026-05-21",
@@ -245,9 +263,7 @@ test("createBookedLeadFromSourceSchema accepts CallLead booking with only phone"
     source_company: "BestRelocation Inbounds",
   });
 
-  assert.equal(parsed.lead_type, "CallLead");
-  assert.equal(parsed.call_job_no, undefined);
-  assert.equal(parsed.call_phone_number, "(240) 555-0199");
+  assert.equal(parsed.success, false);
 });
 
 test("createBookedLeadFromSourceSchema rejects CallLead booking without job or phone", () => {

@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { resolveBookingLeadReconciliationSchema } from "./employeeBookings.validation";
+import {
+  bookingLeadReconciliationListQuerySchema,
+  resolveBookingLeadReconciliationSchema,
+} from "./employeeBookings.validation";
+
+test("reconciliation list query accepts owner_booking origin", () => {
+  const parsed = bookingLeadReconciliationListQuerySchema.parse({
+    origin: "owner_booking",
+  });
+  assert.equal(parsed.origin, "owner_booking");
+});
 
 test("create-and-attach validates Form Lead fields for its selected model", () => {
   const result = resolveBookingLeadReconciliationSchema.safeParse({

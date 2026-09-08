@@ -32,7 +32,7 @@ applies_to:
 
 # Daily Operations
 
-Ten shippable issues (DOP-01–10 shipped). Arrivals is on `/daily` as a live rail.
+Eleven shippable issues (DOP-01–11 shipped). Arrivals is on `/daily` as a live rail.
 This pack follows
 `docs/lead-costs-owner-editing/` and `docs/operational-surfaces/`:
 same fourteen-section issue contract, same rule that **repository state
@@ -85,10 +85,12 @@ wins and the issue author fixes this pack in the same change.
 | **8** | [DOP-08](issues/DOP-08.md) | both (proof + docs) | Browser walk and pointers. |
 | **9** | [DOP-09](issues/DOP-09.md) | vantage-admin | Complementary Arrivals strip on `/daily`. |
 | **10** | [DOP-10](issues/DOP-10.md) | both (snapshot + board) | Owner-requested live workspace: focus expands in place, trend % vs yesterday / day before, full-fact cards, kind colours, Live Events polish. |
+| **11** | [DOP-11](issues/DOP-11.md) | both (board + `metrics` multiplicity) | Solo Panel view, full-stream overlay, motion, live like-hour clock, count per `event`. Supersedes DOP-10 expand-in-place. |
 
-DOP-01–10 shipped. Pack reopened 2026-09-08 for the Arrivals append
-(DOP-09) and again the same day for the Owner's live-workspace review
-(DOP-10); closed after DOP-10. Do not start leftover pack work. Agents
+DOP-01–11 shipped. Pack reopened 2026-09-08 for the Arrivals append
+(DOP-09), again the same day for the Owner's live-workspace review
+(DOP-10), and again the same day for solo view / motion / live clock
+(DOP-11); closed after DOP-11. Do not start leftover pack work. Agents
 may use 21st.dev on DOP-06, DOP-07, DOP-09, and DOP-10 against the
 named craft targets only.
 
@@ -109,17 +111,19 @@ Live values live in [`PROGRESS.md`](PROGRESS.md).
 | [DOP-08](issues/DOP-08.md) | Browser proof and docs | DOP-02, DOP-03, DOP-07 | complete | complete |
 | [DOP-09](issues/DOP-09.md) | Arrivals band on /daily | DOP-07 | complete | complete |
 | [DOP-10](issues/DOP-10.md) | Live workspace: focus without loss, trend %, full cards, kind colours | DOP-09 | complete | complete |
+| [DOP-11](issues/DOP-11.md) | Board motion, solo panels, full-stream overlay, live clock | DOP-10 | complete | complete |
 
 DOP-02 and DOP-03 may run in parallel after DOP-01. DOP-04 may start
 after DOP-01 (snapshot can return zeros until hooks land). DOP-06
 waits for DOP-04 and DOP-05 so the page has a real snapshot and a live
 pipe. DOP-09 waits for DOP-07 so cards, Quiet priorities, and the
 single EventSource already exist. DOP-10 waits for DOP-09 so it
-reorganises a board that already has Arrivals.
+reorganises a board that already has Arrivals. DOP-11 waits for
+DOP-10 so it replaces expand-in-place on that board.
 
 ## Ready queue
 
-Empty. Pack issues DOP-01–10 are `complete`.
+Empty. Pack issues DOP-01–11 are `complete`.
 
 ## Standing constraints for every issue
 
@@ -173,6 +177,6 @@ docs/daily-operations/
 ├── LOCAL-ADMIN.md
 ├── PROGRESS.md
 ├── issues/
-│   ├── DOP-01.md … DOP-10.md
+│   ├── DOP-01.md … DOP-11.md
 └── reports/
 ```

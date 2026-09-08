@@ -66,6 +66,7 @@ export function isGranotOfficialLeadlessBooking(booking: {
   return booking.is_leadless_booking === true
     && booking.is_referral_booking !== true
     && booking.booking_origin !== "employee_booking"
+    && booking.booking_origin !== "owner_booking"
     && !booking.lead_ref
     && !booking.lead_model;
 }

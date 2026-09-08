@@ -59,7 +59,7 @@ test("candidate query detects the 26th matching lead instead of proving false un
 
   const result = await queryEmployeeBookingCandidates(submission);
 
-  assert.deepEqual(limits, [26, 26, 26, 26]);
+  assert.deepEqual(limits, [26, 26, 26, 26, 26]);
   assert.equal(result.hasOverflow, true);
   assert.equal(result.candidates.length, 25);
   assert.equal(
@@ -97,6 +97,24 @@ test("candidate snapshots keep Granot and ingested contact for owner display", a
   });
   assert.equal(result.candidates[0]?.snapshot.granot_contact_snapshot?.name, "Form Granot");
   assert.equal(result.candidates[0]?.snapshot.granot_contact_snapshot?.differs_from_ingested, true);
+});
+
+test("candidate query tags a unique Form Lead Job Number as job_no", async () => {
+  const formJob = {
+    _id: new Types.ObjectId(),
+    job_no: "EBR-JOB-001",
+    normalized_job_no: "EBR JOB 001",
+    source_company: "top10_leads",
+    source_granularity_key: "top10_form",
+  };
+  (FormLead as any).find = (filter: Record<string, unknown>) =>
+    buildQuery("normalized_job_no" in filter ? [formJob] : [], []);
+  (CallLead as any).find = () => buildQuery([], []);
+
+  const result = await queryEmployeeBookingCandidates(submission);
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0]?.leadModel, "FormLead");
+  assert.deepEqual(result.candidates[0]?.matchMethods, ["job_no"]);
 });
 
 function buildQuery<T>(docs: T[], limits: number[]) {

@@ -1,4 +1,5 @@
 import mongoose, { type ClientSession } from "mongoose";
+import { snapshotEmployeeBookingAutoMatchPolicy } from "../../config/domain";
 import { BookedLead } from "../../models/BookedLead";
 import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconciliationCase";
 import { CallLead } from "../../models/CallLead";
@@ -880,17 +881,7 @@ function buildMatchAttempt(
         : evaluated.reason,
     candidate_count: evaluated.candidates.length,
     candidate_snapshot_hash: candidateHash,
-    auto_match_policy_version:
-      process.env.EMPLOYEE_BOOKING_AUTO_MATCH_POLICY_VERSION?.trim() ||
-      "employee-booking-v1",
-    enabled_auto_match_rules:
-      (
-        process.env.EMPLOYEE_BOOKING_AUTO_MATCH_RULES?.trim() ||
-        "form_lid_exact,call_job_no_exact,form_contact_triple_exact,form_email_phone_exact,channel_phone_exact"
-      )
-        .split(",")
-        .map((value) => value.trim())
-        .filter(Boolean),
+    ...snapshotEmployeeBookingAutoMatchPolicy(),
   };
 }
 

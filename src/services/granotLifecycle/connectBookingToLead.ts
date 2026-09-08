@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
 import { getGranotLifecycleFlags, type GranotLifecycleFlags } from "../../config/domain/granotLifecycle";
 import { BookedLead } from "../../models/BookedLead";
+import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconciliationCase";
 import { DomainCommandExecution } from "../../models/DomainCommandExecution";
 import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
@@ -158,6 +159,12 @@ async function applyConnect(input: {
     }).session(input.session),
   );
   const linkBefore = await loadActiveLink(bookingBefore, input.session);
+  const openCase = bookingBefore
+    ? await BookingLeadReconciliationCase.exists({
+        booking: bookingBefore._id,
+        status: "pending",
+      }).session(input.session)
+    : null;
   const evaluation = evaluateConnectPreconditions({
     booking: bookingBefore,
     expected_booking_revision: input.input.expected_booking_revision,
@@ -168,6 +175,7 @@ async function applyConnect(input: {
       ? bookingSourceAssignment(bookingBefore, linkBefore?.source_scope)
       : undefined,
     out_of_scope_override_reason: input.input.out_of_scope_override_reason,
+    hasOpenReconciliationCase: Boolean(openCase),
   });
   if (evaluation.kind === "reject") {
     throw lifecycle(

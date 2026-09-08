@@ -27,14 +27,18 @@ Employee and Precise Form pending Bookings.
 
 ## 4. Current-state evidence to verify
 
-Observed 2026-09-08; **reverify at implementation**.
+Reverified and updated 2026-09-08 during EJBA-03.
 
 - `/bookings/new` title is “Precise Booking Form”.
-- Call Lead mode requires `call_phone_number` in the client
-  `missingFields` list. “Book this lead” from the Call desk sends
-  `?lead_type=CallLead&call_phone_number=`.
-- Success copy does not mention Booking Reconciliation.
-- Connect lives on `/bookings` stored-lead section (BILA-03).
+- Call phone is optional helper text. Job Number stays required.
+- “Book this lead” from the Call desk sends `call_phone_number` and
+  `call_job_no` when the Lead has a job.
+- Pending / Leadless success uses the copy module and links
+  `/bookings/reconciliation` (with `?case=` when the create result has
+  `reconciliation_case_id`).
+- Connect hides `employee_booking` / `owner_booking` (and an open-case
+  flag if present). Granot official Leadless (no origin) still offers
+  Connect.
 
 ## 5. Locked decisions
 
@@ -42,6 +46,10 @@ Observed 2026-09-08; **reverify at implementation**.
 - Phone is optional helper text, not a submit gate.
 - Owner-visible strings in one copy module. Never print
   `owner_booking` or `is_leadless_booking`.
+- On Precise Form / Owner-create cases, **Dismiss is a valid close
+  without a Lead**. Copy must say the Booking stays filed and no Lead
+  is required. Do not frame it only as abandoning a failed match.
+  Do not invent a second command; keep `dismiss`.
 
 ## 6. Deliverables
 
@@ -60,11 +68,25 @@ Observed 2026-09-08; **reverify at implementation**.
 
 ## 8. Acceptance criteria
 
-- [ ] Call Lead submit without phone is allowed when job is present.
-- [ ] Pending success includes `/bookings/reconciliation?case=`.
-- [ ] Connect is not offered on these pending rows.
-- [ ] Browser check at http://localhost:3000/bookings/new (Call Lead
+- [x] Call Lead submit without phone is allowed when job is present.
+      Evidence: `getPreciseBookingFormMissingFields` + form markup
+      (`required` removed). Browser: client submitted job-only.
+- [x] Pending success includes `/bookings/reconciliation?case=`.
+      Evidence: `readOwnerCreateReconciliationCaseId` +
+      `preciseBookingReconciliationHref`. Live 3001 create had no case
+      id (old API); Leadless still showed pending copy + desk link.
+- [x] Connect is not offered on these pending rows.
+      Evidence: `tests/booking-stored-lead.test.ts` — `owner_booking`
+      / `employee_booking` Leadless → Connect false; Granot official
+      (no origin) still true.
+- [x] Browser check at http://localhost:3000/bookings/new (Call Lead
       job-only submit, and Leadless submit) recorded.
+      See `reports/EJBA-03-completion.md`.
+- [x] Pending Precise Form case copy lets the Owner keep the Booking
+      without attaching a Lead (existing Dismiss, clearer wording).
+      Evidence: `BOOKING_RECONCILIATION_COPY.dismissButton` /
+      `dismissConfirm`; action stays `dismiss`. Origin filter label
+      “Precise Booking Form”.
 
 ## 9. Commands
 

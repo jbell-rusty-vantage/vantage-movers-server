@@ -22,7 +22,10 @@ import {
  */
 
 function requireCallBookingIdentity(value: Record<string, unknown>) {
-  return Boolean(value.call_job_no || value.call_phone_number);
+  if (value.ingestion_source === "best_relocation_sheet") {
+    return Boolean(value.call_job_no || value.call_phone_number);
+  }
+  return Boolean(value.call_job_no);
 }
 
 function binderTotalMatches(value: {
@@ -103,7 +106,7 @@ export const createBookedLeadFromSourceSchema = z.discriminatedUnion("lead_type"
     .strict()
     .refine(
       requireCallBookingIdentity,
-      "CallLead booking requires either call_job_no or call_phone_number",
+      "CallLead booking requires call_job_no unless this is a Best Relocation import",
     ),
 ]);
 

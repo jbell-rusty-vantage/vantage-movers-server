@@ -33,13 +33,19 @@ rematch reason).
 
 ## 4. Current-state evidence to verify
 
-Observed 2026-09-08; **reverify at implementation**.
+Observed 2026-09-08; **reverified at implementation** (pre-change matched
+these bullets). This change landed Exact Job Booking Attach on the
+employee matcher:
 
-- Default rules are the five-rule list including `channel_phone_exact`.
-- Policy version default is `employee-booking-v1`.
-- Rematch default reasons are only `matching_unavailable`.
-- Rematch calls `evaluateEmployeeBookingMatch` +
-  `queryEmployeeBookingCandidates`.
+- Allowed rules: `call_job_no_exact`, `form_job_no_exact`. Retired
+  names throw at parse.
+- Policy version default is `exact-job-v1`.
+- Rematch default reasons are `matching_unavailable,no_match`.
+- Rematch still calls `evaluateEmployeeBookingMatch` +
+  `queryEmployeeBookingCandidates`, and snapshots
+  `getEmployeeBookingMatchingConfig()` / `snapshotEmployeeBookingAutoMatchPolicy()`.
+- `queryEmployeeBookingCandidates` now also queries Form Lead
+  `normalized_job_no`.
 
 ## 5. Locked decisions
 
@@ -69,12 +75,18 @@ Observed 2026-09-08; **reverify at implementation**.
 
 ## 8. Acceptance criteria
 
-- [ ] Unique Call Lead job still links.
-- [ ] Unique Form Lead job on form channel links.
-- [ ] Same phone, no job → 201 pending, Leadless, case `no_match`.
-- [ ] Parser rejects `channel_phone_exact` (or equivalent tested refuse).
-- [ ] Rematch attaches only after a unique job appears.
-- [ ] `pnpm test` and `pnpm typecheck` recorded.
+- [x] Unique Call Lead job still links.
+  Evidence: `leadMatchEvaluator.test.ts` — unique Call Lead `job_no` → `call_job_no_exact`.
+- [x] Unique Form Lead job on form channel links.
+  Evidence: `leadMatchEvaluator.test.ts` `form_job_no_exact`; Form Lead `normalized_job_no` query in `leadCandidateQueries.test.ts`.
+- [x] Same phone, no job → 201 pending, Leadless, case `no_match`.
+  Evidence: evaluator + rematch `no_match` (no new submit HTTP test; submit still maps pending → Leadless + case).
+- [x] Parser rejects `channel_phone_exact` (or equivalent tested refuse).
+  Evidence: `employeeBookingMatching.test.ts` throws unknown for phone / LID / email+phone / contact triple.
+- [x] Rematch attaches only after a unique job appears.
+  Evidence: `reconciliationRematch.service.test.ts` — phone-only pending; unique job `call_job_no_exact`. Snapshot uses `snapshotEmployeeBookingAutoMatchPolicy()`.
+- [x] `pnpm test` and `pnpm typecheck` recorded.
+  Evidence: [`../reports/EJBA-01-completion.md`](../reports/EJBA-01-completion.md) — typecheck exit 0; 52/52 targeted tests pass.
 
 ## 9. Commands
 
