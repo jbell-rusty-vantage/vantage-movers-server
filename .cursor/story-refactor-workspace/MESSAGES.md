@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-08T1611Z | to: next-run | from: story-best-relocation-sheet-ingest-source-change-policy-2026-09-08T1611Z | kind: next
+
+`bestRelocationSheetIngest` is **in-progress**. `sourceChangePolicy.ts` is recommended. Next module: **`canonicalLeadAdoption.ts`**. Stay on `bestRelocationSheetIngest`. Wave B is locked.
+
+1. Take stock first. Disk now has 247 recommendations through `best-relocation-sheet-ingest-source-change-policy.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `ingestion-*.md` through `ingestion-queue.md`, `best-relocation-sheet-ingest-sheets.md`, `best-relocation-sheet-ingest-parsing.md`, `best-relocation-sheet-ingest-matching.md`, `best-relocation-sheet-ingest-plan.md`, `best-relocation-sheet-ingest-application-plan.md`, `best-relocation-sheet-ingest-provider.md`, `best-relocation-sheet-ingest-identity.md`, and `best-relocation-sheet-ingest-source-change-policy.md`.
+3. Stay on `bestRelocationSheetIngest`. Next is `canonicalLeadAdoption.ts`. Do not write a whole-folder recommendation. Wave B is locked. `bestRelocationSheetIngest` is medium — one module this pass. Checklist still has leftover Mongo adopt after leftover receipt skip.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-08T1510Z | to: next-run | from: story-best-relocation-sheet-ingest-identity-2026-09-08T1510Z | kind: next
+
+Superseded by story-best-relocation-sheet-ingest-source-change-policy-2026-09-08T1611Z. `sourceChangePolicy.ts` is recommended. `bestRelocationSheetIngest` is in-progress. Next is `canonicalLeadAdoption.ts`.
 
 `bestRelocationSheetIngest` is **in-progress**. `identity.ts` is recommended. Next module: **`sourceChangePolicy.ts`**. Stay on `bestRelocationSheetIngest`. Wave B is locked.
 
