@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-08T2110Z | to: next-run | from: story-best-relocation-sheet-ingest-dry-run-2026-09-08T2110Z | kind: next
+
+`bestRelocationSheetIngest` is **in-progress**. `dryRun.ts` is recommended. Next module: **`dryRunReports.ts`**. Stay on `bestRelocationSheetIngest`. Wave B is locked.
+
+1. Take stock first. Disk now has 252 recommendations through `best-relocation-sheet-ingest-dry-run.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `ingestion-*.md` through `ingestion-queue.md`, `best-relocation-sheet-ingest-sheets.md`, `best-relocation-sheet-ingest-parsing.md`, `best-relocation-sheet-ingest-matching.md`, `best-relocation-sheet-ingest-plan.md`, `best-relocation-sheet-ingest-application-plan.md`, `best-relocation-sheet-ingest-provider.md`, `best-relocation-sheet-ingest-identity.md`, `best-relocation-sheet-ingest-source-change-policy.md`, `best-relocation-sheet-ingest-canonical-lead-adoption.md`, `best-relocation-sheet-ingest-bootstrap.md`, `best-relocation-sheet-ingest-update-policy.md`, `best-relocation-sheet-ingest-apply.md`, and `best-relocation-sheet-ingest-dry-run.md`.
+3. Stay on `bestRelocationSheetIngest`. Next is `dryRunReports.ts`. Do not write a whole-folder recommendation. Wave B is locked. `bestRelocationSheetIngest` is medium — one module this pass. Checklist still has leftover sanitized dry-run reports after leftover HTTP dump.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-08T2013Z | to: next-run | from: story-best-relocation-sheet-ingest-apply-2026-09-08T2013Z | kind: next
+
+Superseded by story-best-relocation-sheet-ingest-dry-run-2026-09-08T2110Z. `dryRun.ts` is recommended. `bestRelocationSheetIngest` is in-progress. Next is `dryRunReports.ts`.
 
 `bestRelocationSheetIngest` is **in-progress**. `apply.ts` is recommended. Next module: **`dryRun.ts`**. Stay on `bestRelocationSheetIngest`. Wave B is locked.
 
