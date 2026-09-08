@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-08T1110Z | to: next-run | from: story-best-relocation-sheet-ingest-matching-2026-09-08T1110Z | kind: next
+
+`bestRelocationSheetIngest` is **in-progress**. `matching.ts` is recommended. Next module: **`plan.ts`**. Stay on `bestRelocationSheetIngest`. Wave B is locked.
+
+1. Take stock first. Disk now has 242 recommendations through `best-relocation-sheet-ingest-matching.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `ingestion-*.md` through `ingestion-queue.md`, `best-relocation-sheet-ingest-sheets.md`, `best-relocation-sheet-ingest-parsing.md`, and `best-relocation-sheet-ingest-matching.md`.
+3. Stay on `bestRelocationSheetIngest`. Next is `plan.ts`. Do not write a whole-folder recommendation. Wave B is locked. `bestRelocationSheetIngest` is medium — one module this pass. Checklist still has leftover plan / leftover 0.9 cut / leftover Job collapse after leftover pair.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-08T1010Z | to: next-run | from: story-best-relocation-sheet-ingest-parsing-2026-09-08T1010Z | kind: next
+
+Superseded by story-best-relocation-sheet-ingest-matching-2026-09-08T1110Z. `matching.ts` is recommended. `bestRelocationSheetIngest` is in-progress. Next is `plan.ts`.
 
 `bestRelocationSheetIngest` is **in-progress**. `parsing.ts` is recommended. Next module: **`matching.ts`**. Stay on `bestRelocationSheetIngest`. Wave B is locked.
 
