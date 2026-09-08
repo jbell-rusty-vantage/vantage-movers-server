@@ -29,6 +29,10 @@ import {
 } from "./createLeadFromGranot";
 import { processGranotObservation, type GranotLifecycleProcessorDeps } from "./processor";
 import type { SourcePolicyStore } from "./sourcePolicy";
+import {
+  clearCapturedDailyOperationsFacts,
+  getCapturedDailyOperationsFacts,
+} from "../dailyOperations/testDailyOperationsSink";
 
 const capturedAt = new Date("2026-08-17T15:00:00.000Z");
 const decidedAt = new Date("2026-08-17T16:00:00.000Z");
@@ -2126,4 +2130,90 @@ test("[AC-09] live Form same states select Local; differing states select long-d
   assert.equal(stateBlocked.decisions[0]?.reason_code, "missing_creation_route_data");
   assert.equal(stateBlocked.createLeadCalls, 0);
   assert.equal(stateBlocked.links.length, 0);
+});
+
+test("pending_match records granot.pending_match with parent_receipt_id", async () => {
+  clearCapturedDailyOperationsFacts();
+  const row = observation();
+  const deps = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, shadow_mode: false },
+  });
+  const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+  assert.equal(result.outcome, "pending_match");
+  const facts = getCapturedDailyOperationsFacts().filter(
+    (fact) => fact.input.kind === "granot.pending_match",
+  );
+  assert.equal(facts.length, 1);
+  assert.equal(facts[0]?.input.parent_receipt_id, String(row.receipt_id));
+  assert.equal(
+    facts[0]?.input.dedupe_key,
+    `decision:${result.decision_id}:granot.pending_match`,
+  );
+  assert.deepEqual(facts[0]?.input.metric_touches, ["decisions.pending_match"]);
+  assert.equal(getCapturedDailyOperationsFacts().some((fact) => fact.input.kind === "granot.minted"), false);
+});
+
+test("unmatched records granot.unmatched and created is not minted by the processor", async () => {
+  clearCapturedDailyOperationsFacts();
+  const row = observation();
+  const unmatched = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    matchAttempt: 8,
+    flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, shadow_mode: true },
+  });
+  unmatched.now = () => new Date(capturedAt.getTime() + 24 * 60 * 60 * 1000);
+  const unmatchedResult = await processGranotObservation(
+    { receipt_id: String(row.receipt_id) },
+    unmatched,
+  );
+  assert.equal(unmatchedResult.outcome, "unmatched");
+  const unmatchedFacts = getCapturedDailyOperationsFacts().filter(
+    (fact) => fact.input.kind === "granot.unmatched",
+  );
+  assert.equal(unmatchedFacts.length, 1);
+  assert.equal(unmatchedFacts[0]?.input.parent_receipt_id, String(row.receipt_id));
+
+  clearCapturedDailyOperationsFacts();
+  const createdRow = completeFormObservation();
+  const created = memoryDeps({
+    observation: createdRow,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: liveCreationFlags(),
+    store: formCreateStore(),
+    createLead: async () => appliedCreateResult("FormLead"),
+  });
+  const createdResult = await processGranotObservation(
+    { receipt_id: String(createdRow.receipt_id) },
+    created,
+  );
+  assert.equal(createdResult.outcome, "created");
+  assert.equal(created.createLeadCalls, 1);
+  assert.equal(
+    getCapturedDailyOperationsFacts().some((fact) => fact.input.kind === "granot.minted"),
+    false,
+  );
+});
+
+test("same observation/attempt replay does not increment Daily Operations again", async () => {
+  clearCapturedDailyOperationsFacts();
+  const row = observation();
+  const first = memoryDeps({
+    observation: row,
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, shadow_mode: false },
+  });
+  await processGranotObservation({ receipt_id: String(row.receipt_id) }, first);
+  const afterFirst = getCapturedDailyOperationsFacts().length;
+  assert.ok(afterFirst >= 1);
+  const replay = memoryDeps({
+    observation: row,
+    existingDecision: first.decisions[0],
+    activation: { activated_at: new Date("2026-08-17T14:00:00.000Z") },
+    flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, shadow_mode: false },
+  });
+  await processGranotObservation({ receipt_id: String(row.receipt_id) }, replay);
+  assert.equal(getCapturedDailyOperationsFacts().length, afterFirst);
 });

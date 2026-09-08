@@ -1,5 +1,6 @@
 import type { FormLeadDocument } from "../../models/FormLead";
 import { logger } from "../../logger";
+import { recordCrmFailedDailyOperationsFact } from "../dailyOperations/recordDomainFacts";
 import { recordOperationalEvent } from "../observability";
 import {
   CRM_FORM_LEAD_ENDPOINT,
@@ -117,6 +118,14 @@ export async function submitFormLeadToCrm(
         errorMessage: `crm_http_${response.status}`,
         notificationCandidate: true,
       });
+      await recordCrmFailedDailyOperationsFact({
+        leadId,
+        leadModel: "FormLead",
+        customer_name: lead.name,
+        phone: lead.phone_number,
+        source_company: sourceCompany,
+        detail: `crm_http_${response.status}`,
+      });
     }
 
     return {
@@ -150,6 +159,14 @@ export async function submitFormLeadToCrm(
       details: { companyLabel, causeMessage: message },
       errorMessage: message,
       notificationCandidate: true,
+    });
+    await recordCrmFailedDailyOperationsFact({
+      leadId,
+      leadModel: "FormLead",
+      customer_name: lead.name,
+      phone: lead.phone_number,
+      source_company: sourceCompany,
+      detail: message,
     });
 
     return {

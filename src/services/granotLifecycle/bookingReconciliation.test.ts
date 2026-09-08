@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import mongoose from "mongoose";
 import { selectBookingIntakeLatestAction } from "./bookingIntakeLatestAction";
 import {
@@ -39,6 +39,10 @@ import {
   getCapturedOperationalEvents,
 } from "../observability";
 import { getGranotLifecycleOpenBookingCases } from "./metrics";
+import {
+  clearCapturedDailyOperationsFacts,
+  getCapturedDailyOperationsFacts,
+} from "../dailyOperations/testDailyOperationsSink";
 
 const oid = () => new mongoose.Types.ObjectId().toHexString();
 
@@ -312,6 +316,10 @@ describe("Booking Reconciliation classification", () => {
 });
 
 describe("Booking Reconciliation persistence", () => {
+  afterEach(() => {
+    clearCapturedDailyOperationsFacts();
+  });
+
   function prepared(contextValue: BookingReconciliationCurrentContext): PreparedBookingReconciliationDecision {
     return {
       receipt_id: new mongoose.Types.ObjectId(contextValue.receipt_id),
@@ -394,6 +402,39 @@ describe("Booking Reconciliation persistence", () => {
     assert.equal(JSON.stringify(audit).includes(current.observation_id), false);
     assert.equal(JSON.stringify(audit).includes(decisionId), false);
     assert.equal(getGranotLifecycleOpenBookingCases("create_missing_booking"), 1);
+    const openedFacts = getCapturedDailyOperationsFacts().filter(
+      (fact) => fact.input.kind === "intake.opened",
+    );
+    assert.equal(openedFacts.length, 1);
+    assert.ok(openedFacts[0]?.input.metric_touches.includes("intakes.opened"));
+    assert.equal(
+      openedFacts[0]?.input.metric_touches.includes("intakes.refreshed"),
+      false,
+    );
+    assert.equal(openedFacts[0]?.input.job_no, "JOB-22");
+    assert.equal(openedFacts[0]?.input.links?.intake_case_id, result.case_ref.id);
+    assert.equal(openedFacts[0]?.input.parent_receipt_id, current.receipt_id);
+    assert.ok(openedFacts[0]?.input.metric_touches.includes("webhooks.booked"));
+  });
+
+  it("does not increment booked again when capture already classified Booked", async () => {
+    const current = context({
+      booking_action: "booked",
+      payload_event_type_raw: "Booked",
+    });
+    const memory = memoryStore(current);
+    await createGranotBookingReconciliation({
+      prepared: prepared(current),
+      store: memory.store,
+    }).reconcileObservation({
+      observation_id: current.observation_id,
+      decision_id: oid(),
+    });
+    const openedFacts = getCapturedDailyOperationsFacts().filter(
+      (fact) => fact.input.kind === "intake.opened",
+    );
+    assert.equal(openedFacts.length, 1);
+    assert.deepEqual(openedFacts[0]?.input.metric_touches, ["intakes.opened"]);
   });
 
   it("[AC-20] refreshes new evidence without staling case revision and dedupes Observation replay", async () => {
@@ -413,6 +454,43 @@ describe("Booking Reconciliation persistence", () => {
     assert.equal(memory.cases[0]!.case_revision, 1);
     assert.equal(memory.cases[0]!.evidence_revision, 2);
     assert.equal(memory.cases[0]!.evidence.length, 2);
+    const openedFacts = getCapturedDailyOperationsFacts().filter(
+      (fact) => fact.input.kind === "intake.opened",
+    );
+    const refreshedFacts = getCapturedDailyOperationsFacts().filter(
+      (fact) => fact.input.kind === "intake.refreshed",
+    );
+    assert.equal(openedFacts.length, 1);
+    assert.equal(refreshedFacts.length, 1);
+    assert.deepEqual(openedFacts[0]?.input.metric_touches.filter((touch) => touch.startsWith("intakes.")), [
+      "intakes.opened",
+    ]);
+    assert.equal(
+      refreshedFacts[0]?.input.metric_touches.includes("intakes.opened"),
+      false,
+    );
+    assert.ok(refreshedFacts[0]?.input.metric_touches.includes("intakes.refreshed"));
+  });
+
+  it("Observation replay does not increment Daily Operations intake again", async () => {
+    const booked = context({ booking_action: "booked" });
+    const memory = memoryStore(booked);
+    await createGranotBookingReconciliation({
+      prepared: prepared(booked),
+      store: memory.store,
+    }).reconcileObservation({ observation_id: booked.observation_id, decision_id: oid() });
+    assert.equal(
+      getCapturedDailyOperationsFacts().filter((fact) => fact.input.kind === "intake.opened").length,
+      1,
+    );
+    clearCapturedDailyOperationsFacts();
+    const replay = await createGranotBookingReconciliation({
+      prepared: prepared(booked),
+      store: memory.store,
+    }).reconcileObservation({ observation_id: booked.observation_id, decision_id: oid() });
+    assert.equal(replay.kind, "refreshed");
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(getCapturedDailyOperationsFacts(), []);
   });
 
   it("[AC-28] opens and refreshes a Referral case without Source Scope or Lead suggestion", async () => {

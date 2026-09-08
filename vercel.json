@@ -75,6 +75,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/daily-operations-close",
+      "schedule": "5 * * * *"
+    },
+    {
       "path": "/api/cron/booking-reconciliation-rematch",
       "schedule": "*/5 * * * *"
     },

@@ -16,6 +16,7 @@ import {
   CALL_LEAD_CHANGE_PATHS,
   collectDocumentFieldChanges,
 } from "../domainCommands/entityChange";
+import { recordCallLeadDailyOperationsFact } from "../dailyOperations/recordDomainFacts";
 import { ConflictError, NotFoundError } from "../errors";
 import { deleteCallLeadFromSheets } from "../googleSheets.service";
 import { getLeadTargets } from "../googleSheets/targets";
@@ -185,6 +186,7 @@ export async function completeCallLeadIngestion(
     leadIdentity: callLeadIdentity,
     details: { form_fill: true },
   });
+  await recordCallLeadDailyOperationsFact(pending);
 
   return lead;
 }

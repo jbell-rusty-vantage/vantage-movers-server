@@ -1,12 +1,13 @@
 # Daily Operations — pre-specification
 
-**Status:** pre-specification (implementation-ready intent, not yet coded)  
+**Status:** superseded (2026-09-06)  
+**Working contract:** [`daily-operations-specification.md`](daily-operations-specification.md)  
 **Date:** 2026-09-06  
 **Surfaces:** `vantage-main-server` + `vantage-admin`  
 **Package manager:** `pnpm@10.13.1` on the main server  
 **Glossary:** workspace-root [`CONTEXT.md`](../../../CONTEXT.md)
 
-This is the working contract for **Daily Operations**. The orientation memo [`daily-operations-workspace.md`](daily-operations-workspace.md) is background only.
+This file is background. The formal specification replaced the one mixed feed with **Daily Operations Panels** on one board and added quiet-hours / zip-miss card rules. Do not implement from this file. The orientation memo [`daily-operations-workspace.md`](daily-operations-workspace.md) is also background only.
 
 Use glossary words. Do not invent synonyms. In particular:
 

@@ -1,7 +1,7 @@
 # Daily Operations Workspace
 
 **Status:** orientation memo (superseded as the working contract)  
-**Working contract:** [`daily-operations-pre-specification.md`](daily-operations-pre-specification.md)  
+**Working contract:** [`daily-operations-specification.md`](daily-operations-specification.md)  
 **Date:** 2026-09-06  
 **Surfaces:** `vantage-main-server` + `vantage-admin`  
 **Audience:** Owner-facing Admin Dashboard, backed by new main-server reads and increment writers

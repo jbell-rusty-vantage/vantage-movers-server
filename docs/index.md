@@ -42,6 +42,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [granot-http-collector.md](knowledge/services/granot-http-collector.md) | HTTP session collector; approved apply captures automation receipts. |
 | [job-number-timeline.md](knowledge/services/job-number-timeline.md) | Owner-only typed Job Number chain; production module `src/services/jobNumberTimeline/`, not Granot lifecycle projections. |
 | [lead-messaging.md](knowledge/services/lead-messaging.md) | Persist and dispatch outbound confirmation SMS for public Form Leads and Granot create-if-missing Leads. |
+| [daily-operations.md](knowledge/services/daily-operations.md) | Pointer only. Owner Daily Operations: category panels plus complementary Arrivals on `/daily`. Not Daily View. Not Live Events. Contract is the formal spec, not this file. |
 | [employee-bookings.md](knowledge/services/employee-bookings.md) | Public employee booking submit with auto-match, plus Owner booking-lead reconciliation cases. |
 | [reporting.md](knowledge/services/reporting.md) | Owner-gated report definitions, immutable revisions, confirmed runs, and Google destination delivery. |
 | [tariff.md](knowledge/services/tariff.md) | Append-only tariff adjustment rows to TARIFF_SHEET_ID / Master. Carrier is the resolved Moving Carrier name and DOT. |
@@ -77,8 +78,9 @@ Workspace ADRs are outside this repo. This standalone checkout does not contain 
 
 | Path | Description |
 | --- | --- |
-| [daily-operations/daily-operations-pre-specification.md](daily-operations/daily-operations-pre-specification.md) | Pre-spec: Owner Daily Operations workspace. Mongo day projection + Daily Operations Events, Upstash Redis doorbell, SSE, hook points, Admin `/daily`. Not Analytics, Live Events, or Observational. |
-| [daily-operations/daily-operations-workspace.md](daily-operations/daily-operations-workspace.md) | Orientation memo that preceded the pre-spec. The pre-spec is the working contract. |
+| [daily-operations/daily-operations-specification.md](daily-operations/daily-operations-specification.md) | **Working contract.** Owner Daily Operations: category panels plus complementary Arrivals on `/daily`, Mongo day projection, Redis doorbell, SSE, hooks. Not Analytics, Live Events, Observational, or Daily View. |
+| [daily-operations/daily-operations-pre-specification.md](daily-operations/daily-operations-pre-specification.md) | Superseded pre-spec (one mixed feed). Formal spec wins. |
+| [daily-operations/daily-operations-workspace.md](daily-operations/daily-operations-workspace.md) | Orientation memo that preceded the pre-spec. Background only. |
 | [form-lead-contact-snapshots-display-and-search-specification.md](form-lead-contact-snapshots-display-and-search-specification.md) | Show Form submitted vs Granot contact on Admin Form Leads, and search both plus the ingested snapshot. |
 | [call-lead-contact-provenance/call-lead-contact-provenance-specification.md](call-lead-contact-provenance/call-lead-contact-provenance-specification.md) | Lock Call Lead operational phone to the ingested caller; store Granot contact only on `granot_contact_snapshot` coalesced by Job Number. HTTP Automation and extension apply share that processor. Owner desk search finds any known contact. |
 | [lead-no-sync/lead-no-sync-specification.md](lead-no-sync/lead-no-sync-specification.md) | No-Sync Lead (`no_sync`): default on Manual create; skip and delete Master Leads rows; Owner mark; desk filter; contains is Not expected. Distinct from Unmatched Call Lead. |
@@ -108,6 +110,7 @@ Active work packs. The ledger inside each is a navigation aid; the repository is
 | [operational-surfaces/README.md](operational-surfaces/README.md) | Five-issue pack. OSE-01–05 shipped (extract, tabbed detail, row cluster, grouped filters, browser walk). Admin presentation only; no main-server invariant changes. |
 | [granot-lifecycle-surfaces/README.md](granot-lifecycle-surfaces/README.md) | Three-issue pack. GLS-01 Ingestion IA + Health home shipped; GLS-02 receipt search API shipped; GLS-03 Receipts tab not shipped. Job Timeline stays `/job-timeline`. |
 | [lead-costs-owner-editing/README.md](lead-costs-owner-editing/README.md) | Five-issue pack. LCE-01 server `set_range`; LCE-02 By date form; LCE-03 copy/URL/handoff; LCE-04 structured rebuild; LCE-05 browser proof. Simple construction and CPL Correction workers stay. |
+| [daily-operations/README.md](daily-operations/README.md) | Nine-issue pack. DOP-01–08 shipped; Arrivals is on `/daily`. Category panels plus complementary Arrivals. Not Daily View. Not Live Events. Not the 2026-08-19 tabbed layout. |
 | [call-lead-contact-provenance/README.md](call-lead-contact-provenance/README.md) | Five required issues (CLCP-01–05). Lock Call operational phone; Granot snapshot coalesce by Job; Job-wins identity; shared HTTP/extension preview; Owner desk any-known-contact. |
 | [lead-no-sync/README.md](lead-no-sync/README.md) | Four-issue pack (LNS-01–04). Persist `no_sync`, default it on Manual create, delete Master Leads rows when marked, filter it on the desks, contains Not expected. |
 | [extension-user-management](../../granot_sync_extensions_and_services/docs/extension-user-management/README.md) | Four-issue pack. EUM-01–04 shipped. Extension User `roles[]`; leftover Employee → Sales + Customer Service; Owner edit/delete; session invalidation. |

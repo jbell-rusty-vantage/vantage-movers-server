@@ -25,6 +25,10 @@ import type {
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { toObjectId } from "../../utils/objectId";
 import { emitGranotLifecycleEvent } from "./observability";
+import {
+  classifyGranotBookingActionFromPayload,
+  recordGranotIntakeDailyOperationsFact,
+} from "../dailyOperations/recordGranotFacts";
 import { setGranotLifecycleOpenBookingCases } from "./metrics";
 import type { EvaluatedGate } from "./sourcePolicy";
 import { createMongoSourcePolicyStore, resolveSourcePolicy } from "./sourcePolicy";
@@ -47,6 +51,7 @@ export type BookingReconciliationCurrentContext = {
   job_no_snapshot?: string;
   priority: { canonical?: string; valid: boolean };
   booking_action?: "booked" | "release";
+  payload_event_type_raw?: string;
   lifecycle_disposition?: "source_scoped_lead" | "referral_booking" | "deferred";
   reviewed_source_policy?: {
     granot_crm_source_id: string;
@@ -146,6 +151,10 @@ export type CaseEffectResult =
       mode?: GranotBookingReconciliationCaseDocument["mode"];
       case_revision?: number;
       evidence_revision?: number;
+      normalized_job_no?: string;
+      booking_action?: "booked" | "release";
+      payload_event_type_raw?: string;
+      replayed?: boolean;
     }
   | { kind: "none"; reason: BookingReconciliationNoCaseReason }
   | { kind: "employee_booking_lead_reconciliation"; case_id: string }
@@ -301,8 +310,39 @@ async function reconcilePreparedObservation(
       },
       piiPolicy: "masked",
     });
+    if (!result.replayed) {
+      await recordGranotIntakeDailyOperationsFact({
+        case_id: result.case_ref.id,
+        kind: result.kind,
+        revision: result.evidence_revision,
+        job_no: result.normalized_job_no ?? null,
+        receipt_id: String(prepared.receipt_id),
+        decision_id: input.decision_id,
+        booking_action: result.booking_action ?? null,
+        captureAlreadyClassified: didCaptureClassifyBookingAction(
+          result.payload_event_type_raw,
+        ),
+      });
+    }
   }
   return result;
+}
+
+function caseBookingAction(
+  current: BookingReconciliationCurrentContext,
+): "booked" | "release" | undefined {
+  if (current.booking_action === "booked" || current.booking_action === "release") {
+    return current.booking_action;
+  }
+  return undefined;
+}
+
+function didCaptureClassifyBookingAction(
+  payloadEventTypeRaw: string | undefined,
+): boolean {
+  return classifyGranotBookingActionFromPayload({
+    event_type: payloadEventTypeRaw,
+  }) != null;
 }
 
 async function recomputeOpenCaseGauge(
@@ -442,6 +482,10 @@ async function reconcileInTransaction(
           mode: existing.mode,
           case_revision: existing.case_revision,
           evidence_revision: existing.evidence_revision,
+          normalized_job_no: existing.normalized_job_no,
+          booking_action: caseBookingAction(current),
+          payload_event_type_raw: current.payload_event_type_raw,
+          replayed: true,
         };
       }
       row = await store.refreshCase(
@@ -517,6 +561,9 @@ async function reconcileInTransaction(
       mode: row.mode,
       case_revision: row.case_revision,
       evidence_revision: row.evidence_revision,
+      normalized_job_no: row.normalized_job_no,
+      booking_action: caseBookingAction(current),
+      payload_event_type_raw: current.payload_event_type_raw,
     };
   });
 }
@@ -672,6 +719,7 @@ export function createMongoBookingReconciliationStore(): BookingReconciliationPe
         job_no_snapshot: observation.identity?.job_no_raw ?? normalizedJobNo,
         priority: observation.priority,
         booking_action: observation.booking_action?.normalized,
+        payload_event_type_raw: observation.payload_event_type_raw,
         lifecycle_disposition: policySnapshot.lifecycle_disposition,
         reviewed_source_policy:
           policySnapshot.granot_crm_source_id && policySnapshot.lifecycle_policy_version

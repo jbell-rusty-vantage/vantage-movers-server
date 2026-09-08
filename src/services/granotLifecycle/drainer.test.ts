@@ -23,6 +23,10 @@ import {
 } from "./metrics";
 import { LEASE_DURATION_MS, TECHNICAL_DEAD_LETTER_ATTEMPT } from "./schedules";
 import type { SynchronizationOutcome } from "./types";
+import {
+  clearCapturedDailyOperationsFacts,
+  getCapturedDailyOperationsFacts,
+} from "../dailyOperations/testDailyOperationsSink";
 
 const capturedAt = new Date("2026-08-17T00:00:00.000Z");
 
@@ -368,9 +372,18 @@ test("[AC-30] foundation consecutive technical failure 10 dead-letters with a sa
       });
     },
   };
+  clearCapturedDailyOperationsFacts();
   const summary = await drainRequestedReceipt(String(row._id), "cron", deps);
   assert.equal(summary.dead_lettered, 1);
   assert.equal(row.processing.state, "dead_letter");
+  const deadLetterFacts = getCapturedDailyOperationsFacts().filter(
+    (fact) => fact.input.kind === "exception.dead_letter",
+  );
+  assert.equal(deadLetterFacts.length, 1);
+  assert.equal(
+    deadLetterFacts[0]?.input.dedupe_key,
+    `exception:dead_letter:${String(row._id)}`,
+  );
   assert.equal(row.processing.technical_attempts, TECHNICAL_DEAD_LETTER_ATTEMPT);
   assert.equal(row.processing.match_attempt, 3);
   assert.equal(row.processing.last_error?.code, "transaction_failure");
