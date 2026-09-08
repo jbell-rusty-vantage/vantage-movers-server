@@ -14,6 +14,7 @@ type MutableModel = {
   find: unknown;
   findById: unknown;
   findOne?: unknown;
+  exists?: unknown;
 };
 
 type QueryCapture = {
@@ -38,7 +39,7 @@ afterEach(() => {
   if (FormLead && originalFormFind) FormLead.find = originalFormFind;
   if (CallLead && originalCallFind) CallLead.find = originalCallFind;
   BookedLead.findById = originalBookingFindById;
-  BookingLeadReconciliationCase.exists = originalCaseExists;
+  (BookingLeadReconciliationCase as unknown as MutableModel).exists = originalCaseExists;
   Link.findOne = originalLinkFindOne;
 });
 
@@ -184,8 +185,8 @@ function stubBooking(doc: Record<string, unknown>): void {
 }
 
 function stubOpenCase(open: boolean): void {
-  BookingLeadReconciliationCase.exists = (async () =>
-    open ? { _id: bookingId } : null) as typeof BookingLeadReconciliationCase.exists;
+  (BookingLeadReconciliationCase as unknown as MutableModel).exists = async () =>
+    open ? { _id: bookingId } : null;
 }
 
 function stubLink(): void {
