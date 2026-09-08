@@ -76,6 +76,11 @@ const SNAPSHOT_FIXTURE = {
 let lastEventsQuery: Record<string, unknown> | null = null;
 let rebuildCalls = 0;
 let closeCalls = 0;
+let liveNow = Date.parse("2026-09-06T18:14:00.000Z");
+function nextLiveNow(): number {
+  liveNow += 1;
+  return liveNow;
+}
 let lastClosed: { today: string; closed_days: string[]; already_closed: boolean } = {
   today: "2026-09-06",
   closed_days: ["2026-09-05"],
@@ -129,6 +134,45 @@ app.use(
         revision: 2,
       };
     },
+    findLiveEventById: async (eventId) =>
+      eventId === "68bcf1a0c4d5e6f708901235"
+        ? {
+            _id: { toString: () => eventId },
+            day: "2026-09-06",
+            occurred_at: new Date("2026-09-06T18:15:00.000Z"),
+            lane: "granot",
+            kind: "granot.priority_updated",
+            title: "Granot priority updated",
+            source_company: null,
+            ingestion_origin: "granot_lead_created",
+            lead_kind: null,
+            job_no: "P5562401",
+            entity_type: "GranotObservationReceipt",
+            entity_id: "rec_1",
+            parent_receipt_id: null,
+            links: { receipt_id: "rec_1" },
+            card: {},
+            metric_touches: ["webhooks.priority_updated"],
+            redis_stream_id: "1717200000001-0",
+          }
+        : null,
+    listLiveAfter: async () => [],
+    listLiveNewest: async () => null,
+    getLiveRedis: () => ({
+      async xread() {
+        return [
+          {
+            redis_stream_id: "1717200000001-0",
+            event_id: "68bcf1a0c4d5e6f708901235",
+          },
+        ];
+      },
+    }),
+    liveStreamSleep: async () => undefined,
+    liveStreamNow: nextLiveNow,
+    liveStreamMaxMs: 3,
+    liveStreamPollMs: 1,
+    liveStreamHeartbeatMs: 60_000,
   }),
 );
 app.use(
@@ -226,6 +270,7 @@ test("Owner snapshot includes yesterday_by_now, company zeros, and wordpress_for
 test("Admin without Owner is 403 on every Daily Operations method", async () => {
   const getPath = "/api/v1/admin/daily-operations";
   const eventsPath = "/api/v1/admin/daily-operations/events";
+  const livePath = "/api/v1/admin/daily-operations/live";
   const rebuildPath = "/api/v1/admin/daily-operations/rebuild";
   assert.equal(
     (await fetch(`${baseUrl}${getPath}`, { headers: signedHeaders("admin", getPath) })).status,
@@ -233,6 +278,10 @@ test("Admin without Owner is 403 on every Daily Operations method", async () => 
   );
   assert.equal(
     (await fetch(`${baseUrl}${eventsPath}`, { headers: signedHeaders("admin", eventsPath) })).status,
+    403,
+  );
+  assert.equal(
+    (await fetch(`${baseUrl}${livePath}`, { headers: signedHeaders("admin", livePath) })).status,
     403,
   );
   assert.equal(
@@ -270,6 +319,41 @@ test("events page is newest-first and forwards cursor, lane, and limit", async (
     lane: "lead",
     limit: 40,
   });
+});
+
+test("Owner live SSE emits snapshot then Redis event; lane query is ignored", async () => {
+  const path = "/api/v1/admin/daily-operations/live?lane=lead";
+  const response = await fetch(`${baseUrl}${path}`, {
+    headers: signedHeaders("owner", "/api/v1/admin/daily-operations/live"),
+  });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/);
+  assert.equal(response.headers.get("cache-control"), "no-cache, no-transform");
+  assert.equal(response.headers.get("connection"), "keep-alive");
+  assert.equal(response.headers.get("x-accel-buffering"), "no");
+  const body = await response.text();
+  assert.match(body, /event: snapshot/);
+  assert.match(body, /"yesterday_by_now":31/);
+  assert.match(body, /event: event/);
+  assert.match(body, /granot.priority_updated/);
+  assert.match(body, /event: metrics/);
+  assert.equal(body.includes("UPSTASH"), false);
+  assert.equal(body.includes("KV_REST"), false);
+  assert.equal(body.includes("x-api-secret"), false);
+});
+
+test("Owner live SSE with Last-Event-ID skips snapshot", async () => {
+  const path = "/api/v1/admin/daily-operations/live";
+  const response = await fetch(`${baseUrl}${path}`, {
+    headers: {
+      ...signedHeaders("owner", path),
+      "last-event-id": "2026-09-06T18:14:00.000Z:68bcf1a0c4d5e6f708901234",
+    },
+  });
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  assert.equal(body.includes("event: snapshot"), false);
+  assert.match(body, /granot.priority_updated/);
 });
 
 test("Owner rebuild returns counters-replaced, events not deleted", async () => {

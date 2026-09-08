@@ -146,7 +146,7 @@ export async function listDailyOperationsEvents(
     timezone: FLORIDA_TIME_ZONE,
     order: DAILY_OPERATIONS_EVENTS_ORDER,
     limit,
-    items: page.map(projectEventItem),
+    items: page.map(projectDailyOperationsEventItem),
     next_cursor:
       hasMore && last
         ? encodeDailyOperationsEventCursor({
@@ -191,7 +191,9 @@ function normalizeCursor(
   return decoded;
 }
 
-function projectEventItem(row: DailyOperationsEventRow): DailyOperationsEventItem {
+export function projectDailyOperationsEventItem(
+  row: DailyOperationsEventRow,
+): DailyOperationsEventItem {
   const occurredAt =
     row.occurred_at instanceof Date
       ? row.occurred_at.toISOString()

@@ -29,7 +29,7 @@ server does **not** filter by lane.
 
 ## 4. Current-state evidence to verify
 
-Observed 2026-09-06; **reverify before coding.**
+Observed 2026-09-06; **reverified 2026-09-08 — no drift.**
 
 - Live Events: `runLiveReceiptSse` polls Mongo, `maxMs = 240_000`,
   heartbeat 15s, `Last-Event-ID` decode with `lastIndexOf(":")`.
@@ -76,14 +76,14 @@ None required. DOP-08 owns pointers.
 
 ## 10. Acceptance criteria
 
-- [ ] First open without Last-Event-ID emits `snapshot` then tails.
-- [ ] Valid Last-Event-ID skips snapshot.
-- [ ] Redis envelope loads the Mongo event by `event_id`.
-- [ ] Missing Redis uses Mongo tail and still emits facts.
-- [ ] Lane query is ignored server-side (documented + tested).
-- [ ] Heartbeat at 15s idle.
-- [ ] Owner-only. No Redis credentials in the response.
-- [ ] Focused tests + typecheck.
+- [x] First open without Last-Event-ID emits `snapshot` then tails.
+- [x] Valid Last-Event-ID skips snapshot.
+- [x] Redis envelope loads the Mongo event by `event_id`.
+- [x] Missing Redis uses Mongo tail and still emits facts.
+- [x] Lane query is ignored server-side (documented + tested).
+- [x] Heartbeat at 15s idle.
+- [x] Owner-only. No Redis credentials in the response.
+- [x] Focused tests + typecheck.
 
 ## 11. Commands
 

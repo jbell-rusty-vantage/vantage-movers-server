@@ -91,15 +91,15 @@ This issue **owns** them:
 
 ## 10. Acceptance criteria
 
-- [ ] Owner walk covers tiles, pace, at least three panels, one
+- [x] Owner walk covers tiles, pace, at least three panels, one
       deep link, live indicator.
-- [ ] Held-text and zip-miss are demonstrated **or** explicitly
+- [x] Held-text and zip-miss are demonstrated **or** explicitly
       recorded as "no local fact today" with the code path named.
-- [ ] Admin role blocked.
-- [ ] Docs point at the formal spec, not the pre-spec, as the
+- [x] Admin role blocked.
+- [x] Docs point at the formal spec, not the pre-spec, as the
       working contract.
-- [ ] docs-keeper invoked; report names the files it changed.
-- [ ] PROGRESS coverage table ticked.
+- [x] docs-keeper invoked; report names the files it changed.
+- [x] PROGRESS coverage table ticked.
 
 ## 11. Commands
 

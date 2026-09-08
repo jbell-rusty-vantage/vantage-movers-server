@@ -3,9 +3,10 @@ type: Specification
 title: Daily Operations — Owner business-day board
 description: >-
   Implementation-ready contract for Daily Operations: Owner-only /daily
-  with a headline pulse, origin and Source Company mix, and a category
-  panel grid over the America/New_York business day. Mongo is the book.
-  Redis is a doorbell. After-commit Daily Operations Events are the feed.
+  with a headline pulse, origin and Source Company mix, a complementary
+  Arrivals strip, and a category panel grid over the America/New_York
+  business day. Mongo is the book. Redis is a doorbell. After-commit
+  Daily Operations Events are the facts.
 tags:
   - daily-operations
   - owner-dashboard
@@ -56,14 +57,17 @@ sources:
 > Daily Operations View.
 
 **Prepared:** 2026-09-06
+**Amended:** 2026-09-08 — complementary Arrivals band (DOP-09).
 **Repos:** `vantage-main-server` (projection, hooks, snapshot, SSE, Redis
 doorbell). `vantage-admin` (Owner `/daily` workspace).
 **Owner-facing labels:** Daily Operations, Today, Leads, Form, Call,
 Duplicates, Texts, Held until 8:00 AM, Granot, Intakes, Still open,
-Bookings, Cancellations, Exceptions, Quiet priorities, Live
+Bookings, Cancellations, Exceptions, Quiet priorities, Arrivals,
+Just now, Live
 **Canonical facts:** [Daily Operations](../../../CONTEXT.md),
 [Daily Operations Event](../../../CONTEXT.md),
 [Daily Operations Panel](../../../CONTEXT.md),
+[Arrivals](../../../CONTEXT.md),
 [Lead](../../../CONTEXT.md),
 [Form Lead](../../../CONTEXT.md),
 [Call Lead](../../../CONTEXT.md),
@@ -89,7 +93,7 @@ Read in this order. Stop and report contradictions; do not silently merge.
 
 | Order | Authority | Wins on |
 | --- | --- | --- |
-| 1 | **This file** | Owner IA, panels, cards, counts, hooks, API, SSE, Redis doorbell |
+| 1 | **This file** | Owner IA, panels, Arrivals, cards, counts, hooks, API, SSE, Redis doorbell |
 | 2 | Workspace-root [`CONTEXT.md`](../../../CONTEXT.md) | Words. Do not invent synonyms |
 | 3 | [`0001-mongodb-system-of-record.md`](../../../docs/adr/0001-mongodb-system-of-record.md) | Mongo remains the book |
 | 4 | Current hook-point code named in §14 | Seams this pack extends; reverify before coding |
@@ -102,7 +106,7 @@ Superseded as working contracts (background only):
 
 | File | Why it no longer wins |
 | --- | --- |
-| [`daily-operations-pre-specification.md`](daily-operations-pre-specification.md) | One mixed feed. This file keeps the data plane and replaces the presentation with category panels. |
+| [`daily-operations-pre-specification.md`](daily-operations-pre-specification.md) | One mixed feed as the board. This file keeps the data plane and presents category panels, plus a complementary Arrivals strip. |
 | [`daily-operations-workspace.md`](daily-operations-workspace.md) | Orientation memo. Poll-only transport is obsolete. |
 | [`../granot-lead-lifecycle/owner-daily-operations-view-specification.md`](../granot-lead-lifecycle/owner-daily-operations-view-specification.md) | Rolling 24h/48h tabs, conversations, agent credit, deposit. Different product. |
 | [`../../../vantage-admin/uxdocs/owner-daily-view-planned.txt`](../../../vantage-admin/uxdocs/owner-daily-view-planned.txt) | Wireframes for that older product. |
@@ -119,13 +123,13 @@ Daily Operations is the Owner's **business-day board** at Admin `/daily`.
 It answers, continuously, in `America/New_York`:
 
 1. How is today going — counts, mix, and pace versus **yesterday at this same hour**.
-2. What just happened — in the category the Owner already thinks in.
+2. What just happened — in the category the Owner already thinks in, and across the day in Arrivals.
 3. What needs a look — intakes Waiting for you, texts held until morning, zip that did not produce a state, failed texts, dead letters.
 
-The Owner develops that sense by seeing **counts and changes on every category at once**, not by hunting a mixed firehose and not by flipping tabs that hide the rest of the day.
+The Owner develops that sense by seeing **counts and changes on every category at once**, not by hunting a mixed firehose as the only view and not by flipping tabs that hide the rest of the day.
 
-**Presentation:** one page, four bands, **one Daily Operations Panel per major category**.
-**Transport:** one EventSource. One Granot stream. Client fans events into panels.
+**Presentation:** one page, five bands, **one Daily Operations Panel per major category**, plus a complementary Arrivals strip.
+**Transport:** one EventSource. One Granot stream. Client fans events into panels and slices the same list for Arrivals.
 
 It does **not** replace:
 
@@ -149,10 +153,11 @@ The question is not "one feed or many sockets." It is "how does the Owner read a
 
 | Shape | Why it fails |
 | --- | --- |
-| **One mixed feed** (pre-spec) | A Cancellation or a failed text is buried under `priority_updated`. The Owner cannot see "how texts are going" without filtering away bookings. Counts live far from the facts that justify them. |
-| **Tabs** (2026-08-19 ODV) | Opening Leads hides Bookings. The day is the product; a tab hides the day. Badge counts on tabs are a consolation prize. |
+| **One mixed feed as the only view** (pre-spec) | A Cancellation or a failed text is buried under `priority_updated`. The Owner cannot see "how texts are going" without filtering away bookings. Counts live far from the facts that justify them. A complementary Arrivals strip is **not** this shape. |
+| **Tabs** (2026-08-19 ODV), including a tab for live incoming | Opening Leads hides Bookings. The day is the product; a tab hides the day. Badge counts on tabs are a consolation prize. Arrivals is a strip on the same board, not a tab. |
 | **A page per category** | Fragments the New York day. Triple the chrome. The Owner cannot hold volume, work, and outcomes in one glance. |
 | **A live space per Granot class** | Triple reconnect and watermark for no new information. Hides create → priority 5 → Booked on one Job Number. Locked: Granot stays **one stream**, presented as **one panel** with chips. |
+| **Enhance Live Events instead** | Wrong desk. Live Events is the raw Granot receipt firehose. The Owner stays on `/daily`. |
 
 ### 2.2 Locked shape — category panels on one board
 
@@ -173,6 +178,10 @@ The Owner can answer, without clicking:
 Clicking a headline tile or a panel header **focuses** that panel (`?lane=`). Other panels collapse to a slim count rail. The day does not navigate away. `?lane=all` (default) is the command-center grid.
 
 One socket still serves every panel. Lane and company filters apply in memory.
+
+**Arrivals** is not a Daily Operations Panel. It reads the same
+in-memory events and shows the newest facts across lanes so motion is
+visible without making the mixed stream the way the Owner reads the day.
 
 ### 2.3 What "counts and changes" means
 
@@ -210,7 +219,19 @@ Owner nav order after this pack:
 
 Non-owners: no sidebar item, page blocked, live BFF 403.
 
-### 3.2 Layout — four bands, one workspace
+### 3.2 Layout — five bands, one workspace
+
+Locked order. Do not reopen:
+
+1. Chrome (title, Eastern day, ● Live)
+2. Headline tiles
+3. Origins + Source Companies (the mix)
+4. **Arrivals** (complementary strip — §3.4)
+5. Category panels
+
+Arrivals sits **between the mix and the panels**. Not under the
+headline tiles (that splits the scoreboard). Not below the panels
+(motion falls off the page). Not a tab.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -226,6 +247,10 @@ Non-owners: no sidebar item, page blocked, live BFF 403.
 │ Best Relocation       6         │ Best Relocation   6   0        │
 │ Vantage Admin         2         │ main site         4  +1        │
 │ WordPress form        0         │ … zeros remain visible         │
+├──────────────────────────────────────────────────────────────────┤
+│ ARRIVALS — newest first · all lanes · Quiet + company apply      │
+│  Just now  Cancellation written · … · ••4192              [Open] │
+│  2:13      Call Lead created · …                          [Open] │
 ├──────────────────────────────────────────────────────────────────┤
 │ PANELS  [Quiet priorities]           company filter from row     │
 │ ┌─ Leads 42 +4 ──┐ ┌─ Texts 19 ──┐ ┌─ Granot 55 ──┐ ┌─ Intakes ─┐│
@@ -248,9 +273,13 @@ Focus (`?lane=lead`):
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Clicking a company row sets `?company=` and filters every panel. Clicking
-the row again (or Clear) removes the filter. The company table highlights
-the selected row.
+Arrivals stays on the page above this focused panel and stays
+cross-lane.
+
+Clicking a company row sets `?company=` and filters every panel **and
+Arrivals**. Clicking the row again (or Clear) removes the filter. The
+company table highlights the selected row. `?lane=` focuses a panel; it
+does not hide or lane-filter Arrivals.
 
 `?open=` is a Daily Operations alias that **maps onto desks that
 already exist**. Do not fork a second drawer. Confirm work stays on
@@ -271,6 +300,43 @@ SidePanel). Lead / Booking / Cancellation open the existing
 A board that silently stops updating is worse than one that never claimed to.
 Never blank a populated panel because a poll failed. Keep the last good
 snapshot.
+
+### 3.4 Arrivals (complementary strip)
+
+Arrivals is a newest-first strip of Daily Operations Events from every
+lane. It is motion and presence — not a second Analytics, not a Granot
+payload accordion, and not Live Events.
+
+**Why this band exists.** Tiles answer how the day is going. Panels
+answer how this category is going. Arrivals answers what just landed,
+any lane, with insert motion. The Owner does not switch to
+`/live-events` for that feeling.
+
+**Placement (locked):** after the origins / Source Company mix, before
+the category panel grid. See §3.2.
+
+**Rules:**
+
+- Same EventSource as the rest of `/daily`. Same in-memory
+  `board.events`. No second socket. No Redis in the browser.
+- Default show **20** newest after Quiet priorities and `?company=`.
+  Do not apply `?lane=` as a filter.
+- Focus does not hide Arrivals. A Cancellation stays visible when
+  Granot floods and when the Owner is focused on Leads.
+- Reuse the shared card shell (§8). Name + last four only. No Confirm.
+- New insert: slide-in + 1.5s highlight (§4.1). Existing cards shift
+  down; they do not reshuffle.
+- Empty: one quiet line (`Nothing has arrived yet today.`). Do not
+  occupy a tall hero.
+- Session still ticks tiles (`session_delta`) independently.
+- Quiet priorities hides `granot.priority_updated` cards only; counts
+  unchanged.
+- Owner copy lives in `daily-copy.ts`. Band label **Arrivals**. A card
+  that inserted this session may show **Just now** instead of the clock.
+  Do not say Daily View, SMS (except when naming Twilio), partner, or
+  unqualified “webhook event.” Do not revive “Live facts.”
+
+§2.1 still forbids a mixed feed as the only view of the day.
 
 ---
 
@@ -296,12 +362,15 @@ a weekly pulse. This page is a live day.
 
 Reuse `Card`, `StatusBadge` / existing chips, `FeedbackMessage`,
 `floridaTime`, `SOURCE_COMPANY_LABELS`. Do not invent a second design
-system. 21st.dev may craft the named shells in DOP-06 and DOP-07 only;
-it must not invent endpoints or a second drawer.
+system. 21st.dev may craft the named shells in DOP-06, DOP-07, and
+DOP-09 only; it must not invent endpoints or a second drawer.
 
 ### 4.2 Density
 
 - Headline: one row on `xl`, wrap on smaller. No money.
+- Arrivals: **20** newest across lanes after filters. No "Load
+  earlier" on this strip (that stays on focused panels). Empty state
+  is one line.
 - Panels: CSS grid `xl:grid-cols-2 2xl:grid-cols-3`. Exceptions span
   full width when focused.
 - Default cards visible per panel: **8**. Focused panel: **40**, then
@@ -324,7 +393,7 @@ sees on desks.
 
 Owner-visible strings live in `vantage-admin/components/daily/daily-copy.ts`.
 Do not scatter "Quiet priorities" / "Held until 8:00 AM" / "state not
-found" as magic strings across components.
+found" / "Arrivals" as magic strings across components.
 
 ---
 
@@ -846,7 +915,7 @@ Copy `runLiveReceiptSse`
 
 1. Snapshot from Mongo: today's day document + last N events (default
    80, NY day). Lane filter from query is **not** applied server-side —
-   filter on the client so one socket serves all panels.
+   filter on the client so one socket serves all panels and Arrivals.
 2. Remember Redis stream ID `"0-0"` or the last `XADD` id stored on the
    newest event (`redis_stream_id`) / `Last-Event-ID` decode.
 3. Loop until max duration:
@@ -1398,10 +1467,11 @@ days are not rebuilt unless an explicit later Owner confirm is added.
 | --- | --- |
 | `app/(dashboard)/daily/page.tsx` | Page |
 | `components/daily/daily-copy.ts` | Owner strings |
-| `components/daily/daily-shell.tsx` | Chrome, live state, four bands |
+| `components/daily/daily-shell.tsx` | Chrome, live state, five bands |
 | `components/daily/headline-tiles.tsx` | Pulse |
 | `components/daily/origins-panel.tsx` | Ingestion Origin |
 | `components/daily/companies-table.tsx` | Source Company |
+| `components/daily/arrivals-stream.tsx` | Complementary Arrivals strip |
 | `components/daily/category-panels.tsx` | Grid + focus |
 | `components/daily/event-card.tsx` | Shared card + links |
 | `lib/api/dailyOperations.ts` | Snapshot via `/api/proxy` |
@@ -1418,7 +1488,9 @@ const source = new EventSource("/api/daily-operations-live");
 Native reconnect. No custom backoff. `onerror` → status `reconnecting`.
 Merge events by `event_id`. Apply `metrics` to the tile store. Filter
 lanes / Quiet priorities / company **in memory**. Fan each event into
-exactly one panel by `lane`.
+exactly one panel by `lane`. Slice Arrivals from the same merged list
+(newest 20 after Quiet + company). Do not open a second EventSource.
+Do not filter Arrivals by `?lane=`.
 
 Do not add a 3s HTTP poll of the snapshot while SSE is live. Optional:
 one snapshot fetch on tab focus if the stream was hidden long enough to
@@ -1459,14 +1531,17 @@ pattern as sheet-sync / RingCentral.
   `createLeadFromGranot` finalize increments Lead + origin
   `granot_lead_created`
 - Admin: Owner nav order; Admin role cannot open `/daily`; panel fan-out
-  by lane; Quiet priorities hides priority cards but not counts
+  by lane; Quiet priorities hides priority cards but not counts;
+  Arrivals mixed insert order; Cancellation remains visible when Granot
+  floods; exactly one EventSource
 - Do **not** hit the real Upstash project from the Node test runner
 
 ---
 
 ## 20. Phasing and issues
 
-Eight shippable issues. The specification wins; issues sequence work.
+Nine shippable issues (DOP-01–08 shipped; DOP-09 is the Arrivals
+append). The specification wins; issues sequence work.
 
 | Issue | Ships | Repos |
 | --- | --- | --- |
@@ -1478,6 +1553,7 @@ Eight shippable issues. The specification wins; issues sequence work.
 | [DOP-06](issues/DOP-06.md) | Admin chrome, auth, BFF, headline, origins, companies, pace | admin |
 | [DOP-07](issues/DOP-07.md) | Category panels, cards, links, Quiet priorities, exceptions | admin |
 | [DOP-08](issues/DOP-08.md) | Browser proof + docs | both |
+| [DOP-09](issues/DOP-09.md) | Complementary Arrivals band on `/daily` | admin |
 
 ### Slice mapping
 
@@ -1486,6 +1562,7 @@ Eight shippable issues. The specification wins; issues sequence work.
 | Truthful board | DOP-01–06 | Tiles and mix are live; panels may still be a single column of cards if DOP-07 is not done — **do not ship `/daily` to the Owner until DOP-07** |
 | Category board | DOP-07 | The command-center the Owner asked for |
 | Proof | DOP-08 | Walk + knowledge pointers |
+| Arrivals motion | DOP-09 | Facts arrive on `/daily` without leaving the board |
 
 Sheet Sync panel may land in DOP-07 as opt-in or wait for a later
 polish issue. v1 may ship the lane off with a working card renderer.
@@ -1507,7 +1584,7 @@ polish issue. v1 may ship the lane off with a working card renderer.
 ## 21. Locked decisions
 
 1. `/daily` is a new Owner page. Not a tab on Live Events, Overview, or Observational.
-2. **Category panels on one board.** Not one mixed feed. Not tabs. Not a page per category.
+2. **Category panels on one board.** Not one mixed feed as the only view. Not tabs. Not a page per category.
 3. **One Granot stream**, one EventSource. No per-class live space. Granot chips live inside the Granot panel.
 4. Mongo is SoR for events and counts. Redis is a doorbell (`XADD` Stream). Degrade to Mongo tail if Redis is absent.
 5. After-commit hooks only. Same seam as `recordOperationalEvent`. Never Granot 202 for Lead / Booking / Decision counts.
@@ -1523,6 +1600,7 @@ polish issue. v1 may ship the lane off with a working card renderer.
 15. A zip that does not produce a state is an Exception **and** a chip on the Lead card. The Lead still counts.
 16. No mutations from Daily Operations. Confirm stays on `/intakes`.
 17. Do not implement the 2026-08-19 Owner Daily Operations View.
+18. **Complementary Arrivals** on `/daily` between mix and panels. Not a tab. Not mixed-feed-as-only-view. Same EventSource. Default 20 newest across lanes after Quiet + company. `?lane=` does not filter Arrivals.
 
 ---
 
@@ -1570,8 +1648,10 @@ The Leads panel shows the last Form and Call cards with names and
 links. The Texts panel shows held versus sent. The Granot panel groups
 a `lead_created` receipt with its minted outcome. A new RingCentral
 Call Lead appears in the Leads panel and the Call tile ticks without a
-page refresh. Live Events still has the raw Granot accordion. Analytics
-is unchanged. Confirm still happens on `/intakes`.
+page refresh. The same fact slides into Arrivals with a 1.5s highlight.
+The Owner does not open Live Events to feel that the day is moving.
+Live Events still has the raw Granot accordion. Analytics is unchanged.
+Confirm still happens on `/intakes`.
 
 ---
 

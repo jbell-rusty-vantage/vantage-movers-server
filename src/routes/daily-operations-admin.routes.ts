@@ -10,6 +10,17 @@ import {
   listDailyOperationsEvents,
 } from "../services/dailyOperations/eventsPage";
 import {
+  createDailyOperationsLiveRedisReader,
+  defaultFindDailyOperationsEventById,
+  defaultListDailyOperationsEventsAfter,
+  defaultListNewestDailyOperationsEvent,
+  LIVE_DAILY_OPERATIONS_HEARTBEAT_MS,
+  LIVE_DAILY_OPERATIONS_MAX_MS,
+  LIVE_DAILY_OPERATIONS_POLL_MS,
+  runDailyOperationsLiveSse,
+  type DailyOperationsLiveSseDeps,
+} from "../services/dailyOperations/liveStream";
+import {
   DailyOperationsRebuildError,
   rebuildOpenDailyOperationsDay,
 } from "../services/dailyOperations/rebuild";
@@ -20,6 +31,15 @@ export type DailyOperationsAdminRouteDeps = {
   getSnapshot?: typeof getDailyOperationsSnapshot;
   listEvents?: typeof listDailyOperationsEvents;
   rebuild?: typeof rebuildOpenDailyOperationsDay;
+  findLiveEventById?: DailyOperationsLiveSseDeps["findEventById"];
+  listLiveAfter?: DailyOperationsLiveSseDeps["listAfter"];
+  listLiveNewest?: DailyOperationsLiveSseDeps["listNewest"];
+  getLiveRedis?: DailyOperationsLiveSseDeps["getRedis"];
+  liveStreamSleep?: (ms: number) => Promise<void>;
+  liveStreamNow?: () => number;
+  liveStreamPollMs?: number;
+  liveStreamHeartbeatMs?: number;
+  liveStreamMaxMs?: number;
 };
 
 export function createDailyOperationsAdminRouter(
@@ -39,6 +59,59 @@ export function createDailyOperationsAdminRouter(
       return res.status(200).json(snapshot);
     } catch (error) {
       return sendError(res, error, requestId(req));
+    }
+  });
+
+  // One socket serves every Daily Operations Panel. `?lane=` is ignored.
+  router.get("/api/v1/admin/daily-operations/live", async (req, res) => {
+    try {
+      await connect();
+      requireRegistryOwnerActor(req, auth(req));
+    } catch (error) {
+      return sendError(res, error, requestId(req));
+    }
+
+    res.status(200);
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    const abort = new AbortController();
+    req.on("close", () => abort.abort());
+    try {
+      await runDailyOperationsLiveSse(
+        {
+          write: (chunk) => {
+            res.write(chunk);
+          },
+        },
+        {
+          getSnapshot: async () => getSnapshot(),
+          findEventById: deps.findLiveEventById ?? defaultFindDailyOperationsEventById,
+          listAfter: deps.listLiveAfter ?? defaultListDailyOperationsEventsAfter,
+          listNewest: deps.listLiveNewest ?? defaultListNewestDailyOperationsEvent,
+          getRedis: deps.getLiveRedis ?? createDailyOperationsLiveRedisReader,
+          sleep:
+            deps.liveStreamSleep ??
+            ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
+          now: deps.liveStreamNow ?? Date.now,
+          pollMs: deps.liveStreamPollMs ?? LIVE_DAILY_OPERATIONS_POLL_MS,
+          heartbeatMs: deps.liveStreamHeartbeatMs ?? LIVE_DAILY_OPERATIONS_HEARTBEAT_MS,
+          maxMs: deps.liveStreamMaxMs ?? LIVE_DAILY_OPERATIONS_MAX_MS,
+          signal: abort.signal,
+        },
+        req.header("last-event-id"),
+      );
+    } catch (error) {
+      if (!res.writableEnded) {
+        res.write(`event: error\ndata: ${JSON.stringify({ error: "Live stream failed" })}\n\n`);
+      }
+      void error;
+    }
+    if (!res.writableEnded) {
+      res.end();
     }
   });
 

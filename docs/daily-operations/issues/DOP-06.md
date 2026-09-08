@@ -100,14 +100,14 @@ DOP-08 for the full map sentence.
 
 ## 10. Acceptance criteria
 
-- [ ] Owner nav: Overview, Daily Operations, Live Events, …
-- [ ] Admin role: no nav item; `/daily` blocked; live BFF 403.
-- [ ] Tiles show today + pace vs `yesterday_by_now` + session delta.
-- [ ] Origins include WordPress form at zero when the snapshot says 0.
-- [ ] Company table includes zero rows.
-- [ ] EventSource to `/api/daily-operations-live`; tiles update on
+- [x] Owner nav: Overview, Daily Operations, Live Events, …
+- [x] Admin role: no nav item; `/daily` blocked; live BFF 403.
+- [x] Tiles show today + pace vs `yesterday_by_now` + session delta.
+- [x] Origins include WordPress form at zero when the snapshot says 0.
+- [x] Company table includes zero rows.
+- [x] EventSource to `/api/daily-operations-live`; tiles update on
       `metrics` without refresh (browser or client-unit proof).
-- [ ] `pnpm test && pnpm typecheck && pnpm lint` in vantage-admin
+- [x] `pnpm test && pnpm typecheck && pnpm lint` in vantage-admin
       (scoped lint on files you touch is acceptable if full-repo lint
       already fails on pre-existing files — record that).
 

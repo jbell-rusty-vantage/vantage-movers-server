@@ -31,13 +31,14 @@ issue’s repository.
   it into that issue and into the **Cross-issue findings** table in
   `PROGRESS.md` — do not do it.
 - DOP-01–05 stay in `vantage-main-server` except pack-doc drift
-  fixes. DOP-06–07 stay in `vantage-admin`. DOP-08 may touch both
-  plus pack docs.
+  fixes. DOP-06–07 and DOP-09 stay in `vantage-admin`. DOP-08 may
+  touch both plus pack docs.
 - Owner-visible strings use spec §4.4 / §8. Do not print Redis keys,
   `dedupe_key`, or Mongo collection names on `/daily`.
 - 21st.dev (MCP `user-21st` or CLI) is allowed only for the craft
-  target named in DOP-06 or DOP-07. Search first. Do not replace the
-  dashboard shell with a generated page that invents endpoints.
+  target named in DOP-06, DOP-07, or DOP-09. Search first. Do not
+  replace the dashboard shell with a generated page that invents
+  endpoints.
 - If you are blocked, set the status to `blocked`, record the exact
   question in the issue log, and stop. A blocked issue with a precise
   question is a good outcome; an issue that guessed is not.
@@ -80,6 +81,7 @@ been run and its output recorded.
 Use glossary terms from workspace-root `CONTEXT.md`. Say **Daily
 Operations**, not Daily View. Say **Daily Operations Event**, not
 Operational Event. Say **Daily Operations Panel**, not tab or live
-space. Say **Lead Message**, not SMS (except when naming Twilio).
-Say **Source Company**, not partner. Say **Ingestion Origin**, not
-request source.
+space. Say **Arrivals**, not Live facts, event pipe, or mixed feed
+(when meaning the whole board). Say **Lead Message**, not SMS
+(except when naming Twilio). Say **Source Company**, not partner.
+Say **Ingestion Origin**, not request source.
