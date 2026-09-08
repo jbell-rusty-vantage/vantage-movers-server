@@ -175,7 +175,7 @@ The Owner can answer, without clicking:
 
 > 42 leads — 4 ahead of yesterday at this hour. 19 texts, 3 held until 8:00 AM. 3 intakes opened, 2 Waiting for you. 6 Bookings. 1 Cancellation. 2 zip misses.
 
-Clicking a headline tile or a panel header **focuses** that panel (`?lane=`). Other panels collapse to a slim count rail. The day does not navigate away. `?lane=all` (default) is the command-center grid.
+Clicking a headline tile or a panel header **focuses** that panel (`?lane=`). **DOP-10:** focus *expands* the panel in place — it moves to the first grid cell, spans the full grid width, shows up to 40 cards and **Load earlier**. Every other panel stays in the grid at its default size; the count rail is gone. Clicking the same tile / header again, or **Collapse**, clears `?lane=`. The day does not navigate away. `?lane=all` (default) is the command-center grid. Each panel also has **Show all (N)** to reveal every in-memory card for that lane without focusing.
 
 One socket still serves every panel. Lane and company filters apply in memory.
 
@@ -195,6 +195,16 @@ Every headline tile and every panel header shows the same four numbers when they
 | `session_delta` | Change since this tab opened, derived from SSE `metric_touches` |
 
 `yesterday` (closed full day) is available on hover / secondary line. Pace is the comparison the Owner uses at 2:14pm. End-of-day yesterday versus a half-finished today always looks like a miss.
+
+**DOP-10 — trend %.** Tiles and panel headers also show, visibly (never tooltip-only):
+
+| Number | Meaning |
+| --- | --- |
+| `pct` | `(today − yesterday_by_now) / yesterday_by_now`, rounded, as `+12%` / `−8%` |
+| `two_day_avg_by_now` | mean of `yesterday_by_now` and `day_before_by_now` when both exist; the one that exists otherwise |
+| secondary line | `Yesterday by now 31 · Yesterday 38 · Day before 35` |
+
+Rules: baseline `null` → `—` (`missing`); baseline `0` and today `0` → `even`; baseline `0` and today `> 0` → `ahead` with the label **new** (never `Infinity`). Tone words are `ahead` / `behind` / `even` / `missing`. When no baseline exists at all the chip is hidden and the line reads **no prior day yet**.
 
 v1 does **not** show lead cost, binder, or deposit. Those stay on Analytics.
 
@@ -233,6 +243,30 @@ Arrivals sits **between the mix and the panels**. Not under the
 headline tiles (that splits the scoreboard). Not below the panels
 (motion falls off the page). Not a tab.
 
+**DOP-10 — one workspace.** The five bands keep their DOM order. Band
+1 gains a **board toolbar** (Quiet priorities · Sheet Sync · Colours)
+and the live indicator becomes a rippling dot with `last fact {n}s
+ago`. Band 3 becomes the **overview row**: Hourly rhythm (today vs
+yesterday vs day before, `now` marker) · Ingestion Origin · Source
+Company. On `xl` and up bands 4 and 5 share one workspace: Arrivals is
+a **sticky, scrollable live rail** on the left and the category panel
+grid sits beside it; on narrower screens Arrivals stacks above the
+panels. Arrivals is still before the panels in the DOM.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ Daily Operations · Tue Sep 8 · ◉ Live · last fact 12s ago        │
+│                       [Quiet priorities] [Sheet Sync] [Colours]  │
+├──────────────────────────────────────────────────────────────────┤
+│ HEADLINE  42 Leads +4 · +12%  ▂▃▅▇  Yesterday by now 38 · …      │
+├──────────────────────────────────────────────────────────────────┤
+│ HOURLY RHYTHM (today/yest/day before) │ ORIGINS │ SOURCE COMPANIES │
+├──────────────┬───────────────────────────────────────────────────┤
+│ ARRIVALS ◉   │ PANELS                                            │
+│ (sticky rail)│ ┌ Leads ┐ ┌ Texts ┐ ┌ Granot ┐ ┌ Intakes ┐ …       │
+└──────────────┴───────────────────────────────────────────────────┘
+```
+
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │ Daily Operations     Sat Sep 6 · America/New_York · ● Live       │
@@ -263,17 +297,18 @@ headline tiles (that splits the scoreboard). Not below the panels
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-Focus (`?lane=lead`):
+Focus (`?lane=lead`) — **DOP-10** (the count rail from DOP-07 is gone):
 
 ```
-┌─ count rail: Texts 19 · Granot 55 · Intakes 3 · Book 6 · … ─┐
-│ LEADS                                          42  +4 vs 2pm │
-│ 2:13  Call Lead · Maria Chen · Top 10 · RingCentral  [Open]  │
-│ 2:11  Form Lead · … · ZIP 33101 · state not found    [Open]  │
-└──────────────────────────────────────────────────────────────┘
+┌─ LEADS  42  +4 · +12% vs yesterday by now         [Collapse] ─┐
+│ 2:13  Call Lead · Maria Chen · Top 10 · RingCentral  [Open]    │
+│ 2:11  Form Lead · … · ZIP 33101 · state not found    [Open]    │
+│ … up to 40 cards · [Load earlier]                              │
+└────────────────────────────────────────────────────────────────┘
+┌ Texts 19 ┐ ┌ Granot 55 ┐ ┌ Intakes 3 ┐ ┌ Bookings 6 ┐ …  (unchanged)
 ```
 
-Arrivals stays on the page above this focused panel and stays
+Arrivals stays on the page beside / above this focused panel and stays
 cross-lane.
 
 Clicking a company row sets `?company=` and filters every panel **and
@@ -359,11 +394,16 @@ a weekly pulse. This page is a live day.
 | `bg-destructive/10` | Failed text, dead letter, CRM fail |
 | 1.5s highlight on insert | New card only. Existing cards never reorder. |
 | `session_delta` flash | `+1` on the tile and the panel header for ~2s |
+| **DOP-10** kind tone | Every catalog kind and every lane resolves to one of a fixed set of named **tones** (static Tailwind class bundles in `lib/api/dailyOperationsColors.ts`). The card left rail, kind dot, kind badge, panel header accent, and Arrivals dot read the resolved tone. |
+| **DOP-10** Owner overrides | `localStorage` key `vantage-admin-daily-kind-colors`; edited from the **Colours** toolbar panel (kinds grouped by lane, swatch picker, **Reset colours**). URL untouched. Unknown stored tone names fall back to the default. |
+| **DOP-10** rippling live dot | `◉ Live` uses a CSS ripple (`daily-live-ripple`); Paused / Reconnecting / Off use the same dot without ripple. |
 
 Reuse `Card`, `StatusBadge` / existing chips, `FeedbackMessage`,
 `floridaTime`, `SOURCE_COMPANY_LABELS`. Do not invent a second design
-system. 21st.dev may craft the named shells in DOP-06, DOP-07, and
-DOP-09 only; it must not invent endpoints or a second drawer.
+system. 21st.dev may craft the named shells in DOP-06, DOP-07, DOP-09,
+and DOP-10 only; it must not invent endpoints or a second drawer.
+Tone class strings are static bundles; never build a Tailwind class
+from a variable.
 
 ### 4.2 Density
 
@@ -371,13 +411,18 @@ DOP-09 only; it must not invent endpoints or a second drawer.
 - Arrivals: **20** newest across lanes after filters. No "Load
   earlier" on this strip (that stays on focused panels). Empty state
   is one line.
-- Panels: CSS grid `xl:grid-cols-2 2xl:grid-cols-3`. Exceptions span
-  full width when focused.
-- Default cards visible per panel: **8**. Focused panel: **40**, then
+- Panels: CSS grid `xl:grid-cols-2 2xl:grid-cols-3` beside the
+  Arrivals rail (**DOP-10**). The focused panel spans the full grid
+  width; the others keep their cells.
+- Default cards visible per panel: **8**, plus **Show all (N)**
+  (**DOP-10**, in-memory only). Focused panel: **40**, then
   "Load earlier" against `GET .../events`.
-- Card title is one Owner sentence. Second line is identity + chips.
-  Third line is links. No raw JSON. No Granot payload accordion
-  (that is Live Events).
+- Card title is one Owner sentence. Second line is identity. Then
+  (**DOP-10**) a labelled fact grid with every populated stored field
+  (§8.1), then attention chips, then links. No raw JSON. No Granot
+  payload accordion (that is Live Events).
+- Arrivals cards tick relative time (`12s ago`, `3m ago`); panel cards
+  keep the Eastern clock (**DOP-10**).
 
 ### 4.3 Names and contact
 
@@ -412,7 +457,13 @@ found" / "Arrivals" as magic strings across components.
 | Intakes | Cases **opened** today, plus **Waiting for you** (live open-case query) | Refreshes (panel only) |
 
 Each tile shows `today`, `yesterday_by_now`, pace chip, and session
-delta. Clicking the tile focuses the matching panel (`?lane=`).
+delta. **DOP-10:** the pace chip carries the count delta **and** the
+percent versus yesterday at this hour (§2.3); a visible secondary line
+reads `Yesterday by now N · Yesterday N · Day before N`; a 24-bucket
+hourly sparkline for today renders when `hourly.today` is present.
+Chips and line are hidden, and the tile says **no prior day yet**, when
+no baseline exists. Clicking the tile focuses the matching panel
+(`?lane=`); clicking the focused tile again clears the focus.
 
 Granot tile secondary line: `lead_created` · `priority_updated` ·
 Booked / Release. Intakes secondary line: `{opened} opened · {still_open}
@@ -530,6 +581,26 @@ the facts that make the next click obvious.
 
 Time is America/New_York via `floridaTime`. Client keys on `event_id`.
 A retried SSE replaces rather than appends.
+
+**DOP-10 — show everything stored.** The shell renders every populated
+field of §8.2 as a labelled fact, not chips only, and never hides a
+stored value behind a hover or an expander:
+
+```
+▌{h:mm a | 12s ago}  {catalog sentence}                 [kind badge]
+▌{server title when it differs}
+▌{name} · ••{last4} · {Source Company} · {Ingestion Origin}
+▌ Job number · Form / Call · Pickup → Delivery (ZIP + state,
+▌ "state not found") · Move type · Text purpose / status / send-at /
+▌ skip reason · Granot class / booking action / decision · Booking
+▌ kind · Exception code / detail · Entity type
+▌{attention chips}   {links}
+```
+
+The left rail (`▌`), kind dot, and kind badge use the kind's tone
+(§4.1). `Open list` opens the desk list **without** a record;
+`Open lead` opens the record. An unknown Ingestion Origin is shown as
+its raw value, not dropped.
 
 ### 8.2 Card payload (stored on the event, small)
 
@@ -1422,6 +1493,20 @@ Message schema has **no** `sendAt` / `scheduled_for` field.
 
 Missing open day → treat as zeros. Missing closed yesterday →
 `yesterday` totals null and UI shows `—`.
+
+**DOP-10 — the day before (additive).** The snapshot loads **three**
+day documents. New fields, all optional for older clients:
+
+- `day_before: "YYYY-MM-DD"` next to `today` / `yesterday`.
+- Every headline pace (`leads`, `bookings`, `cancellations`, `texts`)
+  gains `day_before: number|null` and `day_before_by_now: number|null`
+  (hourly buckets `0..currentNyHour`).
+- `webhooks.*` gain `day_before: number|null`.
+- Companies gain `day_before_total: number|null`.
+- `hourly.day_before: DailyOperationsHourlyBucket[]` (24 buckets).
+
+Missing day before → `null`, same rule as yesterday. Existing fields
+are unchanged.
 
 ### 16.2 SSE events
 

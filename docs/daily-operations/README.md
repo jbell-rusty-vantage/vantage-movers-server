@@ -32,7 +32,7 @@ applies_to:
 
 # Daily Operations
 
-Nine shippable issues (DOP-01–09 shipped). Arrivals is on `/daily`.
+Ten shippable issues (DOP-01–10 shipped). Arrivals is on `/daily` as a live rail.
 This pack follows
 `docs/lead-costs-owner-editing/` and `docs/operational-surfaces/`:
 same fourteen-section issue contract, same rule that **repository state
@@ -47,7 +47,7 @@ wins on every conflict.
 This pack does **not** replace Live Events, Overview, Analytics, or
 Intakes. It does not implement the 2026-08-19 Owner Daily Operations
 View (24h/48h tabs, conversations, deposit). Arrivals is on `/daily`
-as the complementary newest-20 strip (not a Daily Operations Panel).
+as the complementary newest-20 live rail (not a Daily Operations Panel).
 Not Daily View. Not Live Events.
 
 ## Authorities
@@ -84,11 +84,13 @@ wins and the issue author fixes this pack in the same change.
 | **7** | [DOP-07](issues/DOP-07.md) | vantage-admin | Category panels, cards, links, Quiet priorities. The Owner board. |
 | **8** | [DOP-08](issues/DOP-08.md) | both (proof + docs) | Browser walk and pointers. |
 | **9** | [DOP-09](issues/DOP-09.md) | vantage-admin | Complementary Arrivals strip on `/daily`. |
+| **10** | [DOP-10](issues/DOP-10.md) | both (snapshot + board) | Owner-requested live workspace: focus expands in place, trend % vs yesterday / day before, full-fact cards, kind colours, Live Events polish. |
 
-DOP-01–09 shipped. Pack reopened 2026-09-08 for the Arrivals append
-and closed the same day. Do not start leftover pack work. Agents may
-use 21st.dev on DOP-06, DOP-07, and DOP-09 against the named craft
-targets only.
+DOP-01–10 shipped. Pack reopened 2026-09-08 for the Arrivals append
+(DOP-09) and again the same day for the Owner's live-workspace review
+(DOP-10); closed after DOP-10. Do not start leftover pack work. Agents
+may use 21st.dev on DOP-06, DOP-07, DOP-09, and DOP-10 against the
+named craft targets only.
 
 ## Unit ledger
 
@@ -106,16 +108,18 @@ Live values live in [`PROGRESS.md`](PROGRESS.md).
 | [DOP-07](issues/DOP-07.md) | Category panels, cards, links | DOP-06 | complete | complete |
 | [DOP-08](issues/DOP-08.md) | Browser proof and docs | DOP-02, DOP-03, DOP-07 | complete | complete |
 | [DOP-09](issues/DOP-09.md) | Arrivals band on /daily | DOP-07 | complete | complete |
+| [DOP-10](issues/DOP-10.md) | Live workspace: focus without loss, trend %, full cards, kind colours | DOP-09 | complete | complete |
 
 DOP-02 and DOP-03 may run in parallel after DOP-01. DOP-04 may start
 after DOP-01 (snapshot can return zeros until hooks land). DOP-06
 waits for DOP-04 and DOP-05 so the page has a real snapshot and a live
 pipe. DOP-09 waits for DOP-07 so cards, Quiet priorities, and the
-single EventSource already exist.
+single EventSource already exist. DOP-10 waits for DOP-09 so it
+reorganises a board that already has Arrivals.
 
 ## Ready queue
 
-Empty. Pack issues DOP-01–09 are `complete`.
+Empty. Pack issues DOP-01–10 are `complete`.
 
 ## Standing constraints for every issue
 
@@ -169,6 +173,6 @@ docs/daily-operations/
 ├── LOCAL-ADMIN.md
 ├── PROGRESS.md
 ├── issues/
-│   ├── DOP-01.md … DOP-09.md
+│   ├── DOP-01.md … DOP-10.md
 └── reports/
 ```

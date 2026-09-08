@@ -123,6 +123,74 @@ test("yesterday_by_now is hourly 0..currentNyHour, not the full yesterday", asyn
   assert.equal(snapshot.metrics.texts.held_now, 3);
 });
 
+test("day_before and day_before_by_now come from the third NY day; missing day is null", async () => {
+  const today = buildDaySeed("2026-09-06");
+  today.leads.total = 42;
+  const yesterday = buildDaySeed("2026-09-05");
+  yesterday.leads.total = 38;
+  yesterday.hourly[9]!.leads = 31;
+  const dayBefore = buildDaySeed("2026-09-04");
+  dayBefore.leads.total = 35;
+  dayBefore.bookings.total = 4;
+  dayBefore.messages.successful = 20;
+  dayBefore.hourly[8]!.leads = 12;
+  dayBefore.hourly[14]!.leads = 9;
+  dayBefore.hourly[16]!.leads = 14;
+  dayBefore.hourly[14]!.bookings = 2;
+  dayBefore.hourly[13]!.messages = 11;
+  dayBefore.webhooks.lead_created = 40;
+  dayBefore.companies.top10_leads = { form: 8, call: 3, total: 11 };
+
+  const docs: Record<string, unknown> = {
+    "2026-09-06": today,
+    "2026-09-05": yesterday,
+    "2026-09-04": dayBefore,
+  };
+  const snapshot = await getDailyOperationsSnapshot({
+    now: () => new Date("2026-09-06T18:14:00.000Z"),
+    loadDay: async (day) => (docs[day] as never) ?? null,
+    countOpenIntakes: async () => 0,
+    countHeldMessages: async () => 0,
+    redisConfigured: () => false,
+  });
+
+  assert.equal(snapshot.day_before, "2026-09-04");
+  assert.equal(snapshot.metrics.leads.yesterday, 38);
+  assert.equal(snapshot.metrics.leads.yesterday_by_now, 31);
+  assert.equal(snapshot.metrics.leads.day_before, 35);
+  assert.equal(snapshot.metrics.leads.day_before_by_now, 21);
+  assert.equal(snapshot.metrics.bookings.day_before, 4);
+  assert.equal(snapshot.metrics.bookings.day_before_by_now, 2);
+  assert.equal(snapshot.metrics.texts.day_before, 20);
+  assert.equal(snapshot.metrics.texts.day_before_by_now, 11);
+  assert.equal(snapshot.metrics.webhooks.lead_created.day_before, 40);
+  assert.equal(snapshot.metrics.webhooks.booked.day_before, 0);
+  assert.equal(
+    snapshot.companies.find((row) => row.source_company === "top10_leads")?.day_before_total,
+    11,
+  );
+  assert.equal(snapshot.hourly.day_before.length, 24);
+  assert.equal(snapshot.hourly.day_before[16]?.leads, 14);
+
+  const withoutDayBefore = await getDailyOperationsSnapshot({
+    now: () => new Date("2026-09-06T18:14:00.000Z"),
+    loadDay: async (day) => (day === "2026-09-04" ? null : ((docs[day] as never) ?? null)),
+    countOpenIntakes: async () => 0,
+    countHeldMessages: async () => 0,
+    redisConfigured: () => false,
+  });
+  assert.equal(withoutDayBefore.metrics.leads.yesterday_by_now, 31);
+  assert.equal(withoutDayBefore.metrics.leads.day_before, null);
+  assert.equal(withoutDayBefore.metrics.leads.day_before_by_now, null);
+  assert.equal(withoutDayBefore.metrics.webhooks.lead_created.day_before, null);
+  assert.equal(withoutDayBefore.companies[0]?.day_before_total, null);
+  assert.equal(withoutDayBefore.hourly.day_before.length, 24);
+  assert.equal(
+    withoutDayBefore.hourly.day_before.every((bucket) => bucket.leads === 0),
+    true,
+  );
+});
+
 test("every SOURCE_COMPANIES slug is present including zeros", async () => {
   const today = buildDaySeed("2026-09-06");
   today.companies.top10_leads = { form: 12, call: 5, total: 17 };
@@ -150,6 +218,7 @@ test("every SOURCE_COMPANIES slug is present including zeros", async () => {
     call: 5,
     total: 17,
     yesterday_total: 15,
+    day_before_total: 15,
   });
   const silent = snapshot.companies.find((row) => row.source_company === "paid_overflow");
   assert.deepEqual(silent, {
@@ -158,6 +227,7 @@ test("every SOURCE_COMPANIES slug is present including zeros", async () => {
     call: 0,
     total: 0,
     yesterday_total: 0,
+    day_before_total: 0,
   });
 });
 

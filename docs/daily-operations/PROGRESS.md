@@ -20,6 +20,7 @@ Contract: [`daily-operations-specification.md`](daily-operations-specification.m
 | [DOP-07](issues/DOP-07.md) | Category panels, cards, links | DOP-06 | `complete` | coordinator / DOP-07 implementer | 2026-09-08 | 2026-09-08 | [reports/DOP-07-completion.md](reports/DOP-07-completion.md) |
 | [DOP-08](issues/DOP-08.md) | Browser proof and docs | DOP-02, DOP-03, DOP-07 | `complete` | coordinator / DOP-08 implementer | 2026-09-08 | 2026-09-08 | [reports/DOP-08-completion.md](reports/DOP-08-completion.md) |
 | [DOP-09](issues/DOP-09.md) | Arrivals band on /daily | DOP-07 | `complete` | coordinator / DOP-09 agents | 2026-09-08 | 2026-09-08 | [reports/DOP-09-completion.md](reports/DOP-09-completion.md) |
+| [DOP-10](issues/DOP-10.md) | Live workspace: focus without loss, trend %, full cards, kind colours | DOP-09 | `complete` | DOP-10 agent | 2026-09-08 | 2026-09-08 | [reports/DOP-10-completion.md](reports/DOP-10-completion.md) |
 
 Status vocabulary: `ready` · `active` · `blocked` · `complete` · `deferred`.
 
@@ -34,6 +35,7 @@ Status vocabulary: `ready` · `active` · `blocked` · `complete` · `deferred`.
 | 5 | DOP-07 | Category panels. Do not ship `/daily` before this. |
 | 6 | DOP-08 | Browser walk + docs-keeper. |
 | 7 | DOP-09 | Complementary Arrivals on `/daily`. Pack reopened. |
+| 8 | DOP-10 | Owner-requested live workspace: focus keeps the board, trend %, full cards, kind colours, Live Events polish. |
 
 ## Specification coverage
 
@@ -51,6 +53,7 @@ by the issue that closes it, with the evidence named.
 | §2, §7–8 | Category panels, cards, links | DOP-07 | ☑ | [reports/DOP-07-completion.md](reports/DOP-07-completion.md) |
 | §23 | Browser walk + pointers | DOP-08 | ☑ | [reports/DOP-08-completion.md](reports/DOP-08-completion.md) |
 | §3.2, §3.4, §21.18 | Complementary Arrivals band | DOP-09 | ☑ | [reports/DOP-09-completion.md](reports/DOP-09-completion.md) |
+| §2.2, §2.3, §3.2, §4.1, §4.2, §5, §8.1, §16.1 (DOP-10 amendments) | Expand-in-place focus, trend % + day before, one workspace, kind tones, full-fact cards | DOP-10 | ☑ | [reports/DOP-10-completion.md](reports/DOP-10-completion.md) |
 
 ## Acceptance criteria (specification §23)
 
@@ -66,6 +69,7 @@ by the issue that closes it, with the evidence named.
 | 8 | No Redis `INCR` as the Owner total | DOP-01, DOP-05 | ☑ |
 | 9 | Test runner never writes Redis | DOP-01 | ☑ |
 | 10 | Arrivals shows newest facts across lanes; Cancellation still visible when Granot floods; one EventSource | DOP-09 | ☑ (browser Form Lead; flood in unit tests; one EventSource) |
+| 11 | Focus keeps every panel on screen; tiles / headers show `%` vs yesterday by now; cards show every stored fact; kind tones persist; toolbar in chrome | DOP-10 | ☑ (browser `?lane=granot`, Colours → rose persisted; trend by fixture — no local prior day) |
 
 ## Cross-issue findings
 
@@ -106,3 +110,5 @@ place — record it here and in the target issue.
 | 2026-09-08 | DOP-09 | Hydration fetch is all-lanes so `?lane=` remount cannot empty Arrivals. Re-walk: Texts focused empty; Form Lead card still in Arrivals. |
 | 2026-09-08 | DOP-09 | docs-keeper: pointer + admin map say category panels plus complementary Arrivals. |
 | 2026-09-08 | DOP-09 | Complete. Arrivals strip on `/daily` between mix and panels. Selector newest-20 after Quiet + company; `?lane=` ignored; hydration all-lanes. One EventSource. 557 admin tests pass; typecheck 0. Browser: empty NY day then Manual Form Lead (••0999, Just now, tiles +1). Report: `reports/DOP-09-completion.md`. |
+| 2026-09-08 | DOP-10 | Picked up after Owner review of DOP-09. Repos: `vantage-admin` on `daily-operations` (equal to `main`), `vantage-main-server` on `main` working tree (snapshot only). Focus without losing the board, trend % vs yesterday / day before, cards show every stored fact, per-kind colours, live rail, Live Events polish. |
+| 2026-09-08 | DOP-10 | Complete. Server snapshot loads the day before (`day_before`, `day_before_by_now`, `hourly.day_before`, `day_before_total`; 29 dailyOperations/route tests pass). Admin: focus expands in place (count rail removed), toolbar in chrome, tiles + panel headers show `%` and visible baseline line, Hourly rhythm, Arrivals sticky live rail, full-fact cards, 12 tones with per-kind overrides + Colours panel, Live Events rows show every lead fact with class rails. 569 admin tests pass; typecheck 0; lint failures pre-existing only. Spec §2.2/§2.3/§3.2/§4.1/§4.2/§5/§8.1/§16.1 amended (`DOP-10`). Browser: `/daily`, `?lane=granot`, Colours, `/live-events`. Report: `reports/DOP-10-completion.md`. docs-keeper next. |
