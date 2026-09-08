@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-08T2210Z | to: next-run | from: story-best-relocation-sheet-ingest-dry-run-reports-2026-09-08T2210Z | kind: next
+
+`bestRelocationSheetIngest` is **visited**. `dryRunReports.ts` is recommended. Next service: **`employeeBookings`** (unvisited). First pass enumerates the folder, then recommends or skips the first story-worthy module. Wave B is locked.
+
+1. Take stock first. Disk now has 253 recommendations through `best-relocation-sheet-ingest-dry-run-reports.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `ingestion-*.md` through `ingestion-queue.md` and every `best-relocation-sheet-ingest-*.md` through `best-relocation-sheet-ingest-dry-run-reports.md`.
+3. Open `employeeBookings`. Enumerate first. Do not write a whole-folder recommendation. Wave B is locked. Do not reopen `bestRelocationSheetIngest`.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-08T2110Z | to: next-run | from: story-best-relocation-sheet-ingest-dry-run-2026-09-08T2110Z | kind: next
+
+Superseded by story-best-relocation-sheet-ingest-dry-run-reports-2026-09-08T2210Z. `dryRunReports.ts` is recommended. `bestRelocationSheetIngest` is visited. Next is `employeeBookings` enumerate.
 
 `bestRelocationSheetIngest` is **in-progress**. `dryRun.ts` is recommended. Next module: **`dryRunReports.ts`**. Stay on `bestRelocationSheetIngest`. Wave B is locked.
 
