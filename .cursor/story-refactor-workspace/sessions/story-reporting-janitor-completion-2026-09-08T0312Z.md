@@ -3,7 +3,7 @@
 - Date (UTC): 2026-09-08T03:12Z
 - Service / module: `reporting` / `live/janitorCompletion.ts`
 - Lock: taken
-- Branch / PR: `docs/story-refactor` / new PR after #205 merged (this pass opens it)
+- Branch / PR: `docs/story-refactor` / https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206
 
 ## Stock at start
 

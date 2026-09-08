@@ -11,7 +11,7 @@ Open items first. Newest on top. Not knowledge.
 1. Take stock first. Disk now has 234 recommendations through `reporting-janitor-completion.md`.
 2. Do not rewrite `form-lead.md` or any prior recommendation, including every `reporting-*.md` through `reporting-janitor-completion.md`.
 3. Open `ingestion`. Enumerate every non-test `.ts` file onto the checklist, skip barrels/type-only, then recommend the first story-worthy module. Do not write a whole-folder recommendation. Wave B is locked.
-4. No `src/` edits. Branch `docs/story-refactor`. PR #205 is merged. This pass opens the next story-refactor PR. Push to `docs/story-refactor` updates it. Do **not** call `open_git_pr` while that PR is open.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
 5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
 
 ## 2026-09-08T0211Z | to: next-run | from: story-reporting-test-artifact-janitor-2026-09-08T0211Z | kind: next
