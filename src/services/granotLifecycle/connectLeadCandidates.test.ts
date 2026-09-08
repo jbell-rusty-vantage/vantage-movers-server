@@ -3,6 +3,7 @@ import { afterEach, test } from "node:test";
 import { inspect } from "node:util";
 import mongoose from "mongoose";
 import { BookedLead } from "../../models/BookedLead";
+import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconciliationCase";
 import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
@@ -25,6 +26,7 @@ let CallLead: MutableModel | undefined;
 let originalFormFind: unknown;
 let originalCallFind: unknown;
 const originalBookingFindById = BookedLead.findById;
+const originalCaseExists = BookingLeadReconciliationCase.exists;
 const Link = getGranotRecordLinkModel() as unknown as MutableModel;
 const originalLinkFindOne = Link.findOne;
 
@@ -36,11 +38,13 @@ afterEach(() => {
   if (FormLead && originalFormFind) FormLead.find = originalFormFind;
   if (CallLead && originalCallFind) CallLead.find = originalCallFind;
   BookedLead.findById = originalBookingFindById;
+  BookingLeadReconciliationCase.exists = originalCaseExists;
   Link.findOne = originalLinkFindOne;
 });
 
 test("empty Connect q does not dump the book", async () => {
   stubBooking({ is_leadless_booking: true, is_referral_booking: false });
+  stubOpenCase(false);
   const form = stubFind(bindForm(), [{ _id: formLeadId, name: "Should not appear" }]);
   stubFind(bindCall(), []);
   stubLink();
@@ -52,6 +56,7 @@ test("empty Connect q does not dump the book", async () => {
 
 test("Connect Form q hits snapshot paths and omits ineligible Leads", async () => {
   stubBooking({ is_leadless_booking: true, is_referral_booking: false, source: "best-relocation" });
+  stubOpenCase(false);
   const form = stubFind(bindForm(), [formLeadWithSnapshot()]);
   stubFind(bindCall(), []);
   stubLink();
@@ -80,6 +85,7 @@ test("Connect Form q hits snapshot paths and omits ineligible Leads", async () =
 
 test("Connect Call q hits snapshot paths and excludes unmatched Call Leads", async () => {
   stubBooking({ is_leadless_booking: true, is_referral_booking: false });
+  stubOpenCase(false);
   stubFind(bindForm(), []);
   const call = stubFind(bindCall(), [callLeadWithSnapshot()]);
   stubLink();
@@ -109,6 +115,7 @@ test("Connect Call q hits snapshot paths and excludes unmatched Call Leads", asy
 
 test("Connect Call q for Granot-only phone hits snapshot phone paths", async () => {
   stubBooking({ is_leadless_booking: true, is_referral_booking: false });
+  stubOpenCase(false);
   stubFind(bindForm(), []);
   const call = stubFind(bindCall(), [callLeadWithSnapshot()]);
   stubLink();
@@ -130,14 +137,22 @@ test("Connect Call q for Granot-only phone hits snapshot phone paths", async () 
   assert.equal(item.known_contacts?.granot?.phone_number, "555-9999");
 });
 
-test("Connect candidates fail closed on Referral and cancelled Bookings", async () => {
+test("Connect candidates fail closed on Referral, cancelled, and open-case Bookings", async () => {
   stubBooking({ is_leadless_booking: true, is_referral_booking: true });
+  stubOpenCase(false);
   await assert.rejects(
     () => listConnectLeadCandidates(String(bookingId), { q: "Ada", limit: 25 }),
     (error: { code?: string }) => error.code === GRANOT_LIFECYCLE_ERROR_CODES.IDENTITY_CONFLICT,
   );
 
   stubBooking({ is_leadless_booking: true, cancelled: new Date(), is_referral_booking: false });
+  await assert.rejects(
+    () => listConnectLeadCandidates(String(bookingId), { q: "Ada", limit: 25 }),
+    (error: { code?: string }) => error.code === GRANOT_LIFECYCLE_ERROR_CODES.IDENTITY_CONFLICT,
+  );
+
+  stubBooking({ is_leadless_booking: true, is_referral_booking: false });
+  stubOpenCase(true);
   await assert.rejects(
     () => listConnectLeadCandidates(String(bookingId), { q: "Ada", limit: 25 }),
     (error: { code?: string }) => error.code === GRANOT_LIFECYCLE_ERROR_CODES.IDENTITY_CONFLICT,
@@ -166,6 +181,11 @@ function stubBooking(doc: Record<string, unknown>): void {
       exec: async () => ({ _id: bookingId, ...doc }),
     }),
   })) as typeof BookedLead.findById;
+}
+
+function stubOpenCase(open: boolean): void {
+  BookingLeadReconciliationCase.exists = (async () =>
+    open ? { _id: bookingId } : null) as typeof BookingLeadReconciliationCase.exists;
 }
 
 function stubLink(): void {
