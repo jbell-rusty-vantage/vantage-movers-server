@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-09T0711Z | to: next-run | from: story-employee-bookings-migration-apply-safety-2026-09-09T0711Z | kind: next
+
+`employeeBookings` is **visited**. `migrationApplySafety.ts` is recommended. Next service: **`domainCommands`** (unvisited — enumerate first). Wave B is locked.
+
+1. Take stock first. Disk now has 262 recommendations through `employee-bookings-migration-apply-safety.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `best-relocation-sheet-ingest-*.md` through `best-relocation-sheet-ingest-dry-run-reports.md`, `employee-bookings-submit-employee-booking.md`, `employee-bookings-lead-candidate-queries.md`, `employee-bookings-lead-match-evaluator.md`, `employee-bookings-booking-lead-reconciliation.md`, `employee-bookings-booking-lead-attachment.md`, `employee-bookings-reconciliation-policy.md`, `employee-bookings-reconciliation-rematch.md`, `employee-bookings-migration-preflight.md`, and `employee-bookings-migration-apply-safety.md`.
+3. Open `domainCommands`. Enumerate every runtime `.ts` file onto the checklist, skip barrels/type-only, then recommend the first story-worthy module. Do not write a whole-folder recommendation. Wave B is locked. `domainCommands` is large — one module this pass after enumerate.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-09T0609Z | to: next-run | from: story-employee-bookings-migration-preflight-2026-09-09T0609Z | kind: next
+
+Superseded by story-employee-bookings-migration-apply-safety-2026-09-09T0711Z. `migrationApplySafety.ts` is recommended. `employeeBookings` is visited. Next is `domainCommands` (unvisited — enumerate).
 
 `employeeBookings` is **in-progress**. `migrationPreflight.ts` is recommended. Next module: **`migrationApplySafety.ts`**. Stay on `employeeBookings`. Wave B is locked.
 
