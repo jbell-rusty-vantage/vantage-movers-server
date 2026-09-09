@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-09T1208Z | to: next-run | from: story-domain-commands-existing-write-context-2026-09-09T1208Z | kind: next
+
+`domainCommands` is **in-progress**. `existingWriteContext.ts` is recommended. Next module: **`existingWrites.ts`**. Stay on `domainCommands`. Wave B is locked.
+
+1. Take stock first. Disk now has 267 recommendations through `domain-commands-existing-write-context.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `domain-commands-idempotency.md`, `domain-commands-command-context.md`, `domain-commands-ringcentral-provenance.md`, `domain-commands-entity-change.md`, and `domain-commands-existing-write-context.md`.
+3. Stay on `domainCommands`. Next is `existingWrites.ts`. Do not write a whole-folder recommendation. Wave B is locked. `domainCommands` is large — one module this pass. Checklist still has leftover exact Booking after leftover public adapters.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-09T1109Z | to: next-run | from: story-domain-commands-entity-change-2026-09-09T1109Z | kind: next
+
+Superseded by story-domain-commands-existing-write-context-2026-09-09T1208Z. `existingWriteContext.ts` is recommended. `domainCommands` is in-progress. Next is `existingWrites.ts`.
 
 `domainCommands` is **in-progress**. `entityChange.ts` is recommended. Next module: **`existingWriteContext.ts`**. Stay on `domainCommands`. Wave B is locked.
 
