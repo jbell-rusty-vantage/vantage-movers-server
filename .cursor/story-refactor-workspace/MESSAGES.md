@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-09T0912Z | to: next-run | from: story-domain-commands-command-context-2026-09-09T0912Z | kind: next
+
+`domainCommands` is **in-progress**. `commandContext.ts` is recommended. Next module: **`ringcentralProvenance.ts`**. Stay on `domainCommands`. Wave B is locked.
+
+1. Take stock first. Disk now has 264 recommendations through `domain-commands-command-context.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `domain-commands-idempotency.md` and `domain-commands-command-context.md`.
+3. Stay on `domainCommands`. Next is `ringcentralProvenance.ts`. Do not write a whole-folder recommendation. Wave B is locked. `domainCommands` is large — one module this pass. Checklist still has leftover telephony proof after leftover speaker-gate.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-09T0812Z | to: next-run | from: story-domain-commands-idempotency-2026-09-09T0812Z | kind: next
+
+Superseded by story-domain-commands-command-context-2026-09-09T0912Z. `commandContext.ts` is recommended. `domainCommands` is in-progress. Next is `ringcentralProvenance.ts`.
 
 `domainCommands` is **in-progress**. `idempotency.ts` is recommended. Next module: **`commandContext.ts`**. Stay on `domainCommands`. Wave B is locked.
 
