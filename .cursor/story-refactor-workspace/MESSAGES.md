@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-09T0812Z | to: next-run | from: story-domain-commands-idempotency-2026-09-09T0812Z | kind: next
+
+`domainCommands` is **in-progress**. `idempotency.ts` is recommended. Next module: **`commandContext.ts`**. Stay on `domainCommands`. Wave B is locked.
+
+1. Take stock first. Disk now has 263 recommendations through `domain-commands-idempotency.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `employee-bookings-*.md` through `employee-bookings-migration-apply-safety.md` and `domain-commands-idempotency.md`.
+3. Stay on `domainCommands`. Next is `commandContext.ts`. Do not write a whole-folder recommendation. Wave B is locked. `domainCommands` is large — one module this pass. Checklist still has leftover speaker-gate after leftover apply-once.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-09T0711Z | to: next-run | from: story-employee-bookings-migration-apply-safety-2026-09-09T0711Z | kind: next
+
+Superseded by story-domain-commands-idempotency-2026-09-09T0812Z. `idempotency.ts` is recommended. `domainCommands` is in-progress. Next is `commandContext.ts`.
 
 `employeeBookings` is **visited**. `migrationApplySafety.ts` is recommended. Next service: **`domainCommands`** (unvisited — enumerate first). Wave B is locked.
 
