@@ -3,14 +3,14 @@
 - Date (UTC): 2026-09-09
 - Wave: A (`src/services/`)
 - Current service: `durableWork` (in-progress)
-- Next module: `capability.ts`
+- Next module: `schema.ts`
 - Stock: visited 32 / in-progress 1 / unvisited 5
-- Recommendations on disk: 273 (`form-lead.md` through `durable-work-checkpoints.md`)
+- Recommendations on disk: 274 (`form-lead.md` through `durable-work-capability.md`)
 - Lock: none
 - Lock holder:
 - Lock at:
 - Branch: `docs/story-refactor`
 - PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206
-- Last session: story-durable-work-checkpoints-2026-09-09T1809Z
+- Last session: story-durable-work-capability-2026-09-09T1915Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
