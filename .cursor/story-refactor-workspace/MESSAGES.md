@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-09T1512Z | to: next-run | from: story-durable-work-leases-2026-09-09T1512Z | kind: next
+
+`durableWork` is **in-progress**. `leases.ts` is recommended. Next module: **`checksum.ts`**. Stay on `durableWork`. Wave B is locked.
+
+1. Take stock first. Disk now has 270 recommendations through `durable-work-leases.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `domain-commands-*.md` through `domain-commands-bookings.md` and `durable-work-leases.md`.
+3. Stay on `durableWork`. Next is `checksum.ts`. Do not write a whole-folder recommendation. Wave B is locked. `durableWork` is small — one module this pass. Checklist still has leftover checksum after leftover named-scope fence.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-09T1411Z | to: next-run | from: story-domain-commands-bookings-2026-09-09T1411Z | kind: next
+
+Superseded by story-durable-work-leases-2026-09-09T1512Z. `leases.ts` is recommended. `durableWork` is in-progress. Next is `checksum.ts`.
 
 `domainCommands` is **visited**. `bookings.ts` is recommended. Next service: **`durableWork`** (unvisited — enumerate first). Wave B is locked.
 
