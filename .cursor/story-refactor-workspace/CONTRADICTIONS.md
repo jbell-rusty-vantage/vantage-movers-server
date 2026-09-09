@@ -4,6 +4,9 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Direct Book This Lead and Book From Source both persist `command_name: "createBookingFromLead"`. Do not give from-source its own stored name so “the two POSTs audit apart.” See `recommendations/domain-commands-existing-writes.md`.
+- HTTP `{ command, data }` assigns `data` only inside `operation` or `finalize`. Replay skips both, so Wave B can 201 `{ already_applied, undefined | null }`. Do not reload the aggregate on replay so “HTTP always has a record.” See `recommendations/domain-commands-existing-writes.md`.
+- `expected` on `runExistingUpdateSourceOwnedLead` is forwarded only for Form and unused by current v1 PATCH. `buildGranotSyncExpectedFilter` is a different Wave B filter. Do not thread Granot-sync expected here so “one expected owns preview.” See `recommendations/domain-commands-existing-writes.md`.
 - Knowledge Compatibility context says “Employee role throws.” `existingWriteContext.ts` throws every non-Owner extension user (Sales, Customer Service, leftover Employee). The error says “owner or admin actor,” but the JWT fold only asks `hasExtensionRole(..., "owner")`; `admin` is a header role. Do not let Sales through so “tariff-adjacent Bearer can book.” See `recommendations/domain-commands-existing-write-context.md`.
 - `fingerprintScopedApiKey` has no runtime caller. Wave B `requireVantageAuth` already stores `sha256(secret).hex.slice(0, 32)` on `scopedKeyFingerprint`. Do not hash the raw secret again here so “one file owns the fingerprint.” See `recommendations/domain-commands-existing-write-context.md`.
 - Registry `trustedActor.ts` verifies `x-vantage-admin-signature`. This factory reads user-id / email / role only when `auth.kind === "secret"`. Incomplete headers fall through to the API-secret system actor. Do not ask HMAC so “we match Registry.” See `recommendations/domain-commands-existing-write-context.md`.
