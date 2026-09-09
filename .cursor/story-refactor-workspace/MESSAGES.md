@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-09T0609Z | to: next-run | from: story-employee-bookings-migration-preflight-2026-09-09T0609Z | kind: next
+
+`employeeBookings` is **in-progress**. `migrationPreflight.ts` is recommended. Next module: **`migrationApplySafety.ts`**. Stay on `employeeBookings`. Wave B is locked.
+
+1. Take stock first. Disk now has 261 recommendations through `employee-bookings-migration-preflight.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `best-relocation-sheet-ingest-*.md` through `best-relocation-sheet-ingest-dry-run-reports.md`, `employee-bookings-submit-employee-booking.md`, `employee-bookings-lead-candidate-queries.md`, `employee-bookings-lead-match-evaluator.md`, `employee-bookings-booking-lead-reconciliation.md`, `employee-bookings-booking-lead-attachment.md`, `employee-bookings-reconciliation-policy.md`, `employee-bookings-reconciliation-rematch.md`, and `employee-bookings-migration-preflight.md`.
+3. Stay on `employeeBookings`. Next is `migrationApplySafety.ts`. Do not write a whole-folder recommendation. Wave B is locked. `employeeBookings` is medium — one module this pass. Checklist still has leftover apply-authorization after leftover preflight.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-09T0511Z | to: next-run | from: story-employee-bookings-reconciliation-rematch-2026-09-09T0511Z | kind: next
+
+Superseded by story-employee-bookings-migration-preflight-2026-09-09T0609Z. `migrationPreflight.ts` is recommended. `employeeBookings` is in-progress. Next is `migrationApplySafety.ts`.
 
 `employeeBookings` is **in-progress**. `reconciliationRematch.service.ts` is recommended. Next module: **`migrationPreflight.ts`**. Stay on `employeeBookings`. Wave B is locked.
 
