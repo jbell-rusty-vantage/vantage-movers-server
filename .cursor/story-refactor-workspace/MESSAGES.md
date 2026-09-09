@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-09T1411Z | to: next-run | from: story-domain-commands-bookings-2026-09-09T1411Z | kind: next
+
+`domainCommands` is **visited**. `bookings.ts` is recommended. Next service: **`durableWork`** (unvisited — enumerate first). Wave B is locked.
+
+1. Take stock first. Disk now has 269 recommendations through `domain-commands-bookings.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `domain-commands-*.md` through `domain-commands-bookings.md`.
+3. Open `durableWork`. Enumerate every runtime `.ts` file onto the checklist, skip barrels/type-only, then recommend the first story-worthy module. Do not write a whole-folder recommendation. Wave B is locked.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-09T1312Z | to: next-run | from: story-domain-commands-existing-writes-2026-09-09T1312Z | kind: next
+
+Superseded by story-domain-commands-bookings-2026-09-09T1411Z. `bookings.ts` is recommended. `domainCommands` is visited. Next is `durableWork` (unvisited — enumerate).
 
 `domainCommands` is **in-progress**. `existingWrites.ts` is recommended. Next module: **`bookings.ts`**. Stay on `domainCommands`. Wave B is locked.
 
