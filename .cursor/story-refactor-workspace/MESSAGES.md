@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-09T1915Z | to: next-run | from: story-durable-work-capability-2026-09-09T1915Z | kind: next
+
+`durableWork` is **in-progress**. `capability.ts` is recommended. Next module: **`schema.ts`**. Stay on `durableWork`. Wave B is locked.
+
+1. Take stock first. Disk now has 274 recommendations through `durable-work-capability.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `domain-commands-*.md` through `domain-commands-bookings.md`, `durable-work-leases.md`, `durable-work-checksum.md`, `durable-work-actors.md`, `durable-work-checkpoints.md`, and `durable-work-capability.md`.
+3. Stay on `durableWork`. Next is `schema.ts`. Do not write a whole-folder recommendation. Wave B is locked. `durableWork` is small — one module this pass. Checklist still has leftover schema after leftover unused three-gate AND.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-09T1809Z | to: next-run | from: story-durable-work-checkpoints-2026-09-09T1809Z | kind: next
+
+Superseded by story-durable-work-capability-2026-09-09T1915Z. `capability.ts` is recommended. `durableWork` is in-progress. Next is `schema.ts`.
 
 `durableWork` is **in-progress**. `checkpoints.ts` is recommended. Next module: **`capability.ts`**. Stay on `durableWork`. Wave B is locked.
 
