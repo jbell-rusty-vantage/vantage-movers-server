@@ -35,7 +35,7 @@
 ## Contradictions
 
 - File lives under `employeeBookings` and has no employee-booking caller; four Registry CLIs import it
-- `the live-db confirm-token constant` is duplicated on this file and the Registry migration / inventory libs
+- the live-db confirm-token constant is duplicated on this file and the Registry migration / inventory libs
 - Granot `--confirm=<name>` is a different flag shape from `--confirm-<live>-db=vantagemovers`
 - Sibling `assertMigrationDatabaseAllowed` refuses historical for a look; this file only refuses a live write
 - `historicalConsolidation/targetGuard.ts` is a heavier apply story and must stay separate
