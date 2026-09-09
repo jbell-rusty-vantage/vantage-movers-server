@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-09T1610Z | to: next-run | from: story-durable-work-checksum-2026-09-09T1610Z | kind: next
+
+`durableWork` is **in-progress**. `checksum.ts` is recommended. Next module: **`actors.ts`**. Stay on `durableWork`. Wave B is locked.
+
+1. Take stock first. Disk now has 271 recommendations through `durable-work-checksum.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `domain-commands-*.md` through `domain-commands-bookings.md`, `durable-work-leases.md`, and `durable-work-checksum.md`.
+3. Stay on `durableWork`. Next is `actors.ts`. Do not write a whole-folder recommendation. Wave B is locked. `durableWork` is small — one module this pass. Checklist still has leftover actors after leftover artifact seal.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-09T1512Z | to: next-run | from: story-durable-work-leases-2026-09-09T1512Z | kind: next
+
+Superseded by story-durable-work-checksum-2026-09-09T1610Z. `checksum.ts` is recommended. `durableWork` is in-progress. Next is `actors.ts`.
 
 `durableWork` is **in-progress**. `leases.ts` is recommended. Next module: **`checksum.ts`**. Stay on `durableWork`. Wave B is locked.
 
