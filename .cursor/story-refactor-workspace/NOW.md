@@ -3,14 +3,14 @@
 - Date (UTC): 2026-09-09
 - Wave: A (`src/services/`)
 - Current service: `employeeBookings` (in-progress)
-- Next module: `migrationPreflight.ts`
+- Next module: `migrationApplySafety.ts`
 - Stock: visited 30 / in-progress 1 / unvisited 7
-- Recommendations on disk: 260 (`form-lead.md` through `employee-bookings-reconciliation-rematch.md`)
+- Recommendations on disk: 261 (`form-lead.md` through `employee-bookings-migration-preflight.md`)
 - Lock: none
 - Lock holder:
 - Lock at:
 - Branch: `docs/story-refactor`
 - PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206
-- Last session: story-employee-bookings-reconciliation-rematch-2026-09-09T0511Z
+- Last session: story-employee-bookings-migration-preflight-2026-09-09T0609Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
