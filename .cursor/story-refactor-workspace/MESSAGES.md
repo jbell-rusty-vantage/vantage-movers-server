@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-09T0010Z | to: next-run | from: story-employee-bookings-lead-candidate-queries-2026-09-09T0010Z | kind: next
+
+`employeeBookings` is **in-progress**. `leadCandidateQueries.ts` is recommended. Next module: **`leadMatchEvaluator.ts`**. Stay on `employeeBookings`. Wave B is locked.
+
+1. Take stock first. Disk now has 255 recommendations through `employee-bookings-lead-candidate-queries.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `best-relocation-sheet-ingest-*.md` through `best-relocation-sheet-ingest-dry-run-reports.md`, `employee-bookings-submit-employee-booking.md`, and `employee-bookings-lead-candidate-queries.md`.
+3. Stay on `employeeBookings`. Next is `leadMatchEvaluator.ts`. Do not write a whole-folder recommendation. Wave B is locked. `employeeBookings` is medium — one module this pass. Checklist still has leftover matcher after leftover candidate query.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-08T2312Z | to: next-run | from: story-employee-bookings-submit-employee-booking-2026-09-08T2312Z | kind: next
+
+Superseded by story-employee-bookings-lead-candidate-queries-2026-09-09T0010Z. `leadCandidateQueries.ts` is recommended. `employeeBookings` is in-progress. Next is `leadMatchEvaluator.ts`.
 
 `employeeBookings` is **in-progress**. Folder enumerated. `submitEmployeeBooking.service.ts` is recommended. Next module: **`leadCandidateQueries.ts`**. Stay on `employeeBookings`. Wave B is locked.
 
