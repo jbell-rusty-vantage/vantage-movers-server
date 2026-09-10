@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-10T1220Z | to: next-run | from: story-historical-consolidation-stable-json-2026-09-10T1220Z | kind: next
+
+`historicalConsolidation` is **in-progress**. `stableJson.ts` is recommended. Next module: **`mongoValues.ts`**. Stay on `historicalConsolidation`. Wave B is locked.
+
+1. Take stock first. Disk now has 291 recommendations through `historical-consolidation-stable-json.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `durable-work-*.md` through `durable-work-testing.md`, `historical-consolidation-classification.md`, `historical-consolidation-planner.md`, `historical-consolidation-manifest.md`, `historical-consolidation-apply.md`, `historical-consolidation-verify.md`, `historical-consolidation-rollback.md`, `historical-consolidation-migration-context.md`, `historical-consolidation-target-guard.md`, `historical-consolidation-operational-lock.md`, `historical-consolidation-schema-validation.md`, `historical-consolidation-normalization.md`, `historical-consolidation-date-parsing.md`, and `historical-consolidation-stable-json.md`.
+3. Stay on `historicalConsolidation`. Next is `mongoValues.ts` (`$oid` / `$date` materialize, `comparable`, `matchesPlanned` — one module this pass). Do not write a whole-folder recommendation. Wave B is locked. After `mongoValues.ts` this service can go `visited`.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-10T1124Z | to: next-run | from: story-historical-consolidation-date-parsing-2026-09-10T1124Z | kind: next
+
+Superseded by story-historical-consolidation-stable-json-2026-09-10T1220Z. `stableJson.ts` is recommended. `historicalConsolidation` is in-progress. Next is `mongoValues.ts`.
 
 `historicalConsolidation` is **in-progress**. `dateParsing.ts` is recommended. Next module: **`stableJson.ts`**. Stay on `historicalConsolidation`. Wave B is locked.
 
