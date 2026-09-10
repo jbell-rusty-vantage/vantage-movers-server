@@ -8,7 +8,7 @@ import { REPORTING_DESTINATION_HEALTH_MAX_AGE_MS } from "../../config/domain/rep
 import { connectMongo } from "../../db";
 import { GoogleDriveConnection } from "../../models/GoogleDriveConnection";
 import { operationalWorkbookRegistry } from "../operationalWorkbooks";
-import { BadRequestError, IntegrationError, NotFoundError } from "../errors";
+import { BadRequestError, ConflictError, IntegrationError, NotFoundError } from "../errors";
 import type { DurableActor } from "../durableWork";
 import { createGoogleDriveFolder } from "../googleDriveOAuth/spreadsheet.service";
 import {
@@ -432,7 +432,14 @@ export async function archiveReportingDestinationRecord(
   }
   const archived = await archiveReportingDestination(id, expectedVersion, actor);
   if (!archived) {
-    throw new NotFoundError("Reporting destination was not found.");
+    const current = await getReportingDestinationById(id);
+    if (!current) {
+      throw new NotFoundError("Reporting destination was not found.");
+    }
+    if (current.state === "archived") {
+      throw new ConflictError("Reporting destination is already archived.");
+    }
+    throw new ConflictError("Reporting destination changed. Refresh and try again.");
   }
   return safeReportingDestinationForRead(archived);
 }

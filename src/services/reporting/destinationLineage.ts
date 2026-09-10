@@ -42,8 +42,9 @@ export function isProvenManagedTabAdvancement(input: {
 
 /**
  * Validate a live destination for a new or resumed run of an immutable revision.
- * Accepts only same destination/workbook/strategy/published-name identity with
- * either an exact managed-tab match or proven lineage advancement.
+ * Accepts the same destination/workbook/strategy with either the same
+ * managed-tab sheet ID (title may change after Recreate) or proven
+ * lineage advancement that still uses the published name.
  */
 export function validateDestinationForImmutableRevision(input: {
   live: ValidatedReportingDestinationSnapshotV1;
@@ -94,10 +95,26 @@ export function validateDestinationForImmutableRevision(input: {
         409,
       );
     }
+    const revisionSheetId = revisionDestination.managedTab?.immutableSheetId;
+    const liveSheetId = live.managedTab?.immutableSheetId;
     if (
-      !live.managedTab?.name ||
-      !revisionDestination.managedTab?.name ||
-      live.managedTab.name !== revisionDestination.managedTab.name
+      !Number.isSafeInteger(revisionSheetId) ||
+      !Number.isSafeInteger(liveSheetId)
+    ) {
+      throw reportingError(
+        "destination_unverified",
+        "Managed-tab sheet ID drifted without proven Vantage lineage advancement.",
+        409,
+      );
+    }
+    const sameSheet = revisionSheetId === liveSheetId;
+    if (
+      !sameSheet &&
+      (
+        !live.managedTab?.name ||
+        !revisionDestination.managedTab?.name ||
+        live.managedTab.name !== revisionDestination.managedTab.name
+      )
     ) {
       throw reportingError(
         "destination_unverified",
@@ -105,8 +122,6 @@ export function validateDestinationForImmutableRevision(input: {
         409,
       );
     }
-    const revisionSheetId = revisionDestination.managedTab.immutableSheetId;
-    const liveSheetId = live.managedTab.immutableSheetId;
     if (
       !isProvenManagedTabAdvancement({
         revisionSheetId,

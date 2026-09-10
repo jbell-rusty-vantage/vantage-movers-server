@@ -55,12 +55,11 @@ export function destinationStableIdentityPayload(
     provider: snapshot.provider,
     driveConnectionId: snapshot.driveConnectionId,
     ownerIdentitySnapshot: snapshot.ownerIdentitySnapshot,
-    folder: snapshot.folder,
+    folder: { id: snapshot.folder.id },
     strategy: snapshot.strategy,
-    workbook: snapshot.workbook ?? null,
+    workbook: snapshot.workbook ? { id: snapshot.workbook.id } : null,
     managedTab: snapshot.managedTab
       ? {
-          immutableSheetId: snapshot.managedTab.immutableSheetId,
           name: snapshot.managedTab.name,
           managed: snapshot.managedTab.managed,
         }
@@ -73,7 +72,6 @@ export function destinationStableIdentityPayload(
       operationalWorkbookMatch: snapshot.safety.operationalWorkbookMatch,
       humanCreatedTabTakeover: snapshot.safety.humanCreatedTabTakeover,
     },
-    capacity: snapshot.capacity,
   };
 }
 
@@ -115,8 +113,10 @@ export function snapshotChecksumFromDestinationRecord(
     !folder.name ||
     !folder.url ||
     (strategy !== "replace_tab" && strategy !== "snapshot") ||
-    !capacity?.provider_max_cells ||
-    !capacity.destination_available_cells
+    !Number.isSafeInteger(capacity?.provider_max_cells) ||
+    (capacity?.provider_max_cells ?? 0) <= 0 ||
+    !Number.isSafeInteger(capacity?.destination_available_cells) ||
+    (capacity?.destination_available_cells ?? -1) < 0
   ) {
     return null;
   }

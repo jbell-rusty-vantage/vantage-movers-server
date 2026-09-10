@@ -74,7 +74,7 @@ import { assertEstimateFitsCapacity } from "./reporting.service";
 import { enqueueIncompleteArtifactCleanup } from "./cleanup";
 import { recordReportingAudit } from "./reportingAudit";
 import type { ReportingExecutionPackageV1 } from "./reporting.service";
-import type { ValidatedReportingRequest } from "./catalog";
+import { ReportingError, type ValidatedReportingRequest } from "./catalog";
 import { getReportingDestinationPort } from "./destinationContract";
 
 const LEASE_TTL_MS = 5 * 60_000;
@@ -1781,11 +1781,22 @@ function inferPhase(
   return "querying";
 }
 
-function toFailure(
+export function toFailure(
   error: unknown,
   phase: "querying" | "writing" | "verifying" | "promoting",
 ): ReportingSafeFailureEnvelope {
   if (error instanceof LeaseLostError) return error.envelope;
+  if (error instanceof ReportingError) {
+    if (
+      error.code === "destination_unverified"
+      || error.code === "destination_strategy_mismatch"
+    ) {
+      return reportingFailure("DESTINATION_CHANGED", { phase });
+    }
+    if (error.code === "destination_unsafe") {
+      return reportingFailure("DESTINATION_UNSAFE", { phase });
+    }
+  }
   if (
     error &&
     typeof error === "object" &&

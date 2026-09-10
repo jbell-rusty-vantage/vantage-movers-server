@@ -38,6 +38,7 @@ import {
 } from "../validation/reportingDestination.validation";
 import { isReportingGoogleDeliveryEnabled } from "../config/domain/reporting";
 import { emitReportingDestinationHealthFailure } from "../services/reporting/reportingObservability";
+import { AppError } from "../services/errors";
 import { OperationalWorkbookConfigurationError } from "../services/operationalWorkbooks/registry";
 
 const router = Router();
@@ -153,7 +154,7 @@ router.post(`${base}/destinations/:id/verify`, async (req, res) => {
   }
 });
 
-router.delete(`${base}/destinations/:id`, async (req, res) => {
+async function archiveDestination(req: Request, res: Response) {
   try {
     const actor = ownerActor(req);
     assertReportingGoogleDeliveryEnabled();
@@ -173,8 +174,13 @@ router.delete(`${base}/destinations/:id`, async (req, res) => {
       destinationId: req.params.id,
     });
     return res.json({ ok: true, data });
-  } catch (error) { return sendError(res, error); }
-});
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+router.post(`${base}/destinations/:id/archive`, archiveDestination);
+router.delete(`${base}/destinations/:id`, archiveDestination);
 
 router.post(`${base}/draft/preview`, async (req, res) => {
   try {
@@ -480,6 +486,22 @@ export function serializeReportingRouteError(error: unknown): {
     return {
       status: error.statusCode,
       body: error.toHttpBody(),
+    };
+  }
+  if (error instanceof AppError) {
+    if (error.statusCode >= 500) {
+      return {
+        status: error.statusCode,
+        body: {
+          ok: false,
+          code: "reporting_internal_error",
+          error: "Reporting request failed",
+        },
+      };
+    }
+    return {
+      status: error.statusCode,
+      body: { ok: false, code: error.code, error: error.message },
     };
   }
   if (error instanceof InvalidReportingObjectIdError) {

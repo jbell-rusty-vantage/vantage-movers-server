@@ -281,6 +281,7 @@ POST   /api/v1/admin/reporting/destinations
 GET    /api/v1/admin/reporting/destinations/:id
 PATCH  /api/v1/admin/reporting/destinations/:id
 POST   /api/v1/admin/reporting/destinations/:id/verify
+POST   /api/v1/admin/reporting/destinations/:id/archive
 DELETE /api/v1/admin/reporting/destinations/:id
 GET    /api/v1/admin/reporting/definitions
 POST   /api/v1/admin/reporting/definitions

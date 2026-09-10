@@ -30,7 +30,7 @@ import { serializeReportingRunMarker } from "./google/runMarker";
 import {
   initialChecksumAccumulator,
 } from "./executionStream";
-import type { ReportingCandidateManifestV1 } from "./catalog";
+import { reportingError, type ReportingCandidateManifestV1 } from "./catalog";
 import { BadRequestError } from "../errors";
 import { registerReportingStage4Foundation } from "./registerStage4Foundation";
 
@@ -879,6 +879,25 @@ test("regression: destination lineage accepts proven replace_tab advancement", a
       }),
     /lineage|drift/i,
   );
+
+  const renamedBase = {
+    ...base,
+    managedTab: {
+      immutableSheetId: 1,
+      name: "Weekly Report (recreated)",
+      managed: true as const,
+    },
+  };
+  const renamed = {
+    ...renamedBase,
+    snapshotChecksum: destinationSnapshotChecksum(renamedBase),
+  };
+  const renamedAccepted = validateDestinationForImmutableRevision({
+    live: renamed,
+    revisionDestination,
+  });
+  assert.equal(renamedAccepted.managedTab?.immutableSheetId, 1);
+  assert.equal(renamedAccepted.managedTab?.name, "Weekly Report (recreated)");
 });
 
 test("regression: phase-aware transition skips advanced status without LEASE_LOST", async () => {
@@ -1241,6 +1260,21 @@ test("regression: CAS-resume path refuses tampered markers and trailing edits", 
   }
 });
 
+test("regression: worker maps destination ReportingErrors to destination failures", async () => {
+  const { toFailure } = await import("./reportingWorker.js");
+  const unverified = toFailure(
+    reportingError("destination_unverified", "Destination was not found.", 409),
+    "querying",
+  );
+  assert.equal(unverified.code, "DESTINATION_CHANGED");
+  assert.match(unverified.summary, /destination changed/i);
+  const unsafe = toFailure(
+    reportingError("destination_unsafe", "Destination safety validation failed.", 409),
+    "writing",
+  );
+  assert.equal(unsafe.code, "DESTINATION_UNSAFE");
+});
+
 test("regression: destination stable identity ignores volatile health timestamps", async () => {
   const {
     destinationStableIdentityChecksum,
@@ -1292,5 +1326,28 @@ test("regression: destination stable identity ignores volatile health timestamps
   assert.notEqual(
     destinationStableIdentityChecksum(base),
     destinationStableIdentityChecksum(drifted),
+  );
+  const withTab = {
+    ...base,
+    strategy: "replace_tab" as const,
+    workbook: { id: "wb", name: "W", url: "https://example.test/w" },
+    managedTab: {
+      immutableSheetId: 1,
+      name: "Weekly Report",
+      managed: true as const,
+    },
+  };
+  assert.equal(
+    destinationStableIdentityChecksum(withTab),
+    destinationStableIdentityChecksum({
+      ...withTab,
+      capacity: { providerMaxCells: 5_000_000, destinationAvailableCells: 1_000 },
+      workbook: { id: "wb", name: "Renamed", url: "https://example.test/w2" },
+      managedTab: {
+        immutableSheetId: 99,
+        name: "Weekly Report",
+        managed: true as const,
+      },
+    }),
   );
 });

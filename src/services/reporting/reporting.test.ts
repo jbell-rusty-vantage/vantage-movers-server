@@ -27,6 +27,7 @@ import {
   destinationSnapshotChecksum,
   destinationStableIdentityChecksum,
   FakeReportingDestinationPort,
+  snapshotChecksumFromDestinationRecord,
   validateDestinationSnapshot,
   type ValidatedReportingDestinationSnapshotV1,
 } from "./destinationContract";
@@ -69,6 +70,7 @@ import {
   safeReportingRunForRead,
   serializeReportingRouteError,
 } from "../../routes/reporting.routes";
+import { BadRequestError, ConflictError, NotFoundError } from "../errors";
 import {
   assertSafeReportingFailure,
   reportingCheckpoint,
@@ -570,6 +572,27 @@ test("confirmation binds stable destination identity; health refresh stays valid
   });
 });
 
+test("owner destination checksum treats zero available cells as a real capacity, not missing", () => {
+  const checksum = snapshotChecksumFromDestinationRecord(
+    {
+      state: "active",
+      access_status: "verified",
+      drive_connection_id: "64b000000000000000000001",
+      owner_identity_snapshot: { stable_owner_id: "owner", masked_email: "o***@example.com" },
+      folder: { id: "folder", name: "Reports", url: "https://example.test/folder" },
+      strategy: "snapshot",
+      destination_type: "owner_drive",
+      ownership_policy: "vantage_managed_tab",
+      health_verified_at: "2026-09-10T16:00:00.000Z",
+      denylist_checked_at: "2026-09-10T16:00:00.000Z",
+      capacity: { provider_max_cells: 10_000_000, destination_available_cells: 0 },
+    },
+    "64b000000000000000000310",
+  );
+  assert.equal(typeof checksum, "string");
+  assert.equal(checksum?.length, 64);
+});
+
 test("confirmation evidence binds actor, idempotency key, and immutable fingerprint", () => {
   withReportingSecrets(() => {
     const owner = actor("owner-a");
@@ -955,6 +978,41 @@ test("reporting routes preserve RegistryError status and reject malformed IDs", 
         ok: false,
         code: "invalid_object_id",
         error: "Invalid resource identifier",
+      },
+    },
+  );
+});
+
+test("reporting routes surface destination AppErrors instead of a generic 500", () => {
+  assert.deepEqual(serializeReportingRouteError(new BadRequestError("Managed tab name is required.")), {
+    status: 400,
+    body: {
+      ok: false,
+      code: "app.bad_request",
+      error: "Managed tab name is required.",
+    },
+  });
+  assert.deepEqual(
+    serializeReportingRouteError(new NotFoundError("Reporting destination was not found.")),
+    {
+      status: 404,
+      body: {
+        ok: false,
+        code: "app.not_found",
+        error: "Reporting destination was not found.",
+      },
+    },
+  );
+  assert.deepEqual(
+    serializeReportingRouteError(
+      new ConflictError("Reporting destination changed. Refresh and try again."),
+    ),
+    {
+      status: 409,
+      body: {
+        ok: false,
+        code: "app.conflict",
+        error: "Reporting destination changed. Refresh and try again.",
       },
     },
   );

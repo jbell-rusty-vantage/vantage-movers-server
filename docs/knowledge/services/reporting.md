@@ -43,7 +43,7 @@ All under `/api/v1/admin/reporting` with `requireApiSecret`. Reads use `requireR
 | Action | Route | Function |
 |--------|-------|----------|
 | Catalog | `GET .../catalog` | `getReportingCatalog` — only enabled datasets |
-| Destinations | `GET/POST/PATCH/DELETE .../destinations`, `POST .../verify` | `reportingDestination.service` |
+| Destinations | `GET/POST/PATCH/DELETE .../destinations`, `POST .../verify`, `POST .../archive` | `reportingDestination.service` — archive body is `{ expected_version }` on DELETE or POST `/archive`. |
 | Draft preview | `POST .../draft/preview` | `previewReportingDraft` |
 | Save definition / revision | `POST .../definitions`, `POST .../definitions/:id/revisions` | `saveReportingRevision` |
 | Run | `POST .../definitions/:id/run` | `prepareManualRun` (estimate, then confirm) |
