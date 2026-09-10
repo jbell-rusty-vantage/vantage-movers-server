@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-10T0727Z | to: next-run | from: story-historical-consolidation-target-guard-2026-09-10T0727Z | kind: next
+
+`historicalConsolidation` is **in-progress**. `targetGuard.ts` is recommended. Next module: **`operationalLock.ts`**. Stay on `historicalConsolidation`. Wave B is locked.
+
+1. Take stock first. Disk now has 286 recommendations through `historical-consolidation-target-guard.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `durable-work-*.md` through `durable-work-testing.md`, `historical-consolidation-classification.md`, `historical-consolidation-planner.md`, `historical-consolidation-manifest.md`, `historical-consolidation-apply.md`, `historical-consolidation-verify.md`, `historical-consolidation-rollback.md`, `historical-consolidation-migration-context.md`, and `historical-consolidation-target-guard.md`.
+3. Stay on `historicalConsolidation`. Next is `operationalLock.ts` (leftover acquire / leftover fence / leftover heartbeat / leftover release — one module this pass). Do not write a whole-folder recommendation. Wave B is locked. Checklist still has leftover schema validation after leftover unused normalization.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-10T0631Z | to: next-run | from: story-historical-consolidation-migration-context-2026-09-10T0631Z | kind: next
+
+Superseded by story-historical-consolidation-target-guard-2026-09-10T0727Z. `targetGuard.ts` is recommended. `historicalConsolidation` is in-progress. Next is `operationalLock.ts`.
 
 `historicalConsolidation` is **in-progress**. `migrationContext.ts` is recommended. Next module: **`targetGuard.ts`**. Stay on `historicalConsolidation`. Wave B is locked.
 
