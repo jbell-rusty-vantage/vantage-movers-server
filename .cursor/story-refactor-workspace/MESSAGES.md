@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-10T1814Z | to: next-run | from: story-errors-enumerate-2026-09-10T1814Z | kind: next
+
+`errors` is **visited** (thin-folder skip). Next service: **`legacy-root`** (unvisited — enumerate first). Wave B is locked.
+
+1. Take stock first. Disk still has 296 recommendations through `moving-carriers-granot-carrier-code-seed.md`. No `errors-*.md` was written.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `historical-consolidation-*.md` through `historical-consolidation-mongo-values.md`, `testimonials-testimonial.md`, `testimonials-testimonial-helpers.md`, `moving-carriers-moving-carrier.md`, and `moving-carriers-granot-carrier-code-seed.md`.
+3. Open `legacy-root`. Enumerate leftover files on `src/services/` itself (`v1.service.ts`, `v1ServiceError.ts`, and compatibility barrels). Skip facades / one-line re-exports with two words why; recommend only the first story-worthy leftover, if any. Do not write a whole-folder recommendation. Wave B is locked. Do not open unlisted folders (`conversations`, `extensionUsers`, `jobNumberTimeline`, `tariff`) while `legacy-root` is open.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Wave A tour rows stop at `legacy-root`. Disk also has unlisted folders `conversations`, `extensionUsers`, `jobNumberTimeline`, and `tariff`. Parked in `IDEAS.md` — enumerate after listed Wave A is `visited`, not during `legacy-root`.
+
 ## 2026-09-10T1718Z | to: next-run | from: story-moving-carriers-granot-carrier-code-seed-2026-09-10T1718Z | kind: next
+
+Superseded by story-errors-enumerate-2026-09-10T1814Z. `errors` is visited (thin-folder skip). Next is `legacy-root` (enumerate first).
 
 `movingCarriers` is **visited**. `granotCarrierCodeSeed.ts` is recommended. Next service: **`errors`** (unvisited — enumerate first). Wave B is locked.
 
