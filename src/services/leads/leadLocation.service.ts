@@ -127,13 +127,13 @@ export function deriveLocal(pickupState: string, deliveryState: string): LocalTy
 }
 
 /**
- * Form-lead variant of `deriveLocal` that treats unknown states as
- * `long_distance` to keep classification conservative when the zip lookup
- * has failed on either side.
+ * Form-lead variant of `deriveLocal`. When either side is `not_found`
+ * (zip lookup missed), Move Type is Local Move — the owner treats
+ * "FL + not_found" and "not_found, not_found" as local, not long distance.
  */
 export function deriveFormLeadLocal(pickupState: string, deliveryState: string): LocalType {
   if (pickupState === FORM_LEAD_UNKNOWN_STATE || deliveryState === FORM_LEAD_UNKNOWN_STATE) {
-    return "long_distance";
+    return "local";
   }
 
   return deriveLocal(pickupState, deliveryState);

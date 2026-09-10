@@ -8,6 +8,7 @@ stale_after: 2026-11-27
 resource: src/services/leads/formLead.service.ts
 applies_to:
   - src/services/leads/formLead.service.ts
+  - src/services/leads/leadLocation.service.ts
   - src/services/leads/wordpressFormSubmissionReceipt.ts
   - src/models/WordpressFormSubmissionReceipt.ts
   - src/services/leads/leadIngestionProvenance.ts
@@ -33,7 +34,7 @@ generated:
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority:** [Final Granot Lead Lifecycle specification](../../../scripts/prototypes/granot-lead-lifecycle/specs/FINAL-SPECIFICATION-GRANOT-LEAD-LIFECYCLE.md) for Granot identity; [`../../../../docs/adr/`](../../../../docs/adr/) for [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md) and [0002 CRM post survives failures](../../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md)
-**Primary code:** `src/services/leads/formLead.service.ts`, `src/services/leads/wordpressFormSubmissionReceipt.ts`, `src/services/leads/leadIngestionProvenance.ts`, `src/services/leads/leadCplResolution.ts`, `src/services/crm/crm.service.ts`, `src/services/crm/formLeadPayload.ts`  
+**Primary code:** `src/services/leads/formLead.service.ts`, `src/services/leads/leadLocation.service.ts`, `src/services/leads/wordpressFormSubmissionReceipt.ts`, `src/services/leads/leadIngestionProvenance.ts`, `src/services/leads/leadCplResolution.ts`, `src/services/crm/crm.service.ts`, `src/services/crm/formLeadPayload.ts`  
 **Domain terms used:** [Form Lead Ingestion](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Ingestion Origin](../../../../CONTEXT.md), [WordPress Form Submission Receipt](../../../../CONTEXT.md), [Duplicate Lead](../../../../CONTEXT.md), [No-Sync Lead](../../../../CONTEXT.md), [CRM Posting](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Tracking Reference](../../../../CONTEXT.md), [Lead ID](../../../../CONTEXT.md), [Form Fill](../../../../CONTEXT.md), [Move Type](../../../../CONTEXT.md), [CPL](../../../../CONTEXT.md)
 
 # Form Lead Service
@@ -49,7 +50,7 @@ Public `ingestFormLead` always assigns `ingestion_origin: "wordpress_form"` and 
 | Step | What happens |
 |------|----------------|
 | 1. Normalize | Name, phone, **Source Company** (`resolveLeadSourceAssignment`), required location |
-| 2. Derive | **Move Type** (`deriveFormLeadLocal` from pickup/delivery states; trusted Best Relocation create may pass `local` through when `ingestion_source === "best_relocation_sheet"`), **CPL** snapshot (`resolveLeadCplSnapshot` → `operationsRegistry.resolveCpl`), Florida `timestamp`, **Tracking Reference** (`ref_no`, default `"not provided"`), `lid` (`generateLeadId` when omitted), `move_date` (`input.move_date ?? tx.now` on this create path), trusted `ingestion_origin`, immutable `ingested_contact_snapshot` / `ingested_move_snapshot` (`captured_at_ingestion`, same trusted `now`) |
+| 2. Derive | **Move Type** (`deriveFormLeadLocal` from pickup/delivery states: same known state is Local Move, different known states is Long Distance Move, and either side `not_found` is Local Move; trusted Best Relocation create may pass `local` through when `ingestion_source === "best_relocation_sheet"`), **CPL** snapshot (`resolveLeadCplSnapshot` → `operationsRegistry.resolveCpl`), Florida `timestamp`, **Tracking Reference** (`ref_no`, default `"not provided"`), `lid` (`generateLeadId` when omitted), `move_date` (`input.move_date ?? tx.now` on this create path), trusted `ingestion_origin`, immutable `ingested_contact_snapshot` / `ingested_move_snapshot` (`captured_at_ingestion`, same trusted `now`) |
 | 3. **Duplicate Lead** check | `findDuplicateFormLeadMatch` — throws if Source Granularity is missing; same exact `source_granularity_id`; earlier non-duplicate Form Lead; same cohort around `2026-04-30T04:00:00.000Z` (pre-cutoff looks only before the event timestamp; on/after cutoff looks `[cutoff, event)`); normalized phone **or** email |
 | 3b. [WordPress Form Submission Receipt](../../../../CONTEXT.md) | Authorized test path only — see **WordPress Form Submission Receipt** below. Capture runs **before** `FormLead.save`. Unauthorized / missing key / production DB: no receipt write; Lead create continues. |
 | 4. Persist + Sheet Sync intent | Atomic in queued mode via `runSheetSyncWrite`: save Form Lead with `duplicate` flag; `post_to_granot = post_to_granot && !duplicate`. `wordpress_submission_key` is stripped before persist. |
@@ -120,7 +121,7 @@ Manual / `vantage_admin` create defaults [No-Sync Lead](../../../../CONTEXT.md) 
 ## Correction (`correctFormLead`)
 
 - Re-normalizes provided fields. Strips forbidden lifecycle fields (`omitForbiddenLeadLifecycleFields`).
-- Re-derives **Move Type** only when pickup/delivery zip or state is in the patch. Recomputes the **CPL** snapshot only when source-affecting fields change, `lead_source_company` is missing, or `timestamp` is patched.
+- Re-derives **Move Type** only when pickup/delivery zip or state is in the patch (`deriveFormLeadLocal`: either side `not_found` is Local Move). Recomputes the **CPL** snapshot only when source-affecting fields change, `lead_source_company` is missing, or `timestamp` is patched.
 - Optional `receiver_agent` (+ `receiver_agent_source` / snapshots) via Operations Registry agent lookup. Missing agent → 404. The source enum includes `granot_username_match`; existing extension writes still store `extension_crm_username_match`, which remains readable.
 - **Blocked:** `quoted` / `cubic_feet` / `receiver_agent_source === "extension_crm_username_match"` on Duplicate Leads (one ConflictError); **Bad Lead** on duplicate, Booked, or Cancelled leads.
 - `options.expected` miss or Mongoose `VersionError` → ConflictError `preview_drift` ("reload before applying").
@@ -140,6 +141,7 @@ Manual / `vantage_admin` create defaults [No-Sync Lead](../../../../CONTEXT.md) 
 | Rule | Detail |
 |------|--------|
 | Duplicate Form Leads | Always saved + Sheet Sync'd to `Duplicates`; **never CRM-posted** |
+| Unknown-state Move Type | Either pickup or delivery `not_found` → Local Move (`deriveFormLeadLocal`). Call Leads still use optional location / `deriveLocal`. |
 | Form Fill | One-way at create: new non-duplicate Form Lead marks existing Call Leads; not run for duplicates |
 | Helpers | Do not bypass Source Company, location, duplicate, or Sheet Sync scheduling |
 | `sms_consent` | Boolean or `"true"`/`"false"` at the route; only parsed `true` creates a Lead Message. Duplicate leads record a skipped message; false/missing creates no message. |

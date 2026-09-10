@@ -511,6 +511,19 @@ pnpm migration:extension-user-roles-sales-backfill -- --report
 pnpm migration:extension-user-roles-sales-backfill -- --apply --confirm-production=<db>
 ```
 
+## Form Lead unknown-state Move Type (September 2026)
+
+When a Form Lead pickup or delivery state is `not_found`, Move Type is Local
+Move. Live create/update uses `deriveFormLeadLocal`. This command repairs
+September 2026 Florida-stamped `timestamp` rows that are still
+`long_distance`, then runs the official Form Lead correction Sheet Sync path.
+
+```text
+pnpm migration:form-lead-unknown-state-local -- --report
+pnpm migration:form-lead-unknown-state-local -- --apply --confirm-production=<db>
+pnpm migration:form-lead-unknown-state-local -- --verify --confirm-production=<db>
+```
+
 ## Extension User roles array
 
 Converts leftover singular `role` to `roles[]`. Leftover Employee becomes
