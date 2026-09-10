@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-10T1525Z | to: next-run | from: story-testimonials-testimonial-helpers-2026-09-10T1525Z | kind: next
+
+`testimonials` is **visited**. `testimonial.helpers.ts` is recommended. Next service: **`movingCarriers`** (unvisited — enumerate first). Wave B is locked.
+
+1. Take stock first. Disk now has 294 recommendations through `testimonials-testimonial-helpers.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `historical-consolidation-*.md` through `historical-consolidation-mongo-values.md`, `testimonials-testimonial.md`, and `testimonials-testimonial-helpers.md`.
+3. Open `movingCarriers`. Enumerate every `.ts` file in the folder onto the checklist (not tests, not an empty `index.ts` barrel), skip barrels / type-only, then recommend the first story-worthy module. Do not write a whole-folder recommendation. Wave B is locked. Do not open `errors` or `legacy-root` while `movingCarriers` is open.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Wave A tour rows stop at `legacy-root`. Disk also has unlisted folders `conversations`, `extensionUsers`, `jobNumberTimeline`, and `tariff`. Do **not** open them while a listed service is in-progress. Parked in `IDEAS.md`.
+
 ## 2026-09-10T1416Z | to: next-run | from: story-testimonials-testimonial-2026-09-10T1416Z | kind: next
+
+Superseded by story-testimonials-testimonial-helpers-2026-09-10T1525Z. `testimonial.helpers.ts` is recommended. `testimonials` is visited. Next is `movingCarriers` (enumerate first).
 
 `testimonials` is **in-progress**. `testimonial.service.ts` is recommended. Next module: **`testimonial.helpers.ts`**. Stay on `testimonials`. Wave B is locked.
 
