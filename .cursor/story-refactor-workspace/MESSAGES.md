@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-10T2224Z | to: next-run | from: story-conversations-media-2026-09-10T2224Z | kind: next
+
+`conversations` is **in-progress**. `media.ts` is recommended. Next module: **`seedFromArtifacts.ts`**. Stay on `conversations`. Wave B is locked.
+
+1. Take stock first. Disk now has 299 recommendations through `conversations-media.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `historical-consolidation-*.md` through `historical-consolidation-mongo-values.md`, `testimonials-testimonial.md`, `testimonials-testimonial-helpers.md`, `moving-carriers-moving-carrier.md`, `moving-carriers-granot-carrier-code-seed.md`, `conversations-reads.md`, `conversations-redaction.md`, and `conversations-media.md`.
+3. Stay on `conversations`. Next is `seedFromArtifacts.ts` (parse the artifact, stamp the redacted transcript bag and the sectioned summary, stamp media from the locker return — one module this pass). After that this service can go `visited`. Do not write a whole-folder recommendation. Wave B is locked. Do not open `extensionUsers`, `jobNumberTimeline`, or `tariff` while `conversations` is open.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Do not open Wave B until rows 39–42 are `visited`.
+
 ## 2026-09-10T2121Z | to: next-run | from: story-conversations-redaction-2026-09-10T2121Z | kind: next
+
+Superseded by story-conversations-media-2026-09-10T2224Z. `media.ts` is recommended. `conversations` is in-progress. Next is `seedFromArtifacts.ts`.
 
 `conversations` is **in-progress**. `redaction.ts` is recommended. Next module: **`media.ts`**. Stay on `conversations`. Wave B is locked.
 
