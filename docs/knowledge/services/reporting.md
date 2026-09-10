@@ -51,7 +51,7 @@ All under `/api/v1/admin/reporting` with `requireApiSecret`. Reads use `requireR
 | Queue | reporting consumer | `reportingWorker` |
 | Cron | `/api/cron/reporting-delivery-heartbeat` (+ health-scan, cleanup, test-artifact janitor) | wake stranded leased runs |
 
-Google destination **mutations and new runs** stay off unless `REPORTING_GOOGLE_DELIVERY_ENABLED=true` (fail-closed). Missing env cannot enable writes.
+Google destination **mutations and new runs** stay off unless `REPORTING_GOOGLE_DELIVERY_ENABLED=true` (fail-closed). Missing env cannot enable writes. Run confirmation HMAC reads `REPORTING_CONFIRMATION_SECRET`, then `API_SECRET`, then `VANTAGE_API_SECRET`. Missing all three is 503 `reporting_hmac_unconfigured` (no env names in the body). Incomplete operational-workbook denylist is 503 `reporting_workbook_safety_unconfigured`.
 
 ## Datasets (code-defined `@1`)
 

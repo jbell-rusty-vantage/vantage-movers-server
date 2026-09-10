@@ -38,6 +38,7 @@ import {
 } from "../validation/reportingDestination.validation";
 import { isReportingGoogleDeliveryEnabled } from "../config/domain/reporting";
 import { emitReportingDestinationHealthFailure } from "../services/reporting/reportingObservability";
+import { OperationalWorkbookConfigurationError } from "../services/operationalWorkbooks/registry";
 
 const router = Router();
 const base = "/api/v1/admin/reporting";
@@ -493,6 +494,16 @@ export function serializeReportingRouteError(error: unknown): {
         ok: false,
         code: "reporting_google_delivery_disabled",
         error: error.message,
+      },
+    };
+  }
+  if (error instanceof OperationalWorkbookConfigurationError) {
+    return {
+      status: 503,
+      body: {
+        ok: false,
+        code: "reporting_workbook_safety_unconfigured",
+        error: "Reporting destinations are unavailable until operational workbook safety configuration is complete.",
       },
     };
   }

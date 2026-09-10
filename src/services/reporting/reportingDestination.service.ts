@@ -460,8 +460,8 @@ export async function buildValidatedDestinationSnapshot(
     destination_available_cells: number;
   };
   const strategy = destination.strategy as ReportingDestinationStrategy;
-  const healthVerifiedAt = (destination.health_verified_at as Date).toISOString();
-  const denylistCheckedAt = (destination.denylist_checked_at as Date).toISOString();
+  const healthVerifiedAt = isoDestinationTimestamp(destination.health_verified_at);
+  const denylistCheckedAt = isoDestinationTimestamp(destination.denylist_checked_at);
   const now = Date.now();
   if (
     now - Date.parse(healthVerifiedAt) > REPORTING_DESTINATION_HEALTH_MAX_AGE_MS ||
@@ -725,4 +725,18 @@ async function renameManagedTabWithClient(
 ) {
   const workbookClient = client ?? (await createSheetsWorkbookClient());
   return workbookClient.renameManagedTab(input);
+}
+
+function isoDestinationTimestamp(value: unknown): string {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString();
+  }
+  if (typeof value === "string" && Number.isFinite(Date.parse(value))) {
+    return new Date(value).toISOString();
+  }
+  throw reportingError(
+    "destination_unverified",
+    "Destination health verification is stale.",
+    409,
+  );
 }

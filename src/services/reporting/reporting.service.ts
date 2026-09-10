@@ -967,19 +967,33 @@ export function assertIdempotencyFingerprint(
 }
 
 function confirmationSecret(): string {
-  const secret = process.env.REPORTING_CONFIRMATION_SECRET ?? process.env.API_SECRET;
-  if (!secret) throw new Error("REPORTING_CONFIRMATION_SECRET or API_SECRET is required.");
+  const secret = (
+    process.env.REPORTING_CONFIRMATION_SECRET ??
+    process.env.API_SECRET ??
+    process.env.VANTAGE_API_SECRET
+  )?.trim();
+  if (!secret) {
+    throw reportingError(
+      "reporting_hmac_unconfigured",
+      "Sheet creation is unavailable until reporting confirmation is configured.",
+      503,
+    );
+  }
   return secret;
 }
 
 function reportingEvidenceSecret(): string {
-  const secret =
+  const secret = (
     process.env.REPORTING_EVIDENCE_SECRET ??
     process.env.REPORTING_CONFIRMATION_SECRET ??
-    process.env.API_SECRET;
+    process.env.API_SECRET ??
+    process.env.VANTAGE_API_SECRET
+  )?.trim();
   if (!secret) {
-    throw new Error(
-      "REPORTING_EVIDENCE_SECRET, REPORTING_CONFIRMATION_SECRET, or API_SECRET is required.",
+    throw reportingError(
+      "reporting_hmac_unconfigured",
+      "Report preview is unavailable until reporting confirmation is configured.",
+      503,
     );
   }
   return secret;

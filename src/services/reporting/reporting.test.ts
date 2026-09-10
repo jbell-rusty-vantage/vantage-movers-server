@@ -20,6 +20,7 @@ import {
   EXCEPTION_TYPES,
   getReportingCatalog,
   LEAD_OUTCOME_COLUMNS,
+  ReportingError,
   SOURCE_PERFORMANCE_MEASURES,
 } from "./catalog";
 import {
@@ -77,6 +78,7 @@ import {
 } from "./reportingRunRepository";
 import { RegistryError } from "../operationsRegistry/errors";
 import { REGISTRY_ERROR_CODES } from "../errors/registryErrorCodes";
+import { OperationalWorkbookConfigurationError } from "../operationalWorkbooks/registry";
 import {
   getReportingSnapshotAdapter,
   setReportingSnapshotAdapter,
@@ -939,6 +941,23 @@ test("reporting routes preserve RegistryError status and reject malformed IDs", 
   );
 });
 
+test("incomplete operational workbook safety fails closed without leaking keys", () => {
+  assert.deepEqual(
+    serializeReportingRouteError(
+      new OperationalWorkbookConfigurationError(["MASTER_BOOKED_SPREADSHEET_ID"]),
+    ),
+    {
+      status: 503,
+      body: {
+        ok: false,
+        code: "reporting_workbook_safety_unconfigured",
+        error:
+          "Reporting destinations are unavailable until operational workbook safety configuration is complete.",
+      },
+    },
+  );
+});
+
 test("reporting routes expose the deployment kill switch without leaking config", () => {
   assert.deepEqual(
     serializeReportingRouteError(new ReportingGoogleDeliveryDisabledError()),
@@ -951,6 +970,46 @@ test("reporting routes expose the deployment kill switch without leaking config"
       },
     },
   );
+});
+
+test("run confirmation HMAC uses VANTAGE_API_SECRET when API_SECRET is unset", () => {
+  const beforeApi = process.env.API_SECRET;
+  const beforeConfirmation = process.env.REPORTING_CONFIRMATION_SECRET;
+  const beforeVantage = process.env.VANTAGE_API_SECRET;
+  delete process.env.API_SECRET;
+  delete process.env.REPORTING_CONFIRMATION_SECRET;
+  process.env.VANTAGE_API_SECRET = "vantage-api-secret";
+  try {
+    assert.match(reportingActorFingerprint(actor("owner-a")), /^[A-Za-z0-9_-]+$/);
+  } finally {
+    restoreEnv("API_SECRET", beforeApi);
+    restoreEnv("REPORTING_CONFIRMATION_SECRET", beforeConfirmation);
+    restoreEnv("VANTAGE_API_SECRET", beforeVantage);
+  }
+});
+
+test("missing reporting confirmation secrets fail closed with a safe 503", () => {
+  const beforeApi = process.env.API_SECRET;
+  const beforeConfirmation = process.env.REPORTING_CONFIRMATION_SECRET;
+  const beforeVantage = process.env.VANTAGE_API_SECRET;
+  delete process.env.API_SECRET;
+  delete process.env.REPORTING_CONFIRMATION_SECRET;
+  delete process.env.VANTAGE_API_SECRET;
+  try {
+    assert.throws(() => reportingActorFingerprint(actor("owner-a")), (error: unknown) => {
+      assert.equal(error instanceof ReportingError, true);
+      if (!(error instanceof ReportingError)) return false;
+      assert.equal(error.code, "reporting_hmac_unconfigured");
+      assert.equal(error.statusCode, 503);
+      assert.match(error.message, /sheet creation/i);
+      assert.doesNotMatch(error.message, /VANTAGE_API_SECRET|API_SECRET/i);
+      return true;
+    });
+  } finally {
+    restoreEnv("API_SECRET", beforeApi);
+    restoreEnv("REPORTING_CONFIRMATION_SECRET", beforeConfirmation);
+    restoreEnv("VANTAGE_API_SECRET", beforeVantage);
+  }
 });
 
 test("persistence models expose required indexes and immutable revision middleware", () => {
