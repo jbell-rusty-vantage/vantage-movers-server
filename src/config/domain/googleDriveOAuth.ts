@@ -3,10 +3,12 @@ import { isReportingGoogleDeliveryEnabled } from "./reporting";
 const DEFAULT_CALLBACK_PATH =
   "/api/v1/admin/google-drive/oauth/callback";
 
-export type GoogleDriveOAuthConfig = {  clientId: string;
+export type GoogleDriveOAuthConfig = {
+  clientId: string;
   clientSecret: string;
   redirectUri: string;
   ownerEmail: string;
+  ownerEmails: readonly string[];
   tokenEncryptionKey: Buffer;
   exportFolderId?: string;
   completionRedirectUrl?: string;
@@ -72,10 +74,42 @@ export function assertTrustedCompletionRedirectUrl(
   }
 }
 
+export function parseGoogleOAuthOwnerEmails(
+  primaryRaw = process.env.GOOGLE_OAUTH_OWNER_EMAIL,
+  extrasRaw = process.env.GOOGLE_OAUTH_OWNER_EMAILS,
+): { ownerEmail: string; ownerEmails: readonly string[] } {
+  const ownerEmail = primaryRaw?.trim().toLowerCase();
+  if (!ownerEmail) {
+    throw new Error("GOOGLE_OAUTH_OWNER_EMAIL is required");
+  }
+
+  const extraTokens = extrasRaw?.trim()
+    ? extrasRaw.split(",").map((token) => token.trim().toLowerCase())
+    : [];
+  if (extraTokens.some((token) => !token)) {
+    throw new Error("GOOGLE_OAUTH_OWNER_EMAILS contains a blank token.");
+  }
+  if (new Set(extraTokens).size !== extraTokens.length) {
+    throw new Error("GOOGLE_OAUTH_OWNER_EMAILS contains duplicate tokens.");
+  }
+
+  return {
+    ownerEmail,
+    ownerEmails: [...new Set([ownerEmail, ...extraTokens])],
+  };
+}
+
+export function isAuthorizedGoogleDriveOwnerEmail(
+  email: string,
+  ownerEmails: readonly string[] = getGoogleDriveOAuthConfig().ownerEmails,
+): boolean {
+  return ownerEmails.includes(email.trim().toLowerCase());
+}
+
 export function getGoogleDriveOAuthConfig(): GoogleDriveOAuthConfig {
   const clientId = requiredEnv("GOOGLE_OAUTH_CLIENT_ID");
   const clientSecret = requiredEnv("GOOGLE_OAUTH_CLIENT_SECRET");
-  const ownerEmail = requiredEnv("GOOGLE_OAUTH_OWNER_EMAIL").toLowerCase();
+  const { ownerEmail, ownerEmails } = parseGoogleOAuthOwnerEmails();
   const redirectUri =
     process.env.GOOGLE_OAUTH_REDIRECT_URI?.trim() ||
     `https://vantage-movers-main-server.vercel.app${DEFAULT_CALLBACK_PATH}`;
@@ -104,6 +138,7 @@ export function getGoogleDriveOAuthConfig(): GoogleDriveOAuthConfig {
     clientSecret,
     redirectUri,
     ownerEmail,
+    ownerEmails,
     tokenEncryptionKey,
     exportFolderId:
       process.env.GOOGLE_DRIVE_EXPORT_FOLDER_ID?.trim() || undefined,

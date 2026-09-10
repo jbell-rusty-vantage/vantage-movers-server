@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   assertTrustedCompletionRedirectUrl,
+  isAuthorizedGoogleDriveOwnerEmail,
   isProductionGoogleDriveEnvironment,
+  parseGoogleOAuthOwnerEmails,
 } from "../../config/domain/googleDriveOAuth";
 
 test("completion redirect must match configured trusted admin origin", () => {
@@ -59,4 +61,61 @@ test("production detection follows NODE_ENV and VERCEL_ENV", () => {
   else process.env.NODE_ENV = previousNodeEnv;
   if (previousVercelEnv === undefined) delete process.env.VERCEL_ENV;
   else process.env.VERCEL_ENV = previousVercelEnv;
+});
+
+test("owner email allowlist keeps the primary identity and unions extras", () => {
+  assert.deepEqual(
+    parseGoogleOAuthOwnerEmails("JBELL@vantagehomemovers.com", undefined),
+    {
+      ownerEmail: "jbell@vantagehomemovers.com",
+      ownerEmails: ["jbell@vantagehomemovers.com"],
+    },
+  );
+  assert.deepEqual(
+    parseGoogleOAuthOwnerEmails(
+      "jbell@vantagehomemovers.com",
+      "jbell@vantagehomemovers.com, ringram@vantagehomemovers.com",
+    ),
+    {
+      ownerEmail: "jbell@vantagehomemovers.com",
+      ownerEmails: [
+        "jbell@vantagehomemovers.com",
+        "ringram@vantagehomemovers.com",
+      ],
+    },
+  );
+  assert.equal(
+    isAuthorizedGoogleDriveOwnerEmail("RINGRAM@vantagehomemovers.com", [
+      "jbell@vantagehomemovers.com",
+      "ringram@vantagehomemovers.com",
+    ]),
+    true,
+  );
+  assert.equal(
+    isAuthorizedGoogleDriveOwnerEmail("other@vantagehomemovers.com", [
+      "jbell@vantagehomemovers.com",
+      "ringram@vantagehomemovers.com",
+    ]),
+    false,
+  );
+});
+
+test("owner email allowlist rejects blank or duplicate extras", () => {
+  assert.throws(
+    () =>
+      parseGoogleOAuthOwnerEmails(
+        "jbell@vantagehomemovers.com",
+        "ringram@vantagehomemovers.com,,other@vantagehomemovers.com",
+      ),
+    /blank token/,
+  );
+  assert.throws(
+    () =>
+      parseGoogleOAuthOwnerEmails(
+        "jbell@vantagehomemovers.com",
+        "ringram@vantagehomemovers.com,ringram@vantagehomemovers.com",
+      ),
+    /duplicate tokens/,
+  );
+  assert.throws(() => parseGoogleOAuthOwnerEmails("  ", undefined), /required/);
 });

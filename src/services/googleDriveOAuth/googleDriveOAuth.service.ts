@@ -1,6 +1,9 @@
 import { createHash, randomBytes } from "node:crypto";
 import { google, type Auth } from "googleapis";
-import { getGoogleDriveOAuthConfig } from "../../config/domain";
+import {
+  getGoogleDriveOAuthConfig,
+  isAuthorizedGoogleDriveOwnerEmail,
+} from "../../config/domain";
 import { connectMongo } from "../../db";
 import { GoogleDriveConnection } from "../../models/GoogleDriveConnection";
 import { GoogleOAuthState } from "../../models/GoogleOAuthState";
@@ -38,12 +41,18 @@ export type GoogleDriveConnectionStatus =
       last_used_at?: Date;
     };
 
-export async function beginGoogleDriveOAuth(): Promise<{
+export async function beginGoogleDriveOAuth(input?: {
+  loginHint?: string;
+}): Promise<{
   authorization_url: string;
   expires_at: Date;
 }> {
   const config = getGoogleDriveOAuthConfig();
   await connectMongo();
+  const loginHint =
+    input?.loginHint && isAuthorizedGoogleDriveOwnerEmail(input.loginHint)
+      ? input.loginHint.trim().toLowerCase()
+      : config.ownerEmail;
 
   const state = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + STATE_TTL_MS);
@@ -57,7 +66,7 @@ export async function beginGoogleDriveOAuth(): Promise<{
   const authorizationUrl = client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
-    login_hint: config.ownerEmail,
+    login_hint: loginHint,
     scope: OAUTH_SCOPES,
     state,
   });
@@ -113,7 +122,7 @@ export async function completeGoogleDriveOAuth(
       "Google did not return a verified email address.",
     );
   }
-  if (googleEmail !== config.ownerEmail) {
+  if (!isAuthorizedGoogleDriveOwnerEmail(googleEmail)) {
     throw new UnauthorizedError(
       "The connected Google account is not authorized for reporting.",
       { statusCode: 403 },

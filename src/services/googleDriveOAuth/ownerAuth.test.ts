@@ -24,6 +24,8 @@ afterEach(() => {
   delete process.env.GOOGLE_OAUTH_CLIENT_SECRET;
   delete process.env.GOOGLE_OAUTH_TOKEN_ENCRYPTION_KEY;
   delete process.env.GOOGLE_OAUTH_TRUSTED_ADMIN_ORIGIN;
+  delete process.env.GOOGLE_OAUTH_OWNER_EMAIL;
+  delete process.env.GOOGLE_OAUTH_OWNER_EMAILS;
 });
 
 function configureOAuthEnv(): void {
@@ -36,12 +38,12 @@ function configureOAuthEnv(): void {
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = TEST_SECRET;
 }
 
-function signedOwnerRequest(): Request {
+function signedOwnerRequest(email = OWNER_EMAIL): Request {
   const timestamp = `${Date.now()}`;
   const signature = computeAdminActorSignature(
     {
       adminId: "admin_123",
-      email: OWNER_EMAIL,
+      email,
       role: "owner",
       timestamp,
       requestId: "req_abc123",
@@ -57,7 +59,7 @@ function signedOwnerRequest(): Request {
     header(name: string) {
       const headers: Record<string, string> = {
         "x-vantage-admin-user-id": "admin_123",
-        "x-vantage-admin-email": OWNER_EMAIL,
+        "x-vantage-admin-email": email,
         "x-vantage-admin-role": "owner",
         "x-vantage-admin-request-id": "req_abc123",
         "x-vantage-admin-timestamp": timestamp,
@@ -85,6 +87,32 @@ test("google drive owner auth rejects scoped API keys", () => {
       requireGoogleDriveOwnerActor({
         ...signedOwnerRequest(),
         vantageAuth: { kind: "scoped_key", scopedKeyName: "integration" },
+      } as unknown as Request),
+    GoogleDriveOwnerAccessRequiredError,
+  );
+});
+
+test("google drive owner auth accepts an allowlisted extra owner email", () => {
+  configureOAuthEnv();
+  process.env.GOOGLE_OAUTH_OWNER_EMAILS = "owner@example.com,ringram@vantagehomemovers.com";
+  const extraEmail = "ringram@vantagehomemovers.com";
+  const req = signedOwnerRequest(extraEmail);
+  const actor = requireGoogleDriveOwnerActor({
+    ...req,
+    vantageAuth: { kind: "secret" },
+  } as unknown as Request);
+  assert.equal(actor.actorLabel, extraEmail);
+});
+
+test("google drive owner auth rejects a signed owner outside the allowlist", () => {
+  configureOAuthEnv();
+  process.env.GOOGLE_OAUTH_OWNER_EMAILS = "owner@example.com,ringram@vantagehomemovers.com";
+  const req = signedOwnerRequest("other@vantagehomemovers.com");
+  assert.throws(
+    () =>
+      requireGoogleDriveOwnerActor({
+        ...req,
+        vantageAuth: { kind: "secret" },
       } as unknown as Request),
     GoogleDriveOwnerAccessRequiredError,
   );

@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import type { VantageAuthContext } from "../../middleware/requireApiSecret";
-import { getGoogleDriveOAuthConfig } from "../../config/domain";
+import { isAuthorizedGoogleDriveOwnerEmail } from "../../config/domain";
 import {
   requireRegistryOwnerActor,
   type RegistryActorContext,
@@ -18,8 +18,7 @@ export function requireGoogleDriveOwnerActor(req: Request): RegistryActorContext
   }
 
   const actor = requireRegistryOwnerActor(req, auth);
-  const configuredOwnerEmail = getGoogleDriveOAuthConfig().ownerEmail;
-  if (actor.actorLabel !== configuredOwnerEmail) {
+  if (!isAuthorizedGoogleDriveOwnerEmail(actor.actorLabel)) {
     throw new GoogleDriveOwnerAccessRequiredError();
   }
   return actor;

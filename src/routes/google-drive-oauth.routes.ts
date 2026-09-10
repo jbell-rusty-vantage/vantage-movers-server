@@ -17,7 +17,10 @@ import {
   bootstrapGooglePicker,
   verifyGooglePickerSelection,
 } from "../services/googleDriveOAuth/picker.service";
-import { enforceGoogleDriveOwnerAccess } from "../services/googleDriveOAuth/ownerAuth";
+import {
+  enforceGoogleDriveOwnerAccess,
+  requireGoogleDriveOwnerActor,
+} from "../services/googleDriveOAuth/ownerAuth";
 import {
   publicMessageForCategory,
   sanitizeGoogleDriveApiError,
@@ -44,9 +47,10 @@ router.post(
   `${BASE_PATH}/oauth/authorize`,
   requireApiSecret,
   enforceGoogleDriveOwnerAccess,
-  async (_req, res) => {
+  async (req, res) => {
     try {
-      const data = await beginGoogleDriveOAuth();
+      const actor = requireGoogleDriveOwnerActor(req);
+      const data = await beginGoogleDriveOAuth({ loginHint: actor.actorLabel });
       return res.json({ ok: true, data });
     } catch (error) {
       await recordOAuthHealthFailure(error);

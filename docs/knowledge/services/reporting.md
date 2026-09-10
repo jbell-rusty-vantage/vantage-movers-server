@@ -12,6 +12,8 @@ applies_to:
   - src/services/reporting/reportingWorker.ts
   - src/services/reporting/catalog/index.ts
   - src/config/domain/reporting.ts
+  - src/config/domain/googleDriveOAuth.ts
+  - src/services/googleDriveOAuth/ownerAuth.ts
 owners: [team:main-server]
 sources:
   - id: primary
@@ -51,7 +53,7 @@ All under `/api/v1/admin/reporting` with `requireApiSecret`. Reads use `requireR
 | Queue | reporting consumer | `reportingWorker` |
 | Cron | `/api/cron/reporting-delivery-heartbeat` (+ health-scan, cleanup, test-artifact janitor) | wake stranded leased runs |
 
-Google destination **mutations and new runs** stay off unless `REPORTING_GOOGLE_DELIVERY_ENABLED=true` (fail-closed). Missing env cannot enable writes. Run confirmation HMAC reads `REPORTING_CONFIRMATION_SECRET`, then `API_SECRET`, then `VANTAGE_API_SECRET`. Missing all three is 503 `reporting_hmac_unconfigured` (no env names in the body). Incomplete operational-workbook denylist is 503 `reporting_workbook_safety_unconfigured`.
+Google destination **mutations and new runs** stay off unless `REPORTING_GOOGLE_DELIVERY_ENABLED=true` (fail-closed). Missing env cannot enable writes. Drive OAuth, Picker, and folder create require a signed Owner whose email is `GOOGLE_OAUTH_OWNER_EMAIL` or in comma-separated `GOOGLE_OAUTH_OWNER_EMAILS`. Completing Google consent accepts the same allowlist. `GOOGLE_OAUTH_OWNER_EMAIL` stays the connection key, token-encryption AAD, and destination owner stamp — changing it breaks an existing connection and destination identity. Run confirmation HMAC reads `REPORTING_CONFIRMATION_SECRET`, then `API_SECRET`, then `VANTAGE_API_SECRET`. Missing all three is 503 `reporting_hmac_unconfigured` (no env names in the body). Incomplete operational-workbook denylist is 503 `reporting_workbook_safety_unconfigured`.
 
 ## Datasets (code-defined `@1`)
 
