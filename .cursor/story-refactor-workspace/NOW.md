@@ -3,14 +3,14 @@
 - Date (UTC): 2026-09-10
 - Wave: A (`src/services/`)
 - Current service: `historicalConsolidation` (in-progress)
-- Next module: `apply.ts`
+- Next module: `verify.ts`
 - Stock: visited 33 / in-progress 1 / unvisited 4
-- Recommendations on disk: 281 (`form-lead.md` through `historical-consolidation-manifest.md`)
+- Recommendations on disk: 282 (`form-lead.md` through `historical-consolidation-apply.md`)
 - Lock: none
 - Lock holder:
 - Lock at:
 - Branch: `docs/story-refactor`
 - PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206
-- Last session: story-historical-consolidation-manifest-2026-09-10T0212Z
+- Last session: story-historical-consolidation-apply-2026-09-10T0310Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
