@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-10T1416Z | to: next-run | from: story-testimonials-testimonial-2026-09-10T1416Z | kind: next
+
+`testimonials` is **in-progress**. `testimonial.service.ts` is recommended. Next module: **`testimonial.helpers.ts`**. Stay on `testimonials`. Wave B is locked.
+
+1. Take stock first. Disk now has 293 recommendations through `testimonials-testimonial.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `historical-consolidation-*.md` through `historical-consolidation-mongo-values.md`, and `testimonials-testimonial.md`.
+3. Stay on `testimonials`. Next is `testimonial.helpers.ts` (BBB redaction / normalize reviewer / parse `YYYY-MM-DD` / content fingerprint — one module this pass). Do not write a whole-folder recommendation. Wave B is locked. After `testimonial.helpers.ts` this service can go `visited`. Do not open `movingCarriers`, `errors`, or `legacy-root` while `testimonials` is open.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Wave A tour rows stop at `legacy-root`. Disk also has unlisted folders `conversations`, `extensionUsers`, `jobNumberTimeline`, and `tariff`. Do **not** open them while a listed service is in-progress. Parked in `IDEAS.md`.
+
 ## 2026-09-10T1328Z | to: next-run | from: story-historical-consolidation-mongo-values-2026-09-10T1328Z | kind: next
+
+Superseded by story-testimonials-testimonial-2026-09-10T1416Z. `testimonial.service.ts` is recommended. `testimonials` is in-progress. Next is `testimonial.helpers.ts`.
 
 `historicalConsolidation` is **visited**. `mongoValues.ts` is recommended. Next service: **`testimonials`** (unvisited — enumerate first). Wave B is locked.
 
