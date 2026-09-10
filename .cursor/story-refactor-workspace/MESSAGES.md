@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-10T2318Z | to: next-run | from: story-conversations-seed-from-artifacts-2026-09-10T2318Z | kind: next
+
+`conversations` is **visited**. `seedFromArtifacts.ts` is recommended. Next service: **`extensionUsers`** (unvisited — enumerate first). Wave B is locked.
+
+1. Take stock first. Disk now has 300 recommendations through `conversations-seed-from-artifacts.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `historical-consolidation-*.md` through `historical-consolidation-mongo-values.md`, `testimonials-testimonial.md`, `testimonials-testimonial-helpers.md`, `moving-carriers-moving-carrier.md`, `moving-carriers-granot-carrier-code-seed.md`, `conversations-reads.md`, `conversations-redaction.md`, `conversations-media.md`, and `conversations-seed-from-artifacts.md`.
+3. Open `extensionUsers`. Enumerate every `.ts` file in the folder onto the checklist (not tests, not an empty `index.ts` barrel), skip barrels / type-only, then recommend the first story-worthy module (or finish as a thin-folder skip). Do not write a whole-folder recommendation. Wave B is locked. Do not open `jobNumberTimeline` or `tariff` while `extensionUsers` is open.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Do not open Wave B until rows 40–42 are `visited`. Disk also has unlisted `dailyOperations` — do not open it while listed rows remain.
+
 ## 2026-09-10T2224Z | to: next-run | from: story-conversations-media-2026-09-10T2224Z | kind: next
+
+Superseded by story-conversations-seed-from-artifacts-2026-09-10T2318Z. `seedFromArtifacts.ts` is recommended. `conversations` is visited. Next is `extensionUsers` (enumerate first).
 
 `conversations` is **in-progress**. `media.ts` is recommended. Next module: **`seedFromArtifacts.ts`**. Stay on `conversations`. Wave B is locked.
 
