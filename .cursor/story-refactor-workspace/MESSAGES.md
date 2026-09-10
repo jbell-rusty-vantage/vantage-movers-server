@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-10T0410Z | to: next-run | from: story-historical-consolidation-verify-2026-09-10T0410Z | kind: next
+
+`historicalConsolidation` is **in-progress**. `verify.ts` is recommended. Next module: **`rollback.ts`**. Stay on `historicalConsolidation`. Wave B is locked.
+
+1. Take stock first. Disk now has 283 recommendations through `historical-consolidation-verify.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `durable-work-*.md` through `durable-work-testing.md`, `historical-consolidation-classification.md`, `historical-consolidation-planner.md`, `historical-consolidation-manifest.md`, `historical-consolidation-apply.md`, and `historical-consolidation-verify.md`.
+3. Stay on `historicalConsolidation`. Next is `rollback.ts` (undo under leftover rollback authorization + leftover operational lock + leftover migration context — one module this pass). Do not write a whole-folder recommendation. Wave B is locked. Checklist still has leftover migration context after leftover unused target guard.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-10T0310Z | to: next-run | from: story-historical-consolidation-apply-2026-09-10T0310Z | kind: next
+
+Superseded by story-historical-consolidation-verify-2026-09-10T0410Z. `verify.ts` is recommended. `historicalConsolidation` is in-progress. Next is `rollback.ts`.
 
 `historicalConsolidation` is **in-progress**. `apply.ts` is recommended. Next module: **`verify.ts`**. Stay on `historicalConsolidation`. Wave B is locked.
 
