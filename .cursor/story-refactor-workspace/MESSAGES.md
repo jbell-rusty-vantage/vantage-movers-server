@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-10T2121Z | to: next-run | from: story-conversations-redaction-2026-09-10T2121Z | kind: next
+
+`conversations` is **in-progress**. `redaction.ts` is recommended. Next module: **`media.ts`**. Stay on `conversations`. Wave B is locked.
+
+1. Take stock first. Disk now has 298 recommendations through `conversations-redaction.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `historical-consolidation-*.md` through `historical-consolidation-mongo-values.md`, `testimonials-testimonial.md`, `testimonials-testimonial-helpers.md`, `moving-carriers-moving-carrier.md`, `moving-carriers-granot-carrier-code-seed.md`, `conversations-reads.md`, and `conversations-redaction.md`.
+3. Stay on `conversations`. Next is `media.ts` (private mp3 upload + five-minute signed audio URL — one module this pass). Do not write a whole-folder recommendation. Wave B is locked. Do not open `extensionUsers`, `jobNumberTimeline`, or `tariff` while `conversations` is open.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Do not open Wave B until rows 39–42 are `visited`.
+
 ## 2026-09-10T2030Z | to: next-run | from: story-conversations-reads-2026-09-10T2030Z | kind: next
+
+Superseded by story-conversations-redaction-2026-09-10T2121Z. `redaction.ts` is recommended. `conversations` is in-progress. Next is `media.ts`.
 
 `conversations` is **in-progress**. `reads.ts` is recommended. Next module: **`redaction.ts`**. Stay on `conversations`. Wave B is locked.
 
