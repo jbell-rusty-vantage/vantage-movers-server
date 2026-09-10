@@ -104,6 +104,8 @@ export function snapshotChecksumFromDestinationRecord(
   const capacity = destination.capacity as
     | { provider_max_cells?: number; destination_available_cells?: number }
     | undefined;
+  const providerMaxCells = capacity?.provider_max_cells;
+  const destinationAvailableCells = capacity?.destination_available_cells;
   const strategy = destination.strategy;
   if (
     !driveConnectionId ||
@@ -113,10 +115,12 @@ export function snapshotChecksumFromDestinationRecord(
     !folder.name ||
     !folder.url ||
     (strategy !== "replace_tab" && strategy !== "snapshot") ||
-    !Number.isSafeInteger(capacity?.provider_max_cells) ||
-    (capacity?.provider_max_cells ?? 0) <= 0 ||
-    !Number.isSafeInteger(capacity?.destination_available_cells) ||
-    (capacity?.destination_available_cells ?? -1) < 0
+    providerMaxCells == null ||
+    !Number.isSafeInteger(providerMaxCells) ||
+    providerMaxCells <= 0 ||
+    destinationAvailableCells == null ||
+    !Number.isSafeInteger(destinationAvailableCells) ||
+    destinationAvailableCells < 0
   ) {
     return null;
   }
@@ -164,8 +168,8 @@ export function snapshotChecksumFromDestinationRecord(
       humanCreatedTabTakeover: false as const,
     },
     capacity: {
-      providerMaxCells: capacity.provider_max_cells,
-      destinationAvailableCells: capacity.destination_available_cells,
+      providerMaxCells,
+      destinationAvailableCells,
     },
     ...(validatedStrategy === "replace_tab"
       ? {

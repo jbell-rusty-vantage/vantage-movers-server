@@ -98,6 +98,8 @@ export function validateDestinationForImmutableRevision(input: {
     const revisionSheetId = revisionDestination.managedTab?.immutableSheetId;
     const liveSheetId = live.managedTab?.immutableSheetId;
     if (
+      revisionSheetId == null ||
+      liveSheetId == null ||
       !Number.isSafeInteger(revisionSheetId) ||
       !Number.isSafeInteger(liveSheetId)
     ) {
