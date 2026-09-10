@@ -30,6 +30,7 @@ const ReportingDefinitionRevisionSchema = new Schema<Record<string, any>>(
   {
     collection: "reporting_definition_revisions",
     timestamps: { createdAt: "created_at", updatedAt: false },
+    minimize: false,
   },
 );
 

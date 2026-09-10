@@ -448,6 +448,11 @@ function reportingHealthFailureReason(error: unknown): string {
 }
 function sendError(res: Response, error: unknown) {
   const serialized = serializeReportingRouteError(error);
+  if (serialized.status >= 500) {
+    const name = error instanceof Error ? error.name : "unknown";
+    const message = error instanceof Error ? error.message : "unknown";
+    console.error("reporting.route.internal_error", { name, message });
+  }
   return res.status(serialized.status).json(serialized.body);
 }
 

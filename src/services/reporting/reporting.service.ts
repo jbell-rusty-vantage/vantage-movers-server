@@ -6,7 +6,13 @@ import { ReportingDefinitionRevision } from "../../models/ReportingDefinitionRev
 import { ReportingPreview } from "../../models/ReportingPreview";
 import { ReportingRun } from "../../models/ReportingRun";
 import { ReportingRunConfirmation } from "../../models/ReportingRunConfirmation";
-import { canonicalJson, computeChecksum, type ChecksumArtifactKind, type DurableActor } from "../durableWork";
+import {
+  CanonicalSerializationError,
+  canonicalJson,
+  computeChecksum,
+  type ChecksumArtifactKind,
+  type DurableActor,
+} from "../durableWork";
 import {
   REPORTING_DATASETS,
   requireDataset,
@@ -854,7 +860,7 @@ export function canonicalRevisionSnapshot(
     date_window_spec: revision.date_window_spec,
     resolved_window: revision.resolved_window,
     registry_snapshot: revision.registry_snapshot,
-    filters: revision.filters,
+    filters: revision.filters ?? {},
     selected_columns: revision.selected_columns,
     effective_sort: revision.effective_sort,
     timezone: revision.timezone,
@@ -874,10 +880,22 @@ export function canonicalRevisionSnapshot(
 }
 
 export function assertRevisionChecksum(revision: Record<string, any>): void {
-  const actual = checksumArtifact(
-    "reporting_revision",
-    canonicalRevisionSnapshot(revision),
-  );
+  let actual: string;
+  try {
+    actual = checksumArtifact(
+      "reporting_revision",
+      canonicalRevisionSnapshot(revision),
+    );
+  } catch (error) {
+    if (error instanceof CanonicalSerializationError) {
+      throw reportingError(
+        "revision_checksum_mismatch",
+        "Immutable reporting revision checksum mismatch.",
+        409,
+      );
+    }
+    throw error;
+  }
   if (!safeEqual(actual, String(revision.revision_snapshot_checksum ?? ""))) {
     throw reportingError(
       "revision_checksum_mismatch",

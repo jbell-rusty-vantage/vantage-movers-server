@@ -881,6 +881,25 @@ test("source read-through capture is fenced by active lease owner and epoch", ()
   assert.deepEqual(filter.leased_until, { $gt: now });
 });
 
+test("revision checksum survives Mongo minimize of empty filters", () => {
+  const revision = revisionFixture();
+  revision.filters = {};
+  revision.revision_snapshot_checksum = computeChecksum({
+    checksum_version: 1,
+    artifact_kind: "reporting_revision",
+    schema_version: 1,
+    payload: canonicalRevisionSnapshot(revision),
+  });
+  const reloaded = {
+    ...revision,
+    _id: new mongoose.Types.ObjectId(String(revision._id)),
+    definition_id: new mongoose.Types.ObjectId(String(revision.definition_id)),
+    preview_id: new mongoose.Types.ObjectId(String(revision.preview_id)),
+  };
+  delete (reloaded as { filters?: unknown }).filters;
+  assert.doesNotThrow(() => assertRevisionChecksum(reloaded));
+});
+
 test("revision checksum verification detects tampering and bulk mutation is blocked", () => {
   const revision = revisionFixture();
   revision.revision_snapshot_checksum = computeChecksum({
