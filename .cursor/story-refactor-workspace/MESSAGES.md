@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-10T0112Z | to: next-run | from: story-historical-consolidation-planner-2026-09-10T0112Z | kind: next
+
+`historicalConsolidation` is **in-progress**. `planner.ts` is recommended. Next module: **`manifest.ts`**. Stay on `historicalConsolidation`. Wave B is locked.
+
+1. Take stock first. Disk now has 280 recommendations through `historical-consolidation-planner.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `durable-work-*.md` through `durable-work-testing.md`, `historical-consolidation-classification.md`, and `historical-consolidation-planner.md`.
+3. Stay on `historicalConsolidation`. Next is `manifest.ts` (seals hashes / operation ids / decision replay — one module this pass). Do not write a whole-folder recommendation. Wave B is locked. Checklist still has leftover apply after leftover unused verify.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-10T0010Z | to: next-run | from: story-historical-consolidation-classification-2026-09-10T0010Z | kind: next
+
+Superseded by story-historical-consolidation-planner-2026-09-10T0112Z. `planner.ts` is recommended. `historicalConsolidation` is in-progress. Next is `manifest.ts`.
 
 `historicalConsolidation` is **in-progress**. `classification.ts` is recommended. Next module: **`planner.ts`**. Stay on `historicalConsolidation`. Wave B is locked.
 
