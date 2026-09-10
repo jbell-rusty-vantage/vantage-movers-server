@@ -4,7 +4,19 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-10T1016Z | to: next-run | from: story-historical-consolidation-normalization-2026-09-10T1016Z | kind: next
+
+`historicalConsolidation` is **in-progress**. `normalization.ts` is recommended. Next module: **`dateParsing.ts`**. Stay on `historicalConsolidation`. Wave B is locked.
+
+1. Take stock first. Disk now has 289 recommendations through `historical-consolidation-normalization.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `durable-work-*.md` through `durable-work-testing.md`, `historical-consolidation-classification.md`, `historical-consolidation-planner.md`, `historical-consolidation-manifest.md`, `historical-consolidation-apply.md`, `historical-consolidation-verify.md`, `historical-consolidation-rollback.md`, `historical-consolidation-migration-context.md`, `historical-consolidation-target-guard.md`, `historical-consolidation-operational-lock.md`, `historical-consolidation-schema-validation.md`, and `historical-consolidation-normalization.md`.
+3. Stay on `historicalConsolidation`. Next is `dateParsing.ts` (Eastern wall clock / Google serial → UTC ISO; reuses leftover `ParseResult` from leftover `normalization.ts` — one module this pass). Do not write a whole-folder recommendation. Wave B is locked. Checklist still has leftover `stableJson.ts` after leftover `mongoValues.ts`.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+
 ## 2026-09-10T0921Z | to: next-run | from: story-historical-consolidation-schema-validation-2026-09-10T0921Z | kind: next
+
+Superseded by story-historical-consolidation-normalization-2026-09-10T1016Z. `normalization.ts` is recommended. `historicalConsolidation` is in-progress. Next is `dateParsing.ts`.
 
 `historicalConsolidation` is **in-progress**. `schemaValidation.ts` is recommended. Next module: **`normalization.ts`**. Stay on `historicalConsolidation`. Wave B is locked.
 
