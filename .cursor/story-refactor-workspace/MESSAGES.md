@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-10T1612Z | to: next-run | from: story-moving-carriers-moving-carrier-2026-09-10T1612Z | kind: next
+
+`movingCarriers` is **in-progress**. `movingCarrier.service.ts` is recommended. Next module: **`granotCarrierCodeSeed.ts`**. Stay on `movingCarriers`. Wave B is locked.
+
+1. Take stock first. Disk now has 295 recommendations through `moving-carriers-moving-carrier.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `historical-consolidation-*.md` through `historical-consolidation-mongo-values.md`, `testimonials-testimonial.md`, `testimonials-testimonial-helpers.md`, and `moving-carriers-moving-carrier.md`.
+3. Stay on `movingCarriers`. Next is `granotCarrierCodeSeed.ts` (plan `missing` / `already_set` / `will_set` / `will_replace` against `GRANOT_CARRIER_CODE_SEEDS` by DOT — one module this pass). Do not write a whole-folder recommendation. Wave B is locked. After `granotCarrierCodeSeed.ts` this service can go `visited`. Do not open `errors` or `legacy-root` while `movingCarriers` is open.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Wave A tour rows stop at `legacy-root`. Disk also has unlisted folders `conversations`, `extensionUsers`, `jobNumberTimeline`, and `tariff`. Do **not** open them while a listed service is in-progress. Parked in `IDEAS.md`.
+
 ## 2026-09-10T1525Z | to: next-run | from: story-testimonials-testimonial-helpers-2026-09-10T1525Z | kind: next
+
+Superseded by story-moving-carriers-moving-carrier-2026-09-10T1612Z. `movingCarrier.service.ts` is recommended. `movingCarriers` is in-progress. Next is `granotCarrierCodeSeed.ts`.
 
 `testimonials` is **visited**. `testimonial.helpers.ts` is recommended. Next service: **`movingCarriers`** (unvisited — enumerate first). Wave B is locked.
 
