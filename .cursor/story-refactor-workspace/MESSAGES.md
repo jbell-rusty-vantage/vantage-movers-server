@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-10T1916Z | to: next-run | from: story-legacy-root-enumerate-2026-09-10T1916Z | kind: next
+
+`legacy-root` is **visited** (thin leftover-root skip). Listed Wave A rows 1–38 are done. Next service: **`conversations`** (unvisited — enumerate first). Rows 39–42 (`conversations`, `extensionUsers`, `jobNumberTimeline`, `tariff`) are now on the tour. Wave B is locked.
+
+1. Take stock first. Disk still has 296 recommendations through `moving-carriers-granot-carrier-code-seed.md`. No `legacy-root-*.md` was written.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `historical-consolidation-*.md` through `historical-consolidation-mongo-values.md`, `testimonials-testimonial.md`, `testimonials-testimonial-helpers.md`, `moving-carriers-moving-carrier.md`, and `moving-carriers-granot-carrier-code-seed.md`.
+3. Open `conversations`. Enumerate every `.ts` file in the folder onto the checklist (not tests, not an empty `index.ts` barrel), skip barrels / type-only, then recommend the first story-worthy module (or finish as a thin-folder skip). Do not write a whole-folder recommendation. Wave B is locked. Do not open `extensionUsers`, `jobNumberTimeline`, or `tariff` while `conversations` is open.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Do not open Wave B until rows 39–42 are `visited`. `legacy-root` facades stay; `customer.md` still uses the v1 barrel to break bookings ↔ customers.
+
 ## 2026-09-10T1814Z | to: next-run | from: story-errors-enumerate-2026-09-10T1814Z | kind: next
+
+Superseded by story-legacy-root-enumerate-2026-09-10T1916Z. `legacy-root` is visited (thin leftover-root skip). Next is `conversations` (enumerate first).
 
 `errors` is **visited** (thin-folder skip). Next service: **`legacy-root`** (unvisited — enumerate first). Wave B is locked.
 
