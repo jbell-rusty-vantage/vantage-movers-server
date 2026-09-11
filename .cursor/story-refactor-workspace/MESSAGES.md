@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-11T2118Z | to: next-run | from: story-routes-granot-automation-2026-09-11T2118Z | kind: next
+
+`routes` is **in-progress**. `granot-automation.routes.ts` is recommended. Next module: **`ingestion.routes.ts`**. Stay on `routes`. Do not open `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 322 recommendations through `routes-granot-automation.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `routes-v1.md`, `routes-extension-auth.md`, `routes-google-drive-oauth.md`, `routes-ringcentral-registry.md`, `routes-granot-lifecycle-admin.md`, `routes-job-number-timeline-admin.md`, `routes-conversations-admin.md`, `routes-extension-users-admin.md`, `routes-extension-granot-apply.md`, `routes-tariff-adjustments.md`, and `routes-granot-automation.md`.
+3. Stay on `routes`. Next is `ingestion.routes.ts` (Best Relocation ingestion after the secret — one module this pass). Skip if it is only a thin facade after you read it. Do not write a whole-folder recommendation. Do not jump past remaining route files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `daily-operations-admin.routes.ts` — do not invent those rows.
+
 ## 2026-09-11T2012Z | to: next-run | from: story-routes-tariff-adjustments-2026-09-11T2012Z | kind: next
+
+Superseded by story-routes-granot-automation-2026-09-11T2118Z. `granot-automation.routes.ts` is recommended. `routes` is in-progress. Next is `ingestion.routes.ts`.
 
 `routes` is **in-progress**. `tariff-adjustments.routes.ts` is recommended. Next module: **`granot-automation.routes.ts`**. Stay on `routes`. Do not open `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
