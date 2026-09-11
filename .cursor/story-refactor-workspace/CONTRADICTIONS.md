@@ -4,6 +4,13 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Destination `NotFoundError` / `BadRequestError` / `IntegrationError` become **500** `reporting_internal_error`. Definition miss is in-file **404**. `serializeReportingRouteError` does not `instanceof AppError`. Do not map destination miss onto 404 so “one not-found owns the desk.” See `recommendations/routes-reporting.md`.
+- `ReportingError` echoes `error.message`. Unexpected errors are **500** `"Reporting request failed"`. Sibling leftover ingestion hides every message. Do not hide `ReportingError.message` so “this desk matches leftover ingestion.” See `recommendations/routes-reporting.md`.
+- The Google kill switch is only on destination writes and new runs. Preview / freeze / clone / archive-definition / cancel do not check it. Do not add it onto cancel so “cancel matches `/run`.” See `recommendations/routes-reporting.md`.
+- Cancel discards `publishReportingWakeup` and always **200**. Heartbeat unpublished is **503**. Confirm’s wakeup lives in Wave A and returns `wakeupPublished`. Do not 503 cancel so “one wakeup rule owns every poke.” See `recommendations/routes-reporting.md`.
+- The host rule lists `POST .../destinations/:id/archive`. This file only has `DELETE`. Operator skill lists DELETE only. Do not add POST archive so “the host rule wins.” See `recommendations/routes-reporting.md`.
+- GET definition detail hides preview `destination_snapshot` and still returns revision `destination_snapshot`. GET run hides `execution_package.destination`. Do not strip revision snapshots so “one hide owns every GET.” See `recommendations/routes-reporting.md`.
+- This desk remounts `requireApiSecret` after public v1 and leftover ingestion. GET asks `requireRegistryReadActor` (Admin may read). Granot automation GET asks Owner. Do not switch GET onto Owner so “every queue desk matches.” See `recommendations/routes-reporting.md`.
 - This desk `sendError` never echoes `error.message` (**500** `"Ingestion request failed"`; **4xx** `"Ingestion request was rejected"`) and does not **ask** `toHttpBody()`. Sibling Granot automation **asks** `toHttpBody()`. Sibling Tariff **500** echoes `error.message`. Do not silently import another refuse so “one refuse owns every Owner desk.” See `recommendations/routes-ingestion.md`.
 - `assertObjectId` throws a bare `Error` → **500** `ingestion_internal_error`. Do not map that onto **400** without a paired test. See `recommendations/routes-ingestion.md`.
 - Owner retry checks `BEST_RELOCATION_INGEST_ENABLED` and not `application_enabled`. Non-bootstrap approve checks both. Worker later skips `DEPLOYMENT_GATE_DISABLED`. Do not add `application_enabled` onto retry so “retry matches approve.” See `recommendations/routes-ingestion.md`.

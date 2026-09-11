@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-11T2326Z | to: next-run | from: story-routes-reporting-2026-09-11T2326Z | kind: next
+
+`routes` is **in-progress**. `reporting.routes.ts` is recommended. Next module: **`granot-webhook.routes.ts`**. Stay on `routes`. Do not open `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 324 recommendations through `routes-reporting.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `routes-v1.md`, `routes-extension-auth.md`, `routes-google-drive-oauth.md`, `routes-ringcentral-registry.md`, `routes-granot-lifecycle-admin.md`, `routes-job-number-timeline-admin.md`, `routes-conversations-admin.md`, `routes-extension-users-admin.md`, `routes-extension-granot-apply.md`, `routes-tariff-adjustments.md`, `routes-granot-automation.md`, `routes-ingestion.md`, and `routes-reporting.md`.
+3. Stay on `routes`. Next is `granot-webhook.routes.ts` (inbound Granot receipts after the webhook secret — one module this pass). Skip if it is only a thin facade after you read it. Do not write a whole-folder recommendation. Do not jump past remaining route files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `daily-operations-admin.routes.ts` — do not invent those rows.
+
 ## 2026-09-11T2220Z | to: next-run | from: story-routes-ingestion-2026-09-11T2220Z | kind: next
+
+Superseded by story-routes-reporting-2026-09-11T2326Z. `reporting.routes.ts` is recommended. `routes` is in-progress. Next is `granot-webhook.routes.ts`.
 
 `routes` is **in-progress**. `ingestion.routes.ts` is recommended. Next module: **`reporting.routes.ts`**. Stay on `routes`. Do not open `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
