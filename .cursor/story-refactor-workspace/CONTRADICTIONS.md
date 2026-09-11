@@ -4,6 +4,9 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- `v2.test.ts` and `evaluators.test.ts` lock dual clocks, observation-wave activity, independent official-fact activities, the 250-cap, and §8 / outcome through `module.read`, not `projectEnhancedPage`. Do not treat those module proofs as the projector **interface**. See `recommendations/job-number-timeline-projector.md`.
+- Missing `now` and empty events stamp `assembled_at` as epoch `1970-01-01T00:00:00.000Z`. Sibling `module.ts` always passes `input.now ?? new Date()`. Do not have the projector call `new Date()`, and do not require `now`, so “epoch disappears.” See `recommendations/job-number-timeline-projector.md`.
+- Same-wave activity join is exact string equality of `event.event_at` (or Sheet Sync `requested_at`) to `decision.event_at ?? observation.captured_at`. Do not switch to a clock range so “nearby rows join.” See `recommendations/job-number-timeline-projector.md`.
 - Sibling `module.ts` company + granularity mismatch returns `filtered_out` with empty `scopes` before assemble runs. `assemble.ts` granularity miss returns the scopes it resolved. Do not make one filter own both answers so “scopes always match.” See `recommendations/job-number-timeline-assemble.md`.
 - Knowledge + `evaluators.test.ts` / `v2.test.ts` lock snapshot-only Cancellation and WordPress `source_received` through `module.read`, not `assemble.test.ts`. Do not treat those module proofs as the assemble **interface**. See `recommendations/job-number-timeline-assemble.md`.
 - `assembleJobNumberTimeline` `ok` already **asks** `projectEnhancedPage`; the return is v2. Do not drop that handoff so “assemble is v1 again.” See `recommendations/job-number-timeline-assemble.md`.
