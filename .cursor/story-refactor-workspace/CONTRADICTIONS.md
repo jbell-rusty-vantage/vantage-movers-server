@@ -4,6 +4,11 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- This desk `sendError` never echoes `error.message` (**500** `"Ingestion request failed"`; **4xx** `"Ingestion request was rejected"`) and does not **ask** `toHttpBody()`. Sibling Granot automation **asks** `toHttpBody()`. Sibling Tariff **500** echoes `error.message`. Do not silently import another refuse so “one refuse owns every Owner desk.” See `recommendations/routes-ingestion.md`.
+- `assertObjectId` throws a bare `Error` → **500** `ingestion_internal_error`. Do not map that onto **400** without a paired test. See `recommendations/routes-ingestion.md`.
+- Owner retry checks `BEST_RELOCATION_INGEST_ENABLED` and not `application_enabled`. Non-bootstrap approve checks both. Worker later skips `DEPLOYMENT_GATE_DISABLED`. Do not add `application_enabled` onto retry so “retry matches approve.” See `recommendations/routes-ingestion.md`.
+- GET connection does not plant the row. PATCH / preview / heartbeat **ask** `ensureBestRelocationConnection`. Do not plant on GET so “the first dashboard load owns the card.” See `recommendations/routes-ingestion.md`.
+- This desk remounts `requireApiSecret` after public v1. Granot automation remounts because it sits **before** v1. GET here **asks** `requireRegistryReadActor` (Admin may read). Granot automation GET **asks** Owner. Do not switch GET onto Owner so “every queue desk matches.” See `recommendations/routes-ingestion.md`.
 - Knowledge `tariff.md` names Owner / Customer Service Bearer and leftover Employee still allowed; it omits secret-only. The isolated route test locks secret-only **200**. This file never 401/403. Do not silently refuse secret-only so “the knowledge sentence becomes true.” See `recommendations/routes-tariff-adjustments.md`.
 - Sales Bearer is **403 `"Forbidden"`** on `requireApiSecret` **before** this file. The route test stamps `vantageAuth` and never names Sales. Do not remap parent `"Forbidden"` onto a tariff-owned 403 in this file. See `recommendations/routes-tariff-adjustments.md`.
 - Omitted `effective_date` is local `M/D/YYYY`. Append `Timestamp` is Florida. First-row date fallback is tautological with Zod except when both omit. Do not silently pass `now` into `appendTariffAdjustmentRows` so “one clock owns the row.” See `recommendations/routes-tariff-adjustments.md`.
