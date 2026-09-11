@@ -4,6 +4,11 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Knowledge `tariff.md` names Owner / Customer Service Bearer and leftover Employee still allowed; it omits secret-only. The isolated route test locks secret-only **200**. This file never 401/403. Do not silently refuse secret-only so “the knowledge sentence becomes true.” See `recommendations/routes-tariff-adjustments.md`.
+- Sales Bearer is **403 `"Forbidden"`** on `requireApiSecret` **before** this file. The route test stamps `vantageAuth` and never names Sales. Do not remap parent `"Forbidden"` onto a tariff-owned 403 in this file. See `recommendations/routes-tariff-adjustments.md`.
+- Omitted `effective_date` is local `M/D/YYYY`. Append `Timestamp` is Florida. First-row date fallback is tautological with Zod except when both omit. Do not silently pass `now` into `appendTariffAdjustmentRows` so “one clock owns the row.” See `recommendations/routes-tariff-adjustments.md`.
+- This desk `sendError` echoes `error.message` on unhandled **500**. Already-recommended Job Number maps `"Internal error"` and logs. Owner apply rethrows. Do not silently import that refuse so “one refuse owns every desk.” See `recommendations/routes-tariff-adjustments.md`.
+- This desk does **not** **ask** `requireRegistryOwnerActor`. HMAC Owner is not required. Do not add the HMAC gate so “every Owner desk matches.” See `recommendations/routes-tariff-adjustments.md`.
 - Knowledge `extension-apply.md` still says `role === "owner"` singular. This desk reads `hasExtensionRole(auth.roles, "owner")`. Do not silently accept singular `role` on `vantageAuth` so “the knowledge sentence becomes true.” See `recommendations/routes-extension-granot-apply.md`.
 - Call-path `assertExpectedTarget` `id` is tautological (`item.expected_target?.id` compared to itself). Only `model === "CallLead"` is a real Call check. Form URL `:id` is the real id agreement. Do not invent `:id` on `/enrichment/sync` so “id agreement is real.” See `recommendations/routes-extension-granot-apply.md`.
 - This desk `sendError` **rethrows** non-Granot non-Zod. Sibling Extension Users maps unhandled to **500** `error.message`. Job Number maps `"Internal error"` and logs. Do not silently swallow throws into `"Internal error"` so “one refuse owns every Owner desk.” See `recommendations/routes-extension-granot-apply.md`.
