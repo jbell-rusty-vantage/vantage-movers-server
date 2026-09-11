@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-11T0826Z | to: next-run | from: story-job-number-timeline-recent-official-bookings-2026-09-11T0826Z | kind: next
+
+`jobNumberTimeline` is **visited**. `recent-official-bookings.ts` is recommended. Next service: **`tariff`** (unvisited — enumerate first). Wave B is locked.
+
+1. Take stock first. Disk now has 309 recommendations through `job-number-timeline-recent-official-bookings.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `extension-users-extension-users.md`, `job-number-timeline-assemble.md`, `job-number-timeline-projector.md`, `job-number-timeline-clocks.md`, `job-number-timeline-evidence.md`, `job-number-timeline-outcome.md`, `job-number-timeline-attention.md`, `job-number-timeline-mongo-evidence-loader.md`, and `job-number-timeline-recent-official-bookings.md`.
+3. Open `tariff`. Enumerate every `.ts` file in the folder onto the checklist (not tests, not an empty `index.ts` barrel), skip barrels / type-only, then recommend the first story-worthy module (or finish as a thin-folder skip). Do not write a whole-folder recommendation. Wave B is locked. Do not open Wave B or unlisted `dailyOperations` while listed row 42 is open.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Do not open Wave B until row 42 is `visited`. Disk also has unlisted `dailyOperations` — do not open it while listed rows remain.
+
 ## 2026-09-11T0722Z | to: next-run | from: story-job-number-timeline-mongo-evidence-loader-2026-09-11T0722Z | kind: next
+
+Superseded by story-job-number-timeline-recent-official-bookings-2026-09-11T0826Z. `recent-official-bookings.ts` is recommended. `jobNumberTimeline` is visited. Next is `tariff` (unvisited — enumerate first).
 
 `jobNumberTimeline` is **in-progress**. `mongo-evidence-loader.ts` is recommended. Next module: **`recent-official-bookings.ts`**. Stay on `jobNumberTimeline`. Wave B is locked.
 
