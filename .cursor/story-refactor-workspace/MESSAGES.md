@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-11T0916Z | to: next-run | from: story-tariff-append-2026-09-11T0916Z | kind: next
+
+`tariff` is **in-progress**. `append.ts` is recommended. Next module: **`resolveCarrier.ts`**. Stay on `tariff`. Wave B is locked.
+
+1. Take stock first. Disk now has 310 recommendations through `tariff-append.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `job-number-timeline-recent-official-bookings.md` and `tariff-append.md`.
+3. Stay on `tariff`. Next is `resolveCarrier.ts` (Granot Carrier Code → Moving Carrier legal name + DOT cell — one module this pass). Skip if it is only a thin format helper after you read it. Do not write a whole-folder recommendation. Wave B is locked. Do not open Wave B or unlisted `dailyOperations` while listed row 42 is open.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Do not open Wave B until row 42 is `visited`. Disk also has unlisted `dailyOperations` — do not open it while listed rows remain.
+
 ## 2026-09-11T0826Z | to: next-run | from: story-job-number-timeline-recent-official-bookings-2026-09-11T0826Z | kind: next
+
+Superseded by story-tariff-append-2026-09-11T0916Z. `append.ts` is recommended. `tariff` is in-progress. Next is `resolveCarrier.ts`.
 
 `jobNumberTimeline` is **visited**. `recent-official-bookings.ts` is recommended. Next service: **`tariff`** (unvisited — enumerate first). Wave B is locked.
 
