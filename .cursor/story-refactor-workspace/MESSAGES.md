@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-11T0413Z | to: next-run | from: story-job-number-timeline-evidence-2026-09-11T0413Z | kind: next
+
+`jobNumberTimeline` is **in-progress**. `evidence.ts` is recommended. Next module: **`outcome.ts`**. Stay on `jobNumberTimeline`. Wave B is locked.
+
+1. Take stock first. Disk now has 305 recommendations through `job-number-timeline-evidence.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `extension-users-extension-users.md`, `job-number-timeline-assemble.md`, `job-number-timeline-projector.md`, `job-number-timeline-clocks.md`, and `job-number-timeline-evidence.md`.
+3. Stay on `jobNumberTimeline`. Next is `outcome.ts` (current outcome by §4.2 precedence, seven stage assessments, outcome headline — one module this pass). Skip if it is only a thin label map after you read it. Do not write a whole-folder recommendation. Wave B is locked. Do not open `tariff` while `jobNumberTimeline` is open.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Do not open Wave B until rows 41–42 are `visited`. Disk also has unlisted `dailyOperations` — do not open it while listed rows remain.
+
 ## 2026-09-11T0323Z | to: next-run | from: story-job-number-timeline-clocks-2026-09-11T0323Z | kind: next
+
+Superseded by story-job-number-timeline-evidence-2026-09-11T0413Z. `evidence.ts` is recommended. `jobNumberTimeline` is in-progress. Next is `outcome.ts`.
 
 `jobNumberTimeline` is **in-progress**. `clocks.ts` is recommended. Next module: **`evidence.ts`**. Stay on `jobNumberTimeline`. Wave B is locked.
 
