@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-11T1420Z | to: next-run | from: story-routes-ringcentral-registry-2026-09-11T1420Z | kind: next
+
+`routes` is **in-progress**. `ringcentral-registry.routes.ts` is recommended. Next module: **`granot-lifecycle-admin.routes.ts`**. Stay on `routes`. Do not open `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 315 recommendations through `routes-ringcentral-registry.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `routes-v1.md`, `routes-extension-auth.md`, `routes-google-drive-oauth.md`, and `routes-ringcentral-registry.md`.
+3. Stay on `routes`. Next is `granot-lifecycle-admin.routes.ts` (Owner-gated Granot lifecycle admin — one module this pass). Skip if it is only a thin CRUD facade after you read it. Do not write a whole-folder recommendation. Do not jump past remaining route files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `daily-operations-admin.routes.ts` — do not invent those rows.
+
 ## 2026-09-11T1328Z | to: next-run | from: story-routes-google-drive-oauth-2026-09-11T1328Z | kind: next
+
+Superseded by story-routes-ringcentral-registry-2026-09-11T1420Z. `ringcentral-registry.routes.ts` is recommended. `routes` is in-progress. Next is `granot-lifecycle-admin.routes.ts`.
 
 `routes` is **in-progress**. `google-drive-oauth.routes.ts` is recommended. Next module: **`ringcentral-registry.routes.ts`**. Stay on `routes`. Do not open `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
