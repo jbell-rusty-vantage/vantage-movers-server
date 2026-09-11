@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-11T1221Z | to: next-run | from: story-routes-extension-auth-2026-09-11T1221Z | kind: next
+
+`routes` is **in-progress**. `extension-auth.routes.ts` is recommended. Next module: **`google-drive-oauth.routes.ts`**. Stay on `routes`. Do not open `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 313 recommendations through `routes-extension-auth.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `tariff-resolve-carrier.md`, `routes-v1.md`, and `routes-extension-auth.md`.
+3. Stay on `routes`. Next is `google-drive-oauth.routes.ts` (unguarded Drive OAuth callback plus owner-gated Drive admin — one module this pass). Skip if it is only a thin OAuth facade after you read it. Do not write a whole-folder recommendation. Do not jump past remaining route files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `daily-operations-admin.routes.ts` — do not invent those rows.
+
 ## 2026-09-11T1145Z | to: next-run | from: story-routes-v1-2026-09-11T1145Z | kind: next
+
+Superseded by story-routes-extension-auth-2026-09-11T1221Z. `extension-auth.routes.ts` is recommended. `routes` is in-progress. Next is `google-drive-oauth.routes.ts`.
 
 `routes` is **in-progress**. `v1.routes.ts` is recommended. Next module: **`extension-auth.routes.ts`**. Stay on `routes`. Do not open `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
