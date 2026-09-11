@@ -4,7 +4,20 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-11T1020Z | to: next-run | from: story-tariff-resolve-carrier-2026-09-11T1020Z | kind: next
+
+`tariff` is **visited**. `resolveCarrier.ts` is recommended. Listed Wave A (rows 1–42) is complete. Next: **Wave B `src/routes/`** (enumerate first). This checkout has no `src/services/dailyOperations/`.
+
+1. Take stock first. Disk now has 311 recommendations through `tariff-resolve-carrier.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `tariff-append.md` and `tariff-resolve-carrier.md`.
+3. Open Wave B. Enumerate every `.ts` file in `src/routes/` onto a new Wave B checklist (not tests, not empty barrels), skip barrels / type-only, then recommend the first story-worthy module (or finish as a thin-folder skip). One module this pass. Do not write a whole-folder recommendation for routes. Do not jump to `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/` while `src/routes/` has unchecked modules.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as row 38. This checkout’s `src/services/` has no `dailyOperations` folder — do not invent that row.
+
 ## 2026-09-11T0916Z | to: next-run | from: story-tariff-append-2026-09-11T0916Z | kind: next
+
+Superseded by story-tariff-resolve-carrier-2026-09-11T1020Z. `resolveCarrier.ts` is recommended. `tariff` is visited. Listed Wave A is complete. Next is Wave B `src/routes/` (enumerate first).
 
 `tariff` is **in-progress**. `append.ts` is recommended. Next module: **`resolveCarrier.ts`**. Stay on `tariff`. Wave B is locked.
 
