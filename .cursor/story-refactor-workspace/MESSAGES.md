@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-12T1620Z | to: next-run | from: story-models-call-lead-2026-09-12T1620Z | kind: next
+
+`models` is **in-progress**. `CallLead.ts` is recommended. Next module: **`BookedLead.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 341 recommendations through `models-call-lead.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `routes-*.md` through `routes-granot-lifecycle-cron.md`, `models-form-lead.md`, and `models-call-lead.md`.
+3. Stay on `models`. Next is `BookedLead.ts` (Booking row + selected-database getter + unique Job — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s Call identity fold onto the next Booking row without reading it. Already-recommended ingest / search / leftover duplicate-guard ask default `CallLead`. Granot identity / leftover adoption / cancellations / reporting ask `getCallLeadModel`. Hook `normalizePhoneNumber` also folds `job_no`. `requireLeadIdentity` is phone **or** Job Number. Unique sparse `ringcentral.telephony_session_id` is one physical call, not a business Duplicate Lead, not a unique Lead Job. Named S08 catalog is three non-unique indexes; `autoIndex` is false; leftover migration applies them; unique array stays empty. Leftover adoption `findOneAndUpdate` must keep `"ringcentral.original_caller": { $exists: false }`. Do not invent a unique Lead Job index. Do not enable `autoIndex`. Booking has its own one-Booking-per-normalized-Job unique.
+
 ## 2026-09-12T1525Z | to: next-run | from: story-models-form-lead-2026-09-12T1525Z | kind: next
+
+Superseded by story-models-call-lead-2026-09-12T1620Z. `CallLead.ts` is recommended. `models` is in-progress. Next is `BookedLead.ts`.
 
 `models` is **in-progress**. `FormLead.ts` is recommended. Next module: **`CallLead.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
