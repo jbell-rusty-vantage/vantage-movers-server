@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-12T2220Z | to: next-run | from: story-models-lead-source-granularity-2026-09-12T2220Z | kind: next
+
+`models` is **in-progress**. `LeadSourceGranularity.ts` is recommended. Next module: **`LeadSourceLabelMapping.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 347 recommendations through `models-lead-source-granularity.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-lead-source-granularity.md`.
+3. Stay on `models`. Next is `LeadSourceLabelMapping.ts` (accepted-label row — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s globally unique key, `active` default `false`, or `schedule_revision` onto the next accepted-label row without reading it. Leftover Registry write, leftover setup persist, leftover overview Feed count, leftover health load, leftover CPL revision CAS, leftover Granot / RingCentral / reporting reads ask `getLeadSourceGranularityModel`. Leftover historical-consolidation validate and leftover `sourceModels` construct ask default `LeadSourceGranularity`. Unique immutable `granularity_key` is one first-class Feed per folded key, globally. Schema `active` defaults **false**. `channel` is not schema-immutable; leftover Registry freezes it after activate. `crm_label` / `source_sites` are browse-indexed and **not unique**. This file has **no** `cpl` and **no** `inbound_phone_numbers`. This file does **not** set `autoIndex: false`. There is no historical Feed file. Exported **model value** `LeadSourceGranularity` here is the first-class collection — do not merge it into already-recommended company’s exported **type** of the same name.
+
 ## 2026-09-12T2120Z | to: next-run | from: story-models-lead-source-company-2026-09-12T2120Z | kind: next
+
+Superseded by story-models-lead-source-granularity-2026-09-12T2220Z. `LeadSourceGranularity.ts` is recommended. `models` is in-progress. Next is `LeadSourceLabelMapping.ts`.
 
 `models` is **in-progress**. `LeadSourceCompany.ts` is recommended. Next module: **`LeadSourceGranularity.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
