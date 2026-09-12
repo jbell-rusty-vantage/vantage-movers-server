@@ -4,7 +4,22 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-12T0924Z | to: next-run | from: story-routes-cpl-correction-cron-2026-09-12T0924Z | kind: next
+
+`routes` is **in-progress**. `cpl-correction-cron.routes.ts` is recommended. Next module: **`notification-cron.routes.ts`**. Stay on `routes`. Do not open `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 334 recommendations through `routes-cpl-correction-cron.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `routes-v1.md`, `routes-extension-auth.md`, `routes-google-drive-oauth.md`, `routes-ringcentral-registry.md`, `routes-granot-lifecycle-admin.md`, `routes-job-number-timeline-admin.md`, `routes-conversations-admin.md`, `routes-extension-users-admin.md`, `routes-extension-granot-apply.md`, `routes-tariff-adjustments.md`, `routes-granot-automation.md`, `routes-ingestion.md`, `routes-reporting.md`, `routes-granot-webhook.md`, `routes-ringcentral-webhook.md`, `routes-ringcentral-webhook-local.md`, `routes-twilio-message-status.md`, `routes-twilio-voice.md`, `routes-ringcentral-cron.md`, `routes-booking-reconciliation-cron.md`, `routes-sheet-sync-cron.md`, `routes-lead-messaging-cron.md`, and `routes-cpl-correction-cron.md`.
+3. Stay on `routes`. Next is `notification-cron.routes.ts` (daily owner digest after `CRON_SECRET` — one module this pass). Skip if it is only a thin facade after you read it. Do not write a whole-folder recommendation. Do not jump past remaining route files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `daily-operations-admin.routes.ts` — do not invent those rows.
+7. Do not copy Sheet Sync’s queued-only fence onto this next desk without reading it. Do not invent a CPL correction queue publisher so “every drain uses `@vercel/queue`.” HTTP `claimed` on the CPL cron is `results.length`, not leases won. That 500 is generic `CPL_CORRECTION_DRAIN_FAILED`, not `error.message`.
+
 ## 2026-09-12T0822Z | to: next-run | from: story-routes-lead-messaging-cron-2026-09-12T0822Z | kind: next
+
+Superseded by story-routes-cpl-correction-cron-2026-09-12T0924Z. `cpl-correction-cron.routes.ts` is recommended. `routes` is in-progress. Next is `notification-cron.routes.ts`.
+
 
 `routes` is **in-progress**. `lead-messaging-cron.routes.ts` is recommended. Next module: **`cpl-correction-cron.routes.ts`**. Stay on `routes`. Do not open `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
