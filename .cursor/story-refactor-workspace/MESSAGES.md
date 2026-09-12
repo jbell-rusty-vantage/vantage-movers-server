@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-12T1424Z | to: next-run | from: story-routes-granot-lifecycle-cron-2026-09-12T1424Z | kind: next
+
+`routes` is **visited**. `granot-lifecycle-cron.routes.ts` is recommended. Next service: **`models`** (unvisited). Enumerate every runtime `.ts` in `src/models/` onto the checklist first. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/` while `models` is unvisited or in-progress.
+
+1. Take stock first. Disk now has 339 recommendations through `routes-granot-lifecycle-cron.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `routes-*.md` through `routes-granot-lifecycle-cron.md`.
+3. Open `models`. Enumerate first. Then recommend or skip the first story-worthy module. Skip barrels / type-only / one-line re-exports with two words why. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `daily-operations-admin.routes.ts` — do not invent those rows.
+7. Do not copy this desk’s scan-and-drain onto the next models pass. Granot lifecycle missing secret is **500** `"CRON_SECRET is not set"`. HTTP **200** omits Wave A `reason: "processing_disabled"` and `trigger`. Processing-off still writes `granot_lifecycle.cron.run.completed`. Unexpected throw is generic **500** `"Granot lifecycle drain failed"` (no `error.message`) plus a zeroed failed letter. Factory injects `connect` / `drain` and never `emit`. This tick accepts `x-cron-secret`, opens Mongo on the route, never publishes, never requeues, never claims one `{ receipt_id }`, and does not write `cron.auth.failed`.
+
 ## 2026-09-12T1323Z | to: next-run | from: story-routes-granot-automation-cron-2026-09-12T1323Z | kind: next
+
+Superseded by story-routes-granot-lifecycle-cron-2026-09-12T1424Z. `granot-lifecycle-cron.routes.ts` is recommended. `routes` is visited. Next is enumerate `src/models/`.
 
 `routes` is **in-progress**. `granot-automation-cron.routes.ts` is recommended. Next module: **`granot-lifecycle-cron.routes.ts`**. Stay on `routes`. Do not open `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
