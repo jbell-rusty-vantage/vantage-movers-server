@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-12T1117Z | to: next-run | from: story-routes-best-relocation-ingestion-cron-2026-09-12T1117Z | kind: next
+
+`routes` is **in-progress**. `best-relocation-ingestion-cron.routes.ts` is recommended. Next module: **`reporting-cron.routes.ts`**. Stay on `routes`. Do not open `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 336 recommendations through `routes-best-relocation-ingestion-cron.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `routes-v1.md`, `routes-extension-auth.md`, `routes-google-drive-oauth.md`, `routes-ringcentral-registry.md`, `routes-granot-lifecycle-admin.md`, `routes-job-number-timeline-admin.md`, `routes-conversations-admin.md`, `routes-extension-users-admin.md`, `routes-extension-granot-apply.md`, `routes-tariff-adjustments.md`, `routes-granot-automation.md`, `routes-ingestion.md`, `routes-reporting.md`, `routes-granot-webhook.md`, `routes-ringcentral-webhook.md`, `routes-ringcentral-webhook-local.md`, `routes-twilio-message-status.md`, `routes-twilio-voice.md`, `routes-ringcentral-cron.md`, `routes-booking-reconciliation-cron.md`, `routes-sheet-sync-cron.md`, `routes-lead-messaging-cron.md`, `routes-cpl-correction-cron.md`, `routes-notification-cron.md`, and `routes-best-relocation-ingestion-cron.md`.
+3. Stay on `routes`. Next is `reporting-cron.routes.ts` (reporting cron ticks after `CRON_SECRET` — one module this pass). Skip if it is only a thin facade after you read it. Do not write a whole-folder recommendation. Do not jump past remaining route files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `daily-operations-admin.routes.ts` — do not invent those rows.
+7. Do not copy Sheet Sync’s queued-only fence onto this next desk without reading it. Do not discard an unpublished Best Relocation wakeup so “cron matches Owner 202.” HTTP env-off skip is after leftover `ensureBestRelocationConnection`, not before Mongo. Leftover `ingestionHeartbeatSkipReason` is unused by HTTP. Stale letter is 30 hours, not leftover `cadence_hours`. That 500 may echo `error.message`. This desk does not write `cron.auth.failed`.
+
 ## 2026-09-12T1035Z | to: next-run | from: story-routes-notification-cron-2026-09-12T1035Z | kind: next
+
+Superseded by story-routes-best-relocation-ingestion-cron-2026-09-12T1117Z. `best-relocation-ingestion-cron.routes.ts` is recommended. `routes` is in-progress. Next is `reporting-cron.routes.ts`.
 
 `routes` is **in-progress**. `notification-cron.routes.ts` is recommended. Next module: **`best-relocation-ingestion-cron.routes.ts`**. Stay on `routes`. Do not open `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
