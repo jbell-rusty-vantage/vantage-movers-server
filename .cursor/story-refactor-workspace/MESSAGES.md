@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-12T1525Z | to: next-run | from: story-models-form-lead-2026-09-12T1525Z | kind: next
+
+`models` is **in-progress**. `FormLead.ts` is recommended. Next module: **`CallLead.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 340 recommendations through `models-form-lead.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including every `routes-*.md` through `routes-granot-lifecycle-cron.md` and `models-form-lead.md`.
+3. Stay on `models`. Next is `CallLead.ts` (Call Lead row + selected-database getter + S08 indexes — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s Form-only identity fold onto the next Call Lead row without reading it. Form ingest / lifecycle / duplicate ask `getFormLeadModel`. Search / employee-booking candidates ask default `FormLead`. Hook `normalizeEmployeeBookingFields` folds lid / phone / name / job_no for every Form Lead. Named S08 catalog is four non-unique indexes; `autoIndex` is false; leftover migration applies them. Do not invent a unique Lead Job index. Do not enable `autoIndex`. Call Lead has its own `requireLeadIdentity` and RingCentral caller immutability.
+
 ## 2026-09-12T1424Z | to: next-run | from: story-routes-granot-lifecycle-cron-2026-09-12T1424Z | kind: next
+
+Superseded by story-models-form-lead-2026-09-12T1525Z. `FormLead.ts` is recommended. `models` is in-progress. Next is `CallLead.ts`.
 
 `routes` is **visited**. `granot-lifecycle-cron.routes.ts` is recommended. Next service: **`models`** (unvisited). Enumerate every runtime `.ts` in `src/models/` onto the checklist first. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/` while `models` is unvisited or in-progress.
 
