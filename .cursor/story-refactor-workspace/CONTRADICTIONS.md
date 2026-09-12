@@ -4,6 +4,9 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- After keep succeeds, a later normalize / enrich / party / session throw answers `{ storedRawEvent: false, warning: "webhook_acknowledged_processing_failed" }`. Wave A keep already returned `{ storedRawEvent, duplicate }`. Do not silently echo the captured bag on the warning path so “the body tells the truth” without a paired test. See `recommendations/routes-ringcentral-webhook.md`.
+- Leftover `shouldWebhookCallLogValidate` is on leftover config and the debug GET config bag. This file never **asks** it. Knowledge names it as future hardening, off by default. Do not call it here so “the leftover flag becomes true.” See `recommendations/routes-ringcentral-webhook.md`.
+- This desk always **200**s a processing throw. Leftover Granot inbound **503**s a capture throw. Do not 503 this desk so “every inbound webhook matches leftover Granot.” See `recommendations/routes-ringcentral-webhook.md`.
 - Destination `NotFoundError` / `BadRequestError` / `IntegrationError` become **500** `reporting_internal_error`. Definition miss is in-file **404**. `serializeReportingRouteError` does not `instanceof AppError`. Do not map destination miss onto 404 so “one not-found owns the desk.” See `recommendations/routes-reporting.md`.
 - `ReportingError` echoes `error.message`. Unexpected errors are **500** `"Reporting request failed"`. Sibling leftover ingestion hides every message. Do not hide `ReportingError.message` so “this desk matches leftover ingestion.” See `recommendations/routes-reporting.md`.
 - The Google kill switch is only on destination writes and new runs. Preview / freeze / clone / archive-definition / cancel do not check it. Do not add it onto cancel so “cancel matches `/run`.” See `recommendations/routes-reporting.md`.
