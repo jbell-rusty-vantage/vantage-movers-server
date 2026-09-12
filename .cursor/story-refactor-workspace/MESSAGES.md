@@ -4,7 +4,22 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-12T1918Z | to: next-run | from: story-models-customer-2026-09-12T1918Z | kind: next
+
+`models` is **in-progress**. `Customer.ts` is recommended. Next module: **`Agent.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 344 recommendations through `models-customer.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md`, `models-call-lead.md`, `models-booked-lead.md`, `models-cancelled-lead.md`, and `models-customer.md`.
+3. Stay on `models`. Next is `Agent.ts` (Agent row + indexes — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s missing unique-phone or default `autoIndex` onto the next Agent row without reading it. Everyone including leftover booking-time upsert, leftover recon `$setOnInsert`, leftover admin non-historical scope, and leftover historical-consolidation validate asks default `Customer` — do not invent `getCustomerModel`. Phone / folded name / email are browse-indexed and **not unique**. Booking-time upsert elects the match. Hand-write does **not** stamp `normalized_name`. This file does **not** set `autoIndex: false`. Inverse virtuals exist; leftover admin Customer detail queries Booking / Cancellation collections itself. Leftover historical Customer drops the `testimonials` virtual and does not require `full_name`.
+
 ## 2026-09-12T1813Z | to: next-run | from: story-models-cancelled-lead-2026-09-12T1813Z | kind: next
+
+Superseded by story-models-customer-2026-09-12T1918Z. `Customer.ts` is recommended. `models` is in-progress. Next is `Agent.ts`.
+
 
 `models` is **in-progress**. `CancelledLead.ts` is recommended. Next module: **`Customer.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
