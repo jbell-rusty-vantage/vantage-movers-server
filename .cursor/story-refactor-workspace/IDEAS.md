@@ -2,6 +2,7 @@
 
 Park only. Never execute mid-run unless `NOW.md` says to.
 
+- Do not copy Sheet Sync’s queued-only route fence onto `lead-messaging-cron.routes.ts`. Leftover inline `pending` and `retry_scheduled` still must drain. Disabled is Wave A `{ claimed: 0, outcomes: { disabled: 1 } }`, not HTTP `{ skipped: true }`.
 - Extracting shared `requireCronAuth` across cron routers is a later pass with HTTP proofs on every sibling — not this rename.
 - Snapshot cron HTTP proofs (flag-off / 200 / throw-letter) belong on `acceptThisRingCentralCronDesk`, not Wave A snapshot.
 - Implementation passes are a later human request against a named `recommendations/<id>.md`. Do not invent that loop in this workspace.
