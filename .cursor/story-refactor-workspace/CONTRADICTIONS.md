@@ -4,6 +4,10 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Employee-Job rematch defaults **on** (`env !== "false"`). RingCentral Call Log / snapshot flags default **false**. Do not flip rematch off so “this desk matches Call Log dormant deploy.” See `recommendations/routes-booking-reconciliation-cron.md`.
+- A held rematch seat returns zeros with HTTP `{ skipped: false }`. Call Log maps `lease_held` to **200** skipped. Do not copy that map onto rematch so “every cron elects the same skip.” See `recommendations/routes-booking-reconciliation-cron.md`.
+- Rematch cron has no try/catch (unhandled Express). Next sheet-sync cron **500**s `error.message`. Call Log **500**s generic `"Call log sync failed"`. Do not add a catch so “one refuse owns every cron” without a paired HTTP proof. See `recommendations/routes-booking-reconciliation-cron.md`.
+- Host tables and operator `hit-vantage-api` omit `/api/cron/booking-reconciliation-rematch` and list the Owner desk. Handshake is `CRON_SECRET`. Do not remount the API secret so “the host table wins.” See `recommendations/routes-booking-reconciliation-cron.md`.
 - Call Log cron **500** is generic `"Call log sync failed"`. Analytics reconcile cron **500** echoes `error.message` and writes `ringcentral.analytics_reconcile.failed` with `notificationCandidate: true`. Do not sanitize the snapshot 500 so “one refuse owns both ticks” without a paired proof that Wave A completed still auto-resolves that `dedupeKey`. See `recommendations/routes-ringcentral-cron.md`.
 - A disabled Call Log tick never asks the sweep. `lease_held` is **200** skipped, never HTTP 500. Do not 500 overlap so “Vercel retries a held lease.” See `recommendations/routes-ringcentral-cron.md`.
 - `requireCronAuth` is copied across sibling cron routers. Reporting 503s a missing secret; this desk 500s. Do not extract shared middleware in a rename without a paired HTTP proof on every cron. See `recommendations/routes-ringcentral-cron.md`.
