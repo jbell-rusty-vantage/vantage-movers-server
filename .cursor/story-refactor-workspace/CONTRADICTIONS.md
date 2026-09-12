@@ -4,6 +4,10 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Call Log cron **500** is generic `"Call log sync failed"`. Analytics reconcile cron **500** echoes `error.message` and writes `ringcentral.analytics_reconcile.failed` with `notificationCandidate: true`. Do not sanitize the snapshot 500 so “one refuse owns both ticks” without a paired proof that Wave A completed still auto-resolves that `dedupeKey`. See `recommendations/routes-ringcentral-cron.md`.
+- A disabled Call Log tick never asks the sweep. `lease_held` is **200** skipped, never HTTP 500. Do not 500 overlap so “Vercel retries a held lease.” See `recommendations/routes-ringcentral-cron.md`.
+- `requireCronAuth` is copied across sibling cron routers. Reporting 503s a missing secret; this desk 500s. Do not extract shared middleware in a rename without a paired HTTP proof on every cron. See `recommendations/routes-ringcentral-cron.md`.
+- Host tables and operator `hit-vantage-api` omit `/api/cron/ringcentral-*`. `app.ts` mounts this desk before leftover `v1Routes`, so leftover `requireApiSecret` never runs. Handshake is `CRON_SECRET`. Do not remount the API secret so “the host table wins.” See `recommendations/routes-ringcentral-cron.md`.
 - Host unguarded table and operator `hit-vantage-api` omit `/api/webhooks/twilio/voice*`. `app.ts` mounts this desk before leftover `v1Routes`, so leftover `requireApiSecret` never runs. Do not remount the secret so “the host table wins.” See `recommendations/routes-twilio-voice.md`.
 - Leftover inbound unexpected-destination warn masks `To`. Leftover inbound letter `details` keep raw `from` / `to` / `forward_to`. Do not silently mask leftover letter details in a rename so “one mask owns every phone” without a paired letter proof. See `recommendations/routes-twilio-voice.md`.
 - Destination fence is inbound-only. Leftover `/status` and leftover `/completed` `To` is leftover RingCentral `forwardTo`, not leftover `TWILIO_FROM_NUMBER`. Do not 400 progress/completed so “one fence owns every POST.” See `recommendations/routes-twilio-voice.md`.
