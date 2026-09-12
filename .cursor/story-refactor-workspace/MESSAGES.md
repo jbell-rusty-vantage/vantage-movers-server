@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-12T2318Z | to: next-run | from: story-models-lead-source-label-mapping-2026-09-12T2318Z | kind: next
+
+`models` is **in-progress**. `LeadSourceLabelMapping.ts` is recommended. Next module: **`CplRate.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 348 recommendations through `models-lead-source-label-mapping.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-lead-source-label-mapping.md`.
+3. Stay on `models`. Next is `CplRate.ts` (legacy fourteen-slot CPL row — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s live-only unique, `active` default `true`, or leftover fold validator onto the next fourteen-slot CPL row without reading it. Leftover hang / leftover archive / leftover list / leftover collection-first ask, leftover health load, leftover projection list ask `getLeadSourceLabelMappingModel`. Leftover unique-index inspect and leftover document construct ask default `LeadSourceLabelMapping`. Leftover overview does **not** count this collection. Leftover historical-consolidation does **not** validate this collection. Named partial unique `{ namespace, normalized_label }` where `{ active: true }` is one live hung spelling per leftover namespace plus fold — archived rows may share that pair. Schema `active` defaults **true**. `normalized_label` must equal leftover `normalizeSourceLabel(label)` and is **not** stamped on validate. Destination fields are immutable after create; leftover correction is archive then hang. This file does **not** set `autoIndex: false`. There is no historical mapping file. Do not merge this leftover hung-spelling unique into leftover next `CplRate.ts` leftover unique leftover `label`.
+
 ## 2026-09-12T2220Z | to: next-run | from: story-models-lead-source-granularity-2026-09-12T2220Z | kind: next
+
+Superseded by story-models-lead-source-label-mapping-2026-09-12T2318Z. `LeadSourceLabelMapping.ts` is recommended. `models` is in-progress. Next is `CplRate.ts`.
 
 `models` is **in-progress**. `LeadSourceGranularity.ts` is recommended. Next module: **`LeadSourceLabelMapping.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
