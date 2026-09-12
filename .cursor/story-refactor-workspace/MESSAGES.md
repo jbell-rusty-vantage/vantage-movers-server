@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-12T1035Z | to: next-run | from: story-routes-notification-cron-2026-09-12T1035Z | kind: next
+
+`routes` is **in-progress**. `notification-cron.routes.ts` is recommended. Next module: **`best-relocation-ingestion-cron.routes.ts`**. Stay on `routes`. Do not open `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 335 recommendations through `routes-notification-cron.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `routes-v1.md`, `routes-extension-auth.md`, `routes-google-drive-oauth.md`, `routes-ringcentral-registry.md`, `routes-granot-lifecycle-admin.md`, `routes-job-number-timeline-admin.md`, `routes-conversations-admin.md`, `routes-extension-users-admin.md`, `routes-extension-granot-apply.md`, `routes-tariff-adjustments.md`, `routes-granot-automation.md`, `routes-ingestion.md`, `routes-reporting.md`, `routes-granot-webhook.md`, `routes-ringcentral-webhook.md`, `routes-ringcentral-webhook-local.md`, `routes-twilio-message-status.md`, `routes-twilio-voice.md`, `routes-ringcentral-cron.md`, `routes-booking-reconciliation-cron.md`, `routes-sheet-sync-cron.md`, `routes-lead-messaging-cron.md`, `routes-cpl-correction-cron.md`, and `routes-notification-cron.md`.
+3. Stay on `routes`. Next is `best-relocation-ingestion-cron.routes.ts` (Best Relocation ingest heartbeat after `CRON_SECRET` — one module this pass). Skip if it is only a thin facade after you read it. Do not write a whole-folder recommendation. Do not jump past remaining route files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `daily-operations-admin.routes.ts` — do not invent those rows.
+7. Do not copy Sheet Sync’s queued-only fence onto this next desk without reading it. Do not split the notification cron’s one `try` so “retry still runs after a card throw.” `notification.digest_cron.failed` starts with `notification.`, so leftover policy stays quiet even though `notificationCandidate` is true. HTTP disabled letter is still 200 with `digest.skipped`, not `{ skipped: true }`. That 500 may echo `error.message`. This desk writes `cron.auth.failed`; already-recommended CPL / Lead Messaging / Sheet Sync crons do not.
+
 ## 2026-09-12T0924Z | to: next-run | from: story-routes-cpl-correction-cron-2026-09-12T0924Z | kind: next
+
+Superseded by story-routes-notification-cron-2026-09-12T1035Z. `notification-cron.routes.ts` is recommended. `routes` is in-progress. Next is `best-relocation-ingestion-cron.routes.ts`.
 
 `routes` is **in-progress**. `cpl-correction-cron.routes.ts` is recommended. Next module: **`notification-cron.routes.ts`**. Stay on `routes`. Do not open `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
