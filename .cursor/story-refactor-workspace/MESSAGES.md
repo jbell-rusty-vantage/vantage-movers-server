@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-12T2018Z | to: next-run | from: story-models-agent-2026-09-12T2018Z | kind: next
+
+`models` is **in-progress**. `Agent.ts` is recommended. Next module: **`LeadSourceCompany.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 345 recommendations through `models-agent.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md`, `models-call-lead.md`, `models-booked-lead.md`, `models-cancelled-lead.md`, `models-customer.md`, and `models-agent.md`.
+3. Stay on `models`. Next is `LeadSourceCompany.ts` (Source Company row — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s unique folded name or dual Granot-username uniques onto the next Source Company row without reading it. Everyone including leftover Registry write, leftover identity `$or`, leftover Owner active-id load, leftover admin non-historical scope, and leftover historical-consolidation validate asks default `Agent` — do not invent `getAgentModel`. Folded name is **unique**. Aliases are browse-indexed and not unique on this schema; leftover Registry assert also covers aliases. Nested `granot_identity.username` and flat `granot_crm_username` are both unique-sparse; leftover receiver / Registry resolve query **only** the nested field; leftover identity `$or`s both. Inverse virtuals exist; leftover preview counts Form / Call / Booking collections itself. `created_from` defaults to `"booked_lead"`. This file does **not** set `autoIndex: false`. Leftover historical Agent drops uniqueness, Granot fields, and virtuals.
+
 ## 2026-09-12T1918Z | to: next-run | from: story-models-customer-2026-09-12T1918Z | kind: next
+
+Superseded by story-models-agent-2026-09-12T2018Z. `Agent.ts` is recommended. `models` is in-progress. Next is `LeadSourceCompany.ts`.
 
 `models` is **in-progress**. `Customer.ts` is recommended. Next module: **`Agent.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
