@@ -4,6 +4,10 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- This desk **404**s an unknown SID (`"Message not recorded yet"`) so Twilio retries the persist-SID race. Leftover RingCentral inbound and leftover local-file always **200**. Leftover Granot inbound **202**s after commit and **503**s a capture throw. Do not 204 a miss so “this desk matches leftover RingCentral always-200.” See `recommendations/routes-twilio-message-status.md`.
+- Leftover apply `true` (SID-mismatch history / unknown status / no rank move) still **204**s. Do not 409 an ignored callback so Twilio retry-storms a terminal row. See `recommendations/routes-twilio-message-status.md`.
+- Host unguarded table and operator `hit-vantage-api` omit `/api/webhooks/twilio/message-status`. `app.ts` mounts this desk before leftover `v1Routes`, so leftover `requireApiSecret` never runs. Do not remount the secret so “the host table wins.” See `recommendations/routes-twilio-message-status.md`.
+- `stringParams` is a copy of leftover next voice. Do not extract a shared helper in this rename without a paired HTTP proof on both desks. See `recommendations/routes-twilio-message-status.md`.
 - This desk always **200**s a JSONL write throw (`storedRawEvent: false`). Leftover Granot inbound **503**s a capture throw. Do not 503 this desk so “every inbound webhook matches leftover Granot.” See `recommendations/routes-ringcentral-webhook-local.md`.
 - File comment and leftover skipped append name `pnpm ringcentral:webhook:create:local`. `package.json` has no `ringcentral:*` scripts. Leftover `ringcentral-integration.mdc` says there are none. Knowledge Debug table names `pnpm ringcentral:webhook:monitor` and never names `/api/webhooks/ringcentral-local`. Do not invent a `package.json` script so “the comment becomes true.” See `recommendations/routes-ringcentral-webhook-local.md`.
 - `getValidationToken` / `headersToRecord` are a copy of leftover live webhook. Do not extract a shared helper in this rename without a paired HTTP proof on both desks. See `recommendations/routes-ringcentral-webhook-local.md`.
