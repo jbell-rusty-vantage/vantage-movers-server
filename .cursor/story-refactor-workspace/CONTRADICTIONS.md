@@ -4,6 +4,9 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Knowledge `customer.md` says virtuals `booked_leads` / `cancelled_leads` “populate from admin detail.” Leftover `adminBrowse.appendDetailRelations` `find`s `booked_leads` / `cancelled_leads` by `{ customer: id }` and never populates those virtuals. Do not change leftover admin so “the knowledge sentence becomes true.” See `recommendations/models-customer.md`.
+- Live `Customer.ts` does **not** set `autoIndex: false`. Form / Call / Booking / Cancellation do. Do not silently set `autoIndex: false` so “Customer matches Booking” without a reviewed index migration. See `recommendations/models-customer.md`.
+- Live `Customer.ts` requires `full_name` and declares a `testimonials` virtual. Leftover `historical/Customer.ts` leaves `full_name` optional and drops that virtual. Do not merge the schemas so “one file owns live and historical.” See `recommendations/models-customer.md`.
 - Granot lifecycle cron HTTP **200** omits Wave A `reason: "processing_disabled"` and `trigger`. Processing-off is still `{ skipped: true }` plus a completed letter. Do not add those fields so “HTTP matches the summary type” without a paired body proof. See `recommendations/routes-granot-lifecycle-cron.md`.
 - Granot lifecycle cron factory injects `connect` / `drain` and never `emit`. An `emitDrainRunEvent` throw after a finished scan **500**s a zeroed failed letter. The leftover consumer rethrows after its failed letter. Do not swallow the emit so “HTTP stays 200 after a finished scan” without a product decision. See `recommendations/routes-granot-lifecycle-cron.md`.
 - Granot lifecycle missing `CRON_SECRET` is **500** `"CRON_SECRET is not set"`. Already-recommended Reporting **503**s `"CRON_SECRET is not configured."`. Do not change this to 503 so “every cron matches Reporting.” See `recommendations/routes-granot-lifecycle-cron.md`.
