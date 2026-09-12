@@ -4,6 +4,10 @@ Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open
 
+- Sheet Sync cron **200** `{ skipped: false, summary }` even when `summary.skipped === true` (held `sheet-sync:drain`) or `summary.ok === false` (handled run failure). Call Log maps `lease_held` to **200** skipped. Do not copy that map onto this desk, and do not 500 a held seat or a handled failure so “Vercel retries the safety net.” See `recommendations/routes-sheet-sync-cron.md`.
+- Sheet Sync cron refuses unless `SHEET_SYNC_MODE=queued`. Wave A drain / the queue consumer / Admin retry do **not** check mode. Do not add the mode gate inside `runSheetSyncDrain`, and do not add it onto Admin retry so “every start matches cron.” See `recommendations/routes-sheet-sync-cron.md`.
+- Sheet Sync cron **500** echoes `error.message` on an unexpected throw. Call Log **500**s generic `"Call log sync failed"`. Rematch has no try/catch. Do not sanitize this 500 so “one refuse owns every cron” without a paired HTTP proof. See `recommendations/routes-sheet-sync-cron.md`.
+- Host tables and operator `hit-vantage-api` omit `/api/cron/sheet-sync-drain` and list Admin `POST .../sheet-sync/retry`. Handshake is `CRON_SECRET`. Do not remount the API secret so “the host table wins.” See `recommendations/routes-sheet-sync-cron.md`.
 - Employee-Job rematch defaults **on** (`env !== "false"`). RingCentral Call Log / snapshot flags default **false**. Do not flip rematch off so “this desk matches Call Log dormant deploy.” See `recommendations/routes-booking-reconciliation-cron.md`.
 - A held rematch seat returns zeros with HTTP `{ skipped: false }`. Call Log maps `lease_held` to **200** skipped. Do not copy that map onto rematch so “every cron elects the same skip.” See `recommendations/routes-booking-reconciliation-cron.md`.
 - Rematch cron has no try/catch (unhandled Express). Next sheet-sync cron **500**s `error.message`. Call Log **500**s generic `"Call log sync failed"`. Do not add a catch so “one refuse owns every cron” without a paired HTTP proof. See `recommendations/routes-booking-reconciliation-cron.md`.
