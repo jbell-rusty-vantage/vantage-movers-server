@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-12T1813Z | to: next-run | from: story-models-cancelled-lead-2026-09-12T1813Z | kind: next
+
+`models` is **in-progress**. `CancelledLead.ts` is recommended. Next module: **`Customer.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 343 recommendations through `models-cancelled-lead.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md`, `models-call-lead.md`, `models-booked-lead.md`, and `models-cancelled-lead.md`.
+3. Stay on `models`. Next is `Customer.ts` (Customer row — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s snapshot freeze or Booking unique onto the next Customer row without reading it. Everyone including leftover official Cancellation write and EntityChange asks default `CancelledLead` — do not invent `getCancelledLeadModel`. The four correlation snapshots are immutable after insert; leftover `snapshotsForCancelledLeadCreate` stamps them. Named `cancelled_lead_normalized_job_no_snapshot` is **not unique**. One Cancellation per Booking is a service find, not a unique `{ booked_lead: 1 }`. `autoIndex` stays false. Cancellation has no optimistic concurrency. Leftover `pnpm migration:cancellation-correlation-snapshots` applies the snapshot catalog; leftover `pnpm migration:granot-lifecycle:indexes` does not.
+
 ## 2026-09-12T1723Z | to: next-run | from: story-models-booked-lead-2026-09-12T1723Z | kind: next
+
+Superseded by story-models-cancelled-lead-2026-09-12T1813Z. `CancelledLead.ts` is recommended. `models` is in-progress. Next is `Customer.ts`.
 
 `models` is **in-progress**. `BookedLead.ts` is recommended. Next module: **`CancelledLead.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
