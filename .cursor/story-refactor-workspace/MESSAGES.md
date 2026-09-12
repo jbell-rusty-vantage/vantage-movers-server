@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-12T1723Z | to: next-run | from: story-models-booked-lead-2026-09-12T1723Z | kind: next
+
+`models` is **in-progress**. `BookedLead.ts` is recommended. Next module: **`CancelledLead.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 342 recommendations through `models-booked-lead.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md`, `models-call-lead.md`, and `models-booked-lead.md`.
+3. Stay on `models`. Next is `CancelledLead.ts` (Cancellation row + indexes — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s unique Job onto Form / Call, and do not invent `getBookedLeadModel` on the next Cancellation row without reading it. Booking unique partial `{ normalized_job_no: 1 }` is one official Booking per folded Job — not a unique Lead Job. Lead-attached rows require `lead_ref` + `lead_model` unless Referral or Leadless. Employee unique is `employee_submission_id_unique` (employee origin + string `submission_id` only) and is not in the lifecycle unique array. Everyone including Granot identity and EntityChange asks default `BookedLead`. `autoIndex` stays false.
+
 ## 2026-09-12T1620Z | to: next-run | from: story-models-call-lead-2026-09-12T1620Z | kind: next
+
+Superseded by story-models-booked-lead-2026-09-12T1723Z. `BookedLead.ts` is recommended. `models` is in-progress. Next is `CancelledLead.ts`.
 
 `models` is **in-progress**. `CallLead.ts` is recommended. Next module: **`BookedLead.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
