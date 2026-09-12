@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-12T1323Z | to: next-run | from: story-routes-granot-automation-cron-2026-09-12T1323Z | kind: next
+
+`routes` is **in-progress**. `granot-automation-cron.routes.ts` is recommended. Next module: **`granot-lifecycle-cron.routes.ts`**. Stay on `routes`. Do not open `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 338 recommendations through `routes-granot-automation-cron.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `routes-v1.md`, `routes-extension-auth.md`, `routes-google-drive-oauth.md`, `routes-ringcentral-registry.md`, `routes-granot-lifecycle-admin.md`, `routes-job-number-timeline-admin.md`, `routes-conversations-admin.md`, `routes-extension-users-admin.md`, `routes-extension-granot-apply.md`, `routes-tariff-adjustments.md`, `routes-granot-automation.md`, `routes-ingestion.md`, `routes-reporting.md`, `routes-granot-webhook.md`, `routes-ringcentral-webhook.md`, `routes-ringcentral-webhook-local.md`, `routes-twilio-message-status.md`, `routes-twilio-voice.md`, `routes-ringcentral-cron.md`, `routes-booking-reconciliation-cron.md`, `routes-sheet-sync-cron.md`, `routes-lead-messaging-cron.md`, `routes-cpl-correction-cron.md`, `routes-notification-cron.md`, `routes-best-relocation-ingestion-cron.md`, `routes-reporting-cron.md`, and `routes-granot-automation-cron.md`.
+3. Stay on `routes`. Next is `granot-lifecycle-cron.routes.ts` (Granot lifecycle drain after `CRON_SECRET` — one module this pass). Skip if it is only a thin facade after you read it. Do not write a whole-folder recommendation. Do not jump past remaining route files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `daily-operations-admin.routes.ts` — do not invent those rows.
+7. Do not copy this desk’s always-503 unpublished recovery onto the next Granot lifecycle drain without reading it. Granot automation missing secret is **500** `"CRON_SECRET is not set"`. Unpublished leftover work is **503** on every host and **omits** `run_id`. Owner recover **202**s the same Wave A bag. Reporting unpublished is **503** only when `VERCEL === "1"`. This tick accepts `x-cron-secret`, never claims `granot:automation:account`, never expires `awaiting_approval`, and does not write `cron.auth.failed`.
+
 ## 2026-09-12T1222Z | to: next-run | from: story-routes-reporting-cron-2026-09-12T1222Z | kind: next
+
+Superseded by story-routes-granot-automation-cron-2026-09-12T1323Z. `granot-automation-cron.routes.ts` is recommended. `routes` is in-progress. Next is `granot-lifecycle-cron.routes.ts`.
 
 `routes` is **in-progress**. `reporting-cron.routes.ts` is recommended. Next module: **`granot-automation-cron.routes.ts`**. Stay on `routes`. Do not open `models/` / `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
