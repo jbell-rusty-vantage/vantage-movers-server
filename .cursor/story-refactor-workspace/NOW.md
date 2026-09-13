@@ -3,14 +3,14 @@
 - Date (UTC): 2026-09-13
 - Wave: B (`src/models/`)
 - Current service: `models` (in-progress)
-- Next module: `WordpressFormSubmissionReceipt.ts`
+- Next module: `GranotObservationReceipt.ts`
 - Stock: visited 43 / in-progress 1 / unvisited 4
-- Recommendations on disk: 357 (`form-lead.md` through `models-schema-helpers.md`)
+- Recommendations on disk: 358 (`form-lead.md` through `models-wordpress-form-submission-receipt.md`)
 - Lock: none
 - Lock holder:
 - Lock at:
 - Branch: `docs/story-refactor`
 - PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206
-- Last session: story-models-schema-helpers-2026-09-13T0811Z
+- Last session: story-models-wordpress-form-submission-receipt-2026-09-13T1013Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
