@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T2312Z | to: next-run | from: story-models-granot-crm-source-semantics-2026-09-13T2312Z | kind: next
+
+`models` is **in-progress**. `granotCrmSourceSemantics.ts` is recommended. Next module: **`GranotCrmCsvIngestion.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 371 recommendations through `models-granot-crm-source-semantics.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-granot-crm-source-semantics.md`.
+3. Stay on `models`. Next is `GranotCrmCsvIngestion.ts` (CSV upload evidence on `granot_crm_csv_ingestions` — trigger extension/script/manual, status uploaded/skipped_unchanged/failed, S3 keys + sha256 — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this judge’s without-refs / with-refs seam, dual `GRANOT_LIFECYCLE_DISPOSITIONS` vs already-recommended `granotLifecycleSchemas.ts`, dual `GRANOT_LIFECYCLE_LEAD_MODELS` vs `GRANOT_LEAD_MODELS`, health `lifecycle_enabled: false` plus string-includes, inactive-company message vs `lifecycle_enabled && !active`, type-only `sourcePolicy.ts` import, or `GranotCrmSource.test.ts` leftover-ref proofs onto leftover next `GranotCrmCsvIngestion.ts` without reading it. Leftover Owner persist leftover-asks leftover this leftover judge **with refs**. Leftover row leftover-asks it **without refs**. Leftover `sourcePolicy.ts` leftover-does leftover-not leftover-call leftover the leftover function. Do not merge this leftover judge into leftover already-recommended leftover `GranotCrmSource.ts` so “one file owns the card and the judge.” Do not apply the folded-label unique from a CSV-ingestion pass. Leftover next `GranotCrmCsvIngestion.ts` is the CSV upload evidence row — collection `granot_crm_csv_ingestions` — read it before recommending.
+
 ## 2026-09-13T2212Z | to: next-run | from: story-models-granot-crm-source-2026-09-13T2212Z | kind: next
+
+Superseded by story-models-granot-crm-source-semantics-2026-09-13T2312Z. `granotCrmSourceSemantics.ts` is recommended. `models` is in-progress. Next is `GranotCrmCsvIngestion.ts`.
 
 `models` is **in-progress**. `GranotCrmSource.ts` is recommended. Next module: **`granotCrmSourceSemantics.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
