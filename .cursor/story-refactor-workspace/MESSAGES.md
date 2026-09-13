@@ -4,6 +4,18 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T0512Z | to: next-run | from: story-models-moving-carrier-2026-09-13T0512Z | kind: next
+
+`models` is **in-progress**. `MovingCarrier.ts` is recommended. Next module: **`ExtensionUser.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 354 recommendations through `models-moving-carrier.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-moving-carrier.md`.
+3. Stay on `models`. Next is `ExtensionUser.ts` (default-only unique email login row — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s field-unique DOT / MC / partial Granot Carrier Code or default-only `created_from: "admin"` onto leftover next `ExtensionUser.ts` without reading it. Leftover desk write / leftover Tariff code find / leftover seed load / leftover seed `--apply` stamp ask default `MovingCarrier`. There is no `getMovingCarrierModel`. Unique is DOT alone and MC alone plus a weaker compound `{ dot_number, mc_number }` plus partial unique non-empty `granot_carrier_code`. `normalized_name` is indexed not unique. Booking never stores this id. Leftover Tariff leftover-finds `{ granot_carrier_code }` with no `active` filter. Leftover seed leftover-matches DOT only. Leftover overview / leftover health / leftover historical-consolidation / leftover Registry do **not** ask this collection. This file does **not** set `autoIndex: false`. There is no `historical/MovingCarrier.ts`. Nobody leftover-inspects leftover `MovingCarrier.schema.indexes()`. Do not unique-index leftover folded name so leftover carrier matches leftover Merchant. Do not drop leftover field-level DOT or MC uniques so leftover “schema identity matches CSV.” Do not invent leftover `getMovingCarrierModel` so leftover “carrier matches Form.” Do not delete the default `MovingCarrier` export so “carrier matches evidence.” Leftover next `ExtensionUser.ts` unique is email — read it before recommending.
+
 ## 2026-09-13T0412Z | to: next-run | from: story-models-merchant-2026-09-13T0412Z | kind: next
 
 `models` is **in-progress**. `Merchant.ts` is recommended. Next module: **`MovingCarrier.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
