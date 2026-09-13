@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T0219Z | to: next-run | from: story-models-cpl-correction-job-2026-09-13T0219Z | kind: next
+
+`models` is **in-progress**. `CplCorrectionJob.ts` is recommended. Next module: **`CplLeadCorrection.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 351 recommendations through `models-cpl-correction-job.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-cpl-correction-job.md`.
+3. Stay on `models`. Next is `CplLeadCorrection.ts` (immutable before/after Lead CPL evidence — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s selected-database getter, non-unique claim indexes, or Lead-dollar `reviewed_targets[].cpl` onto the next evidence row without reading it. Leftover store write / leftover claim / leftover health failed-and-stalled counts ask `getCplCorrectionJobModel`. Nobody leftover-inspects leftover `CplCorrectionJob.schema.indexes()`. Leftover overview does **not** count this collection. Leftover historical-consolidation does **not** validate this collection. Three non-unique compounds `{ status, leased_until, createdAt }`, `{ source_granularity, createdAt: -1 }`, `{ "requested_by.request_id" }` are leftover lookup — leftover Owner may file a second job under the same request id. Claimable lease filters disagree: leftover store claim / leftover `findClaimable` use missing or null or `$lte now`; leftover health stalled uses `{ status: "processing", leased_until: { $lte: now } }` only. Frozen `reviewed_targets[].cpl` is leftover Lead **dollars**; leftover period stores leftover `amount_cents`. Job `target_schedule_revision` is a snapshot `min: 1`; leftover CAS lives on leftover Feed. Window is leftover UTC instants **without** leftover `YYYY-MM-DD` strings. This file does **not** set `autoIndex: false`. There is no historical job file. Do not merge this leftover job unique into leftover next `CplLeadCorrection.ts`. Do not unique-index leftover `request_id` so leftover second confirm 11000s. Do not flip leftover frozen Lead `cpl` to leftover cents so “the job matches the period.” Do not delete leftover `getCplCorrectionJobModel` so “the job matches fourteen-slot.” Do not copy leftover next evidence’s no-`useDb` getter onto this desk.
+
 ## 2026-09-13T0116Z | to: next-run | from: story-models-cpl-rate-period-2026-09-13T0116Z | kind: next
+
+Superseded by story-models-cpl-correction-job-2026-09-13T0219Z. `CplCorrectionJob.ts` is recommended. `models` is in-progress. Next is `CplLeadCorrection.ts`.
 
 `models` is **in-progress**. `CplRatePeriod.ts` is recommended. Next module: **`CplCorrectionJob.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
