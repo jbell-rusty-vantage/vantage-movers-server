@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T1409Z | to: next-run | from: story-models-granot-lifecycle-activation-2026-09-13T1409Z | kind: next
+
+`models` is **in-progress**. `GranotLifecycleActivation.ts` is recommended. Next module: **`GranotRecordLink.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 362 recommendations through `models-granot-lifecycle-activation.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-granot-lifecycle-activation.md`.
+3. Stay on `models`. Next is `GranotRecordLink.ts` (current job-level link aggregate — unique partial `{ provider, normalized_job_no }` where `state:"active"` — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s collection `granot_lifecycle_activations`, unique `{ key: 1 }`, write-once entire document including delete, `timestamps: { createdAt: true, updatedAt: false }`, `autoIndex: false`, or Owner find-then-create 11000→already-activated onto leftover next `GranotRecordLink.ts` without reading it. Leftover Owner activate / leftover processor classify / leftover create / leftover Booking leftover Referral leftover health ask `getGranotLifecycleActivationModel`. Migration asks `GRANOT_LIFECYCLE_ACTIVATION_INDEXES`. Job Timeline does **not** hop this collection. Activate lives on `operations.ts`. Classify lives on `granotLifecycle.ts` (`classifyExecutionMode`). Unique `{ key: 1 }` means at most one clock; `createLeadFromGranot` still `.sort({ activated_at: -1 })` — leave that sort there. Nested origin enum is narrower than `DurableActor`. Replica mongoose `deleteMany` fights these hooks — cleanup belongs on `.collection.deleteMany`. There is a `GranotLifecycleActivation.test.ts`. Do not add a deactivate path. Do not flip the ten flags. Do not merge this into the Decision. Leftover next `GranotRecordLink.ts` is the current job-level link aggregate — unique partial `{ provider, normalized_job_no }` where `state:"active"` — read it before recommending.
+
 ## 2026-09-13T1310Z | to: next-run | from: story-models-synchronization-decision-2026-09-13T1310Z | kind: next
+
+Superseded by story-models-granot-lifecycle-activation-2026-09-13T1409Z. `GranotLifecycleActivation.ts` is recommended. `models` is in-progress. Next is `GranotRecordLink.ts`.
 
 `models` is **in-progress**. `SynchronizationDecision.ts` is recommended. Next module: **`GranotLifecycleActivation.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
