@@ -4,6 +4,18 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T0316Z | to: next-run | from: story-models-cpl-lead-correction-2026-09-13T0316Z | kind: next
+
+`models` is **in-progress**. `CplLeadCorrection.ts` is recommended. Next module: **`Merchant.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 352 recommendations through `models-cpl-lead-correction.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-cpl-lead-correction.md`.
+3. Stay on `models`. Next is `Merchant.ts` (default-only unique `normalized_name` catalog row — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s unique `{ job_id, lead_model, lead_id }` or no-`useDb` getter onto leftover next `Merchant.ts` without reading it. Leftover store append asks `getCplLeadCorrectionModel` after Form / Call CAS. There is no default `CplLeadCorrection` export. Unique is job-plus-Lead so resume cannot append a second receipt; history `{ lead_model, lead_id, corrected_at: -1 }` is not unique because Owner may file a second job against the same Lead. Evidence `cpl` is Lead dollars, not period `amount_cents`. Snapshot has no `duplicate`. This file does **not** set `autoIndex: false`. Nobody leftover-finds `cpl_lead_corrections` after append. Leftover overview / leftover historical-consolidation do **not** ask this collection. There is no historical evidence file. Do not unique-index Lead alone so a second job 11000s. Do not drop uniqueness on job-plus-Lead so retries append a second receipt. Do not flip evidence `cpl` to cents so “evidence matches the period.” Do not add `useDb` so “evidence matches the job.” Do not invent a default `CplLeadCorrection` export so “evidence matches the job.” Leftover next `Merchant.ts` is default-only unique `normalized_name` plus a non-unique `name_aliases` index — read it before recommending.
+
 ## 2026-09-13T0219Z | to: next-run | from: story-models-cpl-correction-job-2026-09-13T0219Z | kind: next
 
 `models` is **in-progress**. `CplCorrectionJob.ts` is recommended. Next module: **`CplLeadCorrection.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
