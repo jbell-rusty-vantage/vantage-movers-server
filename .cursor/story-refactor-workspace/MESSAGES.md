@@ -4,7 +4,22 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T0713Z | to: next-run | from: story-models-testimonial-2026-09-13T0713Z | kind: next
+
+`models` is **in-progress**. `Testimonial.ts` is recommended. Next module: **`schemaHelpers.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 356 recommendations through `models-testimonial.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-testimonial.md`.
+3. Stay on `models`. Next is `schemaHelpers.ts` (Lead `sourceCompanyField` / `localField` / `sheetSyncSchema` catalog — one module this pass). Skip if it is only a thin field dump after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s unique `{ source, content_fingerprint }` or optional unindexed `source_company` onto leftover next `schemaHelpers.ts` without reading it. Leftover Main Site find / leftover owner populate find / leftover owner detail / leftover reviewer-name distinct ask default `Testimonial`. There is no `getTestimonialModel`. Unique is source plus content fingerprint. `normalized_reviewer_name` is indexed not unique. `featured` is filterable and not indexed. `published` defaults `true`; leftover list omitting `published` includes unpublished. Optional `source_company` is **not** leftover `sourceCompanyField`. Leftover overview / leftover health / leftover historical-consolidation / leftover Registry do **not** ask this collection. This file does **not** set `autoIndex: false`. There is no `historical/Testimonial.ts`. Knowledge names leftover ops ingest; that script is **absent** in this checkout. Do not stamp leftover fingerprint or leftover folded reviewer on validate. Do not invent leftover `getTestimonialModel` so leftover “review matches Form.” Do not delete the default `Testimonial` export so “review matches evidence.” Do not copy leftover `sourceCompanyField` onto this optional `source_company`. Leftover next `schemaHelpers.ts` leftover-exports required Lead `source_company` default `"not_provided"` plus leftover `sheetSyncSchema` — read it before recommending.
+
 ## 2026-09-13T0608Z | to: next-run | from: story-models-extension-user-2026-09-13T0608Z | kind: next
+
+Superseded by story-models-testimonial-2026-09-13T0713Z. `Testimonial.ts` is recommended. `models` is in-progress. Next is `schemaHelpers.ts`.
+
 
 `models` is **in-progress**. `ExtensionUser.ts` is recommended. Next module: **`Testimonial.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
