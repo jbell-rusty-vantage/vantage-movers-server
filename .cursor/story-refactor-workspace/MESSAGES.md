@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T1310Z | to: next-run | from: story-models-synchronization-decision-2026-09-13T1310Z | kind: next
+
+`models` is **in-progress**. `SynchronizationDecision.ts` is recommended. Next module: **`GranotLifecycleActivation.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 361 recommendations through `models-synchronization-decision.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-synchronization-decision.md`.
+3. Stay on `models`. Next is `GranotLifecycleActivation.ts` (write-once unique `{ key: 1 }` activation cutover — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s collection `synchronization_decisions`, unique `{ observation_id, attempt }`, write-once entire document, `timestamps: false`, `autoIndex: false`, or processor findOne-then-compare replay onto leftover next `GranotLifecycleActivation.ts` without reading it. Leftover persist / leftover drain poll / leftover Owner Referral list / leftover Booking leftover case leftover insert ask `getSynchronizationDecisionModel`. Migration asks `SYNCHRONIZATION_DECISION_INDEXES`. Job Timeline hops `synchronization_decisions` by Observation `_id` `$in` without importing this model. Processor replay is `findOne({ observation_id, attempt })` then `decisionMeaningEquals` / `DecisionIntegrityError` — not Observation find-then-create. 11000 on `persistDecisionAndLink` is the Record Link unique, not this Decision unique. Referral may persist `source_policy` without `source_scope`. Contact never enters the Decision. Processor / sync / create / booking / release / discrepancy stamp `processing.latest_decision_id` on the envelope through `.collection.updateOne` (hooks do not run). There is a `SynchronizationDecision.test.ts`. Do not require `source_scope`. Do not add `processing.*`. Do not merge this into the statement. Leftover next `GranotLifecycleActivation.ts` is write-once unique `{ key: 1 }` — read it before recommending.
+
 ## 2026-09-13T1208Z | to: next-run | from: story-models-granot-observation-2026-09-13T1208Z | kind: next
+
+Superseded by story-models-synchronization-decision-2026-09-13T1310Z. `SynchronizationDecision.ts` is recommended. `models` is in-progress. Next is `GranotLifecycleActivation.ts`.
 
 `models` is **in-progress**. `GranotObservation.ts` is recommended. Next module: **`SynchronizationDecision.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
