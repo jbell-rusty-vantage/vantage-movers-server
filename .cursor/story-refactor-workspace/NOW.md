@@ -1,16 +1,16 @@
 # NOW
 
-- Date (UTC): 2026-09-12
+- Date (UTC): 2026-09-13
 - Wave: B (`src/models/`)
 - Current service: `models` (in-progress)
-- Next module: `CplRate.ts`
+- Next module: `CplRatePeriod.ts`
 - Stock: visited 43 / in-progress 1 / unvisited 4
-- Recommendations on disk: 348 (`form-lead.md` through `models-lead-source-label-mapping.md`)
+- Recommendations on disk: 349 (`form-lead.md` through `models-cpl-rate.md`)
 - Lock: none
 - Lock holder:
 - Lock at:
 - Branch: `docs/story-refactor`
 - PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206
-- Last session: story-models-lead-source-label-mapping-2026-09-12T2318Z
+- Last session: story-models-cpl-rate-2026-09-13T0025Z
 
 Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.

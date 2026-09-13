@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T0025Z | to: next-run | from: story-models-cpl-rate-2026-09-13T0025Z | kind: next
+
+`models` is **in-progress**. `CplRate.ts` is recommended. Next module: **`CplRatePeriod.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 349 recommendations through `models-cpl-rate.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-cpl-rate.md`.
+3. Stay on `models`. Next is `CplRatePeriod.ts` (writable live CPL period row — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s default-only connection, dollar `cpl`, unique `label`, or optional-`local` compound unique onto the next live period row without reading it. Leftover seed / leftover slot read / leftover admin fallback list, leftover inventory find, leftover M4 snapshot find ask default `CplRate`. There is **no** `getCplRateModel`. Leftover overview does **not** count this collection. Leftover health **asks** leftover next `getCplRatePeriodModel` and leftover telemetry names path `legacy_cpl_rates`. Leftover historical-consolidation does **not** validate this collection. Field unique `{ label: 1 }` is the leftover seed key. Compound unique `{ source_company, lead_type, local }` is the leftover slot identity — Mongo treats missing `local` as one null; only Best Relocation forms set `local`. `source_company` is a **string slug**, not ObjectId. `cpl` is leftover **dollars** (`min: 0`, not integer-validated). File comment says “Owner-editable”; leftover service only seeds / lists / reads. This file does **not** set `autoIndex: false`. There is no historical fourteen-slot file. Do not merge this leftover dollar unique into leftover next `CplRatePeriod.ts` leftover `amount_cents`.
+
 ## 2026-09-12T2318Z | to: next-run | from: story-models-lead-source-label-mapping-2026-09-12T2318Z | kind: next
+
+Superseded by story-models-cpl-rate-2026-09-13T0025Z. `CplRate.ts` is recommended. `models` is in-progress. Next is `CplRatePeriod.ts`.
 
 `models` is **in-progress**. `LeadSourceLabelMapping.ts` is recommended. Next module: **`CplRate.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
