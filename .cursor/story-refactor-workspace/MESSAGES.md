@@ -4,7 +4,22 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T0116Z | to: next-run | from: story-models-cpl-rate-period-2026-09-13T0116Z | kind: next
+
+`models` is **in-progress**. `CplRatePeriod.ts` is recommended. Next module: **`CplCorrectionJob.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 350 recommendations through `models-cpl-rate-period.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-cpl-rate-period.md`.
+3. Stay on `models`. Next is `CplCorrectionJob.ts` (Owner prior-Lead rewrite job — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s getter, integer `amount_cents`, non-unique lookup indexes, or dual live-period filters onto the next correction-job row without reading it. Leftover schedule write / leftover covering find, leftover health load, leftover projection, leftover activate load, leftover M4, leftover Paid Overflow count ask `getCplRatePeriodModel`. Leftover `schema.indexes()` inspect asks default `CplRatePeriod`. Leftover overview does **not** count this collection. Leftover historical-consolidation does **not** validate this collection. Three non-unique compounds `{ source_granularity, effective_from }`, `{ source_granularity, effective_until }`, `{ source_granularity, archived_at }` are leftover lookup — leftover archive-then-insert may share `effective_from`. Live-period filters disagree: leftover schedule / leftover M4 use `{ archived_at: null }`; leftover health / leftover projection / leftover activate / leftover Paid Overflow use `{ archived_at: { $exists: false } }`. `amount_cents` is leftover integer cents (`Number.isSafeInteger`, `min: 0`). Period `schedule_revision` is a snapshot `min: 1`; leftover CAS lives on leftover Feed. `source_granularity` is a Feed ObjectId. This file does **not** set `autoIndex: false`. There is no historical period file. Do not merge this leftover cents unique into leftover next `CplCorrectionJob.ts`. Do not unique-index Feed plus start so leftover archive-then-insert breaks. Do not flip cents to dollars so “the period matches the slot.”
+
 ## 2026-09-13T0025Z | to: next-run | from: story-models-cpl-rate-2026-09-13T0025Z | kind: next
+
+Superseded by story-models-cpl-rate-period-2026-09-13T0116Z. `CplRatePeriod.ts` is recommended. `models` is in-progress. Next is `CplCorrectionJob.ts`.
+
 
 `models` is **in-progress**. `CplRate.ts` is recommended. Next module: **`CplRatePeriod.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
