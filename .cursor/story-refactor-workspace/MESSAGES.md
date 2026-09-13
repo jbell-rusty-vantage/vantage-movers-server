@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T1817Z | to: next-run | from: story-models-granot-booking-discrepancy-2026-09-13T1817Z | kind: next
+
+`models` is **in-progress**. `GranotBookingDiscrepancy.ts` is recommended. Next module: **`GranotReleaseDiscrepancy.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 366 recommendations through `models-granot-booking-discrepancy.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-granot-booking-discrepancy.md`.
+3. Stay on `models`. Next is `GranotReleaseDiscrepancy.ts` (identity-conflict Owner work for Release evidence — four `release_*` reasons; collection `granot_release_discrepancies` — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s collection `granot_booking_discrepancies`, unique open `{normalized_job_no, discrepancy_kind, reason_fingerprint}` partial on `state:"open"`, two named indexes (no sequence unique), five `booked_*` reasons, or missing delete hooks onto leftover next `GranotReleaseDiscrepancy.ts` without reading it. Leftover persist `discrepancies.ts` picks this getter when `kind === "booking"`. Leftover `discrepancyOwnerCommands.ts` / leftover `discrepancyProjections.ts` / leftover health / leftover metrics ask `getGranotBookingDiscrepancyModel` or `BOOKING_DISCREPANCY_REASON_CODES`. Migration asks `GRANOT_BOOKING_DISCREPANCY_INDEXES`. Job Timeline hops `granot_booking_discrepancies` by prefix-equivalent Job without importing this model. Fingerprint is hashed on leftover persist (64 hex stored here). Mongoose guards live on leftover later `createGranotDiscrepancyModel`. `schema-and-crud` omits this collection. `timestamps: true` / `autoIndex: false` come from the factory. There is a `GranotBookingDiscrepancy.test.ts`. Replica fixtures use `.collection.insertOne` / `.collection.deleteMany` (hooks do not run). Do not unique Job Number without the open-fingerprint partial. Do not add a sequence unique so “desk matches the Booking case.” Do not merge this into the Booking case or the leftover later factory. Leftover next `GranotReleaseDiscrepancy.ts` is identity-conflict Owner work for Release evidence — four `release_*` reasons — read it before recommending.
+
 ## 2026-09-13T1718Z | to: next-run | from: story-models-granot-release-reconciliation-case-2026-09-13T1718Z | kind: next
+
+Superseded by story-models-granot-booking-discrepancy-2026-09-13T1817Z. `GranotBookingDiscrepancy.ts` is recommended. `models` is in-progress. Next is `GranotReleaseDiscrepancy.ts`.
 
 `models` is **in-progress**. `GranotReleaseReconciliationCase.ts` is recommended. Next module: **`GranotBookingDiscrepancy.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
