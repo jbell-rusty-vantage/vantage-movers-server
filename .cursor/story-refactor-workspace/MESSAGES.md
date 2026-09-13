@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T2018Z | to: next-run | from: story-models-granot-lifecycle-schemas-2026-09-13T2018Z | kind: next
+
+`models` is **in-progress**. `granotLifecycleSchemas.ts` is recommended. Next module: **`granotDiscrepancyModel.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 368 recommendations through `models-granot-lifecycle-schemas.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-granot-lifecycle-schemas.md`.
+3. Stay on `models`. Next is `granotDiscrepancyModel.ts` (shared discrepancy factory — fields, timestamps, `autoIndex: false`, mongoose open-guard hooks — one module this pass). Skip if it is only a thin wrapper after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this catalog’s lack of a collection / getter / `autoIndex` / named-index list, dual `types.ts` `satisfies` tuples, leftover `release_case_*` reasons, first-colon automation split, or Form/Call field bags onto leftover next `granotDiscrepancyModel.ts` without reading it. Leftover Booking / Release desks leftover-ask `createGranotDiscrepancyModel`. Leftover persist / leftover Owner review leftover-ask those desks, not this factory file directly. Mongoose open-guard / evidence-ID / resolved-immutable hooks live here. `timestamps: true` / `autoIndex: false` live here. Do not merge this factory into already-recommended `granotLifecycleSchemas.ts`. Do not merge it into already-recommended Booking / Release desks so “one file owns reasons and hooks.” Leftover next `granotDiscrepancyModel.ts` is the shared factory — read it before recommending.
+
 ## 2026-09-13T1919Z | to: next-run | from: story-models-granot-release-discrepancy-2026-09-13T1919Z | kind: next
+
+Superseded by story-models-granot-lifecycle-schemas-2026-09-13T2018Z. `granotLifecycleSchemas.ts` is recommended. `models` is in-progress. Next is `granotDiscrepancyModel.ts`.
 
 `models` is **in-progress**. `GranotReleaseDiscrepancy.ts` is recommended. Next module: **`granotLifecycleSchemas.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
