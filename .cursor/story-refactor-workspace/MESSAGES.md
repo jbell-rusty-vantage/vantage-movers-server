@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T1115Z | to: next-run | from: story-models-granot-observation-receipt-2026-09-13T1115Z | kind: next
+
+`models` is **in-progress**. `GranotObservationReceipt.ts` is recommended. Next module: **`GranotObservation.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 359 recommendations through `models-granot-observation-receipt.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-granot-observation-receipt.md`.
+3. Stay on `models`. Next is `GranotObservation.ts` (one normalized Granot statement per receipt — unique `receipt_id` — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s collection `granot_webhook_receipts`, write-once evidence, `processing.*` drain work, or partial unique `{ observation_channel, channel_operation_id }` onto leftover next `GranotObservation.ts` without reading it. Leftover capture insert / leftover drain claim / leftover Owner list ask `getGranotObservationReceiptModel`. Migration asks `GRANOT_OBSERVATION_RECEIPT_INDEXES`. Job Timeline hops `granot_webhook_receipts` by Observation `receipt_id` without importing this model. Processor / sync / create / booking / release / discrepancy stamp `processing.latest_decision_id` through `.collection.updateOne` (hooks do not run). `payload_sha256` is diagnostic, never unique. Webhook rows omit `channel_operation_id` so they stay out of the unique. `autoIndex` is unset (do not copy WordPress `false` from this file). There is a `GranotObservationReceipt.test.ts`. Do not unique the payload hash. Do not rewrite native Decision stamps. Do not merge this into WordPress. Leftover next `GranotObservation.ts` is one normalized statement per receipt — unique `receipt_id` — read it before recommending.
+
 ## 2026-09-13T1013Z | to: next-run | from: story-models-wordpress-form-submission-receipt-2026-09-13T1013Z | kind: next
+
+Superseded by story-models-granot-observation-receipt-2026-09-13T1115Z. `GranotObservationReceipt.ts` is recommended. `models` is in-progress. Next is `GranotObservation.ts`.
 
 `models` is **in-progress**. `WordpressFormSubmissionReceipt.ts` is recommended. Next module: **`GranotObservationReceipt.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
