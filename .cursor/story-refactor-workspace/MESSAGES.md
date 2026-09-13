@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T1511Z | to: next-run | from: story-models-granot-record-link-2026-09-13T1511Z | kind: next
+
+`models` is **in-progress**. `GranotRecordLink.ts` is recommended. Next module: **`GranotBookingReconciliationCase.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 363 recommendations through `models-granot-record-link.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-granot-record-link.md`.
+3. Stay on `models`. Next is `GranotBookingReconciliationCase.ts` (append-only Owner Booking work — unique open `{normalized_job_no, action_kind}` partial on `state:"open"` plus `{normalized_job_no, action_kind, sequence_number}` — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s collection `granot_record_links`, unique partial `{ provider, normalized_job_no }` where `state:"active"`, refresh allowlist, mongoose `booking_ref` refuse, or command-owned `.collection.updateOne` onto leftover next `GranotBookingReconciliationCase.ts` without reading it. Leftover processor persist / leftover sync / leftover create / leftover Confirm leftover Referral leftover Connect leftover identity leftover health ask `getGranotRecordLinkModel`. Migration asks `GRANOT_RECORD_LINK_INDEXES`. Job Timeline hops `granot_record_links` by prefix-equivalent Job without importing this model. Confirm / Referral / Connect stamp `booking_ref` through `.collection.updateOne` because mongoose `$set` refuses it. Disputed stays `active` and lookup-visible. Unique is exact Job string; identity uses `equivalentNormalizedJobFilter`. `timestamps: false` but `updatedAt` is on the allowlist. `autoIndex: false`. There is a `GranotRecordLink.test.ts`. Replica fixtures use `.collection.insertOne` / `.collection.deleteMany` (hooks do not run). Do not add `booking_ref` to the mongoose allowlist. Do not unique Job Number without the active partial. Do not merge this into the Decision or the clock. Leftover next `GranotBookingReconciliationCase.ts` is append-only Owner Booking work — unique open `{normalized_job_no, action_kind}` partial on `state:"open"` — read it before recommending.
+
 ## 2026-09-13T1409Z | to: next-run | from: story-models-granot-lifecycle-activation-2026-09-13T1409Z | kind: next
+
+Superseded by story-models-granot-record-link-2026-09-13T1511Z. `GranotRecordLink.ts` is recommended. `models` is in-progress. Next is `GranotBookingReconciliationCase.ts`.
 
 `models` is **in-progress**. `GranotLifecycleActivation.ts` is recommended. Next module: **`GranotRecordLink.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
