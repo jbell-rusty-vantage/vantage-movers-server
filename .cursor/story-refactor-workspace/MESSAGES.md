@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T1608Z | to: next-run | from: story-models-granot-booking-reconciliation-case-2026-09-13T1608Z | kind: next
+
+`models` is **in-progress**. `GranotBookingReconciliationCase.ts` is recommended. Next module: **`GranotReleaseReconciliationCase.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 364 recommendations through `models-granot-booking-reconciliation-case.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-granot-booking-reconciliation-case.md`.
+3. Stay on `models`. Next is `GranotReleaseReconciliationCase.ts` (append-only historical Owner Release work — `action_kind: "release"`; processor no longer opens it; new Release evidence lands on the Booking case — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s collection `granot_booking_reconciliation_cases`, unique open `{normalized_job_no, action_kind}` partial on `state:"open"`, unique sequence, `$push`-only evidence append, missing delete hooks, or `action_kind: "booked"` onto leftover next `GranotReleaseReconciliationCase.ts` without reading it. Leftover persist / leftover Confirm leftover update leftover Referral leftover No Action leftover Owner reads ask `getGranotBookingReconciliationCaseModel`. Migration asks `GRANOT_BOOKING_RECONCILIATION_CASE_INDEXES`. Job Timeline hops `granot_booking_reconciliation_cases` by prefix-equivalent Job without importing this model. New Release evidence lands here; `action_kind` stays `"booked"`. Referral may omit `source_scope` and `suggested_lead`. `resolution.entity_ref.id` is a string; `suggested_lead.lead_ref.id` is an ObjectId. Knowledge still says three additional read indexes; disk has four (includes `evidence.observation_id`). `timestamps: true`. `autoIndex: false`. There is a `GranotBookingReconciliationCase.test.ts`. Replica fixtures use `.collection.insertOne` / mongoose `deleteMany` (no delete hook). Do not unique Job Number without the open partial. Do not unique `evidence.observation_id`. Do not merge this into the Record Link or the leftover Release case. Leftover next `GranotReleaseReconciliationCase.ts` is historical Owner Release work — `action_kind: "release"`; processor no longer opens it — read it before recommending.
+
 ## 2026-09-13T1511Z | to: next-run | from: story-models-granot-record-link-2026-09-13T1511Z | kind: next
+
+Superseded by story-models-granot-booking-reconciliation-case-2026-09-13T1608Z. `GranotBookingReconciliationCase.ts` is recommended. `models` is in-progress. Next is `GranotReleaseReconciliationCase.ts`.
 
 `models` is **in-progress**. `GranotRecordLink.ts` is recommended. Next module: **`GranotBookingReconciliationCase.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
