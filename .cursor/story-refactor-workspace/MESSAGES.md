@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T2115Z | to: next-run | from: story-models-granot-discrepancy-model-2026-09-13T2115Z | kind: next
+
+`models` is **in-progress**. `granotDiscrepancyModel.ts` is recommended. Next module: **`GranotCrmSource.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 369 recommendations through `models-granot-discrepancy-model.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-granot-discrepancy-model.md`.
+3. Stay on `models`. Next is `GranotCrmSource.ts` (Granot CRM source Registry + CSV catalog — collection `granot_crm_sources`, unique `normalized_granot_label`, lifecycle + outbound SMS — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this factory’s lack of a collection / getter / named-index catalog, `timestamps: true` / `autoIndex: false`, mongoose open-guard / evidence-ID / resolved-immutable hooks, exact `filter.state === "open"` string, `$push` allowed / `$set evidence` forbidden / `$unset` forbidden, missing delete refuse, `mongoose.models[name]` reuse, dual document-vs-query refuse lists, or copied DurableActor schema onto leftover next `GranotCrmSource.ts` without reading it. Leftover Booking / Release desks leftover-ask `createGranotDiscrepancyModel`. Leftover persist / leftover Owner review leftover-ask those desks, not this factory file directly. Already-recommended catalog leftover-supplies Lead-model / evidence-action / no-action tuples. There is no `granotDiscrepancyModel.test.ts`. Booking desk test title leftover-claims leftover-hook coverage it leftover-does not leftover-run. Replica seeds leftover-use `.collection.insertOne` (hooks do not run). `schema-and-crud` omits this factory and both discrepancy collections. Do not merge this factory into already-recommended desks so “one file owns reasons and hooks.” Do not merge it into already-recommended `granotLifecycleSchemas.ts`. Do not merge it into leftover later `observabilityModelFactory.ts`. Leftover next `GranotCrmSource.ts` is the Granot CRM source Registry + CSV catalog — unique `normalized_granot_label`, lifecycle fields default off, optional `outbound_sms` — read it before recommending.
+
 ## 2026-09-13T2018Z | to: next-run | from: story-models-granot-lifecycle-schemas-2026-09-13T2018Z | kind: next
+
+Superseded by story-models-granot-discrepancy-model-2026-09-13T2115Z. `granotDiscrepancyModel.ts` is recommended. `models` is in-progress. Next is `GranotCrmSource.ts`.
 
 `models` is **in-progress**. `granotLifecycleSchemas.ts` is recommended. Next module: **`granotDiscrepancyModel.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
