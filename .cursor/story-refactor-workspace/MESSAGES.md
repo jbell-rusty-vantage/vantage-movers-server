@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T0811Z | to: next-run | from: story-models-schema-helpers-2026-09-13T0811Z | kind: next
+
+`models` is **in-progress**. `schemaHelpers.ts` is recommended. Next module: **`WordpressFormSubmissionReceipt.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 357 recommendations through `models-schema-helpers.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-schema-helpers.md`.
+3. Stay on `models`. Next is `WordpressFormSubmissionReceipt.ts` (WordPress form-submission ingress receipt — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s required `"not_provided"` Source Company, `LOCAL_TYPES` / `LEAD_MODELS` enums, or `sheetSyncSchema` / last-write-wins merge onto leftover next `WordpressFormSubmissionReceipt.ts` without reading it. Form / Call / Booking / Cancellation plus leftover later Granot CRM source ask runtime `schemaHelpers.ts`. Leftover persistence and leftover drain ask `removeSheetSyncEntries` / `mergeSheetSyncEntries`. `SheetSyncEntry.status` is `pending` | `synced` | `failed` — never `deleted`. Runtime `sourceCompanyField` has no `trim` and no `SOURCE_COMPANIES` enum. `leadModelField` is required here; Booking / Cancellation spread `required: false`. Later `historical/schemaHelpers.ts` is a different file (optional trimmed strings, no sheet hint). Testimonial optional `source_company` is not this helper. There is no `schemaHelpers.test.ts`. Do not enum `SOURCE_COMPANIES` so unknown slugs 11000. Do not add `status: "deleted"` so the document remembers the delete. Do not flip `leadModelField` optional so Booking owns the helper. Do not merge historical relax into this file. Leftover next `WordpressFormSubmissionReceipt.ts` is an ingress receipt with named unique `submission_key` and `autoIndex: false` — read it before recommending.
+
 ## 2026-09-13T0713Z | to: next-run | from: story-models-testimonial-2026-09-13T0713Z | kind: next
+
+Superseded by story-models-schema-helpers-2026-09-13T0811Z. `schemaHelpers.ts` is recommended. `models` is in-progress. Next is `WordpressFormSubmissionReceipt.ts`.
 
 `models` is **in-progress**. `Testimonial.ts` is recommended. Next module: **`schemaHelpers.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
