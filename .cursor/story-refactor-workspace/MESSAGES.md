@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T1013Z | to: next-run | from: story-models-wordpress-form-submission-receipt-2026-09-13T1013Z | kind: next
+
+`models` is **in-progress**. `WordpressFormSubmissionReceipt.ts` is recommended. Next module: **`GranotObservationReceipt.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 358 recommendations through `models-wordpress-form-submission-receipt.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-wordpress-form-submission-receipt.md`.
+3. Stay on `models`. Next is `GranotObservationReceipt.ts` (Granot credential-redacted envelope / drain work source — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s unique `submission_key`, `form_path: "test"`, write-once `lead_ref`, or `autoIndex: false` onto leftover next `GranotObservationReceipt.ts` without reading it. Leftover store insert / find / attach ask `getWordpressFormSubmissionReceiptModel`. Migration asks `WORDPRESS_FORM_SUBMISSION_RECEIPT_INDEXES` and applies on `testvantagemovers` only; `vantagemovers` apply is refused. Job Timeline hops `wordpress_form_submission_receipts` by `lead_ref.id` without importing this model. Capture / authorize live on `wordpressFormSubmissionReceipt.ts`. Ingest lives on `formLead.service.ts`. Schema hook refuses identity mutation and nulling `lead_ref`; it does not run on `findOneAndUpdate` without `runValidators`. There is no `WordpressFormSubmissionReceipt.test.ts`. Do not infer `submission_key`. Do not flip `autoIndex` on. Do not merge this into Granot. Leftover next `GranotObservationReceipt.ts` is the credential-redacted Granot envelope — collection `granot_webhook_receipts`; `processing.*` is the drain work source — read it before recommending.
+
 ## 2026-09-13T0811Z | to: next-run | from: story-models-schema-helpers-2026-09-13T0811Z | kind: next
+
+Superseded by story-models-wordpress-form-submission-receipt-2026-09-13T1013Z. `WordpressFormSubmissionReceipt.ts` is recommended. `models` is in-progress. Next is `GranotObservationReceipt.ts`.
 
 `models` is **in-progress**. `schemaHelpers.ts` is recommended. Next module: **`WordpressFormSubmissionReceipt.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
