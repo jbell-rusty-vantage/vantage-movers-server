@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T2212Z | to: next-run | from: story-models-granot-crm-source-2026-09-13T2212Z | kind: next
+
+`models` is **in-progress**. `GranotCrmSource.ts` is recommended. Next module: **`granotCrmSourceSemantics.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 370 recommendations through `models-granot-crm-source.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-granot-crm-source.md`.
+3. Stay on `models`. Next is `granotCrmSourceSemantics.ts` (structure + policy pairing + optional company/Feed refs for a Granot CRM source card — one module this pass). Skip if it is only a thin enum dump after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this row’s collection `granot_crm_sources`, live unique `{ crm_origin, workspace_slug }`, declared-but-unapplied unique `{ normalized_granot_label }`, `pre("validate")` without refs, leftover string `source_company` vs ObjectId `lead_source_company`, `enabled` default true / `lifecycle_enabled` default false, `timestamps: true` / `autoIndex: false`, or selected-database getter onto leftover next `granotCrmSourceSemantics.ts` without reading it. Leftover Owner persist leftover-asks leftover `validateGranotCrmSourceSemantics` **with refs**. This row leftover-asks it **without refs**. Leftover `sourcePolicy.ts` leftover-does leftover-not leftover-import leftover the leftover helper. Leftover `GranotCrmSource.test.ts` leftover-currently leftover-hosts leftover leftover-ref leftover leftover-and leftover leftover-fold leftover leftover-proofs leftover leftover-that leftover leftover-belong leftover leftover-on leftover leftover-next leftover leftover-helper leftover leftover-and leftover leftover-`sourceLabel.ts`. Do not merge the helper into this row so “one file owns the card and the judge.” Do not apply the folded-label unique from a semantics pass. Leftover next `granotCrmSourceSemantics.ts` is the structure / policy-pairing / optional-refs judge — read it before recommending.
+
 ## 2026-09-13T2115Z | to: next-run | from: story-models-granot-discrepancy-model-2026-09-13T2115Z | kind: next
+
+Superseded by story-models-granot-crm-source-2026-09-13T2212Z. `GranotCrmSource.ts` is recommended. `models` is in-progress. Next is `granotCrmSourceSemantics.ts`.
 
 `models` is **in-progress**. `granotDiscrepancyModel.ts` is recommended. Next module: **`GranotCrmSource.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
