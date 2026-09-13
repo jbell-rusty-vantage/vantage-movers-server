@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T1208Z | to: next-run | from: story-models-granot-observation-2026-09-13T1208Z | kind: next
+
+`models` is **in-progress**. `GranotObservation.ts` is recommended. Next module: **`SynchronizationDecision.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 360 recommendations through `models-granot-observation.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-granot-observation.md`.
+3. Stay on `models`. Next is `SynchronizationDecision.ts` (one immutable Decision row per observation/attempt — unique `{ observation_id, attempt }` — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s collection `granot_observations`, write-once entire document, unique `receipt_id`, or find-then-create persist onto leftover next `SynchronizationDecision.ts` without reading it. Leftover persist / leftover Owner read / leftover Booking leftover case leftover load ask `getGranotObservationModel`. Migration asks `GRANOT_OBSERVATION_INDEXES`. Job Timeline hops `granot_observations` by `identity.normalized_job_no` without importing this model, then hops `granot_webhook_receipts` by Observation `receipt_id`. Invalid and unsupported still persist. Schema lists `missing_job_number` and `granot_agent_identity_conflict`; normalize never emits those. `granot_crm_source_id` is unused here. `autoIndex` is unset (do not copy WordPress `false` from this file). There is a `GranotObservation.test.ts`. Replica fixtures use `.collection.insertOne` / `deleteMany` (hooks do not run). Do not unique Job Number. Do not add `processing.*`. Do not merge this into the envelope. Leftover next `SynchronizationDecision.ts` is one immutable row per observation/attempt — unique `{ observation_id, attempt }` — read it before recommending.
+
 ## 2026-09-13T1115Z | to: next-run | from: story-models-granot-observation-receipt-2026-09-13T1115Z | kind: next
+
+Superseded by story-models-granot-observation-2026-09-13T1208Z. `GranotObservation.ts` is recommended. `models` is in-progress. Next is `SynchronizationDecision.ts`.
 
 `models` is **in-progress**. `GranotObservationReceipt.ts` is recommended. Next module: **`GranotObservation.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
