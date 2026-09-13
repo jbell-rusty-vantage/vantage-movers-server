@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-13T0608Z | to: next-run | from: story-models-extension-user-2026-09-13T0608Z | kind: next
+
+`models` is **in-progress**. `ExtensionUser.ts` is recommended. Next module: **`Testimonial.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 355 recommendations through `models-extension-user.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-extension-user.md`.
+3. Stay on `models`. Next is `Testimonial.ts` (default-only unique `{ source, content_fingerprint }` review row — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this desk’s unique folded email, leftover singular `role` / `roles[]` split, or `token_version` onto leftover next `Testimonial.ts` without reading it. Leftover Owner desk write / leftover login active-email find / leftover refresh and token active-id find / leftover both role migrations ask default `ExtensionUser`. There is no `getExtensionUserModel`. Unique is folded email. `active` is indexed not unique. Login leftover-finds `{ active: true }`; Owner list does not filter `active`. `roles[]` items refuse leftover `employee`; leftover singular `role` accepts it. Wave B Zod leftover-imports leftover `EXTENSION_ROLES` from this file. Leftover overview / leftover health / leftover historical-consolidation / leftover Registry do **not** ask this collection. This file does **not** set `autoIndex: false`. There is no `historical/ExtensionUser.ts`. Knowledge names leftover `scripts/dev_ops/upsert-extension-user.ts`; that script is **absent** in this checkout. Do not add leftover `employee` onto leftover `roles[]` so leftover “the array can store what the singular field stores.” Do not drop leftover singular `role` so leftover “schema matches knowledge `roles[]`.” Do not invent leftover `getExtensionUserModel` so leftover “login matches Form.” Do not delete the default `ExtensionUser` export so “login matches evidence.” Leftover next `Testimonial.ts` unique is `{ source, content_fingerprint }` — `normalized_reviewer_name` is indexed not unique — read it before recommending.
+
 ## 2026-09-13T0512Z | to: next-run | from: story-models-moving-carrier-2026-09-13T0512Z | kind: next
+
+Superseded by story-models-extension-user-2026-09-13T0608Z. `ExtensionUser.ts` is recommended. `models` is in-progress. Next is `Testimonial.ts`.
 
 `models` is **in-progress**. `MovingCarrier.ts` is recommended. Next module: **`ExtensionUser.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
