@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T1808Z | to: next-run | from: story-models-booking-lead-reconciliation-case-2026-09-14T1808Z | kind: next
+
+`models` is **in-progress**. `BookingLeadReconciliationCase.ts` is recommended. Next module: **`PublicSubmissionThrottleBucket.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 390 recommendations through `models-booking-lead-reconciliation-case.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-booking-lead-reconciliation-case.md`.
+3. Stay on `models`. Next is `PublicSubmissionThrottleBucket.ts` (public employee-submit throttle bag — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this employee / Best-Relocation Owner case’s collection `booking_lead_reconciliation_cases`, unique `booking`, `origin` default `employee_booking` (Best Relocation writes `external_sheet_ingestion`; ordinary admin leadless and Granot Confirm do **not** insert), `status` default `pending`, required `reason` with no default, application `revision` CAS plus mongoose `optimisticConcurrency` `__v`, rematch lease `findOneAndUpdate` that does **not** bump `revision`, omitted selected-database getter, omitted `autoIndex: false`, unnamed browse / rematch clocks the boot creates, omitted model test, Core Collections / historical `SIDE_EFFECT_COLLECTIONS` / Job Timeline that **omit** this name, or default-export submit / desk / rematch / Granot `findOne({ booking })` onto leftover next `PublicSubmissionThrottleBucket.ts` without reading it. Already-recommended employee submit `new` + `save` after a leadless Booking. Already-recommended Best Relocation leadless `create([...])`. Already-recommended Owner desk CAS-es `revision`. Do not add a getter so “this matches conversation.” Do not unique Job Number so “the case owns the Job.” Do not merge this case into leftover next public throttle, already-recommended Granot Booking case, already-recommended conversation recording, or already-recommended Form / Call / Booking. Leftover next `PublicSubmissionThrottleBucket.ts` is the public employee-submit throttle bag — read it before recommending.
+
 ## 2026-09-14T1712Z | to: next-run | from: story-models-lead-conversation-2026-09-14T1712Z | kind: next
+
+Superseded by story-models-booking-lead-reconciliation-case-2026-09-14T1808Z. `BookingLeadReconciliationCase.ts` is recommended. `models` is in-progress. Next is `PublicSubmissionThrottleBucket.ts`.
 
 `models` is **in-progress**. `LeadConversation.ts` is recommended. Next module: **`BookingLeadReconciliationCase.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
