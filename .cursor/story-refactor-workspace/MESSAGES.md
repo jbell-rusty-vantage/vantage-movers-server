@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T2215Z | to: next-run | from: story-models-external-data-connection-2026-09-14T2215Z | kind: next
+
+`models` is **in-progress**. `ExternalDataConnection.ts` is recommended. Next module: **`IngestionRun.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 394 recommendations through `models-external-data-connection.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-external-data-connection.md`.
+3. Stay on `models`. Next is `IngestionRun.ts` (Best Relocation ingest walk — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this Best Relocation workbook connection’s collection `external_data_connections`, unique `key` (`best_relocation`), env-name pointers `BEST_RELOCATION_SYNC_SHEET_ID` / `BOOKED_DEALS_FORM_RESPONSES_SYNC_SHEET_ID` (not spreadsheet ids), masked `resolved_workbooks`, `application_enabled` default false (PATCH enable needs leftover env + `bootstrap_completed_at` date; claim due also needs `application_enabled_actor`), cadence 24 | 48, named `external_connection_scheduler` / `external_connection_health` plus unnamed unique `key`, omitted `autoIndex: false` (boot creates those clocks; no migration), omitted selected-database getter, omitted save helper, omitted model test, Core Collections / historical `SIDE_EFFECT_COLLECTIONS` / Job Timeline that **omit** this name, GET that does **not** plant, leftover `applyApprovedClaim` that alone stamps `bootstrap_completed_at`, or default-export plant / claim / inspect stamp onto leftover next `IngestionRun.ts` without reading it. Already-recommended plant upserts key `best_relocation`. Already-recommended GET paints a synthetic off row on miss. Do not add a getter so “this matches the Change.” Do not store a raw spreadsheet id so “inspect can skip env.” Do not default application on so “cron can start tonight.” Do not merge this row into leftover next Ingestion Run, already-recommended Command, already-recommended Change, already-recommended Owner Drive, already-recommended Sheets minute budget, already-recommended public throttle, already-recommended Owner case, or already-recommended Form / Call / Booking. Leftover next `IngestionRun.ts` is the Best Relocation ingest walk — read it before recommending.
+
 ## 2026-09-14T2112Z | to: next-run | from: story-models-domain-command-execution-2026-09-14T2112Z | kind: next
+
+Superseded by story-models-external-data-connection-2026-09-14T2215Z. `ExternalDataConnection.ts` is recommended. `models` is in-progress. Next is `IngestionRun.ts`.
 
 `models` is **in-progress**. `DomainCommandExecution.ts` is recommended. Next module: **`ExternalDataConnection.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
