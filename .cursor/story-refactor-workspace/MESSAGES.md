@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T0812Z | to: next-run | from: story-models-sheet-sync-quota-bucket-2026-09-14T0812Z | kind: next
+
+`models` is **in-progress**. `SheetSyncQuotaBucket.ts` is recommended. Next module: **`GoogleDriveConnection.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 380 recommendations through `models-sheet-sync-quota-bucket.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-sheet-sync-quota-bucket.md`.
+3. Stay on `models`. Next is `GoogleDriveConnection.ts` (Owner Google Drive OAuth connection row — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this bucket’s collection `sheet_sync_quota_buckets`, unique `{ scope, op_class, window_start }`, live `"user"` versus unused comment `project`, inline `read`/`write` (no `SheetSyncQuotaOpClass` import), `count` default 0 with no `min`, unnamed TTL `{ window_start: 1 }` `expireAfterSeconds: 3600`, omitted selected-database getter, or omitted `autoIndex: false` onto leftover next `GoogleDriveConnection.ts` without reading it. Already-recommended leftover limiter leftover-asks leftover `SheetSyncQuotaBucket as unknown as QuotaBucketStore` leftover after leftover `connectMongo()`. Already-recommended leftover drain leftover leftover-constructs leftover leftover `new QuotaLimiter()` leftover leftover once leftover leftover per leftover leftover invocation. Do not add a selected-database getter so “CRM matches Sheet Sync.” Do not start minting `scope: "project"` so “the comment becomes true.” Do not rewrite the knowledge table so the omitted collection row appears. Do not merge this bucket into the already-recommended leftover named-scope fence, leftover outbox job, leftover drain card, leftover attempt, leftover unused project budgets, or the leftover later public throttle / leftover later SMS rate bag. Leftover next `GoogleDriveConnection.ts` is the Owner Drive OAuth connection — read it before recommending.
+
 ## 2026-09-14T0710Z | to: next-run | from: story-models-sheet-sync-lease-2026-09-14T0710Z | kind: next
+
+Superseded by story-models-sheet-sync-quota-bucket-2026-09-14T0812Z. `SheetSyncQuotaBucket.ts` is recommended. `models` is in-progress. Next is `GoogleDriveConnection.ts`.
 
 `models` is **in-progress**. `SheetSyncLease.ts` is recommended. Next module: **`SheetSyncQuotaBucket.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
