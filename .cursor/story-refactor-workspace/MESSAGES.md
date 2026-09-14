@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T0510Z | to: next-run | from: story-models-sheet-sync-run-2026-09-14T0510Z | kind: next
+
+`models` is **in-progress**. `SheetSyncRun.ts` is recommended. Next module: **`SheetSyncAttempt.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 377 recommendations through `models-sheet-sync-run.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-sheet-sync-run.md`.
+3. Stay on `models`. Next is `SheetSyncAttempt.ts` (per-target write outcome — required `run_id` plus optional `job_id`, actions lookup/update/append/delete/ensure_headers, statuses synced/failed/deferred, leftover three unnamed clocks — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this drain card’s collection `sheet_sync_runs`, four triggers with unused `"script"`, four statuses, unused Mixed `quota_summary`, throw-only `error_summary`, locked-skip plants-no-row, unnamed two newest-first clocks, omitted selected-database getter, or omitted `autoIndex: false` onto leftover next `SheetSyncAttempt.ts` without reading it. Already-recommended leftover drain leftover-asks this default model after leftover `connectMongo()`. Already-recommended leftover admin leftover-pages leftover this leftover card leftover then leftover leftover-opens leftover leftover later leftover attempts leftover by leftover `run_id`. Do not add a selected-database getter so “CRM matches Sheet Sync.” Do not plant a row on locked skip. Do not start writing `quota_summary`. Do not merge this run into the already-recommended leftover outbox row or the leftover later per-target attempt. Leftover next `SheetSyncAttempt.ts` is the per-target write outcome — read it before recommending.
+
 ## 2026-09-14T0408Z | to: next-run | from: story-models-sheet-sync-job-2026-09-14T0408Z | kind: next
+
+Superseded by story-models-sheet-sync-run-2026-09-14T0510Z. `SheetSyncRun.ts` is recommended. `models` is in-progress. Next is `SheetSyncAttempt.ts`.
 
 `models` is **in-progress**. `SheetSyncJob.ts` is recommended. Next module: **`SheetSyncRun.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
