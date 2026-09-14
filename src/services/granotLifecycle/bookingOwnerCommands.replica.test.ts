@@ -10,6 +10,7 @@ import { CancelledLead } from "../../models/CancelledLead";
 import { DomainCommandExecution } from "../../models/DomainCommandExecution";
 import { getEntityChangeModel } from "../../models/EntityChange";
 import { getFormLeadModel } from "../../models/FormLead";
+import { getGranotLifecycleActivationModel } from "../../models/GranotLifecycleActivation";
 import { getGranotBookingReconciliationCaseModel } from "../../models/GranotBookingReconciliationCase";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
 import { getGranotObservationModel } from "../../models/GranotObservation";
@@ -21,7 +22,7 @@ import { Merchant } from "../../models/Merchant";
 import { SheetSyncJob } from "../../models/SheetSyncJob";
 import { normalizeJobNo } from "../bookings/bookingIdentity";
 import { GRANOT_LIFECYCLE_ERROR_CODES, GranotLifecycleError } from "./errors";
-import { confirmCancellation } from "./bookingOwnerCommands";
+import { confirmCancellation, noAction, updateExistingBooking } from "./bookingOwnerCommands";
 
 const seeded = new Set<string>();
 const jobPrefix = `R9-${Date.now().toString(36).toUpperCase()}`;
@@ -48,10 +49,12 @@ async function replicaReady(t: { skip: (reason: string) => void }) {
 after(async () => {
   if (mongoose.connection.readyState === 1) {
     const ids = [...seeded].map((value) => new mongoose.Types.ObjectId(value));
+    const bookingIds = (await BookedLead.find({ normalized_job_no: { $regex: `^${normalizedJobPrefix}` } })
+      .select({ _id: 1 }).lean().exec()).map((row) => row._id);
     await Promise.all([
       getGranotBookingReconciliationCaseModel().deleteMany({ normalized_job_no: { $regex: `^${normalizedJobPrefix}` } }),
       BookedLead.deleteMany({ normalized_job_no: { $regex: `^${normalizedJobPrefix}` } }),
-      CancelledLead.deleteMany({ _id: { $in: ids } }),
+      CancelledLead.deleteMany({ $or: [{ _id: { $in: ids } }, { booked_lead: { $in: bookingIds } }] }),
       getGranotRecordLinkModel().collection.deleteMany({ normalized_job_no: { $regex: `^${normalizedJobPrefix}` } }),
       getFormLeadModel().deleteMany({ _id: { $in: ids } }),
       Agent.deleteMany({ _id: { $in: ids } }),
@@ -64,7 +67,7 @@ after(async () => {
       mongoose.connection.collection("synchronization_decisions").deleteMany({ _id: { $in: ids } }),
       DomainCommandExecution.deleteMany({ "provenance.case_id": { $in: [...seeded] } }),
       getEntityChangeModel().collection.deleteMany({ "provenance.case_id": { $in: ids } }),
-      SheetSyncJob.deleteMany({ entity_id: { $in: [...seeded] } }),
+      SheetSyncJob.deleteMany({ entity_id: { $in: [...seeded, ...bookingIds.map(String)] } }),
     ]);
   }
   await mongoose.disconnect().catch(() => undefined);
@@ -332,6 +335,269 @@ function cancelCommand(caseId: mongoose.Types.ObjectId, suffix: string) {
   };
 }
 
+const rrfFlags = {
+  ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
+  booking_commands_enabled: true,
+  referral_booking_enabled: true,
+};
+
+const rrfPolicyVersion = "unit-rrf-referral-v1";
+
+async function ensureLifecycleActivation() {
+  let activation = await getGranotLifecycleActivationModel().collection.findOne({ key: "granot_lifecycle" });
+  if (!activation) {
+    await getGranotLifecycleActivationModel().collection.insertOne({
+      key: "granot_lifecycle",
+      activated_at: new Date("2026-01-01T00:00:00.000Z"),
+      activated_by: {
+        actor_type: "system",
+        actor_id: "unit-rrf-replica",
+        actor_label: "RRF replica",
+        actor_role: "system",
+        request_id: "unit-rrf-replica-activation",
+        origin: "reporting_projection",
+      },
+      reason: "RRF-01 disposable replica activation fixture.",
+      processor_version: "unit-rrf-test",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+    activation = await getGranotLifecycleActivationModel().collection.findOne({ key: "granot_lifecycle" });
+  }
+  return activation!;
+}
+
+async function insertEvidenceRow(input: {
+  action: "release" | "booked";
+  capturedAt: Date;
+  job: string;
+  jobRaw: string;
+  sourceId: mongoose.Types.ObjectId;
+  includeSourcePolicy: boolean;
+  identityJob?: string;
+}) {
+  const receiptId = id();
+  const observationId = id();
+  const decisionId = id();
+  await getGranotObservationReceiptModel().collection.insertOne({
+    _id: receiptId,
+    observation_channel: "granot_webhook",
+    captured_at: input.capturedAt,
+    processing: { state: "completed", match_attempt: 1 },
+  });
+  await getGranotObservationModel().collection.insertOne({
+    _id: observationId,
+    receipt_id: receiptId,
+    captured_at: input.capturedAt,
+    source_label_raw: "Referral",
+    normalized_source_label: `rrf-referral-${input.sourceId.toHexString().slice(-6)}`,
+    granot_crm_source_id: input.sourceId,
+    identity: { normalized_job_no: input.identityJob ?? input.job, job_no_raw: input.jobRaw },
+    contact: { display_name: "RRF Referral Customer" },
+    priority: { valid: false },
+    booking_action: { normalized: input.action },
+  });
+  await mongoose.connection.collection("synchronization_decisions").insertOne({
+    _id: decisionId,
+    receipt_id: receiptId,
+    observation_id: observationId,
+    attempt: 1,
+    execution_mode: "live",
+    outcome: "linked",
+    reason_code: input.includeSourcePolicy ? "booking_case_opened" : "booking_case_refreshed",
+    decided_at: input.capturedAt,
+    ...(input.includeSourcePolicy
+      ? {
+        source_policy: {
+          granot_crm_source_id: input.sourceId,
+          disposition: "referral_booking",
+          policy_version: rrfPolicyVersion,
+        },
+      }
+      : {}),
+  });
+  return { receiptId, observationId, decisionId, captured_at: input.capturedAt, action: input.action };
+}
+
+async function seedReferralReviewCase(options: {
+  latestAction: "booked" | "release";
+  sourceEnabled?: boolean;
+  jobMismatch?: boolean;
+  preActivation?: boolean;
+}) {
+  const caseId = id();
+  const bookingId = id();
+  const linkId = id();
+  const sourceId = id();
+  const agentId = id();
+  const merchantId = id();
+  const activation = await ensureLifecycleActivation();
+  const activatedAt = new Date(activation.activated_at as Date).getTime();
+  const firstCaptured = options.preActivation
+    ? new Date(activatedAt - 60_000)
+    : new Date(Math.max(new Date("2026-08-19T14:00:00.000Z").getTime(), activatedAt + 60_000));
+  const bookedCaptured = new Date(firstCaptured.getTime() + 60_000);
+  const laterReleaseCaptured = new Date(bookedCaptured.getTime() + 60_000);
+  const jobRaw = `${jobPrefix}-${caseId.toHexString().slice(-6).toUpperCase()}`;
+  const job = normalizeJobNo(jobRaw)!;
+  const first = await insertEvidenceRow({
+    action: "release",
+    capturedAt: firstCaptured,
+    job,
+    jobRaw,
+    sourceId,
+    includeSourcePolicy: true,
+    identityJob: options.jobMismatch ? `${job}X` : job,
+  });
+  const booked = await insertEvidenceRow({
+    action: "booked",
+    capturedAt: bookedCaptured,
+    job,
+    jobRaw,
+    sourceId,
+    includeSourcePolicy: false,
+  });
+  const laterRelease = options.latestAction === "release"
+    ? await insertEvidenceRow({
+      action: "release",
+      capturedAt: laterReleaseCaptured,
+      job,
+      jobRaw,
+      sourceId,
+      includeSourcePolicy: false,
+    })
+    : null;
+  const evidence = laterRelease
+    ? [
+      { observation_id: first.observationId, decision_id: first.decisionId, captured_at: first.captured_at, action: "release" },
+      { observation_id: booked.observationId, decision_id: booked.decisionId, captured_at: booked.captured_at, action: "booked" },
+      { observation_id: laterRelease.observationId, decision_id: laterRelease.decisionId, captured_at: laterRelease.captured_at, action: "release" },
+    ]
+    : [
+      { observation_id: first.observationId, decision_id: first.decisionId, captured_at: first.captured_at, action: "release" },
+      { observation_id: booked.observationId, decision_id: booked.decisionId, captured_at: booked.captured_at, action: "booked" },
+    ];
+  const lastEvidenceAt = evidence[evidence.length - 1]!.captured_at;
+  await getGranotCrmSourceModel().collection.insertOne({
+    _id: sourceId,
+    source: "Referral",
+    granot_label: "Referral",
+    crm_origin: `unit-rrf-${sourceId}`,
+    workspace_slug: `unit-rrf-${sourceId}`,
+    normalized_granot_label: `unit-rrf-referral-${sourceId.toHexString().slice(-6)}`,
+    enabled: options.sourceEnabled ?? true,
+    lifecycle_enabled: true,
+    lifecycle_disposition: "referral_booking",
+    lead_created_policy: "observation_only",
+    lead_source_company: null,
+    lifecycle_routes: [],
+    lifecycle_policy_version: rrfPolicyVersion,
+  });
+  await Agent.collection.insertOne({
+    _id: agentId,
+    name: "RRF Synthetic Agent",
+    normalized_name: `rrf-agent-${agentId}`,
+    active: true,
+    role: "agent",
+    created_from: "unit-rrf-test",
+  });
+  await Merchant.collection.insertOne({
+    _id: merchantId,
+    name: "RRF Synthetic Merchant",
+    normalized_name: `rrf-merchant-${merchantId}`,
+    active: true,
+    created_from: "unit-rrf-test",
+  });
+  await BookedLead.collection.insertOne({
+    _id: bookingId,
+    timestamp: firstCaptured,
+    book_date: firstCaptured,
+    job_no: jobRaw,
+    normalized_job_no: job,
+    customer_name: "RRF Referral Customer",
+    agent_allocations: [{ agent: agentId, agent_name_snapshot: "RRF Synthetic Agent", binder_amount: 100 }],
+    total_binder_amount: 100,
+    deposit_amount: 100,
+    merchant: "RRF Synthetic Merchant",
+    source: "referral",
+    is_referral_booking: true,
+    is_leadless_booking: false,
+    over_2000: false,
+    over_4000: false,
+    domain_revision: 0,
+  });
+  await getGranotRecordLinkModel().collection.insertOne({
+    _id: linkId,
+    provider: "granot",
+    normalized_job_no: job,
+    job_no_snapshot: jobRaw,
+    state: "active",
+    booking_ref: bookingId,
+    disputed: false,
+    established_by_decision_id: first.decisionId,
+    established_at: firstCaptured,
+    last_observation_id: evidence[evidence.length - 1]!.observation_id,
+    last_observed_at: lastEvidenceAt,
+    domain_revision: 0,
+  });
+  await getGranotBookingReconciliationCaseModel().collection.insertOne({
+    _id: caseId,
+    normalized_job_no: job,
+    job_no_snapshot: jobRaw,
+    action_kind: "booked",
+    sequence_number: 1,
+    mode: "review_existing_booking",
+    state: "open",
+    case_revision: 1,
+    evidence_revision: evidence.length,
+    record_link_id: linkId,
+    deterministic_booking_id: bookingId,
+    booking_revision_at_open: 0,
+    evidence,
+    observed_context: {},
+    opened_at: firstCaptured,
+    last_evidence_at: lastEvidenceAt,
+  });
+  return {
+    caseId,
+    bookingId,
+    sourceId,
+    agentId,
+    merchantId,
+    job,
+    evidenceRevision: evidence.length,
+  };
+}
+
+function rrfNoActionCommand(caseId: mongoose.Types.ObjectId, suffix: string) {
+  return {
+    case_id: String(caseId),
+    expected_case_revision: 1,
+    reason_code: "booking_still_valid" as const,
+    idempotency_key: `unit-rrf-no-action-${suffix}-${caseId}`,
+    owner,
+  };
+}
+
+function rrfUpdateCommand(
+  fixture: { caseId: mongoose.Types.ObjectId; agentId: mongoose.Types.ObjectId; merchantId: mongoose.Types.ObjectId },
+  suffix: string,
+) {
+  return {
+    case_id: String(fixture.caseId),
+    expected_case_revision: 1,
+    expected_booking_revision: 0,
+    official_booking_details: {
+      book_date: "2026-09-01",
+      primary_agent_id: String(fixture.agentId),
+      total_binder_amount: 150,
+      deposit_amount: 3000,
+      merchant_id: String(fixture.merchantId),
+    },
+    idempotency_key: `unit-rrf-update-${suffix}-${fixture.caseId}`,
+    owner,
+  };
+}
+
 test("[AC-R9] Confirm Cancellation succeeds only for AC-R3 posture and replays", async (t) => {
   if (!(await replicaReady(t))) return;
   const fixture = await seedBookingCase({ mode: "review_existing_booking", latestAction: "release" });
@@ -423,4 +689,107 @@ test("[AC-R9] booking commands disabled is POLICY_BLOCKED even when release comm
   assert.equal(await CancelledLead.countDocuments({ booked_lead: fixture.bookingId }), 0);
   assert.equal((await BookedLead.findById(fixture.bookingId).lean().exec())?.cancelled, undefined);
   assert.equal((await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec())?.state, "open");
+});
+
+test("[AC-RRF-01][AC-RRF-06] Release-first Referral review No Action closes the case only", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const fixture = await seedReferralReviewCase({ latestAction: "booked" });
+  const before = await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec();
+  assert.equal(before?.case_revision, 1);
+  assert.ok((before?.evidence_revision ?? 0) > 1);
+  assert.equal(fixture.evidenceRevision, before?.evidence_revision);
+  const result = await noAction(rrfNoActionCommand(fixture.caseId, "ok"), { flags: rrfFlags });
+  assert.equal(result.outcome, "no_action");
+  assert.equal(await BookedLead.countDocuments({ normalized_job_no: fixture.job }), 1);
+  assert.equal(await getEntityChangeModel().countDocuments({ "provenance.case_id": fixture.caseId }), 0);
+  assert.equal(await SheetSyncJob.countDocuments({
+    entity_id: { $in: [String(fixture.caseId), String(fixture.bookingId)] },
+  }), 0);
+  const afterCase = await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec();
+  assert.equal(afterCase?.state, "resolved");
+  assert.equal(afterCase?.resolution?.outcome, "no_action");
+  assert.equal(afterCase?.case_revision, 2);
+  assert.equal(afterCase?.evidence_revision, before?.evidence_revision);
+});
+
+test("[AC-RRF-02] Release-first Referral review Update keeps one Booking", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const fixture = await seedReferralReviewCase({ latestAction: "booked" });
+  const result = await updateExistingBooking(rrfUpdateCommand(fixture, "ok"), { flags: rrfFlags });
+  assert.equal(result.outcome, "booking_updated");
+  assert.equal(await BookedLead.countDocuments({ normalized_job_no: fixture.job }), 1);
+  const booking = await BookedLead.findById(fixture.bookingId).lean().exec();
+  assert.equal(booking?.deposit_amount, 3000);
+  assert.equal(booking?.is_referral_booking, true);
+  assert.equal(booking?.lead_ref, undefined);
+  assert.equal(booking?.lead_model, undefined);
+  assert.equal(await SheetSyncJob.countDocuments({ entity_id: String(fixture.bookingId) }), 1);
+  assert.equal(
+    (await SheetSyncJob.findOne({ entity_id: String(fixture.bookingId) }).lean().exec())?.operation,
+    "referral_booking.update",
+  );
+});
+
+test("[AC-RRF-03] Release-first review latest Booked Cancel is GRANOT_CASE_REVISION_CONFLICT", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const fixture = await seedReferralReviewCase({ latestAction: "booked" });
+  await assert.rejects(
+    confirmCancellation(cancelCommand(fixture.caseId, "rrf-booked"), { flags: rrfFlags }),
+    (error: unknown) =>
+      error instanceof GranotLifecycleError &&
+      error.code === GRANOT_LIFECYCLE_ERROR_CODES.CASE_REVISION_CONFLICT &&
+      error.statusCode === 409,
+  );
+  assert.equal(await CancelledLead.countDocuments({ booked_lead: fixture.bookingId }), 0);
+  assert.equal((await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec())?.state, "open");
+});
+
+test("[AC-RRF-03] Release-first review latest Release Cancel creates Cancellation without a Lead", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const fixture = await seedReferralReviewCase({ latestAction: "release" });
+  const result = await confirmCancellation(cancelCommand(fixture.caseId, "rrf-release"), { flags: rrfFlags });
+  assert.equal(result.outcome, "cancellation_created");
+  const [booking, cancellation] = await Promise.all([
+    BookedLead.findById(fixture.bookingId).lean().exec(),
+    CancelledLead.findById(result.cancellation_ref!.id).lean().exec(),
+  ]);
+  assert.equal(booking?.lead_ref, undefined);
+  assert.equal(booking?.lead_model, undefined);
+  assert.equal(cancellation?.lead_ref, undefined);
+  assert.equal(cancellation?.lead_model, undefined);
+  assert.equal(String(booking?.cancelled), result.cancellation_ref?.id);
+});
+
+test("[AC-RRF-05] Release-first Referral review dead Registry is GRANOT_POLICY_BLOCKED", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const fixture = await seedReferralReviewCase({ latestAction: "booked", sourceEnabled: false });
+  await assert.rejects(
+    noAction(rrfNoActionCommand(fixture.caseId, "dead-policy"), { flags: rrfFlags }),
+    (error: unknown) =>
+      error instanceof GranotLifecycleError &&
+      error.code === GRANOT_LIFECYCLE_ERROR_CODES.POLICY_BLOCKED &&
+      error.statusCode === 422,
+  );
+  assert.equal((await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec())?.state, "open");
+  assert.equal(await BookedLead.countDocuments({ normalized_job_no: fixture.job }), 1);
+});
+
+test("[AC-RRF-01] Release-first Referral review job mismatch or pre-activation is GRANOT_IDENTITY_CONFLICT", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const mismatched = await seedReferralReviewCase({ latestAction: "booked", jobMismatch: true });
+  await assert.rejects(
+    noAction(rrfNoActionCommand(mismatched.caseId, "job-mismatch"), { flags: rrfFlags }),
+    (error: unknown) =>
+      error instanceof GranotLifecycleError &&
+      error.code === GRANOT_LIFECYCLE_ERROR_CODES.IDENTITY_CONFLICT &&
+      error.statusCode === 409,
+  );
+  const preActivation = await seedReferralReviewCase({ latestAction: "booked", preActivation: true });
+  await assert.rejects(
+    noAction(rrfNoActionCommand(preActivation.caseId, "pre-activation"), { flags: rrfFlags }),
+    (error: unknown) =>
+      error instanceof GranotLifecycleError &&
+      error.code === GRANOT_LIFECYCLE_ERROR_CODES.IDENTITY_CONFLICT &&
+      error.statusCode === 409,
+  );
 });

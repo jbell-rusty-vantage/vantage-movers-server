@@ -27,7 +27,7 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:docs-keeper
-  at: 2026-09-01T18:20:00Z
+  at: 2026-09-14T20:35:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority (Release routing, booking-intake upsert, Confirm Granot Cancellation on a booking case):** [`release-into-booking-intake.md`](./release-into-booking-intake.md). Booked-only still wins on Priority 5, pairing, AC-18 / AC-P1–P4 / AC-P6–P8 (AC-P5 superseded). FINAL SPEC still wins on uniqueness, revisions, Referral, official-field blankness, and identity-conflict discrepancies.  
@@ -90,7 +90,7 @@ Every command requires `requireRegistryOwnerActor`, one strict `Idempotency-Key`
 - `confirmCancellation` is [Confirm Granot Cancellation](../../../../CONTEXT.md) on the **booking** case. It is allowed only when the case is open, mode is `review_existing_booking`, `selectBookingIntakeLatestAction(evidence) === "release"`, a deterministic official Booking is still active, and `GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED` is true. It does **not** require Release case/command flags. Create-missing and create-referral never expose this command, even when `latest_action === "release"`. Wrong posture (including latest Booked on review) is **409** `CASE_REVISION_CONFLICT` and writes no Cancellation. Official write + case-resolve CAS is shared with the historical Release command (`officialCancellationWrite.ts`). Input equals today's Release confirm: `expected_case_revision`, `expected_booking_revision`, official `cancel_date`, `refund_amount`, optional reason/notes/`cancelled_by`. One `Idempotency-Key`. Owner actor.
 - `resolveGranotBookingCaseNoAction` is available for open standard create-missing or review-existing cases. Optional reason code/text are metadata only. Its transaction writes the Command plus one case resolution/revision and creates no aggregate revision, `EntityChange`, Sheet Sync intent, link, discrepancy, notification, or replacement case.
 - `createReferralBooking` is available only for open `create_referral_booking` behind both Booking-command and Referral gates. It derives the accepted first Observation/Decision and exact reviewed Referral source from immutable evidence, accepts only complete blank-entered official fields, and atomically creates one no-Lead Referral Booking, one active booking-only Record Link, two Changes, case resolution, Command, and one `booked_lead` / `referral_booking.create` intent. The planner targets only Master Booked.
-- Existing Referral `review_existing_booking` reuses full official update and No Action, but revalidates the Referral Decision/source policy, never attaches or mutates a Lead/Source Scope, and queues `referral_booking.update` as a master-only Booking write.
+- Existing Referral `review_existing_booking` reuses full official update and No Action, but revalidates the Referral Decision/source policy, never attaches or mutates a Lead/Source Scope, and queues `referral_booking.update` as a master-only Booking write. Referral review revalidates first-evidence Decision/policy; first action may be Booked or Release. Latest action still gates Confirm Granot Cancellation.
 
 Exact replay returns the durable result. A same-state update resolves `already_satisfied` without aggregate Change/outbox. Case and Booking compare-and-swap filters produce one winner; stale case, stale/cancelled Booking, and link/Job/source incompatibility fail closed. External Sheet delivery is post-commit only.
 

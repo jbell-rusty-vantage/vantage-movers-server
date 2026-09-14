@@ -561,11 +561,17 @@ function assertCommandAllowed(row: GranotBookingReconciliationCaseDocument, flag
   }
 }
 
+/** Minting Booked-only lives in referralBooking.ts; this helper is policy liveness only. */
+export function isAcceptedReferralPolicyAction(normalized: string | undefined): boolean {
+  return normalized === "booked" || normalized === "release";
+}
+
 async function assertActiveReferralPolicy(
   row: GranotBookingReconciliationCaseDocument,
   session: ClientSession,
   requestId?: string,
 ) {
+  // Minting Booked-only lives in referralBooking.ts; this helper is policy liveness only.
   const first = row.evidence[0];
   const observation = first
     ? await getGranotObservationModel().findById(first.observation_id).session(session).lean().exec()
@@ -576,7 +582,7 @@ async function assertActiveReferralPolicy(
   const activation = await getGranotLifecycleActivationModel().findOne({ key: "granot_lifecycle" })
     .session(session).lean().exec();
   if (
-    !observation || observation.booking_action?.normalized !== "booked" ||
+    !observation || !isAcceptedReferralPolicyAction(observation.booking_action?.normalized) ||
     !decision || decision.execution_mode !== "live" || !activation ||
     observation.captured_at < activation.activated_at ||
     observation.identity?.normalized_job_no !== row.normalized_job_no

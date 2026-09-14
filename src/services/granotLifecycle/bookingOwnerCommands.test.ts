@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { GRANOT_LIFECYCLE_ERROR_CODES, GranotLifecycleError } from "./errors";
-import { assertBookingIntakeCancelAllowed } from "./bookingOwnerCommands";
+import { assertBookingIntakeCancelAllowed, isAcceptedReferralPolicyAction } from "./bookingOwnerCommands";
 
 const captured = new Date("2026-08-18T12:00:00.000Z");
 const later = new Date("2026-08-18T13:00:00.000Z");
@@ -69,5 +69,26 @@ describe("assertBookingIntakeCancelAllowed", () => {
       mode: "review_existing_booking",
       evidence: evidence([{ action: "release", captured_at: later, observation_id: releaseId }]),
     });
+  });
+});
+
+describe("isAcceptedReferralPolicyAction", () => {
+  it("[AC-RRF-01] review_existing_booking + first action release → accept", () => {
+    assert.equal(isAcceptedReferralPolicyAction("release"), true);
+  });
+
+  it("[AC-RRF-02] review_existing_booking + first action booked → accept", () => {
+    assert.equal(isAcceptedReferralPolicyAction("booked"), true);
+  });
+
+  it("[AC-RRF-01] create_referral_booking + first action booked → accept", () => {
+    assert.equal(isAcceptedReferralPolicyAction("booked"), true);
+  });
+
+  it("[AC-RRF-01] first action priority_5 / missing / unknown / empty → reject", () => {
+    assert.equal(isAcceptedReferralPolicyAction("priority_5"), false);
+    assert.equal(isAcceptedReferralPolicyAction(undefined), false);
+    assert.equal(isAcceptedReferralPolicyAction("unknown"), false);
+    assert.equal(isAcceptedReferralPolicyAction(""), false);
   });
 });
