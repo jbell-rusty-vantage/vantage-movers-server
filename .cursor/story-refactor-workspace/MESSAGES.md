@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T0610Z | to: next-run | from: story-models-sheet-sync-attempt-2026-09-14T0610Z | kind: next
+
+`models` is **in-progress**. `SheetSyncAttempt.ts` is recommended. Next module: **`SheetSyncLease.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 378 recommendations through `models-sheet-sync-attempt.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-sheet-sync-attempt.md`.
+3. Stay on `models`. Next is `SheetSyncLease.ts` (knowledge table still says “Global drain mutex”; live file says per-tab write fence — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this attempt’s collection `sheet_sync_attempts`, required `run_id` plus optional `job_id`, five actions, three statuses, unused Google / quota-estimate fields, best-effort `insertMany` after `sheet_sync[]` remember, empty-bag plants-no-row, unnamed three clocks with only `{ run_id, createdAt }` read at runtime, omitted selected-database getter, or omitted `autoIndex: false` onto leftover next `SheetSyncLease.ts` without reading it. Already-recommended leftover drain leftover-asks this default model after leftover `connectMongo()`. Already-recommended leftover admin leftover-opens leftover these leftover rows leftover by leftover `run_id`. Do not add a selected-database getter so “CRM matches Sheet Sync.” Do not start writing `google_operation`. Do not plant a row on an empty bag. Do not merge this attempt into the already-recommended leftover drain card, leftover outbox row, leftover `sheet_sync[]`, or the leftover later lease. Leftover next `SheetSyncLease.ts` is the lease — read it before recommending. Park the knowledge-vs-live “global mutex vs per-tab fence” fight for that file.
+
 ## 2026-09-14T0510Z | to: next-run | from: story-models-sheet-sync-run-2026-09-14T0510Z | kind: next
+
+Superseded by story-models-sheet-sync-attempt-2026-09-14T0610Z. `SheetSyncAttempt.ts` is recommended. `models` is in-progress. Next is `SheetSyncLease.ts`.
 
 `models` is **in-progress**. `SheetSyncRun.ts` is recommended. Next module: **`SheetSyncAttempt.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
