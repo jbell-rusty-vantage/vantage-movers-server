@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T1319Z | to: next-run | from: story-models-ringcentral-inbound-route-2026-09-14T1319Z | kind: next
+
+`models` is **in-progress**. `RingCentralInboundRoute.ts` is recommended. Next module: **`RingCentralInboundRouteAssignment.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 385 recommendations through `models-ringcentral-inbound-route.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-ringcentral-inbound-route.md`.
+3. Stay on `models`. Next is `RingCentralInboundRouteAssignment.ts` (effective-dated inbound-number → live call Feed interval — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this inbound-number card’s collection `ringcentral_inbound_routes`, unique `phone_number`, `phone_locked` default false (activate locks forever; archive does **not** unlock), schema `immutable` on phone that fires only on document `save` (Owner write is `findOneAndUpdate` and fences in Registry), `active` default false, `ever_activated` default false, `validation_status` default `unvalidated` (validator `unavailable` stores as `unvalidated`), snapshot load `{ ever_activated: true, validation_status: "valid" }` (**not** `active: true`), Granot create / adoption `{ active: true, validation_status: "valid" }`, camelCase `createdAt` / `updatedAt` plus default `__v`, selected-database getter, omitted `autoIndex: false`, or M5 `createIndexes()` onto leftover next `RingCentralInboundRouteAssignment.ts` without reading it. Already-recommended Owner write asks this getter after `connectMongo()`. Already-recommended snapshot loads ever-activated valid cards and does **not** filter `active`. Do not add a selected-database-less default so “this matches Picker.” Do not add `active: true` to snapshot load so “archive hides ingest.” Do not unlock `phone_locked` on archive so “the Owner can reuse the number.” Do not merge this card into next assignment interval, already-recommended Call Lead `route_id`, already-recommended Source Company, or already-recommended Picker selection. Leftover next `RingCentralInboundRouteAssignment.ts` is the effective-dated inbound-number → live call Feed interval — read it before recommending.
+
 ## 2026-09-14T1209Z | to: next-run | from: story-models-google-picker-selection-2026-09-14T1209Z | kind: next
+
+Superseded by story-models-ringcentral-inbound-route-2026-09-14T1319Z. `RingCentralInboundRoute.ts` is recommended. `models` is in-progress. Next is `RingCentralInboundRouteAssignment.ts`.
 
 `models` is **in-progress**. `GooglePickerSelection.ts` is recommended. Next module: **`RingCentralInboundRoute.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
