@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T1209Z | to: next-run | from: story-models-google-picker-selection-2026-09-14T1209Z | kind: next
+
+`models` is **in-progress**. `GooglePickerSelection.ts` is recommended. Next module: **`RingCentralInboundRoute.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 384 recommendations through `models-google-picker-selection.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-google-picker-selection.md`.
+3. Stay on `models`. Next is `RingCentralInboundRoute.ts` (Operations Registry inbound-number → source attribution row — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this Picker selection’s collection `google_picker_selections`, unique `reference_hash`, non-unique `owner_email`, required `flow` enum folder|spreadsheet (store **does** filter by flow), required Drive snapshot `file_id` / `mime_type` / `name` / `url`, optional `parent_folder_id` (verify writes it only for spreadsheet), required `expires_at`, `consumed_at` default null (keep the row), named `created_at` only (`updatedAt: false`) with `versionKey: false`, unnamed unique hash clock plus Mongo TTL `{ expires_at: 1 }` `expireAfterSeconds: 0`, omitted selected-database getter, or omitted `autoIndex: false` onto leftover next `RingCentralInboundRoute.ts` without reading it. Already-recommended verify writes this default model **through the store** after `connectMongo()` — it does **not** `GooglePickerSelection.create`. Already-recommended store finds / spends it (`findOne` / `findOneAndUpdate`) and **does** filter by `flow`. Do not add a selected-database getter so “CRM matches Drive.” Do not persist the plaintext reference so “consume can skip hashing.” Do not unique `owner_email` so “one Picker at a time.” Do not switch consume to `findOneAndDelete` so “selection matches consent.” Do not teach verify to write the model itself so “this matches the nonce bootstrap.” Do not drop `flow` from the store find so “selection matches the nonce.” Do not merge this selection into the already-recommended durable Drive row, already-recommended consent hash, already-recommended Picker nonce, later destination pointer, or the already-recommended company service account. Leftover next `RingCentralInboundRoute.ts` is the inbound-number → source attribution row — read it before recommending.
+
 ## 2026-09-14T1109Z | to: next-run | from: story-models-google-picker-nonce-2026-09-14T1109Z | kind: next
+
+Superseded by story-models-google-picker-selection-2026-09-14T1209Z. `GooglePickerSelection.ts` is recommended. `models` is in-progress. Next is `RingCentralInboundRoute.ts`.
 
 `models` is **in-progress**. `GooglePickerNonce.ts` is recommended. Next module: **`GooglePickerSelection.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
