@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T0908Z | to: next-run | from: story-models-google-drive-connection-2026-09-14T0908Z | kind: next
+
+`models` is **in-progress**. `GoogleDriveConnection.ts` is recommended. Next module: **`GoogleOAuthState.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 381 recommendations through `models-google-drive-connection.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-google-drive-connection.md`.
+3. Stay on `models`. Next is `GoogleOAuthState.ts` (ten-minute Owner Drive consent hash — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this connection’s collection `google_drive_connections`, unique `owner_email`, required `google_email`, four ciphertext fields plus `encryption_version` default 1, free-string `scopes` (no `ALLOWED_GOOGLE_OAUTH_SCOPES` import), `connected_at` reset / `last_used_at` unset on complete, named `created_at` / `updated_at` with `versionKey: false`, no TTL, omitted selected-database getter, or omitted `autoIndex: false` onto leftover next `GoogleOAuthState.ts` without reading it. Already-recommended login asks this default model after `connectMongo()`. Already-recommended destination finds by `owner_email` then stamps `drive_connection_id`. Do not add a selected-database getter so “CRM matches Drive.” Do not store a plaintext refresh token so “the row can refresh itself.” Do not change complete upsert to delete-then-insert so “reconnect mints a new `_id`.” Do not merge this connection into the later ten-minute state hash, later picker nonce / selection, later destination pointer, or the already-recommended company service account. Leftover next `GoogleOAuthState.ts` is the ten-minute consent hash — read it before recommending.
+
 ## 2026-09-14T0812Z | to: next-run | from: story-models-sheet-sync-quota-bucket-2026-09-14T0812Z | kind: next
+
+Superseded by story-models-google-drive-connection-2026-09-14T0908Z. `GoogleDriveConnection.ts` is recommended. `models` is in-progress. Next is `GoogleOAuthState.ts`.
 
 `models` is **in-progress**. `SheetSyncQuotaBucket.ts` is recommended. Next module: **`GoogleDriveConnection.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
