@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T1013Z | to: next-run | from: story-models-google-oauth-state-2026-09-14T1013Z | kind: next
+
+`models` is **in-progress**. `GoogleOAuthState.ts` is recommended. Next module: **`GooglePickerNonce.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 382 recommendations through `models-google-oauth-state.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-google-oauth-state.md`.
+3. Stay on `models`. Next is `GooglePickerNonce.ts` (Picker one-time nonce with `flow` plus `consumed_at` — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this consent hash’s collection `google_oauth_states`, unique `nonce_hash`, non-unique `owner_email`, required `expires_at`, named `created_at` only (`updatedAt: false`) with `versionKey: false`, unnamed unique hash clock plus Mongo TTL `{ expires_at: 1 }` `expireAfterSeconds: 0`, omitted selected-database getter, or omitted `autoIndex: false` onto leftover next `GooglePickerNonce.ts` without reading it. Already-recommended login creates this default model after `connectMongo()` and consumes with `findOneAndDelete`. Do not add a selected-database getter so “CRM matches Drive.” Do not persist the plaintext state so “the callback can skip hashing.” Do not unique `owner_email` so “one consent at a time.” Do not switch consume to `consumed_at` so “consent matches Picker.” Do not merge this hash into the already-recommended durable Drive row, later picker nonce / selection, later destination pointer, or the already-recommended company service account. Leftover next `GooglePickerNonce.ts` is the Picker one-time nonce — read it before recommending.
+
 ## 2026-09-14T0908Z | to: next-run | from: story-models-google-drive-connection-2026-09-14T0908Z | kind: next
+
+Superseded by story-models-google-oauth-state-2026-09-14T1013Z. `GoogleOAuthState.ts` is recommended. `models` is in-progress. Next is `GooglePickerNonce.ts`.
 
 `models` is **in-progress**. `GoogleDriveConnection.ts` is recommended. Next module: **`GoogleOAuthState.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
