@@ -230,6 +230,13 @@ export type GranotTimelinePage = {
   };
 };
 
+export type DeterministicBookingListProjection = {
+  present: boolean;
+  masked_ref?: string;
+  id?: string;
+  public_cancel_allowed?: boolean;
+};
+
 export type GranotLifecycleCaseListItem = {
   case_id: string;
   kind: "booking" | "release";
@@ -244,7 +251,7 @@ export type GranotLifecycleCaseListItem = {
   evidence_count: number;
   case_revision: number;
   evidence_revision: number;
-  deterministic_booking: { present: boolean; masked_ref?: string };
+  deterministic_booking: DeterministicBookingListProjection;
   opened_at: string;
   last_evidence_at: string;
   resolved_at?: string;
@@ -704,6 +711,21 @@ export async function listGranotLifecycleCases(
     : [];
   const sourceLabels = new Map(sources.map((source) => [String(source._id), source.granot_label]));
   const listPairing = await listPriorityPairingByCase(visible);
+  const bookingIds = [...new Set(visible.flatMap((row) => (
+    row.deterministic_booking_id ? [String(row.deterministic_booking_id)] : []
+  )))].map((id) => toObjectId(id));
+  const bookings = bookingIds.length
+    ? await BookedLead.find({ _id: { $in: bookingIds } })
+      .select({
+        cancelled: 1,
+        is_referral_booking: 1,
+        is_leadless_booking: 1,
+        lead_ref: 1,
+        lead_model: 1,
+      })
+      .lean()
+    : [];
+  const bookingById = new Map(bookings.map((booking) => [String(booking._id), booking]));
   const items = visible.map((row) => {
     const sourceId = row.source_scope
       ? String(row.source_scope.granot_crm_source_id)
@@ -724,12 +746,12 @@ export async function listGranotLifecycleCases(
       evidence_count: row.evidence.length,
       case_revision: row.case_revision,
       evidence_revision: row.evidence_revision,
-      deterministic_booking: {
-        present: Boolean(row.deterministic_booking_id),
-        masked_ref: row.deterministic_booking_id
-          ? maskLifecycleId(String(row.deterministic_booking_id))
+      deterministic_booking: projectDeterministicBooking(
+        row.deterministic_booking_id,
+        row.deterministic_booking_id
+          ? bookingById.get(String(row.deterministic_booking_id))
           : undefined,
-      },
+      ),
       opened_at: iso(row.opened_at, "case.opened_at"),
       last_evidence_at: iso(row.last_evidence_at, "case.last_evidence_at"),
       resolved_at: row.resolved_at ? iso(row.resolved_at, "case.resolved_at") : undefined,
@@ -1825,6 +1847,35 @@ export function maskContactLabel(contact?: {
 
 function maskLifecycleId(value: string): string {
   return value.length <= 10 ? "***" : `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+type DeterministicBookingFacts = {
+  cancelled?: unknown;
+  is_referral_booking?: boolean;
+  is_leadless_booking?: boolean;
+  lead_ref?: unknown;
+  lead_model?: unknown;
+};
+
+export function projectDeterministicBooking(
+  bookingId: unknown,
+  booking?: DeterministicBookingFacts | null,
+): DeterministicBookingListProjection {
+  if (!bookingId) return { present: false };
+  const id = String(bookingId);
+  return {
+    present: true,
+    masked_ref: maskLifecycleId(id),
+    id,
+    public_cancel_allowed: Boolean(
+      booking
+      && !booking.cancelled
+      && booking.is_referral_booking !== true
+      && booking.is_leadless_booking !== true
+      && booking.lead_ref
+      && booking.lead_model,
+    ),
+  };
 }
 
 function iso(value: unknown, field: string): string {

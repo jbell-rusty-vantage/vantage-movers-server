@@ -163,7 +163,7 @@ Run via `package.json` so `.env` + `tsx` stay consistent.
 | `scripts/output/` | Generated artifacts (not runtime) |
 | Root one-offs | `dev-server.ts`, `best-relocation-sheet-ingest.ts` (`pnpm ingest:best-relocation -- --dry-run`; CLI live apply retired), `generate-granot-webhook-secret.ts`, `test-setup.ts`, `dump-operations-name-link-inventory.ts` (`pnpm ops:dump-name-link-inventory`), `ingest-moving-carriers.ts` (`pnpm db:ingest-moving-carriers`), `seed-granot-carrier-codes.ts` (`pnpm db:seed-granot-carrier-codes`; live stamp needs `--apply`), `prove-tariff-append.ts` (`pnpm prove:tariff-append`), `test-create-google-spreadsheet.ts` |
 | `scripts/dev_ops/twilio/`, `scripts/dev_ops/ping-db.ts` | `pnpm twilio:*` (incl. `twilio:schedule-sms` to list Messaging Services, dry-run the quiet-hours plan, or create a scheduled message), `pnpm db:ping` |
-| `scripts/dev_ops/ringcentral/` | Manual RC diagnostics/webhook runners — invoke with `tsx` + `.env`; **no** `pnpm ringcentral:*` scripts in `package.json` |
+| `scripts/dev_ops/ringcentral/` | Manual RC diagnostics/webhook runners and API probes — invoke with `tsx` + `.env`; **no** `pnpm ringcentral:*` scripts in `package.json`. Skill: `.cursor/skills/ringcentral-api/` |
 
 Keep reusable runtime logic in `src/services/`; scripts should call services, not reimplement them.
 

@@ -15,7 +15,10 @@ applies_to:
   - vantage-admin/components/granot-lifecycle/booking-update-form.tsx
   - vantage-admin/components/granot-lifecycle/referral-booking-form.tsx
   - vantage-admin/components/granot-lifecycle/official-binder-agents-fields.tsx
+  - docs/owner-booking-intake-presentation/owner-booking-intake-presentation-specification.md
   - vantage-admin/app/(dashboard)/intakes
+  - vantage-admin/components/intakes
+  - vantage-admin/components/dashboard/needs-you.tsx
   - vantage-admin/app/(dashboard)/bookings
   - vantage-admin/app/(dashboard)/manual
   - vantage-admin/components/bookings/booking-stored-lead-section.tsx
@@ -26,12 +29,16 @@ sources:
   - id: spec
     resource: docs/granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md
     title: Owner booking intake and lead attachment
+  - id: presentation
+    resource: docs/owner-booking-intake-presentation/owner-booking-intake-presentation-specification.md
+    title: Owner booking intake presentation
 generated:
   by: process:docs-keeper
-  at: 2026-09-08T20:30:00Z
+  at: 2026-09-14T20:56:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
-**Authority:** [`owner-booking-intake-and-lead-attachment-specification.md`](../../granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md)
+**Authority:** [`owner-booking-intake-and-lead-attachment-specification.md`](../../granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md)  
+**Authority (Owner `/intakes` CTAs):** [`owner-booking-intake-presentation-specification.md`](../../owner-booking-intake-presentation/owner-booking-intake-presentation-specification.md). Do not copy CTA tables here.
 
 # Owner booking intake and lead attachment
 
@@ -42,8 +49,10 @@ This file is a **Reference** pointer only. It does not copy contract rules.
 - [Booking intake robustness pack](../../booking-intake-lead-attachment/README.md) — BILA-01–BILA-03 shipped. **Wins on the Connect surface** (`/bookings`, also Owner `/manual`; not `/bookings/reconciliation`). Live values: [`PROGRESS.md`](../../booking-intake-lead-attachment/PROGRESS.md).
 - [Exact Job Booking Attach pack](../../exact-job-booking-attach/README.md) — [Precise Booking Form](../../../../CONTEXT.md) pending is **not** Granot official [Leadless Booking](../../../../CONTEXT.md). Connect Booking to Lead for Confirm is unchanged. Do not copy rules here.
 - [Call Lead contact provenance](../../call-lead-contact-provenance/README.md) — Call operational phone stays the ingested caller; automatic intake match is Job, else granularity + phone. Desk Call `q` (CLCP-05, required) is any-known-contact. Do not copy rules here.
+- [Referral review Release-first](../../referral-review-release-first/README.md) — Referral review first evidence may be Release. **Wins on the Referral owner-command policy gate** (No Action / Update / Cancel). Do not copy rules here.
+- [Owner booking intake presentation](../../owner-booking-intake-presentation/owner-booking-intake-presentation-specification.md) — Finalize / Possibly Fix copy, list-level **No Action**, no **Confirm Granot Cancellation** on `/intakes`. **Wins on Owner intake CTAs.** Landed. Do not copy rules here.
 
-**Landed:** §5 even Binder — one Binder, at most two Agents, server even-cent split. See [`agent-allocation.md`](../services/agent-allocation.md) and [`booking-reconciliation.md`](./booking-reconciliation.md). **BILA-01** — Form candidate `q` is any-known-contact; DTO carries `known_contacts`; intake shows Form submitted vs Granot. See [`projections.md`](./projections.md). **BILA-02** — Confirm `selected_lead` is optional; unique high-confidence auto-attach or official [Leadless Booking](../../../../CONTEXT.md); later Booked opens `review_existing_booking`. See [`booking-reconciliation.md`](./booking-reconciliation.md) and [`bookings.md`](../services/bookings.md). **BILA-03** — Connect Booking to Lead from `/bookings` (also Owner `/manual`): Owner searches eligible unbooked Leads, connects one, and the command writes EntityChange plus `booking_chain` / `booked_lead.connect_lead`. Referral and cancelled Bookings have no Connect. Confirm still does not open a [Booking Lead Reconciliation Case](../../../../CONTEXT.md). See [`bookings.md`](../services/bookings.md). **EJBA-02** — Precise Form pending (`booking_origin=owner_booking`) is not official Granot Leadless and is not Connectable; later attach is [Booking Lead Reconciliation](../../../../CONTEXT.md). See [`bookings.md`](../services/bookings.md) and [`employee-bookings.md`](../services/employee-bookings.md).
+**Landed:** **Owner booking intake presentation** — two Owner postures (**Finalize Booking** / **Possibly Fix Booking**); list-level **No Action** on `review_existing_booking` only (`reason_code` `booking_still_valid`); **Confirm Granot Cancellation** never on Owner `/intakes` (`BookingOwnerActions` `surface=intakes`); optional **Cancel this booking** when the list projection allows (does not close the case). Technical `/ingestion/granot/lifecycle` may still show **Confirm Granot Cancellation**. Compact official-**Booking**-now strip on the workbench. Copy and CTA matrix stay in the presentation spec. **§5 even Binder** — one Binder, at most two Agents, server even-cent split. See [`agent-allocation.md`](../services/agent-allocation.md) and [`booking-reconciliation.md`](./booking-reconciliation.md). **BILA-01** — Form candidate `q` is any-known-contact; DTO carries `known_contacts`; intake shows Form submitted vs Granot. See [`projections.md`](./projections.md). **BILA-02** — Confirm `selected_lead` is optional; unique high-confidence auto-attach or official [Leadless Booking](../../../../CONTEXT.md); later Booked opens `review_existing_booking`. See [`booking-reconciliation.md`](./booking-reconciliation.md) and [`bookings.md`](../services/bookings.md). **BILA-03** — Connect Booking to Lead from `/bookings` (also Owner `/manual`): Owner searches eligible unbooked Leads, connects one, and the command writes EntityChange plus `booking_chain` / `booked_lead.connect_lead`. Referral and cancelled Bookings have no Connect. Confirm still does not open a [Booking Lead Reconciliation Case](../../../../CONTEXT.md). See [`bookings.md`](../services/bookings.md). **EJBA-02** — Precise Form pending (`booking_origin=owner_booking`) is not official Granot Leadless and is not Connectable; later attach is [Booking Lead Reconciliation](../../../../CONTEXT.md). See [`bookings.md`](../services/bookings.md) and [`employee-bookings.md`](../services/employee-bookings.md).
 
 **Not implemented:** owner-intake unmasking and the rest of the 2026-08-24 spec. Connect is not on `/intakes`, Daily Completed, or `/bookings/reconciliation`.
 

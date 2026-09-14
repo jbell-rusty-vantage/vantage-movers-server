@@ -20,6 +20,7 @@ import {
   projectOwnerVisibleContact,
   paginateTimeline,
   projectCaseDetailPriorityPairing,
+  projectDeterministicBooking,
   rankBookingCandidateProjections,
   type GranotTimelineEntry,
 } from "./projections";
@@ -96,6 +97,48 @@ test("[AC-35] lifecycle DTO recursive guard rejects raw transport and credential
   const safe = { items: [], next_cursor: null, current: {}, capabilities: { booking_cases: true, release_cases: false, discrepancies: false, official_facts: true } };
   assertProjectionSafe(safe);
   assert.deepEqual(collectForbiddenProjectionKeys({ ...safe, payload: { authorization: "redacted" } }).sort(), ["authorization", "payload"]);
+  assertProjectionSafe({
+    present: true,
+    masked_ref: "64c0f4...4444",
+    id: "64c0f4a1b2c3d4e5f6a74444",
+    public_cancel_allowed: true,
+  });
+});
+
+test("list deterministic booking exposes the official id and public-cancel eligibility", () => {
+  assert.deepEqual(projectDeterministicBooking(undefined), { present: false });
+  const bookingId = "64c0f4a1b2c3d4e5f6a74444";
+  assert.deepEqual(
+    projectDeterministicBooking(bookingId, {
+      is_referral_booking: false,
+      is_leadless_booking: false,
+      lead_ref: "lead-1",
+      lead_model: "FormLead",
+    }),
+    {
+      present: true,
+      masked_ref: "64c0f4...4444",
+      id: bookingId,
+      public_cancel_allowed: true,
+    },
+  );
+  assert.equal(
+    projectDeterministicBooking(bookingId, { is_referral_booking: true, lead_ref: "lead-1", lead_model: "FormLead" }).public_cancel_allowed,
+    false,
+  );
+  assert.equal(
+    projectDeterministicBooking(bookingId, { is_leadless_booking: true }).public_cancel_allowed,
+    false,
+  );
+  assert.equal(projectDeterministicBooking(bookingId).public_cancel_allowed, false);
+  assert.equal(
+    projectDeterministicBooking(bookingId, {
+      cancelled: "cancellation-1",
+      lead_ref: "lead-1",
+      lead_model: "FormLead",
+    }).public_cancel_allowed,
+    false,
+  );
 });
 
 test("[AC-31] health flag names match the ten centralized lifecycle flags and do not promote effects", () => {

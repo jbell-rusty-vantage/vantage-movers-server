@@ -22,11 +22,12 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:docs-keeper
-  at: 2026-09-04T20:00:00Z
+  at: 2026-09-14T20:56:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Authority (intakes list, latest_action, confirm_cancellation):** [`release-into-booking-intake.md`](./release-into-booking-intake.md). Pairing DTOs: [`booking-reconciliation-booked-only-specification.md`](../../granot-lead-lifecycle/booking-reconciliation-booked-only-specification.md) §7. FINAL SPEC still wins on uniqueness, revisions, and official-field blankness.  
-**Primary code:** `src/services/granotLifecycle/projections.ts`, `src/services/granotLifecycle/creatingObservation.ts`, `src/services/granotLifecycle/bookingPriorityPairing.ts`, `src/services/granotLifecycle/alerts.ts`, `src/routes/granot-lifecycle-admin.routes.ts`, `src/validation/v1/granotLifecycle.validation.ts`
+**Authority (Owner `/intakes` CTAs + list `deterministic_booking` cancel fields):** [`owner-booking-intake-presentation-specification.md`](../../owner-booking-intake-presentation/owner-booking-intake-presentation-specification.md). Do not copy CTA tables here.  
+**Primary code:** `src/services/granotLifecycle/projections.ts` (`projectDeterministicBooking`), `src/services/granotLifecycle/creatingObservation.ts`, `src/services/granotLifecycle/bookingPriorityPairing.ts`, `src/services/granotLifecycle/alerts.ts`, `src/routes/granot-lifecycle-admin.routes.ts`, `src/validation/v1/granotLifecycle.validation.ts`
 **Domain terms used:** [Granot Observation](../../../../CONTEXT.md), [Granot Booking Reconciliation Case](../../../../CONTEXT.md), [Booking Priority Pairing](../../../../CONTEXT.md), [Job Number](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Cancellation](../../../../CONTEXT.md), [Source Scope](../../../../CONTEXT.md)
 
 # Granot lifecycle read projections
@@ -59,7 +60,7 @@ Booking list rows expose compact [Booking Priority Pairing](../../../../CONTEXT.
 
 ## Projection boundaries
 
-- Lists contain a centralized irreversible contact label and masked Booking reference only. Raw case context/evidence arrays are absent.
+- Lists contain a centralized irreversible contact label. `deterministic_booking` is `projectDeterministicBooking`: `present`; when a Booking exists, official `id`, `masked_ref`, and `public_cancel_allowed` (true only for an ordinary sourced Booking: not Referral, not Leadless, not cancelled, has `lead_ref` + `lead_model`). That `id` is the official Booking id so the list can link public cancel without opening the case — not Granot payload. `assertProjectionSafe` is unchanged. Raw case context/evidence arrays are absent.
 - Authorized detail keeps immutable Granot evidence visibly separate from live official Booking/Cancellation fields. Create-missing `official_draft` is empty and never derives defaults from Granot evidence.
 - Referral list/detail derives the reviewed Registry source ID/label from immutable Decision `source_policy`, while keeping case `source_scope` absent. `create_referral_booking` exposes no suggestion/candidate search/Lead link; existing Referral review shows current official Booking values with no Lead selector.
 - Submitted/ingested contact and accepted Granot contact are separately labeled. Receipt payloads/headers, credentials, addresses, arbitrary Lead documents, and CPL internals never enter list/detail/timeline/health DTOs. The Owner-only creating-observation read is the receipt-payload exception — see [Creating observation](#creating-observation).
