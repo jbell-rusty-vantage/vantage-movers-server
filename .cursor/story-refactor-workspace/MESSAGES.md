@@ -4,6 +4,32 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T1612Z | to: next-run | from: story-models-lead-message-rate-limit-2026-09-14T1612Z | kind: next
+
+`models` is **in-progress**. `LeadMessageRateLimit.ts` is recommended. Next module: **`LeadConversation.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 388 recommendations through `models-lead-message-rate-limit.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-lead-message-rate-limit.md`.
+3. Stay on `models`. Next is `LeadConversation.ts` (conversation recording — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this capacity bucket’s collection `lead_message_rate_limits`, string `_id` (`hourly:${UTC hour ISO}` vs `destination:${sha256(E.164)}`), required `kind` enum hourly|destination, `count` default 0 with **no** `min`, `last_reserved_at` / `last_decision_token` default null (not kind-gated), required `expires_at` (hourly `hourStart+2h`; destination `now+cooldown*2`), unnamed TTL `{ expires_at: 1 }` `expireAfterSeconds: 0`, camelCase `createdAt` / `updatedAt` plus default `__v`, selected-database getter, omitted save helper, omitted `autoIndex: false`, persist that skips reserve on duplicate / disabled, hourly `$inc` then ceiling (skip still burns), destination `$add` even on cooldown deny, Core Collections / historical `SIDE_EFFECT_COLLECTIONS` that **omit** this name, or persist tests that inject `evaluateGuard` onto leftover later `LeadConversation.ts` without reading it. Already-recommended reserve asks this getter after E.164 / country prefix. Already-recommended persist writes the skipped or pending row on `lead_messages`. Do not store the plaintext destination so “cooldown can skip hashing.” Do not decrement hourly on skip so “a skip gives the slot back.” Do not delete the getter so “this matches Picker.” Do not merge this bag into leftover later conversation recording, leftover later public throttle, already-recommended outbound SMS row, already-recommended Sheets minute budget, or already-recommended Form / Call Lead. Leftover later `LeadConversation.ts` is the conversation recording — read it before recommending.
+
+## 2026-09-14T1512Z | to: next-run | from: story-models-lead-message-2026-09-14T1512Z | kind: next
+
+Superseded by story-models-lead-message-rate-limit-2026-09-14T1612Z. `LeadMessageRateLimit.ts` is recommended. `models` is in-progress. Next is `LeadConversation.ts`.
+
+`models` is **in-progress**. `LeadMessage.ts` is recommended. Next module: **`LeadMessageRateLimit.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 387 recommendations through `models-lead-message.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-lead-message.md`.
+3. Stay on `models`. Next is `LeadMessageRateLimit.ts` (hourly / destination capacity bucket — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this outbound SMS row’s collection `lead_messages`, optional `form_lead` plus additive `lead_ref`, unique partial `{ twilio_message_sid: 1 }` where `$type: "string"`, unique partial `{ observation_id: 1, purpose: 1 }` where ObjectId, camelCase `createdAt` / `updatedAt` plus default `__v`, selected-database getter, `createLeadMessage` save-through-the-getter, omitted `autoIndex: false`, Admin Form browse / Owner list `form_lead` filter, Analytics `$ifNull` `lead_ref.id` / `form_lead`, Job Timeline raw-collection hop, Phase-1 backfill that copies `form_lead` onto `lead_ref` and does **not** unset `form_lead`, or historical `SIDE_EFFECT_COLLECTIONS` onto leftover next `LeadMessageRateLimit.ts` without reading it. Already-recommended persist asks `createLeadMessage` after consent / capacity / skip. Already-recommended claim / drain / callback ask the getter. Do not drop `form_lead` so “one pointer is enough.” Do not unique `twilio_message_sid` without the `$type: "string"` filter so “null SIDs collide.” Do not delete the getter so “this matches Picker.” Do not merge this row into leftover next hourly / destination bucket, leftover later conversation recording, already-recommended Form / Call Lead, or already-recommended inbound-number interval. Leftover next `LeadMessageRateLimit.ts` is the hourly / destination capacity bucket — read it before recommending.
+
 ## 2026-09-14T1410Z | to: next-run | from: story-models-ringcentral-inbound-route-assignment-2026-09-14T1410Z | kind: next
 
 `models` is **in-progress**. `RingCentralInboundRouteAssignment.ts` is recommended. Next module: **`LeadMessage.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
