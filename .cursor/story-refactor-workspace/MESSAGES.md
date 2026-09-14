@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T1410Z | to: next-run | from: story-models-ringcentral-inbound-route-assignment-2026-09-14T1410Z | kind: next
+
+`models` is **in-progress**. `RingCentralInboundRouteAssignment.ts` is recommended. Next module: **`LeadMessage.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 386 recommendations through `models-ringcentral-inbound-route-assignment.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-ringcentral-inbound-route-assignment.md`.
+3. Stay on `models`. Next is `LeadMessage.ts` (durable outbound SMS row — `form_lead` plus additive `lead_ref` — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this assignment interval’s collection `ringcentral_inbound_route_assignments`, unique partial `{ route: 1 }` where `active: true`, open find `{ route, effective_until missing }`, immutable `route` / company / Feed / `effective_from`, close `$set` `effective_until` + `active: false` (never `deleteOne`), `active` default `true` (the already-recommended card defaults `false`), snapshot load `find({})` that does **not** read `assignment.active`, snapshot resolve `effective_from <= callStartedAt < effective_until`, Granot create / adoption `active` plus the window, Lead Source list `{ effective_until missing, active: true }` vs detail `{ effective_until missing }`, health `{ effective_until missing }`, camelCase `createdAt` / `updatedAt` plus default `__v`, selected-database getter, omitted `autoIndex: false`, or M5 `createIndexes()` onto leftover next `LeadMessage.ts` without reading it. Already-recommended Owner write asks this getter after `connectMongo()`. Already-recommended snapshot loads every interval and resolves by the start clock. Do not add `active: true` to snapshot load so “closed intervals vanish from history.” Do not switch close to `deleteOne` so “we match the consent hash.” Do not add `phone_number` so “the interval owns the inbound number.” Do not delete the getter so “this matches Picker.” Do not merge this interval into the already-recommended inbound-number card, already-recommended Call Lead `route_assignment_id`, already-recommended Source Company / first-class Feed, or leftover next SMS row. Leftover next `LeadMessage.ts` is the durable outbound SMS row — read it before recommending.
+
 ## 2026-09-14T1319Z | to: next-run | from: story-models-ringcentral-inbound-route-2026-09-14T1319Z | kind: next
+
+Superseded by story-models-ringcentral-inbound-route-assignment-2026-09-14T1410Z. `RingCentralInboundRouteAssignment.ts` is recommended. `models` is in-progress. Next is `LeadMessage.ts`.
 
 `models` is **in-progress**. `RingCentralInboundRoute.ts` is recommended. Next module: **`RingCentralInboundRouteAssignment.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
