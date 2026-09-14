@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T2112Z | to: next-run | from: story-models-domain-command-execution-2026-09-14T2112Z | kind: next
+
+`models` is **in-progress**. `DomainCommandExecution.ts` is recommended. Next module: **`ExternalDataConnection.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 393 recommendations through `models-domain-command-execution.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-domain-command-execution.md`.
+3. Stay on `models`. Next is `ExternalDataConnection.ts` (Best Relocation workbook connection — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this durable applied command result’s collection `domain_command_executions`, unique `{ origin, idempotency_key }` plus unique `{ command_id }`, origins `external_sheet_ingestion | vantage_admin | granot_lifecycle | ringcentral` (not `browser_extension`), nested `result.status: "applied"` plus compatibility top-level `entity_refs` / `warnings`, `readStoredCanonicalCommandResult` (nested wins; legacy without `result` derives; never rewrite; never `already_applied`), Mixed actor / initiator / provenance, `timestamps: true` plus required `applied_at`, default `__v`, omitted `autoIndex: false` (boot creates four named clocks **and** leftover `pnpm migration:granot-lifecycle:indexes` also applies non-unique first), omitted selected-database getter, persist `new` + `save({ session })` on the default after `connectMongo()`, persist preallocates `_id` from ObjectId-hex `command_id` else mints `_id` and still stores the caller string, leftover Granot reload `findOne({ origin, command_name, idempotency_key })`, leftover Best Relocation ownership `$elemMatch` top-level `entity_refs` BookedLead, Core Collections that **names** this collection, historical `SIDE_EFFECT_COLLECTIONS` / Job Timeline that **omit** this name, or already-recommended persist / leftover reload / leftover ownership default `DomainCommandExecution` onto leftover next `ExternalDataConnection.ts` without reading it. Already-recommended persist writes nested plus top-level then commits. Already-recommended compatibility `already_applied` is one-way on `types.ts`. Do not store `already_applied` so “replay is visible in Mongo.” Do not add a getter so “this matches the Change.” Do not flip `autoIndex: false` so “boot matches the Change.” Do not drop top-level `entity_refs` so “one copy is enough.” Do not merge this row into leftover next Best Relocation connection, already-recommended Change, already-recommended public throttle, already-recommended SMS capacity, already-recommended Sheets minute budget, already-recommended Owner case, or already-recommended Form / Call / Booking. Leftover next `ExternalDataConnection.ts` is the Best Relocation workbook connection — read it before recommending.
+
 ## 2026-09-14T2009Z | to: next-run | from: story-models-entity-change-2026-09-14T2009Z | kind: next
+
+Superseded by story-models-domain-command-execution-2026-09-14T2112Z. `DomainCommandExecution.ts` is recommended. `models` is in-progress. Next is `ExternalDataConnection.ts`.
 
 `models` is **in-progress**. `EntityChange.ts` is recommended. Next module: **`DomainCommandExecution.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
