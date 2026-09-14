@@ -4,6 +4,18 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T1512Z | to: next-run | from: story-models-lead-message-2026-09-14T1512Z | kind: next
+
+`models` is **in-progress**. `LeadMessage.ts` is recommended. Next module: **`LeadMessageRateLimit.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 387 recommendations through `models-lead-message.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-lead-message.md`.
+3. Stay on `models`. Next is `LeadMessageRateLimit.ts` (hourly / destination capacity bucket — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this outbound SMS row’s collection `lead_messages`, optional `form_lead` plus additive `lead_ref`, unique partial `{ twilio_message_sid: 1 }` where `$type: "string"`, unique partial `{ observation_id: 1, purpose: 1 }` where ObjectId, camelCase `createdAt` / `updatedAt` plus default `__v`, selected-database getter, `createLeadMessage` save-through-the-getter, omitted `autoIndex: false`, Admin Form browse / Owner list `form_lead` filter, Analytics `$ifNull` `lead_ref.id` / `form_lead`, Job Timeline raw-collection hop, Phase-1 backfill that copies `form_lead` onto `lead_ref` and does **not** unset `form_lead`, or historical `SIDE_EFFECT_COLLECTIONS` onto leftover next `LeadMessageRateLimit.ts` without reading it. Already-recommended persist asks `createLeadMessage` after consent / capacity / skip. Already-recommended claim / drain / callback ask the getter. Do not drop `form_lead` so “one pointer is enough.” Do not unique `twilio_message_sid` without the `$type: "string"` filter so “null SIDs collide.” Do not delete the getter so “this matches Picker.” Do not merge this row into leftover next hourly / destination bucket, leftover later conversation recording, already-recommended Form / Call Lead, or already-recommended inbound-number interval. Leftover next `LeadMessageRateLimit.ts` is the hourly / destination capacity bucket — read it before recommending.
+
 ## 2026-09-14T1410Z | to: next-run | from: story-models-ringcentral-inbound-route-assignment-2026-09-14T1410Z | kind: next
 
 `models` is **in-progress**. `RingCentralInboundRouteAssignment.ts` is recommended. Next module: **`LeadMessage.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
