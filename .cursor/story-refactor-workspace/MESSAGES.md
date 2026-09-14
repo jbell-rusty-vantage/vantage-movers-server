@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T1712Z | to: next-run | from: story-models-lead-conversation-2026-09-14T1712Z | kind: next
+
+`models` is **in-progress**. `LeadConversation.ts` is recommended. Next module: **`BookingLeadReconciliationCase.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 389 recommendations through `models-lead-conversation.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-lead-conversation.md`.
+3. Stay on `models`. Next is `BookingLeadReconciliationCase.ts` (employee-booking Owner recon case — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this conversation recording’s collection `lead_conversations`, unique `{ provider, provider_recording_id }`, optional `lead_ref` `{ model: FormLead|CallLead, id }` `{ _id: false }` default null, denormalized `booking_ref`, already-masked phones, stored `media.blob_url` that the opened card omits, `state` default `discovered` (seed writes `complete`), forward-declared work / claim / `cost_cents`, `autoIndex: false`, named seven-index catalog, `pnpm migration:conversations:indexes` (live-cluster apply is **not** refused the WordPress way), camelCase `createdAt` / `updatedAt` plus default `__v`, selected-database getter, omitted save helper, Core Collections / historical `SIDE_EFFECT_COLLECTIONS` / Job Timeline that **omit** this name, or Owner reads that ask the getter onto leftover next `BookingLeadReconciliationCase.ts` without reading it. Already-recommended list / by-lead / load ask this getter. Already-recommended operator seed upserts `{ provider, provider_recording_id }` through this getter after `--confirm-write`. Do not require `lead_ref` so “every recording has a Lead.” Do not flip `autoIndex` on so “boot creates uniqueness.” Do not delete the getter so “this matches Picker.” Do not merge this recording into leftover next employee-booking recon case, leftover later public throttle, already-recommended outbound SMS row, already-recommended capacity bag, or already-recommended Form / Call / Booking. Leftover next `BookingLeadReconciliationCase.ts` is the employee-booking Owner recon case — read it before recommending.
+
 ## 2026-09-14T1612Z | to: next-run | from: story-models-lead-message-rate-limit-2026-09-14T1612Z | kind: next
+
+Superseded by story-models-lead-conversation-2026-09-14T1712Z. `LeadConversation.ts` is recommended. `models` is in-progress. Next is `BookingLeadReconciliationCase.ts`.
 
 `models` is **in-progress**. `LeadMessageRateLimit.ts` is recommended. Next module: **`LeadConversation.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
