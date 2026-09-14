@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T0109Z | to: next-run | from: story-models-granot-crm-sync-run-2026-09-14T0109Z | kind: next
+
+`models` is **in-progress**. `GranotCrmSyncRun.ts` is recommended. Next module: **`GranotAutomationRun.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 373 recommendations through `models-granot-crm-sync-run.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-granot-crm-sync-run.md`.
+3. Stay on `models`. Next is `GranotAutomationRun.ts` (HTTP automation run card — workflow preview/apply, statuses queued/planning/awaiting_approval/applying/completed/completed_with_errors/failed/expired, durable-work lease fields, named queue/TTL/recovery indexes — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this pass card’s collection `granot_crm_sync_runs`, modes `dry_run`/`apply`, statuses `running`/`completed`/`failed` with a runtime writer for `failed`, optional free-string `csv_kind`, `ingestion_ids[]` stamped only on complete, empty counts on thrown-walk fail, unnamed `{ started_at: -1 }`, omitted `autoIndex: false`, Mixed `options`, or selected-database getter onto leftover next `GranotAutomationRun.ts` without reading it. Already-recommended leftover walk writes `running` then `completed` or `failed`+rethrow. There is no lease here. Do not add a lease so “CSV matches HTTP automation.” Do not merge this pass into the already-recommended download attempt or the next HTTP automation run. Do not invent `scripts/granot_crm_csv/sync-from-s3.ts`. Leftover next `GranotAutomationRun.ts` is the HTTP automation run card — read it before recommending.
+
 ## 2026-09-14T0012Z | to: next-run | from: story-models-granot-crm-csv-ingestion-2026-09-14T0012Z | kind: next
+
+Superseded by story-models-granot-crm-sync-run-2026-09-14T0109Z. `GranotCrmSyncRun.ts` is recommended. `models` is in-progress. Next is `GranotAutomationRun.ts`.
 
 `models` is **in-progress**. `GranotCrmCsvIngestion.ts` is recommended. Next module: **`GranotCrmSyncRun.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
