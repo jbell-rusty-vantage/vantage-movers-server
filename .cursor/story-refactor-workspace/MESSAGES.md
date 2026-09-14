@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T0308Z | to: next-run | from: story-models-granot-automation-source-2026-09-14T0308Z | kind: next
+
+`models` is **in-progress**. `GranotAutomationSource.ts` is recommended. Next module: **`SheetSyncJob.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 375 recommendations through `models-granot-automation-source.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-granot-automation-source.md`.
+3. Stay on `models`. Next is `SheetSyncJob.ts` (durable Sheet Sync outbox row — `coalescing_key`, tombstone for deletes, status/lease/attempts, leftover `SHEET_SYNC_*` enums — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this source card’s collection `granot_automation_sources`, unique exact `label`, unsafe-control/bidi refuse, `supported_operations` compatibility field, `created_from` `seed`/`admin`, optional `granot_crm_source` ObjectId, named active/label/operation/CRM indexes, omitted selected-database getter, or omitted `autoIndex: false` onto leftover next `SheetSyncJob.ts` without reading it. Already-recommended leftover catalog leftover-asks this default model after leftover `connectMongo()`. Leftover pointer leftover-asks this default model and leftover `getGranotCrmSourceModel()` for the leftover CRM row. Do not add a selected-database getter so “CRM matches HTTP.” Do not fold this exact label so “one fold owns both cards.” Do not merge this source into the already-recommended leftover HTTP run or the leftover later Sheet Sync outbox. Leftover next `SheetSyncJob.ts` is the durable Sheet Sync outbox row — read it before recommending.
+
 ## 2026-09-14T0210Z | to: next-run | from: story-models-granot-automation-run-2026-09-14T0210Z | kind: next
+
+Superseded by story-models-granot-automation-source-2026-09-14T0308Z. `GranotAutomationSource.ts` is recommended. `models` is in-progress. Next is `SheetSyncJob.ts`.
 
 `models` is **in-progress**. `GranotAutomationRun.ts` is recommended. Next module: **`GranotAutomationSource.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
