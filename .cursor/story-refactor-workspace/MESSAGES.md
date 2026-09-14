@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T1912Z | to: next-run | from: story-models-public-submission-throttle-bucket-2026-09-14T1912Z | kind: next
+
+`models` is **in-progress**. `PublicSubmissionThrottleBucket.ts` is recommended. Next module: **`EntityChange.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 391 recommendations through `models-public-submission-throttle-bucket.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-public-submission-throttle-bucket.md`.
+3. Stay on `models`. Next is `EntityChange.ts` (append-only mutation evidence — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this public employee-submit window bag’s collection `public_submission_throttle_buckets`, unique `{ key_hash, window_start }`, global key the literal `"global"` (not a hash), client key the already-hashed 64-hex header (never the raw client key), `count` default 0 **with** `min: 0`, `$inc` then compare (429 still burns; global first so a global 429 never touches client), `expires_at` `$setOnInsert` `windowStart + 2 * windowSeconds`, unnamed TTL `{ expires_at: 1 }` `expireAfterSeconds: 0`, camelCase `createdAt` / `updatedAt` plus default `__v`, omitted selected-database getter, omitted save helper, omitted `autoIndex: false`, unnamed unique plus TTL clocks the boot creates, omitted model test, Core Collections / historical `SIDE_EFFECT_COLLECTIONS` / Job Timeline that **omit** this name, or default-export submit `findOneAndUpdate` onto leftover next `EntityChange.ts` without reading it. Already-recommended employee submit bumps before prepare / duplicate / the write. Already-recommended HTTP path always sends 64 hex after `connectMongo()`. Do not add a getter so “this matches conversation.” Do not store the plaintext client key so “throttle can skip the header hash.” Do not decrement on 429 so “a skip gives the slot back.” Do not merge this bag into leftover next mutation evidence, already-recommended SMS capacity, already-recommended Sheets minute budget, already-recommended Owner case, or already-recommended Form / Call / Booking. Leftover next `EntityChange.ts` is the append-only mutation evidence — read it before recommending.
+
 ## 2026-09-14T1808Z | to: next-run | from: story-models-booking-lead-reconciliation-case-2026-09-14T1808Z | kind: next
+
+Superseded by story-models-public-submission-throttle-bucket-2026-09-14T1912Z. `PublicSubmissionThrottleBucket.ts` is recommended. `models` is in-progress. Next is `EntityChange.ts`.
 
 `models` is **in-progress**. `BookingLeadReconciliationCase.ts` is recommended. Next module: **`PublicSubmissionThrottleBucket.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
