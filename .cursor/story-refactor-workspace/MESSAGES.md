@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T0710Z | to: next-run | from: story-models-sheet-sync-lease-2026-09-14T0710Z | kind: next
+
+`models` is **in-progress**. `SheetSyncLease.ts` is recommended. Next module: **`SheetSyncQuotaBucket.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 379 recommendations through `models-sheet-sync-lease.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-sheet-sync-lease.md`.
+3. Stay on `models`. Next is `SheetSyncQuotaBucket.ts` (per-minute Google read/write budget bucket — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this fence’s collection `sheet_sync_leases`, unique `scope`, four live account scopes (`sheet-sync:drain`, `ingestion:best_relocation:apply`, `granot:automation:account`, `booking-reconciliation:rematch`), unused per-tab comment, hand-copied four fence columns versus unused `fencedLeaseFields()`, unnamed `{ leased_until: 1 }` plus unique `{ scope: 1 }`, omitted selected-database getter, or omitted `autoIndex: false` onto leftover next `SheetSyncQuotaBucket.ts` without reading it. Already-recommended leftover wrapper leftover-asks leftover `MongoLeaseStore(SheetSyncLease)` leftover after leftover `connectMongo()`. Already-recommended leftover BR leftover / leftover Granot leftover leftover-construct leftover leftover the leftover leftover same leftover leftover store leftover leftover on leftover leftover this leftover leftover default leftover leftover model. Do not add a selected-database getter so “CRM matches Sheet Sync.” Do not start minting tab scopes so “the comment becomes true.” Do not rewrite the knowledge table so “Global drain mutex” is the only sentence. Do not merge this fence into the already-recommended leftover outbox job lease, leftover drain card, leftover attempt, leftover unused `fencedLeaseFields()`, or the leftover later quota bucket. Leftover next `SheetSyncQuotaBucket.ts` is the per-minute budget bucket — read it before recommending.
+
 ## 2026-09-14T0610Z | to: next-run | from: story-models-sheet-sync-attempt-2026-09-14T0610Z | kind: next
+
+Superseded by story-models-sheet-sync-lease-2026-09-14T0710Z. `SheetSyncLease.ts` is recommended. `models` is in-progress. Next is `SheetSyncQuotaBucket.ts`.
 
 `models` is **in-progress**. `SheetSyncAttempt.ts` is recommended. Next module: **`SheetSyncLease.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
