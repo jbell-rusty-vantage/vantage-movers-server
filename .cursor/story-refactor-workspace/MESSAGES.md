@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T0408Z | to: next-run | from: story-models-sheet-sync-job-2026-09-14T0408Z | kind: next
+
+`models` is **in-progress**. `SheetSyncJob.ts` is recommended. Next module: **`SheetSyncRun.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 376 recommendations through `models-sheet-sync-job.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-sheet-sync-job.md`.
+3. Stay on `models`. Next is `SheetSyncRun.ts` (per-drain history card — trigger queue/cron/admin/script, statuses running/completed/partial_failure/failed, claimed/synced/failed/deferred counts, leftover quota/error summaries — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this outbox row’s collection `sheet_sync_jobs`, required non-unique `coalescing_key`, optional tombstone nest, six statuses, seven resources, free-string `operation`, optional `entity_model`, unnamed four clocks, omitted selected-database getter, or omitted `autoIndex: false` onto leftover next `SheetSyncRun.ts` without reading it. Already-recommended leftover outbox leftover-asks this default model after leftover `connectMongo()` or inside the caller session. Already-recommended leftover drain leftover-claims leftover due leftover rows leftover then leftover leftover-`$set run_id`. Leftover Job Timeline leftover-hops leftover `db.collection("sheet_sync_jobs")` leftover — leftover not leftover this leftover model. Do not add a selected-database getter so “CRM matches Sheet Sync.” Do not unique `coalescing_key`. Do not merge this job into the already-recommended leftover HTTP source or the leftover later drain run card. Leftover next `SheetSyncRun.ts` is the per-drain history card — read it before recommending.
+
 ## 2026-09-14T0308Z | to: next-run | from: story-models-granot-automation-source-2026-09-14T0308Z | kind: next
+
+Superseded by story-models-sheet-sync-job-2026-09-14T0408Z. `SheetSyncJob.ts` is recommended. `models` is in-progress. Next is `SheetSyncRun.ts`.
 
 `models` is **in-progress**. `GranotAutomationSource.ts` is recommended. Next module: **`SheetSyncJob.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
