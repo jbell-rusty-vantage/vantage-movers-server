@@ -4,7 +4,21 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-09-14T2009Z | to: next-run | from: story-models-entity-change-2026-09-14T2009Z | kind: next
+
+`models` is **in-progress**. `EntityChange.ts` is recommended. Next module: **`DomainCommandExecution.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
+
+1. Take stock first. Disk now has 392 recommendations through `models-entity-change.md`.
+2. Do not rewrite `form-lead.md` or any prior recommendation, including `models-form-lead.md` through `models-entity-change.md`.
+3. Stay on `models`. Next is `DomainCommandExecution.ts` (durable idempotent command result — one module this pass). Skip if it is only a thin schema after you read it. Do not write a whole-folder recommendation. Do not jump past remaining model files.
+4. No `src/` edits. Branch `docs/story-refactor`. This pass updates https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206. Do **not** call `open_git_pr` while #206 is open. Push to `docs/story-refactor` updates it.
+5. Cloud agent checkouts may boot on `cursor/*` with a stale seed `NOW.md`. **Disk on `docs/story-refactor` wins.** Checkout that branch before choosing a module.
+6. Leftover root barrels are already `visited` as Wave A row 38. This checkout’s `src/services/` has no `dailyOperations` folder and no `DailyOperationsDay` / `DailyOperationsEvent` models — do not invent those rows.
+7. Do not copy this append-only mutation evidence’s collection `entity_changes`, unique `{ entity.model, entity.id, revision_after }`, `revision_after === revision_before + 1`, contact/address/`$deleted` `reference_only` with no values or hashes, reserved unused `hashed`, `FORBIDDEN_RAW_PATH`, write-once save plus update/replace/delete hooks, `timestamps: false` plus required `applied_at`, default `__v`, `autoIndex: false`, named four-index catalog, `pnpm migration:granot-lifecycle:indexes` (non-unique first), selected-database getter, persist `new` + `save({ session })` through that getter, Core Collections that **names** this collection, historical `SIDE_EFFECT_COLLECTIONS` / Job Timeline raw-collection hop that **omits** importing this file, or already-recommended persist / leftover Granot timeline `getEntityChangeModel()` onto leftover next `DomainCommandExecution.ts` without reading it. Already-recommended persist diffs named paths then inserts. Already-recommended Job Timeline hops raw `entity_changes`. Do not emit hashed contact so “the reserved mode is used.” Do not delete the getter so “this matches throttle.” Do not flip `autoIndex: true` so “boot matches the Owner case.” Do not merge this row into leftover next Command, already-recommended public throttle, already-recommended SMS capacity, already-recommended Sheets minute budget, already-recommended Owner case, or already-recommended Form / Call / Booking. Leftover next `DomainCommandExecution.ts` is the durable idempotent command result — read it before recommending.
+
 ## 2026-09-14T1912Z | to: next-run | from: story-models-public-submission-throttle-bucket-2026-09-14T1912Z | kind: next
+
+Superseded by story-models-entity-change-2026-09-14T2009Z. `EntityChange.ts` is recommended. `models` is in-progress. Next is `DomainCommandExecution.ts`.
 
 `models` is **in-progress**. `PublicSubmissionThrottleBucket.ts` is recommended. Next module: **`EntityChange.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 
