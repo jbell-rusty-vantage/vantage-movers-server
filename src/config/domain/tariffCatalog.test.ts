@@ -19,9 +19,9 @@ test("maps Initial Price cubic feet onto the Drop Downs Linehaul ranges", () => 
   assert.equal(mapLinehaulCubicFeetToRule(-1), undefined);
 });
 
-test("treats Binding Estimate Fee as outside the owner catalog", () => {
+test("treats Binding Estimate Fee as automatic, not an owner dropdown", () => {
   assert.equal(OWNER_TARIFF_SERVICES.includes("Binding Estimate Fee" as never), false);
-  assert.equal(isCatalogTariffPair("Binding Estimate Fee", "Binding Estimate Fee"), false);
+  assert.equal(isCatalogTariffPair("Binding Estimate Fee", "Binding Estimate Fee"), true);
 });
 
 test("rules for a Service stay inside that Service", () => {

@@ -42,7 +42,7 @@ generated:
 
 `Timestamp`, `Effective Date`, `Pickup Zone`, `Delivery Zone`, `Service`, `Rule ` (live header has a trailing space), `New Rule`, `Carrier`.
 
-`Service` and `Rule` must be a Drop Downs pair. Linehaul Rule is the cubic-feet range for the parsed Initial Price. Owner groups use `P.G.S.`, `Accesorial Services`, `Packing Services`, or `Bulk Fee` with that Service's Rules. Binding Estimate Fee on Drop Downs is a delimiter, not a pair. One or more rows share date, zones, and carrier. `Timestamp` is stamped by the server at append time.
+`Service` and `Rule` must be a Drop Downs pair. Linehaul Rule is the cubic-feet range for the parsed Initial Price. Binding Estimate Fee is automatic (`Binding Estimate Fee` / `Binding Estimate Fee` plus the Extra amount). Owner groups use `P.G.S.`, `Accesorial Services`, `Packing Services`, or `Bulk Fee` with that Service's Rules. One or more rows share date, zones, and carrier. `Timestamp` is stamped by the server at append time.
 
 `Carrier` is the Moving Carrier legal name and DOT for the Granot Carrier Code the extension sent. Lookup is `moving_carriers.granot_carrier_code`. Unknown codes are 400.
 

@@ -1,9 +1,11 @@
 // Canonical Service / Rule pairs from the Tariff Adjustment Drop Downs tab.
-// Binding Estimate Fee on that tab is a delimiter between automatic Linehaul
-// ranges and owner-chosen groups. Keep this file in lockstep with
+// Linehaul ranges and Binding Estimate Fee are automatic. Owner-chosen groups
+// are the remaining Services. Keep this file in lockstep with
 // granot_sync_extensions_and_services/src/workflows/tariff-adjustment/catalog.ts
 
 export const LINEHAUL_SERVICE = "Linehaul";
+export const BINDING_ESTIMATE_FEE_SERVICE = "Binding Estimate Fee";
+export const BINDING_ESTIMATE_FEE_RULE = "Binding Estimate Fee";
 
 export const LINEHAUL_RANGES = [
   { label: "0 to 300 c.f.", min: 0, max: 300 },
@@ -54,6 +56,7 @@ export const OWNER_TARIFF_SERVICES = Object.keys(
 
 export const TARIFF_SERVICE_RULES = {
   [LINEHAUL_SERVICE]: LINEHAUL_RULES,
+  [BINDING_ESTIMATE_FEE_SERVICE]: [BINDING_ESTIMATE_FEE_RULE],
   ...OWNER_TARIFF_SERVICE_RULES,
 } as const;
 
@@ -74,4 +77,8 @@ export function rulesForTariffService(service: string): readonly string[] {
 
 export function isCatalogTariffPair(service: string, rule: string): boolean {
   return rulesForTariffService(service).includes(rule);
+}
+
+export function isBindingEstimateFeeLabel(value: string): boolean {
+  return /^binding estimate fee$/i.test(value.trim());
 }
