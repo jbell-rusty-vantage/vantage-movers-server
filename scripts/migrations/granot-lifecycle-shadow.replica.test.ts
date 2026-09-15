@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import mongoose from "mongoose";
+import { toObjectId } from "../../src/utils/objectId.js";
 import { getMongoDatabaseName } from "../../src/config/domain/runtime.js";
 import { connectMongo } from "../../src/db.js";
 import { getGranotObservationModel } from "../../src/models/GranotObservation.js";
@@ -59,7 +60,7 @@ test("[AC-31][AC-35][AC-37][AC-38] historical processor replay is causally idemp
   } finally {
     const observations = await getGranotObservationModel().find({ receipt_id: captured.receipt_id }).select({ _id: 1 }).lean();
     await getSynchronizationDecisionModel().collection.deleteMany({ observation_id: { $in: observations.map((row) => row._id) } });
-    await getGranotObservationModel().collection.deleteMany({ receipt_id: new mongoose.Types.ObjectId(captured.receipt_id) });
-    await getGranotObservationReceiptModel().collection.deleteOne({ _id: new mongoose.Types.ObjectId(captured.receipt_id) });
+    await getGranotObservationModel().collection.deleteMany({ receipt_id: toObjectId(captured.receipt_id) });
+    await getGranotObservationReceiptModel().collection.deleteOne({ _id: toObjectId(captured.receipt_id) });
   }
 });

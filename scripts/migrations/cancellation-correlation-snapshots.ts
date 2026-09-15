@@ -11,6 +11,7 @@
  */
 import mongoose from "mongoose";
 import { getMongoDatabaseName } from "../../src/config/domain/runtime.js";
+import { toObjectId } from "../../src/utils/objectId.js";
 import { connectMongo } from "../../src/db.js";
 import { CANCELLED_LEAD_NORMALIZED_JOB_SNAPSHOT_INDEX } from "../../src/models/CancelledLead.js";
 import {
@@ -106,7 +107,7 @@ async function main(): Promise<void> {
   const bookingDocs = bookingIds.length > 0
     ? await bookings
       .find(
-        { _id: { $in: bookingIds.map((id) => new mongoose.Types.ObjectId(id)) } },
+        { _id: { $in: bookingIds.map((id) => toObjectId(id)) } },
         {
           projection: {
             job_no: 1,
@@ -163,7 +164,7 @@ async function main(): Promise<void> {
       if (row.class !== "deterministic" || !row.snapshots) continue;
       const result = await cancellations.updateOne(
         {
-          _id: new mongoose.Types.ObjectId(row.id),
+          _id: toObjectId(row.id),
           $or: [
             { normalized_job_no_snapshot: { $exists: false } },
             { normalized_job_no_snapshot: null },
@@ -175,7 +176,7 @@ async function main(): Promise<void> {
           lead_ref_snapshot: row.snapshots.lead_ref_snapshot
             ? {
                 model: row.snapshots.lead_ref_snapshot.model,
-                id: new mongoose.Types.ObjectId(row.snapshots.lead_ref_snapshot.id),
+                id: toObjectId(row.snapshots.lead_ref_snapshot.id),
               }
             : null,
         } },

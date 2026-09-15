@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { GRANOT_LIFECYCLE_FLAG_DEFAULTS } from "../../config/domain/granotLifecycle";
 import { getMongoDatabaseName } from "../../config/domain/runtime";
 import { connectMongo } from "../../db";
@@ -46,7 +47,7 @@ async function replicaReady(t: { skip: (reason: string) => void }) {
 
 after(async () => {
   if (mongoose.connection.readyState === 1) {
-    const ids = [...seeded].map((value) => new mongoose.Types.ObjectId(value));
+    const ids = [...seeded].map((value) => toObjectId(value));
     await Promise.all([
       getGranotReleaseReconciliationCaseModel().deleteMany({ normalized_job_no: { $regex: `^${normalizedJobPrefix}` } }),
       BookedLead.deleteMany({ normalized_job_no: { $regex: `^${normalizedJobPrefix}` } }),

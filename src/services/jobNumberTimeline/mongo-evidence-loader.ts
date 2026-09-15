@@ -25,6 +25,16 @@ import type {
 } from "./rows.js";
 import type { JobTimelineLeadModel } from "./types.js";
 
+function asUnknownArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function asDocumentArray(value: unknown): Document[] {
+  return Array.isArray(value)
+    ? value.filter((row: unknown): row is Document => row != null && typeof row === "object" && !Array.isArray(row))
+    : [];
+}
+
 function asId(value: unknown): string {
   if (value == null) return "";
   if (typeof value === "string") return value;
@@ -65,7 +75,7 @@ function mapObservation(row: Document): ObservationRow {
   const identity = (row.identity ?? {}) as Document;
   const priority = (row.priority ?? {}) as Document;
   const bookingAction = (row.booking_action ?? {}) as Document;
-  const issues = Array.isArray(row.issues) ? row.issues : [];
+  const issues = asUnknownArray(row.issues);
   return {
     id: asId(row._id),
     captured_at: asIso(row.captured_at),
@@ -78,8 +88,8 @@ function mapObservation(row: Document): ObservationRow {
     priority_valid: priority.valid === true,
     booking_action_normalized: asString(bookingAction.normalized),
     issue_codes: issues
-      .map((issue) => (issue && typeof issue === "object" ? asString((issue as Document).code) : undefined))
-      .filter((code): code is string => Boolean(code)),
+      .map((issue: unknown) => (issue && typeof issue === "object" ? asString((issue as Document).code) : undefined))
+      .filter((code: string | undefined): code is string => Boolean(code)),
     granot_crm_source_id: row.granot_crm_source_id ? asId(row.granot_crm_source_id) : undefined,
   };
 }
@@ -129,8 +139,8 @@ function mapEntityChange(row: Document, fallbackModel?: string): EntityChangeRow
 function mapDecision(row: Document): DecisionRow {
   const scope = (row.source_scope ?? {}) as Document;
   const target = row.target as Document | undefined;
-  const effects = Array.isArray(row.effects) ? row.effects : [];
-  const gates = Array.isArray(row.evaluated_gates) ? row.evaluated_gates : [];
+  const effects = asUnknownArray(row.effects);
+  const gates = asUnknownArray(row.evaluated_gates);
   return {
     id: asId(row._id),
     observation_id: asId(row.observation_id),
@@ -146,9 +156,9 @@ function mapDecision(row: Document): DecisionRow {
     source_granularity_id: scope.source_granularity_id ? asId(scope.source_granularity_id) : undefined,
     source_company_id: scope.lead_source_company ? asId(scope.lead_source_company) : undefined,
     effect_kinds: effects
-      .map((effect) => (effect && typeof effect === "object" ? asString((effect as Document).kind) : undefined))
-      .filter((kind): kind is string => Boolean(kind)),
-    evaluated_gates: gates.flatMap((gate) => {
+      .map((effect: unknown) => (effect && typeof effect === "object" ? asString((effect as Document).kind) : undefined))
+      .filter((kind: string | undefined): kind is string => Boolean(kind)),
+    evaluated_gates: gates.flatMap((gate: unknown) => {
       if (!gate || typeof gate !== "object") return [];
       const record = gate as Document;
       const name = asString(record.gate);
@@ -159,7 +169,7 @@ function mapDecision(row: Document): DecisionRow {
 }
 
 function mapCase(row: Document, kind: "booking" | "release"): CaseRow {
-  const evidence = Array.isArray(row.evidence) ? row.evidence : [];
+  const evidence = asUnknownArray(row.evidence);
   return {
     id: asId(row._id),
     kind,
@@ -172,7 +182,7 @@ function mapCase(row: Document, kind: "booking" | "release"): CaseRow {
     evidence_revision: typeof row.evidence_revision === "number" ? row.evidence_revision : undefined,
     opened_at: asIso(row.opened_at),
     resolved_at: row.resolved_at ? asIso(row.resolved_at) : undefined,
-    evidence: evidence.flatMap((item) => {
+    evidence: evidence.flatMap((item: unknown) => {
       if (!item || typeof item !== "object") return [];
       const record = item as Document;
       return [{
@@ -187,9 +197,11 @@ export async function loadCompanyGranularityIds(
   db: Db,
   sourceCompanyId: string,
 ): Promise<string[]> {
-  const rows = await db.collection("lead_source_granularities").find({
-    source_company: asMongoId(sourceCompanyId),
-  }).project({ _id: 1 }).toArray();
+  const rows = asDocumentArray(
+    await db.collection("lead_source_granularities").find({
+      source_company: asMongoId(sourceCompanyId),
+    }).project({ _id: 1 }).toArray(),
+  );
   return rows.map((row) => asId(row._id));
 }
 
@@ -199,13 +211,13 @@ export async function loadJobNumberTimelineRows(
 ): Promise<JobTimelineRows> {
   const jobFilter = equivalentNormalizedJobFilter(normalizedJobNo);
   const [
-    observations,
-    record_links,
-    bookings,
-    booking_cases,
-    release_cases,
-    booking_discrepancies,
-    release_discrepancies,
+    observationDocs,
+    recordLinkDocs,
+    bookingDocs,
+    bookingCaseDocs,
+    releaseCaseDocs,
+    bookingDiscrepancyDocs,
+    releaseDiscrepancyDocs,
     callLogCursorDoc,
   ] = await Promise.all([
     db.collection("granot_observations").find(observationJobFilter(normalizedJobNo)).toArray(),
@@ -217,18 +229,25 @@ export async function loadJobNumberTimelineRows(
     db.collection("granot_release_discrepancies").find(jobFilter).toArray(),
     db.collection(getRingCentralCollectionName("callLogSyncState")).findOne({ key: "account" }),
   ]);
+  const observations = asDocumentArray(observationDocs);
+  const record_links = asDocumentArray(recordLinkDocs);
+  const bookings = asDocumentArray(bookingDocs);
+  const booking_cases = asDocumentArray(bookingCaseDocs);
+  const release_cases = asDocumentArray(releaseCaseDocs);
+  const booking_discrepancies = asDocumentArray(bookingDiscrepancyDocs);
+  const release_discrepancies = asDocumentArray(releaseDiscrepancyDocs);
 
   const observationIds = observations.map((row) => row._id);
   const receiptIds = observations
     .map((row) => row.receipt_id)
-    .filter((id): id is NonNullable<typeof id> => Boolean(id));
-  const [decisions, receiptDocs] = await Promise.all([
+    .filter((id: unknown): id is NonNullable<unknown> => Boolean(id));
+  const [decisionDocs, receiptDocRows] = await Promise.all([
     observationIds.length > 0
       ? db.collection("synchronization_decisions").find({ observation_id: { $in: observationIds } }).toArray()
       : Promise.resolve([]),
     receiptIds.length > 0
       ? db.collection("granot_webhook_receipts").find({
-          _id: { $in: receiptIds.map((id) => asMongoId(asId(id))) },
+          _id: { $in: receiptIds.map((id: unknown) => asMongoId(asId(id))) },
         } as Document).project({
           captured_at: 1,
           createdAt: 1,
@@ -239,6 +258,8 @@ export async function loadJobNumberTimelineRows(
         }).toArray()
       : Promise.resolve([]),
   ]);
+  const decisions = asDocumentArray(decisionDocs);
+  const receiptDocs = asDocumentArray(receiptDocRows);
 
   const mappedObservations = observations.map(mapObservation);
   const mappedDecisions = decisions.map(mapDecision);
@@ -292,7 +313,7 @@ export async function loadJobNumberTimelineRows(
     db.collection("cancelled_leads").find(snapshotFilter).toArray(),
   ]);
   const cancellationsById = new Map<string, Document>();
-  for (const row of [...linkedCancellations, ...snapshotCancellations]) {
+  for (const row of [...asDocumentArray(linkedCancellations), ...asDocumentArray(snapshotCancellations)]) {
     cancellationsById.set(asId(row._id), row);
   }
   const mappedCancellations: CancellationRow[] = [...cancellationsById.values()].map((row) => {
@@ -397,7 +418,7 @@ export async function loadJobNumberTimelineRows(
             "lead_ref.id": 1,
           }).toArray()
         : Promise.resolve([]);
-      const [changes, messages, processedCallDocs, wordpressReceiptDocs] = await Promise.all([
+      const [changeDocs, messageDocs, processedCallDocRows, wordpressReceiptDocRows] = await Promise.all([
         db.collection("entity_changes").find({
           "entity.model": leadRef.model,
           "entity.id": asId(leadDoc._id),
@@ -406,6 +427,10 @@ export async function loadJobNumberTimelineRows(
         processedCallQuery,
         wordpressReceiptQuery,
       ]);
+      const changes = asDocumentArray(changeDocs);
+      const messages = asDocumentArray(messageDocs);
+      const processedCallDocs = asDocumentArray(processedCallDocRows);
+      const wordpressReceiptDocs = asDocumentArray(wordpressReceiptDocRows);
       mappedWordpressReceipts = wordpressReceiptDocs.map((row) => {
         const leadRefDoc = row.lead_ref as Document | undefined;
         return {
@@ -449,19 +474,23 @@ export async function loadJobNumberTimelineRows(
     }
   }
 
-  const bookingChanges = bookingIds.length > 0
-    ? await db.collection("entity_changes").find({
-        "entity.model": "BookedLead",
-        "entity.id": { $in: bookingIds },
-      }).toArray()
-    : [];
+  const bookingChanges = asDocumentArray(
+    bookingIds.length > 0
+      ? await db.collection("entity_changes").find({
+          "entity.model": "BookedLead",
+          "entity.id": { $in: bookingIds },
+        }).toArray()
+      : [],
+  );
   const cancellationIds = mappedCancellations.map((row) => row.id);
-  const cancellationChanges = cancellationIds.length > 0
-    ? await db.collection("entity_changes").find({
-        "entity.model": "CancelledLead",
-        "entity.id": { $in: cancellationIds },
-      }).toArray()
-    : [];
+  const cancellationChanges = asDocumentArray(
+    cancellationIds.length > 0
+      ? await db.collection("entity_changes").find({
+          "entity.model": "CancelledLead",
+          "entity.id": { $in: cancellationIds },
+        }).toArray()
+      : [],
+  );
   entity_changes = [
     ...entity_changes,
     ...bookingChanges.map((row) => mapEntityChange(row, "BookedLead")),
@@ -473,9 +502,11 @@ export async function loadJobNumberTimelineRows(
     ...mappedBookings.map((row) => row.id),
     ...mappedCancellations.map((row) => row.id),
   ];
-  const sheetJobs = entityIds.length > 0
-    ? await db.collection("sheet_sync_jobs").find({ entity_id: { $in: entityIds } }).toArray()
-    : [];
+  const sheetJobs = asDocumentArray(
+    entityIds.length > 0
+      ? await db.collection("sheet_sync_jobs").find({ entity_id: { $in: entityIds } }).toArray()
+      : [],
+  );
   const mappedSheetJobs: SheetSyncJobRow[] = sheetJobs.map((row) => ({
     id: asId(row._id),
     entity_id: String(row.entity_id ?? ""),
@@ -491,13 +522,15 @@ export async function loadJobNumberTimelineRows(
   }));
 
   const sourceIds = mappedObservations
-    .map((row) => row.granot_crm_source_id)
-    .filter((id): id is string => Boolean(id));
-  const crmSources = sourceIds.length > 0
-    ? await db.collection("granot_crm_sources").find({
-        _id: { $in: sourceIds.map(asMongoId) },
-      } as Document).toArray()
-    : [];
+    .map((row: ObservationRow) => row.granot_crm_source_id)
+    .filter((id: string | undefined): id is string => Boolean(id));
+  const crmSources = asDocumentArray(
+    sourceIds.length > 0
+      ? await db.collection("granot_crm_sources").find({
+          _id: { $in: sourceIds.map(asMongoId) },
+        } as Document).toArray()
+      : [],
+  );
   const mappedSources: CrmSourceRow[] = crmSources.map((row) => {
     const route = (row.reviewed_route ?? row.route ?? {}) as Document;
     return {
@@ -512,12 +545,14 @@ export async function loadJobNumberTimelineRows(
     ...mappedLinks.map((row) => row.source_granularity_id),
     ...mappedDecisions.map((row) => row.source_granularity_id),
     ...mappedSources.map((row) => row.source_granularity_id),
-  ].filter((id): id is string => Boolean(id));
-  const granularities = granularityIds.length > 0
-    ? await db.collection("lead_source_granularities").find({
-        _id: { $in: granularityIds.map(asMongoId) },
-      } as Document).toArray()
-    : [];
+  ].filter((id: string | undefined): id is string => Boolean(id));
+  const granularities = asDocumentArray(
+    granularityIds.length > 0
+      ? await db.collection("lead_source_granularities").find({
+          _id: { $in: granularityIds.map(asMongoId) },
+        } as Document).toArray()
+      : [],
+  );
   const mappedGranularities: GranularityRow[] = granularities.map((row) => ({
     id: asId(row._id),
     source_company_id: row.source_company ? asId(row.source_company) : row.source_company_id ? asId(row.source_company_id) : undefined,

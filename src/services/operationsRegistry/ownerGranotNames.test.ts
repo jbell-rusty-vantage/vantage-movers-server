@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import type { ClientSession } from "mongoose";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
@@ -404,7 +405,7 @@ test("form_by_move_type with two Call Feeds is rejected", async () => {
   const callA = String(callFeedId);
   const callB = String(formFeedId);
   (Granularity as unknown as MutableModel).findById = (id: unknown) =>
-    leanById(feedDoc(new mongoose.Types.ObjectId(String(id)), { channel: "call" }));
+    leanById(feedDoc(toObjectId(String(id)), { channel: "call" }));
   await assert.rejects(
     () =>
       createGranotNameFromOwnerIntent(

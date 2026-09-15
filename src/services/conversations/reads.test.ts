@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import type { LeadConversationDocument } from "../../models/LeadConversation";
 import {
   assertListProjectionSafe,
@@ -9,7 +9,7 @@ import {
 
 function seededDocument(): LeadConversationDocument {
   return {
-    _id: new mongoose.Types.ObjectId("6a905b5cf7dda52cfacb721e"),
+    _id: toObjectId("6a905b5cf7dda52cfacb721e"),
     state: "complete",
     direction: "Inbound",
     started_at: new Date("2026-08-07T16:00:41.844Z"),
@@ -20,9 +20,9 @@ function seededDocument(): LeadConversationDocument {
     receiver_agent_name_snapshot: "Patrick",
     lead_ref: {
       model: "CallLead",
-      id: new mongoose.Types.ObjectId("6a761d3d7ceae445794c57bd"),
+      id: toObjectId("6a761d3d7ceae445794c57bd"),
     },
-    booking_ref: new mongoose.Types.ObjectId("6a7d4e3529d500054c6b5be5"),
+    booking_ref: toObjectId("6a7d4e3529d500054c6b5be5"),
     transcript: {
       text: "Redacted transcript with [REDACTED:EMAIL]",
       model: "gpt-4o-mini-transcribe",

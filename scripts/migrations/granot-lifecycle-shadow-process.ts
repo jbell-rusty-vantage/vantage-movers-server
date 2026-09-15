@@ -3,6 +3,7 @@ import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import mongoose from "mongoose";
 import { getMongoDatabaseName, isTestMode } from "../../src/config/domain/runtime.js";
+import { toObjectId } from "../../src/utils/objectId.js";
 import { connectMongo } from "../../src/db.js";
 import { getGranotLifecycleActivationModel } from "../../src/models/GranotLifecycleActivation.js";
 import { GRANOT_OBSERVATION_RECEIPT_COLLECTION } from "../../src/models/GranotObservationReceipt.js";
@@ -90,7 +91,7 @@ async function main(): Promise<void> {
       saveCheckpoint: checkpoint.save,
       async listReceipts({ afterId, limit }) {
         const historicalFilter = cutoff ? { captured_at: { $lt: cutoff } } : {};
-        const afterFilter = afterId ? { _id: { $gt: new mongoose.Types.ObjectId(afterId) } } : {};
+        const afterFilter = afterId ? { _id: { $gt: toObjectId(afterId) } } : {};
         const documents = await db.collection(GRANOT_OBSERVATION_RECEIPT_COLLECTION).find({ ...historicalFilter, ...afterFilter }, { projection: { _id: 1, captured_at: 1, route_event_class: 1 } }).sort({ _id: 1 }).limit(limit).toArray();
         const excludedPostCutoffCount = cutoff ? await db.collection(GRANOT_OBSERVATION_RECEIPT_COLLECTION).countDocuments({ captured_at: { $gte: cutoff }, ...afterFilter }) : 0;
         return { receipts: documents.map((row) => ({ id: String(row._id), captured_at: row.captured_at as Date, event_class: String(row.route_event_class ?? "none") })), excludedPostCutoffCount };

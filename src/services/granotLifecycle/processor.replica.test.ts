@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { GRANOT_LIFECYCLE_FLAG_DEFAULTS } from "../../config/domain/granotLifecycle";
 import { getMongoDatabaseName } from "../../config/domain/runtime";
 import { connectMongo, withTransaction } from "../../db";
@@ -163,7 +164,7 @@ function replicaProcessorDeps(input: {
         normalized_job_no: "SYNTHETIC JOB 100",
         job_no_snapshot: "synthetic-job-100",
         state: "active",
-        lead_ref: { model: "FormLead", id: new mongoose.Types.ObjectId(input.leadId) },
+        lead_ref: { model: "FormLead", id: toObjectId(input.leadId) },
         disputed: false,
         established_by_decision_id: objectId(),
         established_at: capturedAt,

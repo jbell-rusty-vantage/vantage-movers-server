@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { isObjectIdString, toObjectId } from "../../src/utils/objectId";
 import {
   computeMigrationChecksum,
   countPlannedActions,
@@ -140,10 +141,10 @@ export type SourceGranularitiesManifest = OperationsRegistryMigrationManifestBas
 const DEFAULT_PROJECTION_MODE = "derived_import" as const;
 
 function isValidObjectIdString(value: string): boolean {
-  if (!mongoose.Types.ObjectId.isValid(value)) {
+  if (!isObjectIdString(value)) {
     return false;
   }
-  return String(new mongoose.Types.ObjectId(value)) === value;
+  return String(toObjectId(value)) === value;
 }
 
 function normalizeKey(value: string | null | undefined): string | undefined {
@@ -675,8 +676,8 @@ export function granularityMigrationInsertDocument(
     return null;
   }
   return {
-    _id: new mongoose.Types.ObjectId(plan.document.id),
-    source_company: new mongoose.Types.ObjectId(plan.document.source_company),
+    _id: toObjectId(plan.document.id),
+    source_company: toObjectId(plan.document.source_company),
     granularity_key: plan.document.granularity_key,
     channel: plan.document.channel,
     owner_label: plan.document.owner_label,
@@ -700,12 +701,12 @@ export function companyMigrationUpdateFilter(
   }
   const setPayload: Record<string, unknown> = {};
   if (plan.update.default_form_granularity) {
-    setPayload.default_form_granularity = new mongoose.Types.ObjectId(
+    setPayload.default_form_granularity = toObjectId(
       plan.update.default_form_granularity,
     );
   }
   if (plan.update.default_call_granularity) {
-    setPayload.default_call_granularity = new mongoose.Types.ObjectId(
+    setPayload.default_call_granularity = toObjectId(
       plan.update.default_call_granularity,
     );
   }

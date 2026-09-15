@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import type { GranotObservationDocument } from "../../models/GranotObservation";
 import {
   isCanonicalPriorityFive,
@@ -30,8 +30,8 @@ function observation(input: {
   booking_action?: GranotObservationDocument["booking_action"];
 }): GranotObservationDocument {
   return {
-    _id: new mongoose.Types.ObjectId(input.id),
-    receipt_id: new mongoose.Types.ObjectId(input.receipt ?? input.id.replace(/.$/, "1")),
+    _id: toObjectId(input.id),
+    receipt_id: toObjectId(input.receipt ?? input.id.replace(/.$/, "1")),
     captured_at: input.captured_at,
     route_event_class: input.route,
     payload_event_type_raw: input.event,

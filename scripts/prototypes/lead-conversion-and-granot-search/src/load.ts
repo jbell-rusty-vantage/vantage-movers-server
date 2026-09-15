@@ -4,6 +4,7 @@ import {
   equivalentNormalizedJobFilter,
   normalizeJobNo,
 } from "../../../../src/services/bookings/bookingIdentity.js";
+import { isObjectIdString, toObjectId } from "../../../../src/utils/objectId.js";
 import type {
   GranotSearchCatalog,
   ReceivedLeadRow,
@@ -255,8 +256,8 @@ export async function loadGranotSearchCatalog(
   }
 
   const objectIds = observationIds
-    .filter((id) => mongoose.Types.ObjectId.isValid(id))
-    .map((id) => new mongoose.Types.ObjectId(id));
+    .filter((id) => isObjectIdString(id))
+    .map((id) => toObjectId(id));
 
   const [decisionDocs, commandDocs] = await Promise.all([
     db

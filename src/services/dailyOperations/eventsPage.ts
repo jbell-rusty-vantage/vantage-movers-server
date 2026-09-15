@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import {
   getDailyOperationsEventModel,
   type DailyOperationsCard,
@@ -6,6 +5,7 @@ import {
   type DailyOperationsLinks,
 } from "../../models/DailyOperationsEvent";
 import { FLORIDA_TIME_ZONE } from "../../utils/easternTime";
+import { isObjectIdString, toObjectId } from "../../utils/objectId";
 import { easternDayKey } from "./dayDocument";
 import {
   DAILY_OPERATIONS_LANES,
@@ -228,8 +228,8 @@ async function defaultListEvents(input: {
   if (input.lane) filter.lane = input.lane;
   if (input.cursor) {
     const occurredAt = new Date(input.cursor.occurred_at);
-    const objectId = mongoose.Types.ObjectId.isValid(input.cursor.event_id)
-      ? new mongoose.Types.ObjectId(input.cursor.event_id)
+    const objectId = isObjectIdString(input.cursor.event_id)
+      ? toObjectId(input.cursor.event_id)
       : null;
     filter.$or = objectId
       ? [

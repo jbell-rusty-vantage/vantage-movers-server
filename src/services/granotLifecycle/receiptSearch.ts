@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { getGranotBookingReconciliationCaseModel } from "../../models/GranotBookingReconciliationCase";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
 import { getGranotObservationModel } from "../../models/GranotObservation";
@@ -585,7 +586,7 @@ function asObjectId(id: string): mongoose.Types.ObjectId | null {
   if (!/^[a-fA-F0-9]{24}$/.test(id)) {
     return null;
   }
-  return new mongoose.Types.ObjectId(id);
+  return toObjectId(id);
 }
 
 function asIdString(value: unknown): string | null {

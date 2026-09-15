@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { GRANOT_LIFECYCLE_FLAG_DEFAULTS } from "../../config/domain/granotLifecycle";
 import type { GranotObservationDocument } from "../../models/GranotObservation";
 import {
@@ -697,7 +698,7 @@ function exactLink(leadId: string): GranotRecordLinkDocument {
     normalized_job_no: "SYNTHETIC JOB 100",
     job_no_snapshot: "synthetic-job-100",
     state: "active",
-    lead_ref: { model: "FormLead", id: new mongoose.Types.ObjectId(leadId) },
+    lead_ref: { model: "FormLead", id: toObjectId(leadId) },
     disputed: false,
     established_by_decision_id: objectId(),
     established_at: decidedAt,
@@ -1603,9 +1604,9 @@ test("[AC-08] live eligible no-match invokes createLeadFromGranot once with the 
     createLeadFromGranotPayloadChecksum({
       observation: row,
       source_scope: {
-        granot_crm_source_id: new mongoose.Types.ObjectId(store.sourceId),
-        lead_source_company: new mongoose.Types.ObjectId(store.companyId),
-        source_granularity_id: new mongoose.Types.ObjectId(store.localGranularityId),
+        granot_crm_source_id: toObjectId(store.sourceId),
+        lead_source_company: toObjectId(store.companyId),
+        source_granularity_id: toObjectId(store.localGranularityId),
         disposition: "source_scoped_lead",
         policy_version: "granot-lifecycle-source-policy-v1",
       },
@@ -2037,9 +2038,9 @@ test("[AC-09] live Form same states select Local; differing states select long-d
     createLeadFromGranotPayloadChecksum({
       observation: localRow,
       source_scope: {
-        granot_crm_source_id: new mongoose.Types.ObjectId(store.sourceId),
-        lead_source_company: new mongoose.Types.ObjectId(store.companyId),
-        source_granularity_id: new mongoose.Types.ObjectId(store.localGranularityId),
+        granot_crm_source_id: toObjectId(store.sourceId),
+        lead_source_company: toObjectId(store.companyId),
+        source_granularity_id: toObjectId(store.localGranularityId),
         disposition: "source_scoped_lead",
         policy_version: "granot-lifecycle-source-policy-v1",
       },
@@ -2070,9 +2071,9 @@ test("[AC-09] live Form same states select Local; differing states select long-d
     createLeadFromGranotPayloadChecksum({
       observation: longRow,
       source_scope: {
-        granot_crm_source_id: new mongoose.Types.ObjectId(store.sourceId),
-        lead_source_company: new mongoose.Types.ObjectId(store.companyId),
-        source_granularity_id: new mongoose.Types.ObjectId(store.longGranularityId),
+        granot_crm_source_id: toObjectId(store.sourceId),
+        lead_source_company: toObjectId(store.companyId),
+        source_granularity_id: toObjectId(store.longGranularityId),
         disposition: "source_scoped_lead",
         policy_version: "granot-lifecycle-source-policy-v1",
       },

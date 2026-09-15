@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { connectMongo, withTransaction } from "../../db";
 import { getCallLeadModel } from "../../models/CallLead";
 import { DomainCommandExecution } from "../../models/DomainCommandExecution";
@@ -33,12 +34,12 @@ import {
   type RingCentralQualifiedCall,
 } from "./ringcentral-call-lead-ingest.service";
 
-const COMPANY_ID = new mongoose.Types.ObjectId("68a500000000000000000020");
-const GRANULARITY_ID = new mongoose.Types.ObjectId(
+const COMPANY_ID = toObjectId("68a500000000000000000020");
+const GRANULARITY_ID = toObjectId(
   "68a500000000000000000021",
 );
-const ROUTE_ID = new mongoose.Types.ObjectId("68a500000000000000000022");
-const ASSIGNMENT_ID = new mongoose.Types.ObjectId(
+const ROUTE_ID = toObjectId("68a500000000000000000022");
+const ASSIGNMENT_ID = toObjectId(
   "68a500000000000000000023",
 );
 const SOURCE_SLUG = "unit20_synthetic";

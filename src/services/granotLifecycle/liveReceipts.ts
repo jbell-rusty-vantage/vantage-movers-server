@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { getGranotBookingReconciliationCaseModel } from "../../models/GranotBookingReconciliationCase";
 import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
@@ -194,7 +195,7 @@ function asObjectId(id: string): mongoose.Types.ObjectId | null {
   if (!/^[a-fA-F0-9]{24}$/.test(id)) {
     return null;
   }
-  return new mongoose.Types.ObjectId(id);
+  return toObjectId(id);
 }
 
 function webhookFilter(): Record<string, unknown> {

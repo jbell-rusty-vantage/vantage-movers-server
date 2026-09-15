@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import mongoose, { type ClientSession } from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { getMongoDatabaseName } from "../../config/domain/runtime";
 import { connectMongo } from "../../db";
 import { getGranotBookingReconciliationCaseModel } from "../../models/GranotBookingReconciliationCase";
@@ -59,7 +60,7 @@ after(async () => {
   if (mongoose.connection.readyState === 1) {
     await getGranotReleaseReconciliationCaseModel().deleteMany({ normalized_job_no: { $in: [...jobs] } });
     await getGranotBookingReconciliationCaseModel().deleteMany({ normalized_job_no: { $in: [...jobs] } });
-    const ids = [...evidenceIds].map((id) => new mongoose.Types.ObjectId(id));
+    const ids = [...evidenceIds].map((id) => toObjectId(id));
     await getSynchronizationDecisionModel().collection.deleteMany({ observation_id: { $in: ids } });
     await getGranotObservationModel().collection.deleteMany({ _id: { $in: ids } });
     await getGranotObservationReceiptModel().collection.deleteMany({ _id: { $in: ids } });
@@ -115,7 +116,7 @@ function replicaStore(bookingId: mongoose.Types.ObjectId, bookingRevision: () =>
     ...base,
     async loadCurrentContext(observationId: string, session: ClientSession) {
       const row = await getGranotObservationModel().collection.findOne(
-        { _id: new mongoose.Types.ObjectId(observationId) },
+        { _id: toObjectId(observationId) },
         { session },
       );
       if (!row) throw new Error("Synthetic Release replica Observation not found");

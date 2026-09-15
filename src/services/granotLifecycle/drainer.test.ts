@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { GRANOT_LIFECYCLE_FLAG_DEFAULTS } from "../../config/domain/granotLifecycle";
 import {
   buildClaimFilter,
@@ -496,7 +497,7 @@ test("synchronous completed work returns the stored processor result", async () 
       technical_attempts: 0,
       match_attempt: 0,
       next_attempt_at: capturedAt,
-      latest_decision_id: new mongoose.Types.ObjectId(decision.decision_id),
+      latest_decision_id: toObjectId(decision.decision_id),
       completed_at: capturedAt,
       manual_requeue_count: 0,
     },

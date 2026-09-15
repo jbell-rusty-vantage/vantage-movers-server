@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import {
   bookingHasRecoverableJobNumber,
   cancellationCorrelationSnapshotsFromBooking,
@@ -14,7 +14,7 @@ test("cancellation snapshots stamp four fields from a surviving Booking", () => 
   const snapshots = cancellationCorrelationSnapshotsFromBooking({
     job_no: "P7702",
     normalized_job_no: "7702",
-    lead_ref: new mongoose.Types.ObjectId(LEAD_ID),
+    lead_ref: toObjectId(LEAD_ID),
     lead_model: "FormLead",
     createdAt: CREATED,
   });
@@ -65,7 +65,7 @@ test("create-path stamp keeps ObjectId lead ref", () => {
   const stamped = snapshotsForCancelledLeadCreate({
     job_no: "7702",
     normalized_job_no: "7702",
-    lead_ref: new mongoose.Types.ObjectId(LEAD_ID),
+    lead_ref: toObjectId(LEAD_ID),
     lead_model: "FormLead",
     createdAt: CREATED,
   });

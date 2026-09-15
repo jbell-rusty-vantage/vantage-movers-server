@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { toObjectId } from "../../utils/objectId";
 import { GRANOT_LIFECYCLE_FLAG_DEFAULTS } from "../../config/domain/granotLifecycle";
 import { GRANOT_LIFECYCLE_ERROR_CODES } from "./errors";
-import mongoose from "mongoose";
 import {
   assertProjectionSafe,
   collectForbiddenProjectionKeys,
@@ -174,8 +174,8 @@ test("[AC-P7] list compact pairing matches the creating Booked class and omits R
   }];
   const pairing = projectBookingPriorityPairing({
     creating_booked: {
-      _id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e788"),
-      receipt_id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e781"),
+      _id: toObjectId("64b7f4d9e6c2a1b0f3d5e788"),
+      receipt_id: toObjectId("64b7f4d9e6c2a1b0f3d5e781"),
       captured_at: new Date("2026-08-24T15:01:00.000Z"),
       route_event_class: "booking_status_changed",
       payload_event_type_raw: "Booked",
@@ -184,8 +184,8 @@ test("[AC-P7] list compact pairing matches the creating Booked class and omits R
       booking_action: { normalized: "booked" },
     } as never,
     job_observations: [{
-      _id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e780"),
-      receipt_id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e782"),
+      _id: toObjectId("64b7f4d9e6c2a1b0f3d5e780"),
+      receipt_id: toObjectId("64b7f4d9e6c2a1b0f3d5e782"),
       captured_at: new Date("2026-08-24T15:00:00.000Z"),
       route_event_class: "priority_updated",
       payload_event_type_raw: "Priority",
@@ -229,8 +229,8 @@ test("[AC-P7] list compact pairing matches the creating Booked class and omits R
 
 test("[AC-P4][AC-P6][AC-P7] detail pairing includes later Priority 5 and is null for historical Priority 5 only", () => {
   const creating = {
-    _id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e788"),
-    receipt_id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e781"),
+    _id: toObjectId("64b7f4d9e6c2a1b0f3d5e788"),
+    receipt_id: toObjectId("64b7f4d9e6c2a1b0f3d5e781"),
     captured_at: new Date("2026-08-24T15:01:00.000Z"),
     route_event_class: "booking_status_changed" as const,
     payload_event_type_raw: "Booked",
@@ -239,8 +239,8 @@ test("[AC-P4][AC-P6][AC-P7] detail pairing includes later Priority 5 and is null
     booking_action: { normalized: "booked" as const },
   };
   const later = {
-    _id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e789"),
-    receipt_id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e783"),
+    _id: toObjectId("64b7f4d9e6c2a1b0f3d5e789"),
+    receipt_id: toObjectId("64b7f4d9e6c2a1b0f3d5e783"),
     captured_at: new Date("2026-08-24T15:02:00.000Z"),
     route_event_class: "priority_updated" as const,
     payload_event_type_raw: "Priority",

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { z } from "zod";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { parseReportingEnabledDatasets } from "../../config/domain/reporting";
 import { ReportingDefinition } from "../../models/ReportingDefinition";
 import { ReportingDefinitionRevision } from "../../models/ReportingDefinitionRevision";
@@ -892,7 +893,7 @@ test("source read-through capture is fenced by active lease owner and epoch", ()
     now,
   });
   assert.deepEqual(filter, {
-    _id: new mongoose.Types.ObjectId("64b000000000000000000099"),
+    _id: toObjectId("64b000000000000000000099"),
     status: "queued",
     lease_owner: "worker-a",
     lease_epoch: 4,
@@ -915,9 +916,9 @@ test("revision checksum survives Mongo minimize of empty filters", () => {
   });
   const reloaded = {
     ...revision,
-    _id: new mongoose.Types.ObjectId(String(revision._id)),
-    definition_id: new mongoose.Types.ObjectId(String(revision.definition_id)),
-    preview_id: new mongoose.Types.ObjectId(String(revision.preview_id)),
+    _id: toObjectId(String(revision._id)),
+    definition_id: toObjectId(String(revision.definition_id)),
+    preview_id: toObjectId(String(revision.preview_id)),
   };
   delete (reloaded as { filters?: unknown }).filters;
   assert.doesNotThrow(() => assertRevisionChecksum(reloaded));
@@ -1233,7 +1234,7 @@ async function withLeadlessManifestFixture(
   action: (booking: Record<string, any>) => Promise<void>,
 ): Promise<void> {
   const booking: Record<string, any> = {
-    _id: new mongoose.Types.ObjectId("64b000000000000000000099"),
+    _id: toObjectId("64b000000000000000000099"),
     timestamp: new Date("2026-05-15T14:00:00.000Z"),
     createdAt: new Date("2026-05-15T14:00:00.000Z"),
     updatedAt: new Date("2026-05-15T15:00:00.000Z"),
@@ -1242,7 +1243,7 @@ async function withLeadlessManifestFixture(
     lead_model: null,
     job_no: "JOB-100",
     employee_source_snapshot: {
-      lead_source_company: new mongoose.Types.ObjectId(
+      lead_source_company: toObjectId(
         "64b000000000000000000001",
       ),
       source_granularity_key: "forms",

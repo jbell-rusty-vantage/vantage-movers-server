@@ -1,7 +1,7 @@
 import type { Db, Document } from "mongodb";
-import mongoose from "mongoose";
 import { assembleJobNumberTimeline } from "../../../../src/services/jobNumberTimeline/assemble.js";
 import { loadJobNumberTimelineRows } from "../../../../src/services/jobNumberTimeline/mongo-evidence-loader.js";
+import { isObjectIdString, toObjectId } from "../../../../src/utils/objectId.js";
 import type { JobTimelinePage } from "../../../../src/services/jobNumberTimeline/types.js";
 import { scoreJobNumberTimeline } from "../../job-number-timeline/src/discover.js";
 import type {
@@ -350,10 +350,10 @@ export async function loadLifecycleEvidence(input: {
 
   const ringCentralLeadIds = ringCentralProcessedRows
     .map((row) => optionalText(row.callLeadId))
-    .filter((value): value is string => value != null && mongoose.Types.ObjectId.isValid(value));
+    .filter((value): value is string => value != null && isObjectIdString(value));
   const ringCentralLeadRows = ringCentralLeadIds.length > 0
     ? await db.collection("call_leads").find({
-      _id: { $in: ringCentralLeadIds.map((value) => new mongoose.Types.ObjectId(value)) },
+      _id: { $in: ringCentralLeadIds.map((value) => toObjectId(value)) },
     }).project({ _id: 1 }).toArray()
     : [];
   const existingRingCentralLeadIds = new Set(ringCentralLeadRows.map((row) => id(row._id)));
@@ -443,13 +443,13 @@ export async function loadLifecycleEvidence(input: {
     ...cancellationCases.map((row) => row.deterministic_booking_id),
   ].filter((value): value is string => Boolean(value)))];
   const supplementalBookingRows = caseBookingIds.length > 0
-    ? await db.collection("booked_leads").find({ _id: { $in: caseBookingIds.map((value) => new mongoose.Types.ObjectId(value)) } }).project({
+    ? await db.collection("booked_leads").find({ _id: { $in: caseBookingIds.map((value) => toObjectId(value)) } }).project({
       _id: 1, timestamp: 1, createdAt: 1, normalized_job_no: 1,
       lead_ref: 1, booking_origin: 1,
     }).toArray()
     : [];
   const supplementalCancellationRows = caseBookingIds.length > 0
-    ? await db.collection("cancelled_leads").find({ booked_lead: { $in: caseBookingIds.map((value) => new mongoose.Types.ObjectId(value)) } }).project({
+    ? await db.collection("cancelled_leads").find({ booked_lead: { $in: caseBookingIds.map((value) => toObjectId(value)) } }).project({
       _id: 1, booked_lead: 1, createdAt: 1, timestamp: 1,
     }).toArray()
     : [];

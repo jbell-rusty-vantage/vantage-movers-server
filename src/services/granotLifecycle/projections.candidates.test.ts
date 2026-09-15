@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { inspect } from "node:util";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { BookedLead } from "../../models/BookedLead";
 import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
@@ -136,7 +137,7 @@ test("Form item with a snapshot returns known_contacts.granot and live contact s
       phone_number: "555-9999",
       email: "granot@example.invalid",
       differs_from_ingested: true,
-      observation_id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e799"),
+      observation_id: toObjectId("64b7f4d9e6c2a1b0f3d5e799"),
       evidence_status: "qualified",
       captured_at: new Date("2026-08-01T12:00:00.000Z"),
     },
@@ -342,7 +343,7 @@ function callLeadWithSnapshot(): Record<string, unknown> {
       phone_number: "555-9999",
       email: "granot@example.invalid",
       differs_from_ingested: true,
-      observation_id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e799"),
+      observation_id: toObjectId("64b7f4d9e6c2a1b0f3d5e799"),
       evidence_status: "qualified",
       captured_at: new Date("2026-08-01T12:00:00.000Z"),
     },
@@ -374,7 +375,7 @@ function formLeadWithSnapshot(): Record<string, unknown> {
       phone_number: "555-9999",
       email: "granot@example.invalid",
       differs_from_ingested: true,
-      observation_id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e799"),
+      observation_id: toObjectId("64b7f4d9e6c2a1b0f3d5e799"),
       evidence_status: "qualified",
       captured_at: new Date("2026-08-01T12:00:00.000Z"),
     },

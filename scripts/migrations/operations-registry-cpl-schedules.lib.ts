@@ -1,8 +1,8 @@
-import mongoose from "mongoose";
 import {
   cplRateCacheKey,
   type CplLeadType,
 } from "../../src/config/domain/cplRateDefinitions";
+import { toObjectId } from "../../src/utils/objectId";
 import { CPL_BUSINESS_TIME_ZONE } from "../../src/models/CplRatePeriod";
 import {
   businessDateToUtc,
@@ -549,7 +549,7 @@ export function cplScheduleMigrationInsertDocument(
     return null;
   }
   return {
-    source_granularity: new mongoose.Types.ObjectId(plan.source_granularity_id),
+    source_granularity: toObjectId(plan.source_granularity_id),
     amount_cents: plan.period.amount_cents,
     effective_from: businessDateToUtc(plan.period.effective_from_date),
     effective_from_date: plan.period.effective_from_date,

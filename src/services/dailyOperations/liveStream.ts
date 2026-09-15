@@ -1,10 +1,11 @@
-import mongoose from "mongoose";
+import type { Types } from "mongoose";
 import {
   getDailyOperationsRedis,
   getDailyOperationsStreamKey,
 } from "../../config/domain/dailyOperations";
 import { isTestMode, isVantageTestRunner } from "../../config/domain/runtime";
 import { getDailyOperationsEventModel } from "../../models/DailyOperationsEvent";
+import { isObjectIdString, toObjectId } from "../../utils/objectId";
 import { easternDayKey, easternInstantBounds } from "./dayDocument";
 import {
   decodeDailyOperationsEventCursor,
@@ -215,7 +216,7 @@ export async function runDailyOperationsLiveSse(
 export async function defaultFindDailyOperationsEventById(
   eventId: string,
 ): Promise<DailyOperationsLiveEventRow | null> {
-  if (!mongoose.Types.ObjectId.isValid(eventId)) {
+  if (!isObjectIdString(eventId)) {
     return null;
   }
   const row = await getDailyOperationsEventModel()
@@ -376,9 +377,9 @@ function fieldsToRecord(fields: unknown): Record<string, string> {
   return out;
 }
 
-function asObjectId(id: string): mongoose.Types.ObjectId | null {
+function asObjectId(id: string): Types.ObjectId | null {
   if (!/^[a-fA-F0-9]{24}$/.test(id)) {
     return null;
   }
-  return new mongoose.Types.ObjectId(id);
+  return toObjectId(id);
 }

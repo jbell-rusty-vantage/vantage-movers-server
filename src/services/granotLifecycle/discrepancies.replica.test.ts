@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { getMongoDatabaseName } from "../../config/domain/runtime";
 import { connectMongo } from "../../db";
 import { BookedLead } from "../../models/BookedLead";
@@ -51,7 +52,7 @@ async function seedDiscrepancy(input: { job: string; reason?: string; linkId?: m
 
 after(async () => {
   if (mongoose.connection.readyState === 1) {
-    const objectIds = [...ids].map((value) => new mongoose.Types.ObjectId(value));
+    const objectIds = [...ids].map((value) => toObjectId(value));
     await Promise.all([
       getGranotBookingDiscrepancyModel().collection.deleteMany({ $or: [{ _id: { $in: objectIds } }, { normalized_job_no: { $regex: `^${normalizedPrefix}` } }] }),
       getGranotRecordLinkModel().collection.deleteMany({ normalized_job_no: { $regex: `^${normalizedPrefix}` } }),

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { inspect } from "node:util";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { BookedLead } from "../../models/BookedLead";
 import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconciliationCase";
 import { getCallLeadModel } from "../../models/CallLead";
@@ -230,7 +231,7 @@ function callLeadWithSnapshot(): Record<string, unknown> {
       name: "Granot-only Name",
       phone_number: "555-9999",
       differs_from_ingested: true,
-      observation_id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e799"),
+      observation_id: toObjectId("64b7f4d9e6c2a1b0f3d5e799"),
       evidence_status: "qualified",
       captured_at: new Date("2026-08-01T12:00:00.000Z"),
     },
@@ -249,7 +250,7 @@ function formLeadWithSnapshot(): Record<string, unknown> {
     granot_contact_snapshot: {
       name: "Granot Later",
       differs_from_ingested: true,
-      observation_id: new mongoose.Types.ObjectId("64b7f4d9e6c2a1b0f3d5e799"),
+      observation_id: toObjectId("64b7f4d9e6c2a1b0f3d5e799"),
       evidence_status: "qualified",
       captured_at: new Date("2026-08-01T12:00:00.000Z"),
     },

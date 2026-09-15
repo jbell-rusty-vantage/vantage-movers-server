@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import type { GranotObservationDocument } from "../../models/GranotObservation";
 import type { SynchronizationDecisionSourceScope } from "../../models/SynchronizationDecision";
 import {
@@ -278,7 +279,7 @@ test("[AC-08] command envelope rejects invalid Observation, missing provenance, 
 
 test("create_if_missing SMS handoff requires the resolved Lead Source ID from source_scope", () => {
   const companyId = String(objectId());
-  const scope = sourceScope({ lead_source_company: new mongoose.Types.ObjectId(companyId) });
+  const scope = sourceScope({ lead_source_company: toObjectId(companyId) });
   assert.equal(String(scope.lead_source_company), companyId);
   assert.equal("lead_source_company" in scope, true);
   const checksum = createLeadFromGranotPayloadChecksum({

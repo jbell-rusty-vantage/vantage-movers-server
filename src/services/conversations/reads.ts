@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import {
   getLeadConversationModel,
   type LeadConversationDocument,
@@ -184,7 +185,7 @@ export async function listConversationsByLead(input: {
   const Model = getLeadConversationModel();
   const rows = await Model.find({
     "lead_ref.model": input.model,
-    "lead_ref.id": new mongoose.Types.ObjectId(input.id),
+    "lead_ref.id": toObjectId(input.id),
   }).sort({ started_at: -1 });
   return rows.map((row) => {
     const item = toConversationListItem(row);

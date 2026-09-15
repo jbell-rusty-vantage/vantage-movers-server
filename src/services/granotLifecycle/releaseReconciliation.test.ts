@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import {
   classifyReleaseReconciliation,
   createGranotReleaseReconciliation,
@@ -111,8 +112,8 @@ describe("Release Reconciliation classification", () => {
 describe("Release Reconciliation persistence", () => {
   function prepared(current: ReleaseReconciliationCurrentContext): PreparedReleaseReconciliationDecision {
     return {
-      receipt_id: new mongoose.Types.ObjectId(current.receipt_id),
-      observation_id: new mongoose.Types.ObjectId(current.observation_id),
+      receipt_id: toObjectId(current.receipt_id),
+      observation_id: toObjectId(current.observation_id),
       attempt: 1,
       execution_mode: "live",
       outcome: "already_current",

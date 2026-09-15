@@ -8,6 +8,7 @@
  */
 import mongoose from "mongoose";
 import { connectMongo } from "../../src/db.js";
+import { toObjectId } from "../../src/utils/objectId.js";
 import { getMongoDatabaseName } from "../../src/config/domain/runtime.js";
 import { GRANOT_CRM_SOURCE_COLLECTION, GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES } from "../../src/models/GranotCrmSource.js";
 import {
@@ -45,8 +46,8 @@ async function main(): Promise<void> {
   if (!db) throw new Error("Mongo database is unavailable.");
 
   const links = db.collection(GRANOT_RECORD_LINK_COLLECTION);
-  const keepId = new mongoose.Types.ObjectId(KEEP_LINK_ID);
-  const supersedeId = new mongoose.Types.ObjectId(SUPERSEDE_LINK_ID);
+  const keepId = toObjectId(KEEP_LINK_ID);
+  const supersedeId = toObjectId(SUPERSEDE_LINK_ID);
   const [keep, supersede] = await Promise.all([
     links.findOne({ _id: keepId, normalized_job_no: JOB, state: "active" }),
     links.findOne({ _id: supersedeId, normalized_job_no: JOB, state: "active" }),

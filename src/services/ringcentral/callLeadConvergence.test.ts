@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import {
   selectRingCentralConvergenceCandidates,
   type RingCentralConvergenceCandidateQuery,
@@ -61,7 +61,7 @@ function deps(
     findCandidates: async (query) => {
       capture?.push(query);
       return rows.map((row) => ({
-        _id: new mongoose.Types.ObjectId(row.id),
+        _id: toObjectId(row.id),
         domain_revision: row.revision ?? 0,
         ingested_contact_snapshot: {
           normalized_phone_number:
@@ -138,7 +138,7 @@ test("[AC-14][AC-16] candidate window is inclusive at exactly plus/minus 12 hour
 });
 
 test("[AC-14][AC-16] exact boundaries qualify and one millisecond outside does not", async () => {
-  const candidateId = new mongoose.Types.ObjectId(
+  const candidateId = toObjectId(
     "507f1f77bcf86cd799439011",
   );
   for (const createdAt of [

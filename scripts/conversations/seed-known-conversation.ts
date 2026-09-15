@@ -9,6 +9,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import mongoose from "mongoose";
 import { connectMongo } from "../../src/db.js";
+import { toObjectId } from "../../src/utils/objectId.js";
 import { getMongoDatabaseName, isTestMode } from "../../src/config/domain/runtime.js";
 import { getCallLeadModel } from "../../src/models/CallLead.js";
 import { getLeadConversationModel } from "../../src/models/LeadConversation.js";
@@ -98,7 +99,7 @@ async function main(): Promise<void> {
         call_log_id: seed.call_log_id,
         telephony_session_id: seed.telephony_session_id,
         lead_ref: { model: seed.lead_model, id: lead._id },
-        booking_ref: lead.booked ?? new mongoose.Types.ObjectId(seed.booked_lead_id),
+        booking_ref: lead.booked ?? toObjectId(seed.booked_lead_id),
         normalized_job_no: seed.normalized_job_no,
         lead_source_company: lead.lead_source_company ?? null,
         source_granularity_id: lead.source_granularity_id ?? null,

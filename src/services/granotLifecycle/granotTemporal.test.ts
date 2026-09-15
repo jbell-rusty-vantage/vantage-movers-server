@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import {
   compareGranotTemporal,
   olderTemporalWinnerFilter,
@@ -54,7 +54,7 @@ test("[AC-32] no source, channel, or Priority can be encoded in the temporal tup
   assert.deepEqual(clauses[1], {
     "last_accepted_granot_observation.captured_at": later,
     "last_accepted_granot_observation.observation_id": {
-      $lt: new mongoose.Types.ObjectId(highId),
+      $lt: toObjectId(highId),
     },
   });
   assert.equal(JSON.stringify(filter).includes("$exists"), false);

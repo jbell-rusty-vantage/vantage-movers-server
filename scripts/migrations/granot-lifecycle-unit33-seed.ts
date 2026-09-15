@@ -1,11 +1,12 @@
 /** Synthetic-only seed for the Unit 33 disposable receipt cleanup proof. */
 import mongoose from "mongoose";
 import { getMongoDatabaseName, isTestMode } from "../../src/config/domain/runtime.js";
+import { toObjectId } from "../../src/utils/objectId.js";
 import { connectMongo } from "../../src/db.js";
 import { GRANOT_OBSERVATION_RECEIPT_COLLECTION } from "../../src/models/GranotObservationReceipt.js";
 import { hashCredentialRedactedPayload } from "../../src/services/granotLifecycle/receiptEvidence.js";
 
-const SYNTHETIC_ID = new mongoose.Types.ObjectId("33aa00000000000000000001");
+const SYNTHETIC_ID = toObjectId("33aa00000000000000000001");
 const CAPTURED_AT = new Date("2026-08-19T00:00:00.000Z");
 
 async function main(): Promise<void> {

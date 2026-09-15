@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { connectMongo } from "../../db";
 import { getCallLeadModel } from "../../models/CallLead";
 import { EntityChange } from "../../models/EntityChange";
@@ -31,10 +32,10 @@ import { RingCentralApiError } from "./client";
  * they actually happen.
  */
 
-const COMPANY_ID = new mongoose.Types.ObjectId("68a500000000000000000030");
-const GRANULARITY_ID = new mongoose.Types.ObjectId("68a500000000000000000031");
-const ROUTE_ID = new mongoose.Types.ObjectId("68a500000000000000000032");
-const ASSIGNMENT_ID = new mongoose.Types.ObjectId("68a500000000000000000033");
+const COMPANY_ID = toObjectId("68a500000000000000000030");
+const GRANULARITY_ID = toObjectId("68a500000000000000000031");
+const ROUTE_ID = toObjectId("68a500000000000000000032");
+const ASSIGNMENT_ID = toObjectId("68a500000000000000000033");
 const SOURCE_SLUG = "unit21_synthetic";
 const TARGET_PHONE = "+15550003000";
 const CALLER_PHONE = "+15550004000";

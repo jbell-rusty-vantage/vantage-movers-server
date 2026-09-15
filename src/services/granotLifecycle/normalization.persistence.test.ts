@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import {
   ObservationIntegrityError,
   normalizeGranotReceipt,
@@ -11,7 +12,7 @@ import {
 } from "./normalization";
 
 const capturedAt = new Date("2026-08-17T16:00:00.000Z");
-const receiptId = new mongoose.Types.ObjectId("aaaaaaaaaaaaaaaaaaaaaaaa");
+const receiptId = toObjectId("aaaaaaaaaaaaaaaaaaaaaaaa");
 
 function candidate(
   overrides: Partial<NormalizedObservationCandidate> = {},

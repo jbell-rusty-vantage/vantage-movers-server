@@ -1,4 +1,5 @@
-import mongoose from "mongoose";
+import type { Types } from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { normalizeJobNo } from "../bookings/bookingIdentity";
 
 export type CancellationLeadRefSnapshot = {
@@ -69,7 +70,7 @@ export function snapshotsForCancelledLeadCreate(
 ): {
   job_no_snapshot: string | null;
   normalized_job_no_snapshot: string | null;
-  lead_ref_snapshot: { model: "FormLead" | "CallLead"; id: mongoose.Types.ObjectId } | null;
+  lead_ref_snapshot: { model: "FormLead" | "CallLead"; id: Types.ObjectId } | null;
   booking_created_at_snapshot: Date | null;
 } {
   const snapshots = cancellationCorrelationSnapshotsFromBooking(booking);
@@ -79,7 +80,7 @@ export function snapshotsForCancelledLeadCreate(
     lead_ref_snapshot: snapshots.lead_ref_snapshot
       ? {
           model: snapshots.lead_ref_snapshot.model,
-          id: new mongoose.Types.ObjectId(snapshots.lead_ref_snapshot.id),
+          id: toObjectId(snapshots.lead_ref_snapshot.id),
         }
       : null,
     booking_created_at_snapshot: snapshots.booking_created_at_snapshot,

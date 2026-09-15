@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import { after, afterEach, before, test } from "node:test";
 import express from "express";
 import mongoose from "mongoose";
+import { toObjectId } from "../utils/objectId";
 import { computeAdminActorSignature } from "../services/operationsRegistry/trustedActor";
 import { createConversationsAdminRouter } from "./conversations-admin.routes";
 import type { LeadConversationDocument } from "../models/LeadConversation";
@@ -12,7 +13,7 @@ const CONVERSATION_ID = "6a761d3d7ceae445794c57bd";
 const LEAD_ID = "6a761d3d7ceae445794c57be";
 
 const conversation = {
-  _id: new mongoose.Types.ObjectId(CONVERSATION_ID),
+  _id: toObjectId(CONVERSATION_ID),
   state: "complete",
   direction: "Inbound",
   started_at: new Date("2026-08-07T16:00:00.000Z"),
@@ -21,7 +22,7 @@ const conversation = {
   match_confidence: "high",
   normalized_job_no: "P5562014",
   receiver_agent_name_snapshot: "Patrick",
-  lead_ref: { model: "CallLead", id: new mongoose.Types.ObjectId(LEAD_ID) },
+  lead_ref: { model: "CallLead", id: toObjectId(LEAD_ID) },
   booking_ref: new mongoose.Types.ObjectId(),
   rc_result: "Accepted",
   telephony_session_id: "s-session",

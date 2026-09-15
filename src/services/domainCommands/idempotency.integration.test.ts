@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { getMongoDatabaseName } from "../../config/domain/runtime";
 import { connectMongo, withTransaction } from "../../db";
 import { DomainCommandExecution } from "../../models/DomainCommandExecution";
@@ -503,10 +504,14 @@ async function insertDecision(
   await Decision.create(
     [
       {
-        _id: new mongoose.Types.ObjectId(context.provenance.decision_id ?? undefined),
-        observation_id: new mongoose.Types.ObjectId(
-          context.provenance.observation_id ?? undefined,
-        ),
+        _id:
+          typeof context.provenance.decision_id === "string"
+            ? toObjectId(context.provenance.decision_id)
+            : new mongoose.Types.ObjectId(),
+        observation_id:
+          typeof context.provenance.observation_id === "string"
+            ? toObjectId(context.provenance.observation_id)
+            : new mongoose.Types.ObjectId(),
         attempt: 1,
         execution_mode: "live_shadow",
         outcome: "applied",

@@ -11,6 +11,7 @@
  */
 import mongoose from "mongoose";
 import { getMongoDatabaseName } from "../../src/config/domain/runtime.js";
+import { toObjectId } from "../../src/utils/objectId.js";
 import { connectMongo } from "../../src/db.js";
 import { GRANOT_OBSERVATION_RECEIPT_COLLECTION } from "../../src/models/GranotObservationReceipt.js";
 import {
@@ -92,7 +93,7 @@ async function applyBackfill(
     const update = buildReceiptReshapeUpdate(entry);
     return {
       updateOne: {
-        filter: { _id: new mongoose.Types.ObjectId(entry.id) },
+        filter: { _id: toObjectId(entry.id) },
         update,
       },
     };

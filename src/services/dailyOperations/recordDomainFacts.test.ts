@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, test } from "node:test";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { completeCallLeadIngestion } from "../leads/callLead.service";
 import type { CallLeadIngestionInProgress } from "../leads/callLead.service";
 import { dispatchOrQueuePersistedLeadMessage } from "../leadMessaging/leadMessaging.service";
@@ -336,7 +337,7 @@ test("CRM HTTP fail records exception.crm_failed", async () => {
     new Response("bad request", { status: 400 })) as typeof fetch;
   try {
     const lead = FormLead.hydrate({
-      _id: new mongoose.Types.ObjectId("507f1f77bcf86cd799439011"),
+      _id: toObjectId("507f1f77bcf86cd799439011"),
       name: "Jane Customer",
       pickup_zip: "07030",
       destination_zip: "33139",

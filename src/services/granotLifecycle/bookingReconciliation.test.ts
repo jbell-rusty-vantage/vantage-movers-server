@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import mongoose from "mongoose";
+import { toObjectId } from "../../utils/objectId";
 import { selectBookingIntakeLatestAction } from "./bookingIntakeLatestAction";
 import {
   classifyBookingReconciliation,
@@ -322,15 +323,15 @@ describe("Booking Reconciliation persistence", () => {
 
   function prepared(contextValue: BookingReconciliationCurrentContext): PreparedBookingReconciliationDecision {
     return {
-      receipt_id: new mongoose.Types.ObjectId(contextValue.receipt_id),
-      observation_id: new mongoose.Types.ObjectId(contextValue.observation_id),
+      receipt_id: toObjectId(contextValue.receipt_id),
+      observation_id: toObjectId(contextValue.observation_id),
       attempt: 1,
       execution_mode: "live",
       outcome: "already_current",
       reason_code: "desired_state_already_current",
       source_policy: contextValue.reviewed_source_policy
         ? {
-            granot_crm_source_id: new mongoose.Types.ObjectId(contextValue.reviewed_source_policy.granot_crm_source_id),
+            granot_crm_source_id: toObjectId(contextValue.reviewed_source_policy.granot_crm_source_id),
             disposition: contextValue.reviewed_source_policy.disposition,
             policy_version: contextValue.reviewed_source_policy.policy_version,
           }
@@ -595,7 +596,7 @@ describe("Booking Reconciliation persistence", () => {
     const memory = memoryStore(booked);
     memory.store.listJobObservations = async () => [
       {
-        _id: new mongoose.Types.ObjectId(precedingId),
+        _id: toObjectId(precedingId),
         receipt_id: new mongoose.Types.ObjectId(),
         captured_at: new Date("2026-08-18T12:00:00.000Z"),
         route_event_class: "priority_updated",
