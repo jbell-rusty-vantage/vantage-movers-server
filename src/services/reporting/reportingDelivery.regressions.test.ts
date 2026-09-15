@@ -31,7 +31,7 @@ import {
   initialChecksumAccumulator,
 } from "./executionStream";
 import { reportingError, type ReportingCandidateManifestV1 } from "./catalog";
-import { BadRequestError } from "../errors";
+import { BadRequestError, IntegrationError } from "../errors";
 import { registerReportingStage4Foundation } from "./registerStage4Foundation";
 
 const columns = [
@@ -1277,7 +1277,6 @@ test("regression: worker maps destination ReportingErrors to destination failure
 
 test("regression: Google 400 marker write maps to INTERNAL_FAILURE with provider_status", async () => {
   const { toFailure } = await import("./reportingWorker.js");
-  const { IntegrationError } = await import("../errors");
   const failure = toFailure(
     new IntegrationError(
       "Reporting Sheets write_markers failed: Google rejected the reporting request (HTTP 400).",
