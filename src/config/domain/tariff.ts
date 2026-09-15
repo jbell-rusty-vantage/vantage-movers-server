@@ -2,6 +2,7 @@ import { getRequiredEnv } from "./runtime";
 
 export const TARIFF_SHEET_ENV_VAR = "TARIFF_SHEET_ID";
 export const TARIFF_SHEET_TAB_NAME = "Master";
+export const TARIFF_SHEET_DROPDOWNS_TAB_NAME = "Drop Downs";
 
 // Live Master tab header for Rule includes a trailing space. Match it
 // exactly so ensureTabsAndHeaders does not rewrite the Owner's header.

@@ -13,6 +13,7 @@ applies_to:
   - src/validation/v1/tariffAdjustments.validation.ts
   - src/middleware/requireApiSecret.ts
   - src/config/domain/tariff.ts
+  - src/config/domain/tariffCatalog.ts
   - src/config/domain/granotCarrierCodes.ts
   - scripts/prove-tariff-append.ts
 owners: [team:main-server]
@@ -33,7 +34,7 @@ generated:
 
 # Tariff Service
 
-**Role:** Append two tariff adjustment rows per Granot Forms View parse to `TARIFF_SHEET_ID` / `Master`. **Append-only.** Does not upsert. Does not write customer name, phone, email, job number, or ref.
+**Role:** Append one or more tariff adjustment rows per Granot Forms View parse to `TARIFF_SHEET_ID` / `Master`. **Append-only.** Does not upsert. Does not write customer name, phone, email, job number, or ref.
 
 **Not Sheet Sync.** This is a separate owner spreadsheet. It does not use the lead/booking outbox or Mongo IDs.
 
@@ -41,13 +42,13 @@ generated:
 
 `Timestamp`, `Effective Date`, `Pickup Zone`, `Delivery Zone`, `Service`, `Rule ` (live header has a trailing space), `New Rule`, `Carrier`.
 
-`Service` is `Linehaul` or `Additional Services`. The two rows share date, zones, and carrier. `Timestamp` is stamped by the server at append time.
+`Service` and `Rule` must be a Drop Downs pair. Linehaul Rule is the cubic-feet range for the parsed Initial Price. Owner groups use `P.G.S.`, `Accesorial Services`, `Packing Services`, or `Bulk Fee` with that Service's Rules. Binding Estimate Fee on Drop Downs is a delimiter, not a pair. One or more rows share date, zones, and carrier. `Timestamp` is stamped by the server at append time.
 
 `Carrier` is the Moving Carrier legal name and DOT for the Granot Carrier Code the extension sent. Lookup is `moving_carriers.granot_carrier_code`. Unknown codes are 400.
 
 ## Public API
 
-`POST /api/v1/tariff-adjustments` accepts Owner or Customer Service Bearer (this route only). Legacy Employee Bearer is still allowed on this route. Sales Bearer is 403. The body is two snake_case rows. The server owns the spreadsheet id, `Master` tab, and headers. Response `data` is `{ appended, tab_name, updated_range, rows }` and never includes the spreadsheet id.
+`POST /api/v1/tariff-adjustments` accepts Owner or Customer Service Bearer (this route only). Legacy Employee Bearer is still allowed on this route. Sales Bearer is 403. The body is one to twenty snake_case rows and must include at least one `Linehaul`. The server owns the spreadsheet id, `Master` tab, and headers. Response `data` is `{ appended, tab_name, updated_range, rows }` and never includes the spreadsheet id.
 
 `appendTariffAdjustmentRows(rows, options?)` resolves Carrier, ensures the tab and header row, then `values.append`s. Inject `sheets` / `spreadsheetId` / `resolveCarrier` in tests. The route does not use Sheet Sync.
 

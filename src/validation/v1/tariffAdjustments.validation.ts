@@ -1,10 +1,6 @@
 import { z } from "zod";
+import { isCatalogTariffPair } from "../../config/domain/tariffCatalog";
 import { nonEmptyString, zipSchema } from "./common";
-
-export const TARIFF_ADJUSTMENT_SERVICES = [
-  "Linehaul",
-  "Additional Services",
-] as const;
 
 export const TARIFF_ADJUSTMENT_FORBIDDEN_KEYS = [
   "customer",
@@ -16,6 +12,15 @@ export const TARIFF_ADJUSTMENT_FORBIDDEN_KEYS = [
   "ordref",
   "spreadsheet_id",
   "tab",
+  "title",
+  "source",
+] as const;
+
+const SHARED_ROW_FIELDS = [
+  "effective_date",
+  "pickup_zone",
+  "delivery_zone",
+  "carrier",
 ] as const;
 
 const tariffAdjustmentRowSchema = z
@@ -23,7 +28,7 @@ const tariffAdjustmentRowSchema = z
     effective_date: nonEmptyString.optional(),
     pickup_zone: zipSchema,
     delivery_zone: zipSchema,
-    service: z.enum(TARIFF_ADJUSTMENT_SERVICES),
+    service: nonEmptyString,
     rule: nonEmptyString,
     new_rule: nonEmptyString,
     carrier: nonEmptyString,
@@ -32,7 +37,7 @@ const tariffAdjustmentRowSchema = z
 
 export const createTariffAdjustmentsSchema = z
   .object({
-    rows: z.array(tariffAdjustmentRowSchema).length(2),
+    rows: z.array(tariffAdjustmentRowSchema).min(1).max(20),
   })
   .strict()
   .superRefine((body, ctx) => {
@@ -44,28 +49,36 @@ export const createTariffAdjustmentsSchema = z
       });
     }
 
-    const services = body.rows.map((row) => row.service);
-    const hasLinehaul = services.includes("Linehaul");
-    const hasAdditional = services.includes("Additional Services");
-    if (!hasLinehaul || !hasAdditional) {
+    const hasLinehaul = body.rows.some((row) => row.service === "Linehaul");
+    if (!hasLinehaul) {
       ctx.addIssue({
         code: "custom",
         path: ["rows"],
-        message: "rows must include one Linehaul and one Additional Services",
+        message: "rows must include at least one Linehaul",
       });
     }
 
-    const [first, second] = body.rows;
-    if (!first || !second) {
+    body.rows.forEach((row, index) => {
+      if (!isCatalogTariffPair(row.service, row.rule)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["rows", index, "rule"],
+          message: `rule is not valid for service ${row.service}`,
+        });
+      }
+    });
+
+    const [first] = body.rows;
+    if (!first) {
       return;
     }
 
-    for (const field of ["effective_date", "pickup_zone", "delivery_zone", "carrier"] as const) {
-      if (first[field] !== second[field]) {
+    for (const field of SHARED_ROW_FIELDS) {
+      if (body.rows.some((row) => row[field] !== first[field])) {
         ctx.addIssue({
           code: "custom",
           path: ["rows"],
-          message: `${field} must be identical on both Tariff Adjustment rows`,
+          message: `${field} must be identical on all Tariff Adjustment rows`,
         });
       }
     }

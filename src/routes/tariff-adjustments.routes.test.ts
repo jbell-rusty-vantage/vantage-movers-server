@@ -15,7 +15,7 @@ const VALID_BODY = {
       pickup_zone: "22079",
       delivery_zone: "29671",
       service: "Linehaul",
-      rule: "300 cf",
+      rule: "0 to 300 c.f.",
       new_rule: "$3.75 per cf",
       carrier: "C2C",
     },
@@ -23,9 +23,9 @@ const VALID_BODY = {
       effective_date: "9/1/2026",
       pickup_zone: "22079",
       delivery_zone: "29671",
-      service: "Additional Services",
-      rule: "Binding Estimate Fee",
-      new_rule: "$956.25",
+      service: "P.G.S.",
+      rule: "Guaranteed Pickup Day",
+      new_rule: "100.00",
       carrier: "C2C",
     },
   ],
@@ -39,7 +39,7 @@ let appendImpl: (
   return {
     spreadsheetId: "must-not-leak",
     tabName: "Master",
-    appended: 2,
+    appended: rows.length,
     updatedRange: "Master!A2:H3",
     rows: rows.map((row) => [
       "9/1/2026 12:00:00",
@@ -112,7 +112,7 @@ afterEach(() => {
     return {
       spreadsheetId: "must-not-leak",
       tabName: "Master",
-      appended: 2,
+      appended: rows.length,
       updatedRange: "Master!A2:H3",
       rows: rows.map((row) => [
         "9/1/2026 12:00:00",
@@ -144,7 +144,7 @@ test("Owner can append two Tariff Adjustment rows", async () => {
   assert.equal(appended.length, 1);
   assert.equal(appended[0]?.length, 2);
   assert.equal(appended[0]?.[0]?.service, "Linehaul");
-  assert.equal(appended[0]?.[1]?.service, "Additional Services");
+  assert.equal(appended[0]?.[1]?.service, "P.G.S.");
 });
 
 test("Employee can append two Tariff Adjustment rows", async () => {
@@ -193,6 +193,93 @@ test("stamps today's date when effective_date is omitted", async () => {
   assert.equal(response.status, 200);
   assert.equal(appended[0]?.[0]?.effectiveDate, "9/1/2026");
   assert.equal(appended[0]?.[1]?.effectiveDate, "9/1/2026");
+});
+
+test("Owner can append a Linehaul-only payload", async () => {
+  const response = await post(
+    { rows: [VALID_BODY.rows[0]] },
+    { "x-test-role": "owner" },
+  );
+  const body = (await response.json()) as { ok: boolean; data: { appended: number } };
+
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(appended[0]?.length, 1);
+  assert.equal(appended[0]?.[0]?.service, "Linehaul");
+});
+
+test("Owner can append Linehaul plus an owner-written service", async () => {
+  const response = await post(
+    {
+      rows: [
+        VALID_BODY.rows[0],
+        {
+          ...VALID_BODY.rows[1],
+          service: "Accesorial Services",
+          rule: "Stair Fee",
+          new_rule: "100.00",
+        },
+      ],
+    },
+    { "x-test-role": "owner" },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(appended[0]?.length, 2);
+  assert.equal(appended[0]?.[1]?.service, "Accesorial Services");
+  assert.equal(appended[0]?.[1]?.rule, "Stair Fee");
+  assert.equal(appended[0]?.[1]?.newRule, "100.00");
+});
+
+test("Owner can append three matching rows", async () => {
+  const response = await post(
+    {
+      rows: [
+        VALID_BODY.rows[0],
+        VALID_BODY.rows[1],
+        {
+          ...VALID_BODY.rows[1],
+          service: "Accesorial Services",
+          rule: "Stair Fee",
+          new_rule: "100.00",
+        },
+      ],
+    },
+    { "x-test-role": "owner" },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(appended[0]?.length, 3);
+});
+
+test("rejects an empty rows array", async () => {
+  const response = await post({ rows: [] }, { "x-test-role": "owner" });
+  assert.equal(response.status, 400);
+  assert.equal(appended.length, 0);
+});
+
+test("rejects a payload with no Linehaul row", async () => {
+  const response = await post(
+    { rows: [VALID_BODY.rows[1]] },
+    { "x-test-role": "owner" },
+  );
+  assert.equal(response.status, 400);
+  assert.equal(appended.length, 0);
+});
+
+test("rejects three rows with a mismatched pickup_zone", async () => {
+  const response = await post(
+    {
+      rows: [
+        VALID_BODY.rows[0],
+        VALID_BODY.rows[1],
+        { ...VALID_BODY.rows[1], service: "Accesorial Services", rule: "Stair Fee", pickup_zone: "92037" },
+      ],
+    },
+    { "x-test-role": "owner" },
+  );
+  assert.equal(response.status, 400);
+  assert.equal(appended.length, 0);
 });
 
 async function post(body: unknown, headers: Record<string, string>) {

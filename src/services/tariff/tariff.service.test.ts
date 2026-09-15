@@ -108,6 +108,45 @@ test("appends both service rows with resolved Carrier and never upserts by ident
   assert.equal(result.rows[1]?.[7], RESOLVED_CARRIER);
 });
 
+test("appends Linehaul plus a free-text Service row", async () => {
+  const rows: TariffAdjustmentRow[] = [
+    SAMPLE_ROWS[0],
+    {
+      effectiveDate: "9/1/2026",
+      pickupZone: "22079",
+      deliveryZone: "29671",
+      service: "Accessorial",
+      rule: "owner rule",
+      newRule: "100.00",
+      carrier: "C2C",
+    },
+  ];
+  const sheets = fakeTariffSheets({
+    onAppend: (body) => {
+      assert.deepEqual(
+        body.values,
+        rows.map((row) =>
+          toTariffSheetRow({ ...row, carrier: RESOLVED_CARRIER }, TIMESTAMP),
+        ),
+      );
+      return { updates: { updatedRange: "'Master'!A2:H3" } };
+    },
+  });
+
+  const result = await appendTariffAdjustmentRows(rows, {
+    sheets,
+    spreadsheetId: "tariff-sheet",
+    now: new Date("2026-09-01T16:00:00.000Z"),
+    resolveCarrier: async () => RESOLVED_CARRIER,
+  });
+
+  assert.equal(result.appended, 2);
+  assert.equal(result.rows[0]?.[4], "Linehaul");
+  assert.equal(result.rows[1]?.[4], "Accessorial");
+  assert.equal(result.rows[1]?.[5], "owner rule");
+  assert.equal(result.rows[1]?.[6], "100.00");
+});
+
 test("refuses an empty append", async () => {
   await assert.rejects(
     () =>

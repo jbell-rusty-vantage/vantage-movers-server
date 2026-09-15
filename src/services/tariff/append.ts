@@ -19,7 +19,7 @@ export type TariffAdjustmentRow = {
   effectiveDate: string;
   pickupZone: string;
   deliveryZone: string;
-  service: TariffService;
+  service: string;
   rule: string;
   newRule: string;
   carrier: string;
