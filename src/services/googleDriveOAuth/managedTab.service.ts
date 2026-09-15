@@ -6,6 +6,7 @@ import {
   REPORTING_OWNERSHIP_MARKER_CELL,
   serializeReportingOwnershipMarker,
 } from "../reporting/ownershipMarker";
+import { parseA1Cell } from "../reporting/google/cellSerialization";
 
 export type SheetsWorkbookClient = {
   listSheets(spreadsheetId: string): Promise<
@@ -88,6 +89,7 @@ export function createSheetsWorkbookClientFromApi(
         );
       }
 
+      const markerColumn = parseA1Cell(REPORTING_OWNERSHIP_MARKER_CELL).column;
       const addResponse = await sheets.spreadsheets.batchUpdate({
         spreadsheetId: input.spreadsheetId,
         requestBody: {
@@ -97,6 +99,10 @@ export function createSheetsWorkbookClientFromApi(
                 properties: {
                   title: input.tabName,
                   hidden: false,
+                  gridProperties: {
+                    rowCount: 1000,
+                    columnCount: markerColumn,
+                  },
                 },
               },
             },

@@ -77,3 +77,30 @@ export function columnLetters(index: number): string {
   }
   return letters;
 }
+
+export function columnIndexFromLetters(letters: string): number {
+  const normalized = letters.trim().toUpperCase();
+  if (!/^[A-Z]+$/.test(normalized)) {
+    throw new TypeError("Column letters must be A-Z.");
+  }
+  let index = 0;
+  for (const character of normalized) {
+    index = index * 26 + (character.charCodeAt(0) - 64);
+  }
+  return index;
+}
+
+export function parseA1Cell(cell: string): { column: number; row: number } {
+  const match = /^([A-Z]+)(\d+)$/i.exec(cell.trim());
+  if (!match) {
+    throw new TypeError("Invalid A1 cell.");
+  }
+  const row = Number(match[2]);
+  if (!Number.isSafeInteger(row) || row < 1) {
+    throw new TypeError("A1 row must be a positive integer.");
+  }
+  return {
+    column: columnIndexFromLetters(match[1] ?? ""),
+    row,
+  };
+}

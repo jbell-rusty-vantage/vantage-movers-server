@@ -1275,6 +1275,27 @@ test("regression: worker maps destination ReportingErrors to destination failure
   assert.equal(unsafe.code, "DESTINATION_UNSAFE");
 });
 
+test("regression: Google 400 marker write maps to INTERNAL_FAILURE with provider_status", async () => {
+  const { toFailure } = await import("./reportingWorker.js");
+  const { IntegrationError } = await import("../errors");
+  const failure = toFailure(
+    new IntegrationError(
+      "Reporting Sheets write_markers failed: Google rejected the reporting request (HTTP 400).",
+      {
+        statusCode: 400,
+        metadata: {
+          failure_class: "invalid_request",
+          provider_status: 400,
+        },
+      },
+    ),
+    "querying",
+  );
+  assert.equal(failure.code, "INTERNAL_FAILURE");
+  assert.equal(failure.metadata.phase, "querying");
+  assert.equal(failure.metadata.provider_status, 400);
+});
+
 test("regression: destination stable identity ignores volatile health timestamps", async () => {
   const {
     destinationStableIdentityChecksum,

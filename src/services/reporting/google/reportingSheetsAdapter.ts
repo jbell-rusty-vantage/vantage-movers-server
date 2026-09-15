@@ -8,6 +8,7 @@ import {
 } from "../ownershipMarker";
 import {
   a1Range,
+  parseA1Cell,
   type LiteralCell,
   quoteSheetTitle,
 } from "./cellSerialization";
@@ -20,6 +21,11 @@ import {
 
 export const REPORTING_VALUE_INPUT_OPTION = "RAW" as const;
 export const REPORTING_WRITE_BATCH_ROWS = 1000;
+const GOOGLE_SHEETS_DEFAULT_ROW_COUNT = 1000;
+
+export function reportingStagingTabCellReserve(): number {
+  return GOOGLE_SHEETS_DEFAULT_ROW_COUNT * markerGridMinimum().minColumns;
+}
 
 export type ReportingSheetRef = {
   spreadsheetId: string;
@@ -177,6 +183,7 @@ export function createReportingSheetsAdapterFromApi(
         );
       }
       try {
+        const markerGrid = markerGridMinimum();
         const addResponse = await sheets.spreadsheets.batchUpdate({
           spreadsheetId: input.spreadsheetId,
           requestBody: {
@@ -186,6 +193,10 @@ export function createReportingSheetsAdapterFromApi(
                   properties: {
                     title: input.title,
                     hidden: true,
+                    gridProperties: {
+                      rowCount: GOOGLE_SHEETS_DEFAULT_ROW_COUNT,
+                      columnCount: markerGrid.minColumns,
+                    },
                   },
                 },
               },
@@ -333,6 +344,12 @@ export function createReportingSheetsAdapterFromApi(
         endCol,
       );
       try {
+        await ensureSheetGrid(adapter, sheets, {
+          spreadsheetId: input.spreadsheetId,
+          sheetTitle: input.sheetTitle,
+          minRows: endRow,
+          minColumns: endCol,
+        });
         const response = await sheets.spreadsheets.values.update({
           spreadsheetId: input.spreadsheetId,
           range,
@@ -356,6 +373,9 @@ export function createReportingSheetsAdapterFromApi(
           valueInputOption: REPORTING_VALUE_INPUT_OPTION,
         };
       } catch (error) {
+        if (error instanceof BadRequestError || error instanceof IntegrationError) {
+          throw error;
+        }
         throw wrapProvider(error, "write_values_raw");
       }
     },
@@ -412,6 +432,13 @@ export function createReportingSheetsAdapterFromApi(
         role: input.role,
       });
       try {
+        const markerGrid = markerGridMinimum();
+        await ensureSheetGrid(adapter, sheets, {
+          spreadsheetId: input.spreadsheetId,
+          sheetTitle: input.sheetTitle,
+          minRows: markerGrid.minRows,
+          minColumns: markerGrid.minColumns,
+        });
         await sheets.spreadsheets.values.batchUpdate({
           spreadsheetId: input.spreadsheetId,
           requestBody: {
@@ -431,6 +458,9 @@ export function createReportingSheetsAdapterFromApi(
           },
         });
       } catch (error) {
+        if (error instanceof BadRequestError || error instanceof IntegrationError) {
+          throw error;
+        }
         throw wrapProvider(error, "write_markers");
       }
     },
@@ -634,6 +664,64 @@ function normalizeCell(value: unknown): LiteralCell {
     return value;
   }
   return String(value);
+}
+
+function markerGridMinimum(): { minRows: number; minColumns: number } {
+  const ownership = parseA1Cell(REPORTING_OWNERSHIP_MARKER_CELL);
+  const run = parseA1Cell(REPORTING_RUN_MARKER_CELL);
+  return {
+    minRows: Math.max(ownership.row, run.row),
+    minColumns: Math.max(ownership.column, run.column),
+  };
+}
+
+async function ensureSheetGrid(
+  adapter: ReportingSheetsAdapter,
+  sheets: sheets_v4.Sheets,
+  input: {
+    spreadsheetId: string;
+    sheetTitle: string;
+    minRows: number;
+    minColumns: number;
+  },
+): Promise<void> {
+  const listed = await adapter.listSheets(input.spreadsheetId);
+  const sheet = listed.find((candidate) => candidate.title === input.sheetTitle);
+  if (!sheet) {
+    throw new IntegrationError(
+      "Reporting sheet was not found for grid expansion.",
+    );
+  }
+  const currentRows = sheet.rowCount ?? 0;
+  const currentColumns = sheet.columnCount ?? 0;
+  const requests: sheets_v4.Schema$Request[] = [];
+  if (input.minColumns > currentColumns) {
+    requests.push({
+      appendDimension: {
+        sheetId: sheet.sheetId,
+        dimension: "COLUMNS",
+        length: input.minColumns - currentColumns,
+      },
+    });
+  }
+  if (input.minRows > currentRows) {
+    requests.push({
+      appendDimension: {
+        sheetId: sheet.sheetId,
+        dimension: "ROWS",
+        length: input.minRows - currentRows,
+      },
+    });
+  }
+  if (!requests.length) return;
+  try {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: input.spreadsheetId,
+      requestBody: { requests },
+    });
+  } catch (error) {
+    throw wrapProvider(error, "expand_grid");
+  }
 }
 
 function wrapProvider(error: unknown, operation: string): Error {

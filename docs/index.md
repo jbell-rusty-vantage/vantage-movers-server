@@ -78,7 +78,9 @@ Workspace ADRs are outside this repo. This standalone checkout does not contain 
 
 | Path | Description |
 | --- | --- |
-| [sales-intelligence/recommendation-specification.md](sales-intelligence/recommendation-specification.md) | Proposed number history, follow-up ownership, rep metrics, and conversation intelligence, grounded in a September 11 live prototype. |
+| [call-sales-intelligence/README.md](call-sales-intelligence/README.md) | **Build contract.** Call & Sales Intelligence: Contact Numbers, Call Interactions, Number Activity, Number↔Lead attachment, Outreach, Findings, Rep Identity Links, Owner Rep Nudge, Owner `/sales-intelligence`. Seven-file pack (spec, models, pipeline + LLM points, routes, UX, delivery). Supersedes the two sales-intelligence docs below for implementation. |
+| [sales-intelligence/recommendation-specification.md](sales-intelligence/recommendation-specification.md) | Evidence base (Sept 11 prototype) for Call & Sales Intelligence. Build from the pack above, not this file. |
+| [sales-intelligence/number-activity-consolidation.md](sales-intelligence/number-activity-consolidation.md) | Sept 14 product cut (Number Activity first, no Sales Opportunity). Folded into the pack above. |
 | [daily-operations/daily-operations-specification.md](daily-operations/daily-operations-specification.md) | **Working contract.** Owner Daily Operations: category panels plus complementary Arrivals on `/daily`, Mongo day projection, Redis doorbell, SSE, hooks. Not Analytics, Live Events, Observational, or Daily View. |
 | [daily-operations/daily-operations-pre-specification.md](daily-operations/daily-operations-pre-specification.md) | Superseded pre-spec (one mixed feed). Formal spec wins. |
 | [daily-operations/daily-operations-workspace.md](daily-operations/daily-operations-workspace.md) | Orientation memo that preceded the pre-spec. Background only. |

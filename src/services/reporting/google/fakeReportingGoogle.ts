@@ -4,7 +4,10 @@ import {
   serializeReportingOwnershipMarker,
   REPORTING_OWNERSHIP_MARKER_CELL,
 } from "../ownershipMarker";
-import type { LiteralCell } from "./cellSerialization";
+import {
+  parseA1Cell,
+  type LiteralCell,
+} from "./cellSerialization";
 import {
   assertSafeToTrashReportingArtifact,
   type ReportingDriveAdapter,
@@ -26,10 +29,15 @@ import {
   buildReportingDriveAppProperties,
 } from "./driveAppProperties";
 
+const GOOGLE_SHEETS_DEFAULT_ROW_COUNT = 1000;
+const GOOGLE_SHEETS_DEFAULT_COLUMN_COUNT = 26;
+
 type SheetState = {
   sheetId: number;
   title: string;
   hidden: boolean;
+  rowCount: number;
+  columnCount: number;
   cells: Map<string, LiteralCell>;
 };
 
@@ -98,6 +106,21 @@ export function createFakeReportingGoogle(): FakeReportingGoogle {
 
   const cellKey = (row: number, col: number) => `${row}:${col}`;
 
+  const expandSheetGrid = (sheet: SheetState, row: number, col: number) => {
+    sheet.rowCount = Math.max(sheet.rowCount, row);
+    sheet.columnCount = Math.max(sheet.columnCount, col);
+  };
+
+  const assertWritableCell = (sheet: SheetState, row: number, col: number) => {
+    if (row > sheet.rowCount || col > sheet.columnCount) {
+      const error = new Error(
+        `Requested writing exceeds grid limits. Max rows: ${sheet.rowCount}, max columns: ${sheet.columnCount}`,
+      ) as Error & { status: number };
+      error.status = 400;
+      throw error;
+    }
+  };
+
   const toDriveFile = (spreadsheet: SpreadsheetState): ReportingDriveFile => ({
     id: spreadsheet.id,
     name: spreadsheet.title,
@@ -117,6 +140,8 @@ export function createFakeReportingGoogle(): FakeReportingGoogle {
         sheetId,
         title: "Sheet1",
         hidden: false,
+        rowCount: GOOGLE_SHEETS_DEFAULT_ROW_COUNT,
+        columnCount: GOOGLE_SHEETS_DEFAULT_COLUMN_COUNT,
         cells: new Map(),
       };
       spreadsheets.set(id, {
@@ -178,6 +203,8 @@ export function createFakeReportingGoogle(): FakeReportingGoogle {
         sheetId: sheet.sheetId,
         title: sheet.title,
         hidden: sheet.hidden,
+        rowCount: sheet.rowCount,
+        columnCount: sheet.columnCount,
       }));
     },
     async createHiddenStagingTab(input) {
@@ -187,10 +214,16 @@ export function createFakeReportingGoogle(): FakeReportingGoogle {
         throw new BadRequestError("A staging tab title collision was detected.");
       }
       const sheetId = spreadsheet.nextSheetId++;
+      const markerColumn = Math.max(
+        parseA1Cell(REPORTING_OWNERSHIP_MARKER_CELL).column,
+        parseA1Cell(REPORTING_RUN_MARKER_CELL).column,
+      );
       const sheet: SheetState = {
         sheetId,
         title: input.title,
         hidden: true,
+        rowCount: GOOGLE_SHEETS_DEFAULT_ROW_COUNT,
+        columnCount: markerColumn,
         cells: new Map(),
       };
       spreadsheet.sheets.set(sheetId, sheet);
@@ -248,14 +281,18 @@ export function createFakeReportingGoogle(): FakeReportingGoogle {
       const spreadsheet = requireSpreadsheet(input.spreadsheetId);
       const sheet = sheetByTitle(spreadsheet, input.sheetTitle);
       if (!sheet) throw new BadRequestError("Sheet title missing.");
+      const endRow = input.startRow + input.values.length - 1;
+      const endCol =
+        input.startCol + Math.max(...input.values.map((row) => row.length)) - 1;
+      expandSheetGrid(sheet, endRow, endCol);
       let updatedCells = 0;
       for (let r = 0; r < input.values.length; r += 1) {
         const row = input.values[r]!;
         for (let c = 0; c < row.length; c += 1) {
-          sheet.cells.set(
-            cellKey(input.startRow + r, input.startCol + c),
-            row[c] ?? null,
-          );
+          const nextRow = input.startRow + r;
+          const nextCol = input.startCol + c;
+          assertWritableCell(sheet, nextRow, nextCol);
+          sheet.cells.set(cellKey(nextRow, nextCol), row[c] ?? null);
           updatedCells += 1;
         }
       }
@@ -301,14 +338,21 @@ export function createFakeReportingGoogle(): FakeReportingGoogle {
       const spreadsheet = requireSpreadsheet(input.spreadsheetId);
       const sheet = sheetByTitle(spreadsheet, input.sheetTitle);
       if (!sheet) throw new BadRequestError("Sheet title missing.");
-      void REPORTING_OWNERSHIP_MARKER_CELL;
-      void REPORTING_RUN_MARKER_CELL;
+      const ownershipCell = parseA1Cell(REPORTING_OWNERSHIP_MARKER_CELL);
+      const runCell = parseA1Cell(REPORTING_RUN_MARKER_CELL);
+      expandSheetGrid(
+        sheet,
+        Math.max(ownershipCell.row, runCell.row),
+        Math.max(ownershipCell.column, runCell.column),
+      );
+      assertWritableCell(sheet, ownershipCell.row, ownershipCell.column);
+      assertWritableCell(sheet, runCell.row, runCell.column);
       sheet.cells.set(
-        cellKey(1, 702),
+        cellKey(ownershipCell.row, ownershipCell.column),
         serializeReportingOwnershipMarker(input.destinationId),
       );
       sheet.cells.set(
-        cellKey(1, 701),
+        cellKey(runCell.row, runCell.column),
         serializeReportingRunMarker({
           runId: input.runId,
           destinationId: input.destinationId,

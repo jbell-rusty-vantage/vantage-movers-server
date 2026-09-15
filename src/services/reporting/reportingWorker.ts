@@ -8,7 +8,10 @@ import {
 } from "./executionStream";
 import { serializeReportingHeaderCells } from "./google/cellSerialization";
 import type { ReportingDriveAdapter } from "./google/reportingDriveAdapter";
-import type { ReportingSheetsAdapter } from "./google/reportingSheetsAdapter";
+import {
+  reportingStagingTabCellReserve,
+  type ReportingSheetsAdapter,
+} from "./google/reportingSheetsAdapter";
 import { sanitizeReportingProviderFailure } from "./google/providerFailures";
 import {
   createOrResumeDeliveryArtifact,
@@ -525,10 +528,11 @@ async function executeLeasedReportingRun(input: {
         usedCells +
         resumableStagingCells,
     );
-    // Google creates a staging tab with a default 1000x26 grid before writes.
+    // Staging tabs are created wide enough for ZZ1/ZY1 markers (not the 26-col default).
+    const stagingTabCellReserve = reportingStagingTabCellReserve();
     if (
       existingDeliveryEarly?.staging_sheet_id == null &&
-      observedDestinationAvailableCells < 26_000
+      observedDestinationAvailableCells < stagingTabCellReserve
     ) {
       await failRun(
         runId,
@@ -538,7 +542,7 @@ async function executeLeasedReportingRun(input: {
         "DESTINATION_CAPACITY_EXCEEDED",
         {
           limit: observedDestinationAvailableCells,
-          count: 26_000,
+          count: stagingTabCellReserve,
         },
       );
       return "failed";
@@ -1858,5 +1862,10 @@ export function toFailure(
         : {}),
     });
   }
-  return reportingFailure("INTERNAL_FAILURE", { phase });
+  return reportingFailure("INTERNAL_FAILURE", {
+    phase,
+    ...(sanitized.provider_status !== undefined
+      ? { provider_status: sanitized.provider_status }
+      : {}),
+  });
 }
