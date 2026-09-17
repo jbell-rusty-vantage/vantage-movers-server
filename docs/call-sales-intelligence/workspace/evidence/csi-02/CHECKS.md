@@ -1,13 +1,13 @@
 # CSI-02 verification
 
-Executed September 17, 2026 on the uncommitted `sales-intelligence` patch over baseline `dc70b43`. Provider pages and webhook payloads are synthetic; nothing below is a live RingCentral capability proof.
+Executed September 17, 2026 on `sales-intelligence` over baseline `dc70b43`; artifacts below were regenerated after the independent-review fixes ([INDEPENDENT-REVIEW.md](INDEPENDENT-REVIEW.md)) on top of commit `935fbfd`. Provider pages and webhook payloads are synthetic; nothing below is a live RingCentral capability proof.
 
 | Check | Command / scope | Result / artifact |
 | --- | --- | --- |
 | Server typecheck | `pnpm exec tsc --noEmit` | Exit 0; [typecheck.txt](typecheck.txt). |
-| CSI-02 pure tests | `node --import tsx --import ./scripts/test-setup.ts --test "src/services/numberActivity/*.test.ts"` | 22/22 (part of the focused run below). |
-| Focused server suite (CSI-01 + CSI-02) | Command below | 65/65, 0 skipped; [focused-server-tests.txt](focused-server-tests.txt). |
-| CSI-02 replica proof | `pnpm test:csi:capture:replica` | 12/12 including outer test, 0 skipped; [csi02-replica-tests.txt](csi02-replica-tests.txt). |
+| CSI-02 pure tests | `node --import tsx --import ./scripts/test-setup.ts --test "src/services/numberActivity/*.test.ts"` | 26/26 (part of the focused run below); four are review regressions (unknown short caller id, missing party direction, stale leg regression, overflow monotonicity). |
+| Focused server suite (CSI-01 + CSI-02) | Command below | 69/69, 0 skipped; [focused-server-tests.txt](focused-server-tests.txt). |
+| CSI-02 replica proof | `pnpm test:csi:capture:replica` | 12/12 including outer test, 0 skipped; [csi02-replica-tests.txt](csi02-replica-tests.txt). Extended with: alias `proof_ref` preserved across merge; audit `proof_ref`/`request_id` tie-back with a supplied job id; throttle during gap repair ends the run; watermark holds on a partial run. |
 | CSI-01 replica regression | `pnpm test:csi:replica` | 15/15 after the two additive schema edits; [csi01-replica-regression.txt](csi01-replica-regression.txt). |
 | Unchanged qualification suites | `node --import tsx --import ./scripts/test-setup.ts --test "src/services/ringcentral/*.test.ts" "src/routes/ringcentral-cron.routes.test.ts" "src/routes/ringcentral-webhook.routes.test.ts"` | 93 pass, 0 fail, 3 skipped (pre-existing opt-in `GRANOT_LIFECYCLE_REPLICA_TESTS` proofs, unrelated to this change); [qualification-suites.txt](qualification-suites.txt). |
 | Patch hygiene | `git diff --check` | See HANDOFF. |
@@ -18,7 +18,7 @@ node --import tsx --import ./scripts/test-setup.ts --test "src/validation/intell
 
 ## Replica environment
 
-The CSI-01 disposable replica (`csi01`, loopback 27189) was not running at claim time and no local `mongod` binary existed. A disposable Docker container was started for this work only: `docker run -d --name csi01 -p 127.0.0.1:27189:27189 mongo:8.0 mongod --replSet csi01 --port 27189 --bind_ip_all`, then `rs.initiate({_id:'csi01', members:[{_id:0, host:'127.0.0.1:27189'}]})`. The runner `scripts/test-csi-capture.ts` refuses any other host, ignores `.env`, and selects a fresh `testvantagemovers_csi02<random>` database per run. No production database, provider, queue, subscription or messaging action occurred. The container can be removed with `docker rm -f csi01`.
+The CSI-01 disposable replica (`csi01`, loopback 27189) was not running at claim time and no local `mongod` binary existed. A disposable Docker container was started for this work only: `docker run -d --name csi01 -p 127.0.0.1:27189:27189 mongo:8.0 mongod --replSet csi01 --port 27189 --bind_ip_all`, then `rs.initiate({_id:'csi01', members:[{_id:0, host:'127.0.0.1:27189'}]})`. The runner `scripts/test-csi-capture.ts` refuses any other host, ignores `.env`, and selects a fresh `testvantagemovers_csi02<random>` database per run, which the test drops in its `finally`. No production database, provider, queue, subscription or messaging action occurred. The container can be removed with `docker rm -f csi01`.
 
 ## What the database proofs cover
 

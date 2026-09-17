@@ -60,6 +60,13 @@ export type PersistDependencies = {
   directory: DirectoryLookup;
   resolveRoute?: RouteResolver;
   maxAttempts?: number;
+  /**
+   * Durable job / run id (24-hex) recorded as the audit actor `request_id` so
+   * every audit row ties back to the work item that produced it. When absent
+   * a fresh id is generated and flagged `request_id_generated` on the audit
+   * row instead of masquerading as a job id.
+   */
+  request_id?: string | null;
 };
 
 export type ApplyResult = {
@@ -117,7 +124,12 @@ export async function applyInteractionObservation(
       );
     } catch (error) {
       lastError = error;
-      if (isRetryable(error) && attempt < maxAttempts) continue;
+      if (isRetryable(error) && attempt < maxAttempts) {
+        // Short jittered backoff so contending writers do not re-read the
+        // same conflict in lockstep.
+        await sleep(attempt * 5 + Math.floor(Math.random() * 20));
+        continue;
+      }
       if (error instanceof InteractionPersistenceError) throw error;
       if (isRetryable(error)) {
         throw new InteractionPersistenceError(
@@ -131,6 +143,13 @@ export async function applyInteractionObservation(
   }
   throw new InteractionPersistenceError("retry_exhausted", "Unreachable", lastError);
 }
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const REQUEST_ID_PATTERN = /^[a-f\d]{24}$/i;
+const MAX_SEARCH_TERMS = 20;
 
 function isRetryable(error: unknown): boolean {
   if (duplicateKey(error)) return true;
@@ -233,11 +252,21 @@ async function applyOnce(
     };
   }
 
+  const suppliedRequestId =
+    deps.request_id && REQUEST_ID_PATTERN.test(deps.request_id) ? deps.request_id : null;
+  const requestId = suppliedRequestId ?? String(new mongoose.Types.ObjectId());
   const context: CsiTransactionContext = {
     session,
     command_id: new mongoose.Types.ObjectId(),
     now,
-    actor: csiWorkerActor(String(new mongoose.Types.ObjectId())),
+    actor: csiWorkerActor(requestId),
+  };
+  // Every audit row carries the provider evidence that caused it and whether
+  // the actor request id is a real job/run id or a generated placeholder.
+  const provenance = {
+    proof_ref: input.proof_ref,
+    input_kind: input.kind,
+    request_id_generated: suppliedRequestId === null,
   };
 
   // Contact Number first so the interaction can reference it.
@@ -283,22 +312,27 @@ async function applyOnce(
   }
 
   for (const other of others) {
+    // Tombstone keeps `contact_number_id` for history, but its rollup
+    // contribution was removed above. Any recount or rebuild must filter
+    // `merged_into_id: null` or it will double count this row.
     const tombstone = await Interaction.updateOne(
       { _id: other._id, projection_revision: other.projection_revision, merged_into_id: null },
       { $set: { merged_into_id: interactionId }, $inc: { projection_revision: 1 } },
       { session },
     );
     if (tombstone.modifiedCount !== 1) throw new CsiError("REVISION_CONFLICT");
+    // Re-point aliases only. Each alias keeps the `proof_ref` that originally
+    // proved it; the merge proof lives on the `interaction.merged` audit row.
     await Alias.updateMany(
       { interaction_id: other._id },
-      { $set: { interaction_id: interactionId, proof_ref: input.proof_ref } },
+      { $set: { interaction_id: interactionId } },
       { session },
     );
     await appendCsiAudit(context, {
       subject_key: `interaction:${String(other._id)}`,
       event_kind: "interaction.merged",
       prior: summarize(toProjection(other), other.projection_revision, other.contact_number_id),
-      current: { merged_into_id: String(interactionId), proof_ref: input.proof_ref },
+      current: { merged_into_id: String(interactionId), ...provenance },
       target_id: String(other._id),
       revision: other.projection_revision + 1,
       kind: "interaction",
@@ -326,7 +360,14 @@ async function applyOnce(
     prior: canonical
       ? summarize(toProjection(canonical), canonical.projection_revision, canonical.contact_number_id)
       : { exists: false },
-    current: summarize(outcome.next, revision, number.id),
+    current: {
+      ...summarize(outcome.next, revision, number.id),
+      ...provenance,
+      // New identity evidence is a real change even when the projection body
+      // is unchanged; name it so the row never reads as a phantom update.
+      aliases_added: missingAliases.map((a) => `${a.kind}:${a.value}`),
+      merged_interaction_ids: others.map((o) => String(o._id)),
+    },
     target_id: String(interactionId),
     revision,
     kind: "interaction",
@@ -469,7 +510,14 @@ async function applyRollupDelta(
 ) {
   const ContactNumber = getContactNumberModel();
   const row = await ContactNumber.findById(numberId).session(session).lean();
-  if (!row) throw new CsiError("REVISION_CONFLICT");
+  if (!row) {
+    // Not a race: the referenced Contact Number row does not exist. Fail
+    // without burning the retry budget on a conflict that cannot resolve.
+    throw new InteractionPersistenceError(
+      "projection_failed",
+      "Interaction references a Contact Number row that does not exist",
+    );
+  }
   const rollups = { ...row.rollups };
   const delta = (prev ? -1 : 0) + (next ? 1 : 0);
   rollups.interactions_total = Math.max(0, rollups.interactions_total + delta);
@@ -496,9 +544,11 @@ async function applyRollupDelta(
     providerNames.push(providerName);
     while (providerNames.length > 10) providerNames.shift();
   }
+  // Bounded display cache (02 §17); CSI-04's rebuild owns the full term set.
   const searchTerms = [...row.search_terms];
   if (providerName && !searchTerms.includes(providerName.toLowerCase())) {
     searchTerms.push(providerName.toLowerCase());
+    while (searchTerms.length > MAX_SEARCH_TERMS) searchTerms.shift();
   }
   const result = await ContactNumber.updateOne(
     { _id: numberId, revision: row.revision },
@@ -708,5 +758,3 @@ export function toProjection(row: StoredInteraction | Record<string, unknown>): 
     max_observed_webhook_sequence: r.max_observed_webhook_sequence ?? null,
   };
 }
-
-export type { InteractionIdentity };

@@ -42,5 +42,11 @@ export function isProviderThrottle(error: unknown): boolean {
  */
 export function throttleRetryAfterMs(error: unknown, fallbackMs = 10 * 60_000): number {
   const value = (error as { retryAfterMs?: unknown } | null)?.retryAfterMs;
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : fallbackMs;
+  return providerSuppliedRetryAfter(error) ? (value as number) : fallbackMs;
+}
+
+/** True only when the error actually carried a usable `retryAfterMs`; otherwise the wait is the documented default. */
+export function providerSuppliedRetryAfter(error: unknown): boolean {
+  const value = (error as { retryAfterMs?: unknown } | null)?.retryAfterMs;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }

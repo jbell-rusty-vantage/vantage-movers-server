@@ -14,6 +14,7 @@ import {
 import {
   fetchDetailedCallLogPage,
   isProviderThrottle,
+  providerSuppliedRetryAfter,
   throttleRetryAfterMs,
   type CallLogPageFetcher,
 } from "./callLogClient";
@@ -109,7 +110,12 @@ export type ReconcileSummary = {
   noops: number;
   failures: number;
   throttled_count: number;
+  /** Wait applied after a 429. See `throttle_retry_after_observed` for whether the provider supplied it. */
   throttle_retry_after_ms: number | null;
+  /** False when the shared client exposed no Retry-After and the documented default was used. */
+  throttle_retry_after_observed: boolean;
+  /** 24-hex id stamped as audit actor `request_id` on every row this run wrote. */
+  request_id: string | null;
   cursor_advanced: boolean;
   known_complete_through: string | null;
   gaps_after: number;
@@ -184,6 +190,8 @@ export async function runCallLogReconcileOnce(
     failures: 0,
     throttled_count: 0,
     throttle_retry_after_ms: null,
+    throttle_retry_after_observed: false,
+    request_id: null,
     cursor_advanced: false,
     known_complete_through: null,
     gaps_after: 0,
@@ -247,6 +255,10 @@ export async function runCallLogReconcileOnce(
   let directory: DirectoryLookup | null = null;
   let resolveRoute = deps.resolveRoute;
   let providerWatermark: Date | null = state.cursor?.provider_modified_watermark ?? null;
+  // One request id per reconcile run so every audit row it writes ties back
+  // to this run (surfaced in the summary for operators).
+  const runRequestId = randomBytes(12).toString("hex");
+  summary.request_id = runRequestId;
 
   const runWindow = async (kind: WindowResult["kind"], from: Date, to: Date): Promise<WindowResult> => {
     const result: WindowResult = {
@@ -273,6 +285,7 @@ export async function runCallLogReconcileOnce(
         if (isProviderThrottle(error)) {
           summary.throttled_count += 1;
           summary.throttle_retry_after_ms = throttleRetryAfterMs(error);
+          summary.throttle_retry_after_observed = providerSuppliedRetryAfter(error);
           result.error_code = "provider_throttled";
         } else {
           result.error_code = "provider_request_failed";
@@ -316,7 +329,7 @@ export async function runCallLogReconcileOnce(
           const applied = await deps.apply(
             accountId,
             { kind: "call_log", record, proof_ref: `call_log:${str(record.id) ?? "unknown"}`, source: "call_log_reconcile" },
-            { now: deps.now, directory, resolveRoute },
+            { now: deps.now, directory, resolveRoute, request_id: runRequestId },
           );
           if (applied.noop) result.noops += 1;
           else result.upserts += 1;
@@ -352,7 +365,9 @@ export async function runCallLogReconcileOnce(
       rolling.error_code === "account_unresolved" ||
       rolling.error_code === "account_mismatch";
     for (const gap of openGaps) {
-      if (pageBudget <= 0 || skipRepair) break;
+      // A throttle anywhere in this run (including a previous gap repair) ends
+      // the run; the provider asked us to back off, not to try the next window.
+      if (pageBudget <= 0 || skipRepair || summary.throttled_count > 0) break;
       summary.windows.push(await runWindow("gap_repair", gap.from, gap.to));
     }
 
@@ -366,6 +381,14 @@ export async function runCallLogReconcileOnce(
 
     const finishedAt = deps.now();
     const next = nextState(state, summary.windows, windowTo, finishedAt, deps.config);
+    // The provider-modified watermark is diagnostic today, but it must never
+    // advance past evidence this run did not fully observe: a partial run
+    // keeps the prior value so a future incremental reader cannot inherit a
+    // silent gap.
+    const everyWindowComplete = summary.windows.every((w) => w.complete);
+    const nextWatermark = everyWindowComplete
+      ? providerWatermark
+      : state.cursor?.provider_modified_watermark ?? null;
     summary.cursor_advanced = next.cursor_advanced;
     summary.known_complete_through = next.known_complete_through?.toISOString() ?? null;
     summary.gaps_after = next.gaps.length;
@@ -384,7 +407,7 @@ export async function runCallLogReconcileOnce(
           cursor: {
             last_sync_from: next.cursor_advanced ? windowFrom : state.cursor?.last_sync_from ?? null,
             last_sync_to: next.cursor_advanced ? windowTo : state.cursor?.last_sync_to ?? null,
-            provider_modified_watermark: providerWatermark,
+            provider_modified_watermark: nextWatermark,
             entity_change_applied_at: null,
             entity_change_id: null,
           },

@@ -1,99 +1,181 @@
-✔ returns 500 when CRON_SECRET is not configured (128.0564ms)
-✔ returns 401 when the cron secret does not match (10.0934ms)
-✔ accepts the x-cron-secret header (9.03ms)
-✔ [AC-17] a disabled Call Log sync never claims the lease (13.1623ms)
-✔ [AC-17] lease contention is a bounded skip, not an HTTP 500 (8.5775ms)
-✔ [AC-17] a successful run returns the bounded lease/cursor summary (5.3534ms)
-✔ [AC-17] a genuine failure stays safe and non-sensitive (5.7918ms)
-✔ [AC-17] vercel.json schedules the Call Log sync every 30 minutes (3.36ms)
-✔ normalizePhoneNumberToE164Like handles common RingCentral number shapes (2.5152ms)
-✔ RingCentral inbound target numbers resolve to configured source metadata (1.6947ms)
-✔ RingCentral source labels are consistent with source company mapping (0.3882ms)
-✔ normalizer preserves telephony facts before registry qualification (1.0694ms)
-✔ normalizer uses an explicit provider call start and never notification time (0.6865ms)
-✔ candidate folding preserves answeredAt from an older delayed event (1.6615ms)
-✔ sample answered inbound event is pending immediately and qualifies after elapsed buffer (1.1166ms)
-✔ evaluator rejects outbound calls (0.4206ms)
-✔ evaluator rejects inbound calls to unknown numbers (0.4118ms)
-✔ evaluator keeps live inbound target calls candidate until answered (0.4157ms)
-✔ evaluator rejects terminal inbound target calls that were not answered (0.3464ms)
-✔ evaluator distinguishes live and terminal answered calls under 120 seconds (0.3658ms)
-✔ evaluator qualifies inbound target calls answered over 120 seconds (0.3374ms)
-✔ evaluator rejects missed calls without answered evidence (0.213ms)
-﹣ [AC-17] Unit 21 replica lease, cursor, overlap, and rescan proof (11.2867ms) # Replica-set proof is opt-in via GRANOT_LIFECYCLE_REPLICA_TESTS=true.
-✔ [AC-17] lease owner identity is bounded, opaque, and per invocation (2.0219ms)
-✔ [AC-17] masked owner is a short stable digest and never leaks the owner (0.7343ms)
-✔ [AC-17] singleton key index contract is the exact unique key index (1.5851ms)
-✔ persisted run failure codes are a bounded, non-sensitive set (0.4956ms)
-﹣ [AC-17] Mongo state lease elects exactly one winner (0.8413ms) # Replica-set proof is opt-in via GRANOT_LIFECYCLE_REPLICA_TESTS=true.
-✔ [AC-17] the lease loser performs no provider, route, ingest, or state work (11.532ms)
-✔ [AC-17] two overlapping invocations produce exactly one winner (6.354ms)
-✔ [AC-17] the winner claims before any provider or ingest work (3.019ms)
-✔ [AC-17] a complete successful run advances the cursor exactly once (2.7451ms)
-✔ [AC-17] every failure stage leaves the cursor unchanged (13.3674ms)
-✔ [AC-17] an observed provider throttle is counted and blocks cursor movement (1.4294ms)
-✔ [AC-17] a run with no throttling reports zero throttles (2.4326ms)
-✔ [AC-17] terminal write failure loses the fence and moves no cursor (2.6302ms)
-✔ [AC-17] losing the lease mid-run stops work and writes nothing (2.8958ms)
-✔ [AC-17] the lease is renewed while long work remains (5.0303ms)
-✔ [AC-17] a failed fenced error write degrades to a PII-safe lease-lost event (2.4287ms)
-✔ [AC-17] expired-lease recovery is reported without erasing terminal facts (1.7928ms)
-✔ [AC-17] the rolling lookback stays exactly 12 hours for a first run (2.0287ms)
-✔ [AC-17] the rolling lookback stays exactly 12 hours at a 30-minute cadence (1.128ms)
-✔ [AC-17] a cursor older than the floor keeps its overlap window (1.2317ms)
-✔ [AC-17] the winner's window end is its own claim instant (1.1509ms)
-✔ [AC-17] pagination stops at a short page and continues through full pages (1.0784ms)
-✔ a newest-first Call Log page ingests oldest-first so same-run Duplicate Leads classify (1.2723ms)
-✔ Call Log pages across a newest-first split still ingest oldest-first in one run (21.0434ms)
-✔ [AC-17] Call Log telemetry and events carry no caller or provider content (2.0295ms)
-✔ [AC-17] emitted lease events expose only a masked owner and bounded fields (1.7182ms)
-✔ [AC-17] the run summary itself exposes no caller data (1.1824ms)
-✔ qualifies an inbound answered call over 120s to a mapped toll-free (17.1633ms)
-✔ qualifies a GetMovers inbound call log record (2.379ms)
-✔ rejects a call under 120 seconds (0.5846ms)
-✔ rejects an outbound call (0.6402ms)
-✔ rejects a call to an unmapped number (0.5989ms)
-✔ rejects a missed (unanswered) call (0.4308ms)
-✔ matches target number across call legs and picks the inbound caller (1.582ms)
-✔ aggregates a multi-party session and qualifies the canonical queue party over 120s (3.2051ms)
-✔ uses answered agent lifecycle timing when the target queue leg disconnects early (13.4052ms)
-✔ rejects a session that disconnected under 120 seconds (0.5843ms)
-✔ a live (non-terminal) call over 120s qualifies but is not ingest-eligible (0.4123ms)
-✔ an outbound-only session is not a lead (0.4021ms)
-﹣ [AC-14][AC-15][AC-16] Unit 20 replica adoption, conflict continuation, races, and rollback (3.1667ms) # Replica-set proof is opt-in via GRANOT_LIFECYCLE_REPLICA_TESTS=true.
-✔ [AC-14] one exact immutable-phone candidate is selected without guessing (25.7773ms)
-✔ [AC-16] zero and multiple candidates remain explicit outcomes (2.4295ms)
-✔ [AC-14][AC-16] candidate window is inclusive at exactly plus/minus 12 hours (0.9928ms)
-✔ [AC-14][AC-16] exact boundaries qualify and one millisecond outside does not (3.6354ms)
-✔ [AC-16] missing call start fails adoption closed without querying candidates (0.5982ms)
-✔ [AC-16] Job-only/missing-phone input is never an adoption candidate (0.4934ms)
-✔ adoption match key stays exact Source Granularity plus ingested phone (16.3296ms)
-✔ [AC-16] different Source Granularity with the same phone is not an adoption candidate (1.4311ms)
-✔ [AC-14] current-contact drift cannot replace immutable creation phone (1.0539ms)
-✔ [AC-14] telephony session wins over call-log identity (3.6938ms)
-✔ [AC-14] adoption statuses are terminal replay outcomes (0.4438ms)
-✔ [AC-14] call-log race fence is declared unique and sparse (0.5241ms)
-✔ [AC-14] telephony replay returns before adoption candidate work (20.3693ms)
-✔ [AC-14][AC-15] adoption occurs before duplicate classification and suppresses create (2.1058ms)
-✔ [AC-16] no adoption candidate continues through normal ingest (1.4025ms)
-✔ [AC-14] webhook and Call Log descriptors enter equivalent convergence (0.9289ms)
-✔ [AC-14] call-log-only create fails closed before candidate or Lead work without indexes (1.924ms)
-✔ adoption off still creates a RingCentral-origin Call Lead (documented Race B twin) (1.4309ms)
-✔ RingCentral ingest lock stays gated on the adoption flag (11.6556ms)
-✔ first call from a caller is unique (3.9118ms)
-✔ a second call from the same caller + source within the window is a duplicate (1.2785ms)
-✔ the same telephony session is not counted as its own duplicate (0.6533ms)
-✔ [AC-15] the same call-log identity is not counted as its own duplicate (0.7411ms)
-✔ a call with no caller phone cannot be classified as a duplicate (0.4374ms)
-✔ phone numbers in different formats still match as duplicates (0.9857ms)
-✔ duplicate lookup uses the earlier-only 90-day window (0.9237ms)
-✔ same caller and source exactly 90 days apart is a duplicate (0.7312ms)
-✔ same caller and source more than 90 days apart is unique (0.8474ms)
-✔ different source is scoped out by the duplicate lookup (0.7245ms)
-✔ [AC-15] adopted Lead id is excluded from duplicate classification (0.632ms)
-✔ [AC-15][AC-16] unresolved Granot candidates do not create false duplicates (0.5691ms)
-✔ [AC-15] adopted Granot candidate from another physical call remains eligible (0.5816ms)
-✔ [AC-15] future Leads are outside the earlier-only duplicate window (0.8055ms)
+✔ returns 500 when CRON_SECRET is not configured (36.4088ms)
+✔ returns 401 when the cron secret does not match (4.389ms)
+✔ accepts the x-cron-secret header (4.3367ms)
+✔ [AC-17] a disabled Call Log sync never claims the lease (6.6931ms)
+✔ [AC-17] lease contention is a bounded skip, not an HTTP 500 (7.2468ms)
+✔ [AC-17] a successful run returns the bounded lease/cursor summary (4.5382ms)
+{"level":"error","time":"2026-09-17T22:56:12.989Z","service":"vantage-main-server","env":"development","msg":"ringcentral.cron.call_log_sync.failed","errorName":"Error"}
+✔ [AC-17] a genuine failure stays safe and non-sensitive (5.1868ms)
+✔ [AC-17] vercel.json schedules the Call Log sync every 30 minutes (3.4099ms)
+✔ normalizePhoneNumberToE164Like handles common RingCentral number shapes (2.9877ms)
+✔ RingCentral inbound target numbers resolve to configured source metadata (1.7825ms)
+✔ RingCentral source labels are consistent with source company mapping (0.4057ms)
+✔ normalizer preserves telephony facts before registry qualification (2.8631ms)
+✔ normalizer uses an explicit provider call start and never notification time (0.8146ms)
+✔ candidate folding preserves answeredAt from an older delayed event (1.5574ms)
+✔ sample answered inbound event is pending immediately and qualifies after elapsed buffer (1.1478ms)
+✔ evaluator rejects outbound calls (1.6157ms)
+✔ evaluator rejects inbound calls to unknown numbers (1.7217ms)
+✔ evaluator keeps live inbound target calls candidate until answered (0.6841ms)
+✔ evaluator rejects terminal inbound target calls that were not answered (0.3788ms)
+✔ evaluator distinguishes live and terminal answered calls under 120 seconds (0.3367ms)
+✔ evaluator qualifies inbound target calls answered over 120 seconds (0.405ms)
+✔ evaluator rejects missed calls without answered evidence (0.2495ms)
+﹣ [AC-17] Unit 21 replica lease, cursor, overlap, and rescan proof (1.893ms) # Replica-set proof is opt-in via GRANOT_LIFECYCLE_REPLICA_TESTS=true.
+✔ [AC-17] lease owner identity is bounded, opaque, and per invocation (2.4425ms)
+✔ [AC-17] masked owner is a short stable digest and never leaks the owner (0.8886ms)
+✔ [AC-17] singleton key index contract is the exact unique key index (1.7116ms)
+✔ persisted run failure codes are a bounded, non-sensitive set (0.6482ms)
+﹣ [AC-17] Mongo state lease elects exactly one winner (1.8223ms) # Replica-set proof is opt-in via GRANOT_LIFECYCLE_REPLICA_TESTS=true.
+{"level":"info","time":"2026-09-17T22:56:10.802Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.lease_contended","leaseOwnerHash":"e0e92466da53"}
+✔ [AC-17] the lease loser performs no provider, route, ingest, or state work (13.548ms)
+✔ [AC-17] two overlapping invocations produce exactly one winner (4.6348ms)
+✔ [AC-17] the winner claims before any provider or ingest work (2.924ms)
+✔ [AC-17] a complete successful run advances the cursor exactly once (2.6896ms)
+✔ [AC-17] every failure stage leaves the cursor unchanged (5.9458ms)
+✔ [AC-17] an observed provider throttle is counted and blocks cursor movement (1.5459ms)
+✔ [AC-17] a run with no throttling reports zero throttles (1.8328ms)
+✔ [AC-17] terminal write failure loses the fence and moves no cursor (2.6469ms)
+✔ [AC-17] losing the lease mid-run stops work and writes nothing (2.8431ms)
+✔ [AC-17] the lease is renewed while long work remains (3.0248ms)
+✔ [AC-17] a failed fenced error write degrades to a PII-safe lease-lost event (1.8203ms)
+✔ [AC-17] expired-lease recovery is reported without erasing terminal facts (2.8372ms)
+✔ [AC-17] the rolling lookback stays exactly 12 hours for a first run (1.2234ms)
+✔ [AC-17] the rolling lookback stays exactly 12 hours at a 30-minute cadence (1.1298ms)
+✔ [AC-17] a cursor older than the floor keeps its overlap window (0.6961ms)
+✔ [AC-17] the winner's window end is its own claim instant (0.7152ms)
+✔ [AC-17] pagination stops at a short page and continues through full pages (0.8997ms)
+✔ a newest-first Call Log page ingests oldest-first so same-run Duplicate Leads classify (0.5961ms)
+✔ Call Log pages across a newest-first split still ingest oldest-first in one run (0.6884ms)
+✔ [AC-17] Call Log telemetry and events carry no caller or provider content (2.0537ms)
+✔ [AC-17] emitted lease events expose only a masked owner and bounded fields (1.2653ms)
+✔ [AC-17] the run summary itself exposes no caller data (1.1415ms)
+{"level":"info","time":"2026-09-17T22:56:10.805Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.lease_contended","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.812Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.812Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.lease_contended","leaseOwnerHash":"8cefb43f6f11"}
+{"level":"info","time":"2026-09-17T22:56:10.812Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.lease_contended","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.813Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","ranAt":"2026-08-18T12:00:00.000Z","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z","leaseOwnerHash":"7408b41fbeb6","leaseAcquired":true,"leaseRecovered":false,"leaseLost":false,"skipped":false,"skipReason":null,"runtimeMs":0,"fetchedRecords":0,"candidateRecords":0,"qualifiedRecords":0,"ingestActions":{"lead_created":0,"lead_created_duplicate":0,"lead_adopted":0,"lead_adopted_duplicate":0,"shadow_recorded":0,"dry_run":0,"skipped_already_processed":0},"adoptedRecords":0,"adoptionConflicts":0,"throttledResponses":0,"leadsCreated":0,"duplicatesFlagged":0,"cursorAdvanced":true,"errors":[]}
+{"level":"info","time":"2026-09-17T22:56:10.813Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.815Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.816Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","ranAt":"2026-08-18T12:00:00.000Z","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z","leaseOwnerHash":"e0e92466da53","leaseAcquired":true,"leaseRecovered":false,"leaseLost":false,"skipped":false,"skipReason":null,"runtimeMs":30,"fetchedRecords":1,"candidateRecords":1,"qualifiedRecords":1,"ingestActions":{"lead_created":0,"lead_created_duplicate":0,"lead_adopted":0,"lead_adopted_duplicate":0,"shadow_recorded":0,"dry_run":1,"skipped_already_processed":0},"adoptedRecords":0,"adoptionConflicts":0,"throttledResponses":0,"leadsCreated":0,"duplicatesFlagged":0,"cursorAdvanced":true,"errors":[]}
+{"level":"info","time":"2026-09-17T22:56:10.816Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.819Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.819Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","ranAt":"2026-08-18T12:00:00.000Z","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z","leaseOwnerHash":"e0e92466da53","leaseAcquired":true,"leaseRecovered":false,"leaseLost":false,"skipped":false,"skipReason":null,"runtimeMs":40,"fetchedRecords":2,"candidateRecords":2,"qualifiedRecords":2,"ingestActions":{"lead_created":0,"lead_created_duplicate":1,"lead_adopted":1,"lead_adopted_duplicate":0,"shadow_recorded":0,"dry_run":0,"skipped_already_processed":0},"adoptedRecords":1,"adoptionConflicts":1,"throttledResponses":0,"leadsCreated":1,"duplicatesFlagged":1,"cursorAdvanced":true,"errors":[]}
+{"level":"info","time":"2026-09-17T22:56:10.819Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.821Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"error","time":"2026-09-17T22:56:10.822Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.failed","leaseOwnerHash":"e0e92466da53","stage":"route_snapshot","errorCode":"route_snapshot_failed","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z"}
+{"level":"error","time":"2026-09-17T22:56:10.822Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.failed","observability_level":"error","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.822Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"error","time":"2026-09-17T22:56:10.823Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.failed","leaseOwnerHash":"e0e92466da53","stage":"provider_fetch","errorCode":"provider_request_failed","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z"}
+{"level":"error","time":"2026-09-17T22:56:10.823Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.failed","observability_level":"error","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.823Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"error","time":"2026-09-17T22:56:10.824Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.failed","leaseOwnerHash":"e0e92466da53","stage":"provider_fetch","errorCode":"provider_throttled","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z"}
+{"level":"error","time":"2026-09-17T22:56:10.824Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.failed","observability_level":"error","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.824Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"error","time":"2026-09-17T22:56:10.825Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.failed","leaseOwnerHash":"e0e92466da53","stage":"ingest","errorCode":"ingest_failed","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z"}
+{"level":"error","time":"2026-09-17T22:56:10.825Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.failed","observability_level":"error","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.827Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"error","time":"2026-09-17T22:56:10.827Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.failed","leaseOwnerHash":"e0e92466da53","stage":"provider_fetch","errorCode":"provider_throttled","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z"}
+{"level":"error","time":"2026-09-17T22:56:10.827Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.failed","observability_level":"error","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.828Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.829Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","ranAt":"2026-08-18T12:00:00.000Z","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z","leaseOwnerHash":"e0e92466da53","leaseAcquired":true,"leaseRecovered":false,"leaseLost":false,"skipped":false,"skipReason":null,"runtimeMs":30,"fetchedRecords":1,"candidateRecords":1,"qualifiedRecords":1,"ingestActions":{"lead_created":0,"lead_created_duplicate":0,"lead_adopted":0,"lead_adopted_duplicate":0,"shadow_recorded":0,"dry_run":1,"skipped_already_processed":0},"adoptedRecords":0,"adoptionConflicts":0,"throttledResponses":0,"leadsCreated":0,"duplicatesFlagged":0,"cursorAdvanced":true,"errors":[]}
+{"level":"info","time":"2026-09-17T22:56:10.829Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.831Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"warn","time":"2026-09-17T22:56:10.832Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.lease_lost","leaseOwnerHash":"e0e92466da53","stage":"state_write"}
+{"level":"warn","time":"2026-09-17T22:56:10.832Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.lease_lost","observability_level":"warn","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.834Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"warn","time":"2026-09-17T22:56:10.834Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.lease_lost","leaseOwnerHash":"e0e92466da53","stage":"lease"}
+{"level":"warn","time":"2026-09-17T22:56:10.835Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.lease_lost","observability_level":"warn","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.837Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.839Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","ranAt":"2026-08-18T12:00:00.000Z","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z","leaseOwnerHash":"e0e92466da53","leaseAcquired":true,"leaseRecovered":false,"leaseLost":false,"skipped":false,"skipReason":null,"runtimeMs":80,"fetchedRecords":6,"candidateRecords":6,"qualifiedRecords":6,"ingestActions":{"lead_created":0,"lead_created_duplicate":0,"lead_adopted":0,"lead_adopted_duplicate":0,"shadow_recorded":0,"dry_run":6,"skipped_already_processed":0},"adoptedRecords":0,"adoptionConflicts":0,"throttledResponses":0,"leadsCreated":0,"duplicatesFlagged":0,"cursorAdvanced":true,"errors":[]}
+{"level":"info","time":"2026-09-17T22:56:10.839Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.841Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"warn","time":"2026-09-17T22:56:10.841Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.lease_lost","leaseOwnerHash":"e0e92466da53","stage":"route_snapshot"}
+{"level":"warn","time":"2026-09-17T22:56:10.841Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.lease_lost","observability_level":"warn","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.843Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"warn","time":"2026-09-17T22:56:10.844Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.lease_recovered","leaseOwnerHash":"e0e92466da53"}
+{"level":"warn","time":"2026-09-17T22:56:10.844Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.lease_recovered","observability_level":"warn","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.844Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","ranAt":"2026-08-18T12:00:00.000Z","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z","leaseOwnerHash":"e0e92466da53","leaseAcquired":true,"leaseRecovered":true,"leaseLost":false,"skipped":false,"skipReason":null,"runtimeMs":20,"fetchedRecords":0,"candidateRecords":0,"qualifiedRecords":0,"ingestActions":{"lead_created":0,"lead_created_duplicate":0,"lead_adopted":0,"lead_adopted_duplicate":0,"shadow_recorded":0,"dry_run":0,"skipped_already_processed":0},"adoptedRecords":0,"adoptionConflicts":0,"throttledResponses":0,"leadsCreated":0,"duplicatesFlagged":0,"cursorAdvanced":true,"errors":[]}
+{"level":"info","time":"2026-09-17T22:56:10.844Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.845Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.846Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","ranAt":"2026-08-18T12:00:00.000Z","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z","leaseOwnerHash":"e0e92466da53","leaseAcquired":true,"leaseRecovered":false,"leaseLost":false,"skipped":false,"skipReason":null,"runtimeMs":20,"fetchedRecords":0,"candidateRecords":0,"qualifiedRecords":0,"ingestActions":{"lead_created":0,"lead_created_duplicate":0,"lead_adopted":0,"lead_adopted_duplicate":0,"shadow_recorded":0,"dry_run":0,"skipped_already_processed":0},"adoptedRecords":0,"adoptionConflicts":0,"throttledResponses":0,"leadsCreated":0,"duplicatesFlagged":0,"cursorAdvanced":true,"errors":[]}
+{"level":"info","time":"2026-09-17T22:56:10.846Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.847Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.847Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","ranAt":"2026-08-18T12:00:00.000Z","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z","leaseOwnerHash":"e0e92466da53","leaseAcquired":true,"leaseRecovered":false,"leaseLost":false,"skipped":false,"skipReason":null,"runtimeMs":20,"fetchedRecords":0,"candidateRecords":0,"qualifiedRecords":0,"ingestActions":{"lead_created":0,"lead_created_duplicate":0,"lead_adopted":0,"lead_adopted_duplicate":0,"shadow_recorded":0,"dry_run":0,"skipped_already_processed":0},"adoptedRecords":0,"adoptionConflicts":0,"throttledResponses":0,"leadsCreated":0,"duplicatesFlagged":0,"cursorAdvanced":true,"errors":[]}
+{"level":"info","time":"2026-09-17T22:56:10.847Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.848Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.848Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","ranAt":"2026-08-18T12:00:00.000Z","windowFrom":"2026-08-17T15:45:00.000Z","windowTo":"2026-08-18T12:00:00.000Z","leaseOwnerHash":"e0e92466da53","leaseAcquired":true,"leaseRecovered":false,"leaseLost":false,"skipped":false,"skipReason":null,"runtimeMs":20,"fetchedRecords":0,"candidateRecords":0,"qualifiedRecords":0,"ingestActions":{"lead_created":0,"lead_created_duplicate":0,"lead_adopted":0,"lead_adopted_duplicate":0,"shadow_recorded":0,"dry_run":0,"skipped_already_processed":0},"adoptedRecords":0,"adoptionConflicts":0,"throttledResponses":0,"leadsCreated":0,"duplicatesFlagged":0,"cursorAdvanced":true,"errors":[]}
+{"level":"info","time":"2026-09-17T22:56:10.848Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.848Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.848Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","ranAt":"2026-08-18T12:00:00.000Z","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z","leaseOwnerHash":"e0e92466da53","leaseAcquired":true,"leaseRecovered":false,"leaseLost":false,"skipped":false,"skipReason":null,"runtimeMs":20,"fetchedRecords":0,"candidateRecords":0,"qualifiedRecords":0,"ingestActions":{"lead_created":0,"lead_created_duplicate":0,"lead_adopted":0,"lead_adopted_duplicate":0,"shadow_recorded":0,"dry_run":0,"skipped_already_processed":0},"adoptedRecords":0,"adoptionConflicts":0,"throttledResponses":0,"leadsCreated":0,"duplicatesFlagged":0,"cursorAdvanced":true,"errors":[]}
+{"level":"info","time":"2026-09-17T22:56:10.849Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.849Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.849Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","ranAt":"2026-08-18T12:00:00.000Z","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z","leaseOwnerHash":"e0e92466da53","leaseAcquired":true,"leaseRecovered":false,"leaseLost":false,"skipped":false,"skipReason":null,"runtimeMs":60,"fetchedRecords":3,"candidateRecords":3,"qualifiedRecords":3,"ingestActions":{"lead_created":0,"lead_created_duplicate":0,"lead_adopted":0,"lead_adopted_duplicate":0,"shadow_recorded":0,"dry_run":3,"skipped_already_processed":0},"adoptedRecords":0,"adoptionConflicts":0,"throttledResponses":0,"leadsCreated":0,"duplicatesFlagged":0,"cursorAdvanced":true,"errors":[]}
+{"level":"info","time":"2026-09-17T22:56:10.849Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.850Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.850Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","ranAt":"2026-08-18T12:00:00.000Z","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z","leaseOwnerHash":"e0e92466da53","leaseAcquired":true,"leaseRecovered":false,"leaseLost":false,"skipped":false,"skipReason":null,"runtimeMs":40,"fetchedRecords":2,"candidateRecords":2,"qualifiedRecords":2,"ingestActions":{"lead_created":0,"lead_created_duplicate":0,"lead_adopted":0,"lead_adopted_duplicate":0,"shadow_recorded":0,"dry_run":2,"skipped_already_processed":0},"adoptedRecords":0,"adoptionConflicts":0,"throttledResponses":0,"leadsCreated":0,"duplicatesFlagged":0,"cursorAdvanced":true,"errors":[]}
+{"level":"info","time":"2026-09-17T22:56:10.850Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.851Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.851Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","ranAt":"2026-08-18T12:00:00.000Z","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z","leaseOwnerHash":"e0e92466da53","leaseAcquired":true,"leaseRecovered":false,"leaseLost":false,"skipped":false,"skipReason":null,"runtimeMs":60,"fetchedRecords":2,"candidateRecords":2,"qualifiedRecords":2,"ingestActions":{"lead_created":0,"lead_created_duplicate":0,"lead_adopted":0,"lead_adopted_duplicate":0,"shadow_recorded":0,"dry_run":2,"skipped_already_processed":0},"adoptedRecords":0,"adoptionConflicts":0,"throttledResponses":0,"leadsCreated":0,"duplicatesFlagged":0,"cursorAdvanced":true,"errors":[]}
+{"level":"info","time":"2026-09-17T22:56:10.851Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.852Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"error","time":"2026-09-17T22:56:10.852Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.failed","leaseOwnerHash":"e0e92466da53","stage":"ingest","errorCode":"ingest_failed","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z"}
+{"level":"error","time":"2026-09-17T22:56:10.853Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.failed","observability_level":"error","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.854Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.854Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","ranAt":"2026-08-18T12:00:00.000Z","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z","leaseOwnerHash":"e0e92466da53","leaseAcquired":true,"leaseRecovered":false,"leaseLost":false,"skipped":false,"skipReason":null,"runtimeMs":30,"fetchedRecords":1,"candidateRecords":1,"qualifiedRecords":1,"ingestActions":{"lead_created":0,"lead_created_duplicate":0,"lead_adopted":0,"lead_adopted_duplicate":0,"shadow_recorded":0,"dry_run":1,"skipped_already_processed":0},"adoptedRecords":0,"adoptionConflicts":0,"throttledResponses":0,"leadsCreated":0,"duplicatesFlagged":0,"cursorAdvanced":true,"errors":[]}
+{"level":"info","time":"2026-09-17T22:56:10.854Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.855Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.started","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+{"level":"info","time":"2026-09-17T22:56:10.855Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","ranAt":"2026-08-18T12:00:00.000Z","windowFrom":"2026-08-18T00:00:00.000Z","windowTo":"2026-08-18T12:00:00.000Z","leaseOwnerHash":"e0e92466da53","leaseAcquired":true,"leaseRecovered":false,"leaseLost":false,"skipped":false,"skipReason":null,"runtimeMs":30,"fetchedRecords":1,"candidateRecords":1,"qualifiedRecords":1,"ingestActions":{"lead_created":0,"lead_created_duplicate":0,"lead_adopted":1,"lead_adopted_duplicate":0,"shadow_recorded":0,"dry_run":0,"skipped_already_processed":0},"adoptedRecords":1,"adoptionConflicts":0,"throttledResponses":0,"leadsCreated":0,"duplicatesFlagged":0,"cursorAdvanced":true,"errors":[]}
+{"level":"info","time":"2026-09-17T22:56:10.856Z","service":"vantage-main-server","env":"development","msg":"ringcentral.call_log_sync.completed","observability_level":"info","category":"ringcentral","workflow":"ringcentral_call_log_sync","run_id":"2026-08-18T12:00:00.000Z"}
+✔ qualifies an inbound answered call over 120s to a mapped toll-free (3.736ms)
+✔ qualifies a GetMovers inbound call log record (0.5267ms)
+✔ rejects a call under 120 seconds (0.3824ms)
+✔ rejects an outbound call (0.3941ms)
+✔ rejects a call to an unmapped number (0.3448ms)
+✔ rejects a missed (unanswered) call (0.3006ms)
+✔ matches target number across call legs and picks the inbound caller (0.3903ms)
+✔ aggregates a multi-party session and qualifies the canonical queue party over 120s (3.6566ms)
+✔ uses answered agent lifecycle timing when the target queue leg disconnects early (2.7018ms)
+✔ rejects a session that disconnected under 120 seconds (0.6746ms)
+✔ a live (non-terminal) call over 120s qualifies but is not ingest-eligible (0.4943ms)
+✔ an outbound-only session is not a lead (0.4778ms)
+﹣ [AC-14][AC-15][AC-16] Unit 20 replica adoption, conflict continuation, races, and rollback (3.0752ms) # Replica-set proof is opt-in via GRANOT_LIFECYCLE_REPLICA_TESTS=true.
+✔ [AC-14] one exact immutable-phone candidate is selected without guessing (6.5531ms)
+✔ [AC-16] zero and multiple candidates remain explicit outcomes (0.864ms)
+✔ [AC-14][AC-16] candidate window is inclusive at exactly plus/minus 12 hours (1.675ms)
+✔ [AC-14][AC-16] exact boundaries qualify and one millisecond outside does not (1.8757ms)
+✔ [AC-16] missing call start fails adoption closed without querying candidates (6.2364ms)
+✔ [AC-16] Job-only/missing-phone input is never an adoption candidate (0.6144ms)
+✔ adoption match key stays exact Source Granularity plus ingested phone (1.9934ms)
+✔ [AC-16] different Source Granularity with the same phone is not an adoption candidate (0.8609ms)
+✔ [AC-14] current-contact drift cannot replace immutable creation phone (1.1444ms)
+✔ [AC-14] telephony session wins over call-log identity (3.2825ms)
+✔ [AC-14] adoption statuses are terminal replay outcomes (0.4421ms)
+✔ [AC-14] call-log race fence is declared unique and sparse (0.3278ms)
+{"level":"info","time":"2026-09-17T22:56:11.044Z","service":"vantage-main-server","env":"development","msg":"ringcentral.ingest.skipped_already_processed","telephonySessionId":"u20-session","callLogId":null,"previousStatus":"lead_adopted","ingestionSource":"webhook"}
+✔ [AC-14] telephony replay returns before adoption candidate work (3.1188ms)
+✔ [AC-14][AC-15] adoption occurs before duplicate classification and suppresses create (1.4181ms)
+✔ [AC-16] no adoption candidate continues through normal ingest (0.8587ms)
+✔ [AC-14] webhook and Call Log descriptors enter equivalent convergence (0.5885ms)
+✔ [AC-14] call-log-only create fails closed before candidate or Lead work without indexes (0.7778ms)
+✔ adoption off still creates a RingCentral-origin Call Lead (documented Race B twin) (0.923ms)
+✔ RingCentral ingest lock stays gated on the adoption flag (0.6609ms)
+{"level":"info","time":"2026-09-17T22:56:11.048Z","service":"vantage-main-server","env":"development","msg":"ringcentral.ingest.processed","action":"dry_run","writeMode":"dry_run","duplicate":false,"duplicateReason":"unique","ingestionSource":"webhook","telephonySessionId":"u20-session","callLogId":null,"sourceCompany":"main_site","durationSeconds":180,"callLeadId":null}
+{"level":"info","time":"2026-09-17T22:56:11.051Z","service":"vantage-main-server","env":"development","msg":"ringcentral.ingest.processed","action":"lead_created","writeMode":"create","duplicate":false,"duplicateReason":"unique","ingestionSource":"webhook","telephonySessionId":"u20-session","callLogId":null,"sourceCompany":"main_site","durationSeconds":180,"callLeadId":"507f1f77bcf86cd799439099"}
+✔ first call from a caller is unique (5.2205ms)
+✔ a second call from the same caller + source within the window is a duplicate (1.1745ms)
+✔ the same telephony session is not counted as its own duplicate (0.7745ms)
+✔ [AC-15] the same call-log identity is not counted as its own duplicate (0.675ms)
+✔ a call with no caller phone cannot be classified as a duplicate (0.4376ms)
+✔ phone numbers in different formats still match as duplicates (0.6927ms)
+✔ duplicate lookup uses the earlier-only 90-day window (1.5651ms)
+✔ same caller and source exactly 90 days apart is a duplicate (2.1577ms)
+✔ same caller and source more than 90 days apart is unique (0.6347ms)
+✔ different source is scoped out by the duplicate lookup (0.5791ms)
+✔ [AC-15] adopted Lead id is excluded from duplicate classification (0.8529ms)
+✔ [AC-15][AC-16] unresolved Granot candidates do not create false duplicates (0.994ms)
+✔ [AC-15] adopted Granot candidate from another physical call remains eligible (0.6941ms)
+✔ [AC-15] future Leads are outside the earlier-only duplicate window (5.8886ms)
 ℹ tests 96
 ℹ suites 0
 ℹ pass 93
@@ -101,4 +183,4 @@
 ℹ cancelled 0
 ℹ skipped 3
 ℹ todo 0
-ℹ duration_ms 10746.8577
+ℹ duration_ms 11104.5841

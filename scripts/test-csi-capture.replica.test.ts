@@ -99,8 +99,25 @@ test("CSI-02 isolated replica proof", { skip: !enabled, timeout: 180_000 }, asyn
       assert.equal(audit[0]!.event_kind, "interaction.created");
       assert.equal(audit[0]!.invalidation.kind, "interaction");
       assert.equal((audit[0]!.current as { contact_number_id: string }).contact_number_id, String(number!._id));
+      // Review fix: audit rows tie back to the provider evidence and declare whether the
+      // actor request id is a real job id or a generated placeholder.
+      const createdCurrent = audit[0]!.current as { proof_ref: string; input_kind: string; request_id_generated: boolean; aliases_added: string[] };
+      assert.equal(createdCurrent.proof_ref, `webhook:${d.ringing.uuid}`);
+      assert.equal(createdCurrent.input_kind, "webhook");
+      assert.equal(createdCurrent.request_id_generated, true, "no job id supplied by this test");
+      assert.deepEqual(createdCurrent.aliases_added.map((a) => a.split(":")[0]).sort(), ["session_id", "telephony_session_id"]);
 
-      okResult(await observe(d.repRinging, at(4)));
+      const jobId = new mongoose.Types.ObjectId().toHexString();
+      const withJob = await observeRingCentralWebhookEvents(
+        normalizeWebhookPartyObservations(d.repRinging, at(4)),
+        { now: () => at(4), directory: async () => directory, resolveRoute: noRoute, recordEvent: noEvent as never, configuredAccountId: null, request_id: jobId },
+      );
+      assert.ok(withJob[0]?.ok);
+      const updated = await Audit.findOne({ subject_key: `interaction:${created.interaction_id}`, event_kind: "interaction.updated" }).lean();
+      assert.equal(updated?.actor.request_id, jobId, "supplied job id is the audit actor request id");
+      assert.equal((updated?.current as { request_id_generated: boolean }).request_id_generated, false);
+      assert.equal((updated?.current as { proof_ref: string }).proof_ref, `webhook:${d.repRinging.uuid}`);
+
       okResult(await observe(d.answered, at(9)));
       const ended = okResult(await observe(d.disconnected, at(96)));
       assert.equal(ended.newly_terminal, true);
@@ -247,6 +264,12 @@ test("CSI-02 isolated replica proof", { skip: !enabled, timeout: 180_000 }, asyn
       assert.equal(String(tomb?.merged_into_id), rowA.interaction_id);
       assert.equal(await Alias.countDocuments({ interaction_id: rowB.interaction_id }), 0);
       assert.equal(await Alias.countDocuments({ interaction_id: rowA.interaction_id }), 4, "telephony, session, record id, sid-only record id");
+      // Review fix: re-pointed aliases keep the proof that originally proved them.
+      const sidOnlyAlias = await Alias.findOne({ kind: "call_log_id", value: sessionIdOnlyCallLog("s-merge-1").id }).lean();
+      assert.equal(String(sidOnlyAlias?.interaction_id), rowA.interaction_id);
+      assert.equal(sidOnlyAlias?.proof_ref, "call_log:sidonly", "merge does not rewrite alias provenance");
+      const mergedAudit = await Audit.findOne({ event_kind: "interaction.merged", subject_key: `interaction:${rowB.interaction_id}` }).lean();
+      assert.equal((mergedAudit?.current as { proof_ref: string }).proof_ref, "call_log:bridge", "merge proof lives on the audit row");
       const numberAfter = await ContactNumber.findOne({ e164: SYNTHETIC_CUSTOMER }).lean();
       assert.equal(numberAfter!.rollups.interactions_total, numberBefore!.rollups.interactions_total - 1);
       assert.equal(await Audit.countDocuments({ event_kind: "interaction.merged", subject_key: `interaction:${rowB.interaction_id}` }), 1);
@@ -408,6 +431,47 @@ test("CSI-02 isolated replica proof", { skip: !enabled, timeout: 180_000 }, asyn
       state = await SyncState.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean();
       assert.equal(state?.gaps.some((g) => g.reason === "page_limit" && g.to.toISOString() === at(-150).toISOString()), true);
 
+      // Review fix: a 429 during gap repair ends the run; remaining gaps are not attempted,
+      // and the provider-modified watermark does not advance on a partial run.
+      await SyncState.updateOne(
+        { scope: CALL_LOG_ALL_DIRECTIONS_SCOPE },
+        {
+          $set: {
+            gaps: [
+              { from: at(-400_000), to: at(-390_000), reason: "provider_request_failed", opened_at: at(-389_000) },
+              { from: at(-380_000), to: at(-370_000), reason: "provider_request_failed", opened_at: at(-369_000) },
+            ],
+          },
+        },
+      );
+      const watermarkBefore = (await SyncState.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean())?.cursor.provider_modified_watermark ?? null;
+      let fetches = 0;
+      const repairThrottled = await runCallLogReconcileOnce(
+        reconcileDeps(async () => {
+          fetches += 1;
+          if (fetches === 1) return [inboundConnectedCallLog("s-wm-1", { lastModifiedTime: new Date(Date.now() + 86_400_000) })];
+          throw new RingCentralApiError("throttled", 429, "Too Many Requests", "/call-log", "GET", null);
+        }),
+      );
+      assert.equal(repairThrottled.windows.length, 2, "rolling window plus exactly one gap repair");
+      assert.equal(repairThrottled.windows[0]!.complete, true);
+      assert.equal(repairThrottled.windows[1]!.kind, "gap_repair");
+      assert.equal(repairThrottled.windows[1]!.error_code, "provider_throttled");
+      assert.equal(repairThrottled.throttled_count, 1);
+      assert.equal(repairThrottled.throttle_retry_after_observed, false, "shared client exposes no Retry-After; the default is not reported as observed");
+      assert.equal(fetches, 2, "the second gap was never fetched");
+      assert.match(repairThrottled.request_id ?? "", /^[a-f\d]{24}$/);
+      const wmAudit = await Audit.findOne({ subject_key: `interaction:${(await Interaction.findOne({ telephony_session_id: "s-wm-1" }).lean())!._id}` }).lean();
+      assert.equal(wmAudit?.actor.request_id, repairThrottled.request_id, "reconcile audit rows tie back to the run");
+      assert.equal((wmAudit?.current as { request_id_generated: boolean }).request_id_generated, false);
+      state = await SyncState.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean();
+      assert.equal(
+        state?.cursor.provider_modified_watermark?.toISOString() ?? null,
+        watermarkBefore?.toISOString() ?? null,
+        "watermark holds when any window of the run was incomplete",
+      );
+      assert.equal(state?.gaps.length, 2, "throttled gap stays open, untouched gap stays open");
+
       // Repair everything with a healthy run.
       const healthy = await runCallLogReconcileOnce(reconcileDeps([[]]));
       assert.equal(healthy.cursor_advanced, true);
@@ -459,6 +523,11 @@ test("CSI-02 isolated replica proof", { skip: !enabled, timeout: 180_000 }, asyn
       assert.equal(await Interaction.countDocuments({ telephony_session_id: "s-noacct-2" }), 0);
     });
   } finally {
+    // Disposable per-run database on the loopback replica; drop it so repeated
+    // runs do not accumulate testvantagemovers_csi02* databases.
+    if (/^testvantagemovers_csi02[a-z0-9]+$/.test(db.databaseName)) {
+      await db.dropDatabase().catch(() => undefined);
+    }
     await mongoose.disconnect();
   }
 });

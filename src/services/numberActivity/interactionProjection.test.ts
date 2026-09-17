@@ -277,6 +277,107 @@ test("internal, withheld and malformed observations keep provider evidence witho
   assert.equal(malformed.next.parties.find((p) => p.role === "external")?.phone_number_raw, "+1");
 });
 
+test("review fix: an unknown short caller id is malformed, never a fabricated extension that makes a customer call Internal", () => {
+  // Garbled inbound caller id "12": no directory extension, no provider extension label.
+  const garbled = callLog(
+    null,
+    inboundConnectedCallLog("s-garbled-1", {
+      from: { phoneNumber: "12", name: "Unknown Caller" },
+      recording: { id: "rec-garbled" },
+      legs: [],
+    }),
+  );
+  assert.equal(garbled.next.direction, "Inbound", "not Internal");
+  assert.equal(garbled.next.external_endpoint_kind, "malformed");
+  assert.equal(garbled.next.external_e164, null);
+  assert.equal(garbled.next.parties.find((p) => p.role === "external")?.phone_number_raw, "12");
+  assert.equal(garbled.next.parties.find((p) => p.role === "external")?.extension_number ?? null, null, "no fabricated extension number");
+  assert.deepEqual(garbled.next.recordings.map((r) => r.provider_recording_id), ["rec-garbled"], "recording evidence retained for discovery");
+
+  // A short dial the directory knows, or that the provider labels as an extension, is still an extension.
+  const known = callLog(null, internalCallLog());
+  assert.equal(known.next.direction, "Internal");
+  assert.equal(known.next.external_endpoint_kind, "extension");
+  const labelled = callLog(
+    null,
+    inboundConnectedCallLog("s-labelled-1", {
+      from: { phoneNumber: "77", extensionNumber: "77", name: "Unknown Ext" },
+      to: { extensionId: SYNTHETIC_USER_EXTENSION.id, extensionNumber: SYNTHETIC_USER_EXTENSION.number },
+      legs: [],
+    }),
+  );
+  assert.equal(labelled.next.direction, "Internal", "provider-labelled extension is provider evidence");
+});
+
+test("review fix: a party event missing `direction` does not turn an outbound customer call into a sticky Internal", () => {
+  const d = outboundUnansweredDeliveries("s-nodir-1");
+  const stripped = structuredClone(d.setup) as { body: { parties: Array<Record<string, unknown>> } };
+  for (const party of stripped.body.parties) delete party.direction;
+  const first = webhook(null, stripped);
+  assert.notEqual(first.next.direction, "Internal");
+  assert.equal(first.next.direction, "Unknown", "no direction evidence yet");
+  assert.equal(first.next.external_e164, SYNTHETIC_CUSTOMER_B, "customer side is still external");
+  assert.equal(first.next.external_endpoint_kind, "external");
+
+  const corrected = webhook(first.next, d.proceeding, at(2));
+  assert.equal(corrected.next.direction, "Outbound", "later evidence corrects Unknown");
+  const reconciled = callLog(corrected.next, outboundMissedCallLog("s-nodir-1"));
+  assert.equal(reconciled.next.direction, "Outbound");
+
+  // A true internal call (both sides are extensions) still projects Internal.
+  assert.equal(webhook(null, internalCallDelivery()).next.direction, "Internal");
+});
+
+test("review fix: a stale Call Log record never regresses leg-level result or duration", () => {
+  const first = callLog(
+    null,
+    inboundConnectedCallLog("s-staleleg-1", {
+      legs: [
+        { id: "leg-same", startTime: at(0).toISOString(), duration: 95, direction: "Inbound", result: "Accepted", legType: "PstnToSip", extension: { id: SYNTHETIC_USER_EXTENSION.id } },
+      ],
+    }),
+  );
+  const leg = (o: InteractionProjection) => o.legs.find((l) => l.call_log_id === "leg-same")!;
+  assert.deepEqual([leg(first.next).result, leg(first.next).duration_seconds], ["Accepted", 95]);
+
+  const older = inboundConnectedCallLog("s-staleleg-1", {
+    result: "Missed",
+    duration: 3,
+    lastModifiedTime: at(-100),
+    legs: [
+      { id: "leg-same", startTime: at(0).toISOString(), duration: 3, direction: "Inbound", result: "Missed", legType: "PstnToSip", extension: { id: SYNTHETIC_USER_EXTENSION.id } },
+      { id: "leg-new", startTime: at(1).toISOString(), duration: 2, direction: "Inbound", result: "Missed", legType: "PstnToSip", extension: { id: SYNTHETIC_USER_EXTENSION_B.id } },
+    ],
+  });
+  const stale = callLog(first.next, older, at(2100));
+  assert.equal(stale.stale_call_log, true);
+  assert.deepEqual([leg(stale.next).result, leg(stale.next).duration_seconds], ["Accepted", 95], "existing leg kept");
+  assert.equal(stale.next.legs.some((l) => l.call_log_id === "leg-new"), true, "new leg still added");
+  assert.equal(stale.next.provider_result, "Call connected");
+});
+
+test("review fix: legs_overflow_count is monotone across records and not double counted on merge", () => {
+  const manyLegs = (count: number, prefix: string) =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `${prefix}-${i}`,
+      startTime: at(i).toISOString(),
+      duration: 1,
+      direction: "Inbound",
+      result: "Accepted",
+      legType: "PstnToSip",
+      extension: { id: SYNTHETIC_USER_EXTENSION.id },
+    }));
+  const big = callLog(null, inboundConnectedCallLog("s-overflow-1", { legs: manyLegs(45, "big") }));
+  assert.equal(big.next.legs.length, 40);
+  assert.equal(big.next.legs_overflow_count, 5);
+  const fewer = callLog(big.next, inboundConnectedCallLog("s-overflow-1", { legs: manyLegs(3, "big"), lastModifiedTime: at(5000) }), at(5100));
+  assert.equal(fewer.next.legs_overflow_count >= 5, true, "dropped legs are not forgotten");
+
+  const other = callLog(null, inboundConnectedCallLog("s-overflow-1", { legs: manyLegs(45, "big") }));
+  const merged = mergeProjections(big.next, other.next);
+  assert.equal(merged.legs_overflow_count, 5, "same dropped legs observed twice count once");
+});
+
 test("session-id only Call Log record resolves to fallback identity and gains the strongest basis when bridged", () => {
   const sidOnly = callLog(null, sessionIdOnlyCallLog());
   assert.equal(sidOnly.next.identity_basis, "session_id");

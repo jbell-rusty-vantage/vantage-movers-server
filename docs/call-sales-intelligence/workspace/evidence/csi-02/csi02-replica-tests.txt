@@ -1,17 +1,24 @@
-CSI-02 isolated replica proof: testvantagemovers_csi023c909a6ec992; loopback replica csi01 on port 27189
+
+> vantage_movers_server@1.0.0 test:csi:capture:replica C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> node --import tsx scripts/test-csi-capture.ts
+
+CSI-02 isolated replica proof: testvantagemovers_csi02632d3aeca2ae; loopback replica csi01 on port 27189
+{"level":"info","time":"2026-09-17T22:56:40.399Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
 ▶ CSI-02 isolated replica proof
-  ✔ webhook lifecycle persists projection, aliases, number rollups, audit and jobs atomically; replay is a no-op (256.106ms)
-  ✔ concurrent duplicate deliveries and concurrent sessions on one number keep one identity and exact rollups (352.7805ms)
-  ✔ Call Log reconciles the webhook session: authoritative result, recordings, late terminal no-op, per-recording discovery (161.2943ms)
-  ✔ identity is account-scoped and never merged by phone/time; same-session proof merges provisional rows (274.8347ms)
-  ✔ internal, withheld and malformed observations: evidence without Contact Number or sales work (87.8391ms)
-  ✔ a failed downstream enqueue rolls back projection, aliases, number and audit together (738.8478ms)
-  ✔ reconcile: dedicated cursor and lease; full success advances cursor and watermark; qualified sync state untouched (292.8668ms)
-  ✔ reconcile: page failure keeps cursor, projects fetched records, opens a gap; the next full run closes it (192.1594ms)
-  ✔ reconcile: 429 ends the run without cursor advance and records the throttle; page limit records the missing range (249.723ms)
-  ✔ reconcile: concurrent workers elect one lease holder; an expired lease cannot write the cursor (317.1129ms)
-  ✔ reconcile: unresolved provider account fails closed without fabricating identity (55.613ms)
-✔ CSI-02 isolated replica proof (5909.9588ms)
+  ✔ webhook lifecycle persists projection, aliases, number rollups, audit and jobs atomically; replay is a no-op (347.7353ms)
+  ✔ concurrent duplicate deliveries and concurrent sessions on one number keep one identity and exact rollups (419.3105ms)
+  ✔ Call Log reconciles the webhook session: authoritative result, recordings, late terminal no-op, per-recording discovery (212.388ms)
+  ✔ identity is account-scoped and never merged by phone/time; same-session proof merges provisional rows (404.8061ms)
+  ✔ internal, withheld and malformed observations: evidence without Contact Number or sales work (151.9029ms)
+{"level":"warn","time":"2026-09-17T22:56:46.238Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.capture.webhook.observe_failed","telephonySessionId":"s-atomic-1","errorCode":"persist_failed","errorName":"Error"}
+  ✔ a failed downstream enqueue rolls back projection, aliases, number and audit together (1001.9255ms)
+  ✔ reconcile: dedicated cursor and lease; full success advances cursor and watermark; qualified sync state untouched (291.7525ms)
+  ✔ reconcile: page failure keeps cursor, projects fetched records, opens a gap; the next full run closes it (298.2932ms)
+  ✔ reconcile: 429 ends the run without cursor advance and records the throttle; page limit records the missing range (412.9991ms)
+{"level":"warn","time":"2026-09-17T22:56:48.477Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.call_log_reconcile.lease_lost","leaseOwnerHash":"5af822e8c03c"}
+  ✔ reconcile: concurrent workers elect one lease holder; an expired lease cannot write the cursor (314.2049ms)
+  ✔ reconcile: unresolved provider account fails closed without fabricating identity (58.4865ms)
+✔ CSI-02 isolated replica proof (8276.5968ms)
 ℹ tests 12
 ℹ suites 0
 ℹ pass 12
@@ -19,4 +26,4 @@ CSI-02 isolated replica proof: testvantagemovers_csi023c909a6ec992; loopback rep
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 9305.5137
+ℹ duration_ms 12895.7332

@@ -187,10 +187,21 @@ test("import boundary: numberActivity never imports qualification, ingest, conve
     "call-log-sync",
     "/leads/",
   ];
-  for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))) {
+  // Explicit exemption: the parity test may import the qualification evaluator
+  // read-only to prove TERMINAL_PARTY_STATUSES stays in sync (03 §2.3 asks for
+  // reuse while §0 forbids the runtime import; runtime uses a local constant).
+  const testOnlyExemptions = new Map<string, string[]>([
+    ["interactionProjection.test.ts", ["../ringcentral/call-candidate-evaluator"]],
+  ]);
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts"))) {
     const source = readFileSync(path.join(dir, file), "utf8");
     const imports = [...source.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]!);
+    const allowed = testOnlyExemptions.get(file) ?? [];
     for (const specifier of imports) {
+      if (allowed.includes(specifier)) {
+        assert.equal(file.endsWith(".test.ts"), true, `${file}: exemption is test-only`);
+        continue;
+      }
       for (const marker of forbidden) {
         assert.equal(specifier.includes(marker), false, `${file} imports forbidden module ${specifier}`);
       }

@@ -31,6 +31,8 @@ export type ObserveDependencies = {
   apply?: typeof applyInteractionObservation;
   recordEvent?: typeof recordOperationalEvent;
   configuredAccountId?: string | null;
+  /** Durable capture-projection job id (24-hex) recorded on every audit row this call writes. */
+  request_id?: string | null;
 };
 
 export type SessionObservationResult =
@@ -96,7 +98,17 @@ export async function observeRingCentralWebhookEvents(
   const now = deps.now ?? (() => new Date());
   const apply = deps.apply ?? applyInteractionObservation;
   const recordEvent = deps.recordEvent ?? recordOperationalEvent;
-  const loadDirectory = deps.directory ?? loadDirectoryLookup;
+  const loadDirectoryOnce = deps.directory ?? loadDirectoryLookup;
+  // One directory load per account for the whole delivery, not per session.
+  const directoryCache = new Map<string, Promise<DirectoryLookup>>();
+  const loadDirectory = (accountId: string) => {
+    let pending = directoryCache.get(accountId);
+    if (!pending) {
+      pending = loadDirectoryOnce(accountId);
+      directoryCache.set(accountId, pending);
+    }
+    return pending;
+  };
   const resolveRoute = deps.resolveRoute ?? (observations.length ? await defaultRouteResolver() : undefined);
 
   const bySession = new Map<string, WebhookPartyObservation[]>();
@@ -120,9 +132,9 @@ export async function observeRingCentralWebhookEvents(
         {
           kind: "webhook",
           events,
-          proof_ref: `webhook:${events.map((e) => e.webhook_uuid ?? "unknown").sort()[0]}`,
+          proof_ref: webhookProofRef(telephonySessionId, events),
         },
-        { now, directory, resolveRoute },
+        { now, directory, resolveRoute, request_id: deps.request_id ?? null },
       );
       results.push({ telephony_session_id: telephonySessionId, account_id: accountId, ok: true, result });
     } catch (error) {
@@ -143,17 +155,31 @@ export async function observeRingCentralWebhookEvents(
         details: { telephonySessionId, errorCode: code },
         notificationCandidate: false,
         reportable: false,
+        piiPolicy: "none",
       });
     }
   }
   return results;
 }
 
+/**
+ * Provider evidence reference for this session's slice of the delivery: every
+ * receipt UUID that contributed, sorted for determinism. Falls back to the
+ * session id when the payload carried no UUID; never a literal "unknown".
+ */
+function webhookProofRef(telephonySessionId: string, events: readonly WebhookPartyObservation[]): string {
+  const uuids = [...new Set(events.map((e) => e.webhook_uuid).filter((u): u is string => !!u))].sort();
+  if (!uuids.length) return `webhook:session:${telephonySessionId}`;
+  const shown = uuids.slice(0, MAX_PROOF_UUIDS);
+  const more = uuids.length - shown.length;
+  return `webhook:${shown.join(",")}${more > 0 ? `,+${more}` : ""}`;
+}
+
+const MAX_PROOF_UUIDS = 8;
+
 function classify(error: unknown): Extract<SessionObservationResult, { ok: false }>["error_code"] {
   if (error instanceof ProviderAccountError) return error.code;
-  if (error instanceof InteractionPersistenceError) {
-    return error.code === "account_mismatch" ? "account_mismatch" : error.code;
-  }
+  if (error instanceof InteractionPersistenceError) return error.code;
   return "persist_failed";
 }
 

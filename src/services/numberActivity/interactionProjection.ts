@@ -184,8 +184,7 @@ export function fromWebhookParties(
       const startCandidate = event.call_started_at ?? event.event_time ?? event.received_at;
       if (!earliestStart || startCandidate < earliestStart) earliestStart = startCandidate;
       const direction = normalizeDirection(event.direction);
-      const externalSide = direction === "Outbound" ? event.to : event.from;
-      const companySide = direction === "Outbound" ? event.from : event.to;
+      const { externalSide, companySide } = splitSides(event, direction, directory);
       const company = classifyEndpoint(
         {
           phoneNumber: companySide.phone_number,
@@ -214,16 +213,29 @@ export function fromWebhookParties(
 
   const accountParties = [...parties.values()].filter((p) => p.role !== "external");
   const externals = [...externalByParty.values()];
-  const externalIsCompany = externals.length > 0 && externals.every((e) => isCompanySide(e.kind));
-  const direction = deriveWebhookDirection(accountParties, existing?.direction ?? null, externalIsCompany);
+  const companies = [...companyByParty.values()];
+  // Internal requires provider evidence on BOTH sides (mirrors the Call Log
+  // path). Judging only the side we *guessed* was external would turn a party
+  // event with a missing `direction` into a sticky Internal call.
+  const bothSidesCompany =
+    externals.length > 0 &&
+    companies.length > 0 &&
+    externals.every((e) => isCompanySide(e.kind)) &&
+    companies.every((e) => isCompanySide(e.kind));
+  const direction = deriveWebhookDirection(accountParties, existing?.direction ?? null, bothSidesCompany);
   const external = pickEndpoint(externals) ?? null;
-  const company = pickEndpoint([...companyByParty.values()]) ?? null;
-  const startedAt = existing?.started_at ?? earliestStart ?? options.now;
+  const company = pickEndpoint(companies) ?? null;
+  const callLogAuthoritative = existing?.provider_last_modified_at != null;
+  // Call Log start time is authoritative; otherwise an earlier provider
+  // `callStartedAt` may correct a start observed too late.
+  const startedAt = callLogAuthoritative
+    ? existing!.started_at
+    : earliest([existing?.started_at ?? null, earliestStart]) ?? options.now;
 
   const externalParty = buildExternalParty(
     existing?.parties.find((p) => p.role === "external") ?? null,
     external,
-    externalSideName(events, direction),
+    externalSideName(events, direction, directory),
     direction,
   );
   if (externalParty) parties.set("external", externalParty);
@@ -232,7 +244,6 @@ export function fromWebhookParties(
   const allTerminal =
     accountParties.length > 0 && accountParties.every((p) => p.terminal_at !== null);
   const terminal = (existing?.terminal ?? false) || allTerminal;
-  const callLogAuthoritative = existing?.provider_last_modified_at != null;
   const voicemailDeclared = accountParties.some((p) => p.terminal_status === "Voicemail");
   const providerResult = callLogAuthoritative
     ? existing!.provider_result
@@ -400,15 +411,47 @@ function resolvePartyRole(
   return previous;
 }
 
+/**
+ * Which endpoint of a party event is the company side. With a provider
+ * `direction` this is definitional. Without one, the party's own extension id
+ * or the endpoints' own classification decides; the party's extension is never
+ * injected into a side merely assumed to be the company, because that would
+ * turn a customer number into an "extension" and the call into Internal.
+ */
+function splitSides(
+  event: WebhookPartyObservation,
+  direction: InteractionDirection | null,
+  directory: DirectoryLookup,
+): { externalSide: WebhookPartyObservation["from"]; companySide: WebhookPartyObservation["to"] } {
+  if (direction === "Outbound") return { externalSide: event.to, companySide: event.from };
+  if (direction === "Inbound") return { externalSide: event.from, companySide: event.to };
+  const partyExtension = event.extension_id;
+  if (partyExtension) {
+    if (event.from.extension_id === partyExtension) return { externalSide: event.to, companySide: event.from };
+    if (event.to.extension_id === partyExtension) return { externalSide: event.from, companySide: event.to };
+  }
+  const fromKind = classifyEndpoint(
+    { phoneNumber: event.from.phone_number, name: event.from.name, extensionId: event.from.extension_id, extensionNumber: event.from.extension_number },
+    directory,
+  ).kind;
+  const toKind = classifyEndpoint(
+    { phoneNumber: event.to.phone_number, name: event.to.name, extensionId: event.to.extension_id, extensionNumber: event.to.extension_number },
+    directory,
+  ).kind;
+  if (isCompanySide(fromKind) && !isCompanySide(toKind)) return { externalSide: event.to, companySide: event.from };
+  // Default (inbound-shaped) when evidence is symmetric or absent.
+  return { externalSide: event.from, companySide: event.to };
+}
+
 function deriveWebhookDirection(
   accountParties: ProjectedParty[],
   previous: InteractionDirection | null,
-  externalIsCompany: boolean,
+  bothSidesCompany: boolean,
 ): InteractionDirection {
   if (previous === "Internal") return previous;
   const directions = new Set(accountParties.map((p) => p.direction).filter(isString));
   if (directions.has("Inbound") && directions.has("Outbound")) return "Internal";
-  if (externalIsCompany) return "Internal";
+  if (bothSidesCompany) return "Internal";
   if (previous && previous !== "Unknown") return previous;
   if (directions.size === 1) return [...directions][0] as InteractionDirection;
   return "Unknown";
@@ -424,10 +467,13 @@ function summarizeWebhookResult(accountParties: ProjectedParty[]): string | null
 function externalSideName(
   events: readonly WebhookPartyObservation[],
   direction: InteractionDirection,
+  directory: DirectoryLookup,
 ): string | null {
   for (const event of events) {
-    const side = direction === "Outbound" ? event.to : event.from;
-    if (side.name) return side.name;
+    const eventDirection =
+      normalizeDirection(event.direction) ?? (direction === "Unknown" || direction === "Internal" ? null : direction);
+    const { externalSide } = splitSides(event, eventDirection, directory);
+    if (externalSide.name) return externalSide.name;
   }
   return null;
 }
@@ -478,7 +524,11 @@ export function fromCallLogRecord(
     .filter((r): r is Record<string, unknown> => r !== null)
     .map((r) => ({ id: str(r.id), type: str(r.type) }))
     .filter((r): r is { id: string; type: string | null } => r.id !== null);
-  const mergedLegs = mergeLegs(existing?.legs ?? [], legs);
+  // A stale record may add legs it alone knows about, but must not overwrite
+  // leg-level result/duration already stored from a newer record.
+  const mergedLegs = stale
+    ? mergeLegs(legs, existing?.legs ?? [])
+    : mergeLegs(existing?.legs ?? [], legs);
   const transfer =
     (existing?.transfer ?? false) ||
     legsRaw.some(
@@ -549,7 +599,9 @@ export function fromCallLogRecord(
     contact_type_basis: contact.contact_type_basis,
     parties,
     legs: mergedLegs.legs,
-    legs_overflow_count: mergedLegs.overflow,
+    // Monotone: legs dropped by an earlier overflow are not forgotten when a
+    // later record carries fewer legs.
+    legs_overflow_count: Math.max(existing?.legs_overflow_count ?? 0, mergedLegs.overflow),
     connected_user_extension_ids: uniqueSorted([
       ...(existing?.connected_user_extension_ids ?? []),
       ...connectedExtensions.filter((id) => {
@@ -764,7 +816,9 @@ export function mergeProjections(
     contact_type_basis: contact.contact_type_basis,
     parties: orderParties([...parties.values()]),
     legs: legs.legs,
-    legs_overflow_count: legs.overflow + canonical.legs_overflow_count + other.legs_overflow_count,
+    // Lower bound on dropped legs; adding both rows' counts would double count
+    // the same dropped legs when they were observed by both.
+    legs_overflow_count: Math.max(legs.overflow, canonical.legs_overflow_count, other.legs_overflow_count),
     connected_user_extension_ids: uniqueSorted([
       ...canonical.connected_user_extension_ids,
       ...other.connected_user_extension_ids,

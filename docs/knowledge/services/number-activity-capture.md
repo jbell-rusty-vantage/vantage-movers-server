@@ -16,6 +16,8 @@ sources:
     resource: docs/call-sales-intelligence/02-domain-models.md
   - id: handoff
     resource: docs/call-sales-intelligence/workspace/evidence/csi-02/HANDOFF.md
+  - id: review
+    resource: docs/call-sales-intelligence/workspace/evidence/csi-02/INDEPENDENT-REVIEW.md
 ---
 
 # Number Activity capture
@@ -39,12 +41,14 @@ sources:
 ## Invariants
 
 - Identity is `(provider, provider_account_id, alias)`; aliases are `telephony_session_id` → `session_id` → `call_log_id`. Two rows merge only when one provider record names both identities; the earlier-created row is canonical, the other gets `merged_into_id`, aliases re-point, rollups move. Phone and time similarity never merge.
-- Each party is fenced by its own `last_webhook_sequence`. `terminal` and `provider_connected` never regress. A Call Log record with an older `lastModifiedTime` adds ids/legs/recordings only. Once a Call Log record has been applied, its result/duration/ended_at outrank later webhook events.
+- Each party is fenced by its own `last_webhook_sequence`. `terminal` and `provider_connected` never regress. A Call Log record with an older `lastModifiedTime` adds ids/legs/recordings only and never overwrites stored leg-level result/duration. Once a Call Log record has been applied, its result/duration/ended_at outrank later webhook events. `legs_overflow_count` is a monotone lower bound.
 - Identical semantic input is a no-op: no write, revision, audit row or job.
 - `contact_type` here is `unknown` or provider-declared `voicemail`; human conversation is never inferred from connection or duration. Transcript/Owner values are preserved.
+- `Internal` requires company-side evidence on **both** endpoints (directory extension/DID, or a provider-supplied extension id/number). An unknown short dial string is `malformed`, not a fabricated extension. A party event with no `direction` projects `Unknown` until later evidence; the party's own extension is never injected into an endpoint merely assumed to be the company side.
 - Internal, withheld, malformed and service-code endpoints keep raw provider evidence on the interaction (`external_endpoint_kind`, party `phone_number_raw`) and never create a Contact Number or `outreach_ensure` job. Internal calls schedule no discovery.
+- Every audit row (`interaction.created|updated|merged`) carries `current.proof_ref` (receipt uuids or Call Log record id), `input_kind`, and `request_id_generated`; callers pass their durable job/run id as `request_id` so `actor.request_id` ties back to real work. Alias rows keep the `proof_ref` that originally proved them; the merge proof is on the `interaction.merged` row. Tombstones keep `contact_number_id`; recounts must filter `merged_into_id: null`.
 - Downstream intent keys: `csi:outreach_ensure:interaction:<id>:<revision>` (material changes with a Contact Number), `csi:attachment_refresh:number:<id>:1` (new Contact Number), `csi:recording_discovery:interaction:<id>:recording:<rid>` (each recording once, terminal), `csi:recording_discovery:interaction:<id>:pending` (terminal with no recording id yet). Missing consumers leave pending jobs; nothing here completes them.
-- Reconcile cursor and `known_complete_through = windowTo − 15 min` advance only when every page was fetched and every record projected. Any interruption records a gap `{from, to, reason}` (`provider_throttled`, `provider_request_failed`, `page_limit`, `projection_failed`, `account_unresolved`, `account_mismatch`); gaps close only when a later complete window covers them. Gaps are bounded at 50 by coalescing, never dropping.
+- Reconcile cursor and `known_complete_through = windowTo − 15 min` advance only when every page was fetched and every record projected. Any interruption records a gap `{from, to, reason}` (`provider_throttled`, `provider_request_failed`, `page_limit`, `projection_failed`, `account_unresolved`, `account_mismatch`); gaps close only when a later complete window covers them. Gaps are bounded at 50 by coalescing, never dropping. A 429 anywhere in a run ends the run (no further gap repair); `cursor.provider_modified_watermark` advances only when every window of the run completed. The shared client exposes no `Retry-After`, so `throttle_retry_after_observed` is false and the wait is the documented default.
 - Provider account comes from party `accountId`, the event path, or the Call Log record `uri`; `RINGCENTRAL_ACCOUNT_ID` is the verified configured fallback. Disagreement fails the observation.
 
 ## Configuration

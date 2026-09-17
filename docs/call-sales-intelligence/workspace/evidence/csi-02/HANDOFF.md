@@ -1,8 +1,8 @@
 # Team handoff — CSI-02
 
 - **Team / issue / date:** B / CSI-02 all-direction Call Interaction projection and authoritative Detailed Call Log reconciliation / September 17, 2026.
-- **Agent and repo / branch / commit:** Fable (main implementer); an independent Opus 5 code review was requested and its findings/resolutions are recorded in the "Independent review" section below once received; `vantage-main-server` `sales-intelligence`, baseline `dc70b43` (CSI-01 complete). Changes are uncommitted for review; no checkout reset, branch switch, commit or push. `vantage-admin` untouched (no dashboard work in this issue).
-- **Status:** ready for review. Implementation evidence is database-backed on an isolated replica with synthetic provider fixtures; live provider capability is not claimed (see limitations).
+- **Agent and repo / branch / commit:** Fable (main implementer) with an independent Opus 5 code review ([INDEPENDENT-REVIEW.md](INDEPENDENT-REVIEW.md)); `vantage-main-server` `sales-intelligence`, baseline `dc70b43` (CSI-01 complete). Implementation committed as `935fbfd`; review resolutions are the follow-up commit on top of it. No checkout reset, branch switch or push. `vantage-admin` untouched (no dashboard work in this issue).
+- **Status:** ready for review (review findings resolved). Implementation evidence is database-backed on an isolated replica with synthetic provider fixtures; live provider capability is not claimed (see limitations).
 
 ## Concrete behavior delivered
 
@@ -27,7 +27,7 @@ Not touched: `src/services/ringcentral/**` (Call Qualification, `ingestRingCentr
 
 ## Tests/checks actually run
 
-See [CHECKS.md](CHECKS.md): typecheck exit 0; focused suite 65/65 (includes 22 CSI-02 pure tests); CSI-02 replica proof 12/12; CSI-01 replica regression 15/15; qualification suites 93 pass / 0 fail / 3 pre-existing opt-in skips; `git diff --check` clean.
+See [CHECKS.md](CHECKS.md) (re-run after the review fixes): typecheck exit 0; focused suite 69/69 (includes 26 CSI-02 pure tests, four added for review findings 1–3 and 8); CSI-02 replica proof 12/12 with new assertions for findings 4–7; CSI-01 replica regression 15/15; qualification suites 93 pass / 0 fail / 3 pre-existing opt-in skips; `git diff --check` clean.
 
 ## Race/idempotency/failure cases verified
 
@@ -56,7 +56,9 @@ None. Flags remain off. A local Docker MongoDB 8.0 container `csi01` on loopback
 
 ## Independent review
 
-Requested from a separate Opus 5 code-reviewer agent over the files above (read-only, allowed to run the isolated suites). Pending at the time of this writing; findings and their resolutions will be appended here, distinguishing fixed items from accepted limitations.
+A separate Opus 5 code-reviewer agent reviewed the `935fbfd` content read-only and ran the isolated suites; verdict Request Changes with ten should-fix findings and a nit list, all confirmed by execution. Three findings changed stored facts about real calls: an unknown short caller id was fabricated into a company extension (making a customer call `Internal` with no Contact Number, outreach or recording discovery); a party event with no `direction` became a sticky `Internal` because the party's extension was injected into an assumed company side; a stale Call Log record regressed leg-level result/duration. A fourth kept calling a throttled provider during gap repair. All ten and every nit except one accepted limitation (`country: "US"` default) are fixed with regression tests; see [INDEPENDENT-REVIEW.md](INDEPENDENT-REVIEW.md) for the finding-by-finding table and proof locations.
+
+Contract-visible additions from the fixes (additive, recorded in CONTRACTS): `PersistDependencies.request_id` and `ObserveDependencies.request_id` (CSI-03 should pass its durable job id so audit rows tie back to the job); `ReconcileSummary.request_id` and `throttle_retry_after_observed`; audit `current` now carries `proof_ref`, `input_kind`, `request_id_generated`, `aliases_added`, `merged_interaction_ids`. Recount/rebuild obligation for CSI-04: filter `merged_into_id: null`.
 
 ## Ledger rows updated
 

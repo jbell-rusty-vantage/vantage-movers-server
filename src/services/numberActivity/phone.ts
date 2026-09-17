@@ -92,6 +92,14 @@ export function classifyEndpoint(
   const directoryExtension = extensionId
     ? directory.extensionById(extensionId)
     : null;
+  // A short dial string is an extension only with evidence: the directory
+  // knows that extension number, or the provider itself labelled the endpoint
+  // with an extension number/id. An unknown short string (garbled caller id,
+  // truncated number) is `malformed`, never a fabricated company extension —
+  // otherwise a real customer call would be stored as Internal and lose its
+  // Contact Number, outreach and recording discovery.
+  const shortDialIsExtension =
+    shortDial && (knownExtensionNumber !== null || extensionNumber !== null || extensionId !== null);
 
   const base = {
     raw,
@@ -99,11 +107,11 @@ export function classifyEndpoint(
     national_ten: toNationalTenDigit(e164),
     digits_reversed: e164 ? reverseDigits(e164) : null,
     country: "US",
-    extension_id: extensionId ?? companyEntry?.extension_id ?? null,
+    extension_id: extensionId ?? companyEntry?.extension_id ?? knownExtensionNumber?.id ?? null,
     extension_number:
       extensionNumber ??
       directoryExtension?.extension_number ??
-      (shortDial ? digits : null),
+      (shortDial && knownExtensionNumber ? digits : null),
   };
 
   let kind: EndpointKind;
@@ -113,7 +121,7 @@ export function classifyEndpoint(
   else if (withheld) kind = "withheld";
   else if (!digits) kind = WITHHELD_TOKENS.has(loweredName) ? "withheld" : "malformed";
   else if (serviceCode) kind = "service_code";
-  else if (shortDial) kind = "extension";
+  else if (shortDial) kind = shortDialIsExtension ? "extension" : "malformed";
   else if (!e164) kind = "malformed";
   else if (extensionId) kind = "extension";
   else kind = "external";
