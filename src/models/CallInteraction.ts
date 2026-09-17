@@ -128,6 +128,13 @@ export const CallInteractionSchema = new Schema(
       default: null,
     }, // external endpoint, null when internal
     external_e164: { type: String, default: null, trim: true },
+    // CSI-02 additive: honest classification of the counterparty endpoint even
+    // when no Contact Number exists (withheld/malformed/service code/company).
+    external_endpoint_kind: {
+      type: String,
+      default: null,
+      enum: [null, ...CONTACT_NUMBER_KINDS],
+    },
     company_e164: { type: String, default: null, trim: true }, // the Vantage number/DID on our side
     inbound_route_id: {
       type: Schema.Types.ObjectId,

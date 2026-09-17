@@ -92,6 +92,7 @@ export const SalesIntelligenceAuditEventSchema = new Schema(
             "analysis",
             "restriction",
             "rep",
+            "interaction", // CSI-02 additive: Call Interaction projection invalidation (03 §10 `interaction` event)
           ]),
           target_id: str,
           subject_key: str,

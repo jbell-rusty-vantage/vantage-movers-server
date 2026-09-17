@@ -5,7 +5,7 @@ Created September 17, 2026. Specification and workspace prepared; runtime work b
 | Issue | Team | Status | Agent / branch / PR | Checks and evidence | Blocker / next step |
 | --- | --- | --- | --- | --- | --- |
 | CSI-01 | A | complete | Codex Step 2; sales-intelligence (server and admin); uncommitted review patch based on Grok 8219d2a | Server 43/43; dashboard 9/9; replica 15/15; both typechecks; isolated CLI report/verify. [Packet](evidence/csi-01/STEP2-HANDOFF.md), [checks](evidence/csi-01/STEP2-CHECKS.md), [exact owned files](evidence/csi-01/STEP2-FILES.md). | GPT-6 independently approved all five review fixes. G1 foundation contracts frozen; B–E feature services and integration acceptance remain downstream. |
-| CSI-02 | B | not started | — | — | CSI-01 |
+| CSI-02 | B | review | Fable (main implementer) + independent Opus 5 code review; `vantage-main-server` `sales-intelligence` from `dc70b43`, uncommitted; no dashboard files | Typecheck 0; focused 65/65 (22 CSI-02 pure tests); CSI-02 replica 12/12; CSI-01 replica 15/15; qualification suites 93 pass/3 pre-existing skips. [Handoff](evidence/csi-02/HANDOFF.md), [checks](evidence/csi-02/CHECKS.md). | Reviewer sign-off, then CSI-03 wires `observeRingCentralWebhookEvents`/`runCallLogReconcileOnce`; C/CSI-11 consume `outreach_ensure`/`attachment_refresh`/`recording_discovery` jobs. Live provider shapes and grants remain G6. |
 | CSI-03 | B | not started | — | — | CSI-02 |
 | CSI-04 | B | not started | — | — | CSI-02 |
 | CSI-05 | C | not started | — | — | CSI-01/02 |
@@ -35,6 +35,8 @@ September 17 (later): portable [RingCentral capability summary](RINGCENTRAL-CAPA
 
 September 17 CSI-01 preparation: [handoff](evidence/csi-01/HANDOFF.md). Envelope module `csi-envelope-v1` recorded in [CONTRACTS.md](CONTRACTS.md). G1 freeze remains pending.
 
+September 17 CSI-02 capture: [handoff](evidence/csi-02/HANDOFF.md), [checks](evidence/csi-02/CHECKS.md). `csi-capture-v1` imports recorded in [CONTRACTS.md](CONTRACTS.md#csi-02-concrete-imports-server-relative-september-17). Entry points for CSI-03: `observeRingCentralWebhookEvents`, `runCallLogReconcileOnce`. Provider fixtures are synthetic; G6 capability remains open.
+
 Append dated handoffs, contract changes and remaining capability checks here or link an issue-specific artifact in `evidence/`. Keep sensitive/provider data out of this workspace. Do not turn a denied recording permission into a zero-data pass.
 
 ## CSI-01 Step 2 ownership — Codex, September 17, 2026
@@ -44,6 +46,12 @@ Status: complete — independent GPT-6 review approved and G1 foundation contrac
 Owned server files: `src/config/domain/salesIntelligence.ts`, `src/config/domain.ts`, `src/config/domain/conversations.ts`; `src/models/salesIntelligence/*` and new CSI model accessors; `src/models/LeadConversation.ts`; `src/validation/intelligence/*`, `src/validation/v1/salesIntelligence.ts`, `src/validation/v1.validation.ts`; `src/services/salesIntelligence/{dto,auth,transactions,jobs,aiBudget,policy,evidence}.ts` and their tests; `src/services/conversations/reads.ts`; `scripts/migrations/sales-intelligence*`; isolated replica test runner; this workspace's CONTRACTS/LEDGER and `evidence/csi-01/STEP2-*` review artifacts. Any additional compatibility files will be listed in the final packet before handoff. Dashboard edits limited to existing conversation nullable-metadata compatibility if required; no screens.
 
 Reuse: `db.withTransaction`, `durableWork/checksum.canonicalJson`, existing Registry Owner verifier, `runtime.getMongoDatabaseName`, report/apply/verify migration conventions. New CSI ledger/audit avoids widening official command origins or EntityChange entities. No production database, provider, queue, subscription or messaging actions authorized or performed. Independent GPT-6 review replaced Fable at the Owner’s request; all substantive findings are resolved.
+
+## CSI-02 ownership — Fable, September 17, 2026
+
+Status: review (ready). Baseline is committed `dc70b43` on `sales-intelligence` (clean tree at claim time); the CSI-02 patch is uncommitted. Single writer for the files below; CSI-01 owned files were read-only except two additive corrections recorded in CONTRACTS.md and the handoff (`CallInteraction.external_endpoint_kind`; audit invalidation kind `interaction`). Replica proofs ran on a disposable Docker MongoDB 8.0 single-node replica `csi01` (loopback 27189) started for this work because the CSI-01 replica was not running; see [CHECKS.md](evidence/csi-02/CHECKS.md).
+
+Owned new server files: `src/services/numberActivity/{types,phone,directory,accountIdentity,interactionProjection,persistInteraction,observeWebhookEvents,callLogClient,reconcileCallLog,fixtures}.ts`, `src/services/numberActivity/{interactionProjection,capture}.test.ts`, `scripts/test-csi-capture.ts`, `scripts/test-csi-capture.replica.test.ts`, `docs/knowledge/services/number-activity-capture.md`, `docs/call-sales-intelligence/workspace/evidence/csi-02/**`. Shared files touched only for recorded additive corrections: `src/models/CallInteraction.ts`, `src/models/salesIntelligence/infrastructure.ts`, `src/services/salesIntelligence/transactions.ts`, `package.json` (one test script), `docs/index.md`, `docs/call-sales-intelligence/02-domain-models.md` (two rule lines), CONTRACTS/LEDGER. Not touched: Call Qualification services, `ringcentral-webhook.routes.ts`, `call-log-sync*.ts`, `ingestRingCentralQualifiedCall`, `vercel.json`, subscriptions, Admin.
 
 ## CSI-01 compatibility ownership addendum
 
