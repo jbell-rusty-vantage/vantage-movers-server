@@ -1,0 +1,45 @@
+{
+  "schema_version": "csi-envelope-v1",
+  "summary": {
+    "overview": "A voicemail was left. Speaker identity is unknown.",
+    "customer_wanted": "Unknown from this recording.",
+    "money_and_dates": "None stated.",
+    "outcome": "Voicemail—speaker unknown. No human-conversation stamp.",
+    "commitments": "None.",
+    "discrepancies": "Provider connected; contact type remains voicemail with unknown speaker.",
+    "finding_keys": [
+      "voicemail_unknown_speaker"
+    ]
+  },
+  "findings": [
+    {
+      "key": "voicemail_unknown_speaker",
+      "claim": "A voicemail was left; the speaker could not be identified.",
+      "basis": "said_on_call",
+      "actor": "unknown",
+      "speaker_ref": null,
+      "action_status": null,
+      "clarity": "clear",
+      "evidence": [
+        {
+          "source": "transcript",
+          "snapshot_id": "snap_transcript_001",
+          "conversation_id": "conv_synthetic_001",
+          "transcript_version": "transcript_v1",
+          "segment_ids": [
+            0
+          ],
+          "quote": "Please call us back when you can."
+        }
+      ],
+      "confidence": 0.71,
+      "kind": "contact_type",
+      "value": {
+        "type": "voicemail",
+        "voicemail_left_by": "unknown"
+      }
+    }
+  ],
+  "next_step_suggestion": null,
+  "owner_instruction_assessments": []
+}

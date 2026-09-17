@@ -104,9 +104,9 @@ Flags are read at call time and default off. Owner-editable policy is persisted/
 | `SALES_INTELLIGENCE_MEDIA_MAX_BYTES` | `26214400` | 25 MB; larger → `unavailable:media_too_large`. |
 | `SALES_INTELLIGENCE_MEDIA_MAX_PER_RUN` | `10` | Bounded per cron run. |
 | `SALES_INTELLIGENCE_STT_ENABLED` | `false` | Transcription. |
-| `SALES_INTELLIGENCE_STT_MODEL` | deployment-selected | Verify transcription API, format/timestamps and pricing during implementation; existing seed constants are not production pipeline configuration. |
+| `SALES_INTELLIGENCE_STT_MODEL` | `openai/gpt-4o-mini-transcribe` (proposed) | Gateway STT starting proposal; verify API, lifecycle, format/timestamps and actual pricing per 12. |
 | `SALES_INTELLIGENCE_EXTRACTION_ENABLED` | `false` | Findings extraction. |
-| `SALES_INTELLIGENCE_EXTRACTION_MODEL` | deployment-selected | Gateway model supporting scoped tool loop and structured envelope; verify catalog/capabilities during implementation. |
+| `SALES_INTELLIGENCE_EXTRACTION_MODEL` | `openai/gpt-5-mini` (proposed) | Owner prefers GPT-5 mini/nano; evaluate `openai/gpt-5-nano` as lower-cost alternative per 12. No unbounded escalation. |
 | `SALES_INTELLIGENCE_CLASSIFY_MODEL` | optional deployment-selected | If a separate classifier is used, it uses the same Vantage MCP agent architecture. |
 | `SALES_INTELLIGENCE_EXTRACTION_VERSION` | `csi-extract-v1` | Prompt + schema version stamp. |
 | `SALES_INTELLIGENCE_AI_MONTHLY_CEILING_CENTS` | `8000` | $80/month admission ceiling; Owner-editable in Coverage. |
@@ -119,7 +119,7 @@ Flags are read at call time and default off. Owner-editable policy is persisted/
 | `SALES_INTELLIGENCE_QUEUE_TOPIC` | env-scoped | Vercel Queue wake-up topic; scheduled recovery uses the same durable jobs. |
 | `SALES_INTELLIGENCE_RETENTION_*` | see §12 | Raw/audio/transcript/findings/activity retention days. |
 | `AI_GATEWAY_API_KEY` | existing | Vercel AI Gateway. |
-| `BLOB_STORE_ID`, `BLOB_READ_WRITE_TOKEN` | existing | Private Blob. |
+| `BLOB_STORE_ID`, `BLOB_STORE_NAME`, `BLOB_READ_WRITE_TOKEN` | Owner reports existing | Reuse private Blob when suitable; NAME is descriptive. Verify ID/token binding and isolation per 12. |
 
 `policy.ts` exports `SALES_INTELLIGENCE_POLICY_VERSION = "csi-policy-v1"` and a `resolvePolicy()` that freezes the numeric defaults above into an object stamped onto Outreach Records at creation and used by `derive.ts`.
 
@@ -216,7 +216,7 @@ Cron `/api/cron/sales-intelligence-transcribe` every 5 minutes wakes at most 5 t
 
 1. `aiBudget.reserve({ kind: "stt", estimate = duration_seconds × rate })`; on failure → `unavailable:budget_exhausted`, `unavailable_until = next budget period`; raising the cap may wake it sooner. Keep the pending stage and job.
 2. Download the Blob server-side (private read via signed token), send to the AI Gateway STT model with `timestamps: segment` where supported. Raw text stays in memory only.
-3. Segment into sentences (`sid` 1..n, `start_ms`, `end_ms`), run `conversations/redaction.ts` (existing deterministic redactor) on every sentence **before** anything is persisted; count `redactions`. Add targeted spoken-digit-run redaction (≥ 7 consecutive spoken digits, card/CVV/expiry phrases) in `redaction.ts` as a strict extension with tests.
+3. Segment into stable text units (`sid` 1..n, nullable `start_ms`/`end_ms`, timing source provider/unavailable); preserve actual provider timing and never invent sentence timestamps, run `conversations/redaction.ts` (existing deterministic redactor) on every sentence **before** anything is persisted; count `redactions`. Add targeted spoken-digit-run redaction (≥ 7 consecutive spoken digits, card/CVV/expiry phrases) in `redaction.ts` as a strict extension with tests.
 4. Speaker attribution: if the STT model returns diarization use it; otherwise leave `speaker: "unknown"` (do not guess from turn order).
 5. Persist `transcript{ text (joined redacted), model, chars, redactions, created_at }`, `transcript_segments[]`, `cost_cents.stt` (actual), state `transcribed`, `next_attempt_at = now`. Reconcile budget actual.
 6. Persist immutable transcript-version evidence and enqueue analysis. The MCP agent may infer contact type; server application updates conversation/interaction with provenance and triggers transitions. Do not invoke an untracked standalone LLM here.
@@ -325,7 +325,7 @@ Default monthly cap **$80 (8000 cents)**, Owner-editable and audited. Reserve fo
 | `coverage` | `{ known_through, gaps_count }` every 60 s |
 | `heartbeat` | `{ at }` |
 
-Optional Redis doorbell (`SALES_INTELLIGENCE_LIVE_REDIS_URL`) shortens the poll like Daily Operations; Mongo remains the book.
+Optional Redis doorbell reuses the existing REST configuration pattern (`KV_REST_API_URL` + `KV_REST_API_TOKEN`, or a complete configured Upstash REST pair), with CSI environment/database namespacing. `REDIS_URL`/`KV_URL` are socket URLs, not REST substitutes; the read-only token cannot publish. Retire the earlier standalone `SALES_INTELLIGENCE_LIVE_REDIS_URL` suggestion. Mongo polling remains fully functional without Redis. See 12 for Owner-supplied configuration.
 
 ## 11. Crons and queues (`vercel.json`)
 
@@ -409,3 +409,7 @@ Retention applies to evidence snapshots, prompts, tool responses, envelope conte
 **Queue deployment:** follow `api/queues/granot-lifecycle-consumer.ts` and `vercel.json`: QueueClient.handleNodeCallback, registered env-scoped queue/v2beta topic, standalone connection/bootstrap and `{job_id}` payload. Add the CSI consumer function trigger config as well as cron entries. A file without trigger registration is not wired. Provider per-stage timeouts must fit the deployed consumer/MCP function limits; persist resumable checkpoints and let cron recover.
 
 **Backend reads:** a stale attachment display snapshot can be rejoined in memory; GET is never a write. Existing conversations list intentionally omits transcript/summary text. Preserve that privacy/performance boundary; expose versioned content only in Owner detail/evidence endpoints. Coerce nothing unknown to an empty success or zero duration.
+
+## Owner-supplied deployment inputs
+
+[12 — Deployment inputs and model policy](12-deployment-inputs-and-model-policy.md) records the existing Gateway key, deployed MCP, Blob/Redis reuse, mapping proposals and partly trusted RingCentral probe. These inputs guide implementation; local credentials are not evidence of deployed permissions.

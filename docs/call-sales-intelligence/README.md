@@ -26,7 +26,9 @@ It is built beside the existing Call Qualification pipeline, never through it. I
 | 09 | [`09-owner-workflow-interview.md`](09-owner-workflow-interview.md) | Accepted Owner interview decisions; historical record, now incorporated. |
 | 10 | [`10-intelligence-agent-contract.md`](10-intelligence-agent-contract.md) | AI SDK + scoped MCP tools, typed envelope, evidence, auto-application, correction and reruns. |
 | 11 | [`11-codebase-alignment-audit.md`](11-codebase-alignment-audit.md) | Verified server/Admin/MCP gaps, required adaptations and evidence. |
+| 12 | [`12-deployment-inputs-and-model-policy.md`](12-deployment-inputs-and-model-policy.md) | Owner-supplied infrastructure, proposed mini/nano/STT configuration and historical capability evidence. |
 | Workspace | [`workspace/README.md`](workspace/README.md) | Team kickoff briefs, file ownership, dependency waves, contracts, ledger and end-to-end acceptance. |
+| RC capability | [`workspace/RINGCENTRAL-CAPABILITY.md`](workspace/RINGCENTRAL-CAPABILITY.md) | Compact Sept 14–15 RingCentral probe for agents. `scripts/dev_ops/**` is gitignored; do not treat this as a fresh production grant. |
 
 ## Decisions already made (do not re-litigate)
 

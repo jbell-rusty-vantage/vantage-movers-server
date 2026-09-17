@@ -1,6 +1,6 @@
 # Team C — Outreach, identity and Owner commands
 
-Own CSI-05/06/10 and server CSI-14. Read [01](../../01-specification.md), [02 §§4–5/15](../../02-domain-models.md), [04](../../04-server-routes.md), [10 §§5–7](../../10-intelligence-agent-contract.md). Consume B's events; publish command interfaces for D and DTOs for E.
+Own CSI-05/06/10 and server CSI-14. Read [01](../../01-specification.md), [02 §§4–5/15](../../02-domain-models.md), [04](../../04-server-routes.md), [10 §§5–7](../../10-intelligence-agent-contract.md), [RingCentral capability](../RINGCENTRAL-CAPABILITY.md) §§5–6. Consume B's events; publish command interfaces for D and DTOs for E.
 
 ## Deliver
 

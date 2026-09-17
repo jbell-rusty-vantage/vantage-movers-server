@@ -1,0 +1,121 @@
+{
+  "schema_version": "csi-envelope-v1",
+  "summary": {
+    "overview": "Three next actions: dated callback, dated estimate, undated availability check.",
+    "customer_wanted": "A callback, a written estimate, and a warehouse-availability check.",
+    "money_and_dates": "Estimate requested today. Callback Friday. Availability has no date.",
+    "outcome": "Commitments recorded; availability still needs a date.",
+    "commitments": "Call Friday, send estimate today, and check availability with no stated date.",
+    "discrepancies": "Availability check is clear as an action and undated.",
+    "finding_keys": [
+      "callback_friday",
+      "send_estimate_today",
+      "undated_availability"
+    ]
+  },
+  "findings": [
+    {
+      "key": "callback_friday",
+      "claim": "Rep promised to call Friday.",
+      "basis": "said_on_call",
+      "actor": "rep",
+      "speaker_ref": "participant_rep_1",
+      "action_status": "promised",
+      "clarity": "clear",
+      "evidence": [
+        {
+          "source": "transcript",
+          "snapshot_id": "snap_transcript_001",
+          "conversation_id": "conv_synthetic_001",
+          "transcript_version": "transcript_v1",
+          "segment_ids": [
+            4,
+            5
+          ],
+          "quote": "I will call you Friday after 2."
+        }
+      ],
+      "confidence": 0.71,
+      "kind": "promised_callback",
+      "value": {
+        "action_kind": "call",
+        "description": "Call the customer Friday.",
+        "date_text": "Friday",
+        "timezone_text": "Eastern",
+        "target_followup_id": null
+      }
+    },
+    {
+      "key": "send_estimate_today",
+      "claim": "Rep promised to send the estimate today.",
+      "basis": "said_on_call",
+      "actor": "rep",
+      "speaker_ref": "participant_rep_1",
+      "action_status": "promised",
+      "clarity": "clear",
+      "evidence": [
+        {
+          "source": "transcript",
+          "snapshot_id": "snap_transcript_001",
+          "conversation_id": "conv_synthetic_001",
+          "transcript_version": "transcript_v1",
+          "segment_ids": [
+            18
+          ],
+          "quote": "I will send the estimate today."
+        }
+      ],
+      "confidence": 0.71,
+      "kind": "next_step",
+      "value": {
+        "action_kind": "send_estimate",
+        "description": "Send the written estimate today.",
+        "date_text": "today",
+        "timezone_text": "America/New_York",
+        "target_followup_id": null
+      }
+    },
+    {
+      "key": "undated_availability",
+      "claim": "Rep said they would check warehouse availability.",
+      "basis": "said_on_call",
+      "actor": "rep",
+      "speaker_ref": "participant_rep_1",
+      "action_status": "promised",
+      "clarity": "clear",
+      "evidence": [
+        {
+          "source": "transcript",
+          "snapshot_id": "snap_transcript_001",
+          "conversation_id": "conv_synthetic_001",
+          "transcript_version": "transcript_v1",
+          "segment_ids": [
+            21
+          ],
+          "quote": "Let me check availability and get back to you."
+        }
+      ],
+      "confidence": 0.71,
+      "kind": "next_step",
+      "value": {
+        "action_kind": "check_availability",
+        "description": "Check warehouse availability.",
+        "date_text": null,
+        "timezone_text": null,
+        "target_followup_id": null
+      }
+    }
+  ],
+  "next_step_suggestion": {
+    "action_kind": "review",
+    "description": "Ask Owner to date the availability check.",
+    "date_text": null,
+    "timezone_text": null,
+    "target_followup_id": null,
+    "rationale": "Suggestion only. Schema validity does not apply this as work.",
+    "finding_keys": [
+      "undated_availability"
+    ]
+  },
+  "owner_instruction_assessments": []
+}

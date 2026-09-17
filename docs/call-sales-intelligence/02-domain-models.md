@@ -535,3 +535,7 @@ All effectful writes enforce Outreach/follow-up/instruction revisions in one tra
 - Full model inventory/index migration includes these collections and the reservations collection in §13, not only the table at the start of the file. ContactNumber and RepIdentityLink need `revision` as well as timestamps for their Owner commands.
 - Physical database follows deployment `TEST_MODE` and configured isolation. CSI has logical production/current-records scope only, not Admin historical/combined. All jobs, credentials, submissions, evidence and commands remain bound to the same deployment/database; never accept a model-supplied database.
 - Array histories in ContactNumber/attachment/rep records are bounded display caches. Append-only audit rows retain full history under the policy; no required provenance is discarded to keep a document under Mongo limits.
+
+## 18. Transcription adapter compatibility
+
+Transcript-version segments use stable sid plus redacted text, nullable start_ms/end_ms and timing_source provider/unavailable. Never fabricate time offsets when the STT provider supplies text only. Preserve available actual timing and explicit unknown speaker. This refines §6 for the economical transcription proposal in [12](12-deployment-inputs-and-model-policy.md).

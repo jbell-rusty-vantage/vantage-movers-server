@@ -1,0 +1,69 @@
+{
+  "schema_version": "csi-envelope-v1",
+  "summary": {
+    "overview": "Model extracted a Friday promise that disagrees with the Owner wait.",
+    "customer_wanted": "Customer asked the company to wait.",
+    "money_and_dates": "Rep promised Friday. Owner instruction says wait.",
+    "outcome": "Disagreement recorded against instruction revision 3.",
+    "commitments": "Rep promised Friday; Owner already instructed wait.",
+    "discrepancies": "Model disagrees with the current Owner instruction version.",
+    "finding_keys": [
+      "rep_promised_friday"
+    ]
+  },
+  "findings": [
+    {
+      "key": "rep_promised_friday",
+      "claim": "Rep promised to call Friday.",
+      "basis": "said_on_call",
+      "actor": "rep",
+      "speaker_ref": "participant_rep_1",
+      "action_status": "promised",
+      "clarity": "clear",
+      "evidence": [
+        {
+          "source": "transcript",
+          "snapshot_id": "snap_transcript_001",
+          "conversation_id": "conv_synthetic_001",
+          "transcript_version": "transcript_v1",
+          "segment_ids": [
+            4,
+            5
+          ],
+          "quote": "I will call you Friday after 2."
+        },
+        {
+          "source": "vantage_record",
+          "snapshot_id": "snap_owner_instruction_003",
+          "record_type": "owner_instruction",
+          "record_id": "instr_wait_001",
+          "field_paths": [
+            "instruction_text",
+            "revision"
+          ]
+        }
+      ],
+      "confidence": 0.71,
+      "kind": "promised_callback",
+      "value": {
+        "action_kind": "call",
+        "description": "Rep-promised Friday callback.",
+        "date_text": "Friday",
+        "timezone_text": "America/New_York",
+        "target_followup_id": null
+      }
+    }
+  ],
+  "next_step_suggestion": null,
+  "owner_instruction_assessments": [
+    {
+      "instruction_id": "instr_wait_001",
+      "instruction_revision": 3,
+      "assessment": "disagrees",
+      "reason": "Envelope records a Friday call promise against the Owner wait instruction.",
+      "finding_keys": [
+        "rep_promised_friday"
+      ]
+    }
+  ]
+}

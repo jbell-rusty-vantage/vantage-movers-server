@@ -4,14 +4,14 @@ Status: ready to start implementation; no work package is claimed or shipped. Cr
 
 ## Start here
 
-1. Read the [product specification](../01-specification.md), [agent contract](../10-intelligence-agent-contract.md), and [workspace instructions](AGENTS.md).
+1. Read the [product specification](../01-specification.md), [agent contract](../10-intelligence-agent-contract.md), [RingCentral capability summary](RINGCENTRAL-CAPABILITY.md), and [workspace instructions](AGENTS.md).
 2. Coordinator starts [Team A — contracts](teams/a-contracts.md) and records actual ownership in the [ledger](LEDGER.md). “Ready” never means a deployed capability has been verified.
 3. Freeze the interfaces in [contracts and handoffs](CONTRACTS.md), then assign the remaining teams according to the dependency waves below. Teams can build fixtures/skeletons against frozen contracts before providers are available.
 4. Each team records changes, checks and artifacts in the ledger and uses the [handoff template](HANDOFF-TEMPLATE.md). Integration follows the [acceptance walkthrough](ACCEPTANCE.md).
 
 ## Authority
 
-The September 17 revisions of 01–06 plus 10 are the build contract. [09](../09-owner-workflow-interview.md) records accepted decisions and their history; 07 is a historical visual reference and 08 is a superseded interview handoff. Do not implement old review-only AI, duration filters, voicemail skips, single-action storage, or mandatory citation verification from those historical files. When uncertain, inspect 01/10 and report the precise conflict; do not ask the Owner to repeat settled decisions.
+The September 17 revisions of 01–06 plus 10 are the build contract. [09](../09-owner-workflow-interview.md) records accepted decisions and their history; 07 is the current Claude design intake contract and 08 is a superseded interview handoff. 12 records Owner-supplied deployment inputs and proposed model policy. Do not implement old review-only AI, duration filters, voicemail skips, single-action storage, or mandatory citation verification from those historical files. When uncertain, inspect 01/10 and report the precise conflict; do not ask the Owner to repeat settled decisions.
 
 | Team | Home / owned work | Start condition |
 | --- | --- | --- |
@@ -52,3 +52,7 @@ This workspace does not launch agents, install dependencies, create external tas
 ## Completion criteria
 
 All rows in the ledger have evidence of implementation and relevant checks, contract changes are reconciled across all three repos, the acceptance walkthrough passes, and open capability/rollout checks are explicit. A code-complete Preview can be certified without claiming recording grants, production backfill, live message proof, or deployment happened. Record those separately.
+
+## Existing deployment inputs
+
+Read [12](../12-deployment-inputs-and-model-policy.md) before provisioning services or selecting models. The server Gateway key, deployed MCP, Blob and Redis configuration are Owner-reported as available. Use the [capability report](RINGCENTRAL-CAPABILITY.md) as historical, partly trusted evidence and the [mapping proposals](../backfill_assistance/agent_ring_central_account_connections_possible.md) as unreviewed bootstrap data.

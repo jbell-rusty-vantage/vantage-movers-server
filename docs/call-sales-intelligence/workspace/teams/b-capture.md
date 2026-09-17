@@ -1,6 +1,6 @@
 # Team B — capture, Number Activity and recordings
 
-Own CSI-02/03/04/11/12. Start after A's contracts. Read [01 §§6–7](../../01-specification.md), [03](../../03-server-pipeline-and-jobs.md), [02](../../02-domain-models.md), the RingCentral Call Qualification and Lead Conversation Service docs from the repository catalog.
+Own CSI-02/03/04/11/12. Start after A's contracts. Read [01 §§6–7](../../01-specification.md), [03](../../03-server-pipeline-and-jobs.md), [02](../../02-domain-models.md), [RingCentral capability](../RINGCENTRAL-CAPABILITY.md), the RingCentral Call Qualification and Lead Conversation Service docs from the repository catalog.
 
 ## Deliver
 

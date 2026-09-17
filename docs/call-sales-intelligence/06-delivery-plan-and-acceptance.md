@@ -63,7 +63,7 @@ Accepted Owner defaults: Mon–Sat 08:00–20:00 America/New_York; first-call 30
 
 Preserved engineering defaults: backfill off until explicitly requested; Team Messaging primary and optional SMS-to-rep/pager off; audio retention 90 days, redacted content 365 days, activity/audit 730 days; initial per-recording reservation limit 25 cents visibly configurable; all feature flags off. These were retained from the earlier pack, not newly asserted as Owner-selected values. Validate capacity/retention during implementation; do not silently drop eligible long calls because of a spend limit.
 
-Deployment checks: current recording-read permission (historically denied Sept 14), actual RingCentral subscriptions and renewal ownership, Agent/extension mappings, MCP scoped credentials, Gateway model/STT/tool compatibility and current pricing, private Blob availability, deployed duration/payload limits, queues and cron configuration. RingSense/ACE remain out of scope. No renewed capability probe was performed in this documentation task.
+Deployment checks: current recording-read permission (historically denied Sept 14), actual RingCentral subscriptions and renewal ownership, Agent/extension mappings, MCP scoped credentials, Gateway model/STT/tool compatibility and current pricing, private Blob availability, deployed duration/payload limits, queues and cron configuration. RingSense/ACE remain out of scope. No renewed capability probe was performed in this documentation task. Agent-facing compact of the Sept 14–15 proofs: [workspace/RINGCENTRAL-CAPABILITY.md](workspace/RINGCENTRAL-CAPABILITY.md).
 
 ## 5. Launch targets
 
@@ -80,3 +80,7 @@ Read the execution workspace for file ownership, handoffs and acceptance evidenc
 ## September 17 codebase alignment
 
 [Audit and required adaptations](11-codebase-alignment-audit.md) are part of this delivery contract. Complete the rows assigned to this team and provide integration evidence; current runtime helpers do not already satisfy the revised contracts. [Design intake](07-claude-design-brief.md) governs the forthcoming Claude artifact; its arrival is not assumed.
+
+## Owner infrastructure update
+
+[12](12-deployment-inputs-and-model-policy.md) supplies implementation inputs for Gateway/model selection, existing deployed MCP, Blob/optional Redis reuse, rep mapping and the historical capability probe. Model choices there are proposed starting settings; live capability evidence remains a deployment check.

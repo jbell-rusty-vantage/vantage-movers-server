@@ -1,6 +1,6 @@
 # Team F — history, resilience and certification
 
-Own CSI-15/16 and gates G4–G6. Begin independent synthetic acceptance fixtures early; integrate runtime after B–E. Read [06](../../06-delivery-plan-and-acceptance.md), [ACCEPTANCE](../ACCEPTANCE.md), [03](../../03-server-pipeline-and-jobs.md), [10](../../10-intelligence-agent-contract.md).
+Own CSI-15/16 and gates G4–G6. Begin independent synthetic acceptance fixtures early; integrate runtime after B–E. Read [06](../../06-delivery-plan-and-acceptance.md), [ACCEPTANCE](../ACCEPTANCE.md), [03](../../03-server-pipeline-and-jobs.md), [10](../../10-intelligence-agent-contract.md), [RingCentral capability](../RINGCENTRAL-CAPABILITY.md). The capability file is historical; G6 requires a fresh probe.
 
 ## Deliver
 

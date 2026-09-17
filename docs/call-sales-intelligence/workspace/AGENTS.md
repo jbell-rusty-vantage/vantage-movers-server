@@ -10,6 +10,8 @@ Read the repository guidance and [workspace README](README.md). The work is the 
 - Maintain the accepted boundaries: no qualification changes, no official-record writes by AI, no automatic rep/customer messages, Owner corrections immediate, multiple/undated actions valid, exact citation verification deferred, $80 budget default.
 - Use the durable job/lease/application protocol, not in-memory events as truth. Include duplicate delivery, stale evidence and concurrent Owner edits in meaningful tests.
 - Fixtures may use synthetic data; credentials/provider bodies/raw transcript data do not belong in artifacts or logs. Do not run production migrations/backfills or live sends merely to complete a test.
-- Record actual commands and results, not generic “tests passed.” Follow each affected repo's available scripts. Distinguish blocked capability proof from failed implementation tests.
+- Record actual commands and results, not generic “tests passed.” Follow each affected repo's available scripts. Distinguish blocked capability proof from failed implementation tests. RingCentral facts for agents: [RINGCENTRAL-CAPABILITY.md](RINGCENTRAL-CAPABILITY.md). That file is a Sept 14–15 historical probe, not a current production grant.
 - A team handoff must include changed contracts, artifacts, checks, limitations and the exact next dependency. Use [HANDOFF-TEMPLATE.md](HANDOFF-TEMPLATE.md).
 - Escalate real unresolved product contradictions with a concrete example. Do not reopen accepted interview decisions just because historical files disagree.
+
+- Read [deployment inputs and model policy](../12-deployment-inputs-and-model-policy.md) before choosing models or provisioning replacement services. Reuse Owner-provided infrastructure where suitable; never copy secret values into handoffs. Mapping proposals are not reviewed identities and historical capability results are not current grants.

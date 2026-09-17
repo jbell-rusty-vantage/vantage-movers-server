@@ -1,0 +1,79 @@
+{
+  "schema_version": "csi-envelope-v1",
+  "summary": {
+    "overview": "Customer asked for a callback and the mapped rep separately promised Friday.",
+    "customer_wanted": "A return call about the Brooklyn to Miami estimate.",
+    "money_and_dates": "No amount stated. Customer asked for Friday; rep promised Friday after 2.",
+    "outcome": "Conversation ended with two distinct callback commitments.",
+    "commitments": "Rep promised to call Friday after 2. Customer requested a callback Friday morning.",
+    "discrepancies": "None observed in this synthetic envelope.",
+    "finding_keys": [
+      "rep_promised_friday",
+      "customer_requested_friday"
+    ]
+  },
+  "findings": [
+    {
+      "key": "rep_promised_friday",
+      "claim": "Rep promised to call the customer Friday after 2.",
+      "basis": "said_on_call",
+      "actor": "rep",
+      "speaker_ref": "participant_rep_1",
+      "action_status": "promised",
+      "clarity": "clear",
+      "evidence": [
+        {
+          "source": "transcript",
+          "snapshot_id": "snap_transcript_001",
+          "conversation_id": "conv_synthetic_001",
+          "transcript_version": "transcript_v1",
+          "segment_ids": [
+            12
+          ],
+          "quote": "I will call you Friday after 2."
+        }
+      ],
+      "confidence": 0.71,
+      "kind": "promised_callback",
+      "value": {
+        "action_kind": "call",
+        "description": "Rep-promised callback Friday after 2.",
+        "date_text": "Friday after 2",
+        "timezone_text": "America/New_York",
+        "target_followup_id": null
+      }
+    },
+    {
+      "key": "customer_requested_friday",
+      "claim": "Customer asked the company to call Friday morning.",
+      "basis": "said_on_call",
+      "actor": "customer",
+      "speaker_ref": "participant_customer_1",
+      "action_status": "requested",
+      "clarity": "clear",
+      "evidence": [
+        {
+          "source": "transcript",
+          "snapshot_id": "snap_transcript_001",
+          "conversation_id": "conv_synthetic_001",
+          "transcript_version": "transcript_v1",
+          "segment_ids": [
+            7
+          ],
+          "quote": "Can you call me Friday morning?"
+        }
+      ],
+      "confidence": 0.71,
+      "kind": "customer_requested_callback",
+      "value": {
+        "action_kind": "call",
+        "description": "Customer-requested callback Friday morning.",
+        "date_text": "Friday morning",
+        "timezone_text": "America/New_York",
+        "target_followup_id": null
+      }
+    }
+  ],
+  "next_step_suggestion": null,
+  "owner_instruction_assessments": []
+}

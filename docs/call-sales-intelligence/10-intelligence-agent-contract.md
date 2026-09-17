@@ -161,3 +161,7 @@ Budget admission includes STT and all agent steps. Monthly default is **8,000 ce
 ## 9. Concrete MCP transport boundary
 
 Add a dedicated MCP endpoint `/api/intelligence-mcp` exposing only §2 tools, versioned prompt and schema. Do not reuse the existing `/api/mcp` registration wholesale: it authenticates a broad shared secret and registers general mutation tools. The worker authenticates to the dedicated endpoint with the signed run credential. MCP verifies it and carries run/deployment context in its request context; main-server requests use the dedicated scoped static key plus run-token header specified in 04 §6. The current generic request context only carries apiSecret and must be extended or given a separate typed CSI context. Never pass the scoped static key to the LLM. Enforce expiry, subject/tool bounds and dataset isolation at the main server as well as MCP; refresh expired credentials only for an active leased run.
+
+## 10. Model and deployed-service policy
+
+Use the main server's existing `AI_GATEWAY_API_KEY` and extend the deployed `vantage-movers-mcp` service. The scoped intelligence endpoint remains new work. Owner prefers GPT-5 nano/mini; the starting proposal is mini for the agent and nano as the evaluated economical alternative. Other models require an explicit proposal. [12](12-deployment-inputs-and-model-policy.md) records current catalog sources, transcription recommendation, budget/lifecycle limits and deployment inputs.

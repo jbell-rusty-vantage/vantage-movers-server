@@ -4,7 +4,7 @@ Created September 17, 2026. Specification and workspace prepared; runtime work b
 
 | Issue | Team | Status | Agent / branch / PR | Checks and evidence | Blocker / next step |
 | --- | --- | --- | --- | --- | --- |
-| CSI-01 | A | not started | — | — | Freeze contracts |
+| CSI-01 | A | review | sales-intelligence (server) + sales-intelligence (admin, no runtime files) | Envelope validator 10/10; `pnpm typecheck` pass. Map: `evidence/csi-01/infrastructure-map.md`. Handoff: `evidence/csi-01/HANDOFF.md`. | Preparation slice only. Contract freeze pending. Models, migrations, jobs, auth, effects, dashboard not started. |
 | CSI-02 | B | not started | — | — | CSI-01 |
 | CSI-03 | B | not started | — | — | CSI-02 |
 | CSI-04 | B | not started | — | — | CSI-02 |
@@ -29,6 +29,10 @@ September 17: interview revision and subsequent server/Admin/MCP codebase audit 
 
 Documentation validation: 24 active pack/workspace documents, 110 local links including referenced heading anchors, code fences/conflict markers, all 18 issue ids, six team briefs, $80 configuration and scoped submission contract passed. `git diff --check` passed after whitespace cleanup. These are documentation checks only; no runtime implementation tests, live provider actions or future design-artifact review were performed.
 
+September 17 (later): portable [RingCentral capability summary](RINGCENTRAL-CAPABILITY.md) added for agents from the Sept 14–15 proofs. `scripts/dev_ops/**` remains gitignored. Not a renewed production probe.
+
 ## Integration notes
+
+September 17 CSI-01 preparation: [handoff](evidence/csi-01/HANDOFF.md). Envelope module `csi-envelope-v1` recorded in [CONTRACTS.md](CONTRACTS.md). G1 freeze remains pending.
 
 Append dated handoffs, contract changes and remaining capability checks here or link an issue-specific artifact in `evidence/`. Keep sensitive/provider data out of this workspace. Do not turn a denied recording permission into a zero-data pass.

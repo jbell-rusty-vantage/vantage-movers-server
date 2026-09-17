@@ -1,0 +1,48 @@
+{
+  "schema_version": "csi-envelope-v1",
+  "summary": {
+    "overview": "Customer asked not to be called before Friday.",
+    "customer_wanted": "No calls until Friday.",
+    "money_and_dates": "Restriction until Friday. No amount stated.",
+    "outcome": "Temporary call restriction stated.",
+    "commitments": "None besides the restriction.",
+    "discrepancies": "Call channel paused pending later effect checks; text is unmentioned.",
+    "finding_keys": [
+      "no_calls_until_friday"
+    ]
+  },
+  "findings": [
+    {
+      "key": "no_calls_until_friday",
+      "claim": "Customer said do not call before Friday.",
+      "basis": "said_on_call",
+      "actor": "customer",
+      "speaker_ref": "participant_customer_1",
+      "action_status": "requested",
+      "clarity": "clear",
+      "evidence": [
+        {
+          "source": "transcript",
+          "snapshot_id": "snap_transcript_001",
+          "conversation_id": "conv_synthetic_001",
+          "transcript_version": "transcript_v1",
+          "segment_ids": [
+            3
+          ],
+          "quote": "Don't call me before Friday."
+        }
+      ],
+      "confidence": 0.71,
+      "kind": "contact_restriction",
+      "value": {
+        "channels": [
+          "call"
+        ],
+        "restriction": "until",
+        "until_text": "Friday"
+      }
+    }
+  ],
+  "next_step_suggestion": null,
+  "owner_instruction_assessments": []
+}

@@ -1,6 +1,6 @@
 # Shared contracts and integration handoffs
 
-Status: specified; runtime types have not been implemented/frozen. Team A records the actual module paths and version once implemented. Tables below are coordination interfaces, not permission to duplicate business logic.
+Status: specified; envelope schema implemented at `csi-envelope-v1` but **not frozen**. Remaining CSI-01 models, DTOs, jobs, policy and migration contracts are still unimplemented. Tables below are coordination interfaces, not permission to duplicate business logic.
 
 | Contract | Authority | Producer → consumer | Required handoff |
 | --- | --- | --- | --- |
@@ -8,7 +8,7 @@ Status: specified; runtime types have not been implemented/frozen. Team A record
 | Attachment attribution | 01 §5.2/§6 | C → B/D/E | Exact/Likely/Unsure, scoped subject, blocked reason; no model-selected Lead authority. |
 | Transcript version | 02 §6; 10 evidence | B → D/E | Immutable redacted segments/digest, speaker evidence/unknown, complete coverage and media state. |
 | Outreach/action commands | 01 §§5–8; 04 | C → D/E | Multiple nullable-due actions, assignments, Owner instruction scopes/revisions, clocks/review/restriction behavior. |
-| Envelope schema | 10 §3 | A/D → all | Strict discriminated union, schema version, example input/output fixtures, zero operational-state output fields. |
+| Envelope schema | 10 §3 | A/D → all | Implemented (unfrozen): `src/validation/intelligence/intelligenceEnvelope.validation.ts` (`csi-envelope-v1`). Fixtures: `src/validation/intelligence/fixtures.ts`. Schema validation only — not evidence authorization or effect application. |
 | Scoped MCP protocol | 10 §2; 04 §6 | D → agent worker | Tool allowlist, credential claims, run subject enforcement, paginated read schemas and snapshot capture. |
 | Submission and effects | 10 §§5–8 | D + C → E/F | Idempotent receipt, stable obligation identity, application/review status separation, CAS failure and partial outcomes. |
 | Owner interventions | 10 §7; 04 §4 | C/D → E | Immediate correction before reanalysis, original/current mode, exact confirmation target, versioned assessment. |
@@ -37,7 +37,7 @@ Changing a field/enum/route requires updating its canonical source document, typ
 
 | Gate | Evidence | Current status |
 | --- | --- | --- |
-| G1 Contracts frozen | Types/migrations/DTO fixtures accepted by B–E | Not started |
+| G1 Contracts frozen | Types/migrations/DTO fixtures accepted by B–E | Pending. Envelope validator + fixtures ready for review; models/migrations/DTOs not started. |
 | G2 Operational loop | Capture → attribution → clocks/actions → Owner UI without AI | Not started |
 | G3 Intelligence loop | Transcript → scoped MCP reads → submit → auto-apply → intervention | Not started |
 | G4 Resilience | Dedupe/races/history/budget/permission/retry/retention proofs | Not started |
