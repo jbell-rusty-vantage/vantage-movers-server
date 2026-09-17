@@ -1,0 +1,17 @@
+✔ duration and match line use the seeded inbound facts (17.6271ms)
+✔ Owner nav shows Overview, Daily Operations, Live Events, then Lead Conversations; Admin does not (0.3244ms)
+✔ page banner names the seeded example and the Vercel AI Gateway path (14.7467ms)
+✔ empty list is honest, not an error or a fake card (2.2976ms)
+✔ list rows on the page never render transcript or summary text (2.0459ms)
+✔ panel shows inbound facts, five body sections, and omits mismatch on this fixture (2.6309ms)
+✔ mismatch is first and visually distinct only when the section is present (1.718ms)
+✔ expanded transcript keeps redaction tokens visible (1.5024ms)
+✔ ConversationPanel does not request an audio URL on mount (2.0733ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1735.8163

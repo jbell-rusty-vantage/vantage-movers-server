@@ -2,6 +2,8 @@
 
 Status: build contract, not implemented. Revised September 17, 2026. [Product](01-specification.md) · [Models](02-domain-models.md) · [Agent contract](10-intelligence-agent-contract.md).
 
+CSI-01 Step 2 implementation note: shared strict schemas and authentication middleware now exist; feature route handlers remain downstream work. See [executable imports and examples](workspace/CONTRACTS.md#csi-01-concrete-imports-server-relative-september-17). The executable `FindingDto` nests the discriminated finding in `assertion`, keeping mutable review/effect projection fields separate from immutable assertions. Earlier DTO sketches below are illustrative; use the exported schema for that representation. G1 foundation contracts are frozen after independent GPT-6 review; downstream feature handlers remain unimplemented.
+
 ## 0. Conventions
 
 Owner routes use `src/routes/sales-intelligence-admin.routes.ts`, `createSalesIntelligenceAdminRouter(deps)`, mounted in `src/routes/v1.routes.ts` after `router.use("/api/v1", requireApiSecret)`. Connect → `requireRegistryOwnerActor(req, auth(req))` → strict Zod parse → service → `{ok:true,data}`. Admin/non-Owner gets `403 OWNER_REQUIRED`. Disabled feature returns `404 FEATURE_DISABLED`. Validators live in `src/validation/v1/salesIntelligence.ts` and its existing barrel. Do not echo provider errors, credentials or raw transcript content on failure.

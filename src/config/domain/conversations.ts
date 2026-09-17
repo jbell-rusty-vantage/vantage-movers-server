@@ -1,7 +1,8 @@
 export const LEAD_CONVERSATION_COLLECTION = "lead_conversations";
 
 export const LEAD_CONVERSATION_PROVIDERS = ["ringcentral"] as const;
-export type LeadConversationProvider = (typeof LEAD_CONVERSATION_PROVIDERS)[number];
+export type LeadConversationProvider =
+  (typeof LEAD_CONVERSATION_PROVIDERS)[number];
 
 export const LEAD_CONVERSATION_LEAD_MODELS = ["FormLead", "CallLead"] as const;
 export type LeadConversationLeadModel =
@@ -12,15 +13,26 @@ export const LEAD_CONVERSATION_MATCH_METHODS = [
   "call_lead_call_log_id",
   "form_lead_outbound_phone_window",
   "owner_manual_attach",
+  "call_interaction_number_candidate",
+  "number_only",
+  "ambiguous_number_context",
 ] as const;
 export type LeadConversationMatchMethod =
   (typeof LEAD_CONVERSATION_MATCH_METHODS)[number];
 
-export const LEAD_CONVERSATION_MATCH_CONFIDENCES = ["high", "medium"] as const;
+export const LEAD_CONVERSATION_MATCH_CONFIDENCES = [
+  "high",
+  "medium",
+  "low",
+] as const;
 export type LeadConversationMatchConfidence =
   (typeof LEAD_CONVERSATION_MATCH_CONFIDENCES)[number];
 
-export const LEAD_CONVERSATION_DIRECTIONS = ["Inbound", "Outbound"] as const;
+export const LEAD_CONVERSATION_DIRECTIONS = [
+  "Inbound",
+  "Outbound",
+  "Unknown",
+] as const;
 export type LeadConversationDirection =
   (typeof LEAD_CONVERSATION_DIRECTIONS)[number];
 
@@ -30,6 +42,7 @@ export const LEAD_CONVERSATION_STATES = [
   "transcribed",
   "complete",
   "no_recording",
+  "unavailable",
   "failed",
   "dead_letter",
 ] as const;

@@ -1,3 +1,4 @@
+import { reportCsiMigration } from "./sales-intelligence.lib.js";
 /**
  * Lead Conversation indexes. Report is default. Apply requires
  * --apply --confirm-production=<database-name>.
@@ -35,6 +36,14 @@ async function main(): Promise<void> {
   const createdIndexNames: string[] = [];
 
   if (mode === "apply") {
+    const readiness = await reportCsiMigration();
+    if (
+      readiness.unresolved_account_ids.length ||
+      readiness.recording_conflict_ids.length
+    )
+      throw new Error(
+        "Use the CSI account-attribution report/apply migration before changing recording identity indexes.",
+      );
     assertGranotLifecycleApplyAuthorized({
       args: process.argv.slice(2),
       databaseName,
@@ -71,7 +80,8 @@ async function main(): Promise<void> {
         (index) =>
           index.name === expected.name &&
           JSON.stringify(index.key) === JSON.stringify(expected.key) &&
-          Boolean(index.unique) === Boolean("unique" in expected && expected.unique),
+          Boolean(index.unique) ===
+            Boolean("unique" in expected && expected.unique),
       ),
   ).map((index) => index.name);
 
@@ -104,7 +114,9 @@ async function main(): Promise<void> {
 }
 
 async function readIndexes(
-  collection: ReturnType<NonNullable<typeof mongoose.connection.db>["collection"]>,
+  collection: ReturnType<
+    NonNullable<typeof mongoose.connection.db>["collection"]
+  >,
 ) {
   try {
     return await collection.indexes();

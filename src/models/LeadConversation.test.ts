@@ -1,20 +1,29 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import mongoose from "mongoose";
-import { LeadConversation, LEAD_CONVERSATION_INDEXES } from "./LeadConversation";
+import {
+  LeadConversation,
+  LEAD_CONVERSATION_INDEXES,
+} from "./LeadConversation";
 
 test("LeadConversation unique recording index is the only unique index", () => {
-  const unique = LEAD_CONVERSATION_INDEXES.filter((index) => "unique" in index && index.unique);
+  const unique = LEAD_CONVERSATION_INDEXES.filter(
+    (index) => "unique" in index && index.unique,
+  );
   assert.equal(unique.length, 1);
-  assert.equal(unique[0]?.name, "lead_conversation_recording_unique");
-  assert.deepEqual(unique[0]?.key, { provider: 1, provider_recording_id: 1 });
+  assert.equal(unique[0]?.name, "lead_conversation_account_recording_unique");
+  assert.deepEqual(unique[0]?.key, {
+    provider: 1,
+    provider_account_id: 1,
+    provider_recording_id: 1,
+  });
 });
 
 test("LeadConversation schema declares the seven contract indexes", () => {
   const declared = new Set(
-    (LeadConversation.schema.indexes() as Array<[unknown, { name?: string }]>).map(
-      ([, options]) => options?.name,
-    ),
+    (
+      LeadConversation.schema.indexes() as Array<[unknown, { name?: string }]>
+    ).map(([, options]) => options?.name),
   );
   for (const index of LEAD_CONVERSATION_INDEXES) {
     assert.equal(declared.has(index.name), true, `missing ${index.name}`);

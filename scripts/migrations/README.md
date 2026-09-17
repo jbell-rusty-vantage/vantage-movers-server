@@ -538,3 +538,13 @@ pnpm migration:extension-user-roles-array
 pnpm migration:extension-user-roles-array -- --report
 pnpm migration:extension-user-roles-array -- --apply --confirm-production=<db>
 ```
+
+## CSI-01 operational use (flags remain off)
+
+Use `pnpm migration:csi:indexes -- --report` first. The default report does not create collections, documents, or indexes. `--apply --confirm-production=<exact-selected-database>` requires a reviewed report with no collisions/incompatible indexes/obsolete single-action fences and no unresolved recording accounts. `--verify` checks key, unique, sparse, partial and TTL options, rather than names alone. Production apply has not been performed or authorized by CSI-01.
+
+A reviewed `--account-mappings=<local-json-file>` is an array of `{conversation_id, provider_account_id, evidence_ref}` from verified provider evidence. No global default account is accepted. Missing, contradictory or duplicate mappings block apply. Keep this artifact access-limited; do not commit customer records. The migration preserves seed summaries/media and builds the account-scoped recording fence before removing the old global recording fence. Partial apply is rerunnable. Do not restore the old global index after multiple accounts contain the same recording ID; roll back code with flags off and preserve additive data/indexes.
+
+The legacy conversation index CLI now refuses unresolved account attribution; it cannot be used to bypass the new migration.
+
+Local proof: `pnpm test:csi:replica` requires a disposable loopback Mongo replica named `csi01` on port `27189`. It never loads `.env`, overrides inherited Mongo routing, generates a new `testvantagemovers_csi<random>` database, and leaves synthetic data for inspection. No mocks are used for these transaction tests. Stop the disposable mongod after review; no Windows service is installed by the proof.

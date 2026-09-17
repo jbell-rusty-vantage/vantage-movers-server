@@ -4,17 +4,14 @@ import {
   getLeadConversationModel,
   type LeadConversationDocument,
 } from "../../models/LeadConversation";
-import {
-  extractSummarySection,
-  hasCrmMismatch,
-} from "./seedFromArtifacts";
+import { extractSummarySection, hasCrmMismatch } from "./seedFromArtifacts";
 
 export type ConversationListItem = {
   id: string;
   state: string;
   direction: string;
   started_at: string;
-  duration_seconds: number;
+  duration_seconds: number | null;
   match_method: string;
   match_confidence: string;
   normalized_job_no: string | null;
@@ -28,11 +25,11 @@ export type ConversationListItem = {
 };
 
 export type ConversationDetail = ConversationListItem & {
-  rc_result: string;
+  rc_result: string | null;
   telephony_session_id: string | null;
-  call_log_id: string;
-  from_phone_masked: string;
-  to_phone_masked: string;
+  call_log_id: string | null;
+  from_phone_masked: string | null;
+  to_phone_masked: string | null;
   match_evidence: LeadConversationDocument["match_evidence"];
   media: {
     blob_pathname: string | null;
@@ -75,7 +72,7 @@ export function toConversationListItem(
     state: document.state,
     direction: document.direction,
     started_at: document.started_at.toISOString(),
-    duration_seconds: document.duration_seconds,
+    duration_seconds: document.duration_seconds ?? null,
     match_method: document.match_method,
     match_confidence: document.match_confidence,
     normalized_job_no: document.normalized_job_no ?? null,
@@ -107,11 +104,11 @@ export function toConversationDetail(
   const summaryText = document.summary?.text ?? "";
   return {
     ...toConversationListItem(document),
-    rc_result: document.rc_result,
+    rc_result: document.rc_result ?? null,
     telephony_session_id: document.telephony_session_id ?? null,
-    call_log_id: document.call_log_id,
-    from_phone_masked: document.from_phone_masked,
-    to_phone_masked: document.to_phone_masked,
+    call_log_id: document.call_log_id ?? null,
+    from_phone_masked: document.from_phone_masked ?? null,
+    to_phone_masked: document.to_phone_masked ?? null,
     match_evidence: document.match_evidence,
     media: document.media
       ? {
@@ -141,25 +138,41 @@ export function toConversationDetail(
           model: document.summary.model,
           prompt_version: document.summary.prompt_version,
           created_at: document.summary.created_at.toISOString(),
-          sections: {
-            overview: extractSummarySection(summaryText, "Conversation overview"),
-            customer_wanted: extractSummarySection(
-              summaryText,
-              "What the customer wanted",
-            ),
-            money_dates: extractSummarySection(
-              summaryText,
-              "Quote / money / dates discussed",
-            ),
-            outcome: extractSummarySection(summaryText, "Outcome and next steps"),
-            promised: extractSummarySection(
-              summaryText,
-              "Anything the agent promised or still needs",
-            ),
-            mismatch: hasCrmMismatch(summaryText)
-              ? extractSummarySection(summaryText, "Mismatch vs CRM")
-              : null,
-          },
+          sections: document.summary.sections
+            ? {
+                overview: document.summary.sections.overview ?? null,
+                customer_wanted:
+                  document.summary.sections.customer_wanted ?? null,
+                money_dates: document.summary.sections.money_dates ?? null,
+                outcome: document.summary.sections.outcome ?? null,
+                promised: document.summary.sections.promised ?? null,
+                mismatch: document.summary.sections.mismatch ?? null,
+              }
+            : {
+                overview: extractSummarySection(
+                  summaryText,
+                  "Conversation overview",
+                ),
+                customer_wanted: extractSummarySection(
+                  summaryText,
+                  "What the customer wanted",
+                ),
+                money_dates: extractSummarySection(
+                  summaryText,
+                  "Quote / money / dates discussed",
+                ),
+                outcome: extractSummarySection(
+                  summaryText,
+                  "Outcome and next steps",
+                ),
+                promised: extractSummarySection(
+                  summaryText,
+                  "Anything the agent promised or still needs",
+                ),
+                mismatch: hasCrmMismatch(summaryText)
+                  ? extractSummarySection(summaryText, "Mismatch vs CRM")
+                  : null,
+              },
         }
       : null,
   };

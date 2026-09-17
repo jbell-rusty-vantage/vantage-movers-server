@@ -1,3 +1,7 @@
+import {
+  isCsiServiceRoute,
+  matchesCsiServiceRouteTemplate,
+} from "../config/domain/salesIntelligence";
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import {
@@ -25,14 +29,22 @@ type ScopedApiKey = {
 export type VantageAuthContext =
   | { kind: "secret" }
   | { kind: "scoped_key"; scopedKeyName: string; scopedKeyFingerprint: string }
-  | { kind: "user"; userId: string; email: string; roles: CurrentExtensionRole[] };
+  | {
+      kind: "user";
+      userId: string;
+      email: string;
+      roles: CurrentExtensionRole[];
+    };
 
 const TARIFF_ADJUSTMENT_BEARER_ROUTE: ScopedApiRoute = {
   method: "POST",
   path: "/api/v1/tariff-adjustments",
 };
 
-const LIMITED_EXTENSION_ROLE_ALLOWED_ROUTES: Record<string, readonly ScopedApiRoute[]> = {
+const LIMITED_EXTENSION_ROLE_ALLOWED_ROUTES: Record<
+  string,
+  readonly ScopedApiRoute[]
+> = {
   customer_service: [TARIFF_ADJUSTMENT_BEARER_ROUTE],
   sales: [],
 };
@@ -65,22 +77,26 @@ export async function requireVantageAuth(
     });
     return res.status(500).json({
       ok: false,
-      error: "VANTAGE_API_SECRET, VANTAGE_SCOPED_API_KEYS, or Bearer auth is not configured",
+      error:
+        "VANTAGE_API_SECRET, VANTAGE_SCOPED_API_KEYS, or Bearer auth is not configured",
     });
   }
 
   // Fast path: the primary API secret matches. No event is recorded here to
   // keep the hot path latency-free; observability focuses on scoped keys and
   // rejections.
-  if (expectedSecret && providedSecret && secretsEqual(providedSecret, expectedSecret)) {
+  if (
+    expectedSecret &&
+    providedSecret &&
+    secretsEqual(providedSecret, expectedSecret)
+  ) {
     setVantageAuth(req, { kind: "secret" });
     return next();
   }
 
   if (bearerToken) {
-    const user = await vantageAuthLookups.getExtensionUserFromAccessToken(
-      bearerToken,
-    );
+    const user =
+      await vantageAuthLookups.getExtensionUserFromAccessToken(bearerToken);
     if (user) {
       if (
         !hasExtensionRole(user.roles, "owner") &&
@@ -143,7 +159,9 @@ export async function requireVantageAuth(
     });
   }
 
-  const matchingKey = scopedKeys.find((key) => secretsEqual(providedSecret, key.secret));
+  const matchingKey = scopedKeys.find((key) =>
+    secretsEqual(providedSecret, key.secret),
+  );
 
   if (!matchingKey) {
     await recordAuthEvent(req, {
@@ -160,6 +178,15 @@ export async function requireVantageAuth(
     });
   }
 
+  if (
+    matchingKey.name ===
+      process.env.SALES_INTELLIGENCE_SCOPED_KEY_NAME?.trim() &&
+    !isCsiServiceRoute(req.method, (req.originalUrl ?? req.url).split("?")[0]!)
+  ) {
+    return res
+      .status(403)
+      .json({ ok: false, code: "RUN_SCOPE_DENIED", error: "Forbidden" });
+  }
   const sourceCompany = readSourceCompany(req);
 
   if (!isRouteAllowed(req, matchingKey)) {
@@ -167,7 +194,10 @@ export async function requireVantageAuth(
       level: "warn",
       eventKey: "auth.scoped_key.forbidden",
       summary: "Scoped API key denied: route not allowed.",
-      details: { scoped_key_name: matchingKey.name, forbidden_reason: "route_not_allowed" },
+      details: {
+        scoped_key_name: matchingKey.name,
+        forbidden_reason: "route_not_allowed",
+      },
       sourceCompany,
       notificationCandidate: false,
     });
@@ -246,7 +276,10 @@ type AuthEventInput = {
  * Records a source-scoped API key auth decision (no secrets are ever stored).
  * Best-effort and gated by `OBSERVABILITY_CAPTURE_AUTH_EVENTS`.
  */
-async function recordAuthEvent(req: Request, input: AuthEventInput): Promise<void> {
+async function recordAuthEvent(
+  req: Request,
+  input: AuthEventInput,
+): Promise<void> {
   if (!shouldCaptureAuthEvents()) {
     return;
   }
@@ -345,7 +378,9 @@ function parseSourceCompanyScope(config: Record<string, unknown>): string[] {
   });
 }
 
-function parseSourceGranularityScope(config: Record<string, unknown>): string[] {
+function parseSourceGranularityScope(
+  config: Record<string, unknown>,
+): string[] {
   const raw =
     config.sourceGranularities ??
     config.source_granularities ??
@@ -368,11 +403,20 @@ function isRouteAllowed(req: Request, key: ScopedApiKey): boolean {
   const method = req.method.toUpperCase();
   const path = normalizePath((req.originalUrl ?? req.url).split("?")[0]);
 
-  return key.routes.some((route) => route.method === method && route.path === path);
+  return key.routes.some(
+    (route) =>
+      route.method === method &&
+      (route.path === path ||
+        (key.name === process.env.SALES_INTELLIGENCE_SCOPED_KEY_NAME &&
+          matchesCsiServiceRouteTemplate(method, route.path, path))),
+  );
 }
 
 function isSourceCompanyAllowed(req: Request, key: ScopedApiKey): boolean {
-  if (key.sourceCompanies.length === 0 && key.sourceGranularities.length === 0) {
+  if (
+    key.sourceCompanies.length === 0 &&
+    key.sourceGranularities.length === 0
+  ) {
     return true;
   }
 
@@ -388,10 +432,14 @@ function isSourceCompanyAllowed(req: Request, key: ScopedApiKey): boolean {
     key.sourceCompanies.length === 0 ||
     (sourceCompany ? key.sourceCompanies.includes(sourceCompany) : false);
 
-  const sourceGranularity = normalizeKey(getString(body.source_granularity_key));
+  const sourceGranularity = normalizeKey(
+    getString(body.source_granularity_key),
+  );
   const granularityAllowed =
     key.sourceGranularities.length === 0 ||
-    (sourceGranularity ? key.sourceGranularities.includes(sourceGranularity) : false);
+    (sourceGranularity
+      ? key.sourceGranularities.includes(sourceGranularity)
+      : false);
 
   return sourceCompanyAllowed && granularityAllowed;
 }
@@ -430,7 +478,9 @@ function getString(value: unknown): string | undefined {
   return typeof value === "string" ? value.trim() : undefined;
 }
 
-function normalizeScopedSourceCompany(value: string | undefined): string | null {
+function normalizeScopedSourceCompany(
+  value: string | undefined,
+): string | null {
   const resolved = resolveSourceCompany(value);
   if (resolved) {
     return resolved;
@@ -439,7 +489,13 @@ function normalizeScopedSourceCompany(value: string | undefined): string | null 
 }
 
 function normalizeKey(value: string | undefined): string {
-  return value?.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") ?? "";
+  return (
+    value
+      ?.trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") ?? ""
+  );
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

@@ -21,6 +21,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [form-lead.md](knowledge/services/form-lead.md) | Create, update, and delete Form Leads, including duplicates, CRM Posting, and Sheet Sync. |
 | [call-lead.md](knowledge/services/call-lead.md) | Create and update Call Leads (manual and RingCentral), duplicates, CPL, and sheet tabs. |
 | [lead-conversation.md](knowledge/services/lead-conversation.md) | Seeded Lead Conversation evidence: redacted transcript, sectioned summary, private audio. |
+| [sales-intelligence-foundation.md](knowledge/services/sales-intelligence-foundation.md) | CSI-01 shared contracts, Mongo fences, scoped auth, durable jobs and budget primitives; independently reviewed foundation, feature flags off. |
 | [extension-users.md](knowledge/services/extension-users.md) | Owner-only Admin Dashboard create, list, edit, and delete for Extension User email, password, and roles[]. Leftover Employee dual-reads as Sales plus Customer Service; credential or roles change increments access-token token_version. |
 | [enrichment.md](knowledge/services/enrichment.md) | Preview and sync Granot Follow Up rows onto Call Leads. |
 | [bookings.md](knowledge/services/bookings.md) | Booked Lead create/update/delete, from-source, referral, leadless, and booking-chain sync. |

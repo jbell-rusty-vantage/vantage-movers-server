@@ -484,6 +484,8 @@ Backfill manifests. `{ stream, window_from, window_to, status: planned|running|c
 
 ## 13. `SalesIntelligenceAiBudget` — `sales_intelligence_ai_budget`
 
+CSI-01 implementation adds nullable `activated_at` to the persisted timezone-period bounds. Initialization of the current period atomically stamps it and resumes eligible current-deployment budget-paused jobs once. Future periods stay inactive until their start; repeated initialization does not repeatedly wake exhausted work. Team C supplies the calendar bounds.
+
 One totals doc per `YYYY-MM` budget period in the configured timezone: `{month, ceiling_cents, reserved_cents, actual_cents, policy_version}`. Initial ceiling is 8000 cents. Reserve atomically only when `actual_cents + reserved_cents + estimate <= ceiling_cents`. Track each reservation in `sales_intelligence_ai_reservations` with unique reservation id, job/run/step, stage, estimated/actual cost, status and timestamps. Reconciliation subtracts reserved estimate and adds actual once; release unused reservations on terminal failure. Never drop unresolved reservations into a bounded array. Depletion pauses the pending stage/job with `budget_exhausted`; operational capture and Owner commands continue. See 10 §8 for provider estimation limits and resume behavior.
 
 ## 14. Read-only joins (no schema change)

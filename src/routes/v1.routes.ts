@@ -1,3 +1,4 @@
+import { createSalesIntelligenceBoundaryRouter } from "./sales-intelligence-boundary.routes";
 import { Router, type Request, type Response } from "express";
 import mongoose from "mongoose";
 import type { Logger } from "pino";
@@ -289,6 +290,7 @@ const router = Router();
 router.use(extensionAuthRoutes);
 router.use(googleDriveOAuthRoutes);
 router.use("/api/v1", requireApiSecret);
+router.use(createSalesIntelligenceBoundaryRouter());
 router.use(ringCentralRegistryRoutes);
 router.use(granotLifecycleAdminRoutes);
 router.use(dailyOperationsAdminRoutes);
@@ -341,8 +343,14 @@ router.get("/api/v1/admin/catalog/merchants", handleCatalogList("merchants"));
 // hide handleAdminBrowse and the Agents table would omit booking metrics.
 router.post("/api/v1/admin/agents", handleCatalogCreate("agents"));
 router.patch("/api/v1/admin/agents/:id", handleCatalogUpdate("agents"));
-router.post("/api/v1/admin/agents/:id/activation", handleCatalogActivation("agents"));
-router.get("/api/v1/admin/agents/:id/dependencies", handleCatalogDependencies("agents"));
+router.post(
+  "/api/v1/admin/agents/:id/activation",
+  handleCatalogActivation("agents"),
+);
+router.get(
+  "/api/v1/admin/agents/:id/dependencies",
+  handleCatalogDependencies("agents"),
+);
 router.get("/api/v1/admin/merchants", handleCatalogList("merchants"));
 router.get("/api/v1/admin/merchants/:id", handleCatalogDetail("merchants"));
 router.post("/api/v1/admin/merchants", handleCatalogCreate("merchants"));
@@ -376,7 +384,10 @@ router.get(
   "/api/v1/admin/source-granularities/:id",
   handleSourceGranularityDetail,
 );
-router.post("/api/v1/admin/source-granularities", handleSourceGranularityCreate);
+router.post(
+  "/api/v1/admin/source-granularities",
+  handleSourceGranularityCreate,
+);
 router.patch(
   "/api/v1/admin/source-granularities/:id",
   handleSourceGranularityUpdate,
@@ -392,7 +403,10 @@ router.get(
 router.get("/api/v1/admin/granot-crm-sources", handleGranotCrmSourcesList);
 router.post("/api/v1/admin/granot-crm-sources", handleGranotCrmSourceCreate);
 router.get("/api/v1/admin/granot-crm-sources/:id", handleGranotCrmSourceDetail);
-router.patch("/api/v1/admin/granot-crm-sources/:id", handleGranotCrmSourceUpdate);
+router.patch(
+  "/api/v1/admin/granot-crm-sources/:id",
+  handleGranotCrmSourceUpdate,
+);
 router.patch(
   "/api/v1/admin/granot-crm-sources/:id/activation",
   handleGranotCrmSourceActivation,
@@ -642,7 +656,8 @@ router.post(
   handleCanonicalCreate(
     createCallLeadSchema,
     "createCallLead",
-    async (data, context) => (await runExistingCreateCallLead({ data, context })).data,
+    async (data, context) =>
+      (await runExistingCreateCallLead({ data, context })).data,
   ),
 );
 router.patch(
@@ -705,10 +720,7 @@ router.post(
       (await runExistingCreateLeadlessBooking({ data, context })).data,
   ),
 );
-router.get(
-  "/api/v1/employee-booking-options",
-  handleEmployeeBookingOptions,
-);
+router.get("/api/v1/employee-booking-options", handleEmployeeBookingOptions);
 router.post(
   "/api/v1/employee-booking-submissions",
   handleEmployeeBookingSubmission,
@@ -719,7 +731,8 @@ router.patch(
     updateBookedLeadSchema,
     "updateBookedLead",
     async (id, patch, context) =>
-      (await runExistingUpdateBookedLead({ booking_id: id, patch, context })).data,
+      (await runExistingUpdateBookedLead({ booking_id: id, patch, context }))
+        .data,
   ),
 );
 router.delete(
@@ -1009,7 +1022,10 @@ async function handleLeadSourceCompanyUpdate(req: Request, res: Response) {
     await connectMongo();
     const actor = requireRegistryOwnerActor(req, getVantageAuth(req));
     const parsed = leadSourceCompanyUpdateSchema.parse(req.body);
-    await createOrUpdateSourceCompany(toSourceCompanyCommand(parsed, id), actor);
+    await createOrUpdateSourceCompany(
+      toSourceCompanyCommand(parsed, id),
+      actor,
+    );
     const data = await getSourceCompany(id);
     return res.json({ ok: true, data });
   } catch (error) {
@@ -1029,7 +1045,8 @@ async function handleSourceCompanyActivation(req: Request, res: Response) {
         active: parsed.active,
         reason: parsed.reason,
         replacement_default_id: parsed.replacement_default_id,
-        remove_automatic_use_for_channel: parsed.remove_automatic_use_for_channel,
+        remove_automatic_use_for_channel:
+          parsed.remove_automatic_use_for_channel,
       },
       actor,
     );
@@ -1062,7 +1079,9 @@ async function handleSourceGranularitiesList(req: Request, res: Response) {
     const parsed = sourceGranularityListQuerySchema.parse(req.query);
     const items = await listSourceGranularities({
       includeInactive: parsed.include_inactive === true,
-      ...(parsed.source_company ? { sourceCompanyId: parsed.source_company } : {}),
+      ...(parsed.source_company
+        ? { sourceCompanyId: parsed.source_company }
+        : {}),
       ...(parsed.channel ? { channel: parsed.channel } : {}),
     });
     return res.json({ ok: true, data: { items } });
@@ -1097,7 +1116,9 @@ async function handleSourceGranularityCreate(req: Request, res: Response) {
         crm_label: parsed.crm_label,
         ...(parsed.aliases !== undefined ? { aliases: parsed.aliases } : {}),
         ...(parsed.local !== undefined ? { local: parsed.local } : {}),
-        ...(parsed.source_sites !== undefined ? { source_sites: parsed.source_sites } : {}),
+        ...(parsed.source_sites !== undefined
+          ? { source_sites: parsed.source_sites }
+          : {}),
         ...(parsed.priority !== undefined ? { priority: parsed.priority } : {}),
         ...(parsed.sheet_tab_name !== undefined
           ? { sheet_tab_name: parsed.sheet_tab_name }
@@ -1141,7 +1162,8 @@ async function handleSourceGranularityActivation(req: Request, res: Response) {
         active: parsed.active,
         reason: parsed.reason,
         replacement_default_id: parsed.replacement_default_id,
-        remove_automatic_use_for_channel: parsed.remove_automatic_use_for_channel,
+        remove_automatic_use_for_channel:
+          parsed.remove_automatic_use_for_channel,
       },
       actor,
     );
@@ -1151,7 +1173,10 @@ async function handleSourceGranularityActivation(req: Request, res: Response) {
   }
 }
 
-async function handleSourceGranularityDependencies(req: Request, res: Response) {
+async function handleSourceGranularityDependencies(
+  req: Request,
+  res: Response,
+) {
   try {
     const id = getValidObjectId(req);
     await connectMongo();
@@ -1211,7 +1236,9 @@ async function handleGranotCrmSourceUpdate(req: Request, res: Response) {
       {
         id,
         granot_label: parsed.granot_label,
-        ...(parsed.default_channel ? { default_channel: parsed.default_channel } : {}),
+        ...(parsed.default_channel
+          ? { default_channel: parsed.default_channel }
+          : {}),
         ...(parsed.enabled !== undefined ? { enabled: parsed.enabled } : {}),
         ...(parsed.notes !== undefined ? { notes: parsed.notes } : {}),
         lifecycle_enabled: parsed.lifecycle_enabled,
@@ -1267,7 +1294,10 @@ async function handleGranotCrmSourceOutboundSms(req: Request, res: Response) {
   }
 }
 
-async function handleGranotCrmSourceOutboundSmsRecent(req: Request, res: Response) {
+async function handleGranotCrmSourceOutboundSmsRecent(
+  req: Request,
+  res: Response,
+) {
   try {
     const id = getValidObjectId(req);
     await connectMongo();
@@ -1399,7 +1429,10 @@ async function handleCplSnapshot(req: Request, res: Response) {
         };
       }),
     );
-    return res.json({ ok: true, data: { generated_at: now.toISOString(), items } });
+    return res.json({
+      ok: true,
+      data: { generated_at: now.toISOString(), items },
+    });
   } catch (error) {
     return sendError(req, res, error);
   }
@@ -1588,7 +1621,9 @@ function toSourceCompanyCommand(
       ? { company_slug: parsed.company_slug }
       : {}),
     ...(parsed.name !== undefined ? { name: parsed.name } : {}),
-    ...(parsed.owner_label !== undefined ? { owner_label: parsed.owner_label } : {}),
+    ...(parsed.owner_label !== undefined
+      ? { owner_label: parsed.owner_label }
+      : {}),
     ...(parsed.aliases !== undefined ? { aliases: parsed.aliases } : {}),
     ...(parsed.default_form_granularity !== undefined
       ? { default_form_granularity: parsed.default_form_granularity ?? null }
@@ -2718,7 +2753,8 @@ function handleDelete(
 
 async function handleEmployeeBookingOptions(req: Request, res: Response) {
   try {
-    const auth = (req as Request & { vantageAuth?: VantageAuthContext }).vantageAuth;
+    const auth = (req as Request & { vantageAuth?: VantageAuthContext })
+      .vantageAuth;
     if (auth?.kind !== "secret") {
       throw new V1ServiceError("Forbidden", 403);
     }
@@ -2732,7 +2768,8 @@ async function handleEmployeeBookingOptions(req: Request, res: Response) {
 
 async function handleEmployeeBookingSubmission(req: Request, res: Response) {
   try {
-    const auth = (req as Request & { vantageAuth?: VantageAuthContext }).vantageAuth;
+    const auth = (req as Request & { vantageAuth?: VantageAuthContext })
+      .vantageAuth;
     if (auth?.kind !== "secret") {
       throw new V1ServiceError("Forbidden", 403);
     }
@@ -2740,7 +2777,10 @@ async function handleEmployeeBookingSubmission(req: Request, res: Response) {
     const parsed = createEmployeeBookingSubmissionSchema.parse(req.body);
     const clientKeyHash = req.header("x-public-client-key-hash")?.trim();
     if (!clientKeyHash || !/^[a-f0-9]{64}$/i.test(clientKeyHash)) {
-      throw new V1ServiceError("A valid public client identifier is required", 400);
+      throw new V1ServiceError(
+        "A valid public client identifier is required",
+        400,
+      );
     }
     const data = await submitEmployeeBooking(parsed, {
       clientKeyHash,
@@ -2807,10 +2847,7 @@ async function handleBookingLeadCandidateRefresh(req: Request, res: Response) {
   }
 }
 
-async function handlePendingEmployeeBookingUpdate(
-  req: Request,
-  res: Response,
-) {
+async function handlePendingEmployeeBookingUpdate(req: Request, res: Response) {
   try {
     const actor = requireOwnerActor(req);
     const id = getValidObjectId(req);
@@ -2868,10 +2905,13 @@ function getVantageAuth(req: Request): VantageAuthContext | undefined {
   return (req as Request & { vantageAuth?: VantageAuthContext }).vantageAuth;
 }
 
-function requireOwnerActor(
-  req: Request,
-): { actor: string; ownerId?: string; ownerEmail?: string } {
-  const auth = (req as Request & { vantageAuth?: VantageAuthContext }).vantageAuth;
+function requireOwnerActor(req: Request): {
+  actor: string;
+  ownerId?: string;
+  ownerEmail?: string;
+} {
+  const auth = (req as Request & { vantageAuth?: VantageAuthContext })
+    .vantageAuth;
   return deriveTrustedOwnerActor(auth, {
     adminUserId: req.header("x-vantage-admin-user-id"),
     adminEmail: req.header("x-vantage-admin-email"),

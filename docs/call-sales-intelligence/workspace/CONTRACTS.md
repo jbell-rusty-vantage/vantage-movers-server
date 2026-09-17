@@ -1,6 +1,6 @@
 # Shared contracts and integration handoffs
 
-Status: specified; envelope schema implemented at `csi-envelope-v1` but **not frozen**. Remaining CSI-01 models, DTOs, jobs, policy and migration contracts are still unimplemented. Tables below are coordination interfaces, not permission to duplicate business logic.
+Status: CSI-01 complete; **G1 foundation contracts frozen** after independent GPT-6 review and resolution of all five substantive findings. Runtime contracts below are the Step 2 handoff. B–E feature services remain unimplemented. Review packet: [STEP2-HANDOFF.md](evidence/csi-01/STEP2-HANDOFF.md). Grok's original handoff remains preserved.
 
 | Contract | Authority | Producer → consumer | Required handoff |
 | --- | --- | --- | --- |
@@ -8,7 +8,7 @@ Status: specified; envelope schema implemented at `csi-envelope-v1` but **not fr
 | Attachment attribution | 01 §5.2/§6 | C → B/D/E | Exact/Likely/Unsure, scoped subject, blocked reason; no model-selected Lead authority. |
 | Transcript version | 02 §6; 10 evidence | B → D/E | Immutable redacted segments/digest, speaker evidence/unknown, complete coverage and media state. |
 | Outreach/action commands | 01 §§5–8; 04 | C → D/E | Multiple nullable-due actions, assignments, Owner instruction scopes/revisions, clocks/review/restriction behavior. |
-| Envelope schema | 10 §3 | A/D → all | Implemented (unfrozen): `src/validation/intelligence/intelligenceEnvelope.validation.ts` (`csi-envelope-v1`). Fixtures: `src/validation/intelligence/fixtures.ts`. Schema validation only — not evidence authorization or effect application. |
+| Envelope schema | 10 §3 | A/D → all | Implemented and frozen: `src/validation/intelligence/intelligenceEnvelope.validation.ts` (`csi-envelope-v1`). Fixtures: `src/validation/intelligence/fixtures.ts`. Schema validation only — not evidence authorization or effect application. |
 | Scoped MCP protocol | 10 §2; 04 §6 | D → agent worker | Tool allowlist, credential claims, run subject enforcement, paginated read schemas and snapshot capture. |
 | Submission and effects | 10 §§5–8 | D + C → E/F | Idempotent receipt, stable obligation identity, application/review status separation, CAS failure and partial outcomes. |
 | Owner interventions | 10 §7; 04 §4 | C/D → E | Immediate correction before reanalysis, original/current mode, exact confirmation target, versioned assessment. |
@@ -37,7 +37,7 @@ Changing a field/enum/route requires updating its canonical source document, typ
 
 | Gate | Evidence | Current status |
 | --- | --- | --- |
-| G1 Contracts frozen | Types/migrations/DTO fixtures accepted by B–E | Pending. Envelope validator + fixtures ready for review; models/migrations/DTOs not started. |
+| G1 Contracts frozen | Independent GPT-6 review approved; substantive findings resolved; concrete types/migrations/DTO fixtures published for B–E | Complete for foundation. [Independent review](evidence/csi-01/STEP2-INDEPENDENT-REVIEW.md). Downstream consumer integration acceptance remains part of feature delivery. |
 | G2 Operational loop | Capture → attribution → clocks/actions → Owner UI without AI | Not started |
 | G3 Intelligence loop | Transcript → scoped MCP reads → submit → auto-apply → intervention | Not started |
 | G4 Resilience | Dedupe/races/history/budget/permission/retry/retention proofs | Not started |
@@ -47,3 +47,79 @@ Changing a field/enum/route requires updating its canonical source document, typ
 ## September 17 codebase alignment
 
 [Audit and required adaptations](../11-codebase-alignment-audit.md) are part of this delivery contract. Complete the rows assigned to this team and provide integration evidence; current runtime helpers do not already satisfy the revised contracts. [Design intake](../07-claude-design-brief.md) governs the forthcoming Claude artifact; its arrival is not assumed.
+
+## CSI-01 concrete imports (server-relative, September 17)
+
+Contract version `csi-foundation-v1`; envelope `csi-envelope-v1`; run credential `csi-run-token-v1`; initial policy `csi-policy-v1`. Policy versions thereafter are unique immutable version identifiers, with a revisioned active pointer. These interfaces are frozen for B–E implementation after independent review. Exported schemas use Zod; consumer types are inferred from those schemas rather than duplicated declarations.
+
+| Consumer | Import and exports | Obligation |
+| --- | --- | --- |
+| All | `src/config/domain/salesIntelligence.ts`: `CSI_CONTRACT_VERSION`, action/stage/tool/error enums, `csiFlag`, `csiDataset` | Flags default off; one deployment/database context. |
+| D, C | `src/validation/intelligence/intelligenceEnvelope.validation.ts`: `intelligenceEnvelopeSchema`, `intelligenceFindingSchema`, `parseIntelligenceEnvelope`, `IntelligenceEnvelope` | Strict assertions and evidence shapes only; no authority to execute an action. Synthetic examples in adjacent `fixtures.ts`. |
+| C, E | `src/validation/v1/salesIntelligence.ts`: `csiCommandSchema`, `CsiCommand`, `csiFollowupInputSchema`, `csiDateResolutionSchema`, `csiSubjectSchema`, `CsiSubject` | Closed command union; expected revisions; ISO UTC strings; nullable dates are meaningful. Handler performs semantic validation. |
+| C, E | Same module: `CSI_OWNER_ACTIONS`, `csiActionAvailabilitySchema`, `csiErrorSchema`, `csiListQuerySchema`, `csiPolicySchema`, `CsiPolicy`, `csiSettingsCommandSchema` | Legal-action DTO describes availability; runtime must revalidate before mutation. |
+| B–E | Same module: `csiRepInputSchema`, `csiRepCommandSchema`, `csiNudgeInputSchema`, `csiNudgeCommandSchema`, `csiBackfillCommandSchema`, `csiSubmissionReceiptSchema` | Separate strict schemas for endpoint families; these do not send messages or start backfills. |
+| E with B/C/D producers | `src/services/salesIntelligence/dto.ts`: `CoverageDto`, `AssignmentDto`, `DerivedDto`, `FollowupDto`, `FindingDto`, `OutreachDto`, `ActionAvailabilityDto`, `AttentionRowDto`, `ReviewItemDto`, `RestrictionDto`, `NumberDetailDto`, `TimelineEventDto`, `EvidenceSnapshotDto`, `OwnerInstructionDto` and corresponding lower-camel `*Schema` exports | Parse outbound DTOs; all row revisions come from storage. `ownerReadSchema` wraps data with `as_of` and `coverage`; `attentionPageDtoSchema` defines snapshot pagination. `assessmentDtoSchema` is the assessment contract. |
+| E | `src/services/salesIntelligence/fixtures.ts`: `undatedFollowupFixture`, `ambiguousReviewFixture`, `closedReviewFixture`, `unknownCoverageFixture` | Review-only Attention rows may have `outreach: null`; do not invent an Outreach record or known coverage. |
+| B–D | `src/models/<ModelName>.ts`: `get<ModelName>Model`, named schema and index exports; `src/models/salesIntelligence/registry.ts`: `CSI_MODEL_REGISTRY` | Accessors route through `getMongoDatabaseName`; never import a global default-DB model. Index migration must precede writes. |
+| B–D | `src/services/salesIntelligence/transactions.ts`: `csiCas`, `executeCsiCommand`, `appendCsiAudit`, `CsiTransactionContext`, `payloadHash` | Use callback session for aggregate, audit, and downstream enqueue. External calls must remain outside retried transactions. |
+| B–D | `src/services/salesIntelligence/jobs.ts`: `enqueueCsiJob`, `claimCsiJob`, `renewCsiJob`, `completeCsiJob`, `failCsiJob`, `JobInput`, `JobLease` | Mongo is authoritative; queue messages carry wake-ups. Commit effects inside completion callback, never before it. |
+| D | `src/services/salesIntelligence/auth.ts`: `requireCsiRun`, `issueCsiRunToken`, `runClaimsSchema`, `RunClaims`; `evidence.ts`: `validateEnvelopeEvidence` | Load stored run/job; construct evidence manifest from trusted persisted snapshots. No model-provided manifest or actor. Full MCP tools remain D. |
+| C, D | `src/services/salesIntelligence/aiBudget.ts`: `initializeCsiBudgetPeriod`, `reserveCsiBudget`, `reconcileCsiBudget` | C computes staffed/calendar boundaries; D reserves before provider calls and reconciles actual usage, including overestimates. |
+| C, E | `src/services/salesIntelligence/policy.ts`: `defaultCsiPolicy`, `resolvePolicy`, `initializeCsiPolicy`, `updateCsiPolicy` | Reads do not initialize storage. Owner initialization/update use idempotency and CAS; policy versions are append-only. |
+
+### Storage and transaction invariants
+
+Inventory: ContactNumber, CallInteraction, CallInteractionAlias, NumberLeadAttachment, RepIdentityLink, OwnerRepNudge, OutreachRecord, OutreachFollowup, IntelligenceRun, IntelligenceEvidenceSnapshot, IntelligenceSubmission, IntelligenceFinding, IntelligenceEffect, SalesIntelligenceOwnerInstruction, IntelligenceOwnerAssessment, SalesIntelligenceReviewItem, SalesIntelligenceContactRestriction, SalesIntelligenceJob, SalesIntelligenceAuditEvent, SalesIntelligenceCommandExecution, SalesIntelligenceAiBudget, SalesIntelligenceAiReservation, SalesIntelligencePolicyVersion, SalesIntelligencePolicyPointer, SalesIntelligenceAttentionSnapshot, RingCentralDirectorySnapshot, SalesIntelligenceSyncState, SalesIntelligenceSyncWindow; existing LeadConversation is extended compatibly.
+
+ContactNumber is global normalized E.164. Provider interaction aliases and recordings are account-scoped. Unknown recording accounts block migration apply; they are never assigned a fabricated default. LeadConversation metadata can be null, legacy summary text still renders, and structured summaries map envelope `money_and_dates/commitments/discrepancies` to public `money_dates/promised/mismatch` using `envelopeSummarySections` and `renderEnvelopeSummary`.
+
+Multiple active follow-ups are supported. `commitment_key` is a stable server-assigned obligation identity; nullable due dates stay null. Unique commitment/missed-episode fences do not implement semantic matching. Immutable snapshots, submissions, instructions, assessments, effects, policy versions and audit history are protected through model hooks. A finalized run cannot replace its analysis/prompt/manifest. Mutable review/projection state is separate. Privileged raw collection migration/retention access is outside these application hooks.
+
+Owner command identity is `(actor_scope, idempotency_key)`. Hash includes command plus payload. Same key/payload replays the stored response; changed payload fails. The callback owns semantic preconditions and all aggregate revisions. CAS rejects stale revisions; audit and enqueue must share its session. CSI evidence remains in the CSI command/audit collections: no new official domain-command origin or EntityChange entity is introduced.
+
+Jobs dedupe by stable key and payload hash. Claims increment lease epoch; completion checks owner, epoch and unexpired lease **after** the effect callback, inside the transaction. Failed fencing rolls back effects. Bounded retries distinguish permission/budget pauses from failures. Reservations atomically admit `actual + reserved + estimate <= ceiling`; reconciliation/release is exactly once. Budget increases resume budget-paused jobs in the current dataset; decreases do not.
+
+### Authentication handoff
+
+`src/routes/sales-intelligence-boundary.routes.ts` is mounted after the existing v1 guard. Owner reads/commands require the existing signed Registry Owner identity; broad API secret alone is insufficient. Internal run routes additionally require the named scoped key and `x-vantage-intelligence-run-token`. The named key has a hard internal-route allowlist even if its configured routes are broad. The token binds run, subject, allowed tools, audience, nonce, deployment/database, lease epoch and expiry (maximum 900 seconds), checked against the stored active run and lease. A token without the scoped key is denied. Feature handlers are intentionally left to B–D; mount them after this boundary.
+
+Configure `SALES_INTELLIGENCE_SCOPED_KEY_NAME` to match an entry in existing `VANTAGE_SCOPED_API_KEYS`; set deployment identity and a dedicated run signing secret through the deployment secret store. Never embed credentials in DTOs. Existing Gateway/Blob and optional matched Redis URL/token configuration is reused by `csiProviderConfiguration`; TEST_MODE disables optional Redis. No provider capability is claimed by these accessors.
+
+For that named key, configure these exact stable route templates: GET `/api/v1/internal/sales-intelligence/runs/:id/context`, POST `/api/v1/internal/sales-intelligence/runs/:id/read`, POST `/api/v1/internal/sales-intelligence/runs/:id/submit`, GET `/api/v1/internal/sales-intelligence/runs/:id/submission`. Only these templates expand a 24-hex run id; generic scoped keys retain literal-path semantics, and arbitrary wildcards are not supported. Each actual request still requires its matching signed run token.
+
+`initializeCsiBudgetPeriod` stores `activated_at` and atomically resumes budget-paused jobs once when the supplied period is current and has allowance. Precreating a future period does not wake work; retrying activation does not repeatedly resume exhausted jobs. Job dedupe is database-global: a reused key under another deployment is an explicit `IDEMPOTENCY_CONFLICT`, never a successful replay of unclaimable work.
+
+### Minimal request and receipt examples
+
+Synthetic undated action (idempotency key is supplied separately to the command executor by the handler):
+
+```json
+{"command":"create_followup","expected_revision":1,"outreach_record_id":"aaaaaaaaaaaaaaaaaaaaaaaa","action":{"kind":"check_availability","description":"Check crew availability","due_at":null}}
+```
+
+Strict submission receipt shape (D persists and returns it atomically with application-job enqueue):
+
+```json
+{"run_id":"aaaaaaaaaaaaaaaaaaaaaaaa","submission_id":"bbbbbbbbbbbbbbbbbbbbbbbb","application_job_id":"cccccccccccccccccccccccc","status":"submitted"}
+```
+
+Owner intervention bodies preserve exact analysis targets. Digest equality, correction ownership and source availability are runtime checks, separate from shape validation:
+
+```json
+{"command":"confirm_run","expected_revision":2,"expected_output_digest":"synthetic-output-digest"}
+```
+
+```json
+{"command":"apply_suggestion","expected_revision":2,"run_id":"aaaaaaaaaaaaaaaaaaaaaaaa","suggestion_output_digest":"synthetic-suggestion-digest","due_at":null,"responsible_agent_id":"bbbbbbbbbbbbbbbbbbbbbbbb"}
+```
+
+```json
+{"command":"reanalyze","expected_revision":2,"mode":"original_evidence","source_run_id":"aaaaaaaaaaaaaaaaaaaaaaaa","owner_correction_ids":["bbbbbbbbbbbbbbbbbbbbbbbb"],"reason":"Review the Owner correction against original evidence"}
+```
+
+`source_run_id` is required for original-evidence mode; current-context mode may omit it. `owner_correction_ids` is an explicit array (empty when none). Optional suggestion overrides preserve the distinction between omission and explicit null.
+
+`FindingDto.assertion` contains the discriminated envelope finding; review state/effect status are sibling projection fields. This explicit nesting replaces the earlier illustrative flattened DTO so assertion fields cannot be confused with mutable application state. Consumers must use the executable schema.
+
+Defaults remain $80/month, Mon–Sat 08:00–20:00 America/New_York, 30/15 staffed-minute deadlines and 1,440 staffed-minute Going cold. Clock evaluation, call reconciliation, Outreach effect rules, full MCP tools and dashboard screens are downstream work. Scenario fixtures above remain integration acceptance requirements, not claims that those services exist.

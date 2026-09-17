@@ -28,12 +28,19 @@ export const CSI_ENVELOPE_BOUNDS = {
   max_finding_key_chars: 120,
 } as const;
 
-const nonEmptyString = z.string().min(1);
-const findingKey = nonEmptyString.max(CSI_ENVELOPE_BOUNDS.max_finding_key_chars);
+const nonEmptyString = z
+  .string()
+  .min(1)
+  .refine((value) => value.trim().length > 0);
+const findingKey = nonEmptyString.max(
+  CSI_ENVELOPE_BOUNDS.max_finding_key_chars,
+);
 const claimOrDescription = nonEmptyString.max(
   CSI_ENVELOPE_BOUNDS.max_claim_or_description_chars,
 );
-const dateWording = nonEmptyString.max(CSI_ENVELOPE_BOUNDS.max_date_wording_chars);
+const dateWording = nonEmptyString.max(
+  CSI_ENVELOPE_BOUNDS.max_date_wording_chars,
+);
 const nullableDateWording = dateWording.nullable();
 
 const transcriptEvidenceSchema = z
@@ -63,7 +70,10 @@ const vantageRecordEvidenceSchema = z
       "owner_note",
     ]),
     record_id: nonEmptyString,
-    field_paths: z.array(nonEmptyString),
+    field_paths: z
+      .array(nonEmptyString.regex(/^[a-zA-Z_][a-zA-Z0-9_.]*$/))
+      .min(1)
+      .max(100),
   })
   .strict();
 
@@ -103,14 +113,15 @@ const findingBaseShape = {
   clarity: z.enum(["clear", "uncertain"]),
   evidence: z
     .array(intelligenceEvidenceRefSchema)
+    .min(1)
     .max(CSI_ENVELOPE_BOUNDS.max_evidence_refs_per_finding),
   confidence: z.number().finite().nullable(),
 };
 
-function findingObject<
-  Kind extends z.ZodTypeAny,
-  Value extends z.ZodTypeAny,
->(kind: Kind, value: Value) {
+function findingObject<Kind extends z.ZodTypeAny, Value extends z.ZodTypeAny>(
+  kind: Kind,
+  value: Value,
+) {
   return z
     .object({
       ...findingBaseShape,
@@ -190,7 +201,11 @@ const contactRestrictionFindingSchema = findingObject(
   z.literal("contact_restriction"),
   z
     .object({
-      channels: z.array(z.enum(["call", "text"])),
+      channels: z
+        .array(z.enum(["call", "text"]))
+        .min(1)
+        .max(2)
+        .refine((v) => v.length === new Set(v).size),
       restriction: z.enum(["until", "ongoing", "unclear"]),
       until_text: nullableDateWording,
     })
@@ -278,6 +293,15 @@ export const intelligenceEnvelopeSchema = z
       });
     }
 
+    const assessments = envelope.owner_instruction_assessments.map(
+      (v) => `${v.instruction_id}:${v.instruction_revision}`,
+    );
+    if (assessments.length !== new Set(assessments).size)
+      context.addIssue({
+        code: "custom",
+        path: ["owner_instruction_assessments"],
+        message: "Duplicate instruction assessment",
+      });
     const seenKeys = new Set<string>();
     const duplicateKeys = new Set<string>();
     for (const finding of envelope.findings) {
@@ -294,8 +318,14 @@ export const intelligenceEnvelopeSchema = z
       });
     }
 
-    const referencedKeyGroups: Array<{ path: Array<string | number>; keys: string[] }> = [
-      { path: ["summary", "finding_keys"], keys: envelope.summary.finding_keys },
+    const referencedKeyGroups: Array<{
+      path: Array<string | number>;
+      keys: string[];
+    }> = [
+      {
+        path: ["summary", "finding_keys"],
+        keys: envelope.summary.finding_keys,
+      },
       {
         path: ["next_step_suggestion", "finding_keys"],
         keys: envelope.next_step_suggestion?.finding_keys ?? [],
@@ -321,12 +351,18 @@ export const intelligenceEnvelopeSchema = z
     }
   });
 
-export type IntelligenceEvidenceRef = z.infer<typeof intelligenceEvidenceRefSchema>;
-export type IntelligenceActionValue = z.infer<typeof intelligenceActionValueSchema>;
+export type IntelligenceEvidenceRef = z.infer<
+  typeof intelligenceEvidenceRefSchema
+>;
+export type IntelligenceActionValue = z.infer<
+  typeof intelligenceActionValueSchema
+>;
 export type IntelligenceFinding = z.infer<typeof intelligenceFindingSchema>;
 export type IntelligenceEnvelope = z.infer<typeof intelligenceEnvelopeSchema>;
 
-export function parseIntelligenceEnvelope(input: unknown): IntelligenceEnvelope {
+export function parseIntelligenceEnvelope(
+  input: unknown,
+): IntelligenceEnvelope {
   return intelligenceEnvelopeSchema.parse(input);
 }
 

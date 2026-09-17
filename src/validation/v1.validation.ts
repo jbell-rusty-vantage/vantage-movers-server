@@ -301,3 +301,4 @@ export {
   createExtensionUserSchema,
   type CreateExtensionUserBody,
 } from "./v1/extensionUsers.validation";
+export * from "./v1/salesIntelligence";

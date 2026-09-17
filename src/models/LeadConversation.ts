@@ -12,8 +12,8 @@ import {
 
 export const LEAD_CONVERSATION_INDEXES = [
   {
-    name: "lead_conversation_recording_unique",
-    key: { provider: 1, provider_recording_id: 1 },
+    name: "lead_conversation_account_recording_unique",
+    key: { provider: 1, provider_account_id: 1, provider_recording_id: 1 },
     unique: true as const,
   },
   {
@@ -90,6 +90,20 @@ const transcriptSchema = new Schema(
 
 const summarySchema = new Schema(
   {
+    sections: {
+      type: new Schema(
+        {
+          overview: String,
+          customer_wanted: String,
+          money_dates: String,
+          outcome: String,
+          promised: String,
+          mismatch: String,
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
     text: { type: String, required: true },
     model: { type: String, required: true, trim: true },
     prompt_version: { type: String, required: true, trim: true },
@@ -122,8 +136,57 @@ const LeadConversationSchema = new Schema(
       required: true,
       enum: LEAD_CONVERSATION_PROVIDERS,
     },
+    provider_account_id: {
+      type: String,
+      default: null,
+      trim: true,
+      required: function (this: { call_interaction_id?: unknown }) {
+        return Boolean(this.call_interaction_id);
+      },
+    },
+    account_attribution_evidence_ref: { type: String, default: null },
+    call_interaction_id: { type: Schema.Types.ObjectId, default: null },
+    contact_number_id: { type: Schema.Types.ObjectId, default: null },
+    contact_type: {
+      type: String,
+      enum: ["unknown", "voicemail", "human_conversation"],
+      default: "unknown",
+    },
+    contact_type_basis: { type: String, default: null },
+    media_digest_sha256: { type: String, default: null },
+    latest_transcript_version: { type: String, default: null },
+    latest_completed_run_id: { type: Schema.Types.ObjectId, default: null },
+    availability_reason: { type: String, default: null },
+    unavailable_until: { type: Date, default: null },
+    pending_stage: { type: String, default: null },
+    analysis_eligibility: {
+      type: new Schema(
+        {
+          eligible: Boolean,
+          reasons: [String],
+          decided_at: Date,
+          policy_version: String,
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
+    speaker_evidence: {
+      type: [
+        new Schema(
+          {
+            speaker_ref: String,
+            agent_id: Schema.Types.ObjectId,
+            rep_identity_link_id: Schema.Types.ObjectId,
+            evidence_ref: String,
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     provider_recording_id: { type: String, required: true, trim: true },
-    call_log_id: { type: String, required: true, trim: true },
+    call_log_id: { type: String, default: null, trim: true },
     telephony_session_id: { type: String, default: null, trim: true },
     lead_ref: { type: leadRefSchema, default: null },
     booking_ref: {
@@ -160,11 +223,11 @@ const LeadConversationSchema = new Schema(
       required: true,
       enum: LEAD_CONVERSATION_DIRECTIONS,
     },
-    rc_result: { type: String, required: true, trim: true },
+    rc_result: { type: String, default: null, trim: true },
     started_at: { type: Date, required: true },
-    duration_seconds: { type: Number, required: true },
-    from_phone_masked: { type: String, required: true, trim: true },
-    to_phone_masked: { type: String, required: true, trim: true },
+    duration_seconds: { type: Number, default: null, min: 0 },
+    from_phone_masked: { type: String, default: null, trim: true },
+    to_phone_masked: { type: String, default: null, trim: true },
     media: { type: mediaSchema, default: null },
     transcript: { type: transcriptSchema, default: null },
     summary: { type: summarySchema, default: null },
@@ -184,6 +247,7 @@ const LeadConversationSchema = new Schema(
   {
     collection: LEAD_CONVERSATION_COLLECTION,
     autoIndex: false,
+    autoCreate: false,
     timestamps: true,
     minimize: false,
     toJSON: { virtuals: true },
@@ -198,13 +262,20 @@ for (const index of LEAD_CONVERSATION_INDEXES) {
   });
 }
 
-export type LeadConversationDocument = InferSchemaType<typeof LeadConversationSchema> & {
+export type LeadConversationDocument = InferSchemaType<
+  typeof LeadConversationSchema
+> & {
   _id: mongoose.Types.ObjectId;
 };
 
 export const LeadConversation: Model<LeadConversationDocument> =
-  (mongoose.models.LeadConversation as Model<LeadConversationDocument> | undefined) ??
-  mongoose.model<LeadConversationDocument>("LeadConversation", LeadConversationSchema);
+  (mongoose.models.LeadConversation as
+    | Model<LeadConversationDocument>
+    | undefined) ??
+  mongoose.model<LeadConversationDocument>(
+    "LeadConversation",
+    LeadConversationSchema,
+  );
 
 export function getLeadConversationModel(): Model<LeadConversationDocument> {
   const dbName = getMongoDatabaseName();
@@ -213,7 +284,12 @@ export function getLeadConversationModel(): Model<LeadConversationDocument> {
   }
   const db = mongoose.connection.useDb(dbName, { useCache: true });
   return (
-    (db.models.LeadConversation as Model<LeadConversationDocument> | undefined) ??
-    db.model<LeadConversationDocument>("LeadConversation", LeadConversationSchema)
+    (db.models.LeadConversation as
+      | Model<LeadConversationDocument>
+      | undefined) ??
+    db.model<LeadConversationDocument>(
+      "LeadConversation",
+      LeadConversationSchema,
+    )
   );
 }
