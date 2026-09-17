@@ -1,6 +1,6 @@
 # 02 — Domain models
 
-Status: implementation-ready. Pack index: [`README.md`](README.md). Rules: [`01-specification.md`](01-specification.md).
+Status: build contract, not implemented. Revised September 17, 2026. Pack index: [`README.md`](README.md). Rules: [`01-specification.md`](01-specification.md).
 
 ## 0. Conventions
 
@@ -10,12 +10,12 @@ Status: implementation-ready. Pack index: [`README.md`](README.md). Rules: [`01-
 - Raw provider payloads keep using the existing `ringcentral_webhook_events` capture (with its `_test` suffix mode). New collections below do **not** use the `_test` suffix; they rely on the DB boundary.
 - Phone normalization: `normalizePhoneNumberForStorage` / `normalizePhoneNumberForMatch` from `src/utils/phone.ts` for parity with Leads; add `toE164(value, defaultCountry="US")` and `toNationalTenDigit()` in `src/services/numberActivity/phone.ts`. Store provider originals untouched.
 
-Collections in this pack:
+Capture and core collections below; run/evidence/application/review/job/policy collections are specified in §15:
 
 | Collection | Model | Purpose |
 | --- | --- | --- |
 | `contact_numbers` | `ContactNumber` | Endpoint identity, classification, eligibility, search terms, rollups |
-| `call_interactions` | `CallInteraction` | Canonical telephony session with parties, legs, recording pointer |
+| `call_interactions` | `CallInteraction` | Canonical telephony session with parties, legs, recording pointers |
 | `number_lead_attachments` | `NumberLeadAttachment` | Number↔Lead evidence edges |
 | `outreach_records` | `OutreachRecord` | Outreach state per Lead or Number Review, events, next action |
 | `outreach_followups` | `OutreachFollowup` | Follow-up rows |
@@ -80,6 +80,7 @@ const rollupsSchema = new Schema(
 
 const ContactNumberSchema = new Schema(
   {
+    revision: { type: Number, required: true, default: 1 },
     e164: { type: String, required: true, trim: true },              // "+17573180143"
     national_ten: { type: String, default: null, trim: true },       // "7573180143" (NANP only)
     digits_reversed: { type: String, required: true, trim: true },   // "3410813757" for suffix search
@@ -95,10 +96,10 @@ const ContactNumberSchema = new Schema(
     first_observed_at: { type: Date, required: true },
     last_activity_at: { type: Date, required: true },
     rollups: { type: rollupsSchema, required: true, default: () => ({}) },
-    running_summary: {                                       // Finding-derived, versioned (see IntelligenceFinding kind "number_summary")
+    running_summary: {                                       // projection from a completed number-level analysis run
       type: new Schema({
         text: { type: String, required: true },
-        finding_id: { type: Schema.Types.ObjectId, required: true },
+        run_id: { type: Schema.Types.ObjectId, ref: "IntelligenceRun", required: true },
         evidence_digest: { type: String, required: true },
         computed_at: { type: Date, required: true },
       }, { _id: false }),
@@ -121,21 +122,23 @@ Rules:
 ```ts
 // src/models/CallInteraction.ts
 export const CALL_INTERACTION_INDEXES = [
-  { name: "call_interaction_session_unique", key: { provider: 1, telephony_session_id: 1 }, unique: true as const,
+  { name: "call_interaction_session_unique", key: { provider: 1, provider_account_id: 1, telephony_session_id: 1 }, unique: true as const,
     partialFilterExpression: { telephony_session_id: { $type: "string" } } },
-  { name: "call_interaction_session_id", key: { provider: 1, session_id: 1 }, sparse: true },
-  { name: "call_interaction_call_log_ids", key: { provider: 1, call_log_ids: 1 } },
+  { name: "call_interaction_session_id", key: { provider: 1, provider_account_id: 1, session_id: 1 }, sparse: true },
+  { name: "call_interaction_call_log_ids", key: { provider: 1, provider_account_id: 1, call_log_ids: 1 } },
   { name: "call_interaction_number_started", key: { contact_number_id: 1, started_at: -1 } },
   { name: "call_interaction_started_window", key: { started_at: -1, _id: -1 } },
   { name: "call_interaction_extension_started", key: { "parties.extension_id": 1, started_at: -1 } },
-  { name: "call_interaction_recording", key: { "recording.provider_recording_id": 1 }, sparse: true },
+  { name: "call_interaction_recording", key: { "recordings.provider_recording_id": 1 }, sparse: true },
   { name: "call_interaction_provider_modified", key: { provider_last_modified_at: -1 } },
-  { name: "call_interaction_updated", key: { updatedAt: -1, _id: -1 } },   // SSE watermark
+  { name: "call_interaction_updated", key: { updatedAt: -1, _id: -1 } },   // repair/read index; SSE uses the durable audit stream
 ] as const;
 
 const partySchema = new Schema(
   {
     party_id: { type: String, default: null, trim: true },
+    last_webhook_sequence: { type: Number, default: null }, // sequence is tracked per party
+    last_event_at: { type: Date, default: null },
     role: { type: String, required: true, enum: ["external", "user", "queue", "ivr", "voicemail", "monitoring", "unknown"] },
     direction: { type: String, default: null, enum: [null, "Inbound", "Outbound"] },
     extension_id: { type: String, default: null, trim: true },
@@ -169,7 +172,7 @@ const legSchema = new Schema(
 const CallInteractionSchema = new Schema(
   {
     provider: { type: String, required: true, enum: ["ringcentral"], default: "ringcentral" },
-    provider_account_id: { type: String, default: null, trim: true },
+    provider_account_id: { type: String, required: true, trim: true },
     telephony_session_id: { type: String, default: null, trim: true },
     session_id: { type: String, default: null, trim: true },
     call_log_ids: { type: [String], default: [] },                 // record + leg ids observed
@@ -188,7 +191,7 @@ const CallInteractionSchema = new Schema(
     provider_result: { type: String, default: null, trim: true },   // "Call connected", "Voicemail", "Missed", ...
     provider_connected: { type: Boolean, required: true, default: false },
     contact_type: { type: String, required: true, enum: ["unknown", "voicemail", "human_conversation"], default: "unknown" },
-    contact_type_basis: { type: String, default: null, trim: true }, // "rule:duration_lt_20s", "transcript:v1", "owner"
+    contact_type_basis: { type: String, default: null, trim: true }, // "provider:voicemail", "transcript:<version>", "owner"; duration alone proves neither voicemail nor human
 
     parties: { type: [partySchema], default: [] },
     legs: { type: [legSchema], default: [] },                       // bounded 40; overflow_count below
@@ -198,14 +201,14 @@ const CallInteractionSchema = new Schema(
     transfer: { type: Boolean, required: true, default: false },
     monitoring: { type: Boolean, required: true, default: false },
 
-    recording: {
-      type: new Schema({
+    recordings: {
+      type: [new Schema({
         provider_recording_id: { type: String, required: true, trim: true },
         recording_type: { type: String, default: null, trim: true },
         observed_at: { type: Date, required: true },
         lead_conversation_id: { type: Schema.Types.ObjectId, ref: "LeadConversation", default: null },
-      }, { _id: false }),
-      default: null,
+      }, { _id: false })],
+      default: [],
     },
 
     // provenance
@@ -213,7 +216,7 @@ const CallInteractionSchema = new Schema(
     provider_last_modified_at: { type: Date, default: null },
     terminal: { type: Boolean, required: true, default: false },
     projection_revision: { type: Number, required: true, default: 1 },
-    last_webhook_sequence: { type: Number, default: null },
+    max_observed_webhook_sequence: { type: Number, default: null }, // diagnostic only, never filters other parties
     first_observed_at: { type: Date, required: true },
     last_observed_at: { type: Date, required: true },
   },
@@ -223,8 +226,9 @@ const CallInteractionSchema = new Schema(
 
 Rules:
 
-- Identity: `telephony_session_id` first; `session_id` if that is absent; a Call Log record id only when neither exists. `identity_basis` records which. Never merge two rows by phone + time.
-- `projection_revision` increments on every projection change; a webhook event with `sequence` ≤ `last_webhook_sequence` for the same party is ignored. A Call Log reconcile that carries `lastModifiedTime` ≤ `provider_last_modified_at` and no new legs is a no-op.
+- Identity is account-scoped: required provider account comes from the payload or verified configured account, never a shared null value. Use telephony session, then session id, then Call Log id. Store each observed alias in `call_interaction_aliases` with unique `(provider,provider_account_id,kind,value)` → interaction id. Reserve aliases and upsert the interaction transactionally so fallback identities are also uniquely fenced. A later exact provider bridge can attach aliases to the existing canonical row. If it bridges two already-persisted provisional rows, merge only with explicit same-session provider proof: select the earlier-created canonical row, migrate dependent refs/idempotency mappings and rollups atomically, tombstone the other with `merged_into_id`. Without such proof, preserve both and open an identity/coverage exception; never merge by phone/time.
+- One interaction may expose several recording IDs, including transferred legs. Keep `recordings[]` deduplicated by provider id and discover each once. Number/call counts count the canonical interaction once; conversation count counts actual recordings. Do not drop all but the first recording. `recording` singular from the earlier draft is retired; if a UI shows one preview, mark that as a projection of the array.
+- `projection_revision` increments on every projection change; a webhook event with `sequence` ≤ `last_webhook_sequence` for the same party is ignored. Never use one session-level max sequence to discard another party from the same delivery. A Call Log reconcile that carries `lastModifiedTime` ≤ `provider_last_modified_at` and no new legs, recordings or other material evidence is a no-op.
 - `terminal` flips true once and never back. Late events may add legs, a recording, or `ended_at`, never un-terminate.
 - `contact_type` may only be set to `human_conversation` by transcript evidence or Owner; rules may set `voicemail`.
 
@@ -266,7 +270,7 @@ const NumberLeadAttachmentSchema = new Schema(
     state: { type: String, required: true, enum: ["candidate", "ambiguous", "attached", "rejected"] },
     certainty: { type: String, required: true, enum: ["exact", "likely", "unsure", "owner_confirmed", "rejected"] },
     evidence: { type: [attachmentEvidenceSchema], default: [] },
-    lead_snapshot: {                                                  // display only, refreshed on read when stale
+    lead_snapshot: {                                                  // display cache; refresh in worker, never mutate on GET
       type: new Schema({
         name: { type: String, default: null }, job_no: { type: String, default: null },
         source_label: { type: String, default: null }, lead_timestamp: { type: Date, default: null },
@@ -277,6 +281,7 @@ const NumberLeadAttachmentSchema = new Schema(
       }, { _id: false }),
       default: null,
     },
+    revision: { type: Number, required: true, default: 1 },
     decided_by: { type: String, default: null, trim: true },          // actor label for owner decisions
     decided_at: { type: Date, default: null },
     decision_reason: { type: String, default: null, trim: true },
@@ -288,260 +293,78 @@ const NumberLeadAttachmentSchema = new Schema(
 
 ## 4. `OutreachRecord` — `outreach_records`
 
-```ts
-export const OUTREACH_RECORD_INDEXES = [
-  { name: "outreach_subject_unique", key: { "subject.kind": 1, "subject.model": 1, "subject.id": 1, "subject.contact_number_id": 1 }, unique: true as const },
-  { name: "outreach_state_due", key: { state: 1, first_action_due_at: 1 } },
-  { name: "outreach_state_next_due", key: { state: 1, "next_action.due_at": 1 } },
-  { name: "outreach_agent_state", key: { responsible_agent_id: 1, state: 1 } },
-  { name: "outreach_primary_number", key: { primary_contact_number_id: 1 } },
-  { name: "outreach_updated", key: { updatedAt: -1, _id: -1 } },    // SSE watermark
-  { name: "outreach_trigger", key: { trigger_at: -1 } },
-] as const;
+One row per subject. Preserve the unique index on `subject.kind/model/id/contact_number_id`; state/due, responsible Agent/state, primary number, and updatedAt/id indexes support Attention and live reads. Mongo `revision` CAS guards all mutations. Subject is either one Lead or one Number Review, never both.
 
-const outreachSubjectSchema = new Schema(
-  {
-    kind: { type: String, required: true, enum: ["lead", "number_review"] },
-    model: { type: String, default: null, enum: [null, "FormLead", "CallLead"] },
-    id: { type: Schema.Types.ObjectId, default: null },
-    contact_number_id: { type: Schema.Types.ObjectId, ref: "ContactNumber", default: null },
-  },
-  { _id: false },
-);
+| Field | Required contract |
+| --- | --- |
+| `subject` | `{kind: lead, model: FormLead\|CallLead, id}` or `{kind: number_review, contact_number_id}`. |
+| `state`, `state_before_identity_review` | Five states from 01; previous state nullable. Official closure wins over restoration. |
+| `primary_contact_number_id` | Nullable Contact Number reference; never silently picks among ambiguous candidates. |
+| `trigger_kind`, `trigger_at`, `first_action_due_at` | Lead arrival, unanswered inbound, Owner open, or clear sales commitment; stored policy version and deadline resolution basis. |
+| `first_attributable_outbound_at`, `first_human_conversation_at`, `last_meaningful_contact_at` | Distinct nullable timestamps; human contact alone resets the meaningful-contact clock. |
+| `next_action` | Rebuildable projection of the most urgent active follow-up, including `followup_id`, action kind, nullable due time, description. Never the authoritative single action store. |
+| `wait_until`, `wait_reason`, `wait_followup_id` | Nullable projection of the relevant customer wait; independent rep actions can keep state Open. |
+| `responsible_agent_id`, `assignment` | Nullable Agent plus `{origin: owner\|first_conversation\|rep_promise, actor_id, evidence_id, assigned_at, instruction_id?}`. Never copied from receiver Agent. |
+| `closed_reason`, `closed_at`, `closed_by`, `closure_origin` | Official eligibility reason or explicit Owner reason; preserve Owner history even if later official context changes. |
+| `revision`, `policy_version` | Required CAS integer and configuration version. |
+| `events` | Optional bounded recent-event cache only. Full history is in append-only `sales_intelligence_audit_events`; never drop history into a counter. |
 
-const nextActionSchema = new Schema(
-  {
-    kind: { type: String, required: true, enum: ["call", "text_customer_via_lead_message", "review", "wait", "reconcile_identity"] },
-    due_at: { type: Date, required: true },
-    note: { type: String, default: null, trim: true },
-    followup_id: { type: Schema.Types.ObjectId, ref: "OutreachFollowup", default: null },
-    set_by: { type: String, required: true, trim: true },
-    set_at: { type: Date, required: true },
-  },
-  { _id: false },
-);
-
-const outreachEventSchema = new Schema(
-  {
-    at: { type: Date, required: true },
-    kind: { type: String, required: true, enum: [
-      "created", "state_changed", "attributable_outbound", "inbound_observed", "voicemail_left",
-      "human_conversation", "finding_accepted", "finding_dismissed", "next_action_set", "followup_completed",
-      "owner_note", "nudge_sent", "attachment_changed", "closed", "reopened",
-    ] },
-    from_state: { type: String, default: null },
-    to_state: { type: String, default: null },
-    actor: { type: String, required: true, trim: true },              // "system" | actor label
-    interaction_id: { type: Schema.Types.ObjectId, ref: "CallInteraction", default: null },
-    finding_id: { type: Schema.Types.ObjectId, ref: "IntelligenceFinding", default: null },
-    nudge_id: { type: Schema.Types.ObjectId, ref: "OwnerRepNudge", default: null },
-    note: { type: String, default: null, trim: true },
-  },
-  { _id: false },
-);
-
-const OutreachRecordSchema = new Schema(
-  {
-    subject: { type: outreachSubjectSchema, required: true },
-    primary_contact_number_id: { type: Schema.Types.ObjectId, ref: "ContactNumber", default: null },
-    state: { type: String, required: true, enum: ["unworked", "open", "waiting_on_customer", "identity_review", "closed"] },
-    state_before_identity_review: { type: String, default: null },
-    trigger_kind: { type: String, required: true, enum: ["lead_arrival", "unanswered_inbound", "owner_open", "reopen"] },
-    trigger_at: { type: Date, required: true },
-    first_action_due_at: { type: Date, default: null },
-    first_attributable_outbound_at: { type: Date, default: null },
-    next_action: { type: nextActionSchema, default: null },
-    wait_until: { type: Date, default: null },
-    wait_reason: { type: String, default: null, trim: true },
-    closed_reason: { type: String, default: null, enum: [null, "booked", "cancelled", "lost", "duplicate", "bad_lead", "suppressed", "not_sales", "no_sync", "owner_dismissed"] },
-    closed_at: { type: Date, default: null },
-    responsible_agent_id: { type: Schema.Types.ObjectId, ref: "Agent", default: null },   // explicit Owner assignment only; never copied from receiver_agent
-    responsible_set_by: { type: String, default: null },
-    sales_assignment_id: { type: Schema.Types.ObjectId, default: null },                  // reserved, later phase
-    blocking_attachment_ids: { type: [Schema.Types.ObjectId], default: [] },
-    outbound_attempts_24h: { type: Number, required: true, default: 0 },                  // maintained for cooldown
-    last_meaningful_contact_at: { type: Date, default: null },
-    events: { type: [outreachEventSchema], default: [] },                                  // bounded 200; older moved to outreach_followups? no: archived to events_archive_count
-    events_archived_count: { type: Number, required: true, default: 0 },
-    policy_version: { type: String, required: true, trim: true },
-    revision: { type: Number, required: true, default: 1 },
-  },
-  { collection: "outreach_records", autoIndex: false, timestamps: true, minimize: false, optimisticConcurrency: true },
-);
-```
-
-Rules:
-
-- Owner commands carry `expected_revision`; mismatch returns 409 with the refreshed record.
-- `responsible_agent_id` is set only by an Owner command. The subject Lead's `receiver_agent` is displayed as "Received by" but never copied here (provenance is not ownership).
-- Derived signals are **not** stored. `outreach/derive.ts` computes them on read with `policy_version` so a policy change re-derives instantly.
+Lead `receiver_agent` remains read-only Received by context. No separate Sales Assignment/offer collection is required for v1. Unassigned work may get one clear first-conversation rep or promising rep; Owner assignment cannot be replaced by later calls.
 
 ## 5. `OutreachFollowup` — `outreach_followups`
 
-```ts
-export const OUTREACH_FOLLOWUP_INDEXES = [
-  { name: "followup_record_status_due", key: { outreach_record_id: 1, status: 1, due_at: 1 } },
-  { name: "followup_agent_status_due", key: { responsible_agent_id: 1, status: 1, due_at: 1 } },
-  { name: "followup_status_due", key: { status: 1, due_at: 1 } },
-] as const;
+Several active rows per Outreach. Index `(outreach_record_id,status,due_at)`, `(responsible_agent_id,status,due_at)`, `(status,due_at)`, and unique `commitment_key`. There is no unique-active-followup-per-record index. Exclude null due times from clock comparisons.
 
-const OutreachFollowupSchema = new Schema(
-  {
-    outreach_record_id: { type: Schema.Types.ObjectId, ref: "OutreachRecord", required: true },
-    kind: { type: String, required: true, enum: ["call", "text_customer_via_lead_message", "review", "wait", "reconcile_identity"] },
-    due_at: { type: Date, required: true },
-    responsible_agent_id: { type: Schema.Types.ObjectId, ref: "Agent", default: null },
-    status: { type: String, required: true, enum: ["due", "completed", "snoozed", "cancelled"], default: "due" },
-    disposition: { type: String, default: null, enum: [null, "spoke", "voicemail", "no_answer", "wrong_number", "customer_declined", "booked_elsewhere", "other"] },
-    note: { type: String, default: null, trim: true },
-    evidence_interaction_id: { type: Schema.Types.ObjectId, ref: "CallInteraction", default: null },
-    origin: { type: String, required: true, enum: ["owner", "accepted_finding", "system_default"] },
-    origin_finding_id: { type: Schema.Types.ObjectId, ref: "IntelligenceFinding", default: null },
-    created_by: { type: String, required: true, trim: true },
-    completed_by: { type: String, default: null, trim: true },
-    completed_at: { type: Date, default: null },
-    snoozed_until: { type: Date, default: null },
-  },
-  { collection: "outreach_followups", autoIndex: false, timestamps: true, minimize: false },
-);
-```
+| Field | Required contract |
+| --- | --- |
+| `outreach_record_id`, `commitment_key` | Required references/stable obligation identity. Idempotency across reruns does not depend solely on a new run id or finding ordinal. |
+| `kind`, `description` | call, text_customer_via_lead_message, send_estimate, check_availability, review, wait, reconcile_identity, other. Description required for other. |
+| `status` | `open`, `completed`, `cancelled`, `superseded`. Due/overdue/paused are derived, not lifecycle status. |
+| `due_at`, `date_text`, `date_resolution` | Nullable UTC deadline; original wording; precision/timezone/assumption/anchor/policy version. Undated is valid. |
+| `base_attention_due_at`, `attention_due_at`, `snoozed_until`, `wait_expired_at` | Nullable; effective Attention date is max(base date, snooze). Day-only customer waits become actionable at next opening. Preserve contractual due date; see 01 §12. |
+| `missed_episode_key`, `trigger_interaction_ids`, `first_missed_at` | Nullable system callback episode identity; repeated misses retain the first deadline until a relevant callback/human inbound resolves it. |
+| `responsible_agent_id`, `assignment` | Per-action assignment with origin/evidence. Owner's explicit assignment of this action wins. |
+| `promised_by_agent_id`, `requested_by`, `origin` | Speaker separate from responsible Agent. Origin `owner`, `rep_promise`, `customer_request`, `customer_wait`, `system_default`; source run/finding/interaction links. |
+| `source_finding_ids`, `origin_run_id`, `owner_instruction_ids` | Provenance and Owner control refs. Several findings/runs may support one obligation. |
+| `disposition`, `completion_basis`, `completed_at`, `completed_by` | Exact outcome; basis `owner`, `call_attempt`, `customer_confirmation`, `rep_confirmation`, `vantage_evidence`. Never imply Spoke from attempt. |
+| `evidence_interaction_id`, `completion_finding_id` | Nullable completion proof; generic later activity is insufficient. |
+| `supersedes_id`, `cancel_reason`, `revision` | History and CAS; cancel on retract/closure, supersede only that commitment when clearly replaced. |
+
+Active call restrictions are joined for action eligibility, not stored by destroying due dates. Recompute `next_action` after every relevant mutation. Undated commitments open date-needed review and do not equal No next step. Follow-up assignment can differ from Outreach ownership.
 
 ## 6. `LeadConversation` — extend `lead_conversations`
 
-Additive fields only. Existing indexes, uniqueness (`provider` + `provider_recording_id`), redaction, and Owner-only reads stay.
+Retain existing seed compatibility and Owner-only reads. Migrate recording uniqueness to `(provider, provider_account_id, provider_recording_id)` after backfilling each existing row with the verified account id; never guess an account for legacy rows. Add account-scoped aliases without duplicating existing recordings. Keep private media and redacted transcript. Add `call_interaction_id`, `contact_number_id`, contact type/basis, speaker evidence, `media_digest_sha256`, `latest_transcript_version`, and `latest_completed_run_id`. `lead_ref` is nullable for number-only and ambiguous evidence. Add match methods `call_interaction_number_candidate`, `number_only`, and `ambiguous_number_context`; add low confidence for unlinked/ambiguous rows. Use these explicit values rather than claiming a candidate match on an unlinked number.
 
-```ts
-// additions to LeadConversationSchema
-call_interaction_id: { type: Schema.Types.ObjectId, ref: "CallInteraction", default: null },
-contact_number_id: { type: Schema.Types.ObjectId, ref: "ContactNumber", default: null },
-contact_type: { type: String, required: true, enum: ["unknown", "voicemail", "human_conversation"], default: "unknown" },
-contact_type_basis: { type: String, default: null, trim: true },
-sales_relevance: {
-  type: new Schema({
-    score_band: { type: String, required: true, enum: ["high", "medium", "low", "sample"] },
-    reasons: { type: [String], default: [] },          // closed set: "form_linked","outbound_connected","duration_ge_90s","promised_callback_pending","unbiased_sample"
-    decided_at: { type: Date, required: true },
-    policy_version: { type: String, required: true },
-  }, { _id: false }),
-  default: null,
-},
-media_digest_sha256: { type: String, default: null, trim: true },
-transcript_segments: {                                   // sentence-level, redacted; sentence ids are the citation namespace
-  type: [new Schema({
-    sid: { type: Number, required: true },               // 1-based sentence id
-    start_ms: { type: Number, default: null },
-    end_ms: { type: Number, default: null },
-    speaker: { type: String, default: null, enum: [null, "rep", "customer", "unknown"] },
-    speaker_confidence: { type: Number, default: null },
-    text: { type: String, required: true },              // redacted
-  }, { _id: false })],
-  default: [],
-},
-intelligence: {
-  type: new Schema({
-    extraction_version: { type: String, default: null },
-    extraction_model: { type: String, default: null },
-    evidence_digest: { type: String, default: null },    // sha256 of the redacted transcript segments
-    findings_count: { type: Number, required: true, default: 0 },
-    last_extracted_at: { type: Date, default: null },
-    unavailable_reason: { type: String, default: null, enum: [null, "permission_denied", "throttled", "budget_exhausted", "media_too_large", "media_404"] },
-    unavailable_until: { type: Date, default: null },
-  }, { _id: false }),
-  default: null,
-},
-```
+Replace threshold-based relevance with `analysis_eligibility: {eligible, reasons[], decided_at, policy_version}`. Reasons: `form_linked`, `call_linked`, `number_review`, `mapped_sales_inbound`, `reviewed_rep_outbound`, `ambiguous_lead_context`, `owner_requested`; exclusions: `internal_company`, `known_non_customer`, `no_sales_context`. No minimum duration and no voicemail skip. Closed Lead eligibility for Outreach is separate from eligibility for analysis.
 
-State enum gains `"unavailable"` in `src/config/domain/conversations.ts` (`LEAD_CONVERSATION_STATES`). `match_method` enum gains `"call_interaction_number_candidate"` (form-lead window match now flows through attachment edges) and `LEAD_CONVERSATION_MATCH_CONFIDENCES` gains `"low"` for number-only conversations with `lead_ref: null`.
+Add `unavailable` to processing states; keep other existing states. Store availability reason, retry time, pending stage and errors separately from latest successful analysis. Each redacted transcript version is immutable in `intelligence_evidence_snapshots` with segment `{sid,start_ms?,end_ms?,speaker:rep|customer|unknown,text}`. The conversation may cache the latest version but must not overwrite prior run evidence. Speaker is unknown without evidence.
 
-The existing `summary` block stays for the sectioned Owner summary; findings are the structured layer beneath it.
+### 6.1 Existing-model adaptation (verified against code)
+
+`src/models/LeadConversation.ts` already allows null `lead_ref` but requires `call_log_id`, `rc_result`, duration, direction and both masked endpoints. A recording observed before final Call Log enrichment cannot fabricate them. Make `call_log_id`, `rc_result`, `duration_seconds` and unavailable masked endpoints nullable; permit direction `Unknown` until resolved. Keep started_at required from real observed call timing; never substitute analysis time. Extend `src/services/conversations/reads.ts`, existing list/detail types and Admin consumers for those nulls. Reconcile later provider values without rewriting prior snapshot evidence.
+
+The existing `summary` is `{text,model,prompt_version,created_at}`, not typed section fields. Add optional `sections` with existing public names `overview`, `customer_wanted`, `money_dates`, `outcome`, `promised`, `mismatch`; map envelope money_and_dates→money_dates, commitments→promised, discrepancies→mismatch. Preserve `summary.text` as a deterministic rendering of those sections. Reads prefer structured sections; the existing text parser is legacy fallback only. Analysis run output remains authoritative and versioned.
+
+Existing `attempts`, `claimed_by`, `claim_expires_at`, `next_attempt_at` are seed-era compatibility fields, not a second worker queue. New stage claims live only in `sales_intelligence_jobs`; conversation fields may project latest stage status but cannot elect another worker. Seeded complete conversations remain readable without a fabricated run; a later requested analysis creates a real run over their redacted transcript.
+
+Existing `uploadConversationMp3` reads a local seed artifact and overwrites `conversations/<recordingId>.mp3`. Automated processing gets a streaming, content-type-aware adapter with immutable account/recording/digest Blob keys. Do not overwrite bytes referenced by an earlier evidence version. Existing seed paths remain playable. Each run references its media digest; signed audio links resolve that version, and return a purge tombstone when unavailable.
 
 ## 7. `IntelligenceFinding` — `intelligence_findings`
 
-```ts
-export const INTELLIGENCE_FINDING_INDEXES = [
-  { name: "finding_conversation_version_unique", key: { lead_conversation_id: 1, extraction_version: 1, evidence_digest: 1, kind: 1, ordinal: 1 }, unique: true as const },
-  { name: "finding_conversation_review", key: { lead_conversation_id: 1, review_state: 1 } },
-  { name: "finding_number_kind", key: { contact_number_id: 1, kind: 1, review_state: 1 } },
-  { name: "finding_outreach_pending", key: { outreach_record_id: 1, review_state: 1 } },
-  { name: "finding_kind_due", key: { kind: 1, "resolved.due_at": 1 }, sparse: true },
-] as const;
+Canonical typed payload is [10 §3](10-intelligence-agent-contract.md#3-envelope). Strictly validate by kind; do not use unconstrained mixed payloads for application. Kinds include contact_type, intent, move_fact, objection, quoted_amount, promised_callback, customer_requested_callback, customer_will_call, next_step, completion_claim, reschedule, booking_claim, payment_claim, contact_restriction, competitor_mention, coaching_note. Number summaries belong to run output/Contact Number projection and are never independent effectful claims.
 
-const citationSchema = new Schema(
-  { sid: { type: Number, required: true }, text: { type: String, required: true } },   // text copied from the redacted segment at extraction time
-  { _id: false },
-);
+Required fields: `run_id`, unique `key` within run, immutable assertion version plus mutable review-projection `revision`, conversation/number/Outreach refs (nullable where inapplicable), `kind`, `claim`, `basis`, actor/speaker/action status, clarity, typed `value`, evidence refs, prompt/schema/model versions, createdAt. `resolved` contains code-resolved dates/amounts with original wording, uncertainty and assumptions. Index unique `(run_id,key)`, `(contact_number_id,kind,createdAt)`, `(outreach_record_id,review_state)`, and `(conversation_id,run_id)`.
 
-const IntelligenceFindingSchema = new Schema(
-  {
-    lead_conversation_id: { type: Schema.Types.ObjectId, ref: "LeadConversation", required: true },
-    call_interaction_id: { type: Schema.Types.ObjectId, ref: "CallInteraction", default: null },
-    contact_number_id: { type: Schema.Types.ObjectId, ref: "ContactNumber", default: null },
-    outreach_record_id: { type: Schema.Types.ObjectId, ref: "OutreachRecord", default: null },
-    extraction_version: { type: String, required: true, trim: true },   // prompt+schema version, e.g. "csi-extract-v1"
-    extraction_model: { type: String, required: true, trim: true },
-    evidence_digest: { type: String, required: true, trim: true },
-    ordinal: { type: Number, required: true },
-    kind: { type: String, required: true, enum: [
-      "contact_type",            // voicemail | human_conversation
-      "intent",                  // moving_inquiry | service_request | not_sales | unknown
-      "move_fact",               // stated move facts (from/to/date/size)
-      "objection",
-      "quoted_amount",
-      "promised_callback",       // rep promised to call
-      "customer_will_call",      // customer said they will call
-      "next_step",
-      "booking_claim",           // "booked" said on the call — never a Booking
-      "contact_restriction",     // do not call / wrong number / opt-out
-      "competitor_mention",
-      "number_summary",          // running cross-call summary (recomputed from evidence set)
-      "coaching_note",
-    ] },
-    claim: { type: String, required: true, trim: true },                 // one atomic sentence
-    actor: { type: String, default: null, enum: [null, "rep", "customer", "unknown"] },
-    action_status: { type: String, default: null, enum: [null, "requested", "promised", "completed", "conditional"] },
-    resolved: {                                                            // typed payload by kind; validated by Zod per kind
-      type: new Schema({
-        due_at: { type: Date, default: null },                             // promised_callback / customer_will_call, after date resolution
-        due_at_unresolved_text: { type: String, default: null },
-        amount_cents: { type: Number, default: null },
-        amount_meaning: { type: String, default: null },                   // "quote_total","deposit","competitor_quote"
-        value: { type: Schema.Types.Mixed, default: null },
-      }, { _id: false }),
-      default: null,
-    },
-    citations: { type: [citationSchema], default: [] },                   // ≥ 1 required except number_summary
-    model_confidence: { type: Number, default: null },                     // informational only; not calibration
-    validation: {
-      type: new Schema({
-        schema_ok: { type: Boolean, required: true },
-        citations_exist: { type: Boolean, required: true },
-        entailment_check: { type: String, required: true, enum: ["not_run", "pass", "fail", "unsure"] },
-      }, { _id: false }),
-      required: true,
-    },
-    review_state: { type: String, required: true, enum: ["pending", "accepted", "dismissed", "superseded"], default: "pending" },
-    reviewed_by: { type: String, default: null, trim: true },
-    reviewed_at: { type: Date, default: null },
-    review_note: { type: String, default: null, trim: true },
-    superseded_by: { type: Schema.Types.ObjectId, ref: "IntelligenceFinding", default: null },
-    applied_effect: { type: String, default: null, enum: [null, "followup_created", "waiting_set", "eligibility_set", "number_classified", "none"] },
-    applied_ref: { type: String, default: null },
-  },
-  { collection: "intelligence_findings", autoIndex: false, timestamps: true, minimize: false },
-);
-```
+Separate `review_state: unreviewed|confirmed|corrected|retracted` from `superseded_by` and application effects. Preserve immutable original assertion and append reviews/corrections; the current view is a projection. `validation: {schema_ok, source_snapshots_valid, locator_status:not_run|located|unlocated, entailment_check:not_run|pass|fail|unsure}`. In v1 exact location and entailment are not gates. A locator error does not dismiss a finding. Ordinary unreviewed assertions are not all Needs review items.
 
-Rules:
-
-- A finding with `validation.citations_exist = false` is persisted with `review_state: "dismissed"` and `review_note: "citation_missing"`; it is never shown as pending.
-- Accepting a finding is an Owner command (`POST .../findings/:id/accept`) that applies exactly one bounded effect from `applied_effect`, in a transaction with the Outreach Record revision check.
-- `number_summary` is recomputed from the evidence set (all `accepted` + `pending` findings on the number) and supersedes the previous summary. Never summarize summaries.
+Effects live in `intelligence_effects`, with zero or multiple rows per finding. Confirmation never reapplies them. Corrections are Owner commands that synchronously revise/retract targeted effects, then schedule analysis. Persist model assessments against exact Owner instruction id/revision; missing assessment renders Cannot determine. Newly generated findings never inherit old confirmation automatically.
 
 ## 8. `RepIdentityLink` — `rep_identity_links`
 
 ```ts
 export const REP_IDENTITY_LINK_INDEXES = [
-  { name: "ril_extension_current_unique", key: { rc_extension_id: 1 }, unique: true as const,
+  { name: "ril_extension_current_unique", key: { rc_account_id: 1, rc_extension_id: 1 }, unique: true as const,
     partialFilterExpression: { effective_to: null } },
   { name: "ril_agent_current", key: { agent_id: 1, effective_to: 1 } },
   { name: "ril_status", key: { status: 1 } },
@@ -549,6 +372,7 @@ export const REP_IDENTITY_LINK_INDEXES = [
 
 const RepIdentityLinkSchema = new Schema(
   {
+    revision: { type: Number, required: true, default: 1 },
     agent_id: { type: Schema.Types.ObjectId, ref: "Agent", required: true },
     agent_name_snapshot: { type: String, required: true, trim: true },
     rc_account_id: { type: String, required: true, trim: true },
@@ -625,7 +449,7 @@ const OwnerRepNudgeSchema = new Schema(
       }, { _id: false }),
       required: true,
     },
-    status: { type: String, required: true, enum: ["pending", "sent", "failed", "fallback_sent"], default: "pending" },
+    status: { type: String, required: true, enum: ["pending", "sent", "failed", "unknown_delivery", "fallback_sent"], default: "pending" },
     provider_message_id: { type: String, default: null, trim: true },
     provider_response_status: { type: Number, default: null },
     fallback_channel: { type: String, default: null, enum: [null, "pager"] },
@@ -638,11 +462,11 @@ const OwnerRepNudgeSchema = new Schema(
 
 ## 11. `SalesIntelligenceSyncState` — `sales_intelligence_sync_state`
 
-One row per stream, `key` unique. Streams: `call_log_all_directions`, `directory`, `media_fetch`, `transcription`, `extraction`, `attachment_suggest`, `outreach_derive`.
+One row per stream, `scope` unique (the actual `MongoLeaseStore` key). Streams: `call_log_all_directions`, `directory`, `media_fetch`, `transcription`, `extraction`, `attachment_suggest`, `outreach_derive`.
 
 ```ts
 {
-  key: String,                                   // unique
+  scope: String,                                 // unique; matches durableWork/leases.ts
   lease_owner: String | null, leased_until: Date | null, lease_epoch: Number,   // MongoLeaseStore-compatible (src/services/durableWork/leases.ts)
   cursor: { last_sync_from: Date | null, last_sync_to: Date | null, provider_modified_watermark: Date | null },
   known_complete_through: Date | null,           // Coverage Watermark for call_log_all_directions
@@ -652,7 +476,7 @@ One row per stream, `key` unique. Streams: `call_log_all_directions`, `directory
 }
 ```
 
-Unique index `{ key: 1 }` named `sales_intelligence_sync_state_key_unique`; runtime fails closed when absent (same posture as the Call Log sync state).
+Unique index `{ scope: 1 }` named `sales_intelligence_sync_state_scope_unique`; runtime fails closed when absent (same posture as the Call Log sync state).
 
 ## 12. `SalesIntelligenceSyncWindow` — `sales_intelligence_sync_windows`
 
@@ -660,7 +484,7 @@ Backfill manifests. `{ stream, window_from, window_to, status: planned|running|c
 
 ## 13. `SalesIntelligenceAiBudget` — `sales_intelligence_ai_budget`
 
-One doc per `YYYY-MM`. `{ month, ceiling_cents, reserved_cents, actual_cents, reservations: [{ job_ref, kind: stt|extract|classify|summary, estimated_cents, actual_cents|null, at }] (bounded; older folded into totals) }`. Reserve atomically with `$inc` guarded by `reserved_cents + estimate ≤ ceiling_cents`; reconcile actual after the provider response. Depleted budget → conversations enter `unavailable` with `budget_exhausted`.
+One totals doc per `YYYY-MM` budget period in the configured timezone: `{month, ceiling_cents, reserved_cents, actual_cents, policy_version}`. Initial ceiling is 8000 cents. Reserve atomically only when `actual_cents + reserved_cents + estimate <= ceiling_cents`. Track each reservation in `sales_intelligence_ai_reservations` with unique reservation id, job/run/step, stage, estimated/actual cost, status and timestamps. Reconciliation subtracts reserved estimate and adds actual once; release unused reservations on terminal failure. Never drop unresolved reservations into a bounded array. Depletion pauses the pending stage/job with `budget_exhausted`; operational capture and Owner commands continue. See 10 §8 for provider estimation limits and resume behavior.
 
 ## 14. Read-only joins (no schema change)
 
@@ -669,10 +493,45 @@ One doc per `YYYY-MM`. `{ month, ceiling_cents, reserved_cents, actual_cents, re
 | `FormLead` | `_id`, `timestamp`, `createdAt`, `name`, `phone_number`, `normalized_phone_number`, `ingested_contact_snapshot.normalized_phone_number`, `granot_contact_snapshot.*`, `receiver_agent`, `receiver_agent_name_snapshot`, `booked`, `cancelled`, `duplicate`, `bad_lead`, `no_sync`, `job_no`, source labels | Attachment suggestion, eligibility, display |
 | `CallLead` | same plus `ringcentral.telephony_session_id`, `session_id`, `call_log_id`, `original_caller.normalized_phone_number` | Exact attachment |
 | `BookedLead`, `CancelledLead` | ids, `booked_at`, `job_no`, allocations (names) | Closed reason + context |
-| `LeadMessage` | `lead_ref`, `to`, `status`, `sent_at`, `delivered_at`, `body` (masked in DTO) | Timeline entries, `last_meaningful_contact_at` |
+| `LeadMessage` | `lead_ref`, `to`, `status`, `sent_at`, `delivered_at`, `body` (masked in DTO) | Timeline/context only; automated delivery does not reset the human-contact clock |
 | `Agent` | `_id`, `name`, `active`, `name_aliases`, `granot_crm_username` | Rep Identity Link proposals and display |
 | `ExtensionUser` | `_id`, `email`, `roles` | Optional link |
 | `RingCentralInboundRoute` (+ assignments) | `phone_number`, `active`, effective dates | `inbound_route_id` on interactions; hygiene |
 | `ringcentral_webhook_events` | raw capture | Replay / repair |
 
-Change streams or `updatedAt` watermarks on `form_leads` / `call_leads` / `booked_leads` / `cancelled_leads` drive the attachment and eligibility refresh (see 03 §4). No hooks are added to Lead write paths.
+Consume durable EntityChange records for relevant Vantage changes, with updatedAt watermarks/meaningful-field digest scans as repair (03 §14). Lead writes do not depend on intelligence succeeding and no new independent Granot webhook is added.
+
+## 15. Run, evidence, application, and review collections
+
+All collections use explicit migrations, `autoIndex:false`, the configured database boundary, and no test-name suffix. ObjectIds below are server-issued; model evidence references must resolve within the run.
+
+| Collection | Fields and unique fence |
+| --- | --- |
+| `intelligence_runs` | subject/number/conversation ids, mode `initial\|original_evidence\|current_context\|number_refresh\|backfill`, parent run, triggering event ids, input fingerprint, prompt/schema/model versions, exact rendered prompt, owner correction refs, manifest digest, raw structured output, normalized envelope, usage/cost, timestamps, status `queued\|running\|submitted\|completed\|stale\|paused\|failed\|dead_letter`; completed means publication/application evaluation finished, with applied/blocked/review counts stored separately. Unique job identity; explicit Owner rerun gets its own command identity. Finalized evidence/output immutable. |
+| `intelligence_evidence_snapshots` | run id or reusable transcript version, source type/id/revision, tool name and redacted arguments, redacted response, retrieved_at, event time, content digest, completeness/coverage. Unique `(run_id,tool_call_id)` for tool reads; unique `(conversation_id,transcript_version)` partial index for transcript snapshots. |
+| `intelligence_submissions` | unique run_id, payload hash, envelope, received_at, application job id. Same payload replay returns same receipt; changed payload conflicts. |
+| `intelligence_effects` | run/finding ids, stable commitment ref, kind, target id/revisions, previous/new values, status/reason, applied_at, superseding/reversing effect refs. Unique `(run_id,finding_key,effect_kind,target_key)` prevents same-run duplicates; stable commitment uniqueness prevents cross-run duplicates. |
+| `sales_intelligence_owner_instructions` | subject/follow-up/finding scope, field, prior/current value, actor, timestamp, revision, active/retracted/satisfied state. Append revisions; preserve corrections and assignment overrides. |
+| `intelligence_owner_assessments` | run_id, instruction_id/revision, agrees/disagrees/cannot_determine, reason, finding refs. Unique `(run_id,instruction_id,instruction_revision)`. |
+| `sales_intelligence_review_items` | subject key, cause kind, cause key, open/resolved/dismissed, evidence refs, resolution actor/time/reason, revisions/history. Unique `(subject_key,cause_kind,cause_key)` for refresh/reopen of same cause. Missing date, identity, completion target, restriction, official mismatch, Owner conflict and closed-work request are typed causes. |
+| `sales_intelligence_contact_restrictions` | contact number, channels, until nullable, origin/actor/source run/finding, Owner resolution, state `active\|expired\|resolved`, revision. Indefinite AI pause is not permanent suppression. |
+| `sales_intelligence_audit_events` | append-only subject/event/command ids, actor, event time, recorded time, prior/new values or refs, correlation/run ids. Unique semantic event key prevents replay duplicates. Include invalidation kind/target/subject/revision; index `(recorded_at,_id)` for the single SSE stream and subject/event-time for history. Redact event projections; never stream raw transcript content. |
+| `sales_intelligence_jobs` | unique dedupe_key, stage, subject/input revision, pending/leased/retry/paused/completed/dead_letter, attempt counters, next_attempt_at, lease_owner/epoch/expiry, reason, result ref. Index status/next_attempt_at; ownership check on completion. |
+| `sales_intelligence_policy_versions` | immutable version, staffed hours/timezone, first/missed deadlines, cold threshold, monthly budget, enabled capabilities, actor/time. Active version selected by a singleton pointer changed with CAS. |
+
+Run scope must distinguish per-conversation analysis and number-level refresh; do not require a fake conversation id for an official Booking-triggered refresh. Persist output links on Number Activity without creating a parallel LeadConversation store.
+
+`SalesIntelligenceAiBudget` monthly default is 8000 cents. Reserve/reconcile all agent steps and STT. Use a durable per-job reservation ledger with unique reservation id; do not lose unresolved reservations by truncating an array. Store aggregate actual/reserved totals and timezone-period boundaries. Admission pauses do not discard jobs.
+
+## 16. Ownership and history constraints
+
+All effectful writes enforce Outreach/follow-up/instruction revisions in one transaction, with their audit rows and pending downstream jobs. Provider calls occur after commit. Lease epochs fence expired workers. Reanalysis may supersede current display, never destroy old Owner confirmation/correction. Retention propagates into evidence snapshots, prompts containing source content, tool responses, and derived outputs; retain non-content tombstones and expose original-evidence rerun unavailable when purged.
+
+## 17. Additional integration fences
+
+- `sales_intelligence_command_executions`: unique `(actor_scope,idempotency_key)`, command/payload hash, stored response, request id, trusted actor, target revisions and timestamps. Atomic with mutations/audit/next jobs. This module owns CSI command evidence and does not write an unsupported CSI entity into existing `EntityChange` enums.
+- `sales_intelligence_attention_snapshots`: opaque snapshot id, Owner/filter/policy/dataset binding, as_of, ordered materialized row DTOs or chunk refs, counts, expires_at (5-minute TTL). Pages use this fixed result; commands always recheck live revisions. Expired cursor returns ATTENTION_SNAPSHOT_EXPIRED and client refreshes. This makes the paging guarantee explicit without pretending current mutable queries are historical snapshots.
+- `call_interaction_aliases`: unique account-scoped provider aliases described in §2. Additional indexes point aliases to canonical interaction ids; merged aliases must not produce duplicate operational effects.
+- Full model inventory/index migration includes these collections and the reservations collection in §13, not only the table at the start of the file. ContactNumber and RepIdentityLink need `revision` as well as timestamps for their Owner commands.
+- Physical database follows deployment `TEST_MODE` and configured isolation. CSI has logical production/current-records scope only, not Admin historical/combined. All jobs, credentials, submissions, evidence and commands remain bound to the same deployment/database; never accept a model-supplied database.
+- Array histories in ContactNumber/attachment/rep records are bounded display caches. Append-only audit rows retain full history under the policy; no required provenance is discarded to keep a document under Mongo limits.

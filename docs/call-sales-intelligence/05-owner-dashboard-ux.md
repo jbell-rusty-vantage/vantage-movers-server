@@ -1,319 +1,121 @@
-# 05 — Owner dashboard: `/sales-intelligence` UX and Admin implementation plan
+# 05 — Owner dashboard behavior and presentation
 
-Status: implementation-ready. Pack index: [`README.md`](README.md). Routes: [`04-server-routes.md`](04-server-routes.md).
+Status: build contract, not implemented. Revised September 17, 2026. [Product](01-specification.md) · [Routes](04-server-routes.md). [07](07-claude-design-brief.md) defines intake of the forthcoming Claude components/styling artifact, which does not exist yet; this specification defines features and behavior. The supplied here.now editor was not successfully inspected during the interview.
 
-## 0. Placement and identity
+## 1. Placement and views
 
-- **Route:** `/sales-intelligence`, Owner-only. Page title "Sales Intelligence".
-- **Sidebar:** Today group, after Lead Conversations: `{ label: "Sales Intelligence", href: "/sales-intelligence", icon: Crosshair, ownerOnly: true }` in `components/layout/dashboard-nav.tsx`. Admin does not see it.
-- **Views** via `?view=attention|numbers|reps|coverage` (default `attention`). **Panels** via `?record=<outreachRecordId>` (Attention detail) or `?number=<contactNumberId>` (Number detail). `?q=` is the search. `view`/`q`/filters are filter keys; `record`/`number` are panel keys, so `writeFilters` never wipes an open panel (same pattern as `GRANOT_WEBHOOK_RECEIPT_PANEL_KEY`).
-- **Deep links in:** Form Lead / Call Lead detail panels get an "Open in Sales Intelligence" chip (`/sales-intelligence?view=attention&record=` resolved via `by-lead`). Overview may show one tile "Needs a call: N" linking to `?view=attention&band=2`. Daily Operations may show a count only; it does not become this page.
-- **Deep links out:** Lead chips open `/form-leads?record=` / `/call-leads?record=`; Job Numbers open `/job-timeline?job=`; conversations open the existing `ConversationPanel` inside the drawer (audio play-only).
-- **Not this page:** Daily Operations, Live Events, Lead Conversations tab, Analytics. It is a workspace over history and live activity, not a category board.
+Owner-only `/sales-intelligence` in `vantage-admin`, within the existing dashboard shell. Preserve four views: Attention, Numbers/Search, Reps, Coverage. No Sales Opportunity object or rep portal. Server DTOs supply ranks, reasons, eligibility, certainty and legal actions; do not copy business rules into client hooks.
 
-## 1. Owner language (copy lives in `components/sales-intelligence/sales-intelligence-copy.ts`)
+Keep URL-addressable number/Outreach panels, current filters and scroll on close. Search by phone/name/Job Number/Agent. Every row/detail shows source/Lead connections and known coverage; unknown is never a zero. Official Lead/Booking actions open their existing Vantage workflows with context.
 
-The reader owns a moving company. Say what happened, then what to do. Never print a `snake_case` code, a provider status, or a model name. Every non-working state says whether anything is being lost.
+## 2. Attention
 
-Fixed vocabulary:
+Seven ordered categories: Promised callbacks overdue; No call yet after form submission; Missed calls with no callback; Follow-ups due; Being worked, but no next step; Open work nobody owns; Going cold. **Needs review** is a visible group/filter alongside them. Default view renders each subject once under its highest-priority reason, with secondary reasons and Needs review badges on that row. Review-only closed/blocked subjects remain visible without a Call now action.
 
-| Server value | Owner word |
+Row anatomy: number/name → Lead/Booking chips with certainty → reason and age/deadline → last exact call outcome → overall owner and action owner where different → secondary reasons/review blockers → available actions. Show latest outcome and meaningful-contact age separately. No answer today must not imply the customer was reached today.
+
+Examples:
+
+- Promised callback overdue · Promised by Jordan · Callback assigned to Jordan · Outreach owned by Alex.
+- Customer requested callback · Friday, 10 a.m. Eastern · Unassigned.
+- Customer called—spoke with Alex · No next step.
+- Customer called—missed · Callback needed · Due in 8 staffed minutes.
+- Send estimate · Due date needed · AI extracted from Thursday's call.
+- Calling paused · Customer said “Don't call again” · Owner review needed.
+- Closed by you · New callback request received · Review before reopening.
+
+First-call and missed-call categories appear immediately, not only after overdue. After-hours deadlines show the next opening. Going cold uses human contact only; future agreed actions/customer waits suppress that reason until due. Cooldown is explanatory; it never makes explicit overdue promises disappear. One row may contain several independently due actions; opening it exposes all.
+
+## 3. Outreach detail
+
+Show summary, overall responsible Agent, all active follow-ups, Needs review, connected Leads/Bookings/Cancellations, recent activity, analysis and notes. Completed/cancelled/superseded actions have a history section. Never replace multiple actions with a single date field.
+
+Owner actions:
+
+| Action | Interaction |
 | --- | --- |
-| `unworked` | **Nobody has called yet** |
-| `open` | **Being worked** |
-| `waiting_on_customer` | **Waiting on the customer** |
-| `identity_review` | **Which lead is this?** |
-| `closed:booked` / `cancelled` / `duplicate` / `bad_lead` / `not_sales` / `suppressed` / `lost` / `no_sync` / `owner_dismissed` | Booked · Cancelled · Duplicate · Bad lead · Not a sale · Do not call · Lost · No-sync · Dismissed |
-| derived `overdue` | **Overdue** chip (red) |
-| derived `no_owner` | **No one owns this** chip |
-| derived `no_next_action` | **No next step** chip |
-| derived `cooldown` | **Tried 3× today** chip (muted) |
-| certainty `exact` / `likely` / `unsure` / `owner_confirmed` | Exact · Likely · Unsure · Confirmed by you |
-| contact type `voicemail` / `human_conversation` / `unknown` | Left voicemail · Spoke · Connected (unknown) |
-| classification `unknown` / `customer` / `company` / `non_customer` | Not decided · Customer · Our number · Not a customer |
-| eligibility `suppressed` / `temporarily_blocked` | Do not call · Paused until {date} |
-| conversation `unavailable` | Audio not available yet |
-| finding pending | **AI suggestion — not verified** |
-| finding accepted | Confirmed by you |
-| reason `first_action_overdue` | "No call yet, {age} after the form came in" |
-| reason `promised_callback_overdue` | "We promised to call back by {time}" |
-| reason `missed_inbound_no_callback` | "They called, we missed it, no callback seen" |
-| reason `followup_due` | "Follow-up was due {time}" |
-| reason `stale_contact` | "Last real conversation {age} ago" |
-| coverage missing | "No observed outbound in this phone system" (never "nobody called") |
+| Set callback date / Add next step | Create or edit a specific action; date may be absent and visibly needs clarification. Show action kind, description, responsible Agent and origin. |
+| Assign | Clearly choose overall Outreach or one follow-up. Show current value/source. Never alter Received by or Booking allocations. |
+| Mark as worked | Optional note; can finish without next step. Result may show No next step. |
+| Complete action | Record actual outcome, optional evidence and optional next step. No forced fabricated contact. |
+| Close | Reason and consequence: active follow-ups will be cancelled with history. Official Booked/Cancelled are not manually selectable shortcuts. |
+| Reopen | Rechecks official eligibility; cancelled actions remain history until explicitly recreated. |
+| Add note | Attributed context only; no hidden date/assignment/status changes. |
+| Message rep | Explicit preview/edit/send to reviewed rep identity; no automatic send on assign/mark worked/analysis. |
+| Review attachment | Confirm/reject/detach with evidence; preserve ambiguous context until resolved. |
+| Open official workflow | Navigate to existing Lead/Booking detail/reconciliation with context. |
 
-Age format: "3 h 20 m ago (2 h 10 m staffed)". Money: `$2,114`. Dates: America/New_York.
+Owner-set fields show who, when, prior value, and source. If another rep made the promise, keep Promised by separate from Assigned to. Unknown rep identity is stated rather than inferred from names. Existing Owner-controlled actions do not jump when new AI output arrives.
 
-## 2. Page shell
+## 4. Analysis and evidence
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│ Sales Intelligence                                        ◉ Live · updated 14:32:07          │
-│ ┌──────────────────────────────────────────────────────────────────────────────────────────┐ │
-│ │ 🔎  Search a phone number, name, or job number                                      [x]  │ │
-│ └──────────────────────────────────────────────────────────────────────────────────────────┘ │
-│ [ Needs attention 41 ]  [ Numbers ]  [ Reps ]  [ Coverage ]                                  │
-│                                                                                               │
-│ ⓘ History is complete through today 2:17 PM. Recordings for other reps are not shared with   │
-│   this system yet (RingCentral permission). Nothing is being lost; audio review is limited.   │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
-```
+Show sectioned summary (overview, customer wanted, money/dates, outcome, commitments, discrepancies), typed assertions, model next-step suggestion, effect outcomes, and analysis version. Badges distinguish Said on call, Confirmed by Vantage records, Model inference; AI-applied, Owner-set, Confirmed by you, Corrected by you.
 
-- Search is global: digits → number search (any suffix ≥ 4 digits); text → names and Job Numbers. Enter opens `?view=numbers&q=`; if exactly one number matches, open `?number=` directly.
-- The ⓘ banner is rendered from `coverage` on every response. Green when `known_through` ≤ 20 min old and no gaps; amber when a gap exists or a capability is `denied`; red only when `known_through` > 2 h old ("Call history is behind; the sync is catching up").
-- ◉ Live dot mirrors Daily Operations (`live-dot.tsx`): one `EventSource` to `/api/sales-intelligence-live`; snapshot resync every 5 min while visible, after hidden ≥ 240 s, and on reconnect.
+Assertions display supporting conversation/record, original wording where available, actor, action status, date interpretation and applied effect. Exact transcript locator validation is deferred: label AI-provided reference / Location not checked rather than Verified quote. Missing or inaccurate segment positions do not hide the analysis. Always let the Owner open the relevant transcript version even if a precise jump is unavailable.
 
-## 3. View: Needs attention (default)
+Actions: Confirm analysis, Confirm assertion, Correct, Retract, Re-analyze original evidence, Re-analyze current context. Confirming an already applied promise does not create it again. Correcting its date changes the action immediately and displays Analysis refresh pending; AI failure cannot roll back the Owner's correction. Retraction cancels the corresponding active commitment while preserving history and any independent later Owner changes.
 
-```
-┌ Filters (left rail, collapsible) ────────┐ ┌ Needs attention — 41 ────────────────────────────────────┐
-│ Show                                     │ │ 1  Promised callbacks overdue                          2  │
-│  ( ) Everything actionable   41          │ │ ┌────────────────────────────────────────────────────────┐ │
-│  ( ) Nobody has called yet   25          │ │ │ (757) 318-0143   Patricia T. · Top10 Forms   Likely     │ │
-│  ( ) Being worked            14          │ │ │ We promised to call back by 1:00 PM · 1 h 32 m overdue │ │
-│  ( ) Waiting on customer      2          │ │ │ Last: Spoke 12 min · Tue 4:10 PM · Joshua              │ │
-│                                          │ │ │ [Overdue] [No one owns this]    (Message rep) (Open →) │ │
-│ Only                                     │ │ └────────────────────────────────────────────────────────┘ │
-│  [ ] Overdue                             │ │ …                                                          │
-│  [ ] No one owns this                    │ │                                                            │
-│  [ ] No next step                        │ │ 2  No call yet after a form                            16  │
-│                                          │ │ ┌────────────────────────────────────────────────────────┐ │
-│ Source                                   │ │ │ (312) 513-7838   Somu D. · Top10 Forms        Likely    │ │
-│  [ Top10 Forms  ▾ ]                      │ │ │ No call yet, 4 h 57 m after the form came in (3 h 40 m │ │
-│                                          │ │ │ staffed)                                               │ │
-│ Rep                                      │ │ │ Form: Evanston IL → Lake Charles LA · Sep 30           │ │
-│  [ Any rep ▾ ]                           │ │ │ [Overdue] [No one owns this]    (Message rep) (Open →) │ │
-│                                          │ │ └────────────────────────────────────────────────────────┘ │
-│ Kind                                     │ │ …                                                          │
-│  [x] Leads  [x] Numbers without a lead   │ │ 3  Missed calls with no callback                        9  │
-│                                          │ │ 4  Follow-ups due                                       6  │
-│ (Reset)                                  │ │ 5  No next step                                         3  │
-│                                          │ │ 6  No one owns this                                     4  │
-│ ── Which lead is this? (7) ──            │ │ 7  Going cold                                           1  │
-│  (757) 555-0199 · 2 leads  (Decide →)    │ │                                                  (Load more) │
-│  …                                       │ └────────────────────────────────────────────────────────────┘
-└──────────────────────────────────────────┘
-```
+Alongside each Owner instruction show latest model assessment **Agrees**, **Disagrees**, or **Cannot determine**, with rationale and evidence. A new run cannot silently inherit old confirmation. Display old assessment as stale if it references an older instruction revision. Model silence is Cannot determine. Disagreement opens Needs review but never replaces the instruction.
 
-Row anatomy (`attention-row.tsx`): number (display) · lead chip (name initial-style, source, certainty word) · reason sentence (from `derived.reasons[0]`) · last interaction line ("Left voicemail 0:41 · today 11:02 · Roy") · status chips · **Message rep** (disabled with tooltip from `nudge_blockers`, e.g. "Map this rep first in Reps") · **Open →** (sets `?record=`).
+Model-generated strategy appears in a separate Suggested next step card with **Apply**. It is not a promise, not a scheduled follow-up, and not shown as overdue. Applying it is an explicit Owner command, with chosen date/Agent displayed.
 
-Band headers are sticky within the list; counts come from `overview.counts.by_band`. Rows animate in/out on live events like Daily Operations cards. New rows arriving via SSE get a 2-second highlight.
+## 5. Needs review resolution
 
-"Which lead is this?" is a separate rail beneath the filters; it never mixes into bands.
-
-Empty states: "Nothing needs attention right now. History is complete through 2:17 PM." / with a gap: "Nothing needs attention in what we can see. Call history between 9:40 and 10:10 AM is still missing; it will be filled in automatically."
-
-## 4. Panel: Outreach record (`?record=`)
-
-Right-side `SidePanel` (the shared `components/operational` panel), tabs: **Now** · **Timeline** · **Conversations** · **Leads** · **Messages**.
-
-```
-┌ (757) 318-0143 · Patricia T. ─────────────────────────────────────────────── [x] ┐
-│ Nobody has called yet · Overdue · No one owns this                                │
-│ Form came in Sun 9:05 AM · Top10 Forms · Evanston IL → Lake Charles LA · Sep 30   │
-│ Lead: Likely  [Open form lead →]   Received by: —                                  │
-│                                                                                    │
-│ ┌ What to do ───────────────────────────────────────────────────────────────────┐ │
-│ │ [ Message rep ]   [ Set next step ]   [ Mark as worked ]   [ Assign to… ▾ ]     │ │
-│ │ [ Waiting on customer ]   [ Close… ▾ ]   [ Add note ]                           │ │
-│ └────────────────────────────────────────────────────────────────────────────────┘ │
-│                                                                                    │
-│ ┌ AI suggestions — not verified (2) ────────────────────────────────────────────┐ │
-│ │ ● Rep promised to call back "tomorrow after 3"  → Wed 3:00 PM                  │ │
-│ │   "I'll give you a ring tomorrow after three." (sentence 41)                   │ │
-│ │   [ Confirm → creates a follow-up ]  [ Not right ]                             │ │
-│ │ ● Customer quoted $2,364 total, $1,064 deposit                                 │ │
-│ │   [ Confirm ]  [ Not right ]                                                   │ │
-│ └────────────────────────────────────────────────────────────────────────────────┘ │
-│                                                                                    │
-│ Next step: —  (No next step)                                                       │
-│ Last real conversation: never                                                      │
-│ Calls: 0 out · 1 in (missed)  Texts: 1 confirmation delivered Sun 9:06 AM          │
-└────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-Rules: buttons render only when the server says the transition is legal (the panel computes legality from `state` using the same table as 01 §5.3; the server re-validates). All commands send `expected_revision`; on 409 the panel shows "This record changed — refreshed" and keeps unsent form values (same posture as intake forms).
-
-### 4.1 Dialog: Message rep
-
-```
-┌ Message a rep about (757) 318-0143 ─────────────────────────────────────────┐
-│ Rep      [ Joshua (ext 104) ▾ ]      only mapped sales reps appear           │
-│ Send by  (•) RingCentral team chat   ( ) Text their RingCentral number       │
-│          ( ) RingCentral pager                                                │
-│                                                                              │
-│ Message                                                                      │
-│ ┌──────────────────────────────────────────────────────────────────────────┐ │
-│ │ Joshua — this Form Lead has had no call for 4 h 57 m.                    │ │
-│ │ Patricia T. · Evanston IL → Lake Charles LA · Sep 30                     │ │
-│ │ Number ending 0143 · last contact never · Top10 Forms                    │ │
-│ │ Open in Vantage: https://admin…/sales-intelligence?record=66e5…          │ │
-│ │ — sent by John via Vantage                                               │ │
-│ └──────────────────────────────────────────────────────────────────────────┘ │
-│ Goes to: Direct chat with Joshua (RingCentral)   · 5 of 6 left this hour     │
-│ This never messages the customer.                                            │
-│                                     ( Cancel )   [ Send to Joshua ]          │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
-
-Flow: open → `POST /nudges/preview` → render; edit → re-preview on blur (debounced); Send → `POST /nudges` with the same `Idempotency-Key`; success toast "Sent to Joshua by team chat"; fallback → "Team chat was not available; sent by pager instead"; failure → inline error "RingCentral did not accept the message. Nothing was sent to the customer." Blockers show inline with the fix ("Joshua is not mapped yet → Reps"). Owner-only; Admin never sees the button.
-
-### 4.2 Dialog: Set next step
-
-Kind (Call · Text the customer · Review · Wait · Sort out which lead) · Due (date/time picker, default next staffed hour) · Rep (optional) · Note. "Wait" switches to the Waiting dialog (until + reason).
-
-### 4.3 Dialog: Close
-
-Reason (Lost · Not a sale · Do not call this number · Dismiss) · note. "Do not call" also sets number eligibility (explains: "Removes this number from every list until you allow it again"). Booked/Cancelled/Duplicate/Bad lead are never offered here ("Those come from the Booking, Cancellation, or Lead record").
-
-### 4.4 Dialog: Which lead is this?
-
-```
-┌ Which lead is (757) 555-0199? ─────────────────────────────────────────────┐
-│ Two leads share this number. Calls stay on the number until you decide.     │
-│ (•) Form Lead · Maria G. · Top10 Forms · Sep 12 · Tampa → Austin            │
-│ ( ) Call Lead · P5562888 · Best Relocation · Aug 2 · Booked                 │
-│ ( ) Neither / a different person                                            │
-│ Why: [ optional note ]                                                      │
-│                                     ( Cancel )   [ Confirm ]                │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-Confirm → `attach` for the chosen and `reject` for the others in sequence (each idempotent). "Neither" → reject all.
-
-## 5. View: Numbers (search)
-
-```
-┌ Numbers ──────────────────────────────────────────────────────────────────────────────────┐
-│ 🔎 0143            [ Customer ▾ ] [ Has lead ▾ ] [ Last 30 days ▾ ] [ Include our numbers ] │
-│                                                                                            │
-│ (757) 318-0143   Customer · Allowed        Patricia T. (Likely)      Last: today 11:02 out  │
-│                  4 calls · 1 out · 3 in · 1 spoke                     Nobody has called yet │
-│ (813) 400-0143   Not decided               No lead on file           Last: Fri 3:20 PM in  │
-│                  2 calls · 0 out · 2 in (missed)                       Missed, no callback  │
-│ …                                                                            (Load more)   │
-└────────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-Row click → `?number=`. Numbers "without a lead" show a quiet "No lead on file" chip and an "Open a review" action inside the panel (not in the row).
-
-## 6. Panel: Number (`?number=`)
-
-Tabs: **Timeline** (default) · **Leads** · **Conversations** · **Outreach** · **About this number**.
-
-```
-┌ (757) 318-0143 ───────────────────────────────────────────────────────────── [x] ┐
-│ Customer · Allowed · seen since Sep 4 · 4 calls · last real conversation Tue      │
-│ Leads: Patricia T. (Likely) [Open →]                                              │
-│ AI summary (from 2 calls, Sep 9–11): Quoted $2,364 with $1,064 deposit; customer   │
-│ finalizing the Louisiana address; rep to call back after 3 PM Wednesday.          │
-│ ─ AI suggestion — not verified ─                                                   │
-│                                                                                    │
-│ Timeline                                                       [ Calls ▾ ] [ All ] │
-│ ● Today 11:02   Out · Left voicemail · 0:41 · Roy (ext 112)          [ ▶ 0:41 ]  │
-│ ● Tue 4:10 PM   Out · Spoke · 12:04 · Joshua (ext 104)    ▸ 2 AI suggestions       │
-│                 [ ▶ play ]  [ Read transcript ]                                    │
-│ ● Sun 9:06 AM   Text · Confirmation delivered (Top10 Forms)                        │
-│ ● Sun 9:05 AM   Form Lead came in · Top10 Forms · Patricia T.                       │
-│ ● Sun 9:05 AM   Nobody has called yet — clock started                              │
-│ ● Sep 4 2:15 PM In · Missed · rang the sales queue (3 phones) · no callback seen    │
-│                                                                    (Load earlier)  │
-└────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-Timeline rules: one entry per Call Interaction, never per leg. Queue fan-out reads "rang the sales queue (3 phones)". Transfers read "transferred to Tyler". Internal-only sessions are hidden unless "Show internal" is on. Audio uses the existing `ConversationPanel` behavior: play-only, one-shot signed URL, never prefetched.
-
-**About this number** tab: classification radio (Not decided · Customer · Our number · Not a customer) + eligibility (Allowed · Paused until… · Do not call) + reason, plus "Rebuild counts" (maintenance).
-
-## 7. View: Reps
-
-```
-┌ Reps ─────────────────────────────────────────────────────────────────────────────────┐
-│ Map each RingCentral phone user to an Agent so calls can be credited and reps can be   │
-│ messaged. Nothing here changes commissions or bookings.                                │
-│                                                                                        │
-│ Mapped (6)                                                                             │
-│ Joshua        ext 104 · (813) 555-0104 · team chat ✓ · SMS ✓     Reviewed   Sales rep  │
-│   Last 30 days: 412 calls out · 188 numbers · 121 connected · 54 spoke · 3 nudges      │
-│   [ Change… ]                                                                          │
-│ …                                                                                      │
-│ Suggested (4)                                                                          │
-│ "Roys" ext 112 → Roy?        exact name match      [ Confirm ] [ Not this person ]     │
-│ "Tyler" ext 118 → two Agents named Tyler           [ Choose… ]                          │
-│ Not mapped (14 RingCentral users) · 3 active Agents without a phone user               │
-│ [ Re-check suggestions ]                                                               │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-Rules: activity numbers appear only on reviewed links. "Connected" and "Spoke" are separate columns with a tooltip ("Connected means the phone system connected; Spoke means a person was heard on a recording we could review"). Never a ranking table. Role kind selector (Sales rep · Service · Manager · Dialer · Shared line · Exclude).
-
-## 8. View: Coverage
-
-```
-┌ Coverage ─────────────────────────────────────────────────────────────────────────────┐
-│ Call history       Complete through today 2:17 PM · last check 2:30 PM · no gaps       │
-│ Recordings         Limited — RingCentral has not granted company-wide recording access  │
-│                    to this connection. 61 of 94 recordings this week were readable.     │
-│ Team chat          Ready (connection can post to direct chats)                          │
-│ Rep texting        Ready (one sending number)                                           │
-│ Pager              Not tested                                                           │
-│ Call insights (RingSense)  Not available on this plan                                   │
-│ AI review budget   $12.40 of $50.00 this month · 38 calls reviewed · not paused         │
-│                                                                                        │
-│ Hygiene                                                                                 │
-│ 61 company numbers · 5 mapped as inbound sources · 11 unmapped numbers received calls   │
-│ in the last 30 days (Operations Registry →)                                             │
-│ 24 phone users · 6 mapped reps · 4 suggestions waiting (Reps →)                         │
-│                                                                                        │
-│ Queues            Audio waiting 3 · transcribing 1 · reviewing 0 · not available 7 ·   │
-│                   failed 0                                                              │
-│ [ Load older history… ]   (plans a 60-day backfill; runs in the background)             │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-Every line states impact in Owner terms. "Unknown" is a valid word; "0" is never shown for a denied capability.
-
-## 9. Live behavior
-
-- `sales-intelligence-shell.tsx` owns the single `EventSource`. Events update React Query caches in place: `interaction` → prepend to the open number timeline and bump the number row; `outreach` → replace the row in the Attention list (re-sort within band; new band → move with motion); `finding` → increment pending count and add to the open panel; `nudge` → append to the timeline; `coverage` → banner.
-- Rows tween counts; entering rows highlight; exiting rows fade (reuse `use-exiting-list.ts` / `animated-number.tsx` patterns from `components/daily`).
-- Snapshot resync (overview + current list) every 5 min, after hidden ≥ 240 s, and on reconnect; the client never derives Overdue itself beyond ticking the displayed age (`use-now.ts`).
-
-## 10. Admin implementation map (`vantage-admin`)
-
-| File | Owns |
+| Cause | Owner action |
 | --- | --- |
-| `app/(dashboard)/sales-intelligence/page.tsx` | Owner gate + `<SalesIntelligenceShell />` |
-| `app/api/sales-intelligence-live/route.ts` | SSE BFF (copy of `daily-operations-live`) |
-| `components/sales-intelligence/sales-intelligence-shell.tsx` | header, search, view tabs, coverage banner, one EventSource, panel routing (`?record=` / `?number=`) |
-| `components/sales-intelligence/sales-intelligence-copy.ts` | every Owner string, reason-code → sentence map, state/chip labels |
-| `components/sales-intelligence/sales-intelligence-tabs.ts` | view ids, hrefs, filter keys vs panel keys |
-| `components/sales-intelligence/attention/attention-view.tsx`, `attention-filters.tsx`, `attention-band.tsx`, `attention-row.tsx`, `identity-review-rail.tsx` | Needs attention |
-| `components/sales-intelligence/numbers/numbers-view.tsx`, `number-row.tsx` | Numbers search |
-| `components/sales-intelligence/panels/outreach-panel.tsx` (+ `outreach-actions.tsx`, `findings-section.tsx`), `number-panel.tsx` (+ `number-timeline.tsx`, `timeline-entry.tsx`, `number-about.tsx`) | Side panels |
-| `components/sales-intelligence/dialogs/message-rep-dialog.tsx`, `next-step-dialog.tsx`, `close-dialog.tsx`, `which-lead-dialog.tsx`, `classify-number-dialog.tsx` | Commands |
-| `components/sales-intelligence/reps/reps-view.tsx`, `rep-link-row.tsx`, `rep-link-dialog.tsx` | Reps |
-| `components/sales-intelligence/coverage/coverage-view.tsx` | Coverage |
-| `lib/api/salesIntelligence.ts` | typed client for every route in 04 (`fetchOverview`, `fetchAttention`, `searchNumbers`, `fetchNumber`, `fetchNumberTimeline`, `fetchOutreach`, `fetchOutreachByLead`, `sendOutreachCommand`, `createFollowup`, `completeFollowup`, `snoozeFollowup`, `acceptFinding`, `dismissFinding`, `fetchReps`, `proposeReps`, `reviewRep`, `createRep`, `previewNudge`, `sendNudge`, `fetchNudges`, `fetchCoverage`, `planBackfill`, `processConversation`, `classifyNumber`, `openNumberReview`); idempotency key helper; DTO types copied from 04 §2 (Admin types are never the semantic authority) |
-| `lib/api/salesIntelligenceLive.ts` | EventSource wrapper + typed event parsing |
-| `lib/api/salesIntelligenceBoard.ts` | pure helpers: band grouping, in-place cache merge on live events, age formatting, legal-transition table for button visibility |
-| `lib/query/keys.ts` | `queryKeys.salesIntelligence = { all, overview(), attention(filters), numbers(filters), number(id), timeline(id, cursor), outreach(id), outreachByLead(model,id), reps(), rep(id), nudges(recordId), coverage(), findings(conversationId) }` |
-| `lib/query/salesIntelligence.ts` | `invalidateSalesIntelligenceCommandViews(queryClient, { recordId?, numberId? })` after every command (also after 409 refetch); `queryKeys.conversations` invalidated when a finding is accepted |
-| `server/auth/authorization.ts` | Owner-only page prefix + proxy deny for non-owner |
-| `components/layout/dashboard-nav.tsx` | nav item |
-| `components/operational/operational-detail-panel.tsx` | "Open in Sales Intelligence" chip on Form/Call Lead detail (reads `fetchOutreachByLead`; hidden when 404) |
+| Identity unclear | Compare candidate Leads; attach/reject in this panel. |
+| Due date needed / unclear commitment | Inspect wording, set date or correct/retract assertion. |
+| Rep identity or action responsibility missing | Review RingCentral link or explicitly assign. |
+| Possible missing Booking/payment discrepancy | Open existing official workflow, then reconcile updated context. |
+| Suggested closure | Close with reason or dismiss suggestion. |
+| Contact restriction | Confirm/edit/lift scoped restriction; dialing stays blocked until permitted. |
+| Model disagrees with Owner | Keep Owner instruction, correct evidence, or explicitly change instruction. |
+| New request on closed work | Inspect and reopen only if eligible, or resolve without reopening. |
 
-Tests: `lib/api/salesIntelligence.test.ts` (URL building, idempotency reuse), `salesIntelligenceBoard.test.ts` (band grouping, merge-on-event, legal transitions), `server/auth/authorization.test.ts` additions (page + proxy), component tests for row copy mapping (every reason code has a sentence; every state has a label — a test iterates the closed sets).
+Resolution includes actor/time/reason and affected commands. Dismissing a card alone does not resolve identity ambiguity or lift a restriction. Ordinary AI-unconfirmed assertions do not all appear here. Review counts count unresolved decisions separately from distinct subjects.
 
-## 11. States and edge copy
+## 6. Number Activity and connected records
 
-| Situation | Copy |
-| --- | --- |
-| Feature off on server | Page shows "Sales Intelligence is not turned on yet." with no fetch loop |
-| Loading | skeleton rows, no spinner text |
-| SSE disconnected | live dot grey; "Reconnecting…"; lists still usable |
-| Coverage `recording_content: denied` | banner + Coverage line; conversation entries show "Audio not shared with this system" instead of a play button |
-| AI paused | findings section: "AI review is paused this month (budget). Calls are still recorded and listed." |
-| Nudge rate-limited | button disabled: "Joshua already got 6 messages this hour" |
-| Lead deleted/no-sync after record exists | row shows Closed · No-sync; timeline keeps history |
-| Number is `company` | never in Attention; Numbers shows "Our number" chip; panel has no outreach actions |
+Number panel preserves every eligible observed call regardless of Lead existence, audio or analysis availability. Timeline merges calls, Lead Messages, transcript/analysis versions, follow-ups, notes, assignments, restrictions, reviews, Owner messages and official context. Show event time and indicate late arrival/backfill. Transfer/queue legs stay within their canonical interaction.
+
+Display all attachment edges and relevant Outreach records, not an arbitrary newest Lead. Each has Exact/Likely/Unsure/Confirmed by you. Booking/payment assertions are visually separate from official records. An unlinked number is not a Lead. A Number Review allows work without manufacturing one.
+
+Voicemail labels distinguish Customer left voicemail / Rep left voicemail / Voicemail—speaker unknown. Provider-connected without evidence reads Connected—contact unknown. Full voicemail analysis is available. Calls after closure continue in the timeline and analysis without reopening work.
+
+## 7. Reps and messaging
+
+Backfill directory↔Agent link proposals with evidence and effective dates. Only reviewed links establish rep metrics or messaging destinations; display unmapped/uncertain history explicitly. An Agent can have multiple extensions; one current extension cannot map to multiple Agents. Shared/dialer/service identities do not become Sales Reps by a name match.
+
+Message rep dialog shows intended rep, reviewed channel and editable masked context. Preview then explicit Send; preserve idempotency across retries. Team Messaging primary, optional configured rep-DID SMS/pager. Sent/failed/unknown delivery are different outcomes. Do not show “sent” when only queued, and do not auto-resend ambiguous delivery. No message ever goes to a customer from this workflow.
+
+## 8. Coverage and settings
+
+Show all-direction history watermark/gaps, recording access, pending discovery/media/STT/analysis/application, oldest queued age, failures/retry, mapping hygiene, active features, model availability and budget. Missing recording or denied grant does not block work based on calls and Vantage events.
+
+Owner-editable defaults: Mon–Sat 8 a.m.–8 p.m. America/New_York; first action 30 staffed minutes; missed callback 15 staffed minutes; Going cold two sales days; AI budget $80/month. Explain that explicit spoken dates override staffed-hours defaults. Record setting changes/version; existing explicit promises do not move silently.
+
+Show actual spend, reserved spend and pending backlog. Budget exhausted: **Analysis paused—budget reached. Call history, follow-ups, and Owner actions still work.** Raising the limit resumes eligible work. Do not assert $80 covers all traffic. Historical backfill is Owner-triggered, range-limited, lower priority than current work and reconciled against newer activity before creating current obligations.
+
+## 9. Live behavior and implementation map
+
+Use SSE invalidations and refetch authoritative DTOs. Subscribe to interactions, Outreach, actions, analysis, review items, restrictions, assignments and settings. Time-derived badges update at deadlines even if no new call happens. Keep focused rows stable during editing; revision conflict refetches and shows changed values, never silently overwrites them. Reconnect with cursor and refresh after gaps.
+
+Admin implementation areas: `app/(dashboard)/sales-intelligence/page.tsx` (verify actual route group); components under `components/sales-intelligence/`; typed client `lib/api/salesIntelligence.ts`; query invalidation and live hook; existing Owner page/proxy authorization and dashboard nav. Reuse existing operational detail panels and auth conventions after reading Admin CONTEXT and rules. Main server remains semantic authority.
+
+Components: view shell, attention row, review group, Outreach panel, number panel, follow-up list/editor, assignment selector, analysis/assertion panel, evidence/version viewer, Owner-instruction assessment, message dialog, rep links, coverage/settings, and existing official-record links. No new standalone design system.
+
+## 10. Acceptance walks
+
+Test the complete Owner flow: fresh Form Lead → inbound human conversation → automatic commitment → actual attempted callback → no next step → Owner date/assignment → later model disagreement → immediate correction while AI unavailable → confirmation without duplicate effect → close → later missed call review without reopen. Include multiple actions, undated action, cross-rep ownership, voicemail, ambiguous identity, non-customer exclusion, budget pause, and stale history.
+
+Exact string examples are not permission to hardcode fixture names. All reason codes have explicit Owner copy; unknown/unavailable never renders as zero or Spoke. Test keyboard/dialog navigation and narrow layouts as well as endpoint behavior.
+
+## 11. Codebase alignment requirements
+
+Use the fixed Current records scope described in 04 §8. Historical RingCentral backfill is older activity in the current dataset, not Admin's historical database scope. Never overwrite the shared scope preference just by opening CSI.
+
+Adapt the existing conversation panel and typed client for run-specific evidence endpoints in 04. The current client returns latest detail only, and the panel contains demo/replay footer copy; remove that assumption from live CSI rendering and update the existing test that asserts it. Load signed audio only on Play, not on every list render. A purged evidence version displays its tombstone and disables original-evidence rerun; it never shows today's transcript under an old run.
+
+Show snoozed-until separately from the original promised date, with contractual lateness preserved. Server `attention_due_at` controls action ranking; another unsnoozed reason may still keep the subject visible. Expired Attention snapshot refreshes the list. Contact-type correction is an explicit evidence correction with a reason; Mark worked alone never marks Spoke.
+
+Team E implements the BFF idempotency/error/streaming changes and server-supplied ActionAvailabilityDto in 04, with Owner/Admin authorization tests. Preserve navigation ordering contracts or update the intentional ordering and its tests together. Component styling from Claude may change presentation, never these rules.
