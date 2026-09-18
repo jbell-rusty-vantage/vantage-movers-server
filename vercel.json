@@ -150,6 +150,10 @@
     {
       "path": "/api/cron/sales-intelligence-directory-sync",
       "schedule": "20 5 * * *"
+    },
+    {
+      "path": "/api/cron/sales-intelligence-attachment-refresh",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

@@ -1,0 +1,22 @@
+✔ CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempotency, error mapping; reads never call a writer (322.0403ms)
+✔ admin router is mounted in v1.routes.ts after the CSI boundary router (1.2683ms)
+✔ CSI cron routes: cron auth, flag-off and lease_held skips, never a provider body (239.5622ms)
+{"level":"error","time":"2026-09-18T17:15:48.806Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.cron.call_log_reconcile.failed","errorName":"Error"}
+✔ CSI cron routes: a throwing service maps to a bounded 500 without provider content (46.0364ms)
+✔ vercel.json registers the CSI-03 crons and the queue consumer trigger (a handler file alone is not registration) (1.6918ms)
+✔ app.ts mounts the CSI cron router before the v1 guard like the other cron routers (0.8412ms)
+✔ phone equality is Likely; exact session authorizes only that interaction and account (2.7108ms)
+✔ overlaps are ambiguous; nonoverlapping moves and outside-overlap events stay independent (1.8401ms)
+✔ unique current Attached outranks candidates; competing Attached blocks; reject and detach persist (0.8173ms)
+✔ Form and Call windows include boundaries; later snapshots never backdate identity (2.8467ms)
+✔ actual attachment queue and five-minute cron registrations, disabled worker skips without Mongo (2.0432ms)
+✔ Owner attachment routes and cron recovery: authority, scope, flag, strict payload, CAS mapping and read-only GET (263.2944ms)
+✔ eligibility: all five accepted contexts, both Lead models, exclusions and absent upstream inputs (3.7838ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9869.0942

@@ -1,4 +1,7 @@
 import { z } from "zod";
+export type { AttachmentDto } from "./attachment/reads";
+export { attachmentDtoSchema } from "./attachment/reads";
+export type { AttachmentAttribution } from "./attachment/suggest";
 import {
   CSI_ACTION_KINDS,
   CSI_EFFECT_STATUSES,

@@ -8,6 +8,9 @@ import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
 import { getFormLeadModel } from "../../../models/FormLead";
 import { getCallLeadModel } from "../../../models/CallLead";
 import { assertTrustedActor, type CsiActor } from "../auth";
+import { attachmentPolicyInput } from "../attachment/store";
+import { resolveAtInteraction, type Attachment } from "../attachment/suggest";
+import { exactEvidence } from "../attachment/sources";
 
 export type EligibilityInputs = {
   direction: string;
@@ -61,7 +64,7 @@ export async function loadEligibilityInputs(interaction: CurrentInteraction, ses
   const number = interaction.contact_number_id
     ? await getContactNumberModel().findById(interaction.contact_number_id).session(session).lean() : null;
   const attachments = number ? await getNumberLeadAttachmentModel().find({ contact_number_id: number._id }).session(session).lean() : [];
-  const applicable: Array<{ state: string; lead: EligibilityInputs["leads"][number] }> = [];
+  const policyEdges: Attachment[] = [];
   const missingInputs: string[] = [];
   for (const attachment of attachments.filter(a => a.state !== "rejected")) {
     const ref = attachment.lead_ref;
@@ -69,22 +72,28 @@ export async function loadEligibilityInputs(interaction: CurrentInteraction, ses
       ? await getFormLeadModel().findById(ref.id).select({ _id: 1 }).session(session).lean()
       : await getCallLeadModel().findById(ref.id).select({ _id: 1, ringcentral: 1 }).session(session).lean();
     if (!lead) { missingInputs.push("lead_reference_missing"); continue; }
+    const edge = attachmentPolicyInput(attachment);
+    // Read-only compatibility for pre-CSI-05 exact evidence. New writes always pin account/identity.
     const rc = "ringcentral" in lead ? lead.ringcentral : null;
-    const exact = attachment.evidence.some(e => ["call_lead_ringcentral_identity", "ringcentral_call_adoption"].includes(e.source));
-    const identityMatches = Boolean(rc && (
-      (interaction.telephony_session_id && rc.telephony_session_id === interaction.telephony_session_id) ||
-      (interaction.session_id && rc.session_id === interaction.session_id) ||
-      (rc.call_log_id && interaction.call_log_ids.includes(rc.call_log_id))
-    ));
-    const windows = attachment.evidence.filter(e => !["call_lead_ringcentral_identity", "ringcentral_call_adoption"].includes(e.source) && e.window_from && e.window_to);
-    const inWindow = windows.some(e => e.window_from! <= interaction.started_at && e.window_to! >= interaction.started_at);
-    if (!exact && !windows.length) missingInputs.push("csi05_attachment_event_scope");
-    if ((exact && identityMatches) || inWindow) applicable.push({ state: attachment.state, lead: { model: ref.model, id: String(ref.id) } });
+    for (const e of edge.evidence) {
+      if (!["call_lead_ringcentral_identity", "ringcentral_call_adoption"].includes(e.source) || e.identity_value) continue;
+      const kind = (["telephony_session_id", "session_id", "call_log_id"] as const).find(k => rc?.[k] &&
+        (k === "call_log_id" ? interaction.call_log_ids.includes(rc[k]!) : interaction[k] === rc[k]));
+      if (kind && rc) {
+        const scoped = await exactEvidence(lead, ref.model, session);
+        if (scoped.some(s => s.evidence.provider_account_id === interaction.provider_account_id &&
+          s.evidence.identity_kind === kind && s.evidence.identity_value === rc[kind])) {
+          e.identity_kind = kind; e.identity_value = rc[kind]!; e.provider_account_id = interaction.provider_account_id;
+        }
+      }
+    }
+    policyEdges.push(edge);
   }
   if (!attachments.length) missingInputs.push("csi05_attachment_context");
-  const attached = applicable.filter(a => a.state === "attached");
-  const selected = attached.length ? attached : applicable;
-  const leads = selected.map(a => a.lead);
+  const attribution = resolveAtInteraction(policyEdges, { id: "_id" in interaction ? String(interaction._id) : "",
+    provider_account_id: interaction.provider_account_id, started_at: interaction.started_at,
+    telephony_session_id: interaction.telephony_session_id, session_id: interaction.session_id, call_log_ids: interaction.call_log_ids });
+  const leads = attribution.applicable_leads;
   const review = number ? await getOutreachRecordModel().exists({
     "subject.kind": "number_review", "subject.contact_number_id": number._id, trigger_kind: "owner_open",
   }).session(session) : null;
@@ -100,7 +109,7 @@ export async function loadEligibilityInputs(interaction: CurrentInteraction, ses
     direction: interaction.direction,
     company: ["company_did", "extension"].includes(interaction.external_endpoint_kind ?? "") || number?.classification === "company",
     nonCustomer: number?.classification === "non_customer",
-    leads, ambiguous: selected.some(a => a.state === "ambiguous") || selected.length > 1, ownerNumberReview: Boolean(review),
+    leads, ambiguous: ["ambiguous_attachment", "competing_attached"].includes(attribution.blocked_reason ?? ""), ownerNumberReview: Boolean(review),
     mappedSalesInbound: Boolean(interaction.inbound_route_id), reviewedRepOutbound: links.length > 0, missingInputs,
   };
 }

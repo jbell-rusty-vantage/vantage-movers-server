@@ -125,6 +125,7 @@ export const SalesIntelligenceSyncStateSchema = new Schema(
           last_sync_from: date,
           last_sync_to: date,
           provider_modified_watermark: date,
+          attachment_source_id: ref,
           entity_change_applied_at: date,
           entity_change_id: ref,
         },

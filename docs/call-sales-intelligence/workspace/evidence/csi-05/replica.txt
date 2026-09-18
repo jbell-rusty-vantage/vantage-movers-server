@@ -1,0 +1,26 @@
+
+> vantage_movers_server@1.0.0 test:csi:attachment:replica C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> node --import tsx scripts/test-csi-attachment.ts
+
+CSI-05 isolated replica proof: testvantagemovers_csi05f1425450e7f1; loopback replica csi01 on port 27189
+{"level":"info","time":"2026-09-18T17:13:35.361Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-05 disposable replica: attachment only
+  ✔ unique pair, duplicate refresh, snapshots/search; resolve numbers without creating (356.2996ms)
+  ✔ concurrent different-pair refresh fan-in; event-time independent historical moves (587.2001ms)
+  ✔ Owner wins concurrent refresh; CAS and idempotency conflicts; reviewed snapshot frozen (550.5824ms)
+  ✔ rejection durable, detached history retained and identity reevaluated (802.7949ms)
+  ✔ exact Call Log/session identity stays interaction-scoped through CSI-11 (1418.8752ms)
+  ✔ B job dispatch creates bounded scan jobs; current documents, no payload trust (802.5436ms)
+  ✔ watermark tie pagination beyond batch; lease contention, stage separation and rollback (9501.3838ms)
+  ✔ Owner competing Attached requires review; independent CAS contenders cannot both win (537.6667ms)
+  ✔ later contact snapshot preserves original evidence; adopted Call Log identity is exact (631.4095ms)
+  ✔ GET and flag-off cron/worker/command do not mutate any collection or official records (378.889ms)
+✔ CSI-05 disposable replica: attachment only (34639.9904ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 47206.0065

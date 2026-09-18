@@ -9,6 +9,7 @@ import {
   type DrainSummary,
 } from "../services/numberActivity/captureProjectionWorker";
 import { runDirectorySyncOnce } from "../services/numberActivity/directorySync";
+import { runAttachmentRefreshOnce, drainAttachmentRefreshJobs } from "../services/salesIntelligence/attachment/refresh";
 import { drainRecordingDiscoveryJobs } from "../services/salesIntelligence/conversations/discover";
 import { drainMediaFetchJobs } from "../services/salesIntelligence/conversations/media";
 import { drainTranscriptionJobs } from "../services/salesIntelligence/conversations/transcribe";
@@ -52,6 +53,8 @@ export type SalesIntelligenceCronRouteDeps = {
   rebuildDrainMax?: number;
   /** CSI-04: daily directory snapshot sync under `SALES_INTELLIGENCE_DIRECTORY_SYNC`. */
   runDirectorySync?: typeof runDirectorySyncOnce;
+  runAttachmentRefresh?: typeof runAttachmentRefreshOnce;
+  drainAttachmentRefresh?: typeof drainAttachmentRefreshJobs;
   runMediaFetch?: typeof drainMediaFetchJobs;
   runTranscription?: typeof drainTranscriptionJobs;
   drainRecordingDiscovery?: typeof drainRecordingDiscoveryJobs;
@@ -63,6 +66,7 @@ export const CSI_CRON_PATHS = {
   directorySync: "/api/cron/sales-intelligence-directory-sync",
   mediaFetch: "/api/cron/sales-intelligence-media-fetch",
   transcribe: "/api/cron/sales-intelligence-transcribe",
+  attachmentRefresh: "/api/cron/sales-intelligence-attachment-refresh",
 } as const;
 
 export function createSalesIntelligenceCronRouter(
@@ -87,6 +91,7 @@ export function createSalesIntelligenceCronRouter(
   const mediaFetch = deps.runMediaFetch ?? drainMediaFetchJobs;
   const transcribe = deps.runTranscription ?? drainTranscriptionJobs;
   const extraRecovery = deps.extraRecovery ?? [
+    { name: "attachment_refresh", flag: "ATTACHMENT_REFRESH" as const, run: () => (deps.drainAttachmentRefresh ?? drainAttachmentRefreshJobs)() },
     { name: "recording_discovery", flag: "MEDIA_ENABLED" as const, run: () => (deps.drainRecordingDiscovery ?? drainRecordingDiscoveryJobs)() },
     { name: "media_fetch", flag: "MEDIA_ENABLED" as const, run: mediaFetch },
     { name: "transcription", flag: "STT_ENABLED" as const, run: transcribe },
@@ -216,6 +221,13 @@ export function createSalesIntelligenceCronRouter(
     } catch {
       return res.status(500).json({ ok: false, error: "Transcription failed" });
     }
+  });
+  router.all(CSI_CRON_PATHS.attachmentRefresh, requireCronAuth, async (_req, res) => {
+    if (!flag("ATTACHMENT_REFRESH")) return res.json({ ok: true, skipped: true, reason: "disabled" });
+    try {
+      await connect();
+      return res.json({ ok: true, ...(await (deps.runAttachmentRefresh ?? runAttachmentRefreshOnce)()) });
+    } catch { return res.status(500).json({ ok: false, error: "Attachment refresh failed" }); }
   });
   return router;
 }

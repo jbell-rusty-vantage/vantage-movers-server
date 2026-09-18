@@ -260,6 +260,11 @@ const attachmentEvidenceSchema = new Schema(
     window_from: { type: Date, default: null },
     window_to: { type: Date, default: null },
     candidate_count_at_suggest: { type: Number, default: null },
+    // CSI-05 additive pins: exact evidence authorizes only this account/interaction identity.
+    interaction_id: { type: Schema.Types.ObjectId, default: null },
+    provider_account_id: { type: String, default: null },
+    identity_kind: { type: String, enum: [null, "telephony_session_id", "session_id", "call_log_id"], default: null },
+    identity_value: { type: String, default: null },
   },
   { _id: false },
 );

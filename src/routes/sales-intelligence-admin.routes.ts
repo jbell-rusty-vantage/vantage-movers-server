@@ -10,6 +10,8 @@ import { numberSearchQuerySchema, searchNumberActivity } from "../services/numbe
 import { getNumberTimeline } from "../services/numberActivity/timeline";
 import { CsiError, requireCsiOwner, assertCurrentScope } from "../services/salesIntelligence/auth";
 import { csiCommandSchema, csiIdSchema } from "../validation/v1/salesIntelligence";
+import { attachmentListQuerySchema, listAttachments } from "../services/salesIntelligence/attachment/reads";
+import { commandAttachment } from "../services/salesIntelligence/attachment/commands";
 
 /**
  * CSI-04 Owner routes for Number Activity (04 §0, §1 `/numbers` rows, §3).
@@ -32,6 +34,8 @@ export type SalesIntelligenceAdminRouteDeps = {
   timeline?: typeof getNumberTimeline;
   enqueueRebuild?: typeof enqueueNumberRebuild;
   coverage?: typeof readCaptureCoverage;
+  attachments?: typeof listAttachments;
+  attachmentCommand?: typeof commandAttachment;
 };
 
 const timelineQuerySchema = z
@@ -50,6 +54,7 @@ const STATUS_BY_CODE: Partial<Record<CsiError["code"], number>> = {
   REVISION_CONFLICT: 409,
   IDEMPOTENCY_CONFLICT: 409,
   RATE_LIMITED: 429,
+  ILLEGAL_TRANSITION: 409,
 };
 
 export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminRouteDeps = {}): Router {
@@ -166,5 +171,29 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
     }
   });
 
+  router.get(`${CSI_ADMIN_PREFIX}/attachments`, async (req, res) => {
+    try {
+      guard(req);
+      const query = attachmentListQuerySchema.parse(req.query);
+      await connect();
+      return res.json({ ok: true, data: await (deps.attachments ?? listAttachments)(query) });
+    } catch (error) { return fail(req, res, error); }
+  });
+  for (const [path, action] of [["/attachments/attach", "attach_lead"], ["/attachments/:id/reject", "reject_attachment"],
+    ["/attachments/:id/detach", "detach_attachment"]] as const) {
+    router.post(`${CSI_ADMIN_PREFIX}${path}`, async (req, res) => {
+      try {
+        const actor = guard(req);
+        if (!flag("ATTACHMENT_REFRESH")) throw new CsiError("FEATURE_DISABLED");
+        const command = csiCommandSchema.parse(req.body);
+        if (command.command !== action || (command.command !== "attach_lead" && command.command !== "reject_attachment" && command.command !== "detach_attachment")) throw new CsiError("INVALID_INPUT");
+        const idempotency_key = req.header("idempotency-key")?.trim();
+        if (!idempotency_key) throw new CsiError("INVALID_INPUT");
+        const attachment_id = action === "attach_lead" ? undefined : csiIdSchema.parse("id" in req.params ? req.params.id : undefined);
+        await connect();
+        return res.json({ ok: true, data: await (deps.attachmentCommand ?? commandAttachment)({ actor, idempotency_key, attachment_id, command }) });
+      } catch (error) { return fail(req, res, error); }
+    });
+  }
   return router;
 }
