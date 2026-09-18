@@ -38,6 +38,10 @@ import {
   previewRingCentralWebhookPayload,
   sanitizeHeaders,
 } from "../services/ringcentral/webhook-capture";
+import {
+  fanOutCaptureProjection,
+  type FanoutResult,
+} from "../services/numberActivity/webhookFanout";
 
 const router = Router();
 
@@ -97,6 +101,18 @@ router.post("/api/webhooks/ringcentral", async (req: Request, res: Response) => 
       payload: req.body ?? null,
     });
 
+    // CSI-03 (03 §2.2): durable, deduplicated capture-projection job for the
+    // stored receipt, awaited before the acknowledgement and independent of
+    // the qualified-call evaluation flag below. Off by default
+    // (`SALES_INTELLIGENCE_CAPTURE_WEBHOOK`). On enqueue failure the receipt is
+    // still durable and the watermark recovery cron closes the gap; the
+    // qualification path below is untouched either way.
+    const captureProjection: FanoutResult = await fanOutCaptureProjection({
+      receiptId: captureResult.receiptId,
+      uuid: normalizedPreview.uuid,
+      telephonySessionId: normalizedPreview.telephonySessionId,
+    });
+
     // `RINGCENTRAL_WEBHOOK_ENABLED=false` acknowledges + audits the raw event
     // but performs no candidate/session/lead processing (e.g. to run cron-only
     // strategy B while keeping the endpoint reachable for RC validation).
@@ -115,6 +131,7 @@ router.post("/api/webhooks/ringcentral", async (req: Request, res: Response) => 
         normalizedPartyEvents: 0,
         candidateUpdates: [],
         sessionUpdates: [],
+        captureProjection,
       });
     }
 
@@ -142,6 +159,7 @@ router.post("/api/webhooks/ringcentral", async (req: Request, res: Response) => 
       normalizedPartyEvents: normalizedPartyEvents.length,
       candidateUpdates,
       sessionUpdates,
+      captureProjection,
     });
   } catch (error) {
     log.error({ err: error, msg: "ringcentral.webhook.processing.failed" });

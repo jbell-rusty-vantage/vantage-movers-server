@@ -27,6 +27,7 @@ import ingestionRoutes from "./routes/ingestion.routes";
 import bestRelocationIngestionCronRoutes from "./routes/best-relocation-ingestion-cron.routes";
 import reportingRoutes from "./routes/reporting.routes";
 import reportingCronRoutes from "./routes/reporting-cron.routes";
+import salesIntelligenceCronRoutes from "./routes/sales-intelligence-cron.routes";
 import { registerReportingStage4Foundation } from "./services/reporting/registerStage4Foundation";
 
 registerReportingStage4Foundation();
@@ -67,6 +68,7 @@ app.use(bestRelocationIngestionCronRoutes);
 app.use(reportingCronRoutes);
 app.use(granotAutomationCronRoutes);
 app.use(granotLifecycleCronRoutes);
+app.use(salesIntelligenceCronRoutes);
 app.use(granotAutomationRoutes);
 app.use(v1Routes);
 app.use(ingestionRoutes);

@@ -2,10 +2,10 @@ import { getRingCentralDirectorySnapshotModel } from "../../models/RingCentralDi
 
 /**
  * Read-only view over the latest RingCentral directory snapshot for one
- * provider account. Directory sync itself (CSI-10) writes snapshots; capture
- * only reads them. An empty lookup is a valid, honest state: without a
- * snapshot, roles are inferred from provider party metadata alone and company
- * classification stays `unknown` rather than being guessed.
+ * provider account. CSI-04 `directorySync.ts` writes snapshots; capture only
+ * reads them. An empty lookup is a valid, honest state: without a snapshot,
+ * roles stay `unknown` and company classification is not guessed. Rep mapping
+ * review belongs to Team C (CSI-10).
  */
 export type DirectoryExtension = Readonly<{
   id: string;

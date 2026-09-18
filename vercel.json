@@ -59,6 +59,15 @@
           "retryAfterSeconds": 30
         }
       ]
+    },
+    "api/queues/sales-intelligence-consumer.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "sales-intelligence-events*",
+          "retryAfterSeconds": 30
+        }
+      ]
     }
   },
   "crons": [
@@ -121,6 +130,18 @@
     {
       "path": "/api/cron/reporting-test-artifact-janitor",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/sales-intelligence-call-log-reconcile",
+      "schedule": "3-59/10 * * * *"
+    },
+    {
+      "path": "/api/cron/sales-intelligence-job-recovery",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/sales-intelligence-directory-sync",
+      "schedule": "20 5 * * *"
     }
   ]
 }

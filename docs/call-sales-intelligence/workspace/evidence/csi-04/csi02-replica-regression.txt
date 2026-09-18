@@ -1,0 +1,29 @@
+
+> vantage_movers_server@1.0.0 test:csi:capture:replica C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> node --import tsx scripts/test-csi-capture.ts
+
+CSI-02 isolated replica proof: testvantagemovers_csi02922e0d1520bb; loopback replica csi01 on port 27189
+{"level":"info","time":"2026-09-18T01:33:12.931Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-02 isolated replica proof
+  ✔ webhook lifecycle persists projection, aliases, number rollups, audit and jobs atomically; replay is a no-op (273.6011ms)
+  ✔ concurrent duplicate deliveries and concurrent sessions on one number keep one identity and exact rollups (269.654ms)
+  ✔ Call Log reconciles the webhook session: authoritative result, recordings, late terminal no-op, per-recording discovery (206.8307ms)
+  ✔ identity is account-scoped and never merged by phone/time; same-session proof merges provisional rows (303.087ms)
+  ✔ internal, withheld and malformed observations: evidence without Contact Number or sales work (88.7713ms)
+{"level":"warn","time":"2026-09-18T01:33:17.882Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.capture.webhook.observe_failed","telephonySessionId":"s-atomic-1","errorCode":"persist_failed","errorName":"Error"}
+  ✔ a failed downstream enqueue rolls back projection, aliases, number and audit together (587.7538ms)
+  ✔ reconcile: dedicated cursor and lease; full success advances cursor and watermark; qualified sync state untouched (305.8759ms)
+  ✔ reconcile: page failure keeps cursor, projects fetched records, opens a gap; the next full run closes it (174.951ms)
+  ✔ reconcile: 429 ends the run without cursor advance and records the throttle; page limit records the missing range (283.4353ms)
+{"level":"warn","time":"2026-09-18T01:33:19.458Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.call_log_reconcile.lease_lost","leaseOwnerHash":"d9132b0b5557"}
+  ✔ reconcile: concurrent workers elect one lease holder; an expired lease cannot write the cursor (289.2388ms)
+  ✔ reconcile: unresolved provider account fails closed without fabricating identity (41.9315ms)
+✔ CSI-02 isolated replica proof (6696.0317ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10123.5058

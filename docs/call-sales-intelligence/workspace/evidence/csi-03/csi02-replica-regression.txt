@@ -1,0 +1,26 @@
+
+> vantage_movers_server@1.0.0 test:csi:capture:replica C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> node --import tsx scripts/test-csi-capture.ts
+
+CSI-02 isolated replica proof: testvantagemovers_csi02ebb24c80b744; loopback replica csi01 on port 27189
+▶ CSI-02 isolated replica proof
+  ✔ webhook lifecycle persists projection, aliases, number rollups, audit and jobs atomically; replay is a no-op (395.6605ms)
+  ✔ concurrent duplicate deliveries and concurrent sessions on one number keep one identity and exact rollups (378.6596ms)
+  ✔ Call Log reconciles the webhook session: authoritative result, recordings, late terminal no-op, per-recording discovery (257.1815ms)
+  ✔ identity is account-scoped and never merged by phone/time; same-session proof merges provisional rows (480.2811ms)
+  ✔ internal, withheld and malformed observations: evidence without Contact Number or sales work (120.4913ms)
+  ✔ a failed downstream enqueue rolls back projection, aliases, number and audit together (917.3778ms)
+  ✔ reconcile: dedicated cursor and lease; full success advances cursor and watermark; qualified sync state untouched (367.4328ms)
+  ✔ reconcile: page failure keeps cursor, projects fetched records, opens a gap; the next full run closes it (281.025ms)
+  ✔ reconcile: 429 ends the run without cursor advance and records the throttle; page limit records the missing range (447.8652ms)
+  ✔ reconcile: concurrent workers elect one lease holder; an expired lease cannot write the cursor (386.3683ms)
+  ✔ reconcile: unresolved provider account fails closed without fabricating identity (94.4964ms)
+✔ CSI-02 isolated replica proof (8413.6598ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13141.7458

@@ -87,6 +87,9 @@
     "granot:lifecycle:unit34:seed": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/granot-lifecycle-unit34/seed-disposable-certification.ts",
     "test:csi:replica": "node --import tsx scripts/test-csi-foundation.ts",
     "test:csi:capture:replica": "node --import tsx scripts/test-csi-capture.ts",
+    "test:csi:fanout:replica": "node --import tsx scripts/test-csi-fanout.ts",
+    "test:csi:numbers:replica": "node --import tsx scripts/test-csi-numbers.ts",
+    "test:csi:reads:replica": "node --import tsx scripts/test-csi-reads.ts",
     "migration:csi:indexes": "node --env-file=.env --import tsx scripts/migrations/sales-intelligence-indexes.ts"
   },
   "keywords": [],

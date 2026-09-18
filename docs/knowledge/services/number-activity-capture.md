@@ -53,7 +53,7 @@ sources:
 
 ## Configuration
 
-`SALES_INTELLIGENCE_CAPTURE_CALL_LOG` gates `runCallLogReconcileOnce` (default off). `SALES_INTELLIGENCE_CALL_LOG_ROLLING_LOOKBACK_MINUTES` (floor 720), `SALES_INTELLIGENCE_CALL_LOG_OVERLAP_MINUTES` (15), `SALES_INTELLIGENCE_CALL_LOG_MAX_PAGES` (20). `RINGCENTRAL_ACCOUNT_ID` optional configured account. Cron/queue registration, webhook fan-out and subscriptions belong to CSI-03/A and are not wired here.
+`SALES_INTELLIGENCE_CAPTURE_CALL_LOG` gates `runCallLogReconcileOnce` (default off). `SALES_INTELLIGENCE_CALL_LOG_ROLLING_LOOKBACK_MINUTES` (floor 720), `SALES_INTELLIGENCE_CALL_LOG_OVERLAP_MINUTES` (15), `SALES_INTELLIGENCE_CALL_LOG_MAX_PAGES` (20). `RINGCENTRAL_ACCOUNT_ID` optional configured account. Cron/queue registration, the webhook fan-out that calls `observeRingCentralWebhookEvents` from a durable job, and the all-direction subscription lifecycle are wired by CSI-03: see [sales-intelligence-webhook-fanout.md](sales-intelligence-webhook-fanout.md).
 
 ## Tests
 

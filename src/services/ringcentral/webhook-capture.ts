@@ -46,6 +46,12 @@ type CaptureRingCentralWebhookEventInput = {
 export type CaptureRingCentralWebhookEventResult = {
   storedRawEvent: boolean;
   duplicate: boolean;
+  /**
+   * CSI-03 additive: the stored receipt `_id` (24-hex) when the raw event is
+   * durable, including the already-stored row on a duplicate uuid. `null`
+   * when nothing durable exists (no Mongo, persist failure).
+   */
+  receiptId: string | null;
 };
 
 let webhookEventIndexesReady: Promise<void> | null = null;
@@ -60,12 +66,12 @@ export async function captureRingCentralWebhookEvent(
       msg: "ringcentral.webhook.capture.mongo_unavailable_logged",
       capture: redactSensitiveValues(document),
     });
-    return { storedRawEvent: false, duplicate: false };
+    return { storedRawEvent: false, duplicate: false, receiptId: null };
   }
 
   try {
     const collection = await getWebhookEventsCollection();
-    await collection.insertOne(document);
+    const inserted = await collection.insertOne(document);
     logger.info({
       msg: "ringcentral.webhook.capture.persisted",
       receivedAt: document.receivedAt.toISOString(),
@@ -74,14 +80,22 @@ export async function captureRingCentralWebhookEvent(
       partyId: document.normalizedPreview.partyId,
       event: document.normalizedPreview.event,
     });
-    return { storedRawEvent: true, duplicate: false };
+    return {
+      storedRawEvent: true,
+      duplicate: false,
+      receiptId: String(inserted.insertedId),
+    };
   } catch (error) {
     if (isDuplicateKeyError(error)) {
       logger.info({
         msg: "ringcentral.webhook.capture.duplicate_acknowledged",
         uuid: document.uuid,
       });
-      return { storedRawEvent: true, duplicate: true };
+      return {
+        storedRawEvent: true,
+        duplicate: true,
+        receiptId: await findStoredReceiptIdByUuid(document.uuid ?? null),
+      };
     }
 
     logger.error({
@@ -89,7 +103,19 @@ export async function captureRingCentralWebhookEvent(
       msg: "ringcentral.webhook.capture.persist_failed_logged",
       capture: redactSensitiveValues(document),
     });
-    return { storedRawEvent: false, duplicate: false };
+    return { storedRawEvent: false, duplicate: false, receiptId: null };
+  }
+}
+
+async function findStoredReceiptIdByUuid(uuid: string | null): Promise<string | null> {
+  if (!uuid) return null;
+  try {
+    const collection = await getWebhookEventsCollection();
+    const row = await collection.findOne({ uuid }, { projection: { _id: 1 } });
+    return row ? String(row._id) : null;
+  } catch (error) {
+    logger.warn({ err: error, msg: "ringcentral.webhook.capture.duplicate_lookup_failed" });
+    return null;
   }
 }
 
@@ -220,6 +246,11 @@ export async function listRingCentralWebhookEvents(limit: number) {
     .toArray();
 }
 
+/** CSI-03 additive export: the recovery scan runs in a cron function that may never have captured a webhook, so it ensures the same index set. */
+export function ensureRingCentralWebhookEventIndexes(): Promise<void> {
+  return ensureWebhookEventIndexes();
+}
+
 function ensureWebhookEventIndexes(): Promise<void> {
   webhookEventIndexesReady ??= createWebhookEventIndexes();
   return webhookEventIndexesReady;
@@ -241,6 +272,12 @@ async function createWebhookEventIndexes(): Promise<void> {
   await collection.createIndex({ uuid: 1 }, { unique: true, sparse: true });
   await collection.createIndex({ telephonySessionId: 1 });
   await collection.createIndex({ sessionId: 1 });
+  // CSI-03 additive: ordered keyset walk for the receipt watermark recovery scan
+  // (telephony receipts only), so paging is an index walk without a SORT stage.
+  await collection.createIndex(
+    { provider: 1, receivedAt: 1, _id: 1 },
+    { partialFilterExpression: { telephonySessionId: { $type: "string" } } },
+  );
 }
 
 function isDuplicateKeyError(error: unknown): boolean {

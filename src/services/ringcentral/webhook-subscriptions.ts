@@ -45,9 +45,19 @@ let subscriptionIndexesReady: Promise<void> | null = null;
 const TELEPHONY_SESSIONS_FILTER =
   "/restapi/v1.0/account/~/telephony/sessions";
 
+/**
+ * Event filters by mode. `"account"` and `"per-number"` are the qualified-call
+ * (inbound-only) builders and are unchanged. CSI-03 adds `"all"`: the same
+ * account telephony-sessions path with no direction filter and, deliberately,
+ * no `withRecordings=true` (that would drop the missed/unrecorded traffic
+ * Number Activity needs).
+ */
 export async function buildRingCentralTelephonyEventFilters(
-  mode: "per-number" | "account" = "account",
+  mode: "per-number" | "account" | "all" = "account",
 ): Promise<string[]> {
+  if (mode === "all") {
+    return [TELEPHONY_SESSIONS_FILTER];
+  }
   if (mode === "account") {
     return [`${TELEPHONY_SESSIONS_FILTER}?direction=Inbound`];
   }
@@ -137,6 +147,29 @@ export function buildRingCentralWebhookSubscriptionMetadata(
     updatedAt: now,
     raw,
   };
+}
+
+/** CSI-03 additive: ids of subscriptions this application created (ownership evidence for renew/repair). */
+export async function listStoredRingCentralWebhookSubscriptionIds(): Promise<string[]> {
+  if (!process.env.MONGO_URI?.trim()) return [];
+  const collection = await getSubscriptionsCollection();
+  const rows = await collection
+    .find({ provider: "ringcentral" }, { projection: { subscriptionId: 1 } })
+    .toArray();
+  return rows.map((row) => row.subscriptionId).filter((id) => typeof id === "string" && id.trim());
+}
+
+/** CSI-03 additive: records a lifecycle status (e.g. `Deleted`) on an owned subscription's metadata; never removes the row. */
+export async function markStoredRingCentralWebhookSubscriptionStatus(
+  subscriptionId: string,
+  status: string,
+): Promise<void> {
+  if (!process.env.MONGO_URI?.trim()) return;
+  const collection = await getSubscriptionsCollection();
+  await collection.updateOne(
+    { subscriptionId },
+    { $set: { status, updatedAt: new Date() } },
+  );
 }
 
 async function getSubscriptionsCollection() {

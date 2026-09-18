@@ -74,6 +74,11 @@ export async function claimCsiJob(
   owner: string,
   jobId?: string,
   ttlMs = 300_000,
+  /**
+   * CSI-03 additive: a worker that only knows how to run one stage claims
+   * only that stage, so a consumer never leases work it cannot process.
+   */
+  stage?: JobInput["stage"],
 ) {
   if (!owner.trim() || ttlMs <= 0 || ttlMs > 900_000)
     throw new CsiError("INVALID_INPUT");
@@ -100,6 +105,7 @@ export async function claimCsiJob(
     {
       ...csiDataset(),
       ...(jobId ? { _id: jobId } : {}),
+      ...(stage ? { stage } : {}),
       $expr: { $lt: ["$attempts", "$max_attempts"] },
       $or: [
         {
@@ -132,16 +138,22 @@ export async function renewCsiJob(lease: JobLease, ttlMs = 300_000) {
   );
   if (result.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
 }
-/** All effect writes use this session. Final lease write occurs AFTER mutations so expiry during the callback rolls everything back. No network calls in callback. */
+/**
+ * All effect writes use this session. Final lease write occurs AFTER mutations so expiry during the callback rolls everything back. No network calls in callback.
+ * CSI-03 additive: `options.result` is a bounded JSON summary persisted on the job row with the completion write;
+ * `options.resultFrom` derives it from the mutation's return value inside the same transaction (CSI-04).
+ */
 export async function completeCsiJob<T>(
   lease: JobLease,
   mutation: (session: ClientSession) => Promise<T>,
+  options: { result?: unknown; resultFrom?: (value: T) => unknown } = {},
 ) {
   return withTransaction(async (session) => {
     const Model = getSalesIntelligenceJobModel();
     const held = await Model.findOne(fence(lease)).session(session);
     if (!held) throw new CsiError("LEASE_LOST");
     const result = await mutation(session);
+    const stored = options.resultFrom ? options.resultFrom(result) : options.result;
     const updated = await Model.updateOne(
       fence(lease),
       {
@@ -150,9 +162,10 @@ export async function completeCsiJob<T>(
           completed_at: new Date(),
           lease_owner: null,
           leased_until: null,
+          ...(stored === undefined ? {} : { result: stored }),
         },
       },
-      { session },
+      { session, runValidators: true },
     );
     if (updated.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
     return result;
@@ -166,6 +179,8 @@ export async function failCsiJob(
     | "permission_denied"
     | "budget_exhausted",
   retryAfterMs = 0,
+  /** CSI-03 additive: bounded JSON summary of the partial outcome kept visible on the retried/paused/dead-lettered row. */
+  options: { result?: unknown } = {},
 ) {
   const Model = getSalesIntelligenceJobModel();
   const row = await Model.findOne(fence(lease));
@@ -180,15 +195,20 @@ export async function failCsiJob(
       (1 + Math.random() * 0.25),
   );
   if (!Number.isFinite(delay) || delay < 0) throw new CsiError("INVALID_INPUT");
-  const result = await Model.updateOne(fence(lease), {
-    $set: {
-      status: paused ? "paused" : exhausted ? "dead_letter" : "retry",
-      reason,
-      next_attempt_at: new Date(Date.now() + delay),
-      lease_owner: null,
-      leased_until: null,
+  const result = await Model.updateOne(
+    fence(lease),
+    {
+      $set: {
+        status: paused ? "paused" : exhausted ? "dead_letter" : "retry",
+        reason,
+        next_attempt_at: new Date(Date.now() + delay),
+        lease_owner: null,
+        leased_until: null,
+        ...(options.result === undefined ? {} : { result: options.result }),
+      },
+      ...(paused ? { $inc: { attempts: -1 } } : {}),
     },
-    ...(paused ? { $inc: { attempts: -1 } } : {}),
-  });
+    { runValidators: true },
+  );
   if (result.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
 }

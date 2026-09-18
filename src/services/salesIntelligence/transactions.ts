@@ -166,7 +166,8 @@ export async function appendCsiAudit(
       | "analysis"
       | "restriction"
       | "rep"
-      | "interaction";
+      | "interaction"
+      | "job";
   },
 ) {
   if (!context.session.inTransaction()) throw new CsiError("INVALID_INPUT");

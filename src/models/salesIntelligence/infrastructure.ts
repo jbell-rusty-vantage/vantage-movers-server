@@ -52,6 +52,15 @@ export const SalesIntelligenceJobSchema = new Schema(
     leased_until: date,
     reason: text,
     result_ref: ref,
+    // CSI-03 additive: bounded JSON summary written with completion (per-session outcomes, counts). Never provider bodies.
+    result: {
+      type: Schema.Types.Mixed,
+      default: null,
+      validate: {
+        validator: (v: unknown) => v === null || z.json().safeParse(v).success,
+        message: "Invalid CSI job result",
+      },
+    },
     completed_at: date,
     input_refs: refs,
   },
@@ -93,6 +102,7 @@ export const SalesIntelligenceAuditEventSchema = new Schema(
             "restriction",
             "rep",
             "interaction", // CSI-02 additive: Call Interaction projection invalidation (03 §10 `interaction` event)
+            "job", // CSI-03 additive: durable job completion summary (capture projection, rebuild)
           ]),
           target_id: str,
           subject_key: str,
