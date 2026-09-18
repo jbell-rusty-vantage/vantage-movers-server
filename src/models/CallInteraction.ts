@@ -184,6 +184,10 @@ export const CallInteractionSchema = new Schema(
     },
 
     // provenance
+    recording_discovery: {
+      type: new Schema({ state: { type: String, enum: ["pending", "discovered", "no_recording"] }, reason: String, checked_at: Date, next_attempt_at: Date }, { _id: false }),
+      default: null,
+    },
     sources: { type: [String], default: [] }, // ["webhook","call_log_reconcile","backfill"]
     provider_last_modified_at: { type: Date, default: null },
     terminal: { type: Boolean, required: true, default: false },

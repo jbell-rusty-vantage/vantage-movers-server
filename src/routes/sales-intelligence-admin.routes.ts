@@ -4,6 +4,7 @@ import { csiFlag } from "../config/domain/salesIntelligence";
 import { connectMongo } from "../db";
 import { logger } from "../logger";
 import { getContactNumberDetail } from "../services/numberActivity/contactNumbers";
+import { readCaptureCoverage } from "../services/numberActivity/coverage";
 import { enqueueNumberRebuild } from "../services/numberActivity/rebuild";
 import { numberSearchQuerySchema, searchNumberActivity } from "../services/numberActivity/search";
 import { getNumberTimeline } from "../services/numberActivity/timeline";
@@ -30,6 +31,7 @@ export type SalesIntelligenceAdminRouteDeps = {
   detail?: typeof getContactNumberDetail;
   timeline?: typeof getNumberTimeline;
   enqueueRebuild?: typeof enqueueNumberRebuild;
+  coverage?: typeof readCaptureCoverage;
 };
 
 const timelineQuerySchema = z
@@ -95,6 +97,15 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
       request_id: req.header("x-vantage-admin-request-id") ?? req.header("x-request-id") ?? "unavailable",
     });
 
+  router.get(`${CSI_ADMIN_PREFIX}/coverage`, async (req, res) => {
+    try {
+      guard(req);
+      z.object({ scope: z.literal("production").optional() }).strict().parse(req.query);
+      await connect();
+      const coverage = await (deps.coverage ?? readCaptureCoverage)();
+      return res.json({ ok: true, data: { as_of: new Date().toISOString(), coverage } });
+    } catch (error) { return fail(req, res, error); }
+  });
   router.get(`${CSI_ADMIN_PREFIX}/numbers`, async (req, res) => {
     try {
       guard(req);

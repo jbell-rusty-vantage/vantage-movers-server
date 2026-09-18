@@ -24,6 +24,15 @@ export const coverageDtoSchema = z
       z.enum(["ok", "denied", "unknown", "unavailable"]),
     ),
     ai_paused: z.boolean(),
+    recordings: z.object({
+      pending_discovery: z.number().int().nonnegative(),
+      media_pending: z.number().int().nonnegative(),
+      media_stored: z.number().int().nonnegative(),
+      no_recording: z.number().int().nonnegative(),
+      unavailable: z.number().int().nonnegative(),
+      failed: z.number().int().nonnegative(),
+      eligibility_undetermined: z.number().int().nonnegative(),
+    }).strict().optional(),
   })
   .strict();
 export const assignmentDtoSchema = z

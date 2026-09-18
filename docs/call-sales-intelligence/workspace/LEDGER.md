@@ -14,7 +14,7 @@ Created September 17, 2026. Specification and workspace prepared; runtime work b
 | CSI-08 | E | not started | — | — | DTO fixtures then CSI-07 |
 | CSI-09 | E (A/C policy service) | not started | — | — | CSI-01/04/06 |
 | CSI-10 | C | not started | — | — | Directory fixture then CSI-02 |
-| CSI-11 | B | not started | — | — | CSI-05/10 eligibility inputs |
+| CSI-11 | B | review (findings resolved) | Codex + independent code review; `vantage-main-server` / `sales-intelligence`, baseline `b92e7458`; uncommitted | Typecheck; focused 108/108; media replica 20/20; CSI-01–04 replicas 15/12/11/7/10; qualification 104 pass/3 pre-existing skips. [Handoff](evidence/csi-11/HANDOFF.md), [checks](evidence/csi-11/CHECKS.md), [review](evidence/csi-11/INDEPENDENT-REVIEW.md). | Both independent reviews approved; all six findings and three recommendations resolved. Final qualification/provider/media 111 pass/3 skips. CSI-05/10 absent inputs remain undetermined; CSI-12 consumes media hook; Team F verifies live permission/Blob at G6. Flags off. |
 | CSI-12 | B | not started | — | — | CSI-11 |
 | CSI-17 | D | not started | — | — | CSI-01 scoped auth/types |
 | CSI-13 | D | not started | — | — | CSI-06/10/12/17 |
@@ -25,6 +25,14 @@ Created September 17, 2026. Specification and workspace prepared; runtime work b
 
 ## Specification validation
 
+CSI-11 ownership addendum (September 17): `scripts/test-csi-reads.replica.test.ts` is claimed solely to extend the existing Coverage assertion with the additive recording counters; existing read-only and pagination proofs remain intact.
+
+## CSI-11 ownership — Codex, September 17, 2026
+
+Clean baseline verified before edits. Exact owned new files: `src/services/salesIntelligence/conversations/{discover,eligibility,media,mediaPolicy,workerSupport}.ts`, `src/services/salesIntelligence/conversations/{eligibility,media,wiring}.test.ts`, `src/services/ringcentral/recordings.ts`, `src/services/ringcentral/recordings.test.ts`, `src/services/conversations/streamingMedia.ts`, `scripts/test-csi-media.ts`, `scripts/test-csi-media.replica.test.ts`, `docs/knowledge/services/sales-intelligence-recording-media.md`, and `docs/call-sales-intelligence/workspace/evidence/csi-11/**`.
+
+Coordinated additive shared edits: `src/services/salesIntelligence/jobs.ts` (fenced retry projection), `src/config/domain/salesIntelligence.ts` (media_fetch stage/config), `src/config/domain/conversations.ts`, `src/models/LeadConversation.ts`, `src/models/CallInteraction.ts`, `src/services/salesIntelligence/dto.ts`, `src/services/numberActivity/{jobDispatch,coverage,fixtures}.ts`, `src/services/ringcentral/client.ts` (bounded streaming read with response headers), `src/routes/sales-intelligence-cron.routes.ts`, `src/routes/sales-intelligence-admin.routes.ts`, `vercel.json`, `package.json`, `docs/index.md`, `docs/knowledge/services/{lead-conversation,number-activity-reads}.md`, specification documents `02-domain-models.md`, `03-server-pipeline-and-jobs.md`, `04-server-routes.md`, and workspace `CONTRACTS.md`/`LEDGER.md`. No qualification, transcript, Lead-write, Admin, production, or budget work. All provider paths use fakes. No commit.
+
 September 17: interview revision and subsequent server/Admin/MCP codebase audit completed. Current 07 is the future Claude design intake contract; its former contents are archived under history/. 08 remains historical evidence, and 09 records decisions. See [11](../11-codebase-alignment-audit.md) for inspected integration gaps and team adaptations.
 
 Documentation validation: 24 active pack/workspace documents, 110 local links including referenced heading anchors, code fences/conflict markers, all 18 issue ids, six team briefs, $80 configuration and scoped submission contract passed. `git diff --check` passed after whitespace cleanup. These are documentation checks only; no runtime implementation tests, live provider actions or future design-artifact review were performed.
@@ -32,6 +40,10 @@ Documentation validation: 24 active pack/workspace documents, 110 local links in
 September 17 (later): portable [RingCentral capability summary](RINGCENTRAL-CAPABILITY.md) added for agents from the Sept 14–15 proofs. `scripts/dev_ops/**` remains gitignored. Not a renewed production probe.
 
 ## Integration notes
+
+September 18 CSI-11 fresh independent review, requested by Owner: `/root/csi11_final_review` identified completed-exclusion rescheduling and unbounded shared-token waits. Both resolved with regressions and independently approved; no remaining actionable findings. Expanded replica 20/20; qualification/provider/media checks 111 pass and 3 pre-existing skips. Updated csi-media-v1 specifies revisioned successor intent only after an excluded completion. [Review](evidence/csi-11/INDEPENDENT-REVIEW.md), [checks](evidence/csi-11/CHECKS.md). Still uncommitted, flags off, no live provider or production action.
+
+September 17 CSI-11 recording discovery and media: [handoff](evidence/csi-11/HANDOFF.md), [exact files](evidence/csi-11/FILES.md). `csi-media-v1` imports and downstream obligations recorded in CONTRACTS.md. Registered discovery/media consumers and bounded recovery reuse the existing foundation; additive transactional retry projection closes lease-fenced failure handling. Synthetic provider and disposable replica proofs cover pending/denied/throttled outcomes, immutable media, account uniqueness and concurrent workers. Independent review findings resolved and final signoff received. Patch remains uncommitted; no production actions, STT, analysis or flag enablement. September 14 recording denial remains historical evidence, not a current grant.
 
 September 17 CSI-01 preparation: [handoff](evidence/csi-01/HANDOFF.md). Envelope module `csi-envelope-v1` recorded in [CONTRACTS.md](CONTRACTS.md). G1 freeze remains pending.
 

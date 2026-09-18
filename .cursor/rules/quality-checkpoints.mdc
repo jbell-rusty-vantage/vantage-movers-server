@@ -1,0 +1,10 @@
+---
+description: Meaningful-task review, clean code and documentation checkpoint
+alwaysApply: true
+---
+
+Use the shared workflow in `docs/quality-checkpoints.md` at meaningful implementation boundaries.
+Run `pnpm finish-work --provider cursor` once the task is ready for a final quality pass.
+Do not run it after every conversational turn. Hooks also record activity for the delayed worker.
+The command uses model intelligence to review, fix/clean, update docs and verify the result.
+When `VANTAGE_QUALITY_CHILD=1`, follow the provided stage prompt; never run finish-work recursively.

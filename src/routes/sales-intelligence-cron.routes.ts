@@ -9,6 +9,8 @@ import {
   type DrainSummary,
 } from "../services/numberActivity/captureProjectionWorker";
 import { runDirectorySyncOnce } from "../services/numberActivity/directorySync";
+import { drainRecordingDiscoveryJobs } from "../services/salesIntelligence/conversations/discover";
+import { drainMediaFetchJobs } from "../services/salesIntelligence/conversations/media";
 import { drainRebuildJobs, type RebuildDrainSummary, type RebuildWorkerDeps } from "../services/numberActivity/rebuild";
 import { runCallLogReconcileOnce } from "../services/numberActivity/reconcileCallLog";
 import {
@@ -49,12 +51,15 @@ export type SalesIntelligenceCronRouteDeps = {
   rebuildDrainMax?: number;
   /** CSI-04: daily directory snapshot sync under `SALES_INTELLIGENCE_DIRECTORY_SYNC`. */
   runDirectorySync?: typeof runDirectorySyncOnce;
+  runMediaFetch?: typeof drainMediaFetchJobs;
+  drainRecordingDiscovery?: typeof drainRecordingDiscoveryJobs;
 };
 
 export const CSI_CRON_PATHS = {
   callLogReconcile: "/api/cron/sales-intelligence-call-log-reconcile",
   jobRecovery: "/api/cron/sales-intelligence-job-recovery",
   directorySync: "/api/cron/sales-intelligence-directory-sync",
+  mediaFetch: "/api/cron/sales-intelligence-media-fetch",
 } as const;
 
 export function createSalesIntelligenceCronRouter(
@@ -76,6 +81,11 @@ export function createSalesIntelligenceCronRouter(
     ((max: number, deadlineMs: number) => drainRebuildJobs(max, deps.rebuildWorkerDeps, { deadlineMs }));
   const rebuildMax = deps.rebuildDrainMax ?? 100;
   const directorySync = deps.runDirectorySync ?? runDirectorySyncOnce;
+  const mediaFetch = deps.runMediaFetch ?? drainMediaFetchJobs;
+  const extraRecovery = deps.extraRecovery ?? [
+    { name: "recording_discovery", flag: "MEDIA_ENABLED" as const, run: () => (deps.drainRecordingDiscovery ?? drainRecordingDiscoveryJobs)() },
+    { name: "media_fetch", flag: "MEDIA_ENABLED" as const, run: mediaFetch },
+  ];
 
   router.all(CSI_CRON_PATHS.callLogReconcile, requireCronAuth, async (_req, res) => {
     // A disabled route never claims the lease; the service also re-checks the flag.
@@ -101,7 +111,7 @@ export function createSalesIntelligenceCronRouter(
   router.all(CSI_CRON_PATHS.jobRecovery, requireCronAuth, async (_req, res) => {
     const captureOn = flag("CAPTURE_WEBHOOK");
     const rebuildOn = flag("ENABLED");
-    const extras = (deps.extraRecovery ?? []).filter((step) => flag(step.flag));
+    const extras = extraRecovery.filter((step) => flag(step.flag));
     if (!captureOn && !rebuildOn && extras.length === 0) {
       return res.json({ ok: true, skipped: true, reason: "disabled" });
     }
@@ -180,6 +190,18 @@ export function createSalesIntelligenceCronRouter(
     }
   });
 
+  router.all(CSI_CRON_PATHS.mediaFetch, requireCronAuth, async (_req, res) => {
+    if (!flag("MEDIA_ENABLED")) return res.json({ ok: true, skipped: true, reason: "disabled" });
+    try {
+      await connect();
+      const summary = await mediaFetch();
+      if (summary.status === "not_claimable" || summary.status === "lease_lost") return res.json({ ok: true, skipped: true, reason: "lease_held", summary });
+      if (summary.status === "disabled") return res.json({ ok: true, skipped: true, reason: "disabled", summary });
+      return res.json({ ok: true, skipped: false, summary });
+    } catch {
+      return res.status(500).json({ ok: false, error: "Media fetch failed" });
+    }
+  });
   return router;
 }
 

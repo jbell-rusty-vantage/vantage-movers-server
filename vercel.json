@@ -72,6 +72,10 @@
   },
   "crons": [
     {
+      "path": "/api/cron/sales-intelligence-media-fetch",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/ringcentral-call-log-sync",
       "schedule": "*/30 * * * *"
     },

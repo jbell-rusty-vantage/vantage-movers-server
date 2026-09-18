@@ -1,0 +1,29 @@
+
+> vantage_movers_server@1.0.0 test:csi:replica C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> node --import tsx scripts/test-csi-foundation.ts
+
+CSI isolated replica proof: testvantagemovers_csi284c837edcf0; loopback replica csi01 on port 27189
+▶ CSI-01 isolated replica proof
+  ✔ migration report does not write; unresolved accounts block apply; verified mappings preserve legacy data (4334.5089ms)
+  ✔ runtime fails closed without a unique fence; obsolete single-action index blocks migration (727.1921ms)
+  ✔ bounded retries and permission pause preserve pending work (127.7973ms)
+  ✔ analysis content finalizes once and snapshots remain immutable (106.1529ms)
+  ✔ subject, alias, commitment and submission fences; multiple nullable dates (67.4535ms)
+  ✔ idempotency replay/conflict and transaction rollback of aggregate/audit/job/command (75.2643ms)
+  ✔ concurrent Owner revisions have one winner (38.735ms)
+  ✔ concurrent same-key commands replay once (43.4963ms)
+  ✔ job dedupe, claim recovery, old epochs and expiry inside effect transaction (344.0355ms)
+  ✔ budget races never over-admit and reconcile/release once (145.5023ms)
+  ✔ job dedupe cannot replay across deployments (36.5352ms)
+  ✔ stored run token enforces job subject, deployment and current lease (108.8039ms)
+  ✔ new budget period resumes current dataset once, not future periods or permission pauses (75.9034ms)
+  ✔ policy CAS preserves immutable versions and one concurrent winner (182.3255ms)
+✔ CSI-01 isolated replica proof (6523.7829ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8298.0778

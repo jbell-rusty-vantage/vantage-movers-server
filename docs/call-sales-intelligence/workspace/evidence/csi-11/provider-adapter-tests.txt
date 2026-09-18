@@ -1,0 +1,10 @@
+✔ recording adapter uses fixed account endpoints and discards contentUri (26.5139ms)
+✔ streaming client shares JWT refresh once, returns headers and forbids redirects (1.5349ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1661.9581

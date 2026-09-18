@@ -69,6 +69,7 @@ export const CSI_JOB_STAGES = [
   "outreach_derive",
   "recording_discovery",
   "media",
+  "media_fetch",
   "transcription",
   "analysis",
   "application",
@@ -126,6 +127,11 @@ export function csiDataset() {
   if (!deployment)
     throw new Error("SALES_INTELLIGENCE_DEPLOYMENT_ID is required");
   return { deployment, database: getMongoDatabaseName() };
+}
+export function csiMediaMaxBytes(): number {
+  const value = Number(process.env.SALES_INTELLIGENCE_MEDIA_MAX_BYTES ?? 26214400);
+  if (!Number.isSafeInteger(value) || value <= 0) throw new Error("invalid_media_max_bytes");
+  return value;
 }
 /** Server only. Never serialize this configuration into a DTO or log. */
 export function csiProviderConfiguration() {

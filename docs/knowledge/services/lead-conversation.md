@@ -46,11 +46,11 @@ A Lead Conversation is evidence of one telephone conversation matched to a Form 
 
 ## Invariants
 
-- Unique on `{ provider, provider_recording_id }`.
+- Unique on `{ provider, provider_account_id, provider_recording_id }` after CSI-01's verified legacy-account migration.
 - Raw STT text never reaches Mongo, a log, or disk.
 - RingCentral `contentUri` is never stored.
 - Summaries never write back to a Lead or Booking.
-- Automated discovery, form-lead phone-window matching, and attach/detach remain deferred.
+- [CSI-11 discovery/media](sales-intelligence-recording-media.md) consumes Call Interaction recording IDs. Attachment writes and automatic transcription remain downstream. Seed paths remain playable and are never overwritten by CSI-11.
 
 ## Seed
 

@@ -177,38 +177,54 @@ export async function failCsiJob(
     | "transient"
     | "schema_invalid"
     | "permission_denied"
-    | "budget_exhausted",
+    | "budget_exhausted"
+    | "recording_pending"
+    | "eligibility_pending"
+    | "throttled",
   retryAfterMs = 0,
   /** CSI-03 additive: bounded JSON summary of the partial outcome kept visible on the retried/paused/dead-lettered row. */
-  options: { result?: unknown } = {},
+  options: {
+    result?: unknown;
+    /** Timed capability pauses resume through the normal claim path. */
+    resumeAt?: Date;
+    mutation?: (session: ClientSession, outcome: { status: string; next_attempt_at: Date }) => Promise<void>;
+  } = {},
 ) {
-  const Model = getSalesIntelligenceJobModel();
-  const row = await Model.findOne(fence(lease));
-  if (!row) throw new CsiError("LEASE_LOST");
-  const paused =
-    reason === "permission_denied" || reason === "budget_exhausted";
-  const exhausted =
-    row.attempts >= (reason === "schema_invalid" ? 2 : row.max_attempts);
-  const delay = Math.max(
-    retryAfterMs,
-    Math.min(21_600_000, 30_000 * 2 ** (row.attempts - 1)) *
-      (1 + Math.random() * 0.25),
-  );
-  if (!Number.isFinite(delay) || delay < 0) throw new CsiError("INVALID_INPUT");
-  const result = await Model.updateOne(
-    fence(lease),
-    {
-      $set: {
-        status: paused ? "paused" : exhausted ? "dead_letter" : "retry",
-        reason,
-        next_attempt_at: new Date(Date.now() + delay),
-        lease_owner: null,
-        leased_until: null,
-        ...(options.result === undefined ? {} : { result: options.result }),
+  return withTransaction(async (session) => {
+    const Model = getSalesIntelligenceJobModel();
+    const row = await Model.findOne(fence(lease)).session(session);
+    if (!row) throw new CsiError("LEASE_LOST");
+    const paused =
+      reason === "permission_denied" || reason === "budget_exhausted";
+    const deferred = paused || ["recording_pending", "eligibility_pending", "throttled"].includes(reason);
+    const exhausted =
+      row.attempts >= (reason === "schema_invalid" ? 2 : row.max_attempts);
+    const delay = Math.max(
+      retryAfterMs,
+      Math.min(21_600_000, 30_000 * 2 ** (row.attempts - 1)) *
+        (1 + Math.random() * 0.25),
+    );
+    if (!Number.isFinite(delay) || delay < 0) throw new CsiError("INVALID_INPUT");
+    const next_attempt_at = options.resumeAt ?? new Date(Date.now() + delay);
+    if (!Number.isFinite(next_attempt_at.getTime())) throw new CsiError("INVALID_INPUT");
+    const status = paused && !options.resumeAt ? "paused" : !deferred && exhausted ? "dead_letter" : "retry";
+    await options.mutation?.(session, { status, next_attempt_at });
+    const result = await Model.updateOne(
+      fence(lease),
+      {
+        $set: {
+          status,
+          reason,
+          next_attempt_at,
+          lease_owner: null,
+          leased_until: null,
+          ...(options.result === undefined ? {} : { result: options.result }),
+        },
+        ...(deferred ? { $inc: { attempts: -1 } } : {}),
       },
-      ...(paused ? { $inc: { attempts: -1 } } : {}),
-    },
-    { runValidators: true },
-  );
-  if (result.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
+      { session, runValidators: true },
+    );
+    if (result.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
+    return { status, next_attempt_at };
+  });
 }

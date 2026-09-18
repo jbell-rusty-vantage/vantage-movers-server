@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "node scripts/quality/hook-entry.mjs --provider cursor --event start",
+        "timeout": 3
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "node scripts/quality/hook-entry.mjs --provider cursor --event prompt",
+        "timeout": 3
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "node scripts/quality/hook-entry.mjs --provider cursor --event tool-start",
+        "timeout": 3
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "node scripts/quality/hook-entry.mjs --provider cursor --event activity",
+        "timeout": 3
+      }
+    ],
+    "stop": [
+      {
+        "command": "node scripts/quality/hook-entry.mjs --provider cursor --event stop",
+        "timeout": 3
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "node scripts/quality/hook-entry.mjs --provider cursor --event end",
+        "timeout": 3
+      }
+    ]
+  }
+}

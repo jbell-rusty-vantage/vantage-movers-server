@@ -5,12 +5,14 @@ import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob"
 import { csiIdSchema } from "../../validation/v1/salesIntelligence";
 import { runCaptureProjectionJob, type CaptureProjectionWorkerDeps } from "./captureProjectionWorker";
 import { runRebuildJob, type RebuildWorkerDeps } from "./rebuild";
+import { runRecordingDiscoveryJob } from "../salesIntelligence/conversations/discover";
+import { runMediaFetchJob } from "../salesIntelligence/conversations/media";
 
 /**
  * Queue wake-up dispatch. The payload is exactly `{ job_id }`; stage and
  * routing come from the authoritative Mongo job row, never from the message.
  * Stages without a registered consumer are left pending (not claimed), so a
- * wake-up for Team C/CSI-11 work never burns their attempts here.
+ * wake-up for future Team C work never burns its attempts here.
  */
 export const csiWakeupSchema = z.object({ job_id: csiIdSchema }).strict();
 
@@ -29,7 +31,7 @@ export type DispatchDependencies = {
   rebuild?: RebuildWorkerDeps;
 };
 
-/** Registered consumers. Team C (CSI-05/06) and CSI-11 add their stages here; unregistered stages stay pending. */
+/** Registered consumers including CSI-11. Future Team C stages stay pending until registered. */
 export function defaultStageHandlers(
   capture: CaptureProjectionWorkerDeps = {},
   rebuild: RebuildWorkerDeps = {},
@@ -37,6 +39,8 @@ export function defaultStageHandlers(
   return {
     capture_projection: (jobId) => runCaptureProjectionJob(jobId, capture),
     rebuild: (jobId) => runRebuildJob(jobId, rebuild),
+    recording_discovery: (jobId) => runRecordingDiscoveryJob(jobId),
+    media_fetch: (jobId) => runMediaFetchJob(jobId),
   };
 }
 

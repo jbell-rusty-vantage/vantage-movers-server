@@ -8,6 +8,43 @@ import {
 
 export { getValidToken } from "./auth";
 
+/** Bound this consumer's wait without changing the shared token refresh contract. */
+async function awaitRecordingAuth<T>(signal: AbortSignal, operation: () => Promise<T>): Promise<T> {
+  signal.throwIfAborted();
+  let onAbort!: () => void;
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      onAbort = () => reject(signal.reason);
+      signal.addEventListener("abort", onAbort, { once: true });
+      Promise.resolve().then(() => { signal.throwIfAborted(); return operation(); }).then(resolve, reject);
+    });
+  } finally { signal.removeEventListener("abort", onAbort); }
+}
+
+/** Additive raw GET transport for bounded streaming consumers. Shares token refresh; never follows a contentUri or cross-origin redirect. */
+export async function ringCentralReadResponse(endpoint: string, signal: AbortSignal, deps: {
+  fetch?: typeof fetch;
+  token?: typeof getValidToken;
+  refresh?: () => Promise<unknown>;
+  server?: string;
+} = {}): Promise<Response> {
+  if (!/^\/restapi\/v1\.0\/account\/[^/]+\/recording\/[^/]+(?:\/content)?$/.test(endpoint)) throw new Error("invalid_recording_endpoint");
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const token = await awaitRecordingAuth(signal, deps.token ?? getValidToken);
+    const response = await (deps.fetch ?? fetch)(`${deps.server ?? getRequiredEnv("RC_SERVER_URL")}${endpoint}`, {
+      method: "GET", headers: { Authorization: `Bearer ${token.access_token}` }, redirect: "error", signal,
+    });
+    if (response.status !== 401 || attempt === 1) return response;
+    await response.body?.cancel();
+    if (deps.refresh) await awaitRecordingAuth(signal, deps.refresh);
+    else {
+      await awaitRecordingAuth(signal, clearRingCentralTokenCache);
+      await awaitRecordingAuth(signal, exchangeJwtForToken);
+    }
+  }
+  throw new Error("recording_auth_failed");
+}
+
 export class RingCentralApiError extends Error {
   constructor(
     message: string,

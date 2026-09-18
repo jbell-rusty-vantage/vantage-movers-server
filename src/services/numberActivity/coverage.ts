@@ -1,6 +1,8 @@
 import { csiDataset } from "../../config/domain/salesIntelligence";
 import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
 import { getSalesIntelligenceSyncStateModel } from "../../models/SalesIntelligenceSyncState";
+import { getLeadConversationModel } from "../../models/LeadConversation";
+import { getCallInteractionModel } from "../../models/CallInteraction";
 import { coverageDtoSchema, type CoverageDto } from "../salesIntelligence/dto";
 import { CALL_LOG_ALL_DIRECTIONS_SCOPE } from "./reconcileCallLog";
 import { WEBHOOK_RECEIPTS_SCOPE } from "./webhookFanout";
@@ -10,8 +12,8 @@ import { WEBHOOK_RECEIPTS_SCOPE } from "./webhookFanout";
  *
  * Honest by construction: without a `call_log_all_directions` sync state the
  * watermark is `null` and `call_log` is `unknown`; open gaps are reported as
- * ranges that are "not yet observed", never "no call". `recording_content`
- * stays `unknown` until CSI-11 proves it. Reads only; no upsert, no `$set`.
+ * ranges that are "not yet observed", never "no call". CSI-11 recording
+ * capability derives from stored outcomes, never from seed audio alone. Reads only; no upsert, no `$set`.
  * Collection read failures propagate (the route maps them to 500); provider
  * content is never part of the result.
  */
@@ -49,6 +51,19 @@ export async function readCaptureCoverage(): Promise<CoverageDto> {
     status: "paused",
     reason: "budget_exhausted",
   });
+  const Conversations = getLeadConversationModel();
+  const [denied, unavailable, stored, mediaPending, missing, failed, undetermined, pendingDiscovery, exhaustedDiscovery, verifiedStored] = await Promise.all([
+    Conversations.countDocuments({ availability_reason: "permission_denied", state: "unavailable" }),
+    Conversations.countDocuments({ state: "unavailable" }),
+    Conversations.countDocuments({ "media.blob_pathname": { $type: "string" }, "media.purged_at": null }),
+    Conversations.countDocuments({ state: "discovered" }),
+    Conversations.countDocuments({ state: "no_recording" }),
+    Conversations.countDocuments({ state: { $in: ["failed", "dead_letter"] } }),
+    Conversations.countDocuments({ "analysis_eligibility.status": "undetermined" }),
+    getCallInteractionModel().countDocuments({ merged_into_id: null, terminal: true, direction: { $ne: "Internal" }, recordings: { $size: 0 }, "recording_discovery.state": { $ne: "no_recording" } }),
+    getCallInteractionModel().countDocuments({ merged_into_id: null, "recording_discovery.state": "no_recording" }),
+    Conversations.countDocuments({ call_interaction_id: { $ne: null }, provider_account_id: { $type: "string" }, media_digest_sha256: { $type: "string" }, "media.blob_pathname": { $type: "string" }, "media.purged_at": null }),
+  ]);
 
   return coverageDtoSchema.parse({
     known_through: knownThrough ? knownThrough.toISOString() : null,
@@ -59,10 +74,12 @@ export async function readCaptureCoverage(): Promise<CoverageDto> {
     })),
     capabilities: {
       call_log: streamCapability(callLog, (row) => Boolean(row.known_complete_through)),
-      recording_content: "unknown",
+      recording_content: denied ? "denied" : unavailable || failed ? "unavailable" : verifiedStored ? "ok" : "unknown",
       webhook: streamCapability(webhook, (row) => Boolean(row.cursor?.last_sync_to)),
     },
     ai_paused: paused > 0,
+    recordings: { pending_discovery: pendingDiscovery, media_pending: mediaPending, media_stored: stored,
+      no_recording: missing + exhaustedDiscovery, unavailable, failed, eligibility_undetermined: undetermined },
   });
 }
 

@@ -69,6 +69,8 @@ All abbreviated paths below are under `/api/v1/admin/sales-intelligence`.
 
 Existing `/api/v1/admin/conversations/:id`, audio-url, and by-lead reads remain Owner-only; add `/api/v1/admin/conversations/by-number/:id`. Media signed URLs remain short-lived/audited. Do not put private Blob URLs into agent output.
 
+CSI-11 implements the capture/media subset of `/coverage` as `{ok:true,data:{as_of,coverage}}` using the existing Owner guard. `coverage.recordings` adds `pending_discovery`, `media_pending`, `media_stored`, `no_recording`, `unavailable`, `failed`, `eligibility_undetermined`. Pending discovery and exhausted discovery count canonical interactions without IDs; other counts are recording conversations. No-recording combines exhausted absent-ID interactions and confirmed conversation absence, without fabricating a recording row. `recording_content` is conservative across stored account states: denied takes precedence, then unavailable/failed, then verified CSI stored media, otherwise unknown. Legacy seed Blob availability counts as stored but never proves a provider grant. These states describe stored outcomes, not a fresh live capability probe. Full AI/settings/job-health Coverage remains downstream; this read neither initializes nor mutates any collection.
+
 ## 2. Shared read contracts
 
 Implement shared server DTOs in `src/services/salesIntelligence/dto.ts`; Admin consumes them without reproducing state/rank rules.

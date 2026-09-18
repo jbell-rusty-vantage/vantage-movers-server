@@ -163,6 +163,9 @@ const LeadConversationSchema = new Schema(
       type: new Schema(
         {
           eligible: Boolean,
+          status: { type: String, enum: ["eligible", "excluded", "undetermined"] },
+          missing_inputs: [String],
+          scope: { type: String, enum: ["lead", "number"] },
           reasons: [String],
           decided_at: Date,
           policy_version: String,

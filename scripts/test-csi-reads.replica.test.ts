@@ -591,11 +591,13 @@ test("CSI-04 read-service isolated replica proof", { skip: !enabled, timeout: 24
     await t.test("coverage: honest without sync state; watermark, gaps, webhook capability and AI pause reported once they exist", async () => {
       assert.equal(await SyncState.countDocuments(), 0);
       const empty = await readOnly("coverage empty", () => readCaptureCoverage());
+      const recordings = { pending_discovery: 10, media_pending: 3, media_stored: 0, no_recording: 0, unavailable: 0, failed: 0, eligibility_undetermined: 0 };
       assert.deepEqual(empty, {
         known_through: null,
         gaps: [],
         capabilities: { call_log: "unknown", recording_content: "unknown", webhook: "unknown" },
         ai_paused: false,
+        recordings,
       });
 
       await SyncState.create({
@@ -611,6 +613,7 @@ test("CSI-04 read-service isolated replica proof", { skip: !enabled, timeout: 24
         gaps: [{ from: at(-7200).toISOString(), to: at(-6000).toISOString(), reason: "provider_request_failed" }],
         capabilities: { call_log: "ok", recording_content: "unknown", webhook: "unknown" },
         ai_paused: false,
+        recordings,
       });
 
       await SyncState.create({ scope: WEBHOOK_RECEIPTS_SCOPE, lease_epoch: 1, cursor: { last_sync_to: at(-60) }, consecutive_failures: 0 });

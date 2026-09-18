@@ -339,6 +339,8 @@ Retain existing seed compatibility and Owner-only reads. Migrate recording uniqu
 
 Replace threshold-based relevance with `analysis_eligibility: {eligible, reasons[], decided_at, policy_version}`. Reasons: `form_linked`, `call_linked`, `number_review`, `mapped_sales_inbound`, `reviewed_rep_outbound`, `ambiguous_lead_context`, `owner_requested`; exclusions: `internal_company`, `known_non_customer`, `no_sales_context`. No minimum duration and no voicemail skip. Closed Lead eligibility for Outreach is separate from eligibility for analysis.
 
+CSI-11 additive adaptation: `eligible: null` plus `status: undetermined` and `missing_inputs[]` distinguishes absent CSI-05/10 evidence from exclusion. `status` is `eligible|excluded|undetermined`; `scope` is `lead|number`. Existing legacy eligibility remains readable. Discovery preserves `Internal` direction too (excluded automatically) rather than rewriting it as Unknown. `CallInteraction.recording_discovery` projects `state: pending|discovered|no_recording`, bounded reason, `checked_at` and nullable `next_attempt_at`; missing recording IDs never create a LeadConversation. The worker queue remains `sales_intelligence_jobs`.
+
 Add `unavailable` to processing states; keep other existing states. Store availability reason, retry time, pending stage and errors separately from latest successful analysis. Each redacted transcript version is immutable in `intelligence_evidence_snapshots` with segment `{sid,start_ms?,end_ms?,speaker:rep|customer|unknown,text}`. The conversation may cache the latest version but must not overwrite prior run evidence. Speaker is unknown without evidence.
 
 ### 6.1 Existing-model adaptation (verified against code)

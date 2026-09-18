@@ -32,6 +32,7 @@ export const LEAD_CONVERSATION_DIRECTIONS = [
   "Inbound",
   "Outbound",
   "Unknown",
+  "Internal",
 ] as const;
 export type LeadConversationDirection =
   (typeof LEAD_CONVERSATION_DIRECTIONS)[number];

@@ -237,6 +237,16 @@ export function callLogRecord(input: {
   };
 }
 
+/** Tiny synthetic WAV header/payload for CSI-11 stream/digest proofs; contains no real voice. */
+export function syntheticRecordingWav(): Uint8Array {
+  const bytes = Buffer.alloc(48);
+  bytes.write("RIFF", 0); bytes.writeUInt32LE(40, 4); bytes.write("WAVEfmt ", 8);
+  bytes.writeUInt32LE(16, 16); bytes.writeUInt16LE(1, 20); bytes.writeUInt16LE(1, 22);
+  bytes.writeUInt32LE(8000, 24); bytes.writeUInt32LE(16000, 28); bytes.writeUInt16LE(2, 32); bytes.writeUInt16LE(16, 34);
+  bytes.write("data", 36); bytes.writeUInt32LE(4, 40);
+  return bytes;
+}
+
 export function inboundConnectedCallLog(sessionId = "s-inbound-1", overrides: Partial<Parameters<typeof callLogRecord>[0]> = {}) {
   return callLogRecord({
     id: `cl-${sessionId}`,
