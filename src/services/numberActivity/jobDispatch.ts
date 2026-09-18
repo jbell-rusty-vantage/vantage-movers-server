@@ -7,6 +7,7 @@ import { runCaptureProjectionJob, type CaptureProjectionWorkerDeps } from "./cap
 import { runRebuildJob, type RebuildWorkerDeps } from "./rebuild";
 import { runRecordingDiscoveryJob } from "../salesIntelligence/conversations/discover";
 import { runMediaFetchJob } from "../salesIntelligence/conversations/media";
+import { runTranscriptionJob } from "../salesIntelligence/conversations/transcribe";
 
 /**
  * Queue wake-up dispatch. The payload is exactly `{ job_id }`; stage and
@@ -41,6 +42,7 @@ export function defaultStageHandlers(
     rebuild: (jobId) => runRebuildJob(jobId, rebuild),
     recording_discovery: (jobId) => runRecordingDiscoveryJob(jobId),
     media_fetch: (jobId) => runMediaFetchJob(jobId),
+    transcription: (jobId) => runTranscriptionJob(jobId),
   };
 }
 

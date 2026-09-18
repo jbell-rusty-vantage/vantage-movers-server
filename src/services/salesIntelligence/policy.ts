@@ -98,7 +98,8 @@ export async function updateCsiPolicy(input: {
         },
         { session: context.session },
       );
-      if (policy.monthly_ceiling_cents > previousPolicy.monthly_ceiling_cents)
+      if (policy.monthly_ceiling_cents > previousPolicy.monthly_ceiling_cents ||
+          policy.per_recording_ceiling_cents > previousPolicy.per_recording_ceiling_cents)
         await getSalesIntelligenceJobModel().updateMany(
           { ...csiDataset(), status: "paused", reason: "budget_exhausted" },
           { $set: { status: "pending", next_attempt_at: context.now } },

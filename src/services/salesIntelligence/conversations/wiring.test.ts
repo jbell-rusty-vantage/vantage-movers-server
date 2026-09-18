@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { test } from "node:test";
 import express from "express";
@@ -31,7 +31,7 @@ test("CSI-11 queue stages, cron schedule, auth, flag-off and lease-held wiring",
   } finally { server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); process.env = env; }
 });
 test("CSI-11 modules never import qualification, Lead writers, budgets, STT or LLMs", () => {
-  for (const file of readdirSync("src/services/salesIntelligence/conversations").filter(f => f.endsWith(".ts") && !f.endsWith(".test.ts"))) {
+  for (const file of ["discover.ts", "eligibility.ts", "media.ts", "mediaPolicy.ts", "workerSupport.ts"]) {
     const source = readFileSync(`src/services/salesIntelligence/conversations/${file}`, "utf8");
     for (const match of source.matchAll(/from\s+"([^"]+)"/g)) {
       assert.doesNotMatch(match[1]!, /ringcentral-call-lead-ingest|call-log-vetting|call-candidate-|call-session-|callLeadConvergence|leads\/|aiBudget|ai-sdk|transcribe|redaction/);

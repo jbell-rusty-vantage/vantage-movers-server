@@ -1,0 +1,25 @@
+
+> vantage_movers_server@1.0.0 test:csi:reads:replica C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> node --import tsx scripts/test-csi-reads.ts
+
+CSI-04 read-service isolated replica proof: testvantagemovers_csi04r27c839549237; loopback replica csi01 on port 27189
+{"level":"info","time":"2026-09-18T15:34:59.910Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-04 read-service isolated replica proof
+  ✔ seed: Contact Numbers and interactions through applyInteractionObservation (webhook + Call Log), one merged pair with a tombstone (2115.1609ms)
+  ✔ seed: hygiene row, attachment, Outreach records, Lead Messages and Lead Conversations (test seeding through the models, not reads) (133.7358ms)
+  ✔ search: keyset pagination is complete and duplicate-free through a same-instant cluster (nine numbers at one timestamp, limit 2) (815.6874ms)
+  ✔ search: e164, suffix and term matching (provider names live in search_terms) (820.5829ms)
+  ✔ search: attachment, activity range, classification and hygiene filters (974.3171ms)
+  ✔ timeline: cross-kind ordering with same-millisecond ties, canonical dedupe, recordings per entry, messages and conversations present (194.5634ms)
+  ✔ timeline: cursor pagination is complete across same-millisecond, cross-kind ties; malformed/missing ids are null; extra sources merge (1894.0793ms)
+  ✔ detail: attachments, connections counts, fresh interaction recount, allowed actions; malformed/missing ids are null (285.7674ms)
+  ✔ coverage: honest without sync state; watermark, gaps, webhook capability and AI pause reported once they exist (604.5674ms)
+✔ CSI-04 read-service isolated replica proof (21167.2536ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 30112.8259

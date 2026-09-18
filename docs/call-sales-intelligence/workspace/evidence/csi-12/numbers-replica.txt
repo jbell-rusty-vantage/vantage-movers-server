@@ -1,0 +1,24 @@
+
+> vantage_movers_server@1.0.0 test:csi:numbers:replica C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> node --import tsx scripts/test-csi-numbers.ts
+
+CSI-04 isolated replica proof: testvantagemovers_csi04677b4a862817; loopback replica csi01 on port 27189
+{"level":"info","time":"2026-09-18T15:35:00.745Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+{"level":"warn","time":"2026-09-18T15:35:14.491Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.directory_sync.failed","leaseOwnerHash":"a482336b0c01","errorCode":"provider_throttled","errorName":"ProviderFailure"}
+{"level":"warn","time":"2026-09-18T15:35:14.540Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.directory_sync.failed","leaseOwnerHash":"2ba46bacb971","errorCode":"account_mismatch","errorName":"ProviderAccountError"}
+▶ CSI-04 isolated replica proof
+  ✔ directory sync: fenced lease, digest-deduplicated snapshots, bound of 30 (exercised as 3), honest failure states; loadDirectoryLookup reads the latest snapshot (1278.6546ms)
+  ✔ snapshot is read by the projection: party roles resolve to user/queue and the company DID is classified (244.3917ms)
+  ✔ directory sync cron: auth, flag and lease mapping through the real router (192.055ms)
+  ✔ rebuild: durable job via the idempotent Owner command; worker recount equals a fresh count, excludes merged tombstones, and is idempotent (1286.394ms)
+  ✔ rebuild: concurrent capture bumps the revision → CAS conflict retries; expired lease cannot complete; rebuild-all fans out dedupe-keyed per-number jobs (533.1756ms)
+  ✔ routes: Owner-only reads and the rebuild command through the real guard; flag-off 404; idempotency replay and conflict; reads mutate nothing (413.5606ms)
+✔ CSI-04 isolated replica proof (16614.6407ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 26399.9721

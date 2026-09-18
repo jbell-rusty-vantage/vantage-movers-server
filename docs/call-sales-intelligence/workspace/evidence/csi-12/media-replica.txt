@@ -1,0 +1,57 @@
+
+> vantage_movers_server@1.0.0 test:csi:media:replica C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> node --import tsx scripts/test-csi-media.ts
+
+CSI-11 isolated replica proof: testvantagemovers_csi1151a844aad2ff; loopback replica csi01 on port 27189
+{"level":"info","time":"2026-09-18T15:35:00.725Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-11 disposable replica proofs (all provider bytes synthetic)
+  ✔ seeded private audio is available but does not prove recording_content capability (114.5105ms)
+  ✔ discovery dispatch, completed-job replay, account uniqueness and durable-before-wake (803.9133ms)
+  ✔ pending job remains pending without a fabricated conversation, then Call Log supplies id (621.9661ms)
+  ✔ merge tombstone resolves current canonical interaction (346.8833ms)
+  ✔ missing CSI-05/10 stays undetermined and never calls a provider (395.1703ms)
+{"level":"warn","time":"2026-09-18T15:35:15.926Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"info","time":"2026-09-18T15:35:16.135Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.media_stored","observability_level":"info","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ 404 pending then success; media digest retained on replay and no overwrite (757.5095ms)
+{"level":"warn","time":"2026-09-18T15:35:16.589Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ 404 availability window exhaustion is explicit no_recording (293.1537ms)
+{"level":"warn","time":"2026-09-18T15:35:16.833Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"info","time":"2026-09-18T15:35:17.442Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.media_stored","observability_level":"info","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ 403 denied and 24h retry; Coverage transitions and every read is read-only (872.81ms)
+{"level":"warn","time":"2026-09-18T15:35:17.732Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"info","time":"2026-09-18T15:35:17.876Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.media_stored","observability_level":"info","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"warn","time":"2026-09-18T15:35:18.105Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"info","time":"2026-09-18T15:35:18.262Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.media_stored","observability_level":"info","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ 429 honors Retry-After or default without burning failure attempts (795.521ms)
+{"level":"warn","time":"2026-09-18T15:35:18.521Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"warn","time":"2026-09-18T15:35:18.617Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"warn","time":"2026-09-18T15:35:18.716Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"warn","time":"2026-09-18T15:35:18.821Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"warn","time":"2026-09-18T15:35:18.909Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"warn","time":"2026-09-18T15:35:18.992Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"warn","time":"2026-09-18T15:35:19.069Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"warn","time":"2026-09-18T15:35:19.149Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.failed","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ eight transient errors dead-letter and atomically project failure (910.9427ms)
+{"level":"warn","time":"2026-09-18T15:35:19.360Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.failed","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ expired eighth claim recovers failure projection once without a ninth provider call (209.8414ms)
+{"level":"info","time":"2026-09-18T15:35:19.654Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.media_stored","observability_level":"info","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ media completion rechecks concurrent Owner exclusion and suppresses downstream hook (279.6634ms)
+{"level":"info","time":"2026-09-18T15:35:20.246Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.media_stored","observability_level":"info","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ restored eligibility reschedules a skipped media job once across concurrent discovery revisions (736.2805ms)
+  ✔ concurrent discovery claims preserve one account recording (166.9201ms)
+{"level":"warn","time":"2026-09-18T15:35:20.790Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ oversize provider media is terminal unavailable and never uploads (229.2824ms)
+  ✔ discovery transaction rolls back conversation refresh and pointer on conflicting media intent (319.2439ms)
+{"level":"info","time":"2026-09-18T15:35:21.521Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.media_stored","observability_level":"info","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ concurrent workers elect one; expired epoch cannot commit media (420.0028ms)
+  ✔ fenced failure callback rolls back effects when lease expires (336.3035ms)
+  ✔ database eligibility reads validate Lead refs, ambiguity, Owner review and effective reviewed rep (375.3989ms)
+✔ CSI-11 disposable replica proofs (all provider bytes synthetic) (21658.8341ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 31397.7075

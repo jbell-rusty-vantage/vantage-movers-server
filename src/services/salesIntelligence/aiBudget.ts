@@ -12,6 +12,7 @@ import { assertIndexes, duplicateKey } from "./transactions";
 import { csiIdSchema } from "../../validation/v1/salesIntelligence";
 import { csiDataset } from "../../config/domain/salesIntelligence";
 import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
+import type { ClientSession } from "mongoose";
 export type ReservationInput = {
   reservation_id: string;
   month: string;
@@ -20,8 +21,10 @@ export type ReservationInput = {
   step: string;
   stage: "transcription" | "analysis";
   estimated_cents: number;
+  kind?: "stt";
 };
 export async function reserveCsiBudget(input: ReservationInput) {
+  if (input.kind && input.stage !== "transcription") throw new CsiError("INVALID_INPUT");
   csiIdSchema.parse(input.job_id);
   if (input.run_id) csiIdSchema.parse(input.run_id);
   if (
@@ -85,8 +88,9 @@ export async function reserveCsiBudget(input: ReservationInput) {
       if (budget.modifiedCount !== 1 && input.estimated_cents !== 0)
         throw new CsiError("BUDGET_EXHAUSTED");
       if (budget.matchedCount !== 1) throw new CsiError("BUDGET_EXHAUSTED");
+      const { kind: _kind, ...record } = input;
       const [reservation] = await Reservations.create(
-        [{ ...input, status: "reserved", reserved_at: new Date() }],
+        [{ ...record, status: "reserved", reserved_at: new Date() }],
         { session },
       );
       return reservation;
@@ -106,6 +110,7 @@ export async function reconcileCsiBudget(
   reservationId: string,
   actualCents: number,
   release = false,
+  session?: ClientSession,
 ) {
   if (
     !Number.isSafeInteger(actualCents) ||
@@ -113,7 +118,7 @@ export async function reconcileCsiBudget(
     (release && actualCents !== 0)
   )
     throw new CsiError("INVALID_INPUT");
-  return withTransaction(async (session) => {
+  const reconcile = async (session: ClientSession) => {
     const Reservations = getSalesIntelligenceAiReservationModel();
     const row = await Reservations.findOne({
       reservation_id: reservationId,
@@ -144,7 +149,12 @@ export async function reconcileCsiBudget(
       { session },
     );
     if (totals.matchedCount !== 1) throw new CsiError("REVISION_CONFLICT");
-  });
+  };
+  if (session) {
+    if (!session.inTransaction()) throw new CsiError("INVALID_INPUT");
+    return reconcile(session);
+  }
+  return withTransaction(reconcile);
 }
 
 /** Period boundaries are computed by Team C's timezone clock, never by browser scope. */

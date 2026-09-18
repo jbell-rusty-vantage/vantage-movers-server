@@ -22,6 +22,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [call-lead.md](knowledge/services/call-lead.md) | Create and update Call Leads (manual and RingCentral), duplicates, CPL, and sheet tabs. |
 | [lead-conversation.md](knowledge/services/lead-conversation.md) | Seeded Lead Conversation evidence: redacted transcript, sectioned summary, private audio. |
 | [sales-intelligence-recording-media.md](knowledge/services/sales-intelligence-recording-media.md) | CSI-11 account-scoped recording discovery, eligibility, immutable private media and availability Coverage. |
+| [sales-intelligence-transcription.md](knowledge/services/sales-intelligence-transcription.md) | CSI-12 budgeted private-media STT, redacted immutable transcript versions and durable analysis intent. |
 | [sales-intelligence-foundation.md](knowledge/services/sales-intelligence-foundation.md) | CSI-01 shared contracts, Mongo fences, scoped auth, durable jobs and budget primitives; independently reviewed foundation, feature flags off. |
 | [number-activity-capture.md](knowledge/services/number-activity-capture.md) | CSI-02 all-direction Call Interaction projection from webhook parties and Detailed Call Log, account-scoped identity, dedicated reconcile cursor/lease, honest coverage gaps, durable downstream job intent; qualification untouched. |
 | [sales-intelligence-webhook-fanout.md](knowledge/services/sales-intelligence-webhook-fanout.md) | CSI-03 durable webhook fan-out: deduplicated capture-projection job per stored receipt before the ack, receipt watermark recovery, capture worker with job-id audit tie-back, queue consumer and cron registration, all-direction subscription lifecycle with ownership guards; qualification untouched, flags off. |
@@ -109,6 +110,7 @@ Workspace ADRs are outside this repo. This standalone checkout does not contain 
 | [lead-costs-owner-editing-specification.md](lead-costs-owner-editing/lead-costs-owner-editing-specification.md) | Operations Registry Lead Costs: Owner From / Through / Amount on one Feed. New `set_range` command. Schedule edits still never rewrite stamped Lead CPL. |
 | [granot-lifecycle-surfaces-specification.md](granot-lifecycle-surfaces/granot-lifecycle-surfaces-specification.md) | Ingestion cleanup, Granot Lifecycle System tab (Health + searchable webhook-channel Granot Observation Receipts). Job Timeline stays Records. Live Events SSE unchanged. |
 | [mongodb-backup-automation/README.md](mongodb-backup-automation/README.md) | Operator playbook: list, trigger, inspect, and restore-drill GCS backups. Invariants stay in the Service. |
+| [quality-checkpoints.md](quality-checkpoints.md) | Local Cursor/Codex quality pipeline: delayed worker, `finish-work`, inspect `vantage-quality/` runs. Operator rule: `.cursor/rules/quality-inspect-and-run.mdc`. |
 
 ## Delivery packs
 

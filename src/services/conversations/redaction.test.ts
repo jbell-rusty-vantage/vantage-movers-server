@@ -43,3 +43,13 @@ test("an unvalidated 16-digit sequence that fails Luhn is left alone", () => {
   assert.equal(result.redactions, 0);
   assert.equal(result.text.includes("1234567890123456"), true);
 });
+
+test("spoken digit runs of seven or more are redacted without changing existing payment rules", () => {
+  assert.equal(redactTranscript("one two three four five six").redactions, 0);
+  for (const raw of ["one two three four five six seven", "ZERO, oh, TWO, three, four, five, nine", "one. two. three. four. five. six. seven."]) {
+    const result = redactTranscript(raw);
+    assert.equal(result.redactions, 1);
+    assert.ok(result.text.startsWith("[REDACTED:SPOKEN_DIGITS]"));
+  }
+  assert.equal(redactTranscript("one two three boxes four five six seven").redactions, 0);
+});

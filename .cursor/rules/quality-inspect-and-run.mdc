@@ -1,0 +1,47 @@
+---
+description: Inspect and manually run the server quality checkpoint pipeline
+globs: scripts/quality/**,.cursor/hooks.json,.quality.config.json,docs/quality-checkpoints.md
+alwaysApply: false
+---
+
+# Quality inspect and run
+
+Owner playbook: [`docs/quality-checkpoints.md`](../../docs/quality-checkpoints.md). This pipeline exists only in `vantage-main-server`.
+
+`.cursor/hooks.json` records metadata (start / prompt / tool / stop / end). Hooks do **not** review code. After sessions go idle (20 min) or end (60s), a detached worker may start a checkpoint.
+
+## Inspect
+
+From `vantage-main-server`:
+
+```bash
+pnpm quality:status
+```
+
+Use `state` from that JSON (`git rev-parse --git-path vantage-quality`). Then read:
+
+- `latest.json` — current or last run
+- `runs/<id>/report.json` — stage, changed paths, checks
+- `runs/<id>/{review,cleanup,docs,verify}.md` — model reports
+- `runs/<id>/{typecheck,lint,test,quality-tests}.log`
+- `runs/<id>/changes.patch` — proposed apply
+- `worker.log` — background worker
+- `events/` — metadata only; no prompt or tool payloads
+
+Statuses: `complete`, `unchanged`, `initialized`, `patch-ready`, `stale`, `failed`, `busy`.
+
+```text
+❌ Re-run hook-entry.mjs expecting a review
+✅ pnpm quality:status, then open latest.json / runs/<id>/
+```
+
+## Run
+
+```bash
+pnpm finish-work --provider cursor
+pnpm finish-work --provider cursor --no-apply
+pnpm quality:pause
+pnpm quality:resume
+```
+
+Run `finish-work` at a finished-task boundary, not after every turn. Skip it when `VANTAGE_QUALITY_CHILD=1`. `pnpm quality:test` is offline. `node scripts/quality/smoke.mjs cursor` is a paid real-model fixture — do not point it at application code.

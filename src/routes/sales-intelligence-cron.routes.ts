@@ -11,6 +11,7 @@ import {
 import { runDirectorySyncOnce } from "../services/numberActivity/directorySync";
 import { drainRecordingDiscoveryJobs } from "../services/salesIntelligence/conversations/discover";
 import { drainMediaFetchJobs } from "../services/salesIntelligence/conversations/media";
+import { drainTranscriptionJobs } from "../services/salesIntelligence/conversations/transcribe";
 import { drainRebuildJobs, type RebuildDrainSummary, type RebuildWorkerDeps } from "../services/numberActivity/rebuild";
 import { runCallLogReconcileOnce } from "../services/numberActivity/reconcileCallLog";
 import {
@@ -52,6 +53,7 @@ export type SalesIntelligenceCronRouteDeps = {
   /** CSI-04: daily directory snapshot sync under `SALES_INTELLIGENCE_DIRECTORY_SYNC`. */
   runDirectorySync?: typeof runDirectorySyncOnce;
   runMediaFetch?: typeof drainMediaFetchJobs;
+  runTranscription?: typeof drainTranscriptionJobs;
   drainRecordingDiscovery?: typeof drainRecordingDiscoveryJobs;
 };
 
@@ -60,6 +62,7 @@ export const CSI_CRON_PATHS = {
   jobRecovery: "/api/cron/sales-intelligence-job-recovery",
   directorySync: "/api/cron/sales-intelligence-directory-sync",
   mediaFetch: "/api/cron/sales-intelligence-media-fetch",
+  transcribe: "/api/cron/sales-intelligence-transcribe",
 } as const;
 
 export function createSalesIntelligenceCronRouter(
@@ -82,9 +85,11 @@ export function createSalesIntelligenceCronRouter(
   const rebuildMax = deps.rebuildDrainMax ?? 100;
   const directorySync = deps.runDirectorySync ?? runDirectorySyncOnce;
   const mediaFetch = deps.runMediaFetch ?? drainMediaFetchJobs;
+  const transcribe = deps.runTranscription ?? drainTranscriptionJobs;
   const extraRecovery = deps.extraRecovery ?? [
     { name: "recording_discovery", flag: "MEDIA_ENABLED" as const, run: () => (deps.drainRecordingDiscovery ?? drainRecordingDiscoveryJobs)() },
     { name: "media_fetch", flag: "MEDIA_ENABLED" as const, run: mediaFetch },
+    { name: "transcription", flag: "STT_ENABLED" as const, run: transcribe },
   ];
 
   router.all(CSI_CRON_PATHS.callLogReconcile, requireCronAuth, async (_req, res) => {
@@ -200,6 +205,16 @@ export function createSalesIntelligenceCronRouter(
       return res.json({ ok: true, skipped: false, summary });
     } catch {
       return res.status(500).json({ ok: false, error: "Media fetch failed" });
+    }
+  });
+  router.all(CSI_CRON_PATHS.transcribe, requireCronAuth, async (_req, res) => {
+    if (!flag("STT_ENABLED")) return res.json({ ok: true, skipped: true, reason: "disabled" });
+    try {
+      await connect();
+      const summary = await transcribe();
+      return res.json({ ok: true, skipped: ["disabled", "not_claimable", "lease_lost"].includes(summary.status), summary });
+    } catch {
+      return res.status(500).json({ ok: false, error: "Transcription failed" });
     }
   });
   return router;

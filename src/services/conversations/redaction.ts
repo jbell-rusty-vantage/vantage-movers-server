@@ -11,38 +11,52 @@ const EXPIRY_NEAR_CARD =
   /\b(?:exp(?:iry|iration)?|exp\.?)[:\s-]*(\d{1,2}\s*[/\-]\s*\d{2,4})\b/gi;
 const ROUTING_NEAR_LABEL =
   /\b(?:routing(?:\s+number)?|aba)[:\s#]*(\d{9})\b/gi;
+const SPOKEN_DIGITS = /\b(?:zero|oh|one|two|three|four|five|six|seven|eight|nine)(?:[\s,;:.\-]+(?:zero|oh|one|two|three|four|five|six|seven|eight|nine)\b){6,}/gi;
 
-export function redactTranscript(raw: string): RedactionResult {
+export function redactTranscript(raw: string, onRedacted?: (value: string, token: string) => void): RedactionResult {
   let redactions = 0;
   let text = raw;
+
+  text = text.replace(SPOKEN_DIGITS, (match) => {
+    redactions += 1;
+    onRedacted?.(match, "[REDACTED:SPOKEN_DIGITS]");
+    return "[REDACTED:SPOKEN_DIGITS]";
+  });
 
   text = text.replace(CARD_SPAN, (match) => {
     const digits = match.replace(/\D/g, "");
     if (digits.length < 13 || digits.length > 19) return match;
     if (!luhnValid(digits)) return match;
     redactions += 1;
+    onRedacted?.(match, "[REDACTED:CARD]");
     return "[REDACTED:CARD]";
   });
 
-  text = replaceCaptured(text, CVV_NEAR_CARD, "[REDACTED:CVV]", () => {
+  text = replaceCaptured(text, CVV_NEAR_CARD, "[REDACTED:CVV]", (value) => {
     redactions += 1;
+    onRedacted?.(value, "[REDACTED:CVV]");
   });
-  text = replaceCaptured(text, EXPIRY_NEAR_CARD, "[REDACTED:EXPIRY]", () => {
+  text = replaceCaptured(text, EXPIRY_NEAR_CARD, "[REDACTED:EXPIRY]", (value) => {
     redactions += 1;
+    onRedacted?.(value, "[REDACTED:EXPIRY]");
   });
-  text = text.replace(SSN, () => {
+  text = text.replace(SSN, (match) => {
     redactions += 1;
+    onRedacted?.(match, "[REDACTED:SSN]");
     return "[REDACTED:SSN]";
   });
-  text = replaceCaptured(text, ROUTING_NEAR_LABEL, "[REDACTED:ROUTING]", () => {
+  text = replaceCaptured(text, ROUTING_NEAR_LABEL, "[REDACTED:ROUTING]", (value) => {
     redactions += 1;
+    onRedacted?.(value, "[REDACTED:ROUTING]");
   });
-  text = text.replace(EMAIL, () => {
+  text = text.replace(EMAIL, (match) => {
     redactions += 1;
+    onRedacted?.(match, "[REDACTED:EMAIL]");
     return "[REDACTED:EMAIL]";
   });
-  text = text.replace(SPOKEN_EMAIL, () => {
+  text = text.replace(SPOKEN_EMAIL, (match) => {
     redactions += 1;
+    onRedacted?.(match, "[REDACTED:EMAIL]");
     return "[REDACTED:EMAIL]";
   });
 
@@ -53,10 +67,10 @@ function replaceCaptured(
   input: string,
   pattern: RegExp,
   token: string,
-  onMatch: () => void,
+  onMatch: (value: string) => void,
 ): string {
   return input.replace(pattern, (full, captured: string) => {
-    onMatch();
+    onMatch(captured || full);
     return captured ? full.replace(captured, token) : token;
   });
 }

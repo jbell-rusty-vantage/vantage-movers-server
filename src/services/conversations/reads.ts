@@ -21,7 +21,7 @@ export type ConversationListItem = {
   has_transcript: boolean;
   has_summary: boolean;
   has_mismatch: boolean;
-  cost_cents: { stt: number; summary: number } | null;
+  cost_cents: { stt: number | null; summary: number } | null;
 };
 
 export type ConversationDetail = ConversationListItem & {
@@ -85,7 +85,7 @@ export function toConversationListItem(
     has_summary: Boolean(document.summary?.text),
     has_mismatch: hasCrmMismatch(summaryText),
     cost_cents: document.cost_cents
-      ? { stt: document.cost_cents.stt, summary: document.cost_cents.summary }
+      ? { stt: document.cost_cents.stt ?? null, summary: document.cost_cents.summary }
       : null,
   };
 }

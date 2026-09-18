@@ -123,7 +123,7 @@ const lastErrorSchema = new Schema(
 
 const costCentsSchema = new Schema(
   {
-    stt: { type: Number, required: true },
+    stt: { type: Number, default: null },
     summary: { type: Number, required: true },
   },
   { _id: false },
@@ -155,6 +155,15 @@ const LeadConversationSchema = new Schema(
     contact_type_basis: { type: String, default: null },
     media_digest_sha256: { type: String, default: null },
     latest_transcript_version: { type: String, default: null },
+    transcription_job_digest: { type: String, default: null },
+    transcript_segments: { type: [new Schema({
+      sid: { type: Number, required: true, min: 1 },
+      start_ms: { type: Number, default: null, min: 0 },
+      end_ms: { type: Number, default: null, min: 0 },
+      timing_source: { type: String, required: true, enum: ["provider", "unavailable"] },
+      speaker: { type: String, required: true, enum: ["rep", "customer", "unknown"] },
+      text: { type: String, required: true },
+    }, { _id: false })], default: [] },
     latest_completed_run_id: { type: Schema.Types.ObjectId, default: null },
     availability_reason: { type: String, default: null },
     unavailable_until: { type: Date, default: null },

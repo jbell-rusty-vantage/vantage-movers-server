@@ -50,7 +50,7 @@ A Lead Conversation is evidence of one telephone conversation matched to a Form 
 - Raw STT text never reaches Mongo, a log, or disk.
 - RingCentral `contentUri` is never stored.
 - Summaries never write back to a Lead or Booking.
-- [CSI-11 discovery/media](sales-intelligence-recording-media.md) consumes Call Interaction recording IDs. Attachment writes and automatic transcription remain downstream. Seed paths remain playable and are never overwritten by CSI-11.
+- [CSI-11 discovery/media](sales-intelligence-recording-media.md) consumes Call Interaction recording IDs. [CSI-12 transcription](sales-intelligence-transcription.md) adds redacted immutable versions, transcript segments and durable analysis intent with flags off. Attachment writes and analysis execution remain downstream. Seed paths remain playable and are never overwritten. Unreported STT billing is nullable in the server read DTO rather than represented as zero or an estimate.
 
 ## Seed
 

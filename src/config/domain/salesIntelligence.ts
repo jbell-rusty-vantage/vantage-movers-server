@@ -146,6 +146,7 @@ export function csiProviderConfiguration() {
     transcriptionModel:
       process.env.SALES_INTELLIGENCE_STT_MODEL ??
       "openai/gpt-4o-mini-transcribe",
+    transcriptionCentsPerSecond: Number(process.env.SALES_INTELLIGENCE_STT_CENTS_PER_SECOND),
     // Socket URLs and read-only tokens are deliberately not REST publisher fallbacks.
     redis:
       !isTestMode() &&

@@ -1,0 +1,21 @@
+✔ redactTranscript redacts a Luhn-valid card spoken as digit groups plus CVV, expiry, SSN, and routing (3.5063ms)
+✔ redactTranscript does not redact a job number, spoken phone, or cubic-feet figure (0.9278ms)
+✔ an unvalidated 16-digit sequence that fails Luhn is left alone (0.4209ms)
+✔ spoken digit runs of seven or more are redacted without changing existing payment rules (0.6404ms)
+✔ Gateway adapter sends configured model, makes one call, keeps timing optional and never logs warnings (4425.7525ms)
+✔ Gateway errors do not expose provider bodies and do not internally retry (95.692ms)
+✔ Blob bytes/digest validated and missing billing never becomes estimated actual cost (0.8357ms)
+✔ text-only transcript retains unknown speakers and unavailable timing (175.9911ms)
+✔ provider timing and actual speaker survive cross-boundary payment redaction (1.8752ms)
+✔ invalid provider timing is unavailable; pricing is configured and rounded to integer cents (3.2908ms)
+✔ CSI-12 five-minute cron, authentication, flag-off and default recovery/queue wiring (191.7436ms)
+✔ CSI-11 queue stages, cron schedule, auth, flag-off and lease-held wiring (233.07ms)
+✔ CSI-11 modules never import qualification, Lead writers, budgets, STT or LLMs (3.716ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 22568.835
