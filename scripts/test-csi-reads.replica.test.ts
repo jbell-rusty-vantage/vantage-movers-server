@@ -571,7 +571,7 @@ test("CSI-04 read-service isolated replica proof", { skip: !enabled, timeout: 24
       assert.equal(d.rollups.last_outbound_at, null);
       assert.deepEqual(d.provider_names, ["Synthetic Customer"]);
       assert.deepEqual(d.search_terms, ["synthetic customer"]);
-      assert.deepEqual(d.outreach_records, []);
+      assert.equal(d.outreach_records.length, 2, "CSI-06 publishes every connected Outreach DTO without GET mutations");
       assert.deepEqual(d.restrictions, []);
       assert.deepEqual(d.review_items, []);
       assert.equal(d.running_analysis, null);

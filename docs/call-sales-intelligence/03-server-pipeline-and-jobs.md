@@ -183,6 +183,8 @@ Lead snapshots refresh in attachment/context workers. GETs may join current reco
 
 ## 5. Outreach ensure and transitions
 
+CSI-06 implementation: `outreach/worker.ts` exports `runOutreachEnsureJob`, `drainOutreachEnsureJobs`, `runOutreachEnsureOnce`. The default dispatcher registers `outreach_ensure`; `/api/cron/sales-intelligence-outreach-ensure` runs every minute and existing job recovery drains the stage under `OUTREACH_ENSURE`. B's `{job_id}` wake-up and interaction `input_refs` stay unchanged. EntityChange uses `(applied_at,_id)`; semantic official-state repair and paged interaction/clock sweeps recover missing intents. Worker-built Attention snapshots avoid GET mutations. Flags remain default off.
+
 Trigger from durable Vantage EntityChange records, attachment/call changes, and scheduled watermark recovery. Ensure one Outreach Record per subject; official ineligible Leads are Closed. Never import qualification write services. Relevant flag changes close atomically with cancellation of outstanding obligations, audit and analysis-refresh job; they never automatically reopen.
 
 An attributable outbound attempt opens Unworked, whether answered or not, with actual outcome. An attributable inbound human conversation with a Sales Rep also opens it. Voicemail/unknown connected is not meaningful human contact. A waiting customer calling back ends the matching wait; a missed callback adds missed-inbound work with the original assigned rep. Other active actions are retained. Auto-assignment only fills unassigned work using one reliably mapped rep; per-promise action assignment can differ from overall owner. Owner revision/assignment/correction wins.
@@ -341,7 +343,7 @@ Optional Redis doorbell reuses the existing REST configuration pattern (`KV_REST
 | `/api/cron/sales-intelligence-backfill-step` | `*/15 * * * *` | `backfill` | `BACKFILL_DAYS > 0` |
 | `/api/cron/sales-intelligence-directory-sync` | `20 5 * * *` | `directory` | `DIRECTORY_SYNC` |
 | `/api/cron/sales-intelligence-attachment-refresh` | `*/5 * * * *` | `attachment_suggest` | `ATTACHMENT_REFRESH` |
-| `/api/cron/sales-intelligence-outreach-ensure` | `*/5 * * * *` | `outreach_derive` | `OUTREACH_ENSURE` |
+| `/api/cron/sales-intelligence-outreach-ensure` | `* * * * *` | `outreach_ensure` | `OUTREACH_ENSURE` |
 | `/api/cron/sales-intelligence-media-fetch` | `*/5 * * * *` | `media_fetch` | `MEDIA_ENABLED` |
 | `/api/cron/sales-intelligence-transcribe` | `*/5 * * * *` | `transcription` | `STT_ENABLED` |
 | `/api/cron/sales-intelligence-extract` | `*/5 * * * *` | `extraction` | `EXTRACTION_ENABLED` |

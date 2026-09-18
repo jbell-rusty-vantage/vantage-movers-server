@@ -2,6 +2,8 @@
 
 Status: build contract, not implemented. Revised September 17, 2026. Pack index: [`README.md`](README.md). Rules: [`01-specification.md`](01-specification.md).
 
+CSI-06 additive schema coordination (September 18): `OutreachFollowup.source_interaction_id` and `SalesIntelligenceContactRestriction.source_interaction_id` are nullable immutable ObjectId references. `OutreachFollowup.source_due_at` retains the original nullable source date independently of Owner rescheduling. These retain the source commitment/restriction independently of later completion evidence or Owner resolution, preventing cross-run replay from recreating fulfilled/corrected work while preserving separately dated actions. Existing indexes remain sufficient because writes serialize through the Outreach aggregate and Contact Number; no new migration/index is introduced. Default-deadline policy versions remain in each action's `date_resolution.policy_version`.
+
 ## 0. Conventions
 
 - Runtime Mongoose models live in `src/models/`, `snake_case` fields, `autoIndex: false`, `timestamps: true`, `minimize: false`, and a `getXModel()` accessor that honours `getMongoDatabaseName()` (the `TEST_MODE` DB boundary), exactly like `src/models/LeadConversation.ts`.

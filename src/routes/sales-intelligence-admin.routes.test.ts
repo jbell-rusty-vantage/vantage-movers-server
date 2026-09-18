@@ -20,12 +20,14 @@ test("CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempot
   process.env.VANTAGE_API_SECRET = "synthetic-global";
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = "synthetic-owner-signature";
   process.env.SALES_INTELLIGENCE_ENABLED = "true";
+  process.env.SALES_INTELLIGENCE_OUTREACH_ENSURE = "true";
   process.env.SALES_INTELLIGENCE_DEPLOYMENT_ID = "route-test";
   process.env.TEST_MODE = "true";
   process.env.TEST_MONGO_DATABASE_NAME = "testvantagemovers_csiadminroute";
   const calls: string[] = [];
   const rebuildCalls: unknown[] = [];
   let rebuildError: CsiError | null = null;
+  let outreachError = new CsiError("IDENTITY_BLOCKED");
   const app = express();
   app.use(express.json());
   app.use("/api/v1", requireApiSecret);
@@ -52,6 +54,7 @@ test("CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempot
         if (rebuildError) throw rebuildError;
         return { job_id: "c".repeat(24), dedupe_key: "k", number_id: input.number_id, replayed: false };
       },
+      outreachCommand: async () => { throw outreachError; },
     }),
   );
   const server = app.listen(0, "127.0.0.1");
@@ -151,6 +154,13 @@ test("CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempot
     assert.equal(replayConflict.status, 409);
     assert.equal(replayConflict.body.code, "IDEMPOTENCY_CONFLICT");
     assert.equal(replayConflict.body.request_id, "req-1");
+
+    const outreachPath = `${CSI_ADMIN_PREFIX}/outreach/${numberId}/commands`;
+    for (const [code, status] of [["IDENTITY_BLOCKED", 409], ["CONTACT_RESTRICTED", 409], ["OFFICIAL_STATE_BLOCKS_REOPEN", 409], ["EVIDENCE_SCOPE_INVALID", 400], ["SUBMISSION_CONFLICT", 409]] as const) {
+      outreachError = new CsiError(code);
+      const rejected = await call("POST", outreachPath, { headers: ownerHeaders("POST", outreachPath, "owner", { "idempotency-key": `reject-${code}` }), body: { command: "mark_worked", expected_revision: 1 } });
+      assert.equal(rejected.status, status); assert.equal(rejected.body.code, code);
+    }
 
     // Master flag off: 404 feature_disabled before any service call.
     calls.length = 0;

@@ -12,6 +12,9 @@ import { CsiError, requireCsiOwner, assertCurrentScope } from "../services/sales
 import { csiCommandSchema, csiIdSchema } from "../validation/v1/salesIntelligence";
 import { attachmentListQuerySchema, listAttachments } from "../services/salesIntelligence/attachment/reads";
 import { commandAttachment } from "../services/salesIntelligence/attachment/commands";
+import { commandOutreach } from "../services/salesIntelligence/followups/commands";
+import { listReviewItems, readOutreach, readOutreachByLead } from "../services/salesIntelligence/outreach/reads";
+import { attentionQuerySchema, readAttention } from "../services/salesIntelligence/outreach/attention";
 
 /**
  * CSI-04 Owner routes for Number Activity (04 §0, §1 `/numbers` rows, §3).
@@ -36,6 +39,7 @@ export type SalesIntelligenceAdminRouteDeps = {
   coverage?: typeof readCaptureCoverage;
   attachments?: typeof listAttachments;
   attachmentCommand?: typeof commandAttachment;
+  outreachCommand?: typeof commandOutreach;
 };
 
 const timelineQuerySchema = z
@@ -55,6 +59,12 @@ const STATUS_BY_CODE: Partial<Record<CsiError["code"], number>> = {
   IDEMPOTENCY_CONFLICT: 409,
   RATE_LIMITED: 429,
   ILLEGAL_TRANSITION: 409,
+  IDENTITY_BLOCKED: 409,
+  CONTACT_RESTRICTED: 409,
+  OFFICIAL_STATE_BLOCKS_REOPEN: 409,
+  EVIDENCE_SCOPE_INVALID: 400,
+  SUBMISSION_CONFLICT: 409,
+  ATTENTION_SNAPSHOT_EXPIRED: 409,
 };
 
 export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminRouteDeps = {}): Router {
@@ -195,5 +205,37 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
       } catch (error) { return fail(req, res, error); }
     });
   }
+  router.get(`${CSI_ADMIN_PREFIX}/outreach/by-lead/:model/:id`, async (req, res) => {
+    try { guard(req); const model = z.enum(["FormLead", "CallLead"]).parse(req.params.model); const id = csiIdSchema.parse(req.params.id);
+      await connect(); const result = await readOutreachByLead(model, id); if (!result) return notFound(req, res); return res.json({ ok: true, ...result }); } catch (error) { return fail(req, res, error); }
+  });
+  router.get(`${CSI_ADMIN_PREFIX}/attention`, async (req, res) => {
+    try { guard(req); const query = attentionQuerySchema.parse(req.query); await connect(); return res.json({ ok: true, ...(await readAttention(query)) }); }
+    catch (error) { return fail(req, res, error); }
+  });
+  router.get(`${CSI_ADMIN_PREFIX}/outreach/:id`, async (req, res) => {
+    try { guard(req); const id = csiIdSchema.parse(req.params.id); await connect(); const result = await readOutreach(id); if (!result) return notFound(req, res); return res.json({ ok: true, ...result }); } catch (error) { return fail(req, res, error); }
+  });
+  router.get(`${CSI_ADMIN_PREFIX}/review-items`, async (req, res) => {
+    try { guard(req); const query = timelineQuerySchema.parse(req.query); if (query.cursor) csiIdSchema.parse(query.cursor); await connect();
+      return res.json({ ok: true, ...(await listReviewItems(query)) }); } catch (error) { return fail(req, res, error); }
+  });
+  for (const [method, path, commands] of [
+    ["post", "/outreach/:id/commands", ["mark_worked", "assign", "set_waiting", "close", "reopen", "add_note"]],
+    ["post", "/followups", ["create_followup"]], ["patch", "/followups/:id", ["patch_followup"]],
+    ["post", "/followups/:id/complete", ["complete_followup"]], ["post", "/followups/:id/snooze", ["snooze_followup"]],
+    ["post", "/followups/:id/cancel", ["cancel_followup"]], ["post", "/restrictions/:id/resolve", ["resolve_restriction"]],
+    ["post", "/review-items/:id/resolve", ["resolve_review"]], ["post", "/interactions/:id/contact-type", ["set_contact_type"]],
+    ["post", "/numbers/:id/open-review", ["open_number_review"]],
+  ] as const) router[method](`${CSI_ADMIN_PREFIX}${path}`, async (req, res) => {
+    try {
+      const actor = guard(req); if (!flag("OUTREACH_ENSURE")) throw new CsiError("FEATURE_DISABLED");
+      const command = csiCommandSchema.parse(req.body);
+      if (!(commands as readonly string[]).includes(command.command)) throw new CsiError("INVALID_INPUT");
+      const target_id = command.command === "create_followup" ? command.outreach_record_id : csiIdSchema.parse("id" in req.params ? req.params.id : undefined);
+      const idempotency_key = req.header("idempotency-key")?.trim(); if (!idempotency_key) throw new CsiError("INVALID_INPUT");
+      await connect(); return res.json({ ok: true, data: await (deps.outreachCommand ?? commandOutreach)({ actor, target_id, idempotency_key, command }) });
+    } catch (error) { return fail(req, res, error); }
+  });
   return router;
 }

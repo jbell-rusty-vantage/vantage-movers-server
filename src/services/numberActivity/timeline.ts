@@ -8,6 +8,7 @@ import { csiDateSchema, csiIdSchema } from "../../validation/v1/salesIntelligenc
 import { CsiError } from "../salesIntelligence/auth";
 import type { ContactNumberLean } from "./contactNumbers";
 import { ownerRead } from "./coverage";
+import { outreachTimelineSource } from "../salesIntelligence/outreach/timeline";
 import {
   numberTimelineEventDtoSchema,
   numberTimelinePageDtoSchema,
@@ -385,6 +386,7 @@ export const DEFAULT_TIMELINE_SOURCES: readonly TimelineSource[] = [
   interactionSource,
   leadMessageSource,
   conversationSource,
+  outreachTimelineSource,
 ];
 
 export type TimelineDependencies = {

@@ -73,6 +73,8 @@ CSI-11 implements the capture/media subset of `/coverage` as `{ok:true,data:{as_
 
 ## 2. Shared read contracts
 
+CSI-06 implementation additions: Outreach/by-Lead detail, follow-up/Outreach commands, restriction/review resolve, interaction contact-type correction, Number Review opening, review lists and Attention reads are registered on the existing Owner router. Number detail now fills `outreach_records[]`, restrictions and review items. Shared derived DTO has optional per-action responsibility, contractual-overdue/action-call availability, review badges and coverage qualification. Outreach exposes optional trigger/first-call timestamps. Attention pages add `status:ready|pending_projection`; absent/expired latest projection returns nullable `snapshot_id`/`total_items` with `pending_projection`, never a known zero. Cursor expiry is `ATTENTION_SNAPSHOT_EXPIRED`. Snapshots are built by the worker, never GET. Follow-up and evidence commands additionally require `OUTREACH_ENSURE`; existing Owner/scope/idempotency boundaries remain unchanged.
+
 Implement shared server DTOs in `src/services/salesIntelligence/dto.ts`; Admin consumes them without reproducing state/rank rules.
 
 ```ts

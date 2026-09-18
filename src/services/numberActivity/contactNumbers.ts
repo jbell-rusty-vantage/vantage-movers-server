@@ -2,9 +2,9 @@ import type mongoose from "mongoose";
 import { getCallInteractionModel } from "../../models/CallInteraction";
 import { getContactNumberModel } from "../../models/ContactNumber";
 import { getNumberLeadAttachmentModel } from "../../models/NumberLeadAttachment";
-import { getOutreachRecordModel } from "../../models/OutreachRecord";
 import { csiIdSchema } from "../../validation/v1/salesIntelligence";
 import { ownerRead } from "./coverage";
+import { readNumberOutreach } from "../salesIntelligence/outreach/reads";
 import {
   numberDetailReadDtoSchema,
   numberSearchItemDtoSchema,
@@ -115,22 +115,12 @@ export async function getContactNumberDetail(
     .lean()) as unknown as ContactNumberLean | null;
   if (!row) return null;
 
-  const [attachments, outreach, recount] = await Promise.all([
+  const [attachments, outreachData, recount] = await Promise.all([
     getNumberLeadAttachmentModel()
       .find({ contact_number_id: row._id })
       .sort({ createdAt: 1, _id: 1 })
       .lean() as unknown as Promise<AttachmentLean[]>,
-    getOutreachRecordModel()
-      .find(
-        {
-          $or: [
-            { "subject.contact_number_id": row._id },
-            { primary_contact_number_id: row._id },
-          ],
-        },
-        { state: 1 },
-      )
-      .lean() as unknown as Promise<Array<{ state: string }>>,
+    readNumberOutreach(numberId),
     getCallInteractionModel().countDocuments({
       contact_number_id: row._id,
       merged_into_id: null,
@@ -154,7 +144,7 @@ export async function getContactNumberDetail(
       state: a.state,
       certainty: a.certainty,
     })),
-    outreach_records: [],
+    ...outreachData,
     running_analysis: row.running_summary
       ? {
           text: row.running_summary.text,
@@ -163,8 +153,6 @@ export async function getContactNumberDetail(
           computed_at: new Date(row.running_summary.computed_at).toISOString(),
         }
       : null,
-    restrictions: [],
-    review_items: [],
     allowed_actions: [
       {
         action: "rebuild_number",
@@ -187,8 +175,8 @@ export async function getContactNumberDetail(
       candidate: byState("candidate"),
       ambiguous: byState("ambiguous"),
       rejected: byState("rejected"),
-      outreach_records_total: outreach.length,
-      open_outreach: outreach.filter((o) => o.state !== "closed").length,
+      outreach_records_total: outreachData.outreach_records.length,
+      open_outreach: outreachData.outreach_records.filter((o) => o.state !== "closed").length,
       interactions_total_recount: recount,
     },
   };

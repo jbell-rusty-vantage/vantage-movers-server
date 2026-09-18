@@ -1,0 +1,40 @@
+✔ CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempotency, error mapping; reads never call a writer (478.6611ms)
+✔ admin router is mounted in v1.routes.ts after the CSI boundary router (2.9501ms)
+✔ CSI cron routes: cron auth, flag-off and lease_held skips, never a provider body (300.0407ms)
+{"level":"error","time":"2026-09-18T18:43:20.354Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.cron.call_log_reconcile.failed","errorName":"Error"}
+✔ CSI cron routes: a throwing service maps to a bounded 500 without provider content (50.1848ms)
+✔ vercel.json registers the CSI-03 crons and the queue consumer trigger (a handler file alone is not registration) (6.5383ms)
+✔ app.ts mounts the CSI cron router before the v1 guard like the other cron routers (3.1808ms)
+✔ terminal party statuses stay in parity with the qualification evaluator (3.1221ms)
+✔ inbound queue call projects all directions of evidence: parties, connection, terminal, external number (45.5202ms)
+✔ duplicate webhook delivery is a semantic no-op: no revision, fenced per party (27.0064ms)
+✔ one party's sequence never suppresses another party in the same delivery (1.9265ms)
+✔ out-of-order and late events never regress terminal or connected facts (1.8908ms)
+✔ Call Log is authoritative: result/duration survive a late webhook terminal event (4.5427ms)
+✔ identical Call Log replay and older lastModifiedTime never create a new revision or regress facts (2.7116ms)
+✔ transfer with multiple recordings keeps every leg and recording, counted once as one interaction (1.6759ms)
+✔ delayed recording evidence after terminal is surfaced as new recording ids (1.6187ms)
+✔ voicemail is provider evidence; connected is not human; outbound unanswered stays unknown (3.1458ms)
+✔ internal, withheld and malformed observations keep provider evidence without a customer identity (2.9876ms)
+✔ review fix: an unknown short caller id is malformed, never a fabricated extension that makes a customer call Internal (1.3127ms)
+✔ review fix: a party event missing `direction` does not turn an outbound customer call into a sticky Internal (2.4746ms)
+✔ review fix: a stale Call Log record never regresses leg-level result or duration (3.475ms)
+✔ review fix: legs_overflow_count is monotone across records and not double counted on merge (7.7132ms)
+✔ session-id only Call Log record resolves to fallback identity and gains the strongest basis when bridged (5.3534ms)
+✔ Call Log first, webhook later: the extension party is adopted, not duplicated (1.565ms)
+✔ mergeProjections requires same account and folds evidence without dropping recordings (1.9317ms)
+✔ no directory snapshot keeps roles unknown instead of guessing (1.3728ms)
+✔ 30/15/1440 clocks, Friday close, Sunday, DST and independent weekly calendar (45.0938ms)
+✔ day-only waits end at close; Attention next opening; explicit Sunday honoured; ambiguity undated (33.7144ms)
+✔ all three actions including undated; snooze preserves contractual overdue and other reasons (51.6894ms)
+✔ inbound human versus missed/provider connected; attempts fulfill callback only and retain outcome (22.8442ms)
+✔ wait coexistence, official closure precedence, planning denies stale and Owner effects (24.3134ms)
+✔ worker, cron and recovery registrations exist without enabling production flags (3.5688ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 40726.9691

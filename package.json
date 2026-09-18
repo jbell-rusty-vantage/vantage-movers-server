@@ -93,6 +93,7 @@
     "test:csi:media:replica": "node --import tsx scripts/test-csi-media.ts",
     "test:csi:transcription:replica": "node --import tsx scripts/test-csi-transcription.ts",
     "test:csi:attachment:replica": "node --import tsx scripts/test-csi-attachment.ts",
+    "test:csi:outreach:replica": "node --import tsx scripts/test-csi-outreach.ts",
     "migration:csi:indexes": "node --env-file=.env --import tsx scripts/migrations/sales-intelligence-indexes.ts",
     "lint": "eslint src api scripts/quality --max-warnings 0",
     "quality:install": "node scripts/quality/install.mjs",

@@ -10,6 +10,7 @@ import {
 } from "../services/numberActivity/captureProjectionWorker";
 import { runDirectorySyncOnce } from "../services/numberActivity/directorySync";
 import { runAttachmentRefreshOnce, drainAttachmentRefreshJobs } from "../services/salesIntelligence/attachment/refresh";
+import { runOutreachEnsureOnce, drainOutreachEnsureJobs } from "../services/salesIntelligence/outreach/worker";
 import { drainRecordingDiscoveryJobs } from "../services/salesIntelligence/conversations/discover";
 import { drainMediaFetchJobs } from "../services/salesIntelligence/conversations/media";
 import { drainTranscriptionJobs } from "../services/salesIntelligence/conversations/transcribe";
@@ -58,6 +59,8 @@ export type SalesIntelligenceCronRouteDeps = {
   runMediaFetch?: typeof drainMediaFetchJobs;
   runTranscription?: typeof drainTranscriptionJobs;
   drainRecordingDiscovery?: typeof drainRecordingDiscoveryJobs;
+  runOutreachEnsure?: typeof runOutreachEnsureOnce;
+  drainOutreachEnsure?: typeof drainOutreachEnsureJobs;
 };
 
 export const CSI_CRON_PATHS = {
@@ -67,6 +70,7 @@ export const CSI_CRON_PATHS = {
   mediaFetch: "/api/cron/sales-intelligence-media-fetch",
   transcribe: "/api/cron/sales-intelligence-transcribe",
   attachmentRefresh: "/api/cron/sales-intelligence-attachment-refresh",
+  outreachEnsure: "/api/cron/sales-intelligence-outreach-ensure",
 } as const;
 
 export function createSalesIntelligenceCronRouter(
@@ -91,6 +95,7 @@ export function createSalesIntelligenceCronRouter(
   const mediaFetch = deps.runMediaFetch ?? drainMediaFetchJobs;
   const transcribe = deps.runTranscription ?? drainTranscriptionJobs;
   const extraRecovery = deps.extraRecovery ?? [
+    { name: "outreach_ensure", flag: "OUTREACH_ENSURE" as const, run: () => (deps.drainOutreachEnsure ?? drainOutreachEnsureJobs)() },
     { name: "attachment_refresh", flag: "ATTACHMENT_REFRESH" as const, run: () => (deps.drainAttachmentRefresh ?? drainAttachmentRefreshJobs)() },
     { name: "recording_discovery", flag: "MEDIA_ENABLED" as const, run: () => (deps.drainRecordingDiscovery ?? drainRecordingDiscoveryJobs)() },
     { name: "media_fetch", flag: "MEDIA_ENABLED" as const, run: mediaFetch },
@@ -228,6 +233,11 @@ export function createSalesIntelligenceCronRouter(
       await connect();
       return res.json({ ok: true, ...(await (deps.runAttachmentRefresh ?? runAttachmentRefreshOnce)()) });
     } catch { return res.status(500).json({ ok: false, error: "Attachment refresh failed" }); }
+  });
+  router.all(CSI_CRON_PATHS.outreachEnsure, requireCronAuth, async (_req, res) => {
+    if (!flag("OUTREACH_ENSURE")) return res.json({ ok: true, skipped: true, reason: "disabled" });
+    try { await connect(); return res.json({ ok: true, ...(await (deps.runOutreachEnsure ?? runOutreachEnsureOnce)()) }); }
+    catch { return res.status(500).json({ ok: false, error: "Outreach ensure failed" }); }
   });
   return router;
 }

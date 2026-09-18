@@ -531,6 +531,7 @@ export const SALES_INTELLIGENCE_CONTACT_RESTRICTION_INDEXES = [
 export const SalesIntelligenceContactRestrictionSchema = new Schema(
   {
     contact_number_id: oid,
+    source_interaction_id: { ...ref, immutable: true },
     channels: {
       type: [String],
       enum: ["call", "text"],

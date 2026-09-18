@@ -929,7 +929,7 @@ function deriveContactType(
   voicemailDeclared: boolean,
 ): { contact_type: ContactType; contact_type_basis: string | null } {
   // Transcript or Owner evidence (set downstream) always outranks provider rules.
-  if (existing && existing.contact_type !== "unknown" && existing.contact_type_basis !== "provider:voicemail") {
+  if (existing && (existing.contact_type_basis === "owner" || (existing.contact_type !== "unknown" && existing.contact_type_basis !== "provider:voicemail"))) {
     return { contact_type: existing.contact_type, contact_type_basis: existing.contact_type_basis };
   }
   if (voicemailDeclared || existing?.contact_type === "voicemail") {

@@ -67,6 +67,11 @@ export const derivedDtoSchema = z
     age_wall_ms: z.number().nonnegative(),
     age_staffed_ms: z.number().nonnegative(),
     policy_version: z.string(),
+    missing_record_responsibility: z.boolean().optional(),
+    missing_action_responsibility: z.array(id).optional(),
+    review_badges: z.array(z.string()).optional(),
+    absence_qualified: z.boolean().optional(),
+    action_facts: z.array(z.object({ id, contractual_overdue: z.boolean(), overdue: z.boolean(), attention_due_at: date.nullable(), call_allowed: z.boolean() }).strict()).optional(),
   })
   .strict();
 export const followupDtoSchema = z
@@ -157,6 +162,9 @@ export const outreachDtoSchema = z
     followups_cursor: z.string().nullable(),
     next_action: followupDtoSchema.nullable(),
     first_human_conversation_at: date.nullable(),
+    trigger_at: date.optional(),
+    first_action_due_at: date.nullable().optional(),
+    first_attributable_outbound_at: date.nullable().optional(),
     last_meaningful_contact_at: date.nullable(),
     derived: derivedDtoSchema,
     related_record_links: z.array(
@@ -192,9 +200,10 @@ export const attentionPageDtoSchema = ownerReadSchema(
   z
     .object({
       items: z.array(attentionRowDtoSchema),
-      snapshot_id: z.string(),
+      snapshot_id: z.string().nullable(),
       cursor: z.string().nullable(),
-      total_items: z.number().int().nonnegative(),
+      total_items: z.number().int().nonnegative().nullable(),
+      status: z.enum(["ready", "pending_projection"]).optional(),
       reason_counts: z.record(z.string(), z.number().int().nonnegative()),
     })
     .strict(),

@@ -159,6 +159,9 @@ export const OutreachFollowupSchema = new Schema(
       "system_default",
     ]),
     source_finding_ids: refs,
+    // CSI-06: immutable commitment origin, separate from the later completion evidence.
+    source_interaction_id: { ...ref, immutable: true },
+    source_due_at: { ...date, immutable: true },
     origin_run_id: ref,
     owner_instruction_ids: refs,
     disposition: {

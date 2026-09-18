@@ -9,6 +9,7 @@ import { runRecordingDiscoveryJob } from "../salesIntelligence/conversations/dis
 import { runMediaFetchJob } from "../salesIntelligence/conversations/media";
 import { runTranscriptionJob } from "../salesIntelligence/conversations/transcribe";
 import { runAttachmentRefreshJob } from "../salesIntelligence/attachment/refresh";
+import { runOutreachEnsureJob } from "../salesIntelligence/outreach/worker";
 
 /**
  * Queue wake-up dispatch. The payload is exactly `{ job_id }`; stage and
@@ -45,6 +46,7 @@ export function defaultStageHandlers(
     media_fetch: (jobId) => runMediaFetchJob(jobId),
     transcription: (jobId) => runTranscriptionJob(jobId),
     attachment_refresh: (jobId) => runAttachmentRefreshJob(jobId),
+    outreach_ensure: (jobId) => runOutreachEnsureJob(jobId),
   };
 }
 

@@ -157,6 +157,7 @@ export async function appendCsiAudit(
     current: z.infer<ReturnType<typeof z.json>>;
     target_id: string;
     revision: number;
+    happened_at?: Date;
     kind:
       | "number"
       | "outreach"
@@ -180,7 +181,7 @@ export async function appendCsiAudit(
         event_kind: input.event_kind,
         command_id: context.command_id,
         actor: context.actor,
-        happened_at: context.now,
+        happened_at: input.happened_at ?? context.now,
         recorded_at: context.now,
         prior: input.prior,
         current: input.current,

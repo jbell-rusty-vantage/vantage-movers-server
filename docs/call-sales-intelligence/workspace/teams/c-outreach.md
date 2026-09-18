@@ -26,3 +26,7 @@ Pin 30/15 staffed-minute deadlines and 2-sales-day clock; default schedule/DST/d
 ## September 17 codebase alignment
 
 [Audit and required adaptations](../../11-codebase-alignment-audit.md) are part of this delivery contract. Complete the rows assigned to this team and provide integration evidence; current runtime helpers do not already satisfy the revised contracts. [Design intake](../../07-claude-design-brief.md) governs the forthcoming Claude artifact; its arrival is not assumed.
+
+## CSI-06 delivery — September 18
+
+Deliverables 2, 3, 4 and 6 are implemented on server `sales-intelligence` from `999c63d`. [Handoff](../evidence/csi-06/HANDOFF.md), [actual checks](../evidence/csi-06/CHECKS.md), and [concrete D/E contracts](../CONTRACTS.md#csi-06-concrete-imports-server-relative-september-18). Current typecheck/lint, 31 focused tests and 22 replica tests pass. CSI-05 attachment resolution is consumed. Deliverable 5 (CSI-10/14) remains not started. Dashboard untouched; no live sends or production flag enablement.

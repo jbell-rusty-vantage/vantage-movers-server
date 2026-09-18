@@ -11,7 +11,7 @@ export type LeadSource = {
   _id: { toString(): string }; timestamp: Date; updatedAt?: Date; createdAt?: Date;
   normalized_phone_number?: string | null; name?: string | null; job_no?: string | null;
   source_company_label_snapshot?: string | null; receiver_agent_name_snapshot?: string | null;
-  booked?: unknown; cancelled?: unknown; duplicate?: boolean; bad_lead?: string | null; ingestion_origin?: string | null;
+  booked?: unknown; cancelled?: unknown; duplicate?: boolean; bad_lead?: string | null; no_sync?: boolean; ingestion_origin?: string | null;
   ingested_contact_snapshot?: ContactSnapshot | null; granot_contact_snapshot?: ContactSnapshot | null;
   current_contact_provenance?: { changed_at: Date } | null;
   ringcentral?: { telephony_session_id?: string | null; session_id?: string | null; call_log_id?: string | null;

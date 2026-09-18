@@ -397,7 +397,8 @@ test("CSI-03 isolated replica proof", { skip: !enabled, timeout: 240_000 }, asyn
       const foreign = await Jobs.findOne({ stage: "outreach_ensure" }).lean();
       assert.ok(foreign, "projection scheduled downstream work for Team C");
       const untouched = await dispatchCsiWakeup({ job_id: String(foreign._id) });
-      assert.equal(untouched.status, "no_consumer");
+      assert.equal(untouched.status, "dispatched");
+      assert.equal((untouched as { outcome: { status: string } }).outcome.status, "disabled");
       const after = await Jobs.findById(foreign._id).lean();
       assert.equal(after?.status, "pending");
       assert.equal(after?.attempts, 0, "a wake-up for a stage without a consumer never burns its attempts");
