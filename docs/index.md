@@ -16,7 +16,7 @@ Canonical bodies live under `docs/knowledge/`.
 
 | Path | Description |
 | --- | --- |
-| [sales-intelligence-analysis.md](knowledge/services/sales-intelligence-analysis.md) | CSI-17 scoped evidence reads, immutable capture and one durable analysis submission; CSI-13 application remains separate. |
+| [sales-intelligence-analysis.md](knowledge/services/sales-intelligence-analysis.md) | CSI-17 scoped MCP evidence and submission; CSI-13 bounded agent, durable application and current number analysis. |
 | [ringcentral-call-lead-qualification.md](knowledge/services/ringcentral-call-lead-qualification.md) | Qualify inbound RingCentral calls (120s) and promote them through shared ingest. |
 | [operations-registry.md](knowledge/services/operations-registry.md) | Catalog, source, CPL, inbound-route, and Granot CRM source system of record. |
 | [form-lead.md](knowledge/services/form-lead.md) | Create, update, and delete Form Leads, including duplicates, CRM Posting, and Sheet Sync. |

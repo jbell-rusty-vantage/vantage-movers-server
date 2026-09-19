@@ -1,5 +1,7 @@
 # 11 — Codebase alignment audit
 
+September 19 addendum: the design export has now been received and source-inspected. [SPRINT-PLAN](workspace/SPRINT-PLAN.md) records current implementation/review state and concrete host integration gaps; the September 17 audit below remains point-in-time evidence.
+
 September 17, 2026. Read-only server/MCP inspection plus one delegated read-only Admin audit. Changes from this audit are specification/workspace changes only; no runtime feature, provider validation or UI design artifact is claimed complete.
 
 ## Verified gaps and prescribed work

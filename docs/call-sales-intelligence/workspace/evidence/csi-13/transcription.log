@@ -1,0 +1,54 @@
+CSI-12 isolated replica proof: testvantagemovers_csi128406b0aa848f; loopback replica csi01 on port 27189
+{"level":"info","time":"2026-09-19T04:40:38.484Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-12 disposable replica with synthetic Blob/STT only
+  ✔ flag off skips hook scheduling, cron unit and queue worker before I/O (2.4836ms)
+  ✖ budget exhaustion keeps pending stage and zero attempts; cap resume completes redacted immutable evidence (680.8927ms)
+  ✔ eligibility flip during STT preserves media/transcript and suppresses analysis (320.6945ms)
+  ✔ undetermined eligibility waits without attempts then resumes with current inputs (343.5756ms)
+  ✔ permission pause releases unused reservation and does not consume attempts (252.6529ms)
+  ✔ stored-media eligibility recheck recovers missing inputs and never starves later eligible rows (1228.562ms)
+  ✔ pre-STT exclusion completes without spend; only that skip reopens preserving prior attempts (994.1082ms)
+  ✔ undetermined at completion durably waits for analysis without repeating STT (361.8841ms)
+  ✔ empty STT is terminal after one paid call and reconciles actual cost (247.1249ms)
+  ✔ duplicate empty completion cannot overwrite a concurrent successful transcript (459.5377ms)
+  ✔ analysis eligibility exclusion closes and restores only its current immutable version (360.4476ms)
+  ✔ eight transient failures dead-letter with safe errors and retain ambiguous spend (812.3223ms)
+  ✔ killed eighth claim is projected without a ninth STT call (159.1072ms)
+  ✔ missing actual cost preserves success and reservation without repeat STT (242.079ms)
+  ✔ concurrent claims make one bounded STT call; expired worker cannot publish (442.8124ms)
+  ✔ scheduler is bounded, closes hook gap, no starvation, atomic under concurrent scans (1351.8945ms)
+  ✔ changed media creates a new immutable version while model changes and seed media do not (418.5421ms)
+  ✔ raw synthetic secrets absent from every Mongo document and qualification cursor untouched (123.4478ms)
+✖ CSI-12 disposable replica with synthetic Blob/STT only (12273.5071ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 17
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17291.0421
+
+✖ failing tests:
+
+test at scripts\test-csi-transcription.replica.test.ts:2:8401
+✖ budget exhaustion keeps pending stage and zero attempts; cap resume completes redacted immutable evidence (680.8927ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'dispatched'
+  - 'no_consumer'
+  
+      at TestContext.<anonymous> (C:\Users\Pinda\Proyectos\vantage\vantage-main-server\scripts\test-csi-transcription.replica.test.ts:117:14)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async TestContext.<anonymous> (C:\Users\Pinda\Proyectos\vantage\vantage-main-server\scripts\test-csi-transcription.replica.test.ts:87:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'dispatched',
+    expected: 'no_consumer',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

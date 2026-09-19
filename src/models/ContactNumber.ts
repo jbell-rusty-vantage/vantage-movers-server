@@ -116,6 +116,11 @@ export const ContactNumberSchema = new Schema(
       ),
       default: null,
     },
+    intelligence_schedule: {
+      type: new Schema({ fingerprint: { type: String, required: true }, generation: { type: Number, required: true },
+        job_id: { type: Schema.Types.ObjectId, required: true } }, { _id: false, strict: "throw" }),
+      default: null,
+    },
   },
   {
     collection: "contact_numbers",

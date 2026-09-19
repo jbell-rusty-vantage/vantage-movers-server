@@ -10,7 +10,7 @@ test("CSI-12 five-minute cron, authentication, flag-off and default recovery/que
   const env = { ...process.env }; process.env.CRON_SECRET = "synthetic-cron";
   let enabled = false, calls = 0, connects = 0;
   assert.equal(typeof defaultStageHandlers().transcription, "function");
-  assert.equal(defaultStageHandlers().analysis, undefined);
+  assert.equal(typeof defaultStageHandlers().analysis, "function"); // CSI-13 now consumes the existing handoff.
   const vercel = JSON.parse(readFileSync("vercel.json", "utf8"));
   assert.ok(vercel.crons.some((cron: { path: string; schedule: string }) => cron.path === CSI_CRON_PATHS.transcribe && cron.schedule === "*/5 * * * *"));
   const app = express();

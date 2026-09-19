@@ -1,5 +1,26 @@
 # Shared contracts and integration handoffs
 
+## September 19 execution clarification
+
+[SPRINT-PLAN](SPRINT-PLAN.md) records current status; dated implementation sections below retain their original evidence scope. CSI-13 now consumes application jobs. CSI-18 server depends on CSI-06/13/17; its UI additionally depends on CSI-08. The received design export is presentation input, not a DTO freeze. Team E must reconcile actual routes/schemas and publish an intake matrix before binding it; in particular CSI proxy Idempotency-Key forwarding and live BFF are still pending. No wire contract changes are made by this planning revision.
+
+## CSI-13 runtime/application contract (September 19)
+
+Consumes the existing CSI-01/06/10/12/17 contracts. No MCP schema/tool changes. [Service](../../knowledge/services/sales-intelligence-analysis.md), [handoff](evidence/csi-13/HANDOFF.md), [checks](evidence/csi-13/CHECKS.md). CSI-18 remains separate.
+
+| Consumer | Exact server-relative import / DTO | Contract |
+| --- | --- | --- |
+| Queue/cron/F | `src/services/salesIntelligence/analysis/worker.ts`: `runIntelligenceJob(jobId?, stage="analysis", deps?)`, `drainIntelligenceJobs(deps?)` | Existing `analysis` and `number_refresh` stages only. Analysis refs remain `[conversation_id,transcript_snapshot_id]`. Current eligibility/version before provider; no STT. Recover same run's receipt before invocation. |
+| Runtime | `analysis/runtime.ts`: `invokeIntelligenceAgent(InvocationInput)`, `RuntimeLimits`, `InvocationStep` | AI SDK ToolLoopAgent, Gateway, authenticated remote HTTP MCP twelve-tool surface, stored prompt/schema retrieval and verification. Closed budgets, captured coverage pages, single repair, receipt-only success. Dependency injection accepts an SDK LanguageModel for local proof; capture/intake are real. |
+| Application/C | `analysis/apply.ts`: `runIntelligenceApplicationJob(jobId?, deps?)`, `drainIntelligenceApplications()` | Existing application refs `[run_id,submission_id]`; five findings per transaction under `checkpointCsiJob`. Per-effect outcomes call CSI-06. Cursor and effects commit together; final publication is a separate fenced transaction after all batches. |
+| Submission/recovery | `analysis/readiness.ts`: `resumeApplicationIntents()` | New submitted intents pause `invocation_pending` until orchestration marks `invocation_complete`. Disabled consumer uses `consumer_unavailable`. Resume only compatible receipts and explicitly identified application-disabled pauses, not arbitrary permission/budget reasons. |
+| Source changes/F | `analysis/scheduling.ts`: `scheduleNumberIntelligence(numberId,session)`, `scanIntelligenceChanges()` | Existing SyncState cursor/lease scans five numbers. ContactNumber `intelligence_schedule={fingerprint,generation,job_id}` coalesces meaningful changes; original Outreach refresh jobs retain their subjects. Clock/updatedAt changes alone cannot invoke a model. |
+| Authority/C | `outreach/effects.ts:applyOutreachEffect` | Conversation run adapter checks persisted Outreach pointer, exact source conversation and current attached event identity. Candidate/foreign subjects denied; same number does not authorize Lead effects. Existing CSI-06 effect decisions remain authoritative. |
+| Read DTO/E | Existing `LeadConversation.summary/latest_completed_run_id` and `ContactNumber.running_summary` | Publish only after application boundary; old workers cannot replace newer current analysis. Run status/counts distinguish completed versus stale and applied/blocked/review. Source citations remain immutable; exact locator/entailment are `not_run`. |
+| Budget/A/F | Existing reservation/reconciliation, additive reservation usage fields | Persist model/pricing/input/output/reasoning/observed cost. Missing billing is unresolved/null, with reservation retained. No policy/budget initialization. Bounded prices/limits must fit existing per-recording/monthly admission policy. |
+
+Registration reuses existing queue/bootstrap and cron router; extract/apply paths run every five minutes plus existing recovery. Defaults remain off. No deployment, live model/STT/provider access or production initialization occurred. No CSI-18 correction IDs or controls are introduced. Prior CSI-17 failed checkpoint and CSI-14 P2 remain recorded in their original evidence.
+
 ## CSI-17 coordinated implementation contract (September 18)
 
 The operational Job Number timeline read reuses `src/services/jobNumberTimeline/mongo-evidence-loader.ts` with optional `maxRowsPerQuery: 200`. Every `find` cursor has a 201-row overflow sentinel and five-second query limit; overflow aborts with `EVIDENCE_LIMIT_REACHED`, never a truncated evidence snapshot. Existing consumers omit this option and retain default behavior. The MCP subagent owns this narrow coordinated loader seam, `mongo-evidence-loader.test.ts` instrumented real-loader coverage, and its Service documentation in addition to the operational adapter. This correction occurred after the initial quality snapshot.
@@ -150,7 +171,7 @@ Changing a field/enum/route requires updating its canonical source document, typ
 
 ## September 17 codebase alignment
 
-[Audit and required adaptations](../11-codebase-alignment-audit.md) are part of this delivery contract. Complete the rows assigned to this team and provide integration evidence; current runtime helpers do not already satisfy the revised contracts. [Design intake](../07-claude-design-brief.md) governs the forthcoming Claude artifact; its arrival is not assumed.
+[Audit and required adaptations](../11-codebase-alignment-audit.md) are part of this delivery contract. Complete the rows assigned to this team and provide integration evidence; current runtime helpers do not already satisfy the revised contracts. [Design intake](../07-claude-design-brief.md) governs the received design export; the September 19 sprint revision records adaptation and validation still required.
 
 ## CSI-01 concrete imports (server-relative, September 17)
 

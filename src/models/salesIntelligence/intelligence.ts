@@ -56,6 +56,10 @@ export const IntelligenceRunSchema = new Schema(
     manifest_snapshot_ids: refs,
     evidence_count: count,
     evidence_bytes: count,
+    application_cursor: count,
+    schema_failures: count,
+    invocation_complete: { type: Boolean, default: false },
+    processing_reason: text,
     finalized_at: date,
     output: {
       ...validatedJson(intelligenceEnvelopeSchema.nullable()),
@@ -65,7 +69,7 @@ export const IntelligenceRunSchema = new Schema(
     raw_output: { ...validatedJson(), required: false, default: null },
     usage: {
       type: new Schema(
-        { input_tokens: count, output_tokens: count, actual_cents: count },
+        { input_tokens: count, output_tokens: count, reasoning_tokens: { type: Number, default: null, min: 0 }, actual_cents: { type: Number, default: null, min: 0 }, usage_complete: { type: Boolean, default: false } },
         { _id: false, strict: "throw" },
       ),
       default: null,

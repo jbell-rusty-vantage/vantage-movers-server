@@ -1,7 +1,7 @@
 # Call & Sales Intelligence — specification pack
 
-**Status:** revised build contract and agent-team workspace ready. Runtime not shipped by this task.
-**Revised:** September 17, 2026 after the Owner interview.
+**Status:** partial local implementation through CSI-13; dashboard integration, review follow-ups and release proof remain. [Current sprint plan](workspace/SPRINT-PLAN.md) · [Next session](workspace/NEXT-SESSION.md).
+**Revised:** September 19, 2026 execution update; September 17 Owner product decisions remain in force.
 **Supersedes for build purposes:** `docs/sales-intelligence/recommendation-specification.md` (Sept 11 evidence base) and `docs/sales-intelligence/number-activity-consolidation.md` (Sept 14 product cut). Both stay as evidence; this pack is the build contract.
 **Source brief:** `scripts/dev_ops/ringcentral/OWNER-TRANSFER-call-intelligence.md` (gitignored; a copy of its decisions is folded into `01-specification.md`).
 
@@ -21,7 +21,7 @@ It is built beside the existing Call Qualification pipeline, never through it. I
 | 04 | [`04-server-routes.md`](04-server-routes.md) | Owner and internal MCP routes, strict command/DTO contracts, service authorization and live reads. |
 | 05 | [`05-owner-dashboard-ux.md`](05-owner-dashboard-ux.md) | Owner views/actions, analysis intervention, exact outcome copy, provenance and component plan. |
 | 06 | [`06-delivery-plan-and-acceptance.md`](06-delivery-plan-and-acceptance.md) | You are opening branches. Issue pack CSI-01 … CSI-18, dependencies, acceptance, settled defaults and remaining deployment checks. |
-| 07 | [`07-claude-design-brief.md`](07-claude-design-brief.md) | Current intake contract for forthcoming Claude components/styling; original brief archived under history/. |
+| 07 | [`07-claude-design-brief.md`](07-claude-design-brief.md) | Intake/adaptation contract for the received vantage-sales-intelligence components/tokens; original brief archived under history/. |
 | 08 | [`08-intelligence-envelope-handoff.md`](08-intelligence-envelope-handoff.md) | Historical prior-session evidence. Decisions and contradictions are reconciled by 09 and the revised build contract. |
 | 09 | [`09-owner-workflow-interview.md`](09-owner-workflow-interview.md) | Accepted Owner interview decisions; historical record, now incorporated. |
 | 10 | [`10-intelligence-agent-contract.md`](10-intelligence-agent-contract.md) | AI SDK + scoped MCP tools, typed envelope, evidence, auto-application, correction and reruns. |
@@ -44,19 +44,19 @@ It is built beside the existing Call Qualification pipeline, never through it. I
 
 ## Execution workspace
 
-Start at [workspace/README.md](workspace/README.md). Team A freezes contracts; B–E own capture, Outreach, intelligence/MCP and Owner UI; F integrates/certifies. The ledger starts unclaimed. Accepted settings: Mon–Sat 08:00–20:00 Eastern, 30-minute first call, 15-minute missed callback, two-sales-day Going cold, **$80 monthly AI cap**.
+Start at [workspace/README.md](workspace/README.md). Team A freezes contracts; B–E own capture, Outreach, intelligence/MCP and Owner UI; F integrates/certifies. Use the ledger for current implementation/review state and SPRINT-PLAN for execution order. Accepted settings: Mon–Sat 08:00–20:00 Eastern, 30-minute first call, 15-minute missed callback, two-sales-day Going cold, **$80 monthly AI cap**.
 
 ## Branches
 
 | Repo | Branch | Scope |
 | --- | --- | --- |
 | `vantage-main-server` | `sales-intelligence` | Models, services under `src/services/salesIntelligence/` and `src/services/numberActivity/`, routes, crons, config, migrations, knowledge doc. |
-| `vantage-movers-mcp` | `feature/sales-intelligence-mcp` | Scoped read/submit tools, credentials, versioned prompts/schema and adapter tests. |
+| `vantage-movers-mcp` | `sales-intelligence` | Scoped read/submit tools, credentials, versioned prompts/schema and adapter tests. |
 | `vantage-admin` | `sales-intelligence` | `/sales-intelligence` page, components, API client, live BFF, authorization, nav. |
 
 Owner-required branch: agents must perform all Call & Sales Intelligence implementation work on `sales-intelligence` in both `vantage-main-server` (server) and `vantage-admin` (dashboard). Inspect the current branch and working tree before edits; use the existing branch or create that exact branch if absent, preserving uncommitted work. Do not implement on the default branch or substitute a differently named team branch. Record repository, branch and owned files in the workspace ledger and handoff. Coordinate agents sharing a checkout; Git cannot check out the same branch in multiple worktrees of one repository, so use separate clones when independent checkouts are necessary, and coordinate integration to avoid divergent pushes. This documentation update does not itself create or switch branches.
 
-The MCP branch suggestion remains separate from this server/dashboard requirement.
+MCP is already on `sales-intelligence`; preserve the implemented CSI-17 branch rather than creating the old suggested feature branch.
 
 Each branch ships behind flags that default off. See `06-delivery-plan-and-acceptance.md`.
 

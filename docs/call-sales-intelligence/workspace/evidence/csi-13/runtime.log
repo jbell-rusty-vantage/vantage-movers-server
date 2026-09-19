@@ -1,0 +1,26 @@
+CSI-13 disposable proof: testvantagemovers_csi13ce409dab09dd; loopback replica csi01:27189; synthetic evidence only
+{"level":"info","time":"2026-09-19T04:39:16.443Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-13 actual ToolLoopAgent + local MCP HTTP + real handlers + disposable replica
+  ✔ real MCP prompt/schema/evidence/submission and application; unknown timing/date stays undated (2593.8164ms)
+  ✔ duplicate delivery permits one invocation and queue failure retains durable application (1639.5864ms)
+  ✔ crash after acknowledgment recovers receipt without a second model invocation (1534.7695ms)
+  ✔ missing billed usage stays reserved; prose-only output is visibly incomplete (2774.2541ms)
+  ✔ budget pause burns no attempt and disabled application does not claim (161.3048ms)
+  ✔ clock-only changes do not alter source fingerprint; bursts have one durable successor (189.6263ms)
+  ✔ one schema repair succeeds; a second invalid result stops with accounted usage (3477.5687ms)
+  ✔ application batch crash resumes without duplicating findings or obligations (2057.8205ms)
+  ✔ expired application lease cannot commit; reclaimed delivery converges (1672.2268ms)
+  ✔ cross-run commitment deduplication and older publication cannot replace newer analysis (3613.2464ms)
+  ✔ incomplete transcript prevents paid work; context ceiling releases unused reservation (681.4717ms)
+  ✔ number synthesis captures original transcripts and findings through MCP (3793.7472ms)
+  ✔ receipt survives expired analysis lease; reclaim recovers without provider work (1351.0368ms)
+  ✔ application readiness resumes only compatible consumer pauses (1441.8745ms)
+✔ CSI-13 actual ToolLoopAgent + local MCP HTTP + real handlers + disposable replica (31125.8372ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 36463.7853

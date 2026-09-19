@@ -1,6 +1,8 @@
 # 06 — Delivery plan and acceptance
 
-Status: build contract, not implemented. Revised September 17, 2026. Execution home: [workspace/README.md](workspace/README.md). This revision replaces the old acceptance-gated AI plan. [09](09-owner-workflow-interview.md) preserves interview decisions; [10](10-intelligence-agent-contract.md) is the agent contract.
+Current sprint order and inspected review state: [September 19 sprint revision](workspace/SPRINT-PLAN.md). Next: [CSI-07 plus initial CSI-08 design integration](workspace/NEXT-SESSION.md), using local Admin/API. The received design export is adapted into `vantage-admin`; production deployment is not a prerequisite for dashboard development.
+
+Status: build contract with partial local implementation. Execution order revised September 19, 2026; product acceptance remains unchanged. Execution home: [workspace/README.md](workspace/README.md). This revision replaces the old acceptance-gated AI plan. [09](09-owner-workflow-interview.md) preserves interview decisions; [10](10-intelligence-agent-contract.md) is the agent contract.
 
 ## 1. Repositories and rollout
 
@@ -28,7 +30,7 @@ Implement behind flags defaulting off. Owner-editable settings cannot override d
 | CSI-12 | STT/redaction/versioned transcript evidence | 11 | Immutable redacted versions, no raw persistence, retry without duplicate STT. |
 | CSI-17 | Scoped MCP read/submit tools and versioned prompt/schema | 01 | Main-server boundary, least-authority token, bounded reads captured as evidence, no mutation/message tools. |
 | CSI-13 | AI SDK agent runs, submission, application, number refresh | 06,10,12,17 | Unattended permitted effects, no exact-locator gate, stable dedupe, live-state and historical reconciliation. |
-| CSI-18 | Owner analysis confirmation/correction/reanalysis and UI | 08,13 | Immediate corrections, original/current evidence modes, agreement and immutable history, no reapplication on confirm. |
+| CSI-18 | Owner analysis confirmation/correction/reanalysis and UI | Server: 06,13,17; UI: 08 and CSI-18 server | Track server/UI separately. Immediate corrections, original/current evidence modes, agreement and immutable history, no reapplication on confirm. Full completion requires both. |
 | CSI-14 | Explicit Owner Rep Nudge | 06,08,10 | Reviewed rep target, preview/send, never automatic/customer, unknown delivery repair. |
 | CSI-15 | Historical backfill, budget recovery and retention | 02,06,12,13 | Live work priority, no obsolete promises revived, purge all evidence copies, resumable windows. |
 | CSI-16 | Integrated certification, capability proof and docs restamp | all above | Acceptance matrix and Owner walkthrough with artifacts; staged rollout remains separate. |
@@ -79,7 +81,7 @@ Read the execution workspace for file ownership, handoffs and acceptance evidenc
 
 ## September 17 codebase alignment
 
-[Audit and required adaptations](11-codebase-alignment-audit.md) are part of this delivery contract. Complete the rows assigned to this team and provide integration evidence; current runtime helpers do not already satisfy the revised contracts. [Design intake](07-claude-design-brief.md) governs the forthcoming Claude artifact; its arrival is not assumed.
+[Audit and required adaptations](11-codebase-alignment-audit.md) are part of this delivery contract. Complete the rows assigned to this team and provide integration evidence; current runtime helpers do not already satisfy the revised contracts. [Design intake](07-claude-design-brief.md) governs the received `vantage-sales-intelligence` export and its adaptation; live integration remains unverified.
 
 ## Owner infrastructure update
 

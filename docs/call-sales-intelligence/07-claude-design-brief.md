@@ -1,6 +1,6 @@
 # 07 — Claude design intake and UI integration
 
-Status: current design integration contract, September 17, 2026. The forthcoming Claude artifact does **not exist yet**. It will supply components, explanations and styling based on these specifications. No visual parity or artifact review is claimed.
+Status: design export received and source inspected September 19, 2026 at `vantage/vantage-sales-intelligence/`. It supplies real components, scoped CSS tokens, API/query adapters and demo fixtures. Its host integration and visual parity have not been verified against the running Admin/API. See [sprint revision](workspace/SPRINT-PLAN.md) for concrete gaps and adoption order.
 
 ## Authority
 
@@ -18,8 +18,8 @@ The former brief is preserved as superseded historical evidence at `history/07-c
 - Explicit preview/send to a reviewed rep, with queued/sent/failed/unknown states; no automated send.
 - Budget pause at editable $80/month, recording gaps, jobs and settings, with operational work remaining available.
 
-## Integrating the future artifact
+## Integrating the received artifact
 
 Team E inventories supplied components against [05](05-owner-dashboard-ux.md) and records missing states in its handoff. Reuse existing dashboard components and official workflow helpers. Bind to shared server DTOs and legal-action flags; mock data is a development fixture, never a business-rule implementation. Keep the fixed Current records scope and Owner authorization from 04. Adapt latest-only conversation UI for exact historical evidence and remove demo replay copy from live views.
 
-Record the received artifact's path/version, component-to-feature mapping, intentional presentation adjustments, accessibility/narrow-layout checks and unresolved design gaps in workspace evidence. If a design conflicts with this pack, implement the specified behavior and flag the visual mismatch. Do not mark design integration complete until the actual artifact has been received and inspected.
+Record the received artifact's path/version, component-to-feature mapping, intentional presentation adjustments, accessibility/narrow-layout checks and unresolved design gaps in workspace evidence. If a design conflicts with this pack, implement the specified behavior and flag the visual mismatch. Receipt/source inspection is complete; mark integration complete only after adaptation to actual server contracts and browser proof in Admin. Copy/adapt components and tokens; preserve the export as reference. Do not copy integration stubs or demo behavior into live routes.

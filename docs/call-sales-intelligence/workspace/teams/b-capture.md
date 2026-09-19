@@ -24,4 +24,4 @@ Replay duplicates/out-of-order/transfer/fan-out/internal/withheld fixtures. Veri
 
 ## September 17 codebase alignment
 
-[Audit and required adaptations](../../11-codebase-alignment-audit.md) are part of this delivery contract. Complete the rows assigned to this team and provide integration evidence; current runtime helpers do not already satisfy the revised contracts. [Design intake](../../07-claude-design-brief.md) governs the forthcoming Claude artifact; its arrival is not assumed.
+[Audit and required adaptations](../../11-codebase-alignment-audit.md) are part of this delivery contract. Complete the rows assigned to this team and provide integration evidence; current runtime helpers do not already satisfy the revised contracts. [Design intake](../../07-claude-design-brief.md) governs the received design export; the September 19 sprint revision records adaptation and validation still required.

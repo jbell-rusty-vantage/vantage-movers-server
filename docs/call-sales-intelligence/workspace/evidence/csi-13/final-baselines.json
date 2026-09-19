@@ -1,0 +1,14 @@
+{
+  "server_branch": "sales-intelligence",
+  "server_head": "a9b9bfcb7a70586ae14e974442e63a033abc7fbf",
+  "server_remote": "https://github.com/jbell-rusty-vantage/vantage-movers-server.git",
+  "server_staged": [],
+  "mcp_branch": "sales-intelligence",
+  "mcp_head": "9a8fd37bf78f8074011fb2d47ff3da3ec400b33d",
+  "mcp_remote": "https://github.com/jbell-rusty-vantage/vantage-movers-mcp.git",
+  "mcp_changes": [],
+  "preserved_baseline_file": true,
+  "checkpoint": "1789795679279-a540097e",
+  "checkpoint_status": "patch-ready",
+  "checkpoint_verify": "PASS"
+}

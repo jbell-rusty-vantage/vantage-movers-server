@@ -8,6 +8,8 @@ import { getIntelligenceEffectModel } from "../../../models/IntelligenceEffect";
 import { getIntelligenceFindingModel } from "../../../models/IntelligenceFinding";
 import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
 import { getCallInteractionModel } from "../../../models/CallInteraction";
+import { getLeadConversationModel } from "../../../models/LeadConversation";
+import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
 import { CsiError, assertTrustedActor } from "../auth";
 import { payloadHash, type CsiTransactionContext } from "../transactions";
 import { resolvePolicy } from "../policy";
@@ -30,13 +32,17 @@ export const outreachEffectInputSchema = z.object({ run_id: id, finding_id: id, 
   clear: z.boolean(), history_complete: z.boolean(), model_strategy: z.boolean().default(false) }).strict();
 export type OutreachEffectInput = z.infer<typeof outreachEffectInputSchema>;
 export type EffectPlan = { status: "applied" | "no_change" | "blocked_owner" | "blocked_identity" | "blocked_closed" | "needs_review" | "stale"; reason: string };
+function contactTypePlan(input: { clear: boolean; model_strategy: boolean }, owner: boolean, changed: boolean): EffectPlan {
+  if (input.model_strategy) return { status: "no_change", reason: "strategy_requires_owner_apply" };
+  if (!input.clear) return { status: "needs_review", reason: "unclear_commitment" };
+  return owner ? { status: "blocked_owner", reason: "owner_contact_type" } : changed ? { status: "stale", reason: "live_revision_changed" } : { status: "applied", reason: "number_contact_evidence" };
+}
 /** Pure decision seam; application re-loads all live facts and repeats this decision. */
 export function planOutreachEffect(input: OutreachEffectInput, live: { record: RecordRow; action?: FollowupRow | null; identityAllowed: boolean; ownerProtected: boolean }): EffectPlan {
   if (input.model_strategy) return { status: "no_change", reason: "strategy_requires_owner_apply" };
   if (!input.clear) return { status: "needs_review", reason: "unclear_commitment" };
   if (input.kind === "pause_channel" || input.kind === "open_review") return { status: "applied", reason: "number_evidence" };
-  if (input.kind === "set_contact_type") return live.ownerProtected ? { status: "blocked_owner", reason: "owner_contact_type" } :
-    input.expected_revision !== live.record.revision ? { status: "stale", reason: "live_revision_changed" } : { status: "applied", reason: "number_contact_evidence" };
+  if (input.kind === "set_contact_type") return contactTypePlan(input, live.ownerProtected, input.expected_revision !== live.record.revision);
   if (!live.identityAllowed) return { status: "blocked_identity", reason: "event_identity" };
   if (live.record.state === "closed") return { status: "blocked_closed", reason: "closed_work_request" };
   if (live.ownerProtected) return { status: "blocked_owner", reason: "owner_instruction" };
@@ -56,7 +62,24 @@ export async function applyOutreachEffect(raw: OutreachEffectInput, context: Csi
   const finding = await getIntelligenceFindingModel().findOne({ _id: input.finding_id, run_id: input.run_id, key: input.finding_key }).session(context.session).lean();
   const run = await getIntelligenceRunModel().findById(input.run_id).session(context.session).lean();
   const call = await getCallInteractionModel().findById(input.interaction_id).session(context.session);
-  if (!finding || !run || !call || run.subject_key !== key || String(run.contact_number_id) !== String(call.contact_number_id)) throw new CsiError("EVIDENCE_SCOPE_INVALID");
+  if (!finding || !run || !call || String(run.contact_number_id) !== String(call.contact_number_id)) throw new CsiError("EVIDENCE_SCOPE_INVALID");
+  if (run.subject_key !== key) {
+    // CSI-12 conversation jobs retain their immutable subject. A persisted pointer is not sufficient:
+    // the exact source conversation and current event attachment must still authorize this record.
+    const conversation = run.conversation_id && run.subject_key === `conversation:${run.conversation_id}`
+      ? await getLeadConversationModel().findOne({ _id: run.conversation_id, call_interaction_id: call._id,
+        contact_number_id: run.contact_number_id }).session(context.session).lean() : null;
+    if (!conversation || String(record.primary_contact_number_id) !== String(run.contact_number_id)) throw new CsiError("EVIDENCE_SCOPE_INVALID");
+    if (record.subject.kind === "lead") {
+      if (String(run.outreach_record_id) !== String(record._id)) throw new CsiError("EVIDENCE_SCOPE_INVALID");
+      const attribution = await interactionAttribution(call, context.session);
+      const attached = await getNumberLeadAttachmentModel().exists({ contact_number_id: run.contact_number_id,
+        "lead_ref.id": record.subject.id, "lead_ref.model": record.subject.model, state: "attached" }).session(context.session);
+      if (!attached || !attribution.lead_effects_allowed || attribution.certainty === "likely" ||
+        attribution.lead_ref?.id !== String(record.subject.id) || attribution.lead_ref.model !== record.subject.model) throw new CsiError("EVIDENCE_SCOPE_INVALID");
+    } else if (String(record.subject.contact_number_id) !== String(run.contact_number_id) ||
+      (run.outreach_record_id && String(run.outreach_record_id) !== String(record._id))) throw new CsiError("EVIDENCE_SCOPE_INVALID");
+  }
   const targetKey = input.target_followup_id ?? `interaction:${call._id}:${input.finding_key}`;
   const existing = await getIntelligenceEffectModel().findOne({ run_id: input.run_id, finding_key: input.finding_key, effect_kind: input.kind, target_key: targetKey }).session(context.session).lean();
   if (existing) {
@@ -86,10 +109,24 @@ export async function applyOutreachEffect(raw: OutreachEffectInput, context: Csi
     const resolved = input.date ? resolveActionDate({ ...input.date, wait: input.action_kind === "wait" }, policy, call.started_at) : resolveActionDateText(input.date_text, policy, call.started_at, input.action_kind === "wait");
     const promisedBy = input.origin === "rep_promise" ? promising : null;
     const assigned = input.origin === "rep_promise" ? promising : current.responsible_agent_id ? String(current.responsible_agent_id) : promising;
-    const matches = await getOutreachFollowupModel().find({ outreach_record_id: current._id, source_interaction_id: call._id,
-      kind: input.action_kind, origin: input.origin, promised_by_agent_id: promisedBy,
+    const matches = action ? [action] : await getOutreachFollowupModel().find({ outreach_record_id: current._id, source_interaction_id: call._id,
+      // Speaker uncertainty/review changes cannot manufacture a second obligation from the same source/date.
+      kind: input.action_kind, origin: input.origin,
       $or: [{ source_due_at: resolved.due_at }, { due_at: resolved.due_at }] }).session(context.session);
-    if (matches.length === 1) { action = matches[0]!; plan = { status: "no_change", reason: "existing_commitment" }; }
+    if (matches.length === 1) {
+      action = matches[0]!;
+      const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+      const sameDate = +(action.source_due_at ?? action.due_at ?? 0) === +(resolved.due_at ?? 0);
+      if (action.kind !== input.action_kind || !sameDate || (!input.target_followup_id && normalize(action.description) !== normalize(input.description))) {
+        plan = { status: "needs_review", reason: "ambiguous_commitment" };
+      } else {
+        plan = { status: "no_change", reason: "existing_commitment" };
+        if (!action.source_finding_ids.some(id => String(id) === input.finding_id)) {
+          const before = action.toObject(); action.source_finding_ids.push(new mongoose.Types.ObjectId(input.finding_id));
+          await saveFollowup(action, before, context, key, "intelligence_commitment_evidence");
+        }
+      }
+    }
     else if (matches.length > 1) plan = { status: "needs_review", reason: "ambiguous_commitment" };
     else {
       action = new (getOutreachFollowupModel())({ outreach_record_id: current._id,
@@ -142,6 +179,8 @@ export async function applyOutreachEffect(raw: OutreachEffectInput, context: Csi
     if (!input.contact_type) throw new CsiError("INVALID_INPUT");
     call.contact_type = input.contact_type; call.contact_type_basis = `finding:${input.finding_id}`; call.projection_revision++;
     await call.save({ session: context.session }); await ensureInteraction(call, context);
+    if (run.conversation_id) await getLeadConversationModel().updateOne({ _id: run.conversation_id, call_interaction_id: call._id },
+      { $set: { contact_type: call.contact_type, contact_type_basis: call.contact_type_basis } }, { session: context.session });
     effectTargetId = String(call._id);
   }
   if (["needs_review", "blocked_closed", "blocked_identity", "blocked_owner"].includes(plan.status) || input.kind === "open_review") {
@@ -154,4 +193,31 @@ export async function applyOutreachEffect(raw: OutreachEffectInput, context: Csi
     target_id: effectTargetId, commitment_key: action?.commitment_key ?? null, status: plan.status, reason: plan.reason,
     revision_before: prior.revision, revision_after: current.revision, previous: jsonValue(prior), current: jsonValue({ input, status: plan.status }), applied_at: context.now }], { session: context.session });
   return { status: plan.status, reason: plan.reason, target_id: effectTargetId };
+}
+
+/** Contact evidence can precede Outreach creation. Reuse the same decision and transition authority. */
+export async function applyUnboundContactTypeEffect(input: { run_id: string; finding_id: string; finding_key: string; interaction_id: string;
+  contact_type: "human_conversation" | "voicemail" | "unknown"; clear: boolean; model_strategy: boolean; expected_revision: number }, context: CsiTransactionContext) {
+  assertTrustedActor(context.actor);
+  if (!context.session.inTransaction() || !csiFlag("OUTREACH_ENSURE")) throw new CsiError("FEATURE_DISABLED");
+  const run = await getIntelligenceRunModel().findById(input.run_id).session(context.session).lean();
+  const finding = await getIntelligenceFindingModel().findOne({ _id: input.finding_id, run_id: input.run_id, key: input.finding_key }).session(context.session).lean();
+  const call = await getCallInteractionModel().findById(input.interaction_id).session(context.session).orFail();
+  const conversation = run?.conversation_id ? await getLeadConversationModel().findOne({ _id: run.conversation_id,
+    call_interaction_id: call._id, contact_number_id: call.contact_number_id }).session(context.session).lean() : null;
+  if (!run || !finding || !conversation || run.outreach_record_id || run.subject_key !== `conversation:${conversation._id}` || String(run.contact_number_id) !== String(call.contact_number_id)) throw new CsiError("EVIDENCE_SCOPE_INVALID");
+  const prior = await getIntelligenceEffectModel().findOne({ run_id: run._id, finding_key: input.finding_key, effect_kind: "set_contact_type", target_key: `interaction:${call._id}` }).session(context.session).lean();
+  if (prior) return { status: prior.status, reason: prior.reason, target_id: String(prior.target_id) };
+  const plan = contactTypePlan(input, call.contact_type_basis === "owner", call.projection_revision !== input.expected_revision);
+  const before = call.contact_type;
+  if (plan.status === "applied") {
+    call.contact_type = input.contact_type; call.contact_type_basis = `finding:${finding._id}`; call.projection_revision++;
+    await call.save({ session: context.session });
+    await getLeadConversationModel().updateOne({ _id: conversation._id }, { $set: { contact_type: call.contact_type, contact_type_basis: call.contact_type_basis } }, { session: context.session });
+    await ensureInteraction(call, context);
+  } else if (plan.status !== "no_change") await openReview(context, run.subject_key, plan.status === "blocked_owner" ? "owner_conflict" : "unclear_commitment", input.finding_key, [input.finding_id]);
+  await getIntelligenceEffectModel().create([{ run_id: run._id, finding_id: finding._id, finding_key: input.finding_key,
+    effect_kind: "set_contact_type", target_key: `interaction:${call._id}`, target_id: call._id, status: plan.status, reason: plan.reason,
+    previous: { contact_type: before }, current: { contact_type: call.contact_type }, applied_at: context.now }], { session: context.session });
+  return { ...plan, target_id: String(call._id) };
 }

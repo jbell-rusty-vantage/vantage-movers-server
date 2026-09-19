@@ -140,6 +140,17 @@ export async function renewCsiJob(lease: JobLease, ttlMs = 300_000) {
   );
   if (result.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
 }
+/** Commit bounded resumable application progress without completing the durable job. */
+export async function checkpointCsiJob<T>(lease: JobLease, mutation: (session: ClientSession) => Promise<T>) {
+  return withTransaction(async session => {
+    const Model = getSalesIntelligenceJobModel();
+    if (!await Model.exists(fence(lease)).session(session)) throw new CsiError("LEASE_LOST");
+    const value = await mutation(session);
+    const changed = await Model.updateOne(fence(lease), { $inc: { evidence_fence: 1 } }, { session });
+    if (changed.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
+    return value;
+  });
+}
 /**
  * All effect writes use this session. Final lease write occurs AFTER mutations so expiry during the callback rolls everything back. No network calls in callback.
  * CSI-03 additive: `options.result` is a bounded JSON summary persisted on the job row with the completion write;

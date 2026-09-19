@@ -1,5 +1,9 @@
 # Team E — Owner dashboard and intervention UI
 
+## Current next session — September 19
+
+Use [NEXT-SESSION](../NEXT-SESSION.md) and [SPRINT-PLAN](../SPRINT-PLAN.md). The design export exists at `vantage/vantage-sales-intelligence/`; copy/adapt its real components and scoped tokens into Admin while preserving the source. First deliver CSI-07 plus the initial CSI-08 Attention/detail read slice against the local API. Full CSI-08, CSI-09, CSI-14 dialogs and CSI-18 UI remain distinct acceptance work. Do not run the broad original kickoff as one undifferentiated task. Reconcile export DTOs, auth placeholders, proxy idempotency forwarding and SSE before treating it as integrated.
+
 Own CSI-07/08/09 and UI CSI-18/14. Read Admin CONTEXT/rules, [05](../../05-owner-dashboard-ux.md), [04](../../04-server-routes.md), [01](../../01-specification.md). Start from A's DTO fixtures; integrate B/C/D without inventing server rules.
 
 ## Deliver
@@ -25,4 +29,4 @@ Browser-walk the scenarios in [ACCEPTANCE](../ACCEPTANCE.md); include missing au
 
 ## September 17 codebase alignment
 
-[Audit and required adaptations](../../11-codebase-alignment-audit.md) are part of this delivery contract. Complete the rows assigned to this team and provide integration evidence; current runtime helpers do not already satisfy the revised contracts. [Design intake](../../07-claude-design-brief.md) governs the forthcoming Claude artifact; its arrival is not assumed.
+[Audit and required adaptations](../../11-codebase-alignment-audit.md) are part of this delivery contract. Complete the rows assigned to this team and provide integration evidence; current runtime helpers do not already satisfy the revised contracts. [Design intake](../../07-claude-design-brief.md) governs the received design export; see the September 19 sprint revision for adoption and contract reconciliation.

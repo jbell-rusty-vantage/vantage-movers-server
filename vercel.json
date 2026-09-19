@@ -71,6 +71,8 @@
     }
   },
   "crons": [
+    { "path": "/api/cron/sales-intelligence-extract", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/sales-intelligence-apply", "schedule": "*/5 * * * *" },
     {
       "path": "/api/cron/sales-intelligence-outreach-ensure",
       "schedule": "* * * * *"

@@ -1,0 +1,138 @@
+import type { MCPClient, CallToolResult } from "@ai-sdk/mcp" with { "resolution-mode": "import" };
+import type { LanguageModel, LanguageModelUsage, ToolSet } from "ai" with { "resolution-mode": "import" };
+import { z } from "zod";
+import { CSI_TOOLS } from "../../../config/domain/salesIntelligence";
+import { payloadHash } from "../transactions";
+import { CSI_PROMPT_VERSION } from "./contracts";
+import { readContentSchema } from "./reads";
+import type { SubmissionReceipt } from "./submit";
+
+export const runtimeLimitsSchema = z.object({ steps: z.number().int().min(1).max(40), context_tokens: z.number().int().min(1000).max(200_000),
+  output_tokens: z.number().int().min(100).max(16_000), total_input_tokens: z.number().int().positive(), total_output_tokens: z.number().int().positive(),
+  elapsed_ms: z.number().int().min(1000).max(180_000), pages: z.number().int().min(1).max(100) }).strict();
+export type RuntimeLimits = z.infer<typeof runtimeLimitsSchema>;
+export const DEFAULT_RUNTIME_LIMITS: RuntimeLimits = { steps: 4, context_tokens: 128_000, output_tokens: 6000,
+  total_input_tokens: 512_000, total_output_tokens: 24_000, elapsed_ms: 120_000, pages: 80 };
+export class IntelligenceRuntimeError extends Error {
+  constructor(readonly reason: "incomplete_coverage" | "bounds_exhausted" | "schema_exhausted" | "receipt_missing" | "contract_mismatch" | "eligibility_changed") { super(reason); }
+}
+const receiptSchema = z.object({ run_id: z.string(), submission_id: z.string(), application_job_id: z.string(), status: z.literal("submitted") }).strict();
+function resultValue(result: CallToolResult): unknown {
+  if (result.isError) throw new IntelligenceRuntimeError("contract_mismatch");
+  const parts = result.content;
+  if (!Array.isArray(parts) || parts.length !== 1 || parts[0].type !== "text") throw new IntelligenceRuntimeError("contract_mismatch");
+  return JSON.parse(parts[0].text);
+}
+export type InvocationStep = { step: number; usage: LanguageModelUsage; actual_cents: number | null; schema_failures: number };
+export type InvocationInput = {
+  endpoint: string; key: string; token: string; run_id: string; model_id: string; gateway_key?: string;
+  prompt: string; schema_digest: string; conversation_ids: string[]; interaction_ids: string[];
+  limits: RuntimeLimits; model?: LanguageModel; schema_failures?: number;
+  beforeProvider: () => Promise<void>; onStep: (step: InvocationStep) => Promise<void>; onInvocationComplete?: () => void;
+};
+/** Byte count is a conservative token ceiling, including tool definitions and accumulated messages. */
+export const contextTokenCeiling = (value: unknown) => Buffer.byteLength(JSON.stringify(value), "utf8");
+export function billedCents(metadata: unknown): number | null {
+  const parsed = z.object({ gateway: z.object({ cost: z.union([z.number(), z.string()]).optional(), totalCost: z.union([z.number(), z.string()]).optional() }) }).safeParse(metadata);
+  if (!parsed.success) return null;
+  const cost = parsed.data.gateway.cost ?? parsed.data.gateway.totalCost;
+  if (cost === undefined || !Number.isFinite(Number(cost)) || Number(cost) < 0) return null;
+  return Math.ceil(Number(cost) * 100);
+}
+/** Every evidence read and exposed tool uses the authenticated remote MCP transport. No direct domain tool. */
+export async function invokeIntelligenceAgent(input: InvocationInput): Promise<SubmissionReceipt> {
+  const { createMCPClient } = await import("@ai-sdk/mcp");
+  const { ToolLoopAgent, isStepCount, tool } = await import("ai");
+  const { createGateway } = await import("@ai-sdk/gateway");
+  const limits = runtimeLimitsSchema.parse(input.limits), uncertain = new AbortController();
+  const signal = AbortSignal.any([AbortSignal.timeout(limits.elapsed_ms), uncertain.signal]);
+  const endpoint = new URL(input.endpoint);
+  if (endpoint.pathname !== "/api/intelligence-mcp" || endpoint.username || endpoint.password || endpoint.search ||
+    (endpoint.protocol !== "https:" && !(endpoint.protocol === "http:" && ["127.0.0.1", "localhost"].includes(endpoint.hostname)))) throw new IntelligenceRuntimeError("contract_mismatch");
+  let client: MCPClient | undefined;
+  try {
+    client = await createMCPClient({ transport: { type: "http", url: endpoint.href,
+      headers: { "x-api-secret": input.key, "x-vantage-intelligence-run-token": input.token } }, maxRetries: 0,
+      initializationOptions: { signal, timeout: limits.elapsed_ms }, onUncaughtError: () => undefined });
+    const options = { signal, timeout: limits.elapsed_ms };
+    const prompt = await client.experimental_getPrompt({ name: CSI_PROMPT_VERSION, arguments: {}, options });
+    const resource = await client.readResource({ uri: "csi://schemas/csi-envelope-v1", options });
+    const content = resource.contents[0];
+    if (prompt.messages.length !== 1 || prompt.messages[0].content.type !== "text" || prompt.messages[0].content.text !== input.prompt ||
+      !content || !("text" in content) || typeof content.text !== "string" || payloadHash(JSON.parse(content.text)) !== input.schema_digest) throw new IntelligenceRuntimeError("contract_mismatch");
+    const definitions = await client.listTools({ options });
+    if (definitions.nextCursor || definitions.tools.length !== CSI_TOOLS.length || definitions.tools.some(t => !(CSI_TOOLS as readonly string[]).includes(t.name))) throw new IntelligenceRuntimeError("contract_mismatch");
+    const evidence: unknown[] = [];
+    let pages = 0;
+    const readPages = async (name: string, args: Record<string, unknown>) => {
+      let cursor: string | undefined;
+      const seen = new Set<string>();
+      do {
+        signal.throwIfAborted();
+        if (++pages > limits.pages) throw new IntelligenceRuntimeError("incomplete_coverage");
+        const value = resultValue(await client!.callTool({ name, arguments: { ...args, ...(cursor ? { cursor } : {}) }, options }));
+        const captured = z.object({ snapshot_id: z.string(), data: readContentSchema }).passthrough().parse(value);
+        evidence.push(value);
+        if (contextTokenCeiling({ prompt: input.prompt, evidence, tools: definitions.tools }) > limits.context_tokens) throw new IntelligenceRuntimeError("incomplete_coverage");
+        // Transcript pagination explicitly describes prior/remaining segments; other gaps are not complete processing.
+        if (captured.data.page.missing_ranges.some(r => !/^segments_(before|after):\d+$/.test(r))) throw new IntelligenceRuntimeError("incomplete_coverage");
+        cursor = captured.data.page.next_cursor ?? undefined;
+        if (!cursor && !captured.data.page.complete && !captured.data.transcript) throw new IntelligenceRuntimeError("incomplete_coverage");
+        if (captured.data.transcript && !captured.data.page.complete && !captured.data.page.missing_ranges.length) throw new IntelligenceRuntimeError("incomplete_coverage");
+        if (cursor && seen.has(cursor)) throw new IntelligenceRuntimeError("incomplete_coverage");
+        if (cursor) seen.add(cursor);
+      } while (cursor);
+    };
+    await readPages("get_intelligence_context", {});
+    await readPages("list_number_activity", { limit: 50 });
+    await readPages("search_leads", { limit: 50 });
+    await readPages("search_bookings", { limit: 50 });
+    for (const id of input.interaction_ids) await readPages("get_rep_identity", { interaction_id: id });
+    for (const id of input.conversation_ids) await readPages("get_call_transcript", { conversation_id: id, limit: 100 });
+    const tools: ToolSet = {};
+    let receipt: SubmissionReceipt | null = null, submissions = 0, steps = 0, inTokens = 0, outTokens = 0, schemaFailures = input.schema_failures ?? 0;
+    if (schemaFailures >= 2) throw new IntelligenceRuntimeError("schema_exhausted");
+    // Wrap transport execution only to enforce the orchestration bounds; authority remains in CSI-17.
+    for (const definition of definitions.tools) {
+      const name = definition.name;
+      // MCP declares schema keywords as unknown; Zod validates the remote JSON Schema at this boundary.
+      const schema = z.fromJSONSchema(definition.inputSchema as Parameters<typeof z.fromJSONSchema>[0]);
+      tools[name] = tool({ description: definition.description, inputSchema: schema, execute: async args => {
+        signal.throwIfAborted();
+        if (receipt) throw new IntelligenceRuntimeError("bounds_exhausted");
+        if (name === "submit_intelligence_analysis" && ++submissions > 2) throw new IntelligenceRuntimeError("schema_exhausted");
+        const value = await client!.callTool({ name, arguments: z.record(z.string(), z.unknown()).parse(args), options });
+        const parsed = z.object({ content: z.array(z.object({ type: z.literal("text"), text: z.string() })).length(1), isError: z.boolean().optional() }).passthrough().safeParse(value);
+        if (name === "submit_intelligence_analysis" && parsed.success && !parsed.data.isError) {
+          const accepted = receiptSchema.safeParse(JSON.parse(parsed.data.content[0].text));
+          if (accepted.success && accepted.data.run_id === input.run_id) receipt = accepted.data;
+        }
+        if (name === "submit_intelligence_analysis" && parsed.success && parsed.data.isError) {
+          const error = z.object({ code: z.string() }).passthrough().safeParse(JSON.parse(parsed.data.content[0].text));
+          if (error.success && error.data.code === "INVALID_INPUT") schemaFailures++;
+          else uncertain.abort(); // Includes ambiguous delivery: trusted worker recovers the receipt first.
+        }
+        return value;
+      } });
+    }
+    await input.beforeProvider();
+    const model = input.model ?? createGateway({ apiKey: input.gateway_key })(input.model_id);
+    const agent = new ToolLoopAgent({ model, tools, instructions: input.prompt, maxRetries: 0, maxOutputTokens: limits.output_tokens,
+      stopWhen: [isStepCount(limits.steps), () => receipt !== null || submissions >= 2 || schemaFailures >= 2],
+      prepareStep: ({ messages }) => {
+        if (contextTokenCeiling({ prompt: input.prompt, messages, tools: definitions.tools }) > limits.context_tokens ||
+          inTokens + limits.context_tokens > limits.total_input_tokens || outTokens + limits.output_tokens > limits.total_output_tokens) throw new IntelligenceRuntimeError("bounds_exhausted");
+        return { providerOptions: { openai: { parallelToolCalls: false } } };
+      },
+      onStepEnd: async step => {
+        schemaFailures += step.toolCalls.filter(call => call.invalid && call.toolName === "submit_intelligence_analysis").length;
+        steps++; inTokens += step.usage.inputTokens ?? limits.context_tokens; outTokens += step.usage.outputTokens ?? limits.output_tokens;
+        await input.onStep({ step: steps, usage: step.usage, actual_cents: billedCents(step.providerMetadata), schema_failures: schemaFailures });
+      },
+    });
+    await agent.generate({ prompt: `Analyze the captured source evidence below. Each page is a durable coverage checkpoint. Preserve coverage uncertainty. Submit with idempotency_key ${JSON.stringify(input.run_id)}.\n${JSON.stringify(evidence)}`, abortSignal: signal });
+    input.onInvocationComplete?.();
+    if (!receipt) throw new IntelligenceRuntimeError(submissions >= 2 || schemaFailures >= 2 ? "schema_exhausted" : "receipt_missing");
+    return receipt;
+  } finally { await client?.close().catch(() => undefined); }
+}

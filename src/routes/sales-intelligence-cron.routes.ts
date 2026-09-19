@@ -16,6 +16,8 @@ import { drainRepIdentityReevaluationJobs } from "../services/salesIntelligence/
 import { drainNudgeRepairJobs } from "../services/salesIntelligence/nudges/repair";
 import { drainMediaFetchJobs } from "../services/salesIntelligence/conversations/media";
 import { drainTranscriptionJobs } from "../services/salesIntelligence/conversations/transcribe";
+import { drainIntelligenceJobs } from "../services/salesIntelligence/analysis/worker";
+import { drainIntelligenceApplications } from "../services/salesIntelligence/analysis/apply";
 import { drainRebuildJobs, type RebuildDrainSummary, type RebuildWorkerDeps } from "../services/numberActivity/rebuild";
 import { runCallLogReconcileOnce } from "../services/numberActivity/reconcileCallLog";
 import {
@@ -65,9 +67,13 @@ export type SalesIntelligenceCronRouteDeps = {
   drainOutreachEnsure?: typeof drainOutreachEnsureJobs;
   drainRepIdentity?: typeof drainRepIdentityReevaluationJobs;
   drainNudgeRepair?: typeof drainNudgeRepairJobs;
+  runIntelligence?: typeof drainIntelligenceJobs;
+  runApplication?: typeof drainIntelligenceApplications;
 };
 
 export const CSI_CRON_PATHS = {
+  extract: "/api/cron/sales-intelligence-extract",
+  apply: "/api/cron/sales-intelligence-apply",
   nudgeRepair: "/api/cron/sales-intelligence-nudge-repair",
   callLogReconcile: "/api/cron/sales-intelligence-call-log-reconcile",
   jobRecovery: "/api/cron/sales-intelligence-job-recovery",
@@ -100,6 +106,8 @@ export function createSalesIntelligenceCronRouter(
   const mediaFetch = deps.runMediaFetch ?? drainMediaFetchJobs;
   const transcribe = deps.runTranscription ?? drainTranscriptionJobs;
   const extraRecovery = deps.extraRecovery ?? [
+    { name: "intelligence", flag: "EXTRACTION_ENABLED" as const, run: () => (deps.runIntelligence ?? drainIntelligenceJobs)() },
+    { name: "application", flag: "EXTRACTION_ENABLED" as const, run: () => (deps.runApplication ?? drainIntelligenceApplications)() },
     { name: "nudge_repair", flag: "NUDGE_ENABLED" as const, run: () => (deps.drainNudgeRepair ?? drainNudgeRepairJobs)() },
     { name: "rep_identity_reevaluate", flag: "ENABLED" as const, run: () => (deps.drainRepIdentity ?? drainRepIdentityReevaluationJobs)() },
     { name: "outreach_ensure", flag: "OUTREACH_ENSURE" as const, run: () => (deps.drainOutreachEnsure ?? drainOutreachEnsureJobs)() },
@@ -108,6 +116,15 @@ export function createSalesIntelligenceCronRouter(
     { name: "media_fetch", flag: "MEDIA_ENABLED" as const, run: mediaFetch },
     { name: "transcription", flag: "STT_ENABLED" as const, run: transcribe },
   ];
+
+  for (const [path, work] of [
+    [CSI_CRON_PATHS.extract, () => (deps.runIntelligence ?? drainIntelligenceJobs)()],
+    [CSI_CRON_PATHS.apply, () => (deps.runApplication ?? drainIntelligenceApplications)()],
+  ] as const) router.all(path, requireCronAuth, async (_req, res) => {
+    if (!flag("ENABLED") || !flag("EXTRACTION_ENABLED")) return res.json({ ok: true, skipped: true, reason: "disabled" });
+    try { await connect(); return res.json({ ok: true, summary: await work() }); }
+    catch { return res.status(500).json({ ok: false, error: "Intelligence processing failed" }); }
+  });
 
   router.all(CSI_CRON_PATHS.callLogReconcile, requireCronAuth, async (_req, res) => {
     // A disabled route never claims the lease; the service also re-checks the flag.

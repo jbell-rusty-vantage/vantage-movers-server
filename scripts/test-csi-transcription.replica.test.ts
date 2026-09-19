@@ -114,7 +114,9 @@ test("CSI-12 disposable replica with synthetic Blob/STT only", { skip: process.e
       const analysis = await Jobs.findOne({ stage: "analysis", input_refs: a.conversationId }).orFail();
       const claimed = await claimCsiJob("analysis-test", String(analysis._id), 300000, "analysis");
       await failCsiJob({ job_id: String(analysis._id), owner: "analysis-test", epoch: claimed!.lease_epoch }, "transient");
-      assert.equal((await dispatchCsiWakeup({ job_id: String(analysis._id) })).status, "no_consumer");
+      const dispatched = await dispatchCsiWakeup({ job_id: String(analysis._id) });
+      assert.equal(dispatched.status, "dispatched"); // CSI-13 is registered; disabled analysis still never repeats STT.
+      assert.equal(dispatched.status === "dispatched" && (dispatched.outcome as { status: string }).status, "disabled");
       assert.equal(sttCalls, 1);
     });
     await t.test("eligibility flip during STT preserves media/transcript and suppresses analysis", async () => {

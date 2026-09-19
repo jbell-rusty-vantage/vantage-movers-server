@@ -17,6 +17,7 @@ import { getSalesIntelligenceReviewItemModel } from "../src/models/SalesIntellig
 import { getSalesIntelligenceJobModel } from "../src/models/SalesIntelligenceJob";
 import { getIntelligenceRunModel } from "../src/models/IntelligenceRun";
 import { getIntelligenceFindingModel } from "../src/models/IntelligenceFinding";
+import { getLeadConversationModel } from "../src/models/LeadConversation";
 import { requireCsiOwner } from "../src/services/salesIntelligence/auth";
 import { computeAdminActorSignature } from "../src/services/operationsRegistry/trustedActor";
 import { persistLeadAttachments } from "../src/services/salesIntelligence/attachment/store";
@@ -81,6 +82,30 @@ test("CSI-06 disposable replica", { skip: process.env.CSI_REPLICA_TEST !== "true
   const apply = (e: ReturnType<typeof outreachEffectInputSchema.parse>) => withTransaction(s => applyOutreachEffect(e, workerContext(s, String(oid()))));
   const snapshot = async () => JSON.stringify(await Promise.all((await db.listCollections().toArray()).sort((a,b) => a.name.localeCompare(b.name)).map(async c => [c.name, await db.collection(c.name).find().sort({ _id: 1 }).toArray()])));
   try {
+    await t.test("CSI-13 repeated source commitment survives changed speaker certainty without duplication", async () => {
+      const f = await fixture(), c = await call(f.n._id, { direction: "Outbound", parties: user() });
+      assert.equal((await apply(await effect(f, c))).status, "applied");
+      assert.equal((await apply(await effect(f, c, { promising_agent_id: null }))).status, "no_change");
+      assert.equal(await Actions.countDocuments({ source_interaction_id: c._id, origin: "rep_promise" }), 1);
+      assert.equal((await Actions.findOne({ source_interaction_id: c._id, origin: "rep_promise" }).orFail()).source_finding_ids.length, 2);
+      assert.equal((await apply(await effect(f, c, { description: "A potentially different callback" }))).status, "needs_review");
+      assert.equal(await Actions.countDocuments({ source_interaction_id: c._id, origin: "rep_promise" }), 1);
+    });
+    await t.test("CSI-13 conversation authority rejects candidates and foreign pointers, accepts current Owner attachment", async () => {
+      const f = await fixture(), c = await call(f.n._id);
+      const conversation = await getLeadConversationModel().create({ provider: "ringcentral", provider_account_id: "synthetic", provider_recording_id: String(oid()),
+        call_interaction_id: c._id, contact_number_id: f.n._id, started_at: c.started_at, direction: "Inbound", match_method: "number_only", match_confidence: "low", state: "transcribed" });
+      const e = await effect(f, c);
+      await getIntelligenceRunModel().collection.updateOne({ _id: new mongoose.Types.ObjectId(e.run_id) }, { $set: {
+        subject_key: `conversation:${conversation._id}`, conversation_id: conversation._id, outreach_record_id: f.record._id } });
+      await assert.rejects(apply(e), /EVIDENCE_SCOPE_INVALID/);
+      const edge = await getNumberLeadAttachmentModel().findOne({ "lead_ref.id": f.lead._id }).orFail();
+      await commandAttachment({ actor, idempotency_key: String(oid()), command: { command: "attach_lead", expected_revision: edge.revision,
+        contact_number_id: String(f.n._id), lead_ref: { model: "FormLead", id: String(f.lead._id) }, reason: "Synthetic reviewed attachment" } });
+      const foreign = await fixture();
+      await assert.rejects(apply({ ...e, outreach_record_id: String(foreign.record._id) }), /EVIDENCE_SCOPE_INVALID/);
+      assert.equal((await apply({ ...e, expected_revision: (await current(f.record._id)).revision })).status, "applied");
+    });
     await t.test("inbound human opens; missed does not; no-answer/voicemail exact outcomes", async () => {
       const f = await fixture(); const missed = await call(f.n._id); await processCall(missed);
       assert.equal((await current(f.record._id)).state, "unworked");

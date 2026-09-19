@@ -1,6 +1,6 @@
 # 05 — Owner dashboard behavior and presentation
 
-Status: build contract, not implemented. Revised September 17, 2026. [Product](01-specification.md) · [Routes](04-server-routes.md). [07](07-claude-design-brief.md) defines intake of the forthcoming Claude components/styling artifact, which does not exist yet; this specification defines features and behavior. The supplied here.now editor was not successfully inspected during the interview.
+Status: build contract, not implemented. Revised September 17, 2026. [Product](01-specification.md) · [Routes](04-server-routes.md). [07](07-claude-design-brief.md) defines adaptation of the received `vantage-sales-intelligence` components/tokens; this specification defines features and behavior. September 19 execution order is in [SPRINT-PLAN](workspace/SPRINT-PLAN.md). The supplied here.now editor was not successfully inspected during the interview.
 
 ## 1. Placement and views
 

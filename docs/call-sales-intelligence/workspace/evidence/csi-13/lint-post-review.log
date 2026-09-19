@@ -1,0 +1,4 @@
+
+> vantage_movers_server@1.0.0 lint C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> eslint src api scripts/quality --max-warnings 0
+

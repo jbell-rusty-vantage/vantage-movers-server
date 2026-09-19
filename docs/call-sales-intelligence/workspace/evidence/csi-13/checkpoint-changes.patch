@@ -1,0 +1,64 @@
+diff --git a/docs/knowledge/services/sales-intelligence-analysis.md b/docs/knowledge/services/sales-intelligence-analysis.md
+index e3f5b2c..9a20b06 100644
+--- a/docs/knowledge/services/sales-intelligence-analysis.md
++++ b/docs/knowledge/services/sales-intelligence-analysis.md
+@@ -83,7 +83,7 @@ Envelope, immutable receipt, finalized run/manifest, audit and one `application`
+ 
+ ## CSI-13 runtime and scheduling
+ 
+-`analysis/worker.ts:runIntelligenceJob(jobId?, stage?, deps?)` is shared by the existing queue dispatcher and cron recovery for `analysis` and `number_refresh`. `analysis` retains CSI-12's immutable `[conversation_id, transcript_snapshot_id]`; `conversationAnalysisInput` rechecks current eligibility, transcript version and media digest before any provider work. `numberAnalysisInput` selects currently eligible pinned transcripts and rechecks their versions before synthesis. Neither invokes transcription. Existing Outreach `number_refresh` intents become coalesced number-owned jobs without mutating their original subjects. `scheduleNumberIntelligence` stores a meaningful-source fingerprint and generation on ContactNumber; only one active job exists per number and publication/recovery schedules at most one successor for changed sources. The existing SyncState/lease infrastructure scans five numbers per sweep. Generic updatedAt, clocks, and semantically unchanged replacement finding IDs are excluded; oversized source sets create a visible paused intent.
++`analysis/worker.ts:runIntelligenceJob(jobId?, stage?, deps?)` is shared by the existing queue dispatcher and cron recovery for `analysis` and `number_refresh`. `analysis` retains CSI-12's immutable `[conversation_id, transcript_snapshot_id]`; `conversationAnalysisInput` rechecks current eligibility, transcript version and media digest before any provider work. `numberAnalysisInput` selects currently eligible pinned transcripts and rechecks their versions before synthesis; it returns terminal `no_transcript_evidence` when none remain, so a record-only number refresh does not reserve budget or invoke the provider. Neither invokes transcription. Existing Outreach `number_refresh` intents become coalesced number-owned jobs without mutating their original subjects. `scheduleNumberIntelligence` stores a meaningful-source fingerprint and generation on ContactNumber; only one active job exists per number and publication/recovery schedules at most one successor for changed sources. The existing SyncState/lease infrastructure scans five numbers per sweep. Generic updatedAt, clocks, and semantically unchanged replacement finding IDs are excluded; oversized source sets create a visible paused intent.
+ 
+ `analysis/runtime.ts:invokeIntelligenceAgent` uses installed AI SDK `ToolLoopAgent` through AI Gateway and the remote HTTP `/api/intelligence-mcp`. Both dedicated headers come from trusted orchestration. It retrieves `sales_intelligence_analyze_v1` and `csi://schemas/csi-envelope-v1`, checks exact stored prompt and schema digest, and exposes exactly the delivered twelve remote tools. The AI SDK/MCP packages have different provider type versions; each AI tool is built from the discovered remote JSON schema and forwards execution only to MCP. There are no direct domain/model tools.
+ 
+@@ -99,7 +99,7 @@ Registration reuses the existing bootstrapped queue consumer and cron router: `/
+ 
+ `applyOutreachEffect` remains semantic authority for Owner precedence, historical fulfillment/official closure, restrictions, assignments, safe revisions and cross-run commitment matching. Its narrow conversation adapter requires the persisted Outreach pointer, exact source conversation/interaction, same primary number and current authoritative event attachment. Candidate/likely matches and foreign records cannot grant Lead effect authority. Number-only clear commitments use `ensureNumberReview`, never Lead creation. Unknown identity cannot assign a rep. Promised-by, action responsibility and overall Outreach responsibility remain distinct.
+ 
+-Application rechecks current records and captured followup revisions. Prior same-conversation assertion overrides require review rather than revival. Unclear/missing targets remain review; strategy stays suggestion-only. Booking/payment/objection/competitor/non-sales evidence never writes official records or sends messages. Number-only restrictions call the existing `applySpokenRestriction`; unresolved until/unclear restrictions remain review. `outreach/effects.ts:applyUnboundContactTypeEffect` shares contact-type decisions and `ensureInteraction` transitions when no Outreach exists, updates conversation and interaction provenance, and preserves Owner contact-type decisions. Snapshot membership/scope and complete captured transcript page chains are mandatory; locator and entailment remain `not_run`.
++Application rechecks current records and captured followup revisions. Prior same-conversation assertion overrides require review rather than revival. Unclear/missing targets remain review; strategy stays suggestion-only. Booking/payment/objection/competitor/non-sales evidence never writes official records or sends messages. Number-only restrictions call the existing `applySpokenRestriction`; unresolved until/unclear restrictions remain review. `outreach/effects.ts:applyUnboundContactTypeEffect` shares contact-type decisions and `ensureInteraction` transitions when no Outreach exists, updates conversation and interaction provenance, and preserves Owner contact-type decisions. Snapshot membership/scope, at least one captured transcript, and complete captured transcript page chains are mandatory; locator and entailment remain `not_run`.
+ 
+ Publication occurs only after every finding batch, independent of blocked/permitted effect counts. It publishes the compatible conversation summary/current-run pointer or ContactNumber running summary and completes the run/job transactionally. Newer current runs cannot be overwritten by older workers; a replaced transcript also prevents conversation publication. CSI-18 correction selection stays absent, `owner_correction_ids=[]`, and existing original-evidence replay APIs remain unchanged.
+ 
+diff --git a/src/services/salesIntelligence/analysis/coverage.test.ts b/src/services/salesIntelligence/analysis/coverage.test.ts
+new file mode 100644
+index 0000000..dc4d1c7
+--- /dev/null
++++ b/src/services/salesIntelligence/analysis/coverage.test.ts
+@@ -0,0 +1,9 @@
++import assert from "node:assert/strict";
++import { test } from "node:test";
++import { capturedTranscriptsComplete } from "./coverage";
++
++test("number analysis cannot publish from record-only captured evidence", () => {
++  const recordOnly = { page: { records: [], complete: true, next_cursor: null, missing_ranges: [] },
++    coverage: { known_through: null, gaps: [], capabilities: { call_log: "unknown" }, ai_paused: false }, allowed_followup_ids: [], instructions: [], speaker_refs: [] };
++  assert.equal(capturedTranscriptsComplete([{ response: recordOnly, arguments: {} }], null), false);
++});
+diff --git a/src/services/salesIntelligence/analysis/coverage.ts b/src/services/salesIntelligence/analysis/coverage.ts
+index 6e01b52..94a79dc 100644
+--- a/src/services/salesIntelligence/analysis/coverage.ts
++++ b/src/services/salesIntelligence/analysis/coverage.ts
+@@ -4,6 +4,9 @@ import { readContentSchema } from "./reads";
+ export function capturedTranscriptsComplete(snapshots: Array<{ response: unknown; arguments: unknown }>, conversationId: string | null) {
+   const pages = snapshots.map(snapshot => ({ data: readContentSchema.parse(snapshot.response), args: snapshot.arguments }))
+     .filter(page => page.data.transcript);
++  // A number synthesis has no single conversation to require, but it still needs
++  // at least one captured transcript before its summary can be published.
++  if (!pages.length) return false;
+   if (conversationId && !pages.some(p => p.data.transcript!.conversation_id === conversationId)) return false;
+   const groups = new Map<string, typeof pages>();
+   for (const page of pages) {
+diff --git a/src/services/salesIntelligence/analysis/sources.ts b/src/services/salesIntelligence/analysis/sources.ts
+index cb10d80..44b2df5 100644
+--- a/src/services/salesIntelligence/analysis/sources.ts
++++ b/src/services/salesIntelligence/analysis/sources.ts
+@@ -98,5 +98,8 @@ export async function numberAnalysisInput(numberId: string, session: ClientSessi
+     if (eligible.status === "undetermined" || eligible.status === "stale") return { status: "undetermined" as const };
+     if (eligible.status === "eligible") { conversation_ids.push(String(conversation._id)); versions.push(String(snapshot._id)); }
+   }
++  // Record-only context is not sufficient for a number synthesis. Returning a
++  // terminal status here prevents reserving budget or invoking the provider.
++  if (!conversation_ids.length) return { status: "no_transcript_evidence" as const };
+   return { status: "eligible" as const, sources, conversation_ids, versions };
+ }

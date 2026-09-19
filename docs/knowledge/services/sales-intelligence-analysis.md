@@ -1,8 +1,8 @@
 ---
 okf_version: "0.2"
 type: Service
-title: Scoped Intelligence evidence and analysis intake
-description: CSI-17 run-scoped evidence reads, immutable capture, and one durable analysis submission; downstream application remains CSI-13.
+title: Scoped Intelligence runtime, evidence and application
+description: CSI-17 scoped MCP evidence and submission, with CSI-13 bounded agent execution, durable application and current number analysis.
 tags: [sales-intelligence, durable-work]
 status: draft
 stale_after: 2026-12-19
@@ -15,6 +15,13 @@ applies_to:
   - src/services/salesIntelligence/analysis/operational.ts
   - src/services/salesIntelligence/analysis/capture.ts
   - src/services/salesIntelligence/analysis/submit.ts
+  - src/services/salesIntelligence/analysis/runtime.ts
+  - src/services/salesIntelligence/analysis/coverage.ts
+  - src/services/salesIntelligence/analysis/worker.ts
+  - src/services/salesIntelligence/analysis/apply.ts
+  - src/services/salesIntelligence/analysis/readiness.ts
+  - src/services/salesIntelligence/analysis/sources.ts
+  - src/services/salesIntelligence/analysis/scheduling.ts
   - src/routes/sales-intelligence-internal.routes.ts
 owners: [team:main-server]
 sources:
@@ -24,9 +31,9 @@ sources:
     resource: docs/call-sales-intelligence/workspace/evidence/csi-17/HANDOFF.md
 ---
 
-# Scoped Intelligence evidence and analysis intake — CSI-17
+# Scoped Intelligence runtime, evidence and application — CSI-17/13
 
-Main server determines authority from a stored Intelligence Run and its active leased job. The dedicated MCP endpoint in `vantage-movers-mcp` exposes bounded reads and one submission. It grants no Owner command, Lead/Booking mutation, attachment, extraction, customer message, or rep message. CSI-13 model execution, scheduling and effect application remain separate work.
+Main server determines authority from a stored Intelligence Run and its active leased job. The dedicated MCP endpoint in `vantage-movers-mcp` exposes bounded reads and one submission. It grants no Owner command, Lead/Booking mutation, attachment, customer message, or rep message. CSI-13 executes the bounded agent and applies permitted findings through the existing Outreach commands; CSI-18 Owner correction/confirmation/reanalysis controls remain separate.
 
 ## Entry points and authority
 
@@ -72,7 +79,31 @@ Original-evidence runs retrieve the parent's retained tool response for the exac
 
 `submitIntelligenceAnalysis` strictly parses one envelope and assembles authorization only from persisted snapshots: record IDs and exposed field paths, transcript versions, reviewed speaker references, observed Owner instruction revisions and followup targets. The model supplies assertions, never its own manifest. Exact quotation/timestamp/entailment checks remain deferred.
 
-Envelope, immutable receipt, finalized run/manifest, audit and one `application` job commit atomically. An identical run/key/envelope replays the same receipt; changed key or payload conflicts. The application job is durably `paused` with `consumer_unavailable` because CSI-13 is absent. Nothing is marked applied, no fake worker succeeds, and missing application does not consume retry attempts. Receipt recovery resolves uncertain delivery without a second run or application job.
+Envelope, immutable receipt, finalized run/manifest, audit and one `application` job commit atomically. An identical run/key/envelope replays the same receipt; changed key or payload conflicts. The application job is durably paused with `invocation_pending` while the enabled orchestrator finishes, otherwise `consumer_unavailable`. `resumeApplicationIntents` validates the exact run/submission/job binding before resuming compatible legacy intents; other reasons remain paused. Receipt recovery resolves uncertain delivery without a second run or application job.
+
+## CSI-13 runtime and scheduling
+
+`analysis/worker.ts:runIntelligenceJob(jobId?, stage?, deps?)` is shared by the existing queue dispatcher and cron recovery for `analysis` and `number_refresh`. `analysis` retains CSI-12's immutable `[conversation_id, transcript_snapshot_id]`; `conversationAnalysisInput` rechecks current eligibility, transcript version and media digest before any provider work. `numberAnalysisInput` selects currently eligible pinned transcripts and rechecks their versions before synthesis; it returns terminal `no_transcript_evidence` when none remain, so a record-only number refresh does not reserve budget or invoke the provider. Neither invokes transcription. Existing Outreach `number_refresh` intents become coalesced number-owned jobs without mutating their original subjects. `scheduleNumberIntelligence` stores a meaningful-source fingerprint and generation on ContactNumber; only one active job exists per number and publication/recovery schedules at most one successor for changed sources. The existing SyncState/lease infrastructure scans five numbers per sweep. Generic updatedAt, clocks, and semantically unchanged replacement finding IDs are excluded; oversized source sets create a visible paused intent.
+
+`analysis/runtime.ts:invokeIntelligenceAgent` uses installed AI SDK `ToolLoopAgent` through AI Gateway and the remote HTTP `/api/intelligence-mcp`. Both dedicated headers come from trusted orchestration. It retrieves `sales_intelligence_analyze_v1` and `csi://schemas/csi-envelope-v1`, checks exact stored prompt and schema digest, and exposes exactly the delivered twelve remote tools. The AI SDK/MCP packages have different provider type versions; each AI tool is built from the discovered remote JSON schema and forwards execution only to MCP. There are no direct domain/model tools.
+
+Before invocation, bounded MCP pagination captures context, activity, official Leads/Bookings, reviewed identities and all selected transcript pages. Number context includes original conversation findings and transcripts, not only generated summaries. Each page is durable captured evidence. Incomplete/oversized coverage pauses visibly; nullable timing/speaker remains usable. The default ceiling is 4 steps, 128,000 conservative UTF-8 bytes per context (an upper token bound), 6,000 output tokens per step, 512,000 cumulative input tokens, 24,000 output tokens, 120 seconds and 80 preflight pages. Provider retries are disabled. At most one schema repair is allowed, with invalid submissions counted durably across retries. Only a durable receipt is success; final prose is insufficient, and uncertain submission is recovered before more model work.
+
+Reserve the complete bounded loop from the existing activated shared budget, including per-step integer-cent rounding. Explicit positive input/output prices and a pricing version are required; no dated catalog price is billing truth. Each reservation records model, pricing and input/output/reasoning usage. Completed invocations reconcile unused reservation, including bounded invalid/prose-only outcomes. Pre-provider failures release it; missing cost or ambiguous provider termination retains unresolved reservation and nullable run cost. A changed configured model cannot silently replace a running run's pinned model. Budget/policy initialization remains outside this worker.
+
+Registration reuses the existing bootstrapped queue consumer and cron router: `/api/cron/sales-intelligence-extract` and `/api/cron/sales-intelligence-apply`, every five minutes, plus minute recovery. `ENABLED` and `EXTRACTION_ENABLED` default off; application additionally requires `OUTREACH_ENSURE`. Failed wakeup publication leaves durable pending intent. No application attempts are consumed while disabled.
+
+## CSI-13 application and publication
+
+`analysis/apply.ts:runIntelligenceApplicationJob(jobId?, deps?)` consumes `[run_id, submission_id]`, verifies immutable envelope and manifest digests, and persists at most five findings per fenced transaction. Finding cursor, CSI-06 effects and review outcomes commit together; retries resume at the cursor. Date/money wording is preserved and resolved server-side. One finding can record Number Review creation and a followup outcome. Number synthesis persists findings and publishes number analysis; conversation extraction owns operational commitments.
+
+`applyOutreachEffect` remains semantic authority for Owner precedence, historical fulfillment/official closure, restrictions, assignments, safe revisions and cross-run commitment matching. Its narrow conversation adapter requires the persisted Outreach pointer, exact source conversation/interaction, same primary number and current authoritative event attachment. Candidate/likely matches and foreign records cannot grant Lead effect authority. Number-only clear commitments use `ensureNumberReview`, never Lead creation. Unknown identity cannot assign a rep. Promised-by, action responsibility and overall Outreach responsibility remain distinct.
+
+Application rechecks current records and captured followup revisions. Prior same-conversation assertion overrides require review rather than revival. Unclear/missing targets remain review; strategy stays suggestion-only. Booking/payment/objection/competitor/non-sales evidence never writes official records or sends messages. Number-only restrictions call the existing `applySpokenRestriction`; unresolved until/unclear restrictions remain review. `outreach/effects.ts:applyUnboundContactTypeEffect` shares contact-type decisions and `ensureInteraction` transitions when no Outreach exists, updates conversation and interaction provenance, and preserves Owner contact-type decisions. Snapshot membership/scope, at least one captured transcript, and complete captured transcript page chains are mandatory; locator and entailment remain `not_run`.
+
+Publication occurs only after every finding batch, independent of blocked/permitted effect counts. It publishes the compatible conversation summary/current-run pointer or ContactNumber running summary and completes the run/job transactionally. Newer current runs cannot be overwritten by older workers; a replaced transcript also prevents conversation publication. CSI-18 correction selection stays absent, `owner_correction_ids=[]`, and existing original-evidence replay APIs remain unchanged.
+
+Runtime configuration and synthetic proof details: [CSI-13 handoff](../../call-sales-intelligence/workspace/evidence/csi-13/HANDOFF.md). No live model quality or deployment is established by these tests.
 
 ## Proof and operations
 

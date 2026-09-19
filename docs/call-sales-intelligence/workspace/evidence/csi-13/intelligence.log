@@ -1,0 +1,20 @@
+CSI-17 disposable proof: testvantagemovers_csi1756f25fe349bd; loopback replica csi01:27189; synthetic evidence only
+{"level":"info","time":"2026-09-19T04:40:56.092Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-17 durable intake, authority and replay on disposable replica
+  ✔ real HTTP named-key boundary, signed claims and strict argument denials (383.9463ms)
+  ✔ concurrent capture freezes one immutable response; duplicate submit creates one paused intent (448.5037ms)
+  ✔ foreign evidence, field, speaker, target and instruction cannot authorize themselves (156.334ms)
+  ✔ rollback leaves no intake or application intent; timeout after commit recovers same receipt (203.4851ms)
+  ✔ submission wins against a late read without extending finalized manifest (166.8544ms)
+  ✔ original evidence replays stored prompt and response without invoking current reader (177.7854ms)
+  ✔ evidence bounds, completed run and missing retained evidence fail closed (172.4782ms)
+  ✔ revocation after evidence computation cannot persist under the old lease (107.9629ms)
+✔ CSI-17 durable intake, authority and replay on disposable replica (4478.2477ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9384.7572

@@ -3,7 +3,7 @@ import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
 import { getIntelligenceEvidenceSnapshotModel } from "../../../models/IntelligenceEvidenceSnapshot";
 import { getIntelligenceSubmissionModel } from "../../../models/IntelligenceSubmission";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
-import { csiDataset } from "../../../config/domain/salesIntelligence";
+import { csiDataset, csiFlag } from "../../../config/domain/salesIntelligence";
 import { CsiError } from "../auth";
 import { appendCsiAudit, payloadHash } from "../transactions";
 import { enqueueCsiJob } from "../jobs";
@@ -60,8 +60,9 @@ export async function submitIntelligenceAnalysis(auth:RunAuthorization, raw:unkn
     const submissionId = newObjectIdHex();
     const job = await enqueueCsiJob({dedupe_key:`csi:application:run:${run._id}`,stage:"application",subject_key:run.subject_key,
       input_revision:run.revision,input_refs:[String(run._id),submissionId]},session);
-    // CSI-13 is absent. Preserve intent without leasing it or spending retry attempts.
-    await getSalesIntelligenceJobModel().updateOne({_id:job._id,status:"pending"},{$set:{status:"paused",reason:"consumer_unavailable"}},{session});
+    // Receipt is durable before orchestration finishes accounting/coverage. Recovery releases only compatible intents.
+    await getSalesIntelligenceJobModel().updateOne({_id:job._id,status:"pending"},{$set:{status:"paused",reason:
+      csiFlag("EXTRACTION_ENABLED") && csiFlag("OUTREACH_ENSURE") ? "invocation_pending" : "consumer_unavailable"}},{session});
     const now = new Date();
     const [submission] = await getIntelligenceSubmissionModel().create([{_id:submissionId,run_id:run._id,idempotency_key:input.idempotency_key,
       payload_hash:hash,envelope:input.envelope,received_at:now,application_job_id:job._id,manifest_digest}],{session});

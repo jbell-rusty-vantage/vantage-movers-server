@@ -9,6 +9,7 @@ import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachme
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
 import { getOutreachFollowupModel } from "../../../models/OutreachFollowup";
 import { getIntelligenceEvidenceSnapshotModel } from "../../../models/IntelligenceEvidenceSnapshot";
+import { getIntelligenceFindingModel } from "../../../models/IntelligenceFinding";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { getSalesIntelligenceOwnerInstructionModel } from "../../../models/SalesIntelligenceOwnerInstruction";
 import { getSalesIntelligenceContactRestrictionModel } from "../../../models/SalesIntelligenceContactRestriction";
@@ -170,7 +171,11 @@ async function context(scope: ReadScope, result: ReadContent) {
   result.page.records.push({ record_type: "contact_number", record_id: String(number._id), revision: String(number.revision), fields: { phone: number.e164, status: number.contact_eligibility.state, certainty: number.classification } });
   const outreach = scope.outreach_record_id ? await getOutreachRecordModel().findOne({ _id: scope.outreach_record_id, primary_contact_number_id: scope.contact_number_id }).lean() : null;
   if (scope.outreach_record_id && !outreach) return fail();
-  const keys = [...new Set([scope.subject_key, `number:${scope.contact_number_id}`, ...(outreach ? [subjectKey(outreach.subject)] : [])])];
+  const records = outreach ? [outreach] : !scope.conversation_id ? await getOutreachRecordModel().find({ primary_contact_number_id: scope.contact_number_id }).sort({ _id: 1 }).limit(101).lean() : [];
+  if (records.length > 100) throw new CsiError("EVIDENCE_LIMIT_REACHED");
+  const conversations = !scope.conversation_id ? await getLeadConversationModel().find({ contact_number_id: scope.contact_number_id }).sort({ _id: 1 }).limit(101).lean() : [];
+  if (conversations.length > 100) throw new CsiError("EVIDENCE_LIMIT_REACHED");
+  const keys = [...new Set([scope.subject_key, `number:${scope.contact_number_id}`, ...records.map(r => subjectKey(r.subject)), ...conversations.map(c => `conversation:${c._id}`)])];
   const [instructions, restrictions, edges] = await Promise.all([
     getSalesIntelligenceOwnerInstructionModel().find({ subject_key: { $in: keys } }).sort({ _id: 1 }).limit(101).lean(),
     getSalesIntelligenceContactRestrictionModel().find({ contact_number_id: scope.contact_number_id }).sort({ _id: 1 }).limit(51).lean(),
@@ -184,15 +189,20 @@ async function context(scope: ReadScope, result: ReadContent) {
   }
   for (const r of restrictions) result.page.records.push({ record_type: "owner_instruction", record_id: String(r._id), revision: String(r.revision), fields: { instruction_field: "restriction", details: r.channels.join(","), status: r.state, due_at: iso(r.until), origin: r.origin } });
   for (const e of edges) result.page.records.push({ record_type: "lead", record_id: String(e.lead_ref.id), revision: String(e.revision), fields: { model: e.lead_ref.model, certainty: e.certainty, status: e.state, details: `Attachment ${e._id}` } });
-  if (scope.outreach_record_id) {
-    const record = outreach;
-    const actions = await getOutreachFollowupModel().find({ outreach_record_id: scope.outreach_record_id }).sort({ _id: 1 }).limit(101).lean();
+  for (const record of records) {
+    const actions = await getOutreachFollowupModel().find({ outreach_record_id: record._id }).sort({ _id: 1 }).limit(101).lean();
     if (!record || actions.length > 100) throw new CsiError("EVIDENCE_SCOPE_INVALID");
     result.page.records.push({ record_type: "outreach", record_id: String(record._id), revision: String(record.revision), fields: { status: stateWithActions(record, actions, new Date()), agent_id: record.responsible_agent_id ? String(record.responsible_agent_id) : null, origin: record.assignment?.origin ?? null, description: text(record.closed_reason) } });
     for (const a of actions) {
       result.allowed_followup_ids.push(String(a._id));
-      result.page.records.push({ record_type: "followup", record_id: String(a._id), revision: String(a.revision), fields: { status: a.status, description: text(a.description), due_at: iso(a.due_at), origin: a.origin, agent_id: a.responsible_agent_id ? String(a.responsible_agent_id) : null, details: a.kind } });
+      result.page.records.push({ record_type: "followup", record_id: String(a._id), revision: String(a.revision), fields: { status: a.status, description: text(a.description), due_at: iso(a.due_at), origin: a.origin, agent_id: a.responsible_agent_id ? String(a.responsible_agent_id) : null, details: JSON.stringify({ kind: a.kind, source_interaction_id: a.source_interaction_id, commitment_key: a.commitment_key, promised_by_agent_id: a.promised_by_agent_id }) } });
     }
+  }
+  if (!scope.conversation_id) {
+    const findings = await getIntelligenceFindingModel().find({ run_id: { $in: conversations.flatMap(c => c.latest_completed_run_id ? [c.latest_completed_run_id] : []) } }).sort({ _id: 1 }).limit(101).lean();
+    if (findings.length > 100) throw new CsiError("EVIDENCE_LIMIT_REACHED");
+    for (const f of findings) result.page.records.push({ record_type: "job_timeline", record_id: String(f._id), revision: String(f.revision),
+      fields: { description: text(f.assertion.claim), status: f.review_state, details: text(JSON.stringify({ kind: f.kind, value: f.assertion.value, evidence: f.assertion.evidence, run_id: f.run_id })) } });
   }
   if (result.page.records.length > 200) throw new CsiError("EVIDENCE_SCOPE_INVALID");
 }

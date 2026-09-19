@@ -1,5 +1,7 @@
 # 01 — Call & Sales Intelligence specification
 
+Execution update September 19: [SPRINT-PLAN](workspace/SPRINT-PLAN.md) changes delivery order and adopts the supplied design export into the existing Admin dashboard. Local Admin/API integration comes first; the product rules in this specification and the Owner interview are unchanged.
+
 Status: build contract, not shipped. Revised September 17, 2026 after the Owner interview. [Pack index](README.md) · [Agent/envelope contract](10-intelligence-agent-contract.md) · [Delivery workspace](workspace/README.md).
 
 ## 1. The Owner question
@@ -18,7 +20,7 @@ No Sales Opportunity object, rep portal, assignment offers, presence-weighted al
 
 This operational feature uses current Vantage records (Admin logical `production` scope). The dashboard's `historical` and `combined` scopes refer to a separate legacy data store, not test mode, and are not CSI subjects in v1. Reject those scope values explicitly rather than silently reading/writing current records. Historical RingCentral call backfill within the current dataset remains supported; it is unrelated to the legacy Admin database selector. Test/Preview isolation uses server `TEST_MODE`/`TEST_MONGO_DATABASE_NAME`, never a browser toggle, and must stay consistent across workers, MCP, reads and writes.
 
-The forthcoming Claude design artifact is not yet present. It will supply components, styling and UX explanations layered over these defined features. It does not change data scope, server rules, permissions or required actions. See [07](07-claude-design-brief.md) for the design intake and [11](11-codebase-alignment-audit.md) for verified integration points.
+The `vantage-sales-intelligence` design export is present and was source-inspected September 19. Its components, tokens and UX explanations are adaptation inputs for the existing Admin dashboard. It does not change data scope, server rules, permissions or required actions. See [07](07-claude-design-brief.md) for the design intake and [11](11-codebase-alignment-audit.md) for verified integration points.
 
 ## 3. Proposed glossary (CONTEXT.md format)
 

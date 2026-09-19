@@ -1,0 +1,25 @@
+CSI isolated replica proof: testvantagemovers_csi61f9b7275ad0; loopback replica csi01 on port 27189
+▶ CSI-01 isolated replica proof
+  ✔ migration report does not write; unresolved accounts block apply; verified mappings preserve legacy data (3166.4013ms)
+  ✔ runtime fails closed without a unique fence; obsolete single-action index blocks migration (728.4477ms)
+  ✔ bounded retries and permission pause preserve pending work (147.7211ms)
+  ✔ analysis content finalizes once and snapshots remain immutable (91.8908ms)
+  ✔ subject, alias, commitment and submission fences; multiple nullable dates (61.3287ms)
+  ✔ idempotency replay/conflict and transaction rollback of aggregate/audit/job/command (68.3438ms)
+  ✔ concurrent Owner revisions have one winner (40.9111ms)
+  ✔ concurrent same-key commands replay once (46.365ms)
+  ✔ job dedupe, claim recovery, old epochs and expiry inside effect transaction (341.2738ms)
+  ✔ budget races never over-admit and reconcile/release once (93.6763ms)
+  ✔ job dedupe cannot replay across deployments (25.7516ms)
+  ✔ stored run token enforces job subject, deployment and current lease (79.4835ms)
+  ✔ new budget period resumes current dataset once, not future periods or permission pauses (89.4271ms)
+  ✔ policy CAS preserves immutable versions and one concurrent winner (191.4013ms)
+✔ CSI-01 isolated replica proof (5257.7792ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6662.6858

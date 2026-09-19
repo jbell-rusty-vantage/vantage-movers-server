@@ -1,0 +1,20 @@
+CSI-17 reads isolated replica proof: testvantagemovers_csi17reads40c6469c34aa; loopback replica csi01 on port 27189
+{"level":"info","time":"2026-09-19T04:41:04.732Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-17 bounded reads on disposable synthetic replica
+  ✔ relevant candidates paginate; arbitrary Lead/Booking IDs never authorize reads (37.7832ms)
+  ✔ immutable pinned transcript pages retain missing ranges and null timing (87.6276ms)
+  ✔ merged Lead pagination retains equal ObjectIds in different collections (17.4045ms)
+  ✔ cancellations use scoped Booking and surviving Lead snapshots with pagination (32.4547ms)
+  ✔ historical reviewed retirement resolves; proposals/conflicts/unknown fail closed (35.7899ms)
+  ✔ Owner precedence and restriction context are scoped and redacted (24.1239ms)
+  ✔ conversation runs admit only persisted same-number Outreach and its Owner instructions (48.5615ms)
+  ✔ official activity timeline projects canonical scoped records without refresh (90.192ms)
+✔ CSI-17 bounded reads on disposable synthetic replica (3272.3416ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7049.8394

@@ -1,5 +1,7 @@
 # End-to-end acceptance walkthrough
 
+September 19 local milestone: CSI-07 plus initial CSI-08 must prove real local API reads, durable-change invalidation, clock-only refresh, reconnect recovery, Owner/Admin denial, Current records scope and scoped idempotency header forwarding, with the supplied design in desktop/narrow browser views. This partial milestone does not certify CSI-18, messaging, backfill or production. Full release still requires every applicable scenario below. See [SPRINT-PLAN](SPRINT-PLAN.md).
+
 Use synthetic fixtures and an isolated test database/Preview. Each scenario records expected versus actual outcome and a screenshot or API/audit artifact. Full matrix: [06 §3](../06-delivery-plan-and-acceptance.md#3-required-acceptance-matrix). This file is a future execution checklist, not a claim these tests ran during specification editing.
 
 1. **Lead arrival and coverage.** Create eligible Form Lead at 19:50 Saturday. It appears immediately; 30 staffed minutes expires Monday 08:20 with the accepted schedule. Show actual coverage and staffed/wall age. Missed inbound at the same time has its 15-minute deadline Monday 08:05; repeat misses do not move it.

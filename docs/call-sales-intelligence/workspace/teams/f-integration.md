@@ -1,5 +1,7 @@
 # Team F — history, resilience and certification
 
+September 19 sequencing: follow [SPRINT-PLAN](../SPRINT-PLAN.md). CSI-15 dependencies are locally implemented; CSI-16 still awaits full UI/intervention integration and closure of CSI-10/14 review findings plus remaining verification limitations. First certify local Admin/API; production-backed local UI is a later operating mode, with deployment and enablement recorded separately.
+
 Own CSI-15/16 and gates G4–G6. Begin independent synthetic acceptance fixtures early; integrate runtime after B–E. Read [06](../../06-delivery-plan-and-acceptance.md), [ACCEPTANCE](../ACCEPTANCE.md), [03](../../03-server-pipeline-and-jobs.md), [10](../../10-intelligence-agent-contract.md), [RingCentral capability](../RINGCENTRAL-CAPABILITY.md). The capability file is historical; G6 requires a fresh probe.
 
 ## Deliver
@@ -24,4 +26,4 @@ G4 requires duplicate/race/history/budget/recovery/retention evidence. G5 requir
 
 ## September 17 codebase alignment
 
-[Audit and required adaptations](../../11-codebase-alignment-audit.md) are part of this delivery contract. Complete the rows assigned to this team and provide integration evidence; current runtime helpers do not already satisfy the revised contracts. [Design intake](../../07-claude-design-brief.md) governs the forthcoming Claude artifact; its arrival is not assumed.
+[Audit and required adaptations](../../11-codebase-alignment-audit.md) are part of this delivery contract. Complete the rows assigned to this team and provide integration evidence; current runtime helpers do not already satisfy the revised contracts. [Design intake](../../07-claude-design-brief.md) governs the received design export; the September 19 sprint revision records adaptation and validation still required.

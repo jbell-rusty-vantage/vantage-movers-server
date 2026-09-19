@@ -12,6 +12,8 @@ import { runAttachmentRefreshJob } from "../salesIntelligence/attachment/refresh
 import { runOutreachEnsureJob } from "../salesIntelligence/outreach/worker";
 import { runRepIdentityReevaluationJob } from "../salesIntelligence/repIdentity/worker";
 import { runNudgeRepairJob } from "../salesIntelligence/nudges/repair";
+import { runIntelligenceJob } from "../salesIntelligence/analysis/worker";
+import { runIntelligenceApplicationJob } from "../salesIntelligence/analysis/apply";
 
 /**
  * Queue wake-up dispatch. The payload is exactly `{ job_id }`; stage and
@@ -51,6 +53,9 @@ export function defaultStageHandlers(
     outreach_ensure: (jobId) => runOutreachEnsureJob(jobId),
     rep_identity_reevaluate: (jobId) => runRepIdentityReevaluationJob(jobId),
     nudge_repair: (jobId) => runNudgeRepairJob(jobId),
+    analysis: (jobId) => runIntelligenceJob(jobId, "analysis"),
+    number_refresh: (jobId) => runIntelligenceJob(jobId, "number_refresh"),
+    application: (jobId) => runIntelligenceApplicationJob(jobId),
   };
 }
 
