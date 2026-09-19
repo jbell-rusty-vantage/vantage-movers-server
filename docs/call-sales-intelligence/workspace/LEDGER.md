@@ -1,5 +1,18 @@
 # Implementation ledger
 
+## Named 1–2 subject seed writes — Grok, September 19, 2026
+
+Owner-authorized example seed only. Not CSI-15. Verified remotes `jbell-rusty-vantage` (`vantage-movers-server`, `vantage-admin`, `vantage-movers-mcp`). Server `main` HEAD `93bfd1a85eba6ff157fdfa91701db63940e8498a` (clean, 1 ahead of origin). Admin `main` HEAD `d82d3de45f56800378d223e7535688f4f0660366` (clean, 1 ahead of origin). MCP clean `9a8fd37bf78f8074011fb2d47ff3da3ec400b33d`, untouched. Official `migration:csi:indexes --verify` ready, unresolved 0; no `--apply`.
+
+Predicted official `outreach_ensure` (`ensureLead` only, subject `outreach-lead:CallLead:<id>`):
+
+- Job `P5562014` Call Lead `6a761d3d7ceae445794c57bd` is official Booked. Create Outreach with `first_action_due_at` null, then `closeRecord` reason `booked` origin `official`.
+- Job `5564480` Call Lead `6aaaf552ca2df3ab6f396b5d` is official Booked. Same create-then-official-close.
+
+No `ensureInteraction`. No CSI-05 attach (production `contact_numbers`, `call_interactions`, and `number_lead_attachments` are empty; capture/reconcile/media fetch remain forbidden). No reopen. Closed booked is not actionable, so no current overdue first-action / missed-callback / going-cold. Official close may enqueue pending `number_refresh` jobs; do not drain them (`EXTRACTION_ENABLED` stays off).
+
+Exact production writes claimed: `outreach_records` and CSI audit for those two Lead subjects; `sales_intelligence_jobs` for the two `outreach_ensure` lead jobs plus any official-close `number_refresh` rows. Evidence under `docs/call-sales-intelligence/workspace/evidence/named-subjects/**` and this ledger note. No runtime source edits. No `.env` / Vercel flag writes. No commit or push unless the Owner asks.
+
 ## Official CSI indexes applied — Owner, September 19, 2026
 
 Owner-authorized `migration:csi:indexes --apply --confirm-production=vantagemovers`. Reviewed mapping stamped company `provider_account_id` `62948571023` on Lead Conversation `6a905b5cf7dda52cfacb721e` (P5562014). `--verify` ready, unresolved 0, no missing/incompatible indexes. Receiver Agent Patrick is identity only; not the account field. Flags remain off. No STT, extraction, capture, live recording fetch, or CSI-15. Mapping artifact is local/gitignored.
