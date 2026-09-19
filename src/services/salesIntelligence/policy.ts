@@ -13,6 +13,7 @@ import { getSalesIntelligenceAiBudgetModel } from "../../models/SalesIntelligenc
 import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
 import { executeCsiCommand, appendCsiAudit, csiCas } from "./transactions";
 import { CsiError, type CsiActor } from "./auth";
+import type { ClientSession } from "mongoose";
 export function defaultCsiPolicy(): CsiPolicy {
   return csiPolicySchema.parse({
     version: SALES_INTELLIGENCE_POLICY_VERSION,
@@ -32,13 +33,15 @@ export function defaultCsiPolicy(): CsiPolicy {
     retention: { audio_days: 90, redacted_days: 365, audit_days: 730 },
   });
 }
-export async function resolvePolicy(): Promise<CsiPolicy> {
+export async function resolvePolicy(session?: ClientSession): Promise<CsiPolicy> {
   const pointer = await getSalesIntelligencePolicyPointerModel()
     .findOne({ key: "active" })
+    .session(session ?? null)
     .lean();
   if (!pointer) return defaultCsiPolicy();
   const row = await getSalesIntelligencePolicyVersionModel()
     .findOne({ version: pointer.version })
+    .session(session ?? null)
     .lean();
   if (!row) throw new CsiError("INVALID_INPUT");
   return csiPolicySchema.parse(row.policy);

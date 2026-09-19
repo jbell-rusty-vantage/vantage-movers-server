@@ -1,4 +1,5 @@
 import { createSalesIntelligenceBoundaryRouter } from "./sales-intelligence-boundary.routes";
+import { createSalesIntelligenceInternalRouter } from "./sales-intelligence-internal.routes";
 import { createSalesIntelligenceAdminRouter } from "./sales-intelligence-admin.routes";
 import { Router, type Request, type Response } from "express";
 import mongoose from "mongoose";
@@ -292,6 +293,7 @@ router.use(extensionAuthRoutes);
 router.use(googleDriveOAuthRoutes);
 router.use("/api/v1", requireApiSecret);
 router.use(createSalesIntelligenceBoundaryRouter());
+router.use(createSalesIntelligenceInternalRouter());
 // CSI-04 Owner reads and the rebuild command; mounted after the CSI boundary (flag + Owner + scope).
 router.use(createSalesIntelligenceAdminRouter());
 router.use(ringCentralRegistryRoutes);

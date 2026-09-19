@@ -1,0 +1,7 @@
+## Findings
+
+- **P2 — Documented nudge controls are ignored by runtime.**  
+  [`03-server-pipeline-and-jobs.md:118`](C:/Users/Pinda/Proyectos/vantage/vantage-main-server/.git/vantage-quality/runs/1789770937919-f180ab27/workspace/docs/call-sales-intelligence/03-server-pipeline-and-jobs.md:118) specifies `SALES_INTELLIGENCE_NUDGE_CHANNELS` and `SALES_INTELLIGENCE_NUDGE_PER_REP_PER_HOUR`, but runtime reads separate channel booleans and `SALES_INTELLIGENCE_NUDGE_HOURLY_LIMIT` in [`salesIntelligence.ts:151`](C:/Users/Pinda/Proyectos/vantage/vantage-main-server/.git/vantage-quality/runs/1789770937919-f180ab27/workspace/src/config/domain/salesIntelligence.ts:151). An operator setting the documented rate to `1` would still permit six nudges/hour; documented channel configuration is likewise ineffective. Smallest fix: align the documentation and contract with implemented keys, or support the documented keys with explicit precedence and tests.
+
+- **P3 — Rep Identity service documentation is now misleading.**  
+  [`sales-intelligence-rep-identity.md:17`](C:/Users/Pinda/Proyectos/vantage/vantage-main-server/.git/vantage-quality/runs/1789770937919-f180ab27/workspace/docs/knowledge/services/sales-intelligence-rep-identity.md:17) says channels are metadata and no messaging exists, while CSI-14 consumes reviewed links and `nudge_channels_allowed` for delivery authorization. Smallest fix: clarify that CSI-10 does not send messages itself, but CSI-14 consumes these reviewed channel permissions.

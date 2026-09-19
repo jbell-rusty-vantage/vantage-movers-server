@@ -15,6 +15,12 @@ import { commandAttachment } from "../services/salesIntelligence/attachment/comm
 import { commandOutreach } from "../services/salesIntelligence/followups/commands";
 import { listReviewItems, readOutreach, readOutreachByLead } from "../services/salesIntelligence/outreach/reads";
 import { attentionQuerySchema, readAttention } from "../services/salesIntelligence/outreach/attention";
+import { listRepLinks, readRepLink, repListQuerySchema } from "../services/salesIntelligence/repIdentity/reads";
+import { createRepLink, proposeRepLinks, reviewRepLink } from "../services/salesIntelligence/repIdentity/commands";
+import { csiRepCreateSchema, csiRepProposeSchema, csiRepCommandSchema } from "../validation/v1/salesIntelligence";
+import { previewNudge, sendNudge } from "../services/salesIntelligence/nudges/commands";
+import { listNudges, nudgeHistoryQuerySchema } from "../services/salesIntelligence/nudges/reads";
+import { csiNudgeCommandSchema } from "../validation/v1/salesIntelligence";
 
 /**
  * CSI-04 Owner routes for Number Activity (04 §0, §1 `/numbers` rows, §3).
@@ -40,6 +46,14 @@ export type SalesIntelligenceAdminRouteDeps = {
   attachments?: typeof listAttachments;
   attachmentCommand?: typeof commandAttachment;
   outreachCommand?: typeof commandOutreach;
+  reps?: typeof listRepLinks;
+  rep?: typeof readRepLink;
+  createRep?: typeof createRepLink;
+  proposeReps?: typeof proposeRepLinks;
+  reviewRep?: typeof reviewRepLink;
+  nudgePreview?: typeof previewNudge;
+  nudgeSend?: typeof sendNudge;
+  nudges?: typeof listNudges;
 };
 
 const timelineQuerySchema = z
@@ -65,6 +79,11 @@ const STATUS_BY_CODE: Partial<Record<CsiError["code"], number>> = {
   EVIDENCE_SCOPE_INVALID: 400,
   SUBMISSION_CONFLICT: 409,
   ATTENTION_SNAPSHOT_EXPIRED: 409,
+  NUDGE_NOT_ACTIONABLE: 409,
+  NUDGE_CONFIGURATION_UNAVAILABLE: 409,
+  NUDGE_DESTINATION_EVIDENCE_INCOMPLETE: 409,
+  NUDGE_DESTINATION_IS_CUSTOMER: 422,
+  NUDGE_BODY_INVALID: 422,
 };
 
 export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminRouteDeps = {}): Router {
@@ -104,11 +123,11 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
     });
     return res.status(500).json({ ok: false, code: "INVALID_INPUT", error: "Sales Intelligence request failed", request_id: requestId });
   };
-  const notFound = (req: Request, res: Response) =>
+  const notFound = (req: Request, res: Response, resource = "Number") =>
     res.status(404).json({
       ok: false,
       code: "INVALID_INPUT",
-      error: "Number not found",
+      error: `${resource} not found`,
       request_id: req.header("x-vantage-admin-request-id") ?? req.header("x-request-id") ?? "unavailable",
     });
 
@@ -235,6 +254,47 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
       const target_id = command.command === "create_followup" ? command.outreach_record_id : csiIdSchema.parse("id" in req.params ? req.params.id : undefined);
       const idempotency_key = req.header("idempotency-key")?.trim(); if (!idempotency_key) throw new CsiError("INVALID_INPUT");
       await connect(); return res.json({ ok: true, data: await (deps.outreachCommand ?? commandOutreach)({ actor, target_id, idempotency_key, command }) });
+    } catch (error) { return fail(req, res, error); }
+  });
+  router.get(`${CSI_ADMIN_PREFIX}/reps`, async (req, res) => {
+    try { guard(req); const query = repListQuerySchema.parse(req.query); await connect();
+      const { as_of, coverage, ...data } = await (deps.reps ?? listRepLinks)(query);
+      return res.json({ ok: true, as_of, coverage, data }); } catch (error) { return fail(req, res, error); }
+  });
+  router.get(`${CSI_ADMIN_PREFIX}/reps/:id`, async (req, res) => {
+    try { guard(req); const id = csiIdSchema.parse(req.params.id);
+      z.object({ scope: z.literal("production").optional() }).strict().parse(req.query); await connect();
+      const result = await (deps.rep ?? readRepLink)(id);
+      if (!result) return notFound(req, res, "Rep Identity Link");
+      const { as_of, coverage, ...data } = result;
+      return res.json({ ok: true, as_of, coverage, data });
+    } catch (error) { return fail(req, res, error); }
+  });
+  for (const path of ["/reps", "/reps/propose", "/reps/:id/review"] as const) router.post(`${CSI_ADMIN_PREFIX}${path}`, async (req, res) => {
+    try {
+      const actor = guard(req), idempotency_key = req.header("idempotency-key")?.trim();
+      if (!idempotency_key) throw new CsiError("INVALID_INPUT");
+      const body = (path === "/reps" ? csiRepCreateSchema : path === "/reps/propose" ? csiRepProposeSchema : csiRepCommandSchema).parse(req.body);
+      const id = path === "/reps/:id/review" ? csiIdSchema.parse("id" in req.params ? req.params.id : undefined) : null;
+      await connect(); const input = { actor, idempotency_key, body };
+      const data = path === "/reps" ? await (deps.createRep ?? createRepLink)(input) : path === "/reps/propose" ? await (deps.proposeReps ?? proposeRepLinks)(input) :
+        await (deps.reviewRep ?? reviewRepLink)({ ...input, id: id! });
+      return res.json({ ok: true, data });
+    } catch (error) { return fail(req, res, error); }
+  });
+  router.get(`${CSI_ADMIN_PREFIX}/nudges`, async (req, res) => {
+    try { guard(req); const query = nudgeHistoryQuerySchema.parse(req.query); await connect(); return res.json({ ok: true, ...(await (deps.nudges ?? listNudges)(query)) }); }
+    catch (error) { return fail(req, res, error); }
+  });
+  for (const path of ["/nudges/preview", "/nudges"] as const) router.post(`${CSI_ADMIN_PREFIX}${path}`, async (req, res) => {
+    try {
+      const actor = guard(req); if (!flag("NUDGE_ENABLED")) throw new CsiError("FEATURE_DISABLED");
+      const body = csiNudgeCommandSchema.parse(req.body), idempotency_key = req.header("idempotency-key")?.trim();
+      if (!idempotency_key || idempotency_key.length > 200) throw new CsiError("INVALID_INPUT");
+      await connect(); const input = { actor, body, idempotency_key };
+      if (path === "/nudges/preview") return res.json({ ok: true, ...(await (deps.nudgePreview ?? previewNudge)(input)) });
+      const data = await (deps.nudgeSend ?? sendNudge)(input);
+      return res.status(data.nudge.status === "pending" ? 202 : 200).json({ ok: true, data });
     } catch (error) { return fail(req, res, error); }
   });
   return router;

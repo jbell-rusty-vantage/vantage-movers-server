@@ -1,0 +1,7 @@
+
+> vantage_movers_server@1.0.0 typecheck C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> tsc --noEmit
+
+scripts/test-csi-nudges.replica.test.ts(111,53): error TS2345: Argument of type '{ number_id: string; cursor: null; limit: number; }' is not assignable to parameter of type 'TimelineSourceInput'.
+  Type '{ number_id: string; cursor: null; limit: number; }' is missing the following properties from type 'TimelineSourceInput': e164, national_ten
+ ELIFECYCLE  Command failed with exit code 2.

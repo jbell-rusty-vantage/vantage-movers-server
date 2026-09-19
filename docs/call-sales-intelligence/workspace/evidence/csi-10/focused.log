@@ -1,0 +1,28 @@
+✔ CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempotency, error mapping; reads never call a writer (400.174ms)
+✔ admin router is mounted in v1.routes.ts after the CSI boundary router (5.273ms)
+✔ CSI cron routes: cron auth, flag-off and lease_held skips, never a provider body (203.0648ms)
+{"level":"error","time":"2026-09-18T21:27:50.481Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.cron.call_log_reconcile.failed","errorName":"Error"}
+✔ CSI cron routes: a throwing service maps to a bounded 500 without provider content (32.8003ms)
+✔ vercel.json registers the CSI-03 crons and the queue consumer trigger (a handler file alone is not registration) (1.0937ms)
+✔ app.ts mounts the CSI cron router before the v1 guard like the other cron routers (1.0822ms)
+✔ eligibility: all five accepted contexts, both Lead models, exclusions and absent upstream inputs (3.3662ms)
+✔ 30/15/1440 clocks, Friday close, Sunday, DST and independent weekly calendar (25.87ms)
+✔ day-only waits end at close; Attention next opening; explicit Sunday honoured; ambiguity undated (10.0644ms)
+✔ all three actions including undated; snooze preserves contractual overdue and other reasons (27.7589ms)
+✔ inbound human versus missed/provider connected; attempts fulfill callback only and retain outcome (12.4392ms)
+✔ wait coexistence, official closure precedence, planning denies stale and Owner effects (4.654ms)
+✔ worker, cron and recovery registrations exist without enabling production flags (1.9994ms)
+✔ exact names remain proposed; alias ties, duplicate names, missing names and non-Users remain explicit (5.6407ms)
+✔ account scope, half-open reassignment, retirement and review authority (2.0229ms)
+✔ period validation compares instants and rejects unknown input keys (4.8505ms)
+✔ registered identity worker is a flag-off no-op (1.3494ms)
+✔ all five Rep routes enforce Owner, strict contracts, scope, flags and idempotency header (375.5141ms)
+✔ minute recovery invokes registered bounded rep stage, honors flag and cron authentication (28.4245ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9247.6043

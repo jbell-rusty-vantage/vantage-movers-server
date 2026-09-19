@@ -1,0 +1,22 @@
+✔ generated MCP prompt, envelope and every tool exactly match server authority (50.8046ms)
+✔ closed tool arguments reject authority, operators, arbitrary URLs and excessive pages (12.29ms)
+✔ owner-added operational record kinds are citable through the authoritative strict envelope (4.3557ms)
+✔ RingCentral search derives account/phone, bounds pages and excludes unrelated/provider-private content (155.0752ms)
+✔ RingCentral reads disabled by default; invalid bounds and caller-supplied authority never reach provider (18.5013ms)
+✔ call detail requires prior server admission and rechecks returned subject and id (12.4465ms)
+✔ provider errors are coverage failures with no raw body; unknown pagination never claims complete (29.6309ms)
+✔ Job Timeline requires authorized resolved Lead and matching server-derived source (9.5124ms)
+✔ operational dataset facilitator is closed, paginated, revision-bound, and treats query as literal data (135.5419ms)
+✔ fixed provider HTTP adapter uses cached token GET only, no refresh, redirects, alternate host or unbounded body (124.3915ms)
+✔ cursor cannot change run, filter, or smuggle a Mongo operator (41.6565ms)
+✔ relevance derives only from authorized lead edges and full normalized number (12.2485ms)
+✔ projection excludes operational secrets and redacts untrusted free text (9.5263ms)
+✔ response contract retains unknown speaker and nullable timing and rejects extra authority (16.2107ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 34494.7437

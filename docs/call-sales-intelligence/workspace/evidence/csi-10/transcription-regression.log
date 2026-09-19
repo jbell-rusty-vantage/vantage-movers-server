@@ -1,0 +1,34 @@
+
+> vantage_movers_server@1.0.0 test:csi:transcription:replica C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> node --import tsx scripts/test-csi-transcription.ts
+
+CSI-12 isolated replica proof: testvantagemovers_csi12606ec7998d6a; loopback replica csi01 on port 27189
+{"level":"info","time":"2026-09-18T21:14:50.550Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-12 disposable replica with synthetic Blob/STT only
+  ✔ flag off skips hook scheduling, cron unit and queue worker before I/O (2.7497ms)
+  ✔ budget exhaustion keeps pending stage and zero attempts; cap resume completes redacted immutable evidence (510.7371ms)
+  ✔ eligibility flip during STT preserves media/transcript and suppresses analysis (224.7734ms)
+  ✔ undetermined eligibility waits without attempts then resumes with current inputs (249.3714ms)
+  ✔ permission pause releases unused reservation and does not consume attempts (204.4299ms)
+  ✔ stored-media eligibility recheck recovers missing inputs and never starves later eligible rows (772.2893ms)
+  ✔ pre-STT exclusion completes without spend; only that skip reopens preserving prior attempts (563.9906ms)
+  ✔ undetermined at completion durably waits for analysis without repeating STT (200.0612ms)
+  ✔ empty STT is terminal after one paid call and reconciles actual cost (174.5606ms)
+  ✔ duplicate empty completion cannot overwrite a concurrent successful transcript (200.1872ms)
+  ✔ analysis eligibility exclusion closes and restores only its current immutable version (232.0204ms)
+  ✔ eight transient failures dead-letter with safe errors and retain ambiguous spend (559.1074ms)
+  ✔ killed eighth claim is projected without a ninth STT call (112.9049ms)
+  ✔ missing actual cost preserves success and reservation without repeat STT (190.9923ms)
+  ✔ concurrent claims make one bounded STT call; expired worker cannot publish (319.7803ms)
+  ✔ scheduler is bounded, closes hook gap, no starvation, atomic under concurrent scans (766.0274ms)
+  ✔ changed media creates a new immutable version while model changes and seed media do not (253.6482ms)
+  ✔ raw synthetic secrets absent from every Mongo document and qualification cursor untouched (71.4166ms)
+✔ CSI-12 disposable replica with synthetic Blob/STT only (8613.7388ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13416.0348

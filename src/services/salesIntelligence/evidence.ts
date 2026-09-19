@@ -25,7 +25,6 @@ export function validateEnvelopeEvidence(
     speaker_refs: string[];
   },
 ) {
-  const byId = new Map(scope.snapshots.map((v) => [v.snapshot_id, v]));
   for (const finding of envelope.findings) {
     if (
       finding.speaker_ref &&
@@ -33,7 +32,10 @@ export function validateEnvelopeEvidence(
     )
       throw new CsiError("EVIDENCE_SCOPE_INVALID");
     for (const ref of finding.evidence) {
-      const snapshot = byId.get(ref.snapshot_id);
+      const snapshot = scope.snapshots.find((entry) => entry.snapshot_id === ref.snapshot_id &&
+        entry.source === ref.source && (ref.source === "transcript"
+          ? entry.conversation_id === ref.conversation_id && entry.transcript_version === ref.transcript_version
+          : entry.record_type === ref.record_type && entry.record_id === ref.record_id));
       if (
         !snapshot ||
         snapshot.subject_key !== scope.subject_key ||

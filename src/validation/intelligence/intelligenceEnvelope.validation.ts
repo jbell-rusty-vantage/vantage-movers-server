@@ -68,6 +68,12 @@ const vantageRecordEvidenceSchema = z
       "rep_identity",
       "owner_instruction",
       "owner_note",
+      "contact_number",
+      "agent",
+      "granot_source",
+      "ringcentral_queue",
+      "ringcentral_user",
+      "job_timeline",
     ]),
     record_id: nonEmptyString,
     field_paths: z

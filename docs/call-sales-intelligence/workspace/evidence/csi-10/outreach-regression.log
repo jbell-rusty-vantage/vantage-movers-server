@@ -1,0 +1,37 @@
+
+> vantage_movers_server@1.0.0 test:csi:outreach:replica C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> node --import tsx scripts/test-csi-outreach.ts
+
+CSI-06 isolated replica proof: testvantagemovers_csi0653b13d28cf77; loopback replica csi01 on port 27189
+{"level":"info","time":"2026-09-18T21:11:18.356Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-06 disposable replica
+  ✔ inbound human opens; missed does not; no-answer/voicemail exact outcomes (366.3256ms)
+  ✔ duplicate misses keep first deadline, late callback resolves and older miss cannot resurrect (326.4274ms)
+  ✔ three actions including undated; individual completion and snooze contracts (285.7709ms)
+  ✔ Alex/Jordan/Casey, duplicate apply, repeated promise, Owner correction beats applying run (334.8397ms)
+  ✔ unknown promising rep remains unassigned despite overall owner; voicemail never human (160.5537ms)
+  ✔ concurrent Owner date correction and worker revision serialize without losing the Owner instruction (311.0517ms)
+  ✔ official closure while identity blocked wins over attach; cancellations retained (227.2656ms)
+  ✔ closed work new request stays Closed and review; no Number Review evasion (100.2735ms)
+  ✔ restriction pauses Owner callback without rewriting it; review dismissal cannot lift (250.1744ms)
+  ✔ Owner note no implied contact/work; CAS race and durable idempotent response (152.5466ms)
+  ✔ registered worker, duplicate wake-up, stage and expired-lease fences; flags off (269.9584ms)
+  ✔ GET does not mutate and Number detail returns plural Outreach DTOs (328.4552ms)
+  ✔ two callbacks from one source with distinct dates stay independently addressable (235.7903ms)
+  ✔ wait callback keeps Jordan, independent estimate remains active; expiry never rewaits (250.2057ms)
+  ✔ permanent suppression blocks reopen; ordinary close/reopen never revives cancelled action (259.8023ms)
+  ✔ Owner contact-type correction is immediate while AI off; unknown retracts contact stamp (202.5948ms)
+  ✔ fulfilled source commitment dedupes after completion evidence changes; old promise after Booking is blocked (246.5583ms)
+  ✔ old mapped missed traffic creates Number Review without age expiry; ambiguous Lead does not (196.0675ms)
+  ✔ EntityChange applied_at source closes No-Sync Lead without updating source timestamp (2984.1782ms)
+  ✔ watermark baseline/recovery scans execute without providers (1642.4306ms)
+  ✔ Attention immutable pagination, one row per subject, all reads remain read-only (1041.5018ms)
+✔ CSI-06 disposable replica (13052.0664ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 19713.3842

@@ -29,6 +29,8 @@ sources:
 
 # Number Activity reads, directory sync and rebuild
 
+CSI-14 integration: the existing Outreach timeline source includes `nudge` audit invalidations as the established `nudge` event kind. It includes Outreach subjects whose primary Contact Number matches, even without a separate attachment edge. Authorization/submission/delivery events are read-only history and never count as customer work. Explicit send behavior belongs to [Owner Rep Nudges](sales-intelligence-nudges.md).
+
 **Role:** the Owner-facing read side of [Number Activity](number-activity-capture.md) (04 §1 `/numbers` rows, §3) plus two maintenance workers: the daily directory snapshot that [capture](number-activity-capture.md) reads for party roles and company classification (02 §9), and the durable rebuild of derived Contact Number fields (03 §0 `rebuild.ts`). Reads never mutate. Sales meaning (attachments, Outreach, findings) belongs to Teams C and D; this service exposes their rows as connections and leaves hooks for their timeline events.
 
 **System of record read:** `contact_numbers`, `call_interactions` (canonical rows only, `merged_into_id: null`), `number_lead_attachments`, `outreach_records`, `lead_messages`, `lead_conversations`, `sales_intelligence_sync_state` (`call_log_all_directions` for Coverage, `webhook_receipts`, `directory`), `sales_intelligence_jobs`. **Written:** `ringcentral_directory_snapshots` (directory sync), `contact_numbers` derived fields (rebuild worker, revision CAS), `sales_intelligence_jobs`/`sales_intelligence_command_executions`/audit (rebuild command and worker).

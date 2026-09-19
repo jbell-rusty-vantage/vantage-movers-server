@@ -58,6 +58,9 @@ export const CSI_TOOLS = [
   "search_bookings",
   "get_booking",
   "get_rep_identity",
+  "query_operational_records",
+  "search_ringcentral_calls",
+  "get_ringcentral_call",
   "submit_intelligence_analysis",
 ] as const;
 export const CSI_JOB_STAGES = [
@@ -77,6 +80,8 @@ export const CSI_JOB_STAGES = [
   "backfill",
   "retention",
   "rebuild",
+  "rep_identity_reevaluate",
+  "nudge_repair",
 ] as const;
 export const CSI_ERROR_CODES = [
   "FEATURE_DISABLED",
@@ -94,6 +99,9 @@ export const CSI_ERROR_CODES = [
   "EVIDENCE_SCOPE_INVALID",
   "NUDGE_DESTINATION_IS_CUSTOMER",
   "NUDGE_NOT_ACTIONABLE",
+  "NUDGE_CONFIGURATION_UNAVAILABLE",
+  "NUDGE_DESTINATION_EVIDENCE_INCOMPLETE",
+  "NUDGE_BODY_INVALID",
   "RATE_LIMITED",
   "BACKFILL_ACTIVE",
   "UNSUPPORTED_SCOPE",
@@ -101,6 +109,8 @@ export const CSI_ERROR_CODES = [
   "LEASE_LOST",
   "INDEX_REQUIRED",
   "BUDGET_EXHAUSTED",
+  "EVIDENCE_LIMIT_REACHED",
+  "PROVIDER_READ_UNAVAILABLE",
 ] as const;
 export type CsiErrorCode = (typeof CSI_ERROR_CODES)[number];
 export const CSI_FLAGS = [
@@ -116,6 +126,7 @@ export const CSI_FLAGS = [
   "EXACT_EVIDENCE_VERIFICATION",
   "NUDGE_ENABLED",
   "LIVE_SSE",
+  "PROVIDER_READS",
 ] as const;
 export function csiFlag(flag: (typeof CSI_FLAGS)[number]): boolean {
   return (
@@ -127,6 +138,38 @@ export function csiDataset() {
   if (!deployment)
     throw new Error("SALES_INTELLIGENCE_DEPLOYMENT_ID is required");
   return { deployment, database: getMongoDatabaseName() };
+}
+
+/** Owner messaging configuration. Optional transports are off unless explicitly enabled. */
+export function csiNudgeConfiguration() {
+  const channelNames = ["team_messaging", "sms_to_rep", "pager"] as const;
+  const rawChannels = process.env.SALES_INTELLIGENCE_NUDGE_CHANNELS;
+  const channels = rawChannels === undefined ? null : rawChannels.split(",").map(value => value.trim()).filter(Boolean);
+  if (channels?.some(value => !(channelNames as readonly string[]).includes(value))) throw new Error("invalid_nudge_channels");
+  const channelEnabled = (channel: typeof channelNames[number], suffix: string, fallback: boolean) => {
+    const override = process.env[`SALES_INTELLIGENCE_NUDGE_${suffix}_ENABLED`]?.trim().toLowerCase();
+    // The documented allowlist cannot be widened by an alias. Explicit false can further restrict it.
+    return channels ? channels.includes(channel) && override !== "false" : override === undefined ? fallback : override === "true";
+  };
+  const positive = (raw: string | undefined, fallback: number) => {
+    const n = raw === undefined ? fallback : Number(raw);
+    if (!Number.isSafeInteger(n) || n < 1 || n > 100) throw new Error("invalid_nudge_limit");
+    return n;
+  };
+  return {
+    account: process.env.RINGCENTRAL_ACCOUNT_ID?.trim() ?? "",
+    senderExtension: process.env.SALES_INTELLIGENCE_NUDGE_SENDER_EXTENSION_ID?.trim() ?? "",
+    senderExtensionNumber: process.env.SALES_INTELLIGENCE_NUDGE_SENDER_EXTENSION_NUMBER?.trim() ?? "",
+    senderPerson: process.env.SALES_INTELLIGENCE_NUDGE_SENDER_PERSON_ID?.trim() ?? "",
+    senderDid: process.env.SALES_INTELLIGENCE_NUDGE_SENDER_DID?.trim() ?? "",
+    recordBaseUrl: process.env.SALES_INTELLIGENCE_ADMIN_BASE_URL?.trim() ?? "",
+    hourlyLimit: positive(process.env.SALES_INTELLIGENCE_NUDGE_PER_REP_PER_HOUR ?? process.env.SALES_INTELLIGENCE_NUDGE_HOURLY_LIMIT, 6),
+    channels: {
+      team_messaging: channelEnabled("team_messaging", "TEAM_MESSAGING", true),
+      sms_to_rep: channelEnabled("sms_to_rep", "SMS", false),
+      pager: channelEnabled("pager", "PAGER", false),
+    },
+  };
 }
 export function csiMediaMaxBytes(): number {
   const value = Number(process.env.SALES_INTELLIGENCE_MEDIA_MAX_BYTES ?? 26214400);

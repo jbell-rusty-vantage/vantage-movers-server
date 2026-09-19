@@ -1,0 +1,16 @@
+✔ bounded real timeline loader applies Mongo limit and timeout to every first-hop and downstream cursor (41.9641ms)
+✔ bounded real loader rejects overflow at initial and later joins instead of publishing truncated evidence (22.4563ms)
+✔ optional bound preserves existing unbounded Owner loader behavior and rejects nonsensical configuration (14.1751ms)
+✔ isObjectIdString accepts 24-char hex ids (2.5913ms)
+✔ toObjectId parses hex strings (1.458ms)
+✔ toObjectIdOrUndefined maps empty values to undefined (0.8791ms)
+✔ job-number-timeline loader does not value-import ObjectId from mongodb (1.003ms)
+✔ newObjectIdHex returns a distinct 24-char hex id (2.8003ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4505.2248

@@ -1,0 +1,27 @@
+
+> vantage_movers_server@1.0.0 test:csi:rep-identity:replica C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> node --import tsx scripts/test-csi-rep-identity.ts
+
+CSI-10 isolated replica proof: testvantagemovers_csi10909d21f4c685; loopback replica csi01 on port 27189; no .env or providers
+{"level":"info","time":"2026-09-18T22:23:39.366Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-10 disposable replica
+  ✔ proposal run exact remains proposed, ambiguous and unmatched remain visible without invented links (786.136ms)
+  ✔ review replay, changed payload and stale revision; reruns preserve decisions (378.8511ms)
+  ✔ non-User target rejects; account scope and multiple extensions per Agent (498.5882ms)
+  ✔ concurrent competing assignments serialize; historical overlaps reject even without open ends (464.2444ms)
+  ✔ atomic reassignment boundaries and retirement preserve reviewed historical identity (510.6126ms)
+  ✔ GET services are read-only, paginate, expose unknown metrics (386.3053ms)
+  ✔ incomplete directory blocks Owner creation; retired history is not overwritten by proposal reruns (276.4482ms)
+  ✔ unchanged call revision re-evaluates durably; Owner assignments, unassignment, actions and closure survive (2197.9023ms)
+  ✔ officially closed work stays closed after reviewed identity is available; source facts unchanged (542.3832ms)
+  ✔ bounded pages reach deferred eligibility and existing STT scheduler without providers (2092.2279ms)
+  ✔ official Agent records unchanged and flags remain off (9.728ms)
+✔ CSI-10 disposable replica (13304.1427ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 24148.8184

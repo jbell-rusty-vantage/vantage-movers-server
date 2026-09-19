@@ -1,0 +1,63 @@
+diff --git a/.cursor/rules/project-organization.mdc b/.cursor/rules/project-organization.mdc
+index 0ef2a92..2aea12e 100644
+--- a/.cursor/rules/project-organization.mdc
++++ b/.cursor/rules/project-organization.mdc
+@@ -83,7 +83,8 @@ Prefer `src/services/<domain>/` imports over legacy barrels (`v1.service.ts`, `*
+ 
+ ### RingCentral
+ - CSI recording/STT orchestration lives under `salesIntelligence/conversations/`; private-media/Gateway adapters and deterministic redaction live under `conversations/`. Queue, five-minute transcription cron and per-stage recovery call the same fenced worker. See [transcription Service](../../docs/knowledge/services/sales-intelligence-transcription.md); `STT_ENABLED` defaults off and the reservation rate requires explicit verified configuration.
+-- Routes are HTTP/cron boundaries only. Logic lives in `ringcentral/`: auth/client, webhook capture, candidates, Call Log sync, analytics reconcile, duplicate detection, call-lead ingest. `call-log-sync-state.store.ts` owns the singleton Call Log cursor plus its five-minute owner-fenced run lease (Mongo, not the cron trigger, elects the winner) and `ringcentral-metrics.ts` owns the Section 33 RingCentral metrics. `ringcentral-cron.routes.ts` exposes `createRingCentralCronRouter(deps)` for tests and maps lease contention to a bounded skip.
++- Sales Intelligence feature services live under `salesIntelligence/{analysis,attachment,conversations,followups,nudges,outreach,repIdentity,review}/`; their Owner routes are mounted at `/api/v1/admin/sales-intelligence` after the CSI boundary, while run-scoped intelligence reads/submission are mounted at `/api/v1/internal/sales-intelligence/runs/:id`. Cron routes stay outside v1 and use the shared cron authentication. Service documents, rather than this map, own their authorization and durable-work invariants.
++- Routes are HTTP/cron boundaries only. Logic lives in `ringcentral/`: auth/client, webhook capture, candidates, Call Log sync, analytics reconcile, duplicate detection, call-lead ingest. `call-log-sync-state.store.ts` owns the singleton Call Log cursor plus its five-minute owner-fenced run lease (Mongo, not the cron trigger, elects the winner) and `ringcentral-metrics.ts` owns the Section 33 RingCentral metrics. `ringcentral-cron.routes.ts` exposes `createRingCentralCronRouter(deps)` for tests and maps lease contention to a bounded skip.
+ - Operations Registry inbound-route snapshot owns runtime inbound-number → source attribution. `call-lead-sources.ts` is migration/test seed only — do not import it at runtime. `ringcentral-call-lead-ingest.service.ts` is the shared promotion path — do not create RC call leads from routes/scripts directly.
+ - `ringcentral-config.ts` is the single source for RC env toggles and write posture.
+ 
+diff --git a/docs/knowledge/services/sales-intelligence-rep-identity.md b/docs/knowledge/services/sales-intelligence-rep-identity.md
+index 500a0c7..ae8256e 100644
+--- a/docs/knowledge/services/sales-intelligence-rep-identity.md
++++ b/docs/knowledge/services/sales-intelligence-rep-identity.md
+@@ -18,7 +18,7 @@ Owner routes are GET/POST `/reps`, GET `/reps/:id`, POST `/reps/propose`, POST `
+ 
+ Temporal intervals are half-open `[effective_from,effective_to)`. `resolveRepIdentities` is the account/extension/event-time authority. Proposed links never resolve; reviewed retired links resolve before their end, while unreviewed retired proposals never do. Conflicting applicable authority fails closed. Non-sales roles cannot establish Sales Rep authority. Existing legacy `reviewed` rows retain status authority; retiring them pins the review metadata. One Agent can have several extensions. The unchanged current unique index plus a transactional per-account/extension SyncState write fence protect concurrent commands, including finite historical overlap checks. Reviewed edits create successor intervals and retire the predecessor atomically; predecessor Agent/role/channels remain historical. A successor must start after the predecessor's start, within its existing interval. In-place rewrites of reviewed history are intentionally rejected; Owner decisions remain audited.
+ 
+-Review/retirement commits a `rep_identity_reevaluate` job with a fixed event window ending at command time. The worker processes 25 canonical interactions per transaction in `(started_at,_id)` order and creates its continuation atomically. The drain stops after five pages or 20 seconds. A durable typed window lives on the existing CSI job, with unchanged ObjectId `input_refs`, payload hashing and lease fencing. Queue dispatch and the existing minute recovery cron reach this stage under ENABLED. It schedules existing Outreach and recording-discovery jobs even when those consumers' flags are off; those flags govern execution. No provider work is performed here. Deferred stored-media rows become due for CSI-12's existing bounded scheduler; media/transcription eligibility retries retain their existing retry policies.
++Review/retirement commits a `rep_identity_reevaluate` job with a fixed event window ending at command time. The worker processes 25 canonical interactions per transaction in `(started_at,_id)` order and creates its continuation atomically. The drain stops after five pages or 20 seconds. A durable typed window lives on the existing CSI job, with unchanged ObjectId `input_refs`, payload hashing and lease fencing. Queue dispatch and the existing minute recovery cron reach this stage under ENABLED. It schedules existing Outreach and recording-discovery jobs for every scanned interaction, including interactions with no current recording entries; recording discovery owns the bounded empty-recording retry window. Consumer flags govern execution. No provider work is performed here. Deferred stored-media rows become due for CSI-12's existing bounded scheduler; media/transcription eligibility retries retain their existing retry policies.
+ 
+ CSI-06's applied-call fingerprint includes resolved identity evidence, so unchanged call revisions can be re-evaluated. Actual attempt/human evidence remains separate. Owner assignment and explicit Owner unassignment survive; established owners are never casually replaced. Unknown promises stay unassigned. Identity-only replay may fulfill still-open obligations using existing call rules, but never recreates a previously applied missed-call episode. Official/Owner closure and cancelled obligations remain terminal. CSI-11/12 eligibility uses the same temporal resolver. Future CSI-13 must include its fingerprint in meaningful-change checks; future CSI-14 must check current reviewed identity and its own explicit send authorization.
+ 
+diff --git a/scripts/test-csi-rep-identity.replica.test.ts b/scripts/test-csi-rep-identity.replica.test.ts
+index 40bc14f..c58ef52 100644
+--- a/scripts/test-csi-rep-identity.replica.test.ts
++++ b/scripts/test-csi-rep-identity.replica.test.ts
+@@ -187,7 +187,7 @@ test("CSI-10 disposable replica", { skip: process.env.CSI_REPLICA_TEST !== "true
+       const record=await getOutreachRecordModel().findOne({ "subject.id":lead._id }).orFail(); assert.equal(record.state,"closed"); assert.equal(record.responsible_agent_id,null);
+       assert.equal(JSON.stringify(await getFormLeadModel().findById(lead._id).lean()),before);
+     });
+-    await t.test("bounded pages reach deferred eligibility and existing STT scheduler without providers", async () => {
++    await t.test("bounded pages schedule empty-recording discovery and reach deferred STT eligibility without providers", async () => {
+       const number=await getContactNumberModel().create({ e164:"+12025550111",digits_reversed:"11105552021",first_observed_at:at,last_activity_at:boundary });
+       const calls=[];
+       for(let i=0;i<27;i++) calls.push(await getCallInteractionModel().create({ provider_account_id:"synthetic",telephony_session_id:`page-${i}`,identity_basis:"telephony_session_id",
+@@ -202,6 +202,7 @@ test("CSI-10 disposable replica", { skip: process.env.CSI_REPLICA_TEST !== "true
+       assert.equal(z.object({ scanned:z.number() }).parse(await runRepIdentityReevaluationJob(String(job._id))).scanned,25);
+       const continuation=await Jobs.findOne({ stage:"rep_identity_reevaluate","rep_identity_window.change_id":job.rep_identity_window!.change_id,_id:{ $ne:job._id } }).orFail();
+       assert.equal(z.object({ scanned:z.number() }).parse(await runRepIdentityReevaluationJob(String(continuation._id))).scanned,2);
++      assert.equal(await Jobs.countDocuments({ stage:"recording_discovery",input_refs:{ $in:calls.map(call=>call._id) } }),27);
+       assert.equal((await getLeadConversationModel().findById(conversation._id))?.analysis_eligibility?.eligible,true);
+       assert.equal((await withTransaction(s=>loadEligibilityInputs(call,s))).reviewedRepOutbound,true);
+       process.env.SALES_INTELLIGENCE_STT_ENABLED="true";
+diff --git a/src/services/salesIntelligence/repIdentity/worker.ts b/src/services/salesIntelligence/repIdentity/worker.ts
+index 1715c44..3eb7f64 100644
+--- a/src/services/salesIntelligence/repIdentity/worker.ts
++++ b/src/services/salesIntelligence/repIdentity/worker.ts
+@@ -37,8 +37,8 @@ export async function runRepIdentityReevaluationJob(jobId?: string) {
+         const eligibility = decideAnalysisEligibility(await loadEligibilityInputs(call, session));
+         await getLeadConversationModel().updateMany({ call_interaction_id: call._id, provider_account_id: account },
+           { $set: { analysis_eligibility: eligibility } }, { session });
+-        // Discovery uses the existing revisioned excluded-job recovery; no media is fetched here.
+-        if (call.recordings.length) await enqueueCsiJob({ stage: "recording_discovery", subject_key: `number:${call.contact_number_id ?? call._id}`,
++        // Discovery owns the bounded empty-recording retry window; no media is fetched here.
++        await enqueueCsiJob({ stage: "recording_discovery", subject_key: `number:${call.contact_number_id ?? call._id}`,
+           dedupe_key: `csi:rep-discovery:${fingerprint}`, input_revision: call.projection_revision, input_refs: [String(call._id)] }, session);
+         // CSI-12's existing bounded scheduler owns admission/dedupe. Only make its deferred rows due.
+         await getLeadConversationModel().updateMany({ call_interaction_id: call._id, provider_account_id: account, state: "media_stored",

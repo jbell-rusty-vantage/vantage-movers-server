@@ -3,12 +3,10 @@ import {
   defineCsiModel,
   actor as registryActorSnapshotSchema,
   leadRef as leadRefSchema,
+  revision,
+  validatedJson,
 } from "./salesIntelligence/common";
-import {
-  CONTACT_NUMBER_CLASSIFICATIONS,
-  CONTACT_ELIGIBILITY_STATES,
-  CONTACT_NUMBER_KINDS,
-} from "../config/domain/salesIntelligence";
+import { csiNudgeCommandSchema } from "../validation/v1/salesIntelligence";
 export const OWNER_REP_NUDGE_INDEXES = [
   {
     name: "nudge_idempotency_unique",
@@ -29,6 +27,20 @@ export const OWNER_REP_NUDGE_INDEXES = [
 export const OwnerRepNudgeSchema = new Schema(
   {
     idempotency_key: { type: String, required: true, trim: true },
+    revision,
+    command_id: { type: Schema.Types.ObjectId, default: null },
+    authorized_command: { ...validatedJson(csiNudgeCommandSchema), required: false },
+    send_expires_at: { type: Date, default: null },
+    submission_started_at: { type: Date, default: null },
+    provider_receipt_at: { type: Date, default: null },
+    expected_outreach_revision: { type: Number, default: null },
+    recipient_person_id: { type: String, default: null },
+    sender_person_id: { type: String, default: null },
+    sender_extension_id: { type: String, default: null },
+    sender_did: { type: String, default: null },
+    sender_extension_number: { type: String, default: null },
+    provider_account_id: { type: String, default: null },
+    purpose: { type: String, enum: ["call_suggestion", "review_context"], default: "review_context" },
     actor: { type: registryActorSnapshotSchema, required: true }, // reuse Operations Registry actor snapshot shape
     outreach_record_id: {
       type: Schema.Types.ObjectId,

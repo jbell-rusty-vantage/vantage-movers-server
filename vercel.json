@@ -156,6 +156,10 @@
       "schedule": "20 5 * * *"
     },
     {
+      "path": "/api/cron/sales-intelligence-nudge-repair",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/sales-intelligence-attachment-refresh",
       "schedule": "*/5 * * * *"
     }

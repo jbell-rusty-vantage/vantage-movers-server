@@ -1,0 +1,139 @@
+diff --git a/.cursor/rules/project-organization.mdc b/.cursor/rules/project-organization.mdc
+index 0ef2a92..91226e9 100644
+--- a/.cursor/rules/project-organization.mdc
++++ b/.cursor/rules/project-organization.mdc
+@@ -16,17 +16,17 @@ alwaysApply: true
+ - `src/routes/` owns HTTP boundaries — keep thin: auth → Zod → service → response.
+ - `src/routes/v1.routes.ts` is the main surface (public v1 + admin browse/search/export/analytics/registry/observability + extension workflows). Mounted after most cron/webhook routes.
+ - Before the `/api/v1` guard inside v1: `extension-auth.routes.ts` (`/api/v1/extension/auth/*`, no secret) and `google-drive-oauth.routes.ts` (mounted **inside** `v1.routes.ts`, not a separate `app.use`). OAuth callback is unguarded; other `/api/v1/admin/google-drive/*` routes attach per-route `requireApiSecret` + owner gate.
+-- After the guard: `ringcentral-registry.routes.ts` (`/api/v1/admin/ringcentral/inbound-routes*`), `granot-lifecycle-admin.routes.ts` (`/api/v1/admin/granot-lifecycle/*`, including Owner-only `GET .../receipts` historical webhook-channel list — unmasked contact + credential-redacted `granot_statement`; see [`live-receipts.md`](../../docs/knowledge/granot-lifecycle/live-receipts.md) — and `GET .../receipts/live` SSE, plus Owner-only `GET /api/v1/admin/bookings/:bookingId/connect-lead-candidates` and `POST .../connect-lead`), `daily-operations-admin.routes.ts` (Owner-only Daily Operations snapshot / events / live SSE / rebuild — pointer [`daily-operations.md`](../../docs/knowledge/services/daily-operations.md)), `job-number-timeline-admin.routes.ts` (`GET /api/v1/admin/job-number-timeline` and `GET .../recent-official-bookings`), and `extension-users-admin.routes.ts` (Owner-only `GET/POST /api/v1/admin/extension-users`).
++- After the guard: `ringcentral-registry.routes.ts` (`/api/v1/admin/ringcentral/inbound-routes*`), `granot-lifecycle-admin.routes.ts` (`/api/v1/admin/granot-lifecycle/*`, including Owner-only `GET .../receipts` historical webhook-channel list — unmasked contact + credential-redacted `granot_statement`; see [`live-receipts.md`](../../docs/knowledge/granot-lifecycle/live-receipts.md) — and `GET .../receipts/live` SSE, plus Owner-only `GET /api/v1/admin/bookings/:bookingId/connect-lead-candidates` and `POST .../connect-lead`), `daily-operations-admin.routes.ts` (Owner-only Daily Operations snapshot / events / live SSE / rebuild — pointer [`daily-operations.md`](../../docs/knowledge/services/daily-operations.md)), `job-number-timeline-admin.routes.ts` (`GET /api/v1/admin/job-number-timeline` and `GET .../recent-official-bookings`), and `extension-users-admin.routes.ts` (Owner-only `GET/POST /api/v1/admin/extension-users`). `sales-intelligence-{boundary,admin}.routes.ts` mount from `v1.routes.ts`; the admin router owns scoped Owner Number Activity, attachment, Outreach, review, Rep Identity, and explicit nudge endpoints under `/api/v1/admin/sales-intelligence`.
+ - Separate admin routers mounted from `src/app.ts` (still under `/api/v1/admin/...`, with `requireApiSecret`):
+   - `granot-automation.routes.ts` — Granot HTTP automation (mounted **before** v1)
+   - `ingestion.routes.ts` — Best Relocation ingestion (after v1)
+   - `reporting.routes.ts` — reporting definitions/destinations/runs (after v1)
+-- Cron/webhook mounts from `src/app.ts` (before v1): RC webhooks (`/api/webhooks/ringcentral`, `/api/webhooks/ringcentral-local`, `/api/dev/ringcentral/*`), Granot webhooks (`/api/webhooks/granot/{lead-created,priority-updated,booking-status-changed}`), RC crons (`ringcentral-call-log-sync`, `ringcentral-analytics-reconcile`), booking-reconciliation rematch, sheet-sync drain, lead-messaging drain, CPL-corrections drain, notification digest, Twilio status/voice, Best Relocation ingest heartbeat, reporting crons (`reporting-delivery-heartbeat`, `reporting-health-scan`, `reporting-cleanup-janitor`, `reporting-test-artifact-janitor`), Granot automation heartbeat, Granot lifecycle drain (`/api/cron/granot-lifecycle-drain`), Daily Operations close (`/api/cron/daily-operations-close`).
++- Cron/webhook mounts from `src/app.ts` (before v1): RC webhooks (`/api/webhooks/ringcentral`, `/api/webhooks/ringcentral-local`, `/api/dev/ringcentral/*`), Granot webhooks (`/api/webhooks/granot/{lead-created,priority-updated,booking-status-changed}`), RC crons (`ringcentral-call-log-sync`, `ringcentral-analytics-reconcile`), booking-reconciliation rematch, sheet-sync drain, lead-messaging drain, CPL-corrections drain, notification digest, Twilio status/voice, Best Relocation ingest heartbeat, reporting crons (`reporting-delivery-heartbeat`, `reporting-health-scan`, `reporting-cleanup-janitor`, `reporting-test-artifact-janitor`), Granot automation heartbeat, Granot lifecycle drain (`/api/cron/granot-lifecycle-drain`), Daily Operations close (`/api/cron/daily-operations-close`), and the authenticated CSI cron router. CSI cron/queue routes only wake or drain durable jobs; their stage-specific service flags and Mongo leases decide work.
+ - `app.ts` also calls `registerReportingStage4Foundation()` at Express bootstrap. Queue consumers do not inherit this — they must re-register foundations themselves.
+-- **Queue consumers** (`api/queues/`): `sheet-sync-consumer`, `lead-messaging-consumer`, `best-relocation-ingestion-consumer`, `reporting-consumer`, `granot-automation-consumer`, `granot-lifecycle-consumer` (`granot-lifecycle-events*`, `{ receipt_id }` only). Mongo remains the durable work source; the consumer is a wake-up.
++- **Queue consumers** (`api/queues/`): `sheet-sync-consumer`, `lead-messaging-consumer`, `best-relocation-ingestion-consumer`, `reporting-consumer`, `granot-automation-consumer`, `granot-lifecycle-consumer` (`granot-lifecycle-events*`, `{ receipt_id }` only), and `sales-intelligence-consumer` (`sales-intelligence-events*`, `{ job_id }` only). Mongo remains the durable work source; each consumer is a wake-up.
+ - `src/validation/` — Zod schemas (`v1.validation.ts` barrel + `src/validation/v1/` + reporting validators).
+ - `src/models/` — runtime Mongoose schemas (`snake_case`); Google Sheets projections produce Title Case columns. `GranotObservationReceipt` lives here; collection `granot_webhook_receipts` is retained. `GranotObservation` lives here; collection `granot_observations`. `SynchronizationDecision`, `GranotLifecycleActivation`, and `GranotRecordLink` are Unit 07 evidence/current-state models. `GranotBookingReconciliationCase` and the separate `GranotReleaseReconciliationCase` are append-only owner-work/evidence models; neither is an official Booking or Cancellation. `DailyOperationsDay` and `DailyOperationsEvent` are the Mongo book for Daily Operations (pointer [`daily-operations.md`](../../docs/knowledge/services/daily-operations.md)).
+-- `src/config/domain/` — mode-aware domain config; re-exported by `src/config/domain.ts` **except** `reporting.ts` (import `./domain/reporting` directly). Prefer focused modules over scattering `process.env`. `granotLifecycle.ts` owns the ten centralized lifecycle flags (processing/shadow default true; all eight effect flags stay false).
++- `src/config/domain/` — mode-aware domain config; re-exported by `src/config/domain.ts` **except** `reporting.ts` (import `./domain/reporting` directly). Prefer focused modules over scattering `process.env`. `granotLifecycle.ts` owns the ten centralized lifecycle flags (processing/shadow default true; all eight effect flags stay false). `salesIntelligence.ts` owns CSI flags, job stages, budget/STT configuration, and nudge channel gates/rate limits; it must not expose provider credentials in DTOs or logs.
+ - `src/db.ts` — shared Mongo helper; preserve `TEST_MODE` DB boundary.
+ - `src/middleware/` — `requireApiSecret` / `requireVantageAuth`, `requireGranotWebhookSecret`, HTTP logging.
+ - `src/auth/extension/` — Granot extension login, JWT, password hashing, `ExtensionUser`.
+diff --git a/docs/call-sales-intelligence/03-server-pipeline-and-jobs.md b/docs/call-sales-intelligence/03-server-pipeline-and-jobs.md
+index a24d542..2f22ce1 100644
+--- a/docs/call-sales-intelligence/03-server-pipeline-and-jobs.md
++++ b/docs/call-sales-intelligence/03-server-pipeline-and-jobs.md
+@@ -115,8 +115,9 @@ Flags are read at call time and default off. Owner-editable policy is persisted/
+ | `SALES_INTELLIGENCE_AI_PER_RECORDING_CEILING_CENTS` | `25` | Per recording reserve cap. |
+ | `SALES_INTELLIGENCE_EXACT_EVIDENCE_VERIFICATION` | `false` | Deferred locator/entailment policy; never a first-release gate. |
+ | `SALES_INTELLIGENCE_NUDGE_ENABLED` | `false` | Owner Rep Nudge command. |
+-| `SALES_INTELLIGENCE_NUDGE_CHANNELS` | `team_messaging` | Comma list ⊆ `team_messaging,sms_to_rep,pager`. |
+-| `SALES_INTELLIGENCE_NUDGE_PER_REP_PER_HOUR` | `6` | Rate limit. |
++| `SALES_INTELLIGENCE_NUDGE_TEAM_MESSAGING_ENABLED` | `true` | Channel-level Team Messaging gate; master, policy, and reviewed-link gates still apply. |
++| `SALES_INTELLIGENCE_NUDGE_SMS_ENABLED`, `SALES_INTELLIGENCE_NUDGE_PAGER_ENABLED` | `false` | Optional channel-level gates. |
++| `SALES_INTELLIGENCE_NUDGE_HOURLY_LIMIT` | `6` | Integer 1–100 rate limit per reviewed link in a rolling hour. |
+ | `SALES_INTELLIGENCE_LIVE_SSE` | `false` | Live stream route. |
+ | `SALES_INTELLIGENCE_QUEUE_TOPIC` | env-scoped | Vercel Queue wake-up topic; scheduled recovery uses the same durable jobs. |
+ | `SALES_INTELLIGENCE_RETENTION_*` | see §12 | Raw/audio/transcript/findings/activity retention days. |
+@@ -253,11 +254,11 @@ Implemented CSI-14 contract: [imports/DTOs/configuration](workspace/evidence/csi
+ 
+ ### 8.1 Preconditions (`preview.ts`, also enforced in `send.ts`)
+ 
+-1. `SALES_INTELLIGENCE_NUDGE_ENABLED` and channel ∈ `NUDGE_CHANNELS` ∩ `link.nudge_channels_allowed`.
++1. `SALES_INTELLIGENCE_NUDGE_ENABLED`, the selected channel's runtime gate (`SALES_INTELLIGENCE_NUDGE_TEAM_MESSAGING_ENABLED`, `SALES_INTELLIGENCE_NUDGE_SMS_ENABLED`, or `SALES_INTELLIGENCE_NUDGE_PAGER_ENABLED`), and channel ∈ `link.nudge_channels_allowed`. Team Messaging defaults on at the channel level; SMS and pager default off.
+ 2. Owner may message a reviewed rep about any active Outreach Record, including identity review or future-due work. Do not require overdue status to ask a rep a question. Closed-work messaging is disabled in v1; Owner can inspect/reopen if eligible. Context/review nudges are distinct from call suggestions: blocked/ambiguous contact must never render a “call now” template.
+ 3. A call-suggestion nudge requires contact eligibility and no active call blocker. An internal review-context message may discuss a restriction without asking the rep to contact the customer. The selected template purpose and blockers are revalidated on Send; this never sends to the customer.
+ 4. Rep Identity Link `status = reviewed`, `effective_to = null`, `role_kind = sales_rep`.
+-5. Per-rep rate limit: < `NUDGE_PER_REP_PER_HOUR` nudges in the last hour (`owner_rep_nudges` by link id).
++5. Per-rep rate limit: fewer than `SALES_INTELLIGENCE_NUDGE_HOURLY_LIMIT` nudges in the last rolling hour (`owner_rep_nudges` by link id). The configured integer is 1–100 and defaults to six.
+ 6. Destination resolution per channel; the resolved destination must not equal (E.164) the Contact Number, any Lead phone on the record, or any Lead Message `to` for those Leads. Violation → 422 `nudge_destination_is_customer` and an operational event `level: "error"`.
+ 7. Idempotency-Key required; replay returns the stored nudge.
+ 
+diff --git a/docs/index.md b/docs/index.md
+index 7f977e9..9271603 100644
+--- a/docs/index.md
++++ b/docs/index.md
+@@ -129,7 +129,7 @@ Active work packs. The ledger inside each is a navigation aid; the repository is
+ | [granot-lifecycle-surfaces/README.md](granot-lifecycle-surfaces/README.md) | Three-issue pack. GLS-01 Ingestion IA + Health home shipped; GLS-02 receipt search API shipped; GLS-03 Receipts tab not shipped. Job Timeline stays `/job-timeline`. |
+ | [lead-costs-owner-editing/README.md](lead-costs-owner-editing/README.md) | Five-issue pack. LCE-01 server `set_range`; LCE-02 By date form; LCE-03 copy/URL/handoff; LCE-04 structured rebuild; LCE-05 browser proof. Simple construction and CPL Correction workers stay. |
+ | [daily-operations/README.md](daily-operations/README.md) | Ten-issue pack. DOP-01–10 shipped (DOP-10: expand-in-place focus, trend % with the day before, full-fact cards, kind colours, Arrivals live rail, Live Events rows). Category panels plus complementary Arrivals on `/daily`. Not Daily View. Not Live Events. Not the 2026-08-19 tabbed layout. |
+-| [call-sales-intelligence/workspace/README.md](call-sales-intelligence/workspace/README.md) | Agent-team execution workspace for CSI-01–18: contracts, capture, Outreach, scoped MCP intelligence, Owner UI, integration and acceptance. Specified; runtime work unclaimed. |
++| [call-sales-intelligence/workspace/README.md](call-sales-intelligence/workspace/README.md) | Agent-team execution workspace for CSI-01–18: contracts, handoffs, evidence, integration and acceptance. It is coordination material, not the source of current runtime status; use the owning Service documents. |
+ | [call-lead-contact-provenance/README.md](call-lead-contact-provenance/README.md) | Five required issues (CLCP-01–05). Lock Call operational phone; Granot snapshot coalesce by Job; Job-wins identity; shared HTTP/extension preview; Owner desk any-known-contact. |
+ | [lead-no-sync/README.md](lead-no-sync/README.md) | Four-issue pack (LNS-01–04). Persist `no_sync`, default it on Manual create, delete Master Leads rows when marked, filter it on the desks, contains Not expected. |
+ | [exact-job-booking-attach/README.md](exact-job-booking-attach/README.md) | Four-issue pack (EJBA-01–04). Job-only auto-attach on Employee submit and Precise Booking Form; pending Owner creates open a Booking Lead Reconciliation Case. |
+diff --git a/docs/knowledge/services/number-activity-reads.md b/docs/knowledge/services/number-activity-reads.md
+index eafd71c..d3c17d1 100644
+--- a/docs/knowledge/services/number-activity-reads.md
++++ b/docs/knowledge/services/number-activity-reads.md
+@@ -29,7 +29,7 @@ sources:
+ 
+ # Number Activity reads, directory sync and rebuild
+ 
+-**Role:** the Owner-facing read side of [Number Activity](number-activity-capture.md) (04 §1 `/numbers` rows, §3) plus two maintenance workers: the daily directory snapshot that [capture](number-activity-capture.md) reads for party roles and company classification (02 §9), and the durable rebuild of derived Contact Number fields (03 §0 `rebuild.ts`). Reads never mutate. Sales meaning (attachments, Outreach, findings) belongs to Teams C and D; this service exposes their rows as connections and leaves hooks for their timeline events.
++**Role:** the Owner-facing read side of [Number Activity](number-activity-capture.md) (04 §1 `/numbers` rows, §3) plus two maintenance workers: the daily directory snapshot that [capture](number-activity-capture.md) reads for party roles and company classification (02 §9), and the durable rebuild of derived Contact Number fields (03 §0 `rebuild.ts`). Reads never mutate. Attachment, Outreach, restriction, and review meaning remains owned by their CSI services; Number detail now composes their read DTOs and the merged timeline includes their append-only audit events.
+ 
+ **System of record read:** `contact_numbers`, `call_interactions` (canonical rows only, `merged_into_id: null`), `number_lead_attachments`, `outreach_records`, `lead_messages`, `lead_conversations`, `sales_intelligence_sync_state` (`call_log_all_directions` for Coverage, `webhook_receipts`, `directory`), `sales_intelligence_jobs`. **Written:** `ringcentral_directory_snapshots` (directory sync), `contact_numbers` derived fields (rebuild worker, revision CAS), `sales_intelligence_jobs`/`sales_intelligence_command_executions`/audit (rebuild command and worker).
+ 
+@@ -40,8 +40,8 @@ sources:
+ | `directorySync.ts` | `runDirectorySyncOnce`: fenced lease on sync-state scope `directory`; reads account, extensions, phone numbers, call queues and queue members through the shared RingCentral client; `normalizeDirectory` (pure) → digest; appends a snapshot only when the digest changed; A→B→A advances `taken_at` on the existing digest; prunes to the last 30 per account (raw collection delete — the model is append-only); `DirectorySyncSummary.truncated` when more than 200 queues skip member fetches; fenced state write with `last_run`/`consecutive_failures`. Flag `SALES_INTELLIGENCE_DIRECTORY_SYNC`; cron `/api/cron/sales-intelligence-directory-sync` (`20 5 * * *`). |
+ | `coverage.ts` | `readCaptureCoverage()` → `CoverageDto` from the `call_log_all_directions` and `webhook_receipts` sync states (`known_through`, open `gaps`), honest `capabilities` (`unavailable` on `consecutive_failures` or `last_run.error_code`; `webhook` ok only with `cursor.last_sync_to` and no failure; `call_log` ok only with a watermark and no failure; `recording_content` from CSI-11 stored media outcomes), `ai_paused` from budget-paused jobs in this dataset. `ownerRead(data, now?)` wraps with `as_of` and `coverage`. |
+ | `search.ts` | `numberSearchQuerySchema` (`hygiene` is only boolean/`"true"`/`"false"` — never `z.coerce.boolean()`), `parseSearchTerm` (≥10 digits → E.164 exact; 3–9 digits → suffix over `digits_reversed`; otherwise anchored prefix term over `search_terms`), `buildNumberSearchFilter` (classification, `attachment` linked/unlinked via rollups, activity range, hygiene toggle for non-external kinds), keyset cursor `(last_activity_at, _id)`, `searchNumberActivity` (default 50, max 200, complete under pagination). |
+-| `contactNumbers.ts` | `getContactNumberDetail(id)`: number, all attachments (every state), outreach records, fresh canonical-interaction recount, `allowed_actions` (`rebuild_number`); `toNumberSearchItem` mapper. |
+-| `timeline.ts` | `getNumberTimeline(id, { cursor, limit }, { sources, extraSources })`: k-way merge of `interactionSource` (canonical rows, recordings counted per entry), `leadMessageSource` (no body text) and `conversationSource` (no transcript/summary text) in the total order `happened_at DESC, kind ASC, id DESC`; `observed_at` preserved separately; cursor by `(happened_at, kind, id)`; `TimelineSource` is the hook Team C uses for outreach events and nudges. |
++| `contactNumbers.ts` | `getContactNumberDetail(id)`: number, all attachments (every state), composed Outreach records plus their restrictions/review items, fresh canonical-interaction recount, `allowed_actions` (`rebuild_number`); `toNumberSearchItem` mapper. Composition delegates to CSI-06 reads and does not write. |
++| `timeline.ts` | `getNumberTimeline(id, { cursor, limit }, { sources, extraSources })`: k-way merge of `interactionSource` (canonical rows, recordings counted per entry), `leadMessageSource` (no body text), `conversationSource` (no transcript/summary text), and the CSI-06 Outreach audit source (including nudge events) in the total order `happened_at DESC, kind ASC, id DESC`; `observed_at` preserved separately; cursor by `(happened_at, kind, id)`. |
+ | `dto.ts` | B-owned Zod schemas built on the CSI-01 DTOs: `numberSearchItemDtoSchema`, `numberSearchPageDtoSchema`, `numberDetailReadDtoSchema` (superset of the frozen `numberDetailDtoSchema` data), `numberTimelineEventDtoSchema` (`timelineEventDtoSchema` + `detail`), `numberTimelinePageDtoSchema`, `NUMBER_DTO_FIXTURES` for Team E. |
+ | `rebuild.ts` | `enqueueNumberRebuild` (Owner command through `executeCsiCommand`, CAS on `expected_revision`, `number.rebuild_requested` audit, durable `rebuild` job); `enqueueRebuildAll` (one job that fans out dedupe-keyed per-number jobs); `recountNumber` (pure, replays stored rows through `toProjection` with the CSI-02 counting rules); `runRebuildJob` (claim stage `rebuild`, recount inside `completeCsiJob`, revision CAS, `number.rebuilt` audit only when something changed, result on the job row); `drainRebuildJobs`. Registered in `defaultStageHandlers` and in the job-recovery cron under `SALES_INTELLIGENCE_ENABLED`. |
+ | `routes/sales-intelligence-admin.routes.ts` | `GET /numbers`, `GET /numbers/:id`, `GET /numbers/:id/timeline`, `POST /numbers/:id/rebuild` under `/api/v1/admin/sales-intelligence`, mounted after the CSI boundary; re-checks flag, signed Owner identity and scope; `Idempotency-Key` required on the command; closed error codes with `request_id`. |
+diff --git a/docs/knowledge/services/sales-intelligence-rep-identity.md b/docs/knowledge/services/sales-intelligence-rep-identity.md
+index 43b04a3..f1acc72 100644
+--- a/docs/knowledge/services/sales-intelligence-rep-identity.md
++++ b/docs/knowledge/services/sales-intelligence-rep-identity.md
+@@ -14,7 +14,7 @@ Runtime: `src/services/salesIntelligence/repIdentity/`. Authority: [specificatio
+ 
+ Proposals consume stored account-scoped directory snapshots and canonical Agent `name`/`name_aliases`. Only User extensions qualify. Exact names, aliases and first tokens are evidence; no match implies review. All matching candidates remain visible, including weaker matches beside an exact one. Ambiguous/unmatched Users are read DTO evidence rather than invented Agent references. Proposal pages create only unique-candidate proposed links and never update any existing extension history. The historical September roster is not imported as authority. Missing snapshots, inconsistent counts/duplicate ids, and unverified provider completeness are explicit. No provider refresh occurs.
+ 
+-Owner routes are GET/POST `/reps`, GET `/reps/:id`, POST `/reps/propose`, POST `/reps/:id/review` under the existing CSI prefix. Writes use signed Owner authentication, strict schemas, expected revisions, durable payload-sensitive command replay, transactions, and append-only CSI audit. Create remains proposed. Review validates the current stored User directory and canonical active Agent. Agent's current username comes from `granot_identity.username`, falling back to `granot_crm_username`; no Agent or Extension User writes occur. Channel values are metadata only; no messaging is implemented.
++Owner routes are GET/POST `/reps`, GET `/reps/:id`, POST `/reps/propose`, POST `/reps/:id/review` under the existing CSI prefix. Writes use signed Owner authentication, strict schemas, expected revisions, durable payload-sensitive command replay, transactions, and append-only CSI audit. Create remains proposed. Review validates the current stored User directory and canonical active Agent. Agent's current username comes from `granot_identity.username`, falling back to `granot_crm_username`; no Agent or Extension User writes occur. This CSI-10 service does not send messages. Its reviewed channel metadata is consumed by CSI-14 as one authorization input for explicit Owner nudges, alongside that service's current-identity, policy, feature, destination, and rate-limit checks.
+ 
+ Temporal intervals are half-open `[effective_from,effective_to)`. `resolveRepIdentities` is the account/extension/event-time authority. Proposed links never resolve; reviewed retired links resolve before their end, while unreviewed retired proposals never do. Conflicting applicable authority fails closed. Non-sales roles cannot establish Sales Rep authority. Existing legacy `reviewed` rows retain status authority; retiring them pins the review metadata. One Agent can have several extensions. The unchanged current unique index plus a transactional per-account/extension SyncState write fence protect concurrent commands, including finite historical overlap checks. Reviewed edits create successor intervals and retire the predecessor atomically; predecessor Agent/role/channels remain historical. A successor must start after the predecessor's start, within its existing interval. In-place rewrites of reviewed history are intentionally rejected; Owner decisions remain audited.
+ 
+diff --git a/src/services/salesIntelligence/nudges/nudges.test.ts b/src/services/salesIntelligence/nudges/nudges.test.ts
+index 42e1e2a..a63196e 100644
+--- a/src/services/salesIntelligence/nudges/nudges.test.ts
++++ b/src/services/salesIntelligence/nudges/nudges.test.ts
+@@ -67,3 +67,28 @@ test("optional channels default off", () => {
+   try {assert.equal(csiNudgeConfiguration().channels.sms_to_rep,false);assert.equal(csiNudgeConfiguration().channels.pager,false);}
+   finally {if(sms!==undefined)process.env.SALES_INTELLIGENCE_NUDGE_SMS_ENABLED=sms;if(pager!==undefined)process.env.SALES_INTELLIGENCE_NUDGE_PAGER_ENABLED=pager;}
+ });
++test("nudge configuration applies documented per-channel gates and hourly limit", () => {
++  const keys = [
++    "SALES_INTELLIGENCE_NUDGE_TEAM_MESSAGING_ENABLED",
++    "SALES_INTELLIGENCE_NUDGE_SMS_ENABLED",
++    "SALES_INTELLIGENCE_NUDGE_PAGER_ENABLED",
++    "SALES_INTELLIGENCE_NUDGE_HOURLY_LIMIT",
++  ] as const;
++  const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
++  Object.assign(process.env, {
++    SALES_INTELLIGENCE_NUDGE_TEAM_MESSAGING_ENABLED: "false",
++    SALES_INTELLIGENCE_NUDGE_SMS_ENABLED: "true",
++    SALES_INTELLIGENCE_NUDGE_PAGER_ENABLED: "true",
++    SALES_INTELLIGENCE_NUDGE_HOURLY_LIMIT: "1",
++  });
++  try {
++    assert.deepEqual(csiNudgeConfiguration().channels, {team_messaging:false,sms_to_rep:true,pager:true});
++    assert.equal(csiNudgeConfiguration().hourlyLimit,1);
++  } finally {
++    for (const key of keys) {
++      const value = previous[key];
++      if (value === undefined) delete process.env[key];
++      else process.env[key] = value;
++    }
++  }
++});

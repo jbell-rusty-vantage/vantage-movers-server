@@ -1,0 +1,98 @@
+[
+  {
+    "path": "package.json",
+    "sha256": "5703e0a1af2decba99f156fdde8339c2b6fbd8ae8f27a5d5d5b9940d0831aa43"
+  },
+  {
+    "path": "scripts/test-csi-nudges.replica.test.ts",
+    "sha256": "31fb31f9efc402822da05777f0e8c2f0c9189082ba01ac79661184a5794bdd2b"
+  },
+  {
+    "path": "scripts/test-csi-nudges.ts",
+    "sha256": "2bc057f7b0c293d8a19fc3fc96c3e0cd2034192cce696062f026e516bd615e50"
+  },
+  {
+    "path": "src/config/domain/salesIntelligence.ts",
+    "sha256": "cda4afdee5aa6386191210ad919f9a955a737301576599b0aeaaa046dbdfad6d"
+  },
+  {
+    "path": "src/models/OwnerRepNudge.ts",
+    "sha256": "953c2c826d1f2529d5f2390c34d5c72b5603c9bfedbebee4f48e7acfcc543825"
+  },
+  {
+    "path": "src/models/salesIntelligence/infrastructure.ts",
+    "sha256": "d0ebe18ebdea9ea6371b330394c41cec8d74fcfd594629a665c8c39d98c4c005"
+  },
+  {
+    "path": "src/routes/sales-intelligence-admin.routes.ts",
+    "sha256": "1ff19c07dcb9f6a7069d142cb7fb25fa06c1d2e76d0a61d4108a7154dc77f32d"
+  },
+  {
+    "path": "src/routes/sales-intelligence-cron.routes.ts",
+    "sha256": "9bbca92da4bf22f2b7a279e8e6f0bfe0d6528172765d7baffc061443ae922ed7"
+  },
+  {
+    "path": "src/services/numberActivity/jobDispatch.ts",
+    "sha256": "5ce64cd0fafd86006c798dbd982ed33de0240e53b3ef30599188f86eb6473a34"
+  },
+  {
+    "path": "src/services/salesIntelligence/nudges/adapters.ts",
+    "sha256": "69451e061467cfb1a081ee8bbef5062d9fc717961f983b95bc94533d68250031"
+  },
+  {
+    "path": "src/services/salesIntelligence/nudges/commands.ts",
+    "sha256": "bbe21b507fab31f95cb42647afbc49e59fb2c3e41c08e77756f7c713ae43d647"
+  },
+  {
+    "path": "src/services/salesIntelligence/nudges/eligibility.ts",
+    "sha256": "c7aa314527bb95332871c525d44547b3e9385571b2db9ade5b2a0b2ac3ccccc9"
+  },
+  {
+    "path": "src/services/salesIntelligence/nudges/nudges.test.ts",
+    "sha256": "2409a10a8c7cabb6da3eddcc1c6eff8a3d6898c9106edabdf4189e421d5e4980"
+  },
+  {
+    "path": "src/services/salesIntelligence/nudges/reads.ts",
+    "sha256": "398899a7ad189b752b7b4f93d132e9eb6784e127dcebcaf7b5c82fe423e04128"
+  },
+  {
+    "path": "src/services/salesIntelligence/nudges/repair.ts",
+    "sha256": "fec8d2730e8f43a429003e1dc925c45c9084dc5bb899eec3e5a0f05e65467628"
+  },
+  {
+    "path": "src/services/salesIntelligence/nudges/routes.test.ts",
+    "sha256": "fd763f44bb9ca09ad34d81d9b57ae34e86688160bd3f64d83081a2d404fca0b7"
+  },
+  {
+    "path": "src/services/salesIntelligence/nudges/templates.ts",
+    "sha256": "e088a7c77f8d53bf9dbc3bd5562094301aea114b2a87a32d6972cf1b1712711a"
+  },
+  {
+    "path": "src/services/salesIntelligence/outreach/reads.ts",
+    "sha256": "df4d51add7be8e8056b0cf7ae927fd513f0bec9cc0144d0190a88b103e39b79b"
+  },
+  {
+    "path": "src/services/salesIntelligence/outreach/timeline.ts",
+    "sha256": "247e901019b8ec1367131a1049bcf135d1d4e2c74c79fb61e2b72434ca2c31d8"
+  },
+  {
+    "path": "src/services/salesIntelligence/policy.ts",
+    "sha256": "88e7c3ce1e48486f65000589f5370ab376c009c58c3ffd2d7040f90d6aaf7fc6"
+  },
+  {
+    "path": "src/services/salesIntelligence/repIdentity/reads.ts",
+    "sha256": "b2cad018ccdbf6cbeaa2baf356914d6edebbedce9c1f6ed967bd8f7b236872ed"
+  },
+  {
+    "path": "src/services/salesIntelligence/transactions.ts",
+    "sha256": "aa0cee7b8f5d352905a80de5fe432799aae6acb05021eac0357eefdff6283f30"
+  },
+  {
+    "path": "src/validation/v1/salesIntelligence.ts",
+    "sha256": "cefdb6499cc49a38c00048617f3006fa395d706747183abe441e7b5d0213b7b2"
+  },
+  {
+    "path": "vercel.json",
+    "sha256": "3954c1e7730eef48188e41ef97c4335ff6e9cae5aaf25132d5c0a4d5f58b5990"
+  }
+]

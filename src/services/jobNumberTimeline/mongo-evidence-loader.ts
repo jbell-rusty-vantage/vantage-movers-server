@@ -1,4 +1,5 @@
 import type { Db, Document } from "mongodb";
+import type { FindCursor } from "mongodb";
 import { isObjectIdString, toObjectId } from "../../utils/objectId.js";
 import { getRingCentralCollectionName } from "../ringcentral/ringcentral-config.js";
 import type { JobNumberTimelineEvidenceLoader } from "./evidence-loader.port.js";
@@ -24,6 +25,24 @@ import type {
   WordpressFormSubmissionReceiptRow,
 } from "./rows.js";
 import type { JobTimelineLeadModel } from "./types.js";
+
+export type JobTimelineMongoReadBounds = { maxRowsPerQuery?: number };
+export class JobTimelineEvidenceLimitError extends Error {
+  readonly code = "EVIDENCE_LIMIT_REACHED";
+  constructor() { super("EVIDENCE_LIMIT_REACHED"); }
+}
+
+/** Optional bounded consumer policy; existing Owner reads keep their established behavior. */
+function rowReader(bounds: JobTimelineMongoReadBounds) {
+  const maximum = bounds.maxRowsPerQuery;
+  if (maximum !== undefined && (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 2_000)) throw new JobTimelineEvidenceLimitError();
+  return async <T extends Document>(cursor: FindCursor<T>): Promise<T[]> => {
+    // Fetch one sentinel row to distinguish complete evidence from overflow.
+    const rows = await (maximum === undefined ? cursor : cursor.limit(maximum + 1).maxTimeMS(5_000)).toArray();
+    if (maximum !== undefined && rows.length > maximum) throw new JobTimelineEvidenceLimitError();
+    return rows;
+  };
+}
 
 function asUnknownArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
@@ -196,11 +215,13 @@ function mapCase(row: Document, kind: "booking" | "release"): CaseRow {
 export async function loadCompanyGranularityIds(
   db: Db,
   sourceCompanyId: string,
+  bounds: JobTimelineMongoReadBounds = {},
 ): Promise<string[]> {
+  const read = rowReader(bounds);
   const rows = asDocumentArray(
-    await db.collection("lead_source_granularities").find({
+    await read(db.collection("lead_source_granularities").find({
       source_company: asMongoId(sourceCompanyId),
-    }).project({ _id: 1 }).toArray(),
+    }).project({ _id: 1 })),
   );
   return rows.map((row) => asId(row._id));
 }
@@ -208,7 +229,9 @@ export async function loadCompanyGranularityIds(
 export async function loadJobNumberTimelineRows(
   db: Db,
   normalizedJobNo: string,
+  bounds: JobTimelineMongoReadBounds = {},
 ): Promise<JobTimelineRows> {
+  const read = rowReader(bounds);
   const jobFilter = equivalentNormalizedJobFilter(normalizedJobNo);
   const [
     observationDocs,
@@ -220,13 +243,13 @@ export async function loadJobNumberTimelineRows(
     releaseDiscrepancyDocs,
     callLogCursorDoc,
   ] = await Promise.all([
-    db.collection("granot_observations").find(observationJobFilter(normalizedJobNo)).toArray(),
-    db.collection("granot_record_links").find(jobFilter).toArray(),
-    db.collection("booked_leads").find(jobFilter).toArray(),
-    db.collection("granot_booking_reconciliation_cases").find(jobFilter).toArray(),
-    db.collection("granot_release_reconciliation_cases").find(jobFilter).toArray(),
-    db.collection("granot_booking_discrepancies").find(jobFilter).toArray(),
-    db.collection("granot_release_discrepancies").find(jobFilter).toArray(),
+    read(db.collection("granot_observations").find(observationJobFilter(normalizedJobNo))),
+    read(db.collection("granot_record_links").find(jobFilter)),
+    read(db.collection("booked_leads").find(jobFilter)),
+    read(db.collection("granot_booking_reconciliation_cases").find(jobFilter)),
+    read(db.collection("granot_release_reconciliation_cases").find(jobFilter)),
+    read(db.collection("granot_booking_discrepancies").find(jobFilter)),
+    read(db.collection("granot_release_discrepancies").find(jobFilter)),
     db.collection(getRingCentralCollectionName("callLogSyncState")).findOne({ key: "account" }),
   ]);
   const observations = asDocumentArray(observationDocs);
@@ -243,10 +266,10 @@ export async function loadJobNumberTimelineRows(
     .filter((id: unknown): id is NonNullable<unknown> => Boolean(id));
   const [decisionDocs, receiptDocRows] = await Promise.all([
     observationIds.length > 0
-      ? db.collection("synchronization_decisions").find({ observation_id: { $in: observationIds } }).toArray()
+      ? read(db.collection("synchronization_decisions").find({ observation_id: { $in: observationIds } }))
       : Promise.resolve([]),
     receiptIds.length > 0
-      ? db.collection("granot_webhook_receipts").find({
+      ? read(db.collection("granot_webhook_receipts").find({
           _id: { $in: receiptIds.map((id: unknown) => asMongoId(asId(id))) },
         } as Document).project({
           captured_at: 1,
@@ -255,7 +278,7 @@ export async function loadJobNumberTimelineRows(
           observation_channel: 1,
           channel_operation_kind: 1,
           "processing.state": 1,
-        }).toArray()
+        }))
       : Promise.resolve([]),
   ]);
   const decisions = asDocumentArray(decisionDocs);
@@ -306,11 +329,11 @@ export async function loadJobNumberTimelineRows(
   const snapshotFilter = equivalentNormalizedJobSnapshotFilter(normalizedJobNo);
   const [linkedCancellations, snapshotCancellations] = await Promise.all([
     bookingIds.length > 0
-      ? db.collection("cancelled_leads").find({
+      ? read(db.collection("cancelled_leads").find({
           booked_lead: { $in: bookingIds.map(asMongoId) },
-        }).toArray()
+        }))
       : Promise.resolve([]),
-    db.collection("cancelled_leads").find(snapshotFilter).toArray(),
+    read(db.collection("cancelled_leads").find(snapshotFilter)),
   ]);
   const cancellationsById = new Map<string, Document>();
   for (const row of [...asDocumentArray(linkedCancellations), ...asDocumentArray(snapshotCancellations)]) {
@@ -396,7 +419,7 @@ export async function loadJobNumberTimelineRows(
         ? { $or: [{ "lead_ref.id": leadDoc._id }, { form_lead: leadDoc._id }] }
         : { "lead_ref.id": leadDoc._id };
       const processedCallQuery = leadRef.model === "CallLead"
-        ? db.collection(getRingCentralCollectionName("processedCalls")).find({
+        ? read(db.collection(getRingCentralCollectionName("processedCalls")).find({
             callLeadId: asId(leadDoc._id),
           }).project({
             status: 1,
@@ -406,24 +429,24 @@ export async function loadJobNumberTimelineRows(
             ingestionSource: 1,
             duplicate: 1,
             callLeadId: 1,
-          }).toArray()
+          }))
         : Promise.resolve([]);
       const wordpressReceiptQuery = leadRef.model === "FormLead"
-        ? db.collection("wordpress_form_submission_receipts").find({
+        ? read(db.collection("wordpress_form_submission_receipts").find({
             "lead_ref.id": leadDoc._id,
           }).project({
             received_at: 1,
             createdAt: 1,
             processing_status: 1,
             "lead_ref.id": 1,
-          }).toArray()
+          }))
         : Promise.resolve([]);
       const [changeDocs, messageDocs, processedCallDocRows, wordpressReceiptDocRows] = await Promise.all([
-        db.collection("entity_changes").find({
+        read(db.collection("entity_changes").find({
           "entity.model": leadRef.model,
           "entity.id": asId(leadDoc._id),
-        }).toArray(),
-        db.collection("lead_messages").find(messageFilter).toArray(),
+        })),
+        read(db.collection("lead_messages").find(messageFilter)),
         processedCallQuery,
         wordpressReceiptQuery,
       ]);
@@ -476,19 +499,19 @@ export async function loadJobNumberTimelineRows(
 
   const bookingChanges = asDocumentArray(
     bookingIds.length > 0
-      ? await db.collection("entity_changes").find({
+      ? await read(db.collection("entity_changes").find({
           "entity.model": "BookedLead",
           "entity.id": { $in: bookingIds },
-        }).toArray()
+        }))
       : [],
   );
   const cancellationIds = mappedCancellations.map((row) => row.id);
   const cancellationChanges = asDocumentArray(
     cancellationIds.length > 0
-      ? await db.collection("entity_changes").find({
+      ? await read(db.collection("entity_changes").find({
           "entity.model": "CancelledLead",
           "entity.id": { $in: cancellationIds },
-        }).toArray()
+        }))
       : [],
   );
   entity_changes = [
@@ -504,7 +527,7 @@ export async function loadJobNumberTimelineRows(
   ];
   const sheetJobs = asDocumentArray(
     entityIds.length > 0
-      ? await db.collection("sheet_sync_jobs").find({ entity_id: { $in: entityIds } }).toArray()
+      ? await read(db.collection("sheet_sync_jobs").find({ entity_id: { $in: entityIds } }))
       : [],
   );
   const mappedSheetJobs: SheetSyncJobRow[] = sheetJobs.map((row) => ({
@@ -526,9 +549,9 @@ export async function loadJobNumberTimelineRows(
     .filter((id: string | undefined): id is string => Boolean(id));
   const crmSources = asDocumentArray(
     sourceIds.length > 0
-      ? await db.collection("granot_crm_sources").find({
+      ? await read(db.collection("granot_crm_sources").find({
           _id: { $in: sourceIds.map(asMongoId) },
-        } as Document).toArray()
+        } as Document))
       : [],
   );
   const mappedSources: CrmSourceRow[] = crmSources.map((row) => {
@@ -548,9 +571,9 @@ export async function loadJobNumberTimelineRows(
   ].filter((id: string | undefined): id is string => Boolean(id));
   const granularities = asDocumentArray(
     granularityIds.length > 0
-      ? await db.collection("lead_source_granularities").find({
+      ? await read(db.collection("lead_source_granularities").find({
           _id: { $in: granularityIds.map(asMongoId) },
-        } as Document).toArray()
+        } as Document))
       : [],
   );
   const mappedGranularities: GranularityRow[] = granularities.map((row) => ({
@@ -583,10 +606,10 @@ export async function loadJobNumberTimelineRows(
   };
 }
 
-export function createMongoEvidenceLoader(input: { db: Db }): JobNumberTimelineEvidenceLoader {
+export function createMongoEvidenceLoader(input: { db: Db } & JobTimelineMongoReadBounds): JobNumberTimelineEvidenceLoader {
   return {
-    loadRows: (normalizedJobNo) => loadJobNumberTimelineRows(input.db, normalizedJobNo),
+    loadRows: (normalizedJobNo) => loadJobNumberTimelineRows(input.db, normalizedJobNo, input),
     loadCompanyGranularityIds: (sourceCompanyId) =>
-      loadCompanyGranularityIds(input.db, sourceCompanyId),
+      loadCompanyGranularityIds(input.db, sourceCompanyId, input),
   };
 }

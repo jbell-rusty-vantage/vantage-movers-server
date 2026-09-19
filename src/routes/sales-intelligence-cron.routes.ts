@@ -12,6 +12,8 @@ import { runDirectorySyncOnce } from "../services/numberActivity/directorySync";
 import { runAttachmentRefreshOnce, drainAttachmentRefreshJobs } from "../services/salesIntelligence/attachment/refresh";
 import { runOutreachEnsureOnce, drainOutreachEnsureJobs } from "../services/salesIntelligence/outreach/worker";
 import { drainRecordingDiscoveryJobs } from "../services/salesIntelligence/conversations/discover";
+import { drainRepIdentityReevaluationJobs } from "../services/salesIntelligence/repIdentity/worker";
+import { drainNudgeRepairJobs } from "../services/salesIntelligence/nudges/repair";
 import { drainMediaFetchJobs } from "../services/salesIntelligence/conversations/media";
 import { drainTranscriptionJobs } from "../services/salesIntelligence/conversations/transcribe";
 import { drainRebuildJobs, type RebuildDrainSummary, type RebuildWorkerDeps } from "../services/numberActivity/rebuild";
@@ -61,9 +63,12 @@ export type SalesIntelligenceCronRouteDeps = {
   drainRecordingDiscovery?: typeof drainRecordingDiscoveryJobs;
   runOutreachEnsure?: typeof runOutreachEnsureOnce;
   drainOutreachEnsure?: typeof drainOutreachEnsureJobs;
+  drainRepIdentity?: typeof drainRepIdentityReevaluationJobs;
+  drainNudgeRepair?: typeof drainNudgeRepairJobs;
 };
 
 export const CSI_CRON_PATHS = {
+  nudgeRepair: "/api/cron/sales-intelligence-nudge-repair",
   callLogReconcile: "/api/cron/sales-intelligence-call-log-reconcile",
   jobRecovery: "/api/cron/sales-intelligence-job-recovery",
   directorySync: "/api/cron/sales-intelligence-directory-sync",
@@ -95,6 +100,8 @@ export function createSalesIntelligenceCronRouter(
   const mediaFetch = deps.runMediaFetch ?? drainMediaFetchJobs;
   const transcribe = deps.runTranscription ?? drainTranscriptionJobs;
   const extraRecovery = deps.extraRecovery ?? [
+    { name: "nudge_repair", flag: "NUDGE_ENABLED" as const, run: () => (deps.drainNudgeRepair ?? drainNudgeRepairJobs)() },
+    { name: "rep_identity_reevaluate", flag: "ENABLED" as const, run: () => (deps.drainRepIdentity ?? drainRepIdentityReevaluationJobs)() },
     { name: "outreach_ensure", flag: "OUTREACH_ENSURE" as const, run: () => (deps.drainOutreachEnsure ?? drainOutreachEnsureJobs)() },
     { name: "attachment_refresh", flag: "ATTACHMENT_REFRESH" as const, run: () => (deps.drainAttachmentRefresh ?? drainAttachmentRefreshJobs)() },
     { name: "recording_discovery", flag: "MEDIA_ENABLED" as const, run: () => (deps.drainRecordingDiscovery ?? drainRecordingDiscoveryJobs)() },
@@ -238,6 +245,11 @@ export function createSalesIntelligenceCronRouter(
     if (!flag("OUTREACH_ENSURE")) return res.json({ ok: true, skipped: true, reason: "disabled" });
     try { await connect(); return res.json({ ok: true, ...(await (deps.runOutreachEnsure ?? runOutreachEnsureOnce)()) }); }
     catch { return res.status(500).json({ ok: false, error: "Outreach ensure failed" }); }
+  });
+  router.all(CSI_CRON_PATHS.nudgeRepair, requireCronAuth, async (_req, res) => {
+    if (!flag("ENABLED") || !flag("NUDGE_ENABLED")) return res.json({ ok: true, skipped: true, reason: "disabled" });
+    try { await connect(); return res.json({ ok: true, summary: await (deps.drainNudgeRepair ?? drainNudgeRepairJobs)() }); }
+    catch { return res.status(500).json({ ok: false, error: "Nudge repair failed" }); }
   });
   return router;
 }

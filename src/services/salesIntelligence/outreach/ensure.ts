@@ -4,7 +4,7 @@ import { getOutreachFollowupModel } from "../../../models/OutreachFollowup";
 import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
 import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getCallInteractionModel } from "../../../models/CallInteraction";
-import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
+import { resolveRepIdentities } from "../repIdentity/resolve";
 import { getSalesIntelligenceAuditEventModel } from "../../../models/SalesIntelligenceAuditEvent";
 import { getSalesIntelligenceOwnerInstructionModel } from "../../../models/SalesIntelligenceOwnerInstruction";
 import { csiFlag } from "../../../config/domain/salesIntelligence";
@@ -54,10 +54,14 @@ export async function interactionAttribution(call: InteractionRow, session: Clie
 }
 /** Read-only consumption of reviewed effective-dated identities; CSI-10 owns their creation/review. */
 export async function mappedSalesReps(call: InteractionRow, session: ClientSession): Promise<string[]> {
+  return (await interactionRepIdentity(call, session)).agent_ids;
+}
+export async function interactionRepIdentity(call: InteractionRow, session: ClientSession) {
   const ids = call.parties.filter(p => p.role === "user" && p.extension_id && p.connected).map(p => p.extension_id!);
-  const rows = await getRepIdentityLinkModel().find({ rc_account_id: call.provider_account_id, rc_extension_id: { $in: ids }, status: "reviewed", role_kind: "sales_rep",
-    effective_from: { $lte: call.started_at }, $or: [{ effective_to: null }, { effective_to: { $gt: call.started_at } }] }).session(session).lean();
-  return [...new Set(rows.map(r => String(r.agent_id)))];
+  const resolved = await resolveRepIdentities(call.provider_account_id, ids, call.started_at, session);
+  // One known participant beside an unknown/conflicting participant is not a reliably identified sole rep.
+  if (resolved.resolutions.some(r => ["unknown", "proposed_only", "conflicting"].includes(r.status))) resolved.agent_ids = [];
+  return resolved;
 }
 export async function ensureInteraction(call: InteractionRow, context: CsiTransactionContext) {
   if (!call.contact_number_id || call.direction === "Internal" || call.monitoring) return null;
@@ -100,8 +104,12 @@ export async function ensureInteraction(call: InteractionRow, context: CsiTransa
   }
   if (!record) return null;
   const recordKey = subjectKey(record.subject);
-  const seen = await getSalesIntelligenceAuditEventModel().exists({ subject_key: recordKey, event_kind: "outreach_call_applied",
+  const repIdentity = await interactionRepIdentity(call, context.session);
+  const previousCall = await getSalesIntelligenceAuditEventModel().exists({ subject_key: recordKey, event_kind: "outreach_call_applied",
     "current.interaction_id": String(call._id), "current.projection_revision": call.projection_revision }).session(context.session);
+  const seen = await getSalesIntelligenceAuditEventModel().exists({ subject_key: recordKey, event_kind: "outreach_call_applied",
+    "current.interaction_id": String(call._id), "current.projection_revision": call.projection_revision,
+    "current.rep_identity_fingerprint": repIdentity.fingerprint }).session(context.session);
   if (record.state === "closed") {
     if (missed && (!record.closed_at || call.started_at > record.closed_at)) await openReview(context, recordKey, "closed_work_request", String(call._id), [String(call._id)]);
     return record;
@@ -112,7 +120,7 @@ export async function ensureInteraction(call: InteractionRow, context: CsiTransa
     await refreshRecord(record, context, "identity_resolved", before);
   }
   if (seen) return record;
-  const prior = record.toObject(), reps = await mappedSalesReps(call, context.session);
+  const prior = record.toObject(), reps = repIdentity.agent_ids;
   const facts = callFacts(record, call, attribution, reps);
   if (!facts.identityAllowed) return record;
   if (facts.outboundAttempt || facts.human) {
@@ -126,7 +134,7 @@ export async function ensureInteraction(call: InteractionRow, context: CsiTransa
       }
     }
   }
-  if (call.contact_type_basis === "owner") {
+  if (call.contact_type_basis === "owner" || previousCall) {
     const calls = await getCallInteractionModel().find({ contact_number_id: call.contact_number_id, merged_into_id: null, started_at: { $gte: record.trigger_at }, contact_type: "human_conversation" }).sort({ started_at: 1 }).session(context.session).lean();
     const humanDates: Date[] = [];
     for (const candidate of calls) if (callFacts(record, candidate, await interactionAttribution(candidate, context.session), await mappedSalesReps(candidate, context.session)).human) humanDates.push(candidate.started_at);
@@ -149,7 +157,8 @@ export async function ensureInteraction(call: InteractionRow, context: CsiTransa
   }
   if (waits.length > 1) await openReview(context, recordKey, "completion_target", `wait:${call._id}`, [String(call._id)]);
   if (callbacks.length > 1) await openReview(context, recordKey, "completion_target", `callback:${call._id}`, [String(call._id)]);
-  if (missed && call.inbound_route_id) {
+  // Identity-only replay can fulfill still-open work, but cannot recreate an already applied missed-call episode.
+  if (missed && call.inbound_route_id && !previousCall) {
     const episodeKey = numberId;
     let episode = actions.find(a => a.status === "open" && a.missed_episode_key === episodeKey);
     const before = episode?.toObject() ?? null;
@@ -180,7 +189,8 @@ export async function ensureInteraction(call: InteractionRow, context: CsiTransa
   await refreshRecord(record, context, "outreach_interaction", prior);
   await appendCsiAudit(context, { kind: "interaction", subject_key: recordKey, target_id: String(call._id), revision: call.projection_revision,
     happened_at: call.started_at,
-    event_kind: "outreach_call_applied", prior: {}, current: { interaction_id: String(call._id), projection_revision: call.projection_revision, happened_at: call.started_at.toISOString(), ...facts } });
+    event_kind: "outreach_call_applied", prior: {}, current: { interaction_id: String(call._id), projection_revision: call.projection_revision,
+      rep_identity_fingerprint: repIdentity.fingerprint, happened_at: call.started_at.toISOString(), ...facts } });
   return record;
 }
 /** Same-transaction reaction to CSI-05. Recheck official closure BEFORE identity state restoration. */

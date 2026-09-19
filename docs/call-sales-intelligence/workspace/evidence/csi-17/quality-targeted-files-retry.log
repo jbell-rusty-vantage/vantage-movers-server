@@ -1,0 +1,25 @@
+﹣ [AC-31][AC-35][AC-37][AC-38] replica health counts come from Mongo and do not mutate official facts (1.0165ms) # Replica-set proof is opt-in via GRANOT_LIFECYCLE_REPLICA_TESTS=true.
+✔ channel filter excludes browser_extension and granot_http_automation receipts (11.3079ms)
+✔ ref_no hits an Observation, a pending receipt fallback, and misses others (2.955ms)
+✔ job_no hits an Observation, a pending receipt fallback, and misses others (1.2376ms)
+✔ name hits an Observation, a pending receipt fallback, and misses others (1.3963ms)
+✔ phone hits an Observation, a pending receipt fallback, and misses others (1.3115ms)
+✔ email hits an Observation, a pending receipt fallback, and misses others (1.1056ms)
+✔ source_company_id and booking_action ignore pending receipts (1.4051ms)
+✔ booking_action booked and release are distinct (1.1568ms)
+✔ payload event_type cannot reroute route_event_class (0.8177ms)
+✔ lead_created and priority_updated never return a booking action on the DTO (0.8975ms)
+✔ Owner list returns unmasked contact and credential-redacted granot_statement (0.7412ms)
+✔ pending receipt and empty Observation phone or email fill from the redacted payload (0.4766ms)
+✔ cursor page is stable newest-first (2.088ms)
+✔ intake_case_id joins the booking case by Job Number, including lead_created (0.4514ms)
+✔ empty find lists newest webhook receipts first (0.4333ms)
+✔ opaque cursor encoder matches the case-list keyset shape (0.3076ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 4961.6736

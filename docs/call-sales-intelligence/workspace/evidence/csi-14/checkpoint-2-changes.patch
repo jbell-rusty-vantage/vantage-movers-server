@@ -1,0 +1,44 @@
+diff --git a/docs/knowledge/services/sales-intelligence-nudges.md b/docs/knowledge/services/sales-intelligence-nudges.md
+index ac1e22b..3e7fbaf 100644
+--- a/docs/knowledge/services/sales-intelligence-nudges.md
++++ b/docs/knowledge/services/sales-intelligence-nudges.md
+@@ -22,7 +22,7 @@ Templates are server-owned version 1, keyed by purpose. Names are first name plu
+ 
+ Provider submissions use native, bounded, single-attempt HTTP with no 401 POST replay. JWT owner and account are verified; Direct resolution also verifies the JWT Team Messaging person. The pager fallback requires explicit `allow_pager_fallback`, configured/allowed pager, and a definitive chat-creation rejection before submission. A mismatched recipient, timeout, or uncertain submission never falls back.
+ 
+-Only the fresh invocation may submit; replay returns the same operation and current status. Receipt ID persistence precedes terminal status/audit. A timeout or missing durable evidence yields `unknown_delivery`, not a retry. Exact receipt reads may establish provider acceptance, never customer work. No exactly-once provider guarantee is claimed.
++Only the fresh invocation may submit; replay returns the same operation and current status. Receipt ID persistence precedes terminal status/audit. A timeout or missing durable evidence yields `unknown_delivery`, not a retry. Exact receipt reads may establish provider acceptance, never customer work: Team Messaging repair also requires the returned Direct-chat ID to equal the persisted requested chat ID, as well as the reviewed two-person membership and message sender/ID. No exactly-once provider guarantee is claimed.
+ 
+ `repair.ts` is reachable through authenticated `/api/cron/sales-intelligence-nudge-repair` every five minutes, generic recovery, and the existing queue's `nudge_repair` dispatch. It examines pending rows older than two minutes, recovers up to 25 orphan/exhausted intents, and drains at most five jobs per invocation with a 30-second loop deadline and 60-second fenced worker leases. It never calls the send command. Before-submission crashes become failed; a submission boundary without an unambiguous receipt becomes unknown. Receipt reads denied/unavailable or credentials changed also become unknown. Unknown is terminal and never automatically resent. Master/nudge flags off preserve pending work and skip repair; re-enablement reconciles only.
+ 
+diff --git a/src/services/salesIntelligence/nudges/adapters.ts b/src/services/salesIntelligence/nudges/adapters.ts
+index b0ebb7a..20a95c3 100644
+--- a/src/services/salesIntelligence/nudges/adapters.ts
++++ b/src/services/salesIntelligence/nudges/adapters.ts
+@@ -70,7 +70,7 @@ export function createNudgeAdapter(transport: Transport = singleAttemptTransport
+       if (input.channel === "team_messaging") {
+         const chat = await transport("GET", `/team-messaging/v1/chats/${encodeURIComponent(input.destination)}`);
+         const parsedChat = z.object({ id, type: z.literal("Direct"), members: z.array(z.union([id, z.object({ id }).transform(v => v.id)])) }).safeParse(chat.value);
+-        if (chat.status !== 200 || !parsedChat.success) return false;
++        if (chat.status !== 200 || !parsedChat.success || parsedChat.data.id !== input.destination) return false;
+         try { assertDirectChat(parsedChat.data, input); } catch { return false; }
+         const post = z.object({ id, creatorId: id }).safeParse(result.value);
+         return post.success && post.data.id === input.messageId && post.data.creatorId === input.senderPerson;
+diff --git a/src/services/salesIntelligence/nudges/nudges.test.ts b/src/services/salesIntelligence/nudges/nudges.test.ts
+index 1d2bf03..e98453a 100644
+--- a/src/services/salesIntelligence/nudges/nudges.test.ts
++++ b/src/services/salesIntelligence/nudges/nudges.test.ts
+@@ -47,6 +47,13 @@ test("repair receipt requires exact ID, sender and Direct membership, not matchi
+   assert.equal(await adapter({id:"exact",creatorId:"other"}).receipt(input),false);
+   assert.equal(await adapter({id:"exact",creatorId:"person100"}).receipt(input),true);
+ });
++test("repair receipt rejects a Direct chat response for a different chat ID", async () => {
++  const input={...recipient,channel:"team_messaging" as const,destination:"expected-chat",body:"same body",messageId:"exact"};
++  const adapter=createNudgeAdapter(async(_method,path)=>({ status:200, value:path.endsWith("/posts/exact")
++    ? {id:"exact",creatorId:"person100"}
++    : {id:"other-chat",type:"Direct",members:["person100","person101"]} }));
++  assert.equal(await adapter.receipt(input),false);
++});
+ test("body/customer destination policy handles canonical, formatted and full-width representations", () => {
+   for(const value of ["+12025550101","2025550101","(202) 555-0101","２０２５５５０１０１","202.555.0101"])
+     assert.throws(()=>validateNudgeBody(`Review ${value}`,["+12025550101"]),/NUDGE_BODY_INVALID/);

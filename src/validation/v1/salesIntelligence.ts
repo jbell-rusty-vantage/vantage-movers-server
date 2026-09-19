@@ -291,6 +291,7 @@ export const csiRepInputSchema = z
     agent_id: csiIdSchema,
     rc_account_id: csiTextSchema,
     rc_extension_id: csiTextSchema,
+    rc_team_messaging_person_id: z.string().regex(/^\d{1,30}$/).nullable().optional(),
     role_kind: z.enum([
       "sales_rep",
       "service",
@@ -306,7 +307,7 @@ export const csiRepInputSchema = z
     ),
   })
   .strict()
-  .refine((v) => v.effective_to === null || v.effective_to > v.effective_from);
+  .refine((v) => v.effective_to === null || new Date(v.effective_to) > new Date(v.effective_from));
 export const csiRepCommandSchema = z
   .object({
     ...base,
@@ -315,6 +316,11 @@ export const csiRepCommandSchema = z
     ...reason,
   })
   .strict();
+export const csiRepCreateSchema = z.object({ ...base, link: csiRepInputSchema, ...reason }).strict();
+export const csiRepProposeSchema = z.object({
+  ...base, rc_account_id: csiTextSchema, directory_snapshot_id: csiIdSchema,
+  after_extension_id: csiTextSchema.optional(), limit: z.number().int().min(1).max(100).default(50), ...reason,
+}).strict();
 export const csiNudgeInputSchema = z
   .object({
     outreach_record_id: csiIdSchema,
@@ -323,6 +329,8 @@ export const csiNudgeInputSchema = z
     template_key: csiTextSchema,
     template_version: csiRevisionSchema,
     purpose: z.enum(["call_suggestion", "review_context"]),
+    followup_id: csiIdSchema.optional(),
+    allow_pager_fallback: z.boolean().default(false),
     body: z.string().trim().min(1).max(1000).optional(),
   })
   .strict();

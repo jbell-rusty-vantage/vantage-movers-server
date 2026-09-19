@@ -15,6 +15,7 @@ import { resolvePolicy } from "../policy";
 import { derive, attentionDue } from "./derive";
 import { stateWithActions } from "./transitions";
 import { subjectKey, type RecordRow, type FollowupRow } from "./types";
+import { nudgeHistoryPage } from "../nudges/reads";
 
 const iso = (value: Date | null | undefined) => value?.toISOString() ?? null;
 export async function toOutreachDto(record: RecordRow, now = new Date(), coverage?: CoverageDto) {
@@ -61,7 +62,8 @@ export async function readOutreach(id: string) {
   if (!record) return null;
   const now = new Date(), coverage = await readCaptureCoverage();
   const instructions = await getSalesIntelligenceOwnerInstructionModel().find({ subject_key: subjectKey(record.subject) }).sort({ happened_at: 1 }).lean();
-  return { as_of: now.toISOString(), coverage, data: { outreach: await toOutreachDto(record, now, coverage), owner_instructions: instructions } };
+  return { as_of: now.toISOString(), coverage, data: { outreach: await toOutreachDto(record, now, coverage), owner_instructions: instructions,
+    nudges: await nudgeHistoryPage({ outreach_record_id: id, limit: 20 }) } };
 }
 export async function readOutreachByLead(model: "FormLead" | "CallLead", id: string) {
   const row = await getOutreachRecordModel().findOne({ "subject.model": model, "subject.id": id }).lean();

@@ -4,6 +4,8 @@ Status: build contract, not implemented. Revised September 17, 2026. Pack index:
 
 ## 0. Module map (`vantage-main-server`)
 
+CSI-10 adds `repIdentity/{propose,commands,resolve,reads,scheduling,worker}.ts`. Review/retirement atomically schedules `rep_identity_reevaluate`; existing queue dispatch and minute job recovery register its bounded drain under ENABLED. Each page scans at most 25 event-time/id ordered interactions, queues existing Outreach/discovery stages, and makes deferred stored-media eligibility due for CSI-12's scheduler. No provider work or new STT/state engine is introduced. Consumers retain their individual flags. Job continuation commits with page effects under the shared lease fence.
+
 ```
 src/config/domain/salesIntelligence.ts        flags, enums, policy defaults, model allowlist, budgets
 src/models/                                   ContactNumber, CallInteraction, NumberLeadAttachment, OutreachRecord,
@@ -247,6 +249,8 @@ An Owner note is context only. Explicit commands set dates, assign, mark worked,
 
 ## 8. Owner Rep Nudge (`nudges/*`)
 
+Implemented CSI-14 contract: [imports/DTOs/configuration](workspace/evidence/csi-14/API-CONTRACT.md), [Service](../knowledge/services/sales-intelligence-nudges.md). The runtime uses one durable Owner intent, an explicit submission boundary, single-attempt POST, and a repair-only `nudge_repair` stage. Exact scoped receipt reads replace any body/time matching. The five-minute authenticated cron, queue dispatch and generic recovery are registered; unknown delivery never resends. The live proof below remains separately gated and was not performed by implementation tests.
+
 ### 8.1 Preconditions (`preview.ts`, also enforced in `send.ts`)
 
 1. `SALES_INTELLIGENCE_NUDGE_ENABLED` and channel ∈ `NUDGE_CHANNELS` ∩ `link.nudge_channels_allowed`.
@@ -271,7 +275,7 @@ Open in Vantage: {{admin_url}}/sales-intelligence?record={{outreach_record_id}}
 
 ### 8.3 Send (`send.ts`) and provider adapters
 
-Order: insert `OwnerRepNudge{ status: pending }` (unique idempotency) → provider call → update status. A crash between insert and update leaves `pending`; the cron `/api/cron/sales-intelligence-nudge-repair` (every 5 min) resolves `pending` older than 2 min by checking the provider (Team Messaging posts list by chat since `createdAt`) or marking `unknown_delivery`. Reconciliation must match a provider message id or another unambiguous receipt; similar body/time alone is not proof. Unknown delivery never triggers automatic resend or fallback.
+Order: insert `OwnerRepNudge{ status: pending }` (unique idempotency) → durable submission boundary → provider call → persist exact receipt → update status/audit. A crash between insert and update leaves `pending`; the cron `/api/cron/sales-intelligence-nudge-repair` (every 5 min) resolves `pending` older than 2 min using the stored message ID and scoped provider receipt, or records `unknown_delivery`. Team Messaging repair reads the exact post and Direct chat, verifying the returned chat ID, members, sender and message ID. It never scans similar body/time as proof. A record without a submission boundary fails as not submitted. Unknown delivery never triggers automatic resend or fallback.
 
 | Channel | Adapter | Endpoint |
 | --- | --- | --- |

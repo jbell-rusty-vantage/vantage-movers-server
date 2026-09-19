@@ -1,0 +1,39 @@
+✔ CSI route templates expand only the closed run paths and methods (2.3872ms)
+✔ Owner analysis commands bind exact output and source evidence (5.6031ms)
+✔ published DTO fixtures preserve undated and review-only rows and unknown coverage (1.4765ms)
+✔ accepted policy defaults and invalid schedules (26.5071ms)
+✔ strict commands allow undated independent actions and reject operational injection (16.6583ms)
+✔ Grok review: empty channels/evidence and duplicate assessment are rejected; no locator gate (7.6196ms)
+✔ all CSI model accessors honor isolated database routing without suffix collections (22.8692ms)
+✔ signed run token requires scoped principal, live run, dataset, nonce, expiry, subject and tool (5.5033ms)
+✔ single-attempt adapter never retries a non-idempotent submission, including 401/429/timeout (3.5998ms)
+✔ Direct chat must have exactly the two reviewed people; supports provider member objects (10.2765ms)
+✔ SMS and pager use JWT sender and correct endpoint contract (1.8242ms)
+✔ repair receipt requires exact ID, sender and Direct membership, not matching text/time (2.3015ms)
+✔ repair receipt rejects a Direct chat response for a different chat ID (0.8538ms)
+✔ body/customer destination policy handles canonical, formatted and full-width representations (1.0746ms)
+✔ versioned templates limit customer identity; purpose/version/client chat are strict (2.0295ms)
+✔ optional channels default off (0.8145ms)
+✔ documented nudge controls take precedence; aliases cannot widen an explicit channel allowlist (1.295ms)
+✔ nudge routes enforce signed Owner, feature, strict input, idempotency; GET never dispatches (486.4593ms)
+✔ repair cron is authenticated, disabled without DB, registered every five minutes (29.1586ms)
+✔ 30/15/1440 clocks, Friday close, Sunday, DST and independent weekly calendar (22.3642ms)
+✔ day-only waits end at close; Attention next opening; explicit Sunday honoured; ambiguity undated (12.5924ms)
+✔ all three actions including undated; snooze preserves contractual overdue and other reasons (28.9339ms)
+✔ inbound human versus missed/provider connected; attempts fulfill callback only and retain outcome (7.9306ms)
+✔ wait coexistence, official closure precedence, planning denies stale and Owner effects (3.5517ms)
+✔ worker, cron and recovery registrations exist without enabling production flags (1.4687ms)
+✔ exact names remain proposed; alias ties, duplicate names, missing names and non-Users remain explicit (5.5365ms)
+✔ account scope, half-open reassignment, retirement and review authority (1.5953ms)
+✔ period validation compares instants and rejects unknown input keys (4.3488ms)
+✔ registered identity worker is a flag-off no-op (1.4722ms)
+✔ all five Rep routes enforce Owner, strict contracts, scope, flags and idempotency header (580.0826ms)
+✔ minute recovery invokes registered bounded rep stage, honors flag and cron authentication (29.6172ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13355.8654

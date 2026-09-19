@@ -1,0 +1,62 @@
+
+> vantage_movers_server@1.0.0 test:csi:nudges:replica C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> node --import tsx scripts/test-csi-nudges.ts
+
+CSI-14 isolated replica proof: testvantagemovers_csi14dcbe83f45bf3; loopback csi01:27189; fake providers only; no .env
+{"level":"info","time":"2026-09-18T22:17:09.247Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-14 disposable replica; no providers
+  ✔ preview masks, permits future work, and performs no mutations; GET is pure (186.6601ms)
+  ✔ Owner-only, flags, strict schema, idempotency and revisions (61.1291ms)
+  ✖ proposal/name, retired, future, finite, wrong-account and non-sales links fail (248.8475ms)
+{"level":"info","time":"2026-09-18T22:17:12.204Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.nudge.sent","observability_level":"info","category":"admin","workflow":"sales_intelligence","entity_id":"6aadb868b1acd248ca11ee4b"}
+  ✔ same concurrent command produces one submission and accurate audit, unchanged work (236.2277ms)
+{"level":"error","time":"2026-09-18T22:17:12.405Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.nudge.failed","observability_level":"error","category":"admin","workflow":"sales_intelligence","entity_id":"6aadb868b1acd248ca11ee56"}
+  ✔ identity retirement after preview and during chat resolution never submits (193.802ms)
+  ✔ closed cannot send; restriction permits review context but blocks call suggestions (130.2422ms)
+  ✔ snoozed call is suppressed, independent unsnoozed call remains eligible (169.6536ms)
+{"level":"error","time":"2026-09-18T22:17:12.788Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.nudge.destination_rejected","observability_level":"error","category":"admin","workflow":"sales_intelligence","entity_id":"6aadb868b1acd248ca11ee68"}
+{"level":"error","time":"2026-09-18T22:17:12.834Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.nudge.destination_rejected","observability_level":"error","category":"admin","workflow":"sales_intelligence","entity_id":"6aadb868b1acd248ca11ee68"}
+{"level":"error","time":"2026-09-18T22:17:12.862Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.nudge.destination_rejected","observability_level":"error","category":"admin","workflow":"sales_intelligence","entity_id":"6aadb868b1acd248ca11ee68"}
+  ✔ destination guards Contact Number, Lead snapshots and Lead Message to; missing evidence blocks (185.5173ms)
+{"level":"info","time":"2026-09-18T22:17:13.131Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.nudge.sent","observability_level":"info","category":"admin","workflow":"sales_intelligence","entity_id":"6aadb869b1acd248ca11ee70"}
+  ✔ owner body rejects full formatted customer numbers and bad templates (227.8417ms)
+{"level":"error","time":"2026-09-18T22:17:13.253Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.nudge.failed","observability_level":"error","category":"admin","workflow":"sales_intelligence","entity_id":"6aadb869b1acd248ca11ee79"}
+{"level":"info","time":"2026-09-18T22:17:13.393Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.nudge.fallback_sent","observability_level":"info","category":"admin","workflow":"sales_intelligence","entity_id":"6aadb869b1acd248ca11ee80"}
+{"level":"error","time":"2026-09-18T22:17:13.535Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.nudge.unknown_delivery","observability_level":"error","category":"admin","workflow":"sales_intelligence","entity_id":"6aadb869b1acd248ca11ee86"}
+  ✔ direct chat mismatch fails; optional channels default off; fallback only definitive chat failure (404.3322ms)
+{"level":"error","time":"2026-09-18T22:17:13.707Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.nudge.unknown_delivery","observability_level":"error","category":"admin","workflow":"sales_intelligence","entity_id":"6aadb869b1acd248ca11ee8f"}
+  ✔ pending command replay does not submit; provider acceptance timeout is not retry permission (186.0434ms)
+{"level":"info","time":"2026-09-18T22:17:13.924Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.nudge.sent","observability_level":"info","category":"admin","workflow":"sales_intelligence","entity_id":"6aadb869b1acd248ca11ee9c"}
+  ✔ per-link rolling limit reserves concurrent pending/failed/unknown attempts (201.5299ms)
+{"level":"info","time":"2026-09-18T22:17:14.095Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.nudge.sent","observability_level":"info","category":"admin","workflow":"sales_intelligence","entity_id":"6aadb869b1acd248ca11eea5"}
+{"level":"error","time":"2026-09-18T22:17:14.142Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.nudge.failed","observability_level":"error","category":"admin","workflow":"sales_intelligence","entity_id":"6aadb86ab1acd248ca11eea9"}
+{"level":"error","time":"2026-09-18T22:17:14.203Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.nudge.unknown_delivery","observability_level":"error","category":"admin","workflow":"sales_intelligence","entity_id":"6aadb86ab1acd248ca11eeab"}
+{"level":"info","time":"2026-09-18T22:17:14.265Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.nudge.sent","observability_level":"info","category":"admin","workflow":"sales_intelligence","entity_id":"6aadb86ab1acd248ca11eead"}
+{"level":"error","time":"2026-09-18T22:17:14.327Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.nudge.unknown_delivery","observability_level":"error","category":"admin","workflow":"sales_intelligence","entity_id":"6aadb86ab1acd248ca11eeaf"}
+{"level":"info","time":"2026-09-18T22:17:14.419Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.nudge.sent","observability_level":"info","category":"admin","workflow":"sales_intelligence","entity_id":"6aadb86ab1acd248ca11eeb1"}
+  ✔ repair crash windows, exact receipt only, duplicate repair and expired worker lease (501.7788ms)
+✖ CSI-14 disposable replica; no providers (5317.956ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 12
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9852.69
+
+✖ failing tests:
+
+test at scripts\test-csi-nudges.replica.test.ts:2:9042
+✖ proposal/name, retired, future, finite, wrong-account and non-sales links fail (248.8475ms)
+  Error: CSI evidence is append-only
+      at model.Query.<anonymous> (C:\Users\Pinda\Proyectos\vantage\vantage-main-server\src\models\salesIntelligence\common.ts:169:15)
+      at Kareem.execPre (C:\Users\Pinda\Proyectos\vantage\vantage-main-server\node_modules\.pnpm\kareem@3.3.0\node_modules\kareem\index.js:59:39)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async model.Query.exec (C:\Users\Pinda\Proyectos\vantage\vantage-main-server\node_modules\.pnpm\mongoose@9.6.2_@aws-sdk+cre_52151edc34d9a9f7ceb6301eec75e8f2\node_modules\mongoose\lib\query.js:4796:5)
+      at async TestContext.<anonymous> (C:\Users\Pinda\Proyectos\vantage\vantage-main-server\scripts\test-csi-nudges.replica.test.ts:95:7)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async TestContext.<anonymous> (C:\Users\Pinda\Proyectos\vantage\vantage-main-server\scripts\test-csi-nudges.replica.test.ts:88:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+ ELIFECYCLE  Command failed with exit code 1.

@@ -1,0 +1,25 @@
+Command: node --import tsx scripts/test-csi-intelligence-reads.ts
+Working directory: C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+Exit code: 0
+Output captured from the completed tool session (17600), joined across output chunks:
+
+CSI-17 reads isolated replica proof: testvantagemovers_csi17reads68c8e9176da2; loopback replica csi01 on port 27189
+{"level":"info","time":"2026-09-19T03:01:37.399Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-17 bounded reads on disposable synthetic replica
+  ✔ relevant candidates paginate; arbitrary Lead/Booking IDs never authorize reads (346.4913ms)
+  ✔ immutable pinned transcript pages retain missing ranges and null timing (712.203ms)
+  ✔ merged Lead pagination retains equal ObjectIds in different collections (157.5928ms)
+  ✔ cancellations use scoped Booking and surviving Lead snapshots with pagination (251.2814ms)
+  ✔ historical reviewed retirement resolves; proposals/conflicts/unknown fail closed (230.8097ms)
+  ✔ Owner precedence and restriction context are scoped and redacted (168.3646ms)
+  ✔ conversation runs admit only persisted same-number Outreach and its Owner instructions (510.6815ms)
+  ✔ official activity timeline projects canonical scoped records without refresh (992.5197ms)
+✔ CSI-17 bounded reads on disposable synthetic replica (81203.2963ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 126097.8029

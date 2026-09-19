@@ -49,6 +49,8 @@ export const SalesIntelligenceJobSchema = new Schema(
     next_attempt_at: at,
     lease_owner: text,
     lease_epoch: count,
+    // CSI-17 transaction fence serializes evidence/submission with lease revocation.
+    evidence_fence: count,
     leased_until: date,
     reason: text,
     result_ref: ref,
@@ -63,6 +65,10 @@ export const SalesIntelligenceJobSchema = new Schema(
     },
     completed_at: date,
     input_refs: refs,
+    rep_identity_window: {
+      type: new Schema({ account: str, extension: str, from: str, through: str, change_id: str, after: text, after_at: text }, { _id: false, strict: "throw" }),
+      default: null,
+    },
   },
   { collection: "sales_intelligence_jobs" },
 );
@@ -101,6 +107,7 @@ export const SalesIntelligenceAuditEventSchema = new Schema(
             "analysis",
             "restriction",
             "rep",
+            "nudge",
             "interaction", // CSI-02 additive: Call Interaction projection invalidation (03 §10 `interaction` event)
             "job", // CSI-03 additive: durable job completion summary (capture projection, rebuild)
           ]),

@@ -17,6 +17,7 @@ export type JobInput = {
   input_revision: number;
   input_refs?: string[];
   priority?: number;
+  rep_identity_window?: { account: string; extension: string; from: string; through: string; change_id: string; after: string | null; after_at: string | null };
 };
 export type JobLease = { job_id: string; owner: string; epoch: number };
 export async function enqueueCsiJob(
@@ -34,6 +35,7 @@ export async function enqueueCsiJob(
     subject_key: input.subject_key,
     input_revision: input.input_revision,
     input_refs: input.input_refs ?? [],
+    ...(input.rep_identity_window ? { rep_identity_window: input.rep_identity_window } : {}),
   });
   const row = await Model.findOneAndUpdate(
     { dedupe_key: input.dedupe_key },

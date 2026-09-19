@@ -4,7 +4,7 @@ import { CallInteractionSchema } from "../../../models/CallInteraction";
 import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
-import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
+import { resolveRepIdentities } from "../repIdentity/resolve";
 import { getFormLeadModel } from "../../../models/FormLead";
 import { getCallLeadModel } from "../../../models/CallLead";
 import { assertTrustedActor, type CsiActor } from "../auth";
@@ -99,11 +99,7 @@ export async function loadEligibilityInputs(interaction: CurrentInteraction, ses
   }).session(session) : null;
   const extensions = interaction.parties.filter(p => p.direction === "Outbound" && ["user", "unknown"].includes(p.role))
     .map(p => p.extension_id).filter((id): id is string => Boolean(id));
-  const links = interaction.direction === "Outbound" ? await getRepIdentityLinkModel().find({
-    rc_account_id: interaction.provider_account_id, rc_extension_id: { $in: extensions },
-    status: "reviewed", role_kind: "sales_rep", effective_from: { $lte: interaction.started_at },
-    $or: [{ effective_to: null }, { effective_to: { $gt: interaction.started_at } }],
-  }).session(session).lean() : [];
+  const links = interaction.direction === "Outbound" ? (await resolveRepIdentities(interaction.provider_account_id, extensions, interaction.started_at, session)).agent_ids : [];
   if (interaction.direction === "Outbound" && !links.length) missingInputs.push("csi10_reviewed_rep_mapping");
   return {
     direction: interaction.direction,

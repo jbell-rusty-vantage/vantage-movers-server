@@ -167,6 +167,7 @@ export async function appendCsiAudit(
       | "analysis"
       | "restriction"
       | "rep"
+      | "nudge"
       | "interaction"
       | "job";
   },

@@ -1,0 +1,54 @@
+# CSI-10 changed files
+
+Baseline: `3355c6dcf68ed2c092824dc1dbb87c71a3f0c343`; repository `vantage-main-server`; branch `sales-intelligence`; dashboard untouched.
+
+- `docs/call-sales-intelligence/02-domain-models.md`
+- `docs/call-sales-intelligence/03-server-pipeline-and-jobs.md`
+- `docs/call-sales-intelligence/04-server-routes.md`
+- `docs/call-sales-intelligence/workspace/CONTRACTS.md`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/.gitignore`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/checkpoint-cleanup.md`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/checkpoint-final-review.md`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/checkpoint-initial-review.md`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/checkpoint-report.json`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/checkpoint.log`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/CHECKS.md`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/FILES.md`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/focused.log`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/foundation-regression.log`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/HANDOFF.md`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/lint.log`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/media-regression.log`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/offline.log`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/outreach-regression.log`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/reads-regression.log`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/replica.log`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/REQUESTS.md`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/REVIEW.md`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/transcription-regression.log`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10/typecheck.log`
+- `docs/call-sales-intelligence/workspace/LEDGER.md`
+- `docs/call-sales-intelligence/workspace/teams/c-outreach.md`
+- `docs/index.md`
+- `docs/knowledge/services/sales-intelligence-outreach.md`
+- `docs/knowledge/services/sales-intelligence-rep-identity.md`
+- `package.json`
+- `scripts/test-csi-rep-identity.replica.test.ts`
+- `scripts/test-csi-rep-identity.ts`
+- `src/config/domain/salesIntelligence.ts`
+- `src/models/salesIntelligence/infrastructure.ts`
+- `src/routes/sales-intelligence-admin.routes.ts`
+- `src/routes/sales-intelligence-cron.routes.ts`
+- `src/services/numberActivity/jobDispatch.ts`
+- `src/services/salesIntelligence/conversations/eligibility.ts`
+- `src/services/salesIntelligence/jobs.ts`
+- `src/services/salesIntelligence/outreach/ensure.ts`
+- `src/services/salesIntelligence/repIdentity/commands.ts`
+- `src/services/salesIntelligence/repIdentity/identity.test.ts`
+- `src/services/salesIntelligence/repIdentity/propose.ts`
+- `src/services/salesIntelligence/repIdentity/reads.ts`
+- `src/services/salesIntelligence/repIdentity/resolve.ts`
+- `src/services/salesIntelligence/repIdentity/routes.test.ts`
+- `src/services/salesIntelligence/repIdentity/scheduling.ts`
+- `src/services/salesIntelligence/repIdentity/worker.ts`
+- `src/validation/v1/salesIntelligence.ts`

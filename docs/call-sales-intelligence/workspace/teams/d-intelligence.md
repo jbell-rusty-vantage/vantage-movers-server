@@ -4,6 +4,8 @@ Own CSI-17/13 and server CSI-18. Work spans `vantage-movers-mcp` and `vantage-ma
 
 ## Deliver
 
+CSI-17 implementation is present on both local `sales-intelligence` branches: dedicated twelve-tool MCP surface (including Owner additions), strict captured reads, exact pinned prompt/schema and atomic one-submission intake with a paused application job. [API contract](../evidence/csi-17/API-CONTRACT.md), [handoff](../evidence/csi-17/HANDOFF.md), [checks](../evidence/csi-17/CHECKS.md). CSI-13 model invocation/scheduling/application and CSI-18 corrections remain separate. No live model/provider proof, deployment or send is included. The proof requests below covering model quality/effects belong to those downstream issues, not CSI-17.
+
 1. Run-scoped service credentials enforced by MCP and main-server internal endpoints. Extend MCP with scoped Lead/Booking/call/activity/rep reads, versioned prompt/schema and one submission tool. Do not expose its existing Lead mutation/general Mongo tools to this agent.
 2. AI SDK ToolLoopAgent with Gateway provider, bounded tool loop, pinned prompt, exact redacted context snapshots and strict envelope. Verify installed API/model capabilities; no filesystem/Eve runtime and no mandatory exact-locator/entailment gate.
 3. Durable run/submission/application protocol: capture evidence and output, idempotent submit, stable cross-run obligations, current-state revalidation, per-effect results, current number analysis and relevant-context refresh. Use C's rules rather than duplicating them in MCP.

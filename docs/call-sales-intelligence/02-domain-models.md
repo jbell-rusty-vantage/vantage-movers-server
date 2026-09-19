@@ -1,5 +1,7 @@
 # 02 — Domain models
 
+CSI-14 implementation addendum (September 18): the existing OwnerRepNudge collection/indexes now carry revision, durable Owner command ID/payload, submission deadline/boundary, account/sender/recipient snapshots and a separately persisted exact provider receipt. No second nudge collection is introduced. All persisted states reserve the per-link rolling-hour limit. See [runtime Service](../knowledge/services/sales-intelligence-nudges.md) and [concrete contract](workspace/evidence/csi-14/API-CONTRACT.md).
+
 Status: build contract, not implemented. Revised September 17, 2026. Pack index: [`README.md`](README.md). Rules: [`01-specification.md`](01-specification.md).
 
 CSI-06 additive schema coordination (September 18): `OutreachFollowup.source_interaction_id` and `SalesIntelligenceContactRestriction.source_interaction_id` are nullable immutable ObjectId references. `OutreachFollowup.source_due_at` retains the original nullable source date independently of Owner rescheduling. These retain the source commitment/restriction independently of later completion evidence or Owner resolution, preventing cross-run replay from recreating fulfilled/corrected work while preserving separately dated actions. Existing indexes remain sufficient because writes serialize through the Outreach aggregate and Contact Number; no new migration/index is introduced. Default-deadline policy versions remain in each action's `date_resolution.policy_version`.
@@ -371,6 +373,8 @@ Separate `review_state: unreviewed|confirmed|corrected|retracted` from `supersed
 Effects live in `intelligence_effects`, with zero or multiple rows per finding. Confirmation never reapplies them. Corrections are Owner commands that synchronously revise/retract targeted effects, then schedule analysis. Persist model assessments against exact Owner instruction id/revision; missing assessment renders Cannot determine. Newly generated findings never inherit old confirmation automatically.
 
 ## 8. `RepIdentityLink` — `rep_identity_links`
+
+CSI-10 implementation: intervals are `[effective_from,effective_to)`. A reviewed retired row retains historical authority only with review metadata and a finite end; an unreviewed retired proposal has none. Owner review changes create successor rows and atomically close predecessors. Existing account/extension current uniqueness remains; finite historical overlaps are additionally rejected under a transactional extension-specific SyncState write fence. No new identity collection/index is introduced. Existing CSI jobs gain nullable typed `rep_identity_window` metadata for bounded consumer recovery; ObjectId `input_refs` are unchanged. See [Service](../knowledge/services/sales-intelligence-rep-identity.md).
 
 ```ts
 export const REP_IDENTITY_LINK_INDEXES = [

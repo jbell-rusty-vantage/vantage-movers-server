@@ -128,6 +128,8 @@ Golden pages for Admin fixtures live in `golden-pages.ts` (`GOLDEN_EXPECTATIONS`
 
 ### Loader
 
+CSI-17's scoped intelligence consumer opts into `createMongoEvidenceLoader({ db, maxRowsPerQuery: 200 })`. Every Mongo `find` cursor, including initial Job Number lookup and downstream decisions, receipts, changes, messages, Sheet Sync and catalog joins, fetches at most 201 rows with a five-second query limit. The extra row detects overflow; `JobTimelineEvidenceLimitError` (`EVIDENCE_LIMIT_REACHED`) aborts the read instead of assembling partial evidence. Single-record lookups remain bounded to one row. Existing Owner consumers omit this option and retain their established read behavior. This optional transport budget does not change timeline events, source authority or projection rules.
+
 Mongo loader reads observations, latest decisions, record links, bookings, cancellations, booking/release cases, discrepancies, leads, entity changes, lead messages, sheet sync jobs, Granot CRM sources, and granularities. It also reads:
 
 - `granot_webhook_receipts` (safe projection: `captured_at`, `createdAt`, `route_event_class`, `observation_channel`, `channel_operation_kind`, `processing.state`)

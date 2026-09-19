@@ -8,6 +8,10 @@ tags: [sales-intelligence, outreach]
 
 # Outreach and follow-ups — CSI-06
 
+CSI-14 integration: Outreach detail adds a read-only `nudges` page (20 entries, `/nudges` continuation). Explicit Owner messaging is owned by [Explicit Owner Rep Nudges](sales-intelligence-nudges.md). It reuses this Service's derivation/restrictions/clock rules and appends `nudge_sent` to the Outreach audit subject without completing actions, assigning work, changing dates or reopening records.
+
+CSI-10 integration: `ensure.ts` consumes `repIdentity/resolve.ts` at interaction time, including reviewed retired history. Applied-call dedupe includes identity fingerprints; an unchanged call revision can fill genuinely unassigned work without replacing established/Owner assignments or inferring a promising speaker. Re-evaluation uses existing action completion rules but cannot recreate an already applied missed episode. CSI-10's bounded jobs feed this existing worker; official closure still wins.
+
 Runtime: `src/services/salesIntelligence/{outreach,followups,review}/`. Authority: [specification](../../call-sales-intelligence/01-specification.md), [Team C](../../call-sales-intelligence/workspace/teams/c-outreach.md), [handoff](../../call-sales-intelligence/workspace/evidence/csi-06/HANDOFF.md).
 
 `ensure.ts` mirrors official eligibility into one Outreach Record per subject. Official closure cancels outstanding actions and queues number refresh in the same transaction. It wins over identity review. No automatic reopening, official writes or qualification imports occur. CSI-05's transactional hook invokes the identity reaction and its paged fan-out schedules revision-specific Outreach work. Event attribution uses `resolveAtInteraction`, never lifetime edge counts. A Number Review cannot escape ambiguous identity or an officially closed related Lead; rejected unrelated edges do not prevent it.

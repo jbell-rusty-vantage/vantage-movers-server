@@ -1,0 +1,6 @@
+
+> vantage_movers_server@1.0.0 typecheck C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> tsc --noEmit
+
+src/services/jobNumberTimeline/mongo-evidence-loader.test.ts(50,18): error TS18048: 'rows.leads' is possibly 'undefined'.
+ ELIFECYCLE  Command failed with exit code 2.
