@@ -1,12 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { proposeRepCandidates } from "./propose";
+import { repProposalDtoSchema } from "./reads";
 import { resolveRepIdentityAt, type TemporalRepLink } from "./resolve";
 import { csiRepInputSchema } from "../../../validation/v1/salesIntelligence";
 import { defaultStageHandlers } from "../../numberActivity/jobDispatch";
 import { runRepIdentityReevaluationJob } from "./worker";
 
 const agents = [{ _id: "a", name: "Alex Reed", name_aliases: ["Alex R"] }, { _id: "b", name: "Jordan Lee", name_aliases: ["Alex R"] }];
+test("directory User DTO carries snapshot destination facts without inventing a person id", () => {
+  const parsed = repProposalDtoSchema.parse({
+    extension_id: "102", extension_name: "Joshua L", status: "unmatched", candidates: [],
+    extension_number: "102", direct_numbers: ["+12025550188"], directory_status: "Enabled",
+  });
+  assert.equal(parsed.extension_number, "102");
+  assert.deepEqual(parsed.direct_numbers, ["+12025550188"]);
+  assert.equal("rc_team_messaging_person_id" in parsed, false);
+});
 test("exact names remain proposed; alias ties, duplicate names, missing names and non-Users remain explicit", () => {
   assert.equal(proposeRepCandidates({ id: "1", name: "Jordan Lee", type: "User" }, agents).status, "proposed");
   assert.equal(proposeRepCandidates({ id: "1", name: "Alex R", type: "User" }, agents).status, "ambiguous");

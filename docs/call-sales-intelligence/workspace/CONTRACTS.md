@@ -33,6 +33,10 @@ Wire requests: GET context with no arguments; POST read `{tool,args}`; POST subm
 
 Concrete CSI-13 imports, all twelve argument/result contracts, exact schema resource, error/cursor/coverage semantics, replay, recovery and paused handoff are in [CSI-17 API-CONTRACT](evidence/csi-17/API-CONTRACT.md). `analysis/run.ts` exports `prepareIntelligenceRun`, `recoverIntelligenceSubmission`, `renderIntelligencePrompt`, `intelligenceSchemaDigest`; `analysis/capture.ts` exports `captureIntelligenceRead`; `analysis/submit.ts` exports `submitIntelligenceAnalysis`, `readIntelligenceSubmission`. MCP is the sole model-facing provider; these are server orchestration seams, not alternative tools. Owner-added record citation kinds are generated from the authoritative envelope schema, with additive digest `18a4746f6343c4b093ef449693b685872e3f912ae36fe87e4d49196fc1ecfed7`. Existing cross-field checks remain. Run fields `schema_digest`, `manifest_snapshot_ids`, `evidence_count`, `evidence_bytes`, submission `manifest_digest`, and job `evidence_fence` are additive; existing unique indexes suffice. No production migration was run.
 
+## CSI-14 Owner destination (September 19)
+
+Product rule now in [01 §3/§9](../01-specification.md), [02 §8/§10](../02-domain-models.md), [03 §8](../03-server-pipeline-and-jobs.md), [04 §5](../04-server-routes.md) and [05 §7](../05-owner-dashboard-ux.md). Preview/send destination is a current User extension on the stored directory snapshot for that RingCentral account (`rc_account_id` + `rc_extension_id`). A reviewed Rep Identity Link is optional metadata, not a send precondition. Rate limit is per User extension. Implemented September 19; [destination evidence](evidence/csi-14-destination/HANDOFF.md). This note does not authorize live send, CSI-15, or inventing Team Messaging person ids.
+
 ## CSI-14 coordinated additions (claimed September 18)
 
 
@@ -45,6 +49,12 @@ CSI-06 detail now returns `data.nudges:{items,next_cursor}`. CSI-10's Owner revi
 Consumer handoff: Team E/CSI-08/09 implement dialogs against preview/send/history; CSI-06 reads the history page and audit subject; CSI-10 remains identity authority; deployment/operations own separately approved current grants/configuration/live proof. Pending/unknown delivery must never trigger automatic resend/fallback. All persisted states reserve the link's rolling-hour limit; default six. Dashboard remains untouched.
 
 The existing `outreach/timeline.ts` read adapter now includes `nudge` invalidations as the already-defined `nudge` timeline kind. Subject lookup includes Outreach primary-number records even without a separate attachment edge. This is read-only composition; lifecycle events never imply completed customer work.
+
+## CSI-10 production seed (September 19)
+
+Additive GET DTO field `rc_direct_numbers` on `repLinkDtoSchema` / `toRepLinkDto`. It is the snapshot DID list already stored on the link at propose/create/review. Admin review uses that list to set `nudge_channels_allowed`: `pager` always; `sms_to_rep` only when the array length is exactly one. Team Messaging person ids stay omitted. Propose still writes empty channels. This is not a send grant.
+
+Live seed used existing Owner routes only. Snapshot `6aaea089984b82cb35a76522` on account `62948571023`. Nine unique first-token Users were proposed and reviewed. Joshua L / Roy W stayed unmatched because Agents `Josh` and `Roys` have empty aliases. Evidence: [csi-10-seed handoff](evidence/csi-10-seed/HANDOFF.md).
 
 ## CSI-10 coordinated additions (September 18)
 

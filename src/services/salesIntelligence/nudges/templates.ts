@@ -18,15 +18,43 @@ const reasonText: Record<string, string> = {
   no_next_step: "The next step needs review.", missing_responsibility: "Responsibility needs review.", going_cold: "The record needs attention.",
 };
 const clean = (text: string) => text.replace(/[\r\n\t]/g, " ").trim();
+const CONTACT_ACTION = String.raw`(?:call|dial|phone|text|sms|contact|message|ring|reach(?:\s+out)?(?:\s+to)?)`;
+const REVIEW_CONTACT_INSTRUCTION = new RegExp(
+  String.raw`(?:` +
+    String.raw`\b(?:please|kindly)\b(?:\s+\w+){0,4}\s+${CONTACT_ACTION}\b` +
+    String.raw`|` +
+    String.raw`\b(?:can|could|would|should|must|need(?:s)?\s+to|have\s+to|ought\s+to)(?:\s+you)?(?:\s+\w+){0,3}\s+${CONTACT_ACTION}\b` +
+    String.raw`|` +
+    String.raw`(?:^|[.!?;\n]\s*)[\p{L}.''-]+(?:\s+[\p{L}.''-]+)?,\s+(?:please\s+)?(?:\w+\s+){0,3}${CONTACT_ACTION}\b` +
+    String.raw`|` +
+    String.raw`(?:^|[.!?;\n]\s+)${CONTACT_ACTION}\b` +
+    String.raw`|` +
+    String.raw`\b(?:go\s+ahead\s+and|let'?s|make\s+(?:sure\s+)?(?:to\s+)?|be\s+sure\s+to|remember\s+to)\s+${CONTACT_ACTION}\b` +
+    String.raw`|` +
+    String.raw`\b${CONTACT_ACTION}\s+(?:the\s+)?(?:customer|client|them|him|her|this\s+(?:person|lead))\b` +
+    String.raw`|` +
+    String.raw`\b${CONTACT_ACTION}\s+(?:now|today|asap|immediately|urgently|tomorrow|tonight)\b` +
+  String.raw`)`,
+  "giu",
+);
+/** Edited review-context bodies fail closed on contact instructions. Restriction discussion and the documented disclaimer stay legal. */
+export function reviewContextForbidsContactRequest(body: string): boolean {
+  const stripped = body.normalize("NFKC").replace(/\bthis is not a request to (?:call|contact|text|message|dial|phone|sms|ring)\b/gi, " ");
+  for (const match of stripped.matchAll(REVIEW_CONTACT_INSTRUCTION)) {
+    const before = stripped.slice(Math.max(0, (match.index ?? 0) - 40), match.index);
+    if (/(?:do\s+not|don't|never|not\s+(?:a\s+request|asking|telling))\s*$/i.test(before)) continue;
+    return true;
+  }
+  return false;
+}
 export function renderNudgeTemplate(input: {
   purpose: NudgePurpose; template_key: string; template_version: number; repName: string; customerName: string | null;
   customerNumber: string; reasons: readonly string[]; lastContact: Date | null; source: string | null;
   recordUrl: string; ownerId: string; body?: string; customerNumbers: readonly string[];
 }) {
   if (input.template_key !== input.purpose || NUDGE_TEMPLATES[input.purpose] !== input.template_version) throw new CsiError("INVALID_INPUT");
-  // Review-context edits cannot turn the internal template into an imperative contact request.
-  // Keep this deterministic; neither a model nor a caller-supplied purpose grants contact authority.
-  if (input.body && input.purpose === "review_context" && /(?:^|[.!?;\n]\s*|\bplease\s+|\b(?:can|could|would)\s+you\s+)(?:call|dial|phone|text|sms|contact|message|ring|reach\s+out\s+to)\b|\bcall\s+(?:now|today|asap)\b/i.test(input.body)) throw new CsiError("NUDGE_NOT_ACTIONABLE");
+  // Review-context edits cannot turn the internal template into a contact request before any provider call.
+  if (input.body && input.purpose === "review_context" && reviewContextForbidsContactRequest(input.body)) throw new CsiError("NUDGE_NOT_ACTIONABLE");
   const name = clean(input.customerName ?? "Customer").split(/\s+/);
   const maskedName = `${name[0]}${name.length > 1 ? ` ${name.at(-1)![0]}.` : ""}`;
   const reason = input.purpose === "review_context" ? `${reasonText[input.reasons[0] ?? ""] ?? "Internal Outreach context needs review."} Please review the internal context; this is not a request to contact the customer.` :

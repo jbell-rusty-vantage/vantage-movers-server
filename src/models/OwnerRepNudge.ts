@@ -20,7 +20,11 @@ export const OWNER_REP_NUDGE_INDEXES = [
   {
     name: "nudge_link_created",
     key: { rep_identity_link_id: 1, createdAt: -1 },
-  }, // per-rep rate limit
+  },
+  {
+    name: "nudge_extension_created",
+    key: { rc_account_id: 1, rc_extension_id: 1, createdAt: -1 },
+  }, // per-User rate limit
   { name: "nudge_status", key: { status: 1, createdAt: -1 } },
 ] as const;
 
@@ -53,12 +57,16 @@ export const OwnerRepNudgeSchema = new Schema(
       required: true,
     },
     lead_ref: { type: leadRefSchema, default: null },
+    rc_account_id: { type: String, required: true, trim: true },
+    rc_extension_id: { type: String, required: true, trim: true },
+    rc_extension_number: { type: String, default: null, trim: true },
+    rc_extension_name_snapshot: { type: String, default: null, trim: true },
     rep_identity_link_id: {
       type: Schema.Types.ObjectId,
       ref: "RepIdentityLink",
-      required: true,
+      default: null,
     },
-    agent_id: { type: Schema.Types.ObjectId, ref: "Agent", required: true },
+    agent_id: { type: Schema.Types.ObjectId, ref: "Agent", default: null },
     channel: {
       type: String,
       required: true,

@@ -46,8 +46,11 @@ test("CSI-14 disposable replica; no providers", { skip: process.env.CSI_REPLICA_
   const agent = await Agent.create({ name: "Alex Reed", normalized_name: "alex reed" });
   const at = new Date(Date.now() - 86400000);
   const directory = await getRingCentralDirectorySnapshotModel().create({ provider_account_id: "synthetic", taken_at: at, digest: "csi14-directory",
-    extensions: [{ id: "101", type: "User", name: "Alex Reed", status: "Enabled", extension_number: "101", direct_numbers: ["+12025550199"], sms_sender_numbers: [] }],
-    counts: { extensions: 1, users: 1, departments: 0, company_numbers: 0, queues: 0 } });
+    extensions: [
+      { id: "101", type: "User", name: "Alex Reed", status: "Enabled", extension_number: "101", direct_numbers: ["+12025550199"], sms_sender_numbers: [] },
+      { id: "102", type: "User", name: "Joshua L", status: "Enabled", extension_number: "102", direct_numbers: ["+12025550188"], sms_sender_numbers: [] },
+    ],
+    counts: { extensions: 2, users: 2, departments: 0, company_numbers: 0, queues: 0 } });
   const link = await Links.create({ agent_id: agent._id, agent_name_snapshot: "Alex Reed", rc_account_id: "synthetic", rc_extension_id: "101", rc_extension_number: "101",
     rc_direct_numbers: ["+12025550199"], rc_team_messaging_person_id: "101", role_kind: "sales_rep", status: "reviewed", effective_from: at,
     reviewed_at: at, reviewed_by: actor.id, nudge_channels_allowed: ["team_messaging", "sms_to_rep", "pager"] });
@@ -65,8 +68,8 @@ test("CSI-14 disposable replica; no providers", { skip: process.env.CSI_REPLICA_
     await getFormLeadModel().collection.insertOne(lead);
     const record = await Records.create({ subject: { kind: "lead", model: "FormLead", id: lead._id }, primary_contact_number_id: number._id,
       state: "unworked", trigger_kind: "lead_arrival", trigger_at: at, first_action_due_at: new Date(Date.now() + 86400000), policy_version: "nudge-test-v1" });
-    const body = { expected_revision: record.revision, expected_rep_revision: 1, nudge: { outreach_record_id: String(record._id), rep_identity_link_id: String(link._id),
-      channel: "team_messaging" as "team_messaging" | "pager" | "sms_to_rep", template_key: "review_context", template_version: 1, purpose: "review_context" as "review_context" | "call_suggestion", allow_pager_fallback: false } };
+    const body = { expected_revision: record.revision, expected_rep_revision: 1, nudge: { outreach_record_id: String(record._id), rc_account_id: "synthetic", rc_extension_id: "101",
+      rep_identity_link_id: String(link._id), channel: "team_messaging" as "team_messaging" | "pager" | "sms_to_rep", template_key: "review_context", template_version: 1, purpose: "review_context" as "review_context" | "call_suggestion", allow_pager_fallback: false } };
     return { number, lead, record, body, input: { actor, idempotency_key: String(oid()), body } };
   };
   const dump = async () => JSON.stringify(await Promise.all((await db.listCollections().toArray()).sort((a,b) => a.name.localeCompare(b.name)).map(async c => [c.name, await db.collection(c.name).find().sort({ _id: 1 }).toArray()])));
@@ -93,12 +96,15 @@ test("CSI-14 disposable replica; no providers", { skip: process.env.CSI_REPLICA_
         await Links.updateOne({ _id: link._id }, { $set: patch }); await assert.rejects(previewNudge(f.input), /IDENTITY_BLOCKED/);
         await Links.updateOne({ _id: link._id }, { $set: { status: "reviewed", effective_from: at, effective_to: null, role_kind: "sales_rep", rc_account_id: "synthetic" } });
       }
-      await getRingCentralDirectorySnapshotModel().collection.updateOne({ _id: directory._id }, { $set: { "extensions.0.type": "Department", "counts.users": 0 } });
+      await getRingCentralDirectorySnapshotModel().collection.updateOne({ _id: directory._id }, { $set: { "extensions.0.type": "Department", "counts.users": 1 } });
       await assert.rejects(previewNudge(f.input), /IDENTITY_BLOCKED/);
-      await getRingCentralDirectorySnapshotModel().collection.updateOne({ _id: directory._id }, { $set: { "extensions.0.type": "User", "counts.users": 1 } });
-      await Agent.updateOne({ _id: agent._id }, { $set: { active: false } }); await assert.rejects(previewNudge(f.input), /IDENTITY_BLOCKED/); await Agent.updateOne({ _id: agent._id }, { $set: { active: true } });
+      await getRingCentralDirectorySnapshotModel().collection.updateOne({ _id: directory._id }, { $set: { "extensions.0.type": "User", "counts.users": 2 } });
+      await Agent.updateOne({ _id: agent._id }, { $set: { active: false } });
+      await previewNudge(f.input);
+      await Agent.updateOne({ _id: agent._id }, { $set: { active: true } });
       const conflict = await Links.create({ ...(await Links.findById(link._id).lean()), _id: oid(), effective_to: new Date(Date.now() + 60000) });
-      await assert.rejects(previewNudge(f.input), /IDENTITY_BLOCKED/); await Links.deleteOne({ _id: conflict._id });
+      await previewNudge(f.input);
+      await Links.deleteOne({ _id: conflict._id });
     });
     await t.test("same concurrent command produces one submission and accurate audit, unchanged work", async () => {
       const f = await fixture(), before = JSON.stringify(await Records.findById(f.record._id).lean()), start = submits;
@@ -132,7 +138,12 @@ test("CSI-14 disposable replica; no providers", { skip: process.env.CSI_REPLICA_
       const before = JSON.stringify(await getSalesIntelligenceContactRestrictionModel().findById(restriction._id).lean());
       assert.equal((await sendNudge(f.input, { adapter })).nudge.status, "sent");
       assert.equal(JSON.stringify(await getSalesIntelligenceContactRestrictionModel().findById(restriction._id).lean()), before);
-      await assert.rejects(previewNudge({ ...f.input, body: { ...f.body, nudge: { ...f.body.nudge, body: "Please call the customer now." } } }), /NUDGE_NOT_ACTIONABLE/);
+      const blocked = submits;
+      for (const body of ["Please call the customer now.", "Alex, call the customer tomorrow.", "Please urgently call the customer."]) {
+        await assert.rejects(previewNudge({ ...f.input, body: { ...f.body, nudge: { ...f.body.nudge, body } } }), /NUDGE_NOT_ACTIONABLE/);
+        await assert.rejects(sendNudge({ ...f.input, idempotency_key: String(oid()), body: { ...f.body, nudge: { ...f.body.nudge, body } } }, { adapter }), /NUDGE_NOT_ACTIONABLE/);
+      }
+      assert.equal(submits, blocked);
     });
     await t.test("snoozed call is suppressed, independent unsnoozed call remains eligible", async () => {
       const f = await fixture(); f.body.nudge.purpose = "call_suggestion"; f.body.nudge.template_key = "call_suggestion";
@@ -197,8 +208,35 @@ test("CSI-14 disposable replica; no providers", { skip: process.env.CSI_REPLICA_
       finally{mock.mock.restore();}
       await sendNudge(f.input,{adapter});assert.equal(submits,before+1);
     });
-    await t.test("per-link rolling limit reserves concurrent pending/failed/unknown attempts", async () => {
-      const f = await fixture(); const count = await Nudges.countDocuments({ rep_identity_link_id: link._id }); process.env.SALES_INTELLIGENCE_NUDGE_PER_REP_PER_HOUR = String(count + 1);
+    await t.test("directory User without a reviewed link is a valid destination; proposed links never invent one", async () => {
+      const f = await fixture();
+      const unmatched = { ...f.body, expected_rep_revision: undefined, nudge: { ...f.body.nudge, rc_extension_id: "102", channel: "pager" as const, allow_pager_fallback: false } };
+      delete (unmatched as { expected_rep_revision?: number }).expected_rep_revision;
+      delete (unmatched.nudge as { rep_identity_link_id?: string }).rep_identity_link_id;
+      await assert.rejects(previewNudge({ ...f.input, body: unmatched }), /NUDGE_CONFIGURATION_UNAVAILABLE/);
+      process.env.SALES_INTELLIGENCE_NUDGE_PAGER_ENABLED = "true";
+      const preview = await previewNudge({ ...f.input, body: unmatched });
+      assert.match(preview.data.body, /^Joshua /);
+      assert.equal(preview.data.recipient.rep_identity_link_id, null);
+      assert.equal(preview.data.expected_rep_revision, null);
+      assert.ok(!preview.data.allowed_channels.includes("team_messaging"));
+      assert.equal((await sendNudge({ actor: f.input.actor, idempotency_key: String(oid()), body: unmatched }, { adapter })).nudge.status, "sent");
+      assert.equal(await Links.countDocuments({ rc_extension_id: "102" }), 0);
+      process.env.SALES_INTELLIGENCE_NUDGE_PAGER_ENABLED = "false";
+    });
+    await t.test("reviewed link may restrict snapshot channels and never enlarge them", async () => {
+      const f = await fixture();
+      await Links.updateOne({ _id: link._id }, { $set: { nudge_channels_allowed: ["team_messaging"], rc_team_messaging_person_id: "101" } });
+      process.env.SALES_INTELLIGENCE_NUDGE_PAGER_ENABLED = "true";
+      f.body.nudge.channel = "pager";
+      await assert.rejects(previewNudge(f.input), /NUDGE_CONFIGURATION_UNAVAILABLE/);
+      f.body.nudge.channel = "team_messaging";
+      await previewNudge(f.input);
+      await Links.updateOne({ _id: link._id }, { $set: { nudge_channels_allowed: ["team_messaging", "sms_to_rep", "pager"] } });
+      process.env.SALES_INTELLIGENCE_NUDGE_PAGER_ENABLED = "false";
+    });
+    await t.test("per-User rolling limit reserves concurrent pending/failed/unknown attempts", async () => {
+      const f = await fixture(); const count = await Nudges.countDocuments({ rc_account_id: "synthetic", rc_extension_id: "101" }); process.env.SALES_INTELLIGENCE_NUDGE_PER_REP_PER_HOUR = String(count + 1);
       const result = await Promise.allSettled([sendNudge(f.input, { adapter }), sendNudge({ ...f.input, idempotency_key: String(oid()) }, { adapter })]);
       assert.equal(result.filter(r => r.status === "fulfilled").length, 1); assert.ok(result.some(r => r.status === "rejected" && String(r.reason).includes("RATE_LIMITED"))); process.env.SALES_INTELLIGENCE_NUDGE_PER_REP_PER_HOUR = "100";
     });

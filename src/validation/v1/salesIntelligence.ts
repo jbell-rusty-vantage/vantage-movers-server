@@ -326,7 +326,9 @@ export const csiRepProposeSchema = z.object({
 export const csiNudgeInputSchema = z
   .object({
     outreach_record_id: csiIdSchema,
-    rep_identity_link_id: csiIdSchema,
+    rc_account_id: csiTextSchema,
+    rc_extension_id: csiTextSchema,
+    rep_identity_link_id: csiIdSchema.optional(),
     channel: z.enum(["team_messaging", "sms_to_rep", "pager"]),
     template_key: csiTextSchema,
     template_version: csiRevisionSchema,
@@ -340,9 +342,10 @@ export const csiNudgeCommandSchema = z
   .object({
     ...base,
     nudge: csiNudgeInputSchema,
-    expected_rep_revision: csiRevisionSchema,
+    expected_rep_revision: csiRevisionSchema.optional(),
   })
-  .strict();
+  .strict()
+  .refine((value) => Boolean(value.nudge.rep_identity_link_id) === (value.expected_rep_revision !== undefined));
 export const csiBackfillCommandSchema = z
   .object({ ...base, from: csiDateSchema, to: csiDateSchema, ...reason })
   .strict()

@@ -78,6 +78,10 @@ Complete the Owner interview, update the specification pack consistently, and cr
 - The workspace contains six team briefs, contract handoffs, dependencies, an unclaimed implementation ledger and acceptance scenarios. No runtime implementation, live provider action, or deployment was performed.
 - Remaining items are implementation/deployment checks (recording grants, subscriptions, actual rep mappings, credentials, model capacity/pricing and rollout), not unanswered questions about the accepted Owner behavior. Retained engineering defaults are explicitly labelled in 06.
 
+## Later Owner decision — September 19, 2026
+
+The Owner (and the implementing developer acting as Owner) may send an Owner Rep Nudge to any current User extension on the stored directory snapshot for that RingCentral account. They know who to message. A reviewed Agent match is not required to send. This supersedes the earlier “reviewed link required before any rep nudge” rule in 01. Attribution, metrics, automatic assignment, and reviewed-rep outbound analysis still require reviewed identity. Never automatic. Never the customer. Incorporated into revised 01–05.
+
 ## Source access
 
 Read the current specification, domain models, and 08 handoff for this interview. The supplied showcase editor URL could not be retrieved with the web reader; no claim of inspecting its contents has been made.

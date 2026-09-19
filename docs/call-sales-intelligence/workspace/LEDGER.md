@@ -1,5 +1,70 @@
 # Implementation ledger
 
+## CSI-14 directory-User destinations + P2 — Grok, September 19, 2026
+
+Verified remotes `jbell-rusty-vantage`. Server `sales-intelligence` HEAD `bbdfe4c2ea080f4a962d74913baed0846c1ac763` (dirty CSI-14 dest docs + CSI-10 seed preserved). Admin `sales-intelligence` HEAD `905fe8777e5707f20b32b2a76c59a3566dafaf09` (dirty CSI-10 seed UI preserved). MCP clean, untouched. No branch switch. One implementation writer.
+
+Exact server claims:
+- `src/validation/v1/salesIntelligence.ts`
+- `src/models/OwnerRepNudge.ts`
+- `src/services/salesIntelligence/nudges/{commands,eligibility,templates,reads,nudges.test,routes.test}.ts`
+- `src/services/salesIntelligence/repIdentity/reads.ts`
+- `src/services/salesIntelligence/repIdentity/identity.test.ts`
+- `scripts/test-csi-nudges.replica.test.ts`
+- `docs/knowledge/services/sales-intelligence-nudges.md`
+
+Exact Admin claims:
+- `vantage-admin/lib/api/salesIntelligence.ts`
+- `vantage-admin/lib/api/salesIntelligence.test.ts`
+- `vantage-admin/components/sales-intelligence/outreach-detail.tsx`
+- `vantage-admin/components/sales-intelligence/message-rep-dialog.tsx`
+- `vantage-admin/components/sales-intelligence/workspace.tsx`
+- `vantage-admin/components/sales-intelligence/sales-intelligence-copy.ts`
+
+Exact coordination/evidence claims:
+- this ledger
+- `docs/call-sales-intelligence/workspace/CONTRACTS.md`
+- `docs/call-sales-intelligence/workspace/teams/c-outreach.md`
+- `docs/call-sales-intelligence/workspace/evidence/csi-14/API-CONTRACT.md`
+- `docs/call-sales-intelligence/workspace/evidence/csi-14-destination/**`
+
+Do not enable `NUDGE_ENABLED`, `STT_ENABLED`, `EXTRACTION_ENABLED`, subscriptions, or live send. Do not apply official `migration:csi:indexes`. Do not write Rep Identity Links for Josh, Roy, Jason, either Tyler, Russell, QA, or unmatched Users. Do not start CSI-15, dashboard CSI-07/08, or live send. No commit or push unless the Owner asks.
+
+## Owner send destination spec — Grok, September 19, 2026
+
+Documentation-only. Owner Rep Nudge destinations are current User extensions on the stored directory snapshot for that RingCentral account. A reviewed Agent match is not required to send. Attribution, metrics, automatic assignment, and reviewed-rep outbound analysis still require reviewed identity. Never automatic. Never the customer. Runtime CSI-14 source is unchanged by this claim.
+
+Exact claims: `docs/call-sales-intelligence/{01-specification,02-domain-models,03-server-pipeline-and-jobs,04-server-routes,05-owner-dashboard-ux,09-owner-workflow-interview}.md`, `docs/knowledge/services/{sales-intelligence-rep-identity,sales-intelligence-nudges}.md`, workspace `CONTRACTS.md`, `LEDGER.md`, `SPRINT-PLAN.md`, `NEXT-SESSION.md`, `README.md`, `teams/c-outreach.md`, `evidence/csi-14/API-CONTRACT.md`, `evidence/csi-10-seed/HANDOFF.md`. No runtime, flags, send, backfill, commit, or push.
+
+## CSI-10 production seed ownership — Grok, September 19, 2026
+
+Owner-authorized production seed only. Verified remotes `jbell-rusty-vantage` (`vantage-movers-server`, `vantage-admin`). Server `sales-intelligence` HEAD `bbdfe4c2ea080f4a962d74913baed0846c1ac763` (clean). Admin `sales-intelligence` HEAD `905fe8777e5707f20b32b2a76c59a3566dafaf09` (clean). No branch switch. Existing CSI-10 implementation remains complete; this claim is the live directory snapshot + unique proposed links + Owner review of those unique rows. One implementation writer.
+
+Exact Admin claims:
+- `vantage-admin/components/sales-intelligence/reps.tsx`
+- `vantage-admin/components/sales-intelligence/sales-intelligence-copy.ts`
+- `vantage-admin/lib/api/salesIntelligence.ts`
+- `vantage-admin/lib/api/salesIntelligence.test.ts`
+
+Exact server claims (additive DTO exposure of already-stored snapshot DIDs so review can set channels; no matcher/send/flag-default changes):
+- `src/services/salesIntelligence/repIdentity/reads.ts`
+- `src/services/salesIntelligence/repIdentity/identity.test.ts`
+- `src/services/salesIntelligence/repIdentity/routes.test.ts`
+- `scripts/test-csi-rep-identity.replica.test.ts`
+- `docs/knowledge/services/sales-intelligence-rep-identity.md`
+
+Exact coordination/evidence claims:
+- this ledger
+- `docs/call-sales-intelligence/workspace/CONTRACTS.md`
+- `docs/call-sales-intelligence/workspace/teams/c-outreach.md`
+- `docs/call-sales-intelligence/workspace/evidence/csi-10-seed/**`
+
+Prerequisite unique fences only (official `migration:csi:indexes` is blocked by unresolved conversation account attribution and would rewrite `lead_conversations` / drop a legacy recording fence). This seed creates the unique indexes required for directory snapshot, propose, review, command replay, identity jobs, and audit. It does not apply the full CSI catalog or CSI-15 backfill.
+
+Enable only `SALES_INTELLIGENCE_ENABLED` and `SALES_INTELLIGENCE_DIRECTORY_SYNC` for Owner directory sync / propose / review. Do not enable `NUDGE_ENABLED`, `STT_ENABLED`, `EXTRACTION_ENABLED`, subscriptions, or live send. Do not write `RepIdentityLink` rows from the September roster markdown. Do not mark reviewed from a name match. `proposed` never satisfies a nudge. Never invent `rc_team_messaging_person_id`. Never auto-link Jason/ext 121, either Tyler, Russell, QA, or Users with no Agent. Any additional path will be claimed before editing.
+
+Seed result: complete for the unique first-token set the matcher could propose (9 reviewed). Josh/Roy unmatched. [Handoff](evidence/csi-10-seed/HANDOFF.md), [checks](evidence/csi-10-seed/CHECKS.md).
+
 ## CSI-18 ownership — Codex, September 19, 2026
 
 Local synthetic proof claim: `scripts/test-csi18-local.ts`. It reuses the private OS-temp session and guarded preview database only.
@@ -51,13 +116,13 @@ Created September 17, 2026; current execution order revised September 19 in [SPR
 | CSI-07 | E (B/C services) | complete (local) | Codex; server/Admin `sales-intelligence`; uncommitted | Owner/auth/current-scope, real durable HTTP invalidations, browser command/clock/reconnect proof; Admin 620/620, server focused 9/9, typechecks and focused lint pass. [Handoff](evidence/csi-07/HANDOFF.md), [checks and checkpoint](evidence/csi-07/CHECKS.md). | Production hosting/capacity remains CSI-16; no deployment/provider proof claimed. CSI-13 preserved. |
 | CSI-08 | E | complete (local) | Codex; Admin/server `sales-intelligence`; uncommitted | Real search/pagination/expiry, attachments/reviews, commands/retry/conflicts/drafts, timeline/official links, Reps, desktop/narrow/keyboard/reconnect/clock proof. Admin626; Number reads10, attachment12, Outreach24; typechecks/focused lint. [Handoff](evidence/csi-08/HANDOFF.md), [checks](evidence/csi-08/CHECKS.md). | Required checkpoint ran: automated checks pass (snapshot2432/115skip; runner12), final review/CLI1 failed on isolated CSI-14 documentation proposal, wholly unapplied; no independent final approval. [Review](evidence/csi-08/REVIEW.md). Full Admin lint retains unrelated baseline errors. CSI-14 disabled; CSI-18/09/15/16 separate. |
 | CSI-09 | E (A/C policy service) | not started | — | — | CSI-01/04/06 |
-| CSI-10 | C | complete | Codex; `vantage-main-server` / `sales-intelligence`; clean baseline `3355c6dcf68ed2c092824dc1dbb87c71a3f0c343`; uncommitted | Current typecheck/lint; focused 19/19; identity replica 12/12; Outreach/media/STT/foundation/reads 22/20/19/15/10; offline 2398 pass/114 skip. [Handoff](evidence/csi-10/HANDOFF.md), [checks](evidence/csi-10/CHECKS.md), [review](evidence/csi-10/REVIEW.md). | Required checkpoint snapshot checks/final review PASS; overall stale after later source refinements, no patch applied or current-source independent approval claimed. Broader pre-existing findings recorded separately. Dashboard untouched; CSI-14 not started; flags off. |
+| CSI-10 | C | complete | Codex implementation + Grok production seed; `sales-intelligence` server `bbdfe4c` / Admin `905fe87` | Implementation packet [csi-10](evidence/csi-10/HANDOFF.md). Seed: 9 reviewed unique links, Josh/Roy unmatched, no send. [Seed handoff](evidence/csi-10-seed/HANDOFF.md), [checks](evidence/csi-10-seed/CHECKS.md). | CSI-14 dialogs/P2 remain later. Optional Owner alias or explicit create for Josh/Roy. Local process flags only; Vercel flags unchanged. |
 | CSI-11 | B | review (findings resolved) | Codex + independent code review; `vantage-main-server` / `sales-intelligence`, baseline `b92e7458`; uncommitted | Typecheck; focused 108/108; media replica 20/20; CSI-01–04 replicas 15/12/11/7/10; qualification 104 pass/3 pre-existing skips. [Handoff](evidence/csi-11/HANDOFF.md), [checks](evidence/csi-11/CHECKS.md), [review](evidence/csi-11/INDEPENDENT-REVIEW.md). | Both independent reviews approved; all six findings and three recommendations resolved. Final qualification/provider/media 111 pass/3 skips. CSI-05/10 absent inputs remain undetermined; CSI-12 consumes media hook; Team F verifies live permission/Blob at G6. Flags off. |
 | CSI-12 | B | review (findings resolved) | Codex + independent review; vantage-main-server / sales-intelligence; baseline CSI-11 63b3dfb; uncommitted | Typecheck/lint; focused 13/13; transcription replica 19/19; CSI-01–04/11 replicas; full suite 2380 pass/114 skips. [Handoff](evidence/csi-12/HANDOFF.md), [checks](evidence/csi-12/CHECKS.md), [review](evidence/csi-12/INDEPENDENT-REVIEW.md). | STT, immutable redacted evidence, budget/retry and analysis intent complete. Independent findings resolved. Flags off; no commit/live proof. Team D owns analysis. |
 | CSI-17 | D | implemented | Codex + authorized MCP/read agents; both repositories `sales-intelligence`; server `3355c6dcf68ed2c092824dc1dbb87c71a3f0c343`, MCP `7e12815189f24d422873f54f146f1fe1033dd655`; uncommitted | Twelve scoped tools, immutable evidence, pinned prompt/schema and durable one-submission intake; Owner-added operational/provider reads. Direct server full suite 2426 pass/114 skipped, focused/replica/typecheck/lint pass; MCP35/build/typecheck pass. [Checks](evidence/csi-17/CHECKS.md) distinguish failed earlier checkpoint test-file reads and later direct hardening. | [Handoff](evidence/csi-17/HANDOFF.md). CSI-13 now supplies the application consumer; paused behavior remains flag/readiness-dependent. CSI-10 replay and existing CSI-14 P2 remain separate. No live proof, deployment, commit or push. |
 | CSI-13 | D | complete | Codex; server `sales-intelligence` / `a9b9bfcb7a70586ae14e974442e63a033abc7fbf` | Baseline and required CSI-17/14 review limitations inspected September 19. | Implementation and synthetic proof complete. Checkpoint 1789795679279-a540097e patch-ready/PASS; inspected coverage fix adopted and replica proof expanded to 21 passing tests. [Handoff](evidence/csi-13/HANDOFF.md), [checks](evidence/csi-13/CHECKS.md). CSI-18 excluded. |
 | CSI-18 | D + E | complete (local) | Codex; server/Admin `sales-intelligence`; uncommitted | Server: Owner6, runtime23, intelligence9, Outreach24, focused21; typecheck/lint pass. UI:626 tests, typecheck/focused lint, real BFF/browser desktop/narrow/keyboard/conflict/retry/access proof. [Handoff](evidence/csi-18/HANDOFF.md), [checks](evidence/csi-18/CHECKS.md). | Server and UI acceptance separately complete. Required checkpoint snapshot gates/review PASS; overall stale/CLI1, adapted source validated directly. Full Admin lint retains unrelated baseline. [Review](evidence/csi-18/REVIEW.md). CSI-09/14/15/16 remain separate. |
-| CSI-14 | C (server); E (dialogs) | review (one P2 unresolved) | Codex; vantage-main-server / sales-intelligence; baseline 3355c6dcf68ed2c092824dc1dbb87c71a3f0c343 with existing uncommitted CSI-10 changes preserved | Typecheck/lint 0; focused 31/31; nudge replica 16/16; CSI-06/10/foundation/reads replica 22/12/15/10; final offline 2409 pass/114 skip/0 fail. [Handoff](evidence/csi-14/HANDOFF.md), [checks](evidence/csi-14/CHECKS.md), [contracts](evidence/csi-14/API-CONTRACT.md), [review](evidence/csi-14/REVIEW.md). | Dashboard untouched; CSI-08/09/E browser consumers remain separate. Initial offline Windows dependency file-read failure retained separately; both isolated checkpoints failed on documented snapshot prose contradictions, corrected in current source; checks passed; no independent final approval claimed. Fresh GPT-6 Astra review found one unresolved P2 edited-review-context purpose bypass; [independent review](evidence/csi-14/INDEPENDENT-REVIEW.md). Live-send proof separately gated and unexecuted. |
+| CSI-14 | C (server); E (dialogs) | implemented (destination + P2; live send still gated) | Grok destination/P2 on Codex server baseline; `sales-intelligence` HEAD `bbdfe4c`; dirty CSI-10 seed preserved | Destination/P2: server typecheck/lint 0; focused nudge+identity 17/17; nudge replica 18/18; identity replica 12/12; Admin API 9/9 + typecheck 0. [Destination handoff](evidence/csi-14-destination/HANDOFF.md). Prior CSI-14 packet remains historical. | Smallest Message-rep picker landed. Fuller dialogs/history and live-send proof remain separately gated. Official index migration not applied. |
 | CSI-15 | F (B/D adapters) | not started | — | — | CSI-02/06/12/13 |
 | CSI-16 | F | not started | — | — | Integrated delivery |
 

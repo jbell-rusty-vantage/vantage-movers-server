@@ -1,5 +1,7 @@
 # 04 — Server routes, DTOs, commands, and MCP authorization
 
+CSI-14 destination addendum (September 19): preview/send take a current directory User (`rc_account_id` + `rc_extension_id`). A reviewed Rep Identity Link is optional, not a send precondition. Implemented; see [CSI-14 contract](workspace/evidence/csi-14/API-CONTRACT.md).
+
 CSI-14 implementation addendum (September 18): Owner `/nudges/preview`, `/nudges` POST/GET, Outreach detail history and authenticated nudge repair are implemented. Concrete browser DTOs, revisions, errors, pagination, optional fallback authorization and configuration are in [CSI-14 contract](workspace/evidence/csi-14/API-CONTRACT.md). This does not claim Admin dialogs, CSI-08 browser integration, MCP sends or live provider proof.
 
 Status: build contract, not implemented. Revised September 17, 2026. [Product](01-specification.md) · [Models](02-domain-models.md) · [Agent contract](10-intelligence-agent-contract.md).
@@ -63,7 +65,7 @@ All abbreviated paths below are under `/api/v1/admin/sales-intelligence`.
 | POST | `/reps/propose` | Directory×Agent proposal/backfill; never silently reviewed. |
 | POST | `/reps/:id/review` | Confirm role/identity/effective dates/channels or retire. |
 | POST | `/nudges/preview` | Render/check only, no send. |
-| POST | `/nudges` | Explicit Owner send to reviewed rep; idempotent delivery record. |
+| POST | `/nudges` | Explicit Owner send to a current account User; idempotent delivery record. |
 | GET | `/nudges` | Audited send history by subject/rep. |
 | GET | `/coverage` | History/capability/recording/AI/job health plus current settings. |
 | GET/PATCH | `/settings` | Read or update versioned Owner policy/settings with CAS/audit. |
@@ -165,7 +167,7 @@ Settings PATCH accepts staffed weekly hours/timezone, first-action minutes, miss
 
 ## 5. Rep messages and official workflow links
 
-Preview validates reviewed active sales-rep identity and permitted channel, renders masked context, and returns blockers. Send requires an explicit Owner action, same idempotency key across retries, verified rep destination, length/rate limits and recorded body. Team Messaging primary; optional SMS-to-rep/pager only when configured. Unknown delivery is not safe to resend blindly. No model tool can call these endpoints. Preserve existing explicit messaging gates in 03; reviewers can still inspect notes and provenance while dialing is blocked.
+Preview validates a current stored-directory User on that RingCentral account and a permitted channel, renders masked context, and returns blockers. A reviewed Rep Identity Link is not required. Send requires an explicit Owner action, same idempotency key across retries, verified User destination, length/rate limits and recorded body. Team Messaging primary when a stored person id exists; optional SMS-to-rep only for a User with exactly one stored DID; pager when an extension number exists. Unknown delivery is not safe to resend blindly. No model tool can call these endpoints. Preserve existing explicit messaging gates in 03; reviewers can still inspect notes and provenance while dialing is blocked.
 
 Lead/Booking links show every connection and its certainty. Official create/update/reconcile actions navigate to the existing workflow, preserving subject context. Do not add a second official Lead/Booking mutation API to Sales Intelligence. Verify actual destination routes in Admin during implementation; do not invent URL parameters that existing forms ignore.
 

@@ -1,6 +1,8 @@
 # 02 — Domain models
 
-CSI-14 implementation addendum (September 18): the existing OwnerRepNudge collection/indexes now carry revision, durable Owner command ID/payload, submission deadline/boundary, account/sender/recipient snapshots and a separately persisted exact provider receipt. No second nudge collection is introduced. All persisted states reserve the per-link rolling-hour limit. See [runtime Service](../knowledge/services/sales-intelligence-nudges.md) and [concrete contract](workspace/evidence/csi-14/API-CONTRACT.md).
+CSI-14 destination addendum (September 19): Owner send destinations are current User extensions on the stored directory snapshot for that RingCentral account. `rep_identity_link_id` and `agent_id` are optional when the Owner chose a directory User with no reviewed Agent match. Rate admission is per `(rc_account_id, rc_extension_id)` in the rolling hour, not per link. Reviewed identity remains required for metrics, automatic assignment, and reviewed-rep outbound analysis. See [01 §3/§9](01-specification.md).
+
+CSI-14 implementation addendum (September 18): the existing OwnerRepNudge collection/indexes now carry revision, durable Owner command ID/payload, submission deadline/boundary, account/sender/recipient snapshots and a separately persisted exact provider receipt. No second nudge collection is introduced. The September 18 per-link rolling-hour wording is superseded by the destination addendum above. See [runtime Service](../knowledge/services/sales-intelligence-nudges.md) and [concrete contract](workspace/evidence/csi-14/API-CONTRACT.md).
 
 Status: build contract, not implemented. Revised September 17, 2026. Pack index: [`README.md`](README.md). Rules: [`01-specification.md`](01-specification.md).
 
@@ -413,7 +415,7 @@ const RepIdentityLinkSchema = new Schema(
 );
 ```
 
-Rules: an Agent may hold several current links (multiple extensions). One extension has at most one current link. `proposed` links never satisfy nudge or metric preconditions. `role_kind !== "sales_rep"` links are visible in Reps but excluded from Attention "Message rep" pickers.
+Rules: an Agent may hold several current links (multiple extensions). One extension has at most one current link. `proposed` links never satisfy metric, automatic-assignment, or reviewed-rep analysis preconditions. Owner send destinations are current directory Users, not this collection. Attention "Message rep" pickers list current User extensions from the stored snapshot. A reviewed `sales_rep` link, when present, may prefill display name and stored channel metadata; its absence does not hide the User. Department, Queue, and other non-User extensions are never destinations.
 
 ## 9. `RingCentralDirectorySnapshot` — `ringcentral_directory_snapshots`
 
@@ -438,7 +440,8 @@ Index: `{ taken_at: -1 }`, unique `{ digest: 1 }`. Consumers: `kind` classificat
 export const OWNER_REP_NUDGE_INDEXES = [
   { name: "nudge_idempotency_unique", key: { idempotency_key: 1 }, unique: true as const },
   { name: "nudge_outreach_created", key: { outreach_record_id: 1, createdAt: -1 } },
-  { name: "nudge_link_created", key: { rep_identity_link_id: 1, createdAt: -1 } },   // per-rep rate limit
+  { name: "nudge_link_created", key: { rep_identity_link_id: 1, createdAt: -1 } },
+  { name: "nudge_extension_created", key: { rc_account_id: 1, rc_extension_id: 1, createdAt: -1 } },   // per-User rate limit
   { name: "nudge_status", key: { status: 1, createdAt: -1 } },
 ] as const;
 
@@ -449,10 +452,14 @@ const OwnerRepNudgeSchema = new Schema(
     outreach_record_id: { type: Schema.Types.ObjectId, ref: "OutreachRecord", required: true },
     contact_number_id: { type: Schema.Types.ObjectId, ref: "ContactNumber", required: true },
     lead_ref: { type: leadRefSchema, default: null },
-    rep_identity_link_id: { type: Schema.Types.ObjectId, ref: "RepIdentityLink", required: true },
-    agent_id: { type: Schema.Types.ObjectId, ref: "Agent", required: true },
+    rc_account_id: { type: String, required: true, trim: true },
+    rc_extension_id: { type: String, required: true, trim: true },
+    rc_extension_number: { type: String, default: null, trim: true },
+    rc_extension_name_snapshot: { type: String, default: null, trim: true },
+    rep_identity_link_id: { type: Schema.Types.ObjectId, ref: "RepIdentityLink", default: null },
+    agent_id: { type: Schema.Types.ObjectId, ref: "Agent", default: null },
     channel: { type: String, required: true, enum: ["team_messaging", "sms_to_rep", "pager"] },
-    destination: { type: String, required: true, trim: true },            // chat id, rep DID e164, or extension number — validated ≠ any customer number
+    destination: { type: String, required: true, trim: true },            // chat id, User DID e164, or extension number — validated ≠ any customer number
     template_key: { type: String, required: true, trim: true },
     template_version: { type: Number, required: true },
     body_as_sent: { type: String, required: true },                         // ≤ 1,000 chars; masked customer number policy applies (last 4 only)

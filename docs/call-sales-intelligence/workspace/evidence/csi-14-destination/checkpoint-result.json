@@ -1,0 +1,90 @@
+{
+  "id": "1789834716855-f5ff3f75",
+  "provider": "cursor",
+  "reason": "manual",
+  "status": "patch-ready",
+  "startedAt": "2026-09-19T16:18:36.856Z",
+  "directory": "C:\\Users\\Pinda\\Proyectos\\vantage\\vantage-main-server\\.git\\vantage-quality\\runs\\1789834716855-f5ff3f75",
+  "inputFingerprint": "2613b569853c14fb227f00d1ab7d99b646a2e581287551f3a80f612f1a73d218",
+  "inputHead": "bbdfe4c2ea080f4a962d74913baed0846c1ac763",
+  "changed": [
+    "docs/call-sales-intelligence/01-specification.md",
+    "docs/call-sales-intelligence/02-domain-models.md",
+    "docs/call-sales-intelligence/03-server-pipeline-and-jobs.md",
+    "docs/call-sales-intelligence/04-server-routes.md",
+    "docs/call-sales-intelligence/05-owner-dashboard-ux.md",
+    "docs/call-sales-intelligence/09-owner-workflow-interview.md",
+    "docs/call-sales-intelligence/workspace/CONTRACTS.md",
+    "docs/call-sales-intelligence/workspace/LEDGER.md",
+    "docs/call-sales-intelligence/workspace/NEXT-SESSION.md",
+    "docs/call-sales-intelligence/workspace/README.md",
+    "docs/call-sales-intelligence/workspace/SPRINT-PLAN.md",
+    "docs/call-sales-intelligence/workspace/evidence/csi-14/API-CONTRACT.md",
+    "docs/call-sales-intelligence/workspace/teams/c-outreach.md",
+    "docs/knowledge/services/sales-intelligence-nudges.md",
+    "docs/knowledge/services/sales-intelligence-rep-identity.md",
+    "scripts/test-csi-nudges.replica.test.ts",
+    "src/models/OwnerRepNudge.ts",
+    "src/services/salesIntelligence/nudges/commands.ts",
+    "src/services/salesIntelligence/nudges/eligibility.ts",
+    "src/services/salesIntelligence/nudges/nudges.test.ts",
+    "src/services/salesIntelligence/nudges/reads.ts",
+    "src/services/salesIntelligence/nudges/routes.test.ts",
+    "src/services/salesIntelligence/nudges/templates.ts",
+    "src/services/salesIntelligence/repIdentity/identity.test.ts",
+    "src/services/salesIntelligence/repIdentity/reads.ts",
+    "src/validation/v1/salesIntelligence.ts",
+    "docs/call-sales-intelligence/workspace/evidence/csi-10-seed/.gitignore",
+    "docs/call-sales-intelligence/workspace/evidence/csi-10-seed/CHECKS.md",
+    "docs/call-sales-intelligence/workspace/evidence/csi-10-seed/FILES.md",
+    "docs/call-sales-intelligence/workspace/evidence/csi-10-seed/HANDOFF.md",
+    "docs/call-sales-intelligence/workspace/evidence/csi-10-seed/REQUESTS.md",
+    "docs/call-sales-intelligence/workspace/evidence/csi-10-seed/REVIEW.md",
+    "docs/call-sales-intelligence/workspace/evidence/csi-10-seed/browser-reps.ax.txt",
+    "docs/call-sales-intelligence/workspace/evidence/csi-10-seed/compare-roster.ts",
+    "docs/call-sales-intelligence/workspace/evidence/csi-10-seed/ensure-unique-fences.ts",
+    "docs/call-sales-intelligence/workspace/evidence/csi-10-seed/propose-and-review.ts",
+    "docs/call-sales-intelligence/workspace/evidence/csi-14-destination/CHECKS.md",
+    "docs/call-sales-intelligence/workspace/evidence/csi-14-destination/FILES.md",
+    "docs/call-sales-intelligence/workspace/evidence/csi-14-destination/HANDOFF.md"
+  ],
+  "stage": "verify",
+  "checks": [
+    {
+      "name": "typecheck",
+      "code": 0,
+      "timedOut": false,
+      "log": "C:\\Users\\Pinda\\Proyectos\\vantage\\vantage-main-server\\.git\\vantage-quality\\runs\\1789834716855-f5ff3f75\\typecheck.log"
+    },
+    {
+      "name": "lint",
+      "code": 0,
+      "timedOut": false,
+      "log": "C:\\Users\\Pinda\\Proyectos\\vantage\\vantage-main-server\\.git\\vantage-quality\\runs\\1789834716855-f5ff3f75\\lint.log"
+    },
+    {
+      "name": "test",
+      "code": 0,
+      "timedOut": false,
+      "log": "C:\\Users\\Pinda\\Proyectos\\vantage\\vantage-main-server\\.git\\vantage-quality\\runs\\1789834716855-f5ff3f75\\test.log"
+    },
+    {
+      "name": "quality-tests",
+      "code": 0,
+      "timedOut": false,
+      "log": "C:\\Users\\Pinda\\Proyectos\\vantage\\vantage-main-server\\.git\\vantage-quality\\runs\\1789834716855-f5ff3f75\\quality-tests.log"
+    }
+  ],
+  "edited": [
+    "docs/call-sales-intelligence/04-server-routes.md",
+    "docs/call-sales-intelligence/workspace/evidence/csi-14-destination/HANDOFF.md",
+    "docs/call-sales-intelligence/workspace/evidence/csi-14/API-CONTRACT.md",
+    "docs/index.md",
+    "docs/knowledge/services/sales-intelligence-nudges.md",
+    "src/services/salesIntelligence/nudges/commands.ts",
+    "src/services/salesIntelligence/nudges/eligibility.ts",
+    "src/services/salesIntelligence/nudges/nudges.test.ts",
+    "src/validation/v1/salesIntelligence.ts"
+  ],
+  "finishedAt": "2026-09-19T16:57:08.696Z"
+}

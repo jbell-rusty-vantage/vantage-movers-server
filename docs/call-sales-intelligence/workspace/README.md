@@ -5,7 +5,7 @@ Status: partial local implementation through CSI-13; review and dashboard/releas
 ## Start here
 
 1. Read the [product specification](../01-specification.md), [agent contract](../10-intelligence-agent-contract.md), [RingCentral capability summary](RINGCENTRAL-CAPABILITY.md), and [workspace instructions](AGENTS.md).
-2. Read the [current sprint revision](SPRINT-PLAN.md) and [ledger](LEDGER.md). G1 is frozen; do not restart Team A. Next session is CSI-07 plus the initial CSI-08 design integration slice. “Ready” never means a deployed capability has been verified.
+2. Read the [current sprint revision](SPRINT-PLAN.md) and [ledger](LEDGER.md). G1 is frozen; do not restart Team A. Next session is merge to `main` and deploy the internal dashboard ([NEXT-SESSION](NEXT-SESSION.md)). “Ready” never means a deployed capability has been verified until that session records URLs and flags.
 3. Freeze the interfaces in [contracts and handoffs](CONTRACTS.md), then assign the remaining teams according to the dependency waves below. Teams can build fixtures/skeletons against frozen contracts before providers are available.
 4. Each team records changes, checks and artifacts in the ledger and uses the [handoff template](HANDOFF-TEMPLATE.md). Integration follows the [acceptance walkthrough](ACCEPTANCE.md).
 

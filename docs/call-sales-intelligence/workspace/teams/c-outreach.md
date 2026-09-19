@@ -8,7 +8,7 @@ Own CSI-05/06/10 and server CSI-14. Read [01](../../01-specification.md), [02 §
 2. Outreach ensure/official closure, inbound-human/outbound-attempt transitions, multiple independent actions, nullable dates, completion/rescheduling, customer waits, clock and Attention derivation. Official closure must win during identity resolution.
 3. Separate overall/action responsibility, first clear rep assignment, promising rep action ownership, Owner field precedence and append-only audit. Never mutate receiver Agent or Booking allocations.
 4. Owner mark worked, date/action/assignment/wait, note, close/reopen, restriction and review-resolution commands. Immediate corrections must be callable by D's review routes; do not defer them to AI.
-5. Effective-dated reviewed Rep Identity Links/backfill proposals. Explicit Owner nudge preview/send/repair only, with rep/customer destination guards. E owns dialogs, C owns server behavior.
+5. Effective-dated reviewed Rep Identity Links/backfill proposals. Explicit Owner nudge preview/send/repair only. Destination is a current account User on the stored directory snapshot; a reviewed Agent match is not required. Customer destination guards remain. E owns dialogs, C owns server behavior.
 6. Read DTOs and meaningful Vantage-event fingerprints. Export the effect-planning/application primitives D uses so model submission does not become a second implementation of business rules.
 
 ## File ownership
@@ -27,6 +27,14 @@ Pin 30/15 staffed-minute deadlines and 2-sales-day clock; default schedule/DST/d
 
 [Audit and required adaptations](../../11-codebase-alignment-audit.md) are part of this delivery contract. Complete the rows assigned to this team and provide integration evidence; current runtime helpers do not already satisfy the revised contracts. [Design intake](../../07-claude-design-brief.md) governs the received design export; the September 19 sprint revision records adaptation and validation still required.
 
+## CSI-14 directory-User destinations + P2 — September 19
+
+Server destination change and P2 are implemented on existing `sales-intelligence` HEADs. Preview/send take `rc_account_id` + `rc_extension_id`. Reviewed identity is optional metadata. Rate limit is per User extension. Edited review-context bodies fail closed on contact instructions before the provider. Smallest Admin Message-rep picker lists current directory Users, including unmatched Josh/Roy. No identity writes for Josh, Roy, Jason, either Tyler, Russell, QA, or unmatched Users. Live send stays off. [Destination handoff](../evidence/csi-14-destination/HANDOFF.md).
+
+## CSI-10 production seed — September 19
+
+Owner-authorized live seed on existing `sales-intelligence` HEADs. Directory snapshot stored; nine unique first-token Users reviewed as `sales_rep` with pager (and `sms_to_rep` only for a single stored DID). Sean is pager-only. Josh/Roy remain unmatched for later Owner alias or explicit create. No messages. [Seed handoff](../evidence/csi-10-seed/HANDOFF.md). September 19 spec: those unmatched Users, and every other current account User, are valid Owner send destinations without an Agent match. CSI-14 destination change and P2 are now implemented; fuller dialogs and live send remain later.
+
 ## CSI-10 delivery — September 18
 
 CSI-14 follow-on: explicit Owner preview/send/history and delivery repair are now implemented on the server; see [CSI-14 handoff](../evidence/csi-14/HANDOFF.md) and [browser contracts](../evidence/csi-14/API-CONTRACT.md). Team E dialogs remain separate and untouched. Earlier “not started” references below describe the CSI-10 delivery baseline. No live send or provider proof was executed.
@@ -39,4 +47,4 @@ Deliverables 2, 3, 4 and 6 are implemented on server `sales-intelligence` from `
 
 CSI-14 final server verification: typecheck/lint pass, focused 31/31, nudge replica 16/16, CSI-06/10/foundation/reads replicas 22/12/15/10, full offline 2409 pass/114 skip/0 fail. Both isolated quality checkpoints passed automated checks but failed final review on snapshot documentation contradictions; current-source corrections and the exact fingerprints/results are in [CSI-14 review](../evidence/csi-14/REVIEW.md). No independent final current-source approval is claimed. Live-send proof remains separately authorized and unexecuted; dashboard untouched.
 
-Subsequent Owner-requested GPT-6 Astra review: CSI-14 has one verified unresolved P2 in edited review-context purpose enforcement; [finding and reproduction](../evidence/csi-14/INDEPENDENT-REVIEW.md). Prior passing checks remain evidence but do not resolve it. Close this narrowly before claiming clean messaging approval. CSI-17 is the next feature slice for Team D; dashboard and live proof remain separate.
+September 19 destination + P2 close: edited review-context contact instructions fail closed before the provider. Isolated Composer 2.5 checkpoint is recorded in [destination review](../evidence/csi-14-destination/REVIEW.md); that snapshot is not independent current-source approval. CSI-17 remains Team D. Dashboard fuller dialogs and live proof remain separate.

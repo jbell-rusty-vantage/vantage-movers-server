@@ -41,7 +41,7 @@ Owner actions:
 | Close | Reason and consequence: active follow-ups will be cancelled with history. Official Booked/Cancelled are not manually selectable shortcuts. |
 | Reopen | Rechecks official eligibility; cancelled actions remain history until explicitly recreated. |
 | Add note | Attributed context only; no hidden date/assignment/status changes. |
-| Message rep | Explicit preview/edit/send to reviewed rep identity; no automatic send on assign/mark worked/analysis. |
+| Message rep | Explicit preview/edit/send to a current account User; no automatic send on assign/mark worked/analysis. A reviewed Agent match is not required. |
 | Review attachment | Confirm/reject/detach with evidence; preserve ambiguous context until resolved. |
 | Open official workflow | Navigate to existing Lead/Booking detail/reconciliation with context. |
 
@@ -84,9 +84,9 @@ Voicemail labels distinguish Customer left voicemail / Rep left voicemail / Voic
 
 ## 7. Reps and messaging
 
-Backfill directory↔Agent link proposals with evidence and effective dates. Only reviewed links establish rep metrics or messaging destinations; display unmapped/uncertain history explicitly. An Agent can have multiple extensions; one current extension cannot map to multiple Agents. Shared/dialer/service identities do not become Sales Reps by a name match.
+Backfill directory↔Agent link proposals with evidence and effective dates. Only reviewed links establish rep metrics, automatic assignment, and reviewed-rep outbound analysis. Display unmapped/uncertain history explicitly. Messaging destinations are current User extensions on the stored directory snapshot; the Owner picks the User. An Agent can have multiple extensions; one current extension cannot map to multiple Agents. Shared/dialer/service identities do not become Sales Reps by a name match.
 
-Message rep dialog shows intended rep, reviewed channel and editable masked context. Preview then explicit Send; preserve idempotency across retries. Team Messaging primary, optional configured rep-DID SMS/pager. Sent/failed/unknown delivery are different outcomes. Do not show “sent” when only queued, and do not auto-resend ambiguous delivery. No message ever goes to a customer from this workflow.
+Message rep dialog lists current account Users from the stored snapshot, shows the chosen User, permitted channel and editable masked context. A reviewed Agent name may appear when a current reviewed link exists; unmatched Users stay selectable. Preview then explicit Send; preserve idempotency across retries. Team Messaging only with a stored person id; optional SMS-to-rep only for a single stored DID; pager from the extension number. Sent/failed/unknown delivery are different outcomes. Do not show “sent” when only queued, and do not auto-resend ambiguous delivery. No message ever goes to a customer from this workflow.
 
 ## 8. Coverage and settings
 

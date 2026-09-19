@@ -1,6 +1,8 @@
 # 01 — Call & Sales Intelligence specification
 
-Execution update September 19: [SPRINT-PLAN](workspace/SPRINT-PLAN.md) changes delivery order and adopts the supplied design export into the existing Admin dashboard. Local Admin/API integration comes first; the product rules in this specification and the Owner interview are unchanged.
+Execution update September 19: [SPRINT-PLAN](workspace/SPRINT-PLAN.md) changes delivery order and adopts the supplied design export into the existing Admin dashboard. Local Admin/API integration comes first.
+
+Owner send destination (September 19): an Owner Rep Nudge may target any current User extension on the stored directory snapshot for that RingCentral account. A reviewed Rep Identity Link is not required to send. Attribution, metrics, auto-assignment, and “outbound by a reviewed Sales Rep” analysis still require reviewed identity. Never automatic. Never the customer.
 
 Status: build contract, not shipped. Revised September 17, 2026 after the Owner interview. [Pack index](README.md) · [Agent/envelope contract](10-intelligence-agent-contract.md) · [Delivery workspace](workspace/README.md).
 
@@ -59,11 +61,11 @@ A versioned, citation-backed extraction from one Lead Conversation transcript (i
 _Avoid_: Insight, AI summary (when meaning a specific finding), fact
 
 **Rep Identity Link**:
-A reviewed, effective-dated map between one Agent and one RingCentral User extension, optionally an Extension User and a Granot username. Required before any rep nudge or rep metric.
+A reviewed, effective-dated map between one Agent and one RingCentral User extension, optionally an Extension User and a Granot username. Required before rep metrics, automatic assignment from a conversation or promise, and “outbound by a reviewed Sales Rep” analysis. Not required for an Owner Rep Nudge.
 _Avoid_: Agent mapping (unqualified), extension (when meaning the link)
 
 **Owner Rep Nudge**:
-An explicit Owner command that sends one internal message to one mapped Sales Rep over RingCentral Team Messaging, SMS to the rep's RingCentral DID, or company pager, about one Outreach Record. Never the customer, never automatic.
+An explicit Owner command that sends one internal message to one current User extension on the stored directory snapshot for that RingCentral account, over RingCentral Team Messaging, SMS to that User's RingCentral DID, or company pager, about one Outreach Record. The Owner chooses the User. A reviewed Agent match is not required. Never the customer, never automatic.
 _Avoid_: Notification, alert, SMS (unqualified), Lead Message
 
 **Contact-Type Signal**:
@@ -185,7 +187,7 @@ Within a category, earliest relevant deadline/oldest trigger first, then stable 
 3. The AI SDK agent reads through scoped MCP and submits one envelope. Main-server rules apply allowed effects automatically; Owner review is not a gate.
 4. Exact citation-location/entailment verification is deferred; schema, scope, chronology, idempotency, live revisions and Owner precedence are enforced now.
 5. Owner assignment/correction/closure is durable. Model agreement/disagreement is visible against the exact instruction version; silence is Cannot determine.
-6. An explicit Owner command is required to send a Rep Nudge. Never automatic and never sent to the customer. A reviewed Rep Identity Link is required.
+6. An explicit Owner command is required to send a Rep Nudge. Never automatic and never sent to the customer. The destination is a current User extension on the stored directory snapshot for that RingCentral account. A reviewed Rep Identity Link is not required to send. A name match, a `proposed` link, or an unmatched directory row never invents a destination; the Owner picks the User.
 7. Same stored facts plus clock/policy produce the same Attention derivation; the model never emits rank or Outreach state.
 8. Mongo is the system of record; queues wake durable jobs, scheduled workers recover them. Duplicate/out-of-order delivery cannot duplicate effects or regress terminal interactions.
 9. Raw STT stays transient; persisted evidence is redacted; media is private. Provider recording URLs/tokens never enter stored transcripts, logs, or queue payloads.

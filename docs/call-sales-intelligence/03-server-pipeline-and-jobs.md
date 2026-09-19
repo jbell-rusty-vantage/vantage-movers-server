@@ -251,27 +251,29 @@ An Owner note is context only. Explicit commands set dates, assign, mark worked,
 
 Implemented CSI-14 contract: [imports/DTOs/configuration](workspace/evidence/csi-14/API-CONTRACT.md), [Service](../knowledge/services/sales-intelligence-nudges.md). The runtime uses one durable Owner intent, an explicit submission boundary, single-attempt POST, and a repair-only `nudge_repair` stage. Exact scoped receipt reads replace any body/time matching. The five-minute authenticated cron, queue dispatch and generic recovery are registered; unknown delivery never resends. The live proof below remains separately gated and was not performed by implementation tests.
 
+September 19 destination rule: preview/send resolve a current User extension on the stored directory snapshot for that account. A reviewed Rep Identity Link is optional display/channel metadata when one exists for that extension; it is not a send precondition. Implemented on `sales-intelligence` in the CSI-14 destination change.
+
 ### 8.1 Preconditions (`preview.ts`, also enforced in `send.ts`)
 
-1. `SALES_INTELLIGENCE_NUDGE_ENABLED` and channel ∈ `NUDGE_CHANNELS` ∩ `link.nudge_channels_allowed`.
-2. Owner may message a reviewed rep about any active Outreach Record, including identity review or future-due work. Do not require overdue status to ask a rep a question. Closed-work messaging is disabled in v1; Owner can inspect/reopen if eligible. Context/review nudges are distinct from call suggestions: blocked/ambiguous contact must never render a “call now” template.
-3. A call-suggestion nudge requires contact eligibility and no active call blocker. An internal review-context message may discuss a restriction without asking the rep to contact the customer. The selected template purpose and blockers are revalidated on Send; this never sends to the customer.
-4. Rep Identity Link `status = reviewed`, `effective_to = null`, `role_kind = sales_rep`.
-5. Per-rep rate limit: < `NUDGE_PER_REP_PER_HOUR` nudges in the last hour (`owner_rep_nudges` by link id).
+1. `SALES_INTELLIGENCE_NUDGE_ENABLED` and the chosen channel is configured. Allowed channels come from the stored snapshot User: pager when an extension number exists; `sms_to_rep` only when that User has exactly one stored DID; Team Messaging only when a stored Team Messaging person id already exists. Do not invent person ids. A reviewed link's `nudge_channels_allowed`, when present, may further restrict, never enlarge, those channels.
+2. Owner may message any current account User about any active Outreach Record, including identity review or future-due work. Do not require overdue status to ask a question. Closed-work messaging is disabled in v1; Owner can inspect/reopen if eligible. Context/review nudges are distinct from call suggestions: blocked/ambiguous contact must never render a “call now” template.
+3. A call-suggestion nudge requires contact eligibility and no active call blocker. An internal review-context message may discuss a restriction without asking the User to contact the customer. The selected template purpose and blockers are revalidated on Send; this never sends to the customer.
+4. Destination identity is `(rc_account_id, rc_extension_id)` from the current stored snapshot, `type = User`, currently present. Department, Queue, company number, retired/missing Users, and fabricated extensions are rejected. A reviewed or proposed Rep Identity Link is not required.
+5. Per-User rate limit: < `NUDGE_PER_REP_PER_HOUR` nudges in the last hour (`owner_rep_nudges` by `rc_account_id` + `rc_extension_id`).
 6. Destination resolution per channel; the resolved destination must not equal (E.164) the Contact Number, any Lead phone on the record, or any Lead Message `to` for those Leads. Violation → 422 `nudge_destination_is_customer` and an operational event `level: "error"`.
 7. Idempotency-Key required; replay returns the stored nudge.
 
 ### 8.2 Template (`templates.ts`, `template_version: 1`)
 
 ```
-{{agent_first_name}} — {{reason_sentence}}
+{{recipient_first_name}} — {{reason_sentence}}
 {{lead_line}}
 Number ending {{last4}} · last contact {{last_contact_relative}} · {{source_label}}
 Open in Vantage: {{admin_url}}/sales-intelligence?record={{outreach_record_id}}
 — sent by {{owner_label}} via Vantage
 ```
 
-`reason_sentence` from the derived reason code (e.g. "this Form Lead has had no call for 3 h 20 m"). Customer number is **last 4 digits only** in the body. Lead line uses first name + last initial. Owner may edit the body in the dialog; the edited body is what is stored as `body_as_sent` (≤ 1,000 chars, validated against the same customer-number rule: the full customer number is rejected).
+`recipient_first_name` comes from the stored directory User name. Use a reviewed Agent first name only when a current reviewed link exists for that extension. `reason_sentence` from the derived reason code (e.g. "this Form Lead has had no call for 3 h 20 m"). Customer number is **last 4 digits only** in the body. Lead line uses first name + last initial. Owner may edit the body in the dialog; the edited body is what is stored as `body_as_sent` (≤ 1,000 chars, validated against the same customer-number rule: the full customer number is rejected).
 
 ### 8.3 Send (`send.ts`) and provider adapters
 

@@ -1,0 +1,46 @@
+URL: /sales-intelligence?view=reps&rc_account_id=62948571023
+Owner session: signed in locally against the seed API. No password captured.
+
+Directory stored · Observed Sep 19, 10:47 AM EDT. Provider completeness is unverified.
+Rep metrics are unavailable. Reviewed identity is required for attribution. Messaging remains disabled.
+
+Reviewed links (9):
+- Dylan · Dylan B · reviewed · sales rep · Channels pager, sms to rep · Stored DIDs 1
+- Sean · Sean K · reviewed · sales rep · Channels pager · Stored DIDs 2
+- Mike · Mike M · reviewed · sales rep · Channels pager, sms to rep · Stored DIDs 1
+- Austin · Austin G · reviewed · sales rep · Channels pager, sms to rep · Stored DIDs 1
+- Jacob · Jacob B · reviewed · sales rep · Channels pager, sms to rep · Stored DIDs 1
+- Brian · Brian Horowitz · reviewed · sales rep · Channels pager, sms to rep · Stored DIDs 1
+- Jenna · Jenna R · reviewed · sales rep · Channels pager, sms to rep · Stored DIDs 1
+- Patrick · Patrick O · reviewed · sales rep · Channels pager, sms to rep · Stored DIDs 1
+- Nick · Nick J · reviewed · sales rep · Channels pager, sms to rep · Stored DIDs 1
+
+No "Review proposed identity" buttons remained.
+
+Directory identity evidence (first page of Users):
+- Kyle M · unmatched
+- Dyanna K · unmatched
+- Dylan B · proposed · Dylan (first token)   [proposal evidence; link is reviewed]
+- Russell Ingram · unmatched
+- Roy W · unmatched
+- Gary E · unmatched
+- Angel Lee · unmatched
+- Benjamin Z · unmatched
+- Tyler S · unmatched
+- Sean K · proposed · Sean (first token)
+- Tyler D · unmatched
+- Emel C · unmatched
+- Mike M · proposed · Mike (first token)
+- Daniel J · unmatched
+- Joshua L · unmatched
+- Austin G · proposed · Austin (first token)
+- Hung L · unmatched
+- Alix S · unmatched
+- Jacob B · proposed · Jacob (first token)
+- Brian Horowitz · proposed · Brian (first token)
+- Jenna R · proposed · Jenna (first token)
+- Sonia C · unmatched
+- Patrick O · proposed · Patrick (first token)
+- Nick J · proposed · Nick (first token)
+
+No Team Messaging person ids shown. No send dialog opened.

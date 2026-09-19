@@ -1,19 +1,38 @@
-# Next agent session — CSI-07 and initial CSI-08 dashboard integration
+# Next agent session — merge CSI to main and deploy the internal dashboard
 
-Copy the prompt below into the next session. Scope is local implementation; CSI-08 stays partial until its remaining workflows are delivered.
+Copy the prompt below into the next session. Subagents are allowed. Prefer Cursor Grok 4.6. Cursor quality / `finish-work` may use Grok 4.6, Auto, or Composer 2.5 only — never a GPT model.
 
-> Implement CSI-07 and a small real dashboard slice of CSI-08 using the existing `vantage-sales-intelligence` design export. Read `docs/call-sales-intelligence/workspace/SPRINT-PLAN.md` first. The goal is a locally running Owner `/sales-intelligence` page in `vantage-admin`, using the export's tokens/components and the local main server, with Attention and Number/Outreach detail plus correct live refetch. Do not start from Team D's broad CSI-18 kickoff.
+> Merge Call & Sales Intelligence into `main` and deploy the internal Owner dashboard. The Owner authorized this session to commit the remaining dirty CSI work, merge into **local `main`**, push **remote `main`**, and deploy. We own this dashboard; it is internal. Resolving production errors, applying additive indexes, running or repairing backfill, and fixing data by hand are acceptable because of how this software is used. CSI-15/16 certification and the full ACCEPTANCE matrix are **not** merge blockers.
 >
-> Inspect branches, Git remotes and dirty files in server/Admin/MCP. Use `sales-intelligence` in server and Admin; preserve existing CSI-13 uncommitted work. Claim exact paths in the ledger. Read the workspace AGENTS, Admin CONTEXT/rules, server catalog/owning Services, 04/05/06, CONTRACTS, and the CSI-06/13 handoffs. Read the export's DESIGN-HANDOFF, INTEGRATION, CONTRACT-GAPS and VALIDATION files. Keep business behavior in the main server.
+> Inspect remotes and dirty files first. All three remotes must stay `jbell-rusty-vantage`: server `vantage-movers-server`, Admin `vantage-admin`, MCP `vantage-movers-mcp`. Observed September 19 HEADs: server `sales-intelligence` `bbdfe4c2ea080f4a962d74913baed0846c1ac763` plus uncommitted CSI-10 seed + CSI-14 destination/P2; Admin `sales-intelligence` `905fe8777e5707f20b32b2a76c59a3566dafaf09` plus uncommitted seed UI + Message-rep picker; MCP `sales-intelligence` `9a8fd37bf78f8074011fb2d47ff3da3ec400b33d` clean, one commit ahead of `origin/main`. Server `origin/main` is `89ac695` (14 commits behind `sales-intelligence`). Local server `main` is stale at `769a591`. Admin `origin/main` is `2021ae5` (3 commits behind). Do not switch remotes or GitHub accounts.
 >
-> First write an intake matrix in `workspace/evidence/csi-07/`: source files/hashes, destination components, route/method/query/body/response mappings, real server availability and the issue owning each gap. Inspect current DTOs/validation/routes; export HTTP types and integration stubs are not authority. Record a runnable local environment plan with actual ports, isolated replica-set database and required worker/recovery steps, without secret values. Use Admin's server-only VANTAGE_API_BASE_URL for the local API; browser requests stay behind the authenticated BFF.
+> Claim exact ledger paths before edits. Do not write `.env`. Do not paste `ADMIN_SEED_*` or any secret. Do not invent Team Messaging person ids. Do not write Rep Identity Links for Josh, Roy, Jason, either Tyler, Russell, QA, or unmatched Users. Never force-push `main`. Never skip hooks. Never `push --force` to `main`/`master`.
 >
-> Implement CSI-07 server invalidations and Admin SSE BFF against durable existing audit/projection sources. Handle reconnect/missed events by refetch, clock-only changes, stream cleanup and nonbuffered transport. Reuse existing live infrastructure where suitable; document any remaining server gap. Prove Owner-only access, Current records scope and API trust boundaries. Extend the JSON proxy's Idempotency-Key forwarding for CSI; it currently forwards only selected Granot commands. Add focused tests for forwarding, denial and scope behavior.
+> ## 1. Land the dirty work, then merge
 >
-> Copy/adapt scoped CSS tokens and real presentation components into Admin. Keep the source export intact; do not replace manifests/lockfiles wholesale or introduce a shared package/standalone app. Use host authentication, navigation, query provider and accessible primitives. Never copy integration-stubs or mock adapters into the live route. Implement the smallest useful real API flow: Attention list with all server-supplied reasons and explicit pending/empty/error states → selected Number/Outreach detail, preserving nullable dates and separate action/overall owners. Keep URL state and selected panel across refetch. Do not fabricate counts or implement ranking/clocks in the browser. Reconcile missing overview calls without pretending the endpoint exists.
+> 1. Re-read remotes, `git status`, and `git log origin/main..HEAD` in all three repos. Preserve unrelated dirty files.
+> 2. Commit the remaining CSI work on each `sales-intelligence` branch when the Owner has authorized commit (this session). Keep `.env` out. Server commit includes destination/P2 runtime, CSI-10 seed evidence, and coordination docs. Admin commit includes Message-rep picker and seed UI.
+> 3. Fast-forward or merge `sales-intelligence` into **local `main`** in server, Admin, and MCP. Update stale local server `main` from the branch; do not reset `origin/main` backwards.
+> 4. Push `origin main` with `-u` only if needed. Return the three compare/commit URLs.
 >
-> Use synthetic persisted records and real local HTTP. No paid provider or production data is needed for this slice. Validate a local server command changes the displayed data, a clock-only change refreshes it, and reconnect recovers a missed change. Preserve focused edits on updates. Browser-walk desktop and narrow layouts; check keyboard/focus and Owner versus Admin access. Capture redacted screenshots and actual command/results. Run relevant checks and the required repository quality checkpoint for implementation changes; report source versus checkpoint evidence accurately.
+> ## 2. Deploy
 >
-> Do not add CSI-18 correction/reanalysis behavior in this session or make unimplemented controls appear functional. CSI-14 messaging remains disabled pending its recorded P2 repair and dedicated dialog integration. Backfill/retention, full Coverage/settings and remaining CSI-08 commands retain their owners. Keep production flags, providers, deployments, subscriptions, migrations/backfill and live sends out of this local task.
+> Admin `vercel.json` has `git.deploymentEnabled: false` — a main push will **not** auto-deploy Admin. Deploy Admin, server, and MCP through the existing Vercel projects / CLI for those `jbell-rusty-vantage` repos. Record deployment URLs. Code on `main` with flags off is a valid first production step.
 >
-> Finish with a runnable local URL/startup handoff, intake matrix, changed contracts, check/review evidence and remaining limitations. Mark CSI-07 complete only with its full live/auth/clock proof; record CSI-08 as partial, not complete. Update the ledger, Team E brief and CONTRACTS. Give the next session a precise remaining CSI-08 scope; Team D may separately implement the CSI-18 server slice under the revised dependency split.
+> Do not point CSI-07 preview ports 3107/3108 at Atlas.
+>
+> ## 3. Production enablement and ops (manual fix is OK)
+>
+> Treat these as separate switches, in this order, and record what you actually enabled:
+>
+> 1. **Dashboard reads:** `SALES_INTELLIGENCE_ENABLED` (and Admin `VANTAGE_API_BASE_URL` / signing already used by production Admin).
+> 2. **Roster:** `SALES_INTELLIGENCE_DIRECTORY_SYNC` if the production snapshot must refresh.
+> 3. **Indexes:** `pnpm migration:csi:indexes -- --report` first. Apply only additive fences this product needs (directory/propose/review/command/nudge_extension_created). Do **not** apply the conversation-account rewrite that drops the legacy `lead_conversations` recording fence unless a reviewed `--account-mappings` file exists. Partial apply is rerunnable. Owner accepts later manual repair.
+> 4. **Analysis / history:** `STT_ENABLED`, `EXTRACTION_ENABLED`, `BACKFILL_DAYS`, media, and MCP endpoint only when that environment is wired (scoped MCP, run-token, pricing). Fleet CSI-15 certification is not required before a first backfill; fix gaps by hand.
+> 5. **Live Owner Rep Nudge:** `SALES_INTELLIGENCE_NUDGE_ENABLED` is a live RingCentral send. Enable it only as its own step after preview works against production. Destination remains a current directory User. Never the customer. Never automatic.
+>
+> Walk the internal dashboard after deploy. Hide or tell the truth about unavailable controls. Repair errors in place. Do not invent matcher links to make Message-rep look complete.
+>
+> Authority: [SPRINT-PLAN](SPRINT-PLAN.md), [destination handoff](evidence/csi-14-destination/HANDOFF.md), [CSI-14 API-CONTRACT](evidence/csi-14/API-CONTRACT.md), [03 flags/jobs](../03-server-pipeline-and-jobs.md), [migration README CSI-01](../../../scripts/migrations/README.md).
+>
+> Finish with deployed SHAs/URLs, which flags are on, which indexes were applied, remaining manual ops, and the next limitation (usually live send, CSI-09, or conversation-account mappings).
