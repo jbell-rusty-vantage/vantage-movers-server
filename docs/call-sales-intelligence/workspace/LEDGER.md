@@ -1,5 +1,49 @@
 # Implementation ledger
 
+## Official CSI indexes applied — Owner, September 19, 2026
+
+Owner-authorized `migration:csi:indexes --apply --confirm-production=vantagemovers`. Reviewed mapping stamped company `provider_account_id` `62948571023` on Lead Conversation `6a905b5cf7dda52cfacb721e` (P5562014). `--verify` ready, unresolved 0, no missing/incompatible indexes. Receiver Agent Patrick is identity only; not the account field. Flags remain off. No STT, extraction, capture, live recording fetch, or CSI-15. Mapping artifact is local/gitignored.
+
+## Named 1–2 number subjects — Owner, September 19, 2026
+
+Documentation-only at naming time. The Owner named Job `P5562014` (Call Lead `6a761d3d7ceae445794c57bd`, stored conversation audio) and Job `5564480` (Call Lead `6aaaf552ca2df3ab6f396b5d`, recent 20-minute inbound, no Vantage conversation). Exact ids and limits: [authorization](evidence/named-subjects/AUTHORIZATION.md). No seed, capture, STT, flag, live recording fetch, or CSI-15 backfill was performed at naming time. CSI-09 is locally complete; the named-subject seed is the next session.
+
+## CSI-09 Coverage/settings + Lead entry — Grok, September 19, 2026
+
+Verified remotes `jbell-rusty-vantage`. Server/Admin/MCP are on `main` after the authorized merge (pre-commit server `cea98a92482f21da91cae1a70c237155a4d74bdc`, Admin `041081adf0a113cd75a69f40f4a49f6662a3dcfa`, MCP `9a8fd37bf78f8074011fb2d47ff3da3ec400b33d`). Local Coverage/settings + Lead entry proof is complete. Work stayed on `main` because it already contains the merge. One implementation writer. No branch switch. Owner asked to commit this slice on `main`; no push in the implementation session.
+
+Exact server claims:
+- `src/services/salesIntelligence/dto.ts`
+- `src/services/salesIntelligence/ownerCoverage.ts`
+- `src/services/salesIntelligence/ownerCoverage.test.ts`
+- `src/services/salesIntelligence/settings.ts`
+- `src/services/salesIntelligence/settings.test.ts`
+- `src/services/salesIntelligence/policy.ts` (read-only reuse; no first-persist write on GET)
+- `src/validation/v1/salesIntelligence.ts`
+- `src/routes/sales-intelligence-admin.routes.ts`
+- `src/routes/sales-intelligence-admin.routes.test.ts`
+- `scripts/test-csi-settings.replica.test.ts`
+- `docs/knowledge/services/{number-activity-reads,sales-intelligence-foundation,sales-intelligence-live}.md`
+
+Exact Admin claims:
+- `vantage-admin/lib/api/salesIntelligence.ts`
+- `vantage-admin/lib/api/salesIntelligence.test.ts`
+- `vantage-admin/components/sales-intelligence/sales-intelligence-copy.ts`
+- `vantage-admin/components/sales-intelligence/workspace.tsx`
+- `vantage-admin/components/sales-intelligence/coverage-view.tsx`
+- `vantage-admin/components/sales-intelligence/settings-form.tsx`
+- `vantage-admin/components/sales-intelligence/lib/official-record.ts`
+- `vantage-admin/components/operational/operational-actions.tsx`
+
+Exact coordination/evidence claims:
+- this ledger
+- `docs/call-sales-intelligence/workspace/CONTRACTS.md`
+- `docs/call-sales-intelligence/workspace/teams/e-dashboard.md`
+- `docs/call-sales-intelligence/04-server-routes.md` (CSI-11 comment only: full Coverage is this issue)
+- `docs/call-sales-intelligence/workspace/evidence/csi-09/**`
+
+Do not enable `NUDGE_ENABLED`, `STT_ENABLED`, `EXTRACTION_ENABLED`, `BACKFILL_DAYS`, capture/media/outreach flags in Vercel or `.env`. Do not apply `migration:csi:indexes`. Do not write `.env` or paste `ADMIN_SEED_*`. Do not point 3107/3108 at Atlas. Do not send a nudge, create a production subscription, or call paid Gateway/STT. Do not implement CSI-15 workers, CSI-14 dialogs, or the CSI-10 empty-recording repair. Kill switches stay env-only.
+
 ## CSI-14 directory-User destinations + P2 — Grok, September 19, 2026
 
 Verified remotes `jbell-rusty-vantage`. Server `sales-intelligence` HEAD `bbdfe4c2ea080f4a962d74913baed0846c1ac763` (dirty CSI-14 dest docs + CSI-10 seed preserved). Admin `sales-intelligence` HEAD `905fe8777e5707f20b32b2a76c59a3566dafaf09` (dirty CSI-10 seed UI preserved). MCP clean, untouched. No branch switch. One implementation writer.
@@ -115,7 +159,7 @@ Created September 17, 2026; current execution order revised September 19 in [SPR
 | CSI-06 | C | complete | Codex; `vantage-main-server` / `sales-intelligence`; baseline `999c63d`; uncommitted | Current typecheck/lint pass; focused 31/31; Outreach replica 22/22; read/attachment/fan-out regressions 10/11/11; offline 2392 pass/114 skip. [Handoff](evidence/csi-06/HANDOFF.md), [checks](evidence/csi-06/CHECKS.md), [review](evidence/csi-06/REVIEW.md). | Dashboard untouched; CSI-10/14 not started; flags off. Required checkpoint failed on its older snapshot; reported issues corrected in current source/docs, no patch applied or independent final approval claimed. |
 | CSI-07 | E (B/C services) | complete (local) | Codex; server/Admin `sales-intelligence`; uncommitted | Owner/auth/current-scope, real durable HTTP invalidations, browser command/clock/reconnect proof; Admin 620/620, server focused 9/9, typechecks and focused lint pass. [Handoff](evidence/csi-07/HANDOFF.md), [checks and checkpoint](evidence/csi-07/CHECKS.md). | Production hosting/capacity remains CSI-16; no deployment/provider proof claimed. CSI-13 preserved. |
 | CSI-08 | E | complete (local) | Codex; Admin/server `sales-intelligence`; uncommitted | Real search/pagination/expiry, attachments/reviews, commands/retry/conflicts/drafts, timeline/official links, Reps, desktop/narrow/keyboard/reconnect/clock proof. Admin626; Number reads10, attachment12, Outreach24; typechecks/focused lint. [Handoff](evidence/csi-08/HANDOFF.md), [checks](evidence/csi-08/CHECKS.md). | Required checkpoint ran: automated checks pass (snapshot2432/115skip; runner12), final review/CLI1 failed on isolated CSI-14 documentation proposal, wholly unapplied; no independent final approval. [Review](evidence/csi-08/REVIEW.md). Full Admin lint retains unrelated baseline errors. CSI-14 disabled; CSI-18/09/15/16 separate. |
-| CSI-09 | E (A/C policy service) | not started | — | — | CSI-01/04/06 |
+| CSI-09 | E (A/C policy service) | complete (local) | Grok; server/Admin `main` after merge | Isolated replica 4/4; server focused 8/8; Admin focused 14/14; typechecks; 3107/3108 browser Coverage + settings save + Lead entry. [Handoff](evidence/csi-09/HANDOFF.md), [checks](evidence/csi-09/CHECKS.md). | Local only. No finish-work checkpoint. Next: named 1–2 subject seed. CSI-14 dialogs, CSI-15, flags, and CSI-10 empty-recording remain separate. |
 | CSI-10 | C | complete | Codex implementation + Grok production seed; `sales-intelligence` server `bbdfe4c` / Admin `905fe87` | Implementation packet [csi-10](evidence/csi-10/HANDOFF.md). Seed: 9 reviewed unique links, Josh/Roy unmatched, no send. [Seed handoff](evidence/csi-10-seed/HANDOFF.md), [checks](evidence/csi-10-seed/CHECKS.md). | CSI-14 dialogs/P2 remain later. Optional Owner alias or explicit create for Josh/Roy. Local process flags only; Vercel flags unchanged. |
 | CSI-11 | B | review (findings resolved) | Codex + independent code review; `vantage-main-server` / `sales-intelligence`, baseline `b92e7458`; uncommitted | Typecheck; focused 108/108; media replica 20/20; CSI-01–04 replicas 15/12/11/7/10; qualification 104 pass/3 pre-existing skips. [Handoff](evidence/csi-11/HANDOFF.md), [checks](evidence/csi-11/CHECKS.md), [review](evidence/csi-11/INDEPENDENT-REVIEW.md). | Both independent reviews approved; all six findings and three recommendations resolved. Final qualification/provider/media 111 pass/3 skips. CSI-05/10 absent inputs remain undetermined; CSI-12 consumes media hook; Team F verifies live permission/Blob at G6. Flags off. |
 | CSI-12 | B | review (findings resolved) | Codex + independent review; vantage-main-server / sales-intelligence; baseline CSI-11 63b3dfb; uncommitted | Typecheck/lint; focused 13/13; transcription replica 19/19; CSI-01–04/11 replicas; full suite 2380 pass/114 skips. [Handoff](evidence/csi-12/HANDOFF.md), [checks](evidence/csi-12/CHECKS.md), [review](evidence/csi-12/INDEPENDENT-REVIEW.md). | STT, immutable redacted evidence, budget/retry and analysis intent complete. Independent findings resolved. Flags off; no commit/live proof. Team D owns analysis. |

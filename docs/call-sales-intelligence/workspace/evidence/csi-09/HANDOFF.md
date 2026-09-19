@@ -1,0 +1,12 @@
+# Team handoff — CSI-09 Coverage/settings + Lead entry
+
+- **Team / issue / date:** E (A/C policy service) / CSI-09 / September 19, 2026.
+- **Agent / repo / branch / baseline:** Cursor Grok 4.6; server `main` HEAD `cea98a92482f21da91cae1a70c237155a4d74bdc` (dirty CSI-09 at implementation); Admin `main` HEAD `041081adf0a113cd75a69f40f4a49f6662a3dcfa` (dirty CSI-09 at implementation). Remotes `jbell-rusty-vantage` (`vantage-movers-server`, `vantage-admin`). Work stayed on `main` because it already contains the `sales-intelligence` merge. No branch switch. Owner later asked to commit on `main`; no push in the implementation session.
+- **Concrete behavior:** Owner GET `/api/v1/admin/sales-intelligence/coverage` returns watermark/gaps, CSI-11 recording counters, recording/STT/analysis/application stage health, oldest queued age, mapping hygiene, env flags/models, budget actual/reserved/remaining, current settings, and a non-executable backfill notice. GET `/settings` is versioned policy plus displayed kill switches and never writes. PATCH `/settings` is `update_settings` with CAS, audit, and Idempotency-Key; first persist writes env bootstraps then the Owner edit; later env is ignored; flags cannot be patched. `scope=production` only. Admin adds the Coverage view and settings editor (accepted NY Mon–Sat 08:00–20:00 defaults). Form/Call Lead Actions enter SI with the official Lead identity via `salesIntelligenceLeadHref` and `outreach/by-lead`.
+- **Owned/changed files:** [FILES.md](FILES.md).
+- **Contracts / consumers:** [CONTRACTS](../../CONTRACTS.md), [04-server-routes](../../../04-server-routes.md) CSI-11/09 coverage comment, foundation/live/number-activity Services.
+- **Checks / artifacts:** [CHECKS.md](CHECKS.md), [REVIEW.md](REVIEW.md). Isolated preview 3107/3108 + replica `127.0.0.1:27189`. Disposable login remains in OS temp; do not copy it here.
+- **Race / replay / recovery:** settings versions are stable per Idempotency-Key. GET never initializes storage. Calendar edits still do not rewrite existing promises.
+- **Known limits:** Backfill is honesty-only. Kill switches stay env-only. CSI-10 empty-recording, CSI-14 dialogs, CSI-15 workers, official indexes, and Vercel flag enablement were not started. Full Admin lint baseline untouched.
+- **Deployment actions:** none.
+- **Next:** named 1–2 subject seed ([NEXT-SESSION](../../NEXT-SESSION.md)). CSI-14 dialogs and CSI-15 remain separate. Do not enable `NUDGE_ENABLED`, `STT_ENABLED`, `EXTRACTION_ENABLED`, or `BACKFILL_DAYS`. Do not apply `migration:csi:indexes`.

@@ -29,4 +29,6 @@ Owner routes use the signed Registry Owner verifier after the unchanged v1 authe
 
 Run the report/apply/verify migration before enabling writers. Missing unique indexes fail closed. Account-scoped recording identity requires evidence-backed legacy attribution. No automatic production migration or data deletion is performed. Multiple follow-ups may have null dates; no single-active-action index is permitted. Existing LeadConversation text summaries and nullable provider metadata remain readable.
 
+Owner HTTP GET/PATCH `/settings` now consume `readCsiSettings` / `commandCsiSettings` over `resolvePolicy`, `initializeCsiPolicy` and `updateCsiPolicy`. GET never writes. Environment bootstrap numbers persist only on first initialize; later Owner edits win. Deployment `csiFlag` kill switches are displayed and are not PATCH-able.
+
 Call reconciliation, clocks, Outreach effects, MCP tools, provider orchestration, queue dispatch and Owner screens are not supplied by this foundation. Team B/C/D handlers must use these primitives and revalidate business preconditions. Privileged raw collection migration/retention operations are outside application immutability hooks.

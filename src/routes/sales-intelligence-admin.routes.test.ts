@@ -183,3 +183,100 @@ test("admin router is mounted in v1.routes.ts after the CSI boundary router", ()
   const admin = source.indexOf("router.use(createSalesIntelligenceAdminRouter())");
   assert.ok(guard > -1 && boundary > guard && admin > boundary, "guard, then boundary, then CSI-04 admin routes");
 });
+
+test("CSI-09 coverage and settings: production scope, CAS, no flag patch, GET never writes", { timeout: 20000 }, async () => {
+  const saved = { ...process.env };
+  process.env.VANTAGE_API_SECRET = "synthetic-global";
+  process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = "synthetic-owner-signature";
+  process.env.SALES_INTELLIGENCE_ENABLED = "true";
+  process.env.SALES_INTELLIGENCE_DEPLOYMENT_ID = "route-test";
+  process.env.TEST_MODE = "true";
+  let settingsReads = 0;
+  let settingsWrites = 0;
+  const coverage = {
+    known_through: null,
+    gaps: [],
+    capabilities: { call_log: "unknown", recording_content: "denied", webhook: "unavailable" },
+    ai_paused: false,
+    recordings: { pending_discovery: 0, media_pending: 0, media_stored: 0, no_recording: 0, unavailable: 0, failed: 0, eligibility_undetermined: 0 },
+    stages: {
+      recording: { pending: 0, leased: 0, retry: 0, paused: 0, dead_letter: 0, oldest_queued_at: null },
+      transcription: { pending: 0, leased: 0, retry: 0, paused: 0, dead_letter: 0, oldest_queued_at: null },
+      analysis: { pending: 0, leased: 0, retry: 0, paused: 0, dead_letter: 0, oldest_queued_at: null },
+      application: { pending: 0, leased: 0, retry: 0, paused: 0, dead_letter: 0, oldest_queued_at: null },
+    },
+    budget: { status: "unknown", month: null, ceiling_cents: 8000, actual_cents: null, reserved_cents: null, remaining_cents: null },
+    mapping_hygiene: { unmapped_inbound_numbers: 0, unmapped_directory_users: null, last_directory_sync_at: null, directory_status: "missing" },
+    flags: { ENABLED: true, STT_ENABLED: false },
+    models: { extraction: { name: "openai/gpt-5-mini", enabled: false }, transcription: { name: "openai/gpt-4o-mini-transcribe", enabled: false } },
+    settings: { persisted: false, revision: 1, version: "csi-policy-v1", source: "accepted_defaults", timezone: "America/New_York", first_action_due_staffed_minutes: 30, missed_callback_due_staffed_minutes: 15, going_cold_staffed_minutes: 1440, monthly_ceiling_cents: 8000 },
+    backfill: { available: false, owner_triggered: true, note: "not yet available" },
+  };
+  const settings = { persisted: false, revision: 1, source: "accepted_defaults", policy: { version: "csi-policy-v1" }, flags: { STT_ENABLED: false }, models: coverage.models, updated_at: null, updated_by: null };
+  const app = express();
+  app.use(express.json());
+  app.use("/api/v1", requireApiSecret);
+  app.use(createSalesIntelligenceBoundaryRouter({ connect: async () => {} }));
+  app.use(createSalesIntelligenceAdminRouter({
+    connect: async () => {},
+    coverage: async () => coverage as never,
+    settings: async () => { settingsReads += 1; return settings as never; },
+    updateSettings: async () => { settingsWrites += 1; return { response: { version: "csi-policy-r2", revision: 2 }, replayed: false } as never; },
+  }));
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const ownerHeaders = (method: string, routePath: string, extra: Record<string, string> = {}) => {
+    const fields = { adminId: "owner", email: "owner@example.test", role: "owner", timestamp: String(Date.now()), requestId: "req-09", method, path: routePath };
+    return {
+      "x-api-secret": "synthetic-global",
+      "x-vantage-admin-user-id": fields.adminId,
+      "x-vantage-admin-email": fields.email,
+      "x-vantage-admin-role": "owner",
+      "x-vantage-admin-timestamp": fields.timestamp,
+      "x-vantage-admin-request-id": fields.requestId,
+      "x-vantage-admin-signature": computeAdminActorSignature(fields, process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET!),
+      ...extra,
+    };
+  };
+  const call = async (method: string, routePath: string, init: { headers?: Record<string, string>; body?: unknown } = {}) => {
+    const response = await fetch(base + routePath, {
+      method,
+      headers: { "content-type": "application/json", ...(init.headers ?? {}) },
+      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+    });
+    return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+  };
+  try {
+    const coveragePath = `${CSI_ADMIN_PREFIX}/coverage`;
+    const settingsPath = `${CSI_ADMIN_PREFIX}/settings`;
+    assert.equal((await call("GET", `${coveragePath}?scope=historical`, { headers: ownerHeaders("GET", coveragePath) })).status, 403);
+    assert.equal((await call("GET", `${settingsPath}?scope=combined`, { headers: ownerHeaders("GET", settingsPath) })).status, 403);
+    const read = await call("GET", coveragePath, { headers: ownerHeaders("GET", coveragePath) });
+    assert.equal(read.status, 200);
+    const data = (read.body.data as { coverage: typeof coverage }).coverage;
+    assert.equal(data.capabilities.recording_content, "denied");
+    assert.equal(data.budget.status, "unknown");
+    assert.equal(data.budget.actual_cents, null);
+    assert.equal(data.mapping_hygiene.unmapped_directory_users, null);
+    assert.equal(data.backfill.available, false);
+    assert.equal(settingsWrites, 0);
+    const settingsRead = await call("GET", settingsPath, { headers: ownerHeaders("GET", settingsPath) });
+    assert.equal(settingsRead.status, 200);
+    assert.equal(settingsReads, 1);
+    assert.equal(settingsWrites, 0);
+    assert.equal("coverage" in settingsRead.body, false);
+    const noKey = await call("PATCH", settingsPath, { headers: ownerHeaders("PATCH", settingsPath), body: { command: "update_settings", expected_revision: 1, policy: { version: "x" }, reason: "Owner" } });
+    assert.equal(noKey.status, 400);
+    const flagged = await call("PATCH", settingsPath, {
+      headers: ownerHeaders("PATCH", settingsPath, { "idempotency-key": "k-flags" }),
+      body: { command: "update_settings", expected_revision: 1, policy: { version: "x" }, reason: "Owner", flags: { STT_ENABLED: true } },
+    });
+    assert.equal(flagged.status, 400);
+    assert.equal(settingsWrites, 0);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    process.env = saved;
+  }
+});

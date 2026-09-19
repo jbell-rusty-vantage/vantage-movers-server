@@ -12,11 +12,12 @@ Inspected local evidence and current source on September 19. No remote issue/PR 
 | CSI-17 | Implemented locally, MCP HEAD `9a8fd37bf78f8074011fb2d47ff3da3ec400b33d`, clean at inspection. Direct checks and CSI-13 transport proof exist; earlier independent checkpoint failed on snapshot dependency/file reads. Do not relabel it approved. |
 | CSI-10 review follow-up | Proposed empty-recording replay repair remains unapplied. Current `repIdentity/worker.ts` still gates discovery on `call.recordings.length`. Review and implement a narrow repair with regression proof; the checkpoint proposal is evidence, not applied source. |
 | CSI-14 | Directory-User destinations and the P2 are implemented locally; [destination handoff](evidence/csi-14-destination/HANDOFF.md), [review](evidence/csi-14-destination/REVIEW.md). Smallest Admin Message-rep picker lists current directory Users. Isolated Composer 2.5 checkpoint was patch-ready/PASS and was not applied wholesale. Live send remains separately gated. Fuller dialogs/history remain. |
-| CSI-07/08/09 | Not implemented as feature workflows. Admin is clean on `sales-intelligence`; foundation auth/proxy work is not completion of live updates or panels. |
-| CSI-18 | Neither server Owner intervention commands nor their dashboard integration is complete. CSI-13 has reusable preparation/history seams, not delivered Owner controls. |
+| CSI-07/08/18 | Locally complete on `main` after the authorized merge. Isolated HTTP/browser proof is in their evidence packets. Production flags remain off. |
+| CSI-09 | Locally complete on `main`. Coverage/settings plus Lead-detail entry; isolated replica 4/4, focused server 8/8, Admin 14/14, 3107/3108 browser proof. [Handoff](evidence/csi-09/HANDOFF.md). CSI-14 dialogs, CSI-15, flag enablement, and the empty-recording repair were not started. |
+| CSI-18 | Locally complete on `main` (see CSI-07/08/18 row). Do not restart it. |
 | CSI-15/16 | Backfill/retention/budget recovery integration and final certification remain. The backend is not ready to be called officially finished or production-certified. |
 
-Older ledger rows preserve their original review scope and historical limitations. This table does not retrospectively approve them. All three Git remotes belong to `jbell-rusty-vantage`; all three observed branches are `sales-intelligence`. Preserve the dirty server checkout.
+Older ledger rows preserve their original review scope and historical limitations. This table does not retrospectively approve them. All three Git remotes belong to `jbell-rusty-vantage`; server, Admin, and MCP are on `main`.
 
 ## Recommended order
 
@@ -24,11 +25,11 @@ Use the local Admin and local API first. This creates a usable integration surfa
 
 September 19 Owner decision: send destinations are current account Users, not reviewed Agent matches. CSI-07/08/18 are locally implemented; do not restart them.
 
-1. **Done locally: CSI-14 directory-User destinations plus P2.** Preview/send resolve a current stored-directory User. Reviewed identity stays required for attribution/metrics/assignment, not for send. Smallest Admin Message-rep picker lists those Users.
-2. **Next session — one task: merge `sales-intelligence` into local `main`, push remote `main`, and deploy.** [Copy-ready instructions](NEXT-SESSION.md). No CSI-14 dialogs, CSI-09, CSI-15, or flag enablement in that session.
-3. **CSI-09 Coverage/settings.** Independent of messaging.
-4. **Targeted 1–2 number-lead example seed, only after a separate Owner authorization that names the subjects.** This is not CSI-15 fleet backfill. Recording grant must be re-probed; official CSI indexes and conversation account attribution remain blocked. Do not activate historical obligations from a UI walkthrough.
-5. **CSI-15/16.** Fleet historical backfill, retention, budget recovery, certification and staged rollout stay later. No production backfill follows from implementing UI.
+1. **Done locally: CSI-14 directory-User destinations plus P2.** Preview/send resolve a current stored-directory User. Reviewed identity stays required for attribution/metrics/assignment, not for send. Smallest Admin Message-rep picker lists those Users. Fuller dialogs/history remain later.
+2. **Done: merge `sales-intelligence` into local `main`, push remote `main`, and deploy with production flags left as they are.**
+3. **Done locally: CSI-09 Coverage/settings plus Lead-detail entry.** [Handoff](evidence/csi-09/HANDOFF.md).
+4. **Next session — one task: targeted 1–2 number-lead example seed.** [Copy-ready instructions](NEXT-SESSION.md). Owner named **P5562014** and **5564480**. [Authorization](evidence/named-subjects/AUTHORIZATION.md). This is not CSI-15 fleet backfill. Do not activate historical obligations. Do not fetch 5564480 media. Verify official indexes only; do not re-apply.
+5. **Later, separately:** CSI-14 fuller dialogs/history; CSI-10 empty-recording repair; flag enablement; CSI-15/16 fleet backfill, retention, budget recovery, certification. No production backfill follows from the named-subject seed.
 
 These are execution slices under existing issue IDs, not replacement issues. Team D can take the CSI-18 server slice independently when scheduled; the default next Owner agent session is the visible dashboard foundation, not Team D's old combined kickoff.
 

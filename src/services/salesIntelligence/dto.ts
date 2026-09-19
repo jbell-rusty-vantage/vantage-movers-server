@@ -15,6 +15,7 @@ import {
   csiSubjectSchema,
   csiActionAvailabilitySchema,
   csiDateResolutionSchema,
+  csiPolicySchema,
 } from "../../validation/v1/salesIntelligence";
 export const coverageDtoSchema = z
   .object({
@@ -36,6 +37,90 @@ export const coverageDtoSchema = z
       failed: z.number().int().nonnegative(),
       eligibility_undetermined: z.number().int().nonnegative(),
     }).strict().optional(),
+  })
+  .strict();
+const nonnegative = z.number().int().nonnegative();
+const unknownCount = nonnegative.nullable();
+export const ownerCoverageStageSchema = z
+  .object({
+    pending: nonnegative,
+    leased: nonnegative,
+    retry: nonnegative,
+    paused: nonnegative,
+    dead_letter: nonnegative,
+    oldest_queued_at: date.nullable(),
+  })
+  .strict();
+export const ownerCoverageDtoSchema = coverageDtoSchema.extend({
+  stages: z
+    .object({
+      recording: ownerCoverageStageSchema,
+      transcription: ownerCoverageStageSchema,
+      analysis: ownerCoverageStageSchema,
+      application: ownerCoverageStageSchema,
+    })
+    .strict(),
+  budget: z
+    .object({
+      status: z.enum(["known", "unknown"]),
+      month: z.string().nullable(),
+      ceiling_cents: nonnegative,
+      actual_cents: unknownCount,
+      reserved_cents: unknownCount,
+      remaining_cents: unknownCount,
+    })
+    .strict(),
+  mapping_hygiene: z
+    .object({
+      unmapped_inbound_numbers: nonnegative,
+      unmapped_directory_users: unknownCount,
+      last_directory_sync_at: date.nullable(),
+      directory_status: z.enum(["stored", "missing"]),
+    })
+    .strict(),
+  flags: z.record(z.string(), z.boolean()),
+  models: z
+    .object({
+      extraction: z.object({ name: z.string(), enabled: z.boolean() }).strict(),
+      transcription: z.object({ name: z.string(), enabled: z.boolean() }).strict(),
+    })
+    .strict(),
+  settings: z
+    .object({
+      persisted: z.boolean(),
+      revision: revision,
+      version: z.string().min(1),
+      source: z.enum(["persisted", "accepted_defaults"]),
+      timezone: z.string().min(1),
+      first_action_due_staffed_minutes: nonnegative,
+      missed_callback_due_staffed_minutes: nonnegative,
+      going_cold_staffed_minutes: nonnegative,
+      monthly_ceiling_cents: nonnegative,
+    })
+    .strict(),
+  backfill: z
+    .object({
+      available: z.literal(false),
+      owner_triggered: z.literal(true),
+      note: z.string().min(1),
+    })
+    .strict(),
+});
+export const csiSettingsReadDtoSchema = z
+  .object({
+    persisted: z.boolean(),
+    revision: revision,
+    source: z.enum(["persisted", "accepted_defaults"]),
+    policy: csiPolicySchema,
+    flags: z.record(z.string(), z.boolean()),
+    models: z
+      .object({
+        extraction: z.object({ name: z.string(), enabled: z.boolean() }).strict(),
+        transcription: z.object({ name: z.string(), enabled: z.boolean() }).strict(),
+      })
+      .strict(),
+    updated_at: date.nullable(),
+    updated_by: z.string().nullable(),
   })
   .strict();
 export const assignmentDtoSchema = z
@@ -222,6 +307,8 @@ export const assessmentDtoSchema = z
   })
   .strict();
 export type CoverageDto = z.infer<typeof coverageDtoSchema>;
+export type OwnerCoverageDto = z.infer<typeof ownerCoverageDtoSchema>;
+export type CsiSettingsReadDto = z.infer<typeof csiSettingsReadDtoSchema>;
 export type AssignmentDto = z.infer<typeof assignmentDtoSchema>;
 export type DerivedDto = z.infer<typeof derivedDtoSchema>;
 export type FollowupDto = z.infer<typeof followupDtoSchema>;

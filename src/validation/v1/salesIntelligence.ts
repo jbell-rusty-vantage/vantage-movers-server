@@ -276,7 +276,7 @@ export const csiPolicySchema = z
   .strict();
 export type CsiPolicy = z.infer<typeof csiPolicySchema>;
 export const csiSettingsCommandSchema = z
-  .object({ ...base, policy: csiPolicySchema, ...reason })
+  .object({ command: z.literal("update_settings"), ...base, policy: csiPolicySchema, ...reason })
   .strict();
 export const csiListQuerySchema = z
   .object({

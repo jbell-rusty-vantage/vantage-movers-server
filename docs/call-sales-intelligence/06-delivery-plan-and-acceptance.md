@@ -1,6 +1,6 @@
 # 06 — Delivery plan and acceptance
 
-Current sprint order and inspected review state: [September 19 sprint revision](workspace/SPRINT-PLAN.md). Next: [CSI-07 plus initial CSI-08 design integration](workspace/NEXT-SESSION.md), using local Admin/API. The received design export is adapted into `vantage-admin`; production deployment is not a prerequisite for dashboard development.
+Current sprint order and inspected review state: [September 19 sprint revision](workspace/SPRINT-PLAN.md). Next: [named 1–2 subject seed](workspace/NEXT-SESSION.md). CSI-07/08/09/18 are locally complete on `main`. The received design export is adapted into `vantage-admin`.
 
 Status: build contract with partial local implementation. Execution order revised September 19, 2026; product acceptance remains unchanged. Execution home: [workspace/README.md](workspace/README.md). This revision replaces the old acceptance-gated AI plan. [09](09-owner-workflow-interview.md) preserves interview decisions; [10](10-intelligence-agent-contract.md) is the agent contract.
 

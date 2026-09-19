@@ -100,6 +100,7 @@
     "test:csi:outreach:replica": "node --import tsx scripts/test-csi-outreach.ts",
     "test:csi:rep-identity:replica": "node --import tsx scripts/test-csi-rep-identity.ts",
     "test:csi:nudges:replica": "node --import tsx scripts/test-csi-nudges.ts",
+    "test:csi:settings:replica": "node --import tsx scripts/test-csi-settings.ts",
     "migration:csi:indexes": "node --env-file=.env --import tsx scripts/migrations/sales-intelligence-indexes.ts",
     "lint": "eslint src api scripts/quality --max-warnings 0",
     "quality:install": "node scripts/quality/install.mjs",

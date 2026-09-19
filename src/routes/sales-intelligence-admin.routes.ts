@@ -4,7 +4,9 @@ import { csiFlag } from "../config/domain/salesIntelligence";
 import { connectMongo } from "../db";
 import { logger } from "../logger";
 import { getContactNumberDetail } from "../services/numberActivity/contactNumbers";
-import { readCaptureCoverage } from "../services/numberActivity/coverage";
+import { readOwnerCoverage } from "../services/salesIntelligence/ownerCoverage";
+import { commandCsiSettings, readCsiSettings } from "../services/salesIntelligence/settings";
+import { csiSettingsCommandSchema } from "../validation/v1/salesIntelligence";
 import { enqueueNumberRebuild } from "../services/numberActivity/rebuild";
 import { numberSearchQuerySchema, searchNumberActivity } from "../services/numberActivity/search";
 import { getNumberTimeline } from "../services/numberActivity/timeline";
@@ -45,7 +47,9 @@ export type SalesIntelligenceAdminRouteDeps = {
   detail?: typeof getContactNumberDetail;
   timeline?: typeof getNumberTimeline;
   enqueueRebuild?: typeof enqueueNumberRebuild;
-  coverage?: typeof readCaptureCoverage;
+  coverage?: typeof readOwnerCoverage;
+  settings?: typeof readCsiSettings;
+  updateSettings?: typeof commandCsiSettings;
   attachments?: typeof listAttachments;
   attachmentCommand?: typeof commandAttachment;
   outreachCommand?: typeof commandOutreach;
@@ -150,8 +154,27 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
       guard(req);
       z.object({ scope: z.literal("production").optional() }).strict().parse(req.query);
       await connect();
-      const coverage = await (deps.coverage ?? readCaptureCoverage)();
+      const coverage = await (deps.coverage ?? readOwnerCoverage)();
       return res.json({ ok: true, data: { as_of: new Date().toISOString(), coverage } });
+    } catch (error) { return fail(req, res, error); }
+  });
+  router.get(`${CSI_ADMIN_PREFIX}/settings`, async (req, res) => {
+    try {
+      guard(req);
+      z.object({ scope: z.literal("production").optional() }).strict().parse(req.query);
+      await connect();
+      const data = await (deps.settings ?? readCsiSettings)();
+      return res.json({ ok: true, as_of: new Date().toISOString(), data });
+    } catch (error) { return fail(req, res, error); }
+  });
+  router.patch(`${CSI_ADMIN_PREFIX}/settings`, async (req, res) => {
+    try {
+      const actor = guard(req);
+      const idempotency_key = req.header("idempotency-key")?.trim();
+      if (!idempotency_key) throw new CsiError("INVALID_INPUT");
+      const command = csiSettingsCommandSchema.parse(req.body);
+      await connect();
+      return res.json({ ok: true, data: await (deps.updateSettings ?? commandCsiSettings)({ actor, idempotency_key, command }) });
     } catch (error) { return fail(req, res, error); }
   });
   router.get(`${CSI_ADMIN_PREFIX}/numbers`, async (req, res) => {

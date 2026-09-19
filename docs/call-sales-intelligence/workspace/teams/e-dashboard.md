@@ -10,9 +10,13 @@ CSI-08 is complete locally. Its workflows are implemented and exercised against 
 
 CSI-14 P2/send dialogs, CSI-18 corrections/reanalysis, CSI-09 Coverage/settings and CSI-15 remain separate. Do not restart CSI-07 or run the old broad kickoff below.
 
+## CSI-09 — September 19 (current)
+
+Coverage/settings and Lead-detail entry are locally complete on `main` after the merge. Owner GET `/coverage` is the full 04/05 DTO. GET/PATCH `/settings` use existing policy commands with CAS/audit. Admin has the fourth Coverage view, settings editor, and official Lead entry. Isolated replica + 3107/3108 browser proof: [handoff](../evidence/csi-09/HANDOFF.md), [checks](../evidence/csi-09/CHECKS.md). CSI-14 dialogs, CSI-15 backfill execution, and flag enablement stay separate.
+
 ## Current next session — September 19
 
-Use [NEXT-SESSION](../NEXT-SESSION.md) and [SPRINT-PLAN](../SPRINT-PLAN.md). The design export exists at `vantage/vantage-sales-intelligence/`; copy/adapt its real components and scoped tokens into Admin while preserving the source. First deliver CSI-07 plus the initial CSI-08 Attention/detail read slice against the local API. Full CSI-08, CSI-09, CSI-14 dialogs and CSI-18 UI remain distinct acceptance work. Do not run the broad original kickoff as one undifferentiated task. Reconcile export DTOs, auth placeholders, proxy idempotency forwarding and SSE before treating it as integrated.
+Use [NEXT-SESSION](../NEXT-SESSION.md) and [SPRINT-PLAN](../SPRINT-PLAN.md). CSI-07/08/09/18 are locally complete on `main`. Next is the named 1–2 subject seed (P5562014, 5564480), not CSI-14 dialogs or CSI-15. Do not run the broad original kickoff as one undifferentiated task.
 
 Own CSI-07/08/09 and UI CSI-18/14. Read Admin CONTEXT/rules, [05](../../05-owner-dashboard-ux.md), [04](../../04-server-routes.md), [01](../../01-specification.md). Start from A's DTO fixtures; integrate B/C/D without inventing server rules.
 
