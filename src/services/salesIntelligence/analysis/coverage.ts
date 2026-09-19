@@ -27,7 +27,10 @@ export function capturedTranscriptsComplete(snapshots: Array<{ response: unknown
       if (!page.next_cursor) break;
       current = group.find(p => cursor(p.args) === page.next_cursor);
     }
-    if (!current) return false;
+    // Every captured transcript page must be reachable exactly once. Otherwise a
+    // duplicate request cursor or orphaned page could leave evidence outside the
+    // coverage gate while the first matching chain still looks complete.
+    if (!current || seen.size !== group.length) return false;
   }
   return true;
 }
