@@ -1,0 +1,67 @@
+All Bookings
+Reconciliation
+Precise Booking Form
+Bookings
+
+Browse bookings, edit production booking details, and start cancellations.
+
+New booking
+EXPORT CSV
+FILTERS
+RESET
+
+No filters applied.
+
+Click a booking row to inspect it, or use the row detail to start a cancellation.
+Use the checkboxes to select a booking. Check Google Sheet contains will appear so you can confirm the booking is in the Google Sheet.
+SHEET
+	BOOK DATE	JOB	CUSTOMER	STATUS	STORED LEAD	SOURCE	BINDER	DEPOSIT	MERCHANT	
+ACTIONS
+	Sep 19, 2026	CSI08-TAYLOR	
+Taylor (synthetic)
+	
+Cancelled
+	—	
+Synthetic source
+	$0.00	$0.00	
+Synthetic merchant
+	
+Lead
+Cancel
+Showing 1 of 1
+ALL ROWS LOADED
+Bookings
+
+Mongo ID: 000000000000000000002006
+
+Summary
+Contact
+Actions
+Production record
+Source
+BOOK DATE
+Sep 19, 2026
+JOB
+CSI08-TAYLOR
+CUSTOMER
+Taylor (synthetic)
+PHONE
+-
+SOURCE
+Synthetic source
+BINDER
+$0.00
+DEPOSIT
+$0.00
+MERCHANT
+Synthetic merchant
+CANCELLED
+Linked
+DATABASE SCOPE
+production
+MONGO ID
+000000000000000000002006
+CANCELLATION
+Cancellation
+LEAD
+Lead

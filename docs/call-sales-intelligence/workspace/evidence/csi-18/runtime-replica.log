@@ -1,0 +1,37 @@
+
+> vantage_movers_server@1.0.0 test:csi:runtime:replica C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> node --import tsx scripts/test-csi-runtime.ts
+
+CSI-13 disposable proof: testvantagemovers_csi1391552042adfa; loopback replica csi01:27189; synthetic evidence only
+{"level":"info","time":"2026-09-19T12:39:23.010Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-13 actual ToolLoopAgent + local MCP HTTP + real handlers + disposable replica
+  ✔ real MCP prompt/schema/evidence/submission and application; unknown timing/date stays undated (3141.8482ms)
+  ✔ duplicate delivery permits one invocation and queue failure retains durable application (2166.2799ms)
+  ✔ CSI-18 original and current reruns use durable jobs and isolated evidence through real MCP (6176.3636ms)
+  ✔ crash after acknowledgment recovers receipt without a second model invocation (2485.7701ms)
+  ✔ missing billed usage stays reserved; prose-only output is visibly incomplete (4309.6417ms)
+  ✔ budget pause burns no attempt and disabled application does not claim (2176.0409ms)
+  ✔ clock-only changes do not alter source fingerprint; bursts have one durable successor (209.9044ms)
+  ✔ one schema repair succeeds; a second invalid result stops with accounted usage (3787.0494ms)
+  ✔ application batch crash resumes without duplicating findings or obligations (2197.4999ms)
+  ✔ expired application lease cannot commit; reclaimed delivery converges (2567.9402ms)
+  ✔ cross-run commitment deduplication and older publication cannot replace newer analysis (4286.8282ms)
+  ✔ incomplete transcript prevents paid work; context ceiling releases unused reservation (792.1993ms)
+  ✔ number synthesis captures original transcripts and findings through MCP (4662.6982ms)
+  ✔ receipt survives expired analysis lease; reclaim recovers without provider work (1857.5771ms)
+  ✔ application readiness resumes only compatible consumer pauses (1912.4391ms)
+  ✔ number-only spoken restrictions reuse CSI-06; unresolved until is review, not indefinite (4613.2167ms)
+  ✔ incomplete history publishes findings with review but cannot activate historical callback (2159.8286ms)
+  ✔ contact evidence updates conversation/interaction through Outreach; a concurrent Owner edit wins (4190.5205ms)
+  ✔ number eligibility is rechecked before provider work without burning retries or STT (2225.5314ms)
+  ✔ record-only number refresh spends nothing; a later transcript schedules a successor (2538.82ms)
+  ✔ legacy record-only MCP receipt cannot publish number analysis (940.1263ms)
+✔ CSI-13 actual ToolLoopAgent + local MCP HTTP + real handlers + disposable replica (66214.5125ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 76959.4025

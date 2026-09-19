@@ -1,0 +1,73 @@
+- banner:
+  - button "Open navigation":
+  - combobox "Database scope":
+    - option "Production" [selected]
+    - option "Historical Read-Only"
+  - button "Open search":
+  - button "Account menu":
+    - generic: A
+    - generic: admin@csi07.example.test
+    - generic: Admin
+- main:
+  - paragraph: Today
+  - heading "Overview" [level=1]
+  - paragraph: Waiting work first. Last 7 days next.
+  - heading "This week" [level=2]
+  - paragraph: Rolling window for production activity only.
+  - link "Open Analytics":
+    - /url: /analytics
+  - paragraph: Sales (Deposits)
+  - paragraph: $0
+  - paragraph: $0 agent binder
+  - paragraph: Bookings
+  - paragraph: "1"
+  - paragraph: 0 active deals
+  - paragraph: Booking Rate
+  - paragraph: 33.3%
+  - paragraph: 3 leads
+  - paragraph: Cancel Rate
+  - paragraph: 100.0%
+  - paragraph: 1 cancelled bookings
+  - paragraph: Lead Cost
+  - paragraph: $0
+  - paragraph: 3 billable leads
+  - heading "Top Agents (This Week)" [level=3]:
+    - text: Top Agents (This Week)
+  - paragraph: Ranked by deposit amount with booking count shown.
+  - link "View all":
+    - /url: /agents
+  - list:
+    - generic: "1"
+    - text: Alex (synthetic)
+    - text: $0
+    - generic: 1 bookings
+  - heading "Start a record" [level=3]
+  - link "Create a Booking Book a Form Lead or Call Lead into a deal.":
+    - /url: /bookings/new
+    - generic: Create a Booking
+    - generic: Book a Form Lead or Call Lead into a deal.
+  - link "Create a Cancellation Cancel an existing Booking.":
+    - /url: /cancellations/new
+    - generic: Create a Cancellation
+    - generic: Cancel an existing Booking.
+  - heading "All time" [level=2]
+  - paragraph: Production totals. Source and agent breakdowns live on Analytics.
+  - link "Open Analytics":
+    - /url: /analytics
+  - paragraph: Total Sales (Deposits)
+  - paragraph: $0
+  - paragraph: $0 agent binder
+  - paragraph: Bookings
+  - paragraph: "1"
+  - paragraph: 0 active deals
+  - paragraph: Total Leads
+  - paragraph: "3"
+  - paragraph: 33.3% booking rate
+  - paragraph: Cancellations
+  - paragraph: "1"
+  - paragraph: 100.0% cancel rate
+  - paragraph: Lead Cost
+  - paragraph: $0
+  - paragraph: 3 billable leads
+- button "Open Next.js Dev Tools":
+- alert

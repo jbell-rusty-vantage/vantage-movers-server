@@ -1,0 +1,392 @@
+Number / Outreach detail
+Close
++12025550101
+customer
+Contact: allowed
+
+As of Sep 19, 6:23 AM EDT · History known through Not observed
+
+Running analysis
+
+No completed analysis available.
+
+Number↔Lead attachments
+
+No attachments recorded. Searching does not attach a Lead.
+
+Contact restrictions
+
+No temporary contact restrictions recorded.
+
+Outreach · Open
+Outreach owned by Jordan (synthetic)
+
+Last human contact: Not observed
+
+Being worked, but no next step
+Mark as worked
+Assign Outreach
+Wait for customer
+Add note
+Close Outreach
+Reopen Outreach
+Add follow-up
+Follow-ups
+
+No active follow-ups recorded.
+
+Completed and cancelled follow-ups
+Call
+Rep promise · cancelled
+
+Synthetic callback updated 2026-09-19T06:56:08.186Z
+
+Due Sep 19, 2:55 AM EDT
+
+Promised by Jordan (synthetic)
+Action assigned to Jordan (synthetic)
+Outreach owned by Jordan (synthetic)
+Send estimate
+Owner · cancelled
+
+Synthetic estimate draft survives live changes
+
+No due date recorded
+
+Action assigned to Casey (synthetic)
+Outreach owned by Jordan (synthetic)
+Check availability
+Owner · completed
+
+CSI-08 synthetic crew availability
+
+No due date recorded
+
+Outcome: completed · Owner
+
+Action assigned to Casey (synthetic)
+Outreach owned by Jordan (synthetic)
+Review
+Owner · completed
+
+Synthetic completion note regression
+
+No due date recorded
+
+Outcome: completed · Owner
+
+Action assigned to Unassigned
+Outreach owned by Jordan (synthetic)
+Review
+Owner · completed
+
+Synthetic completion note regression
+
+No due date recorded
+
+Outcome: completed · Owner
+
+Action assigned to Unassigned
+Outreach owned by Jordan (synthetic)
+Number Activity
+followup · Sep 19, 6:23 AM EDT
+
+reopen
+
+Reason: Synthetic new Owner work; do not revive old commitments.
+
+Responsible Agent: 000000000000000000000702
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:22 AM EDT
+
+outreach closed
+
+Synthetic closure with preserved history.
+
+Closure: owner dismissed
+
+Responsible Agent: 000000000000000000000702
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:22 AM EDT
+
+closure cancelled action
+
+Synthetic callback updated 2026-09-19T06:56:08.186Z
+
+Due Sep 19, 2:55 AM EDT
+
+Responsible Agent: 000000000000000000000702
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:22 AM EDT
+
+cancel followup
+
+Reason: Synthetic estimate superseded; other callback stays open.
+
+Responsible Agent: 000000000000000000000702
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:22 AM EDT
+
+cancel followup
+
+Synthetic estimate draft survives live changes
+
+Due Undated
+
+Responsible Agent: 000000000000000000000703
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:22 AM EDT
+
+snooze followup
+
+Reason: Synthetic future snooze; preserve original promise.
+
+Responsible Agent: 000000000000000000000702
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:22 AM EDT
+
+snooze followup
+
+Synthetic callback updated 2026-09-19T06:56:08.186Z
+
+Due Sep 19, 2:55 AM EDT
+
+Snoozed until Oct 19, 2:55 AM EDT
+
+Responsible Agent: 000000000000000000000702
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+assignment · Sep 19, 6:19 AM EDT
+
+assign
+
+Reason: Synthetic ownership retry proof
+
+Responsible Agent: 000000000000000000000702
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:18 AM EDT
+
+patch followup
+
+Reason: Synthetic Owner edit
+
+Responsible Agent: 000000000000000000000701
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:18 AM EDT
+
+patch followup
+
+Synthetic estimate draft survives live changes
+
+Due Undated
+
+Responsible Agent: 000000000000000000000703
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+owner note · Sep 19, 6:17 AM EDT
+
+Owner added context
+
+Synthetic concurrent CSI-08 update
+
+Responsible Agent: 000000000000000000000701
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:16 AM EDT
+
+complete followup
+
+Synthetic completion context 40765fa2-e0bf-4783-9336-222aae14d694
+
+Responsible Agent: 000000000000000000000701
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:16 AM EDT
+
+complete followup
+
+Synthetic completion note regression
+
+Outcome: completed
+
+Due Undated
+
+Responsible Agent: Unassigned
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:16 AM EDT
+
+create followup
+
+Responsible Agent: 000000000000000000000701
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:16 AM EDT
+
+owner followup created
+
+Synthetic completion note regression
+
+Due Undated
+
+Responsible Agent: Unassigned
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:14 AM EDT
+
+complete followup
+
+Responsible Agent: 000000000000000000000701
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:14 AM EDT
+
+complete followup
+
+Synthetic completion note regression
+
+Outcome: completed
+
+Due Undated
+
+Responsible Agent: Unassigned
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:14 AM EDT
+
+create followup
+
+Responsible Agent: 000000000000000000000701
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:14 AM EDT
+
+owner followup created
+
+Synthetic completion note regression
+
+Due Undated
+
+Responsible Agent: Unassigned
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:09 AM EDT
+
+complete followup
+
+Responsible Agent: 000000000000000000000701
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:09 AM EDT
+
+complete followup
+
+CSI-08 synthetic crew availability
+
+Outcome: completed
+
+Due Undated
+
+Responsible Agent: 000000000000000000000703
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:06 AM EDT
+
+create followup
+
+Responsible Agent: 000000000000000000000701
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:06 AM EDT
+
+owner followup created
+
+CSI-08 synthetic crew availability
+
+Due Undated
+
+Responsible Agent: 000000000000000000000703
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+owner note · Sep 19, 6:00 AM EDT
+
+Owner added context
+
+Synthetic CSI-08 durable retry proof
+
+Responsible Agent: 000000000000000000000701
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+owner note · Sep 19, 3:03 AM EDT
+
+Owner added context
+
+Synthetic CSI-07 idempotency proof
+
+Responsible Agent: 000000000000000000000701
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+Load older activity
+Needs review
+
+No review decisions recorded for this subject.
+
+Rep messaging is unavailable in this preview.

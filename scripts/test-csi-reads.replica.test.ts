@@ -575,7 +575,10 @@ test("CSI-04 read-service isolated replica proof", { skip: !enabled, timeout: 24
       assert.deepEqual(d.restrictions, []);
       assert.deepEqual(d.review_items, []);
       assert.equal(d.running_analysis, null);
-      assert.deepEqual(d.allowed_actions, [{ action: "rebuild_number", enabled: true, blocker_codes: [], target_id: String(customerA._id), expected_revision: customerA.revision }]);
+      assert.deepEqual(d.allowed_actions, [
+        { action: "attach_lead", enabled: false, blocker_codes: ["FEATURE_DISABLED"], target_id: String(customerA._id), expected_revision: customerA.revision },
+        { action: "rebuild_number", enabled: true, blocker_codes: [], target_id: String(customerA._id), expected_revision: customerA.revision },
+      ]);
       assert.equal(d.first_observed_at, at(0).toISOString());
       assert.equal(d.last_activity_at, at(0).toISOString());
 

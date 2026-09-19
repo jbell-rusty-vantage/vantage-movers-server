@@ -1,0 +1,26 @@
+[
+  {
+    "name": "typecheck",
+    "code": 0,
+    "timedOut": false,
+    "log": "C:\\Users\\Pinda\\Proyectos\\vantage\\vantage-main-server\\.git\\vantage-quality\\runs\\1789816163516-89bcb4b3\\typecheck.log"
+  },
+  {
+    "name": "lint",
+    "code": 0,
+    "timedOut": false,
+    "log": "C:\\Users\\Pinda\\Proyectos\\vantage\\vantage-main-server\\.git\\vantage-quality\\runs\\1789816163516-89bcb4b3\\lint.log"
+  },
+  {
+    "name": "test",
+    "code": 0,
+    "timedOut": false,
+    "log": "C:\\Users\\Pinda\\Proyectos\\vantage\\vantage-main-server\\.git\\vantage-quality\\runs\\1789816163516-89bcb4b3\\test.log"
+  },
+  {
+    "name": "quality-tests",
+    "code": 0,
+    "timedOut": false,
+    "log": "C:\\Users\\Pinda\\Proyectos\\vantage\\vantage-main-server\\.git\\vantage-quality\\runs\\1789816163516-89bcb4b3\\quality-tests.log"
+  }
+]

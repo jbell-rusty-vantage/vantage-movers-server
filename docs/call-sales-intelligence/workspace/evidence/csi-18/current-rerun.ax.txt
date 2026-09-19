@@ -1,0 +1,11 @@
+Browser tab: 1, Title: "Vantage Admin", URL: "http://127.0.0.1:3108/sales-intelligence?view=numbers&number=6aae8003c7b754bd337075d1&analysis_run=6aae8004c7b754bd337075d5".
+1 AXWebArea Vantage Admin, URL: 127.0.0.1:3108/sales-intelligence?view=numbers&number=6aae8003c7b754bd337075d1&analysis_run=6aae8004c7b754bd337075d5
+	2 container Reanalyze current context
+		3 container
+			4 heading Reanalyze current context, Value: 2
+				5 text Reanalyze current context
+			6 text Analysis from  Sep 19, 8:28 AM EDT  ·  initial . Enter dates in Eastern time. Captures fresh context for a new analysis.  Processing may remain queued while AI is paused.
+			17 text Analysis refresh queued. Processing may remain paused.
+			16 button Done
+
+The focused UI element is 1 AXWebArea Vantage Admin, URL: 127.0.0.1:3108/sales-intelligence?view=numbers&number=6aae8003c7b754bd337075d1&analysis_run=6aae8004c7b754bd337075d5

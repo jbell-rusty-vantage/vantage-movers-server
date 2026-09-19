@@ -1,0 +1,24 @@
+
+> vantage_movers_server@1.0.0 test:csi:intelligence:replica C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> node --import tsx scripts/test-csi-intelligence.ts
+
+CSI-17 disposable proof: testvantagemovers_csi17bfcb8111f646; loopback replica csi01:27189; synthetic evidence only
+{"level":"info","time":"2026-09-19T12:44:05.199Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-17 durable intake, authority and replay on disposable replica
+  ✔ real HTTP named-key boundary, signed claims and strict argument denials (821.1119ms)
+  ✔ concurrent capture freezes one immutable response; duplicate submit creates one paused intent (1099.6574ms)
+  ✔ foreign evidence, field, speaker, target and instruction cannot authorize themselves (529.0788ms)
+  ✔ rollback leaves no intake or application intent; timeout after commit recovers same receipt (563.8314ms)
+  ✔ submission wins against a late read without extending finalized manifest (355.1914ms)
+  ✔ original evidence replays stored prompt and response without invoking current reader (289.8315ms)
+  ✔ evidence bounds, completed run and missing retained evidence fail closed (266.8826ms)
+  ✔ revocation after evidence computation cannot persist under the old lease (153.0207ms)
+✔ CSI-17 durable intake, authority and replay on disposable replica (13031.9482ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 26724.324

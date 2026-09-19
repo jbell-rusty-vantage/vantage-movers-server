@@ -1,0 +1,64 @@
+
+> vantage_movers_server@1.0.0 test:csi:reads:replica C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> node --import tsx scripts/test-csi-reads.ts
+
+CSI-04 read-service isolated replica proof: testvantagemovers_csi04r0be5b1b23508; loopback replica csi01 on port 27189
+{"level":"info","time":"2026-09-19T10:53:02.899Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-04 read-service isolated replica proof
+  ✔ seed: Contact Numbers and interactions through applyInteractionObservation (webhook + Call Log), one merged pair with a tombstone (1187.7696ms)
+  ✔ seed: hygiene row, attachment, Outreach records, Lead Messages and Lead Conversations (test seeding through the models, not reads) (119.8977ms)
+  ✔ search: keyset pagination is complete and duplicate-free through a same-instant cluster (nine numbers at one timestamp, limit 2) (550.1003ms)
+  ✔ search: e164, suffix and term matching (provider names live in search_terms) (500.0737ms)
+  ✔ search: attachment, activity range, classification and hygiene filters (583.3622ms)
+  ✔ timeline: cross-kind ordering with same-millisecond ties, canonical dedupe, recordings per entry, messages and conversations present (148.6524ms)
+  ✔ timeline: cursor pagination is complete across same-millisecond, cross-kind ties; malformed/missing ids are null; extra sources merge (1345.6966ms)
+  ✖ detail: attachments, connections counts, fresh interaction recount, allowed actions; malformed/missing ids are null (123.9704ms)
+  ✔ coverage: honest without sync state; watermark, gaps, webhook capability and AI pause reported once they exist (396.9172ms)
+✖ CSI-04 read-service isolated replica proof (8933.847ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 8
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 22070.8113
+
+✖ failing tests:
+
+test at scripts\test-csi-reads.replica.test.ts:2:28040
+✖ detail: attachments, connections counts, fresh interaction recount, allowed actions; malformed/missing ids are null (123.9704ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      {
+  +     action: 'attach_lead',
+  +     blocker_codes: [
+  +       'FEATURE_DISABLED'
+  +     ],
+  +     enabled: false,
+  +     expected_revision: 10,
+  +     target_id: '6aae69922244232488ab39df'
+  +   },
+  +   {
+        action: 'rebuild_number',
+        blocker_codes: [],
+        enabled: true,
+        expected_revision: 10,
+        target_id: '6aae69922244232488ab39df'
+  
+      at TestContext.<anonymous> (C:\Users\Pinda\Proyectos\vantage\vantage-main-server\scripts\test-csi-reads.replica.test.ts:578:14)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async TestContext.<anonymous> (C:\Users\Pinda\Proyectos\vantage\vantage-main-server\scripts\test-csi-reads.replica.test.ts:544:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ { action: 'attach_lead', enabled: false, blocker_codes: [Array], target_id: '6aae69922244232488ab39df', expected_revision: 10 }, { action: 'rebuild_number', enabled: true, blocker_codes: [], target_id: '6aae69922244232488ab39df', expected_revision: 10 } ],
+    expected: [ { action: 'rebuild_number', enabled: true, blocker_codes: [], target_id: '6aae69922244232488ab39df', expected_revision: 10 } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+ ELIFECYCLE  Command failed with exit code 1.

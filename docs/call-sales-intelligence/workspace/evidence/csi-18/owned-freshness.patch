@@ -1,0 +1,94 @@
+diff --git a/src/services/salesIntelligence/analysis/reads.test.ts b/src/services/salesIntelligence/analysis/reads.test.ts
+index 55db55a..91242cd 100644
+--- a/src/services/salesIntelligence/analysis/reads.test.ts
++++ b/src/services/salesIntelligence/analysis/reads.test.ts
+@@ -1,6 +1,7 @@
+ import assert from "node:assert/strict";
+ import { test } from "node:test";
+-import { leadRelevance, projectLead, readContentSchema, readCursor } from "./reads";
++import { isCurrentTranscriptVersion, leadRelevance, projectLead, readContentSchema, readCursor } from "./reads";
++import { sameTranscriptSourceSet } from "./sources";
+ import type { ReadScope } from "./contracts";
+ 
+ const scope: ReadScope = { run_id: "a".repeat(24), subject_key: `number:${"b".repeat(24)}`, contact_number_id: "b".repeat(24), conversation_id: null, outreach_record_id: null, account_id: null, e164: "+12025550100", lead_refs: [{ model: "CallLead", id: "c".repeat(24) }] };
+@@ -40,3 +41,12 @@ test("response contract retains unknown speaker and nullable timing and rejects
+   assert.throws(() => readContentSchema.parse({ ...content, send_message: true }));
+   assert.throws(() => readContentSchema.parse({ ...content, page: { ...content.page, records: [{ record_type: "lead", record_id: "a", revision: "1", fields: { arbitrary_authority: true } }] } }));
+ });
++test("number transcript reads reject an explicit retained version that is no longer current", () => {
++  assert.equal(isCurrentTranscriptVersion("csi-transcript-v1:current", "csi-transcript-v1:current"), true);
++  assert.equal(isCurrentTranscriptVersion("csi-transcript-v1:old", "csi-transcript-v1:current"), false);
++});
++test("publication freshness requires the exact current eligible transcript set", () => {
++  assert.equal(sameTranscriptSourceSet(["current-a", "current-b"], ["current-a", "current-b"]), true);
++  assert.equal(sameTranscriptSourceSet(["old-a"], ["current-a"]), false);
++  assert.equal(sameTranscriptSourceSet(["current-a"], ["current-a", "current-b"]), false);
++});
+diff --git a/src/services/salesIntelligence/analysis/reads.ts b/src/services/salesIntelligence/analysis/reads.ts
+index 34d8efd..3ccd100 100644
+--- a/src/services/salesIntelligence/analysis/reads.ts
++++ b/src/services/salesIntelligence/analysis/reads.ts
+@@ -47,6 +47,10 @@ const iso = (v: unknown) => v instanceof Date ? v.toISOString() : null;
+ const emptyPage = (): ReadPage => ({ records: [], next_cursor: null, complete: true, missing_ranges: [] });
+ const fail = (): never => { throw new CsiError("RUN_SCOPE_DENIED"); };
+ 
++/** A number run may read only the transcript version that is current when it is read. */
++export const isCurrentTranscriptVersion = (requested: string | undefined, current: string | null | undefined) =>
++  !requested || requested === current;
++
+ /** Authority is loaded from the stored run and authoritative joins; arguments never widen it. */
+ export async function loadReadScope(run: StoredRun): Promise<ReadScope> {
+   if (!run.contact_number_id) return fail();
+@@ -256,6 +260,9 @@ export async function readIntelligenceEvidence(scope: ReadScope, input: { tool:
+     case "get_call_transcript": {
+       const c = await getLeadConversationModel().findOne({ _id: input.args.conversation_id, contact_number_id: scope.contact_number_id }).select("latest_transcript_version").lean();
+       if (!c || (scope.conversation_id && scope.conversation_id !== String(c._id))) return fail();
++      // Conversation runs use their immutable pinned source below. Number runs
++      // must not let a caller select an older retained transcript by version.
++      if (!scope.transcript_snapshot_id && !isCurrentTranscriptVersion(input.args.transcript_version, c.latest_transcript_version)) return fail();
+       const version = input.args.transcript_version ?? c.latest_transcript_version;
+       const snapshot = (version || scope.transcript_snapshot_id) ? await getIntelligenceEvidenceSnapshotModel().findOne({ ...csiDataset(), source_type: "transcript", conversation_id: c._id,
+         ...(scope.transcript_snapshot_id ? { _id: scope.transcript_snapshot_id } : { transcript_version: version }) }).select("transcript_version completeness").lean() : null;
+diff --git a/src/services/salesIntelligence/analysis/sources.ts b/src/services/salesIntelligence/analysis/sources.ts
+index 98ed15f..583fed4 100644
+--- a/src/services/salesIntelligence/analysis/sources.ts
++++ b/src/services/salesIntelligence/analysis/sources.ts
+@@ -86,7 +86,7 @@ export async function conversationAnalysisInput(conversationId: string, snapshot
+ }
+ 
+ /** Number synthesis may use only currently eligible pinned transcripts; no STT or cache-only text. */
+-export async function numberAnalysisInput(numberId: string, session: ClientSession) {
++export async function numberAnalysisInput(numberId: string, session: ClientSession) {
+   const sources = await intelligenceSources(numberId, session);
+   if (sources.number.kind !== "external" || ["company", "non_customer"].includes(sources.number.classification)) return { status: "excluded" as const };
+   const conversation_ids: string[] = [], versions: string[] = [];
+@@ -101,5 +101,27 @@ export async function numberAnalysisInput(numberId: string, session: ClientSessi
+   // Record-only context is not sufficient for a number synthesis. Returning a
+   // terminal status here prevents reserving budget or invoking the provider.
+   if (!conversation_ids.length) return { status: "no_transcript_evidence" as const };
+-  return { status: "eligible" as const, sources, conversation_ids, versions };
+-}
++  return { status: "eligible" as const, sources, conversation_ids, versions };
++}
++
++/** Exact source membership prevents a number summary from mixing a retained old transcript with current evidence. */
++export function sameTranscriptSourceSet(capturedSourceIds: readonly string[], currentSourceIds: readonly string[]) {
++  return capturedSourceIds.length === currentSourceIds.length &&
++    new Set(capturedSourceIds).size === capturedSourceIds.length &&
++    capturedSourceIds.every(id => currentSourceIds.includes(id));
++}
++
++/** Recheck the captured transcript set immediately before applying/publishing a completed run. */
++export async function capturedTranscriptSourcesCurrent(input: {
++  contact_number_id: string;
++  conversation_id: string | null;
++  transcript_source_ids: readonly string[];
++}, session: ClientSession) {
++  if (input.conversation_id) {
++    if (input.transcript_source_ids.length !== 1) return false;
++    const current = await conversationAnalysisInput(input.conversation_id, input.transcript_source_ids[0], session);
++    return current.status === "eligible";
++  }
++  const current = await numberAnalysisInput(input.contact_number_id, session);
++  return current.status === "eligible" && sameTranscriptSourceSet(input.transcript_source_ids, current.versions);
++}

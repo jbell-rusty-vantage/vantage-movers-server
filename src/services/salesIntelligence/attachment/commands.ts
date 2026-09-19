@@ -60,7 +60,7 @@ export async function commandAttachment(input: { actor: CsiActor; idempotency_ke
       await rebuildAttachmentSearchTerms(numberId, session);
       await onAttachmentChanged({ number_id: numberId, revision: number.revision }, session);
       await appendCsiAudit(context, { kind: "number", target_id: numberId, subject_key: `number:${numberId}`, revision: number.revision,
-        event_kind: command.command, prior, current: { attachment_id: String(row._id), state: row.state, certainty: row.certainty,
+        event_kind: command.command, prior: prior ?? { state: "unlinked" }, current: { attachment_id: String(row._id), state: row.state, certainty: row.certainty,
           attachment_revision: row.revision, reason: command.reason } });
       return { attachment_id: String(row._id), revision: row.revision, state: row.state, certainty: row.certainty };
     } });

@@ -1,0 +1,9 @@
+✔ createTariffAdjustmentsSchema rejects customer and job identifiers (4.1494ms)
+ℹ tests 2546
+ℹ suites 13
+ℹ pass 2431
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 115
+ℹ todo 0
+ℹ duration_ms 349505.3294

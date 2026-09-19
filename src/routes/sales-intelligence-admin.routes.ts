@@ -13,7 +13,7 @@ import { csiCommandSchema, csiIdSchema } from "../validation/v1/salesIntelligenc
 import { attachmentListQuerySchema, listAttachments } from "../services/salesIntelligence/attachment/reads";
 import { commandAttachment } from "../services/salesIntelligence/attachment/commands";
 import { commandOutreach } from "../services/salesIntelligence/followups/commands";
-import { listReviewItems, readOutreach, readOutreachByLead } from "../services/salesIntelligence/outreach/reads";
+import { listReviewItems, readOutreach, readOutreachByLead, reviewItemsQuerySchema } from "../services/salesIntelligence/outreach/reads";
 import { attentionQuerySchema, readAttention } from "../services/salesIntelligence/outreach/attention";
 import { listRepLinks, readRepLink, repListQuerySchema } from "../services/salesIntelligence/repIdentity/reads";
 import { createRepLink, proposeRepLinks, reviewRepLink } from "../services/salesIntelligence/repIdentity/commands";
@@ -21,6 +21,9 @@ import { csiRepCreateSchema, csiRepProposeSchema, csiRepCommandSchema } from "..
 import { previewNudge, sendNudge } from "../services/salesIntelligence/nudges/commands";
 import { listNudges, nudgeHistoryQuerySchema } from "../services/salesIntelligence/nudges/reads";
 import { csiNudgeCommandSchema } from "../validation/v1/salesIntelligence";
+import { streamCsiInvalidations } from "../services/salesIntelligence/live";
+import { commandAnalysis } from "../services/salesIntelligence/analysis/ownerCommands";
+import { listOwnerRuns, readOwnerRun, readOwnerEvidence } from "../services/salesIntelligence/analysis/ownerReads";
 
 /**
  * CSI-04 Owner routes for Number Activity (04 §0, §1 `/numbers` rows, §3).
@@ -54,6 +57,7 @@ export type SalesIntelligenceAdminRouteDeps = {
   nudgePreview?: typeof previewNudge;
   nudgeSend?: typeof sendNudge;
   nudges?: typeof listNudges;
+  live?: typeof streamCsiInvalidations;
 };
 
 const timelineQuerySchema = z
@@ -84,6 +88,8 @@ const STATUS_BY_CODE: Partial<Record<CsiError["code"], number>> = {
   NUDGE_DESTINATION_EVIDENCE_INCOMPLETE: 409,
   NUDGE_DESTINATION_IS_CUSTOMER: 422,
   NUDGE_BODY_INVALID: 422,
+  ORIGINAL_EVIDENCE_UNAVAILABLE: 422,
+  RUN_SCOPE_DENIED: 403,
 };
 
 export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminRouteDeps = {}): Router {
@@ -131,6 +137,14 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
       request_id: req.header("x-vantage-admin-request-id") ?? req.header("x-request-id") ?? "unavailable",
     });
 
+  router.get(`${CSI_ADMIN_PREFIX}/live`, async (req, res) => {
+    try {
+      guard(req);
+      z.object({ scope: z.literal("production").optional() }).strict().parse(req.query);
+      await connect();
+      (deps.live ?? streamCsiInvalidations)(req, res);
+    } catch (error) { if (!res.headersSent) fail(req, res, error); else res.end(); }
+  });
   router.get(`${CSI_ADMIN_PREFIX}/coverage`, async (req, res) => {
     try {
       guard(req);
@@ -236,7 +250,7 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
     try { guard(req); const id = csiIdSchema.parse(req.params.id); await connect(); const result = await readOutreach(id); if (!result) return notFound(req, res); return res.json({ ok: true, ...result }); } catch (error) { return fail(req, res, error); }
   });
   router.get(`${CSI_ADMIN_PREFIX}/review-items`, async (req, res) => {
-    try { guard(req); const query = timelineQuerySchema.parse(req.query); if (query.cursor) csiIdSchema.parse(query.cursor); await connect();
+    try { guard(req); const query = reviewItemsQuerySchema.parse(req.query); await connect();
       return res.json({ ok: true, ...(await listReviewItems(query)) }); } catch (error) { return fail(req, res, error); }
   });
   for (const [method, path, commands] of [
@@ -296,6 +310,41 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
       const data = await (deps.nudgeSend ?? sendNudge)(input);
       return res.status(data.nudge.status === "pending" ? 202 : 200).json({ ok: true, data });
     } catch (error) { return fail(req, res, error); }
+  });
+  router.get(`${CSI_ADMIN_PREFIX}/analysis-runs`, async (req, res) => {
+    try { guard(req); await connect(); return res.json({ ok: true, ...(await listOwnerRuns(req.query)) }); }
+    catch (error) { return fail(req, res, error); }
+  });
+  router.get(`${CSI_ADMIN_PREFIX}/analysis-runs/:id`, async (req, res) => {
+    try { guard(req); await connect(); const result = await readOwnerRun(csiIdSchema.parse(req.params.id), req.query);
+      return result ? res.json({ ok: true, ...result }) : notFound(req, res, "Analysis"); }
+    catch (error) { return fail(req, res, error); }
+  });
+  router.get(`${CSI_ADMIN_PREFIX}/conversations/:id/findings`, async (req, res) => {
+    try { guard(req); const query = z.object({ scope: z.literal("production").optional(), run_id: csiIdSchema.optional() }).strict().parse(req.query);
+      const id = csiIdSchema.parse(req.params.id); await connect();
+      const runs = await listOwnerRuns({ conversation_id: id, limit: 1 });
+      const runId = query.run_id ?? runs.data.items[0]?.id;
+      const result = runId ? await readOwnerRun(runId) : null;
+      if (result && result.data.conversation_id !== id) throw new CsiError("RUN_SCOPE_DENIED");
+      return result ? res.json({ ok: true, ...result }) : notFound(req, res, "Analysis"); }
+    catch (error) { return fail(req, res, error); }
+  });
+  for (const path of ["/analysis-runs/:id/evidence", "/analysis-runs/:id/evidence/:snapshotId"] as const) router.get(`${CSI_ADMIN_PREFIX}${path}`, async (req, res) => {
+    try { guard(req); await connect(); const result = await readOwnerEvidence(csiIdSchema.parse(req.params.id),
+      "snapshotId" in req.params ? csiIdSchema.parse(req.params.snapshotId) : undefined, req.query);
+      return result ? res.json({ ok: true, ...result }) : notFound(req, res, "Evidence"); }
+    catch (error) { return fail(req, res, error); }
+  });
+  for (const [path, action] of [["/analysis-runs/:id/confirm", "confirm_run"], ["/findings/:id/confirm", "confirm_finding"],
+    ["/findings/:id/correct", "correct_finding"], ["/findings/:id/retract", "retract_finding"], ["/analysis-runs/:id/apply-suggestion", "apply_suggestion"],
+    ["/analysis-runs/:id/reanalyze", "reanalyze"], ["/conversations/:id/reanalyze", "reanalyze"], ["/numbers/:id/reanalyze", "reanalyze"]] as const) router.post(`${CSI_ADMIN_PREFIX}${path}`, async (req, res) => {
+    try { const actor = guard(req), target_id = csiIdSchema.parse(req.params.id), command = csiCommandSchema.parse(req.body);
+      if (command.command !== action) throw new CsiError("INVALID_INPUT");
+      const idempotency_key = req.header("idempotency-key")?.trim(); if (!idempotency_key) throw new CsiError("INVALID_INPUT");
+      await connect(); const result = await commandAnalysis({ actor, target_id, command, idempotency_key });
+      return res.status(action === "reanalyze" ? 202 : 200).json({ ok: true, data: result }); }
+    catch (error) { return fail(req, res, error); }
   });
   return router;
 }

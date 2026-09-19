@@ -8,6 +8,8 @@ tags: [sales-intelligence, attachment]
 
 # Number↔Lead attachment — CSI-05
 
+CSI-08 Owner integration: attachment reads expose gate-aware attach/reject/detach availability with the edge revision. Filters may combine Number and Lead to read one exact pair. Absent-pair confirmation uses the displayed Number revision; its audit prior is `{state:"unlinked"}` so required audit validation does not roll back the first attachment. Durable replay returns the original result and no official Lead phone is changed. Number detail exposes the corresponding gate-aware `attach_lead` availability for manual selection. Search itself remains read-only.
+
 Server implementation: `src/services/salesIntelligence/attachment/`. Authoritative rules: [01 §5.2](../../call-sales-intelligence/01-specification.md#52-numberlead-attachment). [Handoff](../../call-sales-intelligence/workspace/evidence/csi-05/HANDOFF.md).
 
 `suggest.ts` is pure. Phone equality is Likely. Form Lead windows are −36h/+14d; Call Lead windows ±12h. Mutable live/Granot evidence cannot begin before its observed change; immutable ingested/original-caller evidence retains the Lead window. Exact evidence pins provider account, alias and interaction, including RingCentral Call Adoption. Outbound caller ID never supplies advertiser attribution.

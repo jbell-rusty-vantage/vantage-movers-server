@@ -1,0 +1,16 @@
+{"level":"info","time":"2026-09-19T12:43:50.065Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-18 Owner interventions on isolated replica
+  ✔ confirmation is exact, durable and never applies effects (474.2498ms)
+  ✔ correction persists immediately, preserves the assertion and leaves absent assessments unknown (479.1127ms)
+  ✔ replay rejects unavailable originals and foreign Owner corrections (132.1513ms)
+  ✔ targeted correction works with AI disabled and preserves independent undated work (937.1129ms)
+  ✔ retraction cancels only eligible work and records blocked completed and closed work (1754.7607ms)
+✔ CSI-18 Owner interventions on isolated replica (14600.9756ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 25088.2214

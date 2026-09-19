@@ -1,5 +1,15 @@
 # Team E — Owner dashboard and intervention UI
 
+## CSI-18 delivered — September 19 (current)
+
+UI local acceptance is complete on the existing CSI-08 panels, with actual server run/finding/evidence/history reads and confirmation, correction, retraction, Apply suggestion and original/current rerun controls. Original assertions, effect outcomes and attributed Owner changes/assessments are separate; missing assessments read Cannot determine. URL selection, Owner/Current BFF, live refetch, preserved drafts/focus and explicit conflict acknowledgement remain intact. Browser desktop/narrow/keyboard/lost-response/access checks and Admin626/typecheck/focused lint passed. Full Admin lint still has unrelated baseline failures. Server local acceptance is separately complete. [Handoff](../evidence/csi-18/HANDOFF.md), [checks](../evidence/csi-18/CHECKS.md), [review](../evidence/csi-18/REVIEW.md). CSI-09/14/15/16 remain separate; historical next-session text below is superseded.
+
+## CSI-08 operational continuation — September 19 (latest)
+
+CSI-08 is complete locally. Its workflows are implemented and exercised against the guarded local API: search/filter/pagination and expiry, review-only Leads, manual/candidate attachments, all existing follow-up/Outreach commands, restriction/review decisions, timeline, official links, Lead/latest-call facts, and Reps stored read/review. Unknown-outcome replay, explicit revision acknowledgement, unsaved draft/focus preservation, reconnect and clock refresh have new browser proof. [CSI-08 handoff](../evidence/csi-08/HANDOFF.md), [intake](../evidence/csi-08/INTAKE.md), [checks](../evidence/csi-08/CHECKS.md), [review/checkpoint](../evidence/csi-08/REVIEW.md). Required checkpoint ran: automated checks passed, but final review failed on inaccurate prose introduced by an isolated CSI-14 proposal; that proposal is wholly unapplied and independent final approval is not claimed. Earlier partial descriptions below are historical.
+
+CSI-14 P2/send dialogs, CSI-18 corrections/reanalysis, CSI-09 Coverage/settings and CSI-15 remain separate. Do not restart CSI-07 or run the old broad kickoff below.
+
 ## Current next session — September 19
 
 Use [NEXT-SESSION](../NEXT-SESSION.md) and [SPRINT-PLAN](../SPRINT-PLAN.md). The design export exists at `vantage/vantage-sales-intelligence/`; copy/adapt its real components and scoped tokens into Admin while preserving the source. First deliver CSI-07 plus the initial CSI-08 Attention/detail read slice against the local API. Full CSI-08, CSI-09, CSI-14 dialogs and CSI-18 UI remain distinct acceptance work. Do not run the broad original kickoff as one undifferentiated task. Reconcile export DTOs, auth placeholders, proxy idempotency forwarding and SSE before treating it as integrated.
@@ -30,3 +40,11 @@ Browser-walk the scenarios in [ACCEPTANCE](../ACCEPTANCE.md); include missing au
 ## September 17 codebase alignment
 
 [Audit and required adaptations](../../11-codebase-alignment-audit.md) are part of this delivery contract. Complete the rows assigned to this team and provide integration evidence; current runtime helpers do not already satisfy the revised contracts. [Design intake](../../07-claude-design-brief.md) governs the received design export; see the September 19 sprint revision for adoption and contract reconciliation.
+
+## CSI-07 / initial CSI-08 handoff — September 19
+
+Local read slice implemented in Admin, using actual scoped export presentation and existing host auth/query/navigation. See [handoff](../evidence/csi-07/HANDOFF.md), [intake](../evidence/csi-07/INTAKE.md) and [checks](../evidence/csi-07/CHECKS.md). CSI-08 stays partial. The older broad kickoff above is not the next task.
+
+Next CSI-08 scope: implement real Number search and Attention pagination (snapshot expiry/refetch), review-only Lead resolution and Needs review filters, attachments/identity commands, follow-up create/patch/complete/snooze/cancel, overall versus action assignment, notes/mark-worked/wait/close/reopen with idempotency and revision conflicts. Add Number Activity timeline using cursor/limit, all official-record links with verified host destinations, latest call outcome/Lead display facts when supplied by server. Reconcile absent overview and missing Attention q/source_label with owning server contracts; do not manufacture counts/DTO values. Add Reps read/review UI from current contracts. Preserve URL panel/filter state and drafts during live refetch; current slice has no editable command forms.
+
+CSI-14 remains disabled until its P2 repair and dedicated preview/send dialog. CSI-09 owns full Coverage/settings/Lead entry points; CSI-15 owns backfill/retention. Team D may implement CSI-18 server independently of remaining CSI-08; E consumes those endpoints later. No correction/reanalysis controls were introduced here.

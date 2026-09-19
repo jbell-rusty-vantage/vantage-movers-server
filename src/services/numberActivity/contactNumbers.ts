@@ -3,6 +3,7 @@ import { getCallInteractionModel } from "../../models/CallInteraction";
 import { getContactNumberModel } from "../../models/ContactNumber";
 import { getNumberLeadAttachmentModel } from "../../models/NumberLeadAttachment";
 import { csiIdSchema } from "../../validation/v1/salesIntelligence";
+import { csiFlag } from "../../config/domain/salesIntelligence";
 import { ownerRead } from "./coverage";
 import { readNumberOutreach } from "../salesIntelligence/outreach/reads";
 import {
@@ -154,6 +155,13 @@ export async function getContactNumberDetail(
         }
       : null,
     allowed_actions: [
+      {
+        action: "attach_lead",
+        enabled: csiFlag("ENABLED") && csiFlag("ATTACHMENT_REFRESH"),
+        blocker_codes: csiFlag("ENABLED") && csiFlag("ATTACHMENT_REFRESH") ? [] : ["FEATURE_DISABLED"],
+        target_id: id,
+        expected_revision: row.revision,
+      },
       {
         action: "rebuild_number",
         enabled: true,

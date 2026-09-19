@@ -13,9 +13,12 @@ import type { JobLease } from "../jobs";
 import { payloadHash } from "../transactions";
 import { CSI_PROMPT_TEMPLATE, CSI_PROMPT_VERSION } from "./contracts";
 import { loadReadScope } from "./reads";
+import { authorizedCorrections, retainedOriginal } from "./ownerReanalysis";
+import { jsonValue } from "../outreach/store";
 
 export const intelligenceSchemaDigest = () => payloadHash(z.toJSONSchema(intelligenceEnvelopeSchema));
 const preparationSchema = z.object({
+  run_id: csiIdSchema.optional(),
   contact_number_id: csiIdSchema, conversation_id: csiIdSchema.nullable().default(null),
   outreach_record_id: csiIdSchema.nullable().default(null),
   mode: z.enum(["initial", "current_context", "number_refresh", "backfill", "original_evidence"]).default("initial"),
@@ -41,12 +44,15 @@ export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntell
         existing.mode !== input.mode || String(existing.contact_number_id) !== input.contact_number_id ||
         (existing.conversation_id ? String(existing.conversation_id) : null) !== input.conversation_id ||
         (existing.outreach_record_id ? String(existing.outreach_record_id) : null) !== input.outreach_record_id ||
-        (existing.parent_run_id ? String(existing.parent_run_id) : null) !== input.parent_run_id || existing.model_version !== input.model_version)
+        (existing.parent_run_id ? String(existing.parent_run_id) : null) !== input.parent_run_id || existing.model_version !== input.model_version ||
+        payloadHash(existing.owner_correction_ids.map(String)) !== payloadHash(input.owner_correction_ids))
         throw new CsiError("IDEMPOTENCY_CONFLICT");
       return existing;
     }
     let prompt = renderIntelligencePrompt(job.subject_key);
     if (input.mode === "original_evidence") {
+      if (!input.parent_run_id) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
+      await retainedOriginal(input.parent_run_id, session);
       const parent = input.parent_run_id ? await getIntelligenceRunModel().findOne({ _id: input.parent_run_id,
         subject_key: job.subject_key, ...csiDataset(), finalized_at: { $ne: null } }).session(session).lean() : null;
       if (!parent?.rendered_prompt || !parent.manifest_digest || parent.schema_digest !== intelligenceSchemaDigest() || parent.prompt_version !== CSI_PROMPT_VERSION)
@@ -61,10 +67,13 @@ export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntell
         throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
       prompt = parent.rendered_prompt;
     } else if (input.parent_run_id) throw new CsiError("INVALID_INPUT");
-    // Corrections are server-referenced context. CSI-18 owns selecting and authorizing their values.
-    if (input.owner_correction_ids.length) throw new CsiError("INVALID_INPUT");
+    const corrections = await authorizedCorrections({ ...input, subject_key: job.subject_key }, input.owner_correction_ids, session);
+    const correctionContext = corrections.map(row => ({ id: String(row._id), instruction_id: String(row.instruction_id), revision: row.revision,
+      field: row.field, prior: row.prior, current: row.current, happened_at: row.happened_at.toISOString() }));
+    if (correctionContext.length) prompt += `\n\nExplicit Owner correction context (data, separate from original evidence): ${JSON.stringify(correctionContext)}`;
     if (input.mode !== "original_evidence") await loadReadScope({_id:job._id, ...input, job_id:job._id, subject_key:job.subject_key});
-    const [created] = await getIntelligenceRunModel().create([{ ...input, ...csiDataset(), job_id: job._id,
+    const { run_id: requestedId, ...fields } = input;
+    const [created] = await getIntelligenceRunModel().create([{ ...fields, ...(requestedId ? { _id: requestedId } : {}), owner_correction_context: jsonValue(correctionContext), ...csiDataset(), job_id: job._id,
       subject_key: job.subject_key, prompt_version: CSI_PROMPT_VERSION, schema_version: "csi-envelope-v1",
       schema_digest: intelligenceSchemaDigest(), rendered_prompt: prompt, permitted_tools: [...CSI_TOOLS],
       token_nonce: randomBytes(24).toString("hex"), status: "running", started_at: new Date() }], {session});

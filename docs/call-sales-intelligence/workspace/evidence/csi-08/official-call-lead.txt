@@ -1,0 +1,249 @@
+- complementary:
+  - img "Vantage Home Movers"
+  - paragraph: Vantage Admin
+  - paragraph: Owner dashboard
+  - button "Collapse sidebar":
+  - navigation "Dashboard":
+    - paragraph: Today
+    - link "Overview":
+      - /url: /
+      - generic: Overview
+    - link "Daily Operations":
+      - /url: /daily
+      - generic: Daily Operations
+    - link "Live Events":
+      - /url: /live-events
+      - generic: Live Events
+    - link "Lead Conversations":
+      - /url: /conversations
+      - generic: Lead Conversations
+    - link "Sales Intelligence":
+      - /url: /sales-intelligence
+      - generic: Sales Intelligence
+    - link "Intakes":
+      - /url: /intakes
+      - generic: Intakes
+    - link "Manual":
+      - /url: /manual
+      - generic: Manual
+    - paragraph: Records
+    - link "Form Leads":
+      - /url: /form-leads
+      - generic: Form Leads
+    - link "Duplicate Form Leads":
+      - /url: /duplicate-form-leads
+      - generic: Duplicate Form Leads
+    - link "Call Leads":
+      - /url: /call-leads
+      - generic: Call Leads
+    - link "Duplicate Call Leads":
+      - /url: /duplicate-call-leads
+      - generic: Duplicate Call Leads
+    - link "Bookings":
+      - /url: /bookings
+      - generic: Bookings
+    - link "Cancellations":
+      - /url: /cancellations
+      - generic: Cancellations
+    - link "Job Timeline":
+      - /url: /job-timeline
+      - generic: Job Timeline
+    - link "Customers":
+      - /url: /customers
+      - generic: Customers
+    - paragraph: People
+    - link "Agents":
+      - /url: /agents
+      - generic: Agents
+    - link "Testimonials":
+      - /url: /testimonials
+      - generic: Testimonials
+    - paragraph: Insight
+    - link "Analytics":
+      - /url: /analytics
+      - generic: Analytics
+    - link "Agent Sales Report":
+      - /url: /reports/agent-sales
+      - generic: Agent Sales Report
+    - link "Reporting":
+      - /url: /reporting
+      - generic: Reporting
+    - link "Exports":
+      - /url: /exports
+      - generic: Exports
+    - paragraph: System
+    - link "Observational":
+      - /url: /observational
+      - generic: Observational
+    - link "Operations Registry":
+      - /url: /operations-registry
+      - generic: Operations Registry
+    - link "Granot Lifecycle":
+      - /url: /granot-lifecycle
+      - generic: Granot Lifecycle
+    - link "Ingestion":
+      - /url: /ingestion
+      - generic: Ingestion
+    - link "Extension":
+      - /url: /extension
+      - generic: Extension
+    - link "Audit Log":
+      - /url: /audit-log
+      - generic: Audit Log
+- banner:
+  - heading "Call Leads" [level=1]
+  - combobox "Database scope":
+    - option "Production" [selected]
+    - option "Historical Read-Only"
+  - textbox "Global search":
+    - /placeholder: Search job, phone, email…
+  - generic: Ctrl K
+  - button "Account menu":
+    - generic: O
+    - generic: owner@csi07.example.test
+    - generic: Owner
+- main:
+  - heading "Call Leads" [level=1]
+  - paragraph: Browse, inspect, edit, export, and book inbound call leads.
+  - button "Export CSV":
+    - text: Export CSV
+  - complementary:
+    - heading "Filters" [level=2]
+    - paragraph: Always available while scrolling.
+    - button "Reset"
+    - button "Collapse filters":
+    - heading "Find" [level=3]
+    - text: Search
+    - textbox "Search":
+      - /placeholder: Name, phone, email, or ID…
+    - text: Date sorting
+    - combobox:
+      - option "Choose date sorting"
+      - 'option "Timestamp: Newest first" [selected]'
+      - 'option "Timestamp: Oldest first"'
+    - text: Date range
+    - textbox "From date"
+    - textbox "To date"
+    - heading "Status" [level=3]
+    - text: Booked
+    - combobox:
+      - option "Any" [selected]
+      - option "Yes"
+      - option "No"
+    - text: Cancelled
+    - combobox:
+      - option "Any" [selected]
+      - option "Yes"
+      - option "No"
+    - text: Hidden from Master Leads
+    - combobox:
+      - option "Any" [selected]
+      - option "Yes"
+      - option "No"
+    - button "Attribution":
+      - heading "Attribution" [level=3]
+    - button "Record fields":
+      - heading "Record fields" [level=3]
+  - paragraph: No filters applied.
+  - generic: Click a lead row to inspect it, then start a booking with identifiers prefilled.
+  - generic: Use the checkboxes to select a lead. Check Google Sheet contains will appear so you can confirm the lead is in the Google Sheet.
+  - table:
+    - rowgroup:
+      - row "Select loaded rows to check the Google Sheet Sheet Created Name Job Source Company Status Granot contact Pickup City Delivery City Local Hidden from Master Leads Actions":
+        - columnheader "Select loaded rows to check the Google Sheet Sheet":
+          - checkbox "Select loaded rows to check the Google Sheet"
+          - generic: Sheet
+        - columnheader "Created":
+          - button "Created"
+        - columnheader "Name":
+          - button "Name"
+        - columnheader "Job":
+          - button "Job"
+        - columnheader "Source Company":
+          - button "Source Company"
+        - columnheader "Status"
+        - columnheader "Granot contact"
+        - columnheader "Pickup City"
+        - columnheader "Delivery City"
+        - columnheader "Local"
+        - columnheader "Hidden from Master Leads"
+        - columnheader "Actions": Actions
+    - rowgroup:
+      - row "Select this record to check the Google Sheet Sep 19, 2026 Riley (synthetic) +12025550107 CSI08-RILEY Synthetic source — - - - - Scroll row left Scroll row right Book" [selected]:
+        - cell "Select this record to check the Google Sheet":
+          - checkbox "Select this record to check the Google Sheet"
+        - cell "Sep 19, 2026"
+        - cell "Riley (synthetic) +12025550107":
+          - generic: Riley (synthetic)
+          - generic: "+12025550107"
+        - cell "CSI08-RILEY":
+          - link "CSI08-RILEY":
+            - /url: /job-timeline?job=CSI08-RILEY
+        - cell "Synthetic source":
+          - generic: Synthetic source
+        - cell
+        - cell "—"
+        - cell "-"
+        - cell "-"
+        - cell "-"
+        - cell "-"
+        - cell "Scroll row left Scroll row right Book":
+          - button "Scroll row left" [disabled]:
+          - button "Scroll row right":
+          - link "Book":
+            - /url: /bookings/new?lead_type=CallLead&call_phone_number=%2B12025550107&call_job_no=CSI08-RILEY
+            - text: Book
+  - generic: Showing 1 of 1
+  - button "All rows loaded" [disabled]
+  - button "Close detail panel"
+  - complementary:
+    - heading "Call Leads" [level=2]
+    - paragraph: "Mongo ID: 000000000000000000001007"
+    - button "Close":
+    - tablist "Tabs":
+      - tab "Summary" [selected]
+      - tab "Contact"
+      - tab "Actions"
+      - tab "Production record"
+      - tab "Source Company"
+    - tabpanel "Summary":
+      - term: Created
+      - definition: Sep 19, 2026
+      - term: Name
+      - definition: Riley (synthetic)
+      - term: Job
+      - definition:
+        - link "CSI08-RILEY":
+          - /url: /job-timeline?job=CSI08-RILEY
+      - term: Source Company
+      - definition: Synthetic source
+      - term: First
+      - definition: "-"
+      - term: Last
+      - definition: "-"
+      - term: Phone
+      - definition: "+12025550107"
+      - term: Granot contact
+      - definition: —
+      - term: Email
+      - definition: "-"
+      - term: Pickup City
+      - definition: "-"
+      - term: Delivery City
+      - definition: "-"
+      - term: Local
+      - definition: "-"
+      - term: Booked
+      - definition: "-"
+      - term: Cancelled
+      - definition: "-"
+      - term: Hidden from Master Leads
+      - definition: "-"
+      - term: Sales Rep
+      - definition: Not assigned
+      - term: Database scope
+      - definition: production
+      - term: Mongo ID
+      - definition: "000000000000000000001007"
+- button "Open Next.js Dev Tools":
+- alert: Call Leads

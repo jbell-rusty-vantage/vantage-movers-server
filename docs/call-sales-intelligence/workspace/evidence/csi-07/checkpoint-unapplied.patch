@@ -1,0 +1,33 @@
+diff --git a/src/routes/sales-intelligence-cron.routes.ts b/src/routes/sales-intelligence-cron.routes.ts
+index e7126ac..6c1f986 100644
+--- a/src/routes/sales-intelligence-cron.routes.ts
++++ b/src/routes/sales-intelligence-cron.routes.ts
+@@ -246,7 +246,13 @@ export function createSalesIntelligenceCronRouter(
+     try {
+       await connect();
+       const summary = await transcribe();
+-      return res.json({ ok: true, skipped: ["disabled", "not_claimable", "lease_lost"].includes(summary.status), summary });
++      const leaseHeld = ["not_claimable", "lease_lost"].includes(summary.status);
++      return res.json({
++        ok: true,
++        skipped: summary.status === "disabled" || leaseHeld,
++        ...(summary.status === "disabled" ? { reason: "disabled" } : leaseHeld ? { reason: "lease_held" } : {}),
++        summary,
++      });
+     } catch {
+       return res.status(500).json({ ok: false, error: "Transcription failed" });
+     }
+diff --git a/src/services/salesIntelligence/conversations/transcriptionWiring.test.ts b/src/services/salesIntelligence/conversations/transcriptionWiring.test.ts
+index a173ac2..f3c9b09 100644
+--- a/src/services/salesIntelligence/conversations/transcriptionWiring.test.ts
++++ b/src/services/salesIntelligence/conversations/transcriptionWiring.test.ts
+@@ -25,7 +25,8 @@ test("CSI-12 five-minute cron, authentication, flag-off and default recovery/que
+     assert.equal((await (await fetch(url + CSI_CRON_PATHS.transcribe, { headers })).json()).reason, "disabled");
+     assert.equal(calls, 0); assert.equal(connects, 0);
+     enabled = true;
+-    assert.equal((await (await fetch(url + CSI_CRON_PATHS.transcribe, { headers })).json()).skipped, true); assert.equal(calls, 1);
++    const held = await (await fetch(url + CSI_CRON_PATHS.transcribe, { headers })).json();
++    assert.equal(held.skipped, true); assert.equal(held.reason, "lease_held"); assert.equal(calls, 1);
+     const recovery = await (await fetch(url + CSI_CRON_PATHS.jobRecovery, { headers })).json();
+     assert.equal(calls, 2); assert.deepEqual(recovery.transcription, { status: "not_claimable" });
+     enabled = false; await fetch(url + CSI_CRON_PATHS.jobRecovery, { headers }); assert.equal(calls, 2);

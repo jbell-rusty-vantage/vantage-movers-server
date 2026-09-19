@@ -1,0 +1,20 @@
+✔ stop is idle, not an immediate checkpoint; another active session keeps the workspace active (1.8434ms)
+✔ secret and generated paths are excluded from snapshots (0.6936ms)
+✔ inactivity is debounced by prompts and file changes; end has a grace period (0.2869ms)
+✔ advancing a checkpoint never adopts concurrent unreviewed files into the baseline (1.9022ms)
+✔ validated edits apply without changing HEAD or staging user work, then deduplicate (4555.382ms)
+✔ changes committed after baseline and new files reach the reviewer (5922.5843ms)
+✔ already-tracked files remain reviewable even if an ignore rule matches them (5246.3952ms)
+✔ concurrent source changes retain the patch and never overwrite user work (3657.8095ms)
+✔ failing checks prevent application even if the model says PASS (3955.1277ms)
+✔ read-only review mutation fails closed (2440.9101ms)
+✔ documentation stage cannot change runtime code (3124.2617ms)
+✔ worker cannot modify hook scripts or dependency manifests (4213.7778ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 33249.6799

@@ -2,12 +2,15 @@
 okf_version: "0.2"
 type: Service
 title: Scoped Intelligence runtime, evidence and application
-description: CSI-17 scoped MCP evidence and submission, with CSI-13 bounded agent execution, durable application and current number analysis.
+description: Scoped MCP evidence, bounded agent execution, durable application, current number analysis and exact-version Owner interventions.
 tags: [sales-intelligence, durable-work]
 status: draft
 stale_after: 2026-12-19
 resource: src/services/salesIntelligence/analysis/submit.ts
 applies_to:
+  - src/services/salesIntelligence/analysis/ownerCommands.ts
+  - src/services/salesIntelligence/analysis/ownerReads.ts
+  - src/services/salesIntelligence/analysis/ownerReanalysis.ts
   - src/services/salesIntelligence/analysis/contracts.ts
   - src/services/salesIntelligence/analysis/run.ts
   - src/services/salesIntelligence/analysis/lease.ts
@@ -101,7 +104,7 @@ Registration reuses the existing bootstrapped queue consumer and cron router: `/
 
 Application rechecks current records and captured followup revisions. Prior same-conversation assertion overrides require review rather than revival. Unclear/missing targets remain review; strategy stays suggestion-only. Booking/payment/objection/competitor/non-sales evidence never writes official records or sends messages. Number-only restrictions call the existing `applySpokenRestriction`; unresolved until/unclear restrictions remain review. `outreach/effects.ts:applyUnboundContactTypeEffect` shares contact-type decisions and `ensureInteraction` transitions when no Outreach exists, updates conversation and interaction provenance, and preserves Owner contact-type decisions. Snapshot membership/scope, at least one captured transcript, and complete captured transcript page chains are mandatory; locator and entailment remain `not_run`.
 
-Publication occurs only after every finding batch, independent of blocked/permitted effect counts. It publishes the compatible conversation summary/current-run pointer or ContactNumber running summary and completes the run/job transactionally. Newer current runs cannot be overwritten by older workers; a replaced transcript also prevents conversation publication. CSI-18 correction selection stays absent, `owner_correction_ids=[]`, and existing original-evidence replay APIs remain unchanged.
+Publication occurs only after every finding batch, independent of blocked/permitted effect counts. It publishes the compatible conversation summary/current-run pointer or ContactNumber running summary and completes the run/job transactionally. Newer current runs cannot be overwritten by older workers; replaced or newly ineligible transcript sources also prevent current publication. CSI-18 Owner reruns carry server-authorized correction references and explicit correction context; ordinary runs keep an empty correction selection.
 
 Runtime configuration and synthetic proof details: [CSI-13 handoff](../../call-sales-intelligence/workspace/evidence/csi-13/HANDOFF.md). No live model quality or deployment is established by these tests.
 
@@ -110,3 +113,19 @@ Runtime configuration and synthetic proof details: [CSI-13 handoff](../../call-s
 `node --import tsx --import ./scripts/test-setup.ts --test src/services/salesIntelligence/analysis/reads.test.ts` passed 4 synthetic tests. `node --import tsx scripts/test-csi-intelligence-reads.ts` passed 9 tests on the existing loopback `csi01` replica using fresh `testvantagemovers_csi17reads*` databases and guarded cleanup. The latter proves real Mongo relevance/pagination, arbitrary-ID denial, old pinned transcript pagination, null timing, historical/proposed/conflicting/unknown identity, Owner restrictions/context, official activity projection and byte-identical domain/job/original-evidence state after reads. Its fetch trap forbids network/provider calls. See [exact read checks](../../call-sales-intelligence/workspace/evidence/csi-17/READS-CHECKS.md) and the CSI-17 handoff for whole-slice transport/intake/checkpoint results; read tests alone are not whole-app approval.
 
 Feature defaults remain off; provider reads additionally require their explicit stage flag and a cached, unexpired token through the existing store. No live model, STT, Blob, RingCentral, deployed MCP, production database or message proof is claimed. Rollback disables CSI flags/registration while retaining immutable evidence, submissions and paused application intent. No production migration, credential provisioning or configuration enablement is part of CSI-17.
+
+## CSI-18 Owner intervention implementation (September 19, 2026)
+
+`ownerCommands.ts` owns exact-version confirmation, targeted correction/retraction, explicit suggestion application and rerun requests. Owner commands use the existing trusted actor and transactional durable command ledger. Run confirmation checks the output digest and run revision; finding commands check the finding revision and parent output digest. Both fence the current published pointer. Confirmation changes review projections and appends audit; it never invokes the effect application worker or changes the model assertion.
+
+Correction stores an immutable assertion instruction and delegates selected action changes to CSI-06 in the same transaction. `action_changes` explicitly names the fields to change, including nullable due dates and responsibility. The follow-up must belong to the finding's effect/provenance and its expected revision is mandatory. Retraction cancels only still-open work created by this assertion with no later independent Owner/model work; completed work, closure, unrelated work and non-reversible effects remain protected with recorded blocked outcomes. Non-follow-up reversals require their existing explicit Owner workflow. Targeted unclear-commitment/Owner-conflict reviews resolve only when no reversal is blocked. Correction/retraction queues current-context reanalysis by default; unavailable evidence is reported without rolling back the immediate Owner decision.
+
+Suggestions require the exact run revision and suggestion digest plus the current Outreach revision. CSI-06 creates Owner-origin work, preserving nullable due date and explicit responsibility. A blocked official-closure result is recorded as blocked, never reported as an applied suggestion.
+
+`ownerReanalysis.ts` schedules durable existing analysis/number-refresh jobs with a server-issued future run id, source run, mode and authorized correction references. Original mode validates retained manifest, response digests, source transcript presence and purge markers, then replays the exact captured calls and pinned prompt plus explicit Owner correction context. Current mode captures fresh context through existing preparation. Neither mode invokes STT. Number reruns remain synthesis-only. Existing reservation, receipt recovery and live effect validation apply; a new run starts with unreviewed assertions. Explicit disagreements produce instruction-version-specific Owner-conflict review; absent assessments remain Cannot determine.
+
+Owner reads are side-effect-free: run list, original output, recorded effects, current actions, attributed instructions/assessments, paged immutable review history and paged evidence. Purged evidence yields an unavailable tombstone and never falls back to current content. Queued requests are visible on the source analysis even before a worker prepares a new run. Server and dashboard acceptance are tracked separately in `docs/call-sales-intelligence/workspace/evidence/csi-18/`.
+
+## CSI-18 source freshness at replay/application
+
+Current-context transcript reads reject explicitly requested obsolete versions. Before applying each batch and publishing a summary, captured transcript sources must still match the current eligible sources (the exact set for a Number, or the pinned eligible source for a Conversation). Original-evidence mode may still analyze a retained historical version: its findings/assessments remain available, but stale transcript evidence cannot apply operational effects or replace the current summary. Such a run is recorded as stale with `transcript_evidence_stale`; it is not silently rebuilt from fresh content. Number synthesis never applies Conversation effects.

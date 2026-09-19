@@ -1,0 +1,206 @@
+$ eslint
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\dashboard\needs-you.tsx
+  175:9  error  Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\dashboard\needs-you.tsx:175:9
+  173 | export function NeedsYouBand({
+  174 |   booking,
+> 175 |   now = Date.now(),
+      |         ^^^^^^^^^^ Cannot call impure function
+  176 |   bookingCommandsEnabled = true,
+  177 | }: {
+  178 |   booking: NeedsYouQueue;  react-hooks/purity
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\job-number-timeline\job-timeline-dashboard.tsx
+  153:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\job-number-timeline\job-timeline-dashboard.tsx:153:5
+  151 |
+  152 |   useEffect(() => {
+> 153 |     setDraftJob(jobFromUrl);
+      |     ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  154 |     setDraftGranularity(granularityFromUrl);
+  155 |   }, [jobFromUrl, granularityFromUrl]);
+  156 |  react-hooks/set-state-in-effect
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\layout\global-search.tsx
+   69:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\layout\global-search.tsx:69:5
+  67 |
+  68 |   useEffect(() => {
+> 69 |     setHotkeyHint(paletteHotkeyHint());
+     |     ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  70 |   }, []);
+  71 |
+  72 |   useEffect(() => {                                                                        react-hooks/set-state-in-effect
+   96:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\layout\global-search.tsx:96:5
+  94 |     }
+  95 |
+> 96 |     setQuery("");
+     |     ^^^^^^^^ Avoid calling setState() directly within an effect
+  97 |     setHighlightedIndex(0);
+  98 |     const frame = window.requestAnimationFrame(() => {
+  99 |       dialogRef.current?.querySelector("input")?.focus();  react-hooks/set-state-in-effect
+  146:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\layout\global-search.tsx:146:5
+  144 |
+  145 |   useEffect(() => {
+> 146 |     setHighlightedIndex(0);
+      |     ^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  147 |   }, [query]);
+  148 |
+  149 |   function openPalette(trigger: HTMLElement | null) {                               react-hooks/set-state-in-effect
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\manual\connect-booking-section.tsx
+  139:9  warning  The 'leadResources' conditional could make the dependencies of useMemo Hook (at line 168) change on every render. To fix this, wrap the initialization of 'leadResources' in its own useMemo() Hook  react-hooks/exhaustive-deps
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\manual\create-lead-form.tsx
+  59:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\manual\create-lead-form.tsx:59:5
+  57 |     const next = defaultSourceChoice(sourceChoices);
+  58 |     if (!next) return;
+> 59 |     setDraft((current) => ({
+     |     ^^^^^^^^ Avoid calling setState() directly within an effect
+  60 |       ...current,
+  61 |       source_company: next.source_company,
+  62 |       source_granularity_key: next.source_granularity_key,  react-hooks/set-state-in-effect
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\operational\operational-resource-page.tsx
+  239:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\operational\operational-resource-page.tsx:239:5
+  237 |
+  238 |   useEffect(() => {
+> 239 |     setSelectedIds(new Set());
+      |     ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  240 |     setSheetContainsOpen(false);
+  241 |     setSheetContainsResult(null);
+  242 |     setSheetContainsError(null);  react-hooks/set-state-in-effect
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\operations-registry\lead-sources\lead-sources-manager.tsx
+  76:9  warning  Do not use `window.location.href` to navigate to internal Next.js pages. Use `redirect()` in the render phase, or `useRouter().push()` in Client Components' event handlers instead. See: https://nextjs.org/docs/messages/no-location-assign-relative-destination  @next/next/no-location-assign-relative-destination
+  80:9  warning  Do not use `window.location.href` to navigate to internal Next.js pages. Use `redirect()` in the render phase, or `useRouter().push()` in Client Components' event handlers instead. See: https://nextjs.org/docs/messages/no-location-assign-relative-destination  @next/next/no-location-assign-relative-destination
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\reporting\destination-selector.tsx
+  57:6  warning  React Hook useEffect has missing dependencies: 'draft' and 'onChange'. Either include them or remove the dependency array. If 'onChange' changes too often, find the parent component that defines it and wrap that definition in useCallback  react-hooks/exhaustive-deps
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\reporting\report-sheet-examples.tsx
+  25:29  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\reporting\report-sheet-examples.tsx:25:29
+  23 |
+  24 |   useEffect(() => {
+> 25 |     if (selectedDatasetKey) setOpenKey(selectedDatasetKey);
+     |                             ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  26 |   }, [selectedDatasetKey]);
+  27 |
+  28 |   return (  react-hooks/set-state-in-effect
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\reporting\reporting-dashboard.tsx
+  170:5  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\reporting\reporting-dashboard.tsx:170:5
+  168 |     if (!pending) return;
+  169 |     sessionStorage.removeItem(REVISION_SAVED_NOTICE_KEY);
+> 170 |     setMessage(pending);
+      |     ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  171 |     setMessageTone("success");
+  172 |   }, []);
+  173 |     react-hooks/set-state-in-effect
+  249:7  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\reporting\reporting-dashboard.tsx:249:7
+  247 |   useEffect(() => {
+  248 |     if (mode === "create" && !draft && catalog.data?.datasets[0]) {
+> 249 |       startCreate();
+      |       ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  250 |     }
+  251 |   }, [mode, catalog.data, draft]);
+  252 |  react-hooks/set-state-in-effect
+  251:6  warning  React Hook useEffect has a missing dependency: 'startCreate'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-hooks/exhaustive-deps
+  255:7  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\components\reporting\reporting-dashboard.tsx:255:7
+  253 |   useEffect(() => {
+  254 |     if (mode === "edit" && !draft && detail.data?.current_revision) {
+> 255 |       startEdit();
+      |       ^^^^^^^^^ Avoid calling setState() directly within an effect
+  256 |     }
+  257 |   }, [mode, detail.data, draft]);
+  258 |     react-hooks/set-state-in-effect
+  257:6  warning  React Hook useEffect has a missing dependency: 'startEdit'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             react-hooks/exhaustive-deps
+
+C:\Users\Pinda\Proyectos\vantage\vantage-admin\lib\api\granotLifecycle.test.ts
+  127:26  warning  '_omitted' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+✖ 18 problems (11 errors, 7 warnings)
+
+[ELIFECYCLE] Command failed with exit code 1.

@@ -1,0 +1,6 @@
+{
+  "requested": "http://127.0.0.1:3108/sales-intelligence",
+  "actual": "http://127.0.0.1:3108/",
+  "role": "Admin",
+  "salesIntelligenceVisible": 0
+}

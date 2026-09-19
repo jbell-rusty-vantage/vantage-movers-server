@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
-import { csiIdSchema } from "../../../validation/v1/salesIntelligence";
+import { csiIdSchema, csiActionAvailabilitySchema } from "../../../validation/v1/salesIntelligence";
+import { csiFlag } from "../../../config/domain/salesIntelligence";
 import { certaintyLabel } from "./suggest";
 import type { StoredAttachment } from "./store";
 
@@ -18,6 +19,7 @@ export const attachmentDtoSchema = z.object({
     cancelled: z.boolean(), duplicate: z.boolean(), bad_lead: z.boolean(), receiver_agent_name: text, refreshed_at: date }).strict().nullable(),
   decided_at: date, decided_by: text, decision_reason: text,
   history: z.array(z.object({ from: text, to: text, at: date, by: text, reason: text }).strict()),
+  allowed_actions: z.array(csiActionAvailabilitySchema).optional(),
 }).strict();
 
 export const attachmentListQuerySchema = z.object({
@@ -28,6 +30,9 @@ export const attachmentListQuerySchema = z.object({
   .refine(q => Boolean(q.lead_model) === Boolean(q.lead_id), "Lead model and id required together");
 export function toAttachmentDto(row: StoredAttachment) {
   return attachmentDtoSchema.parse({ id: String(row._id), revision: row.revision, contact_number_id: String(row.contact_number_id),
+    allowed_actions: (["attach_lead", "reject_attachment", "detach_attachment"] as const).map(action => ({ action, target_id: String(row._id), expected_revision: row.revision,
+      enabled: csiFlag("ENABLED") && csiFlag("ATTACHMENT_REFRESH") && (action !== "detach_attachment" || row.state === "attached"),
+      blocker_codes: !csiFlag("ENABLED") || !csiFlag("ATTACHMENT_REFRESH") ? ["FEATURE_DISABLED"] : [] })),
     lead_ref: { model: row.lead_ref.model, id: String(row.lead_ref.id) }, state: row.state, certainty: row.certainty,
     certainty_label: row.state === "rejected" ? null : certaintyLabel(row.certainty),
     evidence: row.evidence.map(e => ({ source: e.source, field_path: e.field_path, observed_at: e.observed_at.toISOString(),

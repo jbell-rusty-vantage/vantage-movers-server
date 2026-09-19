@@ -103,3 +103,25 @@ export async function numberAnalysisInput(numberId: string, session: ClientSessi
   if (!conversation_ids.length) return { status: "no_transcript_evidence" as const };
   return { status: "eligible" as const, sources, conversation_ids, versions };
 }
+
+/** Exact source membership prevents a number summary from mixing a retained old transcript with current evidence. */
+export function sameTranscriptSourceSet(capturedSourceIds: readonly string[], currentSourceIds: readonly string[]) {
+  return capturedSourceIds.length === currentSourceIds.length &&
+    new Set(capturedSourceIds).size === capturedSourceIds.length &&
+    capturedSourceIds.every(id => currentSourceIds.includes(id));
+}
+
+/** Recheck the captured transcript set immediately before applying/publishing a completed run. */
+export async function capturedTranscriptSourcesCurrent(input: {
+  contact_number_id: string;
+  conversation_id: string | null;
+  transcript_source_ids: readonly string[];
+}, session: ClientSession) {
+  if (input.conversation_id) {
+    if (input.transcript_source_ids.length !== 1) return false;
+    const current = await conversationAnalysisInput(input.conversation_id, input.transcript_source_ids[0], session);
+    return current.status === "eligible";
+  }
+  const current = await numberAnalysisInput(input.contact_number_id, session);
+  return current.status === "eligible" && sameTranscriptSourceSet(input.transcript_source_ids, current.versions);
+}

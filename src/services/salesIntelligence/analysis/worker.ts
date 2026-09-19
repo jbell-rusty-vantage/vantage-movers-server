@@ -19,6 +19,9 @@ import { publishCaptureProjectionWakeup } from "../../numberActivity/webhookFano
 import { applicationReady, resumeApplicationIntents } from "./readiness";
 import { consumeNumberRefreshSignal, scanIntelligenceChanges } from "./scheduling";
 import { resumeTranscriptAnalysisJobs } from "../conversations/transcribe";
+import { retainedOriginal } from "./ownerReanalysis";
+import { intelligenceReadSchema, intelligenceToolArguments } from "./contracts";
+import { readContentSchema } from "./reads";
 
 export const pricingSchema = z.object({ version: z.string().min(1), input_cents_per_million: z.number().positive(), output_cents_per_million: z.number().positive() }).strict();
 export type AnalysisPricing = z.infer<typeof pricingSchema>;
@@ -65,7 +68,7 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
     return { status: "submitted", run_id: receipt.run_id };
   };
   try {
-    if (stage === "number_refresh" && !job.dedupe_key.startsWith("csi:number-analysis:")) {
+    if (stage === "number_refresh" && !job.owner_reanalysis && !job.dedupe_key.startsWith("csi:number-analysis:")) {
       await completeCsiJob(lease, session => consumeNumberRefreshSignal(job.subject_key, job.input_refs, session));
       return { status: "coalesced" };
     }
@@ -79,7 +82,16 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
     if (!config.pricing || !config.endpoint || !config.key || (!deps.model && !config.gateway_key) || (prior && prior.model_version !== config.model_id) || !["openai/gpt-5-mini", "openai/gpt-5-nano"].includes(config.model_id)) {
       await failCsiJob(lease, "permission_denied", 0, { result: { reason: "analysis_configuration_missing" } }); return { status: "paused" };
     }
+    const original = job.owner_reanalysis?.mode === "original_evidence" ? await retainedOriginal(String(job.owner_reanalysis.source_run_id)) : null;
     const input = await withTransaction(async session => {
+      if (original) {
+        const transcripts = original.snapshots.flatMap(s => { const content = readContentSchema.parse(s.response); return content.transcript ? [content.transcript] : []; });
+        return { status: "eligible" as const, contact_number_id: String(original.run.contact_number_id),
+          conversation_id: original.run.conversation_id ? String(original.run.conversation_id) : null,
+          outreach_record_id: original.run.outreach_record_id ? String(original.run.outreach_record_id) : null,
+          fingerprint: original.run.input_fingerprint, conversation_ids: [...new Set(transcripts.map(t => t.conversation_id))],
+          versions: [...new Set(transcripts.map(t => t.source_snapshot_id))], interaction_ids: [] as string[] };
+      }
       if (stage === "analysis") {
         if (job.input_refs.length !== 2 || job.subject_key !== `conversation:${job.input_refs[0]}`) throw new CsiError("EVIDENCE_SCOPE_INVALID");
         const value = await conversationAnalysisInput(String(job.input_refs[0]), String(job.input_refs[1]), session);
@@ -110,7 +122,9 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
     const prepared = await prepareIntelligenceRun(lease, { contact_number_id: input.contact_number_id, conversation_id: input.conversation_id,
       outreach_record_id: prior?.outreach_record_id ? String(prior.outreach_record_id) : input.outreach_record_id,
       input_fingerprint: prior?.input_fingerprint ?? input.fingerprint, model_version: prior?.model_version ?? config.model_id,
-      mode: stage === "number_refresh" ? "number_refresh" : "initial" });
+      mode: job.owner_reanalysis?.mode ?? (stage === "number_refresh" ? "number_refresh" : "initial"),
+      ...(job.owner_reanalysis ? { run_id: String(job.owner_reanalysis.run_id), parent_run_id: original ? String(original.run._id) : null,
+        owner_correction_ids: job.owner_reanalysis.owner_correction_ids.map(String) } : {}) });
     runId = prepared.run_id;
     const budget = await getSalesIntelligenceAiBudgetModel().findOne({ period_start: { $lte: new Date() }, period_end: { $gt: new Date() }, activated_at: { $ne: null } }).lean();
     const estimate = estimateAnalysisCents(config.pricing, limits), policy = await resolvePolicy();
@@ -126,10 +140,15 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
       prompt: prepared.prompt_context.rendered_prompt!, schema_digest: prepared.prompt_context.schema_digest!,
       schema_failures: prior?.schema_failures ?? 0, onInvocationComplete: () => { returned = true; },
       conversation_ids: input.conversation_ids, interaction_ids: input.interaction_ids,
+      ...(original ? { original_reads: original.snapshots.map(s => s.tool_name === "get_intelligence_context"
+        ? { tool: "get_intelligence_context" as const, args: intelligenceToolArguments.get_intelligence_context.parse(s.arguments) }
+        : intelligenceReadSchema.parse({ tool: s.tool_name, args: s.arguments })) } : {}),
       beforeProvider: async () => {
         if (!analysisEnabled()) throw new CsiError("FEATURE_DISABLED");
         await deps.beforeProvider?.();
-        if (input.conversation_id) {
+        if (original) {
+          await retainedOriginal(String(original.run._id));
+        } else if (input.conversation_id) {
           const latest = await withTransaction(session => conversationAnalysisInput(input.conversation_id!, String(job.input_refs[1]), session));
           if (latest.status !== "eligible") throw new IntelligenceRuntimeError("eligibility_changed");
         } else {
@@ -166,11 +185,12 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
     const budget = error instanceof CsiError && error.code === "BUDGET_EXHAUSTED";
     const bounded = error instanceof IntelligenceRuntimeError;
     const eligibility = bounded && error.reason === "eligibility_changed", disabled = error instanceof CsiError && error.code === "FEATURE_DISABLED";
-    const reason = budget ? "budget_exhausted" : disabled ? "analysis_disabled" : bounded ? error.reason : "analysis_failed";
-    await failCsiJob(lease, budget ? "budget_exhausted" : eligibility ? "eligibility_pending" : bounded || disabled ? "permission_denied" : "transient", eligibility ? 600_000 : 0, { result: { reason },
+    const unavailable = error instanceof CsiError && error.code === "ORIGINAL_EVIDENCE_UNAVAILABLE";
+    const reason = budget ? "budget_exhausted" : unavailable ? "original_evidence_unavailable" : disabled ? "analysis_disabled" : bounded ? error.reason : "analysis_failed";
+    await failCsiJob(lease, budget ? "budget_exhausted" : eligibility ? "eligibility_pending" : bounded || disabled || unavailable ? "permission_denied" : "transient", eligibility ? 600_000 : 0, { result: { reason },
       mutation: async (session, outcome) => { if (runId) await getIntelligenceRunModel().updateOne({ _id: runId, finalized_at: null }, { $set: { processing_reason: reason,
         status: outcome.status === "paused" ? "paused" : outcome.status === "dead_letter" ? "failed" : "running" } }, { session }); } });
-    return { status: eligibility ? "eligibility_pending" : budget || bounded || disabled ? "paused" : "retry", reason };
+    return { status: eligibility ? "eligibility_pending" : budget || bounded || disabled || unavailable ? "paused" : "retry", reason };
   } finally {
     if (reservation && await getSalesIntelligenceAiReservationModel().exists({ reservation_id: reservation })) {
       if (!providerStarted) await reconcileCsiBudget(reservation, 0, true);

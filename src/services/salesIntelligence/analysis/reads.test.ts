@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { leadRelevance, projectLead, readContentSchema, readCursor } from "./reads";
+import { isCurrentTranscriptVersion, leadRelevance, projectLead, readContentSchema, readCursor } from "./reads";
+import { sameTranscriptSourceSet } from "./sources";
 import type { ReadScope } from "./contracts";
 
 const scope: ReadScope = { run_id: "a".repeat(24), subject_key: `number:${"b".repeat(24)}`, contact_number_id: "b".repeat(24), conversation_id: null, outreach_record_id: null, account_id: null, e164: "+12025550100", lead_refs: [{ model: "CallLead", id: "c".repeat(24) }] };
@@ -39,4 +40,13 @@ test("response contract retains unknown speaker and nullable timing and rejects 
   assert.deepEqual(readContentSchema.parse(content), content);
   assert.throws(() => readContentSchema.parse({ ...content, send_message: true }));
   assert.throws(() => readContentSchema.parse({ ...content, page: { ...content.page, records: [{ record_type: "lead", record_id: "a", revision: "1", fields: { arbitrary_authority: true } }] } }));
+});
+test("number transcript reads reject an explicit retained version that is no longer current", () => {
+  assert.equal(isCurrentTranscriptVersion("csi-transcript-v1:current", "csi-transcript-v1:current"), true);
+  assert.equal(isCurrentTranscriptVersion("csi-transcript-v1:old", "csi-transcript-v1:current"), false);
+});
+test("publication freshness requires the exact current eligible transcript set", () => {
+  assert.equal(sameTranscriptSourceSet(["current-a", "current-b"], ["current-a", "current-b"]), true);
+  assert.equal(sameTranscriptSourceSet(["old-a"], ["current-a"]), false);
+  assert.equal(sameTranscriptSourceSet(["current-a"], ["current-a", "current-b"]), false);
 });

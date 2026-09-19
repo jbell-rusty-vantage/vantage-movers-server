@@ -1,0 +1,109 @@
+Number / Outreach detail
+Close
++12025550104
+unknown
+Contact: allowed
+
+As of Sep 19, 6:25 AM EDT · History known through Not observed
+
+Running analysis
+
+No completed analysis available.
+
+Number↔Lead attachments
+Morgan (synthetic) · Confirmed by you
+
+Attached · Job Number CSI08-MORGAN · Synthetic source
+
+Open official Lead
+Evidence and decision history
+Confirm attachment
+Reject attachment
+Detach Lead
+Contact restrictions
+
+No temporary contact restrictions recorded.
+
+Outreach · Waiting on customer
+Outreach owned by Unassigned
+
+Morgan (synthetic) · Job Number CSI08-MORGAN · Synthetic source
+
+Open official Lead
+
+Last human contact: Not observed
+
+Open work nobody owns
+Open work nobody owns
+Mark as worked
+Assign Outreach
+Wait for customer
+Add note
+Close Outreach
+Reopen Outreach
+Add follow-up
+Follow-ups
+Wait
+Owner · Open
+
+Synthetic customer requested noon follow-up.
+
+Due Sep 19, 12:00 PM EDT
+
+Action assigned to Unassigned
+Outreach owned by Unassigned
+Edit follow-up / assignment
+Complete follow-up
+Cancel follow-up
+Snooze follow-up
+Completed and cancelled follow-ups
+Number Activity
+followup · Sep 19, 6:25 AM EDT
+
+set waiting
+
+Reason: Synthetic customer requested noon follow-up.
+
+Responsible Agent: Unassigned
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:25 AM EDT
+
+owner followup created
+
+Synthetic customer requested noon follow-up.
+
+Due Sep 19, 12:00 PM EDT
+
+Responsible Agent: Unassigned
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:24 AM EDT
+
+mark worked
+
+Synthetic preparation only; no customer conversation.
+
+Responsible Agent: Unassigned
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+followup · Sep 19, 6:00 AM EDT
+
+outreach created
+
+Responsible Agent: Unassigned
+
+Recorded by sales-intelligence-worker
+
+Earlier values
+Needs review
+
+No review decisions recorded for this subject.
+
+Rep messaging is unavailable in this preview.

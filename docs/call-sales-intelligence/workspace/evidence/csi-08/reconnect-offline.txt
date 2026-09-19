@@ -1,0 +1,362 @@
+- complementary:
+  - img "Vantage Home Movers"
+  - paragraph: Vantage Admin
+  - paragraph: Owner dashboard
+  - button "Collapse sidebar":
+  - navigation "Dashboard":
+    - paragraph: Today
+    - link "Overview":
+      - /url: /
+      - generic: Overview
+    - link "Daily Operations":
+      - /url: /daily
+      - generic: Daily Operations
+    - link "Live Events":
+      - /url: /live-events
+      - generic: Live Events
+    - link "Lead Conversations":
+      - /url: /conversations
+      - generic: Lead Conversations
+    - link "Sales Intelligence":
+      - /url: /sales-intelligence
+      - generic: Sales Intelligence
+    - link "Intakes":
+      - /url: /intakes
+      - generic: Intakes
+    - link "Manual":
+      - /url: /manual
+      - generic: Manual
+    - paragraph: Records
+    - link "Form Leads":
+      - /url: /form-leads
+      - generic: Form Leads
+    - link "Duplicate Form Leads":
+      - /url: /duplicate-form-leads
+      - generic: Duplicate Form Leads
+    - link "Call Leads":
+      - /url: /call-leads
+      - generic: Call Leads
+    - link "Duplicate Call Leads":
+      - /url: /duplicate-call-leads
+      - generic: Duplicate Call Leads
+    - link "Bookings":
+      - /url: /bookings
+      - generic: Bookings
+    - link "Cancellations":
+      - /url: /cancellations
+      - generic: Cancellations
+    - link "Job Timeline":
+      - /url: /job-timeline
+      - generic: Job Timeline
+    - link "Customers":
+      - /url: /customers
+      - generic: Customers
+    - paragraph: People
+    - link "Agents":
+      - /url: /agents
+      - generic: Agents
+    - link "Testimonials":
+      - /url: /testimonials
+      - generic: Testimonials
+    - paragraph: Insight
+    - link "Analytics":
+      - /url: /analytics
+      - generic: Analytics
+    - link "Agent Sales Report":
+      - /url: /reports/agent-sales
+      - generic: Agent Sales Report
+    - link "Reporting":
+      - /url: /reporting
+      - generic: Reporting
+    - link "Exports":
+      - /url: /exports
+      - generic: Exports
+    - paragraph: System
+    - link "Observational":
+      - /url: /observational
+      - generic: Observational
+    - link "Operations Registry":
+      - /url: /operations-registry
+      - generic: Operations Registry
+    - link "Granot Lifecycle":
+      - /url: /granot-lifecycle
+      - generic: Granot Lifecycle
+    - link "Ingestion":
+      - /url: /ingestion
+      - generic: Ingestion
+    - link "Extension":
+      - /url: /extension
+      - generic: Extension
+    - link "Audit Log":
+      - /url: /audit-log
+      - generic: Audit Log
+- banner:
+  - heading "Sales Intelligence" [level=1]
+  - generic: Current records
+  - textbox "Global search":
+    - /placeholder: Search job, phone, email…
+  - generic: Ctrl K
+  - button "Account menu":
+    - generic: O
+    - generic: owner@csi07.example.test
+    - generic: Owner
+- main:
+  - heading "Sales Intelligence" [level=1]
+  - generic: Live
+  - paragraph: Numbers / Search · Current records
+  - main:
+    - navigation "Sales Intelligence views":
+      - button "Attention"
+      - button "Numbers / Search" [pressed]
+      - button "Reps"
+    - region "Number search":
+      - text: Phone, name, Job Number or Agent
+      - textbox "Phone, name, Job Number or Agent": "0101"
+      - button "Search"
+      - text: Classification
+      - combobox "Classification":
+        - option "All classifications" [selected]
+        - option "unknown"
+        - option "customer"
+        - option "company"
+        - option "non customer"
+      - text: Lead connections
+      - combobox "Lead connections":
+        - option "All numbers" [selected]
+        - option "With attachments or candidates"
+        - option "Without attachments or candidates"
+      - checkbox "Company and other internal endpoints"
+      - text: Company and other internal endpoints
+      - button "Refresh numbers"
+      - paragraph: As of Sep 19, 7:04 AM EDT · History known through Not observed
+      - list:
+        - strong: "+12025550101"
+        - generic: Name not observed
+        - generic: customer
+        - generic: allowed
+        - paragraph: Last activity Sep 19, 2:49 AM EDT
+        - paragraph: 0 attached Leads · 0 candidates
+        - button "Open +12025550101": Open Number Activity
+  - dialog "Number / Outreach detail":
+    - heading "Number / Outreach detail" [level=2]
+    - button "Close detail panel" [active]: Close
+    - heading "+12025550101" [level=3]
+    - generic: customer
+    - generic: "Contact: allowed"
+    - paragraph: As of Sep 19, 7:04 AM EDT · History known through Not observed
+    - heading "Running analysis" [level=3]
+    - paragraph: No completed analysis available.
+    - heading "Number↔Lead attachments" [level=3]
+    - paragraph: No attachments recorded. Searching does not attach a Lead.
+    - generic "Find another Lead to attach"
+    - heading "Contact restrictions" [level=3]
+    - paragraph: No temporary contact restrictions recorded.
+    - heading "Outreach · Open" [level=3]
+    - generic: Outreach owned by Jordan (synthetic)
+    - paragraph: "Last human contact: Not observed"
+    - generic: Being worked, but no next step
+    - button "Mark as worked"
+    - button "Assign Outreach"
+    - button "Wait for customer"
+    - button "Add note"
+    - button "Close Outreach"
+    - button "Reopen Outreach" [disabled]
+    - button "Add follow-up"
+    - heading "Follow-ups" [level=3]
+    - paragraph: No active follow-ups recorded.
+    - generic "Completed and cancelled follow-ups"
+    - heading "Number Activity" [level=3]
+    - list:
+      - strong: owner note
+      - text: · Sep 19, 6:51 AM EDT
+      - paragraph: Owner added context
+      - paragraph: Synthetic CSI-08 durable retry proof
+      - paragraph: "Outreach owned by: Jordan (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:23 AM EDT
+      - paragraph: reopen
+      - paragraph: "Reason: Synthetic new Owner work; do not revive old commitments."
+      - paragraph: "Outreach owned by: Jordan (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:22 AM EDT
+      - paragraph: outreach closed
+      - paragraph: Synthetic closure with preserved history.
+      - paragraph: "Closure: owner dismissed"
+      - paragraph: "Outreach owned by: Jordan (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:22 AM EDT
+      - paragraph: closure cancelled action
+      - paragraph: "Cancellation reason: owner_dismissed"
+      - paragraph: Synthetic callback updated 2026-09-19T06:56:08.186Z
+      - paragraph: Due Sep 19, 2:55 AM EDT
+      - paragraph: "Action assigned to: Jordan (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:22 AM EDT
+      - paragraph: cancel followup
+      - paragraph: "Reason: Synthetic estimate superseded; other callback stays open."
+      - paragraph: "Outreach owned by: Jordan (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:22 AM EDT
+      - paragraph: cancel followup
+      - paragraph: "Cancellation reason: Synthetic estimate superseded; other callback stays open."
+      - paragraph: Synthetic estimate draft survives live changes
+      - paragraph: Due Undated
+      - paragraph: "Action assigned to: Casey (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:22 AM EDT
+      - paragraph: snooze followup
+      - paragraph: "Reason: Synthetic future snooze; preserve original promise."
+      - paragraph: "Outreach owned by: Jordan (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:22 AM EDT
+      - paragraph: snooze followup
+      - paragraph: Synthetic callback updated 2026-09-19T06:56:08.186Z
+      - paragraph: Due Sep 19, 2:55 AM EDT
+      - paragraph: Snoozed until Oct 19, 2:55 AM EDT
+      - paragraph: "Action assigned to: Jordan (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: assignment
+      - text: · Sep 19, 6:19 AM EDT
+      - paragraph: assign
+      - paragraph: "Reason: Synthetic ownership retry proof"
+      - paragraph: "Outreach owned by: Jordan (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:18 AM EDT
+      - paragraph: patch followup
+      - paragraph: "Reason: Synthetic Owner edit"
+      - paragraph: "Outreach owned by: Alex (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:18 AM EDT
+      - paragraph: patch followup
+      - paragraph: Synthetic estimate draft survives live changes
+      - paragraph: Due Undated
+      - paragraph: "Action assigned to: Casey (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: owner note
+      - text: · Sep 19, 6:17 AM EDT
+      - paragraph: Owner added context
+      - paragraph: Synthetic concurrent CSI-08 update
+      - paragraph: "Outreach owned by: Alex (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:16 AM EDT
+      - paragraph: complete followup
+      - paragraph: Synthetic completion context 40765fa2-e0bf-4783-9336-222aae14d694
+      - paragraph: "Outreach owned by: Alex (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:16 AM EDT
+      - paragraph: complete followup
+      - paragraph: Synthetic completion note regression
+      - paragraph: "Outcome: completed"
+      - paragraph: Due Undated
+      - paragraph: "Action assigned to: Unassigned"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:16 AM EDT
+      - paragraph: create followup
+      - paragraph: "Outreach owned by: Alex (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:16 AM EDT
+      - paragraph: owner followup created
+      - paragraph: Synthetic completion note regression
+      - paragraph: Due Undated
+      - paragraph: "Action assigned to: Unassigned"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:14 AM EDT
+      - paragraph: complete followup
+      - paragraph: "Outreach owned by: Alex (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:14 AM EDT
+      - paragraph: complete followup
+      - paragraph: Synthetic completion note regression
+      - paragraph: "Outcome: completed"
+      - paragraph: Due Undated
+      - paragraph: "Action assigned to: Unassigned"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:14 AM EDT
+      - paragraph: create followup
+      - paragraph: "Outreach owned by: Alex (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:14 AM EDT
+      - paragraph: owner followup created
+      - paragraph: Synthetic completion note regression
+      - paragraph: Due Undated
+      - paragraph: "Action assigned to: Unassigned"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:09 AM EDT
+      - paragraph: complete followup
+      - paragraph: "Outreach owned by: Alex (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:09 AM EDT
+      - paragraph: complete followup
+      - paragraph: CSI-08 synthetic crew availability
+      - paragraph: "Outcome: completed"
+      - paragraph: Due Undated
+      - paragraph: "Action assigned to: Casey (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:06 AM EDT
+      - paragraph: create followup
+      - paragraph: "Outreach owned by: Alex (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: followup
+      - text: · Sep 19, 6:06 AM EDT
+      - paragraph: owner followup created
+      - paragraph: CSI-08 synthetic crew availability
+      - paragraph: Due Undated
+      - paragraph: "Action assigned to: Casey (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+      - strong: owner note
+      - text: · Sep 19, 6:00 AM EDT
+      - paragraph: Owner added context
+      - paragraph: Synthetic CSI-08 durable retry proof
+      - paragraph: "Outreach owned by: Alex (synthetic)"
+      - paragraph: Recorded by 6aae2fb470ef7c75c4c0852c
+      - generic "Earlier values"
+    - button "Load older activity"
+    - heading "Needs review" [level=3]
+    - paragraph: No review decisions recorded for this subject.
+    - paragraph: Rep messaging is unavailable in this preview.
+- button "Open Next.js Dev Tools":
+- alert

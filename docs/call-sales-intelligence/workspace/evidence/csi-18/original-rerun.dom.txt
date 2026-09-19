@@ -1,0 +1,101 @@
+
+    - heading "Number / Outreach detail" [level=2]
+    - button "Close detail panel": Close
+    - heading "+12022769947" [level=3]
+    - generic: customer
+    - generic: "Contact: allowed"
+    - paragraph: As of Sep 19, 9:17 AM EDT · History known through Not observed
+    - heading "Running analysis" [level=3]
+    - paragraph: Synthetic Owner intervention demonstration
+    - heading "Number↔Lead attachments" [level=3]
+    - paragraph: No attachments recorded. Searching does not attach a Lead.
+    - generic "Find another Lead to attach"
+    - heading "Contact restrictions" [level=3]
+    - paragraph: No temporary contact restrictions recorded.
+    - heading "Outreach · Open" [level=3]
+    - generic: Outreach owned by Unassigned
+    - paragraph: "Last human contact: Not observed"
+    - generic: Open work nobody owns
+    - generic: Due date needed
+    - generic: Open work nobody owns
+    - button "Mark as worked"
+    - button "Assign Outreach"
+    - button "Wait for customer"
+    - button "Add note"
+    - button "Close Outreach"
+    - button "Reopen Outreach" [disabled]
+    - button "Add follow-up"
+    - heading "Follow-ups" [level=3]
+    - article:
+      - heading "Send estimate" [level=4]
+      - generic: Rep promise · Open
+      - paragraph: Prepare the synthetic estimate
+      - paragraph: Due date needed
+      - generic: Promised by Unknown
+      - generic: Action assigned to Unassigned
+      - generic: Outreach owned by Unassigned
+    - button "Edit follow-up / assignment"
+    - button "Complete follow-up"
+    - button "Cancel follow-up"
+    - button "Snooze follow-up" [disabled]
+    - generic "Completed and cancelled follow-ups"
+    - heading "Number Activity" [level=3]
+    - paragraph: No activity observed in available history.
+    - list
+    - region "Analysis and Owner review":
+      - heading "Analysis and Owner review" [level=3]
+      - button "Sep 19, 8:59 AM EDT · initial · completed" [pressed]
+      - paragraph: "Current analysis · completed · Model: synthetic-no-provider · Prompt: sales_intelligence_analyze_v1"
+      - heading "Original model summary" [level=4]
+      - paragraph: Synthetic Owner intervention demonstration
+      - paragraph:
+        - strong: "customer wanted:"
+        - text: Moving estimate
+      - paragraph:
+        - strong: "money and dates:"
+        - text: No date agreed
+      - paragraph:
+        - strong: "outcome:"
+        - text: Follow-up pending
+      - paragraph:
+        - strong: "commitments:"
+        - text: Prepare estimate
+      - paragraph:
+        - strong: "discrepancies:"
+        - text: None
+      - button "Confirm analysis"
+      - button "Reanalyze original evidence"
+      - button "Reanalyze current context"
+      - paragraph: original evidence requested Sep 19, 9:15 AM EDT · pending
+      - article:
+        - heading "next step" [level=4]
+        - paragraph: Prepare the synthetic estimate
+        - generic: Confirmed by you
+        - paragraph: Original model assertion · synthetic-no-provider · vantage record
+        - paragraph: AI-provided references; location and entailment have not been checked.
+        - generic "Assertion references"
+        - heading "Recorded effects" [level=5]
+        - paragraph: "create followup: applied · Sep 19, 8:59 AM EDT"
+        - button "Confirm finding"
+        - button "Correct finding"
+        - button "Retract finding"
+      - heading "Suggested next step" [level=4]
+      - paragraph: Review synthetic estimate with the Owner
+      - paragraph: Suggestion only; applying it creates Owner-origin work.
+      - button "Apply suggestion"
+      - heading "Owner changes and AI assessments" [level=4]
+      - paragraph: No Owner instructions are recorded.
+      - generic "Original evidence"
+      - generic "Immutable review history"
+      - dialog "Reanalyze original evidence":
+        - heading "Reanalyze original evidence" [level=2]
+        - paragraph: Analysis from Sep 19, 8:59 AM EDT · initial. Enter dates in Eastern time.
+        - paragraph: Uses the retained original evidence and prompt, with the corrections you explicitly select below. Processing may remain queued while AI is paused.
+        - status:
+          - paragraph: Analysis refresh queued. Processing may remain paused.
+        - button "Done"
+    - heading "Needs review" [level=3]
+    - paragraph: No review decisions recorded for this subject.
+    - paragraph: Rep messaging is unavailable in this preview.
+- button "Open Next.js Dev Tools":
+- alert

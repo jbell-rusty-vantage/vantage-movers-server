@@ -14,7 +14,8 @@ export const MAX_RUN_EVIDENCE_BYTES = 8_000_000;
 export const MAX_RESPONSE_BYTES = 512_000;
 type ReadInput = IntelligenceRead | {tool: "get_intelligence_context"; args: Record<string, never>};
 export type CapturedEvidence = {snapshot_id: string; content_digest: string; tool: ReadInput["tool"]; as_of: string; data: ReadContent};
-function restored(row: {_id: unknown; content_digest: string; retrieved_at: Date; tool_name?: string | null; response: unknown}): CapturedEvidence {
+function restored(row: {_id: unknown; content_digest: string; retrieved_at: Date; tool_name?: string | null; response: unknown; purged_at?: Date | null}): CapturedEvidence {
+  if (row.purged_at) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
   const tool = row.tool_name;
   if (!tool || tool === "submit_intelligence_analysis" || !(tool in intelligenceToolArguments)) throw new CsiError("EVIDENCE_SCOPE_INVALID");
   const data = readContentSchema.parse(row.response);

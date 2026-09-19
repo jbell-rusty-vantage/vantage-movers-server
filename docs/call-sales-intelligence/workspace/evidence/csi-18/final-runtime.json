@@ -1,0 +1,19 @@
+{
+  "privateSessionScan": "no credential matches in CSI-18 evidence",
+  "source": "final CSI-18 source; guarded preview; providers disabled",
+  "ports": [
+    {
+      "LocalPort": 27189,
+      "OwningProcess": 19344
+    },
+    {
+      "LocalPort": 3108,
+      "OwningProcess": 40836
+    },
+    {
+      "LocalPort": 3107,
+      "OwningProcess": 24188
+    }
+  ],
+  "at": "2026-09-19T13:32:18.1927004Z"
+}

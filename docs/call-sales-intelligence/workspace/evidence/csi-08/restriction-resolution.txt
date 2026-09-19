@@ -1,0 +1,118 @@
+Number / Outreach detail
+Close
++12025550106
+unknown
+Contact: allowed
+
+As of Sep 19, 6:40 AM EDT · History known through Not observed
+
+Running analysis
+
+No completed analysis available.
+
+Number↔Lead attachments
+Taylor (synthetic) · Likely
+
+Candidate · Job Number CSI08-TAYLOR · Synthetic source
+
+Booked · Cancelled
+
+Open official Lead
+Evidence and decision history
+Confirm attachment
+Reject attachment
+Detach Lead
+Contact restrictions
+
+call · resolved · No end date recorded
+
+Outreach · Closed
+Outreach owned by Unassigned
+
+Taylor (synthetic) · Job Number CSI08-TAYLOR · Synthetic source
+
+Open official Lead
+Open official Booking · Exact
+Open official Cancellation · Exact
+
+Latest activity on this number: Inbound · Voicemail · Voicemail—speaker unknown · Sep 19, 6:36 AM EDT
+
+Last human contact: Not observed
+
+Calling blocked: Closed
+
+Mark as worked
+Assign Outreach
+Wait for customer
+Add note
+Close Outreach
+Reopen Outreach
+Add follow-up
+Follow-ups
+
+No active follow-ups recorded.
+
+Completed and cancelled follow-ups
+Number Activity
+Review · Sep 19, 6:40 AM EDT
+
+review resolved
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+Calling paused · Sep 19, 6:39 AM EDT
+
+restriction resolved
+
+Recorded by 6aae2fb470ef7c75c4c0852c
+
+Earlier values
+interaction · Sep 19, 6:36 AM EDT
+
+Inbound call, Voicemail, 0 recordings
+
+Contact: Voicemail—speaker unknown
+
+Observed Sep 19, 6:37 AM EDT
+
+interaction · Sep 19, 6:35 AM EDT
+
+Inbound call, Call connected, 0 recordings
+
+Contact: Connected status does not establish human contact
+
+Observed Sep 19, 6:37 AM EDT
+
+followup · Sep 19, 6:34 AM EDT
+
+outreach closed
+
+Closure: cancelled
+
+Responsible Agent: Unassigned
+
+Recorded by sales-intelligence-worker
+
+Earlier values
+followup · Sep 19, 6:34 AM EDT
+
+outreach created
+
+Responsible Agent: Unassigned
+
+Recorded by sales-intelligence-worker
+
+Earlier values
+Needs review
+Calling paused · dismissed
+
+Opened Sep 19, 6:35 AM EDT
+
+Synthetic review complete after dedicated restriction resolution.
+
+Resolve identity through attachments and contact restrictions through their dedicated controls. Dismissing a decision cannot lift those blockers.
+
+Resolve with no further action
+
+Rep messaging is unavailable in this preview.

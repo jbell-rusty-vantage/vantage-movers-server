@@ -1,0 +1,50 @@
+http://127.0.0.1:3108/sales-intelligence?view=attention&number_cursor=eyJsYXN0X2FjdGl2aXR5X2F0IjoiMjAyNi0wOS0xOVQxMDowMDowNC44NDdaIiwiaWQiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDA4NDUifQ&outreach=000000000000000000000988&number=000000000000000000000888
+Number / Outreach detail
+Close
++12025550188
+unknown
+Contact: allowed
+
+As of Sep 19, 7:04 AM EDT · History known through Not observed
+
+Running analysis
+
+No completed analysis available.
+
+Number↔Lead attachments
+
+No attachments recorded. Searching does not attach a Lead.
+
+Find another Lead to attach
+Contact restrictions
+
+No temporary contact restrictions recorded.
+
+Outreach · Open
+Outreach owned by Unassigned
+
+Last human contact: Not observed
+
+Being worked, but no next step
+Open work nobody owns
+Mark as worked
+Assign Outreach
+Wait for customer
+Add note
+Close Outreach
+Reopen Outreach
+Add follow-up
+Follow-ups
+
+No active follow-ups recorded.
+
+Completed and cancelled follow-ups
+Number Activity
+
+No activity observed in available history.
+
+Needs review
+
+No review decisions recorded for this subject.
+
+Rep messaging is unavailable in this preview.

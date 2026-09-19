@@ -1,0 +1,17 @@
+{
+  "number_id": "6aae8003c7b754bd337075d1",
+  "run_id": "6aae8004c7b754bd337075d5",
+  "finding_id": "6aae8004c7b754bd337075d6",
+  "action_id": "6aae8004c7b754bd337075d7",
+  "url": "http://127.0.0.1:3108/sales-intelligence?view=numbers&number=6aae8003c7b754bd337075d1&analysis_run=6aae8004c7b754bd337075d5",
+  "checks": [
+    "real Owner BFF read",
+    "read has no effects",
+    "confirmation",
+    "durable duplicate",
+    "changed-payload conflict",
+    "stale revision conflict",
+    "Admin read/write denied"
+  ],
+  "at": "2026-09-19T12:29:08.475Z"
+}

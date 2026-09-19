@@ -6,6 +6,7 @@ import { payloadHash } from "../transactions";
 import { CSI_PROMPT_VERSION } from "./contracts";
 import { readContentSchema } from "./reads";
 import type { SubmissionReceipt } from "./submit";
+import type { IntelligenceRead } from "./contracts";
 
 export const runtimeLimitsSchema = z.object({ steps: z.number().int().min(1).max(40), context_tokens: z.number().int().min(1000).max(200_000),
   output_tokens: z.number().int().min(100).max(16_000), total_input_tokens: z.number().int().positive(), total_output_tokens: z.number().int().positive(),
@@ -28,6 +29,7 @@ export type InvocationInput = {
   endpoint: string; key: string; token: string; run_id: string; model_id: string; gateway_key?: string;
   prompt: string; schema_digest: string; conversation_ids: string[]; interaction_ids: string[];
   limits: RuntimeLimits; model?: LanguageModel; schema_failures?: number;
+  original_reads?: Array<IntelligenceRead | { tool: "get_intelligence_context"; args: Record<string, never> }>;
   beforeProvider: () => Promise<void>; onStep: (step: InvocationStep) => Promise<void>; onInvocationComplete?: () => void;
 };
 /** Byte count is a conservative token ceiling, including tool definitions and accumulated messages. */
@@ -83,12 +85,25 @@ export async function invokeIntelligenceAgent(input: InvocationInput): Promise<S
         if (cursor) seen.add(cursor);
       } while (cursor);
     };
+    if (input.original_reads) {
+      for (const read of input.original_reads) {
+        if (++pages > limits.pages) throw new IntelligenceRuntimeError("incomplete_coverage");
+        const captured = resultValue(await client.callTool({ name: read.tool, arguments: read.args, options }));
+        evidence.push(captured);
+        const value = z.object({ snapshot_id: z.string(), data: readContentSchema }).passthrough().parse(captured);
+        if (contextTokenCeiling({ prompt: input.prompt, evidence, tools: definitions.tools }) > limits.context_tokens ||
+          value.data.page.missing_ranges.some(r => !/^segments_(before|after):\d+$/.test(r)) ||
+          (!value.data.page.next_cursor && !value.data.page.complete && !value.data.transcript) ||
+          (value.data.transcript && !value.data.page.complete && !value.data.page.missing_ranges.length)) throw new IntelligenceRuntimeError("incomplete_coverage");
+      }
+    } else {
     await readPages("get_intelligence_context", {});
     await readPages("list_number_activity", { limit: 50 });
     await readPages("search_leads", { limit: 50 });
     await readPages("search_bookings", { limit: 50 });
     for (const id of input.interaction_ids) await readPages("get_rep_identity", { interaction_id: id });
     for (const id of input.conversation_ids) await readPages("get_call_transcript", { conversation_id: id, limit: 100 });
+    }
     const tools: ToolSet = {};
     let receipt: SubmissionReceipt | null = null, submissions = 0, steps = 0, inTokens = 0, outTokens = 0, schemaFailures = input.schema_failures ?? 0;
     if (schemaFailures >= 2) throw new IntelligenceRuntimeError("schema_exhausted");

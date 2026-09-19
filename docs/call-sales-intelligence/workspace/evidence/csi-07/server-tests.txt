@@ -1,0 +1,17 @@
+✔ CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempotency, error mapping; reads never call a writer (578.9555ms)
+✔ admin router is mounted in v1.routes.ts after the CSI boundary router (0.9264ms)
+✔ real HTTP CSI live auth, current scope, clock invalidations and cleanup (195.0736ms)
+✔ 30/15/1440 clocks, Friday close, Sunday, DST and independent weekly calendar (14.448ms)
+✔ day-only waits end at close; Attention next opening; explicit Sunday honoured; ambiguity undated (6.747ms)
+✔ all three actions including undated; snooze preserves contractual overdue and other reasons (13.016ms)
+✔ inbound human versus missed/provider connected; attempts fulfill callback only and retain outcome (5.6583ms)
+✔ wait coexistence, official closure precedence, planning denies stale and Owner effects (3.1796ms)
+✔ worker, cron and recovery registrations exist without enabling production flags (0.9032ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 57344.1382

@@ -30,6 +30,7 @@ import { readContentSchema } from "./reads";
 import { renderEnvelopeSummary } from "../dto";
 import { scheduleNumberIntelligence } from "./scheduling";
 import { capturedTranscriptsComplete } from "./coverage";
+import { capturedTranscriptSourcesCurrent } from "./sources";
 
 type Finding = IntelligenceEnvelope["findings"][number];
 export function resolveQuotedMoney(text: string, currency: string | null): number | null {
@@ -69,6 +70,8 @@ export async function runIntelligenceApplicationJob(jobId?: string, deps: { befo
       return data;
     });
     const transcriptSources = [...new Set(content.flatMap(c => c.transcript ? [c.transcript.source_snapshot_id] : []))];
+    const sourcesCurrent = (session: ClientSession) => capturedTranscriptSourcesCurrent({ contact_number_id: String(run.contact_number_id),
+      conversation_id: run.conversation_id ? String(run.conversation_id) : null, transcript_source_ids: transcriptSources }, session);
     const completeSources = await getIntelligenceEvidenceSnapshotModel().countDocuments({ _id: { $in: transcriptSources },
       ...csiDataset(), source_type: "transcript", "completeness.complete": true });
     if (completeSources !== transcriptSources.length || !capturedTranscriptsComplete(snapshots, run.conversation_id ? String(run.conversation_id) : null)) {
@@ -82,6 +85,7 @@ export async function runIntelligenceApplicationJob(jobId?: string, deps: { befo
         const current = await getIntelligenceRunModel().findById(run._id).session(session).orFail();
         if (current.application_cursor !== start) throw new CsiError("REVISION_CONFLICT");
         const context = workerContext(session, lease.job_id), policy = await resolvePolicy(session);
+        const currentEvidence = await sourcesCurrent(session);
         for (const assertion of envelope.findings.slice(start, start + 5)) {
           const transcript = assertion.evidence.filter(e => e.source === "transcript");
           const sourceIds = [...new Set(transcript.map(e => e.conversation_id))];
@@ -100,9 +104,9 @@ export async function runIntelligenceApplicationJob(jobId?: string, deps: { befo
             validation: { schema_ok: true, source_snapshots_valid: true, locator_status: "not_run", entailment_check: "not_run" } }], { session });
           if (!finding) throw new CsiError("INVALID_INPUT");
           const kind = effectKind(assertion);
-          if (!kind || run.mode === "number_refresh") continue; // Synthesis publishes evidence; per-conversation extraction owns commitments.
+          if (!kind || !run.conversation_id) continue; // Number synthesis, including Owner reruns, never owns conversation effects.
           let record = run.outreach_record_id ? await getOutreachRecordModel().findById(run.outreach_record_id).session(session) : null;
-          let outcome: { status: "needs_review" | "blocked_identity" | "blocked_owner"; reason: string } | null = null;
+          let outcome: { status: "needs_review" | "blocked_identity" | "blocked_owner" | "stale"; reason: string } | null = currentEvidence ? null : { status: "stale", reason: "transcript_evidence_stale" };
           const priorFindings = source ? await getIntelligenceFindingModel().find({ conversation_id: source._id, kind: assertion.kind,
             _id: { $ne: finding._id } }).select("_id").limit(201).session(session).lean() : [];
           const retract = priorFindings.length > 200 || await getSalesIntelligenceOwnerInstructionModel().exists({
@@ -192,10 +196,15 @@ export async function runIntelligenceApplicationJob(jobId?: string, deps: { befo
         const { finding_keys, ...value } = assessment;
         await getIntelligenceOwnerAssessmentModel().create([{ ...value,
           run_id: run._id, finding_ids: findings.filter(f => finding_keys.includes(f.key)).map(f => f._id) }], { session });
+        if (assessment.assessment === "disagrees") await openReview(workerContext(session, lease.job_id), run.subject_key,
+          "owner_conflict", `instruction:${assessment.instruction_id}:${assessment.instruction_revision}`,
+          findings.filter(f => finding_keys.includes(f.key)).map(f => String(f._id)));
       }
-      const published = await publishCurrent(run, envelope, session);
+      const currentEvidence = await sourcesCurrent(session);
+      const published = currentEvidence && await publishCurrent(run, envelope, session);
       const now = new Date();
       await getIntelligenceRunModel().updateOne({ _id: run._id }, { $set: { status: published ? "completed" : "stale", completed_at: now,
+        ...(!currentEvidence ? { processing_reason: "transcript_evidence_stale" } : {}),
         result_counts: { applied: effects.filter(e => e.status === "applied").length, blocked: effects.filter(e => e.status.startsWith("blocked") || e.status === "stale").length,
           review: effects.filter(e => e.status === "needs_review").length } }, $inc: { revision: 1 } }, { session });
       await appendCsiAudit(workerContext(session, lease.job_id), { subject_key: run.subject_key, event_kind: "intelligence.published",

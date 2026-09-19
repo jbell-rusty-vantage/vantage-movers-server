@@ -1,0 +1,112 @@
+
+    - heading "Number / Outreach detail" [level=2]
+    - button "Close detail panel": Close
+    - heading "+12022769947" [level=3]
+    - generic: customer
+    - generic: "Contact: allowed"
+    - paragraph: As of Sep 19, 9:20 AM EDT · History known through Not observed
+    - heading "Running analysis" [level=3]
+    - paragraph: Synthetic Owner intervention demonstration
+    - heading "Number↔Lead attachments" [level=3]
+    - paragraph: No attachments recorded. Searching does not attach a Lead.
+    - generic "Find another Lead to attach"
+    - heading "Contact restrictions" [level=3]
+    - paragraph: No temporary contact restrictions recorded.
+    - heading "Outreach · Open" [level=3]
+    - generic: Outreach owned by Unassigned
+    - paragraph: "Last human contact: Not observed"
+    - generic: Open work nobody owns
+    - generic: Due date needed
+    - generic: Open work nobody owns
+    - button "Mark as worked"
+    - button "Assign Outreach"
+    - button "Wait for customer"
+    - button "Add note"
+    - button "Close Outreach"
+    - button "Reopen Outreach" [disabled]
+    - button "Add follow-up"
+    - heading "Follow-ups" [level=3]
+    - article:
+      - heading "Send estimate" [level=4]
+      - generic: Rep promise · Open
+      - paragraph: Prepare the synthetic estimate
+      - paragraph: Due date needed
+      - generic: Promised by Unknown
+      - generic: Action assigned to Unassigned
+      - generic: Outreach owned by Unassigned
+    - button "Edit follow-up / assignment"
+    - button "Complete follow-up"
+    - button "Cancel follow-up"
+    - button "Snooze follow-up" [disabled]
+    - generic "Completed and cancelled follow-ups"
+    - heading "Number Activity" [level=3]
+    - paragraph: No activity observed in available history.
+    - list
+    - region "Analysis and Owner review":
+      - heading "Analysis and Owner review" [level=3]
+      - button "Sep 19, 8:59 AM EDT · initial · completed" [pressed]
+      - paragraph: "Current analysis · completed · Model: synthetic-no-provider · Prompt: sales_intelligence_analyze_v1"
+      - heading "Original model summary" [level=4]
+      - paragraph: Synthetic Owner intervention demonstration
+      - paragraph:
+        - strong: "customer wanted:"
+        - text: Moving estimate
+      - paragraph:
+        - strong: "money and dates:"
+        - text: No date agreed
+      - paragraph:
+        - strong: "outcome:"
+        - text: Follow-up pending
+      - paragraph:
+        - strong: "commitments:"
+        - text: Prepare estimate
+      - paragraph:
+        - strong: "discrepancies:"
+        - text: None
+      - button "Confirm analysis"
+      - button "Reanalyze original evidence"
+      - button "Reanalyze current context"
+      - paragraph: original evidence requested Sep 19, 9:15 AM EDT · pending
+      - article:
+        - heading "next step" [level=4]
+        - paragraph: Prepare the synthetic estimate
+        - generic: Confirmed by you
+        - paragraph: Original model assertion · synthetic-no-provider · vantage record
+        - paragraph: AI-provided references; location and entailment have not been checked.
+        - generic "Assertion references"
+        - heading "Recorded effects" [level=5]
+        - paragraph: "create followup: applied · Sep 19, 8:59 AM EDT"
+        - button "Confirm finding"
+        - button "Correct finding"
+        - button "Retract finding"
+      - heading "Suggested next step" [level=4]
+      - paragraph: Review synthetic estimate with the Owner
+      - paragraph: Suggestion only; applying it creates Owner-origin work.
+      - button "Apply suggestion"
+      - heading "Owner changes and AI assessments" [level=4]
+      - paragraph: No Owner instructions are recorded.
+      - generic "Original evidence"
+      - paragraph:
+        - button "get intelligence context · Sep 19, 8:59 AM EDT"
+      - generic: "{ \"page\": { \"records\": [ { \"record_type\": \"contact_number\", \"record_id\": \"6aae873111740a59794f4ad1\", \"revision\": \"1\", \"fields\": { \"phone\": \"+12022769947\", \"status\": \"allowed\", \"certainty\": \"customer\" } }, { \"record_type\": \"outreach\", \"record_id\": \"6aae873211740a59794f4ad2\", \"revision\": \"1\", \"fields\": { \"status\": \"open\", \"description\": null, \"agent_id\": null, \"origin\": null } } ], \"next_cursor\": null, \"complete\": true, \"missing_ranges\": [] }, \"coverage\": { \"known_through\": null, \"gaps\": [], \"capabilities\": { \"call_log\": \"unknown\", \"recording_content\": \"unknown\", \"webhook\": \"unknown\" }, \"ai_paused\": false, \"recordings\": { \"pending_discovery\": 0, \"media_pending\": 0, \"media_stored\": 0, \"no_recording\": 0, \"unavailable\": 0, \"failed\": 0, \"eligibility_undetermined\": 0 } }, \"allowed_followup_ids\": [], \"instructions\": [], \"speaker_refs\": [] }"
+      - generic "Immutable review history" [active]
+      - article:
+        - paragraph: analysis.reanalysis requested · 6aae2fb470ef7c75c4c0852c · Sep 19, 9:15 AM EDT
+        - generic: "{ \"before\": {}, \"after\": { \"run_id\": \"6aae8ae7af1121ed9438fe9d\", \"job_id\": \"6aae8ae770ef7c75c4c13c96\", \"status\": \"queued\", \"mode\": \"original_evidence\", \"reason\": \"Verify retained original evidence through the Owner controls\" } }"
+      - article:
+        - paragraph: analysis.finding confirmed · 6aae2fb470ef7c75c4c0852c · Sep 19, 9:14 AM EDT
+        - generic: "{ \"before\": {}, \"after\": { \"output_digest\": \"f4d30eacdc92fc6184e3d73631a6b1a09f6a93c68f2d2ad3c575da2588d57439\", \"finding_ids\": [ \"6aae873211740a59794f4ad8\" ] } }"
+      - article:
+        - paragraph: finding.confirmed · 6aae2fb470ef7c75c4c0852c · Sep 19, 9:14 AM EDT
+        - generic: "{ \"before\": { \"review_state\": \"confirmed\" }, \"after\": { \"review_state\": \"confirmed\", \"run_id\": \"6aae873211740a59794f4ad3\", \"output_digest\": \"f4d30eacdc92fc6184e3d73631a6b1a09f6a93c68f2d2ad3c575da2588d57439\" } }"
+      - article:
+        - paragraph: analysis.confirmed · 6aae2fb470ef7c75c4c0852c · Sep 19, 8:59 AM EDT
+        - generic: "{ \"before\": {}, \"after\": { \"output_digest\": \"f4d30eacdc92fc6184e3d73631a6b1a09f6a93c68f2d2ad3c575da2588d57439\", \"finding_ids\": [ \"6aae873211740a59794f4ad8\" ] } }"
+      - article:
+        - paragraph: finding.confirmed · 6aae2fb470ef7c75c4c0852c · Sep 19, 8:59 AM EDT
+        - generic: "{ \"before\": { \"review_state\": \"unreviewed\" }, \"after\": { \"review_state\": \"confirmed\", \"run_id\": \"6aae873211740a59794f4ad3\", \"output_digest\": \"f4d30eacdc92fc6184e3d73631a6b1a09f6a93c68f2d2ad3c575da2588d57439\" } }"
+    - heading "Needs review" [level=3]
+    - paragraph: No review decisions recorded for this subject.
+    - paragraph: Rep messaging is unavailable in this preview.
+- button "Open Next.js Dev Tools":
+- alert

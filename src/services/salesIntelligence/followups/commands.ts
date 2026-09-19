@@ -79,7 +79,7 @@ export async function applyOwnerCommandInTransaction(targetId: string, command: 
   if (record.state === "closed" && !["reopen", "add_note", "close"].includes(command.command)) throw new CsiError("ILLEGAL_TRANSITION");
   if (command.command === "close") {
     await ownerInstruction(context, record, "closure", prior, { reason: command.reason });
-    await closeRecord(record, command.reason, "owner", context);
+    await closeRecord(record, command.reason, "owner", context, { note: command.note ?? null });
     if (command.reason === "suppressed" && record.primary_contact_number_id) {
       const lock = await lockNumber(String(record.primary_contact_number_id), context.session);
       await getContactNumberModel().updateOne({ _id: record.primary_contact_number_id }, { $set: { contact_eligibility: { state: "suppressed", reason: command.note ?? command.reason, set_by: context.actor.id, set_at: context.now } } }, { session: context.session });
@@ -145,7 +145,10 @@ export async function applyOwnerCommandInTransaction(targetId: string, command: 
     }
     await saveFollowup(action, before, context, key, command.command);
   }
-  await refreshRecord(record, context, command.command, prior, command.command === "add_note" ? { note: command.text } : command.command === "mark_worked" ? { note: command.note ?? null } : {});
+  await refreshRecord(record, context, command.command, prior, {
+    ...(command.command === "add_note" ? { note: command.text } : "note" in command ? { note: command.note ?? null } : {}),
+    ...("reason" in command ? { reason: command.reason ?? null } : {}),
+  });
   await enqueueCsiJob({ stage: "number_refresh", subject_key: key, input_revision: record.revision, dedupe_key: `csi:owner-outreach:${context.command_id}`, input_refs: [recordId] }, context.session);
   return { id: action ? String(action._id) : recordId, revision: action?.revision ?? record.revision, outreach_revision: record.revision, state: record.state };
 }
@@ -184,8 +187,13 @@ async function applyEvidenceCommand(id: string, command: CsiCommand, context: Cs
     }
     if (row.cause_kind === "identity") {
       const numberId = row.subject_key.startsWith("number:") ? row.subject_key.slice(7) : null;
-      if (!numberId || await getOutreachRecordModel().exists({ primary_contact_number_id: numberId, state: "identity_review" }).session(context.session) ||
-        await getNumberLeadAttachmentModel().exists({ contact_number_id: numberId, state: "ambiguous" }).session(context.session)) throw new CsiError("ILLEGAL_TRANSITION");
+      const lead = /^lead:(FormLead|CallLead):([a-fA-F0-9]{24})$/.exec(row.subject_key);
+      if (!numberId && !lead) throw new CsiError("ILLEGAL_TRANSITION");
+      const leadModel = lead?.[1] === "FormLead" ? "FormLead" as const : "CallLead" as const;
+      const subjectFilter = numberId ? { primary_contact_number_id: numberId } : { "subject.model": leadModel, "subject.id": lead![2] };
+      const attachmentFilter = numberId ? { contact_number_id: numberId } : { "lead_ref.model": leadModel, "lead_ref.id": lead![2] };
+      if (await getOutreachRecordModel().exists({ ...subjectFilter, state: "identity_review" }).session(context.session) ||
+        await getNumberLeadAttachmentModel().exists({ ...attachmentFilter, state: "ambiguous" }).session(context.session)) throw new CsiError("ILLEGAL_TRANSITION");
     }
     if (command.resolution === "command_completed" && (!command.completed_command_id || !await getSalesIntelligenceCommandExecutionModel().exists({ _id: command.completed_command_id, "actor.id": context.actor.id }).session(context.session))) throw new CsiError("INVALID_INPUT");
     const prior = row.toObject(); row.state = command.resolution === "no_action" ? "dismissed" : "resolved";

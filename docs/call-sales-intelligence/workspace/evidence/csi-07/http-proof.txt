@@ -1,0 +1,1 @@
+PASS real local HTTP: Owner reads + metadata, Admin/anonymous denial, conflicting scope denial, signed identity isolation, idempotency replay/conflict, streaming reconnect + clock frames.

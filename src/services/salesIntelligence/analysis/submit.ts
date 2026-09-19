@@ -12,6 +12,7 @@ import { intelligenceToolArguments } from "./contracts";
 import { readContentSchema } from "./reads";
 import { loadAuthorizedRun, fenceAuthorizedLease, type RunAuthorization } from "./lease";
 import { newObjectIdHex, toObjectId } from "../../../utils/objectId";
+import { correctionContextSchema } from "./ownerReanalysis";
 
 export type SubmissionReceipt = {run_id:string;submission_id:string;application_job_id:string;status:"submitted"};
 const receipt = (s:{_id:unknown;run_id:unknown;application_job_id:unknown}):SubmissionReceipt => ({run_id:String(s.run_id),submission_id:String(s._id),application_job_id:String(s.application_job_id),status:"submitted"});
@@ -42,6 +43,7 @@ export async function submitIntelligenceAnalysis(auth:RunAuthorization, raw:unkn
     const manifest:EvidenceManifestEntry[] = [], followups:string[] = [], instructions:Array<{id:string;revision:number}> = [], speakers:string[] = [];
     for (const snapshot of snapshots) {
       const content = readContentSchema.parse(snapshot.response);
+      if (snapshot.purged_at) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
       if (snapshot.subject_key !== run.subject_key || payloadHash(content) !== snapshot.content_digest) throw new CsiError("EVIDENCE_SCOPE_INVALID");
       for (const record of content.page.records) manifest.push({snapshot_id:String(snapshot._id),subject_key:run.subject_key,source:"vantage_record",
         conversation_id:null,transcript_version:null,record_type:record.record_type,record_id:record.record_id,field_paths:Object.keys(record.fields)});
@@ -49,11 +51,16 @@ export async function submitIntelligenceAnalysis(auth:RunAuthorization, raw:unkn
         const transcript = content.transcript;
         const retained = await getIntelligenceEvidenceSnapshotModel().findOne({_id:transcript.source_snapshot_id,source_type:"transcript",
           conversation_id:transcript.conversation_id,transcript_version:transcript.transcript_version,...csiDataset()}).session(session).lean();
-        if (!retained) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
+        if (!retained || retained.purged_at) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
         manifest.push({snapshot_id:String(snapshot._id),subject_key:run.subject_key,source:"transcript",conversation_id:transcript.conversation_id,
           transcript_version:transcript.transcript_version,record_type:null,record_id:null,field_paths:[]});
       }
       followups.push(...content.allowed_followup_ids); instructions.push(...content.instructions); speakers.push(...content.speaker_refs);
+    }
+    for (const correction of correctionContextSchema.parse(run.owner_correction_context ?? [])) {
+      const prior = instructions.findIndex(i => i.id === correction.instruction_id);
+      if (prior >= 0) instructions.splice(prior, 1);
+      instructions.push({ id: correction.instruction_id, revision: correction.revision });
     }
     validateEnvelopeEvidence(input.envelope,{subject_key:run.subject_key,snapshots:manifest,allowed_followup_ids:followups,instructions,speaker_refs:speakers});
     const manifest_digest = payloadHash(snapshots.map(s=>({id:String(s._id),digest:s.content_digest})));

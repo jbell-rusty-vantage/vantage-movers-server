@@ -47,6 +47,10 @@ const iso = (v: unknown) => v instanceof Date ? v.toISOString() : null;
 const emptyPage = (): ReadPage => ({ records: [], next_cursor: null, complete: true, missing_ranges: [] });
 const fail = (): never => { throw new CsiError("RUN_SCOPE_DENIED"); };
 
+/** A number run may read only the transcript version that is current when it is read. */
+export const isCurrentTranscriptVersion = (requested: string | undefined, current: string | null | undefined) =>
+  !requested || requested === current;
+
 /** Authority is loaded from the stored run and authoritative joins; arguments never widen it. */
 export async function loadReadScope(run: StoredRun): Promise<ReadScope> {
   if (!run.contact_number_id) return fail();
@@ -256,6 +260,9 @@ export async function readIntelligenceEvidence(scope: ReadScope, input: { tool: 
     case "get_call_transcript": {
       const c = await getLeadConversationModel().findOne({ _id: input.args.conversation_id, contact_number_id: scope.contact_number_id }).select("latest_transcript_version").lean();
       if (!c || (scope.conversation_id && scope.conversation_id !== String(c._id))) return fail();
+      // Conversation runs use their immutable pinned source below. Number runs
+      // must not let a caller select an older retained transcript by version.
+      if (!scope.transcript_snapshot_id && !isCurrentTranscriptVersion(input.args.transcript_version, c.latest_transcript_version)) return fail();
       const version = input.args.transcript_version ?? c.latest_transcript_version;
       const snapshot = (version || scope.transcript_snapshot_id) ? await getIntelligenceEvidenceSnapshotModel().findOne({ ...csiDataset(), source_type: "transcript", conversation_id: c._id,
         ...(scope.transcript_snapshot_id ? { _id: scope.transcript_snapshot_id } : { transcript_version: version }) }).select("transcript_version completeness").lean() : null;

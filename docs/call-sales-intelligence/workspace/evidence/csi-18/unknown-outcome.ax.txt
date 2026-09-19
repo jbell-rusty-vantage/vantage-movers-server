@@ -1,0 +1,17 @@
+Browser tab: 1, Title: "Vantage Admin", URL: "http://127.0.0.1:3108/sales-intelligence?view=numbers&number=6aae8003c7b754bd337075d1&analysis_run=6aae8004c7b754bd337075d5".
+1 AXWebArea Vantage Admin, URL: 127.0.0.1:3108/sales-intelligence?view=numbers&number=6aae8003c7b754bd337075d1&analysis_run=6aae8004c7b754bd337075d5
+	2 container Retract this finding
+		3 container
+			4 heading Retract this finding, Value: 2
+				5 text Retract this finding
+			6 text Analysis from  Sep 19, 8:28 AM EDT  ·  initial . Enter dates in Eastern time. Original model assertion:  Prepare the synthetic estimate Eligible effects will be reversed immediately. Completed actions, official closure and later Owner work are protected. Blocked reversals will be shown in the result.
+			7 container
+				8 text Reason
+				9 text entry area (disabled) Reason, Value: Synthetic retraction must preserve later Owner work
+			13 text Server values changed. Your draft is preserved; review the current evidence before acknowledging.
+			14 button (disabled) Acknowledge current version and keep draft
+			12 text Outcome unknown. Retry the same request to recover its saved result.
+			10 button Retry same request
+			11 button Cancel
+
+The focused UI element is 1 AXWebArea Vantage Admin, URL: 127.0.0.1:3108/sales-intelligence?view=numbers&number=6aae8003c7b754bd337075d1&analysis_run=6aae8004c7b754bd337075d5

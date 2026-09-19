@@ -1,0 +1,3 @@
+Browser tab: 1, Title: "Vantage Admin", URL: "http://127.0.0.1:3108/sales-intelligence?view=numbers&number=6aae8003c7b754bd337075d1&analysis_run=6aae8004c7b754bd337075d5".
+There has been no change in the accessibility tree.
+The focused UI element is 18 text entry area (settable) Reason, Value: Synthetic draft preservation proof

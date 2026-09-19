@@ -1,0 +1,50 @@
+
+> vantage_movers_server@1.0.0 test:csi:attachment:replica C:\Users\Pinda\Proyectos\vantage\vantage-main-server
+> node --import tsx scripts/test-csi-attachment.ts
+
+CSI-05 isolated replica proof: testvantagemovers_csi050b124e209340; loopback replica csi01 on port 27189
+{"level":"info","time":"2026-09-19T10:56:14.287Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-05 disposable replica: attachment only
+  ✖ Owner attaches an absent pair with Number revision and durable replay, preserving official phone (228.8438ms)
+  ✔ unique pair, duplicate refresh, snapshots/search; resolve numbers without creating (191.218ms)
+  ✔ concurrent different-pair refresh fan-in; event-time independent historical moves (382.3062ms)
+  ✔ Owner wins concurrent refresh; CAS and idempotency conflicts; reviewed snapshot frozen (529.8823ms)
+  ✔ rejection durable, detached history retained and identity reevaluated (463.9696ms)
+  ✔ exact Call Log/session identity stays interaction-scoped through CSI-11 (1098.9424ms)
+  ✔ B job dispatch creates bounded scan jobs; current documents, no payload trust (645.2912ms)
+  ✔ watermark tie pagination beyond batch; lease contention, stage separation and rollback (7062.913ms)
+  ✔ Owner competing Attached requires review; independent CAS contenders cannot both win (372.0208ms)
+  ✔ later contact snapshot preserves original evidence; adopted Call Log identity is exact (449.8129ms)
+  ✔ GET and flag-off cron/worker/command do not mutate any collection or official records (190.3261ms)
+✖ CSI-05 disposable replica: attachment only (20474.4533ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 10
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 27801.73
+
+✖ failing tests:
+
+test at scripts\test-csi-attachment.replica.test.ts:2:5910
+✖ Owner attaches an absent pair with Number revision and durable replay, preserving official phone (228.8438ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (C:\Users\Pinda\Proyectos\vantage\vantage-main-server\scripts\test-csi-attachment.replica.test.ts:71:14)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async TestContext.<anonymous> (C:\Users\Pinda\Proyectos\vantage\vantage-main-server\scripts\test-csi-attachment.replica.test.ts:61:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+ ELIFECYCLE  Command failed with exit code 1.

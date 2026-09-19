@@ -1,0 +1,1 @@
+PASS: only the selected synthetic Attention snapshot was expired for browser recovery proof.

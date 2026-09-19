@@ -555,3 +555,7 @@ All effectful writes enforce Outreach/follow-up/instruction revisions in one tra
 ## 18. Transcription adapter compatibility
 
 Transcript-version segments use stable sid plus redacted text, nullable start_ms/end_ms and timing_source provider/unavailable. Never fabricate time offsets when the STT provider supplies text only. Preserve available actual timing and explicit unknown speaker. This refines §6 for the economical transcription proposal in [12](12-deployment-inputs-and-model-policy.md).
+
+### CSI-18 additive storage
+
+IntelligenceRun stores immutable `owner_correction_context` alongside the referenced instruction ids. Durable analysis/number-refresh jobs optionally store `owner_reanalysis:{run_id,source_run_id,mode,owner_correction_ids}` so preparation/retry use the same requested run. Evidence snapshots have nullable `purged_at,purge_reason` tombstone metadata; no retention worker or migration is introduced in CSI-18. Owner corrections append instructions/audits while the original assertion/output/effect documents remain immutable. Current finding review state and revision are projections over that history.

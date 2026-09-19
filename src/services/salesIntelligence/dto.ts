@@ -154,6 +154,9 @@ export const outreachDtoSchema = z
   .object({
     id,
     revision,
+    primary_number: z.object({ id, e164: z.string() }).strict().nullable().optional(),
+    lead_display: z.object({ name: z.string().nullable(), job_no: z.string().nullable(), source_company: z.string().nullable() }).strict().nullable().optional(),
+    latest_number_call: z.object({ id, happened_at: date, direction: z.string(), provider_result: z.string().nullable(), contact_type: z.string() }).strict().nullable().optional(),
     subject: csiSubjectSchema,
     state: z.enum(CSI_OUTREACH_STATES),
     reason: z.string().nullable(),

@@ -300,3 +300,42 @@ Owner intervention bodies preserve exact analysis targets. Digest equality, corr
 `FindingDto.assertion` contains the discriminated envelope finding; review state/effect status are sibling projection fields. This explicit nesting replaces the earlier illustrative flattened DTO so assertion fields cannot be confused with mutable application state. Consumers must use the executable schema.
 
 Defaults remain $80/month, Mon–Sat 08:00–20:00 America/New_York, 30/15 staffed-minute deadlines and 1,440 staffed-minute Going cold. Clock evaluation, call reconciliation, Outreach effect rules, full MCP tools and dashboard screens are downstream work. Scenario fixtures above remain integration acceptance requirements, not claims that those services exist.
+
+## CSI-07 concrete imports / initial CSI-08 slice — September 19
+
+`src/services/salesIntelligence/live.ts`: `watchCsiChanges`, `streamCsiInvalidations`, `CSI_LIVE_COLLECTIONS`; registered Owner GET `/api/v1/admin/sales-intelligence/live?scope=production`. Existing signed Owner + v1 authentication and ENABLED gates; no new flag/index/migration. Replica-set oplog changes over existing audit/projection collections coalesce into SSE invalidations. `event: invalidation`, `id: <connection>:<sequence>`, data `{version:1,reason:"connect"|"reconnect"|"change"|"clock",as_of,refetch:"all"}`. Cursor is advisory, not a durable business-event replay token: every connection refetches all active DTOs, including unknown/missed Last-Event-ID. Clock frames every 15s; watch/timer cleanup on disconnect/error/backpressure/240s lifetime; retry 1s. Feature disable closes the stream. No source documents on wire.
+
+E: `/api/sales-intelligence-live` authenticates/refreshed host session, denies Admin, signs upstream Owner headers, forwards Last-Event-ID, streams without buffering and aborts upstream on cancel. JSON proxy forwards CSI mutation Idempotency-Key and preserves envelope-level `as_of`/`coverage`; `registry_code` remains normalized by the CSI client. Browser identity/API-secret headers are never trusted. CSI header/global search use fixed Current records without rewriting the shared preference.
+
+Additive optional `OutreachDto.primary_number:{id:string,e164:string}|null`, populated from the primary Contact Number; old immutable snapshots can omit it. DTO reads remain read-only. UI uses current `data.items[].outreach/derived` and `data.outreach_records[]`; export types are not wire authority. No `/overview` call exists. CSI-08 remains **partial**, with first 50 Attention rows, server-supplied reasons, explicit pending/error/empty states, Number/Outreach read panels, nullable dates and independent owners. Review-only Lead rows without an Outreach are visibly unavailable until review integration. No commands or messaging controls are presented as functional.
+
+Attention publication still depends on CSI-06 worker/recovery. HTTP/SSE never runs it. Local launcher runs it serially every five seconds only on `testvantagemovers_csi07preview`; production minute cron is unchanged. Hosting scale, deployed change-stream rights and production clock latency remain CSI-16 checks. See [intake](evidence/csi-07/INTAKE.md), [source hashes](evidence/csi-07/SOURCES.md), [handoff](evidence/csi-07/HANDOFF.md).
+
+## CSI-08 operational UI continuation — September 19
+
+Supersedes the partial UI description above. Admin consumes actual Number search/keyset and immutable Attention snapshot cursors; expiry clears only the Attention cursor. Review-only Lead subjects, attachment decisions and manual Lead selection, all existing follow-up/Outreach commands, restrictions, merged Number timeline and Reps read/review are connected to signed BFF routes. Export mocks/adapters are not wire contracts. Overview and Attention q/source_label remain absent; no invented counts or filtering.
+
+Additive server read contracts: Outreach `allowed_actions` includes `create_followup`; Lead facts, latest canonical Number call and related-record links are nullable actual evidence. Attachment reads expose `allowed_actions`; Number detail exposes `attach_lead` with Number revision for an absent pair. Restrictions expose revision and `resolve_restriction` availability. Review GET accepts `subject_key,state,cause_kind` plus cursor/limit and rows expose `resolve_review`. Command service remains final authority, including unresolved identity and active-restriction checks.
+
+Owner commands preserve one key and exact payload across unknown outcomes. Known revision conflicts retain local drafts; explicit acknowledgement advances the revision, and follow-up patch sends only fields edited from the original draft. Nullable dates remain nullable. Overall versus action assignment stays distinct. No-op clock scans do not increment revision; real transitions do. Accepted note/reason fields persist in audit history. First absent-pair attachment audits an explicit unlinked prior state, with no official-record write.
+
+Official Admin destinations require `database_scope=production` (not the API `scope` parameter). Reps requires an explicit account ID with stored directory evidence; performance metrics remain unknown and messaging unavailable. CSI-14/18 integration, CSI-09 settings/Coverage and CSI-15 remain separate. [CSI-08 evidence](evidence/csi-08/HANDOFF.md).
+
+## CSI-18 executable additive contracts — September 19, 2026
+
+All reads/commands below are Owner-only, Current scope, through the existing signed BFF. `Idempotency-Key` is required for commands. Durable duplicate responses use `{data:{response,replayed}}`; changed payload under the same key and stale versions return 409.
+
+| Route | Executable input / response |
+| --- | --- |
+| GET `/analysis-runs` | `contact_number_id` and/or `conversation_id`, `_id` cursor, limit 1–200. `data.items,next_cursor`. |
+| GET `/analysis-runs/:id` | Optional `history_cursor`. Original output and output/suggestion digests, model/prompt, current/editable, finding revisions/effects, current actions, Outreach revision, Owner instructions with exact-version assessments, pending rerun requests, immutable `history,history_next_cursor`. |
+| GET `/conversations/:id/findings` | Optional `run_id`; same analysis read contract. |
+| GET `/analysis-runs/:id/evidence[/snapshotId]` | Manifest paging; snapshot membership checked server-side. Content is bounded to 16,000-character sections with offset cursor. Purged/missing payload returns unavailable, reason and nullable purge time; no current-data replacement. |
+| POST `/analysis-runs/:id/confirm` | `confirm_run,expected_revision,expected_output_digest`. No effects. |
+| POST `/findings/:id/confirm` | `confirm_finding,expected_revision,expected_output_digest`. Exact finding and parent output. |
+| POST `/findings/:id/correct` | `correct_finding,expected_revision,expected_output_digest,replacement,target_effect_id,target_followup_id,reason`; optional `action_changes` (CSI-06 partial follow-up input), `expected_revisions` for affected follow-up, `reanalysis_mode`. Replacement retains finding key/kind. |
+| POST `/findings/:id/retract` | `retract_finding,expected_revision,expected_output_digest,reason`, affected follow-up revision fences; optional `reanalysis_mode`. Blocked reversals are recorded. |
+| POST `/analysis-runs/:id/apply-suggestion` | `apply_suggestion,expected_revision,run_id,suggestion_output_digest`, one Outreach revision fence, optional `due_at,responsible_agent_id` (nullable). Creates Owner-origin work. |
+| POST `/analysis-runs/:id/reanalyze`, `/conversations/:id/reanalyze`, `/numbers/:id/reanalyze` | `reanalyze,expected_revision,mode,source_run_id,owner_correction_ids,reason`. Revision refers to the source run. Original mode requires source; current mode can resolve the published source from the target. Response 202 contains future `run_id,job_id,status:queued`. |
+
+Correction/retraction default to current-context refresh after immediate mutation. Original-evidence unavailability does not roll back the correction. The UI renders original model assertions, effect outcomes, Owner decisions and assessments separately. Prior confirmations do not transfer to new assertions. Evidence references are AI-provided, not independently verified citations. Exact coverage and remaining acceptance are in CSI-18 CHECKS/REVIEW; this contract note alone does not close the issue.

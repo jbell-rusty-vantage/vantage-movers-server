@@ -1,5 +1,9 @@
 # Team D — scoped Vantage MCP and intelligence agent
 
+## CSI-18 delivered — September 19 (current)
+
+Server local acceptance is complete: exact-version confirmation, immediate transactional targeted correction/safe retraction, explicit Owner suggestion application, authorized original/current durable reruns, instruction-version assessments and immutable history/evidence reads. Admin integration is also locally accepted; this is not a server-only close. [Handoff](../evidence/csi-18/HANDOFF.md), [checks](../evidence/csi-18/CHECKS.md), [review](../evidence/csi-18/REVIEW.md). Required checkpoint snapshot checks/review passed, overall stale after a substantiated source adaptation; direct final-source checks passed. No independent final-source approval or live model/production proof is claimed. The older assignments below are historical and do not reopen CSI-18.
+
 ## Current assignment after CSI-13 — September 19
 
 Read [SPRINT-PLAN](../SPRINT-PLAN.md). CSI-13 local implementation is complete; the old combined kickoff below is historical scope, not the next session prompt. CSI-18 server can consume CSI-06/13/17 now; CSI-08 is a dependency of its UI, not its server command implementation. Freeze Owner intervention routes/DTOs and deliver immediate corrections, confirmation, original/current rerun and history proof to E. Record server-only completion separately; full CSI-18 requires E browser integration. The default next Owner session is [CSI-07 plus initial CSI-08](../NEXT-SESSION.md).

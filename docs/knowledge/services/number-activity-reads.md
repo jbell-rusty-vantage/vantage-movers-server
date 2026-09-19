@@ -29,6 +29,8 @@ sources:
 
 # Number Activity reads, directory sync and rebuild
 
+CSI-08 adds Number `attach_lead` availability alongside rebuild, gated by ENABLED and ATTACHMENT_REFRESH and carrying the Number revision for an absent pair. Existing-pair commands use the dedicated attachment revision. Number detail includes existing Outreach enrichment (Lead facts/latest call/official links), active restriction revision/availability, and review rows; reads remain side-effect free. See [CSI-08 intake](../../call-sales-intelligence/workspace/evidence/csi-08/INTAKE.md).
+
 CSI-14 integration: the existing Outreach timeline source includes `nudge` audit invalidations as the established `nudge` event kind. It includes Outreach subjects whose primary Contact Number matches, even without a separate attachment edge. Authorization/submission/delivery events are read-only history and never count as customer work. Explicit send behavior belongs to [Owner Rep Nudges](sales-intelligence-nudges.md).
 
 **Role:** the Owner-facing read side of [Number Activity](number-activity-capture.md) (04 §1 `/numbers` rows, §3) plus two maintenance workers: the daily directory snapshot that [capture](number-activity-capture.md) reads for party roles and company classification (02 §9), and the durable rebuild of derived Contact Number fields (03 §0 `rebuild.ts`). Reads never mutate. Sales meaning (attachments, Outreach, findings) belongs to Teams C and D; this service exposes their rows as connections and leaves hooks for their timeline events.

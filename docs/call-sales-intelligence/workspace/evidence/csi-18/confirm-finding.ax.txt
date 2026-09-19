@@ -1,0 +1,11 @@
+Browser tab: 1, Title: "Vantage Admin", URL: "http://127.0.0.1:3108/sales-intelligence?view=numbers&number=6aae873111740a59794f4ad1&analysis_run=6aae873211740a59794f4ad3".
+0 AXWebArea Vantage Admin, URL: 127.0.0.1:3108/sales-intelligence?view=numbers&number=6aae873111740a59794f4ad1&analysis_run=6aae873211740a59794f4ad3
+	1 container Confirm this finding
+		2 container
+			3 heading Confirm this finding, Value: 2
+				4 text Confirm this finding
+			5 text Analysis from  Sep 19, 8:59 AM EDT  ·  initial . Enter dates in Eastern time. Original model assertion:  Prepare the synthetic estimate Records your review of this exact version. Existing effects remain as recorded.
+			8 text Your review of this exact version is recorded.
+			7 button Done
+
+The focused UI element is 0 AXWebArea Vantage Admin, URL: 127.0.0.1:3108/sales-intelligence?view=numbers&number=6aae873111740a59794f4ad1&analysis_run=6aae873211740a59794f4ad3

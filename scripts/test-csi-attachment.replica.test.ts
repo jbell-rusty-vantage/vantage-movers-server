@@ -58,6 +58,18 @@ test("CSI-05 disposable replica: attachment only", { skip: process.env.CSI_REPLI
   const snapshot = async () => JSON.stringify(await Promise.all((await db.listCollections().toArray()).sort((a,b) => a.name.localeCompare(b.name))
     .map(async c => [c.name, await db.collection(c.name).find().sort({ _id: 1 }).toArray()])));
   try {
+    await t.test("Owner attaches an absent pair with Number revision and durable replay, preserving official phone", async () => {
+      const n = await number(), l = await lead("+12025550199");
+      const command = { command: "attach_lead" as const, contact_number_id: String(n._id), lead_ref: { model: "FormLead" as const, id: String(l._id) }, expected_revision: n.revision, reason: "Synthetic additional callback number" };
+      const result = await commandAttachment({ actor, idempotency_key: "absent-pair", command });
+      assert.equal(result.response.state, "attached");
+      assert.equal((await edge(l._id)).certainty, "owner_confirmed");
+      assert.equal((await getFormLeadModel().findById(l._id).lean())?.normalized_phone_number, "+12025550199");
+      const replay = await commandAttachment({ actor, idempotency_key: "absent-pair", command });
+      assert.equal(replay.replayed, true); assert.deepEqual(replay.response, result.response);
+      const audits = await db.collection("sales_intelligence_audit_events").find({ event_kind: "attach_lead", "invalidation.target_id": String(n._id) }).toArray();
+      assert.equal(audits.length, 1); assert.deepEqual(audits[0].prior, { state: "unlinked" });
+    });
     await t.test("unique pair, duplicate refresh, snapshots/search; resolve numbers without creating", async () => {
       const n = await number(), l = await lead(n.e164);
       await persist(l); const before = await edge(l._id); const beforeNumber = await Numbers.findById(n._id).lean();

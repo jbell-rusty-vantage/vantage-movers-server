@@ -1,0 +1,61 @@
+Cancellations
+
+Browse cancellations and update production cancellation metadata.
+
+New cancellation
+EXPORT CSV
+FILTERS
+RESET
+
+No filters applied.
+
+Use the checkboxes to select a cancellation. Check Google Sheet contains will appear so you can confirm the cancellation is in the Google Sheet.
+SHEET
+	CANCELLED	JOB	CUSTOMER	SOURCE	MERCHANT	REFUND	REASON	BY	
+ACTIONS
+	Sep 19, 2026	CSI08-TAYLOR	
+Taylor (synthetic)
+	
+Synthetic source
+	
+Synthetic merchant
+	$0.00	
+Synthetic destination proof
+	
+-
+	
+Booking
+Showing 1 of 1
+ALL ROWS LOADED
+Cancellations
+
+Mongo ID: 000000000000000000003006
+
+Summary
+Contact
+Production record
+Source
+CANCELLED
+Sep 19, 2026
+JOB
+CSI08-TAYLOR
+CUSTOMER
+Taylor (synthetic)
+SOURCE
+Synthetic source
+MERCHANT
+Synthetic merchant
+REFUND
+$0.00
+REASON
+Synthetic destination proof
+BY
+-
+DATABASE SCOPE
+production
+MONGO ID
+000000000000000000003006
+BOOKING
+View booking
+LEAD
+Lead

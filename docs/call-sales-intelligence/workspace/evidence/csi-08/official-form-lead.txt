@@ -1,0 +1,79 @@
+Form Leads
+
+Browse, inspect, edit, export, and book web form leads.
+
+EXPORT CSV
+FILTERS
+RESET
+
+No filters applied.
+
+Click a lead row to inspect it, then start a booking with identifiers prefilled.
+Use the checkboxes to select a lead. Check Google Sheet contains will appear so you can confirm the lead is in the Google Sheet.
+SHEET
+	CREATED	NAME	REF	JOB	SOURCE COMPANY	STATUS	GRANOT CONTACT	PICKUP CITY	DELIVERY CITY	MOVE	HIDDEN FROM MASTER LEADS	
+ACTIONS
+	Sep 19, 2026	
+Morgan (synthetic)
++12025550104
+	
+-
+	CSI08-MORGAN	
+Synthetic source
+		—	-	-	-	-	
+Book
+Bad
+Showing 1 of 1
+ALL ROWS LOADED
+Form Leads
+
+Mongo ID: 000000000000000000001004
+
+Summary
+Contact
+Lead Message
+Actions
+Production record
+Source Company
+CREATED
+Sep 19, 2026
+NAME
+Morgan (synthetic)
+REF
+-
+JOB
+CSI08-MORGAN
+SOURCE COMPANY
+Synthetic source
+FIRST
+-
+LAST
+-
+PHONE
++12025550104
+GRANOT CONTACT
+—
+EMAIL
+-
+PICKUP CITY
+-
+DELIVERY CITY
+-
+MOVE
+-
+BAD LEAD
+-
+SMS SENT
+No
+BOOKED
+-
+CANCELLED
+-
+HIDDEN FROM MASTER LEADS
+-
+SALES REP
+Not assigned
+DATABASE SCOPE
+production
+MONGO ID
+000000000000000000001004

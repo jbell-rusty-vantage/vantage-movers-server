@@ -52,6 +52,7 @@ export const IntelligenceRunSchema = new Schema(
     model_version: str,
     rendered_prompt: text,
     owner_correction_ids: refs,
+    owner_correction_context: { ...validatedJson(), default: () => [] },
     manifest_digest: text,
     manifest_snapshot_ids: refs,
     evidence_count: count,
@@ -122,6 +123,7 @@ const finalizedFields = [
   "schema_digest",
   "model_version",
   "owner_correction_ids",
+  "owner_correction_context",
   "deployment",
   "database",
   "permitted_tools",
@@ -202,6 +204,8 @@ export const INTELLIGENCE_EVIDENCE_SNAPSHOT_INDEXES = [
 ];
 export const IntelligenceEvidenceSnapshotSchema = new Schema(
   {
+    purged_at: date,
+    purge_reason: text,
     run_id: ref,
     conversation_id: ref,
     transcript_version: text,

@@ -1,0 +1,72 @@
+diff --git a/docs/knowledge/services/sales-intelligence-nudges.md b/docs/knowledge/services/sales-intelligence-nudges.md
+index 3c32b65..8cee3d3 100644
+--- a/docs/knowledge/services/sales-intelligence-nudges.md
++++ b/docs/knowledge/services/sales-intelligence-nudges.md
+@@ -26,6 +26,6 @@ Only the fresh invocation may submit; replay returns the same operation and curr
+ 
+ `repair.ts` is reachable through authenticated `/api/cron/sales-intelligence-nudge-repair` every five minutes, generic recovery, and the existing queue's `nudge_repair` dispatch. It examines pending rows older than two minutes, recovers up to 25 orphan/exhausted intents, and drains at most five jobs per invocation with a 30-second loop deadline and 60-second fenced worker leases. It never calls the send command. Before-submission crashes become failed; a submission boundary without an unambiguous receipt becomes unknown. Receipt reads denied/unavailable or credentials changed also become unknown. Unknown is terminal and never automatically resent. Master/nudge flags off preserve pending work and skip repair; re-enablement reconciles only.
+ 
+-Audit records authorization, submission boundary and terminal disposition with nudge invalidations. Accepted sends append `nudge_sent` on the Outreach subject. Operational events contain IDs and closed error codes, no body, destination, raw response or credentials. History GET and Outreach detail are read-only, cursor-paginated, and retain `as_of`/coverage.
++Audit records authorization, submission boundary and terminal disposition with nudge invalidations. Accepted sends append `nudge_sent` on the Outreach subject. Operational events contain IDs and closed error codes, no body, destination, raw response or credentials. A customer-destination rejection occurs before an `OwnerRepNudge` is persisted, so its `sales_intelligence.nudge.destination_rejected` event identifies the `OutreachRecord` and carries `outreach_record_id`; terminal nudge events identify the persisted nudge. History GET and Outreach detail are read-only, cursor-paginated, and retain `as_of`/coverage.
+ 
+ Configuration and exact consumer imports: [CSI-14 contract](../../call-sales-intelligence/workspace/evidence/csi-14/API-CONTRACT.md). Verification: [checks](../../call-sales-intelligence/workspace/evidence/csi-14/CHECKS.md). A live-send proof is separately gated and was not executed by this task.
+diff --git a/src/services/salesIntelligence/nudges/commands.ts b/src/services/salesIntelligence/nudges/commands.ts
+index 9bf7f71..e4573c2 100644
+--- a/src/services/salesIntelligence/nudges/commands.ts
++++ b/src/services/salesIntelligence/nudges/commands.ts
+@@ -11,7 +11,7 @@ import { lockRepExtension } from "../repIdentity/propose";
+ import { lockNumber } from "../attachment/store";
+ import { enqueueCsiJob } from "../jobs";
+ import { subjectKey } from "../outreach/types";
+-import { recordOperationalEvent } from "../../observability";
++import { recordOperationalEvent, type RecordOperationalEventInput } from "../../observability";
+ import { ownerRead } from "../../numberActivity/coverage";
+ import { checkNudge, assertNudgesEnabled, type NudgeCommand } from "./eligibility";
+ import { createNudgeAdapter, assertDirectChat, NudgeProviderError, type NudgeAdapter, type NudgeSubmission } from "./adapters";
+@@ -31,11 +31,20 @@ export async function nudgeOperational(id: string, status: string, errorCode: st
+     category: "admin", workflow: "sales_intelligence", summary: `Owner nudge ${status}`, details: { nudge_id: id, error_code: errorCode },
+     entity: { type: "OwnerRepNudge", id }, dedupeKey: `csi:nudge:${id}:${status}`, notificationCandidate: false, piiPolicy: "none" });
+ }
++export function nudgeDestinationRejectionEvent(outreachRecordId: string, errorCode: string) {
++  return { level: "error" as const, eventKey: "sales_intelligence.nudge.destination_rejected",
++    category: "admin", workflow: "sales_intelligence", summary: "Owner nudge destination rejected",
++    details: { outreach_record_id: outreachRecordId, error_code: errorCode }, entity: { type: "OutreachRecord", id: outreachRecordId },
++    dedupeKey: `csi:nudge:destination-rejected:${outreachRecordId}`, notificationCandidate: false, piiPolicy: "none" as const } satisfies RecordOperationalEventInput;
++}
++async function recordNudgeDestinationRejected(outreachRecordId: string, errorCode: string) {
++  await recordOperationalEvent(nudgeDestinationRejectionEvent(outreachRecordId, errorCode));
++}
+ async function checked(command: NudgeCommand, actor: CsiActor, now: Date, session?: ClientSession) {
+   try { return await checkNudge(command, actor, now, session); }
+   catch (error) {
+     if (error instanceof CsiError && error.code === "NUDGE_DESTINATION_IS_CUSTOMER")
+-      await nudgeOperational(command.nudge.outreach_record_id, "destination_rejected", error.code);
++      await recordNudgeDestinationRejected(command.nudge.outreach_record_id, error.code);
+     throw error;
+   }
+ }
+diff --git a/src/services/salesIntelligence/nudges/nudges.test.ts b/src/services/salesIntelligence/nudges/nudges.test.ts
+index e98453a..2c64b93 100644
+--- a/src/services/salesIntelligence/nudges/nudges.test.ts
++++ b/src/services/salesIntelligence/nudges/nudges.test.ts
+@@ -5,6 +5,7 @@ import { renderNudgeTemplate, validateNudgeBody } from "./templates";
+ import { collectCustomerPhones, guardDestination } from "./eligibility";
+ import { csiNudgeConfiguration } from "../../../config/domain/salesIntelligence";
+ import { csiNudgeCommandSchema } from "../../../validation/v1/salesIntelligence";
++import { nudgeDestinationRejectionEvent } from "./commands";
+ 
+ const recipient: NudgeRecipient = { account: "synthetic", extension: "101", person: "person101", senderExtension: "100", senderExtensionNumber: "10", senderPerson: "person100", senderDid: "+12025550198" };
+ test("single-attempt adapter never retries a non-idempotent submission, including 401/429/timeout", async () => {
+@@ -74,6 +75,12 @@ test("optional channels default off", () => {
+   try {assert.equal(csiNudgeConfiguration().channels.sms_to_rep,false);assert.equal(csiNudgeConfiguration().channels.pager,false);}
+   finally {if(sms!==undefined)process.env.SALES_INTELLIGENCE_NUDGE_SMS_ENABLED=sms;if(pager!==undefined)process.env.SALES_INTELLIGENCE_NUDGE_PAGER_ENABLED=pager;}
+ });
++test("customer destination rejection identifies the Outreach record, never an uncreated nudge", () => {
++  const event = nudgeDestinationRejectionEvent("outreach-123", "NUDGE_DESTINATION_IS_CUSTOMER");
++  assert.deepEqual(event.entity, { type: "OutreachRecord", id: "outreach-123" });
++  assert.deepEqual(event.details, { outreach_record_id: "outreach-123", error_code: "NUDGE_DESTINATION_IS_CUSTOMER" });
++  assert.equal(event.dedupeKey, "csi:nudge:destination-rejected:outreach-123");
++});
+ test("documented nudge controls take precedence; aliases cannot widen an explicit channel allowlist", () => {
+   const keys = ["SALES_INTELLIGENCE_NUDGE_CHANNELS", "SALES_INTELLIGENCE_NUDGE_PER_REP_PER_HOUR", "SALES_INTELLIGENCE_NUDGE_HOURLY_LIMIT",
+     "SALES_INTELLIGENCE_NUDGE_TEAM_MESSAGING_ENABLED", "SALES_INTELLIGENCE_NUDGE_SMS_ENABLED", "SALES_INTELLIGENCE_NUDGE_PAGER_ENABLED"];

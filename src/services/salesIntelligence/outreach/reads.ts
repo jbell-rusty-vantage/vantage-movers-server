@@ -1,7 +1,9 @@
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
+import { z } from "zod";
 import { getOutreachFollowupModel } from "../../../models/OutreachFollowup";
 import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
 import { getContactNumberModel } from "../../../models/ContactNumber";
+import { getCallInteractionModel } from "../../../models/CallInteraction";
 import { getSalesIntelligenceContactRestrictionModel } from "../../../models/SalesIntelligenceContactRestriction";
 import { getSalesIntelligenceReviewItemModel } from "../../../models/SalesIntelligenceReviewItem";
 import { getSalesIntelligenceOwnerInstructionModel } from "../../../models/SalesIntelligenceOwnerInstruction";
@@ -48,13 +50,26 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
     paused_channels: [...new Set(activeRestrictions.flatMap(r => r.channels))], overdue: a.status === "open" && Boolean(a.due_at && a.due_at < now),
     allowed_actions: (["patch_followup", "complete_followup", "cancel_followup", "snooze_followup"] as const).map(action => availability(action, a)) }));
   const { actions: actionFacts, ...derived } = facts;
+  const db = mongoose.connection.useDb(getMongoDatabaseName(), { useCache: true });
+  const lead = record.subject.kind === "lead" && record.subject.id ? await db.collection(record.subject.model === "FormLead" ? "form_leads" : "call_leads").findOne({ _id: record.subject.id }, { projection: { name: 1, job_no: 1, source_company_label_snapshot: 1 } }) : null;
+  const bookings = record.subject.kind === "lead" ? await db.collection("booked_leads").find({ lead_model: record.subject.model, lead_ref: record.subject.id }, { projection: { _id: 1, cancelled: 1 } }).toArray() : [];
+  const cancellations = bookings.length ? await db.collection("cancelled_leads").find({ booked_lead: { $in: bookings.map(b => b._id) } }, { projection: { _id: 1 } }).toArray() : [];
+  const related = [
+    ...(lead ? [{ model: record.subject.model!, id: String(lead._id), href: `/${record.subject.model === "FormLead" ? "form-leads" : "call-leads"}?record=${lead._id}&database_scope=production`, certainty: "exact" as const }] : []),
+    ...bookings.map(b => ({ model: "BookedLead" as const, id: String(b._id), href: `/bookings?record=${b._id}&database_scope=production`, certainty: "exact" as const })),
+    ...cancellations.map(c => ({ model: "CancelledLead" as const, id: String(c._id), href: `/cancellations?record=${c._id}&database_scope=production`, certainty: "exact" as const })),
+  ];
+  const latest = record.primary_contact_number_id ? await getCallInteractionModel().findOne({ contact_number_id: record.primary_contact_number_id, merged_into_id: null }).sort({ started_at: -1, _id: -1 }).lean() : null;
   return outreachDtoSchema.parse({ id: String(record._id), revision: record.revision,
+    lead_display: lead ? { name: lead.name ?? null, job_no: lead.job_no ?? null, source_company: lead.source_company_label_snapshot ?? null } : null,
+    latest_number_call: latest ? { id: String(latest._id), happened_at: iso(latest.started_at), direction: latest.direction, provider_result: latest.provider_result ?? null, contact_type: latest.contact_type } : null,
+    primary_number: number ? { id: String(number._id), e164: number.e164 } : null,
     subject: record.subject.kind === "lead" ? { kind: "lead", model: record.subject.model, id: String(record.subject.id) } : { kind: "number_review", contact_number_id: String(record.subject.contact_number_id) },
     state: projected.state, reason: record.closed_reason, assignment: assignment(record), followups, followups_cursor: null,
     trigger_at: iso(record.trigger_at), first_action_due_at: iso(record.first_action_due_at), first_attributable_outbound_at: iso(record.first_attributable_outbound_at),
     next_action: followups.find(a => a.id === String(record.next_action?.followup_id)) ?? null, first_human_conversation_at: iso(record.first_human_conversation_at),
-    last_meaningful_contact_at: iso(record.last_meaningful_contact_at), derived: { ...derived, action_facts: actionFacts }, related_record_links: [],
-    allowed_actions: (["mark_worked", "assign", "set_waiting", "add_note", "close", "reopen"] as const).map(action => ({ action, target_id: String(record._id), expected_revision: record.revision,
+    last_meaningful_contact_at: iso(record.last_meaningful_contact_at), derived: { ...derived, action_facts: actionFacts }, related_record_links: related,
+    allowed_actions: (["mark_worked", "assign", "set_waiting", "add_note", "close", "reopen", "create_followup"] as const).map(action => ({ action, target_id: String(record._id), expected_revision: record.revision,
       enabled: action === "add_note" || (action === "reopen" ? record.state === "closed" && record.closure_origin !== "official" && number?.contact_eligibility.state !== "suppressed" : record.state !== "closed"), blocker_codes: [] })) });
 }
 export async function readOutreach(id: string) {
@@ -77,13 +92,17 @@ export async function readNumberOutreach(numberId: string) {
   const reviewItems = await getSalesIntelligenceReviewItemModel().find({ subject_key: { $in: [`number:${numberId}`, ...records.map(r => subjectKey(r.subject))] } }).lean();
   return { outreach_records: await Promise.all(records.map(r => toOutreachDto(r))), restrictions: restrictions.map(r => restrictionDtoSchema.parse({ id: String(r._id), revision: r.revision,
     contact_number_id: String(r.contact_number_id), channels: r.channels, until: iso(r.until), origin: r.origin, state: r.state, run_id: r.run_id ? String(r.run_id) : null,
-    finding_id: r.finding_id ? String(r.finding_id) : null, allowed_actions: [] })), review_items: reviewItems.map(toReviewDto) };
+    finding_id: r.finding_id ? String(r.finding_id) : null, allowed_actions: [{ action: "resolve_restriction", target_id: String(r._id), expected_revision: r.revision, enabled: r.state === "active", blocker_codes: [] }] })), review_items: reviewItems.map(toReviewDto) };
 }
 export function toReviewDto(r: InferSchemaType<typeof SalesIntelligenceReviewItemSchema> & { _id: mongoose.Types.ObjectId; updatedAt: Date }) {
   return reviewItemDtoSchema.parse({ id: String(r._id), revision: r.revision, subject_key: r.subject_key, cause_kind: r.cause_kind, cause_key: r.cause_key, state: r.state,
-    evidence_refs: r.evidence_ids.map(String), opened_at: iso(r.opened_at), updated_at: iso(r.updatedAt), resolved_at: iso(r.resolved_at), resolution_reason: r.resolution_reason, allowed_actions: [] });
+    evidence_refs: r.evidence_ids.map(String), opened_at: iso(r.opened_at), updated_at: iso(r.updatedAt), resolved_at: iso(r.resolved_at), resolution_reason: r.resolution_reason,
+    allowed_actions: [{ action: "resolve_review", target_id: String(r._id), expected_revision: r.revision, enabled: r.state === "open", blocker_codes: [] }] });
 }
-export async function listReviewItems(query: { cursor?: string; limit: number }) {
-  const rows = await getSalesIntelligenceReviewItemModel().find(query.cursor ? { _id: { $gt: query.cursor } } : {}).sort({ _id: 1 }).limit(query.limit + 1).lean();
+export const reviewItemsQuerySchema = z.object({ scope: z.literal("production").optional(), cursor: z.string().regex(/^[a-f\d]{24}$/i).optional(), limit: z.coerce.number().int().min(1).max(200).default(50),
+  subject_key: z.string().regex(/^(number:[a-f\d]{24}|lead:(FormLead|CallLead):[a-f\d]{24})$/i).optional(), state: z.enum(["open", "resolved", "dismissed"]).optional(), cause_kind: reviewItemDtoSchema.shape.cause_kind.optional() }).strict();
+export async function listReviewItems(query: z.infer<typeof reviewItemsQuerySchema>) {
+  const rows = await getSalesIntelligenceReviewItemModel().find({ ...(query.cursor ? { _id: { $gt: query.cursor } } : {}),
+    ...(query.subject_key ? { subject_key: query.subject_key } : {}), ...(query.state ? { state: query.state } : {}), ...(query.cause_kind ? { cause_kind: query.cause_kind } : {}) }).sort({ _id: 1 }).limit(query.limit + 1).lean();
   return ownerRead({ items: rows.slice(0, query.limit).map(toReviewDto), cursor: rows.length > query.limit ? String(rows[query.limit - 1]!._id) : null });
 }

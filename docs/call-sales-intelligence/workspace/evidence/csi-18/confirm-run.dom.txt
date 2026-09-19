@@ -1,0 +1,19 @@
+run_id\": \"6aae873211740a59794f4ad3\", \"output_digest\": \"f4d30eacdc92fc6184e3d73631a6b1a09f6a93c68f2d2ad3c575da2588d57439\" } }"
+      - article:
+        - paragraph: analysis.confirmed · 6aae2fb470ef7c75c4c0852c · Sep 19, 8:59 AM EDT
+        - generic: "{ \"before\": {}, \"after\": { \"output_digest\": \"f4d30eacdc92fc6184e3d73631a6b1a09f6a93c68f2d2ad3c575da2588d57439\", \"finding_ids\": [ \"6aae873211740a59794f4ad8\" ] } }"
+      - article:
+        - paragraph: finding.confirmed · 6aae2fb470ef7c75c4c0852c · Sep 19, 8:59 AM EDT
+        - generic: "{ \"before\": { \"review_state\": \"unreviewed\" }, \"after\": { \"review_state\": \"confirmed\", \"run_id\": \"6aae873211740a59794f4ad3\", \"output_digest\": \"f4d30eacdc92fc6184e3d73631a6b1a09f6a93c68f2d2ad3c575da2588d57439\" } }"
+      - dialog "Confirm this analysis":
+        - heading "Confirm this analysis" [level=2]
+        - paragraph: Analysis from Sep 19, 8:59 AM EDT · initial. Enter dates in Eastern time.
+        - paragraph: Records your review of this exact version. Existing effects remain as recorded.
+        - status:
+          - paragraph: Your review of this exact version is recorded.
+        - button "Done"
+    - heading "Needs review" [level=3]
+    - paragraph: No review decisions recorded for this subject.
+    - paragraph: Rep messaging is unavailable in this preview.
+- button "Open Next.js Dev Tools":
+- alert

@@ -35,11 +35,15 @@ import { DEFAULT_RUNTIME_LIMITS } from "../src/services/salesIntelligence/analys
 import { requireVantageAuth } from "../src/middleware/requireApiSecret";
 import { createSalesIntelligenceBoundaryRouter } from "../src/routes/sales-intelligence-boundary.routes";
 import { createSalesIntelligenceInternalRouter } from "../src/routes/sales-intelligence-internal.routes";
-import { readContentSchema } from "../src/services/salesIntelligence/analysis/reads";
+import { readContentSchema, loadReadScope, readIntelligenceEvidence } from "../src/services/salesIntelligence/analysis/reads";
 import { intelligenceEnvelopeSchema } from "../src/validation/intelligence/intelligenceEnvelope.validation";
 import { payloadHash } from "../src/services/salesIntelligence/transactions";
 import { CsiError } from "../src/services/salesIntelligence/auth";
 import { resumeApplicationIntents } from "../src/services/salesIntelligence/analysis/readiness";
+import { scheduleOwnerReanalysis } from "../src/services/salesIntelligence/analysis/ownerReanalysis";
+import { workerContext } from "../src/services/salesIntelligence/outreach/ensure";
+import { getSalesIntelligenceOwnerInstructionModel } from "../src/models/SalesIntelligenceOwnerInstruction";
+import { getIntelligenceOwnerAssessmentModel } from "../src/models/IntelligenceOwnerAssessment";
 
 test("CSI-13 actual ToolLoopAgent + local MCP HTTP + real handlers + disposable replica", { skip: process.env.CSI_REPLICA_TEST !== "true", timeout: 240_000 }, async t => {
   assert.match(getMongoDatabaseName(), /^testvantagemovers_csi13[a-f0-9]+$/);
@@ -104,7 +108,7 @@ test("CSI-13 actual ToolLoopAgent + local MCP HTTP + real handlers + disposable 
     return { number, call, conversation, snapshot, job };
   }
   const { MockLanguageModelV4 } = await import("ai/test");
-  async function provider(jobId: string, options: { invalid?: boolean; repair?: boolean; noReceipt?: boolean; missingCost?: boolean; restriction?: "ongoing" | "until"; contactType?: boolean } = {}) {
+  async function provider(jobId: string, options: { invalid?: boolean; repair?: boolean; noReceipt?: boolean; missingCost?: boolean; restriction?: "ongoing" | "until"; contactType?: boolean; assessment?: { id: string; revision: number } } = {}) {
     let step = 0;
     return new MockLanguageModelV4({ doGenerate: async input => {
       step++;
@@ -119,7 +123,7 @@ test("CSI-13 actual ToolLoopAgent + local MCP HTTP + real handlers + disposable 
         value: { action_kind: "call", description: "Return customer's call", date_text: null, timezone_text: null, target_followup_id: null } } : null;
       const envelope = intelligenceEnvelopeSchema.parse({ schema_version: "csi-envelope-v1", summary: { overview: "Synthetic source-grounded analysis", customer_wanted: "A callback",
         money_and_dates: "Unknown due date", outcome: "Requested callback", commitments: "One request", discrepancies: "Unknown speaker", finding_keys: finding ? ["callback"] : [] },
-        findings: finding ? [options.contactType ? { ...finding, kind: "contact_type", value: { type: "human_conversation", voicemail_left_by: null } } : options.restriction ? { ...finding, kind: "contact_restriction", value: { channels: ["call"], restriction: options.restriction, until_text: null } } : finding] : [], next_step_suggestion: null, owner_instruction_assessments: [] });
+        findings: finding ? [options.contactType ? { ...finding, kind: "contact_type", value: { type: "human_conversation", voicemail_left_by: null } } : options.restriction ? { ...finding, kind: "contact_restriction", value: { channels: ["call"], restriction: options.restriction, until_text: null } } : finding] : [], next_step_suggestion: null, owner_instruction_assessments: options.assessment ? [{instruction_id:options.assessment.id,instruction_revision:options.assessment.revision,assessment:"disagrees",reason:"Synthetic model disagreement",finding_keys:["callback"]}] : [] });
       return { content: options.noReceipt ? [{ type: "text" as const, text: "Prose is not a receipt" }] : [{ type: "tool-call" as const, toolCallId: `tool-${step}`,
         toolName: step === 1 ? "get_intelligence_context" : "submit_intelligence_analysis", input: JSON.stringify(step === 1 ? {} : { idempotency_key: String(run._id), envelope: options.invalid || (options.repair && step === 2) ? { bad: true } : envelope }) }],
         finishReason: { unified: options.noReceipt ? "stop" as const : "tool-calls" as const, raw: "synthetic" },
@@ -154,6 +158,47 @@ test("CSI-13 actual ToolLoopAgent + local MCP HTTP + real handlers + disposable 
     assert.deepEqual(results.map(r => r.status).sort(), ["not_claimable", "submitted"]);
     const run = await Runs.findOne({ job_id: f.job._id }).orFail(); assert.equal(await Submissions.countDocuments({ run_id: run._id }), 1);
     assert.equal((await Jobs.findOne({ stage: "application", input_refs: run._id }))?.status, "pending");
+  });
+  await t.test("CSI-18 original and current reruns use durable jobs and isolated evidence through real MCP", async () => {
+    const f = await fixture();
+    await runIntelligenceJob(String(f.job._id), "analysis", await deps(String(f.job._id)));
+    const parent = await Runs.findOne({ job_id: f.job._id }).orFail();
+    const receipt = await Submissions.findOne({ run_id: parent._id }).orFail();
+    assert.equal((await runIntelligenceApplicationJob(String(receipt.application_job_id))).status, "completed");
+    const priorFinding = await getIntelligenceFindingModel().findOne({ run_id: parent._id }).orFail();
+    const instruction = await getSalesIntelligenceOwnerInstructionModel().create({ instruction_id: new mongoose.Types.ObjectId(), finding_id: priorFinding._id,
+      subject_key: parent.subject_key, field: "assertion", prior: { claim: priorFinding.assertion.claim }, current: { claim: "Owner says no callback is required" },
+      actor: { kind: "owner", id: "synthetic-owner", request_id: "csi18-instruction" }, happened_at: new Date(), state: "active" });
+    const original = await withTransaction(session => scheduleOwnerReanalysis(String(parent._id), "original_evidence", [String(instruction._id)], workerContext(session, "owner-replay-test")));
+    await getContactNumberModel().updateOne({ _id: f.number._id }, { $set: { provider_names: ["New current context only"] } });
+    const result = await runIntelligenceJob(original.job_id, "analysis", { ...await deps(original.job_id, { assessment: { id: String(instruction.instruction_id), revision: instruction.revision } }), afterReceipt: async () => { throw new Error("synthetic replay acknowledgment loss"); } });
+    assert.equal(result.status, "submitted", JSON.stringify(result));
+    const replay = await Runs.findById(original.run_id).orFail();
+    assert.equal(replay.mode, "original_evidence");assert.equal(String(replay.parent_run_id), String(parent._id));assert(replay.rendered_prompt!.startsWith(parent.rendered_prompt!));assert.match(replay.rendered_prompt!, /Owner says no callback is required/);
+    const before = await Snapshots.find({ run_id: parent._id }).sort({ tool_call_id: 1 }).lean();
+    const after = await Snapshots.find({ run_id: replay._id }).sort({ tool_call_id: 1 }).lean();
+    assert.deepEqual(after.map(s => s.content_digest), before.map(s => s.content_digest));
+    assert.equal((await runIntelligenceJob(original.job_id, "analysis", await deps(original.job_id))).status, "not_claimable");
+    assert.equal(await Reservations.countDocuments({ job_id: original.job_id }), 1);
+    const replayReceipt = await Submissions.findOne({ run_id: replay._id }).orFail();
+    assert.equal((await runIntelligenceApplicationJob(String(replayReceipt.application_job_id))).status, "completed");
+    assert.equal(await Actions.countDocuments({ origin_run_id: replay._id }), 0, "Owner correction prevents stale model work");
+    assert.equal((await getIntelligenceOwnerAssessmentModel().findOne({ run_id: replay._id }))?.assessment, "disagrees");
+    assert.equal((await getIntelligenceFindingModel().findOne({ run_id: replay._id }))?.review_state, "unreviewed");
+    const fresh = await withTransaction(session => scheduleOwnerReanalysis(String(parent._id), "current_context", [], workerContext(session, "owner-current-test")));
+    assert.equal((await runIntelligenceJob(fresh.job_id, "analysis", await deps(fresh.job_id))).status, "submitted");
+    assert((await Snapshots.find({ run_id: fresh.run_id }).lean()).some(s => !before.some(old => old.tool_call_id === s.tool_call_id && old.content_digest === s.content_digest)));
+    await getLeadConversationModel().updateOne({ _id: f.conversation._id }, { $set: { latest_transcript_version: "newer-transcript-pending" } });
+    const historical = await withTransaction(session => scheduleOwnerReanalysis(String(parent._id), "original_evidence", [String(instruction._id)], workerContext(session, "historical-original-test")));
+    assert.equal((await runIntelligenceJob(historical.job_id, "analysis", await deps(historical.job_id))).status, "submitted", "Original mode remains usable with retained older evidence");
+    const historicalReceipt = await Submissions.findOne({ run_id: historical.run_id }).orFail();
+    assert.equal((await runIntelligenceApplicationJob(String(historicalReceipt.application_job_id))).status, "completed");
+    assert.equal((await Runs.findById(historical.run_id))?.status, "stale");
+    assert.equal(await getIntelligenceFindingModel().countDocuments({ run_id: historical.run_id }), 1);
+    assert.equal(await Actions.countDocuments({ origin_run_id: historical.run_id }), 0);
+    assert.notEqual(String((await getLeadConversationModel().findById(f.conversation._id))?.latest_completed_run_id), historical.run_id);
+    await Snapshots.collection.updateOne({ _id: before[0]._id }, { $set: { purged_at: new Date(), purge_reason: "synthetic retention tombstone" } });
+    await assert.rejects(withTransaction(session => scheduleOwnerReanalysis(String(parent._id), "original_evidence", [], workerContext(session, "purged-replay-test"))), /ORIGINAL_EVIDENCE_UNAVAILABLE/);
   });
   await t.test("crash after acknowledgment recovers receipt without a second model invocation", async () => {
     const f = await fixture(), d = await deps(String(f.job._id));
@@ -256,6 +301,22 @@ test("CSI-13 actual ToolLoopAgent + local MCP HTTP + real handlers + disposable 
     const successors = await Promise.all(Array.from({ length: 3 }, () => withTransaction(s => scheduleNumberIntelligence(String(f.number._id), s))));
     assert.equal(new Set(successors).size, 1);
     assert.equal(await Jobs.countDocuments({ subject_key: `number:${f.number._id}`, dedupe_key: /^csi:number-analysis:/ }), 2);
+  });
+  await t.test("current number reads reject obsolete versions and publication rechecks source freshness", async () => {
+    const f = await fixture();await runIntelligenceJob(String(f.job._id), "analysis", await deps(String(f.job._id)));
+    const parent = await Runs.findOne({ job_id: f.job._id }).orFail();const receipt = await Submissions.findOne({ run_id: parent._id }).orFail();
+    await runIntelligenceApplicationJob(String(receipt.application_job_id));
+    const job = await Jobs.findOne({ subject_key: `number:${f.number._id}`, dedupe_key: /^csi:number-analysis:/ }).orFail();
+    await Jobs.updateOne({ _id: job._id }, { $set: { next_attempt_at: new Date(0) } });
+    assert.equal((await runIntelligenceJob(String(job._id), "number_refresh", await deps(String(job._id)))).status, "submitted");
+    const run = await Runs.findOne({ job_id: job._id }).orFail();const submission = await Submissions.findOne({ run_id: run._id }).orFail();
+    assert.equal((await runIntelligenceApplicationJob(String(submission.application_job_id), { beforePublication: async () => {
+      await getLeadConversationModel().updateOne({ _id: f.conversation._id }, { $set: { latest_transcript_version: "new-version-pending" } });
+    } })).status, "completed");
+    assert.equal((await Runs.findById(run._id))?.status, "stale");
+    assert.notEqual(String((await getContactNumberModel().findById(f.number._id))?.running_summary?.run_id), String(run._id));
+    const scope = await loadReadScope(run);
+    await assert.rejects(readIntelligenceEvidence(scope, { tool: "get_call_transcript", args: { conversation_id: String(f.conversation._id), transcript_version: f.snapshot.transcript_version!, limit: 100 } }), /RUN_SCOPE_DENIED/);
   });
   await t.test("receipt survives expired analysis lease; reclaim recovers without provider work", async () => {
     const f = await fixture(), d = await deps(String(f.job._id));
