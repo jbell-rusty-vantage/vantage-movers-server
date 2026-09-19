@@ -25,7 +25,7 @@ Use the local Admin and local API first. This creates a usable integration surfa
 September 19 Owner decision: send destinations are current account Users, not reviewed Agent matches. CSI-07/08/18 are locally implemented; do not restart them.
 
 1. **Done locally: CSI-14 directory-User destinations plus P2.** Preview/send resolve a current stored-directory User. Reviewed identity stays required for attribution/metrics/assignment, not for send. Smallest Admin Message-rep picker lists those Users.
-2. **Next session: merge `sales-intelligence` into local `main`, push remote `main`, and deploy the internal dashboard.** [Copy-ready instructions](NEXT-SESSION.md). Owner-authorized. Manual index/backfill/error repair is acceptable. Fuller dialogs and CSI-15 certification are not merge blockers. Live nudge enablement stays its own production switch.
+2. **Next session — one task: merge `sales-intelligence` into local `main`, push remote `main`, and deploy.** [Copy-ready instructions](NEXT-SESSION.md). No CSI-14 dialogs, CSI-09, CSI-15, or flag enablement in that session.
 3. **CSI-09 Coverage/settings.** Independent of messaging.
 4. **Targeted 1–2 number-lead example seed, only after a separate Owner authorization that names the subjects.** This is not CSI-15 fleet backfill. Recording grant must be re-probed; official CSI indexes and conversation account attribution remain blocked. Do not activate historical obligations from a UI walkthrough.
 5. **CSI-15/16.** Fleet historical backfill, retention, budget recovery, certification and staged rollout stay later. No production backfill follows from implementing UI.
