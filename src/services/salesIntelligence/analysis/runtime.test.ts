@@ -15,6 +15,13 @@ test("reservation covers all bounded inputs, reasoning/output and per-step cent 
   assert.equal(runtimeLimitsSchema.safeParse({ ...limits, steps: 1000 }).success, false);
   assert(contextTokenCeiling({ text: "😀" }) > JSON.stringify({ text: "😀" }).length);
 });
+test("default cumulative budgets permit every configured step at its per-step ceiling", () => {
+  const limits = runtimeLimitsSchema.parse(DEFAULT_RUNTIME_LIMITS);
+  assert(limits.steps >= 12);
+  assert(limits.total_input_tokens >= limits.steps * limits.context_tokens);
+  assert(limits.total_output_tokens >= limits.steps * limits.output_tokens);
+  assert(limits.elapsed_ms < 300_000, "leave room within the default five-minute job lease");
+});
 test("server money resolution accepts exact amounts and preserves ambiguity instead of guessing", () => {
   assert.equal(resolveQuotedMoney("$1,250.25", "USD"), 125025);
   for (const value of ["about $500", "$100 or $200", "$12.999", "1,00"]) assert.equal(resolveQuotedMoney(value, "USD"), null);

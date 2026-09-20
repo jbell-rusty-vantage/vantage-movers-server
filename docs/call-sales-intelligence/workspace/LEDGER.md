@@ -1,5 +1,16 @@
 # Implementation ledger
 
+## Attention projection explainer — Grok, September 20, 2026
+
+Owner asked for a full write-up of why Needs Attention stays on “Attention is being prepared.” Docs only. No runtime change.
+
+Exact claims:
+- `docs/call-sales-intelligence/workspace/ATTENTION-PROJECTION.md`
+- `docs/call-sales-intelligence/workspace/README.md` pointer
+- inspect helpers `scripts/inspect-csi-attention-projection.ts` and `scripts/inspect-csi-attention-candidates.ts` (already used for the 20:09 UTC production counts in that doc)
+
+No phones. No deploy. No snapshot publish from GET.
+
 ## AFTER-16 D+E live submit 400 — Grok, September 20, 2026
 
 Stay-and-fix during Saturday cutover. Production run `6ab02c3d036aa9e7b7ca9655` accepted the scoped key then returned HTTP 400 on POST `/submit`. Run is paused `schema_exhausted` after two `INVALID_INPUT` submits; six snapshots captured, no receipt. Nearby first-hour analysis runs are mostly `bounds_exhausted` (4-step ceiling) or `schema_exhausted`. JSON Schema cannot express envelope refinements, and the 400 body named no issue paths, so the one allowed repair was blind.

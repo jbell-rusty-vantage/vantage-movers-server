@@ -49,19 +49,28 @@ function required(name: string) {
   return value;
 }
 
+function recordText(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || !("text" in value)) return undefined;
+  const text = (value as { text?: unknown }).text;
+  return typeof text === "string" ? text : undefined;
+}
+
+function textMessageContent(content: unknown): string | undefined {
+  if (!content || typeof content !== "object") return undefined;
+  const record = content as { type?: unknown; text?: unknown };
+  if (record.type !== "text" || typeof record.text !== "string") return undefined;
+  return record.text;
+}
+
 function textToolContent(content: unknown): string {
   if (!Array.isArray(content) || content.length !== 1) {
     throw new Error("get_intelligence_context did not return one text result");
   }
-  const part = content[0];
-  if (!part || typeof part !== "object") {
+  const text = textMessageContent(content[0]);
+  if (text === undefined) {
     throw new Error("get_intelligence_context did not return one text result");
   }
-  const record = part as { type?: unknown; text?: unknown };
-  if (record.type !== "text" || typeof record.text !== "string") {
-    throw new Error("get_intelligence_context did not return one text result");
-  }
-  return record.text;
+  return text;
 }
 
 function mcpEndpoint() {
@@ -225,15 +234,11 @@ async function connectAsIntelligenceAgent(input: {
     const options = { timeout: 60_000 };
     const prompt = await client.experimental_getPrompt({ name: CSI_PROMPT_VERSION, arguments: {}, options });
     const resource = await client.readResource({ uri: "csi://schemas/csi-envelope-v1", options });
-    const content = resource.contents[0];
-    if (
-      prompt.messages.length !== 1 ||
-      prompt.messages[0].content.type !== "text" ||
-      prompt.messages[0].content.text !== input.prompt
-    ) {
+    const schemaText = recordText(resource.contents[0]);
+    if (prompt.messages.length !== 1 || textMessageContent(prompt.messages[0]?.content) !== input.prompt) {
       throw new Error("Pinned prompt from MCP did not match prepareIntelligenceRun");
     }
-    if (!content || !("text" in content) || typeof content.text !== "string" || payloadHash(JSON.parse(content.text)) !== input.schemaDigest) {
+    if (!schemaText || payloadHash(JSON.parse(schemaText)) !== input.schemaDigest) {
       throw new Error("Pinned schema digest from MCP did not match prepareIntelligenceRun");
     }
     const definitions = await client.listTools({ options });

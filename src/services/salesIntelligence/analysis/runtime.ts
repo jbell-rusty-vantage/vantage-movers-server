@@ -7,13 +7,16 @@ import { CSI_PROMPT_VERSION } from "./contracts";
 import { readContentSchema } from "./reads";
 import type { SubmissionReceipt } from "./submit";
 import type { IntelligenceRead } from "./contracts";
+import { renderIntelligenceEvidencePrompt, type CapturedPromptPage } from "./prompt";
 
 export const runtimeLimitsSchema = z.object({ steps: z.number().int().min(1).max(40), context_tokens: z.number().int().min(1000).max(200_000),
   output_tokens: z.number().int().min(100).max(16_000), total_input_tokens: z.number().int().positive(), total_output_tokens: z.number().int().positive(),
   elapsed_ms: z.number().int().min(1000).max(180_000), pages: z.number().int().min(1).max(100) }).strict();
 export type RuntimeLimits = z.infer<typeof runtimeLimitsSchema>;
-export const DEFAULT_RUNTIME_LIMITS: RuntimeLimits = { steps: 8, context_tokens: 128_000, output_tokens: 6000,
-  total_input_tokens: 512_000, total_output_tokens: 24_000, elapsed_ms: 120_000, pages: 80 };
+// Fund the full step ceiling even when usage is reported at the per-step bounds.
+// Admission still reserves this complete budget against the Owner's policy.
+export const DEFAULT_RUNTIME_LIMITS: RuntimeLimits = { steps: 12, context_tokens: 128_000, output_tokens: 8000,
+  total_input_tokens: 1_536_000, total_output_tokens: 96_000, elapsed_ms: 180_000, pages: 100 };
 export class IntelligenceRuntimeError extends Error {
   constructor(readonly reason: "incomplete_coverage" | "bounds_exhausted" | "schema_exhausted" | "receipt_missing" | "contract_mismatch" | "eligibility_changed") { super(reason); }
 }
@@ -64,7 +67,7 @@ export async function invokeIntelligenceAgent(input: InvocationInput): Promise<S
       !content || !("text" in content) || typeof content.text !== "string" || payloadHash(JSON.parse(content.text)) !== input.schema_digest) throw new IntelligenceRuntimeError("contract_mismatch");
     const definitions = await client.listTools({ options });
     if (definitions.nextCursor || definitions.tools.length !== CSI_TOOLS.length || definitions.tools.some(t => !(CSI_TOOLS as readonly string[]).includes(t.name))) throw new IntelligenceRuntimeError("contract_mismatch");
-    const evidence: unknown[] = [];
+    const evidence: CapturedPromptPage[] = [];
     let pages = 0;
     const readPages = async (name: string, args: Record<string, unknown>) => {
       let cursor: string | undefined;
@@ -74,7 +77,7 @@ export async function invokeIntelligenceAgent(input: InvocationInput): Promise<S
         if (++pages > limits.pages) throw new IntelligenceRuntimeError("incomplete_coverage");
         const value = resultValue(await client!.callTool({ name, arguments: { ...args, ...(cursor ? { cursor } : {}) }, options }));
         const captured = z.object({ snapshot_id: z.string(), data: readContentSchema }).passthrough().parse(value);
-        evidence.push(value);
+        evidence.push(captured);
         if (contextTokenCeiling({ prompt: input.prompt, evidence, tools: definitions.tools }) > limits.context_tokens) throw new IntelligenceRuntimeError("incomplete_coverage");
         // Transcript pagination explicitly describes prior/remaining segments; other gaps are not complete processing.
         if (captured.data.page.missing_ranges.some(r => !/^segments_(before|after):\d+$/.test(r))) throw new IntelligenceRuntimeError("incomplete_coverage");
@@ -89,8 +92,8 @@ export async function invokeIntelligenceAgent(input: InvocationInput): Promise<S
       for (const read of input.original_reads) {
         if (++pages > limits.pages) throw new IntelligenceRuntimeError("incomplete_coverage");
         const captured = resultValue(await client.callTool({ name: read.tool, arguments: read.args, options }));
-        evidence.push(captured);
         const value = z.object({ snapshot_id: z.string(), data: readContentSchema }).passthrough().parse(captured);
+        evidence.push(value);
         if (contextTokenCeiling({ prompt: input.prompt, evidence, tools: definitions.tools }) > limits.context_tokens ||
           value.data.page.missing_ranges.some(r => !/^segments_(before|after):\d+$/.test(r)) ||
           (!value.data.page.next_cursor && !value.data.page.complete && !value.data.transcript) ||
@@ -104,6 +107,9 @@ export async function invokeIntelligenceAgent(input: InvocationInput): Promise<S
     for (const id of input.interaction_ids) await readPages("get_rep_identity", { interaction_id: id });
     for (const id of input.conversation_ids) await readPages("get_call_transcript", { conversation_id: id, limit: 100 });
     }
+    const evidencePrompt = renderIntelligenceEvidencePrompt(input.run_id, evidence);
+    // Include the derived inventory and guidance before entering the provider lifecycle.
+    if (contextTokenCeiling({ prompt: input.prompt, evidencePrompt, tools: definitions.tools }) > limits.context_tokens) throw new IntelligenceRuntimeError("incomplete_coverage");
     const tools: ToolSet = {};
     let receipt: SubmissionReceipt | null = null, submissions = 0, steps = 0, inTokens = 0, outTokens = 0, schemaFailures = input.schema_failures ?? 0;
     if (schemaFailures >= 2) throw new IntelligenceRuntimeError("schema_exhausted");
@@ -115,19 +121,35 @@ export async function invokeIntelligenceAgent(input: InvocationInput): Promise<S
       tools[name] = tool({ description: definition.description, inputSchema: schema, execute: async args => {
         signal.throwIfAborted();
         if (receipt) throw new IntelligenceRuntimeError("bounds_exhausted");
+        // activeTools limits discovery, not SDK execution of an emitted hidden tool.
+        // An invalid repair consumes the remaining allowance without another read.
+        if (schemaFailures > 0 && name !== "submit_intelligence_analysis") {
+          schemaFailures++;
+          return { isError: true, content: [{ type: "text" as const,
+            text: JSON.stringify({ code: "INVALID_INPUT", issues: [{ path: "tool", code: "repair_requires_submission" }] }) }] };
+        }
         if (name === "submit_intelligence_analysis" && ++submissions > 2) throw new IntelligenceRuntimeError("schema_exhausted");
-        const value = await client!.callTool({ name, arguments: z.record(z.string(), z.unknown()).parse(args), options });
-        const parsed = z.object({ content: z.array(z.object({ type: z.literal("text"), text: z.string() })).length(1), isError: z.boolean().optional() }).passthrough().safeParse(value);
-        if (name === "submit_intelligence_analysis" && parsed.success && !parsed.data.isError) {
-          const accepted = receiptSchema.safeParse(JSON.parse(parsed.data.content[0].text));
-          if (accepted.success && accepted.data.run_id === input.run_id) receipt = accepted.data;
+        try {
+          const value = await client!.callTool({ name, arguments: z.record(z.string(), z.unknown()).parse(args), options });
+          if (name !== "submit_intelligence_analysis") return value;
+          const parsed = z.object({ content: z.array(z.object({ type: z.literal("text"), text: z.string() })).length(1), isError: z.boolean().optional() }).passthrough().parse(value);
+          const payload: unknown = JSON.parse(parsed.content[0].text);
+          if (parsed.isError) {
+            const error = z.object({ code: z.string() }).passthrough().safeParse(payload);
+            if (error.success && error.data.code === "INVALID_INPUT") schemaFailures++;
+            else uncertain.abort();
+          } else {
+            const accepted = receiptSchema.safeParse(payload);
+            if (accepted.success && accepted.data.run_id === input.run_id) receipt = accepted.data;
+            else uncertain.abort();
+          }
+          return value;
+        } catch (error) {
+          // SDK execution errors can otherwise become tool results and trigger
+          // another model step after the server may already have accepted.
+          if (name === "submit_intelligence_analysis") uncertain.abort();
+          throw error;
         }
-        if (name === "submit_intelligence_analysis" && parsed.success && parsed.data.isError) {
-          const error = z.object({ code: z.string() }).passthrough().safeParse(JSON.parse(parsed.data.content[0].text));
-          if (error.success && error.data.code === "INVALID_INPUT") schemaFailures++;
-          else uncertain.abort(); // Includes ambiguous delivery: trusted worker recovers the receipt first.
-        }
-        return value;
       } });
     }
     await input.beforeProvider();
@@ -137,15 +159,19 @@ export async function invokeIntelligenceAgent(input: InvocationInput): Promise<S
       prepareStep: ({ messages }) => {
         if (contextTokenCeiling({ prompt: input.prompt, messages, tools: definitions.tools }) > limits.context_tokens ||
           inTokens + limits.context_tokens > limits.total_input_tokens || outTokens + limits.output_tokens > limits.total_output_tokens) throw new IntelligenceRuntimeError("bounds_exhausted");
-        return { providerOptions: { openai: { parallelToolCalls: false } } };
+        return {
+          providerOptions: { openai: { parallelToolCalls: false } },
+          toolChoice: schemaFailures > 0 ? { type: "tool", toolName: "submit_intelligence_analysis" } : "required",
+          ...(schemaFailures > 0 ? { activeTools: ["submit_intelligence_analysis"] } : {}),
+        };
       },
       onStepEnd: async step => {
-        schemaFailures += step.toolCalls.filter(call => call.invalid && call.toolName === "submit_intelligence_analysis").length;
+        schemaFailures += step.toolCalls.filter(call => call.invalid && (schemaFailures > 0 || call.toolName === "submit_intelligence_analysis")).length;
         steps++; inTokens += step.usage.inputTokens ?? limits.context_tokens; outTokens += step.usage.outputTokens ?? limits.output_tokens;
         await input.onStep({ step: steps, usage: step.usage, actual_cents: billedCents(step.providerMetadata), schema_failures: schemaFailures });
       },
     });
-    await agent.generate({ prompt: `Analyze the captured source evidence below. Each page is a durable coverage checkpoint. Preserve coverage uncertainty. Submit with idempotency_key ${JSON.stringify(input.run_id)}.\n${JSON.stringify(evidence)}`, abortSignal: signal });
+    await agent.generate({ prompt: evidencePrompt, abortSignal: signal });
     input.onInvocationComplete?.();
     if (!receipt) throw new IntelligenceRuntimeError(submissions >= 2 || schemaFailures >= 2 ? "schema_exhausted" : "receipt_missing");
     return receipt;
