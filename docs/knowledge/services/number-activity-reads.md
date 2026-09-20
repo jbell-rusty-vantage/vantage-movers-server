@@ -73,3 +73,8 @@ CSI-15 replaces the Owner Coverage backfill notice with stored window counts, co
 
 - `src/services/numberActivity/{reads,rebuild,directorySync}.test.ts`, `src/routes/sales-intelligence-admin.routes.test.ts`, `src/routes/sales-intelligence-cron.routes.test.ts` — pure and fake-backed.
 - `pnpm test:csi:numbers:replica` (directory sync, snapshot read by the projection, rebuild command/worker/all/dispatch, real route stack) and `pnpm test:csi:reads:replica` (search completeness, matching, hygiene, timeline ordering and dedupe, coverage honesty, no-mutation snapshots) on the isolated replica. Provider directory reads are fakes; not a live capability proof.
+
+
+## CSI-16 evidence restamp
+
+Current local certification is recorded in [CSI-16 checks](../../call-sales-intelligence/workspace/evidence/csi-16/CHECKS.md) and the [execution matrix](../../call-sales-intelligence/workspace/ACCEPTANCE.md). CSI-15 backfill/retention/budget recovery is landed on main. Fresh synthetic and isolated browser evidence does not certify production grants or deployed revisions. G4 retains the media Retry-After clock failure; G5 remains partial and the generic conversation replay label fails integration. Exact owners are in [GAPS](../../call-sales-intelligence/workspace/evidence/csi-16/GAPS.md). [G6](../../call-sales-intelligence/workspace/evidence/csi-16/G6.md) is not probed. Owner full rollout follows separately in AFTER-16 D+E; no capability was enabled by this restamp.

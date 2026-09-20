@@ -135,3 +135,8 @@ Owner reads are side-effect-free: run list, original output, recorded effects, c
 ## CSI-18 source freshness at replay/application
 
 Current-context transcript reads reject explicitly requested obsolete versions. Before applying each batch and publishing a summary, captured transcript sources must still match the current eligible sources (the exact set for a Number, or the pinned eligible source for a Conversation). Original-evidence mode may still analyze a retained historical version: its findings/assessments remain available, but stale transcript evidence cannot apply operational effects or replace the current summary. Such a run is recorded as stale with `transcript_evidence_stale`; it is not silently rebuilt from fresh content. Number synthesis never applies Conversation effects.
+
+
+## CSI-16 evidence restamp
+
+Current local certification is recorded in [CSI-16 checks](../../call-sales-intelligence/workspace/evidence/csi-16/CHECKS.md) and the [execution matrix](../../call-sales-intelligence/workspace/ACCEPTANCE.md). CSI-15 backfill/retention/budget recovery is landed on main. Fresh synthetic and isolated browser evidence does not certify production grants or deployed revisions. G4 retains the media Retry-After clock failure; G5 remains partial and the generic conversation replay label fails integration. Exact owners are in [GAPS](../../call-sales-intelligence/workspace/evidence/csi-16/GAPS.md). [G6](../../call-sales-intelligence/workspace/evidence/csi-16/G6.md) is not probed. Owner full rollout follows separately in AFTER-16 D+E; no capability was enabled by this restamp.

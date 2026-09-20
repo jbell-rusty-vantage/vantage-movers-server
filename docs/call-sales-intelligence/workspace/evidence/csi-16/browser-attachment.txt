@@ -1,0 +1,97 @@
+Browser tab: 1, Title: "Vantage Admin", URL: "http://127.0.0.1:3108/sales-intelligence?view=numbers&number=000000000000000000000804".
+1 AXWebArea Vantage Admin, URL: 127.0.0.1:3108/sales-intelligence?view=numbers&number=000000000000000000000804
+	2 container Number / Outreach detail
+		3 container
+			4 heading Number / Outreach detail, Value: 2, ID: si-detail-title
+				5 text Number / Outreach detail
+			6 button Close panel
+		7 container
+			8 heading [synthetic phone], Value: 3
+				9 text [synthetic phone]
+			10 text Unclassified Can contact As of Sep 19, 8:37 PM EDT  ·  History completeness unknown
+			11 heading Running summary, Value: 3
+				12 text Running summary
+			13 text No completed analysis available.
+			14 heading Number↔Lead attachments, Value: 3
+				15 text Number↔Lead attachments
+			16 container
+				17 heading Morgan (synthetic) · Rejected, Value: 4
+					18 text Morgan (synthetic) ·  Rejected
+				19 text Rejected  · Job Number CSI08-MORGAN  · Synthetic source
+				20 link Description: Open official Lead, Value: 127.0.0.1:3108/form-leads?record=000000000000000000001004&database_scope=production
+				21 button (collapsed) Evidence and decision history, Secondary Actions: Expand
+					22 text Evidence and decision history
+				23 button Confirm attachment
+				24 button Reject attachment
+				25 button (disabled) Detach Lead
+			26 button (collapsed) Find another Lead to attach, Secondary Actions: Expand
+				27 text Find another Lead to attach
+			28 heading Contact restrictions, Value: 3
+				29 text Contact restrictions
+			30 text No temporary contact restrictions recorded.
+			31 heading Outreach · Open, Value: 3
+				32 text Outreach  ·  Open
+			33 text No one owns this
+			34 container
+				35 text Morgan (synthetic)  · Job Number  CSI08-MORGAN  ·  Synthetic source
+			36 link Description: Open official Lead, Value: 127.0.0.1:3108/form-leads?record=000000000000000000001004&database_scope=production
+			37 container
+				38 text Last meaningful contact :  Not observed
+			39 text Follow-up is due Open work nobody owns Open work nobody owns
+			40 button Mark as worked
+			41 button Assign responsible rep
+			42 button Wait for customer
+			43 button Add note
+			44 button Close
+			45 button (disabled) Reopen
+			46 button Add next step
+			47 button Message rep
+			48 heading Follow-ups, Value: 3
+				49 text Follow-ups
+			50 container
+				51 heading Wait, Value: 4
+					52 text Wait
+				53 text Set by you  ·  Open Synthetic customer requested noon follow-up. Due Sep 19, 12:00 PM EDT  · Overdue Assigned to Unassigned Outreach owned by Unassigned
+			54 button Edit follow-up / assignment
+			55 button Complete follow-up
+			56 button Cancel follow-up
+			57 button Snooze
+			58 button (collapsed) Completed and cancelled follow-ups, Secondary Actions: Expand
+				59 text Completed and cancelled follow-ups
+			60 heading Number Activity, Value: 3
+				61 text Number Activity
+			62 content list
+				63 container
+					64 text followup  ·  Sep 19, 12:00 PM EDT wait expired Synthetic customer requested noon follow-up. Due  Sep 19, 12:00 PM EDT Action assigned to :  Unassigned Recorded by  sales-intelligence-worker
+					65 button (collapsed) Earlier values, Secondary Actions: Expand
+						66 text Earlier values
+				67 container
+					68 text Review  ·  Sep 19, 6:39 AM EDT review resolved Decision reason:  Synthetic Lead identity ambiguity has been removed. Recorded by  6aae2fb470ef7c75c4c0852c
+					69 button (collapsed) Earlier values, Secondary Actions: Expand
+						70 text Earlier values
+				71 container
+					72 text followup  ·  Sep 19, 6:25 AM EDT set waiting Reason:  Synthetic customer requested noon follow-up. Outreach owned by :  Unassigned Recorded by  6aae2fb470ef7c75c4c0852c
+					73 button (collapsed) Earlier values, Secondary Actions: Expand
+						74 text Earlier values
+				75 container
+					76 text followup  ·  Sep 19, 6:25 AM EDT owner followup created Synthetic customer requested noon follow-up. Due  Sep 19, 12:00 PM EDT Action assigned to :  Unassigned Recorded by  6aae2fb470ef7c75c4c0852c
+					77 button (collapsed) Earlier values, Secondary Actions: Expand
+						78 text Earlier values
+				79 container
+					80 text followup  ·  Sep 19, 6:24 AM EDT mark worked Synthetic preparation only; no customer conversation. Outreach owned by :  Unassigned Recorded by  6aae2fb470ef7c75c4c0852c
+					81 button (collapsed) Earlier values, Secondary Actions: Expand
+						82 text Earlier values
+				83 container
+					84 text followup  ·  Sep 19, 6:00 AM EDT outreach created Outreach owned by :  Unassigned Recorded by  sales-intelligence-worker
+					85 button (collapsed) Earlier values, Secondary Actions: Expand
+						86 text Earlier values
+			87 container Analysis and Owner review
+				88 heading Analysis and Owner review, Value: 3
+					89 text Analysis and Owner review
+				90 text No analysis runs are available.
+			91 heading Needs review, Value: 3
+				92 text Needs review
+			93 text No review decisions recorded for this subject.
+			94 text Enter the RingCentral account ID on Reps first so Message rep can list current directory Users.
+
+The focused UI element is 6 button Close panel

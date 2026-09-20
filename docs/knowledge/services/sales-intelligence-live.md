@@ -21,3 +21,8 @@ CSI-08 is a partial read slice: supplied scoped export tokens and adapted Attent
 Local startup and evidence: [CSI-07 handoff](../../call-sales-intelligence/workspace/evidence/csi-07/HANDOFF.md).
 
 CSI-15 preserves this SSE contract. The existing query invalidation/fallback refetch displays the updated stored Coverage backfill facts; no backfill payload or customer content is added to the stream. Capture completion and historical Outreach activation remain distinct facts. CSI-15 validation is synthetic and does not claim production stream/hosting certification; see [CSI-15 checks](../../call-sales-intelligence/workspace/evidence/csi-15/CHECKS.md).
+
+
+## CSI-16 evidence restamp
+
+Current local certification is recorded in [CSI-16 checks](../../call-sales-intelligence/workspace/evidence/csi-16/CHECKS.md) and the [execution matrix](../../call-sales-intelligence/workspace/ACCEPTANCE.md). CSI-15 backfill/retention/budget recovery is landed on main. Fresh synthetic and isolated browser evidence does not certify production grants or deployed revisions. G4 retains the media Retry-After clock failure; G5 remains partial and the generic conversation replay label fails integration. Exact owners are in [GAPS](../../call-sales-intelligence/workspace/evidence/csi-16/GAPS.md). [G6](../../call-sales-intelligence/workspace/evidence/csi-16/G6.md) is not probed. Owner full rollout follows separately in AFTER-16 D+E; no capability was enabled by this restamp.

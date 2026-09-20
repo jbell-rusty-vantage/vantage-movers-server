@@ -1,0 +1,3 @@
+Browser tab: 1, Title: "Vantage Admin", URL: "http://127.0.0.1:3108/sales-intelligence?view=numbers&number=6aae873111740a59794f4ad1&rc_account_id=csi08-synthetic".
+There has been no change in the accessibility tree.
+The focused UI element is 1 AXWebArea Vantage Admin, URL: 127.0.0.1:3108/sales-intelligence?view=numbers&number=6aae873111740a59794f4ad1&rc_account_id=csi08-synthetic

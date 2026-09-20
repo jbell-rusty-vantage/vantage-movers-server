@@ -1,0 +1,111 @@
+Browser tab: 1, Title: "Vantage Admin", URL: "http://127.0.0.1:3108/sales-intelligence?view=numbers&number=6aae873111740a59794f4ad1&analysis_run=6aae873211740a59794f4ad3".
+1 AXWebArea Vantage Admin, URL: 127.0.0.1:3108/sales-intelligence?view=numbers&number=6aae873111740a59794f4ad1&analysis_run=6aae873211740a59794f4ad3
+	2 container Number / Outreach detail
+		3 container
+			4 heading Number / Outreach detail, Value: 2, ID: si-detail-title
+				5 text Number / Outreach detail
+			6 button Close panel
+		7 container
+			8 heading [synthetic phone], Value: 3
+				9 text [synthetic phone]
+			10 text Customer Can contact As of Sep 19, 8:39 PM EDT  ·  History completeness unknown
+			11 heading Running summary, Value: 3
+				12 text Running summary
+			13 text Synthetic Owner intervention demonstration
+			14 heading Number↔Lead attachments, Value: 3
+				15 text Number↔Lead attachments
+			16 text No attachments recorded. Searching does not attach a Lead.
+			17 button (collapsed) Find another Lead to attach, Secondary Actions: Expand
+				18 text Find another Lead to attach
+			19 heading Contact restrictions, Value: 3
+				20 text Contact restrictions
+			21 text No temporary contact restrictions recorded.
+			22 heading Outreach · Open, Value: 3
+				23 text Outreach  ·  Open
+			24 text No one owns this
+			25 container
+				26 text Last meaningful contact :  Not observed
+			27 text Open work nobody owns missing date Open work nobody owns
+			28 button Mark as worked
+			29 button Assign responsible rep
+			30 button Wait for customer
+			31 button Add note
+			32 button Close
+			33 button (disabled) Reopen
+			34 button Add next step
+			35 button Message rep
+			36 heading Follow-ups, Value: 3
+				37 text Follow-ups
+			38 container
+				39 heading Send estimate, Value: 4
+					40 text Send estimate
+				41 text Rep promise  ·  Open Prepare the synthetic estimate Due date needed Promised by Unknown Assigned to Unassigned Outreach owned by Unassigned
+			42 button Edit follow-up / assignment
+			43 button Complete follow-up
+			44 button Cancel follow-up
+			45 button (disabled) Snooze
+			46 button (collapsed) Completed and cancelled follow-ups, Secondary Actions: Expand
+				47 text Completed and cancelled follow-ups
+			48 heading Number Activity, Value: 3
+				49 text Number Activity
+			50 text No activity observed in available history.
+			51 container Analysis and Owner review
+				52 heading Analysis and Owner review, Value: 3
+					53 text Analysis and Owner review
+				54 checkbox Sep 19, 8:59 AM EDT · initial · Completed, Value: 1
+					55 text Sep 19, 8:59 AM EDT
+					56 text  · 
+					57 text initial
+					58 text  · 
+					59 text Completed
+				60 container
+					61 text Current analysis  ·  Completed
+				62 heading Original model summary, Value: 4
+					63 text Original model summary
+				64 text Synthetic Owner intervention demonstration
+				65 container
+					66 text Customer wanted :  Moving estimate
+				67 container
+					68 text Money and dates :  No date agreed
+				69 container
+					70 text Outcome :  Follow-up pending
+				71 container
+					72 text Commitments :  Prepare estimate
+				73 container
+					74 text Discrepancies :  None
+				75 button Confirm analysis
+				76 button Re-analyze original evidence
+				77 button Re-analyze current context
+				78 container
+					79 text original evidence  requested  Sep 19, 9:15 AM EDT  ·  pending
+				80 container
+					81 heading next step, Value: 4
+						82 text next step
+					83 text Prepare the synthetic estimate Confirmed by you Original model assertion ·  vantage record AI-provided reference .  Location not checked .
+					84 button (collapsed) Assertion references, Secondary Actions: Expand
+						85 text Assertion references
+					86 heading Recorded effects, Value: 5
+						87 text Recorded effects
+					88 text create followup :  applied  ·  Sep 19, 8:59 AM EDT
+					89 button Confirm
+					90 button Correct
+					91 button Retract
+				92 container
+					93 heading Suggested next step, Value: 4
+						94 text Suggested next step
+					95 text Review synthetic estimate with the Owner Suggested next step — not a promise and not scheduled.
+					96 button Apply
+				97 container
+					98 heading Owner changes and AI assessments, Value: 4
+						99 text Owner changes and AI assessments
+					100 text No Owner instructions are recorded.
+				101 button (collapsed) Original evidence, Secondary Actions: Expand
+					102 text Original evidence
+				103 button (collapsed) Immutable review history, Secondary Actions: Expand
+					104 text Immutable review history
+			105 heading Needs review, Value: 3
+				106 text Needs review
+			107 text No review decisions recorded for this subject.
+			108 text Enter the RingCentral account ID on Reps first so Message rep can list current directory Users.
+
+The focused UI element is 6 button Close panel

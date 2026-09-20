@@ -1,0 +1,113 @@
+Browser tab: 1, Title: "Vantage Admin", URL: "http://127.0.0.1:3108/sales-intelligence?view=attention&lead=000000000000000000001006&lead_model=FormLead".
+1 AXWebArea Vantage Admin, URL: 127.0.0.1:3108/sales-intelligence?view=attention&lead=000000000000000000001006&lead_model=FormLead
+	2 container Number / Outreach detail
+		3 container
+			4 heading Number / Outreach detail, Value: 2, ID: si-detail-title
+				5 text Number / Outreach detail
+			6 button Close panel
+		7 container
+			8 heading [synthetic phone], Value: 3
+				9 text [synthetic phone]
+			10 text Unclassified Can contact As of Sep 19, 8:36 PM EDT  ·  History completeness unknown
+			11 heading Running summary, Value: 3
+				12 text Running summary
+			13 text No completed analysis available.
+			14 heading Number↔Lead attachments, Value: 3
+				15 text Number↔Lead attachments
+			16 container
+				17 heading Taylor (synthetic) · Likely, Value: 4
+					18 text Taylor (synthetic) ·  Likely
+				19 text Candidate  · Job Number CSI08-TAYLOR  · Synthetic source Booked · Cancelled
+				20 link Description: Open official Lead, Value: 127.0.0.1:3108/form-leads?record=000000000000000000001006&database_scope=production
+				21 button (collapsed) Evidence and decision history, Secondary Actions: Expand
+					22 text Evidence and decision history
+				23 button Confirm attachment
+				24 button Reject attachment
+				25 button (disabled) Detach Lead
+			26 button (collapsed) Find another Lead to attach, Secondary Actions: Expand
+				27 text Find another Lead to attach
+			28 heading Contact restrictions, Value: 3
+				29 text Contact restrictions
+			30 container
+				31 text call  ·  resolved  ·  No end date recorded
+			32 heading Outreach · Closed, Value: 3
+				33 text Outreach  ·  Closed
+			34 text No one owns this
+			35 container
+				36 text Taylor (synthetic)  · Job Number  CSI08-TAYLOR  ·  Synthetic source
+			37 link Description: Open official Lead, Value: 127.0.0.1:3108/form-leads?record=000000000000000000001006&database_scope=production
+			38 link Description: Open official Booking · Exact, Value: 127.0.0.1:3108/bookings?record=000000000000000000002006&database_scope=production
+			39 link Description: Open official Cancellation · Exact, Value: 127.0.0.1:3108/cancellations?record=000000000000000000003006&database_scope=production
+			40 container
+				41 text Last activity :  Inbound  ·  Voicemail  ·  Voicemail—speaker unknown  ·  Sep 19, 6:36 AM EDT
+			42 container
+				43 text Last meaningful contact :  Not observed
+			44 container
+				45 text Calling blocked:  Closed
+			46 button (disabled) Mark as worked
+			47 button (disabled) Assign responsible rep
+			48 button (disabled) Wait for customer
+			49 button Add note
+			50 button (disabled) Close
+			51 button (disabled) Reopen
+			52 button (disabled) Add next step
+			53 button (disabled) Message rep
+			54 heading Follow-ups, Value: 3
+				55 text Follow-ups
+			56 text No active follow-ups recorded.
+			57 button (collapsed) Completed and cancelled follow-ups, Secondary Actions: Expand
+				58 text Completed and cancelled follow-ups
+			59 heading Number Activity, Value: 3
+				60 text Number Activity
+			61 content list
+				62 container
+					63 text Review  ·  Sep 19, 6:40 AM EDT review resolved Decision reason:  Synthetic review complete after dedicated restriction resolution. Recorded by  6aae2fb470ef7c75c4c0852c
+					64 button (collapsed) Earlier values, Secondary Actions: Expand
+						65 text Earlier values
+				66 container
+					67 text Contact restriction  ·  Sep 19, 6:39 AM EDT restriction resolved Decision reason:  Synthetic Owner explicitly lifted the temporary call restriction. Recorded by  6aae2fb470ef7c75c4c0852c
+					68 button (collapsed) Earlier values, Secondary Actions: Expand
+						69 text Earlier values
+				70 container
+					71 text interaction  ·  Sep 19, 6:36 AM EDT Inbound call, Voicemail, 0 recordings Contact:  Voicemail—speaker unknown Observed  Sep 19, 6:37 AM EDT
+				72 container
+					73 text interaction  ·  Sep 19, 6:35 AM EDT Inbound call, Call connected, 0 recordings Contact:  Connected status does not establish human contact Observed  Sep 19, 6:37 AM EDT
+				74 container
+					75 text followup  ·  Sep 19, 6:34 AM EDT outreach closed Closure:  cancelled Outreach owned by :  Unassigned Recorded by  sales-intelligence-worker
+					76 button (collapsed) Earlier values, Secondary Actions: Expand
+						77 text Earlier values
+				78 container
+					79 text followup  ·  Sep 19, 6:34 AM EDT outreach created Outreach owned by :  Unassigned Recorded by  sales-intelligence-worker
+					80 button (collapsed) Earlier values, Secondary Actions: Expand
+						81 text Earlier values
+			82 container Analysis and Owner review
+				83 heading Analysis and Owner review, Value: 3
+					84 text Analysis and Owner review
+				85 text No analysis runs are available.
+			86 heading Needs review, Value: 3
+				87 text Needs review
+			88 container
+				89 heading Contact restriction · dismissed, Value: 4
+					90 text Contact restriction  ·  dismissed
+				91 text Opened  Sep 19, 6:35 AM EDT Synthetic review complete after dedicated restriction resolution. Resolve identity through attachments and contact restrictions through their dedicated controls. Dismissing a decision cannot lift those blockers.
+				92 button (disabled) Resolve with no further action
+			93 link Description: Open official Form Lead, Value: 127.0.0.1:3108/form-leads?record=000000000000000000001006&database_scope=production
+			94 heading Number↔Lead attachments, Value: 3
+				95 text Number↔Lead attachments
+			96 container
+				97 heading Taylor (synthetic) · Likely, Value: 4
+					98 text Taylor (synthetic) ·  Likely
+				99 text Candidate  · Job Number CSI08-TAYLOR  · Synthetic source Booked · Cancelled
+				100 link Description: Open official Lead, Value: 127.0.0.1:3108/form-leads?record=000000000000000000001006&database_scope=production
+				101 button Open connected Number Activity
+				102 button (collapsed) Evidence and decision history, Secondary Actions: Expand
+					103 text Evidence and decision history
+				104 button Confirm attachment
+				105 button Reject attachment
+				106 button (disabled) Detach Lead
+			107 heading Needs review, Value: 3
+				108 text Needs review
+			109 text No review decisions recorded for this subject.
+			110 text Enter the RingCentral account ID on Reps first so Message rep can list current directory Users.
+
+The focused UI element is 6 button Close panel

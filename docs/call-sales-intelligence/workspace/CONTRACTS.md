@@ -1,8 +1,12 @@
 # Shared contracts and integration handoffs
 
+## CSI-16 certification restamp
+
+CSI-16 certification packet (September 19 Owner session): fresh local evidence and exact non-green results are in [HANDOFF](evidence/csi-16/HANDOFF.md), [CHECKS](evidence/csi-16/CHECKS.md), [ACCEPTANCE](ACCEPTANCE.md), and [G6](evidence/csi-16/G6.md). G4 has a media Retry-After failure; G5 is partial with a generic replay-label integration failure; current production capabilities are not probed. Owner full rollout follows in AFTER-16 D+E; no cutover occurred here.
+
 ## CSI-15 local implementation contract (September 19)
 
-Team F on local `main`; uncommitted implementation, final validation tracked in [CSI-15 checks](evidence/csi-15/CHECKS.md). This section supersedes the old non-executable Coverage backfill notice. No MCP schema/tool change or production authorization.
+CSI-15 landed on local `main` at `561e048960cd914f37a337addada8b459b5296f1`; original final validation tracked in [CSI-15 checks](evidence/csi-15/CHECKS.md). This section supersedes the old non-executable Coverage backfill notice. No MCP schema/tool change or production authorization.
 
 | Consumer | Concrete interface | Contract |
 | --- | --- | --- |
@@ -18,7 +22,7 @@ Admin consumes only this Coverage addition in its schema/view and focused fixtur
 
 ## September 19 execution clarification
 
-[SPRINT-PLAN](SPRINT-PLAN.md) records current status; dated implementation sections below retain their original evidence scope. CSI-13 now consumes application jobs. CSI-18 server depends on CSI-06/13/17; its UI additionally depends on CSI-08. The received design export is presentation input, not a DTO freeze. Team E must reconcile actual routes/schemas and publish an intake matrix before binding it; in particular CSI proxy Idempotency-Key forwarding and live BFF are still pending. No wire contract changes are made by this planning revision.
+[SPRINT-PLAN](SPRINT-PLAN.md) records current status; dated implementation sections below retain their original evidence scope. CSI-13 now consumes application jobs. CSI-18 server depends on CSI-06/13/17; its UI additionally depends on CSI-08. The received design export is presentation input, not a DTO freeze. Team E must reconcile actual routes/schemas and publish an intake matrix before binding it; CSI proxy Idempotency-Key forwarding and live BFF are now implemented and freshly exercised in CSI-16; the following historical sections retain their original dates. No wire contract changes are made by this planning revision.
 
 ## CSI-13 runtime/application contract (September 19)
 
@@ -189,11 +193,11 @@ Changing a field/enum/route requires updating its canonical source document, typ
 | Gate | Evidence | Current status |
 | --- | --- | --- |
 | G1 Contracts frozen | Independent GPT-6 review approved; substantive findings resolved; concrete types/migrations/DTO fixtures published for B–E | Complete for foundation. [Independent review](evidence/csi-01/STEP2-INDEPENDENT-REVIEW.md). Downstream consumer integration acceptance remains part of feature delivery. |
-| G2 Operational loop | Capture → attribution → clocks/actions → Owner UI without AI | Not started |
-| G3 Intelligence loop | Transcript → scoped MCP reads → submit → auto-apply → intervention | Not started |
-| G4 Resilience | Dedupe/races/history/budget/permission/retry/retention proofs | Not started |
-| G5 Owner walkthrough | Acceptance scenarios with real UI and test backend | Not started |
-| G6 Production capability/rollout | Fresh grants/subscription/credentials/model checks and separate deployment evidence | Not started |
+| G2 Operational loop | Capture → attribution → clocks/actions → Owner UI without AI | Local components/HTTP and bounded browser proof executed; full scenario limits in CSI-16 ACCEPTANCE. Not deployed proof. |
+| G3 Intelligence loop | Transcript → scoped MCP reads → submit → auto-apply → intervention | Fresh runtime 23/23, Owner 6/6 and sibling contract 3/3; real SDK/local MCP with fake model. Paid model/STT unprobed. |
+| G4 Resilience | Dedupe/races/history/budget/permission/retry/retention proofs | FAIL overall: CSI-15 and acceptance replicas pass except media Retry-After leaf + parent (18 pass/2 fail). CSI-16 F-01 assigned B/A; fixtures unchanged. |
+| G5 Owner walkthrough | Acceptance scenarios with real UI and test backend | PARTIAL: isolated current API/Admin browser artifacts and 14-row execution matrix; not-run/capability-blocked portions explicit. Generic replay label F-02 fails integration. |
+| G6 Production capability/rollout | Fresh grants/subscription/credentials/model checks and separate deployment evidence | RECORDED, NOT PROBED: eight current capability rows in CSI-16/G6.md. Full cutover AFTER-16 D+E remains separate. |
 
 ## September 17 codebase alignment
 

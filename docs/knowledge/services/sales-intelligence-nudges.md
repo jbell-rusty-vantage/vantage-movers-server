@@ -31,3 +31,8 @@ Only the fresh invocation may submit; replay returns the same operation and curr
 Audit records authorization, submission boundary and terminal disposition with nudge invalidations. Accepted sends append `nudge_sent` on the Outreach subject. Operational events contain IDs and closed error codes, no body, destination, raw response or credentials. A customer-destination rejection emits `sales_intelligence.nudge.destination_rejected` on the Outreach record, not a synthetic Owner Rep Nudge id. History GET and Outreach detail are read-only, cursor-paginated, and retain `as_of`/coverage.
 
 Configuration and exact consumer imports: [CSI-14 contract](../../call-sales-intelligence/workspace/evidence/csi-14/API-CONTRACT.md). Verification: [checks](../../call-sales-intelligence/workspace/evidence/csi-14/CHECKS.md). A live-send proof is separately gated and was not executed by this task.
+
+
+## CSI-16 evidence restamp
+
+Current local certification is recorded in [CSI-16 checks](../../call-sales-intelligence/workspace/evidence/csi-16/CHECKS.md) and the [execution matrix](../../call-sales-intelligence/workspace/ACCEPTANCE.md). CSI-15 backfill/retention/budget recovery is landed on main. Fresh synthetic and isolated browser evidence does not certify production grants or deployed revisions. G4 retains the media Retry-After clock failure; G5 remains partial and the generic conversation replay label fails integration. Exact owners are in [GAPS](../../call-sales-intelligence/workspace/evidence/csi-16/GAPS.md). [G6](../../call-sales-intelligence/workspace/evidence/csi-16/G6.md) is not probed. Owner full rollout follows separately in AFTER-16 D+E; no capability was enabled by this restamp.

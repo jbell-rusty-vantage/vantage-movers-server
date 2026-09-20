@@ -1,0 +1,51 @@
+{
+  "at": "2026-09-20T00:27:30.481Z",
+  "environment": "loopback csi01; guarded CSI07 preview databases",
+  "clocks": {
+    "saturday": "2026-09-19T23:50:00.000Z",
+    "first_action": "2026-09-21T12:20:00.000Z",
+    "missed_callback": "2026-09-21T12:05:00.000Z"
+  },
+  "coverage": {
+    "backfill": {
+      "available": false,
+      "owner_triggered": true,
+      "days": 0,
+      "planned": null,
+      "partial": null,
+      "complete": null,
+      "failed": null,
+      "known_complete_through": null,
+      "gaps": [],
+      "note": "Historical backfill is Owner-triggered and range-limited. It is lower priority than current work. Default BACKFILL_DAYS=0 plans nothing."
+    }
+  },
+  "scopes": [
+    {
+      "scope": "historical",
+      "status": 403
+    },
+    {
+      "scope": "combined",
+      "status": 403
+    }
+  ],
+  "synthetic_lead_entry_status": 200,
+  "named_subject_reads": [
+    {
+      "lead_id": "6a761d3d7ceae445794c57bd",
+      "preview_status": 404,
+      "result": "not seeded in isolated preview"
+    },
+    {
+      "lead_id": "6aaaf552ca2df3ab6f396b5d",
+      "preview_status": 404,
+      "result": "not seeded in isolated preview"
+    }
+  ],
+  "limitations": [
+    "No production capability probe",
+    "No audio or model invocation",
+    "Clocks use accepted defaults; preview retains Owner-edited first-action setting"
+  ]
+}

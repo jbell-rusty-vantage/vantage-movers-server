@@ -1,0 +1,408 @@
+# Fresh CSI-16 command output excerpts
+
+
+## .git\csi16-backfill.log
+SHA256 c0da37b398fc72411386a146e535558df876bbbfde2366452da7a114dc7a05bd
+✔ CSI-15 backfill synthetic replica (15617.4272ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 77108.7272
+
+## .git\csi16-15-retention.log
+SHA256 043c2eadc483dd390b020fb1acd48bafd956c50f084bf545d71016d2cd256abe
+✔ CSI-15 retention: fenced atomic purge, independent clocks, immutable copies and tombstones (9021.541ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 25991.012
+
+## .git\csi16-15-budget.log
+SHA256 abed7345c322ae027942c0e1c81d6404399b5ea231b17fcfc92bacf788e3db22
+✔ CSI-15 budget, provider recovery, and historical priority (41826.5702ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 51298.0936
+
+## .git\csi16-15-period.log
+SHA256 601cccc975bfcf53c4a35fc40850a2d9bc891cedf8a5e019b7f74563e33ceda2
+✔ CSI-15 runtime budget period activation (3121.9064ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5035.4997
+
+## .git\csi16-outreach.log
+SHA256 8291010b8b6128396d39c19ec465c5d6089192934ddb62e9cf9851879094b01d
+✔ CSI-06 disposable replica (24574.781ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 31320.1708
+
+## .git\csi16-runtime.log
+SHA256 b11001d401085362288dc78294d9384a99937474902f335591e1d45bbf3e69e1
+✔ CSI-13 actual ToolLoopAgent + local MCP HTTP + real handlers + disposable replica (120392.3541ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 126985.1877
+
+## .git\csi16-owner.log
+SHA256 10510fc6c8f5a31e7e03c265dcece9fcd3a9408c625dc3e3f4c5ea7324f69e1c
+✔ CSI-18 Owner interventions on isolated replica (6714.0757ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11796.7683
+
+## .git\csi16-capture.log
+SHA256 b3871cf902f9c89670b5e9135777de1b30e38b91f9c8f81e9298f81566ea7502
+✔ CSI-02 isolated replica proof (6811.5317ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12106.5177
+
+## .git\csi16-attachment.log
+SHA256 c09c793b92c60c9ac8f552bb50ba09efd4c98f3be32add3fecbc03eb7608056e
+✔ CSI-05 disposable replica: attachment only (11888.401ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17768.4811
+
+## .git\csi16-nudges.log
+SHA256 d9f6f81660acb50e7ec42659b0135df667262e5db85f7c577b1adf4954f30912
+✔ CSI-14 disposable replica; no providers (14125.1551ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 19347.1342
+
+## .git\csi16-media.log
+SHA256 84a7a34370db51bb8b71fbfd39e01074325e962d00bd29db97a712fc134d5eec
+CSI-11 isolated replica proof: testvantagemovers_csi11c596180ab70c; loopback replica csi01 on port 27189
+{"level":"info","time":"2026-09-20T00:25:53.263Z","service":"vantage-main-server","env":"development","msg":"mongo.dns.servers_configured","servers":["8.8.8.8","1.1.1.1"]}
+▶ CSI-11 disposable replica proofs (all provider bytes synthetic)
+  ✔ seeded private audio is available but does not prove recording_content capability (90.4961ms)
+  ✔ discovery dispatch, completed-job replay, account uniqueness and durable-before-wake (777.8214ms)
+  ✔ pending job remains pending without a fabricated conversation, then Call Log supplies id (459.3258ms)
+  ✔ merge tombstone resolves current canonical interaction (383.0469ms)
+  ✔ missing CSI-05/10 stays undetermined and never calls a provider (405.0378ms)
+{"level":"warn","time":"2026-09-20T00:25:59.658Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"info","time":"2026-09-20T00:25:59.806Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.media_stored","observability_level":"info","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ 404 pending then success; media digest retained on replay and no overwrite (515.2341ms)
+{"level":"warn","time":"2026-09-20T00:26:00.138Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ 404 availability window exhaustion is explicit no_recording (240.1185ms)
+{"level":"warn","time":"2026-09-20T00:26:00.366Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"info","time":"2026-09-20T00:26:00.718Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.media_stored","observability_level":"info","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ 403 denied and 24h retry; Coverage transitions and every read is read-only (588.9255ms)
+{"level":"warn","time":"2026-09-20T00:26:00.909Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+  ✖ 429 honors Retry-After or default without burning failure attempts (182.2484ms)
+{"level":"warn","time":"2026-09-20T00:26:01.132Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"warn","time":"2026-09-20T00:26:01.239Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"warn","time":"2026-09-20T00:26:01.320Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"warn","time":"2026-09-20T00:26:01.421Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"warn","time":"2026-09-20T00:26:01.504Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"warn","time":"2026-09-20T00:26:01.589Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"warn","time":"2026-09-20T00:26:01.671Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+{"level":"warn","time":"2026-09-20T00:26:01.755Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.failed","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ eight transient errors dead-letter and atomically project failure (865.5903ms)
+{"level":"warn","time":"2026-09-20T00:26:01.923Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.failed","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ expired eighth claim recovers failure projection once without a ninth provider call (165.4945ms)
+{"level":"info","time":"2026-09-20T00:26:02.154Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.media_stored","observability_level":"info","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ media completion rechecks concurrent Owner exclusion and suppresses downstream hook (219.677ms)
+{"level":"info","time":"2026-09-20T00:26:02.672Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.media_stored","observability_level":"info","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ restored eligibility reschedules a skipped media job once across concurrent discovery revisions (589.1895ms)
+  ✔ concurrent discovery claims preserve one account recording (147.6952ms)
+{"level":"warn","time":"2026-09-20T00:26:03.058Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.unavailable","observability_level":"warn","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ oversize provider media is terminal unavailable and never uploads (161.431ms)
+  ✔ discovery transaction rolls back conversation refresh and pointer on conflicting media intent (166.9946ms)
+{"level":"info","time":"2026-09-20T00:26:03.464Z","service":"vantage-main-server","env":"development","msg":"sales_intelligence.conversation.media_stored","observability_level":"info","category":"ringcentral","workflow":"sales_intelligence"}
+  ✔ concurrent workers elect one; expired epoch cannot commit media (246.9988ms)
+  ✔ fenced failure callback rolls back effects when lease expires (322.7246ms)
+  ✔ database eligibility reads validate Lead refs, ambiguity, Owner review and effective reviewed rep (352.0974ms)
+✖ CSI-11 disposable replica proofs (all provider bytes synthetic) (11023.6186ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 18
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16667.3395
+
+✖ failing tests:
+
+test at scripts\test-csi-media.replica.test.ts:2:13796
+✖ 429 honors Retry-After or default without burning failure attempts (182.2484ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 1789864002891
+  - 1789864002851
+               ^
+  
+      at TestContext.<anonymous> (C:\Users\Pinda\Proyectos\vantage\vantage-main-server\scripts\test-csi-media.replica.test.ts:164:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async TestContext.<anonymous> (C:\Users\Pinda\Proyectos\vantage\vantage-main-server\scripts\test-csi-media.replica.test.ts:159:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1789864002891,
+    expected: 1789864002851,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+
+## .git\csi16-focused.log
+SHA256 614609c1dfbc34ceaea882fbfd93f9839fd49f03a620756332059316e8049000
+✔ CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempotency, error mapping; reads never call a writer (1074.6765ms)
+✔ admin router is mounted in v1.routes.ts after the CSI boundary router (2.7345ms)
+✔ CSI-09 coverage and settings: production scope, CAS, no flag patch, GET never writes (206.0011ms)
+✔ real v1 guard + CSI boundary keeps Owner and scoped service authority separate (857.7479ms)
+✔ CSI cron routes: cron auth, flag-off and lease_held skips, never a provider body (446.0172ms)
+✔ CSI cron routes: a throwing service maps to a bounded 500 without provider content (64.7643ms)
+✔ vercel.json registers the CSI-03 crons and the queue consumer trigger (a handler file alone is not registration) (2.3331ms)
+✔ app.ts mounts the CSI cron router before the v1 guard like the other cron routers (1.8773ms)
+✔ phone classification: external, company DID, extension, withheld, service code, malformed (3.3487ms)
+✔ provider account resolution never fabricates or silently picks between accounts (1.9233ms)
+✔ window start honors the twelve-hour floor and the cursor overlap (0.6392ms)
+✔ coverage: complete rolling window advances cursor and watermark, closes covered gaps (0.7218ms)
+✔ coverage: partial page failure never advances complete-through and records the missing range (2.9335ms)
+✔ coverage: gap repair removes a repaired gap, narrows a partially repaired one, and never drops gaps past the bound (1.2496ms)
+✔ import boundary: numberActivity never imports qualification, ingest, convergence or Lead write services (35.8437ms)
+✔ normalizeDirectory reduces provider records to the snapshot shape deterministically; digest is order-independent (57.7233ms)
+✔ fetcher issues the documented account, extension, phone-number and call-queue reads over the shared client (17.1656ms)
+✔ capture-projection dedupe key is the provider uuid, falling back to the receipt id only when the uuid is absent (3.9106ms)
+✔ queue topic is env-scoped and never published from a test runner (3.1661ms)
+✔ fan-out: flag off means no job and no publish; a non-durable receipt is skipped honestly (2.1105ms)
+✔ fan-out: the acknowledgement waits a bounded time for the job transaction; a slow transaction is reported, not awaited forever (112.7524ms)
+✔ fan-out: job is durable before publish; publish failure keeps the enqueued job; enqueue failure is bounded (6.1973ms)
+✔ publish wake-up: gated, best-effort, never throws (3.1018ms)
+✔ wake-up payload is exactly { job_id } with a 24-hex id (12.8688ms)
+✔ worker: unclaimable job (completed, leased elsewhere, foreign stage) does nothing (1.4868ms)
+✔ worker: loads the stored receipt, passes the job id as request_id, completes with a bounded per-session result (23.4815ms)
+✔ worker: deterministic per-session failures (account_unresolved) complete the job with the error visible; retryable ones retry with partial result (5.4007ms)
+✔ worker: missing receipt is schema_invalid (bounded retries), lease loss during completion is reported not retried (1.7003ms)
+✔ terminal party statuses stay in parity with the qualification evaluator (4.8262ms)
+✔ inbound queue call projects all directions of evidence: parties, connection, terminal, external number (65.9729ms)
+✔ duplicate webhook delivery is a semantic no-op: no revision, fenced per party (4.2537ms)
+✔ one party's sequence never suppresses another party in the same delivery (4.2937ms)
+✔ out-of-order and late events never regress terminal or connected facts (25.3011ms)
+✔ Call Log is authoritative: result/duration survive a late webhook terminal event (7.2633ms)
+✔ identical Call Log replay and older lastModifiedTime never create a new revision or regress facts (3.8395ms)
+✔ transfer with multiple recordings keeps every leg and recording, counted once as one interaction (3.2ms)
+✔ delayed recording evidence after terminal is surfaced as new recording ids (3.403ms)
+✔ voicemail is provider evidence; connected is not human; outbound unanswered stays unknown (4.0009ms)
+✔ internal, withheld and malformed observations keep provider evidence without a customer identity (2.5665ms)
+✔ review fix: an unknown short caller id is malformed, never a fabricated extension that makes a customer call Internal (1.1005ms)
+✔ review fix: a party event missing `direction` does not turn an outbound customer call into a sticky Internal (6.7656ms)
+✔ review fix: a stale Call Log record never regresses leg-level result or duration (2.2587ms)
+✔ review fix: legs_overflow_count is monotone across records and not double counted on merge (17.2565ms)
+✔ session-id only Call Log record resolves to fallback identity and gains the strongest basis when bridged (1.6711ms)
+✔ Call Log first, webhook later: the extension party is adopted, not duplicated (1.8247ms)
+✔ mergeProjections requires same account and folds evidence without dropping recordings (1.824ms)
+✔ no directory snapshot keeps roles unknown instead of guessing (0.7589ms)
+✔ parseSearchTerm: e164, suffix, term and formatting (4.8446ms)
+✔ term regex characters are escaped and anchored as a prefix (6.4543ms)
+✔ number cursor round trip; garbage is INVALID_INPUT (50.4883ms)
+✔ buildNumberSearchFilter: hygiene, attachment, range, term and keyset cursor (5.1007ms)
+✔ timeline total order: happened_at desc, kind asc, id desc; isAfterCursor is strict (2.1371ms)
+✔ keysetAfterCursor mirrors isAfterCursor for a fixed kind (0.6023ms)
+✔ mergeTimeline: k-way merge, dedupe on (kind,id), cursor only when more remain (1.6101ms)
+✔ NUMBER_DTO_FIXTURES parse against their schemas; CSI-01 detail data is a subset of the CSI-04 detail data (21.8431ms)
+✔ recount replays stored canonical interactions through the CSI-02 counting rules and derives search terms from evidence only (75.7732ms)
+✔ recount is idempotent: recounting the rebuilt fields yields the same fields; a fresh recount equals incremental rollups (4.9012ms)
+✔ generated MCP prompt, envelope and every tool exactly match server authority (41.0316ms)
+✔ closed tool arguments reject authority, operators, arbitrary URLs and excessive pages (8.8509ms)
+✔ owner-added operational record kinds are citable through the authoritative strict envelope (2.3395ms)
+✔ number analysis cannot publish from record-only captured evidence (6.712ms)
+✔ validates every captured page in a transcript cursor chain (5.5746ms)
+✔ RingCentral search derives account/phone, bounds pages and excludes unrelated/provider-private content (59.9135ms)
+✔ RingCentral reads disabled by default; invalid bounds and caller-supplied authority never reach provider (3.746ms)
+✔ call detail requires prior server admission and rechecks returned subject and id (10.2585ms)
+✔ provider errors are coverage failures with no raw body; unknown pagination never claims complete (52.9788ms)
+✔ Job Timeline requires authorized resolved Lead and matching server-derived source (0.8383ms)
+✔ operational dataset facilitator is closed, paginated, revision-bound, and treats query as literal data (30.0519ms)
+✔ fixed provider HTTP adapter uses cached token GET only, no refresh, redirects, alternate host or unbounded body (52.9019ms)
+✔ cursor cannot change run, filter, or smuggle a Mongo operator (18.7715ms)
+✔ relevance derives only from authorized lead edges and full normalized number (5.3696ms)
+✔ projection excludes operational secrets and redacts untrusted free text (2.0375ms)
+✔ response contract retains unknown speaker and nullable timing and rejects extra authority (14.4434ms)
+✔ number transcript reads reject an explicit retained version that is no longer current (0.9561ms)
+✔ publication freshness requires the exact current eligible transcript set (0.4833ms)
+✔ missing, negative and invalid billed usage never becomes a known zero (9.8627ms)
+✔ reservation covers all bounded inputs, reasoning/output and per-step cent rounding (2.7351ms)
+✔ server money resolution accepts exact amounts and preserves ambiguity instead of guessing (0.8088ms)
+✔ CSI-13 registered stages and authenticated cron share disabled gates before I/O (360.4207ms)
+✔ phone equality is Likely; exact session authorizes only that interaction and account (5.2204ms)
+✔ overlaps are ambiguous; nonoverlapping moves and outside-overlap events stay independent (2.2592ms)
+✔ unique current Attached outranks candidates; competing Attached blocks; reject and detach persist (0.8458ms)
+✔ Form and Call windows include boundaries; later snapshots never backdate identity (3.8093ms)
+✔ actual attachment queue and five-minute cron registrations, disabled worker skips without Mongo (4.3181ms)
+✔ Owner attachment routes and cron recovery: authority, scope, flag, strict payload, CAS mapping and read-only GET (562.4933ms)
+✔ planDailyWindows returns nothing when days=0 or invalid range (4.1681ms)
+✔ planDailyWindows caps by BACKFILL_DAYS from to and splits 24h slices (2.3926ms)
+✔ budget month uses local date before UTC month rollover (65.0881ms)
+✔ budget month spans DST without assuming a fixed UTC offset (5.3904ms)
+✔ budget month rolls December into next year and rejects invalid time (5.6902ms)
+✔ eligibility: all five accepted contexts, both Lead models, exclusions and absent upstream inputs (53.6505ms)
+✔ media stream hashes actual bytes, uses immutable account key and cleans transient file (108.2842ms)
+✔ media rejects declared and streamed oversize, mismatched length/type and arbitrary audio (17.1202ms)
+✔ Retry-After seconds, HTTP date and default (0.8823ms)
+✔ text-only transcript retains unknown speakers and unavailable timing (68.2645ms)
+✔ provider timing and actual speaker survive cross-boundary payment redaction (2.0901ms)
+✔ invalid provider timing is unavailable; pricing is configured and rounded to integer cents (18.1347ms)
+✔ CSI-12 five-minute cron, authentication, flag-off and default recovery/queue wiring (170.1682ms)
+✔ CSI-11 queue stages, cron schedule, auth, flag-off and lease-held wiring (139.5592ms)
+✔ CSI-11 modules never import qualification, Lead writers, budgets, STT or LLMs (3.9484ms)
+✔ CSI route templates expand only the closed run paths and methods (5.9151ms)
+✔ Owner analysis commands bind exact output and source evidence (9.1158ms)
+✔ published DTO fixtures preserve undated and review-only rows and unknown coverage (3.5558ms)
+✔ accepted policy defaults and invalid schedules (42.0567ms)
+✔ strict commands allow undated independent actions and reject operational injection (43.8371ms)
+✔ Grok review: empty channels/evidence and duplicate assessment are rejected; no locator gate (35.0857ms)
+✔ all CSI model accessors honor isolated database routing without suffix collections (47.3761ms)
+✔ signed run token requires scoped principal, live run, dataset, nonce, expiry, subject and tool (8.3728ms)
+✔ real HTTP CSI live auth, current scope, clock invalidations and cleanup (279.655ms)
+✔ single-attempt adapter never retries a non-idempotent submission, including 401/429/timeout (10.6939ms)
+✔ Direct chat must have exactly the two reviewed people; supports provider member objects (26.7176ms)
+✔ SMS and pager use JWT sender and correct endpoint contract (16.3622ms)
+✔ repair receipt requires exact ID, sender and Direct membership, not matching text/time (4.5567ms)
+✔ repair receipt rejects a Direct chat response for a different chat ID (1.0985ms)
+✔ body/customer destination policy handles canonical, formatted and full-width representations (4.8604ms)
+✔ versioned templates limit customer identity; purpose/version/client chat are strict (7.2699ms)
+✔ edited review-context bodies fail closed on contact instructions and keep restriction discussion (9.2382ms)
+✔ customer-destination rejection is an OutreachRecord event, not a fake nudge id (0.7009ms)
+✔ optional channels default off (1.2284ms)
+✔ documented nudge controls take precedence; aliases cannot widen an explicit channel allowlist (2.3708ms)
+✔ nudge routes enforce signed Owner, feature, strict input, idempotency; GET never dispatches (425.3125ms)
+✔ repair cron is authenticated, disabled without DB, registered every five minutes (53.7464ms)
+✔ 30/15/1440 clocks, Friday close, Sunday, DST and independent weekly calendar (44.6831ms)
+✔ day-only waits end at close; Attention next opening; explicit Sunday honoured; ambiguity undated (21.5126ms)
+✔ all three actions including undated; snooze preserves contractual overdue and other reasons (37.2751ms)
+✔ inbound human versus missed/provider connected; attempts fulfill callback only and retain outcome (21.9428ms)
+✔ wait coexistence, official closure precedence, planning denies stale and Owner effects (5.9501ms)
+✔ worker, cron and recovery registrations exist without enabling production flags (1.7614ms)
+✔ budget unknown is distinct from a known zero remaining (8.5543ms)
+✔ empty stage counts keep oldest queued null instead of a false zero age (6.8165ms)
+✔ directory User DTO carries snapshot destination facts without inventing a person id (7.6643ms)
+✔ exact names remain proposed; alias ties, duplicate names, missing names and non-Users remain explicit (11.9303ms)
+✔ account scope, half-open reassignment, retirement and review authority (3.1982ms)
+✔ period validation compares instants and rejects unknown input keys (6.0141ms)
+✔ registered identity worker is a flag-off no-op (1.8285ms)
+✔ all five Rep routes enforce Owner, strict contracts, scope, flags and idempotency header (412.6408ms)
+✔ minute recovery invokes registered bounded rep stage, honors flag and cron authentication (49.3299ms)
+✔ kill switches are env display only and models never serialize secrets (3.5268ms)
+✔ settings command requires update_settings and a full policy; extra flag fields are rejected (49.8544ms)
+✔ policy versions stamped for Owner edits are unique (1.1918ms)
+ℹ tests 140
+ℹ suites 0
+ℹ pass 140
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 40859.2256
+
+## .git\csi16-http-current.log
+SHA256 da2dea2b0fcfbccab032e0eafbb1d58db0c4eb0fc867b59eeaf98d06d89f5f14
+PASS real BFF/API: immutable Attention pagination, number suffix search, attachment availability, targeted review, durable replay/payload conflict, revision conflict, Admin and historical-scope denial.
+
+## .git\csi16-live.log
+SHA256 1c1b96423fe10299dfb25826d470cd611f15571fcf156980fa967d366eec5c77
+PASS real local HTTP: Owner reads + metadata, Admin/anonymous denial, conflicting scope denial, signed identity isolation, idempotency replay/conflict, streaming reconnect + clock frames.
+
+## .git\csi16-clock.log
+SHA256 b636d1ea50a289dec9c900eaffe69f10226607d9d025b01bcaf305102c357c57
+PASS: idle clock scans preserve revisions; actual wait expiry updates action and aggregate once.
+
+## .git\csi16-local.log
+SHA256 beedc7e2f2b7e7310b605ac3bdcf7e479ee5badc22550940dc456bd987476efb
+PASS CSI-16 accepted Saturday clocks, current Coverage contract, scope denial, synthetic Lead entry and named-subject preview absence.
+
+## .git\csi16-typecheck.log
+SHA256 a33d28ad097eb31c4423a969246a0240de904fe51520f328e207be0c669ba3a3
+scripts/probe-intelligence-mcp-agent.ts(231,18): error TS18046: 'context.content' is of type 'unknown'.
+scripts/probe-intelligence-mcp-agent.ts(231,50): error TS18046: 'context.content' is of type 'unknown'.
+scripts/probe-intelligence-mcp-agent.ts(231,71): error TS18046: 'context.content' is of type 'unknown'.
+
+## .git\csi16-typecheck-scoped.log
+SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+
+## ..\vantage-admin\.git\csi16-typecheck.log
+SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+
+## ..\vantage-admin\.git\csi16-tests.log
+SHA256 9b980298aedac6027bd9c26ed59e04cbd416fcc80a1faac3d0fccd4b04b72df6
+✔ destination channels come from stored User evidence and never invent Team Messaging (3.8213ms)
+✔ nudge preview and send use the directory User contract and a stable idempotency key (43.0381ms)
+✔ Owner review records pager always and SMS-to-rep only for exactly one stored DID (0.3769ms)
+✔ Lead detail enters Sales Intelligence with the official Lead identity (0.5019ms)
+✔ official destinations pin the host database_scope, not the API scope parameter (0.7403ms)
+✔ Eastern date entry honors seasonal offsets and rejects ambiguous/nonexistent local times (1.9381ms)
+✔ action edit fences the aggregate and preserves null date and independent ownership (0.6463ms)
+✔ explicit conflict acknowledgement changes fences without overwriting untouched server fields (0.3738ms)
+✔ create independent undated follow-up and optional completion next step (0.4094ms)
+✔ settings GET schema does not invent a capture coverage watermark (4.8988ms)
+✔ settings PATCH uses Idempotency-Key and current-scope BFF (2.9237ms)
+✔ uncertain response retries the exact payload and key through current-scope BFF (1.3993ms)
+✔ owner labels use design sentences for server attention codes (2.6095ms)
+✔ supplied ages format wall and staffed durations without inventing clocks (0.8718ms)
+✔ backfill Coverage preserves unknown counts and stored gap evidence (4.6188ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2349.3103

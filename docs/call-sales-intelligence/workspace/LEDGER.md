@@ -1,5 +1,12 @@
 # Implementation ledger
 
+## CSI-16 ownership — Codex, September 19, 2026
+
+Team F certification claimed before edits. Verified local main baselines: server `561e048960cd914f37a337addada8b459b5296f1`, Admin `fb631eb1f820ce6a5c641c677029371a73dc53ab`, MCP `9a8fd37bf78f8074011fb2d47ff3da3ec400b33d`; all remotes remain `jbell-rusty-vantage`. Preserve server package.json/external probe and MCP formatting dirt. Scope: CSI-16 evidence packet, ACCEPTANCE execution record, CONTRACTS/README/SPRINT-PLAN/Team F, docs catalog/matching Service cards, Admin CONTEXT/project-organization pointers; certification harness only if required. One authorized GPT-6 Astra subagent reviews evidence independently. No production enablement or AFTER-16 work. Specific CSI-16 prohibitions remain in force; no paid calls merely to green a row. Owner's opening instruction authorizes commit/push for this task without another permission request; only CSI-16 files may land.
+
+September 20 close: this commit lands the CSI-16 packet and `scripts/test-csi16-local.ts`. Still excluded: server `package.json` (`probe:intelligence-mcp`) and untracked `scripts/probe-intelligence-mcp-agent.ts`. Admin pointers already on Admin `main` as `d80528a`. MCP formatting dirt is a separate format-only commit, not CSI-16 implementation. No production flags, indexes, or AFTER-16 D+E.
+
+
 ## CSI-15 ownership — Grok, September 19, 2026
 
 Verified remotes `jbell-rusty-vantage` (`vantage-movers-server`, `vantage-admin`, `vantage-movers-mcp`). Server local `main` HEAD `d55f6c2b1eb2bed276d0b5bc8c6d2a5bc065fd7c` (in sync with origin). Admin `main` HEAD `d82d3de45f56800378d223e7535688f4f0660366` (1 ahead of origin — CSI-09, not reset). MCP clean `9a8fd37bf78f8074011fb2d47ff3da3ec400b33d`, untouched. Work stays on local `main`; no branch switch. One implementation writer. Pre-existing dirty Owner docs preserved.

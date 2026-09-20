@@ -1,0 +1,4 @@
+Browser tab: 1, Title: "Vantage Admin", URL: "http://127.0.0.1:3108/sales-intelligence?view=numbers&number=6aae873111740a59794f4ad1&analysis_run=6aae873211740a59794f4ad3".
+The following is a diff from the previous accessibility tree with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+~			10 text Customer Can contact As of Sep 19, 8:41 PM EDT  ·  History completeness unknown
+The focused UI element is 75 button Confirm analysis

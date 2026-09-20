@@ -1,0 +1,103 @@
+Browser tab: 1, Title: "Vantage Admin", URL: "http://127.0.0.1:3108/sales-intelligence?view=numbers&number=000000000000000000000712".
+1 AXWebArea Vantage Admin, URL: 127.0.0.1:3108/sales-intelligence?view=numbers&number=000000000000000000000712
+	2 container Number / Outreach detail
+		3 container
+			4 heading Number / Outreach detail, Value: 2, ID: si-detail-title
+				5 text Number / Outreach detail
+			6 button Close panel
+		7 container
+			8 heading [synthetic phone], Value: 3
+				9 text [synthetic phone]
+			10 text Customer Can contact As of Sep 19, 8:32 PM EDT  ·  History completeness unknown
+			11 heading Running summary, Value: 3
+				12 text Running summary
+			13 text No completed analysis available.
+			14 heading Number↔Lead attachments, Value: 3
+				15 text Number↔Lead attachments
+			16 text No attachments recorded. Searching does not attach a Lead.
+			17 button (collapsed) Find another Lead to attach, Secondary Actions: Expand
+				18 text Find another Lead to attach
+			19 heading Contact restrictions, Value: 3
+				20 text Contact restrictions
+			21 text No temporary contact restrictions recorded.
+			22 heading Outreach · Closed, Value: 3
+				23 text Outreach  ·  Closed
+			24 text Outreach owned by Alex (synthetic)
+			25 container
+				26 text Last meaningful contact :  Not observed
+			27 container
+				28 text Calling blocked:  Closed
+			29 button (disabled) Mark as worked
+			30 button (disabled) Assign responsible rep
+			31 button (disabled) Wait for customer
+			32 button Add note
+			33 button (disabled) Close
+			34 button Reopen
+			35 button (disabled) Add next step
+			36 button (disabled) Message rep
+			37 heading Follow-ups, Value: 3
+				38 text Follow-ups
+			39 text No active follow-ups recorded.
+			40 button (collapsed) Completed and cancelled follow-ups, Secondary Actions: Expand
+				41 text Completed and cancelled follow-ups
+			42 heading Number Activity, Value: 3
+				43 text Number Activity
+			44 content list
+				45 container
+					46 text followup  ·  Sep 19, 8:29 PM EDT outreach closed CSI-16 synthetic explicit Owner closure Closure:  Dismissed Outreach owned by :  Alex (synthetic) Recorded by  6aae2fb470ef7c75c4c0852c
+					47 button (collapsed) Earlier values, Secondary Actions: Expand
+						48 text Earlier values
+				49 container
+					50 text followup  ·  Sep 19, 8:29 PM EDT closure cancelled action Cancellation reason:  owner_dismissed CSI-16 synthetic customer wait; other rep work remains Due  Sep 25, 8:00 PM EDT Action assigned to :  Alex (synthetic) Recorded by  6aae2fb470ef7c75c4c0852c
+					51 button (collapsed) Earlier values, Secondary Actions: Expand
+						52 text Earlier values
+				53 container
+					54 text followup  ·  Sep 19, 8:29 PM EDT closure cancelled action Cancellation reason:  owner_dismissed CSI-16 synthetic availability check without a date Due  Undated Action assigned to :  Unassigned Recorded by  6aae2fb470ef7c75c4c0852c
+					55 button (collapsed) Earlier values, Secondary Actions: Expand
+						56 text Earlier values
+				57 container
+					58 text followup  ·  Sep 19, 8:29 PM EDT closure cancelled action Cancellation reason:  owner_dismissed Prepare moving estimate (synthetic) Due  Undated Action assigned to :  Unassigned Recorded by  6aae2fb470ef7c75c4c0852c
+					59 button (collapsed) Earlier values, Secondary Actions: Expand
+						60 text Earlier values
+				61 container
+					62 text followup  ·  Sep 19, 8:29 PM EDT set waiting Reason:  CSI-16 synthetic customer wait; other rep work remains Outreach owned by :  Alex (synthetic) Recorded by  6aae2fb470ef7c75c4c0852c
+					63 button (collapsed) Earlier values, Secondary Actions: Expand
+						64 text Earlier values
+				65 container
+					66 text followup  ·  Sep 19, 8:29 PM EDT owner followup created CSI-16 synthetic customer wait; other rep work remains Due  Sep 25, 8:00 PM EDT Action assigned to :  Alex (synthetic) Recorded by  6aae2fb470ef7c75c4c0852c
+					67 button (collapsed) Earlier values, Secondary Actions: Expand
+						68 text Earlier values
+				69 container
+					70 text followup  ·  Sep 19, 8:28 PM EDT complete followup CSI-16 synthetic callback attempt only Outreach owned by :  Alex (synthetic) Recorded by  6aae2fb470ef7c75c4c0852c
+					71 button (collapsed) Earlier values, Secondary Actions: Expand
+						72 text Earlier values
+				73 container
+					74 text followup  ·  Sep 19, 8:28 PM EDT complete followup Return the customer’s call (synthetic) Outcome:  No answer Due  Sep 21, 10:00 AM EDT Action assigned to :  Casey (synthetic) Recorded by  6aae2fb470ef7c75c4c0852c
+					75 button (collapsed) Earlier values, Secondary Actions: Expand
+						76 text Earlier values
+				77 container
+					78 text followup  ·  Sep 19, 8:27 PM EDT create followup Outreach owned by :  Alex (synthetic) Recorded by  6aae2fb470ef7c75c4c0852c
+					79 button (collapsed) Earlier values, Secondary Actions: Expand
+						80 text Earlier values
+				81 container
+					82 text followup  ·  Sep 19, 8:27 PM EDT owner followup created CSI-16 synthetic availability check without a date Due  Undated Action assigned to :  Unassigned Recorded by  6aae2fb470ef7c75c4c0852c
+					83 button (collapsed) Earlier values, Secondary Actions: Expand
+						84 text Earlier values
+				85 container
+					86 text followup  ·  Sep 19, 8:25 PM EDT patch followup Reason:  CSI-16 synthetic Owner correction while AI is disabled Outreach owned by :  Alex (synthetic) Recorded by  6aae2fb470ef7c75c4c0852c
+					87 button (collapsed) Earlier values, Secondary Actions: Expand
+						88 text Earlier values
+				89 container
+					90 text followup  ·  Sep 19, 8:25 PM EDT patch followup Return the customer’s call (synthetic) Due  Sep 21, 10:00 AM EDT Action assigned to :  Casey (synthetic) Recorded by  6aae2fb470ef7c75c4c0852c
+					91 button (collapsed) Earlier values, Secondary Actions: Expand
+						92 text Earlier values
+			93 container Analysis and Owner review
+				94 heading Analysis and Owner review, Value: 3
+					95 text Analysis and Owner review
+				96 text No analysis runs are available.
+			97 heading Needs review, Value: 3
+				98 text Needs review
+			99 text No review decisions recorded for this subject.
+			100 text Enter the RingCentral account ID on Reps first so Message rep can list current directory Users.
+
+The focused UI element is 6 button Close panel

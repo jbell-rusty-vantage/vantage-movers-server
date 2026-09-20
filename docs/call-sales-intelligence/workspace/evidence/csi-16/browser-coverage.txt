@@ -1,0 +1,189 @@
+Browser tab: 1, Title: "Vantage Admin", URL: "http://127.0.0.1:3108/sales-intelligence?view=coverage".
+1 AXWebArea Vantage Admin, URL: 127.0.0.1:3108/sales-intelligence?view=coverage
+	2 container
+		3 button Open navigation
+		4 text Current records
+		5 button Open search
+		6 pop up button (collapsed) Description: Account menu, Secondary Actions: Expand
+	7 container dashboard-main
+		8 container
+			9 heading Sales Intelligence, Value: 1
+				10 text Sales Intelligence
+			11 search text field (settable) Search phone, name, or Job Number
+			12 text Live
+			13 tab group Sales Intelligence views
+				14 tab (selectable, settable, boolean) Needs attention, Value: 0, ID: si-view-tab-attention
+				15 tab (selectable, settable, boolean) Numbers, Value: 0, ID: si-view-tab-numbers
+				16 tab (selectable, settable, boolean) Reps, Value: 0, ID: si-view-tab-reps
+				17 tab (selected, settable, boolean) Coverage, Value: 1, ID: si-view-tab-coverage
+		18 container Description: Coverage, ID: si-view-panel-coverage
+			23 container
+				24 heading Call history, Value: 3
+					25 text Call history
+				26 text History completeness unknown  ·  As of Sep 19, 8:23 PM EDT Call log  Unknown  · Recording  Unknown  · Webhook  Unknown
+				27 heading Known gaps, Value: 4
+					28 text Known gaps
+				29 text No open gaps are recorded.
+			30 container
+				31 heading Recording, Value: 3
+					32 text Recording
+				33 text Pending discovery  0  · Media pending  0  · Stored  0  · No recording  0  · Unavailable  0  · Failed  0  · Eligibility undetermined  0 Denied access is not a zero count. Unavailable and unknown stay labeled as such.
+			34 container
+				35 heading Stage health, Value: 3
+					36 text Stage health
+				37 content list
+					38 container
+						39 text Recording  ·  0  pending ·  0  leased ·  0  retry ·  0  paused ·  0  failed  ·  No queued work in this stage
+					40 container
+						41 text Speech to text  ·  0  pending ·  0  leased ·  0  retry ·  0  paused ·  0  failed  ·  No queued work in this stage
+					42 container
+						43 text Analysis  ·  0  pending ·  0  leased ·  0  retry ·  0  paused ·  0  failed  ·  No queued work in this stage
+					44 container
+						45 text Application  ·  0  pending ·  0  leased ·  0  retry ·  0  paused ·  0  failed  ·  No queued work in this stage
+			46 container
+				47 heading AI budget, Value: 3
+					48 text AI budget
+				49 text Spend is unknown until a budget period exists.
+			50 container
+				51 heading Mapping hygiene, Value: 3
+					52 text Mapping hygiene
+				53 text Unmapped inbound numbers  63 Directory users without a reviewed link  0 Directory last synced  Sep 19, 6:00 AM EDT
+			54 container
+				55 heading Active deployment flags, Value: 3
+					56 text Active deployment flags
+				57 content list
+					58 container
+						59 text ENABLED  ·  on
+					60 container
+						61 text CAPTURE_WEBHOOK  ·  off
+					62 container
+						63 text CAPTURE_CALL_LOG  ·  off
+					64 container
+						65 text DIRECTORY_SYNC  ·  off
+					66 container
+						67 text ATTACHMENT_REFRESH  ·  on
+					68 container
+						69 text OUTREACH_ENSURE  ·  on
+					70 container
+						71 text MEDIA_ENABLED  ·  off
+					72 container
+						73 text STT_ENABLED  ·  off
+					74 container
+						75 text EXTRACTION_ENABLED  ·  off
+					76 container
+						77 text EXACT_EVIDENCE_VERIFICATION  ·  off
+					78 container
+						79 text NUDGE_ENABLED  ·  off
+					80 container
+						81 text LIVE_SSE  ·  off
+					82 container
+						83 text PROVIDER_READS  ·  off
+				84 heading Configured models, Value: 4
+					85 text Configured models
+				86 text Extraction  openai/gpt-5-mini  ·  off Transcription  openai/gpt-4o-mini-transcribe  ·  off
+			87 container
+				88 heading Historical backfill, Value: 3
+					89 text Historical backfill
+				90 text Historical planning is disabled Planned  unknown  · Partial  unknown  · Captured  unknown  · Failed  unknown Capture watermark  unknown Historical backfill is Owner-triggered and range-limited. It is lower priority than current work. Default BACKFILL_DAYS=0 plans nothing.
+			91 container
+				92 text Hours and defaults Explicit spoken dates override staffed-hours defaults. Calendar edits do not rewrite existing promises. Revision 3  · 2026-09-19T21:28:17.206Z Timezone
+				93 text field (settable) Timezone, Value: America/New_York
+				94 text Default America/New_York.
+				95 container Weekly staffed hours
+					96 text Weekly staffed hours
+					97 text Accepted default: Monday–Saturday 08:00–20:00 America/New_York. Sunday stays off unless you add it.
+					98 text Monday
+					99 time field (settable) Description: Monday open, Value: 08:00
+						100 container
+							101 stepper
+							102 stepper
+							103 stepper
+						104 pop up button Show time picker Show time picker
+					105 time field (settable) Description: Monday close, Value: 20:00
+						106 container
+							107 stepper
+							108 stepper
+							109 stepper
+						110 pop up button Show time picker Show time picker
+					111 text Tuesday
+					112 time field (settable) Description: Tuesday open, Value: 08:00
+						113 container
+							114 stepper
+							115 stepper
+							116 stepper
+						117 pop up button Show time picker Show time picker
+					118 time field (settable) Description: Tuesday close, Value: 20:00
+						119 container
+							120 stepper
+							121 stepper
+							122 stepper
+						123 pop up button Show time picker Show time picker
+					124 text Wednesday
+					125 time field (settable) Description: Wednesday open, Value: 08:00
+						126 container
+							127 stepper
+							128 stepper
+							129 stepper
+						130 pop up button Show time picker Show time picker
+					131 time field (settable) Description: Wednesday close, Value: 20:00
+						132 container
+							133 stepper
+							134 stepper
+							135 stepper
+						136 pop up button Show time picker Show time picker
+					137 text Thursday
+					138 time field (settable) Description: Thursday open, Value: 08:00
+						139 container
+							140 stepper
+							141 stepper
+							142 stepper
+						143 pop up button Show time picker Show time picker
+					144 time field (settable) Description: Thursday close, Value: 20:00
+						145 container
+							146 stepper
+							147 stepper
+							148 stepper
+						149 pop up button Show time picker Show time picker
+					150 text Friday
+					151 time field (settable) Description: Friday open, Value: 08:00
+						152 container
+							153 stepper
+							154 stepper
+							155 stepper
+						156 pop up button Show time picker Show time picker
+					157 time field (settable) Description: Friday close, Value: 20:00
+						158 container
+							159 stepper
+							160 stepper
+							161 stepper
+						162 pop up button Show time picker Show time picker
+					163 text Saturday
+					164 time field (settable) Description: Saturday open, Value: 08:00
+						165 container
+							166 stepper
+							167 stepper
+							168 stepper
+						169 pop up button Show time picker Show time picker
+					170 time field (settable) Description: Saturday close, Value: 20:00
+						171 container
+							172 stepper
+							173 stepper
+							174 stepper
+						175 pop up button Show time picker Show time picker
+					176 container
+						177 checkbox (settable, integer) Description: Staff Sunday, Value: 0
+						178 text Staff Sunday
+				179 text First action (staffed minutes)
+				180 stepper (settable, integer) First action (staffed minutes), Value: 25
+				181 text Default 30. Missed callback (staffed minutes)
+				182 stepper (settable, integer) Missed callback (staffed minutes), Value: 15
+				183 text Default 15. Going cold (staffed minutes)
+				184 stepper (settable, integer) Going cold (staffed minutes), Value: 1440
+				185 text 1440 staffed minutes is two 12-hour sales days. Editing weekly hours does not change this threshold. Monthly AI ceiling (dollars)
+				186 stepper (settable, integer) Monthly AI ceiling (dollars), Value: 80, Details: 80.00
+				187 text Default $80. Raising the limit resumes eligible paused analysis. Deployment kill switches are environment-only. Saving settings cannot turn them on.
+				188 button Save
+	21 pop up button (collapsed) Description: Open Next.js Dev Tools, ID: next-logo, Secondary Actions: Expand
+		22 image
+
+The focused UI element is 1 AXWebArea Vantage Admin, URL: 127.0.0.1:3108/sales-intelligence?view=coverage

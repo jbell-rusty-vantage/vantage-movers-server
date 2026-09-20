@@ -1,6 +1,6 @@
 # Team F — history, resilience and certification
 
-September 19 sequencing: follow [SPRINT-PLAN](../SPRINT-PLAN.md). Next is CSI-15 ([NEXT-SESSION](../NEXT-SESSION.md)), then CSI-16 ([CSI-16-SESSION](../CSI-16-SESSION.md)). After CSI-16 use [AFTER-16](../AFTER-16.md). Owner Saturday decision: enable **all** capability flags in one cutover and resolve live; do not stage. Fleet backfill still needs an explicit day range.
+September 19 sequencing: follow [SPRINT-PLAN](../SPRINT-PLAN.md). CSI-15 is landed; [CSI-16 packet](../evidence/csi-16/HANDOFF.md) records fresh local proof, open owning-issue findings, partial G5 and unprobed G6. After CSI-16 use [AFTER-16](../AFTER-16.md). Owner Saturday decision: enable **all** capability flags in one cutover and resolve live; do not stage. Fleet backfill still needs an explicit day range.
 
 Own CSI-15/16 and gates G4–G6. Begin independent synthetic acceptance fixtures early; integrate runtime after B–E. Read [06](../../06-delivery-plan-and-acceptance.md), [ACCEPTANCE](../ACCEPTANCE.md), [03](../../03-server-pipeline-and-jobs.md), [10](../../10-intelligence-agent-contract.md), [RingCentral capability](../RINGCENTRAL-CAPABILITY.md). The capability file is historical; G6 requires a fresh probe.
 
@@ -10,7 +10,7 @@ Own CSI-15/16 and gates G4–G6. Begin independent synthetic acceptance fixtures
 2. Retention across private audio, redacted transcripts, prompts, evidence/tool responses, findings and summaries; preserve non-content audit tombstones. Purged original-evidence rerun is explicitly unavailable.
 3. Budget recovery and provider/queue/cron failure integration with A/D. Verify expired lease, missing queue wake-up, throttled provider, permission pause and dead-letter retry behavior.
 4. Run cross-repo acceptance and Owner walkthrough; report exact failures to owning team rather than silently altering their runtime files. Verify all three repos' appropriate checks and contract consistency.
-5. Restamp Service/index/glossary/organization pointers accurately after implementation. Record fresh deployment capability proof and staged rollout plan separately from functional test proof.
+5. Restamp Service/index/glossary/organization pointers accurately after implementation. Record deployment capabilities separately from functional proof; CSI-16 G6 is not probed. Owner selected one full rollout in AFTER-16 D+E.
 
 ## File ownership
 

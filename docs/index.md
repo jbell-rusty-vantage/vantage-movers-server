@@ -10,6 +10,8 @@ Query stamped rows with `pnpm okf:query` (`--type Service`, `--tag`, `--status`,
 
 Glossary stays in workspace-root [`CONTEXT.md`](../CONTEXT.md) (absent in this standalone checkout). Do not redefine terms here.
 
+CSI-16 certification: [packet](call-sales-intelligence/workspace/evidence/csi-16/HANDOFF.md), [checks](call-sales-intelligence/workspace/evidence/csi-16/CHECKS.md), [execution matrix](call-sales-intelligence/workspace/ACCEPTANCE.md). CSI-15 is landed; media retry and generic replay-label gaps remain. Current production capabilities are not probed; Owner full rollout follows separately.
+
 ## Service
 
 Canonical bodies live under `docs/knowledge/`.
@@ -27,7 +29,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [sales-intelligence-attachment.md](knowledge/services/sales-intelligence-attachment.md) | CSI-05 deterministic event-time Number↔Lead attachment, Owner commands, durable refresh and rediscovery; phone equality is Likely. |
 | [sales-intelligence-outreach.md](knowledge/services/sales-intelligence-outreach.md) | CSI-06 Outreach, independent nullable-due follow-ups, staffed clocks, Owner commands, restrictions/reviews, authoritative effects and read-only DTOs. |
 | [sales-intelligence-live.md](knowledge/services/sales-intelligence-live.md) | CSI-07 Owner SSE from durable CSI sources, clock/refetch transport and local Admin read slice. |
-| [sales-intelligence-nudges.md](knowledge/services/sales-intelligence-nudges.md) | CSI-14 explicit Owner preview/send/history, current reviewed rep authority, customer guards, single-attempt submission and repair-only recovery; live proof separately gated. |
+| [sales-intelligence-nudges.md](knowledge/services/sales-intelligence-nudges.md) | CSI-14 explicit Owner preview/send/history, current directory-User destination authority, customer guards, single-attempt submission and repair-only recovery; live proof separately gated. |
 | [sales-intelligence-rep-identity.md](knowledge/services/sales-intelligence-rep-identity.md) | CSI-10 stored-directory proposals, Owner review, temporal identity resolution and bounded consumer recovery. |
 | [sales-intelligence-foundation.md](knowledge/services/sales-intelligence-foundation.md) | CSI-01 shared contracts, Mongo fences, scoped auth, durable jobs and budget primitives; independently reviewed foundation, feature flags off. |
 | [number-activity-capture.md](knowledge/services/number-activity-capture.md) | CSI-02 all-direction Call Interaction projection from webhook parties and Detailed Call Log, account-scoped identity, dedicated reconcile cursor/lease, honest coverage gaps, durable downstream job intent; qualification untouched. |

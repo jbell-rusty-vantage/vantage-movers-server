@@ -1,11 +1,11 @@
 # Call & Sales Intelligence — agent-team workspace
 
-Status: partial local implementation through CSI-13; review and dashboard/release work remain. Updated September 19, 2026. Current execution order: [SPRINT-PLAN](SPRINT-PLAN.md). Copy-ready next session: [NEXT-SESSION](NEXT-SESSION.md). This is a coordination workspace, not a new runtime package.
+Status: CSI-15 landed; CSI-16 certification packet produced with explicit failures and untested capability limits. CSI-16 certification packet (September 19 Owner session): fresh local evidence and exact non-green results are in [HANDOFF](evidence/csi-16/HANDOFF.md), [CHECKS](evidence/csi-16/CHECKS.md), [ACCEPTANCE](ACCEPTANCE.md), and [G6](evidence/csi-16/G6.md). G4 has a media Retry-After failure; G5 is partial with a generic replay-label integration failure; current production capabilities are not probed. Owner full rollout follows in AFTER-16 D+E; no cutover occurred here.
 
 ## Start here
 
 1. Read the [product specification](../01-specification.md), [agent contract](../10-intelligence-agent-contract.md), [RingCentral capability summary](RINGCENTRAL-CAPABILITY.md), and [workspace instructions](AGENTS.md).
-2. Read the [current sprint revision](SPRINT-PLAN.md) and [ledger](LEDGER.md). G1 is frozen; do not restart Team A. Next session is merge to `main` and deploy the internal dashboard ([NEXT-SESSION](NEXT-SESSION.md)). “Ready” never means a deployed capability has been verified until that session records URLs and flags.
+2. Read the [current sprint revision](SPRINT-PLAN.md) and [ledger](LEDGER.md). G1 is frozen; do not restart Team A. Next work is the Owner-selected operational slice in [AFTER-16](AFTER-16.md), after reading the CSI-16 packet. “Ready” never means a deployed capability has been verified until that session records URLs and flags.
 3. Freeze the interfaces in [contracts and handoffs](CONTRACTS.md), then assign the remaining teams according to the dependency waves below. Teams can build fixtures/skeletons against frozen contracts before providers are available.
 4. Each team records changes, checks and artifacts in the ledger and uses the [handoff template](HANDOFF-TEMPLATE.md). Integration follows the [acceptance walkthrough](ACCEPTANCE.md).
 

@@ -1,5 +1,7 @@
 # Sprint revision — September 19, 2026
 
+CSI-16 certification packet (September 19 Owner session): fresh local evidence and exact non-green results are in [HANDOFF](evidence/csi-16/HANDOFF.md), [CHECKS](evidence/csi-16/CHECKS.md), [ACCEPTANCE](ACCEPTANCE.md), and [G6](evidence/csi-16/G6.md). G4 has a media Retry-After failure; G5 is partial with a generic replay-label integration failure; current production capabilities are not probed. Owner full rollout follows in AFTER-16 D+E; no cutover occurred here.
+
 Current execution order after CSI-13. This supersedes the original kickoff order and any historical “CSI-18 next” instruction. Product behavior in 01–05/10 remains unchanged. The Owner supplied the existing `vantage-sales-intelligence` design export and wants a locally running dashboard; production API use is an alternative, not a deployment instruction.
 
 ## Observed completion and review state
@@ -15,7 +17,7 @@ Inspected local evidence and current source on September 19. No remote issue/PR 
 | CSI-07/08/18 | Locally complete on `main` after the authorized merge. Isolated HTTP/browser proof is in their evidence packets. Production flags remain off. |
 | CSI-09 | Locally complete on `main`. Coverage/settings plus Lead-detail entry; isolated replica 4/4, focused server 8/8, Admin 14/14, 3107/3108 browser proof. [Handoff](evidence/csi-09/HANDOFF.md). CSI-14 dialogs, CSI-15, flag enablement, and the empty-recording repair were not started. |
 | CSI-18 | Locally complete on `main` (see CSI-07/08/18 row). Do not restart it. |
-| CSI-15/16 | Backfill/retention/budget recovery integration and final certification remain. The backend is not ready to be called officially finished or production-certified. |
+| CSI-15/16 | CSI-15 landed on main; CSI-16 packet/execution record produced. Media Retry-After and replay-label findings remain open; G5 partial and G6 not probed. This is not all-green production certification. |
 
 Older ledger rows preserve their original review scope and historical limitations. This table does not retrospectively approve them. All three Git remotes belong to `jbell-rusty-vantage`; server, Admin, and MCP are on `main`.
 
@@ -29,8 +31,8 @@ September 19 Owner decision: send destinations are current account Users, not re
 2. **Done: merge `sales-intelligence` into local `main`, push remote `main`, and deploy with production flags left as they are.**
 3. **Done locally: CSI-09 Coverage/settings plus Lead-detail entry.** [Handoff](evidence/csi-09/HANDOFF.md).
 4. **Done locally: named 1–2 subject seed.** Official-closed booked Outreach for P5562014 and 5564480. No Number Activity. [Handoff](evidence/named-subjects/HANDOFF.md).
-5. **Next session — CSI-15 only.** Historical backfill workers, retention, budget/recovery. Synthetic/replica proof. [Copy-ready instructions](NEXT-SESSION.md). No production `POST /backfill`, no Vercel flag enablement.
-6. **Then CSI-16 only.** Certification, ACCEPTANCE matrix, honest G6 capability list, docs restamp. [Copy-ready instructions](CSI-16-SESSION.md). Staged rollout, live send, and fleet backfill remain separately authorized.
+5. **Done on main — CSI-15.** Historical backfill workers, retention, budget/recovery. Synthetic/replica proof. [Copy-ready instructions](NEXT-SESSION.md). No production `POST /backfill`, no Vercel flag enablement.
+6. **CSI-16 packet produced.** Certification, ACCEPTANCE matrix, honest G6 capability list, docs restamp. [Copy-ready instructions](CSI-16-SESSION.md). Full rollout is AFTER-16 D+E; live send and fleet backfill remain separate explicit actions.
 7. **After CSI-16 — operations, not a new issue wave.** [Copy-ready slices](AFTER-16.md). Owner Saturday decision: **full-system cutover in one session** (all capability flags), then stay and resolve. Not a staged flag ladder. Fleet backfill still needs an explicit day range.
 
 These are execution slices under existing issue IDs, not replacement issues. Team D can take the CSI-18 server slice independently when scheduled; the default next Owner agent session is the visible dashboard foundation, not Team D's old combined kickoff.

@@ -1,0 +1,143 @@
+Browser tab: 1, Title: "Vantage Admin", URL: "http://127.0.0.1:3108/form-leads?record=000000000000000000001006&database_scope=production&page=1&panel=actions".
+1 AXWebArea Vantage Admin, URL: 127.0.0.1:3108/form-leads?record=000000000000000000001006&database_scope=production&page=1&panel=actions
+	2 container
+		3 button Open navigation
+		4 pop up button (collapsed, settable) Description: Database scope, Value: Production, Secondary Actions: Expand
+			5 menu
+				6 (selected) Production
+				7 Historical Read-Only
+		8 button Open search
+		9 pop up button (collapsed) Description: Account menu, Secondary Actions: Expand
+	10 container dashboard-main
+		11 heading Form Leads, Value: 1
+			12 text Form Leads
+		13 text Browse, inspect, edit, export, and book web form leads.
+		14 button EXPORT CSV
+		15 container
+			16 button FILTERS
+			17 button RESET
+			18 text No filters applied.
+		19 text Click a lead row to inspect it, then start a booking with identifiers prefilled.
+		20 text Use the checkboxes to select a lead. Check Google Sheet contains will appear so you can confirm the lead is in the Google Sheet.
+		21 container
+			22 table
+				23 row
+					24 cell
+						25 checkbox (settable, integer) Description: Select loaded rows to check the Google Sheet, Value: 0
+						26 text SHEET
+					27 cell
+						28 button CREATED
+					29 cell
+						30 button NAME
+					31 cell
+						32 button REF
+					33 cell
+						34 button JOB
+					35 cell
+						36 button SOURCE COMPANY
+					37 cell
+						38 text STATUS
+					39 cell
+						40 text GRANOT CONTACT
+					41 cell
+						42 text PICKUP CITY
+					43 cell
+						44 text DELIVERY CITY
+					45 cell
+						46 text MOVE
+					47 cell
+						48 text HIDDEN FROM MASTER LEADS
+					49 cell
+						50 text ACTIONS
+				51 row
+					52 cell
+						53 checkbox (settable, integer) Description: Select this record to check the Google Sheet, Value: 0
+					54 cell
+						55 text Sep 19, 2026
+					56 cell
+						57 text Taylor (synthetic)
+						58 text [synthetic phone]
+					59 cell
+						60 text -
+					61 cell
+						62 link Description: CSI08-TAYLOR, Value: 127.0.0.1:3108/job-timeline?job=CSI08-TAYLOR
+					63 cell
+						64 text Synthetic source
+					65 cell
+						66 text Booked Cancelled
+					67 cell
+						68 text —
+					69 cell
+						70 text -
+					71 cell
+						72 text -
+					73 cell
+						74 text -
+					75 cell
+						76 text -
+					77 cell
+						78 container
+							79 button (disabled) Scroll row left
+							80 button Scroll row right
+						81 link Description: Booking, Value: 127.0.0.1:3108/bookings?record=000000000000000000002006
+				82 row
+					83 cell
+						84 checkbox (settable, integer) Description: Select this record to check the Google Sheet, Value: 0
+					85 cell
+						86 text Sep 19, 2026
+					87 cell
+						88 text Morgan (synthetic)
+						89 text [synthetic phone]
+					90 cell
+						91 text -
+					92 cell
+						93 link Description: CSI08-MORGAN, Value: 127.0.0.1:3108/job-timeline?job=CSI08-MORGAN
+					94 cell
+						95 text Synthetic source
+					96 cell
+						97 text —
+					98 cell
+						99 text -
+					100 cell
+						101 text -
+					102 cell
+						103 text -
+					104 cell
+						105 text -
+					106 cell
+						107 container
+							108 button (disabled) Scroll row left
+							109 button Scroll row right
+						110 container
+							111 link Description: Book, Value: 127.0.0.1:3108/bookings/new?lead_type=FormLead&lead_id=000000000000000000001004
+							112 button (collapsed) Description: Bad Lead, Secondary Actions: Expand
+		113 container
+			114 text Showing  2  of 2
+		115 button (disabled) ALL ROWS LOADED
+		116 container
+			117 button Close detail panel
+			118 container
+				119 heading Form Leads, Value: 2
+					120 text Form Leads
+				121 text Mongo ID: 000000000000000000001006
+				122 button Close
+				123 tab group Tabs
+					124 tab (selectable, settable, boolean) Summary, Value: 0, ID: operational-tab-summary
+					125 tab (selectable, settable, boolean) Contact, Value: 0, ID: operational-tab-contact
+					126 tab (selectable, settable, boolean) Lead Message, Value: 0, ID: operational-tab-message
+					127 tab (selected, settable, boolean) Actions, Value: 1, ID: operational-tab-actions
+					128 tab (selectable, settable, boolean) Production record, Value: 0, ID: operational-tab-production
+					129 tab (selectable, settable, boolean) Source Company, Value: 0, ID: operational-tab-source
+			130 container Description: Actions, ID: operational-panel-actions
+				204 link Description: Book this lead, Value: 127.0.0.1:3108/bookings/new?lead_type=FormLead&lead_id=000000000000000000001006
+				205 link Description: Open in Sales Intelligence, Value: 127.0.0.1:3108/sales-intelligence?view=attention&lead=000000000000000000001006&lead_model=FormLead
+				206 link Description: Start cancellation, Value: 127.0.0.1:3108/cancellations/new?lead_id=000000000000000000001006
+				207 text Bad Lead can only be changed for non-booked, non-cancelled form leads.
+				208 text Booked Deals still updates if this lead is booked.
+				209 button HIDE FROM MASTER LEADS
+				210 link Description: View booking, Value: 127.0.0.1:3108/bookings?record=000000000000000000002006
+	201 pop up button (collapsed) Description: Open Next.js Dev Tools, ID: next-logo, Secondary Actions: Expand
+		202 image
+	203 text Form Leads
+
+The focused UI element is 127 tab (selected, settable, boolean) Actions, Value: 1, ID: operational-tab-actions
