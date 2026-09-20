@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { withTransaction } from "../../../db";
-import { csiDataset, csiFlag, csiProviderConfiguration } from "../../../config/domain/salesIntelligence";
+import { CSI_EXTRACTION_MODELS, csiDataset, csiFlag, csiProviderConfiguration } from "../../../config/domain/salesIntelligence";
 import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
 import { getIntelligenceSubmissionModel } from "../../../models/IntelligenceSubmission";
 import { getCallInteractionModel } from "../../../models/CallInteraction";
@@ -118,7 +118,7 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
       if (receipt) return await finish(receipt);
     }
     const config = deps.configuration ?? analysisRuntimeConfiguration(), limits = deps.limits ?? config.limits;
-    if (!config.pricing || !config.endpoint || !config.key || (!deps.model && !config.gateway_key) || (prior && prior.model_version !== config.model_id) || !["openai/gpt-5-mini", "openai/gpt-5-nano"].includes(config.model_id)) {
+    if (!config.pricing || !config.endpoint || !config.key || (!deps.model && !config.gateway_key) || (prior && prior.model_version !== config.model_id) || !(CSI_EXTRACTION_MODELS as readonly string[]).includes(config.model_id)) {
       await failCsiJob(lease, "permission_denied", 0, { result: { reason: "analysis_configuration_missing" } }); return { status: "paused" };
     }
     const original = job.owner_reanalysis?.mode === "original_evidence" ? await retainedOriginal(String(job.owner_reanalysis.source_run_id)) : null;

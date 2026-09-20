@@ -1,7 +1,7 @@
 # Call & Sales Intelligence — specification pack
 
 **Status:** partial local implementation through CSI-13; dashboard integration, review follow-ups and release proof remain. [Current sprint plan](workspace/SPRINT-PLAN.md) · [Next session](workspace/NEXT-SESSION.md).
-**Revised:** September 19, 2026 execution update; September 17 Owner product decisions remain in force.
+**Revised:** September 20, 2026 analysis-context note (15); September 19 execution update; September 17 Owner product decisions remain in force.
 **Supersedes for build purposes:** `docs/sales-intelligence/recommendation-specification.md` (Sept 11 evidence base) and `docs/sales-intelligence/number-activity-consolidation.md` (Sept 14 product cut). Both stay as evidence; this pack is the build contract.
 **Source brief:** `scripts/dev_ops/ringcentral/OWNER-TRANSFER-call-intelligence.md` (gitignored; a copy of its decisions is folded into `01-specification.md`).
 
@@ -27,6 +27,8 @@ It is built beside the existing Call Qualification pipeline, never through it. I
 | 10 | [`10-intelligence-agent-contract.md`](10-intelligence-agent-contract.md) | AI SDK + scoped MCP tools, typed envelope, evidence, auto-application, correction and reruns. |
 | 11 | [`11-codebase-alignment-audit.md`](11-codebase-alignment-audit.md) | Verified server/Admin/MCP gaps, required adaptations and evidence. |
 | 12 | [`12-deployment-inputs-and-model-policy.md`](12-deployment-inputs-and-model-policy.md) | Owner-supplied infrastructure, proposed mini/nano/STT configuration and historical capability evidence. |
+| 13 | [`13-number-analysis-surfaces.md`](13-number-analysis-surfaces.md) | As-built: when a Contact Number enters conversation extraction and number synthesis, and every Mongo / RingCentral / sibling surface those jobs touch. Use this before tightening preflight or scheduling. |
+| 15 | [`15-analysis-context-and-model-efficiency.md`](15-analysis-context-and-model-efficiency.md) | Analysis and recommendation: what the extraction model is actually given (pinned prompt, MCP tool schemas, preflight pages, redacted transcript), why a local run reserved 800k input tokens, and whether `openai/gpt-5.6-luna` is priced like `openai/gpt-5-mini`. |
 | Workspace | [`workspace/README.md`](workspace/README.md) | Team kickoff briefs, file ownership, dependency waves, contracts, ledger and end-to-end acceptance. |
 | RC capability | [`workspace/RINGCENTRAL-CAPABILITY.md`](workspace/RINGCENTRAL-CAPABILITY.md) | Compact Sept 14–15 RingCentral probe for agents. `scripts/dev_ops/**` is gitignored; do not treat this as a fresh production grant. |
 

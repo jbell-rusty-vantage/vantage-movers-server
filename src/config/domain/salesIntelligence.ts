@@ -49,6 +49,11 @@ export const CSI_EFFECT_STATUSES = [
   "needs_review",
   "stale",
 ] as const;
+export const CSI_EXTRACTION_MODELS = [
+  "openai/gpt-5-mini",
+  "openai/gpt-5-nano",
+  "openai/gpt-5.6-luna",
+] as const;
 export const CSI_TOOLS = [
   "get_intelligence_context",
   "get_call_transcript",
