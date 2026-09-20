@@ -1,5 +1,16 @@
 # Implementation ledger
 
+## AFTER-16 A/B/C — Grok, September 20, 2026
+
+Team F operations claimed before writes. Remotes remain `jbell-rusty-vantage`. Local `main` baselines: server `ea09569c6bee1b8727131c27dd2db4e8560422b4` (dirty `package.json` + untracked `scripts/probe-intelligence-mcp-agent.ts` preserved), Admin `d80528a2ab78a8430b48e9e8ce2eb0b463eaf486`, MCP `30b86aa08bbbe6bfdfe07a62a81ecf895d3b2b23`. CSI-16 stays an honest local packet: G4 not wholly green (F-01), G5 partial (F-02), G6 not probed. Do not relabel those green.
+
+Exact claims this sitting:
+- **C** — deploy current `origin/main` SHAs through Vercel projects `vantage-movers-main-server`, `vantage-admin`, `vantage-movers-mcp`. Flags unchanged. No indexes. No `BACKFILL_DAYS`. Packet `evidence/after-16/c-deploy/`.
+- **A** — `src/services/salesIntelligence/repIdentity/worker.ts` enqueue `recording_discovery` for every re-evaluated interaction; replica proof in `scripts/test-csi-rep-identity.replica.test.ts`. Inspected `evidence/csi-17/QUALITY-PROPOSED-CLEANUP.md`; do not apply that patch wholesale. Packet `evidence/after-16/a-empty-recording/`.
+- **B** — Admin Message-rep dialog history + distinct delivery; F-02 provenance; replace Lead Conversations demo chrome; Owner-gate `/conversations` the same way as `/sales-intelligence`. No live send. Packet `evidence/after-16/b-dialogs/`.
+
+D+E flag writes wait for Owner confirmation of the collected production env table. `EXACT_EVIDENCE_VERIFICATION` stays false. `BACKFILL_DAYS` stays 0 unless the Owner names days. Preserve probe dirt. No `.env` in git.
+
 ## CSI-16 ownership — Codex, September 19, 2026
 
 Team F certification claimed before edits. Verified local main baselines: server `561e048960cd914f37a337addada8b459b5296f1`, Admin `fb631eb1f820ce6a5c641c677029371a73dc53ab`, MCP `9a8fd37bf78f8074011fb2d47ff3da3ec400b33d`; all remotes remain `jbell-rusty-vantage`. Preserve server package.json/external probe and MCP formatting dirt. Scope: CSI-16 evidence packet, ACCEPTANCE execution record, CONTRACTS/README/SPRINT-PLAN/Team F, docs catalog/matching Service cards, Admin CONTEXT/project-organization pointers; certification harness only if required. One authorized GPT-6 Astra subagent reviews evidence independently. No production enablement or AFTER-16 work. Specific CSI-16 prohibitions remain in force; no paid calls merely to green a row. Owner's opening instruction authorizes commit/push for this task without another permission request; only CSI-16 files may land.

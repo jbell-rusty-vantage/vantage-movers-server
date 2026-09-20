@@ -38,7 +38,8 @@ export async function runRepIdentityReevaluationJob(jobId?: string) {
         await getLeadConversationModel().updateMany({ call_interaction_id: call._id, provider_account_id: account },
           { $set: { analysis_eligibility: eligibility } }, { session });
         // Discovery uses the existing revisioned excluded-job recovery; no media is fetched here.
-        if (call.recordings.length) await enqueueCsiJob({ stage: "recording_discovery", subject_key: `number:${call.contact_number_id ?? call._id}`,
+        // Empty recordings still enqueue: runRecordingDiscoveryJob owns pending / no_recording / window exhaustion.
+        await enqueueCsiJob({ stage: "recording_discovery", subject_key: `number:${call.contact_number_id ?? call._id}`,
           dedupe_key: `csi:rep-discovery:${fingerprint}`, input_revision: call.projection_revision, input_refs: [String(call._id)] }, session);
         // CSI-12's existing bounded scheduler owns admission/dedupe. Only make its deferred rows due.
         await getLeadConversationModel().updateMany({ call_interaction_id: call._id, provider_account_id: account, state: "media_stored",

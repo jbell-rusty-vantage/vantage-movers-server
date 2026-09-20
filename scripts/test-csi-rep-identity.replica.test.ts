@@ -208,6 +208,17 @@ test("CSI-10 disposable replica", { skip: process.env.CSI_REPLICA_TEST !== "true
       try { const ids=await scheduleTranscriptionJobs(5,async()=>({ published:false,error_code:null })); assert.equal(ids.length,1); assert.equal(await Jobs.countDocuments({ stage:"transcription",input_refs:conversation._id }),1); }
       finally { process.env.SALES_INTELLIGENCE_STT_ENABLED="false"; }
     });
+    await t.test("eligible re-evaluation with empty recordings still enqueues discovery", async () => {
+      const number=await getContactNumberModel().create({ e164:"+12025550114",digits_reversed:"41105552021",first_observed_at:at,last_activity_at:boundary });
+      const call=await getCallInteractionModel().create({ provider_account_id:"synthetic",telephony_session_id:"empty-recording",identity_basis:"telephony_session_id",
+        contact_number_id:number._id,direction:"Outbound",started_at:new Date(+boundary+1000),first_observed_at:at,last_observed_at:at,terminal:true,
+        parties:[{ role:"user",extension_id:"106",direction:"Outbound",connected:false }],recordings:[] });
+      const job=await withTransaction(s=>scheduleRepIdentityReevaluation({ account:"synthetic",extension:"106",from:boundary,through:new Date(+boundary+5000),change_id:String(oid()) },s));
+      assert.equal(z.object({ scanned:z.number() }).parse(await runRepIdentityReevaluationJob(String(job._id))).scanned,1);
+      const discovery=await Jobs.findOne({ stage:"recording_discovery",input_refs:call._id }).orFail();
+      assert.equal(discovery.dedupe_key.startsWith("csi:rep-discovery:"),true);
+      assert.deepEqual(call.recordings,[]);
+    });
     await t.test("official Agent records unchanged and flags remain off", async () => {
       assert.equal(JSON.stringify(await Agent.find().sort({ _id:1 }).lean()),officialAgentsBefore);
       assert.equal(process.env.SALES_INTELLIGENCE_NUDGE_ENABLED,"false"); assert.equal(process.env.SALES_INTELLIGENCE_MEDIA_ENABLED,"false"); assert.equal(process.env.SALES_INTELLIGENCE_STT_ENABLED,"false");
