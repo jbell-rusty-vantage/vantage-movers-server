@@ -6,8 +6,9 @@ import { ownerRead } from "../../numberActivity/coverage";
 
 export type NudgeRow = InferSchemaType<typeof OwnerRepNudgeSchema> & { _id: Types.ObjectId; createdAt: Date; updatedAt: Date };
 export const nudgeHistoryQuerySchema = z.object({ scope: z.literal("production").optional(), outreach_record_id: csiIdSchema.optional(),
+  rc_account_id: z.string().min(1).max(500).optional(), rc_extension_id: z.string().min(1).max(500).optional(),
   rep_identity_link_id: csiIdSchema.optional(), cursor: csiIdSchema.optional(), limit: z.coerce.number().int().min(1).max(100).default(20) }).strict();
-export const nudgeDtoSchema = z.object({ id: csiIdSchema, revision: z.number().int().positive(), outreach_record_id: csiIdSchema,
+export const nudgeDtoSchema = z.object({ id: csiIdSchema, revision: z.number().int().positive(), outreach_record_id: csiIdSchema.nullable(),
   rc_account_id: z.string().nullable(), rc_extension_id: z.string().nullable(),
   rep_identity_link_id: csiIdSchema.nullable(), agent_id: csiIdSchema.nullable(), actor_id: z.string(), channel: z.enum(["team_messaging", "sms_to_rep", "pager"]), purpose: z.enum(["call_suggestion", "review_context"]),
   template_key: z.string(), template_version: z.number(), body_as_sent: z.string(), status: z.enum(["pending", "sent", "failed", "unknown_delivery", "fallback_sent"]),
@@ -15,7 +16,7 @@ export const nudgeDtoSchema = z.object({ id: csiIdSchema, revision: z.number().i
   delivery_note: z.string(), automatic_resend: z.literal(false) });
 export type NudgeDto = z.infer<typeof nudgeDtoSchema>;
 export function toNudgeDto(row: NudgeRow): NudgeDto {
-  return nudgeDtoSchema.parse({ id: String(row._id), revision: row.revision ?? 1, outreach_record_id: String(row.outreach_record_id),
+  return nudgeDtoSchema.parse({ id: String(row._id), revision: row.revision ?? 1, outreach_record_id: row.outreach_record_id ? String(row.outreach_record_id) : null,
     rc_account_id: row.rc_account_id ?? null, rc_extension_id: row.rc_extension_id ?? null,
     rep_identity_link_id: row.rep_identity_link_id ? String(row.rep_identity_link_id) : null,
     agent_id: row.agent_id ? String(row.agent_id) : null, actor_id: row.actor.id, channel: row.channel, purpose: row.purpose ?? "review_context", template_key: row.template_key, template_version: row.template_version,
@@ -26,6 +27,8 @@ export function toNudgeDto(row: NudgeRow): NudgeDto {
 /** Read only: no provider resolution, repair, dispatch, or status writes. */
 export async function nudgeHistoryPage(query: z.infer<typeof nudgeHistoryQuerySchema>) {
   const rows = await getOwnerRepNudgeModel().find({ ...(query.outreach_record_id ? { outreach_record_id: query.outreach_record_id } : {}),
+    ...(query.rc_account_id ? { rc_account_id: query.rc_account_id } : {}),
+    ...(query.rc_extension_id ? { rc_extension_id: query.rc_extension_id } : {}),
     ...(query.rep_identity_link_id ? { rep_identity_link_id: query.rep_identity_link_id } : {}), ...(query.cursor ? { _id: { $lt: query.cursor } } : {}) }).sort({ _id: -1 }).limit(query.limit + 1).lean();
   return { items: rows.slice(0, query.limit).map(toNudgeDto), next_cursor: rows.length > query.limit ? String(rows[query.limit - 1]!._id) : null };
 }

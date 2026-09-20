@@ -8,7 +8,7 @@ tags: [sales-intelligence, rep-identity]
 
 # Rep Identity Links — CSI-10
 
-GET never runs the matcher: directory proposal results (including ambiguous/unmatched Users) are read from the existing durable `propose_reps` command responses for the current snapshot. Users with no stored proposal evidence are `not_proposed`. POST is the only proposal-generation path. No parallel proposal collection is needed.
+GET never runs the matcher: directory proposal results (including ambiguous/unmatched Users) are read from the existing durable `propose_reps` command responses for the current snapshot. Users with no stored proposal evidence are `not_proposed`. POST is the only proposal-generation path. No parallel proposal collection is needed. `rc_account_id` is optional on list: omitted queries return the latest stored snapshot per RingCentral account, current directory Users, and a reviewed attached Agent when one exists.
 
 Runtime: `src/services/salesIntelligence/repIdentity/`. Authority: [specification](../../call-sales-intelligence/01-specification.md), [contracts](../../call-sales-intelligence/workspace/CONTRACTS.md), [handoff](../../call-sales-intelligence/workspace/evidence/csi-10/HANDOFF.md).
 

@@ -45,9 +45,10 @@ test("all five Rep routes enforce Owner, strict contracts, scope, flags and idem
     }
     assert.deepEqual(writes,["create","propose","review"]);
     const page=await call("GET",`${CSI_ADMIN_PREFIX}/reps?rc_account_id=synthetic`); assert.equal(page.status,200);
+    assert.equal((await call("GET",`${CSI_ADMIN_PREFIX}/reps`)).status,200);
     const pageBody=await page.json(); assert.equal(typeof pageBody.as_of,"string"); assert.equal(pageBody.coverage.known_through,null); assert.deepEqual(pageBody.data.items,[]);
     assert.equal((await call("GET",`${CSI_ADMIN_PREFIX}/reps/${id}`)).status,404);
-    assert.deepEqual(reads,["list","detail"]); assert.equal(writes.length,3);
+    assert.deepEqual(reads,["list","list","detail"]); assert.equal(writes.length,3);
     assert.equal((await call("GET",`${CSI_ADMIN_PREFIX}/reps?rc_account_id=synthetic&scope=historical`)).status,403);
     failure=new CsiError("REVISION_CONFLICT"); assert.equal((await call("POST",CSI_ADMIN_PREFIX+routes[2]!.path,routes[2]!.body)).status,409);
     process.env.SALES_INTELLIGENCE_ENABLED="false";

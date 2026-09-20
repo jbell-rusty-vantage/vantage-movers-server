@@ -4,6 +4,8 @@ import { toObjectId } from "../../utils/objectId";
 import type { LeadConversationDocument } from "../../models/LeadConversation";
 import {
   assertListProjectionSafe,
+  conversationListFilter,
+  conversationListQuerySchema,
   toConversationListItem,
 } from "./reads";
 
@@ -50,6 +52,22 @@ test("list projection keeps cost cents and does not treat them as leaked summary
   assert.equal("summary" in item, false);
   assert.equal(JSON.stringify(item).includes("Redacted transcript"), false);
   assert.equal(JSON.stringify(item).includes("booked inbound call"), false);
+});
+
+test("conversation list query searches job number, agent, and phones and can hide booked rows", () => {
+  const parsed = conversationListQuerySchema.parse({
+    q: "P556",
+    direction: "Inbound",
+    booked: "false",
+    has_transcript: "true",
+  });
+  const filter = conversationListFilter(parsed);
+  assert.equal(filter.direction, "Inbound");
+  assert.deepEqual(filter.booking_ref, null);
+  assert.deepEqual(filter["transcript.text"], { $exists: true, $nin: [null, ""] });
+  const search = filter.$or as Array<Record<string, unknown>>;
+  assert.equal(search.some((clause) => "normalized_job_no" in clause), true);
+  assert.equal(search.some((clause) => "receiver_agent_name_snapshot" in clause), true);
 });
 
 test("list projection still rejects a top-level transcript or summary field", () => {

@@ -55,13 +55,16 @@ const conversation = {
 } as unknown as LeadConversationDocument;
 
 const audits: Array<{ eventKey: string; details?: Record<string, unknown> }> = [];
+let lastListQuery: unknown;
 
 const app = express();
 app.use(express.json());
 app.use(
   createConversationsAdminRouter({
     connect: async () => undefined,
-    list: async () => [
+    list: async (query) => {
+      lastListQuery = query;
+      return [
       {
         id: CONVERSATION_ID,
         state: "complete",
@@ -79,7 +82,8 @@ app.use(
         has_mismatch: false,
         cost_cents: { stt: 3, summary: 0 },
       },
-    ],
+    ];
+    },
     listByLead: async () => [
       {
         id: CONVERSATION_ID,
@@ -121,6 +125,7 @@ before(() => {
 
 afterEach(() => {
   audits.length = 0;
+  lastListQuery = undefined;
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = SECRET;
 });
 
@@ -165,6 +170,20 @@ test("Owner can read the conversation list without transcript text", async () =>
   assert.equal(body.data[0]?.has_transcript, true);
   assert.equal("transcript" in (body.data[0] ?? {}), false);
   assert.equal(JSON.stringify(body).includes("Redacted transcript"), false);
+});
+
+test("Owner list query forwards search and filters", async () => {
+  const path = "/api/v1/admin/conversations?q=P556&direction=Inbound&booked=true";
+  const response = await fetch(`${baseUrl()}${path}`, {
+    headers: signedHeaders("owner", "/api/v1/admin/conversations"),
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(lastListQuery, {
+    q: "P556",
+    direction: "Inbound",
+    booked: "true",
+    limit: 50,
+  });
 });
 
 test("by-lead list does not include transcript or summary text", async () => {

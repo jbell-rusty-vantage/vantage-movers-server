@@ -71,6 +71,41 @@ export async function checkNudge(command: NudgeCommand, actor: CsiActor, now: Da
   if (!policy.enabled_capabilities.includes("nudges")) throw new CsiError("FEATURE_DISABLED");
   const { nudge } = command;
   if (!config.account || nudge.rc_account_id !== config.account) throw new CsiError("IDENTITY_BLOCKED");
+  if (!nudge.outreach_record_id) {
+    if (nudge.purpose !== "review_context" || !nudge.body || nudge.channel === "sms_to_rep" || nudge.followup_id) throw new CsiError("INVALID_INPUT");
+    const directory = await loadRepDirectory(config.account, session, false);
+    const extension = directory.snapshot?.extensions.find(e => e.id === nudge.rc_extension_id);
+    if (directory.evidence.status !== "stored" || !extension || extension.type !== "User" || extension.status !== "Enabled") throw new CsiError("IDENTITY_BLOCKED");
+    let link = null as Awaited<ReturnType<typeof optionalCurrentReviewedLink>>;
+    if (nudge.rep_identity_link_id) {
+      if (command.expected_rep_revision === undefined) throw new CsiError("INVALID_INPUT");
+      link = await getRepIdentityLinkModel().findById(nudge.rep_identity_link_id).session(session ?? null).lean();
+      if (!link) throw new CsiError("INVALID_INPUT");
+      if (link.revision !== command.expected_rep_revision) throw new CsiError("REVISION_CONFLICT");
+      if (link.rc_extension_id !== nudge.rc_extension_id || !isCurrentReviewedSalesRep(link, config.account, now)) throw new CsiError("IDENTITY_BLOCKED");
+    } else {
+      if (command.expected_rep_revision !== undefined) throw new CsiError("INVALID_INPUT");
+      link = await optionalCurrentReviewedLink(config.account, nudge.rc_extension_id, now, session);
+    }
+    const agent = link ? await Agent.findById(link.agent_id).session(session ?? null).lean() : null;
+    const storedPerson = link?.rc_team_messaging_person_id ?? null;
+    let channels = snapshotChannels(extension, storedPerson).filter(channel => config.channels[channel] && channel !== "sms_to_rep");
+    if (link) channels = channels.filter(channel => link.nudge_channels_allowed.includes(channel));
+    if (!channels.includes(nudge.channel) || !config.senderExtension || !config.senderPerson || config.senderExtension === extension.id) throw new CsiError("NUDGE_CONFIGURATION_UNAVAILABLE");
+    const url = z.url().safeParse(config.recordBaseUrl);
+    if (!url.success || new URL(url.data).protocol !== "https:" || new URL(url.data).username || new URL(url.data).password) throw new CsiError("NUDGE_CONFIGURATION_UNAVAILABLE");
+    const recipient: NudgeRecipient = { account: config.account, extension: extension.id, person: storedPerson,
+      senderExtension: config.senderExtension, senderExtensionNumber: config.senderExtensionNumber, senderPerson: config.senderPerson, senderDid: config.senderDid };
+    const pager = extension.extension_number && /^\d{1,7}$/.test(extension.extension_number) ? extension.extension_number : null;
+    if (nudge.channel === "pager" && (!channels.includes("pager") || !pager || !/^\d{1,7}$/.test(config.senderExtensionNumber))) throw new CsiError("NUDGE_CONFIGURATION_UNAVAILABLE");
+    if (nudge.channel === "team_messaging" && !storedPerson) throw new CsiError("NUDGE_CONFIGURATION_UNAVAILABLE");
+    const recordUrl = new URL("/sales-intelligence", url.data); recordUrl.searchParams.set("view", "reps");
+    const repName = link && agent?.name ? agent.name : (extension.name ?? "User");
+    const body = renderNudgeTemplate({ ...nudge, repName, customerName: null, customerNumber: null, reasons: [], lastContact: null, source: null,
+      recordUrl: recordUrl.toString(), ownerId: actor.id, customerNumbers: [] });
+    return { record: null, number: null, link, extension, recipient, destination: nudge.channel === "pager" ? pager! : storedPerson ?? "",
+      pager, body, facts: { overdue: false, reasons: [], actions: [], call_blockers: [] }, channels, config, customerNumbers: [], policy };
+  }
   const record = await getOutreachRecordModel().findById(nudge.outreach_record_id).session(session ?? null).lean();
   if (!record) throw new CsiError("INVALID_INPUT");
   if (record.revision !== command.expected_revision) throw new CsiError("REVISION_CONFLICT");

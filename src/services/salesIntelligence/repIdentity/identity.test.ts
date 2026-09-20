@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { proposeRepCandidates } from "./propose";
-import { repProposalDtoSchema } from "./reads";
+import { attachedAgentForUser, collectDirectoryUsers, repProposalDtoSchema } from "./reads";
 import { resolveRepIdentityAt, type TemporalRepLink } from "./resolve";
 import { csiRepInputSchema } from "../../../validation/v1/salesIntelligence";
 import { defaultStageHandlers } from "../../numberActivity/jobDispatch";
@@ -12,10 +12,45 @@ test("directory User DTO carries snapshot destination facts without inventing a 
   const parsed = repProposalDtoSchema.parse({
     extension_id: "102", extension_name: "Joshua L", status: "unmatched", candidates: [],
     extension_number: "102", direct_numbers: ["+12025550188"], directory_status: "Enabled",
+    rc_account_id: "account-a", attached_agent: { id: "a".repeat(24), name: "Joshua L" },
   });
   assert.equal(parsed.extension_number, "102");
   assert.deepEqual(parsed.direct_numbers, ["+12025550188"]);
+  assert.equal(parsed.rc_account_id, "account-a");
+  assert.equal(parsed.attached_agent?.name, "Joshua L");
   assert.equal("rc_team_messaging_person_id" in parsed, false);
+});
+test("directory page omits the owner sender extension and keeps other Users", () => {
+  const { page, next_cursor } = collectDirectoryUsers([
+    { rc_account_id: "a", snapshot: { extensions: [
+      { id: "100", type: "User", name: "Owner" },
+      { id: "101", type: "User", name: "Russell" },
+      { id: "1", type: "Department" },
+    ] } },
+  ], undefined, 50, ["100"]);
+  assert.deepEqual(page.map(user => `${user.rc_account_id}:${user.id}`), ["a:101"]);
+  assert.equal(next_cursor, null);
+});
+test("directory page lists Users across stored accounts without an Owner-typed account id", () => {
+  const { page, next_cursor } = collectDirectoryUsers([
+    { rc_account_id: "b", snapshot: { extensions: [{ id: "220", type: "User", name: "Joshua" }, { id: "1", type: "Department" }] } },
+    { rc_account_id: "a", snapshot: { extensions: [{ id: "101", type: "User", name: "Russell" }, { id: "102", type: "User", name: "Casey" }] } },
+  ], undefined, 2);
+  assert.deepEqual(page.map(user => `${user.rc_account_id}:${user.id}`), ["a:101", "a:102"]);
+  assert.equal(next_cursor, "a:102");
+  const next = collectDirectoryUsers([
+    { rc_account_id: "a", snapshot: { extensions: [{ id: "101", type: "User" }, { id: "102", type: "User" }] } },
+    { rc_account_id: "b", snapshot: { extensions: [{ id: "220", type: "User" }] } },
+  ], "a:102", 10);
+  assert.deepEqual(next.page.map(user => user.id), ["220"]);
+  assert.equal(next.next_cursor, null);
+  assert.deepEqual(attachedAgentForUser([
+    { rc_account_id: "a", rc_extension_id: "101", status: "reviewed", effective_to: null, agent_id: "agent-1", agent_name_snapshot: "Russell I" },
+    { rc_account_id: "a", rc_extension_id: "101", status: "proposed", effective_to: null, agent_id: "agent-2", agent_name_snapshot: "Other" },
+  ], "a", "101"), { id: "agent-1", name: "Russell I" });
+  assert.equal(attachedAgentForUser([
+    { rc_account_id: "a", rc_extension_id: "101", status: "reviewed", effective_to: new Date("2026-01-01"), agent_id: "agent-1", agent_name_snapshot: "Russell I" },
+  ], "a", "101"), null);
 });
 test("exact names remain proposed; alias ties, duplicate names, missing names and non-Users remain explicit", () => {
   assert.equal(proposeRepCandidates({ id: "1", name: "Jordan Lee", type: "User" }, agents).status, "proposed");

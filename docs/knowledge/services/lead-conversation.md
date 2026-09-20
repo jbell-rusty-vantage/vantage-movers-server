@@ -38,11 +38,11 @@ A Lead Conversation is evidence of one telephone conversation matched to a Form 
 - Model and seven indexes (`pnpm migration:conversations:indexes`).
 - Deterministic redaction before persistence (`redactTranscript`).
 - Owner-only reads:
-  - `GET /api/v1/admin/conversations`
+  - `GET /api/v1/admin/conversations` — optional `q`, `direction`, `state`, `booked`, `has_transcript`, `limit`; no transcript or summary text
   - `GET /api/v1/admin/conversations/by-lead/:model/:id` — no transcript or summary text
   - `GET /api/v1/admin/conversations/:id` — redacted transcript + sectioned summary
   - `GET /api/v1/admin/conversations/:id/audio-url` — short-lived signed URL, audited
-- One Owner-seeded inbound Call Lead (`P5562014` / Chris Hughes) replayed from existing artifacts. No new STT or summary call.
+- Admin `/conversations` lists searchable rows. The Owner-seeded inbound Call Lead (`P5562014`) remains a seed path, not the tab chrome.
 
 ## Invariants
 

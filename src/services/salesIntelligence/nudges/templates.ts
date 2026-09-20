@@ -49,12 +49,16 @@ export function reviewContextForbidsContactRequest(body: string): boolean {
 }
 export function renderNudgeTemplate(input: {
   purpose: NudgePurpose; template_key: string; template_version: number; repName: string; customerName: string | null;
-  customerNumber: string; reasons: readonly string[]; lastContact: Date | null; source: string | null;
+  customerNumber: string | null; reasons: readonly string[]; lastContact: Date | null; source: string | null;
   recordUrl: string; ownerId: string; body?: string; customerNumbers: readonly string[];
 }) {
   if (input.template_key !== input.purpose || NUDGE_TEMPLATES[input.purpose] !== input.template_version) throw new CsiError("INVALID_INPUT");
   // Review-context edits cannot turn the internal template into a contact request before any provider call.
   if (input.body && input.purpose === "review_context" && reviewContextForbidsContactRequest(input.body)) throw new CsiError("NUDGE_NOT_ACTIONABLE");
+  if (!input.customerNumber) {
+    if (input.purpose !== "review_context" || !input.body) throw new CsiError("INVALID_INPUT");
+    return validateNudgeBody(input.body, input.customerNumbers);
+  }
   const name = clean(input.customerName ?? "Customer").split(/\s+/);
   const maskedName = `${name[0]}${name.length > 1 ? ` ${name.at(-1)![0]}.` : ""}`;
   const reason = input.purpose === "review_context" ? `${reasonText[input.reasons[0] ?? ""] ?? "Internal Outreach context needs review."} Please review the internal context; this is not a request to contact the customer.` :

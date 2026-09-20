@@ -49,12 +49,12 @@ export const OwnerRepNudgeSchema = new Schema(
     outreach_record_id: {
       type: Schema.Types.ObjectId,
       ref: "OutreachRecord",
-      required: true,
+      default: null,
     },
     contact_number_id: {
       type: Schema.Types.ObjectId,
       ref: "ContactNumber",
-      required: true,
+      default: null,
     },
     lead_ref: { type: leadRefSchema, default: null },
     rc_account_id: { type: String, required: true, trim: true },

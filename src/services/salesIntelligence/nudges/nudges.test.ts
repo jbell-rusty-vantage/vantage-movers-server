@@ -283,6 +283,67 @@ test("versioned templates limit customer identity; purpose/version/client chat a
     }).success,
     false,
   );
+  assert.equal(
+    csiNudgeCommandSchema.safeParse({
+      nudge: {
+        rc_account_id: "synthetic",
+        rc_extension_id: "220",
+        channel: "pager",
+        template_key: "review_context",
+        template_version: 1,
+        purpose: "review_context",
+        body: "Joshua — please review this internal note.",
+      },
+    }).success,
+    true,
+  );
+  assert.equal(
+    csiNudgeCommandSchema.safeParse({
+      nudge: {
+        rc_account_id: "synthetic",
+        rc_extension_id: "220",
+        channel: "sms_to_rep",
+        template_key: "review_context",
+        template_version: 1,
+        purpose: "review_context",
+        body: "Joshua — please review this internal note.",
+      },
+    }).success,
+    false,
+  );
+  assert.equal(
+    csiNudgeCommandSchema.safeParse({
+      expected_revision: 1,
+      nudge: {
+        rc_account_id: "synthetic",
+        rc_extension_id: "220",
+        channel: "pager",
+        template_key: "review_context",
+        template_version: 1,
+        purpose: "review_context",
+        body: "Joshua — please review this internal note.",
+      },
+    }).success,
+    false,
+  );
+});
+test("directory-only review template does not require Outreach or a customer number", () => {
+  const body = renderNudgeTemplate({
+    purpose: "review_context",
+    template_key: "review_context",
+    template_version: 1,
+    repName: "Joshua L",
+    customerName: null,
+    customerNumber: null,
+    reasons: [],
+    lastContact: null,
+    source: null,
+    recordUrl: "https://vantage.example.test/sales-intelligence?view=reps",
+    ownerId: "synthetic-owner",
+    body: "Joshua — please review this internal note.",
+    customerNumbers: [],
+  });
+  assert.equal(body, "Joshua — please review this internal note.");
 });
 test("edited review-context bodies fail closed on contact instructions and keep restriction discussion", () => {
   const base = {

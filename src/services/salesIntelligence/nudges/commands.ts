@@ -40,7 +40,7 @@ export function nudgeDestinationRejectionEvent(outreachRecordId: string, errorCo
 async function checked(command: NudgeCommand, actor: CsiActor, now: Date, session?: ClientSession) {
   try { return await checkNudge(command, actor, now, session); }
   catch (error) {
-    if (error instanceof CsiError && error.code === "NUDGE_DESTINATION_IS_CUSTOMER")
+    if (error instanceof CsiError && error.code === "NUDGE_DESTINATION_IS_CUSTOMER" && command.nudge.outreach_record_id)
       await recordOperationalEvent(nudgeDestinationRejectionEvent(command.nudge.outreach_record_id, error.code));
     throw error;
   }
@@ -53,7 +53,7 @@ export async function previewNudge(input: NudgeCommandInput) {
   const result = await checked(command, input.actor, now);
   if (await getOwnerRepNudgeModel().countDocuments(rateWindow(result, now)) >= result.config.hourlyLimit) throw new CsiError("RATE_LIMITED");
   return ownerRead({ body: result.body, template_key: command.nudge.template_key, template_version: command.nudge.template_version, purpose: command.nudge.purpose,
-    expected_revision: result.record.revision, expected_rep_revision: result.link?.revision ?? null,
+    expected_revision: result.record?.revision ?? null, expected_rep_revision: result.link?.revision ?? null,
     recipient: { rc_account_id: result.recipient.account, rc_extension_id: result.recipient.extension, directory_name: result.extension.name ?? null,
       agent_id: result.link ? String(result.link.agent_id) : null, agent_name: result.link?.agent_name_snapshot ?? null,
       rep_identity_link_id: result.link ? String(result.link._id) : null, channel: command.nudge.channel }, allowed_channels: result.channels,
@@ -65,6 +65,7 @@ async function fenceEligibility(result: Awaited<ReturnType<typeof checkNudge>>, 
   if (!pointer) throw new CsiError("REVISION_CONFLICT");
   await getSalesIntelligencePolicyPointerModel().updateOne({ _id: pointer._id }, { $set: { revision: pointer.revision } }, { session, timestamps: false });
   await lockRepExtension(result.recipient.account, result.recipient.extension, session);
+  if (!result.number || !result.record) return;
   const numberLock = await lockNumber(String(result.number._id), session);
   await getContactNumberModel().updateOne({ _id: result.number._id }, { $set: { revision: numberLock.prior_revision, updatedAt: numberLock.prior_updated_at } }, { session, timestamps: false });
   const updated = await getOutreachRecordModel().updateOne({ _id: result.record._id, revision: result.record.revision }, { $inc: { revision: 1 } }, { session, timestamps: false });
@@ -87,18 +88,18 @@ export async function sendNudge(input: NudgeCommandInput, deps: NudgeDependencie
       const count = await getOwnerRepNudgeModel().countDocuments(rateWindow(result, context.now)).session(context.session);
       if (count >= result.config.hourlyLimit) throw new CsiError("RATE_LIMITED");
       const row = new (getOwnerRepNudgeModel())({ idempotency_key: payloadHash([input.actor.id, input.idempotency_key]), actor: input.actor, command_id: context.command_id,
-        authorized_command: command, expected_outreach_revision: command.expected_revision, outreach_record_id: result.record._id, contact_number_id: result.number._id,
-        lead_ref: result.record.subject.kind === "lead" ? { model: result.record.subject.model, id: result.record.subject.id } : null,
+        authorized_command: command, expected_outreach_revision: command.expected_revision ?? null, outreach_record_id: result.record?._id ?? null, contact_number_id: result.number?._id ?? null,
+        lead_ref: result.record?.subject.kind === "lead" ? { model: result.record.subject.model, id: result.record.subject.id } : null,
         rc_account_id: result.recipient.account, rc_extension_id: result.recipient.extension, rc_extension_number: result.extension.extension_number ?? null,
         rc_extension_name_snapshot: result.extension.name ?? null, rep_identity_link_id: result.link?._id ?? null, agent_id: result.link?.agent_id ?? null,
         channel: command.nudge.channel, destination: result.destination,
         recipient_person_id: result.recipient.person, sender_person_id: result.recipient.senderPerson, sender_extension_id: result.recipient.senderExtension, sender_extension_number: result.recipient.senderExtensionNumber, sender_did: result.recipient.senderDid, provider_account_id: result.recipient.account,
         template_key: command.nudge.template_key, template_version: command.nudge.template_version, purpose: command.nudge.purpose, body_as_sent: result.body,
-        preconditions_snapshot: { outreach_state: result.record.state, overdue: result.facts.overdue, attachment_certainty: result.record.state === "identity_review" ? "ambiguous" : "stored",
+        preconditions_snapshot: { outreach_state: result.record?.state ?? "directory", overdue: result.facts.overdue, attachment_certainty: result.record?.state === "identity_review" ? "ambiguous" : "stored",
           rep_link_status: result.link?.status ?? "none", policy_version: result.policy.version }, status: "pending", send_expires_at: new Date(+context.now + 60_000) });
       await row.save({ session: context.session });
       await scheduleNudgeRepair(String(row._id), context.session, new Date(+context.now + 120_000));
-      await appendCsiAudit(context, { subject_key: subjectKey(result.record.subject), event_kind: "nudge.authorized", kind: "nudge", target_id: String(row._id), revision: 1, prior: {}, current: { status: "pending" } });
+      await appendCsiAudit(context, { subject_key: result.record ? subjectKey(result.record.subject) : `directory:${result.recipient.account}:${result.recipient.extension}`, event_kind: "nudge.authorized", kind: "nudge", target_id: String(row._id), revision: 1, prior: {}, current: { status: "pending" } });
       return { nudge_id: String(row._id) };
     } });
   const id = operation.response.nudge_id;
@@ -129,7 +130,7 @@ async function submitAuthorizedNudge(id: string, command: NudgeCommand, actor: C
         { $set: { destination, channel, fallback_channel: fallback ? "pager" : null, submission_started_at: new Date() }, $inc: { revision: 1 } }, { session });
       if (changed.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
       await appendCsiAudit({ session, command_id: current.command_id!, now: new Date(), actor }, {
-        subject_key: subjectKey(check.record.subject), event_kind: "nudge.submission_started", kind: "nudge", target_id: id, revision: current.revision + 1,
+        subject_key: check.record ? subjectKey(check.record.subject) : `directory:${check.recipient.account}:${check.recipient.extension}`, event_kind: "nudge.submission_started", kind: "nudge", target_id: id, revision: current.revision + 1,
         prior: { status: "pending" }, current: { status: "pending", submission_started: true, channel, fallback } });
       return { ...check.recipient, channel, destination, body: current.body_as_sent } satisfies NudgeSubmission;
     });

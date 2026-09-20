@@ -49,6 +49,21 @@ function required(name: string) {
   return value;
 }
 
+function textToolContent(content: unknown): string {
+  if (!Array.isArray(content) || content.length !== 1) {
+    throw new Error("get_intelligence_context did not return one text result");
+  }
+  const part = content[0];
+  if (!part || typeof part !== "object") {
+    throw new Error("get_intelligence_context did not return one text result");
+  }
+  const record = part as { type?: unknown; text?: unknown };
+  if (record.type !== "text" || typeof record.text !== "string") {
+    throw new Error("get_intelligence_context did not return one text result");
+  }
+  return record.text;
+}
+
 function mcpEndpoint() {
   const endpoint = new URL(required("SALES_INTELLIGENCE_MCP_ENDPOINT"));
   if (
@@ -228,7 +243,7 @@ async function connectAsIntelligenceAgent(input: {
     }
     const context = await client.callTool({ name: "get_intelligence_context", arguments: {}, options });
     if (context.isError) throw new Error(`get_intelligence_context failed: ${JSON.stringify(context)}`);
-    const text = context.content[0] && "text" in context.content[0] ? context.content[0].text : "";
+    const text = textToolContent(context.content);
     const captured = JSON.parse(text) as { snapshot_id?: string };
     if (!captured.snapshot_id) throw new Error("get_intelligence_context did not return a captured snapshot");
     return { tools: names, schema_digest: input.schemaDigest, snapshot_id: captured.snapshot_id };

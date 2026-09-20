@@ -1,10 +1,62 @@
 import mongoose from "mongoose";
+import { z } from "zod";
+import {
+  LEAD_CONVERSATION_DIRECTIONS,
+  LEAD_CONVERSATION_STATES,
+} from "../../config/domain/conversations";
 import { toObjectId } from "../../utils/objectId";
 import {
   getLeadConversationModel,
   type LeadConversationDocument,
 } from "../../models/LeadConversation";
 import { extractSummarySection, hasCrmMismatch } from "./seedFromArtifacts";
+
+export const conversationListQuerySchema = z.object({
+  q: z.string().trim().max(80).optional(),
+  direction: z.enum(LEAD_CONVERSATION_DIRECTIONS).optional(),
+  state: z.enum(LEAD_CONVERSATION_STATES).optional(),
+  booked: z.enum(["true", "false"]).optional(),
+  has_transcript: z.enum(["true", "false"]).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+export type ConversationListQuery = z.input<typeof conversationListQuerySchema>;
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function conversationListFilter(query: z.infer<typeof conversationListQuerySchema>) {
+  const filter: Record<string, unknown> = {};
+  if (query.direction) filter.direction = query.direction;
+  if (query.state) filter.state = query.state;
+  if (query.booked === "true") filter.booking_ref = { $ne: null };
+  if (query.booked === "false") filter.booking_ref = null;
+  if (query.has_transcript === "true") filter["transcript.text"] = { $exists: true, $nin: [null, ""] };
+  const missingTranscript = {
+    $or: [
+      { transcript: { $exists: false } },
+      { "transcript.text": { $in: [null, ""] } },
+    ],
+  };
+  const search = query.q
+    ? {
+        $or: [
+          { normalized_job_no: new RegExp(escapeRegex(query.q), "i") },
+          { receiver_agent_name_snapshot: new RegExp(escapeRegex(query.q), "i") },
+          { from_phone_masked: new RegExp(escapeRegex(query.q), "i") },
+          { to_phone_masked: new RegExp(escapeRegex(query.q), "i") },
+          { call_log_id: new RegExp(escapeRegex(query.q), "i") },
+        ],
+      }
+    : null;
+  const clauses = [
+    query.has_transcript === "false" ? missingTranscript : null,
+    search,
+  ].filter(Boolean);
+  if (clauses.length === 1) Object.assign(filter, clauses[0]);
+  else if (clauses.length > 1) filter.$and = clauses;
+  return filter;
+}
 
 export type ConversationListItem = {
   id: string;
@@ -178,9 +230,12 @@ export function toConversationDetail(
   };
 }
 
-export async function listConversations(): Promise<ConversationListItem[]> {
+export async function listConversations(
+  query: ConversationListQuery = {},
+): Promise<ConversationListItem[]> {
+  const parsed = conversationListQuerySchema.parse(query);
   const Model = getLeadConversationModel();
-  const rows = await Model.find({}).sort({ started_at: -1, _id: -1 }).limit(50);
+  const rows = await Model.find(conversationListFilter(parsed)).sort({ started_at: -1, _id: -1 }).limit(parsed.limit);
   return rows.map((row) => {
     const item = toConversationListItem(row);
     assertListProjectionSafe(item);

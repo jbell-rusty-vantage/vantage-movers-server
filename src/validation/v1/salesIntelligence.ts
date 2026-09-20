@@ -325,7 +325,7 @@ export const csiRepProposeSchema = z.object({
 }).strict();
 export const csiNudgeInputSchema = z
   .object({
-    outreach_record_id: csiIdSchema,
+    outreach_record_id: csiIdSchema.optional(),
     rc_account_id: csiTextSchema,
     rc_extension_id: csiTextSchema,
     rep_identity_link_id: csiIdSchema.optional(),
@@ -340,12 +340,17 @@ export const csiNudgeInputSchema = z
   .strict();
 export const csiNudgeCommandSchema = z
   .object({
-    ...base,
+    expected_revision: csiRevisionSchema.optional(),
+    expected_revisions: base.expected_revisions,
+    scope: base.scope,
     nudge: csiNudgeInputSchema,
     expected_rep_revision: csiRevisionSchema.optional(),
   })
   .strict()
-  .refine((value) => Boolean(value.nudge.rep_identity_link_id) === (value.expected_rep_revision !== undefined));
+  .refine((value) => Boolean(value.nudge.rep_identity_link_id) === (value.expected_rep_revision !== undefined))
+  .refine((value) => Boolean(value.nudge.outreach_record_id) === (value.expected_revision !== undefined))
+  .refine((value) => value.nudge.outreach_record_id
+    || (value.nudge.purpose === "review_context" && Boolean(value.nudge.body) && value.nudge.channel !== "sms_to_rep" && !value.nudge.followup_id));
 export const csiBackfillCommandSchema = z
   .object({ ...base, from: csiDateSchema, to: csiDateSchema, ...reason })
   .strict()

@@ -8,6 +8,7 @@ import {
 } from "../services/operationsRegistry";
 import { recordOperationalEvent } from "../services/observability";
 import {
+  conversationListQuerySchema,
   getConversationById,
   issueConversationAudioUrl,
   listConversations,
@@ -49,7 +50,7 @@ export function createConversationsAdminRouter(
     try {
       await connect();
       requireRegistryOwnerActor(req, auth(req));
-      const data = await list();
+      const data = await list(conversationListQuerySchema.parse(req.query));
       return res.status(200).json({ ok: true, data });
     } catch (error) {
       return sendError(res, error, requestId(req));
