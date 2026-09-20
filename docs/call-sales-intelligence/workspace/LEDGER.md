@@ -11,7 +11,7 @@ Exact claims:
 - MCP `lib/intelligence/{auth,api,registration,transport.test}.ts` — forward sanitized issues
 - Service card + CSI-17 API-CONTRACT note
 
-Do not reset production `schema_failures` or resume paused jobs until this is deployed. No phones in evidence. No `.env` in git.
+Deployed 20 Sep 2026 through Vercel CLI (`git.deploymentEnabled` is false): API `cd22b1e4b2a97fce5e8edcfd4ff117730d14dc18` → https://vantage-movers-main-server.vercel.app (`dpl_13YfCCof9kYNZyibLVdabrUmbnoQ`); MCP `a9e002d679387e4641d8d0fae1e7370844e559b6` → https://vantage-movers-mcp.vercel.app (`dpl_EbFSND5yGf4bkgiyrmk13L4QA7vp`). Prompt/schema review brief: `evidence/after-16/prompt-schema-review/PROMPT.md`. Do not reset production `schema_failures` unless the Owner asks. No phones in evidence. No `.env` in git.
 
 ## AFTER-16 A/B/C — Grok, September 20, 2026
 

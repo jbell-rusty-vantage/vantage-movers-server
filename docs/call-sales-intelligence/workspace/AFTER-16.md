@@ -115,3 +115,5 @@ Not part of the Saturday flag flip unless the Owner names days.
 Watch Coverage (watermark, gaps, denied ≠ unknown ≠ zero, budget remaining, oldest queued). Retention cron is daily; original-evidence rerun is unavailable after purge. Budget pause leaves call history and Owner commands up. Emergency rollback is all capability flags off (or the one flag that is on fire). RingSense/ACE stay out of scope. Exact locator/entailment stays off.
 
 After I, new work is ordinary product change, not another CSI issue wave.
+
+Live first-hour submit 400s are a prompt/schema teaching problem as well as a repair-path problem. The copy-paste review for another agent is [prompt-schema-review/PROMPT.md](evidence/after-16/prompt-schema-review/PROMPT.md).
