@@ -1,5 +1,18 @@
 # Implementation ledger
 
+## AFTER-16 D+E live submit 400 — Grok, September 20, 2026
+
+Stay-and-fix during Saturday cutover. Production run `6ab02c3d036aa9e7b7ca9655` accepted the scoped key then returned HTTP 400 on POST `/submit`. Run is paused `schema_exhausted` after two `INVALID_INPUT` submits; six snapshots captured, no receipt. Nearby first-hour analysis runs are mostly `bounds_exhausted` (4-step ceiling) or `schema_exhausted`. JSON Schema cannot express envelope refinements, and the 400 body named no issue paths, so the one allowed repair was blind.
+
+Exact claims:
+- `src/routes/sales-intelligence-internal.routes.ts` — sanitized `{path,code}` on Zod `INVALID_INPUT`; log issue paths only
+- `src/routes/sales-intelligence-internal.routes.test.ts`
+- `src/services/salesIntelligence/analysis/runtime.ts` — default steps 4 → 8
+- MCP `lib/intelligence/{auth,api,registration,transport.test}.ts` — forward sanitized issues
+- Service card + CSI-17 API-CONTRACT note
+
+Do not reset production `schema_failures` or resume paused jobs until this is deployed. No phones in evidence. No `.env` in git.
+
 ## AFTER-16 A/B/C — Grok, September 20, 2026
 
 Team F operations claimed before writes. Remotes remain `jbell-rusty-vantage`. Local `main` baselines: server `ea09569c6bee1b8727131c27dd2db4e8560422b4` (dirty `package.json` + untracked `scripts/probe-intelligence-mcp-agent.ts` preserved), Admin `d80528a2ab78a8430b48e9e8ce2eb0b463eaf486`, MCP `30b86aa08bbbe6bfdfe07a62a81ecf895d3b2b23`. CSI-16 stays an honest local packet: G4 not wholly green (F-01), G5 partial (F-02), G6 not probed. Do not relabel those green.

@@ -12,7 +12,7 @@ export const runtimeLimitsSchema = z.object({ steps: z.number().int().min(1).max
   output_tokens: z.number().int().min(100).max(16_000), total_input_tokens: z.number().int().positive(), total_output_tokens: z.number().int().positive(),
   elapsed_ms: z.number().int().min(1000).max(180_000), pages: z.number().int().min(1).max(100) }).strict();
 export type RuntimeLimits = z.infer<typeof runtimeLimitsSchema>;
-export const DEFAULT_RUNTIME_LIMITS: RuntimeLimits = { steps: 4, context_tokens: 128_000, output_tokens: 6000,
+export const DEFAULT_RUNTIME_LIMITS: RuntimeLimits = { steps: 8, context_tokens: 128_000, output_tokens: 6000,
   total_input_tokens: 512_000, total_output_tokens: 24_000, elapsed_ms: 120_000, pages: 80 };
 export class IntelligenceRuntimeError extends Error {
   constructor(readonly reason: "incomplete_coverage" | "bounds_exhausted" | "schema_exhausted" | "receipt_missing" | "contract_mismatch" | "eligibility_changed") { super(reason); }
