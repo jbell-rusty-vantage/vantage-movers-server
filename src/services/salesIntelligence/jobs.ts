@@ -1,9 +1,12 @@
 import mongoose, { type ClientSession } from "mongoose";
 import { withTransaction } from "../../db";
 import {
+  CSI_BACKFILL_JOB_PRIORITY,
+  CSI_LIVE_JOB_PRIORITY,
   csiDataset,
   type CSI_JOB_STAGES,
 } from "../../config/domain/salesIntelligence";
+export { CSI_BACKFILL_JOB_PRIORITY, CSI_LIVE_JOB_PRIORITY };
 import {
   getSalesIntelligenceJobModel,
   SALES_INTELLIGENCE_JOB_INDEXES,
@@ -89,6 +92,14 @@ export async function claimCsiJob(
   const Model = getSalesIntelligenceJobModel();
   await assertIndexes(Model.collection, SALES_INTELLIGENCE_JOB_INDEXES);
   const now = new Date();
+  // A queue wake-up for a particular historical job cannot jump ahead of
+  // current STT/analysis simply by bypassing the sorted cron claim.
+  const aiStages: JobInput["stage"][] = ["transcription", "analysis", "number_refresh"];
+  const liveAiDue = (!stage || aiStages.includes(stage)) && await Model.exists({
+    ...csiDataset(), stage: { $in: aiStages }, priority: { $gte: CSI_LIVE_JOB_PRIORITY },
+    $or: [{ status: { $in: ["pending", "retry"] }, next_attempt_at: { $lte: now } },
+      { status: "leased" }],
+  });
   // Exhausted crashed claims remain visible; recovery never runs a ninth provider attempt.
   await Model.updateMany(
     {
@@ -110,6 +121,7 @@ export async function claimCsiJob(
       ...csiDataset(),
       ...(jobId ? { _id: jobId } : {}),
       ...(stage ? { stage } : {}),
+      ...(liveAiDue ? { priority: { $gte: CSI_LIVE_JOB_PRIORITY } } : {}),
       $expr: { $lt: ["$attempts", "$max_attempts"] },
       $or: [
         {
@@ -141,6 +153,20 @@ export async function renewCsiJob(lease: JobLease, ttlMs = 300_000) {
     { $set: { leased_until: new Date(now.getTime() + ttlMs) } },
   );
   if (result.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
+}
+/** Successful bounded progress is not a failed attempt. Commit continuation with its effects. */
+export async function continueCsiJob<T>(lease: JobLease, mutation: (session: ClientSession) => Promise<T>) {
+  return withTransaction(async session => {
+    const Model = getSalesIntelligenceJobModel();
+    if (!await Model.exists(fence(lease)).session(session)) throw new CsiError("LEASE_LOST");
+    const value = await mutation(session);
+    const changed = await Model.updateOne(fence(lease), {
+      $set: { status: "pending", lease_owner: null, leased_until: null, next_attempt_at: new Date() },
+      $inc: { attempts: -1 },
+    }, { session });
+    if (changed.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
+    return value;
+  });
 }
 /** Commit bounded resumable application progress without completing the durable job. */
 export async function checkpointCsiJob<T>(lease: JobLease, mutation: (session: ClientSession) => Promise<T>) {

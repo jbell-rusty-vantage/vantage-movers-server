@@ -38,6 +38,12 @@ Runtime: `src/services/salesIntelligence/{outreach,followups,review}/`. Authorit
 
 `timeline.ts` registers an append-only CSI audit source with the existing Number Activity timeline merge. Owner notes retain their context; action, assignment, restriction and review events expose prior/current values. Source `happened_at` and audit `recorded_at` remain separate. GET pagination does not write history or projections.
 
+## CSI-15 historical activation
+
+Historical capture persists attachment work but defers Outreach and recording discovery until safe activation. `backfill/readiness.ts` prevents `ensureInteraction` (including generic repair and attachment hooks) from activating a historical call while later planned capture or its number's paged attachment work is incomplete. The activation worker processes known calls newest first, ten per fenced continuation, before moving to older source calls. Existing fulfillment and official Booked/Cancelled checks remain the only lifecycle authority; no parallel historical Outreach engine exists.
+
+Missed-call and Intelligence follow-up creation audits retain the source time, and Outreach/Number Review opening uses its original trigger time. Capture time remains observable separately. A successfully completed batch does not spend a transient retry. Retention removes derived follow-up content with a readable tombstone and preserves non-content source/effect identity. Synthetic fulfillment, official-close, chronology and recovery proof: [CSI-15 checks](../../call-sales-intelligence/workspace/evidence/csi-15/CHECKS.md).
+
 ## CSI-18 integration (September 19, 2026)
 
 Analysis Owner commands call `applyOwnerCommandInTransaction` for targeted follow-up corrections, eligible cancellation and explicit suggestion application. There is no parallel policy in Admin or MCP. The parent finding/output and exact action revisions are checked before action mutation. Independent actions, nullable dates, later Owner work, completed work, restrictions and official closure retain CSI-06 behavior. The assertion instruction, action audit and eligible review resolution commit with the command result. Original assertions/effects remain immutable; correction outcomes are new attributed history. Validation status is recorded separately for server and UI under `workspace/evidence/csi-18`.

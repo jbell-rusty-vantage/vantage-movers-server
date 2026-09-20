@@ -1,4 +1,4 @@
-import { csiFlag } from "../../../config/domain/salesIntelligence";
+import { csiFlag, CSI_BACKFILL_JOB_PRIORITY, CSI_LIVE_JOB_PRIORITY } from "../../../config/domain/salesIntelligence";
 import { withTransaction } from "../../../db";
 import { getLeadConversationModel } from "../../../models/LeadConversation";
 import { enqueueCsiJob } from "../jobs";
@@ -6,6 +6,12 @@ import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJ
 import { publishCaptureProjectionWakeup } from "../../numberActivity/webhookFanout";
 import { decideAnalysisEligibility, loadEligibilityInputs } from "./eligibility";
 import { loadCanonicalInteraction } from "./workerSupport";
+
+function pipelineJobPriority(sources: readonly string[] | undefined): number {
+  const list = sources ?? [];
+  const historicalOnly = list.includes("backfill") && !list.some((s) => s === "webhook" || s === "call_log_reconcile");
+  return historicalOnly ? CSI_BACKFILL_JOB_PRIORITY : CSI_LIVE_JOB_PRIORITY;
+}
 
 /** Close CSI-11's durable hook→job gap. The marker and job commit together; digest changes alone create a new STT unit. */
 export async function scheduleTranscriptionJobs(max = 5, publish = publishCaptureProjectionWakeup) {
@@ -16,6 +22,7 @@ export async function scheduleTranscriptionJobs(max = 5, publish = publishCaptur
   const Conversations = getLeadConversationModel();
   const now = new Date();
   const filter = {
+    content_purged_at: null,
     state: "media_stored" as const,
     media_digest_sha256: { $type: "string" as const }, "media.blob_pathname": { $type: "string" as const },
     "media.stored_at": { $type: "date" as const }, "media.purged_at": null,
@@ -48,7 +55,8 @@ export async function scheduleTranscriptionJobs(max = 5, publish = publishCaptur
       const digest = current.media_digest_sha256!;
       const subject = `conversation:${current._id}`;
       const job = await enqueueCsiJob({ stage: "transcription", subject_key: subject,
-        dedupe_key: `csi:transcription:${subject}:${digest}`, input_revision: 1, input_refs: [String(current._id)] }, session);
+        dedupe_key: `csi:transcription:${subject}:${digest}`, input_revision: 1, input_refs: [String(current._id)],
+        priority: pipelineJobPriority(interaction.sources) }, session);
       // Only a non-provider exclusion skip may reopen; successful and exhausted jobs remain terminal.
       if (job.status === "completed" && job.result?.reason === "excluded") {
         await getSalesIntelligenceJobModel().updateOne({ _id: job._id, status: "completed", "result.reason": "excluded" },

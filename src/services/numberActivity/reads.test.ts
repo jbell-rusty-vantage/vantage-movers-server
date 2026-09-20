@@ -69,13 +69,13 @@ test("number cursor round trip; garbage is INVALID_INPUT", () => {
 });
 
 test("buildNumberSearchFilter: hygiene, attachment, range, term and keyset cursor", () => {
-  assert.deepEqual(buildNumberSearchFilter(query({}), null), { kind: "external" });
-  assert.deepEqual(buildNumberSearchFilter(query({ hygiene: "true" }), null), { kind: { $ne: "external" } });
-  assert.deepEqual(buildNumberSearchFilter(query({ hygiene: "false" }), null), { kind: "external" }, "?hygiene=false must not invert the default");
-  assert.deepEqual(buildNumberSearchFilter(query({ hygiene: false }), null), { kind: "external" });
+  assert.deepEqual(buildNumberSearchFilter(query({}), null), { kind: "external", purged_at: null });
+  assert.deepEqual(buildNumberSearchFilter(query({ hygiene: "true" }), null), { kind: { $ne: "external" }, purged_at: null });
+  assert.deepEqual(buildNumberSearchFilter(query({ hygiene: "false" }), null), { kind: "external", purged_at: null }, "?hygiene=false must not invert the default");
+  assert.deepEqual(buildNumberSearchFilter(query({ hygiene: false }), null), { kind: "external", purged_at: null });
   assert.throws(() => query({ hygiene: "0" }), "only true/false are accepted; 0/off are not coerced");
   assert.throws(() => query({ hygiene: "off" }));
-  assert.deepEqual(buildNumberSearchFilter(query({ classification: "customer" }), null), { kind: "external", classification: "customer" });
+  assert.deepEqual(buildNumberSearchFilter(query({ classification: "customer" }), null), { kind: "external", classification: "customer", purged_at: null });
 
   const linked = buildNumberSearchFilter(query({ attachment: "linked" }), null);
   assert.deepEqual(linked.$and, [{ $or: [{ "rollups.attached_lead_count": { $gt: 0 } }, { "rollups.candidate_lead_count": { $gt: 0 } }] }]);

@@ -28,8 +28,10 @@ September 19 Owner decision: send destinations are current account Users, not re
 1. **Done locally: CSI-14 directory-User destinations plus P2.** Preview/send resolve a current stored-directory User. Reviewed identity stays required for attribution/metrics/assignment, not for send. Smallest Admin Message-rep picker lists those Users. Fuller dialogs/history remain later.
 2. **Done: merge `sales-intelligence` into local `main`, push remote `main`, and deploy with production flags left as they are.**
 3. **Done locally: CSI-09 Coverage/settings plus Lead-detail entry.** [Handoff](evidence/csi-09/HANDOFF.md).
-4. **Next session — one task: targeted 1–2 number-lead example seed.** [Copy-ready instructions](NEXT-SESSION.md). Owner named **P5562014** and **5564480**. [Authorization](evidence/named-subjects/AUTHORIZATION.md). This is not CSI-15 fleet backfill. Do not activate historical obligations. Do not fetch 5564480 media. Verify official indexes only; do not re-apply.
-5. **Later, separately:** CSI-14 fuller dialogs/history; CSI-10 empty-recording repair; flag enablement; CSI-15/16 fleet backfill, retention, budget recovery, certification. No production backfill follows from the named-subject seed.
+4. **Done locally: named 1–2 subject seed.** Official-closed booked Outreach for P5562014 and 5564480. No Number Activity. [Handoff](evidence/named-subjects/HANDOFF.md).
+5. **Next session — CSI-15 only.** Historical backfill workers, retention, budget/recovery. Synthetic/replica proof. [Copy-ready instructions](NEXT-SESSION.md). No production `POST /backfill`, no Vercel flag enablement.
+6. **Then CSI-16 only.** Certification, ACCEPTANCE matrix, honest G6 capability list, docs restamp. [Copy-ready instructions](CSI-16-SESSION.md). Staged rollout, live send, and fleet backfill remain separately authorized.
+7. **After CSI-16 — operations, not a new issue wave.** [Copy-ready slices](AFTER-16.md). Owner Saturday decision: **full-system cutover in one session** (all capability flags), then stay and resolve. Not a staged flag ladder. Fleet backfill still needs an explicit day range.
 
 These are execution slices under existing issue IDs, not replacement issues. Team D can take the CSI-18 server slice independently when scheduled; the default next Owner agent session is the visible dashboard foundation, not Team D's old combined kickoff.
 

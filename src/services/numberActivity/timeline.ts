@@ -202,6 +202,7 @@ export const interactionSource: TimelineSource = async ({ number_id, limit, curs
     .find({
       contact_number_id: objectId(number_id),
       merged_into_id: null,
+      purged_at: null,
       ...keysetAfterCursor(cursor, "interaction", "started_at", "_id", objectId),
     })
     .sort({ started_at: -1, _id: -1 })
@@ -326,6 +327,7 @@ const CONVERSATION_LINK_SCAN_LIMIT = 2000;
  */
 export const conversationSource: TimelineSource = async ({ number_id, limit, cursor }) => {
   const scanFilter: Record<string, unknown> = {
+    purged_at: null,
     contact_number_id: objectId(number_id),
     merged_into_id: null,
     "recordings.0": { $exists: true },
@@ -408,7 +410,7 @@ export async function getNumberTimeline(
 ): Promise<NumberTimelinePageDto | null> {
   if (!csiIdSchema.safeParse(numberId).success) return null;
   const number = (await getContactNumberModel()
-    .findById(numberId, { e164: 1, national_ten: 1 })
+    .findOne({ _id: numberId, purged_at: null }, { e164: 1, national_ten: 1 })
     .lean()) as unknown as Pick<ContactNumberLean, "_id" | "e164" | "national_ten"> | null;
   if (!number) return null;
   const limit = Math.min(MAX_LIMIT, Math.max(1, Math.trunc(opts.limit ?? DEFAULT_LIMIT)));

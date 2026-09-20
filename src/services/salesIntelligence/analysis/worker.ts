@@ -4,11 +4,13 @@ import { withTransaction } from "../../../db";
 import { csiDataset, csiFlag, csiProviderConfiguration } from "../../../config/domain/salesIntelligence";
 import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
 import { getIntelligenceSubmissionModel } from "../../../models/IntelligenceSubmission";
+import { getCallInteractionModel } from "../../../models/CallInteraction";
 import { getContactNumberModel } from "../../../models/ContactNumber";
+import { getLeadConversationModel } from "../../../models/LeadConversation";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { getSalesIntelligenceAiBudgetModel } from "../../../models/SalesIntelligenceAiBudget";
 import { getSalesIntelligenceAiReservationModel } from "../../../models/SalesIntelligenceAiReservation";
-import { reserveCsiBudget, reconcileCsiBudget } from "../aiBudget";
+import { reserveCsiBudget, reconcileCsiBudget, resumeBudgetPausedJobs } from "../aiBudget";
 import { claimCsiJob, completeCsiJob, checkpointCsiJob, failCsiJob } from "../jobs";
 import { resolvePolicy } from "../policy";
 import { CsiError } from "../auth";
@@ -22,6 +24,8 @@ import { resumeTranscriptAnalysisJobs } from "../conversations/transcribe";
 import { retainedOriginal } from "./ownerReanalysis";
 import { intelligenceReadSchema, intelligenceToolArguments } from "./contracts";
 import { readContentSchema } from "./reads";
+import { retryAfterMs } from "../../ringcentral/recordings";
+import { ensureCurrentCsiBudgetPeriod } from "../budgetPeriod";
 
 export const pricingSchema = z.object({ version: z.string().min(1), input_cents_per_million: z.number().positive(), output_cents_per_million: z.number().positive() }).strict();
 export type AnalysisPricing = z.infer<typeof pricingSchema>;
@@ -42,6 +46,41 @@ export function estimateAnalysisCents(pricing: AnalysisPricing, limits: RuntimeL
   return Math.ceil((limits.total_input_tokens * pricing.input_cents_per_million + limits.total_output_tokens * pricing.output_cents_per_million) / 1_000_000) + limits.steps - 1;
 }
 export const analysisEnabled = () => csiFlag("ENABLED") && csiFlag("EXTRACTION_ENABLED");
+
+export function isHistoricalBackfillOnly(sources: readonly string[] | undefined): boolean {
+  const list = sources ?? [];
+  return list.includes("backfill") && !list.some((s) => s === "webhook" || s === "call_log_reconcile");
+}
+
+async function analysisModeForJob(
+  job: { input_refs: unknown[]; owner_reanalysis?: { mode: string } | null },
+  stage: "analysis" | "number_refresh",
+): Promise<"initial" | "number_refresh" | "backfill" | "original_evidence" | "current_context"> {
+  if (job.owner_reanalysis?.mode === "original_evidence" || job.owner_reanalysis?.mode === "current_context") {
+    return job.owner_reanalysis.mode;
+  }
+  if (stage === "number_refresh") return "number_refresh";
+  if (stage === "analysis" && job.input_refs.length === 2) {
+    const conversation = await getLeadConversationModel().findById(String(job.input_refs[0])).lean();
+    if (conversation?.call_interaction_id) {
+      const interaction = await getCallInteractionModel().findById(conversation.call_interaction_id).lean();
+      if (interaction && isHistoricalBackfillOnly(interaction.sources)) return "backfill";
+    }
+  }
+  return "initial";
+}
+
+function analysisProviderFailure(error: unknown): { kind: "throttled" | "permission_denied" | "transient"; retryAfterMs: number } | null {
+  const candidate = error as { statusCode?: number; status?: number; responseHeaders?: Record<string, string>; headers?: Record<string, string> };
+  const status = candidate.statusCode ?? candidate.status;
+  if (status === 429) {
+    const raw = candidate.responseHeaders?.["retry-after"] ?? candidate.headers?.["retry-after"];
+      return { kind: "throttled", retryAfterMs: retryAfterMs(raw ?? null, new Date()) };
+  }
+  if (status === 401 || status === 403) return { kind: "permission_denied", retryAfterMs: 0 };
+  if (typeof status === "number" && status >= 500) return { kind: "transient", retryAfterMs: 0 };
+  return null;
+}
 
 /** Queue and cron entry point. One bounded invocation; never transcription or provider retries. */
 export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "number_refresh" = "analysis", deps: AnalysisDependencies = {}) {
@@ -119,10 +158,11 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
     if (prior?.status === "paused") await checkpointCsiJob(lease, async session => {
       await getIntelligenceRunModel().updateOne({ _id: prior._id, finalized_at: null, status: "paused" }, { $set: { status: "running", processing_reason: null } }, { session });
     });
+    const analysisMode = await analysisModeForJob(job, stage);
     const prepared = await prepareIntelligenceRun(lease, { contact_number_id: input.contact_number_id, conversation_id: input.conversation_id,
       outreach_record_id: prior?.outreach_record_id ? String(prior.outreach_record_id) : input.outreach_record_id,
       input_fingerprint: prior?.input_fingerprint ?? input.fingerprint, model_version: prior?.model_version ?? config.model_id,
-      mode: job.owner_reanalysis?.mode ?? (stage === "number_refresh" ? "number_refresh" : "initial"),
+      mode: analysisMode,
       ...(job.owner_reanalysis ? { run_id: String(job.owner_reanalysis.run_id), parent_run_id: original ? String(original.run._id) : null,
         owner_correction_ids: job.owner_reanalysis.owner_correction_ids.map(String) } : {}) });
     runId = prepared.run_id;
@@ -182,6 +222,22 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
       if (receipt) return await finish(receipt);
     }
     if (error instanceof CsiError && error.code === "LEASE_LOST") return { status: "lease_lost" };
+    const provider = analysisProviderFailure(error);
+    if (provider) {
+      const failReason = provider.kind;
+      const outcome = await failCsiJob(lease, failReason, provider.retryAfterMs, {
+        result: { reason: failReason },
+        mutation: async (session, outcome) => {
+          if (runId) await getIntelligenceRunModel().updateOne({ _id: runId, finalized_at: null }, {
+            $set: {
+              processing_reason: failReason,
+              status: outcome.status === "paused" ? "paused" : outcome.status === "dead_letter" ? "failed" : "running",
+            },
+          }, { session });
+        },
+      });
+      return { status: failReason === "permission_denied" ? "paused" : outcome.status, reason: failReason };
+    }
     const budget = error instanceof CsiError && error.code === "BUDGET_EXHAUSTED";
     const bounded = error instanceof IntelligenceRuntimeError;
     const eligibility = bounded && error.reason === "eligibility_changed", disabled = error instanceof CsiError && error.code === "FEATURE_DISABLED";
@@ -208,6 +264,8 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
 }
 export async function drainIntelligenceJobs(deps: AnalysisDependencies = {}) {
   if (!analysisEnabled()) return { status: "disabled" };
+  await ensureCurrentCsiBudgetPeriod();
+  await resumeBudgetPausedJobs();
   await getSalesIntelligenceJobModel().updateMany({ ...csiDataset(), stage: { $in: ["analysis", "number_refresh"] },
     status: "paused", reason: "permission_denied", "result.reason": "analysis_disabled" }, { $set: { status: "pending", reason: null, next_attempt_at: new Date() } });
   await recoverExhaustedIntelligenceReceipts();
@@ -224,12 +282,20 @@ export async function recoverExhaustedIntelligenceReceipts() {
   if (!analysisEnabled()) return 0;
   return withTransaction(async session => {
     const jobs = await getSalesIntelligenceJobModel().find({ ...csiDataset(), stage: { $in: ["analysis", "number_refresh"] },
+      "result.failure_projected": { $ne: true },
       $expr: { $gte: ["$attempts", "$max_attempts"] }, $or: [{ status: "dead_letter", reason: "attempts_exhausted" },
         { status: "leased", leased_until: { $lte: new Date() } }] }).sort({ _id: 1 }).limit(5).session(session).lean();
     let recovered = 0;
     for (const job of jobs) {
-      const run = await getIntelligenceRunModel().findOne({ job_id: job._id, ...csiDataset(), subject_key: job.subject_key, status: "submitted" }).session(session).lean();
-      if (!run || !await getIntelligenceSubmissionModel().exists({ run_id: run._id }).session(session)) continue;
+      const run = await getIntelligenceRunModel().findOne({ job_id: job._id, ...csiDataset(), subject_key: job.subject_key }).session(session).lean();
+      if (!run || run.purged_at || run.status !== "submitted" || !await getIntelligenceSubmissionModel().exists({ run_id: run._id, purged_at: null }).session(session)) {
+        await getSalesIntelligenceJobModel().updateOne({ _id: job._id, status: job.status, lease_epoch: job.lease_epoch },
+          { $set: { status: "dead_letter", reason: "attempts_exhausted", lease_owner: null, leased_until: null,
+            result: { reason: "attempts_exhausted", failure_projected: true } } }, { session });
+        if (run && !run.finalized_at) await getIntelligenceRunModel().updateOne({ _id: run._id, finalized_at: null },
+          { $set: { status: "failed", processing_reason: "attempts_exhausted" } }, { session });
+        continue;
+      }
       const result = await getSalesIntelligenceJobModel().updateOne({ _id: job._id, status: job.status, lease_epoch: job.lease_epoch },
         { $set: { status: "retry", reason: "receipt_recovery", attempts: job.max_attempts - 1, lease_owner: null, leased_until: null, next_attempt_at: new Date() } }, { session });
       recovered += result.modifiedCount;

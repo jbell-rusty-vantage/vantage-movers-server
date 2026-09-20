@@ -10,8 +10,9 @@ import { claimCsiJob, completeCsiJob, failCsiJob } from "../jobs";
 import { decideAnalysisEligibility, loadEligibilityInputs } from "./eligibility";
 import { mediaMaxBytes, MEDIA_FETCH_STAGE, recordingPendingDelay, recordingWindowExhausted } from "./mediaPolicy";
 import { auditMediaJob, loadCanonicalInteraction, recordMediaOutcome } from "./workerSupport";
+import { deletePendingStoredAudio } from "../retention";
 
-export type MediaDependencies = { now?: () => Date; owner?: string; provider?: RecordingProvider; upload?: ImmutableUpload; ttlMs?: number };
+export type MediaDependencies = { now?: () => Date; owner?: string; provider?: RecordingProvider; upload?: ImmutableUpload; ttlMs?: number; deleteUpload?: (pathname: string) => Promise<void> };
 /** CSI-12 consumes this state/digest. No STT or analysis job is created by CSI-11. */
 export const MEDIA_STORED_NEXT_STAGE = "transcription" as const;
 
@@ -65,8 +66,8 @@ export async function runMediaFetchJob(jobId?: string, deps: MediaDependencies =
       return { conversation, eligibility };
     });
     const { conversation, eligibility } = context;
-    if (conversation.media?.blob_pathname || conversation.media?.purged_at || eligibility.status === "excluded") {
-      const reason = conversation.media?.blob_pathname ? "already_stored" : conversation.media?.purged_at ? "purged" : "excluded";
+    if (conversation.content_purged_at || conversation.media?.blob_pathname || conversation.media?.purged_at || eligibility.status === "excluded") {
+      const reason = conversation.content_purged_at || conversation.media?.purged_at ? "purged" : conversation.media?.blob_pathname ? "already_stored" : "excluded";
       await completeCsiJob(lease, async session => {
         await Conversations.updateOne({ _id: conversationId }, { $set: { analysis_eligibility: eligibility } }, { session });
         await auditMediaJob(session, lease, now, "conversation.media_skipped", { conversation_id: String(conversationId), reason });
@@ -87,13 +88,14 @@ export async function runMediaFetchJob(jobId?: string, deps: MediaDependencies =
     const response = await provider.content(account, conversation.provider_recording_id, signal);
     const stored = await storeRecordingStream({ response, metadataContentType: metadata.contentType, accountId: account,
       recordingId: conversation.provider_recording_id, maxBytes: mediaMaxBytes(), signal, upload: deps.upload });
-    await completeCsiJob(lease, async session => {
+    const purgedDuringUpload = await completeCsiJob(lease, async session => {
       const current = await Conversations.findById(conversationId).session(session);
       if (!current) throw new CsiError("INVALID_INPUT");
+      if (current.content_purged_at || current.media?.purged_at) return true;
       const canonical = await loadCanonicalInteraction(String(current.call_interaction_id), session);
       const currentEligibility = decideAnalysisEligibility(await loadEligibilityInputs(canonical, session), now);
       // Never replace successful evidence (including seed artifacts or a concurrently stored digest).
-      if (!current.media?.blob_pathname && !current.media?.purged_at) {
+      if (!current.content_purged_at && !current.media?.blob_pathname && !current.media?.purged_at) {
         await Conversations.updateOne({ _id: conversationId }, { $set: {
           state: "media_stored", media: { blob_pathname: stored.blob_pathname, bytes: stored.bytes, content_type: stored.content_type, stored_at: now },
           media_digest_sha256: stored.media_digest_sha256, availability_reason: null, unavailable_until: null,
@@ -101,7 +103,13 @@ export async function runMediaFetchJob(jobId?: string, deps: MediaDependencies =
         } }, { session, runValidators: true });
       }
       await auditMediaJob(session, lease, now, "conversation.media_stored", { conversation_id: String(conversationId), bytes: stored.bytes, media_digest_sha256: stored.media_digest_sha256 });
-    }, { result: { conversation_id: String(conversationId), state: "media_stored", media_digest_sha256: stored.media_digest_sha256 } });
+      return false;
+    }, { resultFrom: purged => ({ conversation_id: String(conversationId), state: purged ? "purged" : "media_stored", media_digest_sha256: stored.media_digest_sha256, ...(purged ? { pending_blob_delete: stored.blob_pathname } : {}) }) });
+    if (purgedDuringUpload) {
+      try { await deletePendingStoredAudio(lease.job_id, stored.blob_pathname, deps.deleteUpload); }
+      catch { return { status: "completed" as const, reason: "purged_cleanup_pending" }; }
+      return { status: "completed" as const, reason: "purged" };
+    }
     await recordMediaOutcome(lease.job_id, "media_stored");
     return { status: "completed" as const };
   } catch (error) {
@@ -122,11 +130,11 @@ export async function runMediaFetchJob(jobId?: string, deps: MediaDependencies =
       await recordMediaOutcome(lease.job_id, "unavailable", reason);
       return { status: "unavailable" as const, reason };
     }
-    const reason = status === 403 ? "permission_denied" : status === 429 ? "throttled" : status === 404 ? "recording_pending" : "transient";
-    const delay = status === 403 ? 86_400_000 : status === 429 ? retryAfterMs((error as RecordingReadError).retryAfter, now) : status === 404 ? recordingPendingDelay(firstObserved, now) : null;
+    const reason = status === 401 || status === 403 ? "permission_denied" : status === 429 ? "throttled" : status === 404 ? "recording_pending" : "transient";
+    const delay = status === 401 || status === 403 ? 86_400_000 : status === 429 ? retryAfterMs((error as RecordingReadError).retryAfter, now) : status === 404 ? recordingPendingDelay(firstObserved, now) : null;
     try {
-      const outcome = await failCsiJob(lease, reason, 0, {
-        ...(delay === null ? {} : { resumeAt: new Date(now.getTime() + delay) }),
+      const outcome = await failCsiJob(lease, reason, reason === "throttled" ? (delay ?? 600_000) : 0, {
+        ...(delay === null ? {} : reason === "permission_denied" ? { resumeAt: new Date(now.getTime() + delay) } : {}),
         result: { conversation_id: String(conversationId), reason },
         mutation: async (session, outcome) => {
           await Conversations.updateOne({ _id: conversationId, "media.blob_pathname": null }, { $set: {

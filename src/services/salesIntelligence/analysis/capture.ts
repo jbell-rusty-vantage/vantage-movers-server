@@ -1,4 +1,5 @@
 import { withTransaction } from "../../../db";
+import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
 import { getIntelligenceEvidenceSnapshotModel } from "../../../models/IntelligenceEvidenceSnapshot";
 import { csiDataset } from "../../../config/domain/salesIntelligence";
@@ -34,6 +35,7 @@ export async function captureIntelligenceRead(auth: RunAuthorization, raw: ReadI
   const tool_call_id = payloadHash(input);
   const existing = await getIntelligenceEvidenceSnapshotModel().findOne({run_id:run._id, tool_call_id, ...csiDataset()}).lean();
   if (existing) return restored(existing);
+  const number = run.contact_number_id ? await getContactNumberModel().findById(run.contact_number_id).select("retention_epoch").lean() : null;
   let data: ReadContent;
   let retrievedAt = new Date();
   if (run.mode === "original_evidence") {
@@ -52,7 +54,13 @@ export async function captureIntelligenceRead(auth: RunAuthorization, raw: ReadI
   await deps.beforePersist?.();
   return withTransaction(async session => {
     const current = await loadAuthorizedRun(auth, session);
+    if (number) {
+      const fence = await getContactNumberModel().updateOne({ _id: number._id, retention_epoch: number.retention_epoch ?? null }, { $inc: { evidence_fence: 1 } }, { session });
+      if (fence.modifiedCount !== 1) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
+    }
     if (current.status !== "running" || current.finalized_at) throw new CsiError("SUBMISSION_CONFLICT");
+    if (data.transcript && !await getIntelligenceEvidenceSnapshotModel().exists({ _id: data.transcript.source_snapshot_id, purged_at: null, purge_started_at: null }).session(session))
+      throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
     const prior = await getIntelligenceEvidenceSnapshotModel().findOne({run_id:current._id,tool_call_id,...csiDataset()}).session(session).lean();
     if (prior) { await fenceAuthorizedLease(auth, current.job_id, session); return restored(prior); }
     if (current.evidence_count >= MAX_RUN_SNAPSHOTS || current.evidence_bytes + bytes > MAX_RUN_EVIDENCE_BYTES)

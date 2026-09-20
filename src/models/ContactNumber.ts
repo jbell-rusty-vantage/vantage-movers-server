@@ -69,6 +69,10 @@ const rollupsSchema = new Schema(
 
 export const ContactNumberSchema = new Schema(
   {
+    content_purge_pending: { type: Boolean, default: false },
+    retention_epoch: { type: Number, default: 0 },
+    evidence_fence: { type: Number, default: 0 },
+    purged_at: { type: Date, default: null },
     revision: { type: Number, required: true, default: 1 },
     e164: { type: String, required: true, trim: true }, // "+17573180143"
     national_ten: { type: String, default: null, trim: true }, // "7573180143" (NANP only)

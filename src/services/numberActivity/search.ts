@@ -97,6 +97,7 @@ export function buildNumberSearchFilter(
   term: ReturnType<typeof parseSearchTerm> = parseSearchTerm(query.q),
 ): Record<string, unknown> {
   const filter: Record<string, unknown> = {
+    purged_at: null,
     kind: query.hygiene ? { $ne: "external" } : "external",
   };
   const and: Array<Record<string, unknown>> = [];

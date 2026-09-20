@@ -19,3 +19,5 @@ Admin uses its server-only API origin, session refresh and signed identity on a 
 CSI-08 is a partial read slice: supplied scoped export tokens and adapted Attention/follow-up/ownership presentation; native modal focus containment with host buttons. Optional additive Outreach `primary_number:{id,e164}|null` enables Number navigation (old snapshots remain readable). Missing overview is not called; pending counts stay null. CSI-09 adds the Coverage view and settings editor on the same live invalidation key. Messaging dialogs remain separate.
 
 Local startup and evidence: [CSI-07 handoff](../../call-sales-intelligence/workspace/evidence/csi-07/HANDOFF.md).
+
+CSI-15 preserves this SSE contract. The existing query invalidation/fallback refetch displays the updated stored Coverage backfill facts; no backfill payload or customer content is added to the stream. Capture completion and historical Outreach activation remain distinct facts. CSI-15 validation is synthetic and does not claim production stream/hosting certification; see [CSI-15 checks](../../call-sales-intelligence/workspace/evidence/csi-15/CHECKS.md).

@@ -1,6 +1,7 @@
 import type { ClientSession } from "mongoose";
 import { z } from "zod";
 import { csiDataset } from "../../../config/domain/salesIntelligence";
+import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
 import { getIntelligenceEvidenceSnapshotModel } from "../../../models/IntelligenceEvidenceSnapshot";
 import { getSalesIntelligenceOwnerInstructionModel } from "../../../models/SalesIntelligenceOwnerInstruction";
@@ -31,14 +32,15 @@ export async function authorizedCorrections(source: Source, ids: readonly string
 export async function retainedOriginal(sourceId: string, session?: ClientSession) {
   const run = await getIntelligenceRunModel().findOne({ _id: sourceId, ...csiDataset() }).session(session ?? null).lean();
   if (!run?.finalized_at || !run.rendered_prompt || !run.manifest_digest) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
+  if (run.contact_number_id && await getContactNumberModel().exists({ _id: run.contact_number_id, content_purge_pending: true }).session(session ?? null)) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
   const snapshots = await getIntelligenceEvidenceSnapshotModel().find({ run_id: run._id, ...csiDataset() }).sort({ _id: 1 }).session(session ?? null).lean();
   if (!snapshots.length || snapshots.length !== run.manifest_snapshot_ids.length ||
     payloadHash(snapshots.map(s => ({ id: String(s._id), digest: s.content_digest }))) !== run.manifest_digest) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
   for (const snapshot of snapshots) {
     const parsed = readContentSchema.safeParse(snapshot.response);
-    if (snapshot.purged_at || !parsed.success || payloadHash(parsed.data) !== snapshot.content_digest) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
+    if (snapshot.purged_at || snapshot.purge_started_at || !parsed.success || payloadHash(parsed.data) !== snapshot.content_digest) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
     if (parsed.data.transcript) {
-      const transcript = await getIntelligenceEvidenceSnapshotModel().findOne({ _id: parsed.data.transcript.source_snapshot_id, ...csiDataset(), purged_at: null }).session(session ?? null).lean();
+      const transcript = await getIntelligenceEvidenceSnapshotModel().findOne({ _id: parsed.data.transcript.source_snapshot_id, ...csiDataset(), purged_at: null, purge_started_at: null }).session(session ?? null).lean();
       if (!transcript) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
     }
   }
@@ -46,15 +48,15 @@ export async function retainedOriginal(sourceId: string, session?: ClientSession
 }
 export async function scheduleOwnerReanalysis(sourceId: string, mode: "original_evidence" | "current_context", correctionIds: string[], context: CsiTransactionContext) {
   const source = await getIntelligenceRunModel().findOne({ _id: sourceId, ...csiDataset() }).session(context.session).lean();
+  const original = mode === "original_evidence" ? await retainedOriginal(sourceId, context.session) : null;
   if (!source?.output || !source.finalized_at) throw new CsiError("INVALID_INPUT");
   await authorizedCorrections(source, correctionIds, context.session);
-  const original = mode === "original_evidence" ? await retainedOriginal(sourceId, context.session) : null;
   let refs: string[] = [];
   if (source.conversation_id) {
     const conversation = await getLeadConversationModel().findById(source.conversation_id).session(context.session).lean();
     const snapshot = original ? original.snapshots.map(s => readContentSchema.parse(s.response).transcript).find(Boolean)?.source_snapshot_id
       : conversation ? String((await getIntelligenceEvidenceSnapshotModel().findOne({ conversation_id: conversation._id, transcript_version: conversation.latest_transcript_version,
-        source_type: "transcript", ...csiDataset(), purged_at: null }).session(context.session).lean())?._id ?? "") : "";
+        source_type: "transcript", ...csiDataset(), purged_at: null, purge_started_at: null }).session(context.session).lean())?._id ?? "") : "";
     if (!snapshot) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
     refs = [String(source.conversation_id), snapshot];
   }

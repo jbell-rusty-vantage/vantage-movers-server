@@ -157,6 +157,18 @@ export async function reconcileCsiBudget(
   return withTransaction(reconcile);
 }
 
+/** Budget headroom returned; analysis/STT jobs paused for admission stay on their saved stage. */
+export async function resumeBudgetPausedJobs(now = new Date(), session?: ClientSession) {
+  const active = await getSalesIntelligenceAiBudgetModel().exists({ period_start: { $lte: now }, period_end: { $gt: now },
+    activated_at: { $ne: null }, $expr: { $lt: [{ $add: ["$actual_cents", "$reserved_cents"] }, "$ceiling_cents"] } }).session(session ?? null);
+  if (!active) return { modifiedCount: 0 };
+  const filter = { ...csiDataset(), status: "paused" as const, reason: "budget_exhausted" as const };
+  const update = { $set: { status: "pending" as const, reason: null, next_attempt_at: now } };
+  const Jobs = getSalesIntelligenceJobModel();
+  if (session) return Jobs.updateMany(filter, update, { session });
+  return Jobs.updateMany(filter, update);
+}
+
 /** Period boundaries are computed by Team C's timezone clock, never by browser scope. */
 export async function initializeCsiBudgetPeriod(input: {
   month: string;
@@ -165,7 +177,7 @@ export async function initializeCsiBudgetPeriod(input: {
   timezone: string;
   period_start: Date;
   period_end: Date;
-}) {
+}, now = new Date()) {
   if (
     !/^\d{4}-(0[1-9]|1[0-2])$/.test(input.month) ||
     !Number.isSafeInteger(input.ceiling_cents) ||
@@ -189,7 +201,6 @@ export async function initializeCsiBudgetPeriod(input: {
         row.timezone !== input.timezone
       )
         throw new CsiError("IDEMPOTENCY_CONFLICT");
-      const now = new Date();
       if (
         !row.activated_at &&
         row.period_start <= now &&
@@ -203,11 +214,7 @@ export async function initializeCsiBudgetPeriod(input: {
         if (activated.modifiedCount !== 1)
           throw new CsiError("REVISION_CONFLICT");
         if (row.actual_cents + row.reserved_cents < row.ceiling_cents)
-          await getSalesIntelligenceJobModel().updateMany(
-            { ...csiDataset(), status: "paused", reason: "budget_exhausted" },
-            { $set: { status: "pending", next_attempt_at: now } },
-            { session },
-          );
+          await resumeBudgetPausedJobs(now, session);
         row.activated_at = now;
       }
       return row;

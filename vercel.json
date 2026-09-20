@@ -146,6 +146,14 @@
       "schedule": "0 4 * * *"
     },
     {
+      "path": "/api/cron/sales-intelligence-backfill-step",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/sales-intelligence-retention",
+      "schedule": "30 4 * * *"
+    },
+    {
       "path": "/api/cron/sales-intelligence-call-log-reconcile",
       "schedule": "3-59/10 * * * *"
     },

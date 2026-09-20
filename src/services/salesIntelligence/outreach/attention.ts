@@ -22,7 +22,7 @@ export async function publishAttentionSnapshot() {
   const rows: z.infer<typeof attentionRowDtoSchema>[] = [];
   let after: string | undefined;
   for (;;) {
-    const page = await getOutreachRecordModel().find(after ? { _id: { $gt: after } } : {}).sort({ _id: 1 }).limit(50).lean();
+    const page = await getOutreachRecordModel().find({ purged_at: null, ...(after ? { _id: { $gt: after } } : {}) }).sort({ _id: 1 }).limit(50).lean();
     for (const record of page) {
       if (Date.now() > deadline) return { status: "incomplete", reason: "snapshot_budget" };
       const outreach = await toOutreachDto(record, now, coverage);

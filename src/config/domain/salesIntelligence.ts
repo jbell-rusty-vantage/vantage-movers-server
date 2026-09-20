@@ -203,6 +203,36 @@ export function csiProviderConfiguration() {
   };
 }
 
+/** Day count, not a `csiFlag` boolean. Default 0 plans nothing and skips the backfill cron. */
+export function csiBackfillDays(): number {
+  const raw = process.env.SALES_INTELLIGENCE_BACKFILL_DAYS;
+  if (raw === undefined || raw.trim() === "") return 0;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > 366)
+    throw new Error("Invalid SALES_INTELLIGENCE_BACKFILL_DAYS");
+  return parsed;
+}
+
+/** Engineering retention defaults, not legal advice. Zero disables that class for the cron. */
+export function csiRetentionDays() {
+  const value = (suffix: string, fallback: number) => {
+    const raw = process.env[`SALES_INTELLIGENCE_RETENTION_${suffix}`];
+    if (raw === undefined) return fallback;
+    const parsed = Number(raw);
+    if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > 3650)
+      throw new Error(`Invalid SALES_INTELLIGENCE_RETENTION_${suffix}`);
+    return parsed;
+  };
+  return {
+    audio_days: value("AUDIO_DAYS", 90),
+    redacted_days: value("TRANSCRIPT_DAYS", 365),
+    activity_days: value("ACTIVITY_DAYS", 730),
+  };
+}
+
+export const CSI_LIVE_JOB_PRIORITY = 0;
+export const CSI_BACKFILL_JOB_PRIORITY = -100;
+
 /** Bootstrap only; callers persist this once, then resolvePolicy reads the active version. */
 export function csiBootstrapNumbers() {
   const value = (suffix: string, fallback: number) => {

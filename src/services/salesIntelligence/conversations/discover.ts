@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { csiDataset, csiFlag } from "../../../config/domain/salesIntelligence";
+import { csiDataset, csiFlag, CSI_BACKFILL_JOB_PRIORITY, CSI_LIVE_JOB_PRIORITY } from "../../../config/domain/salesIntelligence";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { getCallInteractionModel } from "../../../models/CallInteraction";
 import { getLeadConversationModel, LEAD_CONVERSATION_INDEXES } from "../../../models/LeadConversation";
@@ -12,6 +12,12 @@ import { MEDIA_FETCH_STAGE, recordingPendingDelay, recordingWindowExhausted } fr
 import { auditMediaJob, loadCanonicalInteraction } from "./workerSupport";
 
 class PendingRecording extends Error { constructor(readonly firstObserved: Date, readonly interactionId: string) { super("recording_pending"); } }
+
+function pipelineJobPriority(sources: readonly string[] | undefined): number {
+  const list = sources ?? [];
+  const historicalOnly = list.includes("backfill") && !list.some((s) => s === "webhook" || s === "call_log_reconcile");
+  return historicalOnly ? CSI_BACKFILL_JOB_PRIORITY : CSI_LIVE_JOB_PRIORITY;
+}
 export type DiscoveryDependencies = { now?: () => Date; owner?: string; publish?: (jobId: string) => Promise<unknown> };
 
 export async function runRecordingDiscoveryJob(jobId?: string, deps: DiscoveryDependencies = {}) {
@@ -25,6 +31,7 @@ export async function runRecordingDiscoveryJob(jobId?: string, deps: DiscoveryDe
     await assertIndexes(getLeadConversationModel().collection, LEAD_CONVERSATION_INDEXES);
     const result = await completeCsiJob(lease, async session => {
       const interaction = await loadCanonicalInteraction(String(job.input_refs[0] ?? ""), session);
+      if (interaction.purged_at) return { conversations: 0, media_job_ids: [] as string[], state: "purged" };
       const firstObserved = interaction.first_observed_at;
       if (!interaction.recordings.length) {
         if (!recordingWindowExhausted(firstObserved, now)) throw new PendingRecording(firstObserved, String(interaction._id));
@@ -58,7 +65,7 @@ export async function runRecordingDiscoveryJob(jobId?: string, deps: DiscoveryDe
         }, { upsert: true, returnDocument: "after", session, runValidators: true });
         if (!row) throw new CsiError("INVALID_INPUT");
         recording.lead_conversation_id = row._id;
-        if (eligibility.status !== "excluded" && !row.media?.blob_pathname && !row.media?.purged_at) {
+        if (eligibility.status !== "excluded" && !row.content_purged_at && !row.media?.blob_pathname && !row.media?.purged_at) {
           const subject = `conversation:${row._id}`;
           const latest = await getSalesIntelligenceJobModel().findOne({ ...csiDataset(), stage: MEDIA_FETCH_STAGE, subject_key: subject })
             .sort({ input_revision: -1 }).session(session);
@@ -68,6 +75,7 @@ export async function runRecordingDiscoveryJob(jobId?: string, deps: DiscoveryDe
           const mediaJob = await enqueueCsiJob({
             stage: MEDIA_FETCH_STAGE, dedupe_key: `csi:media_fetch:${subject}:${revision}`,
             subject_key: subject, input_revision: revision, input_refs: [String(row._id)],
+            priority: pipelineJobPriority(interaction.sources),
           }, session, now);
           mediaJobs.push(String(mediaJob._id));
         }

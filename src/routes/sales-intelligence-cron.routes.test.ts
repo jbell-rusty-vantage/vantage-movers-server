@@ -84,6 +84,7 @@ async function withServer(
 test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provider body", async () => {
   const saved = { ...process.env };
   process.env.CRON_SECRET = "synthetic-cron";
+  process.env.SALES_INTELLIGENCE_BACKFILL_DAYS = "0";
   const flags: Record<string, boolean> = { CAPTURE_CALL_LOG: false, CAPTURE_WEBHOOK: false, ENABLED: false, DIRECTORY_SYNC: false };
   const calls: string[] = [];
   let reconcileResult = reconcileSummary({ skipped: true, skip_reason: "lease_held" });
@@ -112,6 +113,7 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
       return { claimed: 1, completed: 1, failed: 0, lease_lost: 0, deadline_reached: false };
     },
     rebuildDrainMax: 3,
+    drainRepIdentity: async () => ({ outcomes: [] }),
     runDirectorySync: async () => {
       calls.push("directory");
       return directoryResult;
@@ -230,6 +232,8 @@ test("vercel.json registers the CSI-03 crons and the queue consumer trigger (a h
   assert.equal(schedules.get(CSI_CRON_PATHS.callLogReconcile), "3-59/10 * * * *");
   assert.equal(schedules.get(CSI_CRON_PATHS.jobRecovery), "* * * * *");
   assert.equal(schedules.get(CSI_CRON_PATHS.directorySync), "20 5 * * *", "CSI-04 directory sync is registered and handled by the same router");
+  assert.equal(schedules.get(CSI_CRON_PATHS.backfillStep), "*/15 * * * *");
+  assert.equal(schedules.get(CSI_CRON_PATHS.retention), "30 4 * * *");
   assert.equal(schedules.get("/api/cron/ringcentral-call-log-sync"), "*/30 * * * *", "qualified-call sync schedule unchanged");
   const triggers = manifest.functions["api/queues/sales-intelligence-consumer.ts"]?.experimentalTriggers;
   assert.ok(triggers, "consumer function trigger registered");

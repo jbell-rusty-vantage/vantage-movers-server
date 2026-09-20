@@ -296,3 +296,21 @@ GET    /api/v1/admin/reporting/runs
 GET    /api/v1/admin/reporting/runs/:id
 POST   /api/v1/admin/reporting/runs/:id/cancel
 ```
+
+## CSI-15 historical planning and retention (local implementation)
+
+Sales Intelligence routes require the master flag, signed Owner headers and production scope. `POST /backfill` also requires `Idempotency-Key`; its strict body contains `expected_revision`, `from`, `to`, and `reason`. It plans no windows when `SALES_INTELLIGENCE_BACKFILL_DAYS=0` (default). Coverage GET is read-only. Listing these routes does not authorize production execution or flag enablement.
+
+```text
+GET    /api/v1/admin/sales-intelligence/coverage
+POST   /api/v1/admin/sales-intelligence/backfill
+```
+
+Cron-secret endpoints (not API-secret operator calls):
+
+```text
+/api/cron/sales-intelligence-backfill-step   */15 * * * *
+/api/cron/sales-intelligence-retention       30 4 * * *
+```
+
+Canonical implementation/contract: `docs/knowledge/services/sales-intelligence-foundation.md` and `docs/call-sales-intelligence/workspace/CONTRACTS.md` (CSI-15). Separate Owner authorization is required for production operations; CSI-15 proof uses disposable loopback replicas only.

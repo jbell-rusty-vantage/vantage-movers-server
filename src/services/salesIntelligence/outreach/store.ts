@@ -33,7 +33,7 @@ export async function saveFollowup(action: import("mongoose").HydratedDocument<F
   if (!action.isNew) action.revision++;
   action.attention_due_at = attentionDue(action);
   await action.save({ session: context.session });
-  const eventTime = event === "intelligence_followup_created" ? action.date_resolution?.anchor : ["call_fulfilled_action", "historical_missed_fulfilled"].includes(event) ? action.completed_at : null;
+  const eventTime = ["intelligence_followup_created", "missed_call_episode"].includes(event) ? action.date_resolution?.anchor : ["call_fulfilled_action", "historical_missed_fulfilled"].includes(event) ? action.completed_at : null;
   await auditChange(context, "followup", key, action, prior, action.toObject(), event, eventTime ?? undefined);
 }
 export async function refreshRecord(record: Awaited<ReturnType<typeof recordForUpdate>>, context: CsiTransactionContext, event: string, prior: unknown, details: Record<string, JsonValue> = {}) {
@@ -55,7 +55,8 @@ export async function refreshRecord(record: Awaited<ReturnType<typeof recordForU
   if (event === "clock_boundary" && !record.isNew && !actionChanged && beforeRefresh === payloadHash(jsonValue(record.toObject()))) return;
   if (!record.isNew) record.revision++;
   await record.save({ session: context.session });
-  await auditChange(context, "outreach", subjectKey(record.subject), record, prior, { ...record.toObject(), ...details }, event);
+  await auditChange(context, "outreach", subjectKey(record.subject), record, prior, { ...record.toObject(), ...details }, event,
+    ["outreach_created", "number_review_opened"].includes(event) ? record.trigger_at : undefined);
 }
 export async function closeRecord(record: Awaited<ReturnType<typeof recordForUpdate>>, reason: string, origin: "official" | "owner", context: CsiTransactionContext, details: Record<string, JsonValue> = {}) {
   const prior = record.toObject();

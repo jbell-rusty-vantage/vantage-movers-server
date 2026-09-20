@@ -73,7 +73,7 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
       enabled: action === "add_note" || (action === "reopen" ? record.state === "closed" && record.closure_origin !== "official" && number?.contact_eligibility.state !== "suppressed" : record.state !== "closed"), blocker_codes: [] })) });
 }
 export async function readOutreach(id: string) {
-  const record = await getOutreachRecordModel().findById(id).lean();
+  const record = await getOutreachRecordModel().findOne({ _id: id, purged_at: null }).lean();
   if (!record) return null;
   const now = new Date(), coverage = await readCaptureCoverage();
   const instructions = await getSalesIntelligenceOwnerInstructionModel().find({ subject_key: subjectKey(record.subject) }).sort({ happened_at: 1 }).lean();
@@ -81,12 +81,12 @@ export async function readOutreach(id: string) {
     nudges: await nudgeHistoryPage({ outreach_record_id: id, limit: 20 }) } };
 }
 export async function readOutreachByLead(model: "FormLead" | "CallLead", id: string) {
-  const row = await getOutreachRecordModel().findOne({ "subject.model": model, "subject.id": id }).lean();
+  const row = await getOutreachRecordModel().findOne({ "subject.model": model, "subject.id": id, purged_at: null }).lean();
   return row ? readOutreach(String(row._id)) : null;
 }
 export async function readNumberOutreach(numberId: string) {
   const edges = await getNumberLeadAttachmentModel().find({ contact_number_id: numberId }).lean();
-  const records = await getOutreachRecordModel().find({ $or: [{ primary_contact_number_id: numberId }, { "subject.contact_number_id": numberId },
+  const records = await getOutreachRecordModel().find({ purged_at: null, $or: [{ primary_contact_number_id: numberId }, { "subject.contact_number_id": numberId },
     ...edges.map(e => ({ "subject.model": e.lead_ref.model, "subject.id": e.lead_ref.id }))] }).lean();
   const restrictions = await getSalesIntelligenceContactRestrictionModel().find({ contact_number_id: numberId }).lean();
   const reviewItems = await getSalesIntelligenceReviewItemModel().find({ subject_key: { $in: [`number:${numberId}`, ...records.map(r => subjectKey(r.subject))] } }).lean();

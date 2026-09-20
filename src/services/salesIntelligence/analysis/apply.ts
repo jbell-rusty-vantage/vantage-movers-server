@@ -60,11 +60,13 @@ export async function runIntelligenceApplicationJob(jobId?: string, deps: { befo
     if (job.input_refs.length !== 2) throw new CsiError("EVIDENCE_SCOPE_INVALID");
     const run = await getIntelligenceRunModel().findOne({ _id: job.input_refs[0], subject_key: job.subject_key, ...csiDataset(), finalized_at: { $ne: null } }).orFail();
     const submission = await getIntelligenceSubmissionModel().findOne({ _id: job.input_refs[1], run_id: run._id, application_job_id: job._id }).orFail();
+    if (run.purged_at || run.purge_started_at) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
     const envelope = intelligenceEnvelopeSchema.parse(submission.envelope);
     if (payloadHash(envelope) !== submission.payload_hash || payloadHash(run.output) !== submission.payload_hash || submission.manifest_digest !== run.manifest_digest) throw new CsiError("EVIDENCE_SCOPE_INVALID");
     const snapshots = await getIntelligenceEvidenceSnapshotModel().find({ run_id: run._id, ...csiDataset() }).sort({ _id: 1 }).lean();
     if (snapshots.length !== run.manifest_snapshot_ids.length || payloadHash(snapshots.map(s => ({ id: String(s._id), digest: s.content_digest }))) !== run.manifest_digest) throw new CsiError("EVIDENCE_SCOPE_INVALID");
     const content = snapshots.map(s => {
+      if (s.purged_at || s.purge_started_at) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
       const data = readContentSchema.parse(s.response);
       if (payloadHash(data) !== s.content_digest || s.subject_key !== run.subject_key) throw new CsiError("EVIDENCE_SCOPE_INVALID");
       return data;
@@ -83,6 +85,7 @@ export async function runIntelligenceApplicationJob(jobId?: string, deps: { befo
       await checkpointCsiJob(lease, async session => {
         if (!applicationReady()) throw new CsiError("FEATURE_DISABLED");
         const current = await getIntelligenceRunModel().findById(run._id).session(session).orFail();
+        if (current.purged_at || current.purge_started_at || await getContactNumberModel().exists({ _id: current.contact_number_id, content_purge_pending: true }).session(session)) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
         if (current.application_cursor !== start) throw new CsiError("REVISION_CONFLICT");
         const context = workerContext(session, lease.job_id), policy = await resolvePolicy(session);
         const currentEvidence = await sourcesCurrent(session);
@@ -189,6 +192,7 @@ export async function runIntelligenceApplicationJob(jobId?: string, deps: { befo
     await completeCsiJob(lease, async session => {
       if (!applicationReady()) throw new CsiError("FEATURE_DISABLED");
       const current = await getIntelligenceRunModel().findById(run._id).session(session).orFail();
+      if (current.purged_at || current.purge_started_at || await getContactNumberModel().exists({ _id: current.contact_number_id, content_purge_pending: true }).session(session)) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
       if (current.application_cursor !== envelope.findings.length) throw new CsiError("REVISION_CONFLICT");
       const effects = await getIntelligenceEffectModel().find({ run_id: run._id }).session(session).lean();
       const findings = await getIntelligenceFindingModel().find({ run_id: run._id }).session(session).lean();

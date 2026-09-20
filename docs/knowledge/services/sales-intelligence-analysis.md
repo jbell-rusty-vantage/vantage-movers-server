@@ -36,6 +36,12 @@ sources:
 
 # Scoped Intelligence runtime, evidence and application — CSI-17/13
 
+## CSI-15 historical admission and retention
+
+Historical-only interaction provenance flows through discovery/media/STT to lower-priority analysis and stored `backfill` run mode. Existing live priority 0 outranks historical -100, including explicit queue delivery. Provider Retry-After, permission and budget admission use durable pause/retry semantics without consuming a genuine-failure attempt; raising the ceiling or activating a period resumes the saved stage. These paths reuse the original run/job rather than retranscribing completed source audio.
+
+Retention marks purged runs and source snapshots, erases copied content through privileged raw transactions, and invalidates derived conversation/number summaries. Since derived context does not carry complete transitive provenance, retention conservatively invalidates the affected number's analysis cache while retaining newer source transcripts. Batches cover at most 50 runs; a started-purge marker blocks source reads until completion. Capture, authorized reads, submission and application check retention state/fences; a held copy must not republish erased evidence. Owner evidence reads expose non-content tombstones and original-evidence reruns return `ORIGINAL_EVIDENCE_UNAVAILABLE`. Audio expiry alone does not erase a still-retained transcript. The dedicated [CSI-15 checks](../../call-sales-intelligence/workspace/evidence/csi-15/CHECKS.md) distinguish implemented assertions from completed proof.
+
 Main server determines authority from a stored Intelligence Run and its active leased job. The dedicated MCP endpoint in `vantage-movers-mcp` exposes bounded reads and one submission. It grants no Owner command, Lead/Booking mutation, attachment, customer message, or rep message. CSI-13 executes the bounded agent and applies permitted findings through the existing Outreach commands; CSI-18 Owner correction/confirmation/reanalysis controls remain separate.
 
 ## Entry points and authority

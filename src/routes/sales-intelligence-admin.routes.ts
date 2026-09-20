@@ -5,6 +5,8 @@ import { connectMongo } from "../db";
 import { logger } from "../logger";
 import { getContactNumberDetail } from "../services/numberActivity/contactNumbers";
 import { readOwnerCoverage } from "../services/salesIntelligence/ownerCoverage";
+import { commandPlanBackfill } from "../services/salesIntelligence/backfill/plan";
+import { csiBackfillCommandSchema } from "../validation/v1/salesIntelligence";
 import { commandCsiSettings, readCsiSettings } from "../services/salesIntelligence/settings";
 import { csiSettingsCommandSchema } from "../validation/v1/salesIntelligence";
 import { enqueueNumberRebuild } from "../services/numberActivity/rebuild";
@@ -50,6 +52,7 @@ export type SalesIntelligenceAdminRouteDeps = {
   coverage?: typeof readOwnerCoverage;
   settings?: typeof readCsiSettings;
   updateSettings?: typeof commandCsiSettings;
+  planBackfill?: typeof commandPlanBackfill;
   attachments?: typeof listAttachments;
   attachmentCommand?: typeof commandAttachment;
   outreachCommand?: typeof commandOutreach;
@@ -167,6 +170,20 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
       return res.json({ ok: true, as_of: new Date().toISOString(), data });
     } catch (error) { return fail(req, res, error); }
   });
+  router.post(`${CSI_ADMIN_PREFIX}/backfill`, async (req, res) => {
+    try {
+      const actor = guard(req);
+      const idempotency_key = req.header("idempotency-key")?.trim();
+      if (!idempotency_key) throw new CsiError("INVALID_INPUT");
+      const command = csiBackfillCommandSchema.parse(req.body);
+      await connect();
+      const data = await (deps.planBackfill ?? commandPlanBackfill)({ actor, idempotency_key, command });
+      return res.status(202).json({ ok: true, data });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
   router.patch(`${CSI_ADMIN_PREFIX}/settings`, async (req, res) => {
     try {
       const actor = guard(req);

@@ -31,6 +31,8 @@ export const INTELLIGENCE_RUN_INDEXES = [
 ];
 export const IntelligenceRunSchema = new Schema(
   {
+    purge_started_at: date,
+    purged_at: date,
     subject_key: str,
     contact_number_id: ref,
     conversation_id: ref,
@@ -204,6 +206,7 @@ export const INTELLIGENCE_EVIDENCE_SNAPSHOT_INDEXES = [
 ];
 export const IntelligenceEvidenceSnapshotSchema = new Schema(
   {
+    purge_started_at: date,
     purged_at: date,
     purge_reason: text,
     run_id: ref,
@@ -287,6 +290,8 @@ export const INTELLIGENCE_FINDING_INDEXES = [
 ];
 export const IntelligenceFindingSchema = new Schema(
   {
+    purge_started_at: date,
+    purged_at: date,
     run_id: { ...oid, immutable: true },
     key: { ...str, immutable: true },
     assertion: { ...validatedJson(intelligenceFindingSchema), immutable: true },

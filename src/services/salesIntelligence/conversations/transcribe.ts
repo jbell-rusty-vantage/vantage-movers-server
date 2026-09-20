@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ClientSession } from "mongoose";
-import { csiDataset, csiFlag, csiProviderConfiguration } from "../../../config/domain/salesIntelligence";
+import { csiDataset, csiFlag, csiProviderConfiguration, CSI_BACKFILL_JOB_PRIORITY, CSI_LIVE_JOB_PRIORITY } from "../../../config/domain/salesIntelligence";
 import { withTransaction } from "../../../db";
 import { getLeadConversationModel, type LeadConversationDocument } from "../../../models/LeadConversation";
 import { getIntelligenceEvidenceSnapshotModel, INTELLIGENCE_EVIDENCE_SNAPSHOT_INDEXES } from "../../../models/IntelligenceEvidenceSnapshot";
@@ -8,7 +8,8 @@ import { getSalesIntelligenceAiBudgetModel } from "../../../models/SalesIntellig
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { readStoredAudio, gatewaySttProvider, validateStoredAudio, TranscriptionProviderError, type BlobAudioReader, type SttProvider } from "../../conversations/transcriptionProvider";
 import { publishCaptureProjectionWakeup } from "../../numberActivity/webhookFanout";
-import { reserveCsiBudget, reconcileCsiBudget } from "../aiBudget";
+import { reserveCsiBudget, reconcileCsiBudget, resumeBudgetPausedJobs } from "../aiBudget";
+import { ensureCurrentCsiBudgetPeriod } from "../budgetPeriod";
 import { CsiError } from "../auth";
 import { claimCsiJob, completeCsiJob, enqueueCsiJob, failCsiJob, type JobLease } from "../jobs";
 import { resolvePolicy } from "../policy";
@@ -17,6 +18,12 @@ import { decideAnalysisEligibility, loadEligibilityInputs } from "./eligibility"
 import { auditMediaJob, loadCanonicalInteraction } from "./workerSupport";
 import { EmptyTranscriptionError, prepareTranscript, transcriptionEstimate, transcriptVersion } from "./transcript";
 import { scheduleTranscriptionJobs } from "./transcriptionScheduling";
+
+function pipelineJobPriority(sources: readonly string[] | undefined): number {
+  const list = sources ?? [];
+  const historicalOnly = list.includes("backfill") && !list.some((s) => s === "webhook" || s === "call_log_reconcile");
+  return historicalOnly ? CSI_BACKFILL_JOB_PRIORITY : CSI_LIVE_JOB_PRIORITY;
+}
 
 export type TranscriptionDependencies = {
   owner?: string; now?: () => Date; ttlMs?: number; readAudio?: BlobAudioReader; transcribe?: SttProvider;
@@ -93,7 +100,7 @@ export async function runTranscriptionJob(jobId?: string, deps: TranscriptionDep
       return { status: "completed" as const };
     }
     const conversation = await Conversations.findById(conversationId).orFail();
-    if (conversation.media_digest_sha256 !== digest || conversation.media?.purged_at ||
+    if (conversation.content_purged_at || conversation.media_digest_sha256 !== digest || conversation.media?.purged_at ||
         (conversation.transcript && !conversation.latest_transcript_version)) {
       await completeCsiJob(lease, async () => undefined, { result: { reason: "stale_or_seed_evidence" } });
       return { status: "completed" as const };
@@ -143,7 +150,7 @@ export async function runTranscriptionJob(jobId?: string, deps: TranscriptionDep
     const transcript = { text: redacted.text, model, chars: redacted.text.length, redactions: redacted.redactions, created_at: now };
     const analysisId = await completeCsiJob(lease, async session => {
       const current = await Conversations.findById(conversationId).session(session).orFail();
-      if (current.media_digest_sha256 !== digest || current.media?.purged_at) throw new CsiError("REVISION_CONFLICT");
+      if (current.content_purged_at || current.media_digest_sha256 !== digest || current.media?.purged_at) throw new CsiError("REVISION_CONFLICT");
       const eligible = await currentEligibility(current, session, new Date());
       const response = { transcript: { ...transcript, created_at: now.toISOString() }, media_digest_sha256: digest, actual_cents: actualCents, reservation_id: reservationId!, pricing: { cents_per_second: rate, estimated_cents: estimate } };
       const [snapshot] = await Snapshots.create([{ ...csiDataset(), conversation_id: current._id, transcript_version: version,
@@ -160,8 +167,10 @@ export async function runTranscriptionJob(jobId?: string, deps: TranscriptionDep
       } }, { session, runValidators: true });
       let next: string | null = null;
       if (eligible.status !== "excluded") {
+        const canonical = await loadCanonicalInteraction(String(current.call_interaction_id), session);
         const analysis = await enqueueCsiJob({ stage: "analysis", subject_key: job.subject_key, input_revision: 1,
-          dedupe_key: `csi:analysis:${job.subject_key}:${version}`, input_refs: [String(current._id), String(snapshot!._id)] }, session, now);
+          dedupe_key: `csi:analysis:${job.subject_key}:${version}`, input_refs: [String(current._id), String(snapshot!._id)],
+          priority: pipelineJobPriority(canonical.sources) }, session, now);
         if (eligible.status === "undetermined") {
           await getSalesIntelligenceJobModel().updateOne({ _id: analysis._id }, { $set: { status: "paused", reason: "eligibility_pending" } }, { session });
         } else next = String(analysis._id);
@@ -198,8 +207,9 @@ export async function runTranscriptionJob(jobId?: string, deps: TranscriptionDep
     if (error instanceof CsiError && error.code === "LEASE_LOST") return { status: "lease_lost" as const };
     const reason = error instanceof TranscriptionProviderError && ["permission_denied", "throttled"].includes(error.reason) ? error.reason : "transient";
     try {
-      const outcome = await failCsiJob(lease, reason === "permission_denied" ? "permission_denied" : reason === "throttled" ? "throttled" : "transient", 0, {
-        ...(reason === "permission_denied" || reason === "throttled" ? { resumeAt: new Date(now.getTime() + (reason === "permission_denied" ? 86_400_000 : 600_000)) } : {}),
+      const throttleMs = reason === "throttled" ? 600_000 : 0;
+      const outcome = await failCsiJob(lease, reason === "permission_denied" ? "permission_denied" : reason === "throttled" ? "throttled" : "transient", throttleMs, {
+        ...(reason === "permission_denied" ? { resumeAt: new Date(now.getTime() + 86_400_000) } : {}),
         mutation: async (session, outcome) => {
           await Conversations.updateOne({ _id: conversationId, media_digest_sha256: digest, latest_transcript_version: { $ne: transcriptVersion(digest ?? "") } }, { $set: {
             state: outcome.status === "dead_letter" ? "failed" : "unavailable", pending_stage: "transcription",
@@ -221,6 +231,8 @@ export async function runTranscriptionJob(jobId?: string, deps: TranscriptionDep
 /** At most five durable hook jobs; only one expensive STT unit per invocation. */
 export async function drainTranscriptionJobs(deps: TranscriptionDependencies = {}) {
   if (!csiFlag("STT_ENABLED")) return { status: "disabled" as const };
+  await ensureCurrentCsiBudgetPeriod();
+  await resumeBudgetPausedJobs();
   await resumeTranscriptAnalysisJobs();
   await scheduleTranscriptionJobs(5, deps.publish);
   return runTranscriptionJob(undefined, deps);
@@ -240,7 +252,7 @@ export async function resumeTranscriptAnalysisJobs() {
     resumed += await withTransaction(async session => {
       const current = await getLeadConversationModel().findById(job.input_refs[0]).session(session);
       const snapshot = await getIntelligenceEvidenceSnapshotModel().findOne({ ...csiDataset(), _id: job.input_refs[1], conversation_id: job.input_refs[0] }).session(session);
-      if (!current || !snapshot || current.latest_transcript_version !== snapshot.transcript_version || current.media_digest_sha256 !== snapshot.source_revision) {
+      if (!current || current.content_purged_at || !snapshot || snapshot.purged_at || current.latest_transcript_version !== snapshot.transcript_version || current.media_digest_sha256 !== snapshot.source_revision) {
         await Jobs.updateOne({ ...filter, _id: job._id }, { $set: { status: "completed", reason: null, completed_at: new Date(), result: { reason: "stale_transcript" } } }, { session });
         return 0;
       }

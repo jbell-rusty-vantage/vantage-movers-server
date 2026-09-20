@@ -37,9 +37,9 @@ export async function readOwnerRun(id: string, raw: unknown = {}) {
   const run = await getIntelligenceRunModel().findOne({ _id: csiIdSchema.parse(id), ...csiDataset() }).lean();
   if (!run) return null;
   const [findings, effects, instructions, assessments, number, conversation, record, history] = await Promise.all([
-    getIntelligenceFindingModel().find({ run_id: run._id }).sort({ _id: 1 }).lean(),
+    getIntelligenceFindingModel().find({ run_id: run._id, purged_at: null }).sort({ _id: 1 }).lean(),
     getIntelligenceEffectModel().find({ run_id: run._id }).sort({ _id: 1 }).lean(),
-    getSalesIntelligenceOwnerInstructionModel().find({ $or: [{ finding_id: { $in: await getIntelligenceFindingModel().find({ run_id: run._id }).distinct("_id") } },
+    getSalesIntelligenceOwnerInstructionModel().find({ $or: [{ finding_id: { $in: await getIntelligenceFindingModel().find({ run_id: run._id, purged_at: null }).distinct("_id") } },
       { subject_key: run.subject_key }, { subject_key: `number:${run.contact_number_id}` }] }).sort({ happened_at: -1 }).limit(201).lean(),
     getIntelligenceOwnerAssessmentModel().find({ run_id: run._id }).lean(),
     getContactNumberModel().findById(run.contact_number_id).lean(),
@@ -48,6 +48,7 @@ export async function readOwnerRun(id: string, raw: unknown = {}) {
     getSalesIntelligenceAuditEventModel().find({ subject_key: run.subject_key, "invalidation.kind": "analysis",
       ...(query.history_cursor ? { _id: { $lt: query.history_cursor } } : {}) }).sort({ _id: -1 }).limit(101).lean(),
   ]);
+  if (number?.content_purge_pending) return null;
   if (record) {
     const extra = await getSalesIntelligenceOwnerInstructionModel().find({ subject_key: subjectKey(record.subject) }).sort({ happened_at: -1 }).limit(201).lean();
     const seen = new Set(instructions.map(i => String(i._id)));
@@ -88,11 +89,15 @@ export async function readOwnerEvidence(runId: string, snapshotId?: string, raw:
   const q = z.object({ scope: z.literal("production").optional(), cursor: z.string().max(100).optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }).strict().parse(raw);
   const run = await getIntelligenceRunModel().findOne({ _id: csiIdSchema.parse(runId), ...csiDataset() }).lean();
   if (!run) return null;
+  if (run.contact_number_id && await getContactNumberModel().exists({ _id: run.contact_number_id, content_purge_pending: true })) {
+    if (snapshotId) return ownerRead({ id: csiIdSchema.parse(snapshotId), unavailable: true, reason: "retention_in_progress", purged_at: null, content: null, next_cursor: null });
+    return ownerRead({ items: [], next_cursor: null });
+  }
   if (snapshotId) {
     csiIdSchema.parse(snapshotId);
     if (!run.manifest_snapshot_ids.some(s => String(s) === snapshotId)) throw new CsiError("EVIDENCE_SCOPE_INVALID");
     const row = await getIntelligenceEvidenceSnapshotModel().findOne({ _id: snapshotId, run_id: run._id, ...csiDataset() }).lean();
-    if (!row || row.purged_at || !readContentSchema.safeParse(row.response).success || payloadHash(row.response) !== row.content_digest)
+    if (!row || row.purged_at || row.purge_started_at || !readContentSchema.safeParse(row.response).success || payloadHash(row.response) !== row.content_digest)
       return ownerRead({ id: snapshotId, unavailable: true, reason: row?.purge_reason ?? "original_evidence_unavailable",
         purged_at: row?.purged_at?.toISOString() ?? null, content: null, next_cursor: null });
     const offset = q.cursor ? Number(q.cursor) : 0;
@@ -105,8 +110,8 @@ export async function readOwnerEvidence(runId: string, snapshotId?: string, raw:
   }
   const cursor = q.cursor ? csiIdSchema.parse(q.cursor) : null;
   const ids = run.manifest_snapshot_ids.map(String).sort().filter(id => !cursor || id > cursor).slice(0, q.limit + 1);
-  const rows = await getIntelligenceEvidenceSnapshotModel().find({ _id: { $in: ids.slice(0, q.limit) }, run_id: run._id, ...csiDataset() }).select("_id tool_name content_digest retrieved_at completeness purged_at purge_reason").lean();
+  const rows = await getIntelligenceEvidenceSnapshotModel().find({ _id: { $in: ids.slice(0, q.limit) }, run_id: run._id, ...csiDataset() }).select("_id tool_name content_digest retrieved_at completeness purged_at purge_started_at purge_reason").lean();
   return ownerRead({ items: ids.slice(0, q.limit).map(id => { const row = rows.find(r => String(r._id) === id); return { id, tool: row?.tool_name ?? null,
-    digest: row?.content_digest ?? null, retrieved_at: row?.retrieved_at.toISOString() ?? null, unavailable: !row || Boolean(row.purged_at), completeness: row?.completeness ?? null }; }),
+    digest: row?.content_digest ?? null, retrieved_at: row?.retrieved_at.toISOString() ?? null, unavailable: !row || Boolean(row.purged_at || row.purge_started_at), completeness: row?.completeness ?? null }; }),
     next_cursor: ids.length > q.limit ? ids[q.limit - 1] : null });
 }

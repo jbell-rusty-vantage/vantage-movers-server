@@ -19,6 +19,7 @@ import { addStaffedMinutes } from "./staffing";
 import { callFacts, fulfilledByCall, officialClosure } from "./transitions";
 import { closeRecord, refreshRecord, saveFollowup } from "./store";
 import { subjectKey, type InteractionRow } from "./types";
+import { historicalCaptureReady, historicalAttachmentsReady } from "../backfill/readiness";
 
 export function workerContext(session: ClientSession, requestId: string, now = new Date()): CsiTransactionContext {
   return { session, actor: csiWorkerActor(/^[a-f\d]{24}$/i.test(requestId) ? requestId : payloadHash(requestId).slice(0, 24)), command_id: new mongoose.Types.ObjectId(), now };
@@ -64,6 +65,9 @@ export async function interactionRepIdentity(call: InteractionRow, session: Clie
   return resolved;
 }
 export async function ensureInteraction(call: InteractionRow, context: CsiTransactionContext) {
+  if ("purged_at" in call && call.purged_at) return null;
+  if (call.sources.includes("backfill") && (!await historicalCaptureReady(call.started_at, context.session) ||
+    !await historicalAttachmentsReady(String(call.contact_number_id), context.session))) return null;
   if (!call.contact_number_id || call.direction === "Internal" || call.monitoring) return null;
   const numberId = String(call.contact_number_id), key = `number:${numberId}`;
   const number = await getContactNumberModel().findById(numberId).session(context.session).lean();
@@ -199,6 +203,8 @@ export async function reactToAttachmentChanged(change: { number_id: string; revi
   const context = workerContext(session, `attachment:${change.number_id}:${change.revision}`);
   const edges = await getNumberLeadAttachmentModel().find({ contact_number_id: change.number_id }).session(session).lean();
   const latest = await getCallInteractionModel().findOne({ contact_number_id: change.number_id, merged_into_id: null }).sort({ started_at: -1, _id: -1 }).session(session).lean();
+  if (latest?.sources.includes("backfill") && (!await historicalCaptureReady(latest.started_at, session) ||
+    !await historicalAttachmentsReady(change.number_id, session))) return;
   for (const edge of edges) {
     const record = await ensureLead({ model: edge.lead_ref.model, id: String(edge.lead_ref.id) }, context, change.number_id);
     if (!record || record.state === "closed") continue;

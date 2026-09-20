@@ -1,4 +1,5 @@
 import type { ClientSession, Types } from "mongoose";
+import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { csiDataset } from "../../../config/domain/salesIntelligence";
@@ -12,9 +13,11 @@ export async function loadAuthorizedRun(auth: RunAuthorization, session?: Client
   if (auth.actor.run_id !== claims.run_id || claims.exp <= Date.now() / 1000)
     throw new CsiError("RUN_SCOPE_DENIED");
   const run = await getIntelligenceRunModel().findOne({ _id: claims.run_id, ...csiDataset(),
-    subject_key: claims.subject_key, token_nonce: claims.nonce, status: { $in: ["running", "submitted"] } }).session(session ?? null).lean();
+    purged_at: null, purge_started_at: null, subject_key: claims.subject_key, token_nonce: claims.nonce, status: { $in: ["running", "submitted"] } }).session(session ?? null).lean();
   if (!run || claims.deployment !== run.deployment || claims.database !== run.database ||
       claims.tools.some(tool => !run.permitted_tools.includes(tool))) throw new CsiError("RUN_SCOPE_DENIED");
+  if (run.contact_number_id && await getContactNumberModel().exists({ _id: run.contact_number_id, $or: [{ content_purge_pending: true }, { purged_at: { $ne: null } }] }).session(session ?? null))
+    throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
   const job = await getSalesIntelligenceJobModel().findOne({ _id: run.job_id, ...csiDataset(),
     subject_key: run.subject_key, status: "leased", lease_epoch: claims.lease_epoch, leased_until: { $gt: new Date() } }).session(session ?? null).lean();
   if (!job) throw new CsiError("RUN_SCOPE_DENIED");

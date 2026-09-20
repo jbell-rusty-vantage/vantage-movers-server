@@ -154,6 +154,7 @@ const LeadConversationSchema = new Schema(
     },
     contact_type_basis: { type: String, default: null },
     media_digest_sha256: { type: String, default: null },
+    content_purged_at: { type: Date, default: null },
     latest_transcript_version: { type: String, default: null },
     transcription_job_digest: { type: String, default: null },
     transcript_segments: { type: [new Schema({

@@ -55,6 +55,8 @@ test("CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempot
         return { job_id: "c".repeat(24), dedupe_key: "k", number_id: input.number_id, replayed: false };
       },
       outreachCommand: async () => { throw outreachError; },
+      planBackfill: async input => ({ replayed: false, response: { available: false, days: 0, windows_planned: 0,
+        from: (input.command as { from: string }).from, to: (input.command as { to: string }).to, window_from: null, window_to: null } }),
     }),
   );
   const server = app.listen(0, "127.0.0.1");
@@ -101,6 +103,16 @@ test("CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempot
     assert.equal((await call("GET", numbers, { headers: ownerHeaders("GET", numbers, "admin") })).status, 403);
     assert.equal((await call("GET", `${numbers}?scope=historical`, { headers: ownerHeaders("GET", numbers) })).status, 403);
     assert.deepEqual(calls, []);
+
+    const backfill = `${CSI_ADMIN_PREFIX}/backfill`;
+    const plan = { expected_revision: 1, from: "2026-01-01T00:00:00.000Z", to: "2026-01-02T00:00:00.000Z", reason: "Synthetic history" };
+    assert.equal((await call("POST", backfill, { headers: ownerHeaders("POST", backfill, "admin"), body: plan })).status, 403);
+    assert.equal((await call("POST", `${backfill}?scope=historical`, { headers: ownerHeaders("POST", backfill), body: plan })).status, 403);
+    assert.equal((await call("POST", backfill, { headers: ownerHeaders("POST", backfill), body: plan })).status, 400);
+    const planned = await call("POST", backfill, { headers: ownerHeaders("POST", backfill, "owner", { "Idempotency-Key": "synthetic-plan" }), body: plan });
+    assert.equal(planned.status, 202);
+    assert.equal((planned.body.data as { response: { windows_planned: number } }).response.windows_planned, 0);
+    calls.length = 0;
 
     // Search: query parsed strictly; defaults applied; full customer numbers are an Owner-only concern handled by the service.
     const searched = await call("GET", `${numbers}?q=0200&attachment=unlinked&limit=5`, { headers: ownerHeaders("GET", numbers) });
@@ -210,7 +222,18 @@ test("CSI-09 coverage and settings: production scope, CAS, no flag patch, GET ne
     flags: { ENABLED: true, STT_ENABLED: false },
     models: { extraction: { name: "openai/gpt-5-mini", enabled: false }, transcription: { name: "openai/gpt-4o-mini-transcribe", enabled: false } },
     settings: { persisted: false, revision: 1, version: "csi-policy-v1", source: "accepted_defaults", timezone: "America/New_York", first_action_due_staffed_minutes: 30, missed_callback_due_staffed_minutes: 15, going_cold_staffed_minutes: 1440, monthly_ceiling_cents: 8000 },
-    backfill: { available: false, owner_triggered: true, note: "not yet available" },
+    backfill: {
+      available: false,
+      owner_triggered: true,
+      days: 0,
+      planned: null,
+      partial: null,
+      complete: null,
+      failed: null,
+      known_complete_through: null,
+      gaps: [],
+      note: "not yet available",
+    },
   };
   const settings = { persisted: false, revision: 1, source: "accepted_defaults", policy: { version: "csi-policy-v1" }, flags: { STT_ENABLED: false }, models: coverage.models, updated_at: null, updated_by: null };
   const app = express();

@@ -26,6 +26,11 @@ import {
 } from "./persistInteraction";
 import type { CallLogRecordInput } from "./interactionProjection";
 import type { RouteResolver } from "./types";
+import { RingCentralApiError } from "../ringcentral/client";
+
+function isProviderPermissionDenied(error: unknown): boolean {
+  return error instanceof RingCentralApiError && (error.status === 401 || error.status === 403);
+}
 
 /**
  * Authoritative all-direction Detailed Call Log reconciliation.
@@ -72,6 +77,7 @@ export function callLogReconcileConfig(): ReconcileConfig {
 
 export type ReconcileErrorCode =
   | "provider_throttled"
+  | "provider_permission_denied"
   | "provider_request_failed"
   | "page_limit"
   | "projection_failed"
@@ -622,4 +628,147 @@ function earliestStart(records: CallLogRecordInput[]): Date | null {
     if (start && (!out || start < out)) out = start;
   }
   return out;
+}
+
+export const BACKFILL_LEASE_SCOPE = "backfill";
+export const RETENTION_LEASE_SCOPE = "retention";
+
+export function syncStateLeaseModel(): MongoLeaseModel {
+  const Model = getSalesIntelligenceSyncStateModel();
+  return {
+    findOneAndUpdate: (filter, update, options) =>
+      Model.findOneAndUpdate(filter, update, { ...options, lean: true }) as never,
+    updateOne: (filter, update) => Model.updateOne(filter, update),
+    findOne: (filter) => Model.findOne(filter).lean() as never,
+  };
+}
+
+/** Live reconcile outranks window work. Peek only — never acquire the live lease from backfill. */
+export async function callLogReconcileLeaseHeld(now: Date): Promise<boolean> {
+  const row = await getSalesIntelligenceSyncStateModel()
+    .findOne({
+      scope: CALL_LOG_ALL_DIRECTIONS_SCOPE,
+      lease_owner: { $nin: [null, ""] },
+      leased_until: { $gt: now },
+    })
+    .lean();
+  return Boolean(row);
+}
+
+export type BackfillPageResult = {
+  records: number;
+  upserts: number;
+  noops: number;
+  last_page: boolean;
+  contact_number_ids: string[];
+  throttled: boolean;
+  retry_after_ms: number | null;
+  retry_after_observed: boolean;
+  error_code: ReconcileErrorCode | null;
+};
+
+/** One Call Log page for a historical window. Source is `"backfill"`. Does not claim or write the live cursor. */
+export async function projectCallLogBackfillPage(input: {
+  from: Date;
+  to: Date;
+  page: number;
+  perPage?: number;
+  request_id: string;
+  now?: () => Date;
+  fetchPage?: CallLogPageFetcher;
+  apply?: typeof applyInteractionObservation;
+  directory?: (accountId: string) => Promise<DirectoryLookup>;
+  configuredAccountId?: string | null;
+  resolveRoute?: RouteResolver;
+}): Promise<BackfillPageResult> {
+  const now = input.now ?? (() => new Date());
+  const fetchPage = input.fetchPage ?? fetchDetailedCallLogPage;
+  const apply = input.apply ?? applyInteractionObservation;
+  const directoryFn = input.directory ?? loadDirectoryLookup;
+  const perPage = input.perPage ?? 250;
+  const result: BackfillPageResult = {
+    records: 0,
+    upserts: 0,
+    noops: 0,
+    last_page: false,
+    contact_number_ids: [],
+    throttled: false,
+    retry_after_ms: null,
+    retry_after_observed: false,
+    error_code: null,
+  };
+  let page: unknown[];
+  try {
+    page = await fetchPage({ from: input.from, to: input.to, page: input.page, perPage });
+  } catch (error) {
+    if (isProviderThrottle(error)) {
+      result.throttled = true;
+      result.retry_after_ms = throttleRetryAfterMs(error);
+      result.retry_after_observed = providerSuppliedRetryAfter(error);
+      result.error_code = "provider_throttled";
+      return result;
+    }
+    if (isProviderPermissionDenied(error)) {
+      result.error_code = "provider_permission_denied";
+      return result;
+    }
+    result.error_code = "provider_request_failed";
+    return result;
+  }
+  const rows = page.filter(isRecord);
+  if (rows.length !== page.length) {
+    result.error_code = "projection_failed";
+    return result;
+  }
+  result.records = rows.length;
+  result.last_page = page.length < perPage;
+  if (!rows.length) return result;
+  let accountId: string;
+  try {
+    accountId = resolveProviderAccountId(
+      rows.map((r) => accountIdFromProviderPath(str(r.uri))),
+      input.configuredAccountId ?? configuredRingCentralAccountId(),
+    );
+  } catch (error) {
+    result.error_code = error instanceof ProviderAccountError ? error.code : "unknown_error";
+    return result;
+  }
+  let directory: DirectoryLookup;
+  let resolveRoute: RouteResolver;
+  try {
+    directory = await directoryFn(accountId);
+    resolveRoute = input.resolveRoute ?? (await defaultRouteResolver());
+  } catch {
+    result.error_code = "projection_failed";
+    return result;
+  }
+  const ordered = [...rows].sort(
+    (a, b) => (startOf(a)?.getTime() ?? Number.POSITIVE_INFINITY) - (startOf(b)?.getTime() ?? Number.POSITIVE_INFINITY),
+  );
+  const numbers = new Set<string>();
+  for (const record of ordered) {
+    try {
+      const applied = await apply(
+        accountId,
+        { kind: "call_log", record, proof_ref: `call_log:${str(record.id) ?? "unknown"}`, source: "backfill" },
+        { now, directory, resolveRoute, request_id: input.request_id },
+      );
+      if (applied.noop) result.noops += 1;
+      else result.upserts += 1;
+      if (applied.contact_number_id) numbers.add(applied.contact_number_id);
+    } catch (error) {
+      result.error_code =
+        error instanceof InteractionPersistenceError && error.code === "account_mismatch"
+          ? "account_mismatch"
+          : "projection_failed";
+      logger.warn({
+        msg: "sales_intelligence.call_log_backfill.record_failed",
+        errorName: error instanceof Error ? error.name : "Error",
+      });
+      result.contact_number_ids = [...numbers];
+      return result;
+    }
+  }
+  result.contact_number_ids = [...numbers];
+  return result;
 }

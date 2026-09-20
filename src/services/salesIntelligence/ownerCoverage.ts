@@ -1,3 +1,4 @@
+import { readBackfillCoverage } from "./backfill/coverage";
 import { CSI_JOB_STAGES, csiDataset } from "../../config/domain/salesIntelligence";
 import { getContactNumberModel } from "../../models/ContactNumber";
 import { getRepIdentityLinkModel } from "../../models/RepIdentityLink";
@@ -15,8 +16,6 @@ import { readCsiSettings } from "./settings";
 type JobStage = (typeof CSI_JOB_STAGES)[number];
 const RECORDING_STAGES: readonly JobStage[] = ["recording_discovery", "media", "media_fetch"];
 const QUEUED = ["pending", "retry", "leased"] as const;
-const BACKFILL_NOTE =
-  "Historical backfill is Owner-triggered, range-limited, and not yet available. It is lower priority than current work.";
 
 export function composeBudget(
   row: {
@@ -116,12 +115,13 @@ export async function readOwnerCoverage(): Promise<OwnerCoverageDto> {
     .findOne({ period_start: { $lte: now }, period_end: { $gt: now } })
     .sort({ period_start: -1 })
     .lean();
-  const [recording, transcription, analysis, application, mapping] = await Promise.all([
+  const [recording, transcription, analysis, application, mapping, backfill] = await Promise.all([
     readStage(RECORDING_STAGES),
     readStage(["transcription"]),
     readStage(["analysis"]),
     readStage(["application"]),
     readMappingHygiene(),
+    readBackfillCoverage(),
   ]);
   return ownerCoverageDtoSchema.parse({
     ...capture,
@@ -141,6 +141,6 @@ export async function readOwnerCoverage(): Promise<OwnerCoverageDto> {
       going_cold_staffed_minutes: settings.policy.going_cold_staffed_minutes,
       monthly_ceiling_cents: settings.policy.monthly_ceiling_cents,
     },
-    backfill: { available: false, owner_triggered: true, note: BACKFILL_NOTE },
+    backfill,
   });
 }

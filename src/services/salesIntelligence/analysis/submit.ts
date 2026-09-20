@@ -42,8 +42,8 @@ export async function submitIntelligenceAnalysis(auth:RunAuthorization, raw:unkn
     if (!snapshots.length || snapshots.length !== run.evidence_count) throw new CsiError("EVIDENCE_SCOPE_INVALID");
     const manifest:EvidenceManifestEntry[] = [], followups:string[] = [], instructions:Array<{id:string;revision:number}> = [], speakers:string[] = [];
     for (const snapshot of snapshots) {
+      if (snapshot.purged_at || snapshot.purge_started_at) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
       const content = readContentSchema.parse(snapshot.response);
-      if (snapshot.purged_at) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
       if (snapshot.subject_key !== run.subject_key || payloadHash(content) !== snapshot.content_digest) throw new CsiError("EVIDENCE_SCOPE_INVALID");
       for (const record of content.page.records) manifest.push({snapshot_id:String(snapshot._id),subject_key:run.subject_key,source:"vantage_record",
         conversation_id:null,transcript_version:null,record_type:record.record_type,record_id:record.record_id,field_paths:Object.keys(record.fields)});

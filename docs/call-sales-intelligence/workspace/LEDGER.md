@@ -1,5 +1,40 @@
 # Implementation ledger
 
+## CSI-15 ownership — Grok, September 19, 2026
+
+Verified remotes `jbell-rusty-vantage` (`vantage-movers-server`, `vantage-admin`, `vantage-movers-mcp`). Server local `main` HEAD `d55f6c2b1eb2bed276d0b5bc8c6d2a5bc065fd7c` (in sync with origin). Admin `main` HEAD `d82d3de45f56800378d223e7535688f4f0660366` (1 ahead of origin — CSI-09, not reset). MCP clean `9a8fd37bf78f8074011fb2d47ff3da3ec400b33d`, untouched. Work stays on local `main`; no branch switch. One implementation writer. Pre-existing dirty Owner docs preserved.
+
+Exact server claims:
+- `src/config/domain/salesIntelligence.ts`
+- `src/services/salesIntelligence/backfill/**`
+- `src/services/salesIntelligence/retention.ts`
+- `src/services/salesIntelligence/ownerCoverage.ts`
+- `src/services/salesIntelligence/dto.ts`
+- `src/services/salesIntelligence/jobs.ts` (additive live/backfill priority constants only if required)
+- `src/services/salesIntelligence/conversations/transcribe.ts` (additive analysis job priority/mode)
+- `src/services/salesIntelligence/analysis/worker.ts` (additive backfill-mode preparation)
+- `src/services/numberActivity/reconcileCallLog.ts` (additive live-lease peek + backfill page source)
+- `src/routes/sales-intelligence-admin.routes.ts`
+- `src/routes/sales-intelligence-cron.routes.ts`
+- `vercel.json`
+- `package.json`
+- focused unit/replica tests under `src/services/salesIntelligence/` and `scripts/test-csi-backfill*`
+- Service cards `docs/knowledge/services/{sales-intelligence-foundation,number-activity-reads,sales-intelligence-outreach,sales-intelligence-analysis,sales-intelligence-live}.md`
+
+Exact Admin claims (Coverage DTO only):
+- `vantage-admin/lib/api/salesIntelligence.ts`
+- `vantage-admin/lib/api/salesIntelligence.test.ts` (if Coverage parse tests exist)
+- `vantage-admin/components/sales-intelligence/coverage-view.tsx`
+- `vantage-admin/components/sales-intelligence/sales-intelligence-copy.ts`
+
+Exact coordination/evidence claims:
+- this ledger
+- `docs/call-sales-intelligence/workspace/CONTRACTS.md`
+- `docs/call-sales-intelligence/workspace/teams/f-integration.md` (do not overwrite Owner dirty copy beyond this claim if already dirty — Owner file preserved; contract note only if needed)
+- `docs/call-sales-intelligence/workspace/evidence/csi-15/**`
+
+Do not enable `NUDGE_ENABLED`, `STT_ENABLED`, `EXTRACTION_ENABLED`, `BACKFILL_DAYS`, capture/media/outreach flags in Vercel or `.env`. Do not apply `migration:csi:indexes`. Do not `POST /backfill` against production. Do not create a production subscription, send a nudge, or call paid Gateway/STT. Do not start CSI-14 fuller dialogs, CSI-16, live send, or the CSI-10 empty-recording repair. MCP untouched. No commit or push unless the Owner asks.
+
 ## Named 1–2 subject seed writes — Grok, September 19, 2026
 
 Owner-authorized example seed only. Not CSI-15. Verified remotes `jbell-rusty-vantage` (`vantage-movers-server`, `vantage-admin`, `vantage-movers-mcp`). Server `main` HEAD `93bfd1a85eba6ff157fdfa91701db63940e8498a` (clean, 1 ahead of origin). Admin `main` HEAD `d82d3de45f56800378d223e7535688f4f0660366` (clean, 1 ahead of origin). MCP clean `9a8fd37bf78f8074011fb2d47ff3da3ec400b33d`, untouched. Official `migration:csi:indexes --verify` ready, unresolved 0; no `--apply`.
@@ -180,7 +215,7 @@ Created September 17, 2026; current execution order revised September 19 in [SPR
 | CSI-13 | D | complete | Codex; server `sales-intelligence` / `a9b9bfcb7a70586ae14e974442e63a033abc7fbf` | Baseline and required CSI-17/14 review limitations inspected September 19. | Implementation and synthetic proof complete. Checkpoint 1789795679279-a540097e patch-ready/PASS; inspected coverage fix adopted and replica proof expanded to 21 passing tests. [Handoff](evidence/csi-13/HANDOFF.md), [checks](evidence/csi-13/CHECKS.md). CSI-18 excluded. |
 | CSI-18 | D + E | complete (local) | Codex; server/Admin `sales-intelligence`; uncommitted | Server: Owner6, runtime23, intelligence9, Outreach24, focused21; typecheck/lint pass. UI:626 tests, typecheck/focused lint, real BFF/browser desktop/narrow/keyboard/conflict/retry/access proof. [Handoff](evidence/csi-18/HANDOFF.md), [checks](evidence/csi-18/CHECKS.md). | Server and UI acceptance separately complete. Required checkpoint snapshot gates/review PASS; overall stale/CLI1, adapted source validated directly. Full Admin lint retains unrelated baseline. [Review](evidence/csi-18/REVIEW.md). CSI-09/14/15/16 remain separate. |
 | CSI-14 | C (server); E (dialogs) | implemented (destination + P2; live send still gated) | Grok destination/P2 on Codex server baseline; `sales-intelligence` HEAD `bbdfe4c`; dirty CSI-10 seed preserved | Destination/P2: server typecheck/lint 0; focused nudge+identity 17/17; nudge replica 18/18; identity replica 12/12; Admin API 9/9 + typecheck 0. [Destination handoff](evidence/csi-14-destination/HANDOFF.md). Prior CSI-14 packet remains historical. | Smallest Message-rep picker landed. Fuller dialogs/history and live-send proof remain separately gated. Official index migration not applied. |
-| CSI-15 | F (B/D adapters) | not started | — | — | CSI-02/06/12/13 |
+| CSI-15 | F (B/D adapters) | complete (local; validation limits recorded) | Codex integration; Cursor Grok/Composer assistance; server/Admin `main` | [Handoff](evidence/csi-15/HANDOFF.md), [checks](evidence/csi-15/CHECKS.md), [review](evidence/csi-15/REVIEW.md). Replica backfill 14/14, retention 10/10, budget 13/13, period 4/4; units 64/64; routes 7/7; Admin 13/13. | Final scoped server/Admin typechecks and lint pass; focused Composer reviews approve. Full server typecheck blocked only by concurrent external MCP probe errors. Broader historical snapshot checkpoint failed; no isolated patch applied. No production, commit or CSI-16. |
 | CSI-16 | F | not started | — | — | Integrated delivery |
 
 ## Specification validation
@@ -298,3 +333,8 @@ Additive shared edits authorized by this CSI-12 request: `src/config/domain/sale
 ## CSI-06 ownership — Codex, September 18, 2026
 
 Verified clean server sales-intelligence at 999c63d before edits. Own src/services/salesIntelligence/outreach/**, followups/**, review/**, staffing/clock helpers, scripts/test-csi-outreach*, and evidence/csi-06/**. Coordinate smallest additive registration in jobDispatch.ts, sales-intelligence admin/boundary/cron routes, vercel.json, package.json, shared DTOs and Team A schemas only when required and documented in CONTRACTS. Dashboard untouched; all work stays in vantage-main-server. No CSI-10/14, official writes, provider sends, analysis/STT or production flag enablement.
+
+## CSI-15 corrective integration ownership — September 19
+Parent Codex owns backfill, retention, jobs/config, deferred Outreach safety, purge-aware analysis reads, routes/cron/queue, Admin Coverage DTO, replica proofs and evidence. Cursor Composer 2.5 is restricted to budget/provider recovery in analysis/worker.ts, conversations/{transcribe,transcriptionScheduling,discover,media}.ts, aiBudget.ts and new scripts/test-csi15-budget*.ts. Cursor quality checkpoint will use Composer 2.5 only. Original Owner dirty documents remain preserved. No production operations or commits.
+
+Coordinated bounded subagents own retention implementation/proof, adversarial backfill proof, and the six-file evidence packet plus CONTRACTS/LEDGER and five owning Service updates. Exact task files and preserved external dirty documents: [CSI-15 FILES](evidence/csi-15/FILES.md). The Owner mission explicitly allows subagents and overrides the older handoff-template branch instruction; all work remains on `main`.

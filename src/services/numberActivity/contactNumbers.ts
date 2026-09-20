@@ -112,7 +112,7 @@ export async function getContactNumberDetail(
 ): Promise<NumberDetailReadDto | null> {
   if (!csiIdSchema.safeParse(numberId).success) return null;
   const row = (await getContactNumberModel()
-    .findById(numberId)
+    .findOne({ _id: numberId, purged_at: null })
     .lean()) as unknown as ContactNumberLean | null;
   if (!row) return null;
 

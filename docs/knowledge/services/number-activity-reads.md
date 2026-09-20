@@ -65,6 +65,8 @@ CSI-11 now extends Coverage with recording availability counters and stored medi
 
 ## Configuration
 
+CSI-15 replaces the Owner Coverage backfill notice with stored window counts, configured day range, a monotonic upper capture watermark and explicit gaps. Counts are null before any stored windows; running windows count as partial. Counts cover all windows, while the earliest 500-window gap view discloses truncation. A complete capture window can still await Outreach activation, which the note reports. This upper bound is never presented as gap-free history. Embedded slim capture Coverage is unchanged. Admin consumes the additive DTO; GET remains read-only. Exact contract and synthetic checks: [CSI-15 handoff](../../call-sales-intelligence/workspace/evidence/csi-15/HANDOFF.md).
+
 `SALES_INTELLIGENCE_ENABLED` (reads, rebuild command and rebuild drain), `SALES_INTELLIGENCE_DIRECTORY_SYNC` (directory cron), `RINGCENTRAL_ACCOUNT_ID` (optional configured account check for the directory sync), `SALES_INTELLIGENCE_DEPLOYMENT_ID` (job dataset), `CRON_SECRET`.
 
 ## Tests

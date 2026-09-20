@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { withTransaction } from "../../../db";
+import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
 import { getIntelligenceSubmissionModel } from "../../../models/IntelligenceSubmission";
 import { getIntelligenceEvidenceSnapshotModel } from "../../../models/IntelligenceEvidenceSnapshot";
@@ -30,7 +31,7 @@ export function renderIntelligencePrompt(subject: string) {
   return `${CSI_PROMPT_TEMPLATE}\n\nTrusted subject binding (data): ${JSON.stringify({subject_key: subject})}`;
 }
 /** CSI-13 trusted orchestration seam. Caller must already own an analysis/number-refresh lease. No HTTP/tool registration. */
-export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntelligenceRun) {
+export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntelligenceRun, deps: { beforePersist?: () => Promise<void> } = {}) {
   if (!csiFlag("ENABLED")) throw new CsiError("FEATURE_DISABLED");
   const input = preparationSchema.parse(raw);
   const run = await withTransaction(async session => {
@@ -38,8 +39,16 @@ export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntell
       stage: { $in: ["analysis", "number_refresh"] }, lease_owner: lease.owner, lease_epoch: lease.epoch,
       leased_until: { $gt: new Date() } }).session(session).lean();
     if (!job) throw new CsiError("LEASE_LOST");
+    const number = await getContactNumberModel().findById(input.contact_number_id).session(session).lean();
+    if (!number || number.purged_at || number.content_purge_pending) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
+    const fenceRetention = async () => {
+      const updated = await getContactNumberModel().updateOne({ _id: number._id, purged_at: null,
+        content_purge_pending: { $ne: true }, retention_epoch: number.retention_epoch ?? null }, { $inc: { evidence_fence: 1 } }, { session });
+      if (updated.modifiedCount !== 1) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
+    };
     const existing = await getIntelligenceRunModel().findOne({ job_id: job._id, ...csiDataset() }).session(session);
     if (existing) {
+      if (existing.purged_at || existing.purge_started_at) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
       if (existing.input_fingerprint !== input.input_fingerprint || existing.subject_key !== job.subject_key ||
         existing.mode !== input.mode || String(existing.contact_number_id) !== input.contact_number_id ||
         (existing.conversation_id ? String(existing.conversation_id) : null) !== input.conversation_id ||
@@ -47,6 +56,7 @@ export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntell
         (existing.parent_run_id ? String(existing.parent_run_id) : null) !== input.parent_run_id || existing.model_version !== input.model_version ||
         payloadHash(existing.owner_correction_ids.map(String)) !== payloadHash(input.owner_correction_ids))
         throw new CsiError("IDEMPOTENCY_CONFLICT");
+      await fenceRetention();
       return existing;
     }
     let prompt = renderIntelligencePrompt(job.subject_key);
@@ -55,7 +65,7 @@ export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntell
       await retainedOriginal(input.parent_run_id, session);
       const parent = input.parent_run_id ? await getIntelligenceRunModel().findOne({ _id: input.parent_run_id,
         subject_key: job.subject_key, ...csiDataset(), finalized_at: { $ne: null } }).session(session).lean() : null;
-      if (!parent?.rendered_prompt || !parent.manifest_digest || parent.schema_digest !== intelligenceSchemaDigest() || parent.prompt_version !== CSI_PROMPT_VERSION)
+      if (parent?.purged_at || parent?.purge_started_at || !parent?.rendered_prompt || !parent.manifest_digest || parent.schema_digest !== intelligenceSchemaDigest() || parent.prompt_version !== CSI_PROMPT_VERSION)
         throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
       if (String(parent.contact_number_id) !== input.contact_number_id ||
         (parent.conversation_id ? String(parent.conversation_id) : null) !== input.conversation_id ||
@@ -72,6 +82,8 @@ export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntell
       field: row.field, prior: row.prior, current: row.current, happened_at: row.happened_at.toISOString() }));
     if (correctionContext.length) prompt += `\n\nExplicit Owner correction context (data, separate from original evidence): ${JSON.stringify(correctionContext)}`;
     if (input.mode !== "original_evidence") await loadReadScope({_id:job._id, ...input, job_id:job._id, subject_key:job.subject_key});
+    await deps.beforePersist?.();
+    await fenceRetention();
     const { run_id: requestedId, ...fields } = input;
     const [created] = await getIntelligenceRunModel().create([{ ...fields, ...(requestedId ? { _id: requestedId } : {}), owner_correction_context: jsonValue(correctionContext), ...csiDataset(), job_id: job._id,
       subject_key: job.subject_key, prompt_version: CSI_PROMPT_VERSION, schema_version: "csi-envelope-v1",

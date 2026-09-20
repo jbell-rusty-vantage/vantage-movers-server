@@ -1,6 +1,6 @@
 # 06 — Delivery plan and acceptance
 
-Current sprint order and inspected review state: [September 19 sprint revision](workspace/SPRINT-PLAN.md). Next: [named 1–2 subject seed](workspace/NEXT-SESSION.md). CSI-07/08/09/18 are locally complete on `main`. The received design export is adapted into `vantage-admin`.
+Current sprint order and inspected review state: [September 19 sprint revision](workspace/SPRINT-PLAN.md). Next: [CSI-15](workspace/NEXT-SESSION.md), then [CSI-16](workspace/CSI-16-SESSION.md), then operations in [AFTER-16](workspace/AFTER-16.md). CSI-07/08/09/18 and the named-subject seed are locally complete on `main`. The received design export is adapted into `vantage-admin`.
 
 Status: build contract with partial local implementation. Execution order revised September 19, 2026; product acceptance remains unchanged. Execution home: [workspace/README.md](workspace/README.md). This revision replaces the old acceptance-gated AI plan. [09](09-owner-workflow-interview.md) preserves interview decisions; [10](10-intelligence-agent-contract.md) is the agent contract.
 
@@ -33,7 +33,7 @@ Implement behind flags defaulting off. Owner-editable settings cannot override d
 | CSI-18 | Owner analysis confirmation/correction/reanalysis and UI | Server: 06,13,17; UI: 08 and CSI-18 server | Track server/UI separately. Immediate corrections, original/current evidence modes, agreement and immutable history, no reapplication on confirm. Full completion requires both. |
 | CSI-14 | Explicit Owner Rep Nudge | 06,08,10 | Reviewed rep target, preview/send, never automatic/customer, unknown delivery repair. |
 | CSI-15 | Historical backfill, budget recovery and retention | 02,06,12,13 | Live work priority, no obsolete promises revived, purge all evidence copies, resumable windows. |
-| CSI-16 | Integrated certification, capability proof and docs restamp | all above | Acceptance matrix and Owner walkthrough with artifacts; staged rollout remains separate. |
+| CSI-16 | Integrated certification, capability proof and docs restamp | all above | Acceptance matrix and Owner walkthrough with artifacts. Production enablement is the Saturday full cutover in workspace AFTER-16, not this issue. |
 
 The original CSI identifiers are retained; CSI-17 and CSI-18 add MCP and intervention work. Teams may parallelize after the shared contracts are frozen, using strict fixtures before dependencies are integrated. Do not merge a DTO fork or contradictory schema to save time.
 

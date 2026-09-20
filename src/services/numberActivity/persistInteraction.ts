@@ -203,6 +203,12 @@ async function applyOnce(
   const canonical = rows.length
     ? rows.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b))
     : null;
+  // Retained identity tombstones deduplicate late provider replay without restoring content.
+  if (canonical && "purged_at" in canonical && canonical.purged_at) return {
+    interaction_id: String(canonical._id), contact_number_id: canonical.contact_number_id ? String(canonical.contact_number_id) : null,
+    projection_revision: canonical.projection_revision, noop: true, created: false, newly_terminal: false,
+    new_recording_ids: [], fenced_party_events: 0, stale_call_log: false, merged_interaction_ids: [], jobs: [], contact_number_created: false,
+  };
   const others = rows.filter((row) => canonical && !row._id.equals(canonical._id));
   let existing: InteractionProjection | null = canonical ? toProjection(canonical) : null;
   for (const other of others) existing = mergeProjections(existing!, toProjection(other));
@@ -373,6 +379,7 @@ async function applyOnce(
     kind: "interaction",
   });
 
+  const captureSource = input.kind === "call_log" ? input.source : undefined;
   const jobs = await scheduleDownstream(
     outcome,
     existing,
@@ -381,6 +388,7 @@ async function applyOnce(
     revision,
     session,
     now,
+    captureSource,
   );
 
   return {
@@ -588,7 +596,15 @@ async function scheduleDownstream(
   revision: number,
   session: ClientSession,
   now: Date,
+  captureSource?: CaptureSource,
 ): Promise<string[]> {
+  if (captureSource === "backfill") {
+    if (!number.id) return [];
+    const key = `csi:backfill:attachment:number:${String(number.id)}:interaction:${interactionId}`;
+    await enqueueCsiJob({ dedupe_key: key, stage: "attachment_refresh", subject_key: `number:${String(number.id)}`,
+      input_revision: 1, input_refs: [interactionId], priority: -100 }, session, now);
+    return [key];
+  }
   const jobs: string[] = [];
   const next = outcome.next;
   const internal = next.direction === "Internal" || next.external_endpoint_kind === "company_did" || next.external_endpoint_kind === "extension";

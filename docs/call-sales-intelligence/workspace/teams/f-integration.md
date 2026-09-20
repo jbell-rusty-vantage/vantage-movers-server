@@ -1,6 +1,6 @@
 # Team F — history, resilience and certification
 
-September 19 sequencing: follow [SPRINT-PLAN](../SPRINT-PLAN.md). CSI-15 dependencies are locally implemented; CSI-16 still awaits full UI/intervention integration and closure of CSI-10/14 review findings plus remaining verification limitations. First certify local Admin/API; production-backed local UI is a later operating mode, with deployment and enablement recorded separately.
+September 19 sequencing: follow [SPRINT-PLAN](../SPRINT-PLAN.md). Next is CSI-15 ([NEXT-SESSION](../NEXT-SESSION.md)), then CSI-16 ([CSI-16-SESSION](../CSI-16-SESSION.md)). After CSI-16 use [AFTER-16](../AFTER-16.md). Owner Saturday decision: enable **all** capability flags in one cutover and resolve live; do not stage. Fleet backfill still needs an explicit day range.
 
 Own CSI-15/16 and gates G4–G6. Begin independent synthetic acceptance fixtures early; integrate runtime after B–E. Read [06](../../06-delivery-plan-and-acceptance.md), [ACCEPTANCE](../ACCEPTANCE.md), [03](../../03-server-pipeline-and-jobs.md), [10](../../10-intelligence-agent-contract.md), [RingCentral capability](../RINGCENTRAL-CAPABILITY.md). The capability file is historical; G6 requires a fresh probe.
 

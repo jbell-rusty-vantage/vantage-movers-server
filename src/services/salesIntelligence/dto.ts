@@ -100,8 +100,15 @@ export const ownerCoverageDtoSchema = coverageDtoSchema.extend({
     .strict(),
   backfill: z
     .object({
-      available: z.literal(false),
+      available: z.boolean(),
       owner_triggered: z.literal(true),
+      days: z.number().int().nonnegative(),
+      planned: unknownCount,
+      partial: unknownCount,
+      complete: unknownCount,
+      failed: unknownCount,
+      known_complete_through: date.nullable(),
+      gaps: z.array(z.object({ from: date, to: date, reason: z.string().min(1) }).strict()),
       note: z.string().min(1),
     })
     .strict(),

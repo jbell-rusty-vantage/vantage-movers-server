@@ -55,7 +55,7 @@ export const isCurrentTranscriptVersion = (requested: string | undefined, curren
 export async function loadReadScope(run: StoredRun): Promise<ReadScope> {
   if (!run.contact_number_id) return fail();
   const number = await getContactNumberModel().findById(run.contact_number_id).lean();
-  if (!number) return fail();
+  if (!number || number.purged_at || number.content_purge_pending) return fail();
   const scope: ReadScope = { run_id: String(run._id), subject_key: run.subject_key, contact_number_id: String(number._id), e164: number.e164,
     conversation_id: run.conversation_id ? String(run.conversation_id) : null, outreach_record_id: run.outreach_record_id ? String(run.outreach_record_id) : null, account_id: null, lead_refs: [] };
   if (scope.conversation_id) {
@@ -64,7 +64,7 @@ export async function loadReadScope(run: StoredRun): Promise<ReadScope> {
     scope.account_id = conversation.provider_account_id ?? null;
     const job = run.job_id ? await getSalesIntelligenceJobModel().findById(run.job_id).select("input_refs").lean() : null;
     if (job?.input_refs[1]) {
-      const pinned = await getIntelligenceEvidenceSnapshotModel().findOne({ _id: job.input_refs[1], ...csiDataset(), source_type: "transcript", conversation_id: conversation._id }).select("_id").lean();
+      const pinned = await getIntelligenceEvidenceSnapshotModel().findOne({ _id: job.input_refs[1], ...csiDataset(), source_type: "transcript", purged_at: null, purge_started_at: null, conversation_id: conversation._id }).select("_id").lean();
       if (!pinned) throw new CsiError("EVIDENCE_SCOPE_INVALID");
       scope.transcript_snapshot_id = String(pinned._id);
     }
@@ -171,7 +171,7 @@ export async function readCancellations(scope: ReadScope, args: SearchArgs): Pro
 
 async function context(scope: ReadScope, result: ReadContent) {
   const number = await getContactNumberModel().findById(scope.contact_number_id).lean();
-  if (!number) return fail();
+  if (!number || number.purged_at || number.content_purge_pending) return fail();
   result.page.records.push({ record_type: "contact_number", record_id: String(number._id), revision: String(number.revision), fields: { phone: number.e164, status: number.contact_eligibility.state, certainty: number.classification } });
   const outreach = scope.outreach_record_id ? await getOutreachRecordModel().findOne({ _id: scope.outreach_record_id, primary_contact_number_id: scope.contact_number_id }).lean() : null;
   if (scope.outreach_record_id && !outreach) return fail();
@@ -203,7 +203,7 @@ async function context(scope: ReadScope, result: ReadContent) {
     }
   }
   if (!scope.conversation_id) {
-    const findings = await getIntelligenceFindingModel().find({ run_id: { $in: conversations.flatMap(c => c.latest_completed_run_id ? [c.latest_completed_run_id] : []) } }).sort({ _id: 1 }).limit(101).lean();
+    const findings = await getIntelligenceFindingModel().find({ purged_at: null, purge_started_at: null, run_id: { $in: conversations.flatMap(c => c.latest_completed_run_id ? [c.latest_completed_run_id] : []) } }).sort({ _id: 1 }).limit(101).lean();
     if (findings.length > 100) throw new CsiError("EVIDENCE_LIMIT_REACHED");
     for (const f of findings) result.page.records.push({ record_type: "job_timeline", record_id: String(f._id), revision: String(f.revision),
       fields: { description: text(f.assertion.claim), status: f.review_state, details: text(JSON.stringify({ kind: f.kind, value: f.assertion.value, evidence: f.assertion.evidence, run_id: f.run_id })) } });
@@ -264,14 +264,14 @@ export async function readIntelligenceEvidence(scope: ReadScope, input: { tool: 
       // must not let a caller select an older retained transcript by version.
       if (!scope.transcript_snapshot_id && !isCurrentTranscriptVersion(input.args.transcript_version, c.latest_transcript_version)) return fail();
       const version = input.args.transcript_version ?? c.latest_transcript_version;
-      const snapshot = (version || scope.transcript_snapshot_id) ? await getIntelligenceEvidenceSnapshotModel().findOne({ ...csiDataset(), source_type: "transcript", conversation_id: c._id,
+      const snapshot = (version || scope.transcript_snapshot_id) ? await getIntelligenceEvidenceSnapshotModel().findOne({ ...csiDataset(), source_type: "transcript", purged_at: null, purge_started_at: null, conversation_id: c._id,
         ...(scope.transcript_snapshot_id ? { _id: scope.transcript_snapshot_id } : { transcript_version: version }) }).select("transcript_version completeness").lean() : null;
       if (!snapshot) { result.page.complete = false; result.page.missing_ranges = ["transcript_unavailable"]; break; }
       if (input.args.transcript_version && input.args.transcript_version !== snapshot.transcript_version) return fail();
       const key = `${scope.run_id}:transcript:${snapshot._id}`;
       let offset = 0;
       if (input.args.cursor) { try { const c = z.object({ key: z.string(), offset: z.number().int().nonnegative() }).strict().parse(JSON.parse(Buffer.from(input.args.cursor, "base64url").toString())); if (c.key !== key) throw new Error(); offset = c.offset; } catch { throw new CsiError("INVALID_INPUT"); } }
-      const [part] = await getIntelligenceEvidenceSnapshotModel().aggregate([{ $match: { _id: snapshot._id } }, { $project: { total: { $size: "$segments" }, segments: { $slice: ["$segments", offset, input.args.limit] } } }]);
+      const [part] = await getIntelligenceEvidenceSnapshotModel().aggregate([{ $match: { _id: snapshot._id, purged_at: null, purge_started_at: null } }, { $project: { total: { $size: "$segments" }, segments: { $slice: ["$segments", offset, input.args.limit] } } }]);
       if (!part || offset > part.total) throw new CsiError("INVALID_INPUT");
       const segments = z.array(segmentSchema).max(100).parse(part.segments);
       const next = offset + segments.length;

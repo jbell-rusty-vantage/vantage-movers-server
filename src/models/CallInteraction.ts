@@ -100,6 +100,7 @@ const legSchema = new Schema(
 
 export const CallInteractionSchema = new Schema(
   {
+    purged_at: { type: Date, default: null },
     merged_into_id: { type: Schema.Types.ObjectId, default: null },
     provider: {
       type: String,

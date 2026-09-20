@@ -15,6 +15,7 @@ import { interactionAttribution, interactionRepIdentity } from "../outreach/ensu
 import { subjectKey } from "../outreach/types";
 import { jsonValue } from "../outreach/store";
 import { loadLead } from "../attachment/sources";
+import { historicalCaptureReady, historicalAttachmentsReady } from "../backfill/readiness";
 import { CsiError } from "../auth";
 import { payloadHash } from "../transactions";
 import { decideAnalysisEligibility, loadEligibilityInputs } from "../conversations/eligibility";
@@ -23,6 +24,7 @@ import { intelligenceFindingSchema } from "../../../validation/intelligence/inte
 /** Bounded source fingerprint deliberately excludes clocks, generic updatedAt and derived analysis. */
 export async function intelligenceSources(numberId: string, session: ClientSession) {
   const number = await getContactNumberModel().findById(numberId).session(session).lean().orFail();
+  if (number.content_purge_pending || number.purged_at) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
   const calls = await getCallInteractionModel().find({ contact_number_id: numberId, merged_into_id: null }).sort({ started_at: 1, _id: 1 }).limit(201).session(session).lean();
   const conversations = await getLeadConversationModel().find({ contact_number_id: numberId, latest_transcript_version: { $ne: null } }).sort({ _id: 1 }).limit(101).session(session).lean();
   const edges = await getNumberLeadAttachmentModel().find({ contact_number_id: numberId }).sort({ _id: 1 }).limit(101).session(session).lean();
@@ -46,10 +48,16 @@ export async function intelligenceSources(numberId: string, session: ClientSessi
   const cancellations = await database.collection("cancelled_leads").find({ lead_ref: { $in: edges.map(e => e.lead_ref.id) } },
     { session, projection: { lead_ref: 1, lead_model: 1, reason: 1, timestamp: 1 } }).sort({ _id: 1 }).limit(101).toArray();
   if (bookings.length > 100 || cancellations.length > 100) throw new CsiError("EVIDENCE_LIMIT_REACHED");
-  const findings = await getIntelligenceFindingModel().find({ run_id: { $in: conversations.flatMap(c => c.latest_completed_run_id ? [c.latest_completed_run_id] : []) } })
+  const findings = await getIntelligenceFindingModel().find({
+    run_id: { $in: conversations.flatMap(c => c.latest_completed_run_id ? [c.latest_completed_run_id] : []) },
+  })
     .limit(101).session(session).lean();
   if (findings.length > 100) throw new CsiError("EVIDENCE_LIMIT_REACHED");
   const assertions = findings.map(f => {
+    const purged = (f as { purged_at?: Date | null }).purged_at;
+    if (purged || (f.assertion && typeof f.assertion === "object" && (f.assertion as { purged?: boolean }).purged)) {
+      return payloadHash(jsonValue({ purged: true }));
+    }
     const { key: _key, evidence, ...claim } = intelligenceFindingSchema.parse(f.assertion);
     return payloadHash(jsonValue({ conversation_id: f.conversation_id, claim, review_state: f.review_state,
       evidence: evidence.map(({ snapshot_id: _snapshot, ...source }) => source) }));
@@ -73,8 +81,13 @@ export async function conversationAnalysisInput(conversationId: string, snapshot
   const conversation = await getLeadConversationModel().findById(conversationId).session(session).orFail();
   const snapshot = await getIntelligenceEvidenceSnapshotModel().findOne({ _id: snapshotId, conversation_id: conversation._id,
     source_type: "transcript", ...csiDataset() }).session(session).orFail();
+  if (await getContactNumberModel().exists({ _id: conversation.contact_number_id, content_purge_pending: true }).session(session)) return { status: "stale" as const };
+  if (snapshot.purged_at || snapshot.purge_started_at || conversation.content_purged_at) return { status: "stale" as const };
   if (conversation.latest_transcript_version !== snapshot.transcript_version || conversation.media_digest_sha256 !== snapshot.source_revision || !snapshot.completeness.complete) return { status: "stale" as const };
   const call = await getCallInteractionModel().findOne({ _id: conversation.call_interaction_id, contact_number_id: conversation.contact_number_id, merged_into_id: null }).session(session).orFail();
+  if (call.purged_at) return { status: "stale" as const };
+  if (call.sources.includes("backfill") && (!await historicalCaptureReady(call.started_at, session) ||
+    !await historicalAttachmentsReady(String(call.contact_number_id), session))) return { status: "undetermined" as const };
   const eligibility = decideAnalysisEligibility(await loadEligibilityInputs(call, session));
   if (eligibility.status !== "eligible") return { status: eligibility.status };
   const attribution = await interactionAttribution(call, session);

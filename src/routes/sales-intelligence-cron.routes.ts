@@ -20,6 +20,10 @@ import { drainIntelligenceJobs } from "../services/salesIntelligence/analysis/wo
 import { drainIntelligenceApplications } from "../services/salesIntelligence/analysis/apply";
 import { drainRebuildJobs, type RebuildDrainSummary, type RebuildWorkerDeps } from "../services/numberActivity/rebuild";
 import { runCallLogReconcileOnce } from "../services/numberActivity/reconcileCallLog";
+import { runBackfillStepOnce } from "../services/salesIntelligence/backfill/step";
+import { drainBackfillActivationJobs } from "../services/salesIntelligence/backfill/worker";
+import { runRetentionOnce } from "../services/salesIntelligence/retention";
+import { csiBackfillDays } from "../config/domain/salesIntelligence";
 import {
   runReceiptWatermarkRecovery,
   type RecoverySummary,
@@ -65,6 +69,9 @@ export type SalesIntelligenceCronRouteDeps = {
   drainRecordingDiscovery?: typeof drainRecordingDiscoveryJobs;
   runOutreachEnsure?: typeof runOutreachEnsureOnce;
   drainOutreachEnsure?: typeof drainOutreachEnsureJobs;
+  runBackfillStep?: typeof runBackfillStepOnce;
+  drainBackfillActivation?: typeof drainBackfillActivationJobs;
+  runRetention?: typeof runRetentionOnce;
   drainRepIdentity?: typeof drainRepIdentityReevaluationJobs;
   drainNudgeRepair?: typeof drainNudgeRepairJobs;
   runIntelligence?: typeof drainIntelligenceJobs;
@@ -75,6 +82,8 @@ export const CSI_CRON_PATHS = {
   extract: "/api/cron/sales-intelligence-extract",
   apply: "/api/cron/sales-intelligence-apply",
   nudgeRepair: "/api/cron/sales-intelligence-nudge-repair",
+  backfillStep: "/api/cron/sales-intelligence-backfill-step",
+  retention: "/api/cron/sales-intelligence-retention",
   callLogReconcile: "/api/cron/sales-intelligence-call-log-reconcile",
   jobRecovery: "/api/cron/sales-intelligence-job-recovery",
   directorySync: "/api/cron/sales-intelligence-directory-sync",
@@ -115,6 +124,14 @@ export function createSalesIntelligenceCronRouter(
     { name: "recording_discovery", flag: "MEDIA_ENABLED" as const, run: () => (deps.drainRecordingDiscovery ?? drainRecordingDiscoveryJobs)() },
     { name: "media_fetch", flag: "MEDIA_ENABLED" as const, run: mediaFetch },
     { name: "transcription", flag: "STT_ENABLED" as const, run: transcribe },
+    {
+      name: "backfill_activation",
+      flag: "ENABLED" as const,
+      run: async () => {
+        if (csiBackfillDays() <= 0) return { skipped: true, reason: "backfill_disabled" };
+        return (deps.drainBackfillActivation ?? drainBackfillActivationJobs)();
+      },
+    },
   ];
 
   for (const [path, work] of [
@@ -268,6 +285,35 @@ export function createSalesIntelligenceCronRouter(
     try { await connect(); return res.json({ ok: true, summary: await (deps.drainNudgeRepair ?? drainNudgeRepairJobs)() }); }
     catch { return res.status(500).json({ ok: false, error: "Nudge repair failed" }); }
   });
+
+  router.all(CSI_CRON_PATHS.backfillStep, requireCronAuth, async (_req, res) => {
+    if (!flag("ENABLED") || csiBackfillDays() <= 0) {
+      return res.json({ ok: true, skipped: true, reason: "disabled" });
+    }
+    try {
+      await connect();
+      const step = deps.runBackfillStep ?? runBackfillStepOnce;
+      const summary = await step();
+      await (deps.drainBackfillActivation ?? drainBackfillActivationJobs)();
+      return res.json({ ok: true, skipped: summary.skipped, summary });
+    } catch {
+      return res.status(500).json({ ok: false, error: "Backfill step failed" });
+    }
+  });
+
+  router.all(CSI_CRON_PATHS.retention, requireCronAuth, async (_req, res) => {
+    try {
+      await connect();
+      const summary = await (deps.runRetention ?? runRetentionOnce)();
+      if (summary.skipped && summary.skip_reason === "disabled") {
+        return res.json({ ok: true, skipped: true, reason: "disabled", summary });
+      }
+      return res.json({ ok: true, skipped: summary.skipped, summary });
+    } catch {
+      return res.status(500).json({ ok: false, error: "Retention failed" });
+    }
+  });
+
   return router;
 }
 

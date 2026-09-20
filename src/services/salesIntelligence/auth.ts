@@ -9,6 +9,7 @@ import {
   type CsiErrorCode,
 } from "../../config/domain/salesIntelligence";
 import { csiIdSchema } from "../../validation/v1/salesIntelligence";
+import { getContactNumberModel } from "../../models/ContactNumber";
 import { getIntelligenceRunModel } from "../../models/IntelligenceRun";
 import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
 const getVantageAuth = (req: Request) =>
@@ -221,7 +222,7 @@ export async function issueCsiRunToken(
   const run = await getIntelligenceRunModel().findOne({
     _id: runId,
     job_id: lease.job_id,
-    status: "running",
+    status: "running", purged_at: null, purge_started_at: null,
     ...csiDataset(),
   });
   const job = await getSalesIntelligenceJobModel().findOne({
@@ -233,6 +234,7 @@ export async function issueCsiRunToken(
     ...csiDataset(),
   });
   if (!run || !job || !run.token_nonce) throw new CsiError("RUN_SCOPE_DENIED");
+  if (run.contact_number_id && await getContactNumberModel().exists({ _id: run.contact_number_id, $or: [{ content_purge_pending: true }, { purged_at: { $ne: null } }] })) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
   if (job.subject_key !== run.subject_key)
     throw new CsiError("RUN_SCOPE_DENIED");
   const active: ActiveRunScope = {
