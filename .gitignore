@@ -5,6 +5,7 @@ build/
 .env
 .env.*
 !.env.example
+/sales-intelligence.env
 
 # OS junk
 .DS_Store

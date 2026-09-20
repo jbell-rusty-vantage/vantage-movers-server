@@ -90,6 +90,7 @@
     "test:csi:runtime:replica": "node --import tsx scripts/test-csi-runtime.ts",
     "test:csi:intelligence-reads:replica": "node --import tsx scripts/test-csi-intelligence-reads.ts",
     "generate:csi:intelligence-contract": "node --import tsx scripts/generate-csi-intelligence-contract.ts",
+    "probe:intelligence-mcp": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/probe-intelligence-mcp-agent.ts",
     "test:csi:capture:replica": "node --import tsx scripts/test-csi-capture.ts",
     "test:csi:fanout:replica": "node --import tsx scripts/test-csi-fanout.ts",
     "test:csi:numbers:replica": "node --import tsx scripts/test-csi-numbers.ts",
