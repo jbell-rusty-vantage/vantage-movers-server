@@ -75,7 +75,10 @@ test("buildNumberSearchFilter: hygiene, attachment, range, term and keyset curso
   assert.deepEqual(buildNumberSearchFilter(query({ hygiene: false }), null), { kind: "external", purged_at: null });
   assert.throws(() => query({ hygiene: "0" }), "only true/false are accepted; 0/off are not coerced");
   assert.throws(() => query({ hygiene: "off" }));
-  assert.deepEqual(buildNumberSearchFilter(query({ classification: "customer" }), null), { kind: "external", classification: "customer", purged_at: null });
+  assert.deepEqual(buildNumberSearchFilter(query({ classification: "customer" }), null), { kind: "external", classification: { $in: ["customer"] }, purged_at: null });
+  assert.deepEqual(buildNumberSearchFilter(query({ classification: ["company", "customer"] }), null).classification, { $in: ["company", "customer"] });
+  assert.deepEqual(query({ classification: ["customer", "company", "customer"] }).classification, ["company", "customer"]);
+  assert.equal(query({}).classification, undefined);
 
   const linked = buildNumberSearchFilter(query({ attachment: "linked" }), null);
   assert.deepEqual(linked.$and, [{ $or: [{ "rollups.attached_lead_count": { $gt: 0 } }, { "rollups.candidate_lead_count": { $gt: 0 } }] }]);

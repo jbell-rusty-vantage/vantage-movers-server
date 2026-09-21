@@ -13,9 +13,44 @@ import { deriveOutreachFacts, loadOutreachInputsBatch, toOutreachDto } from "./r
 import { subjectKey } from "./types";
 import { jsonValue } from "./store";
 
-export const attentionQuerySchema = z.object({ scope: z.literal("production").optional(), cursor: z.string().max(2000).optional(), limit: z.coerce.number().int().min(1).max(200).default(50),
-  band: z.coerce.number().int().min(1).max(7).optional(), needs_review: z.enum(["true", "false"]).optional(), state: z.enum(["unworked", "open", "waiting_on_customer", "identity_review", "closed"]).optional(),
-  agent_id: z.string().regex(/^[a-f\d]{24}$/i).optional() }).strict();
+function repeatedQuery<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess((value) => {
+    if (value == null || value === "") return undefined;
+    const parts = (Array.isArray(value) ? value : [value])
+      .flatMap((item) => String(item).split(","))
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return parts.length ? [...new Set(parts)].sort() : undefined;
+  }, z.array(schema).min(1).optional());
+}
+
+const ATTENTION_STATES = ["unworked", "open", "waiting_on_customer", "identity_review", "closed"] as const;
+
+export const attentionQuerySchema = z.object({
+  scope: z.literal("production").optional(),
+  cursor: z.string().max(2000).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  band: repeatedQuery(z.coerce.number().int().min(1).max(7)),
+  needs_review: z.enum(["true", "false"]).optional(),
+  state: repeatedQuery(z.enum(ATTENTION_STATES)),
+  agent_id: repeatedQuery(z.string().regex(/^[a-f\d]{24}$/i)),
+}).strict();
+
+export function rowMatchesAttentionQuery(
+  row: z.infer<typeof attentionRowDtoSchema>,
+  query: z.infer<typeof attentionQuerySchema>,
+) {
+  if (query.band?.length && (row.derived.attention_band == null || !query.band.includes(row.derived.attention_band))) return false;
+  if (query.state?.length && (!row.outreach?.state || !query.state.includes(row.outreach.state as (typeof ATTENTION_STATES)[number]))) return false;
+  if (query.agent_id?.length) {
+    const ids = new Set(query.agent_id);
+    const assigned = row.outreach?.assignment.agent?.id;
+    const followupHit = row.outreach?.followups.some((action) => action.assignment.agent?.id && ids.has(action.assignment.agent.id));
+    if (!(assigned && ids.has(assigned)) && !followupHit) return false;
+  }
+  if (query.needs_review !== undefined && Boolean(row.derived.review_badges?.length) !== (query.needs_review === "true")) return false;
+  return true;
+}
 const PUBLISH_PAGE = 50;
 export const ATTENTION_PUBLISH_BUDGET_MS = 40_000;
 
@@ -97,9 +132,7 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>) {
   // re-validates only the page it returns. Re-parsing a multi-megabyte array
   // on every page view was pure read-path cost (14 §2).
   const stored = (Array.isArray(snapshot.rows) ? snapshot.rows : []) as z.infer<typeof attentionRowDtoSchema>[];
-  const rows = stored.filter(r => (!query.band || r.derived.attention_band === query.band) && (!query.state || r.outreach?.state === query.state) &&
-    (!query.agent_id || r.outreach?.assignment.agent?.id === query.agent_id || r.outreach?.followups.some(a => a.assignment.agent?.id === query.agent_id)) &&
-    (query.needs_review === undefined || Boolean(r.derived.review_badges?.length) === (query.needs_review === "true")));
+  const rows = stored.filter((row) => rowMatchesAttentionQuery(row, query));
   const offset = page?.offset ?? 0, reasons: Record<string, number> = {};
   for (const row of rows) for (const reason of row.derived.reasons) reasons[reason] = (reasons[reason] ?? 0) + 1;
   return attentionPageDtoSchema.parse({ as_of: snapshot.as_of.toISOString(), coverage: await readCaptureCoverage(), data: { items: rows.slice(offset, offset + limit), snapshot_id: snapshot.snapshot_id,
