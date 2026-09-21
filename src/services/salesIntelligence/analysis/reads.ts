@@ -15,7 +15,8 @@ import { getSalesIntelligenceOwnerInstructionModel } from "../../../models/Sales
 import { getSalesIntelligenceContactRestrictionModel } from "../../../models/SalesIntelligenceContactRestriction";
 import { normalizePhoneNumberForMatch } from "../../../utils/phone";
 import { toObjectId } from "../../../utils/objectId";
-import { FORM_LEAD_CONTACT_PHONE_PATHS, fullTextClause } from "../../search/leadBrowseShared";
+import { fullTextClause } from "../../search/leadBrowseShared";
+import { leadPhoneMatchClauses } from "../../../models/leadContactPhoneIndexes";
 import { redactTranscript } from "../../conversations/redaction";
 import { readCaptureCoverage } from "../../numberActivity/coverage";
 import { getNumberTimeline } from "../../numberActivity/timeline";
@@ -95,10 +96,18 @@ export function readCursor(encoded: string | undefined, key: string): string | n
 }
 const cursor = (key: string, after: string) => Buffer.from(JSON.stringify({ key, after })).toString("base64url");
 type SearchArgs = { limit: number; cursor?: string; query?: string; id?: string; model?: "FormLead" | "CallLead" };
+/**
+ * Leads the model may see for this number: the run's authorized attachment
+ * edges plus any Lead whose known contact paths carry the same normalized
+ * number. The phone predicates are the indexed ten-digit keys the attachment
+ * worker itself joins on (`leadContactPhoneIndexes`), so this read and the
+ * identity that authorizes effects agree, and the query no longer walks every
+ * Lead with an unanchored raw-phone regex per page (17 §7).
+ */
 export function leadRelevance(scope: ReadScope, model: "FormLead" | "CallLead") {
   const phone = normalizePhoneNumberForMatch(scope.e164);
   const clauses: Record<string, unknown>[] = [{ _id: { $in: scope.lead_refs.filter(r => r.model === model).map(r => oid(r.id)) } }];
-  if (phone) clauses.push(...FORM_LEAD_CONTACT_PHONE_PATHS.map(path => ({ [path]: path.includes("normalized_") ? phone : new RegExp(`^${phone.length === 10 ? "(?:\\+?1\\D*)?" : "\\+?"}\\D*${phone.split("").join("\\D*")}\\D*$`) })));
+  if (phone) clauses.push(...leadPhoneMatchClauses(model, [phone]));
   return { $or: clauses };
 }
 const projection = { name: 1, customer_name: 1, phone_number: 1, job_no: 1, normalized_job_no: 1, source_company: 1, source: 1, booked: 1, cancelled: 1, duplicate: 1, bad_lead: 1, no_sync: 1, domain_revision: 1, updatedAt: 1, book_date: 1, lead_ref: 1, lead_model: 1, receiver_agent: 1 };

@@ -15,8 +15,16 @@ export const runtimeLimitsSchema = z.object({ steps: z.number().int().min(1).max
 export type RuntimeLimits = z.infer<typeof runtimeLimitsSchema>;
 // Fund the full step ceiling even when usage is reported at the per-step bounds.
 // Admission still reserves this complete budget against the Owner's policy.
-export const DEFAULT_RUNTIME_LIMITS: RuntimeLimits = { steps: 12, context_tokens: 128_000, output_tokens: 8000,
-  total_input_tokens: 1_536_000, total_output_tokens: 96_000, elapsed_ms: 180_000, pages: 100 };
+//
+// Sized for the contract's target (17 §8): evidence is captured before the
+// provider loop, so an ordinary conversation submits in one step with at most
+// one repair. Twelve steps reserved 1.5M input tokens per recording, which
+// exceeded the default 25-cent per-recording ceiling at list pricing and paused
+// every conversation before any model call. `elapsed_ms` stays inside the
+// deployed 120 s function; the previous 180 s could never complete in a cron.
+// `SALES_INTELLIGENCE_ANALYSIS_LIMITS_JSON` still overrides all of these.
+export const DEFAULT_RUNTIME_LIMITS: RuntimeLimits = { steps: 4, context_tokens: 128_000, output_tokens: 8000,
+  total_input_tokens: 512_000, total_output_tokens: 32_000, elapsed_ms: 95_000, pages: 100 };
 export class IntelligenceRuntimeError extends Error {
   constructor(readonly reason: "incomplete_coverage" | "bounds_exhausted" | "schema_exhausted" | "receipt_missing" | "contract_mismatch" | "eligibility_changed") { super(reason); }
 }

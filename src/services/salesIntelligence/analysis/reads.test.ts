@@ -20,10 +20,12 @@ test("relevance derives only from authorized lead edges and full normalized numb
   assert.equal(JSON.stringify(form.$or[0]), JSON.stringify({ _id: { $in: [] } }));
   const normalized = call.$or.find(c => "normalized_phone_number" in c);
   assert.deepEqual(normalized, { normalized_phone_number: "2025550100" });
-  const phone = call.$or.find(c => "phone_number" in c)!.phone_number as RegExp;
-  assert(phone.test("+1 (202) 555-0100"));
-  assert(!phone.test("+1 (202) 555-0199"));
-  assert(!phone.test("9992025550100"));
+  // Indexed ten-digit keys only: the same join the attachment worker uses. No
+  // raw-phone regex, which could never use an index and scanned every Lead.
+  assert.ok(call.$or.every(c => !Object.values(c).some(v => v instanceof RegExp)));
+  assert.deepEqual(call.$or.find(c => "ringcentral.original_caller.normalized_phone_number" in c), { "ringcentral.original_caller.normalized_phone_number": "2025550100" });
+  assert.equal(form.$or.some(c => "ringcentral.original_caller.normalized_phone_number" in c), false);
+  assert.deepEqual(form.$or.find(c => "granot_contact_snapshot.normalized_phone_number" in c), { "granot_contact_snapshot.normalized_phone_number": "2025550100" });
 });
 test("projection excludes operational secrets and redacts untrusted free text", () => {
   const row = projectLead({ _id: "c".repeat(24), domain_revision: 8, name: "Synthetic cvv 123", phone_number: "2025550100", email: "private@example.invalid", raw_provider_body: "secret", booked: "d".repeat(24) }, "CallLead");

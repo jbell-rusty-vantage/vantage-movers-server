@@ -4,8 +4,12 @@ import { getContactNumberModel } from "../../models/ContactNumber";
 import { getRepIdentityLinkModel } from "../../models/RepIdentityLink";
 import { getRingCentralDirectorySnapshotModel } from "../../models/RingCentralDirectorySnapshot";
 import { getSalesIntelligenceAiBudgetModel } from "../../models/SalesIntelligenceAiBudget";
+import { getSalesIntelligenceAiReservationModel } from "../../models/SalesIntelligenceAiReservation";
 import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
 import { readCaptureCoverage } from "../numberActivity/coverage";
+import { decideAnalysisAdmission } from "./analysis/admission";
+import type { RuntimeLimits } from "./analysis/runtime";
+import { analysisRuntimeConfiguration, estimateAnalysisCents } from "./analysis/worker";
 import {
   ownerCoverageDtoSchema,
   ownerCoverageStageSchema,
@@ -44,6 +48,65 @@ export function composeBudget(
     reserved_cents: row.reserved_cents,
     remaining_cents: Math.max(0, row.ceiling_cents - row.actual_cents - row.reserved_cents),
   };
+}
+
+/**
+ * Pure admission picture for the Owner. `estimate` is null when pricing is not
+ * configured, which is itself a distinct reason the pipeline is not running.
+ */
+export function composeAnalysisAdmission(input: {
+  estimate: number | null;
+  per_recording_ceiling_cents: number;
+  budget: { month: string; ceiling_cents: number; actual_cents: number; reserved_cents: number; activated: boolean } | null;
+  model: string;
+  pricing_version: string | null;
+  limits: RuntimeLimits;
+  paused: { per_recording_ceiling: number; budget: number; configuration: number };
+  unresolved_reservations: { count: number; estimated_cents: number };
+}): OwnerCoverageDto["analysis_admission"] {
+  const { steps, context_tokens, output_tokens, total_input_tokens, total_output_tokens, elapsed_ms } = input.limits;
+  const decision = input.estimate === null ? null : decideAnalysisAdmission({
+    stage: "analysis", budget: input.budget?.activated ? input.budget : null, estimated_cents: input.estimate,
+    per_recording_ceiling_cents: input.per_recording_ceiling_cents, model_version: input.model, pricing_version: input.pricing_version ?? "", limits: input.limits,
+  });
+  return {
+    status: decision === null ? "configuration_missing" : decision.admitted ? "admitted" : decision.reason,
+    estimated_cents_per_conversation: input.estimate,
+    per_recording_ceiling_cents: input.per_recording_ceiling_cents,
+    model: input.model,
+    pricing_version: input.pricing_version,
+    limits: { steps, context_tokens, output_tokens, total_input_tokens, total_output_tokens, elapsed_ms },
+    paused: input.paused,
+    unresolved_reservations: input.unresolved_reservations,
+  };
+}
+
+async function readAnalysisAdmission(policy: { per_recording_ceiling_cents: number }, budgetRow: {
+  month: string; ceiling_cents: number; actual_cents: number; reserved_cents: number; activated_at?: Date | null;
+} | null) {
+  const configuration = analysisRuntimeConfiguration();
+  const Job = getSalesIntelligenceJobModel();
+  const analysis = { ...csiDataset(), stage: { $in: ["analysis", "number_refresh"] as JobStage[] }, status: "paused" as const };
+  const [perRecording, budget, configurationPaused, unresolved] = await Promise.all([
+    Job.countDocuments({ ...analysis, reason: "per_recording_ceiling" }),
+    Job.countDocuments({ ...analysis, reason: "budget_exhausted" }),
+    Job.countDocuments({ ...analysis, reason: "permission_denied", "result.reason": "analysis_configuration_missing" }),
+    getSalesIntelligenceAiReservationModel().aggregate<{ _id: null; count: number; estimated_cents: number }>([
+      { $match: { stage: "analysis", status: "reserved", provider_started: true, reserved_at: { $lte: new Date(Date.now() - 3_600_000) } } },
+      { $group: { _id: null, count: { $sum: 1 }, estimated_cents: { $sum: "$estimated_cents" } } },
+    ]),
+  ]);
+  return composeAnalysisAdmission({
+    estimate: configuration.pricing ? estimateAnalysisCents(configuration.pricing, configuration.limits) : null,
+    per_recording_ceiling_cents: policy.per_recording_ceiling_cents,
+    budget: budgetRow ? { month: budgetRow.month, ceiling_cents: budgetRow.ceiling_cents, actual_cents: budgetRow.actual_cents,
+      reserved_cents: budgetRow.reserved_cents, activated: Boolean(budgetRow.activated_at) } : null,
+    model: configuration.model_id,
+    pricing_version: configuration.pricing?.version ?? null,
+    limits: configuration.limits,
+    paused: { per_recording_ceiling: perRecording, budget, configuration: configurationPaused },
+    unresolved_reservations: { count: unresolved[0]?.count ?? 0, estimated_cents: unresolved[0]?.estimated_cents ?? 0 },
+  });
 }
 
 export function composeStage(
@@ -115,18 +178,20 @@ export async function readOwnerCoverage(): Promise<OwnerCoverageDto> {
     .findOne({ period_start: { $lte: now }, period_end: { $gt: now } })
     .sort({ period_start: -1 })
     .lean();
-  const [recording, transcription, analysis, application, mapping, backfill] = await Promise.all([
+  const [recording, transcription, analysis, application, mapping, backfill, admission] = await Promise.all([
     readStage(RECORDING_STAGES),
     readStage(["transcription"]),
     readStage(["analysis"]),
     readStage(["application"]),
     readMappingHygiene(),
     readBackfillCoverage(),
+    readAnalysisAdmission(settings.policy, budgetRow),
   ]);
   return ownerCoverageDtoSchema.parse({
     ...capture,
     stages: { recording, transcription, analysis, application },
     budget: composeBudget(budgetRow, settings.policy.monthly_ceiling_cents),
+    analysis_admission: admission,
     mapping_hygiene: mapping,
     flags: settings.flags,
     models: settings.models,
@@ -140,6 +205,7 @@ export async function readOwnerCoverage(): Promise<OwnerCoverageDto> {
       missed_callback_due_staffed_minutes: settings.policy.missed_callback_due_staffed_minutes,
       going_cold_staffed_minutes: settings.policy.going_cold_staffed_minutes,
       monthly_ceiling_cents: settings.policy.monthly_ceiling_cents,
+      per_recording_ceiling_cents: settings.policy.per_recording_ceiling_cents,
     },
     backfill,
   });

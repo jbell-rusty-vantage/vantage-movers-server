@@ -77,9 +77,9 @@ export async function runTranscriptionJob(jobId?: string, deps: TranscriptionDep
   let providerReturned = false;
   let providerStarted = false;
   let actualCents: number | null = null;
-  const pause = async (reason: "eligibility_pending" | "permission_denied" | "budget_exhausted", detail: string, until?: Date) => {
+  const pause = async (reason: "eligibility_pending" | "permission_denied" | "budget_exhausted" | "per_recording_ceiling", detail: string, until?: Date) => {
     await failCsiJob(lease, reason, 0, {
-      ...(reason === "budget_exhausted" ? {} : { resumeAt: until ?? new Date(now.getTime() + 600_000) }),
+      ...(reason === "budget_exhausted" || reason === "per_recording_ceiling" ? {} : { resumeAt: until ?? new Date(now.getTime() + 600_000) }),
       mutation: async (session, outcome) => {
         await Conversations.updateOne({ _id: conversationId, media_digest_sha256: digest }, { $set: {
           state: "unavailable", availability_reason: detail, unavailable_until: until ?? outcome.next_attempt_at,
@@ -126,7 +126,8 @@ export async function runTranscriptionJob(jobId?: string, deps: TranscriptionDep
     if (estimate === null) return await pause("permission_denied", "stt_pricing_or_duration_missing");
     const budget = await getSalesIntelligenceAiBudgetModel().findOne({ period_start: { $lte: now }, period_end: { $gt: now } }).sort({ period_start: -1 });
     const policy = await resolvePolicy();
-    if (!budget || estimate > policy.per_recording_ceiling_cents) return await pause("budget_exhausted", !budget ? "budget_period_missing" : "per_recording_budget_exhausted", budget?.period_end);
+    if (!budget) return await pause("budget_exhausted", "budget_period_missing");
+    if (estimate > policy.per_recording_ceiling_cents) return await pause("per_recording_ceiling", "per_recording_budget_exhausted", budget.period_end);
     reservationId = `stt:${job._id}:${job.lease_epoch}`;
     try {
       await reserveCsiBudget({ kind: "stt", reservation_id: reservationId, month: budget.month, job_id: String(job._id), run_id: null,

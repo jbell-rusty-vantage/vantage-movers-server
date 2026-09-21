@@ -70,6 +70,33 @@ export const ownerCoverageDtoSchema = coverageDtoSchema.extend({
       remaining_cents: unknownCount,
     })
     .strict(),
+  // Why analysis is or is not being admitted right now, with the numbers the
+  // worker evaluates, so a paused pipeline is explainable from this read alone (17 §5).
+  analysis_admission: z
+    .object({
+      status: z.enum(["admitted", "per_recording_ceiling", "monthly_budget", "no_active_period", "configuration_missing"]),
+      estimated_cents_per_conversation: unknownCount,
+      per_recording_ceiling_cents: nonnegative,
+      model: z.string().min(1),
+      pricing_version: z.string().nullable(),
+      limits: z
+        .object({
+          steps: nonnegative,
+          context_tokens: nonnegative,
+          output_tokens: nonnegative,
+          total_input_tokens: nonnegative,
+          total_output_tokens: nonnegative,
+          elapsed_ms: nonnegative,
+        })
+        .strict(),
+      paused: z
+        .object({ per_recording_ceiling: nonnegative, budget: nonnegative, configuration: nonnegative })
+        .strict(),
+      // Reservations whose invocation started but never reported complete usage.
+      // Their estimate stays reserved on purpose: unknown spend is never released.
+      unresolved_reservations: z.object({ count: nonnegative, estimated_cents: nonnegative }).strict(),
+    })
+    .strict(),
   mapping_hygiene: z
     .object({
       unmapped_inbound_numbers: nonnegative,
@@ -96,6 +123,7 @@ export const ownerCoverageDtoSchema = coverageDtoSchema.extend({
       missed_callback_due_staffed_minutes: nonnegative,
       going_cold_staffed_minutes: nonnegative,
       monthly_ceiling_cents: nonnegative,
+      per_recording_ceiling_cents: nonnegative,
     })
     .strict(),
   backfill: z

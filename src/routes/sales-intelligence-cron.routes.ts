@@ -75,7 +75,7 @@ export type SalesIntelligenceCronRouteDeps = {
   runRetention?: typeof runRetentionOnce;
   drainRepIdentity?: typeof drainRepIdentityReevaluationJobs;
   drainNudgeRepair?: typeof drainNudgeRepairJobs;
-  runIntelligence?: typeof drainIntelligenceJobs;
+  runIntelligence?: () => ReturnType<typeof drainIntelligenceJobs> | Promise<{ status: string }>;
   runApplication?: typeof drainIntelligenceApplications;
 };
 

@@ -101,11 +101,16 @@ export async function updateCsiPolicy(input: {
         },
         { session: context.session },
       );
-      if (policy.monthly_ceiling_cents > previousPolicy.monthly_ceiling_cents ||
-          policy.per_recording_ceiling_cents > previousPolicy.per_recording_ceiling_cents)
+      // Each pause reason resumes only on the change that can admit it again;
+      // a monthly increase cannot help a job whose single invocation exceeds
+      // the per-recording ceiling, and resuming it would only churn (17 §5).
+      const resume: Array<"budget_exhausted" | "per_recording_ceiling"> = [];
+      if (policy.monthly_ceiling_cents > previousPolicy.monthly_ceiling_cents) resume.push("budget_exhausted");
+      if (policy.per_recording_ceiling_cents > previousPolicy.per_recording_ceiling_cents) resume.push("budget_exhausted", "per_recording_ceiling");
+      if (resume.length)
         await getSalesIntelligenceJobModel().updateMany(
-          { ...csiDataset(), status: "paused", reason: "budget_exhausted" },
-          { $set: { status: "pending", next_attempt_at: context.now } },
+          { ...csiDataset(), status: "paused", reason: { $in: [...new Set(resume)] } },
+          { $set: { status: "pending", reason: null, next_attempt_at: context.now } },
           { session: context.session },
         );
       await appendCsiAudit(context, {

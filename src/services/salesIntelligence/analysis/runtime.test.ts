@@ -17,10 +17,17 @@ test("reservation covers all bounded inputs, reasoning/output and per-step cent 
 });
 test("default cumulative budgets permit every configured step at its per-step ceiling", () => {
   const limits = runtimeLimitsSchema.parse(DEFAULT_RUNTIME_LIMITS);
-  assert(limits.steps >= 12);
+  assert(limits.steps >= 2, "one submission plus one focused repair");
   assert(limits.total_input_tokens >= limits.steps * limits.context_tokens);
   assert(limits.total_output_tokens >= limits.steps * limits.output_tokens);
   assert(limits.elapsed_ms < 300_000, "leave room within the default five-minute job lease");
+  assert(limits.elapsed_ms + 10_000 <= 120_000, "one provider invocation must finish inside the deployed 120 s function");
+});
+test("default reservation fits the default per-recording ceiling at extraction list pricing", () => {
+  // openai/gpt-5-mini list pricing in cents per million tokens; a different
+  // deployed price is reported through the admission evidence, not guessed here.
+  const estimate = estimateAnalysisCents({ version: "list", input_cents_per_million: 25, output_cents_per_million: 200 }, DEFAULT_RUNTIME_LIMITS);
+  assert(estimate <= 25, `estimate ${estimate} exceeds the 25-cent default per-recording ceiling`);
 });
 test("server money resolution accepts exact amounts and preserves ambiguity instead of guessing", () => {
   assert.equal(resolveQuotedMoney("$1,250.25", "USD"), 125025);

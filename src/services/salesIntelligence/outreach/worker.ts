@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import mongoose from "mongoose";
+import mongoose, { type ClientSession } from "mongoose";
 import { withTransaction } from "../../../db";
 import { csiFlag } from "../../../config/domain/salesIntelligence";
 import { getEntityChangeModel } from "../../../models/EntityChange";
@@ -7,15 +7,40 @@ import { getFormLeadModel } from "../../../models/FormLead";
 import { getCallLeadModel } from "../../../models/CallLead";
 import { getCallInteractionModel } from "../../../models/CallInteraction";
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
+import { getOutreachFollowupModel } from "../../../models/OutreachFollowup";
 import { getSalesIntelligenceSyncStateModel } from "../../../models/SalesIntelligenceSyncState";
 import { MongoLeaseStore, activeTokenFilter } from "../../durableWork/leases";
 import { CsiError } from "../auth";
-import { claimCsiJob, completeCsiJob, enqueueCsiJob, failCsiJob } from "../jobs";
+import { claimCsiJob, completeCsiJob, enqueueCsiJob, failCsiJob, type JobInput } from "../jobs";
 import { loadCanonicalInteraction } from "../conversations/workerSupport";
 import { ensureInteraction, ensureLead, workerContext } from "./ensure";
 import { refreshRecord, jsonValue } from "./store";
 import { payloadHash } from "../transactions";
 import { ATTENTION_PUBLISH_BUDGET_MS, publishAttentionSnapshot } from "./attention";
+
+/** Calls replayed per coalesced `outreach-number:` job; a continuation job carries the rest. */
+export const OUTREACH_NUMBER_REPLAY_PAGE = 25;
+/** Rows per source per sweep and expired waits nominated per sweep. */
+export const OUTREACH_REPAIR_PAGE = 50;
+const OPEN_OUTREACH_STATES = ["unworked", "open", "waiting_on_customer", "identity_review"] as const;
+
+/**
+ * Coalesced replay of every canonical call on one Contact Number after an
+ * attachment revision (17 §7). `after` is the keyset continuation; the page is
+ * small because each `ensureInteraction` is many reads inside one transaction.
+ */
+export async function replayNumberInteractions(numberId: string, revision: number, session: ClientSession, requestId: string, after?: string) {
+  const rows = await getCallInteractionModel().find({ contact_number_id: numberId, merged_into_id: null,
+    ...(after ? { _id: { $gt: after } } : {}) }).sort({ _id: 1 }).limit(OUTREACH_NUMBER_REPLAY_PAGE).session(session).lean();
+  const context = workerContext(session, requestId);
+  for (const row of rows) await ensureInteraction(row, context);
+  if (rows.length === OUTREACH_NUMBER_REPLAY_PAGE) {
+    const last = String(rows.at(-1)!._id);
+    await enqueueCsiJob({ stage: "outreach_ensure", subject_key: `outreach-number:${numberId}`,
+      dedupe_key: `csi:outreach:number:${numberId}:${revision}:after:${last}`, input_revision: revision, input_refs: [numberId, last] }, session);
+  }
+  return rows.length;
+}
 
 export async function runOutreachEnsureJob(jobId?: string) {
   if (!csiFlag("OUTREACH_ENSURE")) return { status: "disabled" };
@@ -38,11 +63,15 @@ export async function runOutreachEnsureJob(jobId?: string) {
           const current = await getOutreachRecordModel().findById(first).session(session);
           if (current) await refreshRecord(current, context, "clock_boundary", current.toObject());
         }
+      } else if (job.subject_key.startsWith("outreach-number:")) {
+        const after = job.input_refs[1] ? String(job.input_refs[1]) : undefined;
+        return { replayed: await replayNumberInteractions(first, job.input_revision, session, lease.job_id, after) };
       } else {
         const call = await loadCanonicalInteraction(first, session);
         await ensureInteraction(call, context);
       }
-    });
+      return undefined;
+    }, { resultFrom: value => value });
     return { status: "completed" };
   } catch (error) {
     if (error instanceof CsiError && error.code === "LEASE_LOST") return { status: "lease_lost" };
@@ -63,9 +92,59 @@ export async function drainOutreachEnsureJobs(max = 50, options: { deadline?: nu
   }
   return { outcomes, deadline_reached: Date.now() >= deadline };
 }
+
+type RepairSource = "FormLead" | "CallLead" | "CallInteraction" | "OutreachRecord";
+type RepairRow = { _id: unknown; projection_revision?: number; contact_number_id?: unknown; revision?: number;
+  booked?: unknown; cancelled?: unknown; duplicate?: boolean; bad_lead?: unknown; no_sync?: boolean };
+
 /**
- * Durable applied_at scan plus paged baseline/repair sweeps. No updatedAt-based
- * official event cursor.
+ * Durable job for one repair-sweep row, or null when the row needs none.
+ *
+ * Every key is semantic, never a sweep cycle: a Lead by its official flags, a
+ * call by its projection revision, an Outreach Record by its own revision. An
+ * idle corpus therefore hits the dedupe fence on every later sweep instead of
+ * inserting a completed no-op job per row per cycle, which was the dominant
+ * `sales_intelligence_jobs` growth (17 §6).
+ */
+export function outreachRepairNomination(source: RepairSource, row: RepairRow): JobInput | null {
+  const id = String(row._id);
+  if (source === "CallInteraction") {
+    const revision = row.projection_revision ?? 1;
+    return { stage: "outreach_ensure", subject_key: `number:${row.contact_number_id ?? id}`,
+      dedupe_key: `csi:outreach:repair:CallInteraction:${id}:${revision}`, input_revision: revision, input_refs: [id] };
+  }
+  if (source === "OutreachRecord") {
+    const revision = row.revision ?? 1;
+    return { stage: "outreach_ensure", subject_key: `outreach-clock:${id}`,
+      dedupe_key: `csi:outreach:repair:OutreachRecord:${id}:r${revision}`, input_revision: revision, input_refs: [id] };
+  }
+  const fingerprint = payloadHash(jsonValue({ id, official: { booked: row.booked ?? null, cancelled: row.cancelled ?? null,
+    duplicate: row.duplicate ?? false, bad_lead: row.bad_lead ?? null, no_sync: row.no_sync ?? false } }));
+  return { stage: "outreach_ensure", subject_key: `outreach-lead:${source}:${id}`,
+    dedupe_key: `csi:outreach:repair:${source}:${id}:${fingerprint}`, input_revision: parseInt(payloadHash(fingerprint).slice(0, 12), 16) + 1, input_refs: [id] };
+}
+
+/**
+ * Clock job for a wait whose promised date has passed. The boundary itself is
+ * the key, so the same expiry is never queued twice, and a wait that is
+ * re-dated (Owner correction, snooze) gets its own new boundary.
+ */
+export function waitExpiryNomination(wait: { _id: unknown; outreach_record_id: unknown; due_at?: Date | null }): JobInput | null {
+  if (!wait.due_at) return null;
+  return { stage: "outreach_ensure", subject_key: `outreach-clock:${wait.outreach_record_id}`,
+    dedupe_key: `csi:outreach:clock:${wait.outreach_record_id}:wait:${wait._id}:${+wait.due_at}`, input_revision: +wait.due_at, input_refs: [String(wait.outreach_record_id)] };
+}
+
+/**
+ * Durable applied_at scan, due-boundary nominations, and paged semantic repair
+ * sweeps. No updatedAt-based official event cursor.
+ *
+ * Three causes of work stay separate (17 §6): a material source change arrives
+ * through EntityChange; a time boundary (an expired wait) is nominated by an
+ * indexed due query; the repair sweep catches missed events and legacy rows by
+ * semantic fingerprint. Every other clock — first-action deadline, follow-up
+ * due, snooze and restriction expiry, going cold — is derived at read time by
+ * `derive()` and republished by the Attention cron, so it needs no job.
  *
  * Publishing the Attention snapshot is deliberately NOT part of this run: it
  * does not need the ensure lease, and sharing one meant a drain backlog
@@ -82,6 +161,7 @@ export async function runOutreachEnsureOnce(options: { deadline?: number } = {})
   try {
     const scanned = await withTransaction(async session => {
       let count = 0;
+      const now = new Date();
       const state = await State.findOne({ scope: "outreach_entity_changes" }).session(session).lean();
       const at = state?.cursor?.entity_change_applied_at ?? new Date(0), id = state?.cursor?.entity_change_id ?? new mongoose.Types.ObjectId("000000000000000000000000");
       const changes = await getEntityChangeModel().find({ "entity.model": { $in: ["FormLead", "CallLead"] }, $or: [{ applied_at: { $gt: at } }, { applied_at: at, _id: { $gt: id } }] }).sort({ applied_at: 1, _id: 1 }).limit(100).session(session).lean();
@@ -90,28 +170,30 @@ export async function runOutreachEnsureOnce(options: { deadline?: number } = {})
           dedupe_key: `csi:outreach:entity-change:${change._id}`, input_revision: Math.max(1, change.revision_after), input_refs: [change.entity.id] }, session);
         await State.updateOne({ scope: "outreach_entity_changes" }, { $set: { "cursor.entity_change_applied_at": change.applied_at, "cursor.entity_change_id": change._id } }, { session, upsert: true }); count++;
       }
+      // Time boundary: waits whose promised date has passed and is not yet stamped.
+      const expired = await getOutreachFollowupModel().find({ status: "open", kind: "wait", due_at: { $lte: now }, wait_expired_at: null })
+        .sort({ due_at: 1, _id: 1 }).limit(OUTREACH_REPAIR_PAGE).session(session).lean();
+      for (const wait of expired) {
+        const nomination = waitExpiryNomination(wait);
+        if (nomination) { await enqueueCsiJob(nomination, session); count++; }
+      }
       // Rolling _id sweeps recover old records and commits behind a time watermark, without expiring misses.
       for (const source of ["FormLead", "CallLead", "CallInteraction", "OutreachRecord"] as const) {
         const scope = `outreach_repair:${source}`;
         const prior = await State.findOne({ scope }).session(session).lean();
         const after = prior?.cursor?.attachment_source_id;
-        const cycle = prior?.cursor?.provider_modified_watermark ?? new Date();
         const filter = after ? { _id: { $gt: after } } : {};
-        const rows = source === "FormLead" ? await getFormLeadModel().find(filter).sort({ _id: 1 }).limit(50).session(session).lean() :
-          source === "CallLead" ? await getCallLeadModel().find(filter).sort({ _id: 1 }).limit(50).session(session).lean() :
-          source === "CallInteraction" ? await getCallInteractionModel().find({ ...filter, merged_into_id: null }).sort({ _id: 1 }).limit(50).session(session).lean() :
-          await getOutreachRecordModel().find(filter).sort({ _id: 1 }).limit(50).session(session).lean();
+        const rows: RepairRow[] = source === "FormLead" ? await getFormLeadModel().find(filter).sort({ _id: 1 }).limit(OUTREACH_REPAIR_PAGE).session(session).lean() :
+          source === "CallLead" ? await getCallLeadModel().find(filter).sort({ _id: 1 }).limit(OUTREACH_REPAIR_PAGE).session(session).lean() :
+          source === "CallInteraction" ? await getCallInteractionModel().find({ ...filter, merged_into_id: null }).sort({ _id: 1 }).limit(OUTREACH_REPAIR_PAGE).session(session).lean() :
+          // Closed records need no clock: official closure cannot move them and only an Owner command reopens them.
+          await getOutreachRecordModel().find({ ...filter, state: { $in: [...OPEN_OUTREACH_STATES] } }).sort({ _id: 1 }).limit(OUTREACH_REPAIR_PAGE).session(session).lean();
         for (const row of rows) {
-          const subject = source === "CallInteraction" ? `number:${"contact_number_id" in row ? row.contact_number_id : row._id}` : source === "OutreachRecord" ? `outreach-clock:${row._id}` : `outreach-lead:${source}:${row._id}`;
-          const fingerprint = source === "OutreachRecord" ? String(+cycle) : "projection_revision" in row ? String(row.projection_revision) :
-            payloadHash(jsonValue({ id: String(row._id), official: { booked: "booked" in row ? row.booked ?? null : null, cancelled: "cancelled" in row ? row.cancelled ?? null : null,
-              duplicate: "duplicate" in row ? row.duplicate ?? false : false, bad_lead: "bad_lead" in row ? row.bad_lead ?? null : null, no_sync: "no_sync" in row ? row.no_sync ?? false : false } }));
-          const revision = "projection_revision" in row ? row.projection_revision : parseInt(payloadHash(fingerprint).slice(0, 12), 16) + 1;
-          await enqueueCsiJob({ stage: "outreach_ensure", subject_key: subject, dedupe_key: `csi:outreach:repair:${source}:${row._id}:${fingerprint}`,
-            input_revision: revision, input_refs: [String(row._id)] }, session); count++;
+          const nomination = outreachRepairNomination(source, row);
+          if (nomination) { await enqueueCsiJob(nomination, session); count++; }
         }
-        await State.updateOne({ scope }, { $set: { "cursor.attachment_source_id": rows.length === 50 ? rows.at(-1)!._id : null,
-          "cursor.provider_modified_watermark": rows.length === 50 ? cycle : new Date() } }, { session, upsert: true });
+        await State.updateOne({ scope }, { $set: { "cursor.attachment_source_id": rows.length === OUTREACH_REPAIR_PAGE ? rows.at(-1)!._id : null,
+          "cursor.provider_modified_watermark": rows.length === OUTREACH_REPAIR_PAGE ? prior?.cursor?.provider_modified_watermark ?? now : now } }, { session, upsert: true });
       }
       const fence = await State.updateOne(activeTokenFilter(token, new Date()), { $set: { "cursor.last_sync_to": new Date() } }, { session });
       if (fence.modifiedCount !== 1) throw new CsiError("LEASE_LOST");

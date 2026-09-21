@@ -295,6 +295,10 @@ export const SALES_INTELLIGENCE_ATTENTION_SNAPSHOT_INDEXES = [
   },
   // Newest live snapshot for the dataset, without a sort stage (14 §10).
   index("csi_attention_dataset_asof", { deployment: 1, database: 1, as_of: -1 }),
+  // Chunk siblings of one header, in order. Not unique: a missing index still
+  // reads a handful of documents, and a new unique fence would refuse the
+  // first publish until a migration ran.
+  index("csi_attention_parent_chunk", { parent_snapshot_id: 1, chunk_index: 1 }),
 ];
 export const SalesIntelligenceAttentionSnapshotSchema = new Schema(
   {
@@ -308,6 +312,10 @@ export const SalesIntelligenceAttentionSnapshotSchema = new Schema(
     rows: validatedJson(z.array(attentionRowDtoSchema)),
     counts: validatedJson(z.record(z.string(), z.number().int().nonnegative())),
     expires_at: at,
+    // Null on the header (and on older single-document snapshots). A number
+    // marks a chunk sibling whose rows belong to parent_snapshot_id.
+    chunk_index: { type: Number, default: null },
+    parent_snapshot_id: { type: String, default: null },
   },
   { collection: "sales_intelligence_attention_snapshots" },
 );

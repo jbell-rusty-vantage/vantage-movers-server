@@ -26,6 +26,7 @@ import { intelligenceReadSchema, intelligenceToolArguments } from "./contracts";
 import { readContentSchema } from "./reads";
 import { retryAfterMs } from "../../ringcentral/recordings";
 import { ensureCurrentCsiBudgetPeriod } from "../budgetPeriod";
+import { AnalysisAdmissionError, admissionPauseReason, decideAnalysisAdmission, type AdmissionEvidence } from "./admission";
 
 export const pricingSchema = z.object({ version: z.string().min(1), input_cents_per_million: z.number().positive(), output_cents_per_million: z.number().positive() }).strict();
 export type AnalysisPricing = z.infer<typeof pricingSchema>;
@@ -92,6 +93,7 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
   let inputTokens = 0, outputTokens = 0, actualCents = 0, steps = 0;
   let reasoningTokens: number | null = 0;
   let runId: string | null = null;
+  let admissionEvidence: AdmissionEvidence | null = null;
   const finish = async (receipt: Awaited<ReturnType<typeof recoverIntelligenceSubmission>>) => {
     if (!receipt) throw new IntelligenceRuntimeError("receipt_missing");
     await completeCsiJob(lease, async session => {
@@ -168,7 +170,11 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
     runId = prepared.run_id;
     const budget = await getSalesIntelligenceAiBudgetModel().findOne({ period_start: { $lte: new Date() }, period_end: { $gt: new Date() }, activated_at: { $ne: null } }).lean();
     const estimate = estimateAnalysisCents(config.pricing, limits), policy = await resolvePolicy();
-    if (!budget || (stage === "analysis" && estimate > policy.per_recording_ceiling_cents)) throw new CsiError("BUDGET_EXHAUSTED");
+    const admission = decideAnalysisAdmission({ stage, budget, estimated_cents: estimate, per_recording_ceiling_cents: policy.per_recording_ceiling_cents,
+      model_version: config.model_id, pricing_version: config.pricing.version, limits });
+    if (!admission.admitted) throw new AnalysisAdmissionError(admission.reason, admission.evidence);
+    if (!budget) throw new AnalysisAdmissionError("no_active_period", admission.evidence);
+    admissionEvidence = admission.evidence;
     reservation = `analysis:${job._id}:${lease.epoch}`;
     await reserveCsiBudget({ reservation_id: reservation, month: budget.month, job_id: lease.job_id, run_id: runId,
       step: `invocation:${lease.epoch}`, stage: "analysis", estimated_cents: estimate });
@@ -238,12 +244,19 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
       });
       return { status: failReason === "permission_denied" ? "paused" : outcome.status, reason: failReason };
     }
-    const budget = error instanceof CsiError && error.code === "BUDGET_EXHAUSTED";
+    // Admission refusals carry their evaluated numbers so a pause is explainable
+    // and reproducible without re-running anything (17 §5). A reservation race
+    // (`reserveCsiBudget` refusing after the pre-check admitted) is the monthly
+    // reason with the same evidence.
+    const admission = error instanceof AnalysisAdmissionError ? error
+      : error instanceof CsiError && error.code === "BUDGET_EXHAUSTED" && admissionEvidence ? new AnalysisAdmissionError("monthly_budget", admissionEvidence) : null;
+    const budget = admission !== null || (error instanceof CsiError && error.code === "BUDGET_EXHAUSTED");
     const bounded = error instanceof IntelligenceRuntimeError;
     const eligibility = bounded && error.reason === "eligibility_changed", disabled = error instanceof CsiError && error.code === "FEATURE_DISABLED";
     const unavailable = error instanceof CsiError && error.code === "ORIGINAL_EVIDENCE_UNAVAILABLE";
-    const reason = budget ? "budget_exhausted" : unavailable ? "original_evidence_unavailable" : disabled ? "analysis_disabled" : bounded ? error.reason : "analysis_failed";
-    await failCsiJob(lease, budget ? "budget_exhausted" : eligibility ? "eligibility_pending" : bounded || disabled || unavailable ? "permission_denied" : "transient", eligibility ? 600_000 : 0, { result: { reason },
+    const reason = admission ? admission.reason : budget ? "budget_exhausted" : unavailable ? "original_evidence_unavailable" : disabled ? "analysis_disabled" : bounded ? error.reason : "analysis_failed";
+    const failure = admission ? admissionPauseReason(admission.reason) : budget ? "budget_exhausted" : eligibility ? "eligibility_pending" : bounded || disabled || unavailable ? "permission_denied" : "transient";
+    await failCsiJob(lease, failure, eligibility ? 600_000 : 0, { result: { reason, ...(admission ? { admission: admission.evidence } : {}) },
       mutation: async (session, outcome) => { if (runId) await getIntelligenceRunModel().updateOne({ _id: runId, finalized_at: null }, { $set: { processing_reason: reason,
         status: outcome.status === "paused" ? "paused" : outcome.status === "dead_letter" ? "failed" : "running" } }, { session }); } });
     return { status: eligibility ? "eligibility_pending" : budget || bounded || disabled || unavailable ? "paused" : "retry", reason };
@@ -262,8 +275,17 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
     }
   }
 }
-export async function drainIntelligenceJobs(deps: AnalysisDependencies = {}) {
-  if (!analysisEnabled()) return { status: "disabled" };
+/**
+ * Whole-invocation budget for one extract cron. The deployed function allows
+ * 120 s (`vercel.json` `maxDuration`); the drain's preparation reads come first,
+ * and a provider call is only started when it can still finish inside the
+ * remaining budget. A killed invocation is the worst outcome: it strands a
+ * started reservation and a lease with nothing durable to show for it.
+ */
+export const INTELLIGENCE_DRAIN_BUDGET_MS = 105_000;
+export async function drainIntelligenceJobs(deps: AnalysisDependencies = {}, options: { deadline?: number; max?: number } = {}) {
+  if (!analysisEnabled()) return { status: "disabled", outcomes: [] as Array<{ status: string; reason?: string }> };
+  const deadline = options.deadline ?? Date.now() + INTELLIGENCE_DRAIN_BUDGET_MS, max = options.max ?? 50;
   await ensureCurrentCsiBudgetPeriod();
   await resumeBudgetPausedJobs();
   await getSalesIntelligenceJobModel().updateMany({ ...csiDataset(), stage: { $in: ["analysis", "number_refresh"] },
@@ -272,8 +294,22 @@ export async function drainIntelligenceJobs(deps: AnalysisDependencies = {}) {
   await resumeApplicationIntents();
   await resumeTranscriptAnalysisJobs();
   await scanIntelligenceChanges();
-  const result = await runIntelligenceJob(undefined, "analysis", deps);
-  return result.status === "not_claimable" ? runIntelligenceJob(undefined, "number_refresh", deps) : result;
+  // Most queued rows are signals, no-ops or stale checks that finish in well
+  // under a second; one invocation used to process exactly one of them, which
+  // capped the whole pipeline at 288 jobs a day (17 §9).
+  const elapsed = (deps.limits ?? deps.configuration?.limits ?? analysisRuntimeConfiguration().limits).elapsed_ms;
+  const outcomes: Array<{ status: string; reason?: string }> = [];
+  for (let i = 0; i < max; i++) {
+    if (Date.now() + elapsed + 5_000 > deadline) break;
+    let result: { status: string; reason?: string } = await runIntelligenceJob(undefined, "analysis", deps);
+    if (result.status === "not_claimable") result = await runIntelligenceJob(undefined, "number_refresh", deps);
+    outcomes.push(result);
+    if (["not_claimable", "disabled", "lease_lost"].includes(result.status)) break;
+  }
+  // `status` names what this drain did: the last outcome that was real work,
+  // not the trailing `not_claimable` that ends every loop.
+  const productive = outcomes.filter(o => o.status !== "not_claimable");
+  return { status: productive.at(-1)?.status ?? "not_claimable", outcomes, deadline_reached: Date.now() + elapsed + 5_000 > deadline };
 }
 
 /** A receipt committed on the final crashed claim must not strand invocation_pending application.

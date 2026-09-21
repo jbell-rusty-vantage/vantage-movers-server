@@ -255,6 +255,8 @@ export async function failCsiJob(
     | "schema_invalid"
     | "permission_denied"
     | "budget_exhausted"
+    /** One invocation's reservation exceeds the Owner's per-recording ceiling. Monthly headroom cannot resume it; only a higher ceiling or smaller limits can (17 §5). */
+    | "per_recording_ceiling"
     | "recording_pending"
     | "eligibility_pending"
     | "throttled",
@@ -272,7 +274,7 @@ export async function failCsiJob(
     const row = await Model.findOne(fence(lease)).session(session);
     if (!row) throw new CsiError("LEASE_LOST");
     const paused =
-      reason === "permission_denied" || reason === "budget_exhausted";
+      reason === "permission_denied" || reason === "budget_exhausted" || reason === "per_recording_ceiling";
     const deferred = paused || ["recording_pending", "eligibility_pending", "throttled"].includes(reason);
     const exhausted =
       row.attempts >= (reason === "schema_invalid" ? 2 : row.max_attempts);

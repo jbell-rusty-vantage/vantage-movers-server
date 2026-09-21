@@ -109,15 +109,78 @@ export function deriveOutreachFacts(record: RecordRow, inputs: OutreachInputs, c
     unsuccessfulAttempts: [...new Map(inputs.attempts.map(a => [String(a.current.interaction_id), new Date(String(a.current.happened_at))])).values()] });
 }
 
+type LeadLite = { _id: unknown; name?: string | null; job_no?: string | null; source_company_label_snapshot?: string | null };
+type BookingLite = { _id: unknown };
+type CancelLite = { _id: unknown };
+type LatestLite = { _id: unknown; started_at: Date; direction: string; provider_result?: string | null; contact_type: string };
+export type OutreachSideData = {
+  agentNames: Map<string, string>;
+  leads: Map<string, LeadLite>;
+  bookings: Map<string, BookingLite[]>;
+  cancellations: Map<string, CancelLite[]>;
+  latestCalls: Map<string, LatestLite>;
+};
+const leadKey = (model: string, id: unknown) => `${model}:${String(id)}`;
+
+/**
+ * Agent names, Lead display, bookings, cancellations, and the latest call for
+ * a whole page. Attention publish used to pay these five reads once per desk
+ * row, which never finished inside the cron budget at production volume.
+ */
+export async function loadOutreachSideData(records: readonly RecordRow[], inputs: ReadonlyMap<string, OutreachInputs>): Promise<OutreachSideData> {
+  const db = mongoose.connection.useDb(getMongoDatabaseName(), { useCache: true });
+  const agentIds = [...new Map(records.flatMap(record => {
+    const actions = inputs.get(String(record._id))?.actions ?? [];
+    return [record.responsible_agent_id, ...actions.flatMap(action => [action.responsible_agent_id, action.promised_by_agent_id])];
+  }).filter((id): id is mongoose.Types.ObjectId => Boolean(id)).map(id => [String(id), id] as const)).values()];
+  const formIds = records.flatMap(record => record.subject.kind === "lead" && record.subject.model === "FormLead" && record.subject.id ? [record.subject.id] : []);
+  const callIds = records.flatMap(record => record.subject.kind === "lead" && record.subject.model === "CallLead" && record.subject.id ? [record.subject.id] : []);
+  const leadRefs = records.flatMap(record => record.subject.kind === "lead" && record.subject.model && record.subject.id ? [{ model: record.subject.model, id: record.subject.id }] : []);
+  const numberIds = [...new Map(records.flatMap(record => record.primary_contact_number_id ? [[String(record.primary_contact_number_id), record.primary_contact_number_id] as const] : [])).values()];
+  const [agentDocs, formDocs, callDocs, bookingDocs, latestDocs] = await Promise.all([
+    agentIds.length ? db.collection("agents").find({ _id: { $in: agentIds } }, { projection: { name: 1 } }).toArray() : [],
+    formIds.length ? db.collection("form_leads").find({ _id: { $in: formIds } }, { projection: { name: 1, job_no: 1, source_company_label_snapshot: 1 } }).toArray() : [],
+    callIds.length ? db.collection("call_leads").find({ _id: { $in: callIds } }, { projection: { name: 1, job_no: 1, source_company_label_snapshot: 1 } }).toArray() : [],
+    leadRefs.length ? db.collection("booked_leads").find({ $or: leadRefs.map(ref => ({ lead_model: ref.model, lead_ref: ref.id })) }, { projection: { _id: 1, lead_model: 1, lead_ref: 1 } }).toArray() : [],
+    numberIds.length ? getCallInteractionModel().aggregate<{ _id: unknown; id: unknown; started_at: Date; direction: string; provider_result?: string | null; contact_type: string }>([
+      { $match: { contact_number_id: { $in: numberIds }, merged_into_id: null } },
+      { $sort: { contact_number_id: 1, started_at: -1, _id: -1 } },
+      { $group: { _id: "$contact_number_id", id: { $first: "$_id" }, started_at: { $first: "$started_at" }, direction: { $first: "$direction" }, provider_result: { $first: "$provider_result" }, contact_type: { $first: "$contact_type" } } },
+    ]) : [],
+  ]);
+  const bookingIds = bookingDocs.map(booking => booking._id);
+  const cancelDocs = bookingIds.length ? await db.collection("cancelled_leads").find({ booked_lead: { $in: bookingIds } }, { projection: { _id: 1, booked_lead: 1 } }).toArray() : [];
+  const bookings = new Map<string, BookingLite[]>();
+  for (const booking of bookingDocs) {
+    const key = leadKey(String(booking.lead_model), booking.lead_ref);
+    const bucket = bookings.get(key);
+    const lite = { _id: booking._id };
+    if (bucket) bucket.push(lite); else bookings.set(key, [lite]);
+  }
+  const cancellations = new Map<string, CancelLite[]>();
+  for (const cancellation of cancelDocs) {
+    const key = String(cancellation.booked_lead);
+    const bucket = cancellations.get(key);
+    const lite = { _id: cancellation._id };
+    if (bucket) bucket.push(lite); else cancellations.set(key, [lite]);
+  }
+  return {
+    agentNames: new Map(agentDocs.map(agent => [String(agent._id), typeof agent.name === "string" && agent.name ? agent.name : "Unknown Agent"])),
+    leads: new Map([...formDocs.map(lead => [leadKey("FormLead", lead._id), lead] as const), ...callDocs.map(lead => [leadKey("CallLead", lead._id), lead] as const)]),
+    bookings,
+    cancellations,
+    latestCalls: new Map(latestDocs.map(call => [String(call._id), { _id: call.id, started_at: call.started_at, direction: call.direction, provider_result: call.provider_result ?? null, contact_type: call.contact_type }])),
+  };
+}
+
 export async function toOutreachDto(record: RecordRow, now = new Date(), coverage?: CoverageDto,
-  prefetched: { policy?: CsiPolicy; inputs?: OutreachInputs } = {}) {
+  prefetched: { policy?: CsiPolicy; inputs?: OutreachInputs; side?: OutreachSideData } = {}) {
   const policy = prefetched.policy ?? await resolvePolicy();
   const inputs = prefetched.inputs ?? await loadOutreachInputs(record, now);
   const { actions, restrictions, number } = inputs;
   const activeRestrictions = restrictions.filter(r => r.state === "active" && (!r.until || r.until > now));
-  const agentIds = [record.responsible_agent_id, ...actions.flatMap(a => [a.responsible_agent_id, a.promised_by_agent_id])].filter((v): v is mongoose.Types.ObjectId => Boolean(v));
-  const agents = await mongoose.connection.useDb(getMongoDatabaseName(), { useCache: true }).collection("agents").find({ _id: { $in: agentIds } }, { projection: { name: 1 } }).toArray();
-  const agent = (id: unknown) => id ? { id: String(id), name: agents.find(a => String(a._id) === String(id))?.name ?? "Unknown Agent" } : null;
+  const side = prefetched.side ?? await loadOutreachSideData([record], new Map([[String(record._id), inputs]]));
+  const agent = (id: unknown) => id ? { id: String(id), name: side.agentNames.get(String(id)) ?? "Unknown Agent" } : null;
   const assignment = (row: Pick<FollowupRow, "responsible_agent_id" | "assignment">) => ({ agent: agent(row.responsible_agent_id), origin: row.assignment?.origin ?? null,
     assigned_at: iso(row.assignment?.assigned_at), evidence_ref: row.assignment?.evidence_id ? String(row.assignment.evidence_id) : null, owner_instruction_id: row.assignment?.instruction_id ? String(row.assignment.instruction_id) : null });
   const projectedState = stateWithActions(record, actions, now);
@@ -133,16 +196,15 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
     paused_channels: [...new Set(activeRestrictions.flatMap(r => r.channels))], overdue: a.status === "open" && Boolean(a.due_at && a.due_at < now),
     allowed_actions: (["patch_followup", "complete_followup", "cancel_followup", "snooze_followup"] as const).map(action => availability(action, a)) }));
   const { actions: actionFacts, ...derived } = facts;
-  const db = mongoose.connection.useDb(getMongoDatabaseName(), { useCache: true });
-  const lead = record.subject.kind === "lead" && record.subject.id ? await db.collection(record.subject.model === "FormLead" ? "form_leads" : "call_leads").findOne({ _id: record.subject.id }, { projection: { name: 1, job_no: 1, source_company_label_snapshot: 1 } }) : null;
-  const bookings = record.subject.kind === "lead" ? await db.collection("booked_leads").find({ lead_model: record.subject.model, lead_ref: record.subject.id }, { projection: { _id: 1, cancelled: 1 } }).toArray() : [];
-  const cancellations = bookings.length ? await db.collection("cancelled_leads").find({ booked_lead: { $in: bookings.map(b => b._id) } }, { projection: { _id: 1 } }).toArray() : [];
+  const lead = record.subject.kind === "lead" && record.subject.model && record.subject.id ? side.leads.get(leadKey(record.subject.model, record.subject.id)) ?? null : null;
+  const bookings = record.subject.kind === "lead" && record.subject.model && record.subject.id ? side.bookings.get(leadKey(record.subject.model, record.subject.id)) ?? [] : [];
+  const cancellations = bookings.flatMap(booking => side.cancellations.get(String(booking._id)) ?? []);
   const related = [
     ...(lead ? [{ model: record.subject.model!, id: String(lead._id), href: `/${record.subject.model === "FormLead" ? "form-leads" : "call-leads"}?record=${lead._id}&database_scope=production`, certainty: "exact" as const }] : []),
     ...bookings.map(b => ({ model: "BookedLead" as const, id: String(b._id), href: `/bookings?record=${b._id}&database_scope=production`, certainty: "exact" as const })),
     ...cancellations.map(c => ({ model: "CancelledLead" as const, id: String(c._id), href: `/cancellations?record=${c._id}&database_scope=production`, certainty: "exact" as const })),
   ];
-  const latest = record.primary_contact_number_id ? await getCallInteractionModel().findOne({ contact_number_id: record.primary_contact_number_id, merged_into_id: null }).sort({ started_at: -1, _id: -1 }).lean() : null;
+  const latest = record.primary_contact_number_id ? side.latestCalls.get(String(record.primary_contact_number_id)) ?? null : null;
   const mirror = record.lead_attachment;
   const callInProgress = record.call_progress?.state === "in_progress";
   const callRestricted = derived.call_blockers.includes("restriction");

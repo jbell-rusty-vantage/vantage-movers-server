@@ -11,9 +11,9 @@ import { getSalesIntelligenceSyncStateModel, SALES_INTELLIGENCE_SYNC_STATE_INDEX
 import { activeTokenFilter, MongoLeaseStore } from "../../durableWork/leases";
 import { CsiError } from "../auth";
 import { claimCsiJob, completeCsiJob, enqueueCsiJob, failCsiJob } from "../jobs";
-import { assertIndexes } from "../transactions";
+import { assertIndexes, payloadHash } from "../transactions";
 import { loadCanonicalInteraction } from "../conversations/workerSupport";
-import { loadLead, type LeadSource } from "./sources";
+import { leadAttachmentFingerprint, loadLead, type LeadSource } from "./sources";
 import type { LeadRef } from "./suggest";
 import { persistLeadAttachments } from "./store";
 import { rediscoverAttachmentPage } from "./hooks";
@@ -154,8 +154,14 @@ export async function runAttachmentRefreshOnce() {
             if (!await getNumberLeadAttachmentModel().exists({ contact_number_id: sourceId }).session(session)) {
               for (const leadModel of ["FormLead", "CallLead"] as const) await enqueueNumberScan(sourceId, +time, session, leadModel);
             }
-          } else await enqueueCsiJob({ stage: "attachment_refresh", subject_key: `attachment-lead:${model}:${sourceId}`,
-            dedupe_key: `csi:attachment-lead:${model}:${sourceId}:${+time}`, input_revision: +time, input_refs: [sourceId] }, session);
+          } else {
+            // The watermark only orders the scan. The job key is the identity
+            // fingerprint, so an unrelated Lead edit re-raises nothing (17 §7).
+            const fingerprint = leadAttachmentFingerprint(source as LeadSource);
+            await enqueueCsiJob({ stage: "attachment_refresh", subject_key: `attachment-lead:${model}:${sourceId}`,
+              dedupe_key: `csi:attachment-lead:${model}:${sourceId}:${fingerprint}`,
+              input_revision: parseInt(payloadHash(fingerprint).slice(0, 12), 16) + 1, input_refs: [sourceId] }, session);
+          }
           await State.updateOne({ scope }, { $set: { "cursor.provider_modified_watermark": time, "cursor.attachment_source_id": source._id } }, { session, upsert: true });
           count++;
         }

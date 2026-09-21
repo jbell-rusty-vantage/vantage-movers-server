@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { csiDataset } from "../../../config/domain/salesIntelligence";
+import { withTransaction } from "../../../db";
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
 import { getSalesIntelligenceAttentionSnapshotModel } from "../../../models/SalesIntelligenceAttentionSnapshot";
 import { getSalesIntelligenceReviewItemModel } from "../../../models/SalesIntelligenceReviewItem";
@@ -9,7 +10,7 @@ import { CsiError } from "../auth";
 import { resolvePolicy } from "../policy";
 import { payloadHash } from "../transactions";
 import { readCaptureCoverage } from "../../numberActivity/coverage";
-import { deriveOutreachFacts, loadOutreachInputsBatch, toOutreachDto } from "./reads";
+import { deriveOutreachFacts, loadOutreachInputsBatch, loadOutreachSideData, toOutreachDto } from "./reads";
 import { subjectKey } from "./types";
 import { jsonValue } from "./store";
 
@@ -52,7 +53,31 @@ export function rowMatchesAttentionQuery(
   return true;
 }
 const PUBLISH_PAGE = 50;
-export const ATTENTION_PUBLISH_BUDGET_MS = 40_000;
+/** Own cron, `maxDuration` 120s. 40s was the shared ensure slot and expired mid-walk. */
+export const ATTENTION_PUBLISH_BUDGET_MS = 90_000;
+const ATTENTION_INLINE_BYTES = 12_000_000;
+const ATTENTION_CHUNK_BYTES = 900_000;
+
+/** Split an ordered row list so each sibling document stays under Mongo's 16 MB ceiling. */
+export function splitAttentionChunks<T>(rows: readonly T[], maxBytes = ATTENTION_CHUNK_BYTES): T[][] {
+  const chunks: T[][] = [];
+  let current: T[] = [];
+  let size = 2;
+  for (const row of rows) {
+    const piece = Buffer.byteLength(JSON.stringify(row));
+    const next = current.length === 0 ? piece + 2 : size + 1 + piece;
+    if (current.length > 0 && next > maxBytes) {
+      chunks.push(current);
+      current = [row];
+      size = piece + 2;
+    } else {
+      current.push(row);
+      size = next;
+    }
+  }
+  if (current.length) chunks.push(current);
+  return chunks;
+}
 
 /**
  * Worker-created read snapshot. Aborts instead of publishing a truncated
@@ -77,14 +102,22 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number } 
     if (Date.now() > deadline) return { status: "incomplete", reason: "snapshot_budget" };
     const page = await getOutreachRecordModel().find({ purged_at: null, ...(after ? { _id: { $gt: after } } : {}) }).sort({ _id: 1 }).limit(PUBLISH_PAGE).lean();
     const inputs = await loadOutreachInputsBatch(page, now);
+    const desk = [];
     for (const record of page) {
       const bundle = inputs.get(String(record._id));
       if (!bundle) continue;
       const facts = deriveOutreachFacts(record, bundle, { now, policy, coverage });
       if (!facts.attention_band && !facts.review_badges.length) continue;
-      if (Date.now() > deadline) return { status: "incomplete", reason: "snapshot_budget" };
-      const outreach = await toOutreachDto(record, now, coverage, { policy, inputs: bundle });
-      rows.push({ subject_key: subjectKey(record.subject), subject: outreach.subject, outreach, derived: outreach.derived, allowed_actions: outreach.allowed_actions });
+      desk.push({ record, bundle });
+    }
+    if (Date.now() > deadline) return { status: "incomplete", reason: "snapshot_budget" };
+    if (desk.length) {
+      const side = await loadOutreachSideData(desk.map(item => item.record), inputs);
+      for (const { record, bundle } of desk) {
+        if (Date.now() > deadline) return { status: "incomplete", reason: "snapshot_budget" };
+        const outreach = await toOutreachDto(record, now, coverage, { policy, inputs: bundle, side });
+        rows.push({ subject_key: subjectKey(record.subject), subject: outreach.subject, outreach, derived: outreach.derived, allowed_actions: outreach.allowed_actions });
+      }
     }
     if (page.length < PUBLISH_PAGE) break;
     after = String(page.at(-1)!._id);
@@ -106,10 +139,20 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number } 
     return actions.map(a => a.attention_due_at).filter((at): at is string => Boolean(at)).sort()[0] ?? r.outreach?.trigger_at ?? "9999";
   };
   rows.sort((a,b) => (a.derived.attention_band ?? 8) - (b.derived.attention_band ?? 8) || orderTime(a).localeCompare(orderTime(b)) || a.subject_key.localeCompare(b.subject_key));
-  if (Buffer.byteLength(JSON.stringify(rows)) > 12_000_000) return { status: "incomplete", reason: "snapshot_size" };
+  const encoded = jsonValue(rows) as z.infer<typeof attentionRowDtoSchema>[];
   const snapshot_id = `outreach:${randomUUID()}`;
-  await getSalesIntelligenceAttentionSnapshotModel().create({ snapshot_id, owner_id: "system", filter_digest: payloadHash({}), policy_version: policy.version, ...csiDataset(), as_of: now,
-    rows: jsonValue(rows), counts: { total_items: rows.length }, expires_at: new Date(+now + 300_000) });
+  const expires_at = new Date(+now + 300_000);
+  const header = { snapshot_id, owner_id: "system", filter_digest: payloadHash({}), policy_version: policy.version, ...csiDataset(), as_of: now, expires_at, chunk_index: null, parent_snapshot_id: null };
+  const Snapshot = getSalesIntelligenceAttentionSnapshotModel();
+  if (Buffer.byteLength(JSON.stringify(encoded)) <= ATTENTION_INLINE_BYTES) {
+    await Snapshot.create({ ...header, rows: encoded, counts: { total_items: rows.length } });
+  } else {
+    const chunks = splitAttentionChunks(encoded);
+    await withTransaction(async session => {
+      await Snapshot.create([{ ...header, rows: [], counts: { total_items: rows.length, chunks: chunks.length } }], { session });
+      await Snapshot.insertMany(chunks.map((part, chunk_index) => ({ ...header, snapshot_id: `${snapshot_id}:chunk:${chunk_index}`, parent_snapshot_id: snapshot_id, chunk_index, rows: part, counts: { total_items: part.length } })), { session });
+    });
+  }
   return { status: "published", snapshot_id, total_items: rows.length };
 }
 /** No writes on GET, including pagination; cursors bind immutable as-of rows and filters. */
@@ -122,7 +165,9 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>) {
   if (page && page.digest !== digest) throw new CsiError("INVALID_INPUT");
   // The dataset filter already selects Attention snapshots; a `/^outreach:/`
   // regex on top of it only stopped the lookup using an index (14 §10).
-  const snapshot = await getSalesIntelligenceAttentionSnapshotModel().findOne({ ...csiDataset(), ...(page ? { snapshot_id: page.snapshot_id } : {}), expires_at: { $gt: new Date() } }).sort({ as_of: -1 }).lean();
+  // Chunk siblings share as_of with their header. Only a header (missing or
+  // null chunk_index) is a snapshot the desk can bind to.
+  const snapshot = await getSalesIntelligenceAttentionSnapshotModel().findOne({ ...csiDataset(), ...(page ? { snapshot_id: page.snapshot_id } : {}), expires_at: { $gt: new Date() }, $or: [{ chunk_index: null }, { chunk_index: { $exists: false } }] }).sort({ as_of: -1 }).lean();
   if (!snapshot) {
     if (page) throw new CsiError("ATTENTION_SNAPSHOT_EXPIRED");
     return attentionPageDtoSchema.parse({ as_of: new Date().toISOString(), coverage: await readCaptureCoverage(), data: { items: [], snapshot_id: null, cursor: null, total_items: null, reason_counts: {}, status: "pending_projection" } });
@@ -131,7 +176,15 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>) {
   // immutable, so a paginated GET filters and counts over the stored rows and
   // re-validates only the page it returns. Re-parsing a multi-megabyte array
   // on every page view was pure read-path cost (14 §2).
-  const stored = (Array.isArray(snapshot.rows) ? snapshot.rows : []) as z.infer<typeof attentionRowDtoSchema>[];
+  const chunkCount = snapshot.counts?.chunks ?? 0;
+  let stored = (Array.isArray(snapshot.rows) ? snapshot.rows : []) as z.infer<typeof attentionRowDtoSchema>[];
+  if (chunkCount > 0) {
+    const parts = await getSalesIntelligenceAttentionSnapshotModel().find({ ...csiDataset(), parent_snapshot_id: snapshot.snapshot_id }).sort({ chunk_index: 1 }).lean();
+    if (parts.length !== chunkCount) {
+      return attentionPageDtoSchema.parse({ as_of: new Date().toISOString(), coverage: await readCaptureCoverage(), data: { items: [], snapshot_id: null, cursor: null, total_items: null, reason_counts: {}, status: "pending_projection" } });
+    }
+    stored = parts.flatMap(part => (Array.isArray(part.rows) ? part.rows : []) as z.infer<typeof attentionRowDtoSchema>[]);
+  }
   const rows = stored.filter((row) => rowMatchesAttentionQuery(row, query));
   const offset = page?.offset ?? 0, reasons: Record<string, number> = {};
   for (const row of rows) for (const reason of row.derived.reasons) reasons[reason] = (reasons[reason] ?? 0) + 1;

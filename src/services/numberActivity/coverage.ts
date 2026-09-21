@@ -92,10 +92,12 @@ async function deriveCaptureCoverage(): Promise<CoverageDto> {
   const webhook = rows.find((row) => row.scope === WEBHOOK_RECEIPTS_SCOPE) ?? null;
   const knownThrough = callLog?.known_complete_through ?? null;
 
+  // Either admission pause means analysis is not running; the Owner coverage
+  // read explains which one and with which numbers (`analysis_admission`).
   const paused = await getSalesIntelligenceJobModel().countDocuments({
     ...csiDataset(),
     status: "paused",
-    reason: "budget_exhausted",
+    reason: { $in: ["budget_exhausted", "per_recording_ceiling"] },
   });
   const Conversations = getLeadConversationModel();
   const [denied, unavailable, stored, mediaPending, missing, failed, undetermined, pendingDiscovery, exhaustedDiscovery, verifiedStored] = await Promise.all([

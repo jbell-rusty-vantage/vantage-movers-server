@@ -1,0 +1,673 @@
+{
+  "at": "2026-09-21T18:04:33.797Z",
+  "jobs": [
+    {
+      "_id": {
+        "stage": "outreach_ensure",
+        "status": "completed"
+      },
+      "count": 76720,
+      "bytes": 52999967,
+      "first": "2026-09-19T21:56:41.819Z",
+      "last": "2026-09-21T18:03:44.703Z"
+    },
+    {
+      "_id": {
+        "stage": "attachment_refresh",
+        "status": "completed"
+      },
+      "count": 9736,
+      "bytes": 6930597,
+      "first": "2026-09-20T18:30:30.261Z",
+      "last": "2026-09-21T18:04:25.811Z"
+    },
+    {
+      "_id": {
+        "stage": "number_refresh",
+        "status": "pending"
+      },
+      "count": 1434,
+      "bytes": 922990,
+      "first": "2026-09-20T19:02:38.097Z",
+      "last": "2026-09-21T18:04:01.452Z"
+    },
+    {
+      "_id": {
+        "stage": "recording_discovery",
+        "status": "completed"
+      },
+      "count": 782,
+      "bytes": 618155,
+      "first": "2026-09-20T18:33:34.902Z",
+      "last": "2026-09-21T18:00:30.163Z"
+    },
+    {
+      "_id": {
+        "stage": "number_refresh",
+        "status": "completed"
+      },
+      "count": 443,
+      "bytes": 292625,
+      "first": "2026-09-19T21:56:44.241Z",
+      "last": "2026-09-20T19:02:36.104Z"
+    },
+    {
+      "_id": {
+        "stage": "media_fetch",
+        "status": "completed"
+      },
+      "count": 353,
+      "bytes": 293087,
+      "first": "2026-09-20T18:35:23.038Z",
+      "last": "2026-09-21T18:01:08.553Z"
+    },
+    {
+      "_id": {
+        "stage": "transcription",
+        "status": "completed"
+      },
+      "count": 344,
+      "bytes": 309892,
+      "first": "2026-09-20T18:37:18.104Z",
+      "last": "2026-09-21T18:02:24.500Z"
+    },
+    {
+      "_id": {
+        "stage": "analysis",
+        "status": "pending"
+      },
+      "count": 305,
+      "bytes": 235765,
+      "first": "2026-09-21T01:24:22.186Z",
+      "last": "2026-09-21T18:02:26.449Z"
+    },
+    {
+      "_id": {
+        "stage": "recording_discovery",
+        "status": "retry"
+      },
+      "count": 175,
+      "bytes": 127005,
+      "first": "2026-09-20T18:33:33.947Z",
+      "last": "2026-09-21T17:59:22.102Z"
+    },
+    {
+      "_id": {
+        "stage": "media_fetch",
+        "status": "retry"
+      },
+      "count": 71,
+      "bytes": 48476,
+      "first": "2026-09-20T18:35:15.970Z",
+      "last": "2026-09-21T17:55:20.431Z"
+    },
+    {
+      "_id": {
+        "stage": "analysis",
+        "status": "paused"
+      },
+      "count": 24,
+      "bytes": 19092,
+      "first": "2026-09-20T18:55:07.612Z",
+      "last": "2026-09-21T15:49:52.703Z"
+    },
+    {
+      "_id": {
+        "stage": "recording_discovery",
+        "status": "pending"
+      },
+      "count": 20,
+      "bytes": 13692,
+      "first": "2026-09-21T18:03:34.435Z",
+      "last": "2026-09-21T18:04:29.677Z"
+    },
+    {
+      "_id": {
+        "stage": "application",
+        "status": "completed"
+      },
+      "count": 9,
+      "bytes": 6459,
+      "first": "2026-09-20T19:00:08.807Z",
+      "last": "2026-09-21T01:15:37.872Z"
+    },
+    {
+      "_id": {
+        "stage": "rep_identity_reevaluate",
+        "status": "completed"
+      },
+      "count": 9,
+      "bytes": 8607,
+      "first": "2026-09-19T14:49:11.255Z",
+      "last": "2026-09-19T14:49:16.077Z"
+    },
+    {
+      "_id": {
+        "stage": "analysis",
+        "status": "completed"
+      },
+      "count": 7,
+      "bytes": 5911,
+      "first": "2026-09-20T18:57:15.863Z",
+      "last": "2026-09-20T23:44:39.579Z"
+    },
+    {
+      "_id": {
+        "stage": "number_refresh",
+        "status": "retry"
+      },
+      "count": 7,
+      "bytes": 4762,
+      "first": "2026-09-20T18:37:02.145Z",
+      "last": "2026-09-20T18:43:00.802Z"
+    },
+    {
+      "_id": {
+        "stage": "outreach_ensure",
+        "status": "pending"
+      },
+      "count": 4,
+      "bytes": 2744,
+      "first": "2026-09-21T18:04:27.550Z",
+      "last": "2026-09-21T18:04:29.897Z"
+    },
+    {
+      "_id": {
+        "stage": "number_refresh",
+        "status": "paused"
+      },
+      "count": 4,
+      "bytes": 2768,
+      "first": "2026-09-20T18:38:01.121Z",
+      "last": "2026-09-20T18:41:05.570Z"
+    },
+    {
+      "_id": {
+        "stage": "analysis",
+        "status": "retry"
+      },
+      "count": 4,
+      "bytes": 3136,
+      "first": "2026-09-21T13:29:34.691Z",
+      "last": "2026-09-21T14:40:31.883Z"
+    },
+    {
+      "_id": {
+        "stage": "analysis",
+        "status": "dead_letter"
+      },
+      "count": 2,
+      "bytes": 1580,
+      "first": "2026-09-20T22:55:11.521Z",
+      "last": "2026-09-20T23:35:21.858Z"
+    },
+    {
+      "_id": {
+        "stage": "transcription",
+        "status": "dead_letter"
+      },
+      "count": 2,
+      "bytes": 1468,
+      "first": "2026-09-20T22:28:29.534Z",
+      "last": "2026-09-21T03:41:18.229Z"
+    },
+    {
+      "_id": {
+        "stage": "nudge_repair",
+        "status": "completed"
+      },
+      "count": 1,
+      "bytes": 641,
+      "first": "2026-09-21T00:53:54.871Z",
+      "last": "2026-09-21T00:53:54.871Z"
+    }
+  ],
+  "runs": [
+    {
+      "_id": {
+        "mode": "initial",
+        "status": "paused",
+        "reason": "budget_exhausted",
+        "model": "openai/gpt-5.6-luna"
+      },
+      "count": 306,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "actualCents": 0,
+      "completeUsageRows": 0
+    },
+    {
+      "_id": {
+        "mode": "initial",
+        "status": "paused",
+        "reason": "schema_exhausted",
+        "model": "openai/gpt-5-mini"
+      },
+      "count": 10,
+      "inputTokens": 443806,
+      "outputTokens": 123162,
+      "actualCents": 10,
+      "completeUsageRows": 3
+    },
+    {
+      "_id": {
+        "mode": "initial",
+        "status": "paused",
+        "reason": "bounds_exhausted",
+        "model": "openai/gpt-5-mini"
+      },
+      "count": 8,
+      "inputTokens": 156453,
+      "outputTokens": 51828,
+      "actualCents": 0,
+      "completeUsageRows": 0
+    },
+    {
+      "_id": {
+        "mode": "number_refresh",
+        "status": "running",
+        "reason": "analysis_failed",
+        "model": "openai/gpt-5-mini"
+      },
+      "count": 5,
+      "inputTokens": 124285,
+      "outputTokens": 31859,
+      "actualCents": 0,
+      "completeUsageRows": 0
+    },
+    {
+      "_id": {
+        "mode": "initial",
+        "status": "completed",
+        "reason": null,
+        "model": "openai/gpt-5-mini"
+      },
+      "count": 4,
+      "inputTokens": 104675,
+      "outputTokens": 29148,
+      "actualCents": 5,
+      "completeUsageRows": 3
+    },
+    {
+      "_id": {
+        "mode": "initial",
+        "status": "running",
+        "reason": "analysis_failed",
+        "model": "openai/gpt-5.6-luna"
+      },
+      "count": 4,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "actualCents": 0,
+      "completeUsageRows": 0
+    },
+    {
+      "_id": {
+        "mode": "initial",
+        "status": "completed",
+        "reason": null,
+        "model": "openai/gpt-5.6-luna"
+      },
+      "count": 3,
+      "inputTokens": 148374,
+      "outputTokens": 18550,
+      "actualCents": 0,
+      "completeUsageRows": 0
+    },
+    {
+      "_id": {
+        "mode": "initial",
+        "status": "paused",
+        "reason": "contract_mismatch",
+        "model": "openai/gpt-5-mini"
+      },
+      "count": 3,
+      "inputTokens": 72577,
+      "outputTokens": 27522,
+      "actualCents": 0,
+      "completeUsageRows": 1
+    },
+    {
+      "_id": {
+        "mode": "number_refresh",
+        "status": "paused",
+        "reason": "schema_exhausted",
+        "model": "openai/gpt-5-mini"
+      },
+      "count": 2,
+      "inputTokens": 67306,
+      "outputTokens": 13407,
+      "actualCents": 5,
+      "completeUsageRows": 2
+    },
+    {
+      "_id": {
+        "mode": "number_refresh",
+        "status": "paused",
+        "reason": "bounds_exhausted",
+        "model": "openai/gpt-5-mini"
+      },
+      "count": 2,
+      "inputTokens": 31212,
+      "outputTokens": 10462,
+      "actualCents": 0,
+      "completeUsageRows": 0
+    },
+    {
+      "_id": {
+        "mode": "initial",
+        "status": "paused",
+        "reason": "schema_exhausted",
+        "model": "openai/gpt-5.6-luna"
+      },
+      "count": 2,
+      "inputTokens": 117908,
+      "outputTokens": 14062,
+      "actualCents": 0,
+      "completeUsageRows": 0
+    },
+    {
+      "_id": {
+        "mode": "initial",
+        "status": "failed",
+        "reason": "analysis_failed",
+        "model": "openai/gpt-5.6-luna"
+      },
+      "count": 2,
+      "inputTokens": 227807,
+      "outputTokens": 40654,
+      "actualCents": 0,
+      "completeUsageRows": 0
+    },
+    {
+      "_id": {
+        "mode": "number_refresh",
+        "status": "completed",
+        "reason": null,
+        "model": "openai/gpt-5-mini"
+      },
+      "count": 1,
+      "inputTokens": 26607,
+      "outputTokens": 5779,
+      "actualCents": 2,
+      "completeUsageRows": 1
+    },
+    {
+      "_id": {
+        "mode": "number_refresh",
+        "status": "running",
+        "reason": "transient",
+        "model": "openai/gpt-5-mini"
+      },
+      "count": 1,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "actualCents": 0,
+      "completeUsageRows": 1
+    },
+    {
+      "_id": {
+        "mode": "number_refresh",
+        "status": "completed",
+        "reason": null,
+        "model": "openai/gpt-5.6-luna"
+      },
+      "count": 1,
+      "inputTokens": 25058,
+      "outputTokens": 3033,
+      "actualCents": 1,
+      "completeUsageRows": 1
+    },
+    {
+      "_id": {
+        "mode": "number_refresh",
+        "status": "running",
+        "reason": "transient",
+        "model": "openai/gpt-5.6-luna"
+      },
+      "count": 1,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "actualCents": 0,
+      "completeUsageRows": 1
+    }
+  ],
+  "effects": [
+    {
+      "_id": {
+        "status": "applied",
+        "reason": "number_contact_evidence"
+      },
+      "count": 7
+    },
+    {
+      "_id": {
+        "status": "blocked_identity",
+        "reason": "outreach_binding_unavailable"
+      },
+      "count": 4
+    },
+    {
+      "_id": {
+        "status": "needs_review",
+        "reason": "unclear_commitment"
+      },
+      "count": 2
+    },
+    {
+      "_id": {
+        "status": "applied",
+        "reason": "clear_sales_commitment"
+      },
+      "count": 3
+    },
+    {
+      "_id": {
+        "status": "needs_review",
+        "reason": "source_interaction_unresolved"
+      },
+      "count": 2
+    },
+    {
+      "_id": {
+        "status": "needs_review",
+        "reason": "incomplete_history"
+      },
+      "count": 2
+    }
+  ],
+  "outreach": [
+    {
+      "_id": {
+        "state": "closed",
+        "kind": "number_review"
+      },
+      "count": 4
+    },
+    {
+      "_id": {
+        "state": "unworked",
+        "kind": "number_review"
+      },
+      "count": 5
+    },
+    {
+      "_id": {
+        "state": "closed",
+        "kind": "lead"
+      },
+      "count": 1560
+    },
+    {
+      "_id": {
+        "state": "identity_review",
+        "kind": "lead"
+      },
+      "count": 6
+    },
+    {
+      "_id": {
+        "state": "unworked",
+        "kind": "lead"
+      },
+      "count": 6078
+    },
+    {
+      "_id": {
+        "state": "open",
+        "kind": "lead"
+      },
+      "count": 142
+    }
+  ],
+  "collections": [
+    {
+      "name": "sales_intelligence_jobs",
+      "count": 90456,
+      "dataBytes": 62849483,
+      "indexBytes": 11874304
+    },
+    {
+      "name": "sales_intelligence_audit_events",
+      "count": 12997,
+      "dataBytes": 20256038,
+      "indexBytes": 1929216
+    },
+    {
+      "name": "intelligence_runs",
+      "count": 355,
+      "dataBytes": 1701038,
+      "indexBytes": 143360
+    },
+    {
+      "name": "intelligence_evidence_snapshots",
+      "count": 613,
+      "dataBytes": 2561372,
+      "indexBytes": 262144
+    },
+    {
+      "name": "intelligence_findings",
+      "count": 60,
+      "dataBytes": 85653,
+      "indexBytes": 184320
+    },
+    {
+      "name": "intelligence_effects",
+      "count": 20,
+      "dataBytes": 16573,
+      "indexBytes": 110592
+    },
+    {
+      "name": "outreach_records",
+      "count": 7795,
+      "dataBytes": 6252754,
+      "indexBytes": 1167360
+    },
+    {
+      "name": "outreach_followups",
+      "count": 6,
+      "dataBytes": 6961,
+      "indexBytes": 221184
+    },
+    {
+      "name": "number_lead_attachments",
+      "count": 225,
+      "dataBytes": 287150,
+      "indexBytes": 208896
+    },
+    {
+      "name": "contact_numbers",
+      "count": 257,
+      "dataBytes": 277016,
+      "indexBytes": 380928
+    },
+    {
+      "name": "lead_conversations",
+      "count": 447,
+      "dataBytes": 2187894,
+      "indexBytes": 552960
+    },
+    {
+      "name": "call_interactions",
+      "count": 559,
+      "dataBytes": 1700554,
+      "indexBytes": 602112
+    }
+  ],
+  "budgetSnapshot": {
+    "at": "2026-09-21T18:05:16.136Z",
+    "budget": [
+      {
+        "month": "2026-09",
+        "activated_at": "2026-09-20T18:27:02.889Z",
+        "actual_cents": 415,
+        "ceiling_cents": 8000,
+        "period_end": "2026-10-01T04:00:00.000Z",
+        "period_start": "2026-09-01T04:00:00.000Z",
+        "reserved_cents": 1217
+      }
+    ],
+    "reservations": [
+      {
+        "_id": {
+          "stage": "transcription",
+          "status": "reserved",
+          "providerStarted": false,
+          "complete": true
+        },
+        "count": 17,
+        "estimatedCents": 161,
+        "observedCents": 0,
+        "actualCents": 0
+      },
+      {
+        "_id": {
+          "stage": "analysis",
+          "status": "reserved",
+          "providerStarted": true,
+          "complete": true
+        },
+        "count": 56,
+        "estimatedCents": 1056,
+        "observedCents": 92,
+        "actualCents": 0
+      },
+      {
+        "_id": {
+          "stage": "transcription",
+          "status": "reconciled",
+          "providerStarted": false,
+          "complete": true
+        },
+        "count": 344,
+        "estimatedCents": 422,
+        "observedCents": 0,
+        "actualCents": 373
+      },
+      {
+        "_id": {
+          "stage": "analysis",
+          "status": "reconciled",
+          "providerStarted": true,
+          "complete": true
+        },
+        "count": 23,
+        "estimatedCents": 464,
+        "observedCents": 42,
+        "actualCents": 42
+      },
+      {
+        "_id": {
+          "stage": "analysis",
+          "status": "released",
+          "providerStarted": false,
+          "complete": true
+        },
+        "count": 8,
+        "estimatedCents": 141,
+        "observedCents": 0,
+        "actualCents": 0
+      }
+    ]
+  }
+}
