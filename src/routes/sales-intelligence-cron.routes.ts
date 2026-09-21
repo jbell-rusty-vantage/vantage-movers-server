@@ -28,6 +28,8 @@ import {
   runReceiptWatermarkRecovery,
   type RecoverySummary,
 } from "../services/numberActivity/webhookRecovery";
+import { refreshCaptureCoverage } from "../services/numberActivity/coverage";
+import { ensureLeadMessageToIndex } from "../models/LeadMessage";
 
 /**
  * Sales Intelligence cron routes (03 §11). Mounted before the `/api/v1`
@@ -77,6 +79,10 @@ export type SalesIntelligenceCronRouteDeps = {
   drainNudgeRepair?: typeof drainNudgeRepairJobs;
   runIntelligence?: () => ReturnType<typeof drainIntelligenceJobs> | Promise<{ status: string }>;
   runApplication?: typeof drainIntelligenceApplications;
+  /** Recounts the Owner coverage strip. Job recovery calls it once a minute. */
+  refreshCoverage?: () => Promise<unknown>;
+  /** Creates `lead_messages.to` if it is missing. Reads do not. */
+  ensureLeadMessageIndex?: () => Promise<unknown>;
 };
 
 export const CSI_CRON_PATHS = {
@@ -175,6 +181,18 @@ export function createSalesIntelligenceCronRouter(
     }
     try {
       await connect();
+      await (deps.refreshCoverage ?? refreshCaptureCoverage)().catch((error: unknown) => {
+        logger.error({
+          msg: "sales_intelligence.cron.coverage_refresh.failed",
+          errorName: error instanceof Error ? error.name : "Error",
+        });
+      });
+      await (deps.ensureLeadMessageIndex ?? ensureLeadMessageToIndex)().catch((error: unknown) => {
+        logger.error({
+          msg: "sales_intelligence.cron.lead_message_index.failed",
+          errorName: error instanceof Error ? error.name : "Error",
+        });
+      });
       let receiptRecovery: RecoverySummary | null = null;
       let capture: DrainSummary | null = null;
       let rebuild: RebuildDrainSummary | null = null;

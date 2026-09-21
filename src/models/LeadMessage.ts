@@ -217,6 +217,19 @@ LeadMessageSchema.index({ twilio_message_sids: 1 });
 LeadMessageSchema.index({ status: 1, next_attempt_at: 1, createdAt: 1 });
 LeadMessageSchema.index({ leased_until: 1 });
 LeadMessageSchema.index({ purpose: 1, status: 1, createdAt: -1 });
+// Number timeline matches `to` with `$in`. Without this, every activity page scans the collection.
+LeadMessageSchema.index({ to: 1 }, { name: "lead_message_to" });
+
+let leadMessageToIndex: Promise<string> | null = null;
+
+/** Idempotent. The minute job-recovery cron creates it; reads do not. */
+export function ensureLeadMessageToIndex(): Promise<string> {
+  leadMessageToIndex ??= getLeadMessageModel().collection.createIndex({ to: 1 }, { name: "lead_message_to" });
+  return leadMessageToIndex.catch((error: unknown) => {
+    leadMessageToIndex = null;
+    throw error;
+  });
+}
 
 export const LeadMessage: Model<LeadMessageDocument> =
   (mongoose.models.LeadMessage as Model<LeadMessageDocument> | undefined) ??

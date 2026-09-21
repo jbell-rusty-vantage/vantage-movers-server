@@ -115,6 +115,12 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
     },
     rebuildDrainMax: 3,
     drainRepIdentity: async () => ({ outcomes: [] }),
+    refreshCoverage: async () => {
+      calls.push("coverage");
+    },
+    ensureLeadMessageIndex: async () => {
+      calls.push("message-index");
+    },
     runDirectorySync: async () => {
       calls.push("directory");
       return directoryResult;
@@ -165,7 +171,7 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
       assert.equal(recoveryHeld.status, 200);
       assert.equal((recoveryHeld.body.receipt_recovery as RecoverySummary).skip_reason, "lease_held");
       assert.deepEqual(recoveryHeld.body.capture_projection, { claimed: 2, completed: 1, failed: 1, lease_lost: 0, deadline_reached: false });
-      assert.deepEqual(calls, ["connect", "recovery", "drain:7:1234"], "the scan lease being held never blocks job draining");
+      assert.deepEqual(calls, ["connect", "coverage", "message-index", "recovery", "drain:7:1234"], "the scan lease being held never blocks job draining");
       recoveryResult = recoverySummary({ scanned: 3, created: 1, existing: 2, watermark_after: "2026-09-17T13:59:55.000Z" });
       const recovered = await call(CSI_CRON_PATHS.jobRecovery, auth);
       assert.equal((recovered.body.receipt_recovery as RecoverySummary).created, 1);
@@ -179,7 +185,7 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
       assert.equal(rebuildOnly.body.skipped, false);
       assert.equal(rebuildOnly.body.receipt_recovery, null);
       assert.deepEqual(rebuildOnly.body.rebuild, { claimed: 1, completed: 1, failed: 0, lease_lost: 0, deadline_reached: false });
-      assert.deepEqual(calls, ["connect", "rebuild:3:1234"]);
+      assert.deepEqual(calls, ["connect", "coverage", "message-index", "rebuild:3:1234"]);
 
       // CSI-04: directory sync cron — flag-off, lease_held, then a run.
       calls.length = 0;

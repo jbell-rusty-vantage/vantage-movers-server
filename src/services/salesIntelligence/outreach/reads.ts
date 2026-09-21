@@ -240,26 +240,31 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
 export async function readOutreach(id: string) {
   const record = await getOutreachRecordModel().findOne({ _id: id, purged_at: null }).lean();
   if (!record) return null;
-  const now = new Date(), [coverage, policy] = await Promise.all([readCaptureCoverage(), resolvePolicy()]);
-  const instructions = await getSalesIntelligenceOwnerInstructionModel().find({ subject_key: subjectKey(record.subject) }).sort({ happened_at: 1 }).lean();
-  return { as_of: now.toISOString(), coverage, data: { outreach: await toOutreachDto(record, now, coverage, { policy }), owner_instructions: instructions,
-    nudges: await nudgeHistoryPage({ outreach_record_id: id, limit: 20 }) } };
+  const now = new Date(), [coverage, policy, instructions, inputs, nudges] = await Promise.all([
+    readCaptureCoverage(), resolvePolicy(),
+    getSalesIntelligenceOwnerInstructionModel().find({ subject_key: subjectKey(record.subject) }).sort({ happened_at: 1 }).lean(),
+    loadOutreachInputs(record, now), nudgeHistoryPage({ outreach_record_id: id, limit: 20 })]);
+  const side = await loadOutreachSideData([record], new Map([[String(record._id), inputs]]));
+  return { as_of: now.toISOString(), coverage, data: { outreach: await toOutreachDto(record, now, coverage, { policy, inputs, side }),
+    owner_instructions: instructions, nudges } };
 }
 export async function readOutreachByLead(model: "FormLead" | "CallLead", id: string) {
   const row = await getOutreachRecordModel().findOne({ "subject.model": model, "subject.id": id, purged_at: null }).lean();
   return row ? readOutreach(String(row._id)) : null;
 }
 export async function readNumberOutreach(numberId: string) {
-  const edges = await getNumberLeadAttachmentModel().find({ contact_number_id: numberId }).lean();
-  const records = await getOutreachRecordModel().find({ purged_at: null, $or: [{ primary_contact_number_id: numberId }, { "subject.contact_number_id": numberId },
-    ...edges.map(e => ({ "subject.model": e.lead_ref.model, "subject.id": e.lead_ref.id }))] }).lean();
-  const restrictions = await getSalesIntelligenceContactRestrictionModel().find({ contact_number_id: numberId }).lean();
-  const conversations = await getLeadConversationModel().find({ contact_number_id: numberId }).select({ _id: 1 }).lean();
+  const [edges, restrictions] = await Promise.all([
+    getNumberLeadAttachmentModel().find({ contact_number_id: numberId }).lean(),
+    getSalesIntelligenceContactRestrictionModel().find({ contact_number_id: numberId }).lean()]);
+  const [records, conversations] = await Promise.all([
+    getOutreachRecordModel().find({ purged_at: null, $or: [{ primary_contact_number_id: numberId }, { "subject.contact_number_id": numberId },
+      ...edges.map(e => ({ "subject.model": e.lead_ref.model, "subject.id": e.lead_ref.id }))] }).lean(),
+    getLeadConversationModel().find({ contact_number_id: numberId }).select({ _id: 1 }).lean()]);
   const reviewItems = await getSalesIntelligenceReviewItemModel().find({ subject_key: { $in: [`number:${numberId}`, ...records.map(r => subjectKey(r.subject)), ...conversations.map(c => `conversation:${c._id}`)] } }).lean();
   // Policy and Coverage are invariants of the read, not of each record.
-  const now = new Date(), [coverage, policy] = await Promise.all([readCaptureCoverage(), resolvePolicy()]);
-  const inputs = await loadOutreachInputsBatch(records, now);
-  return { outreach_records: await Promise.all(records.map(r => toOutreachDto(r, now, coverage, { policy, inputs: inputs.get(String(r._id)) }))), restrictions: restrictions.map(r => restrictionDtoSchema.parse({ id: String(r._id), revision: r.revision,
+  const now = new Date(), [coverage, policy, inputs] = await Promise.all([readCaptureCoverage(), resolvePolicy(), loadOutreachInputsBatch(records, now)]);
+  const side = await loadOutreachSideData(records, inputs);
+  return { outreach_records: await Promise.all(records.map(r => toOutreachDto(r, now, coverage, { policy, inputs: inputs.get(String(r._id)), side }))), restrictions: restrictions.map(r => restrictionDtoSchema.parse({ id: String(r._id), revision: r.revision,
     contact_number_id: String(r.contact_number_id), channels: r.channels, until: iso(r.until), origin: r.origin, state: r.state, run_id: r.run_id ? String(r.run_id) : null,
     finding_id: r.finding_id ? String(r.finding_id) : null, allowed_actions: [{ action: "resolve_restriction", target_id: String(r._id), expected_revision: r.revision, enabled: r.state === "active", blocker_codes: [] }] })), review_items: reviewItems.map(toReviewDto) };
 }

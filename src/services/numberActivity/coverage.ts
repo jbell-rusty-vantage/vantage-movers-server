@@ -1,4 +1,6 @@
+import mongoose from "mongoose";
 import { csiDataset } from "../../config/domain/salesIntelligence";
+import { getMongoDatabaseName, isTestMode } from "../../config/domain/runtime";
 import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
 import { getSalesIntelligenceSyncStateModel } from "../../models/SalesIntelligenceSyncState";
 import { getLeadConversationModel } from "../../models/LeadConversation";
@@ -45,9 +47,12 @@ function streamCapability(
  *
  * The counters are derived from evidence the Owner is already reading behind a
  * watermark that lags, so a value that lags one short window is honest. The
- * memo also collapses the concurrent calls inside one k-way timeline merge
- * into a single derivation by sharing the in-flight promise.
+ * minute job-recovery cron writes that derivation once. Owner reads load the
+ * stored projection. Test mode still derives, so a replica proof sees the
+ * write it just made, and a read never inserts. The memo collapses concurrent
+ * calls inside one process into a single in-flight promise.
  */
+const COVERAGE_PROJECTION = "sales_intelligence_coverage_projections";
 function coverageCacheTtlMs(): number {
   const raw = process.env.SALES_INTELLIGENCE_COVERAGE_CACHE_MS?.trim();
   if (!raw) return 5_000;
@@ -63,6 +68,57 @@ export function resetCaptureCoverageCache(): void {
   coverageMemo = null;
 }
 
+function coverageCollection() {
+  const db = mongoose.connection.useDb(getMongoDatabaseName(), { useCache: true }).db;
+  if (!db) throw new Error("Database is not connected");
+  return db.collection(COVERAGE_PROJECTION);
+}
+
+let projectionIndex: Promise<string> | null = null;
+
+function ensureProjectionIndex(): Promise<string> {
+  projectionIndex ??= coverageCollection().createIndex(
+    { deployment: 1, database: 1 },
+    { unique: true, name: "csi_coverage_projection_dataset" },
+  );
+  return projectionIndex.catch((error: unknown) => {
+    projectionIndex = null;
+    throw error;
+  });
+}
+
+async function loadStoredCoverage(): Promise<CoverageDto | null> {
+  const dataset = csiDataset();
+  const doc = await coverageCollection().findOne(
+    { deployment: dataset.deployment, database: dataset.database },
+    { projection: { coverage: 1 } },
+  );
+  const parsed = coverageDtoSchema.safeParse(doc?.coverage);
+  return parsed.success ? parsed.data : null;
+}
+
+/** Recount and replace the stored projection. Owner reads do not call this. */
+export async function refreshCaptureCoverage(): Promise<CoverageDto> {
+  const coverage = await deriveCaptureCoverage();
+  const dataset = csiDataset();
+  await ensureProjectionIndex();
+  await coverageCollection().updateOne(
+    { deployment: dataset.deployment, database: dataset.database },
+    { $set: { coverage, computed_at: new Date() } },
+    { upsert: true },
+  );
+  resetCaptureCoverageCache();
+  return coverage;
+}
+
+async function resolveCoverage(): Promise<CoverageDto> {
+  if (!isTestMode()) {
+    const stored = await loadStoredCoverage();
+    if (stored) return stored;
+  }
+  return deriveCaptureCoverage();
+}
+
 export async function readCaptureCoverage(): Promise<CoverageDto> {
   const ttl = coverageCacheTtlMs();
   const dataset = csiDataset();
@@ -70,7 +126,7 @@ export async function readCaptureCoverage(): Promise<CoverageDto> {
   if (ttl > 0 && coverageMemo && coverageMemo.key === key && Date.now() - coverageMemo.at < ttl) {
     return coverageMemo.value;
   }
-  const value = deriveCaptureCoverage();
+  const value = resolveCoverage();
   if (ttl > 0) {
     const memo: CoverageMemo = { key, at: Date.now(), value };
     coverageMemo = memo;

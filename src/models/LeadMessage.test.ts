@@ -39,6 +39,13 @@ test("LeadMessage unique SID index excludes unsent documents", () => {
   });
 });
 
+test("LeadMessage indexes the timeline address", () => {
+  const toIndex = LeadMessage.schema
+    .indexes()
+    .find((index: [Record<string, unknown>, Record<string, unknown>]) => index[0].to === 1);
+  assert.equal(toIndex?.[1].name, "lead_message_to");
+});
+
 test("LeadMessage rejects unsupported lifecycle states", async () => {
   const message = new LeadMessage({
     form_lead: new mongoose.Types.ObjectId(),
