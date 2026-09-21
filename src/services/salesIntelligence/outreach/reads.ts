@@ -4,6 +4,7 @@ import { getOutreachFollowupModel } from "../../../models/OutreachFollowup";
 import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
 import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getCallInteractionModel } from "../../../models/CallInteraction";
+import { getLeadConversationModel } from "../../../models/LeadConversation";
 import { getSalesIntelligenceContactRestrictionModel } from "../../../models/SalesIntelligenceContactRestriction";
 import { getSalesIntelligenceReviewItemModel } from "../../../models/SalesIntelligenceReviewItem";
 import { getSalesIntelligenceOwnerInstructionModel } from "../../../models/SalesIntelligenceOwnerInstruction";
@@ -253,7 +254,8 @@ export async function readNumberOutreach(numberId: string) {
   const records = await getOutreachRecordModel().find({ purged_at: null, $or: [{ primary_contact_number_id: numberId }, { "subject.contact_number_id": numberId },
     ...edges.map(e => ({ "subject.model": e.lead_ref.model, "subject.id": e.lead_ref.id }))] }).lean();
   const restrictions = await getSalesIntelligenceContactRestrictionModel().find({ contact_number_id: numberId }).lean();
-  const reviewItems = await getSalesIntelligenceReviewItemModel().find({ subject_key: { $in: [`number:${numberId}`, ...records.map(r => subjectKey(r.subject))] } }).lean();
+  const conversations = await getLeadConversationModel().find({ contact_number_id: numberId }).select({ _id: 1 }).lean();
+  const reviewItems = await getSalesIntelligenceReviewItemModel().find({ subject_key: { $in: [`number:${numberId}`, ...records.map(r => subjectKey(r.subject)), ...conversations.map(c => `conversation:${c._id}`)] } }).lean();
   // Policy and Coverage are invariants of the read, not of each record.
   const now = new Date(), [coverage, policy] = await Promise.all([readCaptureCoverage(), resolvePolicy()]);
   const inputs = await loadOutreachInputsBatch(records, now);

@@ -1,1 +1,6 @@
 api/**/*.test.ts
+.env
+.env.*
+!.env.example
+sales-intelligence.env
+.claude

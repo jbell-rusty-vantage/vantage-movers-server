@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { billedCents, contextTokenCeiling, runtimeLimitsSchema, DEFAULT_RUNTIME_LIMITS } from "./runtime";
+import { billedCents, contextTokenCeiling, runtimeLimitsSchema, DEFAULT_RUNTIME_LIMITS, resultValue } from "./runtime";
 import { CSI_ANALYSIS_LEASE_TTL_MS, CSI_FUNCTION_MAX_DURATION_MS, estimateAnalysisCents } from "./worker";
 import { resolveQuotedMoney } from "./apply";
+
+test("transient MCP evidence-read failures are retryable rather than contract mismatches", () => {
+  for (const [code, status] of [["INTELLIGENCE_UNAVAILABLE", 503], ["PROVIDER_READ_UNAVAILABLE", 503], ["RATE_LIMITED", 429]] as const) {
+    assert.throws(() => resultValue({ isError: true, content: [{ type: "text", text: JSON.stringify({ ok: false, code }) }] }), error => error instanceof Error && "statusCode" in error && error.statusCode === status);
+  }
+  assert.throws(() => resultValue({ isError: true, content: [{ type: "text", text: '{"code":"INVALID_INPUT"}' }] }), /contract_mismatch/);
+});
 
 test("missing, negative and invalid billed usage never becomes a known zero", () => {
   for (const value of [{}, { gateway: {} }, { gateway: { cost: -1 } }, { gateway: { cost: "unknown" } }]) assert.equal(billedCents(value), null);

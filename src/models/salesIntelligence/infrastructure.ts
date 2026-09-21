@@ -312,6 +312,8 @@ export const SalesIntelligenceAttentionSnapshotSchema = new Schema(
     database: str,
     as_of: at,
     rows: validatedJson(z.array(attentionRowDtoSchema)),
+    // Lossless cache encoding; legacy inline/chunk rows remain readable during rollout.
+    rows_gzip_base64: { type: String, default: null },
     counts: validatedJson(z.record(z.string(), z.number().int().nonnegative())),
     expires_at: at,
     // Null on the header (and on older single-document snapshots). A number

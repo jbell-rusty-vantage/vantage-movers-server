@@ -8,6 +8,8 @@ tags: [sales-intelligence, outreach]
 
 # Outreach and follow-ups — CSI-06
 
+Attention publication batches 500 Outreach Records, with bounded value-keyed staffing-calendar caches shared across records. This preserves DST and policy-hour behavior without reconstructing the same calendar for each record. Conversation-scoped review items retain their stable subject keys and open the Conversation's actual Contact Number; Number detail includes those reviews. A review whose Conversation no longer supplies a Number stays stored but cannot create a navigable Attention row. The full snapshot remains atomic and expires under the existing five-minute contract; no partial list is published when the 90-second budget is exceeded. September 21 production-data verification published 6,363 rows in 74.6 seconds; the old path either exhausted its budget or rejected a conversation review as an invalid Lead.
+
 CSI-08 Owner integration: reads add `create_followup` availability, Lead display facts, latest canonical call outcome and actual related official-record links. Host URLs pin `database_scope=production`; API reads still use `scope=production`. Review reads accept `subject_key`, `state` and `cause_kind`, and expose resolution availability. Restriction detail supplies revision and resolution availability. Identity resolution accepts Number or Lead subjects and still rejects unresolved matching ambiguous attachments/identity-review Outreach. Clock scans skip revision/audit writes when neither the aggregate nor an action changed; real wait expiry retains the aggregate fence. Accepted completion/closure notes and command reasons survive in audit history. See [CSI-08 intake](../../call-sales-intelligence/workspace/evidence/csi-08/INTAKE.md).
 
 CSI-14 integration: Outreach detail adds a read-only `nudges` page (20 entries, `/nudges` continuation). Explicit Owner messaging is owned by [Explicit Owner Rep Nudges](sales-intelligence-nudges.md). It reuses this Service's derivation/restrictions/clock rules and appends `nudge_sent` to the Outreach audit subject without completing actions, assigning work, changing dates or reopening records.
@@ -49,6 +51,10 @@ Bounded maintenance (September 21, 2026; [17 §6](../../call-sales-intelligence-
 Attachment fan-out is coalesced: an attachment revision raises one `outreach-number:` job per Contact Number revision (`replayNumberInteractions`), which replays the number's canonical calls in keyset pages of 25 with a continuation job, instead of one `number:` job per call. Per-call `number:` jobs remain the shape of interaction repair and queue wake-ups.
 
 `timeline.ts` registers an append-only CSI audit source with the existing Number Activity timeline merge. Owner notes retain their context; action, assignment, restriction and review events expose prior/current values. Source `happened_at` and audit `recorded_at` remain separate. GET pagination does not write history or projections.
+
+## Attention cache storage (September 21, 2026)
+
+Attention publication validates the complete row array and stores a lossless gzip/base64 encoding when it fits the 12 MB inline budget. The reader accepts both this encoding and the previous inline/chunk representation. Expiry, cursor identity, ordering, filters and counts are unchanged. The decoded payload is capped at 64 MB; larger publications retain the existing chunk path. A measured production snapshot of 6,394 rows decreased from 26,761,829 JSON bytes to 1,242,624 encoded bytes. This matters on the shared 512 MB Atlas cluster: multiple full snapshots had caused storage-quota write failures. The cache is disposable only after its existing `expires_at`; customer evidence and audit retention are unchanged. Rollback to a reader without compression support requires allowing the five-minute compressed cache TTL to elapse before serving Attention.
 
 ## CSI-15 historical activation
 

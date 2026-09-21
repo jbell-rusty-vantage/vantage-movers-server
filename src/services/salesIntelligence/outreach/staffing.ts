@@ -2,8 +2,16 @@ import type { CsiPolicy } from "../../../validation/v1/salesIntelligence";
 
 export type Staffing = Pick<CsiPolicy, "timezone" | "staffed_hours">;
 const minute = 60_000;
+const formatters = new Map<string, Intl.DateTimeFormat>();
+const calendarDays = new Map<string, { start: Date; end: Date }[]>();
 function localParts(at: Date, timezone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(at);
+  let formatter = formatters.get(timezone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+    if (formatters.size >= 16) formatters.delete(formatters.keys().next().value!);
+    formatters.set(timezone, formatter);
+  }
+  const parts = formatter.formatToParts(at);
   const value = (key: string) => Number(parts.find(p => p.type === key)!.value);
   return { year: value("year"), month: value("month"), day: value("day"), hour: value("hour"), minute: value("minute") };
 }
@@ -31,17 +39,25 @@ function shiftDay(day: string, offset: number) {
   return new Date(+new Date(`${day}T00:00:00Z`) + offset * 86_400_000).toISOString().slice(0, 10);
 }
 function intervals(day: string, staffing: Staffing) {
+  // Value-keyed and bounded: changed policy hours cannot reuse stale intervals.
+  const key = JSON.stringify([staffing.timezone, staffing.staffed_hours, day]);
+  const cached = calendarDays.get(key);
+  if (cached) return cached;
   const weekday = new Date(`${day}T12:00:00Z`).getUTCDay() || 7;
-  return staffing.staffed_hours.filter(s => s.day === weekday).sort((a, b) => a.start_minute - b.start_minute).flatMap(s => {
+  const result = staffing.staffed_hours.filter(s => s.day === weekday).sort((a, b) => a.start_minute - b.start_minute).flatMap(s => {
     const start = localInstant(day, s.start_minute, staffing.timezone);
     const end = localInstant(day, s.end_minute, staffing.timezone);
     return start && end ? [{ start, end }] : [];
   });
+  if (calendarDays.size >= 8192) calendarDays.delete(calendarDays.keys().next().value!);
+  calendarDays.set(key, result);
+  return result;
 }
 export function staffedMinutesBetween(from: Date, to: Date, staffing: Staffing): number {
   if (to <= from) return 0;
   let total = 0;
-  for (let day = dayKey(from, staffing.timezone); day <= dayKey(to, staffing.timezone); day = shiftDay(day, 1)) {
+  const lastDay = dayKey(to, staffing.timezone);
+  for (let day = dayKey(from, staffing.timezone); day <= lastDay; day = shiftDay(day, 1)) {
     for (const span of intervals(day, staffing)) total += Math.max(0, Math.min(+to, +span.end) - Math.max(+from, +span.start));
   }
   return total / minute;

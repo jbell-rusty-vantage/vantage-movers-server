@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { gzipSync, gunzipSync } from "node:zlib";
 import { z } from "zod";
 import { csiDataset } from "../../../config/domain/salesIntelligence";
 import { withTransaction } from "../../../db";
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
 import { getSalesIntelligenceAttentionSnapshotModel } from "../../../models/SalesIntelligenceAttentionSnapshot";
 import { getSalesIntelligenceReviewItemModel } from "../../../models/SalesIntelligenceReviewItem";
+import { getLeadConversationModel } from "../../../models/LeadConversation";
 import { attentionRowDtoSchema, attentionPageDtoSchema } from "../dto";
 import { CsiError } from "../auth";
 import { resolvePolicy } from "../policy";
@@ -52,11 +54,34 @@ export function rowMatchesAttentionQuery(
   if (query.needs_review !== undefined && Boolean(row.derived.review_badges?.length) !== (query.needs_review === "true")) return false;
   return true;
 }
-const PUBLISH_PAGE = 50;
+const PUBLISH_PAGE = 500;
 /** Own cron, `maxDuration` 120s. 40s was the shared ensure slot and expired mid-walk. */
 export const ATTENTION_PUBLISH_BUDGET_MS = 90_000;
 const ATTENTION_INLINE_BYTES = 12_000_000;
 const ATTENTION_CHUNK_BYTES = 900_000;
+const ATTENTION_DECODE_MAX_BYTES = 64_000_000;
+
+/** Internal lossless cache only; no change to the public Attention DTO. */
+export function compressAttentionRows(rows: readonly unknown[]): string | null {
+  const raw = Buffer.from(JSON.stringify(rows));
+  if (raw.length > ATTENTION_DECODE_MAX_BYTES) return null;
+  const encoded = gzipSync(raw).toString("base64");
+  return Buffer.byteLength(encoded) <= ATTENTION_INLINE_BYTES ? encoded : null;
+}
+export function decompressAttentionRows(encoded: string): unknown[] {
+  const rows: unknown = JSON.parse(gunzipSync(Buffer.from(encoded, "base64"), { maxOutputLength: ATTENTION_DECODE_MAX_BYTES }).toString("utf8"));
+  if (!Array.isArray(rows)) throw new Error("Invalid Attention cache");
+  return rows;
+}
+
+/** Conversation reviews keep their stable key and open their actual Number. */
+export function attentionReviewSubject(key: string, conversationNumbers: ReadonlyMap<string, string>) {
+  const parts = key.split(":");
+  if (parts[0] === "number" && /^[a-f\d]{24}$/i.test(parts[1] ?? "")) return { kind: "number_review" as const, contact_number_id: parts[1]! };
+  if (parts[0] === "lead" && ["FormLead", "CallLead"].includes(parts[1] ?? "") && /^[a-f\d]{24}$/i.test(parts[2] ?? "")) return { kind: "lead" as const, model: parts[1] as "FormLead" | "CallLead", id: parts[2]! };
+  const number = parts[0] === "conversation" ? conversationNumbers.get(parts[1]!) : undefined;
+  return number ? { kind: "number_review" as const, contact_number_id: number } : null;
+}
 
 /** Split an ordered row list so each sibling document stays under Mongo's 16 MB ceiling. */
 export function splitAttentionChunks<T>(rows: readonly T[], maxBytes = ATTENTION_CHUNK_BYTES): T[][] {
@@ -123,11 +148,15 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number } 
     after = String(page.at(-1)!._id);
   }
   const reviews = await getSalesIntelligenceReviewItemModel().find({ state: "open" }).lean();
+  const conversationIds = [...new Set(reviews.map(review => review.subject_key).filter(key => /^conversation:[a-f\d]{24}$/i.test(key)).map(key => key.split(":")[1]!))];
+  const conversations = conversationIds.length ? await getLeadConversationModel().find({ _id: { $in: conversationIds } }).select({ contact_number_id: 1 }).lean() : [];
+  const conversationNumbers = new Map(conversations.flatMap(conversation => conversation.contact_number_id ? [[String(conversation._id), String(conversation.contact_number_id)] as const] : []));
   for (const review of reviews) {
     if (rows.some(r => r.subject_key === review.subject_key)) continue;
-    const parts = review.subject_key.split(":");
-    const subject = parts[0] === "number" ? { kind: "number_review" as const, contact_number_id: parts[1]! } :
-      { kind: "lead" as const, model: parts[1] as "FormLead" | "CallLead", id: parts[2]! };
+    const subject = attentionReviewSubject(review.subject_key, conversationNumbers);
+    // A missing/purged conversation cannot supply a navigable Number; its review
+    // remains in the review store and must not prevent every other row publishing.
+    if (!subject) continue;
     const same = reviews.filter(r => r.subject_key === review.subject_key);
     rows.push(attentionRowDtoSchema.parse({ subject_key: review.subject_key, subject, outreach: null, allowed_actions: [], derived: { overdue: false, no_owner: false, no_next_action: false, cooldown: false,
       attention_band: null, reasons: [], review_item_ids: same.map(r => String(r._id)), review_badges: [...new Set(same.map(r => r.cause_kind))], call_blockers: ["review_only"], age_wall_ms: 0, age_staffed_ms: 0, policy_version: policy.version } }));
@@ -139,12 +168,15 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number } 
     return actions.map(a => a.attention_due_at).filter((at): at is string => Boolean(at)).sort()[0] ?? r.outreach?.trigger_at ?? "9999";
   };
   rows.sort((a,b) => (a.derived.attention_band ?? 8) - (b.derived.attention_band ?? 8) || orderTime(a).localeCompare(orderTime(b)) || a.subject_key.localeCompare(b.subject_key));
-  const encoded = jsonValue(rows) as z.infer<typeof attentionRowDtoSchema>[];
+  const encoded = z.array(attentionRowDtoSchema).parse(jsonValue(rows));
   const snapshot_id = `outreach:${randomUUID()}`;
   const expires_at = new Date(+now + 300_000);
   const header = { snapshot_id, owner_id: "system", filter_digest: payloadHash({}), policy_version: policy.version, ...csiDataset(), as_of: now, expires_at, chunk_index: null, parent_snapshot_id: null };
   const Snapshot = getSalesIntelligenceAttentionSnapshotModel();
-  if (Buffer.byteLength(JSON.stringify(encoded)) <= ATTENTION_INLINE_BYTES) {
+  const compressed = compressAttentionRows(encoded);
+  if (compressed) {
+    await Snapshot.create({ ...header, rows: [], rows_gzip_base64: compressed, counts: { total_items: rows.length } });
+  } else if (Buffer.byteLength(JSON.stringify(encoded)) <= ATTENTION_INLINE_BYTES) {
     await Snapshot.create({ ...header, rows: encoded, counts: { total_items: rows.length } });
   } else {
     const chunks = splitAttentionChunks(encoded);
@@ -178,6 +210,7 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>) {
   // on every page view was pure read-path cost (14 §2).
   const chunkCount = snapshot.counts?.chunks ?? 0;
   let stored = (Array.isArray(snapshot.rows) ? snapshot.rows : []) as z.infer<typeof attentionRowDtoSchema>[];
+  if (snapshot.rows_gzip_base64) stored = decompressAttentionRows(snapshot.rows_gzip_base64) as z.infer<typeof attentionRowDtoSchema>[];
   if (chunkCount > 0) {
     const parts = await getSalesIntelligenceAttentionSnapshotModel().find({ ...csiDataset(), parent_snapshot_id: snapshot.snapshot_id }).sort({ chunk_index: 1 }).lean();
     if (parts.length !== chunkCount) {

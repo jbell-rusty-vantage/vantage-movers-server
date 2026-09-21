@@ -41,6 +41,7 @@ export function analysisRuntimeConfiguration() {
     model_id: provider.extractionModel, pricing: pricing.success ? pricing.data : null, limits };
 }
 export type AnalysisDependencies = { configuration?: ReturnType<typeof analysisRuntimeConfiguration>; model?: InvocationInput["model"];
+  onError?: (error: unknown) => void;
   limits?: RuntimeLimits; beforeProvider?: () => Promise<void>; afterReceipt?: () => Promise<void>;
   publish?: typeof publishCaptureProjectionWakeup;
   /** Test seam for the queue gate; production reads the deployment environment. */
@@ -246,6 +247,7 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
     await deps.afterReceipt?.();
     return await finish(receipt);
   } catch (error) {
+    deps.onError?.(error);
     if (runId) {
       const receipt = await recoverIntelligenceSubmission(runId, lease).catch(() => null);
       if (receipt) return await finish(receipt);

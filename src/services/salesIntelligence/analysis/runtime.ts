@@ -31,11 +31,21 @@ export class IntelligenceRuntimeError extends Error {
   constructor(readonly reason: "incomplete_coverage" | "bounds_exhausted" | "schema_exhausted" | "receipt_missing" | "contract_mismatch" | "eligibility_changed") { super(reason); }
 }
 const receiptSchema = z.object({ run_id: z.string(), submission_id: z.string(), application_job_id: z.string(), status: z.literal("submitted") }).strict();
-function resultValue(result: CallToolResult): unknown {
-  if (result.isError) throw new IntelligenceRuntimeError("contract_mismatch");
+export function resultValue(result: CallToolResult): unknown {
   const parts = result.content;
   if (!Array.isArray(parts) || parts.length !== 1 || parts[0].type !== "text") throw new IntelligenceRuntimeError("contract_mismatch");
-  return JSON.parse(parts[0].text);
+  const value: unknown = JSON.parse(parts[0].text);
+  if (result.isError) {
+    const error = z.object({ code: z.string() }).passthrough().safeParse(value);
+    if (error.success && ["INTELLIGENCE_UNAVAILABLE", "PROVIDER_READ_UNAVAILABLE", "RATE_LIMITED"].includes(error.data.code)) {
+      // An MCP tool reports downstream failures inside a successful transport
+      // response. Preserve their retry classification instead of permanently
+      // pausing a valid contract before the provider has even started.
+      throw Object.assign(new Error(error.data.code), { statusCode: error.data.code === "RATE_LIMITED" ? 429 : 503 });
+    }
+    throw new IntelligenceRuntimeError("contract_mismatch");
+  }
+  return value;
 }
 export type InvocationStep = { step: number; usage: LanguageModelUsage; actual_cents: number | null; schema_failures: number;
   /** Prefix tokens the provider reported serving from its cache, or null when it reports none (22 §4.3). */
