@@ -11,6 +11,7 @@ import { getSalesIntelligenceAuditEventModel } from "../../../models/SalesIntell
 import mongoose, { type InferSchemaType } from "mongoose";
 import type { SalesIntelligenceReviewItemSchema } from "../../../models/SalesIntelligenceReviewItem";
 import { getMongoDatabaseName } from "../../../config/domain/runtime";
+import type { CsiPolicy } from "../../../validation/v1/salesIntelligence";
 import { ownerRead, readCaptureCoverage } from "../../numberActivity/coverage";
 import { outreachDtoSchema, reviewItemDtoSchema, restrictionDtoSchema, type CoverageDto } from "../dto";
 import { resolvePolicy } from "../policy";
@@ -20,25 +21,97 @@ import { subjectKey, type RecordRow, type FollowupRow } from "./types";
 import { nudgeHistoryPage } from "../nudges/reads";
 
 const iso = (value: Date | null | undefined) => value?.toISOString() ?? null;
-export async function toOutreachDto(record: RecordRow, now = new Date(), coverage?: CoverageDto) {
-  const key = subjectKey(record.subject), policy = await resolvePolicy();
+
+const ATTEMPT_WINDOW_MS = 86_400_000;
+const reviewKeys = (record: RecordRow) => [subjectKey(record.subject), `number:${record.primary_contact_number_id}`];
+const attemptsSince = (now: Date) => new Date(+now - ATTEMPT_WINDOW_MS).toISOString();
+
+/**
+ * Everything `derive()` needs for one Outreach Record, loaded in five reads.
+ * Split out so a caller that must decide band membership for thousands of
+ * records can load a whole page with five `$in` queries instead of paying the
+ * twelve round trips a full Owner detail DTO costs (14 §2).
+ */
+export async function loadOutreachInputs(record: RecordRow, now: Date) {
   const [actions, restrictions, reviewItems, number, attempts] = await Promise.all([
     getOutreachFollowupModel().find({ outreach_record_id: record._id }).sort({ _id: 1 }).lean(),
     getSalesIntelligenceContactRestrictionModel().find({ contact_number_id: record.primary_contact_number_id }).lean(),
-    getSalesIntelligenceReviewItemModel().find({ subject_key: { $in: [key, `number:${record.primary_contact_number_id}`] } }).lean(),
+    getSalesIntelligenceReviewItemModel().find({ subject_key: { $in: reviewKeys(record) } }).lean(),
     getContactNumberModel().findById(record.primary_contact_number_id).lean(),
-    getSalesIntelligenceAuditEventModel().find({ subject_key: key, event_kind: "outreach_call_applied", "current.outboundAttempt": true,
-      "current.human": false, "current.happened_at": { $gt: new Date(+now - 86_400_000).toISOString() } }).lean(),
+    getSalesIntelligenceAuditEventModel().find({ subject_key: subjectKey(record.subject), event_kind: "outreach_call_applied", "current.outboundAttempt": true,
+      "current.human": false, "current.happened_at": { $gt: attemptsSince(now) } }).lean(),
   ]);
+  return { actions, restrictions, reviewItems, number, attempts };
+}
+export type OutreachInputs = Awaited<ReturnType<typeof loadOutreachInputs>>;
+
+/** The same five reads for a whole page of records, keyed by record id. */
+export async function loadOutreachInputsBatch(records: readonly RecordRow[], now: Date): Promise<Map<string, OutreachInputs>> {
+  const out = new Map<string, OutreachInputs>();
+  if (!records.length) return out;
+  const recordIds = records.map(r => r._id);
+  const numberIds = [...new Map(records.flatMap(r => r.primary_contact_number_id ? [[String(r.primary_contact_number_id), r.primary_contact_number_id]] as const : [])).values()];
+  const keys = [...new Set(records.flatMap(reviewKeys))];
+  const [actions, restrictions, reviewItems, numbers, attempts] = await Promise.all([
+    getOutreachFollowupModel().find({ outreach_record_id: { $in: recordIds } }).sort({ _id: 1 }).lean(),
+    numberIds.length ? getSalesIntelligenceContactRestrictionModel().find({ contact_number_id: { $in: numberIds } }).lean() : Promise.resolve([]),
+    getSalesIntelligenceReviewItemModel().find({ subject_key: { $in: keys } }).lean(),
+    numberIds.length ? getContactNumberModel().find({ _id: { $in: numberIds } }).lean() : Promise.resolve([]),
+    getSalesIntelligenceAuditEventModel().find({ subject_key: { $in: records.map(r => subjectKey(r.subject)) }, event_kind: "outreach_call_applied",
+      "current.outboundAttempt": true, "current.human": false, "current.happened_at": { $gt: attemptsSince(now) } }).lean(),
+  ]);
+  const group = <T>(rows: readonly T[], keyOf: (row: T) => string) => {
+    const map = new Map<string, T[]>();
+    for (const row of rows) {
+      const key = keyOf(row);
+      const bucket = map.get(key);
+      if (bucket) bucket.push(row); else map.set(key, [row]);
+    }
+    return map;
+  };
+  const byRecord = group(actions, a => String(a.outreach_record_id));
+  const byNumber = group(restrictions, r => String(r.contact_number_id));
+  const byKey = group(reviewItems, r => r.subject_key);
+  const byAttemptKey = group(attempts, a => a.subject_key);
+  const numberById = new Map(numbers.map(n => [String(n._id), n]));
+  for (const record of records) {
+    const numberId = record.primary_contact_number_id ? String(record.primary_contact_number_id) : null;
+    out.set(String(record._id), {
+      actions: byRecord.get(String(record._id)) ?? [],
+      restrictions: numberId ? byNumber.get(numberId) ?? [] : [],
+      reviewItems: [...new Map(reviewKeys(record).flatMap(key => (byKey.get(key) ?? []).map(row => [String(row._id), row] as const))).values()],
+      number: numberId ? numberById.get(numberId) ?? null : null,
+      attempts: byAttemptKey.get(subjectKey(record.subject)) ?? [],
+    });
+  }
+  return out;
+}
+
+/**
+ * Band and badge membership for one record. Pure over `inputs`, so a publish
+ * can decide what belongs on the desk before building any Owner detail DTO.
+ */
+export function deriveOutreachFacts(record: RecordRow, inputs: OutreachInputs, context: { now: Date; policy: CsiPolicy; coverage: CoverageDto }) {
+  const projected = { ...record, state: stateWithActions(record, inputs.actions, context.now) };
+  return derive(projected, { now: context.now, policy: context.policy, staffing: context.policy, followups: inputs.actions,
+    restrictions: inputs.restrictions, reviewItems: inputs.reviewItems, coverage: context.coverage,
+    suppressed: inputs.number?.contact_eligibility.state === "suppressed",
+    unsuccessfulAttempts: [...new Map(inputs.attempts.map(a => [String(a.current.interaction_id), new Date(String(a.current.happened_at))])).values()] });
+}
+
+export async function toOutreachDto(record: RecordRow, now = new Date(), coverage?: CoverageDto,
+  prefetched: { policy?: CsiPolicy; inputs?: OutreachInputs } = {}) {
+  const policy = prefetched.policy ?? await resolvePolicy();
+  const inputs = prefetched.inputs ?? await loadOutreachInputs(record, now);
+  const { actions, restrictions, number } = inputs;
   const activeRestrictions = restrictions.filter(r => r.state === "active" && (!r.until || r.until > now));
   const agentIds = [record.responsible_agent_id, ...actions.flatMap(a => [a.responsible_agent_id, a.promised_by_agent_id])].filter((v): v is mongoose.Types.ObjectId => Boolean(v));
   const agents = await mongoose.connection.useDb(getMongoDatabaseName(), { useCache: true }).collection("agents").find({ _id: { $in: agentIds } }, { projection: { name: 1 } }).toArray();
   const agent = (id: unknown) => id ? { id: String(id), name: agents.find(a => String(a._id) === String(id))?.name ?? "Unknown Agent" } : null;
   const assignment = (row: Pick<FollowupRow, "responsible_agent_id" | "assignment">) => ({ agent: agent(row.responsible_agent_id), origin: row.assignment?.origin ?? null,
     assigned_at: iso(row.assignment?.assigned_at), evidence_ref: row.assignment?.evidence_id ? String(row.assignment.evidence_id) : null, owner_instruction_id: row.assignment?.instruction_id ? String(row.assignment.instruction_id) : null });
-  const projected = { ...record, state: stateWithActions(record, actions, now) };
-  const facts = derive(projected, { now, policy, staffing: policy, followups: actions, restrictions, reviewItems, coverage: coverage ?? await readCaptureCoverage(),
-    suppressed: number?.contact_eligibility.state === "suppressed", unsuccessfulAttempts: [...new Map(attempts.map(a => [String(a.current.interaction_id), new Date(String(a.current.happened_at))])).values()] });
+  const projectedState = stateWithActions(record, actions, now);
+  const facts = deriveOutreachFacts(record, inputs, { now, policy, coverage: coverage ?? await readCaptureCoverage() });
   const availability = (action: "patch_followup" | "complete_followup" | "cancel_followup" | "snooze_followup", row: FollowupRow) => ({ action, target_id: String(row._id), expected_revision: row.revision,
     enabled: row.status === "open" && record.state !== "closed" && (action !== "snooze_followup" || Boolean(row.due_at)), blocker_codes: [] });
   const followups = actions.map(a => ({ id: String(a._id), revision: a.revision, kind: a.kind, description: a.description, status: a.status, due_at: iso(a.due_at),
@@ -65,7 +138,7 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
     latest_number_call: latest ? { id: String(latest._id), happened_at: iso(latest.started_at), direction: latest.direction, provider_result: latest.provider_result ?? null, contact_type: latest.contact_type } : null,
     primary_number: number ? { id: String(number._id), e164: number.e164 } : null,
     subject: record.subject.kind === "lead" ? { kind: "lead", model: record.subject.model, id: String(record.subject.id) } : { kind: "number_review", contact_number_id: String(record.subject.contact_number_id) },
-    state: projected.state, reason: record.closed_reason, assignment: assignment(record), followups, followups_cursor: null,
+    state: projectedState, reason: record.closed_reason, assignment: assignment(record), followups, followups_cursor: null,
     trigger_at: iso(record.trigger_at), first_action_due_at: iso(record.first_action_due_at), first_attributable_outbound_at: iso(record.first_attributable_outbound_at),
     next_action: followups.find(a => a.id === String(record.next_action?.followup_id)) ?? null, first_human_conversation_at: iso(record.first_human_conversation_at),
     last_meaningful_contact_at: iso(record.last_meaningful_contact_at), derived: { ...derived, action_facts: actionFacts }, related_record_links: related,
@@ -75,9 +148,9 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
 export async function readOutreach(id: string) {
   const record = await getOutreachRecordModel().findOne({ _id: id, purged_at: null }).lean();
   if (!record) return null;
-  const now = new Date(), coverage = await readCaptureCoverage();
+  const now = new Date(), [coverage, policy] = await Promise.all([readCaptureCoverage(), resolvePolicy()]);
   const instructions = await getSalesIntelligenceOwnerInstructionModel().find({ subject_key: subjectKey(record.subject) }).sort({ happened_at: 1 }).lean();
-  return { as_of: now.toISOString(), coverage, data: { outreach: await toOutreachDto(record, now, coverage), owner_instructions: instructions,
+  return { as_of: now.toISOString(), coverage, data: { outreach: await toOutreachDto(record, now, coverage, { policy }), owner_instructions: instructions,
     nudges: await nudgeHistoryPage({ outreach_record_id: id, limit: 20 }) } };
 }
 export async function readOutreachByLead(model: "FormLead" | "CallLead", id: string) {
@@ -90,7 +163,10 @@ export async function readNumberOutreach(numberId: string) {
     ...edges.map(e => ({ "subject.model": e.lead_ref.model, "subject.id": e.lead_ref.id }))] }).lean();
   const restrictions = await getSalesIntelligenceContactRestrictionModel().find({ contact_number_id: numberId }).lean();
   const reviewItems = await getSalesIntelligenceReviewItemModel().find({ subject_key: { $in: [`number:${numberId}`, ...records.map(r => subjectKey(r.subject))] } }).lean();
-  return { outreach_records: await Promise.all(records.map(r => toOutreachDto(r))), restrictions: restrictions.map(r => restrictionDtoSchema.parse({ id: String(r._id), revision: r.revision,
+  // Policy and Coverage are invariants of the read, not of each record.
+  const now = new Date(), [coverage, policy] = await Promise.all([readCaptureCoverage(), resolvePolicy()]);
+  const inputs = await loadOutreachInputsBatch(records, now);
+  return { outreach_records: await Promise.all(records.map(r => toOutreachDto(r, now, coverage, { policy, inputs: inputs.get(String(r._id)) }))), restrictions: restrictions.map(r => restrictionDtoSchema.parse({ id: String(r._id), revision: r.revision,
     contact_number_id: String(r.contact_number_id), channels: r.channels, until: iso(r.until), origin: r.origin, state: r.state, run_id: r.run_id ? String(r.run_id) : null,
     finding_id: r.finding_id ? String(r.finding_id) : null, allowed_actions: [{ action: "resolve_restriction", target_id: String(r._id), expected_revision: r.revision, enabled: r.state === "active", blocker_codes: [] }] })), review_items: reviewItems.map(toReviewDto) };
 }

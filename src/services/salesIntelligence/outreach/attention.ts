@@ -9,26 +9,49 @@ import { CsiError } from "../auth";
 import { resolvePolicy } from "../policy";
 import { payloadHash } from "../transactions";
 import { readCaptureCoverage } from "../../numberActivity/coverage";
-import { toOutreachDto } from "./reads";
+import { deriveOutreachFacts, loadOutreachInputsBatch, toOutreachDto } from "./reads";
 import { subjectKey } from "./types";
 import { jsonValue } from "./store";
 
 export const attentionQuerySchema = z.object({ scope: z.literal("production").optional(), cursor: z.string().max(2000).optional(), limit: z.coerce.number().int().min(1).max(200).default(50),
   band: z.coerce.number().int().min(1).max(7).optional(), needs_review: z.enum(["true", "false"]).optional(), state: z.enum(["unworked", "open", "waiting_on_customer", "identity_review", "closed"]).optional(),
   agent_id: z.string().regex(/^[a-f\d]{24}$/i).optional() }).strict();
-/** Worker-created read snapshot. Aborts instead of publishing a truncated Attention list. */
-export async function publishAttentionSnapshot() {
-  const now = new Date(), deadline = +now + 40_000, policy = await resolvePolicy(), coverage = await readCaptureCoverage();
+const PUBLISH_PAGE = 50;
+export const ATTENTION_PUBLISH_BUDGET_MS = 40_000;
+
+/**
+ * Worker-created read snapshot. Aborts instead of publishing a truncated
+ * Attention list.
+ *
+ * Band membership is decided from batch-loaded record state before any Owner
+ * detail DTO is built: `derive()` needs only followups, restrictions, review
+ * items, the Contact Number and the 24-hour attempt audit, and those load for
+ * a whole page in five `$in` queries. Only records that actually earned a band
+ * or a badge pay for a DTO. Policy and Coverage are publish-wide invariants and
+ * are resolved once. Before this the publish paid roughly twelve round trips
+ * for every non-purged record — about 48,000 inside a 40-second budget at
+ * production volume — which is why it never landed (14 §2).
+ */
+export async function publishAttentionSnapshot(options: { deadlineMs?: number } = {}) {
+  const now = new Date();
+  const deadline = +now + (options.deadlineMs ?? ATTENTION_PUBLISH_BUDGET_MS);
+  const [policy, coverage] = await Promise.all([resolvePolicy(), readCaptureCoverage()]);
   const rows: z.infer<typeof attentionRowDtoSchema>[] = [];
   let after: string | undefined;
   for (;;) {
-    const page = await getOutreachRecordModel().find({ purged_at: null, ...(after ? { _id: { $gt: after } } : {}) }).sort({ _id: 1 }).limit(50).lean();
+    if (Date.now() > deadline) return { status: "incomplete", reason: "snapshot_budget" };
+    const page = await getOutreachRecordModel().find({ purged_at: null, ...(after ? { _id: { $gt: after } } : {}) }).sort({ _id: 1 }).limit(PUBLISH_PAGE).lean();
+    const inputs = await loadOutreachInputsBatch(page, now);
     for (const record of page) {
+      const bundle = inputs.get(String(record._id));
+      if (!bundle) continue;
+      const facts = deriveOutreachFacts(record, bundle, { now, policy, coverage });
+      if (!facts.attention_band && !facts.review_badges.length) continue;
       if (Date.now() > deadline) return { status: "incomplete", reason: "snapshot_budget" };
-      const outreach = await toOutreachDto(record, now, coverage);
-      if (outreach.derived.attention_band || outreach.derived.review_badges?.length) rows.push({ subject_key: subjectKey(record.subject), subject: outreach.subject, outreach, derived: outreach.derived, allowed_actions: outreach.allowed_actions });
+      const outreach = await toOutreachDto(record, now, coverage, { policy, inputs: bundle });
+      rows.push({ subject_key: subjectKey(record.subject), subject: outreach.subject, outreach, derived: outreach.derived, allowed_actions: outreach.allowed_actions });
     }
-    if (page.length < 50) break;
+    if (page.length < PUBLISH_PAGE) break;
     after = String(page.at(-1)!._id);
   }
   const reviews = await getSalesIntelligenceReviewItemModel().find({ state: "open" }).lean();
@@ -62,12 +85,19 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>) {
   let page: z.infer<typeof cursorSchema> | null = null;
   if (cursor) { try { page = cursorSchema.parse(JSON.parse(Buffer.from(cursor, "base64url").toString())); } catch { throw new CsiError("INVALID_INPUT"); } }
   if (page && page.digest !== digest) throw new CsiError("INVALID_INPUT");
-  const snapshot = await getSalesIntelligenceAttentionSnapshotModel().findOne({ ...csiDataset(), ...(page ? { snapshot_id: page.snapshot_id } : { snapshot_id: /^outreach:/ }), expires_at: { $gt: new Date() } }).sort({ as_of: -1 }).lean();
+  // The dataset filter already selects Attention snapshots; a `/^outreach:/`
+  // regex on top of it only stopped the lookup using an index (14 §10).
+  const snapshot = await getSalesIntelligenceAttentionSnapshotModel().findOne({ ...csiDataset(), ...(page ? { snapshot_id: page.snapshot_id } : {}), expires_at: { $gt: new Date() } }).sort({ as_of: -1 }).lean();
   if (!snapshot) {
     if (page) throw new CsiError("ATTENTION_SNAPSHOT_EXPIRED");
     return attentionPageDtoSchema.parse({ as_of: new Date().toISOString(), coverage: await readCaptureCoverage(), data: { items: [], snapshot_id: null, cursor: null, total_items: null, reason_counts: {}, status: "pending_projection" } });
   }
-  const rows = z.array(attentionRowDtoSchema).parse(snapshot.rows).filter(r => (!query.band || r.derived.attention_band === query.band) && (!query.state || r.outreach?.state === query.state) &&
+  // Rows were validated on write against the same schema and the snapshot is
+  // immutable, so a paginated GET filters and counts over the stored rows and
+  // re-validates only the page it returns. Re-parsing a multi-megabyte array
+  // on every page view was pure read-path cost (14 §2).
+  const stored = (Array.isArray(snapshot.rows) ? snapshot.rows : []) as z.infer<typeof attentionRowDtoSchema>[];
+  const rows = stored.filter(r => (!query.band || r.derived.attention_band === query.band) && (!query.state || r.outreach?.state === query.state) &&
     (!query.agent_id || r.outreach?.assignment.agent?.id === query.agent_id || r.outreach?.followups.some(a => a.assignment.agent?.id === query.agent_id)) &&
     (query.needs_review === undefined || Boolean(r.derived.review_badges?.length) === (query.needs_review === "true")));
   const offset = page?.offset ?? 0, reasons: Record<string, number> = {};

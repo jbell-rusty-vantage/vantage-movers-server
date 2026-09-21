@@ -6,6 +6,9 @@
   "outputDirectory": "public",
   "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
   "functions": {
+    "api/index.ts": {
+      "maxDuration": 120
+    },
     "api/queues/sheet-sync-consumer.ts": {
       "experimentalTriggers": [
         {
@@ -75,6 +78,10 @@
     { "path": "/api/cron/sales-intelligence-apply", "schedule": "*/5 * * * *" },
     {
       "path": "/api/cron/sales-intelligence-outreach-ensure",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/sales-intelligence-attention-publish",
       "schedule": "* * * * *"
     },
     {
@@ -155,7 +162,7 @@
     },
     {
       "path": "/api/cron/sales-intelligence-call-log-reconcile",
-      "schedule": "3-59/10 * * * *"
+      "schedule": "3-59/5 * * * *"
     },
     {
       "path": "/api/cron/sales-intelligence-job-recovery",

@@ -1,6 +1,8 @@
 # 14 — Call Log capture and Number search: efficiency analysis and recommendation
 
-Status: analysis and recommendation. Not a delivery plan, not a contract change.
+Status: **implemented** (2026-09-20). The analysis below stands as written; §14 records
+what landed, what changed shape on the way in, and the two operator steps it needs.
+Originally: analysis and recommendation. Not a delivery plan, not a contract change.
 Authority for product rules stays with [01](01-specification.md), [03](03-server-pipeline-and-jobs.md), [04](04-server-routes.md), [10](10-intelligence-agent-contract.md).
 Companion reading: [13 — Contact Number analysis surfaces](13-number-analysis-surfaces.md) (what the analysis path touches) and [workspace/ATTENTION-PROJECTION.md](workspace/ATTENTION-PROJECTION.md) (why Needs Attention is `pending_projection`).
 Code of record: `src/services/numberActivity/*`, `src/services/salesIntelligence/outreach/*`, `src/services/salesIntelligence/attachment/*`, `src/services/salesIntelligence/jobs.ts`.
@@ -523,6 +525,8 @@ failing `incomplete_coverage` (13 §5.4); source-change latency drops from days 
 
 | Concern | Path |
 | --- | --- |
+| Shared `search_terms` cap and owner | `src/services/numberActivity/searchTerms.ts` |
+| Lead phone join key and its indexes | `src/models/leadContactPhoneIndexes.ts` |
 | Coverage recount on every read | `src/services/numberActivity/coverage.ts` |
 | Number search filter and cursor | `src/services/numberActivity/search.ts` |
 | Timeline k-way merge and sources | `src/services/numberActivity/timeline.ts` |
@@ -541,3 +545,67 @@ failing `incomplete_coverage` (13 §5.4); source-change latency drops from days 
 | Contact Number / Interaction / Conversation indexes | `src/models/ContactNumber.ts`, `CallInteraction.ts`, `LeadConversation.ts` |
 | Lead phone indexes | `src/models/FormLead.ts`, `src/models/CallLead.ts`, `src/utils/phone.ts` |
 | Cron cadences | `vercel.json` |
+
+---
+
+## 14. As built
+
+All twelve findings are addressed. Two departures from the recommendation are noted below;
+both are cases where the proposed mechanism was unsafe as written, not where the goal changed.
+
+### Per finding
+
+| # | Finding | What landed |
+| --- | --- | --- |
+| 1 | Coverage recount on every read | `readCaptureCoverage()` memoized per dataset for `SALES_INTELLIGENCE_COVERAGE_CACHE_MS` (default 5 s, `0` disables), sharing the in-flight promise so one k-way timeline merge derives it once. `recordings: {$size: 0}` → `"recordings.0": {$exists: false}`. New indexes `call_interaction_discovery_state`, `lead_conversation_eligibility`, `lead_conversation_media_stored` (partial). |
+| 2 | Attention publish cost | `resolvePolicy()` and Coverage hoisted to once per publish. `loadOutreachInputsBatch` loads a 50-record page in five `$in` queries; `deriveOutreachFacts` decides band/badge membership from that batch; only rows that earned one build a DTO. `readAttention` no longer Zod-parses the whole snapshot per page — rows are validated on write and the returned page is re-validated. |
+| 3 | Lead attachment corpus scan | `findLeadsByNumber` asks the phone index with the number's own join key (`national_ten`, or the E.164 digit string outside NANP) across every contact path `phoneEvidence` reads. New indexes on both Lead collections, registered in the CSI index inventory. `O(numbers × leads)` → `O(matches)`. |
+| 4 | Twelve-hour reconcile window | `resolveWindowPlan` makes the cursor a watermark with a 90-minute safety clamp; the clamped range becomes a `watermark_clamp` gap so nothing is silently skipped. Settled records (unmodified since the watermark, every identity already aliased) skip the transaction. Lease renews on a `ttl/3` clock. Cron `3-59/10` → `3-59/5`. |
+| 5 | Two 40-second budgets | One absolute deadline threaded through the ensure drain. Publish moved to its own cron (`/api/cron/sales-intelligence-attention-publish`), its own lease (`attention_publish`) and its own budget; it refuses to start a walk with under 5 s left rather than being killed mid-walk. `maxDuration: 120` declared for `api/index.ts`. |
+| 6 | `search_terms` cap drift | One shared cap and a stated owner in `searchTerms.ts`. Regression test asserts capture cannot evict a lead-derived term from a full set. |
+| 7 | Job claim index | `csi_job_claim` carries the claim's dataset/stage prefix and its exact sort. Dead-letter sweep moved off the per-claim path. `csi_job_completed_ttl` retires completed rows after 14 days. |
+| 8 | Number search in-memory sorts | Compound indexes carrying `(last_activity_at, _id)` for `digits_reversed`, `search_terms`, `classification` and `kind`. |
+| 9 | Timeline conversation scan | `lead_conversations` read directly off `contact_number_id` (new index); the legacy recording-link fallback is bounded to the page window instead of 2,000 rows. `list_number_activity` scope guards evaluated once per run (the uncursored first page), unchanged and still fail-closed. |
+| 10 | Digit search, `assertIndexes`, source scan, snapshot regex | Digit input `$or`s exact E.164 with the suffix predicate. `assertIndexes` memoized per collection per process (successes only). `scanIntelligenceChanges` driven from the audit stream with the round-robin kept as repair. The `/^outreach:/` regex dropped; `csi_attention_dataset_asof` added. |
+| 11 | `assertIndexes` per claim/persist | See §10. The same finding applies to `defineCsiModel`'s `requireUniqueFences`, which issued a `listIndexes` on **every** CSI write, not only on claims and lead persists; it is memoized the same way. |
+| 12 | Source scan laps in days | See §10. |
+
+### Two departures
+
+**§2 item 4 — narrowing the publish candidate set at the query.** Not done, because it is not
+sound: `derive()` grants `review_badges` (`missing_date`, `missing_responsibility`, and any open
+review item) regardless of state, so a closed record can still legitimately belong on the desk.
+Excluding closed records at the server would silently drop those rows. The batch decision in
+item 2 removes the cost anyway — the scan is now ~5 queries per 50 records whatever their state.
+
+**§2 item 3 — a separate `toAttentionRowDto`.** Not done. `outreachDtoSchema` requires
+`related_record_links` and `allowed_actions`, so a slimmer row would be a DTO contract change
+affecting the admin client, and §12 is explicit that this work does not change read contracts.
+Batch-deciding membership already means only real desk rows ever build a DTO, which is where the
+cost was.
+
+### Operator steps
+
+Applied 20 Sep 2026 on `vantagemovers` (Owner-authorized). `--verify` ready, unresolved
+accounts 0, no missing or incompatible indexes. The superseded names
+(`contact_number_digits_reversed`, `contact_number_search_terms`,
+`contact_number_classification_activity`, `call_interaction_number_started`) were dropped
+after the replacements existed. Conversation-number backfill scanned one unset row and
+left it unresolved (no invented link); the page-window fallback still covers that row.
+
+1. `pnpm migration:csi:indexes --apply` — builds the new indexes. Required: §1, §3, §7, §8 and §9
+   all depend on them, and the attachment reverse lookup degrades to a scan without them.
+   Renamed indexes (`contact_number_digits_reversed`, `contact_number_search_terms`,
+   `contact_number_classification_activity`, `call_interaction_number_started`) are superseded,
+   not dropped by the migration; drop the old names once the new ones are built.
+2. `pnpm migration:csi:conversation-number --apply` — backfills
+   `lead_conversations.contact_number_id` from the recording link, after which the §9 legacy
+   fallback finds nothing. Safe to defer: the fallback keeps the timeline correct meanwhile.
+
+### Verification
+
+`pnpm typecheck` and `pnpm test` (2,478 pass) are green. The behavioural changes carry unit
+coverage in `src/services/numberActivity/efficiency.test.ts` (§3, §6, §7, §8, §9 index contracts)
+and `capture.test.ts` (§4 watermark and clamp gap). The acceptance checks in §11 — `explain()` on
+the five read shapes, `outreach_ensure` trending to zero, the desk reaching `ready` — are
+production observations and still need to be taken against the deployed system.

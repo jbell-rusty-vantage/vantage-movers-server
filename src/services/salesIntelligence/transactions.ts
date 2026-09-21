@@ -20,19 +20,56 @@ export function duplicateKey(error: unknown): boolean {
       error.code === 11000,
   );
 }
+type IndexedCollection = {
+  dbName?: string;
+  collectionName?: string;
+  indexes(): Promise<
+    Array<{
+      name?: string;
+      key: object;
+      unique?: boolean;
+      partialFilterExpression?: object;
+      sparse?: boolean;
+    }>
+  >;
+};
+
+/**
+ * A satisfied unique fence for one collection cannot become unsatisfied inside
+ * a process lifetime: dropping an index is an operator action that restarts
+ * the worker. Without this memo a single 250-Lead attachment page issues 250
+ * `listIndexes` server commands, and every enqueue and claim issues one more
+ * (14 §10). Only successes are cached, so a genuinely missing index keeps
+ * failing closed on every call until it is created.
+ */
+const verifiedIndexFences = new Set<string>();
+
+/** Test seam; production never needs to forget a verified fence. */
+export function resetVerifiedIndexFences(): void {
+  verifiedIndexFences.clear();
+}
+
 export async function assertIndexes(
-  collection: {
-    indexes(): Promise<
-      Array<{
-        name?: string;
-        key: object;
-        unique?: boolean;
-        partialFilterExpression?: object;
-        sparse?: boolean;
-      }>
-    >;
-  },
+  collection: IndexedCollection,
   expected: readonly CsiIndex[],
+) {
+  const required = expected.filter((v) => v.unique);
+  if (!required.length) return;
+  const namespace = `${collection.dbName ?? "?"}.${collection.collectionName ?? "?"}`;
+  const memoKey = `${namespace}:${canonicalJson(required.map((v) => v.name))}`;
+  if (namespace.includes("?")) {
+    // An unidentifiable collection (a test double) is never memoized.
+    await verifyIndexFences(collection, required);
+    return;
+  }
+  if (verifiedIndexFences.has(memoKey)) return;
+  await verifyIndexFences(collection, required);
+  verifiedIndexFences.add(memoKey);
+}
+
+async function verifyIndexFences(
+  collection: IndexedCollection,
+  required: readonly CsiIndex[],
 ) {
   let actual;
   try {
@@ -40,7 +77,7 @@ export async function assertIndexes(
   } catch {
     throw new CsiError("INDEX_REQUIRED");
   }
-  for (const e of expected.filter((v) => v.unique)) {
+  for (const e of required) {
     if (
       !actual.some(
         (a) =>

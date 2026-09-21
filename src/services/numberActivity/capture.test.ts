@@ -10,7 +10,7 @@ import {
 import { EMPTY_DIRECTORY_LOOKUP } from "./directory";
 import { at, syntheticDirectory, SYNTHETIC_QUEUE_EXTENSION, SYNTHETIC_SALES_DID } from "./fixtures";
 import { classifyEndpoint, toE164, toNationalTenDigit } from "./phone";
-import { nextState, resolveWindowStart, type ReconcileConfig, type WindowResult } from "./reconcileCallLog";
+import { nextState, resolveWindowPlan, resolveWindowStart, type ReconcileConfig, type WindowResult } from "./reconcileCallLog";
 
 const directory = syntheticDirectory();
 
@@ -51,6 +51,7 @@ test("provider account resolution never fabricates or silently picks between acc
 
 const config: ReconcileConfig = {
   rollingLookbackMinutes: 720,
+  safetyLookbackMinutes: 90,
   overlapMinutes: 15,
   maxPages: 20,
   perPage: 250,
@@ -73,13 +74,47 @@ function window(partial: Partial<WindowResult> & Pick<WindowResult, "from" | "to
   };
 }
 
-test("window start honors the twelve-hour floor and the cursor overlap", () => {
+test("window start is a watermark with a bounded safety lookback, and records what it skipped", () => {
   const now = at(0);
+  // Cold start: no cursor, no gaps, so the full lookback is the honest reach.
   assert.equal(resolveWindowStart(now, {}, config).toISOString(), at(-720 * 60).toISOString());
+  assert.equal(resolveWindowPlan(now, {}, config).skipped, null);
+
+  // Steady state: the cursor moves the window FORWARD. It used to be able to
+  // move it only earlier, so every run re-projected a full twelve hours.
   const recent = { cursor: { last_sync_to: at(-600) } };
-  assert.equal(resolveWindowStart(now, recent, config).toISOString(), at(-720 * 60).toISOString(), "recent cursor: floor wins");
+  const incremental = resolveWindowPlan(now, recent, config);
+  assert.equal(incremental.from.toISOString(), at(-600 - 15 * 60).toISOString(), "cursor minus overlap");
+  assert.equal(incremental.skipped, null);
+
+  // Stale cursor: the window is clamped to the safety lookback and whatever
+  // the clamp left behind is returned, never silently skipped.
   const stale = { cursor: { last_sync_to: at(-20 * 3600) } };
-  assert.equal(resolveWindowStart(now, stale, config).toISOString(), at(-20 * 3600 - 15 * 60).toISOString(), "stale cursor: overlap start wins");
+  const clamped = resolveWindowPlan(now, stale, config);
+  assert.equal(clamped.from.toISOString(), at(-90 * 60).toISOString(), "clamped to the safety lookback");
+  assert.deepEqual(
+    [clamped.skipped?.from.toISOString(), clamped.skipped?.to.toISOString()],
+    [at(-20 * 3600 - 15 * 60).toISOString(), at(-90 * 60).toISOString()],
+  );
+});
+
+test("a clamped window opens a repairable gap instead of losing the range", () => {
+  const skipped = { from: at(-20 * 3600 - 15 * 60), to: at(-90 * 60) };
+  const opened = nextState({ gaps: [] as never[] }, [window({ from: at(-90 * 60), to: at(0) })], at(0), at(1), config, skipped);
+  assert.equal(opened.cursor_advanced, true, "the incremental window still completed");
+  assert.deepEqual(
+    opened.gaps.map((g) => [g.from.toISOString(), g.to.toISOString(), g.reason]),
+    [[skipped.from.toISOString(), skipped.to.toISOString(), "watermark_clamp"]],
+    "gap repair, which already runs oldest-first on leftover budget, covers it",
+  );
+  assert.equal(opened.opened.length, 1);
+
+  // Re-clamping on a later run widens the same gap rather than accumulating duplicates.
+  const again = nextState({ gaps: opened.gaps }, [window({ from: at(-90 * 60), to: at(0) })], at(0), at(1), config,
+    { from: at(-30 * 3600), to: at(-90 * 60) });
+  assert.equal(again.gaps.length, 1);
+  assert.equal(again.gaps[0]!.from.toISOString(), at(-30 * 3600).toISOString());
+  assert.equal(again.opened.length, 0);
 });
 
 test("coverage: complete rolling window advances cursor and watermark, closes covered gaps", () => {

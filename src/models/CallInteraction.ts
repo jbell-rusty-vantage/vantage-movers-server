@@ -26,9 +26,15 @@ export const CALL_INTERACTION_INDEXES = [
     name: "call_interaction_call_log_ids",
     key: { provider: 1, provider_account_id: 1, call_log_ids: 1 },
   },
+  // `_id` completes the timeline's total order so the keyset read needs no sort stage (14 §9).
   {
-    name: "call_interaction_number_started",
-    key: { contact_number_id: 1, started_at: -1 },
+    name: "call_interaction_number_started_id",
+    key: { contact_number_id: 1, started_at: -1, _id: -1 },
+  },
+  // Serves the Coverage discovery counters without a collection scan (14 §1).
+  {
+    name: "call_interaction_discovery_state",
+    key: { merged_into_id: 1, terminal: 1, "recording_discovery.state": 1 },
   },
   { name: "call_interaction_started_window", key: { started_at: -1, _id: -1 } },
   {

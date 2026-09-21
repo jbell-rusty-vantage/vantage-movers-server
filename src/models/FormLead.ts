@@ -12,6 +12,7 @@ import {
   RECEIVER_AGENT_SOURCES,
 } from "./granotLifecycleSchemas";
 import { normalizeJobNo } from "../services/bookings/bookingIdentity";
+import { FORM_LEAD_ATTACHMENT_INDEXES } from "./leadContactPhoneIndexes";
 import {
   localField,
   sheetSyncSchema,
@@ -144,6 +145,10 @@ FormLeadSchema.index({
   email: 1,
   normalized_contact_name: 1,
 });
+// CSI attachment reverse lookup (14 §3): one keyed read per Contact Number.
+for (const { key, ...options } of FORM_LEAD_ATTACHMENT_INDEXES) {
+  FormLeadSchema.index(key as Record<string, 1>, options);
+}
 export const FORM_LEAD_S08_INDEXES = [
   {
     name: "form_lead_normalized_job_no",

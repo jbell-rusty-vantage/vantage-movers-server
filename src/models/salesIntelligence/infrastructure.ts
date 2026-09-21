@@ -25,10 +25,34 @@ import {
   unique,
   index,
 } from "./common";
+/**
+ * Completed queue rows are operational exhaust, not the audit trail (that
+ * lives in `sales_intelligence_audit_events`). `completed_at` is written only
+ * by `completeCsiJob`, and Mongo's TTL monitor ignores documents whose indexed
+ * field is not a date, so pending/leased/retry rows are never expired (14 §7).
+ */
+export const CSI_JOB_RETENTION_SECONDS = 14 * 24 * 60 * 60;
 export const SALES_INTELLIGENCE_JOB_INDEXES = [
   unique("csi_job_dedupe_unique", { dedupe_key: 1 }),
   index("csi_job_due", { status: 1, next_attempt_at: 1, priority: -1 }),
   index("csi_job_lease", { status: 1, leased_until: 1 }),
+  // The claim leads with the dataset and (optionally) the stage, then sorts
+  // `priority desc, next_attempt_at asc, _id asc`. This index carries that
+  // exact order so the claim never runs a blocking in-memory sort (14 §7).
+  index("csi_job_claim", {
+    deployment: 1,
+    database: 1,
+    stage: 1,
+    status: 1,
+    priority: -1,
+    next_attempt_at: 1,
+    _id: 1,
+  }),
+  {
+    name: "csi_job_completed_ttl",
+    key: { completed_at: 1 as const },
+    expireAfterSeconds: CSI_JOB_RETENTION_SECONDS,
+  },
 ];
 export const SalesIntelligenceJobSchema = new Schema(
   {
@@ -269,6 +293,8 @@ export const SALES_INTELLIGENCE_ATTENTION_SNAPSHOT_INDEXES = [
     key: { expires_at: 1 as const },
     expireAfterSeconds: 0,
   },
+  // Newest live snapshot for the dataset, without a sort stage (14 §10).
+  index("csi_attention_dataset_asof", { deployment: 1, database: 1, as_of: -1 }),
 ];
 export const SalesIntelligenceAttentionSnapshotSchema = new Schema(
   {

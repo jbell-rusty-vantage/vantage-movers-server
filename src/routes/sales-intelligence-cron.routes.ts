@@ -10,7 +10,7 @@ import {
 } from "../services/numberActivity/captureProjectionWorker";
 import { runDirectorySyncOnce } from "../services/numberActivity/directorySync";
 import { runAttachmentRefreshOnce, drainAttachmentRefreshJobs } from "../services/salesIntelligence/attachment/refresh";
-import { runOutreachEnsureOnce, drainOutreachEnsureJobs } from "../services/salesIntelligence/outreach/worker";
+import { runOutreachEnsureOnce, drainOutreachEnsureJobs, runAttentionPublishOnce } from "../services/salesIntelligence/outreach/worker";
 import { drainRecordingDiscoveryJobs } from "../services/salesIntelligence/conversations/discover";
 import { drainRepIdentityReevaluationJobs } from "../services/salesIntelligence/repIdentity/worker";
 import { drainNudgeRepairJobs } from "../services/salesIntelligence/nudges/repair";
@@ -69,6 +69,7 @@ export type SalesIntelligenceCronRouteDeps = {
   drainRecordingDiscovery?: typeof drainRecordingDiscoveryJobs;
   runOutreachEnsure?: typeof runOutreachEnsureOnce;
   drainOutreachEnsure?: typeof drainOutreachEnsureJobs;
+  runAttentionPublish?: typeof runAttentionPublishOnce;
   runBackfillStep?: typeof runBackfillStepOnce;
   drainBackfillActivation?: typeof drainBackfillActivationJobs;
   runRetention?: typeof runRetentionOnce;
@@ -91,6 +92,7 @@ export const CSI_CRON_PATHS = {
   transcribe: "/api/cron/sales-intelligence-transcribe",
   attachmentRefresh: "/api/cron/sales-intelligence-attachment-refresh",
   outreachEnsure: "/api/cron/sales-intelligence-outreach-ensure",
+  attentionPublish: "/api/cron/sales-intelligence-attention-publish",
 } as const;
 
 export function createSalesIntelligenceCronRouter(
@@ -279,6 +281,13 @@ export function createSalesIntelligenceCronRouter(
     if (!flag("OUTREACH_ENSURE")) return res.json({ ok: true, skipped: true, reason: "disabled" });
     try { await connect(); return res.json({ ok: true, ...(await (deps.runOutreachEnsure ?? runOutreachEnsureOnce)()) }); }
     catch { return res.status(500).json({ ok: false, error: "Outreach ensure failed" }); }
+  });
+  // Publish owns its lease and its invocation so an ensure drain backlog can
+  // never starve the Needs Attention desk (14 §5).
+  router.all(CSI_CRON_PATHS.attentionPublish, requireCronAuth, async (_req, res) => {
+    if (!flag("OUTREACH_ENSURE")) return res.json({ ok: true, skipped: true, reason: "disabled" });
+    try { await connect(); return res.json({ ok: true, ...(await (deps.runAttentionPublish ?? runAttentionPublishOnce)()) }); }
+    catch { return res.status(500).json({ ok: false, error: "Attention publish failed" }); }
   });
   router.all(CSI_CRON_PATHS.nudgeRepair, requireCronAuth, async (_req, res) => {
     if (!flag("ENABLED") || !flag("NUDGE_ENABLED")) return res.json({ ok: true, skipped: true, reason: "disabled" });

@@ -226,14 +226,21 @@ export async function readIntelligenceEvidence(scope: ReadScope, input: { tool: 
         try { timelineCursor = z.object({ key: z.literal(key), cursor: z.string().min(1).max(400) }).strict().parse(JSON.parse(Buffer.from(input.args.cursor, "base64url").toString())).cursor; }
         catch { throw new CsiError("INVALID_INPUT"); }
       }
-      // Official timeline has bounded pages but unbounded attachment joins and a 2000-call
-      // recording scan. Preflight those joins so it cannot silently omit older evidence.
-      const [edges, outreach, recordings] = await Promise.all([
-        getNumberLeadAttachmentModel().countDocuments({ contact_number_id: scope.contact_number_id }),
-        getOutreachRecordModel().countDocuments({ primary_contact_number_id: scope.contact_number_id }),
-        getCallInteractionModel().countDocuments({ contact_number_id: scope.contact_number_id, merged_into_id: null, "recordings.0": { $exists: true } }),
-      ]);
-      if (edges > 100 || outreach > 100 || recordings > 2000) throw new CsiError("EVIDENCE_SCOPE_INVALID");
+      // Official timeline has bounded pages but unbounded attachment joins.
+      // Preflight those joins so it cannot silently omit older evidence.
+      //
+      // The caps are a property of the subject, not of the page, so they are
+      // evaluated once at run preparation — the first page, the one with no
+      // cursor — instead of on all eighty pages of a paginated walk (14 §9).
+      // The caps themselves are unchanged and still fail closed.
+      if (!timelineCursor) {
+        const [edges, outreach, recordings] = await Promise.all([
+          getNumberLeadAttachmentModel().countDocuments({ contact_number_id: scope.contact_number_id }),
+          getOutreachRecordModel().countDocuments({ primary_contact_number_id: scope.contact_number_id }),
+          getCallInteractionModel().countDocuments({ contact_number_id: scope.contact_number_id, merged_into_id: null, "recordings.0": { $exists: true } }),
+        ]);
+        if (edges > 100 || outreach > 100 || recordings > 2000) throw new CsiError("EVIDENCE_SCOPE_INVALID");
+      }
       const page = await getNumberTimeline(scope.contact_number_id, { ...input.args, cursor: timelineCursor });
       if (!page) return fail();
       result.coverage = page.coverage;

@@ -38,9 +38,9 @@ const query = (input: Record<string, unknown>) => numberSearchQuerySchema.parse(
 test("parseSearchTerm: e164, suffix, term and formatting", () => {
   assert.deepEqual(parseSearchTerm(undefined), { kind: "none" });
   assert.deepEqual(parseSearchTerm("   "), { kind: "none" });
-  assert.deepEqual(parseSearchTerm("5550100200"), { kind: "e164", e164: "+15550100200" });
-  assert.deepEqual(parseSearchTerm("+1 555 010 0200"), { kind: "e164", e164: "+15550100200" });
-  assert.deepEqual(parseSearchTerm("(555) 010-0200"), { kind: "e164", e164: "+15550100200" }, "formatted ten digits is an exact number");
+  assert.deepEqual(parseSearchTerm("5550100200"), { kind: "e164", e164: "+15550100200", reversed: "0020010555" });
+  assert.deepEqual(parseSearchTerm("+1 555 010 0200"), { kind: "e164", e164: "+15550100200", reversed: "00200105551" });
+  assert.deepEqual(parseSearchTerm("(555) 010-0200"), { kind: "e164", e164: "+15550100200", reversed: "0020010555" }, "formatted ten digits is an exact number");
   assert.deepEqual(parseSearchTerm("0200"), { kind: "suffix", reversed: "0020" });
   assert.deepEqual(parseSearchTerm("010-0200"), { kind: "suffix", reversed: "0020010" }, "seven digits is a suffix");
   assert.deepEqual(parseSearchTerm("smith"), { kind: "term", term: "smith" });
@@ -88,7 +88,11 @@ test("buildNumberSearchFilter: hygiene, attachment, range, term and keyset curso
   assert.deepEqual(ranged.last_activity_at, { $gte: new Date(T0), $lte: new Date(T1) });
   assert.deepEqual(buildNumberSearchFilter(query({ active_from: T0 }), null).last_activity_at, { $gte: new Date(T0) });
 
-  assert.equal(buildNumberSearchFilter(query({ q: "5550100200" }), null).e164, "+15550100200");
+  // Digit input matches exact E.164 OR the same digits as a suffix, so a
+  // pasted number with a wrong country prefix is a hit, not a search miss.
+  const digits = buildNumberSearchFilter(query({ q: "5550100200" }), null).$and as Array<Record<string, unknown>>;
+  assert.deepEqual(digits, [{ $or: [{ e164: "+15550100200" }, { digits_reversed: { $regex: "^0020010555" } }] }]);
+  assert.equal(buildNumberSearchFilter(query({ q: "5550100200" }), null).e164, undefined, "the exact match moved into the $or");
   assert.deepEqual(buildNumberSearchFilter(query({ q: "0200" }), null).digits_reversed, { $regex: "^0020" });
 
   const paged = buildNumberSearchFilter(query({ attachment: "linked", active_to: T1 }), { last_activity_at: T1, id: ID_B });

@@ -77,6 +77,54 @@ function fence(lease: JobLease, now = new Date()) {
     leased_until: { $gt: now },
   };
 }
+/**
+ * Exhausted crashed claims remain visible; recovery never runs a ninth
+ * provider attempt.
+ *
+ * This is queue-wide housekeeping, not a claim precondition: the claim filter
+ * already carries `attempts < max_attempts`, so an exhausted row can never be
+ * claimed whether or not it has been dead-lettered yet. The sweep only makes
+ * it *visible*, which is why it runs on a cadence instead of as a
+ * collection-wide `updateMany` in front of every single claim — up to 150 a
+ * minute across the ensure and recovery drains (14 §7).
+ */
+const SWEEP_INTERVAL_MS = 60_000;
+let lastSweepAt = 0;
+
+/** Test seam; production relies on the interval alone. */
+export function resetCsiJobSweepClock(): void {
+  lastSweepAt = 0;
+}
+
+async function sweepExhaustedCsiJobsOnCadence(now: Date) {
+  if (now.getTime() - lastSweepAt < SWEEP_INTERVAL_MS) return;
+  lastSweepAt = now.getTime();
+  // Housekeeping must never fail a claim.
+  try {
+    await sweepExhaustedCsiJobs(now);
+  } catch {
+    /* the next tick sweeps again */
+  }
+}
+
+export async function sweepExhaustedCsiJobs(now = new Date()) {
+  const result = await getSalesIntelligenceJobModel().updateMany(
+    {
+      ...csiDataset(),
+      status: "leased",
+      leased_until: { $lte: now },
+      $expr: { $gte: ["$attempts", "$max_attempts"] },
+    },
+    {
+      $set: {
+        status: "dead_letter",
+        reason: "attempts_exhausted",
+        lease_owner: null,
+      },
+    },
+  );
+  return { dead_lettered: result.modifiedCount };
+}
 export async function claimCsiJob(
   owner: string,
   jobId?: string,
@@ -100,22 +148,7 @@ export async function claimCsiJob(
     $or: [{ status: { $in: ["pending", "retry"] }, next_attempt_at: { $lte: now } },
       { status: "leased" }],
   });
-  // Exhausted crashed claims remain visible; recovery never runs a ninth provider attempt.
-  await Model.updateMany(
-    {
-      ...csiDataset(),
-      status: "leased",
-      leased_until: { $lte: now },
-      $expr: { $gte: ["$attempts", "$max_attempts"] },
-    },
-    {
-      $set: {
-        status: "dead_letter",
-        reason: "attempts_exhausted",
-        lease_owner: null,
-      },
-    },
-  );
+  await sweepExhaustedCsiJobsOnCadence(now);
   return Model.findOneAndUpdate(
     {
       ...csiDataset(),
@@ -140,6 +173,9 @@ export async function claimCsiJob(
       $inc: { lease_epoch: 1, attempts: 1 },
     },
     {
+      // `csi_job_claim` leads with the dataset and stage and then carries this
+      // exact order, so the claim is an index scan rather than a blocking
+      // in-memory sort over every pending job (14 §7).
       sort: { priority: -1, next_attempt_at: 1, _id: 1 },
       returnDocument: "after",
     },

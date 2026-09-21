@@ -40,6 +40,23 @@ export const LEAD_CONVERSATION_INDEXES = [
     name: "lead_conversation_call_log",
     key: { call_log_id: 1 },
   },
+  // Number timeline reads conversations straight off the number (14 §9); the
+  // trailing `_id` carries the timeline's total order so no sort stage runs.
+  {
+    name: "lead_conversation_number_started",
+    key: { contact_number_id: 1, started_at: -1, _id: -1 },
+  },
+  // Coverage eligibility counter (14 §1).
+  {
+    name: "lead_conversation_eligibility",
+    key: { state: 1, "analysis_eligibility.status": 1 },
+  },
+  // Coverage "media stored" counters; partial so it only carries stored media.
+  {
+    name: "lead_conversation_media_stored",
+    key: { "media.blob_pathname": 1, "media.purged_at": 1 },
+    partialFilterExpression: { "media.blob_pathname": { $type: "string" } },
+  },
 ] as const;
 
 const leadRefSchema = new Schema(
@@ -272,6 +289,9 @@ for (const index of LEAD_CONVERSATION_INDEXES) {
   LeadConversationSchema.index(index.key, {
     name: index.name,
     ...("unique" in index && index.unique ? { unique: true } : {}),
+    ...("partialFilterExpression" in index
+      ? { partialFilterExpression: index.partialFilterExpression }
+      : {}),
   });
 }
 

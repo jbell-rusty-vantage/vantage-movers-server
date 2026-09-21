@@ -36,7 +36,53 @@ function streamCapability(
   return okWhen(row) ? "ok" : "unknown";
 }
 
+/**
+ * Coverage is a dashboard health strip, not per-row truth, and `ownerRead`
+ * wraps it around every Owner payload: one number search, one timeline page,
+ * one Attention GET and one Outreach detail each used to pay the same
+ * thirteen-query tax, and a single paginated analysis preflight multiplied it
+ * by the page count (14 §1).
+ *
+ * The counters are derived from evidence the Owner is already reading behind a
+ * watermark that lags, so a value that lags one short window is honest. The
+ * memo also collapses the concurrent calls inside one k-way timeline merge
+ * into a single derivation by sharing the in-flight promise.
+ */
+function coverageCacheTtlMs(): number {
+  const raw = process.env.SALES_INTELLIGENCE_COVERAGE_CACHE_MS?.trim();
+  if (!raw) return 5_000;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 5_000;
+}
+
+type CoverageMemo = { key: string; at: number; value: Promise<CoverageDto> };
+let coverageMemo: CoverageMemo | null = null;
+
+/** Test seam and the hook a capture write uses when it must be read back immediately. */
+export function resetCaptureCoverageCache(): void {
+  coverageMemo = null;
+}
+
 export async function readCaptureCoverage(): Promise<CoverageDto> {
+  const ttl = coverageCacheTtlMs();
+  const dataset = csiDataset();
+  const key = `${dataset.deployment}:${dataset.database}`;
+  if (ttl > 0 && coverageMemo && coverageMemo.key === key && Date.now() - coverageMemo.at < ttl) {
+    return coverageMemo.value;
+  }
+  const value = deriveCaptureCoverage();
+  if (ttl > 0) {
+    const memo: CoverageMemo = { key, at: Date.now(), value };
+    coverageMemo = memo;
+    // A failed derivation must not be served for the rest of the window.
+    value.catch(() => {
+      if (coverageMemo === memo) coverageMemo = null;
+    });
+  }
+  return value;
+}
+
+async function deriveCaptureCoverage(): Promise<CoverageDto> {
   const SyncState = getSalesIntelligenceSyncStateModel();
   const rows = (await SyncState.find(
     { scope: { $in: [CALL_LOG_ALL_DIRECTIONS_SCOPE, WEBHOOK_RECEIPTS_SCOPE] } },
@@ -60,7 +106,9 @@ export async function readCaptureCoverage(): Promise<CoverageDto> {
     Conversations.countDocuments({ state: "no_recording" }),
     Conversations.countDocuments({ state: { $in: ["failed", "dead_letter"] } }),
     Conversations.countDocuments({ "analysis_eligibility.status": "undetermined" }),
-    getCallInteractionModel().countDocuments({ merged_into_id: null, terminal: true, direction: { $ne: "Internal" }, recordings: { $size: 0 }, "recording_discovery.state": { $ne: "no_recording" } }),
+    // `recordings: { $size: 0 }` can never use an index; `recordings.0` can,
+    // and `call_interaction_discovery_state` serves the rest of the predicate.
+    getCallInteractionModel().countDocuments({ merged_into_id: null, terminal: true, "recordings.0": { $exists: false }, direction: { $ne: "Internal" }, "recording_discovery.state": { $ne: "no_recording" } }),
     getCallInteractionModel().countDocuments({ merged_into_id: null, "recording_discovery.state": "no_recording" }),
     Conversations.countDocuments({ call_interaction_id: { $ne: null }, provider_account_id: { $type: "string" }, media_digest_sha256: { $type: "string" }, "media.blob_pathname": { $type: "string" }, "media.purged_at": null }),
   ]);

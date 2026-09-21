@@ -25,6 +25,7 @@ import {
   type CallLogRecordInput,
 } from "./interactionProjection";
 import { reverseDigits, toNationalTenDigit } from "./phone";
+import { addObservedSearchTerm } from "./searchTerms";
 import type {
   CaptureSource,
   InteractionIdentity,
@@ -149,7 +150,6 @@ function sleep(ms: number): Promise<void> {
 }
 
 const REQUEST_ID_PATTERN = /^[a-f\d]{24}$/i;
-const MAX_SEARCH_TERMS = 20;
 
 function isRetryable(error: unknown): boolean {
   if (duplicateKey(error)) return true;
@@ -552,12 +552,9 @@ async function applyRollupDelta(
     providerNames.push(providerName);
     while (providerNames.length > 10) providerNames.shift();
   }
-  // Bounded display cache (02 §17); CSI-04's rebuild owns the full term set.
-  const searchTerms = [...row.search_terms];
-  if (providerName && !searchTerms.includes(providerName.toLowerCase())) {
-    searchTerms.push(providerName.toLowerCase());
-    while (searchTerms.length > MAX_SEARCH_TERMS) searchTerms.shift();
-  }
+  // Bounded display cache (02 §17); the rebuild paths own the full term set,
+  // so capture only ever adds and never evicts a lead-derived term (14 §6).
+  const searchTerms = addObservedSearchTerm(row.search_terms, providerName);
   const result = await ContactNumber.updateOne(
     { _id: numberId, revision: row.revision },
     {

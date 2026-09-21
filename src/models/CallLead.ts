@@ -15,6 +15,7 @@ import {
 } from "./schemaHelpers";
 import { normalizePhoneNumberForMatch } from "../utils/phone";
 import { normalizeJobNo } from "../services/bookings/bookingIdentity";
+import { CALL_LEAD_ATTACHMENT_INDEXES } from "./leadContactPhoneIndexes";
 
 /**
  * Provenance + qualification metadata for call leads created from the
@@ -230,6 +231,11 @@ export const CALL_LEAD_S08_INDEXES = [
     ],
   },
 ] as const;
+
+// CSI attachment reverse lookup (14 §3): one keyed read per Contact Number.
+for (const { key, ...options } of CALL_LEAD_ATTACHMENT_INDEXES) {
+  CallLeadSchema.index(key as Record<string, 1>, options);
+}
 
 for (const index of CALL_LEAD_S08_INDEXES) {
   CallLeadSchema.index(index.key, { name: index.name });

@@ -1,5 +1,9 @@
 # Implementation ledger
 
+## CSI-14 efficiency indexes applied — Grok, September 20, 2026
+
+Owner asked to apply the CSI-14 operator steps, commit the efficiency work, push `main`, and deploy the server. Official `migration:csi:indexes --apply --confirm-production=vantagemovers` then `--verify`: ready, unresolved 0, no missing/incompatible indexes. Superseded names `contact_number_digits_reversed`, `contact_number_search_terms`, `contact_number_classification_activity`, and `call_interaction_number_started` dropped after replacements existed. `migration:csi:conversation-number --apply` scanned 1 unset conversation and left it unresolved (no invented link). Flags unchanged. No phones in evidence.
+
 ## Attention projection explainer — Grok, September 20, 2026
 
 Owner asked for a full write-up of why Needs Attention stays on “Attention is being prepared.” Docs only. No runtime change.

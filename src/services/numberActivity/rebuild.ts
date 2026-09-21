@@ -12,6 +12,7 @@ import { CsiError, csiWorkerActor, type CsiActor } from "../salesIntelligence/au
 import { claimCsiJob, completeCsiJob, enqueueCsiJob, failCsiJob, renewCsiJob, type JobLease } from "../salesIntelligence/jobs";
 import { appendCsiAudit, executeCsiCommand } from "../salesIntelligence/transactions";
 import { toProjection } from "./persistInteraction";
+import { boundSearchTerms } from "./searchTerms";
 import type { InteractionProjection } from "./types";
 
 /**
@@ -34,7 +35,6 @@ import type { InteractionProjection } from "./types";
 export const REBUILD_STAGE = "rebuild" as const;
 export const REBUILD_ALL_SUBJECT = "numbers:all";
 const MAX_PROVIDER_NAMES = 10;
-const MAX_SEARCH_TERMS = 50;
 const REBUILD_ALL_BATCH = 500;
 
 // ---------------------------------------------------------------------------
@@ -111,7 +111,7 @@ export function recountNumber(input: RecountInput): RebuiltFields {
       if (term) terms.add(term);
     }
   }
-  const search_terms = [...terms].slice(0, MAX_SEARCH_TERMS);
+  const search_terms = boundSearchTerms(terms);
   // Repair, not monotone widen: a stale stored window (tombstone, re-pointed
   // number, or a corrupted row) is replaced by the canonical evidence. Capture
   // only widens; rebuild is the path that puts the bounds back on the evidence.

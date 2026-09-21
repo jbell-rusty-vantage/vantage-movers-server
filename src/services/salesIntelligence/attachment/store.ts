@@ -1,6 +1,7 @@
 import mongoose, { type ClientSession, type InferSchemaType } from "mongoose";
 import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getNumberLeadAttachmentModel, NumberLeadAttachmentSchema, NUMBER_LEAD_ATTACHMENT_INDEXES } from "../../../models/NumberLeadAttachment";
+import { boundSearchTerms } from "../../numberActivity/searchTerms";
 import { CsiError, csiWorkerActor } from "../auth";
 import { appendCsiAudit, assertIndexes, payloadHash } from "../transactions";
 import { ambiguityFanIn, suggest, type Attachment, type Evidence, type LeadRef } from "./suggest";
@@ -34,7 +35,7 @@ export async function rebuildAttachmentSearchTerms(numberId: string, session: Cl
       if (value?.trim()) terms.add(value.trim().toLowerCase());
     }
   }
-  await getContactNumberModel().updateOne({ _id: numberId }, { $set: { search_terms: [...terms].slice(0, 50),
+  await getContactNumberModel().updateOne({ _id: numberId }, { $set: { search_terms: boundSearchTerms(terms),
     "rollups.attached_lead_count": edges.filter(e => e.state === "attached").length,
     "rollups.candidate_lead_count": edges.filter(e => ["candidate", "ambiguous"].includes(e.state)).length } }, { session });
 }

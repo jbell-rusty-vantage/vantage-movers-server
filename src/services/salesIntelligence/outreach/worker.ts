@@ -15,7 +15,7 @@ import { loadCanonicalInteraction } from "../conversations/workerSupport";
 import { ensureInteraction, ensureLead, workerContext } from "./ensure";
 import { refreshRecord, jsonValue } from "./store";
 import { payloadHash } from "../transactions";
-import { publishAttentionSnapshot } from "./attention";
+import { ATTENTION_PUBLISH_BUDGET_MS, publishAttentionSnapshot } from "./attention";
 
 export async function runOutreachEnsureJob(jobId?: string) {
   if (!csiFlag("OUTREACH_ENSURE")) return { status: "disabled" };
@@ -49,17 +49,33 @@ export async function runOutreachEnsureJob(jobId?: string) {
     await failCsiJob(lease, "transient"); return { status: "retry" };
   }
 }
-export async function drainOutreachEnsureJobs(max = 50) {
-  const outcomes: string[] = [], deadline = Date.now() + 40_000;
+/**
+ * One invocation, one clock. `deadline` is an absolute epoch millisecond so a
+ * caller that already spent part of the invocation passes what is left rather
+ * than starting a fresh 40-second budget of its own (14 §5).
+ */
+export const OUTREACH_ENSURE_BUDGET_MS = 40_000;
+export async function drainOutreachEnsureJobs(max = 50, options: { deadline?: number } = {}) {
+  const outcomes: string[] = [], deadline = options.deadline ?? Date.now() + OUTREACH_ENSURE_BUDGET_MS;
   for (let i = 0; i < max && Date.now() < deadline; i++) {
     const result = await runOutreachEnsureJob(); outcomes.push(result.status);
     if (["not_claimable", "disabled", "lease_lost"].includes(result.status)) break;
   }
-  return { outcomes };
+  return { outcomes, deadline_reached: Date.now() >= deadline };
 }
-/** Durable applied_at scan plus paged baseline/repair sweeps. No updatedAt-based official event cursor. */
-export async function runOutreachEnsureOnce() {
+/**
+ * Durable applied_at scan plus paged baseline/repair sweeps. No updatedAt-based
+ * official event cursor.
+ *
+ * Publishing the Attention snapshot is deliberately NOT part of this run: it
+ * does not need the ensure lease, and sharing one meant a drain backlog
+ * starved the desk and a publish could start with almost none of the
+ * invocation left and be killed mid-walk, which writes nothing and is
+ * indistinguishable from `snapshot_budget` (14 §5). See `runAttentionPublishOnce`.
+ */
+export async function runOutreachEnsureOnce(options: { deadline?: number } = {}) {
   if (!csiFlag("OUTREACH_ENSURE")) return { skipped: true, reason: "disabled", scanned: 0 };
+  const deadline = options.deadline ?? Date.now() + OUTREACH_ENSURE_BUDGET_MS;
   const State = getSalesIntelligenceSyncStateModel(), store = new MongoLeaseStore(State);
   const token = await store.acquire({ scope: "outreach_ensure", owner: randomUUID(), now: new Date(), ttl_ms: 300_000 });
   if (!token) return { skipped: true, reason: "lease_held", scanned: 0 };
@@ -101,6 +117,27 @@ export async function runOutreachEnsureOnce() {
       if (fence.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
       return count;
     });
-    return { skipped: false, scanned, ...(await drainOutreachEnsureJobs(100)), attention: await publishAttentionSnapshot() };
+    return { skipped: false, scanned, ...(await drainOutreachEnsureJobs(100, { deadline })) };
+  } finally { await store.release({ token, now: new Date() }); }
+}
+
+export const ATTENTION_PUBLISH_SCOPE = "attention_publish";
+
+/**
+ * Attention publish, on its own lease and its own cron entry (14 §5). It
+ * competes with nothing, receives the whole invocation budget, and a drain
+ * backlog can no longer keep the desk at `pending_projection`.
+ */
+export async function runAttentionPublishOnce(options: { deadline?: number } = {}) {
+  if (!csiFlag("OUTREACH_ENSURE")) return { skipped: true, reason: "disabled" as const };
+  const deadline = options.deadline ?? Date.now() + ATTENTION_PUBLISH_BUDGET_MS;
+  const State = getSalesIntelligenceSyncStateModel(), store = new MongoLeaseStore(State);
+  const token = await store.acquire({ scope: ATTENTION_PUBLISH_SCOPE, owner: randomUUID(), now: new Date(), ttl_ms: 300_000 });
+  if (!token) return { skipped: true, reason: "lease_held" as const };
+  try {
+    const remaining = deadline - Date.now();
+    // A walk that cannot finish writes nothing, which is worse than saying so.
+    if (remaining < 5_000) return { skipped: true, reason: "insufficient_budget" as const };
+    return { skipped: false, attention: await publishAttentionSnapshot({ deadlineMs: remaining }) };
   } finally { await store.release({ token, now: new Date() }); }
 }

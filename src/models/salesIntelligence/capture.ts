@@ -128,6 +128,11 @@ export const SalesIntelligenceSyncStateSchema = new Schema(
           attachment_source_id: ref,
           entity_change_applied_at: date,
           entity_change_id: ref,
+          // CSI-14: durable position in the CSI audit stream, so number
+          // synthesis follows committed change rather than a round-robin
+          // poll that laps in days (14 §10).
+          audit_recorded_at: date,
+          audit_event_id: ref,
         },
         { _id: false, strict: "throw" },
       ),

@@ -58,7 +58,8 @@ export function decodeNumberCursor(encoded: string): NumberCursor {
 
 export type ParsedSearchTerm =
   | { kind: "none" }
-  | { kind: "e164"; e164: string }
+  /** `reversed` is always present so an exact miss still tries the suffix. */
+  | { kind: "e164"; e164: string; reversed: string }
   | { kind: "suffix"; reversed: string }
   | { kind: "term"; term: string };
 
@@ -70,21 +71,29 @@ export function escapeRegex(value: string): string {
 
 /**
  * Digits-only (after stripping phone formatting) with >= 10 digits → exact
- * E.164; 3..9 digits → suffix over `digits_reversed`; anything else is a
- * lowercased term matched as an anchored prefix against `search_terms`
- * (customer/provider names, Job Numbers, agent names).
+ * E.164 **or** the same digits as a suffix; 3..9 digits → suffix over
+ * `digits_reversed`; anything else is a lowercased term matched as an anchored
+ * prefix against `search_terms` (customer/provider names, Job Numbers, agent
+ * names).
+ *
+ * The suffix arm on long digit input matters: a pasted number carrying a wrong
+ * or extra country prefix normalizes to an E.164 value the system never
+ * stored, and exact-only matching reported "the number isn't in the system"
+ * for what is really a search miss (14 §10). Both arms are index-served, so
+ * widening the predicate does not widen the work.
  */
 export function parseSearchTerm(q: string | undefined): ParsedSearchTerm {
   const trimmed = q?.trim() ?? "";
   if (!trimmed) return { kind: "none" };
   const stripped = trimmed.replace(PHONE_FORMATTING, "");
   if (/^\d+$/.test(stripped)) {
+    const reversed = stripped.split("").reverse().join("");
     if (stripped.length >= 10) {
       const e164 = toE164(trimmed);
-      if (e164) return { kind: "e164", e164 };
+      if (e164) return { kind: "e164", e164, reversed };
     }
     if (stripped.length >= 3) {
-      return { kind: "suffix", reversed: stripped.split("").reverse().join("") };
+      return { kind: "suffix", reversed };
     }
   }
   return { kind: "term", term: trimmed.toLowerCase() };
@@ -119,8 +128,13 @@ export function buildNumberSearchFilter(
     if (query.active_to) range.$lte = new Date(query.active_to);
     filter.last_activity_at = range;
   }
-  if (term.kind === "e164") filter.e164 = term.e164;
-  else if (term.kind === "suffix") filter.digits_reversed = { $regex: `^${term.reversed}` };
+  if (term.kind === "e164") {
+    // Exact identity first, then the same digits as a suffix: both arms are
+    // anchored index lookups, so the `$or` stays a bounded index union.
+    and.push({
+      $or: [{ e164: term.e164 }, { digits_reversed: { $regex: `^${term.reversed}` } }],
+    });
+  } else if (term.kind === "suffix") filter.digits_reversed = { $regex: `^${term.reversed}` };
   else if (term.kind === "term") filter.search_terms = { $regex: `^${escapeRegex(term.term)}` };
   if (cursor) {
     const at = new Date(cursor.last_activity_at);

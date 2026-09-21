@@ -24,7 +24,12 @@ import {
   defaultRouteResolver,
   InteractionPersistenceError,
 } from "./persistInteraction";
-import type { CallLogRecordInput } from "./interactionProjection";
+import {
+  aliasesFor,
+  identityFromCallLogRecord,
+  type CallLogRecordInput,
+} from "./interactionProjection";
+import { getCallInteractionAliasModel } from "../../models/CallInteractionAlias";
 import type { RouteResolver } from "./types";
 import { RingCentralApiError } from "../ringcentral/client";
 
@@ -50,6 +55,8 @@ export const CALL_LOG_ALL_DIRECTIONS_SCOPE = "call_log_all_directions";
 
 export type ReconcileConfig = {
   rollingLookbackMinutes: number;
+  /** Ceiling on how far back one incremental window reaches; the rest is gap repair. */
+  safetyLookbackMinutes: number;
   overlapMinutes: number;
   maxPages: number;
   perPage: number;
@@ -65,8 +72,10 @@ export function callLogReconcileConfig(): ReconcileConfig {
     return Number.isSafeInteger(parsed) && parsed >= min ? parsed : fallback;
   };
   return {
-    // Twelve-hour floor, same rationale as the qualified-call sync.
+    // Cold-start reach and the outer bound on a repaired gap. Same rationale
+    // as the qualified-call sync; it is no longer the size of every window.
     rollingLookbackMinutes: Math.max(720, int("CALL_LOG_ROLLING_LOOKBACK_MINUTES", 720, 1)),
+    safetyLookbackMinutes: int("CALL_LOG_SAFETY_LOOKBACK_MINUTES", 90, 1),
     overlapMinutes: int("CALL_LOG_OVERLAP_MINUTES", 15, 0),
     maxPages: int("CALL_LOG_MAX_PAGES", 20, 1),
     perPage: 250,
@@ -238,7 +247,8 @@ export async function runCallLogReconcileOnce(
   const state = ((await Model.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean()) ??
     {}) as StoredState;
   const windowTo = startedAt;
-  const windowFrom = resolveWindowStart(windowTo, state, deps.config);
+  const plan = resolveWindowPlan(windowTo, state, deps.config);
+  const windowFrom = plan.from;
   summary.window_from = windowFrom.toISOString();
   summary.window_to = windowTo.toISOString();
   await deps.recordEvent(
@@ -250,17 +260,26 @@ export async function runCallLogReconcileOnce(
     }),
   );
 
-  const renew = async () => {
+  // Renew on a clock, not per record. A fenced `findOneAndUpdate` for every
+  // Call Log row in the window was N round trips that proved nothing the
+  // previous renewal had not already proved (14 §4).
+  let lastRenewAt = startedAt.getTime();
+  const renewInterval = Math.max(1, Math.floor(deps.config.leaseTtlMs / 3));
+  const renew = async (force = false) => {
+    const at = deps.now().getTime();
+    if (!force && at - lastRenewAt < renewInterval) return;
     const renewed = await leases.renew({ token: lease, ttl_ms: deps.config.leaseTtlMs, now: deps.now() });
     if (!renewed) throw new LeaseLostError();
     lease = renewed;
+    lastRenewAt = at;
   };
 
   let pageBudget = deps.config.maxPages;
   let accountId: string | null = null;
   let directory: DirectoryLookup | null = null;
   let resolveRoute = deps.resolveRoute;
-  let providerWatermark: Date | null = state.cursor?.provider_modified_watermark ?? null;
+  const storedWatermark: Date | null = state.cursor?.provider_modified_watermark ?? null;
+  let providerWatermark: Date | null = storedWatermark;
   // One request id per reconcile run so every audit row it writes ties back
   // to this run (surfaced in the summary for operators).
   const runRequestId = randomBytes(12).toString("hex");
@@ -329,7 +348,18 @@ export async function runCallLogReconcileOnce(
       const ordered = [...collected].sort(
         (a, b) => (startOf(a)?.getTime() ?? Number.POSITIVE_INFINITY) - (startOf(b)?.getTime() ?? Number.POSITIVE_INFINITY),
       );
+      const settled = await settledRecords(ordered, accountId, storedWatermark);
       for (const record of ordered) {
+        if (settled.has(record)) {
+          // Not modified since the watermark and every provider identity it
+          // carries already resolves to a stored alias, so re-projecting it
+          // could only rediscover `noop: true` — after opening a Mongo
+          // transaction and reading aliases and canonical rows to find out
+          // (14 §4). The watermark advances only when every window completed,
+          // so a record whose previous apply failed is never in this set.
+          result.noops += 1;
+          continue;
+        }
         await renew();
         try {
           const applied = await deps.apply(
@@ -386,7 +416,7 @@ export async function runCallLogReconcileOnce(
     }
 
     const finishedAt = deps.now();
-    const next = nextState(state, summary.windows, windowTo, finishedAt, deps.config);
+    const next = nextState(state, summary.windows, windowTo, finishedAt, deps.config, plan.skipped);
     // The provider-modified watermark is diagnostic today, but it must never
     // advance past evidence this run did not fully observe: a partial run
     // keeps the prior value so a future incremental reader cannot inherit a
@@ -503,13 +533,39 @@ export async function runCallLogReconcileOnce(
   }
 }
 
-/** min(cursor.last_sync_to − overlap, now − rolling lookback); first run uses the lookback alone. */
-export function resolveWindowStart(windowTo: Date, state: StoredState, config: ReconcileConfig): Date {
-  const rollingStart = new Date(windowTo.getTime() - config.rollingLookbackMinutes * 60_000);
+/**
+ * The incremental window, plus the range this run deliberately did not reach.
+ *
+ * The cursor used to be able to move the window only *earlier*: the start was
+ * `min(cursor.last_sync_to − overlap, now − 720 min)`, so every run re-fetched
+ * and re-projected a full twelve hours and each Call Log record was processed
+ * roughly seventy-two times before it aged out (14 §4).
+ *
+ * Now the cursor is a watermark: `max(cursor.last_sync_to − overlap,
+ * now − safety)`. A stale cursor is never silently skipped — whatever the
+ * clamp left behind is returned as `skipped` and opened as a gap, and gap
+ * repair, which already exists and is the right mechanism for catching up,
+ * covers it oldest-first with the leftover page budget. A first run has no
+ * cursor and no gaps, so it uses the full cold-start lookback.
+ */
+export function resolveWindowPlan(
+  windowTo: Date,
+  state: StoredState,
+  config: ReconcileConfig,
+): { from: Date; skipped: { from: Date; to: Date } | null } {
   const lastTo = state.cursor?.last_sync_to ?? null;
-  if (!lastTo) return rollingStart;
+  if (!lastTo) {
+    return { from: new Date(windowTo.getTime() - config.rollingLookbackMinutes * 60_000), skipped: null };
+  }
   const cursorStart = new Date(lastTo.getTime() - config.overlapMinutes * 60_000);
-  return cursorStart <= rollingStart ? cursorStart : rollingStart;
+  const safetyStart = new Date(windowTo.getTime() - config.safetyLookbackMinutes * 60_000);
+  if (cursorStart >= safetyStart) return { from: cursorStart, skipped: null };
+  return { from: safetyStart, skipped: { from: cursorStart, to: safetyStart } };
+}
+
+/** Start of the incremental window. See `resolveWindowPlan` for the skipped range. */
+export function resolveWindowStart(windowTo: Date, state: StoredState, config: ReconcileConfig): Date {
+  return resolveWindowPlan(windowTo, state, config).from;
 }
 
 export function nextState(
@@ -518,6 +574,8 @@ export function nextState(
   windowTo: Date,
   now: Date,
   config: ReconcileConfig,
+  /** Range the watermark clamp did not reach this run; recorded, never skipped. */
+  skipped: { from: Date; to: Date } | null = null,
 ): {
   cursor_advanced: boolean;
   known_complete_through: Date | null;
@@ -530,6 +588,24 @@ export function nextState(
   const closed: StoredGap[] = [];
   let known = state.known_complete_through ?? null;
   let cursorAdvanced = false;
+
+  // A bounded incremental window is honest only if what it left behind is
+  // recorded as a gap. Gap repair then covers it oldest-first with the
+  // leftover page budget, which is the mechanism that already exists for
+  // catching up (14 §4).
+  if (skipped && skipped.from < skipped.to) {
+    const existing = gaps.find(
+      (g) => g.reason === "watermark_clamp" && g.from <= skipped.to && g.to >= skipped.from,
+    );
+    if (existing) {
+      existing.from = existing.from < skipped.from ? existing.from : skipped.from;
+      existing.to = existing.to > skipped.to ? existing.to : skipped.to;
+    } else {
+      const gap = { from: skipped.from, to: skipped.to, reason: "watermark_clamp", opened_at: now };
+      gaps.push(gap);
+      opened.push(gap);
+    }
+  }
 
   for (const w of windows) {
     if (w.complete) {
@@ -604,6 +680,54 @@ function elapsed(from: Date, to: Date): number {
 
 function isRecord(value: unknown): value is CallLogRecordInput {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Records this run can prove cannot change the projection, found with one
+ * alias query for the whole window instead of one transaction per record.
+ *
+ * `provider_modified_watermark` was computed and persisted but explicitly
+ * diagnostic; this is the incremental reader it was always for (14 §4).
+ */
+export async function settledRecords(
+  records: readonly CallLogRecordInput[],
+  accountId: string,
+  watermark: Date | null,
+): Promise<Set<CallLogRecordInput>> {
+  const settled = new Set<CallLogRecordInput>();
+  if (!watermark) return settled;
+  type Alias = ReturnType<typeof aliasesFor>[number];
+  const keysByRecord = new Map<CallLogRecordInput, string[]>();
+  const wanted = new Map<string, Alias>();
+  for (const record of records) {
+    const modified = dateOf(record.lastModifiedTime);
+    if (!modified || modified > watermark) continue;
+    let aliases: Alias[];
+    try {
+      aliases = aliasesFor(identityFromCallLogRecord(record));
+    } catch {
+      continue;
+    }
+    if (!aliases.length) continue;
+    keysByRecord.set(record, aliases.map((a) => `${a.kind}:${a.value}`));
+    for (const alias of aliases) wanted.set(`${alias.kind}:${alias.value}`, alias);
+  }
+  if (!wanted.size) return settled;
+  const rows = await getCallInteractionAliasModel()
+    .find(
+      {
+        provider: "ringcentral",
+        provider_account_id: accountId,
+        $or: [...wanted.values()].map((a) => ({ kind: a.kind, value: a.value })),
+      },
+      { kind: 1, value: 1 },
+    )
+    .lean();
+  const known = new Set(rows.map((row) => `${row.kind}:${row.value}`));
+  for (const [record, keys] of keysByRecord) {
+    if (keys.every((key) => known.has(key))) settled.add(record);
+  }
+  return settled;
 }
 
 function str(value: unknown): string | null {

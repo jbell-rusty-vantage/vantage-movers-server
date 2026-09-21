@@ -1,6 +1,10 @@
 import mongoose from "mongoose";
 import { CSI_MODEL_REGISTRY } from "../../src/models/salesIntelligence/registry";
 import { LEAD_CONVERSATION_INDEXES } from "../../src/models/LeadConversation";
+import {
+  CALL_LEAD_ATTACHMENT_INDEXES,
+  FORM_LEAD_ATTACHMENT_INDEXES,
+} from "../../src/models/leadContactPhoneIndexes";
 import type { CsiIndex } from "../../src/models/salesIntelligence/common";
 import { canonicalJson } from "../../src/services/durableWork/checksum";
 import { getMongoDatabaseName } from "../../src/config/domain/runtime";
@@ -19,6 +23,10 @@ export function csiIndexInventory(): Array<{
       indexes: v.indexes,
     })),
     { collection: "lead_conversations", indexes: LEAD_CONVERSATION_INDEXES },
+    // CSI-owned additions only; the Lead collections' own indexes are not
+    // managed here (14 §3 attachment reverse lookup).
+    { collection: "form_leads", indexes: FORM_LEAD_ATTACHMENT_INDEXES },
+    { collection: "call_leads", indexes: CALL_LEAD_ATTACHMENT_INDEXES },
     {
       collection: "entity_changes",
       indexes: [

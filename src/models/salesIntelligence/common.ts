@@ -99,6 +99,14 @@ export const dateResolution = new Schema(
   },
   { _id: false, strict: "throw" },
 );
+/** `db.collection` namespaces whose unique fences this process has verified. */
+const verifiedCsiFences = new Set<string>();
+
+/** Test seam; production never needs to forget a verified fence. */
+export function resetVerifiedCsiFences(): void {
+  verifiedCsiFences.clear();
+}
+
 export function defineCsiModel<S extends Schema>(
   name: string,
   schema: S,
@@ -115,13 +123,21 @@ export function defineCsiModel<S extends Schema>(
   async function requireUniqueFences() {
     const uniqueIndexes = indexes.filter((i) => i.unique);
     if (!uniqueIndexes.length) return;
-    const db = mongoose.connection.useDb(getMongoDatabaseName(), {
+    const dbName = getMongoDatabaseName();
+    const collection = String(schema.options.collection);
+    // A satisfied unique fence cannot become unsatisfied inside a process
+    // lifetime — dropping an index is an operator action that restarts the
+    // worker. Without this memo every single CSI write issues its own
+    // `listIndexes` server command (14 §10, same reasoning as `assertIndexes`).
+    // Only successes are cached, so a genuinely missing fence keeps failing
+    // closed on every write until it is created.
+    const memoKey = `${dbName}.${collection}`;
+    if (verifiedCsiFences.has(memoKey)) return;
+    const db = mongoose.connection.useDb(dbName, {
       useCache: true,
     }).db;
     if (!db) throw new Error("INDEX_REQUIRED");
-    const observed = await db
-      .collection(String(schema.options.collection))
-      .indexes();
+    const observed = await db.collection(collection).indexes();
     for (const expected of uniqueIndexes) {
       if (
         !observed.some(
@@ -136,6 +152,7 @@ export function defineCsiModel<S extends Schema>(
       )
         throw new Error("INDEX_REQUIRED");
     }
+    verifiedCsiFences.add(memoKey);
   }
   schema.pre("save", requireUniqueFences);
   schema.pre("insertMany", requireUniqueFences);

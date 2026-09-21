@@ -226,11 +226,23 @@ test("CSI cron routes: a throwing service maps to a bounded 500 without provider
 test("vercel.json registers the CSI-03 crons and the queue consumer trigger (a handler file alone is not registration)", () => {
   const manifest = JSON.parse(readFileSync(path.join(process.cwd(), "vercel.json"), "utf8")) as {
     crons: Array<{ path: string; schedule: string }>;
-    functions: Record<string, { experimentalTriggers?: Array<{ type: string; topic: string }> }>;
+    functions: Record<string, { maxDuration?: number; experimentalTriggers?: Array<{ type: string; topic: string }> }>;
   };
   const schedules = new Map(manifest.crons.map((c) => [c.path, c.schedule]));
-  assert.equal(schedules.get(CSI_CRON_PATHS.callLogReconcile), "3-59/10 * * * *");
+  // CSI-14 §4: the reconcile window is a watermark with a bounded safety
+  // lookback instead of a twelve-hour floor, so a run costs far less and the
+  // cadence buys fresher capture at lower total provider cost.
+  assert.equal(schedules.get(CSI_CRON_PATHS.callLogReconcile), "3-59/5 * * * *");
   assert.equal(schedules.get(CSI_CRON_PATHS.jobRecovery), "* * * * *");
+  assert.equal(schedules.get(CSI_CRON_PATHS.outreachEnsure), "* * * * *");
+  // CSI-14 §5: publish owns its own cron, lease and invocation budget, so an
+  // ensure drain backlog can never starve the Needs Attention desk.
+  assert.equal(schedules.get(CSI_CRON_PATHS.attentionPublish), "* * * * *");
+  assert.equal(
+    manifest.functions["api/index.ts"]?.maxDuration,
+    120,
+    "the cron entry point declares its ceiling instead of inheriting a platform default",
+  );
   assert.equal(schedules.get(CSI_CRON_PATHS.directorySync), "20 5 * * *", "CSI-04 directory sync is registered and handled by the same router");
   assert.equal(schedules.get(CSI_CRON_PATHS.backfillStep), "*/15 * * * *");
   assert.equal(schedules.get(CSI_CRON_PATHS.retention), "30 4 * * *");

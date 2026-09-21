@@ -11,21 +11,44 @@ import {
 } from "../config/domain/salesIntelligence";
 // src/models/ContactNumber.ts
 
+/**
+ * Every filtered listing sorts `(last_activity_at desc, _id desc)`, so each
+ * selective prefix carries that order in the index and the common Owner
+ * searches run as index scans with no blocking in-memory sort (14 §8).
+ *
+ * `contact_number_terms_activity` is multikey on `search_terms`: Mongo will
+ * still not use index order to sort on a field that follows the array field,
+ * so that one shape keeps a sort stage. It is here because the compound index
+ * narrows the candidate set the sort has to touch; the others remove the sort.
+ */
 export const CONTACT_NUMBER_INDEXES = [
   {
     name: "contact_number_e164_unique",
     key: { e164: 1 },
     unique: true as const,
   },
-  { name: "contact_number_digits_reversed", key: { digits_reversed: 1 } }, // suffix search (last 4/7)
-  { name: "contact_number_search_terms", key: { search_terms: 1 } }, // names, job numbers
+  // Suffix search (last 4/7), carrying the listing sort.
+  {
+    name: "contact_number_digits_activity",
+    key: { digits_reversed: 1, last_activity_at: -1, _id: -1 },
+  },
+  // Names, job numbers, agent names.
+  {
+    name: "contact_number_terms_activity",
+    key: { search_terms: 1, last_activity_at: -1, _id: -1 },
+  },
   {
     name: "contact_number_last_activity",
     key: { last_activity_at: -1, _id: -1 },
   },
   {
-    name: "contact_number_classification_activity",
-    key: { classification: 1, last_activity_at: -1 },
+    name: "contact_number_classification_activity_id",
+    key: { classification: 1, last_activity_at: -1, _id: -1 },
+  },
+  // `kind` is always in the search filter (`external`, or `$ne` under hygiene).
+  {
+    name: "contact_number_kind_activity",
+    key: { kind: 1, last_activity_at: -1, _id: -1 },
   },
   {
     name: "contact_number_eligibility",

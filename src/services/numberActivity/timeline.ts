@@ -317,18 +317,37 @@ function conversationEvent(numberId: string, row: ConversationLean): NumberTimel
   });
 }
 
-/** Bounded scan of recording-bearing canonical interactions when resolving conversations. */
-const CONVERSATION_LINK_SCAN_LIMIT = 2000;
+const CONVERSATION_PROJECTION = {
+  provider_account_id: 1,
+  provider_recording_id: 1,
+  call_interaction_id: 1,
+  state: 1,
+  direction: 1,
+  contact_type: 1,
+  duration_seconds: 1,
+  started_at: 1,
+  createdAt: 1,
+  lead_ref: 1,
+} as const;
 
 /**
- * `lead_conversations` linked to this number's canonical interactions: by
- * `recordings[].lead_conversation_id` when set, otherwise by
- * `provider_recording_id` within the same `provider_account_id`.
+ * Legacy `lead_conversations` rows written before discovery stamped
+ * `contact_number_id` are reached through the recording link instead. The
+ * fallback is bounded by the page window: it used to scan up to 2,000
+ * recording-bearing interactions and build a `$in` of that size on *every*
+ * timeline page, including every page of the analysis preflight (14 §9).
+ *
+ * `scripts/migrations/csi-conversation-contact-number.ts` backfills the link,
+ * after which this branch finds nothing in steady state.
  */
-export const conversationSource: TimelineSource = async ({ number_id, limit, cursor }) => {
+async function legacyLinkedConversations(
+  numberId: string,
+  limit: number,
+  cursor: TimelineCursor | null,
+): Promise<ConversationLean[]> {
   const scanFilter: Record<string, unknown> = {
     purged_at: null,
-    contact_number_id: objectId(number_id),
+    contact_number_id: objectId(numberId),
     merged_into_id: null,
     "recordings.0": { $exists: true },
   };
@@ -336,7 +355,7 @@ export const conversationSource: TimelineSource = async ({ number_id, limit, cur
   const interactions = (await getCallInteractionModel()
     .find(scanFilter, { provider_account_id: 1, recordings: 1 })
     .sort({ started_at: -1, _id: -1 })
-    .limit(CONVERSATION_LINK_SCAN_LIMIT)
+    .limit(limit)
     .lean()) as unknown as Array<Pick<InteractionLean, "provider_account_id" | "recordings">>;
   const linkedIds: mongoose.Types.ObjectId[] = [];
   const byAccount = new Map<string, Set<string>>();
@@ -362,26 +381,37 @@ export const conversationSource: TimelineSource = async ({ number_id, limit, cur
   }
   if (!or.length) return [];
   const keyset = keysetAfterCursor(cursor, "conversation", "started_at", "_id", objectId);
-  const rows = (await getLeadConversationModel()
+  return (await getLeadConversationModel()
     .find(
-      cursor ? { $and: [{ $or: or }, keyset] } : { $or: or },
-      {
-        provider_account_id: 1,
-        provider_recording_id: 1,
-        call_interaction_id: 1,
-        state: 1,
-        direction: 1,
-        contact_type: 1,
-        duration_seconds: 1,
-        started_at: 1,
-        createdAt: 1,
-        lead_ref: 1,
-      },
+      { $and: [{ $or: or }, { contact_number_id: null }, ...(cursor ? [keyset] : [])] },
+      CONVERSATION_PROJECTION,
     )
     .sort({ started_at: -1, _id: -1 })
     .limit(limit)
     .lean()) as unknown as ConversationLean[];
-  return rows.map((row) => conversationEvent(number_id, row));
+}
+
+/**
+ * `lead_conversations` for this number. Discovery stamps `contact_number_id`
+ * on every conversation it writes, so the primary read is a keyset scan of
+ * `lead_conversation_number_started` with no sort stage and no join.
+ */
+export const conversationSource: TimelineSource = async ({ number_id, limit, cursor }) => {
+  const keyset = keysetAfterCursor(cursor, "conversation", "started_at", "_id", objectId);
+  const [direct, legacy] = await Promise.all([
+    getLeadConversationModel()
+      .find({ contact_number_id: objectId(number_id), ...keyset }, CONVERSATION_PROJECTION)
+      .sort({ started_at: -1, _id: -1 })
+      .limit(limit)
+      .lean() as unknown as Promise<ConversationLean[]>,
+    legacyLinkedConversations(number_id, limit, cursor),
+  ]);
+  const merged = new Map<string, ConversationLean>();
+  for (const row of [...direct, ...legacy]) merged.set(String(row._id), row);
+  return [...merged.values()]
+    .sort((a, b) => +new Date(b.started_at) - +new Date(a.started_at) || (String(a._id) < String(b._id) ? 1 : -1))
+    .slice(0, limit)
+    .map((row) => conversationEvent(number_id, row));
 };
 
 export const DEFAULT_TIMELINE_SOURCES: readonly TimelineSource[] = [

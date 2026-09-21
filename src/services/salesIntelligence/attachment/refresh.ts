@@ -5,6 +5,7 @@ import { withTransaction } from "../../../db";
 import { getFormLeadModel } from "../../../models/FormLead";
 import { getCallLeadModel } from "../../../models/CallLead";
 import { getContactNumberModel } from "../../../models/ContactNumber";
+import { leadPhoneMatchClauses } from "../../../models/leadContactPhoneIndexes";
 import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
 import { getSalesIntelligenceSyncStateModel, SALES_INTELLIGENCE_SYNC_STATE_INDEXES } from "../../../models/SalesIntelligenceSyncState";
 import { activeTokenFilter, MongoLeaseStore } from "../../durableWork/leases";
@@ -18,6 +19,50 @@ import { persistLeadAttachments } from "./store";
 import { rediscoverAttachmentPage } from "./hooks";
 
 const PAGE = 250;
+
+/**
+ * The join key for a number scan, as the Lead collections store it.
+ *
+ * `normalizePhoneNumberForMatch` produces the ten-digit NANP form, which is
+ * exactly `contact_numbers.national_ten`. Outside NANP `national_ten` is null,
+ * so the E.164 digit string is the stored form and the fallback key; that set
+ * is tiny, and falling back beats silently attaching nothing (14 §3).
+ */
+export function numberLookupDigits(number: { national_ten?: string | null; e164?: string | null }): string[] {
+  const ten = number.national_ten?.trim();
+  if (ten) return [ten];
+  const digits = number.e164?.replace(/\D/g, "") ?? "";
+  return digits ? [digits] : [];
+}
+
+/**
+ * Leads whose any known contact path carries this number, keyset-paged by
+ * `_id`. This replaces an unfiltered walk of every Form Lead and every Call
+ * Lead — 250 at a time, once per Contact Number, for both models — that made
+ * the dominant queue job `O(numbers x leads)` (14 §3).
+ *
+ * The exact-identity path (`exactEvidence`: telephony session / call log ids)
+ * stays lead-driven: it is already an indexed lookup from the Lead, and the
+ * attachment watermark sweep raises an `attachment-lead:` job for every Lead,
+ * so those edges are still made — just not by re-reading the corpus here.
+ */
+async function findLeadsByNumber(
+  number: { national_ten?: string | null; e164?: string | null },
+  model: LeadRef["model"],
+  session: ClientSession,
+  after?: string,
+): Promise<LeadSource[]> {
+  const clauses = leadPhoneMatchClauses(model, numberLookupDigits(number));
+  if (!clauses.length) return [];
+  const filter = {
+    $or: clauses,
+    ...(after ? { _id: { $gt: new mongoose.Types.ObjectId(after) } } : {}),
+  };
+  return model === "FormLead"
+    ? getFormLeadModel().find(filter).sort({ _id: 1 }).limit(PAGE).session(session).lean()
+    : getCallLeadModel().find(filter).sort({ _id: 1 }).limit(PAGE).session(session).lean();
+}
+
 async function enqueueNumberScan(numberId: string, revision: number, session: ClientSession, model: LeadRef["model"], after?: string) {
   return enqueueCsiJob({ stage: "attachment_refresh", subject_key: `attachment-scan:${model}:${numberId}`,
     dedupe_key: `csi:attachment-scan:${model}:${numberId}:${revision}:${after ?? "start"}`,
@@ -46,10 +91,9 @@ export async function runAttachmentRefreshJob(jobId?: string) {
       if (row.subject_key.startsWith("attachment-scan:")) {
         const model = row.subject_key.split(":")[1];
         if (model !== "FormLead" && model !== "CallLead") throw new CsiError("INVALID_INPUT");
-        if (!await getContactNumberModel().exists({ _id: first }).session(session)) return 0;
-        const filter = refs[1] ? { _id: { $gt: new mongoose.Types.ObjectId(refs[1]) } } : {};
-        const leads: LeadSource[] = model === "FormLead" ? await getFormLeadModel().find(filter).sort({ _id: 1 }).limit(PAGE).session(session).lean() :
-          await getCallLeadModel().find(filter).sort({ _id: 1 }).limit(PAGE).session(session).lean();
+        const number = await getContactNumberModel().findById(first, { national_ten: 1, e164: 1 }).session(session).lean();
+        if (!number) return 0;
+        const leads = await findLeadsByNumber(number, model, session, refs[1]);
         let count = 0;
         for (const lead of leads) count += await persistLeadAttachments(lead, model, session, lease.job_id, new Date(), first);
         if (leads.length === PAGE) await enqueueNumberScan(first, row.input_revision, session, model, String(leads.at(-1)!._id));
