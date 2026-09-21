@@ -14,11 +14,22 @@ import { toE164 } from "./phone";
  * helpers plus one read. Reads never mutate. Non-external kinds are hidden
  * unless `hygiene=true`, which then shows only non-external kinds (02 §1).
  */
+function repeatedQuery<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess((value) => {
+    if (value == null || value === "") return undefined;
+    const parts = (Array.isArray(value) ? value : [value])
+      .flatMap((item) => String(item).split(","))
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return parts.length ? [...new Set(parts)].sort() : undefined;
+  }, z.array(schema).min(1).optional());
+}
+
 export const numberSearchQuerySchema = z
   .object({
     scope: z.literal("production").optional(),
     q: z.string().trim().max(200).optional(),
-    classification: z.enum(CONTACT_NUMBER_CLASSIFICATIONS).optional(),
+    classification: repeatedQuery(z.enum(CONTACT_NUMBER_CLASSIFICATIONS)),
     attachment: z.enum(["any", "linked", "unlinked"]).default("any"),
     active_from: csiDateSchema.optional(),
     active_to: csiDateSchema.optional(),
@@ -110,7 +121,7 @@ export function buildNumberSearchFilter(
     kind: query.hygiene ? { $ne: "external" } : "external",
   };
   const and: Array<Record<string, unknown>> = [];
-  if (query.classification) filter.classification = query.classification;
+  if (query.classification?.length) filter.classification = { $in: query.classification };
   if (query.attachment === "linked") {
     and.push({
       $or: [
