@@ -157,16 +157,80 @@ export async function reconcileCsiBudget(
   return withTransaction(reconcile);
 }
 
+/**
+ * A reservation is held until its invocation reports what it actually spent. A
+ * function killed mid-invocation reports nothing, so its estimate stays
+ * subtracted from the monthly ceiling forever: production reached 59 stranded
+ * analysis reservations holding $11.10, which is what paused 377 analysis jobs
+ * with `budget_exhausted` (22 §1, measured in 23 §0).
+ *
+ * Raising the function limit removes the common cause; it cannot remove the
+ * case, because any limit can be exceeded. This sweep is the durable answer.
+ * It only touches a reservation whose job is demonstrably not running — no
+ * live lease — and only after a grace period far longer than the gap between
+ * a worker releasing its lease and running its own reconciliation, so it never
+ * races the owning invocation.
+ *
+ * What it books is deliberately conservative and honest: a provider that never
+ * started is released at zero, and a started one is reconciled at the cents its
+ * steps actually reported. That can under-count a kill between the last step
+ * and the response, which is why the row keeps `usage_complete: false` and
+ * stays visible in the reservation report rather than being silently trusted.
+ */
+export const STRANDED_RESERVATION_GRACE_MS = 1_800_000;
+export async function recoverStrandedCsiReservations(now = new Date(), limit = 25) {
+  const Reservations = getSalesIntelligenceAiReservationModel();
+  const rows = await Reservations.find({
+    status: "reserved",
+    reserved_at: { $lte: new Date(now.getTime() - STRANDED_RESERVATION_GRACE_MS) },
+  }).sort({ reserved_at: 1 }).limit(limit).lean();
+  let released = 0, reconciled = 0, cents = 0;
+  for (const row of rows) {
+    const running = await getSalesIntelligenceJobModel().exists({
+      _id: row.job_id, status: "leased", leased_until: { $gt: now },
+    });
+    if (running) continue;
+    const settled = row.provider_started ? Math.max(0, Math.trunc(row.observed_cents)) : 0;
+    try {
+      await reconcileCsiBudget(row.reservation_id, settled, !row.provider_started);
+    } catch (error) {
+      // `IDEMPOTENCY_CONFLICT`: the owning invocation reconciled between this
+      // read and this write, and its accounting wins. `REVISION_CONFLICT`: the
+      // period row no longer holds this estimate as reserved, which is a real
+      // inconsistency — the row is deliberately left `reserved` and visible in
+      // the reservation report rather than force-settled to make the sweep
+      // look clean, and the next sweep tries it again.
+      if (error instanceof CsiError && ["IDEMPOTENCY_CONFLICT", "REVISION_CONFLICT"].includes(error.code)) continue;
+      throw error;
+    }
+    if (row.provider_started) {
+      reconciled++;
+      cents += settled;
+      await Reservations.updateOne({ reservation_id: row.reservation_id }, { $set: { usage_complete: false } });
+    } else released++;
+  }
+  return { released, reconciled, recovered_cents: cents };
+}
+
 /** Budget headroom returned; analysis/STT jobs paused for admission stay on their saved stage. */
+/**
+ * Ids collected for wake-ups by a resume. The resume itself stays unbounded so
+ * a large paused backlog is released in one write; only the messages are
+ * bounded, and a job released without one is claimed by the recovery cron on
+ * its next pass (22 §3).
+ */
+export const CSI_WAKEUP_PUBLISH_LIMIT = 100;
 export async function resumeBudgetPausedJobs(now = new Date(), session?: ClientSession) {
   const active = await getSalesIntelligenceAiBudgetModel().exists({ period_start: { $lte: now }, period_end: { $gt: now },
     activated_at: { $ne: null }, $expr: { $lt: [{ $add: ["$actual_cents", "$reserved_cents"] }, "$ceiling_cents"] } }).session(session ?? null);
-  if (!active) return { modifiedCount: 0 };
+  if (!active) return { modifiedCount: 0, job_ids: [] as string[] };
   const filter = { ...csiDataset(), status: "paused" as const, reason: "budget_exhausted" as const };
   const update = { $set: { status: "pending" as const, reason: null, next_attempt_at: now } };
   const Jobs = getSalesIntelligenceJobModel();
-  if (session) return Jobs.updateMany(filter, update, { session });
-  return Jobs.updateMany(filter, update);
+  const job_ids = (await Jobs.find(filter, { _id: 1 }).sort({ _id: 1 }).limit(CSI_WAKEUP_PUBLISH_LIMIT)
+    .session(session ?? null).lean()).map(row => String(row._id));
+  const result = session ? await Jobs.updateMany(filter, update, { session }) : await Jobs.updateMany(filter, update);
+  return { modifiedCount: result.modifiedCount, job_ids };
 }
 
 /** Period boundaries are computed by Team C's timezone clock, never by browser scope. */

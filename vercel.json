@@ -7,7 +7,7 @@
   "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
   "functions": {
     "api/index.ts": {
-      "maxDuration": 120
+      "maxDuration": 800
     },
     "api/queues/sheet-sync-consumer.ts": {
       "experimentalTriggers": [
@@ -64,6 +64,7 @@
       ]
     },
     "api/queues/sales-intelligence-consumer.ts": {
+      "maxDuration": 800,
       "experimentalTriggers": [
         {
           "type": "queue/v2beta",

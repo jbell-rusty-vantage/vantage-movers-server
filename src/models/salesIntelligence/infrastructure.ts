@@ -233,6 +233,8 @@ export const SalesIntelligenceAiReservationSchema = new Schema(
     input_tokens: count,
     output_tokens: count,
     reasoning_tokens: { type: Number, default: null, min: 0 },
+    /** Prefix tokens the provider served from cache, or null when it reported none (22 §4.3). */
+    cached_input_tokens: { type: Number, default: null, min: 0 },
     observed_cents: count,
     usage_complete: { type: Boolean, default: true },
     actual_cents: {

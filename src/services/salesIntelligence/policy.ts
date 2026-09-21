@@ -10,8 +10,10 @@ import {
 import { getSalesIntelligencePolicyVersionModel } from "../../models/SalesIntelligencePolicyVersion";
 import { getSalesIntelligencePolicyPointerModel } from "../../models/SalesIntelligencePolicyPointer";
 import { getSalesIntelligenceAiBudgetModel } from "../../models/SalesIntelligenceAiBudget";
+import { CSI_WAKEUP_PUBLISH_LIMIT } from "./aiBudget";
 import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
 import { executeCsiCommand, appendCsiAudit, csiCas } from "./transactions";
+import { publishRunnableWakeups } from "../numberActivity/webhookFanout";
 import { CsiError, type CsiActor } from "./auth";
 import type { ClientSession } from "mongoose";
 export function defaultCsiPolicy(): CsiPolicy {
@@ -53,7 +55,10 @@ export async function updateCsiPolicy(input: {
   policy: CsiPolicy;
 }) {
   const policy = csiPolicySchema.parse(input.policy);
-  return executeCsiCommand({
+  // Jobs this change makes runnable, woken after the command commits. An
+  // idempotent replay resumes nothing and so publishes nothing (22 §3).
+  const resumed: string[] = [];
+  const result = await executeCsiCommand({
     ...input,
     command: "update_settings",
     payload: { expected_revision: input.expected_revision, policy },
@@ -107,12 +112,21 @@ export async function updateCsiPolicy(input: {
       const resume: Array<"budget_exhausted" | "per_recording_ceiling"> = [];
       if (policy.monthly_ceiling_cents > previousPolicy.monthly_ceiling_cents) resume.push("budget_exhausted");
       if (policy.per_recording_ceiling_cents > previousPolicy.per_recording_ceiling_cents) resume.push("budget_exhausted", "per_recording_ceiling");
-      if (resume.length)
+      if (resume.length) {
+        const filter = { ...csiDataset(), status: "paused" as const, reason: { $in: [...new Set(resume)] } };
+        for (const row of await getSalesIntelligenceJobModel()
+          .find(filter, { _id: 1 })
+          .sort({ _id: 1 })
+          .limit(CSI_WAKEUP_PUBLISH_LIMIT)
+          .session(context.session)
+          .lean())
+          resumed.push(String(row._id));
         await getSalesIntelligenceJobModel().updateMany(
-          { ...csiDataset(), status: "paused", reason: { $in: [...new Set(resume)] } },
+          filter,
           { $set: { status: "pending", reason: null, next_attempt_at: context.now } },
           { session: context.session },
         );
+      }
       await appendCsiAudit(context, {
         subject_key: "policy:active",
         event_kind: "policy_changed",
@@ -125,6 +139,8 @@ export async function updateCsiPolicy(input: {
       return { version: policy.version, revision: current.revision + 1 };
     },
   });
+  await publishRunnableWakeups(resumed);
+  return result;
 }
 
 /** First policy install is an explicit Owner mutation; GET/resolvePolicy never writes. */

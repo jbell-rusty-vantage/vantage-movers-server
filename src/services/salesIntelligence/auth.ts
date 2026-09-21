@@ -14,8 +14,19 @@ import { getIntelligenceRunModel } from "../../models/IntelligenceRun";
 import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
 const getVantageAuth = (req: Request) =>
   (req as Request & { vantageAuth?: VantageAuthContext }).vantageAuth;
+/** Bounded `path` / `code` pairs, never submitted values. Mirrors the sanitized Zod issue shape. */
+export type CsiIssue = Readonly<{ path: string; code: string }>;
 export class CsiError extends Error {
-  constructor(readonly code: CsiErrorCode) {
+  constructor(
+    readonly code: CsiErrorCode,
+    /**
+     * Which parts of the request were refused. A definite rejection the caller
+     * can act on must say where it failed: without this an evidence-scope
+     * refusal reached the model as a bare code, so its one repair allowance
+     * could not be spent on anything (22 §4.4).
+     */
+    readonly issues?: readonly CsiIssue[],
+  ) {
     super(code);
   }
 }

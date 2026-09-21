@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { billedCents, contextTokenCeiling, runtimeLimitsSchema, DEFAULT_RUNTIME_LIMITS } from "./runtime";
-import { estimateAnalysisCents } from "./worker";
+import { CSI_ANALYSIS_LEASE_TTL_MS, CSI_FUNCTION_MAX_DURATION_MS, estimateAnalysisCents } from "./worker";
 import { resolveQuotedMoney } from "./apply";
 
 test("missing, negative and invalid billed usage never becomes a known zero", () => {
@@ -20,8 +21,17 @@ test("default cumulative budgets permit every configured step at its per-step ce
   assert(limits.steps >= 2, "one submission plus one focused repair");
   assert(limits.total_input_tokens >= limits.steps * limits.context_tokens);
   assert(limits.total_output_tokens >= limits.steps * limits.output_tokens);
-  assert(limits.elapsed_ms < 300_000, "leave room within the default five-minute job lease");
-  assert(limits.elapsed_ms + 10_000 <= 120_000, "one provider invocation must finish inside the deployed 120 s function");
+  assert(limits.elapsed_ms < CSI_ANALYSIS_LEASE_TTL_MS, "leave room within the lease renewed before the provider phase");
+  assert(limits.elapsed_ms + 10_000 <= CSI_FUNCTION_MAX_DURATION_MS, "one provider invocation must finish inside the deployed function");
+});
+test("the deployed function limit is the same number in vercel.json for both analysis paths", () => {
+  // Both the crons (`api/index.ts`) and the queue consumer run analysis. A
+  // limit that disagreed with `CSI_FUNCTION_MAX_DURATION_MS` would resurface
+  // exactly the killed-invocation strand that 18 had to clean up (22 §2).
+  const config = JSON.parse(readFileSync("vercel.json", "utf8")) as { functions: Record<string, { maxDuration?: number; experimentalTriggers?: unknown[] }> };
+  for (const path of ["api/index.ts", "api/queues/sales-intelligence-consumer.ts"])
+    assert.equal(config.functions[path]?.maxDuration, CSI_FUNCTION_MAX_DURATION_MS / 1000, path);
+  assert(config.functions["api/queues/sales-intelligence-consumer.ts"]?.experimentalTriggers?.length, "consumer keeps its queue registration");
 });
 test("default reservation fits the default per-recording ceiling at extraction list pricing", () => {
   // openai/gpt-5-mini list pricing in cents per million tokens; a different

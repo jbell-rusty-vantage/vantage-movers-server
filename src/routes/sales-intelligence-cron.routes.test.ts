@@ -8,6 +8,7 @@ import type { ReconcileSummary } from "../services/numberActivity/reconcileCallL
 import type { RecoverySummary } from "../services/numberActivity/webhookRecovery";
 import type { DirectorySyncSummary } from "../services/numberActivity/directorySync";
 import { createSalesIntelligenceCronRouter, CSI_CRON_PATHS } from "./sales-intelligence-cron.routes";
+import { CSI_FUNCTION_MAX_DURATION_MS } from "../services/salesIntelligence/analysis/worker";
 
 function reconcileSummary(partial: Partial<ReconcileSummary>): ReconcileSummary {
   return {
@@ -240,7 +241,7 @@ test("vercel.json registers the CSI-03 crons and the queue consumer trigger (a h
   assert.equal(schedules.get(CSI_CRON_PATHS.attentionPublish), "* * * * *");
   assert.equal(
     manifest.functions["api/index.ts"]?.maxDuration,
-    120,
+    CSI_FUNCTION_MAX_DURATION_MS / 1000,
     "the cron entry point declares its ceiling instead of inheriting a platform default",
   );
   assert.equal(schedules.get(CSI_CRON_PATHS.directorySync), "20 5 * * *", "CSI-04 directory sync is registered and handled by the same router");

@@ -135,6 +135,33 @@ export async function publishCaptureProjectionWakeup(
   }
 }
 
+/**
+ * Wake-ups for jobs that became runnable without being newly enqueued.
+ *
+ * Every durable job needs exactly one thing to start promptly: a message. The
+ * enqueue sites already publish one. The *resume* sites did not, so a job
+ * released by a budget recovery, a policy change, a receipt recovery or an
+ * eligibility re-check waited for the next five-minute cron instead of the
+ * consumer (22 §3).
+ *
+ * Best-effort by the same rule as `publishCaptureProjectionWakeup`: the pending
+ * row is the durable truth, delivery loss is covered by cron recovery, and a
+ * duplicate message hits the claim fence. Callers publish only after their
+ * transaction commits, never inside it.
+ */
+export async function publishRunnableWakeups(
+  jobIds: readonly string[],
+  deps: PublishDependencies & { publish?: typeof publishCaptureProjectionWakeup } = {},
+): Promise<{ published: number }> {
+  const shouldPublish = deps.shouldPublish ?? shouldPublishSalesIntelligenceQueue;
+  if (!jobIds.length || !shouldPublish()) return { published: 0 };
+  const publish = deps.publish ?? publishCaptureProjectionWakeup;
+  const results = await Promise.all(
+    [...new Set(jobIds)].map((jobId) => publish(jobId, deps).catch(() => ({ published: false }))),
+  );
+  return { published: results.filter((result) => result.published).length };
+}
+
 export type FanoutResult =
   | { status: "skipped"; reason: "flag_off" | "receipt_not_durable" | "no_telephony_session" }
   | { status: "enqueued"; job_id: string; dedupe_key: string; published: boolean }

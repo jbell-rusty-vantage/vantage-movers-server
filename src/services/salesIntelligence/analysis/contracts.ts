@@ -3,7 +3,20 @@ import { csiIdSchema } from "../../../validation/v1/salesIntelligence";
 import { intelligenceEnvelopeSchema } from "../../../validation/intelligence/intelligenceEnvelope.validation";
 
 export const CSI_ANALYSIS_VERSION = "csi-intelligence-v1" as const;
-export const CSI_PROMPT_VERSION = "sales_intelligence_analyze_v1" as const;
+/**
+ * Prompt versions the MCP still serves. A run pins one at preparation and keeps
+ * it; `original_evidence` replays a parent byte-for-byte, so retiring a version
+ * would silently change what a replay was asked (22 §4.3).
+ *
+ * v2 differs from v1 only in *where* the per-run material sits: v1 appended the
+ * trusted subject binding and any Owner correction context to the pinned text,
+ * which made every run's system prompt different and defeated provider prefix
+ * caching. v2 pins the template alone and carries that material in the evidence
+ * message instead. The instructions themselves are unchanged.
+ */
+export const CSI_PROMPT_VERSIONS = ["sales_intelligence_analyze_v1", "sales_intelligence_analyze_v2"] as const;
+export type CsiPromptVersion = (typeof CSI_PROMPT_VERSIONS)[number];
+export const CSI_PROMPT_VERSION: CsiPromptVersion = "sales_intelligence_analyze_v2";
 const cursor = z.string().min(1).max(512).optional();
 const page = { cursor, limit: z.number().int().min(1).max(50).default(20) };
 const query = z.string().trim().min(1).max(120).optional();

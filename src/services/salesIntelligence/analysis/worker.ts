@@ -10,14 +10,14 @@ import { getLeadConversationModel } from "../../../models/LeadConversation";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { getSalesIntelligenceAiBudgetModel } from "../../../models/SalesIntelligenceAiBudget";
 import { getSalesIntelligenceAiReservationModel } from "../../../models/SalesIntelligenceAiReservation";
-import { reserveCsiBudget, reconcileCsiBudget, resumeBudgetPausedJobs } from "../aiBudget";
-import { claimCsiJob, completeCsiJob, checkpointCsiJob, failCsiJob } from "../jobs";
+import { reserveCsiBudget, reconcileCsiBudget, resumeBudgetPausedJobs, recoverStrandedCsiReservations, CSI_WAKEUP_PUBLISH_LIMIT } from "../aiBudget";
+import { claimCsiJob, completeCsiJob, checkpointCsiJob, failCsiJob, renewCsiJob } from "../jobs";
 import { resolvePolicy } from "../policy";
 import { CsiError } from "../auth";
 import { prepareIntelligenceRun, recoverIntelligenceSubmission } from "./run";
 import { conversationAnalysisInput, intelligenceSources, numberAnalysisInput } from "./sources";
 import { DEFAULT_RUNTIME_LIMITS, runtimeLimitsSchema, invokeIntelligenceAgent, IntelligenceRuntimeError, type InvocationInput, type RuntimeLimits } from "./runtime";
-import { publishCaptureProjectionWakeup } from "../../numberActivity/webhookFanout";
+import { publishCaptureProjectionWakeup, publishRunnableWakeups, shouldPublishSalesIntelligenceQueue } from "../../numberActivity/webhookFanout";
 import { applicationReady, resumeApplicationIntents } from "./readiness";
 import { consumeNumberRefreshSignal, scanIntelligenceChanges } from "./scheduling";
 import { resumeTranscriptAnalysisJobs } from "../conversations/transcribe";
@@ -42,7 +42,9 @@ export function analysisRuntimeConfiguration() {
 }
 export type AnalysisDependencies = { configuration?: ReturnType<typeof analysisRuntimeConfiguration>; model?: InvocationInput["model"];
   limits?: RuntimeLimits; beforeProvider?: () => Promise<void>; afterReceipt?: () => Promise<void>;
-  publish?: typeof publishCaptureProjectionWakeup };
+  publish?: typeof publishCaptureProjectionWakeup;
+  /** Test seam for the queue gate; production reads the deployment environment. */
+  shouldPublish?: () => boolean };
 export function estimateAnalysisCents(pricing: AnalysisPricing, limits: RuntimeLimits) {
   return Math.ceil((limits.total_input_tokens * pricing.input_cents_per_million + limits.total_output_tokens * pricing.output_cents_per_million) / 1_000_000) + limits.steps - 1;
 }
@@ -83,15 +85,21 @@ function analysisProviderFailure(error: unknown): { kind: "throttled" | "permiss
   return null;
 }
 
+/**
+ * Lease TTL for an analysis claim, and the TTL it is renewed to once evidence
+ * capture is done. It must exceed `elapsed_ms` with room for the submission
+ * commit; `runtime.test.ts` pins that relationship.
+ */
+export const CSI_ANALYSIS_LEASE_TTL_MS = 300_000;
 /** Queue and cron entry point. One bounded invocation; never transcription or provider retries. */
 export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "number_refresh" = "analysis", deps: AnalysisDependencies = {}) {
   if (!analysisEnabled()) return { status: "disabled" };
-  const job = await claimCsiJob(`csi-analysis:${randomUUID()}`, jobId, 300_000, stage);
+  const job = await claimCsiJob(`csi-analysis:${randomUUID()}`, jobId, CSI_ANALYSIS_LEASE_TTL_MS, stage);
   if (!job) return { status: "not_claimable" };
   const lease = { job_id: String(job._id), owner: job.lease_owner!, epoch: job.lease_epoch };
   let reservation: string | null = null, providerStarted = false, returned = false, usageComplete = true;
   let inputTokens = 0, outputTokens = 0, actualCents = 0, steps = 0;
-  let reasoningTokens: number | null = 0;
+  let reasoningTokens: number | null = 0, cachedTokens: number | null = null;
   let runId: string | null = null;
   let admissionEvidence: AdmissionEvidence | null = null;
   const finish = async (receipt: Awaited<ReturnType<typeof recoverIntelligenceSubmission>>) => {
@@ -183,7 +191,9 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
       await getIntelligenceRunModel().updateOne({ _id: runId }, { $set: { pricing_snapshot: config.pricing } }, { session });
     });
     const receipt = await invokeIntelligenceAgent({ ...config, limits, model: deps.model, run_id: runId, token: prepared.token,
-      prompt: prepared.prompt_context.rendered_prompt!, schema_digest: prepared.prompt_context.schema_digest!,
+      prompt: prepared.prompt_context.rendered_prompt!, prompt_version: prepared.prompt_context.prompt_version!,
+      schema_digest: prepared.prompt_context.schema_digest!, evidence_preamble: prepared.prompt_context.evidence_preamble,
+      permitted_tools: prepared.permitted_tools, model_tools: prepared.model_tools,
       schema_failures: prior?.schema_failures ?? 0, onInvocationComplete: () => { returned = true; },
       conversation_ids: input.conversation_ids, interaction_ids: input.interaction_ids,
       ...(original ? { original_reads: original.snapshots.map(s => s.tool_name === "get_intelligence_context"
@@ -191,6 +201,12 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
         : intelligenceReadSchema.parse({ tool: s.tool_name, args: s.arguments })) } : {}),
       beforeProvider: async () => {
         if (!analysisEnabled()) throw new CsiError("FEATURE_DISABLED");
+        // Evidence capture has already spent part of the claim's TTL. The
+        // provider phase may run for the whole `elapsed_ms`, so it starts
+        // against a fresh lease rather than the remainder of the claim; a
+        // shorter TTL is still preferred over claiming long, because it keeps
+        // recovery of a genuinely crashed claim fast (22 Item 1).
+        await renewCsiJob(lease, CSI_ANALYSIS_LEASE_TTL_MS);
         await deps.beforeProvider?.();
         if (original) {
           await retainedOriginal(String(original.run._id));
@@ -210,13 +226,20 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
         steps++; inputTokens += step.usage.inputTokens ?? 0; outputTokens += step.usage.outputTokens ?? 0;
         const reasoning = step.usage.outputTokenDetails.reasoningTokens;
         reasoningTokens = reasoningTokens === null || reasoning === undefined ? null : reasoningTokens + reasoning;
+        // Cached prefix tokens stay null until some step reports them, so an
+        // unreported saving is never written down as zero saved (22 §4.3).
+        if (step.cached_input_tokens !== null) cachedTokens = (cachedTokens ?? 0) + step.cached_input_tokens;
         if (step.actual_cents === null || step.usage.inputTokens === undefined || step.usage.outputTokens === undefined) usageComplete = false;
         actualCents += step.actual_cents ?? 0;
-        await getIntelligenceRunModel().updateOne({ _id: runId }, { $max: { schema_failures: step.schema_failures } });
+        // The rejected argument paths are the only durable record of *why* a
+        // first submission failed; nothing else stores them, which is why the
+        // schema_exhausted share could not be classified before (22 §4.4).
+        await getIntelligenceRunModel().updateOne({ _id: runId }, { $max: { schema_failures: step.schema_failures },
+          ...(step.rejected_paths.length ? { $push: { schema_rejections: { $each: step.rejected_paths.slice(0, 16), $slice: -32 } } } : {}) });
         // Billing observations survive lease loss; only domain/application writes require its fence.
         await getSalesIntelligenceAiReservationModel().updateOne({ reservation_id: reservation, status: "reserved" }, { $set: {
           observed_steps: steps, input_tokens: inputTokens, output_tokens: outputTokens, reasoning_tokens: reasoningTokens,
-          observed_cents: actualCents, usage_complete: usageComplete } });
+          cached_input_tokens: cachedTokens, observed_cents: actualCents, usage_complete: usageComplete } });
       },
     });
     returned = true;
@@ -268,7 +291,9 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
         const rows = await getSalesIntelligenceAiReservationModel().find({ run_id: runId }).lean();
         await getIntelligenceRunModel().updateOne({ _id: runId }, { $set: { usage: {
           input_tokens: rows.reduce((n, r) => n + r.input_tokens, 0), output_tokens: rows.reduce((n, r) => n + r.output_tokens, 0),
-          reasoning_tokens: rows.some(r => r.reasoning_tokens == null) ? null : rows.reduce((n, r) => n + (r.reasoning_tokens ?? 0), 0), usage_complete: rows.every(r => r.status !== "reserved"),
+          reasoning_tokens: rows.some(r => r.reasoning_tokens == null) ? null : rows.reduce((n, r) => n + (r.reasoning_tokens ?? 0), 0),
+          cached_input_tokens: rows.every(r => r.cached_input_tokens == null) ? null : rows.reduce((n, r) => n + (r.cached_input_tokens ?? 0), 0),
+          usage_complete: rows.every(r => r.status !== "reserved"),
           actual_cents: rows.some(r => r.status === "reserved") ? null : rows.reduce((n, r) => n + (r.actual_cents ?? 0), 0),
         } } });
       }
@@ -276,30 +301,76 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
   }
 }
 /**
- * Whole-invocation budget for one extract cron. The deployed function allows
- * 120 s (`vercel.json` `maxDuration`); the drain's preparation reads come first,
- * and a provider call is only started when it can still finish inside the
- * remaining budget. A killed invocation is the worst outcome: it strands a
- * started reservation and a lease with nothing durable to show for it.
+ * The deployed function limit for both analysis paths. `vercel.json` carries
+ * the same number for `api/index.ts` (the crons) and for the Sales Intelligence
+ * queue consumer, and `runtime.test.ts` reads that file and asserts they agree,
+ * the way `wiring.test.ts` already reads the crons. Nothing derives this from
+ * the environment at runtime: a limit that silently disagreed with the deployed
+ * one is exactly the failure 18 was cleaning up after (22 §2).
  */
-export const INTELLIGENCE_DRAIN_BUDGET_MS = 105_000;
+export const CSI_FUNCTION_MAX_DURATION_MS = 800_000;
+/**
+ * Whole-invocation budget for one extract cron: the function limit less a
+ * margin for the response and for the platform's own shutdown. The drain's
+ * preparation reads come first, and a provider call is only started when it can
+ * still finish inside the remaining budget. A killed invocation is the worst
+ * outcome: it strands a started reservation and a lease with nothing durable to
+ * show for it.
+ */
+export const INTELLIGENCE_DRAIN_BUDGET_MS = CSI_FUNCTION_MAX_DURATION_MS - 15_000;
+/**
+ * How long a runnable analysis job may sit past its `next_attempt_at` before
+ * this cron stops trusting the queue and runs it itself. Longer than the
+ * consumer's own retry, so the ordinary outcome while the queue is healthy is
+ * "nothing overdue" (22 §3).
+ */
+export const INTELLIGENCE_RECOVERY_THRESHOLD_MS = 600_000;
+/**
+ * Whether a runnable analysis job has waited past the recovery threshold,
+ * which is what a lost wake-up looks like. It decides only whether this cron
+ * runs the loop at all; the loop still claims through the sorted,
+ * priority-ordered `claimCsiJob`, never by an id read here.
+ */
+async function overdueIntelligenceJobs(now: Date) {
+  return getSalesIntelligenceJobModel().exists({ ...csiDataset(), stage: { $in: ["analysis", "number_refresh"] },
+    status: { $in: ["pending", "retry"] }, $expr: { $lt: ["$attempts", "$max_attempts"] },
+    next_attempt_at: { $lte: new Date(now.getTime() - INTELLIGENCE_RECOVERY_THRESHOLD_MS) } });
+}
 export async function drainIntelligenceJobs(deps: AnalysisDependencies = {}, options: { deadline?: number; max?: number } = {}) {
   if (!analysisEnabled()) return { status: "disabled", outcomes: [] as Array<{ status: string; reason?: string }> };
   const deadline = options.deadline ?? Date.now() + INTELLIGENCE_DRAIN_BUDGET_MS, max = options.max ?? 50;
   await ensureCurrentCsiBudgetPeriod();
-  await resumeBudgetPausedJobs();
-  await getSalesIntelligenceJobModel().updateMany({ ...csiDataset(), stage: { $in: ["analysis", "number_refresh"] },
-    status: "paused", reason: "permission_denied", "result.reason": "analysis_disabled" }, { $set: { status: "pending", reason: null, next_attempt_at: new Date() } });
-  await recoverExhaustedIntelligenceReceipts();
-  await resumeApplicationIntents();
-  await resumeTranscriptAnalysisJobs();
-  await scanIntelligenceChanges();
+  // Free the headroom held by killed invocations before deciding what the
+  // monthly ceiling can admit, so a resumed job is not paused again the moment
+  // it is claimed.
+  await recoverStrandedCsiReservations();
+  // Every preparation step below can make a job runnable. Each returns the ids
+  // it released so they are woken through the queue once this cron's writes
+  // have committed, instead of waiting for the next five-minute tick (22 §3).
+  const wakeups: string[] = [];
+  wakeups.push(...(await resumeBudgetPausedJobs()).job_ids);
+  const disabled = { ...csiDataset(), stage: { $in: ["analysis", "number_refresh"] as const },
+    status: "paused" as const, reason: "permission_denied" as const, "result.reason": "analysis_disabled" };
+  wakeups.push(...(await getSalesIntelligenceJobModel().find(disabled, { _id: 1 }).sort({ _id: 1 })
+    .limit(CSI_WAKEUP_PUBLISH_LIMIT).lean()).map(row => String(row._id)));
+  await getSalesIntelligenceJobModel().updateMany(disabled, { $set: { status: "pending", reason: null, next_attempt_at: new Date() } });
+  wakeups.push(...(await recoverExhaustedIntelligenceReceipts()).job_ids);
+  wakeups.push(...(await resumeApplicationIntents()).job_ids);
+  wakeups.push(...(await resumeTranscriptAnalysisJobs()).job_ids);
+  wakeups.push(...(await scanIntelligenceChanges()).job_ids);
+  const published = await publishRunnableWakeups(wakeups, { publish: deps.publish, shouldPublish: deps.shouldPublish });
+  // With a registered consumer, one message per runnable job is the execution
+  // path and this cron is recovery: it runs the loop only when there is no
+  // queue to carry the message, or when a job is overdue past the recovery
+  // threshold. `max` and the deadline still bound a lost-message backlog.
+  const queued = (deps.shouldPublish ?? shouldPublishSalesIntelligenceQueue)();
+  const recover = queued ? Boolean(await overdueIntelligenceJobs(new Date())) : true;
   // Most queued rows are signals, no-ops or stale checks that finish in well
   // under a second; one invocation used to process exactly one of them, which
   // capped the whole pipeline at 288 jobs a day (17 §9).
   const elapsed = (deps.limits ?? deps.configuration?.limits ?? analysisRuntimeConfiguration().limits).elapsed_ms;
   const outcomes: Array<{ status: string; reason?: string }> = [];
-  for (let i = 0; i < max; i++) {
+  for (let i = 0; recover && i < max; i++) {
     if (Date.now() + elapsed + 5_000 > deadline) break;
     let result: { status: string; reason?: string } = await runIntelligenceJob(undefined, "analysis", deps);
     if (result.status === "not_claimable") result = await runIntelligenceJob(undefined, "number_refresh", deps);
@@ -309,19 +380,22 @@ export async function drainIntelligenceJobs(deps: AnalysisDependencies = {}, opt
   // `status` names what this drain did: the last outcome that was real work,
   // not the trailing `not_claimable` that ends every loop.
   const productive = outcomes.filter(o => o.status !== "not_claimable");
-  return { status: productive.at(-1)?.status ?? "not_claimable", outcomes, deadline_reached: Date.now() + elapsed + 5_000 > deadline };
+  return { status: recover ? productive.at(-1)?.status ?? "not_claimable" : "queue_dispatched",
+    outcomes, woke: published.published, recovery_ran: recover,
+    deadline_reached: recover && Date.now() + elapsed + 5_000 > deadline };
 }
 
 /** A receipt committed on the final crashed claim must not strand invocation_pending application.
  * Re-admit only a proven receipt; the normal worker recovers it before configuration/provider work. */
 export async function recoverExhaustedIntelligenceReceipts() {
-  if (!analysisEnabled()) return 0;
+  if (!analysisEnabled()) return { recovered: 0, job_ids: [] as string[] };
   return withTransaction(async session => {
     const jobs = await getSalesIntelligenceJobModel().find({ ...csiDataset(), stage: { $in: ["analysis", "number_refresh"] },
       "result.failure_projected": { $ne: true },
       $expr: { $gte: ["$attempts", "$max_attempts"] }, $or: [{ status: "dead_letter", reason: "attempts_exhausted" },
         { status: "leased", leased_until: { $lte: new Date() } }] }).sort({ _id: 1 }).limit(5).session(session).lean();
     let recovered = 0;
+    const job_ids: string[] = [];
     for (const job of jobs) {
       const run = await getIntelligenceRunModel().findOne({ job_id: job._id, ...csiDataset(), subject_key: job.subject_key }).session(session).lean();
       if (!run || run.purged_at || run.status !== "submitted" || !await getIntelligenceSubmissionModel().exists({ run_id: run._id, purged_at: null }).session(session)) {
@@ -335,7 +409,8 @@ export async function recoverExhaustedIntelligenceReceipts() {
       const result = await getSalesIntelligenceJobModel().updateOne({ _id: job._id, status: job.status, lease_epoch: job.lease_epoch },
         { $set: { status: "retry", reason: "receipt_recovery", attempts: job.max_attempts - 1, lease_owner: null, leased_until: null, next_attempt_at: new Date() } }, { session });
       recovered += result.modifiedCount;
+      if (result.modifiedCount === 1) job_ids.push(String(job._id));
     }
-    return recovered;
+    return { recovered, job_ids };
   });
 }

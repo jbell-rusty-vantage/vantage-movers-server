@@ -114,10 +114,10 @@ async function numbersNamedByAudit(
  * the stream only nominates candidates.
  */
 export async function scanIntelligenceChanges() {
-  if (!csiFlag("ENABLED") || !csiFlag("EXTRACTION_ENABLED")) return { status: "disabled", scanned: 0, changed: 0 };
+  if (!csiFlag("ENABLED") || !csiFlag("EXTRACTION_ENABLED")) return { status: "disabled", scanned: 0, changed: 0, job_ids: [] as string[] };
   const Model = getSalesIntelligenceSyncStateModel(), store = new MongoLeaseStore(Model);
   const token = await store.acquire({ scope: "intelligence_source_scan", owner: randomUUID(), now: new Date(), ttl_ms: 300_000 });
-  if (!token) return { status: "lease_held", scanned: 0, changed: 0 };
+  if (!token) return { status: "lease_held", scanned: 0, changed: 0, job_ids: [] as string[] };
   try {
     return await withTransaction(async session => {
       const state = await Model.findOne({ scope: token.scope }).session(session).lean();
@@ -139,7 +139,14 @@ export async function scanIntelligenceChanges() {
         if (numberId) scheduled.add(numberId);
         consumed = event;
       }
-      for (const numberId of scheduled) await scheduleNumberIntelligence(numberId, session);
+      // Ids are collected so the caller can wake each runnable job after this
+      // transaction commits; `scheduleNumberIntelligence` returns null when the
+      // fingerprint is unchanged and nothing was scheduled (22 §3).
+      const job_ids: string[] = [];
+      for (const numberId of scheduled) {
+        const jobId = await scheduleNumberIntelligence(numberId, session);
+        if (jobId) job_ids.push(jobId);
+      }
 
       // 2. Repair sweep: the original round-robin, unchanged, so a number no
       //    audit event ever names is still revisited.
@@ -148,7 +155,8 @@ export async function scanIntelligenceChanges() {
         .sort({ _id: 1 }).limit(REPAIR_SWEEP_LIMIT).session(session).lean();
       for (const number of rows) {
         if (scheduled.has(String(number._id))) continue;
-        await scheduleNumberIntelligence(String(number._id), session);
+        const jobId = await scheduleNumberIntelligence(String(number._id), session);
+        if (jobId) job_ids.push(jobId);
       }
 
       const updated = await Model.updateOne(activeTokenFilter(token, new Date()), { $set: {
@@ -156,7 +164,7 @@ export async function scanIntelligenceChanges() {
         ...(consumed ? { "cursor.audit_recorded_at": consumed.recorded_at, "cursor.audit_event_id": consumed._id } : {}),
       } }, { session });
       if (updated.modifiedCount !== 1 && updated.matchedCount !== 1) throw new CsiError("LEASE_LOST");
-      return { status: "scanned", scanned: rows.length, changed: scheduled.size };
+      return { status: "scanned", scanned: rows.length, changed: scheduled.size, job_ids };
     });
   } finally { await store.release({ token, now: new Date() }); }
 }

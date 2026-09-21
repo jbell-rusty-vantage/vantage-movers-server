@@ -61,6 +61,8 @@ export const IntelligenceRunSchema = new Schema(
     evidence_bytes: count,
     application_cursor: count,
     schema_failures: count,
+    /** `path:code` pairs the server rejected on an INVALID_INPUT submission, newest last, bounded (22 §4.4). */
+    schema_rejections: strings,
     invocation_complete: { type: Boolean, default: false },
     processing_reason: text,
     finalized_at: date,
@@ -72,7 +74,7 @@ export const IntelligenceRunSchema = new Schema(
     raw_output: { ...validatedJson(), required: false, default: null },
     usage: {
       type: new Schema(
-        { input_tokens: count, output_tokens: count, reasoning_tokens: { type: Number, default: null, min: 0 }, actual_cents: { type: Number, default: null, min: 0 }, usage_complete: { type: Boolean, default: false } },
+        { input_tokens: count, output_tokens: count, reasoning_tokens: { type: Number, default: null, min: 0 }, cached_input_tokens: { type: Number, default: null, min: 0 }, actual_cents: { type: Number, default: null, min: 0 }, usage_complete: { type: Boolean, default: false } },
         { _id: false, strict: "throw" },
       ),
       default: null,
@@ -101,6 +103,8 @@ export const IntelligenceRunSchema = new Schema(
     deployment: str,
     database: str,
     permitted_tools: { type: [String], enum: CSI_TOOLS, default: [] },
+    /** Why this run was granted the discovery tools beyond its captured evidence, or null (22 §4.1). */
+    tool_grant_reason: text,
     token_nonce: text,
     started_at: date,
     submitted_at: date,

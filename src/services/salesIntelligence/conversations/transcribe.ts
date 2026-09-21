@@ -7,7 +7,7 @@ import { getIntelligenceEvidenceSnapshotModel, INTELLIGENCE_EVIDENCE_SNAPSHOT_IN
 import { getSalesIntelligenceAiBudgetModel } from "../../../models/SalesIntelligenceAiBudget";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { readStoredAudio, gatewaySttProvider, validateStoredAudio, TranscriptionProviderError, type BlobAudioReader, type SttProvider } from "../../conversations/transcriptionProvider";
-import { publishCaptureProjectionWakeup } from "../../numberActivity/webhookFanout";
+import { publishCaptureProjectionWakeup, publishRunnableWakeups } from "../../numberActivity/webhookFanout";
 import { reserveCsiBudget, reconcileCsiBudget, resumeBudgetPausedJobs } from "../aiBudget";
 import { ensureCurrentCsiBudgetPeriod } from "../budgetPeriod";
 import { CsiError } from "../auth";
@@ -233,15 +233,20 @@ export async function runTranscriptionJob(jobId?: string, deps: TranscriptionDep
 export async function drainTranscriptionJobs(deps: TranscriptionDependencies = {}) {
   if (!csiFlag("STT_ENABLED")) return { status: "disabled" as const };
   await ensureCurrentCsiBudgetPeriod();
-  await resumeBudgetPausedJobs();
-  await resumeTranscriptAnalysisJobs();
+  // Both resumes can release an analysis job. Wake each one so it runs on the
+  // consumer rather than waiting for the extract cron's next tick (22 §3).
+  const wakeups = [
+    ...(await resumeBudgetPausedJobs()).job_ids,
+    ...(await resumeTranscriptAnalysisJobs()).job_ids,
+  ];
+  await publishRunnableWakeups(wakeups, { publish: deps.publish });
   await scheduleTranscriptionJobs(5, deps.publish);
   return runTranscriptionJob(undefined, deps);
 }
 
 /** Recover only eligibility-held analysis intents, pinned to their immutable current transcript. */
 export async function resumeTranscriptAnalysisJobs() {
-  if (!csiFlag("STT_ENABLED")) return 0;
+  if (!csiFlag("STT_ENABLED")) return { resumed: 0, job_ids: [] as string[] };
   const Jobs = getSalesIntelligenceJobModel();
   const filter = { ...csiDataset(), stage: "analysis" as const, $or: [
     { status: "paused" as const, reason: "eligibility_pending" },
@@ -249,8 +254,9 @@ export async function resumeTranscriptAnalysisJobs() {
   ] };
   const jobs = await Jobs.find(filter).sort({ next_attempt_at: 1, _id: 1 }).limit(5);
   let resumed = 0;
+  const job_ids: string[] = [];
   for (const job of jobs) {
-    resumed += await withTransaction(async session => {
+    const made = await withTransaction(async session => {
       const current = await getLeadConversationModel().findById(job.input_refs[0]).session(session);
       const snapshot = await getIntelligenceEvidenceSnapshotModel().findOne({ ...csiDataset(), _id: job.input_refs[1], conversation_id: job.input_refs[0] }).session(session);
       if (!current || current.content_purged_at || !snapshot || snapshot.purged_at || current.latest_transcript_version !== snapshot.transcript_version || current.media_digest_sha256 !== snapshot.source_revision) {
@@ -269,6 +275,8 @@ export async function resumeTranscriptAnalysisJobs() {
         { $set: { analysis_eligibility: eligibility, pending_stage: excluded ? null : "analysis", next_attempt_at: excluded ? null : new Date() } }, { session });
       return eligible ? result.modifiedCount : 0;
     });
+    resumed += made;
+    if (made) job_ids.push(String(job._id));
   }
-  return resumed;
+  return { resumed, job_ids };
 }

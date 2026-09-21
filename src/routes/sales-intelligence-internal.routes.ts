@@ -25,7 +25,13 @@ export function intelligenceRouteFailure(error: unknown, requestId: string) {
     : code === "SUBMISSION_CONFLICT" || code === "REVISION_CONFLICT" || code === "LEASE_LOST" ? 409
     : code === "ORIGINAL_EVIDENCE_UNAVAILABLE" ? 422 : code === "EVIDENCE_LIMIT_REACHED" || code === "BUDGET_EXHAUSTED" ? 413
     : code === "PROVIDER_READ_UNAVAILABLE" ? 503 : code === "INTERNAL_ERROR" ? 500 : 403;
-  const issues = error instanceof ZodError ? sanitizedSchemaIssues(error) : undefined;
+  const issues = error instanceof ZodError ? sanitizedSchemaIssues(error)
+    : error instanceof CsiError && error.issues?.length
+      ? error.issues.slice(0, 16).flatMap((issue) => {
+          const path = issue.path.slice(0, 160), issueCode = String(issue.code).slice(0, 48);
+          return path && ISSUE_PATH.test(path) && issueCode ? [{ path, code: issueCode }] : [];
+        })
+      : undefined;
   return {
     status,
     body: {
