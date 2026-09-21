@@ -12,6 +12,7 @@ import {
 import { resolveSourceCompany } from "../config/domain";
 import { shouldCaptureAuthEvents } from "../config/domain/observability";
 import { recordOperationalEvent } from "../services/observability";
+import { logger } from "../logger";
 
 type ScopedApiRoute = {
   method: string;
@@ -281,6 +282,13 @@ async function recordAuthEvent(
   input: AuthEventInput,
 ): Promise<void> {
   if (!shouldCaptureAuthEvents()) {
+    return;
+  }
+  // A successful scoped-key check happens on every authenticated request.
+  // That is request telemetry, not a business fact, and persisting it filled
+  // operational_events. Denials still become Operational Events.
+  if (input.eventKey === "auth.scoped_key.accepted") {
+    logger.info({ msg: input.eventKey, workflow: "api_secret", ...input.details });
     return;
   }
   await recordOperationalEvent({
