@@ -90,7 +90,7 @@ export const SalesIntelligenceJobSchema = new Schema(
     completed_at: date,
     input_refs: refs,
     owner_reanalysis: {
-      type: new Schema({ run_id: oid, source_run_id: oid, mode: enumeration(["original_evidence", "current_context"]), owner_correction_ids: refs }, { _id: false, strict: "throw" }),
+      type: new Schema({ run_id: oid, source_run_id: oid, mode: enumeration(["original_evidence", "current_context"]), owner_correction_ids: refs, focus_finding_id: ref }, { _id: false, strict: "throw" }),
       default: null,
     },
     rep_identity_window: {

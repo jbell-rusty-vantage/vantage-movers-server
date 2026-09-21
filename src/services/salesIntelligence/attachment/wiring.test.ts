@@ -9,6 +9,8 @@ import { requireApiSecret } from "../../../middleware/requireApiSecret";
 import { computeAdminActorSignature } from "../../operationsRegistry/trustedActor";
 import { defaultStageHandlers } from "../../numberActivity/jobDispatch";
 import { runAttachmentRefreshJob } from "./refresh";
+import { autoAttachNumber } from "./store";
+import { csiFlag } from "../../../config/domain/salesIntelligence";
 import { CsiError } from "../auth";
 
 test("actual attachment queue and five-minute cron registrations, disabled worker skips without Mongo", async () => {
@@ -62,4 +64,15 @@ test("Owner attachment routes and cron recovery: authority, scope, flag, strict 
     await fetch(`${base}${CSI_CRON_PATHS.jobRecovery}`, { headers: { "x-cron-secret": "synthetic-cron" } });
     assert.equal(connects, before); assert.equal(scans, 1); assert.equal(drains, 1);
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); process.env = saved; }
+});
+test("automatic attach is flag-gated and off by default: nothing is read or written until AUTO_ATTACH is on", async () => {
+  const before = process.env.SALES_INTELLIGENCE_AUTO_ATTACH;
+  delete process.env.SALES_INTELLIGENCE_AUTO_ATTACH;
+  try {
+    assert.equal(csiFlag("AUTO_ATTACH"), false);
+    // Returns before touching Mongo, so a 0 here is the gate and not a connection failure.
+    assert.equal(await autoAttachNumber("a".repeat(24), { now: new Date() } as unknown as Parameters<typeof autoAttachNumber>[1]), 0);
+    process.env.SALES_INTELLIGENCE_AUTO_ATTACH = "true";
+    assert.equal(csiFlag("AUTO_ATTACH"), true);
+  } finally { if (before === undefined) delete process.env.SALES_INTELLIGENCE_AUTO_ATTACH; else process.env.SALES_INTELLIGENCE_AUTO_ATTACH = before; }
 });

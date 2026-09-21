@@ -15,12 +15,22 @@ import type { CsiPolicy } from "../../../validation/v1/salesIntelligence";
 import { ownerRead, readCaptureCoverage } from "../../numberActivity/coverage";
 import { outreachDtoSchema, reviewItemDtoSchema, restrictionDtoSchema, type CoverageDto } from "../dto";
 import { resolvePolicy } from "../policy";
+import { certaintyLabel } from "../attachment/suggest";
 import { derive, attentionDue } from "./derive";
 import { stateWithActions } from "./transitions";
 import { subjectKey, type RecordRow, type FollowupRow } from "./types";
 import { nudgeHistoryPage } from "../nudges/reads";
 
 const iso = (value: Date | null | undefined) => value?.toISOString() ?? null;
+
+/** Owner-facing reading of the stored attachment mirror. Derived on read, never stored. */
+export function provenanceState(mirror: RecordRow["lead_attachment"]) {
+  if (!mirror || mirror.state === "rejected") return "needs_a_lead" as const;
+  if (mirror.state === "ambiguous") return "ambiguous" as const;
+  if (mirror.state !== "attached") return "needs_a_lead" as const;
+  if (mirror.certainty === "owner_confirmed") return "attached_by_you" as const;
+  return mirror.decided_by === "automatic" ? "attached_automatically" as const : "attached_from_evidence" as const;
+}
 
 const ATTEMPT_WINDOW_MS = 86_400_000;
 const reviewKeys = (record: RecordRow) => [subjectKey(record.subject), `number:${record.primary_contact_number_id}`];
@@ -133,7 +143,25 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
     ...cancellations.map(c => ({ model: "CancelledLead" as const, id: String(c._id), href: `/cancellations?record=${c._id}&database_scope=production`, certainty: "exact" as const })),
   ];
   const latest = record.primary_contact_number_id ? await getCallInteractionModel().findOne({ contact_number_id: record.primary_contact_number_id, merged_into_id: null }).sort({ started_at: -1, _id: -1 }).lean() : null;
+  const mirror = record.lead_attachment;
+  const callInProgress = record.call_progress?.state === "in_progress";
+  const callRestricted = derived.call_blockers.includes("restriction");
+  // Same blockers the command enforces: a closed record, a call already in progress, and the
+  // active call restriction. Closed and in-flight are both ILLEGAL_TRANSITION on the command.
+  const callAvailability = [
+    { action: "start_call" as const, enabled: record.state !== "closed" && !callInProgress && !callRestricted,
+      blocker_codes: [...(record.state === "closed" || callInProgress ? ["ILLEGAL_TRANSITION" as const] : []), ...(callRestricted ? ["CONTACT_RESTRICTED" as const] : [])] },
+    { action: "end_call" as const, enabled: record.state !== "closed" && callInProgress,
+      blocker_codes: record.state !== "closed" && callInProgress ? [] : ["ILLEGAL_TRANSITION" as const] },
+  ].map(a => ({ ...a, target_id: String(record._id), expected_revision: record.revision }));
   return outreachDtoSchema.parse({ id: String(record._id), revision: record.revision,
+    lead_attachment: mirror ? { attachment_id: String(mirror.attachment_id), lead_ref: { model: mirror.lead_ref.model, id: String(mirror.lead_ref.id) },
+      state: mirror.state, certainty: mirror.certainty, certainty_label: certaintyLabel(mirror.certainty), decided_by: mirror.decided_by,
+      decided_at: iso(mirror.decided_at), confidence: mirror.confidence ?? null, observed_at: iso(mirror.observed_at),
+      lead_display: lead && String(lead._id) === String(mirror.lead_ref.id) ? { name: lead.name ?? null, job_no: lead.job_no ?? null } : null } : null,
+    call_progress: record.call_progress ? { state: record.call_progress.state, started_at: iso(record.call_progress.started_at),
+      started_by: record.call_progress.started_by, ended_at: iso(record.call_progress.ended_at), ended_by: record.call_progress.ended_by,
+      note: record.call_progress.note } : null,
     lead_display: lead ? { name: lead.name ?? null, job_no: lead.job_no ?? null, source_company: lead.source_company_label_snapshot ?? null } : null,
     latest_number_call: latest ? { id: String(latest._id), happened_at: iso(latest.started_at), direction: latest.direction, provider_result: latest.provider_result ?? null, contact_type: latest.contact_type } : null,
     primary_number: number ? { id: String(number._id), e164: number.e164 } : null,
@@ -141,9 +169,10 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
     state: projectedState, reason: record.closed_reason, assignment: assignment(record), followups, followups_cursor: null,
     trigger_at: iso(record.trigger_at), first_action_due_at: iso(record.first_action_due_at), first_attributable_outbound_at: iso(record.first_attributable_outbound_at),
     next_action: followups.find(a => a.id === String(record.next_action?.followup_id)) ?? null, first_human_conversation_at: iso(record.first_human_conversation_at),
-    last_meaningful_contact_at: iso(record.last_meaningful_contact_at), derived: { ...derived, action_facts: actionFacts }, related_record_links: related,
-    allowed_actions: (["mark_worked", "assign", "set_waiting", "add_note", "close", "reopen", "create_followup"] as const).map(action => ({ action, target_id: String(record._id), expected_revision: record.revision,
-      enabled: action === "add_note" || (action === "reopen" ? record.state === "closed" && record.closure_origin !== "official" && number?.contact_eligibility.state !== "suppressed" : record.state !== "closed"), blocker_codes: [] })) });
+    last_meaningful_contact_at: iso(record.last_meaningful_contact_at), related_record_links: related,
+    derived: { ...derived, action_facts: actionFacts, call_state: record.call_progress?.state ?? "not_started", provenance_state: provenanceState(mirror) },
+    allowed_actions: [...(["mark_worked", "assign", "set_waiting", "add_note", "close", "reopen", "create_followup"] as const).map(action => ({ action, target_id: String(record._id), expected_revision: record.revision,
+      enabled: action === "add_note" || (action === "reopen" ? record.state === "closed" && record.closure_origin !== "official" && number?.contact_eligibility.state !== "suppressed" : record.state !== "closed"), blocker_codes: [] })), ...callAvailability] });
 }
 export async function readOutreach(id: string) {
   const record = await getOutreachRecordModel().findOne({ _id: id, purged_at: null }).lean();

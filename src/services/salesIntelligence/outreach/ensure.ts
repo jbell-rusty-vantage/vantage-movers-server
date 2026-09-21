@@ -12,12 +12,12 @@ import { csiWorkerActor } from "../auth";
 import { appendCsiAudit, payloadHash, type CsiTransactionContext } from "../transactions";
 import { resolvePolicy } from "../policy";
 import { loadLead } from "../attachment/sources";
-import { attachmentPolicyInput } from "../attachment/store";
+import { attachmentPolicyInput, type StoredAttachment } from "../attachment/store";
 import { resolveAtInteraction, type LeadRef } from "../attachment/suggest";
 import { openReview } from "../review/items";
 import { addStaffedMinutes } from "./staffing";
 import { callFacts, fulfilledByCall, officialClosure } from "./transitions";
-import { closeRecord, refreshRecord, saveFollowup } from "./store";
+import { closeRecord, jsonValue, refreshRecord, saveFollowup } from "./store";
 import { subjectKey, type InteractionRow } from "./types";
 import { historicalCaptureReady, historicalAttachmentsReady } from "../backfill/readiness";
 
@@ -127,6 +127,16 @@ export async function ensureInteraction(call: InteractionRow, context: CsiTransa
   const prior = record.toObject(), reps = repIdentity.agent_ids;
   const facts = callFacts(record, call, attribution, reps);
   if (!facts.identityAllowed) return record;
+  // The Owner should not have to remember to press stop. The covering window is the interaction's
+  // own span widened backwards by that same duration for the dialling gap, so no clock constant
+  // is invented outside policy; a call with no end time yet stamps on a later projection.
+  const progress = record.call_progress;
+  if (progress?.state === "in_progress" && facts.attributable) {
+    const ended = call.ended_at ?? call.started_at;
+    if (+progress.started_at >= +call.started_at - (+ended - +call.started_at) && +progress.started_at <= +ended) {
+      progress.state = "ended"; progress.ended_at = ended; progress.ended_by = "system"; progress.interaction_id = call._id;
+    }
+  }
   if (facts.outboundAttempt || facts.human) {
     if (record.state === "unworked") record.state = "open";
     if (facts.outboundAttempt && (!record.first_attributable_outbound_at || record.first_attributable_outbound_at > call.started_at)) record.first_attributable_outbound_at = call.started_at;
@@ -197,6 +207,23 @@ export async function ensureInteraction(call: InteractionRow, context: CsiTransa
       rep_identity_fingerprint: repIdentity.fingerprint, happened_at: call.started_at.toISOString(), ...facts } });
   return record;
 }
+/**
+ * The deciding attachment edge as the Outreach Record displays it.
+ *
+ * A bounded display mirror (02 §17): the append-only audit rows remain the full history, and
+ * this only exists so provenance is readable without re-resolving identity on every GET.
+ * Ambiguous or competing identity is recorded as Ambiguous rather than silently picking a lead.
+ */
+function leadAttachmentMirror(edge: StoredAttachment, ambiguous: boolean, observedAt: Date) {
+  const state = ambiguous && edge.state !== "rejected" ? "ambiguous" as const : edge.state;
+  return { attachment_id: edge._id, lead_ref: { model: edge.lead_ref.model, id: edge.lead_ref.id }, state,
+    certainty: state === "ambiguous" && !edge.decided_at ? "unsure" as const : edge.certainty,
+    decided_by: edge.decided_at ? "owner" as const : edge.auto_decision ? "automatic" as const : "evidence" as const,
+    decided_at: edge.decided_at ?? edge.auto_decision?.decided_at ?? null,
+    confidence: edge.auto_decision?.confidence ?? null, observed_at: observedAt };
+}
+/** Mirror equality excluding the observation time, so an unchanged edge writes no audit row. */
+const mirrorIdentity = (mirror: unknown) => payloadHash({ ...(jsonValue(mirror) as Record<string, unknown>), observed_at: null });
 /** Same-transaction reaction to CSI-05. Recheck official closure BEFORE identity state restoration. */
 export async function reactToAttachmentChanged(change: { number_id: string; revision: number }, session: ClientSession) {
   if (!csiFlag("OUTREACH_ENSURE")) return;
@@ -211,6 +238,16 @@ export async function reactToAttachmentChanged(change: { number_id: string; revi
     const identity = latest ? { ...latest, id: String(latest._id) } : { id: "", provider_account_id: "", call_log_ids: [], started_at: record.trigger_at };
     const attribution = resolveAtInteraction(edges.map(attachmentPolicyInput), identity);
     const blocked = ["ambiguous_attachment", "competing_attached"].includes(attribution.blocked_reason ?? "");
+    // Provenance mirror. The edge is re-read live in this transaction, so the stored Contact
+    // Number revision only fences an out-of-order older change from clobbering a newer mirror.
+    const mirror = leadAttachmentMirror(edge, blocked, context.now);
+    if (String(record.primary_contact_number_id ?? change.number_id) === change.number_id &&
+      (record.lead_attachment_revision ?? 0) <= change.revision && mirrorIdentity(record.lead_attachment) !== mirrorIdentity(mirror)) {
+      const before = record.toObject();
+      record.lead_attachment = mirror;
+      record.lead_attachment_revision = Math.max(record.lead_attachment_revision ?? 0, change.revision);
+      await refreshRecord(record, context, "outreach_lead_attachment_mirrored", before);
+    }
     const prior = record.toObject();
     if (blocked && record.state !== "identity_review") { record.state_before_identity_review = record.state; record.state = "identity_review"; }
     else if (!blocked && record.state === "identity_review") { record.state = record.state_before_identity_review ?? "unworked"; record.state_before_identity_review = null; }

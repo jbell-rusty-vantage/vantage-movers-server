@@ -3,7 +3,10 @@ import type { Request, Response } from "express";
 import { getMongoDatabaseName } from "../../config/domain/runtime";
 import { csiFlag } from "../../config/domain/salesIntelligence";
 
-/** Durable committed sources only. No documents, phone numbers or provider bodies cross SSE. */
+/** Durable committed sources only. No documents, ids, phone numbers or provider bodies cross SSE.
+ * A frame carries the changed collections' stable topic slugs and nothing else: a collection slug
+ * is safe, a subject id is not, so nothing here is ever keyed by the document that changed.
+ */
 export const CSI_LIVE_COLLECTIONS = [
   "sales_intelligence_audit_events", "sales_intelligence_attention_snapshots",
   "contact_numbers", "call_interactions", "number_lead_attachments", "lead_conversations",
@@ -13,6 +16,25 @@ export const CSI_LIVE_COLLECTIONS = [
   "sales_intelligence_policy_versions", "sales_intelligence_policy_pointers",
   "rep_identity_links", "owner_rep_nudges", "sales_intelligence_sync_state",
 ] as const;
+
+/** Changed collection to Owner-facing topic slug. Unmapped watched collections coalesce to "other",
+ * which the client treats as "refetch everything" — a new collection is never silently ignored. */
+export const CSI_LIVE_TOPICS: Readonly<Record<string, string>> = {
+  outreach_records: "outreach", outreach_followups: "outreach",
+  number_lead_attachments: "attachment",
+  intelligence_runs: "analysis", intelligence_findings: "analysis",
+  intelligence_effects: "analysis", intelligence_owner_assessments: "analysis",
+  contact_numbers: "number", call_interactions: "number", lead_conversations: "number",
+  sales_intelligence_attention_snapshots: "attention",
+  sales_intelligence_review_items: "review",
+  sales_intelligence_contact_restrictions: "restriction",
+  rep_identity_links: "rep", owner_rep_nudges: "nudge",
+};
+/** Reads only `ns.coll` from a change. No other change-event field is inspected or forwarded. */
+export function csiLiveTopic(change: unknown): string {
+  const coll = (change as { ns?: { coll?: unknown } } | null)?.ns?.coll;
+  return (typeof coll === "string" && CSI_LIVE_TOPICS[coll]) || "other";
+}
 
 export interface LiveChanges {
   next(): Promise<unknown>;
@@ -27,25 +49,28 @@ export function watchCsiChanges(): LiveChanges {
 /** Cursor is advisory: every connection explicitly resyncs, including unknown/expired cursors.
  * Oplog delivery accelerates reads; periodic resync also closes the initial watch/read race.
  * Clock frames trigger server DTO reads, never client deadline/ranking calculations.
+ * `topics` narrows those reads; `refetch: "all"` stays so a version 1 client keeps resyncing.
+ * A connect, reconnect or clock frame carries no topics, so the client resyncs everything.
  */
 export function streamCsiInvalidations(req: Request, res: Response, deps: {
   watch?: () => LiveChanges; clockMs?: number; lifetimeMs?: number; enabled?: () => boolean;
 } = {}) {
   const changes = (deps.watch ?? watchCsiChanges)();
   let closed = false, pending = false, sequence = 0;
+  const topics = new Set<string>();
   const connection = Date.now().toString(36);
   res.status(200).set({ "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform",
     Connection: "keep-alive", "X-Accel-Buffering": "no" });
   res.flushHeaders();
-  const send = (reason: "connect" | "reconnect" | "change" | "clock") => {
+  const send = (reason: "connect" | "reconnect" | "change" | "clock", changed: readonly string[] = []) => {
     if (closed) return;
     if (!(deps.enabled ?? (() => csiFlag("ENABLED")))()) { close(); return; }
     // Slow consumers reconnect/refetch rather than accumulate an unbounded transport buffer.
-    if (!res.write(`id: ${connection}:${++sequence}\nevent: invalidation\ndata: ${JSON.stringify({ version: 1, reason, as_of: new Date().toISOString(), refetch: "all" })}\n\n`)) close();
+    if (!res.write(`id: ${connection}:${++sequence}\nevent: invalidation\ndata: ${JSON.stringify({ version: 2, reason, as_of: new Date().toISOString(), refetch: "all", topics: [...changed].sort() })}\n\n`)) close();
   };
   const clock = setInterval(() => send("clock"), deps.clockMs ?? 15_000);
   const lifetime = setTimeout(() => close(), deps.lifetimeMs ?? 240_000);
-  const coalesce = setInterval(() => { if (pending) { pending = false; send("change"); } }, 250);
+  const coalesce = setInterval(() => { if (pending) { pending = false; const changed = [...topics]; topics.clear(); send("change", changed); } }, 250);
   function close() {
     if (closed) return;
     closed = true;
@@ -58,7 +83,7 @@ export function streamCsiInvalidations(req: Request, res: Response, deps: {
   res.write("retry: 1000\n\n");
   send(req.header("last-event-id") ? "reconnect" : "connect");
   void (async () => {
-    try { while (!closed) { await changes.next(); pending = true; } }
+    try { while (!closed) { topics.add(csiLiveTopic(await changes.next())); pending = true; } }
     catch { close(); } // No provider/database errors are exposed. EventSource reconnects and refetches.
   })();
   return close;

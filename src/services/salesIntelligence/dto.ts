@@ -164,6 +164,9 @@ export const derivedDtoSchema = z
     review_badges: z.array(z.string()).optional(),
     absence_qualified: z.boolean().optional(),
     action_facts: z.array(z.object({ id, contractual_overdue: z.boolean(), overdue: z.boolean(), attention_due_at: date.nullable(), call_allowed: z.boolean() }).strict()).optional(),
+    call_state: z.enum(["not_started", "in_progress", "ended"]).optional(),
+    // Derived from the attachment mirror, never stored: who or what decided this lead.
+    provenance_state: z.enum(["attached_by_you", "attached_automatically", "attached_from_evidence", "needs_a_lead", "ambiguous"]).optional(),
   })
   .strict();
 export const followupDtoSchema = z
@@ -249,6 +252,14 @@ export const outreachDtoSchema = z
     primary_number: z.object({ id, e164: z.string() }).strict().nullable().optional(),
     lead_display: z.object({ name: z.string().nullable(), job_no: z.string().nullable(), source_company: z.string().nullable() }).strict().nullable().optional(),
     latest_number_call: z.object({ id, happened_at: date, direction: z.string(), provider_result: z.string().nullable(), contact_type: z.string() }).strict().nullable().optional(),
+    lead_attachment: z.object({ attachment_id: id, lead_ref: z.object({ model: z.enum(["FormLead", "CallLead"]), id }).strict(),
+      state: z.enum(["candidate", "ambiguous", "attached", "rejected"]),
+      certainty: z.enum(["exact", "likely", "unsure", "owner_confirmed", "rejected"]), certainty_label: z.string(),
+      decided_by: z.enum(["owner", "automatic", "evidence"]), decided_at: date.nullable(),
+      confidence: z.number().min(0).max(1).nullable(), observed_at: date,
+      lead_display: z.object({ name: z.string().nullable(), job_no: z.string().nullable() }).strict().nullable() }).strict().nullable().optional(),
+    call_progress: z.object({ state: z.enum(["in_progress", "ended"]), started_at: date, started_by: z.string(),
+      ended_at: date.nullable(), ended_by: z.string().nullable(), note: z.string().nullable() }).strict().nullable().optional(),
     subject: csiSubjectSchema,
     state: z.enum(CSI_OUTREACH_STATES),
     reason: z.string().nullable(),

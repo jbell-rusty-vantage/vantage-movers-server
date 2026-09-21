@@ -17,6 +17,25 @@ export async function enqueueBackfillActivation(windowId: string, session: Clien
     subject_key: `window:${windowId}`, input_revision: 1, input_refs: [windowId], priority: CSI_BACKFILL_JOB_PRIORITY }, session, now);
 }
 
+/** Limits activation to the captured half-open historical window for one Contact Number. */
+export function activationCallFilterForWindow(window: {
+  window_from: Date;
+  window_to: Date;
+  activation_call_at?: Date | null;
+  activation_call_id?: mongoose.Types.ObjectId | null;
+}, contactNumberId: mongoose.Types.ObjectId) {
+  const beforeActivationCursor = window.activation_call_at && window.activation_call_id
+    ? { $or: [{ started_at: { $lt: window.activation_call_at } },
+      { started_at: window.activation_call_at, _id: { $lt: window.activation_call_id } }] }
+    : {};
+  return {
+    contact_number_id: contactNumberId,
+    merged_into_id: null,
+    started_at: { $gte: window.window_from, $lt: window.window_to },
+    ...beforeActivationCursor,
+  };
+}
+
 /** Each transaction processes at most ten calls for one number, newest first. */
 async function activationBatch(windowId: string, session: ClientSession, requestId: string) {
   const Window = getSalesIntelligenceSyncWindowModel();
@@ -36,11 +55,8 @@ async function activationBatch(windowId: string, session: ClientSession, request
     }
   }
   if (!await historicalAttachmentsReady(String(numberId), session)) throw new CsiError("BACKFILL_ACTIVE");
-  const calls = await Interaction.find({ contact_number_id: numberId, merged_into_id: null,
-    started_at: { $gte: window.window_from },
-    ...(window.activation_call_at ? { $or: [ { started_at: { $lt: window.activation_call_at } },
-      { started_at: window.activation_call_at, _id: { $lt: window.activation_call_id } } ] } : {}),
-  }).sort({ started_at: -1, _id: -1 }).limit(10).session(session);
+  const calls = await Interaction.find(activationCallFilterForWindow(window, numberId))
+    .sort({ started_at: -1, _id: -1 }).limit(10).session(session);
   const context = workerContext(session, requestId);
   for (const call of calls) {
     await ensureInteraction(call, context);

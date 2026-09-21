@@ -23,7 +23,7 @@ import { auditChange, closeRecord, ownerInstruction, recordForUpdate, refreshRec
 import { enqueueCsiJob } from "../jobs";
 import { ensureNumberReview } from "../outreach/numberReview";
 
-export const OUTREACH_COMMANDS = ["mark_worked", "assign", "set_waiting", "add_note", "close", "reopen", "create_followup", "patch_followup", "complete_followup", "snooze_followup", "cancel_followup", "resolve_restriction", "resolve_review", "set_contact_type", "open_number_review"] as const;
+export const OUTREACH_COMMANDS = ["mark_worked", "assign", "set_waiting", "start_call", "end_call", "add_note", "close", "reopen", "create_followup", "patch_followup", "complete_followup", "snooze_followup", "cancel_followup", "resolve_restriction", "resolve_review", "set_contact_type", "open_number_review"] as const;
 type ActionInput = Extract<CsiCommand, { command: "create_followup" }>["action"];
 export async function createOwnerFollowup(record: Awaited<ReturnType<typeof recordForUpdate>>, input: ActionInput, context: CsiTransactionContext, suffix = "action") {
   const policy = await resolvePolicy();
@@ -116,6 +116,22 @@ export async function applyOwnerCommandInTransaction(targetId: string, command: 
     if (new Date(command.until) <= context.now || record.state === "identity_review") throw new CsiError("INVALID_INPUT");
     await createOwnerFollowup(record, { kind: "wait", description: command.reason, due_at: command.until }, context);
     if (record.state === "unworked") record.state = "open";
+  } else if (command.command === "start_call" || command.command === "end_call") {
+    // Call progress is its own field: `record_closed` is already rejected above, and the
+    // remaining blockers are an in-flight call and the restriction that gates calling.
+    if (command.command === "start_call") {
+      if (record.call_progress?.state === "in_progress") throw new CsiError("ILLEGAL_TRANSITION");
+      if (record.primary_contact_number_id && await getSalesIntelligenceContactRestrictionModel().exists({ contact_number_id: record.primary_contact_number_id,
+        state: "active", channels: "call", $or: [{ until: null }, { until: { $gt: context.now } }] }).session(context.session)) throw new CsiError("CONTACT_RESTRICTED");
+      // Starting again after an ended call replaces the field; the audit stream is the history.
+      record.call_progress = { state: "in_progress", started_at: context.now, started_by: context.actor.id,
+        ended_at: null, ended_by: null, note: command.note ?? null, interaction_id: null };
+    } else {
+      if (record.call_progress?.state !== "in_progress") throw new CsiError("ILLEGAL_TRANSITION");
+      record.call_progress.state = "ended"; record.call_progress.ended_at = context.now; record.call_progress.ended_by = context.actor.id;
+      if (command.note) record.call_progress.note = command.note;
+    }
+    await ownerInstruction(context, record, "status", prior.call_progress ?? null, record.call_progress);
   } else if (command.command === "create_followup") {
     await createOwnerFollowup(record, command.action, context);
   } else if (action) {

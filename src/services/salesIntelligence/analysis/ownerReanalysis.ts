@@ -3,6 +3,7 @@ import { z } from "zod";
 import { csiDataset } from "../../../config/domain/salesIntelligence";
 import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
+import { getIntelligenceFindingModel } from "../../../models/IntelligenceFinding";
 import { getIntelligenceEvidenceSnapshotModel } from "../../../models/IntelligenceEvidenceSnapshot";
 import { getSalesIntelligenceOwnerInstructionModel } from "../../../models/SalesIntelligenceOwnerInstruction";
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
@@ -46,11 +47,14 @@ export async function retainedOriginal(sourceId: string, session?: ClientSession
   }
   return { run, snapshots };
 }
-export async function scheduleOwnerReanalysis(sourceId: string, mode: "original_evidence" | "current_context", correctionIds: string[], context: CsiTransactionContext) {
+export async function scheduleOwnerReanalysis(sourceId: string, mode: "original_evidence" | "current_context", correctionIds: string[], context: CsiTransactionContext, focusFindingId?: string) {
   const source = await getIntelligenceRunModel().findOne({ _id: sourceId, ...csiDataset() }).session(context.session).lean();
   const original = mode === "original_evidence" ? await retainedOriginal(sourceId, context.session) : null;
   if (!source?.output || !source.finalized_at) throw new CsiError("INVALID_INPUT");
   await authorizedCorrections(source, correctionIds, context.session);
+  // Provenance only: the focused assertion must belong to this run, and it never widens scoping.
+  if (focusFindingId && !await getIntelligenceFindingModel().exists({ _id: focusFindingId, run_id: source._id, purged_at: null }).session(context.session))
+    throw new CsiError("RUN_SCOPE_DENIED");
   let refs: string[] = [];
   if (source.conversation_id) {
     const conversation = await getLeadConversationModel().findById(source.conversation_id).session(context.session).lean();
@@ -63,6 +67,6 @@ export async function scheduleOwnerReanalysis(sourceId: string, mode: "original_
   const runId = newObjectIdHex();
   const job = await enqueueCsiJob({ dedupe_key: `csi:owner-reanalysis:${context.command_id}`, stage: source.conversation_id ? "analysis" : "number_refresh",
     subject_key: source.subject_key, input_revision: source.revision, input_refs: refs,
-    owner_reanalysis: { run_id: runId, source_run_id: sourceId, mode, owner_correction_ids: correctionIds } }, context.session);
-  return { run_id: runId, job_id: String(job._id), status: "queued" };
+    owner_reanalysis: { run_id: runId, source_run_id: sourceId, mode, owner_correction_ids: correctionIds, focus_finding_id: focusFindingId ?? null } }, context.session);
+  return { run_id: runId, job_id: String(job._id), status: "queued", focus_finding_id: focusFindingId ?? null };
 }

@@ -197,7 +197,7 @@ Within a category, earliest relevant deadline/oldest trigger first, then stable 
 
 Use explicit outcome wording throughout. Provider-connected is not Spoke. Say Customer left voicemail or Rep left voicemail when supported; otherwise Voicemail—speaker unknown. Absence copy says No call observed in available history, with coverage. Certainty labels remain Exact / Likely / Unsure / Confirmed by you.
 
-Action set: Set callback date, Set/add next step, Assign Outreach or individual action to Agent, Message rep, Mark as worked, Close/reopen, Add note, confirm/reject attachment, Confirm analysis, confirm/correct/retract assertion, Re-analyze original evidence, Re-analyze current context, and open existing Lead/Booking workflows. AI-applied / Owner-set / Confirmed by you / Corrected by you are distinct provenance labels. Analysis confirmation means the Owner reviewed it; it does not certify an official Booking or payment.
+Action set: Set callback date, Set/add next step, Assign Outreach or individual action to Agent, Message rep, Mark as worked, Start the call, End the call, Close/reopen, Add note, confirm/reject attachment, Confirm analysis, confirm/correct/retract assertion, Re-analyze original evidence, Re-analyze current context, and open existing Lead/Booking workflows. Start the call / End the call write Call state on the Outreach Record only; they are not a new official Outreach state. AI-applied / Owner-set / Confirmed by you / Corrected by you are distinct provenance labels. Analysis confirmation means the Owner reviewed it; it does not certify an official Booking or payment.
 
 ## 11. Delivery boundary
 

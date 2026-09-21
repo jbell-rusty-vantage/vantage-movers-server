@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ambiguityFanIn, leadWindow, resolveAtInteraction, suggest, type Attachment, type Evidence } from "./suggest";
+import { ambiguityFanIn, autoAttachConfidence, leadWindow, resolveAtInteraction, suggest, type Attachment, type Evidence } from "./suggest";
 import { phoneEvidence } from "./sources";
 const at = new Date("2026-09-01T12:00:00Z");
 const phone = (timestamp = at): Evidence => ({ source: "ingested_contact_snapshot", field_path: "ingested_contact_snapshot.normalized_phone_number",
@@ -42,4 +42,26 @@ test("Form and Call windows include boundaries; later snapshots never backdate i
   assert.equal(resolveAtInteraction([suggest([evidence[0]!.evidence], { model: "FormLead", id: "a" })], interaction).lead_effects_allowed, false);
   assert.equal(evidence[1]!.evidence.window_from?.toISOString(), form.window_from.toISOString());
   for (const time of [form.window_from, form.window_to]) assert.equal(resolveAtInteraction([candidate("a")], { ...interaction, started_at: time }).lead_effects_allowed, true);
+});
+const live = (timestamp = at): Evidence => ({ ...phone(timestamp), source: "lead_phone_live", field_path: "form_leads.normalized_phone_number" });
+const caller = (timestamp = at): Evidence => ({ ...phone(timestamp), source: "ringcentral_original_caller", field_path: "call_interactions.original_caller" });
+const edge = (id: string, ...evidence: Evidence[]) => suggest(evidence, { model: "FormLead", id });
+test("automatic attach only on unambiguous phone evidence; Owner decisions and competitors always win", () => {
+  const single = edge("a", live());
+  assert.equal(autoAttachConfidence(single, [single]), 0.9);
+  assert.equal(autoAttachConfidence(edge("a", live(), caller()), [single]), 0.95);
+  // Two leads whose windows overlap are Ambiguous, so neither one attaches by itself.
+  assert.equal(autoAttachConfidence(single, [single, edge("b", live())]), null);
+  const later = edge("c", live(new Date("2026-12-01T12:00:00Z")));
+  assert.equal(autoAttachConfidence(single, [single, later]), 0.9);
+  assert.equal(autoAttachConfidence(single, [single, { ...later, state: "attached" }]), null);
+  assert.equal(autoAttachConfidence({ ...single, decided_at: at }, [single]), null);
+  assert.equal(autoAttachConfidence({ ...single, state: "rejected", certainty: "rejected" }, [single]), null);
+  // Snapshot phone equality and windowless evidence are not automatic-attach sources.
+  assert.equal(autoAttachConfidence(candidate("a"), [candidate("a")]), null);
+  assert.equal(autoAttachConfidence(edge("a", { ...live(), window_to: null }), []), null);
+  // Exact telephony identity keeps its own result and never becomes a Likely automatic attach.
+  const exact = edge("a", { source: "ringcentral_call_adoption", field_path: "ringcentral.session_id", observed_at: at,
+    window_from: null, window_to: null, provider_account_id: "account", identity_kind: "session_id", identity_value: "session" }, live());
+  assert.equal(exact.state, "attached"); assert.equal(exact.certainty, "exact");
 });

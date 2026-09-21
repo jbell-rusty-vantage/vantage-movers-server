@@ -18,7 +18,7 @@ Canonical bodies live under `docs/knowledge/`.
 
 | Path | Description |
 | --- | --- |
-| [sales-intelligence-analysis.md](knowledge/services/sales-intelligence-analysis.md) | CSI-17 scoped MCP evidence and submission; CSI-13 bounded agent, durable application and current number analysis. |
+| [sales-intelligence-analysis.md](knowledge/services/sales-intelligence-analysis.md) | CSI-17 scoped MCP evidence and submission; CSI-13 bounded agent, durable application and current number analysis; CSI-18 Owner intervention including optional `focus_finding_id` on reanalyze. |
 | [ringcentral-call-lead-qualification.md](knowledge/services/ringcentral-call-lead-qualification.md) | Qualify inbound RingCentral calls (120s) and promote them through shared ingest. |
 | [operations-registry.md](knowledge/services/operations-registry.md) | Catalog, source, CPL, inbound-route, and Granot CRM source system of record. |
 | [form-lead.md](knowledge/services/form-lead.md) | Create, update, and delete Form Leads, including duplicates, CRM Posting, and Sheet Sync. |
@@ -26,9 +26,9 @@ Canonical bodies live under `docs/knowledge/`.
 | [lead-conversation.md](knowledge/services/lead-conversation.md) | Seeded Lead Conversation evidence: redacted transcript, sectioned summary, private audio. |
 | [sales-intelligence-recording-media.md](knowledge/services/sales-intelligence-recording-media.md) | CSI-11 account-scoped recording discovery, eligibility, immutable private media and availability Coverage. |
 | [sales-intelligence-transcription.md](knowledge/services/sales-intelligence-transcription.md) | CSI-12 budgeted private-media STT, redacted immutable transcript versions and durable analysis intent. |
-| [sales-intelligence-attachment.md](knowledge/services/sales-intelligence-attachment.md) | CSI-05 deterministic event-time Number↔Lead attachment, Owner commands, durable refresh and rediscovery; phone equality is Likely. |
-| [sales-intelligence-outreach.md](knowledge/services/sales-intelligence-outreach.md) | CSI-06 Outreach, independent nullable-due follow-ups, staffed clocks, Owner commands, restrictions/reviews, authoritative effects and read-only DTOs. |
-| [sales-intelligence-live.md](knowledge/services/sales-intelligence-live.md) | CSI-07 Owner SSE from durable CSI sources, clock/refetch transport and local Admin read slice. |
+| [sales-intelligence-attachment.md](knowledge/services/sales-intelligence-attachment.md) | CSI-05 deterministic event-time Number↔Lead attachment, Owner commands, durable refresh and rediscovery; phone equality is Likely; flag-gated automatic attach (`AUTO_ATTACH`, default off). |
+| [sales-intelligence-outreach.md](knowledge/services/sales-intelligence-outreach.md) | CSI-06 Outreach, independent nullable-due follow-ups, staffed clocks, Owner commands including Start the call / End the call, `lead_attachment` mirror, restrictions/reviews, authoritative effects and read-only DTOs. |
+| [sales-intelligence-live.md](knowledge/services/sales-intelligence-live.md) | CSI-07 Owner SSE from durable CSI sources; version-2 `topics` from changed collection only; clock/refetch transport and local Admin read slice. |
 | [sales-intelligence-nudges.md](knowledge/services/sales-intelligence-nudges.md) | CSI-14 explicit Owner preview/send/history, current directory-User destination authority, customer guards, single-attempt submission and repair-only recovery; live proof separately gated. |
 | [sales-intelligence-rep-identity.md](knowledge/services/sales-intelligence-rep-identity.md) | CSI-10 stored-directory proposals, Owner review, temporal identity resolution and bounded consumer recovery. |
 | [sales-intelligence-foundation.md](knowledge/services/sales-intelligence-foundation.md) | CSI-01 shared contracts, Mongo fences, scoped auth, durable jobs and budget primitives; independently reviewed foundation, feature flags off. |

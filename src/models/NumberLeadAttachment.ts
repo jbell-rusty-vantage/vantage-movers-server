@@ -108,6 +108,19 @@ export const NumberLeadAttachmentSchema = new Schema(
     decided_by: { type: String, default: null, trim: true }, // actor label for owner decisions
     decided_at: { type: Date, default: null },
     decision_reason: { type: String, default: null, trim: true },
+    // High-confidence automatic attach. Never `decided_at`: that field marks the Owner's
+    // reviewed decision, which refresh and fan-in may never revise.
+    auto_decision: {
+      type: new Schema(
+        {
+          confidence: { type: Number, required: true, min: 0, max: 1 },
+          reason: { type: String, required: true, trim: true },
+          decided_at: { type: Date, required: true },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
     history: {
       type: [
         new Schema(

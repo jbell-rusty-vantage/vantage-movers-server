@@ -5,6 +5,8 @@ import { readFileSync } from "node:fs";
 import { defaultCsiPolicy } from "../policy";
 import { addStaffedMinutes, localInstant, resolveActionDate, resolveActionDateText, staffedMinutesBetween } from "./staffing";
 import { derive } from "./derive";
+import { provenanceState } from "./reads";
+import type { RecordRow } from "./types";
 import { callFacts, fulfilledByCall, stateWithActions, officialClosure } from "./transitions";
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
 import { getOutreachFollowupModel } from "../../../models/OutreachFollowup";
@@ -77,4 +79,15 @@ test("worker, cron and recovery registrations exist without enabling production 
   const config = JSON.parse(readFileSync("vercel.json", "utf8"));
   assert.ok(config.crons.some((c: { path: string }) => c.path === "/api/cron/sales-intelligence-outreach-ensure"));
   assert.match(readFileSync("src/routes/sales-intelligence-cron.routes.ts", "utf8"), /name: "outreach_ensure", flag: "OUTREACH_ENSURE"/);
+});
+test("provenance state reads the stored attachment mirror; no attached edge is Needs a lead", () => {
+  const mirror = (over: Partial<NonNullable<RecordRow["lead_attachment"]>> = {}) => ({ attachment_id: id(), lead_ref: { model: "FormLead" as const, id: id() },
+    state: "attached" as const, certainty: "likely" as const, decided_by: "evidence" as const, decided_at: null, confidence: null, observed_at: at, ...over });
+  assert.equal(provenanceState(null), "needs_a_lead");
+  assert.equal(provenanceState(mirror({ state: "candidate" })), "needs_a_lead");
+  assert.equal(provenanceState(mirror({ state: "rejected", certainty: "rejected" })), "needs_a_lead");
+  assert.equal(provenanceState(mirror({ state: "ambiguous", certainty: "unsure" })), "ambiguous");
+  assert.equal(provenanceState(mirror({ certainty: "owner_confirmed", decided_by: "owner", decided_at: at })), "attached_by_you");
+  assert.equal(provenanceState(mirror({ decided_by: "automatic", confidence: 0.9, decided_at: at })), "attached_automatically");
+  assert.equal(provenanceState(mirror({ certainty: "exact" })), "attached_from_evidence");
 });

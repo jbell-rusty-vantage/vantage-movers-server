@@ -38,7 +38,7 @@ export async function commandAnalysis(input: { actor: CsiActor; target_id: strin
         const source = await getIntelligenceRunModel().findOne({ _id: sourceId, ...csiDataset() }).session(context.session);
         if (!source || (target !== String(source._id) && target !== String(source.conversation_id) && target !== String(source.contact_number_id))) throw new CsiError("RUN_SCOPE_DENIED");
         if (source.revision !== command.expected_revision || command.expected_revisions?.length) throw new CsiError("REVISION_CONFLICT");
-        const result = await scheduleOwnerReanalysis(String(source._id), command.mode, command.owner_correction_ids, context);
+        const result = await scheduleOwnerReanalysis(String(source._id), command.mode, command.owner_correction_ids, context, command.focus_finding_id);
         await csiCas(getIntelligenceRunModel(), String(source._id), source.revision, {}, context.session);
         await appendCsiAudit(context, { kind: "analysis", target_id: String(source._id), subject_key: source.subject_key, revision: source.revision + 1,
           event_kind: "analysis.reanalysis_requested", prior: {}, current: { ...result, mode: command.mode, reason: command.reason } });

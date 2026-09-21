@@ -86,6 +86,50 @@ export const OutreachRecordSchema = new Schema(
     wait_followup_id: ref,
     responsible_agent_id: ref,
     assignment: { type: assignment, default: null },
+    // Mirror of the deciding NumberLeadAttachment edge, so provenance is readable without
+    // re-resolving identity on GET. A bounded display cache (17 §17): the append-only audit
+    // rows stay the full history, and `lead_attachment_revision` keeps an older Contact
+    // Number revision from clobbering a newer mirror.
+    lead_attachment: {
+      type: new Schema(
+        {
+          attachment_id: oid,
+          lead_ref: { type: leadRef, required: true },
+          state: enumeration(["candidate", "ambiguous", "attached", "rejected"]),
+          certainty: enumeration([
+            "exact",
+            "likely",
+            "unsure",
+            "owner_confirmed",
+            "rejected",
+          ]),
+          decided_by: enumeration(["owner", "automatic", "evidence"]),
+          decided_at: date,
+          confidence: { type: Number, default: null, min: 0, max: 1 },
+          observed_at: at,
+        },
+        { _id: false, strict: "throw" },
+      ),
+      default: null,
+    },
+    lead_attachment_revision: { type: Number, default: null },
+    // Owner call progress. Deliberately not a CSI_OUTREACH_STATES member: that enum carries
+    // official closure meaning, and being on the phone right now is not a closure.
+    call_progress: {
+      type: new Schema(
+        {
+          state: enumeration(["in_progress", "ended"]),
+          started_at: at,
+          started_by: str,
+          ended_at: date,
+          ended_by: text,
+          note: text,
+          interaction_id: ref,
+        },
+        { _id: false, strict: "throw" },
+      ),
+      default: null,
+    },
     closed_reason: text,
     closed_at: date,
     closed_by: text,

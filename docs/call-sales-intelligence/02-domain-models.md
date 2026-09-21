@@ -297,11 +297,21 @@ const NumberLeadAttachmentSchema = new Schema(
     decided_by: { type: String, default: null, trim: true },          // actor label for owner decisions
     decided_at: { type: Date, default: null },
     decision_reason: { type: String, default: null, trim: true },
+    auto_decision: {                                                  // high-confidence automatic attach; never `decided_at`
+      type: new Schema({
+        confidence: { type: Number, required: true, min: 0, max: 1 },
+        reason: { type: String, required: true, trim: true },
+        decided_at: { type: Date, required: true },
+      }, { _id: false }),
+      default: null,
+    },
     history: { type: [new Schema({ from: String, to: String, at: Date, by: String, reason: String }, { _id: false })], default: [] },
   },
   { collection: "number_lead_attachments", autoIndex: false, timestamps: true, minimize: false },
 );
 ```
+
+Automatic attach is flag-gated (`AUTO_ATTACH`, default off) and additive to exact evidence, which keeps its own Attached/Exact result. An edge attaches by itself only when it is not rejected, carries no Owner `decided_at`, would not be Ambiguous under the same window-overlap fan-in, has no already-Attached competitor on the number, and carries at least one windowed `lead_phone_live` or `ringcentral_original_caller` item: `0.90` for one such source, `0.95` when two or more agree on the same Lead, and no tier below that. The result is Attached/Likely with `decision_reason` `automatic_high_confidence` and an `auto_decision` record — not Exact and not Confirmed by you. `decided_at` stays null so refresh keeps revising the edge; `reject_attachment` and `detach_attachment` remain the reversal, and a rejected pair never resurrects. The decision is written through the same committed change contract as an evidence refresh, so the Outreach mirror, search terms and live stream all see it.
 
 ## 4. `OutreachRecord` — `outreach_records`
 
@@ -317,6 +327,8 @@ One row per subject. Preserve the unique index on `subject.kind/model/id/contact
 | `next_action` | Rebuildable projection of the most urgent active follow-up, including `followup_id`, action kind, nullable due time, description. Never the authoritative single action store. |
 | `wait_until`, `wait_reason`, `wait_followup_id` | Nullable projection of the relevant customer wait; independent rep actions can keep state Open. |
 | `responsible_agent_id`, `assignment` | Nullable Agent plus `{origin: owner\|first_conversation\|rep_promise, actor_id, evidence_id, assigned_at, instruction_id?}`. Never copied from receiver Agent. |
+| `lead_attachment`, `lead_attachment_revision` | Nullable mirror of the deciding `NumberLeadAttachment` edge — `{attachment_id, lead_ref, state, certainty, decided_by: owner\|automatic\|evidence, decided_at, confidence, observed_at}` — plus the Contact Number revision it was built from. Recomputed inside the attachment change transaction and audited as `outreach_lead_attachment_mirrored`. Ambiguous or competing identity is recorded as Ambiguous, never resolved to one Lead. Confidence is populated only for an automatic decision. Monotonic: an older Contact Number revision never clobbers a newer mirror. Bounded display cache per §17; the append-only audit rows remain the full history. |
+| `call_progress` | Nullable `{state: in_progress\|ended, started_at, started_by, ended_at, ended_by, note, interaction_id}`. Owner call progress only; it is deliberately not a `state` value, because that enum carries official closure meaning. Starting again after an ended call replaces the field and the audit stream keeps the history. A later Call Interaction covering the started window stamps `interaction_id` and ends it, so the Owner need not press stop. |
 | `closed_reason`, `closed_at`, `closed_by`, `closure_origin` | Official eligibility reason or explicit Owner reason; preserve Owner history even if later official context changes. |
 | `revision`, `policy_version` | Required CAS integer and configuration version. |
 | `events` | Optional bounded recent-event cache only. Full history is in append-only `sales_intelligence_audit_events`; never drop history into a counter. |

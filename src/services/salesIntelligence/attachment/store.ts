@@ -1,10 +1,11 @@
 import mongoose, { type ClientSession, type InferSchemaType } from "mongoose";
 import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getNumberLeadAttachmentModel, NumberLeadAttachmentSchema, NUMBER_LEAD_ATTACHMENT_INDEXES } from "../../../models/NumberLeadAttachment";
+import { csiFlag } from "../../../config/domain/salesIntelligence";
 import { boundSearchTerms } from "../../numberActivity/searchTerms";
 import { CsiError, csiWorkerActor } from "../auth";
-import { appendCsiAudit, assertIndexes, payloadHash } from "../transactions";
-import { ambiguityFanIn, suggest, type Attachment, type Evidence, type LeadRef } from "./suggest";
+import { appendCsiAudit, assertIndexes, payloadHash, type CsiTransactionContext } from "../transactions";
+import { ambiguityFanIn, autoAttachConfidence, exactSource, suggest, AUTO_ATTACH_REASON, type Attachment, type Evidence, type LeadRef } from "./suggest";
 import { exactEvidence, phoneEvidence, leadSnapshot, type LeadSource } from "./sources";
 import { onAttachmentChanged } from "./hooks";
 
@@ -53,6 +54,41 @@ export async function fanInNumber(numberId: string, session: ClientSession, now:
     }, { session, runValidators: true });
     if (result.modifiedCount !== 1) throw new CsiError("REVISION_CONFLICT");
     changed = true;
+  }
+  return changed;
+}
+/**
+ * Flag-gated automatic promotion of an unambiguous phone-evidence edge (CSI `AUTO_ATTACH`).
+ *
+ * Evaluated over one loaded snapshot of the number's edges, so the outcome does not depend on
+ * row order. The Owner stays authoritative: a rejected or `decided_at` pair is never promoted,
+ * exact-source edges keep their own Exact result, and `reject_attachment`/`detach_attachment`
+ * remain the reversal. The caller folds `changed` into the same committed change contract, so
+ * the Outreach mirror, the search-term rebuild and the live stream all see this decision.
+ */
+export async function autoAttachNumber(numberId: string, context: CsiTransactionContext) {
+  if (!csiFlag("AUTO_ATTACH")) return 0;
+  const Model = getNumberLeadAttachmentModel();
+  const rows = await Model.find({ contact_number_id: numberId }).session(context.session).lean();
+  const edges = rows.map(attachmentPolicyInput);
+  let changed = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]!, edge = edges[i]!;
+    if (row.state === "attached" || row.state === "rejected" || row.decided_at) continue;
+    if (edge.evidence.some(e => exactSource(e.source))) continue;
+    const confidence = autoAttachConfidence(edge, edges);
+    if (confidence === null) continue;
+    const result = await Model.updateOne({ _id: row._id, revision: row.revision, decided_at: null, state: { $nin: ["attached", "rejected"] } }, {
+      $set: { state: "attached", certainty: "likely", decision_reason: AUTO_ATTACH_REASON,
+        auto_decision: { confidence, reason: AUTO_ATTACH_REASON, decided_at: context.now } }, $inc: { revision: 1 },
+      $push: { history: { from: row.state, to: "attached", at: context.now, by: "system", reason: AUTO_ATTACH_REASON } },
+    }, { session: context.session, runValidators: true });
+    if (result.modifiedCount !== 1) throw new CsiError("REVISION_CONFLICT");
+    await appendCsiAudit(context, { kind: "number", target_id: String(row._id), subject_key: `number:${numberId}`, revision: row.revision + 1,
+      event_kind: "attachment_auto_attached", prior: { state: row.state, certainty: row.certainty },
+      current: { attachment_id: String(row._id), lead_model: row.lead_ref.model, lead_id: String(row.lead_ref.id),
+        state: "attached", certainty: "likely", confidence, reason: AUTO_ATTACH_REASON } });
+    changed++;
   }
   return changed;
 }
@@ -110,11 +146,13 @@ export async function persistLeadAttachments(lead: LeadSource, model: LeadRef["m
         if (result.modifiedCount !== 1) throw new CsiError("REVISION_CONFLICT");
       }
     }
+    const audit: CsiTransactionContext = { session, now, command_id: new mongoose.Types.ObjectId(), actor: csiWorkerActor(requestId) };
     wrote = await fanInNumber(numberId, session, now) || wrote;
+    wrote = await autoAttachNumber(numberId, audit) > 0 || wrote;
     if (wrote) {
       await rebuildAttachmentSearchTerms(numberId, session);
       await onAttachmentChanged({ number_id: numberId, revision: number.revision }, session);
-      await appendCsiAudit({ session, now, command_id: new mongoose.Types.ObjectId(), actor: csiWorkerActor(requestId) }, {
+      await appendCsiAudit(audit, {
         kind: "number", target_id: numberId, subject_key: `number:${numberId}`, revision: number.revision,
         event_kind: "attachment_refreshed", prior: { attachment_revision: prior?.revision ?? null },
         current: { lead_model: model, lead_id: ref.id, number_revision: number.revision },

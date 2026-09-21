@@ -95,6 +95,9 @@ export const csiCommandSchema = z.discriminatedUnion("command", [
     reason: csiTextSchema.optional(),
   }),
   command("set_waiting", { until: csiDateSchema, ...reason }),
+  // Owner call progress. Separate from CSI_OUTREACH_STATES, which carries closure meaning.
+  command("start_call", { note: csiTextSchema.optional() }),
+  command("end_call", { note: csiTextSchema.optional() }),
   command("close", {
     reason: z.enum(["lost", "not_sales", "owner_dismissed", "suppressed"]),
     note: csiTextSchema.optional(),
@@ -148,6 +151,8 @@ export const csiCommandSchema = z.discriminatedUnion("command", [
     mode: z.enum(["original_evidence", "current_context"]),
     source_run_id: csiIdSchema.optional(),
     owner_correction_ids: z.array(csiIdSchema).max(100),
+    // Provenance for why the rerun was asked for; it never changes run scoping or evidence rules.
+    focus_finding_id: csiIdSchema.optional(),
     ...reason,
   }).refine(
     (v) => v.mode !== "original_evidence" || v.source_run_id !== undefined,

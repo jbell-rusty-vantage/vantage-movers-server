@@ -174,6 +174,19 @@ test("CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempot
       assert.equal(rejected.status, status); assert.equal(rejected.body.code, code);
     }
 
+    // Owner call progress rides the same handler: strict body, Idempotency-Key, CAS mapping.
+    outreachError = new CsiError("ILLEGAL_TRANSITION");
+    for (const command of ["start_call", "end_call"] as const) {
+      const rejected = await call("POST", outreachPath, { headers: ownerHeaders("POST", outreachPath, "owner", { "idempotency-key": `call-${command}` }),
+        body: { command, expected_revision: 2, note: "On the phone now" } });
+      assert.equal(rejected.status, 409); assert.equal(rejected.body.code, "ILLEGAL_TRANSITION");
+      const noKey = await call("POST", outreachPath, { headers: ownerHeaders("POST", outreachPath), body: { command, expected_revision: 2 } });
+      assert.equal(noKey.status, 400); assert.equal(noKey.body.code, "INVALID_INPUT");
+      const foreignField = await call("POST", outreachPath, { headers: ownerHeaders("POST", outreachPath, "owner", { "idempotency-key": `strict-${command}` }),
+        body: { command, expected_revision: 2, until: "2026-09-20T00:00:00.000Z" } });
+      assert.equal(foreignField.status, 400);
+    }
+
     // Master flag off: 404 feature_disabled before any service call.
     calls.length = 0;
     process.env.SALES_INTELLIGENCE_ENABLED = "false";

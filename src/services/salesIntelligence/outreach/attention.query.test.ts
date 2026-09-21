@@ -41,7 +41,7 @@ test("rowMatchesAttentionQuery treats empty selection as all", () => {
       assignment: { agent: { id: AGENT_A } },
       followups: [],
     },
-  } as Parameters<typeof rowMatchesAttentionQuery>[0];
+  } as unknown as Parameters<typeof rowMatchesAttentionQuery>[0];
   assert.equal(rowMatchesAttentionQuery(row, parse({})), true);
   assert.equal(rowMatchesAttentionQuery(row, parse({ band: ["3", "1"] })), true);
   assert.equal(rowMatchesAttentionQuery(row, parse({ band: "1" })), false);

@@ -39,6 +39,19 @@ export function ambiguityFanIn(edges: readonly Attachment[]): Attachment[] {
     return { ...edge, state: ambiguous ? "ambiguous" : "candidate", certainty: ambiguous ? "unsure" : "likely" };
   });
 }
+export const AUTO_ATTACH_REASON = "automatic_high_confidence";
+const autoAttachSource = (e: Evidence) => ["lead_phone_live", "ringcentral_original_caller"].includes(e.source) && Boolean(e.window_from && e.window_to);
+/** Automatic attach confidence, or null when the evidence is not genuinely unambiguous.
+ * There is no tier below 0.90: an Owner decision, a rejected pair, a competing Attached edge
+ * and anything `ambiguityFanIn` would call Ambiguous all stay Candidate. */
+export function autoAttachConfidence(edge: Attachment, edges: readonly Attachment[]): number | null {
+  if (edge.state === "rejected" || edge.decided_at) return null;
+  if (edges.some(other => other !== edge && other.state === "attached")) return null;
+  // Same identity comparison `ambiguityFanIn` uses, whether or not `edge` is a member of `edges`.
+  if (ambiguityFanIn([edge, ...edges])[0]!.state === "ambiguous") return null;
+  const sources = new Set(edge.evidence.filter(autoAttachSource).map(e => e.source));
+  return sources.size === 0 ? null : sources.size >= 2 ? 0.95 : 0.9;
+}
 function exactApplies(e: Evidence, interaction: InteractionIdentity) {
   if (!exactSource(e.source) || e.provider_account_id !== interaction.provider_account_id) return false;
   if (e.interaction_id === interaction.id) return true;
