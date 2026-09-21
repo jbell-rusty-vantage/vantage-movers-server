@@ -76,14 +76,17 @@ async function numbersForLead(leadModel: "FormLead" | "CallLead", leadId: mongoo
   const lead = leadModel === "FormLead"
     ? await getFormLeadModel().findById(leadId).lean()
     : await getCallLeadModel().findById(leadId).lean();
-  if (!lead) return { lead, numbers: [] as Awaited<ReturnType<typeof getContactNumberModel>>[] };
+  if (!lead) return { lead, numbers: [] };
   const phones = phonesFromLead(lead as Record<string, unknown>);
-  const numbers = await getContactNumberModel().find({
-    $or: [
-      { national_ten: { $in: phones } },
-      { e164: { $in: phones.map(phone => phone.length === 10 ? `+1${phone}` : phone) } },
-    ],
-  }).select({ e164: 1, national_ten: 1 }).lean();
+  const numbers = await getContactNumberModel()
+    .find({
+      $or: [
+        { national_ten: { $in: phones } },
+        { e164: { $in: phones.map((phone) => (phone.length === 10 ? `+1${phone}` : phone)) } },
+      ],
+    })
+    .select({ e164: 1, national_ten: 1 })
+    .lean();
   return { lead, numbers };
 }
 
@@ -250,16 +253,17 @@ async function main() {
     const leadModel = booking?.lead_model === "FormLead" || booking?.lead_model === "CallLead" ? booking.lead_model : null;
     if (!booking?.lead_ref || !leadModel) continue;
     const { lead, numbers } = await numbersForLead(leadModel, booking.lead_ref);
-    const conversation = numbers[0]
-      ? await getLeadConversationModel().findOne({ contact_number_id: numbers[0]._id }).sort({ started_at: -1 }).lean()
+    const number = numbers[0];
+    const conversation = number
+      ? await getLeadConversationModel().findOne({ contact_number_id: number._id }).sort({ started_at: -1 }).lean()
       : null;
-    if (!conversation || !numbers[0]) continue;
+    if (!conversation || !number) continue;
     const evidence = lead ? phoneEvidence(lead as never, leadModel) : [];
     console.log("e164_check", {
       job_no: jobNo,
       evidence: evidence.length,
-      stored_e164_match: evidence.some(item => item.e164 === numbers[0]!.e164),
-      toE164_national: numbers[0].national_ten ? toE164(numbers[0].national_ten) === numbers[0].e164 : null,
+      stored_e164_match: evidence.some((item) => item.e164 === number.e164),
+      toE164_national: number.national_ten ? toE164(number.national_ten) === number.e164 : null,
     });
     targets.push({
       kind: "booked",
@@ -267,7 +271,7 @@ async function main() {
       lead_model: leadModel,
       lead_id: String(booking.lead_ref),
       conversation_id: String(conversation._id),
-      number_id: String(numbers[0]._id),
+      number_id: String(number._id),
     });
   }
 
