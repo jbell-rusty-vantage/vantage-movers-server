@@ -25,7 +25,9 @@ export function derive(record: RecordRow, context: DeriveContext) {
   add(4, "followups_due", due.length > 0);
   add(5, "no_next_step", record.state === "open" && actions.length === 0);
   add(6, "missing_responsibility", !record.responsible_agent_id || missing.length > 0);
-  const futurePlan = actions.some(a => { const at = attentionDue(a); return at && at > now; });
+  // Snoozing an overdue task postpones its reminder, not the customer's agreement
+  // or the last human contact. Day-only waits still honor their next-opening boundary.
+  const futurePlan = actions.some(a => a.due_at && (a.base_attention_due_at ?? a.due_at) > now);
   add(7, "going_cold", !futurePlan && age >= policy.going_cold_staffed_minutes);
   const review = context.reviewItems.filter(r => r.state === "open");
   const badges = new Set(review.map(r => r.cause_kind));

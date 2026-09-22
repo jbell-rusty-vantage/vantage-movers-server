@@ -49,6 +49,20 @@ test("all three actions including undated; snooze preserves contractual overdue 
   assert.equal(result.actions[0]?.contractual_overdue, true); assert.equal(result.actions[0]?.overdue, false);
   assert.deepEqual(result.call_blockers, ["restriction"]); assert.ok(!result.reasons.includes("going_cold"));
 });
+test("snoozing overdue work does not hide Going cold; agreed future work still does", () => {
+  const r = record(); r.state = "open";
+  const now = new Date("2026-09-24T16:00:00Z");
+  const a = action("call", new Date("2026-09-19T16:00:00Z"));
+  a.snoozed_until = new Date("2026-09-25T16:00:00Z");
+  const context = { now, policy, staffing: policy, followups: [a], restrictions: [], reviewItems: [], coverage: {} };
+  assert.ok(derive(r, context).reasons.includes("going_cold"));
+  assert.ok(!derive(r, context).reasons.includes("followups_due"));
+  a.due_at = new Date("2026-09-25T16:00:00Z");
+  assert.ok(!derive(r, context).reasons.includes("going_cold"));
+  a.kind = "wait"; a.due_at = new Date("2026-09-24T15:00:00Z");
+  a.base_attention_due_at = new Date("2026-09-25T12:00:00Z");
+  assert.ok(!derive(r, context).reasons.includes("going_cold"));
+});
 test("inbound human versus missed/provider connected; attempts fulfill callback only and retain outcome", () => {
   const r = record(); const call = new (getCallInteractionModel())({ provider_account_id: "synthetic", identity_basis: "call_log_id", call_log_ids: ["c"], started_at: new Date(+at + 60000), direction: "Inbound", terminal: true,
     first_observed_at: at, last_observed_at: at, contact_type: "human_conversation", parties: [{ role: "user", extension_id: "101", connected: true, direction: "Inbound" }] }).toObject();
