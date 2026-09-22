@@ -5,6 +5,9 @@ import { ambiguousReviewFixture, unknownCoverageFixture } from "../fixtures";
 import { compressAttentionRows, readAttention } from "./attention";
 import { payloadHash } from "../transactions";
 
+process.env.TEST_MODE = "true";
+process.env.SALES_INTELLIGENCE_DEPLOYMENT_ID = "isolated";
+
 test("the latest list stays readable after freshness expires, including its pagination", async t => {
   const Snapshot = getSalesIntelligenceAttentionSnapshotModel();
   const asOf = new Date("2026-09-21T12:00:00Z");
