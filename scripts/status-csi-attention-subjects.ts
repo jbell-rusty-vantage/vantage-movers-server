@@ -51,7 +51,7 @@ async function main() {
     id: row.snapshot_id,
     as_of: row.as_of,
     expires_at: row.expires_at,
-    live: row.expires_at ? row.expires_at > now : false,
+    live: row.expires_at == null || row.expires_at > now,
     total: row.counts?.total_items ?? null,
   })));
 }

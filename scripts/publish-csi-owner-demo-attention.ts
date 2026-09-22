@@ -19,7 +19,7 @@ async function main() {
   const started = Date.now();
   const published = await publishAttentionSnapshot({ deadlineMs: 55 * 60 * 1000 });
   const snapshot = await getSalesIntelligenceAttentionSnapshotModel()
-    .findOne({ expires_at: { $gt: new Date() }, $or: [{ chunk_index: null }, { chunk_index: { $exists: false } }] })
+    .findOne({ chunk_index: null, $or: [{ expires_at: null }, { expires_at: { $gt: new Date() } }] })
     .sort({ as_of: -1 })
     .select({ snapshot_id: 1, as_of: 1, expires_at: 1, counts: 1, rows: 1 })
     .lean();
