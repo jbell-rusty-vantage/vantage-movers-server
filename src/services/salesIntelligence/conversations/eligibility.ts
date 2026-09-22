@@ -66,11 +66,17 @@ export async function loadEligibilityInputs(interaction: CurrentInteraction, ses
   const attachments = number ? await getNumberLeadAttachmentModel().find({ contact_number_id: number._id }).session(session).lean() : [];
   const policyEdges: Attachment[] = [];
   const missingInputs: string[] = [];
-  for (const attachment of attachments.filter(a => a.state !== "rejected")) {
+  const eligibleAttachments = attachments.filter(a => a.state !== "rejected");
+  const formLeads = await getFormLeadModel().find({ _id: { $in: eligibleAttachments.filter(a => a.lead_ref.model === "FormLead").map(a => a.lead_ref.id) } })
+    .select({ _id: 1 }).session(session).lean();
+  const callLeads = await getCallLeadModel().find({ _id: { $in: eligibleAttachments.filter(a => a.lead_ref.model === "CallLead").map(a => a.lead_ref.id) } })
+    .select({ _id: 1, ringcentral: 1 }).session(session).lean();
+  const forms = new Map(formLeads.map(lead => [String(lead._id), lead]));
+  const calls = new Map(callLeads.map(lead => [String(lead._id), lead]));
+  for (const attachment of eligibleAttachments) {
     const ref = attachment.lead_ref;
     const lead = ref.model === "FormLead"
-      ? await getFormLeadModel().findById(ref.id).select({ _id: 1 }).session(session).lean()
-      : await getCallLeadModel().findById(ref.id).select({ _id: 1, ringcentral: 1 }).session(session).lean();
+      ? forms.get(String(ref.id)) : calls.get(String(ref.id));
     if (!lead) { missingInputs.push("lead_reference_missing"); continue; }
     const edge = attachmentPolicyInput(attachment);
     // Read-only compatibility for pre-CSI-05 exact evidence. New writes always pin account/identity.

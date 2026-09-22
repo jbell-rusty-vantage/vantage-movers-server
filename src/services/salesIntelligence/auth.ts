@@ -175,6 +175,20 @@ export async function requireCsiRun(
   runId: string,
   tool: (typeof CSI_TOOLS)[number],
 ) {
+  return authorizeStoredRun(runId, req.header("x-vantage-intelligence-run-token") ?? "", tool,
+    getVantageAuth(req), req.header("x-request-id") ?? runId);
+}
+
+/** First-party worker seam. Still verifies the signed token and stored run/lease. */
+export async function authorizeCsiRun(input: { runId: string; token: string; tool: (typeof CSI_TOOLS)[number] }) {
+  return authorizeStoredRun(input.runId, input.token, input.tool, {
+    kind: "scoped_key", scopedKeyName: process.env.SALES_INTELLIGENCE_SCOPED_KEY_NAME ?? "",
+    scopedKeyFingerprint: "in-process-worker",
+  }, input.runId);
+}
+
+async function authorizeStoredRun(runId: string, token: string, tool: (typeof CSI_TOOLS)[number],
+  auth: VantageAuthContext | undefined, requestId: string) {
   csiIdSchema.parse(runId);
   const run = await getIntelligenceRunModel()
     .findOne({ _id: runId, ...csiDataset() })
@@ -185,8 +199,8 @@ export async function requireCsiRun(
     .lean();
   if (!job || job.status !== "leased") throw new CsiError("RUN_SCOPE_DENIED");
   const claims = verifyRunToken(
-    req.header("x-vantage-intelligence-run-token") ?? "",
-    getVantageAuth(req),
+    token,
+    auth,
     {
       id: String(run._id),
       subject_key: run.subject_key,
@@ -205,7 +219,7 @@ export async function requireCsiRun(
     actor: trust({
       kind: "intelligence",
       id: `run:${runId}`,
-      request_id: req.header("x-request-id") ?? runId,
+      request_id: requestId,
       run_id: runId,
     }),
   };

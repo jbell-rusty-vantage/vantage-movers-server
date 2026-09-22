@@ -47,7 +47,7 @@ export async function retainedOriginal(sourceId: string, session?: ClientSession
   }
   return { run, snapshots };
 }
-export async function scheduleOwnerReanalysis(sourceId: string, mode: "original_evidence" | "current_context", correctionIds: string[], context: CsiTransactionContext, focusFindingId?: string) {
+export async function scheduleOwnerReanalysis(sourceId: string, mode: "original_evidence" | "current_context", correctionIds: string[], context: CsiTransactionContext, focusFindingId?: string, applicationDisabled = false) {
   const source = await getIntelligenceRunModel().findOne({ _id: sourceId, ...csiDataset() }).session(context.session).lean();
   const original = mode === "original_evidence" ? await retainedOriginal(sourceId, context.session) : null;
   if (!source?.output || !source.finalized_at) throw new CsiError("INVALID_INPUT");
@@ -67,6 +67,6 @@ export async function scheduleOwnerReanalysis(sourceId: string, mode: "original_
   const runId = newObjectIdHex();
   const job = await enqueueCsiJob({ dedupe_key: `csi:owner-reanalysis:${context.command_id}`, stage: source.conversation_id ? "analysis" : "number_refresh",
     subject_key: source.subject_key, input_revision: source.revision, input_refs: refs,
-    owner_reanalysis: { run_id: runId, source_run_id: sourceId, mode, owner_correction_ids: correctionIds, focus_finding_id: focusFindingId ?? null } }, context.session);
+    owner_reanalysis: { run_id: runId, source_run_id: sourceId, mode, owner_correction_ids: correctionIds, focus_finding_id: focusFindingId ?? null, application_disabled: applicationDisabled } }, context.session);
   return { run_id: runId, job_id: String(job._id), status: "queued", focus_finding_id: focusFindingId ?? null };
 }

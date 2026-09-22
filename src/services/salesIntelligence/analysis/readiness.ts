@@ -16,7 +16,7 @@ export async function resumeApplicationIntents() {
       if (job.input_refs.length !== 2) continue;
       const run = await getIntelligenceRunModel().findOne({ _id: job.input_refs[0], ...csiDataset(), status: "submitted" }).session(session).lean();
       const submission = await getIntelligenceSubmissionModel().findOne({ _id: job.input_refs[1], run_id: run?._id, application_job_id: job._id }).session(session).lean();
-      if (!run || !submission || run.subject_key !== job.subject_key) continue;
+      if (!run || run.application_disabled || !submission || run.subject_key !== job.subject_key) continue;
       // Old CSI-17 receipts have no invocation owner; receipt provenance is still validated by application.
       if (job.reason === "invocation_pending" && !run.invocation_complete) continue;
       const result = await getSalesIntelligenceJobModel().updateOne({ _id: job._id, status: "paused", reason: job.reason },

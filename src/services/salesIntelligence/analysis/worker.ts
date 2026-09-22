@@ -19,7 +19,7 @@ import { conversationAnalysisInput, intelligenceSources, numberAnalysisInput } f
 import { DEFAULT_RUNTIME_LIMITS, runtimeLimitsSchema, invokeIntelligenceAgent, IntelligenceRuntimeError, type InvocationInput, type RuntimeLimits } from "./runtime";
 import { publishCaptureProjectionWakeup, publishRunnableWakeups, shouldPublishSalesIntelligenceQueue } from "../../numberActivity/webhookFanout";
 import { applicationReady, resumeApplicationIntents } from "./readiness";
-import { consumeNumberRefreshSignal, scanIntelligenceChanges } from "./scheduling";
+import { consumeNumberRefreshSignal, scanIntelligenceChanges, scheduleNumberIntelligence } from "./scheduling";
 import { resumeTranscriptAnalysisJobs } from "../conversations/transcribe";
 import { retainedOriginal } from "./ownerReanalysis";
 import { intelligenceReadSchema, intelligenceToolArguments } from "./contracts";
@@ -27,6 +27,10 @@ import { readContentSchema } from "./reads";
 import { retryAfterMs } from "../../ringcentral/recordings";
 import { ensureCurrentCsiBudgetPeriod } from "../budgetPeriod";
 import { AnalysisAdmissionError, admissionPauseReason, decideAnalysisAdmission, type AdmissionEvidence } from "./admission";
+
+import { STRUCTURED_PIPELINE, structuredAnalysisEnabled } from "./structuredPrompt";
+import { invokeStructuredAnalysis, STRUCTURED_LEASE_MS } from "./structuredRuntime";
+import { StructuredStepTimeout, StructuredYield, STRUCTURED_INVOCATION_MS, updateStructuredRunUsage } from "./structuredGeneration";
 
 export const pricingSchema = z.object({ version: z.string().min(1), input_cents_per_million: z.number().positive(), output_cents_per_million: z.number().positive() }).strict();
 export type AnalysisPricing = z.infer<typeof pricingSchema>;
@@ -101,20 +105,21 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
   let reservation: string | null = null, providerStarted = false, returned = false, usageComplete = true;
   let inputTokens = 0, outputTokens = 0, actualCents = 0, steps = 0;
   let reasoningTokens: number | null = 0, cachedTokens: number | null = null;
-  let runId: string | null = null;
+  let runId: string | null = null, useStructured = false;
   let admissionEvidence: AdmissionEvidence | null = null;
   const finish = async (receipt: Awaited<ReturnType<typeof recoverIntelligenceSubmission>>) => {
     if (!receipt) throw new IntelligenceRuntimeError("receipt_missing");
     await completeCsiJob(lease, async session => {
       const run = await getIntelligenceRunModel().findById(receipt.run_id).session(session).orFail();
       await getIntelligenceRunModel().updateOne({ _id: receipt.run_id, ...csiDataset() }, { $set: { invocation_complete: true,
-        processing_reason: providerStarted && !usageComplete ? "analysis_cost_unreported" : null } }, { session });
+        processing_reason: run.analysis_pipeline ? run.usage?.usage_complete === false ? "analysis_cost_unreported" : null
+          : providerStarted && !usageComplete ? "analysis_cost_unreported" : null } }, { session });
       if (run.mode === "number_refresh") await getContactNumberModel().updateOne({ _id: run.contact_number_id, "intelligence_schedule.job_id": job._id },
         { $set: { "intelligence_schedule.fingerprint": run.input_fingerprint } }, { session });
-      if (applicationReady()) await getSalesIntelligenceJobModel().updateOne({ _id: receipt.application_job_id, ...csiDataset(), status: "paused",
+      if (applicationReady() && !run.application_disabled) await getSalesIntelligenceJobModel().updateOne({ _id: receipt.application_job_id, ...csiDataset(), status: "paused",
         reason: { $in: ["invocation_pending", "consumer_unavailable"] } }, { $set: { status: "pending", reason: null, next_attempt_at: new Date() } }, { session });
     }, { result: { run_id: receipt.run_id, submission_id: receipt.submission_id } });
-    if (applicationReady()) await (deps.publish ?? publishCaptureProjectionWakeup)(receipt.application_job_id).catch(() => undefined);
+    if (applicationReady() && !job.owner_reanalysis?.application_disabled) await (deps.publish ?? publishCaptureProjectionWakeup)(receipt.application_job_id).catch(() => undefined);
     return { status: "submitted", run_id: receipt.run_id };
   };
   try {
@@ -124,15 +129,18 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
     }
     const prior = await getIntelligenceRunModel().findOne({ job_id: job._id, ...csiDataset() }).lean();
     if (prior) {
+      useStructured = prior.analysis_pipeline === STRUCTURED_PIPELINE;
       runId = String(prior._id);
       const receipt = await recoverIntelligenceSubmission(runId, lease);
       if (receipt) return await finish(receipt);
     }
     const config = deps.configuration ?? analysisRuntimeConfiguration(), limits = deps.limits ?? config.limits;
-    if (!config.pricing || !config.endpoint || !config.key || (!deps.model && !config.gateway_key) || (prior && prior.model_version !== config.model_id) || !(CSI_EXTRACTION_MODELS as readonly string[]).includes(config.model_id)) {
+    const original = job.owner_reanalysis?.mode === "original_evidence" ? await retainedOriginal(String(job.owner_reanalysis.source_run_id)) : null;
+    useStructured = prior ? prior.analysis_pipeline === STRUCTURED_PIPELINE : original ? original.run.analysis_pipeline === STRUCTURED_PIPELINE : structuredAnalysisEnabled();
+    if (!config.pricing || (!useStructured && (!config.endpoint || !config.key)) || (!deps.model && !config.gateway_key) || (prior && prior.model_version !== config.model_id) || !(CSI_EXTRACTION_MODELS as readonly string[]).includes(config.model_id)) {
       await failCsiJob(lease, "permission_denied", 0, { result: { reason: "analysis_configuration_missing" } }); return { status: "paused" };
     }
-    const original = job.owner_reanalysis?.mode === "original_evidence" ? await retainedOriginal(String(job.owner_reanalysis.source_run_id)) : null;
+
     const input = await withTransaction(async session => {
       if (original) {
         const transcripts = original.snapshots.flatMap(s => { const content = readContentSchema.parse(s.response); return content.transcript ? [content.transcript] : []; });
@@ -166,6 +174,17 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
       }, { result: { reason: input.status } });
       return { status: input.status };
     }
+    if (useStructured && prior && !original && !input.conversation_id && prior.input_fingerprint !== input.fingerprint) {
+      // A checkpoint may already contain summaries from the previous transcript set.
+      // Retire it instead of mixing versions in one immutable evidence manifest.
+      await completeCsiJob(lease, async session => {
+        await getIntelligenceRunModel().updateOne({ _id: prior._id, finalized_at: null },
+          { $set: { status: "stale", processing_reason: "eligibility_changed", completed_at: new Date() } }, { session });
+      }, { result: { reason: "eligibility_changed" } });
+      const next = await withTransaction(session => scheduleNumberIntelligence(input.contact_number_id, session));
+      if (next) await (deps.publish ?? publishCaptureProjectionWakeup)(next).catch(() => undefined);
+      return { status: "stale", reason: "eligibility_changed" };
+    }
     if (prior?.status === "paused") await checkpointCsiJob(lease, async session => {
       await getIntelligenceRunModel().updateOne({ _id: prior._id, finalized_at: null, status: "paused" }, { $set: { status: "running", processing_reason: null } }, { session });
     });
@@ -173,31 +192,35 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
     const prepared = await prepareIntelligenceRun(lease, { contact_number_id: input.contact_number_id, conversation_id: input.conversation_id,
       outreach_record_id: prior?.outreach_record_id ? String(prior.outreach_record_id) : input.outreach_record_id,
       input_fingerprint: prior?.input_fingerprint ?? input.fingerprint, model_version: prior?.model_version ?? config.model_id,
-      mode: analysisMode,
+      mode: analysisMode, analysis_pipeline: useStructured ? STRUCTURED_PIPELINE : null,
       ...(job.owner_reanalysis ? { run_id: String(job.owner_reanalysis.run_id), parent_run_id: original ? String(original.run._id) : null,
         owner_correction_ids: job.owner_reanalysis.owner_correction_ids.map(String) } : {}) });
     runId = prepared.run_id;
-    const budget = await getSalesIntelligenceAiBudgetModel().findOne({ period_start: { $lte: new Date() }, period_end: { $gt: new Date() }, activated_at: { $ne: null } }).lean();
-    const estimate = estimateAnalysisCents(config.pricing, limits), policy = await resolvePolicy();
-    const admission = decideAnalysisAdmission({ stage, budget, estimated_cents: estimate, per_recording_ceiling_cents: policy.per_recording_ceiling_cents,
-      model_version: config.model_id, pricing_version: config.pricing.version, limits });
-    if (!admission.admitted) throw new AnalysisAdmissionError(admission.reason, admission.evidence);
-    if (!budget) throw new AnalysisAdmissionError("no_active_period", admission.evidence);
-    admissionEvidence = admission.evidence;
-    reservation = `analysis:${job._id}:${lease.epoch}`;
-    await reserveCsiBudget({ reservation_id: reservation, month: budget.month, job_id: lease.job_id, run_id: runId,
-      step: `invocation:${lease.epoch}`, stage: "analysis", estimated_cents: estimate });
-    await getSalesIntelligenceAiReservationModel().updateOne({ reservation_id: reservation }, { $set: { model_version: config.model_id, pricing_snapshot: config.pricing } });
+    if (!useStructured) {
+      const budget = await getSalesIntelligenceAiBudgetModel().findOne({ period_start: { $lte: new Date() }, period_end: { $gt: new Date() }, activated_at: { $ne: null } }).lean();
+      const estimate = estimateAnalysisCents(config.pricing, limits), policy = await resolvePolicy();
+      const admission = decideAnalysisAdmission({ stage, budget, estimated_cents: estimate, per_recording_ceiling_cents: policy.per_recording_ceiling_cents,
+        model_version: config.model_id, pricing_version: config.pricing.version, limits });
+      if (!admission.admitted) throw new AnalysisAdmissionError(admission.reason, admission.evidence);
+      if (!budget) throw new AnalysisAdmissionError("no_active_period", admission.evidence);
+      admissionEvidence = admission.evidence;
+      reservation = `analysis:${job._id}:${lease.epoch}`;
+      await reserveCsiBudget({ reservation_id: reservation, month: budget.month, job_id: lease.job_id, run_id: runId,
+        step: `invocation:${lease.epoch}`, stage: "analysis", estimated_cents: estimate });
+      await getSalesIntelligenceAiReservationModel().updateOne({ reservation_id: reservation }, { $set: { model_version: config.model_id, pricing_snapshot: config.pricing } });
+    }
     await checkpointCsiJob(lease, async session => {
       await getIntelligenceRunModel().updateOne({ _id: runId }, { $set: { pricing_snapshot: config.pricing } }, { session });
     });
-    const receipt = await invokeIntelligenceAgent({ ...config, limits, model: deps.model, run_id: runId, token: prepared.token,
+    const invoke = useStructured ? (invocation: InvocationInput) => invokeStructuredAnalysis({ ...invocation, lease, pricing: config.pricing!,
+      source_ids: input.versions, ...(original ? { original_run_id: String(original.run._id) } : {}) }) : invokeIntelligenceAgent;
+    const receipt = await invoke({ ...config, limits, model: deps.model, run_id: runId, token: prepared.token,
       prompt: prepared.prompt_context.rendered_prompt!, prompt_version: prepared.prompt_context.prompt_version!,
       schema_digest: prepared.prompt_context.schema_digest!, evidence_preamble: prepared.prompt_context.evidence_preamble,
       permitted_tools: prepared.permitted_tools, model_tools: prepared.model_tools,
       schema_failures: prior?.schema_failures ?? 0, onInvocationComplete: () => { returned = true; },
       conversation_ids: input.conversation_ids, interaction_ids: input.interaction_ids,
-      ...(original ? { original_reads: original.snapshots.map(s => s.tool_name === "get_intelligence_context"
+      ...(original && !useStructured ? { original_reads: original.snapshots.map(s => s.tool_name === "get_intelligence_context"
         ? { tool: "get_intelligence_context" as const, args: intelligenceToolArguments.get_intelligence_context.parse(s.arguments) }
         : intelligenceReadSchema.parse({ tool: s.tool_name, args: s.arguments })) } : {}),
       beforeProvider: async () => {
@@ -207,7 +230,7 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
         // against a fresh lease rather than the remainder of the claim; a
         // shorter TTL is still preferred over claiming long, because it keeps
         // recovery of a genuinely crashed claim fast (22 Item 1).
-        await renewCsiJob(lease, CSI_ANALYSIS_LEASE_TTL_MS);
+        await renewCsiJob(lease, useStructured ? STRUCTURED_LEASE_MS : CSI_ANALYSIS_LEASE_TTL_MS);
         await deps.beforeProvider?.();
         if (original) {
           await retainedOriginal(String(original.run._id));
@@ -218,7 +241,7 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
           const latest = await withTransaction(session => numberAnalysisInput(input.contact_number_id, session));
           if (latest.status !== "eligible" || JSON.stringify(latest.versions) !== JSON.stringify(input.versions)) throw new IntelligenceRuntimeError("eligibility_changed");
         }
-        await checkpointCsiJob(lease, async session => {
+        if (!useStructured) await checkpointCsiJob(lease, async session => {
           await getSalesIntelligenceAiReservationModel().updateOne({ reservation_id: reservation }, { $set: { provider_started: true } }, { session });
         });
         providerStarted = true;
@@ -253,6 +276,16 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
       if (receipt) return await finish(receipt);
     }
     if (error instanceof CsiError && error.code === "LEASE_LOST") return { status: "lease_lost" };
+    if (error instanceof StructuredYield || error instanceof StructuredStepTimeout) {
+      const timeouts = error instanceof StructuredStepTimeout ? (job.result && typeof job.result === "object" && "step_timeouts" in job.result ? Number(job.result.step_timeouts) : 0) + 1 : 0;
+      const pause = timeouts >= 2;
+      await failCsiJob(lease, pause ? "permission_denied" : "recording_pending", 0, {
+        result: { reason: error.message, step_timeouts: timeouts }, ...(pause ? {} : { resumeAt: new Date() }),
+        mutation: async session => { if (runId) await getIntelligenceRunModel().updateOne({ _id: runId, finalized_at: null },
+          { $set: { status: pause ? "paused" : "running", processing_reason: error.message } }, { session }); },
+      });
+      return { status: pause ? "paused" : "retry", reason: error.message };
+    }
     const provider = analysisProviderFailure(error);
     if (provider) {
       const failReason = provider.kind;
@@ -286,6 +319,7 @@ export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "nu
         status: outcome.status === "paused" ? "paused" : outcome.status === "dead_letter" ? "failed" : "running" } }, { session }); } });
     return { status: eligibility ? "eligibility_pending" : budget || bounded || disabled || unavailable ? "paused" : "retry", reason };
   } finally {
+    if (useStructured && runId) await updateStructuredRunUsage(runId);
     if (reservation && await getSalesIntelligenceAiReservationModel().exists({ reservation_id: reservation })) {
       if (!providerStarted) await reconcileCsiBudget(reservation, 0, true);
       else if (returned && usageComplete && steps) await reconcileCsiBudget(reservation, actualCents);
@@ -370,7 +404,7 @@ export async function drainIntelligenceJobs(deps: AnalysisDependencies = {}, opt
   // Most queued rows are signals, no-ops or stale checks that finish in well
   // under a second; one invocation used to process exactly one of them, which
   // capped the whole pipeline at 288 jobs a day (17 §9).
-  const elapsed = (deps.limits ?? deps.configuration?.limits ?? analysisRuntimeConfiguration().limits).elapsed_ms;
+  const elapsed = structuredAnalysisEnabled() ? STRUCTURED_INVOCATION_MS : (deps.limits ?? deps.configuration?.limits ?? analysisRuntimeConfiguration().limits).elapsed_ms;
   const outcomes: Array<{ status: string; reason?: string }> = [];
   for (let i = 0; recover && i < max; i++) {
     if (Date.now() + elapsed + 5_000 > deadline) break;

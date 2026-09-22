@@ -27,9 +27,11 @@ import { stateWithActions } from "../outreach/transitions";
 import { subjectKey } from "../outreach/types";
 import { CsiError } from "../auth";
 import { readPageSchema, type EvidenceRecord, type IntelligenceRead, type ReadPage, type ReadScope } from "./contracts";
+import { summaryStepSchema } from "./structuredContract";
 
 const segmentSchema = z.object({ sid: z.number().int().nonnegative(), start_ms: z.number().nullable(), end_ms: z.number().nullable(), timing_source: z.enum(["provider", "unavailable"]), speaker: z.enum(["rep", "customer", "unknown"]), text: z.string() }).strict();
 export const readContentSchema = z.object({ page: readPageSchema,
+  analysis_summary: summaryStepSchema.optional(),
   transcript: z.object({ conversation_id: z.string(), transcript_version: z.string(), source_snapshot_id: z.string(), segments: z.array(segmentSchema).max(100) }).strict().optional(),
   coverage: coverageDtoSchema, allowed_followup_ids: z.array(z.string()).max(100),
   instructions: z.array(z.object({ id: z.string(), revision: z.number().int() }).strict()).max(100), speaker_refs: z.array(z.string()).max(100),
@@ -220,8 +222,9 @@ async function context(scope: ReadScope, result: ReadContent) {
   if (result.page.records.length > 200) throw new CsiError("EVIDENCE_SCOPE_INVALID");
 }
 
-export async function readIntelligenceEvidence(scope: ReadScope, input: { tool: "get_intelligence_context"; args: Record<string, never> } | IntelligenceRead): Promise<ReadContent> {
-  const result: ReadContent = { page: emptyPage(), coverage: await readCaptureCoverage(), allowed_followup_ids: [], instructions: [], speaker_refs: [] };
+export async function readIntelligenceEvidence(scope: ReadScope, input: { tool: "get_intelligence_context"; args: Record<string, never> } | IntelligenceRead,
+  coverage?: ReadContent["coverage"]): Promise<ReadContent> {
+  const result: ReadContent = { page: emptyPage(), coverage: coverage ?? await readCaptureCoverage(), allowed_followup_ids: [], instructions: [], speaker_refs: [] };
   switch (input.tool) {
     case "get_intelligence_context": await context(scope, result); break;
     case "search_leads": result.page = await readLeads(scope, input.args); break;
@@ -250,7 +253,7 @@ export async function readIntelligenceEvidence(scope: ReadScope, input: { tool: 
         ]);
         if (edges > 100 || outreach > 100 || recordings > 2000) throw new CsiError("EVIDENCE_SCOPE_INVALID");
       }
-      const page = await getNumberTimeline(scope.contact_number_id, { ...input.args, cursor: timelineCursor });
+      const page = await getNumberTimeline(scope.contact_number_id, { ...input.args, cursor: timelineCursor }, { coverage: result.coverage });
       if (!page) return fail();
       result.coverage = page.coverage;
       result.page = { records: page.data.items.map(r => ({ record_type: r.kind === "interaction" ? "interaction" : r.kind === "owner_note" ? "owner_note" : "job_timeline", record_id: r.id,

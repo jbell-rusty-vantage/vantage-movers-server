@@ -22,6 +22,8 @@ export type ReservationInput = {
   stage: "transcription" | "analysis";
   estimated_cents: number;
   kind?: "stt";
+  /** Structured model steps may start while there is headroom; admitted repairs finish. */
+  soft_stop?: boolean;
 };
 export async function reserveCsiBudget(input: ReservationInput) {
   if (input.kind && input.stage !== "transcription") throw new CsiError("INVALID_INPUT");
@@ -69,7 +71,7 @@ export async function reserveCsiBudget(input: ReservationInput) {
       const budget = await Budget.updateOne(
         {
           month: input.month,
-          $expr: {
+          $expr: input.soft_stop ? { $lt: [{ $add: ["$actual_cents", "$reserved_cents"] }, "$ceiling_cents"] } : {
             $lte: [
               {
                 $add: [
@@ -88,7 +90,7 @@ export async function reserveCsiBudget(input: ReservationInput) {
       if (budget.modifiedCount !== 1 && input.estimated_cents !== 0)
         throw new CsiError("BUDGET_EXHAUSTED");
       if (budget.matchedCount !== 1) throw new CsiError("BUDGET_EXHAUSTED");
-      const { kind: _kind, ...record } = input;
+      const { kind: _kind, soft_stop: _softStop, ...record } = input;
       const [reservation] = await Reservations.create(
         [{ ...record, status: "reserved", reserved_at: new Date() }],
         { session },
@@ -143,7 +145,7 @@ export async function reconcileCsiBudget(
       {
         $inc: {
           reserved_cents: -row.estimated_cents,
-          actual_cents: actualCents,
+          actual_cents: actualCents - (row.settled_cents ?? 0),
         },
       },
       { session },

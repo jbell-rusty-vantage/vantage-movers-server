@@ -22,7 +22,8 @@ import { getNumberLeadAttachmentModel } from "../src/models/NumberLeadAttachment
 import { csiDataset } from "../src/config/domain/salesIntelligence";
 
 const args = process.argv.slice(2);
-const hours = Number(args[args.indexOf("--hours") + 1] || 24);
+const hoursIndex = args.indexOf("--hours");
+const hours = hoursIndex < 0 ? 24 : Number(args[hoursIndex + 1]);
 const json = args.includes("--json");
 
 function family(key: string) {
@@ -30,6 +31,7 @@ function family(key: string) {
 }
 
 async function main() {
+  if (!Number.isFinite(hours) || hours <= 0) throw new Error("--hours must be a positive number");
   await connectMongo();
   const dataset = csiDataset();
   const Jobs = getSalesIntelligenceJobModel();
@@ -52,6 +54,18 @@ async function main() {
 
   const runs = await getIntelligenceRunModel().aggregate<{ _id: { status: string; reason: string | null; mode: string }; count: number }>([
     { $match: dataset }, { $group: { _id: { status: "$status", reason: "$processing_reason", mode: "$mode" }, count: { $sum: 1 } } }, { $sort: { count: -1 } },
+  ]);
+  const analysisCosts = await getIntelligenceRunModel().aggregate([
+    { $match: { ...dataset, conversation_id: { $ne: null }, purged_at: null, status: { $in: ["submitted", "completed"] } } },
+    { $group: {
+      _id: { pipeline: { $ifNull: ["$analysis_pipeline", "legacy"] }, shadow: { $ifNull: ["$application_disabled", false] } },
+      runs: { $sum: 1 },
+      complete_usage_runs: { $sum: { $cond: [{ $eq: ["$usage.usage_complete", true] }, 1, 0] } },
+      observed_cents: { $sum: { $ifNull: ["$usage.actual_cents", 0] } },
+      mean_complete_cents: { $avg: { $cond: [{ $eq: ["$usage.usage_complete", true] }, "$usage.actual_cents", null] } },
+      mean_generation_elapsed_ms: { $avg: { $subtract: ["$finalized_at", "$started_at"] } },
+      validation_repairs: { $sum: "$schema_failures" },
+    } },
   ]);
   const paused = await Jobs.aggregate<{ _id: { stage: string; reason: string | null; detail: string | null }; count: number }>([
     { $match: { ...dataset, status: "paused" } }, { $group: { _id: { stage: "$stage", reason: "$reason", detail: "$result.reason" }, count: { $sum: 1 } } }, { $sort: { count: -1 } },
@@ -77,6 +91,7 @@ async function main() {
       created_in_window: keys.length, per_hour: [...perHour].sort().map(([hour, count]) => ({ hour, count })),
       families_in_window: [...families].sort((a, b) => b[1] - a[1]).slice(0, 30).map(([key, count]) => ({ key, count })) },
     runs: runs.map(r => ({ ...r._id, count: r.count })),
+    conversation_analysis_costs: analysisCosts.map(({ _id, ...values }) => ({ ..._id, ...values })),
     paused_jobs: paused.map(r => ({ ...r._id, count: r.count })), admission_sample: admissionSample ?? null,
     reservations: reservations.map(r => ({ ...r._id, count: r.count, estimated_cents: r.estimated, actual_cents: r.actual })),
     effects: effects.map(r => ({ ...r._id, count: r.count })),
@@ -89,6 +104,8 @@ async function main() {
     console.log(`jobs: ${storage ? `${storage.documents} docs, ${(storage.data_bytes / 1048576).toFixed(1)} MiB data, ${(storage.index_bytes / 1048576).toFixed(1)} MiB index` : "storage unavailable"}; created in window ${keys.length}`);
     for (const f of report.jobs.families_in_window.slice(0, 15)) console.log(`  ${String(f.count).padStart(7)}  ${f.key}`);
     console.log("runs:"); for (const r of report.runs) console.log(`  ${String(r.count).padStart(7)}  ${r.mode} ${r.status} ${r.reason ?? ""}`);
+    console.log("conversation analysis costs:");
+    for (const row of report.conversation_analysis_costs) console.log(JSON.stringify(row));
     console.log("paused jobs:"); for (const r of report.paused_jobs) console.log(`  ${String(r.count).padStart(7)}  ${r.stage} ${r.reason ?? ""} ${r.detail ?? ""}`);
     console.log("reservations:"); for (const r of report.reservations) console.log(`  ${String(r.count).padStart(7)}  ${r.status} started=${r.started} complete=${r.complete} est=${r.estimated_cents}c actual=${r.actual_cents}c`);
     console.log("effects:"); for (const r of report.effects) console.log(`  ${String(r.count).padStart(7)}  ${r.status} ${r.reason ?? ""}`);

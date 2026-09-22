@@ -27,10 +27,10 @@ async function fenceCurrentRun(run: Run, context: CsiTransactionContext) {
   if (result.matchedCount !== 1) throw new CsiError("REVISION_CONFLICT");
 }
 
-export async function commandAnalysis(input: { actor: CsiActor; target_id: string; idempotency_key: string; command: CsiCommand }) {
+export async function commandAnalysis(input: { actor: CsiActor; target_id: string; idempotency_key: string; command: CsiCommand; application_disabled?: boolean }) {
   const command = csiCommandSchema.parse(input.command), target = csiIdSchema.parse(input.target_id);
   return executeCsiCommand({ actor: input.actor, command: command.command, idempotency_key: input.idempotency_key,
-    payload: { target_id: target, command }, operation: async (context): Promise<JsonValue> => {
+    payload: { target_id: target, command, ...(input.application_disabled ? { application_disabled: true } : {}) }, operation: async (context): Promise<JsonValue> => {
       if (!csiFlag("ENABLED")) throw new CsiError("FEATURE_DISABLED");
       if (command.command === "reanalyze") {
         const sourceId = command.source_run_id ?? (await getLeadConversationModel().findById(target).session(context.session).lean())?.latest_completed_run_id
@@ -38,7 +38,7 @@ export async function commandAnalysis(input: { actor: CsiActor; target_id: strin
         const source = await getIntelligenceRunModel().findOne({ _id: sourceId, ...csiDataset() }).session(context.session);
         if (!source || (target !== String(source._id) && target !== String(source.conversation_id) && target !== String(source.contact_number_id))) throw new CsiError("RUN_SCOPE_DENIED");
         if (source.revision !== command.expected_revision || command.expected_revisions?.length) throw new CsiError("REVISION_CONFLICT");
-        const result = await scheduleOwnerReanalysis(String(source._id), command.mode, command.owner_correction_ids, context, command.focus_finding_id);
+        const result = await scheduleOwnerReanalysis(String(source._id), command.mode, command.owner_correction_ids, context, command.focus_finding_id, input.application_disabled);
         await csiCas(getIntelligenceRunModel(), String(source._id), source.revision, {}, context.session);
         await appendCsiAudit(context, { kind: "analysis", target_id: String(source._id), subject_key: source.subject_key, revision: source.revision + 1,
           event_kind: "analysis.reanalysis_requested", prior: {}, current: { ...result, mode: command.mode, reason: command.reason } });

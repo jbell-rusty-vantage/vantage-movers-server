@@ -10,6 +10,7 @@ import { readCaptureCoverage } from "../numberActivity/coverage";
 import { decideAnalysisAdmission } from "./analysis/admission";
 import type { RuntimeLimits } from "./analysis/runtime";
 import { analysisRuntimeConfiguration, estimateAnalysisCents } from "./analysis/worker";
+import { structuredAnalysisEnabled } from "./analysis/structuredPrompt";
 import {
   ownerCoverageDtoSchema,
   ownerCoverageStageSchema,
@@ -63,10 +64,11 @@ export function composeAnalysisAdmission(input: {
   limits: RuntimeLimits;
   paused: { per_recording_ceiling: number; budget: number; configuration: number };
   unresolved_reservations: { count: number; estimated_cents: number };
+  structured?: boolean;
 }): OwnerCoverageDto["analysis_admission"] {
   const { steps, context_tokens, output_tokens, total_input_tokens, total_output_tokens, elapsed_ms } = input.limits;
   const decision = input.estimate === null ? null : decideAnalysisAdmission({
-    stage: "analysis", budget: input.budget?.activated ? input.budget : null, estimated_cents: input.estimate,
+    stage: "analysis", budget: input.budget?.activated ? input.budget : null, estimated_cents: input.estimate, structured: input.structured,
     per_recording_ceiling_cents: input.per_recording_ceiling_cents, model_version: input.model, pricing_version: input.pricing_version ?? "", limits: input.limits,
   });
   return {
@@ -97,7 +99,8 @@ async function readAnalysisAdmission(policy: { per_recording_ceiling_cents: numb
     ]),
   ]);
   return composeAnalysisAdmission({
-    estimate: configuration.pricing ? estimateAnalysisCents(configuration.pricing, configuration.limits) : null,
+    estimate: configuration.pricing ? structuredAnalysisEnabled() ? 7 : estimateAnalysisCents(configuration.pricing, configuration.limits) : null,
+    structured: structuredAnalysisEnabled(),
     per_recording_ceiling_cents: policy.per_recording_ceiling_cents,
     budget: budgetRow ? { month: budgetRow.month, ceiling_cents: budgetRow.ceiling_cents, actual_cents: budgetRow.actual_cents,
       reserved_cents: budgetRow.reserved_cents, activated: Boolean(budgetRow.activated_at) } : null,

@@ -80,6 +80,11 @@ export const IntelligenceRunSchema = new Schema(
       default: null,
     },
     pricing_snapshot: { ...validatedJson(), required: false, default: null },
+    analysis_pipeline: text,
+    application_disabled: { type: Boolean, default: false },
+    step_contracts: { ...validatedJson(), required: false, default: null },
+    step_artifacts: { ...validatedJson(), required: false, default: null },
+    per_recording_ceiling_exceeded: { type: Boolean, default: false },
     status: enumeration(
       [
         "queued",
@@ -196,6 +201,7 @@ export const getIntelligenceRunModel = defineCsiModel(
   INTELLIGENCE_RUN_INDEXES,
 );
 export const INTELLIGENCE_EVIDENCE_SNAPSHOT_INDEXES = [
+  unique("csi_evidence_artifact_unique", { artifact_key: 1 }, { artifact_key: { $type: "string" } }),
   unique(
     "csi_evidence_tool_unique",
     { run_id: 1, tool_call_id: 1 },
@@ -216,7 +222,8 @@ export const IntelligenceEvidenceSnapshotSchema = new Schema(
     run_id: ref,
     conversation_id: ref,
     transcript_version: text,
-    source_type: enumeration(["transcript", "vantage_record", "tool_response"]),
+    source_type: enumeration(["transcript", "vantage_record", "tool_response", "summary", "context"]),
+    artifact_key: text,
     source_id: str,
     source_revision: text,
     tool_name: { type: String, enum: [...CSI_TOOLS, null], default: null },

@@ -6,6 +6,13 @@ import { admissionPauseReason, decideAnalysisAdmission } from "./admission";
 const base = { stage: "analysis" as const, estimated_cents: 20, per_recording_ceiling_cents: 25, model_version: "openai/gpt-5-mini", pricing_version: "list", limits: DEFAULT_RUNTIME_LIMITS };
 const budget = { month: "2026-09", ceiling_cents: 8000, actual_cents: 415, reserved_cents: 1217 };
 
+test("structured admission uses monthly headroom and treats per-recording ceilings as reports", () => {
+  assert.equal(decideAnalysisAdmission({ ...base, structured: true, budget, estimated_cents: 1000, per_recording_ceiling_cents: 1 }).admitted, true);
+  assert.equal(decideAnalysisAdmission({ ...base, structured: true, budget: { ...budget, reserved_cents: 0, actual_cents: 7999 } }).admitted, true);
+  const exhausted = decideAnalysisAdmission({ ...base, structured: true, budget: { ...budget, reserved_cents: 0, actual_cents: 8000 } });
+  assert.equal(!exhausted.admitted && exhausted.reason, "monthly_budget");
+});
+
 test("admission reasons are distinct and carry the evaluated numbers", () => {
   const admitted = decideAnalysisAdmission({ ...base, budget });
   assert.equal(admitted.admitted, true);

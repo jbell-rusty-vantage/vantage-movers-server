@@ -8,6 +8,7 @@ import { csiDateSchema, csiIdSchema } from "../../validation/v1/salesIntelligenc
 import { CsiError } from "../salesIntelligence/auth";
 import type { ContactNumberLean } from "./contactNumbers";
 import { ownerRead } from "./coverage";
+import type { CoverageDto } from "../salesIntelligence/dto";
 import { outreachTimelineSource } from "../salesIntelligence/outreach/timeline";
 import {
   numberTimelineEventDtoSchema,
@@ -422,6 +423,8 @@ export const DEFAULT_TIMELINE_SOURCES: readonly TimelineSource[] = [
 ];
 
 export type TimelineDependencies = {
+  /** Reuse the worker's captured watermark across evidence pages. */
+  coverage?: CoverageDto;
   /** Replaces the default source set (tests). */
   sources?: TimelineSource[];
   /** Appended to the source set (Team C: outreach events, nudges). */
@@ -456,6 +459,6 @@ export async function getNumberTimeline(
   const pages = await Promise.all(sources.map((source) => source(input)));
   const merged = mergeTimeline(pages, limit);
   return numberTimelinePageDtoSchema.parse(
-    await ownerRead({ number_id: numberId, items: merged.items, cursor: merged.cursor }, deps.now),
+    await ownerRead({ number_id: numberId, items: merged.items, cursor: merged.cursor }, deps.now, deps.coverage),
   );
 }
