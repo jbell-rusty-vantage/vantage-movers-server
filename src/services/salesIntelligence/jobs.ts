@@ -20,7 +20,7 @@ export type JobInput = {
   input_revision: number;
   input_refs?: string[];
   priority?: number;
-  owner_reanalysis?: { run_id: string; source_run_id: string; mode: "original_evidence" | "current_context"; owner_correction_ids: string[]; focus_finding_id?: string | null };
+  owner_reanalysis?: { run_id: string; source_run_id: string; mode: "original_evidence" | "current_context"; owner_correction_ids: string[]; focus_finding_id?: string | null; application_disabled?: boolean };
   rep_identity_window?: { account: string; extension: string; from: string; through: string; change_id: string; after: string | null; after_at: string | null };
 };
 export type JobLease = { job_id: string; owner: string; epoch: number };

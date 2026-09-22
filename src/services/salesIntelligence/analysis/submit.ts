@@ -51,7 +51,7 @@ export async function submitIntelligenceAnalysis(auth:RunAuthorization, raw:unkn
         const transcript = content.transcript;
         const retained = await getIntelligenceEvidenceSnapshotModel().findOne({_id:transcript.source_snapshot_id,source_type:"transcript",
           conversation_id:transcript.conversation_id,transcript_version:transcript.transcript_version,...csiDataset()}).session(session).lean();
-        if (!retained || retained.purged_at) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
+        if (!retained || retained.purged_at || retained.purge_started_at) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
         manifest.push({snapshot_id:String(snapshot._id),subject_key:run.subject_key,source:"transcript",conversation_id:transcript.conversation_id,
           transcript_version:transcript.transcript_version,record_type:null,record_id:null,field_paths:[]});
       }
@@ -69,7 +69,7 @@ export async function submitIntelligenceAnalysis(auth:RunAuthorization, raw:unkn
       input_revision:run.revision,input_refs:[String(run._id),submissionId]},session);
     // Receipt is durable before orchestration finishes accounting/coverage. Recovery releases only compatible intents.
     await getSalesIntelligenceJobModel().updateOne({_id:job._id,status:"pending"},{$set:{status:"paused",reason:
-      csiFlag("EXTRACTION_ENABLED") && csiFlag("OUTREACH_ENSURE") ? "invocation_pending" : "consumer_unavailable"}},{session});
+      run.application_disabled ? "permission_denied" : csiFlag("EXTRACTION_ENABLED") && csiFlag("OUTREACH_ENSURE") ? "invocation_pending" : "consumer_unavailable", ...(run.application_disabled ? { result: { reason: "shadow_analysis" } } : {})}},{session});
     const now = new Date();
     const [submission] = await getIntelligenceSubmissionModel().create([{_id:submissionId,run_id:run._id,idempotency_key:input.idempotency_key,
       payload_hash:hash,envelope:input.envelope,received_at:now,application_job_id:job._id,manifest_digest}],{session});

@@ -59,6 +59,10 @@ export async function runIntelligenceApplicationJob(jobId?: string, deps: { befo
   try {
     if (job.input_refs.length !== 2) throw new CsiError("EVIDENCE_SCOPE_INVALID");
     const run = await getIntelligenceRunModel().findOne({ _id: job.input_refs[0], subject_key: job.subject_key, ...csiDataset(), finalized_at: { $ne: null } }).orFail();
+    if (run?.application_disabled) {
+      await failCsiJob(lease, "permission_denied", 0, { result: { reason: "shadow_analysis" } });
+      return { status: "shadow_analysis" };
+    }
     const submission = await getIntelligenceSubmissionModel().findOne({ _id: job.input_refs[1], run_id: run._id, application_job_id: job._id }).orFail();
     if (run.purged_at || run.purge_started_at) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
     const envelope = intelligenceEnvelopeSchema.parse(submission.envelope);

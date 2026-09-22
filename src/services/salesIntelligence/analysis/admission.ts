@@ -34,6 +34,7 @@ export function decideAnalysisAdmission(input: {
   model_version: string;
   pricing_version: string;
   limits: RuntimeLimits;
+  structured?: boolean;
 }): AdmissionDecision {
   const { steps, context_tokens, output_tokens, total_input_tokens, total_output_tokens, elapsed_ms } = input.limits;
   const evidence: AdmissionEvidence = {
@@ -44,6 +45,7 @@ export function decideAnalysisAdmission(input: {
     limits: { steps, context_tokens, output_tokens, total_input_tokens, total_output_tokens, elapsed_ms },
   };
   if (!input.budget) return { admitted: false, reason: "no_active_period", evidence };
+  if (input.structured) return (evidence.remaining_cents ?? 0) > 0 ? { admitted: true, evidence } : { admitted: false, reason: "monthly_budget", evidence };
   if (input.stage === "analysis" && input.estimated_cents > input.per_recording_ceiling_cents) return { admitted: false, reason: "per_recording_ceiling", evidence };
   if (input.estimated_cents > 0 && input.estimated_cents > (evidence.remaining_cents ?? 0)) return { admitted: false, reason: "monthly_budget", evidence };
   return { admitted: true, evidence };

@@ -63,7 +63,10 @@ async function purgeContent(root: Document, kind: "snapshot" | "run", at: Date, 
   const findingIds = findings.map(r => r._id);
   await database.collection("intelligence_evidence_snapshots").updateMany({ $or: [
     ...(kind === "snapshot" && !more ? [{ _id: root._id }] : []), { run_id: { $in: runIds } },
-    ...(root.source_type === "transcript" && !more ? [{ "response.transcript.source_snapshot_id": String(root._id) }, { conversation_id: root.conversation_id, source_type: "transcript" }] : []),
+    // Transcript retention erases every version of the conversation. Canonical summaries have
+    // no run_id, so they must follow that same conversation fence (including legacy roots).
+    ...(root.source_type === "transcript" && !more ? [{ "response.transcript.source_snapshot_id": String(root._id) },
+      { conversation_id: root.conversation_id, source_type: { $in: ["transcript", "summary"] } }] : []),
   ] }, { $set: { ...snapshotContent, purged_at: at, purge_reason: "retention" } }, options);
   await database.collection("intelligence_runs").updateMany({ _id: { $in: runIds } }, { $set: {
     purged_at: at, rendered_prompt: null, output: null, raw_output: null, owner_correction_context: null,

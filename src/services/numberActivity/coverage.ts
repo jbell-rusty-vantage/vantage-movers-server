@@ -193,9 +193,10 @@ async function deriveCaptureCoverage(): Promise<CoverageDto> {
 export async function ownerRead<T>(
   data: T,
   now?: () => Date,
+  capturedCoverage?: CoverageDto,
 ): Promise<{ as_of: string; coverage: CoverageDto; data: T }> {
   const clock = now ?? (() => new Date());
   const asOf = clock();
-  const coverage = await readCaptureCoverage();
+  const coverage = capturedCoverage ?? await readCaptureCoverage();
   return { as_of: asOf.toISOString(), coverage, data };
 }

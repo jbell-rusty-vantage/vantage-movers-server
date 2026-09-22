@@ -90,7 +90,8 @@ export const SalesIntelligenceJobSchema = new Schema(
     completed_at: date,
     input_refs: refs,
     owner_reanalysis: {
-      type: new Schema({ run_id: oid, source_run_id: oid, mode: enumeration(["original_evidence", "current_context"]), owner_correction_ids: refs, focus_finding_id: ref }, { _id: false, strict: "throw" }),
+      type: new Schema({ run_id: oid, source_run_id: oid, mode: enumeration(["original_evidence", "current_context"]), owner_correction_ids: refs, focus_finding_id: ref,
+        application_disabled: { type: Boolean, default: false } }, { _id: false, strict: "throw" }),
       default: null,
     },
     rep_identity_window: {
@@ -236,6 +237,7 @@ export const SalesIntelligenceAiReservationSchema = new Schema(
     /** Prefix tokens the provider served from cache, or null when it reported none (22 §4.3). */
     cached_input_tokens: { type: Number, default: null, min: 0 },
     observed_cents: count,
+    settled_cents: count,
     usage_complete: { type: Boolean, default: true },
     actual_cents: {
       type: Number,

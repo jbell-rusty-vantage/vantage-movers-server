@@ -19,9 +19,11 @@ import { readCaptureCoverage } from "../../numberActivity/coverage";
 import { loadReadScope } from "./reads";
 import { authorizedCorrections, retainedOriginal } from "./ownerReanalysis";
 import { jsonValue } from "../outreach/store";
+import { FINDINGS_PROMPT, FINDINGS_PROMPT_VERSION, STRUCTURED_PIPELINE, structuredStepContracts } from "./structuredPrompt";
 
 export { intelligenceSchemaDigest } from "./schemaArtifact";
 const preparationSchema = z.object({
+  analysis_pipeline: z.literal(STRUCTURED_PIPELINE).nullable().default(null),
   run_id: csiIdSchema.optional(),
   contact_number_id: csiIdSchema, conversation_id: csiIdSchema.nullable().default(null),
   outreach_record_id: csiIdSchema.nullable().default(null),
@@ -47,7 +49,7 @@ export function renderIntelligencePrompt() {
  * the parent was asked.
  */
 export function intelligenceEvidencePreamble(run: { prompt_version: string; subject_key: string; owner_correction_context?: unknown }) {
-  if (run.prompt_version !== "sales_intelligence_analyze_v2") return "";
+  if (run.prompt_version === "sales_intelligence_analyze_v1") return "";
   const corrections = Array.isArray(run.owner_correction_context) ? run.owner_correction_context : [];
   return `Trusted subject binding (data): ${JSON.stringify({ subject_key: run.subject_key })}` +
     (corrections.length ? `\nExplicit Owner correction context (data, separate from original evidence): ${JSON.stringify(corrections)}` : "");
@@ -88,7 +90,7 @@ export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntell
     const existing = await getIntelligenceRunModel().findOne({ job_id: job._id, ...csiDataset() }).session(session);
     if (existing) {
       if (existing.purged_at || existing.purge_started_at) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
-      if (existing.input_fingerprint !== input.input_fingerprint || existing.subject_key !== job.subject_key ||
+      if ((existing.analysis_pipeline ?? null) !== input.analysis_pipeline || existing.input_fingerprint !== input.input_fingerprint || existing.subject_key !== job.subject_key ||
         existing.mode !== input.mode || String(existing.contact_number_id) !== input.contact_number_id ||
         (existing.conversation_id ? String(existing.conversation_id) : null) !== input.conversation_id ||
         (existing.outreach_record_id ? String(existing.outreach_record_id) : null) !== input.outreach_record_id ||
@@ -98,9 +100,10 @@ export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntell
       await fenceRetention();
       return existing;
     }
-    let prompt = renderIntelligencePrompt();
-    let promptVersion: string = CSI_PROMPT_VERSION;
+    let prompt = input.analysis_pipeline ? FINDINGS_PROMPT : renderIntelligencePrompt();
+    let promptVersion: string = input.analysis_pipeline ? FINDINGS_PROMPT_VERSION : CSI_PROMPT_VERSION;
     let schemaDigest = intelligenceSchemaDigest();
+    let stepContracts = input.analysis_pipeline ? jsonValue(structuredStepContracts()) : null;
     let originalTools: string[] = [];
     if (input.mode === "original_evidence") {
       if (!input.parent_run_id) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
@@ -113,6 +116,7 @@ export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntell
       // still fails loudly here rather than being quietly re-pinned.
       if (parent?.purged_at || parent?.purge_started_at || !parent?.rendered_prompt || !parent.manifest_digest ||
         !parent.schema_digest || !knownSchemaDigest(parent.schema_digest) ||
+        !(parent.analysis_pipeline === STRUCTURED_PIPELINE && parent.prompt_version === FINDINGS_PROMPT_VERSION) &&
         !(CSI_PROMPT_VERSIONS as readonly string[]).includes(parent.prompt_version ?? ""))
         throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
       if (String(parent.contact_number_id) !== input.contact_number_id ||
@@ -124,9 +128,10 @@ export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntell
         payloadHash(snapshots.map(s => ({id: String(s._id), digest: s.content_digest}))) !== parent.manifest_digest)
         throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
       prompt = parent.rendered_prompt;
+      stepContracts = parent.step_contracts ?? null;
       promptVersion = parent.prompt_version!;
       schemaDigest = parent.schema_digest;
-      originalTools = snapshots.flatMap(snapshot => snapshot.tool_name ? [snapshot.tool_name] : []);
+      originalTools = parent.analysis_pipeline ? parent.permitted_tools : snapshots.flatMap(snapshot => snapshot.tool_name ? [snapshot.tool_name] : []);
     } else if (input.parent_run_id) throw new CsiError("INVALID_INPUT");
     const corrections = await authorizedCorrections({ ...input, subject_key: job.subject_key }, input.owner_correction_ids, session);
     const correctionContext = corrections.map(row => ({ id: String(row._id), instruction_id: String(row.instruction_id), revision: row.revision,
@@ -143,6 +148,8 @@ export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntell
     const [created] = await getIntelligenceRunModel().create([{ ...fields, ...(requestedId ? { _id: requestedId } : {}), owner_correction_context: jsonValue(correctionContext), ...csiDataset(), job_id: job._id,
       subject_key: job.subject_key, prompt_version: promptVersion, schema_version: CSI_ENVELOPE_SCHEMA_VERSION,
       schema_digest: schemaDigest, rendered_prompt: prompt,
+      application_disabled: job.owner_reanalysis?.application_disabled ?? false,
+      step_contracts: stepContracts,
       permitted_tools: permittedToolsForRun(grant), tool_grant_reason: grant.discovery_reason,
       token_nonce: randomBytes(24).toString("hex"), status: "running", started_at: new Date() }], {session});
     if (!created) throw new CsiError("RUN_SCOPE_DENIED");

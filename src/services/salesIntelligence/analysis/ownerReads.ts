@@ -69,6 +69,8 @@ export async function readOwnerRun(id: string, raw: unknown = {}) {
   return ownerRead({ ...runSummary(run), current, editable, output: run.output, output_digest: run.output ? payloadHash(run.output) : null,
     suggestion_output_digest: run.output?.next_step_suggestion ? payloadHash(run.output.next_step_suggestion) : null,
     model_version: run.model_version, prompt_version: run.prompt_version, processing_reason: run.processing_reason, original_evidence_available: available,
+    analysis_pipeline: run.analysis_pipeline ?? null, usage: run.usage ?? null,
+    per_recording_ceiling_exceeded: run.per_recording_ceiling_exceeded ?? false,
     reanalysis_requests: requests.map(j => ({ id: String(j._id), run_id: String(j.owner_reanalysis!.run_id), mode: j.owner_reanalysis!.mode,
       focus_finding_id: j.owner_reanalysis!.focus_finding_id ? String(j.owner_reanalysis!.focus_finding_id) : null,
       status: j.status, reason: j.reason, created_at: j.createdAt.toISOString() })),
