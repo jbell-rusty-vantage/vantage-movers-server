@@ -60,6 +60,7 @@ export const ATTENTION_PUBLISH_BUDGET_MS = 90_000;
 const ATTENTION_INLINE_BYTES = 12_000_000;
 const ATTENTION_CHUNK_BYTES = 900_000;
 const ATTENTION_DECODE_MAX_BYTES = 64_000_000;
+export const ATTENTION_FRESH_MS = 300_000;
 
 /** Internal lossless cache only; no change to the public Attention DTO. */
 export function compressAttentionRows(rows: readonly unknown[]): string | null {
@@ -170,25 +171,31 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number } 
   rows.sort((a,b) => (a.derived.attention_band ?? 8) - (b.derived.attention_band ?? 8) || orderTime(a).localeCompare(orderTime(b)) || a.subject_key.localeCompare(b.subject_key));
   const encoded = z.array(attentionRowDtoSchema).parse(jsonValue(rows));
   const snapshot_id = `outreach:${randomUUID()}`;
-  const expires_at = new Date(+now + 300_000);
+  const expires_at = null;
   const header = { snapshot_id, owner_id: "system", filter_digest: payloadHash({}), policy_version: policy.version, ...csiDataset(), as_of: now, expires_at, chunk_index: null, parent_snapshot_id: null };
   const Snapshot = getSalesIntelligenceAttentionSnapshotModel();
   const compressed = compressAttentionRows(encoded);
-  if (compressed) {
-    await Snapshot.create({ ...header, rows: [], rows_gzip_base64: compressed, counts: { total_items: rows.length } });
-  } else if (Buffer.byteLength(JSON.stringify(encoded)) <= ATTENTION_INLINE_BYTES) {
-    await Snapshot.create({ ...header, rows: encoded, counts: { total_items: rows.length } });
-  } else {
-    const chunks = splitAttentionChunks(encoded);
-    await withTransaction(async session => {
+  await withTransaction(async session => {
+    if (compressed) {
+      await Snapshot.create([{ ...header, rows: [], rows_gzip_base64: compressed, counts: { total_items: rows.length } }], { session });
+    } else if (Buffer.byteLength(JSON.stringify(encoded)) <= ATTENTION_INLINE_BYTES) {
+      await Snapshot.create([{ ...header, rows: encoded, counts: { total_items: rows.length } }], { session });
+    } else {
+      const chunks = splitAttentionChunks(encoded);
       await Snapshot.create([{ ...header, rows: [], counts: { total_items: rows.length, chunks: chunks.length } }], { session });
       await Snapshot.insertMany(chunks.map((part, chunk_index) => ({ ...header, snapshot_id: `${snapshot_id}:chunk:${chunk_index}`, parent_snapshot_id: snapshot_id, chunk_index, rows: part, counts: { total_items: part.length } })), { session });
-    });
-  }
+    }
+    // Privileged cache-lifecycle update only: never mutate immutable rows or
+    // cursor identities. Keep superseded headers AND chunks for five minutes.
+    // The transaction leaves the previous list untouched if publication fails.
+    await Snapshot.collection.updateMany({ ...csiDataset(), as_of: { $lt: now }, expires_at: null },
+      { $set: { expires_at: new Date(Date.now() + ATTENTION_FRESH_MS) } }, { session });
+  });
   return { status: "published", snapshot_id, total_items: rows.length };
 }
 /** No writes on GET, including pagination; cursors bind immutable as-of rows and filters. */
-export async function readAttention(raw: z.input<typeof attentionQuerySchema>) {
+export async function readAttention(raw: z.input<typeof attentionQuerySchema>, deps: { coverage?: typeof readCaptureCoverage; now?: Date } = {}) {
+  const now = deps.now ?? new Date(), coverage = deps.coverage ?? readCaptureCoverage;
   const query = attentionQuerySchema.parse(raw);
   const { cursor, limit, ...filters } = query, digest = payloadHash(filters);
   const cursorSchema = z.object({ snapshot_id: z.string().startsWith("outreach:"), offset: z.number().int().nonnegative(), digest: z.string() }).strict();
@@ -199,10 +206,12 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>) {
   // regex on top of it only stopped the lookup using an index (14 §10).
   // Chunk siblings share as_of with their header. Only a header (missing or
   // null chunk_index) is a snapshot the desk can bind to.
-  const snapshot = await getSalesIntelligenceAttentionSnapshotModel().findOne({ ...csiDataset(), ...(page ? { snapshot_id: page.snapshot_id } : {}), expires_at: { $gt: new Date() }, $or: [{ chunk_index: null }, { chunk_index: { $exists: false } }] }).sort({ as_of: -1 }).lean();
+  const snapshot = await getSalesIntelligenceAttentionSnapshotModel().findOne({ ...csiDataset(), ...(page ? { snapshot_id: page.snapshot_id } : {}),
+    $and: [{ $or: [{ expires_at: null }, { expires_at: { $gt: now } }] },
+      { chunk_index: null }] }).sort({ as_of: -1 }).lean();
   if (!snapshot) {
     if (page) throw new CsiError("ATTENTION_SNAPSHOT_EXPIRED");
-    return attentionPageDtoSchema.parse({ as_of: new Date().toISOString(), coverage: await readCaptureCoverage(), data: { items: [], snapshot_id: null, cursor: null, total_items: null, reason_counts: {}, status: "pending_projection" } });
+    return attentionPageDtoSchema.parse({ as_of: now.toISOString(), coverage: await coverage(), data: { items: [], snapshot_id: null, cursor: null, total_items: null, reason_counts: {}, status: "pending_projection" } });
   }
   // Rows were validated on write against the same schema and the snapshot is
   // immutable, so a paginated GET filters and counts over the stored rows and
@@ -214,14 +223,14 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>) {
   if (chunkCount > 0) {
     const parts = await getSalesIntelligenceAttentionSnapshotModel().find({ ...csiDataset(), parent_snapshot_id: snapshot.snapshot_id }).sort({ chunk_index: 1 }).lean();
     if (parts.length !== chunkCount) {
-      return attentionPageDtoSchema.parse({ as_of: new Date().toISOString(), coverage: await readCaptureCoverage(), data: { items: [], snapshot_id: null, cursor: null, total_items: null, reason_counts: {}, status: "pending_projection" } });
+      return attentionPageDtoSchema.parse({ as_of: now.toISOString(), coverage: await coverage(), data: { items: [], snapshot_id: null, cursor: null, total_items: null, reason_counts: {}, status: "pending_projection" } });
     }
     stored = parts.flatMap(part => (Array.isArray(part.rows) ? part.rows : []) as z.infer<typeof attentionRowDtoSchema>[]);
   }
   const rows = stored.filter((row) => rowMatchesAttentionQuery(row, query));
   const offset = page?.offset ?? 0, reasons: Record<string, number> = {};
   for (const row of rows) for (const reason of row.derived.reasons) reasons[reason] = (reasons[reason] ?? 0) + 1;
-  return attentionPageDtoSchema.parse({ as_of: snapshot.as_of.toISOString(), coverage: await readCaptureCoverage(), data: { items: rows.slice(offset, offset + limit), snapshot_id: snapshot.snapshot_id,
+  return attentionPageDtoSchema.parse({ as_of: snapshot.as_of.toISOString(), coverage: await coverage(), data: { items: rows.slice(offset, offset + limit), snapshot_id: snapshot.snapshot_id,
     cursor: offset + limit < rows.length ? Buffer.from(JSON.stringify({ snapshot_id: snapshot.snapshot_id, offset: offset + limit, digest })).toString("base64url") : null,
-    total_items: rows.length, reason_counts: reasons, status: "ready" } });
+    total_items: rows.length, reason_counts: reasons, status: "ready", stale: +now >= +snapshot.as_of + ATTENTION_FRESH_MS } });
 }
