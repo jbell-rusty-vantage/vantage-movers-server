@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { withTransaction } from "../src/db";
-import { csiDataset, csiFlag, CSI_BACKFILL_JOB_PRIORITY } from "../src/config/domain/salesIntelligence";
+import { csiDataset, csiFlag, CSI_BACKFILL_JOB_PRIORITY, CSI_LIVE_JOB_PRIORITY } from "../src/config/domain/salesIntelligence";
 import { getCallInteractionModel } from "../src/models/CallInteraction";
 import { getContactNumberModel } from "../src/models/ContactNumber";
 import { getLeadConversationModel } from "../src/models/LeadConversation";
@@ -19,7 +19,7 @@ import { publishAttentionSnapshot } from "../src/services/salesIntelligence/outr
 import { readCaptureCoverage } from "../src/services/numberActivity/coverage";
 import { enqueueCsiJob } from "../src/services/salesIntelligence/jobs";
 import { payloadHash } from "../src/services/salesIntelligence/transactions";
-import { runIntelligenceJob, analysisRuntimeConfiguration } from "../src/services/salesIntelligence/analysis/worker";
+import { runIntelligenceJob, analysisRuntimeConfiguration, isHistoricalBackfillOnly } from "../src/services/salesIntelligence/analysis/worker";
 import { runIntelligenceApplicationJob } from "../src/services/salesIntelligence/analysis/apply";
 import { scheduleNumberIntelligence } from "../src/services/salesIntelligence/analysis/scheduling";
 import { runMediaFetchJob } from "../src/services/salesIntelligence/conversations/media";
@@ -28,20 +28,22 @@ import { inventorySchema, selectCandidates, type Candidate } from "./outreach-ba
 import { backfillEvent } from "./outreach-backfill-history";
 
 const OUTPUT = "scripts/output/outreach-backfill";
-const label = "outreach-seed-2026-09-21";
+const label = `outreach-seed-2026-09-21${process.argv.includes("--citation-repair") ? ":citation-guidance-v1" : ""}`;
 const noPublish = async () => ({ published: false, error_code: null });
 
 async function runWhenClaimable(jobId: string, stage: "analysis" | "number_refresh", recovery = false) {
   const config = analysisRuntimeConfiguration();
     const job = await getSalesIntelligenceJobModel().findById(jobId).lean();
     if (!job) return { status: "job_missing" };
-    if (job.status === "completed") return { status: "submitted", run_id: typeof job.result?.run_id === "string" ? job.result.run_id : undefined };
+    if (job.status === "completed") return typeof job.result?.run_id === "string"
+      ? { status: "submitted", run_id: job.result.run_id }
+      : { status: "completed_without_submission", reason: String(job.result?.reason ?? "no_receipt") };
     if (["paused", "dead_letter"].includes(job.status)) return { status: job.status, reason: String(job.result?.reason ?? job.reason) };
     if (process.argv.includes("--prepare-only")) return { status: "queued", job_id: jobId };
     if (job.status === "leased" && job.leased_until && job.leased_until > new Date()) return { status: "leased", job_id: jobId };
     if (job.next_attempt_at > new Date()) return { status: "retry_scheduled", job_id: jobId };
     const result = await runIntelligenceJob(jobId, stage, { publish: noPublish,
-      ...(recovery ? { limits: { ...config.limits, steps: 8, elapsed_ms: 240_000 } } : {}),
+      ...(recovery ? { limits: { ...config.limits, steps: 8, context_tokens: 192_000, elapsed_ms: 240_000 } } : {}),
       beforeProvider: async () => { backfillEvent({ phase: "provider", job_id: jobId, stage }); },
     });
     return result;
@@ -103,9 +105,17 @@ async function processConversation(id: string, candidate: Candidate) {
     return attribution.lead_effects_allowed && attribution.lead_ref?.model === candidate.model && attribution.lead_ref.id === candidate.lead_id;
   });
   if (!matches || !await revalidate(candidate)) return { status: "identity_or_eligibility_changed" };
+  const source = await getCallInteractionModel().findById(conversation.call_interaction_id).select({ sources: 1 }).lean();
+  // Match the normal pipeline: imported historical-only calls are lower priority;
+  // repairing previously captured live calls preserves their existing live priority.
+  const priority = isHistoricalBackfillOnly(source?.sources) ? CSI_BACKFILL_JOB_PRIORITY : CSI_LIVE_JOB_PRIORITY;
   if (conversation.latest_completed_run_id) {
-    const prior = await getIntelligenceRunModel().findById(conversation.latest_completed_run_id).select({ status: 1 }).lean();
-    if (prior?.status === "completed") return { status: "already_analyzed", run_id: String(prior._id) };
+    const prior = await getIntelligenceRunModel().findById(conversation.latest_completed_run_id).select({ status: 1, job_id: 1 }).lean();
+    const priorJob = prior ? await getSalesIntelligenceJobModel().findById(prior.job_id).select({ input_refs: 1 }).lean() : null;
+    const sameTranscript = priorJob?.input_refs[1] ? await getIntelligenceEvidenceSnapshotModel().exists({ _id: priorJob.input_refs[1],
+      conversation_id: id, transcript_version: conversation.latest_transcript_version, source_revision: conversation.media_digest_sha256,
+      purged_at: null, "completeness.complete": true }) : false;
+    if (prior?.status === "completed" && sameTranscript) return { status: "already_analyzed", run_id: String(prior._id) };
   }
   if (!conversation.media?.blob_pathname) {
     const job = await getSalesIntelligenceJobModel().findOne({ ...csiDataset(), stage: "media_fetch", subject_key: `conversation:${id}` }).sort({ _id: -1 }).lean();
@@ -117,7 +127,7 @@ async function processConversation(id: string, candidate: Candidate) {
   if (!conversation.latest_transcript_version) {
     if (!conversation.media_digest_sha256) return { status: "media_digest_missing" };
     const job = await withTransaction(session => enqueueCsiJob({ stage: "transcription", subject_key: `conversation:${id}`,
-      dedupe_key: `csi:transcription:conversation:${id}:${conversation!.media_digest_sha256}`, input_revision: 1, input_refs: [id], priority: CSI_BACKFILL_JOB_PRIORITY }, session));
+      dedupe_key: `csi:transcription:conversation:${id}:${conversation!.media_digest_sha256}`, input_revision: 1, input_refs: [id], priority }, session));
     const stt = await runTranscriptionJob(String(job._id), { publish: noPublish });
     conversation = await getLeadConversationModel().findById(id).lean();
     if (!conversation?.latest_transcript_version) return { status: "transcription_pending", outcome: stt.status };
@@ -127,17 +137,21 @@ async function processConversation(id: string, candidate: Candidate) {
   if (!snapshot) return { status: "transcript_snapshot_missing" };
   let job = await withTransaction(session => enqueueCsiJob({ stage: "analysis", subject_key: `conversation:${id}`,
     dedupe_key: `csi:analysis:conversation:${id}:${conversation!.latest_transcript_version}`, input_revision: 1,
-    input_refs: [id, String(snapshot._id)], priority: CSI_BACKFILL_JOB_PRIORITY }, session));
+    input_refs: [id, String(snapshot._id)], priority }, session));
   if (job.status === "completed" && typeof job.result?.run_id === "string") return { status: "already_submitted", run_id: job.result.run_id, application: await applyRun(job.result.run_id) };
   // One explicit recovery per transcript for old bounded model failures. The old
   // run remains immutable; budget, permissions and exhausted retries are not reset.
   const recovery = job.status === "paused" && ["schema_exhausted", "bounds_exhausted"].includes(String(job.result?.reason));
   if (recovery) job = await withTransaction(session => enqueueCsiJob({ stage: "analysis", subject_key: `conversation:${id}`,
     dedupe_key: `csi:analysis:conversation:${id}:${conversation!.latest_transcript_version}:${label}`, input_revision: 1,
-    input_refs: [id, String(snapshot._id)], priority: CSI_BACKFILL_JOB_PRIORITY }, session));
+    input_refs: [id, String(snapshot._id)], priority }, session));
+  if (recovery && job.status === "pending" && job.attempts === 0 && job.priority !== priority) {
+    await getSalesIntelligenceJobModel().updateOne({ _id: job._id, ...csiDataset(), status: "pending", attempts: 0 }, { $set: { priority } });
+    backfillEvent({ phase: "source_priority_corrected", job_id: String(job._id), priority });
+  }
   const result = await runWhenClaimable(String(job._id), "analysis", recovery);
   const runId = "run_id" in result && typeof result.run_id === "string" ? result.run_id : null;
-  return { status: result.status, job_id: String(job._id), run_id: runId, application: runId ? await applyRun(runId) : null };
+  return { status: result.status, reason: "reason" in result ? result.reason : null, job_id: String(job._id), run_id: runId, application: runId ? await applyRun(runId) : null };
 }
 
 export async function executeBackfill(limit: number, apply: boolean) {
@@ -190,7 +204,14 @@ export async function executeBackfill(limit: number, apply: boolean) {
     await writeFile(`${OUTPUT}/results.json`, JSON.stringify({ from: inventory.from, started_at: inventory.now, updated_at: new Date(), results }, null, 2));
     backfillEvent({ phase: "candidate_complete", lead_id: candidate.lead_id, band: dto?.derived.attention_band, analyses: analyses.map(a => a.status) });
   }
-  const publication = await publishAttentionSnapshot();
+  await publishBackfillAttention();
+}
+
+export async function publishBackfillAttention() {
+  // An offline operator can allow more build time while retaining the complete,
+  // atomic canonical snapshot and its unchanged five-minute expiration.
+  const publication = await publishAttentionSnapshot({ deadlineMs: 180_000 });
   await writeFile(`${OUTPUT}/publication.json`, JSON.stringify(publication, null, 2));
   backfillEvent({ phase: "publication", publication });
+  return publication;
 }

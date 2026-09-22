@@ -123,7 +123,11 @@ test("actual MCP transport and ToolLoopAgent enforce bounded submit repair", {
           assert.deepEqual(input.tools?.map(tool => tool.type === "function" ? tool.name : "other"), ["submit_intelligence_analysis"]);
           if (scenario === "server-invalid") assert(serialized.includes("summary.finding_keys.0"));
           // The repair step must be able to see which citation was refused.
-          if (scenario.startsWith("scope-")) assert(serialized.includes("findings.0.evidence.0.snapshot_id"), "evidence issue paths never reached the repair");
+          if (scenario.startsWith("scope-")) {
+            assert(serialized.includes("findings.0.evidence.0.snapshot_id"), "evidence issue paths never reached the repair");
+            assert(serialized.includes("repair_help"), "repair must receive the captured citation inventory beside the rejection");
+            assert(serialized.includes("citation_inventory"));
+          }
         }
         const invalid = scenario === "exhausted" || (providerCalls === 1 && ["server-invalid", "sdk-invalid", "repair-read"].includes(scenario));
         const envelope = invalid ? scenario === "sdk-invalid" ? { bad: true } : { ...validEnvelope, summary: { ...validEnvelope.summary, finding_keys: ["missing"] } } : validEnvelope;

@@ -58,6 +58,14 @@ export function intelligenceCitationInventory(pages: readonly CapturedPromptPage
   });
 }
 
+/** Repair help repeats captured authority; it never substitutes a citation or accepts a finding. */
+export function citationRepairHelp(pages: readonly CapturedPromptPage[]) {
+  return {
+    instruction: "Correct each rejected citation using the captured snapshot_id and the record/field or transcript/segment membership below. A Lead ID, conversation ID, run ID, or transcript source_snapshot_id is not a captured snapshot_id. Keep only claims supported by the cited evidence; omit a finding you cannot support and remove its summary references. Submit the corrected full envelope with the same idempotency key. This inventory covers the initial captured pages; any later reads must use their own returned captured snapshot IDs.",
+    citation_inventory: intelligenceCitationInventory(pages),
+  };
+}
+
 /**
  * The evidence message. `preamble` carries the per-run material that used to be
  * appended to the pinned prompt — the trusted subject binding and any Owner

@@ -12,7 +12,7 @@ import { BookedLead } from "../src/models/BookedLead";
 import { phoneEvidence } from "../src/services/salesIntelligence/attachment/sources";
 import { officialClosure } from "../src/services/salesIntelligence/outreach/transitions";
 import { analysisRuntimeConfiguration, estimateAnalysisCents } from "../src/services/salesIntelligence/analysis/worker";
-import { executeBackfill } from "./outreach-backfill-execute";
+import { executeBackfill, publishBackfillAttention } from "./outreach-backfill-execute";
 import { backfillEvent } from "./outreach-backfill-history";
 import { reportBackfill } from "./outreach-backfill-report";
 
@@ -23,6 +23,10 @@ async function main() {
   await connectMongo();
   backfillEvent({ phase: "started", database: mongoose.connection.name, apply: process.argv.includes("--apply"), resume: process.argv.includes("--resume") });
   const limit = Number(process.argv.find(a => a.startsWith("--limit="))?.slice(8) ?? 24);
+  if (process.argv.includes("--publish-only")) {
+    if (!process.argv.includes("--apply")) throw new Error("--publish-only requires --apply");
+    return publishBackfillAttention();
+  }
   if (process.argv.includes("--report-only")) return reportBackfill(limit);
   if (process.argv.includes("--resume")) return executeBackfill(limit, process.argv.includes("--apply"));
   const now = new Date(), from = new Date(+now - 45 * 86400000);

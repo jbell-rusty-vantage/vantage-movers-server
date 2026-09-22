@@ -5,6 +5,7 @@ import { getLeadConversationModel } from "../src/models/LeadConversation";
 import { getIntelligenceRunModel } from "../src/models/IntelligenceRun";
 import { getSalesIntelligenceJobModel } from "../src/models/SalesIntelligenceJob";
 import { getContactNumberModel } from "../src/models/ContactNumber";
+import { getNumberLeadAttachmentModel } from "../src/models/NumberLeadAttachment";
 import { toOutreachDto } from "../src/services/salesIntelligence/outreach/reads";
 import { readCaptureCoverage } from "../src/services/numberActivity/coverage";
 import { csiDataset } from "../src/config/domain/salesIntelligence";
@@ -22,22 +23,27 @@ export async function reportBackfill(limit: number) {
     const conversations = await getLeadConversationModel().find({ _id: { $in: candidate.conversations.map(c => c.id) } }).select({ state: 1, latest_completed_run_id: 1 }).lean();
     const runs = await getIntelligenceRunModel().find({ _id: { $in: conversations.flatMap(c => c.latest_completed_run_id ? [c.latest_completed_run_id] : []) } }).select({ status: 1, result_counts: 1, completed_at: 1, usage: 1 }).lean();
     const numbers = await getContactNumberModel().find({ _id: { $in: candidate.number_ids } }).select({ running_summary: 1 }).lean();
+    const edges = await getNumberLeadAttachmentModel().find({ "lead_ref.model": candidate.model, "lead_ref.id": candidate.lead_id,
+      contact_number_id: { $in: candidate.number_ids }, state: { $ne: "rejected" } }).select({ state: 1, certainty: 1 }).lean();
     rows.push({ model: candidate.model, lead_id: candidate.lead_id, outreach_id: record ? String(record._id) : null,
       state: record?.state, band: dto?.derived.attention_band, reasons: dto?.derived.reasons,
       blockers: dto?.derived.call_blockers, absence_qualified: dto?.derived.absence_qualified,
+      attachment_certainties: [...new Set(edges.map(e => e.certainty))],
+      needs_identity_confirmation_for_ai_effects: !edges.some(e => e.state === "attached" && ["exact", "owner_confirmed"].includes(e.certainty)),
       completed_conversations: runs.filter(r => r.status === "completed").length,
       completed_since_inventory: runs.filter(r => r.status === "completed" && r.completed_at && r.completed_at >= inventory.now).length,
       number_summaries: numbers.filter(n => n.running_summary?.text).length,
       open_followups: dto?.followups.filter(f => f.status === "open").map(f => ({ id: f.id, kind: f.kind, due_at: f.due_at, origin: f.origin, owner: f.assignment.agent?.id ?? null })),
     });
   }
-  const recoveryJobs = await getSalesIntelligenceJobModel().find({ ...csiDataset(), dedupe_key: /:outreach-seed-2026-09-21$/ }).select({ status: 1, result: 1, input_refs: 1 }).lean();
+  const recoveryJobs = await getSalesIntelligenceJobModel().find({ ...csiDataset(), dedupe_key: /:outreach-seed-2026-09-21(?::citation-guidance-v1)?$/ }).select({ status: 1, result: 1, input_refs: 1 }).lean();
   const recoveries = await getIntelligenceRunModel().find({ ...csiDataset(), job_id: { $in: recoveryJobs.map(j => j._id) } }).select({ status: 1, usage: 1, result_counts: 1, processing_reason: 1 }).lean();
   const summary = { candidates: inventory.candidates.length, selected: rows.length,
     with_completed_conversations: rows.filter(r => r.completed_conversations > 0).length,
     completed_since_inventory: rows.reduce((n, r) => n + r.completed_since_inventory, 0),
     open_followups: rows.reduce((n, r) => n + (r.open_followups?.length ?? 0), 0),
     number_summaries: rows.reduce((n, r) => n + r.number_summaries, 0),
+    needs_identity_confirmation_for_ai_effects: rows.filter(r => r.needs_identity_confirmation_for_ai_effects).length,
     bands: rows.reduce<Record<string, number>>((n, r) => { const key = String(r.band); n[key] = (n[key] ?? 0) + 1; return n; }, {}),
     recovery_jobs: recoveryJobs.reduce<Record<string, number>>((n, j) => { n[j.status] = (n[j.status] ?? 0) + 1; return n; }, {}),
     recovery_actual_cents: recoveries.reduce((n, r) => n + (r.usage?.actual_cents ?? 0), 0),

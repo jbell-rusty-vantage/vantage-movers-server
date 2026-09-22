@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { intelligenceCitationInventory, renderIntelligenceEvidencePrompt, segmentIdRanges, type CapturedPromptPage } from "./prompt";
+import { intelligenceCitationInventory, renderIntelligenceEvidencePrompt, segmentIdRanges, citationRepairHelp, type CapturedPromptPage } from "./prompt";
 
 function syntheticPromptPages(): CapturedPromptPage[] {
   const empty = {
@@ -52,4 +52,16 @@ test("contiguous transcript segment ids collapse to ranges and gaps survive", ()
   assert.deepEqual(segmentIdRanges([7]), [7]);
   assert.deepEqual(segmentIdRanges([]), []);
   assert.deepEqual(segmentIdRanges([4, 3, 3, 5]), ["3-5"]);
+});
+
+test("citation repair exposes only the captured membership, never upstream IDs or transcript content", () => {
+  const pages = syntheticPromptPages();
+  const before = structuredClone(pages);
+  const help = citationRepairHelp(pages);
+  assert.deepEqual(help.citation_inventory.map(p => p.snapshot_id), ["captured-records", "captured-empty-bookings", "captured-transcript"]);
+  assert.deepEqual(help.citation_inventory[0].records[0].field_paths, ["status", "booked"]);
+  assert.equal(help.citation_inventory[1].records.length, 0);
+  assert(!JSON.stringify(help.citation_inventory).includes("upstream-stt-snapshot"));
+  assert(!JSON.stringify(help.citation_inventory).includes("Synthetic untrusted transcript"));
+  assert.deepEqual(pages, before);
 });

@@ -29,6 +29,16 @@ Inventory found 1,972 Form Leads and 446 Call Leads, 389 external Contact Number
 
 ## Remaining
 
+### Recovery checkpoint — 2026-09-22 00:49 UTC
+
+- Commit `f5b33dd` preserves the first implementation and progress file. No push yet.
+- The first full reconciliation completed all 24 selected opportunities. The normal 90-second Attention build returned `incomplete/snapshot_budget`; no partial snapshot was published.
+- At 00:44 UTC, verification found 14 selected opportunities with completed conversation intelligence, 14 Number summaries, 18 primary No next step rows and 6 primary Missing responsibility rows. These include prior intelligence; three completed conversations were newer than the inventory. There were no open dated follow-ups.
+- All 12 selected Form Leads require identity confirmation before Lead-specific AI effects. Phone matching remains Likely; this task does not confirm identities for the Owner.
+- Live model failures showed rejected snapshot IDs/field paths. Added captured citation inventory to the existing bounded repair response and tested the real local MCP repair path. A distinct, deterministic `citation-guidance-v1` recovery pass started at 00:48 UTC. Existing failed runs/counters remain intact.
+- Full offline tests passed (2,509 passed, 114 skipped, zero failed). Focused selection/Outreach tests passed 10; focused prompt/runtime tests passed 20. Typecheck and lint passed. The model-review CLI failure was insufficient workspace credits; no model review completion is claimed.
+- Current process writes `citation-repair.log` and append-only `history.jsonl`. Before resuming after another interruption, check for the surviving Node process before starting any apply command.
+
 Finish selected analyses/application and Number summaries without bypassing live work or budget limits; publish and verify the normal Attention snapshot; preserve per-run outcomes; write final owner report; rerun applicable checks; commit only this task's files and push main. The worktree contains unrelated pre-existing edits and untracked cleanup scripts; do not include them.
 
 Run from the server root with existing environment files:

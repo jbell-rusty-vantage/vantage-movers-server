@@ -36,6 +36,8 @@ sources:
 
 # Scoped Intelligence runtime, evidence and application — CSI-17/13
 
+September 21 Outreach backfill exposed repeated `snapshot_not_captured` and `field_path_not_exposed` submission failures. The local runtime now repeats the initial captured citation inventory beside those definitive rejection paths during the existing single repair. It preserves the server's error, permits no extra submissions, does not substitute evidence, and leaves acceptance to the existing scope validator. Later read results retain their own returned snapshot authority. Pinned prompts, envelope schemas and authoritative stored evidence are unchanged.
+
 ## CSI-15 historical admission and retention
 
 Historical-only interaction provenance flows through discovery/media/STT to lower-priority analysis and stored `backfill` run mode. Existing live priority 0 outranks historical -100, including explicit queue delivery. Provider Retry-After, permission and budget admission use durable pause/retry semantics without consuming a genuine-failure attempt; raising the ceiling or activating a period resumes the saved stage. These paths reuse the original run/job rather than retranscribing completed source audio.

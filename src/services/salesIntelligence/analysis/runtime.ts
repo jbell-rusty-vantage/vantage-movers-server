@@ -6,7 +6,7 @@ import { schemaArtifactForDigest } from "./schemaArtifact";
 import { readContentSchema } from "./reads";
 import type { SubmissionReceipt } from "./submit";
 import type { IntelligenceRead } from "./contracts";
-import { renderIntelligenceEvidencePrompt, type CapturedPromptPage } from "./prompt";
+import { renderIntelligenceEvidencePrompt, citationRepairHelp, type CapturedPromptPage } from "./prompt";
 
 export const runtimeLimitsSchema = z.object({ steps: z.number().int().min(1).max(40), context_tokens: z.number().int().min(1000).max(200_000),
   output_tokens: z.number().int().min(100).max(16_000), total_input_tokens: z.number().int().positive(), total_output_tokens: z.number().int().positive(),
@@ -222,7 +222,16 @@ export async function invokeIntelligenceAgent(input: InvocationInput): Promise<S
           const payload: unknown = JSON.parse(parsed.content[0].text);
           if (parsed.isError) {
             const error = z.object({ code: z.string() }).passthrough().safeParse(payload);
-            if (error.success && isRepairableRejection(error.data.code)) { schemaFailures++; rejectedPaths.push(...rejectedIssuePaths(payload)); }
+            if (error.success && isRepairableRejection(error.data.code)) {
+              schemaFailures++;
+              const paths = rejectedIssuePaths(payload);
+              rejectedPaths.push(...paths);
+              if (paths.some(path => /:(snapshot_not_captured|citation_not_on_snapshot|field_path_not_exposed)$/.test(path))) {
+                // The model has one repair. Put the actual citable IDs beside the
+                // rejection instead of asking it to recover them from a long transcript.
+                return { ...value, content: [{ type: "text" as const, text: JSON.stringify({ ...error.data, repair_help: citationRepairHelp(evidence) }) }] };
+              }
+            }
             else uncertain.abort();
           } else {
             const accepted = receiptSchema.safeParse(payload);
