@@ -79,7 +79,7 @@ export async function generateStructuredStep<T>(input: {
   if (!budget) throw new CsiError("BUDGET_EXHAUSTED");
   const reservationId = `steps:${input.lease.job_id}:${input.lease.epoch}:${input.kind}:${input.key}`;
   await reserveCsiBudget({ reservation_id: reservationId, month: budget.month, job_id: input.lease.job_id,
-    run_id: input.run_id, step: `${input.kind}:${input.key}`, stage: "analysis", soft_stop: true,
+    run_id: input.run_id, step: `${input.kind}:${input.key}:invocation:${input.lease.epoch}`, stage: "analysis", soft_stop: true,
     estimated_cents: await nominalCents(input.kind, input.model_id) });
   await getSalesIntelligenceAiReservationModel().updateOne({ reservation_id: reservationId }, { $set: {
     model_version: input.model_id, pricing_snapshot: input.pricing, usage_complete: true, reasoning_tokens: 0,
