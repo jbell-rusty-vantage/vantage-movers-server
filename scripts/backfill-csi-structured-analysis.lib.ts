@@ -1,3 +1,17 @@
+/** Observe a peer's active lease without claiming it or changing retry policy. */
+export async function waitForBackfillPeer(
+  loadJob: () => Promise<{ status: string; leased_until?: Date | null } | null>,
+  sleep: (ms: number) => Promise<unknown>,
+  now: () => number = Date.now,
+) {
+  const deadline = now() + 740_000;
+  while (now() < deadline) {
+    const job = await loadJob();
+    if (job?.status !== "leased" || !job.leased_until || job.leased_until.getTime() <= now()) return;
+    await sleep(Math.min(2_000, deadline - now()));
+  }
+}
+
 /** Resume only durable, immediately due step boundaries. The worker owns retry policy and all state writes. */
 export async function continueStructuredAnalysis<Result extends { status: string; reason?: string }>(
   invoke: () => Promise<Result>,

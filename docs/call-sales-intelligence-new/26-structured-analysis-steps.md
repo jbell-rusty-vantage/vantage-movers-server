@@ -36,7 +36,7 @@ The index migration is additive; without `--apply` it only verifies. The backfil
 
 Deploy the updated server before applying the backfill: the old server's strict evidence reader cannot render the new summary artifact. Then create a separate apply manifest by omitting `--shadow`, initially with `--limit 1`, followed by the full cohort. Generate this apply manifest after shadow processing because Owner reanalysis advances source revisions. Application uses the normal worker and effects service; no summary, finding or effect is inserted directly by the script. Shadow runs have an immutable application-disabled fence checked by submission, readiness and application.
 
-The script reports submitted/completed states, application outcomes, cost and usage completeness. This is validation and cost evidence, not a claim of semantic equality with prior nondeterministic outputs. Owner precedence, attachment eligibility and current Booking state remain application-time checks.
+The script reports submitted/completed states, application outcomes, cost and usage completeness. When production claims a job first, the runner observes its live lease for up to 740 seconds before reading the final state; it never steals the lease or advances deferred retries. This is validation and cost evidence, not a claim of semantic equality with prior nondeterministic outputs. Owner precedence, attachment eligibility and current Booking state remain application-time checks.
 
 ## Verification
 

@@ -8,6 +8,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import express, { type Request } from "express";
 import mongoose from "mongoose";
 import { z } from "zod";
@@ -23,7 +24,7 @@ import { computeAdminActorSignature } from "../src/services/operationsRegistry/t
 import { commandAnalysis } from "../src/services/salesIntelligence/analysis/ownerCommands";
 import { runIntelligenceJob } from "../src/services/salesIntelligence/analysis/worker";
 import { runIntelligenceApplicationJob } from "../src/services/salesIntelligence/analysis/apply";
-import { continueStructuredAnalysis, runBoundedBackfill } from "./backfill-csi-structured-analysis.lib";
+import { continueStructuredAnalysis, runBoundedBackfill, waitForBackfillPeer } from "./backfill-csi-structured-analysis.lib";
 
 class BackfillError extends Error {}
 const pipeline = "csi-analysis-steps-v1";
@@ -182,6 +183,8 @@ async function main() {
       const analysis = await continueStructuredAnalysis(() => runIntelligenceJob(entry.job_id, "analysis", { publish: async () => ({ published: false, error_code: null }) }),
         () => getSalesIntelligenceJobModel().findById(entry.job_id).select("status next_attempt_at result").lean().exec());
       entry.analysis_status = analysis.status;
+      if (analysis.status === "not_claimable") await waitForBackfillPeer(() =>
+        getSalesIntelligenceJobModel().findById(entry.job_id).select("status leased_until").lean().exec(), sleep);
       const run = await getIntelligenceRunModel().findById(entry.run_id).lean();
       if (!run || run.analysis_pipeline !== pipeline) throw new BackfillError("Structured pipeline did not run");
       entry.actual_cents = run.usage?.actual_cents ?? null;
@@ -199,6 +202,8 @@ async function main() {
         entry.state = "submitted"; await save(path, manifest);
         const applied = await runIntelligenceApplicationJob(String(application._id));
         entry.application_status = applied.status;
+        if (applied.status === "not_claimable") await waitForBackfillPeer(() =>
+          getSalesIntelligenceJobModel().findById(application._id).select("status leased_until").lean().exec(), sleep);
         const completed = await getIntelligenceRunModel().findById(entry.run_id).lean();
         const currentApplication = await getSalesIntelligenceJobModel().findById(application._id).select("status reason").lean();
         entry.application_job_status = currentApplication?.status;

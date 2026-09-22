@@ -1,6 +1,25 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { continueStructuredAnalysis, runBoundedBackfill } from "./backfill-csi-structured-analysis.lib";
+import { continueStructuredAnalysis, runBoundedBackfill, waitForBackfillPeer } from "./backfill-csi-structured-analysis.lib";
+
+test("manual backfill waits for a peer's live lease and observes completion", async () => {
+  let elapsed = 0, reads = 0;
+  await waitForBackfillPeer(async () => ++reads < 3
+    ? { status: "leased", leased_until: new Date(10_000) }
+    : { status: "completed" }, async ms => { elapsed += ms; }, () => elapsed);
+  assert.equal(reads, 3);
+  assert.equal(elapsed, 4_000);
+});
+
+test("manual backfill leaves expired leases and deferred retries to normal workers", async () => {
+  for (const job of [null, { status: "retry" }, { status: "leased", leased_until: new Date(1) }]) {
+    await waitForBackfillPeer(async () => job, async () => assert.fail("must not wait"), () => 2);
+  }
+  let elapsed = 0;
+  await waitForBackfillPeer(async () => ({ status: "leased", leased_until: new Date(elapsed + 10_000) }),
+    async ms => { elapsed += ms; }, () => elapsed);
+  assert.equal(elapsed, 740_000);
+});
 
 test("manual backfill continues due checkpoint and first timeout using only normal worker claims", async () => {
   const outcomes = [{ status: "retry", reason: "step_checkpoint" }, { status: "retry", reason: "step_timeout" }, { status: "submitted" }];
