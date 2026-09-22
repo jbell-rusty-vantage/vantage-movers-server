@@ -14,6 +14,8 @@ New runs use `csi-analysis-steps-v1` by default. Existing pinned legacy runs ret
 
 Number synthesis consumes cached call summaries and current context. `original_evidence` replays the exact retained artifacts and pinned step contracts; `current_context` reuses the summary and refreshes context/findings. Purged or changed contracts fail closed.
 
+Provider transport converts disjoint, required literal-tagged `oneOf` branches to equivalent `anyOf` branches because some Gateway routes reject `oneOf`. The original Zod validator and logical schema hashes remain unchanged, preserving saved summary reuse and original-evidence replay. Unproven or overlapping unions are refused instead of weakened.
+
 ## Limits and accounting
 
 Structured calls have no tool-step, page-loop, output-token or repair-count budget. Each model step has a 600-second elapsed deadline. A 740-second invocation checkpoints before starting a step it cannot finish; the saved summary is reused on the next claim. A timed-out step receives one durable retry, then pauses. Provider throttling uses the existing Retry-After path.

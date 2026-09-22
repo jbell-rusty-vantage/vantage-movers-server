@@ -9,6 +9,7 @@ import { CsiError } from "../auth";
 import type { JobLease } from "../jobs";
 import { resolvePolicy } from "../policy";
 import { billedCents, cachedInputTokens } from "./runtime";
+import { structuredProviderSchema } from "./structuredProviderSchema";
 
 export const STRUCTURED_STEP_MS = 600_000;
 export const STRUCTURED_INVOCATION_MS = 740_000;
@@ -72,6 +73,7 @@ export async function generateStructuredStep<T>(input: {
   deadline: number; beforeProvider: () => Promise<void>;
 }) {
   const { generateObject, NoObjectGeneratedError } = await import("ai");
+  const providerSchema = await structuredProviderSchema(input.schema);
   if (Date.now() + STRUCTURED_STEP_MS + 10_000 > input.deadline) throw new StructuredYield();
   await input.beforeProvider();
   const budget = await getSalesIntelligenceAiBudgetModel().findOne({ activated_at: { $ne: null },
@@ -92,7 +94,7 @@ export async function generateStructuredStep<T>(input: {
       await getSalesIntelligenceAiReservationModel().updateOne({ reservation_id: reservationId }, { $set: { provider_started: true } });
       let value: unknown;
       try {
-        const result = await generateObject({ model: input.model, schema: input.schema, maxRetries: 0,
+        const result = await generateObject({ model: input.model, schema: providerSchema, maxRetries: 0,
           system: input.system, prompt: input.prompt + repair, abortSignal: signal });
         await recordUsage(reservationId, result.usage, result.providerMetadata, input.pricing);
         value = result.object;

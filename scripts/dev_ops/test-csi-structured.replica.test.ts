@@ -85,6 +85,7 @@ test("structured CSI: real worker, local schema repair, durable reuse and shadow
     const calls: string[] = [], prompts: string[] = [];
     const model = new MockLanguageModelV4({ doGenerate: async input => {
       assert.equal(input.tools?.length ?? 0, 0, "the model must never choose tools");
+      assert.equal(JSON.stringify(input.responseFormat).includes('"oneOf"'), false, "strict providers reject oneOf");
       const text = JSON.stringify(input.prompt);
       prompts.push(text);
       const isSummary = text.includes("Summarize one redacted moving-sales conversation");
