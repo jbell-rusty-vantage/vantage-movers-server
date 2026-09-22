@@ -21,7 +21,8 @@ import { retainedOriginal } from "./ownerReanalysis";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 
 export const ownerAnalysisQuery = z.object({ scope: z.literal("production").optional(), contact_number_id: csiIdSchema.optional(),
-  conversation_id: csiIdSchema.optional(), cursor: csiIdSchema.optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }).strict();
+  conversation_id: csiIdSchema.optional(), status: z.literal("completed").optional(), conversation_only: z.enum(["true", "false"]).optional(),
+  cursor: csiIdSchema.optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }).strict();
 const runSummary = (r: { _id: unknown; revision: number; status: string; mode: string; conversation_id?: unknown; completed_at?: Date | null; createdAt: Date }) =>
   ({ id: String(r._id), revision: r.revision, status: r.status, mode: r.mode, conversation_id: r.conversation_id ? String(r.conversation_id) : null,
     created_at: r.createdAt.toISOString(), completed_at: r.completed_at?.toISOString() ?? null });
@@ -29,7 +30,9 @@ export async function listOwnerRuns(raw: unknown) {
   const q = ownerAnalysisQuery.parse(raw);
   if (!q.contact_number_id && !q.conversation_id) throw new CsiError("INVALID_INPUT");
   const rows = await getIntelligenceRunModel().find({ ...csiDataset(), ...(q.contact_number_id ? { contact_number_id: q.contact_number_id } : {}),
-    ...(q.conversation_id ? { conversation_id: q.conversation_id } : {}), ...(q.cursor ? { _id: { $lt: q.cursor } } : {}) }).sort({ _id: -1 }).limit(q.limit + 1).lean();
+    ...(q.conversation_id ? { conversation_id: q.conversation_id } : q.conversation_only === "true" ? { conversation_id: { $ne: null } } : {}),
+    ...(q.status ? { status: q.status, output: { $ne: null }, purged_at: null, purge_started_at: null } : {}),
+    ...(q.cursor ? { _id: { $lt: q.cursor } } : {}) }).sort({ _id: -1 }).limit(q.limit + 1).lean();
   return ownerRead({ items: rows.slice(0, q.limit).map(runSummary), next_cursor: rows.length > q.limit ? String(rows[q.limit - 1]._id) : null });
 }
 export async function readOwnerRun(id: string, raw: unknown = {}) {

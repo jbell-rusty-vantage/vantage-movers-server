@@ -338,6 +338,7 @@ export const attentionPageDtoSchema = ownerReadSchema(
       cursor: z.string().nullable(),
       total_items: z.number().int().nonnegative().nullable(),
       status: z.enum(["ready", "pending_projection"]).optional(),
+      stale: z.boolean().optional(),
       reason_counts: z.record(z.string(), z.number().int().nonnegative()),
     })
     .strict(),
