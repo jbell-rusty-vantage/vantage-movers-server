@@ -179,7 +179,9 @@ export async function executeBackfill(limit: number, apply: boolean) {
         .filter((c, i, all) => all.findIndex(other => other.interaction_id === c.interaction_id) === i).slice(0, 2);
       for (const conversation of conversations) {
         seenConversations.add(conversation.id);
-        analyses.push({ conversation_id: conversation.id, ...await processConversation(conversation.id, candidate) });
+        const analysis = { conversation_id: conversation.id, ...await processConversation(conversation.id, candidate) };
+        analyses.push(analysis);
+        backfillEvent({ phase: "analysis_result", lead_id: candidate.lead_id, analysis });
       }
     }
     const numberResults = [];

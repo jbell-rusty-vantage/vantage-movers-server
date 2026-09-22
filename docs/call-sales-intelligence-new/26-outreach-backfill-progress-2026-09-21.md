@@ -27,7 +27,7 @@ Inventory found 1,972 Form Leads and 446 Call Leads, 389 external Contact Number
 - Typecheck passed after the runner fixes. Outreach tests: 8 passed. Selection tests: 2 passed.
 - Required `pnpm finish-work --provider codex --no-apply` was invoked; its review CLI exited 1. Artifacts: `.git/vantage-quality/runs/1790036119513-4393eeba/`. Inspect `review.md.log` before retrying. No quality patch applied.
 
-## Remaining
+## Remaining at the earlier checkpoint
 
 ### Recovery checkpoint — 2026-09-22 00:49 UTC
 
@@ -48,3 +48,11 @@ node --env-file=.env --env-file=sales-intelligence.env --import tsx scripts/back
 ```
 
 `--resume` requires an inventory less than 24 hours old and matching the current database. Do not start a second apply process while one is alive. No customer messages, official Lead/Booking updates, or production deployment are authorized by the script.
+
+## Completed bounded run — 2026-09-22 01:04 UTC
+
+Final results are in [the trigger review and backfill report](27-outreach-intelligence-backfill-report-2026-09-21.md). Both apply passes exited successfully. All 24 selected opportunities were reconciled; nine new conversation analyses completed, including six with the citation guidance. Eighteen opportunities now have completed conversation intelligence (27 associated completed conversations total). There are 14 available Number summaries, 18 primary No next step records, 6 primary Missing responsibility records and no open dated follow-ups. Twelve selected Form Leads still require identity confirmation for Lead-specific AI effects. Unresolved contract, bounds, schema, retry, exhausted and identity cases are explicitly retained in the report.
+
+Canonical publication succeeded with 6,559 rows; a fresh Owner read returned `ready`. Verification is saved in `verification.json`, publication identity in `publication.json`, complete per-candidate results in `results.json`, and append-only events in `history.jsonl`. Known recovery usage is 32 cents with three unresolved cost records; no reservation was manually released.
+
+Final typecheck, lint and 23 focused tests passed, in addition to the earlier full offline suite. The required model-review checkpoint remains unavailable because its CLI workspace ran out of credits. Checkpoints `f5b33dd` and `2590f18` preserve implementation and recovery history; the final report commit is intended for the same authorized push to main. Unrelated pre-existing work remains outside these commits.

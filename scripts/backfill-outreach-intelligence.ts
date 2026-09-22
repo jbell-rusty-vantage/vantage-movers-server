@@ -9,6 +9,7 @@ import { getNumberLeadAttachmentModel } from "../src/models/NumberLeadAttachment
 import { getLeadConversationModel } from "../src/models/LeadConversation";
 import { getOutreachRecordModel } from "../src/models/OutreachRecord";
 import { BookedLead } from "../src/models/BookedLead";
+import { normalizeJobNo } from "../src/services/bookings/bookingIdentity";
 import { phoneEvidence } from "../src/services/salesIntelligence/attachment/sources";
 import { officialClosure } from "../src/services/salesIntelligence/outreach/transitions";
 import { analysisRuntimeConfiguration, estimateAnalysisCents } from "../src/services/salesIntelligence/analysis/worker";
@@ -44,7 +45,8 @@ async function main() {
       if (officialClosure(lead)) continue;
       const matched = [...new Set(phoneEvidence(lead, model).map(p => byPhone.get(p.e164)).filter(n => n && n.contact_eligibility.state !== "suppressed"))];
       if (!matched.length) continue;
-      const booking = await BookedLead.exists({ $or: [{ lead_ref: lead._id, lead_model: model }, ...(lead.job_no ? [{ normalized_job_no: lead.job_no.trim().toUpperCase() }] : [])] });
+      const normalizedJobNo = normalizeJobNo(lead.job_no);
+      const booking = await BookedLead.exists({ $or: [{ lead_ref: lead._id, lead_model: model }, ...(normalizedJobNo ? [{ normalized_job_no: normalizedJobNo }] : [])] });
       if (booking) { counts.booking_excluded = (counts.booking_excluded ?? 0) + 1; continue; }
       const ids = matched.map(n => n!._id);
       const [edges, conversations, outreach] = await Promise.all([
