@@ -95,14 +95,22 @@ export function assessmentProviderFailure(error: unknown): { kind: "throttled" |
 type ArtifactRow = {
   _id: unknown; status: string; input_fingerprint: string; schema_version: string; scores?: unknown; context_as_of: Date;
   latest_conversation_at?: Date | null; generated_at?: Date | null; job_id?: unknown; subject_key: string; shadow: boolean;
-  engagement?: unknown; contact_number_id?: unknown;
+  engagement?: unknown; contact_number_id?: unknown; conflicts?: unknown;
 };
 type Projection = { artifact_id: unknown; context_as_of?: Date | null; stale?: boolean; status?: string } | null | undefined;
 type Scores = { move_likelihood?: { score?: number | null; confidence?: string | null }; transaction_intent?: { score?: number | null; confidence?: string | null } } | null;
 
+/** Data spec §2.2: the fields the artifact's conflicts affect (`conflicts[].affects`), deduped, in first-seen order. */
+export function conflictTargetsFor(conflicts: unknown): string[] {
+  if (!Array.isArray(conflicts)) return [];
+  const affects = conflicts.map(conflict => (conflict && typeof conflict === "object" ? (conflict as { affects?: unknown }).affects : null));
+  return [...new Set(affects.filter((target): target is string => typeof target === "string" && target.length > 0))];
+}
+
 export function projectionFor(artifact: ArtifactRow, eligibilityRevision: number, now: Date) {
   const scores = (artifact.scores ?? null) as Scores;
   return {
+    conflict_targets: conflictTargetsFor(artifact.conflicts),
     artifact_id: artifact._id, status: artifact.status as "ready" | "insufficient_evidence",
     transaction_intent: scores?.transaction_intent?.score ?? null, move_likelihood: scores?.move_likelihood?.score ?? null,
     transaction_intent_confidence: scores?.transaction_intent?.confidence ?? null, move_likelihood_confidence: scores?.move_likelihood?.confidence ?? null,

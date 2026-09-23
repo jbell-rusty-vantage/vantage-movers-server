@@ -20,29 +20,62 @@ import { readContentSchema } from "./reads";
 import { retainedOriginal } from "./ownerReanalysis";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 
+const RUN_CURSOR = /^(\d{1,16})\.([a-f\d]{24})$/i;
 export const ownerAnalysisQuery = z.object({ scope: z.literal("production").optional(), contact_number_id: csiIdSchema.optional(),
   conversation_id: csiIdSchema.optional(), status: z.literal("completed").optional(), conversation_only: z.enum(["true", "false"]).optional(),
-  cursor: csiIdSchema.optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }).strict();
+  /** `<createdAt ms>.<run id>` keyset from `next_cursor`; a bare run id (pre-D12 cursor) still resolves to that run's position. */
+  cursor: z.union([csiIdSchema, z.string().regex(RUN_CURSOR)]).optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }).strict();
 const runSummary = (r: { _id: unknown; revision: number; status: string; mode: string; conversation_id?: unknown; completed_at?: Date | null; createdAt: Date }) =>
   ({ id: String(r._id), revision: r.revision, status: r.status, mode: r.mode, conversation_id: r.conversation_id ? String(r.conversation_id) : null,
     created_at: r.createdAt.toISOString(), completed_at: r.completed_at?.toISOString() ?? null });
+type RunKey = { _id: unknown; createdAt: Date };
+/** Newest first by `(createdAt, _id)`; ObjectId hex order is `_id` order. */
+export const runKeyDesc = (a: RunKey, b: RunKey) => (+b.createdAt - +a.createdAt) || (String(b._id) < String(a._id) ? -1 : String(b._id) > String(a._id) ? 1 : 0);
+export const encodeRunCursor = (row: RunKey) => `${+row.createdAt}.${String(row._id)}`;
+/**
+ * Data spec §7 D12: newest first on `csi_run_number` `{contact_number_id, createdAt:-1}`.
+ * The index supplies `createdAt` order with no blocking SORT; `_id` breaks ties in memory.
+ * A tie that straddles the page edge is completed with one bounded equality read, so the
+ * `(createdAt, _id)` keyset never skips or repeats a run.
+ */
 export async function listOwnerRuns(raw: unknown) {
   const q = ownerAnalysisQuery.parse(raw);
   if (!q.contact_number_id && !q.conversation_id) throw new CsiError("INVALID_INPUT");
-  const rows = await getIntelligenceRunModel().find({ ...csiDataset(), ...(q.contact_number_id ? { contact_number_id: q.contact_number_id } : {}),
+  const model = getIntelligenceRunModel();
+  const filter = { ...csiDataset(), ...(q.contact_number_id ? { contact_number_id: q.contact_number_id } : {}),
     ...(q.conversation_id ? { conversation_id: q.conversation_id } : q.conversation_only === "true" ? { conversation_id: { $ne: null } } : {}),
-    ...(q.status ? { status: q.status, output: { $ne: null }, purged_at: null, purge_started_at: null } : {}),
-    ...(q.cursor ? { _id: { $lt: q.cursor } } : {}) }).sort({ _id: -1 }).limit(q.limit + 1).lean();
-  return ownerRead({ items: rows.slice(0, q.limit).map(runSummary), next_cursor: rows.length > q.limit ? String(rows[q.limit - 1]._id) : null });
+    ...(q.status ? { status: q.status, output: { $ne: null }, purged_at: null, purge_started_at: null } : {}) };
+  let after: { createdAt: Date; _id: string } | null = null;
+  if (q.cursor) {
+    const match = RUN_CURSOR.exec(q.cursor);
+    if (match) after = { createdAt: new Date(Number(match[1])), _id: match[2]!.toLowerCase() };
+    else {
+      const legacy = await model.findOne({ _id: q.cursor, ...csiDataset() }).select({ _id: 1, createdAt: 1 }).lean();
+      if (!legacy) throw new CsiError("INVALID_INPUT");
+      after = { createdAt: legacy.createdAt, _id: String(legacy._id) };
+    }
+  }
+  const keyset = after ? { $or: [{ createdAt: { $lt: after.createdAt } }, { createdAt: after.createdAt, _id: { $lt: after._id } }] } : {};
+  let rows = await model.find({ ...filter, ...keyset }).sort({ createdAt: -1 }).limit(q.limit + 1).lean();
+  const edge = rows.length > q.limit ? rows[q.limit]!.createdAt : null;
+  if (edge && +rows[q.limit - 1]!.createdAt === +edge) {
+    const tie = await model.find({ ...filter, createdAt: edge, ...(after && +after.createdAt === +edge ? { _id: { $lt: after._id } } : {}) }).lean();
+    rows = [...rows.filter(r => +r.createdAt !== +edge), ...tie];
+  }
+  rows.sort(runKeyDesc);
+  const page = rows.slice(0, q.limit);
+  return ownerRead({ items: page.map(runSummary), next_cursor: rows.length > q.limit ? encodeRunCursor(page.at(-1)!) : null });
 }
 export async function readOwnerRun(id: string, raw: unknown = {}) {
   const query = z.object({ scope: z.literal("production").optional(), history_cursor: csiIdSchema.optional() }).strict().parse(raw);
   const run = await getIntelligenceRunModel().findOne({ _id: csiIdSchema.parse(id), ...csiDataset() }).lean();
   if (!run) return null;
-  const [findings, effects, instructions, assessments, number, conversation, record, history] = await Promise.all([
-    getIntelligenceFindingModel().find({ run_id: run._id, purged_at: null }).sort({ _id: 1 }).lean(),
+  // Data spec §7 D3: the findings are read once, before the fan-out, and their ids scope the
+  // instructions query (it used to await a second `distinct` inside the argument list).
+  const findings = await getIntelligenceFindingModel().find({ run_id: run._id, purged_at: null }).sort({ _id: 1 }).lean();
+  const [effects, instructions, assessments, number, conversation, record, history] = await Promise.all([
     getIntelligenceEffectModel().find({ run_id: run._id }).sort({ _id: 1 }).lean(),
-    getSalesIntelligenceOwnerInstructionModel().find({ $or: [{ finding_id: { $in: await getIntelligenceFindingModel().find({ run_id: run._id, purged_at: null }).distinct("_id") } },
+    getSalesIntelligenceOwnerInstructionModel().find({ $or: [{ finding_id: { $in: findings.map(f => f._id) } },
       { subject_key: run.subject_key }, { subject_key: `number:${run.contact_number_id}` }] }).sort({ happened_at: -1 }).limit(201).lean(),
     getIntelligenceOwnerAssessmentModel().find({ run_id: run._id }).lean(),
     getContactNumberModel().findById(run.contact_number_id).lean(),

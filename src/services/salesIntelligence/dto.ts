@@ -322,6 +322,9 @@ export const attentionSortKeysDtoSchema = z
     // Data spec §3.3 (S1): frozen from the row's `facts`; optional so older snapshots still parse.
     last_call: date.nullable().optional(),
     interactions: z.number().int().nonnegative().nullable().optional(),
+    // Data spec §3.5 (S2): closed partition only; absent on active rows and on older snapshots.
+    closed: date.nullable().optional(),
+    time_to_close: z.number().int().nonnegative().nullable().optional(),
   })
   .strict();
 /**
@@ -360,14 +363,87 @@ export const outreachFactsDtoSchema = z
   })
   .strict();
 export type OutreachFactsDto = z.infer<typeof outreachFactsDtoSchema>;
-export const ATTENTION_SORTS = ["attention", "next_action_due", "lead_received", "last_human_contact", "last_lead_progress", "transaction_intent", "move_likelihood"] as const;
+export const ATTENTION_SORTS = ["attention", "next_action_due", "lead_received", "last_human_contact", "last_lead_progress", "transaction_intent", "move_likelihood",
+  // Data spec §3.4 (S2): Last call and Interactions (final spec §7.2); Closed and Time to close exist only in `view=closed` (final spec §8).
+  "last_call", "interactions", "closed", "time_to_close"] as const;
+export const ATTENTION_CLOSED_SORTS = ["closed", "time_to_close"] as const;
 export const ATTENTION_SCORE_SORTS = ["transaction_intent", "move_likelihood"] as const;
-export const ATTENTION_VIEWS = ["attention", "all_outreach"] as const;
+export const ATTENTION_VIEWS = ["attention", "all_outreach", "closed"] as const;
 export const ATTENTION_FRESHNESS = ["fresh", "all"] as const;
 export const ATTENTION_SORT_DEFAULT_DIRECTION: Record<(typeof ATTENTION_SORTS)[number], "asc" | "desc"> = {
   attention: "asc", next_action_due: "asc", lead_received: "desc", last_human_contact: "asc", last_lead_progress: "desc",
-  transaction_intent: "desc", move_likelihood: "desc",
+  transaction_intent: "desc", move_likelihood: "desc", last_call: "desc", interactions: "desc", closed: "desc", time_to_close: "asc",
 };
+/**
+ * Data spec §2.3 / §3.4 / §3.5 (S2): the snapshot partition. `closed` rows are kept for 90 days after
+ * `closed_at` and are reachable only through `view=closed`; rows without the field are `active`.
+ */
+export const ATTENTION_PARTITIONS = ["active", "closed"] as const;
+/** Closed-view outcomes (final spec §8), mapped from `closed_reason` / `closure_origin` (data spec §3.5). */
+export const ATTENTION_OUTCOMES = ["booked", "cancelled", "bad_lead", "duplicate", "no_sync", "crm_dead", "crm_bad_unusable", "owner"] as const;
+export type AttentionOutcome = (typeof ATTENTION_OUTCOMES)[number];
+const dayString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/**
+ * Data spec §3.5: the inputs of the Closed view's outcome line. `time_to_close_ms` is
+ * booked `book_date − trigger_at`, cancelled `cancel_date − trigger_at`, otherwise
+ * `closed_at − trigger_at`; null when the named instant is missing (never zero).
+ */
+export const attentionOutcomeDtoSchema = z
+  .object({
+    reason: z.enum(ATTENTION_OUTCOMES),
+    origin: z.enum(["official", "crm_disposition", "owner"]),
+    closed_at: date,
+    time_to_close_ms: z.number().int().nonnegative().nullable(),
+    calls_total: z.number().int().nonnegative().nullable(),
+    booking: z.object({ id, book_date: date.nullable(), total_binder_amount: z.number().nullable(), job_no: z.string().nullable(), agent_name: z.string().nullable() }).strict().nullable(),
+    cancellation: z.object({ id, cancel_date: date.nullable(), reason: z.string().nullable() }).strict().nullable(),
+    priority: z.object({ code: z.string(), label: z.string() }).strict().nullable(),
+    note: z.string().nullable(),
+  })
+  .strict();
+export type AttentionOutcomeDto = z.infer<typeof attentionOutcomeDtoSchema>;
+/**
+ * Data spec §2.3 / §3.3 / §3.4 (S2): every desk filter reads one of these keys, frozen at publish.
+ * `agents` is assigned ∪ follow-up responsible ∪ promised (V10). `priority` is the raw Granot code;
+ * null is "Not set". `ti` / `ml` are the frozen score sort keys; `received_at` is `sort_keys.lead_received`.
+ */
+export const attentionFilterKeysDtoSchema = z
+  .object({
+    band: z.number().int().min(1).max(7).nullable(),
+    needs_review: z.boolean(),
+    state: z.enum(CSI_OUTREACH_STATES).nullable(),
+    agents: z.array(id),
+    attachment: z.enum(["lead", "none"]),
+    priority: z.string().nullable(),
+    has_recording: z.boolean(),
+    has_assessment: z.boolean(),
+    newer_call: z.boolean(),
+    ti: z.number().min(0).max(100).nullable(),
+    ml: z.number().min(0).max(100).nullable(),
+    received_at: date.nullable(),
+    move_date: dayString.nullable(),
+    outcome: z.enum(ATTENTION_OUTCOMES).nullable(),
+    closed_at: date.nullable(),
+  })
+  .strict();
+export type AttentionFilterKeysDto = z.infer<typeof attentionFilterKeysDtoSchema>;
+/**
+ * Data spec §3.6 / final spec §6: the five tiles, accumulated during the publish walk and
+ * stored on the snapshot header; `GET /attention` returns them as `data.metrics`.
+ * `booked_7d_median_days` is whole days rounded down of the median `book_date − trigger_at`.
+ */
+export const attentionMetricsDtoSchema = z
+  .object({
+    as_of: date,
+    leads_received_7d: z.number().int().nonnegative(),
+    not_called_yet: z.number().int().nonnegative(),
+    callbacks_overdue: z.number().int().nonnegative(),
+    awaiting_assessment: z.number().int().nonnegative(),
+    booked_7d: z.number().int().nonnegative(),
+    booked_7d_median_days: z.number().int().nonnegative().nullable(),
+  })
+  .strict();
+export type AttentionMetricsDto = z.infer<typeof attentionMetricsDtoSchema>;
 export const outreachDtoSchema = z
   .object({
     id,
@@ -431,6 +507,10 @@ export const attentionRowDtoSchema = z
     // Move assessment §8: band/badge membership. `false` rows are reachable only in `view=all_outreach`;
     // rows from snapshots published before the marker existed are treated as in Attention.
     in_attention: z.boolean().optional(),
+    // Data spec §2.3 (S2). All optional so snapshots published before S2 still parse.
+    partition: z.enum(ATTENTION_PARTITIONS).optional(),
+    filter_keys: attentionFilterKeysDtoSchema.optional(),
+    outcome: attentionOutcomeDtoSchema.nullable().optional(),
   })
   .strict();
 export const ownerReadSchema = <T extends z.ZodType>(data: T) =>
@@ -450,6 +530,8 @@ export const attentionPageDtoSchema = ownerReadSchema(
       direction: z.enum(["asc", "desc"]).optional(),
       view: z.enum(ATTENTION_VIEWS).optional(),
       freshness: z.enum(ATTENTION_FRESHNESS).optional(),
+      // Data spec §3.6 (S2, ATTENTION_V2): the header's tiles; absent when the snapshot has none.
+      metrics: attentionMetricsDtoSchema.nullable().optional(),
     })
     .strict(),
 );

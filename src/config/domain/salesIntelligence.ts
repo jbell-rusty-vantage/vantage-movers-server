@@ -147,6 +147,13 @@ export const CSI_FLAGS = [
   // the summary/findings pipeline exactly as before; reads still serve retained
   // artifacts and the assessment-only backfill runner injects its own gate.
   "MOVE_ASSESSMENT",
+  // Final data spec §9 S2: the Attention closed partition, header metrics and
+  // index array. Off keeps the publish and GET /attention as before for the
+  // current Admin; the additive row fields are published either way.
+  "ATTENTION_V2",
+  // Final data spec §9 S4: the Owner timeline on the story readers (§5).
+  // Off keeps GET /numbers/:id/timeline exactly as before.
+  "TIMELINE_V2",
 ] as const;
 export function csiFlag(flag: (typeof CSI_FLAGS)[number]): boolean {
   return (

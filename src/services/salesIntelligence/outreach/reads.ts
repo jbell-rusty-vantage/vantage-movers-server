@@ -25,8 +25,12 @@ import { subjectKey, type RecordRow, type FollowupRow } from "./types";
 import { nudgeHistoryPage } from "../nudges/reads";
 import { basisLabel, dispositionLabel, isTerminal, priorityLabel, progressExplanation, CRM_CLOSURE_REASONS, type LeadProgressRow } from "./leadProgress";
 import { moveAssessmentProjectionDto } from "../assessment/presentation";
+import type { LeadMoveSource } from "../assessment/views";
+import { outreachFacts } from "./facts";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { csiDataset } from "../../../config/domain/salesIntelligence";
+import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
+import { latestSummaryFromRun, officialStatus, outreachDetailDtoSchema } from "./detailDto";
 
 const iso = (value: Date | null | undefined) => value?.toISOString() ?? null;
 
@@ -178,9 +182,21 @@ export function deriveOutreachFacts(record: RecordRow, inputs: OutreachInputs, c
     unsuccessfulAttempts: [...new Map(inputs.attempts.map(a => [String(a.current.interaction_id), new Date(String(a.current.happened_at))])).values()] });
 }
 
-type LeadLite = { _id: unknown; name?: string | null; job_no?: string | null; source_company_label_snapshot?: string | null };
-type BookingLite = { _id: unknown };
-type CancelLite = { _id: unknown };
+type LeadLite = LeadMoveSource & { _id: unknown; name?: string | null; job_no?: string | null; source_company_label_snapshot?: string | null;
+  timestamp?: Date | null; booked?: unknown; cancelled?: unknown; duplicate?: boolean | null; bad_lead?: unknown; no_sync?: boolean | null;
+  granot_priority?: unknown; quoted?: boolean | null; receiver_agent_name_snapshot?: string | null };
+type BookingLite = { _id: unknown; book_date?: Date | null; total_binder_amount?: number | null; job_no?: string | null; agent?: unknown };
+type CancelLite = { _id: unknown; cancel_date?: Date | null; reason?: string | null };
+/**
+ * Data spec §3.2: one projection per Lead collection, wide enough for `facts.route`
+ * (`moveViewsForLead`), the official status, the Priority filter key and S2's closed
+ * outcome. Form Leads carry `destination_zip`, Call Leads `delivery_zip`.
+ */
+const LEAD_COMMON_PROJECTION = { name: 1, job_no: 1, source_company_label_snapshot: 1, timestamp: 1, pickup_city: 1, pickup_state: 1, pickup_zip: 1,
+  delivery_city: 1, delivery_state: 1, move_date: 1, move_size: 1, granot_move_size: 1, cubic_feet: 1, current_move_provenance: 1,
+  booked: 1, cancelled: 1, duplicate: 1, bad_lead: 1, no_sync: 1, granot_priority: 1, quoted: 1, receiver_agent_name_snapshot: 1 } as const;
+const FORM_LEAD_PROJECTION = { ...LEAD_COMMON_PROJECTION, destination_zip: 1 } as const;
+const CALL_LEAD_PROJECTION = { ...LEAD_COMMON_PROJECTION, delivery_zip: 1 } as const;
 type LatestLite = { _id: unknown; started_at: Date; direction: string; provider_result?: string | null; contact_type: string };
 export type OutreachSideData = {
   /** Lead keys with at least one attached Contact Number that is suppressed (override/reopen must stay closed). */
@@ -208,34 +224,43 @@ export async function loadOutreachSideData(records: readonly RecordRow[], inputs
   const callIds = records.flatMap(record => record.subject.kind === "lead" && record.subject.model === "CallLead" && record.subject.id ? [record.subject.id] : []);
   const leadRefs = records.flatMap(record => record.subject.kind === "lead" && record.subject.model && record.subject.id ? [{ model: record.subject.model, id: record.subject.id }] : []);
   const numberIds = [...new Map(records.flatMap(record => record.primary_contact_number_id ? [[String(record.primary_contact_number_id), record.primary_contact_number_id] as const] : [])).values()];
-  const [agentDocs, formDocs, callDocs, bookingDocs, latestDocs] = await Promise.all([
-    agentIds.length ? db.collection("agents").find({ _id: { $in: agentIds } }, { projection: { name: 1 } }).toArray() : [],
-    formIds.length ? db.collection("form_leads").find({ _id: { $in: formIds } }, { projection: { name: 1, job_no: 1, source_company_label_snapshot: 1 } }).toArray() : [],
-    callIds.length ? db.collection("call_leads").find({ _id: { $in: callIds } }, { projection: { name: 1, job_no: 1, source_company_label_snapshot: 1 } }).toArray() : [],
-    leadRefs.length ? db.collection("booked_leads").find({ $or: leadRefs.map(ref => ({ lead_model: ref.model, lead_ref: ref.id })) }, { projection: { _id: 1, lead_model: 1, lead_ref: 1 } }).toArray() : [],
+  const [formDocs, callDocs, bookingDocs, latestDocs] = await Promise.all([
+    formIds.length ? db.collection("form_leads").find({ _id: { $in: formIds } }, { projection: FORM_LEAD_PROJECTION }).toArray() : [],
+    callIds.length ? db.collection("call_leads").find({ _id: { $in: callIds } }, { projection: CALL_LEAD_PROJECTION }).toArray() : [],
+    leadRefs.length ? db.collection("booked_leads").find({ $or: leadRefs.map(ref => ({ lead_model: ref.model, lead_ref: ref.id })) },
+      { projection: { _id: 1, lead_model: 1, lead_ref: 1, book_date: 1, total_binder_amount: 1, job_no: 1, agent: 1 } }).toArray() : [],
+    // Data spec D1 (deferred): `facts.last_call_at` reads the Number rollups; this aggregation stays
+    // only while the production admin still reads `latest_number_call`.
     numberIds.length ? getCallInteractionModel().aggregate<{ _id: unknown; id: unknown; started_at: Date; direction: string; provider_result?: string | null; contact_type: string }>([
       { $match: { contact_number_id: { $in: numberIds }, merged_into_id: null } },
       { $sort: { contact_number_id: 1, started_at: -1, _id: -1 } },
       { $group: { _id: "$contact_number_id", id: { $first: "$_id" }, started_at: { $first: "$started_at" }, direction: { $first: "$direction" }, provider_result: { $first: "$provider_result" }, contact_type: { $first: "$contact_type" } } },
     ]) : [],
   ]);
-  const attachedEdges = leadRefs.length ? await attachmentModel().find({ state: "attached", $or: leadRefs.map(ref => ({ "lead_ref.model": ref.model, "lead_ref.id": ref.id })) }).select({ contact_number_id: 1, lead_ref: 1 }).lean() : [];
+  // `Booked · {agent}` (§3.2): the booking agents join the one agents `$in`, so it runs after the bookings.
+  const bookingAgentIds = bookingDocs.flatMap(booking => booking.agent instanceof mongoose.Types.ObjectId ? [booking.agent] : []);
+  const allAgentIds = [...new Map([...agentIds, ...bookingAgentIds].map(id => [String(id), id] as const)).values()];
+  const bookingIds = bookingDocs.map(booking => booking._id);
+  const [agentDocs, cancelDocs, attachedEdges] = await Promise.all([
+    allAgentIds.length ? db.collection("agents").find({ _id: { $in: allAgentIds } }, { projection: { name: 1 } }).toArray() : [],
+    bookingIds.length ? db.collection("cancelled_leads").find({ booked_lead: { $in: bookingIds } }, { projection: { _id: 1, booked_lead: 1, cancel_date: 1, reason: 1 } }).toArray() : [],
+    leadRefs.length ? attachmentModel().find({ state: "attached", $or: leadRefs.map(ref => ({ "lead_ref.model": ref.model, "lead_ref.id": ref.id })) }).select({ contact_number_id: 1, lead_ref: 1 }).lean() : [],
+  ]);
   const suppressedNumberIds = attachedEdges.length ? new Set((await getContactNumberModel().find({ _id: { $in: attachedEdges.map(e => e.contact_number_id) }, "contact_eligibility.state": "suppressed" }).select({ _id: 1 }).lean()).map(n => String(n._id))) : new Set<string>();
   const suppressedLeads = new Set(attachedEdges.filter(e => suppressedNumberIds.has(String(e.contact_number_id))).map(e => leadKey(e.lead_ref.model, e.lead_ref.id)));
-  const bookingIds = bookingDocs.map(booking => booking._id);
-  const cancelDocs = bookingIds.length ? await db.collection("cancelled_leads").find({ booked_lead: { $in: bookingIds } }, { projection: { _id: 1, booked_lead: 1 } }).toArray() : [];
   const bookings = new Map<string, BookingLite[]>();
   for (const booking of bookingDocs) {
     const key = leadKey(String(booking.lead_model), booking.lead_ref);
     const bucket = bookings.get(key);
-    const lite = { _id: booking._id };
+    const lite: BookingLite = { _id: booking._id, book_date: booking.book_date ?? null, total_binder_amount: booking.total_binder_amount ?? null,
+      job_no: booking.job_no ?? null, agent: booking.agent ?? null };
     if (bucket) bucket.push(lite); else bookings.set(key, [lite]);
   }
   const cancellations = new Map<string, CancelLite[]>();
   for (const cancellation of cancelDocs) {
     const key = String(cancellation.booked_lead);
     const bucket = cancellations.get(key);
-    const lite = { _id: cancellation._id };
+    const lite: CancelLite = { _id: cancellation._id, cancel_date: cancellation.cancel_date ?? null, reason: cancellation.reason ?? null };
     if (bucket) bucket.push(lite); else cancellations.set(key, [lite]);
   }
   return {
@@ -278,6 +303,8 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
   const lead = record.subject.kind === "lead" && record.subject.model && record.subject.id ? side.leads.get(leadKey(record.subject.model, record.subject.id)) ?? null : null;
   const bookings = record.subject.kind === "lead" && record.subject.model && record.subject.id ? side.bookings.get(leadKey(record.subject.model, record.subject.id)) ?? [] : [];
   const cancellations = bookings.flatMap(booking => side.cancellations.get(String(booking._id)) ?? []);
+  // Data spec §3.3 / §3.8: card facts at this read's `now` (publish time for the snapshot, request time for the detail).
+  const card = outreachFacts({ record, followups: actions, number, lead, bookings, cancellations, now });
   const related = [
     ...(lead ? [{ model: record.subject.model!, id: String(lead._id), href: `/${record.subject.model === "FormLead" ? "form-leads" : "call-leads"}?record=${lead._id}&database_scope=production`, certainty: "exact" as const }] : []),
     ...bookings.map(b => ({ model: "BookedLead" as const, id: String(b._id), href: `/bookings?record=${b._id}&database_scope=production`, certainty: "exact" as const })),
@@ -310,7 +337,9 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
   const overrideEnabled = csiFlag("LEAD_PROGRESS") && Boolean(progress) && terminalNow && (crmClosed || record.state !== "closed") && number?.contact_eligibility.state !== "suppressed" && !leadSuppressed;
   return outreachDtoSchema.parse({ id: String(record._id), revision: record.revision,
     lead_progress: progress,
-    move_assessment: moveAssessmentProjectionDto(record, assessmentPending),
+    // RD2 / S3-PRES contract: the assessment's `move_date_passed` staleness is derived on read from the same facts.
+    move_assessment: moveAssessmentProjectionDto(record, assessmentPending, { moveDatePassed: card.facts.move_date_passed }),
+    facts: card.facts,
     lead_attachment: mirror ? { attachment_id: String(mirror.attachment_id), lead_ref: { model: mirror.lead_ref.model, id: String(mirror.lead_ref.id) },
       state: mirror.state, certainty: mirror.certainty, certainty_label: certaintyLabel(mirror.certainty), decided_by: mirror.decided_by,
       decided_at: iso(mirror.decided_at), confidence: mirror.confidence ?? null, observed_at: iso(mirror.observed_at),
@@ -337,16 +366,41 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
         blocker_codes: overrideEnabled ? [] : !csiFlag("LEAD_PROGRESS") ? ["FEATURE_DISABLED" as const] : ["ILLEGAL_TRANSITION" as const] },
       ...callAvailability] });
 }
+/**
+ * Data spec §4.1 / V21: the newest completed, unpurged run of the Number, newest by
+ * `createdAt` then `_id` on `csi_run_number`. One read serves `newest_run_id` and
+ * `latest_summary`; only the overview and the summary ids are projected.
+ */
+function newestCompletedRun(numberId: unknown) {
+  if (!numberId) return Promise.resolve(null);
+  return getIntelligenceRunModel().findOne({ contact_number_id: numberId, status: "completed", ...csiDataset(), output: { $ne: null }, purged_at: null, purge_started_at: null })
+    .select({ _id: 1, conversation_id: 1, completed_at: 1, "output.summary.overview": 1, "step_artifacts.summaries": 1 })
+    .sort({ createdAt: -1, _id: -1 }).lean();
+}
+
+/** The §4.1 additions from reads `readOutreach` already made plus the one run read. Pure. */
+export function outreachDetailAdditions(record: RecordRow, side: OutreachSideData, number: OutreachInputs["number"], run: Parameters<typeof latestSummaryFromRun>[0]) {
+  // A Number whose content purge is pending shows no model text (the run read's own guard, `readOwnerRun`).
+  const usable = run && !number?.content_purge_pending ? run : null;
+  const ref = record.subject.kind === "lead" && record.subject.model && record.subject.id ? leadKey(record.subject.model, record.subject.id) : null;
+  const bookings = ref ? side.bookings.get(ref) ?? [] : [];
+  const cancelled = new Set(bookings.filter(b => (side.cancellations.get(String(b._id)) ?? []).length > 0).map(b => String(b._id)));
+  return { newest_run_id: usable ? String(usable._id) : null, latest_summary: latestSummaryFromRun(usable),
+    official: officialStatus(ref ? side.leads.get(ref) ?? null : null, bookings, cancelled) };
+}
+
 export async function readOutreach(id: string) {
   const record = await getOutreachRecordModel().findOne({ _id: id, purged_at: null }).lean();
   if (!record) return null;
-  const now = new Date(), [coverage, policy, instructions, inputs, nudges] = await Promise.all([
+  const numberId = record.primary_contact_number_id ?? (record.subject.kind === "number_review" ? record.subject.contact_number_id : null);
+  const now = new Date(), [coverage, policy, instructions, inputs, nudges, run] = await Promise.all([
     readCaptureCoverage(), resolvePolicy(),
     getSalesIntelligenceOwnerInstructionModel().find({ subject_key: subjectKey(record.subject) }).sort({ happened_at: 1 }).lean(),
-    loadOutreachInputs(record, now), nudgeHistoryPage({ outreach_record_id: id, limit: 20 })]);
+    loadOutreachInputs(record, now), nudgeHistoryPage({ outreach_record_id: id, limit: 20 }), newestCompletedRun(numberId)]);
   const side = await loadOutreachSideData([record], new Map([[String(record._id), inputs]]));
-  return { as_of: now.toISOString(), coverage, data: { outreach: await toOutreachDto(record, now, coverage, { policy, inputs, side }),
-    owner_instructions: instructions, nudges } };
+  const outreach = outreachDetailDtoSchema.parse({ ...await toOutreachDto(record, now, coverage, { policy, inputs, side }),
+    ...outreachDetailAdditions(record, side, inputs.number, run) });
+  return { as_of: now.toISOString(), coverage, data: { outreach, owner_instructions: instructions, nudges } };
 }
 export async function readOutreachByLead(model: "FormLead" | "CallLead", id: string) {
   const row = await getOutreachRecordModel().findOne({ "subject.model": model, "subject.id": id, purged_at: null }).lean();

@@ -54,10 +54,11 @@ const numberDto = () => import("../../../src/services/numberActivity/dto") as Pr
 
 /** `GET /outreach/:id` data: the outreach DTO is strict; instructions and nudges keep their own contracts. */
 async function outreachReadSchema(): Promise<ResolvedSchema> {
-  const { ownerReadSchema, outreachDtoSchema } = await import("../../../src/services/salesIntelligence/dto");
+  const { ownerReadSchema } = await import("../../../src/services/salesIntelligence/dto");
+  const { outreachDetailDtoSchema } = await import("../../../src/services/salesIntelligence/outreach/detailDto");
   const { z } = await import("zod");
-  return { schema: ownerReadSchema(z.object({ outreach: outreachDtoSchema, owner_instructions: z.array(z.unknown()), nudges: z.unknown() }).strict()),
-    name: "ownerReadSchema({ outreach: outreachDtoSchema, owner_instructions, nudges })", exact: true };
+  return { schema: ownerReadSchema(z.object({ outreach: outreachDetailDtoSchema, owner_instructions: z.array(z.unknown()), nudges: z.unknown() }).strict()),
+    name: "ownerReadSchema({ outreach: outreachDetailDtoSchema, owner_instructions, nudges })", exact: true };
 }
 
 const ATTENTION_S2: Array<[string, string]> = [

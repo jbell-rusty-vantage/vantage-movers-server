@@ -37,13 +37,19 @@ export async function retainedOriginal(sourceId: string, session?: ClientSession
   const snapshots = await getIntelligenceEvidenceSnapshotModel().find({ run_id: run._id, ...csiDataset() }).sort({ _id: 1 }).session(session ?? null).lean();
   if (!snapshots.length || snapshots.length !== run.manifest_snapshot_ids.length ||
     payloadHash(snapshots.map(s => ({ id: String(s._id), digest: s.content_digest }))) !== run.manifest_digest) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
+  const sourceIds = new Set<string>();
   for (const snapshot of snapshots) {
     const parsed = readContentSchema.safeParse(snapshot.response);
     if (snapshot.purged_at || snapshot.purge_started_at || !parsed.success || payloadHash(parsed.data) !== snapshot.content_digest) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
-    if (parsed.data.transcript) {
-      const transcript = await getIntelligenceEvidenceSnapshotModel().findOne({ _id: parsed.data.transcript.source_snapshot_id, ...csiDataset(), purged_at: null, purge_started_at: null }).session(session ?? null).lean();
-      if (!transcript) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
-    }
+    if (parsed.data.transcript) sourceIds.add(parsed.data.transcript.source_snapshot_id);
+  }
+  // Data spec §7 D3: every transcript source is checked in one read, not one `findOne` per snapshot.
+  if (sourceIds.size) {
+    if ([...sourceIds].some(id => !/^[a-f\d]{24}$/i.test(id))) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
+    const sources = await getIntelligenceEvidenceSnapshotModel().find({ _id: { $in: [...sourceIds] }, ...csiDataset() })
+      .select({ _id: 1, purged_at: 1, purge_started_at: 1 }).session(session ?? null).lean();
+    const retained = new Set(sources.filter(s => !s.purged_at && !s.purge_started_at).map(s => String(s._id)));
+    if ([...sourceIds].some(id => !retained.has(id.toLowerCase()))) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
   }
   return { run, snapshots };
 }
