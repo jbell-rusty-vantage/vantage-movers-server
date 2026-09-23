@@ -31,6 +31,7 @@ import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJ
 import { csiDataset } from "../../../config/domain/salesIntelligence";
 import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
 import { latestSummaryFromRun, officialStatus, outreachDetailDtoSchema } from "./detailDto";
+import { EMPTY_SUGGESTION_SIDE, loadSuggestionSide, suggestedNextStep, type SuggestionSide } from "./suggestion";
 
 const iso = (value: Date | null | undefined) => value?.toISOString() ?? null;
 
@@ -80,7 +81,7 @@ export async function loadAttachedLeadProgressForNumbers(numberIds: readonly str
   if (!refs.length) return out;
   const records = await getOutreachRecordModel().find({ purged_at: null, $or: refs.map(ref => ({ "subject.model": ref.model, "subject.id": ref.id })) }).lean();
   const recordByLead = new Map(records.map(record => [leadKey(String(record.subject.model), record.subject.id), record] as const));
-  const [side, pending] = await Promise.all([loadOutreachSideData(records, new Map()), pendingAssessmentKeys(records.map(r => subjectKey(r.subject)))]);
+  const [side, pending] = await Promise.all([loadOutreachSideData(records, new Map(), { suggestions: false }), pendingAssessmentKeys(records.map(r => subjectKey(r.subject)))]);
   for (const [numberId, ref] of resolved) out.set(numberId, attachedProgressForLead(ref, recordByLead, side, pending, now));
   return out;
 }
@@ -247,6 +248,8 @@ export type OutreachSideData = {
   bookings: Map<string, BookingLite[]>;
   cancellations: Map<string, CancelLite[]>;
   latestCalls: Map<string, LatestLite>;
+  /** S1-SUGGEST: case-2 inputs for card line 6 (final spec §5.5), batched per page (`suggestion.ts`). */
+  suggestions: SuggestionSide;
 };
 const leadKey = (model: string, id: unknown) => `${model}:${String(id)}`;
 
@@ -255,7 +258,8 @@ const leadKey = (model: string, id: unknown) => `${model}:${String(id)}`;
  * a whole page. Attention publish used to pay these five reads once per desk
  * row, which never finished inside the cron budget at production volume.
  */
-export async function loadOutreachSideData(records: readonly RecordRow[], inputs: ReadonlyMap<string, OutreachInputs>): Promise<OutreachSideData> {
+export async function loadOutreachSideData(records: readonly RecordRow[], inputs: ReadonlyMap<string, OutreachInputs>,
+  options: { suggestions?: boolean } = {}): Promise<OutreachSideData> {
   const db = mongoose.connection.useDb(getMongoDatabaseName(), { useCache: true });
   const agentIds = [...new Map(records.flatMap(record => {
     const actions = inputs.get(String(record._id))?.actions ?? [];
@@ -265,7 +269,10 @@ export async function loadOutreachSideData(records: readonly RecordRow[], inputs
   const callIds = records.flatMap(record => record.subject.kind === "lead" && record.subject.model === "CallLead" && record.subject.id ? [record.subject.id] : []);
   const leadRefs = records.flatMap(record => record.subject.kind === "lead" && record.subject.model && record.subject.id ? [{ model: record.subject.model, id: record.subject.id }] : []);
   const numberIds = [...new Map(records.flatMap(record => record.primary_contact_number_id ? [[String(record.primary_contact_number_id), record.primary_contact_number_id] as const] : [])).values()];
-  const [formDocs, callDocs, bookingDocs, latestDocs] = await Promise.all([
+  // S1-SUGGEST: needs each record's follow-ups; a caller without `inputs` (the Numbers list) opts out.
+  const suggestionsLoad = options.suggestions === false ? Promise.resolve(EMPTY_SUGGESTION_SIDE)
+    : loadSuggestionSide(records, record => inputs.get(String(record._id))?.actions ?? []);
+  const [formDocs, callDocs, bookingDocs, latestDocs, suggestions] = await Promise.all([
     formIds.length ? db.collection("form_leads").find({ _id: { $in: formIds } }, { projection: FORM_LEAD_PROJECTION }).toArray() : [],
     callIds.length ? db.collection("call_leads").find({ _id: { $in: callIds } }, { projection: CALL_LEAD_PROJECTION }).toArray() : [],
     leadRefs.length ? db.collection("booked_leads").find({ $or: leadRefs.map(ref => ({ lead_model: ref.model, lead_ref: ref.id })) },
@@ -277,6 +284,7 @@ export async function loadOutreachSideData(records: readonly RecordRow[], inputs
       { $sort: { contact_number_id: 1, started_at: -1, _id: -1 } },
       { $group: { _id: "$contact_number_id", id: { $first: "$_id" }, started_at: { $first: "$started_at" }, direction: { $first: "$direction" }, provider_result: { $first: "$provider_result" }, contact_type: { $first: "$contact_type" } } },
     ]) : [],
+    suggestionsLoad,
   ]);
   // `Booked · {agent}` (§3.2): the booking agents join the one agents `$in`, so it runs after the bookings.
   const bookingAgentIds = bookingDocs.flatMap(booking => booking.agent instanceof mongoose.Types.ObjectId ? [booking.agent] : []);
@@ -311,6 +319,7 @@ export async function loadOutreachSideData(records: readonly RecordRow[], inputs
     bookings,
     cancellations,
     latestCalls: new Map(latestDocs.map(call => [String(call._id), { _id: call.id, started_at: call.started_at, direction: call.direction, provider_result: call.provider_result ?? null, contact_type: call.contact_type }])),
+    suggestions,
   };
 }
 
@@ -381,6 +390,8 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
     // RD2 / S3-PRES contract: the assessment's `move_date_passed` staleness is derived on read from the same facts.
     move_assessment: moveAssessmentProjectionDto(record, assessmentPending, { moveDatePassed: card.facts.move_date_passed }),
     facts: card.facts,
+    // S1-SUGGEST: card line 6 case 2 at this read's `now`; Apply carries the same guards as `create_followup` above.
+    suggested_next_step: suggestedNextStep({ record: { ...record, state: projectedState }, followups: actions, side: side.suggestions ?? EMPTY_SUGGESTION_SIDE, dispositionBlockers }),
     lead_attachment: mirror ? { attachment_id: String(mirror.attachment_id), lead_ref: { model: mirror.lead_ref.model, id: String(mirror.lead_ref.id) },
       state: mirror.state, certainty: mirror.certainty, certainty_label: certaintyLabel(mirror.certainty), decided_by: mirror.decided_by,
       decided_at: iso(mirror.decided_at), confidence: mirror.confidence ?? null, observed_at: iso(mirror.observed_at),

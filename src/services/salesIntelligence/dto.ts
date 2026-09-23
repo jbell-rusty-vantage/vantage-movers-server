@@ -444,6 +444,31 @@ export const attentionMetricsDtoSchema = z
   })
   .strict();
 export type AttentionMetricsDto = z.infer<typeof attentionMetricsDtoSchema>;
+/**
+ * S1-SUGGEST (final spec §5.5 case 2): the newest analysis's suggestion for card line 6, served only when the
+ * server decided case 2 holds at `as_of` (open record, no open next action, newest completed run of the Number has
+ * an unapplied `next_step_suggestion`). `apply` carries what `apply_suggestion` needs: `target_id`/`run_id`,
+ * `expected_revision` (run), `suggestion_output_digest`, and the Outreach fence (`outreach_id`, `outreach_expected_revision`).
+ */
+export const outreachSuggestedNextStepDtoSchema = z
+  .object({
+    run_id: id,
+    action_kind: z.string(),
+    action_label: z.string(),
+    description: z.string(),
+    date_text: z.string().nullable(),
+    timezone_text: z.string().nullable(),
+    apply: csiActionAvailabilitySchema
+      .extend({
+        action: z.literal("apply_suggestion"),
+        suggestion_output_digest: z.string(),
+        outreach_id: id,
+        outreach_expected_revision: revision,
+      })
+      .strict(),
+  })
+  .strict();
+export type OutreachSuggestedNextStepDto = z.infer<typeof outreachSuggestedNextStepDtoSchema>;
 export const outreachDtoSchema = z
   .object({
     id,
@@ -465,6 +490,8 @@ export const outreachDtoSchema = z
     // Data spec §3.3 (S1): card facts at the response's `as_of`. Optional so snapshots published
     // before S1 still parse; every row published from S1 on carries it.
     facts: outreachFactsDtoSchema.optional(),
+    // S1-SUGGEST (final spec §5.5 case 2): null unless case 2 holds at `as_of`; absent on snapshots published before it.
+    suggested_next_step: outreachSuggestedNextStepDtoSchema.nullable().optional(),
     subject: csiSubjectSchema,
     state: z.enum(CSI_OUTREACH_STATES),
     reason: z.string().nullable(),

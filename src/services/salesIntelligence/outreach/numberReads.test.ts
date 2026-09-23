@@ -3,6 +3,7 @@ import { test, type TestContext } from "node:test";
 import mongoose from "mongoose";
 import { getMongoDatabaseName } from "../../../config/domain/runtime";
 import { getCallInteractionModel } from "../../../models/CallInteraction";
+import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
 import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getLeadConversationModel } from "../../../models/LeadConversation";
 import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
@@ -81,6 +82,8 @@ const MODELS = {
   conversations: getLeadConversationModel, restrictions: getSalesIntelligenceContactRestrictionModel, reviews: getSalesIntelligenceReviewItemModel,
   followups: getOutreachFollowupModel, audit: getSalesIntelligenceAuditEventModel, jobs: getSalesIntelligenceJobModel,
   policy: getSalesIntelligencePolicyPointerModel, sync: getSalesIntelligenceSyncStateModel,
+  // S1-SUGGEST: the side data's one newest-run-per-Number aggregation (card line 6 case 2).
+  runs: getIntelligenceRunModel,
 } as const;
 function install(t: TestContext, store: Store): Counter {
   const counter: Counter = { reads: [] };
@@ -165,7 +168,7 @@ test("D2: GET /numbers/:id read count is independent of the number of Outreach r
     });
   }
   assert.deepEqual(counts[1], counts[8], "same reads, same kinds, for 1 and 8 Outreach records");
-  assert.equal(counts[1]!.length, 29, "the header adds no read (29 before and after S4-NUMBER follow-up)");
+  assert.equal(counts[1]!.length, 30, "the header adds no read (29 after S4-NUMBER follow-up; +1 S1-SUGGEST newest-run aggregation, constant in n)");
   t.diagnostic(`reads per GET /numbers/:id = ${counts[1]!.length}: ${counts[1]!.join(", ")}`);
 });
 
