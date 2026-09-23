@@ -45,6 +45,11 @@ export type ContactNumberLean = {
     attached_lead_count: number;
     candidate_lead_count: number;
     open_outreach_count: number;
+    /** Data spec §2.1; missing on rows written before the rollup existed. */
+    recordings_total?: number;
+    conversations_analyzed_total?: number;
+    last_analyzed_at?: Date | null;
+    outreach_records_total?: number;
   };
   running_summary: {
     text: string;
@@ -78,6 +83,10 @@ export function toRollupsDto(row: ContactNumberLean): NumberRollupsDto {
     attached_lead_count: r.attached_lead_count ?? 0,
     candidate_lead_count: r.candidate_lead_count ?? 0,
     open_outreach_count: r.open_outreach_count ?? 0,
+    recordings_total: r.recordings_total ?? 0,
+    conversations_analyzed_total: r.conversations_analyzed_total ?? 0,
+    last_analyzed_at: iso(r.last_analyzed_at),
+    outreach_records_total: r.outreach_records_total ?? 0,
   };
 }
 

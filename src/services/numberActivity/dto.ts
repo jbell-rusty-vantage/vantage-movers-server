@@ -40,13 +40,34 @@ export const numberRollupsDtoSchema = z
     attached_lead_count: nonNegativeInt,
     candidate_lead_count: nonNegativeInt,
     open_outreach_count: nonNegativeInt,
+    /**
+     * Data spec §2.1 / §4.2 row line 4–5. Always emitted by `toRollupsDto`;
+     * optional here so older fixtures and readers still parse. Rows written
+     * before the rollup sweep read the model default (0 / null).
+     */
+    recordings_total: nonNegativeInt.optional(),
+    conversations_analyzed_total: nonNegativeInt.optional(),
+    last_analyzed_at: date.nullable().optional(),
+    outreach_records_total: nonNegativeInt.optional(),
   })
   .strict();
 
 export const NUMBER_SEARCH_MATCH_KINDS = ["e164", "suffix", "term", "none"] as const;
 
-/** LP-06 (§14.2): Numbers list time sorts. `last_activity` desc is the historical default. */
-export const NUMBER_SEARCH_SORTS = ["last_activity", "last_human_conversation", "first_observed"] as const;
+/**
+ * Numbers list sorts. LP-06 (§14.2) time sorts, plus data spec §4.2:
+ * `last_call` is an alias of `last_activity` (same index, same cursor),
+ * `first_call` an alias of `first_observed`, and `interactions` orders by
+ * `rollups.interactions_total`. `last_activity` desc is the historical default.
+ */
+export const NUMBER_SEARCH_SORTS = [
+  "last_activity",
+  "last_human_conversation",
+  "first_observed",
+  "last_call",
+  "first_call",
+  "interactions",
+] as const;
 export const NUMBER_SEARCH_DIRECTIONS = ["asc", "desc"] as const;
 export type NumberSearchSort = (typeof NUMBER_SEARCH_SORTS)[number];
 export type NumberSearchDirection = (typeof NUMBER_SEARCH_DIRECTIONS)[number];
