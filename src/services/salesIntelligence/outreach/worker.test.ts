@@ -21,6 +21,8 @@ test("repair nominations are semantic: an idle row maps to the same job on every
   assert.equal(interaction.input_revision, 3);
   assert.equal(outreachRepairNomination("CallInteraction", call)!.dedupe_key, interaction.dedupe_key);
   assert.notEqual(outreachRepairNomination("CallInteraction", { ...call, projection_revision: 4 })!.dedupe_key, interaction.dedupe_key);
+  // A call without a Contact Number has no Outreach subject and is never nominated (production stall, 2026-09-21).
+  assert.equal(outreachRepairNomination("CallInteraction", { _id: id(), projection_revision: 1 }), null);
 
   // The Outreach Record key is its own revision, never a sweep-cycle clock:
   // the former cycle key inserted one completed job per record per cycle.

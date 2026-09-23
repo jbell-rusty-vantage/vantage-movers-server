@@ -128,6 +128,10 @@ export function outreachChangeNomination(change: { _id: unknown; entity: { model
 export function outreachRepairNomination(source: RepairSource, row: RepairRow): JobInput | null {
   const id = String(row._id);
   if (source === "CallInteraction") {
+    // A call with no Contact Number has no Outreach subject (`ensureInteraction` returns at once);
+    // nominating it produced a `number:<interaction id>` subject whose key collided with the
+    // `number:null` rows an earlier build stored, which pinned the production sweep (LP-03 hotfix).
+    if (!row.contact_number_id) return null;
     const revision = row.projection_revision ?? 1;
     return { stage: "outreach_ensure", subject_key: `number:${row.contact_number_id ?? id}`,
       dedupe_key: `csi:outreach:repair:CallInteraction:${id}:${revision}`, input_revision: revision, input_refs: [id] };
@@ -203,7 +207,7 @@ export async function runOutreachEnsureOnce(options: { deadline?: number } = {})
           // A row whose stored payload disagrees with today's shape must never pin the cursor; the
           // repair sweep still recovers that Lead. Anything else aborts the pass as before.
           if (!(error instanceof CsiError && error.code === "IDEMPOTENCY_CONFLICT")) throw error;
-          conflicts.push(String(change._id));
+          conflicts.push(`csi:outreach:entity-change:v2:${change._id}`);
         }
         // H2.2: a create or a contact/eligibility change re-evaluates the complete match set now,
         // instead of waiting for the 5-minute updatedAt watermark (kept as the backstop).
@@ -216,13 +220,18 @@ export async function runOutreachEnsureOnce(options: { deadline?: number } = {})
       }
       const last = changes.at(-1);
       if (last) await State.updateOne({ scope: "outreach_entity_changes" }, { $set: { "cursor.entity_change_applied_at": last.applied_at, "cursor.entity_change_id": last._id } }, { session, upsert: true });
-      if (conflicts.length) console.warn(JSON.stringify({ msg: "outreach.entity_change_job_conflict_skipped", change_ids: conflicts }));
       // Time boundary: waits whose promised date has passed and is not yet stamped.
       const expired = await getOutreachFollowupModel().find({ status: "open", kind: "wait", due_at: { $lte: now }, wait_expired_at: null })
         .sort({ due_at: 1, _id: 1 }).limit(OUTREACH_REPAIR_PAGE).session(session).lean();
+      // A stored row whose payload disagrees with today's shape must never pin the scan: skip it,
+      // log it, and let the cursor advance (the same tolerance the change scan has).
+      const enqueueTolerant = async (nomination: JobInput) => {
+        try { await enqueueCsiJob(nomination, session); count++; }
+        catch (error) { if (!(error instanceof CsiError && error.code === "IDEMPOTENCY_CONFLICT")) throw error; conflicts.push(nomination.dedupe_key); }
+      };
       for (const wait of expired) {
         const nomination = waitExpiryNomination(wait);
-        if (nomination) { await enqueueCsiJob(nomination, session); count++; }
+        if (nomination) await enqueueTolerant(nomination);
       }
       // Rolling _id sweeps recover old records and commits behind a time watermark, without expiring misses.
       for (const source of ["FormLead", "CallLead", "CallInteraction", "OutreachRecord"] as const) {
@@ -237,13 +246,14 @@ export async function runOutreachEnsureOnce(options: { deadline?: number } = {})
           await getOutreachRecordModel().find({ ...filter, state: { $in: [...OPEN_OUTREACH_STATES] } }).sort({ _id: 1 }).limit(OUTREACH_REPAIR_PAGE).session(session).lean();
         for (const row of rows) {
           const nomination = outreachRepairNomination(source, row);
-          if (nomination) { await enqueueCsiJob(nomination, session); count++; }
+          if (nomination) await enqueueTolerant(nomination);
         }
         await State.updateOne({ scope }, { $set: { "cursor.attachment_source_id": rows.length === OUTREACH_REPAIR_PAGE ? rows.at(-1)!._id : null,
           "cursor.provider_modified_watermark": rows.length === OUTREACH_REPAIR_PAGE ? prior?.cursor?.provider_modified_watermark ?? now : now } }, { session, upsert: true });
       }
       const fence = await State.updateOne(activeTokenFilter(token, new Date()), { $set: { "cursor.last_sync_to": new Date() } }, { session });
       if (fence.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
+      if (conflicts.length) console.warn(JSON.stringify({ msg: "outreach.job_conflict_skipped", dedupe_keys: conflicts }));
       return count;
     });
     return { skipped: false, scanned, ...(await drainOutreachEnsureJobs(100, { deadline })) };
