@@ -65,13 +65,18 @@ export async function updateStructuredRunUsage(runId: string) {
   }, per_recording_ceiling_exceeded: cents > policy.per_recording_ceiling_cents } });
 }
 
-/** Validation retries stay local and have only an elapsed-time stop. Provider errors return to durable retry. */
+/**
+ * Validation retries stay local and have only an elapsed-time stop. Provider errors return to durable retry.
+ * Returns both the exact object the provider returned on the accepted attempt (`raw`) and the
+ * server-validated/expanded result (`accepted`), so the run can retain the model's own output
+ * (context provenance specification §2 R1).
+ */
 export async function generateStructuredStep<T>(input: {
   kind: "summary" | "findings"; key: string; run_id: string; lease: JobLease;
   model: LanguageModel; model_id: string; pricing: StepPricing; schema: z.ZodType;
   system: string; prompt: string; validate: (value: unknown) => T;
   deadline: number; beforeProvider: () => Promise<void>;
-}) {
+}): Promise<{ raw: unknown; accepted: T }> {
   const { generateObject, NoObjectGeneratedError } = await import("ai");
   const providerSchema = await structuredProviderSchema(input.schema);
   if (Date.now() + STRUCTURED_STEP_MS + 10_000 > input.deadline) throw new StructuredYield();
@@ -110,7 +115,7 @@ export async function generateStructuredStep<T>(input: {
         repair = `\nThe previous response failed validation. Correct these paths: ${JSON.stringify(issuePaths(error.cause))}. Return the complete object.`;
         continue;
       }
-      try { return input.validate(value); }
+      try { return { raw: value, accepted: input.validate(value) }; }
       catch (error) {
         if (!(error instanceof z.ZodError) && !(error instanceof CsiError && error.code === "EVIDENCE_SCOPE_INVALID")) throw error;
         const paths = issuePaths(error);

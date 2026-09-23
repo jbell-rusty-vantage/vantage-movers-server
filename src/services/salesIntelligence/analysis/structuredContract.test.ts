@@ -28,7 +28,8 @@ function raw() {
   return { summary, findings: [{ kind: fact.kind, value: fact.value, claim: fact.claim,
     actor: fact.actor, clarity: fact.clarity, action_status: null, basis: "said_on_call",
     evidence: [{ source: "transcript", call_index: 0, segment_ids: [7], quote: null }] }],
-  next_step: null, owner_instruction_assessments: [{ instruction_index: 0, assessment: "agrees", reason: "Consistent" }] };
+  next_step: null, owner_instruction_assessments: [{ instruction_index: 0, assessment: "agrees", reason: "Consistent" }],
+  prior_finding_relations: [], story_discrepancies: [] };
 }
 
 test("minimal findings expand into the unchanged submission envelope using server citation metadata", () => {
@@ -118,4 +119,30 @@ test("model schemas contain no server metadata and reject operational additions"
       assert.equal(json.includes(`\"${key}\"`), false, key);
   }
   assert.equal(minimalFindingsSchema.safeParse({ ...raw(), schema_version: "invented" }).success, false);
+});
+
+test("prior relations and story discrepancies resolve prompt indices to captured record ids and refuse unknown ones", () => {
+  const scope = inputs();
+  scope.context = [...scope.context, { snapshot_id: "story-snapshot", data: { ...scope.context[0].data, instructions: [],
+    page: { records: [{ record_type: "story_event", record_id: "lead_message_sent:m1", revision: null, fields: { kind: "lead_message_sent", description: "Vantage sent a text (delivered)." } }],
+      next_cursor: null, complete: true, missing_ranges: [] } } },
+  { snapshot_id: "prior-snapshot", data: { ...scope.context[0].data, instructions: [],
+    page: { records: [{ record_type: "prior_finding", record_id: "finding-prior-1", revision: "1", fields: { kind: "promised_callback", description: "Rep promised a callback" } }],
+      next_cursor: null, complete: true, missing_ranges: [] } } }];
+  const resolved = { ...scope, prior_finding_ids: ["finding-prior-1"], story_event_ids: ["lead_message_sent:m1"] };
+  const model = { ...raw(), prior_finding_relations: [{ prior_index: 0, relation: "superseded", by_finding_index: 0,
+    evidence: [{ source: "context", record: "prior_finding", id: "finding-prior-1" }], note: "Newer promise on the later call" }],
+    story_discrepancies: [{ story_index: 0, claim: "Customer says no text arrived", evidence: [{ source: "transcript", call_index: 0, segment_ids: [7], quote: null }] }] };
+  const envelope = expandStructuredFindings(model, resolved);
+  assert.deepEqual(envelope.prior_finding_relations?.[0].prior_finding_id, "finding-prior-1");
+  assert.equal(envelope.prior_finding_relations?.[0].by_finding_key, "finding-1");
+  assert.equal(envelope.prior_finding_relations?.[0].evidence[0].snapshot_id, "prior-snapshot");
+  assert.equal(envelope.story_discrepancies?.[0].story_event_id, "lead_message_sent:m1");
+  assert.throws(() => expandStructuredFindings({ ...model, prior_finding_relations: [{ ...model.prior_finding_relations[0], prior_index: 4 }] }, resolved), /EVIDENCE_SCOPE_INVALID/);
+  assert.throws(() => expandStructuredFindings({ ...model, story_discrepancies: [{ ...model.story_discrepancies[0], story_index: 9 }] }, resolved), /EVIDENCE_SCOPE_INVALID/);
+  assert.throws(() => expandStructuredFindings({ ...model, prior_finding_relations: [{ ...model.prior_finding_relations[0], by_finding_index: 3 }] }, resolved), /EVIDENCE_SCOPE_INVALID/);
+  // Without the id lists (a replay of a run that never saw a prior page), every index is refused rather than guessed.
+  assert.throws(() => expandStructuredFindings(model, scope), /EVIDENCE_SCOPE_INVALID/);
+  const empty = expandStructuredFindings(raw(), resolved);
+  assert.equal("prior_finding_relations" in empty, false);
 });

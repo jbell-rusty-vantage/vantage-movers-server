@@ -1,5 +1,6 @@
 import { createSalesIntelligenceBoundaryRouter } from "./sales-intelligence-boundary.routes";
 import { createSalesIntelligenceInternalRouter } from "./sales-intelligence-internal.routes";
+import { createSalesIntelligenceHistoryRouter } from "./sales-intelligence-history.routes";
 import { createSalesIntelligenceAdminRouter } from "./sales-intelligence-admin.routes";
 import { Router, type Request, type Response } from "express";
 import mongoose from "mongoose";
@@ -292,6 +293,9 @@ const router = Router();
 router.use(extensionAuthRoutes);
 router.use(googleDriveOAuthRoutes);
 router.use("/api/v1", requireApiSecret);
+// History reads (MCP general endpoint) sit behind the broad secret only; the boundary router
+// below denies every other `/internal/sales-intelligence` path, so this must precede it.
+router.use(createSalesIntelligenceHistoryRouter());
 router.use(createSalesIntelligenceBoundaryRouter());
 router.use(createSalesIntelligenceInternalRouter());
 // CSI-04 Owner reads and the rebuild command; mounted after the CSI boundary (flag + Owner + scope).

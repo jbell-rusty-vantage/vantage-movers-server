@@ -273,3 +273,21 @@ test("enforces document 10 engineering bounds", () => {
   const summaryResult = safeParseIntelligenceEnvelope(longSummary);
   assert.equal(summaryResult.success, false);
 });
+
+test("prior-finding relations and story discrepancies are additive: absent stays valid, present is bounded to this envelope", () => {
+  const base = parseIntelligenceEnvelope(clone(repPromiseVsCustomerCallbackFixture));
+  assert.equal("prior_finding_relations" in base, false);
+  const evidence = base.findings[0].evidence;
+  const valid = { ...clone(base), prior_finding_relations: [{ prior_finding_id: "prior-1", relation: "superseded", by_finding_key: base.findings[0].key, evidence, note: null }],
+    story_discrepancies: [{ story_event_id: "lead_message_sent:abc", claim: "Customer says no text arrived", evidence }] };
+  assert.equal(safeParseIntelligenceEnvelope(valid).success, true);
+  const unknownKey = safeParseIntelligenceEnvelope({ ...valid, prior_finding_relations: [{ ...valid.prior_finding_relations[0], by_finding_key: "invented" }] });
+  assert.equal(unknownKey.success, false);
+  if (!unknownKey.success) assert(issuePaths(unknownKey.error).includes("prior_finding_relations.0.by_finding_key"));
+  const noEvidence = safeParseIntelligenceEnvelope({ ...valid, prior_finding_relations: [{ ...valid.prior_finding_relations[0], evidence: [] }] });
+  assert.equal(noEvidence.success, false);
+  assert.equal(safeParseIntelligenceEnvelope({ ...valid, prior_finding_relations: [{ ...valid.prior_finding_relations[0], relation: "cannot_determine", by_finding_key: null, evidence: [] }] }).success, true);
+  const duplicate = safeParseIntelligenceEnvelope({ ...valid, prior_finding_relations: [valid.prior_finding_relations[0], valid.prior_finding_relations[0]] });
+  assert.equal(duplicate.success, false);
+  assert.equal(safeParseIntelligenceEnvelope({ ...valid, story_discrepancies: [{ ...valid.story_discrepancies[0], evidence: [] }] }).success, false);
+});

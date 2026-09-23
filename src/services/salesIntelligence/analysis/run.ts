@@ -145,7 +145,11 @@ export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntell
     await fenceRetention();
     const grant = { mode: input.mode as AnalysisMode, original_tools: originalTools, discovery_reason: discovery };
     const { run_id: requestedId, ...fields } = input;
+    // Context provenance §2 R4: the newest completed run of this subject is this run's predecessor.
+    const predecessor = await getIntelligenceRunModel().findOne({ subject_key: job.subject_key, ...csiDataset(), status: "completed", purged_at: null })
+      .select("_id").sort({ createdAt: -1, _id: -1 }).session(session).lean();
     const [created] = await getIntelligenceRunModel().create([{ ...fields, ...(requestedId ? { _id: requestedId } : {}), owner_correction_context: jsonValue(correctionContext), ...csiDataset(), job_id: job._id,
+      predecessor_run_id: predecessor?._id ?? null,
       subject_key: job.subject_key, prompt_version: promptVersion, schema_version: CSI_ENVELOPE_SCHEMA_VERSION,
       schema_digest: schemaDigest, rendered_prompt: prompt,
       application_disabled: job.owner_reanalysis?.application_disabled ?? false,

@@ -23,6 +23,7 @@ import { workerContext, mappedSalesReps } from "../outreach/ensure";
 import { ensureNumberReview } from "../outreach/numberReview";
 import { resolveActionDateText } from "../outreach/staffing";
 import { openReview } from "../review/items";
+import { applyPriorRelations } from "./relations";
 import { applySpokenRestriction } from "../review/restrictions";
 import { resolvePolicy } from "../policy";
 import { applicationReady, resumeApplicationIntents } from "./readiness";
@@ -198,8 +199,10 @@ export async function runIntelligenceApplicationJob(jobId?: string, deps: { befo
       const current = await getIntelligenceRunModel().findById(run._id).session(session).orFail();
       if (current.purged_at || current.purge_started_at || await getContactNumberModel().exists({ _id: current.contact_number_id, content_purge_pending: true }).session(session)) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
       if (current.application_cursor !== envelope.findings.length) throw new CsiError("REVISION_CONFLICT");
-      const effects = await getIntelligenceEffectModel().find({ run_id: run._id }).session(session).lean();
       const findings = await getIntelligenceFindingModel().find({ run_id: run._id }).session(session).lean();
+      // Context provenance §6.3: connect this run's output to the prior findings it was shown, before effects are counted.
+      await applyPriorRelations(run, envelope, findings, workerContext(session, lease.job_id), session);
+      const effects = await getIntelligenceEffectModel().find({ run_id: run._id }).session(session).lean();
       for (const assessment of envelope.owner_instruction_assessments) {
         const { finding_keys, ...value } = assessment;
         await getIntelligenceOwnerAssessmentModel().create([{ ...value,

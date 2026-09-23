@@ -290,7 +290,7 @@ export function assessmentEvidenceRefs(artifact: ArtifactRow): EvidenceRefDto[] 
 export type SnapshotRow = { _id: unknown; run_id?: unknown; conversation_id?: unknown; response?: unknown; content_digest: string;
   purged_at?: Date | null; purge_started_at?: Date | null; retrieved_at?: Date | null };
 export type RunRow = {
-  _id: unknown; conversation_id?: unknown; contact_number_id?: unknown; status: string; output?: unknown; analysis_pipeline?: string | null;
+  _id: unknown; conversation_id?: unknown; contact_number_id?: unknown; status: string; output?: unknown; raw_output?: unknown; analysis_pipeline?: string | null;
   step_artifacts?: unknown; prompt_version: string; schema_version: string; model_version: string; completed_at?: Date | null; createdAt?: Date | null;
   purged_at?: Date | null; purge_started_at?: Date | null; manifest_snapshot_ids?: readonly unknown[];
 };
@@ -512,9 +512,9 @@ export function runFullOutput(input: Pick<RunPresentationInput, "run" | "summari
     const served = !blocked && run.output != null;
     return fullOutputSchema.parse({ kind: pipeline === "structured" ? "findings" : "legacy_analysis", id: runId, version: run.schema_version ?? null,
       generated_at: iso(run.completed_at), availability: blocked ?? (served ? "ready" : "unavailable"), complete: served,
-      // A legacy agent submitted the envelope itself; a structured run retains only the server-expanded envelope (the
-      // minimal model object is not stored), so it is labelled accepted and never presented as the provider response.
-      model_output: served && pipeline === "legacy" ? json(run.output) : null,
+      // A legacy agent submitted the envelope itself. A structured run retains the provider's exact findings object in
+      // `raw_output` (context provenance §2 R2); runs analysed before that landed have none and show the accepted envelope only.
+      model_output: served && pipeline === "legacy" ? json(run.output) : served && run.raw_output != null ? json(run.raw_output) : null,
       accepted: served && pipeline === "structured" ? json(run.output) : null,
       details: { ...details, digests: served ? { output_digest: payloadHash(run.output) } : {} } });
   }

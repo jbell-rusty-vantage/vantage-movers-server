@@ -74,6 +74,12 @@ const vantageRecordEvidenceSchema = z
       "ringcentral_queue",
       "ringcentral_user",
       "job_timeline",
+      // Context provenance pages (spec §5.1): additive record types the findings step may cite.
+      "story_event",
+      "granot_state",
+      "prior_summary",
+      "prior_finding",
+      "prior_assessment",
     ]),
     record_id: nonEmptyString,
     field_paths: z
@@ -272,6 +278,43 @@ const ownerInstructionAssessmentSchema = z
   })
   .strict();
 
+export const PRIOR_FINDING_RELATIONS = [
+  "still_true",
+  "superseded",
+  "fulfilled",
+  "contradicted",
+  "cannot_determine",
+] as const;
+export type PriorFindingRelation = (typeof PRIOR_FINDING_RELATIONS)[number];
+
+/**
+ * Context provenance (spec §6.2, additive): how this run relates to each earlier finding it was
+ * shown, and where a call contradicts the server-assembled story. Both are optional so every
+ * envelope accepted before r3 stays valid; the server applies them (supersede, review items).
+ */
+const priorFindingRelationSchema = z
+  .object({
+    prior_finding_id: nonEmptyString,
+    relation: z.enum(PRIOR_FINDING_RELATIONS),
+    by_finding_key: findingKey.nullable(),
+    evidence: z
+      .array(intelligenceEvidenceRefSchema)
+      .max(CSI_ENVELOPE_BOUNDS.max_evidence_refs_per_finding),
+    note: claimOrDescription.nullable(),
+  })
+  .strict();
+
+const storyDiscrepancySchema = z
+  .object({
+    story_event_id: nonEmptyString,
+    claim: claimOrDescription,
+    evidence: z
+      .array(intelligenceEvidenceRefSchema)
+      .min(1)
+      .max(CSI_ENVELOPE_BOUNDS.max_evidence_refs_per_finding),
+  })
+  .strict();
+
 export const intelligenceEnvelopeSchema = z
   .object({
     schema_version: z.literal(CSI_ENVELOPE_SCHEMA_VERSION),
@@ -281,9 +324,33 @@ export const intelligenceEnvelopeSchema = z
       .max(CSI_ENVELOPE_BOUNDS.max_findings),
     next_step_suggestion: nextStepSuggestionSchema.nullable(),
     owner_instruction_assessments: z.array(ownerInstructionAssessmentSchema),
+    prior_finding_relations: z.array(priorFindingRelationSchema).max(60).optional(),
+    story_discrepancies: z.array(storyDiscrepancySchema).max(20).optional(),
   })
   .strict()
   .superRefine((envelope, context) => {
+    const relationKeys = new Set(envelope.findings.map((finding) => finding.key));
+    (envelope.prior_finding_relations ?? []).forEach((relation, index) => {
+      if (relation.by_finding_key !== null && !relationKeys.has(relation.by_finding_key))
+        context.addIssue({
+          code: "custom",
+          path: ["prior_finding_relations", index, "by_finding_key"],
+          message: "by_finding_key does not match a finding in this envelope",
+        });
+      if (relation.relation !== "cannot_determine" && relation.evidence.length === 0)
+        context.addIssue({
+          code: "custom",
+          path: ["prior_finding_relations", index, "evidence"],
+          message: "a determined relation cites at least one piece of evidence",
+        });
+    });
+    const relationIds = (envelope.prior_finding_relations ?? []).map((relation) => relation.prior_finding_id);
+    if (relationIds.length !== new Set(relationIds).size)
+      context.addIssue({
+        code: "custom",
+        path: ["prior_finding_relations"],
+        message: "one relation per prior finding",
+      });
     const summaryChars =
       envelope.summary.overview.length +
       envelope.summary.customer_wanted.length +

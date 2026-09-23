@@ -33,7 +33,7 @@ export async function findRunArtifact(auth: RunAuthorization, key: string) {
 
 /** Persist keyed artifacts under the same retention and lease fences as tool capture. */
 export async function persistAnalysisArtifact(auth: RunAuthorization, input: {
-  kind: "summary" | "context"; key: string; data: ReadContent; canonical?: boolean; retrieved_at?: Date;
+  kind: "summary" | "context" | "story" | "prior"; key: string; data: ReadContent; canonical?: boolean; retrieved_at?: Date;
 }): Promise<CapturedPromptPage> {
   const data = readContentSchema.parse(input.data);
   const digest = payloadHash(data), bytes = Buffer.byteLength(JSON.stringify(data));

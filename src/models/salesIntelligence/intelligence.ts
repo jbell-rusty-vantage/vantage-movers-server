@@ -28,6 +28,8 @@ import {
 export const INTELLIGENCE_RUN_INDEXES = [
   unique("csi_run_job_unique", { job_id: 1 }),
   index("csi_run_subject", { subject_key: 1, createdAt: -1 }),
+  // Context provenance §2 R4: every run of a Number, newest first (prior analyses, history tools).
+  index("csi_run_number", { contact_number_id: 1, createdAt: -1 }),
 ];
 export const IntelligenceRunSchema = new Schema(
   {
@@ -45,6 +47,8 @@ export const IntelligenceRunSchema = new Schema(
       "backfill",
     ]),
     parent_run_id: ref,
+    /** Context provenance §2 R4: the newest completed run of the same subject before this one, or null. */
+    predecessor_run_id: ref,
     job_id: oid,
     triggering_event_ids: refs,
     input_fingerprint: str,
@@ -126,6 +130,7 @@ const finalizedFields = [
   "outreach_record_id",
   "mode",
   "parent_run_id",
+  "predecessor_run_id",
   "job_id",
   "triggering_event_ids",
   "input_fingerprint",
@@ -222,7 +227,7 @@ export const IntelligenceEvidenceSnapshotSchema = new Schema(
     run_id: ref,
     conversation_id: ref,
     transcript_version: text,
-    source_type: enumeration(["transcript", "vantage_record", "tool_response", "summary", "context"]),
+    source_type: enumeration(["transcript", "vantage_record", "tool_response", "summary", "context", "story", "prior"]),
     artifact_key: text,
     source_id: str,
     source_revision: text,
@@ -545,6 +550,10 @@ export const SalesIntelligenceReviewItemSchema = new Schema(
       // Priority whose provenance is unresolved.
       "disposition_reopen",
       "disposition_review",
+      // Context provenance §6.3: prior-finding relations and story discrepancies the server surfaces.
+      "prior_fulfilled_unclaimed",
+      "prior_contradiction",
+      "record_disputed_on_call",
     ]),
     cause_key: str,
     state: enumeration(["open", "resolved", "dismissed"], "open"),

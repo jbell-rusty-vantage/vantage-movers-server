@@ -63,7 +63,18 @@ export function schemaArtifactForDigest(digest: string): ResolvedSchemaArtifact 
   }
   return null;
 }
-export const knownSchemaDigest = (digest: string) => schemaArtifactForDigest(digest) !== null;
+/**
+ * Digests of the envelope renderings pinned by runs prepared before the context-provenance
+ * additions (optional `prior_finding_relations` / `story_discrepancies`, five record types).
+ * The contract those runs accepted is a strict subset of today's, so an `original_evidence`
+ * replay of one is still asked exactly what its parent was asked; this deployment simply cannot
+ * re-render their JSON, so `schemaArtifactForDigest` stays null for them.
+ */
+export const LEGACY_SCHEMA_DIGESTS: Readonly<Record<string, SchemaArtifactRevision>> = {
+  "18a4746f6343c4b093ef449693b685872e3f912ae36fe87e4d49196fc1ecfed7": "r1",
+  "c26e86d1eac2e9d1090133bcb65dcab8e0830d99f5c4b3ccbdc55934e9658d6a": "r2",
+};
+export const knownSchemaDigest = (digest: string) => schemaArtifactForDigest(digest) !== null || digest in LEGACY_SCHEMA_DIGESTS;
 
 /**
  * Tool argument schemas as the MCP publishes them. The submit tool embeds the

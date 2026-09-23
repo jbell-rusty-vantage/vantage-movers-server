@@ -50,8 +50,16 @@ export const intelligenceReadSchema = z.discriminatedUnion("tool", [
 ]);
 export type IntelligenceRead = z.infer<typeof intelligenceReadSchema>;
 export type IntelligenceReadTool = IntelligenceRead["tool"] | "get_intelligence_context";
+/**
+ * Closed record catalog. The five newest types are the context-provenance pages (spec §5.1):
+ * `story_event` (one deterministic chronology sentence), `granot_state` (a Lead's current Granot
+ * state: Priority, Quoted, estimate/payment/balance, booking action), and the three prior model
+ * outputs (`prior_summary`, `prior_finding`, `prior_assessment`) the new run is shown.
+ */
+export const EVIDENCE_RECORD_TYPES = ["lead", "booking", "cancellation", "interaction", "outreach", "followup", "rep_identity", "owner_instruction", "owner_note", "agent", "granot_source", "ringcentral_queue", "ringcentral_user", "job_timeline", "contact_number",
+  "story_event", "granot_state", "prior_summary", "prior_finding", "prior_assessment"] as const;
 export const evidenceRecordSchema = z.object({
-  record_type: z.enum(["lead", "booking", "cancellation", "interaction", "outreach", "followup", "rep_identity", "owner_instruction", "owner_note", "agent", "granot_source", "ringcentral_queue", "ringcentral_user", "job_timeline", "contact_number"]),
+  record_type: z.enum(EVIDENCE_RECORD_TYPES),
   record_id: z.string().min(1).max(200),
   revision: z.string().nullable(),
   // Closed projection names. Values remain evidence, never query operators or application commands.
@@ -68,6 +76,15 @@ export const evidenceRecordSchema = z.object({
     due_at: z.string().nullable().optional(), origin: z.string().nullable().optional(),
     instruction_field: z.string().nullable().optional(), instruction_value: z.json().optional(),
     details: z.string().nullable().optional(),
+    // Context provenance (spec §5.1/§5.2): Lead move facts and Granot state, story and prior-analysis projections.
+    received_at: z.string().nullable().optional(), pickup: z.string().nullable().optional(), delivery: z.string().nullable().optional(),
+    move_date: z.string().nullable().optional(), move_size: z.string().nullable().optional(),
+    granot_priority: z.string().nullable().optional(), priority_label: z.string().nullable().optional(), quoted: z.boolean().optional(),
+    estimate: z.string().nullable().optional(), payment: z.string().nullable().optional(), balance: z.string().nullable().optional(),
+    agent_name: z.string().nullable().optional(), ingestion_origin: z.string().nullable().optional(),
+    kind: z.string().nullable().optional(), review_state: z.string().nullable().optional(), action_status: z.string().nullable().optional(),
+    actor: z.string().nullable().optional(), run_id: z.string().nullable().optional(), conversation_id: z.string().nullable().optional(),
+    happened_at: z.string().nullable().optional(), effects: z.json().optional(),
   }).strict(),
 }).strict();
 export type EvidenceRecord = z.infer<typeof evidenceRecordSchema>;

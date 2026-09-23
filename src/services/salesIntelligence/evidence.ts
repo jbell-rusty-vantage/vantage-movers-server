@@ -45,39 +45,54 @@ function evidenceIssues(
   const add = (path: string, code: string) => {
     if (issues.length < 16) issues.push({ path, code });
   };
+  const checkRef = (refAt: string, ref: IntelligenceEnvelope["findings"][number]["evidence"][number]) => {
+    const snapshot = scope.snapshots.find(
+      (entry) =>
+        entry.snapshot_id === ref.snapshot_id &&
+        entry.source === ref.source &&
+        (ref.source === "transcript"
+          ? entry.conversation_id === ref.conversation_id &&
+            entry.transcript_version === ref.transcript_version
+          : entry.record_type === ref.record_type && entry.record_id === ref.record_id),
+    );
+    if (!snapshot || snapshot.subject_key !== scope.subject_key) {
+      // A snapshot id that exists for some other source or subject is not a
+      // near miss to be explained; it is outside this run either way.
+      const known = scope.snapshots.some((entry) => entry.snapshot_id === ref.snapshot_id);
+      add(`${refAt}.snapshot_id`, known ? "citation_not_on_snapshot" : "snapshot_not_captured");
+      return;
+    }
+    if (ref.source === "vantage_record") {
+      const missing = ref.field_paths.filter((path) => !snapshot.field_paths.includes(path));
+      if (missing.length) add(`${refAt}.field_paths`, "field_path_not_exposed");
+    }
+  };
   envelope.findings.forEach((finding, index) => {
     const at = `findings.${index}`;
     if (finding.speaker_ref && !scope.speaker_refs.includes(finding.speaker_ref))
       add(`${at}.speaker_ref`, "speaker_ref_not_listed");
-    finding.evidence.forEach((ref, refIndex) => {
-      const refAt = `${at}.evidence.${refIndex}`;
-      const snapshot = scope.snapshots.find(
-        (entry) =>
-          entry.snapshot_id === ref.snapshot_id &&
-          entry.source === ref.source &&
-          (ref.source === "transcript"
-            ? entry.conversation_id === ref.conversation_id &&
-              entry.transcript_version === ref.transcript_version
-            : entry.record_type === ref.record_type && entry.record_id === ref.record_id),
-      );
-      if (!snapshot || snapshot.subject_key !== scope.subject_key) {
-        // A snapshot id that exists for some other source or subject is not a
-        // near miss to be explained; it is outside this run either way.
-        const known = scope.snapshots.some((entry) => entry.snapshot_id === ref.snapshot_id);
-        add(`${refAt}.snapshot_id`, known ? "citation_not_on_snapshot" : "snapshot_not_captured");
-        return;
-      }
-      if (ref.source === "vantage_record") {
-        const missing = ref.field_paths.filter((path) => !snapshot.field_paths.includes(path));
-        if (missing.length) add(`${refAt}.field_paths`, "field_path_not_exposed");
-      }
-    });
+    finding.evidence.forEach((ref, refIndex) => checkRef(`${at}.evidence.${refIndex}`, ref));
     if (
       "target_followup_id" in finding.value &&
       finding.value.target_followup_id &&
       !scope.allowed_followup_ids.includes(finding.value.target_followup_id)
     )
       add(`${at}.value.target_followup_id`, "followup_not_allowed");
+  });
+  // Context provenance (spec §6.2): relations and discrepancies cite like any finding, and the
+  // prior finding / story event they name must itself be a captured record of this run.
+  const captured = (type: string, id: string) =>
+    scope.snapshots.some((entry) => entry.source === "vantage_record" && entry.record_type === type &&
+      entry.record_id === id && entry.subject_key === scope.subject_key);
+  (envelope.prior_finding_relations ?? []).forEach((relation, index) => {
+    const at = `prior_finding_relations.${index}`;
+    if (!captured("prior_finding", relation.prior_finding_id)) add(`${at}.prior_finding_id`, "prior_not_observed");
+    relation.evidence.forEach((ref, refIndex) => checkRef(`${at}.evidence.${refIndex}`, ref));
+  });
+  (envelope.story_discrepancies ?? []).forEach((discrepancy, index) => {
+    const at = `story_discrepancies.${index}`;
+    if (!captured("story_event", discrepancy.story_event_id)) add(`${at}.story_event_id`, "story_event_not_observed");
+    discrepancy.evidence.forEach((ref, refIndex) => checkRef(`${at}.evidence.${refIndex}`, ref));
   });
   const target = envelope.next_step_suggestion?.target_followup_id;
   if (target && !scope.allowed_followup_ids.includes(target))

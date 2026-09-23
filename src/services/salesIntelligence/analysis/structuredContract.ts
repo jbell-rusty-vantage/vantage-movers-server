@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  CSI_ENVELOPE_SCHEMA_VERSION, CSI_ENVELOPE_BOUNDS, intelligenceActionValueSchema,
+  CSI_ENVELOPE_SCHEMA_VERSION, CSI_ENVELOPE_BOUNDS, PRIOR_FINDING_RELATIONS, intelligenceActionValueSchema,
   intelligenceEnvelopeSchema, intelligenceEvidenceRefSchema, intelligenceFindingSchema,
   type IntelligenceEvidenceRef,
 } from "../../../validation/intelligence/intelligenceEnvelope.validation";
@@ -41,6 +41,25 @@ export type SummaryStep = z.infer<typeof summaryStepSchema>;
 /** csi-summary-v2 generation contract: the block is required because strict providers reject optional keys. */
 export const summaryGenerationSchema = summaryStepSchema.extend({ move_evidence: summaryMoveEvidenceSchema }).strict();
 
+/**
+ * Context provenance §6.2: the two additive findings-step outputs. Indices point into the
+ * prompt's `prior.findings` and `story.events` lists; the server resolves them to record ids.
+ * Both arrays are required in the generation contract (strict providers reject optional keys)
+ * and empty when nothing applies.
+ */
+const priorFindingRelationOutputSchema = z.object({
+  prior_index: z.number().int().nonnegative(),
+  relation: z.enum(PRIOR_FINDING_RELATIONS),
+  by_finding_index: z.number().int().nonnegative().nullable(),
+  evidence: z.array(minimalEvidenceSchema).max(CSI_ENVELOPE_BOUNDS.max_evidence_refs_per_finding),
+  note: envelopeShape.summary.shape.overview.max(200).nullable(),
+}).strict();
+const storyDiscrepancyOutputSchema = z.object({
+  story_index: z.number().int().nonnegative(),
+  claim: z.string().min(1).max(300),
+  evidence: z.array(minimalEvidenceSchema).min(1).max(CSI_ENVELOPE_BOUNDS.max_evidence_refs_per_finding),
+}).strict();
+
 export const minimalFindingsSchema = z.object({
   summary: summaryTextSchema,
   findings: z.array(z.discriminatedUnion("kind", [minimalOptions[0], ...minimalOptions.slice(1)]))
@@ -53,6 +72,8 @@ export const minimalFindingsSchema = z.object({
     assessment: envelopeShape.owner_instruction_assessments.element.shape.assessment,
     reason: envelopeShape.owner_instruction_assessments.element.shape.reason,
   }).strict()),
+  prior_finding_relations: z.array(priorFindingRelationOutputSchema).max(60),
+  story_discrepancies: z.array(storyDiscrepancyOutputSchema).max(20),
 }).strict();
 export type MinimalFindings = z.infer<typeof minimalFindingsSchema>;
 
@@ -90,6 +111,10 @@ export type StructuredExpansionInputs = {
   calls: readonly StructuredCall[];
   /** Ordered server-owned instruction list shown to the model, including current corrections. */
   instructions?: readonly { id: string; revision: number }[];
+  /** The `prior_finding` record ids in the order the prompt listed them (context provenance §5.4). */
+  prior_finding_ids?: readonly string[];
+  /** The `story_event` record ids in the order the prompt listed them. */
+  story_event_ids?: readonly string[];
 };
 
 export function structuredInstructions(context: readonly CapturedPromptPage[]) {
@@ -112,10 +137,10 @@ export function expandStructuredFindings(raw: unknown, inputs: StructuredExpansi
       subject_key: inputs.subject_key, source: "transcript", conversation_id: page.data.transcript.conversation_id,
       transcript_version: page.data.transcript.transcript_version, record_type: null, record_id: null, field_paths: [] });
   }
-  const findings = minimal.findings.map((finding, index) => {
-    const transcriptSpeakers: Array<string | null> = [];
-    const evidence = finding.evidence.flatMap((ref, refIndex): IntelligenceEvidenceRef[] => {
-      const path = `findings.${index}.evidence.${refIndex}`;
+  type MinimalRef = z.infer<typeof minimalEvidenceSchema>;
+  const expandRefs = (refs: readonly MinimalRef[], at: string, transcriptSpeakers?: Array<string | null>) =>
+    refs.flatMap((ref, refIndex): IntelligenceEvidenceRef[] => {
+      const path = `${at}.evidence.${refIndex}`;
       if (ref.source === "transcript") {
         const call = inputs.calls[ref.call_index];
         const transcript = call?.data.transcript;
@@ -129,7 +154,7 @@ export function expandStructuredFindings(raw: unknown, inputs: StructuredExpansi
           const matching = facts.filter(fact => fact.segment_ids.includes(id));
           return matching.length > 0 && matching.every(fact => fact.speaker === "rep");
         });
-        transcriptSpeakers.push(repSegments && speakers.length === 1 ? speakers[0] : null);
+        transcriptSpeakers?.push(repSegments && speakers.length === 1 ? speakers[0] : null);
         return [{ source: "transcript", snapshot_id: call.snapshot_id,
           conversation_id: transcript.conversation_id, transcript_version: transcript.transcript_version,
           segment_ids: ref.segment_ids, quote: ref.quote }];
@@ -141,9 +166,30 @@ export function expandStructuredFindings(raw: unknown, inputs: StructuredExpansi
       if (!matches.length) refuse(`${path}.id`, "record_not_in_context");
       return matches;
     });
+  const findings = minimal.findings.map((finding, index) => {
+    const transcriptSpeakers: Array<string | null> = [];
+    const evidence = expandRefs(finding.evidence, `findings.${index}`, transcriptSpeakers);
     const uniqueSpeakers = [...new Set(transcriptSpeakers)];
     return { ...finding, evidence, key: `finding-${index + 1}`, confidence: null,
       speaker_ref: finding.actor === "rep" && uniqueSpeakers.length === 1 ? uniqueSpeakers[0] : null };
+  });
+  // Prior relations and story discrepancies (§6.2): indices resolve to the record ids the run was shown.
+  const priorIds = inputs.prior_finding_ids ?? [], storyIds = inputs.story_event_ids ?? [];
+  const relations = minimal.prior_finding_relations.map((relation, index) => {
+    const at = `prior_finding_relations.${index}`;
+    const priorId = priorIds[relation.prior_index];
+    if (!priorId) refuse(`${at}.prior_index`, "prior_not_observed");
+    if (relation.by_finding_index !== null && !findings[relation.by_finding_index]) refuse(`${at}.by_finding_index`, "finding_not_in_envelope");
+    if (relation.relation !== "cannot_determine" && !relation.evidence.length) refuse(`${at}.evidence`, "relation_without_evidence");
+    return { prior_finding_id: priorId, relation: relation.relation,
+      by_finding_key: relation.by_finding_index === null ? null : findings[relation.by_finding_index].key,
+      evidence: expandRefs(relation.evidence, at), note: relation.note };
+  });
+  const discrepancies = minimal.story_discrepancies.map((discrepancy, index) => {
+    const at = `story_discrepancies.${index}`;
+    const storyId = storyIds[discrepancy.story_index];
+    if (!storyId) refuse(`${at}.story_index`, "story_event_not_observed");
+    return { story_event_id: storyId, claim: discrepancy.claim, evidence: expandRefs(discrepancy.evidence, at) };
   });
   const envelope = intelligenceEnvelopeSchema.parse({
     schema_version: CSI_ENVELOPE_SCHEMA_VERSION,
@@ -156,6 +202,8 @@ export function expandStructuredFindings(raw: unknown, inputs: StructuredExpansi
       return { instruction_id: instruction.id, instruction_revision: instruction.revision,
         assessment: assessment.assessment, reason: assessment.reason, finding_keys: [] };
     }),
+    ...(relations.length ? { prior_finding_relations: relations } : {}),
+    ...(discrepancies.length ? { story_discrepancies: discrepancies } : {}),
   });
   validateEnvelopeEvidence(envelope, { subject_key: inputs.subject_key, snapshots: manifest,
     allowed_followup_ids: allPages.flatMap(page => page.data.allowed_followup_ids),

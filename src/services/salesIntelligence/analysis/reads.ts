@@ -24,15 +24,23 @@ import { coverageDtoSchema } from "../dto";
 import { resolveRepIdentityAt, type TemporalRepLink } from "../repIdentity/resolve";
 import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
 import { stateWithActions } from "../outreach/transitions";
+import { normalizePriority, priorityLabel } from "../outreach/leadProgress";
+import { moveViewsForLead, type LeadMoveSource } from "../assessment/views";
 import { subjectKey } from "../outreach/types";
 import { CsiError } from "../auth";
 import { readPageSchema, type EvidenceRecord, type IntelligenceRead, type ReadPage, type ReadScope } from "./contracts";
 import { summaryStepSchema } from "./structuredContract";
 
 const segmentSchema = z.object({ sid: z.number().int().nonnegative(), start_ms: z.number().nullable(), end_ms: z.number().nullable(), timing_source: z.enum(["provider", "unavailable"]), speaker: z.enum(["rep", "customer", "unknown"]), text: z.string() }).strict();
+/** The Subject Story prose beside its `story_event` records (context provenance spec §4.6/§5.4). Data, never instruction. */
+export const storyBlockSchema = z.object({
+  as_of: z.string(), opening: z.string().max(4000), prose: z.string().max(60_000), tail: z.string().max(4000),
+  coverage: z.json(), candidates: z.array(z.json()).max(60), granot: z.array(z.json()).max(100), digest: z.string(),
+}).strict();
 export const readContentSchema = z.object({ page: readPageSchema,
   analysis_summary: summaryStepSchema.optional(),
   transcript: z.object({ conversation_id: z.string(), transcript_version: z.string(), source_snapshot_id: z.string(), segments: z.array(segmentSchema).max(100) }).strict().optional(),
+  story: storyBlockSchema.optional(),
   coverage: coverageDtoSchema, allowed_followup_ids: z.array(z.string()).max(100),
   instructions: z.array(z.object({ id: z.string(), revision: z.number().int() }).strict()).max(100), speaker_refs: z.array(z.string()).max(100),
 }).strict();
@@ -121,9 +129,17 @@ export function leadRelevance(scope: ReadScope, model: "FormLead" | "CallLead") 
   if (phone) clauses.push(...leadPhoneMatchClauses(model, [phone]));
   return { $or: clauses };
 }
-const projection = { name: 1, customer_name: 1, phone_number: 1, job_no: 1, normalized_job_no: 1, source_company: 1, source: 1, booked: 1, cancelled: 1, duplicate: 1, bad_lead: 1, no_sync: 1, domain_revision: 1, updatedAt: 1, book_date: 1, lead_ref: 1, lead_model: 1, receiver_agent: 1 };
+const projection = { name: 1, customer_name: 1, phone_number: 1, job_no: 1, normalized_job_no: 1, source_company: 1, source_company_label_snapshot: 1, source: 1, booked: 1, cancelled: 1, duplicate: 1, bad_lead: 1, no_sync: 1, domain_revision: 1, updatedAt: 1, book_date: 1, lead_ref: 1, lead_model: 1, receiver_agent: 1,
+  timestamp: 1, granot_priority: 1, quoted: 1, receiver_agent_name_snapshot: 1, ingestion_origin: 1, pickup_city: 1, pickup_state: 1, pickup_zip: 1, delivery_city: 1, delivery_state: 1, destination_zip: 1, delivery_zip: 1, move_date: 1, move_size: 1, granot_move_size: 1, cubic_feet: 1, current_move_provenance: 1 };
+const place = (endpoint: { city: string | null; state: string | null; zip: string | null }) => [endpoint.city, endpoint.state, endpoint.zip].filter(Boolean).join(", ") || null;
+/** Official Lead fields plus the move facts, receipt time and Granot Priority/Quoted (context provenance §5.2). Email is never sent. */
 export function projectLead(row: Record<string, unknown>, model: "FormLead" | "CallLead"): EvidenceRecord {
-  return { record_type: "lead", record_id: String(row._id), revision: row.domain_revision == null ? iso(row.updatedAt) : String(row.domain_revision), fields: { model, name: text(row.name), phone: text(row.phone_number), job_no: text(row.job_no), source: text(row.source_company), booked: Boolean(row.booked), cancelled: Boolean(row.cancelled), duplicate: Boolean(row.duplicate), bad_lead: Boolean(row.bad_lead), no_sync: Boolean(row.no_sync), agent_id: row.receiver_agent ? String(row.receiver_agent) : null } };
+  const move = moveViewsForLead(row as LeadMoveSource, model).canonical_current;
+  const priority = normalizePriority(row.granot_priority);
+  return { record_type: "lead", record_id: String(row._id), revision: row.domain_revision == null ? iso(row.updatedAt) : String(row.domain_revision), fields: { model, name: text(row.name), phone: text(row.phone_number), job_no: text(row.job_no),
+    source: text(row.source_company_label_snapshot) ?? text(row.source_company), booked: Boolean(row.booked), cancelled: Boolean(row.cancelled), duplicate: Boolean(row.duplicate), bad_lead: Boolean(row.bad_lead), no_sync: Boolean(row.no_sync), agent_id: row.receiver_agent ? String(row.receiver_agent) : null,
+    received_at: iso(row.timestamp), pickup: place(move.pickup), delivery: place(move.delivery), move_date: move.move_date, move_size: move.move_size ?? move.granot_move_size,
+    granot_priority: priority, priority_label: priorityLabel(priority), quoted: Boolean(row.quoted), agent_name: text(row.receiver_agent_name_snapshot), ingestion_origin: text(row.ingestion_origin) } };
 }
 /** Official any-known-contact paths, scoped projection: broad CRUD uses global models and is deliberately not imported. */
 export async function readLeads(scope: ReadScope, args: SearchArgs): Promise<ReadPage> {
@@ -195,7 +211,9 @@ async function context(scope: ReadScope, result: ReadContent) {
   result.page.records.push({ record_type: "contact_number", record_id: String(number._id), revision: String(number.revision), fields: { phone: number.e164, status: number.contact_eligibility.state, certainty: number.classification } });
   const outreach = scope.outreach_record_id ? await getOutreachRecordModel().findOne({ _id: scope.outreach_record_id, primary_contact_number_id: scope.contact_number_id }).lean() : null;
   if (scope.outreach_record_id && !outreach) return fail();
-  const records = outreach ? [outreach] : !scope.conversation_id ? await getOutreachRecordModel().find({ primary_contact_number_id: scope.contact_number_id }).sort({ _id: 1 }).limit(101).lean() : [];
+  // Every run sees the number's Outreach work and follow-ups (context provenance §7.1): a conversation run on a
+  // Number Review subject used to see none, so it re-created follow-ups the record already carried.
+  const records = outreach ? [outreach] : await getOutreachRecordModel().find({ primary_contact_number_id: scope.contact_number_id }).sort({ _id: 1 }).limit(101).lean();
   if (records.length > 100) throw new CsiError("EVIDENCE_LIMIT_REACHED");
   const conversations = !scope.conversation_id ? await getLeadConversationModel().find({ contact_number_id: scope.contact_number_id }).sort({ _id: 1 }).limit(101).lean() : [];
   if (conversations.length > 100) throw new CsiError("EVIDENCE_LIMIT_REACHED");

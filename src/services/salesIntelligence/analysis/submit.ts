@@ -23,9 +23,14 @@ export async function readIntelligenceSubmission(auth: RunAuthorization) {
   return {run_id:String(run._id), status:run.status, submission:submission ? receipt(submission) : null,
     prompt_context:{rendered_prompt:run.rendered_prompt,prompt_version:run.prompt_version,schema_version:run.schema_version,schema_digest:run.schema_digest,mode:run.mode}};
 }
-/** Immutable intake + manifest + audit + durable application intent. No effects, model or messages. */
+/**
+ * Immutable intake + manifest + audit + durable application intent. No effects, model or messages.
+ * `deps.raw_output` is the exact provider object of the structured findings step, written in the
+ * same `$set` as the accepted envelope so both are finalized together (context provenance §2 R2).
+ * It is never accepted from tool arguments: the MCP submit path has no way to supply it.
+ */
 export async function submitIntelligenceAnalysis(auth:RunAuthorization, raw:unknown,
-  deps:{beforeCommit?:()=>Promise<void>;afterCommit?:()=>Promise<void>} = {}):Promise<SubmissionReceipt> {
+  deps:{beforeCommit?:()=>Promise<void>;afterCommit?:()=>Promise<void>;raw_output?:unknown} = {}):Promise<SubmissionReceipt> {
   const input = intelligenceToolArguments.submit_intelligence_analysis.parse(raw);
   if (!auth.claims.tools.includes("submit_intelligence_analysis")) throw new CsiError("RUN_SCOPE_DENIED");
   const hash = payloadHash(input.envelope);
@@ -74,7 +79,8 @@ export async function submitIntelligenceAnalysis(auth:RunAuthorization, raw:unkn
     const [submission] = await getIntelligenceSubmissionModel().create([{_id:submissionId,run_id:run._id,idempotency_key:input.idempotency_key,
       payload_hash:hash,envelope:input.envelope,received_at:now,application_job_id:job._id,manifest_digest}],{session});
     const updated = await getIntelligenceRunModel().updateOne({_id:run._id,revision:run.revision,status:"running",finalized_at:null},
-      {$set:{status:"submitted",submitted_at:now,finalized_at:now,manifest_digest,manifest_snapshot_ids:snapshots.map(s=>s._id),output:input.envelope},$inc:{revision:1}},{session,runValidators:true});
+      {$set:{status:"submitted",submitted_at:now,finalized_at:now,manifest_digest,manifest_snapshot_ids:snapshots.map(s=>s._id),output:input.envelope,
+        ...(deps.raw_output !== undefined ? { raw_output: deps.raw_output } : {})},$inc:{revision:1}},{session,runValidators:true});
     if (updated.modifiedCount !== 1) throw new CsiError("REVISION_CONFLICT");
     await appendCsiAudit({session,command_id:toObjectId(submissionId),now,actor:auth.actor}, {subject_key:run.subject_key,event_kind:"intelligence.submitted",
       prior:{status:"running"},current:{status:"submitted",submission_id:submissionId,application_job_id:String(job._id),manifest_digest},target_id:String(run._id),revision:run.revision+1,kind:"analysis"});
