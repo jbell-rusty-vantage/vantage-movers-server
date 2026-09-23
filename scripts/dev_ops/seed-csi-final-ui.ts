@@ -13,6 +13,16 @@
  *
  * Every subject gets a stable label in `si_seed_manifest` (label, states, ids), which the contract
  * capture reads. `assert-si-seed-states.ts` checks every state against the source collections.
+ *
+ * Attention flag (CF-PREP, 2026-09-23). The final publish uses `SALES_INTELLIGENCE_ATTENTION_V2` off
+ * unless `--attention-v2` is passed (closed partition, header metrics, index). To switch an existing
+ * seed between the two contract-capture modes without rebuilding it:
+ *
+ *   node --import tsx scripts/dev_ops/seed-csi-final-ui.ts --publish-attention on    # flag-on snapshot
+ *   node --import tsx scripts/dev_ops/seed-csi-final-ui.ts --publish-attention off   # flag-off snapshot
+ *
+ * That mode only publishes a new Attention snapshot of `testvantagemovers_finalui` (the manifest must
+ * exist) and writes nothing else; the newest published snapshot is the one `GET /attention` reads.
  */
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -23,6 +33,16 @@ import { SI_CONTRACTS_DIR, SI_SEED_DATABASE, SI_SEED_DEPLOYMENT, SI_SEED_MANIFES
 
 const DATABASE = process.env.SI_SEED_DATABASE ?? SI_SEED_DATABASE;
 assertSeedDatabase(DATABASE);
+const ARGS = process.argv.slice(2);
+const PUBLISH_ONLY = (() => {
+  const i = ARGS.indexOf("--publish-attention");
+  if (i < 0) return null;
+  const value = ARGS[i + 1];
+  if (value !== "on" && value !== "off") throw new Error("--publish-attention on|off");
+  return value;
+})();
+/** ATTENTION_V2 for the snapshot this run publishes. */
+const ATTENTION_V2 = PUBLISH_ONLY ? PUBLISH_ONLY === "on" : ARGS.includes("--attention-v2");
 Object.assign(process.env, {
   CSI_REPLICA_TEST: "true", TEST_MODE: "true", TEST_MONGO_DATABASE_NAME: DATABASE, MONGO_URI: SI_SEED_REPLICA, MONGODB_URI: SI_SEED_REPLICA,
   SALES_INTELLIGENCE_DEPLOYMENT_ID: SI_SEED_DEPLOYMENT, SHEET_SYNC_MODE: "disabled",
@@ -30,6 +50,7 @@ Object.assign(process.env, {
   SALES_INTELLIGENCE_CAPTURE_CALL_LOG: "false", SALES_INTELLIGENCE_CAPTURE_WEBHOOK: "false", SALES_INTELLIGENCE_DIRECTORY_SYNC: "false",
   SALES_INTELLIGENCE_MEDIA_ENABLED: "false", SALES_INTELLIGENCE_STT_ENABLED: "false", SALES_INTELLIGENCE_ATTACHMENT_REFRESH: "false",
   SALES_INTELLIGENCE_OUTREACH_ENSURE: "true", SALES_INTELLIGENCE_AUTO_ATTACH: "false", SALES_INTELLIGENCE_LEAD_PROGRESS: "true",
+  SALES_INTELLIGENCE_ATTENTION_V2: ATTENTION_V2 ? "true" : "false", SALES_INTELLIGENCE_TIMELINE_V2: "false",
   SALES_INTELLIGENCE_ANALYSIS_PRICING_VERSION: "synthetic", SALES_INTELLIGENCE_ANALYSIS_INPUT_CENTS_PER_MILLION: "1",
   SALES_INTELLIGENCE_ANALYSIS_OUTPUT_CENTS_PER_MILLION: "1", SALES_INTELLIGENCE_EXTRACTION_MODEL: "openai/gpt-5-mini",
   // Empty, not absent: a transitive dotenv/config import must not refill provider credentials from .env.
@@ -62,6 +83,23 @@ const AREAS = ["305", "407", "813", "404", "617", "702", "512", "303", "615", "9
 let numberSerial = 0, jobSerial = 5_590_000, keySerial = 0;
 const fakeName = () => `${pick(FIRST)} ${pick(LAST)}`;
 const nextJob = () => String(++jobSerial);
+
+/** `--publish-attention on|off`: republish the Attention snapshot of an existing seed; nothing else is written. */
+async function republishAttention() {
+  globalThis.fetch = (async () => { throw new Error("External traffic forbidden in the final-UI seed"); }) as typeof fetch;
+  const { connectMongo } = await import("../../src/db");
+  const { getMongoDatabaseName } = await import("../../src/config/domain/runtime");
+  const { publishAttentionSnapshot } = await import("../../src/services/salesIntelligence/outreach/attention");
+  await connectMongo();
+  if (getMongoDatabaseName() !== DATABASE) throw new Error("wrong database");
+  const db = mongoose.connection.useDb(DATABASE, { useCache: true }).db!;
+  if ((await db.admin().command({ hello: 1 })).setName !== "csi01") throw new Error("not the csi01 replica");
+  if (!(await db.collection(SI_SEED_MANIFEST).countDocuments({}))) throw new Error(`no ${SI_SEED_MANIFEST} in ${DATABASE}: run the full seed first`);
+  const snapshot = await publishAttentionSnapshot({ attentionV2: ATTENTION_V2 });
+  if (snapshot.status !== "published") throw new Error(`attention publish: ${JSON.stringify(snapshot)}`);
+  console.log(`Attention snapshot republished on ${DATABASE} with ATTENTION_V2 ${ATTENTION_V2 ? "on" : "off"}: ${JSON.stringify(snapshot)}`);
+  await mongoose.disconnect();
+}
 
 async function main() {
   globalThis.fetch = (async () => { throw new Error("External traffic forbidden in the final-UI seed"); }) as typeof fetch;
@@ -982,7 +1020,7 @@ async function main() {
   });
   const rebuild = await drainRebuildJobs(numberIds.length + 10);
   if (rebuild.completed !== numberIds.length) throw new Error(`rebuild completed ${rebuild.completed} of ${numberIds.length}: ${JSON.stringify(rebuild)}`);
-  const snapshot = await publishAttentionSnapshot();
+  const snapshot = await publishAttentionSnapshot({ attentionV2: ATTENTION_V2 });
   if (snapshot.status !== "published") throw new Error(`attention publish: ${JSON.stringify(snapshot)}`);
 
   // ── manifest: collection in the seed DB + a copy for the contract workspace ──────────────
@@ -996,4 +1034,4 @@ async function main() {
   console.table(manifest.map(m => ({ label: m.label, states: m.states.join(","), outreach: m.outreach_record_id, number: m.contact_number_id })));
   await mongoose.disconnect();
 }
-main().then(() => process.exit(0)).catch(error => { console.error(error instanceof Error ? error.stack ?? error.message : String(error)); process.exit(1); });
+(PUBLISH_ONLY ? republishAttention() : main()).then(() => process.exit(0)).catch(error => { console.error(error instanceof Error ? error.stack ?? error.message : String(error)); process.exit(1); });

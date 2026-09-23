@@ -3,7 +3,8 @@
  *
  *   node --env-file=.env --import tsx scripts/dev_ops/serve-csi-local.ts
  *
- * Environment: `CSI_LOCAL_DATABASE` (default `testvantagemovers_madem0`), `PORT` (default 3999).
+ * Environment: `CSI_LOCAL_DATABASE` (default `testvantagemovers_madem0`), `PORT` (default 3999),
+ * `CSI_LOCAL_FLAGS` (optional, e.g. `ATTENTION_V2,TIMELINE_V2`; unlisted final-data flags are forced off).
  * The Mongo URI is hard-coded to loopback; Atlas is never reached. The Admin proxy signing
  * secret is read from `../vantage-admin/.env` so the isolated Admin copy can sign Owner
  * requests; the value is never printed. Company/personal gateway keys are removed from the
@@ -25,6 +26,17 @@ function adminSecret(): string {
 process.env.AI_GATEWAY_API_KEY = "";
 process.env.PERSONAL_AI_GATEWAY_API_KEY = "";
 process.env.SALES_INTELLIGENCE_MCP_ENDPOINT = "";
+// CF-PREP: no Blob store. The Owner media route would otherwise read the store named in `.env` for a
+// seeded pathname; blank, it writes its local audit row and then fails the read (`BlobReadFailed`).
+process.env.BLOB_READ_WRITE_TOKEN = "";
+process.env.BLOB_STORE_ID = "";
+// CF-PREP: `CSI_LOCAL_FLAGS=ATTENTION_V2,TIMELINE_V2` turns the final-data flags on. Each of the two is
+// set explicitly (listed → "true", else "false") so `.env` or the shell can never decide a capture's mode.
+const LOCAL_FLAGS = ["ATTENTION_V2", "TIMELINE_V2"] as const;
+const requested = (process.env.CSI_LOCAL_FLAGS ?? "").split(",").map(v => v.trim().toUpperCase()).filter(Boolean);
+const unknownFlags = requested.filter(v => !(LOCAL_FLAGS as readonly string[]).includes(v));
+if (unknownFlags.length) throw new Error(`CSI_LOCAL_FLAGS: unknown flag(s) ${unknownFlags.join(", ")}; allowed ${LOCAL_FLAGS.join(", ")}`);
+for (const flag of LOCAL_FLAGS) process.env[`SALES_INTELLIGENCE_${flag}`] = requested.includes(flag) ? "true" : "false";
 Object.assign(process.env, {
   TEST_MODE: "true", TEST_MONGO_DATABASE_NAME: DATABASE, MONGO_URI: "mongodb://127.0.0.1:27189/?replicaSet=csi01",
   MONGODB_URI: "mongodb://127.0.0.1:27189/?replicaSet=csi01",
@@ -36,5 +48,6 @@ Object.assign(process.env, {
   SALES_INTELLIGENCE_LEAD_PROGRESS: "true", RINGCENTRAL_ACCOUNT_ID: "", CRON_SECRET: "synthetic-cron-secret",
   VANTAGE_ADMIN_PROXY_SIGNING_SECRET: adminSecret(), PORT: process.env.PORT ?? "3999",
 });
-console.log(`Local CSI API: database ${DATABASE}, loopback replica csi01:27189, port ${process.env.PORT}; gateway keys removed from the process`);
+console.log(`Local CSI API: database ${DATABASE}, loopback replica csi01:27189, port ${process.env.PORT}; gateway and Blob keys removed from the process; ` +
+  `flags ${LOCAL_FLAGS.map(f => `${f}=${process.env[`SALES_INTELLIGENCE_${f}`]}`).join(" ")}`);
 void import("./../dev-server");
