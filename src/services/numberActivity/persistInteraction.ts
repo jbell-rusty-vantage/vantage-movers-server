@@ -504,7 +504,49 @@ function rollupsFor(projection: InteractionProjection) {
     attached_lead_count: 0,
     candidate_lead_count: 0,
     open_outreach_count: 0,
+    recordings_total: projection.recordings.length,
+    // Owned by analysis apply and Outreach ensure (Number rollups Service doc); a new Number has neither yet.
+    conversations_analyzed_total: 0,
+    last_analyzed_at: null,
+    outreach_records_total: 0,
   };
+}
+
+/** The rollup fields capture owns incrementally (data spec §8). */
+export type CaptureRollups = {
+  interactions_total: number;
+  inbound_total: number;
+  outbound_total: number;
+  recordings_total: number;
+  last_inbound_at: Date | null;
+  last_outbound_at: Date | null;
+};
+
+/**
+ * Pure delta: removes `prev`'s contribution and adds `next`'s. A null `prev` is a new
+ * canonical interaction on this Number; a null `next` is one leaving it (merged away,
+ * re-pointed or no longer eligible). Counts never go below zero: a Number written before
+ * `recordings_total` existed reads 0 until the rebuild sweep, and must not go negative
+ * when an older interaction leaves it.
+ */
+export function captureRollupDelta(
+  current: Partial<CaptureRollups> | null | undefined,
+  prev: Pick<InteractionProjection, "direction" | "recordings"> | null,
+  next: Pick<InteractionProjection, "direction" | "recordings" | "started_at"> | null,
+): CaptureRollups {
+  const count = (value: number | null | undefined) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+  const dir = (row: typeof prev, direction: string) => (row?.direction === direction ? 1 : 0);
+  const out: CaptureRollups = {
+    interactions_total: Math.max(0, count(current?.interactions_total) - (prev ? 1 : 0) + (next ? 1 : 0)),
+    inbound_total: Math.max(0, count(current?.inbound_total) - dir(prev, "Inbound") + dir(next, "Inbound")),
+    outbound_total: Math.max(0, count(current?.outbound_total) - dir(prev, "Outbound") + dir(next, "Outbound")),
+    recordings_total: Math.max(0, count(current?.recordings_total) - (prev?.recordings.length ?? 0) + (next?.recordings.length ?? 0)),
+    last_inbound_at: current?.last_inbound_at ?? null,
+    last_outbound_at: current?.last_outbound_at ?? null,
+  };
+  if (next?.direction === "Inbound") out.last_inbound_at = laterOf(out.last_inbound_at, next.started_at);
+  if (next?.direction === "Outbound") out.last_outbound_at = laterOf(out.last_outbound_at, next.started_at);
+  return out;
 }
 
 /** Applies the difference between `prev` and `next` for one number under revision CAS. */
@@ -526,27 +568,7 @@ async function applyRollupDelta(
       "Interaction references a Contact Number row that does not exist",
     );
   }
-  const rollups = { ...row.rollups };
-  const delta = (prev ? -1 : 0) + (next ? 1 : 0);
-  rollups.interactions_total = Math.max(0, rollups.interactions_total + delta);
-  rollups.inbound_total = Math.max(
-    0,
-    rollups.inbound_total -
-      (prev?.direction === "Inbound" ? 1 : 0) +
-      (next?.direction === "Inbound" ? 1 : 0),
-  );
-  rollups.outbound_total = Math.max(
-    0,
-    rollups.outbound_total -
-      (prev?.direction === "Outbound" ? 1 : 0) +
-      (next?.direction === "Outbound" ? 1 : 0),
-  );
-  if (next?.direction === "Inbound") {
-    rollups.last_inbound_at = laterOf(rollups.last_inbound_at, next.started_at);
-  }
-  if (next?.direction === "Outbound") {
-    rollups.last_outbound_at = laterOf(rollups.last_outbound_at, next.started_at);
-  }
+  const rollups = captureRollupDelta(row.rollups, prev, next);
   const providerNames = [...row.provider_names];
   if (providerName && !providerNames.includes(providerName)) {
     providerNames.push(providerName);
@@ -558,8 +580,24 @@ async function applyRollupDelta(
   const result = await ContactNumber.updateOne(
     { _id: numberId, revision: row.revision },
     {
+      // Dotted paths for the capture-owned rollups only, never the whole `rollups`
+      // object. `conversations_analyzed_total`, `last_analyzed_at` and
+      // `outreach_records_total` are `$inc`/`$max`-ed by analysis apply and
+      // Outreach ensure without a revision bump, so replacing the object from
+      // this read would be a read-modify-write of fields capture does not own.
+      // Two guarantees keep those increments: (1) this write never names them;
+      // (2) every rollup writer runs in a transaction, and a transaction that
+      // writes this document after another write to it committed since its
+      // snapshot aborts with a WriteConflict and is retried from a fresh read.
+      // The revision CAS still fences the read-modify-write writers (capture,
+      // rebuild) against each other. See "Number rollups" in the capture doc.
       $set: {
-        rollups,
+        "rollups.interactions_total": rollups.interactions_total,
+        "rollups.inbound_total": rollups.inbound_total,
+        "rollups.outbound_total": rollups.outbound_total,
+        "rollups.recordings_total": rollups.recordings_total,
+        "rollups.last_inbound_at": rollups.last_inbound_at,
+        "rollups.last_outbound_at": rollups.last_outbound_at,
         provider_names: providerNames,
         search_terms: searchTerms,
         last_activity_at: laterOf(row.last_activity_at, next?.started_at ?? null) ?? row.last_activity_at,

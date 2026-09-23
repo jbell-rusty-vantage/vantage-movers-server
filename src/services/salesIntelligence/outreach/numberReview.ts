@@ -9,6 +9,7 @@ import { resolvePolicy } from "../policy";
 import { type CsiTransactionContext } from "../transactions";
 import { authoritativeClosure } from "./transitions";
 import { refreshRecord } from "./store";
+import { countOutreachRecordOnNumber } from "./ensure";
 
 /** Owner opening and D's clear sales commitment share eligibility; neither can escape related closed/ambiguous Leads. */
 export async function ensureNumberReview(numberId: string, trigger: "owner_open" | "clear_sales_commitment", context: CsiTransactionContext, interaction?: InteractionIdentity) {
@@ -34,6 +35,8 @@ export async function ensureNumberReview(numberId: string, trigger: "owner_open"
     record = new (getOutreachRecordModel())({ subject: { kind: "number_review", contact_number_id: numberId }, primary_contact_number_id: numberId,
       trigger_kind: trigger, trigger_at: at.started_at, policy_version: policy.version });
     await refreshRecord(record, context, "number_review_opened", null);
+    // Number rollup `outreach_records_total` (data spec §8): primary and subject are this Number, counted once.
+    await countOutreachRecordOnNumber(numberId, context.session);
   }
   return record;
 }

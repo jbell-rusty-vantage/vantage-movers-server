@@ -89,7 +89,11 @@ async function purgeContent(root: Document, kind: "snapshot" | "run", at: Date, 
     ...(numberId ? [{ contact_number_id: numberId }] : []), { outreach_record_id: { $in: recordIds } },
   ] }, { $set: { content_purged_at: at, body_as_sent: "", authorized_command: null } }, options);
   if (numberId) {
-    await database.collection("contact_numbers").updateOne({ _id: numberId }, { $set: { running_summary: null, intelligence_schedule: null, content_purge_pending: more }, $inc: { revision: 1, retention_epoch: 1 } }, options);
+    // Number rollups (data spec §8): the next statement nulls `latest_completed_run_id` on every
+    // conversation of this Number in this same transaction, so the exact analysed count is 0.
+    // A $set, not a decrement or an enqueued rebuild: it is exact whatever the stored value was.
+    await database.collection("contact_numbers").updateOne({ _id: numberId }, { $set: { running_summary: null, intelligence_schedule: null, content_purge_pending: more,
+      "rollups.conversations_analyzed_total": 0, "rollups.last_analyzed_at": null }, $inc: { revision: 1, retention_epoch: 1 } }, options);
     await database.collection(LEAD_CONVERSATION_COLLECTION).updateMany({ contact_number_id: numberId }, { $set: { summary: null, latest_completed_run_id: null } }, options);
   }
   // Move assessment §7: a summary must not bypass a purge of its underlying evidence.
@@ -175,7 +179,10 @@ export async function runRetentionOnce(overrides: {
     if (days.activity_days > 0) {
       const rows = await db().collection("call_interactions").find({ started_at: { $lte: cutoff(days.activity_days) }, purged_at: null }).sort({ started_at: 1 }).limit(limit).toArray();
       for (const row of rows) await commit(async session => {
+        // Read in the transaction: the recordings given back are exactly the ones this write clears.
+        const current = await db().collection("call_interactions").findOne({ _id: row._id, purged_at: null }, { session, projection: { recordings: 1, merged_into_id: 1, contact_number_id: 1 } });
         await db().collection("call_interactions").updateOne({ _id: row._id }, { $set: { purged_at: started, parties: [], legs: [], recordings: [], external_e164: null, provider_names: [] } }, { session });
+        if (current) await releasePurgedRecordings(current, session);
         // Keep provider identifiers and aliases to prevent replay from resurrecting the call.
         await db().collection("outreach_followups").updateMany({ source_interaction_id: row._id }, { $set: { purged_at: started, description: "Activity removed by retention.", date_text: null, date_resolution: null, status: "cancelled" } }, { session });
       });
@@ -187,10 +194,20 @@ export async function runRetentionOnce(overrides: {
   } finally { await leases.release({ token, now: now() }).catch(() => undefined); }
 }
 
+/** `rollups.recordings_total` counts canonical, unpurged interactions: a purged canonical row gives its
+ * recordings back, clamped at 0 for a Number the rebuild sweep has not reached yet. A merged tombstone's
+ * recordings were already removed from its Number when it was merged. */
+async function releasePurgedRecordings(row: Document, session: ClientSession) {
+  const count = Array.isArray(row.recordings) ? row.recordings.length : 0;
+  if (!count || row.merged_into_id || !row.contact_number_id) return;
+  await db().collection("contact_numbers").updateOne({ _id: row.contact_number_id }, [{ $set: { "rollups.recordings_total":
+    { $max: [0, { $subtract: [{ $ifNull: ["$rollups.recordings_total", 0] }, count] }] } } }], { session });
+}
+
 async function purgeNumberActivity(id: ObjectId, at: Date, session: ClientSession) {
   const options = { session }, database = db();
   // A future genuine call may create a new Contact Number; retained call aliases still dedupe history.
-  await database.collection("contact_numbers").updateOne({ _id: id }, { $set: { purged_at: at, e164: `purged:${id}`, national_ten: null, digits_reversed: "", provider_names: [], search_terms: [], running_summary: null, rollups: { interactions_total: 0, inbound_total: 0, outbound_total: 0, human_conversations_total: 0, attached_lead_count: 0, candidate_lead_count: 0, open_outreach_count: 0 }, contact_eligibility: { state: "suppressed", reason: "retention" }, intelligence_schedule: null } }, options);
+  await database.collection("contact_numbers").updateOne({ _id: id }, { $set: { purged_at: at, e164: `purged:${id}`, national_ten: null, digits_reversed: "", provider_names: [], search_terms: [], running_summary: null, rollups: { interactions_total: 0, inbound_total: 0, outbound_total: 0, human_conversations_total: 0, attached_lead_count: 0, candidate_lead_count: 0, open_outreach_count: 0, recordings_total: 0, conversations_analyzed_total: 0, last_analyzed_at: null, outreach_records_total: 0 }, contact_eligibility: { state: "suppressed", reason: "retention" }, intelligence_schedule: null } }, options);
   await database.collection("number_lead_attachments").deleteMany({ contact_number_id: id }, options);
   const records = await database.collection("outreach_records").find({ primary_contact_number_id: id }, options).project({ _id: 1 }).toArray();
   await database.collection("outreach_records").updateMany({ primary_contact_number_id: id }, { $set: { purged_at: at, state: "closed", closed_reason: "manual", closed_at: at, assignment: null } }, options);

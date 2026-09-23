@@ -95,6 +95,10 @@ test("recount is idempotent: recounting the rebuilt fields yields the same field
       attached_lead_count: 0,
       candidate_lead_count: 0,
       open_outreach_count: 0,
+      recordings_total: projection.recordings.length,
+      conversations_analyzed_total: 0,
+      last_analyzed_at: null,
+      outreach_records_total: 0,
     },
     provider_names: ["Synthetic Customer"],
     search_terms: ["synthetic customer"],
@@ -143,4 +147,37 @@ test("LP-06 recount repairs a late first_observed_at from calls ingested out of 
     false,
     "a first_observed_at difference alone is a change the rebuild writes",
   );
+});
+
+test("S1-ROLLUP recount: recordings, analysed conversations and Outreach records come from the stored evidence", () => {
+  const inbound = inboundQueueAnsweredDeliveries("s-rb-s1");
+  const base = project([inbound.ringing, inbound.answered, inbound.disconnected], at(10));
+  const withRecordings = (n: number): InteractionProjection => ({ ...base, recordings: Array.from({ length: n }, (_, i) => ({
+    provider_recording_id: `r-${n}-${i}`, recording_type: null, observed_at: at(0), lead_conversation_id: null })) });
+  const rebuilt = recountNumber({
+    number: { first_observed_at: at(0), last_activity_at: at(0), rollups: { last_meaningful_contact_at: null } },
+    interactions: [withRecordings(0), withRecordings(1), withRecordings(2)],
+    attachments: [],
+    open_outreach_count: 1,
+    analyzed_conversations: { total: 2, last_started_at: at(700) },
+    outreach_records_total: 3,
+  });
+  assert.equal(rebuilt.rollups.recordings_total, 3, "0 + 1 + 2");
+  assert.equal(rebuilt.rollups.conversations_analyzed_total, 2);
+  assert.equal(rebuilt.rollups.last_analyzed_at?.toISOString(), at(700).toISOString());
+  assert.equal(rebuilt.rollups.outreach_records_total, 3);
+  assert.equal(rebuilt.rollups.open_outreach_count, 1, "open_outreach_count unchanged");
+  const legacyCaller = recountNumber({ number: { first_observed_at: at(0), last_activity_at: at(0), rollups: {} }, interactions: [], attachments: [], open_outreach_count: 0 });
+  assert.equal(legacyCaller.rollups.conversations_analyzed_total, 0);
+  assert.equal(legacyCaller.rollups.last_analyzed_at, null);
+  assert.equal(legacyCaller.rollups.outreach_records_total, 0);
+  // Idempotent on the new fields.
+  assert.equal(sameRebuiltFields(rebuilt, { ...rebuilt, rollups: { ...rebuilt.rollups } }), true);
+  for (const field of ["recordings_total", "conversations_analyzed_total", "outreach_records_total"] as const) {
+    assert.equal(sameRebuiltFields({ ...rebuilt, rollups: { ...rebuilt.rollups, [field]: rebuilt.rollups[field] + 1 } }, rebuilt), false, field);
+  }
+  assert.equal(sameRebuiltFields({ ...rebuilt, rollups: { ...rebuilt.rollups, last_analyzed_at: at(1) } }, rebuilt), false);
+  // A Number stored before S1 has no such fields: the rebuild writes them once, even when every count is zero.
+  const { recordings_total: _r, conversations_analyzed_total: _c, last_analyzed_at: _l, outreach_records_total: _o, ...legacyRollups } = legacyCaller.rollups;
+  assert.equal(sameRebuiltFields({ ...legacyCaller, rollups: legacyRollups as never }, legacyCaller), false);
 });

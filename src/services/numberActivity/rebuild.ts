@@ -6,6 +6,7 @@ import { getCallInteractionModel } from "../../models/CallInteraction";
 import { getContactNumberModel } from "../../models/ContactNumber";
 import { getNumberLeadAttachmentModel } from "../../models/NumberLeadAttachment";
 import { getOutreachRecordModel } from "../../models/OutreachRecord";
+import { getLeadConversationModel } from "../../models/LeadConversation";
 import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
 import { csiIdSchema } from "../../validation/v1/salesIntelligence";
 import { CsiError, csiWorkerActor, type CsiActor } from "../salesIntelligence/auth";
@@ -20,7 +21,10 @@ import type { InteractionProjection } from "./types";
  *
  * Recomputes a Contact Number's rollups, provider names, search terms and
  * activity bounds from stored evidence only: canonical `call_interactions`
- * (`merged_into_id: null`), `number_lead_attachments` and `outreach_records`.
+ * (`merged_into_id: null`), `number_lead_attachments`, `outreach_records` and
+ * analysed `lead_conversations` (data spec §8: the rebuild is the source of truth
+ * for every rollup, including the ones analysis apply and Outreach ensure keep
+ * incrementally).
  * It replays stored rows through the same pure shape CSI-02 persists
  * (`toProjection`) and applies the same counting rules, so a rebuilt number
  * equals what incremental capture would have produced. No new business fact
@@ -53,7 +57,18 @@ export type RebuildRollups = {
   attached_lead_count: number;
   candidate_lead_count: number;
   open_outreach_count: number;
+  /** Σ `recordings.length` over canonical interactions (purged interactions hold none). */
+  recordings_total: number;
+  /** Lead Conversations with `latest_completed_run_id` set and `content_purged_at` null. */
+  conversations_analyzed_total: number;
+  /** Newest `started_at` among those conversations. */
+  last_analyzed_at: Date | null;
+  /** Outreach Records with this Number as primary or as subject, `purged_at` null. */
+  outreach_records_total: number;
 };
+
+/** The rebuild's reads of analysed conversations on one Number. */
+export type AnalyzedConversationEvidence = { total: number; last_started_at: Date | null };
 
 export type RebuiltFields = {
   rollups: RebuildRollups;
@@ -78,6 +93,9 @@ export type RecountInput = {
   interactions: readonly InteractionProjection[];
   attachments: readonly AttachmentEvidence[];
   open_outreach_count: number;
+  /** Absent in callers that predate S1; the recount then reads zero. */
+  analyzed_conversations?: AnalyzedConversationEvidence;
+  outreach_records_total?: number;
 };
 
 export function recountNumber(input: RecountInput): RebuiltFields {
@@ -95,6 +113,10 @@ export function recountNumber(input: RecountInput): RebuiltFields {
     attached_lead_count: input.attachments.filter((a) => a.state === "attached").length,
     candidate_lead_count: input.attachments.filter((a) => a.state === "candidate" || a.state === "ambiguous").length,
     open_outreach_count: input.open_outreach_count,
+    recordings_total: ordered.reduce((sum, i) => sum + i.recordings.length, 0),
+    conversations_analyzed_total: input.analyzed_conversations?.total ?? 0,
+    last_analyzed_at: input.analyzed_conversations?.last_started_at ?? null,
+    outreach_records_total: input.outreach_records_total ?? 0,
   };
   const providerNames: string[] = [];
   for (const interaction of ordered) {
@@ -142,6 +164,12 @@ export function sameRebuiltFields(current: RebuiltFields, next: RebuiltFields): 
     a.attached_lead_count === b.attached_lead_count &&
     a.candidate_lead_count === b.candidate_lead_count &&
     a.open_outreach_count === b.open_outreach_count &&
+    // A row stored before S1 lacks these fields (lean reads apply no defaults); that
+    // is a difference, so the sweep materialises them once, and a rerun is a no-op.
+    a.recordings_total === b.recordings_total &&
+    a.conversations_analyzed_total === b.conversations_analyzed_total &&
+    (a.last_analyzed_at === undefined ? undefined : time(a.last_analyzed_at)) === time(b.last_analyzed_at) &&
+    a.outreach_records_total === b.outreach_records_total &&
     JSON.stringify(current.provider_names) === JSON.stringify(next.provider_names) &&
     JSON.stringify([...current.search_terms].sort()) === JSON.stringify([...next.search_terms].sort()) &&
     time(current.first_observed_at) === time(next.first_observed_at) &&
@@ -280,23 +308,41 @@ export async function loadRebuildEvidence(numberId: string, session?: ClientSess
     state: { $ne: "closed" },
     $or: [{ "subject.contact_number_id": oid }, { primary_contact_number_id: oid }],
   });
+  // One record counts once even when the Number is both its primary and its subject.
+  const outreachTotalQuery = getOutreachRecordModel().countDocuments({
+    purged_at: null,
+    $or: [{ "subject.contact_number_id": oid }, { primary_contact_number_id: oid }],
+  });
+  // `lead_conversation_number_started` {contact_number_id, started_at:-1, _id:-1}: the newest
+  // analysed row gives `last_analyzed_at`, the count gives the total.
+  const analyzedFilter = { contact_number_id: oid, latest_completed_run_id: { $ne: null }, content_purged_at: null };
+  const analyzedCountQuery = getLeadConversationModel().countDocuments(analyzedFilter);
+  const analyzedLatestQuery = getLeadConversationModel().findOne(analyzedFilter, { started_at: 1 }).sort({ started_at: -1, _id: -1 });
   if (session) {
     numberQuery.session(session);
     interactionsQuery.session(session);
     attachmentsQuery.session(session);
     outreachQuery.session(session);
+    outreachTotalQuery.session(session);
+    analyzedCountQuery.session(session);
+    analyzedLatestQuery.session(session);
   }
-  const [number, interactions, attachments, openOutreach] = await Promise.all([
+  const [number, interactions, attachments, openOutreach, outreachTotal, analyzedTotal, analyzedLatest] = await Promise.all([
     numberQuery.lean(),
     interactionsQuery.lean(),
     attachmentsQuery.lean(),
     outreachQuery,
+    outreachTotalQuery,
+    analyzedCountQuery,
+    analyzedLatestQuery.lean(),
   ]);
   return {
     number,
     interactions: interactions.map((row) => toProjection(row as unknown as Record<string, unknown>)),
     attachments: attachments.map((a) => ({ state: a.state, lead_snapshot: a.lead_snapshot ?? null })) as AttachmentEvidence[],
     open_outreach_count: openOutreach,
+    outreach_records_total: outreachTotal,
+    analyzed_conversations: { total: analyzedTotal, last_started_at: analyzedLatest?.started_at ?? null } as AnalyzedConversationEvidence,
   };
 }
 
@@ -339,6 +385,8 @@ export async function runRebuildJob(jobId: string | undefined, deps: RebuildWork
           interactions: evidence.interactions,
           attachments: evidence.attachments,
           open_outreach_count: evidence.open_outreach_count,
+          analyzed_conversations: evidence.analyzed_conversations,
+          outreach_records_total: evidence.outreach_records_total,
         });
         const summary: RebuildJobResult = {
           kind: "number",

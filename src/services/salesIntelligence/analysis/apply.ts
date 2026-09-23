@@ -252,6 +252,7 @@ async function publishCurrent(run: { _id: unknown; started_at?: Date | null; cre
           sections: { overview: envelope.summary.overview, customer_wanted: envelope.summary.customer_wanted, money_dates: envelope.summary.money_and_dates,
             outcome: envelope.summary.outcome, promised: envelope.summary.commitments, mismatch: envelope.summary.discrepancies } } } }, { session });
     if (result.matchedCount !== 1) throw new CsiError("REVISION_CONFLICT");
+    await countNewlyAnalyzedConversation(conversation, session);
   } else {
     const number = await getContactNumberModel().findById(run.contact_number_id).session(session).orFail();
     if (await newer(number.running_summary?.run_id)) return false;
@@ -260,6 +261,25 @@ async function publishCurrent(run: { _id: unknown; started_at?: Date | null; cre
     if (result.modifiedCount !== 1) throw new CsiError("REVISION_CONFLICT");
   }
   return true;
+}
+/**
+ * Number rollup `conversations_analyzed_total` / `last_analyzed_at` (data spec §8): counted
+ * once, when the CAS above moves `latest_completed_run_id` from null to a run; a re-analysis
+ * replaces a non-null id and is not a new analysed conversation. A purged conversation can
+ * never publish (its transcript version is null), but it is excluded here too so the
+ * increment follows the rebuild's definition exactly. `$inc`/`$max` without a revision bump,
+ * in the same transaction as the conversation write: a concurrent capture or rebuild that
+ * read this Number earlier aborts on WriteConflict and re-reads (see the capture doc).
+ */
+export async function countNewlyAnalyzedConversation(conversation: { latest_completed_run_id?: unknown; content_purged_at?: Date | null;
+  contact_number_id?: unknown; started_at: Date }, session: ClientSession) {
+  if (!newlyAnalyzed(conversation)) return;
+  await getContactNumberModel().updateOne({ _id: String(conversation.contact_number_id) },
+    { $inc: { "rollups.conversations_analyzed_total": 1 }, $max: { "rollups.last_analyzed_at": conversation.started_at } }, { session });
+}
+/** True when publishing a run on this conversation adds it to the Number's analysed count. */
+export function newlyAnalyzed(conversation: { latest_completed_run_id?: unknown; content_purged_at?: Date | null; contact_number_id?: unknown }) {
+  return !conversation.latest_completed_run_id && !conversation.content_purged_at && Boolean(conversation.contact_number_id);
 }
 export async function drainIntelligenceApplications() {
   const outcomes: string[] = [];

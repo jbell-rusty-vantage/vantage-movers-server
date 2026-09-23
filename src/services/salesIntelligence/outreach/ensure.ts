@@ -27,6 +27,18 @@ import { closureBasisFor, isTerminal, projectLeadProgress, selectProgressEvidenc
 export function workerContext(session: ClientSession, requestId: string, now = new Date()): CsiTransactionContext {
   return { session, actor: csiWorkerActor(/^[a-f\d]{24}$/i.test(requestId) ? requestId : payloadHash(requestId).slice(0, 24)), command_id: new mongoose.Types.ObjectId(), now };
 }
+/**
+ * Number rollup `outreach_records_total` (data spec §8): records with this Number as
+ * `primary_contact_number_id` or `subject.contact_number_id`, not purged. Called exactly where a
+ * record starts to reference a Number: `outreach_created` with a primary, `outreach_number_linked`
+ * (primary set from null; it is never re-pointed), and `number_review_opened` (subject and primary
+ * are the same Number, so the record counts once). `$inc` without a revision bump, in the caller's
+ * transaction with the record insert or link, so a concurrent capture or rebuild that read this
+ * Number earlier aborts on WriteConflict and re-reads; the rebuild recounts it with `countDocuments`.
+ */
+export async function countOutreachRecordOnNumber(numberId: string | mongoose.Types.ObjectId, session: ClientSession) {
+  await getContactNumberModel().updateOne({ _id: numberId }, { $inc: { "rollups.outreach_records_total": 1 } }, { session });
+}
 export type EnsureLeadOptions = {
   /** The `EntityChange` that raised this job, so basis and `source_change_id` are exact (H1). */
   changeId?: string | null;
@@ -51,9 +63,13 @@ export async function ensureLead(ref: LeadRef, context: CsiTransactionContext, n
       first_action_due_at: ref.model === "FormLead" ? addStaffedMinutes(lead.timestamp, policy.first_action_due_staffed_minutes, policy) : null,
       deadline_resolution: { precision: "exact", timezone: policy.timezone, assumption: "Staffed first-call deadline", anchor: lead.timestamp, policy_version: policy.version } });
     await refreshRecord(row, context, "outreach_created", null);
+    if (numberId) await countOutreachRecordOnNumber(numberId, context.session);
   } else if (numberId && !row.primary_contact_number_id) {
     const prior = row.toObject(); row.primary_contact_number_id = new mongoose.Types.ObjectId(numberId);
     await refreshRecord(row, context, "outreach_number_linked", prior);
+    // A Lead record's subject never names a Number, so linking its first primary is a new record for this Number.
+    // (Retention purges records by primary, so a record without one is never purged.)
+    await countOutreachRecordOnNumber(numberId, context.session);
   }
   // §11.1: an exact Booking relationship closes work even when the Lead mirror is delayed.
   const reason = await authoritativeClosure(lead, ref, context.session);
@@ -218,6 +234,8 @@ export async function ensureInteraction(call: InteractionRow, context: CsiTransa
       record = new (getOutreachRecordModel())({ subject: { kind: "number_review", contact_number_id: numberId }, primary_contact_number_id: numberId,
         trigger_kind: "unanswered_inbound", trigger_at: call.started_at, policy_version: policy.version });
       await refreshRecord(record, context, "number_review_opened", null);
+      // Primary and subject are the same Number: one record, counted once.
+      await countOutreachRecordOnNumber(numberId, context.session);
     }
   }
   if (!record) return null;
