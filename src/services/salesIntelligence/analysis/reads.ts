@@ -46,6 +46,15 @@ const text = (v: unknown) => {
   if (redacted.length > 4000) throw new CsiError("EVIDENCE_SCOPE_INVALID");
   return redacted;
 };
+/**
+ * Server-serialized structured details (timeline detail, finding value, Owner instruction) are
+ * bounded, not refused: an oversized detail blob is truncated with a marker, so one large
+ * Granot/RingCentral detail cannot make a whole Number unanalyzable. Customer text keeps `text`.
+ */
+const detailsText = (value: unknown) => {
+  const redacted = redactTranscript(JSON.stringify(value)).text;
+  return redacted.length > 4000 ? `${redacted.slice(0, 3980)}…[truncated]` : redacted;
+};
 const iso = (v: unknown) => v instanceof Date ? v.toISOString() : null;
 const emptyPage = (): ReadPage => ({ records: [], next_cursor: null, complete: true, missing_ranges: [] });
 const fail = (): never => { throw new CsiError("RUN_SCOPE_DENIED"); };
@@ -200,7 +209,7 @@ async function context(scope: ReadScope, result: ReadContent) {
   if (instructions.length > 100 || restrictions.length > 50 || edges.length > 100) throw new CsiError("EVIDENCE_SCOPE_INVALID");
   for (const r of instructions) {
     result.instructions.push({ id: String(r.instruction_id), revision: r.revision });
-    result.page.records.push({ record_type: "owner_instruction", record_id: String(r.instruction_id), revision: String(r.revision), fields: { instruction_field: r.field, details: text(JSON.stringify(r.current)), status: r.state } });
+    result.page.records.push({ record_type: "owner_instruction", record_id: String(r.instruction_id), revision: String(r.revision), fields: { instruction_field: r.field, details: detailsText(r.current), status: r.state } });
   }
   for (const r of restrictions) result.page.records.push({ record_type: "owner_instruction", record_id: String(r._id), revision: String(r.revision), fields: { instruction_field: "restriction", details: r.channels.join(","), status: r.state, due_at: iso(r.until), origin: r.origin } });
   for (const e of edges) result.page.records.push({ record_type: "lead", record_id: String(e.lead_ref.id), revision: String(e.revision), fields: { model: e.lead_ref.model, certainty: e.certainty, status: e.state, details: `Attachment ${e._id}` } });
@@ -217,7 +226,7 @@ async function context(scope: ReadScope, result: ReadContent) {
     const findings = await getIntelligenceFindingModel().find({ purged_at: null, purge_started_at: null, run_id: { $in: conversations.flatMap(c => c.latest_completed_run_id ? [c.latest_completed_run_id] : []) } }).sort({ _id: 1 }).limit(101).lean();
     if (findings.length > 100) throw new CsiError("EVIDENCE_LIMIT_REACHED");
     for (const f of findings) result.page.records.push({ record_type: "job_timeline", record_id: String(f._id), revision: String(f.revision),
-      fields: { description: text(f.assertion.claim), status: f.review_state, details: text(JSON.stringify({ kind: f.kind, value: f.assertion.value, evidence: f.assertion.evidence, run_id: f.run_id })) } });
+      fields: { description: text(f.assertion.claim), status: f.review_state, details: detailsText({ kind: f.kind, value: f.assertion.value, evidence: f.assertion.evidence, run_id: f.run_id }) } });
   }
   if (result.page.records.length > 200) throw new CsiError("EVIDENCE_SCOPE_INVALID");
 }
@@ -258,7 +267,7 @@ export async function readIntelligenceEvidence(scope: ReadScope, input: { tool: 
       result.coverage = page.coverage;
       result.page = { records: page.data.items.map(r => ({ record_type: r.kind === "interaction" ? "interaction" : r.kind === "owner_note" ? "owner_note" : "job_timeline", record_id: r.id,
         revision: typeof r.detail.projection_revision === "number" ? String(r.detail.projection_revision) : null,
-        fields: { occurred_at: r.happened_at, description: text(r.description), status: r.kind, details: text(JSON.stringify(r.detail)) } })),
+        fields: { occurred_at: r.happened_at, description: text(r.description), status: r.kind, details: detailsText(r.detail) } })),
         complete: !page.data.cursor, next_cursor: page.data.cursor ? Buffer.from(JSON.stringify({ key, cursor: page.data.cursor })).toString("base64url") : null, missing_ranges: [] }; break;
     }
     case "get_rep_identity": {

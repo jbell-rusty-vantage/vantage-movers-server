@@ -139,8 +139,14 @@ export async function claimCsiJob(
    * runs its own jobs in process on the personal key) claims only rows at or above this priority.
    */
   minPriority?: number,
+  /**
+   * An in-process backfill runner claiming its own historical row by id is a separate
+   * consumer: it never jumps ahead of the cron's sorted live queue, so the live-work gate
+   * does not apply. Only valid with an explicit `jobId`.
+   */
+  options: { historical?: boolean } = {},
 ) {
-  if (!owner.trim() || ttlMs <= 0 || ttlMs > 900_000)
+  if (!owner.trim() || ttlMs <= 0 || ttlMs > 900_000 || (options.historical && !jobId))
     throw new CsiError("INVALID_INPUT");
   const Model = getSalesIntelligenceJobModel();
   await assertIndexes(Model.collection, SALES_INTELLIGENCE_JOB_INDEXES);
@@ -148,7 +154,7 @@ export async function claimCsiJob(
   // A queue wake-up for a particular historical job cannot jump ahead of
   // current STT/analysis simply by bypassing the sorted cron claim.
   const aiStages: JobInput["stage"][] = ["transcription", "analysis", "number_refresh"];
-  const liveAiDue = (!stage || aiStages.includes(stage)) && await Model.exists({
+  const liveAiDue = !options.historical && (!stage || aiStages.includes(stage)) && await Model.exists({
     ...csiDataset(), stage: { $in: aiStages }, priority: { $gte: CSI_LIVE_JOB_PRIORITY },
     $or: [{ status: { $in: ["pending", "retry"] }, next_attempt_at: { $lte: now } },
       { status: "leased" }],

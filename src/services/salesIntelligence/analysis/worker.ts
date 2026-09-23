@@ -49,7 +49,9 @@ export type AnalysisDependencies = { configuration?: ReturnType<typeof analysisR
   limits?: RuntimeLimits; beforeProvider?: () => Promise<void>; afterReceipt?: () => Promise<void>;
   publish?: typeof publishCaptureProjectionWakeup;
   /** Test seam for the queue gate; production reads the deployment environment. */
-  shouldPublish?: () => boolean };
+  shouldPublish?: () => boolean;
+  /** Backfill runner: claim this historical (backfill-priority) job by id regardless of live work due. */
+  historical?: boolean };
 export function estimateAnalysisCents(pricing: AnalysisPricing, limits: RuntimeLimits) {
   return Math.ceil((limits.total_input_tokens * pricing.input_cents_per_million + limits.total_output_tokens * pricing.output_cents_per_million) / 1_000_000) + limits.steps - 1;
 }
@@ -99,7 +101,7 @@ export const CSI_ANALYSIS_LEASE_TTL_MS = 300_000;
 /** Queue and cron entry point. One bounded invocation; never transcription or provider retries. */
 export async function runIntelligenceJob(jobId?: string, stage: "analysis" | "number_refresh" = "analysis", deps: AnalysisDependencies = {}) {
   if (!analysisEnabled()) return { status: "disabled" };
-  const job = await claimCsiJob(`csi-analysis:${randomUUID()}`, jobId, CSI_ANALYSIS_LEASE_TTL_MS, stage);
+  const job = await claimCsiJob(`csi-analysis:${randomUUID()}`, jobId, CSI_ANALYSIS_LEASE_TTL_MS, stage, undefined, { historical: Boolean(deps.historical && jobId) });
   if (!job) return { status: "not_claimable" };
   const lease = { job_id: String(job._id), owner: job.lease_owner!, epoch: job.lease_epoch };
   let reservation: string | null = null, providerStarted = false, returned = false, usageComplete = true;
