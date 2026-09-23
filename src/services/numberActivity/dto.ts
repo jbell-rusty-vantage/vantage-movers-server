@@ -10,6 +10,8 @@ import {
   csiRevisionSchema as revision,
 } from "../../validation/v1/salesIntelligence";
 import {
+  attachedLeadProgressDtoSchema,
+  type AttachedLeadProgressDto,
   coverageDtoSchema,
   numberDetailDtoSchema,
   ownerReadSchema,
@@ -33,6 +35,8 @@ export const numberRollupsDtoSchema = z
     human_conversations_total: nonNegativeInt,
     last_inbound_at: date.nullable(),
     last_outbound_at: date.nullable(),
+    /** LP-06: the Numbers `last_human_conversation` sort field. Optional so older fixtures/readers parse. */
+    last_human_conversation_at: date.nullable().optional(),
     attached_lead_count: nonNegativeInt,
     candidate_lead_count: nonNegativeInt,
     open_outreach_count: nonNegativeInt,
@@ -40,6 +44,32 @@ export const numberRollupsDtoSchema = z
   .strict();
 
 export const NUMBER_SEARCH_MATCH_KINDS = ["e164", "suffix", "term", "none"] as const;
+
+/** LP-06 (§14.2): Numbers list time sorts. `last_activity` desc is the historical default. */
+export const NUMBER_SEARCH_SORTS = ["last_activity", "last_human_conversation", "first_observed"] as const;
+export const NUMBER_SEARCH_DIRECTIONS = ["asc", "desc"] as const;
+export type NumberSearchSort = (typeof NUMBER_SEARCH_SORTS)[number];
+export type NumberSearchDirection = (typeof NUMBER_SEARCH_DIRECTIONS)[number];
+
+/**
+ * LP-06 (§7 Number card, §11.3): the Lead progress of the Number's one
+ * resolved display Lead, from `loadAttachedLeadProgressForNumbers` in
+ * `salesIntelligence/outreach/reads`. `multiple`/`none` carry no Lead fields,
+ * so Admin can never show a merged Priority or an any-Lead Quoted boolean.
+ * `lead_progress` is null while the Lead progress flag is off. The shape is
+ * the Outreach DTO's `attachedLeadProgressDtoSchema`; this adds the
+ * resolved/non-resolved field rule.
+ */
+export const numberAttachedLeadProgressDtoSchema = attachedLeadProgressDtoSchema.superRefine((value, ctx) => {
+  if (value.status === "resolved") {
+    if (!value.lead_ref) ctx.addIssue({ code: "custom", message: "resolved requires lead_ref", path: ["lead_ref"] });
+    return;
+  }
+  for (const key of ["lead_ref", "lead_progress", "booking", "outreach_state", "lead_display"] as const) {
+    if (value[key] !== undefined) ctx.addIssue({ code: "custom", message: `${value.status} carries no Lead fields`, path: [key] });
+  }
+});
+export type AttachedLeadProgressItemDto = AttachedLeadProgressDto;
 
 export const numberSearchItemDtoSchema = z
   .object({
@@ -57,6 +87,8 @@ export const numberSearchItemDtoSchema = z
     /** `attached_lead_count > 0 || candidate_lead_count > 0`. */
     linked: z.boolean(),
     match: z.object({ kind: z.enum(NUMBER_SEARCH_MATCH_KINDS) }).strict(),
+    /** LP-06: optional and additive; absent on detail-derived items and older servers. */
+    attached_lead_progress: numberAttachedLeadProgressDtoSchema.optional(),
   })
   .strict();
 
@@ -65,6 +97,11 @@ export const numberSearchPageDtoSchema = ownerReadSchema(
     .object({
       items: z.array(numberSearchItemDtoSchema),
       cursor: z.string().nullable(),
+      /** LP-06: the order applied to this page (the resolved request; defaults `last_activity`/`desc`). */
+      sort: z
+        .object({ sort: z.enum(NUMBER_SEARCH_SORTS), direction: z.enum(NUMBER_SEARCH_DIRECTIONS) })
+        .strict()
+        .optional(),
     })
     .strict(),
 );

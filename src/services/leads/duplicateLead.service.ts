@@ -1,10 +1,15 @@
-import type { ClientSession } from "mongoose";
+import mongoose, { type ClientSession } from "mongoose";
 import type { SourceCompany } from "../../config/domain";
 import { logger } from "../../logger";
 import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
 import type { FullSheetSyncJob } from "../sheetSync";
+import {
+  emitLeadChange,
+  FORM_FILL_DETECTOR_ACTOR_ID,
+  systemLeadChangeContext,
+} from "../domainCommands/leadChangeEmission";
 import { buildPhoneRegex } from "./leadPhoneMatching";
 
 export type DuplicateFormLeadMatch = {
@@ -156,6 +161,10 @@ export async function hasFormFillForCallLead(
  * caller can persist/finalize the syncs alongside the form-lead write (inside
  * the same transaction in queued mode). When a `session` is supplied the call
  * lead writes participate in that transaction.
+ *
+ * Each flipped Call Lead also gets a CallLead `EntityChange` (`form_fill`) in
+ * the same session (LP-03 / E13), attributed to the fixed form-fill-detector
+ * system actor; the flips of one Form Lead share one `command_execution_id`.
  */
 export async function markMatchingCallLeadsWithFormFill(
   sourceScope: SourceCompany | LeadSourceMatchScope,
@@ -191,9 +200,31 @@ export async function markMatchingCallLeadsWithFormFill(
   );
 
   const jobs: FullSheetSyncJob[] = [];
+  const now = new Date();
+  const commandExecutionId = new mongoose.Types.ObjectId();
+  const context =
+    matchedCallLeads.length > 0
+      ? systemLeadChangeContext({
+          actor_id: FORM_FILL_DETECTOR_ACTOR_ID,
+          command_name: "markCallLeadFormFill",
+          payload: { form_lead_id: formLeadId },
+        })
+      : null;
   for (const callLead of matchedCallLeads) {
+    const before = callLead.toObject() as Record<string, unknown>;
     callLead.form_fill = true;
     await callLead.save({ session });
+    await emitLeadChange({
+      model: "CallLead",
+      id: callLead._id.toString(),
+      before,
+      paths: ["form_fill"],
+      session,
+      now,
+      command_name: "markCallLeadFormFill",
+      command_execution_id: commandExecutionId,
+      context: context!,
+    });
     jobs.push({
       resource: "source_lead",
       operation: "call_lead.form_fill.update",

@@ -11,6 +11,8 @@ export type Attachment = {
   lead_ref: LeadRef; state: "candidate" | "ambiguous" | "attached" | "rejected";
   certainty: "likely" | "unsure" | "exact" | "owner_confirmed" | "rejected";
   evidence: Evidence[]; decided_at?: Date | null;
+  /** From the display snapshot: a Duplicate Lead neither competes nor inflates ambiguity (§5.1). */
+  duplicate?: boolean;
 };
 export type InteractionIdentity = {
   id: string; provider_account_id: string; started_at: Date;
@@ -33,25 +35,19 @@ const overlaps = (a: Evidence, b: Evidence) => a.window_from && a.window_to && b
 export function ambiguityFanIn(edges: readonly Attachment[]): Attachment[] {
   return edges.map(edge => {
     if (edge.state === "attached" || edge.state === "rejected" || edge.decided_at) return edge;
-    const ambiguous = edges.some(other => other !== edge && other.state !== "rejected" &&
+    // A Duplicate Lead's own edge stays a plain candidate: it never competes and is never a target (§5.1).
+    if (edge.duplicate) return { ...edge, state: "candidate", certainty: "likely" };
+    const ambiguous = edges.some(other => other !== edge && other.state !== "rejected" && !other.duplicate &&
       (other.lead_ref.id !== edge.lead_ref.id || other.lead_ref.model !== edge.lead_ref.model) &&
       edge.evidence.some(a => !exactSource(a.source) && other.evidence.some(b => !exactSource(b.source) && overlaps(a, b))));
     return { ...edge, state: ambiguous ? "ambiguous" : "candidate", certainty: ambiguous ? "unsure" : "likely" };
   });
 }
-export const AUTO_ATTACH_REASON = "automatic_high_confidence";
-const autoAttachSource = (e: Evidence) => ["lead_phone_live", "ringcentral_original_caller"].includes(e.source) && Boolean(e.window_from && e.window_to);
-/** Automatic attach confidence, or null when the evidence is not genuinely unambiguous.
- * There is no tier below 0.90: an Owner decision, a rejected pair, a competing Attached edge
- * and anything `ambiguityFanIn` would call Ambiguous all stay Candidate. */
-export function autoAttachConfidence(edge: Attachment, edges: readonly Attachment[]): number | null {
-  if (edge.state === "rejected" || edge.decided_at) return null;
-  if (edges.some(other => other !== edge && other.state === "attached")) return null;
-  // Same identity comparison `ambiguityFanIn` uses, whether or not `edge` is a member of `edges`.
-  if (ambiguityFanIn([edge, ...edges])[0]!.state === "ambiguous") return null;
-  const sources = new Set(edge.evidence.filter(autoAttachSource).map(e => e.source));
-  return sources.size === 0 ? null : sources.size >= 2 ? 0.95 : 0.9;
-}
+/** H5 (`sole-match-v1`) automatic attach reason. The pre-H5 value stays recognised on stored edges. */
+export const AUTO_ATTACH_REASON = "sole_non_duplicate_match";
+export const LEGACY_AUTO_ATTACH_REASONS = ["automatic_high_confidence"] as const;
+export const isAutoAttachReason = (reason: string | null | undefined) =>
+  reason === AUTO_ATTACH_REASON || (LEGACY_AUTO_ATTACH_REASONS as readonly string[]).includes(reason ?? "");
 function exactApplies(e: Evidence, interaction: InteractionIdentity) {
   if (!exactSource(e.source) || e.provider_account_id !== interaction.provider_account_id) return false;
   if (e.interaction_id === interaction.id) return true;

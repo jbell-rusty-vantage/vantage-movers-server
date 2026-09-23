@@ -17,13 +17,14 @@ import { loadLead } from "../attachment/sources";
 import { lockNumber, attachmentPolicyInput } from "../attachment/store";
 import { resolveAtInteraction } from "../attachment/suggest";
 import { ensureInteraction } from "../outreach/ensure";
-import { officialClosure } from "../outreach/transitions";
+import { authoritativeClosure } from "../outreach/transitions";
+import { isTerminal, type LeadProgressRow } from "../outreach/leadProgress";
 import { subjectKey, type RecordRow } from "../outreach/types";
-import { auditChange, closeRecord, ownerInstruction, recordForUpdate, refreshRecord, saveFollowup, jsonValue } from "../outreach/store";
+import { auditChange, closeRecord, ownerInstruction, recordForUpdate, refreshRecord, saveFollowup, jsonValue, queueNumberRollupRebuild } from "../outreach/store";
 import { enqueueCsiJob } from "../jobs";
 import { ensureNumberReview } from "../outreach/numberReview";
 
-export const OUTREACH_COMMANDS = ["mark_worked", "assign", "set_waiting", "start_call", "end_call", "add_note", "close", "reopen", "create_followup", "patch_followup", "complete_followup", "snooze_followup", "cancel_followup", "resolve_restriction", "resolve_review", "set_contact_type", "open_number_review"] as const;
+export const OUTREACH_COMMANDS = ["mark_worked", "assign", "set_waiting", "start_call", "end_call", "add_note", "close", "reopen", "override_disposition", "create_followup", "patch_followup", "complete_followup", "snooze_followup", "cancel_followup", "resolve_restriction", "resolve_review", "set_contact_type", "open_number_review"] as const;
 type ActionInput = Extract<CsiCommand, { command: "create_followup" }>["action"];
 export async function createOwnerFollowup(record: Awaited<ReturnType<typeof recordForUpdate>>, input: ActionInput, context: CsiTransactionContext, suffix = "action") {
   const policy = await resolvePolicy();
@@ -69,14 +70,22 @@ export async function applyOwnerCommandInTransaction(targetId: string, command: 
   await validateFences(command, record, action);
   const prior = record.toObject(), key = subjectKey(record.subject);
   if (record.subject.kind === "lead") {
-    const lead = await loadLead({ model: record.subject.model!, id: String(record.subject.id) }, context.session);
-    const reason = lead ? officialClosure(lead) : "lead_unavailable";
+    const ref = { model: record.subject.model!, id: String(record.subject.id) };
+    const lead = await loadLead(ref, context.session);
+    // §11.1: an exact Booking relationship rejects the command even when the Lead mirror is delayed.
+    const reason = lead ? await authoritativeClosure(lead, ref, context.session) : "lead_unavailable";
     if (reason) {
       await closeRecord(record, reason, "official", context);
       if (command.command !== "add_note") return { id: recordId, revision: record.revision, blocked: "official_closure", reason };
     }
   }
-  if (record.state === "closed" && !["reopen", "add_note", "close"].includes(command.command)) throw new CsiError("ILLEGAL_TRANSITION");
+  if (record.state === "closed" && !["reopen", "add_note", "close", "override_disposition"].includes(command.command)) throw new CsiError("ILLEGAL_TRANSITION");
+  const progress = record.lead_progress as LeadProgressRow | null;
+  const terminalNow = Boolean(progress && isTerminal(progress.disposition) && progress.provenance === "accepted" && !progress.override);
+  // A terminal CRM disposition that is not overridden blocks new sales execution on an open record too (§3.3 guards).
+  if (terminalNow && record.state !== "closed" && ["create_followup", "set_waiting", "start_call", "mark_worked"].includes(command.command)) throw new CsiError("CRM_DISPOSITION_CLOSED");
+  if (progress && record.state !== "closed" && await getSalesIntelligenceReviewItemModel().exists({ subject_key: key, cause_kind: "disposition_review", state: "open" }).session(context.session) &&
+    ["create_followup", "set_waiting", "start_call"].includes(command.command)) throw new CsiError("DISPOSITION_REVIEW");
   if (command.command === "close") {
     await ownerInstruction(context, record, "closure", prior, { reason: command.reason });
     await closeRecord(record, command.reason, "owner", context, { note: command.note ?? null });
@@ -88,12 +97,29 @@ export async function applyOwnerCommandInTransaction(targetId: string, command: 
     }
     return { id: recordId, revision: record.revision, state: record.state };
   }
-  if (command.command === "reopen") {
-    if (record.state !== "closed") throw new CsiError("ILLEGAL_TRANSITION");
+  if (command.command === "reopen" || command.command === "override_disposition") {
+    if (command.command === "override_disposition") {
+      // §3.3: explicit, audited, revision-scoped. Identical redelivery keeps it; a semantic change expires it.
+      if (!csiFlag("LEAD_PROGRESS")) throw new CsiError("FEATURE_DISABLED");
+      if (!progress) throw new CsiError("ILLEGAL_TRANSITION");
+      if (progress.disposition_revision !== command.disposition_revision) throw new CsiError("REVISION_CONFLICT");
+      if (!terminalNow) throw new CsiError("ILLEGAL_TRANSITION");
+      if (record.state === "closed" && record.closure_origin !== "crm_disposition") throw new CsiError("ILLEGAL_TRANSITION");
+    } else {
+      if (record.state !== "closed") throw new CsiError("ILLEGAL_TRANSITION");
+      // Work closed by the CRM disposition stays closed until the disposition moved on; otherwise the Owner overrides explicitly.
+      if (record.closure_origin === "crm_disposition" && terminalNow && !progress?.reopen_review_id) throw new CsiError("CRM_DISPOSITION_CLOSED");
+    }
     const number = record.primary_contact_number_id ? await getContactNumberModel().findById(record.primary_contact_number_id).session(context.session).lean() : null;
     if (number?.contact_eligibility.state === "suppressed" || (number && ["company", "non_customer"].includes(number.classification))) throw new CsiError("ILLEGAL_TRANSITION");
-    record.state = "open"; record.closed_at = null; record.closed_reason = null; record.closed_by = null; record.closure_origin = null; record.state_before_identity_review = null;
-    if (record.primary_contact_number_id) {
+    // A suppression on any attached Number, not only the primary, keeps CRM-closed work closed.
+    if (record.subject.kind === "lead") {
+      const attachedNumbers = (await getNumberLeadAttachmentModel().find({ "lead_ref.model": record.subject.model, "lead_ref.id": record.subject.id, state: "attached" }).select({ contact_number_id: 1 }).session(context.session).lean()).map(e => e.contact_number_id);
+      if (attachedNumbers.length && await getContactNumberModel().exists({ _id: { $in: attachedNumbers }, "contact_eligibility.state": "suppressed" }).session(context.session)) throw new CsiError("ILLEGAL_TRANSITION");
+    }
+    const wasClosed = record.state === "closed";
+    if (wasClosed) { record.state = "open"; record.closed_at = null; record.closed_reason = null; record.closed_by = null; record.closure_origin = null; record.state_before_identity_review = null; }
+    if (wasClosed && record.primary_contact_number_id) {
       const edges = await getNumberLeadAttachmentModel().find({ contact_number_id: record.primary_contact_number_id }).session(context.session).lean();
       const latest = await getCallInteractionModel().findOne({ contact_number_id: record.primary_contact_number_id, merged_into_id: null }).sort({ started_at: -1 }).session(context.session).lean();
       const identity = latest ? { ...latest, id: String(latest._id) } : { id: "", provider_account_id: "", call_log_ids: [], started_at: record.trigger_at };
@@ -101,7 +127,18 @@ export async function applyOwnerCommandInTransaction(targetId: string, command: 
         record.state = "identity_review"; record.state_before_identity_review = "open";
       }
     }
-    await ownerInstruction(context, record, "closure", prior, { state: "open", reason: command.reason });
+    const instruction = await ownerInstruction(context, record, "closure", prior, command.command === "override_disposition"
+      ? { state: record.state, override: true, reason: command.reason, disposition_revision: command.disposition_revision } : { state: "open", reason: command.reason });
+    if (progress) {
+      const next: LeadProgressRow = { ...progress, reopen_review_id: null, override: command.command === "override_disposition"
+        ? { reason: command.reason, instruction_id: instruction, disposition_revision: command.disposition_revision, decided_at: context.now, decided_by: context.actor.id } : progress.override };
+      record.lead_progress = next;
+      // The reopen review is answered by this explicit Owner decision.
+      for (const review of await getSalesIntelligenceReviewItemModel().find({ subject_key: key, cause_kind: "disposition_reopen", state: "open" }).session(context.session)) {
+        review.state = "resolved"; review.resolution_actor = { ...context.actor, run_id: null }; review.resolved_at = context.now; review.resolution_reason = command.command; review.revision++;
+        await review.save({ session: context.session });
+      }
+    }
   } else if (command.command === "mark_worked") {
     if (record.state === "identity_review") record.state_before_identity_review = "open";
     if (record.state === "unworked") record.state = "open";
@@ -176,6 +213,7 @@ async function applyEvidenceCommand(id: string, command: CsiCommand, context: Cs
     const prior = { contact_type: call.contact_type, contact_type_basis: call.contact_type_basis };
     call.contact_type = command.contact_type; call.contact_type_basis = "owner"; call.projection_revision++;
     await call.save({ session: context.session });
+    await queueNumberRollupRebuild(call, prior.contact_type, call.contact_type, context.session);
     await getSalesIntelligenceOwnerInstructionModel().create([{ instruction_id: new mongoose.Types.ObjectId(), subject_key: `number:${call.contact_number_id}`, field: "contact_type",
       prior, current: { contact_type: call.contact_type, interaction_id: id, reason: command.reason }, actor: context.actor, happened_at: context.now, state: "active" }], { session: context.session });
     await auditChange(context, "interaction", `number:${call.contact_number_id}`, { _id: id, revision: call.projection_revision }, prior, { contact_type: call.contact_type, reason: command.reason }, "owner_contact_type");

@@ -7,6 +7,7 @@ import { configuredRingCentralAccountId } from "../../numberActivity/accountIden
 import { payloadHash } from "../transactions";
 import { jsonValue } from "../outreach/store";
 import { leadWindow, type Evidence, type LeadRef } from "./suggest";
+import { SOLE_MATCH_POLICY_VERSION } from "./matchSet";
 
 type ContactSnapshot = { normalized_phone_number?: string | null; phone_number?: string | null; phone?: string | null; captured_at: Date };
 export type LeadSource = {
@@ -84,6 +85,8 @@ export function leadAttachmentFingerprint(lead: LeadSource): string {
   const { refreshed_at: _refreshed, ...display } = leadSnapshot(lead, new Date(0));
   return payloadHash(jsonValue({
     timestamp: lead.timestamp, created_at: lead.createdAt ?? null,
+    // H5: No-Sync decides target eligibility; duplicate/bad_lead ride in `display`.
+    no_sync: lead.no_sync === true,
     live: lead.normalized_phone_number ?? null, changed_at: lead.current_contact_provenance?.changed_at ?? null,
     ingested: contact(lead.ingested_contact_snapshot), granot: contact(lead.granot_contact_snapshot),
     original_caller: contact(lead.ringcentral?.original_caller), ingestion_origin: lead.ingestion_origin ?? null,
@@ -91,6 +94,16 @@ export function leadAttachmentFingerprint(lead: LeadSource): string {
       session_id: lead.ringcentral.session_id ?? null, call_log_id: lead.ringcentral.call_log_id ?? null } : null,
     display,
   }));
+}
+/**
+ * The one `attachment-lead:` job identity, shared by the watermark backstop and the Outreach
+ * entity-change trigger. Keyed by policy version and identity fingerprint, never `updatedAt`.
+ */
+export function leadAttachmentJobInput(model: LeadRef["model"], id: string, lead: LeadSource) {
+  const fingerprint = leadAttachmentFingerprint(lead);
+  return { stage: "attachment_refresh" as const, subject_key: `attachment-lead:${model}:${id}`,
+    dedupe_key: `csi:attachment-lead:${SOLE_MATCH_POLICY_VERSION}:${model}:${id}:${fingerprint}`,
+    input_revision: parseInt(payloadHash(fingerprint).slice(0, 12), 16) + 1, input_refs: [id] };
 }
 export function leadSnapshot(lead: LeadSource, now: Date) {
   return { name: lead.name ?? null, job_no: lead.job_no ?? null, source_label: lead.source_company_label_snapshot ?? null,

@@ -563,14 +563,22 @@ async function applyRollupDelta(
         provider_names: providerNames,
         search_terms: searchTerms,
         last_activity_at: laterOf(row.last_activity_at, next?.started_at ?? null) ?? row.last_activity_at,
-        first_observed_at:
-          next && next.started_at < row.first_observed_at ? next.started_at : row.first_observed_at,
+        // Only ever lowered: a backfill that processes a later call first
+        // must not pin a late date (LP-06, spec §14.2). The rebuild restores
+        // the exact earliest canonical interaction when evidence moves away.
+        first_observed_at: earlierOf(row.first_observed_at, next?.started_at ?? null) ?? row.first_observed_at,
       },
       $inc: { revision: 1 },
     },
     { session, runValidators: true },
   );
   if (result.modifiedCount !== 1) throw new CsiError("REVISION_CONFLICT");
+}
+
+export function earlierOf(a: Date | null | undefined, b: Date | null | undefined): Date | null {
+  if (!a) return b ?? null;
+  if (!b) return a;
+  return a < b ? a : b;
 }
 
 function laterOf(a: Date | null | undefined, b: Date | null): Date | null {

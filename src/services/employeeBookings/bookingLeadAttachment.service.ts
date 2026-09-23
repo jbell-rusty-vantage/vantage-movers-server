@@ -21,6 +21,7 @@ import {
   mirrorBookingToLead,
 } from "../bookings";
 import { type FullSheetSyncJob } from "../sheetSync";
+import type { LeadChangeRecorder } from "../domainCommands/leadChangeEmission";
 import { getLinkedLead } from "../leads";
 import { normalizePhoneNumberForStorage } from "../../utils/phone";
 import { V1ServiceError } from "../v1ServiceError";
@@ -48,7 +49,10 @@ export async function attachLeadToEmployeeBooking(args: {
     | "booking_reconciliation.auto_attach_delayed";
   sourceResolution?: SourceResolutionChoice;
   session?: ClientSession;
+  /** Records the Lead's before-state so the caller emits one Lead EntityChange. */
+  leadChanges?: LeadChangeRecorder;
 }): Promise<FullSheetSyncJob> {
+  await args.leadChanges?.track(args.leadModel, args.leadId);
   const lead = await getLinkedLead(args.leadModel, args.leadId, args.session);
   if (args.sourceResolution === "apply_submission_source") {
     const resolution = await resolveLeadSourceAssignment({
@@ -119,6 +123,7 @@ export async function createAndAttachReconciliationCallLead(args: {
   prepared: PreparedEmployeeBookingSubmission;
   leadFields: CreateReconciliationCallLeadInput;
   session?: ClientSession;
+  leadChanges?: LeadChangeRecorder;
 }): Promise<{ leadId: string; job: FullSheetSyncJob; extraJobs: FullSheetSyncJob[] }> {
   const normalized = normalizeLeadName({
     name: args.leadFields.name ?? args.prepared.leadName,
@@ -164,6 +169,7 @@ export async function createAndAttachReconciliationCallLead(args: {
     created_on_unmatched: false,
   });
   await created.save({ session: args.session });
+  args.leadChanges?.trackCreated("CallLead", created._id.toString());
   if (created.cpl_resolution_status === "missing_rate") {
     await recordMissingLeadCplRate({
       leadModel: "CallLead",
@@ -183,6 +189,7 @@ export async function createAndAttachReconciliationCallLead(args: {
     operation: "booking_reconciliation.create_and_attach",
     sourceResolution: "apply_submission_source",
     session: args.session,
+    leadChanges: args.leadChanges,
   });
   return { leadId: created._id.toString(), job, extraJobs: [] };
 }
@@ -192,6 +199,7 @@ export async function createAndAttachReconciliationFormLead(args: {
   prepared: PreparedEmployeeBookingSubmission;
   leadFields: CreateReconciliationFormLeadInput;
   session?: ClientSession;
+  leadChanges?: LeadChangeRecorder;
 }): Promise<{ leadId: string; job: FullSheetSyncJob; extraJobs: FullSheetSyncJob[] }> {
   const normalized = normalizeLeadName({
     name: args.leadFields.name,
@@ -244,6 +252,7 @@ export async function createAndAttachReconciliationFormLead(args: {
     post_to_granot: false,
   });
   await created.save({ session: args.session });
+  args.leadChanges?.trackCreated("FormLead", created._id.toString());
   if (created.cpl_resolution_status === "missing_rate") {
     await recordMissingLeadCplRate({
       leadModel: "FormLead",
@@ -274,6 +283,7 @@ export async function createAndAttachReconciliationFormLead(args: {
     operation: "booking_reconciliation.create_and_attach",
     sourceResolution: "apply_submission_source",
     session: args.session,
+    leadChanges: args.leadChanges,
   });
   return { leadId: created._id.toString(), job, extraJobs: formFillJobs };
 }
@@ -285,6 +295,7 @@ export async function reassignEmployeeBookingLead(args: {
   nextLeadId: string;
   sourceResolution?: SourceResolutionChoice;
   session?: ClientSession;
+  leadChanges?: LeadChangeRecorder;
 }): Promise<FullSheetSyncJob[]> {
   const jobs: FullSheetSyncJob[] = [];
   const previousLead =
@@ -305,9 +316,11 @@ export async function reassignEmployeeBookingLead(args: {
     operation: "booking_reconciliation.reassign",
     sourceResolution: args.sourceResolution,
     session: args.session,
+    leadChanges: args.leadChanges,
   });
 
   if (previousLead) {
+    await args.leadChanges?.track(previousLead.model, previousLead.id);
     await clearBookingFromLead(previousLead.model, previousLead.id, {
       session: args.session,
       syncAfterClear: false,

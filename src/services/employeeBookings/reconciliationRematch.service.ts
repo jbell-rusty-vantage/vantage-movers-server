@@ -10,6 +10,11 @@ import {
 import { finalizeSheetSync, persistSheetSyncIntent, runSheetSyncWrite } from "../sheetSync";
 import { recordOperationalEvent } from "../observability";
 import { attachLeadToEmployeeBooking } from "./bookingLeadAttachment.service";
+import {
+  BOOKING_RECONCILIATION_REMATCH_ACTOR_ID,
+  LeadChangeRecorder,
+  systemLeadChangeContext,
+} from "../domainCommands/leadChangeEmission";
 import { evaluateEmployeeBookingMatch } from "./leadMatchEvaluator";
 import { queryEmployeeBookingCandidates } from "./leadCandidateQueries";
 import type { PreparedEmployeeBookingSubmission } from "./types";
@@ -183,6 +188,22 @@ export async function runDueBookingLeadRematches(context: { actor: string }) {
             ...snapshotEmployeeBookingAutoMatchPolicy(),
           } as any);
           if (evaluated.kind === "linked") {
+            // The rematch cron attaches outside the canonical executor, so it
+            // emits the Lead EntityChange in this transaction (LP-03 / H4).
+            const leadChanges = new LeadChangeRecorder({
+              command_name: "autoAttachBookingLead",
+              context: systemLeadChangeContext({
+                actor_id: BOOKING_RECONCILIATION_REMATCH_ACTOR_ID,
+                command_name: "autoAttachBookingLead",
+                request_id: owner,
+                payload: {
+                  case_id: String(leased._id),
+                  lead_model: evaluated.leadModel,
+                  lead_id: evaluated.leadId,
+                },
+              }),
+              session,
+            });
             const job = await attachLeadToEmployeeBooking({
               booking,
               prepared,
@@ -190,7 +211,9 @@ export async function runDueBookingLeadRematches(context: { actor: string }) {
               leadId: evaluated.leadId,
               operation: "booking_reconciliation.auto_attach_delayed",
               session,
+              leadChanges,
             });
+            await leadChanges.flush();
             await persistSheetSyncIntent(job, session);
             caseDoc.retry ??= { attempt_count: 0 };
             caseDoc.status = "resolved";

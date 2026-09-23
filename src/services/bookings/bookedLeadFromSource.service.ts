@@ -65,7 +65,7 @@ export async function resolveFromSourceAttach(
   const confirmLinkedEligible = deps.linkedLeadStillEligible ?? linkedLeadStillEligible;
 
   if (input.lead_type === "FormLead") {
-    const resolved = await resolveSourceLead(input);
+    const resolved = await resolveSourceLead(input, { session });
     return {
       kind: "attach",
       ...resolved,
@@ -74,7 +74,7 @@ export async function resolveFromSourceAttach(
   }
 
   if (isBestRelocationFromSource(input)) {
-    const resolved = await resolveSourceLead(input);
+    const resolved = await resolveSourceLead(input, { session });
     return { kind: "attach", ...resolved };
   }
 

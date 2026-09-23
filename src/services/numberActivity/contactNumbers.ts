@@ -10,6 +10,7 @@ import {
   numberDetailReadDtoSchema,
   numberSearchItemDtoSchema,
   type NumberDetailReadDto,
+  type AttachedLeadProgressItemDto,
   type NumberRollupsDto,
   type NumberSearchItemDto,
 } from "./dto";
@@ -40,6 +41,7 @@ export type ContactNumberLean = {
     human_conversations_total: number;
     last_inbound_at: Date | null;
     last_outbound_at: Date | null;
+    last_human_conversation_at?: Date | null;
     attached_lead_count: number;
     candidate_lead_count: number;
     open_outreach_count: number;
@@ -72,16 +74,22 @@ export function toRollupsDto(row: ContactNumberLean): NumberRollupsDto {
     human_conversations_total: r.human_conversations_total ?? 0,
     last_inbound_at: iso(r.last_inbound_at),
     last_outbound_at: iso(r.last_outbound_at),
+    last_human_conversation_at: iso(r.last_human_conversation_at),
     attached_lead_count: r.attached_lead_count ?? 0,
     candidate_lead_count: r.candidate_lead_count ?? 0,
     open_outreach_count: r.open_outreach_count ?? 0,
   };
 }
 
-/** Pure mapper shared with `search.ts`. `search_terms` is deliberately not copied. */
+/**
+ * Pure mapper shared with `search.ts`. `search_terms` is deliberately not
+ * copied. `attached` is the page-batched Lead progress for this Number (LP-06);
+ * a non-resolved status is reduced to its bare status so no Lead field leaks.
+ */
 export function toNumberSearchItem(
   row: ContactNumberLean,
   match: NumberSearchItemDto["match"],
+  attached?: AttachedLeadProgressItemDto,
 ): NumberSearchItemDto {
   const rollups = toRollupsDto(row);
   return numberSearchItemDtoSchema.parse({
@@ -98,7 +106,20 @@ export function toNumberSearchItem(
     rollups,
     linked: rollups.attached_lead_count > 0 || rollups.candidate_lead_count > 0,
     match,
+    ...(attached ? { attached_lead_progress: attachedForItem(attached) } : {}),
   });
+}
+
+export function attachedForItem(value: AttachedLeadProgressItemDto): AttachedLeadProgressItemDto {
+  if (value.status !== "resolved") return { status: value.status };
+  return {
+    status: "resolved",
+    lead_ref: value.lead_ref,
+    lead_progress: value.lead_progress ?? null,
+    booking: value.booking ?? null,
+    outreach_state: value.outreach_state ?? null,
+    ...(value.lead_display !== undefined ? { lead_display: value.lead_display } : {}),
+  };
 }
 
 /**

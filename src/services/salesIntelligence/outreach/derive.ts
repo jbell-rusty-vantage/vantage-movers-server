@@ -25,6 +25,9 @@ export function derive(record: RecordRow, context: DeriveContext) {
   add(4, "followups_due", due.length > 0);
   add(5, "no_next_step", record.state === "open" && actions.length === 0);
   add(6, "missing_responsibility", !record.responsible_agent_id || missing.length > 0);
+  // LP-01: work established by accepted Lead progress with no attributable call in available history.
+  // A secondary explanation, never a band of its own (§4).
+  if (actionable && record.state !== "unworked" && record.lead_progress?.work_observed && !record.first_attributable_outbound_at && !record.first_human_conversation_at) reasons.push("no_call_observed");
   // Snoozing an overdue task postpones its reminder, not the customer's agreement
   // or the last human contact. Day-only waits still honor their next-opening boundary.
   const futurePlan = actions.some(a => a.due_at && (a.base_attention_due_at ?? a.due_at) > now);
@@ -38,6 +41,8 @@ export function derive(record: RecordRow, context: DeriveContext) {
   if (record.state === "identity_review") { blockers.push("identity"); badges.add("identity"); }
   if (context.suppressed) blockers.push("suppressed");
   if (context.restrictions.some(r => r.state === "active" && r.channels.includes("call") && (!r.until || r.until > now))) { blockers.push("restriction"); badges.add("restriction"); }
+  // A terminal CRM disposition of uncertain provenance blocks new sales execution until reviewed (§6).
+  if (review.some(r => r.cause_kind === "disposition_review")) blockers.push("disposition_review");
   return { overdue: actionable && (due.length > 0 || (record.state === "unworked" && Boolean(record.first_action_due_at && record.first_action_due_at <= now))),
     no_owner: !record.responsible_agent_id || missing.length > 0, missing_record_responsibility: !record.responsible_agent_id,
     missing_action_responsibility: missing, no_next_action: record.state === "open" && actions.length === 0,

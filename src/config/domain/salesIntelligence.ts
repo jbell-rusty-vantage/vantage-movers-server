@@ -116,6 +116,10 @@ export const CSI_ERROR_CODES = [
   "BUDGET_EXHAUSTED",
   "EVIDENCE_LIMIT_REACHED",
   "PROVIDER_READ_UNAVAILABLE",
+  // Lead progress (LP-01): work closed by a current CRM disposition, and a
+  // terminal disposition whose provenance is unresolved.
+  "CRM_DISPOSITION_CLOSED",
+  "DISPOSITION_REVIEW",
 ] as const;
 export type CsiErrorCode = (typeof CSI_ERROR_CODES)[number];
 export const CSI_FLAGS = [
@@ -133,6 +137,10 @@ export const CSI_FLAGS = [
   "NUDGE_ENABLED",
   "LIVE_SSE",
   "PROVIDER_READS",
+  // LP-01: Lead progress projection, CRM disposition closure and the
+  // Priority/Quoted repair fingerprint. Off keeps `ensureLead` and the repair
+  // sweep exactly as before so no mass re-nomination happens before the dry run.
+  "LEAD_PROGRESS",
 ] as const;
 export function csiFlag(flag: (typeof CSI_FLAGS)[number]): boolean {
   return (

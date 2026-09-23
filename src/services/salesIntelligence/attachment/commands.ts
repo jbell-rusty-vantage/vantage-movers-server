@@ -4,7 +4,7 @@ import { csiCommandSchema, csiIdSchema, type CsiCommand } from "../../../validat
 import { CsiError, type CsiActor } from "../auth";
 import { appendCsiAudit, assertIndexes, executeCsiCommand } from "../transactions";
 import { loadLead } from "./sources";
-import { fanInNumber, lockNumber, rebuildAttachmentSearchTerms } from "./store";
+import { autoAttachNumber, fanInNumber, lockNumber, rebuildAttachmentSearchTerms } from "./store";
 import { leadWindow } from "./suggest";
 import { onAttachmentChanged } from "./hooks";
 
@@ -57,6 +57,8 @@ export async function commandAttachment(input: { actor: CsiActor; idempotency_ke
       if (prior) row.revision = prior.revision + 1;
       await row.save({ session });
       await fanInNumber(numberId, session, now);
+      // H5: an Owner decision can contest or withdraw an automatic edge; it never overrides this one.
+      await autoAttachNumber(numberId, context);
       await rebuildAttachmentSearchTerms(numberId, session);
       await onAttachmentChanged({ number_id: numberId, revision: number.revision }, session);
       await appendCsiAudit(context, { kind: "number", target_id: numberId, subject_key: `number:${numberId}`, revision: number.revision,

@@ -14,6 +14,9 @@ afterEach(() => {
 
 function jobQuery(docs: unknown[]) {
   return {
+    session() {
+      return this;
+    },
     sort() {
       return this;
     },

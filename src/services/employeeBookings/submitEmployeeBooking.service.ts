@@ -14,6 +14,11 @@ import { AppError, ConflictError } from "../errors";
 import { recordOperationalEvent } from "../observability";
 import { getLinkedLead } from "../leads";
 import { claimAvailableLeadForBooking } from "../bookings";
+import {
+  EMPLOYEE_BOOKING_SUBMISSION_ACTOR_ID,
+  LeadChangeRecorder,
+  systemLeadChangeContext,
+} from "../domainCommands/leadChangeEmission";
 import { upsertCustomerFromBookingContact } from "../customers/customerFromLead.service";
 import {
   finalizeSheetSync,
@@ -204,6 +209,24 @@ export async function submitEmployeeBooking(
                 attached_at: new Date(),
               },
             });
+            // Public employee submission has no trusted Owner; the Lead change is
+            // attributed to the fixed employee-booking-submission system actor.
+            const leadChanges = new LeadChangeRecorder({
+              command_name: "submitEmployeeBooking",
+              context: systemLeadChangeContext({
+                actor_id: EMPLOYEE_BOOKING_SUBMISSION_ACTOR_ID,
+                command_name: "submitEmployeeBooking",
+                request_id: prepared.submissionId,
+                payload: {
+                  submission_id: prepared.submissionId,
+                  booking_id: booking._id.toString(),
+                  lead_model: matchOutcome.leadModel,
+                  lead_id: matchOutcome.leadId,
+                },
+              }),
+              session,
+            });
+            await leadChanges.track(matchOutcome.leadModel, matchOutcome.leadId);
             const claimed = await claimAvailableLeadForBooking(
               lead,
               matchOutcome.leadModel,
@@ -215,6 +238,7 @@ export async function submitEmployeeBooking(
             );
             if (claimed) {
               await booking.save({ session });
+              await leadChanges.flush();
               const job: FullSheetSyncJob = {
                 resource: "booking_chain",
                 operation: "employee_booking.create_linked",

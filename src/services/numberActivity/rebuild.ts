@@ -539,3 +539,132 @@ function jsonRollups(rollups: RebuildRollups): JsonRollups {
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// LP-06 bounded First observed repair (§14.2 step 3)
+// ---------------------------------------------------------------------------
+
+export type FirstObservedRepairOptions = {
+  /** Numbers scanned in this call, in `_id` order. */
+  limit: number;
+  /** Resume after this Contact Number id (exclusive). */
+  after?: string | null;
+  /** Dry run unless true. */
+  apply: boolean;
+  now?: () => Date;
+};
+
+export type FirstObservedRepairSummary = {
+  apply: boolean;
+  scanned: number;
+  changed: number;
+  unchanged: number;
+  /** Numbers with no canonical interaction keep their stored value; counted in `unchanged` too. */
+  no_evidence: number;
+  errors: number;
+  /** Pass as `after` to resume; null when the scan reached the end. */
+  next_after: string | null;
+  changes: Array<{ id: string; before: string; after: string; direction: "lowered" | "raised" }>;
+  error_ids: string[];
+};
+
+/** Earliest `started_at` over canonical interactions (`merged_into_id: null`), or null. */
+export async function earliestCanonicalStart(numberId: mongoose.Types.ObjectId): Promise<Date | null> {
+  const row = await getCallInteractionModel()
+    .findOne({ contact_number_id: numberId, merged_into_id: null }, { started_at: 1 })
+    .sort({ started_at: 1, _id: 1 })
+    .lean();
+  return row?.started_at ? new Date(row.started_at) : null;
+}
+
+/**
+ * Sets `first_observed_at` to the earliest canonical interaction, lowering or
+ * raising it, for one bounded, resumable page of Contact Numbers. Touches no
+ * other field: `last_activity_at`, rollups and search terms stay as stored
+ * (the full rebuild owns those). Each change is a revision-CAS write with a
+ * `number.first_observed_repaired` audit row in one transaction; a concurrent
+ * capture makes that number an error for this pass, and a rerun picks it up.
+ */
+export async function repairFirstObservedAt(options: FirstObservedRepairOptions): Promise<FirstObservedRepairSummary> {
+  const limit = Math.max(1, Math.min(5_000, Math.trunc(options.limit)));
+  if (options.after != null) csiIdSchema.parse(options.after);
+  const now = options.now ?? (() => new Date());
+  const runId = String(new mongoose.Types.ObjectId());
+  const numbers = (await getContactNumberModel()
+    .find(options.after ? { _id: { $gt: new mongoose.Types.ObjectId(options.after) } } : {}, {
+      _id: 1,
+      revision: 1,
+      first_observed_at: 1,
+    })
+    .sort({ _id: 1 })
+    .limit(limit)
+    .lean()) as Array<{ _id: mongoose.Types.ObjectId; revision: number; first_observed_at: Date }>;
+  const summary: FirstObservedRepairSummary = {
+    apply: options.apply,
+    scanned: 0,
+    changed: 0,
+    unchanged: 0,
+    no_evidence: 0,
+    errors: 0,
+    next_after: numbers.length === limit ? String(numbers.at(-1)!._id) : null,
+    changes: [],
+    error_ids: [],
+  };
+  for (const number of numbers) {
+    summary.scanned += 1;
+    const id = String(number._id);
+    try {
+      const earliest = await earliestCanonicalStart(number._id);
+      const before = number.first_observed_at ? new Date(number.first_observed_at) : null;
+      if (!earliest) {
+        summary.no_evidence += 1;
+        summary.unchanged += 1;
+        continue;
+      }
+      if (before && before.getTime() === earliest.getTime()) {
+        summary.unchanged += 1;
+        continue;
+      }
+      const change = {
+        id,
+        before: before ? before.toISOString() : "null",
+        after: earliest.toISOString(),
+        direction: before && earliest > before ? ("raised" as const) : ("lowered" as const),
+      };
+      if (options.apply) {
+        await withTransaction(async (session) => {
+          const written = await getContactNumberModel().updateOne(
+            { _id: number._id, revision: number.revision },
+            { $set: { first_observed_at: earliest }, $inc: { revision: 1 } },
+            { session, runValidators: true },
+          );
+          if (written.modifiedCount !== 1) throw new CsiError("REVISION_CONFLICT");
+          await appendCsiAudit(
+            { session, command_id: new mongoose.Types.ObjectId(), now: now(), actor: csiWorkerActor(runId) },
+            {
+              subject_key: `number:${id}`,
+              event_kind: "number.first_observed_repaired",
+              prior: { revision: number.revision, first_observed_at: change.before },
+              current: { revision: number.revision + 1, first_observed_at: change.after, repair_run_id: runId },
+              target_id: id,
+              revision: number.revision + 1,
+              kind: "number",
+            },
+          );
+        });
+      }
+      summary.changed += 1;
+      summary.changes.push(change);
+    } catch (error) {
+      summary.errors += 1;
+      summary.error_ids.push(id);
+      logger.error({
+        msg: "sales_intelligence.first_observed_repair.failed",
+        numberId: id,
+        errorName: error instanceof Error ? error.name : "Error",
+        code: error instanceof CsiError ? error.code : undefined,
+      });
+    }
+  }
+  return summary;
+}

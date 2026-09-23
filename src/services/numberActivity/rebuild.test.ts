@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { at, inboundQueueAnsweredDeliveries, outboundUnansweredDeliveries, syntheticDirectory, SYNTHETIC_ACCOUNT_ID } from "./fixtures";
 import { fromWebhookParties } from "./interactionProjection";
 import { normalizeWebhookPartyObservations } from "./observeWebhookEvents";
+import { earlierOf } from "./persistInteraction";
 import { recountNumber, sameRebuiltFields, rebuildDedupeKey, type RebuiltFields } from "./rebuild";
 import type { InteractionProjection } from "./types";
 
@@ -103,4 +104,43 @@ test("recount is idempotent: recounting the rebuilt fields yields the same field
   assert.equal(sameRebuiltFields(incremental, first), true, "rebuild matches what capture wrote incrementally");
   assert.equal(sameRebuiltFields(incremental, { ...first, rollups: { ...first.rollups, inbound_total: 2 } }), false);
   assert.equal(rebuildDedupeKey("a".repeat(24), "b".repeat(24)), `csi:rebuild:number:${"a".repeat(24)}:cmd:${"b".repeat(24)}`);
+});
+
+test("LP-06 earlierOf lowers only; capture keeps first_observed_at at the earliest call however calls arrive", () => {
+  assert.equal(earlierOf(at(10), at(5))?.toISOString(), at(5).toISOString());
+  assert.equal(earlierOf(at(5), at(10))?.toISOString(), at(5).toISOString());
+  assert.equal(earlierOf(null, at(10))?.toISOString(), at(10).toISOString());
+  assert.equal(earlierOf(at(10), null)?.toISOString(), at(10).toISOString());
+  assert.equal(earlierOf(undefined, undefined), null);
+  // Out-of-order ingestion: the later call is processed first.
+  const arrivals = [at(9_000), at(1_000), at(5_000)];
+  let first: Date | null = null;
+  for (const started of arrivals) first = earlierOf(first, started);
+  assert.equal(first?.toISOString(), at(1_000).toISOString());
+});
+
+test("LP-06 recount repairs a late first_observed_at from calls ingested out of order and ignores merged rows", () => {
+  const inbound = inboundQueueAnsweredDeliveries("s-rb-lp06");
+  const base = project([inbound.ringing, inbound.answered, inbound.disconnected], at(10));
+  const later = { ...base, started_at: at(9_000) };
+  const earliest = { ...base, started_at: at(1_000) };
+  const middle = { ...base, started_at: at(5_000) };
+  // Stored row as the old create path left it: first_observed_at is the first *processed* call.
+  const stored = { first_observed_at: later.started_at, last_activity_at: later.started_at, rollups: { last_meaningful_contact_at: null } };
+  const repaired = recountNumber({ number: stored, interactions: [later, earliest, middle], attachments: [], open_outreach_count: 0 });
+  assert.equal(repaired.first_observed_at.toISOString(), at(1_000).toISOString(), "lowered to the earliest canonical interaction");
+  assert.equal(repaired.last_activity_at.toISOString(), at(9_000).toISOString(), "last activity stays the latest call");
+  // `loadRebuildEvidence` passes canonical rows only (`merged_into_id: null`); with the earliest row merged away the value is raised.
+  const raised = recountNumber({
+    number: { ...stored, first_observed_at: at(1_000) },
+    interactions: [later, middle],
+    attachments: [],
+    open_outreach_count: 0,
+  });
+  assert.equal(raised.first_observed_at.toISOString(), at(5_000).toISOString(), "raised when the earliest evidence is no longer canonical");
+  assert.equal(
+    sameRebuiltFields({ ...raised, first_observed_at: at(1_000) }, raised),
+    false,
+    "a first_observed_at difference alone is a change the rebuild writes",
+  );
 });

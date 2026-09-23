@@ -541,6 +541,10 @@ export const SalesIntelligenceReviewItemSchema = new Schema(
       "closed_work_request",
       "missing_responsibility",
       "unclear_commitment",
+      // LP-01: a later nonterminal Priority on CRM-closed work; a terminal
+      // Priority whose provenance is unresolved.
+      "disposition_reopen",
+      "disposition_review",
     ]),
     cause_key: str,
     state: enumeration(["open", "resolved", "dismissed"], "open"),

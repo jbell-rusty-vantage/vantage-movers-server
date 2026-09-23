@@ -208,6 +208,17 @@ Booking delete: clears `booked`, `cancelled`, threshold flags. Legacy path also 
 
 Atomic `updateOne` used by employee submit. Filter: not booked, not cancelled, not duplicate; Call Leads also `created_on_unmatched != true`. Sets `booked` + thresholds + optional `local`. **Does not rewrite CPL.** Returns `false` when another writer already claimed the lead (test: concurrent claims, only one wins).
 
+## Lead EntityChange emission (LP-03, 2026-09-22)
+
+Sales Intelligence reads Lead state only through durable `EntityChange` rows. Every write in this Service that changes a Form Lead or Call Lead now leaves one Lead change in the same session:
+
+- **Canonical adapters (already emitted):** `createBookingFromLead` (direct and from-source), `updateBookedLead`, `deleteBookedLead`, `createCancellation`, `attachBookingToLead`, Granot Confirm / Connect / Owner Booking commands. `mirrorBookingToLead`, `clearBookingFromLead` and `claimAvailableLeadForBooking` themselves do **not** emit, because these commands already diff the Lead and persist its change; emitting in the helper would double-stamp `domain_revision`.
+- **Compatibility writers (new):** `createBookedLead`, `updateBookedLead` and `deleteBookedLead` in `bookedLead.service.ts` (still reached by `DELETE /api/v1/customers/:id` cascade) emit through `LeadChangeRecorder` with the fixed `booking-lead-mirror` system actor. The legacy/disabled Sheet Sync delete branch has no transaction; its change is written right after the Lead clear.
+- **`resolveBookingSourceLead` (new):** takes an optional `{ session }`. The job-match phone correction, the phone-match job/phone correction (`correctBookingSourceCallLead`) and the Unmatched Call Lead mint (`createCallLead`) each emit with the fixed `booking-source-resolver` actor and stamp the returned document's `domain_revision`, so the booking command's later `booked` change uses the current CAS value. **Open:** `bookedLeadFromSource.service.ts` does not yet pass the command session, so these writes and their changes still commit outside the command transaction.
+- `refreshAttachedBookingFromLead` writes only the Booking (customer, `local`), not the Lead; no Lead change is due.
+
+Helper: `src/services/domainCommands/leadChangeEmission.ts` (before/after diff over `FORM_LEAD_CHANGE_PATHS` / `CALL_LEAD_CHANGE_PATHS`, `persistEntityChangeMutations`, revision stamp). A semantic no-op emits nothing.
+
 ## Derived fields and invariants
 
 | Field | Rule |
@@ -268,6 +279,7 @@ Atomic `updateOne` used by employee submit. Filter: not booked, not cancelled, n
 - `connectLead.test.ts` — connectable booking / eligible Lead fences, `owner_booking` / `employee_booking` rejected, sheet intent `booking_chain` / `booked_lead.connect_lead`
 - `connectLeadCandidates.test.ts` — empty `q` is an empty page; non-connectable booking is `IDENTITY_CONFLICT`
 - `connectBookingToLead.replica.test.ts` — happy-path EntityChange + sheet intent (skipped unless the Booking-command flag is on)
+- `employeeBookings/leadChangeEmission.replica.test.ts` — compatibility delete and source-resolver Lead changes (opt-in `LP03_REPLICA_TESTS=true`)
 
 ## Related services
 

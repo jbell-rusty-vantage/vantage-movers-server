@@ -7,7 +7,7 @@ import { lockNumber, attachmentPolicyInput } from "../attachment/store";
 import { resolveAtInteraction, type InteractionIdentity } from "../attachment/suggest";
 import { resolvePolicy } from "../policy";
 import { type CsiTransactionContext } from "../transactions";
-import { officialClosure } from "./transitions";
+import { authoritativeClosure } from "./transitions";
 import { refreshRecord } from "./store";
 
 /** Owner opening and D's clear sales commitment share eligibility; neither can escape related closed/ambiguous Leads. */
@@ -22,8 +22,9 @@ export async function ensureNumberReview(numberId: string, trigger: "owner_open"
   const attribution = resolveAtInteraction(edges.map(attachmentPolicyInput), at);
   if (attribution.blocked_reason !== "unlinked") throw new CsiError("IDENTITY_BLOCKED");
   for (const edge of edges) {
-    const lead = await loadLead({ model: edge.lead_ref.model, id: String(edge.lead_ref.id) }, context.session);
-    if (lead && officialClosure(lead)) throw new CsiError("OFFICIAL_STATE_BLOCKS_REOPEN");
+    const edgeRef = { model: edge.lead_ref.model, id: String(edge.lead_ref.id) };
+    const lead = await loadLead(edgeRef, context.session);
+    if (lead && await authoritativeClosure(lead, edgeRef, context.session)) throw new CsiError("OFFICIAL_STATE_BLOCKS_REOPEN");
     if (await getOutreachRecordModel().exists({ "subject.model": edge.lead_ref.model, "subject.id": edge.lead_ref.id, state: "closed" }).session(context.session)) throw new CsiError("ILLEGAL_TRANSITION");
   }
   let record = await getOutreachRecordModel().findOne({ "subject.kind": "number_review", "subject.contact_number_id": numberId }).session(context.session);

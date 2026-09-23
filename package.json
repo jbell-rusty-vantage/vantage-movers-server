@@ -103,6 +103,8 @@
     "test:csi:rep-identity:replica": "node --import tsx scripts/dev_ops/test-csi-rep-identity.ts",
     "test:csi:nudges:replica": "node --import tsx scripts/dev_ops/test-csi-nudges.ts",
     "test:csi:settings:replica": "node --import tsx scripts/dev_ops/test-csi-settings.ts",
+    "test:csi:lead-progress:replica": "node --import tsx scripts/dev_ops/test-csi-lead-progress.ts",
+    "reconcile:lead-progress": "node --env-file=.env --import tsx scripts/reconcile-lead-progress.ts",
     "migration:csi:indexes": "node --env-file=.env --import tsx scripts/migrations/sales-intelligence-indexes.ts",
     "migration:csi:conversation-number": "node --env-file=.env --import tsx scripts/migrations/csi-conversation-contact-number.ts",
     "lint": "eslint src api scripts/quality --max-warnings 0",

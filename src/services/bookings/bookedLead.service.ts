@@ -48,6 +48,11 @@ import {
   collectDocumentFieldChanges,
   FORM_LEAD_CHANGE_PATHS,
 } from "../domainCommands/entityChange";
+import {
+  BOOKING_LEAD_MIRROR_ACTOR_ID,
+  LeadChangeRecorder,
+  systemLeadChangeContext,
+} from "../domainCommands/leadChangeEmission";
 import { recordBookingDailyOperationsFact } from "../dailyOperations/recordDomainFacts";
 import { V1ServiceError } from "../v1ServiceError";
 import { recordOperationalEvent } from "../observability";
@@ -80,6 +85,29 @@ type CreateBookedLeadServiceInput = Omit<CreateBookedLeadInput, "job_no"> & {
   ingestion_source?: typeof BEST_RELOCATION_INGESTION_SOURCE;
   booking_origin?: "employee_booking" | "owner_booking";
 };
+
+/**
+ * Lead EntityChange recorder for the compatibility (non-canonical) Booking
+ * writes in this file: `createBookedLead`, `updateBookedLead` and
+ * `deleteBookedLead` (still reached by the customer-delete cascade and the
+ * compatibility Lead removal). The canonical `*InTransaction` variants do not
+ * use it because their commands already emit the Lead change.
+ */
+function compatibilityBookingLeadChanges(
+  command_name: string,
+  payload: Record<string, unknown>,
+  session?: ClientSession,
+): LeadChangeRecorder {
+  return new LeadChangeRecorder({
+    command_name,
+    context: systemLeadChangeContext({
+      actor_id: BOOKING_LEAD_MIRROR_ACTOR_ID,
+      command_name,
+      payload,
+    }),
+    session,
+  });
+}
 
 function assignPrimaryAgentAsReceiver(
   lead: object & { receiver_agent?: unknown },
@@ -121,8 +149,14 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
   } = input;
   const canonicalBookingInput = { ...bookingInput, merchant };
 
-  const outcome = await runSheetSyncWrite((session) =>
-    persistBookedLeadCreateInTransaction(input, {
+  const outcome = await runSheetSyncWrite(async (session) => {
+    const leadChanges = compatibilityBookingLeadChanges(
+      "createBookingFromLead",
+      { lead_model: input.lead_model, lead_ref: input.lead_ref, job_no: input.job_no ?? null },
+      session,
+    );
+    await leadChanges.track(input.lead_model, String(input.lead_ref));
+    const persisted = await persistBookedLeadCreateInTransaction(input, {
       agent_allocations,
       merchant,
       total_binder_amount,
@@ -131,8 +165,10 @@ export async function createBookedLead(input: CreateBookedLeadServiceInput) {
       canonicalBookingInput,
       over_2000,
       over_4000,
-    }, { session, now: new Date() }),
-  );
+    }, { session, now: new Date() });
+    await leadChanges.flush();
+    return persisted;
+  });
 
   return finalizeBookedLeadCreateAfterCommit(input, merchant, warnings, outcome);
 }
@@ -661,6 +697,12 @@ export async function updateBookedLead(id: string, input: UpdateBookedLeadInput)
 
   const job = await runSheetSyncWrite(async (session) => {
     const leadModel = booking.lead_model as LeadModelName;
+    const leadChanges = compatibilityBookingLeadChanges(
+      "updateBookedLead",
+      { booking_id: id },
+      session,
+    );
+    await leadChanges.track(leadModel, booking.lead_ref!.toString());
     const lead = await getLinkedLead(
       leadModel,
       booking.lead_ref!.toString(),
@@ -684,6 +726,7 @@ export async function updateBookedLead(id: string, input: UpdateBookedLeadInput)
       bookingId: booking._id.toString(),
     };
     await persistSheetSyncIntent(bookingJob, session);
+    await leadChanges.flush();
     return bookingJob;
   });
 
@@ -750,7 +793,14 @@ export async function deleteBookedLead(id: string, cascade: boolean) {
 
       if (leadModel && leadId) {
         // Clear booking columns off the surviving lead and refresh its row.
+        const leadChanges = compatibilityBookingLeadChanges(
+          "deleteBookedLead",
+          { booking_id: id },
+          session,
+        );
+        await leadChanges.track(leadModel, leadId);
         await clearBookingFromLead(leadModel, leadId, { session, syncAfterClear: false });
+        await leadChanges.flush();
         await enqueueSheetSyncJob(
           {
             resource: "source_lead",
@@ -791,7 +841,14 @@ export async function deleteBookedLead(id: string, cascade: boolean) {
     }
   }
   if (leadModel && leadId) {
+    // Legacy/disabled Sheet Sync mode has no transaction here; the change is
+    // written right after the Lead clear, matching this path's durability.
+    const leadChanges = compatibilityBookingLeadChanges("deleteBookedLead", {
+      booking_id: id,
+    });
+    await leadChanges.track(leadModel, leadId);
     await clearBookingFromLead(leadModel, leadId);
+    await leadChanges.flush();
   }
   await deleteBookedLeadFromSheets(booking);
   await booking.deleteOne();

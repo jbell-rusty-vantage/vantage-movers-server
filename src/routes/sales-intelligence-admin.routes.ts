@@ -294,7 +294,7 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
       return res.json({ ok: true, ...(await listReviewItems(query)) }); } catch (error) { return fail(req, res, error); }
   });
   for (const [method, path, commands] of [
-    ["post", "/outreach/:id/commands", ["mark_worked", "assign", "set_waiting", "start_call", "end_call", "close", "reopen", "add_note"]],
+    ["post", "/outreach/:id/commands", ["mark_worked", "assign", "set_waiting", "start_call", "end_call", "close", "reopen", "override_disposition", "add_note"]],
     ["post", "/followups", ["create_followup"]], ["patch", "/followups/:id", ["patch_followup"]],
     ["post", "/followups/:id/complete", ["complete_followup"]], ["post", "/followups/:id/snooze", ["snooze_followup"]],
     ["post", "/followups/:id/cancel", ["cancel_followup"]], ["post", "/restrictions/:id/resolve", ["resolve_restriction"]],

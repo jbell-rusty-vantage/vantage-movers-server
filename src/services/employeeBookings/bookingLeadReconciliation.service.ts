@@ -23,6 +23,10 @@ import type {
 import { ConflictError, NotFoundError } from "../errors";
 import { recordOperationalEvent } from "../observability";
 import { finalizeSheetSync, persistSheetSyncIntent, runSheetSyncWrite } from "../sheetSync";
+import {
+  LeadChangeRecorder,
+  ownerLeadChangeContext,
+} from "../domainCommands/leadChangeEmission";
 import { V1ServiceError } from "../v1ServiceError";
 import { prepareEmployeeBookingSubmission } from "./employeeBookingPreparation";
 import {
@@ -356,13 +360,33 @@ export async function resolveBookingLeadReconciliation(
   context: EmployeeBookingActorContext,
 ) {
   const jobs = await runSheetSyncWrite(
-    (session) =>
-      persistBookingLeadReconciliationResolveInTransaction(
-        caseId,
-        command,
-        context,
-        { session, now: new Date() },
-      ),
+    async (session) => {
+      const now = new Date();
+      // Owner resolve runs outside the canonical executor, so it emits one Lead
+      // EntityChange per affected Lead (attached, created, and the Lead a
+      // reassign detaches) in this transaction. The canonical
+      // `attachBookingToLead` calls the InTransaction variant without a
+      // recorder because it emits its own Lead change.
+      const leadChanges = new LeadChangeRecorder({
+        command_name: "resolveBookingLeadReconciliation",
+        context: ownerLeadChangeContext({
+          owner: context,
+          command_name: "resolveBookingLeadReconciliation",
+          payload: { case_id: caseId, action: command.action },
+        }),
+        session,
+        now,
+      });
+      const resolvedJobs =
+        await persistBookingLeadReconciliationResolveInTransaction(
+          caseId,
+          command,
+          context,
+          { session, now, leadChanges },
+        );
+      await leadChanges.flush();
+      return resolvedJobs;
+    },
     { forceTransaction: true },
   );
   for (const job of jobs) {
@@ -404,9 +428,15 @@ export async function persistBookingLeadReconciliationResolveInTransaction(
   caseId: string,
   command: ResolveBookingLeadReconciliationInput,
   context: EmployeeBookingActorContext,
-  tx: { session?: ClientSession; now: Date },
+  tx: {
+    session?: ClientSession;
+    now: Date;
+    /** Set by non-canonical callers that must emit Lead EntityChanges themselves. */
+    leadChanges?: LeadChangeRecorder;
+  },
 ) {
   const session = tx.session;
+  const leadChanges = tx.leadChanges;
     const caseDoc = (await BookingLeadReconciliationCase.findById(caseId)
       .session(session ?? null)
       .exec()) as any;
@@ -448,6 +478,7 @@ export async function persistBookingLeadReconciliationResolveInTransaction(
         operation: "booking_reconciliation.attach_existing",
         sourceResolution: command.source_resolution,
         session,
+        leadChanges,
       });
       await persistSheetSyncIntent(job, session);
       jobsToFinalize.push(job);
@@ -470,6 +501,7 @@ export async function persistBookingLeadReconciliationResolveInTransaction(
           prepared,
           leadFields: command.lead_fields as any,
           session,
+          leadChanges,
         });
         for (const extraJob of result.extraJobs) {
           await persistSheetSyncIntent(extraJob, session);
@@ -491,6 +523,7 @@ export async function persistBookingLeadReconciliationResolveInTransaction(
           prepared,
           leadFields: command.lead_fields as any,
           session,
+          leadChanges,
         });
         for (const extraJob of result.extraJobs) {
           await persistSheetSyncIntent(extraJob, session);
@@ -522,6 +555,7 @@ export async function persistBookingLeadReconciliationResolveInTransaction(
         nextLeadId: command.lead_id,
         sourceResolution: command.source_resolution,
         session,
+        leadChanges,
       });
       for (const job of reassignmentJobs) {
         await persistSheetSyncIntent(job, session);

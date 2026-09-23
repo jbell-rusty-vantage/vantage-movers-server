@@ -11,29 +11,18 @@ import { getSalesIntelligenceSyncStateModel, SALES_INTELLIGENCE_SYNC_STATE_INDEX
 import { activeTokenFilter, MongoLeaseStore } from "../../durableWork/leases";
 import { CsiError } from "../auth";
 import { claimCsiJob, completeCsiJob, enqueueCsiJob, failCsiJob } from "../jobs";
-import { assertIndexes, payloadHash } from "../transactions";
+import { assertIndexes } from "../transactions";
 import { loadCanonicalInteraction } from "../conversations/workerSupport";
-import { leadAttachmentFingerprint, loadLead, type LeadSource } from "./sources";
+import { leadAttachmentJobInput, loadLead, type LeadSource } from "./sources";
 import type { LeadRef } from "./suggest";
 import { persistLeadAttachments } from "./store";
+import { numberLookupDigits, SOLE_MATCH_POLICY_VERSION } from "./matchSet";
 import { rediscoverAttachmentPage } from "./hooks";
 
 const PAGE = 250;
 
-/**
- * The join key for a number scan, as the Lead collections store it.
- *
- * `normalizePhoneNumberForMatch` produces the ten-digit NANP form, which is
- * exactly `contact_numbers.national_ten`. Outside NANP `national_ten` is null,
- * so the E.164 digit string is the stored form and the fallback key; that set
- * is tiny, and falling back beats silently attaching nothing (14 §3).
- */
-export function numberLookupDigits(number: { national_ten?: string | null; e164?: string | null }): string[] {
-  const ten = number.national_ten?.trim();
-  if (ten) return [ten];
-  const digits = number.e164?.replace(/\D/g, "") ?? "";
-  return digits ? [digits] : [];
-}
+/** The number join key now lives with the sole-match lookup; re-exported for existing callers. */
+export { numberLookupDigits };
 
 /**
  * Leads whose any known contact path carries this number, keyset-paged by
@@ -65,7 +54,7 @@ async function findLeadsByNumber(
 
 async function enqueueNumberScan(numberId: string, revision: number, session: ClientSession, model: LeadRef["model"], after?: string) {
   return enqueueCsiJob({ stage: "attachment_refresh", subject_key: `attachment-scan:${model}:${numberId}`,
-    dedupe_key: `csi:attachment-scan:${model}:${numberId}:${revision}:${after ?? "start"}`,
+    dedupe_key: `csi:attachment-scan:${SOLE_MATCH_POLICY_VERSION}:${model}:${numberId}:${revision}:${after ?? "start"}`,
     input_revision: revision, input_refs: [numberId, ...(after ? [after] : [])] }, session);
 }
 /** Queue payload remains {job_id}. Only durable input_refs and current documents supply inputs. */
@@ -124,7 +113,12 @@ export async function drainAttachmentRefreshJobs(max = 20) {
 }
 /** Bounded 500-source scan: 200 Form Leads, 200 Call Leads, 100 Contact Numbers.
  * Keyset (updatedAt,_id) prevents equal-timestamp loss. Checkpoints commit with job intents.
- * EntityChange.applied_at remains a later scan source; CSI never writes EntityChange.
+ * Since H5/H2 (September 22, 2026) the Outreach entity-change scan is the primary trigger: it
+ * consumes Lead EntityChanges and enqueues `attachment-lead:` jobs (same policy-versioned
+ * fingerprint key) for creates and phone/snapshot/duplicate/bad_lead/no_sync changes. This
+ * watermark stays as the backstop. CSI still never writes EntityChange.
+ * Dedupe keys carry `SOLE_MATCH_POLICY_VERSION` so completed pre-H5 jobs never fence a
+ * sole-match evaluation.
  */
 export async function runAttachmentRefreshOnce() {
   if (!csiFlag("ATTACHMENT_REFRESH")) return { skipped: true, reason: "disabled", scanned: 0 };
@@ -157,10 +151,7 @@ export async function runAttachmentRefreshOnce() {
           } else {
             // The watermark only orders the scan. The job key is the identity
             // fingerprint, so an unrelated Lead edit re-raises nothing (17 §7).
-            const fingerprint = leadAttachmentFingerprint(source as LeadSource);
-            await enqueueCsiJob({ stage: "attachment_refresh", subject_key: `attachment-lead:${model}:${sourceId}`,
-              dedupe_key: `csi:attachment-lead:${model}:${sourceId}:${fingerprint}`,
-              input_revision: parseInt(payloadHash(fingerprint).slice(0, 12), 16) + 1, input_refs: [sourceId] }, session);
+            await enqueueCsiJob(leadAttachmentJobInput(model, sourceId, source as LeadSource), session);
           }
           await State.updateOne({ scope }, { $set: { "cursor.provider_modified_watermark": time, "cursor.attachment_source_id": source._id } }, { session, upsert: true });
           count++;

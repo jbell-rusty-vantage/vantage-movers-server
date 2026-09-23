@@ -16,6 +16,11 @@ import {
   CALL_LEAD_CHANGE_PATHS,
   collectDocumentFieldChanges,
 } from "../domainCommands/entityChange";
+import {
+  applyLeadChangeStamp,
+  emitLeadChange,
+  ringCentralCallLeadCreateContext,
+} from "../domainCommands/leadChangeEmission";
 import { recordCallLeadDailyOperationsFact } from "../dailyOperations/recordDomainFacts";
 import { ConflictError, NotFoundError } from "../errors";
 import { deleteCallLeadFromSheets } from "../googleSheets.service";
@@ -310,11 +315,43 @@ export async function beginRingCentralCallLeadIngestion(
     ringcentral: rememberRingCentralTransport(input),
   });
   await writeTheCallLead(created, tx.session);
+  await recordTheRingCentralLeadChange(created, input, tx);
   const job = callLeadCreateJob(created._id.toString());
   if (created.no_sync !== true) {
     await rememberSheetSync(job, tx.session);
   }
   return { lead: created, job, source_company, sourceAssignment, form_fill };
+}
+
+/**
+ * E3 (Lead progress H4): a RingCentral-created Call Lead writes its create
+ * `EntityChange` in the same session as the Lead, so Outreach learns of it
+ * through the one EntityChange consumer instead of the repair sweep. This is
+ * not an idempotent canonical command: the ingest's processed-call store owns
+ * idempotency, and the change carries a freshly minted `command_execution_id`.
+ * Duplicate and non-duplicate Call Leads both emit.
+ */
+async function recordTheRingCentralLeadChange(
+  created: CallLeadDocument,
+  input: CreateRingCentralCallLeadInput,
+  tx: CallLeadSession,
+) {
+  const leadId = created._id.toString();
+  const stamp = await emitLeadChange({
+    model: "CallLead",
+    id: leadId,
+    before: null,
+    session: tx.session,
+    now: tx.now,
+    command_name: "createCallLead",
+    context: ringCentralCallLeadCreateContext({
+      lead_id: leadId,
+      telephony_session_id: input.ringcentral.telephony_session_id,
+      call_log_id: input.ringcentral.call_log_id,
+      ingestion_source: input.ringcentral.ingestion_source,
+    }),
+  });
+  applyLeadChangeStamp(created, stamp);
 }
 
 /**

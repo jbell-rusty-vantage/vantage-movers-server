@@ -103,6 +103,8 @@ export const csiCommandSchema = z.discriminatedUnion("command", [
     note: csiTextSchema.optional(),
   }),
   command("reopen", reason),
+  // LP-01 §3.3: explicit, revision-scoped Owner override of a CRM disposition.
+  command("override_disposition", { disposition_revision: z.string().min(1).max(200), ...reason }),
   command("add_note", { text: csiTextSchema }),
   command("create_followup", {
     outreach_record_id: csiIdSchema,

@@ -273,10 +273,55 @@ export const findingDtoSchema = z
     allowed_actions: z.array(csiActionAvailabilitySchema),
   })
   .strict();
+/**
+ * LP-01 §7: server-owned Lead progress projection as the Owner reads it. Every
+ * label is computed here; Admin never derives Quoted from Priority or policy
+ * from a code. Optional on every read so an older Admin still parses.
+ */
+export const leadProgressDtoSchema = z
+  .object({
+    lead_ref: z.object({ model: z.enum(["FormLead", "CallLead"]), id }).strict(),
+    granot_priority: z.string().nullable(),
+    priority_label: z.string(),
+    quoted: z.boolean().nullable(),
+    disposition: z.enum(["fresh", "quoted", "rep_discretion", "crm_bad_unusable", "crm_dead", "unmapped", "unknown"]),
+    disposition_label: z.string(),
+    work_observed: z.boolean(),
+    basis: z.enum(["quoted", "priority_assigned", "priority_changed", "historical_snapshot"]).nullable(),
+    basis_label: z.string().nullable(),
+    provenance: z.enum(["accepted", "uncertain", "none"]),
+    source_origin: z.enum(["granot", "vantage", "ringcentral"]).nullable(),
+    source_applied_at: date.nullable(),
+    last_progress_at: date.nullable(),
+    first_work_observed_at: date.nullable(),
+    closure: z.object({ basis: z.enum(["granot_bad_unusable", "granot_dead_opportunity"]), closed_at: date.nullable() }).strict().nullable(),
+    override: z.object({ reason: z.string(), decided_at: date, decided_by: z.string(), disposition_revision: z.string() }).strict().nullable(),
+    reopen_review_id: id.nullable(),
+    disposition_revision: z.string(),
+    explanation: z.string().nullable(),
+    no_call_observed: z.boolean(),
+    projected_at: date,
+  })
+  .strict();
+export type LeadProgressDto = z.infer<typeof leadProgressDtoSchema>;
+/** §14.1: server-computed ordering keys frozen into each Attention snapshot row. Score keys are added by Move assessment on this same object. */
+export const attentionSortKeysDtoSchema = z
+  .object({
+    next_action_due: date.nullable(),
+    lead_received: date.nullable(),
+    last_human_contact: date.nullable(),
+    last_lead_progress: date.nullable(),
+  })
+  .strict();
+export const ATTENTION_SORTS = ["attention", "next_action_due", "lead_received", "last_human_contact", "last_lead_progress"] as const;
+export const ATTENTION_SORT_DEFAULT_DIRECTION: Record<(typeof ATTENTION_SORTS)[number], "asc" | "desc"> = {
+  attention: "asc", next_action_due: "asc", lead_received: "desc", last_human_contact: "asc", last_lead_progress: "desc",
+};
 export const outreachDtoSchema = z
   .object({
     id,
     revision,
+    lead_progress: leadProgressDtoSchema.nullable().optional(),
     primary_number: z.object({ id, e164: z.string() }).strict().nullable().optional(),
     lead_display: z.object({ name: z.string().nullable(), job_no: z.string().nullable(), source_company: z.string().nullable() }).strict().nullable().optional(),
     latest_number_call: z.object({ id, happened_at: date, direction: z.string(), provider_result: z.string().nullable(), contact_type: z.string() }).strict().nullable().optional(),
@@ -326,6 +371,7 @@ export const attentionRowDtoSchema = z
     outreach: outreachDtoSchema.nullable(),
     derived: derivedDtoSchema,
     allowed_actions: z.array(csiActionAvailabilitySchema),
+    sort_keys: attentionSortKeysDtoSchema.optional(),
   })
   .strict();
 export const ownerReadSchema = <T extends z.ZodType>(data: T) =>
@@ -340,6 +386,10 @@ export const attentionPageDtoSchema = ownerReadSchema(
       status: z.enum(["ready", "pending_projection"]).optional(),
       stale: z.boolean().optional(),
       reason_counts: z.record(z.string(), z.number().int().nonnegative()),
+      // §14.1: the sort the page was produced under; absent on pre-sort servers.
+      sort: z.enum(ATTENTION_SORTS).optional(),
+      direction: z.enum(["asc", "desc"]).optional(),
+      view: z.enum(["attention"]).optional(),
     })
     .strict(),
 );
@@ -379,6 +429,8 @@ export const reviewItemDtoSchema = z
       "closed_work_request",
       "missing_responsibility",
       "unclear_commitment",
+      "disposition_reopen",
+      "disposition_review",
     ]),
     cause_key: z.string(),
     state: z.enum(["open", "resolved", "dismissed"]),
@@ -517,6 +569,18 @@ export const ownerInstructionDtoSchema = z
     assessments: z.array(assessmentDtoSchema),
   })
   .strict();
+/** Number list/detail: Lead progress of the one resolved display Lead, or an explicit multiple/none (§7). */
+export const attachedLeadProgressDtoSchema = z
+  .object({
+    status: z.enum(["resolved", "multiple", "none"]),
+    lead_ref: z.object({ model: z.enum(["FormLead", "CallLead"]), id }).strict().optional(),
+    lead_progress: leadProgressDtoSchema.nullable().optional(),
+    booking: z.object({ id, cancelled: z.boolean() }).strict().nullable().optional(),
+    outreach_state: z.string().nullable().optional(),
+    lead_display: z.object({ name: z.string().nullable(), job_no: z.string().nullable() }).strict().nullable().optional(),
+  })
+  .strict();
+export type AttachedLeadProgressDto = z.infer<typeof attachedLeadProgressDtoSchema>;
 export type ReviewItemDto = z.infer<typeof reviewItemDtoSchema>;
 export type RestrictionDto = z.infer<typeof restrictionDtoSchema>;
 export type NumberDetailDto = z.infer<typeof numberDetailDtoSchema>;

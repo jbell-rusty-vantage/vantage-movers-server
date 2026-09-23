@@ -13,6 +13,7 @@ import { MongoLeaseStore, activeTokenFilter } from "../../durableWork/leases";
 import { CsiError } from "../auth";
 import { claimCsiJob, completeCsiJob, enqueueCsiJob, failCsiJob, type JobInput } from "../jobs";
 import { loadCanonicalInteraction } from "../conversations/workerSupport";
+import { leadAttachmentJobInput, loadLead } from "../attachment/sources";
 import { ensureInteraction, ensureLead, workerContext } from "./ensure";
 import { refreshRecord, jsonValue } from "./store";
 import { payloadHash } from "../transactions";
@@ -55,7 +56,9 @@ export async function runOutreachEnsureJob(jobId?: string) {
       if (job.subject_key.startsWith("outreach-lead:")) {
         const model = job.subject_key.split(":")[1];
         if (model !== "FormLead" && model !== "CallLead") throw new CsiError("INVALID_INPUT");
-        await ensureLead({ model, id: first }, context);
+        // H1: the raising EntityChange id rides in input_refs[1] so basis and source_change_id are exact.
+        const changeId = job.input_refs[1] ? String(job.input_refs[1]) : null;
+        await ensureLead({ model, id: first }, context, undefined, { changeId });
       } else if (job.subject_key.startsWith("outreach-clock:")) {
         const record = await getOutreachRecordModel().findById(first).session(session);
         if (record) {
@@ -95,7 +98,23 @@ export async function drainOutreachEnsureJobs(max = 50, options: { deadline?: nu
 
 type RepairSource = "FormLead" | "CallLead" | "CallInteraction" | "OutreachRecord";
 type RepairRow = { _id: unknown; projection_revision?: number; contact_number_id?: unknown; revision?: number;
-  booked?: unknown; cancelled?: unknown; duplicate?: boolean; bad_lead?: unknown; no_sync?: boolean };
+  booked?: unknown; cancelled?: unknown; duplicate?: boolean; bad_lead?: unknown; no_sync?: boolean;
+  granot_priority?: unknown; quoted?: unknown };
+
+/** H2: the commit-lag re-scan window. `applied_at` is taken before the transaction runs, so a change can commit after the cursor has passed it. */
+export const OUTREACH_CHANGE_RESCAN_MS = 120_000;
+/** Lead paths whose change must also re-evaluate the complete normalized-phone match set (H2, §5.2). */
+const ATTACHMENT_TRIGGER_PATHS = new Set(["phone_number", "normalized_phone_number", "ingested_contact_snapshot", "granot_contact_snapshot", "ringcentral",
+  "current_contact_provenance", "duplicate", "bad_lead", "no_sync", "booked", "cancelled", "timestamp"]);
+export function changeTriggersAttachment(change: { revision_before: number; changed_paths: readonly string[] }): boolean {
+  return change.revision_before === 0 || change.changed_paths.some(path => ATTACHMENT_TRIGGER_PATHS.has(path) || ATTACHMENT_TRIGGER_PATHS.has(path.split(".")[0]!));
+}
+export function outreachChangeNomination(change: { _id: unknown; entity: { model: string; id: string }; revision_after: number }): JobInput {
+  return { stage: "outreach_ensure", subject_key: `outreach-lead:${change.entity.model}:${change.entity.id}`,
+    // `v2`: the job now carries the change id, so its payload differs from rows the pre-LP scan
+    // inserted; a versioned key keeps those rows from turning the re-scan into an IDEMPOTENCY_CONFLICT.
+    dedupe_key: `csi:outreach:entity-change:v2:${change._id}`, input_revision: Math.max(1, change.revision_after), input_refs: [change.entity.id, String(change._id)] };
+}
 
 /**
  * Durable job for one repair-sweep row, or null when the row needs none.
@@ -118,8 +137,12 @@ export function outreachRepairNomination(source: RepairSource, row: RepairRow): 
     return { stage: "outreach_ensure", subject_key: `outreach-clock:${id}`,
       dedupe_key: `csi:outreach:repair:OutreachRecord:${id}:r${revision}`, input_revision: revision, input_refs: [id] };
   }
+  // H3: with LEAD_PROGRESS on, a Priority/Quoted change also re-nominates the Lead, so the sweep
+  // recovers any missed accepted change within one lap. Off keeps the old key so no mass
+  // re-nomination happens before the dry run.
   const fingerprint = payloadHash(jsonValue({ id, official: { booked: row.booked ?? null, cancelled: row.cancelled ?? null,
-    duplicate: row.duplicate ?? false, bad_lead: row.bad_lead ?? null, no_sync: row.no_sync ?? false } }));
+    duplicate: row.duplicate ?? false, bad_lead: row.bad_lead ?? null, no_sync: row.no_sync ?? false },
+    ...(csiFlag("LEAD_PROGRESS") ? { progress: { granot_priority: row.granot_priority ?? null, quoted: row.quoted ?? null } } : {}) }));
   return { stage: "outreach_ensure", subject_key: `outreach-lead:${source}:${id}`,
     dedupe_key: `csi:outreach:repair:${source}:${id}:${fingerprint}`, input_revision: parseInt(payloadHash(fingerprint).slice(0, 12), 16) + 1, input_refs: [id] };
 }
@@ -164,12 +187,36 @@ export async function runOutreachEnsureOnce(options: { deadline?: number } = {})
       const now = new Date();
       const state = await State.findOne({ scope: "outreach_entity_changes" }).session(session).lean();
       const at = state?.cursor?.entity_change_applied_at ?? new Date(0), id = state?.cursor?.entity_change_id ?? new mongoose.Types.ObjectId("000000000000000000000000");
-      const changes = await getEntityChangeModel().find({ "entity.model": { $in: ["FormLead", "CallLead"] }, $or: [{ applied_at: { $gt: at } }, { applied_at: at, _id: { $gt: id } }] }).sort({ applied_at: 1, _id: 1 }).limit(100).session(session).lean();
-      for (const change of changes) {
-        await enqueueCsiJob({ stage: "outreach_ensure", subject_key: `outreach-lead:${change.entity.model}:${change.entity.id}`,
-          dedupe_key: `csi:outreach:entity-change:${change._id}`, input_revision: Math.max(1, change.revision_after), input_refs: [change.entity.id] }, session);
-        await State.updateOne({ scope: "outreach_entity_changes" }, { $set: { "cursor.entity_change_applied_at": change.applied_at, "cursor.entity_change_id": change._id } }, { session, upsert: true }); count++;
+      const Change = getEntityChangeModel();
+      // H2.1 commit-lag gap: a change whose transaction committed after the cursor passed its
+      // `applied_at` would otherwise be skipped for good. Re-scan the trailing window on every
+      // pass (per-change dedupe makes a re-enqueue a no-op) and advance the strict cursor only
+      // from the page beyond it, so a busy window can never starve the cursor.
+      const overlap = at.getTime() > 0 ? await Change.find({ "entity.model": { $in: ["FormLead", "CallLead"] },
+        applied_at: { $gt: new Date(+at - OUTREACH_CHANGE_RESCAN_MS), $lte: at }, _id: { $ne: id } }).sort({ applied_at: 1, _id: 1 }).limit(500).session(session).lean() : [];
+      const changes = await Change.find({ "entity.model": { $in: ["FormLead", "CallLead"] }, $or: [{ applied_at: { $gt: at } }, { applied_at: at, _id: { $gt: id } }] }).sort({ applied_at: 1, _id: 1 }).limit(100).session(session).lean();
+      const attachmentOn = csiFlag("ATTACHMENT_REFRESH");
+      const conflicts: string[] = [];
+      for (const change of [...overlap, ...changes]) {
+        try { await enqueueCsiJob(outreachChangeNomination(change), session); }
+        catch (error) {
+          // A row whose stored payload disagrees with today's shape must never pin the cursor; the
+          // repair sweep still recovers that Lead. Anything else aborts the pass as before.
+          if (!(error instanceof CsiError && error.code === "IDEMPOTENCY_CONFLICT")) throw error;
+          conflicts.push(String(change._id));
+        }
+        // H2.2: a create or a contact/eligibility change re-evaluates the complete match set now,
+        // instead of waiting for the 5-minute updatedAt watermark (kept as the backstop).
+        if (attachmentOn && (change.entity.model === "FormLead" || change.entity.model === "CallLead") && changeTriggersAttachment(change)) {
+          const lead = await loadLead({ model: change.entity.model, id: change.entity.id }, session);
+          // One job identity (fingerprint + sole-match policy version) shared with the watermark backstop.
+          if (lead) await enqueueCsiJob(leadAttachmentJobInput(change.entity.model, change.entity.id, lead), session);
+        }
+        count++;
       }
+      const last = changes.at(-1);
+      if (last) await State.updateOne({ scope: "outreach_entity_changes" }, { $set: { "cursor.entity_change_applied_at": last.applied_at, "cursor.entity_change_id": last._id } }, { session, upsert: true });
+      if (conflicts.length) console.warn(JSON.stringify({ msg: "outreach.entity_change_job_conflict_skipped", change_ids: conflicts }));
       // Time boundary: waits whose promised date has passed and is not yet stamped.
       const expired = await getOutreachFollowupModel().find({ status: "open", kind: "wait", due_at: { $lte: now }, wait_expired_at: null })
         .sort({ due_at: 1, _id: 1 }).limit(OUTREACH_REPAIR_PAGE).session(session).lean();

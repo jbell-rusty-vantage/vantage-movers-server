@@ -90,6 +90,19 @@ Overrideable warnings (`duplicate_lead`, `source_conflict`, `channel_conflict`, 
 
 Owner candidate search (`searchBookingLeadCandidates` / `searchCandidates`) is any-known-contact: `q`, `name`, `email`, and `phone_number` OR live + ingested + Granot paths from `CALL_LEAD_CONTACT_*_PATHS` (aliases of the Form lists). Dedicated `phone_number` still uses `normalizePhoneNumberForMatch` on `*.normalized_phone_number` and typed-substring regex on `*.phone_number`. Owner search results and auto-match candidate snapshots return sanitized `ingested_contact_snapshot` and `granot_contact_snapshot` for owner display. Automatic submit match (`queryEmployeeBookingCandidates`) stays Job / operational phone and does not search Granot snapshot paths.
 
+## Lead EntityChange emission (LP-03, 2026-09-22)
+
+These paths run outside the canonical command executor, so each emits one Lead `EntityChange` per affected Lead inside its own transaction through `LeadChangeRecorder` (`src/services/domainCommands/leadChangeEmission.ts`). Outreach then learns of a Booked / linked / cleared Lead through the EntityChange scan instead of the repair sweep.
+
+| Write path | Lead change | Actor |
+|---|---|---|
+| Public submit auto-link (`claimAvailableLeadForBooking` in `submitEmployeeBooking`) | matched Lead | fixed `employee-booking-submission` system actor (no trusted Owner on the public route) |
+| Owner resolve `attach_existing` / `create_and_attach` / `reassign` (`resolveBookingLeadReconciliation`) | attached Lead; created Lead (one create change, `revision_before: 0`); both old and new Lead on reassign | Owner from `deriveTrustedOwnerActor` (`vantage_admin`), else the `booking-lead-mirror` system actor |
+| Auto-rematch cron attach (`runDueBookingLeadRematches`) | attached Lead | fixed `booking-reconciliation-rematch` system actor |
+| Reconciliation `create_and_attach` Form Lead → `form_fill` flip on matching Call Leads | each flipped Call Lead (`changed_paths: ["form_fill"]`) | fixed `form-fill-detector` system actor |
+
+`reopen`, `dismiss`, `update_pending` and candidate refresh write no Lead field and emit nothing. `resolveBookingLeadReconciliationInTransaction` (used by the canonical `attachBookingToLead`) passes no recorder: that command emits its own Lead change. These emissions are not idempotent canonical commands; the submission id and case revision keep their existing idempotency, and each emission mints its own `command_execution_id`.
+
 ## Auto-rematch cron
 
 Default `BOOKING_RECONCILIATION_AUTO_REMATCH_ENABLED` is on unless the env is the string `false`. Default reason list is `matching_unavailable,no_match`. Delays default `5,30,120` minutes. Cron skips entirely when the flag is off.

@@ -50,6 +50,17 @@ export const CONTACT_NUMBER_INDEXES = [
     name: "contact_number_kind_activity",
     key: { kind: 1, last_activity_at: -1, _id: -1 },
   },
+  // LP-06 (§14.2) time sorts. `kind` is always filtered; each index serves
+  // its sort in both directions (scanned backwards for `asc`) and the
+  // `field: null` segment keyed on `_id`.
+  {
+    name: "contact_number_kind_human_conversation",
+    key: { kind: 1, "rollups.last_human_conversation_at": -1, _id: -1 },
+  },
+  {
+    name: "contact_number_kind_first_observed",
+    key: { kind: 1, first_observed_at: -1, _id: -1 },
+  },
   {
     name: "contact_number_eligibility",
     key: { "contact_eligibility.state": 1 },

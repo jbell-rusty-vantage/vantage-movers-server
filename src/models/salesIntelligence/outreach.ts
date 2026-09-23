@@ -133,9 +133,65 @@ export const OutreachRecordSchema = new Schema(
     closed_reason: text,
     closed_at: date,
     closed_by: text,
+    // `crm_disposition` (LP-01): closed by an accepted Granot Priority 7/8.
+    // Unlike `official` it can be reopened by an explicit Owner reopen once the
+    // disposition is nonterminal again, or by a revision-scoped Owner override.
     closure_origin: {
       type: String,
-      enum: ["owner", "official", null],
+      enum: ["owner", "official", "crm_disposition", null],
+      default: null,
+    },
+    // LP-01 §3.2: server-owned projection of the Lead's current canonical
+    // Priority/Quoted plus the evidence that work started. Additive; null until
+    // the LEAD_PROGRESS flag has projected the record once.
+    lead_progress: {
+      type: new Schema(
+        {
+          granot_priority: text,
+          quoted: { type: Boolean, default: null },
+          disposition: enumeration([
+            "fresh",
+            "quoted",
+            "rep_discretion",
+            "crm_bad_unusable",
+            "crm_dead",
+            "unmapped",
+            "unknown",
+          ]),
+          work_observed: { type: Boolean, required: true, default: false },
+          basis: {
+            type: String,
+            enum: ["quoted", "priority_assigned", "priority_changed", "historical_snapshot", null],
+            default: null,
+          },
+          provenance: enumeration(["accepted", "uncertain", "none"]),
+          source_change_id: ref,
+          source_origin: { type: String, enum: ["granot", "vantage", "ringcentral", null], default: null },
+          source_observation_id: ref,
+          source_decision_id: ref,
+          source_applied_at: date,
+          first_work_observed_at: date,
+          last_progress_at: date,
+          projected_at: at,
+          fingerprint: str,
+          disposition_revision: str,
+          override: {
+            type: new Schema(
+              {
+                reason: str,
+                instruction_id: oid,
+                disposition_revision: str,
+                decided_at: at,
+                decided_by: str,
+              },
+              { _id: false, strict: "throw" },
+            ),
+            default: null,
+          },
+          reopen_review_id: ref,
+        },
+        { _id: false, strict: "throw" },
+      ),
       default: null,
     },
     revision,

@@ -14,15 +14,80 @@ import type { SalesIntelligenceReviewItemSchema } from "../../../models/SalesInt
 import { getMongoDatabaseName } from "../../../config/domain/runtime";
 import type { CsiPolicy } from "../../../validation/v1/salesIntelligence";
 import { ownerRead, readCaptureCoverage } from "../../numberActivity/coverage";
-import { outreachDtoSchema, reviewItemDtoSchema, restrictionDtoSchema, type CoverageDto } from "../dto";
+import { attachedLeadProgressDtoSchema, leadProgressDtoSchema, outreachDtoSchema, reviewItemDtoSchema, restrictionDtoSchema, type AttachedLeadProgressDto, type CoverageDto, type LeadProgressDto } from "../dto";
 import { resolvePolicy } from "../policy";
 import { certaintyLabel } from "../attachment/suggest";
+import { csiFlag } from "../../../config/domain/salesIntelligence";
+import { getNumberLeadAttachmentModel as attachmentModel } from "../../../models/NumberLeadAttachment";
 import { derive, attentionDue } from "./derive";
 import { stateWithActions } from "./transitions";
 import { subjectKey, type RecordRow, type FollowupRow } from "./types";
 import { nudgeHistoryPage } from "../nudges/reads";
+import { basisLabel, dispositionLabel, isTerminal, priorityLabel, progressExplanation, CRM_CLOSURE_REASONS, type LeadProgressRow } from "./leadProgress";
 
 const iso = (value: Date | null | undefined) => value?.toISOString() ?? null;
+
+/** §7: the stored projection as the Owner reads it. Labels are server words; nothing is derived in Admin. */
+export function leadProgressDto(record: Pick<RecordRow, "subject" | "lead_progress" | "closed_reason" | "closed_at" | "closure_origin" | "first_attributable_outbound_at" | "first_human_conversation_at">): LeadProgressDto | null {
+  const row = record.lead_progress as LeadProgressRow | null | undefined;
+  if (!row || record.subject.kind !== "lead" || !record.subject.model || !record.subject.id) return null;
+  const closed = record.closure_origin === "crm_disposition" && (CRM_CLOSURE_REASONS as readonly string[]).includes(record.closed_reason ?? "");
+  return leadProgressDtoSchema.parse({
+    lead_ref: { model: record.subject.model, id: String(record.subject.id) },
+    granot_priority: row.granot_priority, priority_label: priorityLabel(row.granot_priority), quoted: row.quoted,
+    disposition: row.disposition, disposition_label: dispositionLabel(row.disposition),
+    work_observed: row.work_observed, basis: row.basis, basis_label: basisLabel(row.basis), provenance: row.provenance,
+    source_origin: row.source_origin, source_applied_at: iso(row.source_applied_at), last_progress_at: iso(row.last_progress_at),
+    first_work_observed_at: iso(row.first_work_observed_at),
+    closure: closed ? { basis: record.closed_reason, closed_at: iso(record.closed_at) } : null,
+    override: row.override ? { reason: row.override.reason, decided_at: iso(row.override.decided_at), decided_by: row.override.decided_by, disposition_revision: row.override.disposition_revision } : null,
+    reopen_review_id: row.reopen_review_id ? String(row.reopen_review_id) : null,
+    disposition_revision: row.disposition_revision,
+    explanation: progressExplanation(row),
+    no_call_observed: row.work_observed && !record.first_attributable_outbound_at && !record.first_human_conversation_at,
+    projected_at: iso(row.projected_at),
+  });
+}
+
+/**
+ * Number list/detail helper (§7, §11.3): the Lead progress and Booking of the one
+ * Lead a Number resolves to, or an explicit `multiple` / `none`. Batched for a
+ * page: one edges query, one Outreach query, one Bookings query, one Leads
+ * query per model. Reads only; never merges facts from different Leads.
+ */
+export async function loadAttachedLeadProgressForNumbers(numberIds: readonly string[], now: Date): Promise<Map<string, AttachedLeadProgressDto>> {
+  void now;
+  const out = new Map<string, AttachedLeadProgressDto>();
+  if (!numberIds.length) return out;
+  const ids = numberIds.map(id => new mongoose.Types.ObjectId(id));
+  const edges = await attachmentModel().find({ contact_number_id: { $in: ids }, state: { $ne: "rejected" } }).lean();
+  const byNumber = new Map<string, typeof edges>();
+  for (const edge of edges) { const key = String(edge.contact_number_id); byNumber.set(key, [...(byNumber.get(key) ?? []), edge]); }
+  const resolved = new Map<string, { model: "FormLead" | "CallLead"; id: string }>();
+  for (const id of numberIds) {
+    const list = byNumber.get(id) ?? [];
+    if (!list.length) { out.set(id, { status: "none" }); continue; }
+    const attached = list.filter(e => e.state === "attached");
+    // Only an attached edge resolves a Lead; a lone candidate never lends its Priority to the Number.
+    const pick = attached.length === 1 ? attached[0]! : null;
+    if (!pick) { out.set(id, { status: attached.length > 1 ? "multiple" : "none" }); continue; }
+    resolved.set(id, { model: pick.lead_ref.model, id: String(pick.lead_ref.id) });
+  }
+  const refs = [...resolved.values()];
+  if (!refs.length) return out;
+  const records = await getOutreachRecordModel().find({ purged_at: null, $or: refs.map(ref => ({ "subject.model": ref.model, "subject.id": ref.id })) }).lean();
+  const recordByLead = new Map(records.map(record => [leadKey(String(record.subject.model), record.subject.id), record] as const));
+  const side = await loadOutreachSideData(records, new Map());
+  for (const [numberId, ref] of resolved) {
+    const record = recordByLead.get(leadKey(ref.model, ref.id)) ?? null;
+    const bookings = side.bookings.get(leadKey(ref.model, ref.id)) ?? [];
+    const booking = bookings[0] ? { id: String(bookings[0]._id), cancelled: (side.cancellations.get(String(bookings[0]._id)) ?? []).length > 0 } : null;
+    const lead = side.leads.get(leadKey(ref.model, ref.id)) ?? null;
+    out.set(numberId, attachedLeadProgressDtoSchema.parse({ status: "resolved", lead_ref: ref, lead_progress: record ? leadProgressDto(record) : null, booking,
+      outreach_state: record ? stateWithActions(record, [], now) : null, lead_display: lead ? { name: lead.name ?? null, job_no: lead.job_no ?? null } : null }));
+  }
+  return out;
+}
 
 /** Owner-facing reading of the stored attachment mirror. Derived on read, never stored. */
 export function provenanceState(mirror: RecordRow["lead_attachment"]) {
@@ -115,6 +180,8 @@ type BookingLite = { _id: unknown };
 type CancelLite = { _id: unknown };
 type LatestLite = { _id: unknown; started_at: Date; direction: string; provider_result?: string | null; contact_type: string };
 export type OutreachSideData = {
+  /** Lead keys with at least one attached Contact Number that is suppressed (override/reopen must stay closed). */
+  suppressedLeads: Set<string>;
   agentNames: Map<string, string>;
   leads: Map<string, LeadLite>;
   bookings: Map<string, BookingLite[]>;
@@ -149,6 +216,9 @@ export async function loadOutreachSideData(records: readonly RecordRow[], inputs
       { $group: { _id: "$contact_number_id", id: { $first: "$_id" }, started_at: { $first: "$started_at" }, direction: { $first: "$direction" }, provider_result: { $first: "$provider_result" }, contact_type: { $first: "$contact_type" } } },
     ]) : [],
   ]);
+  const attachedEdges = leadRefs.length ? await attachmentModel().find({ state: "attached", $or: leadRefs.map(ref => ({ "lead_ref.model": ref.model, "lead_ref.id": ref.id })) }).select({ contact_number_id: 1, lead_ref: 1 }).lean() : [];
+  const suppressedNumberIds = attachedEdges.length ? new Set((await getContactNumberModel().find({ _id: { $in: attachedEdges.map(e => e.contact_number_id) }, "contact_eligibility.state": "suppressed" }).select({ _id: 1 }).lean()).map(n => String(n._id))) : new Set<string>();
+  const suppressedLeads = new Set(attachedEdges.filter(e => suppressedNumberIds.has(String(e.contact_number_id))).map(e => leadKey(e.lead_ref.model, e.lead_ref.id)));
   const bookingIds = bookingDocs.map(booking => booking._id);
   const cancelDocs = bookingIds.length ? await db.collection("cancelled_leads").find({ booked_lead: { $in: bookingIds } }, { projection: { _id: 1, booked_lead: 1 } }).toArray() : [];
   const bookings = new Map<string, BookingLite[]>();
@@ -166,6 +236,7 @@ export async function loadOutreachSideData(records: readonly RecordRow[], inputs
     if (bucket) bucket.push(lite); else cancellations.set(key, [lite]);
   }
   return {
+    suppressedLeads,
     agentNames: new Map(agentDocs.map(agent => [String(agent._id), typeof agent.name === "string" && agent.name ? agent.name : "Unknown Agent"])),
     leads: new Map([...formDocs.map(lead => [leadKey("FormLead", lead._id), lead] as const), ...callDocs.map(lead => [leadKey("CallLead", lead._id), lead] as const)]),
     bookings,
@@ -211,13 +282,27 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
   const callRestricted = derived.call_blockers.includes("restriction");
   // Same blockers the command enforces: a closed record, a call already in progress, and the
   // active call restriction. Closed and in-flight are both ILLEGAL_TRANSITION on the command.
+  // LP-01 guards mirrored from `applyOwnerCommandInTransaction`: an un-overridden terminal disposition
+  // and an open disposition review block new sales execution on an open record.
+  const progressRow = record.lead_progress as import("./leadProgress").LeadProgressRow | null;
+  const dispositionBlocked = Boolean(progressRow && isTerminal(progressRow.disposition) && progressRow.provenance === "accepted" && !progressRow.override) && record.state !== "closed";
+  const underDispositionReview = derived.call_blockers.includes("disposition_review") && record.state !== "closed";
+  const dispositionBlockers = [...(dispositionBlocked ? ["CRM_DISPOSITION_CLOSED" as const] : []), ...(underDispositionReview ? ["DISPOSITION_REVIEW" as const] : [])];
   const callAvailability = [
-    { action: "start_call" as const, enabled: record.state !== "closed" && !callInProgress && !callRestricted,
-      blocker_codes: [...(record.state === "closed" || callInProgress ? ["ILLEGAL_TRANSITION" as const] : []), ...(callRestricted ? ["CONTACT_RESTRICTED" as const] : [])] },
+    { action: "start_call" as const, enabled: record.state !== "closed" && !callInProgress && !callRestricted && !dispositionBlockers.length,
+      blocker_codes: [...(record.state === "closed" || callInProgress ? ["ILLEGAL_TRANSITION" as const] : []), ...(callRestricted ? ["CONTACT_RESTRICTED" as const] : []), ...dispositionBlockers] },
     { action: "end_call" as const, enabled: record.state !== "closed" && callInProgress,
       blocker_codes: record.state !== "closed" && callInProgress ? [] : ["ILLEGAL_TRANSITION" as const] },
   ].map(a => ({ ...a, target_id: String(record._id), expected_revision: record.revision }));
+  const progress = leadProgressDto(record);
+  const crmClosed = record.state === "closed" && record.closure_origin === "crm_disposition";
+  const terminalNow = Boolean(progress && isTerminal(progress.disposition) && progress.provenance === "accepted" && !progress.override);
+  // Reopen after a CRM closure needs the disposition to have moved on (a reopen review), else the Owner overrides explicitly.
+  const reopenBlockedByCrm = crmClosed && terminalNow && !progress?.reopen_review_id;
+  const leadSuppressed = record.subject.kind === "lead" && side.suppressedLeads.has(leadKey(String(record.subject.model), record.subject.id));
+  const overrideEnabled = csiFlag("LEAD_PROGRESS") && Boolean(progress) && terminalNow && (crmClosed || record.state !== "closed") && number?.contact_eligibility.state !== "suppressed" && !leadSuppressed;
   return outreachDtoSchema.parse({ id: String(record._id), revision: record.revision,
+    lead_progress: progress,
     lead_attachment: mirror ? { attachment_id: String(mirror.attachment_id), lead_ref: { model: mirror.lead_ref.model, id: String(mirror.lead_ref.id) },
       state: mirror.state, certainty: mirror.certainty, certainty_label: certaintyLabel(mirror.certainty), decided_by: mirror.decided_by,
       decided_at: iso(mirror.decided_at), confidence: mirror.confidence ?? null, observed_at: iso(mirror.observed_at),
@@ -234,8 +319,15 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
     next_action: followups.find(a => a.id === String(record.next_action?.followup_id)) ?? null, first_human_conversation_at: iso(record.first_human_conversation_at),
     last_meaningful_contact_at: iso(record.last_meaningful_contact_at), related_record_links: related,
     derived: { ...derived, action_facts: actionFacts, call_state: record.call_progress?.state ?? "not_started", provenance_state: provenanceState(mirror) },
-    allowed_actions: [...(["mark_worked", "assign", "set_waiting", "add_note", "close", "reopen", "create_followup"] as const).map(action => ({ action, target_id: String(record._id), expected_revision: record.revision,
-      enabled: action === "add_note" || (action === "reopen" ? record.state === "closed" && record.closure_origin !== "official" && number?.contact_eligibility.state !== "suppressed" : record.state !== "closed"), blocker_codes: [] })), ...callAvailability] });
+    allowed_actions: [...(["mark_worked", "assign", "set_waiting", "add_note", "close", "reopen", "create_followup"] as const).map(action => {
+      const guarded = (action === "mark_worked" && dispositionBlocked) || ((action === "set_waiting" || action === "create_followup") && dispositionBlockers.length > 0);
+      return { action, target_id: String(record._id), expected_revision: record.revision,
+        enabled: action === "add_note" || (action === "reopen" ? record.state === "closed" && record.closure_origin !== "official" && number?.contact_eligibility.state !== "suppressed" && !reopenBlockedByCrm : record.state !== "closed" && !guarded),
+        blocker_codes: action === "reopen" && reopenBlockedByCrm ? ["CRM_DISPOSITION_CLOSED" as const] : guarded ? (action === "mark_worked" ? ["CRM_DISPOSITION_CLOSED" as const] : dispositionBlockers) : [] };
+    }),
+      { action: "override_disposition" as const, target_id: String(record._id), expected_revision: record.revision, enabled: overrideEnabled,
+        blocker_codes: overrideEnabled ? [] : !csiFlag("LEAD_PROGRESS") ? ["FEATURE_DISABLED" as const] : ["ILLEGAL_TRANSITION" as const] },
+      ...callAvailability] });
 }
 export async function readOutreach(id: string) {
   const record = await getOutreachRecordModel().findOne({ _id: id, purged_at: null }).lean();

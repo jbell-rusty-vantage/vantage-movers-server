@@ -12,6 +12,7 @@ applies_to:
   - src/services/domainCommands/existingWriteContext.ts
   - src/services/domainCommands/commandContext.ts
   - src/services/domainCommands/entityChange.ts
+  - src/services/domainCommands/leadChangeEmission.ts
   - src/services/domainCommands/index.ts
   - src/models/EntityChange.ts
   - src/models/DomainCommandExecution.ts
@@ -125,3 +126,16 @@ Owner Release commands (gated) use the same executor and envelope. Exact names i
 A semantic no-op performs no aggregate save, revision increment, Change, or outbox write. Exact replay never re-enters the operation.
 
 `sourceSystemForOrigin`: `granot_lifecycle` → `granot`; `ringcentral` → `ringcentral`; else `vantage`.
+
+## Non-canonical Lead change emission (LP-03, 2026-09-22)
+
+`leadChangeEmission.ts` lets Lead writers outside the executor persist the same append-only Lead `EntityChange` and `domain_revision` CAS in their own session: `emitLeadChange` (one Lead, before/after diff, optional `paths`), `LeadChangeRecorder` (`track` before the first write, `trackCreated` after an insert, `flush` before commit; one change per Lead, one shared `command_execution_id`), and `applyLeadChangeStamp` (keeps a hydrated document's revision current without marking it modified). A Lead with no stored `domain_revision` is initialized to `0` in the same session before the stamp.
+
+These rows have **no** `DomainCommandExecution`; `command_execution_id` is freshly minted, and the owning workflow keeps its own idempotency. Contexts are records of who wrote, not authorization claims, and are never passed to `assertCommandContext`:
+
+- **RingCentral Call Lead create (E3):** `beginRingCentralCallLeadIngestion` emits `createCallLead` (`revision_before: 0`, create fields) with origin `ringcentral`, the fixed `ringcentral-call-ingest` actor/initiator, `source_receipt_id` = telephony session id (else Call Log id) and `source_connection_key` = `ringcentral:<ingestion_source>:<id>`, built like `buildRingCentralCommandContext`. Duplicate and non-duplicate Call Leads both emit; idempotency stays with `upsertProcessedCall`.
+- **Fixed `vantage_admin`-origin system actors:** `employee-booking-submission`, `booking-reconciliation-rematch`, `booking-lead-mirror`, `booking-source-resolver`, `form-fill-detector`. Owner reconciliation uses a trusted Owner actor.
+- **`form_fill` flip (E13):** `markMatchingCallLeadsWithFormFill` emits `markCallLeadFormFill` with `changed_paths: ["form_fill"]` per flipped Call Lead, in the Form Lead create session.
+
+Still without a Lead change: none of the known Booking/employee-booking/RingCentral create paths. The Booking source resolver's writes commit inside the from-source booking transaction (`bookedLeadFromSource.service.ts` passes its session); legacy callers without a session commit the Lead write and its change separately.
+

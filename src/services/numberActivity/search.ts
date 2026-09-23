@@ -1,12 +1,23 @@
+import { createHash } from "node:crypto";
 import mongoose from "mongoose";
 import { z } from "zod";
 import { CONTACT_NUMBER_CLASSIFICATIONS } from "../../config/domain/salesIntelligence";
 import { getContactNumberModel } from "../../models/ContactNumber";
 import { csiDateSchema, csiIdSchema } from "../../validation/v1/salesIntelligence";
+import { canonicalJson } from "../durableWork/checksum";
 import { CsiError } from "../salesIntelligence/auth";
+import { loadAttachedLeadProgressForNumbers } from "../salesIntelligence/outreach/reads";
 import { toNumberSearchItem, type ContactNumberLean } from "./contactNumbers";
 import { ownerRead } from "./coverage";
-import { numberSearchPageDtoSchema, type NumberSearchPageDto } from "./dto";
+import {
+  NUMBER_SEARCH_DIRECTIONS,
+  NUMBER_SEARCH_SORTS,
+  numberSearchPageDtoSchema,
+  type AttachedLeadProgressItemDto,
+  type NumberSearchDirection,
+  type NumberSearchPageDto,
+  type NumberSearchSort,
+} from "./dto";
 import { toE164 } from "./phone";
 
 /**
@@ -44,6 +55,13 @@ export const numberSearchQuerySchema = z
       .default(false),
     cursor: z.string().max(2000).optional(),
     limit: z.coerce.number().int().min(1).max(200).default(50),
+    /**
+     * LP-06 (§14.2). Both optional: when neither is given the request runs the
+     * historical `(last_activity_at desc, _id desc)` path unchanged, including
+     * its legacy cursor. Effective defaults are `last_activity` / `desc`.
+     */
+    sort: z.enum(NUMBER_SEARCH_SORTS).optional(),
+    direction: z.enum(NUMBER_SEARCH_DIRECTIONS).optional(),
   })
   .strict();
 export type NumberSearchQuery = z.infer<typeof numberSearchQuerySchema>;
@@ -160,31 +178,310 @@ export function buildNumberSearchFilter(
   return filter;
 }
 
-export async function searchNumberActivity(
+// ---------------------------------------------------------------------------
+// LP-06 time sorts (§14.2): live keyset, nulls last in both directions
+// ---------------------------------------------------------------------------
+
+export const NUMBER_SORT_FIELDS = {
+  last_activity: "last_activity_at",
+  last_human_conversation: "rollups.last_human_conversation_at",
+  first_observed: "first_observed_at",
+} as const satisfies Record<NumberSearchSort, string>;
+
+/**
+ * Largest q-narrowed candidate set the planner may sort in memory for a
+ * non-activity sort. Above it the page is read in the sort index's own order
+ * (a `hint`), so the requested order is kept and no blocking sort runs.
+ */
+export const NUMBER_SORT_CANDIDATE_CAP = 2_000;
+/** The `{kind, field, _id}` index that carries each non-activity sort (`models/ContactNumber.ts`). */
+export const NUMBER_SORT_INDEXES = {
+  last_human_conversation: "contact_number_kind_human_conversation",
+  first_observed: "contact_number_kind_first_observed",
+} as const satisfies Partial<Record<NumberSearchSort, string>>;
+const DEFAULT_SORT: NumberSortSpec = { sort: "last_activity", direction: "desc" };
+
+export type NumberSortSpec = { sort: NumberSearchSort; direction: NumberSearchDirection };
+export type NumberSortSegment = "value" | "null";
+/**
+ * v2 cursor: the order, the segment (`value` or `null`) and the last row's
+ * position in it. `digest` binds the filters plus the sort and direction.
+ */
+export type NumberSortCursor = {
+  v: 2;
+  sort: NumberSearchSort;
+  direction: NumberSearchDirection;
+  segment: NumberSortSegment;
+  value: string | null;
+  id: string;
+  digest: string;
+};
+const numberSortCursorSchema = z
+  .object({
+    v: z.literal(2),
+    sort: z.enum(NUMBER_SEARCH_SORTS),
+    direction: z.enum(NUMBER_SEARCH_DIRECTIONS),
+    segment: z.enum(["value", "null"]),
+    value: csiDateSchema.nullable(),
+    id: csiIdSchema,
+    digest: z.string().regex(/^[a-f0-9]{16}$/),
+  })
+  .strict()
+  .refine((c) => (c.segment === "null") === (c.value === null));
+
+export function encodeNumberSortCursor(cursor: NumberSortCursor): string {
+  return Buffer.from(JSON.stringify(numberSortCursorSchema.parse(cursor))).toString("base64url");
+}
+
+export function resolveNumberSort(query: Pick<NumberSearchQuery, "sort" | "direction">): NumberSortSpec {
+  return { sort: query.sort ?? DEFAULT_SORT.sort, direction: query.direction ?? DEFAULT_SORT.direction };
+}
+
+/** Filters that change the result set, plus the requested order. `limit` and `cursor` are excluded. */
+export function numberSearchDigest(query: NumberSearchQuery, requested: NumberSortSpec): string {
+  return createHash("sha256")
+    .update(
+      canonicalJson({
+        v: 2,
+        term: parseSearchTerm(query.q),
+        classification: query.classification ?? null,
+        attachment: query.attachment,
+        active_from: query.active_from ?? null,
+        active_to: query.active_to ?? null,
+        hygiene: query.hygiene,
+        sort: requested.sort,
+        direction: requested.direction,
+      }),
+    )
+    .digest("hex")
+    .slice(0, 16);
+}
+
+/**
+ * Decodes a cursor for an explicitly sorted request. A legacy
+ * `{last_activity_at, id}` cursor is accepted only for `last_activity desc`
+ * (it is the value segment of that order). A v2 cursor must carry this
+ * request's digest, sort and direction. Anything else is `INVALID_INPUT`.
+ */
+export function decodeNumberSortCursor(
+  encoded: string,
   query: NumberSearchQuery,
-  deps: { now?: () => Date } = {},
-): Promise<NumberSearchPageDto> {
-  const cursor = query.cursor ? decodeNumberCursor(query.cursor) : null;
-  const parsed = parseSearchTerm(query.q);
-  const filter = buildNumberSearchFilter(query, cursor, parsed);
-  const rows = (await getContactNumberModel()
-    .find(filter)
-    .sort({ last_activity_at: -1, _id: -1 })
-    .limit(query.limit + 1)
-    .lean()) as unknown as ContactNumberLean[];
+  requested: NumberSortSpec,
+): NumberSortCursor {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+  } catch {
+    throw new CsiError("INVALID_INPUT");
+  }
+  const digest = numberSearchDigest(query, requested);
+  const legacy = numberCursorSchema.safeParse(parsed);
+  if (legacy.success) {
+    if (requested.sort !== "last_activity" || requested.direction !== "desc") throw new CsiError("INVALID_INPUT");
+    return { v: 2, ...DEFAULT_SORT, segment: "value", value: legacy.data.last_activity_at, id: legacy.data.id, digest };
+  }
+  const v2 = numberSortCursorSchema.safeParse(parsed);
+  if (!v2.success || v2.data.digest !== digest) throw new CsiError("INVALID_INPUT");
+  if (v2.data.sort !== requested.sort || v2.data.direction !== requested.direction) throw new CsiError("INVALID_INPUT");
+  return v2.data;
+}
+
+export function sortFieldValue(row: ContactNumberLean, sort: NumberSearchSort): Date | null {
+  const value =
+    sort === "last_human_conversation"
+      ? row.rollups?.last_human_conversation_at
+      : sort === "first_observed"
+        ? row.first_observed_at
+        : row.last_activity_at;
+  return value ? new Date(value) : null;
+}
+
+/**
+ * Pure filter for one segment of a sorted listing. The value segment is
+ * `field != null` with the `(field, _id)` keyset in the requested direction;
+ * the null segment is `field == null` (null or missing) keyed on `_id` alone.
+ * Conditions go into `$and` so the activity range on `last_activity_at` is
+ * never overwritten.
+ */
+export function buildSortedNumberSearchFilter(
+  query: NumberSearchQuery,
+  applied: NumberSortSpec,
+  segment: NumberSortSegment,
+  position: Pick<NumberSortCursor, "segment" | "value" | "id"> | null,
+  term: ParsedSearchTerm = parseSearchTerm(query.q),
+): Record<string, unknown> {
+  const filter = buildNumberSearchFilter(query, null, term);
+  const and = [...((filter.$and as Array<Record<string, unknown>> | undefined) ?? [])];
+  const field = NUMBER_SORT_FIELDS[applied.sort];
+  const after = applied.direction === "desc" ? "$lt" : "$gt";
+  const inSegment = position && position.segment === segment ? position : null;
+  if (segment === "value") {
+    and.push({ [field]: { $ne: null } });
+    if (inSegment) {
+      const at = new Date(inSegment.value!);
+      const id = new mongoose.Types.ObjectId(inSegment.id);
+      and.push({ $or: [{ [field]: { [after]: at } }, { [field]: at, _id: { [after]: id } }] });
+    }
+  } else {
+    and.push({ [field]: null });
+    if (inSegment) and.push({ _id: { [after]: new mongoose.Types.ObjectId(inSegment.id) } });
+  }
+  filter.$and = and;
+  return filter;
+}
+
+export function sortedNumberMongoSort(applied: NumberSortSpec, segment: NumberSortSegment): Record<string, 1 | -1> {
+  const dir = applied.direction === "desc" ? -1 : 1;
+  return segment === "value" ? { [NUMBER_SORT_FIELDS[applied.sort]]: dir, _id: dir } : { _id: dir };
+}
+
+/** Row access used by the pager; Mongo in production, an in-memory evaluator in unit tests. */
+export type NumberRowSource = {
+  find(
+    filter: Record<string, unknown>,
+    sort: Record<string, 1 | -1>,
+    limit: number,
+    hint?: string,
+  ): Promise<ContactNumberLean[]>;
+  count(filter: Record<string, unknown>, limit: number): Promise<number>;
+};
+
+export type NumberSearchPageResult = {
+  page: ContactNumberLean[];
+  next: string | null;
+  applied: NumberSortSpec;
+  /** The index hinted for this page (q-narrowed set above the cap), if any. */
+  hint?: string;
+};
+
+export function mongoNumberRowSource(): NumberRowSource {
+  const Model = getContactNumberModel();
+  return {
+    find: async (filter, sort, limit, hint) => {
+      const q = Model.find(filter).sort(sort).limit(limit);
+      if (hint) q.hint(hint);
+      return (await q.lean()) as unknown as ContactNumberLean[];
+    },
+    count: (filter, limit) => Model.countDocuments(filter, { limit }),
+  };
+}
+
+/**
+ * One page of the Numbers list. With neither `sort` nor `direction` this is
+ * the historical single keyset query and legacy cursor, unchanged. Otherwise
+ * it pages the non-null segment of the sort field, then the null segment by
+ * `_id`, in at most two index-served queries.
+ */
+export async function pageNumberSearch(
+  query: NumberSearchQuery,
+  parsed: ParsedSearchTerm,
+  source: NumberRowSource,
+): Promise<NumberSearchPageResult> {
+  if (query.sort === undefined && query.direction === undefined) {
+    const cursor = query.cursor ? decodeNumberCursor(query.cursor) : null;
+    const rows = await source.find(
+      buildNumberSearchFilter(query, cursor, parsed),
+      { last_activity_at: -1, _id: -1 },
+      query.limit + 1,
+    );
+    const page = rows.slice(0, query.limit);
+    const last = page[page.length - 1];
+    const next =
+      rows.length > query.limit && last
+        ? encodeNumberCursor({
+            last_activity_at: new Date(last.last_activity_at).toISOString(),
+            id: String(last._id),
+          })
+        : null;
+    return { page, next, applied: DEFAULT_SORT };
+  }
+
+  const requested = resolveNumberSort(query);
+  const digest = numberSearchDigest(query, requested);
+  const position = query.cursor ? decodeNumberSortCursor(query.cursor, query, requested) : null;
+  const applied = requested;
+  let hint: string | undefined;
+  if (parsed.kind !== "none" && applied.sort !== "last_activity") {
+    // A q-narrowed set may be sorted in memory by the planner; bound that. Above
+    // the cap, read in the sort index's own order instead. Both plans return
+    // the same total order, so this is decided per page and needs no cursor state.
+    const candidates = await source.count(buildNumberSearchFilter(query, null, parsed), NUMBER_SORT_CANDIDATE_CAP + 1);
+    if (candidates > NUMBER_SORT_CANDIDATE_CAP) hint = NUMBER_SORT_INDEXES[applied.sort];
+  }
+
+  const want = query.limit + 1;
+  const rows: ContactNumberLean[] = [];
+  if (!position || position.segment === "value") {
+    rows.push(
+      ...(await source.find(
+        buildSortedNumberSearchFilter(query, applied, "value", position, parsed),
+        sortedNumberMongoSort(applied, "value"),
+        want,
+        hint,
+      )),
+    );
+  }
+  if (rows.length < want) {
+    rows.push(
+      ...(await source.find(
+        buildSortedNumberSearchFilter(query, applied, "null", position, parsed),
+        sortedNumberMongoSort(applied, "null"),
+        want - rows.length,
+        hint,
+      )),
+    );
+  }
   const page = rows.slice(0, query.limit);
-  const match = { kind: parsed.kind };
   const last = page[page.length - 1];
+  const lastValue = last ? sortFieldValue(last, applied.sort) : null;
   const next =
     rows.length > query.limit && last
-      ? encodeNumberCursor({
-          last_activity_at: new Date(last.last_activity_at).toISOString(),
+      ? encodeNumberSortCursor({
+          v: 2,
+          ...applied,
+          segment: lastValue ? "value" : "null",
+          value: lastValue ? lastValue.toISOString() : null,
           id: String(last._id),
+          digest,
         })
       : null;
+  return { page, next, applied, ...(hint ? { hint } : {}) };
+}
+
+export type NumberSearchDeps = {
+  now?: () => Date;
+  /** Injection seam for tests; production uses the Outreach batch helper. */
+  attachedLeadProgress?: (
+    numberIds: readonly string[],
+    now: Date,
+  ) => Promise<ReadonlyMap<string, AttachedLeadProgressItemDto>>;
+  source?: NumberRowSource;
+};
+
+export async function searchNumberActivity(
+  query: NumberSearchQuery,
+  deps: NumberSearchDeps = {},
+): Promise<NumberSearchPageDto> {
+  const parsed = parseSearchTerm(query.q);
+  const match = { kind: parsed.kind };
+  const { page, next, applied } = await pageNumberSearch(query, parsed, deps.source ?? mongoNumberRowSource());
+
+  // One batched Lead progress read per page, never one per card.
+  const now = deps.now?.() ?? new Date();
+  const loadAttached = deps.attachedLeadProgress ?? loadAttachedLeadProgressForNumbers;
+  const attached: ReadonlyMap<string, AttachedLeadProgressItemDto> = page.length
+    ? await loadAttached(
+        page.map((row) => String(row._id)),
+        now,
+      )
+    : new Map();
   return numberSearchPageDtoSchema.parse(
     await ownerRead(
-      { items: page.map((row) => toNumberSearchItem(row, match)), cursor: next },
+      {
+        items: page.map((row) => toNumberSearchItem(row, match, attached.get(String(row._id)))),
+        cursor: next,
+        sort: applied,
+      },
       deps.now,
     ),
   );

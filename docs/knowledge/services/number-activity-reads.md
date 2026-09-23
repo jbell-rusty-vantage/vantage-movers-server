@@ -14,6 +14,8 @@ applies_to:
   - src/services/numberActivity/coverage.ts
   - src/services/numberActivity/dto.ts
   - src/services/numberActivity/rebuild.ts
+  - src/models/ContactNumber.ts
+  - scripts/repair-contact-number-first-observed.ts
   - src/routes/sales-intelligence-admin.routes.ts
 owners: [team:main-server]
 sources:
@@ -80,3 +82,34 @@ CSI-15 replaces the Owner Coverage backfill notice with stored window counts, co
 ## CSI-16 evidence restamp
 
 Current local certification is recorded in [CSI-16 checks](../../call-sales-intelligence/workspace/evidence/csi-16/CHECKS.md) and the [execution matrix](../../call-sales-intelligence/workspace/ACCEPTANCE.md). CSI-15 backfill/retention/budget recovery is landed on main. Fresh synthetic and isolated browser evidence does not certify production grants or deployed revisions. G4 retains the media Retry-After clock failure; G5 remains partial and the generic conversation replay label fails integration. Exact owners are in [GAPS](../../call-sales-intelligence/workspace/evidence/csi-16/GAPS.md). [G6](../../call-sales-intelligence/workspace/evidence/csi-16/G6.md) is not probed. Owner full rollout follows separately in AFTER-16 D+E; no capability was enabled by this restamp.
+
+## LP-06 Numbers time sorts, First observed repair and attached Lead progress (2026-09-22)
+
+Lead progress spec §14.2, §7 Number card and §11.3; acceptance 25. Explain evidence: `sales-intelligence-move-assessment-workspace/evidence/LP-06-numbers-sorts.md`.
+
+- **Query.** `GET /numbers` accepts optional `sort=last_activity|last_human_conversation|first_observed` and `direction=asc|desc`, with effective defaults `last_activity`/`desc`. The fields are `last_activity_at`, `rollups.last_human_conversation_at` and `first_observed_at`. The list stays a live keyset query, not a snapshot. It has no Lead progress sort; that sort stays on Outreach.
+- **Historical path.** When neither parameter is sent, the request runs the old single query `(last_activity_at desc, _id desc)` and returns the legacy cursor `{last_activity_at, id}`, unchanged. A legacy cursor is also accepted by an explicit `last_activity desc` request, and rejected by any other sort.
+- **Nulls last in both directions.** The pager reads the value segment (`field != null`, keyset `(field, _id)` in the requested direction, so `asc` is `(field asc, _id asc)`), then the null segment (`field == null`, null or missing, ordered by `_id` in the same direction). Each page makes at most two queries.
+- **Cursor v2.** `{v:2, sort, direction, segment:"value"|"null", value: iso|null, id, digest}`. `digest` is a 16-hex SHA-256 over the parsed term, classification, attachment, activity range, hygiene, sort and direction. It excludes `limit` and the cursor. A cursor minted for a different sort, direction or filter set is `INVALID_INPUT` (400), and so is a tampered or garbage cursor. A v2 cursor sent without sort parameters is also rejected.
+- **Narrowed searches.** When `q` is set and the sort is not Last call activity, the server counts candidates, capped at 2,001.
+  - At or below `NUMBER_SORT_CANDIDATE_CAP` (2,000), the planner may sort the narrowed set in memory.
+  - Above the cap, both segments are read with a `hint` on the sort's own `{kind, field, _id}` index. The order is the requested one either way, so this is decided per page, the cursor carries no plan state and the response carries no note.
+  - Explain on 20,000 synthetic Numbers: the hinted plan has no SORT and examines 286 to 450 keys.
+- **Indexes** (`CONTACT_NUMBER_INDEXES`, built by the idempotent `pnpm migration:csi:indexes` inventory):
+  - `contact_number_kind_human_conversation` `{kind:1, "rollups.last_human_conversation_at":-1, _id:-1}`
+  - `contact_number_kind_first_observed` `{kind:1, first_observed_at:-1, _id:-1}`
+
+  Explain shows every `kind=external` value and null segment index-served with no SORT stage, in both directions. Hygiene (`kind ≠ external`) keeps a SORT stage bounded by the number of non-external Numbers.
+- **Response.** `data.sort` holds the applied `{sort, direction}` (additive). Each item exposes `first_observed_at`, `last_activity_at` and `rollups.last_human_conversation_at`; the last is additive and optional in `numberRollupsDtoSchema` and is also on detail.
+- **`attached_lead_progress`** (optional, additive) on every list item. It comes from one batched `loadAttachedLeadProgressForNumbers(pageIds, now)` call per page (`salesIntelligence/outreach/reads`), never one per card, and its shape is that module's `attachedLeadProgressDtoSchema`.
+  - `resolved` carries `lead_ref`, `lead_progress` (null while Lead progress is off), `booking`, `outreach_state` and `lead_display`.
+  - `multiple` and `none` carry no Lead fields. The mapper strips them and the Number DTO refinement rejects them, so Admin never shows a merged Priority or an any-Lead Quoted boolean.
+  - A Number absent from the helper's map gets no field.
+- **First observed.**
+  - Capture: every upsert lowers `first_observed_at` with `earlierOf` (`persistInteraction.applyRollupDelta`), so ingesting a later call first no longer pins a late date. Creation uses the first call's `started_at`.
+  - Rebuild: `recountNumber` sets `first_observed_at` to the earliest canonical interaction (`merged_into_id: null`), lowering or raising it, under the rebuild's revision CAS.
+  - Repair: `scripts/repair-contact-number-first-observed.ts [--limit=500] [--after=<id>] [--apply]` (`repairFirstObservedAt`) is bounded and resumable, and a dry run by default. It prints `{scanned, changed, unchanged, no_evidence, errors, lowered, raised, next_after}`. It writes only `first_observed_at`, with a revision CAS plus a `number.first_observed_repaired` audit row in one transaction; `last_activity_at`, rollups and search terms are never touched. A concurrent capture shows up as an error on that pass, and a rerun picks it up.
+- **Tests.**
+  - `reads.test.ts` (pure pager over an in-memory Mongo evaluator): 3 sorts × 2 directions × page sizes 1 to 50 on 14 Numbers with ties and 5 nulls; the historical path and legacy cursor; cursor binding and tampering; the cap hint; the attached DTO rules.
+  - `rebuild.test.ts`: `earlierOf`, and an out-of-order recount that lowers the value, and raises it past merged evidence.
+  - `pnpm test:csi:numbers:replica`: the real route over all 6 orders with nulls last; cursor rejection; reads mutating nothing; `attached_lead_progress` resolved/multiple/none; a hinted plan on the replica; a no-SORT explain guard; and acceptance 25, where calls are ingested out of order, the stored value is forced late, then repaired (dry run, apply, no-op rerun, `--after` paging, raise past a tombstone).

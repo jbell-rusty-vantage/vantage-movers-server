@@ -1,3 +1,5 @@
+import mongoose, { type ClientSession } from "mongoose";
+import { getMongoDatabaseName } from "../../../config/domain/runtime";
 import type { AttachmentAttribution } from "../attachment/suggest";
 import type { RecordRow, FollowupRow, InteractionRow } from "./types";
 
@@ -35,4 +37,20 @@ export function officialClosure(lead: { duplicate?: boolean; bad_lead?: unknown;
   if (lead.bad_lead) return "bad_lead";
   if (lead.no_sync) return "no_sync";
   return null;
+}
+/**
+ * §11.1: an official Booking relationship closes work even when the Lead's
+ * `booked` mirror or the Outreach projection is delayed. The exact
+ * `booked_leads` row `{lead_model, lead_ref}` is the authority; phone-only or
+ * Granot-observed booking evidence never counts. Reads only.
+ */
+export async function authoritativeClosure(lead: Parameters<typeof officialClosure>[0], ref: { model: "FormLead" | "CallLead"; id: string }, session: ClientSession): Promise<string | null> {
+  const mirrored = officialClosure(lead);
+  if (mirrored) return mirrored;
+  const db = mongoose.connection.useDb(getMongoDatabaseName(), { useCache: true });
+  const booking = await db.collection("booked_leads").findOne({ lead_model: ref.model, lead_ref: new mongoose.Types.ObjectId(ref.id) }, { projection: { _id: 1, cancelled: 1 }, session });
+  if (!booking) return null;
+  if (booking.cancelled) return "cancelled";
+  const cancellation = await db.collection("cancelled_leads").findOne({ booked_lead: booking._id }, { projection: { _id: 1 }, session });
+  return cancellation ? "cancelled" : "booked";
 }

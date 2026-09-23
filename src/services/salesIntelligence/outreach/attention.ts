@@ -7,7 +7,7 @@ import { getOutreachRecordModel } from "../../../models/OutreachRecord";
 import { getSalesIntelligenceAttentionSnapshotModel } from "../../../models/SalesIntelligenceAttentionSnapshot";
 import { getSalesIntelligenceReviewItemModel } from "../../../models/SalesIntelligenceReviewItem";
 import { getLeadConversationModel } from "../../../models/LeadConversation";
-import { attentionRowDtoSchema, attentionPageDtoSchema } from "../dto";
+import { attentionRowDtoSchema, attentionPageDtoSchema, ATTENTION_SORTS, ATTENTION_SORT_DEFAULT_DIRECTION } from "../dto";
 import { CsiError } from "../auth";
 import { resolvePolicy } from "../policy";
 import { payloadHash } from "../transactions";
@@ -37,7 +37,39 @@ export const attentionQuerySchema = z.object({
   needs_review: z.enum(["true", "false"]).optional(),
   state: repeatedQuery(z.enum(ATTENTION_STATES)),
   agent_id: repeatedQuery(z.string().regex(/^[a-f\d]{24}$/i)),
+  // §14.1: one sort parameter and one cursor mechanism shared with the Move assessment score sorts.
+  // Time sorts keep the current view; `all_outreach` is added by MA-04 on this same enum.
+  sort: z.enum(ATTENTION_SORTS).default("attention"),
+  direction: z.enum(["asc", "desc"]).optional(),
+  view: z.enum(["attention"]).default("attention"),
 }).strict();
+export type AttentionSort = (typeof ATTENTION_SORTS)[number];
+
+/** §14.1 ordering keys, computed once at publish from the frozen row. Never `updatedAt`, `projected_at` or `as_of`. */
+export function attentionSortKeys(row: Pick<z.infer<typeof attentionRowDtoSchema>, "outreach" | "derived">) {
+  const record = row.outreach;
+  const open = record?.followups.filter(a => a.status === "open") ?? [];
+  const dues = open.map(a => a.attention_due_at).filter((at): at is string => Boolean(at));
+  if (record?.state === "unworked" && record.subject.kind === "lead" && record.subject.model === "FormLead" && record.first_action_due_at) dues.push(record.first_action_due_at);
+  return {
+    next_action_due: dues.length ? dues.sort()[0]! : null,
+    lead_received: record?.subject.kind === "lead" ? record.trigger_at ?? null : null,
+    last_human_contact: record?.last_meaningful_contact_at ?? null,
+    last_lead_progress: record?.lead_progress?.last_progress_at ?? null,
+  };
+}
+/** Global order over the whole filtered snapshot: value order, nulls last in both directions, ties on subject_key. */
+export function sortAttentionRows<T extends Pick<z.infer<typeof attentionRowDtoSchema>, "subject_key" | "sort_keys">>(rows: readonly T[], sort: AttentionSort, direction: "asc" | "desc"): T[] {
+  if (sort === "attention") return [...rows];
+  const sign = direction === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const left = a.sort_keys?.[sort] ?? null, right = b.sort_keys?.[sort] ?? null;
+    if (left === null && right === null) return a.subject_key.localeCompare(b.subject_key);
+    if (left === null) return 1;
+    if (right === null) return -1;
+    return sign * left.localeCompare(right) || a.subject_key.localeCompare(b.subject_key);
+  });
+}
 
 export function rowMatchesAttentionQuery(
   row: z.infer<typeof attentionRowDtoSchema>,
@@ -142,7 +174,8 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number } 
       for (const { record, bundle } of desk) {
         if (Date.now() > deadline) return { status: "incomplete", reason: "snapshot_budget" };
         const outreach = await toOutreachDto(record, now, coverage, { policy, inputs: bundle, side });
-        rows.push({ subject_key: subjectKey(record.subject), subject: outreach.subject, outreach, derived: outreach.derived, allowed_actions: outreach.allowed_actions });
+        const row = { subject_key: subjectKey(record.subject), subject: outreach.subject, outreach, derived: outreach.derived, allowed_actions: outreach.allowed_actions };
+        rows.push({ ...row, sort_keys: attentionSortKeys(row) });
       }
     }
     if (page.length < PUBLISH_PAGE) break;
@@ -160,7 +193,8 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number } 
     if (!subject) continue;
     const same = reviews.filter(r => r.subject_key === review.subject_key);
     rows.push(attentionRowDtoSchema.parse({ subject_key: review.subject_key, subject, outreach: null, allowed_actions: [], derived: { overdue: false, no_owner: false, no_next_action: false, cooldown: false,
-      attention_band: null, reasons: [], review_item_ids: same.map(r => String(r._id)), review_badges: [...new Set(same.map(r => r.cause_kind))], call_blockers: ["review_only"], age_wall_ms: 0, age_staffed_ms: 0, policy_version: policy.version } }));
+      attention_band: null, reasons: [], review_item_ids: same.map(r => String(r._id)), review_badges: [...new Set(same.map(r => r.cause_kind))], call_blockers: ["review_only"], age_wall_ms: 0, age_staffed_ms: 0, policy_version: policy.version },
+      sort_keys: { next_action_due: null, lead_received: null, last_human_contact: null, last_lead_progress: null } }));
   }
   const orderTime = (r: z.infer<typeof attentionRowDtoSchema>) => {
     if (r.derived.attention_band === 2) return r.outreach?.first_action_due_at ?? r.outreach?.trigger_at ?? "9999";
@@ -197,7 +231,11 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number } 
 export async function readAttention(raw: z.input<typeof attentionQuerySchema>, deps: { coverage?: typeof readCaptureCoverage; now?: Date } = {}) {
   const now = deps.now ?? new Date(), coverage = deps.coverage ?? readCaptureCoverage;
   const query = attentionQuerySchema.parse(raw);
-  const { cursor, limit, ...filters } = query, digest = payloadHash(filters);
+  const direction = query.direction ?? ATTENTION_SORT_DEFAULT_DIRECTION[query.sort];
+  // The cursor binds snapshot, view, filters, sort and direction (§14.1). Attention order keeps the
+  // pre-sort digest shape so a cursor minted before this contract still resolves.
+  const { cursor, limit, sort, direction: _direction, view, ...filters } = query;
+  const digest = payloadHash(sort === "attention" ? filters : { ...filters, sort, direction, view });
   const cursorSchema = z.object({ snapshot_id: z.string().startsWith("outreach:"), offset: z.number().int().nonnegative(), digest: z.string() }).strict();
   let page: z.infer<typeof cursorSchema> | null = null;
   if (cursor) { try { page = cursorSchema.parse(JSON.parse(Buffer.from(cursor, "base64url").toString())); } catch { throw new CsiError("INVALID_INPUT"); } }
@@ -211,7 +249,7 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
       { chunk_index: null }] }).sort({ as_of: -1 }).lean();
   if (!snapshot) {
     if (page) throw new CsiError("ATTENTION_SNAPSHOT_EXPIRED");
-    return attentionPageDtoSchema.parse({ as_of: now.toISOString(), coverage: await coverage(), data: { items: [], snapshot_id: null, cursor: null, total_items: null, reason_counts: {}, status: "pending_projection" } });
+    return attentionPageDtoSchema.parse({ as_of: now.toISOString(), coverage: await coverage(), data: { items: [], snapshot_id: null, cursor: null, total_items: null, reason_counts: {}, status: "pending_projection", sort: query.sort, direction, view: query.view } });
   }
   // Rows were validated on write against the same schema and the snapshot is
   // immutable, so a paginated GET filters and counts over the stored rows and
@@ -227,10 +265,11 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
     }
     stored = parts.flatMap(part => (Array.isArray(part.rows) ? part.rows : []) as z.infer<typeof attentionRowDtoSchema>[]);
   }
-  const rows = stored.filter((row) => rowMatchesAttentionQuery(row, query));
+  // Filter, then sort the whole frozen snapshot, then paginate (§14.1). Attention order is the stored band order.
+  const rows = sortAttentionRows(stored.filter((row) => rowMatchesAttentionQuery(row, query)), query.sort, direction);
   const offset = page?.offset ?? 0, reasons: Record<string, number> = {};
   for (const row of rows) for (const reason of row.derived.reasons) reasons[reason] = (reasons[reason] ?? 0) + 1;
   return attentionPageDtoSchema.parse({ as_of: snapshot.as_of.toISOString(), coverage: await coverage(), data: { items: rows.slice(offset, offset + limit), snapshot_id: snapshot.snapshot_id,
     cursor: offset + limit < rows.length ? Buffer.from(JSON.stringify({ snapshot_id: snapshot.snapshot_id, offset: offset + limit, digest })).toString("base64url") : null,
-    total_items: rows.length, reason_counts: reasons, status: "ready", stale: +now >= +snapshot.as_of + ATTENTION_FRESH_MS } });
+    total_items: rows.length, reason_counts: reasons, status: "ready", stale: +now >= +snapshot.as_of + ATTENTION_FRESH_MS, sort: query.sort, direction, view: query.view } });
 }

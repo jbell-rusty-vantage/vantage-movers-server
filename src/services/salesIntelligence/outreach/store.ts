@@ -58,7 +58,8 @@ export async function refreshRecord(record: Awaited<ReturnType<typeof recordForU
   await auditChange(context, "outreach", subjectKey(record.subject), record, prior, { ...record.toObject(), ...details }, event,
     ["outreach_created", "number_review_opened"].includes(event) ? record.trigger_at : undefined);
 }
-export async function closeRecord(record: Awaited<ReturnType<typeof recordForUpdate>>, reason: string, origin: "official" | "owner", context: CsiTransactionContext, details: Record<string, JsonValue> = {}) {
+export type ClosureOrigin = "official" | "owner" | "crm_disposition";
+export async function closeRecord(record: Awaited<ReturnType<typeof recordForUpdate>>, reason: string, origin: ClosureOrigin, context: CsiTransactionContext, details: Record<string, JsonValue> = {}) {
   const prior = record.toObject();
   if (record.state === "closed" && record.closed_reason === reason && record.closure_origin === origin) return;
   for (const action of await getOutreachFollowupModel().find({ outreach_record_id: record._id, status: "open" }).session(context.session)) {
@@ -68,8 +69,22 @@ export async function closeRecord(record: Awaited<ReturnType<typeof recordForUpd
   record.state = "closed"; record.state_before_identity_review = null; record.closed_reason = reason;
   record.closed_at = context.now; record.closed_by = context.actor.id; record.closure_origin = origin;
   await refreshRecord(record, context, "outreach_closed", prior, details);
-  await enqueueCsiJob({ stage: "number_refresh", subject_key: subjectKey(record.subject), input_revision: record.revision,
+  // A CRM disposition closure refreshes displays through the Attention publish and reads; it must not
+  // nominate a paid Number analysis (§12: Priority-only changes make no model call).
+  if (origin !== "crm_disposition") await enqueueCsiJob({ stage: "number_refresh", subject_key: subjectKey(record.subject), input_revision: record.revision,
     dedupe_key: `csi:outreach-closure:${record._id}:${record.revision}`, input_refs: [String(record._id)] }, context.session);
+}
+/**
+ * LP-06: `rollups.last_human_conversation_at` / `human_conversations_total` on the Contact Number
+ * are owned by the Number rebuild. Capture never labels a call a human conversation; findings and
+ * the Owner do. Queue the durable rebuild in the same transaction whenever the label crosses the
+ * human-conversation boundary, keyed by the interaction's projection revision.
+ */
+export async function queueNumberRollupRebuild(call: { _id: unknown; contact_number_id?: unknown; projection_revision: number }, before: string | null | undefined, after: string, session: mongoose.ClientSession) {
+  if (!call.contact_number_id || (before === "human_conversation") === (after === "human_conversation")) return;
+  const numberId = String(call.contact_number_id);
+  await enqueueCsiJob({ stage: "rebuild", subject_key: `number:${numberId}`, dedupe_key: `csi:rebuild:number:${numberId}:contact-type:${call._id}:${call.projection_revision}`,
+    input_revision: call.projection_revision, input_refs: [numberId] }, session);
 }
 /** Stable, meaningful Vantage context fingerprint; excludes observed time and projection bookkeeping. */
 export const vantageEventFingerprint = (record: RecordRow, actions: readonly FollowupRow[], official: unknown) => payloadHash(jsonValue({ subject: record.subject, state: record.state,

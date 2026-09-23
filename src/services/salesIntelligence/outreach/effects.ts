@@ -18,7 +18,7 @@ import { ensureLead, ensureInteraction, interactionAttribution, mappedSalesReps 
 import { subjectKey, type RecordRow, type FollowupRow } from "./types";
 import { callFacts, fulfilledByCall } from "./transitions";
 import { resolveActionDate, resolveActionDateText } from "./staffing";
-import { recordForUpdate, refreshRecord, saveFollowup, jsonValue } from "./store";
+import { recordForUpdate, refreshRecord, saveFollowup, jsonValue, queueNumberRollupRebuild } from "./store";
 import { applySpokenRestriction } from "../review/restrictions";
 
 /** Server-resolved intent, never an HTTP/model write schema. D validates snapshots and resolves date wording first. */
@@ -177,8 +177,10 @@ export async function applyOutreachEffect(raw: OutreachEffectInput, context: Csi
     plan = restriction; effectTargetId = restriction.target_id;
   } else if (plan.status === "applied" && input.kind === "set_contact_type") {
     if (!input.contact_type) throw new CsiError("INVALID_INPUT");
+    const previousType = call.contact_type;
     call.contact_type = input.contact_type; call.contact_type_basis = `finding:${input.finding_id}`; call.projection_revision++;
     await call.save({ session: context.session }); await ensureInteraction(call, context);
+    await queueNumberRollupRebuild(call, previousType, call.contact_type, context.session);
     if (run.conversation_id) await getLeadConversationModel().updateOne({ _id: run.conversation_id, call_interaction_id: call._id },
       { $set: { contact_type: call.contact_type, contact_type_basis: call.contact_type_basis } }, { session: context.session });
     effectTargetId = String(call._id);
@@ -215,6 +217,7 @@ export async function applyUnboundContactTypeEffect(input: { run_id: string; fin
     await call.save({ session: context.session });
     await getLeadConversationModel().updateOne({ _id: conversation._id }, { $set: { contact_type: call.contact_type, contact_type_basis: call.contact_type_basis } }, { session: context.session });
     await ensureInteraction(call, context);
+    await queueNumberRollupRebuild(call, before, call.contact_type, context.session);
   } else if (plan.status !== "no_change") await openReview(context, run.subject_key, plan.status === "blocked_owner" ? "owner_conflict" : "unclear_commitment", input.finding_key, [input.finding_id]);
   await getIntelligenceEffectModel().create([{ run_id: run._id, finding_id: finding._id, finding_key: input.finding_key,
     effect_kind: "set_contact_type", target_key: `interaction:${call._id}`, target_id: call._id, status: plan.status, reason: plan.reason,
