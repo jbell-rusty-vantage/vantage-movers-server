@@ -8,6 +8,8 @@ status: draft
 stale_after: 2026-12-23
 resource: src/services/salesIntelligence/analysis/submit.ts
 applies_to:
+  - src/services/salesIntelligence/analysis/ownerConversations.ts
+  - src/services/salesIntelligence/analysis/currentFindings.ts
   - src/services/salesIntelligence/analysis/ownerCommands.ts
   - src/services/salesIntelligence/analysis/ownerReads.ts
   - src/services/salesIntelligence/analysis/ownerReanalysis.ts
@@ -104,6 +106,16 @@ Both the named dedicated scoped key and `x-vantage-intelligence-run-token` are r
 Broad official CRUD services import global models and mutation dependencies, so scoped Lead/Booking reads reuse pure normalization/search vocabulary with explicit configured-dataset projections instead of importing those services. Likewise `outreach/reads.ts` imports nudge history and performs unbounded joins: the Intelligence context uses its official state helper over explicitly bounded model reads. This adaptation does not duplicate a write invariant or invoke nudge code.
 
 Lead/Booking cursors bind run, dataset/model and search string with an ObjectId keyset; merged Lead pages use the total order `(ObjectId, model)` so equal IDs in different collections remain reachable. Strict decoding rejects operator injection and cross-filter reuse. Activity wraps the official timeline cursor in a strict run binding. Transcript cursors bind run and immutable snapshot plus segment offset. A partial transcript page has `complete:false`, `segments_before:N` / `segments_after:N` missing ranges, and a next cursor where applicable; the final page never claims the entire transcript was returned when earlier segments are absent. Text projections redact through the existing transcript redactor and reject excessive free text rather than silently truncating it.
+
+### Current findings (`GET /outreach/:id/findings`, S3-FINDINGS, September 23, 2026)
+
+The Findings section of the analysis page reads the **current findings** of the record's Number, not one run's list (RD3): for each Lead Conversation with a `latest_completed_run_id` and no `content_purged_at`, the unpurged findings of that run, newest 200 conversations (`truncated: true` beyond). Findings with `superseded_by` set are dropped unless `include_superseded=true`; retracted findings stay listed. A Number run's findings are never current: Number synthesis never owns conversation effects, so their work result would always read `Not applicable`. Older runs stay reachable through Full output.
+
+Each item carries the S3-PRES presentation (`category`, `source_word`, `action_status_word`, `value_line`, `work_result`, `work_result_detail`, resolved `evidence[]`) and `allowed_actions` for `confirm_finding` / `correct_finding` / `retract_finding`, enabled only while the finding is `unreviewed` on a completed conversation run with an output. Order: final spec §11.5 category order, then newest call first. `reason` is `no_number` (Lead-only subject) or `retention_pending` (Number content purge in progress). The read is `analysis/currentFindings.ts` over a fixed query shape (conversations on `lead_conversation_number_started`, findings on `csi_finding_conversation`, then one `$in` each for runs, effects, review items, snapshots, follow-ups and source transcripts); it never reads per finding. Proof: `currentFindings.test.ts`, `scripts/dev_ops/test-si-findings.ts` (B20).
+
+### Owner conversation reads (S4-CONV, September 23, 2026)
+
+`analysis/ownerConversations.ts` serves `GET /numbers/:id/conversations` (one card per canonical Call Interaction with a Lead Conversation, keyset `(started_at desc, _id desc)`, `other_calls` for the rest of the page) and `GET /conversations/:id/transcript` (Owner mirror of `get_call_transcript`: current transcript version, `$slice`, redacted, segment ids, speaker labels, `at`, missing ranges). The card's per-call summary is the step-1 canonical summary snapshot (newest `source_type: "summary"` row for the current transcript version, else the newest: the `prior.ts` selection), keyed `overview, customer_wanted, money_and_dates, outcome, commitments, discrepancies` with the S3-PRES labels, `summary_source: "call_summary"`; without a step-1 snapshot it falls back to `LeadConversation.summary.sections` (`summary_source: "legacy"`). `GET /conversations/:id/media` is in [recording media](sales-intelligence-recording-media.md). The internal history reader `readConversationHistory` is single-conversation; the Owner list batches the same selection instead of calling it per card.
 
 ## Context provenance (September 23, 2026)
 
