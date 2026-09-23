@@ -61,6 +61,12 @@ export const CONTACT_NUMBER_INDEXES = [
     name: "contact_number_kind_first_observed",
     key: { kind: 1, first_observed_at: -1, _id: -1 },
   },
+  // Data spec §4.2 / V14: Numbers `sort=interactions`, with the same
+  // two-segment (value, then null) paging as the time sorts above.
+  {
+    name: "contact_number_kind_interactions",
+    key: { kind: 1, "rollups.interactions_total": -1, _id: -1 },
+  },
   {
     name: "contact_number_eligibility",
     key: { "contact_eligibility.state": 1 },
@@ -97,6 +103,16 @@ const rollupsSchema = new Schema(
     attached_lead_count: { type: Number, required: true, default: 0 },
     candidate_lead_count: { type: Number, required: true, default: 0 },
     open_outreach_count: { type: Number, required: true, default: 0 },
+    // Data spec §2.1 / §8 (owners and rebuild in the Number rollups Service doc).
+    // Rows written before these existed read the default until the rebuild sweep.
+    /** Σ `recordings.length` over canonical interactions (not merged, not purged). */
+    recordings_total: { type: Number, required: true, default: 0 },
+    /** Lead Conversations with `latest_completed_run_id` set and content not purged. */
+    conversations_analyzed_total: { type: Number, required: true, default: 0 },
+    /** Newest `started_at` among those analysed conversations. */
+    last_analyzed_at: { type: Date, default: null },
+    /** Outreach Records with this Number as primary or as subject, not purged. */
+    outreach_records_total: { type: Number, required: true, default: 0 },
   },
   { _id: false },
 );

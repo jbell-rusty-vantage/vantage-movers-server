@@ -6,6 +6,8 @@ import {
   FORM_LEAD_ATTACHMENT_INDEXES,
 } from "../../src/models/leadContactPhoneIndexes";
 import type { CsiIndex } from "../../src/models/salesIntelligence/common";
+import { ENTITY_CHANGE_INDEXES } from "../../src/models/EntityChange";
+import { GRANOT_OBSERVATION_INDEXES } from "../../src/models/GranotObservation";
 import { canonicalJson } from "../../src/services/durableWork/checksum";
 import { getMongoDatabaseName } from "../../src/config/domain/runtime";
 export type AccountMapping = {
@@ -31,9 +33,50 @@ export function csiIndexInventory(): Array<{
       collection: "entity_changes",
       indexes: [
         { name: "entity_change_applied_scan", key: { applied_at: 1, _id: 1 } },
+        // Data spec §2.7 / D10: the story readers and the Owner timeline read
+        // Granot changes per Lead; declared on the model, which has autoIndex off.
+        modelIndex(ENTITY_CHANGE_INDEXES, "entity_change_entity_applied"),
+      ],
+    },
+    // D10: indexes the story readers and the Owner timeline already query in
+    // production. These models set `autoIndex: false` and no other migration
+    // builds them, so this report is the only proof they exist on Atlas. The
+    // names are the ones the models declare (Mongo's default name where the
+    // model gives none), so `--apply` never collides with an existing index.
+    {
+      collection: "granot_observations",
+      indexes: [
+        modelIndex(GRANOT_OBSERVATION_INDEXES, "granot_observation_normalized_job_no_captured"),
+        modelIndex(GRANOT_OBSERVATION_INDEXES, "granot_observation_normalized_phone_captured"),
+      ],
+    },
+    {
+      collection: "booked_leads",
+      indexes: [
+        { name: "lead_ref_1_lead_model_1", key: { lead_ref: 1, lead_model: 1 } },
+        { name: "job_no_1", key: { job_no: 1 } },
+      ],
+    },
+    {
+      collection: "cancelled_leads",
+      indexes: [
+        { name: "booked_lead_1", key: { booked_lead: 1 } },
+        { name: "lead_ref_1", key: { lead_ref: 1 } },
+      ],
+    },
+    {
+      collection: "lead_messages",
+      indexes: [
+        { name: "lead_message_lead_ref_created", key: { "lead_ref.model": 1, "lead_ref.id": 1, createdAt: -1 } },
+        { name: "lead_message_to", key: { to: 1 } },
       ],
     },
   ];
+}
+function modelIndex(indexes: ReadonlyArray<{ name: string; key: Record<string, 1 | -1> }>, name: string): CsiIndex {
+  const found = indexes.find((index) => index.name === name);
+  if (!found) throw new Error(`Index ${name} is not declared on its model`);
+  return { name: found.name, key: { ...found.key } };
 }
 async function indexes(collection: mongoose.mongo.Collection) {
   try {

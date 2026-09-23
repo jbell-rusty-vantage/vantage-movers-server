@@ -213,6 +213,8 @@ export const OutreachRecordSchema = new Schema(
           stale: { type: Boolean, required: true, default: false },
           stale_reason: text,
           published_at: at,
+          /** Data spec §2.2: `artifact.conflicts[].affects`, deduped; written with the projection. */
+          conflict_targets: { type: [String], default: [] },
           /** Outreach revision the publication was fenced against (closure/disposition race guard). */
           eligibility_revision: count,
         },

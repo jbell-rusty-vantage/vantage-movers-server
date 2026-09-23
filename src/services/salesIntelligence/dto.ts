@@ -319,8 +319,47 @@ export const attentionSortKeysDtoSchema = z
     move_likelihood: z.number().min(0).max(100).nullable().optional(),
     assessment_status: z.enum(ASSESSMENT_AVAILABILITY).nullable().optional(),
     assessment_stale: z.boolean().nullable().optional(),
+    // Data spec §3.3 (S1): frozen from the row's `facts`; optional so older snapshots still parse.
+    last_call: date.nullable().optional(),
+    interactions: z.number().int().nonnegative().nullable().optional(),
   })
   .strict();
+/**
+ * Data spec §2.3 / final spec §5.3: card facts computed by `outreachFacts()` at
+ * the response's `as_of` (Attention publish time, or request time on the live
+ * detail). Every state here is decided on the server; the Admin only formats a
+ * duration between a server time and `as_of`. Counts are null when the record
+ * has no primary Contact Number ("No Number on file"), never zero.
+ */
+export const NEXT_ACTION_STATES = ["due", "overdue", "no_due_date", "none"] as const;
+export const outreachFactsDtoSchema = z
+  .object({
+    route: z
+      .object({
+        pickup_city: z.string().nullable(),
+        pickup_state: z.string().nullable(),
+        delivery_city: z.string().nullable(),
+        delivery_state: z.string().nullable(),
+        /** YYYY-MM-DD, Form Leads only. */
+        move_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+        source: z.literal("lead"),
+      })
+      .strict()
+      .nullable(),
+    move_date_passed: z.boolean(),
+    last_call_at: date.nullable(),
+    calls_total: z.number().int().nonnegative().nullable(),
+    conversations_total: z.number().int().nonnegative().nullable(),
+    recordings_available: z.number().int().nonnegative().nullable(),
+    recordings_analyzed: z.number().int().nonnegative().nullable(),
+    newer_call_since_assessment: z.boolean(),
+    details_disagree: z.boolean(),
+    next_action_state: z.enum(NEXT_ACTION_STATES),
+    /** Phase 5 (rep threads); always null until S5. */
+    rep_thread: z.null(),
+  })
+  .strict();
+export type OutreachFactsDto = z.infer<typeof outreachFactsDtoSchema>;
 export const ATTENTION_SORTS = ["attention", "next_action_due", "lead_received", "last_human_contact", "last_lead_progress", "transaction_intent", "move_likelihood"] as const;
 export const ATTENTION_SCORE_SORTS = ["transaction_intent", "move_likelihood"] as const;
 export const ATTENTION_VIEWS = ["attention", "all_outreach"] as const;
@@ -347,6 +386,9 @@ export const outreachDtoSchema = z
       ended_at: date.nullable(), ended_by: z.string().nullable(), note: z.string().nullable() }).strict().nullable().optional(),
     // Move assessment §8.1: compact projection with read-time applicability; absent/null reads as Not assessed.
     move_assessment: outreachMoveAssessmentDtoSchema.nullable().optional(),
+    // Data spec §3.3 (S1): card facts at the response's `as_of`. Optional so snapshots published
+    // before S1 still parse; every row published from S1 on carries it.
+    facts: outreachFactsDtoSchema.optional(),
     subject: csiSubjectSchema,
     state: z.enum(CSI_OUTREACH_STATES),
     reason: z.string().nullable(),
