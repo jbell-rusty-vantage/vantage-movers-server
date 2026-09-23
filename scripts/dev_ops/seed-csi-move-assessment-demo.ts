@@ -178,7 +178,7 @@ async function main() {
   const s9 = await subject("stale", "FormLead", form("Pensacola"), [
     { tag: "active_50", overview: "Customer planning a September move.", said: ["Moving mid September"] }]);
   await assess(s9, "demo:9");
-  await withTransaction(session => runtime.markAssessmentStale(s9.recordId, "move_date_window_passed", session)); push(s9, "ready ML 50 / TI 50, stale (move_date_window_passed)");
+  await withTransaction(session => runtime.markAssessmentStale(s9.recordId, "move_date_passed", session)); push(s9, "ready ML 50 / TI 50, stale (move_date_passed)");
   // 10. Purged.
   const s10 = await subject("purged", "CallLead", { pickup_city: "Omaha", pickup_state: "NE" }, [
     { tag: "conditional_75", overview: "Customer interested pending approval.", said: ["Need approval first"] }]);
