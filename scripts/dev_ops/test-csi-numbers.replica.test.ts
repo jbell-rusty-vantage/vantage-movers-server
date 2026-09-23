@@ -1238,9 +1238,10 @@ test(
                     assert.equal(item.attached_lead_progress.status, "resolved");
                     assert.equal(item.attached_lead_progress.lead_ref?.id, String(leadA));
                   } else if (item.id === String(seeded[1]!._id)) {
-                    assert.deepEqual(item.attached_lead_progress, { status: "multiple" }, "no Lead fields on multiple");
+                    // S4-NUMBER: `outreach_records_total` (final spec §9.1 line 5) is present on every status; no Lead fields otherwise.
+                    assert.deepEqual(item.attached_lead_progress, { status: "multiple", outreach_records_total: item.attached_lead_progress.outreach_records_total }, "no Lead fields on multiple");
                   } else if (seeded.some((s) => String(s._id) === item.id)) {
-                    assert.deepEqual(item.attached_lead_progress, { status: "none" });
+                    assert.deepEqual(item.attached_lead_progress, { status: "none", outreach_records_total: 0 });
                   }
                 }
                 seen.push(...data.items.map((i) => i.id));

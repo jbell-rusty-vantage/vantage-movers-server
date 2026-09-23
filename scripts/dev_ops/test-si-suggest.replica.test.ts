@@ -51,7 +51,7 @@ test("S1-SUGGEST card suggestion on the csi01 replica", { skip: process.env.CSI_
     target_followup_id: null, rationale: "The customer asked for a price.", finding_keys: ["f1"] };
   const insertRun = async (input: { numberId: mongoose.Types.ObjectId; recordId: string; conversationId: mongoose.Types.ObjectId | null; createdAt: Date; suggestion: unknown }) => {
     const _id = oid();
-    await getIntelligenceRunModel().collection.insertOne({ _id, ...csiDataset(), conversation_id: input.conversationId, contact_number_id: input.numberId,
+    await getIntelligenceRunModel().collection.insertOne({ _id, ...csiDataset(), job_id: oid(), conversation_id: input.conversationId, contact_number_id: input.numberId,
       outreach_record_id: new mongoose.Types.ObjectId(input.recordId), subject_key: input.conversationId ? `conversation:${input.conversationId}` : `number:${input.numberId}`,
       status: "completed", completed_at: input.createdAt, schema_version: "csi-envelope-v1", prompt_version: "csi-agent-v3", model_version: "openai/gpt-5-mini", mode: "initial",
       revision: 1, input_fingerprint: "synthetic", manifest_snapshot_ids: [], purged_at: null, purge_started_at: null,
@@ -108,7 +108,7 @@ test("S1-SUGGEST card suggestion on the csi01 replica", { skip: process.env.CSI_
     const result = await commandAnalysis({ actor: ownerActor(`${ADMIN}/analysis-runs/${served.run_id}/apply-suggestion`), target_id: served.apply.target_id,
       idempotency_key: `suggest-apply-${served.run_id}`, command: { command: "apply_suggestion", expected_revision: served.apply.expected_revision, run_id: served.run_id,
         suggestion_output_digest: served.apply.suggestion_output_digest, expected_revisions: [{ target: "outreach", id: served.apply.outreach_id, revision: served.apply.outreach_expected_revision }] } });
-    assert.equal((result as { status?: string }).status, "applied");
+    assert.equal((result as { response?: { status?: string } }).response?.status, "applied", JSON.stringify(result).slice(0, 800));
     const after = await detail(recordA);
     assert.ok(after.next_action, "case 1: the applied suggestion is now the open follow-up");
     assert.equal(after.suggested_next_step, null);

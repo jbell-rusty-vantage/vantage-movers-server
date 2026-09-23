@@ -208,12 +208,12 @@ export function buildS4TimelineDocs(): S4Docs {
   const addFollowup = (n: number, record: mongoose.Types.ObjectId, createdMs: number, status: string, fixedId?: mongoose.Types.ObjectId) => {
     const _id = fixedId ?? oidFor("f2", n);
     const created = at(createdMs), updated = at(createdMs + 9 * DAY);
-    followups.push({ _id, outreach_record_id: record, kind: n % 3 ? "call" : "send_estimate", description: `Follow-up ${n}: call back about the estimate`, status,
+    followups.push({ _id, commitment_key: `fixture:${String(_id)}`, outreach_record_id: record, kind: n % 3 ? "call" : "send_estimate", description: `Follow-up ${n}: call back about the estimate`, status,
       due_at: n % 4 ? at(createdMs + 2 * DAY) : null, origin: n % 2 ? "rep_promise" : "owner", source_finding_ids: [], completion_basis: status === "completed" ? "owner" : null,
       completed_at: status === "completed" ? at(createdMs + 3 * DAY) : null, cancel_reason: status === "cancelled" ? "customer booked elsewhere" : null,
       revision: 2, createdAt: created, updatedAt: updated });
     // A cancel or supersede leaves an audit row days before `updatedAt` (the reader fix times the event by it); follow-up 9 has none.
-    if ((status === "cancelled" || status === "superseded") && n !== 9) audits.push({ _id: fixedId ? ids.cancelAudit : oidFor("f3", n), subject_key: keyOf(record),
+    if ((status === "cancelled" || status === "superseded") && n !== 9) audits.push({ _id: fixedId ? ids.cancelAudit : oidFor("f3", n), semantic_key: `fixture:f3:${n}`, subject_key: keyOf(record),
       event_kind: status === "cancelled" ? "cancel_followup" : "intelligence_commitment_evidence", happened_at: at(createdMs + 4 * DAY), recorded_at: at(createdMs + 4 * DAY + 2 * MIN),
       prior: { status: "open" }, current: { status }, actor: { kind: "owner", id: "owner@example.test" }, invalidation: { kind: "followup", target_id: String(_id) }, revision: 2 });
   };
@@ -235,7 +235,7 @@ export function buildS4TimelineDocs(): S4Docs {
   let auditMs = 6 * DAY;
   const auditFor = (n: number, key: string, whenMs: number) => {
     const [event_kind, kind, current] = auditKinds[n % auditKinds.length]!;
-    audits.push({ _id: oidFor("f4", n), subject_key: event_kind === "intelligence.submitted" ? `number:${key === "M" ? ids.n2 : ids.n1}` : key === "M" ? `lead:FormLead:${ids.leadM}` : key === "B" ? `lead:CallLead:${ids.leadB}` : `lead:FormLead:${ids.leadA}`,
+    audits.push({ _id: oidFor("f4", n), semantic_key: `fixture:f4:${n}`, subject_key: event_kind === "intelligence.submitted" ? `number:${key === "M" ? ids.n2 : ids.n1}` : key === "M" ? `lead:FormLead:${ids.leadM}` : key === "B" ? `lead:CallLead:${ids.leadB}` : `lead:FormLead:${ids.leadA}`,
       event_kind, happened_at: at(whenMs), recorded_at: at(whenMs + (n % 5 === 0 ? 3 * HOUR : MIN)), prior: { state: "open" }, current, actor: { kind: n % 4 ? "owner" : "worker", id: "owner@example.test" },
       invalidation: { kind, target_id: String(kind === "followup" ? oidFor("f2", 1) : ids.recordA) }, revision: 1 });
   };
@@ -244,7 +244,7 @@ export function buildS4TimelineDocs(): S4Docs {
   insert("audits", audits);
 
   // ── Move assessments (one shadow, one not ready; published after creation) ──
-  const artifact = (n: number, key: string, createdMs: number, publishDelayMs: number, extra: Record<string, unknown> = {}) => ({ _id: oidFor("a5", n), subject_key: key,
+  const artifact = (n: number, key: string, createdMs: number, publishDelayMs: number, extra: Record<string, unknown> = {}) => ({ _id: oidFor("a5", n), subject_key: key, input_fingerprint: `fixture:a5:${n}`,
     status: "ready", shadow: false, purged_at: null, published_at: at(createdMs + publishDelayMs), createdAt: at(createdMs), updatedAt: at(createdMs + publishDelayMs),
     scores: { transaction_intent: { score: 40 + n * 5 }, move_likelihood: { score: 50 + n * 3 } }, engagement: { work_status: n % 2 ? "worked_with_next_step" : "not_contacted" }, ...extra });
   insert("artifacts", [

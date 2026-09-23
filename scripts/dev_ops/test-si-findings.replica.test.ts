@@ -53,7 +53,7 @@ test("S3-FINDINGS current findings on the csi01 replica", { skip: process.env.CS
   const unanalysed = await seedSummaryConversation(numberId, at(13), { overview: "Unanalysed call." });
 
   const runs = { old1: oid(), new1: oid(), old2: oid(), new2: oid(), purged: oid(), numberRun: oid() };
-  const runRow = (_id: mongoose.Types.ObjectId, conversation: mongoose.Types.ObjectId | null, created: Date) => ({ _id, ...csiDataset(), conversation_id: conversation,
+  const runRow = (_id: mongoose.Types.ObjectId, conversation: mongoose.Types.ObjectId | null, created: Date) => ({ _id, ...csiDataset(), job_id: oid(), conversation_id: conversation,
     contact_number_id: number._id, outreach_record_id: record._id, subject_key: conversation ? `conversation:${conversation}` : `number:${numberId}`, status: "completed",
     completed_at: created, analysis_pipeline: "csi-analysis-steps-v1", step_artifacts: { summaries: [] }, schema_version: "csi-envelope-v1", prompt_version: "csi-findings-v1",
     model_version: "openai/gpt-5-mini", mode: "initial", revision: 1, input_fingerprint: "synthetic", manifest_snapshot_ids: [], purged_at: null, purge_started_at: null,
