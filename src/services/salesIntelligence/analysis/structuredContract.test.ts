@@ -7,6 +7,7 @@ import { expandStructuredFindings, minimalFindingsSchema, summaryStepSchema, val
 
 const summary = { overview: "Synthetic call", customer_wanted: "A move", money_and_dates: "",
   outcome: "Discussed", commitments: "", discrepancies: "" };
+const none = { observations: [], inventory: [], intent_signals: [] };
 const fact = { kind: "intent" as const, value: { intent: "moving_inquiry" as const },
   claim: "Customer discussed a move", actor: "customer" as const, clarity: "clear" as const,
   action_status: null, speaker: "customer" as const, segment_ids: [7], quote: null };
@@ -51,8 +52,8 @@ test("record citations expand exposed fields and reject invented or missing reco
 });
 
 test("summary and findings reject invented transcript segments, even valid transcript segments omitted from summary", () => {
-  assert.equal(validateSummaryStep({ summary, said_on_call: [fact] }, [7]).said_on_call.length, 1);
-  assert.throws(() => validateSummaryStep({ summary, said_on_call: [fact] }, [9]), /EVIDENCE_SCOPE_INVALID/);
+  assert.equal(validateSummaryStep({ summary, said_on_call: [fact], move_evidence: none }, [7]).said_on_call.length, 1);
+  assert.throws(() => validateSummaryStep({ summary, said_on_call: [fact], move_evidence: none }, [9]), /EVIDENCE_SCOPE_INVALID/);
   const model = raw();
   model.findings[0].evidence[0].segment_ids = [8];
   assert.throws(() => expandStructuredFindings(model, inputs()), /EVIDENCE_SCOPE_INVALID/);
@@ -73,12 +74,17 @@ test("unknown or ambiguous speakers never acquire reviewed rep authority", () =>
 
 test("summary validation enforces total section size and transcript-only followup authority", () => {
   assert.throws(() => validateSummaryStep({ summary: { ...summary, overview: "x".repeat(4_001) },
-    said_on_call: [fact] }, [7]), /EVIDENCE_SCOPE_INVALID/);
+    said_on_call: [fact], move_evidence: none }, [7]), /EVIDENCE_SCOPE_INVALID/);
   const action = { ...fact, kind: "promised_callback", value: { action_kind: "call",
     description: "Call tomorrow", date_text: "tomorrow", timezone_text: null, target_followup_id: "invented" as string | null } };
-  assert.throws(() => validateSummaryStep({ summary, said_on_call: [action] }, [7]), /EVIDENCE_SCOPE_INVALID/);
+  assert.throws(() => validateSummaryStep({ summary, said_on_call: [action], move_evidence: none }, [7]), /EVIDENCE_SCOPE_INVALID/);
   action.value.target_followup_id = null;
-  assert.equal(validateSummaryStep({ summary, said_on_call: [action] }, [7]).said_on_call.length, 1);
+  assert.equal(validateSummaryStep({ summary, said_on_call: [action], move_evidence: none }, [7]).said_on_call.length, 1);
+  // csi-summary-v1 artifacts (no block) stay readable; generation requires the block and validates its citations.
+  assert.equal(summaryStepSchema.safeParse({ summary, said_on_call: [fact] }).success, true);
+  assert.throws(() => validateSummaryStep({ summary, said_on_call: [action] }, [7]));
+  assert.throws(() => validateSummaryStep({ summary, said_on_call: [action], move_evidence: { ...none, intent_signals: [{ signal: "definite_move",
+    text: "We are moving", speaker: "customer", segment_ids: [9] }] } }, [7]), /EVIDENCE_SCOPE_INVALID/);
 });
 
 test("multiple calls retain independent citation scope and cannot merge different rep identities", () => {

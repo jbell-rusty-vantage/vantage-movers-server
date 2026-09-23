@@ -316,3 +316,68 @@ test("CSI-09 coverage and settings: production scope, CAS, no flag patch, GET ne
     process.env = saved;
   }
 });
+
+test("Move assessment presentation routes: Owner guard, flag-off 404, id validation, 404 for missing, reads only through the injected services", { timeout: 20000 }, async () => {
+  const saved = { ...process.env };
+  process.env.VANTAGE_API_SECRET = "synthetic-global";
+  process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = "synthetic-owner-signature";
+  process.env.SALES_INTELLIGENCE_ENABLED = "true";
+  process.env.SALES_INTELLIGENCE_DEPLOYMENT_ID = "route-test";
+  process.env.TEST_MODE = "true";
+  const existing = "a".repeat(24), missing = "f".repeat(24), outputId = "b".repeat(24);
+  const calls: string[] = [];
+  const read = (name: string) => async (id: string, second?: unknown) => {
+    calls.push(`${name}:${id}${typeof second === "string" ? `:${second}` : ""}`);
+    return id === existing ? { as_of: asOf, coverage, data: { name } } : null;
+  };
+  const app = express();
+  app.use(express.json());
+  app.use("/api/v1", requireApiSecret);
+  app.use(createSalesIntelligenceBoundaryRouter({ connect: async () => {} }));
+  app.use(createSalesIntelligenceAdminRouter({ connect: async () => { calls.push("connect"); },
+    outreachAssessment: read("outreach") as never, assessment: read("assessment") as never, assessmentOutput: read("output") as never,
+    assessmentEvidence: read("evidence") as never, runPresentation: read("presentation") as never,
+    runOutput: (async (id: string, second: string) => read("runOutput")(id, second)) as never }));
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const headers = (routePath: string, role = "owner") => {
+    const fields = { adminId: "owner", email: "owner@example.test", role, timestamp: String(Date.now()), requestId: "req-ma", method: "GET", path: routePath };
+    return { "x-api-secret": "synthetic-global", "x-vantage-admin-user-id": fields.adminId, "x-vantage-admin-email": fields.email, "x-vantage-admin-role": role,
+      "x-vantage-admin-timestamp": fields.timestamp, "x-vantage-admin-request-id": fields.requestId,
+      "x-vantage-admin-signature": computeAdminActorSignature(fields, process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET!) };
+  };
+  const get = async (routePath: string, query = "", role = "owner") => {
+    const response = await fetch(base + routePath + query, { headers: headers(routePath, role), signal: AbortSignal.timeout(5000) });
+    return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+  };
+  const paths = (id: string) => [[`${CSI_ADMIN_PREFIX}/outreach/${id}/assessment`, "outreach"], [`${CSI_ADMIN_PREFIX}/assessments/${id}`, "assessment"],
+    [`${CSI_ADMIN_PREFIX}/assessments/${id}/output`, "output"], [`${CSI_ADMIN_PREFIX}/assessments/${id}/evidence`, "evidence"],
+    [`${CSI_ADMIN_PREFIX}/analysis-runs/${id}/presentation`, "presentation"], [`${CSI_ADMIN_PREFIX}/analysis-runs/${id}/output/${outputId}`, "runOutput"]] as const;
+  try {
+    for (const [routePath, name] of paths(existing)) {
+      const ok = await get(routePath);
+      assert.equal(ok.status, 200, routePath);
+      assert.deepEqual([ok.body.ok, ok.body.as_of, (ok.body.data as { name: string }).name], [true, asOf, name]);
+      assert.equal((await get(routePath, "?scope=production")).status, 200);
+      assert.equal((await get(routePath, "?scope=historical")).status, 403);
+      assert.equal((await get(routePath, "?cursor=1")).status, 400, "unknown query parameters are rejected");
+      assert.equal((await get(routePath, "", "admin")).status, 403, "Owner only");
+    }
+    for (const [routePath] of paths(missing)) assert.equal((await get(routePath)).status, 404, routePath);
+    assert.equal((await get(`${CSI_ADMIN_PREFIX}/assessments/not-an-id`)).status, 400);
+    assert.equal((await get(`${CSI_ADMIN_PREFIX}/analysis-runs/${existing}/output/not-an-id`)).status, 400);
+    assert.ok(calls.includes(`runOutput:${existing}:${outputId}`));
+    calls.length = 0;
+    process.env.SALES_INTELLIGENCE_ENABLED = "false";
+    for (const [routePath] of paths(existing)) {
+      const disabled = await get(routePath);
+      assert.deepEqual([disabled.status, disabled.body.code], [404, "FEATURE_DISABLED"]);
+    }
+    assert.deepEqual(calls, [], "flag off: no connect and no read");
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    process.env = saved;
+  }
+});

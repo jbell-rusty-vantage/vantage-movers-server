@@ -194,6 +194,32 @@ export const OutreachRecordSchema = new Schema(
       ),
       default: null,
     },
+    // MA-02 §7: small current projection/pointer of the accepted Move assessment artifact.
+    // Additive; null until an assessment publishes. Full inventory lives on the artifact.
+    // Applicability (closed work, CRM disposition) is derived on read, never stored here.
+    move_assessment: {
+      type: new Schema(
+        {
+          artifact_id: oid,
+          status: enumeration(["ready", "insufficient_evidence", "ambiguous_subject", "not_applicable", "failed", "purged"]),
+          transaction_intent: { type: Number, default: null, min: 0, max: 100 },
+          move_likelihood: { type: Number, default: null, min: 0, max: 100 },
+          transaction_intent_confidence: { type: String, enum: ["low", "medium", "high", null], default: null },
+          move_likelihood_confidence: { type: String, enum: ["low", "medium", "high", null], default: null },
+          context_as_of: at,
+          latest_conversation_at: date,
+          input_fingerprint: str,
+          schema_version: str,
+          stale: { type: Boolean, required: true, default: false },
+          stale_reason: text,
+          published_at: at,
+          /** Outreach revision the publication was fenced against (closure/disposition race guard). */
+          eligibility_revision: count,
+        },
+        { _id: false, strict: "throw" },
+      ),
+      default: null,
+    },
     revision,
     policy_version: str,
   },

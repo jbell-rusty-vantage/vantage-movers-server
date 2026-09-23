@@ -104,6 +104,8 @@
     "test:csi:nudges:replica": "node --import tsx scripts/dev_ops/test-csi-nudges.ts",
     "test:csi:settings:replica": "node --import tsx scripts/dev_ops/test-csi-settings.ts",
     "test:csi:lead-progress:replica": "node --import tsx scripts/dev_ops/test-csi-lead-progress.ts",
+    "test:csi:move-assessment:replica": "node --import tsx scripts/dev_ops/test-csi-move-assessment.ts",
+    "test:csi:move-assessment-backfill:replica": "node --import tsx scripts/dev_ops/test-csi-move-assessment-backfill.ts",
     "reconcile:lead-progress": "node --env-file=.env --import tsx scripts/reconcile-lead-progress.ts",
     "migration:csi:indexes": "node --env-file=.env --import tsx scripts/migrations/sales-intelligence-indexes.ts",
     "migration:csi:conversation-number": "node --env-file=.env --import tsx scripts/migrations/csi-conversation-contact-number.ts",

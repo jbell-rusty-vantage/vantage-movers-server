@@ -134,6 +134,11 @@ export async function claimCsiJob(
    * only that stage, so a consumer never leases work it cannot process.
    */
   stage?: JobInput["stage"],
+  /**
+   * MA-03: a live consumer that must never run historical work (the assessment-only backfill
+   * runs its own jobs in process on the personal key) claims only rows at or above this priority.
+   */
+  minPriority?: number,
 ) {
   if (!owner.trim() || ttlMs <= 0 || ttlMs > 900_000)
     throw new CsiError("INVALID_INPUT");
@@ -154,7 +159,7 @@ export async function claimCsiJob(
       ...csiDataset(),
       ...(jobId ? { _id: jobId } : {}),
       ...(stage ? { stage } : {}),
-      ...(liveAiDue ? { priority: { $gte: CSI_LIVE_JOB_PRIORITY } } : {}),
+      ...(liveAiDue || minPriority !== undefined ? { priority: { $gte: liveAiDue ? Math.max(CSI_LIVE_JOB_PRIORITY, minPriority ?? CSI_LIVE_JOB_PRIORITY) : minPriority! } } : {}),
       $expr: { $lt: ["$attempts", "$max_attempts"] },
       $or: [
         {

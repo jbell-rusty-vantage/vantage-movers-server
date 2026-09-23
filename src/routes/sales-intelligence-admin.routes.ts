@@ -28,6 +28,7 @@ import { csiNudgeCommandSchema } from "../validation/v1/salesIntelligence";
 import { streamCsiInvalidations } from "../services/salesIntelligence/live";
 import { commandAnalysis } from "../services/salesIntelligence/analysis/ownerCommands";
 import { listOwnerRuns, readOwnerRun, readOwnerEvidence } from "../services/salesIntelligence/analysis/ownerReads";
+import { readAssessment, readAssessmentEvidence, readAssessmentOutput, readOutreachAssessment, readRunOutput, readRunPresentation } from "../services/salesIntelligence/assessment/reads";
 
 /**
  * CSI-04 Owner routes for Number Activity (04 §0, §1 `/numbers` rows, §3).
@@ -65,6 +66,12 @@ export type SalesIntelligenceAdminRouteDeps = {
   nudgeSend?: typeof sendNudge;
   nudges?: typeof listNudges;
   live?: typeof streamCsiInvalidations;
+  outreachAssessment?: typeof readOutreachAssessment;
+  assessment?: typeof readAssessment;
+  assessmentOutput?: typeof readAssessmentOutput;
+  assessmentEvidence?: typeof readAssessmentEvidence;
+  runPresentation?: typeof readRunPresentation;
+  runOutput?: typeof readRunOutput;
 };
 
 const timelineQuerySchema = z
@@ -285,6 +292,30 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
   router.get(`${CSI_ADMIN_PREFIX}/attention`, async (req, res) => {
     try { guard(req); const query = attentionQuerySchema.parse(req.query); await connect(); return res.json({ ok: true, ...(await readAttention(query)) }); }
     catch (error) { return fail(req, res, error); }
+  });
+  // Move assessment §8.3–8.4 / MA-01 §10: GET-only presentation reads behind the master flag. No model calls, no writes.
+  const scopeOnly = z.object({ scope: z.literal("production").optional() }).strict();
+  router.get(`${CSI_ADMIN_PREFIX}/outreach/:id/assessment`, async (req, res) => {
+    try { guard(req); const id = csiIdSchema.parse(req.params.id); scopeOnly.parse(req.query); await connect();
+      const result = await (deps.outreachAssessment ?? readOutreachAssessment)(id);
+      return result ? res.json({ ok: true, ...result }) : notFound(req, res, "Outreach"); } catch (error) { return fail(req, res, error); }
+  });
+  for (const [path, read] of [["/assessments/:artifactId", () => deps.assessment ?? readAssessment],
+    ["/assessments/:artifactId/output", () => deps.assessmentOutput ?? readAssessmentOutput],
+    ["/assessments/:artifactId/evidence", () => deps.assessmentEvidence ?? readAssessmentEvidence]] as const) router.get(`${CSI_ADMIN_PREFIX}${path}`, async (req, res) => {
+    try { guard(req); const id = csiIdSchema.parse(req.params.artifactId); scopeOnly.parse(req.query); await connect();
+      const result = await read()(id);
+      return result ? res.json({ ok: true, ...result }) : notFound(req, res, "Assessment"); } catch (error) { return fail(req, res, error); }
+  });
+  router.get(`${CSI_ADMIN_PREFIX}/analysis-runs/:id/presentation`, async (req, res) => {
+    try { guard(req); const id = csiIdSchema.parse(req.params.id); scopeOnly.parse(req.query); await connect();
+      const result = await (deps.runPresentation ?? readRunPresentation)(id);
+      return result ? res.json({ ok: true, ...result }) : notFound(req, res, "Analysis"); } catch (error) { return fail(req, res, error); }
+  });
+  router.get(`${CSI_ADMIN_PREFIX}/analysis-runs/:id/output/:outputId`, async (req, res) => {
+    try { guard(req); const id = csiIdSchema.parse(req.params.id), outputId = csiIdSchema.parse(req.params.outputId); scopeOnly.parse(req.query); await connect();
+      const result = await (deps.runOutput ?? readRunOutput)(id, outputId);
+      return result ? res.json({ ok: true, ...result }) : notFound(req, res, "Output"); } catch (error) { return fail(req, res, error); }
   });
   router.get(`${CSI_ADMIN_PREFIX}/outreach/:id`, async (req, res) => {
     try { guard(req); const id = csiIdSchema.parse(req.params.id); await connect(); const result = await readOutreach(id); if (!result) return notFound(req, res); return res.json({ ok: true, ...result }); } catch (error) { return fail(req, res, error); }

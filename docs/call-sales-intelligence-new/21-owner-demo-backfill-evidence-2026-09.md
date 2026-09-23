@@ -2,6 +2,40 @@
 
 Date: September 21, 2026. Deliverable 2 of [19](19-system-walkthrough-and-owner-demo-backfill-task.md). Identifiers below are redacted. No phone numbers, names, or transcript text.
 
+## Follow-up incident repair, September 21 evening UTC
+
+This section supersedes the historical status statements below. Attention was repaired and verified through the live signed Owner API: HTTP 200, `ready`, 6,382 subjects at 21:55 UTC (3.7 seconds), and 6,394 at 22:14 UTC (3.6 seconds). The full publisher first completed 6,363 rows in 74.6 seconds inside its 90-second budget. Repeated calendar conversion was the main CPU bottleneck; bounded timezone/calendar caches and 500-record batches resolve it. Conversation-scoped reviews now resolve to their actual Number rather than crashing publication with an invalid Lead DTO.
+
+The MCP timeout was 20 seconds, while an observed downstream authority read took 17 seconds. MCP now allows 45 seconds per downstream request and a 120-second route budget. Transient evidence failures remain retryable in the analysis runtime, rather than becoming permanent contract mismatches. Credential-free diagnostics record action, elapsed time and safe error kind. Direct CLI production MCP deployment: `dpl_5RaorrGtSuwE5BKnxoh9xNfYV57z`. The deployed prompt v2 is present; the earlier missing-v2 observation below no longer applies.
+
+The retry exposed a second blocker: Atlas reported its 512 MB storage quota exhausted, rejecting writes with code 8000. Attention cache copies alone occupied about 76 MB. Lossless snapshot compression preserves rows, counts, ordering, cursor identities and the five-minute TTL. A real 6,394-row snapshot measures 26,761,829 JSON bytes versus 1,242,624 compressed/base64 bytes. Main-server deployment `dpl_9RahDhKBUoJ7AbWkBxqBDjze7zTy` includes the cache fix and supports older inline/chunk snapshots. No recordings, conversations or audit history were deleted. An explicit existing-TTL cleanup found zero expired documents at execution time; Atlas had already removed them.
+
+Verification scripts: `scripts/check-csi-attention-ready.ts` and `scripts/verify-csi-five-examples.ts`. The latter checks official booked state, stored media with Blob HEAD, transcript presence, completed analysis and Running Summary without printing customer text or audio URLs. At 22:22 UTC, all five intended samples passed with real stored recordings, transcripts and completed analysis. Job 5564791 completed at 22:19:58 UTC after the cache repair; the application reported two applied effects and one review. Its evidence raised unclear-commitment reviews rather than inventing a firm follow-up. Its actual cost remains unknown because the earlier transport attempts did not report complete usage; null is not zero. Number summaries for 5564791 and 5564716 remain separate recovery work.
+
+| Job | Official grouping | Recording seconds | Audio bytes | Completed analysis at 22:22 UTC |
+| --- | --- | ---: | ---: | --- |
+| 5563953 | Booked Form Lead | 249 | 344,205 | yes |
+| 5564267 | Booked Form Lead | 297 | 600,237 | yes |
+| 5564618 | Unbooked Form Lead | 116 | 293,229 | yes |
+| 5564791 | Unbooked Call Lead | 425 | 160,749 | yes |
+| 5564716 | Unbooked Call Lead | 509 | 1,566,189 | yes |
+
+The production cron wrote compressed snapshots at 22:15, 22:17 and 22:18 UTC. The live Owner API returned `ready` with 6,400 subjects at 22:23 UTC, using the 22:22:16 snapshot. Shared-cluster latency still varies (this read took 27 seconds), so ready/count correctness is verified, but consistently low latency is not claimed. The user assigned collection pruning to another agent; this repair performed no receipt or operational-event deletions.
+
+### Production logging release and final checks
+
+Completed Attention repairs were recorded separately as `9b6c3d7`. The user's urgent logging-only request was committed as `4f3a205059683ac0a2f8b728c908067de06dfb38` (two middleware files and one focused regression test), pushed to `fix/outreach-attention-and-five-examples`, and released through [Vercel Production workflow 35663829180](https://github.com/jbell-rusty-vantage/vantage-movers-server/actions/runs/35663829180). It passed typecheck and 2,496 tests, with zero failures and 116 skipped. Production deployment `dpl_6jAzUjrJoX2e2HUYE5odbFbTTxsm` serves the normal main-server alias.
+
+Between 22:50:20 and 23:01:57 UTC, fresh production traffic produced zero `auth.scoped_key.accepted` and zero `http.request.slow` Mongo Operational Events. A deliberately invalid credential returned 401 and persisted one `auth.api_secret.rejected`; other Operational Events continued (41 non-targeted events in that window). Vercel application logs retained successful scoped authentication and HTTP durations, including successful requests taking 3.7–3.9 seconds. No observability flag, collection, record or index was removed by this logging patch. The focused test also positively exercises the actual v1 `http.request.5xx` writer path.
+
+After release, real scoped main-server and MCP initialization probes both returned 200 in about three seconds (versus a pre-release main-server status read of 38 seconds). The live Owner Attention API returned `ready`, 6,420 subjects, as-of 22:50:02 UTC. No MCP 5xx responses were found in the 22:50:20–22:53:42 observation window; this is a bounded observation, not a guarantee of future uptime.
+
+MCP was deployed directly via CLI as requested; latest `dpl_CQGzF37PgH6DaHxfyH76FPCS4md4` also rejects unsupported SSE GET probes locally before a downstream authority read. All POST authority checks remain. Its 37 tests/typecheck passed, and a live GET returned 405/Allow: POST in 182 ms. No MCP Git deployment integration was introduced.
+
+All five recording/transcript/completed-analysis checks passed again at 22:56–22:57 UTC. Three Numbers have Running Summaries. The separate summary for 5564716 returned a transient AI Gateway failure on its bounded retry. For 5564791, the exhausted historical v1 summary run was preserved and one explicit v2 repair was attempted through the canonical worker; it also returned `retry` / `transient`. Both summaries remain pending; neither result invalidates the five completed conversation analyses. No schema-failure counters, budget gates or lease checks were reset to force a result.
+
+Checks: focused server regression tests and local typecheck pass; MCP 37 tests and typecheck pass. Earlier required `finish-work` checkpoint ran: its full suite passed 2,495 tests (116 skipped), lint and quality-runner tests passed. Its isolated proposed patch failed typecheck on missing imports in unrelated analysis-admission changes and was not applied. The actual working tree typecheck passes. The later official production workflow passed typecheck and the full suite (2,496 passed, 116 skipped), and its deployment is Ready.
+
 ## What happened to the earlier records
 
 The three earlier subjects are still stored. Nothing deleted them. Job `5564662` (Call Lead) and job `5564549` (Form Lead) each have an Outreach Record closed `booked` by official closure, so they were never going to appear on Attention: a closed record does not carry a band. They show under Numbers, on a closed Work tab. `5564662` never reached analysis: the conversation is still `discovered` and `excluded`, with no transcript and no Intelligence Run, and the Number↔Lead edge is only `candidate` / `likely`. `5564549` is transcribed and eligible, but its runs are paused (`schema_exhausted` on the latest, `bounds_exhausted` on the two before it). The unbooked Call Lead is still there too: edge `attached` / `exact`, Outreach `open`, analysis run `completed`. It left the desk because Attention has no snapshot. `sales_intelligence_attention_snapshots` has zero documents, and production `GET /api/v1/admin/sales-intelligence/attention` returns `pending_projection`. The publish walk reads about 7,805 Outreach Records and takes on the order of 16 seconds per page of 50. The cron budget is 90 seconds, so the walk returns `snapshot_budget` and writes nothing. Checked with `scripts/status-csi-attention-subjects.ts` and `scripts/inspect-csi-owner-demo-candidates.ts`.

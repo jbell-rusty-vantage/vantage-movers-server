@@ -18,6 +18,7 @@ import { ensureInteraction, ensureLead, workerContext } from "./ensure";
 import { refreshRecord, jsonValue } from "./store";
 import { payloadHash } from "../transactions";
 import { ATTENTION_PUBLISH_BUDGET_MS, publishAttentionSnapshot } from "./attention";
+import { nominateMoveAssessmentForChange } from "../assessment/runtime";
 
 /** Calls replayed per coalesced `outreach-number:` job; a continuation job carries the rest. */
 export const OUTREACH_NUMBER_REPLAY_PAGE = 25;
@@ -216,6 +217,9 @@ export async function runOutreachEnsureOnce(options: { deadline?: number } = {})
           // One job identity (fingerprint + sole-match policy version) shared with the watermark backstop.
           if (lead) await enqueueCsiJob(leadAttachmentJobInput(change.entity.model, change.entity.id, lead), session);
         }
+        // Move assessment §7: a meaningful canonical move-field change nominates the assessment step
+        // (flag-gated, path-filtered, dedupe-keyed inside). Priority/Quoted-only changes never do.
+        await nominateMoveAssessmentForChange(change, session);
         count++;
       }
       const last = changes.at(-1);

@@ -31,6 +31,7 @@ async function main() {
     const started = Date.now();
     const page = await getOutreachRecordModel().find({ purged_at: null, ...(after ? { _id: { $gt: after } } : {}) }).sort({ _id: 1 }).limit(50).lean();
     const inputs = await loadOutreachInputsBatch(page, now);
+    const inputsDone = Date.now();
     const desk = page.filter((record) => {
       const bundle = inputs.get(String(record._id));
       if (!bundle) return false;
@@ -45,7 +46,7 @@ async function main() {
         if (bundle) await toOutreachDto(record, now, coverage, { policy, inputs: bundle, side });
       }
     }
-    pages.push({ i, records: page.length, desk: desk.length, ms: Date.now() - started, dto_ms: Date.now() - sideStarted });
+    pages.push({ i, records: page.length, desk: desk.length, ms: Date.now() - started, inputs_ms: inputsDone - started, derive_ms: sideStarted - inputsDone, dto_ms: Date.now() - sideStarted });
     if (page.length < 50) break;
     after = String(page.at(-1)!._id);
   }

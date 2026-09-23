@@ -50,3 +50,19 @@ test("rowMatchesAttentionQuery treats empty selection as all", () => {
   assert.equal(rowMatchesAttentionQuery(row, parse({ agent_id: [AGENT_A, AGENT_B] })), true);
   assert.equal(rowMatchesAttentionQuery(row, parse({ agent_id: AGENT_B })), false);
 });
+
+test("rowMatchesAttentionQuery: view marker, closed work and freshness (Move assessment §8)", () => {
+  const make = (over: Record<string, unknown>) => ({ derived: { attention_band: null, review_badges: [] as string[] },
+    outreach: { state: "open", assignment: { agent: null }, followups: [] }, ...over }) as unknown as Parameters<typeof rowMatchesAttentionQuery>[0];
+  const noBand = make({ in_attention: false });
+  assert.equal(rowMatchesAttentionQuery(noBand, parse({})), false, "Attention view hides rows without a band or badge");
+  assert.equal(rowMatchesAttentionQuery(noBand, parse({ view: "all_outreach" })), true);
+  assert.equal(rowMatchesAttentionQuery(make({}), parse({})), true, "older rows without the marker stay in Attention");
+  const closed = make({ in_attention: true, outreach: { state: "closed", assignment: { agent: null }, followups: [] } });
+  assert.equal(rowMatchesAttentionQuery(closed, parse({ view: "all_outreach" })), false);
+  assert.equal(rowMatchesAttentionQuery(closed, parse({ view: "all_outreach", state: "closed" })), true);
+  assert.equal(rowMatchesAttentionQuery(closed, parse({})), true, "default Attention population is unchanged");
+  const stale = make({ in_attention: false, sort_keys: { assessment_stale: true } });
+  assert.equal(rowMatchesAttentionQuery(stale, parse({ view: "all_outreach", freshness: "fresh" })), false);
+  assert.equal(rowMatchesAttentionQuery(stale, parse({ view: "all_outreach", freshness: "all" })), true);
+});

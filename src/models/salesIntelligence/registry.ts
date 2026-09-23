@@ -88,6 +88,10 @@ import {
   SALES_INTELLIGENCE_SYNC_WINDOW_INDEXES,
 } from "./capture";
 import {
+  getMoveAssessmentArtifactModel,
+  MOVE_ASSESSMENT_ARTIFACT_INDEXES,
+} from "./assessment";
+import {
   getContactNumberModel,
   CONTACT_NUMBER_INDEXES,
 } from "../ContactNumber";
@@ -222,6 +226,11 @@ export const CSI_MODEL_REGISTRY = [
     name: "SalesIntelligenceSyncWindow",
     model: getSalesIntelligenceSyncWindowModel,
     indexes: SALES_INTELLIGENCE_SYNC_WINDOW_INDEXES,
+  },
+  {
+    name: "MoveAssessmentArtifact",
+    model: getMoveAssessmentArtifactModel,
+    indexes: MOVE_ASSESSMENT_ARTIFACT_INDEXES,
   },
   {
     name: "ContactNumber",

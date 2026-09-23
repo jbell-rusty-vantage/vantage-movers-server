@@ -17,6 +17,7 @@ import { drainNudgeRepairJobs } from "../services/salesIntelligence/nudges/repai
 import { drainMediaFetchJobs } from "../services/salesIntelligence/conversations/media";
 import { drainTranscriptionJobs } from "../services/salesIntelligence/conversations/transcribe";
 import { drainIntelligenceJobs } from "../services/salesIntelligence/analysis/worker";
+import { drainMoveAssessmentJobs } from "../services/salesIntelligence/assessment/runtime";
 import { drainIntelligenceApplications } from "../services/salesIntelligence/analysis/apply";
 import { drainRebuildJobs, type RebuildDrainSummary, type RebuildWorkerDeps } from "../services/numberActivity/rebuild";
 import { runCallLogReconcileOnce } from "../services/numberActivity/reconcileCallLog";
@@ -78,6 +79,7 @@ export type SalesIntelligenceCronRouteDeps = {
   drainRepIdentity?: typeof drainRepIdentityReevaluationJobs;
   drainNudgeRepair?: typeof drainNudgeRepairJobs;
   runIntelligence?: () => ReturnType<typeof drainIntelligenceJobs> | Promise<{ status: string }>;
+  drainMoveAssessment?: typeof drainMoveAssessmentJobs;
   runApplication?: typeof drainIntelligenceApplications;
   /** Recounts the Owner coverage strip. Job recovery calls it once a minute. */
   refreshCoverage?: () => Promise<unknown>;
@@ -125,6 +127,7 @@ export function createSalesIntelligenceCronRouter(
   const extraRecovery = deps.extraRecovery ?? [
     { name: "intelligence", flag: "EXTRACTION_ENABLED" as const, run: () => (deps.runIntelligence ?? drainIntelligenceJobs)() },
     { name: "application", flag: "EXTRACTION_ENABLED" as const, run: () => (deps.runApplication ?? drainIntelligenceApplications)() },
+    { name: "move_assessment", flag: "MOVE_ASSESSMENT" as const, run: () => (deps.drainMoveAssessment ?? drainMoveAssessmentJobs)() },
     { name: "nudge_repair", flag: "NUDGE_ENABLED" as const, run: () => (deps.drainNudgeRepair ?? drainNudgeRepairJobs)() },
     { name: "rep_identity_reevaluate", flag: "ENABLED" as const, run: () => (deps.drainRepIdentity ?? drainRepIdentityReevaluationJobs)() },
     { name: "outreach_ensure", flag: "OUTREACH_ENSURE" as const, run: () => (deps.drainOutreachEnsure ?? drainOutreachEnsureJobs)() },

@@ -24,6 +24,9 @@ import { stateWithActions } from "./transitions";
 import { subjectKey, type RecordRow, type FollowupRow } from "./types";
 import { nudgeHistoryPage } from "../nudges/reads";
 import { basisLabel, dispositionLabel, isTerminal, priorityLabel, progressExplanation, CRM_CLOSURE_REASONS, type LeadProgressRow } from "./leadProgress";
+import { moveAssessmentProjectionDto } from "../assessment/presentation";
+import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
+import { csiDataset } from "../../../config/domain/salesIntelligence";
 
 const iso = (value: Date | null | undefined) => value?.toISOString() ?? null;
 
@@ -246,8 +249,12 @@ export async function loadOutreachSideData(records: readonly RecordRow[], inputs
 }
 
 export async function toOutreachDto(record: RecordRow, now = new Date(), coverage?: CoverageDto,
-  prefetched: { policy?: CsiPolicy; inputs?: OutreachInputs; side?: OutreachSideData } = {}) {
+  prefetched: { policy?: CsiPolicy; inputs?: OutreachInputs; side?: OutreachSideData; assessmentPending?: boolean } = {}) {
   const policy = prefetched.policy ?? await resolvePolicy();
+  // MA-04: the projection rides on every Outreach read. Attention publish passes the queued set it
+  // already loaded; detail reads answer one bounded `exists` for the Pending label.
+  const assessmentPending = prefetched.assessmentPending ?? Boolean(await getSalesIntelligenceJobModel().exists({ ...csiDataset(),
+    stage: "move_assessment", subject_key: subjectKey(record.subject), status: { $in: ["pending", "leased", "retry"] } }));
   const inputs = prefetched.inputs ?? await loadOutreachInputs(record, now);
   const { actions, restrictions, number } = inputs;
   const activeRestrictions = restrictions.filter(r => r.state === "active" && (!r.until || r.until > now));
@@ -303,6 +310,7 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
   const overrideEnabled = csiFlag("LEAD_PROGRESS") && Boolean(progress) && terminalNow && (crmClosed || record.state !== "closed") && number?.contact_eligibility.state !== "suppressed" && !leadSuppressed;
   return outreachDtoSchema.parse({ id: String(record._id), revision: record.revision,
     lead_progress: progress,
+    move_assessment: moveAssessmentProjectionDto(record, assessmentPending),
     lead_attachment: mirror ? { attachment_id: String(mirror.attachment_id), lead_ref: { model: mirror.lead_ref.model, id: String(mirror.lead_ref.id) },
       state: mirror.state, certainty: mirror.certainty, certainty_label: certaintyLabel(mirror.certainty), decided_by: mirror.decided_by,
       decided_at: iso(mirror.decided_at), confidence: mirror.confidence ?? null, observed_at: iso(mirror.observed_at),

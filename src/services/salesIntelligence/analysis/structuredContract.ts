@@ -5,6 +5,7 @@ import {
   type IntelligenceEvidenceRef,
 } from "../../../validation/intelligence/intelligenceEnvelope.validation";
 import { CsiError } from "../auth";
+import { summaryMoveEvidenceSchema } from "../assessment/contract";
 import { validateEnvelopeEvidence, type EvidenceManifestEntry } from "../evidence";
 import type { CapturedPromptPage } from "./prompt";
 
@@ -27,12 +28,18 @@ const factOptions = intelligenceFindingSchema.options.map(option => option
   .extend({ speaker: z.enum(["rep", "customer", "unknown"]), segment_ids: segmentIds,
     quote: transcriptRef.shape.quote }));
 
-/** Value contracts come from the submission schema; there is no second finding taxonomy. */
+/**
+ * Value contracts come from the submission schema; there is no second finding taxonomy.
+ * Reader contract: csi-summary-v1 artifacts carry no `move_evidence` and stay readable (MA-01 §3).
+ */
 export const summaryStepSchema = z.object({
   summary: summaryTextSchema,
   said_on_call: z.array(z.discriminatedUnion("kind", [factOptions[0], ...factOptions.slice(1)])),
+  move_evidence: summaryMoveEvidenceSchema.optional(),
 }).strict();
 export type SummaryStep = z.infer<typeof summaryStepSchema>;
+/** csi-summary-v2 generation contract: the block is required because strict providers reject optional keys. */
+export const summaryGenerationSchema = summaryStepSchema.extend({ move_evidence: summaryMoveEvidenceSchema }).strict();
 
 export const minimalFindingsSchema = z.object({
   summary: summaryTextSchema,
@@ -54,7 +61,7 @@ function refuse(path: string, code: string): never {
 }
 
 export function validateSummaryStep(raw: unknown, transcriptSegmentIds: readonly number[]): SummaryStep {
-  const summary = summaryStepSchema.parse(raw);
+  const summary = summaryGenerationSchema.parse(raw);
   if (Object.values(summary.summary).reduce((total, section) => total + section.length, 0) > CSI_ENVELOPE_BOUNDS.max_summary_total_chars)
     refuse("summary", "summary_text_too_long");
   const allowed = new Set(transcriptSegmentIds);
@@ -64,6 +71,11 @@ export function validateSummaryStep(raw: unknown, transcriptSegmentIds: readonly
     if ("target_followup_id" in fact.value && fact.value.target_followup_id !== null)
       refuse(`said_on_call.${index}.value.target_followup_id`, "followup_not_available_in_transcript_step");
   });
+  const { observations, inventory, intent_signals } = summary.move_evidence;
+  for (const [list, items] of [["observations", observations], ["inventory", inventory], ["intent_signals", intent_signals]] as const)
+    items.forEach((item, index) => {
+      if (item.segment_ids.some(id => !allowed.has(id))) refuse(`move_evidence.${list}.${index}.segment_ids`, "segment_not_in_transcript");
+    });
   return summary;
 }
 

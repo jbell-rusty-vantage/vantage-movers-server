@@ -8,6 +8,7 @@ import {
   CSI_OUTREACH_STATES,
 } from "../../config/domain/salesIntelligence";
 import { intelligenceFindingSchema } from "../../validation/intelligence/intelligenceEnvelope.validation";
+import { ASSESSMENT_AVAILABILITY, outreachMoveAssessmentDtoSchema } from "./assessment/dto";
 import {
   csiIdSchema as id,
   csiDateSchema as date,
@@ -304,18 +305,29 @@ export const leadProgressDtoSchema = z
   })
   .strict();
 export type LeadProgressDto = z.infer<typeof leadProgressDtoSchema>;
-/** §14.1: server-computed ordering keys frozen into each Attention snapshot row. Score keys are added by Move assessment on this same object. */
+/**
+ * §14.1 / Move assessment §8: server-computed ordering keys frozen into each Attention snapshot row.
+ * Score keys are optional so rows from older snapshots still parse; missing reads as null (sorts last).
+ */
 export const attentionSortKeysDtoSchema = z
   .object({
     next_action_due: date.nullable(),
     lead_received: date.nullable(),
     last_human_contact: date.nullable(),
     last_lead_progress: date.nullable(),
+    transaction_intent: z.number().min(0).max(100).nullable().optional(),
+    move_likelihood: z.number().min(0).max(100).nullable().optional(),
+    assessment_status: z.enum(ASSESSMENT_AVAILABILITY).nullable().optional(),
+    assessment_stale: z.boolean().nullable().optional(),
   })
   .strict();
-export const ATTENTION_SORTS = ["attention", "next_action_due", "lead_received", "last_human_contact", "last_lead_progress"] as const;
+export const ATTENTION_SORTS = ["attention", "next_action_due", "lead_received", "last_human_contact", "last_lead_progress", "transaction_intent", "move_likelihood"] as const;
+export const ATTENTION_SCORE_SORTS = ["transaction_intent", "move_likelihood"] as const;
+export const ATTENTION_VIEWS = ["attention", "all_outreach"] as const;
+export const ATTENTION_FRESHNESS = ["fresh", "all"] as const;
 export const ATTENTION_SORT_DEFAULT_DIRECTION: Record<(typeof ATTENTION_SORTS)[number], "asc" | "desc"> = {
   attention: "asc", next_action_due: "asc", lead_received: "desc", last_human_contact: "asc", last_lead_progress: "desc",
+  transaction_intent: "desc", move_likelihood: "desc",
 };
 export const outreachDtoSchema = z
   .object({
@@ -333,6 +345,8 @@ export const outreachDtoSchema = z
       lead_display: z.object({ name: z.string().nullable(), job_no: z.string().nullable() }).strict().nullable() }).strict().nullable().optional(),
     call_progress: z.object({ state: z.enum(["in_progress", "ended"]), started_at: date, started_by: z.string(),
       ended_at: date.nullable(), ended_by: z.string().nullable(), note: z.string().nullable() }).strict().nullable().optional(),
+    // Move assessment §8.1: compact projection with read-time applicability; absent/null reads as Not assessed.
+    move_assessment: outreachMoveAssessmentDtoSchema.nullable().optional(),
     subject: csiSubjectSchema,
     state: z.enum(CSI_OUTREACH_STATES),
     reason: z.string().nullable(),
@@ -372,6 +386,9 @@ export const attentionRowDtoSchema = z
     derived: derivedDtoSchema,
     allowed_actions: z.array(csiActionAvailabilitySchema),
     sort_keys: attentionSortKeysDtoSchema.optional(),
+    // Move assessment §8: band/badge membership. `false` rows are reachable only in `view=all_outreach`;
+    // rows from snapshots published before the marker existed are treated as in Attention.
+    in_attention: z.boolean().optional(),
   })
   .strict();
 export const ownerReadSchema = <T extends z.ZodType>(data: T) =>
@@ -389,7 +406,8 @@ export const attentionPageDtoSchema = ownerReadSchema(
       // §14.1: the sort the page was produced under; absent on pre-sort servers.
       sort: z.enum(ATTENTION_SORTS).optional(),
       direction: z.enum(["asc", "desc"]).optional(),
-      view: z.enum(["attention"]).optional(),
+      view: z.enum(ATTENTION_VIEWS).optional(),
+      freshness: z.enum(ATTENTION_FRESHNESS).optional(),
     })
     .strict(),
 );

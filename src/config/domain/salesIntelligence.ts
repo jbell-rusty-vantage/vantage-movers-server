@@ -87,6 +87,8 @@ export const CSI_JOB_STAGES = [
   "rebuild",
   "rep_identity_reevaluate",
   "nudge_repair",
+  // MA-02: independent Move assessment step (one subject-level model call per input fingerprint).
+  "move_assessment",
 ] as const;
 export const CSI_ERROR_CODES = [
   "FEATURE_DISABLED",
@@ -141,6 +143,10 @@ export const CSI_FLAGS = [
   // Priority/Quoted repair fingerprint. Off keeps `ensureLead` and the repair
   // sweep exactly as before so no mass re-nomination happens before the dry run.
   "LEAD_PROGRESS",
+  // MA-02: Move assessment nomination/generation in the normal flow. Off keeps
+  // the summary/findings pipeline exactly as before; reads still serve retained
+  // artifacts and the assessment-only backfill runner injects its own gate.
+  "MOVE_ASSESSMENT",
 ] as const;
 export function csiFlag(flag: (typeof CSI_FLAGS)[number]): boolean {
   return (

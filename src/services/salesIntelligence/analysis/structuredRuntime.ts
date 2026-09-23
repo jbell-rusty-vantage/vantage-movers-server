@@ -14,13 +14,14 @@ import { loadAuthorizedRun } from "./lease";
 import { submitIntelligenceAnalysis } from "./submit";
 import { correctionContextSchema, retainedOriginal } from "./ownerReanalysis";
 import { assembleContextPage, findSummaryArtifact, findRunArtifact, persistAnalysisArtifact, restoreAnalysisArtifact } from "./structuredArtifacts";
-import { summaryStepSchema, minimalFindingsSchema, validateSummaryStep, expandStructuredFindings,
+import { summaryGenerationSchema, minimalFindingsSchema, validateSummaryStep, expandStructuredFindings,
   structuredInstructions, type StructuredCall } from "./structuredContract";
 import { SUMMARY_PROMPT_VERSION, SUMMARY_PROMPT, FINDINGS_PROMPT, structuredStepContracts } from "./structuredPrompt";
 import { generateStructuredStep, STRUCTURED_INVOCATION_MS, type StepPricing } from "./structuredGeneration";
 import type { InvocationInput } from "./runtime";
 import { readStructuredIdentities } from "./structuredIdentity";
 import { modelEvidence } from "./modelEvidence";
+import { nominateMoveAssessmentForNumber } from "../assessment/runtime";
 
 export const STRUCTURED_LEASE_MS = 660_000;
 type StructuredInput = InvocationInput & { lease: JobLease; pricing: StepPricing; source_ids: string[]; original_run_id?: string };
@@ -84,7 +85,7 @@ export async function invokeStructuredAnalysis(input: StructuredInput) {
         if (!transcript) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
         const segments = transcript.segments.map(s => ({ sid: s.sid, start_ms: s.start_ms, end_ms: s.end_ms,
           timing_source: s.timing_source, speaker: s.speaker, text: s.text }));
-        const summary = await generate({ kind: "summary", key, schema: summaryStepSchema, system: SUMMARY_PROMPT,
+        const summary = await generate({ kind: "summary", key, schema: summaryGenerationSchema, system: SUMMARY_PROMPT,
           prompt: JSON.stringify({ subject_binding: binding, segments }),
           validate: value => validateSummaryStep(value, segments.map(s => s.sid)) });
         auth = await authorize();
@@ -133,6 +134,9 @@ export async function invokeStructuredAnalysis(input: StructuredInput) {
       summaries: calls.map(c => c.snapshot_id), context: context.snapshot_id,
       context_digest: payloadHash(context.data),
     }) } }, { session });
+    // Move assessment (MA-02 §3): the summaries this invocation captured are the assessment's inputs.
+    // Nomination is a durable no-op when nothing changed; it never gates or waits for findings.
+    if (!input.original_run_id && run.contact_number_id) await nominateMoveAssessmentForNumber(String(run.contact_number_id), `summary:${run._id}`, session);
   });
   const instructions = structuredInstructions([context]);
   const corrections = correctionContextSchema.parse(run.owner_correction_context ?? []);
@@ -142,7 +146,8 @@ export async function invokeStructuredAnalysis(input: StructuredInput) {
     instructions.push({ id: correction.instruction_id, revision: correction.revision });
   }
   const prompt = JSON.stringify(modelEvidence({ subject_scope: run.conversation_id ? "conversation" : "number",
-    calls: calls.map((call, call_index) => ({ call_index, ...call.summary })),
+    // `move_evidence` feeds the Move assessment step only; the findings prompt stays byte-identical to v1.
+    calls: calls.map((call, call_index) => { const { move_evidence: _move, ...summary } = call.summary; return { call_index, ...summary }; }),
     context: { records: context.data.page.records, coverage: context.data.coverage, allowed_followup_ids: context.data.allowed_followup_ids },
     instructions: instructions.map((instruction, instruction_index) => ({ instruction_index, ...instruction })),
     owner_corrections: corrections }));

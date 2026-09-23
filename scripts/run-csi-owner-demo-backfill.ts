@@ -1,5 +1,5 @@
 /**
- * Owner demo backfill for four real Number↔Lead connections (task 19 §3.4).
+ * Owner demo backfill for five real Number↔Lead connections (task 19 §3.4).
  * Redacted ids and job numbers only. Never prints phones, names, or transcripts.
  *
  *   pnpm exec tsx --env-file=.env --env-file=sales-intelligence.env scripts/run-csi-owner-demo-backfill.ts
@@ -30,7 +30,7 @@ import { runIntelligenceApplicationJob } from "../src/services/salesIntelligence
 import { scheduleNumberIntelligence } from "../src/services/salesIntelligence/analysis/scheduling";
 import { readCaptureCoverage } from "../src/services/numberActivity/coverage";
 import { toOutreachDto } from "../src/services/salesIntelligence/outreach/reads";
-import { publishAttentionSnapshot } from "../src/services/salesIntelligence/outreach/attention";
+import { publishAttentionSnapshot, decompressAttentionRows } from "../src/services/salesIntelligence/outreach/attention";
 import {
   resolveAtInteraction,
   type Attachment,
@@ -44,6 +44,7 @@ const PICKS = [
   { role: "booked", model: "FormLead" as const, job_no: "5564267" },
   { role: "open", model: "FormLead" as const, job_no: "5564618" },
   { role: "open", model: "CallLead" as const, job_no: "5564791" },
+  { role: "open", model: "CallLead" as const, job_no: "5564716" },
 ];
 
 const mask = (value: unknown) => {
@@ -335,12 +336,17 @@ async function runSubject(resolved: Awaited<ReturnType<typeof resolvePick>>) {
 
 async function attentionFor(subjects: { job_no: string; lead_id: string }[]) {
   const snapshot = await getSalesIntelligenceAttentionSnapshotModel()
-    .findOne({ chunk_index: null, $or: [{ expires_at: null }, { expires_at: { $gt: new Date() } }] })
+    .findOne({ ...csiDataset(), chunk_index: null, $or: [{ expires_at: null }, { expires_at: { $gt: new Date() } }] })
     .sort({ as_of: -1 })
-    .select({ snapshot_id: 1, as_of: 1, expires_at: 1, counts: 1, rows: 1 })
+    .select({ snapshot_id: 1, as_of: 1, expires_at: 1, counts: 1, rows: 1, rows_gzip_base64: 1 })
     .lean();
   const wanted = new Map(subjects.map((row) => [row.lead_id, row.job_no]));
-  const rows = Array.isArray(snapshot?.rows) ? snapshot.rows : [];
+  let rows: unknown[] = Array.isArray(snapshot?.rows) ? snapshot.rows : [];
+  if (snapshot?.rows_gzip_base64) rows = decompressAttentionRows(snapshot.rows_gzip_base64);
+  else if (snapshot?.counts?.chunks) {
+    const chunks = await getSalesIntelligenceAttentionSnapshotModel().find({ ...csiDataset(), parent_snapshot_id: snapshot.snapshot_id }).sort({ chunk_index: 1 }).lean();
+    rows = chunks.flatMap(chunk => Array.isArray(chunk.rows) ? chunk.rows : []);
+  }
   const hits = rows.flatMap((row) => {
     const record = row as { subject?: { id?: string }; derived?: { attention_band?: number | null } };
     const job = record.subject?.id ? wanted.get(String(record.subject.id)) : undefined;
@@ -440,7 +446,7 @@ async function retryConversation(row: Extract<Awaited<ReturnType<typeof resolveP
       {
         stage: "analysis",
         subject_key: `conversation:${row.conversation_id}`,
-        dedupe_key: `csi:analysis:conversation:${row.conversation_id}:${version}:owner-demo-retry-2`,
+        dedupe_key: `csi:analysis:conversation:${row.conversation_id}:${version}:owner-demo-repair-2026-09-21`,
         input_revision: 1,
         input_refs: [row.conversation_id, String(snapshot._id)],
         priority: 0,
@@ -451,7 +457,10 @@ async function retryConversation(row: Extract<Awaited<ReturnType<typeof resolveP
   if (job.status === "paused" && job.reason === "budget_exhausted") {
     await getSalesIntelligenceJobModel().updateOne({ _id: job._id, status: "paused", reason: "budget_exhausted" }, { $set: { status: "pending", reason: null, next_attempt_at: new Date() } });
   }
-  const analysis = await runIntelligenceJob(String(job._id), "analysis");
+  const analysis = await runIntelligenceJob(String(job._id), "analysis", {
+    beforeProvider: async () => { console.log(JSON.stringify({ phase: "provider_start", job_no: row.pick.job_no, at: new Date().toISOString() })); },
+    onError: error => { console.log(JSON.stringify({ phase: "analysis_error", name: error instanceof Error ? error.name : "unknown", code: (error as { code?: unknown; statusCode?: number }).code, statusCode: (error as { statusCode?: number }).statusCode })); },
+  });
   let application: string | null = null;
   if (analysis.status === "submitted" && "run_id" in analysis && analysis.run_id) {
     const applyJob = await getSalesIntelligenceJobModel().findOne({ stage: "application", "input_refs.0": analysis.run_id }).sort({ _id: -1 }).lean();
@@ -516,7 +525,9 @@ async function main() {
   if (WRITE && !admission.ready) throw new Error("Local analysis admission is not ready. Refusing to spend.");
   await connectMongo();
   const resolved = [];
-  for (const pick of PICKS) resolved.push(await resolvePick(pick));
+  const onlyJob = process.argv.find(arg => arg.startsWith("--job="))?.slice(6);
+  if (onlyJob && !PICKS.some(pick => pick.job_no === onlyJob)) throw new Error("Job is not in the reviewed demo set");
+  for (const pick of PICKS.filter(pick => !onlyJob || pick.job_no === onlyJob)) resolved.push(await resolvePick(pick));
   if (FINISH) {
     await finish(resolved);
     return;

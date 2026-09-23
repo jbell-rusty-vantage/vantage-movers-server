@@ -9,6 +9,7 @@ import { withTransaction } from "../../db";
 import { MongoLeaseStore, activeTokenFilter } from "../durableWork/leases";
 import { RETENTION_LEASE_SCOPE, syncStateLeaseModel } from "../numberActivity/reconcileCallLog";
 import { resolveRetentionDays } from "./retentionPolicy";
+import { purgeMoveAssessments } from "./assessment/runtime";
 
 export type RetentionSummary = {
   skipped: boolean;
@@ -91,6 +92,9 @@ async function purgeContent(root: Document, kind: "snapshot" | "run", at: Date, 
     await database.collection("contact_numbers").updateOne({ _id: numberId }, { $set: { running_summary: null, intelligence_schedule: null, content_purge_pending: more }, $inc: { revision: 1, retention_epoch: 1 } }, options);
     await database.collection(LEAD_CONVERSATION_COLLECTION).updateMany({ contact_number_id: numberId }, { $set: { summary: null, latest_completed_run_id: null } }, options);
   }
+  // Move assessment §7: a summary must not bypass a purge of its underlying evidence.
+  if (numberId) await purgeMoveAssessments({ contact_number_id: String(numberId) }, at, session);
+  else if (root.conversation_id) await purgeMoveAssessments({ conversation_id: String(root.conversation_id) }, at, session);
   if (root.source_type === "transcript" && root.conversation_id) {
     await database.collection(LEAD_CONVERSATION_COLLECTION).updateOne({ _id: root.conversation_id }, { $set: {
       content_purged_at: at, transcript: null, transcript_segments: [], latest_transcript_version: null,

@@ -15,6 +15,7 @@ import { runNudgeRepairJob } from "../salesIntelligence/nudges/repair";
 import { runIntelligenceJob } from "../salesIntelligence/analysis/worker";
 import { runIntelligenceApplicationJob } from "../salesIntelligence/analysis/apply";
 import { runBackfillActivationJob } from "../salesIntelligence/backfill/worker";
+import { runMoveAssessmentJob } from "../salesIntelligence/assessment/runtime";
 
 /**
  * Queue wake-up dispatch. The payload is exactly `{ job_id }`; stage and
@@ -58,6 +59,7 @@ export function defaultStageHandlers(
     number_refresh: (jobId) => runIntelligenceJob(jobId, "number_refresh"),
     application: (jobId) => runIntelligenceApplicationJob(jobId),
     backfill: (jobId) => runBackfillActivationJob(jobId),
+    move_assessment: (jobId) => runMoveAssessmentJob(jobId),
   };
 }
 
