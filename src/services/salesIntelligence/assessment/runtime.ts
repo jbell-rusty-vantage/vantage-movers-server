@@ -25,6 +25,7 @@ import { StructuredStepTimeout, StructuredYield, STRUCTURED_INVOCATION_MS, type 
 import { assessmentStepContract, MOVE_ASSESSMENT_SCHEMA_VERSION, type AcceptedAssessment } from "./contract";
 import { assembleAssessmentContext, type AssessmentContext, type AssessmentSkip } from "./context";
 import { generateMoveAssessment, type AssessmentCredential, type AssessmentLedger } from "./generate";
+import { applyAssessmentEngagement } from "./engagement";
 
 /**
  * Move assessment runtime (MA-01 §4/§8, specification §7/§9). One subject-level model
@@ -94,6 +95,7 @@ export function assessmentProviderFailure(error: unknown): { kind: "throttled" |
 type ArtifactRow = {
   _id: unknown; status: string; input_fingerprint: string; schema_version: string; scores?: unknown; context_as_of: Date;
   latest_conversation_at?: Date | null; generated_at?: Date | null; job_id?: unknown; subject_key: string; shadow: boolean;
+  engagement?: unknown; contact_number_id?: unknown;
 };
 type Projection = { artifact_id: unknown; context_as_of?: Date | null; stale?: boolean; status?: string } | null | undefined;
 type Scores = { move_likelihood?: { score?: number | null; confidence?: string | null }; transaction_intent?: { score?: number | null; confidence?: string | null } } | null;
@@ -165,6 +167,10 @@ export async function publishAssessmentProjection(artifact: ArtifactRow & { outr
   await appendCsiAudit(workerContext(session, String(artifact.job_id ?? artifact._id), now), { kind: "outreach",
     subject_key: subjectKey(record.subject), target_id: String(record._id), revision: record.revision + 1,
     event_kind: "move_assessment_published", prior: jsonValue(record.move_assessment ?? { value: null }), current: jsonValue(projection) });
+  // Deterministic work-state effects (promised callbacks, next steps, marked worked) ride the same
+  // transaction as the projection, so the Attention band and the score never disagree about inputs.
+  await applyAssessmentEngagement({ _id: artifact._id, job_id: artifact.job_id, engagement: artifact.engagement,
+    latest_conversation_at: artifact.latest_conversation_at ?? null, contact_number_id: artifact.contact_number_id }, context.outreach_record_id, session, now);
   return "published";
 }
 
@@ -190,7 +196,7 @@ export async function purgeMoveAssessments(filter: { contact_number_id?: string;
   const ids = (await Artifacts.find({ ...csiDataset(), purged_at: null, $or: or }).select("_id").session(session).lean()).map(row => row._id);
   if (!ids.length) return { artifacts: 0, projections: 0 };
   const artifacts = await Artifacts.updateMany({ _id: { $in: ids } }, { $set: { status: "purged", purged_at: at, purge_reason: "retention",
-    scores: null, views: null, inventory: null, conflicts: null, coverage: null, model_output: { purged: true } }, $inc: { revision: 1 } }, { session });
+    scores: null, views: null, inventory: null, conflicts: null, engagement: null, engagement_effects: null, coverage: null, model_output: { purged: true } }, $inc: { revision: 1 } }, { session });
   const projections = await getOutreachRecordModel().updateMany({ "move_assessment.artifact_id": { $in: ids } }, { $set: {
     "move_assessment.status": "purged", "move_assessment.transaction_intent": null, "move_assessment.move_likelihood": null,
     "move_assessment.transaction_intent_confidence": null, "move_assessment.move_likelihood_confidence": null,
@@ -324,7 +330,7 @@ export async function runMoveAssessmentJob(jobId?: string, deps: MoveAssessmentD
         views: jsonValue({ original_ingestion: context.views?.original_ingestion ?? null, canonical_current: context.views?.canonical_current ?? null,
           customer_stated: accepted.move_details }),
         inventory: jsonValue({ ...accepted.inventory, source_coverage: context.coverage.source_coverage }),
-        conflicts: jsonValue(accepted.conflicts), coverage: jsonValue(context.coverage), model_output: jsonValue(generated.model_output),
+        conflicts: jsonValue(accepted.conflicts), engagement: jsonValue(accepted.engagement), coverage: jsonValue(context.coverage), model_output: jsonValue(generated.model_output),
         usage: generated.usage, generated_at: generatedAt,
       } }, { session, runValidators: true });
       if (written.modifiedCount !== 1) throw new CsiError("LEASE_LOST");

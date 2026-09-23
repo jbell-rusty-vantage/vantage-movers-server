@@ -24,7 +24,8 @@ const dimension = (level: (typeof ASSESSMENT_LEVELS)[number], evidence_ids: stri
   ({ level, confidence: "medium" as const, rationale: `Selected ${level} from the cited evidence.`, evidence_ids, conditions });
 function output(overrides: Partial<MoveAssessmentModelOutput> = {}): MoveAssessmentModelOutput {
   return { move_likelihood: dimension("unknown", []), transaction_intent: dimension("unknown", []), move_details: [],
-    inventory: { items: [], coverage: "none", limitations: [] }, conflicts: [], ...overrides };
+    inventory: { items: [], coverage: "none", limitations: [] }, conflicts: [],
+    engagement: { work_status: "unknown", rationale: "No engagement evidence.", evidence_ids: [], promised_callbacks: [], next_steps: [] }, ...overrides };
 }
 function refusal(raw: unknown): Array<{ path: string; code: string }> {
   try { expandAssessment(raw, catalog); } catch (error) {
@@ -137,3 +138,22 @@ test("the pinned step contract carries the rubric and is stable", () => {
     assert.ok(MOVE_ASSESSMENT_PROMPT.includes(phrase), phrase);
   for (const entry of catalog) evidenceCatalogEntrySchema.parse(entry);
 });
+
+test("engagement: a worked status needs conversation evidence; commitment dates must be calendar dates; ids expand", () => {
+  const engagement = (over: Partial<MoveAssessmentModelOutput["engagement"]>): MoveAssessmentModelOutput["engagement"] =>
+    ({ work_status: "unknown", rationale: "No engagement evidence.", evidence_ids: [], promised_callbacks: [], next_steps: [], ...over });
+  assert.deepEqual(refusal(output({ engagement: engagement({ work_status: "worked_with_next_step", evidence_ids: ["e1"] }) })),
+    [{ path: "engagement.work_status", code: "work_status_requires_conversation_evidence" }]);
+  assert.deepEqual(refusal(output({ engagement: engagement({ promised_callbacks: [{ by: "rep", raw_text: "Friday", date: "2026-02-30", time_text: null, status: "pending", evidence_ids: ["e3"] }] }) })),
+    [{ path: "engagement.promised_callbacks.0.date", code: "date_invalid" }]);
+  assert.deepEqual(refusal(output({ engagement: engagement({ next_steps: [{ action: "call", owner: "rep", description: "Call back", date: null, date_text: null, status: "planned", evidence_ids: ["nope"] }] }) })),
+    [{ path: "engagement.next_steps.0.evidence_ids.0", code: "evidence_not_in_catalog" }]);
+  const accepted = expandAssessment(output({ engagement: engagement({ work_status: "worked_with_next_step", rationale: "Rep spoke with the customer.", evidence_ids: ["e5"],
+    promised_callbacks: [{ by: "rep", raw_text: "I'll call Friday", date: "2026-09-25", time_text: null, status: "pending", evidence_ids: ["e5"] }] }) }), catalog);
+  assert.equal(accepted.engagement.work_status, "worked_with_next_step");
+  assert.deepEqual(accepted.engagement.evidence.map(ref => ref.id), ["e5"]);
+  assert.deepEqual(accepted.engagement.promised_callbacks.map(item => [item.by, item.date, item.evidence[0].call_at]), [["rep", "2026-09-25", "2026-09-20T15:00:00.000Z"]]);
+  assert.match(MOVE_ASSESSMENT_PROMPT, /Vantage Movers LLC/);
+  assert.match(MOVE_ASSESSMENT_PROMPT, /Boynton Beach, Florida/);
+});
+

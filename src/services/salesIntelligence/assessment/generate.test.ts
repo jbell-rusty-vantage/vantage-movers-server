@@ -20,7 +20,8 @@ const payload: AssessmentPromptPayload = { subject: { kind: "lead", lead_model: 
 const dimension = (level: MoveAssessmentModelOutput["move_likelihood"]["level"], evidence_ids: string[]) =>
   ({ level, confidence: "medium" as const, rationale: `Selected ${level} from cited evidence.`, evidence_ids, conditions: [] });
 const valid: MoveAssessmentModelOutput = { move_likelihood: dimension("confirmed", ["e1"]), transaction_intent: dimension("active", ["e2"]),
-  move_details: [], inventory: { items: [], coverage: "none", limitations: [] }, conflicts: [] };
+  move_details: [], inventory: { items: [], coverage: "none", limitations: [] }, conflicts: [],
+  engagement: { work_status: "unknown", rationale: "No engagement evidence.", evidence_ids: [], promised_callbacks: [], next_steps: [] } };
 
 function recorder() {
   const events: string[] = [], reservations: Array<{ reservation_id: string; step: string; estimated_cents: number; run_id: string | null }> = [];

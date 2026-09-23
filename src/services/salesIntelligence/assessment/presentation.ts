@@ -6,7 +6,7 @@ import { TERMINAL_DISPOSITIONS, type Disposition } from "../outreach/leadProgres
 import {
   assessmentSectionSchema, assessmentVersionSchema, evidenceLocatorDtoSchema, evidenceRefDtoSchema, evidenceSectionSchema, fullOutputSchema,
   inventoryItemDtoSchema, moveViewDtoSchema, observationDtoSchema, outreachMoveAssessmentDtoSchema, runPresentationSchema, scoreDtoSchema,
-  sourceManifestEntryDtoSchema, summaryFindingsSectionSchema, conflictDtoSchema,
+  sourceManifestEntryDtoSchema, summaryFindingsSectionSchema, conflictDtoSchema, engagementDtoSchema, type EngagementDto,
   type AssessmentApplicability, type AssessmentAvailability, type AssessmentSection, type AssessmentVersion, type EvidenceItemDto, type EvidenceRefDto,
   type EvidenceSection, type FullOutput, type FullOutputRef, type OutreachMoveAssessmentDto, type RunPresentation, type ScoreDto, type SummaryFindingsSection,
 } from "./dto";
@@ -133,6 +133,7 @@ export type ArtifactRow = {
   schema_version: string; rubric_version: string; prompt_version: string; prompt_digest: string; schema_digest: string; model_version: string;
   input_fingerprint: string; input_mode?: string | null; generated_at?: Date | null; context_as_of?: Date | null; latest_conversation_at?: Date | null;
   scores?: unknown; views?: unknown; inventory?: unknown; conflicts?: unknown; coverage?: unknown; model_output?: unknown; source_manifest?: unknown;
+  engagement?: unknown; engagement_effects?: unknown;
   purged_at?: Date | null; purge_started_at?: Date | null; createdAt?: Date | null;
 };
 export type SectionContext = {
@@ -188,6 +189,20 @@ function observationDto(raw: unknown) {
   return observationDtoSchema.parse({ field: row.field, value: pick(variant.shape.value, row.value), status: row.status, evidence: refs(row.evidence) });
 }
 
+function engagementDto(raw: unknown, effectsRaw: unknown): EngagementDto | undefined {
+  const row = rec(raw);
+  if (!row) return undefined;
+  const fx = rec(effectsRaw);
+  return engagementDtoSchema.parse({
+    work_status: row.work_status, rationale: str(row.rationale) ?? "", evidence: refs(row.evidence),
+    promised_callbacks: arr(row.promised_callbacks).map(item => { const r = rec(item) ?? {}; return { by: r.by, raw_text: r.raw_text, date: str(r.date), time_text: str(r.time_text), status: r.status, evidence: refs(r.evidence) }; }),
+    next_steps: arr(row.next_steps).map(item => { const r = rec(item) ?? {}; return { action: r.action, owner: r.owner, description: r.description, date: str(r.date), date_text: str(r.date_text), status: r.status, evidence: refs(r.evidence) }; }),
+    effects: fx ? { applied: Boolean(fx.applied), mark_worked: Boolean(fx.mark_worked), blocked: str(fx.blocked), followup_ids: arr(fx.followup_ids).map(String),
+      followups: arr(fx.followups).map(item => { const r = rec(item) ?? {}; return { kind: String(r.kind), origin: String(r.origin), description: String(r.description ?? ""), source: String(r.source) }; }),
+      skipped: arr(fx.skipped).map(item => { const r = rec(item) ?? {}; return { source: String(r.source), index: Number(r.index ?? 0), reason: String(r.reason) }; }) } : null,
+  });
+}
+
 /** (1) Stored artifact → `AssessmentSection`. Content is only served for ready / insufficient-evidence artifacts. */
 export function assessmentSection(artifact: ArtifactRow, context: SectionContext): AssessmentSection {
   const availability = artifactAvailability(artifact, context.retention_pending);
@@ -215,6 +230,7 @@ export function assessmentSection(artifact: ArtifactRow, context: SectionContext
         coverage: inventory.coverage ?? null, limitations: arr(inventory.limitations).map(String), source_coverage: coverage?.source_coverage ?? null },
       conflicts: arr(artifact.conflicts).map(conflict => conflictDtoSchema.parse({ affects: rec(conflict)?.affects, explanation: rec(conflict)?.explanation,
         evidence: refs(rec(conflict)?.evidence) })),
+      ...(artifact.engagement ? { engagement: engagementDto(artifact.engagement, artifact.engagement_effects) } : {}),
       coverage: coverage ? { conversations_available: coverage.conversations_available, conversations_selected: coverage.conversations_selected,
         findings_selected: coverage.findings_selected } : null,
       source_manifest: arr(artifact.source_manifest).map(entry => sourceManifestEntryDtoSchema.parse({ kind: rec(entry)?.kind, id: rec(entry)?.id,
@@ -254,7 +270,8 @@ export function assessmentFullOutput(artifact: ArtifactRow, retentionPending = f
     generated_at: iso(artifact.generated_at), availability: sectionAvailability, complete: served && artifact.model_output != null,
     model_output: served ? json(artifact.model_output) : null,
     accepted: served ? json({ scores: artifact.scores ?? null, views: artifact.views ?? null, inventory: artifact.inventory ?? null,
-      conflicts: artifact.conflicts ?? null, coverage: artifact.coverage ?? null }) : null,
+      conflicts: artifact.conflicts ?? null, engagement: artifact.engagement ?? null, engagement_effects: artifact.engagement_effects ?? null,
+      coverage: artifact.coverage ?? null }) : null,
     details: { schema_version: artifact.schema_version, prompt_version: artifact.prompt_version, model_version: artifact.model_version,
       digests: { prompt_digest: artifact.prompt_digest, schema_digest: artifact.schema_digest, input_fingerprint: artifact.input_fingerprint } } });
 }

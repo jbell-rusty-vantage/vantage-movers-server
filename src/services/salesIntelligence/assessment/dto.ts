@@ -95,6 +95,23 @@ export type InventoryItemDto = z.infer<typeof inventoryItemDtoSchema>;
 export const conflictDtoSchema = z.object({ affects: z.string(), explanation: z.string(), evidence: z.array(evidenceRefDtoSchema) }).strict();
 export type ConflictDto = z.infer<typeof conflictDtoSchema>;
 
+/** Work state the model read from the conversations, plus the deterministic effects the server applied at publication. */
+export const promisedCallbackDtoSchema = z.object({ by: z.string(), raw_text: z.string(), date: z.string().nullable(), time_text: z.string().nullable(),
+  status: z.string(), evidence: z.array(evidenceRefDtoSchema) }).strict();
+export const nextStepDtoSchema = z.object({ action: z.string(), owner: z.string(), description: z.string(), date: z.string().nullable(), date_text: z.string().nullable(),
+  status: z.string(), evidence: z.array(evidenceRefDtoSchema) }).strict();
+export const engagementEffectsDtoSchema = z.object({
+  applied: z.boolean(), mark_worked: z.boolean(), blocked: z.string().nullable(), followup_ids: z.array(z.string()),
+  followups: z.array(z.object({ kind: z.string(), origin: z.string(), description: z.string(), source: z.string() }).strict()),
+  skipped: z.array(z.object({ source: z.string(), index: z.number().int(), reason: z.string() }).strict()),
+}).strict();
+export const engagementDtoSchema = z.object({
+  work_status: z.string(), rationale: z.string(), evidence: z.array(evidenceRefDtoSchema),
+  promised_callbacks: z.array(promisedCallbackDtoSchema), next_steps: z.array(nextStepDtoSchema),
+  effects: engagementEffectsDtoSchema.nullable(),
+}).strict();
+export type EngagementDto = z.infer<typeof engagementDtoSchema>;
+
 export const sourceManifestEntryDtoSchema = z.object({
   kind: z.enum(["summary_artifact", "legacy_run", "conversation_summary", "finding", "lead", "official", "owner_correction"]),
   id: z.string(), version: z.string(), conversation_id: z.string().nullable(), call_at: date.nullable(), lineage: z.array(z.string()),
@@ -113,6 +130,8 @@ export const assessmentSectionSchema = z.object({
   inventory: z.object({ items: z.array(inventoryItemDtoSchema), coverage: z.enum(["none", "partial", "customer_says_complete"]).nullable(),
     limitations: z.array(z.string()), source_coverage: z.enum(["complete", "partial", "none"]).nullable() }).strict(),
   conflicts: z.array(conflictDtoSchema),
+  /** Additive (older artifacts and servers may omit it). */
+  engagement: engagementDtoSchema.optional(),
   coverage: z.object({ conversations_available: z.number().int().nonnegative(), conversations_selected: z.number().int().nonnegative(),
     findings_selected: z.number().int().nonnegative() }).strict().nullable(),
   source_manifest: z.array(sourceManifestEntryDtoSchema),

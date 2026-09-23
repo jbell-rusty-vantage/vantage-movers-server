@@ -94,6 +94,10 @@ export const MoveAssessmentArtifactSchema = new Schema(
     views: nullableJson,
     inventory: nullableJson,
     conflicts: nullableJson,
+    /** Accepted engagement: work status, promised callbacks and next steps with expanded evidence. */
+    engagement: nullableJson,
+    /** Deterministic Outreach effects derived from `engagement` at publication (`engagement.ts`); written after generation. */
+    engagement_effects: nullableJson,
     /** Server-measured source coverage, distinct from the model's inventory coverage claim. */
     coverage: nullableJson,
     /** The exact validated model object (five top-level fields, §5.1). Never rewritten. */
@@ -128,7 +132,7 @@ export const MoveAssessmentArtifactSchema = new Schema(
 
 const immutableOnceReady = ["subject_key", "input_fingerprint", "schema_version", "rubric_version", "prompt_version", "prompt_digest",
   "schema_digest", "model_version", "input_mode", "source_manifest", "context_as_of", "latest_conversation_at", "scores", "views",
-  "inventory", "conflicts", "coverage", "model_output", "generated_at"];
+  "inventory", "conflicts", "engagement", "coverage", "model_output", "generated_at"];
 MoveAssessmentArtifactSchema.pre(["updateOne", "updateMany", "findOneAndUpdate"], function () {
   const update = this.getUpdate();
   if (Array.isArray(update)) throw new Error("Move assessment pipelines are forbidden");

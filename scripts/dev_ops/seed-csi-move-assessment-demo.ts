@@ -65,7 +65,7 @@ async function main() {
     const entries = payload.conversations.flatMap(c => c.entries);
     const tag = entries.map(e => /\[demo:([a-z0-9_]+)\]/.exec(e.text)?.[1]).find(Boolean) as Tag | undefined;
     const e = (i: number) => entries[Math.min(i, entries.length - 1)].id;
-    const empty = { move_details: [], inventory: { items: [], coverage: "none" as const, limitations: [] }, conflicts: [] };
+    const empty = { move_details: [], inventory: { items: [], coverage: "none" as const, limitations: [] }, conflicts: [], engagement: fx.noEngagement() };
     switch (tag) {
       case "definite_other": return { ...fx.defaultAssessment(payload), move_likelihood: { ...dim("confirmed", [e(0)]), confidence: "high" },
         transaction_intent: { ...dim("none", [e(1)]), confidence: "high" } };

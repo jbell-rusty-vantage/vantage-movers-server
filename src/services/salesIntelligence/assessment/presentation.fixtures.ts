@@ -100,6 +100,9 @@ export function modelOutput() {
     inventory: { items: [{ label: "Sofa", quantity: { min: 1, max: 1 }, room: "Living room", dimensions: null, handling: null, status: "included", evidence_ids: ["e1"] }],
       coverage: "partial", limitations: ["Garage not discussed"] },
     conflicts: [{ affects: "move_date", explanation: "Lead says Oct 1, call says Oct 15", evidence_ids: ["e1", "e2"] }],
+    engagement: { work_status: "worked_with_next_step", rationale: "Rep spoke with the customer and promised a callback.", evidence_ids: ["e1"],
+      promised_callbacks: [{ by: "rep", raw_text: "I'll call you Friday", date: "2026-09-11", time_text: null, status: "pending", evidence_ids: ["e1"] }],
+      next_steps: [] },
   };
 }
 export function artifact(over: Partial<ArtifactRow> = {}): ArtifactRow {

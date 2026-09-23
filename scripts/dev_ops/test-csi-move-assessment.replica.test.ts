@@ -23,8 +23,11 @@ import {
   drainMoveAssessmentJobs, nominateMoveAssessment, purgeMoveAssessments, runMoveAssessmentJob, type MoveAssessmentDeps,
 } from "../../src/services/salesIntelligence/assessment/runtime";
 import {
-  MARK, mockAssessmentModel, seedLead, seedLegacyConversation, seedNumber, seedRecord, seedSummaryConversation,
+  MARK, defaultAssessment, mockAssessmentModel, seedLead, seedLegacyConversation, seedNumber, seedRecord, seedSummaryConversation,
 } from "./csi-move-assessment-fixtures";
+import { resolvePolicy } from "../../src/services/salesIntelligence/policy";
+import { readCaptureCoverage } from "../../src/services/numberActivity/coverage";
+import { deriveOutreachFacts, loadOutreachInputsBatch } from "../../src/services/salesIntelligence/outreach/reads";
 
 test("Move assessment runtime: one call per fingerprint, reuse, fences, shadow and retention on the csi01 replica", {
   skip: process.env.CSI_REPLICA_TEST !== "true", timeout: 300_000,
@@ -357,5 +360,69 @@ test("Move assessment runtime: one call per fingerprint, reuse, fences, shadow a
     assert.equal(budget.reserved_cents, 0);
     assert.equal(budget.actual_cents, rows.reduce((sum, row) => sum + (row.actual_cents ?? 0), 0));
     assert.deepEqual(await counts(), baseline, "still no analysis domain effects");
+  });
+
+  await t.test("engagement: promised callbacks and next steps become follow-ups deterministically and move the Attention band", async () => {
+    const Followups = getOutreachFollowupModel();
+    const n8 = await seedNumber();
+    const l8 = await seedLead("FormLead", n8.national_ten!, { pickup_city: "Orlando", pickup_state: "FL", delivery_city: "Boynton Beach", delivery_state: "FL" });
+    const r8 = await seedRecord(l8, String(n8._id));
+    await seedSummaryConversation(String(n8._id), at(14), { overview: "First call: rep left a voicemail.", commitments: "Rep said they would try again." },
+      [{ claim: "I'll try you again tomorrow" }]);
+    await seedSummaryConversation(String(n8._id), at(16), { overview: "Rep spoke with the customer about a three-bedroom move.",
+      commitments: "Rep promised to call back Friday with the estimate." }, [{ claim: "I'll call you back Friday with the estimate" }]);
+    assert.equal((await Records.findById(r8).orFail().lean()).state, "unworked");
+    const decide = (payload: Parameters<typeof defaultAssessment>[0]) => {
+      const latest = payload.conversations.at(-1)!, earlier = payload.conversations[0];
+      const cite = (c: typeof latest) => [c.entries.at(-1)!.id];
+      return { ...defaultAssessment(payload), engagement: { work_status: "worked_with_next_step" as const, rationale: `${MARK.rationale}: rep spoke with the customer and promised a callback.`,
+        evidence_ids: cite(latest),
+        promised_callbacks: [
+          { by: "rep" as const, raw_text: "I'll call you back Friday with the estimate", date: "2026-09-18", time_text: null, status: "pending" as const, evidence_ids: cite(latest) },
+          { by: "rep" as const, raw_text: "I'll try you again tomorrow", date: "2026-09-15", time_text: null, status: "pending" as const, evidence_ids: cite(earlier) },
+        ],
+        next_steps: [{ action: "send_estimate" as const, owner: "rep" as const, description: "Send the written estimate", date: null, date_text: "Friday", status: "planned" as const, evidence_ids: cite(latest) }] } };
+    };
+    const mock = await mockAssessmentModel(decide);
+    const first = await run(r8, "summary:engagement", { model: mock.model });
+    assert.equal(first.result.status, "completed", JSON.stringify(first.result));
+    assert.equal(first.result.reason, "published");
+    const artifact = await Artifacts.findById(first.result.artifact_id).orFail().lean();
+    const effects = artifact.engagement_effects as { applied: boolean; mark_worked: boolean; followup_ids: string[]; skipped: Array<{ reason: string }> };
+    assert.equal(effects.applied, true);
+    assert.equal(effects.mark_worked, true, "an unworked record with a worked status is now open");
+    assert.deepEqual(effects.skipped.map(s => s.reason), ["superseded_by_later_call"], "the earlier call's promise was superseded by the later contact");
+    const actions = await Followups.find({ outreach_record_id: r8, status: "open" }).sort({ commitment_key: 1 }).lean();
+    assert.deepEqual(actions.map(a => [a.kind, a.origin, a.requested_by, a.commitment_key]), [
+      ["send_estimate", "rep_promise", "rep", `assessment:${artifact._id}:next_step:0`],
+      ["call", "rep_promise", "rep", `assessment:${artifact._id}:promised_callback:0`],
+    ]);
+    // Both resolve to the end of the sales day of Friday 2026-09-18 in the policy timezone ("Friday" anchored to the 16th).
+    for (const a of actions) assert.ok(a.due_at && a.due_at >= new Date("2026-09-18T00:00:00Z") && a.due_at < new Date("2026-09-19T12:00:00Z"), String(a.due_at));
+    assert.equal(+actions[0].due_at!, +actions[1].due_at!);
+    assert.ok(actions.every(a => String(a.date_resolution?.anchor?.toISOString()) === at(16).toISOString()), "dates anchor to the call that made the commitment");
+    const record = await Records.findById(r8).orFail().lean();
+    assert.equal(record.state, "open");
+    assert.equal(String(record.next_action?.followup_id), String(actions.find(a => a.kind === "call")!._id) || String(record.next_action?.followup_id));
+    assert.equal(await getSalesIntelligenceAuditEventModel().countDocuments({ subject_key: `lead:FormLead:${l8.id}`, event_kind: "assessment_followup_created" }), 2);
+    assert.equal(await getSalesIntelligenceAuditEventModel().countDocuments({ subject_key: `lead:FormLead:${l8.id}`, event_kind: "move_assessment_engagement" }), 1);
+    // The band follows from derive(): an overdue rep-promised callback is band 1.
+    const [policy, coverage] = await Promise.all([resolvePolicy(), readCaptureCoverage()]);
+    const inputs = await loadOutreachInputsBatch([record], now);
+    const facts = deriveOutreachFacts(record, inputs.get(String(record._id))!, { now, policy, coverage });
+    assert.equal(facts.attention_band, 1, JSON.stringify(facts.reasons));
+    assert.ok(facts.reasons.includes("promised_callback_overdue"));
+    // Republishing the same artifact (unchanged fingerprint) creates nothing new.
+    const again = await run(r8, "summary:engagement-again", { model: mock.model });
+    assert.equal(again.result.status, "reused", JSON.stringify(again.result));
+    assert.equal(await Followups.countDocuments({ outreach_record_id: r8 }), 2);
+    // A changed input regenerates; the same commitments are not duplicated while the actions stay open.
+    await getFormLeadModel().collection.updateOne({ _id: l8._id }, { $set: { move_size: "3 Bedroom" } });
+    const regenerated = await run(r8, "change:engagement", { model: mock.model });
+    assert.equal(regenerated.result.status, "completed", JSON.stringify(regenerated.result));
+    assert.equal(await Followups.countDocuments({ outreach_record_id: r8 }), 2, "one open action per kind");
+    const second = await Artifacts.findById(regenerated.result.artifact_id).orFail().lean();
+    assert.deepEqual((second.engagement_effects as { skipped: Array<{ reason: string }> }).skipped.map(s => s.reason).sort(), ["open_action_exists", "open_action_exists", "superseded_by_later_call"]);
+    assert.equal(mock.calls(), 2);
   });
 });

@@ -110,7 +110,8 @@ export function defaultAssessment(payload: AssessmentPromptPayload): MoveAssessm
   const entries = payload.conversations.flatMap(c => c.entries);
   const lead = [...(payload.views.canonical_current?.entries ?? []), ...(payload.views.original_ingestion?.entries ?? [])];
   if (!entries.length) return { move_likelihood: dimension(lead.length ? "active" : "unknown", lead.slice(0, 1).map(e => e.id)),
-    transaction_intent: dimension("unknown", []), move_details: [], inventory: { items: [], coverage: "none", limitations: [] }, conflicts: [] };
+    transaction_intent: dimension("unknown", []), move_details: [], inventory: { items: [], coverage: "none", limitations: [] }, conflicts: [],
+    engagement: noEngagement() };
   const first = entries[0].id, last = entries.at(-1)!.id;
   return {
     move_likelihood: dimension("strong", [first]), transaction_intent: dimension("active", [last]),
@@ -119,8 +120,13 @@ export function defaultAssessment(payload: AssessmentPromptPayload): MoveAssessm
     inventory: { items: [{ label: "Sofa", quantity: { min: 1, max: 1 }, room: "Living room", dimensions: null, handling: null, status: "included", evidence_ids: [first] }],
       coverage: "partial", limitations: [] },
     conflicts: [],
+    engagement: { work_status: "worked_no_next_step", rationale: `${MARK.rationale}: rep spoke with the customer; no follow-up agreed.`, evidence_ids: [last],
+      promised_callbacks: [], next_steps: [] },
   };
 }
+/** Engagement block that creates no Outreach effect (unknown work state, no commitments). */
+export const noEngagement = (): MoveAssessmentModelOutput["engagement"] =>
+  ({ work_status: "unknown", rationale: `${MARK.rationale}: no engagement evidence.`, evidence_ids: [], promised_callbacks: [], next_steps: [] });
 
 export type AssessmentDecider = (payload: AssessmentPromptPayload, attempt: number) => unknown;
 export async function mockAssessmentModel(decide: AssessmentDecider = defaultAssessment, options: { cost?: number } = {}) {

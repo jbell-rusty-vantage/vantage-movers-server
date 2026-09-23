@@ -353,7 +353,7 @@ export async function promoteShadowArtifact(shadowArtifactId: string, now = new 
           prompt_digest: shadow.prompt_digest, schema_digest: shadow.schema_digest, model_version: shadow.model_version,
           input_mode: shadow.input_mode, source_manifest: shadow.source_manifest, context_as_of: shadow.context_as_of,
           latest_conversation_at: shadow.latest_conversation_at, status: shadow.status, scores: shadow.scores, views: shadow.views,
-          inventory: shadow.inventory, conflicts: shadow.conflicts, coverage: shadow.coverage, model_output: shadow.model_output,
+          inventory: shadow.inventory, conflicts: shadow.conflicts, engagement: shadow.engagement ?? null, coverage: shadow.coverage, model_output: shadow.model_output,
           usage, generated_at: shadow.generated_at, job_id: null, lease_epoch: 0, promoted_from: shadow._id }], { session });
         target = created.toObject() as unknown as Publishable;
       }
@@ -740,7 +740,8 @@ function artifactFields(mode: "shadow" | "apply", outcome: { artifact_id?: strin
 }
 
 // ── Report ──────────────────────────────────────────────────────────────────
-type ReportArtifact = { _id: unknown; shadow?: boolean | null; status: string; input_mode?: string | null; scores?: unknown; inventory?: unknown; conflicts?: unknown };
+type ReportArtifact = { _id: unknown; shadow?: boolean | null; status: string; input_mode?: string | null; scores?: unknown; inventory?: unknown; conflicts?: unknown;
+  engagement?: unknown; engagement_effects?: unknown };
 type DimensionLike = { level?: string; score?: number | null; confidence?: string };
 
 /** Counts only: outcomes, coverage, distributions, usage and the reimbursement lines. No narrative. */
@@ -778,15 +779,35 @@ export function backfillReport(manifest: BackfillManifest, artifacts: readonly R
     inventory_coverage: count(artifacts.map(a => (a.inventory as { coverage?: string } | null)?.coverage)),
     source_coverage: count(artifacts.map(a => (a.inventory as { source_coverage?: string } | null)?.source_coverage)),
     conflicts: artifacts.reduce((sum, a) => sum + (Array.isArray(a.conflicts) ? a.conflicts.length : 0), 0),
+    engagement: engagementReport(artifacts),
     counters: c,
     deferred: manifest.selection.deferred.length,
     reimbursement,
   };
 }
 
+/** Work-state distribution and the deterministic effects the publication applied (counts only). */
+export function engagementReport(artifacts: readonly ReportArtifact[]) {
+  const bag: Record<string, number> = {};
+  const bump = (key: string, by = 1) => { bag[key] = (bag[key] ?? 0) + by; };
+  let promised = 0, steps = 0, created = 0, worked = 0, applied = 0;
+  const skipped: Record<string, number> = {};
+  for (const a of artifacts) {
+    const e = (a.engagement ?? null) as { work_status?: string; promised_callbacks?: unknown[]; next_steps?: unknown[] } | null;
+    if (e) { bump(e.work_status ?? "null"); promised += e.promised_callbacks?.length ?? 0; steps += e.next_steps?.length ?? 0; }
+    const fx = (a.engagement_effects ?? null) as { applied?: boolean; mark_worked?: boolean; followup_ids?: unknown[]; skipped?: Array<{ reason?: string }> } | null;
+    if (!fx) continue;
+    if (fx.applied) applied++;
+    if (fx.mark_worked) worked++;
+    created += fx.followup_ids?.length ?? 0;
+    for (const item of fx.skipped ?? []) skipped[item.reason ?? "unknown"] = (skipped[item.reason ?? "unknown"] ?? 0) + 1;
+  }
+  return { work_status: bag, promised_callbacks: promised, next_steps: steps, effects: { artifacts_applied: applied, followups_created: created, marked_worked: worked, skipped } };
+}
+
 export async function loadReportArtifacts(manifest: BackfillManifest) {
   const ids = [...new Set(manifest.rows.flatMap(r => [r.shadow_artifact_id, r.artifact_id]).filter((v): v is string => Boolean(v)))];
   if (!ids.length) return [];
   return getMoveAssessmentArtifactModel().find({ _id: { $in: ids.map(toObjectId) } })
-    .select("shadow status input_mode scores inventory conflicts").lean() as Promise<ReportArtifact[]>;
+    .select("shadow status input_mode scores inventory conflicts engagement engagement_effects").lean() as Promise<ReportArtifact[]>;
 }
