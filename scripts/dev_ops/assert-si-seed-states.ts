@@ -54,6 +54,32 @@ async function timelineEvents(db: Db) {
   return out;
 }
 
+const RELATION_KINDS = ["superseded", "fulfilled", "contradicted", "still_true", "cannot_determine"];
+type RunDoc = { _id: ObjectId; contact_number_id: ObjectId; conversation_id: ObjectId | null; outreach_record_id: ObjectId | null; output: Record<string, any> };
+/**
+ * Per Number, its newest completed, unpurged run with an output: `createdAt` desc then `_id` desc, the rule of
+ * `outreach/reads.ts` `newestCompletedRun` behind `GET /outreach/:id` `newest_run_id` (data spec §4.1 / V21).
+ */
+async function newestRuns(db: Db): Promise<RunDoc[]> {
+  return db.collection("intelligence_runs").aggregate<{ run: RunDoc }>([
+    { $match: { status: "completed", output: { $ne: null }, purged_at: null, purge_started_at: null } },
+    { $sort: { contact_number_id: 1, createdAt: -1, _id: -1 } },
+    { $group: { _id: "$contact_number_id", run: { $first: "$$ROOT" } } },
+  ]).toArray().then(rows => rows.map(r => r.run));
+}
+/** The Outreach record a run's analysis page belongs to: the run's own binding, else the open record on its Number. */
+async function recordOfRun(db: Db, run: RunDoc) {
+  return run.outreach_record_id ? db.collection("outreach_records").findOne({ _id: run.outreach_record_id, purged_at: null })
+    : db.collection("outreach_records").findOne({ primary_contact_number_id: run.contact_number_id, state: { $ne: "closed" }, purged_at: null });
+}
+/** Mongo clauses for calls whose first user party resolves to a reviewed sales-rep link at the call time (`repIdentity/resolve.ts`). */
+async function reviewedRepClauses(db: Db) {
+  const links = await db.collection("rep_identity_links").find({ status: "reviewed", role_kind: "sales_rep" }).toArray();
+  return links.map(link => ({ provider_account_id: link.rc_account_id,
+    parties: { $elemMatch: { role: "user", extension_id: link.rc_extension_id } },
+    started_at: { $gte: link.effective_from, ...(link.effective_to ? { $lt: link.effective_to } : {}) } }));
+}
+
 const CHECKS: Record<SiSeedState, Check> = {
   number_only: db => db.collection("outreach_records").countDocuments({ "subject.kind": "number_review", purged_at: null }),
   multi_lead_phone: async db => (await db.collection("number_lead_attachments").aggregate([{ $match: { state: "attached" } },
@@ -168,6 +194,57 @@ const CHECKS: Record<SiSeedState, Check> = {
   calls_50: async db => (await db.collection("call_interactions").aggregate([{ $match: { merged_into_id: null, purged_at: null } },
     { $group: { _id: "$contact_number_id", n: { $sum: 1 } } }, { $match: { n: { $gte: 50 } } }]).toArray()).length,
   timeline_300: async db => (await timelineEvents(db)).filter(row => row.total >= 300 && row.kinds >= 4).length,
+  // ── SEED-FIX ──
+  newest_run_relations: async db => (await newestRuns(db)).filter(run => {
+    const kinds = new Set(((run.output.prior_finding_relations ?? []) as Array<{ relation: string }>).map(r => r.relation));
+    return RELATION_KINDS.every(kind => kinds.has(kind));
+  }).length,
+  newest_run_story_discrepancies: async db => (await newestRuns(db)).filter(run => (run.output.story_discrepancies ?? []).length > 0).length,
+  newest_number_run_no_relations: async db => (await newestRuns(db)).filter(run => run.conversation_id == null
+    && !(run.output.prior_finding_relations ?? []).length && !(run.output.story_discrepancies ?? []).length).length,
+  owner_instruction_assessments: async db => {
+    const runs = await db.collection("intelligence_runs").find({ status: "completed", "output.owner_instruction_assessments.0": { $exists: true } }).toArray();
+    let n = 0;
+    for (const run of runs) {
+      const items = run.output.owner_instruction_assessments as Array<{ instruction_id: string; instruction_revision: number; assessment: string }>;
+      const matched: string[] = [];
+      for (const item of items) if (ObjectId.isValid(item.instruction_id) && await db.collection("sales_intelligence_owner_instructions")
+        .countDocuments({ instruction_id: new ObjectId(item.instruction_id), revision: item.instruction_revision })) matched.push(item.assessment);
+      const stored = await db.collection("intelligence_owner_assessments").countDocuments({ run_id: run._id });
+      if (["agrees", "disagrees", "cannot_determine"].every(kind => matched.includes(kind)) && stored === items.length) n++;
+    }
+    return n;
+  },
+  rep_identity_reviewed: async db => {
+    const clauses = await reviewedRepClauses(db);
+    return clauses.length ? db.collection("call_interactions").countDocuments({ merged_into_id: null, $or: clauses }) : 0;
+  },
+  rep_identity_unreviewed: async db => {
+    const clauses = await reviewedRepClauses(db);
+    return db.collection("call_interactions").countDocuments({ merged_into_id: null, parties: { $elemMatch: { role: "user", extension_id: { $type: "string" } } },
+      ...(clauses.length ? { $nor: clauses } : {}) });
+  },
+  suggestion_unapplied_no_followup: async db => {
+    let n = 0;
+    for (const run of await newestRuns(db)) {
+      if (!run.output.next_step_suggestion) continue;
+      const record = await recordOfRun(db, run);
+      if (!record || record.state === "closed") continue;
+      const open = await db.collection("outreach_followups").countDocuments({ outreach_record_id: record._id, status: "open" });
+      const applied = await db.collection("sales_intelligence_audit_events").countDocuments({ event_kind: "analysis.suggestion_applied", "invalidation.target_id": String(run._id) });
+      if (!open && !applied) n++;
+    }
+    return n;
+  },
+  suggestion_applied_followup: async db => {
+    const newest = new Set((await newestRuns(db)).map(run => String(run._id)));
+    const audits = await db.collection("sales_intelligence_audit_events").find({ event_kind: "analysis.suggestion_applied" }).toArray();
+    let n = 0;
+    // `apply_suggestion` creates the follow-up in the same command: commitment key `owner:{command_id}:action` (assessment/reads.ts).
+    for (const audit of audits) if (newest.has(String(audit.invalidation?.target_id)) && audit.command_id
+      && await db.collection("outreach_followups").countDocuments({ commitment_key: `owner:${String(audit.command_id)}:action` })) n++;
+    return n;
+  },
 };
 
 async function main() {

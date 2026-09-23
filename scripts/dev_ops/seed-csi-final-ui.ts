@@ -23,6 +23,11 @@
  *
  * That mode only publishes a new Attention snapshot of `testvantagemovers_finalui` (the manifest must
  * exist) and writes nothing else; the newest published snapshot is the one `GET /attention` reads.
+ *
+ * SEED-FIX (2026-09-23): `S-findings`' relations (five kinds) and story discrepancy moved onto R3, the Number's newest run
+ * (`newest_run_id`), with the real `applyPriorRelations` bookkeeping; R3 also assesses three Owner instructions. New subject
+ * `S-suggestion-open` (no follow-up, newest Number run with an unapplied suggestion and no relations). Rep Identity Links:
+ * extension 101 reviewed (Dana Reyes), 103 proposed only, 102 none.
  */
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -122,6 +127,10 @@ async function main() {
   const { getGranotObservationModel } = await import("../../src/models/GranotObservation");
   const { getLeadMessageModel } = await import("../../src/models/LeadMessage");
   const { getMoveAssessmentArtifactModel } = await import("../../src/models/MoveAssessmentArtifact");
+  const { getRepIdentityLinkModel } = await import("../../src/models/RepIdentityLink");
+  const { getSalesIntelligenceOwnerInstructionModel } = await import("../../src/models/SalesIntelligenceOwnerInstruction");
+  const { getIntelligenceOwnerAssessmentModel } = await import("../../src/models/IntelligenceOwnerAssessment");
+  const { applyPriorRelations } = await import("../../src/services/salesIntelligence/analysis/relations");
   const { ensureLead, workerContext, latestProgressEvidence } = await import("../../src/services/salesIntelligence/outreach/ensure");
   const { ensureNumberReview } = await import("../../src/services/salesIntelligence/outreach/numberReview");
   const { recordForUpdate, refreshRecord, saveFollowup } = await import("../../src/services/salesIntelligence/outreach/store");
@@ -162,6 +171,19 @@ async function main() {
     created_from: "booked_lead", createdAt: ago(200), updatedAt: ago(200) }));
   await db.collection("agents").insertMany(agents);
   const agentId = (i: number) => String(agents[i]!._id);
+
+  // ── Rep Identity Links (SEED-FIX): extension 101 reviewed → Dana Reyes, 103 proposed only, 102 none ─────────
+  // Every call defaults to extension 101 on `synthetic-account`, so `rep.name` reads "Dana Reyes" (reviewed at the call time,
+  // `repIdentity/resolve.ts`). S-calls-60 rotates its plain calls over 101 / 102 (no link → unknown) / 103 (proposed → name null).
+  const REP_ACCOUNT = "synthetic-account";
+  await getRepIdentityLinkModel().create([
+    { agent_id: agents[0]!._id, agent_name_snapshot: agents[0]!.name, rc_account_id: REP_ACCOUNT, rc_extension_id: "101", rc_extension_number: "101",
+      rc_extension_name_snapshot: "Dana Reyes", role_kind: "sales_rep", status: "reviewed", proposal_basis: "exact_full_name", effective_from: ago(400),
+      reviewed_by: "owner@example.test", reviewed_at: ago(399), history: [{ at: ago(400), by: "system", change: "proposed" }, { at: ago(399), by: "owner@example.test", change: "reviewed" }] },
+    { agent_id: agents[2]!._id, agent_name_snapshot: agents[2]!.name, rc_account_id: REP_ACCOUNT, rc_extension_id: "103", rc_extension_number: "103",
+      rc_extension_name_snapshot: "T. Cho", role_kind: "sales_rep", status: "proposed", proposal_basis: "first_token", effective_from: ago(400),
+      history: [{ at: ago(400), by: "system", change: "proposed" }] },
+  ]);
 
   // ── manifest ──────────────────────────────────────────────────────────────────────────────
   const manifest: SiManifestRow[] = [];
@@ -345,9 +367,11 @@ async function main() {
   // ── analysis runs, findings, effects (model outputs stored as documents) ─────────────────
   const COVERAGE = { known_through: null, gaps: [], capabilities: { call_log: "unknown" }, ai_paused: false };
   type RecordRef = { record_type: string; record_id: string; revision?: string | null; fields: Record<string, unknown> };
-  async function pageSnapshot(runId: mongoose.Types.ObjectId, kind: "context" | "story" | "prior", subject: string, records: RecordRef[], at: Date, story?: Record<string, unknown>) {
+  type InstructionRef = { id: string; revision: number };
+  async function pageSnapshot(runId: mongoose.Types.ObjectId, kind: "context" | "story" | "prior", subject: string, records: RecordRef[], at: Date, story?: Record<string, unknown>,
+    instructions: InstructionRef[] = []) {
     const response = readContentSchema.parse({ page: { records: records.map(r => ({ revision: null, ...r })), complete: true, next_cursor: null, missing_ranges: [] },
-      coverage: COVERAGE, instructions: [], speaker_refs: [], allowed_followup_ids: [], ...(story ? { story } : {}) });
+      coverage: COVERAGE, instructions, speaker_refs: [], allowed_followup_ids: [], ...(story ? { story } : {}) });
     const row = await Snapshots.create({ ...dataset, run_id: runId, source_type: kind, source_id: `${kind}:${runId}`, arguments: {}, response, retrieved_at: at, happened_at: at,
       content_digest: payloadHash(response), subject_key: subject, completeness: { complete: true, missing_ranges: [] }, segments: [] });
     return String(row._id);
@@ -356,11 +380,14 @@ async function main() {
     evidence: Array<Record<string, unknown>>; resolved?: Record<string, unknown> | null; review_state?: string };
   type RunSpec = { number: { id: string }; recordId: string | null; conversation: SeededConversation | null; summaries: SeededConversation[]; at: Date; prompt: string;
     summary: SummaryText; findings: FindingSpec[]; relations?: Array<Record<string, unknown>>; discrepancies?: Array<Record<string, unknown>>; suggestion?: Record<string, unknown> | null;
-    context?: RecordRef[]; story?: RecordRef[]; prior?: RecordRef[]; legacy?: boolean; runId?: mongoose.Types.ObjectId };
+    context?: RecordRef[]; story?: RecordRef[]; prior?: RecordRef[]; legacy?: boolean; runId?: mongoose.Types.ObjectId;
+    /** Owner instructions the run was shown (context page `instructions`) and its assessment of each (`structuredContract.ts`: `finding_keys: []`). */
+    instructions?: Array<InstructionRef & { assessment: "agrees" | "disagrees" | "cannot_determine"; reason: string }> };
   async function seedRun(spec: RunSpec) {
     const runId = spec.runId ?? O();
     const subject = spec.conversation ? `conversation:${spec.conversation.conversationId}` : `number:${spec.number.id}`;
-    const contextId = spec.legacy ? null : await pageSnapshot(runId, "context", subject, spec.context ?? [], spec.at);
+    const shown = (spec.instructions ?? []).map(({ id, revision }) => ({ id, revision }));
+    const contextId = spec.legacy ? null : await pageSnapshot(runId, "context", subject, spec.context ?? [], spec.at, undefined, shown);
     const storyId = spec.story ? await pageSnapshot(runId, "story", subject, spec.story, spec.at, { as_of: spec.at.toISOString(), opening: "Synthetic story opening.",
       prose: "Synthetic story prose for the final-UI seed.", tail: "", coverage: {}, candidates: [], granot: [], digest: payloadHash(spec.story) }) : null;
     const priorId = spec.prior ? await pageSnapshot(runId, "prior", subject, spec.prior, spec.at) : null;
@@ -375,7 +402,8 @@ async function main() {
     const findings = spec.findings.map(f => intelligenceFindingSchema.parse({ key: f.key, kind: f.kind, claim: f.claim, basis: f.basis ?? "said_on_call", actor: f.actor ?? "customer",
       speaker_ref: null, action_status: f.action_status ?? null, clarity: f.clarity ?? "clear", evidence: sub(f.evidence), confidence: null, value: f.value }));
     const output = intelligenceEnvelopeSchema.parse({ schema_version: "csi-envelope-v1", summary: { ...spec.summary, finding_keys: findings.map(f => f.key) }, findings,
-      next_step_suggestion: spec.suggestion ?? null, owner_instruction_assessments: [],
+      next_step_suggestion: spec.suggestion ?? null,
+      owner_instruction_assessments: (spec.instructions ?? []).map(i => ({ instruction_id: i.id, instruction_revision: i.revision, assessment: i.assessment, reason: i.reason, finding_keys: [] })),
       ...(spec.relations ? { prior_finding_relations: spec.relations.map(r => ({ ...r, evidence: sub(r.evidence as Array<Record<string, unknown>>) })) } : {}),
       ...(spec.discrepancies ? { story_discrepancies: spec.discrepancies.map(d => ({ ...d, evidence: sub(d.evidence as Array<Record<string, unknown>>) })) } : {}) });
     const summaryIds = spec.summaries.flatMap(s => (s.summaryId ? [s.summaryId] : []));
@@ -387,7 +415,8 @@ async function main() {
       manifest_digest: payloadHash(manifestIds.map(String)), manifest_snapshot_ids: manifestIds, evidence_count: manifestIds.length, evidence_bytes: 4000, application_cursor: findings.length,
       schema_failures: 0, schema_rejections: [], invocation_complete: true, processing_reason: null, finalized_at: plus(spec.at, 60_000), output,
       raw_output: spec.legacy ? null : { summary: spec.summary, findings: findings.map(({ key: _key, confidence: _c, speaker_ref: _s, ...rest }) => rest), next_step: spec.suggestion ?? null,
-        owner_instruction_assessments: [], prior_finding_relations: output.prior_finding_relations ?? [], story_discrepancies: output.story_discrepancies ?? [] },
+        owner_instruction_assessments: (spec.instructions ?? []).map((i, index) => ({ instruction_index: index, assessment: i.assessment, reason: i.reason })),
+        prior_finding_relations: output.prior_finding_relations ?? [], story_discrepancies: output.story_discrepancies ?? [] },
       usage: { input_tokens: 5200, output_tokens: 900, reasoning_tokens: 300, cached_input_tokens: 0, actual_cents: 4, usage_complete: true }, pricing_snapshot: null,
       analysis_pipeline: spec.legacy ? null : "csi-analysis-steps-v1", application_disabled: false, step_contracts: null,
       step_artifacts: spec.legacy ? null : { summaries: summaryIds, context: contextId, context_digest: "synthetic", story: storyId, prior: priorId,
@@ -399,12 +428,29 @@ async function main() {
     const ids: Record<string, string> = {};
     for (const [i, finding] of findings.entries()) {
       const _id = O(); ids[finding.key] = String(_id);
+      // As `apply.ts` stores it: the single conversation the finding's transcript citations name, else the run's conversation.
+      const sources = [...new Set(finding.evidence.flatMap(e => (e.source === "transcript" ? [e.conversation_id] : [])))];
+      const conversationId = sources.length === 1 ? sources[0]! : spec.conversation?.conversationId ?? null;
       await Findings.collection.insertOne({ _id, run_id: runId, key: finding.key, assertion: finding, revision: 1,
-        conversation_id: spec.conversation ? O(spec.conversation.conversationId) : null, contact_number_id: O(spec.number.id), outreach_record_id: spec.recordId ? O(spec.recordId) : null,
+        conversation_id: conversationId ? O(conversationId) : null, contact_number_id: O(spec.number.id), outreach_record_id: spec.recordId ? O(spec.recordId) : null,
         kind: finding.kind, prompt_version: spec.prompt, schema_version: "csi-envelope-v1", model_version: "openai/gpt-5.6-luna", resolved: spec.findings[i]!.resolved ?? null,
         review_state: spec.findings[i]!.review_state ?? "unreviewed", superseded_by: null,
         validation: { schema_ok: true, source_snapshots_valid: true, locator_status: "not_run", entailment_check: "not_run" },
         purged_at: null, purge_started_at: null, createdAt: plus(spec.at, 60_000 + i), updatedAt: plus(spec.at, 60_000 + i) } as never);
+    }
+    // The application step's bookkeeping in `apply.ts` order: the real `applyPriorRelations` (supersede links, relation and
+    // record-dispute review items on the run's subject), then one Owner assessment row per instruction and an `owner_conflict`
+    // review for each disagreement. Work effects of the findings themselves are seeded by the caller.
+    if (output.prior_finding_relations?.length || output.story_discrepancies?.length || output.owner_instruction_assessments.length) {
+      await withTransaction(async session => {
+        const context = workerContext(session, String(O()), plus(spec.at, 55_000));
+        await applyPriorRelations({ _id: runId, subject_key: subject, contact_number_id: O(spec.number.id) }, output,
+          Object.entries(ids).map(([key, id]) => ({ _id: O(id), key })), context, session);
+        for (const { finding_keys: _keys, ...value } of output.owner_instruction_assessments) {
+          await getIntelligenceOwnerAssessmentModel().create([{ ...value, run_id: runId, finding_ids: [] }], { session });
+          if (value.assessment === "disagrees") await openReview(context, subject, "owner_conflict", `instruction:${value.instruction_id}:${value.instruction_revision}`, []);
+        }
+      });
     }
     // Publication pointers exactly as `apply.ts` `publishCurrent` writes them.
     if (spec.conversation) {
@@ -820,22 +866,20 @@ async function main() {
     await seedEffect({ runId: r1.runId, findingId: f["finding-5"]!, findingKey: "finding-5", kind: "set_contact_type", target: `interaction:${c1.callId}`, targetId: c1.callId, status: "no_change", at: r1At });
     await withTransaction(session => openReview(workerContext(session, String(O()), r1At), key, "unclear_commitment", `finding:${f["finding-8"]}`, [f["finding-8"]!]));
 
-    // R2: conversation run on the second call (analyze_v4) with relations of all five kinds and a story discrepancy.
+    // R2: conversation run on the second call (analyze_v4). It owns the call's work effects (fu1 completed, fu2 created). The
+    // relations and the story discrepancy live on R3, the Number's newest run, which is what the analysis page reads (SEED-FIX,
+    // DECISIONS 2026-09-23 "Relations and record disputes come from the newest run").
     const r2At = plus(c2.at, HOUR);
+    const story: RecordRef[] = [{ record_type: "story_event", record_id: `lead_message_sent:${lm}`, fields: { kind: "lead_message_sent", happened_at: plus(receivedAt, 150_000).toISOString(),
+      description: "A quote request confirmation text was sent to the customer and delivered." } },
+      { record_type: "granot_state", record_id: `FormLead:${s.lead.id}`, fields: { granot_priority: "1", priority_label: "Quoted", quoted: true, estimate: "4200.00" } }];
     const r2 = await seedRun({ number: n, recordId: s.recordId, conversation: c2, summaries: [c2], at: r2At, prompt: "sales_intelligence_analyze_v4",
       summary: { overview: "Priya still plans the Tampa to Charlotte move next month. The competing quote dropped to $3,500 and she never received the confirmation text. Rep will send the estimate tonight and call Friday.",
         customer_wanted: "A written estimate that beats $3,500.", money_and_dates: "Competing quote $3,500; callback Friday; move next month.", outcome: "Estimate to be sent tonight.",
         commitments: "Rep will send the estimate tonight and call Friday.", discrepancies: "Customer says the confirmation text never arrived." },
       context: [leadRecord, outreachRecord, { record_type: "followup", record_id: fu1, fields: { status: "open", description: "Call back with the estimate", due_at: plus(c1.at, 2 * DAY).toISOString(), origin: "rep_promise" } },
         { record_type: "interaction", record_id: c2.callId, fields: { direction: "Outbound", result: "Call connected", duration_seconds: 610, occurred_at: c2.at.toISOString() } }],
-      story: [{ record_type: "story_event", record_id: `lead_message_sent:${lm}`, fields: { kind: "lead_message_sent", happened_at: plus(receivedAt, 150_000).toISOString(),
-        description: "A quote request confirmation text was sent to the customer and delivered." } },
-        { record_type: "granot_state", record_id: `FormLead:${s.lead.id}`, fields: { granot_priority: "1", priority_label: "Quoted", quoted: true, estimate: "4200.00" } }],
-      prior: [
-        ...(["finding-1", "finding-2", "finding-4", "finding-6", "finding-9"] as const).map(k => ({ record_type: "prior_finding", record_id: f[k]!, fields: { kind: k, run_id: r1.runId,
-          conversation_id: c1.conversationId, review_state: "unreviewed", happened_at: c1.at.toISOString(), description: `Earlier finding ${k}` } })),
-        { record_type: "prior_summary", record_id: c1.summaryId!, fields: { conversation_id: c1.conversationId, happened_at: c1.at.toISOString(), description: "First call summary" } },
-      ],
+      story,
       findings: [
         { key: "finding-1", kind: "next_step", actor: "rep", action_status: "promised", claim: "Rep will send the written estimate tonight.", value: { action_kind: "send_estimate",
           description: "Send the written estimate", date_text: "tonight", timezone_text: null, target_followup_id: null }, evidence: [t(c2, [3], "I will send the written estimate tonight"),
@@ -844,22 +888,12 @@ async function main() {
           value: { action_kind: "call", description: "Promised callback made", date_text: null, timezone_text: null, target_followup_id: fu1 }, evidence: [t(c2, [1]),
           rec("__context__", "followup", fu1, ["status", "due_at"])] },
         { key: "finding-3", kind: "quoted_amount", claim: "The competing quote is now $3,500.", value: { amount_text: "thirty five hundred", currency: "USD", meaning: "competitor_quote" },
-          evidence: [t(c2, [4]), rec("__prior__", "prior_finding", f["finding-4"]!, ["description"])], resolved: { due_at: null, amount_cents: 350000, original_wording: "thirty five hundred", assumptions: [], uncertain: false } },
+          evidence: [t(c2, [4])], resolved: { due_at: null, amount_cents: 350000, original_wording: "thirty five hundred", assumptions: [], uncertain: false } },
         { key: "finding-4", kind: "promised_callback", actor: "rep", action_status: "promised", claim: "Rep promised to call Friday.", value: { action_kind: "call", description: "Call Friday about the estimate",
           date_text: "Friday", timezone_text: null, target_followup_id: null }, evidence: [t(c2, [3, 6])],
           resolved: { due_at: ahead(1, 3), amount_cents: null, original_wording: "Friday", assumptions: ["Friday 10:00 AM ET"], uncertain: false } },
-      ],
-      relations: [
-        { prior_finding_id: f["finding-6"], relation: "superseded", by_finding_key: "finding-1", evidence: [t(c2, [3])], note: "The estimate is now promised for tonight." },
-        { prior_finding_id: f["finding-1"], relation: "fulfilled", by_finding_key: "finding-2", evidence: [t(c2, [1])], note: "This call is the promised callback." },
-        { prior_finding_id: f["finding-4"], relation: "contradicted", by_finding_key: "finding-3", evidence: [t(c2, [4])], note: "The competing quote changed from $4,000 to $3,500." },
-        { prior_finding_id: f["finding-9"], relation: "still_true", by_finding_key: null, evidence: [t(c2, [1])], note: null },
-        { prior_finding_id: f["finding-2"], relation: "cannot_determine", by_finding_key: null, evidence: [], note: "Texting was not discussed on this call." },
-      ],
-      discrepancies: [{ story_event_id: `lead_message_sent:${lm}`, claim: "Customer says the confirmation text never arrived.", evidence: [t(c2, [2], "I never got the confirmation text you mentioned.")] }] });
+      ] });
     const g = r2.ids;
-    await Findings.updateOne({ _id: f["finding-6"] }, { $set: { superseded_by: O(g["finding-1"]) } });
-    await seedEffect({ runId: r2.runId, findingId: g["finding-1"]!, findingKey: "finding-1", kind: "supersede", target: `finding:${f["finding-6"]}`, targetId: f["finding-6"], status: "applied", at: r2At });
     // The completion claim completes the first call's follow-up through the shared store.
     await withTransaction(async session => {
       const context = workerContext(session, String(O()), r2At);
@@ -873,26 +907,64 @@ async function main() {
       await refreshRecord(record, context, "intelligence_effects_applied", prior, { run_id: r2.runId });
     });
     await seedEffect({ runId: r2.runId, findingId: g["finding-2"]!, findingKey: "finding-2", kind: "complete_followup", target: `followup:run:${r1.runId}:finding-1`, targetId: fu1, status: "applied", at: r2At });
-    const contradiction = await withTransaction(session => openReview(workerContext(session, String(O()), r2At), key, "prior_contradiction", `prior:${f["finding-4"]}`, [g["finding-3"]!, f["finding-4"]!]));
-    await seedEffect({ runId: r2.runId, findingId: g["finding-3"]!, findingKey: "finding-3", kind: "open_review", target: `review:prior_contradiction:${f["finding-4"]}`, targetId: String(contradiction._id),
-      status: "applied", reason: "prior_finding_contradicted", at: r2At });
-    await withTransaction(session => openReview(workerContext(session, String(O()), r2At), key, "record_disputed_on_call", `story:lead_message_sent:${lm}`,
-      Object.values(g).slice(0, 5)));
     const fu2 = await intelligenceFollowup(s.recordId, { kind: "call", description: "Call Friday about the estimate", due: ahead(1, 3), findingId: g["finding-4"]!, runId: r2.runId,
       anchor: r2At, promisedBy: agentId(1), commitment: `run:${r2.runId}:finding-4` });
     await seedEffect({ runId: r2.runId, findingId: g["finding-4"]!, findingKey: "finding-4", kind: "create_followup", target: `followup:run:${r2.runId}:finding-4`, targetId: fu2, status: "applied", at: r2At });
 
-    // R3: Number run (synthesis over all three calls, no effects) with a next-step suggestion the Owner applies.
+    // Three Owner notes through the real `add_note` command (each writes a `description` Owner instruction) before the Number run,
+    // which is shown them and assesses each one: agrees / disagrees / cannot_determine (final spec §11.5, §18 row 7).
+    await ownerNote(s.recordId, "Customer asked for the estimate in writing, not by text.");
+    await ownerNote(s.recordId, "Customer already booked with another mover; stop working this Lead.");
+    await ownerNote(s.recordId, "Customer prefers calls after 5 PM ET.");
+    const notes = await getSalesIntelligenceOwnerInstructionModel().find({ subject_key: key, field: "description" }).sort({ happened_at: 1, _id: 1 }).lean();
+    if (notes.length !== 3) throw new Error(`S-findings: expected 3 Owner instructions, found ${notes.length}`);
+    const shown = notes.map(row => ({ id: String(row.instruction_id), revision: row.revision }));
+
+    // R3: the Number's newest run (synthesis over all three calls; a Number run owns no work effects). It carries the prior
+    // relations of all five kinds (to R1's findings), the story discrepancy, the Owner instruction assessments and a
+    // next-step suggestion the Owner applies. `seedRun` runs the real `applyPriorRelations` for its bookkeeping.
     const r3At = plus(c3.at, 2 * HOUR);
     const r3 = await seedRun({ number: n, recordId: s.recordId, conversation: null, summaries: [c1, c2, c3], at: r3At, prompt: "sales_intelligence_analyze_v4",
       summary: { overview: "Priya is moving a two bedroom apartment from Tampa to Charlotte next month. She is comparing Vantage against a $3,500 competing quote and is waiting on the written estimate. The latest call reached voicemail. A Friday callback is promised.",
         customer_wanted: "A written estimate below $3,500.", money_and_dates: "Competing quote $3,500; Friday callback; move next month.", outcome: "Waiting on the estimate; voicemail left.",
         commitments: "Rep promised a Friday callback.", discrepancies: "Customer says the confirmation text never arrived." },
-      context: [leadRecord, outreachRecord],
-      findings: [{ key: "finding-1", kind: "intent", claim: "Customer is still actively planning the move.", value: { intent: "moving_inquiry" },
-        evidence: [t(c2, [4]), rec("__context__", "lead", leadRecord.record_id, ["move_date"])] }],
+      context: [leadRecord, outreachRecord, { record_type: "followup", record_id: fu1, fields: { status: "completed", description: "Call back with the estimate",
+        due_at: plus(c1.at, 2 * DAY).toISOString(), origin: "rep_promise" } }],
+      story,
+      prior: [
+        ...(["finding-1", "finding-2", "finding-4", "finding-6", "finding-9"] as const).map(k => ({ record_type: "prior_finding", record_id: f[k]!, fields: { kind: k, run_id: r1.runId,
+          conversation_id: c1.conversationId, review_state: "unreviewed", happened_at: c1.at.toISOString(), description: `Earlier finding ${k}` } })),
+        { record_type: "prior_summary", record_id: c1.summaryId!, fields: { conversation_id: c1.conversationId, happened_at: c1.at.toISOString(), description: "First call summary" } },
+      ],
+      instructions: [
+        { ...shown[0]!, assessment: "agrees", reason: "The customer asked not to be texted, and the rep promised to send the written estimate." },
+        { ...shown[1]!, assessment: "disagrees", reason: "On the latest calls the customer is still waiting on Vantage's written estimate and comparing a $3,500 quote." },
+        { ...shown[2]!, assessment: "cannot_determine", reason: "The calls do not mention a preferred time of day." },
+      ],
+      findings: [
+        { key: "finding-1", kind: "intent", claim: "Customer is still actively planning the move.", value: { intent: "moving_inquiry" },
+          evidence: [t(c2, [4]), rec("__context__", "lead", leadRecord.record_id, ["move_date"])] },
+        { key: "finding-2", kind: "next_step", actor: "rep", action_status: "promised", claim: "Rep will send the revised written estimate before the Friday call.",
+          value: { action_kind: "send_estimate", description: "Send the revised written estimate", date_text: "before Friday", timezone_text: null, target_followup_id: null },
+          evidence: [t(c2, [3], "I will send the written estimate tonight")] },
+        { key: "finding-3", kind: "completion_claim", actor: "rep", action_status: "completed", claim: "The second call was the callback the rep promised on the first call.",
+          value: { action_kind: "call", description: "Promised callback made", date_text: null, timezone_text: null, target_followup_id: fu1 },
+          evidence: [t(c2, [1]), rec("__context__", "followup", fu1, ["status", "due_at"])] },
+        { key: "finding-4", kind: "quoted_amount", claim: "The competing quote is now $3,500.", value: { amount_text: "thirty five hundred", currency: "USD", meaning: "competitor_quote" },
+          evidence: [t(c2, [4]), rec("__prior__", "prior_finding", f["finding-4"]!, ["description"])],
+          resolved: { due_at: null, amount_cents: 350000, original_wording: "thirty five hundred", assumptions: [], uncertain: false } },
+      ],
+      relations: [
+        { prior_finding_id: f["finding-6"], relation: "superseded", by_finding_key: "finding-2", evidence: [t(c2, [3])], note: "The estimate is now promised before the Friday call." },
+        { prior_finding_id: f["finding-1"], relation: "fulfilled", by_finding_key: "finding-3", evidence: [t(c2, [1])], note: "The second call is the promised callback." },
+        { prior_finding_id: f["finding-4"], relation: "contradicted", by_finding_key: "finding-4", evidence: [t(c2, [4])], note: "The competing quote changed from $4,000 to $3,500." },
+        { prior_finding_id: f["finding-9"], relation: "still_true", by_finding_key: null, evidence: [t(c2, [1])], note: null },
+        { prior_finding_id: f["finding-2"], relation: "cannot_determine", by_finding_key: null, evidence: [], note: "Texting was not discussed on the later calls." },
+      ],
+      discrepancies: [{ story_event_id: `lead_message_sent:${lm}`, claim: "Customer says the confirmation text never arrived.",
+        evidence: [t(c2, [2], "I never got the confirmation text you mentioned."), rec("__story__", "story_event", `lead_message_sent:${lm}`, ["description"])] }],
       suggestion: { action_kind: "send_estimate", description: "Send the revised written estimate before the Friday call", date_text: "before Friday", timezone_text: null, target_followup_id: null,
-        rationale: "The customer is waiting on the estimate and has a lower competing quote.", finding_keys: ["finding-1"] } });
+        rationale: "The customer is waiting on the estimate and has a lower competing quote.", finding_keys: ["finding-2"] } });
     const artifact = await assess(s.recordId, "default");
 
     // Owner commands through the real command paths: retract one finding, apply the Number run's suggestion.
@@ -903,11 +975,50 @@ async function main() {
       command: { command: "apply_suggestion", expected_revision: run3.revision, run_id: r3.runId, suggestion_output_digest: payloadHash(run3.output!.next_step_suggestion),
         due_at: ahead(2).toISOString(), expected_revisions: [{ target: "outreach", id: s.recordId, revision: record.revision }] } });
     row("S-findings", ["work_applied", "work_blocked", "work_needs_review_effect", "work_needs_review_item", "work_not_applicable", "work_superseded", "work_retracted",
-      "relation_bookkeeping_effects", "relations_all_kinds", "story_discrepancies", "lead_message", "number_run", "conversation_run", "suggestion_applied", "media_retained",
+      "relation_bookkeeping_effects", "relations_all_kinds", "story_discrepancies", "newest_run_relations", "newest_run_story_discrepancies", "owner_instruction_assessments",
+      "lead_message", "number_run", "conversation_run", "suggestion_applied", "suggestion_applied_followup", "rep_identity_reviewed", "media_retained",
       "transcript_segments", "summary_snapshot_move_evidence", "move_date_future"], { outreach_record_id: s.recordId, contact_number_id: n.id, lead_refs: leadIds(s.lead),
       conversation_ids: [c1.conversationId, c2.conversationId, c3.conversationId], run_ids: [r1.runId, r2.runId, r3.runId], artifact_ids: [artifact],
       finding_ids: [...Object.values(f), ...Object.values(g), ...Object.values(r3.ids)],
-      note: "R1 conversation run (every work_result), R2 conversation run (relations of five kinds + story discrepancy + bookkeeping effects), R3 Number run with an applied suggestion" });
+      note: "R1 conversation run (every work_result); R2 conversation run (its call's effects: fu1 completed, fu2 created); R3 = newest_run_id, Number run with relations of five kinds + "
+        + "story discrepancy (real applyPriorRelations bookkeeping), 3 Owner instruction assessments (agrees/disagrees/cannot_determine) and an applied suggestion" });
+  }
+
+  // 6b. Card suggestion (final spec §5.5 case 2) and the empty relations state (SEED-FIX): an open Lead with no follow-up whose
+  // newest run is a Number run with an unapplied next_step_suggestion and no prior_finding_relations / story_discrepancies.
+  // The call carries no commitment, so its conversation run records no findings and no work; nothing creates a follow-up.
+  {
+    const s = await leadSubject({ receivedDaysAgo: 5, fields: { move_date: utcMidnight(etDay(ahead(40))), pickup_city: "Orlando", pickup_state: "FL",
+      delivery_city: "Atlanta", delivery_state: "GA", move_size: "3 Bedroom" } });
+    const n = s.number!;
+    const c1 = await seedConversation(n, { call: { at: ago(3), direction: "Inbound", result: "Call connected", duration: 260 }, lead: s.lead,
+      lines: [["rep", "Thanks for calling Vantage Movers, this is Dana. How can I help?"], ["customer", "We are moving from Orlando to Atlanta in about six weeks."],
+        ["rep", "Is it a house or an apartment?"], ["customer", "A three bedroom house. I want to see a price before I decide anything."],
+        ["rep", "Understood, I have your details on file."], ["customer", "Okay, thanks."]],
+      said: [{ kind: "intent", claim: "Customer is planning a move in about six weeks.", value: { intent: "moving_inquiry" }, actor: "customer", clarity: "clear", action_status: null,
+        speaker: "customer", segment_ids: [2], quote: null }],
+      moveEvidence: { observations: [
+        { field: "pickup_location", value: { line: null, city: "Orlando", state: "FL", zip: null, precision: "city" }, status: "stated", speaker: "customer", segment_ids: [2] },
+        { field: "delivery_location", value: { line: null, city: "Atlanta", state: "GA", zip: null, precision: "city" }, status: "stated", speaker: "customer", segment_ids: [2] },
+        { field: "move_size", value: { value: { min: 3, max: 3 }, unit: "bedrooms", text: "three bedroom house", basis: "customer_stated" }, status: "stated", speaker: "customer", segment_ids: [4] }],
+        inventory: [], intent_signals: [{ signal: "definite_move", text: "We are moving in about six weeks.", speaker: "customer", segment_ids: [2] }] },
+      summary: { overview: "Customer is moving a three bedroom house from Orlando to Atlanta in about six weeks and wants a price first.", customer_wanted: "A price before deciding.",
+        money_and_dates: "No price discussed; moving in about six weeks.", outcome: "No next step agreed.", commitments: "", discrepancies: "" } });
+    const t = (segs: number[]) => ({ source: "transcript", snapshot_id: c1.summaryId!, conversation_id: c1.conversationId, transcript_version: c1.version, segment_ids: segs, quote: null });
+    const ra = await seedRun({ number: n, recordId: s.recordId, conversation: c1, summaries: [c1], at: plus(c1.at, HOUR), prompt: "sales_intelligence_analyze_v4",
+      summary: { overview: "Customer is moving a three bedroom house from Orlando to Atlanta in about six weeks and wants a price first.", customer_wanted: "A price before deciding.",
+        money_and_dates: "No price discussed; moving in about six weeks.", outcome: "No next step agreed.", commitments: "", discrepancies: "" }, findings: [] });
+    const rb = await seedRun({ number: n, recordId: s.recordId, conversation: null, summaries: [c1], at: plus(c1.at, 3 * HOUR), prompt: "sales_intelligence_analyze_v4",
+      summary: { overview: "The customer is moving a three bedroom house from Orlando to Atlanta in about six weeks. They want a price before deciding and no next step is set.",
+        customer_wanted: "A price for the move.", money_and_dates: "No price yet; move in about six weeks.", outcome: "No next step agreed.", commitments: "", discrepancies: "" },
+      context: [{ record_type: "outreach", record_id: s.recordId, fields: { status: "open", description: `Outreach for ${s.lead.name}` } }],
+      prior: [{ record_type: "prior_summary", record_id: c1.summaryId!, fields: { conversation_id: c1.conversationId, happened_at: c1.at.toISOString(), description: "Call summary" } }],
+      findings: [{ key: "finding-1", kind: "intent", claim: "Customer is actively planning the move and wants a price.", value: { intent: "moving_inquiry" }, evidence: [t([2, 4])] }],
+      suggestion: { action_kind: "call", description: "Call with a price for the Orlando to Atlanta move", date_text: "tomorrow", timezone_text: null, target_followup_id: null,
+        rationale: "The customer asked for a price before deciding and no follow-up is set.", finding_keys: [] } });
+    row("S-suggestion-open", ["suggestion_unapplied_no_followup", "newest_number_run_no_relations", "followup_none", "number_run", "conversation_run"], { outreach_record_id: s.recordId,
+      contact_number_id: n.id, lead_refs: leadIds(s.lead), conversation_ids: [c1.conversationId], run_ids: [ra.runId, rb.runId],
+      note: "Open record, no follow-up; newest run (Number run) has an unapplied next_step_suggestion and no relations or discrepancies (§5.5 case 2, empty §11.1/§11.5 lists)" });
   }
 
   // 7. Legacy (pre-structured) conversation: analyze_v2 envelope, no step-1 summary snapshot, legacy summary keys.
@@ -961,7 +1072,9 @@ async function main() {
     const specs: CallSpec[] = Array.from({ length: 54 }, (_, i) => {
       const inbound = rand() < 0.35, connected = rand() < 0.5;
       return { at: ago(45 - i * 0.8, rand() * 5), direction: inbound ? "Inbound" : "Outbound", result: connected ? "Call connected" : inbound ? "Missed" : pick(["No Answer", "Voicemail", "Busy"]),
-        connected, duration: connected ? Math.floor(20 + rand() * 500) : 0, name: inbound ? "WIRELESS CALLER" : undefined };
+        connected, duration: connected ? Math.floor(20 + rand() * 500) : 0, name: inbound ? "WIRELESS CALLER" : undefined,
+        // Rep identity mix (no extra rand draw): 101 reviewed → name, 102 no link → unknown, 103 proposed only → name null.
+        extension: (["101", "102", "103"] as const)[i % 3] };
     });
     await seedCalls(s.number!.id, s.number!.e164, specs);
     const conversations: SeededConversation[] = [];
@@ -971,8 +1084,8 @@ async function main() {
     const run = await seedRun({ number: s.number!, recordId: s.recordId, conversation: last, summaries: [last], at: plus(last.at, HOUR), prompt: "sales_intelligence_analyze_v4",
       summary: { overview: "Long-running customer with many calls; still comparing quotes.", customer_wanted: "A lower price.", money_and_dates: "Around $4,000.", outcome: "No decision yet.",
         commitments: "", discrepancies: "" }, findings: [] });
-    row("S-calls-60", ["calls_50", "conversation_run"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
-      conversation_ids: conversations.map(c => c.conversationId), run_ids: [run.runId], note: "60 canonical calls (54 plain + 6 with conversations)" });
+    row("S-calls-60", ["calls_50", "conversation_run", "rep_identity_reviewed", "rep_identity_unreviewed"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      conversation_ids: conversations.map(c => c.conversationId), run_ids: [run.runId], note: "60 canonical calls (54 plain on extensions 101 reviewed / 102 unlinked / 103 proposed, + 6 with conversations on 101)" });
   }
 
   // 11. A subject with 300+ mixed timeline events (cursor exactness B12).

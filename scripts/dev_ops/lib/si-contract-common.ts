@@ -36,6 +36,10 @@ export const SI_SEED_STATES = [
   "transcript_segments", "summary_snapshot_move_evidence",
   "number_run", "conversation_run", "suggestion_applied",
   "calls_50", "timeline_300",
+  // SEED-FIX (2026-09-23): what the analysis page reads from the Number's newest run, rep names, instruction assessments, card suggestion.
+  "newest_run_relations", "newest_run_story_discrepancies", "newest_number_run_no_relations",
+  "owner_instruction_assessments", "rep_identity_reviewed", "rep_identity_unreviewed",
+  "suggestion_unapplied_no_followup", "suggestion_applied_followup",
 ] as const;
 export type SiSeedState = (typeof SI_SEED_STATES)[number];
 
