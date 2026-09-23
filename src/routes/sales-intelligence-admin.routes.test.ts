@@ -121,7 +121,8 @@ test("CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempot
     assert.equal(searched.body.as_of, asOf);
     const lastCall: string = calls[calls.length - 1] ?? "";
     const searchCall = JSON.parse(lastCall.slice("search:".length)) as Record<string, unknown>;
-    assert.deepEqual(searchCall, { q: "0200", attachment: "unlinked", limit: 5, hygiene: false });
+    // S2-NUMBERS: the two Analysis filters default to false like `hygiene` (absent = no filter).
+    assert.deepEqual(searchCall, { q: "0200", attachment: "unlinked", limit: 5, hygiene: false, has_recording: false, has_outreach: false });
     const badQuery = await call("GET", `${numbers}?limit=999`, { headers: ownerHeaders("GET", numbers) });
     assert.equal(badQuery.status, 400);
     assert.equal(badQuery.body.code, "INVALID_INPUT");
