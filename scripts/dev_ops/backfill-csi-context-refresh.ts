@@ -16,6 +16,8 @@
 const personal = process.env.PERSONAL_AI_GATEWAY_API_KEY?.trim() ?? "";
 if (!personal) { console.error(JSON.stringify({ refused: "PERSONAL_AI_GATEWAY_API_KEY is missing or empty" })); process.exit(2); }
 process.env.AI_GATEWAY_API_KEY = personal;
+// Personal-key spend is recorded per run but never reserved against or added to the Owner's monthly ceiling.
+process.env.SALES_INTELLIGENCE_PERSONAL_LEDGER = "true";
 process.env.SALES_INTELLIGENCE_EXTRACTION_ENABLED = "true";
 process.env.SALES_INTELLIGENCE_EXTRACTION_MODEL ??= "openai/gpt-5.6-luna";
 process.env.SALES_INTELLIGENCE_ANALYSIS_V3 ??= "true";

@@ -4,7 +4,7 @@ import { withTransaction } from "../../../db";
 import { getSalesIntelligenceAiBudgetModel } from "../../../models/SalesIntelligenceAiBudget";
 import { getSalesIntelligenceAiReservationModel } from "../../../models/SalesIntelligenceAiReservation";
 import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
-import { reserveCsiBudget, reconcileCsiBudget } from "../aiBudget";
+import { reserveCsiBudget, reconcileCsiBudget, currentLedger } from "../aiBudget";
 import { CsiError } from "../auth";
 import type { JobLease } from "../jobs";
 import { resolvePolicy } from "../policy";
@@ -49,7 +49,7 @@ async function recordUsage(reservationId: string, usage: LanguageModelUsage, met
         reasoning_tokens: row.reasoning_tokens == null || usage.outputTokenDetails?.reasoningTokens === undefined ? null : row.reasoning_tokens + usage.outputTokenDetails.reasoningTokens,
         cached_input_tokens: cached === null ? row.cached_input_tokens : (row.cached_input_tokens ?? 0) + cached },
     }, { session });
-    await getSalesIntelligenceAiBudgetModel().updateOne({ month: row.month }, { $inc: { actual_cents: cost.cents } }, { session });
+    if (row.ledger !== "personal") await getSalesIntelligenceAiBudgetModel().updateOne({ month: row.month }, { $inc: { actual_cents: cost.cents } }, { session });
   });
 }
 
@@ -86,7 +86,7 @@ export async function generateStructuredStep<T>(input: {
   if (!budget) throw new CsiError("BUDGET_EXHAUSTED");
   const reservationId = `steps:${input.lease.job_id}:${input.lease.epoch}:${input.kind}:${input.key}`;
   await reserveCsiBudget({ reservation_id: reservationId, month: budget.month, job_id: input.lease.job_id,
-    run_id: input.run_id, step: `${input.kind}:${input.key}:invocation:${input.lease.epoch}`, stage: "analysis", soft_stop: true,
+    run_id: input.run_id, step: `${input.kind}:${input.key}:invocation:${input.lease.epoch}`, stage: "analysis", soft_stop: true, ledger: currentLedger(),
     estimated_cents: await nominalCents(input.kind, input.model_id) });
   await getSalesIntelligenceAiReservationModel().updateOne({ reservation_id: reservationId }, { $set: {
     model_version: input.model_id, pricing_snapshot: input.pricing, usage_complete: true, reasoning_tokens: 0,

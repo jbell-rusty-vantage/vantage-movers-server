@@ -24,7 +24,12 @@ export type ReservationInput = {
   kind?: "stt";
   /** Structured model steps may start while there is headroom; admitted repairs finish. */
   soft_stop?: boolean;
+  /** `personal`: spend on an operator's own gateway key. Recorded per run, never reserved against or added to the Owner's monthly ceiling. */
+  ledger?: "owner" | "personal";
 };
+/** Process-local: an in-process backfill on PERSONAL_AI_GATEWAY_API_KEY sets this so its steps book to the personal ledger. Never set in production. */
+export const personalLedger = () => process.env.SALES_INTELLIGENCE_PERSONAL_LEDGER === "true";
+export const currentLedger = (): "owner" | "personal" => (personalLedger() ? "personal" : "owner");
 export async function reserveCsiBudget(input: ReservationInput) {
   if (input.kind && input.stage !== "transcription") throw new CsiError("INVALID_INPUT");
   csiIdSchema.parse(input.job_id);
@@ -68,7 +73,8 @@ export async function reserveCsiBudget(input: ReservationInput) {
         reservation_id: input.reservation_id,
       }).session(session);
       if (prior) return check(prior);
-      const budget = await Budget.updateOne(
+      const ledger = input.ledger ?? "owner";
+      const budget = ledger === "personal" ? { matchedCount: 1, modifiedCount: 1 } : await Budget.updateOne(
         {
           month: input.month,
           $expr: input.soft_stop ? { $lt: [{ $add: ["$actual_cents", "$reserved_cents"] }, "$ceiling_cents"] } : {
@@ -92,7 +98,7 @@ export async function reserveCsiBudget(input: ReservationInput) {
       if (budget.matchedCount !== 1) throw new CsiError("BUDGET_EXHAUSTED");
       const { kind: _kind, soft_stop: _softStop, ...record } = input;
       const [reservation] = await Reservations.create(
-        [{ ...record, status: "reserved", reserved_at: new Date() }],
+        [{ ...record, ledger, status: "reserved", reserved_at: new Date() }],
         { session },
       );
       return reservation;
@@ -140,6 +146,7 @@ export async function reconcileCsiBudget(
       { session },
     );
     if (updated.modifiedCount !== 1) throw new CsiError("REVISION_CONFLICT");
+    if (row.ledger === "personal") return; // Personal spend never moves the Owner's ceiling.
     const totals = await getSalesIntelligenceAiBudgetModel().updateOne(
       { month: row.month, reserved_cents: { $gte: row.estimated_cents } },
       {
