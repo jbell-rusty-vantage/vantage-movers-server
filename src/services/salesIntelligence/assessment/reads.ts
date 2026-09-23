@@ -5,8 +5,12 @@ import { getMoveAssessmentArtifactModel } from "../../../models/MoveAssessmentAr
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
 import { getOutreachFollowupModel } from "../../../models/OutreachFollowup";
 import { getContactNumberModel } from "../../../models/ContactNumber";
+import { getCallInteractionModel } from "../../../models/CallInteraction";
 import { getLeadConversationModel } from "../../../models/LeadConversation";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
+import { getSalesIntelligenceReviewItemModel } from "../../../models/SalesIntelligenceReviewItem";
+import { getSalesIntelligenceAuditEventModel } from "../../../models/SalesIntelligenceAuditEvent";
+import { getSalesIntelligenceOwnerInstructionModel } from "../../../models/SalesIntelligenceOwnerInstruction";
 import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
 import { getIntelligenceFindingModel } from "../../../models/IntelligenceFinding";
 import { getIntelligenceEffectModel } from "../../../models/IntelligenceEffect";
@@ -15,31 +19,39 @@ import { csiIdSchema, csiSubjectSchema } from "../../../validation/v1/salesIntel
 import { ownerRead } from "../../numberActivity/coverage";
 import type { CoverageDto } from "../dto";
 import { subjectKey } from "../outreach/types";
+import { moveViewsForLead, type LeadMoveSource } from "./views";
 import {
   outreachAssessmentDtoSchema, type AssessmentSection, type EvidenceSection, type FullOutput, type OutreachAssessmentDto, type RunPresentation,
 } from "./dto";
 import {
-  assessmentApplicability, assessmentEvidenceRefs, assessmentFullOutput, assessmentSection, assessmentVersion, evidenceSection, noAssessmentAvailability,
-  runFullOutput, runPresentation, type ApplicabilityInput, type ArtifactRow, type ConversationRow, type EffectRow, type FindingRow, type FollowupLite,
-  type ProjectionRow, type RunRow, type SnapshotRow,
+  assessmentApplicability, assessmentEvidenceRefs, assessmentFullOutput, assessmentSection, assessmentVersion, evidenceSection, leadOnlyMoveTable,
+  moveDateHasPassed, noAssessmentAvailability, runFullOutput, runPresentation,
+  type AppliedSuggestion, type ApplicabilityInput, type ArtifactRow, type ConversationRow, type EffectRow, type FindingRow, type FollowupLite,
+  type InstructionRow, type LeadFlagsRow, type ProjectionRow, type ReviewItemRow, type RunRow, type SnapshotRow, type TranscriptRow,
 } from "./presentation";
 
 /**
- * MA-04 Owner reads for Move assessment and the shared analysis presentation (MA-01 §10).
+ * MA-04 Owner reads for Move assessment and the shared analysis presentation (MA-01 §10), extended by
+ * the model-output presentation contract (data spec §6.2, §6.11 B–D).
  *
  * GET-only: no writes, no jobs, no model calls. Every read goes through an
  * `AssessmentStore` so the adapters are exercised without Mongo; the default
- * store is dataset-scoped and batch-loads (one query per collection).
+ * store is dataset-scoped and batch-loads (one query per collection, never one
+ * per finding, citation or row).
  * Retention wins everywhere: purged artifacts and runs return tombstone
  * availability, a Number with `content_purge_pending` returns `unavailable`.
  */
 export const PENDING_ASSESSMENT_JOB_STATUSES = ["pending", "leased", "retry"] as const;
 const VERSION_LIMIT = 50;
+const REVIEW_ITEM_LIMIT = 500;
 
 export type RecordLite = ApplicabilityInput & {
   _id: unknown; subject: { kind: string; model?: string | null; id?: unknown; contact_number_id?: unknown };
   primary_contact_number_id?: unknown; move_assessment?: ProjectionRow | null;
 };
+type LeadModel = "FormLead" | "CallLead";
+export type LeadRow = LeadMoveSource & LeadFlagsRow & { _id: unknown };
+export type ReviewItemQuery = { subject_key: string; finding_ids: readonly string[]; causes: ReadonlyArray<{ cause_kind: string; cause_keys: readonly string[] }> };
 export type AssessmentStore = {
   record(id: string): Promise<RecordLite | null>;
   /** Non-shadow artifacts for a subject, newest first, bounded. */
@@ -55,11 +67,25 @@ export type AssessmentStore = {
   followups(ids: readonly string[]): Promise<FollowupLite[]>;
   snapshots(ids: readonly string[]): Promise<SnapshotRow[]>;
   conversations(ids: readonly string[]): Promise<ConversationRow[]>;
-  /** `${model}:${id}` keys of Leads that exist. */
-  leads(refs: readonly { model: "FormLead" | "CallLead"; id: string }[]): Promise<Set<string>>;
+  /** `${model}:${id}` → the Lead's move fields and official flags, for Leads that exist (one query per Lead collection). */
+  leads(refs: readonly { model: LeadModel; id: string }[]): Promise<Map<string, LeadRow>>;
+  /** Data spec §6.2: canonical calls on the Number after `after` (`call_interaction_number_started_id`). */
+  newerCalls(numberId: string, after: Date): Promise<number>;
+  /** Review items naming the findings (open) or opened for the given causes; one query. */
+  reviewItems(query: ReviewItemQuery): Promise<ReviewItemRow[]>;
+  /** The newest `analysis.suggestion_applied` audit row for the run and the follow-up its command created. */
+  appliedSuggestion(subjectKey: string, runId: string): Promise<AppliedSuggestion | null>;
+  /** Owner instruction revisions by instruction id (every revision; the caller picks). */
+  instructions(ids: readonly string[]): Promise<InstructionRow[]>;
+  /** Source transcript snapshots with only the cited segment ids. */
+  transcripts(ids: readonly string[], segmentIds: readonly number[]): Promise<TranscriptRow[]>;
 };
 
 const ids = (values: readonly string[]) => [...new Set(values)].filter(value => csiIdSchema.safeParse(value).success);
+const oids = (values: readonly string[]) => ids(values).map(id => new mongoose.Types.ObjectId(id));
+const LEAD_FIELDS = { _id: 1, pickup_city: 1, pickup_state: 1, pickup_zip: 1, delivery_city: 1, delivery_state: 1, destination_zip: 1, delivery_zip: 1,
+  move_date: 1, move_size: 1, granot_move_size: 1, cubic_feet: 1, ingestion_origin: 1, current_move_provenance: 1, ingested_move_snapshot: 1,
+  booked: 1, cancelled: 1, duplicate: 1, bad_lead: 1, no_sync: 1 } as const;
 export const mongoAssessmentStore: AssessmentStore = {
   record: id => getOutreachRecordModel().findOne({ _id: id, purged_at: null }).lean() as Promise<RecordLite | null>,
   artifacts: key => getMoveAssessmentArtifactModel().find({ ...csiDataset(), subject_key: key, shadow: false }).sort({ createdAt: -1, _id: -1 })
@@ -76,22 +102,47 @@ export const mongoAssessmentStore: AssessmentStore = {
   followups: async list => (ids(list).length ? getOutreachFollowupModel().find({ _id: { $in: ids(list) } }).lean() as Promise<FollowupLite[]> : []),
   snapshots: async list => (ids(list).length ? getIntelligenceEvidenceSnapshotModel().find({ _id: { $in: ids(list) }, ...csiDataset() })
     .select("_id run_id conversation_id response content_digest purged_at purge_started_at retrieved_at").lean() as Promise<SnapshotRow[]> : []),
-  conversations: async list => (ids(list).length ? getLeadConversationModel().find({ _id: { $in: ids(list) } }).select("_id summary content_purged_at").lean() as Promise<ConversationRow[]> : []),
+  conversations: async list => (ids(list).length ? getLeadConversationModel().find({ _id: { $in: ids(list) } })
+    .select("_id summary content_purged_at started_at").lean() as Promise<ConversationRow[]> : []),
   leads: async refs => {
     const db = mongoose.connection.useDb(getMongoDatabaseName(), { useCache: true });
-    const out = new Set<string>();
+    const out = new Map<string, LeadRow>();
     for (const [model, collection] of [["FormLead", "form_leads"], ["CallLead", "call_leads"]] as const) {
-      const wanted = ids(refs.filter(ref => ref.model === model).map(ref => ref.id));
+      const wanted = oids(refs.filter(ref => ref.model === model).map(ref => ref.id));
       if (!wanted.length) continue;
-      const rows = await db.collection(collection).find({ _id: { $in: wanted.map(id => new mongoose.Types.ObjectId(id)) } }, { projection: { _id: 1 } }).toArray();
-      for (const row of rows) out.add(`${model}:${String(row._id)}`);
+      const rows = await db.collection(collection).find({ _id: { $in: wanted } }, { projection: LEAD_FIELDS }).toArray();
+      for (const row of rows) out.set(`${model}:${String(row._id)}`, row as unknown as LeadRow);
     }
     return out;
   },
+  newerCalls: (numberId, after) => getCallInteractionModel().countDocuments({ contact_number_id: numberId, merged_into_id: null, purged_at: null, started_at: { $gt: after } }),
+  reviewItems: async query => {
+    const clauses = [...(ids(query.finding_ids).length ? [{ state: "open", evidence_ids: { $in: ids(query.finding_ids) } }] : []),
+      ...query.causes.filter(cause => cause.cause_keys.length).map(cause => ({ cause_kind: cause.cause_kind, cause_key: { $in: [...cause.cause_keys] } }))];
+    if (!clauses.length) return [];
+    return getSalesIntelligenceReviewItemModel().find({ subject_key: query.subject_key, $or: clauses as never[] }).select("_id cause_kind cause_key state evidence_ids")
+      .limit(REVIEW_ITEM_LIMIT).lean() as Promise<ReviewItemRow[]>;
+  },
+  appliedSuggestion: async (key, runId) => {
+    const audit = await getSalesIntelligenceAuditEventModel().findOne({ subject_key: key, event_kind: "analysis.suggestion_applied", "invalidation.target_id": runId })
+      .sort({ happened_at: -1 }).select("happened_at command_id").lean();
+    if (!audit) return null;
+    // `apply_suggestion` creates the follow-up through `createOwnerFollowup` in the same command: `owner:{command_id}:action`.
+    const followup = audit.command_id ? await getOutreachFollowupModel().findOne({ commitment_key: `owner:${String(audit.command_id)}:action` })
+      .select("_id due_at").lean() : null;
+    return { applied_at: audit.happened_at ?? null, followup_id: followup ? String(followup._id) : null, followup_due_at: followup?.due_at ?? null };
+  },
+  instructions: async list => (ids(list).length ? getSalesIntelligenceOwnerInstructionModel().find({ instruction_id: { $in: ids(list) } })
+    .select("instruction_id revision field current happened_at").limit(500).lean() as Promise<InstructionRow[]> : []),
+  transcripts: async (list, segmentIds) => (oids(list).length ? getIntelligenceEvidenceSnapshotModel().aggregate([
+    { $match: { _id: { $in: oids(list) }, ...csiDataset(), source_type: "transcript" } },
+    { $project: { conversation_id: 1, purged_at: 1, purge_started_at: 1,
+      segments: { $filter: { input: "$segments", as: "segment", cond: { $in: ["$$segment.sid", [...new Set(segmentIds)]] } } } } },
+  ]) as Promise<TranscriptRow[]> : []),
 };
 
-/** Injectable for tests; production reads use Mongo and the live Coverage read. */
-export type AssessmentReadDeps = { store?: AssessmentStore; coverage?: () => Promise<CoverageDto> };
+/** Injectable for tests; production reads use Mongo and the live Coverage read. `now` is the read's `as_of` for derived states. */
+export type AssessmentReadDeps = { store?: AssessmentStore; coverage?: () => Promise<CoverageDto>; now?: () => Date };
 const respond = async <T>(data: T, deps: AssessmentReadDeps) => ownerRead(data, undefined, deps.coverage ? await deps.coverage() : undefined);
 
 const numberOf = (record: RecordLite | null, artifact?: ArtifactRow | null) => {
@@ -100,15 +151,31 @@ const numberOf = (record: RecordLite | null, artifact?: ArtifactRow | null) => {
 };
 const retentionPending = async (store: AssessmentStore, numberId: string | null) => (numberId ? store.purgePending(numberId) : false);
 const isCurrent = (record: RecordLite | null, artifact: ArtifactRow) => record?.move_assessment?.artifact_id != null && String(record.move_assessment.artifact_id) === String(artifact._id);
+const subjectLead = (record: RecordLite | null) => record?.subject.kind === "lead" && (record.subject.model === "FormLead" || record.subject.model === "CallLead") && record.subject.id != null
+  ? { model: record.subject.model as LeadModel, id: String(record.subject.id) } : null;
+/** The subject Lead's live views (one Lead read), or null for a Number-review subject or a missing Lead. */
+async function loadLeadViews(store: AssessmentStore, record: RecordLite | null) {
+  const ref = subjectLead(record);
+  if (!ref) return null;
+  const row = (await store.leads([ref])).get(`${ref.model}:${ref.id}`);
+  return row ? moveViewsForLead(row, ref.model) : null;
+}
+/** Data spec §6.2 `newer_calls_count`: null when the artifact covers no conversation or the subject has no Number. */
+async function newerCallsFor(store: AssessmentStore, artifact: ArtifactRow, numberId: string | null, section: AssessmentSection) {
+  if (!numberId || !artifact.latest_conversation_at || !["ready", "insufficient_evidence"].includes(section.availability)) return null;
+  return store.newerCalls(numberId, new Date(artifact.latest_conversation_at));
+}
 
 /** `GET /outreach/:id/assessment`: the subject, its current assessment (or Not assessed / Pending / Not applicable) and every version. */
 export async function readOutreachAssessment(outreachId: string, deps: AssessmentReadDeps = {}) {
   const store = deps.store ?? mongoAssessmentStore;
+  const now = deps.now?.() ?? new Date();
   const record = await store.record(csiIdSchema.parse(outreachId));
   if (!record) return null;
   const key = subjectKey(record.subject as Parameters<typeof subjectKey>[0]);
   const numberId = numberOf(record);
-  const [artifacts, pending, purgePending] = await Promise.all([store.artifacts(key), store.pendingJob(key), retentionPending(store, numberId)]);
+  const [artifacts, pending, purgePending, leadViews] = await Promise.all([store.artifacts(key), store.pendingJob(key), retentionPending(store, numberId),
+    loadLeadViews(store, record)]);
   const applicability = assessmentApplicability(record);
   // A `pending` artifact is a generation in flight: it signals Pending but is not a version.
   const settled = artifacts.filter(artifact => artifact.status !== "pending" && !artifact.shadow);
@@ -116,8 +183,11 @@ export async function readOutreachAssessment(outreachId: string, deps: Assessmen
   const pointed = record.move_assessment?.artifact_id != null ? settled.find(artifact => isCurrent(record, artifact))
     ?? await store.artifact(String(record.move_assessment.artifact_id)) : null;
   const current = pointed && !pointed.shadow ? pointed : settled[0] ?? null;
-  const section: AssessmentSection | null = current ? assessmentSection(current, { applicability, projection: record.move_assessment ?? null,
-    current: isCurrent(record, current), retention_pending: purgePending }) : null;
+  const context = { applicability, projection: record.move_assessment ?? null, retention_pending: purgePending,
+    move_date_passed: moveDateHasPassed(leadViews?.canonical_current.move_date, now) };
+  let section: AssessmentSection | null = current ? assessmentSection(current, { ...context, current: isCurrent(record, current) }) : null;
+  if (current && section) section = assessmentSection(current, { ...context, current: isCurrent(record, current),
+    newer_calls_count: await newerCallsFor(store, current, numberOf(record, current), section) });
   const availability = applicability !== "active" ? "not_applicable" : section ? section.availability : noAssessmentAvailability(applicability, inFlight);
   const dto: OutreachAssessmentDto = outreachAssessmentDtoSchema.parse({
     subject: { outreach_record_id: String(record._id), subject_key: key, state: record.state, contact_number_id: numberId, applicability,
@@ -125,6 +195,7 @@ export async function readOutreachAssessment(outreachId: string, deps: Assessmen
         : { kind: "number_review", contact_number_id: String(record.subject.contact_number_id) }) },
     availability, current: section,
     versions: settled.map(artifact => assessmentVersion(artifact, isCurrent(record, artifact), purgePending)),
+    ...(!section && leadViews ? { lead_move_table: leadOnlyMoveTable(leadViews) } : {}),
   });
   return respond(dto, deps);
 }
@@ -139,11 +210,16 @@ async function loadArtifact(artifactId: string, store: AssessmentStore) {
 /** `GET /assessments/:artifactId`: one version as an `AssessmentSection`. Applicability is read from the current record. */
 export async function readAssessment(artifactId: string, deps: AssessmentReadDeps = {}) {
   const store = deps.store ?? mongoAssessmentStore;
+  const now = deps.now?.() ?? new Date();
   const loaded = await loadArtifact(artifactId, store);
   if (!loaded) return null;
   const { artifact, record, purgePending } = loaded;
-  return respond(assessmentSection(artifact, { applicability: record ? assessmentApplicability(record) : "active",
-    projection: record?.move_assessment ?? null, current: isCurrent(record, artifact), retention_pending: purgePending }), deps);
+  const current = isCurrent(record, artifact);
+  const leadViews = current ? await loadLeadViews(store, record) : null;
+  const context = { applicability: record ? assessmentApplicability(record) : "active" as const, projection: record?.move_assessment ?? null, current,
+    retention_pending: purgePending, move_date_passed: moveDateHasPassed(leadViews?.canonical_current.move_date, now) };
+  const section = assessmentSection(artifact, context);
+  return respond(assessmentSection(artifact, { ...context, newer_calls_count: await newerCallsFor(store, artifact, numberOf(record, artifact), section) }), deps);
 }
 
 /** `GET /assessments/:artifactId/output`: exact retained model object plus the accepted envelope, labelled separately. */
@@ -153,9 +229,10 @@ export async function readAssessmentOutput(artifactId: string, deps: AssessmentR
   return loaded ? respond<FullOutput>(assessmentFullOutput(loaded.artifact, loaded.purgePending), deps) : null;
 }
 
-/** `GET /assessments/:artifactId/evidence`: every citation resolved with retention-aware availability. */
+/** `GET /assessments/:artifactId/evidence`: every citation resolved with retention-aware availability and its server-built text. */
 export async function readAssessmentEvidence(artifactId: string, deps: AssessmentReadDeps = {}) {
   const store = deps.store ?? mongoAssessmentStore;
+  const now = deps.now?.() ?? new Date();
   const loaded = await loadArtifact(artifactId, store);
   if (!loaded) return null;
   const { artifact, purgePending } = loaded;
@@ -166,15 +243,20 @@ export async function readAssessmentEvidence(artifactId: string, deps: Assessmen
   }
   const refs = assessmentEvidenceRefs(artifact);
   const want = (source: string) => refs.flatMap(ref => ref.locator.source === source ? [ref.locator] : []);
-  const [snapshots, runs, conversations, findings, leads] = await Promise.all([
+  const leadRefs = [...want("lead"), ...want("official")].flatMap(locator => (locator.source === "lead" || locator.source === "official")
+    && (locator.model === "FormLead" || locator.model === "CallLead") ? [{ model: locator.model as LeadModel, id: locator.id }] : []);
+  const [snapshots, runs, conversations, findings, leads, instructions] = await Promise.all([
     store.snapshots(want("summary_artifact").map(locator => "snapshot_id" in locator ? locator.snapshot_id : "")),
     store.runs([...want("legacy_run"), ...want("finding")].map(locator => "run_id" in locator ? locator.run_id : "")),
-    store.conversations(want("conversation_summary").map(locator => "conversation_id" in locator && locator.conversation_id ? locator.conversation_id : "")),
+    store.conversations(refs.flatMap(ref => "conversation_id" in ref.locator && ref.locator.conversation_id ? [ref.locator.conversation_id] : [])),
     store.findingsById(want("finding").map(locator => "finding_id" in locator ? locator.finding_id : "")),
-    store.leads(want("lead").flatMap(locator => locator.source === "lead" ? [{ model: locator.model, id: locator.id }] : [])),
+    store.leads(leadRefs),
+    store.instructions(want("owner_correction").map(locator => "instruction_id" in locator ? locator.instruction_id : "")),
   ]);
   return respond(evidenceSection(refs, { snapshots: new Map(snapshots.map(row => [String(row._id), row])), runs: new Map(runs.map(row => [String(row._id), row])),
-    conversations: new Map(conversations.map(row => [String(row._id), row])), findings: new Map(findings.map(row => [String(row._id), row])), leads }), deps);
+    conversations: new Map(conversations.map(row => [String(row._id), row])), findings: new Map(findings.map(row => [String(row._id), row])),
+    leads: new Set(leads.keys()), lead_flags: leads, views: section.views, context_as_of: section.context_as_of, as_of: now.toISOString(),
+    instructions: new Map(instructions.map(row => [`${String(row.instruction_id)}:${row.revision}`, row])) }), deps);
 }
 
 async function loadRun(runId: string, store: AssessmentStore) {
@@ -185,23 +267,66 @@ async function loadRun(runId: string, store: AssessmentStore) {
   return { run, summaries, purgePending };
 }
 
-/** `GET /analysis-runs/:id/presentation`: Summary & findings, Evidence and Full output references for a legacy or structured run. */
+type EnvelopeRef = { source?: string; snapshot_id?: string; conversation_id?: string; segment_ids?: number[] };
+type LooseEnvelope = {
+  findings?: { evidence?: EnvelopeRef[] }[];
+  prior_finding_relations?: { prior_finding_id?: string; relation?: string; evidence?: EnvelopeRef[] }[];
+  story_discrepancies?: { story_event_id?: string; evidence?: EnvelopeRef[] }[];
+  owner_instruction_assessments?: { instruction_id?: string }[];
+};
+const sourceSnapshotOf = (row: SnapshotRow) => {
+  const transcript = (row.response as { transcript?: { source_snapshot_id?: unknown; segments?: unknown[] } } | null | undefined)?.transcript;
+  return typeof transcript?.source_snapshot_id === "string" ? transcript.source_snapshot_id : null;
+};
+
+/**
+ * `GET /analysis-runs/:id/presentation`: Summary & findings, Evidence and Full output references for a legacy or structured run,
+ * with the §6.11 B–C additions. Query shape is fixed (no per-finding or per-citation read): run, summaries, findings, effects;
+ * then one batch each for snapshots, follow-ups, prior findings, review items, the applied-suggestion audit, instructions and
+ * conversations; then source transcripts (only when a transcript citation's snapshot does not carry its segments).
+ */
 export async function readRunPresentation(runId: string, deps: AssessmentReadDeps = {}) {
   const store = deps.store ?? mongoAssessmentStore;
   const loaded = await loadRun(runId, store);
   if (!loaded) return null;
   const { run, summaries, purgePending } = loaded;
   const [findings, effects] = await Promise.all([store.findings(String(run._id)), store.effects(String(run._id))]);
-  const cited = findings.flatMap(finding => {
-    const evidence = (finding.assertion as { evidence?: unknown } | null)?.evidence;
-    return Array.isArray(evidence) ? evidence.flatMap(ref => typeof ref === "object" && ref && "snapshot_id" in ref ? [String(ref.snapshot_id)] : []) : [];
-  });
-  const envelopeFindings = (run.output as { findings?: { evidence?: { snapshot_id?: string }[] }[] } | null | undefined)?.findings ?? [];
-  const envelopeCited = envelopeFindings.flatMap(finding => (finding.evidence ?? []).flatMap(ref => (ref.snapshot_id ? [ref.snapshot_id] : [])));
+  const envelope = (run.output ?? null) as LooseEnvelope | null;
+  const storedRefs = findings.flatMap(finding => { const evidence = (finding.assertion as { evidence?: unknown } | null)?.evidence; return Array.isArray(evidence) ? evidence as EnvelopeRef[] : []; });
+  const envelopeRefs = [...(envelope?.findings ?? []).flatMap(finding => finding.evidence ?? []),
+    ...(envelope?.prior_finding_relations ?? []).flatMap(relation => relation.evidence ?? []), ...(envelope?.story_discrepancies ?? []).flatMap(item => item.evidence ?? [])];
+  const allRefs = [...storedRefs, ...envelopeRefs];
   const targets = effects.filter(effect => effect.target_id && ["create_followup", "revise_followup", "complete_followup"].includes(effect.effect_kind)).map(effect => String(effect.target_id));
-  const [snapshots, actions] = await Promise.all([store.snapshots([...cited, ...envelopeCited]), store.followups(targets)]);
+  const priorIds = (envelope?.prior_finding_relations ?? []).flatMap(relation => relation.prior_finding_id ? [relation.prior_finding_id] : []);
+  const storyIds = (envelope?.story_discrepancies ?? []).flatMap(item => item.story_event_id ? [item.story_event_id] : []);
+  const subject = run.subject_key ?? "";
+  const conversationIds = [...new Set([...findings.flatMap(finding => finding.conversation_id != null ? [String(finding.conversation_id)] : []),
+    ...(run.conversation_id != null ? [String(run.conversation_id)] : []), ...allRefs.flatMap(ref => ref.conversation_id ? [ref.conversation_id] : [])])];
+  const [snapshots, actions, priorFindings, reviewItems, suggestion, instructions, conversations] = await Promise.all([
+    store.snapshots(allRefs.flatMap(ref => (ref.snapshot_id ? [String(ref.snapshot_id)] : []))),
+    store.followups(targets),
+    store.findingsById(priorIds),
+    subject ? store.reviewItems({ subject_key: subject, finding_ids: findings.map(finding => String(finding._id)), causes: [
+      { cause_kind: "prior_contradiction", cause_keys: priorIds }, { cause_kind: "prior_fulfilled_unclaimed", cause_keys: priorIds },
+      { cause_kind: "record_disputed_on_call", cause_keys: storyIds }] }) : Promise.resolve([]),
+    subject && envelope && (run.output as { next_step_suggestion?: unknown }).next_step_suggestion ? store.appliedSuggestion(subject, String(run._id)) : Promise.resolve(null),
+    store.instructions((envelope?.owner_instruction_assessments ?? []).flatMap(item => item.instruction_id ? [item.instruction_id] : [])),
+    store.conversations(conversationIds),
+  ]);
+  // Transcript citations whose own snapshot (a structured summary artifact) carries no segments read them from the source transcript.
+  const byId = new Map([...snapshots, ...summaries].map(row => [String(row._id), row]));
+  const transcriptRefs = allRefs.filter(ref => ref.source === "transcript" && ref.snapshot_id);
+  const needsSource = transcriptRefs.flatMap(ref => {
+    const row = byId.get(String(ref.snapshot_id));
+    const inline = (row?.response as { transcript?: { segments?: { sid?: number }[] } } | null | undefined)?.transcript?.segments ?? [];
+    const complete = (ref.segment_ids ?? []).length > 0 && (ref.segment_ids ?? []).every(id => inline.some(segment => segment.sid === id));
+    const source = row && !complete ? sourceSnapshotOf(row) : null;
+    return source ? [source] : [];
+  });
+  const transcripts = needsSource.length ? await store.transcripts([...new Set(needsSource)], transcriptRefs.flatMap(ref => ref.segment_ids ?? [])) : [];
   return respond<RunPresentation>(runPresentation({ run, findings, effects, actions, summaries, retention_pending: purgePending,
-    snapshots: new Map(snapshots.map(row => [String(row._id), row])) }), deps);
+    snapshots: new Map(snapshots.map(row => [String(row._id), row])), prior_findings: priorFindings, review_items: reviewItems, suggestion,
+    instructions, conversations, transcripts }), deps);
 }
 
 /** `GET /analysis-runs/:id/output/:outputId`: one retained run output (the run's envelope, or a captured conversation summary). */

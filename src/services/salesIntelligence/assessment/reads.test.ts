@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { unknownCoverageFixture } from "../fixtures";
-import { outreachAssessmentDtoSchema } from "./dto";
-import type { ArtifactRow, RunRow, SnapshotRow } from "./presentation";
-import { readAssessment, readAssessmentEvidence, readAssessmentOutput, readOutreachAssessment, readRunOutput, readRunPresentation, type AssessmentStore, type RecordLite } from "./reads";
+import { outreachAssessmentDtoSchema, runPresentationSchema } from "./dto";
+import type { AppliedSuggestion, ArtifactRow, EffectRow, FindingRow, ReviewItemRow, RunRow, SnapshotRow, TranscriptRow } from "./presentation";
+import { readAssessment, readAssessmentEvidence, readAssessmentOutput, readOutreachAssessment, readRunOutput, readRunPresentation, type AssessmentStore, type LeadRow, type RecordLite } from "./reads";
 import {
-  IDS, artifact, conversationRow, hex, legacyActions, legacyEffects, legacyFindings, legacyRun, oldArtifact, purgedArtifact, snapshot, structuredRun, summaryArtifactResponse,
+  CONTEXT_SNAPSHOT, IDS, artifact, contextResponse, conversationRow, hex, instructionRow, legacyActions, legacyEnvelope, priorFindings, relationsRun, transcriptRow, legacyEffects, legacyFindings, legacyRun, oldArtifact, purgedArtifact, snapshot, structuredRun, summaryArtifactResponse,
 } from "./presentation.fixtures";
 
-type World = { records?: RecordLite[]; artifacts?: ArtifactRow[]; pending?: string[]; purgePending?: string[]; runs?: RunRow[]; snapshots?: SnapshotRow[] };
+type World = { records?: RecordLite[]; artifacts?: ArtifactRow[]; pending?: string[]; purgePending?: string[]; runs?: RunRow[]; snapshots?: SnapshotRow[];
+  leads?: Record<string, Partial<LeadRow>>; newerCalls?: number; reviewItems?: ReviewItemRow[]; suggestion?: AppliedSuggestion | null; transcripts?: TranscriptRow[];
+  findings?: FindingRow[]; effects?: EffectRow[] };
 /** In-memory store with the same contract as the Mongo store; records every query so tests can assert no per-row or write traffic. */
 function store(world: World) {
   const calls: string[] = [];
@@ -21,13 +23,18 @@ function store(world: World) {
     purgePending: id => log("purgePending", Boolean(world.purgePending?.includes(id))),
     run: id => log("run", world.runs?.find(r => String(r._id) === id) ?? null),
     runs: ids => log("runs", (world.runs ?? []).filter(r => ids.includes(String(r._id)))),
-    findings: runId => log("findings", runId === IDS.legacyRun ? legacyFindings() : []),
-    findingsById: ids => log("findingsById", legacyFindings().filter(f => ids.includes(String(f._id)))),
-    effects: runId => log("effects", runId === IDS.legacyRun ? legacyEffects() : []),
+    findings: runId => log("findings", (world.findings ?? legacyFindings()).filter(f => String(f.run_id) === runId)),
+    findingsById: ids => log("findingsById", [...legacyFindings(), ...(world.findings ?? [])].filter(f => ids.includes(String(f._id)))),
+    effects: runId => log("effects", world.effects ?? (runId === IDS.legacyRun ? legacyEffects() : [])),
     followups: ids => log("followups", legacyActions().filter(a => ids.includes(String(a._id)))),
     snapshots: ids => log("snapshots", (world.snapshots ?? []).filter(row => ids.includes(String(row._id)))),
     conversations: ids => log("conversations", ids.includes(IDS.conversation) ? [conversationRow()] : []),
-    leads: refs => log("leads", new Set(refs.map(ref => `${ref.model}:${ref.id}`))),
+    leads: refs => log("leads", new Map(refs.map(ref => [`${ref.model}:${ref.id}`, { _id: ref.id, ...(world.leads?.[`${ref.model}:${ref.id}`] ?? {}) } as LeadRow]))),
+    newerCalls: () => log("newerCalls", world.newerCalls ?? 0),
+    reviewItems: () => log("reviewItems", world.reviewItems ?? []),
+    appliedSuggestion: () => log("appliedSuggestion", world.suggestion ?? null),
+    instructions: ids => log("instructions", ids.includes(IDS.instruction) ? [instructionRow()] : []),
+    transcripts: ids => log("transcripts", (world.transcripts ?? []).filter(row => ids.includes(String(row._id)))),
   };
   return { deps: { store: s, coverage: async () => unknownCoverageFixture }, calls };
 }
@@ -125,4 +132,48 @@ test("structured run presentation and its full outputs: the captured summary and
   assert.equal((await readRunOutput(IDS.structuredRun, IDS.structuredRun, deps))!.data.kind, "findings");
   assert.equal(await readRunOutput(IDS.structuredRun, hex(404), deps), null);
   assert.equal(await readRunPresentation(hex(404), deps), null);
+});
+
+test("S3-PRES §6.2: stale_reason derives from the Lead's move date at as_of (ET), newer_calls_count is measured once, no assessment serves the Lead-only move table", async () => {
+  const world = { records: [lead({ move_assessment: projection() })], artifacts: [artifact()], newerCalls: 3,
+    leads: { [`FormLead:${IDS.lead}`]: { move_date: new Date("2026-10-14T00:00:00Z"), pickup_city: "Austin", pickup_state: "TX" } } };
+  const before = store(world);
+  const fresh = (await readOutreachAssessment(IDS.record, { ...before.deps, now: () => new Date("2026-10-15T03:59:00Z") }))!.data;
+  assert.deepEqual([fresh.current?.stale, fresh.current?.stale_reason, fresh.current?.newer_calls_count], [false, null, 3]);
+  assert.equal(before.calls.filter(c => c === "newerCalls").length, 1);
+  assert.equal(before.calls.filter(c => c === "leads").length, 1, "one Lead read");
+  const after = (await readOutreachAssessment(IDS.record, { ...store(world).deps, now: () => new Date("2026-10-15T04:00:00Z") }))!.data;
+  assert.deepEqual([after.current?.stale, after.current?.stale_reason, after.current?.move_likelihood.stale_reason], [true, "move_date_passed", "move_date_passed"]);
+  outreachAssessmentDtoSchema.parse(after);
+  const byArtifact = (await readAssessment(IDS.artifactNew, { ...store(world).deps, now: () => new Date("2026-10-16T12:00:00Z") }))!.data;
+  assert.deepEqual([byArtifact.stale_reason, byArtifact.newer_calls_count, Boolean(byArtifact.move_table)], ["move_date_passed", 3, true]);
+  const none = (await readOutreachAssessment(IDS.record, store({ records: [lead()], leads: world.leads }).deps))!.data;
+  assert.deepEqual([none.current, none.lead_move_table?.rows.find(r => r.key === "pickup")?.lead_on_file], [null, "Austin, TX"]);
+  // Lead-only artifact (no covered conversation): nothing to count.
+  const leadOnly = store({ ...world, artifacts: [artifact({ latest_conversation_at: null, input_mode: "lead_only" })] });
+  assert.equal((await readOutreachAssessment(IDS.record, leadOnly.deps))!.data.current?.newer_calls_count, null);
+  assert.ok(!leadOnly.calls.includes("newerCalls"));
+});
+
+test("S3-PRES run presentation: fixed query shape, independent of the number of findings and citations (no per-finding / per-evidence read)", async () => {
+  const summary = snapshot(IDS.summarySnapshot, summaryArtifactResponse(), { run_id: IDS.structuredRun });
+  const context = snapshot(CONTEXT_SNAPSHOT, contextResponse(), { run_id: IDS.structuredRun });
+  const envelope = relationsRun().output as ReturnType<typeof legacyEnvelope>;
+  const findingsFor = (n: number): FindingRow[] => Array.from({ length: n }, (_, i) => ({ _id: hex(200 + i), run_id: IDS.structuredRun, revision: 1, key: i < 2 ? `f${i + 1}` : `x${i}`,
+    assertion: { ...envelope.findings[i % 2], key: i < 2 ? `f${i + 1}` : `x${i}` }, review_state: "unreviewed", purged_at: null, conversation_id: IDS.conversation }));
+  const shapes: string[][] = [];
+  for (const n of [2, 40]) {
+    const { deps, calls } = store({ runs: [relationsRun()], snapshots: [summary, context], findings: [...findingsFor(n), ...priorFindings()], transcripts: [transcriptRow()],
+      suggestion: { applied_at: new Date("2026-09-10T15:00:00Z"), followup_id: hex(51), followup_due_at: null } });
+    const view = (await readRunPresentation(IDS.structuredRun, deps))!.data;
+    runPresentationSchema.parse(view);
+    assert.equal(view.summary_findings.findings.length, n);
+    assert.equal(view.summary_findings.prior_finding_relations?.length, 5);
+    assert.equal(view.summary_findings.suggested_next_step?.followup_id, hex(51));
+    assert.ok(view.evidence.items.filter(i => i.kind === "transcript_quote").every(i => i.quote === "We move on the fifteenth of October."));
+    shapes.push([...calls].sort());
+  }
+  assert.deepEqual(shapes[0], shapes[1], "40 findings issue exactly the queries 2 findings do");
+  for (const name of ["snapshots", "reviewItems", "appliedSuggestion", "instructions", "conversations", "transcripts", "findingsById"])
+    assert.equal(shapes[1]!.filter(c => c === name).length, name === "snapshots" ? 2 : 1, name);
 });

@@ -20,6 +20,10 @@ export const ASSESSMENT_APPLICABILITY = ["active", "closed", "not_applicable"] a
 export type AssessmentApplicability = (typeof ASSESSMENT_APPLICABILITY)[number];
 const confidence = z.enum(["low", "medium", "high"]);
 const score = z.number().min(0).max(100);
+/** Data spec §6.2: the one derived staleness reason. A stored reason outside this enum is ignored on read. */
+export const STALE_REASONS = ["move_date_passed"] as const;
+export type StaleReason = (typeof STALE_REASONS)[number];
+const staleReason = z.enum(STALE_REASONS);
 
 /** §3 locators plus the two envelope citation shapes (`analysis_transcript`, `analysis_record`) used by legacy/structured findings. */
 export const evidenceLocatorDtoSchema = z.discriminatedUnion("source", [
@@ -48,7 +52,9 @@ export type EvidenceRefDto = z.infer<typeof evidenceRefDtoSchema>;
 export const scoreDtoSchema = z.object({
   score: score.nullable(), level: z.enum(ASSESSMENT_LEVELS).nullable(), label: z.string(), confidence: confidence.nullable(),
   rationale: z.string().nullable(), conditions: z.array(z.string()), evidence: z.array(evidenceRefDtoSchema),
-  stale: z.boolean(), stale_reason: z.string().nullable(), applicability: z.enum(ASSESSMENT_APPLICABILITY),
+  stale: z.boolean(), stale_reason: staleReason.nullable(), applicability: z.enum(ASSESSMENT_APPLICABILITY),
+  /** RD11: true only when the level is above `unknown` and the score cites nothing (`This score should cite evidence and does not.`). */
+  evidence_missing: z.boolean().optional(),
 }).strict();
 export type ScoreDto = z.infer<typeof scoreDtoSchema>;
 
@@ -96,20 +102,56 @@ export const conflictDtoSchema = z.object({ affects: z.string(), explanation: z.
 export type ConflictDto = z.infer<typeof conflictDtoSchema>;
 
 /** Work state the model read from the conversations, plus the deterministic effects the server applied at publication. */
+/**
+ * Server labels (data spec §6.11 D, final spec §11.3) are additive and optional: an older server omits them.
+ * `followup_created` / `followup_id` come from `engagement_effects` (the follow-up the server created for this item).
+ */
+const engagementItemLabels = {
+  status_label: z.string().optional(), date_label: z.string().nullable().optional(),
+  followup_created: z.boolean().optional(), followup_id: z.string().nullable().optional(),
+};
 export const promisedCallbackDtoSchema = z.object({ by: z.string(), raw_text: z.string(), date: z.string().nullable(), time_text: z.string().nullable(),
-  status: z.string(), evidence: z.array(evidenceRefDtoSchema) }).strict();
+  status: z.string(), evidence: z.array(evidenceRefDtoSchema), by_label: z.string().optional(), ...engagementItemLabels }).strict();
 export const nextStepDtoSchema = z.object({ action: z.string(), owner: z.string(), description: z.string(), date: z.string().nullable(), date_text: z.string().nullable(),
-  status: z.string(), evidence: z.array(evidenceRefDtoSchema) }).strict();
+  status: z.string(), evidence: z.array(evidenceRefDtoSchema), action_label: z.string().optional(), owner_label: z.string().optional(), ...engagementItemLabels }).strict();
 export const engagementEffectsDtoSchema = z.object({
   applied: z.boolean(), mark_worked: z.boolean(), blocked: z.string().nullable(), followup_ids: z.array(z.string()),
   followups: z.array(z.object({ kind: z.string(), origin: z.string(), description: z.string(), source: z.string() }).strict()),
-  skipped: z.array(z.object({ source: z.string(), index: z.number().int(), reason: z.string() }).strict()),
+  skipped: z.array(z.object({ source: z.string(), index: z.number().int(), reason: z.string(),
+    reason_label: z.string().optional(), text: z.string().nullable().optional() }).strict()),
+  blocked_label: z.string().nullable().optional(),
 }).strict();
 export const engagementDtoSchema = z.object({
   work_status: z.string(), rationale: z.string(), evidence: z.array(evidenceRefDtoSchema),
   promised_callbacks: z.array(promisedCallbackDtoSchema), next_steps: z.array(nextStepDtoSchema),
   effects: engagementEffectsDtoSchema.nullable(),
+  work_status_label: z.string().optional(),
 }).strict();
+
+/**
+ * Final spec §11.4 move table (data spec §6.11 D): server-built strings, fixed row order. A null cell is
+ * empty (`Not mentioned` in the customer column, `Not on file` in the other two); `services`, `access`
+ * and `money` have no Lead values, so their Lead cells are always null.
+ */
+export const MOVE_TABLE_ROWS = ["pickup", "delivery", "move_date", "size", "services", "access", "money", "inventory"] as const;
+export const MOVE_TABLE_MARKERS = ["flexible", "conditional", "changed", "retracted", "declined"] as const;
+export const moveTableDtoSchema = z.object({
+  rows: z.array(z.object({
+    key: z.enum(MOVE_TABLE_ROWS), label: z.string(),
+    customer: z.array(z.object({ text: z.string(), marker: z.enum(MOVE_TABLE_MARKERS).nullable(), evidence: z.array(evidenceRefDtoSchema) }).strict()),
+    lead_on_file: z.string().nullable(), original: z.string().nullable(),
+    conflict: z.object({ explanation: z.string(), evidence: z.array(evidenceRefDtoSchema),
+      /** The disagreeing cells, from the conflict's citations (Lead on file / Original submission / the customer's words). */
+      cells: z.array(z.enum(["customer", "lead_on_file", "original"])) }).strict().nullable(),
+  }).strict()),
+  original_origin_label: z.string().nullable(),
+  /** Conflicts that affect a score rather than a fact (`Conflicts ({n})`). */
+  score_conflicts: z.array(z.object({ affects: z.string(), affects_label: z.string(), explanation: z.string(), evidence: z.array(evidenceRefDtoSchema) }).strict()),
+  inventory_count: z.number().int().nonnegative(),
+  /** `From {n} of {m} conversations`, or null when coverage is unknown. */
+  source_coverage_text: z.string().nullable(),
+}).strict();
+export type MoveTableDto = z.infer<typeof moveTableDtoSchema>;
 export type EngagementDto = z.infer<typeof engagementDtoSchema>;
 
 export const sourceManifestEntryDtoSchema = z.object({
@@ -135,6 +177,14 @@ export const assessmentSectionSchema = z.object({
   coverage: z.object({ conversations_available: z.number().int().nonnegative(), conversations_selected: z.number().int().nonnegative(),
     findings_selected: z.number().int().nonnegative() }).strict().nullable(),
   source_manifest: z.array(sourceManifestEntryDtoSchema),
+  /** Additive (data spec §6.11 D, §6.2). Absent on older servers. */
+  move_table: moveTableDtoSchema.optional(),
+  /** Canonical calls on the Number after `latest_conversation_at`; null when the section has no Number or no covered conversation. */
+  newer_calls_count: z.number().int().nonnegative().nullable().optional(),
+  stale: z.boolean().optional(),
+  stale_reason: staleReason.nullable().optional(),
+  /** When the artifact was published onto the Outreach record; null for an unpublished version. */
+  published_at: date.nullable().optional(),
 }).strict();
 export type AssessmentSection = z.infer<typeof assessmentSectionSchema>;
 
@@ -153,10 +203,44 @@ export const assessmentSubjectSchema = z.object({
 export const outreachAssessmentDtoSchema = z.object({
   subject: assessmentSubjectSchema, availability: z.enum(ASSESSMENT_AVAILABILITY),
   current: assessmentSectionSchema.nullable(), versions: z.array(assessmentVersionSchema),
+  /** Additive: when there is no current section, the move table from the live Lead views only (final spec §11.9). */
+  lead_move_table: moveTableDtoSchema.nullable().optional(),
 }).strict();
 export type OutreachAssessmentDto = z.infer<typeof outreachAssessmentDtoSchema>;
 
 const summarySectionKey = z.enum(["overview", "customer_wanted", "money_and_dates", "outcome", "commitments", "discrepancies"]);
+
+/** Data spec §6.5: the work a finding did, decided on the server. */
+export const WORK_RESULTS = ["applied", "blocked", "needs_review", "not_applicable", "superseded", "retracted"] as const;
+export type WorkResult = (typeof WORK_RESULTS)[number];
+/** Final spec §11.5 category order; the kind → category table lives on the server only. */
+export const FINDING_CATEGORIES = ["commitments", "booking_payment", "money", "objections", "restrictions", "move_facts", "call_type", "coaching"] as const;
+export type FindingCategory = (typeof FINDING_CATEGORIES)[number];
+/** Data spec §6.11 B. Optional so a client parses an older server's findings. */
+export const presentedFindingFields = {
+  source_word: z.string().optional(), action_status_word: z.string().nullable().optional(), value_line: z.string().nullable().optional(),
+  category: z.enum(FINDING_CATEGORIES).optional(), category_label: z.string().optional(),
+  work_result: z.enum(WORK_RESULTS).optional(), work_result_detail: z.string().nullable().optional(), superseded_by: z.string().nullable().optional(),
+  /** Start of the call the finding came from (`LeadConversation.started_at`); null when unknown. */
+  call_at: date.nullable().optional(),
+};
+export const PRIOR_RELATION_KINDS = ["still_true", "superseded", "fulfilled", "contradicted", "cannot_determine"] as const;
+export const priorFindingRelationDtoSchema = z.object({
+  prior_finding_id: z.string(), prior_claim: z.string().nullable(), prior_kind: z.string().nullable(),
+  relation: z.enum(PRIOR_RELATION_KINDS), relation_word: z.string(),
+  /** `changed` rows are listed under `Changes since the last analysis`; `unchanged` rows (still true / unclear) are collapsed. */
+  group: z.enum(["changed", "unchanged"]),
+  by_finding_id: z.string().nullable(), by_claim: z.string().nullable(), note: z.string().nullable(),
+  evidence: z.array(evidenceRefDtoSchema), review_item_id: z.string().nullable(), review_item_state: z.string().nullable(),
+}).strict();
+export const storyDiscrepancyDtoSchema = z.object({
+  story_event_id: z.string(), event_kind: z.string(), claim: z.string(), evidence: z.array(evidenceRefDtoSchema),
+  review_item_id: z.string().nullable(), review_item_state: z.string().nullable(),
+}).strict();
+export const ownerInstructionAssessmentDtoSchema = z.object({
+  instruction_id: z.string(), instruction_revision: z.number().int().nonnegative(), instruction_text: z.string().nullable(),
+  assessment: z.enum(["agrees", "disagrees", "cannot_determine"]), assessment_word: z.string(), reason: z.string(),
+}).strict();
 export const summaryFindingsSectionSchema = z.object({
   availability: z.enum(SECTION_AVAILABILITY),
   scope: z.enum(["conversation", "number"]),
@@ -169,10 +253,18 @@ export const summaryFindingsSectionSchema = z.object({
     id: z.string(), kind: z.string(), claim: z.string(), basis: z.string(), actor: z.string(), action_status: z.string().nullable(),
     clarity: z.string(), review_state: z.enum(["unreviewed", "confirmed", "corrected", "retracted"]), evidence: z.array(evidenceRefDtoSchema),
     effects: z.array(z.object({ kind: z.string(), status: z.string(), reason: z.string().nullable(), target_id: z.string().nullable() }).strict()),
+    ...presentedFindingFields,
   }).strict()),
   suggested_next_step: z.object({ action_kind: z.string(), description: z.string(), date_text: z.string().nullable(), timezone_text: z.string().nullable(),
-    rationale: z.string(), target_followup_id: z.string().nullable() }).strict().nullable(),
+    rationale: z.string(), target_followup_id: z.string().nullable(),
+    // Additive (data spec §6.11 C): the `analysis.suggestion_applied` audit row for this run and the follow-up it created.
+    action_label: z.string().optional(), applied_at: date.nullable().optional(), followup_id: z.string().nullable().optional(),
+    followup_due_at: date.nullable().optional() }).strict().nullable(),
   applied_actions: z.array(z.object({ id: z.string(), kind: z.string(), description: z.string(), status: z.string(), due_at: date.nullable() }).strict()),
+  /** Additive (data spec §6.11 C), empty when the run's output carries none. */
+  prior_finding_relations: z.array(priorFindingRelationDtoSchema).optional(),
+  story_discrepancies: z.array(storyDiscrepancyDtoSchema).optional(),
+  owner_instruction_assessments: z.array(ownerInstructionAssessmentDtoSchema).optional(),
 }).strict();
 export type SummaryFindingsSection = z.infer<typeof summaryFindingsSectionSchema>;
 
@@ -185,6 +277,18 @@ export const evidenceOpenDtoSchema = z.discriminatedUnion("kind", [
 export const evidenceItemDtoSchema = z.object({
   id: z.string(), kind: z.enum(EVIDENCE_KINDS), source: evidenceLocatorDtoSchema,
   availability: z.enum(["retained", "purged", "missing", "partial"]), text: z.string().nullable(), open: evidenceOpenDtoSchema.nullable(),
+  // Additive (data spec §6.11 C). Transcript items: the quoted segments, their speaker and exact time (call start + first segment offset).
+  quote: z.string().nullable().optional(), speaker: z.enum(["rep", "customer", "unknown"]).nullable().optional(), at: date.nullable().optional(),
+  /** `Rep`, `Customer` or `Speaker unknown` for `speaker`. */
+  speaker_label: z.string().nullable().optional(),
+  /** When the cited content was removed under retention; the citation is kept. */
+  purged_at: date.nullable().optional(),
+  // Summary citations: the call time and the transcript segments behind the cited item (`Open in transcript`).
+  conversation_id: z.string().nullable().optional(), call_at: date.nullable().optional(), segment_ids: z.array(z.number().int().nonnegative()).optional(),
+  /** Short source phrase (`From the call summary`, `Said on the call`, a summary section label). */
+  source_label: z.string().nullable().optional(),
+  // Record citations: final spec §11.6 label, a one-line `text` and the time the record was read.
+  record_label: z.string().nullable().optional(), as_of: date.nullable().optional(),
 }).strict();
 export type EvidenceItemDto = z.infer<typeof evidenceItemDtoSchema>;
 export const evidenceSectionSchema = z.object({ availability: z.enum(SECTION_AVAILABILITY), items: z.array(evidenceItemDtoSchema) }).strict();
@@ -221,6 +325,6 @@ export const outreachMoveAssessmentDtoSchema = z.object({
   artifact_id: id.nullable(), status: z.enum(ASSESSMENT_AVAILABILITY), applicability: z.enum(ASSESSMENT_APPLICABILITY),
   transaction_intent: score.nullable(), move_likelihood: score.nullable(),
   transaction_intent_confidence: confidence.nullable(), move_likelihood_confidence: confidence.nullable(),
-  context_as_of: date.nullable(), latest_conversation_at: date.nullable(), stale: z.boolean(), stale_reason: z.string().nullable(), published_at: date.nullable(),
+  context_as_of: date.nullable(), latest_conversation_at: date.nullable(), stale: z.boolean(), stale_reason: staleReason.nullable(), published_at: date.nullable(),
 }).strict();
 export type OutreachMoveAssessmentDto = z.infer<typeof outreachMoveAssessmentDtoSchema>;

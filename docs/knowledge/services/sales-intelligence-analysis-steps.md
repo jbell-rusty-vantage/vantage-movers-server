@@ -17,6 +17,9 @@ applies_to:
   - src/services/salesIntelligence/story/
   - src/services/salesIntelligence/companyContext.ts
   - src/services/salesIntelligence/assessment/contract.ts
+  - src/services/salesIntelligence/assessment/presentation.ts
+  - src/services/salesIntelligence/assessment/dto.ts
+  - src/services/salesIntelligence/assessment/reads.ts
 ---
 
 # What the analysis model steps are shown and what they produce
@@ -94,6 +97,31 @@ Everything on this page is labelled to the model as an earlier model output, nev
 ## Move assessment (`assessment/contract.ts`, `move-assessment-v1`)
 
 Nominated after every summary step for the Outreach subject of the number; its own context (`assessment/context.ts`): Lead views (original submission vs canonical current), official flags, Owner corrections, every call summary with `move_evidence`, retained findings of seven kinds. Returns `scores` (`transaction_intent`, `move_likelihood`: level, confidence, rationale, evidence ids, conditions), `move_details` (locations, date window, size, service, access, money), `inventory` (items, coverage, limitations), `conflicts`, and `engagement` (`work_status`, promised callbacks, next steps). The server maps levels to numbers, publishes the artifact onto the Outreach record and applies deterministic band effects and follow-ups from `engagement`. The findings step sees the published assessment as a `prior_assessment` record; the assessment does not read the story.
+
+## How each output is presented to the Owner (S3-PRES, data spec §6.11)
+
+The analysis page renders model output only through server-built presentation fields; the admin places strings and formats nothing about a finding, a score or a move fact. All of it is pure code in `assessment/presentation.ts` over rows `assessment/reads.ts` loads in fixed batches (never one query per finding or citation). Model text in new fields is redacted with `redactTranscript`, like the evidence catalog. Times are America/New_York with the `ET` suffix (`Tue Sep 23, 10:00 AM ET`).
+
+| Model output | DTO path | Built by |
+| --- | --- | --- |
+| Step 1 `summary.*` | `GET /analysis-runs/:id/presentation` → `summary_findings.summary.sections[]` (`key`, server `label`, `text`) for a one-call run; the per-call card is S4 (`GET /numbers/:id/conversations`) | `runPresentation`, `SUMMARY_LABELS` |
+| Step 1 `said_on_call[]` | `summary_findings.said_on_call[]`; as evidence, the resolved item's `text`, `segment_ids`, `speaker`, `call_at`, `source_label: "Said on the call"` | `summaryCitation` |
+| Step 1 `move_evidence.{observations, inventory, intent_signals}` | Assessment evidence items for `move_evidence.N`: one flat index in that order (the catalog's numbering, `sources.ts`), `text` such as `Money: $4,200 quote`, `Inventory: Piano × 1 (Living room)`, `Ready to book: …`, plus `segment_ids` | `summaryCitation` (fixes D11) |
+| Step 3 `summary.*` | `summary_findings.summary.sections[]` (Number or multi-call run); the 280-character overview is `outreach.latest_summary` (S3-READS) | `runPresentation` |
+| Step 3 `findings[]` + stored `resolved`, `review_state`, `effects`, `superseded_by` | `summary_findings.findings[]`: `source_word`, `action_status_word`, `value_line`, `category` / `category_label` (final spec §11.5 order), `work_result`, `work_result_detail`, `superseded_by`, `call_at`; raw `effects[]` kept | `findingSourceWord`, `actionStatusWord`, `findingValueLine`, `findingCategory`, `findingWorkResult` |
+| Step 3 `next_step_suggestion` | `summary_findings.suggested_next_step` + `action_label`, `applied_at`, `followup_id`, `followup_due_at` (the `analysis.suggestion_applied` audit row for this run and the `owner:{command_id}:action` follow-up it created; null when not applied) | `runPresentation`, store `appliedSuggestion` |
+| Step 3 `owner_instruction_assessments[]` | `summary_findings.owner_instruction_assessments[]` `{instruction_id, instruction_revision, instruction_text, assessment, assessment_word, reason}` | `correctionText` |
+| Step 3 `prior_finding_relations[]` | `summary_findings.prior_finding_relations[]` `{prior_finding_id, prior_claim, prior_kind, relation, relation_word, group, by_finding_id, by_claim, note, evidence[], review_item_id, review_item_state}`; `group: unchanged` for `still_true` / `cannot_determine` | `runPresentation` (prior findings: one `$in`; review items: one query with the finding and cause clauses) |
+| Step 3 `story_discrepancies[]` | `summary_findings.story_discrepancies[]` `{story_event_id, event_kind, claim, evidence[], review_item_id, review_item_state}` | `storyEventKind` |
+| Citations of every step | `evidence.items[]`: transcript items `quote`, `speaker`, `at` (call start + segment `start_ms`), `purged_at`; summary items `text`, `call_at`, `segment_ids`, `source_label`; record items `record_label` (final spec §11.6), one-line `text`, `as_of` | `resolveEvidence` |
+| Move assessment `scores.*` | `GET /outreach/:id/assessment` → `current.{transaction_intent, move_likelihood}` (`ScoreDto`: `label`, `evidence_missing` true only above `unknown` with no citations, RD11) | `dimension` |
+| Assessment `move_details[]` + Lead views | `current.move_table.rows[]` (`pickup, delivery, move_date, size, services, access, money, inventory`): `customer[] {text, marker, evidence}`, `lead_on_file`, `original`, `conflict {explanation, evidence, cells}`; `original_origin_label`, `score_conflicts[]`, `source_coverage_text`; `lead_move_table` when there is no assessment | `moveTable`, `leadOnlyMoveTable` |
+| Assessment `inventory`, `source_coverage` | `current.inventory.{items, coverage, limitations, source_coverage}` (pass-through) and `move_table.inventory_count` | `assessmentSection` |
+| Assessment `conflicts[]` | `current.conflicts[]`, and on `move_table` per row / `score_conflicts` | `moveTable` |
+| Assessment `engagement` + `engagement_effects` | `current.engagement`: `work_status_label`; per item `status_label`, `by_label` / `action_label`, `date_label`, `followup_created`, `followup_id`; `effects.skipped[].reason_label`, `.text`; `effects.blocked_label` | `engagementDto` |
+| Assessment header | `current.{generated_at, published_at, latest_conversation_at, coverage, input_mode, availability}` + `newer_calls_count` (one `countDocuments` on `call_interaction_number_started_id`) + derived `stale` / `stale_reason` (`move_date_passed` when the Lead's move date is before today in ET at `as_of`; a stored reason outside the enum is ignored) | `derivedFreshness`, `moveDateHasPassed` |
+
+**Work result** (`findingWorkResult`, data spec §6.5): relation bookkeeping effects are dropped first (`supersede`, and `open_review` with reason `prior_finding_contradicted` or `prior_fulfilled_followup_open`); then `retracted` › `superseded` (detail: the superseding finding id) › `applied` (detail: `follow-up due {ET}` for a created or revised follow-up, else the effect kind label) › `blocked` (detail: the reason's label) › `needs_review` (a `needs_review` effect, or an open review item naming the finding) › `not_applicable`. Review items that do not describe the finding's own work never count: `record_disputed_on_call` (it cites the run's first five findings) and the two relation causes `prior_contradiction` / `prior_fulfilled_unclaimed` (they surface on the relation row instead).
 
 ## Where to look at a run
 
