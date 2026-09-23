@@ -51,7 +51,7 @@ export async function applyPriorRelations(run: RunRow, envelope: IntelligenceEnv
   }
   for (const discrepancy of envelope.story_discrepancies ?? []) {
     // A customer disputing a text Vantage sent or a callback Vantage recorded is a record question for the Owner.
-    if (!/^(lead_message_sent|followup_completed|call):/.test(discrepancy.story_event_id)) continue;
+    if (!/^(lead_message_sent|followup_completed):/.test(discrepancy.story_event_id)) continue;
     await openReview(context, run.subject_key, "record_disputed_on_call", discrepancy.story_event_id, findings.map(f => String(f._id)).slice(0, 5));
   }
 }
