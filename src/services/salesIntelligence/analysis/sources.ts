@@ -48,11 +48,13 @@ export async function intelligenceSources(numberId: string, session: ClientSessi
   const cancellations = await database.collection("cancelled_leads").find({ lead_ref: { $in: edges.map(e => e.lead_ref.id) } },
     { session, projection: { lead_ref: 1, lead_model: 1, reason: 1, timestamp: 1 } }).sort({ _id: 1 }).limit(101).toArray();
   if (bookings.length > 100 || cancellations.length > 100) throw new CsiError("EVIDENCE_LIMIT_REACHED");
+  // Findings only feed the fingerprint hash: their bound follows the 100-conversation bound rather than a flat 100,
+  // which made a 19-conversation Number unanalysable at number level.
   const findings = await getIntelligenceFindingModel().find({
     run_id: { $in: conversations.flatMap(c => c.latest_completed_run_id ? [c.latest_completed_run_id] : []) },
   })
-    .limit(101).session(session).lean();
-  if (findings.length > 100) throw new CsiError("EVIDENCE_LIMIT_REACHED");
+    .limit(1001).session(session).lean();
+  if (findings.length > 1000) throw new CsiError("EVIDENCE_LIMIT_REACHED");
   const assertions = findings.map(f => {
     const purged = (f as { purged_at?: Date | null }).purged_at;
     if (purged || (f.assertion && typeof f.assertion === "object" && (f.assertion as { purged?: boolean }).purged)) {
