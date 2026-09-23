@@ -53,7 +53,19 @@ export type TimelineSourceInput = {
   national_ten: string | null;
   limit: number;
   cursor: TimelineCursor | null;
+  /** D4: reach legacy conversations (no `contact_number_id`) through the recording link. Default true. */
+  legacy_conversations?: boolean;
 };
+
+/**
+ * D4 gate (data spec §7). The legacy conversation scan stays **on** by default: the production
+ * count of unlinked conversations is 4, not 0 (DECISIONS 2026-09-23). The operator turns it off
+ * with `SALES_INTELLIGENCE_LEGACY_CONVERSATION_FALLBACK_DISABLED=true` after
+ * `migration:csi:conversation-number` and a zero re-count. Same env semantics as `csiFlag`.
+ */
+export function legacyConversationFallbackEnabled(): boolean {
+  return process.env.SALES_INTELLIGENCE_LEGACY_CONVERSATION_FALLBACK_DISABLED?.trim().toLowerCase() !== "true";
+}
 
 /** Returns up to `limit` events strictly after `cursor` in the total order, already sorted. */
 export type TimelineSource = (input: TimelineSourceInput) => Promise<NumberTimelineEventDto[]>;
@@ -397,7 +409,7 @@ async function legacyLinkedConversations(
  * on every conversation it writes, so the primary read is a keyset scan of
  * `lead_conversation_number_started` with no sort stage and no join.
  */
-export const conversationSource: TimelineSource = async ({ number_id, limit, cursor }) => {
+export const conversationSource: TimelineSource = async ({ number_id, limit, cursor, legacy_conversations }) => {
   const keyset = keysetAfterCursor(cursor, "conversation", "started_at", "_id", objectId);
   const [direct, legacy] = await Promise.all([
     getLeadConversationModel()
@@ -405,7 +417,7 @@ export const conversationSource: TimelineSource = async ({ number_id, limit, cur
       .sort({ started_at: -1, _id: -1 })
       .limit(limit)
       .lean() as unknown as Promise<ConversationLean[]>,
-    legacyLinkedConversations(number_id, limit, cursor),
+    legacy_conversations === false ? Promise.resolve([] as ConversationLean[]) : legacyLinkedConversations(number_id, limit, cursor),
   ]);
   const merged = new Map<string, ConversationLean>();
   for (const row of [...direct, ...legacy]) merged.set(String(row._id), row);
@@ -430,6 +442,8 @@ export type TimelineDependencies = {
   /** Appended to the source set (Team C: outreach events, nudges). */
   extraSources?: TimelineSource[];
   now?: () => Date;
+  /** D4 override; defaults to `legacyConversationFallbackEnabled()`. */
+  legacyConversations?: boolean;
 };
 
 const DEFAULT_LIMIT = 50;
@@ -455,6 +469,7 @@ export async function getNumberTimeline(
     national_ten: number.national_ten ?? null,
     limit: limit + 1,
     cursor,
+    legacy_conversations: deps.legacyConversations ?? legacyConversationFallbackEnabled(),
   };
   const pages = await Promise.all(sources.map((source) => source(input)));
   const merged = mergeTimeline(pages, limit);

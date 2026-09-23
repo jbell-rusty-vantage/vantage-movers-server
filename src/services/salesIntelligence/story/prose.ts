@@ -317,3 +317,85 @@ export function renderStoryProse(story: Pick<SubjectStory, "opening" | "events" 
   if (story.tail.trim()) pieces.push(story.tail.trim());
   return pieces.join(" ");
 }
+
+// ---------------------------------------------------------------------------------------------
+// Owner timeline copy (final specification §10.2; data spec §5.2 adapter). The description the
+// Owner reads is `renderTimelineSentence`, i.e. the same sentence the model reads; the title is
+// the short §10.2 heading. Nothing above this line changes for the model's story page.
+// ---------------------------------------------------------------------------------------------
+
+/** `Sep 20, 3:10 PM ET`, with the year only when it differs from the reference instant's year (§3.3). */
+export function formatTimelineTime(iso: string | null | undefined, timezone: string, reference: Date | null): string {
+  const date = parse(iso);
+  if (!date) return "Time unknown";
+  const p = parts(date, timezone);
+  const sameYear = reference ? parts(reference, timezone).year === p.year : true;
+  return `${p.month} ${p.day}${sameYear ? "" : `, ${p.year}`}, ${p.hour}:${p.minute} ${p.period} ${p.zone}`;
+}
+
+const OWNER_CERTAINTY_LABELS: Record<string, string> = { exact: "Exact", likely: "Likely", unsure: "Unsure", owner_confirmed: "Confirmed by you", rejected: "Rejected" };
+const sentenceCase = (value: string) => capitalize(value.replace(/_/g, " "));
+
+/**
+ * The sentence for the Owner timeline: `renderSentence` capitalised, plus the two kinds the
+ * model never sees (`followup_snoozed`, `analysis_submitted`).
+ */
+export function renderTimelineSentence(event: StoryEvent, ctx: RenderContext): string {
+  const d = event.detail;
+  const kind = event.kind as string;
+  if (kind === "followup_snoozed") return clip(redactTranscript(`The follow-up was snoozed${str(d.until) ? ` until ${formatAbsolute(str(d.until), ctx.timezone)}` : ""}${str(d.reason) ? `: ${clean(d.reason, 120)}` : ""}.`).text, SENTENCE_MAX);
+  if (kind === "analysis_submitted") return "An analysis run was submitted for processing.";
+  return capitalize(renderSentence(event, ctx));
+}
+
+/** The §10.2 title of one timeline event. `reference` is the response `as_of` (year rule). */
+export function renderTimelineTitle(event: StoryEvent, ctx: RenderContext, reference: Date | null): string {
+  const d = event.detail;
+  const when = (value: unknown) => formatTimelineTime(str(value), ctx.timezone, reference);
+  let title: string;
+  switch (event.kind as string) {
+    case "lead_received": title = d.model === "CallLead" ? "Call Lead created after Call Qualification" : `Form Lead received from ${clean(d.source_company_label, 60) ?? "an unknown source"}`; break;
+    case "call_qualified": title = "Call qualified as a Lead"; break;
+    case "call": title = `${d.direction === "Inbound" ? "Inbound" : d.direction === "Outbound" ? "Outbound" : sentenceCase(String(d.direction ?? "Unknown"))} call · ${clean(d.provider_result, 40) ?? "result not reported"} · ${formatDuration(d.duration_seconds)}`; break;
+    case "conversation_recorded": title = "Recorded conversation captured"; break;
+    case "conversation_analyzed": title = "Conversation analyzed"; break;
+    case "assessment_published": title = `Assessment published · Transaction intent ${num(d.transaction_intent) ?? "not scored"} · Move likelihood ${num(d.move_likelihood) ?? "not scored"}`; break;
+    case "granot_priority_changed": title = `Granot Priority ${clean(d.to, 10) ?? "cleared"}${str(d.label_to) ? ` (${clean(d.label_to, 30)})` : ""}`; break;
+    case "quoted_changed": title = d.quoted === false ? "Quoted mark removed in Granot" : "Marked Quoted in Granot"; break;
+    case "granot_observed": title = "Granot record observed"; break;
+    case "number_attached": {
+      const verb = d.state === "rejected" ? "Number rejected for this Lead" : d.state === "ambiguous" ? "Number marked ambiguous for this Lead" : d.state === "attached" ? "Number attached to this Lead" : "Number is a candidate for this Lead";
+      const certainty = str(d.certainty) ? OWNER_CERTAINTY_LABELS[str(d.certainty)!] ?? clean(d.certainty, 30) : null;
+      title = [verb, certainty, clean(d.reason, 60)].filter((p): p is string => Boolean(p)).join(" · "); break;
+    }
+    case "followup_created":
+      title = d.kind === "call" ? (str(d.due_at) ? `Callback promised for ${when(d.due_at)}` : "Callback promised · no due date")
+        : `Follow-up created · ${followupKindLabel(str(d.kind))}${str(d.due_at) ? ` · due ${when(d.due_at)}` : ""}`; break;
+    case "followup_completed": title = `Follow-up completed · ${completionBasisLabel(str(d.completion_basis))}`; break;
+    case "followup_snoozed": title = str(d.until) ? `Snoozed until ${when(d.until)}` : "Follow-up snoozed"; break;
+    case "followup_cancelled": title = `Follow-up cancelled · ${clean(d.cancel_reason, 80) ?? "no reason recorded"}`; break;
+    case "followup_superseded": title = "Follow-up replaced by a later one"; break;
+    case "assigned": title = `Assigned to ${clean(d.agent_name, 60) ?? (str(d.agent_id) ? `agent ${clean(d.agent_id, 30)}` : "no one")}`; break;
+    case "owner_note": title = "Owner note"; break;
+    case "closed": title = `Closed · ${clean(d.reason, 60) ?? "no reason recorded"}`; break;
+    case "reopened": title = "Reopened"; break;
+    case "waiting_set": title = str(d.until) ? `Waiting until ${when(d.until)}` : "Set to wait"; break;
+    case "review_opened": title = "Review opened"; break;
+    case "review_resolved": title = "Review resolved"; break;
+    case "restriction_set": title = "Contact restriction set"; break;
+    case "restriction_resolved": title = "Contact restriction resolved"; break;
+    case "nudge_sent": title = `Rep nudge sent${str(d.channel) ? ` · ${clean(d.channel, 30)}` : ""}`; break;
+    case "call_started": title = "Call started"; break;
+    case "call_ended": title = "Call ended"; break;
+    case "analysis_submitted": title = "Analysis submitted"; break;
+    case "owner_correction": title = `You corrected ${clean(String(d.field ?? "the record").replace(/_/g, " "), 30)}`; break;
+    case "booking_recorded": {
+      const binder = formatMoney(d.total_binder_amount);
+      title = ["Booked", binder ? `binder ${binder}` : null, clean(d.agent_name, 60)].filter((p): p is string => Boolean(p)).join(" · "); break;
+    }
+    case "cancellation_recorded": title = `Cancelled · ${clean(d.reason, 80) ?? "no reason recorded"}`; break;
+    case "lead_message_sent": title = `Text sent to the customer · ${purposeLabel(str(d.purpose))} · ${clean(d.status, 30) ?? "status unknown"}`; break;
+    default: title = sentenceCase(String(event.kind));
+  }
+  return clip(redactTranscript(title).text, 160);
+}

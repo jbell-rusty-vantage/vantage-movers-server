@@ -108,7 +108,8 @@ const leadClause = (lead: LeadRow, timezone: string) => {
 const candidateClause = (c: LeadCandidate, timezone: string) => [`${c.lead_ref.model === "FormLead" ? "Form Lead" : "Call Lead"}${c.name ? ` ${c.name}` : ""}`, c.source_company_label ?? "source unknown",
   `received ${formatDate(c.received_at, timezone, false)}`, ...(c.job_no ? [`Job ${c.job_no}`] : []), ...(c.duplicate ? ["duplicate"] : [])].join(", ");
 
-function customerLabel(leads: readonly LeadRow[], attachedRefs: readonly StoryLeadRef[], number: Resolved["number"]): string {
+/** Customer label for the prose (Lead name → Granot name → caller ID → "the caller"); the Owner timeline adapter reuses it. */
+export function customerLabel(leads: readonly LeadRow[], attachedRefs: readonly StoryLeadRef[], number: Pick<NonNullable<Resolved["number"]>, "provider_names"> | null): string {
   const ordered = [...attachedRefs.flatMap(ref => leads.filter(l => l.model === ref.model && String(l._id) === ref.id)), ...leads];
   for (const lead of ordered) { const name = leadCustomerName(lead); if (name) return clean(name, 80); }
   const callerId = number?.provider_names.find(n => n.trim());

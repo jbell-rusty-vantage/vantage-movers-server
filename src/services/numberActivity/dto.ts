@@ -184,6 +184,103 @@ export const numberTimelinePageDtoSchema = ownerReadSchema(
     .strict(),
 );
 
+/**
+ * Timeline v2 (data spec §2.6, §5; final spec §10), served behind `SALES_INTELLIGENCE_TIMELINE_V2`.
+ * A superset of the v1 item (`id`, `kind`, `happened_at`, `observed_at`, `subject_key`,
+ * `description`, `evidence_refs`, `detail`), so the admin's current `timelineSchema` still parses
+ * a v2 Number page. `kind` is an open string (the story catalog names; admin maps unknown kinds to a
+ * generic row). Every state is computed by the server: `recorded_late`, `routine`, `chips`, `group`.
+ */
+export const TIMELINE_V2_GROUPS = ["calls", "lead_updates", "work", "messages", "analysis"] as const;
+export const TIMELINE_V2_CHIPS = ["Recording", "Analyzed", "Voicemail", "Human conversation"] as const;
+export const TIMELINE_V2_ACTION_KINDS = ["open_conversation", "open_booking"] as const;
+export const TIMELINE_V2_RECORDING_STATES = ["none", "recorded", "analyzed"] as const;
+
+const timelineV2RepDtoSchema = z
+  .object({
+    agent_id: z.string().nullable(),
+    /** Present only when the RingCentral identity link is reviewed. */
+    name: z.string().nullable(),
+    status: z.enum(["reviewed", "proposed", "unknown"]),
+    extension: z.string().nullable(),
+  })
+  .strict();
+
+/** Facts of a `call` event (Number route Calls tab, final spec §9.3). */
+export const timelineV2CallDtoSchema = z
+  .object({
+    interaction_id: id,
+    direction: z.string(),
+    result: z.string().nullable(),
+    connected: z.boolean(),
+    contact_type: z.string(),
+    duration_seconds: z.number().nullable(),
+    recording_count: z.number().int().nonnegative(),
+    recording_state: z.enum(TIMELINE_V2_RECORDING_STATES),
+    /** The analyzed conversation, else the first linked one; null without a recording link. */
+    conversation_id: id.nullable(),
+    rep: timelineV2RepDtoSchema.nullable(),
+  })
+  .strict();
+
+export const timelineV2EventDtoSchema = z
+  .object({
+    id: z.string().min(1),
+    kind: z.string().min(1),
+    /** Data spec §5.2 row number; the second key of the total order. */
+    kind_order: z.number().int().positive(),
+    group: z.enum(TIMELINE_V2_GROUPS),
+    happened_at: date,
+    observed_at: date,
+    /** `observed_at − happened_at > 1 h`: print `Recorded {observed_at}` (final spec §3.1). */
+    recorded_late: z.boolean(),
+    subject_key: z.string(),
+    title: z.string(),
+    /** The Subject Story sentence the model reads for the same event. */
+    description: z.string(),
+    evidence_refs: z.array(z.string()),
+    detail: z.record(z.string(), z.json()),
+    chips: z.array(z.enum(TIMELINE_V2_CHIPS)),
+    action: z.object({ kind: z.enum(TIMELINE_V2_ACTION_KINDS), href: z.string().min(1) }).strict().nullable(),
+    /** Collapsed under `Processing details ({n})` (final spec §10.1). */
+    routine: z.boolean(),
+    /** Scope `number` with more than one Lead: the admin prefixes `Job {n} ·`. */
+    job_no: z.string().nullable(),
+    actor: z
+      .object({
+        kind: z.enum(["customer", "rep", "vantage", "granot", "owner", "intelligence", "worker"]),
+        agent_id: z.string().nullable(),
+        name: z.string().nullable(),
+      })
+      .strict(),
+    call: timelineV2CallDtoSchema.nullable(),
+  })
+  .strict();
+
+export const timelineV2PageDtoSchema = ownerReadSchema(
+  z
+    .object({
+      scope: z.enum(["number", "outreach"]),
+      /** Always set on scope `number` (the v1 admin requires it). */
+      number_id: id.nullable(),
+      outreach_id: id.nullable(),
+      items: z.array(timelineV2EventDtoSchema),
+      cursor: z.string().nullable(),
+      /** Echo of the `kinds[]` filter applied; null = every kind. */
+      kinds: z.array(z.string()).nullable(),
+      coverage: z
+        .object({
+          /** Sources that did not read every row (more than 20 Leads, or a bounded set at its cap). */
+          truncated_sources: z.array(z.string()),
+        })
+        .strict(),
+    })
+    .strict(),
+);
+
+export type TimelineV2EventDto = z.infer<typeof timelineV2EventDtoSchema>;
+export type TimelineV2PageDto = z.infer<typeof timelineV2PageDtoSchema>;
+
 export type NumberRollupsDto = z.infer<typeof numberRollupsDtoSchema>;
 export type NumberSearchItemDto = z.infer<typeof numberSearchItemDtoSchema>;
 export type NumberSearchPageDto = z.infer<typeof numberSearchPageDtoSchema>;

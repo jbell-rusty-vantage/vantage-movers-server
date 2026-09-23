@@ -12,6 +12,7 @@ import { csiSettingsCommandSchema } from "../validation/v1/salesIntelligence";
 import { enqueueNumberRebuild } from "../services/numberActivity/rebuild";
 import { numberSearchQuerySchema, searchNumberActivity } from "../services/numberActivity/search";
 import { getNumberTimeline } from "../services/numberActivity/timeline";
+import { readNumberTimelineV2, readOutreachTimeline, timelineV2QuerySchema } from "../services/salesIntelligence/outreach/timelineRead";
 import { CsiError, requireCsiOwner, assertCurrentScope } from "../services/salesIntelligence/auth";
 import { csiCommandSchema, csiIdSchema } from "../validation/v1/salesIntelligence";
 import { attachmentListQuerySchema, listAttachments } from "../services/salesIntelligence/attachment/reads";
@@ -50,6 +51,9 @@ export type SalesIntelligenceAdminRouteDeps = {
   search?: typeof searchNumberActivity;
   detail?: typeof getContactNumberDetail;
   timeline?: typeof getNumberTimeline;
+  /** S4-TIMELINE: served only when `SALES_INTELLIGENCE_TIMELINE_V2` is on. */
+  timelineV2?: typeof readNumberTimelineV2;
+  outreachTimeline?: typeof readOutreachTimeline;
   enqueueRebuild?: typeof enqueueNumberRebuild;
   coverage?: typeof readOwnerCoverage;
   settings?: typeof readCsiSettings;
@@ -231,6 +235,14 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
     try {
       guard(req);
       const id = csiIdSchema.parse(req.params.id);
+      // Timeline v2 (data spec §5): the story catalog, `kinds[]`, `kind_order` cursor. Off = today's v1 response, byte for byte.
+      if (flag("TIMELINE_V2")) {
+        const v2 = timelineV2QuerySchema.parse(req.query);
+        await connect();
+        const page = await (deps.timelineV2 ?? readNumberTimelineV2)(id, v2);
+        if (!page) return notFound(req, res);
+        return res.json({ ok: true, ...page });
+      }
       const query = timelineQuerySchema.parse(req.query);
       await connect();
       const page = await timeline(id, { cursor: query.cursor, limit: query.limit });
@@ -324,6 +336,13 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
     try { guard(req); const id = csiIdSchema.parse(req.params.id), outputId = csiIdSchema.parse(req.params.outputId); scopeOnly.parse(req.query); await connect();
       const result = await (deps.runOutput ?? readRunOutput)(id, outputId);
       return result ? res.json({ ok: true, ...result }) : notFound(req, res, "Output"); } catch (error) { return fail(req, res, error); }
+  });
+  // Timeline v2, scope outreach (final spec §10.3). 404 FEATURE_DISABLED until `SALES_INTELLIGENCE_TIMELINE_V2` is on.
+  router.get(`${CSI_ADMIN_PREFIX}/outreach/:id/timeline`, async (req, res) => {
+    try { guard(req); if (!flag("TIMELINE_V2")) throw new CsiError("FEATURE_DISABLED");
+      const id = csiIdSchema.parse(req.params.id); const query = timelineV2QuerySchema.parse(req.query); await connect();
+      const page = await (deps.outreachTimeline ?? readOutreachTimeline)(id, query);
+      return page ? res.json({ ok: true, ...page }) : notFound(req, res, "Outreach"); } catch (error) { return fail(req, res, error); }
   });
   router.get(`${CSI_ADMIN_PREFIX}/outreach/:id`, async (req, res) => {
     try { guard(req); const id = csiIdSchema.parse(req.params.id); await connect(); const result = await readOutreach(id); if (!result) return notFound(req, res); return res.json({ ok: true, ...result }); } catch (error) { return fail(req, res, error); }
