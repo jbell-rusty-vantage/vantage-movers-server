@@ -5,7 +5,7 @@ import {
   intelligenceFindingSchema,
 } from "../../validation/intelligence/intelligenceEnvelope.validation";
 import { csiPolicySchema } from "../../validation/v1/salesIntelligence";
-import { attentionMetricsDtoSchema, attentionRowDtoSchema } from "../../services/salesIntelligence/dto";
+import { attentionRowDtoSchema } from "../../services/salesIntelligence/dto";
 import { z } from "zod";
 import {
   defineCsiModel,
@@ -326,14 +326,6 @@ export const SalesIntelligenceAttentionSnapshotSchema = new Schema(
     // marks a chunk sibling whose rows belong to parent_snapshot_id.
     chunk_index: { type: Number, default: null },
     parent_snapshot_id: { type: String, default: null },
-    // Data spec §2.4 / §3.6–§3.7 (S2, SALES_INTELLIGENCE_ATTENTION_V2). Null on chunk siblings, on
-    // flag-off publishes and on older headers; the read then decodes the rows as before.
-    metrics: {
-      type: Schema.Types.Mixed,
-      default: null,
-      validate: { validator: (v: unknown) => v == null || attentionMetricsDtoSchema.safeParse(v).success, message: "Invalid Attention metrics" },
-    },
-    index_gzip_base64: { type: String, default: null },
   },
   { collection: "sales_intelligence_attention_snapshots" },
 );
