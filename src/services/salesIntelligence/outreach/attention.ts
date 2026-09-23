@@ -368,6 +368,30 @@ export function attentionCursorDigest(input: Omit<AttentionQuery, "cursor" | "li
   return payloadHash(sort === "attention" && view === "attention" && freshness !== "fresh" ? filters : { ...filters, sort, direction, view, ...fresh });
 }
 type StoredRow = z.infer<typeof attentionRowDtoSchema>;
+
+/**
+ * Parsed Attention snapshots, per process. A published snapshot is immutable (only `expires_at` changes, and
+ * the header lookup still checks it), so a warm read skips the payload transfer and the gunzip + JSON.parse of
+ * the whole row set (data spec §3.7, B8). Keyed by dataset and `snapshot_id`; the newest two are kept: the
+ * current snapshot and the one open cursors may still be paging. Entries and rows are shared read-only.
+ */
+type ParsedSnapshot = { entries: AttentionIndexEntry[]; rows: StoredRow[] | null; loadRows: () => StoredRow[]; chunks: Map<number, StoredRow[]> };
+const PARSED_SNAPSHOTS = new Map<string, ParsedSnapshot>();
+const PARSED_SNAPSHOT_LIMIT = 2;
+const ATTENTION_PAYLOAD_EXCLUDED = "-rows -rows_gzip_base64 -index_gzip_base64";
+function parsedSnapshotKey(snapshotId: string) {
+  const { deployment, database } = csiDataset();
+  return `${deployment}:${database}:${snapshotId}`;
+}
+function rememberParsedSnapshot(key: string, value: ParsedSnapshot) {
+  PARSED_SNAPSHOTS.delete(key);
+  PARSED_SNAPSHOTS.set(key, value);
+  while (PARSED_SNAPSHOTS.size > PARSED_SNAPSHOT_LIMIT) PARSED_SNAPSHOTS.delete(PARSED_SNAPSHOTS.keys().next().value!);
+}
+/** Tests only: forget every parsed snapshot so a read pays the cold path again. */
+export function clearParsedAttentionSnapshots() {
+  PARSED_SNAPSHOTS.clear();
+}
 /** No writes on GET, including pagination; cursors bind immutable as-of rows and filters. */
 export async function readAttention(raw: z.input<typeof attentionQuerySchema>, deps: { coverage?: typeof readCaptureCoverage; now?: Date } = {}) {
   const now = deps.now ?? new Date(), coverage = deps.coverage ?? readCaptureCoverage;
@@ -388,9 +412,11 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
   // Chunk siblings share as_of with their header. Only a header (missing or
   // null chunk_index) is a snapshot the desk can bind to.
   const Snapshot = getSalesIntelligenceAttentionSnapshotModel();
+  // The header is read without its payload; the parsed payload comes from the in-process cache when this
+  // instance has already read this snapshot (B8), otherwise it is loaded and parsed once below.
   const snapshot = await Snapshot.findOne({ ...csiDataset(), ...(page ? { snapshot_id: page.snapshot_id } : {}),
     $and: [{ $or: [{ expires_at: null }, { expires_at: { $gt: now } }] },
-      { chunk_index: null }] }).sort({ as_of: -1 }).lean();
+      { chunk_index: null }] }).select(ATTENTION_PAYLOAD_EXCLUDED).sort({ as_of: -1 }).lean();
   const pending = async () => attentionPageDtoSchema.parse({ as_of: now.toISOString(), coverage: await coverage(), data: { items: [], snapshot_id: null, cursor: null, total_items: null, reason_counts: {}, status: "pending_projection" } });
   if (!snapshot) {
     if (page) throw new CsiError("ATTENTION_SNAPSHOT_EXPIRED");
@@ -403,21 +429,28 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
   // materializes only the page (inline: the row array once; chunked: only the
   // chunks the page names). A snapshot without an index is read as before.
   const chunkCount = snapshot.counts?.chunks ?? 0;
-  const inlineRows = (): StoredRow[] => (snapshot.rows_gzip_base64 ? decompressAttentionRows(snapshot.rows_gzip_base64) : Array.isArray(snapshot.rows) ? snapshot.rows : []) as StoredRow[];
-  const encodedIndex = (snapshot as { index_gzip_base64?: string | null }).index_gzip_base64;
-  let stored: StoredRow[] | null = null;
-  let entries: AttentionIndexEntry[];
-  if (encodedIndex) {
-    entries = decodeAttentionIndex(encodedIndex);
-  } else {
-    stored = inlineRows();
-    if (chunkCount > 0) {
-      const parts = await Snapshot.find({ ...csiDataset(), parent_snapshot_id: snapshot.snapshot_id }).sort({ chunk_index: 1 }).lean();
-      if (parts.length !== chunkCount) return pending();
-      stored = parts.flatMap(part => (Array.isArray(part.rows) ? part.rows : []) as StoredRow[]);
+  const cacheKey = parsedSnapshotKey(snapshot.snapshot_id);
+  let parsed = PARSED_SNAPSHOTS.get(cacheKey);
+  if (!parsed) {
+    const payload = await Snapshot.findOne({ _id: snapshot._id }).select("rows rows_gzip_base64 index_gzip_base64").lean();
+    if (!payload) return pending();
+    const encodedRows = payload.rows_gzip_base64 ?? null, plainRows = Array.isArray(payload.rows) ? payload.rows as StoredRow[] : [];
+    const encodedIndex = (payload as { index_gzip_base64?: string | null }).index_gzip_base64;
+    const inlineRows = () => (encodedRows ? decompressAttentionRows(encodedRows) : plainRows) as StoredRow[];
+    if (encodedIndex) {
+      parsed = { entries: decodeAttentionIndex(encodedIndex), rows: null, loadRows: inlineRows, chunks: new Map() };
+    } else {
+      let stored = inlineRows();
+      if (chunkCount > 0) {
+        const parts = await Snapshot.find({ ...csiDataset(), parent_snapshot_id: snapshot.snapshot_id }).sort({ chunk_index: 1 }).lean();
+        if (parts.length !== chunkCount) return pending();
+        stored = parts.flatMap(part => (Array.isArray(part.rows) ? part.rows : []) as StoredRow[]);
+      }
+      parsed = { entries: stored.map((row, position) => attentionIndexEntry(row, position)), rows: stored, loadRows: () => stored, chunks: new Map() };
     }
-    entries = stored.map((row, position) => attentionIndexEntry(row, position));
+    rememberParsedSnapshot(cacheKey, parsed);
   }
+  const entries = parsed.entries;
   // Filter, then sort the whole frozen snapshot, then paginate (§14.1). Attention order is the stored band order.
   const context = { as_of: snapshot.as_of };
   const matched = sortAttentionEntries(entries.filter(entry => entryMatchesAttentionQuery(entry, query, context)), query.sort, direction);
@@ -425,16 +458,18 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
   for (const entry of matched) for (const reason of entry.reasons) reasons[reason] = (reasons[reason] ?? 0) + 1;
   const slice = matched.slice(offset, offset + limit);
   let items: StoredRow[];
-  if (stored) {
-    items = slice.map(entry => stored![entry.position]!);
-  } else if (slice.some(entry => entry.chunk_index != null)) {
+  if (slice.some(entry => entry.chunk_index != null)) {
+    const cached = parsed.chunks;
     const wanted = [...new Set(slice.map(entry => entry.chunk_index!))];
-    const parts = await Snapshot.find({ ...csiDataset(), parent_snapshot_id: snapshot.snapshot_id, chunk_index: { $in: wanted } }).lean();
-    if (parts.length !== wanted.length) return pending();
-    const byChunk = new Map(parts.map(part => [part.chunk_index as number, (Array.isArray(part.rows) ? part.rows : []) as StoredRow[]]));
-    items = slice.map(entry => byChunk.get(entry.chunk_index!)?.[entry.position] as StoredRow);
+    const missing = wanted.filter(chunk => !cached.has(chunk));
+    if (missing.length) {
+      const parts = await Snapshot.find({ ...csiDataset(), parent_snapshot_id: snapshot.snapshot_id, chunk_index: { $in: missing } }).lean();
+      if (parts.length !== missing.length) return pending();
+      for (const part of parts) cached.set(part.chunk_index as number, (Array.isArray(part.rows) ? part.rows : []) as StoredRow[]);
+    }
+    items = slice.map(entry => cached.get(entry.chunk_index!)?.[entry.position] as StoredRow);
   } else {
-    const all = slice.length ? inlineRows() : [];
+    const all = slice.length ? (parsed.rows ??= parsed.loadRows()) : [];
     items = slice.map(entry => all[entry.position]!);
   }
   // The index and the rows are written in one transaction; a mismatch means a corrupt snapshot, never a silent wrong page.

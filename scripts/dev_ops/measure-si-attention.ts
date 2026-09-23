@@ -48,7 +48,7 @@ async function main() {
   const { getOutreachFollowupModel } = await import("../../src/models/OutreachFollowup");
   const { getContactNumberModel } = await import("../../src/models/ContactNumber");
   const { getSalesIntelligenceAttentionSnapshotModel } = await import("../../src/models/SalesIntelligenceAttentionSnapshot");
-  const { publishAttentionSnapshot, readAttention, decompressAttentionRows } = await import("../../src/services/salesIntelligence/outreach/attention");
+  const { publishAttentionSnapshot, readAttention, decompressAttentionRows, clearParsedAttentionSnapshots } = await import("../../src/services/salesIntelligence/outreach/attention");
   const { readCaptureCoverage } = await import("../../src/services/numberActivity/coverage");
   const { defaultCsiPolicy } = await import("../../src/services/salesIntelligence/policy");
 
@@ -173,6 +173,14 @@ async function main() {
       rows_gzip_bytes: rowsGzip, rows_decoded_bytes: decoded, index_gzip_bytes: header?.index_gzip_base64 ? Buffer.byteLength(header.index_gzip_base64) : 0,
       header_bson_bytes: header ? mongoose.mongo.BSON.calculateObjectSize(header) : 0, largest_chunk_bson_bytes: Math.max(0, ...chunkDocs.map(d => mongoose.mongo.BSON.calculateObjectSize(d))) };
     const requests = mix(Boolean(publish?.attentionV2));
+    // Cold reads: the parsed-snapshot cache is empty (a new instance, or the first read after a publish).
+    const cold: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      clearParsedAttentionSnapshots();
+      const start = performance.now();
+      await readAttention(requests[0]![1]);
+      cold.push(performance.now() - start);
+    }
     const timings: Record<string, number[]> = {};
     const all: number[] = [];
     for (let i = 0; i < READS; i++) {
@@ -194,7 +202,7 @@ async function main() {
       }
     }
     const summary = Object.fromEntries(Object.entries(timings).map(([k, v]) => [k, { n: v.length, p50: +pct(v, 0.5).toFixed(1), p95: +pct(v, 0.95).toFixed(1) }]));
-    const result = { label, walk_ms: walkMs, walk_budget_ms: 90_000, size, reads: { n: all.length, p50: +pct(all, 0.5).toFixed(1), p95: +pct(all, 0.95).toFixed(1), max: +Math.max(...all).toFixed(1) }, by_kind: summary };
+    const result = { label, walk_ms: walkMs, walk_budget_ms: 90_000, size, reads: { n: all.length, p50: +pct(all, 0.5).toFixed(1), p95: +pct(all, 0.95).toFixed(1), max: +Math.max(...all).toFixed(1) }, cold_reads_ms: cold.map(ms => +ms.toFixed(1)), by_kind: summary };
     console.log(`# ${label}`, JSON.stringify(result));
     return result;
   }
@@ -206,7 +214,7 @@ async function main() {
     results.push(await measure("flag_on auto layout", { attentionV2: true }));
     results.push(await measure("flag_on chunked layout", { attentionV2: true, layout: "chunked" }));
     console.log("# B8 target p95 < 150 ms; walk budget 90 s");
-    for (const r of results) console.log(`# ${r.label}: walk ${(r.walk_ms / 1000).toFixed(1)} s, total_items ${r.size.total_items} (closed ${r.size.closed_items}), ${r.size.layout}, reads p50 ${r.reads.p50} ms p95 ${r.reads.p95} ms over ${r.reads.n}`);
+    for (const r of results) console.log(`# ${r.label}: walk ${(r.walk_ms / 1000).toFixed(1)} s, total_items ${r.size.total_items} (closed ${r.size.closed_items}), ${r.size.layout}, reads p50 ${r.reads.p50} ms p95 ${r.reads.p95} ms over ${r.reads.n}; cold reads ${r.cold_reads_ms.join("/")} ms`);
   } finally {
     if (process.env.S2_KEEP !== "1") await db.dropDatabase();
     await mongoose.disconnect();

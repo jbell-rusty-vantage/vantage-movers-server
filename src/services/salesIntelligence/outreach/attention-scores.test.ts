@@ -5,7 +5,7 @@ import { attentionRowDtoSchema, type AttentionRowDto } from "../dto";
 import { unknownCoverageFixture } from "../fixtures";
 import { payloadHash } from "../transactions";
 import { moveAssessmentProjectionDto } from "../assessment/presentation";
-import { attentionCursorDigest, attentionQuerySchema, attentionSortKeys, compressAttentionRows, readAttention, sortAttentionRows } from "./attention";
+import { attentionCursorDigest, attentionQuerySchema, attentionSortKeys, clearParsedAttentionSnapshots, compressAttentionRows, readAttention, sortAttentionRows } from "./attention";
 
 process.env.TEST_MODE = "true";
 process.env.SALES_INTELLIGENCE_DEPLOYMENT_ID = "isolated";
@@ -46,7 +46,10 @@ const rows = [
 function mockSnapshot(t: TestContext, list: readonly AttentionRowDto[]) {
   const snapshot = { snapshot_id: "outreach:scores", as_of: new Date("2026-09-22T12:00:00Z"), expires_at: null, counts: { total_items: list.length }, rows: [],
     rows_gzip_base64: compressAttentionRows(list) };
-  t.mock.method(getSalesIntelligenceAttentionSnapshotModel(), "findOne", () => ({ sort: () => ({ lean: async () => snapshot }) }));
+  // Every test publishes its own rows under one snapshot id, so the parsed-snapshot cache starts empty.
+  clearParsedAttentionSnapshots();
+  const query = { select: () => query, sort: () => query, lean: async () => snapshot };
+  t.mock.method(getSalesIntelligenceAttentionSnapshotModel(), "findOne", () => query);
 }
 const deps = { now: new Date("2026-09-22T12:01:00Z"), coverage: async () => unknownCoverageFixture };
 const keys = (page: Awaited<ReturnType<typeof readAttention>>) => page.data.items.map(item => Number.parseInt(item.subject_key.split(":")[2]!, 16));
