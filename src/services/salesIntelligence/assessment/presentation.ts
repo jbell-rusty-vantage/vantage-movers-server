@@ -4,13 +4,13 @@ import { redactTranscript } from "../../conversations/redaction";
 import { readContentSchema } from "../analysis/reads";
 import { payloadHash } from "../transactions";
 import { TERMINAL_DISPOSITIONS, type Disposition } from "../outreach/leadProgress";
-import { summaryMoveEvidenceSchema } from "./contract";
+import { LEVEL_SCORES, summaryMoveEvidenceSchema } from "./contract";
 import {
   assessmentSectionSchema, assessmentVersionSchema, evidenceLocatorDtoSchema, evidenceRefDtoSchema, evidenceSectionSchema, fullOutputSchema,
   inventoryItemDtoSchema, moveViewDtoSchema, observationDtoSchema, outreachMoveAssessmentDtoSchema, runPresentationSchema, scoreDtoSchema,
   sourceManifestEntryDtoSchema, summaryFindingsSectionSchema, conflictDtoSchema, engagementDtoSchema, moveTableDtoSchema, STALE_REASONS, type EngagementDto,
   type FindingCategory, type MoveTableDto, type StaleReason, type WorkResult,
-  type AssessmentApplicability, type AssessmentAvailability, type AssessmentSection, type AssessmentVersion, type EvidenceItemDto, type EvidenceRefDto,
+  ASSESSMENT_LEVEL_LABELS, type AssessmentLevel, type AssessmentApplicability, type AssessmentAvailability, type AssessmentSection, type AssessmentVersion, type EvidenceItemDto, type EvidenceRefDto,
   type EvidenceSection, type FullOutput, type FullOutputRef, type OutreachMoveAssessmentDto, type RunPresentation, type ScoreDto, type SummaryFindingsSection,
 } from "./dto";
 
@@ -148,6 +148,18 @@ export function derivedFreshness(applicability: AssessmentApplicability, project
  * queued job (`pending`). Returns null for Not assessed so older rows and unassessed rows read alike.
  * `options.moveDatePassed` (S1 `facts.move_date_passed`) derives `stale_reason: "move_date_passed"`.
  */
+const LEVEL_BY_SCORE = new Map(Object.entries(LEVEL_SCORES).flatMap(([level, value]) => value === null ? [] : [[value, level as AssessmentLevel] as const]));
+/**
+ * The contract level of a stored score. Only an actionable, scored status carries a level: a
+ * scored status without a number is `unknown` (the model picked `unknown`); anything else is null.
+ */
+export function projectionLevel(score: number | null | undefined, actionable: boolean): AssessmentLevel | null {
+  if (!actionable) return null;
+  if (score == null) return "unknown";
+  return LEVEL_BY_SCORE.get(score) ?? null;
+}
+export const levelLabel = (level: AssessmentLevel | null | undefined) => (level ? ASSESSMENT_LEVEL_LABELS[level] : null);
+
 export function moveAssessmentProjectionDto(record: ApplicabilityInput & { move_assessment?: ProjectionRow | null }, pending = false,
   options: { moveDatePassed?: boolean } = {}): OutreachMoveAssessmentDto | null {
   const applicability = assessmentApplicability(record);
@@ -158,7 +170,10 @@ export function moveAssessmentProjectionDto(record: ApplicabilityInput & { move_
     : projection ? (projection.status as AssessmentAvailability) : "pending";
   // A pending-only row has no assessment to be stale.
   const freshness = projection ? derivedFreshness(applicability, projection, options.moveDatePassed) : { stale: false, stale_reason: null };
+  const tiLevel = projectionLevel(projection?.transaction_intent, actionable), mlLevel = projectionLevel(projection?.move_likelihood, actionable);
   return outreachMoveAssessmentDtoSchema.parse({
+    transaction_intent_level: tiLevel, move_likelihood_level: mlLevel,
+    transaction_intent_level_label: levelLabel(tiLevel), move_likelihood_level_label: levelLabel(mlLevel),
     artifact_id: idOf(projection?.artifact_id), status, applicability,
     transaction_intent: actionable ? projection?.transaction_intent ?? null : null,
     move_likelihood: actionable ? projection?.move_likelihood ?? null : null,
@@ -254,7 +269,7 @@ function dimension(raw: unknown, availability: AssessmentAvailability, context: 
   if (!row) return emptyScore(availability, context);
   const score = typeof row.score === "number" ? row.score : null;
   const evidence = refs(row.evidence);
-  return scoreDtoSchema.parse({ score, level: row.level ?? null, label: scoreLabel(score, availability, context.applicability),
+  return scoreDtoSchema.parse({ score, level: row.level ?? null, level_label: levelLabel(row.level as AssessmentLevel | null | undefined), label: scoreLabel(score, availability, context.applicability),
     confidence: row.confidence ?? null, rationale: str(row.rationale), conditions: arr(row.conditions).map(String), evidence,
     stale: context.stale, stale_reason: context.stale_reason, applicability: context.applicability,
     // RD11: the contract allows zero citations at `unknown`; any higher level must cite.

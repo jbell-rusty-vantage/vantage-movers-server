@@ -16,6 +16,11 @@ export type AssessmentAvailability = (typeof ASSESSMENT_AVAILABILITY)[number];
 /** Availability of a section that is not an assessment (summary/findings, evidence, full output). */
 export const SECTION_AVAILABILITY = ["ready", "unavailable", "purged", "unsupported"] as const;
 export const ASSESSMENT_LEVELS = ["unknown", "none", "exploring", "active", "strong", "confirmed"] as const;
+export type AssessmentLevel = (typeof ASSESSMENT_LEVELS)[number];
+/** Final spec §5.4 level words, the second half of `75 / 100 · Strong`. */
+export const ASSESSMENT_LEVEL_LABELS: Record<AssessmentLevel, string> = {
+  unknown: "Unknown", none: "None", exploring: "Exploring", active: "Active", strong: "Strong", confirmed: "Confirmed",
+};
 export const ASSESSMENT_APPLICABILITY = ["active", "closed", "not_applicable"] as const;
 export type AssessmentApplicability = (typeof ASSESSMENT_APPLICABILITY)[number];
 const confidence = z.enum(["low", "medium", "high"]);
@@ -51,6 +56,8 @@ export type EvidenceRefDto = z.infer<typeof evidenceRefDtoSchema>;
 
 export const scoreDtoSchema = z.object({
   score: score.nullable(), level: z.enum(ASSESSMENT_LEVELS).nullable(), label: z.string(), confidence: confidence.nullable(),
+  /** Final spec §11.2 `{n} / 100 · {Level}`: the level word; null when there is no level. */
+  level_label: z.string().nullable().optional(),
   rationale: z.string().nullable(), conditions: z.array(z.string()), evidence: z.array(evidenceRefDtoSchema),
   stale: z.boolean(), stale_reason: staleReason.nullable(), applicability: z.enum(ASSESSMENT_APPLICABILITY),
   /** RD11: true only when the level is above `unknown` and the score cites nothing (`This score should cite evidence and does not.`). */
@@ -326,5 +333,11 @@ export const outreachMoveAssessmentDtoSchema = z.object({
   transaction_intent: score.nullable(), move_likelihood: score.nullable(),
   transaction_intent_confidence: confidence.nullable(), move_likelihood_confidence: confidence.nullable(),
   context_as_of: date.nullable(), latest_conversation_at: date.nullable(), stale: z.boolean(), stale_reason: staleReason.nullable(), published_at: date.nullable(),
+  // Final spec §5.4 card line 5 `Transaction intent 75 / 100 · Strong`. The server maps the stored
+  // score back to its contract level (`LEVEL_SCORES` is one-to-one); null when the score is not shown.
+  transaction_intent_level: z.enum(ASSESSMENT_LEVELS).nullable().optional(),
+  move_likelihood_level: z.enum(ASSESSMENT_LEVELS).nullable().optional(),
+  transaction_intent_level_label: z.string().nullable().optional(),
+  move_likelihood_level_label: z.string().nullable().optional(),
 }).strict();
 export type OutreachMoveAssessmentDto = z.infer<typeof outreachMoveAssessmentDtoSchema>;
