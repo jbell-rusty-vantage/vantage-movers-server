@@ -59,8 +59,9 @@ export function leadProgressDto(record: Pick<RecordRow, "subject" | "lead_progre
 /**
  * Number list/detail helper (§7, §11.3): the Lead progress and Booking of the one
  * Lead a Number resolves to, or an explicit `multiple` / `none`. Batched for a
- * page: one edges query, one Outreach query, one Bookings query, one Leads
- * query per model. Reads only; never merges facts from different Leads.
+ * page: one edges query, one Outreach query, the side-data reads, and one
+ * pending-assessment `distinct`. Reads only; never merges facts from different Leads.
+ * V15 / D5: only `resolved` carries `move_assessment` and `lead_status`.
  */
 export async function loadAttachedLeadProgressForNumbers(numberIds: readonly string[], now: Date): Promise<Map<string, AttachedLeadProgressDto>> {
   void now;
@@ -84,16 +85,39 @@ export async function loadAttachedLeadProgressForNumbers(numberIds: readonly str
   if (!refs.length) return out;
   const records = await getOutreachRecordModel().find({ purged_at: null, $or: refs.map(ref => ({ "subject.model": ref.model, "subject.id": ref.id })) }).lean();
   const recordByLead = new Map(records.map(record => [leadKey(String(record.subject.model), record.subject.id), record] as const));
-  const side = await loadOutreachSideData(records, new Map());
+  const [side, pending] = await Promise.all([loadOutreachSideData(records, new Map()), pendingAssessmentKeys(records.map(r => subjectKey(r.subject)))]);
   for (const [numberId, ref] of resolved) {
     const record = recordByLead.get(leadKey(ref.model, ref.id)) ?? null;
     const bookings = side.bookings.get(leadKey(ref.model, ref.id)) ?? [];
+    const cancellations = bookings.flatMap(b => side.cancellations.get(String(b._id)) ?? []);
     const booking = bookings[0] ? { id: String(bookings[0]._id), cancelled: (side.cancellations.get(String(bookings[0]._id)) ?? []).length > 0 } : null;
     const lead = side.leads.get(leadKey(ref.model, ref.id)) ?? null;
+    // The Outreach DTO's own rule: pending from the batched queued set, `move_date_passed` from the card facts at `now`.
+    const moveDatePassed = record ? outreachFacts({ record, followups: [], number: null, lead, bookings, cancellations, now }).facts.move_date_passed : false;
     out.set(numberId, attachedLeadProgressDtoSchema.parse({ status: "resolved", lead_ref: ref, lead_progress: record ? leadProgressDto(record) : null, booking,
-      outreach_state: record ? stateWithActions(record, [], now) : null, lead_display: lead ? { name: lead.name ?? null, job_no: lead.job_no ?? null } : null }));
+      outreach_state: record ? stateWithActions(record, [], now) : null, lead_display: lead ? { name: lead.name ?? null, job_no: lead.job_no ?? null } : null,
+      lead_status: leadStatusWord(record, lead, bookings, side.cancellations),
+      move_assessment: record ? moveAssessmentProjectionDto(record, pending.has(subjectKey(record.subject)), { moveDatePassed }) : null }));
   }
   return out;
+}
+
+/**
+ * Final spec §9.1 line 2 (`Open | Booked | Booked, then cancelled | Not booked`) as a server word:
+ * the official status (`officialStatus`: Lead flags, then the exact Booking and Cancellation rows),
+ * then a CRM-disposition or official closure of the Lead's Outreach as `not_booked`. An Owner close
+ * of the Outreach is Outreach state (line 5), not a Lead status. Null when the Lead row is gone.
+ */
+export function leadStatusWord(record: Pick<RecordRow, "state" | "closure_origin" | "closed_reason"> | null, lead: LeadLite | null,
+  bookings: readonly BookingLite[], cancellations: ReadonlyMap<string, readonly CancelLite[]>): "open" | "booked" | "booked_then_cancelled" | "not_booked" | null {
+  const official = officialStatus(lead, bookings, new Set(bookings.filter(b => (cancellations.get(String(b._id)) ?? []).length > 0).map(b => String(b._id))));
+  if (!official) return null;
+  if (official.status === "booked") return "booked";
+  if (official.status === "cancelled") return "booked_then_cancelled";
+  if (official.status !== "open_lead") return "not_booked";
+  const closedByLead = record?.state === "closed" && (record.closure_origin === "crm_disposition" || record.closure_origin === "official");
+  if (!closedByLead) return "open";
+  return record.closed_reason === "booked" ? "booked" : record.closed_reason === "cancelled" ? "booked_then_cancelled" : "not_booked";
 }
 
 /** Owner-facing reading of the stored attachment mirror. Derived on read, never stored. */
@@ -406,21 +430,63 @@ export async function readOutreachByLead(model: "FormLead" | "CallLead", id: str
   const row = await getOutreachRecordModel().findOne({ "subject.model": model, "subject.id": id, purged_at: null }).lean();
   return row ? readOutreach(String(row._id)) : null;
 }
-export async function readNumberOutreach(numberId: string) {
-  const [edges, restrictions] = await Promise.all([
-    getNumberLeadAttachmentModel().find({ contact_number_id: numberId }).lean(),
-    getSalesIntelligenceContactRestrictionModel().find({ contact_number_id: numberId }).lean()]);
+/** Data spec §7 D2: the one pending-assessment read for a set of subjects (the publish's queued-set rule, scoped by `csiDataset()`). */
+async function pendingAssessmentKeys(keys: readonly string[]): Promise<Set<string>> {
+  if (!keys.length) return new Set();
+  const rows = await getSalesIntelligenceJobModel().distinct("subject_key", { ...csiDataset(), stage: "move_assessment",
+    status: { $in: ["pending", "leased", "retry"] }, subject_key: { $in: [...new Set(keys)] } });
+  return new Set(rows.map(String));
+}
+
+type NumberOutreachEdge = { lead_ref: { model: "FormLead" | "CallLead"; id: mongoose.Types.ObjectId } };
+/**
+ * `GET /numbers/:id` Outreach part. Data spec §7 D2: the caller hands over the Number and its
+ * attachment edges it already read; restrictions, review items, follow-ups, recent attempts and the
+ * pending-assessment set are each read once for every record together, and the Number is read again
+ * only for a record whose primary Number is a different phone (one batched `$in`). The read count is
+ * therefore independent of the number of Outreach records.
+ */
+export async function readNumberOutreach(numberId: string, prefetched: { edges?: readonly NumberOutreachEdge[]; number?: unknown; now?: Date; coverage?: CoverageDto } = {}) {
+  const edges = prefetched.edges ?? await getNumberLeadAttachmentModel().find({ contact_number_id: numberId }).lean();
   const [records, conversations] = await Promise.all([
     getOutreachRecordModel().find({ purged_at: null, $or: [{ primary_contact_number_id: numberId }, { "subject.contact_number_id": numberId },
       ...edges.map(e => ({ "subject.model": e.lead_ref.model, "subject.id": e.lead_ref.id }))] }).lean(),
     getLeadConversationModel().find({ contact_number_id: numberId }).select({ _id: 1 }).lean()]);
-  const reviewItems = await getSalesIntelligenceReviewItemModel().find({ subject_key: { $in: [`number:${numberId}`, ...records.map(r => subjectKey(r.subject)), ...conversations.map(c => `conversation:${c._id}`)] } }).lean();
-  // Policy and Coverage are invariants of the read, not of each record.
-  const now = new Date(), [coverage, policy, inputs] = await Promise.all([readCaptureCoverage(), resolvePolicy(), loadOutreachInputsBatch(records, now)]);
+  const now = prefetched.now ?? new Date();
+  // The response's review items keep their historical key set; each record's `derive()` inputs also need its primary-number key.
+  const responseKeys = new Set([`number:${numberId}`, ...records.map(r => subjectKey(r.subject)), ...conversations.map(c => `conversation:${c._id}`)]);
+  const primaryIds = [...new Map(records.flatMap(r => r.primary_contact_number_id ? [[String(r.primary_contact_number_id), r.primary_contact_number_id] as const] : [])).values()];
+  const otherIds = primaryIds.filter(id => String(id) !== numberId || !prefetched.number);
+  const [coverage, policy, restrictions, reviewItems, otherNumbers, actions, attempts, pending] = await Promise.all([
+    prefetched.coverage ?? readCaptureCoverage(), resolvePolicy(),
+    getSalesIntelligenceContactRestrictionModel().find({ contact_number_id: { $in: [...new Map([[numberId, new mongoose.Types.ObjectId(numberId)], ...primaryIds.map(id => [String(id), id] as const)]).values()] } }).lean(),
+    getSalesIntelligenceReviewItemModel().find({ subject_key: { $in: [...new Set([...responseKeys, ...records.flatMap(reviewKeys)])] } }).lean(),
+    otherIds.length ? getContactNumberModel().find({ _id: { $in: otherIds } }).lean() : Promise.resolve([]),
+    records.length ? getOutreachFollowupModel().find({ outreach_record_id: { $in: records.map(r => r._id) } }).sort({ _id: 1 }).lean() : Promise.resolve([]),
+    records.length ? getSalesIntelligenceAuditEventModel().find({ subject_key: { $in: records.map(r => subjectKey(r.subject)) }, event_kind: "outreach_call_applied",
+      "current.outboundAttempt": true, "current.human": false, "current.happened_at": { $gt: attemptsSince(now) } }).lean() : Promise.resolve([]),
+    pendingAssessmentKeys(records.map(r => subjectKey(r.subject)))]);
+  type Inputs = OutreachInputs;
+  const numberById = new Map<string, Inputs["number"]>(otherNumbers.map(n => [String(n._id), n] as const));
+  if (prefetched.number) numberById.set(numberId, prefetched.number as Inputs["number"]);
+  const inputs = new Map<string, Inputs>();
+  for (const record of records) {
+    const primary = record.primary_contact_number_id ? String(record.primary_contact_number_id) : null;
+    const keys = new Set(reviewKeys(record));
+    inputs.set(String(record._id), {
+      actions: actions.filter(a => String(a.outreach_record_id) === String(record._id)),
+      restrictions: primary ? restrictions.filter(r => String(r.contact_number_id) === primary) : [],
+      reviewItems: reviewItems.filter(r => keys.has(r.subject_key)),
+      number: primary ? numberById.get(primary) ?? null : null,
+      attempts: attempts.filter(a => a.subject_key === subjectKey(record.subject)),
+    });
+  }
   const side = await loadOutreachSideData(records, inputs);
-  return { outreach_records: await Promise.all(records.map(r => toOutreachDto(r, now, coverage, { policy, inputs: inputs.get(String(r._id)), side }))), restrictions: restrictions.map(r => restrictionDtoSchema.parse({ id: String(r._id), revision: r.revision,
+  return { outreach_records: await Promise.all(records.map(r => toOutreachDto(r, now, coverage, { policy, inputs: inputs.get(String(r._id)), side, assessmentPending: pending.has(subjectKey(r.subject)) }))),
+    restrictions: restrictions.filter(r => String(r.contact_number_id) === numberId).map(r => restrictionDtoSchema.parse({ id: String(r._id), revision: r.revision,
     contact_number_id: String(r.contact_number_id), channels: r.channels, until: iso(r.until), origin: r.origin, state: r.state, run_id: r.run_id ? String(r.run_id) : null,
-    finding_id: r.finding_id ? String(r.finding_id) : null, allowed_actions: [{ action: "resolve_restriction", target_id: String(r._id), expected_revision: r.revision, enabled: r.state === "active", blocker_codes: [] }] })), review_items: reviewItems.map(toReviewDto) };
+    finding_id: r.finding_id ? String(r.finding_id) : null, allowed_actions: [{ action: "resolve_restriction", target_id: String(r._id), expected_revision: r.revision, enabled: r.state === "active", blocker_codes: [] }] })),
+    review_items: reviewItems.filter(r => responseKeys.has(r.subject_key)).map(toReviewDto) };
 }
 export function toReviewDto(r: InferSchemaType<typeof SalesIntelligenceReviewItemSchema> & { _id: mongoose.Types.ObjectId; updatedAt: Date }) {
   return reviewItemDtoSchema.parse({ id: String(r._id), revision: r.revision, subject_key: r.subject_key, cause_kind: r.cause_kind, cause_key: r.cause_key, state: r.state,

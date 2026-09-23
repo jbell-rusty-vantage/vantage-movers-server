@@ -723,6 +723,15 @@ export const attachedLeadProgressDtoSchema = z
     booking: z.object({ id, cancelled: z.boolean() }).strict().nullable().optional(),
     outreach_state: z.string().nullable().optional(),
     lead_display: z.object({ name: z.string().nullable(), job_no: z.string().nullable() }).strict().nullable().optional(),
+    /**
+     * V15 / D5: the resolved Lead's Outreach assessment (the Outreach DTO's projection, same pending
+     * and `move_date_passed` handling). Only on `resolved`: a Number with two Leads never shows a score.
+     */
+    move_assessment: outreachMoveAssessmentDtoSchema.nullable().optional(),
+    /** Final spec §9.1 line 2: the resolved Lead's official status word, from booking, cancellation and official/CRM closure. */
+    lead_status: z.enum(["open", "booked", "booked_then_cancelled", "not_booked"]).nullable().optional(),
+    /** Final spec §9.1 line 5: the Number's `rollups.outreach_records_total`; present on every status. */
+    outreach_records_total: nonnegative.optional(),
   })
   .strict();
 export type AttachedLeadProgressDto = z.infer<typeof attachedLeadProgressDtoSchema>;

@@ -4,7 +4,7 @@ import { getContactNumberModel } from "../../models/ContactNumber";
 import { getNumberLeadAttachmentModel } from "../../models/NumberLeadAttachment";
 import { csiIdSchema } from "../../validation/v1/salesIntelligence";
 import { csiFlag } from "../../config/domain/salesIntelligence";
-import { ownerRead } from "./coverage";
+import { ownerRead, readCaptureCoverage } from "./coverage";
 import { readNumberOutreach } from "../salesIntelligence/outreach/reads";
 import {
   numberDetailReadDtoSchema,
@@ -115,12 +115,18 @@ export function toNumberSearchItem(
     rollups,
     linked: rollups.attached_lead_count > 0 || rollups.candidate_lead_count > 0,
     match,
-    ...(attached ? { attached_lead_progress: attachedForItem(attached) } : {}),
+    ...(attached ? { attached_lead_progress: attachedForItem(attached, rollups.outreach_records_total) } : {}),
   });
 }
 
-export function attachedForItem(value: AttachedLeadProgressItemDto): AttachedLeadProgressItemDto {
-  if (value.status !== "resolved") return { status: value.status };
+/**
+ * Non-resolved statuses keep only `status` (and the Number's Outreach count), so no Lead field and
+ * no score leaks from a Number with several Leads (final spec D5). `outreachRecordsTotal` is the
+ * Number's rollup (§9.1 line 5), never a per-row query.
+ */
+export function attachedForItem(value: AttachedLeadProgressItemDto, outreachRecordsTotal?: number): AttachedLeadProgressItemDto {
+  const total = outreachRecordsTotal !== undefined ? { outreach_records_total: outreachRecordsTotal } : {};
+  if (value.status !== "resolved") return { status: value.status, ...total };
   return {
     status: "resolved",
     lead_ref: value.lead_ref,
@@ -128,13 +134,18 @@ export function attachedForItem(value: AttachedLeadProgressItemDto): AttachedLea
     booking: value.booking ?? null,
     outreach_state: value.outreach_state ?? null,
     ...(value.lead_display !== undefined ? { lead_display: value.lead_display } : {}),
+    ...(value.lead_status !== undefined ? { lead_status: value.lead_status } : {}),
+    ...(value.move_assessment !== undefined ? { move_assessment: value.move_assessment } : {}),
+    ...total,
   };
 }
 
 /**
  * Number detail. `null` when the id is malformed or the row is missing.
- * `outreach_records`, `restrictions` and `review_items` are empty until Team C
- * publishes their read mappers; `connections` carries the counts meanwhile.
+ * Data spec §7 D2: the Number and its attachment edges are read once here and
+ * handed to `readNumberOutreach`, which reads restrictions, review items and the
+ * pending-assessment set once each; the read count does not grow with the
+ * number of Outreach records. Coverage is resolved once for the whole response.
  */
 export async function getContactNumberDetail(
   numberId: string,
@@ -145,18 +156,20 @@ export async function getContactNumberDetail(
     .findOne({ _id: numberId, purged_at: null })
     .lean()) as unknown as ContactNumberLean | null;
   if (!row) return null;
+  const now = deps.now?.() ?? new Date();
 
-  const [attachments, outreachData, recount] = await Promise.all([
+  const [attachments, recount, coverage] = await Promise.all([
     getNumberLeadAttachmentModel()
       .find({ contact_number_id: row._id })
       .sort({ createdAt: 1, _id: 1 })
       .lean() as unknown as Promise<AttachmentLean[]>,
-    readNumberOutreach(numberId),
     getCallInteractionModel().countDocuments({
       contact_number_id: row._id,
       merged_into_id: null,
     }),
+    readCaptureCoverage(),
   ]);
+  const outreachData = await readNumberOutreach(numberId, { edges: attachments, number: row, now, coverage });
 
   const byState = (state: AttachmentLean["state"]) =>
     attachments.filter((a) => a.state === state).length;
@@ -219,5 +232,5 @@ export async function getContactNumberDetail(
     },
   };
 
-  return numberDetailReadDtoSchema.parse(await ownerRead(data, deps.now));
+  return numberDetailReadDtoSchema.parse(await ownerRead(data, () => now, coverage));
 }
