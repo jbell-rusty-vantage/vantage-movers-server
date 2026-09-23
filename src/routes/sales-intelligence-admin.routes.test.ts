@@ -436,3 +436,106 @@ test("S3-FINDINGS current findings route: Owner guard, flag-off 404, scope, quer
     process.env = saved;
   }
 });
+
+test("S4-CONV conversation routes: Owner guard, flag-off 404, validation, 404s, transcript paging params, media 200/206/416/404 streamed without the blob path", { timeout: 20000 }, async () => {
+  const saved = { ...process.env };
+  process.env.VANTAGE_API_SECRET = "synthetic-global";
+  process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = "synthetic-owner-signature";
+  process.env.SALES_INTELLIGENCE_ENABLED = "true";
+  process.env.SALES_INTELLIGENCE_DEPLOYMENT_ID = "route-test";
+  process.env.TEST_MODE = "true";
+  const existing = "a".repeat(24), missing = "f".repeat(24);
+  const audio = Uint8Array.from({ length: 64 }, (_, i) => i);
+  const calls: string[] = [];
+  const app = express();
+  app.use(express.json());
+  app.use("/api/v1", requireApiSecret);
+  app.use(createSalesIntelligenceBoundaryRouter({ connect: async () => {} }));
+  app.use(createSalesIntelligenceAdminRouter({ connect: async () => { calls.push("connect"); },
+    conversations: (async (id: string, query: unknown) => { calls.push(`conversations:${id}:${JSON.stringify(query)}`);
+      return id === existing ? { as_of: asOf, coverage, data: { contact_number_id: id, items: [], other_calls: [], next_cursor: null } } : null; }) as never,
+    transcript: (async (id: string, query: unknown) => { calls.push(`transcript:${id}:${JSON.stringify(query)}`);
+      return id === existing ? { as_of: asOf, coverage, data: { conversation_id: id } } : null; }) as never,
+    conversationMedia: (async (input: { conversation_id: string; actor: { kind: string }; range: string | null }) => {
+      calls.push(`media:${input.conversation_id}:${input.actor.kind}:${input.range}`);
+      if (input.conversation_id !== existing) return { kind: "not_found" };
+      const base = { "Accept-Ranges": "bytes", "Cache-Control": "private, no-store", "Content-Type": "audio/mpeg" };
+      if (input.range === "bytes=64-") return { kind: "range_not_satisfiable", headers: { ...base, "Content-Range": "bytes */64" } };
+      if (input.range === "bytes=8-15") return { kind: "stream", status: 206, headers: { ...base, "Content-Range": "bytes 8-15/64", "Content-Length": "8" }, body: new Blob([audio.slice(8, 16)]).stream() };
+      return { kind: "stream", status: 200, headers: { ...base, "Content-Length": "64" }, body: new Blob([audio]).stream() };
+    }) as never }));
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const headers = (routePath: string, role = "owner") => {
+    const fields = { adminId: "owner", email: "owner@example.test", role, timestamp: String(Date.now()), requestId: "req-conv", method: "GET", path: routePath };
+    return { "x-api-secret": "synthetic-global", "x-vantage-admin-user-id": fields.adminId, "x-vantage-admin-email": fields.email, "x-vantage-admin-role": role,
+      "x-vantage-admin-timestamp": fields.timestamp, "x-vantage-admin-request-id": fields.requestId,
+      "x-vantage-admin-signature": computeAdminActorSignature(fields, process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET!) };
+  };
+  const fetchRoute = (routePath: string, query = "", role = "owner", extra: Record<string, string> = {}) =>
+    fetch(base + routePath + query, { headers: { ...headers(routePath, role), ...extra }, signal: AbortSignal.timeout(5000) });
+  const conversationsPath = (id: string) => `${CSI_ADMIN_PREFIX}/numbers/${id}/conversations`;
+  const transcriptPath = (id: string) => `${CSI_ADMIN_PREFIX}/conversations/${id}/transcript`;
+  const mediaPath = (id: string) => `${CSI_ADMIN_PREFIX}/conversations/${id}/media`;
+  try {
+    const cursor = "1726844400000.bbbbbbbbbbbbbbbbbbbbbbbb";
+    const list = await fetchRoute(conversationsPath(existing), `?limit=5&cursor=${cursor}`);
+    assert.equal(list.status, 200);
+    assert.deepEqual(await list.json(), { ok: true, as_of: asOf, coverage, data: { contact_number_id: existing, items: [], other_calls: [], next_cursor: null } });
+    assert.equal(calls.at(-1), `conversations:${existing}:${JSON.stringify({ cursor, limit: 5 })}`);
+    assert.equal((await fetchRoute(conversationsPath(existing))).status, 200);
+    assert.equal(calls.at(-1), `conversations:${existing}:${JSON.stringify({ limit: 50 })}`);
+    for (const bad of ["?limit=101", "?cursor=nope", "?nope=1"]) assert.equal((await fetchRoute(conversationsPath(existing), bad)).status, 400, bad);
+    assert.equal((await fetchRoute(conversationsPath(missing))).status, 404);
+    assert.equal((await fetchRoute(conversationsPath("not-an-id"))).status, 400);
+
+    const transcript = await fetchRoute(transcriptPath(existing), "?offset=100&limit=50");
+    assert.equal(transcript.status, 200);
+    assert.equal(calls.at(-1), `transcript:${existing}:${JSON.stringify({ offset: 100, limit: 50 })}`);
+    assert.equal((await fetchRoute(transcriptPath(existing))).status, 200);
+    assert.equal(calls.at(-1), `transcript:${existing}:${JSON.stringify({ offset: 0, limit: 100 })}`);
+    for (const bad of ["?limit=101", "?offset=-1", "?cursor=1"]) assert.equal((await fetchRoute(transcriptPath(existing), bad)).status, 400, bad);
+    assert.equal((await fetchRoute(transcriptPath(missing))).status, 404);
+
+    const full = await fetchRoute(mediaPath(existing));
+    assert.equal(full.status, 200);
+    assert.equal(full.headers.get("content-type"), "audio/mpeg");
+    assert.equal(full.headers.get("accept-ranges"), "bytes");
+    assert.equal(full.headers.get("cache-control"), "private, no-store");
+    assert.equal(full.headers.get("content-length"), "64");
+    assert.deepEqual(new Uint8Array(await full.arrayBuffer()), audio);
+    assert.equal(calls.at(-1), `media:${existing}:owner:null`);
+    const partial = await fetchRoute(mediaPath(existing), "", "owner", { Range: "bytes=8-15" });
+    assert.equal(partial.status, 206);
+    assert.equal(partial.headers.get("content-range"), "bytes 8-15/64");
+    assert.deepEqual(new Uint8Array(await partial.arrayBuffer()), audio.slice(8, 16));
+    assert.equal(calls.at(-1), `media:${existing}:owner:bytes=8-15`);
+    const unsatisfiable = await fetchRoute(mediaPath(existing), "", "owner", { Range: "bytes=64-" });
+    assert.equal(unsatisfiable.status, 416);
+    assert.equal(unsatisfiable.headers.get("content-range"), "bytes */64");
+    const gone = await fetchRoute(mediaPath(missing));
+    assert.equal(gone.status, 404);
+    const goneBody = await gone.text();
+    assert.doesNotMatch(goneBody + JSON.stringify([...full.headers, ...partial.headers]), /blob|conversations\//i);
+    assert.equal((await fetchRoute(mediaPath(existing), "?scope=historical")).status, 403);
+    assert.equal((await fetchRoute(mediaPath(existing), "?x=1")).status, 400);
+
+    // Owner only, and flag off: nothing reaches a service.
+    calls.length = 0;
+    for (const routePath of [conversationsPath(existing), transcriptPath(existing), mediaPath(existing)]) {
+      assert.equal((await fetchRoute(routePath, "", "admin")).status, 403, routePath);
+      assert.equal((await fetch(base + routePath, { headers: { "x-api-secret": "synthetic-global" }, signal: AbortSignal.timeout(5000) })).status, 403, routePath);
+    }
+    process.env.SALES_INTELLIGENCE_ENABLED = "false";
+    for (const routePath of [conversationsPath(existing), transcriptPath(existing), mediaPath(existing)]) {
+      const disabled = await fetchRoute(routePath);
+      assert.deepEqual([disabled.status, ((await disabled.json()) as { code: string }).code], [404, "FEATURE_DISABLED"]);
+    }
+    assert.deepEqual(calls, [], "Owner guard and flag off: no connect and no read");
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    process.env = saved;
+  }
+});

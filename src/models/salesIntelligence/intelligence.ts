@@ -218,6 +218,8 @@ export const INTELLIGENCE_EVIDENCE_SNAPSHOT_INDEXES = [
     { transcript_version: { $type: "string" } },
   ),
   index("csi_evidence_run", { run_id: 1, _id: 1 }),
+  // S4-CONV: step-1 summary selection per conversation (Owner conversations read, prior.ts, readConversationHistory).
+  index("csi_evidence_conversation_source", { conversation_id: 1, source_type: 1, _id: -1 }),
 ];
 export const IntelligenceEvidenceSnapshotSchema = new Schema(
   {

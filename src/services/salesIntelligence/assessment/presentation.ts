@@ -284,7 +284,7 @@ export const WORK_STATUS_LABELS: Record<string, string> = {
 };
 const CALLBACK_STATUS_LABELS: Record<string, string> = { pending: "Pending", fulfilled: "Done", cancelled: "Cancelled", unknown: "Unclear" };
 const NEXT_STEP_STATUS_LABELS: Record<string, string> = { planned: "Planned", conditional: "Conditional", done: "Done", unknown: "Unclear" };
-const PARTY_LABELS: Record<string, string> = { rep: "Rep", customer: "Customer", unknown: "Speaker unknown" };
+export const PARTY_LABELS: Record<string, string> = { rep: "Rep", customer: "Customer", unknown: "Speaker unknown" };
 const NEXT_STEP_ACTION_LABELS: Record<string, string> = { call: "Call", text_customer: "Text the customer", send_estimate: "Send estimate",
   check_availability: "Check availability", review: "Review", wait: "Wait for the customer", other: "Other" };
 /** Why an engagement item did not become a follow-up (`engagement.ts` reasons); unknown reasons read as their words. */
@@ -571,7 +571,7 @@ export type EvidenceSources = {
   as_of?: string | null;
 };
 
-const SUMMARY_LABELS = { overview: "Overview", customer_wanted: "What the customer wanted", money_and_dates: "Money and dates",
+export const SUMMARY_LABELS = { overview: "Overview", customer_wanted: "What the customer wanted", money_and_dates: "Money and dates",
   outcome: "Outcome", commitments: "Commitments", discrepancies: "Discrepancies" } as const;
 type SummaryKey = keyof typeof SUMMARY_LABELS;
 const CONVERSATION_SECTION: Record<string, string> = { overview: "overview", customer_wanted: "customer_wanted", money_dates: "money_dates",

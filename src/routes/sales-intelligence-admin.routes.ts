@@ -1,3 +1,6 @@
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
 import { Router, type Request, type Response } from "express";
 import { z, ZodError } from "zod";
 import { csiFlag } from "../config/domain/salesIntelligence";
@@ -31,6 +34,8 @@ import { commandAnalysis } from "../services/salesIntelligence/analysis/ownerCom
 import { listOwnerRuns, readOwnerRun, readOwnerEvidence } from "../services/salesIntelligence/analysis/ownerReads";
 import { readAssessment, readAssessmentEvidence, readAssessmentOutput, readOutreachAssessment, readRunOutput, readRunPresentation } from "../services/salesIntelligence/assessment/reads";
 import { currentFindingsQuerySchema, readCurrentFindings } from "../services/salesIntelligence/analysis/currentFindings";
+import { ownerConversationsQuerySchema, ownerTranscriptQuerySchema, readOwnerConversations, readOwnerTranscript } from "../services/salesIntelligence/analysis/ownerConversations";
+import { openOwnerConversationMedia } from "../services/salesIntelligence/conversations/ownerMedia";
 
 /**
  * CSI-04 Owner routes for Number Activity (04 §0, §1 `/numbers` rows, §3).
@@ -78,6 +83,9 @@ export type SalesIntelligenceAdminRouteDeps = {
   runPresentation?: typeof readRunPresentation;
   runOutput?: typeof readRunOutput;
   currentFindings?: typeof readCurrentFindings;
+  conversations?: typeof readOwnerConversations;
+  transcript?: typeof readOwnerTranscript;
+  conversationMedia?: typeof openOwnerConversationMedia;
 };
 
 const timelineQuerySchema = z
@@ -427,6 +435,35 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
       if (result && result.data.conversation_id !== id) throw new CsiError("RUN_SCOPE_DENIED");
       return result ? res.json({ ok: true, ...result }) : notFound(req, res, "Analysis"); }
     catch (error) { return fail(req, res, error); }
+  });
+  // S4-CONV (data spec §6.7–6.9, final spec §11.7): Owner conversation cards, transcript pages and the recording stream. GET-only;
+  // the media route writes one `media_played` audit row before the first byte and never exposes the blob URL or pathname.
+  router.get(`${CSI_ADMIN_PREFIX}/numbers/:id/conversations`, async (req, res) => {
+    try { guard(req); const id = csiIdSchema.parse(req.params.id); const query = ownerConversationsQuerySchema.parse(req.query); await connect();
+      const result = await (deps.conversations ?? readOwnerConversations)(id, query);
+      return result ? res.json({ ok: true, ...result }) : notFound(req, res); } catch (error) { return fail(req, res, error); }
+  });
+  router.get(`${CSI_ADMIN_PREFIX}/conversations/:id/transcript`, async (req, res) => {
+    try { guard(req); const id = csiIdSchema.parse(req.params.id); const query = ownerTranscriptQuerySchema.parse(req.query); await connect();
+      const result = await (deps.transcript ?? readOwnerTranscript)(id, query);
+      return result ? res.json({ ok: true, ...result }) : notFound(req, res, "Conversation"); } catch (error) { return fail(req, res, error); }
+  });
+  router.get(`${CSI_ADMIN_PREFIX}/conversations/:id/media`, async (req, res) => {
+    const aborted = new AbortController();
+    res.once("close", () => aborted.abort());
+    try {
+      const actor = guard(req); const id = csiIdSchema.parse(req.params.id); scopeOnly.parse(req.query); await connect();
+      const outcome = await (deps.conversationMedia ?? openOwnerConversationMedia)({ conversation_id: id, actor, range: req.header("range") ?? null, signal: aborted.signal });
+      if (outcome.kind === "not_found") return notFound(req, res, "Recording");
+      if (outcome.kind === "range_not_satisfiable") return res.status(416).set(outcome.headers).end();
+      res.status(outcome.status).set(outcome.headers);
+      await pipeline(Readable.fromWeb(outcome.body as unknown as NodeWebReadableStream<Uint8Array>), res);
+    } catch (error) {
+      if (!res.headersSent) return fail(req, res, error);
+      // Mid-stream failure or client abort: the status is already sent; end the socket without an error body.
+      if (!aborted.signal.aborted) logger.error({ msg: "sales_intelligence.admin.media_stream_failed", errorName: error instanceof Error ? error.name : "Error" });
+      res.destroy();
+    }
   });
   for (const path of ["/analysis-runs/:id/evidence", "/analysis-runs/:id/evidence/:snapshotId"] as const) router.get(`${CSI_ADMIN_PREFIX}${path}`, async (req, res) => {
     try { guard(req); await connect(); const result = await readOwnerEvidence(csiIdSchema.parse(req.params.id),
