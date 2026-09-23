@@ -345,6 +345,24 @@ test("directory-only review template does not require Outreach or a customer num
   });
   assert.equal(body, "Joshua — please review this internal note.");
 });
+test("directory-only review text may tell that User to call or message someone", () => {
+  const body = renderNudgeTemplate({
+    purpose: "review_context",
+    template_key: "review_context",
+    template_version: 1,
+    repName: "Joshua L",
+    customerName: null,
+    customerNumber: null,
+    reasons: [],
+    lastContact: null,
+    source: null,
+    recordUrl: "https://vantage.example.test/sales-intelligence?view=reps",
+    ownerId: "synthetic-owner",
+    body: "Please call the customer.",
+    customerNumbers: [],
+  });
+  assert.equal(body, "Please call the customer.");
+});
 test("edited review-context bodies fail closed on contact instructions and keep restriction discussion", () => {
   const base = {
     purpose: "review_context" as const,

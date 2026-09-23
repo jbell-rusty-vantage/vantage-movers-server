@@ -224,6 +224,16 @@ async function authorizeStoredRun(runId: string, token: string, tool: (typeof CS
     }),
   };
 }
+/** Fixed operator identity for an explicit dev_ops backfill. Never accepted from HTTP. */
+export function csiOperatorActor(requestId: string): CsiActor {
+  if (!requestId.trim() || requestId.length > 200) throw new CsiError("INVALID_INPUT");
+  return trust({
+    kind: "owner",
+    id: "sales-intelligence-operator",
+    request_id: requestId,
+    run_id: null,
+  });
+}
 /** Fixed service identity, never accepted from HTTP JSON. */
 export function csiWorkerActor(jobId: string): CsiActor {
   csiIdSchema.parse(jobId);
