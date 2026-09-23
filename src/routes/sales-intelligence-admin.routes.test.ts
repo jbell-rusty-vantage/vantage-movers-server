@@ -382,3 +382,57 @@ test("Move assessment presentation routes: Owner guard, flag-off 404, id validat
     process.env = saved;
   }
 });
+
+test("S3-FINDINGS current findings route: Owner guard, flag-off 404, scope, query validation, 404 for missing, reads only through the injected service", { timeout: 20000 }, async () => {
+  const saved = { ...process.env };
+  process.env.VANTAGE_API_SECRET = "synthetic-global";
+  process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = "synthetic-owner-signature";
+  process.env.SALES_INTELLIGENCE_ENABLED = "true";
+  process.env.SALES_INTELLIGENCE_DEPLOYMENT_ID = "route-test";
+  process.env.TEST_MODE = "true";
+  const existing = "a".repeat(24), missing = "f".repeat(24);
+  const calls: string[] = [];
+  const app = express();
+  app.use(express.json());
+  app.use("/api/v1", requireApiSecret);
+  app.use(createSalesIntelligenceBoundaryRouter({ connect: async () => {} }));
+  app.use(createSalesIntelligenceAdminRouter({ connect: async () => { calls.push("connect"); },
+    currentFindings: (async (id: string, query: unknown) => {
+      calls.push(`findings:${id}:${JSON.stringify(query)}`);
+      return id === existing ? { as_of: asOf, coverage, data: { items: [], reason: null, truncated: false } } : null;
+    }) as never }));
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const get = async (routePath: string, query = "", role = "owner") => {
+    const fields = { adminId: "owner", email: "owner@example.test", role, timestamp: String(Date.now()), requestId: "req-findings", method: "GET", path: routePath };
+    const response = await fetch(base + routePath + query, { signal: AbortSignal.timeout(5000), headers: { "x-api-secret": "synthetic-global",
+      "x-vantage-admin-user-id": fields.adminId, "x-vantage-admin-email": fields.email, "x-vantage-admin-role": role, "x-vantage-admin-timestamp": fields.timestamp,
+      "x-vantage-admin-request-id": fields.requestId, "x-vantage-admin-signature": computeAdminActorSignature(fields, process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET!) } });
+    return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+  };
+  const route = (id: string) => `${CSI_ADMIN_PREFIX}/outreach/${id}/findings`;
+  try {
+    const ok = await get(route(existing));
+    assert.equal(ok.status, 200);
+    assert.deepEqual([ok.body.ok, ok.body.as_of, ok.body.data], [true, asOf, { items: [], reason: null, truncated: false }]);
+    assert.equal((await get(route(existing), "?scope=production&include_superseded=true")).status, 200);
+    assert.ok(calls.includes(`findings:${existing}:${JSON.stringify({ scope: "production", include_superseded: "true" })}`), "the parsed query reaches the service");
+    assert.equal((await get(route(existing), "?scope=historical")).status, 403);
+    assert.equal((await get(route(existing), "?include_superseded=yes")).status, 400);
+    assert.equal((await get(route(existing), "?cursor=1")).status, 400, "unknown query parameters are rejected");
+    assert.equal((await get(route(existing), "", "admin")).status, 403, "Owner only");
+    assert.equal((await get(route("not-an-id"))).status, 400);
+    const absent = await get(route(missing));
+    assert.deepEqual([absent.status, absent.body.error], [404, "Outreach not found"]);
+    calls.length = 0;
+    process.env.SALES_INTELLIGENCE_ENABLED = "false";
+    const disabled = await get(route(existing));
+    assert.deepEqual([disabled.status, disabled.body.code], [404, "FEATURE_DISABLED"]);
+    assert.deepEqual(calls, [], "flag off: no connect and no read");
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    process.env = saved;
+  }
+});

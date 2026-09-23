@@ -29,6 +29,7 @@ import { streamCsiInvalidations } from "../services/salesIntelligence/live";
 import { commandAnalysis } from "../services/salesIntelligence/analysis/ownerCommands";
 import { listOwnerRuns, readOwnerRun, readOwnerEvidence } from "../services/salesIntelligence/analysis/ownerReads";
 import { readAssessment, readAssessmentEvidence, readAssessmentOutput, readOutreachAssessment, readRunOutput, readRunPresentation } from "../services/salesIntelligence/assessment/reads";
+import { currentFindingsQuerySchema, readCurrentFindings } from "../services/salesIntelligence/analysis/currentFindings";
 
 /**
  * CSI-04 Owner routes for Number Activity (04 §0, §1 `/numbers` rows, §3).
@@ -72,6 +73,7 @@ export type SalesIntelligenceAdminRouteDeps = {
   assessmentEvidence?: typeof readAssessmentEvidence;
   runPresentation?: typeof readRunPresentation;
   runOutput?: typeof readRunOutput;
+  currentFindings?: typeof readCurrentFindings;
 };
 
 const timelineQuerySchema = z
@@ -298,6 +300,12 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
   router.get(`${CSI_ADMIN_PREFIX}/outreach/:id/assessment`, async (req, res) => {
     try { guard(req); const id = csiIdSchema.parse(req.params.id); scopeOnly.parse(req.query); await connect();
       const result = await (deps.outreachAssessment ?? readOutreachAssessment)(id);
+      return result ? res.json({ ok: true, ...result }) : notFound(req, res, "Outreach"); } catch (error) { return fail(req, res, error); }
+  });
+  // Data spec §6.11 A / final spec §11.5: current findings of the record's Number (latest run per conversation). GET-only.
+  router.get(`${CSI_ADMIN_PREFIX}/outreach/:id/findings`, async (req, res) => {
+    try { guard(req); const id = csiIdSchema.parse(req.params.id); const query = currentFindingsQuerySchema.parse(req.query); await connect();
+      const result = await (deps.currentFindings ?? readCurrentFindings)(id, query);
       return result ? res.json({ ok: true, ...result }) : notFound(req, res, "Outreach"); } catch (error) { return fail(req, res, error); }
   });
   for (const [path, read] of [["/assessments/:artifactId", () => deps.assessment ?? readAssessment],
