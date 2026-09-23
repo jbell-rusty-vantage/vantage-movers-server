@@ -100,10 +100,19 @@ export function nextActionState(record: Pick<FactsRecord, "state" | "next_action
   return +due <= +now ? "overdue" : "due";
 }
 
+/** One malformed Lead must not throw inside the all-or-nothing Attention walk: its card shows no route instead. */
+function safeCanonicalView(lead: Parameters<typeof moveViewsForLead>[0], model: "FormLead" | "CallLead") {
+  try {
+    return moveViewsForLead(lead, model).canonical_current;
+  } catch {
+    return null;
+  }
+}
+
 export function outreachFacts(input: FactsInput) {
   const { record, number, lead, now } = input;
   const model = record.subject.kind === "lead" ? record.subject.model : null;
-  const view = lead && (model === "FormLead" || model === "CallLead") ? moveViewsForLead(lead, model).canonical_current : null;
+  const view = lead && (model === "FormLead" || model === "CallLead") ? safeCanonicalView(lead, model) : null;
   const route: OutreachFactsDto["route"] = view ? { pickup_city: view.pickup.city, pickup_state: view.pickup.state,
     delivery_city: view.delivery.city, delivery_state: view.delivery.state, move_date: view.move_date, source: "lead" } : null;
   const rollups = number ? number.rollups ?? {} : null;

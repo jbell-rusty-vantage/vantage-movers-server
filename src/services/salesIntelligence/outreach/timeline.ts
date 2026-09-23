@@ -16,8 +16,8 @@ const SUBJECT_LOOKUP_CAP = 100;
  */
 export const outreachTimelineSource: TimelineSource = async ({ number_id, cursor, limit }) => {
   const [edges, records] = await Promise.all([
-    getNumberLeadAttachmentModel().find({ contact_number_id: number_id }).select("lead_ref").sort({ _id: 1 }).limit(SUBJECT_LOOKUP_CAP).lean(),
-    getOutreachRecordModel().find({ primary_contact_number_id: number_id }).select("subject").sort({ _id: 1 }).limit(SUBJECT_LOOKUP_CAP).lean(),
+    getNumberLeadAttachmentModel().find({ contact_number_id: number_id }).select("lead_ref").sort({ _id: -1 }).limit(SUBJECT_LOOKUP_CAP).lean(),
+    getOutreachRecordModel().find({ primary_contact_number_id: number_id }).select("subject").sort({ _id: -1 }).limit(SUBJECT_LOOKUP_CAP).lean(),
   ]);
   const keys = [`number:${number_id}`, ...edges.map(e => `lead:${e.lead_ref.model}:${e.lead_ref.id}`), ...records.map(r => subjectKey(r.subject))];
   const rows = await getSalesIntelligenceAuditEventModel().aggregate([

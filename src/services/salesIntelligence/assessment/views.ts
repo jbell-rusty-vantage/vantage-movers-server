@@ -29,7 +29,8 @@ export type LeadMoveSource = MoveFields & {
 
 /** Customer-submitted origins. Granot-created, sheet, admin and legacy rows are not proof of a form submission. */
 const FORM_SUBMISSION_ORIGINS = new Set(["wordpress_form"]);
-const clean = (value: Text) => value?.trim() || null;
+// Raw-driver reads can hold a non-string (a numeric zip); coerce so one odd Lead never throws inside the Attention walk.
+const clean = (value: Text | number) => value == null ? null : String(value).trim() || null;
 const state = (value: Text) => { const v = clean(value); return v === FORM_LEAD_UNKNOWN_STATE ? null : v; };
 const day = (value: Date | null | undefined) => value instanceof Date && !Number.isNaN(+value) ? value.toISOString().slice(0, 10) : null;
 

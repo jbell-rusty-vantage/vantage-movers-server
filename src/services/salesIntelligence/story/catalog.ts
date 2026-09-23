@@ -88,7 +88,7 @@ export function auditEventStoryKind(eventKind: string, invalidationKind?: string
 /** Audit kinds that are routine bookkeeping, never story events (§4.3). */
 export const EXCLUDED_AUDIT_EVENT_KINDS = [
   "clock_boundary", "outreach_interaction", "outreach_number_linked", "intelligence.submitted", "outreach_lead_attachment_mirrored",
-  "attachment_refreshed", "projection_refreshed",
+  "attachment_refreshed", "projection_refreshed", "media_played",
 ] as const;
 
 const ATTEMPT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;

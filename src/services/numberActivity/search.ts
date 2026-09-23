@@ -579,7 +579,7 @@ export async function searchNumberActivity(
         cursor: next,
         sort: applied,
       },
-      deps.now,
+      () => now,
     ),
   );
 }

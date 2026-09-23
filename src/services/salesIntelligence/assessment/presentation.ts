@@ -497,9 +497,19 @@ export function assessmentSection(artifact: ArtifactRow, context: SectionContext
       source_manifest: arr(artifact.source_manifest).map(entry => sourceManifestEntryDtoSchema.parse({ kind: rec(entry)?.kind, id: rec(entry)?.id,
         version: rec(entry)?.version, conversation_id: idOf(rec(entry)?.conversation_id), call_at: iso(rec(entry)?.call_at), lineage: arr(rec(entry)?.lineage).map(String) })),
     });
-    return assessmentSectionSchema.parse({ ...section, move_table: moveTable(section) });
+    return withMoveTable(section);
   } catch (error) {
     if (error instanceof z.ZodError) return empty("unsupported");
+    throw error;
+  }
+}
+
+/** The move table is optional: a construction error omits it instead of hiding a section that rendered before it existed. */
+function withMoveTable(section: AssessmentSection): AssessmentSection {
+  try {
+    return assessmentSectionSchema.parse({ ...section, move_table: moveTable(section) });
+  } catch (error) {
+    if (error instanceof z.ZodError) return section;
     throw error;
   }
 }

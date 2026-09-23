@@ -108,6 +108,7 @@
     "test:csi:move-assessment-backfill:replica": "node --import tsx scripts/dev_ops/test-csi-move-assessment-backfill.ts",
     "test:si:rollups:replica": "node --import tsx scripts/dev_ops/test-si-rollups.ts",
     "test:si:facts:replica": "node --import tsx scripts/dev_ops/test-si-facts.ts",
+    "test:si:suggest:replica": "node --import tsx scripts/dev_ops/test-si-suggest.ts",
     "test:si:desk:replica": "node --import tsx scripts/dev_ops/test-si-desk.ts",
     "test:si:numbers:replica": "node --import tsx scripts/dev_ops/test-si-numbers.ts",
     "test:si:presentation:replica": "node --import tsx scripts/dev_ops/test-si-presentation.ts",

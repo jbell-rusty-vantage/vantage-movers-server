@@ -143,7 +143,8 @@ export const mongoAssessmentStore: AssessmentStore = {
 
 /** Injectable for tests; production reads use Mongo and the live Coverage read. `now` is the read's `as_of` for derived states. */
 export type AssessmentReadDeps = { store?: AssessmentStore; coverage?: () => Promise<CoverageDto>; now?: () => Date };
-const respond = async <T>(data: T, deps: AssessmentReadDeps) => ownerRead(data, undefined, deps.coverage ? await deps.coverage() : undefined);
+/** `now` is the clock the derived states were computed at, so `as_of` never disagrees with them (data spec §3.8 rule 4). */
+const respond = async <T>(data: T, deps: AssessmentReadDeps, now?: Date) => ownerRead(data, now ? () => now : undefined, deps.coverage ? await deps.coverage() : undefined);
 
 const numberOf = (record: RecordLite | null, artifact?: ArtifactRow | null) => {
   const value = artifact?.contact_number_id ?? record?.primary_contact_number_id ?? (record?.subject.kind === "number_review" ? record.subject.contact_number_id : null);
@@ -197,7 +198,7 @@ export async function readOutreachAssessment(outreachId: string, deps: Assessmen
     versions: settled.map(artifact => assessmentVersion(artifact, isCurrent(record, artifact), purgePending)),
     ...(!section && leadViews ? { lead_move_table: leadOnlyMoveTable(leadViews) } : {}),
   });
-  return respond(dto, deps);
+  return respond(dto, deps, now);
 }
 
 async function loadArtifact(artifactId: string, store: AssessmentStore) {
@@ -219,7 +220,7 @@ export async function readAssessment(artifactId: string, deps: AssessmentReadDep
   const context = { applicability: record ? assessmentApplicability(record) : "active" as const, projection: record?.move_assessment ?? null, current,
     retention_pending: purgePending, move_date_passed: moveDateHasPassed(leadViews?.canonical_current.move_date, now) };
   const section = assessmentSection(artifact, context);
-  return respond(assessmentSection(artifact, { ...context, newer_calls_count: await newerCallsFor(store, artifact, numberOf(record, artifact), section) }), deps);
+  return respond(assessmentSection(artifact, { ...context, newer_calls_count: await newerCallsFor(store, artifact, numberOf(record, artifact), section) }), deps, now);
 }
 
 /** `GET /assessments/:artifactId/output`: exact retained model object plus the accepted envelope, labelled separately. */
@@ -239,7 +240,7 @@ export async function readAssessmentEvidence(artifactId: string, deps: Assessmen
   const section = assessmentSection(artifact, { applicability: "active", current: false, retention_pending: purgePending });
   if (!["ready", "insufficient_evidence"].includes(section.availability)) {
     const availability = section.availability === "purged" ? "purged" : section.availability === "unsupported" ? "unsupported" : "unavailable";
-    return respond<EvidenceSection>({ availability, items: [] }, deps);
+    return respond<EvidenceSection>({ availability, items: [] }, deps, now);
   }
   const refs = assessmentEvidenceRefs(artifact);
   const want = (source: string) => refs.flatMap(ref => ref.locator.source === source ? [ref.locator] : []);
@@ -256,7 +257,7 @@ export async function readAssessmentEvidence(artifactId: string, deps: Assessmen
   return respond(evidenceSection(refs, { snapshots: new Map(snapshots.map(row => [String(row._id), row])), runs: new Map(runs.map(row => [String(row._id), row])),
     conversations: new Map(conversations.map(row => [String(row._id), row])), findings: new Map(findings.map(row => [String(row._id), row])),
     leads: new Set(leads.keys()), lead_flags: leads, views: section.views, context_as_of: section.context_as_of, as_of: now.toISOString(),
-    instructions: new Map(instructions.map(row => [`${String(row.instruction_id)}:${row.revision}`, row])) }), deps);
+    instructions: new Map(instructions.map(row => [`${String(row.instruction_id)}:${row.revision}`, row])) }), deps, now);
 }
 
 async function loadRun(runId: string, store: AssessmentStore) {
