@@ -169,7 +169,7 @@ export async function getContactNumberDetail(
     }),
     readCaptureCoverage(),
   ]);
-  const outreachData = await readNumberOutreach(numberId, { edges: attachments, number: row, now, coverage });
+  const { attached_lead_progress: attached, ...outreachData } = await readNumberOutreach(numberId, { edges: attachments, number: row, now, coverage });
 
   const byState = (state: AttachmentLean["state"]) =>
     attachments.filter((a) => a.state === state).length;
@@ -220,6 +220,8 @@ export async function getContactNumberDetail(
     first_observed_at: new Date(row.first_observed_at).toISOString(),
     last_activity_at: new Date(row.last_activity_at).toISOString(),
     rollups: toRollupsDto(row),
+    // §9.3: the header is the Numbers row, through the same mapper (no extra read).
+    attached_lead_progress: attachedForItem(attached, row.rollups.outreach_records_total ?? 0),
     connections: {
       attachments_total: attachments.length,
       attached: byState("attached"),

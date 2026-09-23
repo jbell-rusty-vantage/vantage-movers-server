@@ -85,12 +85,14 @@ test("S4-NUMBER disposable replica", { skip: process.env.CSI_REPLICA_TEST !== "t
     assert.equal(byLead.get(String(two[0]!.leadId))?.transaction_intent, 60, "each Outreach keeps its own scores on the detail");
     assert.equal(byLead.get(String(two[1]!.leadId))?.status, "pending", "the pending set reaches the record");
     assert.equal(detailTwo.data.connections.attached, 2);
+    assert.deepEqual(detailTwo.data.attached_lead_progress, rowTwo.attached_lead_progress, "§9.3 header == row (multiple, no score)");
     assert.deepEqual(jobOps.filter(m => m !== "distinct" && m !== "countDocuments"), [], "no per-record jobs exists/findOne");
     assert.equal(jobOps.filter(m => m === "distinct").length, 1, "one pending-assessment distinct");
     jobOps.length = 0;
     const detailOne = await getContactNumberDetail(String(single._id), { now: () => now });
     assert.ok(detailOne);
     assert.equal(detailOne.data.outreach_records[0]?.move_assessment?.transaction_intent, 75);
+    assert.deepEqual(detailOne.data.attached_lead_progress, rowOne.attached_lead_progress, "§9.3 header == row (resolved, scores)");
     assert.equal(jobOps.filter(m => m === "distinct").length, 1);
     assert.equal(detailOne.data.outreach_records[0]?.id, String(one.record._id));
   } finally {

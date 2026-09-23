@@ -86,7 +86,7 @@ export const numberAttachedLeadProgressDtoSchema = attachedLeadProgressDtoSchema
     if (!value.lead_ref) ctx.addIssue({ code: "custom", message: "resolved requires lead_ref", path: ["lead_ref"] });
     return;
   }
-  for (const key of ["lead_ref", "lead_progress", "booking", "outreach_state", "lead_display"] as const) {
+  for (const key of ["lead_ref", "lead_progress", "booking", "outreach_state", "lead_display", "lead_status", "move_assessment"] as const) {
     if (value[key] !== undefined) ctx.addIssue({ code: "custom", message: `${value.status} carries no Lead fields`, path: [key] });
   }
 });
@@ -151,6 +151,7 @@ export const NUMBER_DETAIL_READ_ONLY_FIELDS = [
   "last_activity_at",
   "rollups",
   "connections",
+  "attached_lead_progress",
 ] as const;
 
 const numberDetailReadDataSchema = numberDetailDtoSchema.shape.data
@@ -164,6 +165,8 @@ const numberDetailReadDataSchema = numberDetailDtoSchema.shape.data
     last_activity_at: date,
     rollups: numberRollupsDtoSchema,
     connections: numberConnectionsDtoSchema,
+    /** Final spec §9.3: the header's Lead line and scores, identical to the Numbers row's item. Optional and additive. */
+    attached_lead_progress: numberAttachedLeadProgressDtoSchema.optional(),
   })
   .strict();
 

@@ -165,6 +165,7 @@ test("D2: GET /numbers/:id read count is independent of the number of Outreach r
     });
   }
   assert.deepEqual(counts[1], counts[8], "same reads, same kinds, for 1 and 8 Outreach records");
+  assert.equal(counts[1]!.length, 29, "the header adds no read (29 before and after S4-NUMBER follow-up)");
   t.diagnostic(`reads per GET /numbers/:id = ${counts[1]!.length}: ${counts[1]!.join(", ")}`);
 });
 
@@ -226,6 +227,40 @@ test("V15 / D5: resolved → move_assessment + lead_status; multiple and none �
   assert.equal(resolvedItem.attached_lead_progress?.outreach_records_total, 2);
   numberSearchItemDtoSchema.parse(resolvedItem);
   assert.deepEqual(attachedForItem({ status: "multiple", move_assessment: stale.move_assessment, lead_status: "open" } as never), { status: "multiple" }, "the mapper strips a score from a non-resolved status");
+});
+
+test("§9.3: the Number detail header equals the Numbers row for the same Number (resolved, multiple, none, pending, stale)", async t => {
+  const [one, two, none, pendingNo, passed] = ["+16175550201", "+16175550202", "+16175550203", "+16175550204", "+16175550205"].map((e, i) => numberDoc(e, { rollups: { outreach_records_total: i } }));
+  const [leadA, leadB, leadC, leadD, leadE] = [oid(), oid(), oid(), oid(), oid()];
+  const store: Store = {
+    contact_numbers: [one!, two!, none!, pendingNo!, passed!],
+    attachments: [edge(one!._id, leadA), edge(two!._id, leadB), edge(two!._id, leadC), edge(none!._id, leadC, "candidate"), edge(none!._id, leadB, "rejected"), edge(pendingNo!._id, leadD), edge(passed!._id, leadE)],
+    records: [outreach(leadA, one!._id, { move_assessment: READY, state: "closed", closed_reason: "booked", closure_origin: "official" }),
+      outreach(leadB, two!._id, { move_assessment: READY }), outreach(leadC, two!._id, { move_assessment: READY }),
+      outreach(leadD, pendingNo!._id), outreach(leadE, passed!._id, { move_assessment: READY })],
+    form_leads: [lead(leadA, { booked: true }), lead(leadB), lead(leadC), lead(leadD), lead(leadE, { move_date: new Date("2026-09-01T00:00:00Z") })],
+    booked_leads: [{ _id: oid(), lead_model: "FormLead", lead_ref: leadA, book_date: new Date("2026-09-21T00:00:00Z") }],
+    jobs: [{ _id: oid(), deployment: process.env.SALES_INTELLIGENCE_DEPLOYMENT_ID, database: getMongoDatabaseName(), stage: "move_assessment", status: "retry", subject_key: subjectKeyOf(leadD) }],
+  };
+  install(t, store);
+  const numbers = [one!, two!, none!, pendingNo!, passed!];
+  const map = await loadAttachedLeadProgressForNumbers(numbers.map(n => String(n._id)), NOW);
+  const seen = new Set<string>();
+  for (const n of numbers) {
+    resetCaptureCoverageCache();
+    const detail = await getContactNumberDetail(String(n._id), { now: () => NOW });
+    assert.ok(detail);
+    const row = toNumberSearchItem(n as unknown as ContactNumberLean, { kind: "none" }, map.get(String(n._id)));
+    assert.deepEqual(detail.data.attached_lead_progress, row.attached_lead_progress, `header == row for ${n.e164}`);
+    seen.add(`${row.attached_lead_progress?.status}:${row.attached_lead_progress?.move_assessment?.status ?? "-"}`);
+  }
+  assert.deepEqual([...seen].sort(), ["multiple:-", "none:-", "resolved:not_applicable", "resolved:pending", "resolved:ready"]);
+  const multiple = (await getContactNumberDetail(String(two!._id), { now: () => NOW }))!;
+  assert.deepEqual(multiple.data.attached_lead_progress, { status: "multiple", outreach_records_total: 1 }, "two Leads: no score in the header either");
+  assert.throws(() => numberSearchItemDtoSchema.parse({ ...toNumberSearchItem(two as unknown as ContactNumberLean, { kind: "none" }, { status: "multiple" }),
+    attached_lead_progress: { status: "multiple", move_assessment: null } }), "schema rejects a score field on multiple");
+  assert.throws(() => numberSearchItemDtoSchema.parse({ ...toNumberSearchItem(two as unknown as ContactNumberLean, { kind: "none" }, { status: "none" }),
+    attached_lead_progress: { status: "none", lead_status: "open" } }), "schema rejects a Lead status on none");
 });
 
 test("lead_status words (final spec §9.1 line 2)", () => {

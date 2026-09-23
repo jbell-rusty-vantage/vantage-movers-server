@@ -71,35 +71,52 @@ export async function loadAttachedLeadProgressForNumbers(numberIds: readonly str
   const edges = await attachmentModel().find({ contact_number_id: { $in: ids }, state: { $ne: "rejected" } }).lean();
   const byNumber = new Map<string, typeof edges>();
   for (const edge of edges) { const key = String(edge.contact_number_id); byNumber.set(key, [...(byNumber.get(key) ?? []), edge]); }
-  const resolved = new Map<string, { model: "FormLead" | "CallLead"; id: string }>();
+  const resolved = new Map<string, AttachedLeadRef>();
   for (const id of numberIds) {
-    const list = byNumber.get(id) ?? [];
-    if (!list.length) { out.set(id, { status: "none" }); continue; }
-    const attached = list.filter(e => e.state === "attached");
-    // Only an attached edge resolves a Lead; a lone candidate never lends its Priority to the Number.
-    const pick = attached.length === 1 ? attached[0]! : null;
-    if (!pick) { out.set(id, { status: attached.length > 1 ? "multiple" : "none" }); continue; }
-    resolved.set(id, { model: pick.lead_ref.model, id: String(pick.lead_ref.id) });
+    const pick = resolveAttachedLead(byNumber.get(id) ?? []);
+    if (pick.status === "resolved") resolved.set(id, pick.ref); else out.set(id, { status: pick.status });
   }
   const refs = [...resolved.values()];
   if (!refs.length) return out;
   const records = await getOutreachRecordModel().find({ purged_at: null, $or: refs.map(ref => ({ "subject.model": ref.model, "subject.id": ref.id })) }).lean();
   const recordByLead = new Map(records.map(record => [leadKey(String(record.subject.model), record.subject.id), record] as const));
   const [side, pending] = await Promise.all([loadOutreachSideData(records, new Map()), pendingAssessmentKeys(records.map(r => subjectKey(r.subject)))]);
-  for (const [numberId, ref] of resolved) {
-    const record = recordByLead.get(leadKey(ref.model, ref.id)) ?? null;
-    const bookings = side.bookings.get(leadKey(ref.model, ref.id)) ?? [];
-    const cancellations = bookings.flatMap(b => side.cancellations.get(String(b._id)) ?? []);
-    const booking = bookings[0] ? { id: String(bookings[0]._id), cancelled: (side.cancellations.get(String(bookings[0]._id)) ?? []).length > 0 } : null;
-    const lead = side.leads.get(leadKey(ref.model, ref.id)) ?? null;
-    // The Outreach DTO's own rule: pending from the batched queued set, `move_date_passed` from the card facts at `now`.
-    const moveDatePassed = record ? outreachFacts({ record, followups: [], number: null, lead, bookings, cancellations, now }).facts.move_date_passed : false;
-    out.set(numberId, attachedLeadProgressDtoSchema.parse({ status: "resolved", lead_ref: ref, lead_progress: record ? leadProgressDto(record) : null, booking,
-      outreach_state: record ? stateWithActions(record, [], now) : null, lead_display: lead ? { name: lead.name ?? null, job_no: lead.job_no ?? null } : null,
-      lead_status: leadStatusWord(record, lead, bookings, side.cancellations),
-      move_assessment: record ? moveAssessmentProjectionDto(record, pending.has(subjectKey(record.subject)), { moveDatePassed }) : null }));
-  }
+  for (const [numberId, ref] of resolved) out.set(numberId, attachedProgressForLead(ref, recordByLead, side, pending, now));
   return out;
+}
+
+type AttachedLeadRef = { model: "FormLead" | "CallLead"; id: string };
+/**
+ * The one Lead a Number resolves to (§7, D5): exactly one `attached` edge. Several attached edges are
+ * `multiple`; candidates, ambiguous and rejected edges never lend a Lead to the Number (`none`).
+ * Shared by the Numbers row and the Number detail header so they cannot disagree.
+ */
+export function resolveAttachedLead(edges: readonly { state: string; lead_ref: { model: "FormLead" | "CallLead"; id: unknown } }[]):
+  { status: "resolved"; ref: AttachedLeadRef } | { status: "multiple" | "none" } {
+  const attached = edges.filter(e => e.state === "attached");
+  if (attached.length > 1) return { status: "multiple" };
+  if (attached.length === 0) return { status: "none" };
+  return { status: "resolved", ref: { model: attached[0]!.lead_ref.model, id: String(attached[0]!.lead_ref.id) } };
+}
+
+/**
+ * The `resolved` item for one Lead from data a read already holds: its Outreach record (keyed by
+ * `FormLead:<id>`), the page's side data and pending-assessment set. Pure; the row and the header use it.
+ * V15: the projection follows the Outreach DTO's pending and `move_date_passed` rules at `now`.
+ */
+export function attachedProgressForLead(ref: AttachedLeadRef, recordByLead: ReadonlyMap<string, RecordRow>, side: Pick<OutreachSideData, "bookings" | "cancellations" | "leads">,
+  pending: ReadonlySet<string>, now: Date): AttachedLeadProgressDto {
+  const key = leadKey(ref.model, ref.id);
+  const record = recordByLead.get(key) ?? null;
+  const bookings = side.bookings.get(key) ?? [];
+  const cancellations = bookings.flatMap(b => side.cancellations.get(String(b._id)) ?? []);
+  const booking = bookings[0] ? { id: String(bookings[0]._id), cancelled: (side.cancellations.get(String(bookings[0]._id)) ?? []).length > 0 } : null;
+  const lead = side.leads.get(key) ?? null;
+  const moveDatePassed = record ? outreachFacts({ record, followups: [], number: null, lead, bookings, cancellations, now }).facts.move_date_passed : false;
+  return attachedLeadProgressDtoSchema.parse({ status: "resolved", lead_ref: ref, lead_progress: record ? leadProgressDto(record) : null, booking,
+    outreach_state: record ? stateWithActions(record, [], now) : null, lead_display: lead ? { name: lead.name ?? null, job_no: lead.job_no ?? null } : null,
+    lead_status: leadStatusWord(record, lead, bookings, side.cancellations),
+    move_assessment: record ? moveAssessmentProjectionDto(record, pending.has(subjectKey(record.subject)), { moveDatePassed }) : null });
 }
 
 /**
@@ -438,7 +455,7 @@ async function pendingAssessmentKeys(keys: readonly string[]): Promise<Set<strin
   return new Set(rows.map(String));
 }
 
-type NumberOutreachEdge = { lead_ref: { model: "FormLead" | "CallLead"; id: mongoose.Types.ObjectId } };
+type NumberOutreachEdge = { state: string; lead_ref: { model: "FormLead" | "CallLead"; id: mongoose.Types.ObjectId } };
 /**
  * `GET /numbers/:id` Outreach part. Data spec §7 D2: the caller hands over the Number and its
  * attachment edges it already read; restrictions, review items, follow-ups, recent attempts and the
@@ -482,7 +499,11 @@ export async function readNumberOutreach(numberId: string, prefetched: { edges?:
     });
   }
   const side = await loadOutreachSideData(records, inputs);
-  return { outreach_records: await Promise.all(records.map(r => toOutreachDto(r, now, coverage, { policy, inputs: inputs.get(String(r._id)), side, assessmentPending: pending.has(subjectKey(r.subject)) }))),
+  // §9.3 header = the Numbers row: the same resolver and mapper over the edges, records, side data and pending set already held.
+  const pick = resolveAttachedLead(edges);
+  const leadRecords = new Map(records.flatMap(r => r.subject.kind === "lead" ? [[leadKey(String(r.subject.model), r.subject.id), r] as const] : []));
+  const attached_lead_progress: AttachedLeadProgressDto = pick.status === "resolved" ? attachedProgressForLead(pick.ref, leadRecords, side, pending, now) : { status: pick.status };
+  return { attached_lead_progress, outreach_records: await Promise.all(records.map(r => toOutreachDto(r, now, coverage, { policy, inputs: inputs.get(String(r._id)), side, assessmentPending: pending.has(subjectKey(r.subject)) }))),
     restrictions: restrictions.filter(r => String(r.contact_number_id) === numberId).map(r => restrictionDtoSchema.parse({ id: String(r._id), revision: r.revision,
     contact_number_id: String(r.contact_number_id), channels: r.channels, until: iso(r.until), origin: r.origin, state: r.state, run_id: r.run_id ? String(r.run_id) : null,
     finding_id: r.finding_id ? String(r.finding_id) : null, allowed_actions: [{ action: "resolve_restriction", target_id: String(r._id), expected_revision: r.revision, enabled: r.state === "active", blocker_codes: [] }] })),
