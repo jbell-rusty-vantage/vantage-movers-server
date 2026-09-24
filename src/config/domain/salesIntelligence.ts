@@ -169,6 +169,21 @@ export const CSI_FLAGS = [
   // Form Lead Contact Numbers: the `attachment-lead:` job creates the Contact Number for a
   // non-duplicate Form Lead's submitted phone before attachment. Off: only calls create numbers.
   "FORM_LEAD_NUMBERS",
+  // Team 3 (reconciliation addendum G7, assignment addendum E1–E28). All off keeps today's behaviour.
+  // S5c-NUMBERS: the Numbers list hides form-only Numbers (`has_calls = false`) unless `include_form_only`.
+  "NUMBERS_HAS_CALLS_DEFAULT",
+  // S6-P5: an accepted Granot Priority 5 closes Outreach as `granot_booked` (E1/E2).
+  "PRIORITY5_CLOSURE",
+  // S6-AGENT: the Outreach responsible rep follows the Lead's `receiver_agent` (`crm_receiver`, E4/E26).
+  "RECEIVER_ASSIGNMENT",
+  // S6-AGENT: Granot's latest rep replaces an automatic `receiver_agent` (E3/E6; renamed from
+  // GRANOT_RECEIVER_AGENT_LATEST_WINS by G10).
+  "RECEIVER_LATEST_WINS",
+  // S8-REP: the server accepts the signed `rep` role and enforces its scope on every route (E8–E11).
+  "REP_ACCESS",
+  // S9: band transitions + baseline, the `overview_now` tally, `outreach_rep_days` cron and the
+  // overview route (E15–E23, G8).
+  "OVERVIEW",
 ] as const;
 export function csiFlag(flag: (typeof CSI_FLAGS)[number]): boolean {
   return (
