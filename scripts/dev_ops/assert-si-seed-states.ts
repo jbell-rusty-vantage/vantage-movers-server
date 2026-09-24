@@ -10,6 +10,7 @@ import { MongoClient, ObjectId, type Db } from "mongodb";
 import { SI_SEED_DATABASE, SI_SEED_REPLICA, SI_SEED_STATES, assertSeedDatabase, type SiSeedState } from "./lib/si-contract-common";
 import { defaultCsiPolicy } from "../../src/services/salesIntelligence/policy";
 import { staffedMinutesBetween } from "../../src/services/salesIntelligence/outreach/staffing";
+import { derive } from "../../src/services/salesIntelligence/outreach/derive";
 
 const DAY = 86_400_000;
 const etDay = (at: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
@@ -99,20 +100,38 @@ async function attemptOffsetMatches(db: Db, prefix: string, target: number, tole
   for (const call of calls) if (Math.abs(staffedMinutesBetween(call.started_at, followup.due_at, POLICY) - target) <= tolerance) return 1;
   return 0;
 }
-/** Numbers whose only calls are a single Inbound human conversation: [staffed minutes ago] per Number. */
-async function inboundOnlyStaffedMinutesAgo(db: Db, now: Date): Promise<number[]> {
+/** Numbers whose only calls are a single Inbound human conversation: {numberId, staffed minutes ago}. */
+async function inboundOnlyRecords(db: Db, now: Date): Promise<Array<{ numberId: ObjectId; minutesAgo: number }>> {
   const groups = await db.collection("call_interactions").aggregate<{ _id: ObjectId; directions: string[]; calls: Array<{ direction: string; contact_type: string; started_at: Date }> }>([
     { $match: { merged_into_id: null } },
     { $group: { _id: "$contact_number_id", directions: { $addToSet: "$direction" }, calls: { $push: { direction: "$direction", contact_type: "$contact_type", started_at: "$started_at" } } } },
   ]).toArray();
-  const out: number[] = [];
+  const out: Array<{ numberId: ObjectId; minutesAgo: number }> = [];
   for (const row of groups) {
     if (row.directions.length !== 1 || row.directions[0] !== "Inbound") continue;
     const human = row.calls.filter(c => c.contact_type === "human_conversation");
     if (human.length !== 1) continue;
-    out.push(staffedMinutesBetween(human[0]!.started_at, now, POLICY));
+    out.push({ numberId: row._id, minutesAgo: staffedMinutesBetween(human[0]!.started_at, now, POLICY) });
   }
   return out;
+}
+/**
+ * AC0-SEED phase 2: derive-consistent boundary check for `no_callback_after_inbound`. Bucketed with a
+ * small epsilon (see the state list below), then re-verified against the real `derive()` using the
+ * SAME `now` the bucketing used, so seed-to-assert clock drift can never make this flaky: whichever
+ * side of 240 the elapsed staffed minutes actually land on, the reason's presence must agree with it.
+ */
+async function inboundOnlyDeriveCheck(db: Db, now: Date, min: number, max: number) {
+  const rows = (await inboundOnlyRecords(db, now)).filter(r => r.minutesAgo >= min && r.minutesAgo < max);
+  let n = 0;
+  for (const r of rows) {
+    const record = await db.collection("outreach_records").findOne({ primary_contact_number_id: r.numberId });
+    if (!record || record.state !== "open") continue;
+    const derived = await deriveForRecord(db, record._id, now);
+    const expectFires = r.minutesAgo >= 240;
+    if (Boolean(derived?.reasons.includes("no_callback_after_inbound")) === expectFires) n++;
+  }
+  return n;
 }
 /** FormLeads within [minSec, maxSec] old whose attached Number has zero call_interactions. */
 async function unworkedFormLeadAge(db: Db, minSec: number, maxSec: number) {
@@ -128,6 +147,14 @@ async function unworkedFormLeadAge(db: Db, minSec: number, maxSec: number) {
   }
   return n;
 }
+/** `derive()` reasons for the Outreach record of the (uniquely named) FormLead matching `query`. */
+async function derivedReasonsForFormLead(db: Db, now: Date, query: Record<string, unknown>) {
+  const lead = await db.collection("form_leads").findOne(query, { projection: { _id: 1 } });
+  if (!lead) return null;
+  const record = await db.collection("outreach_records").findOne({ "subject.model": "FormLead", "subject.id": lead._id });
+  if (!record) return null;
+  return deriveForRecord(db, record._id, now);
+}
 /** FormLeads with an Outbound call on the attached phone [minDays, maxDays] before the form's `timestamp`. */
 async function calledBeforeFormDays(db: Db, minDays: number, maxDays: number) {
   const leads = await db.collection("form_leads").find({}, { projection: { _id: 1, timestamp: 1 } }).toArray();
@@ -140,6 +167,18 @@ async function calledBeforeFormDays(db: Db, minDays: number, maxDays: number) {
   }
   return n;
 }
+/** The Outreach record of the (first) FormLead with an Outbound call [minDays, maxDays] before its `timestamp`. */
+async function calledBeforeFormRecord(db: Db, minDays: number, maxDays: number) {
+  const leads = await db.collection("form_leads").find({}, { projection: { _id: 1, timestamp: 1 } }).toArray();
+  for (const lead of leads) {
+    const attachment = await db.collection("number_lead_attachments").findOne({ "lead_ref.id": lead._id, state: "attached" });
+    if (!attachment) continue;
+    const calls = await db.collection("call_interactions").find({ contact_number_id: attachment.contact_number_id, direction: "Outbound", started_at: { $lt: lead.timestamp } }).toArray();
+    if (calls.some(call => { const days = (+lead.timestamp - +call.started_at) / DAY; return days >= minDays && days <= maxDays; }))
+      return db.collection("outreach_records").findOne({ "subject.model": "FormLead", "subject.id": lead._id });
+  }
+  return null;
+}
 /** Outbound, non-human-conversation attempts grouped by Number, with the distinct `user`-party extensions seen. */
 async function outboundAttemptExtensionGroups(db: Db) {
   return db.collection("call_interactions").aggregate<{ _id: ObjectId; exts: string[]; n: number }>([
@@ -147,6 +186,23 @@ async function outboundAttemptExtensionGroups(db: Db) {
     { $unwind: "$parties" }, { $match: { "parties.role": "user" } },
     { $group: { _id: "$contact_number_id", exts: { $addToSet: "$parties.extension_id" }, n: { $sum: 1 } } },
   ]).toArray();
+}
+/** AC0-SEED going-cold candidates (§7.3): open records, `trigger_at` 30+ days old, never a human conversation, with a recent (10-day) outbound attempt. Shared by `ac_going_cold_unreached` (phase 1, raw facts) and `ac_unreached_reason` (phase 2, the derived reason). */
+async function goingColdCandidates(db: Db, now: Date) {
+  const records = await db.collection("outreach_records").find({ state: { $ne: "closed" }, primary_contact_number_id: { $ne: null }, trigger_at: { $lt: new Date(+now - 30 * DAY) } }).toArray();
+  const out: typeof records = [];
+  for (const r of records) {
+    if (await db.collection("call_interactions").countDocuments({ contact_number_id: r.primary_contact_number_id, contact_type: "human_conversation" })) continue;
+    if (await db.collection("call_interactions").countDocuments({ contact_number_id: r.primary_contact_number_id, direction: "Outbound", started_at: { $gte: new Date(+now - 10 * DAY) } })) out.push(r);
+  }
+  return out;
+}
+/** Pure `derive()` over the SOURCE collections for one record: never the manifest, never a cached snapshot. */
+async function deriveForRecord(db: Db, recordId: ObjectId, now: Date) {
+  const record = await db.collection("outreach_records").findOne({ _id: recordId });
+  if (!record) return null;
+  const followups = await db.collection("outreach_followups").find({ outreach_record_id: recordId }).toArray();
+  return derive(record as never, { now, policy: POLICY, staffing: POLICY, followups: followups as never, restrictions: [], reviewItems: [], coverage: {}, evolution: true });
 }
 
 const CHECKS: Record<SiSeedState, Check> = {
@@ -316,10 +372,33 @@ const CHECKS: Record<SiSeedState, Check> = {
   },
   // ── AC0-SEED (2026-09-23): Attention evolution / Case File source-data states. Every check reads
   // only the source collections the corresponding seed subject wrote (TEAM-4-INSTRUCTION §4). ──────
-  ac_callback_customer_exact: (db, now) => db.collection("outreach_followups").countDocuments({ origin: "customer_request", kind: "call", status: "open",
-    "date_resolution.precision": "exact", due_at: { $lt: now } }),
-  ac_callback_owner_exact: db => db.collection("outreach_followups").countDocuments({ origin: "owner", kind: "call", status: "open", "date_resolution.precision": "exact" }),
-  ac_callback_rep_day: db => db.collection("outreach_followups").countDocuments({ origin: "rep_promise", kind: "call", status: "open", "date_resolution.precision": "day" }),
+  // Phase 2: also verify the real `derive()` puts this exact-precision callback in band 1 with the
+  // right `promised_by:*` (F8 §5.1). The raw-fact count from phase 1 still gates `ok`.
+  ac_callback_customer_exact: async (db, now) => {
+    const raw = await db.collection("outreach_followups").countDocuments({ origin: "customer_request", kind: "call", status: "open", "date_resolution.precision": "exact", due_at: { $lt: now } });
+    const followup = await followupByCommitmentPrefix(db, "ac:customer-exact:");
+    if (!followup) return 0;
+    const derived = await deriveForRecord(db, followup.outreach_record_id, now);
+    return raw && derived?.attention_band === 1 && derived.reasons.includes("promised_by:customer") ? raw : 0;
+  },
+  ac_callback_owner_exact: async (db, now) => {
+    const raw = await db.collection("outreach_followups").countDocuments({ origin: "owner", kind: "call", status: "open", "date_resolution.precision": "exact" });
+    const candidates = await db.collection("outreach_followups").find({ origin: "owner", kind: "call", status: "open", "date_resolution.precision": "exact", due_at: { $lt: now } }).toArray();
+    for (const c of candidates) {
+      const derived = await deriveForRecord(db, c.outreach_record_id, now);
+      if (derived?.attention_band === 1 && derived.reasons.includes("promised_by:owner")) return raw;
+    }
+    return 0;
+  },
+  // Phase 2: the day-precision rep promise is now overdue (§5.5 K13: day precision never reaches band 1;
+  // once overdue it is band 4 `followups_due`).
+  ac_callback_rep_day: async (db, now) => {
+    const raw = await db.collection("outreach_followups").countDocuments({ origin: "rep_promise", kind: "call", status: "open", "date_resolution.precision": "day" });
+    const followup = await followupByCommitmentPrefix(db, "ac:rep-day:");
+    if (!followup) return 0;
+    const derived = await deriveForRecord(db, followup.outreach_record_id, now);
+    return raw && derived?.attention_band === 4 && derived.reasons.includes("followups_due") && derived.attention_band !== 1 ? raw : 0;
+  },
   ac_callback_send_estimate_day: db => db.collection("outreach_followups").countDocuments({ origin: "rep_promise", kind: "send_estimate", status: "open", "date_resolution.precision": "day" }),
   ac_attempt_50_early: db => attemptOffsetMatches(db, "ac:attempt-50:", 50, 5),
   ac_attempt_70_early: db => attemptOffsetMatches(db, "ac:attempt-70:", 70, 5),
@@ -342,16 +421,68 @@ const CHECKS: Record<SiSeedState, Check> = {
     const gaps = [staffedMinutesBetween(calls[0]!.started_at, calls[1]!.started_at, POLICY), staffedMinutesBetween(calls[1]!.started_at, calls[2]!.started_at, POLICY)];
     return gaps.every(g => g >= 90 && g <= 150) ? 1 : 0;
   },
+  // Phase 2: the completion loop actually ran (`ensureInteraction` on each attempt). Found by the
+  // root's own commitment key, then the code's own `retry:<root>:<attempt>` key (`promiseRetryKey`).
+  ac_retry_successor_1: async db => {
+    const root = await followupByCommitmentPrefix(db, "ac:promise-chain:");
+    if (!root) return 0;
+    return db.collection("outreach_followups").countDocuments({ "promise_chain.root_id": root._id, "promise_chain.attempt": 1, commitment_key: `retry:${root._id}:1` });
+  },
+  ac_retry_successor_2: async db => {
+    const root = await followupByCommitmentPrefix(db, "ac:promise-chain:");
+    if (!root) return 0;
+    return db.collection("outreach_followups").countDocuments({ "promise_chain.root_id": root._id, "promise_chain.attempt": 2, commitment_key: `retry:${root._id}:2` });
+  },
+  ac_promise_chain_unreached: async (db, now) => {
+    const root = await followupByCommitmentPrefix(db, "ac:promise-chain:");
+    if (!root) return 0;
+    const derived = await deriveForRecord(db, root.outreach_record_id, now);
+    return derived?.reasons.includes("promise_unreached") ? 1 : 0;
+  },
+  // Phase 2: rule 2 (§6) — the inbound human conversation after the promise completed it as `customer_called`.
+  ac_completion_customer_called: async db => {
+    const followup = await followupByCommitmentPrefix(db, "ac:inbound-after-promise:");
+    return followup?.status === "completed" && followup.disposition === "customer_called" ? 1 : 0;
+  },
+  // Phase 2: rule 1 (§6) — 50 min early is inside the 60-staffed-minute window (completes); 70 is outside (stays open).
+  ac_completion_early_window: async db => {
+    const followup = await followupByCommitmentPrefix(db, "ac:attempt-50:");
+    return followup?.status === "completed" ? 1 : 0;
+  },
+  ac_completion_not_early_window: async db => {
+    const followup = await followupByCommitmentPrefix(db, "ac:attempt-70:");
+    return followup?.status === "open" ? 1 : 0;
+  },
   ac_formlead_40s: db => unworkedFormLeadAge(db, 0, 300),
-  ac_formlead_3h: db => unworkedFormLeadAge(db, 2 * 3600, 4 * 3600),
-  // Bucketed with a small epsilon around the 240-minute boundary: the seed's own binary search
-  // (`staffedBefore`, searching via `addStaffedMinutes`) already lands within floating-point noise
-  // (~1e-5 minutes) of the exact target, and the two states must stay on either side of the threshold
-  // even with a little real clock drift between the seed run and this assertion.
-  ac_inbound_only_239: async (db, now) => (await inboundOnlyStaffedMinutesAgo(db, now)).filter(m => m >= 225 && m < 239.95).length,
-  ac_inbound_only_240: async (db, now) => (await inboundOnlyStaffedMinutesAgo(db, now)).filter(m => m >= 239.95 && m <= 255).length,
-  ac_called_before_form_6d: db => calledBeforeFormDays(db, 5.5, 6.5),
-  ac_called_before_form_8d: db => calledBeforeFormDays(db, 7.5, 8.5),
+  // Wide bucket: the seed now builds this Lead by staffed minutes (45), not calendar hours, so its real
+  // age can be anywhere from ~45 minutes to ~2 days depending on when in the week the seed ran (the
+  // longest staffed gap is Sat 20:00 -> Mon 08:00). Still clearly not the ~40-second-old sibling.
+  ac_formlead_3h: db => unworkedFormLeadAge(db, 600, 48 * 3600),
+  // Phase 2: derive() reasons for the specific (uniquely named) record, F10 §5.2.
+  ac_new_not_yet_due_vs_no_call_yet: async (db, now) => {
+    const fresh = await derivedReasonsForFormLead(db, now, { name: "AC Fresh FormLead 40s" });
+    const stale = await derivedReasonsForFormLead(db, now, { name: "AC Fresh FormLead 3h" });
+    const freshOk = Boolean(fresh?.reasons.includes("new_not_yet_due")) && !fresh?.reasons.includes("no_call_yet");
+    const staleOk = Boolean(stale?.reasons.includes("no_call_yet")) && !stale?.reasons.includes("new_not_yet_due");
+    return freshOk && staleOk ? 1 : 0;
+  },
+  // Bucketed with a small epsilon around the 240-minute boundary, then re-verified against the real
+  // `derive()` output at the SAME `now` (`inboundOnlyDeriveCheck`), so seed-to-assert clock drift
+  // between the two script invocations can never make this boundary state flaky.
+  ac_inbound_only_239: (db, now) => inboundOnlyDeriveCheck(db, now, 225, 239.95),
+  ac_inbound_only_240: (db, now) => inboundOnlyDeriveCheck(db, now, 239.95, 255),
+  // Phase 2: `prior_contact_at` (§5.4) is now a real record field, computed by `ensureLead`'s
+  // `computeContactFacts` at creation time. 6 days back sets it; 8 days (outside the 7-day lookback) doesn't.
+  ac_called_before_form_6d: async db => {
+    const raw = await calledBeforeFormDays(db, 5.5, 6.5);
+    const record = await calledBeforeFormRecord(db, 5.5, 6.5);
+    return raw && record?.prior_contact_at ? raw : 0;
+  },
+  ac_called_before_form_8d: async db => {
+    const raw = await calledBeforeFormDays(db, 7.5, 8.5);
+    const record = await calledBeforeFormRecord(db, 7.5, 8.5);
+    return raw && (!record || !record.prior_contact_at) ? raw : 0;
+  },
   ac_progress_0_to_1: db => db.collection("entity_changes").countDocuments({ changed_paths: "granot_priority",
     fields: { $elemMatch: { path: "granot_priority", before: "0", after: "1" } }, "provenance.observation_id": { $exists: true } }),
   ac_progress_1_3_1: async db => {
@@ -361,18 +492,44 @@ const CHECKS: Record<SiSeedState, Check> = {
       "provenance.observation_id": { $exists: true } });
     return Math.min(upTo3, backTo1);
   },
-  ac_progress_uncertain_1: db => db.collection("outreach_records").countDocuments({ "lead_progress.granot_priority": "1", "lead_progress.provenance": "uncertain" }),
-  ac_progress_accepted_3: db => db.collection("outreach_records").countDocuments({ "lead_progress.disposition": "rep_discretion", "lead_progress.provenance": "accepted",
-    "lead_progress.work_observed": true }),
+  // Phase 2: P4 (§7.1) actually created one `system_default` "Follow up on the quote" for the accepted
+  // 0->1 / 1->3->1 transitions — and, strengthening the phase-1 checks, created NOTHING for the
+  // uncertain-1 and accepted-rep_discretion-3 records (K25: "creates nothing").
+  ac_progress_default_created: db => db.collection("outreach_followups").countDocuments({ default_kind: "quote_followup", status: "open" }),
+  ac_progress_uncertain_1: async db => {
+    const records = await db.collection("outreach_records").find({ "lead_progress.granot_priority": "1", "lead_progress.provenance": "uncertain" }).toArray();
+    let n = 0;
+    for (const r of records) if (!(await db.collection("outreach_followups").countDocuments({ outreach_record_id: r._id, default_kind: "quote_followup" }))) n++;
+    return n;
+  },
+  ac_progress_accepted_3: async db => {
+    const records = await db.collection("outreach_records").find({ "lead_progress.disposition": "rep_discretion", "lead_progress.provenance": "accepted", "lead_progress.work_observed": true }).toArray();
+    let n = 0;
+    for (const r of records) if (!(await db.collection("outreach_followups").countDocuments({ outreach_record_id: r._id, default_kind: "quote_followup" }))) n++;
+    return n;
+  },
   ac_attempts_same_rep: async db => (await outboundAttemptExtensionGroups(db)).filter(g => g.exts.length === 1 && g.n >= 2).length,
   ac_attempts_two_reps: async db => (await outboundAttemptExtensionGroups(db)).filter(g => g.exts.length >= 2).length,
-  ac_going_cold_unreached: async (db, now) => {
-    const records = await db.collection("outreach_records").find({ state: { $ne: "closed" }, primary_contact_number_id: { $ne: null }, trigger_at: { $lt: new Date(+now - 30 * DAY) } }).toArray();
+  // Phase 2: `ensureInteraction` actually ran (`firstAttemptsAgent`, §7.2). The same-rep record gets
+  // `assignment.origin: "first_attempts"`; the two-reps record gets no automatic assignment at all.
+  ac_first_attempts_assigned: async db => {
+    const groups = (await outboundAttemptExtensionGroups(db)).filter(g => g.exts.length === 1 && g.n >= 2);
     let n = 0;
-    for (const r of records) {
-      if (await db.collection("call_interactions").countDocuments({ contact_number_id: r.primary_contact_number_id, contact_type: "human_conversation" })) continue;
-      if (await db.collection("call_interactions").countDocuments({ contact_number_id: r.primary_contact_number_id, direction: "Outbound", started_at: { $gte: new Date(+now - 10 * DAY) } })) n++;
-    }
+    for (const g of groups) { const record = await db.collection("outreach_records").findOne({ primary_contact_number_id: g._id }); if (record?.assignment?.origin === "first_attempts") n++; }
+    return n;
+  },
+  ac_first_attempts_none: async db => {
+    const groups = (await outboundAttemptExtensionGroups(db)).filter(g => g.exts.length >= 2);
+    let n = 0;
+    for (const g of groups) { const record = await db.collection("outreach_records").findOne({ primary_contact_number_id: g._id }); if (record && record.assignment?.origin !== "first_attempts") n++; }
+    return n;
+  },
+  ac_going_cold_unreached: (db, now) => goingColdCandidates(db, now).then(rows => rows.length),
+  // Phase 2: the `unreached` secondary reason (§7.3) on the same going-cold record, via the real `derive()`.
+  ac_unreached_reason: async (db, now) => {
+    const rows = await goingColdCandidates(db, now);
+    let n = 0;
+    for (const r of rows) { const derived = await deriveForRecord(db, r._id, now); if (derived?.reasons.includes("unreached")) n++; }
     return n;
   },
   ac_number_25_summaries: async db => (await db.collection("lead_conversations").aggregate([

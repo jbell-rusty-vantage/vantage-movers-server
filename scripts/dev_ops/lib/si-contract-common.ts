@@ -52,6 +52,14 @@ export const SI_SEED_STATES = [
   "ac_granot_estimate_drop", "ac_granot_invalid", "ac_granot_phone_mismatch",
   "ac_extension_directory_name", "ac_extension_unknown",
   "ac_call_lead_ringcentral_route",
+  // AC0-SEED phase 2 (2026-09-24): derived states, once Worker A's AC3-AC5 code (`eddad04`) ran the
+  // seed's Outreach ensure with SALES_INTELLIGENCE_ATTENTION_EVOLUTION on.
+  "ac_retry_successor_1", "ac_retry_successor_2", "ac_promise_chain_unreached",
+  "ac_completion_customer_called", "ac_completion_early_window", "ac_completion_not_early_window",
+  "ac_new_not_yet_due_vs_no_call_yet",
+  "ac_progress_default_created",
+  "ac_first_attempts_assigned", "ac_first_attempts_none",
+  "ac_unreached_reason",
 ] as const;
 export type SiSeedState = (typeof SI_SEED_STATES)[number];
 
