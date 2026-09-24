@@ -96,6 +96,8 @@ main()
       console.error(error.message);
     } else {
       console.error(`Sales Intelligence subscription command failed: ${error instanceof Error ? error.message : String(error)}`);
+      const body = (error as { responseBody?: unknown } | null)?.responseBody;
+      if (body !== undefined) console.error(`Provider response: ${JSON.stringify(body).slice(0, 1000)}`);
     }
     process.exitCode = 1;
   })
