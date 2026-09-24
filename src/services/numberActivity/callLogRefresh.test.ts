@@ -27,6 +27,8 @@ function applyResult(overrides: Partial<ApplyResult> = {}): ApplyResult {
     noop: false,
     created: false,
     newly_terminal: false,
+    newly_settled: false,
+    call_log_state: "settled",
     new_recording_ids: [],
     fenced_party_events: 0,
     stale_call_log: false,
