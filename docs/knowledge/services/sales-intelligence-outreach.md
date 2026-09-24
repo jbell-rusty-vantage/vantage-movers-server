@@ -174,3 +174,22 @@ Behind `SALES_INTELLIGENCE_ATTENTION_EVOLUTION` (AC3–AC5) and `SALES_INTELLIGE
   - *Classification before retries (B1).* Capture records every connected call as `contact_type: unknown`. Only a finding or the Owner sets `human_conversation`. So `connected_contact_unknown` is not a miss at completion time (`KNOWN_MISS_DISPOSITIONS` = `no_answer`, `left_voicemail`; `knownMiss`, `contactClassified`): an unclassified connected call creates no retry and cannot end a chain in `promise_unreached`. When the same call is re-projected after classification, `reconcileClassifiedCall` handles it. If the call is now a human conversation, it re-marks the completed callback `spoke_with_customer` and supersedes the chain's open retries (`cancel_reason: reached_on_classification`, which the follow-up DTO shows). If the call is classified as not a conversation, it creates the deferred retry (same key).
   - *Stale facts (S1).* The four contact facts carry `contact_facts_revision`. A flag-on `refreshRecord` re-stamps it only while the facts were current; `computeContactFacts` makes them current. A save while the flag is off (a rollback window) leaves them stale (`contactFactsMissing` is true when a fact is absent or the stamp is not the record revision), and the next ensure or the repair lap (`:contact-facts-v1`) recomputes them. Revision bumps outside `refreshRecord` (assessment publish) cause one bounded recompute.
   - *Rollback note (S5).* `updateCsiPolicy` rejects the seven evolution policy fields with `INVALID_INPUT` (issues `policy.<field>` / `requires_attention_evolution`, now in the admin route's error body) unless `SALES_INTELLIGENCE_ATTENTION_EVOLUTION` is on. A stored policy carrying them is refused by the strict policy schema of any build before this branch (`01bcf18`). **Before rolling the code back below this branch, turn the flag off and PATCH the settings without those fields**; with the flag off they can no longer be stored.
+
+## Team 3: live call and Priority chips (S5c-LIVE, S7-PRIO, September 24, 2026)
+
+Reconciliation addendum §3.2 (G3) and assignment addendum §5 (E12–E14). Both are additive and unflagged.
+
+- **`live_call`.** `outreach.live_call` is `{ interaction_id, direction, started_at, rep }` or null, computed at the read's `as_of`: the newest call on the record's primary Contact Number with `terminal: false`, not a monitoring leg, not `Internal`, not merged, started in the last 4 hours. `rep` is the Case File §4.5 Vantage-side clause (`repClause`: reviewed name, else the extension marked unreviewed, else `no_extension`).
+  - It's read in `loadOutreachSideData`: one `call_interactions` `$in` over the page's primary Numbers (index `contact_number_id + started_at`), inside the existing parallel side reads. The rep-identity context (links, directory, routes) is read only when the page has a live call.
+  - The publish page, the Outreach detail and the Number detail all get it. The Numbers list opts out (`liveCalls: false`).
+  - `filter_keys.live_call` mirrors it on the row.
+  - The Owner's manual `call_progress` ("Owner calling") is unchanged and independent; the row reads as live when either is set.
+  - The SSE topic `number` already fires on `call_interactions`.
+  - Proof: `scripts/dev_ops/test-si-live.ts` (C18; reads flat for 6 vs 40 records, one `call_interactions.find` per page). The walk goes from 221 to 238 queries on the 8,031-record generator (17 pages).
+- **Priority keys.** `filter_keys.priority` is `no_lead` for a record with no Lead; a Lead without a code stays null ("Not set"). `GET /attention` accepts `priority=no_lead`.
+- **`priority_counts`.** The ATTENTION_V2 publish stores `priority_counts: { [key]: { attention, active, closed } }` on the header, tallied over the same index entries the read filters:
+  - `attention` = the Needs Attention view;
+  - `active` = All Outreach (closed work hidden);
+  - `closed` = the Closed view.
+
+  A chip's count equals the rows that view returns for `priority=<key>` with no other filter. `GET /attention` returns them as `data.priority_counts`. Proof: `scripts/dev_ops/test-si-priority.ts` (C7: codes 0/1/3/4/7/8/9, Not set and No Lead; presets New `0,not_set`, Quoted `1`, Other `3,4,7,8,9` in all three views).
