@@ -24,7 +24,7 @@ sources:
 
 **Role:** turns every RingCentral telephony observation — inbound, outbound, missed, unanswered, transferred, internal, withheld — into one canonical [Call Interaction](../../../../CONTEXT.md) per provider session, keyed by provider account plus session/Call Log aliases. It feeds Number Activity; it never widens [Call Qualification](../../../../CONTEXT.md), never imports `ingestRingCentralQualifiedCall`, and never writes Leads.
 
-**System of record:** `call_interactions`, `call_interaction_aliases`, `contact_numbers`, `sales_intelligence_sync_state` (scope `call_log_all_directions`), CSI audit events and `sales_intelligence_jobs`. Indexes come from the CSI migration; writers fail closed without the unique fences.
+**System of record:** `call_interactions`, `call_interaction_aliases`, `contact_numbers`, `sales_intelligence_sync_state` (scopes `call_log_all_directions` and `call_log_sweep`), CSI audit events and `sales_intelligence_jobs`. Indexes come from the CSI migration; writers fail closed without the unique fences.
 
 ## Modules
 
@@ -33,8 +33,11 @@ sources:
 | `interactionProjection.ts` | Pure. `fromWebhookParties`, `fromCallLogRecord`, `mergeProjections`, `sameProjection`, identity/alias helpers. No I/O. |
 | `persistInteraction.ts` | One Mongo transaction per observation: alias reservation, insert or revision-CAS update, merge-with-proof tombstones, Contact Number rollups, `interaction` audit invalidation, `enqueueCsiJob` intent. Bounded retry on duplicate key / revision conflict. |
 | `observeWebhookEvents.ts` | `normalizeWebhookPartyObservations(payload, receivedAt)` and `observeRingCentralWebhookEvents(observations, deps)`. Interface CSI-03 calls from its durable capture-projection job. |
-| `reconcileCallLog.ts` | `runCallLogReconcileOnce(deps)`: fenced lease, rolling window, oldest-first projection, gaps, gap repair, cursor and `known_complete_through`. |
-| `callLogClient.ts` | Detailed Call Log page fetch without a direction filter over the shared RingCentral client/token store. |
+| `reconcileCallLog.ts` | `runCallLogReconcileOnce(deps)`: fenced lease, Call Log Sync step, start-time window with settle horizon, per-row skip, oldest-first projection, quarantine retries, straggler settles, gaps, gap repair, cursor and `known_complete_through`. |
+| `callLogQuarantine.ts` | Pure quarantine bookkeeping (`record_failures` → `quarantined_records`, backoff, bounds, error classification, bounded failure log fields). |
+| `callLogSyncDriver.ts` | `runCallLogSyncStep`: account Call Log Sync (`FSync` bootstrap, `ISync` chain, expiry fallback, token-storage rule, shadow counting). |
+| `callLogSweep.ts` | `runCallLogSweepOnce`: nightly authoritative re-read with before/after completeness figures on scope `call_log_sweep`. |
+| `callLogClient.ts` | Detailed Call Log page fetch without a direction filter, one record by id, and account Call Log Sync, over the shared RingCentral client/token store. GET only. |
 | `phone.ts`, `directory.ts`, `accountIdentity.ts` | Endpoint classification (`external`, `company_did`, `extension`, `service_code`, `withheld`, `malformed`), read-only directory lookup, provider account resolution that never fabricates. |
 | `fixtures.ts` | Synthetic deliveries and records for CSI-03/04/C tests. |
 
@@ -49,10 +52,41 @@ sources:
 - Internal, withheld, malformed and service-code endpoints keep raw provider evidence on the interaction (`external_endpoint_kind`, party `phone_number_raw`) and never create a Contact Number or `outreach_ensure` job. Internal calls schedule no discovery.
 - Every audit row (`interaction.created|updated|merged`) carries `current.proof_ref` (receipt uuids or Call Log record id), `input_kind`, and `request_id_generated`; callers pass their durable job/run id as `request_id` so `actor.request_id` ties back to real work. Alias rows keep the `proof_ref` that originally proved them; the merge proof is on the `interaction.merged` row. Tombstones keep `contact_number_id`; recounts must filter `merged_into_id: null`.
 - Downstream intent keys: `csi:outreach_ensure:interaction:<id>:<revision>` (material changes with a Contact Number), `csi:attachment_refresh:number:<id>:1` (new Contact Number), `csi:recording_discovery:interaction:<id>:recording:<rid>` (each recording once, terminal), `csi:recording_discovery:interaction:<id>:pending` (terminal with no recording id yet). Missing consumers leave pending jobs; nothing here completes them.
-- The reconcile window is a **watermark**, not a floor: `max(cursor.last_sync_to − overlap, now − safety)`, with the full lookback reserved for a cold start (no cursor). When the safety clamp bites, the range it did not reach is opened as a `watermark_clamp` gap and repaired oldest-first with the leftover page budget — a bounded window is honest only if what it left behind is recorded (CSI-14 §4). Previously the cursor could move the window only *earlier*, so every run re-fetched and re-projected a full twelve hours and each record was processed ~72 times before it aged out.
-- A record whose `lastModifiedTime` is at or before the stored `provider_modified_watermark` **and** whose every provider identity already resolves to a stored alias is counted as a no-op without opening a transaction: it could only rediscover `noop: true` after reading aliases and canonical rows. The watermark advances only when every window completed, so a record whose previous apply failed is never skipped. The lease renews on a clock (`ttl/3`), not once per record.
-- Reconcile cursor and `known_complete_through = windowTo − 15 min` advance only when every page was fetched and every record projected. Any interruption records a gap `{from, to, reason}` (`provider_throttled`, `provider_request_failed`, `page_limit`, `projection_failed`, `account_unresolved`, `account_mismatch`); gaps close only when a later complete window covers them. Gaps are bounded at 50 by coalescing, never dropping. A 429 anywhere in a run ends the run (no further gap repair); `cursor.provider_modified_watermark` advances only when every window of the run completed. The shared client exposes no `Retry-After`, so `throttle_retry_after_observed` is false and the wait is the documented default.
+- A Call Log record is **observed, not final**. RingCentral lists a queue call while its ring-out legs are still ending and rewrites the same record when the call ends; `/call-log` filters on **start** time. Every run therefore re-reads a trailing settle horizon, and nothing assumes a record read once is its final version.
+- The reconcile window is `from = min(incremental_from, now − settle horizon)`, where `incremental_from = max(cursor.last_sync_to − overlap, now − safety)` is a **watermark**. A first run with no cursor uses the full cold-start lookback. When the safety clamp bites, the range `incremental_from` did not reach is opened as a `watermark_clamp` gap and repaired oldest-first with the leftover page budget; the horizon does not change that rule.
+- **Per-row skip.** A record is counted as a no-op without opening a transaction only when **every** alias it carries resolves to **one** canonical row, its `lastModifiedTime` is at or before **that row's** `provider_last_modified_at`, and the row is not `call_log_state: "provisional"` (absent counts as not provisional). Two batched reads per window (aliases, then canonical rows following `merged_into_id`). `cursor.provider_modified_watermark` is diagnostic only; it advances only when every window of the run completed and is never read for skipping.
+- **Stragglers.** Each run re-reads by id (first `call_log_ids` entry) up to 10 canonical provisional rows whose `started_at` is older than the settle horizon — no start-time window reaches them any more — and applies them, so a provisional row settles after it has left the window. Quarantined ids and ids this run already applied are skipped. Each read counts against the page budget.
+- Reconcile cursor and `known_complete_through` advance only when every page of the rolling window was fetched and every record projected **or quarantined**. `known_complete_through = min(windowTo − 15 min, oldest provisional start inside the horizon, ISync sync time − 15 min when Call Log Sync drives)` and never moves backwards. Any interruption records a gap `{from, to, reason}` (`provider_throttled`, `provider_request_failed`, `page_limit`, `projection_failed`, `account_unresolved`, `account_mismatch`, `quarantine_overflow`); gaps close only when a later complete window covers them. Gaps are bounded at 50 by coalescing, never dropping. A 429 anywhere in a run ends the run's provider traffic. The shared client exposes no `Retry-After`, so `throttle_retry_after_observed` is false and the wait is the documented default. The lease renews on a clock (`ttl/3`), not once per record.
 - Provider account comes from party `accountId`, the event path, or the Call Log record `uri`; `RINGCENTRAL_ACCOUNT_ID` is the verified configured fallback. Disagreement fails the observation.
+
+## Failure isolation (quarantine)
+
+One record that keeps failing never holds the window. State lives on the `call_log_all_directions` row:
+
+- `record_failures` (bounded 500, oldest dropped): `{call_log_id, failures, last_error_code}`, the consecutive failures before quarantine. A record counts at most once per run, even when a gap repair re-reads it.
+- `quarantined_records` (bounded 200; the oldest is evicted into a `quarantine_overflow` gap over its start so it is re-read): `{call_log_id, telephony_session_id, start_time, error_code, error_name, failures, first_failed_at, last_failed_at, next_retry_at}`. `error_code` is `projection_failed`, `account_mismatch`, `retry_exhausted`, `persist_failed` (Mongo/Mongoose rejections such as `StrictModeError`), `provider_not_found` or `provider_request_failed`.
+
+At `SALES_INTELLIGENCE_CALL_LOG_QUARANTINE_AFTER` (3) failures a record moves to quarantine with `next_retry_at = now + 60 min`. A window whose only failures are quarantined records is complete. A quarantined record found in a window before its retry time is held, not attempted. Due entries are re-read by id (`GET /account/~/call-log/{id}?view=Detailed`), at most `SALES_INTELLIGENCE_CALL_LOG_QUARANTINE_RETRIES_PER_RUN` (5) per run; success anywhere removes the entry, failure doubles the delay up to 12 h. Every record failure logs `errorName` and the first 200 characters of the error message (schema paths and codes, no PII).
+
+Escalation: `consecutive_failures ≥ 3` makes the `failed` event `error` level and a notification candidate; a newly quarantined record raises `record_quarantined` (warn); a quarantine older than 2 h raises `quarantine_stale` (warn) each run. The Owner Coverage read (`call_log_capture`) shows `quarantined_count` and `oldest_quarantined_at`.
+
+## Account Call Log Sync driver
+
+`SALES_INTELLIGENCE_CALL_LOG_SYNC` = `off` (default) | `shadow` | `on`. Account Call Log Sync returns records **modified** since a durable `syncToken`, regardless of start time. The step runs inside the reconcile lease, before the window, and shares the page budget:
+
+- No token, or a token whose `sync_time` is older than 24 h: `FSync` (`syncType=FSync&view=Detailed&recordCount=250&dateFrom=min(cursor.last_sync_to, now − settle horizon)`), then `ISync` with each returned token while a page comes back full.
+- Otherwise `ISync` (`syncType=ISync&syncToken=…&view=Detailed`). A 400 or `CLG-*` error is token expiry: `FSync` in the same run, `consecutive_expiries + 1`, `sync_token_expired` (warn).
+- Non-voice entries are ignored. A throttle or provider error changes nothing and applies nothing.
+- `shadow`: counts records whose stored row would change (the per-row skip) and applies nothing; the token chain still advances. The window keeps the full settle horizon and stays authoritative.
+- `on`: applies every record through the window's path (per-row skip, quarantine). The new token is stored only when every record applied or was quarantined. With a stored token the window narrows to the safety lookback (90) as a net; if the step failed, the window keeps the full settle horizon.
+
+State: `call_log_sync: {token, sync_time, last_full_sync_at, consecutive_expiries}`. The token never appears in logs, events or summaries. `last_run` carries `sync_mode`, `sync_type`, `sync_records`, `sync_changed`, `sync_applied`, `sync_token_stored`, `sync_error_code`.
+
+## Nightly sweep
+
+`/api/cron/sales-intelligence-call-log-sweep` at `40 7 * * *` UTC under `SALES_INTELLIGENCE_CAPTURE_CALL_LOG` (`runCallLogSweepOnce`). It takes the reconcile lease (a held lease is a `lease_held` skip) and never writes the reconcile cursor, gaps or quarantine. Window `[now − SWEEP_LOOKBACK_HOURS (36), now − settle horizon]`, full paging (at least 40 pages), **no skip**: every record goes through `applyInteractionObservation`.
+
+Before applying, each provider record is compared with its stored canonical row exactly as `scripts/dev_ops/diff-call-log-vs-interactions.ts` does: **missing** when no row matches its `telephony_session_id` or Call Log ids; **stale** when the provider `lastModifiedTime` is newer than `provider_last_modified_at`, or the result, duration or a recording id differs. Scope `call_log_sweep` records `last_run: {from, to, provider_records, stored_in_latest_version, applied_changes, missing_before, stale_before, provisional_after_horizon, quarantined, failures, …}` and `consecutive_drift_runs`. A complete sweep with `missing_before + stale_before > 0` raises `sweep_found_drift` (warn), a notification candidate on the second consecutive night; an interrupted sweep leaves the streak unchanged. The Owner Coverage read shows the last sweep's figures (`call_log_capture.last_sweep`).
 
 ## Number rollups
 
@@ -76,9 +110,23 @@ Retention's Number activity purge zeroes every rollup on the suppressed Number (
 
 ## Configuration
 
-`SALES_INTELLIGENCE_CAPTURE_CALL_LOG` gates `runCallLogReconcileOnce` (default off). `SALES_INTELLIGENCE_CALL_LOG_ROLLING_LOOKBACK_MINUTES` (floor 720 — cold-start reach and the outer bound on a repaired gap, no longer the size of every window), `SALES_INTELLIGENCE_CALL_LOG_SAFETY_LOOKBACK_MINUTES` (90 — how far one incremental window may reach back), `SALES_INTELLIGENCE_CALL_LOG_OVERLAP_MINUTES` (15), `SALES_INTELLIGENCE_CALL_LOG_MAX_PAGES` (20). The cron runs `3-59/5` — a smaller window buys fresher capture at lower total provider cost. `RINGCENTRAL_ACCOUNT_ID` optional configured account. Cron/queue registration, the webhook fan-out that calls `observeRingCentralWebhookEvents` from a durable job, and the all-direction subscription lifecycle are wired by CSI-03: see [sales-intelligence-webhook-fanout.md](sales-intelligence-webhook-fanout.md).
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `SALES_INTELLIGENCE_CAPTURE_CALL_LOG` | off | Gates the reconcile and the nightly sweep |
+| `SALES_INTELLIGENCE_CALL_LOG_ROLLING_LOOKBACK_MINUTES` | 720 (floor 720) | Cold-start reach and the outer bound on a repaired gap |
+| `SALES_INTELLIGENCE_CALL_LOG_SAFETY_LOOKBACK_MINUTES` | 90 | How far the incremental (cursor) start may reach back; the window net when Call Log Sync drives |
+| `SALES_INTELLIGENCE_CALL_LOG_OVERLAP_MINUTES` | 15 | Cursor overlap |
+| `SALES_INTELLIGENCE_CALL_LOG_MAX_PAGES` | 20 | Provider requests per run (pages, by-id reads, sync requests) |
+| `SALES_INTELLIGENCE_CALL_LOG_SETTLE_HORIZON_MINUTES` | 240 (floor 60) | Trailing re-read reach; must exceed the longest expected call |
+| `SALES_INTELLIGENCE_CALL_LOG_QUARANTINE_AFTER` | 3 | Consecutive failures before quarantine |
+| `SALES_INTELLIGENCE_CALL_LOG_QUARANTINE_RETRIES_PER_RUN` | 5 | By-id re-reads of due quarantined records per run |
+| `SALES_INTELLIGENCE_CALL_LOG_SYNC` | `off` | `off`, `shadow` or `on` account Call Log Sync driver |
+| `SALES_INTELLIGENCE_CALL_LOG_SWEEP_LOOKBACK_HOURS` | 36 | Nightly sweep reach |
+| `RINGCENTRAL_ACCOUNT_ID` | unset | Optional configured account |
+
+The reconcile cron runs `3-59/5`; the sweep `40 7 * * *`. All provider calls are `GET`. Cron/queue registration, the webhook fan-out that calls `observeRingCentralWebhookEvents` from a durable job, and the all-direction subscription lifecycle are wired by CSI-03: see [sales-intelligence-webhook-fanout.md](sales-intelligence-webhook-fanout.md).
 
 ## Tests
 
-- `src/services/numberActivity/*.test.ts` — pure projection, phone, account, coverage math, import boundary.
-- `pnpm test:csi:capture:replica` — isolated single-node replica proofs: atomic persistence and rollback, concurrent duplicates, account-scoped identity, merge-with-proof, reconcile cursor/gaps/429/page limit/lease fencing, qualified cursor collection untouched. Provider pages are synthetic; these are not live capability proofs.
+- `src/services/numberActivity/*.test.ts` — pure projection, phone, account, coverage math, import boundary; `callLogCompleteness.test.ts` covers the quarantine lifecycle and bounds, the Call Log Sync token chain, expiry fallback and token-storage rule with a fake fetcher, configuration, and the Owner Coverage figures.
+- `pnpm test:csi:capture:replica` — isolated single-node replica proofs: atomic persistence and rollback, concurrent duplicates, account-scoped identity, merge-with-proof, reconcile cursor/gaps/429/page limit/lease fencing, qualified cursor collection untouched; the per-row skip hole (L1 < L2 < L3), a snapshot re-read inside the horizon, quarantine lifecycle and escalation, straggler settles and the provisional cap on `known_complete_through`, Call Log Sync `on`/`shadow` wiring, and the sweep's before/after figures and drift streak. Provider pages are synthetic; these are not live capability proofs.
