@@ -145,5 +145,10 @@ Data spec §3.4–§3.7, final spec §6–§8. `outreach/attention.ts`, `outreac
   | flag on, inline | 8.0 s | 34.3 ms | 360–490 ms |
   | flag on, chunked | 11.0 s | 34.8 ms | 72–97 ms |
 
-  The replica walk has none of Atlas's round-trip latency. The production flag-off walk was 74.6 s of the 90 s budget, so measure the flag-on walk on production before enabling `ATTENTION_V2`.
+  Production (Vercel → Atlas, `scripts/dev_ops/inspect-attention-walks.ts`, walk = header ObjectId time − `as_of`) on 2026-09-24:
+  - before the deploy: 8.5–10 s for 6,540 rows;
+  - flag off on the new code: about 10.5 s;
+  - **`ATTENTION_V2` on** (enabled 2026-09-24 01:02 UTC): **12.8 s** for 9,128 rows, 2,566 of them closed, inline layout.
+
+  All three are far inside the 90 s budget. An older 74.6 s figure predates the efficiency work.
 - **Proof.** Unit: `outreach/attentionIndex.test.ts` (B5 table over every parameter, views, ET-midnight and DST move-date boundaries, sorts, query contract, digest compatibility, B7 recount, index round trip, Admin-schema parse), `outreach/facts.test.ts` (filter keys, B6 time-to-close rules, outcome mapping and exclusions). Replica: `node --import tsx scripts/dev_ops/test-si-desk.ts` (`testvantagemovers_s2desk`: flag off vs on, B6, B7, paging, chunked reads, a pre-S2 snapshot).
