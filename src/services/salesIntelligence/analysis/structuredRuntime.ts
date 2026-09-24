@@ -15,9 +15,10 @@ import { correctionContextSchema, retainedOriginal } from "./ownerReanalysis";
 import { assembleContextPage, findSummaryArtifact, findRunArtifact, persistAnalysisArtifact, restoreAnalysisArtifact } from "./structuredArtifacts";
 import { summaryGenerationSchema, minimalFindingsSchema, validateSummaryStep, expandStructuredFindings,
   structuredInstructions, type StructuredCall } from "./structuredContract";
-import { SUMMARY_PROMPT_VERSION, SUMMARY_PROMPT, FINDINGS_PROMPT, structuredStepContracts } from "./structuredPrompt";
+import { SUMMARY_PROMPT_VERSION, SUMMARY_PROMPT, FINDINGS_PROMPT, structuredStepContracts, layoutOfContracts, CASE_FILE_SUMMARY_PROMPT_VERSION,
+  SUMMARY_PROMPT_V3, FINDINGS_PROMPT_V5 } from "./structuredPrompt";
 import { generateStructuredStep, STRUCTURED_INVOCATION_MS, type StepPricing } from "./structuredGeneration";
-import type { InvocationInput } from "./runtime";
+import { IntelligenceRuntimeError, type InvocationInput } from "./runtime";
 import { readStructuredIdentities } from "./structuredIdentity";
 import { modelEvidence } from "./modelEvidence";
 import type { CapturedPromptPage } from "./prompt";
@@ -25,6 +26,11 @@ import { selectPriorAnalyses } from "./prior";
 import { assembleSubjectStory } from "../story/assemble";
 import { storyToReadContent } from "../story/page";
 import { nominateMoveAssessmentForNumber } from "../assessment/runtime";
+import { assembleCaseFile } from "../casefile/assemble";
+import { findingsAppendix } from "../casefile/appendix";
+import { caseFileFromReadContent, caseFileToReadContent } from "../casefile/page";
+import { summaryCallContext, type SummaryCallContext } from "../casefile/summaryInput";
+import { CASE_FILE_TIMEZONE } from "../casefile/types";
 
 export const STRUCTURED_LEASE_MS = 660_000;
 type StructuredInput = InvocationInput & { lease: JobLease; pricing: StepPricing; source_ids: string[]; original_run_id?: string };
@@ -68,11 +74,15 @@ export async function invokeStructuredAnalysis(input: StructuredInput) {
   };
   let auth = await authorize();
   const run = await loadAuthorizedRun(auth);
-  if (payloadHash(run.step_contracts) !== payloadHash(structuredStepContracts())) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
+  // The layout was fixed at prepare time (`step_contracts`, Case File spec §4.11): a run never switches
+  // layout mid-flight, and a legacy run resumed after the flag flips still runs, and checks, as legacy.
+  const layout = layoutOfContracts(run.step_contracts);
+  if (payloadHash(run.step_contracts) !== payloadHash(structuredStepContracts(layout))) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
   const beforeProvider = async () => { await input.beforeProvider(); auth = await authorize(); };
   const generate = <T>(args: Pick<Parameters<typeof generateStructuredStep<T>>[0], "kind" | "key" | "schema" | "system" | "prompt" | "validate">) =>
     generateStructuredStep({ ...args, lease: input.lease, run_id: input.run_id, model, model_id: input.model_id,
       pricing: input.pricing, deadline, beforeProvider });
+  if (layout === "case_file") return invokeCaseFileLayout({ input, run, generate, auth: () => auth, reauthorize: async () => { auth = await authorize(); return auth; } });
   const calls: StructuredCall[] = [];
   let context: CapturedPromptPage | undefined, story: CapturedPromptPage | undefined, prior: CapturedPromptPage | undefined;
 
@@ -211,6 +221,195 @@ export async function invokeStructuredAnalysis(input: StructuredInput) {
     validate: value => expandStructuredFindings(value, { subject_key: run.subject_key, context: pages, calls, instructions,
       prior_finding_ids: priorFindings.map(r => r.record_id), story_event_ids: storyEvents.map(r => r.record_id) }) });
   auth = await authorize();
+  await input.beforeProvider(); // Recheck current eligibility / purge before accepting any effects intent.
+  const receipt = await submitIntelligenceAnalysis(auth, { idempotency_key: input.run_id, envelope }, { raw_output: raw });
+  input.onInvocationComplete?.();
+  return receipt;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Case File layout (Attention and Case File spec §4.9–§4.12), SALES_INTELLIGENCE_CASE_FILE
+// ---------------------------------------------------------------------------------------------
+
+type RunRow = Awaited<ReturnType<typeof loadAuthorizedRun>>;
+type Generate = <T>(args: Pick<Parameters<typeof generateStructuredStep<T>>[0], "kind" | "key" | "schema" | "system" | "prompt" | "validate">) =>
+  ReturnType<typeof generateStructuredStep<T>>;
+type Auth = Awaited<ReturnType<typeof authorizeCsiRun>>;
+/** Validation repairs of the findings object in the Case File layout before the run pauses (`schema_exhausted`). */
+export const CASE_FILE_FINDINGS_REPAIRS = 2;
+const EMPTY_SUMMARY: StructuredCall["summary"] = { summary: { overview: "", customer_wanted: "", money_and_dates: "", outcome: "", commitments: "", discrepancies: "" }, said_on_call: [] };
+
+/**
+ * One findings invocation in the Case File layout. The same capture discipline as the legacy layout
+ * (summaries, context, prior page frozen once per run and restored on retry and replay), plus:
+ *
+ * - the summary step reads `{ call, subject_binding, segments }` with `csi-summary-v3` (§4.12; the
+ *   cache key carries the version, so v3 summaries never reuse v2 artifacts);
+ * - the Case File is assembled once, frozen as the `case_file` artifact (its `story_event` records are
+ *   the T numbering) and restored verbatim on retry and replay (§4.11);
+ * - calls are numbered by `started_at` (C = `call_index`); calls this run did not capture are listed
+ *   with `segments_available: false` and cannot be cited by transcript (§4.9).
+ */
+async function invokeCaseFileLayout(ctx: { input: StructuredInput; run: RunRow; generate: Generate; auth: () => Auth; reauthorize: () => Promise<Auth> }) {
+  const { input, run, generate } = ctx;
+  const calls: StructuredCall[] = [];
+  let context: CapturedPromptPage | undefined, prior: CapturedPromptPage | undefined, caseFile: CapturedPromptPage | undefined;
+
+  if (input.original_run_id) {
+    const original = await retainedOriginal(input.original_run_id);
+    for (const row of original.snapshots) {
+      const old = restoreAnalysisArtifact(row);
+      const source = row.source_type as string;
+      const kind = source === "case_file" ? "case_file" as const : source === "prior" ? "prior" as const : old.data.analysis_summary ? "summary" as const : "context" as const;
+      const copy = await persistAnalysisArtifact(ctx.auth(), { kind, key: `original:${row._id}`, data: old.data, retrieved_at: row.retrieved_at });
+      if (kind === "summary" && copy.data.analysis_summary) calls.push({ ...copy, summary: copy.data.analysis_summary, speaker_refs: copy.data.speaker_refs });
+      else if (kind === "case_file") caseFile = copy;
+      else if (kind === "prior") prior = copy;
+      else if (row.source_type === "context") context = copy;
+    }
+    if (!calls.length || !context || !caseFile) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
+  } else {
+    const scope = await loadReadScope(run), coverage = await readCaptureCoverage();
+    const read = (raw: unknown) => readIntelligenceEvidence(scope, intelligenceReadSchema.parse(raw), coverage);
+    const base = await readIntelligenceEvidence(scope, { tool: "get_intelligence_context", args: {} }, coverage);
+    const binding = base.page.records.filter(r => r.record_type === "lead").map(r => ({ id: r.record_id,
+      model: r.fields.model, certainty: r.fields.certainty, state: r.fields.status }));
+    const conversations = await getLeadConversationModel().find({ _id: { $in: input.conversation_ids }, contact_number_id: run.contact_number_id })
+      .select("call_interaction_id").lean();
+    const identities = await readStructuredIdentities(String(run.contact_number_id),
+      conversations.flatMap(c => c.call_interaction_id ? [String(c.call_interaction_id)] : []), coverage);
+    const identityPages = [...identities.values()];
+    const attached = binding.filter(b => b.state === "attached" && (b.model === "FormLead" || b.model === "CallLead"))
+      .map(b => ({ model: b.model as "FormLead" | "CallLead", id: b.id }));
+    const callFacts = await summaryCallContext({ conversation_ids: input.conversation_ids, contact_number_id: String(run.contact_number_id), binding: attached });
+
+    for (let index = 0; index < input.conversation_ids.length; index++) {
+      const conversationId = input.conversation_ids[index], sourceId = input.source_ids[index];
+      const conversation = conversations.find(c => String(c._id) === conversationId);
+      const source = await getIntelligenceEvidenceSnapshotModel().findOne({ _id: sourceId, conversation_id: conversationId,
+        source_type: "transcript", purged_at: null, purge_started_at: null, ...csiDataset() })
+        .select("transcript_version retrieved_at completeness").lean();
+      if (!conversation || !source?.transcript_version || !source.completeness.complete) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
+      const key = payloadHash({ ...csiDataset(), conversation_id: conversationId, transcript_version: source.transcript_version,
+        prompt: CASE_FILE_SUMMARY_PROMPT_VERSION, model: input.model_id });
+      let cached = await findSummaryArtifact(key);
+      if (!cached) {
+        // Raw transcript is read only for a missing summary, never sent to the findings model.
+        const transcript = await getIntelligenceEvidenceSnapshotModel().findOne({ _id: sourceId, purged_at: null, purge_started_at: null }).select("segments").lean();
+        if (!transcript) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
+        const segments = transcript.segments.map(s => ({ sid: s.sid, start_ms: s.start_ms, end_ms: s.end_ms,
+          timing_source: s.timing_source, speaker: s.speaker, text: s.text }));
+        const call: SummaryCallContext | null = callFacts.get(conversationId) ?? null;
+        const { accepted: summary } = await generate({ kind: "summary", key, schema: summaryGenerationSchema, system: SUMMARY_PROMPT_V3,
+          prompt: JSON.stringify({ call, subject_binding: binding, segments }),
+          validate: value => validateSummaryStep(value, segments.map(s => s.sid)) });
+        await ctx.reauthorize();
+        cached = await persistAnalysisArtifact(ctx.auth(), { kind: "summary", key, canonical: true, retrieved_at: source.retrieved_at,
+          data: { page: { records: [], complete: true, next_cursor: null, missing_ranges: [] }, coverage,
+            allowed_followup_ids: [], instructions: [], speaker_refs: [], analysis_summary: summary,
+            transcript: { conversation_id: conversationId, transcript_version: source.transcript_version,
+              source_snapshot_id: sourceId, segments: [] } } });
+      }
+      if (!cached.data.analysis_summary || cached.data.transcript?.source_snapshot_id !== sourceId) throw new CsiError("EVIDENCE_SCOPE_INVALID");
+      const speakerRefs = identities.get(String(conversation.call_interaction_id))?.speaker_refs ?? [];
+      const captured = await persistAnalysisArtifact(ctx.auth(), { kind: "summary", key: `summary:${key}`,
+        data: { ...cached.data, speaker_refs: speakerRefs }, retrieved_at: source.retrieved_at });
+      calls.push({ ...captured, summary: captured.data.analysis_summary!, speaker_refs: captured.data.speaker_refs });
+    }
+
+    context = await findRunArtifact(ctx.auth(), "context") ?? undefined;
+    if (!context) {
+      const pages = [base];
+      for (const tool of ["search_leads", "search_bookings", "list_number_activity"] as const) {
+        let cursor: string | null = null;
+        const seen = new Set<string>();
+        do {
+          const page = await read({ tool, args: { limit: 50, ...(cursor ? { cursor } : {}) } });
+          pages.push(page);
+          cursor = page.page.next_cursor;
+          if (!cursor && !page.page.complete) throw new CsiError("EVIDENCE_LIMIT_REACHED");
+          if (cursor && seen.has(cursor)) throw new CsiError("EVIDENCE_LIMIT_REACHED");
+          if (cursor) seen.add(cursor);
+        } while (cursor);
+      }
+      context = await persistAnalysisArtifact(ctx.auth(), { kind: "context", key: "context", data: assembleContextPage([...pages, ...identityPages]) });
+    }
+    const asOf = run.started_at ?? new Date();
+    prior = await findRunArtifact(ctx.auth(), "prior") ?? undefined;
+    if (!prior) {
+      const selected = await selectPriorAnalyses({ contact_number_id: scope.contact_number_id, subject_key: run.subject_key,
+        outreach_record_id: scope.outreach_record_id, exclude_conversation_id: run.conversation_id ? String(run.conversation_id) : null, as_of: asOf }, coverage);
+      prior = await persistAnalysisArtifact(ctx.auth(), { kind: "prior", key: "prior", data: selected });
+    }
+    caseFile = await findRunArtifact(ctx.auth(), "case_file") ?? undefined;
+    if (!caseFile) {
+      const summaries = new Map(calls.map(call => [call.data.transcript!.conversation_id, { summary: call.summary,
+        call_interaction_id: conversations.find(c => String(c._id) === call.data.transcript!.conversation_id)?.call_interaction_id ? String(conversations.find(c => String(c._id) === call.data.transcript!.conversation_id)!.call_interaction_id) : null }]));
+      const assembled = await assembleCaseFile({ contact_number_id: scope.contact_number_id, e164: scope.e164, lead_refs: scope.lead_refs,
+        outreach_record_ids: scope.outreach_record_id ? [scope.outreach_record_id] : [], conversation_ids: input.conversation_ids,
+        focus_conversation_ids: run.conversation_id ? [String(run.conversation_id)] : null, summaries, prior: prior.data, as_of: asOf, timezone: CASE_FILE_TIMEZONE,
+        audience: "findings", allowed_followup_ids: context.data.allowed_followup_ids, coverage });
+      caseFile = await persistAnalysisArtifact(ctx.auth(), { kind: "case_file", key: "case_file", data: caseFileToReadContent(assembled.file, assembled.rendered, coverage) });
+    }
+  }
+
+  const contextPage = context, caseFilePage = caseFile;
+  const recorded = caseFileFromReadContent(caseFilePage.data);
+  if (!recorded) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
+  const storyEvents = recordsOf(caseFilePage, "story_event"), priorFindings = recordsOf(prior, "prior_finding");
+  // Cn = call_index: the Case File's call order (by `started_at`). A call this run did not capture keeps its number but has no segments.
+  const byConversation = new Map(calls.map(call => [call.data.transcript?.conversation_id ?? "", call]));
+  const ordered: StructuredCall[] = recorded.call_conversation_ids.map(id => byConversation.get(id) ?? { snapshot_id: "", summary: EMPTY_SUMMARY, speaker_refs: [],
+    data: { page: { records: [], next_cursor: null, complete: true, missing_ranges: [] }, coverage: contextPage.data.coverage, allowed_followup_ids: [], instructions: [], speaker_refs: [] } });
+  for (const call of calls) if (!recorded.call_conversation_ids.includes(call.data.transcript?.conversation_id ?? "")) ordered.push(call);
+  await checkpointCsiJob(input.lease, async session => {
+    await getIntelligenceRunModel().updateOne({ _id: run._id }, { $set: { step_artifacts: jsonValue({
+      summaries: calls.map(c => c.snapshot_id), context: contextPage.snapshot_id,
+      context_digest: payloadHash(contextPage.data),
+      story: null, story_digest: null,
+      prior: prior?.snapshot_id ?? null, prior_digest: prior ? payloadHash(prior.data) : null,
+      case_file: { snapshot_id: caseFilePage.snapshot_id, bytes: recorded.bytes, trimmed_steps: recorded.trimmed_steps, over_hard_budget: recorded.over_hard_budget,
+        digest: recorded.digest, customer_evidence_digest: recorded.customer_evidence_digest, calls: recorded.call_conversation_ids.length, story_events: recorded.story_events },
+      lineage: {
+        prior_run_ids: [...new Set(recordsOf(prior, "prior_finding").concat(recordsOf(prior, "prior_summary")).flatMap(r => r.fields.run_id ? [r.fields.run_id] : []))],
+        prior_summary_ids: recordsOf(prior, "prior_summary").map(r => r.record_id),
+        prior_finding_ids: priorFindings.map(r => r.record_id),
+        assessment_artifact_id: recordsOf(prior, "prior_assessment")[0]?.record_id ?? null,
+        story_events: storyEvents.length, story_from: storyEvents[0]?.fields.happened_at ?? null, story_to: storyEvents.at(-1)?.fields.happened_at ?? null,
+      },
+    }) } }, { session });
+    // Move assessment (MA-02 §3): the summaries this invocation captured are the assessment's inputs.
+    if (!input.original_run_id && run.contact_number_id) await nominateMoveAssessmentForNumber(String(run.contact_number_id), `summary:${run._id}`, session);
+  });
+  const instructions = structuredInstructions([contextPage]);
+  const corrections = correctionContextSchema.parse(run.owner_correction_context ?? []);
+  for (const correction of corrections) {
+    const existing = instructions.findIndex(i => i.id === correction.instruction_id);
+    if (existing >= 0) instructions.splice(existing, 1);
+    instructions.push({ id: correction.instruction_id, revision: correction.revision });
+  }
+  const storyEventIds = storyEvents.map(r => r.record_id), priorFindingIds = priorFindings.map(r => r.record_id);
+  const prompt = JSON.stringify(modelEvidence({ subject_scope: run.conversation_id ? "conversation" : "number", case_file: recorded.text,
+    appendix: findingsAppendix({ calls: ordered.map(call => ({ summary: call.summary, segments_available: Boolean(call.data.transcript) })), context: contextPage.data,
+      story_event_ids: storyEventIds, prior_finding_ids: priorFindingIds }),
+    instructions: instructions.map((instruction, instruction_index) => ({ instruction_index, ...instruction })),
+    owner_corrections: corrections }));
+  const pages = [contextPage, caseFilePage, ...(prior ? [prior] : [])];
+  // The Case File layout adds citation paths a model can get wrong repeatedly (a call without segments, a T number):
+  // after the original answer and two repairs the run pauses as `schema_exhausted` instead of repairing until the step timeout.
+  let rejected = 0;
+  const { raw, accepted: envelope } = await generate({ kind: "findings", key: input.run_id, schema: minimalFindingsSchema,
+    system: FINDINGS_PROMPT_V5, prompt,
+    validate: value => {
+      try {
+        return expandStructuredFindings(value, { subject_key: run.subject_key, context: pages, calls: ordered, instructions,
+          prior_finding_ids: priorFindingIds, story_event_ids: storyEventIds });
+      } catch (error) {
+        if (++rejected > CASE_FILE_FINDINGS_REPAIRS) throw new IntelligenceRuntimeError("schema_exhausted");
+        throw error;
+      }
+    } });
+  const auth = await ctx.reauthorize();
   await input.beforeProvider(); // Recheck current eligibility / purge before accepting any effects intent.
   const receipt = await submitIntelligenceAnalysis(auth, { idempotency_key: input.run_id, envelope }, { raw_output: raw });
   input.onInvocationComplete?.();

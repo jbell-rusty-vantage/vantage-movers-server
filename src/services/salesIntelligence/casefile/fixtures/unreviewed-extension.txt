@@ -1,0 +1,57 @@
+CASE FILE (data) · Number +17575550143 · as of Wed Sep 23, 2026 4:10 PM ET
+Sources: Vantage intake, RingCentral, Granot, Vantage Bookings, Vantage Outreach, Owner, Analysis.
+
+§1 WHO AND WHAT
+Customer: Maria Lopez [form name] · caller ID "M LOPEZ" [RingCentral]
+Leads on this number:
+  L1 Form Lead · Top10 · Job 84521 · received Tue Sep 15, 2026 6:30 PM ET · attached (Exact, sole phone match)
+Assigned rep: Jordan Bell (first conversation, Thu Sep 17, 2026)
+Receiver agent: Jordan Bell [Granot username match, set Thu Sep 17, 2026]
+Phone reps seen: Jordan Bell (1 call), ext 118 "Mike R." [directory name, unreviewed] (1 call), ext 999 [unreviewed] (1 call)
+
+§2 HOW THE LEAD STARTED
+L1 [Vantage intake] Form submitted Tue Sep 15, 2026 6:30 PM ET on Top10:
+   2 Bedrooms · Norfolk, VA 23510 → Raleigh, NC 27601 · move date Oct 10, 2026
+   (as submitted; §3 shows Granot's current values)
+
+§3 GRANOT NOW   (last known value per field, each with the observation time)
+L1 Priority 1 Quoted (since Thu Sep 17, 2026 11:20 AM ET) · Quoted yes [Lead] · Estimate $7,100 (Thu Sep 17, 2026) · Payment — · Balance —
+   Move date Oct 10, 2026 · 540 cu ft · Service Long distance
+   Granot rep JBELL (user JBELL)
+   Last accepted observation Thu Sep 17, 2026 11:20 AM ET; 1 accepted observation read.
+   No Vantage Booking recorded.
+
+§4 TIMELINE   (oldest → newest; [Tn] = story index n; Cn = call_index n; times ET)
+[T0] Tue Sep 15 6:30 PM · Vantage intake · L1 Form Lead received (Top10) · Job 84521
+[T1] Tue Sep 15 6:31 PM · Vantage · Vantage sent the customer a quote request confirmation text (delivered)
+[T2] Tue Sep 15 6:35 PM · Vantage · Number attached to L1 (Exact, sole phone match)
+[T3] Thu Sep 17 10:04 AM · RingCentral · C0 outbound from Top10 line by Jordan Bell (ext 104, reviewed)
+     → connected 4m12s, recorded, human conversation
+     C0 SUMMARY (full): Customer is moving a 2 bedroom home from Norfolk to Raleigh around October 10. She wants a written estimate. | wanted: A written estimate. | money & dates: Move around Oct 10. | outcome: Rep will email the estimate today. | commitments: Email estimate today; call back Monday after 5 PM.
+     C0 SAID: [rep promised] Rep promised to email the estimate today. (K2 → no record) · [rep promised] Rep promised to call back Monday after 5 PM. (K1 → open F-0) · [customer] Customer said her husband decides.
+[T4] Thu Sep 17 10:30 AM · Vantage Outreach · F-0 created: call "Call back Monday after 5 PM", due Mon Sep 21, 2026 5:00 PM ET (rep promise)
+[T5] Thu Sep 17 11:20 AM · Granot · Granot recorded the Lead: Priority 1 Quoted, estimate $7,100, move date Oct 10, 2026, 540 cu ft, service Long distance, Granot rep JBELL
+[T6] Tue Sep 22 9:00 AM · RingCentral · outbound from Top10 line by ext 999 (identity not reviewed) (recorded Tue Sep 22) → not connected (No Answer)
+[T7] Wed Sep 23 3:40 PM · RingCentral · C1 inbound to Vantage line (+15615550100), queue "Sales" rang 2; answered by ext 118 (identity not reviewed; directory name "Mike R.")
+     → connected 6m02s, recorded, human conversation   ◀ THIS RUN
+     C1 SUMMARY (full): Customer called back about the estimate and asked for a lower price. | outcome: The person who answered said someone would call her back tomorrow.
+     C1 SAID: [rep promised] Someone at Vantage said they would call her back tomorrow. (K3 → pending)
+Tail: last human conversation Wed Sep 23 (today). No outbound attempt since.
+
+§5 OPEN WORK NOW   [Vantage Outreach, as of this file]
+Commitments ledger:
+  K1 rep promised "Rep promised to call back Monday after 5 PM." (C0, Thu Sep 17, 2026) → open (F-0, due Mon Sep 21, 2026 5:00 PM ET, overdue 2 days)
+  K2 rep promised "Rep promised to email the estimate today." (C0, Thu Sep 17, 2026) → no record it was done
+  K3 rep promised "Someone at Vantage said they would call her back tomorrow." (C1, Wed Sep 23, 2026) → pending (undated; grace until Fri Sep 25, 2026 3:40 PM ET)
+Open actions:
+  F-0 call "Call back Monday after 5 PM" due Mon Sep 21, 2026 5:00 PM ET (rep promise, exact) — overdue 2 days
+State: open · Assigned: Jordan Bell · Restrictions: none · Reviews open: none
+
+§6 PRIOR ANALYSIS   (earlier model outputs — what was concluded before, not facts)
+Rolling summary: none (no Number synthesis yet).
+Prior findings: none.
+Move assessment: none published.
+
+§7 THIS RUN
+Analyze: C1 (Wed Sep 23, 2026 3:40 PM ET, inbound, 6m02s). Earlier calls are context.
+Coverage: capture complete through Wed Sep 23, 2026 4:05 PM ET. Trimmed: none. Size 4.6 KB.

@@ -31,9 +31,13 @@ export async function findRunArtifact(auth: RunAuthorization, key: string) {
   return row ? restoreAnalysisArtifact(row) : null;
 }
 
-/** Persist keyed artifacts under the same retention and lease fences as tool capture. */
+/**
+ * Persist keyed artifacts under the same retention and lease fences as tool capture. `case_file` is the
+ * Case File page (Attention and Case File spec §4.11): a `ReadContent` like the others, so retention,
+ * the digest check and the original-evidence replay treat it exactly as they treat `story`.
+ */
 export async function persistAnalysisArtifact(auth: RunAuthorization, input: {
-  kind: "summary" | "context" | "story" | "prior"; key: string; data: ReadContent; canonical?: boolean; retrieved_at?: Date;
+  kind: "summary" | "context" | "story" | "prior" | "case_file"; key: string; data: ReadContent; canonical?: boolean; retrieved_at?: Date;
 }): Promise<CapturedPromptPage> {
   const data = readContentSchema.parse(input.data);
   const digest = payloadHash(data), bytes = Buffer.byteLength(JSON.stringify(data));
@@ -64,7 +68,8 @@ export async function persistAnalysisArtifact(auth: RunAuthorization, input: {
       _id: newObjectIdHex(), ...query, run_id: input.canonical ? null : run._id,
       conversation_id: data.transcript?.conversation_id ?? null,
       // transcript_version is reserved by the pre-existing source-transcript unique index.
-      transcript_version: null, source_type: input.kind, source_id: input.key,
+      // `case_file` needs the one-value enum addition in `models/salesIntelligence/intelligence.ts` (coordinator diff, AC2-FINDINGS evidence).
+      transcript_version: null, source_type: input.kind as "summary" | "context" | "story" | "prior", source_id: input.key,
       source_revision: data.transcript?.transcript_version ?? digest,
       subject_key: input.canonical && data.transcript ? `conversation:${data.transcript.conversation_id}` : run.subject_key,
       arguments: {}, response: data, content_digest: digest,

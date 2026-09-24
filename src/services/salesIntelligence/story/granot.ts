@@ -3,6 +3,7 @@ import { getMongoDatabaseName } from "../../../config/domain/runtime";
 import { redactTranscript } from "../../conversations/redaction";
 import { moveViewsForLead, type MoveEndpoint } from "../assessment/views";
 import { dispositionFor, normalizePriority, priorityLabel } from "../outreach/leadProgress";
+import type { GranotObservationDocument } from "../../../models/GranotObservation";
 import { newestObservations, readLeadRows, type LeadRow } from "./sources";
 import type { GranotLeadState, StorySubject } from "./types";
 
@@ -25,9 +26,10 @@ const endpoint = (e: MoveEndpoint): string | null => {
 const location = (loc: { city?: string; state?: string; zip?: string } | undefined | null) =>
   loc ? endpoint({ city: loc.city ?? null, state: loc.state ?? null, zip: loc.zip ?? null }) : null;
 
-type BookingRow = { _id: unknown; job_no?: string | null; book_date?: Date | null; deposit_amount?: number | null; total_binder_amount?: number | null; lead_ref?: unknown };
+export type BookingRow = { _id: unknown; job_no?: string | null; book_date?: Date | null; deposit_amount?: number | null; total_binder_amount?: number | null; lead_ref?: unknown };
 
-async function readBookings(leads: readonly LeadRow[]): Promise<Map<string, BookingRow>> {
+/** The Booking per Lead (`booked` pointer, else `lead_ref`), keyed `Model:id`. The Case File's §3 Booking line reads the same rows. */
+export async function readLeadBookings(leads: readonly LeadRow[]): Promise<Map<string, BookingRow>> {
   const out = new Map<string, BookingRow>();
   const ids = [...new Set(leads.flatMap(l => (l.booked ? [String(l.booked)] : [])))].filter(id => mongoose.isValidObjectId(id));
   const leadIds = leads.map(l => l._id);
@@ -43,10 +45,38 @@ async function readBookings(leads: readonly LeadRow[]): Promise<Map<string, Book
   return out;
 }
 
+/**
+ * The tracked Granot fields of one observation, read exactly as the story reads them (context
+ * provenance §4.6). The Case File's Granot history (Case File spec §4.4) uses the same accessors,
+ * so a value means the same thing on both pages. Absent values are null.
+ */
+export type GranotTrackedField = "priority" | "estimate" | "payment" | "balance" | "move_date" | "move_size" | "cubic_feet" | "service_type" | "pickup" | "delivery" | "user_raw" | "rep_raw";
+export const GRANOT_TRACKED_FIELDS: readonly GranotTrackedField[] = ["priority", "estimate", "payment", "balance", "move_date", "move_size", "cubic_feet", "service_type", "pickup", "delivery", "user_raw", "rep_raw"];
+type ObservationLike = Pick<GranotObservationDocument, "priority" | "display_money" | "move" | "agent_identity"> | null | undefined;
+export const observationEstimate = (o: ObservationLike) => text(o?.display_money?.estimate?.raw, 40);
+export const observationPayment = (o: ObservationLike) => text(o?.display_money?.payment?.raw, 40);
+export const observationBalance = (o: ObservationLike) => text(o?.display_money?.balance?.raw, 40);
+export const observationMoveDate = (o: ObservationLike) => (o?.move?.move_date ? o.move.move_date.toISOString().slice(0, 10) : text(o?.move?.move_date_raw, 40));
+export const observationMoveSize = (o: ObservationLike) => text(o?.move?.granot_move_size_raw, 40);
+export const observationCubicFeet = (o: ObservationLike) => num(o?.move?.estimated_cubic_feet);
+export const observationServiceType = (o: ObservationLike) => text(o?.move?.service_type_raw, 40);
+export const observationPickup = (o: ObservationLike) => location(o?.move?.origin);
+export const observationDelivery = (o: ObservationLike) => location(o?.move?.destination);
+export const observationRep = (o: ObservationLike) => text(o?.agent_identity?.rep_raw, 60);
+export const observationUser = (o: ObservationLike) => text(o?.agent_identity?.user_raw, 60);
+/** Priority as the observation states it (`canonical`, else `raw`), like the story's `granot_observed` event. */
+export const observationPriority = (o: ObservationLike) => normalizePriority(o?.priority?.canonical ?? o?.priority?.raw);
+export function granotTrackedValues(o: ObservationLike): Record<GranotTrackedField, string | null> {
+  const cubic = observationCubicFeet(o);
+  return { priority: observationPriority(o), estimate: observationEstimate(o), payment: observationPayment(o), balance: observationBalance(o),
+    move_date: observationMoveDate(o), move_size: observationMoveSize(o), cubic_feet: cubic === null ? null : String(cubic), service_type: observationServiceType(o),
+    pickup: observationPickup(o), delivery: observationDelivery(o), user_raw: observationUser(o), rep_raw: observationRep(o) };
+}
+
 export async function granotLeadStates(subject: StorySubject): Promise<GranotLeadState[]> {
   if (!subject.lead_refs.length) return [];
   const leads = await readLeadRows(subject.lead_refs.slice(0, 100));
-  const [observations, bookings] = await Promise.all([newestObservations(leads, subject.as_of), readBookings(leads)]);
+  const [observations, bookings] = await Promise.all([newestObservations(leads, subject.as_of), readLeadBookings(leads)]);
   return leads.map(lead => {
     const key = `${lead.model}:${lead._id}`;
     const observation = observations.get(key) ?? null;
@@ -59,15 +89,15 @@ export async function granotLeadStates(subject: StorySubject): Promise<GranotLea
       granot_priority: priority, priority_label: priorityLabel(priority), disposition: dispositionFor(priority),
       quoted: lead.quoted === true, booked: Boolean(lead.booked) || booking !== null, cancelled: Boolean(lead.cancelled),
       duplicate: Boolean(lead.duplicate), bad_lead: Boolean(lead.bad_lead), no_sync: Boolean(lead.no_sync),
-      receiver_agent_name: text(lead.receiver_agent_name_snapshot, 80), granot_rep_raw: text(observation?.agent_identity?.rep_raw, 60),
+      receiver_agent_name: text(lead.receiver_agent_name_snapshot, 80), granot_rep_raw: observationRep(observation),
       move: {
-        pickup: endpoint(views.pickup) ?? location(observation?.move?.origin), delivery: endpoint(views.delivery) ?? location(observation?.move?.destination),
-        move_date: views.move_date ?? (observation?.move?.move_date ? observation.move.move_date.toISOString().slice(0, 10) : text(observation?.move?.move_date_raw, 40)),
-        move_size: views.move_size, granot_move_size: views.granot_move_size ?? text(observation?.move?.granot_move_size_raw, 40),
-        cubic_feet: views.cubic_feet ?? num(observation?.move?.estimated_cubic_feet),
-        service_type: text(lead.granot_service_type, 40) ?? text(observation?.move?.service_type_raw, 40),
+        pickup: endpoint(views.pickup) ?? observationPickup(observation), delivery: endpoint(views.delivery) ?? observationDelivery(observation),
+        move_date: views.move_date ?? observationMoveDate(observation),
+        move_size: views.move_size, granot_move_size: views.granot_move_size ?? observationMoveSize(observation),
+        cubic_feet: views.cubic_feet ?? observationCubicFeet(observation),
+        service_type: text(lead.granot_service_type, 40) ?? observationServiceType(observation),
       },
-      money: { estimate: text(observation?.display_money?.estimate?.raw, 40), payment: text(observation?.display_money?.payment?.raw, 40), balance: text(observation?.display_money?.balance?.raw, 40) },
+      money: { estimate: observationEstimate(observation), payment: observationPayment(observation), balance: observationBalance(observation) },
       booking_action: observation?.booking_action?.normalized ?? text(observation?.booking_action?.raw, 40),
       observation: observation ? { id: String(observation._id), kind: observation.kind, captured_at: observation.captured_at.toISOString(), source_label: observation.normalized_source_label ?? null } : null,
       booking: booking ? { id: String(booking._id), job_no: text(booking.job_no, 40), book_date: booking.book_date instanceof Date ? booking.book_date.toISOString() : null,

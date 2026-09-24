@@ -1,0 +1,38 @@
+CASE FILE (data) · Number +17575550143 · as of Wed Sep 23, 2026 4:10 PM ET
+Sources: Vantage intake, RingCentral, Granot, Vantage Bookings, Vantage Outreach, Owner, Analysis.
+
+§1 WHO AND WHAT
+Customer: name not recorded
+Leads on this number:
+  L1 Form Lead · Top10 · Job 84000 · received Thu Sep 10, 2026 9:00 AM ET · candidate (phone), not attached
+  L2 Form Lead · MovingQuotes · duplicate · received Fri Sep 11, 2026 9:00 AM ET · candidate (phone), not attached
+Assigned rep: none
+Phone reps seen: Jordan Bell (1 call)
+
+§2 HOW THE LEAD STARTED
+No Lead is attached to this number.
+First call on record: Mon Sep 21, 2026 11:00 AM ET · inbound to Vantage line (+15615550100) [RingCentral]
+
+§3 GRANOT NOW   (last known value per field, each with the observation time)
+No attached Lead: Granot state is shown only for attached Leads.
+
+§4 TIMELINE   (oldest → newest; [Tn] = story index n; Cn = call_index n; times ET)
+[T0] Mon Sep 21 11:00 AM · RingCentral · inbound to Vantage line (+15615550100) → not connected (Missed)
+[T1] Mon Sep 21 11:30 AM · RingCentral · C0 outbound from Vantage line (+15615550100) by Jordan Bell (ext 104, reviewed)
+     → connected 4m12s, recorded, human conversation
+     C0 SUMMARY (full): Caller asked whether Vantage had received her form last week. | outcome: Rep will look up the form.
+Tail: last human conversation Mon Sep 21 (2 days ago). No outbound attempt since.
+
+§5 OPEN WORK NOW   [Vantage Outreach, as of this file]
+Commitments ledger: none recorded.
+Open actions: none.
+State: unworked · Assigned: none · Restrictions: none · Reviews open: 1 (reconcile identity)
+
+§6 PRIOR ANALYSIS   (earlier model outputs — what was concluded before, not facts)
+Rolling summary: none (no Number synthesis yet).
+Prior findings: none.
+Move assessment: none published.
+
+§7 THIS RUN
+Analyze: no call is new in this run; the whole file is context.
+Coverage: capture complete through Wed Sep 23, 2026 4:05 PM ET. Trimmed: none. Size 2.0 KB.

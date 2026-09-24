@@ -229,7 +229,7 @@ export const IntelligenceEvidenceSnapshotSchema = new Schema(
     run_id: ref,
     conversation_id: ref,
     transcript_version: text,
-    source_type: enumeration(["transcript", "vantage_record", "tool_response", "summary", "context", "story", "prior"]),
+    source_type: enumeration(["transcript", "vantage_record", "tool_response", "summary", "context", "story", "prior", "case_file"]),
     artifact_key: text,
     source_id: str,
     source_revision: text,

@@ -1,0 +1,42 @@
+CASE FILE (data) · Number +17575550143 · as of Wed Sep 23, 2026 4:10 PM ET
+Sources: Vantage intake, RingCentral, Granot, Vantage Bookings, Vantage Outreach, Owner, Analysis.
+
+§1 WHO AND WHAT
+Customer: Dan Whit [Call Lead name] · caller ID "DAN WHIT" [RingCentral]
+Leads on this number:
+  L1 Call Lead · MovingQuotes · Job 84600 · received Sun Sep 20, 2026 1:00 PM ET · attached (Exact, RingCentral call identity)
+Assigned rep: Jordan Bell (first conversation, Sun Sep 20, 2026)
+Receiver agent: none recorded
+Phone reps seen: Jordan Bell (1 call)
+
+§2 HOW THE LEAD STARTED
+L1 [RingCentral] Inbound call Sun Sep 20, 2026 1:00 PM ET to MovingQuotes line (+18005550199),
+   qualified as a Call Lead (Answered inbound call over 60 seconds); answered by Jordan Bell (ext 104, reviewed)
+
+§3 GRANOT NOW   (last known value per field, each with the observation time)
+L1 No accepted Granot observation on record. Lead record: Priority not set · Quoted no [Lead]
+   No Vantage Booking recorded.
+
+§4 TIMELINE   (oldest → newest; [Tn] = story index n; Cn = call_index n; times ET)
+[T0] Sun Sep 20 1:00 PM · Vantage intake · L1 Call Lead created (MovingQuotes) · Job 84600
+[T1] Sun Sep 20 1:00 PM · RingCentral · RingCentral qualified the call: Answered inbound call over 60 seconds
+[T2] Sun Sep 20 1:00 PM · RingCentral · C0 inbound to MovingQuotes line; answered by Jordan Bell (ext 104, reviewed)
+     → connected 6m50s, recorded, human conversation   ◀ THIS RUN
+     C0 SUMMARY (full): Customer called about moving a studio to Tampa next week. | outcome: Rep quoted over the phone.
+     C0 SAID: [customer] Customer said the price is too high.
+[T3] Sun Sep 20 1:09 PM · Vantage · Number attached to L1 (Exact, RingCentral call identity)
+Tail: last human conversation Sun Sep 20 (3 days ago). No outbound attempt since.
+
+§5 OPEN WORK NOW   [Vantage Outreach, as of this file]
+Commitments ledger: none recorded.
+Open actions: none.
+State: open · Assigned: Jordan Bell · Restrictions: none · Reviews open: none
+
+§6 PRIOR ANALYSIS   (earlier model outputs — what was concluded before, not facts)
+Rolling summary: none (no Number synthesis yet).
+Prior findings: none.
+Move assessment: none published.
+
+§7 THIS RUN
+Analyze: C0 (Sun Sep 20, 2026 1:00 PM ET, inbound, 6m50s). Earlier calls are context.
+Coverage: capture complete through Wed Sep 23, 2026 4:05 PM ET. Trimmed: none. Size 2.4 KB.

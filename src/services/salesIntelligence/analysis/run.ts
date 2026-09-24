@@ -19,7 +19,7 @@ import { readCaptureCoverage } from "../../numberActivity/coverage";
 import { loadReadScope } from "./reads";
 import { authorizedCorrections, retainedOriginal } from "./ownerReanalysis";
 import { jsonValue } from "../outreach/store";
-import { FINDINGS_PROMPT, FINDINGS_PROMPT_VERSION, STRUCTURED_PIPELINE, structuredStepContracts } from "./structuredPrompt";
+import { STRUCTURED_FINDINGS_PROMPT_VERSIONS, STRUCTURED_PIPELINE, findingsPromptFor, layoutOfContracts, structuredStepContracts } from "./structuredPrompt";
 
 export { intelligenceSchemaDigest } from "./schemaArtifact";
 const preparationSchema = z.object({
@@ -100,10 +100,13 @@ export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntell
       await fenceRetention();
       return existing;
     }
-    let prompt = input.analysis_pipeline ? FINDINGS_PROMPT : renderIntelligencePrompt();
-    let promptVersion: string = input.analysis_pipeline ? FINDINGS_PROMPT_VERSION : CSI_PROMPT_VERSION;
+    // SALES_INTELLIGENCE_CASE_FILE is read once, here, and recorded in step_contracts (Case File spec §4.11).
+    const contracts = input.analysis_pipeline ? structuredStepContracts() : null;
+    const structured = contracts ? findingsPromptFor(layoutOfContracts(contracts)) : null;
+    let prompt = structured ? structured.prompt : renderIntelligencePrompt();
+    let promptVersion: string = structured ? structured.version : CSI_PROMPT_VERSION;
     let schemaDigest = intelligenceSchemaDigest();
-    let stepContracts = input.analysis_pipeline ? jsonValue(structuredStepContracts()) : null;
+    let stepContracts = contracts ? jsonValue(contracts) : null;
     let originalTools: string[] = [];
     if (input.mode === "original_evidence") {
       if (!input.parent_run_id) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
@@ -116,7 +119,7 @@ export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntell
       // still fails loudly here rather than being quietly re-pinned.
       if (parent?.purged_at || parent?.purge_started_at || !parent?.rendered_prompt || !parent.manifest_digest ||
         !parent.schema_digest || !knownSchemaDigest(parent.schema_digest) ||
-        !(parent.analysis_pipeline === STRUCTURED_PIPELINE && parent.prompt_version === FINDINGS_PROMPT_VERSION) &&
+        !(parent.analysis_pipeline === STRUCTURED_PIPELINE && STRUCTURED_FINDINGS_PROMPT_VERSIONS.includes(parent.prompt_version ?? "")) &&
         !(CSI_PROMPT_VERSIONS as readonly string[]).includes(parent.prompt_version ?? ""))
         throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
       if (String(parent.contact_number_id) !== input.contact_number_id ||
