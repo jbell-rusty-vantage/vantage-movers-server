@@ -14,6 +14,11 @@
  *
  * Refuses to apply against the production database unless --allow-production is
  * passed; the coordinator never passes it without Owner approval.
+ *
+ * S6-P5: Priority 5 (`crm_booked`, closure `granot_booked`) follows SALES_INTELLIGENCE_PRIORITY5_CLOSURE
+ * in this process; with it on, the inventory counts 5 under `terminal_*`. The dedicated S10 step 4
+ * reconcile (report of closes / uncertain / upgrades, held `number_refresh`, drift guard) is
+ * `scripts/dev_ops/reconcile-priority5.ts`.
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import mongoose from "mongoose";

@@ -82,15 +82,28 @@ export async function supersedeDefaults(record: Pick<RecordRow, "_id" | "subject
   return placeholders.map(action => String(action._id));
 }
 export type ClosureOrigin = "official" | "owner" | "crm_disposition";
+/**
+ * S6-P5 (assignment addendum §2.1, E2): a record closed by Priority 5 (`crm_disposition` /
+ * `granot_booked`) that gets its exact Vantage Booking becomes an official `booked` closure. It keeps
+ * the original `closed_at`: the Closed view's `booked` time-to-close uses `book_date`.
+ * Only `authoritativeClosure`'s exact `booked_leads` / Lead mirror reaches here, never a phone match.
+ * A later `cancelled` is an ordinary official closure. Not flag-gated: without PRIORITY5_CLOSURE no
+ * record is ever closed as `granot_booked`, and after a flag rollback the upgrade is still right.
+ */
+export const isGranotBookedUpgrade = (record: Pick<RecordRow, "state" | "closed_reason" | "closure_origin">, reason: string, origin: ClosureOrigin) =>
+  record.state === "closed" && record.closure_origin === "crm_disposition" && record.closed_reason === "granot_booked" && origin === "official" && reason === "booked";
 export async function closeRecord(record: Awaited<ReturnType<typeof recordForUpdate>>, reason: string, origin: ClosureOrigin, context: CsiTransactionContext, details: Record<string, JsonValue> = {}) {
   const prior = record.toObject();
   if (record.state === "closed" && record.closed_reason === reason && record.closure_origin === origin) return;
+  const upgrade = isGranotBookedUpgrade(record, reason, origin);
+  if (upgrade) details = { ...details, upgraded_from: "granot_booked" };
   for (const action of await getOutreachFollowupModel().find({ outreach_record_id: record._id, status: "open" }).session(context.session)) {
     const before = action.toObject(); action.status = "cancelled"; action.cancel_reason = reason; action.snoozed_until = null;
     await saveFollowup(action, before, context, subjectKey(record.subject), "closure_cancelled_action");
   }
   record.state = "closed"; record.state_before_identity_review = null; record.closed_reason = reason;
-  record.closed_at = context.now; record.closed_by = context.actor.id; record.closure_origin = origin;
+  if (!upgrade) record.closed_at = context.now;
+  record.closed_by = context.actor.id; record.closure_origin = origin;
   await refreshRecord(record, context, "outreach_closed", prior, details);
   // A CRM disposition closure refreshes displays through the Attention publish and reads; it must not
   // nominate a paid Number analysis (§12: Priority-only changes make no model call).

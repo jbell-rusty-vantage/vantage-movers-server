@@ -179,7 +179,9 @@ export function outcomeReason(record: Pick<FactsRecord, "state" | "closed_reason
   if (record.state !== "closed") return null;
   const reason = record.closed_reason ?? "";
   if (record.closure_origin === "owner") return "owner";
-  if (record.closure_origin === "crm_disposition") return reason === "granot_dead_opportunity" ? "crm_dead" : reason === "granot_bad_unusable" ? "crm_bad_unusable" : null;
+  if (record.closure_origin === "crm_disposition") return reason === "granot_dead_opportunity" ? "crm_dead" : reason === "granot_bad_unusable" ? "crm_bad_unusable"
+    // S6-P5 (§2.2): Priority 5 "Booked in Granot". After the E2 upgrade the record is an official `booked`.
+    : reason === "granot_booked" ? "granot_booked" : null;
   if (record.closure_origin === "official") return OFFICIAL_OUTCOMES.has(reason as AttentionOutcome) ? reason as AttentionOutcome : null;
   return null;
 }
@@ -217,7 +219,7 @@ export function closedOutcome(input: Pick<FactsInput, "record" | "bookings" | "c
     booking: booking ? { id: String(booking._id), book_date: isoOf(booking.book_date), total_binder_amount: typeof booking.total_binder_amount === "number" ? booking.total_binder_amount : null,
       job_no: booking.job_no ?? null, agent_name: booking.agent != null ? input.agentNames?.get(String(booking.agent)) ?? null : null } : null,
     cancellation: cancellation ? { id: String(cancellation._id), cancel_date: isoOf(cancellation.cancel_date), reason: cancellation.reason ?? null } : null,
-    priority: (reason === "crm_dead" || reason === "crm_bad_unusable") && code != null ? { code, label: priorityLabel(code) } : null,
+    priority: (reason === "crm_dead" || reason === "crm_bad_unusable" || reason === "granot_booked") && code != null ? { code, label: priorityLabel(code) } : null,
     note: reason === "owner" ? record.closed_reason ?? null : null,
   };
 }

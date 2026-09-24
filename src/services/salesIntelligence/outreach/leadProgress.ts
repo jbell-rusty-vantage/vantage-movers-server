@@ -1,4 +1,5 @@
 import type { Types } from "mongoose";
+import { csiFlag } from "../../../config/domain/salesIntelligence";
 import { payloadHash } from "../transactions";
 import { jsonValue } from "./store";
 
@@ -10,12 +11,17 @@ import { jsonValue } from "./store";
  * other valid code is displayed raw with no invented meaning; a missing or
  * malformed value is Unknown. Canonical stored `quoted` is read as its own
  * evidence and is never recomputed from the code.
+ *
+ * S6-P5 (assignment addendum §2, E1), behind SALES_INTELLIGENCE_PRIORITY5_CLOSURE: `5` is
+ * `crm_booked` ("Booked in Granot"), a CRM-disposition closure like `7`/`8`. With the flag off `5`
+ * stays an unmapped code, exactly as before.
  */
-export type Disposition = "fresh" | "quoted" | "rep_discretion" | "crm_bad_unusable" | "crm_dead" | "unmapped" | "unknown";
+export type Disposition = "fresh" | "quoted" | "rep_discretion" | "crm_bad_unusable" | "crm_dead" | "crm_booked" | "unmapped" | "unknown";
 export type ProgressBasis = "quoted" | "priority_assigned" | "priority_changed" | "historical_snapshot";
 export type Provenance = "accepted" | "uncertain" | "none";
 export type SourceOrigin = "granot" | "vantage" | "ringcentral";
-export const TERMINAL_DISPOSITIONS: readonly Disposition[] = ["crm_bad_unusable", "crm_dead"];
+// `crm_booked` is only ever projected with PRIORITY5_CLOSURE on; a stored one stays terminal after a flag rollback.
+export const TERMINAL_DISPOSITIONS: readonly Disposition[] = ["crm_bad_unusable", "crm_dead", "crm_booked"];
 export const WORK_DISPOSITIONS: readonly Disposition[] = ["quoted", "rep_discretion"];
 export const LEAD_PROGRESS_POLICY_VERSION = "lead-progress-v1";
 
@@ -26,9 +32,14 @@ const CONFIRMED: Record<string, { disposition: Disposition; label: string }> = {
   "7": { disposition: "crm_bad_unusable", label: "CRM bad/unusable" },
   "8": { disposition: "crm_dead", label: "CRM dead opportunity" },
 };
+/** S6-P5 (E1): Priority 5, only with SALES_INTELLIGENCE_PRIORITY5_CLOSURE on. */
+export const PRIORITY5_CODE = "5";
+const PRIORITY5 = { disposition: "crm_booked" as Disposition, label: "Booked in Granot" };
+export const priority5ClosureEnabled = () => csiFlag("PRIORITY5_CLOSURE");
+const confirmed = (priority: string) => CONFIRMED[priority] ?? (priority === PRIORITY5_CODE && priority5ClosureEnabled() ? PRIORITY5 : undefined);
 const DISPOSITION_LABELS: Record<Disposition, string> = {
   fresh: "Fresh", quoted: "Quoted", rep_discretion: "Rep discretion", crm_bad_unusable: "CRM bad/unusable",
-  crm_dead: "CRM dead opportunity", unmapped: "Unknown meaning", unknown: "Unknown",
+  crm_dead: "CRM dead opportunity", crm_booked: "Booked in Granot", unmapped: "Unknown meaning", unknown: "Unknown",
 };
 const BASIS_LABELS: Record<ProgressBasis, string> = {
   quoted: "Lead quoted", priority_assigned: "Priority assigned in Granot", priority_changed: "Priority changed in Granot",
@@ -43,20 +54,22 @@ export function normalizePriority(value: unknown): string | null {
 }
 export function dispositionFor(priority: string | null): Disposition {
   if (priority === null) return "unknown";
-  if (CONFIRMED[priority]) return CONFIRMED[priority]!.disposition;
+  const meaning = confirmed(priority);
+  if (meaning) return meaning.disposition;
   return /^\d{1,3}$/.test(priority) ? "unmapped" : "unknown";
 }
 export function priorityLabel(priority: string | null): string {
   if (priority === null) return "Not set";
-  return CONFIRMED[priority]?.label ?? (dispositionFor(priority) === "unmapped" ? "Unknown meaning" : "Unknown");
+  return confirmed(priority)?.label ?? (dispositionFor(priority) === "unmapped" ? "Unknown meaning" : "Unknown");
 }
 export const dispositionLabel = (d: Disposition) => DISPOSITION_LABELS[d];
 export const basisLabel = (b: ProgressBasis | null) => (b ? BASIS_LABELS[b] : null);
 export const isTerminal = (d: Disposition) => TERMINAL_DISPOSITIONS.includes(d);
-export function closureBasisFor(d: Disposition): "granot_bad_unusable" | "granot_dead_opportunity" | null {
-  return d === "crm_bad_unusable" ? "granot_bad_unusable" : d === "crm_dead" ? "granot_dead_opportunity" : null;
+export const CRM_CLOSURE_REASONS = ["granot_bad_unusable", "granot_dead_opportunity", "granot_booked"] as const;
+export type CrmClosureReason = (typeof CRM_CLOSURE_REASONS)[number];
+export function closureBasisFor(d: Disposition): CrmClosureReason | null {
+  return d === "crm_bad_unusable" ? "granot_bad_unusable" : d === "crm_dead" ? "granot_dead_opportunity" : d === "crm_booked" ? "granot_booked" : null;
 }
-export const CRM_CLOSURE_REASONS = ["granot_bad_unusable", "granot_dead_opportunity"] as const;
 
 /** The accepted change that supplied the current Priority/Quoted values, when one exists. */
 export type ProgressEvidence = {

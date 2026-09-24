@@ -383,7 +383,7 @@ export const leadProgressDtoSchema = z
     granot_priority: z.string().nullable(),
     priority_label: z.string(),
     quoted: z.boolean().nullable(),
-    disposition: z.enum(["fresh", "quoted", "rep_discretion", "crm_bad_unusable", "crm_dead", "unmapped", "unknown"]),
+    disposition: z.enum(["fresh", "quoted", "rep_discretion", "crm_bad_unusable", "crm_dead", "crm_booked", "unmapped", "unknown"]),
     disposition_label: z.string(),
     work_observed: z.boolean(),
     basis: z.enum(["quoted", "priority_assigned", "priority_changed", "historical_snapshot"]).nullable(),
@@ -393,7 +393,7 @@ export const leadProgressDtoSchema = z
     source_applied_at: date.nullable(),
     last_progress_at: date.nullable(),
     first_work_observed_at: date.nullable(),
-    closure: z.object({ basis: z.enum(["granot_bad_unusable", "granot_dead_opportunity"]), closed_at: date.nullable() }).strict().nullable(),
+    closure: z.object({ basis: z.enum(["granot_bad_unusable", "granot_dead_opportunity", "granot_booked"]), closed_at: date.nullable() }).strict().nullable(),
     override: z.object({ reason: z.string(), decided_at: date, decided_by: z.string(), disposition_revision: z.string() }).strict().nullable(),
     reopen_review_id: id.nullable(),
     disposition_revision: z.string(),
@@ -481,7 +481,8 @@ export const ATTENTION_SORT_DEFAULT_DIRECTION: Record<(typeof ATTENTION_SORTS)[n
  */
 export const ATTENTION_PARTITIONS = ["active", "closed"] as const;
 /** Closed-view outcomes (final spec §8), mapped from `closed_reason` / `closure_origin` (data spec §3.5). */
-export const ATTENTION_OUTCOMES = ["booked", "cancelled", "bad_lead", "duplicate", "no_sync", "crm_dead", "crm_bad_unusable", "owner"] as const;
+// S6-P5 (E1, §2.2): `granot_booked` is a CRM-disposition closure by Priority 5 (only with PRIORITY5_CLOSURE on).
+export const ATTENTION_OUTCOMES = ["booked", "cancelled", "bad_lead", "duplicate", "no_sync", "crm_dead", "crm_bad_unusable", "owner", "granot_booked"] as const;
 export type AttentionOutcome = (typeof ATTENTION_OUTCOMES)[number];
 const dayString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 /**

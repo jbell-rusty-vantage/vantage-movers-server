@@ -144,7 +144,7 @@ export const OutreachRecordSchema = new Schema(
     closed_reason: text,
     closed_at: date,
     closed_by: text,
-    // `crm_disposition` (LP-01): closed by an accepted Granot Priority 7/8.
+    // `crm_disposition` (LP-01): closed by an accepted Granot Priority 7/8 (and 5 with PRIORITY5_CLOSURE, S6-P5).
     // Unlike `official` it can be reopened by an explicit Owner reopen once the
     // disposition is nonterminal again, or by a revision-scoped Owner override.
     closure_origin: {
@@ -166,6 +166,8 @@ export const OutreachRecordSchema = new Schema(
             "rep_discretion",
             "crm_bad_unusable",
             "crm_dead",
+            // S6-P5 (E1): Priority 5 "Booked in Granot", projected only with PRIORITY5_CLOSURE on.
+            "crm_booked",
             "unmapped",
             "unknown",
           ]),

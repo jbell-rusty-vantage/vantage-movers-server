@@ -83,6 +83,8 @@ export async function ensureLead(ref: LeadRef, context: CsiTransactionContext, n
   // §11.1: an exact Booking relationship closes work even when the Lead mirror is delayed.
   const reason = await authoritativeClosure(lead, ref, context.session);
   if (reason) await closeRecord(row, reason, "official", context);
+  // G8 (reconciliation §4.2): inside `applyLeadProgress` the CRM-disposition closure (accepted 5/7/8) is decided
+  // before the §7.1 quote default can be created, so an accepted 5 (Granot also sets `quoted`) never gets one.
   if (csiFlag("LEAD_PROGRESS")) await applyLeadProgress(row, lead, ref, context, options.changeId ?? null, reason);
   if (numberId) {
     const numberReview = await Model.findOne({ "subject.kind": "number_review", "subject.contact_number_id": numberId, state: { $ne: "closed" } }).session(context.session);
@@ -151,7 +153,7 @@ async function applyLeadProgress(record: Awaited<ReturnType<typeof recordForUpda
       await closeRecord(record, basis, "crm_disposition", context, { disposition: next.disposition, source_change_id: next.source_change_id ? String(next.source_change_id) : null });
       event = "lead_progress_updated";
     } else if (record.closure_origin === "crm_disposition" && record.closed_reason !== basis) {
-      // 7 ↔ 8 refreshes the current disposition and keeps the closure history.
+      // 5 ↔ 7 ↔ 8 refreshes the current disposition and keeps the closure history (closed_at unchanged).
       record.closed_reason = basis; event = "lead_progress_updated";
     }
     if (next.reopen_review_id) { await resolveDispositionReviews(context, key, ["disposition_reopen"], "disposition_terminal_again"); next.reopen_review_id = null; event = "lead_progress_updated"; }
@@ -178,7 +180,8 @@ async function applyLeadProgress(record: Awaited<ReturnType<typeof recordForUpda
   if (dispositionChanged && !terminal && next.reopen_review_id && record.state !== "closed") next.reopen_review_id = null;
   if (!event) return;
   record.lead_progress = next;
-  // §7.1 / §8.1: accepted progress to Quoted that opens the record, or moves an open record to Quoted.
+  // §7.1 / §8.1: accepted progress to Quoted that opens the record, or moves an open record to Quoted. A terminal
+  // disposition (S6-P5: 5 included) never reaches here as `quoted`, and a 5 → 1 on closed work leaves it closed.
   const quotedProgress = next.provenance === "accepted" && next.disposition === "quoted" && eligible && (becameOpen || (record.state === "open" && dispositionChanged));
   let defaultId: string | null = null;
   if (attentionEvolutionEnabled()) {
