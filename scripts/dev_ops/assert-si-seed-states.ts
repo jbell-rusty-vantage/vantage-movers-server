@@ -709,6 +709,61 @@ const CHECKS: Record<SiSeedState, Check> = {
     }
     return n;
   },
+  // CF-FINAL (S6-AGENT on the seed): records whose rep follows the Lead's receiver_agent, with the EntityChange that wrote it as evidence.
+  t3_crm_receiver: async db => {
+    const rows = await db.collection("outreach_records").find({ "subject.kind": "lead", "assignment.origin": "crm_receiver", responsible_agent_id: { $type: "objectId" } }).toArray();
+    let n = 0;
+    for (const r of rows) {
+      const lead = await leadOf(db, r);
+      const change = r.assignment?.evidence_id ? await db.collection("entity_changes").findOne({ _id: r.assignment.evidence_id, changed_paths: "receiver_agent" }) : null;
+      if (lead?.receiver_agent && String(lead.receiver_agent) === String(r.responsible_agent_id) && change) n++;
+    }
+    return n;
+  },
+  // E5, rank 20: a crm_receiver record backed by a ringcentral_answered receiver the real fill wrote (EntityChange source_system ringcentral).
+  t3_crm_receiver_ringcentral: async db => {
+    const rows = await db.collection("outreach_records").find({ "assignment.origin": "crm_receiver", "assignment.receiver_source": "ringcentral_answered" }).toArray();
+    let n = 0;
+    for (const r of rows) {
+      const lead = await leadOf(db, r);
+      const change = await db.collection("entity_changes").findOne({ "entity.id": String(r.subject.id), changed_paths: "receiver_agent", command_name: "fillReceiverAgentFromAnsweredCall",
+        "provenance.source_system": "ringcentral" });
+      if (lead?.receiver_agent_source === "ringcentral_answered" && String(lead.receiver_agent) === String(r.responsible_agent_id) && change) n++;
+    }
+    return n;
+  },
+  // C13: an Owner assignment kept across a receiver change: the Lead's receiver changed (≥ 2 receiver changes, different agents), the
+  // current receiver is neither the Owner's rep nor the first receiver, and the record is still the Owner's. (The Owner command runs at
+  // wall-clock time while the seed's history is back-dated, so the order is the seed's, not comparable timestamps.)
+  t3_owner_kept_after_receiver_change: async db => {
+    const rows = await db.collection("outreach_records").find({ "subject.kind": "lead", "assignment.origin": "owner", responsible_agent_id: { $type: "objectId" } }).toArray();
+    let n = 0;
+    for (const r of rows) {
+      const lead = await leadOf(db, r);
+      const changes = await db.collection("entity_changes").find({ "entity.id": String(r.subject.id), changed_paths: "receiver_agent" }).sort({ applied_at: 1 }).toArray();
+      const afters = changes.map(c => String(c.fields?.find((f: { path: string }) => f.path === "receiver_agent")?.after));
+      if (lead?.receiver_agent && changes.length >= 2 && new Set(afters).size >= 2 && afters.at(-1) === String(lead.receiver_agent)
+        && String(lead.receiver_agent) !== String(r.responsible_agent_id) && afters[0] !== String(r.responsible_agent_id)) n++;
+    }
+    return n;
+  },
+  // The timeline's "Rep changed in Granot: {old} → {new}" source: a Granot receiver change (not a creation) naming both reps.
+  t3_receiver_change_event: db => db.collection("entity_changes").countDocuments({ changed_paths: "receiver_agent", "provenance.source_system": "granot",
+    fields: { $all: [{ $elemMatch: { path: "receiver_agent_name_snapshot", before: { $type: "string" }, after: { $type: "string" } } }] } }),
+  // `user ≠ rep` changes nothing: no receiver change comes from such an observation, and its Lead keeps the receiver of its newest change.
+  t3_granot_user_not_rep_unchanged: async db => {
+    const splits = await db.collection("granot_observations").find({ "agent_identity.user_raw": { $type: "string" }, $expr: { $ne: ["$agent_identity.user_raw", "$agent_identity.rep_raw"] } }).toArray();
+    let n = 0;
+    for (const o of splits) {
+      if (await db.collection("entity_changes").countDocuments({ "provenance.observation_id": o._id })) continue;
+      const job = o.identity?.normalized_job_no;
+      const lead = await db.collection("form_leads").findOne({ normalized_job_no: job }) ?? await db.collection("call_leads").findOne({ normalized_job_no: job });
+      const newest = lead ? await db.collection("entity_changes").findOne({ "entity.id": String(lead._id), changed_paths: "receiver_agent" }, { sort: { applied_at: -1 } }) : null;
+      const after = newest?.fields?.find((f: { path: string }) => f.path === "receiver_agent")?.after;
+      if (lead?.receiver_agent && newest && String(after) === String(lead.receiver_agent) && +newest.applied_at < +o.captured_at) n++;
+    }
+    return n;
+  },
   // Two reps each promised a follow-up on a record another rep is responsible for (E11 union).
   t3_promise_across_reps: async db => {
     const actions = await db.collection("outreach_followups").find({ status: "open", origin: "rep_promise", promised_by_agent_id: { $type: "objectId" } }).toArray();
@@ -812,3 +867,8 @@ async function main() {
   } finally { await client.close(); }
 }
 main().catch(error => { console.error(error instanceof Error ? error.stack ?? error.message : String(error)); process.exitCode = 1; });
+/** CF-FINAL: the Lead an Outreach record's subject names (null for a Number review). */
+function leadOf(db: Db, record: { subject?: { kind: string; model?: string; id?: unknown } } & Record<string, unknown>) {
+  if (record.subject?.kind !== "lead" || !record.subject.id) return Promise.resolve(null);
+  return db.collection(record.subject.model === "CallLead" ? "call_leads" : "form_leads").findOne({ _id: new ObjectId(String(record.subject.id)) });
+}

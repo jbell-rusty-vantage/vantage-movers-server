@@ -76,7 +76,7 @@ async function main() {
       if (!result.success) problems.push(...result.error.issues.slice(0, 5).map(issue => `${admin.name}: ${issue.path.join(".")}: ${issue.message}`));
     }
     const state = file.slice(route.slug.length + 2, -".json".length);
-    if (route.checks) problems.push(...route.checks(readLike ? raw : (raw as { body?: unknown }).body, { rows, state, file, agents }));
+    if (route.checks) problems.push(...route.checks(readLike ? raw : (raw as { body?: unknown }).body, { rows, state, file, agents, dir }));
     const note = route.kind === "script" ? " # script capture (no route); server caseFileArtifactSchema + script-local strict wrapper"
       : state.endsWith("__synthetic") ? " # synthetic: pure composeCaptureHealth in a copy of the real response"
       : server.source === "script-local" && route.kind === "read" ? " # server exports no schema; script-local strict schema" : "";

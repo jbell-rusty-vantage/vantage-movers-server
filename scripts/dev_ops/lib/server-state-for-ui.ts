@@ -170,10 +170,20 @@ export function listFixtures(contractsDir: string, stages = discoverStages(contr
       for (const file of readdirSync(dir).filter(name => name.endsWith(".json") && !name.startsWith("_")).sort()) {
         out.push({ stage, mode, rel: mode === "on" ? `${stage}/${file}` : `${stage}/flag-off/${file}`, file, slug: slugOf(file), state: stateOf(file) });
       }
+      // CF-FINAL: a flags-on stage's other subfolders (not `flag-off/`, not `reports/`) hold fixtures of another server, e.g.
+      // `S8/admin-users/` (the admin server's Users routes). Their slug is folder-prefixed: `admin-users/list`, `admin-users/invite`.
+      if (mode === "on") {
+        for (const sub of readdirSync(dir).filter(name => !SKIPPED_SUBFOLDERS.has(name) && !name.startsWith("_") && statSync(resolve(dir, name)).isDirectory()).sort()) {
+          for (const file of readdirSync(resolve(dir, sub)).filter(name => name.endsWith(".json") && !name.startsWith("_")).sort()) {
+            out.push({ stage, mode, rel: `${stage}/${sub}/${file}`, file, slug: `${sub}/${slugOf(file)}`, state: stateOf(file) });
+          }
+        }
+      }
     }
   }
   return out;
 }
+const SKIPPED_SUBFOLDERS = new Set(["flag-off", "reports"]);
 
 export type FixtureReader = (rel: string) => unknown;
 export function cachedReader(contractsDir: string): FixtureReader {

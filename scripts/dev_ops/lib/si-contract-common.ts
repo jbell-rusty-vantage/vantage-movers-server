@@ -73,6 +73,8 @@ export const SI_SEED_STATES = [
   "t3_receiver_manual", "t3_receiver_granot", "t3_receiver_extension", "t3_receiver_sheet", "t3_receiver_ringcentral",
   "t3_granot_rep_change", "t3_granot_observation_out_of_order", "t3_granot_user_not_rep",
   "t3_owner_assign_vs_receiver", "t3_promise_across_reps",
+  // CF-FINAL (2026-09-24): S6-AGENT on the seed (crm_receiver, the real ringcentral_answered fill, C13 after a later rep change, the timeline event source).
+  "t3_crm_receiver", "t3_crm_receiver_ringcentral", "t3_owner_kept_after_receiver_change", "t3_receiver_change_event", "t3_granot_user_not_rep_unchanged",
   "t3_closed_200d", "t3_no_lead",
   "t3_priority_0", "t3_priority_1", "t3_priority_3", "t3_priority_4", "t3_priority_7", "t3_priority_8", "t3_priority_9", "t3_priority_not_set",
   "t3_rep_days_two_reps", "t3_rep_days_unmapped",

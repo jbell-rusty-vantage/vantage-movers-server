@@ -14,6 +14,8 @@
  * The two exceptions are documented in `si-contract-schemas.ts`: `GET /analysis-runs/:id` (the server
  * exports no schema) and status/header fixtures (media, flag-off Outreach timeline).
  */
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { ZodType } from "zod";
 import type { SiManifestRow } from "./si-contract-common";
 
@@ -46,7 +48,7 @@ export type CaptureCall = {
  */
 export type CaptureEnv = { agents: Record<string, string>; followups: Record<string, { id: string; revision: number } | null> };
 export type ResolvedSchema = { schema: ZodType; name: string; source: "server" | "script-local" | "admin@539a628" };
-export type CheckContext = { rows: readonly SiManifestRow[] | null; state: string; file: string; agents?: Record<string, string> | null };
+export type CheckContext = { rows: readonly SiManifestRow[] | null; state: string; file: string; agents?: Record<string, string> | null; /** CF-FINAL: the fixture folder (cross-fixture checks). */ dir?: string };
 export type RouteEntry = {
   stage: Stage;
   mode: Mode;
@@ -654,6 +656,7 @@ const RECEIVER_LABELS = ["T3-receiver-manual", "T3-receiver-granot", "T3-receive
 const RECEIVER_SOURCE: Record<string, string> = { "t3-receiver-manual": "manual", "t3-receiver-granot": "granot_username_match", "t3-receiver-extension": "extension_match",
   "t3-receiver-sheet": "best_relocation_sheet", "t3-receiver-ringcentral": "ringcentral_answered", "t3-granot-rep-change": "granot_username_match" };
 const ACROSS = ["T3-promise-across-a", "T3-promise-across-b"] as const;
+const OWNER_KEPT_LABEL = "T3-owner-kept";
 
 function s6ClosedChecks(body: any, ctx: CheckContext): string[] {
   const out = [...flagOnHeader(body), ...attentionRowsCarryS2(body, true)];
@@ -699,9 +702,48 @@ function s6DetailChecks(body: any, ctx: CheckContext): string[] {
   if (ctx.state === "t3-p5-uncertain" && (o.state === "closed" || lp?.provenance !== "uncertain" || lp?.disposition !== "crm_booked")) out.push(`uncertain 5: state ${o.state}, provenance ${lp?.provenance}`);
   if (ctx.state === "t3-p5-to-1" && (o.state !== "closed" || lp?.granot_priority !== "1" || !lp?.reopen_review_id)) out.push(`5 → 1: state ${o.state}, code ${lp?.granot_priority}, reopen_review_id ${lp?.reopen_review_id}`);
   if (ctx.state === "t3-p5-booking-upgrade" && (o.state !== "closed" || lp?.closure?.basis === "granot_booked")) out.push(`upgrade: state ${o.state}, closure ${JSON.stringify(lp?.closure)}`);
-  if (ctx.state.startsWith("t3-promise-across") && o.assignment?.origin !== "owner") out.push(`Owner assignment: origin ${o.assignment?.origin}`);
-  // S6-AGENT (lands later): once the detail carries `receiver_agent`, it must show the seeded source.
-  if (has(o, "receiver_agent") && RECEIVER_SOURCE[ctx.state] && o.receiver_agent?.source !== RECEIVER_SOURCE[ctx.state]) out.push(`receiver_agent.source ${o.receiver_agent?.source}, expected ${RECEIVER_SOURCE[ctx.state]}`);
+  // CF-FINAL (S6-AGENT merged): every detail carries `receiver_agent` (flag on); each seeded source is a `crm_receiver` assignment to that agent.
+  if (!has(o, "receiver_agent")) out.push("receiver_agent missing (RECEIVER_ASSIGNMENT on)");
+  const expected = RECEIVER_SOURCE[ctx.state];
+  if (expected) {
+    const r = o.receiver_agent;
+    if (!r || r.source !== expected || !r.agent?.name || !r.set_at) out.push(`receiver_agent ${JSON.stringify(r)}, expected {agent, source ${expected}, set_at}`);
+    if (o.assignment?.origin !== "crm_receiver" || o.assignment?.agent?.id !== r?.agent?.id) out.push(`assignment ${JSON.stringify(o.assignment)}: expected crm_receiver to the receiver agent`);
+  }
+  // C13 / E26: the Owner's assignment kept against a different receiver (T3-owner-kept: after a later Granot rep change).
+  if (OWNER_KEPT.includes(ctx.state) && (o.assignment?.origin !== "owner" || !o.receiver_agent?.agent || o.receiver_agent.agent.id === o.assignment?.agent?.id))
+    out.push(`Owner assignment vs receiver: assignment ${JSON.stringify(o.assignment)}, receiver_agent ${JSON.stringify(o.receiver_agent)}`);
+  // Addendum §4.3: lead_cost per basis on the priced Leads; every record with a Lead carries one (null only without a Lead).
+  const cost = LEAD_COST[ctx.state];
+  if (cost && (o.lead_cost?.basis !== cost.basis || o.lead_cost?.amount !== cost.amount)) out.push(`lead_cost ${JSON.stringify(o.lead_cost)}, expected ${JSON.stringify(cost)}`);
+  if (!has(o, "lead_cost") || (o.subject?.kind === "lead" && o.lead_cost === null)) out.push(`lead_cost ${JSON.stringify(o.lead_cost)} on a record with a Lead`);
+  return out;
+}
+const OWNER_KEPT = ["t3-promise-across-a", "t3-promise-across-b", "t3-owner-kept"];
+const SPEND_LABELS = ["T3-spend-rate", "T3-spend-legacy", "T3-spend-missing-rate", "T3-spend-duplicate-zero"] as const;
+const LEAD_COST: Record<string, { basis: string; amount: number }> = { "t3-spend-rate": { basis: "rate", amount: 40 }, "t3-spend-legacy": { basis: "legacy", amount: 35 },
+  "t3-spend-missing-rate": { basis: "unpriced", amount: 0 }, "t3-spend-duplicate-zero": { basis: "zero", amount: 0 } };
+/** CF-FINAL: the timeline's receiver events (S6-AGENT): "Rep changed in Granot: {old} → {new}", and the RingCentral fill's "Receiver agent changed". */
+const RECEIVER_EVENT: Record<string, string[]> = {
+  "t3-granot-rep-change": ["Rep changed in Granot: none → Dana Reyes", "Rep changed in Granot: Dana Reyes → Marcus Bell"],
+  "t3-owner-kept": ["Rep changed in Granot: none → Marcus Bell", "Rep changed in Granot: Marcus Bell → Dana Reyes"],
+  "t3-receiver-ringcentral": ["Receiver agent changed: none → Marcus Bell"],
+};
+function s6TimelineChecks(body: any, ctx: CheckContext): string[] {
+  const want = RECEIVER_EVENT[ctx.state];
+  if (!want) return [];
+  const titles = items(body).filter(item => item.kind === "receiver_agent_changed").map(item => String(item.title));
+  return want.filter(title => !titles.includes(title)).map(title => `no receiver_agent_changed "${title}" (seen: ${JSON.stringify(titles)})`);
+}
+/** CF-FINAL: an S5c field captured later: the in-progress call on the conversations read (cards or `other_calls`), with `call_log_state`. */
+function s6ConversationsChecks(body: any, ctx: CheckContext): string[] {
+  const d = body?.data ?? {};
+  const all = [...(Array.isArray(d.items) ? d.items : []), ...(Array.isArray(d.other_calls) ? d.other_calls : [])];
+  const out: string[] = [];
+  if (ctx.state === "t3-live-call" && !all.some(c => c.in_progress === true)) out.push("no in_progress call on the cards or other_calls");
+  if (ctx.state === "s-findings" && !(d.items?.length > 0)) out.push("no conversation cards");
+  if (ctx.state === "t3-capture-states" && !all.some(c => c.call_log_state === "settled")) out.push("no call with call_log_state settled");
+  if (all.some(c => !has(c, "in_progress") || !has(c, "call_log_state"))) out.push("a card or other call lacks in_progress / call_log_state");
   return out;
 }
 
@@ -798,6 +840,37 @@ function repOverviewChecks(body: any, agents?: Record<string, string> | null): s
   if (!["ok", "attention", "broken"].includes(d.now?.capture_health?.status)) out.push("now.capture_health.status missing");
   return out;
 }
+/**
+ * CF-FINAL (C11, `656c477f`): each `team_medians` metric is null unless at least 3 team members (reps with an open assignment or a call
+ * in the period) have a known value. The members and their values come from the Owner's unscoped Overview of the same period in the
+ * same folder (`reps[]` = the team rows the median is taken over); `team_medians.reps` must equal the member count.
+ */
+const MEDIAN_PATHS: Record<string, (r: any) => unknown> = {
+  open: r => r.open_assignments?.open, overdue: r => r.open_assignments?.overdue, outbound_attempts: r => r.interactions?.outbound_attempts,
+  answered_inbound: r => r.interactions?.answered_inbound, human_conversations: r => r.interactions?.human_conversations, talk_minutes: r => r.interactions?.talk_minutes,
+  attempt_conversation_rate: r => r.interactions?.attempt_conversation_rate, leads: r => r.outcomes?.leads, quoted: r => r.outcomes?.quoted,
+  booked_in_granot: r => r.outcomes?.booked_in_granot, booked_official: r => r.outcomes?.booked_official, booking_rate: r => r.outcomes?.booking_rate,
+  spend: r => r.spend?.spend, cost_per_booking: r => r.cost_per_booking,
+};
+export const MEDIAN_MIN_COHORT = 3;
+export function medianCohortChecks(body: any, ctx: CheckContext, ownerFile: string): string[] {
+  const medians = body?.data?.team_medians;
+  if (!medians) return [];
+  const file = ctx.dir ? resolve(ctx.dir, ownerFile) : null;
+  if (!file || !existsSync(file)) return [`median cohort: the Owner's ${ownerFile} is not in the folder`];
+  const owner = JSON.parse(readFileSync(file, "utf8"))?.data;
+  const members = (owner?.reps ?? []).filter((r: any) => r.open_assignments?.open > 0 || r.interactions?.calls > 0);
+  const out: string[] = [];
+  if (medians.reps !== members.length) out.push(`team_medians.reps ${medians.reps} ≠ ${members.length} team members in ${ownerFile}`);
+  for (const [field, pick] of Object.entries(MEDIAN_PATHS)) {
+    const known = members.map(pick).filter((v: unknown) => typeof v === "number").length;
+    if (known < MEDIAN_MIN_COHORT && medians[field] !== null) out.push(`C11: team_medians.${field} ${medians[field]} over ${known} reps (< ${MEDIAN_MIN_COHORT}): must be null`);
+    if (known >= MEDIAN_MIN_COHORT && typeof medians[field] !== "number") out.push(`team_medians.${field} null over ${known} reps`);
+  }
+  return out;
+}
+const OWNER_PERIOD_FILE: Record<string, string> = { "rep-today": "overview__today.json", "rep-last-7-days": "overview__last-7-days.json", "rep-custom": "overview__custom.json",
+  "owner-one-rep-scope": "overview__default.json" };
 function s9OverviewCalls(_rows: readonly SiManifestRow[], env: CaptureEnv): CaptureCall[] {
   const today = etDayKey(new Date());
   const scoped = (body: any) => { const id = body?.data?.reps?.find((r: any) => r.agent?.name === "Dana Reyes")?.agent?.id; return id ? `/overview?agent_id=${id}` : null; };
@@ -823,13 +896,13 @@ function s9OverviewChecks(body: any, ctx: CheckContext): string[] {
     const out = repOverviewChecks(body, ctx.agents);
     const period = /^rep-(today|last-7-days|custom)$/.exec(ctx.state)?.[1]?.replace(/-/g, "_");
     if (period && d.periods?.activity?.key !== period) out.push(`periods.activity.key ${d.periods?.activity?.key}, expected ${period}`);
-    return out;
+    return [...out, ...medianCohortChecks(body, ctx, OWNER_PERIOD_FILE[ctx.state]!)];
   }
   const out: string[] = [];
   if (!["ok", "attention", "broken"].includes(d.now?.capture_health?.status)) out.push("now.capture_health.status missing");
   if (ctx.state === "owner-one-rep-scope") {
     if (d.reps?.length !== 1 || d.reps[0].agent?.name !== "Dana Reyes" || !d.team_medians || d.unmapped !== null || d.unassigned !== null) out.push("one-rep scope: expected one rep row, team_medians, null unmapped/unassigned");
-    return out;
+    return [...out, ...medianCohortChecks(body, ctx, OWNER_PERIOD_FILE[ctx.state]!)];
   }
   if (d.team_medians) out.push("team_medians on an unscoped Owner read");
   if (!(d.now?.live_calls >= 1)) out.push(`now.live_calls ${d.now?.live_calls}, expected ≥ 1 (T3-live-call)`);
@@ -905,17 +978,24 @@ ROUTES.push(
   { stage: "S6", mode: "on", slug: "attention", route: "GET /attention", params: "limit=200 default; view=all_outreach&limit=200 (the uncertain 5 with its review badge)", kind: "read",
     calls: fixed([{ state: "default", path: "/attention?limit=200" }, { state: "all-outreach", path: "/attention?view=all_outreach&limit=200" }]),
     schema: attentionServer, admin: [adminSchema("attentionSchema")], checks: s6ActiveChecks },
-  { stage: "S6", mode: "on", slug: "outreach", route: "GET /outreach/:id", params: `${[...P5_ALL, ...RECEIVER_LABELS, ...ACROSS].join(", ")}`, kind: "read",
-    calls: labelCalls([...P5_ALL, ...RECEIVER_LABELS, ...ACROSS], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}` : null)),
+  { stage: "S6", mode: "on", slug: "outreach", route: "GET /outreach/:id", params: `${[...P5_ALL, ...RECEIVER_LABELS, ...ACROSS, OWNER_KEPT_LABEL, ...SPEND_LABELS].join(", ")}`, kind: "read",
+    calls: labelCalls([...P5_ALL, ...RECEIVER_LABELS, ...ACROSS, OWNER_KEPT_LABEL, ...SPEND_LABELS], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}` : null)),
     schema: outreachReadSchema, admin: [adminSchema("outreachReadSchema")], checks: s6DetailChecks },
-  { stage: "S6", mode: "on", slug: "outreach-timeline", route: "GET /outreach/:id/timeline", params: "limit=50: the Priority 5 closures, the reopen review, the upgrade", kind: "read",
-    calls: labelCalls(P5_ALL, row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}/timeline?limit=50` : null)), schema: timelineServer },
+  { stage: "S6", mode: "on", slug: "outreach-timeline", route: "GET /outreach/:id/timeline", params: "limit=50: the Priority 5 closures, the reopen review, the upgrade; the receiver_agent_changed events (T3-granot-rep-change, T3-owner-kept, T3-receiver-ringcentral)", kind: "read",
+    calls: labelCalls([...P5_ALL, "T3-granot-rep-change", OWNER_KEPT_LABEL, "T3-receiver-ringcentral"], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}/timeline?limit=50` : null)),
+    schema: timelineServer, checks: s6TimelineChecks },
+  // CF-FINAL: a later capture of an S5c field (CF5c didn't capture this route): the conversations read on the in-progress-call subject.
+  { stage: "S6", mode: "on", slug: "number-conversations", route: "GET /numbers/:id/conversations", params: "T3-live-call's Number (the in-progress call: in_progress, call_log_state; other_calls); S-findings' Number (conversation cards carrying in_progress / call_log_state); T3-capture-states' Number (settled and provisional-then-settled calls: call_log_state settled)", kind: "read",
+    calls: labelCalls(["T3-live-call", "S-findings", "T3-capture-states"], row => (row.contact_number_id ? `/numbers/${row.contact_number_id}/conversations` : null)),
+    schema: serverSchema(load.conversations, "ownerConversationsResponseSchema", "analysis/ownerConversations.ts"), checks: s6ConversationsChecks },
   { stage: "S6", mode: "off", slug: "attention", route: "GET /attention (Team 3 flags off)", params: "limit=200 default; view=all_outreach; view=closed", kind: "read",
     calls: fixed([{ state: "default", path: "/attention?limit=200" }, { state: "all-outreach", path: "/attention?view=all_outreach&limit=200" }, { state: "closed", path: "/attention?view=closed&limit=200" }]),
     schema: attentionServer, admin: [adminSchema("attentionSchema")], checks: flagOnHeader },
   { stage: "S6", mode: "off", slug: "outreach", route: "GET /outreach/:id (Team 3 flags off)", params: `${[...P5_ALL, ACROSS[0]].join(", ")}`, kind: "read",
     calls: labelCalls([...P5_ALL, ACROSS[0]], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}` : null)),
-    schema: outreachReadSchema, admin: [adminSchema("outreachReadSchema")], checks: body => (has(body?.data?.outreach, "band_since") ? ["flag-off detail carries band_since"] : []) },
+    schema: outreachReadSchema, admin: [adminSchema("outreachReadSchema")], checks: body => [...(has(body?.data?.outreach, "band_since") ? ["flag-off detail carries band_since"] : []),
+      // CF-FINAL: `receiver_agent` is RECEIVER_ASSIGNMENT-only (absent off); `lead_cost` is unflagged (present, and the production Admin parses it).
+      ...(has(body?.data?.outreach, "receiver_agent") ? ["flag-off detail carries receiver_agent"] : []), ...(has(body?.data?.outreach, "lead_cost") ? [] : ["lead_cost missing (unflagged)"])] },
   { stage: "S6", mode: "off", slug: "number-timeline", route: "GET /numbers/:id/timeline (v2, Team 3 flags off)", params: "T3-p5-accepted, T3-p5-booking-upgrade", kind: "read",
     calls: labelCalls([P5.accepted, P5.upgrade], row => (row.contact_number_id ? `/numbers/${row.contact_number_id}/timeline?limit=50` : null)),
     schema: timelineServer, admin: [adminSchema("timelineSchema")] },
@@ -1010,6 +1090,9 @@ function s8RepDeskChecks(body: any, ctx: CheckContext): string[] {
     if (body?.data?.total_items !== sum) out.push(`total_items ${body?.data?.total_items} ≠ Σ rep priority_counts.${view} ${sum} (the rep's chips count the rep's rows)`);
   }
   if (ctx.state.endsWith("preset-other") && rows.some(row => !(PRESETS.other as readonly string[]).includes(row.filter_keys?.priority ?? "not_set"))) out.push("preset Other returned another Priority");
+  // CF-FINAL (S6-AGENT on the seed): the rep's scope includes the records assigned to her from the Lead's receiver agent.
+  if (ctx.state === "all-outreach" && !rows.some(row => row.outreach?.assignment?.origin === "crm_receiver" && row.outreach?.assignment?.agent?.id === rep))
+    out.push("no crm_receiver record of the rep in her All Outreach scope");
   out.push(...attentionRowsCarryS2(body, ctx.state.startsWith("closed")));
   return out;
 }
@@ -1051,7 +1134,8 @@ function s8ClosedHistoryChecks(rep: boolean) {
 function s8OwnerOverviewChecks(body: any, ctx: CheckContext): string[] {
   const d = body?.data;
   if (!d) return ["data missing"];
-  if (ctx.state === "agent-rep") return d.reps?.length === 1 && d.reps[0].agent?.name === REP_NAME && d.team_medians && d.unmapped === null ? [] : ["Owner agent_id=<rep>: expected one rep row + team_medians"];
+  if (ctx.state === "agent-rep") return [...(d.reps?.length === 1 && d.reps[0].agent?.name === REP_NAME && d.team_medians && d.unmapped === null ? [] : ["Owner agent_id=<rep>: expected one rep row + team_medians"]),
+    ...medianCohortChecks(body, ctx, "owner-overview__default.json")];
   return d.team_medians === undefined && d.scope === null && d.reps?.some((r: any) => r.agent?.name === OTHER_REP_NAMES[0]) ? [] : ["the Owner's unscoped Overview: expected scope null, no team_medians, every rep"];
 }
 /** 404 bodies: an out-of-scope id gets exactly what a missing one gets (same code and message, C6). */
@@ -1207,7 +1291,7 @@ ROUTES.push(
     calls: fixed([{ state: "default", path: "/outreach/closed-history?limit=50" }]), schema: closedHistoryServer, checks: s8ClosedHistoryChecks(false) },
   { stage: "S8", mode: "on", slug: "rep-overview", route: "GET /overview (as the rep)", params: "default; &agent_id=<other rep> (ignored)", kind: "read",
     calls: (_rows, env) => [{ state: "default", path: "/overview", headers: asRep(env) }, { state: "param-agent-other-rep", path: `/overview?agent_id=${env.agents[OTHER_REP_NAMES[0]]}`, headers: asRep(env) }],
-    schema: overviewSchema, checks: (body, ctx) => repOverviewChecks(body, ctx.agents) },
+    schema: overviewSchema, checks: (body, ctx) => [...repOverviewChecks(body, ctx.agents), ...medianCohortChecks(body, ctx, "owner-overview__default.json")] },
   { stage: "S8", mode: "on", slug: "owner-overview", route: "GET /overview (Owner)", params: "default; agent_id=<rep>", kind: "read",
     calls: (_rows, env) => [{ state: "default", path: "/overview" }, { state: "agent-rep", path: `/overview?agent_id=${env.agents[REP_NAME]}` }],
     schema: overviewSchema, checks: s8OwnerOverviewChecks },

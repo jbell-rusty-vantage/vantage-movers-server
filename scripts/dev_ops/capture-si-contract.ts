@@ -281,8 +281,16 @@ async function main() {
   const notes = stage === "S6" && mode === "on" ? {
     reports: "reports/S10-{3,4}-replica[-apply].md: the receiver_agent backfill (S10 step 3, S6-AGENT) and the Priority 5 reconcile (S10 step 4, S6-P5) dry-run and apply " +
       "report formats, copied from the replica evidence (evidence/S10-3-replica*.md, evidence/S10-4-replica*.md); not HTTP captures.",
-    receiver_agent: "S6-AGENT has not merged: the detail carries assignment {agent, origin} but not receiver_agent, and no record is crm_receiver yet. The seed writes the " +
-      "receiver_agent states as raw Lead fields (and sets RECEIVER_ASSIGNMENT / RECEIVER_LATEST_WINS); re-run the seed and this capture after S6-AGENT merges.",
+    receiver_agent: "S6-AGENT (ac4c0db4) on the seed: outreach__t3-receiver-* and t3-granot-rep-change are crm_receiver assignments with outreach.receiver_agent " +
+      "{agent, source, set_at} per source (the field is outreach.receiver_agent on the detail, not lead.receiver_agent). T3-receiver-ringcentral is the real E5 fill " +
+      "(ensureLead → writeReceiverAgent; rank 20, assignment.receiver_source is stored, not in the DTO). T3-promise-across-a/b and T3-owner-kept keep the Owner's " +
+      "assignment against a different receiver (C13; T3-owner-kept after a later Granot rep change). outreach-timeline__t3-granot-rep-change / t3-owner-kept carry " +
+      "\"Rep changed in Granot: {old} → {new}\"; t3-receiver-ringcentral \"Receiver agent changed: none → …\".",
+    lead_cost: "outreach__t3-spend-{rate,legacy,missing-rate,duplicate-zero}.json: outreach.lead_cost {amount, basis} for rate / legacy / unpriced / zero (53700288, unflagged); " +
+      "every other detail with a Lead carries one too (a default Lead is zero).",
+    s5c_later_capture: "number-conversations__{t3-live-call,s-findings,t3-capture-states}.json are a later capture of S5c fields (CF5c didn't capture this route): the in-progress " +
+      "call's in_progress: true / call_log_state on the conversations read (in other_calls: an in-progress call has no conversation card yet), and cards carrying " +
+      "in_progress / call_log_state on S-findings, and settled Call Log calls (call_log_state settled) on T3-capture-states. They belong to the S5c contract; they're filed here because S5c is frozen.",
   } : stage === "S9" && mode === "on" ? {
     rep_scope: "overview__rep-{today,last-7-days,custom}.json (CF8 addition, S8-REP): the rep's own Overview, as the rep (Dana Reyes, signed by the local API as the admin proxy " +
       "signs a rep): forced scope, team_medians, no other rep's name or values (C11)." + (only ? " Captured with --only from a later seed than the other S9 fixtures (their " +

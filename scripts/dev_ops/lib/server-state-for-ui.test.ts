@@ -170,3 +170,22 @@ test("CONTRACT.md helpers: tables (escaped pipes, pipes in code), decision ids, 
   assert.deepEqual(citedFixtureNames(tables[0]![1]!.join(" ")), ["../S1/outreach__s-findings.json", "outreach__t3-live-call.json"]);
   assert.deepEqual(citedFixtureNames("`closed-history__outcome-booked-granot-booked-page-{1,2}.json`"), [], "brace shorthand is skipped");
 });
+
+test("listFixtures: a stage's other subfolders (not flag-off/, reports/) are flags-on fixtures with a folder-prefixed slug (CF-FINAL)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "si-state-"));
+  const write = (rel: string, body: unknown) => { mkdirSync(join(dir, rel, ".."), { recursive: true }); writeFileSync(join(dir, rel), JSON.stringify(body)); };
+  try {
+    write("S8/_capture-index.json", { stage: "S8", calls: [] });
+    write("S8/rep-attention__default.json", { ok: true, data: { items: [] } });
+    write("S8/admin-users/list__after.json", { status: 200, body: { ok: true, data: { users: [{ email: "a@example.invalid" }] } } });
+    write("S8/admin-users/audit-log.json", []);
+    write("S8/reports/ignored.json", {});
+    write("S8/flag-off/rep-refused__attention.json", { status: 403 });
+    const fixtures = listFixtures(dir);
+    assert.deepEqual(fixtures.map(f => `${f.mode} ${f.rel} ${f.slug}`), ["on S8/rep-attention__default.json rep-attention", "on S8/admin-users/audit-log.json admin-users/audit-log",
+      "on S8/admin-users/list__after.json admin-users/list", "off S8/flag-off/rep-refused__attention.json rep-refused"]);
+    const evidence = findEvidence({ routes: ["admin-users/list"], path: "body.data.users[].email" }, fixtures, cachedReader(dir));
+    assert.equal(evidence.status, "ok");
+    assert.equal(evidence.fixture, "S8/admin-users/list__after.json");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

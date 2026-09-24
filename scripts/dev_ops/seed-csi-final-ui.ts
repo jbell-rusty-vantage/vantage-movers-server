@@ -1736,6 +1736,7 @@ async function main() {
       issues: [], quoted: false, createdAt: receivedAt, updatedAt: receivedAt } as never);
     return String(_id);
   }
+  const agentName = (id: mongoose.Types.ObjectId | null) => (id ? agents.find(a => String(a._id) === String(id))?.name ?? null : null);
   /** The `EntityChange` a receiver write appends (every receiver path, before/after), as the Granot processor or a Vantage writer records it. */
   async function receiverChange(lead: LeadRef, at: Date, before: { agent: mongoose.Types.ObjectId | null; source: string | null; value: string | null },
     after: { agent: mongoose.Types.ObjectId; source: string; value: string }, observationId: string | null) {
@@ -1746,8 +1747,12 @@ async function main() {
       command_name: observationId ? "granot.observe_lead" : "vantage.update_lead",
       provenance: { source_system: system, ...(observationId ? { observation_channel: "granot_webhook", observation_id: O(observationId) } : {}),
         actor: { actor_type: "system", actor_id: system === "granot" ? "granot-lifecycle" : "seed" }, initiator: { actor_type: "system", actor_id: "seed" } },
-      changed_paths: ["receiver_agent", "receiver_agent_set_at", "receiver_agent_source", "receiver_agent_source_value"],
-      fields: [{ path: "receiver_agent", value_mode: "stored", before: before.agent, after: after.agent }, { path: "receiver_agent_set_at", value_mode: "stored", before: null, after: at },
+      // CF-FINAL: the name snapshot rides along, as `emitLeadChange` records every changed path; the timeline's
+      // "Rep changed in Granot: {old} → {new}" reads it (without it both sides read "none").
+      changed_paths: ["receiver_agent", "receiver_agent_name_snapshot", "receiver_agent_set_at", "receiver_agent_source", "receiver_agent_source_value"],
+      fields: [{ path: "receiver_agent", value_mode: "stored", before: before.agent, after: after.agent },
+        { path: "receiver_agent_name_snapshot", value_mode: "stored", before: agentName(before.agent), after: agentName(after.agent) },
+        { path: "receiver_agent_set_at", value_mode: "stored", before: null, after: at },
         { path: "receiver_agent_source", value_mode: "stored", before: before.source, after: after.source },
         { path: "receiver_agent_source_value", value_mode: "stored", before: before.value, after: after.value }],
       revision_before: revision, revision_after: revision + 1, applied_at: at } as never);
@@ -1821,7 +1826,6 @@ async function main() {
     ["T3-receiver-granot", "t3_receiver_granot", MARCUS, "granot_username_match", "marcus b.", "FormLead"],
     ["T3-receiver-extension", "t3_receiver_extension", TINA, "extension_match", "103", "FormLead"],
     ["T3-receiver-sheet", "t3_receiver_sheet", DANA, "best_relocation_sheet", "Dana Reyes", "FormLead"],
-    ["T3-receiver-ringcentral", "t3_receiver_ringcentral", MARCUS, "ringcentral_answered", "104", "CallLead"],
   ] as const) {
     const setAt = ago(3, 2);
     const s = await leadSubject({ model, receivedDaysAgo: 4, fields: { name: `T3 Receiver ${source}` } });
@@ -1834,6 +1838,21 @@ async function main() {
     await seedRecord(s.lead, s.number!.id, plus(setAt, MINUTE));
     row(label, [state], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
       note: `Lead receiver_agent ${agent.name} (source ${source}, value ${value}, set ${setAt.toISOString()}) with its EntityChange` });
+  }
+  {
+    // CF-FINAL (S6-AGENT E5, real): a Call Lead with no receiver whose creating call (its `ringcentral.telephony_session_id`, on the
+    // record's primary Number) was answered by one reviewed rep, Marcus on ext 104. `ensureLead` → `applyReceiverAssignment` fills
+    // `receiver_agent` through `writeReceiverAgent` (EntityChange source_system ringcentral) and assigns `crm_receiver` at rank 20.
+    // The call is connected but not a human conversation, so no `first_conversation` (40) outranks it.
+    const s = await leadSubject({ model: "CallLead", receivedDaysAgo: 4, fields: { name: "T3 Receiver ringcentral_answered", receiver_agent_name_snapshot: null },
+      calls: [{ at: ago(4), direction: "Inbound", result: "Call connected", duration: 95, contact: "unknown", extension: "104" }] });
+    const call = await Calls.collection.findOne({ contact_number_id: O(s.number!.id) }, { sort: { started_at: 1 } });
+    await setLead(s.lead, { "ringcentral.telephony_session_id": call!.telephony_session_id });
+    await seedRecord(s.lead, s.number!.id, ago(3, 23));
+    row("T3-receiver-ringcentral", ["t3_receiver_ringcentral", "t3_crm_receiver_ringcentral"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id,
+      lead_refs: leadIds(s.lead), interaction_ids: [String(call!._id)],
+      note: "Call Lead with no receiver; its creating call (telephony_session_id) answered by Marcus Bell on reviewed ext 104: ensureLead filled receiver_agent " +
+        "(source ringcentral_answered, EntityChange source_system ringcentral) and assigned crm_receiver at rank 20" });
   }
   {
     // A Granot rep change across two observations (Dana R. → Marcus B.), then an out-of-order older observation (Tina C.,
@@ -1849,7 +1868,7 @@ async function main() {
     const lateId = await granotObservation(s.lead, n.ten, ago(3), "0", { user_raw: "tina c.", rep_raw: "tina c." }, ago(1));
     const splitId = await granotObservation(s.lead, n.ten, ago(1, 6), "0", { user_raw: "dana r.", rep_raw: "marcus b." });
     await seedRecord(s.lead, n.id, ago(1, 5));
-    row("T3-granot-rep-change", ["t3_granot_rep_change", "t3_granot_observation_out_of_order", "t3_granot_user_not_rep"], { outreach_record_id: s.recordId,
+    row("T3-granot-rep-change", ["t3_granot_rep_change", "t3_granot_observation_out_of_order", "t3_granot_user_not_rep", "t3_receiver_change_event", "t3_granot_user_not_rep_unchanged", "t3_crm_receiver"], { outreach_record_id: s.recordId,
       contact_number_id: n.id, lead_refs: leadIds(s.lead),
       note: `Granot rep Dana R. (${o1}) → Marcus B. (${o2}), receiver_agent Marcus; older observation ${lateId} (Tina C., captured 3 days ago, received 1 day ago) ` +
         `did not win; observation ${splitId} has user dana r. ≠ rep marcus b.` });
@@ -1863,12 +1882,34 @@ async function main() {
     await setLead(s.lead, receiverFields(receiver, "granot_username_match", receiver === DANA ? "dana r." : "marcus b.", ago(2, 22)));
     await receiverChange(s.lead, ago(2, 22), { agent: null, source: null, value: null },
       { agent: receiver._id, source: "granot_username_match", value: receiver === DANA ? "dana r." : "marcus b." }, null);
+    // CF-FINAL: the ensure makes it `crm_receiver` first; the Owner's assign then wins, and a later ensure keeps it (E26, C13).
+    await seedRecord(s.lead, s.number!.id, ago(2, 21));
     await ownerAssign(s.recordId, owner);
+    await seedRecord(s.lead, s.number!.id, ago(2, 20));
     const anchor = ago(2, 19), resolved = resolveActionDate({ exact: ahead(1, 2).toISOString() }, policy, anchor);
     const fid = await directFollowup(s.recordId, { kind: "call", description: `${promiser.name} promised a callback about the estimate`, origin: "rep_promise", requestedBy: "rep",
       anchor, resolved, promisedBy: String(promiser._id), commitment: `t3:promise-across:${s.recordId}` });
     row(label, ["t3_owner_assign_vs_receiver", "t3_promise_across_reps"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
       note: `receiver_agent ${receiver.name}; Owner assigned ${owner.name}; open rep_promise ${fid} promised by ${promiser.name}` });
+  }
+
+  // ── CF-FINAL (C13): the Owner's assignment survives a later Granot rep change. Receiver Marcus (crm_receiver), the Owner assigns
+  //    Tina, then Granot moves the Lead to Dana: receiver_agent follows Granot, the record stays the Owner's (Tina). ──
+  {
+    const s = await leadSubject({ receivedDaysAgo: 5, fields: { name: "T3 Owner Kept", receiver_agent_name_snapshot: null } });
+    const n = s.number!;
+    const o1At = ago(4, 6), o1 = await granotObservation(s.lead, n.ten, o1At, "0", { user_raw: "marcus b.", rep_raw: "marcus b." });
+    await setLead(s.lead, receiverFields(MARCUS, "granot_username_match", "marcus b.", plus(o1At, 2 * MINUTE)));
+    await receiverChange(s.lead, plus(o1At, 2 * MINUTE), { agent: null, source: null, value: null }, { agent: MARCUS._id, source: "granot_username_match", value: "marcus b." }, o1);
+    await seedRecord(s.lead, n.id, plus(o1At, 5 * MINUTE));
+    await ownerAssign(s.recordId, TINA);
+    const o2At = ago(1, 8), o2 = await granotObservation(s.lead, n.ten, o2At, "0", { user_raw: "dana r.", rep_raw: "dana r." });
+    await setLead(s.lead, receiverFields(DANA, "granot_username_match", "dana r.", plus(o2At, 2 * MINUTE)));
+    await receiverChange(s.lead, plus(o2At, 2 * MINUTE), { agent: MARCUS._id, source: "granot_username_match", value: "marcus b." },
+      { agent: DANA._id, source: "granot_username_match", value: "dana r." }, o2);
+    await seedRecord(s.lead, n.id, plus(o2At, 5 * MINUTE));
+    row("T3-owner-kept", ["t3_owner_kept_after_receiver_change"], { outreach_record_id: s.recordId, contact_number_id: n.id, lead_refs: leadIds(s.lead),
+      note: `receiver Marcus (crm_receiver) → Owner assigned Tina → Granot rep change Marcus → Dana (${o2}): receiver_agent Dana, record still Owner/Tina (C13)` });
   }
 
   // ── A record closed 200 days ago (Closed history, E27): Priority 8 accepted, crm_dead ──────────

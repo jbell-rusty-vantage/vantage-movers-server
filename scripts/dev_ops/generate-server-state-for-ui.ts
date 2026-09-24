@@ -60,7 +60,6 @@ function region(name: string, spec: string, routes: string | string[], prefix: s
 
 const CARD = "data.items[].outreach.";
 const O = "data.outreach.";
-const CF6 = "CF6 recapture after S6-AGENT merges";
 
 region("Desk card · line 1 · identity and chips", "final §5.2, §5.7; D1", "attention", "data.items[].", [
   ["subject.kind", "What the row is about", "enum", "never null", "card.subject", { observe: true }],
@@ -132,7 +131,7 @@ region("Desk card · line 6 · next step", "final §5.5; D7; F9; F11", "attentio
 region("Desk card · line 7 · ownership and urgency", "final §5.2; E4; E26; F12; addendum §2.2", "attention", CARD, [
   ["assignment.agent.name", "`Assigned to {name}`", "string", "`assignment.agent: null` → `Unassigned`", "card.assigned_to"],
   ["assignment.origin", "Why the rep is assigned", "enum", "null with no agent", "assignment.origin.{value}", { observe: true }],
-  ["assignment.origin", "Assigned from the Lead's Receiver agent (S6-AGENT)", "`crm_receiver`", "only with `RECEIVER_ASSIGNMENT` on", "assignment.origin.crm_receiver (\"Assigned from Granot\")", { expect: "crm_receiver", pending: CF6 }],
+  ["assignment.origin", "Assigned from the Lead's Receiver agent (S6-AGENT)", "`crm_receiver`", "only with `RECEIVER_ASSIGNMENT` on", "assignment.origin.crm_receiver (\"Assigned from Granot\")", { expect: "crm_receiver", prefer: "S6/attention__all-outreach.json" }],
   ["next_action.promised_by.name", "`Promised by {name}`", "string", "`promised_by: null` → the assignment wording", "card.promised_by"],
   ["facts.next_action_state", "`· Callback overdue {as_of − attention_due_at}` / `· Due in {…}`", "enum", "never null; `no_due_date` / `none` → nothing", "card.overdue / card.due_in", { observe: true }],
   ["lead_progress.granot_priority", "`Granot Priority {code} ({label})`", "string | null", "`lead_progress: null` → nothing", "card.priority"],
@@ -218,7 +217,7 @@ region("Timeline · both scopes", "final §10; D2; D17; RD8; G2; G4; S9", ["outr
   ["items[kind=band_changed].detail.to_band", "`Moved from {band} to {band}`", "1–7 | null", "null → left Attention", "timeline.band_changed"],
   ["items[kind=band_changed].detail.estimated", "Baseline estimate (G8)", "boolean", "never null on the kind", "timeline.band_changed.estimated", { observe: true }],
   ["items[kind=followup_superseded].title", "Superseded default (Team 4)", "string", "—", "(server copy)"],
-  ["items[kind=receiver_agent_changed].title", "\"Rep changed in Granot: {old} → {new}\" (S6-AGENT, timeline only)", "string", "only with `RECEIVER_ASSIGNMENT` on", "(server copy)", { pending: CF6 }],
+  ["items[kind=receiver_agent_changed].title", "\"Rep changed in Granot: {old} → {new}\" (S6-AGENT, timeline only)", "string", "only with `RECEIVER_ASSIGNMENT` on", "(server copy)", { prefer: "S6/outreach-timeline__t3-granot-rep-change.json", observe: true }],
   ["cursor", "`Load older activity`", "string | null", "null on the last page", "timeline.load_older"],
   ["kinds", "Echo of the applied kind filter", "string[] | null", "null → no filter", "timeline.filter"],
   ["coverage.truncated_sources[]", "A \"partial\" note when a source was capped", "string[]", "empty array → complete", "timeline.partial"],
@@ -233,10 +232,13 @@ region("Analysis page · Situation", "final §11.1; RD5; RD7; E26; addendum §4.
   ["official.status", "`Official: {…}`", "enum", "`official: null` (no Lead) → no line", "analysis.official.{value}", { observe: true }],
   ["official.priority.code", "`Granot Priority {code} ({label})`", "string", "`priority: null` → omitted", "analysis.official.priority"],
   ["official.booking_id", "`Open Booking`", "id | null", "null → no link", "analysis.official.open_booking"],
-  ["receiver_agent.agent.name", "`Receiver agent in Granot: {name}` beside `Assigned by you` (E26)", "string", "`receiver_agent: null` (no Lead / no receiver); absent with `RECEIVER_ASSIGNMENT` off", "analysis.receiver_agent", { pending: CF6 }],
-  ["receiver_agent.source", "Receiver agent source", "enum | null", "null on legacy Leads", "analysis.receiver_agent.source.{value}", { pending: CF6 }],
-  ["receiver_agent.set_at", "When it was set", "ISO | null", "null on legacy Leads", "analysis.receiver_agent.set_at", { pending: CF6 }],
-  [null, "`Lead cost $X (legacy price)` on the official status line", "—", "no server field", "analysis.official.lead_cost", { label: "Lead cost on the official line (addendum §4.3)" }],
+  // CF-FINAL: the field is `outreach.receiver_agent` on the detail (S6-AGENT), not `lead.receiver_agent` as the addendum and TEAM-3 §6 wrote.
+  ["receiver_agent.agent.name", "`Receiver agent in Granot: {name}` beside `Assigned by you` (E26)", "string", "`receiver_agent: null` (no Lead / no receiver); absent with `RECEIVER_ASSIGNMENT` off", "analysis.receiver_agent", { prefer: "S6/outreach__t3-owner-kept.json" }],
+  ["receiver_agent.source", "Receiver agent source", "enum | null", "null on legacy Leads", "analysis.receiver_agent.source.{value}", { prefer: "S6/outreach__t3-receiver-ringcentral.json", observe: true }],
+  ["receiver_agent.set_at", "When it was set", "ISO | null", "null on legacy Leads", "analysis.receiver_agent.set_at", { prefer: "S6/outreach__t3-receiver-granot.json" }],
+  // CF-FINAL: `53700288` added the field (unflagged; the Overview's `spendBasis`).
+  ["lead_cost.amount", "`Lead cost ${amount}` on the official status line (addendum §4.3)", "number (dollars) ≥ 0", "`lead_cost: null` without a Lead (never $0); absent on older servers", "analysis.official.lead_cost", { prefer: "S6/outreach__t3-spend-legacy.json" }],
+  ["lead_cost.basis", "`(legacy price)` / `(unpriced)` qualifier", "rate | legacy | unpriced | zero", "as above", "analysis.official.lead_cost.basis.{value}", { prefer: "S6/outreach__t3-spend-rate.json", observe: true }],
 ]);
 region("Analysis page · Situation", "final §11.1; RD7", "run-presentation", "data.summary_findings.", [
   ["story_discrepancies[].claim", "`Records disputed on a call ({n})`", "string", "empty array → section omitted", "analysis.disputed"],
@@ -332,10 +334,11 @@ region("Analysis page · Conversations", "final §11.7; D14; RD4; RD12; G2", "nu
   ["items[].media_available", "Show the `<audio>` player", "boolean", "never null", "conversations.player"],
   ["items[].summary_source", "Per-call summary source", "call_summary | legacy | null", "null + empty sections → no summary", "conversations.summary_source", { observe: true }],
   ["items[].summary_sections[].label", "Section labels (server)", "string", "empty → no summary", "(server copy)", { observe: true }],
-  ["items[].in_progress", "In-progress call on a card (G2)", "boolean", "result and duration null while true", "conversations.in_progress", { pending: "an S5c-shaped capture of `GET /numbers/:id/conversations`" }],
-  ["items[].call_log_state", "Call Log state (G2)", "provisional | settled | null", "null = final unless `terminal: false`", "conversations.call_log_state", { pending: "an S5c-shaped capture of `GET /numbers/:id/conversations`" }],
+  ["items[].in_progress", "In-progress call on a card (G2)", "boolean", "result and duration null while true", "conversations.in_progress", { prefer: "S6/number-conversations__s-findings.json", observe: true }],
+  ["items[].call_log_state", "Call Log state (G2)", "provisional | settled | null", "null = final unless `terminal: false`", "conversations.call_log_state", { prefer: "S6/number-conversations__s-findings.json" }],
   ["other_calls[].result", "`Other calls ({n})`", "enum | null", "empty array → section omitted", "conversations.other.result.{value}", { observe: true }],
-  ["other_calls[].in_progress", "In-progress call in `Other calls` (G2)", "boolean", "result and duration null while true", "conversations.in_progress", { pending: "an S5c-shaped capture (CF5c notes: unit tests only)" }],
+  ["other_calls[].in_progress", "In-progress call in `Other calls` (G2)", "boolean", "result and duration null while true", "conversations.in_progress", { prefer: "S6/number-conversations__t3-live-call.json", expect: "true" }],
+  ["other_calls[].call_log_state", "Call Log state of an other call (G2)", "provisional | settled | null", "null = final unless `terminal: false`", "conversations.call_log_state", { prefer: "S6/number-conversations__t3-capture-states.json", observe: true }],
   ["next_cursor", "More cards", "string | null", "null → last page", "conversations.load_more"],
 ]);
 region("Analysis page · Conversations", "final §11.7", "conversation-transcript", "data.", [
@@ -494,32 +497,50 @@ region("Overview", "addendum §6; E15–E23; G8; reconciliation §4.3–§4.4", 
   ["team_medians.reps", "Anonymous team medians (rep view, E23)", "int", "`team_medians` absent or null for the Owner's unscoped read", "overview.team_medians"],
 ]);
 
-region("Users (Operations Registry, Owner only)", "addendum §4.1; E8; E28", ["admin-users", "admin-user", "admin-users-invite", "admin-user-invite"], "", [
-  ["**.email", "User email", "string", "never null", "users.email", { pending: "CF8 (admin-server routes; the fixture slug is a guess)" }],
-  ["**.role", "Role", "owner | admin | rep", "never null", "users.role.{value}", { pending: "CF8", observe: true }],
-  ["**.agent_id", "Linked Agent (required for a rep)", "id | null", "null unless rep", "users.agent", { pending: "CF8" }],
-  ["**.active", "Active", "boolean", "never null", "users.active", { pending: "CF8" }],
-  ["**.delivery", "Invite delivery (`sent` / `not_configured` / `failed` / `unreachable`)", "enum", "only on the invite response", "users.invite.delivery.{value}", { pending: "CF8", observe: true }],
-  ["**.expires_at", "Invite expiry (72 h)", "ISO", "only on the invite response", "users.invite.expires", { pending: "CF8" }],
+// CF-FINAL: the Users rows point at the CF8 admin-server fixtures (`contracts/S8/admin-users/`, slug `admin-users/<operation>`);
+// the rep shell rows at the S8 rep fixtures (`rep-*` slugs: every call there is made as the rep, Dana Reyes).
+const ADMIN_USERS = ["admin-users/list", "admin-users/create", "admin-users/update", "admin-users/invite", "admin-users/set-password", "admin-users/deactivate", "admin-users/accept-invite"];
+region("Users (Operations Registry, Owner only)", "addendum §4.1; E8; E28", ADMIN_USERS, "body.data.", [
+  ["users[].email", "User email", "string", "never null", "users.email", { prefer: "S8/admin-users/list__after.json" }],
+  ["users[].role", "Role", "owner | admin | rep", "never null", "users.role.{value}", { prefer: "S8/admin-users/list__after.json", observe: true }],
+  ["users[].agent_id", "Linked Agent (required for a rep)", "id | null", "null unless rep", "users.agent", { prefer: "S8/admin-users/list__after.json" }],
+  ["users[].active", "Active", "boolean", "never null", "users.active", { prefer: "S8/admin-users/list__after.json" }],
+  ["delivery", "Invite delivery (`sent` / `not_configured` / `failed` / `unreachable`)", "enum", "only on the invite response", "users.invite.delivery.{value}", { prefer: "S8/admin-users/invite__rep-not-emailed.json", observe: true }],
+  ["expires_at", "Invite expiry (72 h)", "ISO", "only on the invite response", "users.invite.expires", { prefer: "S8/admin-users/invite__rep-not-emailed.json" }],
+]);
+region("Users (Operations Registry, Owner only)", "addendum §4.1; E28", ADMIN_USERS, "body.", [
+  ["code", "Refusal code (`agent_required`, `invite_invalid`, `forbidden`, …)", "string", "only on a refusal", "users.error.{value}", { observe: true }],
 ]);
 
-const REP = /^rep(?:-|$)/;
-region("Rep shell", "addendum §4.2–§4.3; E8–E11; E23", "attention", "data.", [
-  ["items[].filter_keys.agents[]", "`My work` / `All my Outreach`: the server forces `agent_id` to the rep", "id[]", "a rep never sees another rep's record", "rep.desk", { state: REP, pending: "CF8 (state names starting `rep`)" }],
-  ["metrics.not_called_yet", "Rep tiles computed over the rep's scope", "int", "as the Owner's", "rep.metrics", { state: REP, pending: "CF8" }],
-  ["priority_counts.*.active", "Rep chip counts", "int", "as the Owner's", "rep.preset.count", { state: REP, pending: "CF8" }],
+region("Rep shell", "addendum §4.2–§4.3; E8–E11; E23", "rep-attention", "data.", [
+  ["items[].filter_keys.agents[]", "`My work` / `All my Outreach`: the server forces `agent_id` to the rep", "id[]", "a rep never sees another rep's record", "rep.desk", { prefer: "S8/rep-attention__all-outreach.json" }],
+  ["items[].outreach.assignment.origin", "The rep's records include those assigned from the Lead's Receiver agent", "enum", "as the Owner's", "assignment.origin.{value}", { prefer: "S8/rep-attention__all-outreach.json", expect: "crm_receiver" }],
+  ["metrics.not_called_yet", "Rep tiles computed over the rep's scope", "int", "as the Owner's", "rep.metrics", { prefer: "S8/rep-attention__default.json" }],
+  ["priority_counts.*.active", "Rep chip counts", "int", "as the Owner's", "rep.preset.count", { prefer: "S8/rep-attention__all-outreach.json" }],
 ]);
-region("Rep shell", "addendum §4.2; E9", "outreach", O, [
-  ["followups[].allowed_actions[].action", "E9 allowlist: complete, snooze, re-date own follow-ups with a note", "enum[]", "other actions absent or disabled", "rep.followup.action.{value}", { state: REP, pending: "CF8", observe: true }],
+region("Rep shell", "addendum §4.2; E9", "rep-outreach", O, [
+  ["followups[].allowed_actions[].action", "E9 allowlist: complete, snooze, re-date own follow-ups with a note", "enum[]", "other actions absent or disabled", "rep.followup.action.{value}", { prefer: "S8/rep-outreach__ac-callback-owner-exact.json", observe: true }],
 ]);
-region("Rep shell", "addendum §4.2 (404, never 403)", ["outreach", "outreach-timeline", "outreach-assessment", "outreach-findings", "number-conversations", "conversation-transcript", "conversation-media"], "", [
-  ["**.status", "A record outside the rep's scope answers 404 (existence doesn't leak)", "404", "—", "rep.not_found", { state: REP, expect: "404", pending: "CF8 (status-fixture naming is a guess)" }],
+region("Rep shell", "addendum §4.2; E9", "rep-outreach", "data.", [
+  ["nudges.items[]", "No Owner→rep nudges on a rep's detail", "array (always empty for a rep)", "empty", "rep.nudges"],
 ]);
-region("Rep shell", "addendum §6; E23", "overview", "data.", [
-  ["team_medians.reps", "Rep Overview: own numbers plus anonymous team medians", "int", "—", "rep.overview.team_medians", { state: REP, pending: "CF8/CF9 (rep Overview)" }],
+region("Rep shell", "addendum §4.2; E9", "rep-command-refused", "", [
+  ["body.code", "A command outside the E9 allowlist (close, assign, notes, create/cancel, another rep's follow-up)", "`FORBIDDEN`", "—", "rep.command.forbidden", { expect: "FORBIDDEN", prefer: "S8/rep-command-refused__assign-record.json" }],
 ]);
-region("Rep shell", "addendum §2.2a", "closed-history", "data.", [
-  ["items[].outcome.reason", "Rep Closed history, forced scope", "enum", "—", "rep.closed_history", { state: REP, pending: "CF8" }],
+region("Rep shell", "addendum §4.2 (404, never 403)", ["rep-outreach-out-of-scope", "rep-outreach-timeline-out-of-scope", "rep-outreach-assessment-out-of-scope", "rep-outreach-findings-out-of-scope",
+  "rep-number-conversations-out-of-scope", "rep-conversation-transcript-out-of-scope", "rep-conversation-media-out-of-scope"], "", [
+  ["status", "A record outside the rep's scope answers 404 (existence doesn't leak; same body as a missing id)", "404", "—", "rep.not_found", { expect: "404", prefer: "S8/rep-outreach-out-of-scope__s-audio-purged.json" }],
+]);
+region("Rep shell", "addendum §4.2 (Owner-only routes)", "rep-owner-only", "", [
+  ["body.code", "Numbers, Number, coverage, settings, reps, review items, nudges, attachments, artifacts: Owner only", "`OWNER_REQUIRED`", "—", "rep.owner_only", { expect: "OWNER_REQUIRED", prefer: "S8/rep-owner-only__numbers.json" }],
+]);
+region("Rep shell", "addendum §6; E23; C11", "rep-overview", "data.", [
+  ["team_medians.reps", "Rep Overview: own numbers plus anonymous team medians", "int", "—", "rep.overview.team_medians", { prefer: "S8/rep-overview__default.json" }],
+  ["team_medians.open", "A team median (each metric null below 3 contributing reps, C11)", "number | null", "null when fewer than 3 reps have a value", "rep.overview.team_medians.metric", { prefer: "S8/rep-overview__default.json" }],
+  ["reps[].agent.name", "The rep's own row only", "string", "never another rep", "rep.overview.self"],
+]);
+region("Rep shell", "addendum §2.2a", "rep-closed-history", "data.", [
+  ["items[].outcome.reason", "Rep Closed history, forced scope", "enum", "—", "rep.closed_history", { prefer: "S8/rep-closed-history__default-page-1.json", observe: true }],
 ]);
 region("Rep shell", "final §12; addendum §4.1", "outreach", O, [
   [null, "Messages / rep threads for reps", "—", "denied to reps; Phase 5 for everyone", "—", { label: "Messages (rep)", deferred: "Phase 5, and denied to reps (addendum §4.1)" }],
@@ -549,14 +570,16 @@ const CHANGES: Change[] = [
   { what: "Form-created Numbers: `created_via`, `has_calls`; the list hides form-only Numbers by default (`filters.has_calls`, `include_form_only`)", ids: "G7; DECISIONS 2026-09-24 (S5c-NUMBERS)", routes: ["numbers"], path: "data.filters.has_calls", prefer: "S5c/numbers__default.json" },
   { what: "Accepted Granot Priority 5 closes Outreach as `granot_booked` (reversible); the exact Booking upgrades it to `booked`", ids: "E1; E2; G8; DECISIONS 2026-09-24 (S6-P5)", routes: ["attention-closed"], path: "data.items[].outcome.reason", expect: "granot_booked", prefer: "S6/attention-closed__closed-outcome-granot-booked.json" },
   { what: "`lead_progress.disposition: crm_booked` for an accepted 5; an uncertain 5 opens a review and stays active", ids: "E1", routes: ["outreach"], path: "data.outreach.lead_progress.disposition", expect: "crm_booked", prefer: "S6/outreach__t3-p5-accepted.json" },
-  { what: "Assigned rep follows the Lead's Receiver agent (`assignment.origin: crm_receiver`)", ids: "E3; E4; E5; E6; E26; G10", routes: ["outreach"], path: "data.outreach.assignment.origin", expect: "crm_receiver", pending: CF6 },
-  { what: "Detail shows the Receiver agent beside the Assigned rep (`outreach.receiver_agent {agent, source, set_at}`; the addendum wrote `lead.receiver_agent`)", ids: "E26", routes: ["outreach"], path: "data.outreach.receiver_agent.agent.name", pending: CF6 },
+  { what: "Assigned rep follows the Lead's Receiver agent (`assignment.origin: crm_receiver`; a `ringcentral_answered` receiver ranks 20); the Owner's assignment is kept against a later receiver change (C13)", ids: "E3; E4; E5; E6; E26; G10", routes: ["outreach"], path: "data.outreach.assignment.origin", expect: "crm_receiver", prefer: "S6/outreach__t3-receiver-ringcentral.json" },
+  { what: "Detail shows the Receiver agent beside the Assigned rep (`outreach.receiver_agent {agent, source, set_at}`; the addendum wrote `lead.receiver_agent`); timeline `receiver_agent_changed` (\"Rep changed in Granot: {old} → {new}\")", ids: "E26", routes: ["outreach"], path: "data.outreach.receiver_agent.agent.name", prefer: "S6/outreach__t3-owner-kept.json" },
+  { what: "Lead cost on the Outreach detail (`outreach.lead_cost {amount, basis: rate | legacy | unpriced | zero}`, the Overview's spend basis; null without a Lead)", ids: "E10; E20; addendum §4.3", routes: ["outreach"], path: "data.outreach.lead_cost.basis", expect: "legacy", prefer: "S6/outreach__t3-spend-legacy.json" },
   { what: "`filter_keys.priority: \"no_lead\"` (unflagged) and `priority_counts` per key and view `{attention, active, closed}`", ids: "E12; E13; E14; DECISIONS 2026-09-24 (per view; `no_lead` unflagged)", routes: ["attention"], path: "data.items[].filter_keys.priority", expect: "no_lead", prefer: "S7/attention__all-outreach-no-lead.json" },
   { what: "Closed history beyond the 90-day partition (`GET /outreach/closed-history`, `retention`)", ids: "E27", routes: ["closed-history"], path: "data.retention.days", prefer: "S7/closed-history__before-90d.json" },
   { what: "Band history: `band_since {at, estimated}`, timeline `band_changed` with causes incl. `baseline`, `policy`, `capture_repair`", ids: "E25; G8", routes: ["outreach-timeline"], path: "data.items[kind=band_changed].detail.cause.kind", expect: "baseline" },
   { what: "Overview route: now (with `live_calls`, `capture_health.status`), desk health, reps, Unmapped / Unassigned, spend by basis and source", ids: "E15; E16; E17; E18; E19; E20; E22; G8; DECISIONS 2026-09-24 (S9 now from the index)", routes: ["overview"], path: "data.now.live_calls", prefer: "S9/overview__default.json" },
-  { what: "Rep role: server-forced scope on every SI route, 404 outside it, E9 command allowlist", ids: "E8; E9; E10; E11", routes: ["attention"], path: "data.items[].filter_keys.agents[]", state: REP, pending: "CF8" },
-  { what: "Owner-managed Admin users and invites (admin server)", ids: "E28; DECISIONS 2026-09-24 (S8-USERS details)", routes: ["admin-users"], path: "**.email", pending: "CF8" },
+  { what: "Rep role: server-forced scope on every SI route, 404 outside it, E9 command allowlist", ids: "E8; E9; E10; E11", routes: ["rep-attention"], path: "data.items[].filter_keys.agents[]", prefer: "S8/rep-attention__all-outreach.json" },
+  { what: "Team medians on a rep-scoped Overview are null per metric below 3 contributing reps (a rep can't work out another rep's value)", ids: "C11; E23; DECISIONS 2026-09-24 (656c477f)", routes: ["rep-overview"], path: "data.team_medians.reps", prefer: "S8/rep-overview__default.json" },
+  { what: "Owner-managed Admin users and invites (admin server)", ids: "E28; DECISIONS 2026-09-24 (S8-USERS details)", routes: ["admin-users/list"], path: "body.data.users[].email", prefer: "S8/admin-users/list__after.json" },
 ];
 
 // ---------------------------------------------------------------------------------------------------------------
