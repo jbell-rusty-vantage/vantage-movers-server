@@ -160,6 +160,8 @@ async function main() {
   const limit = Number(option("--limit") ?? 100_000);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100_000) throw new Error("--limit must be 1..100000");
   const sample = Number(option("--sample") ?? 10);
+  // S10-REPAIR: a verifier sends no DDL (model autoIndex would re-create a missing index, e.g. the sheet-sync TTL).
+  mongoose.set("autoIndex", false); mongoose.set("autoCreate", false);
   await connectMongo();
   const database = getMongoDatabaseName();
   if (!localDatabase(database, process.env.MONGO_URI)) {
